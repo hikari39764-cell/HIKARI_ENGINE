@@ -1284,6 +1284,7 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         view.viewId = selected->request.viewId;
         view.purpose = selected->request.purpose;
         view.cameraFrame = &selected->request.cameraFrame;
+        view.assetRegistry = assetRegistry;
         const PARTICLES::ParticleRenderFrameSource particleFrameSource{
             selected->request.particleInputOverride.get(),
             assetRegistry,

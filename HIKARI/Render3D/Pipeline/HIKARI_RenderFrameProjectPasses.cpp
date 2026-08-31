@@ -444,6 +444,14 @@ bool ExecuteProjectRenderPass(
     pass.encoder.clearWorkingColor = &ClearWorkingColor;
     pass.encoder.capabilityMask = static_cast<uint32_t>(
         GameProjectRenderCommandCapability::ClearWorkingColor);
+    if ((descriptor.flags &
+            GameProjectRenderPassFlag::ShaderCommands) != 0u) {
+        pass.encoder.version = kGameProjectRenderCommandEncoderVersion;
+        pass.encoder.drawFullscreen =
+            &ExecuteProjectFullscreenShaderCommand;
+        pass.encoder.capabilityMask |= static_cast<uint32_t>(
+            GameProjectRenderCommandCapability::ShaderCommands);
+    }
     const bool executed = extensions.executePass(
         extensions.context,
         descriptor.stableId,

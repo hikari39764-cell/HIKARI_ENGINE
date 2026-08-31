@@ -287,6 +287,12 @@ namespace HIKARI::ASSETS::COOKING {
                     outMessage)) {
                 return false;
             }
+            if (!SHADER::INTERNAL::
+                    ValidateContentAddressedShaderArtifact(
+                        artifactPath,
+                        outMessage)) {
+                return false;
+            }
             SHADER::ShaderCookedArtifact cooked{};
             std::string artifactError{};
             if (!SHADER::ReadHshadercFile(

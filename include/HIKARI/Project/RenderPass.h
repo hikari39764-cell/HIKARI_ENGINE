@@ -5,6 +5,7 @@
 #include <type_traits>
 
 #include "HIKARI/Project/RenderFrame.h"
+#include "HIKARI/Project/RenderShader.h"
 
 namespace HIKARI {
 
@@ -17,6 +18,7 @@ namespace HIKARI {
     inline constexpr uint32_t kGameProjectRenderPassDescV1Size = 224u;
     inline constexpr uint32_t kGameProjectRenderCommandEncoderV1Size = 56u;
     inline constexpr uint32_t kGameProjectRenderPassContextV1Size = 88u;
+    inline constexpr uint32_t kGameProjectRenderCommandEncoderVersion = 2u;
 
     enum class GameProjectRenderPassAnchor : uint32_t {
         PostOpaqueBeforeObserver = 0u,
@@ -38,7 +40,13 @@ namespace HIKARI {
     enum class GameProjectRenderCommandCapability : uint32_t {
         None = 0u,
         ClearWorkingColor = 1u << 0u,
+        ShaderCommands = 1u << 1u,
     };
+
+    namespace GameProjectRenderPassFlag {
+        inline constexpr uint32_t ShaderCommands = 1u << 0u;
+        inline constexpr uint32_t All = ShaderCommands;
+    }
 
     constexpr uint32_t GameProjectRenderViewPurposeBit(
         GameProjectRenderViewPurpose purpose) noexcept {
@@ -151,7 +159,7 @@ namespace HIKARI {
                     ~kGameProjectRenderPassV1PurposeMask) != 0u ||
                 resourceUseCount >
                     kGameProjectRenderPassMaximumResourceUseCount ||
-                flags != 0u) {
+                (flags & ~GameProjectRenderPassFlag::All) != 0u) {
                 return false;
             }
             for (const uint32_t value : reserved) {
@@ -159,6 +167,7 @@ namespace HIKARI {
                     return false;
                 }
             }
+            bool hasSampledInput = false;
             for (uint32_t index = 0u;
                 index < kGameProjectRenderPassMaximumResourceUseCount;
                 ++index) {
@@ -196,6 +205,11 @@ namespace HIKARI {
                     !useReservedClear) {
                     return false;
                 }
+                hasSampledInput = hasSampledInput ||
+                    (use.access == GameProjectRenderSurfaceAccess::Sampled &&
+                     IsGameProjectFullscreenShaderInput(
+                        use.semantic,
+                        use.phase));
                 for (uint32_t previous = 0u;
                     previous < index;
                     ++previous) {
@@ -204,6 +218,10 @@ namespace HIKARI {
                         return false;
                     }
                 }
+            }
+            if ((flags & GameProjectRenderPassFlag::ShaderCommands) != 0u &&
+                !hasSampledInput) {
+                return false;
             }
             return true;
         }
@@ -226,7 +244,9 @@ namespace HIKARI {
         uint64_t commandGeneration = 0u;
         ClearGameProjectWorkingColorFn clearWorkingColor = nullptr;
         uint32_t capabilityMask = 0u;
-        uint32_t reserved[5] = { 0u, 0u, 0u, 0u, 0u };
+        uint32_t reservedV1 = 0u;
+        DrawGameProjectFullscreenShaderFn drawFullscreen = nullptr;
+        uint32_t reserved[2] = { 0u, 0u };
 
         bool ClearWorkingColor(
             float red,
@@ -236,7 +256,8 @@ namespace HIKARI {
             const uint32_t capability = static_cast<uint32_t>(
                 GameProjectRenderCommandCapability::ClearWorkingColor);
             return structSize == kGameProjectRenderCommandEncoderV1Size &&
-                version == kGameProjectRenderPassVersion &&
+                (version == kGameProjectRenderPassVersion ||
+                 version == kGameProjectRenderCommandEncoderVersion) &&
                 context != nullptr && commandGeneration != 0u &&
                 clearWorkingColor != nullptr &&
                 (capabilityMask & capability) != 0u &&
@@ -247,6 +268,21 @@ namespace HIKARI {
                     green,
                     blue,
                     alpha);
+        }
+
+        bool DrawFullscreen(
+            const GameProjectFullscreenDrawDesc& draw) const noexcept {
+            const uint32_t capability = static_cast<uint32_t>(
+                GameProjectRenderCommandCapability::ShaderCommands);
+            if (structSize != kGameProjectRenderCommandEncoderV1Size ||
+                version != kGameProjectRenderCommandEncoderVersion ||
+                context == nullptr || commandGeneration == 0u ||
+                drawFullscreen == nullptr || reservedV1 != 0u ||
+                reserved[0] != 0u || reserved[1] != 0u ||
+                (capabilityMask & capability) == 0u) {
+                return false;
+            }
+            return drawFullscreen(context, commandGeneration, &draw);
         }
     };
 
@@ -283,6 +319,8 @@ namespace HIKARI {
         GameProjectRenderCommandEncoder, context) == 8u);
     static_assert(offsetof(
         GameProjectRenderCommandEncoder, commandGeneration) == 16u);
+    static_assert(offsetof(
+        GameProjectRenderCommandEncoder, drawFullscreen) == 40u);
     static_assert(std::is_standard_layout_v<GameProjectRenderPassContext>);
     static_assert(std::is_trivially_copyable_v<
         GameProjectRenderPassContext>);

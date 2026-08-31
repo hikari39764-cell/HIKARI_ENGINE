@@ -1,12 +1,11 @@
 #include "Assets/Importers/HIKARI_ShaderImporter.h"
-#include <algorithm>
 #include <span>
-#include <unordered_map>
 #include <json.hpp>
 #include "Assets/Formats/HIKARI_HshadercFormat.h"
 #include "Assets/Importers/Internal/HIKARI_ShaderImporterValidation.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Assets/Shader/HIKARI_ShaderCookedArtifact.h"
+#include "Assets/Shader/HIKARI_ShaderCookedArtifactBuilder.h"
 #include "Assets/Shader/HIKARI_ShaderSourceManifest.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
@@ -85,110 +84,6 @@ namespace HIKARI {
             outDirectory = imported;
             return true;
         }
-        GFX::ShaderStage ToGfxStage(SHADER::ShaderStage stage) {
-            switch (stage) {
-            case SHADER::ShaderStage::Vertex:
-                return GFX::ShaderStage::Vertex;
-            case SHADER::ShaderStage::Pixel:
-                return GFX::ShaderStage::Pixel;
-            case SHADER::ShaderStage::Compute:
-                return GFX::ShaderStage::Compute;
-            case SHADER::ShaderStage::Amplification:
-                return GFX::ShaderStage::Amplification;
-            case SHADER::ShaderStage::Mesh:
-                return GFX::ShaderStage::Mesh;
-            case SHADER::ShaderStage::Geometry:
-                return GFX::ShaderStage::Geometry;
-            case SHADER::ShaderStage::Count:
-                break;
-            }
-            return GFX::ShaderStage::Pixel;
-        }
-        GFX::ShaderCookIncludeRoot ToGfxRoot(
-            SHADER::ShaderIncludeRoot root) {
-            switch (root) {
-            case SHADER::ShaderIncludeRoot::Project:
-                return GFX::ShaderCookIncludeRoot::Project;
-            case SHADER::ShaderIncludeRoot::EngineSdk:
-                return GFX::ShaderCookIncludeRoot::EngineSdk;
-            case SHADER::ShaderIncludeRoot::Count:
-                break;
-            }
-            return GFX::ShaderCookIncludeRoot::Count;
-        }
-        SHADER::ShaderResourceBindingKind ToArtifactBindingKind(
-            GFX::ShaderCookBindingKind kind) {
-            switch (kind) {
-            case GFX::ShaderCookBindingKind::ConstantBuffer:
-                return SHADER::ShaderResourceBindingKind::ConstantBuffer;
-            case GFX::ShaderCookBindingKind::ShaderResource:
-                return SHADER::ShaderResourceBindingKind::ShaderResource;
-            case GFX::ShaderCookBindingKind::UnorderedAccess:
-                return SHADER::ShaderResourceBindingKind::UnorderedAccess;
-            case GFX::ShaderCookBindingKind::Sampler:
-                return SHADER::ShaderResourceBindingKind::Sampler;
-            case GFX::ShaderCookBindingKind::Count:
-                break;
-            }
-            return SHADER::ShaderResourceBindingKind::Count;
-        }
-        bool BuildCookRequest(
-            const SHADER::ShaderSourceManifest& manifest,
-            const std::filesystem::path& projectShaderRoot,
-            GFX::ShaderCookRequest& outRequest,
-            std::string& outError) {
-            GFX::ShaderCookRequest request{};
-            request.projectShaderRoot = projectShaderRoot;
-            request.primarySourceRoot =
-                GFX::ShaderCookIncludeRoot::Project;
-            request.sourcePath = manifest.sourcePath;
-            request.engineSdkIncludeRoot =
-                GFX::ResolveShaderSourcePath(
-                    L"HIKARI/Shaders");
-            request.entries.reserve(manifest.entries.size());
-            for (const SHADER::ShaderEntryPoint& entry : manifest.entries) {
-                request.entries.push_back({
-                    entry.id,
-                    ToGfxStage(entry.stage),
-                    entry.entry,
-                    entry.profile
-                });
-            }
-            request.defines.reserve(manifest.defines.size());
-            for (const SHADER::ShaderDefine& define : manifest.defines) {
-                request.defines.push_back({ define.name, define.value });
-            }
-            request.includeRoots.reserve(manifest.includeRoots.size());
-            bool needsEngineSdk = false;
-            for (SHADER::ShaderIncludeRoot root : manifest.includeRoots) {
-                request.includeRoots.push_back(ToGfxRoot(root));
-                needsEngineSdk = needsEngineSdk ||
-                    root == SHADER::ShaderIncludeRoot::EngineSdk;
-            }
-            request.engineInterface = {
-                manifest.engineInterfaceId,
-                manifest.engineInterfaceVersion,
-                manifest.engineInterfaceHash
-            };
-            request.rootLayout = {
-                manifest.rootLayoutId,
-                manifest.rootLayoutVersion,
-                manifest.rootLayoutHash
-            };
-            request.requiredCaps = {
-                manifest.requiredCaps.minimumShaderModel,
-                manifest.requiredCaps.minimumRootSignatureVersion,
-                manifest.requiredCaps.requiredFeatureMask
-            };
-            if (needsEngineSdk &&
-                !request.engineSdkIncludeRoot.is_absolute()) {
-                outError =
-                    "engine Shader SDK root is not initialized for cook";
-                return false;
-            }
-            outRequest = std::move(request);
-            return true;
-        }
         bool BuildArtifact(
             const AssetRecord& record,
             const SHADER::ShaderSourceManifest& manifest,
@@ -196,129 +91,48 @@ namespace HIKARI {
             const GFX::ShaderCookOutput& compiled,
             SHADER::ShaderCookedArtifact& outArtifact,
             std::string& outError) {
-            if (!compiled.success ||
-                compiled.toolchain.contractVersion !=
-                    SHADER::kShaderCompilerContractVersion ||
-                compiled.entries.size() != manifest.entries.size() ||
-                compiled.engineInterface.id != manifest.engineInterfaceId ||
-                compiled.engineInterface.version !=
-                    manifest.engineInterfaceVersion ||
-                compiled.engineInterface.hash !=
-                    manifest.engineInterfaceHash ||
-                compiled.rootLayout.id != manifest.rootLayoutId ||
-                compiled.rootLayout.version != manifest.rootLayoutVersion ||
-                compiled.rootLayout.hash != manifest.rootLayoutHash ||
-                compiled.requiredCaps.minimumShaderModel !=
-                    manifest.requiredCaps.minimumShaderModel ||
-                compiled.requiredCaps.minimumRootSignatureVersion !=
-                    manifest.requiredCaps.minimumRootSignatureVersion ||
-                compiled.requiredCaps.requiredFeatureMask !=
-                    manifest.requiredCaps.requiredFeatureMask) {
-                outError = "shader compiler output identity is invalid";
-                return false;
-            }
-            SHADER::ShaderCookedArtifact artifact{};
-            artifact.sourceGuid = record.guid;
-            artifact.programId = manifest.programId;
-            artifact.manifestHash = manifestHash;
-            artifact.compiler = {
-                compiled.toolchain.compilerId,
-                compiled.toolchain.compilerVersion,
-                compiled.toolchain.contractVersion,
-                compiled.toolchain.compilerBinaryHash,
-                compiled.toolchain.validatorBinaryHash
-            };
-            artifact.engineInterfaceId = compiled.engineInterface.id;
-            artifact.engineInterfaceVersion =
-                compiled.engineInterface.version;
-            artifact.engineInterfaceHash = compiled.engineInterface.hash;
-            artifact.rootLayoutId = compiled.rootLayout.id;
-            artifact.rootLayoutVersion = compiled.rootLayout.version;
-            artifact.rootLayoutHash = compiled.rootLayout.hash;
-            artifact.requiredCaps = {
-                compiled.requiredCaps.minimumShaderModel,
-                compiled.requiredCaps.minimumRootSignatureVersion,
-                compiled.requiredCaps.requiredFeatureMask
-            };
-            artifact.dependencies.reserve(compiled.dependencies.size());
-            for (const GFX::ShaderCookDependency& dependency :
-                 compiled.dependencies) {
-                artifact.dependencies.push_back({
-                    dependency.logicalPath,
-                    dependency.byteSize,
-                    dependency.contentHash
-                });
-            }
-            const std::string mainLogicalPath = "Project/" +
-                manifest.sourcePath.lexically_normal().generic_string();
-            if (std::none_of(
-                    artifact.dependencies.begin(),
-                    artifact.dependencies.end(),
-                    [&mainLogicalPath](
-                        const SHADER::ShaderSourceDependency& dependency) {
-                        return dependency.logicalPath == mainLogicalPath;
-                    })) {
-                outError =
-                    "manifest source path does not match its canonical file";
-                return false;
-            }
-            if (!SHADER::ComputeShaderSourceClosureHash(
-                    artifact.manifestHash,
-                    artifact.dependencies,
-                    artifact.sourceClosureHash)) {
-                outError = "could not compute shader source closure hash";
-                return false;
-            }
-            std::unordered_map<
-                std::string,
-                const SHADER::ShaderEntryPoint*> entriesById{};
-            for (const SHADER::ShaderEntryPoint& entry : manifest.entries) {
-                entriesById.emplace(entry.id, &entry);
-            }
-            artifact.entries.reserve(compiled.entries.size());
-            for (const GFX::ShaderCookEntryOutput& compiledEntry :
-                 compiled.entries) {
-                const auto found = entriesById.find(compiledEntry.id);
-                if (found == entriesById.end()) {
-                    outError = "compiled shader entry is not in the manifest";
-                    return false;
+            return SHADER::BuildShaderCookedArtifact(
+                record.guid,
+                manifest,
+                manifestHash,
+                SHADER::ShaderIncludeRoot::Project,
+                compiled,
+                outArtifact,
+                outError);
+        }
+        void RemoveStaleShaderArtifacts(
+            const std::filesystem::path& importedDirectory,
+            const std::filesystem::path& retainedArtifact) noexcept {
+            std::error_code error{};
+            for (std::filesystem::directory_iterator iterator(
+                     importedDirectory,
+                     std::filesystem::directory_options::
+                        skip_permission_denied,
+                     error),
+                 end;
+                 iterator != end;
+                 iterator.increment(error)) {
+                if (error) {
+                    return;
                 }
-                SHADER::ShaderCookedEntry entry{};
-                entry.entry = *found->second;
-                entry.compilerArguments =
-                    compiledEntry.canonicalArguments;
-                entry.dxil = compiledEntry.dxil;
-                entry.bindings.reserve(compiledEntry.bindings.size());
-                for (const GFX::ShaderCookBinding& binding :
-                     compiledEntry.bindings) {
-                    entry.bindings.push_back({
-                        ToArtifactBindingKind(binding.kind),
-                        binding.registerIndex,
-                        binding.registerSpace,
-                        binding.count,
-                        binding.visibilityMask
-                    });
+                const std::filesystem::path candidate = iterator->path();
+                const std::string filename = TEXT::ToLowerAsciiCopy(
+                    candidate.filename().string());
+                if (!iterator->is_regular_file(error) || error ||
+                    !filename.starts_with("shader-") ||
+                    !filename.ends_with(".hshaderc")) {
+                    error.clear();
+                    continue;
                 }
-                if (!SHADER::ComputeShaderArgumentsHash(
-                        entry.compilerArguments,
-                        entry.compilerArgumentsHash) ||
-                    !SHADER::ComputeShaderReflectionHash(
-                        entry.bindings,
-                        entry.reflectionHash) ||
-                    !HASH::ComputeSha256(
-                        std::as_bytes(
-                            std::span<const uint8_t>(entry.dxil)),
-                        entry.dxilHash)) {
-                    outError = "could not hash compiled shader entry";
-                    return false;
+                if (!std::filesystem::equivalent(
+                        candidate,
+                        retainedArtifact,
+                        error) &&
+                    !error) {
+                    (void)std::filesystem::remove(candidate, error);
                 }
-                artifact.entries.push_back(std::move(entry));
+                error.clear();
             }
-            if (!SHADER::ValidateShaderCookedArtifact(artifact, outError)) {
-                return false;
-            }
-            outArtifact = std::move(artifact);
-            return true;
         }
     } // namespace
     ASSETS::SEMANTICS::AssetImporterKind
@@ -381,9 +195,11 @@ namespace HIKARI {
             return result;
         }
         GFX::ShaderCookRequest request{};
-        if (!BuildCookRequest(
+        if (!SHADER::BuildShaderCookRequest(
                 manifest,
+                SHADER::ShaderIncludeRoot::Project,
                 projectShaderRoot,
+                GFX::ResolveShaderSourcePath(L"HIKARI/Shaders"),
                 request,
                 error)) {
             result.message = "[ShaderImporter][ERROR] " + error;
@@ -463,6 +279,7 @@ namespace HIKARI {
                 "publication: " + error;
             return result;
         }
+        RemoveStaleShaderArtifacts(importedDirectory, outputPath);
         ASSETS::IMPORTERS::INTERNAL::AppendShaderProjectDependencies(
             artifact,
             "Project/" + manifest.sourcePath.generic_string(),

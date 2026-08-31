@@ -516,6 +516,7 @@ namespace HIKARI {
                 ? RENDER3D::RenderViewPurpose::Game
                 : RENDER3D::RenderViewPurpose::EditorScene;
             primaryView.cameraFrame = &state_->camera.resolvedFrame;
+            primaryView.assetRegistry = &state_->assets.Registry();
             primaryView.projectRenderExtensions = {
                 &state_->runtime.systemScheduler,
                 [](void* context,

@@ -13,6 +13,10 @@ namespace HIKARI::ASSETS::SHADER {
 
 namespace HIKARI::ASSETS::SHADER::INTERNAL {
 
+    bool ValidateContentAddressedShaderArtifact(
+        const std::filesystem::path& artifactPath,
+        std::string& outError);
+
     bool ValidateShaderAssetRecordAuthority(
         const AssetRecord& record,
         std::string& outError);

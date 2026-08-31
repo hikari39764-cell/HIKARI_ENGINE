@@ -12,6 +12,7 @@
 #include <json.hpp>
 
 #include "Assets/Cooking/HIKARI_CookedContentManifest.h"
+#include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Project/HIKARI_ProjectDescriptor.h"
@@ -183,8 +184,11 @@ namespace HIKARI::EDITOR {
                  std::filesystem::path(
                      "HIKARI/runtime_config.json"),
                  std::filesystem::path(
-                     "EngineContent/ShaderBytecode/Shaders/"
-                     "Render3D_StaticPS.hlsl/main_ps_6_0.dxil"),
+                     "EngineContent/Shaders/Cooked/"
+                     "BuiltinShaderArtifacts.json"),
+                 std::filesystem::path(
+                     "EngineContent/Shaders/"
+                     "BuiltinShaderCatalog.json"),
                  std::filesystem::path("Content") /
                      kProjectDescriptorFilename,
                  std::filesystem::path("Content") /
@@ -197,6 +201,14 @@ namespace HIKARI::EDITOR {
                     outMessage)) {
                 return false;
             }
+        }
+        std::vector<ASSETS::SHADER::BuiltinShaderArtifactProgram>
+            packagedShaders{};
+        if (!ASSETS::SHADER::LoadBuiltinShaderArtifactBundle(
+                packageRoot / "EngineContent/Shaders",
+                packagedShaders,
+                outMessage)) {
+            return false;
         }
 
         if (!std::filesystem::is_directory(

@@ -74,6 +74,37 @@ namespace HIKARI::ASSETS::SHADER::INTERNAL {
 
     } // namespace
 
+    bool ValidateContentAddressedShaderArtifact(
+        const std::filesystem::path& artifactPath,
+        std::string& outError) {
+        const std::string filename = TEXT::ToLowerAsciiCopy(
+            artifactPath.filename().string());
+        constexpr std::string_view prefix = "shader-";
+        constexpr std::string_view suffix = ".hshaderc";
+        const size_t expectedLength =
+            prefix.size() + 64u + suffix.size();
+        HASH::Sha256Digest namedHash{};
+        HASH::Sha256Digest fileHash{};
+        if (filename.size() != expectedLength ||
+            !filename.starts_with(prefix) ||
+            !filename.ends_with(suffix) ||
+            !HASH::ParseSha256(
+                std::string_view(filename).substr(prefix.size(), 64u),
+                namedHash) ||
+            !HASH::ComputeFileSha256(
+                artifactPath,
+                fileHash,
+                outError) ||
+            namedHash != fileHash) {
+            if (outError.empty()) {
+                outError = "Shader artifact filename/content hash mismatch";
+            }
+            return false;
+        }
+        outError.clear();
+        return true;
+    }
+
     bool ValidateShaderAssetRecordAuthority(
         const AssetRecord& record,
         std::string& outError) {
@@ -152,6 +183,12 @@ namespace HIKARI::ASSETS::SHADER::INTERNAL {
             outError =
                 "Shader artifact is outside its imported owner "
                 "directory: " + record.guid.value;
+            return false;
+        }
+        if (!ValidateContentAddressedShaderArtifact(
+                ownedArtifactPath,
+                outError)) {
+            outError += ": " + record.guid.value;
             return false;
         }
         outError.clear();

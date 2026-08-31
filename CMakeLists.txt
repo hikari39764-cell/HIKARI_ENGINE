@@ -137,6 +137,74 @@ target_link_libraries(
         ${HIKARI_RUNTIME_PUBLIC_LINK_LIBRARIES}
         ${HIKARI_RUNTIME_PRIVATE_LINK_LIBRARIES})
 
+add_executable(
+    HIKARI_BuiltinShaderCookTool
+    EXCLUDE_FROM_ALL
+    "Tools/ShaderCook/HIKARI_BuiltinShaderCookMain.cpp")
+target_link_libraries(
+    HIKARI_BuiltinShaderCookTool
+    PRIVATE
+        HIKARI::Runtime)
+hikari_configure_engine_target(HIKARI_BuiltinShaderCookTool)
+set_target_properties(
+    HIKARI_BuiltinShaderCookTool
+    PROPERTIES
+        FOLDER "Engine/Tools"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tools")
+foreach(configuration IN ITEMS Debug EditorRelease Shipping)
+    string(TOUPPER "${configuration}" configuration_upper)
+    set_target_properties(
+        HIKARI_BuiltinShaderCookTool
+        PROPERTIES
+            "RUNTIME_OUTPUT_DIRECTORY_${configuration_upper}"
+                "${CMAKE_BINARY_DIR}/tools")
+endforeach()
+foreach(runtime_file IN LISTS HIKARI_RUNTIME_DEPENDENCIES)
+    add_custom_command(
+        TARGET HIKARI_BuiltinShaderCookTool
+        POST_BUILD
+        COMMAND
+            "${CMAKE_COMMAND}" -E copy_if_different
+            "${runtime_file}"
+            "$<TARGET_FILE_DIR:HIKARI_BuiltinShaderCookTool>"
+        VERBATIM)
+endforeach()
+file(
+    GLOB_RECURSE
+    HIKARI_BUILTIN_SHADER_COOK_INPUTS
+    CONFIGURE_DEPENDS
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Shaders/*.hlsl"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Shaders/*.hlsli"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Shaders/*.h")
+set(
+    HIKARI_BUILTIN_SHADER_ARTIFACT_ROOT
+    "${CMAKE_BINARY_DIR}/bin/EngineContent/Shaders/Cooked")
+set(
+    HIKARI_BUILTIN_SHADER_CATALOG_PATH
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Shaders/BuiltinShaderCatalog.json")
+add_custom_target(
+    HIKARI_BuiltinShaderArtifacts
+    COMMAND
+        "$<TARGET_FILE:HIKARI_BuiltinShaderCookTool>"
+        --catalog
+        "${HIKARI_BUILTIN_SHADER_CATALOG_PATH}"
+        --shader-root
+        "${HIKARI_SOURCE_ROOT}/HIKARI/Shaders"
+        --output-root
+        "${HIKARI_BUILTIN_SHADER_ARTIFACT_ROOT}"
+    BYPRODUCTS
+        "${HIKARI_BUILTIN_SHADER_ARTIFACT_ROOT}/BuiltinShaderArtifacts.json"
+    DEPENDS
+        HIKARI_BuiltinShaderCookTool
+        "${HIKARI_BUILTIN_SHADER_CATALOG_PATH}"
+        ${HIKARI_BUILTIN_SHADER_COOK_INPUTS}
+    WORKING_DIRECTORY "${HIKARI_SOURCE_ROOT}"
+    COMMENT "Cooking admitted built-in HSHADERC programs"
+    VERBATIM)
+set_target_properties(
+    HIKARI_BuiltinShaderArtifacts
+    PROPERTIES FOLDER "Engine/Tools")
+
 function(hikari_add_runtime_contract target_name source_path)
     set(options NO_TOOLING_STUBS)
     cmake_parse_arguments(
@@ -374,6 +442,9 @@ if(HIKARI_WITH_EDITOR_BUILD)
         HIKARI_EditorHost
         PRIVATE
             HIKARI::Editor)
+    add_dependencies(
+        HIKARI_EditorHost
+        HIKARI_BuiltinShaderArtifacts)
     hikari_configure_engine_target(HIKARI_EditorHost)
     hikari_configure_runtime_deployment(HIKARI_EditorHost)
     set_target_properties(
@@ -417,6 +488,9 @@ else()
         HIKARI_GameHost
         PRIVATE
             HIKARI::Runtime)
+    add_dependencies(
+        HIKARI_GameHost
+        HIKARI_BuiltinShaderArtifacts)
     hikari_configure_engine_target(HIKARI_GameHost)
     hikari_configure_runtime_deployment(
         HIKARI_GameHost

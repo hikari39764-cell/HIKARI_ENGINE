@@ -11,6 +11,7 @@
 #include "Render3D/Resources/HIKARI_RenderTextureView.h"
 
 namespace HIKARI {
+    class AssetRegistry;
     class Camera3D;
     struct SceneEnvironment;
 }
@@ -79,6 +80,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
         GFX::Context graphics{};
         const Camera3D* camera = nullptr;
         const SceneEnvironment* environment = nullptr;
+        const AssetRegistry* assetRegistry = nullptr;
         RenderFrameProjectExtensionSink projectRenderExtensions{};
         uint32_t renderWidth = 1;
         uint32_t renderHeight = 1;

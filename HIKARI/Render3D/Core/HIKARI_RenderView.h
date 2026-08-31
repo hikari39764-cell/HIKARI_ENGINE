@@ -6,6 +6,7 @@
 #include "Render3D/Core/HIKARI_RenderViewIdentity.h"
 
 namespace HIKARI {
+    class AssetRegistry;
     struct GameProjectRenderFrameView;
     struct GameProjectRenderPassDesc;
     struct GameProjectRenderPassContext;
@@ -85,6 +86,7 @@ namespace HIKARI::RENDER3D {
             combatAfterimageFrameSource = nullptr;
         const COMBAT_VFX::PerfectGuardShockwaveFrameSource*
             actionPostReactionFrameSource = nullptr;
+        const AssetRegistry* assetRegistry = nullptr;
         RenderFrameProjectExtensionSink projectRenderExtensions{};
     };
 

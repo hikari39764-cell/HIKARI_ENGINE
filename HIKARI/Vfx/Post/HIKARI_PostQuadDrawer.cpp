@@ -1,15 +1,22 @@
 #include "Vfx/Post/HIKARI_PostQuadDrawer.h"
+#include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
+#include "Assets/Shader/HIKARI_ProjectFullscreenShaderContract.h"
+#include "Core/Hashing/HIKARI_Sha256.h"
 #include "Gfx/HIKARI_D3DBlobCompat.h"
-#include "Gfx/HIKARI_ShaderCompiler.h"
+#include "HIKARI/Project/RenderShader.h"
 #include <Windows.h>
 #include <d3dcommon.h>
+#include <d3dcompiler.h>
 #include <d3dx12.h>
 #include <cassert>
 #include <cstring>
+#include <span>
 #include <sstream>
+#include <utility>
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
+#include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
 
 using Microsoft::WRL::ComPtr;
 
@@ -23,90 +30,143 @@ namespace HIKARI {
                 OutputDebugStringA(static_cast<const char*>(err->GetBufferPointer()));
             }
 
-            static uint64_t MakeShaderKey(ID3DBlob* blob)
+            static std::string MakeShaderKey(ID3DBlob* blob)
             {
-                return reinterpret_cast<uint64_t>(blob);
+                HASH::Sha256Digest digest{};
+                if (blob == nullptr || blob->GetBufferPointer() == nullptr ||
+                    blob->GetBufferSize() == 0u ||
+                    !HASH::ComputeSha256(
+                        std::as_bytes(std::span(
+                            static_cast<const uint8_t*>(
+                                blob->GetBufferPointer()),
+                            blob->GetBufferSize())),
+                        digest)) {
+                    return {};
+                }
+                return HASH::ToHex(digest);
             }
 
-            const char* kFullscreenVS = R"(
-struct VS_OUT {
-  float4 pos : SV_POSITION;
-  float2 uv  : TEXCOORD0;
-};
-VS_OUT main(uint vid : SV_VertexID)
-{
-  VS_OUT o;
-  float2 pos;
-  if (vid == 0) pos = float2(-1.0, -1.0);
-  else if (vid == 1) pos = float2(-1.0,  3.0);
-  else pos = float2( 3.0, -1.0);
-  o.pos = float4(pos, 0, 1);
-  o.uv  = float2((pos.x + 1) * 0.5, 1 - (pos.y + 1) * 0.5);
-  return o;
-}
-)";
+            constexpr std::string_view kFullscreenProgramId =
+                "HIKARI.EngineShader.Post_ProjectFullscreen";
 
-            const char* kCopyPS = R"(
-Texture2D gTex : register(t0);
-SamplerState gSamp : register(s0);
-struct PS_IN {
-  float4 pos : SV_POSITION;
-  float2 uv  : TEXCOORD0;
-};
-float4 main(PS_IN i) : SV_TARGET
-{
-  return gTex.Sample(gSamp, i.uv);
-}
-)";
+            bool LoadCookedBlob(
+                ID3D12Device* device,
+                std::string_view entryId,
+                ASSETS::SHADER::ShaderStage stage,
+                std::string profile,
+                ComPtr<ID3DBlob>& outBlob) {
+                const GFX::ShaderDeviceCapabilities caps =
+                    GFX::QueryShaderDeviceCapabilities(device);
+                const ASSETS::SHADER::ShaderAssetContractExpectation
+                    contract = ASSETS::SHADER::
+                        MakeProjectFullscreenShaderContract({
+                            caps.shaderModel,
+                            caps.rootSignatureVersion,
+                            caps.featureMask
+                        });
+                const ASSETS::SHADER::ShaderAssetResolveResult resolved =
+                    ASSETS::SHADER::ResolveBuiltinShaderEntry(
+                        kFullscreenProgramId,
+                        { std::string(entryId), stage, std::move(profile) },
+                        contract);
+                const ASSETS::SHADER::ShaderCookedArtifact* artifact =
+                    resolved ? resolved.lease.GetArtifact() : nullptr;
+                const std::span<const uint8_t> dxil =
+                    artifact != nullptr &&
+                        ASSETS::SHADER::
+                            HasProjectFullscreenInterfaceDependency(
+                                *artifact,
+                                contract.engineInterfaceHash)
+                        ? resolved.lease.GetDxil()
+                        : std::span<const uint8_t>{};
+                if (dxil.empty() || contract.engineInterfaceHash.IsZero()) {
+                    DEBUGLOG::PushRenderError(
+                        "[PostQuadDrawer][ERROR] Cooked fullscreen entry "
+                        "is unavailable: " + resolved.diagnostic);
+                    return false;
+                }
+                ComPtr<ID3DBlob> blob{};
+                if (FAILED(D3DCreateBlob(
+                        dxil.size(),
+                        blob.GetAddressOf())) ||
+                    blob == nullptr) {
+                    return false;
+                }
+                std::memcpy(
+                    blob->GetBufferPointer(),
+                    dxil.data(),
+                    dxil.size());
+                outBlob = std::move(blob);
+                return true;
+            }
         }
 
         bool QuadDrawer::Init(const GFX::Context& ctx)
         {
+            const bool hasPartialGpuState = !initialized_ &&
+                (rootSig_ != nullptr || !pipelineCache_.empty());
+            const bool deviceChanged =
+                context_.deviceGeneration != 0u &&
+                context_.deviceGeneration != ctx.deviceGeneration;
+            if (hasPartialGpuState || deviceChanged) {
+                Finalize();
+            }
+            if (initialized_) {
+                if (ctx.device == nullptr || ctx.cmdList == nullptr ||
+                    ctx.deviceGeneration != context_.deviceGeneration) {
+                    return false;
+                }
+                context_ = ctx;
+                return true;
+            }
             context_ = ctx;
-            if (initialized_) { return true; }
 
             if (context_.device == nullptr || context_.cmdList == nullptr) {
                 DEBUGLOG::PushRenderError(std::string("[PostQuadDrawer][ERROR] Init received invalid GFX context. ") + DumpState());
+                Finalize();
                 return false;
             }
 
             {
-                if (!GFX::CompileShaderSourceSm6(
-                    kFullscreenVS,
-                    std::strlen(kFullscreenVS),
-                    L"PostQuadDrawer.FullscreenVS",
-                    "main",
-                    GFX::ShaderStage::Vertex,
-                    vsBlob_.GetAddressOf())) {
-                    DEBUGLOG::PushRenderError("[PostQuadDrawer][ERROR] FullscreenVS compile failed.");
+                if (!LoadCookedBlob(
+                        context_.device,
+                        "FullscreenVS",
+                        ASSETS::SHADER::ShaderStage::Vertex,
+                        "vs_6_0",
+                        vsBlob_)) {
+                    DEBUGLOG::PushRenderError("[PostQuadDrawer][ERROR] FullscreenVS cooked load failed.");
+                    Finalize();
                     return false;
                 }
             }
             {
-                if (!GFX::CompileShaderSourceSm6(
-                    kCopyPS,
-                    std::strlen(kCopyPS),
-                    L"PostQuadDrawer.CopyPS",
-                    "main",
-                    GFX::ShaderStage::Pixel,
-                    psCopyBlob_.GetAddressOf())) {
-                    DEBUGLOG::PushRenderError("[PostQuadDrawer][ERROR] CopyPS compile failed.");
+                if (!LoadCookedBlob(
+                        context_.device,
+                        "CopyPS",
+                        ASSETS::SHADER::ShaderStage::Pixel,
+                        "ps_6_0",
+                        psCopyBlob_)) {
+                    DEBUGLOG::PushRenderError("[PostQuadDrawer][ERROR] CopyPS cooked load failed.");
+                    Finalize();
                     return false;
                 }
             }
 
             if (!CreateRootSignature()) {
                 DEBUGLOG::PushRenderError(std::string("[PostQuadDrawer][ERROR] CreateRootSignature failed during Init. ") + DumpState());
+                Finalize();
                 return false;
             }
 
             currentPostPS_ = psCopyBlob_.Get();
             if (!EnsurePipelineSet(outputFormat_)) {
                 DEBUGLOG::PushRenderError(std::string("[PostQuadDrawer][ERROR] EnsurePipelineSet failed during Init. ") + DumpState());
+                Finalize();
                 return false;
             }
             if (!SetPixelShader(currentPostPS_)) {
                 DEBUGLOG::PushRenderError(std::string("[PostQuadDrawer][ERROR] SetPixelShader failed during Init. ") + DumpState());
+                Finalize();
                 return false;
             }
 
@@ -202,6 +262,10 @@ float4 main(PS_IN i) : SV_TARGET
 
         void QuadDrawer::UpdateContext(const GFX::Context& ctx)
         {
+            if (context_.deviceGeneration != 0u &&
+                context_.deviceGeneration != ctx.deviceGeneration) {
+                Finalize();
+            }
             context_ = ctx;
         }
 
@@ -241,7 +305,11 @@ float4 main(PS_IN i) : SV_TARGET
             outputFormat_ = format;
 
             if (currentPostPS_ != nullptr) {
-                const uint64_t shaderKey = MakeShaderKey(currentPostPS_);
+                const std::string shaderKey = MakeShaderKey(currentPostPS_);
+                if (shaderKey.empty()) {
+                    currentPostPso_ = nullptr;
+                    return false;
+                }
                 auto& pso = currentPipelineSet_->postByShader[shaderKey];
                 if (!pso) {
                     if (!CreatePipeline(currentPostPS_, outputFormat_, pso, "PostQuadDrawer Dynamic Post PSO")) {
@@ -291,6 +359,7 @@ float4 main(PS_IN i) : SV_TARGET
                 PipelineSet& set = entry.second;
                 GFX::RetireD3D12ObjectForFrame(set.copy, context_, "PostQuadDrawer.CopyPSO");
                 GFX::RetireD3D12ObjectForFrame(set.blendAlpha, context_, "PostQuadDrawer.BlendAlphaPSO");
+                GFX::RetireD3D12ObjectForFrame(set.blendPremultipliedAlpha, context_, "PostQuadDrawer.BlendPremultipliedPSO");
                 GFX::RetireD3D12ObjectForFrame(set.blendAdd, context_, "PostQuadDrawer.BlendAddPSO");
                 GFX::RetireD3D12ObjectForFrame(set.blendMultiply, context_, "PostQuadDrawer.BlendMultiplyPSO");
                 for (auto& shaderPso : set.postByShader) {
@@ -464,7 +533,11 @@ float4 main(PS_IN i) : SV_TARGET
                 return false;
             }
 
-            const uint64_t shaderKey = MakeShaderKey(psBlob);
+            const std::string shaderKey = MakeShaderKey(psBlob);
+            if (shaderKey.empty()) {
+                currentPostPso_ = nullptr;
+                return false;
+            }
             auto& cachedPso = currentPipelineSet_->postByShader[shaderKey];
             if (!cachedPso) {
                 if (!CreatePipeline(psBlob, outputFormat_, cachedPso, "PostQuadDrawer Dynamic Post PSO")) {

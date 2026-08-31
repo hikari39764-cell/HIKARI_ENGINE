@@ -216,6 +216,10 @@ bool SystemScheduler::ExecuteRenderPass(
     const GameProjectRenderPassContext& context) noexcept {
     constexpr uint32_t kClearCapability = static_cast<uint32_t>(
         GameProjectRenderCommandCapability::ClearWorkingColor);
+    constexpr uint32_t kShaderCapability = static_cast<uint32_t>(
+        GameProjectRenderCommandCapability::ShaderCommands);
+    constexpr uint32_t kKnownCapabilities =
+        kClearCapability | kShaderCapability;
     if (!IsOwnerThread()) {
         return false;
     }
@@ -237,12 +241,15 @@ bool SystemScheduler::ExecuteRenderPass(
         !IsValidRenderFrameView(*context.frame, attachedWorldIdentity_) ||
         context.encoder.structSize !=
             kGameProjectRenderCommandEncoderV1Size ||
-        context.encoder.version != kGameProjectRenderPassVersion ||
+        (context.encoder.version != kGameProjectRenderPassVersion &&
+         context.encoder.version !=
+            kGameProjectRenderCommandEncoderVersion) ||
         context.encoder.context == nullptr ||
         context.encoder.commandGeneration == 0u ||
         context.encoder.clearWorkingColor == nullptr ||
-        (context.encoder.capabilityMask & ~kClearCapability) != 0u ||
+        (context.encoder.capabilityMask & ~kKnownCapabilities) != 0u ||
         (context.encoder.capabilityMask & kClearCapability) == 0u ||
+        context.encoder.reservedV1 != 0u ||
         HasNonZero(context.encoder.reserved) ||
         HasNonZero(context.reserved)) {
         ++renderPassFailureCount_;
@@ -261,7 +268,18 @@ bool SystemScheduler::ExecuteRenderPass(
             std::string_view(descriptor.stableId) != requested) {
             continue;
         }
-        if (!IsValidRenderPassDesc(descriptor) ||
+        const bool expectsShaderCommands =
+            (descriptor.flags &
+                GameProjectRenderPassFlag::ShaderCommands) != 0u;
+        const bool encoderMatches = expectsShaderCommands
+            ? context.encoder.version ==
+                    kGameProjectRenderCommandEncoderVersion &&
+                context.encoder.drawFullscreen != nullptr &&
+                (context.encoder.capabilityMask & kShaderCapability) != 0u
+            : context.encoder.version == kGameProjectRenderPassVersion &&
+                context.encoder.drawFullscreen == nullptr &&
+                (context.encoder.capabilityMask & kShaderCapability) == 0u;
+        if (!encoderMatches || !IsValidRenderPassDesc(descriptor) ||
             !pass->ExecuteRenderPass(context)) {
             ++renderPassFailureCount_;
             return false;

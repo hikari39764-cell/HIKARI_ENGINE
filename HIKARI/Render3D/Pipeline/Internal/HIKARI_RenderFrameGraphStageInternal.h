@@ -142,6 +142,10 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
     bool ExecuteProjectRenderPass(
         const GRAPH::RenderGraphPassContext& context,
         void* userData) noexcept;
+    bool ExecuteProjectFullscreenShaderCommand(
+        void* context,
+        uint64_t commandGeneration,
+        const GameProjectFullscreenDrawDesc* draw) noexcept;
     bool ExecuteProjectRenderObserver(
         const GRAPH::RenderGraphPassContext& context,
         void* userData) noexcept;

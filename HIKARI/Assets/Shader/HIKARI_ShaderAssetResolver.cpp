@@ -171,6 +171,28 @@ namespace HIKARI::ASSETS::SHADER {
         return ResolveDescriptor(*descriptor, entry, contract);
     }
 
+    ShaderAssetResolveResult ShaderAssetResolver::ResolveArtifact(
+        std::shared_ptr<const ShaderCookedArtifact> artifact,
+        const ShaderAssetEntryExpectation& entry,
+        const ShaderAssetContractExpectation& contract) {
+        ShaderAssetResolveResult request =
+            ValidateRequest(entry, contract);
+        if (request.code != ShaderAssetResolveCode::Success) {
+            return request;
+        }
+        if (artifact == nullptr ||
+            !IsValidAssetGuid(artifact->sourceGuid.value)) {
+            return Failure(
+                ShaderAssetResolveCode::ArtifactUnavailable,
+                "Shader artifact is unavailable");
+        }
+        ShaderAssetDescriptor descriptor{};
+        descriptor.id.value = artifact->sourceGuid.value;
+        descriptor.type = AssetType::Shader;
+        descriptor.program = std::move(artifact);
+        return ResolveDescriptor(descriptor, entry, contract);
+    }
+
     ShaderAssetResolveResult ShaderAssetResolver::ResolveByProgramId(
         const AssetRegistry& registry,
         std::string_view programId,

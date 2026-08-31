@@ -141,6 +141,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
             }
             context.camera = &view.cameraFrame->camera;
             context.environment = &environment;
+            context.assetRegistry = view.assetRegistry;
             context.projectRenderExtensions = view.projectRenderExtensions;
             context.scene.dsv = POST::PostSystem::GetCurrentRenderTargetDsv();
             context.scene.readOnlyDsv =

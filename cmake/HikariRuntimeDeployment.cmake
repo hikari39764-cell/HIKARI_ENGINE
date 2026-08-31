@@ -74,8 +74,6 @@ function(hikari_configure_runtime_deployment target_name)
                     "${HIKARI_SOURCE_ROOT}/Tools/ShaderCheck/Compile-HikariShaders.ps1"
                 -DxcPath
                     "${HIKARI_DXC_EXECUTABLE}"
-                -OutputRoot
-                    "$<TARGET_FILE_DIR:${target_name}>/EngineContent/ShaderBytecode"
             WORKING_DIRECTORY "${HIKARI_SOURCE_ROOT}"
             VERBATIM)
     endif()
@@ -99,12 +97,20 @@ function(hikari_configure_runtime_deployment target_name)
                 "${HIKARI_SOURCE_ROOT}/HIKARI/Shaders"
             DESTINATION
                 "EngineContent")
-        if(HIKARI_PRODUCT STREQUAL "Shipping")
-            install(
-                DIRECTORY
-                    "${CMAKE_BINARY_DIR}/bin/EngineContent/ShaderBytecode/"
-                DESTINATION
-                    "EngineContent/ShaderBytecode")
-        endif()
+        install(CODE
+            "execute_process(\n"
+            "  COMMAND \"${CMAKE_COMMAND}\"\n"
+            "    \"-DHIKARI_SHADER_SOURCE_ROOT=${HIKARI_SOURCE_ROOT}/HIKARI/Shaders\"\n"
+            "    \"-DHIKARI_SHADER_COOKED_ROOT=${CMAKE_BINARY_DIR}/bin/EngineContent/Shaders/Cooked\"\n"
+            "    -P \"${HIKARI_SOURCE_ROOT}/cmake/ValidateBuiltinShaderInstall.cmake\"\n"
+            "  RESULT_VARIABLE _hikari_shader_validation_result)\n"
+            "if(NOT _hikari_shader_validation_result EQUAL 0)\n"
+            "  message(FATAL_ERROR \"Built-in HSHADERC install validation failed.\")\n"
+            "endif()")
+        install(
+            DIRECTORY
+                "${CMAKE_BINARY_DIR}/bin/EngineContent/Shaders/Cooked/"
+            DESTINATION
+                "EngineContent/Shaders/Cooked")
     endif()
 endfunction()

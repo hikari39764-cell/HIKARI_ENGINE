@@ -46,7 +46,10 @@ namespace HIKARI {
                 Microsoft::WRL::ComPtr<ID3D12PipelineState> blendPremultipliedAlpha;
                 Microsoft::WRL::ComPtr<ID3D12PipelineState> blendAdd;
                 Microsoft::WRL::ComPtr<ID3D12PipelineState> blendMultiply;
-                std::unordered_map<uint64_t, Microsoft::WRL::ComPtr<ID3D12PipelineState>> postByShader;
+                std::unordered_map<
+                    std::string,
+                    Microsoft::WRL::ComPtr<ID3D12PipelineState>>
+                    postByShader;
             };
 
             bool CreateRootSignature();

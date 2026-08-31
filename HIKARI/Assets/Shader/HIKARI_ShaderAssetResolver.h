@@ -97,6 +97,11 @@ namespace HIKARI::ASSETS::SHADER {
     // D3D12, COM, compiler, and filesystem ownership stay outside this API.
     class ShaderAssetResolver final {
     public:
+        static ShaderAssetResolveResult ResolveArtifact(
+            std::shared_ptr<const ShaderCookedArtifact> artifact,
+            const ShaderAssetEntryExpectation& entry,
+            const ShaderAssetContractExpectation& contract);
+
         static ShaderAssetResolveResult ResolveByGuid(
             const AssetRegistry& registry,
             const AssetGuid& assetGuid,

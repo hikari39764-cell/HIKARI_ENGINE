@@ -155,6 +155,14 @@ namespace HIKARI::ASSETS::SHADER::INTERNAL {
                 return false;
             }
         }
+        std::string contentAddressError{};
+        if (!ValidateContentAddressedShaderArtifact(
+                artifactPath,
+                contentAddressError)) {
+            HIKARI_LOG_ERROR(
+                "[ShaderAssetRegistry] " + contentAddressError);
+            return false;
+        }
 
         auto program = std::make_shared<ShaderCookedArtifact>();
         std::string readError{};

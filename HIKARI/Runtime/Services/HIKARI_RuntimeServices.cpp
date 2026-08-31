@@ -11,6 +11,7 @@
 #include <utility>
 
 #include "Audio/HIKARI_Audio.h"
+#include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
@@ -464,6 +465,7 @@ namespace HIKARI {
                 }
                 RENDER3D::PIPELINE::
                     ShutdownRenderFramePipelineResources();
+                ASSETS::SHADER::ResetBuiltinShaderArtifactResolver();
                 HIKARI_LOG_INFO(
                     "Render frame pipeline resources shutdown.");
                 GAME_UI::ShutdownGameUiRenderer();
