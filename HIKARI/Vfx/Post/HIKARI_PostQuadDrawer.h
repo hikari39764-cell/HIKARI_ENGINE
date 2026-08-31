@@ -2,6 +2,7 @@
 #include <d3d12.h>
 #include <wrl.h>
 #include <cstdint>
+#include <span>
 #include <string>
 #include <unordered_map>
 #include "Gfx/HIKARI_D3DBlobCompat.h"
@@ -33,6 +34,7 @@ namespace HIKARI {
             void DrawFullscreen(ID3D12DescriptorHeap* srvHeap, D3D12_GPU_DESCRIPTOR_HANDLE srvGpu);
             void SetInputTexture(ID3D12DescriptorHeap* srvHeap, D3D12_GPU_DESCRIPTOR_HANDLE srvGpu);
             bool SetPixelShader(ID3DBlob* psBlob);
+            bool SetPixelShader(std::span<const uint8_t> bytecode);
             void SetConstantBuffer(D3D12_GPU_VIRTUAL_ADDRESS cbv0);
             void DrawFullscreen();
             void DrawBlended(ID3D12DescriptorHeap* srvHeap, D3D12_GPU_DESCRIPTOR_HANDLE srvGpu, BlendOption mode = BlendOption::Alpha);
@@ -54,7 +56,7 @@ namespace HIKARI {
 
             bool CreateRootSignature();
             bool CreatePipeline(
-                ID3DBlob* psBlob,
+                std::span<const uint8_t> pixelBytecode,
                 DXGI_FORMAT format,
                 Microsoft::WRL::ComPtr<ID3D12PipelineState>& outPso,
                 const char* debugName);
@@ -70,7 +72,6 @@ namespace HIKARI {
             PipelineSet* currentPipelineSet_ = nullptr;
             ID3D12PipelineState* currentPostPso_ = nullptr;
 
-            ID3DBlob* currentPostPS_ = nullptr;
             DXGI_FORMAT outputFormat_ = DXGI_FORMAT_R8G8B8A8_UNORM;
             ID3D12DescriptorHeap* currentSrvHeap_ = nullptr;
             D3D12_GPU_DESCRIPTOR_HANDLE currentSrvGpu_{};

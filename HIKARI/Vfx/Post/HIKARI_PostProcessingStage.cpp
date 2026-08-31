@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <sstream>
+#include <string_view>
 
 #include "Core/HIKARI_TimeService.h"
 #include "Core/HIKARI_Logger.h"
@@ -395,7 +396,8 @@ namespace HIKARI::POST {
     bool PostProcessingStage::EnsureToneMappingEffect() {
         if (toneMappingEffect_) return true;
         auto effect = std::make_unique<PostEffect>();
-        if (!effect->LoadPixelShader(L"HIKARI/Shaders/Post_ToneMappingPS.hlsl")) {
+        if (!effect->LoadBuiltinPixelShader(
+                "HIKARI.EngineShader.Post_ToneMappingPS")) {
             LogState("ToneMapping effect load failed");
             return false;
         }
@@ -407,7 +409,8 @@ namespace HIKARI::POST {
         if (fxaaEffect_ && fxaaChain_.HasAny()) return true;
         if (!fxaaEffect_) {
             auto effect = std::make_unique<PostEffect>();
-            if (!effect->LoadPixelShader(L"HIKARI/Shaders/Post_FXAA.hlsl")) {
+            if (!effect->LoadBuiltinPixelShader(
+                    "HIKARI.EngineShader.Post_FXAA")) {
                 LogState("FXAA effect load failed");
                 return false;
             }
@@ -421,7 +424,8 @@ namespace HIKARI::POST {
     bool PostProcessingStage::EnsureSunGlareEffect() {
         if (sunGlareEffect_) return true;
         auto effect = std::make_unique<PostEffect>();
-        if (!effect->LoadPixelShader(L"HIKARI/Shaders/Post_SunGlarePS.hlsl")) {
+        if (!effect->LoadBuiltinPixelShader(
+                "HIKARI.EngineShader.Post_SunGlarePS")) {
             LogState("Sun glare effect load failed");
             return false;
         }
@@ -436,8 +440,8 @@ namespace HIKARI::POST {
         }
         if (!actionScreenImpulseEffect_) {
             auto effect = std::make_unique<PostEffect>();
-            if (!effect->LoadPixelShader(
-                    L"HIKARI/Shaders/Post_ActionScreenImpulse.hlsl")) {
+            if (!effect->LoadBuiltinPixelShader(
+                    "HIKARI.EngineShader.Post_ActionScreenImpulse")) {
                 LogState("Action screen impulse effect load failed");
                 return false;
             }
@@ -457,17 +461,21 @@ namespace HIKARI::POST {
         bloomChain_.Clear();
         activeBloomEffects_.clear();
         activeBloomBlurPairCount_ = 0;
-        auto load = [](const wchar_t* path) {
+        auto load = [](std::string_view programId) {
             auto effect = std::make_unique<PostEffect>();
-            return effect->LoadPixelShader(path) ? std::move(effect) : nullptr;
+            return effect->LoadBuiltinPixelShader(programId)
+                ? std::move(effect)
+                : nullptr;
         };
-        auto extract = load(L"HIKARI/Shaders/Post_BloomExtractPS.hlsl");
+        auto extract = load("HIKARI.EngineShader.Post_BloomExtractPS");
         if (!extract) return false;
         bloomChain_.Add(extract.get());
         activeBloomEffects_.push_back(std::move(extract));
         for (uint32_t i = 0; i < blurPairCount; ++i) {
-            auto horizontal = load(L"HIKARI/Shaders/Post_BloomBlurHPS.hlsl");
-            auto vertical = load(L"HIKARI/Shaders/Post_BloomBlurVPS.hlsl");
+            auto horizontal = load(
+                "HIKARI.EngineShader.Post_BloomBlurHPS");
+            auto vertical = load(
+                "HIKARI.EngineShader.Post_BloomBlurVPS");
             if (!horizontal || !vertical) {
                 bloomChain_.Clear();
                 activeBloomEffects_.clear();

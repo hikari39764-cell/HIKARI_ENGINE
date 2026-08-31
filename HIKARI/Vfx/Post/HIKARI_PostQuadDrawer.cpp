@@ -30,17 +30,21 @@ namespace HIKARI {
                 OutputDebugStringA(static_cast<const char*>(err->GetBufferPointer()));
             }
 
-            static std::string MakeShaderKey(ID3DBlob* blob)
+            std::span<const uint8_t> BlobBytes(ID3DBlob* blob)
+            {
+                return blob != nullptr && blob->GetBufferPointer() != nullptr
+                    ? std::span(
+                        static_cast<const uint8_t*>(blob->GetBufferPointer()),
+                        blob->GetBufferSize())
+                    : std::span<const uint8_t>{};
+            }
+
+            std::string MakeShaderKey(
+                std::span<const uint8_t> bytecode)
             {
                 HASH::Sha256Digest digest{};
-                if (blob == nullptr || blob->GetBufferPointer() == nullptr ||
-                    blob->GetBufferSize() == 0u ||
-                    !HASH::ComputeSha256(
-                        std::as_bytes(std::span(
-                            static_cast<const uint8_t*>(
-                                blob->GetBufferPointer()),
-                            blob->GetBufferSize())),
-                        digest)) {
+                if (bytecode.empty() || !HASH::ComputeSha256(
+                        std::as_bytes(bytecode), digest)) {
                     return {};
                 }
                 return HASH::ToHex(digest);
@@ -158,14 +162,8 @@ namespace HIKARI {
                 return false;
             }
 
-            currentPostPS_ = psCopyBlob_.Get();
             if (!EnsurePipelineSet(outputFormat_)) {
                 DEBUGLOG::PushRenderError(std::string("[PostQuadDrawer][ERROR] EnsurePipelineSet failed during Init. ") + DumpState());
-                Finalize();
-                return false;
-            }
-            if (!SetPixelShader(currentPostPS_)) {
-                DEBUGLOG::PushRenderError(std::string("[PostQuadDrawer][ERROR] SetPixelShader failed during Init. ") + DumpState());
                 Finalize();
                 return false;
             }
@@ -284,6 +282,9 @@ namespace HIKARI {
             const int key = static_cast<int>(format);
             auto found = pipelineCache_.find(key);
             if (found != pipelineCache_.end()) {
+                if (currentPipelineSet_ != &found->second) {
+                    currentPostPso_ = nullptr;
+                }
                 currentPipelineSet_ = &found->second;
                 outputFormat_ = format;
                 return true;
@@ -295,31 +296,19 @@ namespace HIKARI {
                 DEBUGLOG::PushRenderError(std::string("[PostQuadDrawer][ERROR] EnsurePipelineSet CreateBlendPipelines failed. format=") + GFX::FormatToString(format) + " " + DumpState());
                 return false;
             }
-            if (!CreatePipeline(psCopyBlob_.Get(), format, set.copy, "PostQuadDrawer Copy PSO")) {
+            if (!CreatePipeline(
+                    BlobBytes(psCopyBlob_.Get()),
+                    format,
+                    set.copy,
+                    "PostQuadDrawer Copy PSO")) {
                 DEBUGLOG::PushRenderError(std::string("[PostQuadDrawer][ERROR] EnsurePipelineSet copy PSO failed. format=") + GFX::FormatToString(format) + " " + DumpState());
                 return false;
             }
 
             auto inserted = pipelineCache_.emplace(key, std::move(set));
             currentPipelineSet_ = &inserted.first->second;
+            currentPostPso_ = nullptr;
             outputFormat_ = format;
-
-            if (currentPostPS_ != nullptr) {
-                const std::string shaderKey = MakeShaderKey(currentPostPS_);
-                if (shaderKey.empty()) {
-                    currentPostPso_ = nullptr;
-                    return false;
-                }
-                auto& pso = currentPipelineSet_->postByShader[shaderKey];
-                if (!pso) {
-                    if (!CreatePipeline(currentPostPS_, outputFormat_, pso, "PostQuadDrawer Dynamic Post PSO")) {
-                        DEBUGLOG::PushRenderError(std::string("[PostQuadDrawer][ERROR] EnsurePipelineSet post PSO failed. format=") + GFX::FormatToString(format) + " " + DumpState());
-                        currentPostPso_ = nullptr;
-                        return false;
-                    }
-                }
-                currentPostPso_ = pso.Get();
-            }
 
             return true;
         }
@@ -345,7 +334,6 @@ namespace HIKARI {
                 << " psoBlendAlpha=" << (hasBlendAlpha ? 1 : 0)
                 << " psoBlendAdd=" << (hasBlendAdd ? 1 : 0)
                 << " psoBlendMultiply=" << (hasBlendMultiply ? 1 : 0)
-                << " currentPostPS=" << (currentPostPS_ ? 1 : 0)
                 << " currentPostPso=" << (currentPostPso_ ? 1 : 0)
                 << " currentSrvHeap=" << (currentSrvHeap_ ? 1 : 0)
                 << " currentSrvGpu=0x" << std::hex << currentSrvGpu_.ptr << std::dec
@@ -373,7 +361,6 @@ namespace HIKARI {
             GFX::RetireD3D12ObjectForFrame(rootSig_, context_, "PostQuadDrawer.RootSignature");
             vsBlob_.Reset();
             psCopyBlob_.Reset();
-            currentPostPS_ = nullptr;
             currentSrvHeap_ = nullptr;
             currentCBV0_ = 0;
             initialized_ = false;
@@ -433,17 +420,21 @@ namespace HIKARI {
             return true;
         }
 
-        bool QuadDrawer::CreatePipeline(ID3DBlob* psBlob, DXGI_FORMAT format, ComPtr<ID3D12PipelineState>& outPso, const char* debugName)
+        bool QuadDrawer::CreatePipeline(
+            std::span<const uint8_t> pixelBytecode,
+            DXGI_FORMAT format,
+            ComPtr<ID3D12PipelineState>& outPso,
+            const char* debugName)
         {
             auto* device = context_.device;
-            if (!device || !rootSig_ || !vsBlob_ || !psBlob) {
+            if (!device || !rootSig_ || !vsBlob_ || pixelBytecode.empty()) {
                 DEBUGLOG::PushRenderError(std::string("[PostQuadDrawer][ERROR] invalid input in CreatePipeline. name=") + (debugName ? debugName : "") + " " + DumpState());
                 return false;
             }
             D3D12_GRAPHICS_PIPELINE_STATE_DESC pso{};
             pso.pRootSignature = rootSig_.Get();
             pso.VS = { vsBlob_->GetBufferPointer(), vsBlob_->GetBufferSize() };
-            pso.PS = { psBlob->GetBufferPointer(), psBlob->GetBufferSize() };
+            pso.PS = { pixelBytecode.data(), pixelBytecode.size() };
             pso.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
             pso.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
             pso.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
@@ -527,20 +518,35 @@ namespace HIKARI {
                 DEBUGLOG::PushRenderError(std::string("[PostQuadDrawer][ERROR] SetPixelShader received null psBlob. ") + DumpState());
                 return false;
             }
-            currentPostPS_ = psBlob;
+            return SetPixelShader(BlobBytes(psBlob));
+        }
+
+        bool QuadDrawer::SetPixelShader(
+            std::span<const uint8_t> bytecode)
+        {
+            if (bytecode.empty()) {
+                DEBUGLOG::PushRenderError(
+                    std::string("[PostQuadDrawer][ERROR] SetPixelShader "
+                        "received empty bytecode. ") + DumpState());
+                return false;
+            }
             if (!EnsurePipelineSet(outputFormat_) || !currentPipelineSet_) {
                 currentPostPso_ = nullptr;
                 return false;
             }
 
-            const std::string shaderKey = MakeShaderKey(psBlob);
+            const std::string shaderKey = MakeShaderKey(bytecode);
             if (shaderKey.empty()) {
                 currentPostPso_ = nullptr;
                 return false;
             }
             auto& cachedPso = currentPipelineSet_->postByShader[shaderKey];
             if (!cachedPso) {
-                if (!CreatePipeline(psBlob, outputFormat_, cachedPso, "PostQuadDrawer Dynamic Post PSO")) {
+                if (!CreatePipeline(
+                        bytecode,
+                        outputFormat_,
+                        cachedPso,
+                        "PostQuadDrawer Dynamic Post PSO")) {
                     currentPostPso_ = nullptr;
                     return false;
                 }

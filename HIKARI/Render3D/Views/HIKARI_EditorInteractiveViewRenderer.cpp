@@ -531,8 +531,8 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
 
             if (g_displayEffect == nullptr) {
                 auto effect = std::make_unique<POST::PostEffect>();
-                if (!effect->LoadPixelShader(
-                        L"HIKARI/Shaders/Post_ToneMappingPS.hlsl")) {
+                if (!effect->LoadBuiltinPixelShader(
+                        "HIKARI.EngineShader.Post_ToneMappingPS")) {
                     return false;
                 }
                 g_displayEffect = std::move(effect);
@@ -546,8 +546,8 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             }
             if (g_fxaaEffect == nullptr) {
                 auto effect = std::make_unique<POST::PostEffect>();
-                if (!effect->LoadPixelShader(
-                        L"HIKARI/Shaders/Post_FXAA.hlsl")) {
+                if (!effect->LoadBuiltinPixelShader(
+                        "HIKARI.EngineShader.Post_FXAA")) {
                     return false;
                 }
                 g_fxaaEffect = std::move(effect);
