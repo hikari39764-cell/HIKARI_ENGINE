@@ -147,7 +147,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
 
         state->result.compiledPassCount = graph->GetCompiledPassCount();
         state->result.prefixCompleted = graph->ExecuteThrough(
-            "RenderFeatures.Composite");
+            "ProjectRender.Observe.PostOpaque");
         state->result.pausedForPresentation =
             state->result.prefixCompleted &&
             graph->GetExecutionState().status ==

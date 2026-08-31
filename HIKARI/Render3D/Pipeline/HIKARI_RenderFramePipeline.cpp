@@ -18,6 +18,7 @@
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameContext.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameGraphStage.h"
+#include "Render3D/Pipeline/Internal/HIKARI_RenderFrameGraphStageInternal.h"
 #include "Render3D/Surface/HIKARI_SceneSurfaceSet.h"
 #include "Render3D/Surface/HIKARI_RenderFrameSurfaceRegistry.h"
 #include "Render3D/ScreenSpace/HIKARI_ScreenSpacePasses.h"
@@ -126,6 +127,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
             }
             context.camera = &view.cameraFrame->camera;
             context.environment = &environment;
+            context.projectRenderObserver = view.projectRenderObserver;
             context.scene.dsv = POST::PostSystem::GetCurrentRenderTargetDsv();
             context.scene.readOnlyDsv =
                 POST::PostSystem::GetCurrentRenderTargetReadOnlyDsv();
@@ -613,6 +615,15 @@ namespace HIKARI::RENDER3D::PIPELINE {
             MESHRENDERER::RenderForwardOpaquePass(graphics, captureResources);
         MESHRENDERER::EndFrame();
         return opaqueOk;
+    }
+
+    void ShutdownRenderFramePipelineResources() noexcept {
+        try {
+            gStylizedScreenFeatures.Release();
+        }
+        catch (...) {
+        }
+        INTERNAL::ReleaseRenderFrameGraphPassResources();
     }
 
 } // namespace HIKARI::RENDER3D::PIPELINE

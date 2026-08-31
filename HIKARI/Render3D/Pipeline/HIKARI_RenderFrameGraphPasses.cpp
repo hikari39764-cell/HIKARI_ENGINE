@@ -417,9 +417,18 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             &ExecuteVisibilityFeatures,
             &ExecuteSceneColorPostOpaqueCapture,
             &ExecuteStylizedFeatureComposite,
+            &ExecuteProjectRenderObserver,
             &ExecutePresentationResume
         };
         return callbacks;
+    }
+
+    void ReleaseRenderFrameGraphPassResources() noexcept {
+        try {
+            gSsrRenderer.Release();
+        }
+        catch (...) {
+        }
     }
 
 } // namespace HIKARI::RENDER3D::PIPELINE::INTERNAL

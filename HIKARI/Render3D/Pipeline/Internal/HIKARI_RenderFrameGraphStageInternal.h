@@ -35,6 +35,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         GRAPH::RenderGraphExecuteFn visibilityFeatures = nullptr;
         GRAPH::RenderGraphExecuteFn sceneColorPostOpaqueCapture = nullptr;
         GRAPH::RenderGraphExecuteFn stylizedFeatureComposite = nullptr;
+        GRAPH::RenderGraphExecuteFn projectRenderObserver = nullptr;
         GRAPH::RenderGraphExecuteFn presentationResume = nullptr;
     };
 
@@ -108,12 +109,16 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
     bool ExecuteStylizedFeatureComposite(
         const GRAPH::RenderGraphPassContext& context,
         void* userData) noexcept;
+    bool ExecuteProjectRenderObserver(
+        const GRAPH::RenderGraphPassContext& context,
+        void* userData) noexcept;
     bool ExecutePresentationResume(
         const GRAPH::RenderGraphPassContext& context,
         void* userData) noexcept;
 
     const RenderFrameGraphPassCallbacks&
         GetRenderFrameGraphPassCallbacks() noexcept;
+    void ReleaseRenderFrameGraphPassResources() noexcept;
 
     bool BuildRenderFrameGraphPlan(
         const RenderFrameGraphPlanOptions& options,

@@ -9,6 +9,7 @@
 #include "HIKARI/Project/GameProjectSdk.h"
 #include "HIKARI/Project/GameSystem.h"
 #include "HIKARI/Project/MassSystem.h"
+#include "HIKARI/Project/RenderFrame.h"
 #include "HIKARI/Project/WorldTypes.h"
 #include "HIKARI/Project/WorldMassTypes.h"
 #include "HIKARI/Runtime/ComponentTypeId.h"
@@ -150,6 +151,47 @@ namespace HIKARI {
                 execute);
         }
 
+        // Additive read-only render observer. The callback runs on the render
+        // owner thread at a stable RenderGraph anchor and may not retain the
+        // frame, camera, surface array or handles beyond that callback.
+        template<class System>
+        bool RegisterRenderObserverSystem(
+            GameSystemDescriptor descriptor,
+            const GameProjectRenderObserverDesc& observer) {
+            ConfigureSystemDescriptor<System>(descriptor);
+            using CallbackResult = std::invoke_result_t<
+                decltype(&System::ObserveRenderFrame),
+                const System*,
+                const GameProjectRenderFrameView&>;
+            static_assert(std::is_void_v<CallbackResult> ||
+                std::is_same_v<CallbackResult, bool>);
+            const ObserveGameProjectRenderFrameFn observe =
+                [](const IGameSystem* system,
+                    const GameProjectRenderFrameView* frame) noexcept {
+                    if (system == nullptr || frame == nullptr) {
+                        return false;
+                    }
+                    try {
+                        const auto& typed =
+                            *static_cast<const System*>(system);
+                        if constexpr (std::is_void_v<CallbackResult>) {
+                            typed.ObserveRenderFrame(*frame);
+                            return true;
+                        }
+                        else {
+                            return typed.ObserveRenderFrame(*frame);
+                        }
+                    }
+                    catch (...) {
+                        return false;
+                    }
+                };
+            return RegisterRenderObserverSystemRaw(
+                descriptor,
+                observer,
+                observe);
+        }
+
         template<class Data>
         bool RegisterMassData(
             ComponentTypeId typeId,
@@ -220,6 +262,10 @@ namespace HIKARI {
             GameSystemDescriptor descriptor,
             const GameProjectMassSystemScheduleDesc& schedule,
             ExecuteGameProjectMassPartitionFn execute);
+        HIKARI_GAME_PROJECT_SDK_API bool RegisterRenderObserverSystemRaw(
+            GameSystemDescriptor descriptor,
+            const GameProjectRenderObserverDesc& observer,
+            ObserveGameProjectRenderFrameFn observe);
         HIKARI_GAME_PROJECT_SDK_API bool RegisterMassDataRaw(
             const GameProjectMassDataTypeDesc& descriptor);
 

@@ -73,6 +73,19 @@ bool IsValidParallelMassSystemSchedule(
         reservedClear;
 }
 
+bool IsValidRenderObserverDesc(
+    const GameProjectRenderObserverDesc& observer) noexcept {
+    bool reservedClear = true;
+    for (const uint32_t value : observer.reserved) {
+        reservedClear = reservedClear && value == 0u;
+    }
+    return observer.structSize == kGameProjectRenderObserverDescV1Size &&
+        observer.version == kGameProjectRenderFrameVersion &&
+        observer.stage < GameProjectRenderObserverStage::Count &&
+        observer.flags == 0u &&
+        reservedClear;
+}
+
 bool SystemSettingsContract::IsConfigured() const noexcept {
     return version != 0 ||
         (defaultSettings.is_object() && !defaultSettings.empty()) ||

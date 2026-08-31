@@ -101,8 +101,10 @@ void SystemScheduler::Clear() {
     }
     ReleaseParallelRuntime();
     systems_.clear();
+    attachedWorldIdentity_ = 0u;
     nextInsertionIndex_ = 0u;
     parallelMassFailureCount_ = 0u;
+    renderObserverFailureCount_ = 0u;
 }
 
 bool SystemScheduler::ExecuteParallelMassSystem(

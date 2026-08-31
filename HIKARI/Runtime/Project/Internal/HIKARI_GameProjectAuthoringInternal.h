@@ -171,14 +171,19 @@ namespace HIKARI {
 
     class GameProjectSystemAdapter final
         : public ISystem,
-          public IMassWorkerSystem {
+          public IMassWorkerSystem,
+          public IRenderFrameObserverSystem {
     public:
         GameProjectSystemAdapter(
             std::string systemId,
             IGameSystem* system,
             DestroyGameSystemFn destroy,
             GameProjectMassSystemScheduleDesc massSchedule = {},
-            ExecuteGameProjectMassPartitionFn executeMass = nullptr) noexcept;
+            ExecuteGameProjectMassPartitionFn executeMass = nullptr,
+            GameProjectRenderObserverDesc renderObserver = {
+                0u, 0u, GameProjectRenderObserverStage::Count,
+                0u, { 0u, 0u, 0u, 0u } },
+            ObserveGameProjectRenderFrameFn observeRender = nullptr) noexcept;
         ~GameProjectSystemAdapter() override;
 
         std::string_view GetName() const override;
@@ -218,6 +223,10 @@ namespace HIKARI {
             GameProjectMassPartitionOutput& output,
             const GameProjectMassCommandWriter& commands,
             const FrameContext& frame) const noexcept override;
+        const GameProjectRenderObserverDesc&
+            GetRenderObserverDesc() const noexcept override;
+        bool ObserveRenderFrame(
+            const GameProjectRenderFrameView& frame) const noexcept override;
 
     private:
         std::string systemId_{};
@@ -225,6 +234,8 @@ namespace HIKARI {
         DestroyGameSystemFn destroy_ = nullptr;
         GameProjectMassSystemScheduleDesc massSchedule_{};
         ExecuteGameProjectMassPartitionFn executeMass_ = nullptr;
+        GameProjectRenderObserverDesc renderObserver_{};
+        ObserveGameProjectRenderFrameFn observeRender_ = nullptr;
     };
 
 } // namespace HIKARI

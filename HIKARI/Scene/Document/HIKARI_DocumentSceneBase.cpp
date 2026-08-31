@@ -516,6 +516,15 @@ namespace HIKARI {
                 ? RENDER3D::RenderViewPurpose::Game
                 : RENDER3D::RenderViewPurpose::EditorScene;
             primaryView.cameraFrame = &state_->camera.resolvedFrame;
+            primaryView.projectRenderObserver = {
+                &state_->runtime.systemScheduler,
+                [](void* context,
+                    const GameProjectRenderFrameView& frame) noexcept {
+                    return static_cast<SystemScheduler*>(context)->
+                        ObserveRenderFrame(frame);
+                },
+                state_->runtime.world.GetRuntimeIdentity()
+            };
             VFX::VfxPlaybackService* playback =
                 state_->runtime.world.Services().Find<
                     VFX::VfxPlaybackService>();

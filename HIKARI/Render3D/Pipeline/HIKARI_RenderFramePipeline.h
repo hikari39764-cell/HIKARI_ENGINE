@@ -31,4 +31,6 @@ namespace HIKARI::RENDER3D::PIPELINE {
         uint32_t width,
         uint32_t height);
 
+    void ShutdownRenderFramePipelineResources() noexcept;
+
 } // namespace HIKARI::RENDER3D::PIPELINE

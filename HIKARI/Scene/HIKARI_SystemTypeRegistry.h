@@ -11,6 +11,7 @@
 #include <json.hpp>
 
 #include "HIKARI/Project/MassSystem.h"
+#include "HIKARI/Project/RenderFrame.h"
 
 namespace HIKARI {
 
@@ -18,6 +19,8 @@ class ISystem;
 
 bool IsValidParallelMassSystemSchedule(
     const GameProjectMassSystemScheduleDesc& schedule) noexcept;
+bool IsValidRenderObserverDesc(
+    const GameProjectRenderObserverDesc& observer) noexcept;
 
 struct SystemSettingsContract {
     using MigrateFn = std::function<bool(
@@ -48,6 +51,8 @@ struct SystemTypeInfo {
     SystemSettingsContract settings{};
     bool hasParallelMassSchedule = false;
     GameProjectMassSystemScheduleDesc parallelMassSchedule{};
+    bool hasRenderObserver = false;
+    GameProjectRenderObserverDesc renderObserver{};
 };
 
 class SystemTypeRegistry {

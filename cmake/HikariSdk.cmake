@@ -24,6 +24,7 @@ set(
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/PresentationTypes.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/PresentationViews.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/PropertyArchive.h"
+    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/RenderFrame.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/RuntimeExtension.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/RuntimeFeature.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/RuntimeFeatureRegistration.h"
@@ -102,7 +103,7 @@ configure_package_config_file(
     NO_SET_AND_CHECK_MACRO)
 write_basic_package_version_file(
     "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfigVersion.cmake"
-    VERSION 2.8.0
+    VERSION 2.9.0
     COMPATIBILITY SameMajorVersion)
 
 function(hikari_configure_game_project_sdk host_target)

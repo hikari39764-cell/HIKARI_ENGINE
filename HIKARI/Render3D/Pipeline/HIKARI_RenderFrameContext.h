@@ -63,6 +63,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
         GFX::Context graphics{};
         const Camera3D* camera = nullptr;
         const SceneEnvironment* environment = nullptr;
+        RenderFrameObserverSink projectRenderObserver{};
         uint32_t renderWidth = 1;
         uint32_t renderHeight = 1;
         uint32_t outputWidth = 1;

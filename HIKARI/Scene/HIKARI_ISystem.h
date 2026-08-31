@@ -10,6 +10,8 @@ struct GameProjectMassSystemScheduleDesc;
 struct GameProjectMassPartitionInput;
 struct GameProjectMassPartitionOutput;
 struct GameProjectMassCommandWriter;
+struct GameProjectRenderObserverDesc;
+struct GameProjectRenderFrameView;
 
 class ISystem {
 public:
@@ -45,6 +47,18 @@ public:
         GameProjectMassPartitionOutput& output,
         const GameProjectMassCommandWriter& commands,
         const FrameContext& frame) const noexcept = 0;
+};
+
+// RenderGraph calls this sibling only at its stable owner-thread observation
+// anchor. It does not change the existing ISystem or IGameSystem vtables.
+class IRenderFrameObserverSystem {
+public:
+    virtual ~IRenderFrameObserverSystem() = default;
+
+    virtual const GameProjectRenderObserverDesc&
+        GetRenderObserverDesc() const noexcept = 0;
+    virtual bool ObserveRenderFrame(
+        const GameProjectRenderFrameView& frame) const noexcept = 0;
 };
 
 } // namespace HIKARI

@@ -462,6 +462,10 @@ namespace HIKARI {
                     HIKARI_LOG_INFO(
                         "Render frame surface registry shutdown.");
                 }
+                RENDER3D::PIPELINE::
+                    ShutdownRenderFramePipelineResources();
+                HIKARI_LOG_INFO(
+                    "Render frame pipeline resources shutdown.");
                 GAME_UI::ShutdownGameUiRenderer();
                 DX::DxRenderer::Finalize();
                 HIKARI_LOG_INFO("DxRenderer finalized.");

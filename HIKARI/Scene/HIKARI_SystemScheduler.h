@@ -29,7 +29,11 @@ public:
     bool HasSystem(std::string_view systemId) const;
     size_t GetSystemCount() const;
     uint64_t GetParallelMassFailureCount() const noexcept;
+    uint64_t GetRenderObserverFailureCount() const noexcept;
     std::vector<std::string> GetExecutionOrder() const;
+
+    bool ObserveRenderFrame(
+        const GameProjectRenderFrameView& frame) noexcept;
 
     void AttachWorld(World& world);
     void DetachWorld(World& world);
@@ -83,8 +87,10 @@ private:
 
     std::vector<SystemEntry> systems_{};
     const std::thread::id ownerThread_{};
+    uint64_t attachedWorldIdentity_ = 0u;
     uint64_t nextInsertionIndex_ = 0;
     uint64_t parallelMassFailureCount_ = 0u;
+    uint64_t renderObserverFailureCount_ = 0u;
     std::unique_ptr<ParallelRuntime> parallelRuntime_{};
 };
 

@@ -258,9 +258,26 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
                 compositeComplete)) {
             return false;
         }
-        const std::array resumeReads{
+        const std::array observerReads{
             ResourceUse{
                 compositeComplete,
+                GRAPH::RenderGraphAccess::ReadDependency
+            }
+        };
+        GRAPH::RenderGraphResourceId observerComplete{};
+        if (!AddCompletionPass(
+                graph,
+                "ProjectRender.Observe.PostOpaque",
+                "ProjectRender.Observe.PostOpaque.Complete",
+                observerReads,
+                callbacks.projectRenderObserver,
+                userData,
+                observerComplete)) {
+            return false;
+        }
+        const std::array resumeReads{
+            ResourceUse{
+                observerComplete,
                 GRAPH::RenderGraphAccess::ReadDependency
             }
         };
