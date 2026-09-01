@@ -104,11 +104,6 @@ namespace HIKARI {
 
             static Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSig_;
             static BlendMode currentBlendMode_;
-
-            // ==========================================
-            // [新增] 遮罩相?私有?源
-            // ==========================================
-            static Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigMask_; // ?用的 RootSig (? b1 参数)
         };
 
     } // namespace DX

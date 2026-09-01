@@ -13,6 +13,7 @@
 #include "Assets/Shader/HIKARI_BuiltinShaderCatalog.h"
 #include "Assets/Shader/HIKARI_DepthPyramidShaderContract.h"
 #include "Assets/Shader/HIKARI_PostEffectShaderContract.h"
+#include "Assets/Shader/HIKARI_Render2DBuiltinShaderContract.h"
 #include "Assets/Shader/HIKARI_ShaderCookedArtifactBuilder.h"
 #include "Core/Hashing/HIKARI_Sha256.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
@@ -147,6 +148,13 @@ namespace {
                 artifact,
                 artifact.entries.front(),
                 outError))) {
+            return false;
+        }
+        if (program.contract.engineInterfaceId ==
+                SHADER::kRender2DBuiltinEngineInterfaceId &&
+            !SHADER::ValidateRender2DBuiltinShaderArtifact(
+                artifact,
+                outError)) {
             return false;
         }
         std::vector<uint8_t> bytes{};

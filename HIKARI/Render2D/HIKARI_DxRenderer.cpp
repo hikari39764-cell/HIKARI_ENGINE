@@ -2,20 +2,23 @@
 
 #include "Render2D/HIKARI_DxRenderer.h"
 #include "Render2D/HIKARI_DxTexture.h"
+#include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
+#include "Assets/Shader/HIKARI_Render2DBuiltinShaderContract.h"
 #include "Core/Presentation/HIKARI_LogicalDisplayDefaults.h"
 #include "Core/HIKARI_Logger.h"
+#include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_DynamicUploadBuffer.h"
-#include "Gfx/HIKARI_ShaderCompiler.h"
+#include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
 
 #include <d3d12.h>
 #include <dxgi1_6.h>
 #include <d3dx12.h>
 
-#include <cassert>
 #include <array>
 #include <cstring>
+#include <string>
+#include <utility>
 #include <vector>
-#include <cmath> // for max
 
 using Microsoft::WRL::ComPtr;
 
@@ -175,138 +178,31 @@ namespace HIKARI {
             }
 
 
-            // =========================================================
-            // Shader（VS/PS）
-            // =========================================================
-
-            static const char* kMeshVS = R"(
-cbuffer GlobalCB : register(b0)
-{
-    float2 screenSize;
-    float2 pad;
-}
-struct VS_IN {
-    float2 pos : POSITION;
-    float2 uv  : TEXCOORD0;
-    float4 col : COLOR0;
-};
-struct VS_OUT {
-    float4 pos : SV_POSITION;
-    float2 uv  : TEXCOORD0;
-    float4 col : COLOR0;
-};
-VS_OUT main(VS_IN input)
-{
-    VS_OUT o;
-    float2 ndc;
-    ndc.x = (input.pos.x / screenSize.x) * 2.0f - 1.0f;
-    ndc.y = 1.0f - (input.pos.y / screenSize.y) * 2.0f;
-    o.pos = float4(ndc, 0.0f, 1.0f);
-    o.uv = input.uv;
-    o.col = input.col;
-    return o;
-}
-)";
-
-            static const char* kMeshPS = R"(
-Texture2D tex0 : register(t0);
-SamplerState smp : register(s0);
-struct PS_IN {
-    float4 pos : SV_POSITION;
-    float2 uv  : TEXCOORD0;
-    float4 col : COLOR0;
-};
-float4 main(PS_IN input) : SV_TARGET
-{
-    float4 texCol = tex0.Sample(smp, input.uv);
-    return texCol * input.col;
-}
-)";
-
-            static const char* kMaskPS = R"(
-Texture2D tex0 : register(t0);
-SamplerState smp : register(s0);
-
-cbuffer MaskCB : register(b1)
-{
-    float2 playerPos; 
-    float radius; 
-    float softness; 
-};
-
-struct PS_IN {
-    float4 pos : SV_POSITION;
-    float2 uv  : TEXCOORD0;
-    float4 col : COLOR0;
-};
-
-float4 main(PS_IN input) : SV_TARGET
-{
-    float4 texCol = tex0.Sample(smp, input.uv);
-    float4 finalColor = texCol * input.col;
-
-    // 1. ?算当前像素到玩家的距?
-    float dist = distance(input.pos.xy, playerPos);
-
-    // 2. ?算?? Alpha
-    // 从 0.0 (中心) 到 radius (??) 生成 0.0 -> 1.0 的平滑?渡
-    // ??中心就是完全透明的，越往外越不透明
-    float alphaFactor = smoothstep(0.0f, radius, dist);
-
-    finalColor.a *= alphaFactor;
-    return finalColor;
-}
-)";
-
-            static const char* kLineVS = R"(
-cbuffer GlobalCB : register(b0)
-{
-    float2 screenSize;
-    float2 pad;
-}
-struct VS_IN {
-    float2 pos : POSITION;
-    float4 col : COLOR0;
-};
-struct VS_OUT {
-    float4 pos : SV_POSITION;
-    float4 col : COLOR0;
-};
-VS_OUT main(VS_IN input)
-{
-    VS_OUT o;
-    float2 ndc;
-    ndc.x = (input.pos.x / screenSize.x) * 2.0f - 1.0f;
-    ndc.y = 1.0f - (input.pos.y / screenSize.y) * 2.0f;
-    o.pos = float4(ndc, 0.0f, 1.0f);
-    o.col = input.col;
-    return o;
-}
-)";
-
-            static const char* kLinePS = R"(
-struct PS_IN { float4 pos : SV_POSITION; float4 col : COLOR0; };
-float4 main(PS_IN input) : SV_TARGET { return input.col; }
-)";
-
-
-            // =========================================================
-            // Helper - Shader Compile
-            // =========================================================
-
-            static ComPtr<ID3DBlob> CompileShader(const char* src, const char* entry, const char* profile)
-            {
-                ComPtr<ID3DBlob> blob;
-                if (!GFX::CompileShaderSourceSm6(
-                    src,
-                    std::strlen(src),
-                    L"Render2D.InlineShader",
-                    entry,
-                    GFX::UpgradeToShaderModel6Profile(profile),
-                    blob.GetAddressOf())) {
-                    assert(false);
+            bool ResolveRender2DBuiltinEntry(
+                const ASSETS::SHADER::ShaderAssetContractExpectation& contract,
+                const char* entryId,
+                ASSETS::SHADER::ShaderStage stage,
+                const char* profile,
+                ASSETS::SHADER::ShaderAssetEntryLease& outLease) {
+                ASSETS::SHADER::ShaderAssetResolveResult resolved =
+                    ASSETS::SHADER::ResolveBuiltinShaderEntry(
+                        "HIKARI.EngineShader.Render2D_Builtin",
+                        { entryId, stage, profile },
+                        contract);
+                if (!resolved || resolved.lease.GetDxil().empty()) {
+                    HIKARI_LOG_ERROR(
+                        std::string("[DxRenderer] cooked Shader entry ") +
+                        entryId + " is unavailable: " + resolved.diagnostic);
+                    return false;
                 }
-                return blob;
+                outLease = std::move(resolved.lease);
+                return true;
+            }
+
+            D3D12_SHADER_BYTECODE ShaderBytecode(
+                const ASSETS::SHADER::ShaderAssetEntryLease& lease) {
+                const auto bytes = lease.GetDxil();
+                return { bytes.data(), bytes.size() };
             }
 
 
@@ -318,9 +214,6 @@ float4 main(PS_IN input) : SV_TARGET { return input.col; }
 
         Microsoft::WRL::ComPtr<ID3D12RootSignature> DxRenderer::rootSig_;
         BlendMode DxRenderer::currentBlendMode_ = BlendMode::StraightAlpha;
-
-        // [新增]
-        Microsoft::WRL::ComPtr<ID3D12RootSignature> DxRenderer::rootSigMask_;
 
         void DxRenderer::Init(const GFX::Context& ctx)
         {
@@ -337,9 +230,14 @@ float4 main(PS_IN input) : SV_TARGET { return input.col; }
 
             auto* device = g_ctx.device;
             g_pipelineSets = {};
+            rootSig_.Reset();
             g_pipelineSets[0].format = DXGI_FORMAT_R16G16B16A16_FLOAT;
             g_pipelineSets[1].format = DXGI_FORMAT_R8G8B8A8_UNORM;
             g_outputFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
+            if (device == nullptr) {
+                HIKARI_LOG_ERROR("[DxRenderer] D3D12 device is unavailable");
+                return;
+            }
 
             // === UploadBuffers ===
             bool uploadBuffersReady = true;
@@ -358,14 +256,71 @@ float4 main(PS_IN input) : SV_TARGET { return input.col; }
                     "[DxRenderer] dynamic upload page initialization failed");
             }
 
-            // === RootSignature (Default) ===
+            const GFX::ShaderDeviceCapabilities capabilities =
+                GFX::QueryShaderDeviceCapabilities(device);
+            const ASSETS::SHADER::ShaderAssetContractExpectation
+                shaderContract =
+                    ASSETS::SHADER::MakeRender2DBuiltinShaderContract({
+                        capabilities.shaderModel,
+                        capabilities.rootSignatureVersion,
+                        capabilities.featureMask
+                    });
+            ASSETS::SHADER::ShaderAssetEntryLease meshVs{};
+            ASSETS::SHADER::ShaderAssetEntryLease meshPs{};
+            ASSETS::SHADER::ShaderAssetEntryLease maskPs{};
+            ASSETS::SHADER::ShaderAssetEntryLease lineVs{};
+            ASSETS::SHADER::ShaderAssetEntryLease linePs{};
+            if (!ResolveRender2DBuiltinEntry(
+                    shaderContract,
+                    "MeshVS",
+                    ASSETS::SHADER::ShaderStage::Vertex,
+                    "vs_6_0",
+                    meshVs) ||
+                !ResolveRender2DBuiltinEntry(
+                    shaderContract,
+                    "MeshPS",
+                    ASSETS::SHADER::ShaderStage::Pixel,
+                    "ps_6_0",
+                    meshPs) ||
+                !ResolveRender2DBuiltinEntry(
+                    shaderContract,
+                    "MaskPS",
+                    ASSETS::SHADER::ShaderStage::Pixel,
+                    "ps_6_0",
+                    maskPs) ||
+                !ResolveRender2DBuiltinEntry(
+                    shaderContract,
+                    "LineVS",
+                    ASSETS::SHADER::ShaderStage::Vertex,
+                    "vs_6_0",
+                    lineVs) ||
+                !ResolveRender2DBuiltinEntry(
+                    shaderContract,
+                    "LinePS",
+                    ASSETS::SHADER::ShaderStage::Pixel,
+                    "ps_6_0",
+                    linePs)) {
+                return;
+            }
+            std::string shaderDiagnostic{};
+            if (!ASSETS::SHADER::ValidateRender2DBuiltinShaderArtifact(
+                    *meshVs.GetArtifact(),
+                    shaderDiagnostic)) {
+                HIKARI_LOG_ERROR(
+                    std::string("[DxRenderer] cooked Shader contract failed: ") +
+                    shaderDiagnostic);
+                return;
+            }
+
+            // === RootSignature (Global + texture + optional mask) ===
             {
                 CD3DX12_DESCRIPTOR_RANGE range{};
                 range.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
 
-                CD3DX12_ROOT_PARAMETER params[2]{};
+                CD3DX12_ROOT_PARAMETER params[3]{};
                 params[0].InitAsConstantBufferView(0); // b0
                 params[1].InitAsDescriptorTable(1, &range); // t0
+                params[2].InitAsConstantBufferView(1); // b1
 
 
                 D3D12_STATIC_SAMPLER_DESC staticSampler = {};
@@ -393,54 +348,27 @@ float4 main(PS_IN input) : SV_TARGET { return input.col; }
 
                 ComPtr<ID3DBlob> sigBlob, errBlob;
                 HRESULT hr = D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &sigBlob, &errBlob);
-                if (FAILED(hr)) { if (errBlob) OutputDebugStringA((char*)errBlob->GetBufferPointer()); assert(false); }
+                if (!HIKARI_DX_CHECK(
+                        hr,
+                        "DxRenderer::SerializeRootSignature")) {
+                    if (errBlob) {
+                        OutputDebugStringA(
+                            static_cast<const char*>(
+                                errBlob->GetBufferPointer()));
+                    }
+                    return;
+                }
 
                 hr = device->CreateRootSignature(0, sigBlob->GetBufferPointer(), sigBlob->GetBufferSize(), IID_PPV_ARGS(&rootSig_));
-                assert(SUCCEEDED(hr));
-            }
-
-            // === [新增] RootSignature (Mask) ===
-            {
-                // 需要三个参数：b0 (Global), t0 (Texture), b1 (MaskParams)
-                CD3DX12_DESCRIPTOR_RANGE range{};
-                range.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
-
-                CD3DX12_ROOT_PARAMETER params[3]{};
-                params[0].InitAsConstantBufferView(0);      // b0: ScreenSize
-                params[1].InitAsDescriptorTable(1, &range); // t0: Texture
-                params[2].InitAsConstantBufferView(1);      // b1: MaskParams (新增)
-
-                D3D12_STATIC_SAMPLER_DESC staticSampler = {};
-                staticSampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-                staticSampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-                staticSampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-                staticSampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-                staticSampler.MipLODBias = 0;
-                staticSampler.MaxAnisotropy = 0;
-                staticSampler.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
-                staticSampler.BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE;
-                staticSampler.MinLOD = 0.0f;
-                staticSampler.MaxLOD = D3D12_FLOAT32_MAX;
-                staticSampler.ShaderRegister = 0;
-                staticSampler.RegisterSpace = 0;
-                staticSampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-
-                CD3DX12_ROOT_SIGNATURE_DESC desc;
-                desc.Init(_countof(params), params, 1, &staticSampler, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
-
-                ComPtr<ID3DBlob> sigBlob, errBlob;
-                HRESULT hr = D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &sigBlob, &errBlob);
-                if (FAILED(hr)) { if (errBlob) OutputDebugStringA((char*)errBlob->GetBufferPointer()); assert(false); }
-
-                hr = device->CreateRootSignature(0, sigBlob->GetBufferPointer(), sigBlob->GetBufferSize(), IID_PPV_ARGS(&rootSigMask_));
-                assert(SUCCEEDED(hr));
+                if (!HIKARI_DX_CHECK(
+                        hr,
+                        "DxRenderer::CreateRootSignature")) {
+                    return;
+                }
             }
 
             // === PSO: Mesh / Sprite ===
             {
-                ComPtr<ID3DBlob> vs = CompileShader(kMeshVS, "main", "vs_6_0");
-                ComPtr<ID3DBlob> ps = CompileShader(kMeshPS, "main", "ps_6_0");
-
                 D3D12_INPUT_ELEMENT_DESC elems[] = {
                     { "POSITION", 0, DXGI_FORMAT_R32G32_FLOAT,    0, 0,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
                     { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,    0, 8,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
@@ -451,8 +379,8 @@ float4 main(PS_IN input) : SV_TARGET { return input.col; }
                     {
                         ZeroMemory(&desc, sizeof(desc));
                         desc.pRootSignature = rootSig_.Get();
-                        desc.VS = CD3DX12_SHADER_BYTECODE(vs.Get());
-                        desc.PS = CD3DX12_SHADER_BYTECODE(ps.Get());
+                        desc.VS = ShaderBytecode(meshVs);
+                        desc.PS = ShaderBytecode(meshPs);
                         desc.InputLayout = { elems, _countof(elems) };
                         desc.SampleMask = UINT_MAX;
                         desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
@@ -477,17 +405,18 @@ float4 main(PS_IN input) : SV_TARGET { return input.col; }
                         const HRESULT hr = device->CreateGraphicsPipelineState(
                             &desc,
                             IID_PPV_ARGS(set.colorPsos[i].GetAddressOf()));
-                        assert(SUCCEEDED(hr));
+                        if (!HIKARI_DX_CHECK(
+                                hr,
+                                "DxRenderer::CreateColorPipeline")) {
+                            g_pipelineSets = {};
+                            rootSig_.Reset();
+                            return;
+                        }
                     }
                 }
 
-                // === [新增] PSO: Mask ===
-                // ?? Mask PS
-                ComPtr<ID3DBlob> psMask = CompileShader(kMaskPS, "main", "ps_6_0");
-
                 D3D12_GRAPHICS_PIPELINE_STATE_DESC maskDesc = baseDesc;
-                maskDesc.pRootSignature = rootSigMask_.Get(); // 使用新的 RS
-                maskDesc.PS = CD3DX12_SHADER_BYTECODE(psMask.Get()); // 使用 Mask PS
+                maskDesc.PS = ShaderBytecode(maskPs);
                 maskDesc.BlendState = MakeBlendDesc(BlendMode::StraightAlpha); // 使用?准透明混合
 
                 for (PipelineSet& set : g_pipelineSets) {
@@ -495,15 +424,18 @@ float4 main(PS_IN input) : SV_TARGET { return input.col; }
                     const HRESULT hr = device->CreateGraphicsPipelineState(
                         &maskDesc,
                         IID_PPV_ARGS(set.maskPso.GetAddressOf()));
-                    assert(SUCCEEDED(hr));
+                    if (!HIKARI_DX_CHECK(
+                            hr,
+                            "DxRenderer::CreateMaskPipeline")) {
+                        g_pipelineSets = {};
+                        rootSig_.Reset();
+                        return;
+                    }
                 }
             }
 
             // === PSO: Line (保持不?) ===
             {
-                ComPtr<ID3DBlob> vs = CompileShader(kLineVS, "main", "vs_6_0");
-                ComPtr<ID3DBlob> ps = CompileShader(kLinePS, "main", "ps_6_0");
-
                 D3D12_INPUT_ELEMENT_DESC elems[] = {
                     { "POSITION", 0, DXGI_FORMAT_R32G32_FLOAT,    0, 0,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
                     { "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 8, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
@@ -511,8 +443,8 @@ float4 main(PS_IN input) : SV_TARGET { return input.col; }
 
                 D3D12_GRAPHICS_PIPELINE_STATE_DESC d{};
                 d.pRootSignature = rootSig_.Get();
-                d.VS = CD3DX12_SHADER_BYTECODE(vs.Get());
-                d.PS = CD3DX12_SHADER_BYTECODE(ps.Get());
+                d.VS = ShaderBytecode(lineVs);
+                d.PS = ShaderBytecode(linePs);
                 d.InputLayout = { elems, _countof(elems) };
                 d.SampleMask = UINT_MAX;
                 d.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
@@ -530,7 +462,13 @@ float4 main(PS_IN input) : SV_TARGET { return input.col; }
                     const HRESULT hr = device->CreateGraphicsPipelineState(
                         &d,
                         IID_PPV_ARGS(set.linePso.GetAddressOf()));
-                    assert(SUCCEEDED(hr));
+                    if (!HIKARI_DX_CHECK(
+                            hr,
+                            "DxRenderer::CreateLinePipeline")) {
+                        g_pipelineSets = {};
+                        rootSig_.Reset();
+                        return;
+                    }
                 }
             }
 
@@ -589,6 +527,7 @@ float4 main(PS_IN input) : SV_TARGET { return input.col; }
             }
             g_pipelineSets = {};
             g_outputFormat = DXGI_FORMAT_UNKNOWN;
+            rootSig_.Reset();
         }
 
 
@@ -643,6 +582,9 @@ float4 main(PS_IN input) : SV_TARGET { return input.col; }
             if (!pso) {
                 pso = pipelines->colorPsos[
                     static_cast<size_t>(BlendMode::StraightAlpha)].Get();
+            }
+            if (pso == nullptr || rootSig_ == nullptr) {
+                return;
             }
 
             cmd->SetGraphicsRootSignature(rootSig_.Get());
@@ -766,12 +708,12 @@ float4 main(PS_IN input) : SV_TARGET { return input.col; }
 
             auto* cmd = g_ctx.cmdList;
 
-            // 1. 切?到 Mask ?用的 RootSig 和 PSO
-            cmd->SetGraphicsRootSignature(rootSigMask_.Get());
             PipelineSet* pipelines = GetActivePipelineSet();
-            if (pipelines == nullptr || pipelines->maskPso == nullptr) {
+            if (pipelines == nullptr || pipelines->maskPso == nullptr ||
+                rootSig_ == nullptr) {
                 return;
             }
+            cmd->SetGraphicsRootSignature(rootSig_.Get());
             cmd->SetPipelineState(pipelines->maskPso.Get());
 
             // ?色解析
@@ -894,11 +836,12 @@ float4 main(PS_IN input) : SV_TARGET { return input.col; }
         {
             auto* cmd = g_ctx.cmdList;
 
-            cmd->SetGraphicsRootSignature(rootSig_.Get());
             PipelineSet* pipelines = GetActivePipelineSet();
-            if (pipelines == nullptr || pipelines->linePso == nullptr) {
+            if (pipelines == nullptr || pipelines->linePso == nullptr ||
+                rootSig_ == nullptr) {
                 return;
             }
+            cmd->SetGraphicsRootSignature(rootSig_.Get());
             cmd->SetPipelineState(pipelines->linePso.Get());
 
             float r, g, b, a;
