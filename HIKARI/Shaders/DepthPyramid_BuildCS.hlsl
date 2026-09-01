@@ -1,11 +1,4 @@
-cbuffer DepthPyramidBuildCB : register(b0)
-{
-    uint2 gSourceSize;
-    uint2 gDestSize;
-};
-
-Texture2D<float> gSourceDepth : register(t0);
-RWTexture2D<float> gDestDepthPyramid : register(u0);
+#include "Include/Depth/HIKARI_DepthPyramidInterface.hlsli"
 
 float LoadSourceDepth(uint2 pixel)
 {
@@ -13,7 +6,10 @@ float LoadSourceDepth(uint2 pixel)
     return gSourceDepth.Load(int3(pixel, 0));
 }
 
-[numthreads(8, 8, 1)]
+[numthreads(
+    HIKARI_DEPTH_PYRAMID_THREAD_GROUP_SIZE,
+    HIKARI_DEPTH_PYRAMID_THREAD_GROUP_SIZE,
+    1)]
 void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 {
     const uint2 dst = dispatchThreadId.xy;

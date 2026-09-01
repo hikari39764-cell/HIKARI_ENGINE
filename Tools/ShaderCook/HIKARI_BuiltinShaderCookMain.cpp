@@ -11,6 +11,7 @@
 #include "Assets/Formats/HIKARI_HshadercFormat.h"
 #include "Assets/Shader/HIKARI_AutomaticExposureShaderContract.h"
 #include "Assets/Shader/HIKARI_BuiltinShaderCatalog.h"
+#include "Assets/Shader/HIKARI_DepthPyramidShaderContract.h"
 #include "Assets/Shader/HIKARI_PostEffectShaderContract.h"
 #include "Assets/Shader/HIKARI_ShaderCookedArtifactBuilder.h"
 #include "Core/Hashing/HIKARI_Sha256.h"
@@ -134,6 +135,15 @@ namespace {
                 SHADER::kAutomaticExposureEngineInterfaceId &&
             (artifact.entries.size() != 1u ||
              !SHADER::ValidateAutomaticExposureShaderArtifact(
+                artifact,
+                artifact.entries.front(),
+                outError))) {
+            return false;
+        }
+        if (program.contract.engineInterfaceId ==
+                SHADER::kDepthPyramidEngineInterfaceId &&
+            (artifact.entries.size() != 1u ||
+             !SHADER::ValidateDepthPyramidShaderArtifact(
                 artifact,
                 artifact.entries.front(),
                 outError))) {

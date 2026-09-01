@@ -4,18 +4,20 @@
 #include <algorithm>
 #include <array>
 #include <string>
+#include <utility>
 
 #include <d3dcompiler.h>
 #include <d3dx12.h>
 
+#include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
+#include "Assets/Shader/HIKARI_DepthPyramidShaderContract.h"
 #include "Core/HIKARI_Logger.h"
-#include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_DescriptorAllocator.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/HIKARI_PixProfiler.h"
-#include "Gfx/HIKARI_ShaderCompiler.h"
+#include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
 
 namespace HIKARI::RENDER3D::DEPTH {
 
@@ -320,12 +322,6 @@ namespace HIKARI::RENDER3D::DEPTH {
         if (device == nullptr) {
             return false;
         }
-        if (!GFX::SupportsShaderModel6(device)) {
-            DEBUGLOG::PushRenderError(
-                "[DepthPyramid][ERROR] Shader Model 6.0 is required for depth pyramid build.");
-            return false;
-        }
-
         std::array<D3D12_DESCRIPTOR_RANGE, 2> ranges{};
         ranges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
         ranges[0].NumDescriptors = 1;
@@ -370,34 +366,67 @@ namespace HIKARI::RENDER3D::DEPTH {
             }
             return false;
         }
+        Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignature{};
         hr = device->CreateRootSignature(
             0,
             signature->GetBufferPointer(),
             signature->GetBufferSize(),
-            IID_PPV_ARGS(rootSignature_.GetAddressOf()));
+            IID_PPV_ARGS(rootSignature.GetAddressOf()));
         if (!HIKARI_DX_CHECK(hr, "DepthPyramid::CreateRootSignature")) {
             return false;
         }
 
-        Microsoft::WRL::ComPtr<ID3DBlob> cs;
-        if (!GFX::CompileShaderFileSm6(
-            L"HIKARI/Shaders/DepthPyramid_BuildCS.hlsl",
-            "main",
-            GFX::ShaderStage::Compute,
-            cs.GetAddressOf())) {
+        const GFX::ShaderDeviceCapabilities capabilities =
+            GFX::QueryShaderDeviceCapabilities(device);
+        const ASSETS::SHADER::ShaderAssetContractExpectation contract =
+            ASSETS::SHADER::MakeDepthPyramidShaderContract({
+                capabilities.shaderModel,
+                capabilities.rootSignatureVersion,
+                capabilities.featureMask
+            });
+        ASSETS::SHADER::ShaderAssetResolveResult resolved =
+            ASSETS::SHADER::ResolveBuiltinShaderEntry(
+                "HIKARI.EngineShader.DepthPyramid_BuildCS",
+                { "Main",
+                  ASSETS::SHADER::ShaderStage::Compute,
+                  "cs_6_0" },
+                contract);
+        const ASSETS::SHADER::ShaderCookedArtifact* artifact =
+            resolved ? resolved.lease.GetArtifact() : nullptr;
+        const ASSETS::SHADER::ShaderCookedEntry* entry =
+            resolved ? resolved.lease.GetEntry() : nullptr;
+        std::string diagnostic{};
+        if (!resolved || artifact == nullptr || entry == nullptr ||
+            !ASSETS::SHADER::ValidateDepthPyramidShaderArtifact(
+                *artifact,
+                *entry,
+                diagnostic)) {
+            if (diagnostic.empty()) {
+                diagnostic = resolved.diagnostic;
+            }
+            HIKARI_LOG_ERROR(
+                std::string("[DepthPyramid][ERROR] cooked Shader admission "
+                    "failed: ") + diagnostic);
+            return false;
+        }
+        const auto shader = resolved.lease.GetDxil();
+        if (shader.empty()) {
             return false;
         }
 
         D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc{};
-        psoDesc.pRootSignature = rootSignature_.Get();
-        psoDesc.CS = { cs->GetBufferPointer(), cs->GetBufferSize() };
+        psoDesc.pRootSignature = rootSignature.Get();
+        psoDesc.CS = { shader.data(), shader.size() };
+        Microsoft::WRL::ComPtr<ID3D12PipelineState> pipelineState{};
         hr = device->CreateComputePipelineState(
             &psoDesc,
-            IID_PPV_ARGS(pipelineState_.GetAddressOf()));
+            IID_PPV_ARGS(pipelineState.GetAddressOf()));
         if (!HIKARI_DX_CHECK(hr, "DepthPyramid::CreatePso")) {
             return false;
         }
-        pipelineState_->SetName(L"HIKARI.DepthPyramid.PSO");
+        pipelineState->SetName(L"HIKARI.DepthPyramid.PSO");
+        rootSignature_ = std::move(rootSignature);
+        pipelineState_ = std::move(pipelineState);
         stats_.psoReady = true;
         return true;
     }
