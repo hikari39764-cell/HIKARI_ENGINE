@@ -11,6 +11,8 @@
 #include "Core/HIKARI_Logger.h"
 #include "Core/Math/HIKARI_MathValidation.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
+#include "Render3D/Lighting/HIKARI_PanoramaSkyLayerStage.h"
+#include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Physics/Backends/Jolt/HIKARI_JoltPhysicsBackend.h"
 #include "Project/HIKARI_ProjectSettings.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
@@ -735,6 +737,9 @@ namespace HIKARI {
             state_->lighting.sky,
             state_->assets.Database().GetProjectRoot(),
             state_->identity.currentSceneAssetGuid.value);
+        SKYRENDERER::InvalidateSkyTextureCache();
+        RENDER3D::PANORAMA_SKY::
+            InvalidatePanoramaSkyLayerTextureCache();
         for (const RuntimeFeatureSceneIssue& issue :
                 state_->runtime.featureCatalog.AnalyzeSceneDocument(state_->identity.document)) {
             HIKARI_LOG_WARN(

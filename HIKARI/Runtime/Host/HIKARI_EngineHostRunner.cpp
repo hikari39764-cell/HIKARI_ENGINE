@@ -195,6 +195,7 @@ namespace HIKARI::RUNTIME {
         if (!SERVICES::Initialize(
                 resolvedWindowTitle,
                 servicesConfig)) {
+            SERVICES::FinalizeAll();
             GetProjectContext().Close();
             CONTENT::GetEngineContentContext().Close();
             return -1;

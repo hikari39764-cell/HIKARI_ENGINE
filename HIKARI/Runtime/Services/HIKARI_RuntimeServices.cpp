@@ -188,7 +188,8 @@ namespace HIKARI {
                     RENDER3D::GetRenderQualitySettings().frameGenerationMode ==
                         RENDER3D::RenderFrameGenerationMode::Dlss);
             if (gStreamlineEnabled) {
-                (void)RENDER3D::UPSCALING::InitializeStreamlineEarly(
+                gStreamlineEnabled =
+                    RENDER3D::UPSCALING::InitializeStreamlineEarly(
                     enableFrameGenerationPlugins,
                     logRoot.empty()
                         ? std::filesystem::path{}
@@ -251,7 +252,8 @@ namespace HIKARI {
             if (!gWindow.Initialize(wTitle.c_str(), cfg.windowWidth, cfg.windowHeight, cfg.resizableWindow)) {
                 HIKARI_LOG_ERROR("Window initialization failed.");
                 if (gStreamlineEnabled) {
-                    (void)RENDER3D::UPSCALING::ShutdownStreamline();
+                    gStreamlineEnabled =
+                        !RENDER3D::UPSCALING::ShutdownStreamline();
                 }
                 return false;
             }
@@ -289,7 +291,8 @@ namespace HIKARI {
                     graphicsCallbacks)) {
                 HIKARI_LOG_ERROR("D3D12 core initialization failed.");
                 if (gStreamlineEnabled) {
-                    (void)RENDER3D::UPSCALING::ShutdownStreamline();
+                    gStreamlineEnabled =
+                        !RENDER3D::UPSCALING::ShutdownStreamline();
                 }
                 return false;
             }
@@ -536,7 +539,9 @@ namespace HIKARI {
             }
             AUDIO::Shutdown();
             HIKARI_LOG_INFO("Audio shutdown.");
-            gStreamlineEnabled = false;
+            if (streamlineShutdownSafe) {
+                gStreamlineEnabled = false;
+            }
             GFX::ClearCurrentContext();
             if (!streamlineShutdownSafe || graphicsShutdownResult ==
                 GFX::GraphicsShutdownResult::UnsafeWaitFailure) {

@@ -21,6 +21,8 @@
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Core/HIKARI_Logger.h"
 #include "Render3D/Core/HIKARI_Material.h"
+#include "Render3D/Lighting/HIKARI_PanoramaSkyLayerStage.h"
+#include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Render3D/Material/HIKARI_MaterialRuntimeBuilder.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelRenderableAssetResolver.h"
@@ -333,6 +335,9 @@ namespace HIKARI {
             scene.state_->lighting.sky,
             database_.GetProjectRoot(),
             scene.state_->identity.currentSceneAssetGuid.value);
+        SKYRENDERER::InvalidateSkyTextureCache();
+        RENDER3D::PANORAMA_SKY::
+            InvalidatePanoramaSkyLayerTextureCache();
 
         scene.state_->runtime.world.ForEachObjectWith<ModelComponent>(
             [this, &reboundCount](GameObject&, ModelComponent& modelComponent) {
