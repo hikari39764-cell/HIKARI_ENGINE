@@ -19,6 +19,9 @@ namespace HIKARI {
             char* outUtf8,
             uint32_t capacity,
             uint32_t& outLength) const noexcept;
+        // Returns true only when the idle transition gate accepts the
+        // request. Scene loading completes later and may still fail; v1 does
+        // not expose a completion token or queue requests while busy.
         HIKARI_GAME_PROJECT_SDK_API bool RequestScene(
             std::string_view sceneAssetGuid,
             std::string_view spawnPointId,
@@ -108,6 +111,9 @@ namespace HIKARI {
 
         HIKARI_GAME_PROJECT_SDK_API GameProjectRuntimeHostKind
             GetHostKind() const noexcept;
+        // True only while the current World is executing Play/Standalone
+        // gameplay. Editor authoring frames return false.
+        HIKARI_GAME_PROJECT_SDK_API bool IsPlayActive() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool RequestEndSession() const noexcept;
 
     private:

@@ -12,6 +12,7 @@
 #include "Assets/HIKARI_AssetTypes.h"
 #include "Authoring/HIKARI_IInspectorBuilder.h"
 #include "Authoring/HIKARI_ComponentAuthoringTypes.h"
+#include "Input/Runtime/HIKARI_InputTypes.h"
 #include "Runtime/Binding/HIKARI_RuntimeBindingTypes.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
 
@@ -491,6 +492,74 @@ namespace {
         std::memcpy(value, editable.data(), count);
         value[count] = '\0';
         return true;
+    }
+
+    bool GameProjectInspector::SceneAssetGuid(
+        std::string_view propertyId,
+        std::string_view label,
+        char* value,
+        size_t capacity) {
+        if (propertyId.empty() || value == nullptr || capacity == 0u) {
+            return false;
+        }
+        auto* builder = static_cast<IInspectorBuilder*>(builder_);
+        std::string editable{};
+        if (builder == nullptr ||
+            !ReadStringBuffer(value, capacity, editable)) {
+            return false;
+        }
+        const std::string original = editable;
+        const AuthoringFieldDescriptor field{
+            propertyId,
+            label.empty() ? propertyId : label,
+            "Scene asset GUID resolved by the runtime Scene Flow service."
+        };
+        const bool changed = builder->SceneIdPicker(field, editable);
+        return CopyStringToReference(editable, value, capacity) &&
+            (changed || original != editable);
+    }
+
+    bool GameProjectInspector::InputActionId(
+        std::string_view propertyId,
+        std::string_view label,
+        GameProjectInputValueType expectedType,
+        char* value,
+        size_t capacity) {
+        if (propertyId.empty() || value == nullptr || capacity == 0u) {
+            return false;
+        }
+        INPUT::InputActionValueType internalType{};
+        switch (expectedType) {
+        case GameProjectInputValueType::Button:
+            internalType = INPUT::InputActionValueType::Button;
+            break;
+        case GameProjectInputValueType::Axis1D:
+            internalType = INPUT::InputActionValueType::Axis1D;
+            break;
+        case GameProjectInputValueType::Axis2D:
+            internalType = INPUT::InputActionValueType::Axis2D;
+            break;
+        default:
+            return false;
+        }
+        auto* builder = static_cast<IInspectorBuilder*>(builder_);
+        std::string editable{};
+        if (builder == nullptr ||
+            !ReadStringBuffer(value, capacity, editable)) {
+            return false;
+        }
+        const std::string original = editable;
+        const AuthoringFieldDescriptor field{
+            propertyId,
+            label.empty() ? propertyId : label,
+            "Input action id with a validated value type."
+        };
+        const bool changed = builder->InputActionIdPicker(
+            field,
+            internalType,
+            editable);
+        return CopyStringToReference(editable, value, capacity) &&
+            (changed || original != editable);
     }
 
     bool GameProjectInspector::ModelMaterialSetAssetGuid(

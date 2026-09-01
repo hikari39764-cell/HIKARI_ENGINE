@@ -72,6 +72,15 @@ struct InputDeviceState {
     InputDeviceKind lastActiveDevice = InputDeviceKind::None;
 };
 
+struct InputPointerState {
+    float x = 0.0f;
+    float y = 0.0f;
+    float normalizedX = 0.0f;
+    float normalizedY = 0.0f;
+    bool primaryDown = false;
+    bool secondaryDown = false;
+};
+
 struct InputActionState {
     InputActionValueType valueType = InputActionValueType::Button;
     float x = 0.0f;
@@ -90,6 +99,10 @@ public:
     bool IsReleased(const std::string& actionId) const;
     float GetAxis1D(const std::string& actionId) const;
     std::array<float, 2> GetAxis2D(const std::string& actionId) const;
+    bool TryGetPointerState(
+        uint32_t logicalWidth,
+        uint32_t logicalHeight,
+        InputPointerState& outState) const noexcept;
 
     const InputDeviceState& GetDevices() const noexcept { return devices_; }
     InputDeviceKind GetLastActiveDevice() const noexcept {

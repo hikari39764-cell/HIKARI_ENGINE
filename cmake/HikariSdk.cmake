@@ -32,6 +32,7 @@ set(
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/RuntimeFeature.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/RuntimeFeatureRegistration.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/RuntimeRegistration.h"
+    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/SceneFlowTrigger.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/RuntimeActivityTypes.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/TerrainView.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/UiTypes.h"
@@ -106,7 +107,7 @@ configure_package_config_file(
     NO_SET_AND_CHECK_MACRO)
 write_basic_package_version_file(
     "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfigVersion.cmake"
-    VERSION 2.12.0
+    VERSION 2.13.0
     COMPATIBILITY SameMajorVersion)
 
 function(hikari_configure_game_project_sdk host_target)

@@ -6,7 +6,10 @@
 #include "HIKARI_IScene.h"
 #include "HIKARI_SceneManager.h"
 #include "Assets/HIKARI_AssetGuid.h"
+#include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
+#include "Scene/HIKARI_RuntimeWorldServices.h"
+#include "Scene/HIKARI_World.h"
 #include "Vfx/Transition/HIKARI_TransitionProfile.h"
 
 namespace HIKARI {
@@ -16,12 +19,30 @@ namespace HIKARI {
     }
 
     bool SceneTransitionBus::RequestTransition(const SceneTransitionRequest& request) {
-        if (!IsValidAssetGuid(request.targetSceneAssetGuid)) {
+        World* world = RuntimeSceneContext::GetCurrentWorld();
+        if (world == nullptr || !world->IsOwnerThread() ||
+            IsTransitioning() ||
+            !IsValidAssetGuid(request.targetSceneAssetGuid) ||
+            !SERVICES::IsRuntimeSceneGuidAllowed(
+                request.targetSceneAssetGuid) ||
+            request.targetSpawnPointId.size() >= 64u ||
+            request.transitionProfileId.size() > 128u) {
             return false;
         }
+#if defined(HIKARI_WITH_EDITOR)
+        const RuntimePlayStateService* playState =
+            world->Services().Find<RuntimePlayStateService>();
+        if (playState == nullptr || !playState->IsActive()) {
+            return false;
+        }
+#endif
 
         pendingRequest_ = request;
-        activeTransitionProfileId_ = request.transitionProfileId;
+        if (pendingRequest_->transitionProfileId.empty()) {
+            pendingRequest_->transitionProfileId = "noise_wipe";
+        }
+        activeTransitionProfileId_ =
+            pendingRequest_->transitionProfileId;
         transitionOutDuration_ = 0.2f;
         transitionInDuration_ = 0.2f;
         waitForCameraReady_ = false;
@@ -29,7 +50,9 @@ namespace HIKARI {
         cameraReadyTimeout_ = 1.25f;
         cameraReadyWaitSeconds_ = 0.0f;
         TransitionProfile profile{};
-        if (TransitionProfile::LoadById(request.transitionProfileId, profile)) {
+        if (TransitionProfile::LoadById(
+                pendingRequest_->transitionProfileId,
+                profile)) {
             transitionOutDuration_ = (std::max)(0.0f, profile.outDuration);
             transitionInDuration_ = (std::max)(0.0f, profile.inDuration);
             waitForCameraReady_ = profile.waitForCameraReady;
@@ -72,8 +95,6 @@ namespace HIKARI {
                 DocumentSceneBase* documentScene = dynamic_cast<DocumentSceneBase*>(currentScene);
                 const bool opened = documentScene &&
                     documentScene->OpenSceneAssetNow(AssetGuid{ pendingRequest_->targetSceneAssetGuid });
-                lastSceneLoadedFromCache_ = false;
-
                 if (!opened) {
                     RuntimeSceneContext::ClearPendingSceneEntry();
                     state_ = TransitionState::Idle;
@@ -141,21 +162,11 @@ namespace HIKARI {
         return state_;
     }
 
-    bool SceneTransitionBus::WasLastSceneLoadedFromCache() const {
-        return lastSceneLoadedFromCache_;
-    }
-
-    size_t SceneTransitionBus::GetCachedSceneCount() const {
-        return 0;
-    }
-
-    std::vector<std::string> SceneTransitionBus::GetCachedSceneIds() const {
-        return {};
-    }
-
     TransitionVisualState SceneTransitionBus::GetVisualState() const {
         TransitionVisualState visual{};
         visual.profileId = activeTransitionProfileId_;
+        visual.outDuration = transitionOutDuration_;
+        visual.inDuration = transitionInDuration_;
 
         switch (state_) {
         case TransitionState::TransitionOut:

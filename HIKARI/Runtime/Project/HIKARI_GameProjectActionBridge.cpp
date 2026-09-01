@@ -703,27 +703,25 @@ namespace HIKARI {
                 INPUT::InputService>();
             const int width = SERVICES::GetLogicalScreenWidth();
             const int height = SERVICES::GetLogicalScreenHeight();
-            if (input == nullptr || width <= 0 || height <= 0) {
+            if (input == nullptr ||
+                input->GetMouseCaptureMode() !=
+                    INPUT::MouseCaptureMode::Free ||
+                width <= 0 || height <= 0) {
                 return false;
             }
-            const INPUT::InputDeviceState& devices =
-                input->GetSnapshot().GetDevices();
-            if (!std::isfinite(devices.mouseX) ||
-                !std::isfinite(devices.mouseY)) {
+            INPUT::InputPointerState pointer{};
+            if (!input->GetSnapshot().TryGetPointerState(
+                    static_cast<uint32_t>(width),
+                    static_cast<uint32_t>(height),
+                    pointer)) {
                 return false;
             }
-            outState.x = devices.mouseX;
-            outState.y = devices.mouseY;
-            outState.normalizedX = std::clamp(
-                devices.mouseX / static_cast<float>(width),
-                0.0f,
-                1.0f);
-            outState.normalizedY = std::clamp(
-                devices.mouseY / static_cast<float>(height),
-                0.0f,
-                1.0f);
-            outState.primaryDown = devices.mouseButtons[0] != 0u ? 1u : 0u;
-            outState.secondaryDown = devices.mouseButtons[1] != 0u ? 1u : 0u;
+            outState.x = pointer.x;
+            outState.y = pointer.y;
+            outState.normalizedX = pointer.normalizedX;
+            outState.normalizedY = pointer.normalizedY;
+            outState.primaryDown = pointer.primaryDown ? 1u : 0u;
+            outState.secondaryDown = pointer.secondaryDown ? 1u : 0u;
             outState.valid = 1u;
             outState.logicalWidth = static_cast<uint32_t>(width);
             outState.logicalHeight = static_cast<uint32_t>(height);

@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <string_view>
 
+#include "HIKARI/Project/ActionTypes.h"
 #include "HIKARI/Project/GameProjectSdk.h"
 #include "HIKARI/Project/UiTypes.h"
 #include "HIKARI/Project/ValueTypes.h"
@@ -36,6 +37,17 @@ namespace HIKARI {
             float speed = 0.1f);
         HIKARI_GAME_PROJECT_SDK_API bool StringBuffer(
             std::string_view label,
+            char* value,
+            size_t capacity);
+        HIKARI_GAME_PROJECT_SDK_API bool SceneAssetGuid(
+            std::string_view propertyId,
+            std::string_view label,
+            char* value,
+            size_t capacity);
+        HIKARI_GAME_PROJECT_SDK_API bool InputActionId(
+            std::string_view propertyId,
+            std::string_view label,
+            GameProjectInputValueType expectedType,
             char* value,
             size_t capacity);
         // Typed picker for the formal model/material binding asset. The value

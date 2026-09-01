@@ -92,6 +92,7 @@ namespace HIKARI {
             HIKARI_LOG_ERROR(
                 "[SceneAsset] failed to restore the previous runtime World "
                 "after Scene open failed.");
+            state_->runtime.playActive = false;
         }
         return false;
     }

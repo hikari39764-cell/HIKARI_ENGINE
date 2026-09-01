@@ -158,7 +158,7 @@ namespace {
             "        \"HIKARI GameProjects require x64 "
             "Visual Studio 2022.\")\n"
             "endif()\n\n"
-            "find_package(HIKARI 2 CONFIG REQUIRED)\n\n"
+            "find_package(HIKARI 2.13 CONFIG REQUIRED)\n\n"
             "hikari_add_game_project(\n"
             "    NAME \"" + identifier + "\"\n"
             "    SOURCE_DIR Source)\n";
@@ -242,7 +242,9 @@ namespace {
 
         return
             "#include \"HIKARI/Project/"
-            "GameProjectModule.h\"\n\n"
+            "GameProjectModule.h\"\n"
+            "#include \"HIKARI/Project/"
+            "SceneFlowTrigger.h\"\n\n"
             "#include <memory>\n"
             "#include <string_view>\n"
             "#include <vector>\n\n"
@@ -261,7 +263,12 @@ namespace {
             "HIKARI::IRuntimeExtension>>\n"
             "            CreateRuntimeExtensions() "
             "const override {\n"
-            "            return {};\n"
+            "            std::vector<std::unique_ptr<"
+            "HIKARI::IRuntimeExtension>> extensions;\n"
+            "            extensions.push_back(\n"
+            "                HIKARI::SCENE_FLOW::\n"
+            "                    CreateSceneFlowRuntimeExtension());\n"
+            "            return extensions;\n"
             "        }\n"
             "    };\n\n"
             "} // namespace\n"
@@ -393,7 +400,8 @@ namespace {
                         nlohmann::json::array({
                             "Rendering",
                             "Lighting",
-                            "Camera"
+                            "Camera",
+                            "HIKARI.SceneFlow"
                         })
                     },
                     { "startupSceneGuid", "" },

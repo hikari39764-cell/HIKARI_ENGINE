@@ -24,6 +24,7 @@
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "Scene/HIKARI_RuntimeSceneContext.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
+#include "Scene/HIKARI_RuntimeWorldServices.h"
 #include "Scene/HIKARI_SceneTransitionBus.h"
 #include "Scene/Components/HIKARI_DialogueTriggerComponent.h"
 #include "Scene/HIKARI_World.h"
@@ -634,13 +635,9 @@ namespace HIKARI {
                 return false;
             }
             const std::string sceneGuid(sceneAssetGuid);
-            if (!IsValidAssetGuid(sceneGuid) ||
-                !SERVICES::IsRuntimeSceneGuidAllowed(sceneGuid)) {
-                return false;
-            }
             SceneTransitionBus* transitionBus =
                 RuntimeSceneContext::GetTransitionBus();
-            if (transitionBus == nullptr || transitionBus->IsTransitioning()) {
+            if (transitionBus == nullptr) {
                 return false;
             }
             SceneTransitionRequest request{};
@@ -672,13 +669,9 @@ namespace HIKARI {
                 return false;
             }
             const std::string sceneGuid(sceneAssetGuid);
-            if (!IsValidAssetGuid(sceneGuid) ||
-                !SERVICES::IsRuntimeSceneGuidAllowed(sceneGuid)) {
-                return false;
-            }
             SceneTransitionBus* transitionBus =
                 RuntimeSceneContext::GetTransitionBus();
-            if (transitionBus == nullptr || transitionBus->IsTransitioning()) {
+            if (transitionBus == nullptr) {
                 return false;
             }
             SceneTransitionRequest request{};
@@ -845,6 +838,20 @@ namespace HIKARI {
         }
         catch (...) {
             return GameProjectRuntimeHostKind::Unknown;
+        }
+    }
+
+    bool RuntimeSessionView::IsPlayActive() const noexcept {
+        try {
+            World* world = CurrentWorld(world_);
+            const RuntimePlayStateService* playState =
+                world != nullptr
+                    ? world->Services().Find<RuntimePlayStateService>()
+                    : nullptr;
+            return playState != nullptr && playState->IsActive();
+        }
+        catch (...) {
+            return false;
         }
     }
 

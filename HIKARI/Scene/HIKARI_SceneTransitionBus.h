@@ -1,10 +1,8 @@
 ﻿#pragma once
 
-#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
-#include <vector>
 
 namespace HIKARI {
 
@@ -22,9 +20,8 @@ namespace HIKARI {
     struct SceneTransitionRequest {
         std::string targetSceneAssetGuid{};
         std::string targetSpawnPointId{};
-        std::string transitionProfileId{ "Default" };
+        std::string transitionProfileId{ "noise_wipe" };
         bool useTransition = true;
-        bool preserveGameplayState = false;
         // Keep the destination at the fully covered transition-in boundary
         // until ReleaseTransitionIn() is called. This lets a game project run
         // modal work (for example an opening dialogue) over a stable black
@@ -49,9 +46,6 @@ namespace HIKARI {
         void Update(float dt);
         bool IsTransitioning() const;
         TransitionState GetState() const;
-        bool WasLastSceneLoadedFromCache() const;
-        size_t GetCachedSceneCount() const;
-        std::vector<std::string> GetCachedSceneIds() const;
         TransitionVisualState GetVisualState() const;
 
     private:
@@ -65,7 +59,6 @@ namespace HIKARI {
         float cameraReadyTimeout_ = 1.25f;
         bool waitForCameraReady_ = false;
         bool transitionInReleased_ = true;
-        bool lastSceneLoadedFromCache_ = false;
         std::string activeTransitionProfileId_{ "noise_wipe" };
     };
 

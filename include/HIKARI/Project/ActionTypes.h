@@ -37,9 +37,10 @@ namespace HIKARI {
     };
 
     // Pointer coordinates are expressed in the active presentation's logical
-    // client pixels. normalizedX/Y are clamped to [0, 1]. Embedded editor
-    // views that do not own a standalone presentation surface report valid=0
-    // so GameProjects can keep keyboard/gamepad navigation authoritative.
+    // client pixels. normalizedX/Y are clamped to [0, 1]. Relative/captured
+    // mouse mode and embedded editor views without an active presentation
+    // report valid=0. Call SetUiInteractionActive(1) while authoring clickable
+    // pointer UI and release it when that interaction ends.
     struct GameProjectPointerState {
         float x = 0.0f;
         float y = 0.0f;
