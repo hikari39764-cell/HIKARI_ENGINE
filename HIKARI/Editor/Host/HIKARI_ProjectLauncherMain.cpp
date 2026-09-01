@@ -36,6 +36,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
         HIKARI::RUNTIME::EngineHostProjectPolicy::None;
     options.loadRuntimeConfig = false;
     options.windowTitle = "HIKARI Project Hub";
+    options.enableStreamline = false;
     const int exitCode =
         HIKARI::RUNTIME::RunEngineHost(
             application,

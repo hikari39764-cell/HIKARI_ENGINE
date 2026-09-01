@@ -68,6 +68,8 @@ namespace HIKARI {
             auto& gEnableImGui = INTERNAL::GetRuntimeServiceState().enableImGui;
             auto& gEnableEditorUI =
                 INTERNAL::GetRuntimeServiceState().enableEditorUI;
+            auto& gStreamlineEnabled =
+                INTERNAL::GetRuntimeServiceState().streamlineEnabled;
             auto& gRuntimeSessionEndRequested =
                 INTERNAL::GetRuntimeServiceState().runtimeSessionEndRequested;
             auto& gRuntimeStartupSceneGuid =
@@ -179,16 +181,23 @@ namespace HIKARI {
                     ? std::filesystem::path{}
                     : logRoot / "Renderer");
             CORE::InitializeLogger(logRoot);
+            gStreamlineEnabled = cfg.enableStreamline;
             const bool enableFrameGenerationPlugins =
                 IsEditorHostMode(cfg.hostMode) ||
                 (IsStandaloneGameHostMode(cfg.hostMode) &&
                     RENDER3D::GetRenderQualitySettings().frameGenerationMode ==
                         RENDER3D::RenderFrameGenerationMode::Dlss);
-            (void)RENDER3D::UPSCALING::InitializeStreamlineEarly(
-                enableFrameGenerationPlugins,
-                logRoot.empty()
-                    ? std::filesystem::path{}
-                    : logRoot / "Streamline");
+            if (gStreamlineEnabled) {
+                (void)RENDER3D::UPSCALING::InitializeStreamlineEarly(
+                    enableFrameGenerationPlugins,
+                    logRoot.empty()
+                        ? std::filesystem::path{}
+                        : logRoot / "Streamline");
+            }
+            else {
+                HIKARI_LOG_INFO(
+                    "[Streamline] bootstrap disabled for this host.");
+            }
             HIKARI_LOG_INFO("HIKARI boot started.");
             {
                 const RENDER3D::RenderQualitySettings& quality =
@@ -241,7 +250,9 @@ namespace HIKARI {
             HIKARI_LOG_INFO("Window initialization started.");
             if (!gWindow.Initialize(wTitle.c_str(), cfg.windowWidth, cfg.windowHeight, cfg.resizableWindow)) {
                 HIKARI_LOG_ERROR("Window initialization failed.");
-                (void)RENDER3D::UPSCALING::ShutdownStreamline();
+                if (gStreamlineEnabled) {
+                    (void)RENDER3D::UPSCALING::ShutdownStreamline();
+                }
                 return false;
             }
             GFX::PIX::Initialize(gWindow.GetHWND());
@@ -253,17 +264,19 @@ namespace HIKARI {
             }
             HIKARI_LOG_INFO("D3D12 core initialization started.");
             GFX::GraphicsBootstrapCallbacks graphicsCallbacks{};
-            graphicsCallbacks.deviceCreated = [](ID3D12Device* device) {
-                (void)RENDER3D::UPSCALING::AttachStreamlineDevice(device);
-                if (IsEditorHost() &&
-                    !RENDER3D::UPSCALING::SetStreamlineFrameGenerationFeatureLoaded(false)) {
-                    HIKARI_LOG_WARN(
-                        "[Streamline] could not unload DLSS-G before creating the editor swap chain.");
-                }
-            };
-            graphicsCallbacks.swapChainCreated = [](IDXGISwapChain4* swapChain) {
-                RENDER3D::UPSCALING::InspectStreamlineSwapChain(swapChain);
-            };
+            if (gStreamlineEnabled) {
+                graphicsCallbacks.deviceCreated = [](ID3D12Device* device) {
+                    (void)RENDER3D::UPSCALING::AttachStreamlineDevice(device);
+                    if (IsEditorHost() &&
+                        !RENDER3D::UPSCALING::SetStreamlineFrameGenerationFeatureLoaded(false)) {
+                        HIKARI_LOG_WARN(
+                            "[Streamline] could not unload DLSS-G before creating the editor swap chain.");
+                    }
+                };
+                graphicsCallbacks.swapChainCreated = [](IDXGISwapChain4* swapChain) {
+                    RENDER3D::UPSCALING::InspectStreamlineSwapChain(swapChain);
+                };
+            }
             // 交换链必须按窗口 DPI 缩放后的实际客户端像素创建，
             // 否则 150% 缩放下窗口 2880x1620 但交换链只有 1920x1080，内容被截断。
             const int physicalClientWidth = (std::max)(gWindow.Width(), 16);
@@ -275,22 +288,26 @@ namespace HIKARI {
                     cfg.enableDebugLayer,
                     graphicsCallbacks)) {
                 HIKARI_LOG_ERROR("D3D12 core initialization failed.");
-                (void)RENDER3D::UPSCALING::ShutdownStreamline();
+                if (gStreamlineEnabled) {
+                    (void)RENDER3D::UPSCALING::ShutdownStreamline();
+                }
                 return false;
             }
             GFX::FrameSubmissionCallbacks submissionCallbacks{};
-            submissionCallbacks.renderSubmitStart = [] {
-                RENDER3D::UPSCALING::MarkStreamlineReflexRenderSubmitStart();
-            };
-            submissionCallbacks.renderSubmitEnd = [] {
-                RENDER3D::UPSCALING::MarkStreamlineReflexRenderSubmitEnd();
-            };
-            submissionCallbacks.presentStart = [] {
-                RENDER3D::UPSCALING::MarkStreamlineReflexPresentStart();
-            };
-            submissionCallbacks.presentEnd = [] {
-                RENDER3D::UPSCALING::MarkStreamlineReflexPresentEnd();
-            };
+            if (gStreamlineEnabled) {
+                submissionCallbacks.renderSubmitStart = [] {
+                    RENDER3D::UPSCALING::MarkStreamlineReflexRenderSubmitStart();
+                };
+                submissionCallbacks.renderSubmitEnd = [] {
+                    RENDER3D::UPSCALING::MarkStreamlineReflexRenderSubmitEnd();
+                };
+                submissionCallbacks.presentStart = [] {
+                    RENDER3D::UPSCALING::MarkStreamlineReflexPresentStart();
+                };
+                submissionCallbacks.presentEnd = [] {
+                    RENDER3D::UPSCALING::MarkStreamlineReflexPresentEnd();
+                };
+            }
             gGraphicsCore.SetFrameSubmissionCallbacks(std::move(submissionCallbacks));
             HIKARI_LOG_INFO("D3D12 core initialized.");
 
@@ -305,7 +322,9 @@ namespace HIKARI {
 
             GFX::PublishCurrentContext(gGraphicsCore.BuildContext());
             const GFX::Context& graphicsContext = GFX::GetCurrentContext();
-            RENDER3D::UPSCALING::UpdateStreamlineContext(graphicsContext);
+            if (gStreamlineEnabled) {
+                RENDER3D::UPSCALING::UpdateStreamlineContext(graphicsContext);
+            }
 
             DXTEX::DxTextureManager::Init(graphicsContext);
             HIKARI_LOG_INFO("TextureManager initialized.");
@@ -432,11 +451,14 @@ namespace HIKARI {
                             DeferredUntilFence);
             const bool streamlineShutdownSafe =
                 gpuOwnerTeardownEligible &&
-                RENDER3D::UPSCALING::ShutdownStreamline();
+                (!gStreamlineEnabled ||
+                 RENDER3D::UPSCALING::ShutdownStreamline());
             GFX::GraphicsShutdownResult graphicsShutdownResult =
                 GFX::GraphicsShutdownResult::UnsafeWaitFailure;
             if (streamlineShutdownSafe) {
-                HIKARI_LOG_INFO("Streamline shutdown.");
+                if (gStreamlineEnabled) {
+                    HIKARI_LOG_INFO("Streamline shutdown.");
+                }
                 MESHRENDERER::ShutdownParticleGpuDrivenPass();
                 HIKARI_LOG_INFO("Particle GPU-driven pass finalized.");
                 MESHRENDERER::ShutdownOceanSpectrumRuntime();
@@ -514,6 +536,7 @@ namespace HIKARI {
             }
             AUDIO::Shutdown();
             HIKARI_LOG_INFO("Audio shutdown.");
+            gStreamlineEnabled = false;
             GFX::ClearCurrentContext();
             if (!streamlineShutdownSafe || graphicsShutdownResult ==
                 GFX::GraphicsShutdownResult::UnsafeWaitFailure) {

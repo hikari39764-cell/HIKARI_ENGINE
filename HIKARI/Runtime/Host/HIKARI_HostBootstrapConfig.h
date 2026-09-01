@@ -15,6 +15,7 @@ namespace HIKARI::RUNTIME {
         bool resizableWindow = true;
         bool enableImGui = false;
         bool enableEditorUI = false;
+        bool enableStreamline = true;
         int windowWidth = PRESENTATION::kDefaultLogicalWidth;
         int windowHeight = PRESENTATION::kDefaultLogicalHeight;
         std::string startupSceneGuid{};

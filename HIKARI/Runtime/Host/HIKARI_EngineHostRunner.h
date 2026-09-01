@@ -30,6 +30,7 @@ namespace HIKARI::RUNTIME {
             EngineHostProjectPolicy::Required;
         bool loadRuntimeConfig = true;
         const char* windowTitle = "HIKARI_Ver1.3";
+        bool enableStreamline = true;
     };
 
     // エンジンホストのメインエントリポイント。

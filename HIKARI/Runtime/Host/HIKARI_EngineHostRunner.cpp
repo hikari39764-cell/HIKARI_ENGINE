@@ -28,10 +28,12 @@ namespace HIKARI::RUNTIME {
     namespace {
 
         HostBootstrapConfig ResolveBootstrapConfig(
-            EngineHostProduct product,
+            const EngineHostRunOptions& options,
             const RuntimeLaunchConfig& runtimeConfig) {
 
             HostBootstrapConfig config{};
+            const EngineHostProduct product = options.product;
+            config.enableStreamline = options.enableStreamline;
             if (product == EngineHostProduct::Editor) {
                 config.hostMode = RuntimeHostMode::Editor;
                 config.enableImGui = true;
@@ -161,7 +163,7 @@ namespace HIKARI::RUNTIME {
         }
 
         const HostBootstrapConfig servicesConfig =
-            ResolveBootstrapConfig(options.product, runtimeConfig);
+            ResolveBootstrapConfig(options, runtimeConfig);
         const ProjectContext& projectContext =
             GetProjectContext();
 

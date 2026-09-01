@@ -25,6 +25,7 @@ namespace HIKARI::SERVICES::INTERNAL {
         RuntimeHostMode runtimeHostMode = RuntimeHostMode::Game;
         bool enableImGui = false;
         bool enableEditorUI = false;
+        bool streamlineEnabled = false;
         bool runtimeSessionEndRequested = false;
         std::string runtimeStartupSceneGuid{};
         std::vector<std::string> runtimeExportedSceneGuids{};
