@@ -7,7 +7,6 @@
 #include <string>
 #include <utility>
 
-#include <d3dcompiler.h>
 #include <d3dx12.h>
 
 #include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
@@ -19,7 +18,6 @@
 #include "Gfx/HIKARI_GpuPipelineStatsProfiler.h"
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_PixProfiler.h"
-#include "Gfx/HIKARI_ShaderCompiler.h"
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenDrawCommandStream.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
@@ -52,13 +50,6 @@ namespace HIKARI::RENDER3D::MESHLET {
             const ASSETS::SHADER::ShaderAssetEntryLease& shader) noexcept {
             const std::span<const uint8_t> bytes = shader.GetDxil();
             return { bytes.data(), bytes.size() };
-        }
-
-        D3D12_SHADER_BYTECODE ShaderBytecode(ID3DBlob* shader) noexcept {
-            return shader != nullptr
-                ? D3D12_SHADER_BYTECODE{
-                    shader->GetBufferPointer(), shader->GetBufferSize() }
-                : D3D12_SHADER_BYTECODE{};
         }
 
         size_t ForwardPipelineVariantIndex(ForwardShadingCostMode mode) {
@@ -385,7 +376,7 @@ namespace HIKARI::RENDER3D::MESHLET {
             }
 
             stats.shaderModel65Supported =
-                GFX::SupportsShaderModel(device, D3D_SHADER_MODEL_6_5);
+                GFX::QueryShaderDeviceCapabilities(device).shaderModel >= 65u;
 
             D3D12_FEATURE_DATA_D3D12_OPTIONS7 options7{};
             HRESULT hr = device->CheckFeatureSupport(
@@ -632,9 +623,9 @@ namespace HIKARI::RENDER3D::MESHLET {
         };
 
         ASSETS::SHADER::ShaderAssetEntryLease amplificationShader{};
-        Microsoft::WRL::ComPtr<ID3DBlob> shadowAmplificationShader{};
+        ASSETS::SHADER::ShaderAssetEntryLease shadowAmplificationShader{};
         ASSETS::SHADER::ShaderAssetEntryLease forwardMeshShader{};
-        Microsoft::WRL::ComPtr<ID3DBlob> shadowMeshShader{};
+        ASSETS::SHADER::ShaderAssetEntryLease shadowMeshShader{};
         ASSETS::SHADER::ShaderAssetEntryLease depthMeshShader{};
         ASSETS::SHADER::ShaderAssetEntryLease waterVisibilityMeshShader{};
         ASSETS::SHADER::ShaderAssetEntryLease geometryMeshShader{};
@@ -642,7 +633,7 @@ namespace HIKARI::RENDER3D::MESHLET {
         std::array<
             ASSETS::SHADER::ShaderAssetEntryLease,
             kForwardOpaquePipelineVariantCount> forwardPixelShaders{};
-        Microsoft::WRL::ComPtr<ID3DBlob> shadowPixelShader{};
+        ASSETS::SHADER::ShaderAssetEntryLease shadowPixelShader{};
         ASSETS::SHADER::ShaderAssetEntryLease waterVisibilityPixelShader{};
         ASSETS::SHADER::ShaderAssetEntryLease geometryPixelShader{};
         ASSETS::SHADER::ShaderAssetEntryLease
@@ -683,11 +674,11 @@ namespace HIKARI::RENDER3D::MESHLET {
             return false;
         }
         if (needsShadowMeshShader &&
-            !GFX::CompileShaderFileSm6(
-                L"HIKARI/Shaders/Render3D_MeshletShadowAS.hlsl",
-                "main",
-                GFX::ShaderStage::Amplification,
-                shadowAmplificationShader.GetAddressOf())) {
+            !resolveShader(
+                "HIKARI.EngineShader.Render3D_MeshletShadowAS",
+                ASSETS::SHADER::ShaderStage::Amplification,
+                "as_6_5",
+                shadowAmplificationShader)) {
             return false;
         }
         if (needsForwardMeshShader &&
@@ -699,11 +690,11 @@ namespace HIKARI::RENDER3D::MESHLET {
             return false;
         }
         if (needsShadowMeshShader &&
-            !GFX::CompileShaderFileSm6(
-                L"HIKARI/Shaders/Render3D_MeshletShadowMS.hlsl",
-                "main",
-                GFX::ShaderStage::Mesh,
-                shadowMeshShader.GetAddressOf())) {
+            !resolveShader(
+                "HIKARI.EngineShader.Render3D_MeshletShadowMS",
+                ASSETS::SHADER::ShaderStage::Mesh,
+                "ms_6_5",
+                shadowMeshShader)) {
             return false;
         }
         if (needsDepthMeshShader &&
@@ -780,11 +771,11 @@ namespace HIKARI::RENDER3D::MESHLET {
             fullForwardPixelShaderReady = true;
         }
         if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::Shadow) &&
-            !GFX::CompileShaderFileSm6(
-                L"HIKARI/Shaders/Render3D_MeshletShadowPS.hlsl",
-                "main",
-                GFX::ShaderStage::Pixel,
-                shadowPixelShader.GetAddressOf())) {
+            !resolveShader(
+                "HIKARI.EngineShader.Render3D_MeshletShadowPS",
+                ASSETS::SHADER::ShaderStage::Pixel,
+                "ps_6_0",
+                shadowPixelShader)) {
             return false;
         }
         if (IsPipelineRequested(
@@ -926,9 +917,9 @@ namespace HIKARI::RENDER3D::MESHLET {
                 if (CreateMeshletPipelineState(
                     device,
                     rootSignature,
-                    ShaderBytecode(shadowAmplificationShader.Get()),
-                    ShaderBytecode(shadowMeshShader.Get()),
-                    ShaderBytecode(shadowPixelShader.Get()),
+                    ShaderBytecode(shadowAmplificationShader),
+                    ShaderBytecode(shadowMeshShader),
+                    ShaderBytecode(shadowPixelShader),
                     DXGI_FORMAT_UNKNOWN,
                     CullModeForBucket(bucket),
                     false,

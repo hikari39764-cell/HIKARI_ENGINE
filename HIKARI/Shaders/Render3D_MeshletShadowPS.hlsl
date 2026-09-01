@@ -2,6 +2,7 @@
 static const uint MATERIAL_ALPHA_MASK = 1u << 1;
 static const uint HIKARI_INVALID_MESHLET_SHADOW_MATERIAL_INDEX = 0xffffffffu;
 
+#include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
 #define HIKARI_MATERIAL_TEXTURE_POOL_SAMPLING 1
 #include "Include/HIKARI_MeshMaterialData.hlsli"
 #include "Include/HIKARI_SurfaceGpuScene.hlsli"
