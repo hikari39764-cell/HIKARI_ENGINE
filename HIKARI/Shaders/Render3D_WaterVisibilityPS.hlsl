@@ -1,3 +1,5 @@
+#include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
+
 // Reuse the authoritative water coverage helper and its GPU water-data
 // contract from the forward shader. This pass only keeps the coverage and
 // depth-occlusion decisions; it never writes SceneColor.

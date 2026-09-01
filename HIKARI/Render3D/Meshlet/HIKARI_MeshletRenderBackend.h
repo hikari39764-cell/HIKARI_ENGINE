@@ -44,11 +44,13 @@ namespace HIKARI::RENDER3D::MESHLET {
         // shaders/PSOs preserve the core mesh-shader route and opaque-depth
         // fallback.
         constexpr uint32_t WaterVisibility = 1u << 8;
+        constexpr uint32_t GeometryAuxFeatureMask = 1u << 9;
         constexpr uint32_t MainRenderer =
             ForwardOpaque |
             ForwardDepthAware |
             ForwardTransparent |
             GeometryAux |
+            GeometryAuxFeatureMask |
             GeometryOutline |
             VisibilityOverlay |
             DepthPrepass |

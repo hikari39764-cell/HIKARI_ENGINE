@@ -1,3 +1,5 @@
+#include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
+
 struct GpuTraditionalCommandArgument
 {
     uint2 vertexBufferLocation;

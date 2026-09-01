@@ -1,4 +1,5 @@
 #include "Include/HIKARI_MeshletMSCommon.hlsli"
+#include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
 #ifndef HIKARI_MESHLET_DEPTH_ENABLE_WATER
 #define HIKARI_MESHLET_DEPTH_ENABLE_WATER 1
 #endif

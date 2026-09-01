@@ -1,4 +1,5 @@
 #define gFxUser0 gFxUser[0]
+#include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
 #define gFxUser1 gFxUser[1]
 #define gFxUser2 gFxUser[2]
 #define gFxUser3 gFxUser[3]

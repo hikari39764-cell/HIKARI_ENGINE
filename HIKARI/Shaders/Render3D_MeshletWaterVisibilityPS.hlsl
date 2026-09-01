@@ -1,3 +1,5 @@
+#include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
+
 // Keep the water coverage test identical to the forward water shader while
 // consuming the compact depth-MS signature (TEXCOORD0/4/5).
 #define HIKARI_FORWARD_MESHLET_SURFACE_FEATURES 1

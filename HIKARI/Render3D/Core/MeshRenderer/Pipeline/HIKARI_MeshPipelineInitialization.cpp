@@ -2,15 +2,20 @@
 
 #include <array>
 #include <cstddef>
+#include <span>
+#include <string>
+#include <utility>
 
 #include <d3dx12.h>
 
+#include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
+#include "Assets/Shader/HIKARI_RenderGeometryShaderContract.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_D3D12DebugTools.h"
 #include "Gfx/HIKARI_D3DBlobCompat.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/HIKARI_DXCheck.h"
-#include "Gfx/HIKARI_ShaderCompiler.h"
+#include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshInputLayouts.h"
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshRootParameters.h"
 
@@ -19,62 +24,121 @@ namespace HIKARI::MESHRENDERER {
     using Microsoft::WRL::ComPtr;
 
     bool InitializeMeshPipelines(ID3D12Device* device, MeshPipelineStore& store) {
-        if (!GFX::SupportsShaderModel6(device)) {
+        const GFX::ShaderDeviceCapabilities capabilities =
+            GFX::QueryShaderDeviceCapabilities(device);
+        if (capabilities.shaderModel < 60u) {
             DEBUGLOG::PushRenderError("[MeshRenderer][ERROR] Shader Model 6.0 is not supported by this device.");
             return false;
         }
 
-        if (!GFX::CompileShaderFileSm6(L"HIKARI/Shaders/Render3D_StaticVS.hlsl", "main", GFX::ShaderStage::Vertex, store.vsBlob.GetAddressOf())) {
+        const ASSETS::SHADER::ShaderAssetContractExpectation contract =
+            ASSETS::SHADER::MakeRenderGeometryShaderContract(
+                ASSETS::SHADER::RenderGeometryRootLayout::MeshGraphics,
+                { capabilities.shaderModel,
+                  capabilities.rootSignatureVersion,
+                  capabilities.featureMask });
+        const auto resolveShader = [&contract](
+            const char* programId,
+            ASSETS::SHADER::ShaderStage stage,
+            const char* profile,
+            ASSETS::SHADER::ShaderAssetEntryLease& outShader) {
+            ASSETS::SHADER::ShaderAssetResolveResult resolved =
+                ASSETS::SHADER::ResolveBuiltinShaderEntry(
+                    programId,
+                    { "Main", stage, profile },
+                    contract);
+            std::string diagnostic{};
+            const ASSETS::SHADER::ShaderCookedArtifact* artifact =
+                resolved ? resolved.lease.GetArtifact() : nullptr;
+            if (!resolved || artifact == nullptr ||
+                !ASSETS::SHADER::ValidateRenderGeometryShaderArtifact(
+                    *artifact,
+                    diagnostic) ||
+                resolved.lease.GetDxil().empty()) {
+                if (diagnostic.empty()) {
+                    diagnostic = resolved.diagnostic;
+                }
+                DEBUGLOG::PushRenderError(
+                    std::string("[MeshRenderer][Shader][ERROR] ") +
+                    programId + ": " + diagnostic);
+                return false;
+            }
+            outShader = std::move(resolved.lease);
+            return true;
+        };
+
+        if (!resolveShader(
+                "HIKARI.EngineShader.Render3D_StaticVS",
+                ASSETS::SHADER::ShaderStage::Vertex,
+                "vs_6_0",
+                store.vsShader) ||
+            !resolveShader(
+                "HIKARI.EngineShader.Render3D_SkinnedVS",
+                ASSETS::SHADER::ShaderStage::Vertex,
+                "vs_6_0",
+                store.skinnedVsShader) ||
+            !resolveShader(
+                "HIKARI.EngineShader.Render3D_StaticPS",
+                ASSETS::SHADER::ShaderStage::Pixel,
+                "ps_6_0",
+                store.psShader)) {
             return false;
         }
-        if (!GFX::CompileShaderFileSm6(L"HIKARI/Shaders/Render3D_SkinnedVS.hlsl", "main", GFX::ShaderStage::Vertex, store.skinnedVsBlob.GetAddressOf())) {
-            return false;
-        }
-        if (!GFX::CompileShaderFileSm6(L"HIKARI/Shaders/Render3D_StaticPS.hlsl", "main", GFX::ShaderStage::Pixel, store.psBlob.GetAddressOf())) {
-            return false;
+        if (!resolveShader(
+                "HIKARI.EngineShader.Render3D_StaticFxPS",
+                ASSETS::SHADER::ShaderStage::Pixel,
+                "ps_6_0",
+                store.materialFxPsShader)) {
+            DEBUGLOG::PushRenderError(
+                "[MeshRenderer][WARN] Cooked MaterialFx shader is "
+                "unavailable; affected variants use the base pipeline.");
         }
         const bool waterDepthShaderReady =
-            GFX::CompileShaderFileSm6(
-                L"HIKARI/Shaders/Render3D_WaterVisibilityPS.hlsl",
-                "main",
-                GFX::ShaderStage::Pixel,
-                store.waterDepthPsBlob.GetAddressOf());
+            resolveShader(
+                "HIKARI.EngineShader.Render3D_WaterVisibilityPS",
+                ASSETS::SHADER::ShaderStage::Pixel,
+                "ps_6_0",
+                store.waterDepthPsShader);
         if (!waterDepthShaderReady) {
             DEBUGLOG::PushRenderError(
                 "[MeshRenderer][WARN] Water visibility depth shader is "
                 "unavailable; volumetric lighting will use opaque SceneDepth.");
         }
-        if (!GFX::CompileShaderFileSm6(L"HIKARI/Shaders/Render3D_GeometryAuxPS.hlsl", "main", GFX::ShaderStage::Pixel, store.geometryPsBlob.GetAddressOf())) {
+        if (!resolveShader(
+                "HIKARI.EngineShader.Render3D_GeometryAuxPS",
+                ASSETS::SHADER::ShaderStage::Pixel,
+                "ps_6_0",
+                store.geometryPsShader)) {
             return false;
         }
         const bool geometryFeatureMaskShaderReady =
-            GFX::CompileShaderFileSm6(
-                L"HIKARI/Shaders/Render3D_GeometryAuxFeaturePS.hlsl",
-                "main",
-                GFX::ShaderStage::Pixel,
-                store.geometryFeatureMaskPsBlob.GetAddressOf());
+            resolveShader(
+                "HIKARI.EngineShader.Render3D_GeometryAuxFeaturePS",
+                ASSETS::SHADER::ShaderStage::Pixel,
+                "ps_6_0",
+                store.geometryFeatureMaskPsShader);
         const bool geometryOutlineShadersReady =
-            GFX::CompileShaderFileSm6(
-                L"HIKARI/Shaders/Render3D_GeometryOutlineVS.hlsl",
-                "main",
-                GFX::ShaderStage::Vertex,
-                store.geometryOutlineVsBlob.GetAddressOf()) &&
-            GFX::CompileShaderFileSm6(
-                L"HIKARI/Shaders/Render3D_SkinnedGeometryOutlineVS.hlsl",
-                "main",
-                GFX::ShaderStage::Vertex,
-                store.geometryOutlineSkinnedVsBlob.GetAddressOf()) &&
-            GFX::CompileShaderFileSm6(
-                L"HIKARI/Shaders/Render3D_GeometryOutlinePS.hlsl",
-                "main",
-                GFX::ShaderStage::Pixel,
-                store.geometryOutlinePsBlob.GetAddressOf());
+            resolveShader(
+                "HIKARI.EngineShader.Render3D_GeometryOutlineVS",
+                ASSETS::SHADER::ShaderStage::Vertex,
+                "vs_6_0",
+                store.geometryOutlineVsShader) &&
+            resolveShader(
+                "HIKARI.EngineShader.Render3D_SkinnedGeometryOutlineVS",
+                ASSETS::SHADER::ShaderStage::Vertex,
+                "vs_6_0",
+                store.geometryOutlineSkinnedVsShader) &&
+            resolveShader(
+                "HIKARI.EngineShader.Render3D_GeometryOutlinePS",
+                ASSETS::SHADER::ShaderStage::Pixel,
+                "ps_6_0",
+                store.geometryOutlinePsShader);
         const bool visibilityOverlayShaderReady =
-            GFX::CompileShaderFileSm6(
-                L"HIKARI/Shaders/Render3D_VisibilityOverlayPS.hlsl",
-                "main",
-                GFX::ShaderStage::Pixel,
-                store.visibilityOverlayPsBlob.GetAddressOf());
+            resolveShader(
+                "HIKARI.EngineShader.Render3D_VisibilityOverlayPS",
+                ASSETS::SHADER::ShaderStage::Pixel,
+                "ps_6_0",
+                store.visibilityOverlayPsShader);
         if (!geometryFeatureMaskShaderReady ||
             !geometryOutlineShadersReady ||
             !visibilityOverlayShaderReady) {
@@ -83,6 +147,11 @@ namespace HIKARI::MESHRENDERER {
                 "shaders failed to compile. Core Forward rendering remains "
                 "available and the affected feature will be skipped.");
         }
+        const auto shaderBytecode = [](
+            const ASSETS::SHADER::ShaderAssetEntryLease& shader) noexcept {
+            const std::span<const uint8_t> bytes = shader.GetDxil();
+            return D3D12_SHADER_BYTECODE{ bytes.data(), bytes.size() };
+        };
 
         D3D12_DESCRIPTOR_RANGE shadowTextureRange{};
         shadowTextureRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
@@ -618,8 +687,8 @@ namespace HIKARI::MESHRENDERER {
 
         D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc{};
         psoDesc.pRootSignature = store.rootSig.Get();
-        psoDesc.VS = { store.vsBlob->GetBufferPointer(), store.vsBlob->GetBufferSize() };
-        psoDesc.PS = { store.psBlob->GetBufferPointer(), store.psBlob->GetBufferSize() };
+        psoDesc.VS = shaderBytecode(store.vsShader);
+        psoDesc.PS = shaderBytecode(store.psShader);
         psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
         psoDesc.SampleMask = UINT_MAX;
         psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
@@ -644,7 +713,7 @@ namespace HIKARI::MESHRENDERER {
 
         D3D12_GRAPHICS_PIPELINE_STATE_DESC skinnedPsoDesc = psoDesc;
         skinnedPsoDesc.pRootSignature = store.skinnedRootSig.Get();
-        skinnedPsoDesc.VS = { store.skinnedVsBlob->GetBufferPointer(), store.skinnedVsBlob->GetBufferSize() };
+        skinnedPsoDesc.VS = shaderBytecode(store.skinnedVsShader);
         skinnedPsoDesc.InputLayout = { skinnedInputElements.data(), static_cast<UINT>(skinnedInputElements.size()) };
         if (FAILED(device->CreateGraphicsPipelineState(&skinnedPsoDesc, IID_PPV_ARGS(store.skinnedPso.GetAddressOf())))) {
             return false;
@@ -668,7 +737,7 @@ namespace HIKARI::MESHRENDERER {
 
         D3D12_GRAPHICS_PIPELINE_STATE_DESC depthSkinnedPsoDesc = depthPsoDesc;
         depthSkinnedPsoDesc.pRootSignature = store.skinnedRootSig.Get();
-        depthSkinnedPsoDesc.VS = { store.skinnedVsBlob->GetBufferPointer(), store.skinnedVsBlob->GetBufferSize() };
+        depthSkinnedPsoDesc.VS = shaderBytecode(store.skinnedVsShader);
         depthSkinnedPsoDesc.InputLayout = { skinnedInputElements.data(), static_cast<UINT>(skinnedInputElements.size()) };
         if (FAILED(device->CreateGraphicsPipelineState(&depthSkinnedPsoDesc, IID_PPV_ARGS(store.depthSkinnedPso.GetAddressOf())))) {
             return false;
@@ -677,10 +746,8 @@ namespace HIKARI::MESHRENDERER {
         if (waterDepthShaderReady) {
             D3D12_GRAPHICS_PIPELINE_STATE_DESC waterDepthPsoDesc =
                 depthPsoDesc;
-            waterDepthPsoDesc.PS = {
-                store.waterDepthPsBlob->GetBufferPointer(),
-                store.waterDepthPsBlob->GetBufferSize()
-            };
+            waterDepthPsoDesc.PS =
+                shaderBytecode(store.waterDepthPsShader);
             if (FAILED(device->CreateGraphicsPipelineState(
                     &waterDepthPsoDesc,
                     IID_PPV_ARGS(store.waterDepthPso.GetAddressOf())))) {
@@ -690,10 +757,8 @@ namespace HIKARI::MESHRENDERER {
             D3D12_GRAPHICS_PIPELINE_STATE_DESC waterDepthSkinnedPsoDesc =
                 waterDepthPsoDesc;
             waterDepthSkinnedPsoDesc.pRootSignature = store.skinnedRootSig.Get();
-            waterDepthSkinnedPsoDesc.VS = {
-                store.skinnedVsBlob->GetBufferPointer(),
-                store.skinnedVsBlob->GetBufferSize()
-            };
+            waterDepthSkinnedPsoDesc.VS =
+                shaderBytecode(store.skinnedVsShader);
             waterDepthSkinnedPsoDesc.InputLayout = {
                 skinnedInputElements.data(),
                 static_cast<UINT>(skinnedInputElements.size())
@@ -712,7 +777,7 @@ namespace HIKARI::MESHRENDERER {
         }
 
         D3D12_GRAPHICS_PIPELINE_STATE_DESC geometryPsoDesc = psoDesc;
-        geometryPsoDesc.PS = { store.geometryPsBlob->GetBufferPointer(), store.geometryPsBlob->GetBufferSize() };
+        geometryPsoDesc.PS = shaderBytecode(store.geometryPsShader);
         geometryPsoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
         geometryPsoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
         geometryPsoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
@@ -723,7 +788,7 @@ namespace HIKARI::MESHRENDERER {
 
         D3D12_GRAPHICS_PIPELINE_STATE_DESC geometrySkinnedPsoDesc = geometryPsoDesc;
         geometrySkinnedPsoDesc.pRootSignature = store.skinnedRootSig.Get();
-        geometrySkinnedPsoDesc.VS = { store.skinnedVsBlob->GetBufferPointer(), store.skinnedVsBlob->GetBufferSize() };
+        geometrySkinnedPsoDesc.VS = shaderBytecode(store.skinnedVsShader);
         geometrySkinnedPsoDesc.InputLayout = { skinnedInputElements.data(), static_cast<UINT>(skinnedInputElements.size()) };
         if (FAILED(device->CreateGraphicsPipelineState(&geometrySkinnedPsoDesc, IID_PPV_ARGS(store.geometrySkinnedPso.GetAddressOf())))) {
             return false;
@@ -732,10 +797,8 @@ namespace HIKARI::MESHRENDERER {
         if (geometryFeatureMaskShaderReady) {
             D3D12_GRAPHICS_PIPELINE_STATE_DESC geometryFeatureMaskPsoDesc =
                 geometryPsoDesc;
-            geometryFeatureMaskPsoDesc.PS = {
-                store.geometryFeatureMaskPsBlob->GetBufferPointer(),
-                store.geometryFeatureMaskPsBlob->GetBufferSize()
-            };
+            geometryFeatureMaskPsoDesc.PS =
+                shaderBytecode(store.geometryFeatureMaskPsShader);
             geometryFeatureMaskPsoDesc.NumRenderTargets = 3u;
             geometryFeatureMaskPsoDesc.RTVFormats[1] = DXGI_FORMAT_R32G32_UINT;
             geometryFeatureMaskPsoDesc.RTVFormats[2] =
@@ -752,10 +815,8 @@ namespace HIKARI::MESHRENDERER {
                         geometryFeatureMaskPsoDesc;
                 geometryFeatureMaskSkinnedPsoDesc.pRootSignature =
                     store.skinnedRootSig.Get();
-                geometryFeatureMaskSkinnedPsoDesc.VS = {
-                    store.skinnedVsBlob->GetBufferPointer(),
-                    store.skinnedVsBlob->GetBufferSize()
-                };
+                geometryFeatureMaskSkinnedPsoDesc.VS =
+                    shaderBytecode(store.skinnedVsShader);
                 geometryFeatureMaskSkinnedPsoDesc.InputLayout = {
                     skinnedInputElements.data(),
                     static_cast<UINT>(skinnedInputElements.size())
@@ -778,14 +839,10 @@ namespace HIKARI::MESHRENDERER {
 
         if (geometryOutlineShadersReady) {
             D3D12_GRAPHICS_PIPELINE_STATE_DESC outlinePsoDesc = psoDesc;
-            outlinePsoDesc.VS = {
-                store.geometryOutlineVsBlob->GetBufferPointer(),
-                store.geometryOutlineVsBlob->GetBufferSize()
-            };
-            outlinePsoDesc.PS = {
-                store.geometryOutlinePsBlob->GetBufferPointer(),
-                store.geometryOutlinePsBlob->GetBufferSize()
-            };
+            outlinePsoDesc.VS =
+                shaderBytecode(store.geometryOutlineVsShader);
+            outlinePsoDesc.PS =
+                shaderBytecode(store.geometryOutlinePsShader);
             outlinePsoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_FRONT;
             outlinePsoDesc.DepthStencilState.DepthWriteMask =
                 D3D12_DEPTH_WRITE_MASK_ZERO;
@@ -809,10 +866,8 @@ namespace HIKARI::MESHRENDERER {
                 D3D12_GRAPHICS_PIPELINE_STATE_DESC outlineSkinnedPsoDesc =
                     outlinePsoDesc;
                 outlineSkinnedPsoDesc.pRootSignature = store.skinnedRootSig.Get();
-                outlineSkinnedPsoDesc.VS = {
-                    store.geometryOutlineSkinnedVsBlob->GetBufferPointer(),
-                    store.geometryOutlineSkinnedVsBlob->GetBufferSize()
-                };
+                outlineSkinnedPsoDesc.VS =
+                    shaderBytecode(store.geometryOutlineSkinnedVsShader);
                 outlineSkinnedPsoDesc.InputLayout = {
                     skinnedInputElements.data(),
                     static_cast<UINT>(skinnedInputElements.size())
@@ -845,10 +900,8 @@ namespace HIKARI::MESHRENDERER {
 
         if (visibilityOverlayShaderReady) {
             D3D12_GRAPHICS_PIPELINE_STATE_DESC visibilityPsoDesc = psoDesc;
-            visibilityPsoDesc.PS = {
-                store.visibilityOverlayPsBlob->GetBufferPointer(),
-                store.visibilityOverlayPsBlob->GetBufferSize()
-            };
+            visibilityPsoDesc.PS =
+                shaderBytecode(store.visibilityOverlayPsShader);
             ApplyCompositeBlendState(
                 visibilityPsoDesc.BlendState,
                 VFX::CompositeMode::Alpha);
@@ -867,10 +920,8 @@ namespace HIKARI::MESHRENDERER {
                     visibilityPsoDesc;
                 visibilitySkinnedPsoDesc.pRootSignature =
                     store.skinnedRootSig.Get();
-                visibilitySkinnedPsoDesc.VS = {
-                    store.skinnedVsBlob->GetBufferPointer(),
-                    store.skinnedVsBlob->GetBufferSize()
-                };
+                visibilitySkinnedPsoDesc.VS =
+                    shaderBytecode(store.skinnedVsShader);
                 visibilitySkinnedPsoDesc.InputLayout = {
                     skinnedInputElements.data(),
                     static_cast<UINT>(skinnedInputElements.size())
@@ -890,7 +941,6 @@ namespace HIKARI::MESHRENDERER {
             }
         }
 
-        store.psBlobCache["StaticLit"] = store.psBlob;
         return true;
     }
 

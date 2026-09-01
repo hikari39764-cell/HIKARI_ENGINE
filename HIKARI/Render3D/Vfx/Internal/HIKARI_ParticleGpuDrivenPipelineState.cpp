@@ -2,12 +2,18 @@
 
 #include <array>
 #include <limits>
+#include <span>
+#include <string>
+#include <utility>
 
 #include <d3dx12.h>
 
+#include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
+#include "Assets/Shader/HIKARI_RenderGeometryShaderContract.h"
+#include "Core/HIKARI_Logger.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/HIKARI_DXCheck.h"
-#include "Gfx/HIKARI_ShaderCompiler.h"
+#include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
 #include "Render3D/Vfx/Internal/HIKARI_GpuParticleShaderInterop.h"
 
 namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
@@ -55,23 +61,40 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
         bool CreateComputePipeline(
             ID3D12Device* device,
             ID3D12RootSignature* rootSignature,
-            const wchar_t* shaderPath,
+            const ASSETS::SHADER::ShaderAssetContractExpectation& contract,
+            const char* programId,
             const char* entry,
             ID3D12PipelineState** output) {
-            ComPtr<ID3DBlob> shader{};
-            if (!GFX::CompileShaderFileSm6(
-                    shaderPath,
-                    entry,
-                    GFX::ShaderStage::Compute,
-                    shader.GetAddressOf())) {
+            ASSETS::SHADER::ShaderAssetResolveResult resolved =
+                ASSETS::SHADER::ResolveBuiltinShaderEntry(
+                    programId,
+                    { entry,
+                      ASSETS::SHADER::ShaderStage::Compute,
+                      "cs_6_0" },
+                    contract);
+            std::string diagnostic{};
+            const ASSETS::SHADER::ShaderCookedArtifact* artifact =
+                resolved ? resolved.lease.GetArtifact() : nullptr;
+            if (!resolved || artifact == nullptr ||
+                !ASSETS::SHADER::ValidateRenderGeometryShaderArtifact(
+                    *artifact,
+                    diagnostic)) {
+                if (diagnostic.empty()) {
+                    diagnostic = resolved.diagnostic;
+                }
+                HIKARI_LOG_ERROR(
+                    std::string("[ParticleGpuDriven][Shader] ") +
+                    programId + ": " + diagnostic);
+                return false;
+            }
+            const std::span<const uint8_t> shader =
+                resolved.lease.GetDxil();
+            if (shader.empty()) {
                 return false;
             }
             D3D12_COMPUTE_PIPELINE_STATE_DESC description{};
             description.pRootSignature = rootSignature;
-            description.CS = {
-                shader->GetBufferPointer(),
-                shader->GetBufferSize()
-            };
+            description.CS = { shader.data(), shader.size() };
             return HIKARI_DX_CHECK(
                 device->CreateComputePipelineState(
                     &description,
@@ -185,12 +208,22 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
                 simulationRootSignature_.GetAddressOf())) {
             return false;
         }
+        const GFX::ShaderDeviceCapabilities capabilities =
+            GFX::QueryShaderDeviceCapabilities(device);
+        const ASSETS::SHADER::ShaderAssetContractExpectation shaderContract =
+            ASSETS::SHADER::MakeRenderGeometryShaderContract(
+                ASSETS::SHADER::RenderGeometryRootLayout::
+                    ParticleSimulation,
+                { capabilities.shaderModel,
+                  capabilities.rootSignatureVersion,
+                  capabilities.featureMask });
         constexpr std::array entries{"ResetCS", "UpdateCS", "SpawnCS"};
         for (size_t index = 0u; index < entries.size(); ++index) {
             if (!CreateComputePipeline(
                     device,
                     simulationRootSignature_.Get(),
-                    L"HIKARI/Shaders/Render3D_ParticleSimulation.hlsl",
+                    shaderContract,
+                    "HIKARI.EngineShader.Render3D_ParticleSimulation",
                     entries[index],
                     simulationPipelines_[index].GetAddressOf())) {
                 return false;
@@ -232,13 +265,24 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
                 compactionRootSignature_.GetAddressOf())) {
             return false;
         }
+        const GFX::ShaderDeviceCapabilities capabilities =
+            GFX::QueryShaderDeviceCapabilities(device);
+        const ASSETS::SHADER::ShaderAssetContractExpectation shaderContract =
+            ASSETS::SHADER::MakeRenderGeometryShaderContract(
+                ASSETS::SHADER::RenderGeometryRootLayout::
+                    ParticleCompaction,
+                { capabilities.shaderModel,
+                  capabilities.rootSignatureVersion,
+                  capabilities.featureMask });
         constexpr std::array entries{
             "ResetDrawCS", "CompactDrawCS", "BuildDrawArgsCS"};
         for (size_t index = 0u; index < entries.size(); ++index) {
             if (!CreateComputePipeline(
                     device,
                     compactionRootSignature_.Get(),
-                    L"HIKARI/Shaders/Render3D_ParticleGpuDrivenCompute.hlsl",
+                    shaderContract,
+                    "HIKARI.EngineShader."
+                    "Render3D_ParticleGpuDrivenCompute",
                     entries[index],
                     compactionPipelines_[index].GetAddressOf())) {
                 return false;
@@ -323,23 +367,61 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
             return false;
         }
 
-        std::array<ComPtr<ID3DBlob>, 2u> meshShaders{};
-        ComPtr<ID3DBlob> pixelShader{};
-        if (!GFX::CompileShaderFileSm6(
-                L"HIKARI/Shaders/Render3D_ParticleGpuDrivenDraw.hlsl",
+        const GFX::ShaderDeviceCapabilities capabilities =
+            GFX::QueryShaderDeviceCapabilities(device);
+        const ASSETS::SHADER::ShaderAssetContractExpectation shaderContract =
+            ASSETS::SHADER::MakeRenderGeometryShaderContract(
+                ASSETS::SHADER::RenderGeometryRootLayout::ParticleDraw,
+                { capabilities.shaderModel,
+                  capabilities.rootSignatureVersion,
+                  capabilities.featureMask });
+        const auto resolveShader = [&shaderContract](
+            const char* entry,
+            ASSETS::SHADER::ShaderStage stage,
+            const char* profile,
+            ASSETS::SHADER::ShaderAssetEntryLease& outShader) {
+            ASSETS::SHADER::ShaderAssetResolveResult resolved =
+                ASSETS::SHADER::ResolveBuiltinShaderEntry(
+                    "HIKARI.EngineShader.Render3D_ParticleGpuDrivenDraw",
+                    { entry, stage, profile },
+                    shaderContract);
+            std::string diagnostic{};
+            const ASSETS::SHADER::ShaderCookedArtifact* artifact =
+                resolved ? resolved.lease.GetArtifact() : nullptr;
+            if (!resolved || artifact == nullptr ||
+                !ASSETS::SHADER::ValidateRenderGeometryShaderArtifact(
+                    *artifact,
+                    diagnostic) ||
+                resolved.lease.GetDxil().empty()) {
+                if (diagnostic.empty()) {
+                    diagnostic = resolved.diagnostic;
+                }
+                HIKARI_LOG_ERROR(
+                    std::string("[ParticleGpuDriven][Shader] ") +
+                    entry + ": " + diagnostic);
+                return false;
+            }
+            outShader = std::move(resolved.lease);
+            return true;
+        };
+        std::array<ASSETS::SHADER::ShaderAssetEntryLease, 2u>
+            meshShaders{};
+        ASSETS::SHADER::ShaderAssetEntryLease pixelShader{};
+        if (!resolveShader(
                 "ParticleSpriteMS",
-                GFX::ShaderStage::Mesh,
-                meshShaders[0u].GetAddressOf()) ||
-            !GFX::CompileShaderFileSm6(
-                L"HIKARI/Shaders/Render3D_ParticleGpuDrivenDraw.hlsl",
+                ASSETS::SHADER::ShaderStage::Mesh,
+                "ms_6_5",
+                meshShaders[0u]) ||
+            !resolveShader(
                 "ParticleStripMS",
-                GFX::ShaderStage::Mesh,
-                meshShaders[1u].GetAddressOf()) ||
-            !GFX::CompileShaderFileSm6(
-                L"HIKARI/Shaders/Render3D_ParticleGpuDrivenDraw.hlsl",
+                ASSETS::SHADER::ShaderStage::Mesh,
+                "ms_6_5",
+                meshShaders[1u]) ||
+            !resolveShader(
                 "ParticlePS",
-                GFX::ShaderStage::Pixel,
-                pixelShader.GetAddressOf())) {
+                ASSETS::SHADER::ShaderStage::Pixel,
+                "ps_6_0",
+                pixelShader)) {
             return false;
         }
 
@@ -376,9 +458,15 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
 
                 ParticlePipelineStateStream stream{};
                 stream.rootSignature = drawRootSignature_.Get();
+                const std::span<const uint8_t> meshShader =
+                    meshShaders[shapeIndex].GetDxil();
+                const std::span<const uint8_t> pixelShaderBytecode =
+                    pixelShader.GetDxil();
                 stream.meshShader = CD3DX12_SHADER_BYTECODE(
-                    meshShaders[shapeIndex].Get());
-                stream.pixelShader = CD3DX12_SHADER_BYTECODE(pixelShader.Get());
+                    meshShader.data(), meshShader.size());
+                stream.pixelShader = CD3DX12_SHADER_BYTECODE(
+                    pixelShaderBytecode.data(),
+                    pixelShaderBytecode.size());
                 stream.blend = blend;
                 stream.depthStencil = depth;
                 stream.dsvFormat = DXGI_FORMAT_D32_FLOAT;

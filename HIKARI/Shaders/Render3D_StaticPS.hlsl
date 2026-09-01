@@ -1,4 +1,5 @@
 #include "Include/Forward/HIKARI_ForwardCommon.hlsli"
+#include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
 #include "Include/Surface/HIKARI_SurfaceShadingNormal.hlsli"
 #include "Include/Material/HIKARI_MaterialProgramData.hlsli"
 #include "Include/Material/HIKARI_MaterialExpression.hlsli"

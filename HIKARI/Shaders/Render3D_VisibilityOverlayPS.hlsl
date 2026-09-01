@@ -1,4 +1,5 @@
 #define HIKARI_MATERIAL_TEXTURE_POOL_SAMPLING 1
+#include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
 #include "Include/HIKARI_MeshMaterialData.hlsli"
 #include "Include/Material/HIKARI_MaterialProgramData.hlsli"
 

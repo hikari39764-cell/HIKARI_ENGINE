@@ -1,4 +1,5 @@
 #include "HIKARI_ClusterCullCommon.hlsli"
+#include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
 
 static const uint HIKARI_TRANSPARENT_SORT_MAX_RANGES = 4096u;
 

@@ -1,13 +1,12 @@
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshPipelineStore.h"
 
 #include <cstddef>
+#include <span>
 
 #include <d3dx12.h>
 
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
-#include "Gfx/HIKARI_D3DBlobCompat.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
-#include "Gfx/HIKARI_ShaderCompiler.h"
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshInputLayouts.h"
 
 namespace HIKARI::MESHRENDERER {
@@ -27,67 +26,66 @@ namespace HIKARI::MESHRENDERER {
     }
 
     namespace {
-		// シェーダIDから、実際のシェーダファイルのパスを解決する。特定のIDに対しては、デフォルトのファイルパスを返す。
-        std::wstring ResolveShaderPath(const std::string& shaderId, const wchar_t* defaultFile) {
-            if (shaderId.empty() || shaderId == "PBR" || shaderId == "StaticLit") {
-                return defaultFile;
-            }
-            if (shaderId == "StaticFx" || shaderId == "MaterialFx") {
-                return L"HIKARI/Shaders/Render3D_StaticFxPS.hlsl";
-            }
-            std::wstring path = L"HIKARI/Shaders/";
-            path += std::wstring(shaderId.begin(), shaderId.end());
-            path += L".hlsl";
-            return path;
-        }
-		// シェーダIDをキーにして、コンパイル済みのピクセルシェーダのバイナリをキャッシュから取得する。キャッシュに存在しない場合は、ファイルからコンパイルしてキャッシュに保存する。
-        bool LoadPixelShaderBlob(MeshPipelineStore& store, const std::string& shaderProfileId, ID3DBlob** outBlob) {
-            const std::string cacheKey = shaderProfileId.empty() ? "StaticLit" : shaderProfileId;
-            auto it = store.psBlobCache.find(cacheKey);
-            if (it != store.psBlobCache.end()) {
-                *outBlob = it->second.Get();
-                return true;
-            }
 
-            ComPtr<ID3DBlob> blob;
-            const std::wstring path = ResolveShaderPath(cacheKey, L"HIKARI/Shaders/Render3D_StaticPS.hlsl");
-            if (!GFX::CompileShaderFileSm6(path.c_str(), "main", GFX::ShaderStage::Pixel, blob.GetAddressOf())) {
-                DEBUGLOG::PushRenderError(std::string("[MeshRenderer][MaterialFx][WARN] Pixel shader compile failed. shaderId=") + cacheKey + " fallback used");
-                return false;
+        D3D12_SHADER_BYTECODE CookedBytecode(
+            const ASSETS::SHADER::ShaderAssetEntryLease& lease) noexcept {
+            const std::span<const uint8_t> bytes = lease.GetDxil();
+            return { bytes.data(), bytes.size() };
+        }
+
+		// シェーダIDから、実際のシェーダファイルのパスを解決する。特定のIDに対しては、デフォルトのファイルパスを返す。
+		// シェーダIDをキーにして、コンパイル済みのピクセルシェーダのバイナリをキャッシュから取得する。キャッシュに存在しない場合は、ファイルからコンパイルしてキャッシュに保存する。
+        bool ResolvePixelShaderBytecode(
+            MeshPipelineStore& store,
+            const std::string& shaderProfileId,
+            D3D12_SHADER_BYTECODE& outBytecode) {
+            const std::string cacheKey = shaderProfileId.empty() ? "StaticLit" : shaderProfileId;
+            if (cacheKey == "PBR" || cacheKey == "StaticLit") {
+                outBytecode = CookedBytecode(store.psShader);
+                return outBytecode.pShaderBytecode != nullptr;
             }
-            auto [insertIt, _] = store.psBlobCache.emplace(cacheKey, blob);
-            *outBlob = insertIt->second.Get();
-            return true;
+            if (cacheKey == "StaticFx" || cacheKey == "MaterialFx" ||
+                cacheKey == "Render3D_StaticFxPS" ||
+                cacheKey ==
+                    "HIKARI.EngineShader.Render3D_StaticFxPS") {
+                outBytecode = CookedBytecode(store.materialFxPsShader);
+                return outBytecode.pShaderBytecode != nullptr;
+            }
+            DEBUGLOG::PushRenderError(
+                std::string("[MeshRenderer][MaterialFx][WARN] Uncooked pixel ") +
+                "shader rejected. shaderId=" + cacheKey);
+            return false;
         }
         // シェーダIDをキーにして、コンパイル済みの頂点シェーダのバイナリをキャッシュから取得する。キャッシュに存在しない場合は、ファイルからコンパイルしてキャッシュに保存する。
-        bool LoadVertexShaderBlob(MeshPipelineStore& store, const std::string& vertexShaderId, ID3DBlob** outBlob) {
+        bool ResolveVertexShaderBytecode(
+            MeshPipelineStore& store,
+            const std::string& vertexShaderId,
+            D3D12_SHADER_BYTECODE& outBytecode) {
             const std::string cacheKey = vertexShaderId.empty() ? "Render3D_StaticVS" : vertexShaderId;
-            auto it = store.vsBlobCache.find(cacheKey);
-            if (it != store.vsBlobCache.end()) {
-                *outBlob = it->second.Get();
-                return true;
+            if (cacheKey == "Render3D_StaticVS") {
+                outBytecode = CookedBytecode(store.vsShader);
+                return outBytecode.pShaderBytecode != nullptr;
             }
-
-            ComPtr<ID3DBlob> blob;
-            const std::wstring path = ResolveShaderPath(cacheKey, L"HIKARI/Shaders/Render3D_StaticVS.hlsl");
-            if (!GFX::CompileShaderFileSm6(path.c_str(), "main", GFX::ShaderStage::Vertex, blob.GetAddressOf())) {
-                DEBUGLOG::PushRenderError(std::string("[MeshRenderer][MaterialFx][WARN] Vertex shader compile failed. shaderId=") + cacheKey);
-                return false;
-            }
-            auto [insertIt, _] = store.vsBlobCache.emplace(cacheKey, blob);
-            *outBlob = insertIt->second.Get();
-            return true;
+            DEBUGLOG::PushRenderError(
+                std::string("[MeshRenderer][MaterialFx][WARN] Uncooked vertex ") +
+                "shader rejected. shaderId=" + cacheKey);
+            return false;
         }
         
 		// メッシュの描画に使用するパイプラインステートオブジェクトを作成する。頂点シェーダとピクセルシェーダのバイナリを取得し、入力レイアウトやラスタライザステートなどを設定して、ID3D12PipelineStateを生成する。
         bool CreateVariantPipeline(MeshPipelineStore& store, ID3D12Device* device, const VFX::VariantKey& key, bool wireframe, ID3D12PipelineState** outPso) {
-            ID3DBlob* vsBlob = nullptr;
-            if (!LoadVertexShaderBlob(store, key.vertexShaderId, &vsBlob) || vsBlob == nullptr) {
-                vsBlob = store.vsBlob.Get();
+            D3D12_SHADER_BYTECODE vertexShader{};
+            if (!ResolveVertexShaderBytecode(
+                    store,
+                    key.vertexShaderId,
+                    vertexShader) ||
+                vertexShader.pShaderBytecode == nullptr) {
+                vertexShader = CookedBytecode(store.vsShader);
             }
-            ID3DBlob* psBlob = nullptr;
+            D3D12_SHADER_BYTECODE pixelShader{};
             const std::string psId = !key.pixelShaderId.empty() ? key.pixelShaderId : key.shaderId;
-            if (!LoadPixelShaderBlob(store, psId, &psBlob) || psBlob == nullptr) {
+            if (!ResolvePixelShaderBytecode(store, psId, pixelShader) ||
+                pixelShader.pShaderBytecode == nullptr) {
                 return false;
             }
 
@@ -95,8 +93,8 @@ namespace HIKARI::MESHRENDERER {
 
             D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc{};
             psoDesc.pRootSignature = store.rootSig.Get();
-            psoDesc.VS = { vsBlob->GetBufferPointer(), vsBlob->GetBufferSize() };
-            psoDesc.PS = { psBlob->GetBufferPointer(), psBlob->GetBufferSize() };
+            psoDesc.VS = vertexShader;
+            psoDesc.PS = pixelShader;
             ApplyCompositeBlendState(psoDesc.BlendState, key.composite);
             psoDesc.SampleMask = UINT_MAX;
             psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
@@ -116,9 +114,13 @@ namespace HIKARI::MESHRENDERER {
         }
 
         bool CreateSkinnedVariantPipeline(MeshPipelineStore& store, ID3D12Device* device, const VFX::VariantKey& key, bool wireframe, ID3D12PipelineState** outPso) {
-            ID3DBlob* psBlob = nullptr;
+            D3D12_SHADER_BYTECODE pixelShader{};
             const std::string psId = !key.pixelShaderId.empty() ? key.pixelShaderId : key.shaderId;
-            if (!LoadPixelShaderBlob(store, psId, &psBlob) || psBlob == nullptr || store.skinnedVsBlob == nullptr) {
+            const D3D12_SHADER_BYTECODE vertexShader =
+                CookedBytecode(store.skinnedVsShader);
+            if (!ResolvePixelShaderBytecode(store, psId, pixelShader) ||
+                pixelShader.pShaderBytecode == nullptr ||
+                vertexShader.pShaderBytecode == nullptr) {
                 return false;
             }
             if (!key.vertexShaderId.empty()) {
@@ -129,8 +131,8 @@ namespace HIKARI::MESHRENDERER {
 
             D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc{};
             psoDesc.pRootSignature = store.skinnedRootSig.Get();
-            psoDesc.VS = { store.skinnedVsBlob->GetBufferPointer(), store.skinnedVsBlob->GetBufferSize() };
-            psoDesc.PS = { psBlob->GetBufferPointer(), psBlob->GetBufferSize() };
+            psoDesc.VS = vertexShader;
+            psoDesc.PS = pixelShader;
             ApplyCompositeBlendState(psoDesc.BlendState, key.composite);
             psoDesc.SampleMask = UINT_MAX;
             psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
@@ -222,16 +224,17 @@ namespace HIKARI::MESHRENDERER {
         GFX::RetireD3D12ObjectForCurrentFrame(store.visibilityOverlaySkinnedPso, "MeshRenderer.VisibilityOverlaySkinnedPSO");
         GFX::RetireD3D12ObjectForCurrentFrame(store.rootSig, "MeshRenderer.StaticRootSignature");
         GFX::RetireD3D12ObjectForCurrentFrame(store.skinnedRootSig, "MeshRenderer.SkinnedRootSignature");
-        store.vsBlob.Reset();
-        store.skinnedVsBlob.Reset();
-        store.psBlob.Reset();
-        store.waterDepthPsBlob.Reset();
-        store.geometryPsBlob.Reset();
-        store.geometryFeatureMaskPsBlob.Reset();
-        store.geometryOutlineVsBlob.Reset();
-        store.geometryOutlineSkinnedVsBlob.Reset();
-        store.geometryOutlinePsBlob.Reset();
-        store.visibilityOverlayPsBlob.Reset();
+        store.vsShader = {};
+        store.skinnedVsShader = {};
+        store.psShader = {};
+        store.materialFxPsShader = {};
+        store.waterDepthPsShader = {};
+        store.geometryPsShader = {};
+        store.geometryFeatureMaskPsShader = {};
+        store.geometryOutlineVsShader = {};
+        store.geometryOutlineSkinnedVsShader = {};
+        store.geometryOutlinePsShader = {};
+        store.visibilityOverlayPsShader = {};
     }
 
     void InvalidateMeshPipelineVariants(MeshPipelineStore& store) {
@@ -239,11 +242,6 @@ namespace HIKARI::MESHRENDERER {
         RetirePipelineCache(store.skinnedVariantPsoCache, "MeshRenderer.SkinnedVariantPSO");
         RetirePipelineCache(store.wireVariantPsoCache, "MeshRenderer.WireVariantPSO");
         RetirePipelineCache(store.skinnedWireVariantPsoCache, "MeshRenderer.SkinnedWireVariantPSO");
-        store.psBlobCache.clear();
-        store.vsBlobCache.clear();
-        if (store.psBlob) {
-            store.psBlobCache["StaticLit"] = store.psBlob;
-        }
     }
 
     ID3D12RootSignature* GetStaticRootSignature(MeshPipelineStore& store) {

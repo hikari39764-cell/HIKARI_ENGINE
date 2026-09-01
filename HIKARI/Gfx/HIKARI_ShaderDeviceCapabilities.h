@@ -7,6 +7,13 @@
 
 namespace HIKARI::GFX {
 
+    namespace ShaderDeviceFeature {
+        inline constexpr uint64_t WaveOperations = 1ull << 0u;
+        inline constexpr uint64_t MeshShader = 1ull << 1u;
+        inline constexpr uint64_t RayTracing = 1ull << 2u;
+        inline constexpr uint64_t SamplerFeedback = 1ull << 3u;
+    }
+
     struct ShaderDeviceCapabilities {
         uint32_t shaderModel = 0u;
         uint32_t rootSignatureVersion = 0u;
@@ -52,6 +59,41 @@ namespace HIKARI::GFX {
             root.HighestVersion >= D3D_ROOT_SIGNATURE_VERSION_1_1
                 ? 11u
                 : 10u;
+        D3D12_FEATURE_DATA_D3D12_OPTIONS1 options1{};
+        if (SUCCEEDED(device->CheckFeatureSupport(
+                D3D12_FEATURE_D3D12_OPTIONS1,
+                &options1,
+                sizeof(options1))) &&
+            options1.WaveOps != FALSE) {
+            capabilities.featureMask |=
+                ShaderDeviceFeature::WaveOperations;
+        }
+        D3D12_FEATURE_DATA_D3D12_OPTIONS5 options5{};
+        if (SUCCEEDED(device->CheckFeatureSupport(
+                D3D12_FEATURE_D3D12_OPTIONS5,
+                &options5,
+                sizeof(options5))) &&
+            options5.RaytracingTier !=
+                D3D12_RAYTRACING_TIER_NOT_SUPPORTED) {
+            capabilities.featureMask |=
+                ShaderDeviceFeature::RayTracing;
+        }
+        D3D12_FEATURE_DATA_D3D12_OPTIONS7 options7{};
+        if (SUCCEEDED(device->CheckFeatureSupport(
+                D3D12_FEATURE_D3D12_OPTIONS7,
+                &options7,
+                sizeof(options7)))) {
+            if (options7.MeshShaderTier !=
+                    D3D12_MESH_SHADER_TIER_NOT_SUPPORTED) {
+                capabilities.featureMask |=
+                    ShaderDeviceFeature::MeshShader;
+            }
+            if (options7.SamplerFeedbackTier !=
+                    D3D12_SAMPLER_FEEDBACK_TIER_NOT_SUPPORTED) {
+                capabilities.featureMask |=
+                    ShaderDeviceFeature::SamplerFeedback;
+            }
+        }
         return capabilities;
     }
 

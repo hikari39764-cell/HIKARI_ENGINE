@@ -5,9 +5,12 @@
 
 #include <d3dx12.h>
 
+#include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
+#include "Assets/Shader/HIKARI_RenderGeometryShaderContract.h"
+#include "Core/HIKARI_Logger.h"
 #include "Gfx/D3D12/HIKARI_D3D12BufferAlignment.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
-#include "Gfx/HIKARI_ShaderCompiler.h"
+#include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
 #include "Gfx/HIKARI_D3D12DebugTools.h"
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenSceneSource.h"
@@ -206,25 +209,51 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 outPipelineState == nullptr) {
                 return false;
             }
-            if (!GFX::SupportsShaderModel6(device)) {
+            const GFX::ShaderDeviceCapabilities capabilities =
+                GFX::QueryShaderDeviceCapabilities(device);
+            if (capabilities.shaderModel < 60u) {
                 return false;
             }
 
-            Microsoft::WRL::ComPtr<ID3DBlob> computeShader;
-            if (!GFX::CompileShaderFileSm6(
-                L"HIKARI/Shaders/Render3D_GpuTraditionalCommandCompactCS.hlsl",
-                "CompactGpuTraditionalCommandStreamCS",
-                GFX::ShaderStage::Compute,
-                computeShader.GetAddressOf())) {
+            const ASSETS::SHADER::ShaderAssetContractExpectation contract =
+                ASSETS::SHADER::MakeRenderGeometryShaderContract(
+                    ASSETS::SHADER::RenderGeometryRootLayout::
+                        TraditionalCommand,
+                    { capabilities.shaderModel,
+                      capabilities.rootSignatureVersion,
+                      capabilities.featureMask });
+            ASSETS::SHADER::ShaderAssetResolveResult resolved =
+                ASSETS::SHADER::ResolveBuiltinShaderEntry(
+                    "HIKARI.EngineShader."
+                    "Render3D_GpuTraditionalCommandCompactCS",
+                    { "CompactGpuTraditionalCommandStreamCS",
+                      ASSETS::SHADER::ShaderStage::Compute,
+                      "cs_6_0" },
+                    contract);
+            std::string diagnostic{};
+            const ASSETS::SHADER::ShaderCookedArtifact* artifact =
+                resolved ? resolved.lease.GetArtifact() : nullptr;
+            if (!resolved || artifact == nullptr ||
+                !ASSETS::SHADER::ValidateRenderGeometryShaderArtifact(
+                    *artifact,
+                    diagnostic)) {
+                if (diagnostic.empty()) {
+                    diagnostic = resolved.diagnostic;
+                }
+                HIKARI_LOG_ERROR(
+                    std::string("[GpuTraditionalCommandStream][Shader] ") +
+                    diagnostic);
+                return false;
+            }
+            const std::span<const uint8_t> computeShader =
+                resolved.lease.GetDxil();
+            if (computeShader.empty()) {
                 return false;
             }
 
             D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc{};
             psoDesc.pRootSignature = rootSignature;
-            psoDesc.CS = {
-                computeShader->GetBufferPointer(),
-                computeShader->GetBufferSize()
-            };
+            psoDesc.CS = { computeShader.data(), computeShader.size() };
             const HRESULT hr = device->CreateComputePipelineState(
                 &psoDesc,
                 IID_PPV_ARGS(outPipelineState));

@@ -1,4 +1,5 @@
 #include "HIKARI_ClusterCullCommon.hlsli"
+#include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
 
 // 1 thread group = 1 page task (= 1 page, 最大 64 cluster)。
 // cluster 単位の重いテスト (frustum / cone / HZB) を 64 thread で並列に行い、

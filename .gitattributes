@@ -59,6 +59,7 @@ HIKARI/Shaders/Include/Post/HIKARI_PostEffectInterface.hlsli text eol=lf
 HIKARI/Shaders/Include/Color/HIKARI_AutomaticExposureInterface.hlsli text eol=lf
 HIKARI/Shaders/Include/Depth/HIKARI_DepthPyramidInterface.hlsli text eol=lf
 HIKARI/Shaders/Include/Render2D/HIKARI_Render2DBuiltinInterface.hlsli text eol=lf
+HIKARI/Shaders/Include/Render3D/HIKARI_RenderGeometryInterface.hlsli text eol=lf
 
 ###############################################################################
 # diff behavior for common document formats

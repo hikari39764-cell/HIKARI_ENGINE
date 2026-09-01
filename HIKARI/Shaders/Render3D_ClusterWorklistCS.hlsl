@@ -1,5 +1,7 @@
 ﻿#include "HIKARI_ClusterCullCommon.hlsli"
 
+#include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
+
 [numthreads(64, 1, 1)]
 void ExpandPageTasksCS(uint3 dispatchThreadId : SV_DispatchThreadID)
 {

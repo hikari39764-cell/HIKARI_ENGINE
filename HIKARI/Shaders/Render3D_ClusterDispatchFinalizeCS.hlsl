@@ -1,4 +1,5 @@
 #include "HIKARI_ClusterCullCommon.hlsli"
+#include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
 
 // CullPageTasksCS は 1 group = 1 page task。task 数が X 次元上限を超える
 // 場合は Y 次元へ折り返す (CS 側は同じ幅で taskIndex を復元する)。

@@ -5,9 +5,9 @@
 #include <unordered_map>
 
 #include <d3d12.h>
-#include <d3dcompiler.h>
 #include <wrl/client.h>
 
+#include "Assets/Shader/HIKARI_ShaderAssetResolver.h"
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
 #include "Vfx/Common/HIKARI_FxTypes.h"
 
@@ -34,22 +34,21 @@ namespace HIKARI::MESHRENDERER {
         Microsoft::WRL::ComPtr<ID3D12PipelineState> geometryOutlineSkinnedPso;
         Microsoft::WRL::ComPtr<ID3D12PipelineState> visibilityOverlayPso;
         Microsoft::WRL::ComPtr<ID3D12PipelineState> visibilityOverlaySkinnedPso;
-        Microsoft::WRL::ComPtr<ID3DBlob> vsBlob;
-        Microsoft::WRL::ComPtr<ID3DBlob> skinnedVsBlob;
-        Microsoft::WRL::ComPtr<ID3DBlob> psBlob;
-        Microsoft::WRL::ComPtr<ID3DBlob> waterDepthPsBlob;
-        Microsoft::WRL::ComPtr<ID3DBlob> geometryPsBlob;
-        Microsoft::WRL::ComPtr<ID3DBlob> geometryFeatureMaskPsBlob;
-        Microsoft::WRL::ComPtr<ID3DBlob> geometryOutlineVsBlob;
-        Microsoft::WRL::ComPtr<ID3DBlob> geometryOutlineSkinnedVsBlob;
-        Microsoft::WRL::ComPtr<ID3DBlob> geometryOutlinePsBlob;
-        Microsoft::WRL::ComPtr<ID3DBlob> visibilityOverlayPsBlob;
+        ASSETS::SHADER::ShaderAssetEntryLease vsShader{};
+        ASSETS::SHADER::ShaderAssetEntryLease skinnedVsShader{};
+        ASSETS::SHADER::ShaderAssetEntryLease psShader{};
+        ASSETS::SHADER::ShaderAssetEntryLease materialFxPsShader{};
+        ASSETS::SHADER::ShaderAssetEntryLease waterDepthPsShader{};
+        ASSETS::SHADER::ShaderAssetEntryLease geometryPsShader{};
+        ASSETS::SHADER::ShaderAssetEntryLease geometryFeatureMaskPsShader{};
+        ASSETS::SHADER::ShaderAssetEntryLease geometryOutlineVsShader{};
+        ASSETS::SHADER::ShaderAssetEntryLease geometryOutlineSkinnedVsShader{};
+        ASSETS::SHADER::ShaderAssetEntryLease geometryOutlinePsShader{};
+        ASSETS::SHADER::ShaderAssetEntryLease visibilityOverlayPsShader{};
         std::unordered_map<VFX::VariantKey, Microsoft::WRL::ComPtr<ID3D12PipelineState>, VariantKeyHasher> variantPsoCache;
         std::unordered_map<VFX::VariantKey, Microsoft::WRL::ComPtr<ID3D12PipelineState>, VariantKeyHasher> skinnedVariantPsoCache;
         std::unordered_map<VFX::VariantKey, Microsoft::WRL::ComPtr<ID3D12PipelineState>, VariantKeyHasher> wireVariantPsoCache;
         std::unordered_map<VFX::VariantKey, Microsoft::WRL::ComPtr<ID3D12PipelineState>, VariantKeyHasher> skinnedWireVariantPsoCache;
-        std::unordered_map<std::string, Microsoft::WRL::ComPtr<ID3DBlob>> psBlobCache;
-        std::unordered_map<std::string, Microsoft::WRL::ComPtr<ID3DBlob>> vsBlobCache;
     };
 
     bool InitializeMeshPipelines(ID3D12Device* device, MeshPipelineStore& store);

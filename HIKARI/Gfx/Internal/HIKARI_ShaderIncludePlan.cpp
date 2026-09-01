@@ -101,6 +101,12 @@ namespace HIKARI::GFX::INTERNAL {
                     }
                     clean.push_back(line[index]);
                 }
+                if (lineBegin == 0u && clean.size() >= 3u &&
+                    static_cast<unsigned char>(clean[0]) == 0xefu &&
+                    static_cast<unsigned char>(clean[1]) == 0xbbu &&
+                    static_cast<unsigned char>(clean[2]) == 0xbfu) {
+                    clean.erase(0u, 3u);
+                }
                 std::string_view directive = Trim(clean);
                 if (!directive.empty() && directive.front() == '#') {
                     directive.remove_prefix(1u);
@@ -442,20 +448,48 @@ namespace HIKARI::GFX::INTERNAL {
                 lastError_ = "DXC requested an invalid include path";
                 return E_INVALIDARG;
             }
-            const auto found = plan_->aliases.find(
-                MakeAliasKey(std::filesystem::path(filename)));
-            if (found == plan_->aliases.end() ||
-                !RecordDependency(found->second->dependency, lastError_)) {
+            const std::string requested =
+                MakeAliasKey(std::filesystem::path(filename));
+            const auto found = plan_->aliases.find(requested);
+            std::shared_ptr<const ShaderCookFile> planned{};
+            if (found != plan_->aliases.end()) {
+                planned = found->second;
+            }
+            if (!planned) {
+                std::string suffix = requested;
+                while (suffix.find('/') != std::string::npos) {
+                    suffix.erase(0u, suffix.find('/') + 1u);
+                    if (suffix.find('/') == std::string::npos) {
+                        break;
+                    }
+                    const auto suffixFound = plan_->aliases.find(suffix);
+                    if (suffixFound == plan_->aliases.end()) {
+                        continue;
+                    }
+                    if (planned &&
+                        planned->dependency.logicalPath !=
+                            suffixFound->second->dependency.logicalPath) {
+                        lastError_ =
+                            "DXC include suffix resolves ambiguously: " +
+                            requested;
+                        return HRESULT_FROM_WIN32(ERROR_ACCESS_DENIED);
+                    }
+                    planned = suffixFound->second;
+                }
+            }
+            if (!planned ||
+                !RecordDependency(planned->dependency, lastError_)) {
                 if (lastError_.empty()) {
                     lastError_ =
-                        "DXC requested an include outside the approved plan";
+                        "DXC requested an include outside the approved plan: " +
+                        requested;
                 }
                 return HRESULT_FROM_WIN32(ERROR_ACCESS_DENIED);
             }
             ComPtr<IDxcBlobEncoding> blob{};
             const HRESULT result = utils_->CreateBlob(
-                found->second->bytes.data(),
-                static_cast<UINT32>(found->second->bytes.size()),
+                planned->bytes.data(),
+                static_cast<UINT32>(planned->bytes.size()),
                 DXC_CP_UTF8,
                 blob.GetAddressOf());
             if (FAILED(result)) {

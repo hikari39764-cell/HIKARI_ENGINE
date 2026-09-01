@@ -1,4 +1,5 @@
 #include "Render3D_ParticleSimulation.hlsl"
+#include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
 
 RWStructuredBuffer<uint> gAliveParticleIndices : register(u1);
 RWStructuredBuffer<uint> gParticleDrawCounters : register(u2);

@@ -4,9 +4,13 @@
 #include <algorithm>
 #include <array>
 #include <iterator>
+#include <span>
+#include <string>
 
 #include <d3dx12.h>
 
+#include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
+#include "Assets/Shader/HIKARI_RenderGeometryShaderContract.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Core/HIKARI_Logger.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
@@ -17,7 +21,7 @@
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
-#include "Gfx/HIKARI_ShaderCompiler.h"
+#include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
 
 namespace HIKARI::RENDER3D::CLUSTER {
 
@@ -125,34 +129,51 @@ namespace HIKARI::RENDER3D::CLUSTER {
         bool CreateComputePipelineState(
             ID3D12Device* device,
             ID3D12RootSignature* rootSignature,
-            const wchar_t* shaderPath,
+            const ASSETS::SHADER::ShaderAssetContractExpectation& contract,
+            const char* programId,
             const char* entryPoint,
             const wchar_t* debugName,
             ID3D12PipelineState** outPipelineState) {
 
             if (device == nullptr ||
                 rootSignature == nullptr ||
-                shaderPath == nullptr ||
+                programId == nullptr ||
                 entryPoint == nullptr ||
                 outPipelineState == nullptr) {
                 return false;
             }
 
-            Microsoft::WRL::ComPtr<ID3DBlob> computeShader;
-            if (!GFX::CompileShaderFileSm6(
-                shaderPath,
-                entryPoint,
-                GFX::ShaderStage::Compute,
-                computeShader.GetAddressOf())) {
+            ASSETS::SHADER::ShaderAssetResolveResult resolved =
+                ASSETS::SHADER::ResolveBuiltinShaderEntry(
+                    programId,
+                    { entryPoint,
+                      ASSETS::SHADER::ShaderStage::Compute,
+                      "cs_6_0" },
+                    contract);
+            std::string diagnostic{};
+            const ASSETS::SHADER::ShaderCookedArtifact* artifact =
+                resolved ? resolved.lease.GetArtifact() : nullptr;
+            if (!resolved || artifact == nullptr ||
+                !ASSETS::SHADER::ValidateRenderGeometryShaderArtifact(
+                    *artifact,
+                    diagnostic)) {
+                if (diagnostic.empty()) {
+                    diagnostic = resolved.diagnostic;
+                }
+                HIKARI_LOG_ERROR(
+                    std::string("[ClusterGpuCulling][Shader] ") +
+                    programId + ": " + diagnostic);
+                return false;
+            }
+            const std::span<const uint8_t> computeShader =
+                resolved.lease.GetDxil();
+            if (computeShader.empty()) {
                 return false;
             }
 
             D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc{};
             psoDesc.pRootSignature = rootSignature;
-            psoDesc.CS = {
-                computeShader->GetBufferPointer(),
-                computeShader->GetBufferSize()
-            };
+            psoDesc.CS = { computeShader.data(), computeShader.size() };
             const HRESULT hr = device->CreateComputePipelineState(
                 &psoDesc,
                 IID_PPV_ARGS(outPipelineState));
@@ -334,10 +355,18 @@ namespace HIKARI::RENDER3D::CLUSTER {
         if (device == nullptr) {
             return false;
         }
-        if (!GFX::SupportsShaderModel6(device)) {
+        const GFX::ShaderDeviceCapabilities capabilities =
+            GFX::QueryShaderDeviceCapabilities(device);
+        if (capabilities.shaderModel < 60u) {
             ReportWarning("[ClusterGpuCulling][WARN] Shader Model 6.0 is not supported.");
             return false;
         }
+        const ASSETS::SHADER::ShaderAssetContractExpectation shaderContract =
+            ASSETS::SHADER::MakeRenderGeometryShaderContract(
+                ASSETS::SHADER::RenderGeometryRootLayout::ClusterCulling,
+                { capabilities.shaderModel,
+                  capabilities.rootSignatureVersion,
+                  capabilities.featureMask });
 
         D3D12_DESCRIPTOR_RANGE clusterGeometryPoolRange{};
         clusterGeometryPoolRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
@@ -442,7 +471,8 @@ namespace HIKARI::RENDER3D::CLUSTER {
         if (!CreateComputePipelineState(
             device,
             rootSignature_.Get(),
-            L"HIKARI/Shaders/Render3D_ClusterWorklistCS.hlsl",
+            shaderContract,
+            "HIKARI.EngineShader.Render3D_ClusterWorklistCS",
             "ExpandPageTasksCS",
             L"Cluster GPU Worklist Expand Page Tasks PSO",
             expandPageTasksPipelineState_.GetAddressOf())) {
@@ -451,7 +481,8 @@ namespace HIKARI::RENDER3D::CLUSTER {
         if (!CreateComputePipelineState(
             device,
             rootSignature_.Get(),
-            L"HIKARI/Shaders/Render3D_ClusterDispatchFinalizeCS.hlsl",
+            shaderContract,
+            "HIKARI.EngineShader.Render3D_ClusterDispatchFinalizeCS",
             "FinalizePageTaskDispatchCS",
             L"Cluster GPU Worklist Finalize Dispatch PSO",
             finalizeDispatchPipelineState_.GetAddressOf())) {
@@ -460,7 +491,9 @@ namespace HIKARI::RENDER3D::CLUSTER {
         if (!CreateComputePipelineState(
             device,
             rootSignature_.Get(),
-            L"HIKARI/Shaders/Render3D_ClusterMeshletDispatchFinalizeCS.hlsl",
+            shaderContract,
+            "HIKARI.EngineShader."
+            "Render3D_ClusterMeshletDispatchFinalizeCS",
             "FinalizeMeshletDispatchCS",
             L"Cluster GPU Meshlet Dispatch Finalize PSO",
             finalizeMeshletDispatchPipelineState_.GetAddressOf())) {
@@ -469,7 +502,8 @@ namespace HIKARI::RENDER3D::CLUSTER {
         if (!CreateComputePipelineState(
             device,
             rootSignature_.Get(),
-            L"HIKARI/Shaders/Render3D_ClusterFineVisibilityCS.hlsl",
+            shaderContract,
+            "HIKARI.EngineShader.Render3D_ClusterFineVisibilityCS",
             "CullPageTasksCS",
             L"Cluster GPU Fine Visibility Page Tasks PSO",
             cullPageTasksPipelineState_.GetAddressOf())) {
@@ -478,7 +512,8 @@ namespace HIKARI::RENDER3D::CLUSTER {
         if (!CreateComputePipelineState(
             device,
             rootSignature_.Get(),
-            L"HIKARI/Shaders/Render3D_ClusterTransparentSortCS.hlsl",
+            shaderContract,
+            "HIKARI.EngineShader.Render3D_ClusterTransparentSortCS",
             "SortTransparentRangesCS",
             L"Cluster GPU Transparent Back-to-Front Sort PSO",
             transparentSortPipelineState_.GetAddressOf())) {

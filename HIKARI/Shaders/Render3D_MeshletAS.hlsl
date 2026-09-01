@@ -1,4 +1,5 @@
 #include "Include/HIKARI_MeshletDraw.hlsli"
+#include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
 #define HIKARI_SURFACE_GPU_SCENE_SKIP_CONTROL_CB 1
 #define HIKARI_SURFACE_GPU_SCENE_SKIP_CONTROL_HELPERS 1
 #include "Include/HIKARI_SurfaceGpuScene.hlsli"

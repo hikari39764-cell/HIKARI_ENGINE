@@ -1,4 +1,5 @@
 #include "Include/HIKARI_MeshletMSCommon.hlsli"
+#include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
 #include "Include/Meshlet/HIKARI_WaterSurfaceDeform.hlsli"
 #include "Include/Surface/HIKARI_SandSurfaceDeform.hlsli"
 #include "Include/Surface/HIKARI_FoliageWind.hlsli"

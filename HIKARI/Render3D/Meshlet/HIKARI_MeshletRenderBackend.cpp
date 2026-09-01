@@ -3,11 +3,16 @@
 #include <algorithm>
 #include <limits>
 #include <sstream>
+#include <span>
 #include <string>
+#include <utility>
 
 #include <d3dcompiler.h>
 #include <d3dx12.h>
 
+#include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
+#include "Assets/Shader/HIKARI_RenderGeometryShaderContract.h"
+#include "Core/HIKARI_Logger.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_D3D12DebugTools.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
@@ -15,6 +20,7 @@
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
+#include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenDrawCommandStream.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 namespace HIKARI::RENDER3D::MESHLET {
@@ -23,13 +29,14 @@ namespace HIKARI::RENDER3D::MESHLET {
         using ForwardPipelineVariantArray =
             MeshletRenderBackend::ForwardPipelineVariantArray;
 
-        constexpr std::array<const wchar_t*, kForwardOpaquePipelineVariantCount> kForwardOpaqueShaderPaths = {
-            L"HIKARI/Shaders/Render3D_GpuDrivenOpaqueFullPS.hlsl",
-            L"HIKARI/Shaders/Render3D_GpuDrivenOpaqueAlbedoOnlyPS.hlsl",
-            L"HIKARI/Shaders/Render3D_GpuDrivenOpaqueNoNormalMapPS.hlsl",
-            L"HIKARI/Shaders/Render3D_GpuDrivenOpaqueNoShadowPS.hlsl",
-            L"HIKARI/Shaders/Render3D_GpuDrivenOpaqueNoSsaoPS.hlsl",
-            L"HIKARI/Shaders/Render3D_GpuDrivenOpaqueNoMaterialExtrasPS.hlsl",
+        constexpr std::array<const char*, kForwardOpaquePipelineVariantCount>
+            kForwardOpaqueProgramIds = {
+            "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueFullPS",
+            "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueAlbedoOnlyPS",
+            "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueNoNormalMapPS",
+            "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueNoShadowPS",
+            "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueNoSsaoPS",
+            "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueNoMaterialExtrasPS",
         };
 
         constexpr std::array<const wchar_t*, kForwardOpaquePipelineVariantCount> kForwardOpaqueVariantNames = {
@@ -40,6 +47,19 @@ namespace HIKARI::RENDER3D::MESHLET {
             L"NoSSAO",
             L"NoMaterialExtras",
         };
+
+        D3D12_SHADER_BYTECODE ShaderBytecode(
+            const ASSETS::SHADER::ShaderAssetEntryLease& shader) noexcept {
+            const std::span<const uint8_t> bytes = shader.GetDxil();
+            return { bytes.data(), bytes.size() };
+        }
+
+        D3D12_SHADER_BYTECODE ShaderBytecode(ID3DBlob* shader) noexcept {
+            return shader != nullptr
+                ? D3D12_SHADER_BYTECODE{
+                    shader->GetBufferPointer(), shader->GetBufferSize() }
+                : D3D12_SHADER_BYTECODE{};
+        }
 
         size_t ForwardPipelineVariantIndex(ForwardShadingCostMode mode) {
             const uint8_t raw = static_cast<uint8_t>(mode);
@@ -57,8 +77,9 @@ namespace HIKARI::RENDER3D::MESHLET {
             case MeshletPipelineKind::Shadow:
                 return MeshletPipelineMask::Shadow;
             case MeshletPipelineKind::GeometryAux:
-            case MeshletPipelineKind::GeometryAuxFeatureMask:
                 return MeshletPipelineMask::GeometryAux;
+            case MeshletPipelineKind::GeometryAuxFeatureMask:
+                return MeshletPipelineMask::GeometryAuxFeatureMask;
             case MeshletPipelineKind::GeometryOutline:
                 return MeshletPipelineMask::GeometryOutline;
             case MeshletPipelineKind::VisibilityOverlay:
@@ -160,8 +181,12 @@ namespace HIKARI::RENDER3D::MESHLET {
                 ready = ready && ArePipelinesReady(shadow);
             }
             if (IsPipelineRequested(pipelineMask, MeshletPipelineKind::GeometryAux)) {
-                ready = ready && ArePipelinesReady(geometryAux) &&
-                    ArePipelinesReady(geometryFeatureMask);
+                ready = ready && ArePipelinesReady(geometryAux);
+            }
+            if (IsPipelineRequested(
+                    pipelineMask,
+                    MeshletPipelineKind::GeometryAuxFeatureMask)) {
+                ready = ready && ArePipelinesReady(geometryFeatureMask);
             }
             if (IsPipelineRequested(pipelineMask, MeshletPipelineKind::GeometryOutline)) {
                 ready = ready && ArePipelinesReady(geometryOutline);
@@ -389,9 +414,9 @@ namespace HIKARI::RENDER3D::MESHLET {
         void LogMeshletPsoFailure(
             HRESULT hr,
             const wchar_t* debugName,
-            ID3DBlob* amplificationShader,
-            ID3DBlob* meshShader,
-            ID3DBlob* pixelShader,
+            D3D12_SHADER_BYTECODE amplificationShader,
+            D3D12_SHADER_BYTECODE meshShader,
+            D3D12_SHADER_BYTECODE pixelShader,
             DXGI_FORMAT renderTargetFormat,
             D3D12_CULL_MODE cullMode,
             bool alphaBlend,
@@ -408,18 +433,18 @@ namespace HIKARI::RENDER3D::MESHLET {
                 << " cull=" << CullModeToString(cullMode)
                 << " alphaBlend=" << (alphaBlend ? "true" : "false")
                 << " depthWrite=" << (depthWrite ? "true" : "false")
-                << " asBytes=" << (amplificationShader ? amplificationShader->GetBufferSize() : 0u)
-                << " msBytes=" << (meshShader ? meshShader->GetBufferSize() : 0u)
-                << " psBytes=" << (pixelShader ? pixelShader->GetBufferSize() : 0u);
+                << " asBytes=" << amplificationShader.BytecodeLength
+                << " msBytes=" << meshShader.BytecodeLength
+                << " psBytes=" << pixelShader.BytecodeLength;
             DEBUGLOG::PushRenderError(oss.str());
         }
 
         bool CreateMeshletPipelineState(
             ID3D12Device* device,
             ID3D12RootSignature* rootSignature,
-            ID3DBlob* amplificationShader,
-            ID3DBlob* meshShader,
-            ID3DBlob* pixelShader,
+            D3D12_SHADER_BYTECODE amplificationShader,
+            D3D12_SHADER_BYTECODE meshShader,
+            D3D12_SHADER_BYTECODE pixelShader,
             DXGI_FORMAT renderTargetFormat,
             D3D12_CULL_MODE cullMode,
             bool alphaBlend,
@@ -434,9 +459,9 @@ namespace HIKARI::RENDER3D::MESHLET {
 
             if (device == nullptr ||
                 rootSignature == nullptr ||
-                amplificationShader == nullptr ||
-                meshShader == nullptr ||
-                (pixelShader == nullptr && hasRenderTarget) ||
+                amplificationShader.pShaderBytecode == nullptr ||
+                meshShader.pShaderBytecode == nullptr ||
+                (pixelShader.pShaderBytecode == nullptr && hasRenderTarget) ||
                 (tertiaryRenderTargetFormat != DXGI_FORMAT_UNKNOWN &&
                  secondaryRenderTargetFormat == DXGI_FORMAT_UNKNOWN) ||
                 outPipelineState == nullptr) {
@@ -492,13 +517,9 @@ namespace HIKARI::RENDER3D::MESHLET {
 
             MeshletPipelineStateStream stream{};
             stream.RootSignature = rootSignature;
-            stream.AS = CD3DX12_SHADER_BYTECODE(amplificationShader);
-            stream.MS = CD3DX12_SHADER_BYTECODE(meshShader);
-            const D3D12_SHADER_BYTECODE pixelShaderBytecode =
-                pixelShader != nullptr
-                    ? CD3DX12_SHADER_BYTECODE(pixelShader)
-                    : D3D12_SHADER_BYTECODE{};
-            stream.PS = pixelShaderBytecode;
+            stream.AS = amplificationShader;
+            stream.MS = meshShader;
+            stream.PS = pixelShader;
             stream.BlendState = blend;
             stream.DepthStencilState = depthStencil;
             stream.DSVFormat = DXGI_FORMAT_D32_FLOAT;
@@ -572,25 +593,62 @@ namespace HIKARI::RENDER3D::MESHLET {
             return false;
         }
 
-        Microsoft::WRL::ComPtr<ID3DBlob> amplificationShader;
-        Microsoft::WRL::ComPtr<ID3DBlob> shadowAmplificationShader;
-        Microsoft::WRL::ComPtr<ID3DBlob> forwardMeshShader;
-        Microsoft::WRL::ComPtr<ID3DBlob> shadowMeshShader;
-        Microsoft::WRL::ComPtr<ID3DBlob> depthMeshShader;
-        Microsoft::WRL::ComPtr<ID3DBlob> waterVisibilityMeshShader;
-        Microsoft::WRL::ComPtr<ID3DBlob> geometryMeshShader;
-        Microsoft::WRL::ComPtr<ID3DBlob> geometryOutlineMeshShader;
+        const GFX::ShaderDeviceCapabilities capabilities =
+            GFX::QueryShaderDeviceCapabilities(device);
+        const ASSETS::SHADER::ShaderAssetContractExpectation shaderContract =
+            ASSETS::SHADER::MakeRenderGeometryShaderContract(
+                ASSETS::SHADER::RenderGeometryRootLayout::MeshGraphics,
+                { capabilities.shaderModel,
+                  capabilities.rootSignatureVersion,
+                  capabilities.featureMask });
+        const auto resolveShader = [&shaderContract](
+            const char* programId,
+            ASSETS::SHADER::ShaderStage stage,
+            const char* profile,
+            ASSETS::SHADER::ShaderAssetEntryLease& outShader) {
+            ASSETS::SHADER::ShaderAssetResolveResult resolved =
+                ASSETS::SHADER::ResolveBuiltinShaderEntry(
+                    programId,
+                    { "Main", stage, profile },
+                    shaderContract);
+            std::string diagnostic{};
+            const ASSETS::SHADER::ShaderCookedArtifact* artifact =
+                resolved ? resolved.lease.GetArtifact() : nullptr;
+            if (!resolved || artifact == nullptr ||
+                !ASSETS::SHADER::ValidateRenderGeometryShaderArtifact(
+                    *artifact,
+                    diagnostic) ||
+                resolved.lease.GetDxil().empty()) {
+                if (diagnostic.empty()) {
+                    diagnostic = resolved.diagnostic;
+                }
+                HIKARI_LOG_ERROR(
+                    std::string("[MeshletBackend][Shader] ") +
+                    programId + ": " + diagnostic);
+                return false;
+            }
+            outShader = std::move(resolved.lease);
+            return true;
+        };
+
+        ASSETS::SHADER::ShaderAssetEntryLease amplificationShader{};
+        Microsoft::WRL::ComPtr<ID3DBlob> shadowAmplificationShader{};
+        ASSETS::SHADER::ShaderAssetEntryLease forwardMeshShader{};
+        Microsoft::WRL::ComPtr<ID3DBlob> shadowMeshShader{};
+        ASSETS::SHADER::ShaderAssetEntryLease depthMeshShader{};
+        ASSETS::SHADER::ShaderAssetEntryLease waterVisibilityMeshShader{};
+        ASSETS::SHADER::ShaderAssetEntryLease geometryMeshShader{};
+        ASSETS::SHADER::ShaderAssetEntryLease geometryOutlineMeshShader{};
         std::array<
-            Microsoft::WRL::ComPtr<ID3DBlob>,
+            ASSETS::SHADER::ShaderAssetEntryLease,
             kForwardOpaquePipelineVariantCount> forwardPixelShaders{};
-        Microsoft::WRL::ComPtr<ID3DBlob> depthAwarePixelShader;
-        Microsoft::WRL::ComPtr<ID3DBlob> transparentPixelShader;
-        Microsoft::WRL::ComPtr<ID3DBlob> shadowPixelShader;
-        Microsoft::WRL::ComPtr<ID3DBlob> waterVisibilityPixelShader;
-        Microsoft::WRL::ComPtr<ID3DBlob> geometryPixelShader;
-        Microsoft::WRL::ComPtr<ID3DBlob> geometryFeatureMaskPixelShader;
-        Microsoft::WRL::ComPtr<ID3DBlob> geometryOutlinePixelShader;
-        Microsoft::WRL::ComPtr<ID3DBlob> visibilityOverlayPixelShader;
+        Microsoft::WRL::ComPtr<ID3DBlob> shadowPixelShader{};
+        ASSETS::SHADER::ShaderAssetEntryLease waterVisibilityPixelShader{};
+        ASSETS::SHADER::ShaderAssetEntryLease geometryPixelShader{};
+        ASSETS::SHADER::ShaderAssetEntryLease
+            geometryFeatureMaskPixelShader{};
+        ASSETS::SHADER::ShaderAssetEntryLease geometryOutlinePixelShader{};
+        ASSETS::SHADER::ShaderAssetEntryLease visibilityOverlayPixelShader{};
         const bool needsForwardMeshShader =
             IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardOpaque) ||
             IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardDepthAware) ||
@@ -604,19 +662,25 @@ namespace HIKARI::RENDER3D::MESHLET {
             IsPipelineRequested(
                 pipelineMask_, MeshletPipelineKind::WaterVisibility);
         const bool needsGeometryMeshShader =
-            IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAux);
+            IsPipelineRequested(
+                pipelineMask_, MeshletPipelineKind::GeometryAux) ||
+            IsPipelineRequested(
+                pipelineMask_,
+                MeshletPipelineKind::GeometryAuxFeatureMask);
         const bool needsGeometryOutlineMeshShader =
             IsPipelineRequested(
                 pipelineMask_, MeshletPipelineKind::GeometryOutline);
         bool waterVisibilityShadersReady = true;
-        if ((pipelineMask_ & MeshletPipelineMask::MainRenderer) != 0u) {
-            if (!GFX::CompileShaderFileSm6(
-                    L"HIKARI/Shaders/Render3D_MeshletAS.hlsl",
-                    "main",
-                    GFX::ShaderStage::Amplification,
-                    amplificationShader.GetAddressOf())) {
-                return false;
-            }
+        bool geometryFeatureMaskShadersReady = true;
+        bool geometryOutlineShadersReady = true;
+        bool visibilityOverlayShaderReady = true;
+        if ((pipelineMask_ & MeshletPipelineMask::MainRenderer) != 0u &&
+            !resolveShader(
+                "HIKARI.EngineShader.Render3D_MeshletAS",
+                ASSETS::SHADER::ShaderStage::Amplification,
+                "as_6_5",
+                amplificationShader)) {
+            return false;
         }
         if (needsShadowMeshShader &&
             !GFX::CompileShaderFileSm6(
@@ -627,11 +691,11 @@ namespace HIKARI::RENDER3D::MESHLET {
             return false;
         }
         if (needsForwardMeshShader &&
-            !GFX::CompileShaderFileSm6(
-                L"HIKARI/Shaders/Render3D_MeshletMS.hlsl",
-                "main",
-                GFX::ShaderStage::Mesh,
-                forwardMeshShader.GetAddressOf())) {
+            !resolveShader(
+                "HIKARI.EngineShader.Render3D_MeshletMS",
+                ASSETS::SHADER::ShaderStage::Mesh,
+                "ms_6_5",
+                forwardMeshShader)) {
             return false;
         }
         if (needsShadowMeshShader &&
@@ -643,69 +707,77 @@ namespace HIKARI::RENDER3D::MESHLET {
             return false;
         }
         if (needsDepthMeshShader &&
-            !GFX::CompileShaderFileSm6(
-                L"HIKARI/Shaders/Render3D_MeshletDepthMS.hlsl",
-                "main",
-                GFX::ShaderStage::Mesh,
-                depthMeshShader.GetAddressOf())) {
+            !resolveShader(
+                "HIKARI.EngineShader.Render3D_MeshletDepthMS",
+                ASSETS::SHADER::ShaderStage::Mesh,
+                "ms_6_5",
+                depthMeshShader)) {
             return false;
         }
         if (needsWaterVisibilityMeshShader &&
-            !GFX::CompileShaderFileSm6(
-                L"HIKARI/Shaders/Render3D_MeshletWaterVisibilityMS.hlsl",
-                "main",
-                GFX::ShaderStage::Mesh,
-                waterVisibilityMeshShader.GetAddressOf())) {
+            !resolveShader(
+                "HIKARI.EngineShader.Render3D_MeshletWaterVisibilityMS",
+                ASSETS::SHADER::ShaderStage::Mesh,
+                "ms_6_5",
+                waterVisibilityMeshShader)) {
             waterVisibilityShadersReady = false;
             DEBUGLOG::PushRenderError(
-                "[MeshletBackend][WARN] Optional water visibility mesh shader "
-                "failed to compile; opaque SceneDepth fallback remains active.");
+                "[MeshletBackend][WARN] Optional cooked water visibility "
+                "mesh shader is unavailable; opaque SceneDepth fallback "
+                "remains active.");
         }
         if (needsGeometryMeshShader &&
-            !GFX::CompileShaderFileSm6(
-                L"HIKARI/Shaders/Render3D_MeshletGeometryAuxMS.hlsl",
-                "main",
-                GFX::ShaderStage::Mesh,
-                geometryMeshShader.GetAddressOf())) {
+            !resolveShader(
+                "HIKARI.EngineShader.Render3D_MeshletGeometryAuxMS",
+                ASSETS::SHADER::ShaderStage::Mesh,
+                "ms_6_5",
+                geometryMeshShader)) {
             return false;
         }
         if (needsGeometryOutlineMeshShader &&
-            !GFX::CompileShaderFileSm6(
-                L"HIKARI/Shaders/Render3D_MeshletGeometryOutlineMS.hlsl",
-                "main",
-                GFX::ShaderStage::Mesh,
-                geometryOutlineMeshShader.GetAddressOf())) {
-            return false;
+            !resolveShader(
+                "HIKARI.EngineShader.Render3D_MeshletGeometryOutlineMS",
+                ASSETS::SHADER::ShaderStage::Mesh,
+                "ms_6_5",
+                geometryOutlineMeshShader)) {
+            geometryOutlineShadersReady = false;
+            pipelineMask_ &= ~MeshletPipelineMask::GeometryOutline;
+            DEBUGLOG::PushRenderError(
+                "[MeshletBackend][WARN] Optional geometry-outline mesh "
+                "shader is unavailable; core Mesh rendering remains active.");
         }
-        if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardOpaque)) {
+        bool fullForwardPixelShaderReady = false;
+        if (IsPipelineRequested(
+                pipelineMask_,
+                MeshletPipelineKind::ForwardOpaque)) {
             for (size_t variantIndex = 0;
-                variantIndex < kForwardOpaquePipelineVariantCount;
-                ++variantIndex) {
-
-                if (!GFX::CompileShaderFileSm6(
-                    kForwardOpaqueShaderPaths[variantIndex],
-                    "main",
-                    GFX::ShaderStage::Pixel,
-                    forwardPixelShaders[variantIndex].GetAddressOf())) {
+                 variantIndex < kForwardOpaquePipelineVariantCount;
+                 ++variantIndex) {
+                if (!resolveShader(
+                        kForwardOpaqueProgramIds[variantIndex],
+                        ASSETS::SHADER::ShaderStage::Pixel,
+                        "ps_6_0",
+                        forwardPixelShaders[variantIndex])) {
                     return false;
                 }
             }
+            fullForwardPixelShaderReady = true;
         }
-        if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardDepthAware) &&
-            !GFX::CompileShaderFileSm6(
-                L"HIKARI/Shaders/Render3D_GpuDrivenOpaqueFullPS.hlsl",
-                "main",
-                GFX::ShaderStage::Pixel,
-                depthAwarePixelShader.GetAddressOf())) {
-            return false;
-        }
-        if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardTransparent) &&
-            !GFX::CompileShaderFileSm6(
-                L"HIKARI/Shaders/Render3D_GpuDrivenOpaqueFullPS.hlsl",
-                "main",
-                GFX::ShaderStage::Pixel,
-                transparentPixelShader.GetAddressOf())) {
-            return false;
+        if ((IsPipelineRequested(
+                 pipelineMask_,
+                 MeshletPipelineKind::ForwardDepthAware) ||
+             IsPipelineRequested(
+                 pipelineMask_,
+                 MeshletPipelineKind::ForwardTransparent)) &&
+            !fullForwardPixelShaderReady) {
+            if (!resolveShader(
+                    kForwardOpaqueProgramIds[0u],
+                    ASSETS::SHADER::ShaderStage::Pixel,
+                    "ps_6_0",
+                    forwardPixelShaders[0u])) {
+                return false;
+            }
+            fullForwardPixelShaderReady = true;
         }
         if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::Shadow) &&
             !GFX::CompileShaderFileSm6(
@@ -717,47 +789,67 @@ namespace HIKARI::RENDER3D::MESHLET {
         }
         if (IsPipelineRequested(
                 pipelineMask_, MeshletPipelineKind::WaterVisibility) &&
-            !GFX::CompileShaderFileSm6(
-                L"HIKARI/Shaders/Render3D_MeshletWaterVisibilityPS.hlsl",
-                "main",
-                GFX::ShaderStage::Pixel,
-                waterVisibilityPixelShader.GetAddressOf())) {
+            !resolveShader(
+                "HIKARI.EngineShader.Render3D_MeshletWaterVisibilityPS",
+                ASSETS::SHADER::ShaderStage::Pixel,
+                "ps_6_0",
+                waterVisibilityPixelShader)) {
             waterVisibilityShadersReady = false;
             DEBUGLOG::PushRenderError(
-                "[MeshletBackend][WARN] Optional water visibility pixel shader "
-                "failed to compile; opaque SceneDepth fallback remains active.");
+                "[MeshletBackend][WARN] Optional cooked water visibility "
+                "pixel shader is unavailable; opaque SceneDepth fallback "
+                "remains active.");
         }
-        if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAux) &&
-            !GFX::CompileShaderFileSm6(
-                L"HIKARI/Shaders/Render3D_MeshletGeometryAuxPS.hlsl",
-                "main",
-                GFX::ShaderStage::Pixel,
-                geometryPixelShader.GetAddressOf())) {
+        if (IsPipelineRequested(
+                pipelineMask_, MeshletPipelineKind::GeometryAux) &&
+            !resolveShader(
+                "HIKARI.EngineShader.Render3D_MeshletGeometryAuxPS",
+                ASSETS::SHADER::ShaderStage::Pixel,
+                "ps_6_0",
+                geometryPixelShader)) {
             return false;
         }
-        if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAux) &&
-            !GFX::CompileShaderFileSm6(
-                L"HIKARI/Shaders/Render3D_MeshletGeometryAuxFeaturePS.hlsl",
-                "main",
-                GFX::ShaderStage::Pixel,
-                geometryFeatureMaskPixelShader.GetAddressOf())) {
-            return false;
+        if (IsPipelineRequested(
+                pipelineMask_,
+                MeshletPipelineKind::GeometryAuxFeatureMask) &&
+            !resolveShader(
+                "HIKARI.EngineShader.Render3D_MeshletGeometryAuxFeaturePS",
+                ASSETS::SHADER::ShaderStage::Pixel,
+                "ps_6_0",
+                geometryFeatureMaskPixelShader)) {
+            geometryFeatureMaskShadersReady = false;
+            pipelineMask_ &=
+                ~MeshletPipelineMask::GeometryAuxFeatureMask;
+            DEBUGLOG::PushRenderError(
+                "[MeshletBackend][WARN] Optional feature-mask pixel shader "
+                "is unavailable; core Mesh rendering remains active.");
         }
-        if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryOutline) &&
-            !GFX::CompileShaderFileSm6(
-                L"HIKARI/Shaders/Render3D_GeometryOutlinePS.hlsl",
-                "main",
-                GFX::ShaderStage::Pixel,
-                geometryOutlinePixelShader.GetAddressOf())) {
-            return false;
+        if (IsPipelineRequested(
+                pipelineMask_, MeshletPipelineKind::GeometryOutline) &&
+            geometryOutlineShadersReady &&
+            !resolveShader(
+                "HIKARI.EngineShader.Render3D_GeometryOutlinePS",
+                ASSETS::SHADER::ShaderStage::Pixel,
+                "ps_6_0",
+                geometryOutlinePixelShader)) {
+            geometryOutlineShadersReady = false;
+            pipelineMask_ &= ~MeshletPipelineMask::GeometryOutline;
+            DEBUGLOG::PushRenderError(
+                "[MeshletBackend][WARN] Optional geometry-outline pixel "
+                "shader is unavailable; core Mesh rendering remains active.");
         }
-        if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::VisibilityOverlay) &&
-            !GFX::CompileShaderFileSm6(
-                L"HIKARI/Shaders/Render3D_VisibilityOverlayPS.hlsl",
-                "main",
-                GFX::ShaderStage::Pixel,
-                visibilityOverlayPixelShader.GetAddressOf())) {
-            return false;
+        if (IsPipelineRequested(
+                pipelineMask_, MeshletPipelineKind::VisibilityOverlay) &&
+            !resolveShader(
+                "HIKARI.EngineShader.Render3D_VisibilityOverlayPS",
+                ASSETS::SHADER::ShaderStage::Pixel,
+                "ps_6_0",
+                visibilityOverlayPixelShader)) {
+            visibilityOverlayShaderReady = false;
+            pipelineMask_ &= ~MeshletPipelineMask::VisibilityOverlay;
+            DEBUGLOG::PushRenderError(
+                "[MeshletBackend][WARN] Optional visibility-overlay shader "
+                "is unavailable; core Mesh rendering remains active.");
         }
         stats_.shaderCompileReady = true;
 
@@ -776,9 +868,9 @@ namespace HIKARI::RENDER3D::MESHLET {
                     if (CreateMeshletPipelineState(
                         device,
                         rootSignature,
-                        amplificationShader.Get(),
-                        forwardMeshShader.Get(),
-                        forwardPixelShaders[variantIndex].Get(),
+                        ShaderBytecode(amplificationShader),
+                        ShaderBytecode(forwardMeshShader),
+                        ShaderBytecode(forwardPixelShaders[variantIndex]),
                         DXGI_FORMAT_R16G16B16A16_FLOAT,
                         CullModeForBucket(bucket),
                         false,
@@ -796,9 +888,9 @@ namespace HIKARI::RENDER3D::MESHLET {
                 if (CreateMeshletPipelineState(
                     device,
                     rootSignature,
-                    amplificationShader.Get(),
-                    forwardMeshShader.Get(),
-                    depthAwarePixelShader.Get(),
+                    ShaderBytecode(amplificationShader),
+                    ShaderBytecode(forwardMeshShader),
+                    ShaderBytecode(forwardPixelShaders[0u]),
                     DXGI_FORMAT_R16G16B16A16_FLOAT,
                     CullModeForBucket(bucket),
                     true,
@@ -815,9 +907,9 @@ namespace HIKARI::RENDER3D::MESHLET {
                 if (CreateMeshletPipelineState(
                     device,
                     rootSignature,
-                    amplificationShader.Get(),
-                    forwardMeshShader.Get(),
-                    transparentPixelShader.Get(),
+                    ShaderBytecode(amplificationShader),
+                    ShaderBytecode(forwardMeshShader),
+                    ShaderBytecode(forwardPixelShaders[0u]),
                     DXGI_FORMAT_R16G16B16A16_FLOAT,
                     CullModeForBucket(bucket),
                     true,
@@ -834,9 +926,9 @@ namespace HIKARI::RENDER3D::MESHLET {
                 if (CreateMeshletPipelineState(
                     device,
                     rootSignature,
-                    shadowAmplificationShader.Get(),
-                    shadowMeshShader.Get(),
-                    shadowPixelShader.Get(),
+                    ShaderBytecode(shadowAmplificationShader.Get()),
+                    ShaderBytecode(shadowMeshShader.Get()),
+                    ShaderBytecode(shadowPixelShader.Get()),
                     DXGI_FORMAT_UNKNOWN,
                     CullModeForBucket(bucket),
                     false,
@@ -853,9 +945,9 @@ namespace HIKARI::RENDER3D::MESHLET {
                 if (CreateMeshletPipelineState(
                     device,
                     rootSignature,
-                    amplificationShader.Get(),
-                    geometryMeshShader.Get(),
-                    geometryPixelShader.Get(),
+                    ShaderBytecode(amplificationShader),
+                    ShaderBytecode(geometryMeshShader),
+                    ShaderBytecode(geometryPixelShader),
                     DXGI_FORMAT_R16G16B16A16_FLOAT,
                     CullModeForBucket(bucket),
                     false,
@@ -865,14 +957,19 @@ namespace HIKARI::RENDER3D::MESHLET {
                     geometryAuxPipelineStates_[bucketIndex].GetAddressOf())) {
                     ++stats_.pipelineCreateReadyCount;
                 }
+            }
 
+            if (IsPipelineRequested(
+                    pipelineMask_,
+                    MeshletPipelineKind::GeometryAuxFeatureMask) &&
+                geometryFeatureMaskShadersReady) {
                 ++stats_.pipelineCreateRequestCount;
                 if (CreateMeshletPipelineState(
                     device,
                     rootSignature,
-                    amplificationShader.Get(),
-                    geometryMeshShader.Get(),
-                    geometryFeatureMaskPixelShader.Get(),
+                    ShaderBytecode(amplificationShader),
+                    ShaderBytecode(geometryMeshShader),
+                    ShaderBytecode(geometryFeatureMaskPixelShader),
                     DXGI_FORMAT_R16G16B16A16_FLOAT,
                     CullModeForBucket(bucket),
                     false,
@@ -888,14 +985,15 @@ namespace HIKARI::RENDER3D::MESHLET {
             }
 
             if (IsPipelineRequested(
-                    pipelineMask_, MeshletPipelineKind::GeometryOutline)) {
+                    pipelineMask_, MeshletPipelineKind::GeometryOutline) &&
+                geometryOutlineShadersReady) {
                 ++stats_.pipelineCreateRequestCount;
                 if (CreateMeshletPipelineState(
                     device,
                     rootSignature,
-                    amplificationShader.Get(),
-                    geometryOutlineMeshShader.Get(),
-                    geometryOutlinePixelShader.Get(),
+                    ShaderBytecode(amplificationShader),
+                    ShaderBytecode(geometryOutlineMeshShader),
+                    ShaderBytecode(geometryOutlinePixelShader),
                     DXGI_FORMAT_R16G16B16A16_FLOAT,
                     D3D12_CULL_MODE_FRONT,
                     false,
@@ -908,14 +1006,15 @@ namespace HIKARI::RENDER3D::MESHLET {
             }
 
             if (IsPipelineRequested(
-                    pipelineMask_, MeshletPipelineKind::VisibilityOverlay)) {
+                    pipelineMask_, MeshletPipelineKind::VisibilityOverlay) &&
+                visibilityOverlayShaderReady) {
                 ++stats_.pipelineCreateRequestCount;
                 if (CreateMeshletPipelineState(
                     device,
                     rootSignature,
-                    amplificationShader.Get(),
-                    forwardMeshShader.Get(),
-                    visibilityOverlayPixelShader.Get(),
+                    ShaderBytecode(amplificationShader),
+                    ShaderBytecode(forwardMeshShader),
+                    ShaderBytecode(visibilityOverlayPixelShader),
                     DXGI_FORMAT_R16G16B16A16_FLOAT,
                     CullModeForBucket(bucket),
                     true,
@@ -934,9 +1033,9 @@ namespace HIKARI::RENDER3D::MESHLET {
                 if (CreateMeshletPipelineState(
                     device,
                     rootSignature,
-                    amplificationShader.Get(),
-                    depthMeshShader.Get(),
-                    nullptr,
+                    ShaderBytecode(amplificationShader),
+                    ShaderBytecode(depthMeshShader),
+                    {},
                     DXGI_FORMAT_UNKNOWN,
                     CullModeForBucket(bucket),
                     false,
@@ -955,9 +1054,9 @@ namespace HIKARI::RENDER3D::MESHLET {
                 if (CreateMeshletPipelineState(
                         device,
                         rootSignature,
-                        amplificationShader.Get(),
-                        waterVisibilityMeshShader.Get(),
-                        waterVisibilityPixelShader.Get(),
+                        ShaderBytecode(amplificationShader),
+                        ShaderBytecode(waterVisibilityMeshShader),
+                        ShaderBytecode(waterVisibilityPixelShader),
                         DXGI_FORMAT_UNKNOWN,
                         CullModeForBucket(bucket),
                         false,
@@ -969,6 +1068,36 @@ namespace HIKARI::RENDER3D::MESHLET {
                 }
             }
         }
+
+        const auto disableOptionalPipeline = [this](
+            uint32_t mask,
+            PipelineBucketArray& pipelines,
+            const char* diagnostic) {
+            if ((pipelineMask_ & mask) == 0u ||
+                ArePipelinesReady(pipelines)) {
+                return;
+            }
+            for (auto& pipeline : pipelines) {
+                pipeline.Reset();
+            }
+            pipelineMask_ &= ~mask;
+            DEBUGLOG::PushRenderError(diagnostic);
+        };
+        disableOptionalPipeline(
+            MeshletPipelineMask::GeometryAuxFeatureMask,
+            geometryFeatureMaskPipelineStates_,
+            "[MeshletBackend][WARN] Optional feature-mask PSO creation "
+            "failed; core Mesh rendering remains active.");
+        disableOptionalPipeline(
+            MeshletPipelineMask::GeometryOutline,
+            geometryOutlinePipelineStates_,
+            "[MeshletBackend][WARN] Optional geometry-outline PSO creation "
+            "failed; core Mesh rendering remains active.");
+        disableOptionalPipeline(
+            MeshletPipelineMask::VisibilityOverlay,
+            visibilityOverlayPipelineStates_,
+            "[MeshletBackend][WARN] Optional visibility-overlay PSO creation "
+            "failed; core Mesh rendering remains active.");
 
         ResetFrame();
         return stats_.pipelineReady;
@@ -1042,7 +1171,9 @@ namespace HIKARI::RENDER3D::MESHLET {
             IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAux) &&
             ArePipelinesReady(geometryAuxPipelineStates_);
         const bool geometryFeatureMaskReady =
-            IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAux) &&
+            IsPipelineRequested(
+                pipelineMask_,
+                MeshletPipelineKind::GeometryAuxFeatureMask) &&
             ArePipelinesReady(geometryFeatureMaskPipelineStates_);
         const bool geometryOutlineReady =
             IsPipelineRequested(
@@ -1117,7 +1248,9 @@ namespace HIKARI::RENDER3D::MESHLET {
             IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAux) &&
             ArePipelinesReady(geometryAuxPipelineStates_);
         stats_.geometryFeatureMaskPipelineReady =
-            IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAux) &&
+            IsPipelineRequested(
+                pipelineMask_,
+                MeshletPipelineKind::GeometryAuxFeatureMask) &&
             ArePipelinesReady(geometryFeatureMaskPipelineStates_);
         stats_.geometryOutlinePipelineReady =
             IsPipelineRequested(
