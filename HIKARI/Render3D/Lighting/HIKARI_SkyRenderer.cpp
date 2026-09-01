@@ -384,6 +384,10 @@ namespace HIKARI::SKYRENDERER {
                 constantDrawCursors{};
             std::string loadedTexturePath{};
             std::string loadedCubemapPath{};
+            bool loadedTextureIsLinear = false;
+            bool loadedCubemapIsLinear = false;
+            bool textureLoadAttempted = false;
+            bool cubemapLoadAttempted = false;
             RENDER3D::TextureResourceHandle textureResource{};
             RENDER3D::TextureResourceHandle cubemapResource{};
             RENDER3D::TextureResourceHandle fallbackTextureResource{};
@@ -672,19 +676,27 @@ namespace HIKARI::SKYRENDERER {
                 return {};
             }
 
-            g.debug.activeTexturePath = skyAsset->texturePath;
-            if (g.loadedTexturePath != skyAsset->texturePath ||
-                !RENDER3D::IsTextureResourceValid(g.textureResource)) {
+            const std::string& path = skyAsset->texturePath;
+            const bool isLinear = skyAsset->textureIsLinear;
+            g.debug.activeTexturePath = path;
+            if (g.loadedTexturePath != path ||
+                g.loadedTextureIsLinear != isLinear) {
                 RENDER3D::ReleaseTextureResource(g.textureResource);
-                g.loadedTexturePath = skyAsset->texturePath;
+                g.loadedTexturePath = path;
+                g.loadedTextureIsLinear = isLinear;
+                g.textureLoadAttempted = false;
                 g.textureResource = {};
                 g.textureHandle = -1;
-                if (!skyAsset->texturePath.empty()) {
+            }
+            if (!g.textureLoadAttempted &&
+                !RENDER3D::IsTextureResourceValid(g.textureResource)) {
+                g.textureLoadAttempted = true;
+                if (!path.empty()) {
                     g.textureResource =
                         RENDER3D::LoadTextureResourceWithColorSpace(
                         "sky_renderer/scene_sky",
-                        skyAsset->texturePath,
-                        skyAsset->textureIsLinear
+                        path,
+                        isLinear
                             ? RENDER3D::TextureResourceColorSpace::Linear
                             : RENDER3D::TextureResourceColorSpace::Srgb);
                     g.textureHandle =
@@ -693,7 +705,7 @@ namespace HIKARI::SKYRENDERER {
                     if (RENDER3D::IsTextureResourceValid(
                             g.textureResource)) {
                         LogPanoramaTextureQuality(
-                            skyAsset->texturePath,
+                            path,
                             g.textureResource);
                     }
                 }
@@ -716,19 +728,28 @@ namespace HIKARI::SKYRENDERER {
             }
 
             const std::string path = skyAsset->texturePath;
+            const bool isLinear = skyAsset->textureIsLinear;
             g.debug.activeTexturePath = path;
             if (path.empty()) {
                 return {};
             }
 
             if (g.loadedCubemapPath != path ||
-                !RENDER3D::IsTextureResourceValid(g.cubemapResource)) {
+                g.loadedCubemapIsLinear != isLinear) {
                 RENDER3D::ReleaseTextureResource(g.cubemapResource);
                 g.loadedCubemapPath = path;
+                g.loadedCubemapIsLinear = isLinear;
+                g.cubemapLoadAttempted = false;
+                g.cubemapResource = {};
+                g.cubemapHandle = -1;
+            }
+            if (!g.cubemapLoadAttempted &&
+                !RENDER3D::IsTextureResourceValid(g.cubemapResource)) {
+                g.cubemapLoadAttempted = true;
                 g.cubemapResource = RENDER3D::LoadCubemapResource(
                     "sky_renderer/scene_sky_cube",
                     path,
-                    skyAsset->textureIsLinear
+                    isLinear
                         ? RENDER3D::TextureResourceColorSpace::Linear
                         : RENDER3D::TextureResourceColorSpace::Srgb);
                 g.cubemapHandle = RENDER3D::GetTextureResourceBackendHandle(g.cubemapResource);
@@ -784,6 +805,10 @@ namespace HIKARI::SKYRENDERER {
 
         g.loadedTexturePath.clear();
         g.loadedCubemapPath.clear();
+        g.loadedTextureIsLinear = false;
+        g.loadedCubemapIsLinear = false;
+        g.textureLoadAttempted = false;
+        g.cubemapLoadAttempted = false;
 
         g.textureResource = {};
         g.cubemapResource = {};
