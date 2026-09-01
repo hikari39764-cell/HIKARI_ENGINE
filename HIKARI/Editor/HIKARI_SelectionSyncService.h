@@ -17,6 +17,11 @@ namespace HIKARI {
 
         bool SyncSelectedObjectBackToDocument(DocumentSceneBase& scene, EditorSelection& selection, bool& sceneDirty, uint64_t& nextSceneObjectId) const;
         bool RebuildRuntimeWorldWithSelectionSync(DocumentSceneBase& scene, EditorSelection& selection, uint64_t& nextSceneObjectId) const;
+        void SynchronizeAfterRuntimeWorldRebuild(
+            DocumentSceneBase& scene,
+            EditorSelection& selection,
+            uint64_t& nextSceneObjectId,
+            SceneObjectId activeObjectId) const;
         void SyncNextSceneObjectId(DocumentSceneBase& scene, uint64_t& nextSceneObjectId) const;
     };
 

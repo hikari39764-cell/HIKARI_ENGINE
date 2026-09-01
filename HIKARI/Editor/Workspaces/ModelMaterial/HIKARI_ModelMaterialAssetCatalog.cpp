@@ -46,7 +46,12 @@ void ModelMaterialWorkspaceController::EnsureBuiltInRampPresets(
     createdAny = true;
   }
   if (createdAny) {
-    (void)scene.ReloadAssets();
+    if (!scene.ReloadAssets()) {
+      statusMessage_ =
+          "Built-in Ramp assets were created, but Registry publication "
+          "failed";
+      return;
+    }
     assetChoiceRevision_ = 0u;
   }
   rampPresetProjectRoot_ = projectRoot;

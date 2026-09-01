@@ -373,7 +373,9 @@ namespace HIKARI::EDITOR {
                 return {};
             }
 
-            assetDatabase.ScanAssets(false);
+            if (!assetDatabase.ScanAssets(false)) {
+                return {};
+            }
 
             ProjectSettingsService settings{};
             settings.Load(projectRoot);
@@ -734,7 +736,8 @@ namespace HIKARI::EDITOR {
         ProjectSettingsService projectSettings{};
         if (projectSettings.Load(projectRoot)) {
             if (effectiveOptions.startupSceneGuid.empty() &&
-                projectSettings.GetSettings().startupSceneGuid.IsValid()) {
+                IsValidAssetGuid(
+                    projectSettings.GetSettings().startupSceneGuid.value)) {
                 effectiveOptions.startupSceneGuid =
                     projectSettings.GetSettings().startupSceneGuid.value;
             }
@@ -743,6 +746,25 @@ namespace HIKARI::EDITOR {
             effectiveOptions.sceneGuids.end(),
             cookManifest.sceneGuids.begin(),
             cookManifest.sceneGuids.end());
+        if (!effectiveOptions.startupSceneGuid.empty() &&
+            !IsValidAssetGuid(effectiveOptions.startupSceneGuid)) {
+            return {
+                false,
+                {},
+                "Startup Scene GUID must be 32 hexadecimal characters."
+            };
+        }
+        for (const std::string& sceneGuid :
+             effectiveOptions.sceneGuids) {
+            if (!IsValidAssetGuid(sceneGuid)) {
+                return {
+                    false,
+                    {},
+                    "Export Scene GUID must be 32 hexadecimal characters: " +
+                        sceneGuid
+                };
+            }
+        }
         if (effectiveOptions.sceneGuids.empty() &&
             !effectiveOptions.startupSceneGuid.empty()) {
             // Export() is also used by non-UI callers.  Resolve the canonical

@@ -238,7 +238,11 @@ bool CreateFolderFromBrowser(AssetDatabase &assetDatabase,
   if (!relativeEc) {
     currentDirectory = relative.lexically_normal();
   }
-  assetDatabase.ScanAssets(true);
+  if (!assetDatabase.ScanAssets(true)) {
+    lastOperationMessage =
+        TEXT::Localize("ui.assetBrowser.assetDatabaseRefreshFailed");
+    return false;
+  }
   lastOperationMessage =
       TEXT::Localize("ui.assetBrowser.folderCreated");
   return true;
@@ -261,7 +265,11 @@ bool CreateSceneFromBrowser(AssetDatabase &assetDatabase,
     return false;
   }
 
-  assetDatabase.ScanAssets(true);
+  if (!assetDatabase.ScanAssets(true)) {
+    lastOperationMessage =
+        TEXT::Localize("ui.assetBrowser.assetDatabaseRefreshFailed");
+    return false;
+  }
   currentDirectory = scenePath.parent_path();
   if (const AssetRecord *sceneRecord = assetDatabase.FindByPath(scenePath)) {
     SelectRecord(*sceneRecord, selection);
@@ -290,7 +298,11 @@ bool CreateMaterialFromBrowser(AssetDatabase &assetDatabase,
     return false;
   }
 
-  assetDatabase.ScanAssets(true);
+  if (!assetDatabase.ScanAssets(true)) {
+    lastOperationMessage =
+        TEXT::Localize("ui.assetBrowser.assetDatabaseRefreshFailed");
+    return false;
+  }
   currentDirectory = materialPath.parent_path();
   if (const AssetRecord *materialRecord =
           assetDatabase.FindByPath(materialPath)) {

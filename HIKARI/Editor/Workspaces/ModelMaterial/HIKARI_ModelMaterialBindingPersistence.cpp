@@ -83,9 +83,13 @@ bool ModelMaterialWorkspaceController::LoadOrCreateBindings(
                      : created.message + "; an unsaved set remains editable";
     return false;
   }
+  if (!scene.ReloadAssets()) {
+    outMessage =
+        "Material Set was created, but Registry publication failed";
+    return false;
+  }
   authoringDocument_.OpenBindings(modelGuid_, created.assetGuid,
                                   created.sourcePath, {}, true);
-  (void)scene.ReloadAssets();
   outMessage = "created a model-owned Material Set";
   return true;
 }
@@ -144,11 +148,12 @@ bool ModelMaterialWorkspaceController::CreateMaterialSet(
   if (!created.success) {
     return false;
   }
-  authoringDocument_.OpenBindings(
-      modelGuid_, created.assetGuid, created.sourcePath, {}, true);
   if (!scene.ReloadAssets()) {
     outMessage += "; editor registry refresh failed";
+    return false;
   }
+  authoringDocument_.OpenBindings(
+      modelGuid_, created.assetGuid, created.sourcePath, {}, true);
   assetChoiceRevision_ = 0u;
   RebuildSlotState(scene.GetAssetDatabase(), scene.GetAssetRegistry());
   return true;
@@ -186,12 +191,12 @@ bool ModelMaterialWorkspaceController::SaveBindings(
   if (!saved.success) {
     return false;
   }
-  authoringDocument_.MarkBindingsSaved(saved.assetGuid, saved.sourcePath);
   if (!scene.ReloadAssets()) {
     outMessage += "; editor registry refresh failed";
-  } else {
-    (void)scene.RebuildMaterialOverrides();
+    return false;
   }
+  authoringDocument_.MarkBindingsSaved(saved.assetGuid, saved.sourcePath);
+  (void)scene.RebuildMaterialOverrides();
   return true;
 }
 

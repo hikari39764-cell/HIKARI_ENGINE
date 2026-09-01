@@ -676,7 +676,36 @@ namespace HIKARI {
         return OpenStartupSceneAsset();
     }
     bool DocumentSceneBase::RebuildRuntimeWorld(
-        bool reconfigureWorldServices) {
+        bool reconfigureWorldServices,
+        bool assetSnapshotAlreadyRefreshed) {
+        SceneDependencySet deps = state_->runtime.builder.CollectDependencies(
+            state_->identity.document,
+            &state_->runtime.componentRegistry);
+        const auto rejectAssetAdmission = [](const char* message) {
+            HIKARI_LOG_ERROR(message);
+            return false;
+        };
+        if (state_->assets.NeedsRuntimeDependencyRegistryRefresh(deps)) {
+            if (assetSnapshotAlreadyRefreshed) {
+                return rejectAssetAdmission(
+                    "[SceneRuntime] freshly published asset registry is "
+                    "missing required Scene dependencies.");
+            }
+            if (!ReloadAssets()) {
+                return rejectAssetAdmission(
+                    "[SceneRuntime] asset registry refresh failed before "
+                    "runtime rebuild.");
+            }
+            deps = state_->runtime.builder.CollectDependencies(
+                state_->identity.document,
+                &state_->runtime.componentRegistry);
+            if (state_->assets.NeedsRuntimeDependencyRegistryRefresh(deps)) {
+                return rejectAssetAdmission(
+                    "[SceneRuntime] runtime rebuild rejected because "
+                    "required asset descriptors remain unavailable.");
+            }
+        }
+
         SERVICES::GetActionTimeDilationService().ReleaseOwner(
             &state_->runtime.world);
         state_->runtime.gameUiPresentationService.Reset();
@@ -713,20 +742,6 @@ namespace HIKARI {
             if (!ConfigureRuntimeWorldServices()) {
                 RuntimeSceneContext::SetCurrentWorld(nullptr);
                 return false;
-            }
-        }
-
-        SceneDependencySet deps = state_->runtime.builder.CollectDependencies(
-            state_->identity.document,
-            &state_->runtime.componentRegistry);
-        if (state_->assets.NeedsRuntimeDependencyRegistryRefresh(deps)) {
-            // Editor 蛛ｴ縺ｧ霑ｽ蜉繝ｻ蜀絞mport 縺輔ｌ縺・asset descriptor 繧・runtime build 蜑阪↓蜷梧悄縺吶ｋ縲・
-            if (ReloadAssets()) {
-                deps = state_->runtime.builder.CollectDependencies(
-                    state_->identity.document,
-                    &state_->runtime.componentRegistry);
-            } else {
-                HIKARI_LOG_WARN("[SceneRuntime] asset registry refresh failed before runtime rebuild.");
             }
         }
 

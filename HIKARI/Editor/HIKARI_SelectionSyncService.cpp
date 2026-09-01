@@ -107,14 +107,26 @@ namespace HIKARI {
     bool SelectionSyncService::RebuildRuntimeWorldWithSelectionSync(DocumentSceneBase& scene, EditorSelection& selection, uint64_t& nextSceneObjectId) const {
         const SceneObjectId activeObjectId =
             selection.GetActiveObjectId();
-        selection.selectedObject = nullptr;
         const bool built = scene.RebuildRuntimeWorld();
+        SynchronizeAfterRuntimeWorldRebuild(
+            scene,
+            selection,
+            nextSceneObjectId,
+            activeObjectId);
+        return built;
+    }
+
+    void SelectionSyncService::SynchronizeAfterRuntimeWorldRebuild(
+        DocumentSceneBase& scene,
+        EditorSelection& selection,
+        uint64_t& nextSceneObjectId,
+        SceneObjectId activeObjectId) const {
+        selection.selectedObject = nullptr;
         selection.RepairObjectSelection(
             scene.GetWorld(),
             activeObjectId);
         selection.ClearAsset();
         SyncNextSceneObjectId(scene, nextSceneObjectId);
-        return built;
     }
 
     void SelectionSyncService::SyncNextSceneObjectId(DocumentSceneBase& scene, uint64_t& nextSceneObjectId) const {

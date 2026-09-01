@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <vector>
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
 #include "Assets/HIKARI_AssetImportState.h"
 #include "Core/HIKARI_Logger.h"
@@ -2546,23 +2547,50 @@ namespace HIKARI {
                 viewportDropMessage_ = SummarizeRuntimeRefreshReport(context_.lastRuntimeRefreshReport);
             };
 
-            if (resourceWorkspacePanel_.ConsumeRefreshCurrentSceneResourcesRequested()) {
+            const bool refreshCurrentScene =
+                resourceWorkspacePanel_.
+                    ConsumeRefreshCurrentSceneResourcesRequested();
+            const std::string refreshRuntimeGuid =
+                resourceWorkspacePanel_.ConsumeRefreshRuntimeAssetGuid();
+            const std::string reimportAndRefreshRuntimeGuid =
+                resourceWorkspacePanel_.
+                    ConsumeReimportAndRefreshRuntimeAssetGuid();
+            const std::string refreshRuntimeMaterialGuid =
+                resourceWorkspacePanel_.ConsumeRefreshRuntimeMaterialGuid();
+            std::vector<AssetId> targetedRefreshAssets{};
+            const auto appendTargetedRefresh =
+                [&targetedRefreshAssets](const std::string& guid) {
+                    if (guid.empty() ||
+                        std::ranges::any_of(
+                            targetedRefreshAssets,
+                            [&guid](const AssetId& id) {
+                                return id.value == guid;
+                            })) {
+                        return;
+                    }
+                    targetedRefreshAssets.push_back(AssetId{ guid });
+                };
+            appendTargetedRefresh(refreshRuntimeGuid);
+            appendTargetedRefresh(reimportAndRefreshRuntimeGuid);
+            appendTargetedRefresh(refreshRuntimeMaterialGuid);
+
+            bool assetRegistryPublished = false;
+            if (refreshCurrentScene) {
                 EDITOR::ClearMaterialTextureSlotPreviewCache();
                 // 霑ｴ・ｾ陜ｨ・ｨ邵ｺ・ｮ SceneDocument 邵ｺ・ｫ陷・ｽｺ邵ｺ・ｦ邵ｺ荳奇ｽ玖嵩譎擾ｽｭ繝ｻresource 郢ｧ蛛ｵ竏ｪ邵ｺ・ｨ郢ｧ竏壺ｻ陟托ｽｵ郢ｧ鬘泌ｳｩ邵ｺ蜷ｶﾂ繝ｻ
-                applyRefreshReport(refreshService.RefreshCurrentSceneResources(scene));
+                RuntimeResourceRefreshReport report =
+                    refreshService.RefreshCurrentSceneResources(scene);
+                assetRegistryPublished = report.assetRegistryPublished;
+                applyRefreshReport(std::move(report));
             }
 
-            const std::string refreshRuntimeGuid = resourceWorkspacePanel_.ConsumeRefreshRuntimeAssetGuid();
-            if (!refreshRuntimeGuid.empty()) {
+            if (!targetedRefreshAssets.empty() &&
+                (!refreshCurrentScene || assetRegistryPublished)) {
                 EDITOR::ClearMaterialTextureSlotPreviewCache();
-                applyRefreshReport(refreshService.RefreshAsset(scene, AssetId{ refreshRuntimeGuid }));
-            }
-
-            const std::string reimportAndRefreshRuntimeGuid =
-                resourceWorkspacePanel_.ConsumeReimportAndRefreshRuntimeAssetGuid();
-            if (!reimportAndRefreshRuntimeGuid.empty()) {
-                EDITOR::ClearMaterialTextureSlotPreviewCache();
-                applyRefreshReport(refreshService.RefreshAsset(scene, AssetId{ reimportAndRefreshRuntimeGuid }));
+                applyRefreshReport(refreshService.RefreshAssets(
+                    scene,
+                    targetedRefreshAssets,
+                    assetRegistryPublished));
             }
 
             AssetGuid applyMaterialGuid{};
@@ -2578,12 +2606,6 @@ namespace HIKARI {
                 viewportDropMessage_ = SummarizeRuntimeRefreshReport(context_.lastRuntimeRefreshReport);
             }
 
-            const std::string refreshRuntimeMaterialGuid =
-                resourceWorkspacePanel_.ConsumeRefreshRuntimeMaterialGuid();
-            if (!refreshRuntimeMaterialGuid.empty()) {
-                EDITOR::ClearMaterialTextureSlotPreviewCache();
-                applyRefreshReport(refreshService.RefreshAsset(scene, AssetId{ refreshRuntimeMaterialGuid }));
-            }
         }
         bool environmentEditActive = false;
         if (context_.windows.resources.showEnvironment) {

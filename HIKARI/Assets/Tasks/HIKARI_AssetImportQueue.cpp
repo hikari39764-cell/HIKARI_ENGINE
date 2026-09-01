@@ -84,6 +84,9 @@ namespace HIKARI {
         const std::vector<AssetGuid>& guids,
         std::string label) {
 
+        if (!CheckOwnerThread("queued asset import")) {
+            return false;
+        }
         if (cookedContent_) {
             HIKARI_LOG_ERROR(
                 "[AssetDatabase] cooked content is read-only; "
@@ -186,6 +189,9 @@ namespace HIKARI {
     }
 
     bool AssetDatabase::QueueImportAllOutdated(std::string label) {
+        if (!CheckOwnerThread("queued outdated asset import")) {
+            return false;
+        }
         std::vector<AssetGuid> guids{};
         guids.reserve(records_.size());
         for (const AssetRecord& record : records_) {
@@ -206,6 +212,9 @@ namespace HIKARI {
         bool recursive,
         std::string label) {
 
+        if (!CheckOwnerThread("queued directory asset import")) {
+            return false;
+        }
         std::vector<AssetGuid> guids{};
         const std::vector<const AssetRecord*> records =
             CollectInDirectory(directory, recursive);
@@ -233,6 +242,9 @@ namespace HIKARI {
         bool includeSelf,
         std::string label) {
 
+        if (!CheckOwnerThread("queued dependency asset import")) {
+            return false;
+        }
         const AssetRecord* rootRecord = FindByGuid(guid);
         if (rootRecord == nullptr) {
             return false;
@@ -533,6 +545,9 @@ namespace HIKARI {
     }
 
     bool AssetDatabase::RequestCancelQueuedImport() {
+        if (!CheckOwnerThread("queued asset import cancellation")) {
+            return false;
+        }
         const std::shared_ptr<QueuedImportBatch> operation =
             queuedImportBatch_;
         if (!operation || !operation->status.active) {
@@ -552,6 +567,9 @@ namespace HIKARI {
     }
 
     AssetImportBatchStatus AssetDatabase::GetQueuedImportStatus() const {
+        if (!CheckOwnerThread("queued asset import status query")) {
+            return {};
+        }
         if (queuedImportBatch_) {
             return queuedImportBatch_->status;
         }
@@ -561,6 +579,9 @@ namespace HIKARI {
     bool AssetDatabase::ConsumeCompletedImportBatch(
         AssetImportBatchStatus& outStatus) {
 
+        if (!CheckOwnerThread("completed asset import consumption")) {
+            return false;
+        }
         if (!completedImportBatchPending_) {
             return false;
         }
@@ -570,6 +591,9 @@ namespace HIKARI {
     }
 
     void AssetDatabase::PumpAssetTasks() {
+        if (!CheckOwnerThread("asset task pump")) {
+            return;
+        }
         assetTaskService_.PumpMainThreadCompletions();
     }
 

@@ -10,6 +10,7 @@ namespace HIKARI {
     class DocumentSceneBase;
 
     struct RuntimeResourceRefreshReport {
+        bool assetRegistryPublished = false;
         int textureInvalidatedCount = 0;
         int skyInvalidatedCount = 0;
         int modelReloadedCount = 0;
@@ -24,16 +25,24 @@ namespace HIKARI {
     public:
         RuntimeResourceRefreshReport RefreshAsset(
             DocumentSceneBase& scene,
-            const AssetId& assetId);
+            const AssetId& assetId,
+            bool assetRegistryAlreadyPublished = false);
 
         RuntimeResourceRefreshReport RefreshAssets(
             DocumentSceneBase& scene,
-            const std::vector<AssetId>& assetIds);
+            const std::vector<AssetId>& assetIds,
+            bool assetRegistryAlreadyPublished = false);
 
         RuntimeResourceRefreshReport RefreshCurrentSceneResources(
-            DocumentSceneBase& scene);
+            DocumentSceneBase& scene,
+            bool assetRegistryAlreadyPublished = false);
 
     private:
+        bool EnsureAssetRegistryPublished(
+            DocumentSceneBase& scene,
+            bool alreadyPublished,
+            RuntimeResourceRefreshReport& report);
+
         bool RefreshTextureAsset(
             DocumentSceneBase& scene,
             const TextureAssetDescriptor& descriptor,

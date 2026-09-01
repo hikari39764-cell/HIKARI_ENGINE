@@ -172,14 +172,25 @@ namespace HIKARI {
             return;
         }
 
-        ReloadAssets();
+        const bool assetsReady = ReloadAssets();
+        if (!assetsReady) {
+            HIKARI_LOG_ERROR(
+                "[SceneAsset] startup asset publication failed; "
+                "Scene initialization was canceled.");
+            OnExit();
+            return;
+        }
         state_->assets.SequenceAssets().SetAssetDatabase(&state_->assets.Database());
         state_->camera.sequencePlayback.SetAssetStore(&state_->assets.SequenceAssets());
         state_->runtime.dialogueAssets.SetAssetDatabase(
             &state_->assets.Database());
-        if (!OpenStartupSceneAsset()) {
+        if (!OpenStartupSceneAssetWithCurrentAssets()) {
             CreateTransientEmptySceneDocument();
-            RebuildRuntimeWorld();
+            if (!RebuildRuntimeWorld(false, true)) {
+                HIKARI_LOG_ERROR(
+                    "[SceneAsset] transient Scene initialization failed.");
+                OnExit();
+            }
         }
     }
     void DocumentSceneBase::OnExit() {
@@ -197,10 +208,9 @@ namespace HIKARI {
         state_->runtime.systemScheduler.DetachWorld(state_->runtime.world);
         state_->runtime.systemScheduler.Clear();
         state_->runtime.presentationModelService.Clear();
-        // RenderSubmissionSystem owns process-static scene/GPU caches.  The
-        // next World may reuse the same asset context, which otherwise would
-        // skip invalidation and retain render-only presentation objects.
-        RenderSubmissionSystem::InvalidateSceneResources(false);
+        // RenderSubmissionSystem borrows the document-owned Registry and
+        // ModelManager. Clear both before DocumentSceneState is destroyed.
+        RenderSubmissionSystem::SetAssetContext(nullptr, {}, nullptr);
         // Components detach while World services (including RuntimeBinding)
         // are still available, so SDK contexts can release owned writers.
         state_->runtime.world.Clear();

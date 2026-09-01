@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 #include "Assets/HIKARI_AssetDatabase.h"
@@ -57,6 +58,7 @@ namespace HIKARI {
     private:
         AssetDatabase database_{};
         AssetRegistry registry_{};
+        uint64_t registrySourceRevision_ = 0u;
         SequenceAssetStore sequenceAssets_{};
         ModelManager models_{};
     };

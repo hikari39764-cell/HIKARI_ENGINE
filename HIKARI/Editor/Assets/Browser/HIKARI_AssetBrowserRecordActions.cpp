@@ -207,19 +207,24 @@ void DrawRecordContextMenu(
       std::filesystem::path duplicatedPath{};
       std::string error{};
       if (DuplicateSceneAsset(assetDatabase, record, duplicatedPath, error)) {
-        assetDatabase.ScanAssets(true);
-        if (const AssetRecord *duplicated =
-                assetDatabase.FindByPath(duplicatedPath)) {
-          SelectRecord(*duplicated, selection);
+        if (!assetDatabase.ScanAssets(true)) {
+          lastOperationMessage =
+              TEXT::Localize("ui.assetBrowser.assetDatabaseRefreshFailed");
+        } else {
+          if (const AssetRecord *duplicated =
+                  assetDatabase.FindByPath(duplicatedPath)) {
+            SelectRecord(*duplicated, selection);
+          }
+          lastOperationMessage =
+              TEXT::Localize("ui.assetBrowser.sceneDuplicated");
         }
-        lastOperationMessage =
-            TEXT::Localize("ui.assetBrowser.sceneDuplicated");
       } else {
         lastOperationMessage =
             error.empty()
                 ? TEXT::Localize("ui.assetBrowser.sceneDuplicateFailed")
                 : error;
       }
+      return;
     }
     if (ImGui::MenuItem(
             TEXT::Localize("ui.assetBrowser.renameScene").c_str())) {

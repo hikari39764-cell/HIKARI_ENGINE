@@ -72,7 +72,13 @@ namespace HIKARI::EDITOR {
             updatedRecord.displayName = sequence.name;
             updatedRecord.meta.displayName = sequence.name;
             (void)assetDatabase.WriteMeta(updatedRecord);
-            (void)assetDatabase.ScanAssets(false);
+            if (!assetDatabase.ScanAssets(false)) {
+                result.assetGuid = guid;
+                result.sourcePath = sourcePath;
+                result.message =
+                    "Sequence saved, but the asset scan failed";
+                return result;
+            }
             const bool imported = assetDatabase.ImportAsset(guid);
             result.success = imported;
             result.assetGuid = guid;
@@ -128,7 +134,13 @@ namespace HIKARI::EDITOR {
             result.message = std::move(error);
             return result;
         }
-        (void)assetDatabase.ScanAssets(false);
+        if (!assetDatabase.ScanAssets(false)) {
+            result.assetGuid = guid;
+            result.sourcePath = sourcePath;
+            result.message =
+                "Sequence asset was created, but the final scan failed";
+            return result;
+        }
         result.success = assetDatabase.ImportAsset(guid);
         result.assetGuid = guid;
         result.sourcePath = sourcePath;

@@ -2,6 +2,7 @@
 
 #include <cstdio>
 
+#include "Core/HIKARI_Logger.h"
 #include "Core/Text/HIKARI_Localization.h"
 #include "Editor/HIKARI_EditorContext.h"
 #include "Editor/HIKARI_SelectionSyncService.h"
@@ -73,17 +74,30 @@ namespace HIKARI {
 
         if (ImGui::Button(
                 TEXT::Localize("ui.toolbar.reloadAssets").c_str())) {
-            scene.ReloadAssets();
+            if (!scene.ReloadAssets()) {
+                HIKARI_LOG_WARN(
+                    "[SceneAsset] toolbar asset refresh was rejected.");
+            }
         }
         ImGui::SameLine();
         if (ImGui::Button(
                 TEXT::Localize("ui.toolbar.reloadScene").c_str())) {
-            scene.ReloadSceneDocument();
-            context.sceneDirty = false;
-            selectionSync.RebuildRuntimeWorldWithSelectionSync(scene, context.selection, context.nextSceneObjectId);
-            context.sceneNameEditBuffer = scene.GetSceneDocument().sceneName;
-            context.saveAsNameBuffer = scene.GetSceneDocument().sceneName;
-            context.saveAsNameOverriddenByUser = false;
+            const SceneObjectId activeObjectId =
+                context.selection.GetActiveObjectId();
+            const bool reloaded = scene.ReloadSceneDocument();
+            selectionSync.SynchronizeAfterRuntimeWorldRebuild(
+                scene,
+                context.selection,
+                context.nextSceneObjectId,
+                activeObjectId);
+            if (reloaded) {
+                context.sceneDirty = false;
+                context.sceneNameEditBuffer =
+                    scene.GetSceneDocument().sceneName;
+                context.saveAsNameBuffer =
+                    scene.GetSceneDocument().sceneName;
+                context.saveAsNameOverriddenByUser = false;
+            }
         }
         ImGui::SameLine();
         if (ImGui::Button(

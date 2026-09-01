@@ -113,12 +113,19 @@ void DrawRecordList(
     }
 
     if (ImGui::BeginPopupContextItem()) {
+      const uint64_t recordRevision =
+          assetDatabase.GetContentRevision();
       DrawRecordContextMenu(
           assetDatabase, *record, selection, lastOperationMessage, context,
           activatedAsset, saveSceneAsGuid, refreshRuntimeAssetGuid,
           pendingReimportAndRefreshRuntimeAssetGuid, renameSceneGuid,
           deleteSceneGuid, renameSceneNameBuffer);
       ImGui::EndPopup();
+      if (assetDatabase.GetContentRevision() != recordRevision) {
+        ImGui::PopID();
+        ImGui::EndTable();
+        return;
+      }
     }
 
     ImGui::TableSetColumnIndex(1);
@@ -196,12 +203,19 @@ void DrawRecordCompactRows(
       DrawRecordTooltip(*record);
     }
     if (ImGui::BeginPopupContextItem()) {
+      const uint64_t recordRevision =
+          assetDatabase.GetContentRevision();
       DrawRecordContextMenu(
           assetDatabase, *record, selection, lastOperationMessage, context,
           activatedAsset, saveSceneAsGuid, refreshRuntimeAssetGuid,
           pendingReimportAndRefreshRuntimeAssetGuid, renameSceneGuid,
           deleteSceneGuid, renameSceneNameBuffer);
       ImGui::EndPopup();
+      if (assetDatabase.GetContentRevision() != recordRevision) {
+        ImGui::PopID();
+        ImGui::EndTable();
+        return;
+      }
     }
 
     const AssetImportState state = GetImportState(*record);
@@ -293,12 +307,19 @@ void DrawRecordGrid(
       HandleRecordActivated(*record, lastOperationMessage, activatedAsset);
     }
     if (ImGui::BeginPopupContextItem()) {
+      const uint64_t recordRevision =
+          assetDatabase.GetContentRevision();
       DrawRecordContextMenu(
           assetDatabase, *record, selection, lastOperationMessage, context,
           activatedAsset, saveSceneAsGuid, refreshRuntimeAssetGuid,
           pendingReimportAndRefreshRuntimeAssetGuid, renameSceneGuid,
           deleteSceneGuid, renameSceneNameBuffer);
       ImGui::EndPopup();
+      if (assetDatabase.GetContentRevision() != recordRevision) {
+        ImGui::PopID();
+        ImGui::EndTable();
+        return;
+      }
     }
 
     const ImVec4 baseColor =

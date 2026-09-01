@@ -2,7 +2,9 @@
 
 #include <filesystem>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -11,6 +13,8 @@
 #include "Tasks/HIKARI_AssetTaskService.h"
 
 namespace HIKARI {
+
+    class DocumentSceneAssetBindings;
 
     struct AssetImportBatchResult {
         int attempted = 0;
@@ -128,11 +132,27 @@ namespace HIKARI {
         ClusteredGeometryArtifactInfo GetClusteredGeometryArtifactInfo(const AssetGuid& guid) const;
 
     private:
+        friend class DocumentSceneAssetBindings;
+
+        struct ContentSnapshot {
+            std::vector<AssetRecord> records{};
+            std::vector<std::filesystem::path> directories{};
+            std::unordered_map<std::string, size_t> recordsByGuid{};
+            std::unordered_map<std::string, size_t> guidByNormalizedPath{};
+            uint64_t contentRevision = 1u;
+        };
+
+        ContentSnapshot TakeContentSnapshot() noexcept;
+        void RestoreContentSnapshot(ContentSnapshot&& snapshot) noexcept;
+        bool TryTakeContentSnapshot(ContentSnapshot& outSnapshot);
+        bool CheckOwnerThread(const char* operation) const;
+        bool CanReplaceContentSnapshot() const;
         AssetRecord BuildRecordForSource(const std::filesystem::path& sourcePath, bool createMissingMeta);
         AssetType GuessAssetTypeFromPath(const std::filesystem::path& sourcePath) const;
         std::string SelectDefaultImporterId(AssetType type, const std::filesystem::path& sourcePath) const;
 
         void RegisterDefaultImporters();
+        bool ScanAssetsInPlace(bool createMissingMeta);
         void EnsureProjectDirectories() const;
         bool LoadCookedRecords();
         void AddDirectoryToCache(const std::filesystem::path& directory);
@@ -177,6 +197,8 @@ namespace HIKARI {
         AssetImportBatchStatus lastCompletedImportBatch_{};
         bool completedImportBatchPending_ = false;
         AssetTaskService assetTaskService_{};
+        mutable std::mutex ownerThreadMutex_{};
+        std::thread::id ownerThread_{};
     };
 
 } // namespace HIKARI

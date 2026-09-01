@@ -359,7 +359,11 @@ void ProcessDroppedFiles(AssetDatabase &assetDatabase,
 
   if (copiedFiles.empty()) {
     if (copiedCompanionCount > 0) {
-      assetDatabase.ScanAssets(false);
+      if (!assetDatabase.ScanAssets(false)) {
+        lastOperationMessage =
+            TEXT::Localize("ui.assetBrowser.assetDatabaseRefreshFailed");
+        return;
+      }
       char buffer[96]{};
       std::snprintf(
           buffer,
@@ -377,7 +381,11 @@ void ProcessDroppedFiles(AssetDatabase &assetDatabase,
     return;
   }
 
-  assetDatabase.ScanAssets(true);
+  if (!assetDatabase.ScanAssets(true)) {
+    lastOperationMessage =
+        TEXT::Localize("ui.assetBrowser.assetDatabaseRefreshFailed");
+    return;
+  }
 
   std::vector<AssetGuid> importGuids;
   importGuids.reserve(copiedFiles.size());

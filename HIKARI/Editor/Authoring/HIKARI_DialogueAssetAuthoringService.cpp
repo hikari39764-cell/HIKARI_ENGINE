@@ -59,11 +59,19 @@ namespace HIKARI::EDITOR {
             AssetRecord updated = record;
             updated.displayName = definition.name;
             updated.meta.displayName = definition.name;
+            const AssetGuid assetGuid = record.guid;
+            const std::filesystem::path sourcePath = record.sourcePath;
             (void)database.WriteMeta(updated);
-            (void)database.ScanAssets(false);
-            result.success = database.ImportAsset(record.guid);
-            result.assetGuid = record.guid;
-            result.sourcePath = record.sourcePath;
+            if (!database.ScanAssets(false)) {
+                result.assetGuid = assetGuid;
+                result.sourcePath = sourcePath;
+                result.message =
+                    "Dialogue saved, but the asset scan failed";
+                return result;
+            }
+            result.success = database.ImportAsset(assetGuid);
+            result.assetGuid = assetGuid;
+            result.sourcePath = sourcePath;
             result.message = result.success
                 ? "Dialogue saved"
                 : "Dialogue saved, but import validation failed";

@@ -113,7 +113,8 @@ namespace HIKARI {
         bool ReloadAssets();
         bool ReloadSceneDocument();
         bool RebuildRuntimeWorld(
-            bool reconfigureWorldServices = false);
+            bool reconfigureWorldServices = false,
+            bool assetSnapshotAlreadyRefreshed = false);
         bool ApplySystemRuntimeChanges();
         bool ApplyCameraRuntimeChanges();
         bool SetGameDefaultCamera(SceneObjectId cameraObjectId);
@@ -232,6 +233,9 @@ namespace HIKARI {
         friend class DocumentSceneBakeCoordinator;
         friend class DOCUMENT_SCENE_BAKING::
             RasterLightingTransportBackend;
+        bool OpenSceneAssetWithCurrentAssets(
+            const AssetGuid& sceneGuid);
+        bool OpenStartupSceneAssetWithCurrentAssets();
         std::unique_ptr<DocumentSceneState> state_;
     };
 

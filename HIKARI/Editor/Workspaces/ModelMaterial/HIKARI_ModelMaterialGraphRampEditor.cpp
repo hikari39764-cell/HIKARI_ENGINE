@@ -24,16 +24,6 @@ bool ModelMaterialWorkspaceController::CreateRampPresetAndBind(
   MaterialGraphResourceData *resource =
       MATERIAL_GRAPH_UI::FindRampResource(graph, node);
   MaterialAssetData before = source;
-  if (resource == nullptr) {
-    MaterialGraphResourceData created{};
-    created.id = "Ramp_" + std::to_string(authoringIdCounter_++);
-    created.displayName = "Diffuse Ramp";
-    created.type = MaterialResourceType::Ramp1D;
-    created.semantic = MaterialResourceSemantic::Ramp;
-    graph.resources.push_back(std::move(created));
-    node.referenceId = graph.resources.back().id;
-    resource = &graph.resources.back();
-  }
 
   const auto &presets = ASSETS::MATERIAL::GetBuiltInMaterialRampPresets();
   const auto info = std::find_if(
@@ -48,21 +38,29 @@ bool ModelMaterialWorkspaceController::CreateRampPresetAndBind(
       ASSETS::MATERIAL::CreateMaterialRampFromPreset(presetId, copyName),
       "Materials/Ramps");
   if (!created.success) {
-    source = std::move(before);
     outMessage = created.message;
     return false;
   }
-  resource = MATERIAL_GRAPH_UI::FindGraphResource(graph, node.referenceId);
-  if (resource == nullptr) {
-    source = std::move(before);
-    outMessage = "Ramp resource disappeared while creating the asset";
+  if (!scene.ReloadAssets()) {
+    outMessage =
+        "Ramp asset was created, but Registry publication failed";
     return false;
+  }
+  if (resource == nullptr) {
+    MaterialGraphResourceData createdResource{};
+    createdResource.id =
+        "Ramp_" + std::to_string(authoringIdCounter_++);
+    createdResource.displayName = "Diffuse Ramp";
+    createdResource.type = MaterialResourceType::Ramp1D;
+    createdResource.semantic = MaterialResourceSemantic::Ramp;
+    graph.resources.push_back(std::move(createdResource));
+    node.referenceId = graph.resources.back().id;
+    resource = &graph.resources.back();
   }
   resource->assetGuid = created.assetGuid;
   resource->enabled = true;
   CommitMaterialMutation(std::move(before), "Create and bind Ramp asset",
                          scene);
-  (void)scene.ReloadAssets();
   assetChoiceRevision_ = 0u;
   RefreshAssetChoices(scene.GetAssetDatabase());
   outMessage = "created an editable Ramp copy and bound it to the node";
@@ -252,14 +250,17 @@ void ModelMaterialWorkspaceController::DrawInlineRampEditorPopup(
         inlineRampDocument_.GetMaterialAssetGuid(), source);
     statusMessage_ = saved.message;
     if (saved.success) {
-      inlineRampDocument_.MarkMaterialSaved(saved.assetGuid,
-                                             saved.sourcePath);
-      (void)scene.ReloadAssets();
-      assetChoiceRevision_ = 0u;
-      RefreshAssetChoices(scene.GetAssetDatabase());
-      (void)RefreshMaterialPreviews(scene, statusMessage_);
-      inlineRampDocument_.CloseMaterial();
-      ImGui::CloseCurrentPopup();
+      if (!scene.ReloadAssets()) {
+        statusMessage_ += "; Registry publication failed";
+      } else {
+        inlineRampDocument_.MarkMaterialSaved(saved.assetGuid,
+                                               saved.sourcePath);
+        assetChoiceRevision_ = 0u;
+        RefreshAssetChoices(scene.GetAssetDatabase());
+        (void)RefreshMaterialPreviews(scene, statusMessage_);
+        inlineRampDocument_.CloseMaterial();
+        ImGui::CloseCurrentPopup();
+      }
     }
   }
   ImGui::EndDisabled();

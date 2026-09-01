@@ -43,15 +43,15 @@ void ResourceWorkspacePanel::Draw(
                                            context.startupSceneGuid,
                                            context.currentSceneDirty};
 
+  AssetImportBatchStatus completedBatch{};
+  if (assetDatabase.ConsumeCompletedImportBatch(completedBatch)) {
+    importMonitor_ = MakeImportMonitor(completedBatch);
+    refreshCurrentSceneResourcesRequested_ = true;
+  }
   const AssetRecord *selectedRecord =
       selection.selectedAssetGuid.empty()
           ? nullptr
           : assetDatabase.FindByGuid(AssetGuid{selection.selectedAssetGuid});
-  AssetImportBatchStatus completedBatch{};
-  if (assetDatabase.ConsumeCompletedImportBatch(completedBatch)) {
-    assetDatabase.ScanAssets(false);
-    importMonitor_ = MakeImportMonitor(completedBatch);
-  }
   const AssetImportBatchStatus importStatus =
       assetDatabase.GetQueuedImportStatus();
   const bool importActive = importStatus.active;
@@ -89,7 +89,6 @@ void ResourceWorkspacePanel::Draw(
                          EDITOR::EditorButtonTone::Quiet, ImVec2(28.0f, 28.0f),
                          TEXT::Localize(
                              "ui.resource.refreshTooltip").c_str())) {
-    assetDatabase.ScanAssets(true);
     refreshCurrentSceneResourcesRequested_ = true;
   }
   if (importActive) {

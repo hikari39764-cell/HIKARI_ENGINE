@@ -254,8 +254,11 @@ void ModelMaterialWorkspaceController::DrawMaterialWindow(
         authoringDocument_.CloseMaterial();
         candidateAuthoringAssetGuid_ = {};
         candidateMaterialGuid_ = {};
-        (void)scene.ReloadAssets();
-        assetChoiceRevision_ = 0u;
+        if (!scene.ReloadAssets()) {
+          statusMessage_ += "; Registry publication failed";
+        } else {
+          assetChoiceRevision_ = 0u;
+        }
       }
       ImGui::CloseCurrentPopup();
     }

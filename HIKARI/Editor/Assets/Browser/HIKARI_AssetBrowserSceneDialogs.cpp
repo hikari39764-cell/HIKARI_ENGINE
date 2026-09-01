@@ -78,13 +78,17 @@ void DrawSceneAssetModals(AssetDatabase &assetDatabase,
       if (record &&
           RenameSceneAsset(assetDatabase, *record, renameSceneNameBuffer.data(),
                            renamedPath, error)) {
-        assetDatabase.ScanAssets(true);
-        if (const AssetRecord *renamed =
-                assetDatabase.FindByPath(renamedPath)) {
-          SelectRecord(*renamed, selection);
+        if (!assetDatabase.ScanAssets(true)) {
+          lastOperationMessage =
+              TEXT::Localize("ui.assetBrowser.assetDatabaseRefreshFailed");
+        } else {
+          if (const AssetRecord *renamed =
+                  assetDatabase.FindByPath(renamedPath)) {
+            SelectRecord(*renamed, selection);
+          }
+          lastOperationMessage =
+              TEXT::Localize("ui.assetBrowser.sceneRenamed");
         }
-        lastOperationMessage =
-            TEXT::Localize("ui.assetBrowser.sceneRenamed");
       } else {
         lastOperationMessage =
             error.empty()
@@ -148,14 +152,18 @@ void DrawSceneAssetModals(AssetDatabase &assetDatabase,
       bool clearedStartupScene = false;
       if (record && DeleteSceneAssetToTrash(assetDatabase, *record,
                                             clearedStartupScene, error)) {
-        assetDatabase.ScanAssets(true);
-        selection.selectedAssetGuid.clear();
-        selection.selectedAssetPath.clear();
-        lastOperationMessage =
-            clearedStartupScene
-                ? TEXT::Localize(
-                    "ui.assetBrowser.movedToTrashClearedStartup")
-                : TEXT::Localize("ui.assetBrowser.movedToTrash");
+        if (!assetDatabase.ScanAssets(true)) {
+          lastOperationMessage =
+              TEXT::Localize("ui.assetBrowser.assetDatabaseRefreshFailed");
+        } else {
+          selection.selectedAssetGuid.clear();
+          selection.selectedAssetPath.clear();
+          lastOperationMessage =
+              clearedStartupScene
+                  ? TEXT::Localize(
+                      "ui.assetBrowser.movedToTrashClearedStartup")
+                  : TEXT::Localize("ui.assetBrowser.movedToTrash");
+        }
       } else {
         lastOperationMessage =
             error.empty()

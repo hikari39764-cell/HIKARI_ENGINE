@@ -285,6 +285,8 @@ void AssetBrowserPanel::DrawContents(AssetDatabase &assetDatabase,
 
   const ImVec2 available = ImGui::GetContentRegionAvail();
   const bool showFolderTree = scope == AssetBrowserScope::Project;
+  const uint64_t recordsRevision =
+      assetDatabase.GetContentRevision();
   std::vector<const AssetRecord *> records =
       showFolderTree
           ? assetDatabase.CollectInDirectory(currentDirectory_, recursive_)
@@ -395,6 +397,10 @@ void AssetBrowserPanel::DrawContents(AssetDatabase &assetDatabase,
                   "ui.assetBrowser.assetDatabaseRefreshFailed");
     }
     ImGui::EndPopup();
+  }
+  if (assetDatabase.GetContentRevision() != recordsRevision) {
+    ImGui::EndChild();
+    return;
   }
 
   if (records.empty()) {

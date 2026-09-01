@@ -155,15 +155,16 @@ bool ModelMaterialWorkspaceController::CreateAndBindRenderableMaterial(
           scene.GetAssetDatabase()));
   authoringDocument_.OpenMaterial(
       created.assetGuid, created.sourcePath, std::move(source), created.compile,
-      true);
+      false);
   RefreshAuthoringIdCounter();
   candidateMaterialGuid_ = created.assetGuid;
   candidateAuthoringAssetGuid_ = created.assetGuid;
   instanceParentCache_.reset();
   instanceParentCacheGuid_ = {};
   instanceParentCacheRevision_ = 0u;
-  (void)scene.ReloadAssets();
-
+  if (!scene.ReloadAssets())
+    return (outMessage += "; Registry publication failed", false);
+  authoringDocument_.MarkMaterialSaved(created.assetGuid, created.sourcePath);
   const ModelMaterialSlotView *slot =
       authoringMode_ == AuthoringMode::ModelMaterials &&
               createdDomain == MaterialDomain::Surface
@@ -244,19 +245,20 @@ bool ModelMaterialWorkspaceController::CreateAuxiliaryMaterialAsset(
           scene.GetAssetDatabase()));
   authoringDocument_.OpenMaterial(
       created.assetGuid, created.sourcePath, std::move(source),
-      created.compile, true);
+      created.compile, false);
   RefreshAuthoringIdCounter();
   candidateAuthoringAssetGuid_ = created.assetGuid;
   selectedGraphNodeId_.clear();
   selectedGraphEdgeId_.clear();
   selectedRampPointId_.clear();
   materialGesture_.reset();
-  (void)scene.ReloadAssets();
+  if (!scene.ReloadAssets())
+    return (outMessage += "; Registry publication failed", false);
+  authoringDocument_.MarkMaterialSaved(created.assetGuid, created.sourcePath);
   outMessage = std::string(ToString(kind)) +
                " asset created and opened";
   return true;
 }
-
 bool ModelMaterialWorkspaceController::SaveMaterial(
     DocumentSceneBase &scene, bool saveAs, std::string &outMessage) {
   if (!authoringDocument_.HasMaterial()) {
@@ -294,17 +296,16 @@ bool ModelMaterialWorkspaceController::SaveMaterial(
   }
 
   const AssetGuid previousGuid = authoringDocument_.GetMaterialAssetGuid();
+  if (!scene.ReloadAssets()) {
+    outMessage += "; editor registry refresh failed";
+    return false;
+  }
   authoringDocument_.MarkMaterialSaved(saved.assetGuid, saved.sourcePath);
   candidateAuthoringAssetGuid_ = saved.assetGuid;
   if (IsRenderableMaterialAsset(authoringDocument_.GetMaterial().kind)) {
     candidateMaterialGuid_ = saved.assetGuid;
   }
-  const bool registryReloaded = scene.ReloadAssets();
-  if (!registryReloaded) {
-    outMessage += "; editor registry refresh failed";
-  } else {
-    (void)scene.RebuildMaterialOverridesForMaterial(saved.assetGuid);
-  }
+  (void)scene.RebuildMaterialOverridesForMaterial(saved.assetGuid);
   if (saveAs && previousGuid != saved.assetGuid) {
     const ModelMaterialSlotView *slot = GetSelectedSlot();
     if (slot != nullptr && slot->overrideMaterialGuid == previousGuid) {
@@ -495,5 +496,4 @@ bool ModelMaterialWorkspaceController::RefreshMaterialPreviews(
   }
   return authoredPreviewUpdated;
 }
-
 } // namespace HIKARI::EDITOR

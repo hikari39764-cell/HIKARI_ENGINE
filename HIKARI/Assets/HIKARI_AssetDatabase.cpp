@@ -171,6 +171,19 @@ namespace HIKARI {
     }
 
     bool AssetDatabase::Initialize(const std::filesystem::path& projectRoot) {
+        const std::thread::id currentThread =
+            std::this_thread::get_id();
+        {
+            std::lock_guard ownerLock(ownerThreadMutex_);
+            if (ownerThread_ != std::thread::id{} &&
+                ownerThread_ != currentThread) {
+                HIKARI_LOG_ERROR(
+                    "[AssetDatabase] initialization rejected outside the "
+                    "owner thread.");
+                return false;
+            }
+            ownerThread_ = currentThread;
+        }
         std::error_code ec{};
         const ProjectContext& projectContext =
             GetProjectContext();
@@ -219,6 +232,13 @@ namespace HIKARI {
             HIKARI_LOG_ERROR(
                 "[AssetDatabase] Shipping requires " +
                 cookedManifestPath_.generic_string());
+            projectRoot_.clear();
+            assetsRoot_.clear();
+            libraryRoot_.clear();
+            projectSettingsRoot_.clear();
+            sourceMetaRoot_.clear();
+            cookedManifestPath_.clear();
+            cookedContent_ = false;
             return false;
         }
 #endif
@@ -254,6 +274,65 @@ namespace HIKARI {
         return contentRevision_;
     }
 
+    AssetDatabase::ContentSnapshot
+        AssetDatabase::TakeContentSnapshot() noexcept {
+        ContentSnapshot snapshot{};
+        snapshot.records = std::move(records_);
+        snapshot.directories = std::move(directories_);
+        snapshot.recordsByGuid = std::move(recordsByGuid_);
+        snapshot.guidByNormalizedPath =
+            std::move(guidByNormalizedPath_);
+        snapshot.contentRevision = contentRevision_;
+        return snapshot;
+    }
+
+    void AssetDatabase::RestoreContentSnapshot(
+        ContentSnapshot&& snapshot) noexcept {
+        records_ = std::move(snapshot.records);
+        directories_ = std::move(snapshot.directories);
+        recordsByGuid_ = std::move(snapshot.recordsByGuid);
+        guidByNormalizedPath_ =
+            std::move(snapshot.guidByNormalizedPath);
+        contentRevision_ = snapshot.contentRevision;
+    }
+
+    bool AssetDatabase::CheckOwnerThread(
+        const char* operation) const {
+        {
+            std::lock_guard ownerLock(ownerThreadMutex_);
+            if (ownerThread_ == std::thread::id{} ||
+                ownerThread_ != std::this_thread::get_id()) {
+                HIKARI_LOG_ERROR(
+                    std::string("[AssetDatabase] ") + operation +
+                    " rejected outside the owner thread.");
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool AssetDatabase::CanReplaceContentSnapshot() const {
+        if (!CheckOwnerThread("content replacement")) {
+            return false;
+        }
+        if (assetTaskService_.HasActiveTasks()) {
+            HIKARI_LOG_WARN(
+                "[AssetDatabase] scan deferred while asset tasks are "
+                "active.");
+            return false;
+        }
+        return true;
+    }
+
+    bool AssetDatabase::TryTakeContentSnapshot(
+        ContentSnapshot& outSnapshot) {
+        if (!CanReplaceContentSnapshot()) {
+            return false;
+        }
+        outSnapshot = TakeContentSnapshot();
+        return true;
+    }
+
     bool AssetDatabase::IsCookedContent() const noexcept {
         return cookedContent_;
     }
@@ -267,6 +346,35 @@ namespace HIKARI {
     }
 
     bool AssetDatabase::ScanAssets(bool createMissingMeta) {
+        if (!CanReplaceContentSnapshot()) {
+            return false;
+        }
+
+        ContentSnapshot previous = TakeContentSnapshot();
+        const auto restore = [&]() noexcept {
+            RestoreContentSnapshot(std::move(previous));
+        };
+        try {
+            if (!ScanAssetsInPlace(createMissingMeta)) {
+                restore();
+                return false;
+            }
+            return true;
+        }
+        catch (const std::exception& error) {
+            HIKARI_LOG_ERROR(
+                std::string("[AssetDatabase] scan threw: ") +
+                error.what());
+        }
+        catch (...) {
+            HIKARI_LOG_ERROR(
+                "[AssetDatabase] scan threw an unknown exception.");
+        }
+        restore();
+        return false;
+    }
+
+    bool AssetDatabase::ScanAssetsInPlace(bool createMissingMeta) {
         if (cookedContent_) {
             (void)createMissingMeta;
             return LoadCookedRecords();
@@ -310,6 +418,11 @@ namespace HIKARI {
             if (record.guid.IsValid()) {
                 const auto existing = recordsByGuid_.find(record.guid.value);
                 if (existing != recordsByGuid_.end()) {
+                    AssetRecord& firstRecord = records_[existing->second];
+                    firstRecord.duplicateGuid = true;
+                    firstRecord.lastImportMessage =
+                        "[AssetDatabase] duplicate GUID: " +
+                        record.guid.value;
                     record.duplicateGuid = true;
                     record.lastImportMessage = "[AssetDatabase] duplicate GUID: " + record.guid.value;
                     HIKARI_LOG_ERROR(record.lastImportMessage + " source=" + record.sourcePath.generic_string());
@@ -458,6 +571,9 @@ namespace HIKARI {
     }
 
     bool AssetDatabase::ImportAsset(const AssetGuid& guid) {
+        if (!CheckOwnerThread("asset import")) {
+            return false;
+        }
         if (cookedContent_) {
             HIKARI_LOG_ERROR(
                 "[AssetDatabase] cooked content is read-only; "
@@ -602,6 +718,10 @@ namespace HIKARI {
         const AssetGuid& guid,
         std::string& outMessage) {
 
+        if (!CheckOwnerThread("collision artifact rebuild")) {
+            outMessage = "collision artifact rebuild requires the owner thread";
+            return false;
+        }
         if (cookedContent_) {
             outMessage =
                 "cooked content is read-only";
@@ -716,6 +836,10 @@ namespace HIKARI {
 
     AssetImportBatchResult AssetDatabase::ImportAssets(const std::vector<AssetGuid>& guids) {
         AssetImportBatchResult batch{};
+        if (!CheckOwnerThread("asset batch import")) {
+            batch.failed = static_cast<int>(guids.size());
+            return batch;
+        }
         std::vector<AssetGuid> orderedGuids;
         std::unordered_set<std::string> visited;
 
@@ -759,6 +883,9 @@ namespace HIKARI {
     }
 
     AssetImportBatchResult AssetDatabase::ImportAllOutdated() {
+        if (!CheckOwnerThread("outdated asset import")) {
+            return {};
+        }
         std::vector<AssetGuid> importGuids;
         importGuids.reserve(records_.size());
 
@@ -779,6 +906,9 @@ namespace HIKARI {
     AssetImportBatchResult AssetDatabase::ImportOutdatedInDirectory(
         const std::filesystem::path& directory,
         bool recursive) {
+        if (!CheckOwnerThread("directory asset import")) {
+            return {};
+        }
 
         std::vector<AssetGuid> importGuids;
 
@@ -800,6 +930,9 @@ namespace HIKARI {
     }
 
     AssetImportBatchResult AssetDatabase::ImportDependencies(const AssetGuid& guid, bool includeSelf) {
+        if (!CheckOwnerThread("dependency asset import")) {
+            return {};
+        }
         AssetImportBatchResult batch{};
         const AssetRecord* rootRecord = FindByGuid(guid);
         if (!rootRecord) {
@@ -961,6 +1094,9 @@ namespace HIKARI {
     }
 
     bool AssetDatabase::WriteMeta(const AssetRecord& record) {
+        if (!CheckOwnerThread("asset metadata write")) {
+            return false;
+        }
         if (cookedContent_) {
             HIKARI_LOG_ERROR(
                 "[AssetDatabase] cooked content is read-only; "
@@ -1031,6 +1167,9 @@ namespace HIKARI {
     }
 
     bool AssetDatabase::RegenerateMeta(const std::filesystem::path& sourcePath) {
+        if (!CheckOwnerThread("asset metadata regeneration")) {
+            return false;
+        }
         if (cookedContent_) {
             HIKARI_LOG_ERROR(
                 "[AssetDatabase] cooked content is read-only; "

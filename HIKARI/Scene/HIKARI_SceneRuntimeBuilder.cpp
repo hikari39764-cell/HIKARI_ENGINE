@@ -471,6 +471,14 @@ namespace HIKARI {
                             }
                         }
                     }
+                } else if (component.type == "ProceduralMeshComponent") {
+                    const std::string materialSelection =
+                        component.properties.value(
+                            "materialSelection",
+                            std::string{});
+                    if (!materialSelection.empty()) {
+                        deps.materialAssetIds.insert(materialSelection);
+                    }
                 } else if (component.type == "VfxPlayerComponent") {
                     const auto slots =
                         component.properties.find("slots");

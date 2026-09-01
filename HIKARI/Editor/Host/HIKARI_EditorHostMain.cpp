@@ -152,7 +152,7 @@ namespace {
                 HIKARI::GetProjectContext().GetRoot())) {
             const HIKARI::AssetGuid startupSceneGuid =
                 settings.GetSettings().startupSceneGuid;
-            if (startupSceneGuid.IsValid()) {
+            if (HIKARI::IsValidAssetGuid(startupSceneGuid.value)) {
                 exportOptions.startupSceneGuid =
                     startupSceneGuid.value;
                 exportOptions.sceneGuids.push_back(

@@ -468,11 +468,21 @@ namespace HIKARI::ASSETS::COOKING {
             std::string& outMessage) {
 
             CookPlan plan{};
+            if (!options.startupSceneGuid.empty() &&
+                !IsValidAssetGuid(options.startupSceneGuid)) {
+                outMessage =
+                    "Startup Scene GUID must be 32 hexadecimal characters.";
+                return false;
+            }
             for (const std::string& sceneGuid :
                  options.sceneGuids) {
-                if (!sceneGuid.empty()) {
-                    plan.sceneGuids.insert(sceneGuid);
+                if (!IsValidAssetGuid(sceneGuid)) {
+                    outMessage =
+                        "Cooked Scene GUID must be 32 hexadecimal "
+                        "characters: " + sceneGuid;
+                    return false;
                 }
+                plan.sceneGuids.insert(sceneGuid);
             }
 
             if (plan.sceneGuids.empty()) {
@@ -485,7 +495,7 @@ namespace HIKARI::ASSETS::COOKING {
                 for (const AssetRecord* record :
                      assetDatabase.CollectAll()) {
                     if (record != nullptr &&
-                        record->guid.IsValid()) {
+                        IsValidAssetGuid(record->guid.value)) {
                         plan.assetGuids.insert(
                             record->guid.value);
                     }
@@ -512,7 +522,7 @@ namespace HIKARI::ASSETS::COOKING {
             auto queueRecord =
                 [&](const AssetRecord* record) {
                     if (record == nullptr ||
-                        !record->guid.IsValid()) {
+                        !IsValidAssetGuid(record->guid.value)) {
                         ++plan.missingReferenceCount;
                         return;
                     }

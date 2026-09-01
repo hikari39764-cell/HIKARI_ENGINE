@@ -6,6 +6,7 @@
 #include "Assets/HIKARI_AssetRegistry.h"
 #include "Core/HIKARI_Logger.h"
 #include "Render3D/Diagnostics/HIKARI_EnvironmentDiagnostics.h"
+#include "Render3D/Lighting/HIKARI_DefaultSkyEnvironment.h"
 #include "Scene/HIKARI_SceneRuntimeBuilder.h"
 
 #if defined(_MSC_VER)
@@ -31,16 +32,25 @@ namespace HIKARI {
 
     RuntimeResourceRefreshReport RuntimeResourceRefreshService::RefreshAsset(
         DocumentSceneBase& scene,
-        const AssetId& assetId) {
+        const AssetId& assetId,
+        bool assetRegistryAlreadyPublished) {
 
         RuntimeResourceRefreshReport report{};
-        scene.ReloadAssets();
+        if (!EnsureAssetRegistryPublished(
+                scene,
+                assetRegistryAlreadyPublished,
+                report)) {
+            return report;
+        }
 
         const AssetRegistry& registry = scene.GetAssetRegistry();
         if (const auto* texture = registry.FindAs<TextureAssetDescriptor>(assetId)) {
+            const std::string textureId = texture->id.value;
+            const bool activeSkyTexture =
+                IsActiveSkyTexture(scene, textureId);
             if (RefreshTextureAsset(scene, *texture, report)) {
                 ReloadCurrentSceneModelDependencies(scene, report);
-                if (IsActiveSkyTexture(scene, texture->id.value)) {
+                if (activeSkyTexture) {
                     scene.RefreshLightingRuntime();
                 }
             }
@@ -60,10 +70,16 @@ namespace HIKARI {
 
     RuntimeResourceRefreshReport RuntimeResourceRefreshService::RefreshAssets(
         DocumentSceneBase& scene,
-        const std::vector<AssetId>& assetIds) {
+        const std::vector<AssetId>& assetIds,
+        bool assetRegistryAlreadyPublished) {
 
         RuntimeResourceRefreshReport report{};
-        scene.ReloadAssets();
+        if (!EnsureAssetRegistryPublished(
+                scene,
+                assetRegistryAlreadyPublished,
+                report)) {
+            return report;
+        }
 
         bool textureTouched = false;
         bool skyTextureTouched = false;
@@ -103,10 +119,16 @@ namespace HIKARI {
     }
 
     RuntimeResourceRefreshReport RuntimeResourceRefreshService::RefreshCurrentSceneResources(
-        DocumentSceneBase& scene) {
+        DocumentSceneBase& scene,
+        bool assetRegistryAlreadyPublished) {
 
         RuntimeResourceRefreshReport report{};
-        scene.ReloadAssets();
+        if (!EnsureAssetRegistryPublished(
+                scene,
+                assetRegistryAlreadyPublished,
+                report)) {
+            return report;
+        }
 
         const SceneDependencySet dependencies =
             scene.GetRuntimeBuilder().CollectDependencies(
@@ -129,6 +151,9 @@ namespace HIKARI {
         }
 
         for (const std::string& skyId : dependencies.skyAssetIds) {
+            if (skyId == RENDER3D::LIGHTING::kDefaultSkyAssetName) {
+                continue;
+            }
             if (const auto* sky = registry.FindAs<SkyAssetDescriptor>(AssetId{ skyId })) {
                 RefreshSkyAsset(scene, *sky, report);
             } else if (const auto* texture =
@@ -178,6 +203,21 @@ namespace HIKARI {
             "RuntimeRefresh.CurrentScene",
             &scene.GetSceneEnvironment());
         return report;
+    }
+
+    bool RuntimeResourceRefreshService::EnsureAssetRegistryPublished(
+        DocumentSceneBase& scene,
+        bool alreadyPublished,
+        RuntimeResourceRefreshReport& report) {
+        if (alreadyPublished || scene.ReloadAssets()) {
+            report.assetRegistryPublished = true;
+            return true;
+        }
+        ++report.failedCount;
+        AppendMessage(
+            report,
+            "Asset registry publication failed before runtime refresh.");
+        return false;
     }
 
     bool RuntimeResourceRefreshService::RefreshTextureAsset(
@@ -248,9 +288,10 @@ namespace HIKARI {
         RuntimeResourceRefreshReport& report,
         bool rebindAfterReload) {
 
-        if (!scene.ReloadModelAssetRuntime(descriptor.id)) {
+        const AssetId modelId = descriptor.id;
+        if (!scene.ReloadModelAssetRuntime(modelId)) {
             ++report.failedCount;
-            AppendMessage(report, "Failed to reload model: " + descriptor.id.value);
+            AppendMessage(report, "Failed to reload model: " + modelId.value);
             return false;
         }
 
@@ -258,7 +299,7 @@ namespace HIKARI {
         if (rebindAfterReload) {
             report.modelReboundComponentCount += scene.RebindModelComponents();
         }
-        AppendMessage(report, "Reloaded model: " + descriptor.id.value);
+        AppendMessage(report, "Reloaded model: " + modelId.value);
         return true;
     }
 

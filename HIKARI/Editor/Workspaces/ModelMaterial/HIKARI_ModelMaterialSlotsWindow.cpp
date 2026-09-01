@@ -293,10 +293,13 @@ void ModelMaterialWorkspaceController::DrawModelAndSlotsWindow(
           scene.GetAssetDatabase(), setGuid);
       statusMessage_ = deleted.message;
       if (deleted.success) {
-        (void)scene.ReloadAssets();
-        assetChoiceRevision_ = 0u;
-        (void)LoadOrCreateBindings(scene, statusMessage_);
-        RebuildSlotState(scene.GetAssetDatabase(), scene.GetAssetRegistry());
+        if (!scene.ReloadAssets()) {
+          statusMessage_ += "; Registry publication failed";
+        } else {
+          assetChoiceRevision_ = 0u;
+          (void)LoadOrCreateBindings(scene, statusMessage_);
+          RebuildSlotState(scene.GetAssetDatabase(), scene.GetAssetRegistry());
+        }
       }
       ImGui::CloseCurrentPopup();
     }

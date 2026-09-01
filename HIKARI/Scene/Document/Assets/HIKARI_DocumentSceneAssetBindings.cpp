@@ -3,6 +3,7 @@
 #include "Scene/Document/Internal/HIKARI_DocumentSceneState.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 
+#include <exception>
 #include <filesystem>
 #include <memory>
 #include <unordered_map>
@@ -21,6 +22,7 @@
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Core/HIKARI_Logger.h"
 #include "Render3D/Core/HIKARI_Material.h"
+#include "Render3D/Lighting/HIKARI_DefaultSkyEnvironment.h"
 #include "Render3D/Lighting/HIKARI_PanoramaSkyLayerStage.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Render3D/Material/HIKARI_MaterialRuntimeBuilder.h"
@@ -109,6 +111,10 @@ namespace HIKARI {
                 if (assetId.empty()) {
                     continue;
                 }
+                if (assetId ==
+                    RENDER3D::LIGHTING::kDefaultSkyAssetName) {
+                    continue;
+                }
                 const AssetDescriptor* descriptor =
                     registry.FindDescriptor(assetId);
                 if (descriptor == nullptr ||
@@ -133,23 +139,57 @@ namespace HIKARI {
 
     bool DocumentSceneAssetBindings::ReloadAssets() {
         if (database_.GetProjectRoot().empty()) {
-            database_.Initialize({});
+            if (!database_.Initialize({})) {
+                return false;
+            }
         }
-        if (!database_.ScanAssets(true)) {
+        AssetDatabase::ContentSnapshot previousDatabase =
+            {};
+        if (!database_.TryTakeContentSnapshot(previousDatabase)) {
             return false;
         }
+        const auto restoreDatabase = [&]() noexcept {
+            database_.RestoreContentSnapshot(
+                std::move(previousDatabase));
+        };
+        AssetRegistry nextRegistry{};
+        try {
+            if (!database_.ScanAssets(true)) {
+                restoreDatabase();
+                return false;
+            }
 #if defined(HIKARI_WITH_EDITOR)
-        if (!ImportOutdatedShaderArtifacts(database_)) {
-            return false;
-        }
+            if (!ImportOutdatedShaderArtifacts(database_)) {
+                restoreDatabase();
+                return false;
+            }
 #endif
 
-        // AssetDatabase 郢ｧ雋樣ｫｪ闕ｳﾂ邵ｺ・ｮ騾具ｽｻ鬪ｭ・ｲ陷医・竊堤ｸｺ蜉ｱ窶ｻ runtime descriptor 郢ｧ蜑・ｽｽ諛奇ｽ企ｶ・ｴ邵ｺ蜷ｶﾂ繝ｻ
-        // RegistryBuilder owns the isolated rebuild transaction. A corrupt
-        // asset must not replace the last complete live registry.
-        AssetRegistryBuilder assetRegistryBuilder{};
-        if (!assetRegistryBuilder.RebuildRegistry(
-                database_, registry_)) {
+            // Database and Registry publish together. A corrupt asset must
+            // not replace the last complete live snapshot. Successfully
+            // written metadata and cooked artifacts remain reusable inputs;
+            // rollback applies to live publication only.
+            AssetRegistryBuilder assetRegistryBuilder{};
+            if (!assetRegistryBuilder.RebuildRegistry(
+                    database_, nextRegistry)) {
+                restoreDatabase();
+                return false;
+            }
+            registry_.SwapContents(nextRegistry);
+            registrySourceRevision_ = database_.GetContentRevision();
+        }
+        catch (const std::exception& error) {
+            HIKARI_LOG_ERROR(
+                std::string("[SceneAsset] registry publication threw: ") +
+                error.what());
+            restoreDatabase();
+            return false;
+        }
+        catch (...) {
+            HIKARI_LOG_ERROR(
+                "[SceneAsset] registry publication threw an unknown "
+                "exception.");
+            restoreDatabase();
             return false;
         }
 
@@ -270,7 +310,16 @@ namespace HIKARI {
 
     bool DocumentSceneAssetBindings::NeedsRuntimeDependencyRegistryRefresh(
         const SceneDependencySet& dependencies) const {
+        const bool hasDescriptorDependencies =
+            !dependencies.modelAssetIds.empty() ||
+            !dependencies.skyAssetIds.empty() ||
+            !dependencies.textureAssetIds.empty() ||
+            !dependencies.materialAssetIds.empty() ||
+            !dependencies.modelMaterialSetAssetIds.empty() ||
+            !dependencies.vfxAssetIds.empty();
         return
+            (hasDescriptorDependencies &&
+             registrySourceRevision_ != database_.GetContentRevision()) ||
             HasMissingAssetDescriptors(
                 registry_,
                 AssetType::Model,
@@ -287,6 +336,10 @@ namespace HIKARI {
                 registry_,
                 AssetType::VfxEffect,
                 dependencies.vfxAssetIds) ||
+            HasMissingAssetDescriptors(
+                registry_,
+                AssetType::Texture,
+                dependencies.textureAssetIds) ||
             HasMissingSkyResourceDescriptors(
                 registry_,
                 dependencies.skyAssetIds);
@@ -319,12 +372,18 @@ namespace HIKARI {
             scene.state_->identity.document,
             &scene.state_->runtime.componentRegistry);
         if (NeedsRuntimeDependencyRegistryRefresh(deps)) {
-            if (scene.ReloadAssets()) {
-                deps = scene.state_->runtime.builder.CollectDependencies(
-                    scene.state_->identity.document,
-                    &scene.state_->runtime.componentRegistry);
-            } else {
+            if (!scene.ReloadAssets()) {
                 HIKARI_LOG_WARN("[SceneRuntime] asset registry refresh failed before model rebind.");
+                return 0;
+            }
+            deps = scene.state_->runtime.builder.CollectDependencies(
+                scene.state_->identity.document,
+                &scene.state_->runtime.componentRegistry);
+            if (NeedsRuntimeDependencyRegistryRefresh(deps)) {
+                HIKARI_LOG_WARN(
+                    "[SceneRuntime] model rebind rejected because required "
+                    "asset descriptors remain unavailable.");
+                return 0;
             }
         }
 

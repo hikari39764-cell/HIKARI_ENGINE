@@ -74,8 +74,15 @@ namespace HIKARI {
             return false;
         }
 
+        const SceneObjectId activeObjectId =
+            context_.selection.GetActiveObjectId();
         const bool opened = scene.OpenSceneAssetNow(sceneGuid);
         if (!opened) {
+            selectionSync_.SynchronizeAfterRuntimeWorldRebuild(
+                scene,
+                context_.selection,
+                context_.nextSceneObjectId,
+                activeObjectId);
             viewportDropMessage_ =
                 TEXT::Localize("ui.sceneOpen.openFailed");
             HIKARI_LOG_WARN("[SceneAsset] open scene failed: " + sceneGuid.value);

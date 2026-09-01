@@ -18,23 +18,32 @@ namespace HIKARI {
         return OpenSceneAssetNow(sceneGuid);
     }
     bool DocumentSceneBase::OpenSceneAssetNow(const AssetGuid& sceneGuid) {
-        if (!sceneGuid.IsValid()) {
+        if (!IsValidAssetGuid(sceneGuid.value)) {
             return false;
         }
         if (!SERVICES::IsRuntimeSceneGuidAllowed(sceneGuid.value)) {
             HIKARI_LOG_WARN("[SceneAsset] blocked scene outside runtime export set: " + sceneGuid.value);
             return false;
         }
+        return ReloadAssets() &&
+            OpenSceneAssetWithCurrentAssets(sceneGuid);
+    }
+
+    bool DocumentSceneBase::OpenSceneAssetWithCurrentAssets(
+        const AssetGuid& sceneGuid) {
+        if (!IsValidAssetGuid(sceneGuid.value) ||
+            !SERVICES::IsRuntimeSceneGuidAllowed(sceneGuid.value)) {
+            return false;
+        }
         if (state_->assets.Database().GetProjectRoot().empty()) {
-            state_->assets.Database().Initialize({});
+            return false;
         }
 
-        const AssetRecord* record = state_->assets.Database().FindByGuid(sceneGuid);
-        if (!record) {
-            state_->assets.Database().ScanAssets(false);
-            record = state_->assets.Database().FindByGuid(sceneGuid);
-        }
-        if (!record || record->type != AssetType::Scene || record->sourcePath.empty()) {
+        const AssetRecord* record =
+            state_->assets.Database().FindByGuid(sceneGuid);
+        if (!record || record->duplicateGuid ||
+            record->type != AssetType::Scene ||
+            record->sourcePath.empty()) {
             return false;
         }
 
@@ -45,6 +54,17 @@ namespace HIKARI {
             return false;
         }
 
+        SceneDocument previousDocument = state_->identity.document;
+        const uint64_t previousDocumentRevision =
+            state_->identity.documentRevision;
+        std::string previousScenePath = state_->identity.scenePath;
+        std::string previousSceneId = state_->identity.sceneId;
+        AssetGuid previousSceneAssetGuid =
+            state_->identity.currentSceneAssetGuid;
+        const bool previousDocumentDirty =
+            state_->identity.documentDirty;
+        const SceneEnvironment previousEnvironment =
+            state_->lighting.environment;
         if (!state_->runtime.playActive) {
             EndEditorCameraPreview();
         }
@@ -56,19 +76,40 @@ namespace HIKARI {
         state_->identity.documentDirty = false;
 
         state_->lighting.environment = state_->identity.document.environment;
-        ReloadAssets();
-        return RebuildRuntimeWorld();
+        if (RebuildRuntimeWorld(false, true)) {
+            return true;
+        }
+
+        state_->identity.document = std::move(previousDocument);
+        state_->identity.documentRevision = previousDocumentRevision;
+        state_->identity.scenePath = std::move(previousScenePath);
+        state_->identity.sceneId = std::move(previousSceneId);
+        state_->identity.currentSceneAssetGuid =
+            std::move(previousSceneAssetGuid);
+        state_->identity.documentDirty = previousDocumentDirty;
+        state_->lighting.environment = previousEnvironment;
+        if (!RebuildRuntimeWorld(false, true)) {
+            HIKARI_LOG_ERROR(
+                "[SceneAsset] failed to restore the previous runtime World "
+                "after Scene open failed.");
+        }
+        return false;
     }
     bool DocumentSceneBase::OpenStartupSceneAsset() {
+        return ReloadAssets() &&
+            OpenStartupSceneAssetWithCurrentAssets();
+    }
+
+    bool DocumentSceneBase::OpenStartupSceneAssetWithCurrentAssets() {
         if (state_->assets.Database().GetProjectRoot().empty()) {
-            state_->assets.Database().Initialize({});
+            return false;
         }
 
         // ProjectSettings 邵ｺ・ｮ GUID 郢ｧ雋樞煤陷亥現・邵ｲ竏ｵ謔ｴ髫ｪ・ｭ陞ｳ螢ｹ竊醍ｹｧ逕ｻ諤呵崕譏ｴ繝ｻ Scene Asset 郢ｧ蜻域ｲｻ騾包ｽｨ邵ｺ蜷ｶ・狗ｸｲ繝ｻ
-        state_->assets.Database().ScanAssets(true);
-
         const std::string& runtimeStartupSceneGuid = SERVICES::GetRuntimeStartupSceneGuid();
-        if (!runtimeStartupSceneGuid.empty() && OpenSceneAssetNow(AssetGuid{ runtimeStartupSceneGuid })) {
+        if (!runtimeStartupSceneGuid.empty() &&
+            OpenSceneAssetWithCurrentAssets(
+                AssetGuid{ runtimeStartupSceneGuid })) {
             return true;
         }
 
@@ -76,9 +117,9 @@ namespace HIKARI {
         settings.Load(state_->assets.Database().GetProjectRoot());
 
         const AssetGuid startupGuid = settings.GetSettings().startupSceneGuid;
-        if (startupGuid.IsValid() &&
+        if (IsValidAssetGuid(startupGuid.value) &&
             SERVICES::IsRuntimeSceneGuidAllowed(startupGuid.value) &&
-            OpenSceneAssetNow(startupGuid)) {
+            OpenSceneAssetWithCurrentAssets(startupGuid)) {
             return true;
         }
 
@@ -91,17 +132,20 @@ namespace HIKARI {
         });
 
         for (const AssetRecord* record : sceneRecords) {
-            if (!record || !record->guid.IsValid()) {
+            if (!record || !IsValidAssetGuid(record->guid.value)) {
                 continue;
             }
             if (!SERVICES::IsRuntimeSceneGuidAllowed(record->guid.value)) {
                 continue;
             }
-            if (SERVICES::IsEditorHost()) {
-                settings.SetStartupSceneGuid(record->guid);
-                settings.Save();
+            if (!OpenSceneAssetWithCurrentAssets(record->guid)) {
+                continue;
             }
-            return OpenSceneAssetNow(record->guid);
+            if (SERVICES::IsEditorHost()) {
+                (void)settings.SetStartupSceneGuid(record->guid);
+                (void)settings.Save();
+            }
+            return true;
         }
 
         return false;
@@ -154,19 +198,25 @@ namespace HIKARI {
         return saved;
     }
     bool DocumentSceneBase::SaveCurrentSceneDocumentAs(const AssetGuid& sceneGuid) {
-        if (!sceneGuid.IsValid()) {
+        if (!IsValidAssetGuid(sceneGuid.value)) {
             return false;
         }
         if (state_->assets.Database().GetProjectRoot().empty()) {
-            state_->assets.Database().Initialize({});
+            if (!state_->assets.Database().Initialize({})) {
+                return false;
+            }
         }
 
         const AssetRecord* record = state_->assets.Database().FindByGuid(sceneGuid);
         if (!record) {
-            state_->assets.Database().ScanAssets(false);
+            if (!state_->assets.Database().ScanAssets(false)) {
+                return false;
+            }
             record = state_->assets.Database().FindByGuid(sceneGuid);
         }
-        if (!record || record->type != AssetType::Scene || record->sourcePath.empty()) {
+        if (!record || record->duplicateGuid ||
+            record->type != AssetType::Scene ||
+            record->sourcePath.empty()) {
             return false;
         }
 
