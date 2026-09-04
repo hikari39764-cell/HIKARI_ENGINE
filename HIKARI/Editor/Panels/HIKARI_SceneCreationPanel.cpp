@@ -56,6 +56,13 @@ namespace HIKARI::EDITOR {
             CreateWorldSpriteObject(scene, context, selectionSync);
         }
 
+        const std::string worldTextLabel =
+            TEXT::Localize("ui.sceneCreation.worldText");
+        if (MatchesSearch(worldTextLabel.c_str(), search) &&
+            ImGui::MenuItem(worldTextLabel.c_str())) {
+            CreateWorldTextObject(scene, context, selectionSync);
+        }
+
         DrawUiCreationMenu(scene, context, selectionSync, search);
 
         const struct PrimitiveEntry {
@@ -320,6 +327,39 @@ namespace HIKARI::EDITOR {
             context.nextSceneObjectId);
         historyRequest_ = SceneObjectAuthoringHistoryRequest{
             "Create World Sprite",
+            beforeObjects,
+            scene.GetSceneDocument().objects,
+            beforeCamera,
+            scene.GetSceneDocument().camera,
+            dirtyBefore
+        };
+    }
+
+    void SceneCreationPanel::CreateWorldTextObject(
+        DocumentSceneBase& scene,
+        EditorContext& context,
+        const SelectionSyncService& selectionSync) {
+
+        const bool dirtyBefore =
+            context.sceneDirty || scene.HasUnsavedSceneChanges();
+        const std::vector<SceneObjectData> beforeObjects =
+            scene.GetSceneDocument().objects;
+        const SceneCameraSettings beforeCamera =
+            scene.GetSceneDocument().camera;
+        CreateWorldTextRequest request{};
+        request.object.name =
+            TEXT::Localize("ui.sceneCreation.worldText");
+        request.object.position = ComputeObjectPlacementInView(
+            scene.GetCamera());
+        GameObject* object = EDITOR::CreateWorldTextObject(
+            scene, request);
+        context.selection.SelectObject(scene.GetWorld(), object);
+        context.sceneDirty = true;
+        selectionSync.SyncNextSceneObjectId(
+            scene,
+            context.nextSceneObjectId);
+        historyRequest_ = SceneObjectAuthoringHistoryRequest{
+            "Create World Text",
             beforeObjects,
             scene.GetSceneDocument().objects,
             beforeCamera,

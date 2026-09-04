@@ -30,6 +30,7 @@
 #include "Render3D/Water/HIKARI_WaterSurfaceGpuFrameBuffer.h"
 #include "Render3D/Water/Spectrum/HIKARI_OceanSpectrumRuntime.h"
 #include "Render3D/WorldSprite/HIKARI_WorldSpritePass.h"
+#include "Render3D/WorldText/HIKARI_WorldTextPass.h"
 
 namespace HIKARI::MESHRENDERER {
 
@@ -107,6 +108,7 @@ namespace HIKARI::MESHRENDERER {
         RENDER3D::GPUDRIVEN::GpuDrivenLayer gpuDrivenLayer{};
         RENDER3D::PARTICLES::ParticleGpuDrivenPass particlePass{};
         RENDER3D::WORLD_SPRITES::WorldSpritePass worldSpritePass{};
+        RENDER3D::WORLD_TEXT::WorldTextPass worldTextPass{};
         bool clusterGpuDrivenReady = false;
         bool traditionalCommandStreamReady = false;
     };
@@ -170,6 +172,9 @@ namespace HIKARI::MESHRENDERER {
         RENDER3D::WORLD_SPRITES::WorldSpritePass worldSpritePass{};
         const RENDER3D::WORLD_SPRITES::WorldSpriteFrameSource*
             worldSpriteFrameSource = nullptr;
+        RENDER3D::WORLD_TEXT::WorldTextPass worldTextPass{};
+        const RENDER3D::WORLD_TEXT::WorldTextFrameSource*
+            worldTextFrameSource = nullptr;
 
         RENDER3D::GPUDRIVEN::GpuDrivenSceneSource gpuDrivenSceneSource{};
         const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource* gpuDrivenSceneSourceIdentity = nullptr;

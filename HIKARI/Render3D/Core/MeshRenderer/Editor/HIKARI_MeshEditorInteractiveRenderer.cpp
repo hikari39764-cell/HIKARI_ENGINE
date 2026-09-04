@@ -223,6 +223,13 @@ namespace HIKARI::MESHRENDERER {
             return EditorInteractiveMeshRenderResult::
                 MaterialFrameUnavailable;
         }
+        if (!gMeshRendererState.editorInteractive.worldTextPass.PrepareFrame(
+                graphics,
+                view.worldTextFrameSource,
+                cameraPosition)) {
+            return EditorInteractiveMeshRenderResult::
+                MaterialFrameUnavailable;
+        }
         CommitActiveMaterialDataFrame(graphics.cmdList);
 
         RENDER3D::GPUDRIVEN::GpuDrivenLayer& layer =
@@ -416,13 +423,18 @@ namespace HIKARI::MESHRENDERER {
         GeometryBackendExecutionResult transparentResult{};
         bool particleResult = true;
         bool worldSpriteTransparentResult = true;
+        bool worldTextTransparentResult = true;
         const bool hasParticleWork =
             gMeshRendererState.particlePass.HasDrawWork();
         const bool hasWorldSpriteTransparentWork =
             gMeshRendererState.editorInteractive.worldSpritePass.
                 HasTransparentWork();
+        const bool hasWorldTextTransparentWork =
+            gMeshRendererState.editorInteractive.worldTextPass.
+                HasTransparentWork();
         if (hasTransparentSource || hasParticleWork ||
-            hasWorldSpriteTransparentWork) {
+            hasWorldSpriteTransparentWork ||
+            hasWorldTextTransparentWork) {
             if (!passResources.sceneDepth.IsSampleable() ||
                 !settings.targetAccess.BeginDepthRead()) {
                 return EditorInteractiveMeshRenderResult::ForwardPassFailed;
@@ -443,6 +455,10 @@ namespace HIKARI::MESHRENDERER {
                 graphics,
                 overrides.cameraAddress,
                 passResources);
+            worldTextTransparentResult =
+                gMeshRendererState.editorInteractive.worldTextPass.
+                    ExecuteForwardTransparent(
+                        graphics, overrides.cameraAddress);
             settings.targetAccess.EndDepthRead();
         }
         const bool sceneRendered = opaqueResult.gpuBackendExecuted ||
@@ -450,10 +466,15 @@ namespace HIKARI::MESHRENDERER {
             transparentResult.gpuBackendExecuted ||
             gMeshRendererState.editorInteractive.worldSpritePass.
                 HasFrameWork() ||
+            gMeshRendererState.editorInteractive.worldTextPass.
+                HasFrameWork() ||
             gMeshRendererState.particlePass.HasDrawWork() ||
             !sceneSource.HasAnyGpuSceneRanges();
         if (!sceneRendered || !worldSpriteOpaqueResult ||
             !worldSpriteTransparentResult || !particleResult) {
+            return EditorInteractiveMeshRenderResult::ForwardPassFailed;
+        }
+        if (!worldTextTransparentResult) {
             return EditorInteractiveMeshRenderResult::ForwardPassFailed;
         }
         if (!stylizedSurfacePassReady) {

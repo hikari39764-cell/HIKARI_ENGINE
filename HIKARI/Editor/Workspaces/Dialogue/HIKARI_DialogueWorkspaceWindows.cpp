@@ -1652,9 +1652,8 @@ namespace HIKARI::EDITOR {
         }
         ImGui::End();
 
-        if (controller.requestUnsavedDocumentDialog_) {
+        if (controller.ConsumePendingConfirmationOpenRequest()) {
             ImGui::OpenPopup(kUnsavedDialoguePopup);
-            controller.requestUnsavedDocumentDialog_ = false;
         }
         if (ImGui::BeginPopupModal(
                 kUnsavedDialoguePopup,

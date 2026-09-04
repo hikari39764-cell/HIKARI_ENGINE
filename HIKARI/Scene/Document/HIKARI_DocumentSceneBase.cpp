@@ -539,6 +539,8 @@ namespace HIKARI {
             primaryView.assetRegistry = &state_->assets.Registry();
             primaryView.worldSpriteFrameSource =
                 &RenderSubmissionSystem::GetWorldSpriteFrameSource();
+            primaryView.worldTextFrameSource =
+                &RenderSubmissionSystem::GetWorldTextFrameSource();
             primaryView.projectRenderExtensions = {
                 &state_->runtime.systemScheduler,
                 [](void* context,
@@ -603,7 +605,8 @@ namespace HIKARI {
                 sceneLighting,
                 frame,
                 primaryView.particleFrameSource,
-                primaryView.worldSpriteFrameSource);
+                primaryView.worldSpriteFrameSource,
+                primaryView.worldTextFrameSource);
             const MESHRENDERER::MeshRendererFrameResult modelFrame =
                 MODELRENDERER::RenderAll(
                     graphics,
@@ -640,7 +643,8 @@ namespace HIKARI {
             state_->lighting.sky,
             &state_->assets.Registry(),
             state_->runtime.materialExternalValueSnapshot.get(),
-            &RenderSubmissionSystem::GetWorldSpriteFrameSource());
+            &RenderSubmissionSystem::GetWorldSpriteFrameSource(),
+            &RenderSubmissionSystem::GetWorldTextFrameSource());
 #endif
     }
     void DocumentSceneBase::RenderImGui() {

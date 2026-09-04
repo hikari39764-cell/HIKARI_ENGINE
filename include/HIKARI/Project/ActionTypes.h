@@ -6,11 +6,6 @@
 
 namespace HIKARI {
 
-    struct GameProjectFloat2 {
-        float x = 0.0f;
-        float y = 0.0f;
-    };
-
     using GameProjectQuat = GameProjectQuaternion;
 
     enum class GameProjectInputDevice : uint8_t {

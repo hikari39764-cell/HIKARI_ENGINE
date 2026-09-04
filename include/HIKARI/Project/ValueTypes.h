@@ -6,6 +6,11 @@
 
 namespace HIKARI {
 
+    struct GameProjectFloat2 {
+        float x = 0.0f;
+        float y = 0.0f;
+    };
+
     struct GameProjectWorldHandle {
         uint64_t value = 0u;
 
@@ -67,6 +72,13 @@ namespace HIKARI {
         float z = 0.0f;
     };
 
+    struct GameProjectFloat4 {
+        float x = 0.0f;
+        float y = 0.0f;
+        float z = 0.0f;
+        float w = 0.0f;
+    };
+
     struct GameProjectQuaternion {
         float x = 0.0f;
         float y = 0.0f;
@@ -115,7 +127,9 @@ namespace HIKARI {
     static_assert(sizeof(GameProjectObjectHandle) == 16u);
     static_assert(offsetof(GameProjectObjectHandle, world) == 0u);
     static_assert(offsetof(GameProjectObjectHandle, value) == 8u);
+    static_assert(sizeof(GameProjectFloat2) == 8u);
     static_assert(sizeof(GameProjectFloat3) == 12u);
+    static_assert(sizeof(GameProjectFloat4) == 16u);
     static_assert(sizeof(GameProjectQuaternion) == 16u);
     static_assert(sizeof(GameProjectTransform) == 40u);
     static_assert(offsetof(GameProjectTransform, position) == 0u);

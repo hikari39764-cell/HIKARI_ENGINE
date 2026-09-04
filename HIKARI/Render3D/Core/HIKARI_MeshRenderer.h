@@ -40,6 +40,10 @@ namespace HIKARI::RENDER3D {
         struct WorldSpriteFrameSource;
         struct WorldSpritePassStats;
     }
+    namespace WORLD_TEXT {
+        struct WorldTextFrameSource;
+        struct WorldTextPassStats;
+    }
 }
 
 namespace HIKARI::MESHRENDERER {
@@ -71,9 +75,12 @@ namespace HIKARI::MESHRENDERER {
         const RENDER3D::PARTICLES::ParticleRenderFrameSource* source);
     void SetWorldSpriteFrameSource(
         const RENDER3D::WORLD_SPRITES::WorldSpriteFrameSource* source);
+    void SetWorldTextFrameSource(
+        const RENDER3D::WORLD_TEXT::WorldTextFrameSource* source);
     void ReleaseParticleNamespace(uint64_t playbackNamespace);
     void ShutdownParticleGpuDrivenPass();
     void ShutdownWorldSpritePass();
+    void ShutdownWorldTextPass();
     void ShutdownOceanSpectrumRuntime();
     const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource&
         GetActiveGpuDrivenSceneSource();
@@ -216,5 +223,7 @@ namespace HIKARI::MESHRENDERER {
         GetParticleGpuDrivenPassStats();
     const RENDER3D::WORLD_SPRITES::WorldSpritePassStats&
         GetWorldSpritePassStats();
+    const RENDER3D::WORLD_TEXT::WorldTextPassStats&
+        GetWorldTextPassStats();
 
 } // namespace HIKARI::MESHRENDERER

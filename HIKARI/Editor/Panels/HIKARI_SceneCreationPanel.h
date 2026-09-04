@@ -48,6 +48,10 @@ namespace HIKARI {
                 DocumentSceneBase& scene,
                 EditorContext& context,
                 const SelectionSyncService& selectionSync);
+            void CreateWorldTextObject(
+                DocumentSceneBase& scene,
+                EditorContext& context,
+                const SelectionSyncService& selectionSync);
             void DrawUiCreationMenu(
                 DocumentSceneBase& scene,
                 EditorContext& context,

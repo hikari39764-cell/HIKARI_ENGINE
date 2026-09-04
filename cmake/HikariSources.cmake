@@ -7,6 +7,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render2D/HIKARI_DxRenderer.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render2D/HIKARI_GameUiEffectRenderer.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render2D/HIKARI_GameUiTextLayout.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Text/HIKARI_SdfTextLayout.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render2D/HIKARI_DxTexture.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Diagnostics/HIKARI_DebugLogBuffer.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Diagnostics/HIKARI_CpuFrameProfiler.cpp"
@@ -492,6 +493,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Binding/Adapters/HIKARI_RuntimeMaterialValueAdapter.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectActionBridge.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectGameFlowBridge.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectMaterialFxBridge.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectPresentationBridge.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectUiBridge.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectVfxBridge.cpp"
@@ -578,6 +580,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/HIKARI_WorldSpawnBatch.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Components/Rendering/MaterialFx/HIKARI_MaterialFxComponent.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Components/Rendering/MaterialFx/HIKARI_MaterialFxComponentSerialization.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Components/Rendering/WorldText/HIKARI_WorldTextComponent.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Components/Rendering/Model/HIKARI_ModelComponent.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Components/Rendering/Model/HIKARI_ModelComponentAuthoring.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Components/Rendering/Model/HIKARI_ModelComponentSerialization.cpp"
@@ -606,6 +609,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Audio/Backends/HIKARI_AudioBackend_XAudio2.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Vfx/Post/HIKARI_PostProfile.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Vfx/MaterialFx/HIKARI_MaterialFxProfile.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Vfx/MaterialFx/HIKARI_MaterialFxParameterSet.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Vfx/Parameters/HIKARI_VfxParameterValues.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Vfx/Serialization/HIKARI_VfxParameterJson.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Vfx/Serialization/HIKARI_VfxProfileJson.cpp"
@@ -626,6 +630,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Vfx/HIKARI_GpuParticleParameterPacking.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Vfx/HIKARI_ParticleGpuDrivenPass.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/WorldSprite/HIKARI_WorldSpritePass.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/WorldText/HIKARI_WorldTextPass.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Vfx/Internal/HIKARI_ParticleMaterialResolver.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Vfx/Internal/HIKARI_ParticleGpuDrivenPipelineState.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Vfx/Internal/HIKARI_GpuParticleStorage.cpp"
@@ -647,7 +652,7 @@ string(
     CONCAT
     HIKARI_GAME_PROJECT_SDK_EXPORT_PATTERN
     "(HIKARI_RuntimeFeatureCatalog|HIKARI_GameProject("
-    "ActionBridge|NavigationBridge|GameFlowBridge|PresentationBridge|"
+    "ActionBridge|NavigationBridge|GameFlowBridge|MaterialFxBridge|PresentationBridge|"
     "UiBridge|VfxBridge|PropertyBridge|BindingBridge|MassBridge|QueryBridge|"
     "Registration|SpawnBridge|TransformBridge|WorldBridge))\\.cpp$")
 list(
@@ -657,10 +662,10 @@ list(
     REGEX "${HIKARI_GAME_PROJECT_SDK_EXPORT_PATTERN}")
 unset(HIKARI_GAME_PROJECT_SDK_EXPORT_PATTERN)
 list(LENGTH HIKARI_GAME_PROJECT_SDK_EXPORT_SOURCES hikari_sdk_export_count)
-if(NOT hikari_sdk_export_count EQUAL 15)
+if(NOT hikari_sdk_export_count EQUAL 16)
     message(
         FATAL_ERROR
-        "The GameProject SDK export owner must contain exactly 15 sources.")
+        "The GameProject SDK export owner must contain exactly 16 sources.")
 endif()
 
 set(HIKARI_EDITOR_HOST_SOURCES
@@ -678,6 +683,7 @@ set(HIKARI_GAME_HOST_SOURCES
 
 set(HIKARI_ENGINE_TEST_GAME_PROJECT_SOURCES
     "${HIKARI_SOURCE_ROOT}/Tests/Fixtures/Projects/EmptyProject/Source/HIKARI_EmptyGameProjectModule.cpp"
+    "${HIKARI_SOURCE_ROOT}/Tests/Fixtures/Projects/EmptyProject/Source/Editor/HIKARI_EmptyProjectEditorModule.cpp"
     "${HIKARI_SOURCE_ROOT}/Tests/Fixtures/Projects/EmptyProject/Source/SampleMotion/HIKARI_EmptyProjectMotionFeature.cpp"
 )
 
@@ -701,6 +707,9 @@ set(HIKARI_EDITOR_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Projects/HIKARI_ProjectOpenWorkflow.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Projects/HIKARI_ProjectProcess.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Projects/HIKARI_RecentProjectStore.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Project/HIKARI_GameProjectEditorModuleLibrary.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Project/HIKARI_GameProjectEditorWorkspaceRegistry.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Project/HIKARI_GameProjectEditorWorkspaceHost.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Core/MeshRenderer/Editor/HIKARI_MeshEditorInteractiveRenderer.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Core/MeshRenderer/Editor/HIKARI_MeshEditorInteractiveResources.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Core/MeshRenderer/Editor/HIKARI_MeshEditorInteractiveStylizedPasses.cpp"

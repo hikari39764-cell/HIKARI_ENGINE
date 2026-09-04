@@ -196,7 +196,13 @@ namespace HIKARI {
 
     PresentationModelView GameProjectSdkAccess::MakePresentationModelView(
         World& world) noexcept {
-        return PresentationModelView(&world);
+        return PresentationModelView(GameProjectWorldHandle{
+            world.GetRuntimeIdentity()
+        });
+    }
+
+    bool PresentationModelView::IsValid() const noexcept {
+        return GameProjectSdkAccess::GetWorld(*this) != nullptr;
     }
 
     PresentationModelView WorldView::GetPresentationModels() const noexcept {
@@ -253,7 +259,7 @@ namespace HIKARI {
 
     World* GameProjectSdkAccess::GetWorld(
         const PresentationModelView& view) noexcept {
-        return static_cast<World*>(view.world_);
+        return World::ResolveRuntimeWorld(view.world_.value);
     }
 
 } // namespace HIKARI

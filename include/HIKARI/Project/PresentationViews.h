@@ -3,7 +3,9 @@
 #include <string_view>
 
 #include "HIKARI/Project/GameProjectSdk.h"
+#include "HIKARI/Project/MaterialFxView.h"
 #include "HIKARI/Project/PresentationTypes.h"
+#include "HIKARI/Project/ValueTypes.h"
 
 namespace HIKARI {
 
@@ -13,9 +15,7 @@ namespace HIKARI {
     public:
         PresentationModelView() = default;
 
-        bool IsValid() const noexcept {
-            return world_ != nullptr;
-        }
+        HIKARI_GAME_PROJECT_SDK_API bool IsValid() const noexcept;
 
         HIKARI_GAME_PROJECT_SDK_API bool Submit(
             const GameProjectPresentationModelRequest& request)
@@ -32,14 +32,18 @@ namespace HIKARI {
         HIKARI_GAME_PROJECT_SDK_API bool Remove(
             uint64_t ownerObjectHandle,
             uint64_t instanceId) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API MaterialFxView GetMaterialFx(
+            uint64_t ownerObjectHandle,
+            uint64_t instanceId) const noexcept;
 
     private:
         friend struct GameProjectSdkAccess;
 
-        explicit PresentationModelView(void* world) noexcept
+        explicit PresentationModelView(
+            GameProjectWorldHandle world) noexcept
             : world_(world) {}
 
-        void* world_ = nullptr;
+        GameProjectWorldHandle world_{};
     };
 
 } // namespace HIKARI

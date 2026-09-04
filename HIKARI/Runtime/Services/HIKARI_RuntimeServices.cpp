@@ -469,6 +469,8 @@ namespace HIKARI {
                 HIKARI_LOG_INFO("Particle GPU-driven pass finalized.");
                 MESHRENDERER::ShutdownWorldSpritePass();
                 HIKARI_LOG_INFO("World Sprite pass finalized.");
+                MESHRENDERER::ShutdownWorldTextPass();
+                HIKARI_LOG_INFO("World Text pass finalized.");
                 MESHRENDERER::ShutdownOceanSpectrumRuntime();
                 HIKARI_LOG_INFO("Ocean spectrum runtime finalized.");
                 HIKARI::POST::PostSystem::Shutdown();

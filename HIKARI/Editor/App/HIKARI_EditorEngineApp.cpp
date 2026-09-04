@@ -1,12 +1,65 @@
 #include "Editor/App/HIKARI_EditorEngineApp.h"
 
+#include <string>
+#include <utility>
+
+#include "Core/HIKARI_Logger.h"
+#include "Core/HIKARI_TimeService.h"
+#include "Core/Text/HIKARI_UtfPath.h"
+#include "Project/HIKARI_ProjectContext.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
 namespace HIKARI::EDITOR {
 
     bool EditorEngineApp::Initialize() {
-        return runtimeApp_.Initialize();
+        if (!runtimeApp_.Initialize()) {
+            return false;
+        }
+
+        std::string moduleMessage{};
+        if (!gameProjectEditorModule_.LoadForLaunch(moduleMessage)) {
+            HIKARI_LOG_ERROR(
+                "[GameProjectEditor] " + moduleMessage);
+            gameProjectWorkspaceHost_.ReportModuleFailure(
+                std::move(moduleMessage));
+            gameProjectEditorModule_.Reset();
+            return true;
+        }
+        if (!gameProjectEditorModule_.IsLoaded()) {
+            return true;
+        }
+
+        const std::string projectRootUtf8 =
+            TEXT::PathToUtf8(GetProjectContext().GetRoot());
+        if (projectRootUtf8.empty()) {
+            moduleMessage =
+                "Project root is unavailable for the requested Editor "
+                "companion.";
+            HIKARI_LOG_ERROR("[GameProjectEditor] " + moduleMessage);
+            gameProjectWorkspaceHost_.ReportModuleFailure(
+                std::move(moduleMessage));
+            gameProjectEditorModule_.Reset();
+            return true;
+        }
+        if (!gameProjectWorkspaceHost_.RegisterModule(
+                gameProjectEditorModule_,
+                projectRootUtf8,
+                moduleMessage)) {
+            HIKARI_LOG_ERROR(
+                "[GameProjectEditor] " + moduleMessage);
+            gameProjectWorkspaceHost_.ReportModuleFailure(
+                std::move(moduleMessage));
+            gameProjectEditorModule_.Reset();
+            return true;
+        }
+        HIKARI_LOG_INFO(
+            "[GameProjectEditor] composed module=" +
+            std::string(gameProjectEditorModule_.GetModuleId()) +
+            " workspaces=" +
+            std::to_string(
+                gameProjectEditorModule_.GetWorkspaceCount()));
+        return true;
     }
 
     void EditorEngineApp::Update(float deltaTime) {
@@ -32,6 +85,8 @@ namespace HIKARI::EDITOR {
                 editorPlaySession_,
                 projectSession_);
         }
+        gameProjectWorkspaceHost_.Draw(
+            TIME::GetFrameContext().unscaledDt);
     }
 
     void EditorEngineApp::UpdateHostSessions() {
@@ -65,6 +120,8 @@ namespace HIKARI::EDITOR {
     }
 
     void EditorEngineApp::Shutdown() {
+        gameProjectWorkspaceHost_.Shutdown();
+        gameProjectEditorModule_.Reset();
         editorPlaySession_.Shutdown(
             dynamic_cast<DocumentSceneBase*>(
                 runtimeApp_.GetCurrentScene()));

@@ -182,6 +182,9 @@ function Test-HikariLastGoodModule {
         [string]$ModulePath,
 
         [Parameter(Mandatory)]
+        [string]$EditorModulePath,
+
+        [Parameter(Mandatory)]
         [string]$Preset,
 
         [Parameter(Mandatory)]
@@ -203,7 +206,7 @@ function Test-HikariLastGoodModule {
             -LiteralPath $BuildStatePath `
             -Raw |
             ConvertFrom-Json
-        if ([int]$state.schemaVersion -ne 1 -or
+        if ([int]$state.schemaVersion -ne 2 -or
             [string]$state.preset -cne $Preset -or
             [string]$state.configuration -cne $Configuration -or
             [string]$state.projectFingerprint -cne
@@ -216,8 +219,32 @@ function Test-HikariLastGoodModule {
             (Get-FileHash `
                 -LiteralPath $ModulePath `
                 -Algorithm SHA256).Hash.ToLowerInvariant()
-        return $moduleHash -ceq
-            ([string]$state.moduleSha256).ToLowerInvariant()
+        if ($moduleHash -cne
+            ([string]$state.moduleSha256).ToLowerInvariant()) {
+            return $false
+        }
+
+        $editorModulePresent = [bool]$state.editorModulePresent
+        if ($Configuration -ceq 'Shipping' -and
+            $editorModulePresent) {
+            return $false
+        }
+        if (-not $editorModulePresent) {
+            return -not (Test-Path `
+                -LiteralPath $EditorModulePath `
+                -PathType Leaf)
+        }
+        if (-not (Test-Path `
+                -LiteralPath $EditorModulePath `
+                -PathType Leaf)) {
+            return $false
+        }
+        $editorModuleHash =
+            (Get-FileHash `
+                -LiteralPath $EditorModulePath `
+                -Algorithm SHA256).Hash.ToLowerInvariant()
+        return $editorModuleHash -ceq
+            ([string]$state.editorModuleSha256).ToLowerInvariant()
     }
     catch {
         return $false
@@ -231,6 +258,9 @@ function Write-HikariBuildState {
 
         [Parameter(Mandatory)]
         [string]$ModulePath,
+
+        [Parameter(Mandatory)]
+        [string]$EditorModulePath,
 
         [Parameter(Mandatory)]
         [string]$Preset,
@@ -249,13 +279,25 @@ function Write-HikariBuildState {
         (Get-FileHash `
             -LiteralPath $ModulePath `
             -Algorithm SHA256).Hash.ToLowerInvariant()
+    $editorModulePresent = Test-Path `
+        -LiteralPath $EditorModulePath `
+        -PathType Leaf
+    $editorModuleHash = if ($editorModulePresent) {
+        (Get-FileHash `
+            -LiteralPath $EditorModulePath `
+            -Algorithm SHA256).Hash.ToLowerInvariant()
+    } else {
+        ''
+    }
     $state = [ordered]@{
-        schemaVersion = 1
+        schemaVersion = 2
         preset = $Preset
         configuration = $Configuration
         projectFingerprint = $ProjectFingerprint
         sdkFingerprint = $SdkFingerprint
         moduleSha256 = $moduleHash
+        editorModulePresent = $editorModulePresent
+        editorModuleSha256 = $editorModuleHash
         generatedAtUtc = [DateTime]::UtcNow.ToString('o')
     }
     $stateDirectory = Split-Path -Parent $BuildStatePath
@@ -387,6 +429,8 @@ $projectOutputDirectory = Join-Path `
     $projectRoot "Library\Build\$Preset"
 $projectModule = Join-Path `
     $projectOutputDirectory 'bin\HIKARI_GameProject.dll'
+$projectEditorModule = Join-Path `
+    $projectOutputDirectory 'bin\HIKARI_GameProjectEditor.dll'
 $buildStatePath = Join-Path `
     $projectOutputDirectory 'HIKARI_GameProject.buildstate.json'
 $packageDirectory = Join-Path $sdkRootPath 'lib\cmake\HIKARI'
@@ -414,6 +458,7 @@ if (-not $ForceBuild -and
     (Test-HikariLastGoodModule `
         -BuildStatePath $buildStatePath `
         -ModulePath $projectModule `
+        -EditorModulePath $projectEditorModule `
         -Preset $Preset `
         -Configuration $configuration `
         -ProjectFingerprint $projectFingerprint `
@@ -439,15 +484,55 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 if (-not $ConfigureOnly) {
-    & $cmake `
-        --build $projectBuildDirectory `
-        --config $configuration `
-        --target HIKARI_GameProjectModule
+    $editorCompanionMarker = Join-Path `
+        $projectBuildDirectory `
+        'HIKARI_GameProjectEditorCompanion.txt'
+    if (-not (Test-Path `
+            -LiteralPath $editorCompanionMarker `
+            -PathType Leaf)) {
+        throw (
+            'The HIKARI SDK did not publish the Editor companion ' +
+            'configuration marker.')
+    }
+    $editorCompanionEnabled =
+        (Get-Content `
+            -LiteralPath $editorCompanionMarker `
+            -Raw).Trim() -ceq 'TRUE'
+    if ($configuration -ceq 'Shipping' -and
+        $editorCompanionEnabled) {
+        throw 'A GameShipping build cannot enable an Editor companion.'
+    }
+
+    $buildTargets = @('HIKARI_GameProjectModule')
+    if ($editorCompanionEnabled) {
+        $buildTargets += 'HIKARI_GameProjectEditorModule'
+    }
+    $buildArguments = @(
+        '--build',
+        $projectBuildDirectory,
+        '--config',
+        $configuration,
+        '--target') + $buildTargets
+    & $cmake @buildArguments
     if ($LASTEXITCODE -ne 0) {
         throw "GameProject build failed for preset '$Preset'."
     }
     if (-not (Test-Path -LiteralPath $projectModule -PathType Leaf)) {
         throw "GameProject module was not produced: $projectModule"
+    }
+    if ($editorCompanionEnabled -and
+        -not (Test-Path `
+            -LiteralPath $projectEditorModule `
+            -PathType Leaf)) {
+        throw (
+            'GameProject Editor companion was not produced: ' +
+            $projectEditorModule)
+    }
+    if (-not $editorCompanionEnabled -and
+        (Test-Path `
+            -LiteralPath $projectEditorModule `
+            -PathType Leaf)) {
+        Remove-Item -LiteralPath $projectEditorModule -Force
     }
 
     $projectFingerprint = Get-HikariFileSetFingerprint `
@@ -463,6 +548,7 @@ if (-not $ConfigureOnly) {
     Write-HikariBuildState `
         -BuildStatePath $buildStatePath `
         -ModulePath $projectModule `
+        -EditorModulePath $projectEditorModule `
         -Preset $Preset `
         -Configuration $configuration `
         -ProjectFingerprint $projectFingerprint `

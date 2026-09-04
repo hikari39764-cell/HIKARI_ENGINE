@@ -486,6 +486,14 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                 "[MeshRenderer][WARN] World Sprite frame preparation failed; "
                 "mesh rendering continues without World Sprites.");
         }
+        if (!gMeshRendererState.worldTextPass.PrepareFrame(
+                graphics,
+                gMeshRendererState.worldTextFrameSource,
+                camera.GetPosition())) {
+            DEBUGLOG::PushRenderError(
+                "[MeshRenderer][WARN] World Text frame preparation failed; "
+                "mesh rendering continues without World Text.");
+        }
         CommitActiveMaterialDataFrame(cmd);
         if (HasGpuDrivenSceneSource()) {
             UploadMeshShaderJointPalettes();

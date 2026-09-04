@@ -266,6 +266,16 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                 ExecuteForwardTransparent(graphics, cameraAddress);
         }
 
+        bool ExecutePreparedWorldTextForwardTransparent(
+            const GFX::Context& graphics,
+            D3D12_GPU_VIRTUAL_ADDRESS cameraAddress) {
+            if (!gMeshRendererState.worldTextPass.HasTransparentWork()) {
+                return true;
+            }
+            return gMeshRendererState.worldTextPass.
+                ExecuteForwardTransparent(graphics, cameraAddress);
+        }
+
 
 } // namespace HIKARI::MESHRENDERER::INTERNAL
 
@@ -488,7 +498,14 @@ namespace HIKARI::MESHRENDERER {
                     ? frame.cameraCB->GetGPUVirtualAddress()
                     : 0u,
                 passResources);
-        return surfaceExecuted && spritesExecuted && particlesExecuted;
+        const bool textExecuted =
+            ExecutePreparedWorldTextForwardTransparent(
+                graphics,
+                frame.cameraCB != nullptr
+                    ? frame.cameraCB->GetGPUVirtualAddress()
+                    : 0u);
+        return surfaceExecuted && spritesExecuted && particlesExecuted &&
+            textExecuted;
     }
 
     bool HasDepthAwarePassWork() {
@@ -500,6 +517,7 @@ namespace HIKARI::MESHRENDERER {
         return HasGpuDrivenPassSource(
                 RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardTransparent) ||
             gMeshRendererState.worldSpritePass.HasTransparentWork() ||
+            gMeshRendererState.worldTextPass.HasTransparentWork() ||
             gMeshRendererState.particlePass.HasDrawWork();
     }
 

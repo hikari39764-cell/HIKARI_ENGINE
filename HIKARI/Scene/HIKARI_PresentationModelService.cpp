@@ -242,6 +242,247 @@ namespace HIKARI {
         }
     }
 
+    PresentationModelRecord* PresentationModelService::FindRecord(
+        uint64_t ownerObjectHandle,
+        uint64_t instanceId) noexcept {
+        if (ownerObjectHandle == 0u || instanceId == 0u) {
+            return nullptr;
+        }
+        const auto found = records_.find(Key{
+            ownerObjectHandle,
+            instanceId
+        });
+        return found != records_.end() ? &found->second : nullptr;
+    }
+
+    const PresentationModelRecord* PresentationModelService::FindRecord(
+        uint64_t ownerObjectHandle,
+        uint64_t instanceId) const noexcept {
+        if (ownerObjectHandle == 0u || instanceId == 0u) {
+            return nullptr;
+        }
+        const auto found = records_.find(Key{
+            ownerObjectHandle,
+            instanceId
+        });
+        return found != records_.end() ? &found->second : nullptr;
+    }
+
+    bool PresentationModelService::HasRecord(
+        uint64_t ownerObjectHandle,
+        uint64_t instanceId) const noexcept {
+        return FindRecord(ownerObjectHandle, instanceId) != nullptr;
+    }
+
+    bool PresentationModelService::SetMaterialFxProfile(
+        uint64_t ownerObjectHandle,
+        uint64_t instanceId,
+        std::string_view profileId) noexcept {
+        if (profileId.empty()) {
+            return false;
+        }
+        return MutateMaterialFx(
+            ownerObjectHandle,
+            instanceId,
+            [profileId](MaterialFxParameterSet& parameters) {
+                return parameters.SetProfileId(std::string(profileId));
+            });
+    }
+
+    bool PresentationModelService::ClearMaterialFx(
+        uint64_t ownerObjectHandle,
+        uint64_t instanceId) noexcept {
+        return MutateMaterialFx(
+            ownerObjectHandle,
+            instanceId,
+            [](MaterialFxParameterSet& parameters) {
+                parameters.ClearProfile();
+                return true;
+            });
+    }
+
+    bool PresentationModelService::ResetMaterialFxToProfileDefaults(
+        uint64_t ownerObjectHandle,
+        uint64_t instanceId) noexcept {
+        return MutateMaterialFx(
+            ownerObjectHandle,
+            instanceId,
+            [](MaterialFxParameterSet& parameters) {
+                return parameters.ResetToProfileDefaults();
+            });
+    }
+
+    bool PresentationModelService::SetMaterialFxFloat(
+        uint64_t ownerObjectHandle,
+        uint64_t instanceId,
+        std::string_view key,
+        float value) noexcept {
+        return MutateMaterialFx(
+            ownerObjectHandle,
+            instanceId,
+            [key, value](MaterialFxParameterSet& parameters) {
+                return parameters.SetFloat(key, value) ==
+                    MaterialFxParameterResult::Success;
+            });
+    }
+
+    bool PresentationModelService::SetMaterialFxFloat2(
+        uint64_t ownerObjectHandle,
+        uint64_t instanceId,
+        std::string_view key,
+        const DirectX::XMFLOAT2& value) noexcept {
+        return MutateMaterialFx(
+            ownerObjectHandle,
+            instanceId,
+            [key, value](MaterialFxParameterSet& parameters) {
+                return parameters.SetFloat2(key, value) ==
+                    MaterialFxParameterResult::Success;
+            });
+    }
+
+    bool PresentationModelService::SetMaterialFxFloat3(
+        uint64_t ownerObjectHandle,
+        uint64_t instanceId,
+        std::string_view key,
+        const DirectX::XMFLOAT3& value) noexcept {
+        return MutateMaterialFx(
+            ownerObjectHandle,
+            instanceId,
+            [key, value](MaterialFxParameterSet& parameters) {
+                return parameters.SetFloat3(key, value) ==
+                    MaterialFxParameterResult::Success;
+            });
+    }
+
+    bool PresentationModelService::SetMaterialFxFloat4(
+        uint64_t ownerObjectHandle,
+        uint64_t instanceId,
+        std::string_view key,
+        const DirectX::XMFLOAT4& value) noexcept {
+        return MutateMaterialFx(
+            ownerObjectHandle,
+            instanceId,
+            [key, value](MaterialFxParameterSet& parameters) {
+                return parameters.SetFloat4(key, value) ==
+                    MaterialFxParameterResult::Success;
+            });
+    }
+
+    bool PresentationModelService::SetMaterialFxToggle(
+        uint64_t ownerObjectHandle,
+        uint64_t instanceId,
+        std::string_view key,
+        bool value) noexcept {
+        return MutateMaterialFx(
+            ownerObjectHandle,
+            instanceId,
+            [key, value](MaterialFxParameterSet& parameters) {
+                return parameters.SetToggle(key, value) ==
+                    MaterialFxParameterResult::Success;
+            });
+    }
+
+    bool PresentationModelService::TryGetMaterialFxFloat(
+        uint64_t ownerObjectHandle,
+        uint64_t instanceId,
+        std::string_view key,
+        float& outValue) const noexcept {
+        try {
+            const PresentationModelRecord* record = FindRecord(
+                ownerObjectHandle,
+                instanceId);
+            return record != nullptr &&
+                record->materialFx.TryGetFloat(key, outValue) ==
+                    MaterialFxParameterResult::Success;
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    bool PresentationModelService::TryGetMaterialFxFloat2(
+        uint64_t ownerObjectHandle,
+        uint64_t instanceId,
+        std::string_view key,
+        DirectX::XMFLOAT2& outValue) const noexcept {
+        try {
+            const PresentationModelRecord* record = FindRecord(
+                ownerObjectHandle,
+                instanceId);
+            return record != nullptr &&
+                record->materialFx.TryGetFloat2(key, outValue) ==
+                    MaterialFxParameterResult::Success;
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    bool PresentationModelService::TryGetMaterialFxFloat3(
+        uint64_t ownerObjectHandle,
+        uint64_t instanceId,
+        std::string_view key,
+        DirectX::XMFLOAT3& outValue) const noexcept {
+        try {
+            const PresentationModelRecord* record = FindRecord(
+                ownerObjectHandle,
+                instanceId);
+            return record != nullptr &&
+                record->materialFx.TryGetFloat3(key, outValue) ==
+                    MaterialFxParameterResult::Success;
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    bool PresentationModelService::TryGetMaterialFxFloat4(
+        uint64_t ownerObjectHandle,
+        uint64_t instanceId,
+        std::string_view key,
+        DirectX::XMFLOAT4& outValue) const noexcept {
+        try {
+            const PresentationModelRecord* record = FindRecord(
+                ownerObjectHandle,
+                instanceId);
+            return record != nullptr &&
+                record->materialFx.TryGetFloat4(key, outValue) ==
+                    MaterialFxParameterResult::Success;
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    bool PresentationModelService::TryGetMaterialFxToggle(
+        uint64_t ownerObjectHandle,
+        uint64_t instanceId,
+        std::string_view key,
+        bool& outValue) const noexcept {
+        try {
+            const PresentationModelRecord* record = FindRecord(
+                ownerObjectHandle,
+                instanceId);
+            return record != nullptr &&
+                record->materialFx.TryGetToggle(key, outValue) ==
+                    MaterialFxParameterResult::Success;
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    const std::string* PresentationModelService::FindMaterialFxProfileId(
+        uint64_t ownerObjectHandle,
+        uint64_t instanceId) const noexcept {
+        const PresentationModelRecord* record = FindRecord(
+            ownerObjectHandle,
+            instanceId);
+        return record != nullptr
+            ? &record->materialFx.GetProfileId()
+            : nullptr;
+    }
+
     void PresentationModelService::PrepareForRender(
         uint64_t frameIndex,
         std::span<const uint64_t> occupiedObjectIds) noexcept {

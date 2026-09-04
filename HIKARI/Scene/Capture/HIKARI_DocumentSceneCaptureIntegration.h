@@ -13,6 +13,7 @@
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
 #include "Render3D/WorldSprite/HIKARI_WorldSpriteFrameSource.h"
+#include "Render3D/WorldText/HIKARI_WorldTextFrameSource.h"
 #include "Scene/Capture/HIKARI_SceneCaptureService.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 #include "Scene/Document/Internal/HIKARI_DocumentSceneState.h"
@@ -231,7 +232,9 @@ namespace HIKARI::SCENE_CAPTURE {
         const RENDER3D::PARTICLES::ParticleRenderFrameSource*
             particleFrameSource,
         const RENDER3D::WORLD_SPRITES::WorldSpriteFrameSource*
-            worldSpriteFrameSource) {
+            worldSpriteFrameSource,
+        const RENDER3D::WORLD_TEXT::WorldTextFrameSource*
+            worldTextFrameSource) {
         SceneCaptureService& service = state.runtime.sceneCaptureService;
         for (const uint32_t retiredSlot :
              service.ConsumeRetiredCaptureTargets()) {
@@ -293,6 +296,7 @@ namespace HIKARI::SCENE_CAPTURE {
             view.cameraFrame = &captureCamera;
             view.assetRegistry = &state.assets.Registry();
             view.worldSpriteFrameSource = worldSpriteFrameSource;
+            view.worldTextFrameSource = worldTextFrameSource;
             const uint32_t renderVfxFlag = GameProjectSceneCaptureFlags(
                 GameProjectSceneCaptureFlag::RenderVfx);
             if ((request.flags & renderVfxFlag) != 0u) {

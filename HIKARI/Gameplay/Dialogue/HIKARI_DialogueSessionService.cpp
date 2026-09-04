@@ -113,7 +113,7 @@ namespace HIKARI::DIALOGUE {
                 return false;
             }
         }
-        world.FrameEvents().Publish(DialogueRuntimeEvent{
+        PublishEvent(world, DialogueRuntimeEvent{
             DialogueRuntimeEventType::Started,
             trigger_,
             interactor_,
@@ -145,7 +145,7 @@ namespace HIKARI::DIALOGUE {
                 currentNodeId_)) {
             ApplyPortraitNode(*node);
         }
-        world.FrameEvents().Publish(DialogueRuntimeEvent{
+        PublishEvent(world, DialogueRuntimeEvent{
             DialogueRuntimeEventType::NodeEntered,
             trigger_,
             interactor_,
@@ -358,7 +358,7 @@ namespace HIKARI::DIALOGUE {
                 currentNodeId_);
             if (node == nullptr) return false;
             if (node->type == DialogueNodeType::Event) {
-                world.FrameEvents().Publish(DialogueRuntimeEvent{
+                PublishEvent(world, DialogueRuntimeEvent{
                     DialogueRuntimeEventType::EventEmitted,
                     trigger_, interactor_, asset_->guid.value,
                     currentNodeId_, node->eventId });
@@ -443,7 +443,7 @@ namespace HIKARI::DIALOGUE {
                 if (snapshot.IsPressed(kAdvanceAction)) {
                     const DialogueChoice& choice = node->choices[
                         selectedChoice_];
-                    world.FrameEvents().Publish(DialogueRuntimeEvent{
+                    PublishEvent(world, DialogueRuntimeEvent{
                         DialogueRuntimeEventType::ChoiceSelected,
                         trigger_, interactor_, asset_->guid.value,
                         currentNodeId_, choice.id });
@@ -532,7 +532,7 @@ namespace HIKARI::DIALOGUE {
         World& world,
         std::string reason) {
         if (!active_) return;
-        world.FrameEvents().Publish(DialogueRuntimeEvent{
+        PublishEvent(world, DialogueRuntimeEvent{
             DialogueRuntimeEventType::Ended,
             trigger_, interactor_, asset_ ? asset_->guid.value : std::string{},
             currentNodeId_, std::move(reason) });
@@ -553,6 +553,14 @@ namespace HIKARI::DIALOGUE {
         active_ = false;
     }
 
+    void DialogueSessionService::PublishEvent(
+        World& world,
+        DialogueRuntimeEvent event) {
+        const DialogueRuntimeEvent& queued = eventQueue_.Push(
+            std::move(event));
+        world.FrameEvents().Publish(queued);
+    }
+
     void DialogueSessionService::Reset(World* world) noexcept {
         ReleaseOwnership(world);
         asset_.reset();
@@ -567,6 +575,7 @@ namespace HIKARI::DIALOGUE {
         selectedChoice_ = 0u;
         leftPortrait_ = {};
         rightPortrait_ = {};
+        eventQueue_.Reset();
         inputArmed_ = false;
         active_ = false;
     }

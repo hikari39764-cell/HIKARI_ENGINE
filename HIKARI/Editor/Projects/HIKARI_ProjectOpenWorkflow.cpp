@@ -516,6 +516,10 @@ namespace {
             projectRoot_ / "Library" / "Build" /
             preset_ / "bin" /
             "HIKARI_GameProject.dll";
+        const std::filesystem::path projectEditorModule =
+            projectRoot_ / "Library" / "Build" /
+            preset_ / "bin" /
+            "HIKARI_GameProjectEditor.dll";
         std::error_code ec{};
         if (!std::filesystem::is_regular_file(
                 executable,
@@ -542,6 +546,14 @@ namespace {
         if (useProjectModule) {
             arguments.push_back(L"--project-module");
             arguments.push_back(projectModule.wstring());
+            ec.clear();
+            if (std::filesystem::is_regular_file(
+                    projectEditorModule,
+                    ec) && !ec) {
+                arguments.push_back(L"--project-editor-module");
+                arguments.push_back(
+                    projectEditorModule.wstring());
+            }
         }
         else {
             arguments.push_back(

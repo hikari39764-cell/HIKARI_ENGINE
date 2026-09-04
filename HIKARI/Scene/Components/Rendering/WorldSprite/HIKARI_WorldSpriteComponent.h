@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -42,6 +43,22 @@ namespace HIKARI {
         using AlphaMode =
             RENDER3D::WORLD_SPRITES::WorldSpriteAlphaMode;
 
+        // Runtime-only mutations are composed against this complete value and
+        // committed through ApplyRuntimeState. The component remains the
+        // single owner of sanitization, change detection, and render dirtiness.
+        struct RuntimeState {
+            MATH::Vec2 size{ 1.0f, 1.0f };
+            MATH::Vec3 tint{ 1.0f, 1.0f, 1.0f };
+            MATH::Vec2 pivot{ 0.5f, 0.5f };
+            float opacity = 1.0f;
+            float alphaCutoff = 0.5f;
+            int transparentSortPriority = 0;
+            FacingMode facing = FacingMode::CameraFacing;
+            AlphaMode alphaMode = AlphaMode::Auto;
+            bool visible = true;
+            bool preserveAspect = true;
+        };
+
         std::string_view GetTypeName() const override {
             return "WorldSpriteComponent";
         }
@@ -51,71 +68,135 @@ namespace HIKARI {
         }
 
         void SetTextureAssetGuid(AssetGuid guid) {
+            if (textureAssetGuid_ == guid) {
+                return;
+            }
             textureAssetGuid_ = std::move(guid);
             NotifyRenderStateDirty();
         }
 
         bool IsVisible() const noexcept { return visible_; }
         void SetVisible(bool visible) {
-            visible_ = visible;
-            NotifyRenderStateDirty();
+            RuntimeState state = GetRuntimeState();
+            state.visible = visible;
+            (void)ApplyRuntimeState(state);
         }
 
         const MATH::Vec2& GetSize() const noexcept { return size_; }
         void SetSize(MATH::Vec2 size) {
-            size_ = SanitizeSize(size);
-            NotifyRenderStateDirty();
+            RuntimeState state = GetRuntimeState();
+            state.size = size;
+            (void)ApplyRuntimeState(state);
         }
 
         bool GetPreserveAspect() const noexcept { return preserveAspect_; }
         void SetPreserveAspect(bool preserve) {
-            preserveAspect_ = preserve;
-            NotifyRenderStateDirty();
+            RuntimeState state = GetRuntimeState();
+            state.preserveAspect = preserve;
+            (void)ApplyRuntimeState(state);
         }
 
         FacingMode GetFacingMode() const noexcept { return facing_; }
         void SetFacingMode(FacingMode facing) {
-            facing_ = facing;
-            NotifyRenderStateDirty();
+            RuntimeState state = GetRuntimeState();
+            state.facing = facing;
+            (void)ApplyRuntimeState(state);
         }
 
         const MATH::Vec3& GetTint() const noexcept { return tint_; }
         void SetTint(MATH::Vec3 tint) {
-            tint_ = SanitizeColor(tint);
-            NotifyRenderStateDirty();
+            RuntimeState state = GetRuntimeState();
+            state.tint = tint;
+            (void)ApplyRuntimeState(state);
         }
 
         float GetOpacity() const noexcept { return opacity_; }
         void SetOpacity(float opacity) {
-            opacity_ = ClampFinite(opacity, 1.0f, 0.0f, 1.0f);
-            NotifyRenderStateDirty();
+            RuntimeState state = GetRuntimeState();
+            state.opacity = opacity;
+            (void)ApplyRuntimeState(state);
         }
 
         const MATH::Vec2& GetPivot() const noexcept { return pivot_; }
         void SetPivot(MATH::Vec2 pivot) {
-            pivot_ = SanitizePivot(pivot);
-            NotifyRenderStateDirty();
+            RuntimeState state = GetRuntimeState();
+            state.pivot = pivot;
+            (void)ApplyRuntimeState(state);
         }
 
         AlphaMode GetAlphaMode() const noexcept { return alphaMode_; }
         void SetAlphaMode(AlphaMode mode) {
-            alphaMode_ = mode;
-            NotifyRenderStateDirty();
+            RuntimeState state = GetRuntimeState();
+            state.alphaMode = mode;
+            (void)ApplyRuntimeState(state);
         }
 
         float GetAlphaCutoff() const noexcept { return alphaCutoff_; }
         void SetAlphaCutoff(float cutoff) {
-            alphaCutoff_ = ClampFinite(cutoff, 0.5f, 0.0f, 1.0f);
-            NotifyRenderStateDirty();
+            RuntimeState state = GetRuntimeState();
+            state.alphaCutoff = cutoff;
+            (void)ApplyRuntimeState(state);
         }
 
         int GetTransparentSortPriority() const noexcept {
             return transparentSortPriority_;
         }
 
+        uint64_t GetStateRevision() const noexcept {
+            return stateRevision_;
+        }
+
         void SetTransparentSortPriority(int priority) {
-            transparentSortPriority_ = std::clamp(priority, -32768, 32767);
+            RuntimeState state = GetRuntimeState();
+            state.transparentSortPriority = priority;
+            (void)ApplyRuntimeState(state);
+        }
+
+        RuntimeState GetRuntimeState() const noexcept {
+            RuntimeState state{};
+            state.size = size_;
+            state.tint = tint_;
+            state.pivot = pivot_;
+            state.opacity = opacity_;
+            state.alphaCutoff = alphaCutoff_;
+            state.transparentSortPriority = transparentSortPriority_;
+            state.facing = facing_;
+            state.alphaMode = alphaMode_;
+            state.visible = visible_;
+            state.preserveAspect = preserveAspect_;
+            return state;
+        }
+
+        // Returns true only when the sanitized effective state changed. All
+        // fields are assigned before the single dirty/revision notification.
+        bool ApplyRuntimeState(RuntimeState state) {
+            state.size = SanitizeSize(state.size);
+            state.tint = SanitizeColor(state.tint);
+            state.pivot = SanitizePivot(state.pivot);
+            state.opacity = ClampFinite(
+                state.opacity, 1.0f, 0.0f, 1.0f);
+            state.alphaCutoff = ClampFinite(
+                state.alphaCutoff, 0.5f, 0.0f, 1.0f);
+            state.transparentSortPriority = std::clamp(
+                state.transparentSortPriority, -32768, 32767);
+            state.facing = SanitizeFacing(state.facing);
+            state.alphaMode = SanitizeAlphaMode(state.alphaMode);
+            if (HasSameRuntimeState(state)) {
+                return false;
+            }
+
+            size_ = state.size;
+            tint_ = state.tint;
+            pivot_ = state.pivot;
+            opacity_ = state.opacity;
+            alphaCutoff_ = state.alphaCutoff;
+            transparentSortPriority_ = state.transparentSortPriority;
+            facing_ = state.facing;
+            alphaMode_ = state.alphaMode;
+            visible_ = state.visible;
+            preserveAspect_ = state.preserveAspect;
             NotifyRenderStateDirty();
+            return true;
         }
 
         bool QueryGeometryFit(
@@ -419,6 +500,42 @@ namespace HIKARI {
             return value;
         }
 
+        static FacingMode SanitizeFacing(FacingMode mode) noexcept {
+            switch (mode) {
+            case FacingMode::Fixed:
+            case FacingMode::CameraFacing:
+            case FacingMode::FixedYAxis:
+                return mode;
+            default:
+                return FacingMode::CameraFacing;
+            }
+        }
+
+        static AlphaMode SanitizeAlphaMode(AlphaMode mode) noexcept {
+            switch (mode) {
+            case AlphaMode::Auto:
+            case AlphaMode::Opaque:
+            case AlphaMode::Mask:
+            case AlphaMode::Blend:
+                return mode;
+            default:
+                return AlphaMode::Auto;
+            }
+        }
+
+        bool HasSameRuntimeState(const RuntimeState& state) const noexcept {
+            return size_.x == state.size.x && size_.y == state.size.y &&
+                tint_.x == state.tint.x && tint_.y == state.tint.y &&
+                tint_.z == state.tint.z && pivot_.x == state.pivot.x &&
+                pivot_.y == state.pivot.y && opacity_ == state.opacity &&
+                alphaCutoff_ == state.alphaCutoff &&
+                transparentSortPriority_ ==
+                    state.transparentSortPriority &&
+                facing_ == state.facing && alphaMode_ == state.alphaMode &&
+                visible_ == state.visible &&
+                preserveAspect_ == state.preserveAspect;
+        }
+
         static const char* FacingName(FacingMode mode) noexcept {
             switch (mode) {
             case FacingMode::Fixed: return "Fixed";
@@ -452,6 +569,10 @@ namespace HIKARI {
         }
 
         void NotifyRenderStateDirty() {
+            ++stateRevision_;
+            if (stateRevision_ == 0u) {
+                stateRevision_ = 1u;
+            }
             if (GameObject* owner = GetOwner()) {
                 owner->MarkRenderStateDirty();
             }
@@ -468,6 +589,7 @@ namespace HIKARI {
         AlphaMode alphaMode_ = AlphaMode::Auto;
         bool visible_ = true;
         bool preserveAspect_ = true;
+        uint64_t stateRevision_ = 1u;
     };
 
 } // namespace HIKARI

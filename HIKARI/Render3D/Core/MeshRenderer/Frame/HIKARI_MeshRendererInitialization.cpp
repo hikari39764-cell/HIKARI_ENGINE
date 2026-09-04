@@ -148,6 +148,12 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                 "failed. WorldSpriteComponent submissions will remain "
                 "visible through diagnostics but cannot be drawn.");
         }
+        if (!gMeshRendererState.worldTextPass.Initialize(graphics)) {
+            DEBUGLOG::PushRenderError(
+                "[MeshRenderer][WARN] World Text pass initialization "
+                "failed. WorldTextComponent submissions will remain "
+                "visible through diagnostics but cannot be drawn.");
+        }
         gMeshRendererState.clusterGpuDrivenProducer.Attach(&gMeshRendererState.clusterGpuCullingPass);
         gMeshRendererState.gpuDrivenLayer.Attach(
             &gMeshRendererState.surfaceGpuSceneBuffer,

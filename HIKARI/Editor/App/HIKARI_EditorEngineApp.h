@@ -2,6 +2,8 @@
 
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.h"
 #include "Editor/Play/HIKARI_EditorPlaySession.h"
+#include "Editor/Project/HIKARI_GameProjectEditorModuleLibrary.h"
+#include "Editor/Project/HIKARI_GameProjectEditorWorkspaceHost.h"
 #include "Editor/Projects/HIKARI_EditorProjectSession.h"
 #include "Runtime/App/HIKARI_IHostApplication.h"
 #include "Runtime/App/HIKARI_RuntimeEngineApp.h"
@@ -28,6 +30,8 @@ namespace HIKARI::EDITOR {
         DocumentSceneEditorController documentSceneEditorController_{};
         EditorPlaySession editorPlaySession_{};
         EditorProjectSessionController projectSession_{};
+        GameProjectEditorModuleLibrary gameProjectEditorModule_{};
+        GameProjectEditorWorkspaceHost gameProjectWorkspaceHost_{};
     };
 
 } // namespace HIKARI::EDITOR

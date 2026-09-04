@@ -131,6 +131,11 @@ namespace HIKARI {
     void MaterialFxComponent::BuildInspector(
         IInspectorBuilder& builder) {
 
+        const std::string& profileId_ = parameters_.profileId_;
+        const auto& paramValues_ = parameters_.values_;
+        const bool valuesInitialized_ =
+            parameters_.valuesInitialized_;
+
         std::string profileId = profileId_;
         if (builder.String("Profile", profileId)) {
             SetProfileId(std::move(profileId));
@@ -189,6 +194,9 @@ namespace HIKARI {
 
     void MaterialFxComponent::RenderImGui() {
 #if defined(HIKARI_ENABLE_IMGUI)
+        std::string& profileId_ = parameters_.profileId_;
+        auto& paramValues_ = parameters_.values_;
+        bool& valuesInitialized_ = parameters_.valuesInitialized_;
         bool changed = false;
 
         char profileBuffer[256]{};
@@ -229,7 +237,13 @@ namespace HIKARI {
                 if (ImGui::Button(
                     "Reset Defaults##MaterialFx")) {
 
-                    profile.CopyValuesTo(paramValues_);
+                    DirectX::XMFLOAT4
+                        defaults[VFX::kMaterialFxUserCount]{};
+                    profile.CopyValuesTo(defaults);
+                    std::copy(
+                        std::begin(defaults),
+                        std::end(defaults),
+                        paramValues_.begin());
                     profile.CopyValuesTo(visibleValues);
                     valuesInitialized_ = true;
                     changed = true;

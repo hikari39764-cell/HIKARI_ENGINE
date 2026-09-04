@@ -11,6 +11,7 @@
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponentAuthoring.h"
 #include "Scene/Components/Rendering/WorldSprite/HIKARI_WorldSpriteComponent.h"
+#include "Scene/Components/Rendering/WorldText/HIKARI_WorldTextComponent.h"
 #include "Scene/Features/HIKARI_RuntimeFeature.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureIds.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
@@ -44,16 +45,18 @@ namespace HIKARI {
             }
 
             std::string_view GetDescription() const noexcept override {
-                return "Model, material, and procedural geometry rendering.";
+                return "Model, material, procedural geometry, world sprite, "
+                    "and world text rendering.";
             }
 
             std::span<const std::string_view>
                 GetComponentTypeNames() const noexcept override {
-                static constexpr std::array<std::string_view, 4> names{
+                static constexpr std::array<std::string_view, 5> names{
                     "ModelComponent",
                     "MaterialFxComponent",
                     "ProceduralMeshComponent",
-                    "WorldSpriteComponent"
+                    "WorldSpriteComponent",
+                    "WorldTextComponent"
                 };
                 return names;
             }
@@ -164,12 +167,51 @@ namespace HIKARI {
                     "Displays a texture directly on an engine-owned quad in "
                     "3D space, including transparent textures.");
 
+                ComponentTypeInfo worldText{};
+                worldText.typeName = "WorldTextComponent";
+                worldText.factory = []() -> std::unique_ptr<IComponent> {
+                    return std::make_unique<WorldTextComponent>();
+                };
+                worldText.affectsRenderState = true;
+                worldText.initializeDefaults = [](
+                    const SceneObjectData&,
+                    nlohmann::json& properties) {
+                    properties = {
+                        { "version", 1u },
+                        { "text", "World Text" },
+                        { "fontAssetPath",
+                          "Fonts/NotoSansCJKjp-Regular.otf" },
+                        { "visible", true },
+                        { "layoutSize", { 4.0f, 1.0f } },
+                        { "fontHeight", 0.5f },
+                        { "horizontalAlign", "Center" },
+                        { "verticalAlign", "Center" },
+                        { "wrap", "Character" },
+                        { "lineHeightMultiplier", 1.2f },
+                        { "letterSpacing", 0.0f },
+                        { "facing", "CameraFacing" },
+                        { "color", { 1.0f, 1.0f, 1.0f } },
+                        { "outlineColor", { 0.0f, 0.0f, 0.0f } },
+                        { "outlineWidth", 0.04f },
+                        { "opacity", 1.0f },
+                        { "revealAmount", 1.0f },
+                        { "pivot", { 0.5f, 0.5f } },
+                        { "transparentSortPriority", 0 }
+                    };
+                };
+                worldText.presentation = RenderingPresentation(
+                    "World Text (3D)",
+                    "Lays out UTF-8 SDF text in world space with outline, "
+                    "wrapping, alignment, and reveal controls.");
+
                 bool success = components.Register(std::move(model));
                 success = components.Register(std::move(materialFx)) &&
                     success;
                 success = components.Register(std::move(procedural)) &&
                     success;
                 success = components.Register(std::move(worldSprite)) &&
+                    success;
+                success = components.Register(std::move(worldText)) &&
                     success;
                 success = systems.Register(SystemTypeInfo{
                     "ModelRenderSystem",

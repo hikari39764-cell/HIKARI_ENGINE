@@ -158,7 +158,7 @@ namespace {
             "        \"HIKARI GameProjects require x64 "
             "Visual Studio 2022.\")\n"
             "endif()\n\n"
-            "find_package(HIKARI 2.14 CONFIG REQUIRED)\n\n"
+            "find_package(HIKARI 2.18 CONFIG REQUIRED)\n\n"
             "hikari_add_game_project(\n"
             "    NAME \"" + identifier + "\"\n"
             "    SOURCE_DIR Source)\n";

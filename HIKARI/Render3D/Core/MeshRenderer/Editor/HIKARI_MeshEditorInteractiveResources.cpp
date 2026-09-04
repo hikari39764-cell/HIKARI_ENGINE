@@ -50,6 +50,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
 
     void ResetEditorInteractiveResources() {
         gMeshRendererState.editorInteractive.worldSpritePass.Shutdown();
+        gMeshRendererState.editorInteractive.worldTextPass.Shutdown();
         for (EditorInteractiveMeshFrameResources& frame :
             gMeshRendererState.editorInteractive.frames) {
 
@@ -265,6 +266,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         // view available on unsupported devices; the main renderer already
         // reports the capability diagnostic once during initialization.
         (void)gMeshRendererState.editorInteractive.worldSpritePass.Initialize(
+            GFX::GetCurrentContext());
+        (void)gMeshRendererState.editorInteractive.worldTextPass.Initialize(
             GFX::GetCurrentContext());
 
         gMeshRendererState.editorInteractive.initialized = true;

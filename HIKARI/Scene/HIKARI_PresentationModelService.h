@@ -3,11 +3,14 @@
 #include <cstdint>
 #include <span>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "Render3D/HIKARI_Transform3D.h"
+#include "Vfx/MaterialFx/HIKARI_MaterialFxParameterSet.h"
 
 namespace HIKARI {
 
@@ -48,6 +51,7 @@ namespace HIKARI {
         bool visible = true;
         bool castShadow = true;
         bool receiveShadow = true;
+        MaterialFxParameterSet materialFx{};
     };
 
     // World-owned render-only model submissions. These records never become
@@ -67,6 +71,72 @@ namespace HIKARI {
         bool Remove(
             uint64_t ownerObjectHandle,
             uint64_t instanceId) noexcept;
+        bool HasRecord(
+            uint64_t ownerObjectHandle,
+            uint64_t instanceId) const noexcept;
+        bool SetMaterialFxProfile(
+            uint64_t ownerObjectHandle,
+            uint64_t instanceId,
+            std::string_view profileId) noexcept;
+        bool ClearMaterialFx(
+            uint64_t ownerObjectHandle,
+            uint64_t instanceId) noexcept;
+        bool ResetMaterialFxToProfileDefaults(
+            uint64_t ownerObjectHandle,
+            uint64_t instanceId) noexcept;
+        bool SetMaterialFxFloat(
+            uint64_t ownerObjectHandle,
+            uint64_t instanceId,
+            std::string_view key,
+            float value) noexcept;
+        bool SetMaterialFxFloat2(
+            uint64_t ownerObjectHandle,
+            uint64_t instanceId,
+            std::string_view key,
+            const DirectX::XMFLOAT2& value) noexcept;
+        bool SetMaterialFxFloat3(
+            uint64_t ownerObjectHandle,
+            uint64_t instanceId,
+            std::string_view key,
+            const DirectX::XMFLOAT3& value) noexcept;
+        bool SetMaterialFxFloat4(
+            uint64_t ownerObjectHandle,
+            uint64_t instanceId,
+            std::string_view key,
+            const DirectX::XMFLOAT4& value) noexcept;
+        bool SetMaterialFxToggle(
+            uint64_t ownerObjectHandle,
+            uint64_t instanceId,
+            std::string_view key,
+            bool value) noexcept;
+        bool TryGetMaterialFxFloat(
+            uint64_t ownerObjectHandle,
+            uint64_t instanceId,
+            std::string_view key,
+            float& outValue) const noexcept;
+        bool TryGetMaterialFxFloat2(
+            uint64_t ownerObjectHandle,
+            uint64_t instanceId,
+            std::string_view key,
+            DirectX::XMFLOAT2& outValue) const noexcept;
+        bool TryGetMaterialFxFloat3(
+            uint64_t ownerObjectHandle,
+            uint64_t instanceId,
+            std::string_view key,
+            DirectX::XMFLOAT3& outValue) const noexcept;
+        bool TryGetMaterialFxFloat4(
+            uint64_t ownerObjectHandle,
+            uint64_t instanceId,
+            std::string_view key,
+            DirectX::XMFLOAT4& outValue) const noexcept;
+        bool TryGetMaterialFxToggle(
+            uint64_t ownerObjectHandle,
+            uint64_t instanceId,
+            std::string_view key,
+            bool& outValue) const noexcept;
+        const std::string* FindMaterialFxProfileId(
+            uint64_t ownerObjectHandle,
+            uint64_t instanceId) const noexcept;
 
         // The render cache supplies the current GameObject stable-id domain so
         // presentation ids can probe around real scene ids instead of relying
@@ -109,6 +179,39 @@ namespace HIKARI {
             size_t operator()(const Key& key) const noexcept;
         };
 
+        PresentationModelRecord* FindRecord(
+            uint64_t ownerObjectHandle,
+            uint64_t instanceId) noexcept;
+        const PresentationModelRecord* FindRecord(
+            uint64_t ownerObjectHandle,
+            uint64_t instanceId) const noexcept;
+        template<class Mutation>
+        bool MutateMaterialFx(
+            uint64_t ownerObjectHandle,
+            uint64_t instanceId,
+            Mutation&& mutation) noexcept {
+            try {
+                PresentationModelRecord* record = FindRecord(
+                    ownerObjectHandle,
+                    instanceId);
+                if (record == nullptr) {
+                    return false;
+                }
+                MaterialFxParameterSet next = record->materialFx;
+                if (!std::forward<Mutation>(mutation)(next)) {
+                    return false;
+                }
+                if (record->materialFx.HasSameState(next)) {
+                    return true;
+                }
+                record->materialFx = std::move(next);
+                AdvanceRevision();
+                return true;
+            }
+            catch (...) {
+                return false;
+            }
+        }
         void AdvanceRevision() noexcept;
         uint64_t AllocateRenderObjectId(
             const std::unordered_set<uint64_t>& occupiedIds) noexcept;

@@ -52,6 +52,8 @@ namespace HIKARI {
             RenderSubmissionSystem::GetSceneRenderCache();
         const auto& worldSprites =
             RenderSubmissionSystem::GetWorldSpriteFrameSource();
+        const auto& worldTexts =
+            RenderSubmissionSystem::GetWorldTextFrameSource();
 
         for (SceneObjectId objectId : objectIds) {
             const RENDER3D::RUNTIME::SceneRenderObject* renderObject =
@@ -79,6 +81,21 @@ namespace HIKARI {
                 BOUNDS::Encapsulate(
                     selectionBounds,
                     sprite->worldBounds);
+                hasSelectionBounds = true;
+                continue;
+            }
+
+            const auto text = std::find_if(
+                worldTexts.instances.begin(),
+                worldTexts.instances.end(),
+                [objectId](const auto& candidate) {
+                    return candidate.objectId == objectId.value &&
+                        BOUNDS::IsUsable(candidate.worldBounds);
+                });
+            if (text != worldTexts.instances.end()) {
+                BOUNDS::Encapsulate(
+                    selectionBounds,
+                    text->worldBounds);
                 hasSelectionBounds = true;
                 continue;
             }

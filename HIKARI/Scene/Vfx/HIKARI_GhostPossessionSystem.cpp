@@ -25,11 +25,10 @@ namespace HIKARI {
                 std::abs(lhs.w - rhs.w) <= kEpsilon;
         }
 
+        template<class LeftValues, class RightValues>
         bool EqualValues(
-            const DirectX::XMFLOAT4
-                (&lhs)[VFX::kMaterialFxUserCount],
-            const DirectX::XMFLOAT4
-                (&rhs)[VFX::kMaterialFxUserCount]) noexcept {
+            const LeftValues& lhs,
+            const RightValues& rhs) noexcept {
 
             for (size_t index = 0u;
                 index < VFX::kMaterialFxUserCount;

@@ -166,6 +166,8 @@ namespace HIKARI {
             const nlohmann::json& parameters);
         EDITOR::EditorOperationResult ExecuteAiSceneCreateWorldSprite(
             const nlohmann::json& parameters);
+        EDITOR::EditorOperationResult ExecuteAiSceneCreateWorldText(
+            const nlohmann::json& parameters);
         EDITOR::EditorOperationResult ExecuteAiProceduralCreatePrimitive(
             const nlohmann::json& parameters);
         EDITOR::EditorOperationResult ExecuteAiMaterialEditParameter(

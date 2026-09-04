@@ -125,6 +125,7 @@ namespace HIKARI::MESHRENDERER {
 
             resources.particlePass.Shutdown();
             resources.worldSpritePass.Shutdown();
+            resources.worldTextPass.Shutdown();
             for (SecondaryMeshViewFrameResources& frame : resources.frames) {
                 if (frame.cameraCB != nullptr && frame.cameraMapped != nullptr) {
                     frame.cameraCB->Unmap(0, nullptr);
@@ -340,6 +341,12 @@ namespace HIKARI::MESHRENDERER {
                     "initialization failed; capture remains available "
                     "without World Sprites.");
             }
+            if (!resources.worldTextPass.Initialize(graphics)) {
+                HIKARI_LOG_WARN(
+                    "[SecondarySceneCapture] World Text pass "
+                    "initialization failed; capture remains available "
+                    "without World Text.");
+            }
             resources.ownerDevice = device;
             resources.ownerDeviceGeneration = graphics.deviceGeneration;
             resources.initialized = true;
@@ -501,6 +508,14 @@ namespace HIKARI::MESHRENDERER {
                 "[SecondarySceneCapture] World Sprite preparation failed; "
                 "capture remains available without World Sprites.");
         }
+        if (!resources.worldTextPass.PrepareFrame(
+                graphics,
+                renderTransparent ? view.worldTextFrameSource : nullptr,
+                camera.GetPosition())) {
+            HIKARI_LOG_WARN(
+                "[SecondarySceneCapture] World Text preparation failed; "
+                "capture remains available without World Text.");
+        }
         CommitActiveMaterialDataFrame(graphics.cmdList);
 
         RENDER3D::GPUDRIVEN::GpuDrivenLayer& layer =
@@ -656,6 +671,10 @@ namespace HIKARI::MESHRENDERER {
                     overrides.cameraAddress,
                     camera.GetPosition(),
                     passResources);
+            transparentOk = transparentOk &&
+                resources.worldTextPass.ExecuteForwardTransparent(
+                    graphics,
+                    overrides.cameraAddress);
         }
         const bool emptyScene = !sceneSource.HasAnyGpuSceneRanges();
         if ((!opaque.gpuBackendExecuted && !emptyScene) ||

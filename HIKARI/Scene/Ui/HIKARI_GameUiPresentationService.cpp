@@ -7,6 +7,7 @@
 
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
+#include "Core/Text/HIKARI_UtfPath.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
 
 namespace HIKARI::GAME_UI {
@@ -103,7 +104,8 @@ namespace HIKARI::GAME_UI {
                 resolvedTexturePaths_.emplace(cacheKey, outPath);
                 return true;
             }
-            const std::filesystem::path relative{ cacheKey };
+            const std::filesystem::path relative =
+                TEXT::PathFromUtf8(cacheKey);
             if (relative.is_absolute() || relative.has_root_path() ||
                 HasParentTraversal(relative)) {
                 return false;
@@ -165,8 +167,8 @@ namespace HIKARI::GAME_UI {
                 outPath = found->second;
                 return true;
             }
-            const std::filesystem::path relative{
-                cacheKey };
+            const std::filesystem::path relative =
+                TEXT::PathFromUtf8(cacheKey);
             if (relative.is_absolute() || relative.has_root_path() ||
                 HasParentTraversal(relative)) {
                 return false;
@@ -368,7 +370,7 @@ namespace HIKARI::GAME_UI {
             }
 
             GameUiTextDraw draw{};
-            draw.absoluteFontAssetPath = resolved.string();
+            draw.absoluteFontAssetPath = TEXT::PathToUtf8(resolved);
             draw.utf8Text.assign(utf8Text.data(), utf8Text.size());
             draw.request = request;
             draw.style = style;

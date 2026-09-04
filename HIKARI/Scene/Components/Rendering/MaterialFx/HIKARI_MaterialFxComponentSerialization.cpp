@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <iterator>
+#include <utility>
 
 #include "Core/Serialization/Json/HIKARI_JsonMath.h"
 
@@ -12,14 +13,14 @@ namespace HIKARI {
     void MaterialFxComponent::Serialize(
         nlohmann::json& out) const {
 
-        out["profileId"] = profileId_;
-        out["valuesInitialized"] = valuesInitialized_;
-        if (!valuesInitialized_) {
+        out["profileId"] = parameters_.GetProfileId();
+        out["valuesInitialized"] = parameters_.AreValuesInitialized();
+        if (!parameters_.AreValuesInitialized()) {
             return;
         }
 
         out["paramValues"] = nlohmann::json::array();
-        for (const DirectX::XMFLOAT4& value : paramValues_) {
+        for (const DirectX::XMFLOAT4& value : parameters_.GetValues()) {
             out["paramValues"].push_back(
                 JsonMath::ToJsonArray(value));
         }
@@ -28,10 +29,11 @@ namespace HIKARI {
     void MaterialFxComponent::Deserialize(
         const nlohmann::json& in) {
 
-        profileId_ = in.value("profileId", profileId_);
-        for (DirectX::XMFLOAT4& value : paramValues_) {
-            value = {};
-        }
+        const std::string profileId = in.value(
+            "profileId",
+            parameters_.GetProfileId());
+        DirectX::XMFLOAT4
+            decodedValues[VFX::kMaterialFxUserCount]{};
 
         bool hasParamValues = false;
         if (in.contains("paramValues") &&
@@ -40,14 +42,14 @@ namespace HIKARI {
             const nlohmann::json& values = in["paramValues"];
             const size_t count = (std::min)(
                 values.size(),
-                std::size(paramValues_));
+                std::size(decodedValues));
             for (size_t i = 0; i < count; ++i) {
                 const nlohmann::json& node = values[i];
                 if (!node.is_array() || node.size() < 4u) {
                     continue;
                 }
 
-                paramValues_[i] = {
+                decodedValues[i] = {
                     node[0].is_number()
                         ? node[0].get<float>()
                         : 0.0f,
@@ -65,14 +67,14 @@ namespace HIKARI {
             hasParamValues = true;
         }
 
-        valuesInitialized_ =
+        const bool valuesInitialized =
             in.value("valuesInitialized", hasParamValues);
-        if (!valuesInitialized_) {
-            for (DirectX::XMFLOAT4& value : paramValues_) {
-                value = {};
-            }
-        }
-        NotifyRenderStateDirty();
+        MaterialFxParameterSet next = parameters_;
+        next.RestorePersistedState(
+            profileId,
+            decodedValues,
+            valuesInitialized);
+        (void)CommitParameterState(std::move(next));
     }
 
 } // namespace HIKARI

@@ -370,6 +370,9 @@ hikari_add_runtime_contract(
 hikari_add_runtime_contract(
     HIKARI_BuiltinShaderCatalogSmoke
     "Tools/Tests/HIKARI_BuiltinShaderCatalogSmoke.cpp")
+hikari_add_runtime_contract(
+    HIKARI_WorldTextContracts
+    "Tools/Tests/HIKARI_WorldTextContracts.cpp")
 enable_testing()
 foreach(runtime_contract IN ITEMS
     HIKARI_GameComponentBindingLifecycleSmoke
@@ -395,7 +398,8 @@ foreach(runtime_contract IN ITEMS
     HIKARI_ShaderCookProducerSmoke
     HIKARI_ShaderAssetResolverSmoke
     HIKARI_ShaderAssetRegistryAdmissionSmoke
-    HIKARI_BuiltinShaderCatalogSmoke)
+    HIKARI_BuiltinShaderCatalogSmoke
+    HIKARI_WorldTextContracts)
     add_test(
         NAME "${runtime_contract}"
         COMMAND "$<TARGET_FILE:${runtime_contract}>")
@@ -428,6 +432,69 @@ if(HIKARI_WITH_EDITOR_BUILD)
         TREE "${HIKARI_SOURCE_ROOT}"
         FILES
             ${HIKARI_EDITOR_SOURCES})
+
+    add_executable(
+        HIKARI_GameProjectEditorWorkspaceRegistrySmoke
+        EXCLUDE_FROM_ALL
+        "Tools/Tests/HIKARI_GameProjectEditorWorkspaceRegistrySmoke.cpp")
+    target_link_libraries(
+        HIKARI_GameProjectEditorWorkspaceRegistrySmoke
+        PRIVATE
+            HIKARI::Editor)
+    hikari_configure_engine_target(
+        HIKARI_GameProjectEditorWorkspaceRegistrySmoke)
+    set(
+        hikari_editor_contract_output_directory
+        "${CMAKE_BINARY_DIR}/tests")
+    set_target_properties(
+        HIKARI_GameProjectEditorWorkspaceRegistrySmoke
+        PROPERTIES
+            FOLDER "Tests/EditorContracts"
+            EXCLUDE_FROM_DEFAULT_BUILD TRUE
+            ARCHIVE_OUTPUT_DIRECTORY
+                "${hikari_editor_contract_output_directory}"
+            RUNTIME_OUTPUT_DIRECTORY
+                "${hikari_editor_contract_output_directory}"
+            PDB_OUTPUT_DIRECTORY
+                "${hikari_editor_contract_output_directory}"
+            COMPILE_PDB_OUTPUT_DIRECTORY
+                "${hikari_editor_contract_output_directory}"
+            VS_DEBUGGER_WORKING_DIRECTORY "${HIKARI_SOURCE_ROOT}")
+    foreach(configuration IN ITEMS Debug EditorRelease Shipping)
+        string(TOUPPER "${configuration}" configuration_upper)
+        set_target_properties(
+            HIKARI_GameProjectEditorWorkspaceRegistrySmoke
+            PROPERTIES
+                "EXCLUDE_FROM_DEFAULT_BUILD_${configuration_upper}" TRUE
+                "ARCHIVE_OUTPUT_DIRECTORY_${configuration_upper}"
+                    "${hikari_editor_contract_output_directory}"
+                "RUNTIME_OUTPUT_DIRECTORY_${configuration_upper}"
+                    "${hikari_editor_contract_output_directory}"
+                "PDB_OUTPUT_DIRECTORY_${configuration_upper}"
+                    "${hikari_editor_contract_output_directory}"
+                "COMPILE_PDB_OUTPUT_DIRECTORY_${configuration_upper}"
+                    "${hikari_editor_contract_output_directory}")
+    endforeach()
+    foreach(runtime_file IN LISTS HIKARI_RUNTIME_DEPENDENCIES)
+        add_custom_command(
+            TARGET HIKARI_GameProjectEditorWorkspaceRegistrySmoke
+            POST_BUILD
+            COMMAND
+                "${CMAKE_COMMAND}" -E copy_if_different
+                "${runtime_file}"
+                "$<TARGET_FILE_DIR:HIKARI_GameProjectEditorWorkspaceRegistrySmoke>"
+            VERBATIM)
+    endforeach()
+    add_test(
+        NAME HIKARI_GameProjectEditorWorkspaceRegistrySmoke
+        COMMAND
+            "$<TARGET_FILE:HIKARI_GameProjectEditorWorkspaceRegistrySmoke>")
+    set_tests_properties(
+        HIKARI_GameProjectEditorWorkspaceRegistrySmoke
+        PROPERTIES
+            CONFIGURATIONS "Debug;EditorRelease"
+            LABELS "EditorContracts"
+            TIMEOUT 30)
 
     add_executable(HIKARI_EditorHost WIN32)
     target_sources(

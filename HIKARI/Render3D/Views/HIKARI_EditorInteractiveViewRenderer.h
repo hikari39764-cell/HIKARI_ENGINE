@@ -34,6 +34,10 @@ namespace HIKARI::RENDER3D::WORLD_SPRITES {
     struct WorldSpriteFrameSource;
 }
 
+namespace HIKARI::RENDER3D::WORLD_TEXT {
+    struct WorldTextFrameSource;
+}
+
 namespace HIKARI::RENDER3D::EDITORVIEW {
 
     // Tool previews own these guides per view. They are expanded directly by
@@ -156,7 +160,9 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         const MATERIAL::MaterialExternalValueSnapshot*
             materialExternalValues = nullptr,
         const WORLD_SPRITES::WorldSpriteFrameSource*
-            worldSpriteFrameSource = nullptr);
+            worldSpriteFrameSource = nullptr,
+        const WORLD_TEXT::WorldTextFrameSource*
+            worldTextFrameSource = nullptr);
     EditorInteractiveViewOutput GetOutput(RenderViewId viewId);
     std::string_view GetEditorInteractiveViewFailureMessage(
         EditorInteractiveViewFailure failure) noexcept;

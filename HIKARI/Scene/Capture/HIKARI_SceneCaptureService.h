@@ -159,17 +159,12 @@ namespace HIKARI::SCENE_CAPTURE {
                     kGameProjectInvalidMaterialIndex)) {
                 return false;
             }
-            const auto sameDestination = [&binding](
-                const SceneCaptureMaterialBinding& existing) {
-                return existing.modelObject == binding.modelObject &&
-                    existing.materialSlotName == binding.materialSlotName &&
-                    existing.fallbackMaterialIndex ==
-                        binding.fallbackMaterialIndex;
-            };
             const auto found = std::find_if(
                 bindings_.begin(),
                 bindings_.end(),
-                sameDestination);
+                [&binding](const SceneCaptureMaterialBinding& existing) {
+                    return IsSameMaterialDestination(existing, binding);
+                });
             if (found != bindings_.end()) {
                 retiredBindings_.push_back(std::move(*found));
                 *found = std::move(binding);
@@ -306,6 +301,20 @@ namespace HIKARI::SCENE_CAPTURE {
         }
 
     private:
+        static bool IsSameMaterialDestination(
+            const SceneCaptureMaterialBinding& lhs,
+            const SceneCaptureMaterialBinding& rhs) {
+            if (lhs.modelObject != rhs.modelObject ||
+                lhs.materialSlotName != rhs.materialSlotName) {
+                return false;
+            }
+            // A non-empty source slot name is the authoritative identity.
+            // The fallback index participates only for unnamed bindings, as
+            // promised by the public SceneCapture binding contract.
+            return !lhs.materialSlotName.empty() ||
+                lhs.fallbackMaterialIndex == rhs.fallbackMaterialIndex;
+        }
+
         struct CaptureState {
             SceneCaptureRequest request{};
             RENDER3D::TextureResourceHandle outputTexture{};

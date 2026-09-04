@@ -410,9 +410,11 @@ namespace HIKARI::GAME_UI {
             }
 
             std::vector<GameUiTextGlyphDraw> textGlyphs{};
+            TEXT_RENDERING::SdfTextLayoutLease textAtlasLease{};
             if (!BuildGameUiTextGlyphDraws(
                     source->texts,
-                    textGlyphs)) {
+                    textGlyphs,
+                    &textAtlasLease)) {
                 return false;
             }
             std::vector<ResolvedDraw> resolved{};

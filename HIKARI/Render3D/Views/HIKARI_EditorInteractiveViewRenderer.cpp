@@ -1474,7 +1474,9 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         const MATERIAL::MaterialExternalValueSnapshot*
             materialExternalValues,
         const WORLD_SPRITES::WorldSpriteFrameSource*
-            worldSpriteFrameSource) {
+            worldSpriteFrameSource,
+        const WORLD_TEXT::WorldTextFrameSource*
+            worldTextFrameSource) {
 
         InteractiveViewState* selectedStatic = nullptr;
         InteractiveViewState* selectedRealtime = nullptr;
@@ -1615,6 +1617,7 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         view.cameraFrame = &selected->request.cameraFrame;
         view.assetRegistry = assetRegistry;
         view.worldSpriteFrameSource = worldSpriteFrameSource;
+        view.worldTextFrameSource = worldTextFrameSource;
         const PARTICLES::ParticleRenderFrameSource particleFrameSource{
             selected->request.particleInputOverride.get(),
             assetRegistry,

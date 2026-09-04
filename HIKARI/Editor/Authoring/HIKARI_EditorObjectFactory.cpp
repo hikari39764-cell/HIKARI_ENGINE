@@ -7,6 +7,7 @@
 #include "Scene/HIKARI_SceneComponentId.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/HIKARI_SceneDocumentQueries.h"
+#include "Scene/Components/Rendering/WorldText/HIKARI_WorldTextComponent.h"
 #include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/Terrain/HIKARI_TerrainSurfaceComponent.h"
@@ -354,6 +355,53 @@ namespace HIKARI::EDITOR {
         });
         NormalizeSceneComponentIds(object);
         scene.GetSceneDocument().objects.push_back(std::move(object));
+        scene.RebuildRuntimeWorld();
+        return FindRuntimeObject(scene, id);
+    }
+
+    GameObject* CreateWorldTextObject(
+        DocumentSceneBase& scene,
+        const CreateWorldTextRequest& request) {
+
+        SceneObjectData object = BuildBaseObject(
+            scene, nullptr, request.object);
+        if (request.object.name.empty()) {
+            object.name = "World Text";
+        }
+        const SceneObjectId id = object.id;
+
+        WorldTextComponent component{};
+        component.SetText(request.text);
+        component.SetFontAssetPath(request.fontAssetPath);
+        component.SetVisible(request.visible);
+        component.SetLayoutSize(request.layoutSize);
+        component.SetFontHeight(request.fontHeight);
+        component.SetHorizontalAlign(request.horizontalAlign);
+        component.SetVerticalAlign(request.verticalAlign);
+        component.SetWrapMode(request.wrap);
+        component.SetLineHeightMultiplier(
+            request.lineHeightMultiplier);
+        component.SetLetterSpacing(request.letterSpacing);
+        component.SetFacingMode(request.facing);
+        component.SetColor(request.color);
+        component.SetOutlineColor(request.outlineColor);
+        component.SetOutlineWidth(request.outlineWidth);
+        component.SetOpacity(request.opacity);
+        component.SetRevealAmount(request.revealAmount);
+        component.SetPivot(request.pivot);
+        component.SetTransparentSortPriority(
+            request.transparentSortPriority);
+
+        nlohmann::json properties = nlohmann::json::object();
+        component.Serialize(properties);
+        object.components.push_back(SceneComponentData{
+            "WorldTextComponent",
+            std::move(properties)
+        });
+        NormalizeSceneComponentIds(object);
+        scene.GetSceneDocument().objects.push_back(std::move(object));
+
+        // Document を正として runtime world を一度だけ作り直す。
         scene.RebuildRuntimeWorld();
         return FindRuntimeObject(scene, id);
     }

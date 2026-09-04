@@ -471,6 +471,20 @@ namespace HIKARI::EDITOR {
                 }
                 selected.push_back(SceneObjectId{ sprite.objectId });
             }
+            for (const auto& text : RenderSubmissionSystem::
+                    GetWorldTextFrameSource().instances) {
+                if (text.objectId == 0u ||
+                    lockedObjectIds.contains(text.objectId) ||
+                    !BoundsOverlapRectangle(
+                        camera,
+                        viewport,
+                        selectionMin,
+                        selectionMax,
+                        text.worldBounds)) {
+                    continue;
+                }
+                selected.push_back(SceneObjectId{ text.objectId });
+            }
             std::sort(
                 selected.begin(),
                 selected.end(),
@@ -523,6 +537,8 @@ namespace HIKARI::EDITOR {
             nullptr;
         const RENDER3D::WORLD_SPRITES::WorldSpriteInstance*
             selectedSprite = nullptr;
+        const RENDER3D::WORLD_TEXT::WorldTextInstance*
+            selectedText = nullptr;
         for (const RENDER3D::RUNTIME::SceneSurfaceInstance& surface :
             cache.GetSurfaceInstances()) {
             if (!surface.valid ||
@@ -553,6 +569,24 @@ namespace HIKARI::EDITOR {
                 selectedObject.value = sprite.objectId;
                 selectedSurface = nullptr;
                 selectedSprite = &sprite;
+                selectedText = nullptr;
+            }
+        }
+
+        for (const auto& text : RenderSubmissionSystem::
+                GetWorldTextFrameSource().instances) {
+            if (text.objectId == 0u ||
+                lockedObjectIds_.contains(text.objectId)) {
+                continue;
+            }
+            float distance = 0.0f;
+            if (IntersectRayBounds(ray, text.worldBounds, distance) &&
+                distance < selectedDistance) {
+                selectedDistance = distance;
+                selectedObject.value = text.objectId;
+                selectedSurface = nullptr;
+                selectedSprite = nullptr;
+                selectedText = &text;
             }
         }
 
@@ -586,6 +620,7 @@ namespace HIKARI::EDITOR {
                 selectedDistance = distance;
                 selectedObject.value = object.desc.id.value;
                 selectedSprite = nullptr;
+                selectedText = nullptr;
             }
         }
         if (selectedObject.value != 0u) {
@@ -607,6 +642,14 @@ namespace HIKARI::EDITOR {
                 selectionAnchor_.normalizedPosition = NormalizePointInBounds(
                     hitPoint,
                     selectedSprite->worldBounds);
+                selectionAnchor_.valid = true;
+            } else if (selectedText != nullptr) {
+                const MATH::Vec3 hitPoint =
+                    ray.origin + ray.direction * selectedDistance;
+                selectionAnchor_.objectId = selectedObject;
+                selectionAnchor_.normalizedPosition = NormalizePointInBounds(
+                    hitPoint,
+                    selectedText->worldBounds);
                 selectionAnchor_.valid = true;
             }
         }
@@ -802,6 +845,16 @@ namespace HIKARI::EDITOR {
                 if (sprite.objectId == objectId.value &&
                     BOUNDS::IsUsable(sprite.worldBounds)) {
                     objectBounds = &sprite.worldBounds;
+                    break;
+                }
+            }
+        }
+        if (objectBounds == nullptr) {
+            for (const auto& text : RenderSubmissionSystem::
+                    GetWorldTextFrameSource().instances) {
+                if (text.objectId == objectId.value &&
+                    BOUNDS::IsUsable(text.worldBounds)) {
+                    objectBounds = &text.worldBounds;
                     break;
                 }
             }

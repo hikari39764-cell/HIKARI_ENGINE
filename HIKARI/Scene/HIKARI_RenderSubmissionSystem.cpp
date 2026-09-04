@@ -2,6 +2,7 @@
 
 #include "Assets/HIKARI_AssetRegistry.h"
 #include "Assets/HIKARI_AssetTypes.h"
+#include "Core/Text/HIKARI_UtfPath.h"
 #include "Core/HIKARI_FrameContext.h"
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Render3D/Core/HIKARI_BoundsUtils.h"
@@ -19,6 +20,7 @@
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelRenderableAssetResolver.h"
 #include "Scene/Components/Rendering/WorldSprite/HIKARI_WorldSpriteComponent.h"
+#include "Scene/Components/Rendering/WorldText/HIKARI_WorldTextComponent.h"
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/Terrain/HIKARI_TerrainGrassModelFactory.h"
@@ -35,6 +37,7 @@
 #include <cmath>
 #include <limits>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -52,6 +55,8 @@ namespace HIKARI {
         RenderSubmissionSystem::sCombinedGpuSceneSource_{};
     RENDER3D::WORLD_SPRITES::WorldSpriteFrameSource
         RenderSubmissionSystem::sWorldSpriteFrameSource_{};
+    RENDER3D::WORLD_TEXT::WorldTextFrameSource
+        RenderSubmissionSystem::sWorldTextFrameSource_{};
     SceneRenderCacheSync RenderSubmissionSystem::sSceneRenderCacheSync_{};
     bool RenderSubmissionSystem::sGpuSceneRegistryValid_ = false;
     bool RenderSubmissionSystem::sGpuDrivenSceneSyncInitialized_ = false;
@@ -235,6 +240,142 @@ namespace HIKARI {
             };
         }
 
+        Bounds ResolveWorldTextBounds(
+            const RENDER3D::WORLD_TEXT::WorldTextInstance& instance,
+            const MATH::Mat4& worldMatrix) noexcept {
+            const float width = instance.layoutSize.x;
+            const float height = instance.layoutSize.y;
+            if (instance.facing ==
+                RENDER3D::WORLD_TEXT::WorldTextFacingMode::Fixed) {
+                const float left = -instance.pivot.x * width;
+                const float right = (1.0f - instance.pivot.x) * width;
+                const float bottom = -instance.pivot.y * height;
+                const float top = (1.0f - instance.pivot.y) * height;
+                const std::array corners{
+                    MATH::Vec3{ left, bottom, 0.0f },
+                    MATH::Vec3{ right, bottom, 0.0f },
+                    MATH::Vec3{ left, top, 0.0f },
+                    MATH::Vec3{ right, top, 0.0f },
+                };
+                Bounds bounds{
+                    { (std::numeric_limits<float>::max)(),
+                      (std::numeric_limits<float>::max)(),
+                      (std::numeric_limits<float>::max)() },
+                    { (std::numeric_limits<float>::lowest)(),
+                      (std::numeric_limits<float>::lowest)(),
+                      (std::numeric_limits<float>::lowest)() }
+                };
+                for (const MATH::Vec3& corner : corners) {
+                    const MATH::Vec3 point = TransformPoint(
+                        worldMatrix, corner);
+                    bounds.min.x = (std::min)(bounds.min.x, point.x);
+                    bounds.min.y = (std::min)(bounds.min.y, point.y);
+                    bounds.min.z = (std::min)(bounds.min.z, point.z);
+                    bounds.max.x = (std::max)(bounds.max.x, point.x);
+                    bounds.max.y = (std::max)(bounds.max.y, point.y);
+                    bounds.max.z = (std::max)(bounds.max.z, point.z);
+                }
+                constexpr float depthEpsilon = 0.01f;
+                bounds.min = bounds.min - MATH::Vec3{
+                    depthEpsilon, depthEpsilon, depthEpsilon };
+                bounds.max = bounds.max + MATH::Vec3{
+                    depthEpsilon, depthEpsilon, depthEpsilon };
+                return bounds;
+            }
+
+            const float scaledWidth = width *
+                (std::max)(std::abs(instance.worldScale.x), 0.001f);
+            const float scaledHeight = height *
+                (std::max)(std::abs(instance.worldScale.y), 0.001f);
+            const float pivotExtentX = (std::max)(
+                instance.pivot.x,
+                1.0f - instance.pivot.x) * scaledWidth;
+            const float pivotExtentY = (std::max)(
+                instance.pivot.y,
+                1.0f - instance.pivot.y) * scaledHeight;
+            const float radius = std::sqrt(
+                pivotExtentX * pivotExtentX +
+                pivotExtentY * pivotExtentY) + 0.01f;
+            return {
+                instance.worldPosition - MATH::Vec3{ radius, radius, radius },
+                instance.worldPosition + MATH::Vec3{ radius, radius, radius }
+            };
+        }
+
+        bool HasParentTraversal(const std::filesystem::path& path) {
+            for (const auto& part : path) {
+                if (part == "..") {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        bool IsPathWithin(
+            const std::filesystem::path& root,
+            const std::filesystem::path& candidate) {
+            auto rootIt = root.begin();
+            auto candidateIt = candidate.begin();
+            while (rootIt != root.end()) {
+                if (candidateIt == candidate.end() ||
+                    *rootIt != *candidateIt) {
+                    return false;
+                }
+                ++rootIt;
+                ++candidateIt;
+            }
+            return true;
+        }
+
+        bool ResolveWorldTextFontPath(
+            const std::filesystem::path& projectRoot,
+            std::string_view fontAssetPath,
+            std::filesystem::path& outPath) {
+            outPath.clear();
+            if (projectRoot.empty() || fontAssetPath.empty()) {
+                return false;
+            }
+            try {
+                const std::filesystem::path relative =
+                    TEXT::PathFromUtf8(fontAssetPath);
+                if (relative.is_absolute() || relative.has_root_path() ||
+                    HasParentTraversal(relative)) {
+                    return false;
+                }
+                const std::array roots{
+                    projectRoot / "Assets",
+                    projectRoot / "RuntimePayload" / "Assets"
+                };
+                for (const auto& requestedRoot : roots) {
+                    std::error_code error{};
+                    std::filesystem::path root =
+                        std::filesystem::weakly_canonical(
+                            requestedRoot, error);
+                    if (error) {
+                        root = requestedRoot.lexically_normal();
+                    }
+                    error.clear();
+                    const std::filesystem::path candidate =
+                        std::filesystem::weakly_canonical(
+                            root / relative, error);
+                    if (error || !IsPathWithin(root, candidate)) {
+                        continue;
+                    }
+                    error.clear();
+                    if (!std::filesystem::is_regular_file(
+                            candidate, error) || error) {
+                        continue;
+                    }
+                    outPath = candidate;
+                    return true;
+                }
+            }
+            catch (...) {
+                outPath.clear();
+            }
+            return false;
+        }
+
         void BuildWorldSpriteFrameSource(
             World& world,
             const FrameContext& frame,
@@ -298,6 +439,82 @@ namespace HIKARI {
                     }
                     instance.worldBounds = ResolveWorldSpriteBounds(
                         boundsInstance, worldMatrix);
+                    outSource.instances.push_back(std::move(instance));
+                });
+        }
+
+        void BuildWorldTextFrameSource(
+            World& world,
+            const FrameContext& frame,
+            const std::filesystem::path& projectRoot,
+            RENDER3D::WORLD_TEXT::WorldTextFrameSource& outSource) {
+            constexpr size_t kMaximumWorldTextCount = 4096u;
+            outSource.Clear();
+            outSource.worldIdentity = world.GetRuntimeIdentity();
+            outSource.frameIndex = frame.frameIndex;
+            std::unordered_map<std::string, std::filesystem::path>
+                resolvedFonts{};
+            uint32_t stableOrder = 0u;
+            world.ForEachObjectWith<WorldTextComponent>(
+                [&](GameObject& object, WorldTextComponent& text) {
+                    if (!text.IsVisible() || text.GetText().empty() ||
+                        outSource.instances.size() >=
+                            kMaximumWorldTextCount) {
+                        return;
+                    }
+                    const std::string& fontAssetPath =
+                        text.GetFontAssetPath();
+                    auto found = resolvedFonts.find(fontAssetPath);
+                    if (found == resolvedFonts.end()) {
+                        std::filesystem::path resolved{};
+                        if (!ResolveWorldTextFontPath(
+                                projectRoot,
+                                fontAssetPath,
+                                resolved)) {
+                            return;
+                        }
+                        found = resolvedFonts.emplace(
+                            fontAssetPath, std::move(resolved)).first;
+                    }
+
+                    RENDER3D::WORLD_TEXT::WorldTextInstance instance{};
+                    instance.objectId = object.GetRenderStableId();
+                    instance.stableOrder = stableOrder++;
+                    instance.absoluteFontAssetPath =
+                        TEXT::PathToUtf8(found->second);
+                    instance.utf8Text = text.GetText();
+                    instance.layoutSize = text.GetLayoutSize();
+                    instance.pivot = text.GetPivot();
+                    instance.color = text.GetColor();
+                    instance.outlineColor = text.GetOutlineColor();
+                    instance.fontHeight = text.GetFontHeight();
+                    instance.lineHeightMultiplier =
+                        text.GetLineHeightMultiplier();
+                    instance.letterSpacing = text.GetLetterSpacing();
+                    instance.outlineWidth = text.GetOutlineWidth();
+                    instance.opacity = text.GetOpacity();
+                    instance.revealAmount = text.GetRevealAmount();
+                    instance.transparentSortPriority =
+                        text.GetTransparentSortPriority();
+                    instance.horizontalAlign = text.GetHorizontalAlign();
+                    instance.verticalAlign = text.GetVerticalAlign();
+                    instance.wrap = text.GetWrapMode();
+                    instance.facing = text.GetFacingMode();
+
+                    const MATH::Mat4 worldMatrix =
+                        object.GetTransform().GetWorldMatrix();
+                    if (!MATH::DecomposeTRS(
+                            worldMatrix,
+                            instance.worldPosition,
+                            instance.worldRotation,
+                            instance.worldScale)) {
+                        instance.worldPosition = TransformPoint(
+                            worldMatrix, {});
+                        instance.worldRotation = MATH::Quat::Identity();
+                        instance.worldScale = { 1.0f, 1.0f, 1.0f };
+                    }
+                    instance.worldBounds = ResolveWorldTextBounds(
+                        instance, worldMatrix);
                     outSource.instances.push_back(std::move(instance));
                 });
         }
@@ -510,6 +727,7 @@ namespace HIKARI {
         sMassGpuSceneRegistry_.Clear();
         sCombinedGpuSceneSource_.Reset();
         sWorldSpriteFrameSource_.Clear();
+        sWorldTextFrameSource_.Clear();
         sGpuSceneRegistryValid_ = false;
         sGpuDrivenSceneSyncInitialized_ = false;
         sSubmissionWorldIdentity_ = 0u;
@@ -558,6 +776,11 @@ namespace HIKARI {
         return sWorldSpriteFrameSource_;
     }
 
+    const RENDER3D::WORLD_TEXT::WorldTextFrameSource&
+        RenderSubmissionSystem::GetWorldTextFrameSource() {
+        return sWorldTextFrameSource_;
+    }
+
     void RenderSubmissionSystem::PreRender(World& world, const FrameContext& frame) {
         CPU_PROFILE::ScopedCpuTimer cpuTimer(
             CPU_PROFILE::Pass::RenderSubmission);
@@ -592,6 +815,11 @@ namespace HIKARI {
             frame,
             sAssetRegistry_,
             sWorldSpriteFrameSource_);
+        BuildWorldTextFrameSource(
+            world,
+            frame,
+            sProjectRoot_,
+            sWorldTextFrameSource_);
 
         if (!sGpuDrivenSceneSyncInitialized_) {
             sSceneRenderCacheSync_.Sync(

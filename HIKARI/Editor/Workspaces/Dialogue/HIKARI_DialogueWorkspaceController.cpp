@@ -212,12 +212,60 @@ namespace HIKARI::EDITOR {
         return true;
     }
 
+    DialogueDocumentTransitionIntent
+        DialogueWorkspaceController::ToTransitionIntent(
+            PendingDocumentAction action) noexcept {
+        switch (action) {
+        case PendingDocumentAction::NewAsset:
+            return DialogueDocumentTransitionIntent::NewAsset;
+        case PendingDocumentAction::OpenAsset:
+            return DialogueDocumentTransitionIntent::OpenAsset;
+        case PendingDocumentAction::CloseAsset:
+            return DialogueDocumentTransitionIntent::CloseAsset;
+        case PendingDocumentAction::Revert:
+            return DialogueDocumentTransitionIntent::RevertAsset;
+        case PendingDocumentAction::WorkspaceTransition:
+            return DialogueDocumentTransitionIntent::LeaveWorkspace;
+        case PendingDocumentAction::None:
+        default:
+            return DialogueDocumentTransitionIntent::None;
+        }
+    }
+
+    bool DialogueWorkspaceController::QueueTransition(
+        PendingAction action,
+        bool dirty,
+        const char* dirtyMessage,
+        std::string& outMessage) {
+        const DialogueDocumentTransitionRequest request =
+            documentTransition_.Request(
+                ToTransitionIntent(action.kind),
+                dirty);
+        switch (request) {
+        case DialogueDocumentTransitionRequest::ApplyImmediately:
+            return true;
+        case DialogueDocumentTransitionRequest::ConfirmationRequired:
+            pendingAction_ = std::move(action);
+            outMessage = dirtyMessage;
+            return false;
+        case DialogueDocumentTransitionRequest::Busy:
+            outMessage =
+                "A Dialogue document decision is already pending";
+            return false;
+        case DialogueDocumentTransitionRequest::InvalidIntent:
+        default:
+            outMessage = "Dialogue document transition intent is invalid";
+            return false;
+        }
+    }
+
     bool DialogueWorkspaceController::RequestNewAsset(
         std::string& outMessage) {
-        if (document_.IsDirty()) {
-            pendingAction_ = { PendingDocumentAction::NewAsset, {}, {} };
-            requestUnsavedDocumentDialog_ = true;
-            outMessage = "Current dialogue has unsaved changes";
+        if (!QueueTransition(
+                { PendingDocumentAction::NewAsset, {}, {} },
+                document_.IsDirty(),
+                "Current dialogue has unsaved changes",
+                outMessage)) {
             return false;
         }
         return ApplyNewAsset(outMessage);
@@ -236,14 +284,15 @@ namespace HIKARI::EDITOR {
             outMessage = "Dialogue asset is already open";
             return true;
         }
-        if (document_.IsDirty()) {
-            pendingAction_ = {
-                PendingDocumentAction::OpenAsset,
-                assetGuid,
-                {},
-            };
-            requestUnsavedDocumentDialog_ = true;
-            outMessage = "Current dialogue has unsaved changes";
+        if (!QueueTransition(
+                {
+                    PendingDocumentAction::OpenAsset,
+                    assetGuid,
+                    {},
+                },
+                document_.IsDirty(),
+                "Current dialogue has unsaved changes",
+                outMessage)) {
             return false;
         }
         return ApplyOpenAsset(database, assetGuid, outMessage);
@@ -255,10 +304,11 @@ namespace HIKARI::EDITOR {
             outMessage = "No Dialogue asset is open";
             return true;
         }
-        if (document_.IsDirty()) {
-            pendingAction_ = { PendingDocumentAction::CloseAsset, {}, {} };
-            requestUnsavedDocumentDialog_ = true;
-            outMessage = "Current dialogue has unsaved changes";
+        if (!QueueTransition(
+                { PendingDocumentAction::CloseAsset, {}, {} },
+                document_.IsDirty(),
+                "Current dialogue has unsaved changes",
+                outMessage)) {
             return false;
         }
         document_.Close();
@@ -276,10 +326,11 @@ namespace HIKARI::EDITOR {
             outMessage = "Only a saved Dialogue asset can be reverted";
             return false;
         }
-        if (document_.IsDirty()) {
-            pendingAction_ = { PendingDocumentAction::Revert, {}, {} };
-            requestUnsavedDocumentDialog_ = true;
-            outMessage = "Reverting will discard unsaved dialogue changes";
+        if (!QueueTransition(
+                { PendingDocumentAction::Revert, {}, {} },
+                document_.IsDirty(),
+                "Reverting will discard unsaved dialogue changes",
+                outMessage)) {
             return false;
         }
         const bool reverted = document_.Revert(database, outMessage);
@@ -297,14 +348,15 @@ namespace HIKARI::EDITOR {
             outMessage = "Dialogue workspace is already active";
             return false;
         }
-        if (IsDocumentDirty()) {
-            pendingAction_ = {
-                PendingDocumentAction::WorkspaceTransition,
-                {},
-                std::move(request),
-            };
-            requestUnsavedDocumentDialog_ = true;
-            outMessage = "Dialogue documents have unsaved changes";
+        if (!QueueTransition(
+                {
+                    PendingDocumentAction::WorkspaceTransition,
+                    {},
+                    request,
+                },
+                IsDocumentDirty(),
+                "Dialogue documents have unsaved changes",
+                outMessage)) {
             return false;
         }
         deferredWorkspaceRequest_ = std::move(request);
@@ -314,7 +366,12 @@ namespace HIKARI::EDITOR {
 
     bool DialogueWorkspaceController::HasPendingConfirmation()
         const noexcept {
-        return pendingAction_.kind != PendingDocumentAction::None;
+        return documentTransition_.HasPendingIntent();
+    }
+
+    bool DialogueWorkspaceController::ConsumePendingConfirmationOpenRequest()
+        noexcept {
+        return documentTransition_.ConsumeConfirmationOpenRequest();
     }
 
     bool DialogueWorkspaceController::PendingActionSupportsSave()
@@ -345,22 +402,38 @@ namespace HIKARI::EDITOR {
     bool DialogueWorkspaceController::ApplyPending(
         DocumentSceneBase& scene,
         std::string& outMessage) {
-        const PendingAction action = std::move(pendingAction_);
-        pendingAction_ = {};
+        const DialogueDocumentTransitionIntent pendingIntent =
+            ToTransitionIntent(pendingAction_.kind);
+        if (pendingIntent == DialogueDocumentTransitionIntent::None ||
+            pendingIntent != documentTransition_.GetIntent()) {
+            pendingAction_ = {};
+            documentTransition_.Cancel();
+            outMessage = "Dialogue document transition intent was lost";
+            return false;
+        }
+        if (!documentTransition_.BeginApply()) {
+            outMessage = "Dialogue document transition is not ready";
+            return false;
+        }
+        const PendingAction& action = pendingAction_;
+        bool applied = false;
         switch (action.kind) {
         case PendingDocumentAction::NewAsset:
-            return ApplyNewAsset(outMessage);
+            applied = ApplyNewAsset(outMessage);
+            break;
         case PendingDocumentAction::OpenAsset:
-            return ApplyOpenAsset(
+            applied = ApplyOpenAsset(
                 scene.GetAssetDatabase(),
                 action.assetGuid,
                 outMessage);
+            break;
         case PendingDocumentAction::CloseAsset:
             document_.Close();
             selectedNodeId_.clear();
             selectedChoiceIndex_.reset();
             outMessage = "Dialogue asset closed";
-            return true;
+            applied = true;
+            break;
         case PendingDocumentAction::Revert: {
             const bool reverted = document_.Revert(
                 scene.GetAssetDatabase(), outMessage);
@@ -368,21 +441,31 @@ namespace HIKARI::EDITOR {
                 selectedNodeId_ = document_.Definition().entryNodeId;
                 selectedChoiceIndex_.reset();
             }
-            return reverted;
+            applied = reverted;
+            break;
         }
         case PendingDocumentAction::WorkspaceTransition:
             if (!action.workspaceRequest) {
                 outMessage = "Workspace transition target is missing";
-                return false;
+                break;
             }
-            deferredWorkspaceRequest_ = std::move(*action.workspaceRequest);
+            deferredWorkspaceRequest_ = *action.workspaceRequest;
             outMessage = "Dialogue workspace transition confirmed";
-            return true;
+            applied = true;
+            break;
         case PendingDocumentAction::None:
         default:
             outMessage = "No pending Dialogue action";
+            break;
+        }
+        if (!documentTransition_.CompleteApply(applied)) {
+            outMessage = "Dialogue document transition lost its apply state";
             return false;
         }
+        if (applied) {
+            pendingAction_ = {};
+        }
+        return applied;
     }
 
     bool DialogueWorkspaceController::ConfirmSaveThenContinue(
@@ -392,21 +475,33 @@ namespace HIKARI::EDITOR {
             outMessage = "No pending Dialogue action";
             return false;
         }
+        if (documentTransition_.GetState() ==
+            DialogueDocumentTransitionState::ReadyToApply) {
+            return ApplyPending(scene, outMessage);
+        }
         if (!PendingActionSupportsSave()) {
             outMessage = "This Dialogue action only supports discard or cancel";
             return false;
         }
-        const bool saveAll = pendingAction_.kind ==
-            PendingDocumentAction::WorkspaceTransition;
-        if (saveAll) {
-            if (!SaveAll(scene, outMessage)) {
-                return false;
-            }
-        }
-        else if (document_.IsDirty() &&
-            !SaveDialogue(scene, outMessage)) {
+        if (!documentTransition_.BeginSave()) {
+            outMessage = "Dialogue document transition is already resolving";
             return false;
         }
+        const bool saveAll = pendingAction_.kind ==
+            PendingDocumentAction::WorkspaceTransition;
+        bool saved = false;
+        if (saveAll) {
+            saved = SaveAll(scene, outMessage);
+        }
+        else {
+            saved = !document_.IsDirty() ||
+                SaveDialogue(scene, outMessage);
+        }
+        if (!documentTransition_.CompleteSave(saved)) {
+            outMessage = "Dialogue save transaction lost its state";
+            return false;
+        }
+        if (!saved) return false;
         return ApplyPending(scene, outMessage);
     }
 
@@ -414,6 +509,16 @@ namespace HIKARI::EDITOR {
         DocumentSceneBase& scene,
         std::string& outMessage) {
         if (!HasPendingConfirmation()) {
+            outMessage = "No pending Dialogue action";
+            return false;
+        }
+        if (documentTransition_.GetState() ==
+            DialogueDocumentTransitionState::ReadyToApply) {
+            return ApplyPending(scene, outMessage);
+        }
+        if (documentTransition_.GetState() !=
+            DialogueDocumentTransitionState::AwaitingDecision) {
+            outMessage = "Dialogue document transition is already resolving";
             return false;
         }
         if (pendingAction_.kind ==
@@ -437,12 +542,16 @@ namespace HIKARI::EDITOR {
                     scene.GetAssetDatabase());
             }
         }
+        if (!documentTransition_.ChooseDiscard()) {
+            outMessage = "Dialogue document discard could not be resolved";
+            return false;
+        }
         return ApplyPending(scene, outMessage);
     }
 
     void DialogueWorkspaceController::CancelPending() noexcept {
         pendingAction_ = {};
-        requestUnsavedDocumentDialog_ = false;
+        documentTransition_.Cancel();
     }
 
     std::vector<DialogueAssetListEntry>

@@ -404,6 +404,18 @@ namespace HIKARI::PRESENTATION_MODEL {
             desc.receiveShadow = record.receiveShadow;
             desc.hasRuntimeAnimation = false;
             desc.allowStaticCachedForward = false;
+            desc.materialFxProfileId =
+                record.materialFx.GetProfileId();
+            desc.materialFxValuesInitialized =
+                record.materialFx.AreValuesInitialized();
+            const auto& materialFxValues =
+                record.materialFx.GetValues();
+            for (size_t index = 0u;
+                index < VFX::kMaterialFxUserCount;
+                ++index) {
+                desc.materialFxParamValues[index] =
+                    materialFxValues[index];
+            }
 
             if (!transformResolved && record.attachmentEnabled) {
                 const std::string key =

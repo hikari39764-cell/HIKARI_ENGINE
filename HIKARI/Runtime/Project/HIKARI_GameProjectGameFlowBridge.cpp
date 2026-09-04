@@ -48,6 +48,14 @@ namespace HIKARI {
                 : nullptr;
         }
 
+        World* ResolveDialogueWorld(void* world) noexcept {
+            World* runtimeWorld = CurrentWorld(world);
+            return runtimeWorld != nullptr && runtimeWorld->IsOwnerThread() &&
+                    !GameProjectSdkAccess::IsWorldClosing(*runtimeWorld)
+                ? runtimeWorld
+                : nullptr;
+        }
+
         RuntimeObjectHandle DecodeRuntimeHandle(uint64_t value) noexcept {
             if (value == 0u) {
                 return {};
@@ -209,6 +217,136 @@ namespace HIKARI {
             }
             destination[length] = '\0';
             return source.size() >= Capacity;
+        }
+
+        size_t DialogueUtf8CodepointBytes(
+            std::string_view source,
+            size_t offset) noexcept {
+            const auto byte = [&source](size_t index) noexcept {
+                return static_cast<unsigned char>(source[index]);
+            };
+            const auto continuation = [&byte](size_t index) noexcept {
+                return (byte(index) & 0xC0u) == 0x80u;
+            };
+
+            const unsigned char leading = byte(offset);
+            if (leading <= 0x7Fu) return 1u;
+            if (leading >= 0xC2u && leading <= 0xDFu) {
+                return offset + 2u <= source.size() &&
+                        continuation(offset + 1u)
+                    ? 2u
+                    : 0u;
+            }
+            if (leading >= 0xE0u && leading <= 0xEFu) {
+                if (offset + 3u > source.size() ||
+                    !continuation(offset + 1u) ||
+                    !continuation(offset + 2u)) {
+                    return 0u;
+                }
+                const unsigned char second = byte(offset + 1u);
+                if ((leading == 0xE0u && second < 0xA0u) ||
+                    (leading == 0xEDu && second > 0x9Fu)) {
+                    return 0u;
+                }
+                return 3u;
+            }
+            if (leading >= 0xF0u && leading <= 0xF4u) {
+                if (offset + 4u > source.size() ||
+                    !continuation(offset + 1u) ||
+                    !continuation(offset + 2u) ||
+                    !continuation(offset + 3u)) {
+                    return 0u;
+                }
+                const unsigned char second = byte(offset + 1u);
+                if ((leading == 0xF0u && second < 0x90u) ||
+                    (leading == 0xF4u && second > 0x8Fu)) {
+                    return 0u;
+                }
+                return 4u;
+            }
+            return 0u;
+        }
+
+        template<size_t Capacity>
+        bool CopyDialogueUtf8Truncated(
+            std::string_view source,
+            char (&destination)[Capacity]) noexcept {
+            static_assert(Capacity > 0u);
+            std::fill(
+                std::begin(destination),
+                std::end(destination),
+                '\0');
+
+            const size_t embeddedNull = source.find('\0');
+            const bool containsEmbeddedNull =
+                embeddedNull != std::string_view::npos;
+            const std::string_view visible = containsEmbeddedNull
+                ? source.substr(0u, embeddedNull)
+                : source;
+            const size_t byteLimit = (std::min)(
+                visible.size(),
+                Capacity - 1u);
+            size_t copiedBytes = 0u;
+            while (copiedBytes < byteLimit) {
+                const size_t codepointBytes = DialogueUtf8CodepointBytes(
+                    visible,
+                    copiedBytes);
+                if (codepointBytes == 0u ||
+                    codepointBytes > byteLimit - copiedBytes) {
+                    break;
+                }
+                copiedBytes += codepointBytes;
+            }
+            if (copiedBytes != 0u) {
+                std::memcpy(destination, visible.data(), copiedBytes);
+            }
+            destination[copiedBytes] = '\0';
+            return containsEmbeddedNull || copiedBytes != source.size();
+        }
+
+        GameProjectDialogueEventType ToProjectDialogueEventType(
+            DIALOGUE::DialogueRuntimeEventType type) noexcept {
+            switch (type) {
+            case DIALOGUE::DialogueRuntimeEventType::Started:
+                return GameProjectDialogueEventType::Started;
+            case DIALOGUE::DialogueRuntimeEventType::NodeEntered:
+                return GameProjectDialogueEventType::NodeEntered;
+            case DIALOGUE::DialogueRuntimeEventType::ChoiceSelected:
+                return GameProjectDialogueEventType::ChoiceSelected;
+            case DIALOGUE::DialogueRuntimeEventType::EventEmitted:
+                return GameProjectDialogueEventType::EventEmitted;
+            case DIALOGUE::DialogueRuntimeEventType::Ended:
+                return GameProjectDialogueEventType::Ended;
+            }
+            return GameProjectDialogueEventType::Unknown;
+        }
+
+        void FillProjectDialogueEvent(
+            const DIALOGUE::DialogueRuntimeEvent& source,
+            GameProjectDialogueEvent& destination) noexcept {
+            destination = {};
+            destination.sequence = source.sequence;
+            destination.triggerObjectHandle = source.trigger.ToValue();
+            destination.interactorObjectHandle = source.interactor.ToValue();
+            destination.type = ToProjectDialogueEventType(source.type);
+            if (CopyDialogueUtf8Truncated(
+                    source.assetGuid,
+                    destination.assetGuid)) {
+                destination.flags |=
+                    GameProjectDialogueEventFlags::AssetGuidTruncated;
+            }
+            if (CopyDialogueUtf8Truncated(
+                    source.nodeId,
+                    destination.nodeId)) {
+                destination.flags |=
+                    GameProjectDialogueEventFlags::NodeIdTruncated;
+            }
+            if (CopyDialogueUtf8Truncated(
+                    source.value,
+                    destination.value)) {
+                destination.flags |=
+                    GameProjectDialogueEventFlags::ValueTruncated;
+            }
         }
 
         World* ResolveSequenceWorld(
@@ -1264,7 +1402,7 @@ namespace HIKARI {
         std::string_view locale,
         uint8_t pauseWorld) const noexcept {
         try {
-            World* world = CurrentWorld(world_);
+            World* world = ResolveDialogueWorld(world_);
             if (world == nullptr || !IsValidAssetGuid(assetGuid) ||
                 actorObjectHandle == 0u || locale.size() > 32u) {
                 HIKARI_LOG_WARN(
@@ -1321,7 +1459,7 @@ namespace HIKARI {
 
     bool DialogueView::IsActive() const noexcept {
         try {
-            World* world = CurrentWorld(world_);
+            World* world = ResolveDialogueWorld(world_);
             DIALOGUE::DialogueSessionService* service = world != nullptr
                 ? world->Services().Find<
                     DIALOGUE::DialogueSessionService>()
@@ -1335,7 +1473,7 @@ namespace HIKARI {
 
     bool DialogueView::Stop() const noexcept {
         try {
-            World* world = CurrentWorld(world_);
+            World* world = ResolveDialogueWorld(world_);
             DIALOGUE::DialogueSessionService* service = world != nullptr
                 ? world->Services().Find<
                     DIALOGUE::DialogueSessionService>()
@@ -1351,9 +1489,63 @@ namespace HIKARI {
         }
     }
 
+    bool DialogueView::ConsumeEvent(
+        GameProjectDialogueEvent& outEvent) const noexcept {
+        outEvent = {};
+        try {
+            World* world = ResolveDialogueWorld(world_);
+            DIALOGUE::DialogueSessionService* service = world != nullptr
+                ? world->Services().Find<
+                    DIALOGUE::DialogueSessionService>()
+                : nullptr;
+            if (service == nullptr) return false;
+
+            DIALOGUE::DialogueRuntimeEvent event{};
+            if (!service->ConsumeEvent(event)) return false;
+            FillProjectDialogueEvent(event, outEvent);
+            return true;
+        }
+        catch (...) {
+            outEvent = {};
+            return false;
+        }
+    }
+
+    uint32_t DialogueView::GetPendingEventCount() const noexcept {
+        try {
+            World* world = ResolveDialogueWorld(world_);
+            DIALOGUE::DialogueSessionService* service = world != nullptr
+                ? world->Services().Find<
+                    DIALOGUE::DialogueSessionService>()
+                : nullptr;
+            return service != nullptr
+                ? service->GetPendingEventCount()
+                : 0u;
+        }
+        catch (...) {
+            return 0u;
+        }
+    }
+
+    uint64_t DialogueView::GetDroppedEventCount() const noexcept {
+        try {
+            World* world = ResolveDialogueWorld(world_);
+            DIALOGUE::DialogueSessionService* service = world != nullptr
+                ? world->Services().Find<
+                    DIALOGUE::DialogueSessionService>()
+                : nullptr;
+            return service != nullptr
+                ? service->GetDroppedEventCount()
+                : 0u;
+        }
+        catch (...) {
+            return 0u;
+        }
+    }
+
     uint32_t DialogueView::ConsumeOneShotTriggers() const noexcept {
         try {
-            World* world = CurrentWorld(world_);
+            World* world = ResolveDialogueWorld(world_);
             if (world == nullptr) {
                 return 0u;
             }
@@ -1376,7 +1568,7 @@ namespace HIKARI {
 
     uint64_t DialogueView::CaptureOneShotTriggerMask() const noexcept {
         try {
-            World* world = CurrentWorld(world_);
+            World* world = ResolveDialogueWorld(world_);
             if (world == nullptr) {
                 return 0u;
             }
@@ -1419,7 +1611,7 @@ namespace HIKARI {
     uint32_t DialogueView::RestoreOneShotTriggerMask(
         uint64_t completedMask) const noexcept {
         try {
-            World* world = CurrentWorld(world_);
+            World* world = ResolveDialogueWorld(world_);
             if (world == nullptr) {
                 return 0u;
             }

@@ -8,9 +8,11 @@
 
 #include "HIKARI/Project/GameProjectSdk.h"
 #include "HIKARI/Project/LightTypes.h"
+#include "HIKARI/Project/MaterialFxView.h"
 #include "HIKARI/Project/ValueTypes.h"
 #include "HIKARI/Project/WorldTypes.h"
 #include "HIKARI/Project/WorldMassTypes.h"
+#include "HIKARI/Project/WorldSpriteTypes.h"
 #include "HIKARI/Runtime/ComponentTypeId.h"
 
 namespace HIKARI {
@@ -68,6 +70,13 @@ namespace HIKARI {
         HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult
             ApplyRuntimeLightPatch(
                 const GameProjectLightPatch& patch) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool TryGetRuntimeWorldSpriteState(
+            GameProjectWorldSpriteState& outState) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult
+            ApplyRuntimeWorldSpritePatch(
+                const GameProjectWorldSpritePatch& patch) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API MaterialFxView
+            GetMaterialFx() const noexcept;
         // Updates an existing engine-owned runtime material override. This is
         // intended for authored procedural/model presentation objects; it
         // never creates a material, changes the source asset, or persists the

@@ -10,6 +10,7 @@
 
 #include "Assets/HIKARI_AssetGuid.h"
 #include "Editor/Commands/HIKARI_EditorCommandRouter.h"
+#include "Editor/Documents/HIKARI_DialogueDocumentTransition.h"
 #include "Editor/Documents/HIKARI_DialogueEditorDocument.h"
 #include "Editor/Documents/HIKARI_DialogueStyleEditorDocument.h"
 #include "Editor/Workspaces/HIKARI_EditorWorkspace.h"
@@ -91,6 +92,7 @@ namespace HIKARI::EDITOR {
             EditorWorkspaceOpenRequest request,
             std::string& outMessage);
         bool HasPendingConfirmation() const noexcept;
+        bool ConsumePendingConfirmationOpenRequest() noexcept;
         bool PendingActionSupportsSave() const noexcept;
         const char* GetPendingConfirmationText() const noexcept;
         bool ConfirmSaveThenContinue(
@@ -161,6 +163,14 @@ namespace HIKARI::EDITOR {
             std::optional<EditorWorkspaceOpenRequest> workspaceRequest{};
         };
 
+        static DialogueDocumentTransitionIntent ToTransitionIntent(
+            PendingDocumentAction action) noexcept;
+        bool QueueTransition(
+            PendingAction action,
+            bool dirty,
+            const char* dirtyMessage,
+            std::string& outMessage);
+
         DialogueEditorDocument document_{};
         DialogueStyleEditorDocument styleDocument_{};
         DialogueWorkspacePage activePage_ = DialogueWorkspacePage::Style;
@@ -175,9 +185,9 @@ namespace HIKARI::EDITOR {
         std::array<char, 128u> assetSearch_{};
         std::filesystem::path projectRoot_{};
         PendingAction pendingAction_{};
+        DialogueDocumentTransition documentTransition_{};
         std::optional<EditorWorkspaceOpenRequest>
             deferredWorkspaceRequest_{};
-        bool requestUnsavedDocumentDialog_ = false;
         bool autoBindNewNodes_ = true;
         std::unique_ptr<DialoguePreviewRenderer> previewRenderer_{};
         DialoguePreviewElement previewElement_ =

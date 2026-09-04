@@ -6,6 +6,7 @@
 #include "Render3D/HIKARI_Math3D.h"
 #include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
 #include "Render3D/Procedural/HIKARI_ProceduralMeshTypes.h"
+#include "Render3D/WorldText/HIKARI_WorldTextFrameSource.h"
 
 namespace HIKARI {
 
@@ -27,6 +28,33 @@ namespace EDITOR {
         bool addCollider = true;
     };
 
+    struct CreateWorldTextRequest {
+        CreateObjectRequest object{};
+        std::string text{ "World Text" };
+        std::string fontAssetPath{
+            "Fonts/NotoSansCJKjp-Regular.otf" };
+        MATH::Vec2 layoutSize{ 4.0f, 1.0f };
+        MATH::Vec2 pivot{ 0.5f, 0.5f };
+        MATH::Vec3 color{ 1.0f, 1.0f, 1.0f };
+        MATH::Vec3 outlineColor{};
+        float fontHeight = 0.5f;
+        float lineHeightMultiplier = 1.2f;
+        float letterSpacing = 0.0f;
+        float outlineWidth = 0.04f;
+        float opacity = 1.0f;
+        float revealAmount = 1.0f;
+        int transparentSortPriority = 0;
+        TEXT_RENDERING::SdfTextHorizontalAlign horizontalAlign =
+            TEXT_RENDERING::SdfTextHorizontalAlign::Center;
+        TEXT_RENDERING::SdfTextVerticalAlign verticalAlign =
+            TEXT_RENDERING::SdfTextVerticalAlign::Center;
+        TEXT_RENDERING::SdfTextWrap wrap =
+            TEXT_RENDERING::SdfTextWrap::Character;
+        RENDER3D::WORLD_TEXT::WorldTextFacingMode facing =
+            RENDER3D::WORLD_TEXT::WorldTextFacingMode::CameraFacing;
+        bool visible = true;
+    };
+
     GameObject* CreateEmptyObject(
         DocumentSceneBase& scene,
         const CreateObjectRequest& request);
@@ -40,6 +68,10 @@ namespace EDITOR {
         DocumentSceneBase& scene,
         const AssetGuid& textureGuid,
         const CreateObjectRequest& request);
+
+    GameObject* CreateWorldTextObject(
+        DocumentSceneBase& scene,
+        const CreateWorldTextRequest& request);
 
     GameObject* CreatePrimitiveObject(
         DocumentSceneBase& scene,

@@ -1,11 +1,13 @@
 #pragma once
 
+#include <array>
 #include <string>
 
 #include <DirectXMath.h>
 
 #include "Scene/Components/HIKARI_IComponent.h"
 #include "Vfx/Common/HIKARI_FxTypes.h"
+#include "Vfx/MaterialFx/HIKARI_MaterialFxParameterSet.h"
 
 namespace HIKARI {
 
@@ -15,11 +17,11 @@ namespace HIKARI {
             return "MaterialFxComponent";
         }
 
-        void SetProfileId(std::string profileId);
+        bool SetProfileId(std::string profileId);
         const std::string& GetProfileId() const;
 
-        const DirectX::XMFLOAT4 (&GetParamValues() const)
-            [VFX::kMaterialFxUserCount];
+        const std::array<DirectX::XMFLOAT4,
+            VFX::kMaterialFxUserCount>& GetParamValues() const;
         bool AreValuesInitialized() const;
         void SetParamValues(
             const DirectX::XMFLOAT4
@@ -36,8 +38,19 @@ namespace HIKARI {
         bool SetFloat4(
             const std::string& key,
             const DirectX::XMFLOAT4& value);
+        bool SetToggle(const std::string& key, bool value);
         bool GetFloat(const std::string& key, float& out) const;
-        void ResetToProfileDefaults();
+        bool GetFloat2(
+            const std::string& key,
+            DirectX::XMFLOAT2& out) const;
+        bool GetFloat3(
+            const std::string& key,
+            DirectX::XMFLOAT3& out) const;
+        bool GetFloat4(
+            const std::string& key,
+            DirectX::XMFLOAT4& out) const;
+        bool GetToggle(const std::string& key, bool& out) const;
+        bool ResetToProfileDefaults();
 
         void RenderImGui() override;
         void BuildInspector(IInspectorBuilder& builder) override;
@@ -45,12 +58,10 @@ namespace HIKARI {
         void Deserialize(const nlohmann::json& in) override;
 
     private:
+        bool CommitParameterState(MaterialFxParameterSet next);
         void NotifyRenderStateDirty();
 
-        std::string profileId_{};
-        DirectX::XMFLOAT4
-            paramValues_[VFX::kMaterialFxUserCount]{};
-        bool valuesInitialized_ = false;
+        MaterialFxParameterSet parameters_{};
     };
 
 } // namespace HIKARI

@@ -1,6 +1,7 @@
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.h"
 
 #include "Core/HIKARI_MathConfig.h"
+#include "Core/Text/HIKARI_AsciiCase.h"
 #include "Core/Text/HIKARI_Localization.h"
 
 #include <algorithm>
@@ -1490,6 +1491,151 @@ namespace HIKARI {
         result.ok = true;
         result.code = "OK";
         result.message = "已创建 3D 世界贴图 " + object->GetName();
+        return result;
+    }
+
+    EDITOR::EditorOperationResult
+    DocumentSceneEditorController::ExecuteAiSceneCreateWorldText(
+        const nlohmann::json& parameters) {
+        EDITOR::EditorOperationResult result{};
+        DocumentSceneBase* scene = aiOperationScene_;
+        if (scene == nullptr) {
+            result.code = "NO_SCENE";
+            result.message = "场景上下文不可用";
+            return result;
+        }
+
+        EDITOR::CreateWorldTextRequest request{};
+        request.text = parameters.value("text", std::string{});
+        if (request.text.empty()) {
+            result.code = "MISSING_FIELD";
+            result.message = "缺少非空 text 字段";
+            return result;
+        }
+        request.object.name = parameters.value("name", std::string{});
+        const std::string fontAssetPath =
+            parameters.value("fontAssetPath", std::string{});
+        if (!fontAssetPath.empty()) {
+            request.fontAssetPath = fontAssetPath;
+        }
+        request.object.position = {
+            ReadJsonFloat(parameters, "positionX", 0.0f),
+            ReadJsonFloat(parameters, "positionY", 0.0f),
+            ReadJsonFloat(parameters, "positionZ", 0.0f),
+        };
+        request.object.rotation = {
+            ReadJsonFloat(parameters, "rotationX", 0.0f),
+            ReadJsonFloat(parameters, "rotationY", 0.0f),
+            ReadJsonFloat(parameters, "rotationZ", 0.0f),
+        };
+        request.object.scale = {
+            ReadJsonFloat(parameters, "scaleX", 1.0f),
+            ReadJsonFloat(parameters, "scaleY", 1.0f),
+            ReadJsonFloat(parameters, "scaleZ", 1.0f),
+        };
+        request.layoutSize = {
+            ReadJsonFloat(parameters, "layoutWidth", 4.0f),
+            ReadJsonFloat(parameters, "layoutHeight", 1.0f),
+        };
+        request.fontHeight =
+            ReadJsonFloat(parameters, "fontHeight", 0.5f);
+        request.color = {
+            ReadJsonFloat(parameters, "colorR", 1.0f),
+            ReadJsonFloat(parameters, "colorG", 1.0f),
+            ReadJsonFloat(parameters, "colorB", 1.0f),
+        };
+        request.outlineColor = {
+            ReadJsonFloat(parameters, "outlineR", 0.0f),
+            ReadJsonFloat(parameters, "outlineG", 0.0f),
+            ReadJsonFloat(parameters, "outlineB", 0.0f),
+        };
+        request.outlineWidth =
+            ReadJsonFloat(parameters, "outlineWidth", 0.04f);
+        request.opacity =
+            ReadJsonFloat(parameters, "opacity", 1.0f);
+
+        const std::string horizontalAlign = TEXT::ToLowerAsciiCopy(
+            parameters.value("horizontalAlign", std::string("center")));
+        if (horizontalAlign == "left") {
+            request.horizontalAlign =
+                TEXT_RENDERING::SdfTextHorizontalAlign::Left;
+        } else if (horizontalAlign == "right") {
+            request.horizontalAlign =
+                TEXT_RENDERING::SdfTextHorizontalAlign::Right;
+        } else if (horizontalAlign != "center") {
+            result.code = "INVALID_FIELD";
+            result.message =
+                "horizontalAlign 必须为 left/center/right";
+            return result;
+        }
+
+        const std::string verticalAlign = TEXT::ToLowerAsciiCopy(
+            parameters.value("verticalAlign", std::string("center")));
+        if (verticalAlign == "top") {
+            request.verticalAlign =
+                TEXT_RENDERING::SdfTextVerticalAlign::Top;
+        } else if (verticalAlign == "bottom") {
+            request.verticalAlign =
+                TEXT_RENDERING::SdfTextVerticalAlign::Bottom;
+        } else if (verticalAlign != "center") {
+            result.code = "INVALID_FIELD";
+            result.message = "verticalAlign 必须为 top/center/bottom";
+            return result;
+        }
+
+        const std::string wrap = TEXT::ToLowerAsciiCopy(
+            parameters.value("wrap", std::string("character")));
+        if (wrap == "none") {
+            request.wrap = TEXT_RENDERING::SdfTextWrap::None;
+        } else if (wrap != "character") {
+            result.code = "INVALID_FIELD";
+            result.message = "wrap 必须为 none/character";
+            return result;
+        }
+
+        const std::string facing = TEXT::ToLowerAsciiCopy(
+            parameters.value("facing", std::string("camera_facing")));
+        if (facing == "fixed") {
+            request.facing =
+                RENDER3D::WORLD_TEXT::WorldTextFacingMode::Fixed;
+        } else if (facing == "fixed_y_axis") {
+            request.facing =
+                RENDER3D::WORLD_TEXT::WorldTextFacingMode::FixedYAxis;
+        } else if (facing != "camera_facing") {
+            result.code = "INVALID_FIELD";
+            result.message =
+                "facing 必须为 fixed/camera_facing/fixed_y_axis";
+            return result;
+        }
+
+        const bool dirtyBefore =
+            context_.sceneDirty || scene->HasUnsavedSceneChanges();
+        const std::vector<SceneObjectData> beforeObjects =
+            scene->GetSceneDocument().objects;
+        const SceneCameraSettings beforeCamera =
+            scene->GetSceneDocument().camera;
+        GameObject* object = EDITOR::CreateWorldTextObject(*scene, request);
+        if (object == nullptr) {
+            result.code = "CREATE_FAILED";
+            result.message = "创建 3D 世界文字失败";
+            return result;
+        }
+        context_.selection.SelectObject(scene->GetWorld(), object);
+        selectionSync_.SyncNextSceneObjectId(
+            *scene, context_.nextSceneObjectId);
+        CommitSceneObjectAuthoringHistory(
+            *scene,
+            SceneObjectAuthoringHistoryRequest{
+                "Create World Text",
+                beforeObjects,
+                scene->GetSceneDocument().objects,
+                beforeCamera,
+                scene->GetSceneDocument().camera,
+                dirtyBefore });
+        SummarizeSceneObjects(*scene, result.details, 8u);
+        result.ok = true;
+        result.code = "OK";
+        result.message = "已创建 3D 世界文字 " + object->GetName();
         return result;
     }
 

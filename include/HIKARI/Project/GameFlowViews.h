@@ -56,6 +56,18 @@ namespace HIKARI {
             uint8_t pauseWorld = 1u) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool IsActive() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool Stop() const noexcept;
+        // Consumes the oldest retained event. The World keeps at most
+        // kGameProjectDialogueEventQueueCapacity events and discards the
+        // oldest entry on overflow. Ending a dialogue does not clear events.
+        // This owner-thread-only call clears outEvent on failure.
+        HIKARI_GAME_PROJECT_SDK_API bool ConsumeEvent(
+            GameProjectDialogueEvent& outEvent) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API uint32_t
+            GetPendingEventCount() const noexcept;
+        // Saturating count of events discarded since this World's dialogue
+        // service was reset. Consumers can compare snapshots to detect loss.
+        HIKARI_GAME_PROJECT_SDK_API uint64_t
+            GetDroppedEventCount() const noexcept;
         // Legacy bulk gate: marks every one-shot DialogueTrigger in the
         // current World consumed. Persistence code should use the mask APIs
         // below so completing one dialogue cannot suppress unrelated ones.

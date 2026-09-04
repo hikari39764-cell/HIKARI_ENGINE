@@ -9,17 +9,21 @@ set(
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/ActionViews.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/AudioTypes.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/AudioView.h"
+    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/EditorWorkspace.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/FrameContext.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/GameComponent.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/GameFlowTypes.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/GameFlowViews.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/GameProjectModule.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/GameProjectModuleApi.h"
+    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/GameProjectEditorModule.h"
+    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/GameProjectEditorModuleApi.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/GameProjectSdk.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/GameSystem.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/MassSystem.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/Inspector.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/LightTypes.h"
+    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/MaterialFxView.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/NavigationTypes.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/NavigationView.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/PresentationTypes.h"
@@ -48,7 +52,8 @@ set(
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/WorldMassTypes.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/WorldTypes.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/WorldQuery.h"
-    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/WorldView.h")
+    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/WorldView.h"
+    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/WorldSpriteTypes.h")
 
 set(
     HIKARI_SDK_GENERATED_DIRECTORY
@@ -112,7 +117,7 @@ configure_package_config_file(
     NO_SET_AND_CHECK_MACRO)
 write_basic_package_version_file(
     "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfigVersion.cmake"
-    VERSION 2.17.0
+    VERSION 2.18.0
     COMPATIBILITY SameMajorVersion)
 
 function(hikari_configure_game_project_sdk host_target)
@@ -138,7 +143,8 @@ function(hikari_configure_game_project_sdk host_target)
             _sdk_inputs
             "${CMAKE_COMMAND}"
             "${HIKARI_CMAKE_LICENSE_FILE}"
-            "${HIKARI_CMAKE_TOOL_MANIFEST}")
+            "${HIKARI_CMAKE_TOOL_MANIFEST}"
+            "${HIKARI_SOURCE_ROOT}/cmake/SDK/HIKARI_GameProjectEditorModuleAdapter.cpp")
     endif()
     set_property(
         TARGET "${host_target}"
@@ -203,6 +209,10 @@ function(hikari_configure_game_project_sdk host_target)
                 "${CMAKE_COMMAND}" -E copy_if_different
                 "${HIKARI_CMAKE_TOOL_MANIFEST}"
                 "${_sdk_root}/Tools/CMake/HIKARI_CMakeTool.json"
+            COMMAND
+                "${CMAKE_COMMAND}" -E copy_if_different
+                "${HIKARI_SOURCE_ROOT}/cmake/SDK/HIKARI_GameProjectEditorModuleAdapter.cpp"
+                "${_sdk_root}/src/HIKARI_GameProjectEditorModuleAdapter.cpp"
             VERBATIM)
     endif()
 
@@ -224,6 +234,12 @@ function(hikari_configure_game_project_sdk host_target)
         FILES
             "${HIKARI_SOURCE_ROOT}/cmake/SDK/HIKARI_GameProjectModuleAdapter.cpp"
         DESTINATION "Sdk/src")
+    if(HIKARI_WITH_EDITOR_BUILD)
+        install(
+            FILES
+                "${HIKARI_SOURCE_ROOT}/cmake/SDK/HIKARI_GameProjectEditorModuleAdapter.cpp"
+            DESTINATION "Sdk/src")
+    endif()
     install(
         FILES
             "${HIKARI_SOURCE_ROOT}/Tools/Build/Build-HikariProject.ps1"

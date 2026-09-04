@@ -22,6 +22,10 @@ namespace HIKARI::RENDER3D {
         struct WorldSpriteFrameSource;
     }
 
+    namespace WORLD_TEXT {
+        struct WorldTextFrameSource;
+    }
+
     namespace COMBAT_VFX {
         struct CombatAfterimageFrameSource;
         struct CombatPresentationFrameSource;
@@ -87,6 +91,8 @@ namespace HIKARI::RENDER3D {
             nullptr;
         const WORLD_SPRITES::WorldSpriteFrameSource*
             worldSpriteFrameSource = nullptr;
+        const WORLD_TEXT::WorldTextFrameSource*
+            worldTextFrameSource = nullptr;
         const COMBAT_VFX::CombatPresentationFrameSource*
             combatPresentationFrameSource = nullptr;
         const COMBAT_VFX::CombatAfterimageFrameSource*

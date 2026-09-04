@@ -27,6 +27,24 @@ if(NOT TARGET HIKARI::GameProjectSdk)
                 "HIKARI::GameProjectHost")
 endif()
 
+set(
+    HIKARI_GAME_PROJECT_EDITOR_AVAILABLE
+    @HIKARI_WITH_EDITOR_BUILD@)
+if(HIKARI_GAME_PROJECT_EDITOR_AVAILABLE AND
+   NOT TARGET HIKARI::GameProjectEditorSdk)
+    add_library(HIKARI::GameProjectEditorSdk INTERFACE IMPORTED)
+    set_target_properties(
+        HIKARI::GameProjectEditorSdk
+        PROPERTIES
+            INTERFACE_COMPILE_FEATURES "cxx_std_20"
+            INTERFACE_COMPILE_DEFINITIONS
+                "HIKARI_GAME_PROJECT_EDITOR_SDK_IMPORTS=1"
+            INTERFACE_INCLUDE_DIRECTORIES
+                "${_HIKARI_SDK_ROOT}/include"
+            INTERFACE_LINK_LIBRARIES
+                "HIKARI::GameProjectSdk")
+endif()
+
 include("${CMAKE_CURRENT_LIST_DIR}/HIKARIGameProject.cmake")
 
 check_required_components(HIKARI)

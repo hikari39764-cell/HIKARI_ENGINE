@@ -9,6 +9,7 @@
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Scene/Components/Lighting/HIKARI_LightComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
+#include "Scene/Components/Rendering/WorldSprite/HIKARI_WorldSpriteComponent.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/Sand/HIKARI_SandSurfaceQueryService.h"
 #include "Scene/HIKARI_World.h"
@@ -44,6 +45,19 @@ namespace HIKARI {
             return false;
         }
 
+        bool HasNonZeroWorldSpritePatchReserved(
+            const GameProjectWorldSpritePatch& patch) noexcept {
+            if (patch.reserved0 != 0u) {
+                return true;
+            }
+            for (uint8_t value : patch.reserved1) {
+                if (value != 0u) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
     } // namespace
 
     static_assert(
@@ -53,6 +67,16 @@ namespace HIKARI {
         static_cast<uint8_t>(WorldCommandPhase::SystemPostRender) ==
         static_cast<uint8_t>(
             GameProjectWorldCommandPhase::SystemPostRender));
+    static_assert(
+        static_cast<uint32_t>(
+            GameProjectWorldSpriteFacingMode::FixedYAxis) ==
+        static_cast<uint8_t>(
+            WorldSpriteComponent::FacingMode::FixedYAxis));
+    static_assert(
+        static_cast<uint32_t>(
+            GameProjectWorldSpriteAlphaMode::Blend) ==
+        static_cast<uint8_t>(
+            WorldSpriteComponent::AlphaMode::Blend));
 
     ObjectView GameProjectSdkAccess::MakeObjectView(
         GameObject& object) noexcept {
@@ -278,6 +302,180 @@ namespace HIKARI {
             if (Selected(GameProjectLightPatchField::AngularFalloff)) {
                 light->SetAngularFalloff(angularFalloff);
             }
+            return PROJECT::INTERNAL::MakeWorldResult(
+                GameProjectWorldResultCode::Success,
+                handle_);
+        }
+        catch (...) {
+            return PROJECT::INTERNAL::MakeWorldResult(
+                GameProjectWorldResultCode::InternalError,
+                handle_);
+        }
+    }
+
+    bool ObjectView::TryGetRuntimeWorldSpriteState(
+        GameProjectWorldSpriteState& outState) const noexcept {
+        outState = {};
+        try {
+            GameObject* object = GameProjectSdkAccess::GetObject(*this);
+            World* world = object != nullptr ? object->GetWorld() : nullptr;
+            if (object == nullptr || world == nullptr ||
+                !world->IsOwnerThread() ||
+                GameProjectSdkAccess::IsWorldClosing(*world)) {
+                return false;
+            }
+            const WorldSpriteComponent* sprite =
+                object->GetComponent<WorldSpriteComponent>();
+            if (sprite == nullptr) {
+                return false;
+            }
+            const MATH::Vec2& size = sprite->GetSize();
+            const MATH::Vec3& tint = sprite->GetTint();
+            const MATH::Vec2& pivot = sprite->GetPivot();
+            outState.stateRevision = sprite->GetStateRevision();
+            outState.size = { size.x, size.y };
+            outState.tint = { tint.x, tint.y, tint.z };
+            outState.opacity = sprite->GetOpacity();
+            outState.pivot = { pivot.x, pivot.y };
+            outState.alphaCutoff = sprite->GetAlphaCutoff();
+            outState.transparentSortPriority =
+                sprite->GetTransparentSortPriority();
+            outState.facing = static_cast<
+                GameProjectWorldSpriteFacingMode>(
+                    sprite->GetFacingMode());
+            outState.alphaMode = static_cast<
+                GameProjectWorldSpriteAlphaMode>(
+                    sprite->GetAlphaMode());
+            outState.visible = sprite->IsVisible() ? 1u : 0u;
+            outState.preserveAspect =
+                sprite->GetPreserveAspect() ? 1u : 0u;
+            return true;
+        }
+        catch (...) {
+            outState = {};
+            return false;
+        }
+    }
+
+    GameProjectWorldResult ObjectView::ApplyRuntimeWorldSpritePatch(
+        const GameProjectWorldSpritePatch& patch) const noexcept {
+        RuntimeWorldAccessResult access{};
+        World* world = World::ResolveRuntimeWorld(
+            handle_.world.value,
+            &access);
+        if (world == nullptr) {
+            return PROJECT::INTERNAL::MakeWorldAccessFailure(access);
+        }
+        if (!world->IsOwnerThread()) {
+            return PROJECT::INTERNAL::MakeWorldResult(
+                GameProjectWorldResultCode::WrongThread,
+                handle_);
+        }
+        if (!PROJECT::INTERNAL::IsObjectHandleForWorld(handle_, *world)) {
+            return PROJECT::INTERNAL::MakeWorldResult(
+                GameProjectWorldResultCode::InvalidObject,
+                handle_);
+        }
+        if (GameProjectSdkAccess::IsWorldClosing(*world)) {
+            return PROJECT::INTERNAL::MakeWorldResult(
+                GameProjectWorldResultCode::WorldClosing,
+                handle_);
+        }
+
+        const uint32_t mask = patch.fieldMask;
+        const auto Selected = [mask](
+            GameProjectWorldSpritePatchField field) noexcept {
+            return (mask & GameProjectWorldSpritePatchFields(field)) != 0u;
+        };
+        if (patch.structSize != kGameProjectWorldSpritePatchV1Size ||
+            patch.version != kGameProjectWorldSpritePatchVersion ||
+            mask == 0u ||
+            (mask & ~kGameProjectWorldSpritePatchKnownFields) != 0u ||
+            HasNonZeroWorldSpritePatchReserved(patch) ||
+            (Selected(GameProjectWorldSpritePatchField::Visible) &&
+                patch.visible > 1u) ||
+            (Selected(GameProjectWorldSpritePatchField::PreserveAspect) &&
+                patch.preserveAspect > 1u) ||
+            (Selected(GameProjectWorldSpritePatchField::Facing) &&
+                patch.facing >= GameProjectWorldSpriteFacingMode::Count) ||
+            (Selected(GameProjectWorldSpritePatchField::AlphaMode) &&
+                patch.alphaMode >= GameProjectWorldSpriteAlphaMode::Count) ||
+            (Selected(GameProjectWorldSpritePatchField::Size) &&
+                (!std::isfinite(patch.size.x) ||
+                 !std::isfinite(patch.size.y))) ||
+            (Selected(GameProjectWorldSpritePatchField::Tint) &&
+                (!std::isfinite(patch.tint.x) ||
+                 !std::isfinite(patch.tint.y) ||
+                 !std::isfinite(patch.tint.z))) ||
+            (Selected(GameProjectWorldSpritePatchField::Opacity) &&
+                !std::isfinite(patch.opacity)) ||
+            (Selected(GameProjectWorldSpritePatchField::Pivot) &&
+                (!std::isfinite(patch.pivot.x) ||
+                 !std::isfinite(patch.pivot.y))) ||
+            (Selected(GameProjectWorldSpritePatchField::AlphaCutoff) &&
+                !std::isfinite(patch.alphaCutoff))) {
+            return PROJECT::INTERNAL::MakeWorldResult(
+                GameProjectWorldResultCode::InvalidRequest,
+                handle_);
+        }
+
+        GameObject* object = world->FindObject(
+            PROJECT::INTERNAL::DecodeRuntimeHandle(handle_));
+        WorldSpriteComponent* sprite = object != nullptr
+            ? object->GetComponent<WorldSpriteComponent>()
+            : nullptr;
+        if (sprite == nullptr) {
+            return PROJECT::INTERNAL::MakeWorldResult(
+                object == nullptr
+                    ? GameProjectWorldResultCode::InvalidObject
+                    : GameProjectWorldResultCode::Unsupported,
+                handle_);
+        }
+
+        try {
+            WorldSpriteComponent::RuntimeState next =
+                sprite->GetRuntimeState();
+            if (Selected(GameProjectWorldSpritePatchField::Visible)) {
+                next.visible = patch.visible != 0u;
+            }
+            if (Selected(GameProjectWorldSpritePatchField::Size)) {
+                next.size = { patch.size.x, patch.size.y };
+            }
+            if (Selected(
+                    GameProjectWorldSpritePatchField::PreserveAspect)) {
+                next.preserveAspect = patch.preserveAspect != 0u;
+            }
+            if (Selected(GameProjectWorldSpritePatchField::Facing)) {
+                next.facing = static_cast<
+                    WorldSpriteComponent::FacingMode>(patch.facing);
+            }
+            if (Selected(GameProjectWorldSpritePatchField::Tint)) {
+                next.tint = {
+                    patch.tint.x,
+                    patch.tint.y,
+                    patch.tint.z
+                };
+            }
+            if (Selected(GameProjectWorldSpritePatchField::Opacity)) {
+                next.opacity = patch.opacity;
+            }
+            if (Selected(GameProjectWorldSpritePatchField::Pivot)) {
+                next.pivot = { patch.pivot.x, patch.pivot.y };
+            }
+            if (Selected(GameProjectWorldSpritePatchField::AlphaMode)) {
+                next.alphaMode = static_cast<
+                    WorldSpriteComponent::AlphaMode>(patch.alphaMode);
+            }
+            if (Selected(GameProjectWorldSpritePatchField::AlphaCutoff)) {
+                next.alphaCutoff = patch.alphaCutoff;
+            }
+            if (Selected(
+                    GameProjectWorldSpritePatchField::
+                        TransparentSortPriority)) {
+                next.transparentSortPriority =
+                    patch.transparentSortPriority;
+            }
+            (void)sprite->ApplyRuntimeState(next);
             return PROJECT::INTERNAL::MakeWorldResult(
                 GameProjectWorldResultCode::Success,
                 handle_);
