@@ -224,6 +224,8 @@ namespace HIKARI::RENDER3D::RUNTIME {
             flags.routing =
                 flags.material ||
                 oldDesc.visible != newDesc.visible ||
+                oldDesc.nodeVisibilityMask !=
+                    newDesc.nodeVisibilityMask ||
                 oldDesc.isStatic != newDesc.isStatic ||
                 oldDesc.castShadow != newDesc.castShadow ||
                 oldDesc.receiveShadow != newDesc.receiveShadow ||
@@ -299,7 +301,11 @@ namespace HIKARI::RENDER3D::RUNTIME {
             instance.materialIndex = surface.materialIndex;
             instance.objectWorldTransform = object.desc.worldTransform;
             instance.localBounds = surface.localBounds;
-            instance.visible = object.desc.visible;
+            const bool nodeVisible =
+                surface.nodeIndex == kInvalidRenderSurfaceIndex ||
+                surface.nodeIndex >= object.desc.nodeVisibilityMask.size() ||
+                object.desc.nodeVisibilityMask[surface.nodeIndex] != 0u;
+            instance.visible = object.desc.visible && nodeVisible;
             instance.isStatic = object.desc.isStatic;
             instance.castShadow = object.desc.castShadow && surface.castShadowDefault;
             instance.receiveShadow = object.desc.receiveShadow && surface.receiveShadowDefault;

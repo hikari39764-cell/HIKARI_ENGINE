@@ -1,6 +1,8 @@
 #include "Editor/Host/HIKARI_EditorUiServices.h"
 
+#include <algorithm>
 #include <filesystem>
+#include <limits>
 #include <string>
 
 #include <ShlObj.h>
@@ -79,11 +81,14 @@ namespace HIKARI::EDITOR {
             bool InitializeBackend(
                 PLATFORM::Win32Window& window,
                 const GFX::Context& graphics);
+            bool BindBackBufferForUi(
+                const GFX::Context& graphics) const;
 
             bool contextInitialized_ = false;
             bool backendInitialized_ = false;
             std::string iniPathStorage_{};
             bool frameBegun_ = false;
+            bool backBufferBindFailureReported_ = false;
             D3D12_CPU_DESCRIPTOR_HANDLE fontSrvCpu_{};
             D3D12_GPU_DESCRIPTOR_HANDLE fontSrvGpu_{};
         };
@@ -221,6 +226,50 @@ namespace HIKARI::EDITOR {
             frameBegun_ = true;
         }
 
+        bool EditorUiServices::BindBackBufferForUi(
+            const GFX::Context& graphics) const {
+
+            if (graphics.cmdList == nullptr ||
+                graphics.rtv.ptr == 0 ||
+                graphics.backBufferWidth <= 0 ||
+                graphics.backBufferHeight <= 0) {
+                return false;
+            }
+
+            const LONG width = static_cast<LONG>(
+                (std::min)(
+                    static_cast<uint64_t>(graphics.backBufferWidth),
+                    static_cast<uint64_t>((std::numeric_limits<LONG>::max)())));
+            const LONG height = static_cast<LONG>(
+                (std::min)(
+                    static_cast<uint64_t>(graphics.backBufferHeight),
+                    static_cast<uint64_t>((std::numeric_limits<LONG>::max)())));
+            if (width <= 0 || height <= 0) {
+                return false;
+            }
+
+            graphics.cmdList->OMSetRenderTargets(
+                1,
+                &graphics.rtv,
+                FALSE,
+                nullptr);
+            const D3D12_VIEWPORT viewport{
+                0.0f,
+                0.0f,
+                static_cast<float>(width),
+                static_cast<float>(height),
+                0.0f,
+                1.0f};
+            const D3D12_RECT scissor{
+                0,
+                0,
+                width,
+                height};
+            graphics.cmdList->RSSetViewports(1, &viewport);
+            graphics.cmdList->RSSetScissorRects(1, &scissor);
+            return true;
+        }
+
         void EditorUiServices::RenderFrame(
             const GFX::Context& graphics,
             bool produceEditorUiFrame) {
@@ -237,6 +286,16 @@ namespace HIKARI::EDITOR {
                 graphics.srvHeap == nullptr) {
                 return;
             }
+
+            if (!BindBackBufferForUi(graphics)) {
+                if (!backBufferBindFailureReported_) {
+                    backBufferBindFailureReported_ = true;
+                    HIKARI_LOG_ERROR(
+                        "ImGui render skipped: active back buffer RTV or extent is invalid.");
+                }
+                return;
+            }
+            backBufferBindFailureReported_ = false;
 
             CPU_PROFILE::ScopedCpuTimer cpuImGui(
                 CPU_PROFILE::Pass::ImGui);
@@ -282,6 +341,7 @@ namespace HIKARI::EDITOR {
 
             window.SetMessageHandler({});
             frameBegun_ = false;
+            backBufferBindFailureReported_ = false;
 
             if (backendInitialized_) {
                 ImGuiPlatformIO& platformIo =

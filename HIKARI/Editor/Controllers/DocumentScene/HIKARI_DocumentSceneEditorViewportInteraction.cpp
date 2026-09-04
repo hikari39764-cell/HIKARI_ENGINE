@@ -50,6 +50,8 @@ namespace HIKARI {
         bool hasSelectionBounds = false;
         const RENDER3D::RUNTIME::SceneRenderCache& renderCache =
             RenderSubmissionSystem::GetSceneRenderCache();
+        const auto& worldSprites =
+            RenderSubmissionSystem::GetWorldSpriteFrameSource();
 
         for (SceneObjectId objectId : objectIds) {
             const RENDER3D::RUNTIME::SceneRenderObject* renderObject =
@@ -62,6 +64,21 @@ namespace HIKARI {
                 BOUNDS::Encapsulate(
                     selectionBounds,
                     renderObject->desc.worldBounds);
+                hasSelectionBounds = true;
+                continue;
+            }
+
+            const auto sprite = std::find_if(
+                worldSprites.instances.begin(),
+                worldSprites.instances.end(),
+                [objectId](const auto& candidate) {
+                    return candidate.objectId == objectId.value &&
+                        BOUNDS::IsUsable(candidate.worldBounds);
+                });
+            if (sprite != worldSprites.instances.end()) {
+                BOUNDS::Encapsulate(
+                    selectionBounds,
+                    sprite->worldBounds);
                 hasSelectionBounds = true;
                 continue;
             }
@@ -205,8 +222,45 @@ namespace HIKARI {
             viewportDropMessage_ = "VFX drop target not implemented yet";
             break;
         case AssetType::Texture:
-            viewportDropMessage_ = "Texture viewport drop is not implemented yet";
+        {
+            const bool dirtyBefore =
+                context_.sceneDirty || scene.HasUnsavedSceneChanges();
+            const std::vector<SceneObjectData> beforeObjects =
+                scene.GetSceneDocument().objects;
+            const SceneCameraSettings beforeCamera =
+                scene.GetSceneDocument().camera;
+            EDITOR::CreateObjectRequest request{};
+            request.name = payload.record->displayName.empty()
+                ? payload.record->sourcePath.stem().string()
+                : payload.record->displayName;
+            request.position = EDITOR::ComputeObjectPlacementInView(
+                scene.GetCamera(),
+                1.0f);
+            GameObject* object = EDITOR::CreateWorldSpriteObject(
+                scene,
+                payload.guid,
+                request);
+            if (object == nullptr) {
+                viewportDropMessage_ = "World Sprite creation failed";
+                break;
+            }
+            context_.selection.SelectObject(scene.GetWorld(), object);
+            selectionSync_.SyncNextSceneObjectId(
+                scene,
+                context_.nextSceneObjectId);
+            CommitSceneObjectAuthoringHistory(
+                scene,
+                SceneObjectAuthoringHistoryRequest{
+                    "Create World Sprite",
+                    beforeObjects,
+                    scene.GetSceneDocument().objects,
+                    beforeCamera,
+                    scene.GetSceneDocument().camera,
+                    dirtyBefore });
+            viewportDropMessage_ =
+                "World Sprite created: " + object->GetName();
             break;
+        }
         case AssetType::Material:
             if (!context_.selection.selectedObject) {
                 viewportDropMessage_ = "Select a model object first, then drop Material";

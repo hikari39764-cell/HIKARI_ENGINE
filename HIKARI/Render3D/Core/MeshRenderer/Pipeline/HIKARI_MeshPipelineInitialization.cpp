@@ -282,7 +282,8 @@ namespace HIKARI::MESHRENDERER {
 
         D3D12_DESCRIPTOR_RANGE clusterGeometryPoolRange{};
         clusterGeometryPoolRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-        clusterGeometryPoolRange.NumDescriptors = GFX::DESCRIPTOR::kSystemSrvDynamicCount;
+        clusterGeometryPoolRange.NumDescriptors =
+            GFX::DESCRIPTOR::kClusterGeometryDescriptorArenaCapacity;
         clusterGeometryPoolRange.BaseShaderRegister = 0;
         clusterGeometryPoolRange.RegisterSpace = 1;
         clusterGeometryPoolRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;

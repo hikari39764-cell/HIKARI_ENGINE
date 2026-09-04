@@ -316,6 +316,15 @@ namespace HIKARI::SEQUENCER {
         return ResumeInternal(handle, 0);
     }
 
+    bool SequencePlaybackService::SetPlaybackRate(
+        SequencePlaybackHandle handle,
+        float playbackRate) {
+
+        const size_t index = FindInstanceIndex(handle);
+        return index != kInvalidInstanceIndex &&
+            instances_[index].cursor.SetPlaybackRate(playbackRate);
+    }
+
     bool SequencePlaybackService::Seek(
         SequencePlaybackHandle handle,
         float timeSeconds) {

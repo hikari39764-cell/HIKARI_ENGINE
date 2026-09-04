@@ -324,7 +324,7 @@ namespace HIKARI::RENDER3D::SURFACE {
                     Fallback::SkipProvider,
                     SurfaceAccessMask(Access::Sampled, Access::WriteColor,
                         Access::ReadUav, Access::WriteUav,
-                        Access::CopySource)),
+                        Access::CopySource, Access::CopyDestination)),
                 SurfaceDesc(Semantic::PackedSurface, Kind::Texture2D,
                     Format::R16G16B16A16Float, Lifetime::FrameLocal,
                     Fallback::SkipProvider,

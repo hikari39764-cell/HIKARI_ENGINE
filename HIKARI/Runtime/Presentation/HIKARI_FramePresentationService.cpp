@@ -3,6 +3,7 @@
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "Runtime/Services/Internal/HIKARI_RuntimeServiceState.h"
 
+#include <sstream>
 #include <string>
 
 #include "Core/HIKARI_Logger.h"
@@ -19,6 +20,7 @@
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "Render3D/Resources/HIKARI_ClusterGeometryResourceSystem.h"
 #include "Render3D/Core/HIKARI_RenderFrameToken.h"
+#include "Render3D/ScreenSpace/HIKARI_ScreenSpacePasses.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 #include "Render3D/Temporal/HIKARI_TemporalResourceSystem.h"
@@ -62,6 +64,16 @@ namespace HIKARI {
                 INTERNAL::GetRuntimeServiceState().editorGameViewportWidth;
             auto& gEditorGameViewportHeight =
                 INTERNAL::GetRuntimeServiceState().editorGameViewportHeight;
+            auto& gStreamlineEnabled =
+                INTERNAL::GetRuntimeServiceState().streamlineEnabled;
+            auto& gRenderQualityRuntimeInitialized =
+                INTERNAL::GetRuntimeServiceState().
+                    renderQualityRuntimeInitialized;
+            auto& gAppliedRenderQuality =
+                INTERNAL::GetRuntimeServiceState().appliedRenderQuality;
+            auto& gRenderQualityTransitionCount =
+                INTERNAL::GetRuntimeServiceState().
+                    renderQualityTransitionCount;
 
             void AbortActivePrimaryTemporalFrame() {
                 POST::PostSystem::AbortSceneCaptureTemporalFrame(
@@ -84,6 +96,159 @@ namespace HIKARI {
                 gGpuFrameReady = false;
                 GFX::PIX::Update();
                 CPU_PROFILE::EndFrame();
+            }
+
+            std::string DescribeRenderQualityTransition(
+                const RENDER3D::RenderQualitySettings& before,
+                const RENDER3D::RenderQualitySettings& after,
+                const RENDER3D::RenderQualityRuntimeChangeSet& changes) {
+
+                std::ostringstream stream;
+                stream << "[RenderQuality] hot transition #"
+                    << gRenderQualityTransitionCount
+                    << " aa="
+                    << RENDER3D::RenderAntiAliasingModeLabel(
+                        before.antiAliasingMode)
+                    << "->"
+                    << RENDER3D::RenderAntiAliasingModeLabel(
+                        after.antiAliasingMode)
+                    << " dlss="
+                    << RENDER3D::DlssQualityModeLabel(before.dlssQualityMode)
+                    << "->"
+                    << RENDER3D::DlssQualityModeLabel(after.dlssQualityMode)
+                    << " scene="
+                    << RENDER3D::RenderResolutionPresetLabel(
+                        before.sceneResolution)
+                    << "->"
+                    << RENDER3D::RenderResolutionPresetLabel(
+                        after.sceneResolution)
+                    << " drain=" << (changes.RequiresGpuDrain() ? "yes" : "no")
+                    << " temporalReset="
+                    << (changes.RequiresTemporalReset() ? "yes" : "no")
+                    << " streamlineReset="
+                    << (changes.RequiresStreamlineReset() ? "yes" : "no");
+                return stream.str();
+            }
+
+            bool SynchronizeRenderQualityRuntime() {
+                const RENDER3D::RenderQualitySettings requested =
+                    RENDER3D::GetRenderQualitySettings();
+                if (!gRenderQualityRuntimeInitialized) {
+                    gAppliedRenderQuality = requested;
+                    gRenderQualityRuntimeInitialized = true;
+                    return true;
+                }
+                if (RENDER3D::AreRenderQualitySettingsEqual(
+                        gAppliedRenderQuality,
+                        requested)) {
+                    return true;
+                }
+
+                const RENDER3D::RenderQualitySettings previous =
+                    gAppliedRenderQuality;
+                RENDER3D::RenderQualitySettings effective = requested;
+                RENDER3D::RenderQualityRuntimeChangeSet changes =
+                    RENDER3D::ClassifyRenderQualityRuntimeChanges(
+                        previous,
+                        effective);
+
+                if (changes.presentationChanged && !IsEditorHost() &&
+                    !ApplyWindowPresentationSettings()) {
+                    effective.windowSize = previous.windowSize;
+                    effective.windowMode = previous.windowMode;
+                    RENDER3D::SetRenderQualitySettings(effective);
+                    HIKARI_LOG_WARN(
+                        "[RenderQuality] live window presentation change was rejected; previous presentation settings were restored.");
+                    changes = RENDER3D::ClassifyRenderQualityRuntimeChanges(
+                        previous,
+                        effective);
+                }
+
+                if (!changes.RequiresGpuDrain()) {
+                    gAppliedRenderQuality = effective;
+                    ++gRenderQualityTransitionCount;
+                    HIKARI_LOG_INFO(DescribeRenderQualityTransition(
+                        previous,
+                        effective,
+                        changes));
+                    return true;
+                }
+
+                // Resolution and Streamline resources can be referenced by all
+                // three in-flight frame slots.  Reconfigure only after the
+                // presentation owner proves GPU idle; the swap chain itself is
+                // deliberately kept alive.
+                if (!gGraphicsCore.WaitForIdle()) {
+                    RENDER3D::SetRenderQualitySettings(previous);
+                    HIKARI_LOG_ERROR(
+                        "[RenderQuality] GPU idle could not be proven; live quality change was rolled back.");
+                    return true;
+                }
+
+                if (changes.RequiresStreamlineReset() && gStreamlineEnabled &&
+                    !RENDER3D::UPSCALING::
+                        ReleaseStreamlineTransientResources()) {
+                    // A failed Streamline resource release must never leave the
+                    // frame routed into a black DLSS target.  Keep the editor
+                    // usable with the native temporal backend until a later
+                    // retry or process restart.
+                    effective.antiAliasingMode =
+                        RENDER3D::RenderAntiAliasingMode::TAA;
+                    effective.frameGenerationMode =
+                        RENDER3D::RenderFrameGenerationMode::Off;
+                    RENDER3D::SetRenderQualitySettings(effective);
+                    HIKARI_LOG_ERROR(
+                        "[RenderQuality] Streamline hot reset failed; falling back to TAA with frame generation disabled.");
+                    changes = RENDER3D::ClassifyRenderQualityRuntimeChanges(
+                        previous,
+                        effective);
+                }
+
+                RENDER3D::TEMPORAL::ShutdownTemporalResourceSystem(
+                    RENDER3D::TEMPORAL::
+                        TemporalResourceReleaseMode::ImmediateAfterGpuIdle);
+                RENDER3D::SCREENSPACE::ReleaseScreenSpaceRuntimeState();
+                RENDER3D::TEMPORAL::TemporalViewLease temporalView{};
+                if (RENDER3D::TEMPORAL::AcquireTemporalView(
+                        RENDER3D::kPrimaryRenderViewId,
+                        temporalView)) {
+                    (void)RENDER3D::TEMPORAL::ResetTemporalFrameHistory(
+                        temporalView,
+                        RENDER3D::TEMPORAL::
+                            TemporalHistoryResetReason::ExplicitReset);
+                }
+                UpdateGpuContexts();
+
+                gAppliedRenderQuality = effective;
+                ++gRenderQualityTransitionCount;
+                HIKARI_LOG_INFO(DescribeRenderQualityTransition(
+                    previous,
+                    effective,
+                    changes));
+                return true;
+            }
+
+            bool RecoverLastEditorPresentation(
+                bool editorViewport,
+                const char* failedStage) {
+
+                AbortActivePrimaryTemporalFrame();
+                if (!editorViewport ||
+                    !POST::PostSystem::IsEditorViewportReady()) {
+                    return false;
+                }
+                const uint64_t frameIndex = TIME::GetFrameContext().frameIndex;
+                static uint64_t lastReportedFrame = 0u;
+                if (lastReportedFrame == 0u ||
+                    frameIndex - lastReportedFrame >= 120u) {
+                    lastReportedFrame = frameIndex;
+                    HIKARI_LOG_WARN(
+                        std::string("[RenderQuality] retained the last completed Game View after ") +
+                        (failedStage != nullptr ? failedStage :
+                            "a frame-presentation failure") + ".");
+                }
+                gPresentationPrepared = true;
+                return true;
             }
         } // namespace
 
@@ -273,6 +438,9 @@ namespace HIKARI {
             CPU_PROFILE::BeginFrame(frame.frameIndex);
             CPU_PROFILE::ScopedCpuTimer cpuBeginFrame(
                 CPU_PROFILE::Pass::ServicesBeginFrame);
+            if (!SynchronizeRenderQualityRuntime()) {
+                return false;
+            }
             if (!ApplyPendingWindowResize()) {
                 return false;
             }
@@ -336,6 +504,11 @@ namespace HIKARI {
                 return true;
             }
 
+            const bool editorViewport =
+                destination == FramePresentationDestination::EditorViewport &&
+                IsEditorHost() &&
+                IsEditorUIEnabled();
+
             int renderWidth = 0;
             int renderHeight = 0;
             HIKARI::POST::PostSystem::GetSceneCaptureSize(
@@ -346,8 +519,9 @@ namespace HIKARI {
                     renderWidth,
                     renderHeight)) {
                 HIKARI_LOG_ERROR("Render2D HDR output target is unavailable.");
-                AbortActivePrimaryTemporalFrame();
-                return false;
+                return RecoverLastEditorPresentation(
+                    editorViewport,
+                    "Render2D HDR target preparation failed");
             }
 
             if (!gSceneLayersRendered) {
@@ -368,14 +542,10 @@ namespace HIKARI {
                     ContinueSceneCaptureGraphSession()) {
                 HIKARI_LOG_ERROR(
                     "Render frame graph presentation continuation failed.");
-                AbortActivePrimaryTemporalFrame();
-                return false;
+                return RecoverLastEditorPresentation(
+                    editorViewport,
+                    "render-graph continuation failed");
             }
-
-            const bool editorViewport =
-                destination == FramePresentationDestination::EditorViewport &&
-                IsEditorHost() &&
-                IsEditorUIEnabled();
             {
                 CPU_PROFILE::ScopedCpuTimer cpuPost(
                     CPU_PROFILE::Pass::PostResolve);
@@ -390,8 +560,13 @@ namespace HIKARI {
                         editorViewport,
                         gLogicalScreenWidth,
                         gLogicalScreenHeight)) {
-                    HIKARI_LOG_ERROR("Game UI composition preparation failed.");
-                    AbortActivePrimaryTemporalFrame();
+                    if (RecoverLastEditorPresentation(
+                            editorViewport,
+                            "Game UI composition preparation failed")) {
+                        return true;
+                    }
+                    HIKARI_LOG_ERROR(
+                        "Game UI composition preparation failed.");
                     return false;
                 }
             }
@@ -426,8 +601,9 @@ namespace HIKARI {
             if (!HIKARI::POST::PostSystem::FinalizeGameUiComposition(
                     editorViewport)) {
                 HIKARI_LOG_ERROR("Game UI composition finalization failed.");
-                AbortActivePrimaryTemporalFrame();
-                return false;
+                return RecoverLastEditorPresentation(
+                    editorViewport,
+                    "Game UI composition finalization failed");
             }
 
             const HIKARI::POST::PresentationFrameResources& presentation =
@@ -452,7 +628,9 @@ namespace HIKARI {
                     FinishPresentationTemporalFrame(true)) {
                 HIKARI_LOG_ERROR(
                     "Temporal presentation resource frame did not close.");
-                return false;
+                return RecoverLastEditorPresentation(
+                    editorViewport,
+                    "temporal presentation close failed");
             }
             gPresentationPrepared = true;
             return true;

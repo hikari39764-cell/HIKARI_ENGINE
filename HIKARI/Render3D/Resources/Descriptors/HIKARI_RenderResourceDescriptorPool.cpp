@@ -1,8 +1,12 @@
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 
+#include <mutex>
+#include <string>
+
 #include "Core/HIKARI_Logger.h"
 #include "Gfx/HIKARI_DescriptorAllocator.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
+#include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 
 namespace HIKARI::RENDER3D {
 
@@ -11,6 +15,7 @@ namespace HIKARI::RENDER3D {
         struct RenderResourceDescriptorPoolState {
             GFX::Context context{};
             GFX::DescriptorAllocator allocator{};
+            GFX::DescriptorAllocator clusterAllocator{};
             UINT descriptorSize = 0;
             bool initialized = false;
             bool contextAvailable = false;
@@ -20,8 +25,12 @@ namespace HIKARI::RENDER3D {
             ID3D12DescriptorHeap* ownerHeap = nullptr;
             uint32_t allocationCount = 0;
             uint32_t freeCount = 0;
+            uint32_t clusterAllocationCount = 0;
+            uint32_t clusterFreeCount = 0;
             uint32_t failedAllocationCount = 0;
+            uint32_t clusterFailedAllocationCount = 0;
             uint32_t rejectedContextUpdateCount = 0;
+            std::mutex mutex{};
         };
 
         RenderResourceDescriptorPoolState& State() {
@@ -97,7 +106,10 @@ namespace HIKARI::RENDER3D {
 
         std::vector<RenderResourceView> AllocateDescriptorRange(
             RenderResourceDescriptorPoolState& state,
-            uint32_t count) {
+            GFX::DescriptorAllocator& allocator,
+            uint32_t count,
+            uint32_t& allocationCount,
+            uint32_t& failedAllocationCount) {
 
             std::vector<RenderResourceView> views{};
             if (!state.initialized ||
@@ -105,16 +117,16 @@ namespace HIKARI::RENDER3D {
                 !state.contextCompatible ||
                 !HasValidContext(state.context) ||
                 count == 0u) {
-                ++state.failedAllocationCount;
-                return views;
-            }
-            const GFX::DescriptorSlot first =
-                state.allocator.AllocateRange(count);
-            if (!first.IsValid()) {
-                ++state.failedAllocationCount;
+                ++failedAllocationCount;
                 return views;
             }
             views.reserve(count);
+            const GFX::DescriptorSlot first =
+                allocator.AllocateRange(count);
+            if (!first.IsValid()) {
+                ++failedAllocationCount;
+                return views;
+            }
             for (uint32_t offset = 0u; offset < count; ++offset) {
                 RenderResourceView view{};
                 view.descriptorIndex = first.index + offset;
@@ -128,14 +140,39 @@ namespace HIKARI::RENDER3D {
                     view.descriptorIndex);
                 views.push_back(view);
             }
-            state.allocationCount += count;
+            allocationCount += count;
             return views;
+        }
+
+        std::vector<RenderResourceView> AllocateDynamicDescriptorRange(
+            RenderResourceDescriptorPoolState& state,
+            uint32_t count) {
+
+            return AllocateDescriptorRange(
+                state,
+                state.allocator,
+                count,
+                state.allocationCount,
+                state.failedAllocationCount);
+        }
+
+        std::vector<RenderResourceView> AllocateClusterDescriptorRange(
+            RenderResourceDescriptorPoolState& state,
+            uint32_t count) {
+
+            return AllocateDescriptorRange(
+                state,
+                state.clusterAllocator,
+                count,
+                state.clusterAllocationCount,
+                state.clusterFailedAllocationCount);
         }
 
     } // namespace
 
     void UpdateRenderResourceDescriptorPoolContext(const GFX::Context& ctx) {
         RenderResourceDescriptorPoolState& state = State();
+        std::scoped_lock lock(state.mutex);
         if (!RefreshContext(state, ctx) || state.initialized) {
             return;
         }
@@ -144,21 +181,59 @@ namespace HIKARI::RENDER3D {
         state.allocator.Initialize(
             GFX::DESCRIPTOR::kSystemSrvDynamicBegin,
             GFX::DESCRIPTOR::kSystemSrvDynamicCount);
+        state.clusterAllocator.Initialize(
+            GFX::DESCRIPTOR::kClusterGeometryDescriptorArenaBegin,
+            GFX::DESCRIPTOR::kClusterGeometryDescriptorArenaCapacity);
         state.initialized = true;
     }
 
     void ShutdownRenderResourceDescriptorPool() {
         RenderResourceDescriptorPoolState& state = State();
-        state = {};
+        std::scoped_lock lock(state.mutex);
+        state.context = {};
+        state.allocator = {};
+        state.clusterAllocator = {};
+        state.descriptorSize = 0;
+        state.initialized = false;
+        state.contextAvailable = false;
+        state.contextCompatible = true;
+        state.ownerDeviceGeneration = 0;
+        state.ownerDevice = nullptr;
+        state.ownerHeap = nullptr;
+        state.allocationCount = 0;
+        state.freeCount = 0;
+        state.clusterAllocationCount = 0;
+        state.clusterFreeCount = 0;
+        state.failedAllocationCount = 0;
+        state.clusterFailedAllocationCount = 0;
+        state.rejectedContextUpdateCount = 0;
     }
 
     RenderResourceView AllocateRenderResourceDescriptor() {
-        return AllocateDescriptor(State());
+        RenderResourceDescriptorPoolState& state = State();
+        std::scoped_lock lock(state.mutex);
+        return AllocateDescriptor(state);
     }
 
     std::vector<RenderResourceView>
     AllocateRenderResourceDescriptorRange(uint32_t count) {
-        return AllocateDescriptorRange(State(), count);
+        RenderResourceDescriptorPoolState& state = State();
+        std::scoped_lock lock(state.mutex);
+        return AllocateDynamicDescriptorRange(state, count);
+    }
+
+    std::vector<RenderResourceView>
+    AllocateClusterGeometryDescriptorRange(uint32_t count) {
+        RenderResourceDescriptorPoolState& state = State();
+        std::scoped_lock lock(state.mutex);
+        if (count == 0u ||
+            count > GFX::DESCRIPTOR::kClusterGeometryDescriptorArenaCapacity ||
+            count % GFX::DESCRIPTOR::kClusterGeometryDescriptorCountPerResource !=
+                0u) {
+            ++state.clusterFailedAllocationCount;
+            return {};
+        }
+        return AllocateClusterDescriptorRange(state, count);
     }
 
     RenderResourceView AllocateBufferSrvDescriptor(
@@ -169,6 +244,7 @@ namespace HIKARI::RENDER3D {
         D3D12_BUFFER_SRV_FLAGS flags) {
 
         RenderResourceDescriptorPoolState& state = State();
+        std::scoped_lock lock(state.mutex);
         if (!state.initialized ||
             !state.contextAvailable ||
             !state.contextCompatible ||
@@ -207,6 +283,7 @@ namespace HIKARI::RENDER3D {
         D3D12_BUFFER_UAV_FLAGS flags) {
 
         RenderResourceDescriptorPoolState& state = State();
+        std::scoped_lock lock(state.mutex);
         if (!state.initialized ||
             !state.contextAvailable ||
             !state.contextCompatible ||
@@ -245,6 +322,7 @@ namespace HIKARI::RENDER3D {
         UINT mipLevels) {
 
         RenderResourceDescriptorPoolState& state = State();
+        std::scoped_lock lock(state.mutex);
         if (resource == nullptr || mipLevels == 0) {
             ++state.failedAllocationCount;
             return {};
@@ -273,6 +351,7 @@ namespace HIKARI::RENDER3D {
         UINT mipSlice) {
 
         RenderResourceDescriptorPoolState& state = State();
+        std::scoped_lock lock(state.mutex);
         if (resource == nullptr) {
             ++state.failedAllocationCount;
             return {};
@@ -299,6 +378,7 @@ namespace HIKARI::RENDER3D {
         UINT mipLevels) {
 
         RenderResourceDescriptorPoolState& state = State();
+        std::scoped_lock lock(state.mutex);
         if (resource == nullptr || mipLevels == 0) {
             ++state.failedAllocationCount;
             return {};
@@ -325,6 +405,7 @@ namespace HIKARI::RENDER3D {
         UINT wSize) {
 
         RenderResourceDescriptorPoolState& state = State();
+        std::scoped_lock lock(state.mutex);
         if (resource == nullptr) {
             ++state.failedAllocationCount;
             return {};
@@ -344,22 +425,66 @@ namespace HIKARI::RENDER3D {
 
     bool ReleaseRenderResourceDescriptor(RenderResourceView view) {
         RenderResourceDescriptorPoolState& state = State();
+        std::scoped_lock lock(state.mutex);
         if (!state.initialized || view.descriptorIndex == UINT32_MAX) {
             return false;
         }
 
         const GFX::DescriptorSlot slot{ view.descriptorIndex };
-        if (!state.allocator.Owns(slot) || !state.allocator.IsAllocated(slot)) {
-            return false;
+        if (state.allocator.Owns(slot) && state.allocator.IsAllocated(slot)) {
+            state.allocator.Free(slot);
+            ++state.freeCount;
+            return true;
+        }
+        if (state.clusterAllocator.Owns(slot) &&
+            state.clusterAllocator.IsAllocated(slot)) {
+            state.clusterAllocator.Free(slot);
+            ++state.clusterFreeCount;
+            return true;
+        }
+        return false;
+    }
+
+    void RetireRenderResourceDescriptor(
+        RenderResourceView& view,
+        const GFX::Context& context,
+        const char* debugName) noexcept {
+
+        if (!view.IsValid()) {
+            return;
         }
 
-        state.allocator.Free(slot);
-        ++state.freeCount;
-        return true;
+        const RenderResourceView retired = view;
+        if (context.deferredReleaseQueue != nullptr &&
+            context.currentFrameRetireFenceValue != 0u) {
+            try {
+                context.deferredReleaseQueue->Enqueue(
+                    context.currentFrameRetireFenceValue,
+                    [retired]() {
+                        ReleaseRenderResourceDescriptor(retired);
+                    },
+                    debugName != nullptr
+                        ? debugName
+                        : "Render Resource Descriptor");
+            }
+            catch (...) {
+                // Queue admission failed before ownership transferred. Keep
+                // the descriptor allocator coherent even under allocation
+                // pressure; the caller's view is cleared below.
+                ReleaseRenderResourceDescriptor(retired);
+                view = {};
+                return;
+            }
+            view = {};
+            return;
+        }
+        ReleaseRenderResourceDescriptor(retired);
+        view = {};
     }
 
     RenderResourceDescriptorPoolStats GetRenderResourceDescriptorPoolStats() {
-        const RenderResourceDescriptorPoolState& state = State();
+        RenderResourceDescriptorPoolState& state = State();
+        std::scoped_lock lock(state.mutex);
 
         RenderResourceDescriptorPoolStats stats{};
         stats.initialized = state.initialized &&
@@ -373,9 +498,17 @@ namespace HIKARI::RENDER3D {
         stats.capacity = state.allocator.GetCount();
         stats.used = state.allocator.GetUsedCount();
         stats.free = state.allocator.GetFreeCount();
+        stats.clusterBegin = state.clusterAllocator.GetBegin();
+        stats.clusterCapacity = state.clusterAllocator.GetCount();
+        stats.clusterUsed = state.clusterAllocator.GetUsedCount();
+        stats.clusterFree = state.clusterAllocator.GetFreeCount();
         stats.allocationCount = state.allocationCount;
         stats.freeCount = state.freeCount;
+        stats.clusterAllocationCount = state.clusterAllocationCount;
+        stats.clusterFreeCount = state.clusterFreeCount;
         stats.failedAllocationCount = state.failedAllocationCount;
+        stats.clusterFailedAllocationCount =
+            state.clusterFailedAllocationCount;
         stats.rejectedContextUpdateCount =
             state.rejectedContextUpdateCount;
         return stats;

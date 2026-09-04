@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string_view>
 
 #include "Editor/Authoring/HIKARI_PrimitiveCreationDialog.h"
 #include "Editor/Authoring/HIKARI_SceneObjectAuthoringTypes.h"
@@ -36,10 +37,28 @@ namespace HIKARI {
                 ConsumeHistoryRequest();
 
         private:
+            static bool MatchesSearch(
+                std::string_view label,
+                std::string_view search);
             void CreateEmptyObject(
                 DocumentSceneBase& scene,
                 EditorContext& context,
                 const SelectionSyncService& selectionSync);
+            void CreateWorldSpriteObject(
+                DocumentSceneBase& scene,
+                EditorContext& context,
+                const SelectionSyncService& selectionSync);
+            void DrawUiCreationMenu(
+                DocumentSceneBase& scene,
+                EditorContext& context,
+                const SelectionSyncService& selectionSync,
+                std::string_view search);
+            void CreateUiObject(
+                DocumentSceneBase& scene,
+                EditorContext& context,
+                const SelectionSyncService& selectionSync,
+                bool button,
+                bool addSceneFlow = false);
             void CreateLightingObject(
                 DocumentSceneBase& scene,
                 EditorContext& context,

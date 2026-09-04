@@ -476,6 +476,22 @@ namespace HIKARI {
         uint32_t reserved = 0u;
     };
 
+    enum class GameProjectPerfectGuardWaveFlag : uint32_t {
+        None = 0u,
+        // The ring begins at maximumScreenRadius and contracts toward the
+        // projected world center. Refraction direction is reversed as well.
+        Converging = 1u << 0u,
+    };
+
+    constexpr uint32_t GameProjectPerfectGuardWaveFlags(
+        GameProjectPerfectGuardWaveFlag flags) noexcept {
+        return static_cast<uint32_t>(flags);
+    }
+
+    inline constexpr uint32_t kGameProjectPerfectGuardWaveKnownFlags =
+        GameProjectPerfectGuardWaveFlags(
+            GameProjectPerfectGuardWaveFlag::Converging);
+
     // A transient HDR scene-color reaction. The world center is projected by
     // the render view; UI is composed later and is never distorted. Sequence
     // lets the engine reject duplicate perfect-guard delivery in one source.
@@ -491,7 +507,13 @@ namespace HIKARI {
         float chromaticAberration = 0.0035f;
         float flashIntensity = 0.42f;
         float intensity = 1.0f;
-        uint32_t reserved = 0u;
+        union {
+            uint32_t flags = GameProjectPerfectGuardWaveFlags(
+                GameProjectPerfectGuardWaveFlag::None);
+            // Source-compatible alias for projects built against the older
+            // request contract. It occupies the same ABI field as flags.
+            uint32_t reserved;
+        };
     };
 
     // Frame-local full-screen action grade. The caller submits this every

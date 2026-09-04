@@ -18,6 +18,10 @@ namespace HIKARI::RENDER3D {
         struct ParticleRenderFrameSource;
     }
 
+    namespace WORLD_SPRITES {
+        struct WorldSpriteFrameSource;
+    }
+
     namespace COMBAT_VFX {
         struct CombatAfterimageFrameSource;
         struct CombatPresentationFrameSource;
@@ -81,6 +85,8 @@ namespace HIKARI::RENDER3D {
         const ResolvedCameraFrame* cameraFrame = nullptr;
         const PARTICLES::ParticleRenderFrameSource* particleFrameSource =
             nullptr;
+        const WORLD_SPRITES::WorldSpriteFrameSource*
+            worldSpriteFrameSource = nullptr;
         const COMBAT_VFX::CombatPresentationFrameSource*
             combatPresentationFrameSource = nullptr;
         const COMBAT_VFX::CombatAfterimageFrameSource*

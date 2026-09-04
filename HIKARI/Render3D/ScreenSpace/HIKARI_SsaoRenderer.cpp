@@ -283,6 +283,11 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             !EnsureResources(graphics, width, height, useHalfResolution)) {
             return false;
         }
+        activeFrameSlot_ =
+            graphics.frameIndex % GFX::kFrameResourceCount;
+        if (!RefreshAoDescriptorsForCurrentFrame(graphics)) {
+            return false;
+        }
         gDebugState.internalWidth = width_;
         gDebugState.internalHeight = height_;
         gDebugState.halfResolution = halfResolution_;
@@ -379,7 +384,8 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         }
         gDebugState.mainCpuMs = ElapsedMs(mainStart, CpuClock::now());
 
-        D3D12_GPU_DESCRIPTOR_HANDLE sourceSrv = rawSrvGpu_;
+        D3D12_GPU_DESCRIPTOR_HANDLE sourceSrv =
+            rawSrvGpu_[activeFrameSlot_];
         D3D12_CPU_DESCRIPTOR_HANDLE targetRtv = blurredRtv_;
         D3D12_RESOURCE_STATES* targetState = &blurredState_;
         ID3D12Resource* targetResource = blurredAo_.Get();
@@ -433,20 +439,22 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
                 Transition(cmd, targetResource, *targetState, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 
                 if (targetResource == blurredAo_.Get()) {
-                    sourceSrv = blurredSrvGpu_;
+                    sourceSrv = blurredSrvGpu_[activeFrameSlot_];
                     targetRtv = rawRtv_;
                     targetState = &rawState_;
                     targetResource = rawAo_.Get();
                 }
                 else {
-                    sourceSrv = rawSrvGpu_;
+                    sourceSrv = rawSrvGpu_[activeFrameSlot_];
                     targetRtv = blurredRtv_;
                     targetState = &blurredState_;
                     targetResource = blurredAo_.Get();
                 }
             }
 
-            filteredSrv = blurIterations == 0u ? rawSrvGpu_ : sourceSrv;
+            filteredSrv = blurIterations == 0u
+                ? rawSrvGpu_[activeFrameSlot_]
+                : sourceSrv;
             if (useHalfResolution) {
                 GFX::PIX::ScopedGpuEvent pixUpsample(cmd, GFX::PIX::kColorPost, "SSAO.DepthAwareUpsample");
 
@@ -483,7 +491,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
                         : upsamplePso_.Get());
                 DrawFullscreen(cmd);
                 Transition(cmd, resolvedAo_.Get(), resolvedState_, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-                filteredSrv = resolvedSrvGpu_;
+                filteredSrv = resolvedSrvGpu_[activeFrameSlot_];
             }
         }
         gDebugState.blurCpuMs = ElapsedMs(blurStart, CpuClock::now());
@@ -536,23 +544,33 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         }
 
         ID3D12Device* device = graphics.device;
-        if (device == nullptr) {
+        if (device == nullptr || graphics.srvHeap == nullptr) {
             return false;
         }
 
-        GFX::RetireD3D12ObjectForCurrentFrame(rawAo_, "SSAO.RawAO");
-        GFX::RetireD3D12ObjectForCurrentFrame(blurredAo_, "SSAO.BlurredAO");
-        GFX::RetireD3D12ObjectForCurrentFrame(resolvedAo_, "SSAO.ResolvedAO");
-        GFX::RetireD3D12ObjectForCurrentFrame(rtvHeap_, "SSAO.RTVHeap");
+        GFX::RetireD3D12ObjectForFrame(
+            rawAo_, graphics, "SSAO.RawAO");
+        GFX::RetireD3D12ObjectForFrame(
+            blurredAo_, graphics, "SSAO.BlurredAO");
+        GFX::RetireD3D12ObjectForFrame(
+            resolvedAo_, graphics, "SSAO.ResolvedAO");
+        GFX::RetireD3D12ObjectForFrame(
+            rtvHeap_, graphics, "SSAO.RTVHeap");
         rawRtv_ = {};
         blurredRtv_ = {};
         resolvedRtv_ = {};
-        rawSrvCpu_ = {};
-        blurredSrvCpu_ = {};
-        resolvedSrvCpu_ = {};
-        rawSrvGpu_ = {};
-        blurredSrvGpu_ = {};
-        resolvedSrvGpu_ = {};
+        rawSrvCpu_.fill({});
+        blurredSrvCpu_.fill({});
+        resolvedSrvCpu_.fill({});
+        rawSrvGpu_.fill({});
+        blurredSrvGpu_.fill({});
+        resolvedSrvGpu_.fill({});
+        rawSrvResources_.fill(nullptr);
+        blurredSrvResources_.fill(nullptr);
+        resolvedSrvResources_.fill(nullptr);
+        rawSrvGenerations_.fill(0u);
+        blurredSrvGenerations_.fill(0u);
+        resolvedSrvGenerations_.fill(0u);
         rawState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
         blurredState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
         resolvedState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
@@ -578,13 +596,13 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         height_ = aoHeight;
         halfResolution_ = halfResolution;
 
-        if (!CreateAoResource(graphics, aoWidth, aoHeight, GFX::DESCRIPTOR::SystemSrv::SsaoRaw, rawAo_, rawRtv_, rawSrvCpu_, rawSrvGpu_, L"HIKARI.SSAO.Raw")) {
+        if (!CreateAoResource(graphics, aoWidth, aoHeight, rawAo_, rawRtv_, L"HIKARI.SSAO.Raw")) {
             return false;
         }
-        if (!CreateAoResource(graphics, aoWidth, aoHeight, GFX::DESCRIPTOR::SystemSrv::SsaoBlurred, blurredAo_, blurredRtv_, blurredSrvCpu_, blurredSrvGpu_, L"HIKARI.SSAO.Blurred")) {
+        if (!CreateAoResource(graphics, aoWidth, aoHeight, blurredAo_, blurredRtv_, L"HIKARI.SSAO.Blurred")) {
             return false;
         }
-        if (!CreateAoResource(graphics, screenWidth, screenHeight, GFX::DESCRIPTOR::SystemSrv::SsaoResolved, resolvedAo_, resolvedRtv_, resolvedSrvCpu_, resolvedSrvGpu_, L"HIKARI.SSAO.Resolved")) {
+        if (!CreateAoResource(graphics, screenWidth, screenHeight, resolvedAo_, resolvedRtv_, L"HIKARI.SSAO.Resolved")) {
             return false;
         }
 
@@ -625,13 +643,13 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         ID3D12Resource* resource = nullptr;
         D3D12_RESOURCE_STATES resourceState =
             D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-        if (lastAoSrv_.ptr == resolvedSrvGpu_.ptr) {
+        if (lastAoSrv_.ptr == resolvedSrvGpu_[activeFrameSlot_].ptr) {
             resource = resolvedAo_.Get();
             resourceState = resolvedState_;
-        } else if (lastAoSrv_.ptr == blurredSrvGpu_.ptr) {
+        } else if (lastAoSrv_.ptr == blurredSrvGpu_[activeFrameSlot_].ptr) {
             resource = blurredAo_.Get();
             resourceState = blurredState_;
-        } else if (lastAoSrv_.ptr == rawSrvGpu_.ptr) {
+        } else if (lastAoSrv_.ptr == rawSrvGpu_[activeFrameSlot_].ptr) {
             resource = rawAo_.Get();
             resourceState = rawState_;
         }
@@ -642,20 +660,91 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         };
     }
 
+    bool SsaoRenderer::RefreshAoDescriptorsForCurrentFrame(
+        const GFX::Context& graphics) {
+
+        if (graphics.device == nullptr || graphics.srvHeap == nullptr ||
+            rawAo_ == nullptr || blurredAo_ == nullptr ||
+            resolvedAo_ == nullptr) {
+            return false;
+        }
+
+        const uint32_t frameSlot =
+            graphics.frameIndex % GFX::kFrameResourceCount;
+        const UINT descriptorSize =
+            graphics.device->GetDescriptorHandleIncrementSize(
+                D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+        const auto refresh = [&](ID3D12Resource* resource,
+                                 GFX::DESCRIPTOR::SystemSrv descriptorSlot,
+                                 D3D12_CPU_DESCRIPTOR_HANDLE& cpu,
+                                 D3D12_GPU_DESCRIPTOR_HANDLE& gpu,
+                                 ID3D12Resource*& publishedResource,
+                                 uint64_t& publishedGeneration) {
+            if (publishedResource == resource &&
+                publishedGeneration == graphics.deviceGeneration &&
+                cpu.ptr != 0 && gpu.ptr != 0) {
+                return true;
+            }
+
+            cpu = GFX::DESCRIPTOR::CpuAt(
+                graphics.srvHeap,
+                descriptorSize,
+                GFX::DESCRIPTOR::ToIndex(descriptorSlot));
+            gpu = GFX::DESCRIPTOR::GpuAt(
+                graphics.srvHeap,
+                descriptorSize,
+                GFX::DESCRIPTOR::ToIndex(descriptorSlot));
+            if (cpu.ptr == 0 || gpu.ptr == 0) {
+                return false;
+            }
+
+            D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
+            srv.Format = DXGI_FORMAT_R8_UNORM;
+            srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+            srv.Shader4ComponentMapping =
+                D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            srv.Texture2D.MipLevels = 1;
+            graphics.device->CreateShaderResourceView(resource, &srv, cpu);
+            publishedResource = resource;
+            publishedGeneration = graphics.deviceGeneration;
+            return true;
+        };
+
+        return
+            refresh(
+                rawAo_.Get(),
+                GFX::DESCRIPTOR::SsaoRawFrameSlot(graphics.frameIndex),
+                rawSrvCpu_[frameSlot],
+                rawSrvGpu_[frameSlot],
+                rawSrvResources_[frameSlot],
+                rawSrvGenerations_[frameSlot]) &&
+            refresh(
+                blurredAo_.Get(),
+                GFX::DESCRIPTOR::SsaoBlurredFrameSlot(graphics.frameIndex),
+                blurredSrvCpu_[frameSlot],
+                blurredSrvGpu_[frameSlot],
+                blurredSrvResources_[frameSlot],
+                blurredSrvGenerations_[frameSlot]) &&
+            refresh(
+                resolvedAo_.Get(),
+                GFX::DESCRIPTOR::SsaoResolvedFrameSlot(graphics.frameIndex),
+                resolvedSrvCpu_[frameSlot],
+                resolvedSrvGpu_[frameSlot],
+                resolvedSrvResources_[frameSlot],
+                resolvedSrvGenerations_[frameSlot]);
+    }
+
     bool SsaoRenderer::CreateAoResource(
         const GFX::Context& graphics,
         uint32_t width,
         uint32_t height,
-        GFX::DESCRIPTOR::SystemSrv srvSlot,
         Microsoft::WRL::ComPtr<ID3D12Resource>& outResource,
         D3D12_CPU_DESCRIPTOR_HANDLE& outRtv,
-        D3D12_CPU_DESCRIPTOR_HANDLE& outSrvCpu,
-        D3D12_GPU_DESCRIPTOR_HANDLE& outSrvGpu,
         const wchar_t* debugName) {
 
         ID3D12Device* device = graphics.device;
-        ID3D12DescriptorHeap* srvHeap = graphics.srvHeap;
-        if (device == nullptr || srvHeap == nullptr) {
+        if (device == nullptr) {
             return false;
         }
 
@@ -683,18 +772,6 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         }
         outResource->SetName(debugName);
         device->CreateRenderTargetView(outResource.Get(), nullptr, outRtv);
-
-        const UINT descriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-        const UINT srvIndex = GFX::DESCRIPTOR::ToIndex(srvSlot);
-        outSrvCpu = GFX::DESCRIPTOR::CpuAt(srvHeap, descriptorSize, srvIndex);
-        outSrvGpu = GFX::DESCRIPTOR::GpuAt(srvHeap, descriptorSize, srvIndex);
-
-        D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
-        srv.Format = DXGI_FORMAT_R8_UNORM;
-        srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-        srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-        srv.Texture2D.MipLevels = 1;
-        device->CreateShaderResourceView(outResource.Get(), &srv, outSrvCpu);
         return true;
     }
 
@@ -868,6 +945,19 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         depthOnlyUpsamplePso_.Reset();
         lastAoSrv_ = {};
         valid_ = false;
+        activeFrameSlot_ = 0u;
+        rawSrvCpu_.fill({});
+        blurredSrvCpu_.fill({});
+        resolvedSrvCpu_.fill({});
+        rawSrvGpu_.fill({});
+        blurredSrvGpu_.fill({});
+        resolvedSrvGpu_.fill({});
+        rawSrvResources_.fill(nullptr);
+        blurredSrvResources_.fill(nullptr);
+        resolvedSrvResources_.fill(nullptr);
+        rawSrvGenerations_.fill(0u);
+        blurredSrvGenerations_.fill(0u);
+        resolvedSrvGenerations_.fill(0u);
         screenWidth_ = 0;
         screenHeight_ = 0;
         width_ = 0;

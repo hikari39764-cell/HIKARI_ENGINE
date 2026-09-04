@@ -195,6 +195,13 @@ namespace HIKARI {
         None,
     };
 
+    enum class TextureAssetAlphaClass : uint8_t {
+        Unknown,
+        Opaque,
+        Cutout,
+        Translucent,
+    };
+
     enum class CookedAssetFormat {
         Unknown,
         DDS,
@@ -217,6 +224,9 @@ namespace HIKARI {
         TextureUsage usage = TextureUsage::Auto;
         TextureCompression compression = TextureCompression::Auto;
         TextureMipPolicy mipPolicy = TextureMipPolicy::Auto;
+        uint32_t width = 0u;
+        uint32_t height = 0u;
+        TextureAssetAlphaClass alphaClass = TextureAssetAlphaClass::Unknown;
     };
 
     struct MaterialAssetDescriptor final : AssetDescriptor {

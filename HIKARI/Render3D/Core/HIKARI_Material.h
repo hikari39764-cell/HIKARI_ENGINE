@@ -43,6 +43,8 @@ namespace HIKARI {
 
     class Material {
     public:
+        Material();
+
         void SetBaseColor(const MATH::Vec4& color);
         const MATH::Vec4& GetBaseColor() const;
         void SetBaseColorTexturePath(std::string path);
@@ -118,6 +120,8 @@ namespace HIKARI {
         uint64_t GetRevision() const;
 
     private:
+        void TouchRevision() noexcept;
+
         MATH::Vec4 baseColor_{ 1.0f, 1.0f, 1.0f, 1.0f };
         RuntimeTextureSlot baseColorTexture_{};
         RuntimeTextureSlot normalTexture_{};
@@ -154,7 +158,7 @@ namespace HIKARI {
         float alphaCutoff_ = 0.5f;
         bool doubleSided_ = false;
         bool unlit_ = false;
-        uint64_t revision_ = 1;
+        uint64_t revision_ = 0;
     };
 
 } // namespace HIKARI

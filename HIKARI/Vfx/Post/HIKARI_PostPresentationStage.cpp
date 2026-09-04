@@ -51,78 +51,99 @@ namespace HIKARI::POST {
     }
 
     void PostPresentationStage::UpdateContext(const GFX::Context& context) {
+        const bool contextChanged =
+            context_.device != context.device ||
+            context_.srvHeap != context.srvHeap ||
+            context_.deviceGeneration != context.deviceGeneration;
         context_ = context;
         editorOutput_.UpdateContext(context);
+        if (contextChanged) {
+            ResetEditorOutputSrvTracking();
+        }
     }
 
     void PostPresentationStage::Shutdown() {
         editorOutput_.Finalize();
-        editorOutputSrvCpu_ = {};
-        editorOutputSrvGpu_ = {};
-        editorOutputReady_ = false;
+        ResetEditorOutputSrvTracking();
     }
 
-    void PostPresentationStage::InvalidateEditorOutput() {
-        editorOutputReady_ = false;
-    }
-
-    bool PostPresentationStage::EnsureEditorOutput(int width, int height) {
+    bool PostPresentationStage::HasCompatibleEditorOutput(
+        int width,
+        int height) const {
         if (width <= 0 || height <= 0) {
             return false;
         }
-        editorOutput_.UpdateContext(context_);
-        const bool invalid =
-            editorOutput_.GetResource() == nullptr ||
-            editorOutput_.GetWidth() != width ||
-            editorOutput_.GetHeight() != height ||
-            editorOutput_.GetFormat() != DXGI_FORMAT_R8G8B8A8_UNORM ||
-            editorOutput_.HasDepth();
-        if (!invalid) {
-            return true;
-        }
-
-        editorOutput_.Finalize();
-        editorOutput_.SetDebugName("Presentation.EditorGameView.LDR");
-        if (!editorOutput_.Init(
-                width,
-                height,
-                DXGI_FORMAT_R8G8B8A8_UNORM,
-                false,
-                { 0.0f, 0.0f, 0.0f, 1.0f })) {
-            editorOutputReady_ = false;
-            DEBUGLOG::PushRenderError(
-                "[PresentationStage][ERROR] Editor output creation failed.");
-            GFX::DumpD3D12InfoQueue(
-                context_.device,
-                "Presentation editor output creation failed");
-            return false;
-        }
-        RefreshEditorOutputSrv();
-        return true;
+        return editorOutput_.GetResource() != nullptr &&
+            editorOutput_.GetWidth() == width &&
+            editorOutput_.GetHeight() == height &&
+            editorOutput_.GetFormat() == DXGI_FORMAT_R8G8B8A8_UNORM &&
+            !editorOutput_.HasDepth();
     }
 
-    void PostPresentationStage::RefreshEditorOutputSrv() {
+    void PostPresentationStage::ResetEditorOutputSrvTracking() noexcept {
+        editorOutputSrvCpu_.fill({});
+        editorOutputSrvGpu_.fill({});
+        editorOutputSrvResources_.fill(nullptr);
+        editorOutputSrvGenerations_.fill(0u);
+        editorOutputSrvReady_.fill(false);
+        lastPublishedFrameSlot_ = GFX::kFrameResourceCount;
+    }
+
+    void PostPresentationStage::PruneObsoleteEditorOutputSrvTracking(
+        ID3D12Resource* currentResource) noexcept {
+
+        for (uint32_t frameSlot = 0u;
+             frameSlot < GFX::kFrameResourceCount;
+             ++frameSlot) {
+            if (editorOutputSrvResources_[frameSlot] == currentResource) {
+                continue;
+            }
+            editorOutputSrvCpu_[frameSlot] = {};
+            editorOutputSrvGpu_[frameSlot] = {};
+            editorOutputSrvResources_[frameSlot] = nullptr;
+            editorOutputSrvGenerations_[frameSlot] = 0u;
+            editorOutputSrvReady_[frameSlot] = false;
+        }
+    }
+
+    bool PostPresentationStage::RefreshEditorOutputSrv() {
         if (context_.device == nullptr ||
             context_.srvHeap == nullptr ||
             editorOutput_.GetResource() == nullptr) {
-            editorOutputSrvCpu_ = {};
-            editorOutputSrvGpu_ = {};
-            editorOutputReady_ = false;
-            return;
+            return false;
         }
 
-        const UINT descriptorSize = context_.device->GetDescriptorHandleIncrementSize(
-            D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-        const UINT descriptorIndex = GFX::DESCRIPTOR::ToIndex(
-            GFX::DESCRIPTOR::SystemSrv::EditorViewport);
-        editorOutputSrvCpu_ = GFX::DESCRIPTOR::CpuAt(
+        const uint32_t frameSlot =
+            context_.frameIndex % GFX::kFrameResourceCount;
+        if (editorOutputSrvResources_[frameSlot] ==
+                editorOutput_.GetResource() &&
+            editorOutputSrvGenerations_[frameSlot] ==
+                context_.deviceGeneration &&
+            editorOutputSrvCpu_[frameSlot].ptr != 0 &&
+            editorOutputSrvGpu_[frameSlot].ptr != 0) {
+            return true;
+        }
+
+        const UINT descriptorSize =
+            context_.device->GetDescriptorHandleIncrementSize(
+                D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        const GFX::DESCRIPTOR::SystemSrv descriptorSlot =
+            GFX::DESCRIPTOR::EditorViewportFrameSlot(context_.frameIndex);
+        editorOutputSrvCpu_[frameSlot] = GFX::DESCRIPTOR::CpuAt(
             context_.srvHeap,
             descriptorSize,
-            descriptorIndex);
-        editorOutputSrvGpu_ = GFX::DESCRIPTOR::GpuAt(
+            GFX::DESCRIPTOR::ToIndex(descriptorSlot));
+        editorOutputSrvGpu_[frameSlot] = GFX::DESCRIPTOR::GpuAt(
             context_.srvHeap,
             descriptorSize,
-            descriptorIndex);
+            GFX::DESCRIPTOR::ToIndex(descriptorSlot));
+        if (editorOutputSrvCpu_[frameSlot].ptr == 0u ||
+            editorOutputSrvGpu_[frameSlot].ptr == 0u) {
+            editorOutputSrvResources_[frameSlot] = nullptr;
+            editorOutputSrvGenerations_[frameSlot] = 0u;
+            editorOutputSrvReady_[frameSlot] = false;
+            return false;
+        }
 
         D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
         srv.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -132,8 +153,10 @@ namespace HIKARI::POST {
         context_.device->CreateShaderResourceView(
             editorOutput_.GetResource(),
             &srv,
-            editorOutputSrvCpu_);
-        editorOutputReady_ = true;
+            editorOutputSrvCpu_[frameSlot]);
+        editorOutputSrvResources_[frameSlot] = editorOutput_.GetResource();
+        editorOutputSrvGenerations_[frameSlot] = context_.deviceGeneration;
+        return true;
     }
 
     bool PostPresentationStage::DrawSource(
@@ -154,19 +177,65 @@ namespace HIKARI::POST {
         int expectedWidth,
         int expectedHeight) {
 
-        if (!EnsureEditorOutput(source.GetWidth(), source.GetHeight())) {
+        const bool hasCompatibleOutput = HasCompatibleEditorOutput(
+            source.GetWidth(),
+            source.GetHeight());
+        RenderTarget2D replacement{};
+        RenderTarget2D* output = &editorOutput_;
+        const bool replacingOutput = !hasCompatibleOutput;
+        if (replacingOutput) {
+            replacement.UpdateContext(context_);
+            replacement.SetDebugName("Presentation.EditorGameView.LDR");
+            if (!replacement.Init(
+                    source.GetWidth(),
+                    source.GetHeight(),
+                    DXGI_FORMAT_R8G8B8A8_UNORM,
+                    false,
+                    { 0.0f, 0.0f, 0.0f, 1.0f })) {
+                DEBUGLOG::PushRenderError(
+                    "[PresentationStage][ERROR] Editor output creation failed.");
+                GFX::DumpD3D12InfoQueue(
+                    context_.device,
+                    "Presentation editor output creation failed");
+                BindBackBufferFullViewport();
+                return false;
+            }
+            output = &replacement;
+        }
+
+        output->BeginCapture(0.0f, 0.0f, 0.0f, 1.0f);
+        const bool drew = DrawSource(source, quad);
+        output->EndCapture();
+        BindBackBufferFullViewport();
+        const bool sizeCurrent =
+            expectedWidth <= 0 ||
+            expectedHeight <= 0 ||
+            (output->GetWidth() == expectedWidth &&
+                output->GetHeight() == expectedHeight);
+        if (!drew || !sizeCurrent) {
+            return false;
+        }
+
+        if (replacingOutput) {
+            editorOutput_.Swap(replacement);
+        }
+        const bool srvReady = RefreshEditorOutputSrv();
+        if (!srvReady) {
+            if (replacingOutput) {
+                editorOutput_.Swap(replacement);
+            }
             BindBackBufferFullViewport();
             return false;
         }
 
-        editorOutput_.BeginCapture(0.0f, 0.0f, 0.0f, 1.0f);
-        const bool drew = DrawSource(source, quad);
-        editorOutput_.EndCapture();
-        RefreshEditorOutputSrv();
-        BindBackBufferFullViewport();
-        editorOutputReady_ =
-            drew && IsEditorOutputReady(expectedWidth, expectedHeight);
-        return editorOutputReady_;
+        const uint32_t frameSlot =
+            context_.frameIndex % GFX::kFrameResourceCount;
+        editorOutputSrvReady_[frameSlot] = true;
+        lastPublishedFrameSlot_ = frameSlot;
+        if (replacingOutput) {
+            PruneObsoleteEditorOutputSrvTracking(editorOutput_.GetResource());
+        }
+        return true;
     }
 
     bool PostPresentationStage::PresentToBackBuffer(
@@ -217,20 +286,42 @@ namespace HIKARI::POST {
         int expectedWidth,
         int expectedHeight) const {
 
-        const bool sizeCurrent =
+        const uint32_t frameSlot =
+            context_.frameIndex % GFX::kFrameResourceCount;
+        const bool currentSize =
             expectedWidth <= 0 ||
             expectedHeight <= 0 ||
             (editorOutput_.GetWidth() == expectedWidth &&
                 editorOutput_.GetHeight() == expectedHeight);
-        return editorOutputReady_ &&
-            editorOutputSrvGpu_.ptr != 0 &&
-            editorOutput_.GetResource() != nullptr &&
-            sizeCurrent;
+        const bool currentReady =
+            editorOutputSrvReady_[frameSlot] &&
+            editorOutputSrvGpu_[frameSlot].ptr != 0 &&
+            editorOutputSrvResources_[frameSlot] != nullptr &&
+            currentSize;
+        if (currentReady) {
+            return true;
+        }
+
+        if (lastPublishedFrameSlot_ >= GFX::kFrameResourceCount) {
+            return false;
+        }
+        return editorOutputSrvReady_[lastPublishedFrameSlot_] &&
+            editorOutputSrvGpu_[lastPublishedFrameSlot_].ptr != 0 &&
+            editorOutputSrvResources_[lastPublishedFrameSlot_] != nullptr;
     }
 
     D3D12_GPU_DESCRIPTOR_HANDLE
     PostPresentationStage::GetEditorOutputSrv() const {
-        return editorOutputSrvGpu_;
+        const uint32_t frameSlot =
+            context_.frameIndex % GFX::kFrameResourceCount;
+        if (editorOutputSrvReady_[frameSlot] &&
+            editorOutputSrvGpu_[frameSlot].ptr != 0) {
+            return editorOutputSrvGpu_[frameSlot];
+        }
+        if (lastPublishedFrameSlot_ < GFX::kFrameResourceCount) {
+            return editorOutputSrvGpu_[lastPublishedFrameSlot_];
+        }
+        return {};
     }
 
     int PostPresentationStage::GetEditorOutputWidth() const {

@@ -471,6 +471,17 @@ namespace {
                 speed);
     }
 
+    bool GameProjectInspector::Color3(
+        std::string_view label,
+        float& red,
+        float& green,
+        float& blue) {
+        auto* builder =
+            static_cast<IInspectorBuilder*>(builder_);
+        return builder != nullptr &&
+            builder->Color3(label, red, green, blue);
+    }
+
     bool GameProjectInspector::StringBuffer(
         std::string_view label,
         char* value,
@@ -515,6 +526,34 @@ namespace {
             "Scene asset GUID resolved by the runtime Scene Flow service."
         };
         const bool changed = builder->SceneIdPicker(field, editable);
+        return CopyStringToReference(editable, value, capacity) &&
+            (changed || original != editable);
+    }
+
+    bool GameProjectInspector::SequenceAssetGuid(
+        std::string_view propertyId,
+        std::string_view label,
+        char* value,
+        size_t capacity) {
+        if (propertyId.empty() || value == nullptr || capacity == 0u) {
+            return false;
+        }
+        auto* builder = static_cast<IInspectorBuilder*>(builder_);
+        std::string editable{};
+        if (builder == nullptr ||
+            !ReadStringBuffer(value, capacity, editable)) {
+            return false;
+        }
+        const std::string original = editable;
+        const AuthoringFieldDescriptor field{
+            propertyId,
+            label.empty() ? propertyId : label,
+            "Sequence asset GUID played by the runtime Sequence service."
+        };
+        const bool changed = builder->AssetIdPicker(
+            field,
+            AssetType::Sequence,
+            editable);
         return CopyStringToReference(editable, value, capacity) &&
             (changed || original != editable);
     }

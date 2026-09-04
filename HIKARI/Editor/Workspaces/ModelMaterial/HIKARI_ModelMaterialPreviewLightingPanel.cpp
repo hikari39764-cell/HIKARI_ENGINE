@@ -35,6 +35,7 @@ void ModelMaterialWorkspaceController::DrawPreviewLightingPanel(
       if (!previewLighting_.lights.empty()) {
         previewLighting_.lights.front().intensity = keyIntensity;
       }
+      MarkPreviewLightingChanged();
     };
     if (ImGui::Button("Dark Studio")) {
       applyPreset(0.15f, 0.40f, 0.15f, 2.2f);
@@ -58,14 +59,18 @@ void ModelMaterialWorkspaceController::DrawPreviewLightingPanel(
             ? *selectedPreviewLightIndex_
             : 0u;
     auto &light = previewLighting_.lights[lightIndex];
+    bool changed = false;
     ImGui::SeparatorText("Selected Light");
     ImGui::TextUnformatted(light.name.c_str());
-    ImGui::Checkbox("Enabled", &light.enabled);
-    ImGui::ColorEdit3("Color", &light.color.x);
-    ImGui::DragFloat("Intensity", &light.intensity, 0.05f, 0.0f, 64.0f);
+    changed = ImGui::Checkbox("Enabled", &light.enabled) || changed;
+    changed = ImGui::ColorEdit3("Color", &light.color.x) || changed;
+    changed = ImGui::DragFloat("Intensity", &light.intensity, 0.05f,
+                               0.0f, 64.0f) || changed;
     if (light.type == RENDER3D::LIGHTING::SceneLightType::Point) {
-      ImGui::DragFloat("Range", &light.range, 0.10f, 0.1f, 200.0f);
-      ImGui::DragFloat3("Position", &light.position.x, 0.05f);
+      changed = ImGui::DragFloat("Range", &light.range, 0.10f, 0.1f,
+                                 200.0f) || changed;
+      changed = ImGui::DragFloat3("Position", &light.position.x, 0.05f) ||
+                changed;
     } else if (light.type ==
                RENDER3D::LIGHTING::SceneLightType::Directional) {
       MATH::Vec3 direction = MATH::Length(light.direction) > 1.0e-5f
@@ -91,6 +96,7 @@ void ModelMaterialWorkspaceController::DrawPreviewLightingPanel(
             std::sin(pitchRad),
             std::cos(yawRad) * cosinePitch,
         });
+        changed = true;
       }
     }
     ImGui::SeparatorText("Key Light Sync");
@@ -103,10 +109,14 @@ void ModelMaterialWorkspaceController::DrawPreviewLightingPanel(
             environment.directional.direction);
         light.color = environment.directional.color;
         light.intensity = environment.directional.intensity;
+        changed = true;
       }
     } else {
       ImGui::TextDisabled(
           "Scene has no enabled directional light to sync.");
+    }
+    if (changed) {
+      MarkPreviewLightingChanged();
     }
   }
   ImGui::End();

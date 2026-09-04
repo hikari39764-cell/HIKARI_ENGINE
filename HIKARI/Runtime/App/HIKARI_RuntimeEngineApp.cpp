@@ -2,15 +2,42 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "Core/HIKARI_Logger.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Runtime/HIKARI_RuntimeLaunchConfig.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
-#include "Scene/Scenes/HIKARI_GameDocumentScene.h"
+#include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 
 namespace HIKARI::RUNTIME {
+    namespace {
+
+        // Standalone startup is the sole owner and consumer of this Scene
+        // specialization. Keep it private instead of carrying a one-client
+        // Scene module and public header.
+        class GameDocumentScene final : public DocumentSceneBase {
+        public:
+            explicit GameDocumentScene(std::string sceneId)
+                : DocumentSceneBase(std::move(sceneId)) {}
+
+            void OnEnter() override {
+                DocumentSceneBase::OnEnter();
+                if (SERVICES::IsStandaloneGameHost() &&
+                    !BeginRuntimePlay()) {
+                    HIKARI_LOG_ERROR(
+                        "[RuntimeLifecycle] standalone game scene failed "
+                        "to enter Runtime Play state.");
+                }
+            }
+
+            const char* GetSceneName() const override {
+                return GetSceneDocument().sceneName.c_str();
+            }
+        };
+
+    } // namespace
 
     RuntimeEngineApp::RuntimeEngineApp()
         : sceneTransitionBus_(sceneManager_) {

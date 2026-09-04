@@ -323,6 +323,9 @@ hikari_add_runtime_contract(
     HIKARI_RuntimeFeatureTransactionSmoke
     "Tools/Tests/HIKARI_RuntimeFeatureTransactionSmoke.cpp")
 hikari_add_runtime_contract(
+    HIKARI_SequencePlaybackReverseSmoke
+    "Tools/Tests/HIKARI_SequencePlaybackReverseSmoke.cpp")
+hikari_add_runtime_contract(
     HIKARI_RenderGraphSmoke
     "Tools/Tests/HIKARI_RenderGraphSmoke.cpp")
 hikari_add_runtime_contract(
@@ -377,6 +380,7 @@ foreach(runtime_contract IN ITEMS
     HIKARI_WorldQuerySdkSmoke
     HIKARI_WorldMassStoreSmoke
     HIKARI_RuntimeFeatureTransactionSmoke
+    HIKARI_SequencePlaybackReverseSmoke
     HIKARI_RenderGraphSmoke
     HIKARI_RenderGraphCapacitySmoke
     HIKARI_SceneSurfaceSemanticSmoke

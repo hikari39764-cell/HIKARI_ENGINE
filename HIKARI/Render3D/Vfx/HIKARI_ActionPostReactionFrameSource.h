@@ -8,6 +8,8 @@
 namespace HIKARI::RENDER3D::COMBAT_VFX {
 
     inline constexpr uint32_t kMaximumPerfectGuardShockwaves = 4u;
+    inline constexpr uint32_t kPerfectGuardShockwaveConvergingFlag =
+        1u << 0u;
 
     // Immutable, frame-local input published by the Scene reaction owner.
     // The renderer must consume this through a const reference and must not
@@ -29,6 +31,7 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
         float waveAmplitude = 1.0f;
         float waveDamping = 1.0f;
         uint32_t waveCount = 1u;
+        uint32_t flags = 0u;
     };
 
     // Frame-local cinematic color treatment. It is intentionally independent

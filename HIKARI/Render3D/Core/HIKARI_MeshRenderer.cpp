@@ -21,11 +21,13 @@ namespace HIKARI::MESHRENDERER {
     }
 
     void Reset() {
+        ResetSecondarySceneCaptureResources();
         gMeshRendererState.frameObjectIndex = 0;
         gMeshRendererState.gpuMaterialRegistry.Clear();
         gMeshRendererState.gpuDrivenSceneSource.Reset();
         gMeshRendererState.gpuDrivenSceneSourceIdentity = nullptr;
         gMeshRendererState.particleFrameSource = nullptr;
+        gMeshRendererState.worldSpriteFrameSource = nullptr;
         InvalidateGpuDrivenSceneResidency();
         gMeshRendererState.freezeGpuDrivenCullingCamera = false;
         gMeshRendererState.frozenCullingCamera = {};
@@ -90,6 +92,11 @@ namespace HIKARI::MESHRENDERER {
         gMeshRendererState.particleFrameSource = source;
     }
 
+    void SetWorldSpriteFrameSource(
+        const RENDER3D::WORLD_SPRITES::WorldSpriteFrameSource* source) {
+        gMeshRendererState.worldSpriteFrameSource = source;
+    }
+
     void ReleaseParticleNamespace(uint64_t playbackNamespace) {
         if (playbackNamespace == 0u) return;
         gMeshRendererState.particlePass.ReleaseNamespace(playbackNamespace);
@@ -111,10 +118,17 @@ namespace HIKARI::MESHRENDERER {
         INTERNAL::ResetOceanSpectrumLazyInitializationState();
     }
 
+    void ShutdownWorldSpritePass() {
+        gMeshRendererState.worldSpritePass.Shutdown();
+        gMeshRendererState.worldSpriteFrameSource = nullptr;
+    }
+
     bool HasSubmittedItems() {
         return HasGpuDrivenSceneSource() ||
             (gMeshRendererState.particleFrameSource != nullptr &&
-             gMeshRendererState.particleFrameSource->HasFrameWork());
+             gMeshRendererState.particleFrameSource->HasFrameWork()) ||
+            (gMeshRendererState.worldSpriteFrameSource != nullptr &&
+             gMeshRendererState.worldSpriteFrameSource->HasFrameWork());
     }
 
     bool BeginFrame(
@@ -207,6 +221,7 @@ namespace HIKARI::MESHRENDERER {
             gMeshRendererState.gpuDrivenSceneSource.HasMassInstances();
         gMeshRendererState.massForwardOpaqueSubmissionCommitted = false;
         SetParticleFrameSource(view.particleFrameSource);
+        SetWorldSpriteFrameSource(view.worldSpriteFrameSource);
         const bool rendered =
             RENDER3D::PIPELINE::RenderMeshLightingFrame(
                 graphics,
@@ -215,6 +230,7 @@ namespace HIKARI::MESHRENDERER {
                 lighting,
                 debugView);
         SetParticleFrameSource(nullptr);
+        SetWorldSpriteFrameSource(nullptr);
         return MeshRendererFrameResult{
             rendered,
             massSubmissionRequired,
@@ -244,6 +260,11 @@ namespace HIKARI::MESHRENDERER {
     const RENDER3D::PARTICLES::ParticleGpuDrivenPassStats&
         GetParticleGpuDrivenPassStats() {
         return gMeshRendererState.particlePass.GetStats();
+    }
+
+    const RENDER3D::WORLD_SPRITES::WorldSpritePassStats&
+        GetWorldSpritePassStats() {
+        return gMeshRendererState.worldSpritePass.GetStats();
     }
 
 } // namespace HIKARI::MESHRENDERER

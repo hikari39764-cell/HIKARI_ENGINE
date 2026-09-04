@@ -258,13 +258,67 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
                 compositeComplete)) {
             return false;
         }
-        GRAPH::RenderGraphResourceId projectPassesComplete =
+
+        GRAPH::RenderGraphResourceId projectPassDependency =
             compositeComplete;
+        const bool captureSceneColorFinal =
+            options.projectExtensions != nullptr &&
+            ProjectRenderPassesRequireSceneColorFinal(
+                *options.projectExtensions,
+                options.projectPurpose);
+        if (captureSceneColorFinal) {
+            const GRAPH::RenderGraphResourceId sceneColorFinal =
+                AddRenderFrameGraphSurfaceResource(
+                    graph,
+                    "SceneColorFinal",
+                    GRAPH::RenderGraphSemantic::SceneColorFinal,
+                    false,
+                    GRAPH::RenderGraphSemanticPhase::Final,
+                    SURFACE::SceneSurfaceProducer::PostFinal);
+            const GRAPH::RenderGraphResourceId finalCaptureComplete =
+                AddRenderFrameGraphCompletionMarker(
+                    graph,
+                    "SceneColorFinal.Capture.Complete");
+            if (!sceneColorFinal.IsValid() ||
+                !finalCaptureComplete.IsValid()) {
+                return false;
+            }
+            const std::array finalCaptureReads{
+                ResourceUse{
+                    compositeComplete,
+                    GRAPH::RenderGraphAccess::ReadDependency
+                }
+            };
+            const std::array finalCaptureWrites{
+                ResourceUse{
+                    sceneColorFinal,
+                    GRAPH::RenderGraphAccess::CopyDestination,
+                    SURFACE::SceneSurfaceProducer::PostFinal
+                },
+                ResourceUse{
+                    finalCaptureComplete,
+                    GRAPH::RenderGraphAccess::WriteDependency
+                }
+            };
+            if (!graph.AddPass(GRAPH::RenderGraphPassDesc{
+                    "SceneColorFinal.Capture",
+                    finalCaptureReads,
+                    finalCaptureWrites,
+                    callbacks.sceneColorFinalCapture,
+                    userData
+                })) {
+                return false;
+            }
+            projectPassDependency = finalCaptureComplete;
+        }
+
+        GRAPH::RenderGraphResourceId projectPassesComplete =
+            projectPassDependency;
         if (options.projectExtensions != nullptr &&
             !BuildProjectRenderPassChain(
                 *options.projectExtensions,
                 options.projectPurpose,
-                compositeComplete,
+                projectPassDependency,
                 callbacks.projectRenderPass,
                 userData,
                 graph,

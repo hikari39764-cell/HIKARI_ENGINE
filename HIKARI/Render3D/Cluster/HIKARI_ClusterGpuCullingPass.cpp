@@ -370,7 +370,8 @@ namespace HIKARI::RENDER3D::CLUSTER {
 
         D3D12_DESCRIPTOR_RANGE clusterGeometryPoolRange{};
         clusterGeometryPoolRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-        clusterGeometryPoolRange.NumDescriptors = GFX::DESCRIPTOR::kSystemSrvDynamicCount;
+        clusterGeometryPoolRange.NumDescriptors =
+            GFX::DESCRIPTOR::kClusterGeometryDescriptorArenaCapacity;
         clusterGeometryPoolRange.BaseShaderRegister = 0;
         clusterGeometryPoolRange.RegisterSpace = 1;
         clusterGeometryPoolRange.OffsetInDescriptorsFromTableStart =
@@ -1419,8 +1420,10 @@ namespace HIKARI::RENDER3D::CLUSTER {
         baseConstants.enableFrustumCull = 1u;
         baseConstants.candidateCommandBucketCapacity =
             static_cast<uint32_t>(GetCandidateCommandBucketCapacity());
-        baseConstants.clusterSrvPoolBegin = GFX::DESCRIPTOR::kSystemSrvDynamicBegin;
-        baseConstants.clusterSrvPoolCount = GFX::DESCRIPTOR::kSystemSrvDynamicCount;
+        baseConstants.clusterSrvPoolBegin =
+            GFX::DESCRIPTOR::kClusterGeometryDescriptorArenaBegin;
+        baseConstants.clusterSrvPoolCount =
+            GFX::DESCRIPTOR::kClusterGeometryDescriptorArenaCapacity;
         baseConstants.enableConeCull = 1u;
         baseConstants.enableDebugCounters = debugCountersEnabled ? 1u : 0u;
         baseConstants.pageTaskCapacity = static_cast<uint32_t>(pageTaskCapacity_);

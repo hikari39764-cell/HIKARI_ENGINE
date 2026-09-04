@@ -141,6 +141,8 @@ namespace HIKARI::VFX {
             0.05f,
             8.0f);
         result.waveCount = std::clamp(request.waveCount, 1u, 4u);
+        result.flags = request.flags &
+            RENDER3D::COMBAT_VFX::kPerfectGuardShockwaveConvergingFlag;
         result.ageSeconds = 0.0f;
         return result;
     }

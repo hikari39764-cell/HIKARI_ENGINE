@@ -300,9 +300,13 @@ ModelMaterialWorkspaceController::DrawPreviewLightViewportInteraction(
   for (size_t index = 0u; index < previewLighting_.lights.size(); ++index) {
     const bool selected = selectedPreviewLightIndex_ == index;
     if (selected) {
+      const float previousRange = previewLighting_.lights[index].range;
       const bool rangeControl = DrawSelectedLightSpatialOverlay(
           drawList, camera, previewLighting_.lights[index], origin, size,
           previewLightRangeDragActive_);
+      if (previewLighting_.lights[index].range != previousRange) {
+        MarkPreviewLightingChanged();
+      }
       interaction.glyphHovered = interaction.glyphHovered || rangeControl;
       interaction.gizmoInteracting = interaction.gizmoInteracting ||
           (rangeControl && ImGui::IsMouseDown(ImGuiMouseButton_Left));
@@ -346,6 +350,7 @@ ModelMaterialWorkspaceController::DrawPreviewLightViewportInteraction(
             EditorTransformGizmoOperation::Rotate) {
       light.direction = RotationForward(result.rotation);
     }
+    MarkPreviewLightingChanged();
   }
 #else
   (void)originX;

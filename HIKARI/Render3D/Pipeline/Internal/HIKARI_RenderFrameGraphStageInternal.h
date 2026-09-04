@@ -77,6 +77,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         GRAPH::RenderGraphExecuteFn visibilityFeatures = nullptr;
         GRAPH::RenderGraphExecuteFn sceneColorPostOpaqueCapture = nullptr;
         GRAPH::RenderGraphExecuteFn stylizedFeatureComposite = nullptr;
+        GRAPH::RenderGraphExecuteFn sceneColorFinalCapture = nullptr;
         GRAPH::RenderGraphExecuteFn projectRenderPass = nullptr;
         GRAPH::RenderGraphExecuteFn projectDispatchResolve = nullptr;
         GRAPH::RenderGraphExecuteFn projectRenderObserver = nullptr;
@@ -154,6 +155,9 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
     bool ExecuteStylizedFeatureComposite(
         const GRAPH::RenderGraphPassContext& context,
         void* userData) noexcept;
+    bool ExecuteSceneColorFinalCapture(
+        const GRAPH::RenderGraphPassContext& context,
+        void* userData) noexcept;
     bool ExecuteProjectRenderPass(
         const GRAPH::RenderGraphPassContext& context,
         void* userData) noexcept;
@@ -219,6 +223,9 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         GRAPH::RenderGraph& graph,
         GRAPH::RenderGraphResourceId& outDependency) noexcept;
     bool ProjectRenderPassesRequireSceneColorOpaque(
+        const RenderFrameProjectExtensionSink& extensions,
+        GameProjectRenderViewPurpose purpose) noexcept;
+    bool ProjectRenderPassesRequireSceneColorFinal(
         const RenderFrameProjectExtensionSink& extensions,
         GameProjectRenderViewPurpose purpose) noexcept;
     bool ProjectRenderPassesRequireDispatchOutput(

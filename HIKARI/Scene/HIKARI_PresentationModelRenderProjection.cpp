@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <string_view>
 
 #include "Animation/Runtime/HIKARI_AnimationPoseService.h"
 #include "Animation/Runtime/HIKARI_AnimationSocketService.h"
@@ -189,6 +190,54 @@ namespace HIKARI::PRESENTATION_MODEL {
             return {};
         }
 
+        bool BuildExclusiveNodeVisibilityMask(
+            const ModelAsset& model,
+            std::string_view nodeName,
+            std::vector<uint8_t>& outMask) {
+            outMask.clear();
+            if (nodeName.empty()) {
+                return true;
+            }
+
+            // ModelAsset preserves importer order. std::find_if therefore
+            // deliberately selects the first exact, case-sensitive match;
+            // duplicate node names do not make the result nondeterministic.
+            const auto selected = std::find_if(
+                model.nodes.begin(),
+                model.nodes.end(),
+                [nodeName](const ModelNode& node) {
+                    return node.name == nodeName;
+                });
+            if (selected == model.nodes.end()) {
+                return false;
+            }
+
+            const size_t selectedIndex = static_cast<size_t>(
+                selected - model.nodes.begin());
+            outMask.assign(model.nodes.size(), uint8_t{ 0u });
+            for (size_t nodeIndex = 0u;
+                nodeIndex < model.nodes.size();
+                ++nodeIndex) {
+                size_t current = nodeIndex;
+                for (size_t depth = 0u;
+                    depth < model.nodes.size();
+                    ++depth) {
+                    if (current == selectedIndex) {
+                        outMask[nodeIndex] = 1u;
+                        break;
+                    }
+                    const int parent = model.nodes[current].parent;
+                    if (parent < 0 ||
+                        static_cast<size_t>(parent) >= model.nodes.size() ||
+                        static_cast<size_t>(parent) == current) {
+                        break;
+                    }
+                    current = static_cast<size_t>(parent);
+                }
+            }
+            return true;
+        }
+
         void ProjectMaterialSet(
             const PresentationModelRecord& record,
             const ModelAsset& asset,
@@ -295,6 +344,7 @@ namespace HIKARI::PRESENTATION_MODEL {
             const PresentationTransformService* presentationTransforms,
             const ANIMATION::AnimationPoseService* animationPoses,
             MaterialStorage& materialStorage,
+            std::unordered_set<std::string>& missingNodeDiagnostics,
             std::unordered_set<std::string>& attachmentDiagnostics,
             std::unordered_set<std::string>& materialDiagnostics) {
 
@@ -322,11 +372,33 @@ namespace HIKARI::PRESENTATION_MODEL {
             desc.worldBounds = BOUNDS::TransformBounds(
                 desc.localBounds,
                 worldMatrix);
+            bool exclusiveNodeResolved = true;
+            if (asset != nullptr && !record.exclusiveNodeName.empty()) {
+                exclusiveNodeResolved = BuildExclusiveNodeVisibilityMask(
+                    *asset,
+                    record.exclusiveNodeName,
+                    desc.nodeVisibilityMask);
+                if (!exclusiveNodeResolved) {
+                    const std::string modelIdentity =
+                        !asset->id.value.empty()
+                        ? asset->id.value
+                        : asset->sourcePath;
+                    const std::string diagnosticKey = modelIdentity + "|" +
+                        record.exclusiveNodeName;
+                    if (missingNodeDiagnostics.insert(diagnosticKey).second) {
+                        HIKARI_LOG_WARN(
+                            "[PresentationModel] exclusive node unavailable: " +
+                            record.exclusiveNodeName + " in model " +
+                            modelIdentity);
+                    }
+                }
+            }
             desc.visible = record.visible &&
                 transformResolved &&
                 desc.model != nullptr &&
                 desc.renderModel != nullptr &&
-                desc.renderModel->valid;
+                desc.renderModel->valid &&
+                exclusiveNodeResolved;
             desc.isStatic = false;
             desc.castShadow = record.castShadow;
             desc.receiveShadow = record.receiveShadow;
@@ -368,6 +440,7 @@ namespace HIKARI::PRESENTATION_MODEL {
         const ANIMATION::AnimationPoseService* animationPoses,
         MaterialStorageByRenderObject& materialStorage,
         std::unordered_set<std::string>& missingAssetDiagnostics,
+        std::unordered_set<std::string>& missingNodeDiagnostics,
         std::unordered_set<std::string>& attachmentDiagnostics,
         std::unordered_set<std::string>& materialDiagnostics) {
 
@@ -408,6 +481,7 @@ namespace HIKARI::PRESENTATION_MODEL {
                 presentationTransforms,
                 animationPoses,
                 recordMaterials,
+                missingNodeDiagnostics,
                 attachmentDiagnostics,
                 materialDiagnostics));
         }

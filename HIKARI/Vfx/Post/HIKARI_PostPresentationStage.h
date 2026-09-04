@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <d3d12.h>
 
 #include "Gfx/HIKARI_GfxContext.h"
@@ -13,7 +14,6 @@ namespace HIKARI::POST {
     public:
         void UpdateContext(const GFX::Context& context);
         void Shutdown();
-        void InvalidateEditorOutput();
 
         bool PresentToEditor(
             RenderTarget2D& source,
@@ -29,15 +29,26 @@ namespace HIKARI::POST {
         int GetEditorOutputHeight() const;
 
     private:
-        bool EnsureEditorOutput(int width, int height);
+        bool HasCompatibleEditorOutput(int width, int height) const;
         bool DrawSource(RenderTarget2D& source, QuadDrawer& quad) const;
-        void RefreshEditorOutputSrv();
+        bool RefreshEditorOutputSrv();
+        void ResetEditorOutputSrvTracking() noexcept;
+        void PruneObsoleteEditorOutputSrvTracking(
+            ID3D12Resource* currentResource) noexcept;
 
         GFX::Context context_{};
         RenderTarget2D editorOutput_{};
-        D3D12_CPU_DESCRIPTOR_HANDLE editorOutputSrvCpu_{};
-        D3D12_GPU_DESCRIPTOR_HANDLE editorOutputSrvGpu_{};
-        bool editorOutputReady_ = false;
+        std::array<D3D12_CPU_DESCRIPTOR_HANDLE, GFX::kFrameResourceCount>
+            editorOutputSrvCpu_{};
+        std::array<D3D12_GPU_DESCRIPTOR_HANDLE, GFX::kFrameResourceCount>
+            editorOutputSrvGpu_{};
+        std::array<ID3D12Resource*, GFX::kFrameResourceCount>
+            editorOutputSrvResources_{};
+        std::array<uint64_t, GFX::kFrameResourceCount>
+            editorOutputSrvGenerations_{};
+        std::array<bool, GFX::kFrameResourceCount>
+            editorOutputSrvReady_{};
+        uint32_t lastPublishedFrameSlot_ = GFX::kFrameResourceCount;
     };
 
 } // namespace HIKARI::POST

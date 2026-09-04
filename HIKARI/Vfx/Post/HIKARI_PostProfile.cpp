@@ -66,6 +66,40 @@ namespace HIKARI {
         return true;
     }
 
+    std::vector<std::string> PostProfile::CollectAvailableIds() {
+        std::vector<std::string> ids{};
+        const auto CollectDirectory = [&ids](
+            const std::filesystem::path& directory) {
+            if (directory.empty()) {
+                return;
+            }
+            std::error_code error{};
+            if (!std::filesystem::is_directory(directory, error) || error) {
+                return;
+            }
+            std::filesystem::directory_iterator iterator(directory, error);
+            const std::filesystem::directory_iterator end{};
+            while (!error && iterator != end) {
+                const std::filesystem::directory_entry& entry = *iterator;
+                if (entry.is_regular_file(error) && !error &&
+                    entry.path().extension() == ".json") {
+                    const std::string id = entry.path().stem().string();
+                    if (VFX::IsStableFxProfileId(id)) {
+                        ids.push_back(id);
+                    }
+                }
+                iterator.increment(error);
+            }
+        };
+
+        CollectDirectory(
+            CONTENT::GetEngineContentContext().Resolve("PostProfiles"));
+        CollectDirectory("Data/post_profiles");
+        std::sort(ids.begin(), ids.end());
+        ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+        return ids;
+    }
+
     bool PostProfile::LoadFromJson(const std::string& path) {
         nlohmann::json root{};
         if (!SERIALIZATION::JSON::ReadJsonFile(

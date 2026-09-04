@@ -499,6 +499,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 lhs.key.sortKey == rhs.key.sortKey &&
                 lhs.key.psoKey == rhs.key.psoKey &&
                 lhs.key.materialKey == rhs.key.materialKey &&
+                lhs.key.materialRevision == rhs.key.materialRevision &&
                 lhs.key.textureSetKey == rhs.key.textureSetKey &&
                 lhs.key.geometryBackend == rhs.key.geometryBackend &&
                 lhs.key.geometryKey == rhs.key.geometryKey &&

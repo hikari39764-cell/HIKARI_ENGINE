@@ -314,6 +314,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             key.passMask = BuildPassMask(record);
             key.hasMaterialOverride = record.materialOverride != nullptr;
             key.skinned = record.skinned;
+            key.materialRevision = record.materialOverrideRevision;
 
             if (record.model == nullptr ||
                 record.surface == nullptr ||

@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "Assets/HIKARI_AssetGuid.h"
@@ -44,6 +45,12 @@ namespace HIKARI {
     struct RuntimeMaterialOverrideSlot {
         uint32_t materialIndex = 0;
         std::unique_ptr<Material> material{};
+    };
+
+    struct RuntimeModelNodeVisibilityOverride {
+        std::string nodeName{};
+        bool visible = true;
+        bool includeDescendants = true;
     };
 
     class ModelComponent final :
@@ -112,6 +119,8 @@ namespace HIKARI {
             AssetGuid materialGuid);
         void ClearMaterialOverride(uint32_t slotIndex);
         void ClearMaterialOverride(MaterialSlotId slotId);
+        Material* GetRuntimeMaterialOverride(
+            uint32_t slotIndex);
         const Material* GetRuntimeMaterialOverride(
             uint32_t slotIndex) const;
         void SetRuntimeMaterialOverride(
@@ -121,6 +130,19 @@ namespace HIKARI {
         void ClearRuntimeMaterialOverrides();
         const std::vector<RuntimeMaterialOverrideSlot>&
             GetRuntimeMaterialOverrides() const noexcept;
+        bool SetRuntimeNodeVisibilityOverride(
+            std::string_view nodeName,
+            bool visible,
+            bool includeDescendants);
+        bool ClearRuntimeNodeVisibilityOverride(
+            std::string_view nodeName);
+        void ClearRuntimeNodeVisibilityOverrides();
+        const std::vector<RuntimeModelNodeVisibilityOverride>&
+            GetRuntimeNodeVisibilityOverrides() const noexcept;
+        // Resolves the stored exact-name overrides against one concrete model
+        // snapshot. Empty means all nodes are visible.
+        std::vector<uint8_t> ResolveRuntimeNodeVisibilityMask(
+            const ModelAsset& model) const;
 
     private:
         void NotifyRenderStateDirty();
@@ -147,6 +169,8 @@ namespace HIKARI {
         std::vector<ModelMaterialOverrideSlot> materialOverrides_{};
         std::vector<RuntimeMaterialOverrideSlot>
             runtimeMaterialOverrides_{};
+        std::vector<RuntimeModelNodeVisibilityOverride>
+            runtimeNodeVisibilityOverrides_{};
     };
 
 } // namespace HIKARI

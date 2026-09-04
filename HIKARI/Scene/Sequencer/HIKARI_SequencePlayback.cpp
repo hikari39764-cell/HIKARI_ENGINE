@@ -10,7 +10,9 @@ namespace HIKARI::SEQUENCER {
             if (!std::isfinite(playbackRate)) {
                 return 1.0f;
             }
-            return std::clamp(playbackRate, 0.01f, 8.0f);
+            const float magnitude = std::clamp(
+                std::abs(playbackRate), 0.01f, 8.0f);
+            return playbackRate < 0.0f ? -magnitude : magnitude;
         }
 
         bool IsValidDuration(float durationSeconds) noexcept {
@@ -94,6 +96,15 @@ namespace HIKARI::SEQUENCER {
         return true;
     }
 
+    bool SequencePlaybackCursor::SetPlaybackRate(float playbackRate) {
+        if (!bound_ || !std::isfinite(playbackRate) ||
+            std::abs(playbackRate) < 0.01f) {
+            return false;
+        }
+        options_.playbackRate = ClampPlaybackRate(playbackRate);
+        return true;
+    }
+
     void SequencePlaybackCursor::Stop() {
         if (!bound_) {
             return;
@@ -169,11 +180,34 @@ namespace HIKARI::SEQUENCER {
                 : 0.0f;
             context.previousTimeSeconds = timeSeconds_;
             timeSeconds_ += safeDeltaTime * options_.playbackRate;
-            if (timeSeconds_ >= durationSeconds_) {
+            if (options_.playbackRate < 0.0f && timeSeconds_ <= 0.0f) {
+                if (options_.loop) {
+                    const float overshoot = std::fmod(
+                        -timeSeconds_, durationSeconds_);
+                    timeSeconds_ = overshoot <= 1.0e-6f
+                        ? durationSeconds_
+                        : durationSeconds_ - overshoot;
+                    context.reason = SequenceEvaluationReason::Loop;
+                    context.wrapped = true;
+                } else if (options_.holdAtEnd) {
+                    timeSeconds_ = 0.0f;
+                    state_ = SequencePlaybackState::Paused;
+                    context.reason = SequenceEvaluationReason::Complete;
+                } else {
+                    timeSeconds_ = 0.0f;
+                    state_ = SequencePlaybackState::Stopped;
+                    context.reason = SequenceEvaluationReason::Complete;
+                    context.completed = true;
+                }
+            } else if (timeSeconds_ >= durationSeconds_) {
                 if (options_.loop) {
                     timeSeconds_ = std::fmod(timeSeconds_, durationSeconds_);
                     context.reason = SequenceEvaluationReason::Loop;
                     context.wrapped = true;
+                } else if (options_.holdAtEnd) {
+                    timeSeconds_ = durationSeconds_;
+                    state_ = SequencePlaybackState::Paused;
+                    context.reason = SequenceEvaluationReason::Complete;
                 } else {
                     timeSeconds_ = durationSeconds_;
                     state_ = SequencePlaybackState::Stopped;

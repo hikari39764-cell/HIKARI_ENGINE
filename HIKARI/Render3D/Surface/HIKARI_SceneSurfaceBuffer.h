@@ -92,6 +92,7 @@ namespace HIKARI::RENDER3D::SURFACE {
         uint64_t stylizedOutlineStyleGeneration_ = 0u;
         uint32_t activeFrameSlot_ = 0u;
         UINT rtvDescriptorSize_ = 0u;
+        GFX::Context lastGraphicsContext_{};
         uint32_t width_ = 0;
         uint32_t height_ = 0;
         D3D12_RESOURCE_STATES packedSurfaceState_ =

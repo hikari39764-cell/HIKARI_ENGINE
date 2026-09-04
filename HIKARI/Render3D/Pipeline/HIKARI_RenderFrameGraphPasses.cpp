@@ -419,6 +419,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             &ExecuteVisibilityFeatures,
             &ExecuteSceneColorPostOpaqueCapture,
             &ExecuteStylizedFeatureComposite,
+            &ExecuteSceneColorFinalCapture,
             &ExecuteProjectRenderPass,
             &ExecuteProjectDispatchResolve,
             &ExecuteProjectRenderObserver,

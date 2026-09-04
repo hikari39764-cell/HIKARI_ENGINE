@@ -58,6 +58,10 @@ namespace HIKARI::RENDER3D {
         uint32_t uploadSubmitCount = 0;
         uint32_t fenceWaitCount = 0;
         uint32_t descriptorAllocationCount = 0;
+        uint32_t descriptorArenaBegin = 0;
+        uint32_t descriptorArenaCapacity = 0;
+        uint32_t descriptorArenaUsed = 0;
+        uint32_t descriptorArenaFree = 0;
         uint32_t ownerThreadViolationCount = 0;
         uint32_t upgradedVirtualHandleCount = 0;
         uint32_t surfaceCount = 0;

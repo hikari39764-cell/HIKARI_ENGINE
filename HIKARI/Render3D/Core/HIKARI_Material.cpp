@@ -1,6 +1,7 @@
 #include "Render3D/Core/HIKARI_Material.h"
 
 #include <algorithm>
+#include <atomic>
 #include <utility>
 
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
@@ -8,6 +9,13 @@
 namespace HIKARI {
     namespace {
         RuntimeTextureSlot kEmptyTextureSlot{};
+        std::atomic<uint64_t> gNextMaterialRevision{ 1u };
+
+        uint64_t NextMaterialRevision() noexcept {
+            return gNextMaterialRevision.fetch_add(
+                1u,
+                std::memory_order_relaxed);
+        }
 
         bool Equal(const MATH::Vec2& lhs, const MATH::Vec2& rhs) {
             return lhs.x == rhs.x && lhs.y == rhs.y;
@@ -51,6 +59,14 @@ namespace HIKARI {
         }
     }
 
+    Material::Material()
+        : revision_(NextMaterialRevision()) {
+    }
+
+    void Material::TouchRevision() noexcept {
+        revision_ = NextMaterialRevision();
+    }
+
     int RuntimeTextureSlot::ResolveBackendHandle() const {
         if (resource) {
             return RENDER3D::GetTextureResourceBackendHandle(
@@ -70,7 +86,7 @@ namespace HIKARI {
             return;
         }
         baseColor_ = color;
-        ++revision_;
+        TouchRevision();
     }
 
     const MATH::Vec4& Material::GetBaseColor() const {
@@ -88,7 +104,7 @@ namespace HIKARI {
             return;
         }
         baseColorTexture_ = std::move(next);
-        ++revision_;
+        TouchRevision();
     }
 
     const std::string& Material::GetBaseColorTexturePath() const {
@@ -104,7 +120,7 @@ namespace HIKARI {
             return;
         }
         baseColorTexture_ = std::move(next);
-        ++revision_;
+        TouchRevision();
     }
 
     int Material::GetBaseColorTextureHandle() const {
@@ -120,7 +136,7 @@ namespace HIKARI {
             return;
         }
         shaderProfileId_ = std::move(shaderProfileId);
-        ++revision_;
+        TouchRevision();
     }
 
     const std::string& Material::GetShaderProfileId() const {
@@ -132,7 +148,7 @@ namespace HIKARI {
             return;
         }
         featureBits_ = featureBits;
-        ++revision_;
+        TouchRevision();
     }
 
     uint32_t Material::GetFeatureBits() const {
@@ -145,7 +161,7 @@ namespace HIKARI {
             return;
         }
         materialProgramId_ = programId;
-        ++revision_;
+        TouchRevision();
     }
 
     RENDER3D::MATERIAL::MaterialProgramId Material::GetMaterialProgramId() const {
@@ -158,7 +174,7 @@ namespace HIKARI {
             return;
         }
         materialProgramResourceBlock_ = std::move(values);
-        ++revision_;
+        TouchRevision();
     }
 
     std::span<const RuntimeTextureSlot>
@@ -171,7 +187,7 @@ namespace HIKARI {
             return;
         }
         materialProgramInstanceFlags_ = flags;
-        ++revision_;
+        TouchRevision();
     }
 
     uint32_t Material::GetMaterialProgramInstanceFlags() const {
@@ -183,7 +199,7 @@ namespace HIKARI {
             return;
         }
         materialAlphaMode_ = alphaMode;
-        ++revision_;
+        TouchRevision();
     }
 
     RuntimeMaterialAlphaMode Material::GetMaterialAlphaMode() const {
@@ -196,7 +212,7 @@ namespace HIKARI {
             return;
         }
         alphaCutoff_ = next;
-        ++revision_;
+        TouchRevision();
     }
 
     float Material::GetAlphaCutoff() const {
@@ -208,7 +224,7 @@ namespace HIKARI {
             return;
         }
         doubleSided_ = doubleSided;
-        ++revision_;
+        TouchRevision();
     }
 
     bool Material::IsDoubleSided() const {
@@ -220,7 +236,7 @@ namespace HIKARI {
             return;
         }
         unlit_ = unlit;
-        ++revision_;
+        TouchRevision();
     }
 
     bool Material::IsUnlit() const {
@@ -258,7 +274,7 @@ namespace HIKARI {
             return;
         }
         *destination = std::move(slot);
-        ++revision_;
+        TouchRevision();
     }
 
     const RuntimeTextureSlot& Material::GetTextureSlot(MaterialTextureUsage usage) const {
@@ -291,7 +307,7 @@ namespace HIKARI {
             return;
         }
         inheritModelTextures_ = inherit;
-        ++revision_;
+        TouchRevision();
     }
 
     bool Material::InheritsModelTextures() const {
@@ -304,7 +320,7 @@ namespace HIKARI {
             return;
         }
         metallicFactor_ = next;
-        ++revision_;
+        TouchRevision();
     }
 
     float Material::GetMetallicFactor() const {
@@ -317,7 +333,7 @@ namespace HIKARI {
             return;
         }
         roughnessFactor_ = next;
-        ++revision_;
+        TouchRevision();
     }
 
     float Material::GetRoughnessFactor() const {
@@ -330,7 +346,7 @@ namespace HIKARI {
             return;
         }
         specularFactor_ = next;
-        ++revision_;
+        TouchRevision();
     }
 
     float Material::GetSpecularFactor() const {
@@ -342,7 +358,7 @@ namespace HIKARI {
             return;
         }
         specularColorFactor_ = value;
-        ++revision_;
+        TouchRevision();
     }
 
     const MATH::Vec3& Material::GetSpecularColorFactor() const {
@@ -354,7 +370,7 @@ namespace HIKARI {
             return;
         }
         normalScale_ = value;
-        ++revision_;
+        TouchRevision();
     }
 
     float Material::GetNormalScale() const {
@@ -366,7 +382,7 @@ namespace HIKARI {
             return;
         }
         occlusionStrength_ = value;
-        ++revision_;
+        TouchRevision();
     }
 
     float Material::GetOcclusionStrength() const {
@@ -378,7 +394,7 @@ namespace HIKARI {
             return;
         }
         emissiveFactor_ = value;
-        ++revision_;
+        TouchRevision();
     }
 
     const MATH::Vec3& Material::GetEmissiveFactor() const {
@@ -390,7 +406,7 @@ namespace HIKARI {
             return;
         }
         emissiveStrength_ = value;
-        ++revision_;
+        TouchRevision();
     }
 
     float Material::GetEmissiveStrength() const {

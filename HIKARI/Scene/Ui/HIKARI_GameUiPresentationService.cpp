@@ -7,6 +7,7 @@
 
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
+#include "Scene/HIKARI_RuntimeObjectHandle.h"
 
 namespace HIKARI::GAME_UI {
     namespace {
@@ -95,6 +96,11 @@ namespace HIKARI::GAME_UI {
             if (const auto found = resolvedTexturePaths_.find(cacheKey);
                 found != resolvedTexturePaths_.end()) {
                 outPath = found->second;
+                return true;
+            }
+            if (relativePath.starts_with("generated://")) {
+                outPath = std::filesystem::path(cacheKey);
+                resolvedTexturePaths_.emplace(cacheKey, outPath);
                 return true;
             }
             const std::filesystem::path relative{ cacheKey };
@@ -199,6 +205,32 @@ namespace HIKARI::GAME_UI {
         std::string_view assetPathBelowAssets,
         const GameProjectUiSpriteRequest& request) noexcept {
         try {
+            std::filesystem::path resolved{};
+            return ResolveTexturePath(assetPathBelowAssets, resolved) &&
+                SubmitResolvedSprite(resolved, request);
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    bool GameUiPresentationService::SubmitSpriteAsset(
+        std::string_view assetGuid,
+        const GameProjectUiSpriteRequest& request) noexcept {
+        try {
+            std::filesystem::path resolved{};
+            return ResolveTextureAsset(assetGuid, resolved) &&
+                SubmitResolvedSprite(resolved, request);
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    bool GameUiPresentationService::SubmitResolvedSprite(
+        const std::filesystem::path& resolved,
+        const GameProjectUiSpriteRequest& request) noexcept {
+        try {
             if (request.sourceId == 0u ||
                 request.width <= 0.0f || request.height <= 0.0f ||
                 request.referenceWidth <= 0.0f ||
@@ -218,14 +250,10 @@ namespace HIKARI::GAME_UI {
                 !IsFinite(request.tint) ||
                 !IsFinite(request.effectColor) ||
                 !IsFinite(request.highlightColor) ||
-                static_cast<uint32_t>(request.effect) >
+                static_cast<uint32_t>(request.effect) >=
                     static_cast<uint32_t>(
-                        GameProjectUiEffect::TitleMenuDisabled)) {
-                return false;
-            }
-
-            std::filesystem::path resolved{};
-            if (!ResolveTexturePath(assetPathBelowAssets, resolved)) {
+                        GameProjectUiEffect::Count) ||
+                resolved.empty()) {
                 return false;
             }
 
@@ -247,6 +275,33 @@ namespace HIKARI::GAME_UI {
             draw.submissionSequence = nextSequence_++;
             pending_.push_back(std::move(draw));
             return true;
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    bool GameUiPresentationService::ResolveTextureAsset(
+        std::string_view assetGuid,
+        std::filesystem::path& outPath) noexcept {
+        outPath.clear();
+        try {
+            if (assetDatabase_ == nullptr || assetGuid.empty()) {
+                return false;
+            }
+            const AssetRecord* record = assetDatabase_->FindByGuid(
+                AssetGuid{ std::string(assetGuid) });
+            if (record == nullptr || record->type != AssetType::Texture) {
+                return false;
+            }
+            const std::filesystem::path assetsPrefix{ "Assets" };
+            const std::filesystem::path relative =
+                record->sourcePath.lexically_relative(assetsPrefix);
+            if (relative.empty() || relative == "." ||
+                HasParentTraversal(relative)) {
+                return false;
+            }
+            return ResolveTexturePath(relative.generic_string(), outPath);
         }
         catch (...) {
             return false;
@@ -384,6 +439,43 @@ namespace HIKARI::GAME_UI {
         }
     }
 
+    void GameUiPresentationService::BeginInteractionFrame(
+        uint64_t frameIndex) noexcept {
+        if (frameIndex == 0u || interactionFrameIndex_ == frameIndex) {
+            return;
+        }
+        interactionFrameIndex_ = frameIndex;
+        activatedButtons_.clear();
+    }
+
+    bool GameUiPresentationService::PublishButtonActivation(
+        RuntimeObjectHandle object,
+        uint64_t frameIndex) noexcept {
+        if (!object.IsValid() || frameIndex == 0u ||
+            interactionFrameIndex_ != frameIndex) {
+            return false;
+        }
+        const uint64_t value = object.ToValue();
+        if (std::find(
+                activatedButtons_.begin(),
+                activatedButtons_.end(),
+                value) == activatedButtons_.end()) {
+            activatedButtons_.push_back(value);
+        }
+        return true;
+    }
+
+    bool GameUiPresentationService::WasButtonActivated(
+        RuntimeObjectHandle object,
+        uint64_t frameIndex) const noexcept {
+        return object.IsValid() && frameIndex != 0u &&
+            interactionFrameIndex_ == frameIndex &&
+            std::find(
+                activatedButtons_.begin(),
+                activatedButtons_.end(),
+                object.ToValue()) != activatedButtons_.end();
+    }
+
     void GameUiPresentationService::Tick(uint64_t frameIndex) noexcept {
         try {
             // Render submission can be visited by more than one view. A
@@ -479,6 +571,8 @@ namespace HIKARI::GAME_UI {
         resolvedTexturePaths_.clear();
         resolvedDirectAssetPaths_.clear();
         frameSource_ = {};
+        activatedButtons_.clear();
+        interactionFrameIndex_ = 0u;
         nextSequence_ = 1u;
         ++revision_;
     }

@@ -18,6 +18,7 @@
 #include "Render2D/HIKARI_GameUiEffectRenderer.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelRenderableAssetResolver.h"
+#include "Scene/Components/Rendering/WorldSprite/HIKARI_WorldSpriteComponent.h"
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/Terrain/HIKARI_TerrainGrassModelFactory.h"
@@ -30,8 +31,12 @@
 #include "Scene/Vfx/HIKARI_VfxPlaybackService.h"
 #include <Vfx/Common/HIKARI_FxTypes.h>
 
-#include <utility>
+#include <array>
+#include <cmath>
+#include <limits>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace HIKARI {
 
@@ -45,6 +50,8 @@ namespace HIKARI {
         RenderSubmissionSystem::sMassGpuSceneRegistry_{};
     RENDER3D::GPUDRIVEN::GpuDrivenSceneSource
         RenderSubmissionSystem::sCombinedGpuSceneSource_{};
+    RENDER3D::WORLD_SPRITES::WorldSpriteFrameSource
+        RenderSubmissionSystem::sWorldSpriteFrameSource_{};
     SceneRenderCacheSync RenderSubmissionSystem::sSceneRenderCacheSync_{};
     bool RenderSubmissionSystem::sGpuSceneRegistryValid_ = false;
     bool RenderSubmissionSystem::sGpuDrivenSceneSyncInitialized_ = false;
@@ -128,12 +135,15 @@ namespace HIKARI {
                 const Transform3D& worldTransform = object.GetTransform();
                 if (debugMode == ModelRenderDebugMode::WireOverlay ||
                     debugMode == ModelRenderDebugMode::WireOnly) {
+                    const std::vector<uint8_t> nodeVisibilityMask =
+                        model.ResolveRuntimeNodeVisibilityMask(*asset);
                     MESHWIREDEBUG::SubmitModelWire(
                         *asset,
                         worldTransform,
                         model.GetWireColor(),
                         model.GetMaxWireLines(),
-                        model.GetWirePerPrimitiveColor());
+                        model.GetWirePerPrimitiveColor(),
+                        nodeVisibilityMask);
                     ++stats.fallbackWireCount;
                 } else if (debugMode == ModelRenderDebugMode::BoundsOnly) {
                     MESHWIREDEBUG::SubmitModelBounds(
@@ -143,6 +153,153 @@ namespace HIKARI {
                     ++stats.fallbackWireCount;
                 }
             });
+        }
+
+        MATH::Vec3 TransformPoint(
+            const MATH::Mat4& matrix,
+            const MATH::Vec3& point) noexcept {
+            const MATH::Vec4 transformed = matrix.TransformPoint(
+                { point.x, point.y, point.z, 1.0f });
+            if (std::isfinite(transformed.w) &&
+                std::abs(transformed.w) > 1.0e-6f) {
+                return {
+                    transformed.x / transformed.w,
+                    transformed.y / transformed.w,
+                    transformed.z / transformed.w
+                };
+            }
+            return { transformed.x, transformed.y, transformed.z };
+        }
+
+        Bounds ResolveWorldSpriteBounds(
+            const RENDER3D::WORLD_SPRITES::WorldSpriteInstance& instance,
+            const MATH::Mat4& worldMatrix) noexcept {
+            const float width = instance.size.x;
+            const float height = instance.size.y;
+            if (instance.facing == RENDER3D::WORLD_SPRITES::
+                    WorldSpriteFacingMode::Fixed) {
+                const float left = -instance.pivot.x * width;
+                const float right = (1.0f - instance.pivot.x) * width;
+                const float bottom = -instance.pivot.y * height;
+                const float top = (1.0f - instance.pivot.y) * height;
+                const std::array corners{
+                    MATH::Vec3{ left, bottom, 0.0f },
+                    MATH::Vec3{ right, bottom, 0.0f },
+                    MATH::Vec3{ left, top, 0.0f },
+                    MATH::Vec3{ right, top, 0.0f },
+                };
+                Bounds bounds{
+                    { (std::numeric_limits<float>::max)(),
+                      (std::numeric_limits<float>::max)(),
+                      (std::numeric_limits<float>::max)() },
+                    { (std::numeric_limits<float>::lowest)(),
+                      (std::numeric_limits<float>::lowest)(),
+                      (std::numeric_limits<float>::lowest)() }
+                };
+                for (const MATH::Vec3& corner : corners) {
+                    const MATH::Vec3 point = TransformPoint(
+                        worldMatrix, corner);
+                    bounds.min.x = (std::min)(bounds.min.x, point.x);
+                    bounds.min.y = (std::min)(bounds.min.y, point.y);
+                    bounds.min.z = (std::min)(bounds.min.z, point.z);
+                    bounds.max.x = (std::max)(bounds.max.x, point.x);
+                    bounds.max.y = (std::max)(bounds.max.y, point.y);
+                    bounds.max.z = (std::max)(bounds.max.z, point.z);
+                }
+                constexpr float depthEpsilon = 0.01f;
+                bounds.min.x -= depthEpsilon;
+                bounds.min.y -= depthEpsilon;
+                bounds.min.z -= depthEpsilon;
+                bounds.max.x += depthEpsilon;
+                bounds.max.y += depthEpsilon;
+                bounds.max.z += depthEpsilon;
+                return bounds;
+            }
+
+            const float scaledWidth = width *
+                (std::max)(std::abs(instance.worldScale.x), 0.001f);
+            const float scaledHeight = height *
+                (std::max)(std::abs(instance.worldScale.y), 0.001f);
+            const float pivotExtentX = (std::max)(
+                instance.pivot.x,
+                1.0f - instance.pivot.x) * scaledWidth;
+            const float pivotExtentY = (std::max)(
+                instance.pivot.y,
+                1.0f - instance.pivot.y) * scaledHeight;
+            const float radius = std::sqrt(
+                pivotExtentX * pivotExtentX +
+                pivotExtentY * pivotExtentY) + 0.01f;
+            return {
+                instance.worldPosition - MATH::Vec3{ radius, radius, radius },
+                instance.worldPosition + MATH::Vec3{ radius, radius, radius }
+            };
+        }
+
+        void BuildWorldSpriteFrameSource(
+            World& world,
+            const FrameContext& frame,
+            const AssetRegistry* assetRegistry,
+            RENDER3D::WORLD_SPRITES::WorldSpriteFrameSource& outSource) {
+            outSource.Clear();
+            outSource.assetRegistry = assetRegistry;
+            outSource.worldIdentity = world.GetRuntimeIdentity();
+            outSource.frameIndex = frame.frameIndex;
+            uint32_t stableOrder = 0u;
+            world.ForEachObjectWith<WorldSpriteComponent>(
+                [&](GameObject& object, WorldSpriteComponent& sprite) {
+                    if (!sprite.IsVisible()) {
+                        return;
+                    }
+                    RENDER3D::WORLD_SPRITES::WorldSpriteInstance instance{};
+                    instance.objectId = object.GetRenderStableId();
+                    instance.stableOrder = stableOrder++;
+                    instance.size = sprite.GetSize();
+                    instance.pivot = sprite.GetPivot();
+                    instance.tint = sprite.GetTint();
+                    instance.textureAssetGuid =
+                        sprite.GetTextureAssetGuid();
+                    instance.opacity = sprite.GetOpacity();
+                    instance.alphaCutoff = sprite.GetAlphaCutoff();
+                    instance.transparentSortPriority =
+                        sprite.GetTransparentSortPriority();
+                    instance.facing = sprite.GetFacingMode();
+                    instance.alphaMode = sprite.GetAlphaMode();
+                    instance.preserveAspect = sprite.GetPreserveAspect();
+
+                    const MATH::Mat4 worldMatrix =
+                        object.GetTransform().GetWorldMatrix();
+                    if (!MATH::DecomposeTRS(
+                            worldMatrix,
+                            instance.worldPosition,
+                            instance.worldRotation,
+                            instance.worldScale)) {
+                        instance.worldPosition = TransformPoint(
+                            worldMatrix, {});
+                        instance.worldRotation = MATH::Quat::Identity();
+                        instance.worldScale = { 1.0f, 1.0f, 1.0f };
+                    }
+                    auto boundsInstance = instance;
+                    if (instance.preserveAspect && assetRegistry != nullptr &&
+                        instance.textureAssetGuid.IsValid()) {
+                        const auto* texture = assetRegistry->FindAs<
+                            TextureAssetDescriptor>(AssetId{
+                                instance.textureAssetGuid.value });
+                        if (texture != nullptr && texture->width != 0u &&
+                            texture->height != 0u) {
+                            const float scaleX = (std::max)(
+                                std::abs(instance.worldScale.x), 0.001f);
+                            const float scaleY = (std::max)(
+                                std::abs(instance.worldScale.y), 0.001f);
+                            boundsInstance.size.x = instance.size.y *
+                                scaleY / scaleX *
+                                static_cast<float>(texture->width) /
+                                static_cast<float>(texture->height);
+                        }
+                    }
+                    instance.worldBounds = ResolveWorldSpriteBounds(
+                        boundsInstance, worldMatrix);
+                    outSource.instances.push_back(std::move(instance));
+                });
         }
 
         struct ResolvedMassRenderModel {
@@ -352,6 +509,7 @@ namespace HIKARI {
         sGpuSceneRegistry_.Clear();
         sMassGpuSceneRegistry_.Clear();
         sCombinedGpuSceneSource_.Reset();
+        sWorldSpriteFrameSource_.Clear();
         sGpuSceneRegistryValid_ = false;
         sGpuDrivenSceneSyncInitialized_ = false;
         sSubmissionWorldIdentity_ = 0u;
@@ -395,6 +553,11 @@ namespace HIKARI {
         return sGpuSceneRegistry_.GetStats();
     }
 
+    const RENDER3D::WORLD_SPRITES::WorldSpriteFrameSource&
+        RenderSubmissionSystem::GetWorldSpriteFrameSource() {
+        return sWorldSpriteFrameSource_;
+    }
+
     void RenderSubmissionSystem::PreRender(World& world, const FrameContext& frame) {
         CPU_PROFILE::ScopedCpuTimer cpuTimer(
             CPU_PROFILE::Pass::RenderSubmission);
@@ -424,6 +587,11 @@ namespace HIKARI {
         }
 
         TickPresentationServices(world, frame);
+        BuildWorldSpriteFrameSource(
+            world,
+            frame,
+            sAssetRegistry_,
+            sWorldSpriteFrameSource_);
 
         if (!sGpuDrivenSceneSyncInitialized_) {
             sSceneRenderCacheSync_.Sync(

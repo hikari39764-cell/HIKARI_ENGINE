@@ -1,0 +1,22 @@
+{
+  "id": "CRTDY",
+  "displayName": "CRTDY",
+  "domain": "GlobalPost",
+  "passes": [
+    {
+      "passName": "CRTDY Resolve",
+      "programId": "HIKARI.EngineShader.Post_CRTDY",
+      "entryId": "Main"
+    }
+  ],
+  "params": [
+    { "key": "strength", "label": "Strength", "type": "Float", "ref": { "slot": 0, "channel": 0 }, "defaultValues": [1.0, 0, 0, 0], "minValues": [0.0, 0, 0, 0], "maxValues": [1.0, 0, 0, 0], "speed": 0.01 },
+    { "key": "curvature", "label": "Curvature", "type": "Float", "ref": { "slot": 0, "channel": 1 }, "defaultValues": [0.085, 0, 0, 0], "minValues": [0.0, 0, 0, 0], "maxValues": [0.30, 0, 0, 0], "speed": 0.002 },
+    { "key": "scanlines", "label": "Scanlines", "type": "Float", "ref": { "slot": 0, "channel": 2 }, "defaultValues": [0.46, 0, 0, 0], "minValues": [0.0, 0, 0, 0], "maxValues": [1.0, 0, 0, 0], "speed": 0.01 },
+    { "key": "phosphorMask", "label": "Phosphor Mask", "type": "Float", "ref": { "slot": 0, "channel": 3 }, "defaultValues": [0.30, 0, 0, 0], "minValues": [0.0, 0, 0, 0], "maxValues": [1.0, 0, 0, 0], "speed": 0.01 },
+    { "key": "chromaPixels", "label": "Chromatic Pixels", "type": "Float", "ref": { "slot": 1, "channel": 0 }, "defaultValues": [1.35, 0, 0, 0], "minValues": [0.0, 0, 0, 0], "maxValues": [5.0, 0, 0, 0], "speed": 0.05 },
+    { "key": "glitch", "label": "Glitch", "type": "Float", "ref": { "slot": 1, "channel": 1 }, "defaultValues": [0.34, 0, 0, 0], "minValues": [0.0, 0, 0, 0], "maxValues": [1.0, 0, 0, 0], "speed": 0.01 },
+    { "key": "vignette", "label": "Vignette", "type": "Float", "ref": { "slot": 1, "channel": 2 }, "defaultValues": [0.52, 0, 0, 0], "minValues": [0.0, 0, 0, 0], "maxValues": [1.0, 0, 0, 0], "speed": 0.01 },
+    { "key": "rollingBand", "label": "Rolling Band", "type": "Float", "ref": { "slot": 1, "channel": 3 }, "defaultValues": [0.20, 0, 0, 0], "minValues": [0.0, 0, 0, 0], "maxValues": [1.0, 0, 0, 0], "speed": 0.01 }
+  ]
+}

@@ -64,6 +64,7 @@ namespace HIKARI {
             const ANIMATION::AnimationPoseService* animationPoses,
             MaterialStorageByRenderObject& materialStorage,
             std::unordered_set<std::string>& missingAssetDiagnostics,
+            std::unordered_set<std::string>& missingNodeDiagnostics,
             std::unordered_set<std::string>& attachmentDiagnostics,
             std::unordered_set<std::string>& materialDiagnostics);
 

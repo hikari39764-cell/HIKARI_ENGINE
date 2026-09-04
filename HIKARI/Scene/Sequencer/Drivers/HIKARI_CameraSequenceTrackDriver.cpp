@@ -138,6 +138,14 @@ namespace HIKARI::SEQUENCER {
                 aspect,
                 resolvedCamera);
         if (!cameraValid) {
+            // Completion is evaluated before the playback service decides
+            // whether to stop or hold. Keep the last valid override for that
+            // boundary evaluation; OnSequenceStopped still releases it for a
+            // normal completion, while hold-at-end deliberately retains it.
+            if (context.reason == SequenceEvaluationReason::Complete &&
+                state->overrideToken.IsValid()) {
+                return;
+            }
             ReleaseOverride(*state);
             return;
         }

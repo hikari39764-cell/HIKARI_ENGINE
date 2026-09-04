@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "HIKARI/Project/GameProjectSdk.h"
+#include "HIKARI/Project/LightTypes.h"
 #include "HIKARI/Project/ValueTypes.h"
 #include "HIKARI/Project/WorldTypes.h"
 #include "HIKARI/Project/WorldMassTypes.h"
@@ -27,7 +28,9 @@ namespace HIKARI {
     class PresentationVfxView;
     class RuntimeSessionView;
     class SaveGameView;
+    class SceneCaptureView;
     class SceneFlowView;
+    class SequenceView;
     class TerrainView;
     class TimeDilationView;
     class UiView;
@@ -57,6 +60,44 @@ namespace HIKARI {
             const GameProjectTransform& transform) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult SetWorldTransform(
             const GameProjectTransform& transform) const noexcept;
+        // Reads and updates the engine LightComponent attached to this object.
+        // Runtime patches are immediate, owner-thread only, and never persist
+        // into the authored Scene document.
+        HIKARI_GAME_PROJECT_SDK_API bool TryGetRuntimeLightState(
+            GameProjectLightState& outState) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult
+            ApplyRuntimeLightPatch(
+                const GameProjectLightPatch& patch) const noexcept;
+        // Updates an existing engine-owned runtime material override. This is
+        // intended for authored procedural/model presentation objects; it
+        // never creates a material, changes the source asset, or persists the
+        // value back into the Scene document. Reapply after a World rebuild.
+        HIKARI_GAME_PROJECT_SDK_API bool SetRuntimeMaterialColorOverride(
+            uint32_t materialIndex,
+            GameProjectFloat3 baseColor,
+            float opacity,
+            GameProjectFloat3 emissiveColor,
+            float emissiveStrength) const noexcept;
+        // Runtime-only render visibility for the first case-sensitive,
+        // exact-name model node. The name is limited to
+        // kGameProjectModelNodeNameMaximumBytes. The override may be authored
+        // before the model asset is bound; an unmatched name remains stored
+        // but has no render effect. visible must be 0 or 1.
+        // This skips that node's render surfaces without changing animation,
+        // collision, transforms, or the source model asset. A descendant's
+        // explicit override wins over an inherited ancestor override. The
+        // state is not serialized; reapply it after a World rebuild.
+        HIKARI_GAME_PROJECT_SDK_API bool SetModelNodeVisibility(
+            std::string_view nodeName,
+            uint8_t visible,
+            GameProjectModelNodeVisibilityScope scope =
+                GameProjectModelNodeVisibilityScope::NodeAndDescendants)
+            const noexcept;
+        // Clearing restores inherited/default visibility and is idempotent.
+        HIKARI_GAME_PROJECT_SDK_API bool ClearModelNodeVisibilityOverride(
+            std::string_view nodeName) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool ClearModelNodeVisibilityOverrides()
+            const noexcept;
         HIKARI_GAME_PROJECT_SDK_API ObjectView GetParent() const noexcept;
 
     private:
@@ -205,6 +246,10 @@ namespace HIKARI {
             GetPresentationVfx() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API VfxView GetVfx() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API UiView GetUi() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API SequenceView
+            GetSequence() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API SceneCaptureView
+            GetSceneCapture() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API SceneFlowView
             GetSceneFlow() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API DialogueView

@@ -7,6 +7,7 @@
 #include <json.hpp>
 
 #include "Assets/Formats/HIKARI_HmatFormat.h"
+#include "Assets/Formats/HIKARI_HtexFormat.h"
 #include "Assets/Formats/HIKARI_HvfxcFormat.h"
 #include "Assets/Importers/Policy/HIKARI_ModelImportPolicy.h"
 #include "Assets/Importers/Policy/HIKARI_TextureImportPolicy.h"
@@ -25,6 +26,82 @@
 namespace HIKARI {
 
     namespace {
+
+        void ResolveTextureDescriptorMetadata(
+            const AssetDatabase& assetDatabase,
+            const AssetRecord& record,
+            TextureAssetDescriptor& descriptor) {
+
+            const nlohmann::json diagnostics = nlohmann::json::parse(
+                record.artifactManifest.diagnosticsJson,
+                nullptr,
+                false);
+            if (diagnostics.is_object()) {
+                const auto textureIt = diagnostics.find("texture");
+                if (textureIt != diagnostics.end() &&
+                    textureIt->is_object()) {
+                    const nlohmann::json& texture = *textureIt;
+                    const auto boolMember = [&texture](
+                        const char* key) noexcept
+                        -> const nlohmann::json* {
+                        const auto value = texture.find(key);
+                        return value != texture.end() &&
+                                value->is_boolean()
+                            ? &(*value)
+                            : nullptr;
+                    };
+                    const nlohmann::json* hasAlphaValue = boolMember(
+                        "sourceHasAlphaChannel");
+                    const nlohmann::json* meaningfulValue = boolMember(
+                        "sourceHasMeaningfulAlpha");
+                    const nlohmann::json* translucentValue = boolMember(
+                        "sourceHasTranslucentAlpha");
+                    const nlohmann::json* cutoutValue = boolMember(
+                        "sourceHasCutoutAlpha");
+                    // Older artifacts may not contain the full alpha
+                    // diagnostic set. Keep those Unknown so Auto mode takes
+                    // the safe blended path instead of erasing transparency.
+                    if (hasAlphaValue != nullptr &&
+                        meaningfulValue != nullptr) {
+                        const bool hasAlpha = hasAlphaValue->get<bool>();
+                        const bool meaningful = meaningfulValue->get<bool>();
+                        if (!hasAlpha || !meaningful) {
+                            descriptor.alphaClass =
+                                TextureAssetAlphaClass::Opaque;
+                        } else if (translucentValue != nullptr &&
+                                   translucentValue->get<bool>()) {
+                            descriptor.alphaClass =
+                                TextureAssetAlphaClass::Translucent;
+                        } else if (cutoutValue != nullptr &&
+                                   cutoutValue->get<bool>()) {
+                            descriptor.alphaClass =
+                                TextureAssetAlphaClass::Cutout;
+                        }
+                    }
+                }
+            }
+            if (descriptor.alphaClass ==
+                    TextureAssetAlphaClass::Unknown &&
+                descriptor.usage == TextureUsage::Mask) {
+                descriptor.alphaClass = TextureAssetAlphaClass::Cutout;
+            }
+
+            std::filesystem::path artifactPath = descriptor.sourcePath;
+            if (!artifactPath.is_absolute()) {
+                artifactPath = assetDatabase.GetProjectRoot() / artifactPath;
+            }
+            if (artifactPath.extension() != ".htex" &&
+                artifactPath.extension() != ".HTEX") {
+                return;
+            }
+            HtexFileInfo info{};
+            std::string message{};
+            if (InspectHtexFile(
+                    artifactPath.lexically_normal(), info, message)) {
+                descriptor.width = info.width;
+                descriptor.height = info.height;
+            }
+        }
 
         bool LoadMaterialSourceJson(
             const AssetDatabase& assetDatabase,
@@ -445,6 +522,10 @@ namespace HIKARI {
                 descriptor->usage = settings.usage;
                 descriptor->compression = settings.compression;
                 descriptor->mipPolicy = settings.mipPolicy;
+                ResolveTextureDescriptorMetadata(
+                    assetDatabase,
+                    *record,
+                    *descriptor);
                 ok = registry.RegisterDescriptor(std::move(descriptor)) && ok;
             } else if (record->type == AssetType::Model) {
                 auto descriptor = std::make_unique<ModelAssetDescriptor>();

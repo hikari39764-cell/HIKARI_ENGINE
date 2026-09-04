@@ -183,6 +183,7 @@ namespace HIKARI {
         }
 
         runtimeMaterialOverrides_.clear();
+        runtimeNodeVisibilityOverrides_.clear();
         NotifyRenderStateDirty();
     }
 

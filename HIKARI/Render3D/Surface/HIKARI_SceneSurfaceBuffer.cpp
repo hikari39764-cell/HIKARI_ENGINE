@@ -21,8 +21,20 @@ namespace HIKARI::RENDER3D::SURFACE {
         bool enableFeatureMask) {
         width = (std::max)(1u, width);
         height = (std::max)(1u, height);
+        const bool contextChanged =
+            lastGraphicsContext_.deviceGeneration != 0u &&
+                graphics.deviceGeneration != 0u &&
+                lastGraphicsContext_.deviceGeneration !=
+                    graphics.deviceGeneration ||
+            lastGraphicsContext_.device != nullptr &&
+                graphics.device != nullptr &&
+                lastGraphicsContext_.device != graphics.device;
+        if (contextChanged) {
+            ResetResources(false);
+        }
         activeFrameSlot_ =
             graphics.frameIndex % GFX::kFrameResourceCount;
+        lastGraphicsContext_ = graphics;
         if (packedSurface_ != nullptr && packedSurfaceRtv_.ptr != 0u &&
             width_ == width && height_ == height) {
             return PublishPackedSurfaceSrv(graphics) &&
@@ -38,36 +50,64 @@ namespace HIKARI::RENDER3D::SURFACE {
         const GFX::Context& graphics,
         bool enabled) {
 
+        const bool contextChanged =
+            lastGraphicsContext_.deviceGeneration != 0u &&
+                graphics.deviceGeneration != 0u &&
+                lastGraphicsContext_.deviceGeneration !=
+                    graphics.deviceGeneration ||
+            lastGraphicsContext_.device != nullptr &&
+                graphics.device != nullptr &&
+                lastGraphicsContext_.device != graphics.device;
+        if (contextChanged) {
+            ResetResources(false);
+        }
         activeFrameSlot_ =
             graphics.frameIndex % GFX::kFrameResourceCount;
+        lastGraphicsContext_ = graphics;
         return EnsureFeatureMask(graphics, enabled);
     }
 
     void SceneSurfaceBuffer::ResetResources(bool releaseDescriptors) {
-        GFX::RetireD3D12ObjectForCurrentFrame(packedSurface_, "SceneSurfaceBuffer.PackedSurface");
-        GFX::RetireD3D12ObjectForCurrentFrame(featureMask_, "SceneSurfaceBuffer.FeatureMask");
-        GFX::RetireD3D12ObjectForCurrentFrame(
+        const GFX::Context current = GFX::GetCurrentContext();
+        const bool contextUnavailable =
+            current.device == nullptr || current.deviceGeneration == 0u;
+        const bool contextChanged = contextUnavailable
+            ? lastGraphicsContext_.device != nullptr
+            : (lastGraphicsContext_.deviceGeneration != 0u &&
+                   lastGraphicsContext_.deviceGeneration !=
+                       current.deviceGeneration ||
+               lastGraphicsContext_.device != nullptr &&
+                   lastGraphicsContext_.device != current.device);
+        const GFX::Context context = contextChanged
+            ? GFX::Context{}
+            : lastGraphicsContext_.device != nullptr ||
+                  lastGraphicsContext_.deferredReleaseQueue != nullptr
+                ? lastGraphicsContext_
+                : current;
+        GFX::RetireD3D12ObjectForFrame(
+            packedSurface_, context, "SceneSurfaceBuffer.PackedSurface");
+        GFX::RetireD3D12ObjectForFrame(
+            featureMask_, context, "SceneSurfaceBuffer.FeatureMask");
+        GFX::RetireD3D12ObjectForFrame(
             stylizedOutlineStyle_,
+            context,
             "SceneSurfaceBuffer.StylizedOutlineStyle");
-        GFX::RetireD3D12ObjectForCurrentFrame(rtvHeap_, "SceneSurfaceBuffer.RTVHeap");
+        GFX::RetireD3D12ObjectForFrame(
+            rtvHeap_, context, "SceneSurfaceBuffer.RTVHeap");
         if (releaseDescriptors) {
             for (RenderResourceView& view : packedSurfaceSrvs_) {
-                if (view.IsValid()) {
-                    (void)ReleaseRenderResourceDescriptor(view);
-                    view = {};
-                }
+                RetireRenderResourceDescriptor(
+                    view, context, "SceneSurfaceBuffer.PackedSurfaceSRV");
             }
             for (RenderResourceView& view : featureMaskSrvs_) {
-                if (view.IsValid()) {
-                    (void)ReleaseRenderResourceDescriptor(view);
-                    view = {};
-                }
+                RetireRenderResourceDescriptor(
+                    view, context, "SceneSurfaceBuffer.FeatureMaskSRV");
             }
             for (RenderResourceView& view : stylizedOutlineStyleSrvs_) {
-                if (view.IsValid()) {
-                    (void)ReleaseRenderResourceDescriptor(view);
-                    view = {};
-                }
+                RetireRenderResourceDescriptor(
+                    view,
+                    context,
+                    "SceneSurfaceBuffer.OutlineStyleSRV");
             }
             packedSurfaceSrvGenerations_.fill(0u);
             featureMaskSrvGenerations_.fill(0u);
@@ -91,6 +131,7 @@ namespace HIKARI::RENDER3D::SURFACE {
         featureMaskGeneration_ = 0u;
         stylizedOutlineStyleGeneration_ = 0u;
         activeFrameSlot_ = 0u;
+        lastGraphicsContext_ = {};
     }
 
     void SceneSurfaceBuffer::DiscardResources() {

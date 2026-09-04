@@ -32,6 +32,26 @@ namespace HIKARI::RENDER3D::PIPELINE {
     namespace {
         FEATURES::StylizedScreenFeatureRenderer gStylizedScreenFeatures{};
 
+        void LogPrimaryPipelineFailure(
+            uint64_t frameIndex,
+            const char* stage,
+            const char* detail = nullptr) {
+
+            static uint64_t lastReportedFrame = 0u;
+            if (lastReportedFrame != 0u &&
+                frameIndex - lastReportedFrame < 120u) {
+                return;
+            }
+            lastReportedFrame = frameIndex;
+            std::string message = "[RenderFramePipeline] primary frame rejected at ";
+            message += stage != nullptr ? stage : "unknown stage";
+            if (detail != nullptr && detail[0] != '\0') {
+                message += ": ";
+                message += detail;
+            }
+            HIKARI_LOG_ERROR(message);
+        }
+
         class TemporalFrameAbortGuard {
         public:
             TemporalFrameAbortGuard(
@@ -368,6 +388,9 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 temporalFrame,
                 temporalResources);
         if (!temporalResourcesReady) {
+            LogPrimaryPipelineFailure(
+                frame.frameIndex,
+                "temporal resource begin");
             return false;
         }
         if (!POST::PostSystem::SetSceneCaptureTemporalFrame(
@@ -559,6 +582,9 @@ namespace HIKARI::RENDER3D::PIPELINE {
                     GRAPH::RenderGraphSemanticPhase::PreOpaque
                 },
                 screenResult.visibilityDepthPyramid)) {
+            LogPrimaryPipelineFailure(
+                frame.frameIndex,
+                "screen-space surface publication");
             MESHRENDERER::EndFrame();
             return false;
         }
@@ -605,6 +631,13 @@ namespace HIKARI::RENDER3D::PIPELINE {
         if (!graphStage.prefixCompleted ||
             !graphStage.pausedForPresentation ||
             !graphStage.session.IsValid()) {
+            const std::string graphDetail =
+                std::string(GRAPH::ToString(graphStage.diagnostic.code)) +
+                " " + graphStage.diagnostic.message.data();
+            LogPrimaryPipelineFailure(
+                frame.frameIndex,
+                "render-graph prefix",
+                graphDetail.c_str());
             MESHRENDERER::EndFrame();
             return false;
         }

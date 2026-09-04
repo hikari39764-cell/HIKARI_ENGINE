@@ -136,8 +136,11 @@ float4 main(HikariPostEffectInput input) : SV_TARGET
             gUser[index * 4u + 3u].y,
             0.05f,
             8.0f);
+        const float packedWaveAmplitude =
+            gUser[index * 4u + 3u].z;
+        const bool converging = packedWaveAmplitude < 0.0f;
         const float waveAmplitude = clamp(
-            gUser[index * 4u + 3u].z,
+            abs(packedWaveAmplitude) - (converging ? 16.0f : 0.0f),
             0.0f,
             8.0f);
         const float packedDamping = max(
@@ -161,7 +164,9 @@ float4 main(HikariPostEffectInput input) : SV_TARGET
         const float fadeIn = smoothstep(0.0f, 0.035f, age);
         const float fadeOut = 1.0f - smoothstep(0.72f, 1.0f, age);
         const float envelope = fadeIn * fadeOut;
-        const float radius = maximumRadius * lerp(0.025f, 1.0f, growth);
+        const float radius = maximumRadius * (converging
+            ? lerp(1.0f, 0.025f, growth)
+            : lerp(0.025f, 1.0f, growth));
         const float ring = HikariRing(
             distanceToCenter,
             radius,
@@ -180,9 +185,10 @@ float4 main(HikariPostEffectInput input) : SV_TARGET
             (distortedDistance - radius - thickness * 0.58f) /
                 max(thickness, 0.001f),
             2.0f) * 1.15f);
+        const float convergenceDirection = converging ? -1.0f : 1.0f;
         const float signedWarp = clamp(
             distortion * intensity * envelope * waveAmplitude * 1.30f *
-                (outer - inner * 0.96f),
+                (outer - inner * 0.96f) * convergenceDirection,
             -0.12f,
             0.12f);
         const float2 uvDirection = float2(direction.x / aspect, direction.y);
@@ -214,10 +220,17 @@ float4 main(HikariPostEffectInput input) : SV_TARGET
                 age) *
                 (1.0f - smoothstep(0.78f, 1.0f, age)) *
                 exp(-waveDamping * layer * 0.45f);
-            const float echoRadius = maximumRadius *
-                lerp(0.08f + layer * 0.035f,
+            const float echoGrowth =
+                1.0f - pow(1.0f - echoAge, 2.2f);
+            const float echoRadius = maximumRadius * (converging
+                ? lerp(
                     1.08f + layer * 0.06f,
-                    1.0f - pow(1.0f - echoAge, 2.2f));
+                    0.08f + layer * 0.035f,
+                    echoGrowth)
+                : lerp(
+                    0.08f + layer * 0.035f,
+                    1.08f + layer * 0.06f,
+                    echoGrowth));
             echo += HikariRing(
                 distanceToCenter,
                 echoRadius,

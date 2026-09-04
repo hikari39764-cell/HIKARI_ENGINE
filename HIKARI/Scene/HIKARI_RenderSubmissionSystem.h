@@ -9,6 +9,7 @@
 #include "Render3D/GpuDriven/HIKARI_MassGpuScene.h"
 #include "Render3D/Core/HIKARI_RenderView.h"
 #include "Render3D/Runtime/HIKARI_SceneRenderCache.h"
+#include "Render3D/WorldSprite/HIKARI_WorldSpriteFrameSource.h"
 #include "Scene/HIKARI_SceneRenderCacheSync.h"
 #include "Scene/HIKARI_ISystem.h"
 
@@ -68,6 +69,8 @@ namespace HIKARI {
         static const RENDER3D::RUNTIME::SceneRenderCache& GetSceneRenderCache();
         static const RENDER3D::RUNTIME::SceneRenderCache::Stats& GetSceneRenderCacheStats();
         static const RENDER3D::GPUDRIVEN::GpuSceneRegistryStats& GetGpuSceneRegistryStats();
+        static const RENDER3D::WORLD_SPRITES::WorldSpriteFrameSource&
+            GetWorldSpriteFrameSource();
 
     private:
         static void InvalidateSubmissionRouting();
@@ -79,6 +82,8 @@ namespace HIKARI {
             sMassGpuSceneRegistry_;
         static RENDER3D::GPUDRIVEN::GpuDrivenSceneSource
             sCombinedGpuSceneSource_;
+        static RENDER3D::WORLD_SPRITES::WorldSpriteFrameSource
+            sWorldSpriteFrameSource_;
         static SceneRenderCacheSync sSceneRenderCacheSync_;
         static bool sGpuSceneRegistryValid_;
         static bool sGpuDrivenSceneSyncInitialized_;

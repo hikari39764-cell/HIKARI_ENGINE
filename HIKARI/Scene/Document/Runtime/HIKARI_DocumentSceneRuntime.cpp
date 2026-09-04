@@ -11,6 +11,7 @@
 #include "Core/HIKARI_Logger.h"
 #include "Core/Math/HIKARI_MathValidation.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
+#include "Render3D/Render/HIKARI_ModelRenderer.h"
 #include "Render3D/Lighting/HIKARI_PanoramaSkyLayerStage.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Physics/Backends/Jolt/HIKARI_JoltPhysicsBackend.h"
@@ -389,6 +390,7 @@ namespace HIKARI {
         services.Clear();
         state_->runtime.worldServicesConfigured = false;
         state_->runtime.presentationModelService.Clear();
+        state_->runtime.sceneCaptureService.Reset();
         state_->runtime.runtimeObjectActivityService.Clear();
         state_->runtime.sandSurfaceQueryService.Clear();
         state_->runtime.waterSurfaceQueryService.Clear();
@@ -535,6 +537,8 @@ namespace HIKARI {
         success = (!surfaceInteractionEnabled || services.Register(
             state_->runtime.sandSurfaceQueryService)) && success;
         success = services.Register(state_->camera.sequencePlayback) && success;
+        success = services.Register(
+            state_->runtime.sceneCaptureService) && success;
         success = services.Register(state_->runtime.playStateService) && success;
         success = services.Register(state_->runtime.gameplayCameraService) && success;
         success = services.Register(
@@ -709,6 +713,8 @@ namespace HIKARI {
         SERVICES::GetActionTimeDilationService().ReleaseOwner(
             &state_->runtime.world);
         state_->runtime.gameUiPresentationService.Reset();
+        state_->runtime.sceneCaptureService.Reset();
+        MODELRENDERER::ResetSecondarySceneCaptureTarget();
         state_->runtime.dialogueSessionService.Reset(&state_->runtime.world);
         LIGHTING_AUTHORING::SynchronizeLegacyLightingViews(
             state_->identity.document);

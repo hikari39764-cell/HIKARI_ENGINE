@@ -39,10 +39,11 @@ namespace HIKARI {
             return angularFalloff_;
         }
         int GetPriority() const noexcept { return priority_; }
-
-        void SetEnabled(bool enabled) noexcept {
-            enabled_ = enabled;
+        uint64_t GetStateRevision() const noexcept {
+            return stateRevision_;
         }
+
+        void SetEnabled(bool enabled) noexcept;
         void SetLightType(LightComponentType type) noexcept;
         void SetColor(const MATH::Vec3& color) noexcept;
         void SetIntensity(float intensity) noexcept;
@@ -51,12 +52,11 @@ namespace HIKARI {
             float innerAngleDegrees,
             float outerAngleDegrees) noexcept;
         void SetAngularFalloff(float angularFalloff) noexcept;
-        void SetPriority(int priority) noexcept {
-            priority_ = priority;
-        }
+        void SetPriority(int priority) noexcept;
 
     private:
         void ClampSettings() noexcept;
+        void BumpStateRevision() noexcept;
 
         bool enabled_ = true;
         LightComponentType type_ = LightComponentType::Point;
@@ -67,6 +67,7 @@ namespace HIKARI {
         float outerConeAngleDegrees_ = 35.0f;
         float angularFalloff_ = 1.0f;
         int priority_ = 0;
+        uint64_t stateRevision_ = 1u;
     };
 
 } // namespace HIKARI

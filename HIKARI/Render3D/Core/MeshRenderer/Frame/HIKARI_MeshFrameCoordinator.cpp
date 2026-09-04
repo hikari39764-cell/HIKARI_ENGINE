@@ -279,11 +279,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         const GFX::Context& graphics,
         bool depthAwarePhase,
         MeshDrawPassKind passKind,
-        const MeshPassResources& passResources
-#if defined(HIKARI_WITH_EDITOR)
-        , const MeshFrameBindingOverrides* overrides
-#endif
-    ) {
+        const MeshPassResources& passResources,
+        const MeshFrameBindingOverrides* overrides) {
         MeshDrawContext ctx{};
         MeshFrameResources& frame = GetActiveMeshFrameResources();
         ctx.cmd = graphics.cmdList;
@@ -310,7 +307,6 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         ctx.gpuMaterialRegistry = &gMeshRendererState.gpuMaterialRegistry;
         ctx.objectDataSrv = frame.objectDataSrvGpu;
         ctx.materialDataSrv = frame.materialDataSrvGpu;
-#if defined(HIKARI_WITH_EDITOR)
         ctx.surfaceGpuSceneFrameBuffer =
             overrides != nullptr &&
                 overrides->surfaceGpuSceneFrameBuffer != nullptr
@@ -378,35 +374,6 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                 : (frame.skyEnvironmentCB
                     ? frame.skyEnvironmentCB->GetGPUVirtualAddress()
                     : 0);
-#else
-        ctx.surfaceGpuSceneSrv = gMeshRendererState.surfaceGpuSceneBuffer.GetSrv();
-        ctx.surfaceGpuSceneFrameBuffer = &gMeshRendererState.surfaceGpuSceneBuffer;
-        ctx.traditionalCommandStreamBuffer = &gMeshRendererState.traditionalCommandStreamBuffer;
-        ctx.cameraAddress = ResolveCameraAddress();
-        ctx.cullingCameraAddress = ResolveCullingCameraAddress();
-        ctx.lightAddress = frame.lightCB
-            ? frame.lightCB->GetGPUVirtualAddress()
-            : 0;
-        ctx.localLightsAddress = frame.localLightBuffer
-            ? frame.localLightBuffer->GetGPUVirtualAddress()
-            : 0;
-        ctx.localLightClusterHeadersAddress =
-            frame.localLightClusterHeaderBuffer
-                ? frame.localLightClusterHeaderBuffer->
-                    GetGPUVirtualAddress()
-                : 0;
-        ctx.localLightClusterIndicesAddress =
-            frame.localLightClusterIndexBuffer
-                ? frame.localLightClusterIndexBuffer->
-                    GetGPUVirtualAddress()
-                : 0;
-        ctx.shadowAddress = frame.shadowCB
-            ? frame.shadowCB->GetGPUVirtualAddress()
-            : 0;
-        ctx.skyEnvironmentAddress = frame.skyEnvironmentCB
-            ? frame.skyEnvironmentCB->GetGPUVirtualAddress()
-            : 0;
-#endif
         ctx.surfaceFeatureDataAddress =
             waterSurfaceBuffer != nullptr
                 ? waterSurfaceBuffer->GetRecordGpuVirtualAddress()
@@ -510,6 +477,14 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                 gMeshRendererState.particleFrameSource,
                 gMeshRendererState.gpuMaterialRegistry)) {
             return false;
+        }
+        if (!gMeshRendererState.worldSpritePass.PrepareFrame(
+                graphics,
+                gMeshRendererState.worldSpriteFrameSource,
+                camera.GetPosition())) {
+            DEBUGLOG::PushRenderError(
+                "[MeshRenderer][WARN] World Sprite frame preparation failed; "
+                "mesh rendering continues without World Sprites.");
         }
         CommitActiveMaterialDataFrame(cmd);
         if (HasGpuDrivenSceneSource()) {

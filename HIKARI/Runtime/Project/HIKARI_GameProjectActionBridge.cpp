@@ -2618,7 +2618,8 @@ namespace HIKARI {
         const GameProjectPerfectGuardWaveRequest& request) const noexcept {
         try {
             if (world_ == nullptr || request.sourceId == 0u ||
-                request.reserved != 0u ||
+                (request.flags &
+                    ~kGameProjectPerfectGuardWaveKnownFlags) != 0u ||
                 !IsFinite(request.worldCenter) ||
                 !IsFiniteNonNegative(request.color) ||
                 !IsFinitePositive(request.durationUnscaledSeconds) ||
@@ -2652,6 +2653,7 @@ namespace HIKARI {
             runtimeRequest.chromaticShift = request.chromaticAberration;
             runtimeRequest.flashIntensity = request.flashIntensity;
             runtimeRequest.intensity = request.intensity;
+            runtimeRequest.flags = request.flags;
             return reaction->TriggerPerfectGuardShockwave(runtimeRequest);
         }
         catch (...) {

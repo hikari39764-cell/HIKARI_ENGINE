@@ -8,49 +8,66 @@
 namespace HIKARI::GFX::DESCRIPTOR {
 
     constexpr UINT kUserSrvCount = 3968;
+    constexpr UINT kUserSrvBegin = 0;
+    constexpr UINT kSystemSrvBegin = kUserSrvCount;
     // Light probe volume の SH 係数 Texture3D。descriptor table として一括
     // バインドするため 9 スロットは必ず連続で確保する。
     constexpr UINT kLightProbeShVolumeTextureCount = 9;
     constexpr UINT kLightProbeVolumeSetCount = 2;
     constexpr UINT kLightProbeVolumeResidentSetCount = 8;
+    // Ten appended slots complete the frame-1/frame-2 rings whose frame-0
+    // slots remain in the original fixed block.
+    constexpr UINT kSystemSrvFixedFrameRingExtraCount = 10u;
     constexpr UINT kSystemSrvFixedCount =
         33 +
         kLightProbeVolumeResidentSetCount *
-            kLightProbeShVolumeTextureCount;
-    constexpr UINT kSystemSrvDynamicCount = 111;
+            kLightProbeShVolumeTextureCount +
+        kSystemSrvFixedFrameRingExtraCount;
+    constexpr UINT kSystemSrvDynamicCount = 512;
     constexpr UINT kDepthPyramidTransientDescriptorCount = 384;
     constexpr UINT kSystemSrvAuxUsedCount = kDepthPyramidTransientDescriptorCount + 1;
     constexpr UINT kSystemSrvReservedCount =
         kSystemSrvFixedCount + kSystemSrvDynamicCount + kSystemSrvAuxUsedCount;
     constexpr UINT kMeshGpuSceneTableDescriptorCount =
         GFX::kFrameResourceCount * 2u;
-    constexpr UINT kSrvHeapCapacity =
-        kUserSrvCount + kSystemSrvReservedCount +
+    // Cluster geometry owns a descriptor arena separate from the general
+    // dynamic system range. Each HCMESH consumes one geometry SRV and one
+    // metadata SRV, so the arena can admit 512 packed resources without
+    // competing with frame-local dynamic SRV users.
+    constexpr UINT kClusterGeometryDescriptorCountPerResource = 2u;
+    constexpr UINT kClusterGeometryResourceCapacity = 512u;
+    constexpr UINT kClusterGeometryDescriptorArenaCapacity =
+        kClusterGeometryResourceCapacity *
+        kClusterGeometryDescriptorCountPerResource;
+    constexpr UINT kClusterGeometryDescriptorArenaBegin =
+        kSystemSrvBegin + kSystemSrvReservedCount +
         kMeshGpuSceneTableDescriptorCount;
-
-    constexpr UINT kUserSrvBegin = 0;
-    constexpr UINT kSystemSrvBegin = kUserSrvCount;
+    constexpr UINT kClusterGeometryDescriptorArenaEnd =
+        kClusterGeometryDescriptorArenaBegin +
+        kClusterGeometryDescriptorArenaCapacity;
+    constexpr UINT kSrvHeapCapacity =
+        kClusterGeometryDescriptorArenaEnd;
 
     enum class SystemSrv : UINT {
         SceneColorFrame0 = kSystemSrvBegin + 0,
         SceneDepth = kSystemSrvBegin + 1,
-        EditorViewport = kSystemSrvBegin + 2,
+        EditorViewportFrame0 = kSystemSrvBegin + 2,
         ImGuiFont = kSystemSrvBegin + 3,
 
         IblIrradiance = kSystemSrvBegin + 4,
         IblPrefiltered = kSystemSrvBegin + 5,
         IblBrdfLut = kSystemSrvBegin + 6,
         SceneSurface = kSystemSrvBegin + 7,
-        SsaoRaw = kSystemSrvBegin + 8,
-        SsaoBlurred = kSystemSrvBegin + 9,
-        SsaoResolved = kSystemSrvBegin + 10,
+        SsaoRawFrame0 = kSystemSrvBegin + 8,
+        SsaoBlurredFrame0 = kSystemSrvBegin + 9,
+        SsaoResolvedFrame0 = kSystemSrvBegin + 10,
         SceneColorPostOpaqueFrame0 = kSystemSrvBegin + 11,
         SceneColorFrame1 = kSystemSrvBegin + 12,
         SceneColorFrame2 = kSystemSrvBegin + 13,
         SceneColorPostOpaqueFrame1 = kSystemSrvBegin + 14,
         SceneColorPostOpaqueFrame2 = kSystemSrvBegin + 15,
         // +16 は将来の固定 SRV 用に未割り当て。
-        PostSceneDepth = kSystemSrvBegin + 17,
+        PostSceneDepthFrame0 = kSystemSrvBegin + 17,
 
         MeshObjectDataFrame0 = kSystemSrvBegin + 18,
         MeshObjectDataFrame1 = kSystemSrvBegin + 19,
@@ -58,9 +75,13 @@ namespace HIKARI::GFX::DESCRIPTOR {
         MeshMaterialDataFrame0 = kSystemSrvBegin + 21,
         MeshMaterialDataFrame1 = kSystemSrvBegin + 22,
         MeshMaterialDataFrame2 = kSystemSrvBegin + 23,
-        // +24..+26 are retired fixed SurfaceGPUScene descriptors. The active
-        // mesh table is an interleaved legacy/mass pair after the bounded
-        // system ranges so Editor and primary views can bind the same table.
+        // Retired fixed SurfaceGPUScene slots are reused by the per-frame
+        // final scene-color snapshot. Existing descriptor indices do not
+        // move, and the active mesh table remains after the bounded system
+        // ranges.
+        SceneColorFinalFrame0 = kSystemSrvBegin + 24,
+        SceneColorFinalFrame1 = kSystemSrvBegin + 25,
+        SceneColorFinalFrame2 = kSystemSrvBegin + 26,
         ShadowSurfaceGpuSceneFrame0 = kSystemSrvBegin + 27,
         ShadowSurfaceGpuSceneFrame1 = kSystemSrvBegin + 28,
         ShadowSurfaceGpuSceneFrame2 = kSystemSrvBegin + 29,
@@ -87,6 +108,20 @@ namespace HIKARI::GFX::DESCRIPTOR {
         LightProbeShVolumeSecondary6 = kSystemSrvBegin + 48,
         LightProbeShVolumeSecondary7 = kSystemSrvBegin + 49,
         LightProbeShVolumeSecondary8 = kSystemSrvBegin + 50,
+
+        // Gfx-owned frame rings reuse the existing frame-0 fixed slots and
+        // append only frame-1/frame-2 slots in the fixed reservation. This
+        // keeps old frame-0 indices stable while avoiding dynamic leases.
+        EditorViewportFrame1 = kSystemSrvBegin + 105,
+        EditorViewportFrame2 = kSystemSrvBegin + 106,
+        PostSceneDepthFrame1 = kSystemSrvBegin + 107,
+        PostSceneDepthFrame2 = kSystemSrvBegin + 108,
+        SsaoRawFrame1 = kSystemSrvBegin + 109,
+        SsaoRawFrame2 = kSystemSrvBegin + 110,
+        SsaoBlurredFrame1 = kSystemSrvBegin + 111,
+        SsaoBlurredFrame2 = kSystemSrvBegin + 112,
+        SsaoResolvedFrame1 = kSystemSrvBegin + 113,
+        SsaoResolvedFrame2 = kSystemSrvBegin + 114,
 
         MeshSurfaceGpuSceneFrame0 =
             kSystemSrvBegin + kSystemSrvReservedCount,
@@ -122,6 +157,14 @@ namespace HIKARI::GFX::DESCRIPTOR {
         return static_cast<UINT>(slot);
     }
 
+    constexpr SystemSrv FrameSlot(
+        SystemSrv firstFrameSlot,
+        uint32_t frameIndex) {
+        return static_cast<SystemSrv>(
+            ToIndex(firstFrameSlot) +
+            (frameIndex % GFX::kFrameResourceCount));
+    }
+
     constexpr UINT ToFrameIndex(SystemSrv firstFrameSlot, uint32_t frameIndex) {
         return ToIndex(firstFrameSlot) + (frameIndex % GFX::kFrameResourceCount);
     }
@@ -144,6 +187,46 @@ namespace HIKARI::GFX::DESCRIPTOR {
         }
     }
 
+    constexpr SystemSrv EditorViewportFrameSlot(uint32_t frameIndex) {
+        switch (frameIndex % GFX::kFrameResourceCount) {
+        case 1u: return SystemSrv::EditorViewportFrame1;
+        case 2u: return SystemSrv::EditorViewportFrame2;
+        default: return SystemSrv::EditorViewportFrame0;
+        }
+    }
+
+    constexpr SystemSrv PostSceneDepthFrameSlot(uint32_t frameIndex) {
+        switch (frameIndex % GFX::kFrameResourceCount) {
+        case 1u: return SystemSrv::PostSceneDepthFrame1;
+        case 2u: return SystemSrv::PostSceneDepthFrame2;
+        default: return SystemSrv::PostSceneDepthFrame0;
+        }
+    }
+
+    constexpr SystemSrv SsaoRawFrameSlot(uint32_t frameIndex) {
+        switch (frameIndex % GFX::kFrameResourceCount) {
+        case 1u: return SystemSrv::SsaoRawFrame1;
+        case 2u: return SystemSrv::SsaoRawFrame2;
+        default: return SystemSrv::SsaoRawFrame0;
+        }
+    }
+
+    constexpr SystemSrv SsaoBlurredFrameSlot(uint32_t frameIndex) {
+        switch (frameIndex % GFX::kFrameResourceCount) {
+        case 1u: return SystemSrv::SsaoBlurredFrame1;
+        case 2u: return SystemSrv::SsaoBlurredFrame2;
+        default: return SystemSrv::SsaoBlurredFrame0;
+        }
+    }
+
+    constexpr SystemSrv SsaoResolvedFrameSlot(uint32_t frameIndex) {
+        switch (frameIndex % GFX::kFrameResourceCount) {
+        case 1u: return SystemSrv::SsaoResolvedFrame1;
+        case 2u: return SystemSrv::SsaoResolvedFrame2;
+        default: return SystemSrv::SsaoResolvedFrame0;
+        }
+    }
+
     constexpr SystemSrv SceneColorFrameSlot(
         bool postOpaque,
         uint32_t frameIndex) {
@@ -160,6 +243,15 @@ namespace HIKARI::GFX::DESCRIPTOR {
             : (slot == 1u
                 ? SystemSrv::SceneColorFrame1
                 : SystemSrv::SceneColorFrame2);
+    }
+
+    constexpr SystemSrv SceneColorFinalFrameSlot(
+        uint32_t frameIndex) {
+        switch (frameIndex % GFX::kFrameResourceCount) {
+        case 1u: return SystemSrv::SceneColorFinalFrame1;
+        case 2u: return SystemSrv::SceneColorFinalFrame2;
+        default: return SystemSrv::SceneColorFinalFrame0;
+        }
     }
 
     inline D3D12_CPU_DESCRIPTOR_HANDLE CpuAt(
@@ -196,11 +288,25 @@ namespace HIKARI::GFX::DESCRIPTOR {
         kSystemSrvReservedCount >=
         kSystemSrvUsedCount + kSystemSrvDynamicCount + kSystemSrvAuxUsedCount);
     static_assert(kUserSrvCount == 3968);
-    // 絶対 index は HLSL 側 HIKARI_ShaderResourceBindings.hlsli の
-    // HIKARI_SHADER_SYSTEM_SRV_DYNAMIC_BEGIN と同期させること。
-    static_assert(kSystemSrvDynamicBegin == 4073);
-    static_assert(kSystemSrvDynamicCount == 111);
-    static_assert(kSystemSrvAuxBegin == 4184);
+    // Shader-visible absolute indices are mirrored by the HLSL contract.
+    // Generic dynamic descriptors are allocator-only; cluster bindings use
+    // the dedicated shader-visible arena below.
+    static_assert(kSystemSrvFixedCount == 115);
+    static_assert(kSystemSrvFixedFrameRingExtraCount == 10u);
+    static_assert(kSystemSrvDynamicBegin == 4083);
+    static_assert(kSystemSrvDynamicCount == 512);
+    static_assert(kSystemSrvAuxBegin == 4595);
+    static_assert(
+        kClusterGeometryDescriptorArenaCapacity == 1024u);
+    static_assert(
+        kClusterGeometryDescriptorArenaCapacity %
+            kClusterGeometryDescriptorCountPerResource == 0u);
+    static_assert(
+        kClusterGeometryDescriptorArenaBegin ==
+        kSystemSrvBegin + kSystemSrvReservedCount +
+            kMeshGpuSceneTableDescriptorCount);
+    static_assert(
+        kClusterGeometryDescriptorArenaEnd == kSrvHeapCapacity);
     static_assert(kSystemSrvBegin < kSrvHeapCapacity);
     static_assert(kSystemSrvDynamicBegin < kSrvHeapCapacity);
     static_assert(kSystemSrvDynamicBegin + kSystemSrvDynamicCount <= kSrvHeapCapacity);
@@ -215,8 +321,64 @@ namespace HIKARI::GFX::DESCRIPTOR {
         kSrvHeapCapacity);
     static_assert(ToIndex(SystemSrv::SceneColorPostOpaqueFrame2) <
         kSrvHeapCapacity);
+    static_assert(ToIndex(SystemSrv::SceneColorFinalFrame0) <
+        kSrvHeapCapacity);
+    static_assert(ToIndex(SystemSrv::SceneColorFinalFrame2) <
+        kSrvHeapCapacity);
+    static_assert(
+        ToIndex(SystemSrv::SceneColorFinalFrame2) + 1u ==
+        ToIndex(SystemSrv::ShadowSurfaceGpuSceneFrame0));
     static_assert(ToIndex(SystemSrv::SceneDepth) < kSrvHeapCapacity);
-    static_assert(ToIndex(SystemSrv::EditorViewport) < kSrvHeapCapacity);
+    static_assert(ToIndex(SystemSrv::EditorViewportFrame0) < kSrvHeapCapacity);
+    static_assert(ToIndex(SystemSrv::EditorViewportFrame0) ==
+        kSystemSrvBegin + 2u);
+    static_assert(ToIndex(SystemSrv::EditorViewportFrame1) ==
+        kSystemSrvBegin + 105u);
+    static_assert(ToIndex(EditorViewportFrameSlot(0u)) ==
+        ToIndex(SystemSrv::EditorViewportFrame0));
+    static_assert(ToIndex(EditorViewportFrameSlot(1u)) ==
+        ToIndex(SystemSrv::EditorViewportFrame1));
+    static_assert(ToIndex(EditorViewportFrameSlot(2u)) ==
+        ToIndex(SystemSrv::EditorViewportFrame2));
+    static_assert(
+        ToIndex(SystemSrv::LightProbeShVolume0) +
+            kLightProbeVolumeResidentSetCount *
+                kLightProbeShVolumeTextureCount ==
+        ToIndex(SystemSrv::EditorViewportFrame1));
+    static_assert(ToIndex(SystemSrv::EditorViewportFrame2) <
+        kSystemSrvBegin + kSystemSrvFixedCount);
+    static_assert(ToIndex(SystemSrv::PostSceneDepthFrame0) ==
+        kSystemSrvBegin + 17u);
+    static_assert(ToIndex(SystemSrv::PostSceneDepthFrame1) ==
+        ToIndex(SystemSrv::EditorViewportFrame2) + 1u);
+    static_assert(ToIndex(PostSceneDepthFrameSlot(0u)) ==
+        ToIndex(SystemSrv::PostSceneDepthFrame0));
+    static_assert(ToIndex(PostSceneDepthFrameSlot(2u)) ==
+        ToIndex(SystemSrv::PostSceneDepthFrame2));
+    static_assert(ToIndex(SystemSrv::PostSceneDepthFrame2) <
+        kSystemSrvBegin + kSystemSrvFixedCount);
+    static_assert(ToIndex(SystemSrv::SsaoRawFrame0) ==
+        kSystemSrvBegin + 8u);
+    static_assert(ToIndex(SystemSrv::SsaoRawFrame1) ==
+        ToIndex(SystemSrv::PostSceneDepthFrame2) + 1u);
+    static_assert(ToIndex(SystemSrv::SsaoRawFrame2) <
+        kSystemSrvBegin + kSystemSrvFixedCount);
+    static_assert(ToIndex(SystemSrv::SsaoBlurredFrame0) ==
+        kSystemSrvBegin + 9u);
+    static_assert(ToIndex(SystemSrv::SsaoBlurredFrame1) ==
+        ToIndex(SystemSrv::SsaoRawFrame2) + 1u);
+    static_assert(ToIndex(SystemSrv::SsaoBlurredFrame2) <
+        kSystemSrvBegin + kSystemSrvFixedCount);
+    static_assert(ToIndex(SystemSrv::SsaoResolvedFrame0) ==
+        kSystemSrvBegin + 10u);
+    static_assert(ToIndex(SystemSrv::SsaoResolvedFrame1) ==
+        ToIndex(SystemSrv::SsaoBlurredFrame2) + 1u);
+    static_assert(ToIndex(SsaoResolvedFrameSlot(0u)) ==
+        ToIndex(SystemSrv::SsaoResolvedFrame0));
+    static_assert(ToIndex(SsaoResolvedFrameSlot(2u)) ==
+        ToIndex(SystemSrv::SsaoResolvedFrame2));
+    static_assert(ToIndex(SystemSrv::SsaoResolvedFrame2) <
+        kSystemSrvBegin + kSystemSrvFixedCount);
     static_assert(ToIndex(SystemSrv::ImGuiFont) < kSrvHeapCapacity);
     static_assert(ToIndex(SystemSrv::IblIrradiance) < kSrvHeapCapacity);
     static_assert(ToIndex(SystemSrv::IblPrefiltered) < kSrvHeapCapacity);
@@ -230,10 +392,10 @@ namespace HIKARI::GFX::DESCRIPTOR {
             ToIndex(SystemSrv::LightProbeShVolumeSecondary0) + 1 ==
         kLightProbeShVolumeTextureCount);
     static_assert(ToIndex(SystemSrv::SceneSurface) < kSrvHeapCapacity);
-    static_assert(ToIndex(SystemSrv::SsaoRaw) < kSrvHeapCapacity);
-    static_assert(ToIndex(SystemSrv::SsaoBlurred) < kSrvHeapCapacity);
-    static_assert(ToIndex(SystemSrv::SsaoResolved) < kSrvHeapCapacity);
-    static_assert(ToIndex(SystemSrv::PostSceneDepth) < kSrvHeapCapacity);
+    static_assert(ToIndex(SystemSrv::SsaoRawFrame0) < kSrvHeapCapacity);
+    static_assert(ToIndex(SystemSrv::SsaoBlurredFrame0) < kSrvHeapCapacity);
+    static_assert(ToIndex(SystemSrv::SsaoResolvedFrame0) < kSrvHeapCapacity);
+    static_assert(ToIndex(SystemSrv::PostSceneDepthFrame0) < kSrvHeapCapacity);
     static_assert(ToIndex(SystemSrv::MeshObjectDataFrame0) < kSrvHeapCapacity);
     static_assert(ToIndex(SystemSrv::MeshObjectDataFrame2) < kSrvHeapCapacity);
     static_assert(ToIndex(SystemSrv::MeshMaterialDataFrame0) < kSrvHeapCapacity);
@@ -244,6 +406,11 @@ namespace HIKARI::GFX::DESCRIPTOR {
     static_assert(ToIndex(SystemSrv::ShadowSurfaceGpuSceneFrame2) < kSrvHeapCapacity);
     static_assert(ToIndex(SystemSrv::MeshMassRenderProxyFrame2) <
         kSrvHeapCapacity);
+    static_assert(kClusterGeometryDescriptorArenaBegin < kSrvHeapCapacity);
+    static_assert(kClusterGeometryDescriptorArenaEnd <= kSrvHeapCapacity);
+    static_assert(
+        ToIndex(SystemSrv::MeshMassRenderProxyFrame2) + 1u ==
+        kClusterGeometryDescriptorArenaBegin);
     static_assert(
         ToIndex(SystemSrv::MeshMassRenderProxyFrame0) ==
             ToIndex(SystemSrv::MeshSurfaceGpuSceneFrame0) + 1u &&

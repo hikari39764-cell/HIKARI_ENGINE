@@ -322,6 +322,42 @@ namespace HIKARI::EDITOR {
         return FindRuntimeObject(scene, id);
     }
 
+    GameObject* CreateWorldSpriteObject(
+        DocumentSceneBase& scene,
+        const AssetGuid& textureGuid,
+        const CreateObjectRequest& request) {
+
+        SceneObjectData object = BuildBaseObject(
+            scene,
+            textureGuid.IsValid() ? &textureGuid : nullptr,
+            request);
+        if (request.name.empty() && !textureGuid.IsValid()) {
+            object.name = "World Sprite";
+        }
+        const SceneObjectId id = object.id;
+        object.components.push_back(SceneComponentData{
+            "WorldSpriteComponent",
+            {
+                { "version", 1u },
+                { "textureAssetGuid", textureGuid.value },
+                { "visible", true },
+                { "size", { 1.0f, 1.0f } },
+                { "preserveAspect", true },
+                { "facing", "CameraFacing" },
+                { "tint", { 1.0f, 1.0f, 1.0f } },
+                { "opacity", 1.0f },
+                { "pivot", { 0.5f, 0.5f } },
+                { "alphaMode", "Auto" },
+                { "alphaCutoff", 0.5f },
+                { "transparentSortPriority", 0 }
+            }
+        });
+        NormalizeSceneComponentIds(object);
+        scene.GetSceneDocument().objects.push_back(std::move(object));
+        scene.RebuildRuntimeWorld();
+        return FindRuntimeObject(scene, id);
+    }
+
     GameObject* CreateDialogueTriggerObject(
         DocumentSceneBase& scene,
         const CreateObjectRequest& request) {

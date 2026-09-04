@@ -10,6 +10,7 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #ifdef _WIN32
@@ -88,7 +89,11 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             std::array<ID3D12Resource*, GFX::kFrameResourceCount>
                 outputSrvResources{};
             uint64_t targetGeneration = 0;
+            uint64_t pendingSerial = 0u;
             uint64_t lastRenderedSerial = 0;
+            uint64_t deviceGeneration = 0u;
+            GFX::Context lastGraphicsContext{};
+            bool pending = false;
             bool hasRequest = false;
         };
 
@@ -97,8 +102,13 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         std::unique_ptr<POST::QuadDrawer> g_displayQuad{};
         std::unique_ptr<POST::PostEffect> g_displayEffect{};
         std::unique_ptr<POST::PostEffect> g_fxaaEffect{};
+        constexpr uint32_t kMaximumContinuousRenderBurst = 3u;
         uint64_t g_scheduleSerial = 0u;
+        uint64_t g_requestSerial = 0u;
+        uint32_t g_continuousRenderStreak = 0u;
         EditorInteractiveSchedulerStats g_schedulerStats{};
+        std::unordered_map<uintptr_t, uint32_t>
+            g_sceneSourceLeaseCounts{};
 
         struct PreviewCaptureRequest {
             bool pending = false;
@@ -110,6 +120,163 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
 
         std::mutex g_captureMutex;
         PreviewCaptureRequest g_captureRequest{};
+
+        uint64_t NextNonZero(uint64_t value) noexcept {
+            ++value;
+            return value != 0u ? value : 1u;
+        }
+
+        void AcquireSceneSourceLease(
+            const GPUDRIVEN::GpuDrivenSceneSource* source) {
+
+            if (source == nullptr) {
+                return;
+            }
+            ++g_sceneSourceLeaseCounts[
+                reinterpret_cast<uintptr_t>(source)];
+        }
+
+        void ReleaseSceneSourceLease(
+            const GPUDRIVEN::GpuDrivenSceneSource* source) {
+
+            if (source == nullptr) {
+                return;
+            }
+            const uintptr_t identity = reinterpret_cast<uintptr_t>(source);
+            const auto found = g_sceneSourceLeaseCounts.find(identity);
+            if (found == g_sceneSourceLeaseCounts.end()) {
+                return;
+            }
+            if (found->second > 1u) {
+                --found->second;
+                return;
+            }
+            g_sceneSourceLeaseCounts.erase(found);
+            MESHRENDERER::ReleaseEditorInteractiveSceneSource(source);
+        }
+
+        GFX::Context ResolveRetireContext(
+            const InteractiveViewState& state) {
+
+            const GFX::Context& current = GFX::GetCurrentContext();
+            if (state.lastGraphicsContext.device != nullptr &&
+                (current.device == nullptr ||
+                 current.deviceGeneration == 0u)) {
+                // A cleared/partial context has no trustworthy fence owner.
+                return {};
+            }
+            if (state.lastGraphicsContext.deviceGeneration != 0u &&
+                current.deviceGeneration != 0u &&
+                state.lastGraphicsContext.deviceGeneration !=
+                    current.deviceGeneration) {
+                // There is no valid fence relationship across device
+                // generations. Returning an empty context makes the caller
+                // fail closed instead of enqueueing on an old queue pointer.
+                return {};
+            }
+            if (state.lastGraphicsContext.device != nullptr &&
+                current.device != nullptr &&
+                state.lastGraphicsContext.device != current.device) {
+                return {};
+            }
+            if (state.lastGraphicsContext.deferredReleaseQueue != nullptr &&
+                current.deferredReleaseQueue != nullptr &&
+                state.lastGraphicsContext.deferredReleaseQueue !=
+                    current.deferredReleaseQueue) {
+                return {};
+            }
+            if (state.lastGraphicsContext.device != nullptr ||
+                state.lastGraphicsContext.deferredReleaseQueue != nullptr) {
+                return state.lastGraphicsContext;
+            }
+            return current;
+        }
+
+        void RetireDescriptorSet(
+            std::array<RenderResourceView,
+                GFX::kFrameResourceCount>& views,
+            const GFX::Context& context,
+            const char* debugName) {
+
+            for (RenderResourceView& view : views) {
+                RetireRenderResourceDescriptor(view, context, debugName);
+            }
+        }
+
+        void RetireViewResources(InteractiveViewState& state) {
+            const GFX::Context current = GFX::GetCurrentContext();
+            const GFX::Context context = ResolveRetireContext(state);
+            const bool contextChanged =
+                context.device == nullptr &&
+                state.lastGraphicsContext.device != nullptr &&
+                ((current.device == nullptr ||
+                  current.deviceGeneration == 0u) ||
+                 (current.deviceGeneration != 0u &&
+                  state.lastGraphicsContext.deviceGeneration != 0u &&
+                  current.deviceGeneration !=
+                      state.lastGraphicsContext.deviceGeneration) ||
+                 (current.device != nullptr &&
+                  current.device != state.lastGraphicsContext.device) ||
+                 (current.deferredReleaseQueue != nullptr &&
+                  state.lastGraphicsContext.deferredReleaseQueue != nullptr &&
+                  current.deferredReleaseQueue !=
+                      state.lastGraphicsContext.deferredReleaseQueue));
+
+            if (contextChanged) {
+                // RenderTarget2D keeps its own context copy. Clear it before
+                // destruction when the old device is no longer compatible;
+                // otherwise its COM retirement could dereference an old
+                // deferred-release queue.
+                if (state.target != nullptr) {
+                    state.target->UpdateContext({});
+                }
+                if (state.opaqueSceneColorSnapshot != nullptr) {
+                    state.opaqueSceneColorSnapshot->UpdateContext({});
+                }
+                if (state.displayTarget != nullptr) {
+                    state.displayTarget->UpdateContext({});
+                }
+                if (state.antialiasedTarget != nullptr) {
+                    state.antialiasedTarget->UpdateContext({});
+                }
+            }
+
+            // StylizedView owns its composite target and SceneSurface
+            // descriptors. Its shutdown is deliberately per view; the
+            // descriptor owner defers the actual slot reuse to this frame's
+            // fence just like the explicit view-owned descriptor arrays.
+            state.stylizedView.Shutdown();
+            RetireDescriptorSet(
+                state.outputSrvs,
+                context,
+                "EditorInteractiveView.OutputSRV");
+            RetireDescriptorSet(
+                state.opaqueSceneColorSrvs,
+                context,
+                "EditorInteractiveView.OpaqueSceneColorSRV");
+            RetireDescriptorSet(
+                state.sceneDepthSrvs,
+                context,
+                "EditorInteractiveView.SceneDepthSRV");
+            state.outputSrvGenerations.fill(0u);
+            state.opaqueSceneColorSrvGenerations.fill(0u);
+            state.sceneDepthSrvGenerations.fill(0u);
+            state.outputSrvResources.fill(nullptr);
+
+            // RenderTarget2D::Finalize transfers its COM resources and
+            // private heaps to the same fence-safe deferred release queue.
+            state.target.reset();
+            state.opaqueSceneColorSnapshot.reset();
+            state.displayTarget.reset();
+            state.antialiasedTarget.reset();
+            state.lastGraphicsContext = {};
+            state.deviceGeneration = 0u;
+            state.output.colorSrv = {};
+            state.output.ready = false;
+            state.output.width = 0u;
+            state.output.height = 0u;
+            state.output.sceneRevision = 0u;
+        }
 
         bool WriteBmp(
             const std::string& path,
@@ -503,13 +670,58 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             const EditorInteractiveViewRequest& request,
             uint64_t currentSceneRevision) {
 
+            // Primary-scene requests are submitted by ImGui after the scene
+            // render for the current frame has already completed.  The
+            // request therefore normally describes the preceding UI frame.
+            // Inspector/sequencer edits may advance the document revision
+            // again before RenderPending consumes it.  Accept that monotonic
+            // lag and render the current active scene; a request from a newer
+            // revision is still rejected so scene replacement/reset cannot
+            // reuse a request from the previous document generation.
+            const bool sceneRevisionIsConsumable =
+                request.sceneSourceOverride != nullptr ||
+                request.sceneRevision <= currentSceneRevision;
             return request.viewId.value != 0 &&
                 request.visible &&
                 request.width != 0 &&
                 request.height != 0 &&
-                (request.sceneSourceOverride != nullptr ||
-                    request.sceneRevision == currentSceneRevision) &&
+                sceneRevisionIsConsumable &&
                 request.cameraFrame.valid;
+        }
+
+        bool RequestsDiffer(
+            const EditorInteractiveViewRequest& previous,
+            const EditorInteractiveViewRequest& current) noexcept {
+
+            return previous.purpose != current.purpose ||
+                previous.cameraFrame.sourceCameraObjectId !=
+                    current.cameraFrame.sourceCameraObjectId ||
+                previous.cameraFrame.revision != current.cameraFrame.revision ||
+                previous.cameraFrame.cameraCut != current.cameraFrame.cameraCut ||
+                previous.cameraFrame.projectionChanged !=
+                    current.cameraFrame.projectionChanged ||
+                previous.width != current.width ||
+                previous.height != current.height ||
+                previous.sceneRevision != current.sceneRevision ||
+                previous.contentRevision != current.contentRevision ||
+                previous.visible != current.visible ||
+                previous.drawDebug != current.drawDebug ||
+                previous.continuousRealtime != current.continuousRealtime ||
+                previous.schedulingPriority != current.schedulingPriority ||
+                previous.shadingMode != current.shadingMode ||
+                previous.displayExposure != current.displayExposure ||
+                previous.sceneSourceOverride != current.sceneSourceOverride ||
+                previous.environmentOverride != current.environmentOverride ||
+                previous.lightingOverride != current.lightingOverride ||
+                previous.particleInputOverride != current.particleInputOverride ||
+                previous.guideOverlay.showGroundGrid !=
+                    current.guideOverlay.showGroundGrid ||
+                previous.guideOverlay.showWorldAxes !=
+                    current.guideOverlay.showWorldAxes ||
+                previous.suppressSpatialLightingProviders !=
+                    current.suppressSpatialLightingProviders ||
+                previous.useDefaultSkyIbl != current.useDefaultSkyIbl ||
+                previous.spatialAntiAliasing != current.spatialAntiAliasing;
         }
 
         uint32_t ClampExtent(uint32_t value) {
@@ -561,6 +773,23 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             uint32_t height,
             bool spatialAntiAliasing) {
 
+            const GFX::Context graphics = GFX::GetCurrentContext();
+            if (state.deviceGeneration != 0u &&
+                graphics.deviceGeneration != 0u &&
+                state.deviceGeneration != graphics.deviceGeneration) {
+                // A device-generation change invalidates every raw resource
+                // and SRV behind this view. Retire the old set before the
+                // first command on the new device and keep the request queued
+                // for a fresh target publication.
+                RetireViewResources(state);
+                state.pending = state.hasRequest;
+                state.output.requestedRevision =
+                    state.request.sceneRevision;
+                state.output.status = state.hasRequest
+                    ? EditorInteractiveViewStatus::Pending
+                    : EditorInteractiveViewStatus::Idle;
+            }
+
             const bool primaryTargetsReady = state.target != nullptr &&
                 state.target->IsInitialized() &&
                 state.target->GetWidth() == static_cast<int>(width) &&
@@ -595,19 +824,21 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
 
             if (primaryTargetsReady && aaTargetReady) {
 
-                state.target->UpdateContext(GFX::GetCurrentContext());
+                state.target->UpdateContext(graphics);
                 state.opaqueSceneColorSnapshot->UpdateContext(
-                    GFX::GetCurrentContext());
-                state.displayTarget->UpdateContext(GFX::GetCurrentContext());
+                    graphics);
+                state.displayTarget->UpdateContext(graphics);
                 if (state.antialiasedTarget != nullptr) {
                     state.antialiasedTarget->UpdateContext(
-                        GFX::GetCurrentContext());
+                        graphics);
                 }
+                state.lastGraphicsContext = graphics;
+                state.deviceGeneration = graphics.deviceGeneration;
                 return true;
             }
 
             auto replacement = std::make_unique<RenderTarget2D>();
-            replacement->UpdateContext(GFX::GetCurrentContext());
+            replacement->UpdateContext(graphics);
             if (!replacement->Init(
                     static_cast<int>(width),
                     static_cast<int>(height),
@@ -621,7 +852,7 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             replacement->SetDebugName("EditorInteractiveView");
 
             auto sceneColorReplacement = std::make_unique<RenderTarget2D>();
-            sceneColorReplacement->UpdateContext(GFX::GetCurrentContext());
+            sceneColorReplacement->UpdateContext(graphics);
             if (!sceneColorReplacement->Init(
                     static_cast<int>(width),
                     static_cast<int>(height),
@@ -636,7 +867,7 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                 "EditorInteractiveView.OpaqueSceneColor");
 
             auto displayReplacement = std::make_unique<RenderTarget2D>();
-            displayReplacement->UpdateContext(GFX::GetCurrentContext());
+            displayReplacement->UpdateContext(graphics);
             if (!displayReplacement->Init(
                     static_cast<int>(width),
                     static_cast<int>(height),
@@ -651,7 +882,7 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             std::unique_ptr<RenderTarget2D> aaReplacement{};
             if (spatialAntiAliasing) {
                 aaReplacement = std::make_unique<RenderTarget2D>();
-                aaReplacement->UpdateContext(GFX::GetCurrentContext());
+                aaReplacement->UpdateContext(graphics);
                 if (!aaReplacement->Init(
                         static_cast<int>(width),
                         static_cast<int>(height),
@@ -674,6 +905,8 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             if (state.targetGeneration == 0) {
                 state.targetGeneration = 1;
             }
+            state.lastGraphicsContext = graphics;
+            state.deviceGeneration = graphics.deviceGeneration;
             return true;
         }
 
@@ -875,16 +1108,50 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             EditorInteractiveViewStatus status,
             EditorInteractiveViewFailure failure =
                 EditorInteractiveViewFailure::None) {
-            state.output.colorSrv = {};
-            state.output.ready = false;
             state.output.status = status;
             state.output.failure = failure;
-            state.output.sceneRevision = state.request.sceneRevision;
+            state.output.requestedRevision =
+                state.request.sceneRevision;
+
+            // A status transition describes the receipt; it does not erase a
+            // last-completed image. ClearRequest and a device-generation reset
+            // are the only destructive publication boundaries.
+            if (!state.output.ready) {
+                state.output.colorSrv = {};
+                state.output.ready = false;
+            }
+        }
+
+        void MarkOutputPending(InteractiveViewState& state) {
+            // A newer request is queued after the render phase of the current
+            // frame.  Keep the last successfully published texture alive
+            // until its replacement is ready so continuously edited tool
+            // views do not alternate between a valid image and an empty
+            // placeholder. ClearRequest and device replacement remain
+            // destructive publication boundaries.
+            state.pending = true;
+            state.output.status = EditorInteractiveViewStatus::Pending;
+            state.output.failure = EditorInteractiveViewFailure::None;
+            state.output.requestedRevision =
+                state.request.sceneRevision;
+        }
+
+        bool ShouldRetryFailure(
+            EditorInteractiveViewFailure failure) noexcept {
+            return failure != EditorInteractiveViewFailure::None;
         }
 
         void FailOutput(
             InteractiveViewState& state,
             EditorInteractiveViewFailure failure) {
+            // Every renderer stage can recover after a later resource or
+            // device/frame transition. Keep the request retryable; the
+            // scheduler's realtime burst limit bounds repeated attempts and
+            // still gives static views a deterministic turn.
+            state.pending = ShouldRetryFailure(failure);
+            state.pendingSerial = state.pending
+                ? g_requestSerial = NextNonZero(g_requestSerial)
+                : 0u;
             SetOutputStatus(
                 state,
                 EditorInteractiveViewStatus::Failed,
@@ -1124,36 +1391,37 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
     } // namespace
 
     void SubmitRequest(const EditorInteractiveViewRequest& request) {
+        if (request.viewId.value == 0u) {
+            return;
+        }
+
         InteractiveViewState& state = FindOrCreateState(request.viewId);
         const bool requestChanged = !state.hasRequest ||
-            state.request.sceneRevision != request.sceneRevision ||
+            RequestsDiffer(state.request, request);
+        const bool sourceChanged = state.hasRequest &&
             state.request.sceneSourceOverride !=
-                request.sceneSourceOverride ||
-            state.request.width != request.width ||
-            state.request.height != request.height ||
-            state.request.spatialAntiAliasing !=
-                request.spatialAntiAliasing;
-        if (state.hasRequest &&
-            state.request.sceneSourceOverride != request.sceneSourceOverride) {
-            MESHRENDERER::ReleaseEditorInteractiveSceneSource(
-                state.request.sceneSourceOverride);
+                request.sceneSourceOverride;
+        if (sourceChanged) {
+            ReleaseSceneSourceLease(state.request.sceneSourceOverride);
         }
+        if (!state.hasRequest || sourceChanged) {
+            AcquireSceneSourceLease(request.sceneSourceOverride);
+        }
+
         const bool outputRouteChanged = state.hasRequest &&
             state.request.spatialAntiAliasing !=
                 request.spatialAntiAliasing;
         state.request = request;
         if (outputRouteChanged) {
-            ++state.targetGeneration;
-            if (state.targetGeneration == 0u) {
-                state.targetGeneration = 1u;
-            }
+            state.targetGeneration = NextNonZero(state.targetGeneration);
         }
         state.output.viewId = request.viewId;
+        state.output.requestedRevision = state.request.sceneRevision;
         state.hasRequest = true;
         if (requestChanged) {
-            SetOutputStatus(
-                state,
-                EditorInteractiveViewStatus::Pending);
+            state.pendingSerial =
+                g_requestSerial = NextNonZero(g_requestSerial);
+            MarkOutputPending(state);
         }
     }
 
@@ -1162,12 +1430,17 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         if (found == g_views.end()) {
             return;
         }
-        MESHRENDERER::ReleaseEditorInteractiveSceneSource(
-            found->second->request.sceneSourceOverride);
-        found->second->hasRequest = false;
-        SetOutputStatus(
-            *found->second,
-            EditorInteractiveViewStatus::Idle);
+        InteractiveViewState& state = *found->second;
+        if (!state.hasRequest && state.target == nullptr &&
+            state.opaqueSceneColorSnapshot == nullptr &&
+            state.displayTarget == nullptr &&
+            state.antialiasedTarget == nullptr) {
+            g_views.erase(found);
+            return;
+        }
+        ReleaseSceneSourceLease(state.request.sceneSourceOverride);
+        RetireViewResources(state);
+        g_views.erase(found);
     }
 
     void RequestPreviewCapture(
@@ -1199,9 +1472,12 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         SkyManager& skyManager,
         const AssetRegistry* assetRegistry,
         const MATERIAL::MaterialExternalValueSnapshot*
-            materialExternalValues) {
+            materialExternalValues,
+        const WORLD_SPRITES::WorldSpriteFrameSource*
+            worldSpriteFrameSource) {
 
-        InteractiveViewState* selected = nullptr;
+        InteractiveViewState* selectedStatic = nullptr;
+        InteractiveViewState* selectedRealtime = nullptr;
         uint32_t renderableViewCount = 0u;
         for (auto& [viewValue, state] : g_views) {
             (void)viewValue;
@@ -1219,43 +1495,96 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                 continue;
             }
             ++renderableViewCount;
-            const bool realtimePreferred =
-                selected == nullptr ||
-                (state->request.continuousRealtime &&
-                 !selected->request.continuousRealtime);
-            const bool sameCadenceClass = selected != nullptr &&
-                state->request.continuousRealtime ==
-                    selected->request.continuousRealtime;
-            const bool olderThanSelected = sameCadenceClass &&
-                state->lastRenderedSerial < selected->lastRenderedSerial;
-            const bool sameAgeHigherPriority =
-                sameCadenceClass &&
-                state->lastRenderedSerial == selected->lastRenderedSerial &&
+            if (!state->pending && !state->request.continuousRealtime) {
+                // A static view with a completed receipt does not consume a
+                // frame until a new request arrives.
+                continue;
+            }
+
+            if (state->request.continuousRealtime) {
+                // Continuous views are round-robin candidates only after all
+                // newly requested static views have had a chance to publish.
+                // Keep the explicit realtime preference inside this class so
+                // continuous views still win ties among themselves.
+                const bool realtimePreferred =
+                    state->request.continuousRealtime &&
+                    selectedRealtime == nullptr;
+                const bool olderThanSelected = selectedRealtime != nullptr &&
+                    state->lastRenderedSerial <
+                        selectedRealtime->lastRenderedSerial;
+                const bool sameAgeHigherPriority =
+                    selectedRealtime != nullptr &&
+                    state->lastRenderedSerial ==
+                        selectedRealtime->lastRenderedSerial &&
+                    state->request.schedulingPriority >
+                        selectedRealtime->request.schedulingPriority;
+                const bool sameAgeAndPriorityLowerId =
+                    selectedRealtime != nullptr &&
+                    state->lastRenderedSerial ==
+                        selectedRealtime->lastRenderedSerial &&
+                    state->request.schedulingPriority ==
+                        selectedRealtime->request.schedulingPriority &&
+                    state->request.viewId.value <
+                        selectedRealtime->request.viewId.value;
+                if (realtimePreferred || olderThanSelected ||
+                    sameAgeHigherPriority || sameAgeAndPriorityLowerId) {
+                    selectedRealtime = state.get();
+                }
+                continue;
+            }
+
+            if (selectedStatic == nullptr) {
+                selectedStatic = state.get();
+                continue;
+            }
+            const bool olderPendingRequest = state->pendingSerial != 0u &&
+                (selectedStatic->pendingSerial == 0u ||
+                 state->pendingSerial < selectedStatic->pendingSerial);
+            const bool samePendingRequestHigherPriority =
+                state->pendingSerial == selectedStatic->pendingSerial &&
                 state->request.schedulingPriority >
-                    selected->request.schedulingPriority;
-            const bool sameAgeAndPriorityLowerId =
-                sameCadenceClass &&
-                state->lastRenderedSerial == selected->lastRenderedSerial &&
+                    selectedStatic->request.schedulingPriority;
+            const bool samePendingRequestLowerId =
+                state->pendingSerial == selectedStatic->pendingSerial &&
                 state->request.schedulingPriority ==
-                    selected->request.schedulingPriority &&
-                state->request.viewId.value < selected->request.viewId.value;
-            if (realtimePreferred || olderThanSelected || sameAgeHigherPriority ||
-                sameAgeAndPriorityLowerId) {
-                selected = state.get();
+                    selectedStatic->request.schedulingPriority &&
+                state->request.viewId.value < selectedStatic->request.viewId.value;
+            if (olderPendingRequest || samePendingRequestHigherPriority ||
+                samePendingRequestLowerId) {
+                selectedStatic = state.get();
             }
         }
         g_schedulerStats.renderableViewCount = renderableViewCount;
-        if (selected == nullptr ||
-            GFX::GetCurrentContext().cmdList == nullptr ||
-            GFX::GetCurrentContext().device == nullptr) {
+        const bool staticHasFirstPublication = selectedStatic != nullptr &&
+            !selectedStatic->output.ready &&
+            selectedStatic->output.status !=
+                EditorInteractiveViewStatus::Failed;
+        const bool continuousBurstExhausted =
+            g_continuousRenderStreak >= kMaximumContinuousRenderBurst;
+        InteractiveViewState* selected = selectedStatic != nullptr &&
+                (selectedRealtime == nullptr || staticHasFirstPublication ||
+                 continuousBurstExhausted)
+            ? selectedStatic
+            : selectedRealtime != nullptr
+                ? selectedRealtime
+                : selectedStatic;
+        const GFX::Context graphics = GFX::GetCurrentContext();
+        if (selected == nullptr || graphics.cmdList == nullptr ||
+            graphics.device == nullptr) {
             return false;
         }
-
         ++g_scheduleSerial;
         if (g_scheduleSerial == 0u) {
             g_scheduleSerial = 1u;
         }
         selected->lastRenderedSerial = g_scheduleSerial;
+        if (selected->request.continuousRealtime) {
+            if (g_continuousRenderStreak < kMaximumContinuousRenderBurst) {
+                ++g_continuousRenderStreak;
+            }
+        } else {
+            g_continuousRenderStreak = 0u;
+        }
         g_schedulerStats.scheduleSerial = g_scheduleSerial;
         g_schedulerStats.renderedViewId = selected->request.viewId.value;
 
@@ -1285,6 +1614,7 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         view.purpose = selected->request.purpose;
         view.cameraFrame = &selected->request.cameraFrame;
         view.assetRegistry = assetRegistry;
+        view.worldSpriteFrameSource = worldSpriteFrameSource;
         const PARTICLES::ParticleRenderFrameSource particleFrameSource{
             selected->request.particleInputOverride.get(),
             assetRegistry,
@@ -1444,6 +1774,8 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             selected->request.sceneSourceOverride != nullptr
                 ? selected->request.sceneRevision
                 : currentSceneRevision;
+        selected->output.requestedRevision =
+            selected->request.sceneRevision;
         ++selected->output.outputRevision;
         if (selected->output.outputRevision == 0) {
             selected->output.outputRevision = 1;
@@ -1451,6 +1783,8 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         selected->output.ready = true;
         selected->output.status = EditorInteractiveViewStatus::Ready;
         selected->output.failure = EditorInteractiveViewFailure::None;
+        selected->pending = false;
+        selected->pendingSerial = 0u;
         return true;
     }
 
@@ -1503,33 +1837,10 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         RENDERER3D::DEBUG::ShutdownEditorViewResources();
         for (auto& [viewValue, state] : g_views) {
             (void)viewValue;
-            MESHRENDERER::ReleaseEditorInteractiveSceneSource(
-                state->request.sceneSourceOverride);
-            for (RenderResourceView& view : state->outputSrvs) {
-                if (view.IsValid()) {
-                    (void)ReleaseRenderResourceDescriptor(view);
-                    view = {};
-                }
-            }
-            for (RenderResourceView& view : state->opaqueSceneColorSrvs) {
-                if (view.IsValid()) {
-                    (void)ReleaseRenderResourceDescriptor(view);
-                    view = {};
-                }
-            }
-            for (RenderResourceView& view : state->sceneDepthSrvs) {
-                if (view.IsValid()) {
-                    (void)ReleaseRenderResourceDescriptor(view);
-                    view = {};
-                }
-            }
-            state->outputSrvResources.fill(nullptr);
-            state->stylizedView.Shutdown();
-            state->target.reset();
-            state->opaqueSceneColorSnapshot.reset();
-            state->displayTarget.reset();
-            state->antialiasedTarget.reset();
+            ReleaseSceneSourceLease(state->request.sceneSourceOverride);
+            RetireViewResources(*state);
         }
+        g_sceneSourceLeaseCounts.clear();
         MESHRENDERER::ShutdownEditorInteractiveResources();
         g_views.clear();
         g_fxaaEffect.reset();
@@ -1537,6 +1848,8 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         g_displayQuad.reset();
         ShutdownEditorInteractiveStylizedSharedResources();
         g_scheduleSerial = 0u;
+        g_requestSerial = 0u;
+        g_continuousRenderStreak = 0u;
         g_schedulerStats = {};
     }
 

@@ -1164,7 +1164,6 @@ namespace HIKARI {
             if (asset != nullptr) {
                 desc.renderModel = renderModelCache.GetOrCreate(*asset);
             }
-
             desc.worldTransform = object.GetTransform();
             MATH::Mat4 presentationWorld{};
             if (presentationTransforms != nullptr &&
@@ -1319,6 +1318,10 @@ namespace HIKARI {
                     }
                 }
             }
+            if (desc.model != nullptr) {
+                desc.nodeVisibilityMask =
+                    model.ResolveRuntimeNodeVisibilityMask(*desc.model);
+            }
             return desc;
         }
     }
@@ -1335,6 +1338,8 @@ namespace HIKARI {
             terrainGrassProjections{};
         std::unordered_set<std::string>
             presentationMissingAssetsLogged{};
+        std::unordered_set<std::string>
+            presentationMissingNodesLogged{};
         std::unordered_set<std::string>
             presentationAttachmentDiagnosticsLogged{};
         std::unordered_set<std::string>
@@ -1355,6 +1360,7 @@ namespace HIKARI {
         state_->terrainProjections.clear();
         state_->terrainGrassProjections.clear();
         state_->presentationMissingAssetsLogged.clear();
+        state_->presentationMissingNodesLogged.clear();
         state_->presentationAttachmentDiagnosticsLogged.clear();
         state_->presentationMaterialDiagnosticsLogged.clear();
         state_->presentationMaterialOverrides.clear();
@@ -1486,6 +1492,7 @@ namespace HIKARI {
             animationPoses,
             presentationMaterials,
             state_->presentationMissingAssetsLogged,
+            state_->presentationMissingNodesLogged,
             state_->presentationAttachmentDiagnosticsLogged,
             state_->presentationMaterialDiagnosticsLogged);
 
@@ -1639,6 +1646,7 @@ namespace HIKARI {
             animationPoses,
             presentationMaterials,
             state_->presentationMissingAssetsLogged,
+            state_->presentationMissingNodesLogged,
             state_->presentationAttachmentDiagnosticsLogged,
             state_->presentationMaterialDiagnosticsLogged);
 

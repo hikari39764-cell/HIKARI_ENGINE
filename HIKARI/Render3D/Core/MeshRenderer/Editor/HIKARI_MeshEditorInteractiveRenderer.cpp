@@ -216,6 +216,13 @@ namespace HIKARI::MESHRENDERER {
             return EditorInteractiveMeshRenderResult::
                 MaterialFrameUnavailable;
         }
+        if (!gMeshRendererState.editorInteractive.worldSpritePass.PrepareFrame(
+                graphics,
+                view.worldSpriteFrameSource,
+                cameraPosition)) {
+            return EditorInteractiveMeshRenderResult::
+                MaterialFrameUnavailable;
+        }
         CommitActiveMaterialDataFrame(graphics.cmdList);
 
         RENDER3D::GPUDRIVEN::GpuDrivenLayer& layer =
@@ -353,6 +360,9 @@ namespace HIKARI::MESHRENDERER {
                 RENDER3D::MESHLET::MeshletPipelineKind::ForwardOpaque,
                 layer,
                 overrides);
+        const bool worldSpriteOpaqueResult =
+            gMeshRendererState.editorInteractive.worldSpritePass.
+                ExecuteForwardOpaque(graphics, overrides.cameraAddress);
 
         const bool hasDepthAwareSource =
             layer.GetPassExecutionState(
@@ -405,9 +415,14 @@ namespace HIKARI::MESHRENDERER {
         }
         GeometryBackendExecutionResult transparentResult{};
         bool particleResult = true;
+        bool worldSpriteTransparentResult = true;
         const bool hasParticleWork =
             gMeshRendererState.particlePass.HasDrawWork();
-        if (hasTransparentSource || hasParticleWork) {
+        const bool hasWorldSpriteTransparentWork =
+            gMeshRendererState.editorInteractive.worldSpritePass.
+                HasTransparentWork();
+        if (hasTransparentSource || hasParticleWork ||
+            hasWorldSpriteTransparentWork) {
             if (!passResources.sceneDepth.IsSampleable() ||
                 !settings.targetAccess.BeginDepthRead()) {
                 return EditorInteractiveMeshRenderResult::ForwardPassFailed;
@@ -420,6 +435,10 @@ namespace HIKARI::MESHRENDERER {
                 RENDER3D::MESHLET::MeshletPipelineKind::ForwardTransparent,
                 layer,
                 overrides);
+            worldSpriteTransparentResult =
+                gMeshRendererState.editorInteractive.worldSpritePass.
+                    ExecuteForwardTransparent(
+                        graphics, overrides.cameraAddress);
             particleResult = ExecutePreparedParticleForwardTransparent(
                 graphics,
                 overrides.cameraAddress,
@@ -429,9 +448,12 @@ namespace HIKARI::MESHRENDERER {
         const bool sceneRendered = opaqueResult.gpuBackendExecuted ||
             depthAwareResult.gpuBackendExecuted ||
             transparentResult.gpuBackendExecuted ||
+            gMeshRendererState.editorInteractive.worldSpritePass.
+                HasFrameWork() ||
             gMeshRendererState.particlePass.HasDrawWork() ||
             !sceneSource.HasAnyGpuSceneRanges();
-        if (!sceneRendered || !particleResult) {
+        if (!sceneRendered || !worldSpriteOpaqueResult ||
+            !worldSpriteTransparentResult || !particleResult) {
             return EditorInteractiveMeshRenderResult::ForwardPassFailed;
         }
         if (!stylizedSurfacePassReady) {

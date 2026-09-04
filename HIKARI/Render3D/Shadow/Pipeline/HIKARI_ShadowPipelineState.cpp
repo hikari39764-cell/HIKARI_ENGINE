@@ -137,7 +137,10 @@ namespace HIKARI::SHADOW::INTERNAL {
         const D3D12_DESCRIPTOR_RANGE texturePoolRange =
             MakeSrvRange(GFX::DESCRIPTOR::kUserSrvCount, 20);
         const D3D12_DESCRIPTOR_RANGE clusterGeometryPoolRange =
-            MakeSrvRange(GFX::DESCRIPTOR::kSystemSrvDynamicCount, 0, 1);
+            MakeSrvRange(
+                GFX::DESCRIPTOR::kClusterGeometryDescriptorArenaCapacity,
+                0,
+                1);
 
         D3D12_ROOT_PARAMETER params[PIPELINE::kShadowStaticRootParamSandSurfaceHeights + 1]{};
         params[PIPELINE::kShadowStaticRootParamCamera] =

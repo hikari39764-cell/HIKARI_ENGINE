@@ -142,6 +142,12 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                 "[MeshRenderer][WARN] Particle GPU-driven pass initialization "
                 "failed. Particle submissions will remain unavailable.");
         }
+        if (!gMeshRendererState.worldSpritePass.Initialize(graphics)) {
+            DEBUGLOG::PushRenderError(
+                "[MeshRenderer][WARN] World Sprite pass initialization "
+                "failed. WorldSpriteComponent submissions will remain "
+                "visible through diagnostics but cannot be drawn.");
+        }
         gMeshRendererState.clusterGpuDrivenProducer.Attach(&gMeshRendererState.clusterGpuCullingPass);
         gMeshRendererState.gpuDrivenLayer.Attach(
             &gMeshRendererState.surfaceGpuSceneBuffer,

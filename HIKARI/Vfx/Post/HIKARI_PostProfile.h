@@ -20,6 +20,7 @@ public:
     std::array<DirectX::XMFLOAT4, 16> values{};
 
     static bool LoadById(const std::string& profileId, PostProfile& out);
+    static std::vector<std::string> CollectAvailableIds();
     bool LoadFromJson(const std::string& path);
     void ResetValuesFromDefaults();
     void CopyValuesTo(DirectX::XMFLOAT4 (&dst)[16]) const;

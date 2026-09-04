@@ -23,17 +23,28 @@ namespace HIKARI::POST {
 
         const char* SnapshotDebugName(
             SceneColorSnapshotKind kind) noexcept {
-            return kind == SceneColorSnapshotKind::Opaque
-                ? "SceneCapture.ColorOpaque"
-                : "SceneCapture.ColorPostOpaque";
+            switch (kind) {
+            case SceneColorSnapshotKind::Opaque:
+                return "SceneCapture.ColorOpaque";
+            case SceneColorSnapshotKind::PostOpaque:
+                return "SceneCapture.ColorPostOpaque";
+            case SceneColorSnapshotKind::Final:
+                return "SceneCapture.ColorFinal";
+            case SceneColorSnapshotKind::Count:
+            default:
+                return "SceneCapture.ColorInvalid";
+            }
         }
 
         GFX::DESCRIPTOR::SystemSrv SnapshotDescriptor(
             SceneColorSnapshotKind kind,
             uint32_t frameIndex) noexcept {
+            if (kind == SceneColorSnapshotKind::Final) {
+                return GFX::DESCRIPTOR::SceneColorFinalFrameSlot(
+                    frameIndex);
+            }
             return GFX::DESCRIPTOR::SceneColorFrameSlot(
-                kind == SceneColorSnapshotKind::PostOpaque,
-                frameIndex);
+                kind == SceneColorSnapshotKind::PostOpaque, frameIndex);
         }
     }
 
@@ -350,6 +361,9 @@ namespace HIKARI::POST {
             << " sceneColorPostOpaque="
             << sceneColorReady_[SnapshotIndex(
                 SceneColorSnapshotKind::PostOpaque)]
+            << " sceneColorFinal="
+            << sceneColorReady_[SnapshotIndex(
+                SceneColorSnapshotKind::Final)]
             << " lighting=" << lightingEnabled_
             << " target=" << (currentTarget_ != nullptr)
             << "\n  " << sceneTarget_.DumpState()
@@ -357,6 +371,8 @@ namespace HIKARI::POST {
                 SceneColorSnapshotKind::Opaque)].DumpState()
             << "\n  " << sceneColorSnapshots_[SnapshotIndex(
                 SceneColorSnapshotKind::PostOpaque)].DumpState()
+            << "\n  " << sceneColorSnapshots_[SnapshotIndex(
+                SceneColorSnapshotKind::Final)].DumpState()
             << "\n  " << lightTarget_.DumpState();
         return stream.str();
     }

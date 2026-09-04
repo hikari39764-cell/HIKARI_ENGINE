@@ -37,7 +37,7 @@ namespace HIKARI::RENDER3D {
 
         return GetTextureResourcePoolSrvGpuHandle(
             context,
-            GFX::DESCRIPTOR::kSystemSrvDynamicBegin);
+            GFX::DESCRIPTOR::kClusterGeometryDescriptorArenaBegin);
     }
 
 } // namespace HIKARI::RENDER3D

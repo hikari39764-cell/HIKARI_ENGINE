@@ -1407,6 +1407,93 @@ namespace HIKARI {
     }
 
     EDITOR::EditorOperationResult
+    DocumentSceneEditorController::ExecuteAiSceneCreateWorldSprite(
+        const nlohmann::json& parameters) {
+        EDITOR::EditorOperationResult result{};
+        DocumentSceneBase* scene = aiOperationScene_;
+        if (scene == nullptr) {
+            result.code = "NO_SCENE";
+            result.message = "场景上下文不可用";
+            return result;
+        }
+        const std::string texture =
+            parameters.value("texture", std::string{});
+        if (texture.empty()) {
+            result.code = "MISSING_FIELD";
+            result.message = "缺少 texture 字段（纹理资产 id 或路径片段）";
+            return result;
+        }
+        const AssetRegistry& registry = scene->GetAssetRegistry();
+        const AssetDescriptor* descriptor = registry.FindDescriptor(texture);
+        if (descriptor != nullptr && descriptor->type != AssetType::Texture) {
+            descriptor = nullptr;
+        }
+        if (descriptor == nullptr) {
+            for (const AssetDescriptor* candidate :
+                 registry.CollectByType(AssetType::Texture)) {
+                if (candidate != nullptr &&
+                    (candidate->sourcePath.find(texture) !=
+                         std::string::npos ||
+                     candidate->id.value.find(texture) !=
+                         std::string::npos)) {
+                    descriptor = candidate;
+                    break;
+                }
+            }
+        }
+        if (descriptor == nullptr) {
+            result.code = "TEXTURE_NOT_FOUND";
+            result.message = "找不到纹理资产：" + texture;
+            return result;
+        }
+
+        const bool dirtyBefore =
+            context_.sceneDirty || scene->HasUnsavedSceneChanges();
+        const std::vector<SceneObjectData> beforeObjects =
+            scene->GetSceneDocument().objects;
+        const SceneCameraSettings beforeCamera =
+            scene->GetSceneDocument().camera;
+        EDITOR::CreateObjectRequest request{};
+        request.name = parameters.value("name", std::string{});
+        request.position = {
+            ReadJsonFloat(parameters, "positionX", 0.0f),
+            ReadJsonFloat(parameters, "positionY", 0.0f),
+            ReadJsonFloat(parameters, "positionZ", 0.0f),
+        };
+        request.scale = {
+            ReadJsonFloat(parameters, "scaleX", 1.0f),
+            ReadJsonFloat(parameters, "scaleY", 1.0f),
+            ReadJsonFloat(parameters, "scaleZ", 1.0f),
+        };
+        GameObject* object = EDITOR::CreateWorldSpriteObject(
+            *scene,
+            AssetGuid{ descriptor->id.value },
+            request);
+        if (object == nullptr) {
+            result.code = "CREATE_FAILED";
+            result.message = "创建 3D 世界贴图失败";
+            return result;
+        }
+        context_.selection.SelectObject(scene->GetWorld(), object);
+        selectionSync_.SyncNextSceneObjectId(
+            *scene, context_.nextSceneObjectId);
+        CommitSceneObjectAuthoringHistory(
+            *scene,
+            SceneObjectAuthoringHistoryRequest{
+                "Create World Sprite",
+                beforeObjects,
+                scene->GetSceneDocument().objects,
+                beforeCamera,
+                scene->GetSceneDocument().camera,
+                dirtyBefore });
+        SummarizeSceneObjects(*scene, result.details, 8u);
+        result.ok = true;
+        result.code = "OK";
+        result.message = "已创建 3D 世界贴图 " + object->GetName();
+        return result;
+    }
+
+    EDITOR::EditorOperationResult
     DocumentSceneEditorController::ExecuteAiProceduralCreatePrimitive(
         const nlohmann::json& parameters) {
         EDITOR::EditorOperationResult result{};

@@ -29,9 +29,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         }
     };
 
-#if defined(HIKARI_WITH_EDITOR)
     struct MeshFrameBindingOverrides;
-#endif
 
     bool EnsureInitialized(const GFX::Context& graphics);
     void RecordOceanSpectrumForWaterFrame(
@@ -61,6 +59,12 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         const GFX::Context& graphics,
         D3D12_GPU_VIRTUAL_ADDRESS cameraAddress,
         const MeshPassResources& passResources);
+    bool ExecuteParticleForwardTransparent(
+        RENDER3D::PARTICLES::ParticleGpuDrivenPass& particlePass,
+        const GFX::Context& graphics,
+        D3D12_GPU_VIRTUAL_ADDRESS cameraAddress,
+        const MATH::Vec3& cameraPosition,
+        const MeshPassResources& passResources);
     void SyncSurfaceGpuSceneMaterialFrame(const GFX::Context& graphics);
     void SyncGpuDrivenSceneMaterialSources(
         const GFX::Context& graphics,
@@ -87,11 +91,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         const GFX::Context& graphics,
         bool depthAwarePhase,
         MeshDrawPassKind passKind,
-        const MeshPassResources& passResources
-#if defined(HIKARI_WITH_EDITOR)
-        , const MeshFrameBindingOverrides* overrides = nullptr
-#endif
-    );
+        const MeshPassResources& passResources,
+        const MeshFrameBindingOverrides* overrides = nullptr);
     ID3D12PipelineState* ResolveTraditionalStaticPso(
         const GFX::Context& graphics,
         MeshDrawPassKind passKind,
@@ -101,13 +102,9 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         const GFX::Context& graphics,
         const MeshPassResources& passResources,
         RENDER3D::GPUDRIVEN::GpuDrivenPassKind gpuPass,
-        MeshDrawPassKind passKind
-#if defined(HIKARI_WITH_EDITOR)
-        ,
+        MeshDrawPassKind passKind,
         RENDER3D::GPUDRIVEN::GpuDrivenLayer* layerOverride = nullptr,
-        const MeshFrameBindingOverrides* bindingOverrides = nullptr
-#endif
-    );
+        const MeshFrameBindingOverrides* bindingOverrides = nullptr);
     GeometryBackendExecutionResult ExecuteGeometryBackendPlan(
         const GFX::Context& graphics,
         RENDER3D::GPUDRIVEN::GpuDrivenPassKind pass,
@@ -119,7 +116,6 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         RENDER3D::GPUDRIVEN::GpuDrivenPassKind pass,
         const MeshPassResources& passResources);
 
-#if defined(HIKARI_WITH_EDITOR)
     struct MeshFrameBindingOverrides {
         D3D12_GPU_VIRTUAL_ADDRESS cameraAddress = 0;
         D3D12_GPU_VIRTUAL_ADDRESS cullingCameraAddress = 0;
@@ -138,6 +134,17 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             traditionalCommandStreamBuffer = nullptr;
     };
 
+    GeometryBackendExecutionResult ExecuteSecondaryViewGeometryBackendPlan(
+        const GFX::Context& graphics,
+        RENDER3D::GPUDRIVEN::GpuDrivenPassKind pass,
+        const MeshPassResources& passResources,
+        MeshDrawPassKind passKind,
+        RENDER3D::MESHLET::MeshletPipelineKind meshletPipelineKind,
+        RENDER3D::GPUDRIVEN::GpuDrivenLayer& layer,
+        const MeshFrameBindingOverrides& bindingOverrides,
+        bool allowCompatibilityFallback = false);
+
+#if defined(HIKARI_WITH_EDITOR)
     GeometryBackendExecutionResult ExecuteEditorInteractiveGeometryBackendPlan(
         const GFX::Context& graphics,
         RENDER3D::GPUDRIVEN::GpuDrivenPassKind pass,

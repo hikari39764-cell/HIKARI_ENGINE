@@ -268,15 +268,16 @@ void ModelMaterialWorkspaceController::DrawPreviewWindow(
   previewOutputHeight_ = output.height;
   previewOutputRevision_ = output.outputRevision;
   const ModelPreviewScene &activePreview = GetActivePreviewScene();
+  // Interactive output is a receipt: sceneRevision is the last completed
+  // frame, while a newer request may still be Pending. Keep displaying that
+  // receipt until the renderer publishes its replacement.
   previewOutputReady_ = IsPreviewReady() && output.ready &&
-                        output.colorSrv.ptr != 0u &&
-                        output.sceneRevision == activePreview.GetRevision();
+                        output.colorSrv.ptr != 0u;
   const RENDER3D::EDITORVIEW::EditorInteractiveViewOutput compareOutput =
       RENDER3D::EDITORVIEW::GetOutput(compareView.renderViewId);
   const bool compareReady = previewCompareEnabled_ &&
       IsPreviewReady() && compareOutput.ready &&
-      compareOutput.colorSrv.ptr != 0u &&
-      compareOutput.sceneRevision == activePreview.GetRevision();
+      compareOutput.colorSrv.ptr != 0u;
   const auto environmentModeLabel =
       [](PreviewEnvironmentMode mode) {
         switch (mode) {

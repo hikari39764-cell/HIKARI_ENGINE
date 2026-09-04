@@ -15,6 +15,7 @@
 #include "Scene/Features/HIKARI_SequenceRuntimeFeature.h"
 #include "Scene/Features/HIKARI_SurfaceInteractionRuntimeFeature.h"
 #include "Scene/Features/HIKARI_TerrainRuntimeFeature.h"
+#include "Scene/Features/HIKARI_UiRuntimeFeature.h"
 #include "Scene/Features/HIKARI_VfxRuntimeFeature.h"
 #include "Scene/Features/HIKARI_WaterRuntimeFeature.h"
 
@@ -80,6 +81,7 @@ namespace HIKARI {
     RuntimeFeatureCatalog CreateBuiltInRuntimeFeatureCatalog() {
         RuntimeFeatureCatalog catalog;
         (void)catalog.Add(CreateRenderingRuntimeFeature());
+        (void)catalog.Add(CreateUiRuntimeFeature());
         (void)catalog.Add(CreateLightingRuntimeFeature());
         (void)catalog.Add(CreateTerrainRuntimeFeature());
         (void)catalog.Add(CreateWaterRuntimeFeature());

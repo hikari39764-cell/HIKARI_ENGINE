@@ -381,6 +381,45 @@ namespace HIKARI::EDITOR {
                 point.y <= maximum.y;
         }
 
+        bool BoundsOverlapRectangle(
+            const Camera3D& camera,
+            const SceneViewportRect& viewport,
+            const ImVec2& selectionMin,
+            const ImVec2& selectionMax,
+            const Bounds& bounds) {
+
+            if (!BOUNDS::IsUsable(bounds)) {
+                return false;
+            }
+            const MATH::Vec3 center{
+                (bounds.min.x + bounds.max.x) * 0.5f,
+                (bounds.min.y + bounds.max.y) * 0.5f,
+                (bounds.min.z + bounds.max.z) * 0.5f
+            };
+            ImVec2 centerScreen{};
+            const bool centerVisible = ProjectPoint(
+                camera, viewport, center, centerScreen);
+            const std::vector<ImVec2> hull = BuildBoundsHull(
+                camera, viewport, bounds);
+            if (centerVisible && ContainsPoint(
+                    selectionMin, selectionMax, centerScreen)) {
+                return true;
+            }
+            if (hull.size() < 3u || IsOversizedHull(hull, viewport)) {
+                return false;
+            }
+            ImVec2 hullMin = hull.front();
+            ImVec2 hullMax = hull.front();
+            for (const ImVec2& point : hull) {
+                hullMin.x = (std::min)(hullMin.x, point.x);
+                hullMin.y = (std::min)(hullMin.y, point.y);
+                hullMax.x = (std::max)(hullMax.x, point.x);
+                hullMax.y = (std::max)(hullMax.y, point.y);
+            }
+            return RectanglesOverlap(
+                selectionMin, selectionMax, hullMin, hullMax);
+        }
+
         std::vector<SceneObjectId> PickObjectsInRectangle(
             const Camera3D& camera,
             const SceneViewportRect& viewport,
@@ -408,49 +447,29 @@ namespace HIKARI::EDITOR {
                     continue;
                 }
 
-                const Bounds& bounds = object.desc.worldBounds;
-                const MATH::Vec3 center{
-                    (bounds.min.x + bounds.max.x) * 0.5f,
-                    (bounds.min.y + bounds.max.y) * 0.5f,
-                    (bounds.min.z + bounds.max.z) * 0.5f
-                };
-                ImVec2 centerScreen{};
-                const bool centerVisible = ProjectPoint(
-                    camera,
-                    viewport,
-                    center,
-                    centerScreen);
-
-                const std::vector<ImVec2> hull = BuildBoundsHull(
-                    camera,
-                    viewport,
-                    bounds);
-                bool intersects = centerVisible &&
-                    ContainsPoint(
+                if (BoundsOverlapRectangle(
+                        camera,
+                        viewport,
                         selectionMin,
                         selectionMax,
-                        centerScreen);
-                if (!intersects &&
-                    hull.size() >= 3u &&
-                    !IsOversizedHull(hull, viewport)) {
-                    ImVec2 hullMin = hull.front();
-                    ImVec2 hullMax = hull.front();
-                    for (const ImVec2& point : hull) {
-                        hullMin.x = (std::min)(hullMin.x, point.x);
-                        hullMin.y = (std::min)(hullMin.y, point.y);
-                        hullMax.x = (std::max)(hullMax.x, point.x);
-                        hullMax.y = (std::max)(hullMax.y, point.y);
-                    }
-                    intersects = RectanglesOverlap(
-                        selectionMin,
-                        selectionMax,
-                        hullMin,
-                        hullMax);
-                }
-                if (intersects) {
+                        object.desc.worldBounds)) {
                     selected.push_back(
                         SceneObjectId{ object.desc.id.value });
                 }
+            }
+            for (const auto& sprite : RenderSubmissionSystem::
+                    GetWorldSpriteFrameSource().instances) {
+                if (sprite.objectId == 0u ||
+                    lockedObjectIds.contains(sprite.objectId) ||
+                    !BoundsOverlapRectangle(
+                        camera,
+                        viewport,
+                        selectionMin,
+                        selectionMax,
+                        sprite.worldBounds)) {
+                    continue;
+                }
+                selected.push_back(SceneObjectId{ sprite.objectId });
             }
             std::sort(
                 selected.begin(),
@@ -502,6 +521,8 @@ namespace HIKARI::EDITOR {
         float selectedDistance = (std::numeric_limits<float>::max)();
         const RENDER3D::RUNTIME::SceneSurfaceInstance* selectedSurface =
             nullptr;
+        const RENDER3D::WORLD_SPRITES::WorldSpriteInstance*
+            selectedSprite = nullptr;
         for (const RENDER3D::RUNTIME::SceneSurfaceInstance& surface :
             cache.GetSurfaceInstances()) {
             if (!surface.valid ||
@@ -519,7 +540,23 @@ namespace HIKARI::EDITOR {
             }
         }
 
-        if (selectedObject.value != 0u) {
+        for (const auto& sprite : RenderSubmissionSystem::
+                GetWorldSpriteFrameSource().instances) {
+            if (sprite.objectId == 0u ||
+                lockedObjectIds_.contains(sprite.objectId)) {
+                continue;
+            }
+            float distance = 0.0f;
+            if (IntersectRayBounds(ray, sprite.worldBounds, distance) &&
+                distance < selectedDistance) {
+                selectedDistance = distance;
+                selectedObject.value = sprite.objectId;
+                selectedSurface = nullptr;
+                selectedSprite = &sprite;
+            }
+        }
+
+        if (selectedObject.value != 0u && selectedSurface != nullptr) {
             const MATH::Vec3 hitPoint =
                 ray.origin + ray.direction * selectedDistance;
             selectionAnchor_.objectId = selectedObject;
@@ -548,6 +585,7 @@ namespace HIKARI::EDITOR {
                 distance < selectedDistance) {
                 selectedDistance = distance;
                 selectedObject.value = object.desc.id.value;
+                selectedSprite = nullptr;
             }
         }
         if (selectedObject.value != 0u) {
@@ -561,6 +599,14 @@ namespace HIKARI::EDITOR {
                 selectionAnchor_.normalizedPosition = NormalizePointInBounds(
                     hitPoint,
                     object->desc.worldBounds);
+                selectionAnchor_.valid = true;
+            } else if (selectedSprite != nullptr) {
+                const MATH::Vec3 hitPoint =
+                    ray.origin + ray.direction * selectedDistance;
+                selectionAnchor_.objectId = selectedObject;
+                selectionAnchor_.normalizedPosition = NormalizePointInBounds(
+                    hitPoint,
+                    selectedSprite->worldBounds);
                 selectionAnchor_.valid = true;
             }
         }
@@ -746,16 +792,28 @@ namespace HIKARI::EDITOR {
         const RENDER3D::RUNTIME::SceneRenderObject* object =
             RenderSubmissionSystem::GetSceneRenderCache().Find(
                 RENDER3D::RUNTIME::SceneRenderObjectId{ objectId.value });
-        if (object == nullptr ||
-            !object->valid ||
-            !BOUNDS::IsUsable(object->desc.worldBounds)) {
+        const Bounds* objectBounds = object != nullptr && object->valid &&
+                BOUNDS::IsUsable(object->desc.worldBounds)
+            ? &object->desc.worldBounds
+            : nullptr;
+        if (objectBounds == nullptr) {
+            for (const auto& sprite : RenderSubmissionSystem::
+                    GetWorldSpriteFrameSource().instances) {
+                if (sprite.objectId == objectId.value &&
+                    BOUNDS::IsUsable(sprite.worldBounds)) {
+                    objectBounds = &sprite.worldBounds;
+                    break;
+                }
+            }
+        }
+        if (objectBounds == nullptr) {
             return;
         }
 
         const std::vector<ImVec2> objectHull = BuildBoundsHull(
             camera,
             viewport,
-            object->desc.worldBounds);
+            *objectBounds);
         if (!IsOversizedHull(objectHull, viewport)) {
             DrawSelectionHull(*drawList, objectHull);
             return;
@@ -794,7 +852,7 @@ namespace HIKARI::EDITOR {
 
         const Bounds& anchorBounds = anchorSurface != nullptr
             ? anchorSurface->worldBounds
-            : object->desc.worldBounds;
+            : *objectBounds;
         const MATH::Vec3 normalizedAnchor =
             selectionAnchor_.valid &&
                 selectionAnchor_.objectId.value == objectId.value

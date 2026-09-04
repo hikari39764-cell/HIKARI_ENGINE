@@ -190,12 +190,14 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         return backendResult.gpuBackendExecuted;
     }
 
-    bool ExecutePreparedParticleForwardTransparent(
+    bool ExecuteParticleForwardTransparent(
+        RENDER3D::PARTICLES::ParticleGpuDrivenPass& particlePass,
         const GFX::Context& graphics,
         D3D12_GPU_VIRTUAL_ADDRESS cameraAddress,
+        const MATH::Vec3& cameraPosition,
         const MeshPassResources& passResources) {
 
-        if (!gMeshRendererState.particlePass.HasDrawWork()) {
+        if (!particlePass.HasDrawWork()) {
             return true;
         }
         const MeshFrameResources& frame = GetActiveMeshFrameResources();
@@ -217,17 +219,52 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         if (passResources.sceneDepth.IsSampleable()) {
             bindings.sceneDepth = passResources.sceneDepth.srv;
         }
+        bindings.cameraPosition = cameraPosition;
+        bindings.cameraPositionValid = true;
+        return particlePass.ExecuteForwardTransparent(graphics, bindings);
+    }
+
+        bool ExecutePreparedParticleForwardTransparent(
+        const GFX::Context& graphics,
+        D3D12_GPU_VIRTUAL_ADDRESS cameraAddress,
+        const MeshPassResources& passResources) {
+
+        MATH::Vec3 cameraPosition{};
+        const MeshFrameResources& frame = GetActiveMeshFrameResources();
         if (frame.cameraMapped != nullptr) {
-            bindings.cameraPosition = {
+            cameraPosition = {
                 frame.cameraMapped->cameraPos.x,
                 frame.cameraMapped->cameraPos.y,
                 frame.cameraMapped->cameraPos.z,
             };
-            bindings.cameraPositionValid = true;
         }
-        return gMeshRendererState.particlePass.
-            ExecuteForwardTransparent(graphics, bindings);
-    }
+            return ExecuteParticleForwardTransparent(
+            gMeshRendererState.particlePass,
+            graphics,
+            cameraAddress,
+            cameraPosition,
+                passResources);
+        }
+
+        bool ExecutePreparedWorldSpriteForwardOpaque(
+            const GFX::Context& graphics,
+            D3D12_GPU_VIRTUAL_ADDRESS cameraAddress) {
+            if (!gMeshRendererState.worldSpritePass.HasOpaqueWork()) {
+                return true;
+            }
+            return gMeshRendererState.worldSpritePass.ExecuteForwardOpaque(
+                graphics, cameraAddress);
+        }
+
+        bool ExecutePreparedWorldSpriteForwardTransparent(
+            const GFX::Context& graphics,
+            D3D12_GPU_VIRTUAL_ADDRESS cameraAddress) {
+            if (!gMeshRendererState.worldSpritePass.HasTransparentWork()) {
+                return true;
+            }
+            return gMeshRendererState.worldSpritePass.
+                ExecuteForwardTransparent(graphics, cameraAddress);
+        }
 
 
 } // namespace HIKARI::MESHRENDERER::INTERNAL
@@ -392,26 +429,34 @@ namespace HIKARI::MESHRENDERER {
     bool RenderForwardOpaquePass(
         const GFX::Context& graphics,
         const MeshPassResources& passResources) {
-        if (!HasGpuDrivenPassSource(
-            RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardOpaque)) {
-            return true;
+        bool surfaceExecuted = true;
+        if (HasGpuDrivenPassSource(
+                RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardOpaque)) {
+            const GeometryBackendExecutionResult backendResult =
+                ExecuteGeometryBackendPlan(
+                    graphics,
+                    RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardOpaque,
+                    passResources,
+                    MeshDrawPassKind::Forward,
+                    RENDER3D::MESHLET::MeshletPipelineKind::ForwardOpaque);
+            const bool massSubmissionResident =
+                gMeshRendererState.gpuDrivenLayer.GetSceneUploadStats().
+                    massSceneResident &&
+                gMeshRendererState.gpuDrivenLayer.GetFrameContext().scene.
+                    massInstanceCount != 0u;
+            if (massSubmissionResident && backendResult.meshShaderExecuted) {
+                gMeshRendererState.massForwardOpaqueSubmissionCommitted = true;
+            }
+            surfaceExecuted = backendResult.gpuBackendExecuted;
         }
-        const GeometryBackendExecutionResult backendResult =
-            ExecuteGeometryBackendPlan(
+        const MeshFrameResources& frame = GetActiveMeshFrameResources();
+        const bool spritesExecuted =
+            ExecutePreparedWorldSpriteForwardOpaque(
                 graphics,
-                RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardOpaque,
-                passResources,
-                MeshDrawPassKind::Forward,
-                RENDER3D::MESHLET::MeshletPipelineKind::ForwardOpaque);
-        const bool massSubmissionResident =
-            gMeshRendererState.gpuDrivenLayer.GetSceneUploadStats().
-                massSceneResident &&
-            gMeshRendererState.gpuDrivenLayer.GetFrameContext().scene.
-                massInstanceCount != 0u;
-        if (massSubmissionResident && backendResult.meshShaderExecuted) {
-            gMeshRendererState.massForwardOpaqueSubmissionCommitted = true;
-        }
-        return backendResult.gpuBackendExecuted;
+                frame.cameraCB != nullptr
+                    ? frame.cameraCB->GetGPUVirtualAddress()
+                    : 0u);
+        return surfaceExecuted && spritesExecuted;
     }
 
     bool RenderForwardTransparentPass(
@@ -430,6 +475,12 @@ namespace HIKARI::MESHRENDERER {
             surfaceExecuted = backendResult.gpuBackendExecuted;
         }
         const MeshFrameResources& frame = GetActiveMeshFrameResources();
+        const bool spritesExecuted =
+            ExecutePreparedWorldSpriteForwardTransparent(
+                graphics,
+                frame.cameraCB != nullptr
+                    ? frame.cameraCB->GetGPUVirtualAddress()
+                    : 0u);
         const bool particlesExecuted =
             ExecutePreparedParticleForwardTransparent(
                 graphics,
@@ -437,7 +488,7 @@ namespace HIKARI::MESHRENDERER {
                     ? frame.cameraCB->GetGPUVirtualAddress()
                     : 0u,
                 passResources);
-        return surfaceExecuted && particlesExecuted;
+        return surfaceExecuted && spritesExecuted && particlesExecuted;
     }
 
     bool HasDepthAwarePassWork() {
@@ -448,6 +499,7 @@ namespace HIKARI::MESHRENDERER {
     bool HasForwardTransparentPassWork() {
         return HasGpuDrivenPassSource(
                 RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardTransparent) ||
+            gMeshRendererState.worldSpritePass.HasTransparentWork() ||
             gMeshRendererState.particlePass.HasDrawWork();
     }
 

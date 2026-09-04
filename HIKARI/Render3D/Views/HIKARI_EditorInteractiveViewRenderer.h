@@ -30,6 +30,10 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
     struct GpuDrivenSceneSource;
 }
 
+namespace HIKARI::RENDER3D::WORLD_SPRITES {
+    struct WorldSpriteFrameSource;
+}
+
 namespace HIKARI::RENDER3D::EDITORVIEW {
 
     // Tool previews own these guides per view. They are expanded directly by
@@ -81,6 +85,9 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         uint32_t width = 0;
         uint32_t height = 0;
         uint64_t sceneRevision = 0;
+        // Workspace-owned, non-scene preview inputs such as local lighting
+        // increment this revision when their borrowed data changes in place.
+        uint64_t contentRevision = 0;
         bool visible = false;
         bool drawDebug = true;
         // Continuous tool views (for example VFX playback) must be sampled
@@ -109,7 +116,11 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         D3D12_GPU_DESCRIPTOR_HANDLE colorSrv{};
         uint32_t width = 0;
         uint32_t height = 0;
+        // sceneRevision is the last successfully completed revision retained
+        // by this receipt. requestedRevision describes a newer request without
+        // invalidating that last-completed image while status is Pending.
         uint64_t sceneRevision = 0;
+        uint64_t requestedRevision = 0u;
         uint64_t outputRevision = 0;
         EditorInteractiveViewStatus status =
             EditorInteractiveViewStatus::Idle;
@@ -124,6 +135,9 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         uint32_t renderableViewCount = 0u;
     };
 
+    // All view-state APIs are Editor/presentation-owner-thread only. Pointer
+    // overrides remain borrowed until their request is replaced or cleared;
+    // an output is valid only while the corresponding view stays active.
     void SubmitRequest(const EditorInteractiveViewRequest& request);
     void ClearRequest(RenderViewId viewId);
     void RequestPreviewCapture(
@@ -140,7 +154,9 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         SkyManager& skyManager,
         const AssetRegistry* assetRegistry = nullptr,
         const MATERIAL::MaterialExternalValueSnapshot*
-            materialExternalValues = nullptr);
+            materialExternalValues = nullptr,
+        const WORLD_SPRITES::WorldSpriteFrameSource*
+            worldSpriteFrameSource = nullptr);
     EditorInteractiveViewOutput GetOutput(RenderViewId viewId);
     std::string_view GetEditorInteractiveViewFailureMessage(
         EditorInteractiveViewFailure failure) noexcept;

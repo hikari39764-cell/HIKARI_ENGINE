@@ -28,7 +28,7 @@ namespace HIKARI {
             return;
         }
         materialProgramParameterBlock_ = std::move(values);
-        ++revision_;
+        TouchRevision();
     }
 
     std::span<const MATH::Vec4>
@@ -89,7 +89,7 @@ namespace HIKARI {
             return;
         }
         materialProgramParameterBlock_ = std::move(values);
-        ++revision_;
+        TouchRevision();
     }
 
 } // namespace HIKARI

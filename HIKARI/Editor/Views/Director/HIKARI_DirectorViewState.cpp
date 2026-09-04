@@ -37,6 +37,28 @@ void DirectorViewPanel::SetTargetCamera(SceneObjectId cameraObjectId) noexcept {
   targetCameraObjectId_ = cameraObjectId;
 }
 
+bool DirectorViewPanel::FrameTargetCamera(const DocumentSceneBase &scene,
+                                          SceneObjectId cameraObjectId,
+                                          float preferredDistance) {
+  const GameObject *object = scene.GetWorld().FindObject(cameraObjectId);
+  if (object == nullptr ||
+      object->GetComponent<CameraComponent>() == nullptr) {
+    return false;
+  }
+  const MATH::Mat4 world = object->GetTransform().GetWorldMatrix();
+  const MATH::Vec3 position{world.m[3][0], world.m[3][1], world.m[3][2]};
+  SetTargetCamera(cameraObjectId);
+  SetMode(DirectorViewMode::Free);
+  freeCamera_.Focus(position, std::clamp(preferredDistance, 2.0f, 100.0f));
+  currentViewCamera_ = freeCamera_.GetCamera();
+  ++cameraRevision_;
+  if (cameraRevision_ == 0u) {
+    cameraRevision_ = 1u;
+  }
+  cameraCutPending_ = true;
+  return true;
+}
+
 void DirectorViewPanel::ExitPilot() noexcept {
   if (mode_ == DirectorViewMode::Pilot) {
     SetMode(DirectorViewMode::Free);

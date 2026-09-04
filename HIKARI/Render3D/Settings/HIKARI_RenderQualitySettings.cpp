@@ -112,6 +112,50 @@ namespace HIKARI::RENDER3D {
             lhs.sceneDepthPrepass == rhs.sceneDepthPrepass;
     }
 
+    RenderQualityRuntimeChangeSet ClassifyRenderQualityRuntimeChanges(
+        const RenderQualitySettings& before,
+        const RenderQualitySettings& after) {
+
+        const RenderQualitySettings normalizedBefore =
+            NormalizeRenderQualitySettings(before);
+        const RenderQualitySettings normalizedAfter =
+            NormalizeRenderQualitySettings(after);
+        const bool beforeUsesStreamline =
+            IsDlaaAntiAliasingMode(normalizedBefore.antiAliasingMode) ||
+            IsDlssAntiAliasingMode(normalizedBefore.antiAliasingMode);
+        const bool afterUsesStreamline =
+            IsDlaaAntiAliasingMode(normalizedAfter.antiAliasingMode) ||
+            IsDlssAntiAliasingMode(normalizedAfter.antiAliasingMode);
+
+        RenderQualityRuntimeChangeSet changes{};
+        changes.sceneResolutionChanged =
+            normalizedBefore.sceneResolution !=
+                normalizedAfter.sceneResolution ||
+            normalizedBefore.viewportScale != normalizedAfter.viewportScale;
+        changes.temporalBackendChanged =
+            normalizedBefore.antiAliasingMode !=
+                normalizedAfter.antiAliasingMode ||
+            (IsDlssAntiAliasingMode(normalizedBefore.antiAliasingMode) &&
+             IsDlssAntiAliasingMode(normalizedAfter.antiAliasingMode) &&
+             normalizedBefore.dlssQualityMode !=
+                normalizedAfter.dlssQualityMode);
+        changes.streamlineStateChanged =
+            (beforeUsesStreamline || afterUsesStreamline) &&
+            (changes.sceneResolutionChanged ||
+             changes.temporalBackendChanged ||
+             normalizedBefore.dlssQualityMode !=
+                normalizedAfter.dlssQualityMode);
+        changes.frameGenerationChanged =
+            normalizedBefore.frameGenerationMode !=
+                normalizedAfter.frameGenerationMode ||
+            normalizedBefore.frameGenerationMultiplier !=
+                normalizedAfter.frameGenerationMultiplier;
+        changes.presentationChanged =
+            normalizedBefore.windowSize != normalizedAfter.windowSize ||
+            normalizedBefore.windowMode != normalizedAfter.windowMode;
+        return changes;
+    }
+
     void SetRenderQualitySettings(const RenderQualitySettings& settings) {
         gRenderQualitySettings = NormalizeRenderQualitySettings(settings);
     }

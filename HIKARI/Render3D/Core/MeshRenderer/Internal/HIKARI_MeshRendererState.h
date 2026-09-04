@@ -29,11 +29,11 @@
 #include "Render3D/Vfx/HIKARI_ParticleGpuDrivenPass.h"
 #include "Render3D/Water/HIKARI_WaterSurfaceGpuFrameBuffer.h"
 #include "Render3D/Water/Spectrum/HIKARI_OceanSpectrumRuntime.h"
+#include "Render3D/WorldSprite/HIKARI_WorldSpritePass.h"
 
 namespace HIKARI::MESHRENDERER {
 
-#if defined(HIKARI_WITH_EDITOR)
-    struct EditorInteractiveMeshFrameResources {
+    struct SecondaryMeshViewFrameResources {
         Microsoft::WRL::ComPtr<ID3D12Resource> cameraCB{};
         Microsoft::WRL::ComPtr<ID3D12Resource> lightCB{};
         Microsoft::WRL::ComPtr<ID3D12Resource> localLightBuffer{};
@@ -76,10 +76,16 @@ namespace HIKARI::MESHRENDERER {
         }
     };
 
-    struct EditorInteractiveMeshResources {
+    struct SecondaryMeshViewResources {
         bool initialized = false;
+        // These resources own native buffers, descriptor ranges, and pass
+        // objects tied to one D3D12 device.  Keep the owner identity beside
+        // the initialized bit so a device-generation rollover cannot reuse
+        // the old capture state.
+        ID3D12Device* ownerDevice = nullptr;
+        uint64_t ownerDeviceGeneration = 0u;
         std::array<
-            EditorInteractiveMeshFrameResources,
+            SecondaryMeshViewFrameResources,
             GFX::kFrameResourceCount> frames{};
         std::array<
             RENDER3D::RenderResourceView,
@@ -96,8 +102,19 @@ namespace HIKARI::MESHRENDERER {
         RENDER3D::CLUSTER::ClusterGpuCullingPass clusterGpuCullingPass{};
         RENDER3D::GPUDRIVEN::ClusterGpuDrivenProducerAdapter
             clusterGpuDrivenProducer{};
+        RENDER3D::GPUDRIVEN::GpuTraditionalCommandStreamBuffer
+            traditionalCommandStreamBuffer{};
         RENDER3D::GPUDRIVEN::GpuDrivenLayer gpuDrivenLayer{};
+        RENDER3D::PARTICLES::ParticleGpuDrivenPass particlePass{};
+        RENDER3D::WORLD_SPRITES::WorldSpritePass worldSpritePass{};
+        bool clusterGpuDrivenReady = false;
+        bool traditionalCommandStreamReady = false;
     };
+
+#if defined(HIKARI_WITH_EDITOR)
+    using EditorInteractiveMeshFrameResources =
+        SecondaryMeshViewFrameResources;
+    using EditorInteractiveMeshResources = SecondaryMeshViewResources;
 #endif
 
     struct MeshRendererState {
@@ -138,6 +155,9 @@ namespace HIKARI::MESHRENDERER {
         MeshTraditionalIndirectOwner traditionalIndirectOwner{};
         RENDER3D::GPUDRIVEN::GpuDrivenFrame gpuDrivenFrame{};
         RENDER3D::GPUDRIVEN::GpuDrivenLayer gpuDrivenLayer{};
+        std::array<
+            SecondaryMeshViewResources,
+            kSecondarySceneCaptureMaximumCount> secondaryCaptures{};
 #if defined(HIKARI_WITH_EDITOR)
         EditorInteractiveMeshResources editorInteractive{};
 #endif
@@ -147,6 +167,9 @@ namespace HIKARI::MESHRENDERER {
         RENDER3D::PARTICLES::ParticleGpuDrivenPass particlePass{};
         const RENDER3D::PARTICLES::ParticleRenderFrameSource*
             particleFrameSource = nullptr;
+        RENDER3D::WORLD_SPRITES::WorldSpritePass worldSpritePass{};
+        const RENDER3D::WORLD_SPRITES::WorldSpriteFrameSource*
+            worldSpriteFrameSource = nullptr;
 
         RENDER3D::GPUDRIVEN::GpuDrivenSceneSource gpuDrivenSceneSource{};
         const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource* gpuDrivenSceneSourceIdentity = nullptr;

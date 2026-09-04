@@ -177,6 +177,7 @@ namespace HIKARI {
         SEQUENCER::SequencePlayRequest request{};
         request.assetGuid = AssetGuid{ component.sequenceAssetGuid_ };
         request.options.loop = component.loop_;
+        request.options.holdAtEnd = component.holdAtEnd_;
         request.options.playbackRate = component.playbackRate_;
         request.startTimeSeconds = component.startTimeSeconds_;
         request.channel = component.channel_;

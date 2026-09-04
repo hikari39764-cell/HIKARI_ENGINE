@@ -8,6 +8,7 @@
 #include "Runtime/HIKARI_RuntimeHost.h"
 #include "Runtime/Services/HIKARI_ActionTimeDilationService.h"
 #include "Runtime/Services/HIKARI_GameProjectSaveStorageService.h"
+#include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 
 #include <cstdint>
 #include <string>
@@ -40,6 +41,9 @@ namespace HIKARI::SERVICES::INTERNAL {
         bool editorGameViewportVisible = false;
         int editorGameViewportWidth = 0;
         int editorGameViewportHeight = 0;
+        bool renderQualityRuntimeInitialized = false;
+        RENDER3D::RenderQualitySettings appliedRenderQuality{};
+        uint64_t renderQualityTransitionCount = 0;
         std::wstring runtimeWindowBaseTitle{};
         double previewTelemetrySeconds = 0.0;
         uint64_t previewTelemetryRenderFrames = 0;

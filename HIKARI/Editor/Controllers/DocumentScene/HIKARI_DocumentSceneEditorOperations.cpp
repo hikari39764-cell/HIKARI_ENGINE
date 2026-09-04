@@ -264,6 +264,32 @@ namespace HIKARI {
             },
         });
         operationRegistry_.Register({
+            "scene.create_world_sprite",
+            "Create a 3D world sprite directly from a texture asset id or path fragment.",
+            "scene",
+            {
+                P("texture", EditorOperationParameterType::String,
+                  true, "纹理资产 id 或路径片段"),
+                P("name", EditorOperationParameterType::String,
+                  false, "物体名称，缺省使用纹理名"),
+                P("positionX", EditorOperationParameterType::Float,
+                  false, "世界位置 X"),
+                P("positionY", EditorOperationParameterType::Float,
+                  false, "世界位置 Y"),
+                P("positionZ", EditorOperationParameterType::Float,
+                  false, "世界位置 Z"),
+                P("scaleX", EditorOperationParameterType::Float,
+                  false, "缩放 X"),
+                P("scaleY", EditorOperationParameterType::Float,
+                  false, "缩放 Y"),
+                P("scaleZ", EditorOperationParameterType::Float,
+                  false, "缩放 Z"),
+            },
+            [this](const nlohmann::json& parameters) {
+                return ExecuteAiSceneCreateWorldSprite(parameters);
+            },
+        });
+        operationRegistry_.Register({
             "procedural.create_primitive",
             "Create a procedural mesh object (box/sphere/plane/grid_plane/cylinder/capsule).",
             "scene",

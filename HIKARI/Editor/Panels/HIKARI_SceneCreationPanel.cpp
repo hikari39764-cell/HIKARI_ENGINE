@@ -19,13 +19,12 @@
 #endif
 
 namespace HIKARI::EDITOR {
-    namespace {
-
-        bool Matches(std::string_view label, std::string_view search) {
-            return search.empty() ||
-                TEXT::ToLowerAsciiCopy(label).find(TEXT::ToLowerAsciiCopy(search)) !=
-                    std::string::npos;
-        }
+    bool SceneCreationPanel::MatchesSearch(
+        std::string_view label,
+        std::string_view search) {
+        return search.empty() ||
+            TEXT::ToLowerAsciiCopy(label).find(
+                TEXT::ToLowerAsciiCopy(search)) != std::string::npos;
     }
 
     void SceneCreationPanel::DrawCreationMenu(
@@ -45,10 +44,19 @@ namespace HIKARI::EDITOR {
 
         const std::string emptyObjectLabel =
             TEXT::Localize("ui.sceneCreation.emptyObject");
-        if (Matches(emptyObjectLabel.c_str(), search) &&
+        if (MatchesSearch(emptyObjectLabel.c_str(), search) &&
             ImGui::MenuItem(emptyObjectLabel.c_str())) {
             CreateEmptyObject(scene, context, selectionSync);
         }
+
+        const std::string worldSpriteLabel =
+            TEXT::Localize("ui.sceneCreation.worldSprite");
+        if (MatchesSearch(worldSpriteLabel.c_str(), search) &&
+            ImGui::MenuItem(worldSpriteLabel.c_str())) {
+            CreateWorldSpriteObject(scene, context, selectionSync);
+        }
+
+        DrawUiCreationMenu(scene, context, selectionSync, search);
 
         const struct PrimitiveEntry {
             std::string label;
@@ -70,11 +78,11 @@ namespace HIKARI::EDITOR {
 
         bool anyPrimitive = false;
         for (const PrimitiveEntry& primitive : primitives) {
-            anyPrimitive |= Matches(primitive.label.c_str(), search);
+            anyPrimitive |= MatchesSearch(primitive.label.c_str(), search);
         }
         if (anyPrimitive && ImGui::BeginMenu("Procedural Mesh")) {
             for (const PrimitiveEntry& primitive : primitives) {
-                if (!Matches(primitive.label.c_str(), search)) {
+                if (!MatchesSearch(primitive.label.c_str(), search)) {
                     continue;
                 }
                 if (ImGui::MenuItem(primitive.label.c_str())) {
@@ -86,46 +94,46 @@ namespace HIKARI::EDITOR {
 
         const std::string waterSurfaceLabel =
             TEXT::Localize("ui.sceneCreation.waterSurface");
-        if (Matches(waterSurfaceLabel.c_str(), search) &&
+        if (MatchesSearch(waterSurfaceLabel.c_str(), search) &&
             ImGui::MenuItem(waterSurfaceLabel.c_str())) {
             CreateWaterSurfaceObject(scene, context, selectionSync);
         }
 
         const std::string sandSurfaceLabel =
             TEXT::Localize("ui.sceneCreation.sandSurface");
-        if (Matches(sandSurfaceLabel.c_str(), search) &&
+        if (MatchesSearch(sandSurfaceLabel.c_str(), search) &&
             ImGui::MenuItem(sandSurfaceLabel.c_str())) {
             CreateSandSurfaceObject(scene, context, selectionSync);
         }
 
         const std::string dialogueTriggerLabel =
             TEXT::Localize("ui.sceneCreation.dialogueTrigger");
-        if (Matches(dialogueTriggerLabel.c_str(), search) &&
+        if (MatchesSearch(dialogueTriggerLabel.c_str(), search) &&
             ImGui::MenuItem(dialogueTriggerLabel.c_str())) {
             CreateDialogueTriggerObject(scene, context, selectionSync);
         }
 
         const bool showReflectionProbe =
-            Matches(
+            MatchesSearch(
                 TEXT::Localize(
                     "ui.sceneCreation.reflectionProbe").c_str(),
                 search);
         const bool showIrradianceVolume =
-            Matches(
+            MatchesSearch(
                 TEXT::Localize(
                     "ui.sceneCreation.irradianceVolume").c_str(),
                 search);
         const bool showDirectionalLight =
-            Matches(
+            MatchesSearch(
                 TEXT::Localize(
                     "ui.sceneCreation.directionalLight").c_str(),
                 search);
         const bool showPointLight =
-            Matches(
+            MatchesSearch(
                 TEXT::Localize("ui.sceneCreation.pointLight").c_str(),
                 search);
         const bool showSpotLight =
-            Matches(
+            MatchesSearch(
                 TEXT::Localize("ui.sceneCreation.spotLight").c_str(),
                 search);
         if ((showReflectionProbe || showIrradianceVolume ||
@@ -191,13 +199,13 @@ namespace HIKARI::EDITOR {
         const std::vector<std::string> prefabIds = commands.ListPrefabIds();
         if (!prefabIds.empty() &&
             (search.empty() ||
-             Matches(
+             MatchesSearch(
                  TEXT::Localize("ui.sceneCreation.prefab").c_str(),
                  search)) &&
             ImGui::BeginMenu(
                 TEXT::Localize("ui.sceneCreation.prefab").c_str())) {
             for (const std::string& prefabId : prefabIds) {
-                if (search.empty() || Matches(prefabId, search)) {
+                if (search.empty() || MatchesSearch(prefabId, search)) {
                     if (ImGui::MenuItem(prefabId.c_str())) {
                         commands.Execute(
                             SceneObjectCommandId::InstantiatePrefab,
@@ -280,6 +288,38 @@ namespace HIKARI::EDITOR {
             context.nextSceneObjectId);
         historyRequest_ = SceneObjectAuthoringHistoryRequest{
             "Create Empty Object",
+            beforeObjects,
+            scene.GetSceneDocument().objects,
+            beforeCamera,
+            scene.GetSceneDocument().camera,
+            dirtyBefore
+        };
+    }
+
+    void SceneCreationPanel::CreateWorldSpriteObject(
+        DocumentSceneBase& scene,
+        EditorContext& context,
+        const SelectionSyncService& selectionSync) {
+
+        const bool dirtyBefore =
+            context.sceneDirty || scene.HasUnsavedSceneChanges();
+        const std::vector<SceneObjectData> beforeObjects =
+            scene.GetSceneDocument().objects;
+        const SceneCameraSettings beforeCamera =
+            scene.GetSceneDocument().camera;
+        CreateObjectRequest request{};
+        request.name = TEXT::Localize("ui.sceneCreation.worldSprite");
+        request.position = ComputeObjectPlacementInView(
+            scene.GetCamera());
+        GameObject* object = EDITOR::CreateWorldSpriteObject(
+            scene, {}, request);
+        context.selection.SelectObject(scene.GetWorld(), object);
+        context.sceneDirty = true;
+        selectionSync.SyncNextSceneObjectId(
+            scene,
+            context.nextSceneObjectId);
+        historyRequest_ = SceneObjectAuthoringHistoryRequest{
+            "Create World Sprite",
             beforeObjects,
             scene.GetSceneDocument().objects,
             beforeCamera,

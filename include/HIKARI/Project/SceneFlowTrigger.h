@@ -19,6 +19,7 @@
 #include "HIKARI/Project/RuntimeExtension.h"
 #include "HIKARI/Project/RuntimeFeature.h"
 #include "HIKARI/Project/RuntimeFeatureRegistration.h"
+#include "HIKARI/Project/UiView.h"
 
 namespace HIKARI::SCENE_FLOW {
 
@@ -43,6 +44,9 @@ namespace HIKARI::SCENE_FLOW {
             actionEnabled_ = properties.ReadBool(
                 "actionEnabled",
                 actionEnabled_);
+            uiButtonEnabled_ = properties.ReadBool(
+                "uiButtonEnabled",
+                uiButtonEnabled_);
             actionId_ = properties.ReadString("actionId", actionId_);
             pointerRegionEnabled_ = properties.ReadBool(
                 "pointerRegionEnabled",
@@ -84,6 +88,7 @@ namespace HIKARI::SCENE_FLOW {
                 "targetSpawnPointId",
                 targetSpawnPointId_);
             properties.WriteBool("actionEnabled", actionEnabled_);
+            properties.WriteBool("uiButtonEnabled", uiButtonEnabled_);
             properties.WriteString("actionId", actionId_);
             properties.WriteBool(
                 "pointerRegionEnabled",
@@ -114,6 +119,7 @@ namespace HIKARI::SCENE_FLOW {
             if (actionEnabled_) {
                 EditActionId(inspector);
             }
+            inspector.Bool("UI Button Trigger", uiButtonEnabled_);
             inspector.Bool(
                 "Pointer Region Trigger",
                 pointerRegionEnabled_);
@@ -152,7 +158,8 @@ namespace HIKARI::SCENE_FLOW {
             if (!IsCanonicalAssetGuid(targetSceneGuid_)) {
                 inspector.Text("Assign a valid Scene asset before Play.");
             }
-            if (!actionEnabled_ && !pointerRegionEnabled_) {
+            if (!actionEnabled_ && !pointerRegionEnabled_ &&
+                !uiButtonEnabled_) {
                 inspector.Text("Enable at least one trigger source.");
             }
             inspector.Text(
@@ -162,6 +169,7 @@ namespace HIKARI::SCENE_FLOW {
 
         bool IsEnabled() const noexcept { return enabled_; }
         bool IsActionEnabled() const noexcept { return actionEnabled_; }
+        bool IsUiButtonEnabled() const noexcept { return uiButtonEnabled_; }
         bool IsPointerRegionEnabled() const noexcept {
             return pointerRegionEnabled_;
         }
@@ -297,6 +305,7 @@ namespace HIKARI::SCENE_FLOW {
         float cooldownRemaining_ = 0.0f;
         bool enabled_ = true;
         bool actionEnabled_ = true;
+        bool uiButtonEnabled_ = true;
         bool pointerRegionEnabled_ = false;
         bool useTransition_ = true;
         bool oneShotPerWorld_ = true;
@@ -318,13 +327,15 @@ namespace HIKARI::SCENE_FLOW {
                 return;
             }
             const InputView input = world.GetInput();
+            const UiView ui = world.GetUi();
             const SceneFlowView sceneFlow = world.GetSceneFlow();
-            if (!input.IsValid() || !sceneFlow.IsValid()) {
+            if (!sceneFlow.IsValid()) {
                 return;
             }
 
             GameProjectPointerState pointer{};
-            const bool pointerValid = input.GetPointerState(pointer) &&
+            const bool pointerValid = input.IsValid() &&
+                input.GetPointerState(pointer) &&
                 pointer.valid != 0u;
             bool primaryPressed = false;
             if (pointerValid) {
@@ -344,7 +355,7 @@ namespace HIKARI::SCENE_FLOW {
                     : 0.0f;
             (void)world.ForEachComponent<SceneSwitchTriggerComponent>(
                 kComponentTypeId,
-                [&](ObjectView, SceneSwitchTriggerComponent& trigger) {
+                [&](ObjectView object, SceneSwitchTriggerComponent& trigger) {
                     trigger.AdvanceCooldown(unscaledDeltaSeconds);
                     if (!trigger.CanRequest()) {
                         return;
@@ -352,6 +363,7 @@ namespace HIKARI::SCENE_FLOW {
                     GameProjectInputActionState action{};
                     const bool actionPressed =
                         trigger.IsActionEnabled() &&
+                        input.IsValid() &&
                         !trigger.GetActionId().empty() &&
                         input.GetAction(trigger.GetActionId(), action) &&
                         action.valueType ==
@@ -363,7 +375,10 @@ namespace HIKARI::SCENE_FLOW {
                         trigger.ContainsPointer(
                             pointer.normalizedX,
                             pointer.normalizedY);
-                    if (actionPressed || pointerPressed) {
+                    const bool uiActivated =
+                        trigger.IsUiButtonEnabled() && ui.IsValid() &&
+                        ui.WasActivated(object.GetHandle());
+                    if (actionPressed || pointerPressed || uiActivated) {
                         trigger.SetPendingRequest();
                     }
                     if (!trigger.HasPendingRequest() ||
@@ -404,8 +419,8 @@ namespace HIKARI::SCENE_FLOW {
             return "Scene Flow";
         }
         std::string_view GetDescription() const noexcept override {
-            return "Project-owned input and pointer triggers over the "
-                "engine Scene Flow request gate.";
+            return "Project-owned UI button, input and pointer triggers "
+                "over the engine Scene Flow request gate.";
         }
         std::span<const std::string_view>
             GetComponentTypeNames() const noexcept override {
@@ -429,7 +444,8 @@ namespace HIKARI::SCENE_FLOW {
             component.displayName = "Scene Switch Trigger";
             component.category = "Scene Flow";
             component.description =
-                "Requests a Scene by action or normalized pointer region.";
+                "Requests a Scene by UI button, action or normalized "
+                "pointer region.";
             component.featureId = kFeatureId;
 
             GameSystemDescriptor system{};

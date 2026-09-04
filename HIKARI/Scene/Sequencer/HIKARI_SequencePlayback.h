@@ -28,6 +28,7 @@ namespace HIKARI::SEQUENCER {
 
     struct SequencePlaybackOptions {
         bool loop = false;
+        bool holdAtEnd = false;
         float playbackRate = 1.0f;
     };
 
@@ -60,6 +61,7 @@ namespace HIKARI::SEQUENCER {
         bool Play(const SequencePlaybackOptions& options);
         void Pause();
         bool Resume();
+        bool SetPlaybackRate(float playbackRate);
         void Stop();
         void Clear();
         bool Seek(float timeSeconds);

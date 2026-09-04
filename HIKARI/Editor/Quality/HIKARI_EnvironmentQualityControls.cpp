@@ -433,16 +433,27 @@ void DrawGlobalPost(SceneEnvironment &environment) {
   }
 
   const std::string previousProfileId = environment.post.globalPostProfileId;
-  char profileBuffer[256]{};
-  std::strncpy(profileBuffer, environment.post.globalPostProfileId.c_str(),
-               sizeof(profileBuffer) - 1);
-  if (ImGui::InputText(
+  static const std::vector<std::string> profileIds =
+      PostProfile::CollectAvailableIds();
+  const std::string profilePreview =
+      environment.post.globalPostProfileId.empty()
+          ? TEXT::Localize("ui.common.none")
+          : environment.post.globalPostProfileId;
+  if (ImGui::BeginCombo(
           TEXT::Localize("ui.quality.globalPostProfile").c_str(),
-          profileBuffer, sizeof(profileBuffer))) {
-    environment.post.globalPostProfileId = profileBuffer;
-    if (environment.post.globalPostProfileId.empty()) {
-      environment.post.valuesInitialized = false;
+          profilePreview.c_str())) {
+    for (const std::string& profileId : profileIds) {
+      const bool selected =
+          environment.post.globalPostProfileId == profileId;
+      if (ImGui::Selectable(profileId.c_str(), selected)) {
+        environment.post.globalPostProfileId = profileId;
+        environment.post.valuesInitialized = false;
+      }
+      if (selected) {
+        ImGui::SetItemDefaultFocus();
+      }
     }
+    ImGui::EndCombo();
   }
 
   if (!environment.post.globalPostProfileId.empty()) {

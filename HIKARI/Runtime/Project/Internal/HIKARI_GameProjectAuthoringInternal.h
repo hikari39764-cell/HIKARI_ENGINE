@@ -34,6 +34,8 @@ namespace HIKARI {
     class PresentationVfxView;
     class RuntimeSessionView;
     class SaveGameView;
+    class SceneCaptureView;
+    class SequenceView;
     class SceneFlowView;
     class SystemTypeRegistry;
     class TerrainView;
@@ -103,6 +105,8 @@ namespace HIKARI {
         static DialogueView MakeDialogueView(World& world) noexcept;
         static SaveGameView MakeSaveGameView(World& world) noexcept;
         static RuntimeSessionView MakeRuntimeSessionView(World& world) noexcept;
+        static SceneCaptureView MakeSceneCaptureView(World& world) noexcept;
+        static SequenceView MakeSequenceView(World& world) noexcept;
         static GameComponentContext MakeGameComponentContext(
             GameProjectComponentAdapter& adapter,
             GameObject& object,

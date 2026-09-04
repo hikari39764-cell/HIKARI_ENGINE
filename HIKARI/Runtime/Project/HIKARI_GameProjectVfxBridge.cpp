@@ -996,7 +996,9 @@ namespace HIKARI {
                     "world_unavailable");
                 return false;
             }
-            if (wave.sourceId == 0u || wave.reserved != 0u ||
+            if (wave.sourceId == 0u ||
+                (wave.flags &
+                    ~kGameProjectPerfectGuardWaveKnownFlags) != 0u ||
                 !IsFinite(wave.worldCenter) ||
                 !IsFiniteNonNegative(wave.color) ||
                 !IsFinitePositive(wave.durationUnscaledSeconds) ||
@@ -1042,6 +1044,7 @@ namespace HIKARI {
             runtimeRequest.chromaticShift = wave.chromaticAberration;
             runtimeRequest.flashIntensity = wave.flashIntensity;
             runtimeRequest.intensity = wave.intensity;
+            runtimeRequest.flags = wave.flags;
             return reaction->TriggerPerfectGuardShockwave(
                 runtimeRequest,
                 output);

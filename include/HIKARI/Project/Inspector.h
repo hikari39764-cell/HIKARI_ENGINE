@@ -35,11 +35,21 @@ namespace HIKARI {
             float minimum,
             float maximum,
             float speed = 0.1f);
+        HIKARI_GAME_PROJECT_SDK_API bool Color3(
+            std::string_view label,
+            float& red,
+            float& green,
+            float& blue);
         HIKARI_GAME_PROJECT_SDK_API bool StringBuffer(
             std::string_view label,
             char* value,
             size_t capacity);
         HIKARI_GAME_PROJECT_SDK_API bool SceneAssetGuid(
+            std::string_view propertyId,
+            std::string_view label,
+            char* value,
+            size_t capacity);
+        HIKARI_GAME_PROJECT_SDK_API bool SequenceAssetGuid(
             std::string_view propertyId,
             std::string_view label,
             char* value,

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <string_view>
 
+#include "HIKARI/Project/SequenceTypes.h"
 #include "Scene/Sequencer/HIKARI_SequenceBindingNaming.h"
 
 namespace HIKARI::EDITOR {
@@ -52,6 +53,45 @@ namespace HIKARI::EDITOR {
                 guid->get<std::string>() == sequenceAssetGuid.value;
         }
 
+        bool IsCameraPreviewSlot(
+            std::string_view requestedSlot,
+            std::string_view hintedSlot) noexcept {
+
+            if (!hintedSlot.empty() && requestedSlot == hintedSlot) {
+                return true;
+            }
+            return requestedSlot == "CinematicCamera" ||
+                requestedSlot == "Camera.Camera" ||
+                requestedSlot.starts_with("Camera.");
+        }
+
+        bool IsMatchingGameProjectCameraHint(
+            const SceneObjectData& object,
+            const SceneComponentData& component,
+            const AssetGuid& sequenceAssetGuid,
+            std::string_view requestedSlot) {
+
+            if (!sequenceAssetGuid.IsValid() ||
+                !HasCameraComponent(object) ||
+                !component.properties.is_object()) {
+                return false;
+            }
+            const auto guid = component.properties.find(
+                kGameProjectSequencePreviewAssetGuidProperty);
+            if (guid == component.properties.end() ||
+                !guid->is_string() ||
+                guid->get<std::string>() != sequenceAssetGuid.value) {
+                return false;
+            }
+            const auto slot = component.properties.find(
+                kGameProjectSequencePreviewSlotNameProperty);
+            const std::string hintedSlot =
+                slot != component.properties.end() && slot->is_string()
+                    ? slot->get<std::string>()
+                    : std::string{};
+            return IsCameraPreviewSlot(requestedSlot, hintedSlot);
+        }
+
         PersistentBindingResult TryResolvePersistentBinding(
             const SceneDocument& document,
             const AssetGuid& sequenceAssetGuid,
@@ -63,6 +103,17 @@ namespace HIKARI::EDITOR {
             for (const SceneObjectData& object : document.objects) {
                 for (const SceneComponentData& component :
                         object.components) {
+                    if (IsMatchingGameProjectCameraHint(
+                            object,
+                            component,
+                            sequenceAssetGuid,
+                            slotName)) {
+                        if (foundCandidate && candidate != object.id) {
+                            return PersistentBindingResult::Conflict;
+                        }
+                        candidate = object.id;
+                        foundCandidate = true;
+                    }
                     if (!IsMatchingSequencePlayer(
                             component,
                             sequenceAssetGuid)) {

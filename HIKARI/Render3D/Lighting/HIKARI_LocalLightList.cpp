@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <vector>
 
@@ -120,6 +121,8 @@ namespace HIKARI::RENDER3D::LIGHTING {
             std::vector<uint8_t> clusterCounts{};
             std::vector<uint8_t> clusterWriteCounts{};
             std::vector<UploadedLightBounds> uploadedBounds{};
+            std::vector<LocalLightClusterHeader> clusterHeaders{};
+            std::vector<uint32_t> clusterIndices{};
         };
 
         LocalLightListScratch& GetLocalLightListScratch() {
@@ -339,12 +342,17 @@ namespace HIKARI::RENDER3D::LIGHTING {
             view.clusterCount,
             0u);
         scratch.uploadedBounds.clear();
+        scratch.clusterHeaders.assign(
+            view.clusterCount,
+            LocalLightClusterHeader{});
         std::vector<uint8_t>& clusterCounts =
             scratch.clusterCounts;
         std::vector<uint8_t>& clusterWriteCounts =
             scratch.clusterWriteCounts;
         std::vector<UploadedLightBounds>& uploadedBounds =
             scratch.uploadedBounds;
+        std::vector<LocalLightClusterHeader>& clusterHeaders =
+            scratch.clusterHeaders;
         uploadedBounds.reserve((std::min)(
             output.lightCapacity,
             kMaximumLocalLightCount));
@@ -418,7 +426,7 @@ namespace HIKARI::RENDER3D::LIGHTING {
             const uint32_t count =
                 clusterCounts[clusterIndex];
             LocalLightClusterHeader& header =
-                output.clusterHeaders[clusterIndex];
+                clusterHeaders[clusterIndex];
             header.offset = view.clusterIndexCount;
             const uint32_t remainingCapacity =
                 view.clusterIndexCount <
@@ -432,6 +440,12 @@ namespace HIKARI::RENDER3D::LIGHTING {
             view.overflowCount += count - header.count;
             view.clusterIndexCount += header.count;
         }
+
+        scratch.clusterIndices.assign(
+            view.clusterIndexCount,
+            0u);
+        std::vector<uint32_t>& clusterIndices =
+            scratch.clusterIndices;
 
         for (const UploadedLightBounds& uploaded :
              uploadedBounds) {
@@ -450,19 +464,31 @@ namespace HIKARI::RENDER3D::LIGHTING {
                             (z * view.clusterCountY + y) *
                             view.clusterCountX + x;
                         const LocalLightClusterHeader& header =
-                            output.clusterHeaders[clusterIndex];
+                            clusterHeaders[clusterIndex];
                         uint8_t& writeCount =
                             clusterWriteCounts[clusterIndex];
                         if (writeCount >= header.count) {
                             continue;
                         }
-                        output.clusterIndices[
+                        clusterIndices[
                             header.offset + writeCount] =
                             uploaded.lightIndex;
                         ++writeCount;
                     }
                 }
             }
+        }
+        std::memcpy(
+            output.clusterHeaders,
+            clusterHeaders.data(),
+            static_cast<size_t>(view.clusterCount) *
+                sizeof(LocalLightClusterHeader));
+        if (!clusterIndices.empty()) {
+            std::memcpy(
+                output.clusterIndices,
+                clusterIndices.data(),
+                static_cast<size_t>(view.clusterIndexCount) *
+                    sizeof(uint32_t));
         }
         return view;
     }

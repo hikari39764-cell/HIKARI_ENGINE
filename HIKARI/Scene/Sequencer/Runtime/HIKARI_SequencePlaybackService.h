@@ -33,6 +33,9 @@ namespace HIKARI::SEQUENCER {
             SequenceStopReason reason = SequenceStopReason::Stopped);
         bool Pause(SequencePlaybackHandle handle);
         bool Resume(SequencePlaybackHandle handle);
+        bool SetPlaybackRate(
+            SequencePlaybackHandle handle,
+            float playbackRate);
         bool Seek(SequencePlaybackHandle handle, float timeSeconds);
 
         uint64_t Submit(SequencePlaybackCommand command);

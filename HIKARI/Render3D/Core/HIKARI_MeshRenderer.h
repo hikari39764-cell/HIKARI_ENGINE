@@ -36,6 +36,10 @@ namespace HIKARI::RENDER3D {
         struct ParticleGpuDrivenPassStats;
         struct ParticleRenderFrameSource;
     }
+    namespace WORLD_SPRITES {
+        struct WorldSpriteFrameSource;
+        struct WorldSpritePassStats;
+    }
 }
 
 namespace HIKARI::MESHRENDERER {
@@ -65,8 +69,11 @@ namespace HIKARI::MESHRENDERER {
         const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource* source);
     void SetParticleFrameSource(
         const RENDER3D::PARTICLES::ParticleRenderFrameSource* source);
+    void SetWorldSpriteFrameSource(
+        const RENDER3D::WORLD_SPRITES::WorldSpriteFrameSource* source);
     void ReleaseParticleNamespace(uint64_t playbackNamespace);
     void ShutdownParticleGpuDrivenPass();
+    void ShutdownWorldSpritePass();
     void ShutdownOceanSpectrumRuntime();
     const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource&
         GetActiveGpuDrivenSceneSource();
@@ -189,6 +196,17 @@ namespace HIKARI::MESHRENDERER {
         const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource* source);
     void ShutdownEditorInteractiveResources();
 #endif
+    bool RenderSecondarySceneCapture(
+        const GFX::Context& graphics,
+        const RENDER3D::RenderViewContext& view,
+        const SceneEnvironment& environment,
+        const RENDER3D::LIGHTING::SceneLightingSet& lighting,
+        uint32_t captureSlot,
+        uint32_t screenWidth,
+        uint32_t screenHeight,
+        bool renderTransparent);
+    void ResetSecondarySceneCaptureResources(uint32_t captureSlot) noexcept;
+    void ResetSecondarySceneCaptureResources() noexcept;
     const MeshRendererDebugStats& GetDebugStats();
     const RENDER3D::MATERIAL::GpuMaterialRegistryStats&
         GetGpuMaterialRegistryStats();
@@ -196,5 +214,7 @@ namespace HIKARI::MESHRENDERER {
         GetMassGpuSceneFrameBufferStats();
     const RENDER3D::PARTICLES::ParticleGpuDrivenPassStats&
         GetParticleGpuDrivenPassStats();
+    const RENDER3D::WORLD_SPRITES::WorldSpritePassStats&
+        GetWorldSpritePassStats();
 
 } // namespace HIKARI::MESHRENDERER

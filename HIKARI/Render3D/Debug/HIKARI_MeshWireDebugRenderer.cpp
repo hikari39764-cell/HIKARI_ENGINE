@@ -262,7 +262,14 @@ namespace HIKARI::MESHWIREDEBUG {
         gStats.cacheMissCount = 0;
     }
 
-    void SubmitModelWire(const ModelAsset& asset, const Transform3D& world, uint32_t color, uint32_t maxLines, bool perPrimitiveColor) {
+    void SubmitModelWire(
+        const ModelAsset& asset,
+        const Transform3D& world,
+        uint32_t color,
+        uint32_t maxLines,
+        bool perPrimitiveColor,
+        std::span<const uint8_t> nodeVisibilityMask) {
+
         ++gStats.submittedModelCount;
         const MATH::Mat4 worldMatrix = world.GetWorldMatrix();
         constexpr uint32_t kHardWireLineCap = 200000;
@@ -274,6 +281,10 @@ namespace HIKARI::MESHWIREDEBUG {
             std::vector<uint8_t> visited;
             BuildStaticNodeGlobalMatrices(asset, worldMatrix, nodeGlobals, visited);
             for (size_t nodeIndex = 0; nodeIndex < asset.nodes.size(); ++nodeIndex) {
+                if (nodeIndex < nodeVisibilityMask.size() &&
+                    nodeVisibilityMask[nodeIndex] == 0u) {
+                    continue;
+                }
                 const ModelNode& node = asset.nodes[nodeIndex];
                 if (node.meshIndex < 0 || node.meshIndex >= static_cast<int>(asset.meshes.size())) {
                     continue;

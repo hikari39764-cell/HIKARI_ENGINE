@@ -52,6 +52,16 @@ namespace HIKARI {
     } // namespace
 
     void LightComponent::BuildInspector(IInspectorBuilder& builder) {
+        const bool previousEnabled = enabled_;
+        const LightComponentType previousType = type_;
+        const MATH::Vec3 previousColor = color_;
+        const float previousIntensity = intensity_;
+        const float previousRange = range_;
+        const float previousInnerConeAngle = innerConeAngleDegrees_;
+        const float previousOuterConeAngle = outerConeAngleDegrees_;
+        const float previousAngularFalloff = angularFalloff_;
+        const int previousPriority = priority_;
+
         builder.Text("Light");
         builder.Bool("Enabled", enabled_);
 
@@ -95,6 +105,18 @@ namespace HIKARI {
                 0.05f);
         }
         ClampSettings();
+
+        if (previousEnabled != enabled_ || previousType != type_ ||
+            previousColor.x != color_.x ||
+            previousColor.y != color_.y ||
+            previousColor.z != color_.z ||
+            previousIntensity != intensity_ || previousRange != range_ ||
+            previousInnerConeAngle != innerConeAngleDegrees_ ||
+            previousOuterConeAngle != outerConeAngleDegrees_ ||
+            previousAngularFalloff != angularFalloff_ ||
+            previousPriority != priority_) {
+            BumpStateRevision();
+        }
     }
 
     void ReflectionProbeComponent::BuildInspector(

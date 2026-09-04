@@ -145,6 +145,7 @@ RWStructuredBuffer<uint> gClusterCullVisibleClusterList : register(u7);
 
 #include "Include/HIKARI_SurfaceGpuScene.hlsli"
 #include "Include/Cluster/HIKARI_ClusterGpuData.hlsli"
+#include "Include/HIKARI_RenderDescriptorLayout.hlsli"
 
 static const uint HIKARI_CLUSTER_DRAW_BUCKET_BACK_FACE = 0u;
 static const uint HIKARI_CLUSTER_DRAW_BUCKET_DOUBLE_SIDED = 1u;
@@ -251,7 +252,8 @@ static const uint HIKARI_CLUSTER_CULL_HZB_QUERY_REJECT_NEAR_PLANE = 2u;
 static const uint HIKARI_CLUSTER_CULL_HZB_QUERY_REJECT_OFFSCREEN = 3u;
 static const uint HIKARI_CLUSTER_CULL_HZB_QUERY_FLAG_LARGE_RECT = 1u;
 
-ByteAddressBuffer gClusterGeometryPool[111] : register(t0, space1);
+ByteAddressBuffer gClusterGeometryPool[
+    HIKARI_RENDER_CLUSTER_GEOMETRY_SRV_COUNT] : register(t0, space1);
 Texture2D<float> gClusterCullHzb : register(t18);
 
 #endif

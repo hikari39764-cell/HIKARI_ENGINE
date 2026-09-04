@@ -194,7 +194,6 @@ namespace HIKARI::POST {
         requestedRenderHeight_ = nextRenderHeight;
         requestedOutputWidth_ = nextOutputWidth;
         requestedOutputHeight_ = nextOutputHeight;
-        presentationStage_.InvalidateEditorOutput();
     }
 
     void PostSystem::GetSceneCaptureSize(int& width, int& height) {
@@ -246,7 +245,6 @@ namespace HIKARI::POST {
         int width = 0;
         int height = 0;
         GetSceneCaptureSize(width, height);
-        presentationStage_.InvalidateEditorOutput();
         processingStage_.ClearSunGlareFrame();
         processingStage_.UpdateCommonParams(0.0f, width, height);
         if (!captureStage_.Begin(width, height)) {
@@ -647,18 +645,12 @@ namespace HIKARI::POST {
         RenderTarget2D* hdr = EndSceneCaptureAndResolveFinal();
         if (!hdr || !context_.cmdList) {
             presentationStage_.BindBackBufferFullViewport();
-            if (editorViewport) {
-                presentationStage_.InvalidateEditorOutput();
-            }
             return false;
         }
 
         RenderTarget2D* ldr = ResolveFinalSceneToLdr(*hdr, DXGI_FORMAT_R8G8B8A8_UNORM);
         if (!ldr) {
             presentationStage_.BindBackBufferFullViewport();
-            if (editorViewport) {
-                presentationStage_.InvalidateEditorOutput();
-            }
             return false;
         }
 
@@ -697,9 +689,6 @@ namespace HIKARI::POST {
         RenderTarget2D* finalColor = gameUiCompositionStage_.End(quad_);
         if (finalColor == nullptr) {
             presentationStage_.BindBackBufferFullViewport();
-            if (editorViewport) {
-                presentationStage_.InvalidateEditorOutput();
-            }
             return false;
         }
 

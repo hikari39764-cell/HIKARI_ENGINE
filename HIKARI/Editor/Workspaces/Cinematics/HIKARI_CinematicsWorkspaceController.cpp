@@ -261,7 +261,8 @@ void CinematicsWorkspaceController::ApplyWorkspaceActivation(
   }
 
   boundCameraObjectId_ = *targetCamera;
-  directorViewPanel_.SetTargetCamera(*targetCamera);
+  (void)directorViewPanel_.FrameTargetCamera(
+      scene, *targetCamera, 10.0f);
   EditorViewInstance &gameView = workspaceHost.GetCinematicsGameView();
   gameView.cameraBinding.kind = EditorViewCameraSourceKind::SceneCameraObject;
   gameView.cameraBinding.sceneObjectId = *targetCamera;
@@ -315,7 +316,8 @@ void CinematicsWorkspaceController::SyncSceneIdentity(
         scene.GetSceneDocument().camera.defaultCameraObjectId;
     if (defaultCamera && IsEnabledCameraObject(scene, *defaultCamera)) {
       boundCameraObjectId_ = *defaultCamera;
-      directorViewPanel_.SetTargetCamera(*defaultCamera);
+      (void)directorViewPanel_.FrameTargetCamera(
+          scene, *defaultCamera, 10.0f);
       EditorViewInstance &gameView = workspaceHost.GetCinematicsGameView();
       gameView.cameraBinding.kind =
           EditorViewCameraSourceKind::SceneCameraObject;

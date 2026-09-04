@@ -288,6 +288,31 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         }
     }
 
+    bool ExecuteSceneColorFinalCapture(
+        const GRAPH::RenderGraphPassContext& graphPass,
+        void* userData) noexcept {
+        auto& state = *static_cast<StageExecutionState*>(userData);
+        if (!ValidateRenderFrameGraphPassContext(graphPass, state)) {
+            return false;
+        }
+        const RenderFrameGraphStageContext& context = *state.context;
+        try {
+            const RenderTextureView snapshot =
+                POST::PostSystem::CaptureSceneColorSnapshot(
+                    POST::SceneColorSnapshotKind::Final);
+            return snapshot.IsSampleable() &&
+                context.sceneSurfaces.PublishTexture(
+                    GRAPH::RenderGraphSurfaceKey{
+                        GRAPH::RenderGraphSemantic::SceneColorFinal,
+                        GRAPH::RenderGraphSemanticPhase::Final },
+                    snapshot,
+                    SURFACE::SceneSurfaceProducer::PostFinal);
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
     bool ExecutePresentationResume(
         const GRAPH::RenderGraphPassContext& graphPass,
         void* userData) noexcept {

@@ -49,6 +49,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
     } // namespace
 
     void ResetEditorInteractiveResources() {
+        gMeshRendererState.editorInteractive.worldSpritePass.Shutdown();
         for (EditorInteractiveMeshFrameResources& frame :
             gMeshRendererState.editorInteractive.frames) {
 
@@ -182,22 +183,24 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         std::array<
             D3D12_GPU_DESCRIPTOR_HANDLE,
             GFX::kFrameResourceCount> sceneSrvGpu{};
-        const UINT descriptorSize =
-            device->GetDescriptorHandleIncrementSize(
-                D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
         for (uint32_t frameIndex = 0;
             frameIndex < GFX::kFrameResourceCount;
             ++frameIndex) {
 
+            const std::vector<RENDER3D::RenderResourceView> range =
+                RENDER3D::AllocateRenderResourceDescriptorRange(2u);
+            if (range.size() != 2u) {
+                ResetEditorInteractiveResources();
+                return false;
+            }
             RENDER3D::RenderResourceView& view =
                 gMeshRendererState.editorInteractive.surfaceGpuSceneViews[frameIndex];
-            view = RENDER3D::AllocateRenderResourceDescriptor();
+            view = range[0];
             RENDER3D::RenderResourceView& massNullView =
                 gMeshRendererState.editorInteractive.
                     massGpuSceneNullViews[frameIndex];
-            massNullView = RENDER3D::AllocateRenderResourceDescriptor();
-            if (!view.IsValid() || !massNullView.IsValid() ||
-                massNullView.gpu.ptr != view.gpu.ptr + descriptorSize) {
+            massNullView = range[1];
+            if (!view.IsValid() || !massNullView.IsValid()) {
                 ResetEditorInteractiveResources();
                 return false;
             }
@@ -258,6 +261,11 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             ResetEditorInteractiveResources();
             return false;
         }
+        // World Sprite is an optional Mesh Shader extension. Keep the Scene
+        // view available on unsupported devices; the main renderer already
+        // reports the capability diagnostic once during initialization.
+        (void)gMeshRendererState.editorInteractive.worldSpritePass.Initialize(
+            GFX::GetCurrentContext());
 
         gMeshRendererState.editorInteractive.initialized = true;
         return true;

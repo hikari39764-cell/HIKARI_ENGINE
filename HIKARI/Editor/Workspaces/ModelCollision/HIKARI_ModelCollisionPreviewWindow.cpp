@@ -50,9 +50,10 @@ void ModelCollisionWorkspaceController::DrawPreviewWindow(
 
   const RENDER3D::EDITORVIEW::EditorInteractiveViewOutput output =
       RENDER3D::EDITORVIEW::GetOutput(view.renderViewId);
+  // Keep the last completed preview visible while a changed collision scene
+  // is pending; ClearRequest remains the explicit destructive boundary.
   const bool outputReady = showModel_ && output.ready &&
-                           output.colorSrv.ptr != 0 &&
-                           output.sceneRevision == previewScene_.GetRevision();
+                           output.colorSrv.ptr != 0;
   ImGui::SetCursorScreenPos(origin);
   if (outputReady) {
     ImGui::Image(reinterpret_cast<ImTextureID>(

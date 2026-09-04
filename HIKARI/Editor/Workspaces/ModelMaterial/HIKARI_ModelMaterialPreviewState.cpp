@@ -141,6 +141,7 @@ void ModelMaterialWorkspaceController::ResetPreviewKeyLight() {
     key.intensity = 18.0f;
     key.range = (std::max)(radius * 4.0f, 14.0f);
   }
+  MarkPreviewLightingChanged();
 }
 
 void ModelMaterialWorkspaceController::AddPreviewLight(
@@ -178,6 +179,7 @@ void ModelMaterialWorkspaceController::DeleteSelectedPreviewLight() {
     selectedPreviewLightIndex_ = (std::min)(
         *selectedPreviewLightIndex_, previewLighting_.lights.size() - 1u);
   }
+  MarkPreviewLightingChanged();
 }
 
 void ModelMaterialWorkspaceController::FocusSelectedSlot() {
@@ -293,22 +295,28 @@ void ModelMaterialWorkspaceController::DrawPreviewEnvironmentControls() {
   ImGui::SeparatorText("Studio Inspect Environment");
   ImGui::TextDisabled(
       "Create lights with the + icon, then select their viewport glyph.");
+  bool changed = false;
   if (ImGui::Checkbox("Sky", &previewSkyEnabled_)) {
     previewEnvironment_.sky.enabled = previewSkyEnabled_;
+    changed = true;
   }
-  ImGui::DragFloat("Sky Rotation", &previewEnvironment_.sky.yaw, 0.01f);
-  ImGui::DragFloat("Sky Intensity", &previewEnvironment_.sky.exposure,
-                   0.01f, 0.0f, 32.0f);
-  ImGui::DragFloat("IBL Reflections",
-                   &previewEnvironment_.sky.reflectionIntensity,
-                   0.01f, 0.0f, 4.0f);
+  changed = ImGui::DragFloat("Sky Rotation", &previewEnvironment_.sky.yaw,
+                             0.01f) || changed;
+  changed = ImGui::DragFloat("Sky Intensity", &previewEnvironment_.sky.exposure,
+                             0.01f, 0.0f, 32.0f) || changed;
+  changed = ImGui::DragFloat(
+                "IBL Reflections", &previewEnvironment_.sky.reflectionIntensity,
+                0.01f, 0.0f, 4.0f) || changed;
   if (ImGui::IsItemHovered()) {
     ImGui::SetTooltip(
         "Specular reflection strength from the visible DefaultSky. "
         "Studio Inspect never samples scene reflection probes.");
   }
-  ImGui::DragFloat("Ambient", &previewEnvironment_.ambient.intensity,
-                   0.01f, 0.0f, 8.0f);
+  changed = ImGui::DragFloat("Ambient", &previewEnvironment_.ambient.intensity,
+                             0.01f, 0.0f, 8.0f) || changed;
+  if (changed) {
+    MarkPreviewLightingChanged();
+  }
   ImGui::EndDisabled();
 #endif
 }
@@ -339,6 +347,7 @@ void ModelMaterialWorkspaceController::SubmitPreviewRequests(
   request.width = view.extent.width;
   request.height = view.extent.height;
   request.sceneRevision = activePreview.GetRevision();
+  request.contentRevision = previewContentRevision_;
   request.visible = canvasVisible;
   request.drawDebug = false;
   request.schedulingPriority = 100u;

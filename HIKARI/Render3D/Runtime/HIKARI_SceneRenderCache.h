@@ -55,6 +55,9 @@ namespace HIKARI::RENDER3D::RUNTIME {
         MATH::Vec3 worldBoundsPadding{};
 
         bool visible = true;
+        // Empty means every model node is visible. Otherwise entries map
+        // directly to ModelAsset::nodes and use 0 for hidden, 1 for visible.
+        std::vector<uint8_t> nodeVisibilityMask{};
         bool isStatic = false;
         bool castShadow = true;
         bool receiveShadow = true;

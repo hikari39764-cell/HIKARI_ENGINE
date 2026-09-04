@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cmath>
 #include <type_traits>
 
 namespace HIKARI {
@@ -45,6 +46,7 @@ namespace HIKARI {
         TitleMenuPress = 25u,
         TitleMenuDisabled = 26u,
         ItemChargeRecharge = 27u,
+        Count = 28u,
     };
 
     // Submission flags are shared by sprites, text and backdrop requests.
@@ -76,6 +78,69 @@ namespace HIKARI {
         float b = 1.0f;
         float a = 1.0f;
     };
+
+    // Shared aspect-preserving canvas projection used by both rendering and
+    // pointer hit testing. This keeps Scene-authored UI and code submissions
+    // on one coordinate contract.
+    struct GameProjectUiCanvasFit {
+        float scale = 0.0f;
+        float offsetX = 0.0f;
+        float offsetY = 0.0f;
+        float fittedWidth = 0.0f;
+        float fittedHeight = 0.0f;
+
+        bool IsValid() const noexcept {
+            return std::isfinite(scale) && scale > 0.0f &&
+                std::isfinite(offsetX) && std::isfinite(offsetY) &&
+                std::isfinite(fittedWidth) && fittedWidth > 0.0f &&
+                std::isfinite(fittedHeight) && fittedHeight > 0.0f;
+        }
+    };
+
+    inline bool ResolveGameProjectUiCanvasFit(
+        uint32_t logicalWidth,
+        uint32_t logicalHeight,
+        float referenceWidth,
+        float referenceHeight,
+        GameProjectUiCanvasFit& outFit) noexcept {
+
+        outFit = {};
+        if (logicalWidth == 0u || logicalHeight == 0u ||
+            !std::isfinite(referenceWidth) || referenceWidth <= 0.0f ||
+            !std::isfinite(referenceHeight) || referenceHeight <= 0.0f) {
+            return false;
+        }
+        const float scaleX =
+            static_cast<float>(logicalWidth) / referenceWidth;
+        const float scaleY =
+            static_cast<float>(logicalHeight) / referenceHeight;
+        outFit.scale = scaleX < scaleY ? scaleX : scaleY;
+        outFit.fittedWidth = referenceWidth * outFit.scale;
+        outFit.fittedHeight = referenceHeight * outFit.scale;
+        outFit.offsetX =
+            (static_cast<float>(logicalWidth) - outFit.fittedWidth) * 0.5f;
+        outFit.offsetY =
+            (static_cast<float>(logicalHeight) - outFit.fittedHeight) * 0.5f;
+        return outFit.IsValid();
+    }
+
+    inline bool ProjectGameUiScreenPointToCanvas(
+        const GameProjectUiCanvasFit& fit,
+        float screenX,
+        float screenY,
+        float& outCanvasX,
+        float& outCanvasY) noexcept {
+
+        outCanvasX = 0.0f;
+        outCanvasY = 0.0f;
+        if (!fit.IsValid() || !std::isfinite(screenX) ||
+            !std::isfinite(screenY)) {
+            return false;
+        }
+        outCanvasX = (screenX - fit.offsetX) / fit.scale;
+        outCanvasY = (screenY - fit.offsetY) / fit.scale;
+        return std::isfinite(outCanvasX) && std::isfinite(outCanvasY);
+    }
 
     // All positions and extents are expressed in the caller's reference
     // canvas. The engine performs one aspect-preserving fit so authored HUD
@@ -183,6 +248,9 @@ namespace HIKARI {
 
     static_assert(std::is_standard_layout_v<GameProjectUiColor>);
     static_assert(std::is_trivially_copyable_v<GameProjectUiColor>);
+    static_assert(std::is_standard_layout_v<GameProjectUiCanvasFit>);
+    static_assert(std::is_trivially_copyable_v<GameProjectUiCanvasFit>);
+    static_assert(sizeof(GameProjectUiCanvasFit) == 20u);
     static_assert(std::is_standard_layout_v<
         GameProjectUiTextureReference>);
     static_assert(std::is_trivially_copyable_v<

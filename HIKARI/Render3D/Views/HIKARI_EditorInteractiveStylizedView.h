@@ -91,6 +91,7 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             sceneDepthSrvs_{};
         std::array<uint64_t, GFX::kFrameResourceCount>
             sceneSrvGenerations_{};
+        GFX::Context lastGraphicsContext_{};
     };
 
     void ShutdownEditorInteractiveStylizedSharedResources();

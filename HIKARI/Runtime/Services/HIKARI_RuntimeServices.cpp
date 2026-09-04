@@ -165,6 +165,9 @@ namespace HIKARI {
             const RUNTIME::HostBootstrapConfig& cfg) {
             gActionTimeDilationService.Reset();
             gRuntimeSessionEndRequested = false;
+            INTERNAL::GetRuntimeServiceState().renderQualityRuntimeInitialized =
+                false;
+            INTERNAL::GetRuntimeServiceState().renderQualityTransitionCount = 0u;
             std::filesystem::path runtimeUserRoot{};
             const ProjectContext& launchProject = GetProjectContext();
             if (IsStandaloneGameHostMode(cfg.hostMode) &&
@@ -464,6 +467,8 @@ namespace HIKARI {
                 }
                 MESHRENDERER::ShutdownParticleGpuDrivenPass();
                 HIKARI_LOG_INFO("Particle GPU-driven pass finalized.");
+                MESHRENDERER::ShutdownWorldSpritePass();
+                HIKARI_LOG_INFO("World Sprite pass finalized.");
                 MESHRENDERER::ShutdownOceanSpectrumRuntime();
                 HIKARI_LOG_INFO("Ocean spectrum runtime finalized.");
                 HIKARI::POST::PostSystem::Shutdown();
@@ -564,6 +569,9 @@ namespace HIKARI {
             gPreviewTelemetrySeconds = 0.0;
             gPreviewTelemetryRenderFrames = 0;
             gPreviewTelemetryPresentedFrames = 0;
+            INTERNAL::GetRuntimeServiceState().renderQualityRuntimeInitialized =
+                false;
+            INTERNAL::GetRuntimeServiceState().renderQualityTransitionCount = 0u;
             HIKARI_LOG_INFO("HIKARI shutdown completed.");
             CORE::ShutdownLogger();
         }

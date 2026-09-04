@@ -14,6 +14,8 @@ namespace HIKARI {
 
     inline constexpr size_t kGameProjectObjectNameCapacity = 128u;
     inline constexpr size_t
+        kGameProjectModelNodeNameMaximumBytes = 255u;
+    inline constexpr size_t
         kGameProjectWorldMaximumSpawnBatchCount = 256u;
     inline constexpr uint32_t
         kGameProjectWorldTransformWriteVersion = 1u;
@@ -37,6 +39,15 @@ namespace HIKARI {
         kGameProjectWorldMaximumSpawnComponentBytes = 16u * 1024u;
     inline constexpr uint32_t
         kGameProjectWorldMaximumSpawnBatchBytes = 1024u * 1024u;
+
+    // Controls whether a runtime model-node visibility override affects only
+    // the exact named node or also becomes the inherited visibility for its
+    // descendants. An explicit override on a descendant takes precedence.
+    enum class GameProjectModelNodeVisibilityScope : uint32_t {
+        NodeOnly = 0u,
+        NodeAndDescendants,
+        Count,
+    };
 
     enum class GameProjectWorldQueryMatch : uint32_t {
         AllRequired = 0u,

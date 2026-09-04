@@ -28,6 +28,7 @@
 #include "Scene/HIKARI_RuntimeWorldServices.h"
 #include "Scene/Navigation/HIKARI_NavigationWorldService.h"
 #include "Scene/HIKARI_SceneRuntimeBuilder.h"
+#include "Scene/Capture/HIKARI_SceneCaptureService.h"
 #include "Scene/HIKARI_SystemScheduler.h"
 #include "Scene/HIKARI_SystemTypeRegistry.h"
 #include "Scene/HIKARI_World.h"
@@ -48,6 +49,7 @@ namespace HIKARI {
         RuntimePlayStateService playStateService{};
         GameplayCameraService gameplayCameraService{};
         RuntimeAssetContextService runtimeAssetContextService{};
+        SCENE_CAPTURE::SceneCaptureService sceneCaptureService{};
         ANIMATION::AnimationPoseService animationPoseService{};
         ANIMATION::AnimationNodeOverrideService animationNodeOverrideService{};
         ANIMATION::AnimationSocketService animationSocketService{};

@@ -479,6 +479,15 @@ namespace HIKARI {
                     if (!materialSelection.empty()) {
                         deps.materialAssetIds.insert(materialSelection);
                     }
+                } else if (component.type == "WorldSpriteComponent") {
+                    const auto texture = component.properties.find(
+                        "textureAssetGuid");
+                    if (texture != component.properties.end() &&
+                        texture->is_string() &&
+                        !texture->get_ref<const std::string&>().empty()) {
+                        deps.textureAssetIds.insert(
+                            texture->get_ref<const std::string&>());
+                    }
                 } else if (component.type == "VfxPlayerComponent") {
                     const auto slots =
                         component.properties.find("slots");
@@ -569,6 +578,24 @@ namespace HIKARI {
                         *material);
                 }
             }
+        }
+
+        for (const std::string& textureId :
+            dependencies.textureAssetIds) {
+            const auto* texture = assetRegistry.FindAs<
+                TextureAssetDescriptor>(AssetId{ textureId });
+            if (texture == nullptr ||
+                texture->dimension != TextureAssetDimension::Texture2D ||
+                texture->sourcePath.empty()) {
+                continue;
+            }
+            AddTextureRequest(
+                loadPlan,
+                "runtime_world_sprite/" + textureId,
+                texture->sourcePath,
+                texture->colorSpace == TextureAssetColorSpace::Linear
+                    ? RENDER3D::TextureResourceColorSpace::Linear
+                    : RENDER3D::TextureResourceColorSpace::Srgb);
         }
 
         for (const std::string& skyId : dependencies.skyAssetIds) {

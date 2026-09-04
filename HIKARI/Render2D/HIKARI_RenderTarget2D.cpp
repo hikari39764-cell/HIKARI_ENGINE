@@ -1,6 +1,8 @@
 #include "Render2D/HIKARI_RenderTarget2D.h"
 #include <cassert>
 #include <sstream>
+#include <utility>
+#include <utility>
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
@@ -55,7 +57,110 @@ namespace HIKARI {
 
     void RenderTarget2D::UpdateContext(const HIKARI::GFX::Context& ctx)
     {
+        const bool contextChanged =
+            context_.device != ctx.device ||
+            context_.srvHeap != ctx.srvHeap ||
+            context_.deviceGeneration != ctx.deviceGeneration;
         context_ = ctx;
+        if (contextChanged) {
+            ResetDepthSrvTracking();
+        }
+    }
+
+    void RenderTarget2D::Swap(RenderTarget2D& other) noexcept
+    {
+        using std::swap;
+        swap(colorTex_, other.colorTex_);
+        swap(colorState_, other.colorState_);
+        swap(depthTex_, other.depthTex_);
+        swap(depthState_, other.depthState_);
+        swap(rtvHeap_, other.rtvHeap_);
+        swap(srvHeap_, other.srvHeap_);
+        swap(dsvHeap_, other.dsvHeap_);
+        swap(rtvHandle_, other.rtvHandle_);
+        swap(srvCpuHandle_, other.srvCpuHandle_);
+        swap(srvGpuHandle_, other.srvGpuHandle_);
+        swap(dsvHandle_, other.dsvHandle_);
+        swap(readOnlyDsvHandle_, other.readOnlyDsvHandle_);
+        swap(depthSrvCpuHandles_, other.depthSrvCpuHandles_);
+        swap(depthSrvGpuHandles_, other.depthSrvGpuHandles_);
+        swap(depthSrvResources_, other.depthSrvResources_);
+        swap(depthSrvGenerations_, other.depthSrvGenerations_);
+        swap(dsvDescriptorSize_, other.dsvDescriptorSize_);
+        swap(viewport_, other.viewport_);
+        swap(scissorRect_, other.scissorRect_);
+        swap(width_, other.width_);
+        swap(height_, other.height_);
+        swap(format_, other.format_);
+        swap(initialized_, other.initialized_);
+        swap(hasDepth_, other.hasDepth_);
+        swap(publishDepthSrv_, other.publishDepthSrv_);
+        swap(allowUnorderedAccess_, other.allowUnorderedAccess_);
+        swap(debugName_, other.debugName_);
+        swap(context_, other.context_);
+        swap(optimizedClearColor_, other.optimizedClearColor_);
+    }
+
+    void RenderTarget2D::ResetDepthSrvTracking() noexcept
+    {
+        depthSrvCpuHandles_.fill({});
+        depthSrvGpuHandles_.fill({});
+        depthSrvResources_.fill(nullptr);
+        depthSrvGenerations_.fill(0u);
+    }
+
+    bool RenderTarget2D::RefreshDepthSrvForCurrentFrame()
+    {
+        if (!publishDepthSrv_ ||
+            !hasDepth_ ||
+            context_.device == nullptr ||
+            context_.srvHeap == nullptr ||
+            depthTex_ == nullptr) {
+            return false;
+        }
+
+        const uint32_t frameSlot =
+            context_.frameIndex % GFX::kFrameResourceCount;
+        if (depthSrvResources_[frameSlot] == depthTex_.Get() &&
+            depthSrvGenerations_[frameSlot] == context_.deviceGeneration &&
+            depthSrvCpuHandles_[frameSlot].ptr != 0 &&
+            depthSrvGpuHandles_[frameSlot].ptr != 0) {
+            return true;
+        }
+
+        const UINT descriptorSize =
+            context_.device->GetDescriptorHandleIncrementSize(
+                D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        const GFX::DESCRIPTOR::SystemSrv descriptorSlot =
+            GFX::DESCRIPTOR::PostSceneDepthFrameSlot(context_.frameIndex);
+        depthSrvCpuHandles_[frameSlot] = GFX::DESCRIPTOR::CpuAt(
+            context_.srvHeap,
+            descriptorSize,
+            GFX::DESCRIPTOR::ToIndex(descriptorSlot));
+        depthSrvGpuHandles_[frameSlot] = GFX::DESCRIPTOR::GpuAt(
+            context_.srvHeap,
+            descriptorSize,
+            GFX::DESCRIPTOR::ToIndex(descriptorSlot));
+        if (depthSrvCpuHandles_[frameSlot].ptr == 0u ||
+            depthSrvGpuHandles_[frameSlot].ptr == 0u) {
+            depthSrvResources_[frameSlot] = nullptr;
+            depthSrvGenerations_[frameSlot] = 0u;
+            return false;
+        }
+
+        D3D12_SHADER_RESOURCE_VIEW_DESC depthSrv{};
+        depthSrv.Format = DXGI_FORMAT_R32_FLOAT;
+        depthSrv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        depthSrv.Shader4ComponentMapping =
+            D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        depthSrv.Texture2D.MipLevels = 1;
+        context_.device->CreateShaderResourceView(
+            depthTex_.Get(),
+            &depthSrv,
+            depthSrvCpuHandles_[frameSlot]);
+        depthSrvResources_[frameSlot] = depthTex_.Get();
+        depthSrvGenerations_[frameSlot] = context_.deviceGeneration;
+        return true;
     }
 
     void RenderTarget2D::Finalize()
@@ -70,12 +175,12 @@ namespace HIKARI {
         srvGpuHandle_ = {};
         dsvHandle_ = {};
         readOnlyDsvHandle_ = {};
-        depthSrvGpuHandle_ = {};
+        ResetDepthSrvTracking();
         dsvDescriptorSize_ = 0;
 
         initialized_ = false;
         hasDepth_ = false;
-        publishDepthSrv_ = true;
+        publishDepthSrv_ = false;
         allowUnorderedAccess_ = false;
     }
 
@@ -119,7 +224,8 @@ namespace HIKARI {
             << " srvHeap=" << (srvHeap_ ? 1 : 0)
             << " dsvHeap=" << (dsvHeap_ ? 1 : 0)
             << " srvGpu=0x" << std::hex << srvGpuHandle_.ptr << std::dec
-            << " depthSrvGpu=0x" << std::hex << depthSrvGpuHandle_.ptr << std::dec
+            << " depthSrvGpu=0x" << std::hex
+            << GetDepthSrvGpu().ptr << std::dec
             << " colorState=" << GFX::ResourceStateToString(colorState_)
             << " depthState=" << GFX::ResourceStateToString(depthState_);
         return oss.str();
@@ -254,23 +360,6 @@ bool RenderTarget2D::CreateResources()
         device->CreateDepthStencilView(depthTex_.Get(), &readOnlyDsvView, readOnlyDsvHandle_);
 
         // Capture 蟆ら畑 RT 縺ｯ繝｡繧､繝ｳ SceneDepth SRV 繧剃ｸ頑嶌縺阪＠縺ｪ縺・・
-        if (publishDepthSrv_ && context_.srvHeap != nullptr) {
-            const UINT srvDescriptorSize =
-                device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-            const UINT postSceneDepthIndex =
-                GFX::DESCRIPTOR::ToIndex(GFX::DESCRIPTOR::SystemSrv::PostSceneDepth);
-            D3D12_CPU_DESCRIPTOR_HANDLE depthSrvCpu =
-                GFX::DESCRIPTOR::CpuAt(context_.srvHeap, srvDescriptorSize, postSceneDepthIndex);
-            D3D12_GPU_DESCRIPTOR_HANDLE depthSrvGpu =
-                GFX::DESCRIPTOR::GpuAt(context_.srvHeap, srvDescriptorSize, postSceneDepthIndex);
-            D3D12_SHADER_RESOURCE_VIEW_DESC depthSrvView{};
-            depthSrvView.Format = DXGI_FORMAT_R32_FLOAT;
-            depthSrvView.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-            depthSrvView.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-            depthSrvView.Texture2D.MipLevels = 1;
-            device->CreateShaderResourceView(depthTex_.Get(), &depthSrvView, depthSrvCpu);
-            depthSrvGpuHandle_ = depthSrvGpu;
-        }
     }
     SetDebugName(debugName_);
 
@@ -320,6 +409,12 @@ bool RenderTarget2D::CreateResources()
         if (!cmd || !colorTex_ || !rtvHeap_) {
             DEBUGLOG::PushRenderError(std::string("[RenderTarget2D][ERROR] BeginCapture skipped: invalid command list/resource. ") + DumpState());
             return;
+        }
+
+        if (publishDepthSrv_ && hasDepth_ &&
+            !RefreshDepthSrvForCurrentFrame()) {
+            DEBUGLOG::PushRenderError(
+                "[RenderTarget2D][ERROR] BeginCapture depth SRV publication failed.");
         }
 
         TransitionColor(D3D12_RESOURCE_STATE_RENDER_TARGET);
@@ -391,6 +486,13 @@ bool RenderTarget2D::CreateResources()
             return false;
         }
 
+        if (publishDepthSrv_ &&
+            !RefreshDepthSrvForCurrentFrame()) {
+            DEBUGLOG::PushRenderError(
+                "[RenderTarget2D][ERROR] BeginDepthRead depth SRV publication failed.");
+            return false;
+        }
+
         TransitionColor(D3D12_RESOURCE_STATE_RENDER_TARGET);
 
         TransitionDepth(
@@ -424,7 +526,15 @@ bool RenderTarget2D::CreateResources()
 
     bool RenderTarget2D::BeginDepthShaderRead()
     {
-        if (!initialized_ || !hasDepth_ || !depthTex_) {
+        if (!initialized_ || !hasDepth_ || !depthTex_ ||
+            context_.cmdList == nullptr) {
+            return false;
+        }
+
+        if (publishDepthSrv_ &&
+            !RefreshDepthSrvForCurrentFrame()) {
+            DEBUGLOG::PushRenderError(
+                "[RenderTarget2D][ERROR] BeginDepthShaderRead depth SRV publication failed.");
             return false;
         }
 

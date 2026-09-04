@@ -332,21 +332,19 @@ namespace HIKARI::GAME_UI {
             float v0,
             float u1,
             float v1) noexcept {
-            const float scale = (std::min)(
-                static_cast<float>(logicalWidth) /
+            GameProjectUiCanvasFit fit{};
+            if (!ResolveGameProjectUiCanvasFit(
+                    static_cast<uint32_t>(logicalWidth),
+                    static_cast<uint32_t>(logicalHeight),
                     request.referenceWidth,
-                static_cast<float>(logicalHeight) /
-                    request.referenceHeight);
-            const float fittedWidth = request.referenceWidth * scale;
-            const float fittedHeight = request.referenceHeight * scale;
-            const float offsetX =
-                (static_cast<float>(logicalWidth) - fittedWidth) * 0.5f;
-            const float offsetY =
-                (static_cast<float>(logicalHeight) - fittedHeight) * 0.5f;
-            const float x = offsetX + request.x * scale;
-            const float y = offsetY + request.y * scale;
-            const float width = request.width * scale;
-            const float height = request.height * scale;
+                    request.referenceHeight,
+                    fit)) {
+                return;
+            }
+            const float x = fit.offsetX + request.x * fit.scale;
+            const float y = fit.offsetY + request.y * fit.scale;
+            const float width = request.width * fit.scale;
+            const float height = request.height * fit.scale;
             const float pivotX = x + width * request.pivotX;
             const float pivotY = y + height * request.pivotY;
             const float cosine = std::cos(request.rotationRadians);

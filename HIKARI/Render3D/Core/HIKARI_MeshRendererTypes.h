@@ -26,6 +26,11 @@ namespace HIKARI {
 
 namespace HIKARI::MESHRENDERER {
 
+    // One resource set per simultaneous secondary scene capture. Keep this
+    // equal to the public GameProject scene-capture capacity; the document
+    // integration asserts that contract at the boundary.
+    inline constexpr uint32_t kSecondarySceneCaptureMaximumCount = 4u;
+
     enum class MeshRenderDebugMode {
         Normal,
         WireOverlay,

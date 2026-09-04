@@ -51,9 +51,10 @@ namespace HIKARI::RENDER3D::PARTICLES {
         bool cameraPositionValid = false;
     };
 
-    // Owned by MeshRendererState. This object has no target-owning Render
-    // entry point: simulation is prepared with the main material frame and
-    // drawing is executed only from the main ForwardTransparent pass.
+    // Owned by one MeshRenderer view-resource set. This object has no
+    // target-owning Render entry point: each main or bounded secondary view
+    // prepares its own instance, then executes it from that view's
+    // ForwardTransparent pass without sharing camera-dependent GPU state.
     class ParticleGpuDrivenPass final {
     public:
         ParticleGpuDrivenPass();

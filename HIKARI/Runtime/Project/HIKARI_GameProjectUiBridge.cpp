@@ -1,7 +1,9 @@
 #include "HIKARI/Project/UiView.h"
 #include "HIKARI/Project/WorldView.h"
 
+#include "Core/HIKARI_TimeService.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
+#include "Runtime/Project/Internal/HIKARI_GameProjectWorldBridgeInternal.h"
 #include "Scene/HIKARI_World.h"
 #include "Scene/Ui/HIKARI_GameUiPresentationService.h"
 
@@ -28,7 +30,7 @@ namespace HIKARI {
         const GameProjectUiSpriteRequest& request) const noexcept {
         try {
             World* world = static_cast<World*>(world_);
-            if (world == nullptr) {
+            if (world == nullptr || !world->IsOwnerThread()) {
                 return false;
             }
             GAME_UI::GameUiPresentationService* service =
@@ -49,7 +51,7 @@ namespace HIKARI {
         const GameProjectUiTextRequest& request) const noexcept {
         try {
             World* world = static_cast<World*>(world_);
-            if (world == nullptr) {
+            if (world == nullptr || !world->IsOwnerThread()) {
                 return false;
             }
             GAME_UI::GameUiPresentationService* service =
@@ -69,13 +71,35 @@ namespace HIKARI {
         const GameProjectUiBackdropRequest& request) const noexcept {
         try {
             World* world = static_cast<World*>(world_);
-            if (world == nullptr) {
+            if (world == nullptr || !world->IsOwnerThread()) {
                 return false;
             }
             GAME_UI::GameUiPresentationService* service =
                 world->Services().Find<
                     GAME_UI::GameUiPresentationService>();
             return service != nullptr && service->SubmitBackdrop(request);
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    bool UiView::WasActivated(
+        GameProjectObjectHandle object) const noexcept {
+        try {
+            World* world = static_cast<World*>(world_);
+            if (world == nullptr || !world->IsOwnerThread() ||
+                !PROJECT::INTERNAL::IsObjectHandleForWorld(
+                    object,
+                    *world)) {
+                return false;
+            }
+            GAME_UI::GameUiPresentationService* service =
+                world->Services().Find<
+                    GAME_UI::GameUiPresentationService>();
+            return service != nullptr && service->WasButtonActivated(
+                PROJECT::INTERNAL::DecodeRuntimeHandle(object),
+                TIME::GetFrameContext().frameIndex);
         }
         catch (...) {
             return false;

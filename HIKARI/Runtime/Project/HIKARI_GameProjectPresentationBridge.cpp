@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <string>
+#include <utility>
 
 #include "Core/HIKARI_TimeService.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
@@ -77,6 +78,120 @@ namespace HIKARI {
             return std::isfinite(rotationLengthSquared) &&
                 rotationLengthSquared > 1.0e-12f;
         }
+
+        bool SubmitPresentationModelRequest(
+            World* world,
+            const GameProjectPresentationModelRequest& request,
+            std::string_view exclusiveNodeName) noexcept {
+            try {
+                if (request.ownerObjectHandle == 0u ||
+                    request.instanceId == 0u ||
+                    request.model.IsEmpty() ||
+                    request.visible > 1u ||
+                    request.castShadow > 1u ||
+                    request.receiveShadow > 1u ||
+                    request.reserved != 0u ||
+                    request.attachment.enabled > 1u ||
+                    request.attachment.reserved[0] != 0u ||
+                    request.attachment.reserved[1] != 0u ||
+                    request.attachment.reserved[2] != 0u ||
+                    !IsValidTransform(request.worldTransform) ||
+                    (!exclusiveNodeName.empty() &&
+                        exclusiveNodeName.size() >
+                            kGameProjectModelNodeNameMaximumBytes)) {
+                    return false;
+                }
+
+                if (world == nullptr ||
+                    world->FindObject(
+                        DecodeRuntimeHandle(request.ownerObjectHandle)) == nullptr) {
+                    return false;
+                }
+
+                std::string assetGuid{};
+                std::string assetPath{};
+                std::string materialSetAssetGuid{};
+                std::string socketName{};
+                if (!ReadFixedText(request.model.assetGuid, assetGuid) ||
+                    !ReadFixedText(request.model.assetPath, assetPath) ||
+                    !ReadFixedText(
+                        request.materialSetAssetGuid,
+                        materialSetAssetGuid) ||
+                    !ReadFixedText(
+                        request.attachment.socketName,
+                        socketName) ||
+                    (assetGuid.empty() && assetPath.empty()) ||
+                    (request.attachment.enabled != 0u && socketName.empty()) ||
+                    (request.attachment.enabled == 0u && !socketName.empty()) ||
+                    (request.attachment.enabled != 0u &&
+                        !IsValidTransform(request.attachment.localTransform))) {
+                    return false;
+                }
+
+                PresentationModelService* service = world->Services().Find<
+                    PresentationModelService>();
+                if (service == nullptr) {
+                    return false;
+                }
+
+                PresentationModelSubmission submission{};
+                submission.ownerObjectHandle = request.ownerObjectHandle;
+                submission.instanceId = request.instanceId;
+                submission.assetGuid = std::move(assetGuid);
+                submission.assetPath = std::move(assetPath);
+                submission.materialSetAssetGuid =
+                    std::move(materialSetAssetGuid);
+                submission.socketName = std::move(socketName);
+                if (!exclusiveNodeName.empty()) {
+                    submission.exclusiveNodeName.assign(
+                        exclusiveNodeName.data(),
+                        exclusiveNodeName.size());
+                }
+                submission.attachmentEnabled =
+                    request.attachment.enabled != 0u;
+                submission.worldTransform.position = {
+                    request.worldTransform.position.x,
+                    request.worldTransform.position.y,
+                    request.worldTransform.position.z
+                };
+                submission.worldTransform.rotation = {
+                    request.worldTransform.rotation.x,
+                    request.worldTransform.rotation.y,
+                    request.worldTransform.rotation.z,
+                    request.worldTransform.rotation.w
+                };
+                submission.worldTransform.scale = {
+                    request.worldTransform.scale.x,
+                    request.worldTransform.scale.y,
+                    request.worldTransform.scale.z
+                };
+                submission.localTransform.position = {
+                    request.attachment.localTransform.position.x,
+                    request.attachment.localTransform.position.y,
+                    request.attachment.localTransform.position.z
+                };
+                submission.localTransform.rotation = {
+                    request.attachment.localTransform.rotation.x,
+                    request.attachment.localTransform.rotation.y,
+                    request.attachment.localTransform.rotation.z,
+                    request.attachment.localTransform.rotation.w
+                };
+                submission.localTransform.scale = {
+                    request.attachment.localTransform.scale.x,
+                    request.attachment.localTransform.scale.y,
+                    request.attachment.localTransform.scale.z
+                };
+                submission.visible = request.visible != 0u;
+                submission.castShadow = request.castShadow != 0u;
+                submission.receiveShadow = request.receiveShadow != 0u;
+                return service->Submit(
+                    submission,
+                    TIME::GetFrameContext().frameIndex);
+            }
+            catch (...) {
+                return false;
+            }
+        }
     }
 
     PresentationModelView GameProjectSdkAccess::MakePresentationModelView(
@@ -93,107 +208,22 @@ namespace HIKARI {
 
     bool PresentationModelView::Submit(
         const GameProjectPresentationModelRequest& request) const noexcept {
-        try {
-            if (request.ownerObjectHandle == 0u ||
-                request.instanceId == 0u ||
-                request.model.IsEmpty() ||
-                request.visible > 1u ||
-                request.castShadow > 1u ||
-                request.receiveShadow > 1u ||
-                request.reserved != 0u ||
-                request.attachment.enabled > 1u ||
-                request.attachment.reserved[0] != 0u ||
-                request.attachment.reserved[1] != 0u ||
-                request.attachment.reserved[2] != 0u ||
-                !IsValidTransform(request.worldTransform)) {
-                return false;
-            }
+        return SubmitPresentationModelRequest(
+            GameProjectSdkAccess::GetWorld(*this),
+            request,
+            {});
+    }
 
-            World* world = GameProjectSdkAccess::GetWorld(*this);
-            if (world == nullptr ||
-                world->FindObject(
-                    DecodeRuntimeHandle(request.ownerObjectHandle)) == nullptr) {
-                return false;
-            }
-
-            std::string assetGuid{};
-            std::string assetPath{};
-            std::string materialSetAssetGuid{};
-            std::string socketName{};
-            if (!ReadFixedText(request.model.assetGuid, assetGuid) ||
-                !ReadFixedText(request.model.assetPath, assetPath) ||
-                !ReadFixedText(
-                    request.materialSetAssetGuid,
-                    materialSetAssetGuid) ||
-                !ReadFixedText(
-                    request.attachment.socketName,
-                    socketName) ||
-                (assetGuid.empty() && assetPath.empty()) ||
-                (request.attachment.enabled != 0u && socketName.empty()) ||
-                (request.attachment.enabled == 0u && !socketName.empty()) ||
-                (request.attachment.enabled != 0u &&
-                    !IsValidTransform(request.attachment.localTransform))) {
-                return false;
-            }
-
-            PresentationModelService* service = world->Services().Find<
-                PresentationModelService>();
-            if (service == nullptr) {
-                return false;
-            }
-
-            PresentationModelSubmission submission{};
-            submission.ownerObjectHandle = request.ownerObjectHandle;
-            submission.instanceId = request.instanceId;
-            submission.assetGuid = std::move(assetGuid);
-            submission.assetPath = std::move(assetPath);
-            submission.materialSetAssetGuid =
-                std::move(materialSetAssetGuid);
-            submission.socketName = std::move(socketName);
-            submission.attachmentEnabled =
-                request.attachment.enabled != 0u;
-            submission.worldTransform.position = {
-                request.worldTransform.position.x,
-                request.worldTransform.position.y,
-                request.worldTransform.position.z
-            };
-            submission.worldTransform.rotation = {
-                request.worldTransform.rotation.x,
-                request.worldTransform.rotation.y,
-                request.worldTransform.rotation.z,
-                request.worldTransform.rotation.w
-            };
-            submission.worldTransform.scale = {
-                request.worldTransform.scale.x,
-                request.worldTransform.scale.y,
-                request.worldTransform.scale.z
-            };
-            submission.localTransform.position = {
-                request.attachment.localTransform.position.x,
-                request.attachment.localTransform.position.y,
-                request.attachment.localTransform.position.z
-            };
-            submission.localTransform.rotation = {
-                request.attachment.localTransform.rotation.x,
-                request.attachment.localTransform.rotation.y,
-                request.attachment.localTransform.rotation.z,
-                request.attachment.localTransform.rotation.w
-            };
-            submission.localTransform.scale = {
-                request.attachment.localTransform.scale.x,
-                request.attachment.localTransform.scale.y,
-                request.attachment.localTransform.scale.z
-            };
-            submission.visible = request.visible != 0u;
-            submission.castShadow = request.castShadow != 0u;
-            submission.receiveShadow = request.receiveShadow != 0u;
-            return service->Submit(
-                submission,
-                TIME::GetFrameContext().frameIndex);
-        }
-        catch (...) {
+    bool PresentationModelView::SubmitExclusiveNode(
+        const GameProjectPresentationModelRequest& request,
+        std::string_view nodeName) const noexcept {
+        if (nodeName.empty()) {
             return false;
         }
+        return SubmitPresentationModelRequest(
+            GameProjectSdkAccess::GetWorld(*this),
+            request,
+            nodeName);
     }
 
     bool PresentationModelView::Remove(

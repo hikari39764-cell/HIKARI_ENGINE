@@ -55,6 +55,9 @@ public:
                bool runtimePlayActive);
 
   void SetTargetCamera(SceneObjectId cameraObjectId) noexcept;
+  bool FrameTargetCamera(const DocumentSceneBase &scene,
+                         SceneObjectId cameraObjectId,
+                         float preferredDistance = 10.0f);
   void ExitPilot() noexcept;
   void ResetForScene();
   void LeaveWorkspace();

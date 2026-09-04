@@ -45,6 +45,54 @@ namespace HIKARI {
                 lengthSquared > kRotationEpsilonSquared;
         }
 
+        bool HasSameTransformPayload(
+            const Transform3D& lhs,
+            const Transform3D& rhs) noexcept {
+            if (lhs.position.x != rhs.position.x ||
+                lhs.position.y != rhs.position.y ||
+                lhs.position.z != rhs.position.z ||
+                lhs.rotation.x != rhs.rotation.x ||
+                lhs.rotation.y != rhs.rotation.y ||
+                lhs.rotation.z != rhs.rotation.z ||
+                lhs.rotation.w != rhs.rotation.w ||
+                lhs.scale.x != rhs.scale.x ||
+                lhs.scale.y != rhs.scale.y ||
+                lhs.scale.z != rhs.scale.z ||
+                lhs.useExplicitMatrix != rhs.useExplicitMatrix) {
+                return false;
+            }
+            for (size_t column = 0u; column < 4u; ++column) {
+                for (size_t row = 0u; row < 4u; ++row) {
+                    if (lhs.explicitMatrix.m[column][row] !=
+                        rhs.explicitMatrix.m[column][row]) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        bool HasSamePayload(
+            const PresentationModelRecord& record,
+            const PresentationModelSubmission& submission) noexcept {
+            return record.assetGuid == submission.assetGuid &&
+                record.assetPath == submission.assetPath &&
+                record.materialSetAssetGuid ==
+                    submission.materialSetAssetGuid &&
+                record.socketName == submission.socketName &&
+                record.exclusiveNodeName == submission.exclusiveNodeName &&
+                HasSameTransformPayload(
+                    record.worldTransform,
+                    submission.worldTransform) &&
+                HasSameTransformPayload(
+                    record.localTransform,
+                    submission.localTransform) &&
+                record.attachmentEnabled == submission.attachmentEnabled &&
+                record.visible == submission.visible &&
+                record.castShadow == submission.castShadow &&
+                record.receiveShadow == submission.receiveShadow;
+        }
+
         void AddUnique(
             std::vector<uint64_t>& ids,
             std::unordered_set<uint64_t>& membership,
@@ -96,6 +144,7 @@ namespace HIKARI {
                 submission.instanceId
             };
             const auto found = records_.find(key);
+            bool payloadChanged = true;
             if (found == records_.end()) {
                 PresentationModelRecord record{};
                 record.ownerObjectHandle = submission.ownerObjectHandle;
@@ -109,6 +158,7 @@ namespace HIKARI {
                 record.materialSetAssetGuid =
                     submission.materialSetAssetGuid;
                 record.socketName = submission.socketName;
+                record.exclusiveNodeName = submission.exclusiveNodeName;
                 record.worldTransform = submission.worldTransform;
                 record.localTransform = submission.localTransform;
                 record.attachmentEnabled = submission.attachmentEnabled;
@@ -118,17 +168,23 @@ namespace HIKARI {
                 records_.emplace(key, std::move(record));
             } else {
                 PresentationModelRecord& record = found->second;
-                record.assetGuid = submission.assetGuid;
-                record.assetPath = submission.assetPath;
-                record.materialSetAssetGuid =
-                    submission.materialSetAssetGuid;
-                record.socketName = submission.socketName;
-                record.worldTransform = submission.worldTransform;
-                record.localTransform = submission.localTransform;
-                record.attachmentEnabled = submission.attachmentEnabled;
-                record.visible = submission.visible;
-                record.castShadow = submission.castShadow;
-                record.receiveShadow = submission.receiveShadow;
+                payloadChanged = !HasSamePayload(record, submission);
+                if (payloadChanged) {
+                    record.assetGuid = submission.assetGuid;
+                    record.assetPath = submission.assetPath;
+                    record.materialSetAssetGuid =
+                        submission.materialSetAssetGuid;
+                    record.socketName = submission.socketName;
+                    record.exclusiveNodeName =
+                        submission.exclusiveNodeName;
+                    record.worldTransform = submission.worldTransform;
+                    record.localTransform = submission.localTransform;
+                    record.attachmentEnabled =
+                        submission.attachmentEnabled;
+                    record.visible = submission.visible;
+                    record.castShadow = submission.castShadow;
+                    record.receiveShadow = submission.receiveShadow;
+                }
                 removedRenderObjectIdSet_.erase(record.renderObjectId);
                 removedRenderObjectIds_.erase(
                     std::remove(
@@ -137,31 +193,12 @@ namespace HIKARI {
                         record.renderObjectId),
                     removedRenderObjectIds_.end());
             }
-            auto updated = records_.find(key);
-            if (updated != records_.end()) {
-                // The frame token belongs to the submission, not to the
-                // render pass. Multiple render views can consume the same
-                // frame without expiring a late-update submission.
-                updated->second.worldTransform = submission.worldTransform;
-                updated->second.ownerObjectHandle =
-                    submission.ownerObjectHandle;
-                updated->second.instanceId = submission.instanceId;
-                updated->second.assetGuid = submission.assetGuid;
-                updated->second.assetPath = submission.assetPath;
-                updated->second.materialSetAssetGuid =
-                    submission.materialSetAssetGuid;
-                updated->second.socketName = submission.socketName;
-                updated->second.visible = submission.visible;
-                updated->second.castShadow = submission.castShadow;
-                updated->second.receiveShadow = submission.receiveShadow;
-                updated->second.localTransform = submission.localTransform;
-                updated->second.attachmentEnabled =
-                    submission.attachmentEnabled;
-            }
             // Store the touched frame separately so a failed update cannot
             // accidentally make a stale record appear fresh.
             touchedFrames_[key] = frameIndex;
-            AdvanceRevision();
+            if (payloadChanged) {
+                AdvanceRevision();
+            }
             return true;
         }
         catch (...) {
@@ -209,8 +246,8 @@ namespace HIKARI {
         uint64_t frameIndex,
         std::span<const uint64_t> occupiedObjectIds) noexcept {
         try {
-            frameRecords_.clear();
             if (records_.empty()) {
+                frameRecords_.clear();
                 return;
             }
             std::unordered_set<uint64_t> occupiedIds{};
@@ -223,6 +260,7 @@ namespace HIKARI {
             }
 
             frameRecords_.reserve(records_.size());
+            size_t frameRecordCount = 0u;
             for (auto it = records_.begin(); it != records_.end();) {
                 const auto touched = touchedFrames_.find(it->first);
                 if (touched == touchedFrames_.end() ||
@@ -260,9 +298,16 @@ namespace HIKARI {
                     AdvanceRevision();
                 }
                 occupiedIds.insert(record.renderObjectId);
-                frameRecords_.push_back(record);
+                if (frameRecordCount < frameRecords_.size()) {
+                    frameRecords_[frameRecordCount] = record;
+                }
+                else {
+                    frameRecords_.push_back(record);
+                }
+                ++frameRecordCount;
                 ++it;
             }
+            frameRecords_.resize(frameRecordCount);
         }
         catch (...) {
             frameRecords_.clear();

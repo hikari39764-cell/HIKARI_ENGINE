@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <utility>
 
 #include "Scene/Components/HIKARI_IComponent.h"
 
@@ -12,17 +13,33 @@ namespace HIKARI {
             return "AnimationStateMachineComponent";
         }
 
-        void Serialize(nlohmann::json& out) const override;
-        void Deserialize(const nlohmann::json& in) override;
+        void Serialize(nlohmann::json& out) const override {
+            out["enabled"] = enabled_;
+            out["stateMachineAssetGuid"] = assetGuid_;
+            out["playOnStart"] = playOnStart_;
+            out["syncCharacterMotion"] = syncCharacterMotion_;
+        }
+        void Deserialize(const nlohmann::json& in) override {
+            enabled_ = in.value("enabled", enabled_);
+            assetGuid_ = in.value("stateMachineAssetGuid", assetGuid_);
+            playOnStart_ = in.value("playOnStart", playOnStart_);
+            syncCharacterMotion_ = in.value(
+                "syncCharacterMotion", syncCharacterMotion_);
+            lastDiagnostic_.clear();
+        }
         void BuildInspector(IInspectorBuilder& builder) override;
         void RenderImGui() override;
 
-        bool IsEnabled() const noexcept;
-        void SetEnabled(bool enabled) noexcept;
-        const std::string& GetAssetGuid() const noexcept;
-        void SetAssetGuid(std::string guid);
-        bool GetPlayOnStart() const noexcept;
-        bool GetSyncCharacterMotion() const noexcept;
+        bool IsEnabled() const noexcept { return enabled_; }
+        void SetEnabled(bool enabled) noexcept { enabled_ = enabled; }
+        const std::string& GetAssetGuid() const noexcept { return assetGuid_; }
+        void SetAssetGuid(std::string guid) {
+            assetGuid_ = std::move(guid);
+        }
+        bool GetPlayOnStart() const noexcept { return playOnStart_; }
+        bool GetSyncCharacterMotion() const noexcept {
+            return syncCharacterMotion_;
+        }
 
     private:
         bool enabled_ = true;

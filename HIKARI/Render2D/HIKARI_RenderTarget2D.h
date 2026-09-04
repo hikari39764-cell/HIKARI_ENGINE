@@ -23,12 +23,13 @@ namespace HIKARI {
             DXGI_FORMAT format = DXGI_FORMAT_R8G8B8A8_UNORM,
             bool withDepth = false,
             const std::array<float, 4>& optimizedClearColor = { 0.0f, 0.0f, 0.0f, 0.0f },
-            bool publishDepthSrv = true,
+            bool publishDepthSrv = false,
             bool allowUnorderedAccess = false
         );
 
         void UpdateContext(const HIKARI::GFX::Context& ctx);
         void Finalize();
+        void Swap(RenderTarget2D& other) noexcept;
 
         void BeginCapture(float r = 0, float g = 0, float b = 0, float a = 0, float depthClear = 1.0f);
         bool ClearColor(float r, float g, float b, float a);
@@ -57,7 +58,10 @@ namespace HIKARI {
 
         ID3D12DescriptorHeap* GetSrvHeap() const { return srvHeap_.Get(); }
         D3D12_GPU_DESCRIPTOR_HANDLE GetSrvGpu() const { return srvGpuHandle_; }
-        D3D12_GPU_DESCRIPTOR_HANDLE GetDepthSrvGpu() const { return depthSrvGpuHandle_; }
+        D3D12_GPU_DESCRIPTOR_HANDLE GetDepthSrvGpu() const {
+            return depthSrvGpuHandles_[
+                context_.frameIndex % GFX::kFrameResourceCount];
+        }
         D3D12_CPU_DESCRIPTOR_HANDLE GetRtvHandle() const { return rtvHandle_; }
         D3D12_CPU_DESCRIPTOR_HANDLE GetDsvHandle() const { return dsvHandle_; }
         D3D12_CPU_DESCRIPTOR_HANDLE GetReadOnlyDsvHandle() const { return readOnlyDsvHandle_; }
@@ -65,6 +69,8 @@ namespace HIKARI {
     private:
         bool CreateResources();
         void TransitionDepth(D3D12_RESOURCE_STATES nextState);
+        bool RefreshDepthSrvForCurrentFrame();
+        void ResetDepthSrvTracking() noexcept;
 
     private:
         Microsoft::WRL::ComPtr<ID3D12Resource> colorTex_;
@@ -81,7 +87,14 @@ namespace HIKARI {
         D3D12_GPU_DESCRIPTOR_HANDLE srvGpuHandle_{};
         D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle_{};
         D3D12_CPU_DESCRIPTOR_HANDLE readOnlyDsvHandle_{};
-        D3D12_GPU_DESCRIPTOR_HANDLE depthSrvGpuHandle_{};
+        std::array<D3D12_CPU_DESCRIPTOR_HANDLE, GFX::kFrameResourceCount>
+            depthSrvCpuHandles_{};
+        std::array<D3D12_GPU_DESCRIPTOR_HANDLE, GFX::kFrameResourceCount>
+            depthSrvGpuHandles_{};
+        std::array<ID3D12Resource*, GFX::kFrameResourceCount>
+            depthSrvResources_{};
+        std::array<uint64_t, GFX::kFrameResourceCount>
+            depthSrvGenerations_{};
         UINT dsvDescriptorSize_{};
 
         D3D12_VIEWPORT viewport_{};
@@ -92,7 +105,7 @@ namespace HIKARI {
         DXGI_FORMAT format_ = DXGI_FORMAT_R8G8B8A8_UNORM;
         bool initialized_ = false;
         bool hasDepth_ = false;
-        bool publishDepthSrv_ = true;
+        bool publishDepthSrv_ = false;
         bool allowUnorderedAccess_ = false;
         std::string debugName_ = "RenderTarget2D";
         HIKARI::GFX::Context context_{};

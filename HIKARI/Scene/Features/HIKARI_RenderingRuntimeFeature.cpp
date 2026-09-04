@@ -10,6 +10,7 @@
 #include "Scene/Components/Rendering/MaterialFx/HIKARI_MaterialFxComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponentAuthoring.h"
+#include "Scene/Components/Rendering/WorldSprite/HIKARI_WorldSpriteComponent.h"
 #include "Scene/Features/HIKARI_RuntimeFeature.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureIds.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
@@ -48,10 +49,11 @@ namespace HIKARI {
 
             std::span<const std::string_view>
                 GetComponentTypeNames() const noexcept override {
-                static constexpr std::array<std::string_view, 3> names{
+                static constexpr std::array<std::string_view, 4> names{
                     "ModelComponent",
                     "MaterialFxComponent",
-                    "ProceduralMeshComponent"
+                    "ProceduralMeshComponent",
+                    "WorldSpriteComponent"
                 };
                 return names;
             }
@@ -133,10 +135,41 @@ namespace HIKARI {
                     "Procedural Mesh",
                     "Generates editable primitive geometry.");
 
+                ComponentTypeInfo worldSprite{};
+                worldSprite.typeName = "WorldSpriteComponent";
+                worldSprite.factory = []() -> std::unique_ptr<IComponent> {
+                    return std::make_unique<WorldSpriteComponent>();
+                };
+                worldSprite.affectsRenderState = true;
+                worldSprite.initializeDefaults = [](
+                    const SceneObjectData&,
+                    nlohmann::json& properties) {
+                    properties = {
+                        { "version", 1u },
+                        { "textureAssetGuid", "" },
+                        { "visible", true },
+                        { "size", { 1.0f, 1.0f } },
+                        { "preserveAspect", true },
+                        { "facing", "CameraFacing" },
+                        { "tint", { 1.0f, 1.0f, 1.0f } },
+                        { "opacity", 1.0f },
+                        { "pivot", { 0.5f, 0.5f } },
+                        { "alphaMode", "Auto" },
+                        { "alphaCutoff", 0.5f },
+                        { "transparentSortPriority", 0 }
+                    };
+                };
+                worldSprite.presentation = RenderingPresentation(
+                    "World Sprite (3D)",
+                    "Displays a texture directly on an engine-owned quad in "
+                    "3D space, including transparent textures.");
+
                 bool success = components.Register(std::move(model));
                 success = components.Register(std::move(materialFx)) &&
                     success;
                 success = components.Register(std::move(procedural)) &&
+                    success;
+                success = components.Register(std::move(worldSprite)) &&
                     success;
                 success = systems.Register(SystemTypeInfo{
                     "ModelRenderSystem",

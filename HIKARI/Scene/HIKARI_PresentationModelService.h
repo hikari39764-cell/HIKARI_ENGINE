@@ -18,6 +18,10 @@ namespace HIKARI {
         std::string assetPath{};
         std::string materialSetAssetGuid{};
         std::string socketName{};
+        // Empty keeps the legacy whole-model submission. Otherwise the
+        // render projection exposes only this exact-name node and its
+        // descendants.
+        std::string exclusiveNodeName{};
         Transform3D worldTransform{};
         Transform3D localTransform{};
         bool attachmentEnabled = false;
@@ -34,6 +38,10 @@ namespace HIKARI {
         std::string assetPath{};
         std::string materialSetAssetGuid{};
         std::string socketName{};
+        // Empty keeps the legacy whole-model submission. Otherwise the
+        // render projection exposes only this exact-name node and its
+        // descendants.
+        std::string exclusiveNodeName{};
         Transform3D worldTransform{};
         Transform3D localTransform{};
         bool attachmentEnabled = false;

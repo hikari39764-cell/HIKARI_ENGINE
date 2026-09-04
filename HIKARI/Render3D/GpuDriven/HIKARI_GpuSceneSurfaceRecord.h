@@ -41,6 +41,9 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         uint64_t geometryKey = 0;
         uint64_t clusterGeometryKey = 0;
         uint64_t materialKey = 0;
+        // Runtime 内容の世代。materialKey とは分離し、編集のたびに仮想
+        // Resource identity が増え続けないようにする。
+        uint64_t materialRevision = 0;
         uint64_t textureSetKey = 0;
         uint64_t shaderKey = 0;
         uint64_t psoKey = 0;

@@ -108,12 +108,38 @@ namespace HIKARI::RENDER3D {
         bool sceneDepthPrepass = false;
     };
 
+    // Runtime render-quality edits are applied between frames.  The
+    // classification keeps the presentation owner from treating every scalar
+    // tweak as a GPU-resource rebuild while still making resolution, temporal
+    // backend, and Streamline changes explicit.
+    struct RenderQualityRuntimeChangeSet {
+        bool sceneResolutionChanged = false;
+        bool temporalBackendChanged = false;
+        bool streamlineStateChanged = false;
+        bool frameGenerationChanged = false;
+        bool presentationChanged = false;
+
+        bool RequiresGpuDrain() const noexcept {
+            return sceneResolutionChanged || temporalBackendChanged ||
+                streamlineStateChanged || frameGenerationChanged;
+        }
+        bool RequiresTemporalReset() const noexcept {
+            return sceneResolutionChanged || temporalBackendChanged;
+        }
+        bool RequiresStreamlineReset() const noexcept {
+            return streamlineStateChanged || frameGenerationChanged;
+        }
+    };
+
     RenderQualitySettings& GetRenderQualitySettings();
     RenderQualitySettings NormalizeRenderQualitySettings(
         RenderQualitySettings settings);
     bool AreRenderQualitySettingsEqual(
         const RenderQualitySettings& lhs,
         const RenderQualitySettings& rhs);
+    RenderQualityRuntimeChangeSet ClassifyRenderQualityRuntimeChanges(
+        const RenderQualitySettings& before,
+        const RenderQualitySettings& after);
     void SetRenderQualitySettings(const RenderQualitySettings& settings);
 
     const char* RenderResolutionPresetLabel(RenderResolutionPreset preset);

@@ -369,6 +369,14 @@ private:
   void FitPreviewCamera();
   void FocusSelectedSlot();
   void ResetPreviewCamera();
+  // Preview-only lighting and environment edits own a revision separate from
+  // the camera receipt consumed by the interactive-view request.
+  void MarkPreviewLightingChanged() noexcept {
+    ++previewContentRevision_;
+    if (previewContentRevision_ == 0u) {
+      previewContentRevision_ = 1u;
+    }
+  }
   void ResetPreviewKeyLight();
   void InitializePreviewLighting();
   void AddPreviewLight(RENDER3D::LIGHTING::SceneLightType type);
@@ -544,6 +552,7 @@ private:
   ToolPreviewCameraStateStore cameraStateStore_{};
   EditorViewInputRouter inputRouter_{};
   uint64_t cameraRevision_ = 1u;
+  uint64_t previewContentRevision_ = 1u;
   bool cameraCutPending_ = true;
   bool previewRequestSubmitted_ = false;
   bool previewOutputReady_ = false;

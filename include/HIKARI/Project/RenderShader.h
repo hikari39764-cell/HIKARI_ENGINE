@@ -123,9 +123,13 @@ namespace HIKARI {
     constexpr bool IsGameProjectFullscreenShaderInput(
         GameProjectRenderSurfaceSemantic semantic,
         GameProjectRenderSurfacePhase phase) noexcept {
-        return semantic ==
-                GameProjectRenderSurfaceSemantic::SceneColorOpaque &&
-            phase == GameProjectRenderSurfacePhase::Opaque;
+        return
+            (semantic ==
+                 GameProjectRenderSurfaceSemantic::SceneColorOpaque &&
+             phase == GameProjectRenderSurfacePhase::Opaque) ||
+            (semantic ==
+                 GameProjectRenderSurfaceSemantic::SceneColorFinal &&
+             phase == GameProjectRenderSurfacePhase::Final);
     }
 
     // Stable source identity only. GPU programs, DXIL and PSOs remain owned by
@@ -175,8 +179,10 @@ namespace HIKARI {
         }
     };
 
-    // The input must also be declared as Sampled by the containing pass. The
-    // output is the implicit engine-owned WorkingSceneColor target.
+    // The input must also be declared as Sampled by the containing pass. Use
+    // SceneColorOpaque for an early opaque-only effect or SceneColorFinal for
+    // a late effect that must preserve transparent and material screen
+    // features. The output is the implicit engine-owned WorkingSceneColor.
     struct GameProjectFullscreenDrawDesc {
         uint32_t structSize = kGameProjectFullscreenDrawDescV1Size;
         uint32_t version = kGameProjectRenderShaderVersion;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <array>
 
 #include <d3d12.h>
 #include <wrl/client.h>
@@ -82,12 +83,11 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             const GFX::Context& graphics,
             uint32_t width,
             uint32_t height,
-            GFX::DESCRIPTOR::SystemSrv srvSlot,
             Microsoft::WRL::ComPtr<ID3D12Resource>& outResource,
             D3D12_CPU_DESCRIPTOR_HANDLE& outRtv,
-            D3D12_CPU_DESCRIPTOR_HANDLE& outSrvCpu,
-            D3D12_GPU_DESCRIPTOR_HANDLE& outSrvGpu,
             const wchar_t* debugName);
+        bool RefreshAoDescriptorsForCurrentFrame(
+            const GFX::Context& graphics);
 
         void Transition(ID3D12GraphicsCommandList* cmd, ID3D12Resource* resource, D3D12_RESOURCE_STATES& state, D3D12_RESOURCE_STATES nextState);
         void DrawFullscreen(ID3D12GraphicsCommandList* cmd);
@@ -123,12 +123,30 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         D3D12_CPU_DESCRIPTOR_HANDLE rawRtv_{};
         D3D12_CPU_DESCRIPTOR_HANDLE blurredRtv_{};
         D3D12_CPU_DESCRIPTOR_HANDLE resolvedRtv_{};
-        D3D12_CPU_DESCRIPTOR_HANDLE rawSrvCpu_{};
-        D3D12_CPU_DESCRIPTOR_HANDLE blurredSrvCpu_{};
-        D3D12_CPU_DESCRIPTOR_HANDLE resolvedSrvCpu_{};
-        D3D12_GPU_DESCRIPTOR_HANDLE rawSrvGpu_{};
-        D3D12_GPU_DESCRIPTOR_HANDLE blurredSrvGpu_{};
-        D3D12_GPU_DESCRIPTOR_HANDLE resolvedSrvGpu_{};
+        std::array<D3D12_CPU_DESCRIPTOR_HANDLE, GFX::kFrameResourceCount>
+            rawSrvCpu_{};
+        std::array<D3D12_CPU_DESCRIPTOR_HANDLE, GFX::kFrameResourceCount>
+            blurredSrvCpu_{};
+        std::array<D3D12_CPU_DESCRIPTOR_HANDLE, GFX::kFrameResourceCount>
+            resolvedSrvCpu_{};
+        std::array<D3D12_GPU_DESCRIPTOR_HANDLE, GFX::kFrameResourceCount>
+            rawSrvGpu_{};
+        std::array<D3D12_GPU_DESCRIPTOR_HANDLE, GFX::kFrameResourceCount>
+            blurredSrvGpu_{};
+        std::array<D3D12_GPU_DESCRIPTOR_HANDLE, GFX::kFrameResourceCount>
+            resolvedSrvGpu_{};
+        std::array<ID3D12Resource*, GFX::kFrameResourceCount>
+            rawSrvResources_{};
+        std::array<ID3D12Resource*, GFX::kFrameResourceCount>
+            blurredSrvResources_{};
+        std::array<ID3D12Resource*, GFX::kFrameResourceCount>
+            resolvedSrvResources_{};
+        std::array<uint64_t, GFX::kFrameResourceCount>
+            rawSrvGenerations_{};
+        std::array<uint64_t, GFX::kFrameResourceCount>
+            blurredSrvGenerations_{};
+        std::array<uint64_t, GFX::kFrameResourceCount>
+            resolvedSrvGenerations_{};
         D3D12_GPU_DESCRIPTOR_HANDLE lastAoSrv_{};
         D3D12_RESOURCE_STATES rawState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
         D3D12_RESOURCE_STATES blurredState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
@@ -139,6 +157,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         uint32_t height_ = 0;
         bool halfResolution_ = false;
         bool valid_ = false;
+        uint32_t activeFrameSlot_ = 0u;
     };
 
     const SsaoDebugState& GetSsaoDebugState();

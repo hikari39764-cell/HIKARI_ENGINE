@@ -58,6 +58,7 @@ namespace HIKARI {
         out["sequenceAssetGuid"] = sequenceAssetGuid_;
         out["playOnStart"] = playOnStart_;
         out["loop"] = loop_;
+        out["holdAtEnd"] = holdAtEnd_;
         out["playbackRate"] = playbackRate_;
         out["startTimeSeconds"] = startTimeSeconds_;
         out["channel"] = channel_;
@@ -82,6 +83,7 @@ namespace HIKARI {
             sequenceAssetGuid_);
         playOnStart_ = in.value("playOnStart", playOnStart_);
         loop_ = in.value("loop", loop_);
+        holdAtEnd_ = in.value("holdAtEnd", holdAtEnd_);
         playbackRate_ = in.value("playbackRate", playbackRate_);
         startTimeSeconds_ = in.value(
             "startTimeSeconds",
@@ -163,10 +165,12 @@ namespace HIKARI {
     }
 
     void SequencePlayerComponent::NormalizeSettings() {
-        playbackRate_ = std::clamp(
-            std::isfinite(playbackRate_) ? playbackRate_ : 1.0f,
-            0.01f,
-            8.0f);
+        const float finiteRate = std::isfinite(playbackRate_)
+            ? playbackRate_
+            : 1.0f;
+        const float magnitude = std::clamp(
+            std::abs(finiteRate), 0.01f, 8.0f);
+        playbackRate_ = finiteRate < 0.0f ? -magnitude : magnitude;
         startTimeSeconds_ = std::isfinite(startTimeSeconds_)
             ? (std::max)(startTimeSeconds_, 0.0f)
             : 0.0f;

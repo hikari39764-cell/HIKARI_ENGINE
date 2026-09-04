@@ -73,18 +73,34 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         uint32_t width,
         uint32_t height) {
 
+        const GFX::Context graphics = GFX::GetCurrentContext();
+        const bool contextUnavailable =
+            graphics.device == nullptr || graphics.deviceGeneration == 0u;
+        const bool contextChanged = contextUnavailable
+            ? lastGraphicsContext_.device != nullptr
+            : (lastGraphicsContext_.deviceGeneration != 0u &&
+                   lastGraphicsContext_.deviceGeneration !=
+                       graphics.deviceGeneration ||
+               lastGraphicsContext_.device != nullptr &&
+                   lastGraphicsContext_.device != graphics.device);
+        if (contextChanged && compositeTarget_ != nullptr) {
+            compositeTarget_->UpdateContext({});
+            compositeTarget_.reset();
+        }
+        lastGraphicsContext_ = graphics;
+
         if (compositeTarget_ != nullptr &&
             compositeTarget_->IsInitialized() &&
             compositeTarget_->GetWidth() == static_cast<int>(width) &&
             compositeTarget_->GetHeight() == static_cast<int>(height) &&
             compositeTarget_->GetFormat() == kCompositeFormat &&
             !compositeTarget_->HasDepth()) {
-            compositeTarget_->UpdateContext(GFX::GetCurrentContext());
+            compositeTarget_->UpdateContext(graphics);
             return true;
         }
 
         auto replacement = std::make_unique<RenderTarget2D>();
-        replacement->UpdateContext(GFX::GetCurrentContext());
+        replacement->UpdateContext(graphics);
         if (!replacement->Init(
                 static_cast<int>(width),
                 static_cast<int>(height),
@@ -108,6 +124,10 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         SURFACE::SceneSurfaceSet& outSurfaces) {
 
         const GFX::Context& graphics = GFX::GetCurrentContext();
+        if (lastGraphicsContext_.device == nullptr &&
+            lastGraphicsContext_.deferredReleaseQueue == nullptr) {
+            lastGraphicsContext_ = graphics;
+        }
         if (sceneTarget.GetResource() == nullptr ||
             sceneTarget.GetDepthResource() == nullptr ||
             graphics.device == nullptr) {
@@ -307,22 +327,38 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
     }
 
     void EditorInteractiveStylizedView::Shutdown() {
+        const GFX::Context current = GFX::GetCurrentContext();
+        const bool contextUnavailable =
+            current.device == nullptr || current.deviceGeneration == 0u;
+        const bool contextChanged = contextUnavailable
+            ? lastGraphicsContext_.device != nullptr
+            : (lastGraphicsContext_.deviceGeneration != 0u &&
+                   lastGraphicsContext_.deviceGeneration !=
+                       current.deviceGeneration ||
+               lastGraphicsContext_.device != nullptr &&
+                   lastGraphicsContext_.device != current.device);
+        const GFX::Context context = contextChanged
+            ? GFX::Context{}
+            : lastGraphicsContext_.device != nullptr ||
+                  lastGraphicsContext_.deferredReleaseQueue != nullptr
+                ? lastGraphicsContext_
+                : current;
         for (RenderResourceView& view : sceneColorSrvs_) {
-            if (view.IsValid()) {
-                (void)ReleaseRenderResourceDescriptor(view);
-                view = {};
-            }
+            RetireRenderResourceDescriptor(
+                view, context, "EditorInteractiveStylizedView.SceneColorSRV");
         }
         for (RenderResourceView& view : sceneDepthSrvs_) {
-            if (view.IsValid()) {
-                (void)ReleaseRenderResourceDescriptor(view);
-                view = {};
-            }
+            RetireRenderResourceDescriptor(
+                view, context, "EditorInteractiveStylizedView.SceneDepthSRV");
         }
         sceneSrvGenerations_.fill(0u);
         surfaceBuffer_.Release();
+        if (contextChanged && compositeTarget_ != nullptr) {
+            compositeTarget_->UpdateContext({});
+        }
         compositeTarget_.reset();
         plan_ = {};
+        lastGraphicsContext_ = {};
     }
 
     void ShutdownEditorInteractiveStylizedSharedResources() {

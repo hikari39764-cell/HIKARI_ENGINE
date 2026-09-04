@@ -59,6 +59,7 @@ namespace HIKARI {
         std::string sequenceAssetGuid_{};
         bool playOnStart_ = false;
         bool loop_ = false;
+        bool holdAtEnd_ = false;
         float playbackRate_ = 1.0f;
         float startTimeSeconds_ = 0.0f;
         std::string channel_ = "Cinematics";

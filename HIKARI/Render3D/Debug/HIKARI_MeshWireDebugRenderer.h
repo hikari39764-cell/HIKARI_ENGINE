@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <span>
 
 #include "Render3D/HIKARI_Transform3D.h"
 
@@ -20,7 +21,13 @@ namespace HIKARI::MESHWIREDEBUG {
     };
 
     void BeginFrame();
-    void SubmitModelWire(const ModelAsset& asset, const Transform3D& world, uint32_t color, uint32_t maxLines, bool perPrimitiveColor);
+    void SubmitModelWire(
+        const ModelAsset& asset,
+        const Transform3D& world,
+        uint32_t color,
+        uint32_t maxLines,
+        bool perPrimitiveColor,
+        std::span<const uint8_t> nodeVisibilityMask = {});
     void SubmitModelBounds(const ModelAsset& asset, const Transform3D& world, uint32_t color);
     const MeshWireDebugStats& GetDebugStats();
     void ClearCache();

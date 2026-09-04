@@ -212,6 +212,7 @@ namespace HIKARI::RENDER3D::CLUSTER {
             uint32_t candidateCommandCapacity = 0;
             uint32_t enableFrustumCull = 1;
             uint32_t candidateCommandBucketCapacity = 0;
+            // Physical base/count of the dedicated HCMESH descriptor arena.
             uint32_t clusterSrvPoolBegin = 0;
             uint32_t clusterSrvPoolCount = 0;
             uint32_t enableConeCull = 1;

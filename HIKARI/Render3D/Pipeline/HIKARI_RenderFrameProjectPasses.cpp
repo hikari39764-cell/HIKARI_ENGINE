@@ -318,6 +318,44 @@ bool ProjectRenderPassesRequireSceneColorOpaque(
     return false;
 }
 
+bool ProjectRenderPassesRequireSceneColorFinal(
+    const RenderFrameProjectExtensionSink& extensions,
+    GameProjectRenderViewPurpose purpose) noexcept {
+    if (!extensions.CanExecutePasses()) {
+        return false;
+    }
+    uint32_t count = 0u;
+    if (!extensions.getPassCount(extensions.context, count) ||
+        count > kGameProjectRenderMaximumPassCount) {
+        return false;
+    }
+    const uint32_t purposeBit = GameProjectRenderViewPurposeBit(purpose);
+    for (uint32_t index = 0u; index < count; ++index) {
+        GameProjectRenderPassDesc descriptor{};
+        if (!extensions.describePass(
+                extensions.context,
+                index,
+                descriptor) ||
+            !descriptor.IsValid() ||
+            (descriptor.viewPurposeMask & purposeBit) == 0u) {
+            continue;
+        }
+        for (uint32_t useIndex = 0u;
+            useIndex < descriptor.resourceUseCount;
+            ++useIndex) {
+            const GameProjectRenderPassResourceUse& use =
+                descriptor.resources[useIndex];
+            if (use.semantic ==
+                    GameProjectRenderSurfaceSemantic::SceneColorFinal &&
+                use.phase == GameProjectRenderSurfacePhase::Final &&
+                use.access == GameProjectRenderSurfaceAccess::Sampled) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 bool ProjectRenderPassesRequireDispatchOutput(
     const RenderFrameProjectExtensionSink& extensions,
     GameProjectRenderViewPurpose purpose) noexcept {

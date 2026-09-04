@@ -37,6 +37,7 @@ namespace HIKARI::POST {
             float waveAmplitude = 1.0f;
             float waveDamping = 1.0f;
             uint32_t waveCount = 1u;
+            bool converging = false;
         };
 
         struct CinematicGrade {
@@ -388,6 +389,10 @@ namespace HIKARI::POST {
                     sourceWave.waveCount,
                     1u,
                     4u);
+                candidate.converging =
+                    (sourceWave.flags &
+                        RENDER3D::COMBAT_VFX::
+                            kPerfectGuardShockwaveConvergingFlag) != 0u;
 
                 // A scene can be submitted by more than one compatible render
                 // view.  Merge distinct reactions, but do not amplify the same
@@ -403,7 +408,8 @@ namespace HIKARI::POST {
                         std::abs(existing.ageNormalized -
                             candidate.ageNormalized) <= 1.0e-4f &&
                         std::abs(existing.maximumScreenRadius -
-                            candidate.maximumScreenRadius) <= 1.0e-4f) {
+                            candidate.maximumScreenRadius) <= 1.0e-4f &&
+                        existing.converging == candidate.converging) {
                         duplicate = true;
                         break;
                     }
@@ -597,7 +603,9 @@ namespace HIKARI::POST {
                 params.user[base + 3u] = {
                     wave.flashIntensity,
                     wave.waveFrequency,
-                    wave.waveAmplitude,
+                    wave.converging
+                        ? -(wave.waveAmplitude + 16.0f)
+                        : wave.waveAmplitude,
                     wave.waveDamping +
                         static_cast<float>(wave.waveCount) * 16.0f };
             }

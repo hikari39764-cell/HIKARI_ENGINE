@@ -1,11 +1,15 @@
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/Document/Internal/HIKARI_DocumentSceneState.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <initializer_list>
+#include <iterator>
 #include <memory>
 #include <numbers>
+#include <optional>
+#include <string>
 #include <utility>
 #include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
@@ -32,13 +36,14 @@
 #include "Vfx/Post/HIKARI_PostSystem.h"
 #include "Vfx/Post/HIKARI_PostProfile.h"
 #include "Scene/HIKARI_RuntimeSceneContext.h"
+#include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
+#include "Scene/Capture/HIKARI_DocumentSceneCaptureIntegration.h"
 #include "Scene/Lighting/HIKARI_SceneLightingSet.h"
 
 namespace HIKARI {
     namespace {
         constexpr const char* kDefaultGlobalPostProfileId = "Ani";
-
         bool TryUnprojectClipCorner(
             const MATH::Mat4& invViewProj,
             float x,
@@ -208,6 +213,8 @@ namespace HIKARI {
         state_->runtime.systemScheduler.DetachWorld(state_->runtime.world);
         state_->runtime.systemScheduler.Clear();
         state_->runtime.presentationModelService.Clear();
+        state_->runtime.sceneCaptureService.Reset();
+        MODELRENDERER::ResetSecondarySceneCaptureTarget();
         // RenderSubmissionSystem borrows the document-owned Registry and
         // ModelManager. Clear both before DocumentSceneState is destroyed.
         RenderSubmissionSystem::SetAssetContext(nullptr, {}, nullptr);
@@ -375,6 +382,9 @@ namespace HIKARI {
             state_->runtime.materialProjectionSourceSnapshot.reset();
             state_->runtime.materialExternalValueSnapshot.reset();
         }
+        SCENE_CAPTURE::ApplyPublishedMaterialBinding(
+            state_->runtime.world,
+            state_->runtime.sceneCaptureService);
         int captureW = 0;
         int captureH = 0;
         POST::PostSystem::GetSceneCaptureSize(captureW, captureH);
@@ -527,6 +537,8 @@ namespace HIKARI {
                 : RENDER3D::RenderViewPurpose::EditorScene;
             primaryView.cameraFrame = &state_->camera.resolvedFrame;
             primaryView.assetRegistry = &state_->assets.Registry();
+            primaryView.worldSpriteFrameSource =
+                &RenderSubmissionSystem::GetWorldSpriteFrameSource();
             primaryView.projectRenderExtensions = {
                 &state_->runtime.systemScheduler,
                 [](void* context,
@@ -584,6 +596,14 @@ namespace HIKARI {
                 primaryView.actionPostReactionFrameSource =
                     &reactions->GetFrameSource();
             }
+            SCENE_CAPTURE::RenderSecondaryCapture(
+                *state_,
+                graphics,
+                activeEnvironment,
+                sceneLighting,
+                frame,
+                primaryView.particleFrameSource,
+                primaryView.worldSpriteFrameSource);
             const MESHRENDERER::MeshRendererFrameResult modelFrame =
                 MODELRENDERER::RenderAll(
                     graphics,
@@ -596,16 +616,16 @@ namespace HIKARI {
                     state_->runtime.world,
                     frame);
             }
-            const auto& particleReceipt =
+            const auto primaryParticleReceipt =
                 MESHRENDERER::GetParticleGpuDrivenPassStats();
+            SubmitFrozenCullingCameraDebugFrustum();
             if (playback != nullptr &&
-                particleReceipt.simulationAccepted &&
-                particleReceipt.simulationAcceptedToken ==
+                primaryParticleReceipt.simulationAccepted &&
+                primaryParticleReceipt.simulationAcceptedToken ==
                     playback->GetRenderInput().GetDeliveryToken()) {
                 (void)playback->AcknowledgeRenderInput(
-                    particleReceipt.simulationAcceptedToken);
+                    primaryParticleReceipt.simulationAcceptedToken);
             }
-            SubmitFrozenCullingCameraDebugFrustum();
             RENDERER3D::RenderAll(
                 renderCamera,
                 static_cast<float>(captureW),
@@ -619,7 +639,8 @@ namespace HIKARI {
             state_->assets.Models(),
             state_->lighting.sky,
             &state_->assets.Registry(),
-            state_->runtime.materialExternalValueSnapshot.get());
+            state_->runtime.materialExternalValueSnapshot.get(),
+            &RenderSubmissionSystem::GetWorldSpriteFrameSource());
 #endif
     }
     void DocumentSceneBase::RenderImGui() {

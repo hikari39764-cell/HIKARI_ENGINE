@@ -248,6 +248,10 @@ namespace HIKARI {
                     s.descriptorPool.used,
                     s.descriptorPool.capacity,
                     s.descriptorPool.failedAllocationCount);
+                MetricRow("Cluster Descriptor Used / Capacity / Failed", "%u / %u / %u",
+                    s.descriptorPool.clusterUsed,
+                    s.descriptorPool.clusterCapacity,
+                    s.descriptorPool.clusterFailedAllocationCount);
                 ImGui::EndTable();
             }
         }

@@ -23,6 +23,7 @@ namespace HIKARI {
             sequenceAssetGuid_);
         builder.Bool("Play On Start", playOnStart_);
         builder.Bool("Loop", loop_);
+        builder.Bool("Hold At End", holdAtEnd_);
         builder.Float("Playback Rate", playbackRate_);
         builder.Float("Start Time", startTimeSeconds_);
         builder.String("Channel", channel_);

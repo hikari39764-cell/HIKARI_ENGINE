@@ -76,22 +76,74 @@ float4 ResolveOutlineStyle(int2 pixel)
             HIKARI_STYLIZED_OUTLINE_MAX_PIXELS));
 }
 
+bool ResolveOutlineContext(
+    int2 centerPixel,
+    uint centerFeatureMask,
+    out float4 outlineStyle)
+{
+    outlineStyle = ResolveOutlineStyle(centerPixel);
+    if (IsOutlineSurface(centerFeatureMask))
+    {
+        return true;
+    }
+
+    // 中心が背景側でも隣接する対象の Style を拾い、輪郭をモデルの内側
+    // だけでなく外側にも最低 1 本描く。小さいボタンでも線が消えない。
+    const int probePixels = clamp(
+        (int)ceil(gEdgeParams.x),
+        1,
+        (int)HIKARI_STYLIZED_OUTLINE_MAX_PIXELS);
+    const int2 offsets[4] = {
+        int2(probePixels, 0),
+        int2(-probePixels, 0),
+        int2(0, probePixels),
+        int2(0, -probePixels)
+    };
+    [unroll]
+    for (uint index = 0u; index < 4u; ++index)
+    {
+        const int2 samplePixel = ClampSurfacePixel(
+            centerPixel + offsets[index]);
+        const uint sampleFeatureMask = LoadSurfaceFeature(samplePixel).x;
+        if (IsOutlineSurface(sampleFeatureMask))
+        {
+            outlineStyle = ResolveOutlineStyle(samplePixel);
+            return true;
+        }
+    }
+    return false;
+}
+
+float3 ToDisplayRange(float3 color)
+{
+    color = max(color, 0.0f.xxx);
+    return color / (1.0f.xxx + color);
+}
+
 float ResolveEdge(
     float2 uv,
     float2 offset,
     float centerDepth,
-    float3 centerNormal)
+    float3 centerNormal,
+    float3 centerColor)
 {
+    const float2 sampleUv = saturate(uv + offset);
     const float sampleDepth = gSceneDepth.SampleLevel(
-        gPointClamp, saturate(uv + offset), 0.0f);
+        gPointClamp, sampleUv, 0.0f);
     const float3 sampleNormal = HikariDecodeOctahedralNormal(
         gPackedSurface.SampleLevel(
-            gPointClamp, saturate(uv + offset), 0.0f).rg);
+            gPointClamp, sampleUv, 0.0f).rg);
+    const float3 sampleColor = gSceneColor.SampleLevel(
+        gPointClamp, sampleUv, 0.0f).rgb;
     const float depthEdge = abs(sampleDepth - centerDepth) /
         max(gEdgeParams.y, abs(centerDepth) * gEdgeParams.y);
     const float normalEdge = (1.0f - saturate(
         dot(centerNormal, sampleNormal))) / gEdgeParams.z;
-    return max(depthEdge, normalEdge);
+    // ボタンの Face / Collar のように深度と法線が近い別マテリアルも、
+    // HDR 色差から確実に輪郭として検出する。
+    const float colorEdge = length(
+        ToDisplayRange(sampleColor) - ToDisplayRange(centerColor)) / 0.16f;
+    return max(max(depthEdge, normalEdge), colorEdge);
 }
 
 float2 ResolveFaceHairSampleDirection()
@@ -156,19 +208,23 @@ float4 PSMain(FullscreenVertex input) : SV_TARGET
         gPointClamp, input.uv, 0.0f);
     const float3 centerNormal = HikariDecodeOctahedralNormal(
         gPackedSurface.SampleLevel(gPointClamp, input.uv, 0.0f).rg);
-    const float4 outlineStyle = ResolveOutlineStyle(centerPixel);
+    float4 outlineStyle = 0.0f.xxxx;
+    const bool outlineContext = ResolveOutlineContext(
+        centerPixel,
+        centerFeature.x,
+        outlineStyle);
     const float2 texel = gScreenParams.zw * outlineStyle.w;
     float edge = 0.0f;
-    if (IsOutlineSurface(centerFeature.x))
+    if (outlineContext)
     {
         edge = max(edge, ResolveEdge(input.uv, float2(texel.x, 0.0f),
-                                     centerDepth, centerNormal));
+                                     centerDepth, centerNormal, scene.rgb));
         edge = max(edge, ResolveEdge(input.uv, float2(-texel.x, 0.0f),
-                                     centerDepth, centerNormal));
+                                     centerDepth, centerNormal, scene.rgb));
         edge = max(edge, ResolveEdge(input.uv, float2(0.0f, texel.y),
-                                     centerDepth, centerNormal));
+                                     centerDepth, centerNormal, scene.rgb));
         edge = max(edge, ResolveEdge(input.uv, float2(0.0f, -texel.y),
-                                     centerDepth, centerNormal));
+                                     centerDepth, centerNormal, scene.rgb));
     }
     float3 color = scene.rgb *
         (1.0f - ResolveFaceHairShadow(

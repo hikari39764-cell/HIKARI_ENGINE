@@ -172,6 +172,7 @@ namespace HIKARI {
             materialSetSelectionAuthored_ = true;
             materialOverrides_.clear();
             ClearRuntimeMaterialOverrides();
+            runtimeNodeVisibilityOverrides_.clear();
         }
         assetId_ = std::move(assetId);
         NotifyRenderStateDirty();
@@ -305,6 +306,19 @@ namespace HIKARI {
         ClearRuntimeMaterialOverride(legacySlotIndex);
     }
 
+    Material* ModelComponent::GetRuntimeMaterialOverride(
+        uint32_t slotIndex) {
+
+        for (RuntimeMaterialOverrideSlot& slot :
+            runtimeMaterialOverrides_) {
+
+            if (slot.materialIndex == slotIndex) {
+                return slot.material.get();
+            }
+        }
+        return nullptr;
+    }
+
     const Material* ModelComponent::GetRuntimeMaterialOverride(
         uint32_t slotIndex) const {
 
@@ -365,6 +379,148 @@ namespace HIKARI {
         ModelComponent::GetRuntimeMaterialOverrides() const noexcept {
 
         return runtimeMaterialOverrides_;
+    }
+
+    bool ModelComponent::SetRuntimeNodeVisibilityOverride(
+        std::string_view nodeName,
+        bool visible,
+        bool includeDescendants) {
+
+        if (nodeName.empty()) {
+            return false;
+        }
+
+        const auto found = std::find_if(
+            runtimeNodeVisibilityOverrides_.begin(),
+            runtimeNodeVisibilityOverrides_.end(),
+            [nodeName](const RuntimeModelNodeVisibilityOverride& entry) {
+                return entry.nodeName == nodeName;
+            });
+        if (found != runtimeNodeVisibilityOverrides_.end()) {
+            if (found->visible == visible &&
+                found->includeDescendants == includeDescendants) {
+                return true;
+            }
+            found->visible = visible;
+            found->includeDescendants = includeDescendants;
+            NotifyRenderStateDirty();
+            return true;
+        }
+
+        runtimeNodeVisibilityOverrides_.push_back(
+            RuntimeModelNodeVisibilityOverride{
+                std::string(nodeName),
+                visible,
+                includeDescendants,
+            });
+        NotifyRenderStateDirty();
+        return true;
+    }
+
+    bool ModelComponent::ClearRuntimeNodeVisibilityOverride(
+        std::string_view nodeName) {
+
+        if (nodeName.empty()) {
+            return false;
+        }
+        const size_t previousSize =
+            runtimeNodeVisibilityOverrides_.size();
+        std::erase_if(
+            runtimeNodeVisibilityOverrides_,
+            [nodeName](const RuntimeModelNodeVisibilityOverride& entry) {
+                return entry.nodeName == nodeName;
+            });
+        if (runtimeNodeVisibilityOverrides_.size() == previousSize) {
+            return false;
+        }
+        NotifyRenderStateDirty();
+        return true;
+    }
+
+    void ModelComponent::ClearRuntimeNodeVisibilityOverrides() {
+        if (runtimeNodeVisibilityOverrides_.empty()) {
+            return;
+        }
+        runtimeNodeVisibilityOverrides_.clear();
+        NotifyRenderStateDirty();
+    }
+
+    const std::vector<RuntimeModelNodeVisibilityOverride>&
+        ModelComponent::GetRuntimeNodeVisibilityOverrides() const noexcept {
+
+        return runtimeNodeVisibilityOverrides_;
+    }
+
+    std::vector<uint8_t> ModelComponent::ResolveRuntimeNodeVisibilityMask(
+        const ModelAsset& model) const {
+
+        if (model.nodes.empty() ||
+            runtimeNodeVisibilityOverrides_.empty()) {
+            return {};
+        }
+
+        std::vector<const RuntimeModelNodeVisibilityOverride*>
+            directOverrides(model.nodes.size(), nullptr);
+        for (const RuntimeModelNodeVisibilityOverride& entry :
+            runtimeNodeVisibilityOverrides_) {
+
+            const auto node = std::find_if(
+                model.nodes.begin(),
+                model.nodes.end(),
+                [&entry](const ModelNode& candidate) {
+                    return candidate.name == entry.nodeName;
+                });
+            if (node == model.nodes.end()) {
+                continue;
+            }
+            const size_t nodeIndex = static_cast<size_t>(
+                node - model.nodes.begin());
+            directOverrides[nodeIndex] = &entry;
+        }
+
+        std::vector<uint8_t> mask(model.nodes.size(), 1u);
+        bool hasHiddenNode = false;
+        for (size_t nodeIndex = 0u;
+            nodeIndex < model.nodes.size();
+            ++nodeIndex) {
+
+            const RuntimeModelNodeVisibilityOverride* direct =
+                directOverrides[nodeIndex];
+            if (direct != nullptr) {
+                mask[nodeIndex] = direct->visible ? 1u : 0u;
+            }
+            else {
+                int parent = model.nodes[nodeIndex].parent;
+                for (size_t depth = 0u;
+                    depth < model.nodes.size() && parent >= 0 &&
+                        static_cast<size_t>(parent) < model.nodes.size();
+                    ++depth) {
+
+                    const size_t parentIndex =
+                        static_cast<size_t>(parent);
+                    const RuntimeModelNodeVisibilityOverride* inherited =
+                        directOverrides[parentIndex];
+                    if (inherited != nullptr &&
+                        inherited->includeDescendants) {
+                        mask[nodeIndex] =
+                            inherited->visible ? 1u : 0u;
+                        break;
+                    }
+                    const int nextParent =
+                        model.nodes[parentIndex].parent;
+                    if (nextParent == parent) {
+                        break;
+                    }
+                    parent = nextParent;
+                }
+            }
+            hasHiddenNode = hasHiddenNode || mask[nodeIndex] == 0u;
+        }
+
+        if (!hasHiddenNode) {
+            return {};
+        }
+        return mask;
     }
 
     MaterialSlotId ModelComponent::ResolveCurrentSlotId(

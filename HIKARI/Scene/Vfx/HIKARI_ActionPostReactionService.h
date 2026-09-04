@@ -33,6 +33,7 @@ namespace HIKARI::VFX {
             float waveAmplitude = 1.0f;
             float waveDamping = 1.0f;
             uint32_t waveCount = 1u;
+            uint32_t flags = 0u;
         };
 
         struct ActionCinematicGradeRequest {

@@ -109,6 +109,10 @@ namespace HIKARI::SEQUENCER {
             return result;
         }
 
+        const float contentEnd = GetCameraCutTrackContentEnd(track);
+        const float endTolerance = (std::max)(
+            std::abs(contentEnd) * 1.0e-6f,
+            1.0e-6f);
         const CameraCutClip* activeClip = nullptr;
         for (const CameraCutClip& clip : track.clips) {
             if (clip.id == 0 || !clip.cameraBindingId.IsValid() ||
@@ -119,8 +123,15 @@ namespace HIKARI::SEQUENCER {
             }
             const float clipEnd =
                 clip.startTimeSeconds + clip.durationSeconds;
+            // Camera cuts are half-open between clips, but the final authored
+            // frame belongs to the last clip. Otherwise evaluating a Sequence
+            // exactly at its duration releases the camera one frame before a
+            // hold-at-end pause can retain it.
+            const bool terminalFrame =
+                std::abs(timeSeconds - contentEnd) <= endTolerance &&
+                std::abs(clipEnd - contentEnd) <= endTolerance;
             if (timeSeconds < clip.startTimeSeconds ||
-                timeSeconds >= clipEnd) {
+                (timeSeconds >= clipEnd && !terminalFrame)) {
                 continue;
             }
             if (activeClip == nullptr ||
@@ -137,7 +148,11 @@ namespace HIKARI::SEQUENCER {
             result.transition = activeClip->transition;
             result.sequenceTimeSeconds = timeSeconds;
             result.localTimeSeconds =
-                timeSeconds - activeClip->startTimeSeconds;
+                (std::min)(
+                    timeSeconds,
+                    activeClip->startTimeSeconds +
+                        activeClip->durationSeconds) -
+                activeClip->startTimeSeconds;
         }
         return result;
     }

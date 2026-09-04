@@ -4,6 +4,7 @@
 
 #include "HIKARI/Project/GameProjectSdk.h"
 #include "HIKARI/Project/UiTypes.h"
+#include "HIKARI/Project/ValueTypes.h"
 
 namespace HIKARI {
 
@@ -30,6 +31,11 @@ namespace HIKARI {
 
         HIKARI_GAME_PROJECT_SDK_API bool SubmitBackdrop(
             const GameProjectUiBackdropRequest& request) const noexcept;
+        // Returns true only during the frame in which the Scene-authored
+        // button on this object was activated. The object must belong to this
+        // World and callers must remain on the runtime owner thread.
+        HIKARI_GAME_PROJECT_SDK_API bool WasActivated(
+            GameProjectObjectHandle object) const noexcept;
 
     private:
         friend struct GameProjectSdkAccess;

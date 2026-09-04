@@ -1,0 +1,25 @@
+{
+  "id": "CYBER",
+  "displayName": "CYBER",
+  "domain": "GlobalPost",
+  "passes": [
+    {
+      "passName": "CYBER Resolve",
+      "programId": "HIKARI.EngineShader.Post_CYBER",
+      "entryId": "Main"
+    }
+  ],
+  "params": [
+    { "key": "strength", "label": "Strength", "type": "Float", "ref": { "slot": 0, "channel": 0 }, "defaultValues": [1.0, 0, 0, 0], "minValues": [0.0, 0, 0, 0], "maxValues": [1.0, 0, 0, 0], "speed": 0.01 },
+    { "key": "edgeGlow", "label": "Edge Glow", "type": "Float", "ref": { "slot": 0, "channel": 1 }, "defaultValues": [1.15, 0, 0, 0], "minValues": [0.0, 0, 0, 0], "maxValues": [4.0, 0, 0, 0], "speed": 0.02 },
+    { "key": "glitch", "label": "Glitch", "type": "Float", "ref": { "slot": 0, "channel": 2 }, "defaultValues": [0.34, 0, 0, 0], "minValues": [0.0, 0, 0, 0], "maxValues": [1.0, 0, 0, 0], "speed": 0.01 },
+    { "key": "scanlines", "label": "Scanlines", "type": "Float", "ref": { "slot": 0, "channel": 3 }, "defaultValues": [0.22, 0, 0, 0], "minValues": [0.0, 0, 0, 0], "maxValues": [1.0, 0, 0, 0], "speed": 0.01 },
+    { "key": "shadowColor", "label": "Shadow Color", "type": "Color3", "ref": { "slot": 1, "channel": 0 }, "defaultValues": [0.015, 0.025, 0.12, 0], "minValues": [0.0, 0.0, 0.0, 0], "maxValues": [4.0, 4.0, 4.0, 0], "speed": 0.01 },
+    { "key": "midColor", "label": "Mid Color", "type": "Color3", "ref": { "slot": 2, "channel": 0 }, "defaultValues": [0.04, 0.82, 0.92, 0], "minValues": [0.0, 0.0, 0.0, 0], "maxValues": [4.0, 4.0, 4.0, 0], "speed": 0.01 },
+    { "key": "highlightColor", "label": "Highlight Color", "type": "Color3", "ref": { "slot": 3, "channel": 0 }, "defaultValues": [1.0, 0.08, 0.62, 0], "minValues": [0.0, 0.0, 0.0, 0], "maxValues": [4.0, 4.0, 4.0, 0], "speed": 0.01 },
+    { "key": "lowThreshold", "label": "Low Threshold", "type": "Float", "ref": { "slot": 4, "channel": 0 }, "defaultValues": [0.28, 0, 0, 0], "minValues": [0.0, 0, 0, 0], "maxValues": [1.0, 0, 0, 0], "speed": 0.01 },
+    { "key": "highThreshold", "label": "High Threshold", "type": "Float", "ref": { "slot": 4, "channel": 1 }, "defaultValues": [0.64, 0, 0, 0], "minValues": [0.0, 0, 0, 0], "maxValues": [1.0, 0, 0, 0], "speed": 0.01 },
+    { "key": "chromaPixels", "label": "Chromatic Pixels", "type": "Float", "ref": { "slot": 4, "channel": 2 }, "defaultValues": [1.4, 0, 0, 0], "minValues": [0.0, 0, 0, 0], "maxValues": [6.0, 0, 0, 0], "speed": 0.05 },
+    { "key": "vignette", "label": "Vignette", "type": "Float", "ref": { "slot": 4, "channel": 3 }, "defaultValues": [0.35, 0, 0, 0], "minValues": [0.0, 0, 0, 0], "maxValues": [1.0, 0, 0, 0], "speed": 0.01 }
+  ]
+}

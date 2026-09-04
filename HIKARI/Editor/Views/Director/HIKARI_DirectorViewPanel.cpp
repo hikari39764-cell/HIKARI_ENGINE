@@ -5,6 +5,7 @@
 #include <cmath>
 #include <limits>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #if defined(HIKARI_WITH_EDITOR)
@@ -288,10 +289,11 @@ DirectorViewPanelResult DirectorViewPanel::DrawContents(
 
   const RENDER3D::EDITORVIEW::EditorInteractiveViewOutput output =
       RENDER3D::EDITORVIEW::GetOutput(view.renderViewId);
+  const uint64_t currentSceneRevision = scene.GetSceneDocumentRevision();
   const bool outputReady =
       output.ready && output.colorSrv.ptr != 0 && output.width > 0 &&
       output.height > 0 &&
-      output.sceneRevision == scene.GetSceneDocumentRevision();
+      output.sceneRevision <= currentSceneRevision;
   if (outputReady) {
     const ImTextureID texture = reinterpret_cast<ImTextureID>(
         static_cast<uintptr_t>(output.colorSrv.ptr));
@@ -305,9 +307,18 @@ DirectorViewPanelResult DirectorViewPanel::DrawContents(
     drawList->AddRectFilled(
         imageOrigin, {imageOrigin.x + imageSize.x, imageOrigin.y + imageSize.y},
         IM_COL32(9, 12, 16, 255));
-    drawList->AddText({imageOrigin.x + 14.0f, imageOrigin.y + 14.0f},
-                      IM_COL32(184, 198, 211, 255),
-                      "Waiting for Director View output");
+    const bool outputFailed =
+        output.status ==
+        RENDER3D::EDITORVIEW::EditorInteractiveViewStatus::Failed;
+    const std::string_view outputMessage = outputFailed
+        ? RENDER3D::EDITORVIEW::GetEditorInteractiveViewFailureMessage(
+              output.failure)
+        : std::string_view{"Waiting for Director View output"};
+    drawList->AddText(
+        {imageOrigin.x + 14.0f, imageOrigin.y + 14.0f},
+        outputFailed ? IM_COL32(255, 122, 104, 255)
+                     : IM_COL32(184, 198, 211, 255),
+        outputMessage.data());
   }
 
   const bool imageHovered = ImGui::IsItemHovered();
@@ -487,6 +498,8 @@ DirectorViewPanelResult DirectorViewPanel::DrawContents(
   request.height = view.extent.height;
   request.sceneRevision = scene.GetSceneDocumentRevision();
   request.visible = view.interaction.visible;
+  request.continuousRealtime = true;
+  request.schedulingPriority = 100u;
   request.shadingMode = ResolveShadingMode(view.visualization.shadingMode);
   request.displayExposure = view.visualization.displayExposure;
   // Camera overlays and the transform gizmo are drawn explicitly by this

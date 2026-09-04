@@ -14,6 +14,7 @@
 #include "Core/HIKARI_Logger.h"
 #include "Core/Numeric/HIKARI_IntegerConversion.h"
 #include "Gfx/HIKARI_DXCheck.h"
+#include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "Render3D/Resources/HIKARI_RenderResourceSystem.h"
@@ -22,7 +23,10 @@
 namespace HIKARI::RENDER3D {
 
     namespace {
-        constexpr uint32_t kClusterGeometryDescriptorCount = 2u;
+        constexpr uint32_t kClusterGeometryDescriptorCount =
+            GFX::DESCRIPTOR::kClusterGeometryDescriptorCountPerResource;
+        constexpr const char* kClusterGeometryDescriptorOwner =
+            "ClusterGeometryResourceSystem";
 
         struct ClusterGeometryMemorySource {
             CLUSTER::ClusterGeometryPackedBytes packed{};
@@ -45,11 +49,22 @@ namespace HIKARI::RENDER3D {
             Microsoft::WRL::ComPtr<ID3D12Fence> uploadFence{};
             HANDLE uploadFenceEvent = nullptr;
             uint64_t uploadFenceValue = 1;
+            bool contextMismatchReported = false;
         };
 
         ClusterGeometryResourceSystemState& State() {
             static ClusterGeometryResourceSystemState state{};
             return state;
+        }
+
+        bool IsContextCompatible(
+            const GFX::Context& owner,
+            const GFX::Context& candidate) noexcept {
+
+            return owner.device == nullptr ||
+                (owner.deviceGeneration == candidate.deviceGeneration &&
+                 owner.device == candidate.device &&
+                 owner.srvHeap == candidate.srvHeap);
         }
 
         uint64_t PackHandle(ClusterGeometryResourceHandle handle) {
@@ -321,67 +336,122 @@ namespace HIKARI::RENDER3D {
             return desc;
         }
 
-        RenderResourceView CreateClusterGeometrySrv(
+        bool CreateClusterGeometrySrv(
+            ID3D12Device* device,
+            const RenderResourceView& view,
             ID3D12Resource* resource,
             uint64_t byteSize) {
 
-            if (resource == nullptr || byteSize == 0) {
-                return {};
+            if (device == nullptr ||
+                !view.IsValid() ||
+                resource == nullptr ||
+                byteSize == 0 ||
+                byteSize % sizeof(uint32_t) != 0) {
+                return false;
             }
 
-            return AllocateBufferSrvDescriptor(
-                resource,
-                DXGI_FORMAT_R32_TYPELESS,
-                static_cast<UINT>(byteSize / sizeof(uint32_t)),
-                0,
-                D3D12_BUFFER_SRV_FLAG_RAW);
+            D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+            srvDesc.Shader4ComponentMapping =
+                D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            srvDesc.Format = DXGI_FORMAT_R32_TYPELESS;
+            srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+            srvDesc.Buffer.FirstElement = 0;
+            srvDesc.Buffer.NumElements =
+                static_cast<UINT>(byteSize / sizeof(uint32_t));
+            srvDesc.Buffer.StructureByteStride = 0;
+            srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_RAW;
+            device->CreateShaderResourceView(resource, &srvDesc, view.cpu);
+            return true;
+        }
+
+        void ReportDescriptorAllocationFailure(
+            const std::string& path,
+            const RenderResourceDescriptorPoolStats& descriptorStats,
+            const char* reason) {
+
+            const std::string message =
+                "[ClusterGeometryResourceSystem][DescriptorArena][LoadFailed] "
+                "path=" + path +
+                " owner=" + kClusterGeometryDescriptorOwner +
+                " needed=" + std::to_string(kClusterGeometryDescriptorCount) +
+                " used=" + std::to_string(descriptorStats.clusterUsed) +
+                " free=" + std::to_string(descriptorStats.clusterFree) +
+                " capacity=" + std::to_string(descriptorStats.clusterCapacity) +
+                " reason=" + (reason != nullptr ? reason : "unknown");
+            HIKARI_LOG_WARN(message);
         }
 
         void ReleaseClusterGeometryRecordViews(const ClusterGeometryResourceRecord& record) {
-            if (record.srv.IsValid()) {
-                ReleaseRenderResourceDescriptor(record.srv);
-            }
-            if (record.metadataSrv.IsValid()) {
-                ReleaseRenderResourceDescriptor(record.metadataSrv);
-            }
-            if (record.metadataBuffer && State().context.deferredReleaseQueue != nullptr) {
+            ClusterGeometryResourceSystemState& state = State();
+            RenderResourceView srv = record.srv;
+            RenderResourceView metadataSrv = record.metadataSrv;
+            RetireRenderResourceDescriptor(
+                srv,
+                state.context,
+                "Cluster Geometry SRV");
+            RetireRenderResourceDescriptor(
+                metadataSrv,
+                state.context,
+                "Cluster Geometry Metadata SRV");
+            if (record.metadataBuffer &&
+                state.context.deferredReleaseQueue != nullptr &&
+                state.context.currentFrameRetireFenceValue != 0u) {
                 Microsoft::WRL::ComPtr<ID3D12Resource> keepAlive = record.metadataBuffer;
-                State().context.deferredReleaseQueue->Enqueue(
-                    State().context.currentFrameRetireFenceValue,
-                    [keepAlive]() mutable {
-                        keepAlive.Reset();
-                    },
-                    "Cluster Geometry Metadata Buffer");
+                try {
+                    state.context.deferredReleaseQueue->Enqueue(
+                        state.context.currentFrameRetireFenceValue,
+                        [keepAlive]() mutable {
+                            keepAlive.Reset();
+                        },
+                        "Cluster Geometry Metadata Buffer");
+                }
+                catch (...) {
+                    keepAlive.Reset();
+                }
             }
         }
 
-        void RetireReplacedClusterGeometryRecord(
+        void RetireClusterGeometryRecordGpuState(
             const ClusterGeometryResourceRecord& record,
-            Microsoft::WRL::ComPtr<ID3D12Resource> geometryBuffer) {
+            Microsoft::WRL::ComPtr<ID3D12Resource> geometryBuffer,
+            const char* debugName) noexcept {
 
-            const RenderResourceView srv = record.srv;
-            const RenderResourceView metadataSrv = record.metadataSrv;
+            RenderResourceView srv = record.srv;
+            RenderResourceView metadataSrv = record.metadataSrv;
             Microsoft::WRL::ComPtr<ID3D12Resource> metadataBuffer =
                 record.metadataBuffer;
             ClusterGeometryResourceSystemState& state = State();
             if (state.context.deferredReleaseQueue != nullptr &&
                 state.context.currentFrameRetireFenceValue != 0) {
-                state.context.deferredReleaseQueue->Enqueue(
-                    state.context.currentFrameRetireFenceValue,
-                    [srv,
-                     metadataSrv,
-                     geometryBuffer = std::move(geometryBuffer),
-                     metadataBuffer = std::move(metadataBuffer)]() mutable {
-                        if (srv.IsValid()) {
-                            ReleaseRenderResourceDescriptor(srv);
-                        }
-                        if (metadataSrv.IsValid()) {
-                            ReleaseRenderResourceDescriptor(metadataSrv);
-                        }
-                        geometryBuffer.Reset();
-                        metadataBuffer.Reset();
-                    },
-                    "Replaced Cluster Geometry");
+                const char* descriptorDebugName =
+                    debugName != nullptr ? debugName : "Retired Cluster Geometry";
+                RetireRenderResourceDescriptor(
+                    srv,
+                    state.context,
+                    descriptorDebugName);
+                RetireRenderResourceDescriptor(
+                    metadataSrv,
+                    state.context,
+                    descriptorDebugName);
+                try {
+                    state.context.deferredReleaseQueue->Enqueue(
+                        state.context.currentFrameRetireFenceValue,
+                        [geometryBuffer = std::move(geometryBuffer),
+                         metadataBuffer = std::move(metadataBuffer)]() mutable {
+                            geometryBuffer.Reset();
+                            metadataBuffer.Reset();
+                        },
+                        debugName != nullptr
+                            ? debugName
+                            : "Retired Cluster Geometry");
+                }
+                catch (...) {
+                    // Descriptor retirement already has a synchronous
+                    // fallback. Release the captured resources as well when
+                    // queue admission cannot allocate its bookkeeping node.
+                    geometryBuffer.Reset();
+                    metadataBuffer.Reset();
+                }
                 return;
             }
 
@@ -427,12 +497,17 @@ namespace HIKARI::RENDER3D {
             const uint32_t fenceWaits = state.stats.fenceWaitCount;
             const uint32_t descriptorAllocations =
                 state.stats.descriptorAllocationCount;
+            const RenderResourceDescriptorPoolStats descriptorPoolStats =
+                GetRenderResourceDescriptorPoolStats();
             const uint32_t ownerThreadViolations =
                 state.ownerThreadViolations.load(
                     std::memory_order_relaxed);
 
             ClusterGeometryResourceSystemStats stats{};
-            stats.initialized = state.context.device != nullptr && state.context.srvHeap != nullptr;
+            stats.initialized =
+                state.context.device != nullptr &&
+                state.context.srvHeap != nullptr &&
+                descriptorPoolStats.initialized;
             stats.requestCount = requests;
             stats.hitCount = hits;
             stats.missCount = misses;
@@ -447,6 +522,10 @@ namespace HIKARI::RENDER3D {
             stats.uploadSubmitCount = uploadSubmits;
             stats.fenceWaitCount = fenceWaits;
             stats.descriptorAllocationCount = descriptorAllocations;
+            stats.descriptorArenaBegin = descriptorPoolStats.clusterBegin;
+            stats.descriptorArenaCapacity = descriptorPoolStats.clusterCapacity;
+            stats.descriptorArenaUsed = descriptorPoolStats.clusterUsed;
+            stats.descriptorArenaFree = descriptorPoolStats.clusterFree;
             stats.ownerThreadViolationCount = ownerThreadViolations;
             stats.resourceCount = NUMERIC::SaturateToUint32(state.recordsBySourceKey.size());
 
@@ -486,6 +565,17 @@ namespace HIKARI::RENDER3D {
                 "outside the owner thread.");
             return;
         }
+        if (!IsContextCompatible(state.context, ctx)) {
+            if (!state.contextMismatchReported) {
+                HIKARI_LOG_WARN(
+                    "[ClusterGeometryResourceSystem] context update rejected "
+                    "for an incompatible device or SRV heap.");
+                state.contextMismatchReported = true;
+            }
+            RebuildStats();
+            return;
+        }
+        state.contextMismatchReported = false;
         state.context = ctx;
         RebuildStats();
     }
@@ -509,6 +599,7 @@ namespace HIKARI::RENDER3D {
         state.recordsBySourceKey.clear();
         state.sourceKeyByHandle.clear();
         state.context = {};
+        state.contextMismatchReported = false;
         state.stats = {};
         ResetUploadObjects(state);
         state.nextMemorySourceRevision = 1;
@@ -567,12 +658,34 @@ namespace HIKARI::RENDER3D {
         if (sourceKey.empty()) {
             return;
         }
-        state.memorySourcesBySourceKey.erase(sourceKey);
         const auto record = state.recordsBySourceKey.find(sourceKey);
         if (record != state.recordsBySourceKey.end() &&
             record->second.memoryResident) {
-            record->second.ready = false;
+            ClusterGeometryResourceRecord& resource = record->second;
+            Microsoft::WRL::ComPtr<ID3D12Resource> geometryBuffer{};
+            if (resource.handle) {
+                geometryBuffer =
+                    GetRenderResourcePool().GetResource(
+                        resource.handle.ToUntyped());
+                if (!GetRenderResourcePool().Release(
+                        resource.handle.ToUntyped())) {
+                    HIKARI_LOG_WARN(
+                        "[ClusterGeometryResourceSystem][Unregister] "
+                        "failed to release resource handle for path=" +
+                        resource.sourcePath.generic_string());
+                    return;
+                }
+            }
+
+            RetireClusterGeometryRecordGpuState(
+                resource,
+                std::move(geometryBuffer),
+                "Unregistered Cluster Geometry");
+            state.sourceKeyByHandle.erase(PackHandle(resource.handle));
+            state.recordsBySourceKey.erase(record);
         }
+        state.memorySourcesBySourceKey.erase(sourceKey);
+        RebuildStats();
     }
 
     ClusterGeometryResourceHandle LoadClusterGeometryResource(
@@ -680,7 +793,13 @@ namespace HIKARI::RENDER3D {
         const RenderResourceDescriptorPoolStats descriptorStats =
             GetRenderResourceDescriptorPoolStats();
         if (!descriptorStats.initialized ||
-            descriptorStats.free < kClusterGeometryDescriptorCount) {
+            descriptorStats.clusterFree < kClusterGeometryDescriptorCount) {
+            ReportDescriptorAllocationFailure(
+                normalizedPath,
+                descriptorStats,
+                descriptorStats.initialized
+                    ? "cluster-arena-exhausted"
+                    : "cluster-arena-unavailable");
             ++state.stats.failedCount;
             ++state.stats.descriptorAllocationFailedCount;
             return {};
@@ -706,6 +825,31 @@ namespace HIKARI::RENDER3D {
             }
         }
 
+        const std::vector<RenderResourceView> descriptorRange =
+            AllocateClusterGeometryDescriptorRange(
+                kClusterGeometryDescriptorCount);
+        if (descriptorRange.size() != kClusterGeometryDescriptorCount ||
+            !descriptorRange[0].IsValid() ||
+            !descriptorRange[1].IsValid() ||
+            descriptorRange[0].descriptorIndex + 1u !=
+                descriptorRange[1].descriptorIndex) {
+            ReportDescriptorAllocationFailure(
+                normalizedPath,
+                GetRenderResourceDescriptorPoolStats(),
+                "cluster-arena-allocation-failed");
+            for (const RenderResourceView& descriptor : descriptorRange) {
+                ReleaseRenderResourceDescriptor(descriptor);
+            }
+            ++state.stats.failedCount;
+            ++state.stats.descriptorAllocationFailedCount;
+            return {};
+        }
+        RenderResourceView srv = descriptorRange[0];
+        RenderResourceView metadataSrv = descriptorRange[1];
+        state.stats.descriptorAllocationCount +=
+            (srv.IsValid() ? 1u : 0u) +
+            (metadataSrv.IsValid() ? 1u : 0u);
+
         ClusterGeometryUploadBuffer geometryUpload{};
         ClusterGeometryUploadBuffer metadataUpload{};
         if (!CreateClusterGeometryUploadBuffer(
@@ -721,6 +865,8 @@ namespace HIKARI::RENDER3D {
                 L"Cluster Geometry Metadata Upload Staging",
                 metadataUpload) ||
             !ExecuteClusterGeometryUpload(state, geometryUpload, metadataUpload)) {
+            ReleaseRenderResourceDescriptor(srv);
+            ReleaseRenderResourceDescriptor(metadataSrv);
             ++state.stats.failedCount;
             return {};
         }
@@ -728,6 +874,8 @@ namespace HIKARI::RENDER3D {
         ClusterGeometryResourceHandle handle =
             FindOrRegisterHandle(sourceKey, normalizedPath);
         if (!handle) {
+            ReleaseRenderResourceDescriptor(srv);
+            ReleaseRenderResourceDescriptor(metadataSrv);
             ++state.stats.failedCount;
             return {};
         }
@@ -743,12 +891,20 @@ namespace HIKARI::RENDER3D {
             }
         }
 
-        RenderResourceView srv = CreateClusterGeometrySrv(geometryUpload.gpu.Get(), packed.layout.byteSize);
-        RenderResourceView metadataSrv = CreateClusterGeometrySrv(metadataUpload.gpu.Get(), packed.metadataByteSize);
-        state.stats.descriptorAllocationCount +=
-            (srv.IsValid() ? 1u : 0u) +
-            (metadataSrv.IsValid() ? 1u : 0u);
-        if (!srv.IsValid() || !metadataSrv.IsValid()) {
+        if (!CreateClusterGeometrySrv(
+                state.context.device,
+                srv,
+                geometryUpload.gpu.Get(),
+                packed.layout.byteSize) ||
+            !CreateClusterGeometrySrv(
+                state.context.device,
+                metadataSrv,
+                metadataUpload.gpu.Get(),
+                packed.metadataByteSize)) {
+            ReportDescriptorAllocationFailure(
+                normalizedPath,
+                GetRenderResourceDescriptorPoolStats(),
+                "cluster-srv-view-create-failed");
             if (srv.IsValid()) {
                 ReleaseRenderResourceDescriptor(srv);
             }
@@ -771,6 +927,10 @@ namespace HIKARI::RENDER3D {
         }
 
         if (!GetRenderResourcePool().SetView(handle.ToUntyped(), RenderResourceViewKind::Srv, srv)) {
+            ReportDescriptorAllocationFailure(
+                normalizedPath,
+                GetRenderResourceDescriptorPoolStats(),
+                "cluster-resource-view-publish-failed");
             ReleaseRenderResourceDescriptor(srv);
             ReleaseRenderResourceDescriptor(metadataSrv);
             const auto staleRecordIt = state.recordsBySourceKey.find(sourceKey);
@@ -788,9 +948,10 @@ namespace HIKARI::RENDER3D {
         }
 
         if (replacingRecord) {
-            RetireReplacedClusterGeometryRecord(
+            RetireClusterGeometryRecordGpuState(
                 oldRecordIt->second,
-                std::move(replacedGeometryBuffer));
+                std::move(replacedGeometryBuffer),
+                "Replaced Cluster Geometry");
             if (oldRecordIt->second.handle != handle) {
                 state.sourceKeyByHandle.erase(PackHandle(oldRecordIt->second.handle));
             }
