@@ -6,6 +6,8 @@ namespace HIKARI {
     struct DebugWindowState;
     namespace EDITOR {
         class EditorCommandRouter;
+        class EditorOperationRegistry;
+        class GameExportJob;
         class EditorProjectSessionController;
         class EditorToolHost;
         class EditorWorkspaceHost;
@@ -24,7 +26,9 @@ namespace HIKARI {
             EDITOR::EditorProjectSessionController&
                 projectSession,
             bool projectTransitionAllowed,
-            bool hasUnsavedProjectChanges) const;
+            bool hasUnsavedProjectChanges,
+            EDITOR::GameExportJob& exportJob,
+            EDITOR::EditorOperationRegistry& operations) const;
     };
 
 } // namespace HIKARI

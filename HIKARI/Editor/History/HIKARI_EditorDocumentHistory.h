@@ -77,6 +77,7 @@ namespace HIKARI::EDITOR {
         const std::string* GetUndoLabel() const noexcept;
         const std::string* GetRedoLabel() const noexcept;
         uint64_t GetDocumentRevision() const noexcept;
+        uint64_t GetEditRevision() const noexcept { return editRevision_; }
 
     private:
         struct Entry {
@@ -88,6 +89,7 @@ namespace HIKARI::EDITOR {
         size_t cursor_ = 0;
         std::optional<size_t> savedCursor_{ 0 };
         uint64_t documentRevision_ = 0;
+        uint64_t editRevision_ = 1;
         uint64_t openMergeGroup_ = 0;
         bool initialDirty_ = false;
         bool bound_ = false;

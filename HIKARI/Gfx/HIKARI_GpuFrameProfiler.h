@@ -52,6 +52,7 @@ namespace HIKARI::GFX::GPU_PROFILE {
         ImGui,
         WaterVisibilityDepth,
         StylizedClouds,
+        SceneCaptures,
         Count
     };
 
@@ -101,6 +102,16 @@ namespace HIKARI::GFX::GPU_PROFILE {
         ID3D12GraphicsCommandList* cmd_ = nullptr;
         Pass pass_ = Pass::Count;
         bool active_ = false;
+    };
+
+    class ScopedGpuTimerGroup final {
+    public:
+        ScopedGpuTimerGroup(ID3D12GraphicsCommandList* cmd, Pass pass);
+        ~ScopedGpuTimerGroup();
+        ScopedGpuTimerGroup(const ScopedGpuTimerGroup&) = delete;
+        ScopedGpuTimerGroup& operator=(const ScopedGpuTimerGroup&) = delete;
+    private:
+        ScopedGpuTimer timer_;
     };
 
 } // namespace HIKARI::GFX::GPU_PROFILE

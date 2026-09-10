@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <filesystem>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -19,6 +20,7 @@ namespace HIKARI::ASSETS::COOKING {
         // Direct-file consumers such as audio and font/UI presentation use a
         // quarantined RuntimePayload tree instead of shipping authored Assets.
         std::vector<std::filesystem::path> runtimePayloadRoots{};
+        std::function<bool(const std::string&, float)> progress{};
     };
 
     struct AssetCookResult {

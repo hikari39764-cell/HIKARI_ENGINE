@@ -1,4 +1,5 @@
 #include "HIKARI_Dx12Core.h"
+#include <DirectXTex.h>
 #include "Core/Presentation/HIKARI_LogicalDisplayDefaults.h"
 
 #include <d3d12.h>
@@ -598,6 +599,20 @@ bool Dx12Core::EndFrame() {
         if (frameSubmissionCallbacks_.renderSubmitEnd) {
             frameSubmissionCallbacks_.renderSubmitEnd();
         }
+    }
+    if(!capturePath_.empty()) {
+        const auto path=std::exchange(capturePath_,{});
+        DirectX::ScratchImage captured;
+        HRESULT result=DirectX::CaptureTexture(queue_.Get(),CurrentBackBuffer(),false,captured,
+            D3D12_RESOURCE_STATE_PRESENT,D3D12_RESOURCE_STATE_PRESENT);
+        if(SUCCEEDED(result) && captured.GetImageCount()) {
+            std::error_code error;
+            std::filesystem::create_directories(path.parent_path(),error);
+            result=error?E_FAIL:DirectX::SaveToWICFile(*captured.GetImage(0,0,0),DirectX::WIC_FLAGS_NONE,
+                DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG),path.c_str());
+        }
+        if(FAILED(result))HIKARI_LOG_ERROR("[FrameCapture] capture failed: "+path.generic_string());
+        else HIKARI_LOG_INFO("[FrameCapture] saved: "+path.generic_string());
     }
     {
         CPU_PROFILE::ScopedCpuTimer cpuPresent(

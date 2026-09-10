@@ -13,8 +13,10 @@ if (-not $OutputPath) {
 # AI capabilities. The manifest generator extracts them from the registration
 # sites so adding an operation never requires a second manual edit.
 $registryFiles = @(
+    'HIKARI\Editor\Export\HIKARI_GameExportOperations.cpp',
     'HIKARI\Editor\Authoring\HIKARI_ComponentAuthoringOperations.cpp',
     'HIKARI\Editor\Controllers\DocumentScene\HIKARI_DocumentSceneEditorOperations.cpp',
+    'HIKARI\Editor\Authoring\HIKARI_SceneFolderOperations.cpp',
     'HIKARI\Editor\Workspaces\ModelCollision\HIKARI_ModelCollisionOperations.cpp',
     'HIKARI\Editor\Workspaces\AnimationStateMachine\HIKARI_AnimationStateMachineOperations.cpp',
     'HIKARI\Editor\Workspaces\Cinematics\HIKARI_CinematicsOperations.cpp',

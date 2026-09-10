@@ -33,7 +33,7 @@ $productManifest = Join-Path $package 'product_manifest.json'
 if (-not (Test-Path -LiteralPath $productManifest -PathType Leaf)) {
     throw "Validated HIKARI product manifest is missing: $productManifest"
 }
-$manifest = Get-Content -Raw -LiteralPath $productManifest |
+$manifest = Get-Content -Raw -Encoding UTF8 -LiteralPath $productManifest |
     ConvertFrom-Json
 if ([int]$manifest.formatVersion -ne 2) {
     throw 'HIKARI product manifest must use hashed format version 2.'

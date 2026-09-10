@@ -12,6 +12,7 @@
 #include "Core/Hashing/HIKARI_FnvHash.h"
 
 #include "Core/Numeric/HIKARI_IntegerConversion.h"
+#include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
 
@@ -489,12 +490,39 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             return lhs.sourceSurfaceInstanceIndex < rhs.sourceSurfaceInstanceIndex;
         }
 
-        bool HasSameStaticGpuSceneBatchIdentity(
+        bool HasCompatibleGpuScenePatchLayout(
             const GpuSceneSurfaceRecord& lhs,
             const GpuSceneSurfaceRecord& rhs) {
 
             const RUNTIME::SurfaceResourceIds& lhsResources = lhs.key.resources;
             const RUNTIME::SurfaceResourceIds& rhsResources = rhs.key.resources;
+            if (lhs.key.backendRoute == RUNTIME::SurfaceBackendRoute::MeshShader &&
+                rhs.key.backendRoute == RUNTIME::SurfaceBackendRoute::MeshShader) {
+                // MeshShader の材質はインスタンス単位で参照する。
+                // テクスチャや色の更新は既存スロットへ差分反映できる。
+                return
+                    lhs.valid == rhs.valid &&
+                    lhs.skinned == rhs.skinned &&
+                    lhs.key.psoKey == rhs.key.psoKey &&
+                    lhs.key.shaderKey == rhs.key.shaderKey &&
+                    lhs.key.passMask == rhs.key.passMask &&
+                    lhs.key.geometryBackend == rhs.key.geometryBackend &&
+                    lhs.key.geometryKey == rhs.key.geometryKey &&
+                    lhs.key.clusterGeometryKey == rhs.key.clusterGeometryKey &&
+                    lhs.key.objectDataCompatible == rhs.key.objectDataCompatible &&
+                    lhs.key.clusterMainlineEligible == rhs.key.clusterMainlineEligible &&
+                    lhs.key.customVertexShader == rhs.key.customVertexShader &&
+                    lhs.key.materialFx == rhs.key.materialFx &&
+                    lhs.key.waterMaterialFx == rhs.key.waterMaterialFx &&
+                    lhs.key.materialFxUsesCustomVertexShader == rhs.key.materialFxUsesCustomVertexShader &&
+                    lhs.key.materialFxUsesCustomPixelShader == rhs.key.materialFxUsesCustomPixelShader &&
+                    lhs.key.depthAware == rhs.key.depthAware &&
+                    lhs.key.alphaMasked == rhs.key.alphaMasked &&
+                    lhs.key.transparent == rhs.key.transparent &&
+                    lhs.key.doubleSided == rhs.key.doubleSided &&
+                    lhsResources.mesh == rhsResources.mesh &&
+                    lhsResources.clusterGeometry == rhsResources.clusterGeometry;
+            }
             return
                 lhs.key.sortKey == rhs.key.sortKey &&
                 lhs.key.psoKey == rhs.key.psoKey &&
@@ -1082,6 +1110,10 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
     void GpuSceneRegistry::SyncForwardFromSceneCache(
         const GpuSceneRegistrySyncInput& input) {
 
+        stats_.syncMode = GpuSceneSyncMode::None;
+        stats_.frameRecordBuildCount = 0;
+        stats_.frameRecordReuseCount = 0;
+        stats_.patchRejection = {};
         if (input.sceneCache == nullptr) {
             Clear();
             return;
@@ -1108,12 +1140,22 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         if (layoutChanged ||
             traditionalStreamPolicyChanged ||
             !sceneSource_.HasAnyGpuSceneRanges()) {
+            const GpuSceneSyncMode reason =
+                layoutVersion_ != layoutVersion || sourceSurfaceCount_ != surfaceCount
+                    ? GpuSceneSyncMode::RebuildTopology
+                : routingVersion_ != routingVersion
+                    ? GpuSceneSyncMode::RebuildRouting
+                : traditionalStreamPolicyChanged
+                    ? GpuSceneSyncMode::RebuildPolicy
+                    : GpuSceneSyncMode::RebuildEmpty;
             RebuildForwardFromSceneCache(input);
+            stats_.syncMode = reason;
             return;
         }
 
         ClearFrameDirtyRanges();
         if (dataVersion_ == dataVersion) {
+            stats_.syncMode = GpuSceneSyncMode::Reuse;
             sandSurfaceHeightVersion_ = heightVersion;
             sceneSource_.sandSurfaceHeightVersion = heightVersion;
             sceneSource_.dirtyBaseSourceVersion = sceneSource_.sourceVersion;
@@ -1122,10 +1164,16 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
 
         const uint64_t patchBaseSourceVersion = dataVersion_;
         if (!TryPatchForwardDataFromSceneCache(input)) {
-            RebuildForwardFromSceneCache(input);
+            const uint32_t patchRecordBuildCount = stats_.frameRecordBuildCount;
+            GpuScenePatchRejection rejection = std::move(stats_.patchRejection);
+            RebuildForwardFromSceneCache(input, true);
+            stats_.frameRecordBuildCount += patchRecordBuildCount;
+            stats_.patchRejection = std::move(rejection);
+            stats_.syncMode = GpuSceneSyncMode::RebuildPatchRejected;
             return;
         }
 
+        stats_.syncMode = GpuSceneSyncMode::Patch;
         dataVersion_ = dataVersion;
         sandSurfaceHeightVersion_ = heightVersion;
         sceneSource_.sandSurfaceHeightVersion = heightVersion;
@@ -1139,8 +1187,25 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
     }
 
     void GpuSceneRegistry::RebuildForwardFromSceneCache(
-        const GpuSceneRegistrySyncInput& input) {
+        const GpuSceneRegistrySyncInput& input,
+        bool reuseUnchangedRecords) {
 
+        static const auto timer = CPU_PROFILE::RegisterDynamicPass("Render.GpuSceneRebuild");
+        const CPU_PROFILE::ScopedDynamicCpuTimer scope(timer);
+        std::vector<GpuSceneSurfaceRecord> previousRecords;
+        std::vector<uint8_t> dirtyRecordMask;
+        if (reuseUnchangedRecords && input.sceneCache != nullptr &&
+            layoutVersion_ == input.sceneCache->GetSurfaceVersion() &&
+            surfaceRecords_.size() == input.sceneCache->GetSurfaceInstances().size()) {
+            // 経路の再構築でも、変更のない表面の資源解決は再利用する。
+            previousRecords = std::move(surfaceRecords_);
+            dirtyRecordMask.assign(previousRecords.size(), 0u);
+            for (const uint32_t index : input.sceneCache->GetDirtySurfaceIndices()) {
+                if (index < dirtyRecordMask.size()) {
+                    dirtyRecordMask[index] = 1u;
+                }
+            }
+        }
         Clear();
         if (input.sceneCache == nullptr) {
             return;
@@ -1155,10 +1220,25 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             surfaceIndex < surfaces.size();
             ++surfaceIndex) {
 
-            GpuSceneSurfaceRecord record =
-                BuildGpuSceneSurfaceRecord(
-                    surfaces[surfaceIndex],
-                    surfaceIndex);
+            const RUNTIME::SceneSurfaceInstance& surface = surfaces[surfaceIndex];
+            GpuSceneSurfaceRecord record{};
+            if (surfaceIndex < previousRecords.size() &&
+                dirtyRecordMask[surfaceIndex] == 0u &&
+                previousRecords[surfaceIndex].valid &&
+                previousRecords[surfaceIndex].objectId == surface.objectId &&
+                previousRecords[surfaceIndex].objectLifetimeGeneration == surface.objectLifetimeGeneration &&
+                previousRecords[surfaceIndex].objectVersion == surface.objectVersion &&
+                previousRecords[surfaceIndex].materialOverrideRevision == surface.materialOverrideRevision &&
+                previousRecords[surfaceIndex].sourceSurface == &surface) {
+                record = std::move(previousRecords[surfaceIndex]);
+                ++stats_.frameRecordReuseCount;
+            } else {
+                record = BuildGpuSceneSurfaceRecord(surface, surfaceIndex);
+                ++stats_.frameRecordBuildCount;
+            }
+            if (!record.visible) {
+                ++stats_.hiddenSourceRecordCount;
+            }
             surfaceRecords_.push_back(std::move(record));
         }
 
@@ -1599,17 +1679,35 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
     bool GpuSceneRegistry::TryPatchForwardDataFromSceneCache(
         const GpuSceneRegistrySyncInput& input) {
 
-        if (ShouldPublishStaticTraditionalStreams()) {
+        static const auto timer = CPU_PROFILE::RegisterDynamicPass("Render.GpuScenePatch");
+        const CPU_PROFILE::ScopedDynamicCpuTimer scope(timer);
+        uint32_t currentSurfaceIndex = RUNTIME::kInvalidRenderSurfaceIndex;
+        const auto reject = [&](const char* reason) {
+            auto& rejection = stats_.patchRejection;
+            rejection.reason = reason;
+            rejection.surfaceIndex = currentSurfaceIndex;
+            if (input.sceneCache != nullptr &&
+                currentSurfaceIndex < input.sceneCache->GetSurfaceInstances().size()) {
+                const auto& surface = input.sceneCache->GetSurfaceInstances()[currentSurfaceIndex];
+                rejection.objectId = surface.objectId.value;
+                rejection.nodeIndex = surface.nodeIndex;
+                if (surface.model != nullptr) {
+                    rejection.modelPath = surface.model->sourcePath;
+                }
+            }
             return false;
+        };
+        if (ShouldPublishStaticTraditionalStreams()) {
+            return reject("traditional pipeline policy");
         }
 
         if (input.sceneCache == nullptr) {
-            return false;
+            return reject("missing scene cache");
         }
         const std::vector<RUNTIME::SceneSurfaceInstance>& surfaces =
             input.sceneCache->GetSurfaceInstances();
         if (surfaces.size() != surfaceRecords_.size()) {
-            return false;
+            return reject("surface count changed");
         }
 
         std::vector<uint32_t> dirtySurfaceIndices =
@@ -1626,13 +1724,15 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         GpuScenePoseBuilder meshShaderPoseBuilder{};
 
         for (const uint32_t surfaceIndex : dirtySurfaceIndices) {
+            currentSurfaceIndex = surfaceIndex;
             if (surfaceIndex >= surfaces.size() ||
                 surfaceIndex >= surfaceRecords_.size()) {
-                return false;
+                return reject("invalid dirty index");
             }
 
             GpuSceneSurfaceRecord newRecord =
                 BuildGpuSceneSurfaceRecord(surfaces[surfaceIndex], surfaceIndex);
+            ++stats_.frameRecordBuildCount;
             if (newRecord.skinned &&
                 newRecord.key.backendRoute == RUNTIME::SurfaceBackendRoute::MeshShader &&
                 surfaceIndex < RUNTIME::kSurfaceGpuSceneMaxDeformationPalettes) {
@@ -1641,7 +1741,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 if (palette != nullptr && !palette->empty() &&
                     palette->size() <= RUNTIME::kSurfaceGpuSceneMaxJointMatrices) {
                     if (meshShaderJointPalettes_.size() != surfaceRecords_.size()) {
-                        return false;
+                        return reject("pose storage changed");
                     }
                     meshShaderJointPalettes_[surfaceIndex] = *palette;
                     newRecord.jointPaletteSlot = surfaceIndex;
@@ -1650,7 +1750,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             }
             const GpuSceneSurfaceRecord& oldRecord = surfaceRecords_[surfaceIndex];
             if (oldRecord.waterSurface != newRecord.waterSurface) {
-                return false;
+                return reject("water membership changed");
             }
             if (IsGpuSceneForwardSkinnedTraditionalRecord(oldRecord) ||
                 IsGpuSceneForwardSkinnedTraditionalRecord(newRecord) ||
@@ -1660,10 +1760,10 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 IsGpuSceneShadowSkinnedTraditionalRecord(newRecord) ||
                 IsGpuSceneShadowStaticTraditionalRecord(oldRecord) ||
                 IsGpuSceneShadowStaticTraditionalRecord(newRecord)) {
-                return false;
+                return reject("traditional surface");
             }
             if (oldRecord.sandSurface != newRecord.sandSurface) {
-                return false;
+                return reject("sand membership changed");
             }
             const bool oldOpaque = IsGpuSceneForwardOpaqueResidentRecord(oldRecord);
             const bool newOpaque = IsGpuSceneForwardOpaqueResidentRecord(newRecord);
@@ -1683,17 +1783,22 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 IsGpuSceneStaticShadowCasterRecord(oldRecord);
             const bool newShadow =
                 IsGpuSceneStaticShadowCasterRecord(newRecord);
-            if (oldOpaque != newOpaque ||
-                oldDepthOccluder != newDepthOccluder ||
-                oldDepthAware != newDepthAware ||
-                oldTransparent != newTransparent ||
-                oldShadow != newShadow ||
-                !HasSameStaticGpuSceneBatchIdentity(oldRecord, newRecord)) {
-                return false;
+            if (oldOpaque != newOpaque || oldDepthAware != newDepthAware ||
+                oldTransparent != newTransparent) {
+                return reject("forward pass changed");
+            }
+            if (oldDepthOccluder != newDepthOccluder) {
+                return reject("depth coverage changed");
+            }
+            if (oldShadow != newShadow) {
+                return reject("shadow coverage changed");
+            }
+            if (!HasCompatibleGpuScenePatchLayout(oldRecord, newRecord)) {
+                return reject("geometry or material layout changed");
             }
             if ((oldDepthOccluder || newDepthOccluder) &&
                 stats_.depthPrepassBudgetClippedRecordCount != 0u) {
-                return false;
+                return reject("depth occluder budget");
             }
 
             const uint32_t waterSurfaceGpuDataIndex =
@@ -1701,7 +1806,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             if (newRecord.waterSurface) {
                 if (waterSurfaceGpuDataIndex == 0u ||
                     waterSurfaceGpuDataIndex >= waterSurfaceGpuData_.size()) {
-                    return false;
+                    return reject("water slot missing");
                 }
                 newRecord.waterSurfaceGpuDataIndex =
                     waterSurfaceGpuDataIndex;
@@ -1713,7 +1818,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 if (sandSurfaceGpuDataIndex == 0u ||
                     sandSurfaceGpuDataIndex >=
                         sandSurfaceGpuData_.size()) {
-                    return false;
+                    return reject("sand slot missing");
                 }
                 newRecord.sandSurfaceGpuDataIndex =
                     sandSurfaceGpuDataIndex;
@@ -1761,18 +1866,18 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             if (buildStats.instanceCount != 1u ||
                 singleInstance.size() != 1u ||
                 singleMaterial.size() != 1u) {
-                return false;
+                return reject("instance build failed");
             }
 
             if (surfaceIndex >= globalGpuSceneIndexByRecord_.size()) {
-                return false;
+                return reject("record slot missing");
             }
             const uint32_t globalInstanceIndex =
                 globalGpuSceneIndexByRecord_[surfaceIndex];
             if (globalInstanceIndex == RUNTIME::kInvalidRenderSurfaceIndex ||
                 globalInstanceIndex >= globalGpuSceneInstances_.size() ||
                 globalInstanceIndex >= globalMaterialSources_.size()) {
-                return false;
+                return reject("resident instance missing");
             }
 
             RUNTIME::SurfaceGpuSceneInstance patchedInstance =
@@ -1948,6 +2053,20 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
 
     const GpuSceneRegistryStats& GpuSceneRegistry::GetStats() const {
         return stats_;
+    }
+
+    const char* ToString(GpuSceneSyncMode mode) {
+        switch (mode) {
+        case GpuSceneSyncMode::None: return "none";
+        case GpuSceneSyncMode::Reuse: return "reuse";
+        case GpuSceneSyncMode::Patch: return "patch";
+        case GpuSceneSyncMode::RebuildTopology: return "rebuild: topology";
+        case GpuSceneSyncMode::RebuildRouting: return "rebuild: routing";
+        case GpuSceneSyncMode::RebuildPolicy: return "rebuild: policy";
+        case GpuSceneSyncMode::RebuildEmpty: return "rebuild: empty";
+        case GpuSceneSyncMode::RebuildPatchRejected: return "rebuild: patch rejected";
+        }
+        return "unknown";
     }
 
 } // namespace HIKARI::RENDER3D::GPUDRIVEN

@@ -11,6 +11,7 @@
 #include "Render3D/GpuDriven/Backend/HIKARI_GeometryBackendPolicy.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenFrameContext.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenProducer.h"
+#include "Render3D/GpuDriven/HIKARI_GpuDrivenSceneSource.h"
 #include "Render3D/GpuDriven/HIKARI_SurfaceGpuSceneFrameBuffer.h"
 #include "Render3D/GpuDriven/HIKARI_MassGpuSceneFrameBuffer.h"
 #include "Render3D/GpuDriven/CommandStream/HIKARI_GpuTraditionalCommandStreamBuffer.h"
@@ -132,6 +133,28 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         const GpuDrivenCommandFrameStats& GetCommandFrameStats() const;
 
     private:
+        struct SceneUploadDelta {
+            uint64_t baseVersion = 0;
+            uint64_t sourceVersion = 0;
+            std::array<std::vector<GpuSceneDirtyRange>, kGpuDrivenPassCount> ranges{};
+        };
+        struct SceneUploadHistory {
+            uintptr_t sourceIdentity = 0;
+            uint64_t layoutVersion = 0;
+            uint64_t sourceVersion = 0;
+            size_t instanceCount = 0;
+            std::vector<SceneUploadDelta> deltas{};
+        };
+        SceneUploadHistory sceneUploadHistory_{};
+        void TrackSceneUploadDelta(
+            const GpuDrivenSceneSource& source,
+            uintptr_t sourceIdentity,
+            size_t instanceCount);
+        bool PatchSceneUploadHistory(
+            const GpuDrivenSceneSource& source,
+            uintptr_t sourceIdentity,
+            size_t instanceCount);
+
         // 同一フレーム内で BuildCommandFrame が複数回呼ばれても、入力が
         // 変わらない限り伝統ストリームの再アップロード + GPU 圧縮を繰り返さ
         // ないための冪等キー。ResetFrame / ソース差し替えで無効化される。

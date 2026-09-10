@@ -1,4 +1,5 @@
 #include "HIKARI_HierarchyPanel.h"
+#include "Editor/Authoring/HIKARI_SceneFolderAuthoring.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 #include "Core/Text/HIKARI_Localization.h"
 #include <algorithm>
@@ -6,6 +7,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <unordered_map>
 
 #include "Editor/HIKARI_EditorContext.h"
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
@@ -80,7 +82,10 @@ namespace HIKARI {
         const std::function<void(GameObject&)>&
             drawObjectContextMenu,
         const std::function<bool(const GameObject&)>&
-            isObjectLocked) {
+            isObjectLocked,
+        const SceneDocument* document,
+        const EDITOR::EditorOperationRegistry* operations,
+        std::uint64_t documentRevision) {
 #if defined(HIKARI_WITH_EDITOR)
         const auto& objects = world.GetObjects();
         EDITOR::SearchField(
@@ -92,9 +97,17 @@ namespace HIKARI {
         std::vector<GameObject*> filteredObjects{};
         filteredObjects.reserve(objects.size());
         const std::string lowerSearch = TEXT::ToLowerAsciiCopy(searchBuffer_.data());
+        std::unordered_map<std::uint64_t, std::string> objectFolders;
+        if (document && !lowerSearch.empty()) {
+            objectFolders.reserve(document->objects.size());
+            for (const auto& item : document->objects)
+                objectFolders.emplace(item.id.value, TEXT::ToLowerAsciiCopy(item.editorFolder));
+        }
         for (const auto& object : objects) {
-            if (object != nullptr &&
-                MatchesSearch(*object, lowerSearch)) {
+            if (object == nullptr) continue;
+            const auto folder = objectFolders.find(object->GetDocumentId().value);
+            if (MatchesSearch(*object, lowerSearch) ||
+                (folder != objectFolders.end() && folder->second.find(lowerSearch) != std::string::npos)) {
                 filteredObjects.push_back(object.get());
             }
         }
@@ -113,29 +126,9 @@ namespace HIKARI {
                     selection.GetSelectedObjectCount()));
         }
 
-        if (objects.empty()) {
-            EDITOR::EmptyState(
-                TEXT::Localize("ui.hierarchy.emptyTitle").c_str(),
-                TEXT::Localize("ui.hierarchy.emptyHint").c_str());
-            return;
-        }
-        if (filteredObjects.empty()) {
-            EDITOR::EmptyState(
-                TEXT::Localize("ui.hierarchy.noMatchTitle").c_str(),
-                TEXT::Localize("ui.hierarchy.noMatchHint").c_str());
-            return;
-        }
-
         const EDITOR::EditorThemeMetrics& metrics =
             EDITOR::GetEditorThemeMetrics();
-        ImGuiListClipper clipper{};
-        clipper.Begin(static_cast<int>(filteredObjects.size()));
-        while (clipper.Step()) {
-            for (int index = clipper.DisplayStart;
-                index < clipper.DisplayEnd;
-                ++index) {
-                GameObject* objectPtr = filteredObjects[
-                    static_cast<std::size_t>(index)];
+        const auto drawObject = [&](GameObject* objectPtr) {
                 ImGui::PushID(objectPtr);
                 const bool isSelected =
                     selection.IsObjectSelected(
@@ -188,13 +181,37 @@ namespace HIKARI {
                         selection.SelectObject(world, objectPtr);
                     }
                 }
-                if (drawObjectContextMenu &&
-                    ImGui::BeginPopupContextItem("ObjectContextMenu")) {
-                    drawObjectContextMenu(*objectPtr);
+                if (document && operations && ImGui::BeginDragDropSource()) {
+                    if (!selection.IsObjectSelected(objectPtr->GetDocumentId())) selection.SelectObject(world, objectPtr);
+                    const auto& ids = selection.GetSelectedObjectIds();
+                    ImGui::SetDragDropPayload("HIKARI_SCENE_OBJECT_IDS", ids.data(), ids.size() * sizeof(SceneObjectId));
+                    ImGui::Text("%zu オブジェクト", ids.size());
+                    ImGui::EndDragDropSource();
+                }
+                if (ImGui::BeginPopupContextItem("ObjectContextMenu")) {
+                    if (drawObjectContextMenu) drawObjectContextMenu(*objectPtr);
+                    if (document && operations && ImGui::BeginMenu("フォルダーへ移動")) {
+                        auto folders = EDITOR::CollectSceneFolderPaths(*document);
+                        folders.insert(folders.begin(), "");
+                        for (const auto& folder : folders) if (ImGui::MenuItem(folder.empty() ? "未分類" : folder.c_str())) {
+                            nlohmann::json ids = nlohmann::json::array();
+                            for (const auto id : selection.GetSelectedObjectIds()) ids.push_back(id.value);
+                            const auto result = operations->Execute("scene.folder.assign", {{"path",folder},{"objectIds",ids}});
+                            folderMessage_ = result.ok ? std::string{} : result.message;
+                        }
+                        ImGui::EndMenu();
+                    }
                     ImGui::EndPopup();
                 }
                 ImGui::PopID();
-            }
+        };
+        if (document && operations) {
+            DrawFolderContents(world, selection, filteredObjects, lowerSearch, *document, *operations, drawObject, documentRevision);
+        } else {
+            ImGuiListClipper clipper{};
+            clipper.Begin(static_cast<int>(filteredObjects.size()));
+            while (clipper.Step())
+                for (int index = clipper.DisplayStart; index < clipper.DisplayEnd; ++index) drawObject(filteredObjects[index]);
         }
 #else
         (void)world;

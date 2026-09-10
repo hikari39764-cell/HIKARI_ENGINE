@@ -9,8 +9,9 @@ namespace HIKARI::EDITOR::FILE_DIALOG {
 namespace {
 
     std::optional<std::filesystem::path>
-        PickFolderWithInitializedCom(
-            const std::filesystem::path& initialPath) {
+        PickWithInitializedCom(
+            const std::filesystem::path& initialPath, bool folder,
+            const std::wstring& filterLabel = {}, const std::wstring& filterPattern = {}) {
 
         IFileDialog* dialog = nullptr;
         HRESULT hr = CoCreateInstance(
@@ -26,14 +27,18 @@ namespace {
         if (SUCCEEDED(dialog->GetOptions(&options))) {
             dialog->SetOptions(
                 options |
-                FOS_PICKFOLDERS |
+                (folder ? FOS_PICKFOLDERS : FOS_FILEMUSTEXIST) |
                 FOS_FORCEFILESYSTEM);
+        }
+        if (!folder) {
+            const COMDLG_FILTERSPEC filter{filterLabel.c_str(), filterPattern.c_str()};
+            dialog->SetFileTypes(1, &filter);
         }
 
         std::filesystem::path initialFolder = initialPath;
         std::error_code ec{};
         if (!initialFolder.empty() &&
-            !std::filesystem::exists(initialFolder, ec)) {
+            !std::filesystem::is_directory(initialFolder, ec)) {
             initialFolder = initialFolder.parent_path();
         }
         if (!initialFolder.empty()) {
@@ -88,10 +93,22 @@ namespace {
                 }
 
                 pickedPath =
-                    PickFolderWithInitializedCom(initialPath);
+                    PickWithInitializedCom(initialPath, true);
                 CoUninitialize();
             });
         pickerThread.join();
+        return pickedPath;
+    }
+
+    std::optional<std::filesystem::path> PickFile(const std::filesystem::path& initialPath,
+        const std::wstring& filterLabel, const std::wstring& filterPattern) {
+        std::optional<std::filesystem::path> pickedPath;
+        std::thread picker([&]() {
+            if (FAILED(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE))) return;
+            pickedPath = PickWithInitializedCom(initialPath, false, filterLabel, filterPattern);
+            CoUninitialize();
+        });
+        picker.join();
         return pickedPath;
     }
 

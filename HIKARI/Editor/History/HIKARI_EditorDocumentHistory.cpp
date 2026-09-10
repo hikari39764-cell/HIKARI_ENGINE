@@ -13,6 +13,7 @@ namespace HIKARI::EDITOR {
         uint64_t documentRevision,
         bool initiallyDirty) {
 
+        ++editRevision_;
         entries_.clear();
         cursor_ = 0;
         savedCursor_ = initiallyDirty
@@ -42,6 +43,7 @@ namespace HIKARI::EDITOR {
         if (!command) {
             return;
         }
+        ++editRevision_;
         if (cursor_ < entries_.size()) {
             if (savedCursor_ && *savedCursor_ > cursor_) {
                 savedCursor_.reset();
@@ -90,6 +92,7 @@ namespace HIKARI::EDITOR {
         }
         Entry& entry = entries_[cursor_ - 1];
         entry.command->Undo(document);
+        ++editRevision_;
         --cursor_;
         return {
             entry.command->GetImpact(),
@@ -108,6 +111,7 @@ namespace HIKARI::EDITOR {
         }
         Entry& entry = entries_[cursor_];
         entry.command->Redo(document);
+        ++editRevision_;
         ++cursor_;
         return {
             entry.command->GetImpact(),

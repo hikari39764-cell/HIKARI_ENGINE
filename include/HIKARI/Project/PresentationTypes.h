@@ -42,6 +42,15 @@ namespace HIKARI {
         GameProjectTransform localTransform{};
     };
 
+    // Runtime source selection for an existing ModelComponent. Transforms,
+    // visibility and render flags remain owned by the original object.
+    struct GameProjectModelAppearance {
+        uint32_t structSize = sizeof(GameProjectModelAppearance);
+        uint32_t version = 1u;
+        char assetId[kGameProjectModelAssetPathCapacity]{};
+        char materialSetAssetGuid[kGameProjectModelAssetGuidCapacity]{};
+    };
+
     struct GameProjectPresentationModelRequest {
         uint64_t ownerObjectHandle = 0u;
         uint64_t instanceId = 0u;

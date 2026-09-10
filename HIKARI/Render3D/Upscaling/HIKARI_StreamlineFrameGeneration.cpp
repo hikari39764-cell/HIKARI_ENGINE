@@ -323,7 +323,8 @@ namespace HIKARI::RENDER3D::UPSCALING {
         RenderTarget2D& hudlessColor,
         RenderTarget2D& uiColorAndAlpha,
         uint64_t frameIndex,
-        bool hostAllowed) {
+        bool hostAllowed,
+        const D3D12_RECT& sceneRect) {
         INTERNAL::StreamlineState& state = INTERNAL::GetState();
         INTERNAL::StreamlineFrameGenerationRuntimeState& frameGeneration =
             state.frameGeneration;
@@ -341,7 +342,11 @@ namespace HIKARI::RENDER3D::UPSCALING {
             hudlessColor.GetWidth() == uiColorAndAlpha.GetWidth() &&
             hudlessColor.GetHeight() == uiColorAndAlpha.GetHeight() &&
             hudlessColor.GetWidth() == state.context.backBufferWidth &&
-            hudlessColor.GetHeight() == state.context.backBufferHeight;
+            hudlessColor.GetHeight() == state.context.backBufferHeight &&
+            sceneRect.left >= 0 && sceneRect.top >= 0 &&
+            sceneRect.right > sceneRect.left && sceneRect.bottom > sceneRect.top &&
+            sceneRect.right <= hudlessColor.GetWidth() &&
+            sceneRect.bottom <= hudlessColor.GetHeight();
         stats.inputsReady =
             state.stats.frameTokenReady &&
             state.stats.constantsSubmitted &&
@@ -389,10 +394,10 @@ namespace HIKARI::RENDER3D::UPSCALING {
         }
 
         const sl::Extent outputExtent{
-            0u,
-            0u,
-            static_cast<uint32_t>(hudlessColor.GetWidth()),
-            static_cast<uint32_t>(hudlessColor.GetHeight()) };
+            static_cast<uint32_t>(sceneRect.left),
+            static_cast<uint32_t>(sceneRect.top),
+            static_cast<uint32_t>(sceneRect.right - sceneRect.left),
+            static_cast<uint32_t>(sceneRect.bottom - sceneRect.top) };
         const sl::ResourceTag backBufferTag(
             nullptr,
             sl::kBufferTypeBackbuffer,

@@ -5,6 +5,9 @@
 
 namespace HIKARI::EDITOR {
 
+    bool ResolveGameShippingHostExecutable(const std::filesystem::path& runtimeRoot,
+        std::filesystem::path& executable, std::string& message);
+
     bool ValidateGameShippingArtifacts(
         const std::filesystem::path& projectRoot,
         const std::filesystem::path& sourceExe,

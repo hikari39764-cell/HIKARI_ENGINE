@@ -103,7 +103,27 @@ bool MaterialFxProfile::LoadById(const std::string& profileId, MaterialFxProfile
 
     MaterialFxProfile loaded{};
     loaded.id = profileId;
-    if (!loaded.LoadFromJson("Data/material_fx_profiles.json")) {
+    if (profileId == "HIKARI_Dissolve") {
+        // 標準シェーダーの溶解機能を全プロジェクトで利用できるようにする。
+        loaded.displayName = "ディゾルブ";
+        loaded.shaderProfileId = "StaticFx";
+        loaded.composite = VFX::CompositeMode::Replace;
+        const auto parameter = [&](const char* key, const char* label,
+            uint8_t slot, uint8_t channel, float value, float maximum) {
+            VFX::ParamDesc p{};
+            p.key = key; p.label = label; p.ref = {slot, channel};
+            p.defaultValues[0] = value; p.maxValues[0] = maximum;
+            loaded.params.push_back(std::move(p));
+        };
+        parameter("amount", "消失量", 0, 2, 0.0f, 1.0f);
+        parameter("edgeWidth", "境界の幅", 0, 3, 0.06f, 0.5f);
+        parameter("rimStrength", "輪郭の発光", 0, 0, 0.0f, 8.0f);
+        parameter("rimPower", "輪郭の鋭さ", 0, 1, 3.0f, 16.0f);
+        parameter("pulseSpeed", "点滅速度", 1, 0, 8.0f, 32.0f);
+        parameter("edgeBoost", "境界の発光", 1, 1, 2.8f, 16.0f);
+        parameter("noiseScale", "粒の細かさ", 1, 2, 1.5f, 32.0f);
+        VFX::ResetParameterValuesFromDefaults(loaded.params, loaded.values.data(), loaded.values.size());
+    } else if (!loaded.LoadFromJson("Data/material_fx_profiles.json")) {
         ++gProfileCacheStats.failCount;
         return false;
     }

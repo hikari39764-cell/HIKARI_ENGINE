@@ -115,43 +115,42 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
 
         bool PatchDirtyPass(
             SurfaceGpuSceneFrameBuffer& buffer,
-            const GpuDrivenPassSource& pass) {
+            const GpuDrivenPassSource& pass,
+            std::vector<GpuSceneDirtyRange>& ranges) {
 
-            if (!pass.HasDirtyGpuSceneRanges()) {
+            std::erase_if(ranges, [](const GpuSceneDirtyRange& range) {
+                return !range.IsValid();
+            });
+            if (ranges.empty()) {
                 return true;
             }
             if (pass.instances == nullptr) {
                 return false;
             }
-            for (const GpuSceneDirtyRange& range : pass.dirtyRanges) {
-                if (!range.IsValid()) {
-                    continue;
-                }
+            for (const GpuSceneDirtyRange& range : ranges) {
                 const size_t localBegin = range.firstInstance;
                 const size_t localCount = range.instanceCount;
                 if (localBegin >= pass.instances->size() ||
                     localCount > pass.instances->size() - localBegin) {
                     return false;
                 }
-                if (!buffer.UpdateRange(
-                    static_cast<size_t>(pass.gpuSceneBaseIndex) + localBegin,
-                    pass.instances->data() + localBegin,
-                    localCount)) {
-                    return false;
-                }
             }
-            return true;
-        }
-
-        bool PatchDirtySceneRanges(
-            SurfaceGpuSceneFrameBuffer& buffer,
-            const GpuDrivenSceneSource& source) {
-
-            for (size_t passIndex = 0u;
-                passIndex < kGpuDrivenPassCount;
-                ++passIndex) {
-
-                if (!PatchDirtyPass(buffer, source.passes[passIndex])) {
+            std::sort(ranges.begin(), ranges.end(),
+                [](const GpuSceneDirtyRange& left, const GpuSceneDirtyRange& right) {
+                    return left.firstInstance < right.firstInstance;
+                });
+            for (size_t index = 0; index < ranges.size(); ++index) {
+                const size_t begin = ranges[index].firstInstance;
+                size_t end = begin + ranges[index].instanceCount;
+                while (index + 1 < ranges.size() && ranges[index + 1].firstInstance <= end) {
+                    ++index;
+                    end = (std::max)(end, static_cast<size_t>(ranges[index].firstInstance) +
+                        ranges[index].instanceCount);
+                }
+                if (!buffer.UpdateRange(
+                    static_cast<size_t>(pass.gpuSceneBaseIndex) + begin,
+                    pass.instances->data() + begin,
+                    end - begin)) {
                     return false;
                 }
             }
@@ -217,6 +216,84 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         instanceCount = 0;
     }
 
+    void GpuDrivenLayer::TrackSceneUploadDelta(
+        const GpuDrivenSceneSource& source,
+        uintptr_t sourceIdentity,
+        size_t instanceCount) {
+
+        auto& history = sceneUploadHistory_;
+        if (history.sourceIdentity != sourceIdentity ||
+            history.layoutVersion != source.layoutVersion ||
+            history.instanceCount != instanceCount) {
+            history = {};
+            history.sourceIdentity = sourceIdentity;
+            history.layoutVersion = source.layoutVersion;
+            history.instanceCount = instanceCount;
+        }
+        if (history.sourceVersion == source.sourceVersion) {
+            return;
+        }
+        if (history.sourceVersion != source.dirtyBaseSourceVersion ||
+            !source.HasAnyDirtyGpuSceneRanges()) {
+            history.deltas.clear();
+        }
+        history.sourceVersion = source.sourceVersion;
+        if (!source.HasAnyDirtyGpuSceneRanges()) {
+            return;
+        }
+        SceneUploadDelta delta{};
+        delta.baseVersion = source.dirtyBaseSourceVersion;
+        delta.sourceVersion = source.sourceVersion;
+        for (size_t passIndex = 0; passIndex < kGpuDrivenPassCount; ++passIndex) {
+            delta.ranges[passIndex] = source.passes[passIndex].dirtyRanges;
+        }
+        history.deltas.push_back(std::move(delta));
+        constexpr size_t kUploadHistoryCapacity = GFX::kFrameResourceCount * 2u + 2u;
+        if (history.deltas.size() > kUploadHistoryCapacity) {
+            history.deltas.erase(history.deltas.begin());
+        }
+    }
+
+    bool GpuDrivenLayer::PatchSceneUploadHistory(
+        const GpuDrivenSceneSource& source,
+        uintptr_t sourceIdentity,
+        size_t instanceCount) {
+
+        const auto& deltas = sceneUploadHistory_.deltas;
+        const auto first = std::find_if(deltas.begin(), deltas.end(),
+            [&](const SceneUploadDelta& delta) {
+                return sceneBuffer_->CanPatchFrame(
+                    sourceIdentity, instanceCount, source.layoutVersion, delta.baseVersion);
+            });
+        if (first == deltas.end()) {
+            return false;
+        }
+        std::array<std::vector<GpuSceneDirtyRange>, kGpuDrivenPassCount> ranges{};
+        uint64_t version = first->baseVersion;
+        for (auto delta = first; delta != deltas.end(); ++delta) {
+            if (delta->baseVersion != version) {
+                return false;
+            }
+            for (size_t passIndex = 0; passIndex < kGpuDrivenPassCount; ++passIndex) {
+                const auto& changes = delta->ranges[passIndex];
+                ranges[passIndex].insert(ranges[passIndex].end(), changes.begin(), changes.end());
+            }
+            version = delta->sourceVersion;
+        }
+        if (version != source.sourceVersion) {
+            return false;
+        }
+
+        // 現在のスロットが最後に使われてからの差分を全て補い、最新の値を一度だけ送る。
+        sceneBuffer_->ReuseFrame(instanceCount);
+        for (size_t passIndex = 0; passIndex < kGpuDrivenPassCount; ++passIndex) {
+            if (!PatchDirtyPass(*sceneBuffer_, source.passes[passIndex], ranges[passIndex])) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     bool GpuDrivenLayer::Initialize(
         ID3D12Device* device,
         ID3D12RootSignature* staticRootSignature,
@@ -240,6 +317,9 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         WATER::WaterSurfaceGpuFrameBuffer* waterSurfaceBuffer,
         SAND::SandSurfaceGpuFrameBuffer* sandSurfaceBuffer) {
 
+        if (sceneBuffer_ != sceneBuffer) {
+            sceneUploadHistory_ = {};
+        }
         sceneBuffer_ = sceneBuffer;
         massSceneBuffer_ = massSceneBuffer;
         waterSurfaceBuffer_ = waterSurfaceBuffer;
@@ -382,21 +462,13 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                     "wrong for every pass after the first gap/overlap.");
             }
         }
+        TrackSceneUploadDelta(sceneSource, sourceIdentity, sourceInstanceCount);
         const bool activeFrameResidentMatches =
             sceneBuffer_->CanReuseFrame(
                 sourceIdentity,
                 sourceInstanceCount,
                 layoutVersion,
                 sourceVersion);
-        const bool activeFramePatchable =
-            desc.allowDirtyRangePatching &&
-            sceneSource.HasAnyDirtyGpuSceneRanges() &&
-            sceneBuffer_->CanPatchFrame(
-                sourceIdentity,
-                sourceInstanceCount,
-                layoutVersion,
-                sceneSource.dirtyBaseSourceVersion);
-
         if (sourceInstanceCount == 0u) {
             sceneBuffer_->ResetFrame();
             if (desc.residency != nullptr) {
@@ -405,14 +477,9 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         } else if (activeFrameResidentMatches) {
             sceneUploadStats_.reusedResidentFrame = true;
             sceneBuffer_->ReuseFrame(sourceInstanceCount);
-        } else if (activeFramePatchable) {
-            sceneBuffer_->ReuseFrame(sourceInstanceCount);
-            if (PatchDirtySceneRanges(*sceneBuffer_, sceneSource)) {
-                sceneUploadStats_.patchedDirtyRanges = true;
-            } else {
-                UploadFullScene(*sceneBuffer_, sceneSource);
-                sceneUploadStats_.uploadedFullScene = true;
-            }
+        } else if (desc.allowDirtyRangePatching &&
+            PatchSceneUploadHistory(sceneSource, sourceIdentity, sourceInstanceCount)) {
+            sceneUploadStats_.patchedDirtyRanges = true;
         } else {
             UploadFullScene(*sceneBuffer_, sceneSource);
             sceneUploadStats_.uploadedFullScene = true;

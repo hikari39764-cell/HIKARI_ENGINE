@@ -13,6 +13,8 @@ param(
 
     [switch]$ForceBuild,
 
+    [switch]$PrepareGameExport,
+
     [string]$InstallDirectory
 )
 
@@ -339,6 +341,10 @@ function Resolve-HikariCMake {
     }
     $pathCMake =
         Get-Command cmake.exe -ErrorAction SilentlyContinue
+    $editorBundledCMake = Join-Path $SdkRoot '../../../Sdk/Tools/CMake/bin/cmake.exe'
+    if (Test-Path -LiteralPath $editorBundledCMake -PathType Leaf) {
+        $candidates += [IO.Path]::GetFullPath($editorBundledCMake)
+    }
     if ($null -ne $pathCMake) {
         $candidates += $pathCMake.Source
     }
@@ -383,12 +389,45 @@ if (Test-Path -LiteralPath $projectInput -PathType Leaf) {
 }
 $projectRoot = (Resolve-Path -LiteralPath $projectInput).Path
 $sdkRootPath = (Resolve-Path -LiteralPath $SdkRoot).Path
+if ($PrepareGameExport) {
+    if ($Preset -ne 'game-shipping' -or $ConfigureOnly) {
+        throw 'PrepareGameExport requires a complete game-shipping build.'
+    }
+    $shippingRuntimeRoot = Split-Path -Parent $sdkRootPath
+    $shippingConfig = Get-Content -LiteralPath (Join-Path $sdkRootPath 'lib/cmake/HIKARI/HIKARIConfig.cmake') -Raw
+    if ($shippingConfig -notmatch 'HIKARI_GAME_PROJECT_EDITOR_AVAILABLE\s+(OFF|FALSE|0)') {
+        throw 'PrepareGameExport requires the Shipping SDK paired with its runtime, not the Editor SDK.'
+    }
+    $hostManifestPath = Join-Path $sdkRootPath 'lib/cmake/HIKARI/HIKARI_GameHost.json'
+    $hostManifest = Get-Content -LiteralPath $hostManifestPath -Encoding UTF8 -Raw | ConvertFrom-Json
+    if ($hostManifest.schemaVersion -ne 1 -or $hostManifest.sdkBinding -cne 'currentProcess') {
+        throw 'Update the Shipping SDK: current-process host binding is required for game export.'
+    }
+    $exportExecutableName = [string]$hostManifest.executable
+    if ([IO.Path]::GetFileName($exportExecutableName) -cne $exportExecutableName -or
+        [IO.Path]::GetExtension($exportExecutableName) -ine '.exe') {
+        throw 'Invalid Shipping host manifest executable.'
+    }
+    foreach ($required in @($exportExecutableName, 'EngineContent/Shaders/Cooked', 'Sdk/lib/HIKARI_Engine.lib')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $shippingRuntimeRoot $required))) {
+            throw "The paired Shipping runtime kit is incomplete: $required. Build the matching host; do not rename an Editor host."
+        }
+    }
+    $InstallDirectory = Join-Path $projectRoot 'out/install/game-shipping'
+    if ([IO.Path]::GetFullPath($shippingRuntimeRoot).TrimEnd('\') -ine
+        [IO.Path]::GetFullPath($InstallDirectory).TrimEnd('\')) {
+        New-Item -ItemType Directory -Force -Path $InstallDirectory | Out-Null
+        foreach ($entry in Get-ChildItem -LiteralPath $shippingRuntimeRoot -Force) {
+            Copy-Item -LiteralPath $entry.FullName -Destination $InstallDirectory -Recurse -Force
+        }
+    }
+}
 $descriptorPath = Join-Path $projectRoot 'Project.hikari'
 if (-not (Test-Path -LiteralPath $descriptorPath -PathType Leaf)) {
     throw "Project.hikari was not found: $descriptorPath"
 }
 
-$descriptor = Get-Content -LiteralPath $descriptorPath -Raw |
+$descriptor = Get-Content -LiteralPath $descriptorPath -Encoding UTF8 -Raw |
     ConvertFrom-Json
 $manifestRelative = if (
     $null -ne $descriptor.gameProjectManifest -and
@@ -535,16 +574,19 @@ if (-not $ConfigureOnly) {
         Remove-Item -LiteralPath $projectEditorModule -Force
     }
 
-    $projectFingerprint = Get-HikariFileSetFingerprint `
+    $finalProjectFingerprint = Get-HikariFileSetFingerprint `
         -BasePath $projectRoot `
         -Files (Get-HikariProjectInputFiles `
             -ProjectRoot $projectRoot `
             -ManifestRoot $manifestRoot `
             -ProjectManifest $projectManifest)
-    $sdkFingerprint = Get-HikariFileSetFingerprint `
+    $finalSdkFingerprint = Get-HikariFileSetFingerprint `
         -BasePath $sdkRootPath `
         -Files (Get-HikariSdkInputFiles `
             -SdkRoot $sdkRootPath)
+    if ($finalProjectFingerprint -cne $projectFingerprint -or $finalSdkFingerprint -cne $sdkFingerprint) {
+        throw 'Project source or SDK changed during the build. Rebuild after saving; the previous build state was preserved.'
+    }
     Write-HikariBuildState `
         -BuildStatePath $buildStatePath `
         -ModulePath $projectModule `

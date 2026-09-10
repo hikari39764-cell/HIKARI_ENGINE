@@ -75,19 +75,12 @@ namespace HIKARI::PRESENTATION_MODEL {
         }
 
         const ModelAsset* ResolveModelAsset(
-            const PresentationModelRecord& record,
+            const ModelAssetDescriptor* descriptor,
             const AssetRegistry* assetRegistry,
-            ModelManager* modelManager,
-            const std::filesystem::path& projectRoot) {
+            ModelManager* modelManager) {
 
-            if (modelManager == nullptr) {
-                return nullptr;
-            }
-            const ModelAssetDescriptor* descriptor = ResolveModelDescriptor(
-                record,
-                assetRegistry,
-                projectRoot);
-            if (descriptor == nullptr || assetRegistry == nullptr) {
+            if (modelManager == nullptr || descriptor == nullptr ||
+                assetRegistry == nullptr) {
                 return nullptr;
             }
             ModelAsset* asset = ResolveModelAssetNow(
@@ -338,6 +331,8 @@ namespace HIKARI::PRESENTATION_MODEL {
         RENDER3D::RUNTIME::SceneRenderObjectDesc BuildRenderObjectDesc(
             const PresentationModelRecord& record,
             const ModelAsset* asset,
+            const ModelAssetDescriptor& descriptor,
+            const std::filesystem::path& projectRoot,
             RENDER3D::RUNTIME::RenderModelCache& renderModelCache,
             World& world,
             const AssetRegistry* assetRegistry,
@@ -353,6 +348,14 @@ namespace HIKARI::PRESENTATION_MODEL {
             desc.model = asset;
             if (asset != nullptr) {
                 desc.renderModel = renderModelCache.GetOrCreate(*asset);
+            }
+            if (!descriptor.clusteredGeometryPath.empty()) {
+                std::filesystem::path path = descriptor.clusteredGeometryPath;
+                if (!path.is_absolute() && !projectRoot.empty()) {
+                    path = projectRoot / path;
+                }
+                desc.clusteredGeometryPath =
+                    path.lexically_normal().generic_string();
             }
 
             MATH::Mat4 worldMatrix = MATH::Mat4::Identity();
@@ -462,11 +465,14 @@ namespace HIKARI::PRESENTATION_MODEL {
         }
         for (const PresentationModelRecord& record :
                 presentationModels->GetFrameRecords()) {
-            const ModelAsset* asset = ResolveModelAsset(
+            const ModelAssetDescriptor* descriptor = ResolveModelDescriptor(
                 record,
                 assetRegistry,
-                modelManager,
                 projectRoot);
+            const ModelAsset* asset = ResolveModelAsset(
+                descriptor,
+                assetRegistry,
+                modelManager);
             if (asset == nullptr) {
                 const std::string diagnosticKey =
                     !record.assetGuid.empty()
@@ -487,6 +493,8 @@ namespace HIKARI::PRESENTATION_MODEL {
             sceneRenderCache.Upsert(BuildRenderObjectDesc(
                 record,
                 asset,
+                *descriptor,
+                projectRoot,
                 renderModelCache,
                 world,
                 assetRegistry,

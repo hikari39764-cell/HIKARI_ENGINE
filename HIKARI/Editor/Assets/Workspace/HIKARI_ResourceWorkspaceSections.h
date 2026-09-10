@@ -12,7 +12,7 @@ namespace HIKARI::EDITOR::RESOURCE_WORKSPACE {
 ResourceImportBatchMonitor
 MakeImportMonitor(const AssetImportBatchStatus &status);
 
-void DrawScopeCombo(const AssetDatabase &assetDatabase,
+void DrawScopeCombo(const ASSET_BROWSER::AssetBrowserStatisticsCache &statistics,
                     const AssetUsageSummary &usageSummary,
                     AssetBrowserScope &activeScope);
 

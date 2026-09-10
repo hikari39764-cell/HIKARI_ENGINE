@@ -41,6 +41,8 @@ namespace HIKARI {
         using VerticalAlign = TEXT_RENDERING::SdfTextVerticalAlign;
         using WrapMode = TEXT_RENDERING::SdfTextWrap;
 
+        bool IsCanvasSourceOnly() const noexcept { return canvasSourceOnly_; }
+        void SetCanvasSourceOnly(bool value) { if (canvasSourceOnly_ == value) return; canvasSourceOnly_ = value; NotifyRenderStateDirty(); }
         std::string_view GetTypeName() const override {
             return "WorldTextComponent";
         }
@@ -125,6 +127,8 @@ namespace HIKARI {
         WrapMode wrap_ = WrapMode::Character;
         FacingMode facing_ = FacingMode::CameraFacing;
         bool visible_ = true;
+    private:
+        bool canvasSourceOnly_ = false;
     };
 
 } // namespace HIKARI

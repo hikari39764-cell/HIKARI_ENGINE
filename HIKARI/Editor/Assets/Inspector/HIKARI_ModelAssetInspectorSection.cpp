@@ -48,10 +48,7 @@ ToClusteredGeometryArtifactStateText(ClusteredGeometryArtifactState state) {
   }
 }
 
-void DrawClusteredGeometryArtifactInfo(const AssetDatabase &assetDatabase,
-                                       const AssetRecord &record) {
-  const ClusteredGeometryArtifactInfo info =
-      assetDatabase.GetClusteredGeometryArtifactInfo(record);
+void DrawClusteredGeometryArtifactInfo(const ClusteredGeometryArtifactInfo &info) {
   ImGui::SeparatorText(
       TEXT::Localize(
           "ui.modelDiagnostics.clusteredArtifact").c_str());
@@ -94,14 +91,11 @@ void DrawClusteredGeometryArtifactInfo(const AssetDatabase &assetDatabase,
   }
 }
 
-void DrawModelDiagnostics(const AssetDatabase &assetDatabase,
-                          const AssetRecord &record) {
-  DrawClusteredGeometryArtifactInfo(assetDatabase, record);
+void DrawModelDiagnostics(const ClusteredGeometryArtifactInfo &info,
+                          const nlohmann::json &report) {
+  DrawClusteredGeometryArtifactInfo(info);
 
-  nlohmann::json report;
-  if (!SERIALIZATION::JSON::ReadJsonFile(
-          record.importedDirectory / "import_report.json", report) ||
-      !report.is_object() || !report.contains("diagnostics") ||
+  if (!report.is_object() || !report.contains("diagnostics") ||
       !report["diagnostics"].is_object()) {
     ImGui::TextDisabled(
         "%s",

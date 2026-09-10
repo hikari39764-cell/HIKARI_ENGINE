@@ -1,4 +1,5 @@
 #include "Render3D/Text/HIKARI_SdfTextLayout.h"
+#include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 
 #include <algorithm>
 #include <cmath>
@@ -830,6 +831,8 @@ namespace HIKARI::TEXT_RENDERING {
         SdfTextLayoutStats* outStats,
         uint32_t maximumGlyphCount,
         SdfTextLayoutLease* outLease) noexcept {
+        static const auto timer = CPU_PROFILE::RegisterDynamicPass("Text.SdfLayout");
+        const CPU_PROFILE::ScopedDynamicCpuTimer scope(timer);
         SdfTextLayoutStats stats{};
         stats.requestCount = static_cast<uint32_t>((std::min)(
             requests.size(),

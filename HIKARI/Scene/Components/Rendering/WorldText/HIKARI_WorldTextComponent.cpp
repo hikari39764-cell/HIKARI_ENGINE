@@ -154,107 +154,143 @@ namespace HIKARI {
         TEXT::TruncateUtf8(
             text,
             TEXT_RENDERING::kSdfTextMaximumUtf8Bytes);
-        text_ = std::move(text);
+        auto value = std::move(text);
+        if (text_ == value) return;
+        text_ = std::move(value);
         NotifyRenderStateDirty();
     }
 
     void WorldTextComponent::SetFontAssetPath(std::string path) {
         TEXT::TruncateUtf8(path, kMaximumFontAssetPathBytes);
-        fontAssetPath_ = std::move(path);
+        auto value = std::move(path);
+        if (fontAssetPath_ == value) return;
+        fontAssetPath_ = std::move(value);
         NotifyRenderStateDirty();
     }
 
     void WorldTextComponent::SetVisible(bool visible) {
-        visible_ = visible;
+        const auto value = visible;
+        if (visible_ == value) return;
+        visible_ = value;
         NotifyRenderStateDirty();
     }
 
     void WorldTextComponent::SetLayoutSize(MATH::Vec2 size) {
-        layoutSize_ = SanitizeSize(size);
+        const auto value = SanitizeSize(size);
+        if (layoutSize_.x == value.x && layoutSize_.y == value.y) return;
+        layoutSize_ = value;
         NotifyRenderStateDirty();
     }
 
     void WorldTextComponent::SetFontHeight(float height) {
-        fontHeight_ = ClampFinite(height, 0.5f, 0.001f, 10000.0f);
+        const auto value = ClampFinite(height, 0.5f, 0.001f, 10000.0f);
+        if (fontHeight_ == value) return;
+        fontHeight_ = value;
         NotifyRenderStateDirty();
     }
 
     void WorldTextComponent::SetHorizontalAlign(HorizontalAlign align) {
-        horizontalAlign_ = static_cast<uint32_t>(align) <=
+        const auto value = static_cast<uint32_t>(align) <=
                 static_cast<uint32_t>(HorizontalAlign::Right)
             ? align
             : HorizontalAlign::Left;
+        if (horizontalAlign_ == value) return;
+        horizontalAlign_ = value;
         NotifyRenderStateDirty();
     }
 
     void WorldTextComponent::SetVerticalAlign(VerticalAlign align) {
-        verticalAlign_ = static_cast<uint32_t>(align) <=
+        const auto value = static_cast<uint32_t>(align) <=
                 static_cast<uint32_t>(VerticalAlign::Bottom)
             ? align
             : VerticalAlign::Top;
+        if (verticalAlign_ == value) return;
+        verticalAlign_ = value;
         NotifyRenderStateDirty();
     }
 
     void WorldTextComponent::SetWrapMode(WrapMode wrap) {
-        wrap_ = static_cast<uint32_t>(wrap) <=
+        const auto value = static_cast<uint32_t>(wrap) <=
                 static_cast<uint32_t>(WrapMode::Character)
             ? wrap
             : WrapMode::None;
+        if (wrap_ == value) return;
+        wrap_ = value;
         NotifyRenderStateDirty();
     }
 
     void WorldTextComponent::SetLineHeightMultiplier(float multiplier) {
-        lineHeightMultiplier_ = ClampFinite(
+        const auto value = ClampFinite(
             multiplier, 1.2f, 0.25f, 4.0f);
+        if (lineHeightMultiplier_ == value) return;
+        lineHeightMultiplier_ = value;
         NotifyRenderStateDirty();
     }
 
     void WorldTextComponent::SetLetterSpacing(float spacing) {
-        letterSpacing_ = ClampFinite(
+        const auto value = ClampFinite(
             spacing, 0.0f, -10000.0f, 10000.0f);
+        if (letterSpacing_ == value) return;
+        letterSpacing_ = value;
         NotifyRenderStateDirty();
     }
 
     void WorldTextComponent::SetFacingMode(FacingMode facing) {
-        facing_ = static_cast<uint32_t>(facing) <=
+        const auto value = static_cast<uint32_t>(facing) <=
                 static_cast<uint32_t>(FacingMode::FixedYAxis)
             ? facing
             : FacingMode::CameraFacing;
+        if (facing_ == value) return;
+        facing_ = value;
         NotifyRenderStateDirty();
     }
 
     void WorldTextComponent::SetColor(MATH::Vec3 color) {
-        color_ = SanitizeColor(color, { 1.0f, 1.0f, 1.0f });
+        const auto value = SanitizeColor(color, { 1.0f, 1.0f, 1.0f });
+        if (color_.x == value.x && color_.y == value.y && color_.z == value.z) return;
+        color_ = value;
         NotifyRenderStateDirty();
     }
 
     void WorldTextComponent::SetOutlineColor(MATH::Vec3 color) {
-        outlineColor_ = SanitizeColor(color, {});
+        const auto value = SanitizeColor(color, {});
+        if (outlineColor_.x == value.x && outlineColor_.y == value.y && outlineColor_.z == value.z) return;
+        outlineColor_ = value;
         NotifyRenderStateDirty();
     }
 
     void WorldTextComponent::SetOutlineWidth(float width) {
-        outlineWidth_ = ClampFinite(width, 0.04f, 0.0f, 0.25f);
+        const auto value = ClampFinite(width, 0.04f, 0.0f, 0.25f);
+        if (outlineWidth_ == value) return;
+        outlineWidth_ = value;
         NotifyRenderStateDirty();
     }
 
     void WorldTextComponent::SetOpacity(float opacity) {
-        opacity_ = ClampFinite(opacity, 1.0f, 0.0f, 1.0f);
+        const auto value = ClampFinite(opacity, 1.0f, 0.0f, 1.0f);
+        if (opacity_ == value) return;
+        opacity_ = value;
         NotifyRenderStateDirty();
     }
 
     void WorldTextComponent::SetRevealAmount(float amount) {
-        revealAmount_ = ClampFinite(amount, 1.0f, 0.0f, 1.0f);
+        const auto value = ClampFinite(amount, 1.0f, 0.0f, 1.0f);
+        if (revealAmount_ == value) return;
+        revealAmount_ = value;
         NotifyRenderStateDirty();
     }
 
     void WorldTextComponent::SetPivot(MATH::Vec2 pivot) {
-        pivot_ = SanitizePivot(pivot);
+        const auto value = SanitizePivot(pivot);
+        if (pivot_.x == value.x && pivot_.y == value.y) return;
+        pivot_ = value;
         NotifyRenderStateDirty();
     }
 
     void WorldTextComponent::SetTransparentSortPriority(int priority) {
-        transparentSortPriority_ = std::clamp(priority, -32768, 32767);
+        const auto value = std::clamp(priority, -32768, 32767);
+        if (transparentSortPriority_ == value) return;
+        transparentSortPriority_ = value;
         NotifyRenderStateDirty();
     }
 

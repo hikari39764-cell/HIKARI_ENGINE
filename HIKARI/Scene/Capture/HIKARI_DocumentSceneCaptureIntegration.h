@@ -7,8 +7,11 @@
 #include <vector>
 
 #include "Assets/Models/HIKARI_ModelAsset.h"
+#include "Diagnostics/HIKARI_CpuFrameProfiler.h"
+#include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Render3D/Core/HIKARI_Material.h"
+#include "Render2D/HIKARI_GameUiEffectRenderer.h"
 #include "Render3D/Render/HIKARI_ModelRenderer.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
@@ -238,14 +241,20 @@ namespace HIKARI::SCENE_CAPTURE {
         SceneCaptureService& service = state.runtime.sceneCaptureService;
         for (const uint32_t retiredSlot :
              service.ConsumeRetiredCaptureTargets()) {
-            MODELRENDERER::ResetSecondarySceneCaptureTarget(retiredSlot);
+            if (retiredSlot < kGameProjectSceneCaptureMaximumActiveCount)
+                MODELRENDERER::ResetSecondarySceneCaptureTarget(retiredSlot);
+            else GAME_UI::ResetGameUiCanvasTarget(retiredSlot-kGameProjectSceneCaptureMaximumActiveCount);
         }
         const std::vector<SceneCaptureRequest> requests =
             service.Requests();
         if (requests.empty()) {
             MODELRENDERER::ResetSecondarySceneCaptureTarget();
+            for (uint32_t i=0; i<kGameProjectUiCanvasMaximumCount; ++i) GAME_UI::ResetGameUiCanvasTarget(i);
             return;
         }
+        static const auto cpuTimer = CPU_PROFILE::RegisterDynamicPass("Render.SceneCaptures");
+        const CPU_PROFILE::ScopedDynamicCpuTimer cpuScope(cpuTimer);
+        const GFX::GPU_PROFILE::ScopedGpuTimerGroup gpuScope(graphics.cmdList, GFX::GPU_PROFILE::Pass::SceneCaptures);
         static_assert(
             kGameProjectSceneCaptureMaximumActiveCount ==
                 MESHRENDERER::kSecondarySceneCaptureMaximumCount);
@@ -261,6 +270,19 @@ namespace HIKARI::SCENE_CAPTURE {
                 request.height,
                 kGameProjectSceneCaptureMinimumExtent,
                 kGameProjectSceneCaptureMaximumExtent);
+            if (request.uiCanvas) {
+                RENDER3D::TextureResourceHandle texture{};
+                uint64_t revision{}, renderedFrame{};
+                if (request.uiFrame && GAME_UI::RenderGameUiCanvasTarget(
+                    request.renderSlot-kGameProjectSceneCaptureMaximumActiveCount,
+                    state.runtime.world.GetRuntimeIdentity(),*request.uiFrame,request.contentRevision,
+                    width,height,request.clearColor,texture,revision,renderedFrame)) {
+                    service.PublishReady(request.handle,texture,width,height,renderedFrame,revision);
+                } else if (request.contentRevision) {
+                    service.PublishFailure(request.handle,GameProjectSceneCaptureFailure::RenderFailed);
+                }
+                continue;
+            }
             GameObject* cameraObject =
                 state.runtime.world.FindObject(request.cameraObject);
             Camera3D camera{};

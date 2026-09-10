@@ -1,5 +1,6 @@
 #include "Render2D/HIKARI_DxTexture.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
+#include "Core/Text/HIKARI_UtfPath.h"
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -1049,13 +1050,12 @@ namespace HIKARI {
             hr = uploadCmdList_->Reset(uploadAllocator_.Get(), nullptr);
             assert(SUCCEEDED(hr));
 
-            wchar_t wpath[260]{};
-            mbstowcs_s(nullptr, wpath, path.c_str(), _TRUNCATE);
+            const auto nativePath = TEXT::PathFromUtf8(path);
 
             Microsoft::WRL::ComPtr<ID3D12Resource> texResource;
 
             hr = HIKARI::DXTEX::CreateWICTextureFromFile(
-                device, uploadCmdList_.Get(), wpath, texResource.GetAddressOf());
+                device, uploadCmdList_.Get(), nativePath.c_str(), texResource.GetAddressOf());
             if (FAILED(hr) || !texResource) {
                 uploadCmdList_->Close();
                 OutputDebugStringA("DxTextureManager::CreateTextureFromFile - WIC load failed.\n");
@@ -1130,12 +1130,11 @@ namespace HIKARI {
                 return -1;
             }
 
-            wchar_t wpath[260]{};
-            mbstowcs_s(nullptr, wpath, path.c_str(), _TRUNCATE);
+            const auto nativePath = TEXT::PathFromUtf8(path);
 
             DirectX::TexMetadata metadata{};
             DirectX::ScratchImage image{};
-            HRESULT hr = DirectX::LoadFromDDSFile(wpath, DirectX::DDS_FLAGS_NONE, &metadata, image);
+            HRESULT hr = DirectX::LoadFromDDSFile(nativePath.c_str(), DirectX::DDS_FLAGS_NONE, &metadata, image);
             if (FAILED(hr)) {
                 std::ostringstream oss;
                 oss << "[DxTextureManager][DDS][ERROR] LoadFromDDSFile failed. path=" << path
@@ -1237,12 +1236,11 @@ namespace HIKARI {
                 return -1;
             }
 
-            wchar_t wpath[260]{};
-            mbstowcs_s(nullptr, wpath, path.c_str(), _TRUNCATE);
+            const auto nativePath = TEXT::PathFromUtf8(path);
 
             DirectX::TexMetadata metadata{};
             DirectX::ScratchImage image{};
-            HRESULT hr = DirectX::LoadFromTGAFile(wpath, DirectX::TGA_FLAGS_NONE, &metadata, image);
+            HRESULT hr = DirectX::LoadFromTGAFile(nativePath.c_str(), DirectX::TGA_FLAGS_NONE, &metadata, image);
             if (FAILED(hr)) {
                 std::ostringstream oss;
                 oss << "[DxTextureManager][TGA][ERROR] LoadFromTGAFile failed. path=" << path
@@ -1472,12 +1470,11 @@ namespace HIKARI {
                 return -1;
             }
 
-            wchar_t wpath[260]{};
-            mbstowcs_s(nullptr, wpath, path.c_str(), _TRUNCATE);
+            const auto nativePath = TEXT::PathFromUtf8(path);
 
             DirectX::TexMetadata metadata{};
             DirectX::ScratchImage image{};
-            HRESULT hr = DirectX::LoadFromDDSFile(wpath, DirectX::DDS_FLAGS_NONE, &metadata, image);
+            HRESULT hr = DirectX::LoadFromDDSFile(nativePath.c_str(), DirectX::DDS_FLAGS_NONE, &metadata, image);
             if (FAILED(hr)) {
                 std::ostringstream oss;
                 oss << "[DxTextureManager][Cubemap][ERROR] LoadCubemap failed. path=" << path

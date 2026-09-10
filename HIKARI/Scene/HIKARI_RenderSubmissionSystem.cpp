@@ -388,7 +388,7 @@ namespace HIKARI {
             uint32_t stableOrder = 0u;
             world.ForEachObjectWith<WorldSpriteComponent>(
                 [&](GameObject& object, WorldSpriteComponent& sprite) {
-                    if (!sprite.IsVisible()) {
+                    if (!sprite.IsVisible() || sprite.IsCanvasSourceOnly()) {
                         return;
                     }
                     RENDER3D::WORLD_SPRITES::WorldSpriteInstance instance{};
@@ -448,6 +448,8 @@ namespace HIKARI {
             const FrameContext& frame,
             const std::filesystem::path& projectRoot,
             RENDER3D::WORLD_TEXT::WorldTextFrameSource& outSource) {
+            static const auto timer = CPU_PROFILE::RegisterDynamicPass("Scene.WorldTextSource");
+            const CPU_PROFILE::ScopedDynamicCpuTimer scope(timer);
             constexpr size_t kMaximumWorldTextCount = 4096u;
             outSource.Clear();
             outSource.worldIdentity = world.GetRuntimeIdentity();
@@ -457,7 +459,7 @@ namespace HIKARI {
             uint32_t stableOrder = 0u;
             world.ForEachObjectWith<WorldTextComponent>(
                 [&](GameObject& object, WorldTextComponent& text) {
-                    if (!text.IsVisible() || text.GetText().empty() ||
+                    if (!text.IsVisible() || text.IsCanvasSourceOnly() || text.GetText().empty() ||
                         outSource.instances.size() >=
                             kMaximumWorldTextCount) {
                         return;
@@ -809,82 +811,98 @@ namespace HIKARI {
             sSubmissionWorldIdentity_ = world.GetRuntimeIdentity();
         }
 
-        TickPresentationServices(world, frame);
-        BuildWorldSpriteFrameSource(
-            world,
-            frame,
-            sAssetRegistry_,
-            sWorldSpriteFrameSource_);
-        BuildWorldTextFrameSource(
-            world,
-            frame,
-            sProjectRoot_,
-            sWorldTextFrameSource_);
-
-        if (!sGpuDrivenSceneSyncInitialized_) {
-            sSceneRenderCacheSync_.Sync(
+        {
+            static const auto timer = CPU_PROFILE::RegisterDynamicPass("Scene.PresentationSources");
+            const CPU_PROFILE::ScopedDynamicCpuTimer scope(timer);
+            TickPresentationServices(world, frame);
+            BuildWorldSpriteFrameSource(
                 world,
-                MODELRENDERER::GetRenderModelCache(),
-                sSceneRenderCache_,
-                frame.frameIndex,
+                frame,
                 sAssetRegistry_,
-                sProjectRoot_,
-                sRenderViewPurpose_,
-                sModelManager_);
-            sGpuDrivenSceneSyncInitialized_ = true;
-        } else {
-            sSceneRenderCacheSync_.SyncDirty(
+                sWorldSpriteFrameSource_);
+            BuildWorldTextFrameSource(
                 world,
-                MODELRENDERER::GetRenderModelCache(),
-                sSceneRenderCache_,
-                frame.frameIndex,
-                sAssetRegistry_,
+                frame,
                 sProjectRoot_,
-                sRenderViewPurpose_,
-                sModelManager_);
+                sWorldTextFrameSource_);
         }
 
-        RENDER3D::GPUDRIVEN::GpuSceneRegistrySyncInput gpuSceneInput{};
-        gpuSceneInput.sceneCache = &sSceneRenderCache_;
-        sGpuSceneRegistry_.SyncForwardFromSceneCache(gpuSceneInput);
-        sGpuSceneRegistryValid_ = true;
-
-        MassRenderSyncContext massContext{
-            &sMassGpuSceneRegistry_,
-            sAssetRegistry_,
-            sModelManager_,
-            &MODELRENDERER::GetRenderModelCache(),
-            &sProjectRoot_,
-            world.GetRuntimeIdentity(),
-            frame.frameIndex
-        };
-        WorldMassRenderPublicationReceipt massReceipt{};
-        const bool massPublished = world.PublishMassRenderProxies(
-            frame.frameIndex,
-            &massContext,
-            &SyncMassRenderStores,
-            massReceipt);
-        if (massPublished) {
-            sPendingMassPublicationGeneration_ = massReceipt.generation;
-            sPendingMassPublicationFrameIndex_ = massReceipt.frameIndex;
-            sPendingMassSourceVersion_ =
-                sMassGpuSceneRegistry_.GetSource().sourceVersion;
-        } else {
-            sMassGpuSceneRegistry_.Clear();
-            sPendingMassPublicationGeneration_ = 0u;
-            sPendingMassPublicationFrameIndex_ = 0u;
-            sPendingMassSourceVersion_ = 0u;
+        {
+            static const auto timer = CPU_PROFILE::RegisterDynamicPass("Scene.RenderCacheSync");
+            const CPU_PROFILE::ScopedDynamicCpuTimer scope(timer);
+            if (!sGpuDrivenSceneSyncInitialized_) {
+                sSceneRenderCacheSync_.Sync(
+                    world,
+                    MODELRENDERER::GetRenderModelCache(),
+                    sSceneRenderCache_,
+                    frame.frameIndex,
+                    sAssetRegistry_,
+                    sProjectRoot_,
+                    sRenderViewPurpose_,
+                    sModelManager_);
+                sGpuDrivenSceneSyncInitialized_ = true;
+            } else {
+                sSceneRenderCacheSync_.SyncDirty(
+                    world,
+                    MODELRENDERER::GetRenderModelCache(),
+                    sSceneRenderCache_,
+                    frame.frameIndex,
+                    sAssetRegistry_,
+                    sProjectRoot_,
+                    sRenderViewPurpose_,
+                    sModelManager_);
+            }
         }
-        const auto& massStats = sMassGpuSceneRegistry_.GetStats();
-        sDebugStats_.massRenderStoreCount = massStats.storeCount;
-        sDebugStats_.massRenderInstanceCount =
-            massStats.sourceInstanceCount;
-        sDebugStats_.massRenderDirtyRangeCount =
-            massStats.dirtyRangeCount;
-        sDebugStats_.massRenderMissingTemplateCount =
-            massStats.missingTemplateCount;
-        sDebugStats_.massRenderUnsupportedTemplateCount =
-            massStats.unsupportedTemplateCount;
+
+        {
+            static const auto timer = CPU_PROFILE::RegisterDynamicPass("Render.GpuSceneSync");
+            const CPU_PROFILE::ScopedDynamicCpuTimer scope(timer);
+            RENDER3D::GPUDRIVEN::GpuSceneRegistrySyncInput gpuSceneInput{};
+            gpuSceneInput.sceneCache = &sSceneRenderCache_;
+            sGpuSceneRegistry_.SyncForwardFromSceneCache(gpuSceneInput);
+            sGpuSceneRegistryValid_ = true;
+        }
+
+        {
+            static const auto timer = CPU_PROFILE::RegisterDynamicPass("Scene.MassPublication");
+            const CPU_PROFILE::ScopedDynamicCpuTimer scope(timer);
+            MassRenderSyncContext massContext{
+                &sMassGpuSceneRegistry_,
+                sAssetRegistry_,
+                sModelManager_,
+                &MODELRENDERER::GetRenderModelCache(),
+                &sProjectRoot_,
+                world.GetRuntimeIdentity(),
+                frame.frameIndex
+            };
+            WorldMassRenderPublicationReceipt massReceipt{};
+            const bool massPublished = world.PublishMassRenderProxies(
+                frame.frameIndex,
+                &massContext,
+                &SyncMassRenderStores,
+                massReceipt);
+            if (massPublished) {
+                sPendingMassPublicationGeneration_ = massReceipt.generation;
+                sPendingMassPublicationFrameIndex_ = massReceipt.frameIndex;
+                sPendingMassSourceVersion_ =
+                    sMassGpuSceneRegistry_.GetSource().sourceVersion;
+            } else {
+                sMassGpuSceneRegistry_.Clear();
+                sPendingMassPublicationGeneration_ = 0u;
+                sPendingMassPublicationFrameIndex_ = 0u;
+                sPendingMassSourceVersion_ = 0u;
+            }
+            const auto& massStats = sMassGpuSceneRegistry_.GetStats();
+            sDebugStats_.massRenderStoreCount = massStats.storeCount;
+            sDebugStats_.massRenderInstanceCount =
+                massStats.sourceInstanceCount;
+            sDebugStats_.massRenderDirtyRangeCount =
+                massStats.dirtyRangeCount;
+            sDebugStats_.massRenderMissingTemplateCount =
+                massStats.missingTemplateCount;
+            sDebugStats_.massRenderUnsupportedTemplateCount =
+                massStats.unsupportedTemplateCount;
+        }
 
         sCombinedGpuSceneSource_ =
             sGpuSceneRegistry_.GetSceneSource();
@@ -912,6 +930,8 @@ namespace HIKARI {
             sRenderViewPurpose_ ==
                 RENDER3D::RenderViewPurpose::LightProbeCapture;
         if (!lightingBakeCapture) {
+            static const auto timer = CPU_PROFILE::RegisterDynamicPass("Scene.DebugOverlays");
+            const CPU_PROFILE::ScopedDynamicCpuTimer scope(timer);
             SubmitDebugOverlays(world, sDebugStats_);
         }
     }

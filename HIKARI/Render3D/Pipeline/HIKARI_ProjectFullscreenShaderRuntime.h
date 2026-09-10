@@ -1,4 +1,5 @@
 #pragma once
+#include "Render3D/ScreenSpace/HIKARI_ScreenReadability.h"
 
 #include <cstdint>
 #include <string>
@@ -26,6 +27,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
         const RenderTextureView& input,
         uint32_t width,
         uint32_t height,
+        const ScreenReadabilityFrame& readability,
         std::string& outDiagnostic) noexcept;
 
     void ReleaseProjectFullscreenShaderRuntime() noexcept;

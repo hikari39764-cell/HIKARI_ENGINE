@@ -1,4 +1,5 @@
 #include "HIKARI_Win32Window.h"
+#include "Platform/HIKARI_ApplicationIcon.h"
 
 #include <algorithm>
 #include <commctrl.h>
@@ -189,6 +190,7 @@ bool Win32Window::Initialize(
     wc.hInstance = hInstance_;
     wc.lpszClassName = L"HIKARI_WindowClass";
     wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    wc.hIcon = LoadIconW(hInstance_, MAKEINTRESOURCEW(PLATFORM::kApplicationIconResourceId));
     wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
     const ATOM cls = RegisterClassW(&wc);
     if (cls == 0) {
@@ -250,6 +252,14 @@ bool Win32Window::Initialize(
         return false;
     }
     HIKARI_LOG_INFO("Window created.");
+
+    for (const bool useSmallIcon : {false, true}) {
+        const HICON icon = static_cast<HICON>(LoadImageW(hInstance_,
+            MAKEINTRESOURCEW(PLATFORM::kApplicationIconResourceId), IMAGE_ICON,
+            GetSystemMetrics(useSmallIcon ? SM_CXSMICON : SM_CXICON),
+            GetSystemMetrics(useSmallIcon ? SM_CYSMICON : SM_CYICON), LR_SHARED));
+        if (icon) SendMessageW(hwnd_, WM_SETICON, useSmallIcon ? ICON_SMALL : ICON_BIG, reinterpret_cast<LPARAM>(icon));
+    }
 
     ShowWindow(hwnd_, SW_SHOW);
     DragAcceptFiles(hwnd_, TRUE);

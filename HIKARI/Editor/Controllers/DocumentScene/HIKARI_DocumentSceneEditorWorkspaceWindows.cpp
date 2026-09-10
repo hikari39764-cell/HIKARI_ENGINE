@@ -66,7 +66,7 @@ namespace HIKARI {
                 return EDITOR::IsObjectEditorLocked(
                     scene.GetSceneDocument(),
                     object.GetDocumentId());
-            });
+            }, &scene.GetSceneDocument(), &operationRegistry_, scene.GetSceneDocumentRevision());
 
         if (ImGui::BeginPopupContextWindow(
                 "SceneHierarchyEmptyContext",

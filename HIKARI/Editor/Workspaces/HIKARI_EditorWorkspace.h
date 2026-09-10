@@ -19,6 +19,7 @@ namespace HIKARI::EDITOR {
         Vfx,
         Dialogue,
         TerrainSurface,
+        Project,
         Count,
     };
 

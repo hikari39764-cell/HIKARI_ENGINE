@@ -89,6 +89,7 @@ void TextStatus(const char *label, bool ok);
 void MetricRowText(const char *label, const char *value);
 
 RuntimePerformanceSnapshot BuildSnapshot();
+std::string BuildPerformanceReport(const RuntimePerformanceSnapshot& snapshot);
 
 double SumGpuMsByScope(const GFX::GPU_PROFILE::FrameSnapshot &profile,
                        bool nestedSubpass);

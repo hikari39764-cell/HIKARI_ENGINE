@@ -39,6 +39,7 @@
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
 #include "Scene/Capture/HIKARI_DocumentSceneCaptureIntegration.h"
+#include "Scene/Capture/HIKARI_SceneCaptureReadability.h"
 #include "Scene/Lighting/HIKARI_SceneLightingSet.h"
 
 namespace HIKARI {
@@ -531,6 +532,8 @@ namespace HIKARI {
                     renderCamera.GetPosition());
             }
             RENDER3D::RenderViewContext primaryView{};
+            primaryView.screenReadability = SCENE_CAPTURE::CollectScreenReadability(
+                state_->runtime.world, state_->runtime.sceneCaptureService);
             primaryView.viewId = RENDER3D::kPrimaryRenderViewId;
             primaryView.purpose = state_->runtime.playActive
                 ? RENDER3D::RenderViewPurpose::Game

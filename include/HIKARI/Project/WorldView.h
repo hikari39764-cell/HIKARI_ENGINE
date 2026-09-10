@@ -1,5 +1,7 @@
 #pragma once
 
+#include "HIKARI/Project/UiCanvasView.h"
+
 #include <cstdint>
 #include <span>
 #include <string_view>
@@ -13,14 +15,17 @@
 #include "HIKARI/Project/WorldTypes.h"
 #include "HIKARI/Project/WorldMassTypes.h"
 #include "HIKARI/Project/WorldSpriteTypes.h"
+#include "HIKARI/Project/WorldTextTypes.h"
 #include "HIKARI/Runtime/ComponentTypeId.h"
 
 namespace HIKARI {
+    struct GameProjectModelAppearance;
 
     class AnimationView;
     class AudioView;
     class CameraView;
     class DialogueView;
+    class DisplaySettingsView;
     class IGameComponent;
     class InputView;
     class MotionView;
@@ -72,11 +77,25 @@ namespace HIKARI {
                 const GameProjectLightPatch& patch) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool TryGetRuntimeWorldSpriteState(
             GameProjectWorldSpriteState& outState) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool SetRuntimeWorldSpriteTexture(
+            std::string_view textureAssetGuid) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult
             ApplyRuntimeWorldSpritePatch(
                 const GameProjectWorldSpritePatch& patch) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API MaterialFxView
             GetMaterialFx() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool TryGetRuntimeModelAppearance(GameProjectModelAppearance&) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool ApplyRuntimeModelAppearance(const GameProjectModelAppearance&) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool TryGetRuntimeWorldTextState(
+            GameProjectWorldTextState& outState) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult
+            ApplyRuntimeWorldTextPatch(
+                const GameProjectWorldTextPatch& patch) const noexcept;
+        // UTF-8 is copied during this owner-thread call. Empty font keeps the
+        // authored font. No component is created and no Scene is persisted.
+        HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult
+            SetRuntimeWorldTextContent(std::string_view text,
+                std::string_view fontAssetPath = {}) const noexcept;
         // Updates an existing engine-owned runtime material override. This is
         // intended for authored procedural/model presentation objects; it
         // never creates a material, changes the source asset, or persists the
@@ -255,6 +274,8 @@ namespace HIKARI {
             GetPresentationVfx() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API VfxView GetVfx() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API UiView GetUi() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API DisplaySettingsView GetDisplaySettings() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API UiCanvasView GetUiCanvases() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API SequenceView
             GetSequence() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API SceneCaptureView

@@ -10,20 +10,21 @@ namespace HIKARI::ASSETS::SHADER {
 
     inline constexpr std::string_view kPostEffectEngineInterfaceId =
         "HIKARI.PostEffect.Common";
-    inline constexpr uint32_t kPostEffectEngineInterfaceVersion = 1u;
+    inline constexpr uint32_t kPostEffectEngineInterfaceVersion = 2u;
     inline constexpr std::string_view kPostEffectEngineInterfaceHash =
-        "da639891fe67da5a9da252f71123fc755b6f537a8d5c95744a7026d9f826fee0";
+        "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2";
     inline constexpr std::string_view kPostEffectInterfaceDependency =
         "EngineSdk/Include/Post/HIKARI_PostEffectInterface.hlsli";
     inline constexpr std::string_view kPostEffectRootLayoutId =
         "HIKARI.PostQuad.Root";
-    inline constexpr uint32_t kPostEffectRootLayoutVersion = 1u;
+    inline constexpr uint32_t kPostEffectRootLayoutVersion = 2u;
     inline constexpr std::string_view kPostEffectRootLayoutHash =
-        "a5485d8b0624d12da38d2f3e20b44c7b2657f0fae15ea1fa0b1dc79c50b62dd0";
+        "7eeba21bdb7d081bf856331d342b65bc573df2808a5112033ed9daac643e9d94";
     inline constexpr std::string_view kPostEffectRootLayoutCanonical =
-        "HIKARI.PostQuad.Root.v1|"
+        "HIKARI.PostQuad.Root.v2|"
         "0:SRVTable(t0,space0,count1,Pixel)|"
         "1:CBV(b0,space0,Pixel)|"
+        "2:Constants(b1,space0,count36,Pixel)|"
         "StaticSampler(s0,space0,LinearClamp,Pixel)|"
         "Flags(AllowInputAssembler)";
 
@@ -94,7 +95,12 @@ namespace HIKARI::ASSETS::SHADER {
             bool hasConstants = false;
             bool hasTexture = false;
             bool hasSampler = false;
+            bool hasReadability = false;
             for (const ShaderResourceBinding& binding : entry.bindings) {
+                hasReadability = hasReadability || (binding.registerIndex == 1u &&
+                    binding.registerSpace == 0u && binding.count == 1u &&
+                    binding.visibilityMask == pixelVisibility &&
+                    binding.kind == ShaderResourceBindingKind::ConstantBuffer);
                 const bool common = binding.registerIndex == 0u &&
                     binding.registerSpace == 0u && binding.count == 1u &&
                     binding.visibilityMask == pixelVisibility;
@@ -110,7 +116,7 @@ namespace HIKARI::ASSETS::SHADER {
             }
             if (entry.entry.stage != ShaderStage::Pixel ||
                 entry.entry.profile != "ps_6_0" ||
-                entry.bindings.size() != 3u || !hasConstants ||
+                entry.bindings.size() != (hasReadability ? 4u : 3u) || !hasConstants ||
                 !hasTexture || !hasSampler) {
                 outDiagnostic =
                     "PostEffect reflection must contain exact b0, t0 and s0";

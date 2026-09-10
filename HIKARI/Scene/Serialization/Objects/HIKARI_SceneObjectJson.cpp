@@ -77,6 +77,7 @@ namespace HIKARI::SCENE::SERIALIZATION {
 
         if (scope == SceneObjectJsonScope::SceneDocument) {
             out["editorLocked"] = object.editorLocked;
+            if (!object.editorFolder.empty()) out["editorFolder"] = object.editorFolder;
             out["parent"] = object.parent.has_value() ? nlohmann::json(object.parent->value) : nlohmann::json(nullptr);
         } else {
             out["parent"] = nullptr;
@@ -102,6 +103,7 @@ namespace HIKARI::SCENE::SERIALIZATION {
 
         if (scope == SceneObjectJsonScope::SceneDocument) {
             outObject.editorLocked = node.value("editorLocked", false);
+            outObject.editorFolder = node.value("editorFolder", std::string{});
             if (node.contains("parent") && node["parent"].is_number_unsigned()) {
                 outObject.parent = SceneObjectId{ node["parent"].get<uint64_t>() };
             }

@@ -1,6 +1,8 @@
 #ifndef HIKARI_POST_EFFECT_INTERFACE_HLSLI
 #define HIKARI_POST_EFFECT_INTERFACE_HLSLI
 
+#include "HIKARI_ScreenReadability.hlsli"
+
 cbuffer CommonParams : register(b0)
 {
     float gTime;

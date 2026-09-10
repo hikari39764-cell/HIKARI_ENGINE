@@ -212,6 +212,7 @@ bool ExecuteProjectFullscreenShaderCommand(
             *input,
             gate->context->frame.renderWidth,
             gate->context->frame.renderHeight,
+            gate->context->frame.screenReadability,
             diagnostic)) {
         gate->failed = true;
         ReportProjectRenderPassFailure(

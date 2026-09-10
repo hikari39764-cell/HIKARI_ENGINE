@@ -59,6 +59,8 @@ namespace HIKARI {
             bool preserveAspect = true;
         };
 
+        bool IsCanvasSourceOnly() const noexcept { return canvasSourceOnly_; }
+        void SetCanvasSourceOnly(bool value) { if (canvasSourceOnly_ == value) return; canvasSourceOnly_ = value; NotifyRenderStateDirty(); }
         std::string_view GetTypeName() const override {
             return "WorldSpriteComponent";
         }
@@ -590,6 +592,8 @@ namespace HIKARI {
         bool visible_ = true;
         bool preserveAspect_ = true;
         uint64_t stateRevision_ = 1u;
+    private:
+        bool canvasSourceOnly_ = false;
     };
 
 } // namespace HIKARI

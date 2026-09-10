@@ -390,9 +390,46 @@ namespace HIKARI {
             }
 
             const DirectX::ScratchImage& converted = SelectImage(loaded, working);
-            DirectX::ScratchImage mipmapped{};
             const DirectX::TexMetadata convertedMetadata = converted.GetMetadata();
-            if (NeedsMipGeneration(settings, convertedMetadata) && !DirectX::IsCompressed(convertedMetadata.format)) {
+            DirectX::ScratchImage resized{};
+            if (settings.allowResize && convertedMetadata.dimension == DirectX::TEX_DIMENSION_TEXTURE2D) {
+                const size_t maximumSize = (std::max)(size_t{1}, static_cast<size_t>(settings.maxSize));
+                const size_t longestSide = (std::max)(convertedMetadata.width, convertedMetadata.height);
+                const double scale = (std::min)(1.0, static_cast<double>(maximumSize) / longestSide);
+                size_t width = (std::max)(size_t{1}, static_cast<size_t>(convertedMetadata.width * scale + 0.5));
+                size_t height = (std::max)(size_t{1}, static_cast<size_t>(convertedMetadata.height * scale + 0.5));
+                if (settings.forcePowerOfTwo) {
+                    const auto lowerPowerOfTwo = [](size_t extent) {
+                        size_t result = 1;
+                        while (result <= extent / 2) result *= 2;
+                        return result;
+                    };
+                    width = lowerPowerOfTwo(width);
+                    height = lowerPowerOfTwo(height);
+                }
+                if (width != convertedMetadata.width || height != convertedMetadata.height) {
+                    if (task != nullptr) {
+                        if (task->IsCancellationRequested()) {
+                            outMessage = "[DirectXTexBackend] import canceled";
+                            return false;
+                        }
+                        task->ReportStage("Resizing texture", 0.46f, true, sourcePath.filename().string());
+                    }
+                    hr = DirectX::Resize(
+                        converted.GetImages(), converted.GetImageCount(), convertedMetadata,
+                        width, height, ResolveFilterFlags(settings.colorSpace), resized);
+                    if (FAILED(hr)) {
+                        outMessage = "[DirectXTexBackend] texture resize failed: " +
+                            sourcePath.generic_string() + " hr=" + ToHexHr(hr);
+                        HIKARI_LOG_ERROR(outMessage);
+                        return false;
+                    }
+                }
+            }
+            const DirectX::ScratchImage& mipInput = SelectImage(converted, resized);
+            const DirectX::TexMetadata mipInputMetadata = mipInput.GetMetadata();
+            DirectX::ScratchImage mipmapped{};
+            if (NeedsMipGeneration(settings, mipInputMetadata) && !DirectX::IsCompressed(mipInputMetadata.format)) {
                 if (task != nullptr) {
                     if (task->IsCancellationRequested()) {
                         outMessage = "[DirectXTexBackend] import canceled";
@@ -405,9 +442,9 @@ namespace HIKARI {
                         sourcePath.filename().string());
                 }
                 hr = DirectX::GenerateMipMaps(
-                    converted.GetImages(),
-                    converted.GetImageCount(),
-                    convertedMetadata,
+                    mipInput.GetImages(),
+                    mipInput.GetImageCount(),
+                    mipInputMetadata,
                     ResolveFilterFlags(settings.colorSpace),
                     0,
                     mipmapped);
@@ -420,7 +457,7 @@ namespace HIKARI {
                 }
             }
 
-            const DirectX::ScratchImage& mipSource = SelectImage(converted, mipmapped);
+            const DirectX::ScratchImage& mipSource = SelectImage(mipInput, mipmapped);
             const DirectX::TexMetadata mipMetadata = mipSource.GetMetadata();
 
             DirectX::ScratchImage compressed{};
@@ -459,6 +496,8 @@ namespace HIKARI {
                 outImage = std::move(compressed);
             } else if (mipmapped.GetImageCount() > 0) {
                 outImage = std::move(mipmapped);
+            } else if (resized.GetImageCount() > 0) {
+                outImage = std::move(resized);
             } else if (working.GetImageCount() > 0) {
                 outImage = std::move(working);
             } else {

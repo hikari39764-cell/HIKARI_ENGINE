@@ -465,6 +465,8 @@ namespace HIKARI {
             state_->runtime.vfxPlaybackService.
                 SetReliableRenderDeliveryEnabled(true);
         }
+        state_->runtime.sceneCaptureService.SetCanvasAssets(
+            state_->assets.Database().GetProjectRoot(), &state_->assets.Database());
         state_->runtime.gameUiPresentationService.SetProjectRoot(
             state_->assets.Database().GetProjectRoot());
         state_->runtime.gameUiPresentationService.SetAssetDatabase(

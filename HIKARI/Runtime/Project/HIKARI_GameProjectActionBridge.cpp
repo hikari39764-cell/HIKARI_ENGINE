@@ -23,12 +23,15 @@
 #include "Physics/HIKARI_PhysicsWorldService.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
+#include "Runtime/Host/HIKARI_IEditorUiServices.h"
 #include "Runtime/Presentation/HIKARI_GamePresentationService.h"
 #include "Runtime/Services/HIKARI_ActionTimeDilationService.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "HIKARI/Project/WorldView.h"
 #include "Scene/Camera/HIKARI_CameraRigService.h"
 #include "Scene/HIKARI_GameObject.h"
+#include "Scene/HIKARI_CameraDirector.h"
+#include "Vfx/Post/HIKARI_PostSystem.h"
 #include "Scene/HIKARI_PresentationTransformService.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
 #include "Scene/HIKARI_RuntimeSceneContext.h"
@@ -81,6 +84,30 @@ namespace HIKARI {
 
         GameProjectFloat3 ToProject(const MATH::Vec3& value) noexcept {
             return { value.x, value.y, value.z };
+        }
+
+        bool CopyCameraPose(const Camera3D& camera, GameProjectCameraPose& outPose) noexcept {
+            const MATH::Vec3 eye = camera.GetPosition();
+            const MATH::Vec3 target = camera.GetTarget();
+            const MATH::Vec3 up = camera.GetUp();
+            const float fov = camera.GetFovYRad();
+            const float aspect = camera.GetAspect();
+            if (!MATH::IsFinite(eye) || !MATH::IsFinite(target) ||
+                !MATH::IsFinite(up) || !std::isfinite(fov) ||
+                !std::isfinite(aspect) || aspect <= 0.0f ||
+                MATH::Length(target - eye) <= kDirectionEpsilon ||
+                MATH::Length(up) <= kDirectionEpsilon ||
+                std::abs(MATH::Dot(
+                    MATH::Normalize(target - eye),
+                    MATH::Normalize(up))) >= 0.999f) {
+                return false;
+            }
+            outPose.eye = ToProject(eye);
+            outPose.target = ToProject(target);
+            outPose.up = ToProject(up);
+            outPose.verticalFovRadians = fov;
+            outPose.aspectRatio = aspect;
+            return true;
         }
 
         GameProjectQuat ToProject(const MATH::Quat& value) noexcept {
@@ -639,6 +666,13 @@ namespace HIKARI {
             if (world_ == nullptr || actionId.empty()) {
                 return false;
             }
+            if (!SERVICES::IsStandaloneGameHost() &&
+                !SERVICES::IsInProcessGamePresentationActive()) {
+                const auto* editor = RUNTIME::GetEditorUiServices();
+                if (editor == nullptr || !editor->IsGameViewportPlayInputActive()) {
+                    return false;
+                }
+            }
             auto* world = static_cast<World*>(world_);
             INPUT::InputService* input = world->Services().Find<
                 INPUT::InputService>();
@@ -693,28 +727,30 @@ namespace HIKARI {
         GameProjectPointerState& outState) const noexcept {
         outState = {};
         try {
-            if (world_ == nullptr ||
-                (!SERVICES::IsStandaloneGameHost() &&
-                    !SERVICES::IsInProcessGamePresentationActive())) {
+            if (world_ == nullptr) {
                 return false;
             }
             auto* world = static_cast<World*>(world_);
             const INPUT::InputService* input = world->Services().Find<
                 INPUT::InputService>();
-            const int width = SERVICES::GetLogicalScreenWidth();
-            const int height = SERVICES::GetLogicalScreenHeight();
+            uint32_t width = static_cast<uint32_t>((std::max)(SERVICES::GetLogicalScreenWidth(), 0));
+            uint32_t height = static_cast<uint32_t>((std::max)(SERVICES::GetLogicalScreenHeight(), 0));
             if (input == nullptr ||
                 input->GetMouseCaptureMode() !=
-                    INPUT::MouseCaptureMode::Free ||
-                width <= 0 || height <= 0) {
+                    INPUT::MouseCaptureMode::Free) {
                 return false;
             }
             INPUT::InputPointerState pointer{};
-            if (!input->GetSnapshot().TryGetPointerState(
-                    static_cast<uint32_t>(width),
-                    static_cast<uint32_t>(height),
-                    pointer)) {
-                return false;
+            if (!SERVICES::IsStandaloneGameHost() &&
+                !SERVICES::IsInProcessGamePresentationActive()) {
+                const auto* editor = RUNTIME::GetEditorUiServices();
+                if (editor == nullptr || !editor->TryGetGameViewportPointer(pointer, width, height)) {
+                    return false;
+                }
+            } else {
+                if (!input->GetSnapshot().TryGetPointerState(width, height, pointer)) {
+                    return false;
+                }
             }
             outState.x = pointer.x;
             outState.y = pointer.y;
@@ -731,6 +767,23 @@ namespace HIKARI {
             outState = {};
             return false;
         }
+    }
+
+    bool InputView::SetPointerCursorVisible(uint8_t visible) const noexcept {
+        try {
+            auto* world = static_cast<World*>(world_);
+            if (!world || !world->IsOwnerThread() || visible > 1u) return false;
+            auto* input = world->Services().Find<INPUT::InputService>();
+            if (!input) return false;
+            if (!visible) {
+                const auto* camera = world->Services().Find<GameplayCameraService>();
+                GameProjectPointerState pointer{};
+                if (!camera || !camera->IsRuntimeCameraActive() ||
+                    !GetPointerState(pointer) || !pointer.valid) return false;
+            }
+            input->SetPointerCursorVisible(visible != 0u);
+            return true;
+        } catch (...) { return false; }
     }
 
     bool InputView::SetContextActive(
@@ -768,6 +821,7 @@ namespace HIKARI {
             if (input == nullptr) {
                 return false;
             }
+            input->SetUiInteractionActive(active != 0u);
             if (active != 0u) {
                 input->SetMouseCaptureMode(INPUT::MouseCaptureMode::Free);
                 input->ClearMouseCaptureRegion();
@@ -2055,6 +2109,29 @@ namespace HIKARI {
         }
     }
 
+    bool CameraView::SubmitPose(const GameProjectCameraPoseRequest& request) const noexcept {
+        try {
+            if (!world_ || !request.cameraObjectHandle || !request.sourceId ||
+                !std::isfinite(request.modifierWeightScale) || request.modifierWeightScale < 0.0f ||
+                request.modifierWeightScale > 1.0f || request.pose.reserved) return false;
+            auto* world = static_cast<World*>(world_);
+            if (!world->IsOwnerThread() || GameProjectSdkAccess::IsWorldClosing(*world)) return false;
+            auto* service = world->Services().Find<CAMERA::CameraRigService>();
+            if (!service) return false;
+            CAMERA::CameraRigSubmission submission{};
+            if (!ToCameraObjectId(*world, request.cameraObjectHandle, submission.cameraObjectId)) return false;
+            submission.sourceId = request.sourceId;
+            submission.priority = request.priority;
+            submission.pose.eye = ToRuntime(request.pose.eye);
+            submission.pose.target = ToRuntime(request.pose.target);
+            submission.pose.up = ToRuntime(request.pose.up);
+            submission.pose.overrideVerticalFov = true;
+            submission.pose.verticalFovRadians = request.pose.verticalFovRadians;
+            submission.pose.modifierWeightScale = request.modifierWeightScale;
+            return service->SubmitPose(submission);
+        } catch (...) { return false; }
+    }
+
     bool CameraView::SubmitModifier(
         const GameProjectCameraModifier& modifier) const noexcept {
         try {
@@ -2152,32 +2229,38 @@ namespace HIKARI {
                 return false;
             }
             const Camera3D& camera = *service->camera;
-            const MATH::Vec3 eye = camera.GetPosition();
-            const MATH::Vec3 target = camera.GetTarget();
-            const MATH::Vec3 up = camera.GetUp();
-            const float fov = camera.GetFovYRad();
-            const float aspect = camera.GetAspect();
-            if (!MATH::IsFinite(eye) || !MATH::IsFinite(target) ||
-                !MATH::IsFinite(up) || !std::isfinite(fov) ||
-                !std::isfinite(aspect) || aspect <= 0.0f ||
-                MATH::Length(target - eye) <= kDirectionEpsilon ||
-                MATH::Length(up) <= kDirectionEpsilon ||
-                std::abs(MATH::Dot(
-                    MATH::Normalize(target - eye),
-                    MATH::Normalize(up))) >= 0.999f) {
-                return false;
-            }
-            outPose.eye = ToProject(eye);
-            outPose.target = ToProject(target);
-            outPose.up = ToProject(up);
-            outPose.verticalFovRadians = fov;
-            outPose.aspectRatio = aspect;
-            return true;
+            return CopyCameraPose(camera, outPose);
         }
         catch (...) {
             outPose = {};
             return false;
         }
+    }
+
+    bool CameraView::GetRenderedPose(GameProjectCameraPose& outPose) const noexcept {
+        outPose = {};
+        try {
+            if (world_ == nullptr) return false;
+            World* world = static_cast<World*>(world_);
+            const auto* service = world->Services().Find<GameplayCameraService>();
+            const auto* director = world->Services().Find<CameraDirector>();
+            if (!service || !service->IsRuntimeCameraActive() || !director) return false;
+            const auto& frame = director->GetResolvedFrame();
+            return frame.valid && CopyCameraPose(frame.camera, outPose);
+        }
+        catch (...) { outPose = {}; return false; }
+    }
+
+    bool CameraView::GetRadialScreenWarp(float& outCurvature, float& outStrength) const noexcept {
+        outCurvature = outStrength = 0.0f;
+        try {
+            if (world_ == nullptr) return false;
+            World* world = static_cast<World*>(world_);
+            const auto* service = world->Services().Find<GameplayCameraService>();
+            if (!service || !service->IsRuntimeCameraActive()) return false;
+            return POST::PostSystem::GetRadialScreenWarp(outCurvature, outStrength);
+        }
+        catch (...) { outCurvature = outStrength = 0.0f; return false; }
     }
 
     bool CameraView::IsReady() const noexcept {
@@ -2659,6 +2742,19 @@ namespace HIKARI {
         catch (...) {
             return false;
         }
+    }
+
+    bool PresentationVfxView::SubmitPostProfileParameter(std::string_view profileId,
+        const GameProjectPostProfileParameterRequest& request) const noexcept {
+        try {
+            if (!world_ || profileId.empty() || profileId.size() > 128u) return false;
+            World* world = static_cast<World*>(world_);
+            const auto* camera = world->Services().Find<GameplayCameraService>();
+            if (!camera || !camera->IsRuntimeCameraActive()) return false;
+            const DirectX::XMFLOAT4 value{request.value.x, request.value.y, request.value.z, request.value.w};
+            return POST::PostSystem::SubmitProfileParameter(profileId, request.parameterIndex,
+                request.channelMask, value, request.priority, request.sourceId);
+        } catch (...) { return false; }
     }
 
     bool PresentationVfxView::SubmitActionCinematicGrade(

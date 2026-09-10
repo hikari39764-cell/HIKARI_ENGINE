@@ -254,6 +254,8 @@ bool InputService::InitializeTransient() {
 }
 
 void InputService::ResetRuntimeState() {
+    pointerCursorHiddenRequested_ = false;
+    uiInteractionActive_ = false;
     snapshot_ = {};
     rebindOperation_.Reset();
     rebindPreviousDevices_ = {};
@@ -263,6 +265,8 @@ void InputService::ResetRuntimeState() {
 }
 
 void InputService::Shutdown() {
+    pointerCursorHiddenRequested_ = false;
+    uiInteractionActive_ = false;
     StopGamepadVibration();
     if (backend_) backend_->Reset();
     snapshot_ = {};
@@ -302,7 +306,14 @@ void InputService::SetExternalMouseWheel(float delta) {
     if (backend_) backend_->SetExternalMouseWheel(delta);
 }
 
+void InputService::ApplyPointerCursorVisibility(bool pointerOwned) {
+    if (backend_) backend_->SetPointerCursorVisible(
+        !pointerOwned || !pointerCursorHiddenRequested_ ||
+        GetMouseCaptureMode() != MouseCaptureMode::Free);
+}
+
 void InputService::Update(float unscaledDeltaSeconds) {
+    pointerCursorHiddenRequested_ = false;
     if (!backend_) return;
     const InputDeviceState previousDevices = snapshot_.devices_;
     backend_->Poll(snapshot_.devices_);

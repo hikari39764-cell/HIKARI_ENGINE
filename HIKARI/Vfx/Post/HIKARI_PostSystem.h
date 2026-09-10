@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 #include <DirectXMath.h>
 
@@ -62,7 +63,12 @@ namespace HIKARI::POST {
             const std::string& profileId,
             const DirectX::XMFLOAT4(&values)[16]);
         static void ClearGlobalProfile();
+        static bool SubmitProfileParameter(std::string_view profileId, uint32_t index,
+            uint32_t channelMask, const DirectX::XMFLOAT4& value,
+            int32_t priority, uint64_t sourceId);
+        static bool GetRadialScreenWarp(float& curvature, float& strength) noexcept;
         static void SetBloomSettings(const BloomSettings& settings);
+        static void SetScreenReadability(const RENDER3D::ScreenReadabilityFrame& frame);
         static void SetToneMappingSettings(const ToneMappingSettings& settings);
         static void SetFxaaSettings(const FxaaSettings& settings);
         static void SetSunGlareFrame(const SunGlareFrame& frame);

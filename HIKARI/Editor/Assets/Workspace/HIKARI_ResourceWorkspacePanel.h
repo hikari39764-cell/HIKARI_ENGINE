@@ -15,8 +15,9 @@ struct SceneDocument;
 
 struct ResourceWorkspaceContext {
   AssetGuid currentSceneGuid{};
-  AssetGuid startupSceneGuid{};
   bool currentSceneDirty = false;
+  uint64_t documentRevision = 0u;
+  uint64_t editRevision = 0u;
 };
 
 struct ResourceImportBatchMonitor {
@@ -43,6 +44,9 @@ public:
   bool ConsumeRefreshCurrentSceneResourcesRequested() const;
 
 private:
+  mutable EDITOR::ASSET_BROWSER::AssetBrowserUsageCache usageCache_{};
+  mutable EDITOR::ASSET_BROWSER::AssetBrowserProjectSettingsCache projectSettingsCache_{};
+  mutable EDITOR::ASSET_BROWSER::AssetBrowserStatisticsCache statisticsCache_{};
   mutable AssetBrowserPanel assetBrowserPanel_{};
   mutable AssetInspectorPanel assetInspectorPanel_{};
   mutable bool showPreviewLog_ = false;

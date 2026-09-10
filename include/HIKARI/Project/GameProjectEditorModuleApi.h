@@ -8,7 +8,7 @@ namespace HIKARI::EDITOR_PROJECT {
 
     class IEditorWorkspace;
 
-    inline constexpr uint32_t kGameProjectEditorModuleAbiVersion = 1u;
+    inline constexpr uint32_t kGameProjectEditorModuleAbiVersion = 2u;
     inline constexpr char kGameProjectEditorModuleApiEntryPoint[] =
         "HIKARI_GetGameProjectEditorModuleApi";
 

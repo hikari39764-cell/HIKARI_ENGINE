@@ -21,7 +21,8 @@ namespace HIKARI::POST {
             int outputHeight,
             int logicalWidth,
             int logicalHeight,
-            uint64_t frameIndex);
+            uint64_t frameIndex,
+            bool fitScene);
 
         RenderTarget2D* End(QuadDrawer& quad);
         bool IsActive() const { return active_; }

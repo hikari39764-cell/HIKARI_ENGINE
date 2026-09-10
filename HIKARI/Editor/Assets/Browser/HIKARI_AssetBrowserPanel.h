@@ -6,6 +6,7 @@
 #include <string>
 
 #include "Assets/HIKARI_AssetGuid.h"
+#include "Editor/Assets/Browser/HIKARI_AssetBrowserCache.h"
 
 namespace HIKARI {
 
@@ -50,7 +51,8 @@ public:
   void DrawContents(AssetDatabase &assetDatabase, EditorSelection &selection,
                     const AssetUsageSummary *usageSummary,
                     AssetBrowserScope scope,
-                    const AssetBrowserContext *context = nullptr) const;
+                    const AssetBrowserContext *context = nullptr,
+                    uint64_t usageRevision = 0u) const;
   std::optional<AssetWorkspaceActivation> ConsumeActivatedAsset() const;
   std::string ConsumeSaveSceneAsGuid() const;
   std::string ConsumeRefreshRuntimeAssetGuid() const;
@@ -59,6 +61,7 @@ public:
   bool IsRecursiveEnabled() const;
 
 private:
+  mutable EDITOR::ASSET_BROWSER::AssetBrowserCatalogCache catalogCache_{};
   mutable std::filesystem::path currentDirectory_{"Assets"};
   mutable std::array<char, 128> searchBuffer_{};
   mutable int typeFilter_ = 0;

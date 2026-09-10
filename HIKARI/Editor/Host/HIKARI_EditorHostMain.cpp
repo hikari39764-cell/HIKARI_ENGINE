@@ -6,8 +6,10 @@
 #include <Windows.h>
 
 #include "Assets/HIKARI_AssetDatabase.h"
+#include "Core/Content/HIKARI_EngineContentContext.h"
 #include "Editor/App/HIKARI_EditorEngineApp.h"
 #include "Editor/Export/HIKARI_GameExporter.h"
+#include "Editor/Export/HIKARI_GameExportJob.h"
 #include "Editor/Host/HIKARI_EditorUiServices.h"
 #include "Project/HIKARI_ProjectContext.h"
 #include "Project/HIKARI_ProjectLaunch.h"
@@ -94,6 +96,12 @@ namespace {
         assetGuids.reserve(records.size());
         for (const HIKARI::AssetRecord* record : records) {
             if (record != nullptr) {
+                if (!record->guid.IsValid() && !record->metaExists &&
+                    !assetDatabase.RegenerateMeta(record->sourcePath)) {
+                    CoUninitialize();
+                    HIKARI::GetProjectContext().Close();
+                    return 5;
+                }
                 assetGuids.push_back(record->guid);
             }
         }
@@ -112,10 +120,11 @@ namespace {
     }
 
     std::optional<int> RunHeadlessGamePackageIfRequested() {
+        const auto requestPath = HIKARI::ReadRuntimeCommandLinePath(L"--export-request");
         const std::optional<std::filesystem::path> outputDirectory =
             HIKARI::ReadRuntimeCommandLinePath(
                 L"--package-game");
-        if (!outputDirectory) {
+        if (!outputDirectory && !requestPath) {
             return std::nullopt;
         }
 
@@ -144,6 +153,11 @@ namespace {
         }
 
         HIKARI::EDITOR::GameExportOptions exportOptions{};
+        if (requestPath) {
+            const int code = HIKARI::EDITOR::GameExportJob::RunRequest(*requestPath);
+            HIKARI::GetProjectContext().Close();
+            return code;
+        }
         exportOptions.outputDirectory =
             *outputDirectory;
 
@@ -175,13 +189,20 @@ namespace {
 } // namespace
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
-    if (const std::optional<int> importExitCode =
-            RunHeadlessAssetImportIfRequested()) {
-        return *importExitCode;
-    }
-    if (const std::optional<int> packageExitCode =
-            RunHeadlessGamePackageIfRequested()) {
-        return *packageExitCode;
+    if (HIKARI::ReadRuntimeCommandLinePath(L"--import-assets") ||
+        HIKARI::ReadRuntimeCommandLinePath(L"--package-game") ||
+        HIKARI::ReadRuntimeCommandLinePath(L"--export-request")) {
+        std::string message;
+        if (!HIKARI::CONTENT::OpenEngineContentForLaunch(&message)) {
+            OutputDebugStringA(message.c_str());
+            return 3;
+        }
+        const auto importExitCode = RunHeadlessAssetImportIfRequested();
+        const int exitCode = importExitCode
+            ? *importExitCode
+            : RunHeadlessGamePackageIfRequested().value_or(2);
+        HIKARI::CONTENT::GetEngineContentContext().Close();
+        return exitCode;
     }
 
     if (!HIKARI::EDITOR::InstallEditorUiServices()) {

@@ -263,6 +263,15 @@ function(hikari_add_game_project)
         HIKARI_GameProjectModule
         PRIVATE
             HIKARI::GameProjectSdk)
+    if(MSVC AND NOT HIKARI_GAME_PROJECT_EDITOR_AVAILABLE)
+        get_target_property(_hikari_host_path HIKARI::GameProjectHost IMPORTED_LOCATION)
+        get_filename_component(_hikari_host_filename "${_hikari_host_path}" NAME)
+        target_compile_definitions(HIKARI_GameProjectModule PRIVATE
+            "HIKARI_GAME_PROJECT_HOST_IMPORT_NAME=\"${_hikari_host_filename}\"")
+        target_link_options(HIKARI_GameProjectModule PRIVATE
+            "/DELAYLOAD:${_hikari_host_filename}")
+        target_link_libraries(HIKARI_GameProjectModule PRIVATE delayimp)
+    endif()
     if(HIKARI_PROJECT_SOURCE_DIR)
         target_include_directories(
             HIKARI_GameProjectModule

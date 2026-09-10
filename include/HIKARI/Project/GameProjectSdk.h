@@ -11,7 +11,7 @@
 namespace HIKARI::SDK {
 
     inline constexpr unsigned int kVersionMajor = 2u;
-    inline constexpr unsigned int kVersionMinor = 18u;
-    inline constexpr unsigned int kVersionPatch = 0u;
+    inline constexpr unsigned int kVersionMinor = 25u;
+    inline constexpr unsigned int kVersionPatch = 1u;
 
 } // namespace HIKARI::SDK

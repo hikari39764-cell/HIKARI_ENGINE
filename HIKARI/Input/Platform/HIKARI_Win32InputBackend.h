@@ -18,6 +18,7 @@ public:
         return mouseCaptureMode_;
     }
     void SetExternalMouseWheel(float delta) override;
+    void SetPointerCursorVisible(bool visible) override;
     void Reset() override;
     void Poll(InputDeviceState& out) override;
     float ReadControl(
@@ -50,6 +51,7 @@ private:
     bool relativeMouseActive_ = false;
     bool relativeMousePrimed_ = false;
     bool cursorHiddenByBackend_ = false;
+    bool pointerCursorHidden_ = false;
     long previousMouseX_ = 0;
     long previousMouseY_ = 0;
 };

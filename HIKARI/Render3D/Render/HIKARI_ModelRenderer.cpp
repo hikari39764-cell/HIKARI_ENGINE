@@ -7,7 +7,7 @@
 #include <utility>
 
 #include "Gfx/HIKARI_GfxContext.h"
-#include "Render2D/HIKARI_RenderTarget2D.h"
+#include "Render2D/HIKARI_SurfaceTextureTargetRing.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Lighting/HIKARI_PanoramaSkyLayerStage.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
@@ -24,119 +24,7 @@ namespace HIKARI::MODELRENDERER {
         constexpr DXGI_FORMAT kSecondaryCaptureFormat =
             DXGI_FORMAT_R16G16B16A16_FLOAT;
 
-        struct SecondaryCaptureTargetState {
-            std::array<
-                std::unique_ptr<RenderTarget2D>,
-                GFX::kFrameResourceCount> targets{};
-            std::array<
-                RENDER3D::TextureResourceHandle,
-                GFX::kFrameResourceCount> textures{};
-            uint64_t deviceGeneration = 0u;
-            uint64_t worldIdentity = 0u;
-            uint64_t outputRevision = 0u;
-            uint32_t width = 0u;
-            uint32_t height = 0u;
-            uint32_t writeIndex = 0u;
-
-            void Reset() noexcept {
-                for (RENDER3D::TextureResourceHandle& texture : textures) {
-                    if (texture) {
-                        (void)RENDER3D::ReleaseTextureResource(texture);
-                        texture = {};
-                    }
-                }
-                targets = {};
-                deviceGeneration = 0u;
-                worldIdentity = 0u;
-                outputRevision = 0u;
-                width = 0u;
-                height = 0u;
-                writeIndex = 0u;
-            }
-
-            bool Ensure(
-                const GFX::Context& graphics,
-                uint64_t requestedWorldIdentity,
-                uint32_t captureSlot,
-                uint32_t requestedWidth,
-                uint32_t requestedHeight) {
-                if (graphics.device == nullptr ||
-                    graphics.cmdList == nullptr ||
-                    requestedWorldIdentity == 0u) {
-                    return false;
-                }
-                const bool recreate =
-                    deviceGeneration != graphics.deviceGeneration ||
-                    worldIdentity != requestedWorldIdentity ||
-                    width != requestedWidth ||
-                    height != requestedHeight ||
-                    std::any_of(
-                        targets.begin(),
-                        targets.end(),
-                        [](const auto& target) {
-                            return target == nullptr;
-                        });
-                if (recreate) {
-                    Reset();
-                    deviceGeneration = graphics.deviceGeneration;
-                    worldIdentity = requestedWorldIdentity;
-                    width = requestedWidth;
-                    height = requestedHeight;
-                    for (size_t index = 0u; index < targets.size(); ++index) {
-                        targets[index] = std::make_unique<RenderTarget2D>();
-                        targets[index]->UpdateContext(graphics);
-                        targets[index]->SetDebugName(
-                            "Runtime.SceneCapture." +
-                            std::to_string(captureSlot) + "." +
-                            std::to_string(index));
-                        if (!targets[index]->Init(
-                                static_cast<int>(width),
-                                static_cast<int>(height),
-                                kSecondaryCaptureFormat,
-                                true,
-                                { 0.015f, 0.02f, 0.035f, 1.0f },
-                                false)) {
-                            Reset();
-                            return false;
-                        }
-                        RENDER3D::RenderResourceDesc resource{};
-                        resource.kind = RENDER3D::RenderResourceKind::Texture;
-                        resource.usage =
-                            RENDER3D::RenderResourceUsageFlags::ShaderResource |
-                            RENDER3D::RenderResourceUsageFlags::RenderTarget;
-                        resource.lifetime =
-                            RENDER3D::RenderResourceLifetime::External;
-                        resource.debugName =
-                            "Runtime.SceneCapture.Texture." +
-                            std::to_string(captureSlot) + "." +
-                            std::to_string(index);
-                        resource.sourceKey =
-                            "runtime-scene-capture:" +
-                            std::to_string(requestedWorldIdentity) + ":" +
-                            std::to_string(captureSlot) + ":" +
-                            std::to_string(index);
-                        resource.width = width;
-                        resource.height = height;
-                        resource.depthOrArraySize = 1u;
-                        resource.mipLevels = 1u;
-                        resource.format = kSecondaryCaptureFormat;
-                        textures[index] =
-                            RENDER3D::RegisterTextureResourceFromNative(
-                                targets[index]->GetResource(),
-                                kSecondaryCaptureFormat,
-                                std::move(resource));
-                        if (!textures[index]) {
-                            Reset();
-                            return false;
-                        }
-                    }
-                }
-                for (const auto& target : targets) {
-                    target->UpdateContext(graphics);
-                }
-                return true;
-            }
-        };
+        using SecondaryCaptureTargetState = SurfaceTextureTargetRing;
 
         std::array<
             SecondaryCaptureTargetState,

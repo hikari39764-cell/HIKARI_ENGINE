@@ -42,9 +42,9 @@ void DrawRenderPathTable(const RuntimePerformanceSnapshot &s) {
               s.submission.gpuDrivenMainRouteActive ? "on" : "off",
               s.gpuRegistry.strictGpuDrivenMainline ? "on" : "off",
               s.gpuRegistry.cpuForwardViewSuppressedCount);
-    MetricRow("Scene Scanned / Submitted / Hidden", "%d / %d / %d",
-              s.submission.scannedModelCount, s.submission.submittedModelCount,
-              s.submission.hiddenModelCount);
+    MetricRow("Scene Objects Total / Visible / Hidden", "%u / %u / %u",
+              s.scene.renderObjectCount, s.scene.visibleObjectCount,
+              s.scene.hiddenObjectCount);
     MetricRow("Surfaces Total / Clustered / Dirty", "%u / %u / %u",
               s.scene.surfaceInstanceCount,
               s.scene.clusteredGeometrySurfaceInstanceCount,
@@ -53,6 +53,16 @@ void DrawRenderPathTable(const RuntimePerformanceSnapshot &s) {
               s.gpuRegistry.sourceRecordCount,
               s.gpuRegistry.forwardRoutedRecordCount,
               s.gpuRegistry.unsupportedForwardRecordCount);
+    MetricRowText("GPU Scene CPU Sync", RENDER3D::GPUDRIVEN::ToString(s.gpuRegistry.syncMode));
+    MetricRow("GPU Records Rebuilt This Frame", "%u", s.gpuRegistry.frameRecordBuildCount);
+    MetricRow("GPU Records Reused / Hidden", "%u / %u",
+              s.gpuRegistry.frameRecordReuseCount, s.gpuRegistry.hiddenSourceRecordCount);
+    if (s.gpuRegistry.syncMode == RENDER3D::GPUDRIVEN::GpuSceneSyncMode::RebuildPatchRejected) {
+      MetricRowText("GPU Patch Rejection", s.gpuRegistry.patchRejection.reason);
+      MetricRowText("GPU Rejected Model", s.gpuRegistry.patchRejection.modelPath.c_str());
+      MetricRow("GPU Rejected Surface / Node", "%u / %u",
+                s.gpuRegistry.patchRejection.surfaceIndex, s.gpuRegistry.patchRejection.nodeIndex);
+    }
     MetricRow("GPU Scene Upload Full / Dirty / Reuse", "%zu / %zu / %zu",
               static_cast<size_t>(s.mesh.gpuSceneUpload.uploadedFullScene),
               static_cast<size_t>(s.mesh.gpuSceneUpload.patchedDirtyRanges),

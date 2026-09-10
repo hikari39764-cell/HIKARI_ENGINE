@@ -9,6 +9,8 @@ set(
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/ActionViews.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/AudioTypes.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/AudioView.h"
+    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/DisplaySettingsTypes.h"
+    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/DisplaySettingsView.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/EditorWorkspace.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/FrameContext.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/GameComponent.h"
@@ -46,6 +48,8 @@ set(
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/TerrainView.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/UiTypes.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/UiView.h"
+    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/UiCanvasTypes.h"
+    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/UiCanvasView.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/ValueTypes.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/VfxTypes.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/VfxView.h"
@@ -53,7 +57,8 @@ set(
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/WorldTypes.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/WorldQuery.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/WorldView.h"
-    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/WorldSpriteTypes.h")
+    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/WorldSpriteTypes.h"
+    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/WorldTextTypes.h")
 
 set(
     HIKARI_SDK_GENERATED_DIRECTORY
@@ -110,6 +115,13 @@ if(NOT HIKARI_WITH_EDITOR_BUILD)
         "${HIKARI_GAME_HOST_OUTPUT_NAME}.exe")
 endif()
 
+set(_hikari_host_binding "namedHost")
+if(NOT HIKARI_WITH_EDITOR_BUILD)
+    set(_hikari_host_binding "currentProcess")
+endif()
+file(WRITE "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARI_GameHost.json"
+    "{\n  \"schemaVersion\": 1,\n  \"executable\": \"${HIKARI_GAME_PROJECT_HOST_FILENAME}\",\n  \"sdkBinding\": \"${_hikari_host_binding}\"\n}\n")
+
 configure_package_config_file(
     "${HIKARI_SOURCE_ROOT}/cmake/SDK/HIKARIConfig.cmake.in"
     "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfig.cmake"
@@ -117,7 +129,7 @@ configure_package_config_file(
     NO_SET_AND_CHECK_MACRO)
 write_basic_package_version_file(
     "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfigVersion.cmake"
-    VERSION 2.18.0
+    VERSION 2.25.1
     COMPATIBILITY SameMajorVersion)
 
 function(hikari_configure_game_project_sdk host_target)
@@ -136,6 +148,7 @@ function(hikari_configure_game_project_sdk host_target)
         "${HIKARI_SOURCE_ROOT}/cmake/SDK/HIKARI_GameProjectModuleAdapter.cpp"
         "${HIKARI_SOURCE_ROOT}/Tools/Build/Build-HikariProject.ps1"
         "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfig.cmake"
+        "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARI_GameHost.json"
         "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfigVersion.cmake")
     if(HIKARI_WITH_EDITOR_BUILD)
         list(
@@ -172,6 +185,7 @@ function(hikari_configure_game_project_sdk host_target)
             "${CMAKE_COMMAND}" -E copy_if_different
             "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfig.cmake"
             "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfigVersion.cmake"
+            "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARI_GameHost.json"
             "${HIKARI_SOURCE_ROOT}/cmake/SDK/HIKARIGameProject.cmake"
             "${_sdk_root}/lib/cmake/HIKARI"
         COMMAND
@@ -228,6 +242,7 @@ function(hikari_configure_game_project_sdk host_target)
         FILES
             "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfig.cmake"
             "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfigVersion.cmake"
+            "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARI_GameHost.json"
             "${HIKARI_SOURCE_ROOT}/cmake/SDK/HIKARIGameProject.cmake"
         DESTINATION "Sdk/lib/cmake/HIKARI")
     install(
@@ -259,5 +274,10 @@ function(hikari_configure_game_project_sdk host_target)
         install(
             FILES "${HIKARI_CMAKE_TOOL_MANIFEST}"
             DESTINATION "Sdk/Tools/CMake")
+        install(
+            DIRECTORY "${HIKARI_SOURCE_ROOT}/out/install/game-shipping/"
+            DESTINATION "Runtime/Shipping"
+            PATTERN "*.pdb" EXCLUDE
+            PATTERN "HIKARI_GameProject.dll" EXCLUDE)
     endif()
 endfunction()

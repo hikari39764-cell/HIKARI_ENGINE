@@ -78,7 +78,8 @@ namespace HIKARI::RENDER3D::RUNTIME {
 
         bool EqualMaterialOverrides(
             const std::vector<SceneRenderMaterialOverride>& lhs,
-            const std::vector<SceneRenderMaterialOverride>& rhs) {
+            const std::vector<SceneRenderMaterialOverride>& rhs,
+            bool compareRevisions = true) {
 
             if (lhs.size() != rhs.size()) {
                 return false;
@@ -86,8 +87,8 @@ namespace HIKARI::RENDER3D::RUNTIME {
             for (size_t index = 0; index < lhs.size(); ++index) {
                 if (lhs[index].materialIndex != rhs[index].materialIndex ||
                     lhs[index].material != rhs[index].material ||
-                    lhs[index].materialRevision !=
-                        rhs[index].materialRevision) {
+                    (compareRevisions && lhs[index].materialRevision !=
+                        rhs[index].materialRevision)) {
 
                     return false;
                 }
@@ -222,7 +223,14 @@ namespace HIKARI::RENDER3D::RUNTIME {
                 oldDesc.animationPose != newDesc.animationPose;
 
             flags.routing =
-                flags.material ||
+                !EqualMaterialOverrides(
+                    oldDesc.materialOverrides,
+                    newDesc.materialOverrides,
+                    false) ||
+                oldDesc.materialFxProfileId != newDesc.materialFxProfileId ||
+                oldDesc.foliageWind != newDesc.foliageWind ||
+                oldDesc.waterSurface != newDesc.waterSurface ||
+                oldDesc.sandSurface != newDesc.sandSurface ||
                 oldDesc.visible != newDesc.visible ||
                 oldDesc.nodeVisibilityMask !=
                     newDesc.nodeVisibilityMask ||
@@ -236,6 +244,7 @@ namespace HIKARI::RENDER3D::RUNTIME {
             flags.any =
                 flags.model ||
                 flags.transform ||
+                flags.material ||
                 flags.routing ||
                 flags.surfaceData ||
                 animationDataChanged;
@@ -399,6 +408,7 @@ namespace HIKARI::RENDER3D::RUNTIME {
     void SceneRenderCache::Clear() {
         objects_.clear();
         surfaceInstances_.clear();
+        objectSurfaceRanges_.clear();
         dirtySurfaceIndices_.clear();
         indexById_.clear();
         frameStats_ = {};
@@ -833,6 +843,7 @@ namespace HIKARI::RENDER3D::RUNTIME {
 
     void SceneRenderCache::RebuildSurfaceInstances() {
         surfaceInstances_.clear();
+        objectSurfaceRanges_.assign(objects_.size(), {});
 
         uint64_t reserveCount = 0;
         for (const SceneRenderObject& object : objects_) {
@@ -845,6 +856,8 @@ namespace HIKARI::RENDER3D::RUNTIME {
 
         for (size_t objectIndex = 0; objectIndex < objects_.size(); ++objectIndex) {
             const SceneRenderObject& object = objects_[objectIndex];
+            ObjectSurfaceRange& range = objectSurfaceRanges_[objectIndex];
+            range.begin = surfaceInstances_.size();
             if (!IsSurfaceSourceUsable(object)) {
                 continue;
             }
@@ -865,6 +878,7 @@ namespace HIKARI::RENDER3D::RUNTIME {
                     nodeGlobals,
                     bindNodeGlobals));
             }
+            range.count = surfaceInstances_.size() - range.begin;
         }
     }
 
@@ -880,19 +894,31 @@ namespace HIKARI::RENDER3D::RUNTIME {
         }
 
         const RenderModelAsset& renderModel = *object.desc.renderModel;
+        if (objectIndex >= objectSurfaceRanges_.size()) {
+            MarkSurfaceTopologyDirty();
+            return;
+        }
+        const ObjectSurfaceRange range = objectSurfaceRanges_[objectIndex];
+        if (range.begin > surfaceInstances_.size() ||
+            range.count > surfaceInstances_.size() - range.begin ||
+            range.count != renderModel.surfaces.size()) {
+            MarkSurfaceTopologyDirty();
+            return;
+        }
         const std::vector<MATH::Mat4> nodeGlobals = BuildObjectNodeGlobals(object);
         const std::vector<MATH::Mat4>& bindNodeGlobals =
             object.desc.hasRuntimeAnimation
             ? renderModel.bindNodeGlobals
             : nodeGlobals;
         uint32_t updatedSurfaceCount = 0;
-        for (size_t surfaceInstanceIndex = 0;
-            surfaceInstanceIndex < surfaceInstances_.size();
+        for (size_t surfaceInstanceIndex = range.begin;
+            surfaceInstanceIndex < range.begin + range.count;
             ++surfaceInstanceIndex) {
 
             SceneSurfaceInstance& surfaceInstance = surfaceInstances_[surfaceInstanceIndex];
             if (surfaceInstance.objectIndex != NUMERIC::SaturateToUint32(objectIndex)) {
-                continue;
+                MarkSurfaceTopologyDirty();
+                return;
             }
             if (surfaceInstance.surfaceIndex >= renderModel.surfaces.size()) {
                 MarkSurfaceTopologyDirty();

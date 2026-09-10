@@ -478,6 +478,31 @@ namespace HIKARI::GAME_UI {
                 object.ToValue()) != activatedButtons_.end();
     }
 
+    bool GameUiPresentationService::PendingMatchesFrame() const noexcept {
+        if(!frameSource_.revision || !pendingBackdrops_.empty() || frameSource_.hasBackdrop ||
+            pending_.size()!=frameSource_.sprites.size() || pendingTexts_.size()!=frameSource_.texts.size())return false;
+        uint64_t pendingBase=~uint64_t(0),frameBase=~uint64_t(0);
+        for(const auto& s:pending_)pendingBase=(std::min)(pendingBase,s.submissionSequence);
+        for(const auto& s:pendingTexts_)pendingBase=(std::min)(pendingBase,s.submissionSequence);
+        for(const auto& s:frameSource_.sprites)frameBase=(std::min)(frameBase,s.submissionSequence);
+        for(const auto& s:frameSource_.texts)frameBase=(std::min)(frameBase,s.submissionSequence);
+        for(size_t i=0;i<pending_.size();++i) {
+            const auto& a=pending_[i];const auto& b=frameSource_.sprites[i];
+            if(a.absoluteAssetPath!=b.absoluteAssetPath || a.request!=b.request || a.submissionSequence-pendingBase!=b.submissionSequence-frameBase)return false;
+        }
+        for(size_t i=0;i<pendingTexts_.size();++i) {
+            const auto& a=pendingTexts_[i];const auto& b=frameSource_.texts[i];
+            if(a.absoluteFontAssetPath!=b.absoluteFontAssetPath || a.utf8Text!=b.utf8Text || a.request!=b.request || a.style!=b.style || a.submissionSequence-pendingBase!=b.submissionSequence-frameBase)return false;
+        }
+        return true;
+    }
+
+    void GameUiPresentationService::DiscardPending() noexcept {
+        pending_.clear();
+        pendingTexts_.clear();
+        pendingBackdrops_.clear();
+    }
+
     void GameUiPresentationService::Tick(uint64_t frameIndex) noexcept {
         try {
             // Render submission can be visited by more than one view. A

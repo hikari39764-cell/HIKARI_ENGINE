@@ -1,6 +1,8 @@
 #ifndef HIKARI_PROJECT_FULLSCREEN_HLSLI
 #define HIKARI_PROJECT_FULLSCREEN_HLSLI
 
+#include "../Include/Post/HIKARI_ScreenReadability.hlsli"
+
 Texture2D<float4> HikariProjectInput : register(t0);
 SamplerState HikariProjectLinearClamp : register(s0);
 

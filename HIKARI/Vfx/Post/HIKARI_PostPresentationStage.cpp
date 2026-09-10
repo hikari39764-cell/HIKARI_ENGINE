@@ -2,53 +2,12 @@
 
 #include <algorithm>
 
-#include "Core/Presentation/HIKARI_LogicalDisplayDefaults.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_D3D12DebugTools.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Vfx/Post/HIKARI_PostQuadDrawer.h"
 
 namespace HIKARI::POST {
-
-    namespace {
-        struct LetterboxRect {
-            float x = 0.0f;
-            float y = 0.0f;
-            float width = 1.0f;
-            float height = 1.0f;
-        };
-
-        LetterboxRect ComputeLetterboxRect(int width, int height) {
-            if (width <= 0 || height <= 0) {
-                return {};
-            }
-
-            const float targetAspect =
-                static_cast<float>(
-                    PRESENTATION::kDefaultLogicalWidth) /
-                static_cast<float>(
-                    PRESENTATION::kDefaultLogicalHeight);
-            const float outputAspect =
-                static_cast<float>(width) / static_cast<float>(height);
-            int viewportWidth = width;
-            int viewportHeight = height;
-            int viewportX = 0;
-            int viewportY = 0;
-            if (outputAspect > targetAspect) {
-                viewportWidth = static_cast<int>(height * targetAspect + 0.5f);
-                viewportX = (width - viewportWidth) / 2;
-            } else {
-                viewportHeight = static_cast<int>(width / targetAspect + 0.5f);
-                viewportY = (height - viewportHeight) / 2;
-            }
-            return {
-                static_cast<float>(viewportX),
-                static_cast<float>(viewportY),
-                static_cast<float>(viewportWidth),
-                static_cast<float>(viewportHeight)
-            };
-        }
-    }
 
     void PostPresentationStage::UpdateContext(const GFX::Context& context) {
         const bool contextChanged =
@@ -245,21 +204,7 @@ namespace HIKARI::POST {
         if (context_.cmdList == nullptr) {
             return false;
         }
-        context_.cmdList->OMSetRenderTargets(1, &context_.rtv, FALSE, nullptr);
-        const LetterboxRect rect = ComputeLetterboxRect(
-            context_.backBufferWidth,
-            context_.backBufferHeight);
-        const D3D12_VIEWPORT viewport{
-            rect.x, rect.y, rect.width, rect.height, 0.0f, 1.0f
-        };
-        const D3D12_RECT scissor{
-            static_cast<LONG>(rect.x),
-            static_cast<LONG>(rect.y),
-            static_cast<LONG>(rect.x + rect.width),
-            static_cast<LONG>(rect.y + rect.height)
-        };
-        context_.cmdList->RSSetViewports(1, &viewport);
-        context_.cmdList->RSSetScissorRects(1, &scissor);
+        BindBackBufferFullViewport();
         return DrawSource(source, quad);
     }
 

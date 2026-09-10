@@ -223,6 +223,8 @@ namespace HIKARI {
         outDocument.version = root.value("version", 1u);
         const uint32_t sourceVersion = outDocument.version;
         outDocument.sceneName = root.value("sceneName", std::string("Untitled"));
+        if (const auto folders = root.find("editorFolders"); folders != root.end() && folders->is_array())
+            for (const auto& folder : *folders) if (folder.is_string()) outDocument.editorFolders.push_back(folder.get<std::string>());
 
         if (root.contains("environment") && root["environment"].is_object()) {
             SceneJson::DeserializeSceneEnvironmentJson(root["environment"], outDocument.environment);
@@ -267,6 +269,7 @@ namespace HIKARI {
         nlohmann::json root = nlohmann::json::object();
         root["version"] = persisted.version;
         root["sceneName"] = persisted.sceneName;
+        if (!persisted.editorFolders.empty()) root["editorFolders"] = persisted.editorFolders;
 
         SceneJson::SerializeSceneEnvironmentJson(persisted.environment, root["environment"]);
         // Version 6 以场景组件为唯一 Probe / Light Authoring 来源。

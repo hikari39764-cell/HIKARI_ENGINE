@@ -103,13 +103,15 @@ namespace HIKARI {
             bool frameGenerationLoaded = false;
             (void)RENDER3D::UPSCALING::
                 DeactivateStreamlineFrameGeneration(true);
-            if (wantsFrameGeneration) {
+            // ゲーム交換チェーンの生成時にフックを準備し、実行中の On/Off は
+            // DLSS-G の options で切り替える。Editor に戻る際は従来通り解放する。
+            if (RENDER3D::UPSCALING::IsStreamlineFrameGenerationAvailable()) {
                 frameGenerationLoaded =
                     RENDER3D::UPSCALING::SetStreamlineFrameGenerationFeatureLoaded(true);
-                if (!frameGenerationLoaded) {
-                    HIKARI_LOG_WARN(
-                        "[Streamline] game preview will continue without DLSS-G because the feature could not be loaded.");
-                }
+            }
+            if (wantsFrameGeneration && !frameGenerationLoaded) {
+                HIKARI_LOG_WARN(
+                    "[Streamline] game preview will continue without DLSS-G because the feature could not be loaded.");
             }
             if (!gGamePresentationController.Begin(
                     gGraphicsCore,

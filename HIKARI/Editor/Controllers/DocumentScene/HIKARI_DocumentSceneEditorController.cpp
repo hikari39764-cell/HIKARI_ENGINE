@@ -1,4 +1,6 @@
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.h"
+#include "Editor/Project/HIKARI_GameProjectEditorWorkspaceHost.h"
+#include "Core/HIKARI_TimeService.h"
 
 #include "Core/HIKARI_MathConfig.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
@@ -2260,6 +2262,8 @@ namespace HIKARI {
         scene.SetViewportDebugViewState(context_.viewportDebug);
 
         bool resetDockingLayoutRequested = false;
+        exportJob_.Poll();
+        exportStartAllowed_ = playSession.GetMode() == EDITOR::EditorPlayMode::None && !playSession.IsTransitioning();
         debugMenuBar_.Draw(
             context_.windows,
             toolHost_,
@@ -2272,8 +2276,12 @@ namespace HIKARI {
             playSession.GetMode() ==
                     EDITOR::EditorPlayMode::None &&
                 !playSession.IsTransitioning(),
-            HasKnownUnsavedProjectChanges(scene));
+            HasKnownUnsavedProjectChanges(scene), exportJob_, operationRegistry_);
         projectSession.DrawConfirmationDialog();
+
+        if (projectWorkspaceHost_) {
+            projectWorkspaceHost_->DrawNavigation(workspaceHost_, TIME::GetFrameContext().unscaledDt);
+        }
 
         if (resetDockingLayoutRequested) {
             workspaceHost_.RequestResetActiveLayout();
@@ -2353,6 +2361,13 @@ namespace HIKARI {
                     viewportDropMessage_ = std::move(message);
                 }
             }
+        }
+
+        if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Project) && projectWorkspaceHost_) {
+            SERVICES::SetEditorGameViewportSize(0, 0, false);
+            projectWorkspaceHost_->Draw(workspaceHost_, TIME::GetFrameContext().unscaledDt,
+                scene.GetAssetDatabase(), scene.GetAssetRegistry());
+            return;
         }
 
         if (workspaceHost_.IsActive(
@@ -2726,12 +2741,11 @@ namespace HIKARI {
             FocusSceneObjects(scene, { *focusRequest });
         }
         if (context_.windows.resources.showAssetBrowser) {
-            ProjectSettingsService projectSettings{};
-            projectSettings.Load(scene.GetAssetDatabase().GetProjectRoot());
             const ResourceWorkspaceContext resourceContext{
                 scene.GetCurrentSceneAssetGuid(),
-                projectSettings.GetSettings().startupSceneGuid,
-                context_.sceneDirty || scene.HasUnsavedSceneChanges()
+                context_.sceneDirty || scene.HasUnsavedSceneChanges(),
+                scene.GetSceneDocumentRevision(),
+                documentHistory_.GetEditRevision()
             };
             resourceWorkspacePanel_.Draw(
                 scene.GetAssetDatabase(),

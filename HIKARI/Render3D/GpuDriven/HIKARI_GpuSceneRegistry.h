@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenSceneSource.h"
@@ -36,7 +37,33 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         bool sortApplied = false;
     };
 
+    enum class GpuSceneSyncMode : uint8_t {
+        None,
+        Reuse,
+        Patch,
+        RebuildTopology,
+        RebuildRouting,
+        RebuildPolicy,
+        RebuildEmpty,
+        RebuildPatchRejected,
+    };
+
+    const char* ToString(GpuSceneSyncMode mode);
+
+    struct GpuScenePatchRejection {
+        const char* reason = "none";
+        uint64_t objectId = 0;
+        uint32_t surfaceIndex = RUNTIME::kInvalidRenderSurfaceIndex;
+        uint32_t nodeIndex = RUNTIME::kInvalidRenderSurfaceIndex;
+        std::string modelPath{};
+    };
+
     struct GpuSceneRegistryStats {
+        GpuSceneSyncMode syncMode = GpuSceneSyncMode::None;
+        uint32_t frameRecordBuildCount = 0;
+        uint32_t frameRecordReuseCount = 0;
+        uint32_t hiddenSourceRecordCount = 0;
+        GpuScenePatchRejection patchRejection{};
         uint32_t sourceRecordCount = 0;
         uint32_t forwardRoutedRecordCount = 0;
         uint32_t forwardOpaqueResidentRecordCount = 0;
@@ -108,7 +135,9 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         };
 
     private:
-        void RebuildForwardFromSceneCache(const GpuSceneRegistrySyncInput& input);
+        void RebuildForwardFromSceneCache(
+            const GpuSceneRegistrySyncInput& input,
+            bool reuseUnchangedRecords = false);
         void SuppressCpuForwardViews(
             const GpuSceneRegistrySyncInput& input);
         bool TryPatchForwardDataFromSceneCache(const GpuSceneRegistrySyncInput& input);

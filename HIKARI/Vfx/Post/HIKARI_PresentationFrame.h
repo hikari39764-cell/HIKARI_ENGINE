@@ -16,6 +16,7 @@ namespace HIKARI::POST {
         int height = 0;
         int uiLogicalWidth = 0;
         int uiLogicalHeight = 0;
+        D3D12_RECT sceneRect{};
         DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
         RenderTarget2D* hudlessColor = nullptr;
         RenderTarget2D* uiColorAndAlpha = nullptr;

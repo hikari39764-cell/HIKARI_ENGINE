@@ -33,6 +33,10 @@ namespace HIKARI {
     } // namespace
 
     void DocumentSceneEditorController::RegisterEditorOperations() {
+        RegisterSceneFolderOperations();
+        EDITOR::RegisterGameExportOperations(operationRegistry_, exportJob_, [this] {
+            return exportStartAllowed_ && aiOperationScene_ && !HasKnownUnsavedProjectChanges(*aiOperationScene_);
+        });
         using EDITOR::EditorOperationParameterType;
         const auto P = MakeOperationParameter;
         operationRegistry_.Register({

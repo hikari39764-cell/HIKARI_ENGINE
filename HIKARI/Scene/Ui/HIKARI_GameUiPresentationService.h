@@ -50,6 +50,8 @@ namespace HIKARI::GAME_UI {
             RuntimeObjectHandle object,
             uint64_t frameIndex) const noexcept;
 
+        void DiscardPending() noexcept;
+        bool PendingMatchesFrame() const noexcept;
         void Tick(uint64_t frameIndex) noexcept;
         void Reset() noexcept;
 

@@ -30,6 +30,10 @@ public:
     void SetMouseCaptureRegion(const MouseCaptureRegion& region);
     void ClearMouseCaptureRegion();
     MouseCaptureMode GetMouseCaptureMode() const noexcept;
+    void SetUiInteractionActive(bool active) noexcept { uiInteractionActive_ = active; }
+    bool IsUiInteractionActive() const noexcept { return uiInteractionActive_; }
+    void SetPointerCursorVisible(bool visible) noexcept { pointerCursorHiddenRequested_ = !visible; }
+    void ApplyPointerCursorVisibility(bool pointerOwned);
     void SetExternalMouseWheel(float delta);
     void Update(float unscaledDeltaSeconds);
 
@@ -83,6 +87,8 @@ private:
     InputDeviceState rebindPreviousDevices_{};
     float rebindReleaseThreshold_ = 0.25f;
     bool suppressActionsUntilNeutral_ = false;
+    bool uiInteractionActive_ = false;
+    bool pointerCursorHiddenRequested_ = false;
     std::string lastError_{};
     float vibrationRemaining_ = 0.0f;
     bool vibrationActive_ = false;

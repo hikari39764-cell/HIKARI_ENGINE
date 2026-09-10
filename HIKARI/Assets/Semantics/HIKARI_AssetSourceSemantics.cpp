@@ -4,6 +4,7 @@
 #include <string>
 
 #include "Core/Text/HIKARI_AsciiCase.h"
+#include "Core/Text/HIKARI_UtfPath.h"
 
 namespace HIKARI::ASSETS::SEMANTICS {
 
@@ -22,7 +23,7 @@ namespace HIKARI::ASSETS::SEMANTICS {
                 AssetImporterKind::Texture,
                 AssetType::Texture,
                 "TextureImporter",
-                5u,
+                6u,
                 ".png, .jpg, .jpeg, .tga, .bmp, .dds, .hdr",
             },
             {
@@ -97,7 +98,7 @@ namespace HIKARI::ASSETS::SEMANTICS {
 
         bool IsSkyDirectoryPath(const std::filesystem::path& path) {
             for (const std::filesystem::path& part : path) {
-                const std::string name = TEXT::ToLowerAsciiCopy(part.string());
+                const std::string name = TEXT::ToLowerAsciiCopy(TEXT::PathToUtf8(part));
                 if (name == "skies" || name == "sky") {
                     return true;
                 }
@@ -216,11 +217,11 @@ namespace HIKARI::ASSETS::SEMANTICS {
         const std::filesystem::path& sourcePath) {
 
         const std::string extension =
-            TEXT::ToLowerAsciiCopy(sourcePath.extension().string());
+            TEXT::ToLowerAsciiCopy(TEXT::PathToUtf8(sourcePath.extension()));
         const std::string filename =
-            TEXT::ToLowerAsciiCopy(sourcePath.filename().string());
+            TEXT::ToLowerAsciiCopy(TEXT::PathToUtf8(sourcePath.filename()));
         const std::string genericPath =
-            TEXT::ToLowerAsciiCopy(sourcePath.generic_string());
+            TEXT::ToLowerAsciiCopy(TEXT::PathToUtf8(sourcePath));
 
         AssetImporterKind kind = AssetImporterKind::Count;
         if (extension == ".dds" && IsSkyDirectoryPath(sourcePath)) {
@@ -262,7 +263,7 @@ namespace HIKARI::ASSETS::SEMANTICS {
         }
 
         const std::string extension =
-            TEXT::ToLowerAsciiCopy(path.extension().string());
+            TEXT::ToLowerAsciiCopy(TEXT::PathToUtf8(path.extension()));
         return extension == ".hmat"
             ? AssetType::Material
             : AssetType::Unknown;
@@ -291,14 +292,14 @@ namespace HIKARI::ASSETS::SEMANTICS {
         meta.type = semantics.assetType;
         meta.importerId = semantics.importerId;
         meta.importerVersion = semantics.importerVersion;
-        meta.sourcePath = sourcePath.generic_string();
-        meta.displayName = sourcePath.stem().string();
+        meta.sourcePath = TEXT::PathToUtf8(sourcePath);
+        meta.displayName = TEXT::PathToUtf8(sourcePath.stem());
         return meta;
     }
 
     bool IsAssetCompanionSource(const std::filesystem::path& path) {
         const std::string extension =
-            TEXT::ToLowerAsciiCopy(path.extension().string());
+            TEXT::ToLowerAsciiCopy(TEXT::PathToUtf8(path.extension()));
         return extension == ".bin" || extension == ".mtl" ||
             extension == ".hlsl" || extension == ".hlsli" ||
             extension == ".h";

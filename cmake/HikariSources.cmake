@@ -496,6 +496,8 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectMaterialFxBridge.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectPresentationBridge.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectUiBridge.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectDisplaySettingsBridge.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectUiCanvasBridge.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectVfxBridge.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectModuleLibrary.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectBindingBridge.cpp"
@@ -506,6 +508,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectSpawnBridge.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectTransformBridge.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectWorldBridge.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectWorldTextBridge.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectNavigationBridge.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/App/HIKARI_RuntimeEngineApp.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Presentation/HIKARI_FramePresentationService.cpp"
@@ -653,8 +656,8 @@ string(
     HIKARI_GAME_PROJECT_SDK_EXPORT_PATTERN
     "(HIKARI_RuntimeFeatureCatalog|HIKARI_GameProject("
     "ActionBridge|NavigationBridge|GameFlowBridge|MaterialFxBridge|PresentationBridge|"
-    "UiBridge|VfxBridge|PropertyBridge|BindingBridge|MassBridge|QueryBridge|"
-    "Registration|SpawnBridge|TransformBridge|WorldBridge))\\.cpp$")
+    "UiBridge|UiCanvasBridge|DisplaySettingsBridge|VfxBridge|PropertyBridge|BindingBridge|MassBridge|QueryBridge|"
+    "Registration|SpawnBridge|TransformBridge|WorldBridge|WorldTextBridge))\\.cpp$")
 list(
     FILTER
     HIKARI_GAME_PROJECT_SDK_EXPORT_SOURCES
@@ -662,10 +665,10 @@ list(
     REGEX "${HIKARI_GAME_PROJECT_SDK_EXPORT_PATTERN}")
 unset(HIKARI_GAME_PROJECT_SDK_EXPORT_PATTERN)
 list(LENGTH HIKARI_GAME_PROJECT_SDK_EXPORT_SOURCES hikari_sdk_export_count)
-if(NOT hikari_sdk_export_count EQUAL 16)
+if(NOT hikari_sdk_export_count EQUAL 19)
     message(
         FATAL_ERROR
-        "The GameProject SDK export owner must contain exactly 16 sources.")
+        "The GameProject SDK export owner must contain exactly 19 sources.")
 endif()
 
 set(HIKARI_EDITOR_HOST_SOURCES
@@ -890,6 +893,12 @@ set(HIKARI_EDITOR_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/AnimationStateMachine/HIKARI_AnimationStateMachineGraphPanel.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/AnimationStateMachine/HIKARI_AnimationStateMachineGraphMenu.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Export/HIKARI_GameExporter.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Export/HIKARI_GameExportPublication.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Export/HIKARI_GameExportJob.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Export/HIKARI_GameExportOperations.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Export/HIKARI_GameExportIdentity.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Export/HIKARI_GameExportIdentityPanel.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Export/HIKARI_GameExecutableIcon.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Cooking/HIKARI_AssetCooker.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Export/HIKARI_GamePackageHash.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Export/HIKARI_GamePackageManifest.cpp"
@@ -977,6 +986,11 @@ set(HIKARI_EDITOR_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Widgets/HIKARI_AssetPickerPopup.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Widgets/HIKARI_MaterialTextureSlotWidget.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/HIKARI_HierarchyPanel.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/HIKARI_HierarchyFolders.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Authoring/HIKARI_SceneFolderAuthoring.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Authoring/HIKARI_SceneFolderOperations.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorFolderOperations.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Assets/Browser/HIKARI_AssetBrowserCache.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Assets/Browser/HIKARI_AssetBrowserPanel.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Assets/HIKARI_AssetImportSettingsEditor.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Assets/Models/HIKARI_ModelMaterialSlotCatalog.cpp"

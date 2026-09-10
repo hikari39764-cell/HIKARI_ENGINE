@@ -158,6 +158,21 @@ void DrawPathRow(const char *label, const std::filesystem::path &path) {
 #endif
 } // namespace
 
+void AssetInspectorPanel::RefreshFilePreview(const AssetDatabase& database, const AssetRecord& record) const {
+  const auto now = std::chrono::steady_clock::now();
+  const std::string key = database.GetProjectRoot().generic_string() + "|" + record.guid.value;
+  if (key == filePreviewKey_ && filePreviewRevision_ == database.GetContentRevision() &&
+      now < nextFilePreview_) return;
+  filePreviewKey_ = key;
+  filePreviewRevision_ = database.GetContentRevision();
+  nextFilePreview_ = now + std::chrono::seconds(1);
+  rawMeta_ = ReadTextFile(record.metaPath);
+  rawReport_ = ReadTextFile(record.importedDirectory / "import_report.json");
+  modelReport_ = nlohmann::json::parse(rawReport_, nullptr, false);
+  if (record.type == AssetType::Model) modelInfo_ = database.GetClusteredGeometryArtifactInfo(record);
+  else modelInfo_ = {};
+}
+
 void AssetInspectorPanel::Draw(AssetDatabase &assetDatabase,
                                AssetRegistry &assetRegistry,
                                EditorSelection &selection) const {
@@ -189,19 +204,23 @@ void AssetInspectorPanel::Draw(AssetDatabase &assetDatabase,
     return;
   }
 
-  static std::string loadedGuid{};
-  static std::array<char, 256> displayNameBuffer{};
-  static std::array<char, 16384> importSettingsBuffer{};
-  if (loadedGuid != record->guid.value) {
-    loadedGuid = record->guid.value;
-    CopyToBuffer(record->displayName, displayNameBuffer.data(),
-                 displayNameBuffer.size());
-    CopyToBuffer(record->meta.importSettingsJson, importSettingsBuffer.data(),
-                 importSettingsBuffer.size());
+  auto& displayNameBuffer = displayNameBuffer_;
+  auto& importSettingsBuffer = importSettingsBuffer_;
+  if (loadedGuid_ != record->guid.value || loadedProject_ != assetDatabase.GetProjectRoot()) {
+    loadedGuid_ = record->guid.value;
+    loadedProject_ = assetDatabase.GetProjectRoot();
+    CopyToBuffer(record->displayName, displayNameBuffer.data(), displayNameBuffer.size());
+    CopyToBuffer(record->meta.importSettingsJson, importSettingsBuffer.data(), importSettingsBuffer.size());
+    parsedSettingsSource_.clear();
+    filePreviewKey_.clear();
   }
 
   bool dirty = false;
-  nlohmann::json settings = ReadSettings(*record);
+  if (parsedSettings_.is_null() || parsedSettingsSource_ != record->meta.importSettingsJson) {
+    parsedSettings_ = ReadSettings(*record);
+    parsedSettingsSource_ = record->meta.importSettingsJson;
+  }
+  nlohmann::json settings = parsedSettings_;
   const AssetImportState importState = GetImportState(*record);
 
   auto saveMeta = [&]() {
@@ -639,7 +658,8 @@ void AssetInspectorPanel::Draw(AssetDatabase &assetDatabase,
         DrawPathRow(
             TEXT::Localize("ui.assetInspector.modelSource").c_str(),
             record->sourcePath);
-        DrawModelDiagnostics(assetDatabase, *record);
+        RefreshFilePreview(assetDatabase, *record);
+        DrawModelDiagnostics(modelInfo_, modelReport_);
       } else if (record->type == AssetType::Scene) {
         DrawPathRow(
             TEXT::Localize("ui.assetInspector.sceneSource").c_str(),
@@ -686,7 +706,8 @@ void AssetInspectorPanel::Draw(AssetDatabase &assetDatabase,
 
       ImGui::SeparatorText(
           TEXT::Localize("ui.assetInspector.rawMetaJson").c_str());
-      const std::string metaText = ReadTextFile(record->metaPath);
+      RefreshFilePreview(assetDatabase, *record);
+      const std::string& metaText = rawMeta_;
       if (metaText.empty()) {
         ImGui::TextDisabled(
             "%s",
@@ -701,8 +722,7 @@ void AssetInspectorPanel::Draw(AssetDatabase &assetDatabase,
 
       ImGui::SeparatorText(
           TEXT::Localize("ui.assetInspector.importReportJson").c_str());
-      const std::string reportText =
-          ReadTextFile(record->importedDirectory / "import_report.json");
+      const std::string& reportText = rawReport_;
       if (reportText.empty()) {
         ImGui::TextDisabled(
             "%s",

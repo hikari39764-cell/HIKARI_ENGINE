@@ -30,6 +30,14 @@
 #include <algorithm>
 #include <cstdint>
 #include <string>
+#include <sstream>
+#include <iomanip>
+#include <locale>
+#include <dxgi1_6.h>
+#include <wrl/client.h>
+#include "Gfx/HIKARI_GfxContext.h"
+#include "Gfx/HIKARI_GfxDebugConfig.h"
+
 
 namespace HIKARI::EDITOR::PERFORMANCE_AUDIT {
 
@@ -58,10 +66,11 @@ bool IsShadowSubpass(GFX::GPU_PROFILE::Pass pass) {
 
 bool IsNestedGpuSubpass(GFX::GPU_PROFILE::Pass pass) {
   return IsClusterSubpass(pass) || IsShadowSubpass(pass) ||
-         pass == GFX::GPU_PROFILE::Pass::ParticleDraw;
+         pass == GFX::GPU_PROFILE::Pass::ParticleDraw || pass == GFX::GPU_PROFILE::Pass::SceneCaptures;
 }
 
 const char *TimingScopeText(GFX::GPU_PROFILE::Pass pass) {
+  if (pass == GFX::GPU_PROFILE::Pass::SceneCaptures) return "SceneLayers Subpass";
   if (IsShadowSubpass(pass)) {
     return "Shadow Subpass";
   }
@@ -222,6 +231,82 @@ uint32_t CountValidCpuPasses(const CPU_PROFILE::FrameSnapshot &profile) {
     }
   }
   return count;
+}
+std::string BuildPerformanceReport(const RuntimePerformanceSnapshot& s) {
+  std::ostringstream out;
+  out.imbue(std::locale::classic());
+  out << std::fixed << std::setprecision(3);
+  out << "HIKARI performance snapshot\n";
+  const auto& context = GFX::GetCurrentContext();
+  Microsoft::WRL::ComPtr<IDXGIFactory4> factory;
+  Microsoft::WRL::ComPtr<IDXGIAdapter3> adapter;
+  if (context.device && SUCCEEDED(CreateDXGIFactory2(0, IID_PPV_ARGS(&factory))) &&
+      SUCCEEDED(factory->EnumAdapterByLuid(context.device->GetAdapterLuid(), IID_PPV_ARGS(&adapter)))) {
+    DXGI_ADAPTER_DESC1 desc{};
+    if (SUCCEEDED(adapter->GetDesc1(&desc))) {
+      char name[512]{};
+      WideCharToMultiByte(CP_UTF8, 0, desc.Description, -1, name, sizeof(name), nullptr, nullptr);
+      out << "Adapter: " << name << "\nDedicated VRAM MiB: " << desc.DedicatedVideoMemory / 1048576.0 << '\n';
+    }
+    DXGI_QUERY_VIDEO_MEMORY_INFO memory{};
+    if (SUCCEEDED(adapter->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &memory)))
+      out << "Local VRAM usage / budget MiB: " << memory.CurrentUsage / 1048576.0 << " / " << memory.Budget / 1048576.0 << '\n';
+  } else out << "Adapter: unavailable\n";
+  out << "Scene render: " << s.temporalFrame.renderWidth << 'x' << s.temporalFrame.renderHeight
+      << "\nScene output: " << s.temporalFrame.outputWidth << 'x' << s.temporalFrame.outputHeight
+      << "\nBack buffer: " << context.backBufferWidth << 'x' << context.backBufferHeight
+      << "\nAA: " << RENDER3D::RenderAntiAliasingModeLabel(RENDER3D::GetRenderQualitySettings().antiAliasingMode)
+      << "\nFPS raw: " << s.fpsRaw << '\n';
+  const auto& fg = s.streamlineFrameGeneration;
+  out << "Frame Gen requested/loaded/supported/host: " << fg.requested << '/'
+      << fg.featureLoaded << '/' << fg.supported << '/' << fg.hostAllowed << '\n';
+  out << "Frame Gen runtime/reason: " << RENDER3D::UPSCALING::ToString(fg.status)
+      << " / " << (fg.statusReason.empty() ? "none" : fg.statusReason) << '\n';
+  out << "Frame Gen inputs/options/tags/state: " << fg.inputsReady << '/'
+      << fg.optionsConfigured << '/' << fg.tagsSubmitted << '/' << fg.stateValid << '\n';
+  out << "Frame Gen generated requested/max; actually presented: " << fg.generatedFrames
+      << '/' << fg.maxGeneratedFrames << "; " << fg.presentedFrames << '\n';
+  out << "Frame Gen status flags/failures: " << fg.statusFlags << '/' << fg.failureCount << '\n';
+  const auto& debug=GFX::GetGfxDebugConfig();
+  out << "Debug layer configured: " << debug.enableDebugLayer
+      << " GPU validation configured: " << debug.enableGpuBasedValidation << '\n';
+  out << "CPU frame: " << s.cpu.frameIndex << " valid=" << s.cpu.valid << '\n';
+  const auto cpu = [&](const CPU_PROFILE::PassTiming& p) {
+    if (!p.valid && p.rollingSampleCount == 0) return;
+    out << "CPU " << p.name << " now/avg/p95/p99/max ms: " << p.cpuMs << '/' << p.averageMs << '/'
+        << p.p95Ms << '/' << p.p99Ms << '/' << p.maximumMs << " samples=" << p.rollingSampleCount << '\n';
+  };
+  for (const auto& pass : s.cpu.passes) cpu(pass);
+  for (uint32_t i=0; i<s.cpu.dynamicPassCount; ++i) cpu(s.cpu.dynamicPasses[i]);
+  out << "GPU frame: " << s.gpu.frameIndex << " available=" << s.gpu.gpuTimingAvailable << '\n';
+  if (!s.gpu.gpuTimingAvailable) out << "GPU reason: " << s.gpu.unavailableReason << '\n';
+  for (size_t i=0; i<s.gpu.passes.size(); ++i) {
+    const auto& pass=s.gpu.passes[i];
+    if (pass.valid) out << "GPU " << pass.name << " ms: " << pass.gpuMs << " scope="
+        << TimingScopeText(static_cast<GFX::GPU_PROFILE::Pass>(i)) << '\n';
+  }
+  out << "GPU timings are pass samples, not additive frame time; nested passes overlap.\n";
+  out << "Scene objects total/visible/hidden: " << s.scene.renderObjectCount << '/'
+      << s.scene.visibleObjectCount << '/' << s.scene.hiddenObjectCount
+      << "\nSurfaces total/dirty: " << s.scene.surfaceInstanceCount << '/' << s.scene.dirtySurfaceInstanceCount << '\n';
+  out << "GPU scene CPU sync: " << RENDER3D::GPUDRIVEN::ToString(s.gpuRegistry.syncMode)
+      << "; records rebuilt this frame: " << s.gpuRegistry.frameRecordBuildCount << '\n';
+  out << "GPU scene records reused/hidden: " << s.gpuRegistry.frameRecordReuseCount << '/'
+      << s.gpuRegistry.hiddenSourceRecordCount << '\n';
+  if (s.gpuRegistry.syncMode == RENDER3D::GPUDRIVEN::GpuSceneSyncMode::RebuildPatchRejected) {
+    const auto& rejection = s.gpuRegistry.patchRejection;
+    out << "GPU scene patch rejection: " << rejection.reason
+        << "; object=" << rejection.objectId << "; surface=" << rejection.surfaceIndex
+        << "; node=" << rejection.nodeIndex << "; model=" << rejection.modelPath << '\n';
+  }
+  out << "GPU scene upload full/patch/reuse: "
+      << s.mesh.gpuSceneUpload.uploadedFullScene << '/'
+      << s.mesh.gpuSceneUpload.patchedDirtyRanges << '/'
+      << s.mesh.gpuSceneUpload.reusedResidentFrame << '\n';
+  out << "GPU scene upload committed instances/bytes: "
+      << s.mesh.gpuSceneUpload.bufferStats.committedInstanceCount << '/'
+      << s.mesh.gpuSceneUpload.bufferStats.committedBytes << '\n';
+  return out.str();
 }
 #endif
 

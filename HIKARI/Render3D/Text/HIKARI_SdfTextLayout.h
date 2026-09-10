@@ -57,6 +57,7 @@ namespace HIKARI::TEXT_RENDERING {
             SdfTextVerticalAlign::Top;
         SdfTextWrap wrap = SdfTextWrap::None;
         uint64_t submissionSequence = 0u;
+        friend bool operator==(const SdfTextLayoutRequest&, const SdfTextLayoutRequest&) = default;
     };
 
     struct SdfTextGlyphDraw {

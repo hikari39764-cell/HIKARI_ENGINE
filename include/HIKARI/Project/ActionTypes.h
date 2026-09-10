@@ -297,6 +297,16 @@ namespace HIKARI {
         uint32_t reserved = 0u;
     };
 
+    // Frame-scoped absolute pose through the engine camera rig. An explicit
+    // camera object is required; capture cameras are never affected implicitly.
+    struct GameProjectCameraPoseRequest {
+        uint64_t cameraObjectHandle = 0u;
+        uint64_t sourceId = 0u;
+        int32_t priority = 0;
+        float modifierWeightScale = 1.0f;
+        GameProjectCameraPose pose{};
+    };
+
     // Secondary-subject composition for the built-in orbit-follow camera.
     // The engine keeps ownership of the primary follow pivot, smoothing and
     // collision. A zero camera handle applies to every active follow camera.
@@ -509,6 +519,14 @@ namespace HIKARI {
             // request contract. It occupies the same ABI field as flags.
             uint32_t reserved;
         };
+    };
+
+    struct GameProjectPostProfileParameterRequest {
+        uint64_t sourceId = 0u;
+        int32_t priority = 0;
+        uint32_t parameterIndex = 0u;
+        uint32_t channelMask = 15u;
+        GameProjectFloat4 value{};
     };
 
     // Frame-local full-screen action grade. The caller submits this every

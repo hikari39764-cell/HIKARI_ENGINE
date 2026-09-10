@@ -52,6 +52,7 @@ namespace HIKARI {
     // Submission flags are shared by sprites, text and backdrop requests.
     // Modal elements remain visible when the winning backdrop requests HUD
     // suppression. The suppression bit is meaningful on backdrops only.
+    inline constexpr uint32_t kGameProjectUiPreserveSpriteAspect = 1u << 2u;
     inline constexpr uint32_t kGameProjectUiSubmissionModal = 1u << 0u;
     inline constexpr uint32_t kGameProjectUiSuppressNonModal = 1u << 1u;
 
@@ -77,6 +78,7 @@ namespace HIKARI {
         float g = 1.0f;
         float b = 1.0f;
         float a = 1.0f;
+        bool operator==(const GameProjectUiColor&) const noexcept = default;
     };
 
     // Shared aspect-preserving canvas projection used by both rendering and
@@ -178,6 +180,7 @@ namespace HIKARI {
         GameProjectUiColor highlightColor{};
         GameProjectUiEffect effect = GameProjectUiEffect::None;
         uint8_t reserved[7]{};
+        bool operator==(const GameProjectUiSpriteRequest&) const noexcept = default;
     };
 
     // UTF-8 text is copied synchronously by UiView::SubmitText. The font path
@@ -227,6 +230,7 @@ namespace HIKARI {
             GameProjectUiVerticalAlign::Top;
         GameProjectUiTextWrap wrap = GameProjectUiTextWrap::Character;
         uint8_t reserved[5]{};
+        bool operator==(const GameProjectUiTextRequest&) const noexcept = default;
     };
 
     struct GameProjectUiBackdropRequest {

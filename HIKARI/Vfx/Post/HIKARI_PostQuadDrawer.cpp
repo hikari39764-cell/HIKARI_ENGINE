@@ -343,6 +343,7 @@ namespace HIKARI {
 
         void QuadDrawer::Finalize()
         {
+            readability_ = {};
             for (auto& entry : pipelineCache_) {
                 PipelineSet& set = entry.second;
                 GFX::RetireD3D12ObjectForFrame(set.copy, context_, "PostQuadDrawer.CopyPSO");
@@ -379,7 +380,7 @@ namespace HIKARI {
             range.BaseShaderRegister = 0;
             range.RegisterSpace = 0;
             range.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
-            D3D12_ROOT_PARAMETER rp[2]{};
+            D3D12_ROOT_PARAMETER rp[3]{};
             rp[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
             rp[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
             rp[0].DescriptorTable.NumDescriptorRanges = 1;
@@ -388,6 +389,9 @@ namespace HIKARI {
             rp[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
             rp[1].Descriptor.ShaderRegister = 0;
             rp[1].Descriptor.RegisterSpace = 0;
+            rp[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+            rp[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+            rp[2].Constants = {1u, 0u, 36u};
             D3D12_STATIC_SAMPLER_DESC samp{};
             samp.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
             samp.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
@@ -399,7 +403,7 @@ namespace HIKARI {
             samp.ShaderRegister = 0;
             samp.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
             D3D12_ROOT_SIGNATURE_DESC rsDesc{};
-            rsDesc.NumParameters = 2;
+            rsDesc.NumParameters = 3;
             rsDesc.pParameters = rp;
             rsDesc.NumStaticSamplers = 1;
             rsDesc.pStaticSamplers = &samp;
@@ -458,7 +462,7 @@ namespace HIKARI {
             return true;
         }
 
-        void QuadDrawer::DrawBlended(ID3D12DescriptorHeap* srvHeap, D3D12_GPU_DESCRIPTOR_HANDLE srvGpu, BlendOption mode)
+        void QuadDrawer::DrawBlended(ID3D12DescriptorHeap* srvHeap, D3D12_GPU_DESCRIPTOR_HANDLE srvGpu, BlendOption mode, float readabilityCurvature)
         {
             SetInputTexture(srvHeap, srvGpu);
             auto* cmd = context_.cmdList;
@@ -497,8 +501,12 @@ namespace HIKARI {
             ID3D12DescriptorHeap* heaps[] = { currentSrvHeap_ };
             cmd->SetDescriptorHeaps(1, heaps);
             cmd->SetGraphicsRootSignature(rootSig_.Get());
+            auto readability = readability_;
+            readability.attenuateCopy = readabilityCurvature >= 0.0f ? 1u : 0u;
+            readability.curvature = (std::max)(readabilityCurvature, 0.0f);
             cmd->SetPipelineState(selectedPso);
             cmd->SetGraphicsRootDescriptorTable(0, currentSrvGpu_);
+            cmd->SetGraphicsRoot32BitConstants(2u, 36u, &readability, 0u);
             cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
             cmd->DrawInstanced(3, 1, 0, 0);
         }
@@ -582,6 +590,7 @@ namespace HIKARI {
             cmd->SetGraphicsRootSignature(rootSig_.Get());
             cmd->SetPipelineState(currentPipelineSet_->copy.Get());
             cmd->SetGraphicsRootDescriptorTable(0, currentSrvGpu_);
+            cmd->SetGraphicsRoot32BitConstants(2u, 36u, &readability_, 0u);
             cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
             cmd->DrawInstanced(3, 1, 0, 0);
         }
@@ -607,6 +616,7 @@ namespace HIKARI {
             cmd->SetGraphicsRootSignature(rootSig_.Get());
             cmd->SetPipelineState(currentPostPso_);
             cmd->SetGraphicsRootDescriptorTable(0, currentSrvGpu_);
+            cmd->SetGraphicsRoot32BitConstants(2u, 36u, &readability_, 0u);
             if (currentCBV0_ != 0) {
                 cmd->SetGraphicsRootConstantBufferView(1, currentCBV0_);
             }

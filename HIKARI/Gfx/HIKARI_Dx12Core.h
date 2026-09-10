@@ -7,6 +7,7 @@
 
 #include <array>
 #include <functional>
+#include <filesystem>
 #include <utility>
 #include <wrl.h>
 #include <dxgi1_6.h>
@@ -58,6 +59,10 @@ public:
 
     bool BeginFrame(float clearR, float clearG, float clearB, float clearA);
     bool EndFrame();
+    bool RequestFrameCapture(std::filesystem::path output) {
+        if(!capturePath_.empty() || output.empty())return false;
+        capturePath_=std::move(output);return true;
+    }
 
     // ── リサイズ ─────────────────────────────────────────────────
 
@@ -109,6 +114,7 @@ public:
     Context BuildContext() const;
 
 private:
+    std::filesystem::path capturePath_;
     // ── 内部メソッド ──────────────────────────────────────────────
     bool WaitGPU();
     bool MoveToNextFrame();

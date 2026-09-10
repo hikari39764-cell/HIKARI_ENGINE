@@ -1,4 +1,5 @@
 #include "HIKARI_ResourceWorkspacePanel.h"
+#include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 
 #include "Core/Text/HIKARI_Localization.h"
 #include <algorithm>
@@ -37,10 +38,12 @@ void ResourceWorkspacePanel::Draw(
     return;
   }
 
-  AssetUsageSummary usageSummary =
-      AnalyzeAssetUsage(sceneDocument, assetDatabase);
+  static const auto timer = CPU_PROFILE::RegisterDynamicPass("Editor.ResourceWorkspace");
+  const CPU_PROFILE::ScopedDynamicCpuTimer scope(timer);
+  usageCache_.Update(sceneDocument, context.documentRevision, assetDatabase, context.editRevision);
+  const AssetUsageSummary& usageSummary = usageCache_.Summary();
   const AssetBrowserContext browserContext{context.currentSceneGuid,
-                                           context.startupSceneGuid,
+                                           projectSettingsCache_.StartupScene(assetDatabase),
                                            context.currentSceneDirty};
 
   AssetImportBatchStatus completedBatch{};
@@ -56,11 +59,12 @@ void ResourceWorkspacePanel::Draw(
       assetDatabase.GetQueuedImportStatus();
   const bool importActive = importStatus.active;
 
-  DrawScopeCombo(assetDatabase, usageSummary, activeScope_);
+  statisticsCache_.Update(assetDatabase);
+  DrawScopeCombo(statisticsCache_, usageSummary, activeScope_);
   ImGui::SameLine();
   ImGui::TextDisabled(
       TEXT::Localize("ui.resource.assetsUsedFormat").c_str(),
-                      static_cast<int>(assetDatabase.CollectAll().size()),
+                      statisticsCache_.Total(),
                       static_cast<int>(usageSummary.usedGuids.size()));
   ImGui::SameLine();
   if (EDITOR::IconToggleButton(
@@ -270,7 +274,7 @@ void ResourceWorkspacePanel::Draw(
       if (ImGui::BeginChild("##ResourceWorkspaceBrowser",
                             ImVec2(browserWidth, 0.0f), false)) {
         assetBrowserPanel_.DrawContents(assetDatabase, selection, &usageSummary,
-                                        activeScope_, &browserContext);
+                                        activeScope_, &browserContext, usageCache_.Generation());
       }
       ImGui::EndChild();
 
@@ -288,7 +292,7 @@ void ResourceWorkspacePanel::Draw(
       if (ImGui::BeginTabItem(
               TEXT::Localize("ui.resource.tabBrowser").c_str())) {
         assetBrowserPanel_.DrawContents(assetDatabase, selection, &usageSummary,
-                                        activeScope_, &browserContext);
+                                        activeScope_, &browserContext, usageCache_.Generation());
         ImGui::EndTabItem();
       }
       if (showInspector && ImGui::BeginTabItem(

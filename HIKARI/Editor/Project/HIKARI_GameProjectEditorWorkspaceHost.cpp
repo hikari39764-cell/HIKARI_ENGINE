@@ -8,8 +8,17 @@
 #include <vector>
 
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include "Editor/Project/HIKARI_GameProjectEditorModuleLibrary.h"
+#include "Assets/HIKARI_AssetDatabase.h"
+#include "Assets/HIKARI_AssetRegistry.h"
+#include "Editor/DragDrop/HIKARI_EditorAssetDragDrop.h"
+#include "Render2D/HIKARI_DxTexture.h"
+#include "Render2D/HIKARI_GameUiEffectRenderer.h"
+#include "Render2D/HIKARI_SurfaceTextureTargetRing.h"
+#include "Scene/Ui/HIKARI_GameUiPresentationService.h"
+#include "Vfx/Post/HIKARI_PostSystem.h"
 
 namespace HIKARI::EDITOR {
 namespace {
@@ -41,8 +50,98 @@ namespace {
     class GameProjectEditorWorkspaceUi final
         : public EDITOR_PROJECT::IEditorWorkspaceUi {
     public:
+        ~GameProjectEditorWorkspaceUi() override {previewTarget_.Reset();}
+    private:
+        SurfaceTextureTargetRing previewTarget_;
+        GAME_UI::GameUiPresentationService previewContent_;
+        std::filesystem::path previewRoot_;
+        GameProjectUiColor previewClear_{};
+        uint32_t previewWidth_{},previewHeight_{};
+        uint64_t previewSerial_{},previewRenderedFence_=~uint64_t(0);
+        bool previewOpen_{},previewFailed_{};
+    public:
+        void SetAssets(AssetDatabase& database, AssetRegistry& registry) { database_=&database; assets_=&registry; }
+        bool TextureField(std::string_view id, std::string_view label, char* buffer, size_t capacity) override {
+            if(!assets_ || !buffer || !capacity) return false;
+            const auto* record=database_->FindByGuid(AssetGuid{buffer});
+            const std::string shown=record?record->displayName:"画像なし";
+            bool changed=false;
+            const auto assign=[&](std::string_view guid) {
+                if(guid.size()>=capacity) return;
+                std::copy(guid.begin(),guid.end(),buffer);buffer[guid.size()]='\0';changed=true;
+            };
+            const auto stable=MakeStableLabel(label,workspaceId_,id);
+            if(ImGui::BeginCombo(stable.c_str(),shown.c_str())) {
+                if(ImGui::Selectable("画像なし",buffer[0]=='\0')) assign({});
+                for(const auto* descriptor:assets_->CollectByType(AssetType::Texture)) {
+                    const auto* asset=database_->FindByGuid(AssetGuid{descriptor->id.value});
+                    const auto name=asset?asset->displayName:descriptor->sourcePath;
+                    ImGui::PushID(descriptor->id.value.c_str());
+                    if(ImGui::Selectable(name.c_str(),descriptor->id.value==buffer)) assign(descriptor->id.value);
+                    ImGui::PopID();
+                }
+                ImGui::EndCombo();
+            }
+            DroppedAssetPayload payload;
+            if(AcceptAssetDropOfType(*database_,AssetType::Texture,payload) && payload.record) assign(payload.guid.value);
+            return changed;
+        }
+        bool CanvasImage(std::string_view guid, EDITOR_PROJECT::EditorWorkspacePoint minimum,
+            EDITOR_PROJECT::EditorWorkspacePoint maximum, EDITOR_PROJECT::EditorWorkspaceColor tint) override {
+            if(!canvasActive_ || !assets_ || guid.empty())return false;
+            const auto* texture=assets_->FindAs<TextureAssetDescriptor>(AssetId{std::string(guid)});
+            if(!texture || texture->sourcePath.empty()) return false;
+            const auto space=texture->colorSpace==TextureAssetColorSpace::Linear?DXTEX::TextureColorSpace::Linear:
+                texture->colorSpace==TextureAssetColorSpace::Srgb?DXTEX::TextureColorSpace::Srgb:DXTEX::TextureColorSpace::Auto;
+            const int handle=DXTEX::DxTextureManager::LoadTextureWithColorSpace("editor/workspace/"+std::string(guid),texture->sourcePath,space);
+            if(handle<0) return false;
+            const auto srv=DXTEX::DxTextureManager::GetSrvGpuHandle(handle);
+            if(!srv.ptr)return false;
+            canvasDrawList_->AddImage(reinterpret_cast<ImTextureID>(static_cast<uintptr_t>(srv.ptr)),ToScreen(minimum),ToScreen(maximum),{0,0},{1,1},ToImGuiColor(tint));
+            return true;
+        }
+        void CanvasFill(EDITOR_PROJECT::EditorWorkspacePoint a, EDITOR_PROJECT::EditorWorkspacePoint b,
+            EDITOR_PROJECT::EditorWorkspaceColor color) override {
+            if(canvasActive_)canvasDrawList_->AddRectFilled(ToScreen(a),ToScreen(b),ToImGuiColor(color),4.0f);
+        }
+        void CanvasStyledText(EDITOR_PROJECT::EditorWorkspacePoint p, float height, float wrapWidth,
+            EDITOR_PROJECT::EditorWorkspaceColor color, std::string_view text) override {
+            if(canvasActive_)canvasDrawList_->AddText(ImGui::GetFont(),std::clamp(height,4.0f,256.0f),ToScreen(p),ToImGuiColor(color),text.data(),text.data()+text.size(),std::max(wrapWidth,0.0f));
+        }
+        bool BeginCanvasPreview(uint32_t width,uint32_t height,GameProjectUiColor clear) override {
+            if (!canvasActive_ || !database_ || previewOpen_ || width<64 || height<64 || width>2048 || height>2048 ||
+                previewRenderedFence_==GFX::GetCurrentContext().currentFrameRetireFenceValue) return false;
+            const auto root=database_->GetProjectRoot();
+            if (previewRoot_!=root) {previewRoot_=root;previewContent_.SetProjectRoot(root);previewContent_.SetAssetDatabase(database_);}
+            previewContent_.DiscardPending();previewWidth_=width;previewHeight_=height;previewClear_=clear;previewOpen_=true;previewFailed_=false;return true;
+        }
+        bool CanvasPreviewSprite(std::string_view guid,const GameProjectUiSpriteRequest& request) override {
+            if(!previewOpen_)return false;
+            const bool ok=previewContent_.SubmitSpriteAsset(guid,request);previewFailed_|=!ok;return ok;
+        }
+        bool CanvasPreviewText(std::string_view font,std::string_view text,const GameProjectUiTextRequest& request) override {
+            if(!previewOpen_)return false;
+            const bool ok=previewContent_.SubmitText(font,text,request);previewFailed_|=!ok;return ok;
+        }
+        bool EndCanvasPreview(EDITOR_PROJECT::EditorWorkspacePoint minimum,EDITOR_PROJECT::EditorWorkspacePoint maximum) override {
+            if(!previewOpen_)return false;previewOpen_=false;
+            if(previewFailed_) {previewContent_.DiscardPending();return false;}
+            previewContent_.Tick(++previewSerial_);
+            const auto& graphics=GFX::GetCurrentContext();
+            if(!previewTarget_.Ensure(graphics,0xfffffffffffffff0ull,0,previewWidth_,previewHeight_,DXGI_FORMAT_R8G8B8A8_UNORM,false,
+                {previewClear_.r,previewClear_.g,previewClear_.b,previewClear_.a}))return false;
+            auto& target=*previewTarget_.targets[previewTarget_.writeIndex];
+            target.BeginCapture(previewClear_.r,previewClear_.g,previewClear_.b,previewClear_.a);
+            const bool ok=GAME_UI::RenderGameUiWorkspacePreviewFrame(previewContent_.GetFrameSource(),previewWidth_,previewHeight_);
+            target.EndCapture();(void)POST::PostSystem::RebindPresentationBackBuffer();
+            const auto srv=RENDER3D::GetTextureResourceSrvGpuHandle(previewTarget_.textures[previewTarget_.writeIndex]);
+            previewTarget_.writeIndex=(previewTarget_.writeIndex+1)%GFX::kFrameResourceCount;previewRenderedFence_=graphics.currentFrameRetireFenceValue;
+            if(!ok || !srv.ptr)return false;
+            canvasDrawList_->AddImage(reinterpret_cast<ImTextureID>(static_cast<uintptr_t>(srv.ptr)),ToScreen(minimum),ToScreen(maximum));return true;
+        }
         void BeginFrame(std::string_view workspaceId) {
             workspaceId_.assign(workspaceId);
+            previewOpen_=false;previewContent_.DiscardPending();
             panelDepth_ = 0u;
             tableDepth_ = 0u;
             canvasActive_ = false;
@@ -51,6 +150,30 @@ namespace {
 
         void SetWorkspaceId(std::string_view workspaceId) {
             workspaceId_.assign(workspaceId);
+        }
+
+        void DrawDockSpace(bool reset) {
+            const auto* viewport = ImGui::GetMainViewport();
+            const std::string name = "HIKARI_ProjectWorkspace/" + workspaceId_;
+            const ImGuiID root = ImGui::GetID(name.c_str());
+            forceDock_ = reset || ImGui::DockBuilderGetNode(root) == nullptr;
+            if (forceDock_) {
+                ImGui::DockBuilderRemoveNode(root);
+                ImGui::DockBuilderAddNode(root, ImGuiDockNodeFlags_DockSpace);
+                ImGui::DockBuilderSetNodePos(root, viewport->WorkPos);
+                ImGui::DockBuilderSetNodeSize(root, viewport->WorkSize);
+                ImGuiID body = root;
+                ImGui::DockBuilderSplitNode(body, ImGuiDir_Up, 0.08f, &dockRegions_[1], &body);
+                ImGui::DockBuilderSplitNode(body, ImGuiDir_Left, 0.21f, &dockRegions_[2], &body);
+                ImGui::DockBuilderSplitNode(body, ImGuiDir_Right, 0.30f, &dockRegions_[3], &body);
+                ImGui::DockBuilderSplitNode(body, ImGuiDir_Down, 0.25f, &dockRegions_[4], &body);
+                dockRegions_[0] = body;
+                ImGui::DockBuilderFinish(root);
+            } else {
+                // 保存済みレイアウトは ImGui が管理する。新規パネルだけ中央へ入れる。
+                dockRegions_.fill(root);
+            }
+            ImGui::DockSpaceOverViewport(root, viewport);
         }
 
         void EndFrame() noexcept {
@@ -71,13 +194,38 @@ namespace {
         bool BeginPanel(
             std::string_view stablePanelId,
             std::string_view displayName,
-            bool* open) override {
+            bool* open,
+            EDITOR_PROJECT::EditorWorkspaceDockRegion region) override {
             const std::string label = MakeStableLabel(
                 displayName,
                 workspaceId_,
                 stablePanelId);
             ++panelDepth_;
+            const size_t slot = static_cast<size_t>(region);
+            if (slot < dockRegions_.size() && dockRegions_[slot]) {
+                ImGui::SetNextWindowDockID(dockRegions_[slot],
+                    forceDock_ ? ImGuiCond_Always : ImGuiCond_FirstUseEver);
+            }
             return ImGui::Begin(label.c_str(), open);
+        }
+
+        EDITOR_PROJECT::EditorWorkspaceInteraction GetInteraction() const override {
+            const auto& io = ImGui::GetIO();
+            const bool shortcuts = !io.WantTextInput;
+            return {
+                ImGui::IsAnyItemActive() || ImGui::IsMouseDown(0) ? 1u : 0u,
+                shortcuts && io.KeyCtrl && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Z, false) ? 1u : 0u,
+                shortcuts && io.KeyCtrl && (ImGui::IsKeyPressed(ImGuiKey_Y, false) || (io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Z, false))) ? 1u : 0u,
+                shortcuts && ImGui::IsKeyPressed(ImGuiKey_Delete, false) ? 1u : 0u,
+            };
+        }
+
+        bool InputTextMultiline(std::string_view id, std::string_view label,
+            char* buffer, size_t capacity, float height) override {
+            if (!buffer || !capacity) return false;
+            Text(label);
+            return ImGui::InputTextMultiline(MakeStableLabel(label, workspaceId_, id).c_str(),
+                buffer, capacity, ImVec2(-1.0f, height));
         }
 
         void EndPanel() override {
@@ -345,7 +493,7 @@ namespace {
                 ImGui::GetContentRegionAvail().x);
             const float height = std::max(
                 1.0f,
-                requestedHeight > 0.0f ? requestedHeight : 240.0f);
+                requestedHeight > 0.0f ? requestedHeight : ImGui::GetContentRegionAvail().y);
             const std::string label = MakeStableLabel(
                 "Canvas",
                 workspaceId_,
@@ -388,6 +536,9 @@ namespace {
                 io.MousePos.y - canvasMinimum_.y,
             };
             input.hovered = ImGui::IsItemHovered();
+            input.wheel = input.hovered ? ImGui::GetIO().MouseWheel : 0.0f;
+            input.shift = ImGui::GetIO().KeyShift ? 1u : 0u;
+            input.control = ImGui::GetIO().KeyCtrl ? 1u : 0u;
             const bool receivesPointer =
                 input.hovered || ImGui::IsItemActive();
             const std::array<int, 3u> buttons{ 0, 1, 2 };
@@ -497,9 +648,13 @@ namespace {
         }
 
         std::string workspaceId_{};
+        AssetDatabase* database_{};
+        AssetRegistry* assets_{};
         size_t panelDepth_ = 0u;
         size_t tableDepth_ = 0u;
         bool canvasActive_ = false;
+        std::array<ImGuiID, 5> dockRegions_{};
+        bool forceDock_ = false;
         ImVec2 canvasMinimum_{};
         ImVec2 canvasSize_{};
         ImDrawList* canvasDrawList_ = nullptr;
@@ -544,21 +699,74 @@ namespace {
         moduleFailureMessage_ = std::move(message);
     }
 
-    void GameProjectEditorWorkspaceHost::Draw(
-        float unscaledDeltaSeconds) {
-        if (!IsAvailable()) {
-            return;
-        }
-
+    void GameProjectEditorWorkspaceHost::DrawNavigation(
+        EditorWorkspaceHost& host, float unscaledDeltaSeconds) {
+        if (!IsAvailable()) return;
+        if(!requestedWorkspace_.empty() && !host.IsActive(EditorWorkspaceId::Project))
+            (void)host.RequestOpen({EditorWorkspaceId::Project});
         ui_->BeginFrame(registry_.GetActiveWorkspaceId());
         registry_.BeginFrame(*ui_, unscaledDeltaSeconds);
-        DrawWorkspaceSelector();
+        if (ImGui::BeginMainMenuBar()) {
+            if (ImGui::BeginMenu("プロジェクト")) {
+                for (size_t i = 0; i < registry_.GetWorkspaceCount(); ++i) {
+                    const auto info = registry_.GetWorkspaceInfo(i);
+                    if (ImGui::MenuItem(std::string(info.displayName).c_str(), nullptr,
+                            info.active && host.IsActive(EditorWorkspaceId::Project), !info.disabled)) {
+                        requestedWorkspace_.assign(info.workspaceId);
+                        (void)host.RequestOpen({ EditorWorkspaceId::Project });
+                    }
+                }
+                if (!moduleFailureMessage_.empty()) ImGui::TextUnformatted(moduleFailureMessage_.c_str());
+                ImGui::EndMenu();
+            }
+            ImGui::EndMainMenuBar();
+        }
+        if (host.IsActive(EditorWorkspaceId::Project)) {
+            if (const auto* pending = host.PeekPending(); pending && pending->workspaceId != EditorWorkspaceId::Project) {
+                guardedNavigation_ = *pending;
+                host.CancelPending();
+                (void)registry_.RequestCloseActiveWorkspace();
+            }
+            if (!requestedWorkspace_.empty()) {
+                (void)registry_.RequestActivateWorkspace(requestedWorkspace_);
+                requestedWorkspace_.clear();
+            }
+        }
         registry_.ProcessPending();
+        const bool wasAwaiting = registry_.IsAwaitingCloseResolution();
         DrawClosePrompt();
+        if (guardedNavigation_ && !registry_.HasActiveWorkspace()) {
+            (void)host.RequestOpen(*guardedNavigation_);
+            guardedNavigation_.reset();
+        } else if (wasAwaiting && !registry_.IsAwaitingCloseResolution()) {
+            guardedNavigation_.reset();
+        }
+        registry_.EndFrame();
+        ui_->EndFrame();
+    }
+
+    void GameProjectEditorWorkspaceHost::Draw(
+        EditorWorkspaceHost& host, float unscaledDeltaSeconds, AssetDatabase& database, AssetRegistry& assets) {
+        if (!IsAvailable()) return;
+        ui_->SetAssets(database, assets);
+        ui_->BeginFrame(registry_.GetActiveWorkspaceId());
+        registry_.BeginFrame(*ui_, unscaledDeltaSeconds);
+        if (!requestedWorkspace_.empty()) {
+            (void)registry_.RequestActivateWorkspace(requestedWorkspace_);
+            requestedWorkspace_.clear();
+        }
+        registry_.ProcessPending();
         ui_->SetWorkspaceId(registry_.GetActiveWorkspaceId());
+        ui_->DrawDockSpace(resetLayout_ || host.ConsumeReset(EditorWorkspaceId::Project));
+        resetLayout_ = false;
+        DrawWorkspaceSelector(host);
+        DrawClosePrompt();
         registry_.DrawActive();
         registry_.EndFrame();
         ui_->EndFrame();
+        if (!registry_.HasActiveWorkspace() && !registry_.IsAwaitingCloseResolution()) {
+            (void)host.RequestOpen({ EditorWorkspaceId::Scene });
+        }
     }
 
     void GameProjectEditorWorkspaceHost::Shutdown() noexcept {
@@ -592,90 +800,37 @@ namespace {
         return registry_;
     }
 
-    void GameProjectEditorWorkspaceHost::DrawWorkspaceSelector() {
-        if (!ImGui::Begin(
-                "Project Workspaces###GameProject/WorkspaceSelector")) {
-            ImGui::End();
-            return;
-        }
-
-        ImGui::TextUnformatted(
-            "Editor-only workspaces registered by the current project.");
-        ImGui::Separator();
-        if (!moduleFailureMessage_.empty()) {
-            ImGui::TextColored(
-                ImVec4(1.0f, 0.38f, 0.38f, 1.0f),
-                "%.*s",
-                static_cast<int>(moduleFailureMessage_.size()),
-                moduleFailureMessage_.data());
-            if (registry_.GetWorkspaceCount() != 0u) {
-                ImGui::Separator();
+    void GameProjectEditorWorkspaceHost::DrawWorkspaceSelector(EditorWorkspaceHost& host) {
+        if (ui_->BeginPanel("HostToolbar", "ワークスペース", nullptr,
+                EDITOR_PROJECT::EditorWorkspaceDockRegion::Toolbar)) {
+            if (ImGui::Button("シーンへ戻る")) {
+                (void)host.RequestOpen({ EditorWorkspaceId::Scene });
             }
-        }
-        for (size_t index = 0u;
-            index < registry_.GetWorkspaceCount();
-            ++index) {
-            const GameProjectEditorWorkspaceInfo info =
-                registry_.GetWorkspaceInfo(index);
-            ImGui::PushID(static_cast<int>(index));
-            if (info.active) {
-                ImGui::TextDisabled("Active");
-                ImGui::SameLine();
-            }
-            if (info.disabled) {
-                ImGui::BeginDisabled();
-            }
-            const std::string label(info.displayName);
-            if (ImGui::Button(label.c_str())) {
-                (void)registry_.RequestActivateWorkspace(info.workspaceId);
-            }
-            if (info.disabled) {
-                ImGui::EndDisabled();
-                if (!info.failureMessage.empty() &&
-                    ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip(
-                        "%.*s",
-                        static_cast<int>(info.failureMessage.size()),
-                        info.failureMessage.data());
-                }
-            }
-            ImGui::PopID();
-        }
-
-        if (registry_.HasActiveWorkspace()) {
-            ImGui::Separator();
-            if (ImGui::Button("Save Active")) {
+            ImGui::SameLine();
+            if (ImGui::Button("保存  Ctrl+S") || (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S, false))) {
                 (void)registry_.RequestSaveActiveWorkspace();
             }
             ImGui::SameLine();
-            if (ImGui::Button("Close Active")) {
-                (void)registry_.RequestCloseActiveWorkspace();
+            if (ImGui::Button("レイアウトを戻す")) resetLayout_ = true;
+            for (size_t index = 0; index < registry_.GetWorkspaceCount(); ++index) {
+                const auto info = registry_.GetWorkspaceInfo(index);
+                ImGui::SameLine();
+                ImGui::BeginDisabled(info.disabled || info.active);
+                if (ImGui::Button(std::string(info.displayName).c_str())) {
+                    (void)registry_.RequestActivateWorkspace(info.workspaceId);
+                }
+                ImGui::EndDisabled();
             }
             if (registry_.IsActiveWorkspaceDirty()) {
                 ImGui::SameLine();
-                ImGui::TextDisabled("Unsaved changes");
+                ImGui::TextColored(ImVec4(1, .8f, .35f, 1), "● 未保存");
+            }
+            if (!registry_.GetStatusMessage().empty()) {
+                ImGui::TextUnformatted(registry_.GetStatusMessage().data(),
+                    registry_.GetStatusMessage().data() + registry_.GetStatusMessage().size());
             }
         }
-
-        if (!registry_.GetStatusMessage().empty()) {
-            ImGui::Separator();
-            ImVec4 color = ImGui::GetStyleColorVec4(ImGuiCol_Text);
-            if (registry_.GetStatusSeverity() ==
-                EDITOR_PROJECT::EditorWorkspaceStatusSeverity::Warning) {
-                color = ImVec4(1.0f, 0.78f, 0.30f, 1.0f);
-            }
-            else if (registry_.GetStatusSeverity() ==
-                EDITOR_PROJECT::EditorWorkspaceStatusSeverity::Error) {
-                color = ImVec4(1.0f, 0.38f, 0.38f, 1.0f);
-            }
-            ImGui::TextColored(
-                color,
-                "%.*s",
-                static_cast<int>(
-                    registry_.GetStatusMessage().size()),
-                registry_.GetStatusMessage().data());
-        }
-        ImGui::End();
+        ui_->EndPanel();
     }
 
     void GameProjectEditorWorkspaceHost::DrawClosePrompt() {

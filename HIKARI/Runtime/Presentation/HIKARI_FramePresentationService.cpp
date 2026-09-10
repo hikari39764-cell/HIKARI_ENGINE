@@ -131,6 +131,12 @@ namespace HIKARI {
             }
 
             bool SynchronizeRenderQualityRuntime() {
+                auto& service = INTERNAL::GetRuntimeServiceState();
+                if (service.hasRequestedRenderQuality) {
+                    service.hasRequestedRenderQuality = false;
+                    if (IsGamePresentationActive())
+                        RENDER3D::SetRenderQualitySettings(service.requestedRenderQuality);
+                }
                 const RENDER3D::RenderQualitySettings requested =
                     RENDER3D::GetRenderQualitySettings();
                 if (!gRenderQualityRuntimeInitialized) {
@@ -152,7 +158,7 @@ namespace HIKARI {
                         previous,
                         effective);
 
-                if (changes.presentationChanged && !IsEditorHost() &&
+                if (changes.presentationChanged && IsGamePresentationActive() &&
                     !ApplyWindowPresentationSettings()) {
                     effective.windowSize = previous.windowSize;
                     effective.windowMode = previous.windowMode;
@@ -302,6 +308,9 @@ namespace HIKARI {
             }
             if (width == static_cast<int>(GFX::GetCurrentContext().backBufferWidth) &&
                 height == static_cast<int>(GFX::GetCurrentContext().backBufferHeight)) {
+                gLogicalScreenWidth = width;
+                gLogicalScreenHeight = height;
+                HIKARI::CAMERA::SetScreenSize(width, height);
                 ClearPendingWindowResize();
                 return true;
             }
@@ -343,13 +352,24 @@ namespace HIKARI {
             return true;
         }
 
+        bool QueueRenderQualitySettings(const RENDER3D::RenderQualitySettings& settings) {
+            if (!IsGamePresentationActive()) return false;
+            auto& state = INTERNAL::GetRuntimeServiceState();
+            state.requestedRenderQuality = settings;
+            state.hasRequestedRenderQuality = true;
+            return true;
+        }
+
         bool ApplyWindowPresentationSettings() {
+            auto* targetWindow = IsInProcessGamePresentationActive()
+                ? gGamePresentationController.GetGameWindow() : &gWindow;
+            if (targetWindow == nullptr) return false;
             const RENDER3D::RenderQualitySettings& settings =
                 RENDER3D::GetRenderQualitySettings();
             const RENDER3D::RenderResolution size =
                 RENDER3D::ResolveFixedRenderResolution(settings.windowSize);
-            const int windowWidth = size.width > 0 ? size.width : gWindow.Width();
-            const int windowHeight = size.height > 0 ? size.height : gWindow.Height();
+            const int windowWidth = size.width > 0 ? size.width : targetWindow->Width();
+            const int windowHeight = size.height > 0 ? size.height : targetWindow->Height();
 
             PLATFORM::WindowMode mode = PLATFORM::WindowMode::Windowed;
             switch (settings.windowMode) {
@@ -365,7 +385,7 @@ namespace HIKARI {
                 break;
             }
 
-            return gWindow.ApplyWindowMode(mode, windowWidth, windowHeight);
+            return targetWindow->ApplyWindowMode(mode, windowWidth, windowHeight);
         }
 
         FrameSceneResolutionPlan ResolveFrameSceneResolutionPlan() {
@@ -438,51 +458,89 @@ namespace HIKARI {
             CPU_PROFILE::BeginFrame(frame.frameIndex);
             CPU_PROFILE::ScopedCpuTimer cpuBeginFrame(
                 CPU_PROFILE::Pass::ServicesBeginFrame);
-            if (!SynchronizeRenderQualityRuntime()) {
-                return false;
+            {
+                static const auto qualityPass =
+                    CPU_PROFILE::RegisterDynamicPass("Frame.QualityAndResize");
+                CPU_PROFILE::ScopedDynamicCpuTimer qualityTimer(qualityPass);
+                if (!SynchronizeRenderQualityRuntime()) {
+                    return false;
+                }
+                if (!ApplyPendingWindowResize()) {
+                    return false;
+                }
             }
-            if (!ApplyPendingWindowResize()) {
-                return false;
+            {
+                static const auto resourcePass =
+                    CPU_PROFILE::RegisterDynamicPass("Frame.ResourceContexts");
+                CPU_PROFILE::ScopedDynamicCpuTimer resourceTimer(resourcePass);
+                UpdateGpuContexts();
             }
-            UpdateGpuContexts();
 
-            (void)RENDER3D::UPSCALING::BeginStreamlineFrame(frame.frameIndex);
+            {
+                static const auto streamlinePass =
+                    CPU_PROFILE::RegisterDynamicPass("Frame.StreamlineToken");
+                CPU_PROFILE::ScopedDynamicCpuTimer streamlineTimer(streamlinePass);
+                (void)RENDER3D::UPSCALING::BeginStreamlineFrame(frame.frameIndex);
+            }
             (void)RENDER3D::UPSCALING::BeginStreamlineReflexFrame();
 
-            if (!gGraphicsCore.BeginFrame(0.05f, 0.08f, 0.12f, 1.0f)) {
-                HIKARI_LOG_ERROR("D3D12 BeginFrame failed; skipping frame.");
-                return false;
+            {
+                static const auto graphicsPass =
+                    CPU_PROFILE::RegisterDynamicPass("Frame.GraphicsBegin");
+                CPU_PROFILE::ScopedDynamicCpuTimer graphicsTimer(graphicsPass);
+                if (!gGraphicsCore.BeginFrame(0.05f, 0.08f, 0.12f, 1.0f)) {
+                    HIKARI_LOG_ERROR("D3D12 BeginFrame failed; skipping frame.");
+                    return false;
+                }
             }
             gGpuFrameReady = true;
 
-            ApplyFrameSceneCaptureSize();
-            HIKARI::POST::PostSystem::UpdateCommonParams(frame.gameDt);
-            const RENDER3D::RenderFrameToken renderFrame =
-                RENDER3D::AllocateRenderFrameToken(
-                    frame.frameIndex,
-                    RENDER3D::kPrimaryRenderViewId);
-            if (!HIKARI::POST::PostSystem::BeginSceneCapture(
-                    renderFrame,
-                    GFX::GetCurrentContext().deviceGeneration)) {
-                HIKARI_LOG_ERROR(
-                    "Scene capture surface frame initialization failed.");
-                CloseFailedBeginFrame();
-                return false;
+            {
+                static const auto targetsPass =
+                    CPU_PROFILE::RegisterDynamicPass("Frame.SceneTargets");
+                CPU_PROFILE::ScopedDynamicCpuTimer targetsTimer(targetsPass);
+                ApplyFrameSceneCaptureSize();
+                HIKARI::POST::PostSystem::UpdateCommonParams(frame.gameDt);
+                const RENDER3D::RenderFrameToken renderFrame =
+                    RENDER3D::AllocateRenderFrameToken(
+                        frame.frameIndex,
+                        RENDER3D::kPrimaryRenderViewId);
+                if (!HIKARI::POST::PostSystem::BeginSceneCapture(
+                        renderFrame,
+                        GFX::GetCurrentContext().deviceGeneration)) {
+                    HIKARI_LOG_ERROR(
+                        "Scene capture surface frame initialization failed.");
+                    CloseFailedBeginFrame();
+                    return false;
+                }
             }
 
-            HIKARI::RENDERER::BeginFrame();
-            HIKARI::GAME_UI::BeginGameUiFrame();
+            {
+                static const auto uiPass =
+                    CPU_PROFILE::RegisterDynamicPass("Frame.UiSources");
+                CPU_PROFILE::ScopedDynamicCpuTimer uiTimer(uiPass);
+                HIKARI::RENDERER::BeginFrame();
+                HIKARI::GAME_UI::BeginGameUiFrame();
+                DX::DxRenderer::BeginFrame();
+            }
 
-            DX::DxRenderer::BeginFrame();
-            PLATFORM::Win32Window* inputWindow =
-                gGamePresentationController.GetGameWindow();
-            gInputService.SetExternalMouseWheel(
-                inputWindow != nullptr
-                    ? inputWindow->ConsumeMouseWheelDelta()
-                    : gWindow.ConsumeMouseWheelDelta());
-            gInputService.Update(frame.unscaledDt);
+            {
+                static const auto inputPass =
+                    CPU_PROFILE::RegisterDynamicPass("Frame.Input");
+                CPU_PROFILE::ScopedDynamicCpuTimer inputTimer(inputPass);
+                PLATFORM::Win32Window* inputWindow =
+                    gGamePresentationController.GetGameWindow();
+                gInputService.SetExternalMouseWheel(
+                    inputWindow != nullptr
+                        ? inputWindow->ConsumeMouseWheelDelta()
+                        : gWindow.ConsumeMouseWheelDelta());
+                gInputService.Update(frame.unscaledDt);
+            }
             if (RUNTIME::IEditorUiServices* editorUiServices =
                     RUNTIME::GetEditorUiServices()) {
+                static const auto editorUiPass =
+                    CPU_PROFILE::RegisterDynamicPass("Frame.EditorUiBegin");
+                CPU_PROFILE::ScopedDynamicCpuTimer editorUiTimer(editorUiPass);
                 editorUiServices->BeginFrame(
                     gWindow,
                     GFX::GetCurrentContext(),
@@ -558,8 +616,8 @@ namespace HIKARI {
                     GFX::GPU_PROFILE::Pass::PostResolve);
                 if (!HIKARI::POST::PostSystem::PrepareGameUiComposition(
                         editorViewport,
-                        gLogicalScreenWidth,
-                        gLogicalScreenHeight)) {
+                        editorViewport && gEditorGameViewportWidth > 0 ? gEditorGameViewportWidth : gLogicalScreenWidth,
+                        editorViewport && gEditorGameViewportHeight > 0 ? gEditorGameViewportHeight : gLogicalScreenHeight)) {
                     if (RecoverLastEditorPresentation(
                             editorViewport,
                             "Game UI composition preparation failed")) {
@@ -587,8 +645,8 @@ namespace HIKARI {
                     false);
                 if (!HIKARI::GAME_UI::RenderGameUiFrame(
                         HIKARI::TIME::GetFrameContext().frameIndex,
-                        gLogicalScreenWidth,
-                        gLogicalScreenHeight)) {
+                        HIKARI::POST::PostSystem::GetPresentationFrameResources().uiLogicalWidth,
+                        HIKARI::POST::PostSystem::GetPresentationFrameResources().uiLogicalHeight)) {
                     HIKARI_LOG_ERROR(
                         "Game project UI effect rendering failed.");
                 }
@@ -620,7 +678,8 @@ namespace HIKARI {
                             *presentation.hudlessColor,
                             *presentation.uiColorAndAlpha,
                             presentation.frameIndex,
-                            IsGamePresentationActive());
+                            IsGamePresentationActive(),
+                            presentation.sceneRect);
                 }
             }
 
@@ -634,6 +693,10 @@ namespace HIKARI {
             }
             gPresentationPrepared = true;
             return true;
+        }
+
+        bool RequestFrameCapture(const std::filesystem::path& output) {
+            return gGraphicsCore.RequestFrameCapture(output);
         }
 
         bool EndFrame() {

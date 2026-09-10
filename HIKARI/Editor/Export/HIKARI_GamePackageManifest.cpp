@@ -87,6 +87,8 @@ namespace HIKARI::EDITOR {
                 path,
                 "content/runtimepayload/assets/audio/");
             if (extension == ".sln" ||
+                extension == ".bak" || extension == ".tmp" || extension == ".log" ||
+                filename.ends_with("~") ||
                 extension == ".vcxproj" ||
                 extension == ".filters" ||
                 extension == ".cmake" ||

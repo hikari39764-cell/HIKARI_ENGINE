@@ -21,18 +21,18 @@ namespace HIKARI {
         kGameProjectFullscreenShaderEngineInterfaceId =
             "HIKARI.Project.Fullscreen";
     inline constexpr uint32_t
-        kGameProjectFullscreenShaderEngineInterfaceVersion = 1u;
+        kGameProjectFullscreenShaderEngineInterfaceVersion = 2u;
     inline constexpr const char*
         kGameProjectFullscreenShaderEngineInterfaceHash =
-            "7ac2e79351475fa2461b0b8cfe3d55b2da0844ad9db8d1a8d59f3ca4684d3cb5";
+            "0da689c9adb81cb84badc2064d9e3068746b1599d8071828641b5a7ddffd5b22";
     inline constexpr const char*
         kGameProjectFullscreenShaderRootLayoutId =
             "HIKARI.Project.Fullscreen.Root";
     inline constexpr uint32_t
-        kGameProjectFullscreenShaderRootLayoutVersion = 1u;
+        kGameProjectFullscreenShaderRootLayoutVersion = 2u;
     inline constexpr const char*
         kGameProjectFullscreenShaderRootLayoutHash =
-            "b23ee9dd42f7bb49230850bcb0dec1b3005231b38ad9a2f7f612470d111fa7e0";
+            "7eea12a765e2c8df37ef16230ee0af4c4d662c90c7a0a2975ed074290a18c6a5";
 
     namespace DETAIL {
 

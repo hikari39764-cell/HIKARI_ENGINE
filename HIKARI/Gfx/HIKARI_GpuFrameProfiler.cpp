@@ -33,6 +33,7 @@ namespace HIKARI::GFX::GPU_PROFILE {
             FrameSnapshot latest{};
             uint64_t timestampFrequency = 0;
             uint32_t writeSlotIndex = 0;
+            uint32_t groupDepth = 0;
             bool initialized = false;
             bool enabled = true;
             const char* unavailableReason = "";
@@ -237,6 +238,7 @@ namespace HIKARI::GFX::GPU_PROFILE {
         case Pass::ImGui: return "ImGui";
         case Pass::WaterVisibilityDepth: return "Water Visibility Depth";
         case Pass::StylizedClouds: return "Stylized Clouds";
+        case Pass::SceneCaptures: return "Scene Captures";
         case Pass::Count:
         default: return "";
         }
@@ -306,6 +308,7 @@ namespace HIKARI::GFX::GPU_PROFILE {
     }
 
     bool BeginPass(ID3D12GraphicsCommandList* cmd, Pass pass) {
+        if (gState.groupDepth > 0) return false;
         FrameSlot* slot = gState.currentSlot;
         if (!gState.enabled || !gState.initialized || slot == nullptr || cmd == nullptr || !IsValidPass(pass)) {
             return false;
@@ -353,6 +356,15 @@ namespace HIKARI::GFX::GPU_PROFILE {
         if (active_) {
             EndPass(cmd_, pass_);
         }
+    }
+
+    ScopedGpuTimerGroup::ScopedGpuTimerGroup(ID3D12GraphicsCommandList* cmd, Pass pass)
+        : timer_(cmd, pass) {
+        ++gState.groupDepth;
+    }
+
+    ScopedGpuTimerGroup::~ScopedGpuTimerGroup() {
+        if (gState.groupDepth > 0) --gState.groupDepth;
     }
 
 } // namespace HIKARI::GFX::GPU_PROFILE

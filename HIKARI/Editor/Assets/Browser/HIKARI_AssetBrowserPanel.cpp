@@ -73,7 +73,8 @@ void AssetBrowserPanel::DrawContents(AssetDatabase &assetDatabase,
                                      EditorSelection &selection,
                                      const AssetUsageSummary *usageSummary,
                                      AssetBrowserScope scope,
-                                     const AssetBrowserContext *context) const {
+                                     const AssetBrowserContext *context,
+                                     uint64_t usageRevision) const {
 #if defined(HIKARI_WITH_EDITOR)
   if (currentDirectory_.empty()) {
     currentDirectory_ = "Assets";
@@ -285,31 +286,12 @@ void AssetBrowserPanel::DrawContents(AssetDatabase &assetDatabase,
 
   const ImVec2 available = ImGui::GetContentRegionAvail();
   const bool showFolderTree = scope == AssetBrowserScope::Project;
-  const uint64_t recordsRevision =
-      assetDatabase.GetContentRevision();
-  std::vector<const AssetRecord *> records =
-      showFolderTree
-          ? assetDatabase.CollectInDirectory(currentDirectory_, recursive_)
-          : assetDatabase.CollectAll();
-  records.erase(
-      std::remove_if(records.begin(), records.end(),
-                     [&](const AssetRecord *record) {
-                       return !record ||
-                              !MatchesScope(*record, usageSummary, scope) ||
-                              !MatchesTypeFilter(*record, typeFilter_) ||
-                              !MatchesStateFilter(*record, stateFilter_) ||
-                              !MatchesSearch(*record, searchBuffer_.data());
-                     }),
-      records.end());
-
-  std::sort(records.begin(), records.end(),
-            [](const AssetRecord *lhs, const AssetRecord *rhs) {
-              if (!lhs || !rhs) {
-                return lhs < rhs;
-              }
-              return TEXT::ToLowerAsciiCopy(lhs->displayName) <
-                     TEXT::ToLowerAsciiCopy(rhs->displayName);
-            });
+  const auto updateCatalog = [&] {
+    catalogCache_.Update(assetDatabase,
+        AssetBrowserQuery{currentDirectory_, searchBuffer_.data(), scope,
+            typeFilter_, stateFilter_, recursive_}, usageSummary, usageRevision);
+  };
+  updateCatalog();
 
   if (showFolderTree) {
     const float treeWidth =
@@ -319,37 +301,42 @@ void AssetBrowserPanel::DrawContents(AssetDatabase &assetDatabase,
         "%s",
         TEXT::Localize("ui.assetBrowser.folders").c_str());
     ImGui::Separator();
-    for (const std::filesystem::path &directory :
-         assetDatabase.CollectDirectories()) {
-      const bool selected =
-          directory.lexically_normal().generic_string() ==
-          currentDirectory_.lexically_normal().generic_string();
-      const std::filesystem::path relative =
-          directory.lexically_relative("Assets");
-      int depth = 0;
-      if (!relative.empty() && relative != ".") {
-        depth =
-            static_cast<int>(std::distance(relative.begin(), relative.end()));
-      }
-      if (depth > 0) {
-        ImGui::Indent(static_cast<float>(depth) * 11.0f);
-      }
-      EDITOR::DrawFolderGlyph(ImVec2(15.0f, 15.0f));
-      ImGui::SameLine();
-      const std::string folderLabel =
-          directory == std::filesystem::path("Assets")
-              ? std::string("Assets")
-              : directory.filename().generic_string();
-      const std::string selectableLabel =
-          folderLabel + "##" + directory.generic_string();
-      if (ImGui::Selectable(selectableLabel.c_str(), selected)) {
-        currentDirectory_ = directory;
-      }
-      if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("%s", directory.generic_string().c_str());
-      }
-      if (depth > 0) {
-        ImGui::Unindent(static_cast<float>(depth) * 11.0f);
+    const auto& directories = catalogCache_.Directories();
+    ImGuiListClipper folderClipper;
+    folderClipper.Begin(static_cast<int>(directories.size()));
+    while (folderClipper.Step()) {
+      for (int index = folderClipper.DisplayStart; index < folderClipper.DisplayEnd; ++index) {
+        const auto& directory = directories[static_cast<size_t>(index)];
+        const bool selected =
+            directory.lexically_normal().generic_string() ==
+            currentDirectory_.lexically_normal().generic_string();
+        const std::filesystem::path relative =
+            directory.lexically_relative("Assets");
+        int depth = 0;
+        if (!relative.empty() && relative != ".") {
+          depth =
+              static_cast<int>(std::distance(relative.begin(), relative.end()));
+        }
+        if (depth > 0) {
+          ImGui::Indent(static_cast<float>(depth) * 11.0f);
+        }
+        EDITOR::DrawFolderGlyph(ImVec2(15.0f, 15.0f));
+        ImGui::SameLine();
+        const std::string folderLabel =
+            directory == std::filesystem::path("Assets")
+                ? std::string("Assets")
+                : directory.filename().generic_string();
+        const std::string selectableLabel =
+            folderLabel + "##" + directory.generic_string();
+        if (ImGui::Selectable(selectableLabel.c_str(), selected)) {
+          currentDirectory_ = directory;
+        }
+        if (ImGui::IsItemHovered()) {
+          ImGui::SetTooltip("%s", directory.generic_string().c_str());
+        }
+        if (depth > 0) {
+          ImGui::Unindent(static_cast<float>(depth) * 11.0f);
+        }
       }
     }
     ImGui::EndChild();
@@ -362,6 +349,9 @@ void AssetBrowserPanel::DrawContents(AssetDatabase &assetDatabase,
   } else {
     ImGui::TextUnformatted(ToScopeTitle(scope).c_str());
   }
+  updateCatalog();
+  const uint64_t recordsRevision = assetDatabase.GetContentRevision();
+  const auto& records = catalogCache_.Records();
   ImGui::SameLine();
   ImGui::TextDisabled(
       TEXT::Localize("ui.assetBrowser.assetsFormat").c_str(),
@@ -439,6 +429,7 @@ void AssetBrowserPanel::DrawContents(AssetDatabase &assetDatabase,
   (void)usageSummary;
   (void)scope;
   (void)context;
+  (void)usageRevision;
 #endif
 }
 

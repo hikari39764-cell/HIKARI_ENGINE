@@ -390,8 +390,15 @@ namespace HIKARI::RENDER3D::UPSCALING {
 
         HIKARI_LOG_INFO(
             std::string("[Streamline] swap-chain ") +
+            "hooked=" + (nativeSwapChain != nullptr &&
+                nativeSwapChain != swapChain ? "yes" : "no") + " " +
             describe("proxy", swapChain) + " " +
             describe("native", nativeSwapChain));
+        if (nativeSwapChain == swapChain) {
+            HIKARI_LOG_ERROR(
+                "[Streamline] swap chain bypasses the interposer; "
+                "DLSS-G Present hooks are unavailable. Check graphics library link order.");
+        }
 #else
         (void)swapChain;
 #endif

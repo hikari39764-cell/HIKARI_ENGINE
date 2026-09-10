@@ -164,7 +164,59 @@ namespace HIKARI::POST {
         return globalChain_.HasAny();
     }
 
+    bool PostProcessingStage::SubmitProfileParameter(std::string_view profileId, uint32_t index,
+        uint32_t channelMask, const DirectX::XMFLOAT4& value,
+        int32_t priority, uint64_t sourceId) {
+        if (profileId.empty() || profileId != activeGlobalProfileId_ || index >= 16u ||
+            channelMask == 0u || (channelMask & ~15u) != 0u || sourceId == 0u) return false;
+        const float values[]{value.x, value.y, value.z, value.w};
+        for (uint32_t channel = 0; channel < 4u; ++channel)
+            if ((channelMask & (1u << channel)) && !std::isfinite(values[channel])) return false;
+        const auto frame = TIME::GetFrameContext().frameIndex;
+        if (profileOverrideFrame_ != frame || profileOverrideId_ != profileId) {
+            profileOverrides_ = {};
+            profileOverrideFrame_ = frame;
+            profileOverrideId_ = profileId;
+        }
+        for (uint32_t channel = 0; channel < 4u; ++channel) {
+            if (!(channelMask & (1u << channel))) continue;
+            auto& selected = profileOverrides_[index][channel];
+            if (selected.sourceId == 0u || priority > selected.priority ||
+                (priority == selected.priority && sourceId <= selected.sourceId))
+                selected = {values[channel], priority, sourceId};
+        }
+        return true;
+    }
+
+    CommonParams PostProcessingStage::ResolveGlobalFrameParams() const noexcept {
+        CommonParams params = commonParams_;
+        if (profileOverrideFrame_ != TIME::GetFrameContext().frameIndex ||
+            profileOverrideId_ != activeGlobalProfileId_) return params;
+        for (size_t index = 0; index < profileOverrides_.size(); ++index) {
+            auto& value = params.user[index];
+            float* channels[]{&value.x, &value.y, &value.z, &value.w};
+            for (size_t channel = 0; channel < 4; ++channel)
+                if (profileOverrides_[index][channel].sourceId)
+                    *channels[channel] = profileOverrides_[index][channel].value;
+        }
+        return params;
+    }
+
+    void PostProcessingStage::GetRadialScreenWarp(
+        float& curvature, float& strength) const noexcept {
+        curvature = strength = 0.0f;
+        if (activeGlobalProfileId_ != "CRTDY" || !globalChain_.HasAny()) return;
+        const CommonParams params = ResolveGlobalFrameParams();
+        const float value = params.user[0].x * params.intensity;
+        if (!std::isfinite(params.user[0].y) || !std::isfinite(value)) return;
+        curvature = (std::max)(params.user[0].y, 0.0f);
+        strength = std::clamp(value, 0.0f, 1.0f);
+    }
+
     void PostProcessingStage::ClearGlobalProfile() {
+        profileOverrides_ = {};
+        profileOverrideId_.clear();
+        profileOverrideFrame_ = (std::numeric_limits<uint64_t>::max)();
         activeGlobalProfileId_.clear();
         activeGlobalProfile_ = PostProfile{};
         globalChain_.Clear();
@@ -903,7 +955,8 @@ namespace HIKARI::POST {
             sunGlareDebugStats_.requested = sunGlareFrame_.enabled;
         }
         if (!debugOutput && globalChain_.HasAny()) {
-            output = globalChain_.Execute(*output, quad, commonParams_);
+            const CommonParams frameParams = ResolveGlobalFrameParams();
+            output = globalChain_.Execute(*output, quad, frameParams);
         }
         if (!debugOutput) {
             (void)automaticExposureMeter_.QueueMeasurement(*output);
@@ -927,7 +980,11 @@ namespace HIKARI::POST {
         if (bloom && bloom->GetResource()) {
             output->Rebind();
             if (quad.SetOutputFormat(output->GetFormat())) {
-                quad.DrawBlended(bloom->GetSrvHeap(), bloom->GetSrvGpu(), BlendOption::Additive);
+                float bloomCurvature = 0.0f;
+                float bloomStrength = 0.0f;
+                GetRadialScreenWarp(bloomCurvature, bloomStrength);
+                quad.DrawBlended(bloom->GetSrvHeap(), bloom->GetSrvGpu(), BlendOption::Additive,
+                    bloomCurvature * bloomStrength);
             }
             output->EndCapture();
         }
@@ -1002,10 +1059,13 @@ namespace HIKARI::POST {
             displayColor.whiteBalanceB,
             displayColor.contrast
         };
+        float radialCurvature = 0.0f;
+        float radialStrength = 0.0f;
+        GetRadialScreenWarp(radialCurvature, radialStrength);
         toneMappingParams_.user[2] = {
             displayColor.saturation,
-            0.0f,
-            0.0f,
+            radialCurvature,
+            radialStrength,
             0.0f
         };
         toneMappingEffect_->ApplyCommonParams(toneMappingParams_);

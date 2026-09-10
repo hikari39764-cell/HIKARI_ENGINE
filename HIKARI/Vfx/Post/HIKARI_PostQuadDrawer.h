@@ -1,4 +1,5 @@
 #pragma once
+#include "Render3D/ScreenSpace/HIKARI_ScreenReadability.h"
 #include <d3d12.h>
 #include <wrl.h>
 #include <cstdint>
@@ -36,8 +37,9 @@ namespace HIKARI {
             bool SetPixelShader(ID3DBlob* psBlob);
             bool SetPixelShader(std::span<const uint8_t> bytecode);
             void SetConstantBuffer(D3D12_GPU_VIRTUAL_ADDRESS cbv0);
+            void SetScreenReadability(const RENDER3D::ScreenReadabilityFrame& frame) { readability_ = frame; }
             void DrawFullscreen();
-            void DrawBlended(ID3D12DescriptorHeap* srvHeap, D3D12_GPU_DESCRIPTOR_HANDLE srvGpu, BlendOption mode = BlendOption::Alpha);
+            void DrawBlended(ID3D12DescriptorHeap* srvHeap, D3D12_GPU_DESCRIPTOR_HANDLE srvGpu, BlendOption mode = BlendOption::Alpha, float readabilityCurvature = -1.0f);
 
         private:
             struct PipelineSet
@@ -64,6 +66,7 @@ namespace HIKARI {
             bool EnsurePipelineSet(DXGI_FORMAT format);
 
         private:
+            RENDER3D::ScreenReadabilityFrame readability_{};
             bool initialized_ = false;
             Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSig_;
             Microsoft::WRL::ComPtr<ID3DBlob> vsBlob_;

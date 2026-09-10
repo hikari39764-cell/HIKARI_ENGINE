@@ -75,6 +75,14 @@ namespace HIKARI::EDITOR {
                 bool produceEditorUiFrame) override;
             void Shutdown(
                 PLATFORM::Win32Window& window) noexcept override;
+            bool IsGameViewportPlayInputActive() const noexcept override {
+                return EDITOR::IsGameViewportPlayInputActive();
+            }
+            bool TryGetGameViewportPointer(
+                INPUT::InputPointerState& pointer,
+                uint32_t& width, uint32_t& height) const noexcept override {
+                return EDITOR::TryGetGameViewportPointer(pointer, width, height);
+            }
 
         private:
             void ConfigureContext();

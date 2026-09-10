@@ -18,11 +18,10 @@ namespace HIKARI::EDITOR::ASSET_INSPECTOR {
 std::string
 ToClusteredGeometryArtifactStateText(ClusteredGeometryArtifactState state);
 
-void DrawClusteredGeometryArtifactInfo(const AssetDatabase &assetDatabase,
-                                       const AssetRecord &record);
+void DrawClusteredGeometryArtifactInfo(const ClusteredGeometryArtifactInfo &info);
 
-void DrawModelDiagnostics(const AssetDatabase &assetDatabase,
-                          const AssetRecord &record);
+void DrawModelDiagnostics(const ClusteredGeometryArtifactInfo &info,
+                          const nlohmann::json &report);
 
 void CopyToBuffer(const std::string &text, char *buffer, size_t bufferSize);
 

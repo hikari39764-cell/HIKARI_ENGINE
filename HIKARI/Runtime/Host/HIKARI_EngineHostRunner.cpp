@@ -1,4 +1,5 @@
 #include "Runtime/Host/HIKARI_EngineHostRunner.h"
+#include "Core/Text/HIKARI_UtfPath.h"
 
 #include <filesystem>
 
@@ -20,7 +21,9 @@
 #include "Runtime/App/HIKARI_IHostApplication.h"
 #include "Runtime/HIKARI_RuntimeLaunchConfig.h"
 #include "Runtime/Host/HIKARI_HostBootstrapConfig.h"
+#include "Runtime/Host/HIKARI_IEditorUiServices.h"
 #include "Runtime/Presentation/HIKARI_FramePresentationService.h"
+#include "Runtime/Presentation/HIKARI_GamePresentationService.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
 
 namespace HIKARI::RUNTIME {
@@ -249,8 +252,8 @@ namespace HIKARI::RUNTIME {
         const bool openingAnimationActive =
             hasOpeningAssets &&
             openingAnimation.Load(
-                openingAtlas.generic_string(),
-                openingSkeleton.generic_string());
+                TEXT::PathToUtf8(openingAtlas),
+                TEXT::PathToUtf8(openingSkeleton));
         if (openingAnimationActive) {
             openingAnimation.enableCamera = false;
             openingAnimation.SetAnimation("op", false);
@@ -268,6 +271,11 @@ namespace HIKARI::RUNTIME {
             return -1;
         }
 
+        // Explicit diagnostic launch options; no automatic screenshots in normal play.
+        const auto captureOutput=ReadRuntimeCommandLinePath(L"--capture-output");
+        const auto captureFrame=ReadRuntimeCommandLineUint32(L"--capture-frame").value_or(180u);
+        const auto exitFrame=ReadRuntimeCommandLineUint32(L"--exit-after-frame");
+        uint64_t presentedFrames=0;
         while (SERVICES::PumpMessages()) {
             application.UpdateHostSessions();
             if (application.ShouldExitHost()) {
@@ -357,6 +365,17 @@ namespace HIKARI::RUNTIME {
                 application.RenderHostUi();
             }
 
+            bool pointerOwned = SERVICES::IsStandaloneGameHost() ||
+                SERVICES::IsInProcessGamePresentationActive();
+            if (!pointerOwned) {
+                const auto* editor = GetEditorUiServices();
+                INPUT::InputPointerState pointer{};
+                uint32_t width{}, height{};
+                pointerOwned = editor &&
+                    editor->TryGetGameViewportPointer(pointer, width, height);
+            }
+            SERVICES::GetInputService().ApplyPointerCursorVisibility(pointerOwned);
+
             const INPUT::InputSnapshot& input =
                 SERVICES::GetInputSnapshot();
             if (SERVICES::ShouldProduceEditorUiFrame() &&
@@ -366,12 +385,17 @@ namespace HIKARI::RUNTIME {
                     !SERVICES::IsEditorUIEnabled());
             }
 
+            ++presentedFrames;
+            if(captureOutput && presentedFrames==captureFrame)
+                (void)SERVICES::RequestFrameCapture(*captureOutput);
             if (!SERVICES::EndFrame()) {
                 break;
             }
             if (application.ShouldExitHost()) {
                 break;
             }
+
+            if(exitFrame && presentedFrames>=*exitFrame)break;
 
             if (application.IsWindowedHostSessionRunning() &&
                 input.IsPressed(INPUT::ActionIds::StopPlay)) {

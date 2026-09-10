@@ -174,6 +174,8 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 context.surfaceReceipt = surfaceReceipt;
             }
             context.camera = &view.cameraFrame->camera;
+            context.screenReadability = ProjectScreenReadability(
+                view.screenReadability, context.camera->GetViewProj());
             context.environment = &environment;
             context.assetRegistry = view.assetRegistry;
             context.projectRenderExtensions = view.projectRenderExtensions;
@@ -306,6 +308,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
 
         const RenderFrameContext frame =
             BuildRenderFrameContext(graphics, view, environment);
+        POST::PostSystem::SetScreenReadability(frame.screenReadability);
         if (frame.graphics.cmdList == nullptr) {
             return false;
         }

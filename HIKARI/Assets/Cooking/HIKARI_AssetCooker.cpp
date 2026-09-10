@@ -12,12 +12,14 @@
 #include "Assets/Formats/HIKARI_HshadercFormat.h"
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetUsageAnalyzer.h"
+#include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingAsset.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
 #include "Assets/Shader/Internal/HIKARI_ShaderArtifactValidation.h"
 #include "Core/Content/HIKARI_EngineContentContext.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
+#include "Core/Text/HIKARI_UtfPath.h"
 #include "Gameplay/Dialogue/HIKARI_DialogueProjectStyle.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
 #include "Project/HIKARI_ProjectDescriptor.h"
@@ -32,6 +34,8 @@ namespace HIKARI::ASSETS::COOKING {
         struct CookPlan {
             std::unordered_set<std::string> assetGuids{};
             std::unordered_set<std::string> sceneGuids{};
+            std::unordered_map<std::string,
+                std::vector<AssetDependencyDesc>> sourceDependencies{};
             size_t missingReferenceCount = 0u;
         };
 
@@ -155,6 +159,8 @@ namespace HIKARI::ASSETS::COOKING {
                     TEXT::ToLowerAsciiCopy(
                         relative.generic_string());
                 if (relative.filename() == ".gitkeep" ||
+                    relativeKey.ends_with(".bak") || relativeKey.ends_with(".tmp") ||
+                    relativeKey.ends_with(".log") || relativeKey.ends_with("~") ||
                     relativeKey.ends_with(
                         ".hikari.asset.json")) {
                     continue;
@@ -461,6 +467,62 @@ namespace HIKARI::ASSETS::COOKING {
                 sourcePath).lexically_normal();
         }
 
+        bool CollectSourceCookDependencies(
+            const AssetRecord& record,
+            const std::filesystem::path& projectRoot,
+            AssetDatabase& assetDatabase,
+            CookPlan& plan,
+            std::string& outMessage) {
+
+            if (record.type != AssetType::ModelMaterialBinding) {
+                return true;
+            }
+            std::filesystem::path sourcePath{};
+            if (!ResolveContainedFilePath(
+                    projectRoot, record.sourcePath, sourcePath,
+                    outMessage)) {
+                return false;
+            }
+            ASSETS::MODELS::ModelMaterialBindingAssetData data{};
+            std::string error{};
+            if (!ASSETS::MODELS::LoadModelMaterialBindingAsset(
+                    sourcePath, data, error)) {
+                outMessage = "Could not read model material bindings: " +
+                    TEXT::PathToUtf8(record.sourcePath) + ": " + error;
+                return false;
+            }
+            std::vector<AssetDependencyDesc> dependencies{};
+            for (const auto& dependency :
+                 ASSETS::MODELS::CollectModelMaterialBindingDependencies(data)) {
+                const AssetRecord* dependencyRecord =
+                    assetDatabase.FindByGuid(dependency.assetGuid);
+                const AssetType expectedType = dependency.kind ==
+                    ASSETS::MODELS::ModelMaterialBindingDependencyKind::Model
+                    ? AssetType::Model : AssetType::Material;
+                if (dependencyRecord == nullptr ||
+                    dependencyRecord->type != expectedType) {
+                    outMessage = "Missing or invalid " + dependency.role +
+                        " dependency of " + TEXT::PathToUtf8(record.sourcePath) +
+                        ": " + dependency.assetGuid.value;
+                    return false;
+                }
+                dependencies.push_back(AssetDependencyDesc{
+                    dependency.assetGuid, {}, dependency.role });
+            }
+            plan.sourceDependencies.insert_or_assign(
+                record.guid.value, std::move(dependencies));
+            return true;
+        }
+
+        const std::vector<AssetDependencyDesc>& CookDependencies(
+            const AssetRecord& record,
+            const CookPlan& plan) {
+
+            const auto it = plan.sourceDependencies.find(record.guid.value);
+            return it != plan.sourceDependencies.end()
+                ? it->second : record.artifactManifest.dependencies;
+        }
+
         bool BuildCookPlan(
             const AssetCookOptions& options,
             AssetDatabase& assetDatabase,
@@ -498,6 +560,11 @@ namespace HIKARI::ASSETS::COOKING {
                         IsValidAssetGuid(record->guid.value)) {
                         plan.assetGuids.insert(
                             record->guid.value);
+                        if (!CollectSourceCookDependencies(
+                                *record, options.projectRoot, assetDatabase,
+                                plan, outMessage)) {
+                            return false;
+                        }
                     }
                 }
                 outPlan = std::move(plan);
@@ -523,6 +590,11 @@ namespace HIKARI::ASSETS::COOKING {
                 [&](const AssetRecord* record) {
                     if (record == nullptr ||
                         !IsValidAssetGuid(record->guid.value)) {
+                        if (outMessage.empty()) {
+                            outMessage = record
+                                ? "Asset has no valid metadata. Import it before exporting: " + TEXT::PathToUtf8(record->sourcePath)
+                                : "A referenced asset record is missing.";
+                        }
                         ++plan.missingReferenceCount;
                         return;
                     }
@@ -576,13 +648,18 @@ namespace HIKARI::ASSETS::COOKING {
                         assetDatabase.FindByGuid(
                             AssetGuid{ usedGuid });
                     if (usedRecord == nullptr) {
-                        ++plan.missingReferenceCount;
-                        continue;
+                        outMessage = "Missing scene asset record: " + usedGuid;
+                        return false;
                     }
                     queueRecord(usedRecord);
                 }
                 plan.missingReferenceCount +=
                     usage.missingReferences.size();
+                if (!usage.missingReferences.empty()) {
+                    const auto& missing = usage.missingReferences.front();
+                    outMessage = "Missing scene asset: " + missing.assetId + " (" + missing.owner + ", " + missing.role + ").";
+                    return false;
+                }
             }
 
             const std::vector<const AssetRecord*> allRecords =
@@ -649,7 +726,8 @@ namespace HIKARI::ASSETS::COOKING {
                     queueRecord(portraitRecord);
                 }
             }
-            else if (dialogueStyleError) {
+            else if (dialogueStyleError &&
+                     dialogueStyleError != std::errc::no_such_file_or_directory) {
                 outMessage =
                     "Could not inspect dialogue UI style while building "
                     "the cook plan: " + dialogueStyleError.message();
@@ -665,12 +743,17 @@ namespace HIKARI::ASSETS::COOKING {
                     assetDatabase.FindByGuid(
                         AssetGuid{ guid });
                 if (record == nullptr) {
-                    ++plan.missingReferenceCount;
-                    continue;
+                    outMessage = "Missing dependency record: " + guid;
+                    return false;
                 }
 
+                if (!CollectSourceCookDependencies(
+                        *record, options.projectRoot, assetDatabase,
+                        plan, outMessage)) {
+                    return false;
+                }
                 for (const AssetDependencyDesc& dependency :
-                     record->artifactManifest.dependencies) {
+                     CookDependencies(*record, plan)) {
                     if (ASSETS::SEMANTICS::
                             IsSourceOnlyAssetDependencyRole(
                                 dependency.role)) {
@@ -689,13 +772,15 @@ namespace HIKARI::ASSETS::COOKING {
                                 dependency.path);
                     }
                     if (dependencyRecord == nullptr) {
-                        ++plan.missingReferenceCount;
-                        continue;
+                        outMessage = "Missing dependency of " + TEXT::PathToUtf8(record->sourcePath) +
+                            ": " + dependency.guid.value + " " + dependency.path + " (" + dependency.role + ").";
+                        return false;
                     }
                     queueRecord(dependencyRecord);
                 }
             }
 
+            if (plan.missingReferenceCount != 0u) return false;
             outPlan = std::move(plan);
             return true;
         }
@@ -762,7 +847,7 @@ namespace HIKARI::ASSETS::COOKING {
                 if (!line.empty() && line.back() == '\r') {
                     line.pop_back();
                 }
-                const std::filesystem::path pagePath = line;
+                const std::filesystem::path pagePath = TEXT::PathFromUtf8(line);
                 const std::string extension =
                     TEXT::ToLowerAsciiCopy(
                         pagePath.extension().string());
@@ -824,6 +909,11 @@ namespace HIKARI::ASSETS::COOKING {
             }
 
             if (!CopyDirectory(
+                    settingsSource / "Content",
+                    settingsDestination / "Content",
+                    fileCount,
+                    outMessage) ||
+                !CopyDirectory(
                     settingsSource / "Input",
                     settingsDestination / "Input",
                     fileCount,
@@ -1099,6 +1189,11 @@ namespace HIKARI::ASSETS::COOKING {
         }
         result.missingReferenceCount =
             plan.missingReferenceCount;
+        if (result.missingReferenceCount != 0u) {
+            result.message = "Export contains " + std::to_string(result.missingReferenceCount) +
+                " unresolved asset reference(s). Repair references before exporting.";
+            return result;
+        }
 
         std::vector<std::string> assetGuids(
             plan.assetGuids.begin(),
@@ -1114,6 +1209,10 @@ namespace HIKARI::ASSETS::COOKING {
                 runtimeArtifactsByGuid{};
 
         for (const std::string& guid : assetGuids) {
+            if (options.progress && !options.progress("Validating asset " + guid, 0.0f)) {
+                result.message = "Export cancelled. The previous package was preserved.";
+                return result;
+            }
             const AssetRecord* record =
                 assetDatabase.FindByGuid(
                     AssetGuid{ guid });
@@ -1129,6 +1228,13 @@ namespace HIKARI::ASSETS::COOKING {
                 result.message =
                     "Authored asset source path is unsafe: " +
                     record->sourcePath.generic_string();
+                return result;
+            }
+
+            if (!record->sourceExists || (RequiresPrimaryArtifact(record->type) &&
+                (record->importOutdated || record->artifactMissing || !record->lastImportSucceeded))) {
+                result.message = "Asset needs a successful, current import: " +
+                    TEXT::PathToUtf8(record->sourcePath) + " (" + guid + "). " + record->lastImportMessage;
                 return result;
             }
 
@@ -1181,6 +1287,12 @@ namespace HIKARI::ASSETS::COOKING {
         manifest.assets.reserve(assetGuids.size());
 
         for (const std::string& guid : assetGuids) {
+            if (options.progress && !options.progress("Copying asset " + guid,
+                0.1f + 0.8f * static_cast<float>(manifest.assets.size()) /
+                (std::max)(size_t{1}, assetGuids.size()))) {
+                result.message = "Export cancelled. The previous package was preserved.";
+                return result;
+            }
             const AssetRecord* sourceRecord =
                 assetDatabase.FindByGuid(
                     AssetGuid{ guid });
@@ -1205,7 +1317,7 @@ namespace HIKARI::ASSETS::COOKING {
 
             std::vector<AssetDependencyDesc> dependencies{};
             for (AssetDependencyDesc dependency :
-                 sourceRecord->artifactManifest.dependencies) {
+                 CookDependencies(*sourceRecord, plan)) {
                 if (ASSETS::SEMANTICS::
                         IsSourceOnlyAssetDependencyRole(
                             dependency.role)) {
@@ -1318,6 +1430,11 @@ namespace HIKARI::ASSETS::COOKING {
                 "Published by HIKARI AssetCooker";
             manifest.assets.push_back(
                 std::move(cookedRecord));
+        }
+
+        if (options.progress && !options.progress("Copying runtime settings and payloads", 0.92f)) {
+            result.message = "Export cancelled. The previous package was preserved.";
+            return result;
         }
 
         if (!CopyFile(

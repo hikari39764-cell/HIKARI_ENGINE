@@ -104,7 +104,20 @@ namespace HIKARI::POST {
         return processingStage_.SetGlobalProfile(id, values);
     }
     void PostSystem::ClearGlobalProfile() { processingStage_.ClearGlobalProfile(); }
+    bool PostSystem::SubmitProfileParameter(std::string_view profileId, uint32_t index,
+        uint32_t channelMask, const DirectX::XMFLOAT4& value,
+        int32_t priority, uint64_t sourceId) {
+        return initialized_ && processingStage_.SubmitProfileParameter(
+            profileId, index, channelMask, value, priority, sourceId);
+    }
+    bool PostSystem::GetRadialScreenWarp(float& curvature, float& strength) noexcept {
+        curvature = strength = 0.0f;
+        if (!initialized_) return false;
+        processingStage_.GetRadialScreenWarp(curvature, strength);
+        return true;
+    }
     void PostSystem::SetBloomSettings(const BloomSettings& settings) { processingStage_.SetBloomSettings(settings); }
+    void PostSystem::SetScreenReadability(const RENDER3D::ScreenReadabilityFrame& frame) { quad_.SetScreenReadability(frame); }
     void PostSystem::SetToneMappingSettings(const ToneMappingSettings& settings) { processingStage_.SetToneMappingSettings(settings); }
     void PostSystem::SetFxaaSettings(const FxaaSettings& settings) { processingStage_.SetFxaaSettings(settings); }
     void PostSystem::SetSunGlareFrame(const SunGlareFrame& frame) { processingStage_.SetSunGlareFrame(frame); }
@@ -221,6 +234,7 @@ namespace HIKARI::POST {
     bool PostSystem::BeginSceneCapture(
         RENDER3D::RenderFrameToken frame,
         uint64_t deviceGeneration) {
+        quad_.SetScreenReadability({});
         if (!frame.IsValid() ||
             frame.viewId != RENDER3D::kPrimaryRenderViewId ||
             frame.frameIndex != TIME::GetFrameContext().frameIndex ||
@@ -678,7 +692,8 @@ namespace HIKARI::POST {
             outputHeight,
             logicalWidth,
             logicalHeight,
-            TIME::GetFrameContext().frameIndex);
+            TIME::GetFrameContext().frameIndex,
+            !editorViewport);
     }
 
     bool PostSystem::FinalizeGameUiComposition(bool editorViewport) {

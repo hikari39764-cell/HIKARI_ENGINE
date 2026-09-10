@@ -19,6 +19,7 @@ public:
     virtual void ClearMouseCaptureRegion() = 0;
     virtual MouseCaptureMode GetMouseCaptureMode() const noexcept = 0;
     virtual void SetExternalMouseWheel(float delta) = 0;
+    virtual void SetPointerCursorVisible(bool visible) = 0;
     virtual void Reset() = 0;
     virtual void Poll(InputDeviceState& out) = 0;
     virtual float ReadControl(

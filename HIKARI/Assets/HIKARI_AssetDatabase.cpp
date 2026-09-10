@@ -1,5 +1,6 @@
 #include "HIKARI_AssetDatabase.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
+#include "Core/Text/HIKARI_UtfPath.h"
 
 #include <algorithm>
 #include <cctype>
@@ -54,7 +55,7 @@ namespace HIKARI {
         }
 
         bool IsMetaPath(const std::filesystem::path& path) {
-            return EndsWith(TEXT::ToLowerAsciiCopy(path.filename().string()), kSourceMetaSuffix);
+            return EndsWith(TEXT::ToLowerAsciiCopy(TEXT::PathToUtf8(path.filename())), kSourceMetaSuffix);
         }
 
         std::filesystem::path MakeSourceMetaPath(
@@ -65,8 +66,8 @@ namespace HIKARI {
                 return {};
             }
 
-            std::filesystem::path metaPath = sourceMetaRoot / relativeSource.parent_path();
-            metaPath /= relativeSource.filename().string() + std::string(kSourceMetaSuffix);
+            std::filesystem::path metaPath = sourceMetaRoot / relativeSource;
+            metaPath += kSourceMetaSuffix;
             return metaPath.lexically_normal();
         }
 
@@ -211,7 +212,7 @@ namespace HIKARI {
                 const std::string value = pipelineSettings.is_object()
                     ? pipelineSettings.value(key, std::string(fallback))
                     : std::string(fallback);
-                return PROJECT_PATHS::ResolveProjectPath(projectRoot_, value);
+                return PROJECT_PATHS::ResolveProjectPath(projectRoot_, TEXT::PathFromUtf8(value));
             };
 
         assetsRoot_ = resolvePipelinePath("assetsRoot", "Assets");
@@ -231,7 +232,7 @@ namespace HIKARI {
         if (!cookedContent_) {
             HIKARI_LOG_ERROR(
                 "[AssetDatabase] Shipping requires " +
-                cookedManifestPath_.generic_string());
+                TEXT::PathToUtf8(cookedManifestPath_));
             projectRoot_.clear();
             assetsRoot_.clear();
             libraryRoot_.clear();
@@ -245,7 +246,7 @@ namespace HIKARI {
         if (cookedContent_) {
             HIKARI_LOG_INFO(
                 "[AssetDatabase] cooked content mode: " +
-                cookedManifestPath_.generic_string());
+                TEXT::PathToUtf8(cookedManifestPath_));
             return true;
         }
 
@@ -390,7 +391,7 @@ namespace HIKARI {
 
         std::error_code ec{};
         if (!std::filesystem::exists(assetsRoot_, ec)) {
-            HIKARI_LOG_WARN("[AssetDatabase] Assets root missing: " + assetsRoot_.generic_string());
+            HIKARI_LOG_WARN("[AssetDatabase] Assets root missing: " + TEXT::PathToUtf8(assetsRoot_));
             return false;
         }
 
@@ -425,7 +426,7 @@ namespace HIKARI {
                         record.guid.value;
                     record.duplicateGuid = true;
                     record.lastImportMessage = "[AssetDatabase] duplicate GUID: " + record.guid.value;
-                    HIKARI_LOG_ERROR(record.lastImportMessage + " source=" + record.sourcePath.generic_string());
+                    HIKARI_LOG_ERROR(record.lastImportMessage + " source=" + TEXT::PathToUtf8(record.sourcePath));
                 } else {
                     recordsByGuid_[record.guid.value] = index;
                 }
@@ -444,7 +445,7 @@ namespace HIKARI {
         for (; !ec && it != end; it.increment(ec)) {
             const std::filesystem::directory_entry& entry = *it;
             if (entry.is_directory(ec)) {
-                if (IsIgnoredDirectoryName(entry.path().filename().string())) {
+                if (IsIgnoredDirectoryName(TEXT::PathToUtf8(entry.path().filename()))) {
                     it.disable_recursion_pending();
                     continue;
                 }
@@ -513,7 +514,7 @@ namespace HIKARI {
                  record.artifactManifest.artifacts) {
                 ec.clear();
                 if (!std::filesystem::is_regular_file(
-                        projectRoot_ / artifact.path,
+                        projectRoot_ / TEXT::PathFromUtf8(artifact.path),
                         ec) ||
                     ec) {
                     HIKARI_LOG_ERROR(
@@ -530,7 +531,7 @@ namespace HIKARI {
                     record.artifactManifest.artifacts.empty()) {
                     HIKARI_LOG_ERROR(
                         "[AssetDatabase] cooked payload missing: " +
-                        record.sourcePath.generic_string());
+                        TEXT::PathToUtf8(record.sourcePath));
                 }
                 records_.clear();
                 directories_.clear();
@@ -595,7 +596,7 @@ namespace HIKARI {
 
         if (!record->sourceExists) {
             AssetImportResult result{};
-            result.message = "[AssetDatabase] source missing: " + record->sourcePath.generic_string();
+            result.message = "[AssetDatabase] source missing: " + TEXT::PathToUtf8(record->sourcePath);
             WriteImportReport(*record, result);
             RefreshRecordState(*record);
             return false;
@@ -625,7 +626,7 @@ namespace HIKARI {
         std::filesystem::create_directories(context.importedDirectory, ec);
         if (ec) {
             AssetImportResult result{};
-            result.message = "[AssetDatabase] failed to create imported directory: " + context.importedDirectory.generic_string();
+            result.message = "[AssetDatabase] failed to create imported directory: " + TEXT::PathToUtf8(context.importedDirectory);
             WriteImportReport(*record, result);
             RefreshRecordState(*record);
             return false;
@@ -637,11 +638,11 @@ namespace HIKARI {
         } catch (const std::exception& ex) {
             result.success = false;
             result.message = std::string("[AssetDatabase] importer exception: ") + ex.what();
-            HIKARI_LOG_ERROR(result.message + " source=" + record->sourcePath.generic_string() + " guid=" + record->guid.value);
+            HIKARI_LOG_ERROR(result.message + " source=" + TEXT::PathToUtf8(record->sourcePath) + " guid=" + record->guid.value);
         } catch (...) {
             result.success = false;
             result.message = "[AssetDatabase] importer exception: unknown";
-            HIKARI_LOG_ERROR(result.message + " source=" + record->sourcePath.generic_string() + " guid=" + record->guid.value);
+            HIKARI_LOG_ERROR(result.message + " source=" + TEXT::PathToUtf8(record->sourcePath) + " guid=" + record->guid.value);
         }
         std::string commitMessage{};
         return CommitPreparedImport(
@@ -674,15 +675,15 @@ namespace HIKARI {
 
         if (result.success) {
             record->meta.importerVersion = importerVersion;
-            record->meta.sourcePath = record->sourcePath.generic_string();
+            record->meta.sourcePath = TEXT::PathToUtf8(record->sourcePath);
             record->meta.displayName = record->displayName.empty()
-                ? record->sourcePath.stem().string()
+                ? TEXT::PathToUtf8(record->sourcePath.stem())
                 : record->displayName;
             record->artifactManifest.manifestVersion =
                 kAssetArtifactManifestVersion;
             record->artifactManifest.guid = record->guid;
             record->artifactManifest.sourcePath =
-                record->sourcePath.generic_string();
+                TEXT::PathToUtf8(record->sourcePath);
             record->artifactManifest.importerId =
                 record->meta.importerId;
             record->artifactManifest.importerVersion =
@@ -763,8 +764,8 @@ namespace HIKARI {
             artifacts.push_back(ASSETS::SEMANTICS::MakeAssetArtifact(
                 ASSETS::SEMANTICS::AssetArtifactKind::CollisionGeometry,
                 relativeEc
-                    ? collision.path.generic_string()
-                    : relative.lexically_normal().generic_string()));
+                    ? TEXT::PathToUtf8(collision.path)
+                    : TEXT::PathToUtf8(relative.lexically_normal())));
         }
 
           AssetImportResult manifestUpdate{};
@@ -810,7 +811,7 @@ namespace HIKARI {
             kAssetArtifactManifestVersion;
         record->artifactManifest.guid = record->guid;
         record->artifactManifest.sourcePath =
-            record->sourcePath.generic_string();
+            TEXT::PathToUtf8(record->sourcePath);
         record->artifactManifest.importerId = record->meta.importerId;
         record->artifactManifest.importerVersion =
             record->meta.importerVersion;
@@ -1034,7 +1035,7 @@ namespace HIKARI {
         for (const AssetRecord& record : records_) {
             for (const AssetArtifactDesc& artifact :
                 record.artifactManifest.artifacts) {
-                if (MakePathKey(artifact.path) != requestedKey) {
+                if (MakePathKey(TEXT::PathFromUtf8(artifact.path)) != requestedKey) {
                     continue;
                 }
                 // Ambiguous artifact ownership is an invalid database state.
@@ -1145,7 +1146,7 @@ namespace HIKARI {
                 absoluteMetaPath,
                 root) ||
             !root.is_object()) {
-            HIKARI_LOG_ERROR("[AssetDatabase] meta JSON parse failed: " + absoluteMetaPath.generic_string());
+            HIKARI_LOG_ERROR("[AssetDatabase] meta JSON parse failed: " + TEXT::PathToUtf8(absoluteMetaPath));
             return false;
         }
 
@@ -1179,7 +1180,7 @@ namespace HIKARI {
 
         AssetRecord* record = FindByPath(sourcePath);
         if (!record) {
-            HIKARI_LOG_ERROR("[AssetDatabase] RegenerateMeta failed: source not found " + sourcePath.generic_string());
+            HIKARI_LOG_ERROR("[AssetDatabase] RegenerateMeta failed: source not found " + TEXT::PathToUtf8(sourcePath));
             return false;
         }
 
@@ -1195,8 +1196,8 @@ namespace HIKARI {
             meta.type = type;
             meta.importerId = importerId;
             meta.importerVersion = 1;
-            meta.sourcePath = record->sourcePath.generic_string();
-            meta.displayName = record->sourcePath.stem().string();
+            meta.sourcePath = TEXT::PathToUtf8(record->sourcePath);
+            meta.displayName = TEXT::PathToUtf8(record->sourcePath.stem());
             meta.importSettingsJson = "{}";
         }
 
@@ -1259,7 +1260,7 @@ namespace HIKARI {
             return info;
         }
 
-        const std::filesystem::path hcmeshPath = PROJECT_PATHS::ResolveProjectPath(projectRoot_, artifact->path);
+        const std::filesystem::path hcmeshPath = PROJECT_PATHS::ResolveProjectPath(projectRoot_, TEXT::PathFromUtf8(artifact->path));
         info.path = hcmeshPath;
         std::error_code ec{};
         if (!std::filesystem::exists(hcmeshPath, ec) || ec) {
@@ -1332,7 +1333,7 @@ namespace HIKARI {
         record.sourceExists = std::filesystem::exists(absoluteSource);
         record.metaExists = std::filesystem::exists(record.metaPath);
         record.type = GuessAssetTypeFromPath(normalizedSource);
-        record.displayName = normalizedSource.stem().string();
+        record.displayName = TEXT::PathToUtf8(normalizedSource.stem());
 
         if (record.metaExists) {
             AssetMeta meta{};
@@ -1341,15 +1342,15 @@ namespace HIKARI {
                 record.guid = record.meta.guid;
                 record.type = record.meta.type == AssetType::Unknown ? record.type : record.meta.type;
                 record.displayName = record.meta.displayName.empty() ? record.displayName : record.meta.displayName;
-                if (record.meta.sourcePath.empty() || NormalizeProjectPath(record.meta.sourcePath) != normalizedSource) {
-                    record.meta.sourcePath = normalizedSource.generic_string();
+                if (record.meta.sourcePath.empty() || NormalizeProjectPath(TEXT::PathFromUtf8(record.meta.sourcePath)) != normalizedSource) {
+                    record.meta.sourcePath = TEXT::PathToUtf8(normalizedSource);
                     if (createMissingMeta) {
                         WriteMeta(record);
                     }
                 }
             } else {
                 record.meta = AssetMeta{};
-                record.meta.sourcePath = normalizedSource.generic_string();
+                record.meta.sourcePath = TEXT::PathToUtf8(normalizedSource);
                 record.meta.displayName = record.displayName;
                 record.meta.type = record.type;
                 record.lastImportMessage = "[AssetDatabase] meta JSON parse failed";
@@ -1368,7 +1369,7 @@ namespace HIKARI {
                 record.meta.guid = guid;
                 record.meta.type = record.type;
                 record.meta.importerId = importerId;
-                record.meta.sourcePath = normalizedSource.generic_string();
+                record.meta.sourcePath = TEXT::PathToUtf8(normalizedSource);
                 record.meta.displayName = record.displayName;
                 record.meta.importSettingsJson = "{}";
             }
@@ -1379,7 +1380,7 @@ namespace HIKARI {
         } else {
             record.meta = AssetMeta{};
             record.meta.type = record.type;
-            record.meta.sourcePath = normalizedSource.generic_string();
+            record.meta.sourcePath = TEXT::PathToUtf8(normalizedSource);
             record.meta.displayName = record.displayName;
         }
 
@@ -1561,7 +1562,7 @@ namespace HIKARI {
         std::filesystem::file_time_type oldestArtifactTime{};
         bool hasArtifactTime = false;
         for (const AssetArtifactDesc& artifact : record.artifactManifest.artifacts) {
-            const std::filesystem::path artifactPath = PROJECT_PATHS::ResolveProjectPath(projectRoot_, artifact.path);
+            const std::filesystem::path artifactPath = PROJECT_PATHS::ResolveProjectPath(projectRoot_, TEXT::PathFromUtf8(artifact.path));
             if (!std::filesystem::exists(artifactPath)) {
                 artifactMissing = true;
                 continue;
@@ -1594,7 +1595,7 @@ namespace HIKARI {
                 const std::filesystem::path dependencyPath =
                     PROJECT_PATHS::ResolveProjectPath(
                         projectRoot_,
-                        dependency.path);
+                        TEXT::PathFromUtf8(dependency.path));
                 std::error_code dependencyEc{};
                 if (!std::filesystem::exists(
                         dependencyPath,
@@ -1682,7 +1683,7 @@ namespace HIKARI {
         const uint32_t manifestVersion = root.value("manifestVersion", 0u);
         if (manifestVersion != kAssetArtifactManifestVersion) {
             HIKARI_LOG_WARN("[AssetDatabase] unsupported artifact manifest version: " +
-                absoluteManifestPath.generic_string());
+                TEXT::PathToUtf8(absoluteManifestPath));
             return false;
         }
 
@@ -1715,7 +1716,7 @@ namespace HIKARI {
         nlohmann::json root{
             { "manifestVersion", kAssetArtifactManifestVersion },
             { "guid", record.guid.value },
-            { "sourcePath", record.sourcePath.generic_string() },
+            { "sourcePath", TEXT::PathToUtf8(record.sourcePath) },
             { "importerId", record.meta.importerId },
             { "importerVersion", record.meta.importerVersion },
             { "success", result.success },
@@ -1753,7 +1754,7 @@ namespace HIKARI {
 
         nlohmann::json root{
             { "guid", record.guid.value },
-            { "sourcePath", record.sourcePath.generic_string() },
+            { "sourcePath", TEXT::PathToUtf8(record.sourcePath) },
             { "importerId", record.meta.importerId },
             { "importerVersion", record.meta.importerVersion },
             { "success", result.success },
@@ -1802,7 +1803,7 @@ namespace HIKARI {
     }
 
     std::string AssetDatabase::MakePathKey(const std::filesystem::path& path) const {
-        return TEXT::ToLowerAsciiCopy(NormalizeProjectPath(path).generic_string());
+        return TEXT::ToLowerAsciiCopy(TEXT::PathToUtf8(NormalizeProjectPath(path)));
     }
 
     bool AssetDatabase::IsPathUnderDirectory(

@@ -22,20 +22,6 @@
 
 namespace HIKARI::EDITOR::RESOURCE_WORKSPACE {
 #if defined(HIKARI_WITH_EDITOR)
-int CountByType(const AssetDatabase &assetDatabase, AssetType type) {
-  return static_cast<int>(assetDatabase.CollectByType(type).size());
-}
-
-int CountBroken(const AssetDatabase &assetDatabase) {
-  int count = 0;
-  for (const AssetRecord *record : assetDatabase.CollectAll()) {
-    if (record && IsBrokenAssetRecord(*record)) {
-      ++count;
-    }
-  }
-  return count;
-}
-
 ResourceImportBatchMonitor MakeImportMonitor(int attempted, int succeeded,
                                              int failed, std::string label) {
   const double visibilitySeconds =
@@ -79,10 +65,10 @@ std::string ScopeLabel(AssetBrowserScope scope) {
   }
 }
 
-int ScopeCount(const AssetDatabase &assetDatabase,
+int ScopeCount(const ASSET_BROWSER::AssetBrowserStatisticsCache &statistics,
                const AssetUsageSummary &usageSummary, AssetBrowserScope scope) {
 
-  const int total = static_cast<int>(assetDatabase.CollectAll().size());
+  const int total = static_cast<int>(statistics.Total());
   const int used = static_cast<int>(usageSummary.usedGuids.size());
   switch (scope) {
   case AssetBrowserScope::CurrentScene:
@@ -90,48 +76,48 @@ int ScopeCount(const AssetDatabase &assetDatabase,
   case AssetBrowserScope::UnusedInScene:
     return (std::max)(0, total - used);
   case AssetBrowserScope::Broken:
-    return CountBroken(assetDatabase) +
+    return statistics.Broken() +
            static_cast<int>(usageSummary.missingReferences.size());
   case AssetBrowserScope::Textures:
-    return CountByType(assetDatabase, AssetType::Texture);
+    return statistics.Count(AssetType::Texture);
   case AssetBrowserScope::Models:
-    return CountByType(assetDatabase, AssetType::Model);
+    return statistics.Count(AssetType::Model);
   case AssetBrowserScope::Scenes:
-    return CountByType(assetDatabase, AssetType::Scene);
+    return statistics.Count(AssetType::Scene);
   case AssetBrowserScope::Materials:
-    return CountByType(assetDatabase, AssetType::Material);
+    return statistics.Count(AssetType::Material);
   case AssetBrowserScope::Skies:
-    return CountByType(assetDatabase, AssetType::Sky);
+    return statistics.Count(AssetType::Sky);
   case AssetBrowserScope::Vfx:
-    return CountByType(assetDatabase, AssetType::VfxEffect);
+    return statistics.Count(AssetType::VfxEffect);
   case AssetBrowserScope::Sequences:
-    return CountByType(assetDatabase, AssetType::Sequence);
+    return statistics.Count(AssetType::Sequence);
   case AssetBrowserScope::Project:
   default:
     return total;
   }
 }
 
-void DrawScopeMenuItem(const AssetDatabase &assetDatabase,
+void DrawScopeMenuItem(const ASSET_BROWSER::AssetBrowserStatisticsCache &statistics,
                        const AssetUsageSummary &usageSummary, const char *label,
                        AssetBrowserScope scope,
                        AssetBrowserScope &activeScope) {
 
   const std::string itemLabel =
       std::string(label) + "  " +
-      std::to_string(ScopeCount(assetDatabase, usageSummary, scope));
+      std::to_string(ScopeCount(statistics, usageSummary, scope));
   if (ImGui::MenuItem(itemLabel.c_str(), nullptr, activeScope == scope)) {
     activeScope = scope;
   }
 }
 
-void DrawScopeCombo(const AssetDatabase &assetDatabase,
+void DrawScopeCombo(const ASSET_BROWSER::AssetBrowserStatisticsCache &statistics,
                     const AssetUsageSummary &usageSummary,
                     AssetBrowserScope &activeScope) {
 
   const std::string preview =
       ScopeLabel(activeScope) + "  " +
-      std::to_string(ScopeCount(assetDatabase, usageSummary, activeScope));
+      std::to_string(ScopeCount(statistics, usageSummary, activeScope));
 
   ImGui::SetNextItemWidth(190.0f);
   if (!ImGui::BeginCombo("##ResourceScope", preview.c_str())) {
@@ -142,19 +128,19 @@ void DrawScopeCombo(const AssetDatabase &assetDatabase,
       "%s",
       TEXT::Localize("ui.resource.library").c_str());
   DrawScopeMenuItem(
-      assetDatabase, usageSummary,
+      statistics, usageSummary,
       TEXT::Localize("ui.resource.scope.project").c_str(),
       AssetBrowserScope::Project, activeScope);
   DrawScopeMenuItem(
-      assetDatabase, usageSummary,
+      statistics, usageSummary,
       TEXT::Localize("ui.resource.scope.currentScene").c_str(),
       AssetBrowserScope::CurrentScene, activeScope);
   DrawScopeMenuItem(
-      assetDatabase, usageSummary,
+      statistics, usageSummary,
       TEXT::Localize("ui.resource.scope.unused").c_str(),
       AssetBrowserScope::UnusedInScene, activeScope);
   DrawScopeMenuItem(
-      assetDatabase, usageSummary,
+      statistics, usageSummary,
       TEXT::Localize("ui.resource.scope.broken").c_str(),
       AssetBrowserScope::Broken, activeScope);
 
@@ -163,31 +149,31 @@ void DrawScopeCombo(const AssetDatabase &assetDatabase,
       "%s",
       TEXT::Localize("ui.resource.types").c_str());
   DrawScopeMenuItem(
-      assetDatabase, usageSummary,
+      statistics, usageSummary,
       TEXT::Localize("ui.resource.scope.textures").c_str(),
       AssetBrowserScope::Textures, activeScope);
   DrawScopeMenuItem(
-      assetDatabase, usageSummary,
+      statistics, usageSummary,
       TEXT::Localize("ui.resource.scope.models").c_str(),
       AssetBrowserScope::Models, activeScope);
   DrawScopeMenuItem(
-      assetDatabase, usageSummary,
+      statistics, usageSummary,
       TEXT::Localize("ui.resource.scope.scenes").c_str(),
       AssetBrowserScope::Scenes, activeScope);
   DrawScopeMenuItem(
-      assetDatabase, usageSummary,
+      statistics, usageSummary,
       TEXT::Localize("ui.resource.scope.materials").c_str(),
       AssetBrowserScope::Materials, activeScope);
   DrawScopeMenuItem(
-      assetDatabase, usageSummary,
+      statistics, usageSummary,
       TEXT::Localize("ui.resource.scope.skies").c_str(),
       AssetBrowserScope::Skies, activeScope);
   DrawScopeMenuItem(
-      assetDatabase, usageSummary,
+      statistics, usageSummary,
       TEXT::Localize("ui.resource.scope.vfx").c_str(),
       AssetBrowserScope::Vfx, activeScope);
   DrawScopeMenuItem(
-      assetDatabase, usageSummary,
+      statistics, usageSummary,
       TEXT::Localize("ui.resource.scope.sequences").c_str(),
       AssetBrowserScope::Sequences, activeScope);
 

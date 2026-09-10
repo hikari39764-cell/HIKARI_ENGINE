@@ -67,7 +67,8 @@ namespace HIKARI::RENDER3D::UPSCALING {
         RenderTarget2D& hudlessColor,
         RenderTarget2D& uiColorAndAlpha,
         uint64_t frameIndex,
-        bool hostAllowed);
+        bool hostAllowed,
+        const D3D12_RECT& sceneRect);
     bool IsStreamlineFrameGenerationInstalled();
     bool IsStreamlineFrameGenerationAvailable();
     // Must run on the same thread that just presented the frame. Streamline

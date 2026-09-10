@@ -8,11 +8,13 @@
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Project/HIKARI_ProjectContext.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
+#include "Runtime/HIKARI_RuntimeLaunchConfig.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
 namespace HIKARI::EDITOR {
 
     bool EditorEngineApp::Initialize() {
+        documentSceneEditorController_.SetProjectWorkspaceHost(&gameProjectWorkspaceHost_);
         if (!runtimeApp_.Initialize()) {
             return false;
         }
@@ -59,6 +61,9 @@ namespace HIKARI::EDITOR {
             " workspaces=" +
             std::to_string(
                 gameProjectEditorModule_.GetWorkspaceCount()));
+        if(HasRuntimeCommandLineFlag(L"--play-on-start"))editorPlaySession_.RequestWindowedStart();
+        if(const auto workspace=ReadRuntimeCommandLinePath(L"--open-workspace"))
+            gameProjectWorkspaceHost_.RequestWorkspace(TEXT::PathToUtf8(*workspace));
         return true;
     }
 
@@ -85,8 +90,6 @@ namespace HIKARI::EDITOR {
                 editorPlaySession_,
                 projectSession_);
         }
-        gameProjectWorkspaceHost_.Draw(
-            TIME::GetFrameContext().unscaledDt);
     }
 
     void EditorEngineApp::UpdateHostSessions() {

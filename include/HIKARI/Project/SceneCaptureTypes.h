@@ -31,6 +31,7 @@ namespace HIKARI {
         None = 0u,
         FlipTextureX = 1u << 0u,
         FlipTextureY = 1u << 1u,
+        ProtectReadability = 1u << 2u,
     };
 
     constexpr uint32_t GameProjectSceneCaptureMaterialBindingFlags(
@@ -43,7 +44,9 @@ namespace HIKARI {
             GameProjectSceneCaptureMaterialBindingFlags(
                 GameProjectSceneCaptureMaterialBindingFlag::FlipTextureX) |
             GameProjectSceneCaptureMaterialBindingFlags(
-                GameProjectSceneCaptureMaterialBindingFlag::FlipTextureY);
+                GameProjectSceneCaptureMaterialBindingFlag::FlipTextureY) |
+            GameProjectSceneCaptureMaterialBindingFlags(
+                GameProjectSceneCaptureMaterialBindingFlag::ProtectReadability);
 
     struct GameProjectSceneCaptureHandle {
         uint64_t value = 0u;

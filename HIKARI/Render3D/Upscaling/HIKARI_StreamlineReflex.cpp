@@ -1,5 +1,6 @@
 #include "Render3D/Upscaling/HIKARI_StreamlineReflex.h"
 
+#include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineInternal.h"
 
 #if defined(HIKARI_WITH_STREAMLINE)
@@ -90,10 +91,17 @@ namespace HIKARI::RENDER3D::UPSCALING {
 
         bool ok = true;
         if (state.reflex.stats.reflexSupported) {
+            sl::Result sleepResult;
+            {
+                static const auto sleepPass =
+                    CPU_PROFILE::RegisterDynamicPass("Frame.ReflexSleep");
+                CPU_PROFILE::ScopedDynamicCpuTimer sleepTimer(sleepPass);
+                sleepResult = slReflexSleep(*state.frameToken);
+            }
             const bool slept = RecordReflexResult(
                 state,
                 "slReflexSleep",
-                slReflexSleep(*state.frameToken));
+                sleepResult);
             state.reflex.stats.sleepCalled = slept;
             ok = slept && ok;
         }

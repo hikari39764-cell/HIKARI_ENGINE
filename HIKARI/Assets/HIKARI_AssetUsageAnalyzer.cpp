@@ -2,9 +2,11 @@
 
 #include "HIKARI_AssetDatabase.h"
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "Assets/Material/HIKARI_MaterialBuiltInAssets.h"
 #include "Assets/Material/HIKARI_MaterialDependencies.h"
 #include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingAsset.h"
 #include "Scene/HIKARI_SceneDocument.h"
+#include "Render3D/Lighting/HIKARI_DefaultSkyEnvironment.h"
 
 namespace HIKARI {
 
@@ -200,12 +202,10 @@ namespace HIKARI {
         AssetUsageSummary summary{};
         std::unordered_set<std::string> visitedMaterials{};
 
-        AddReference(
-            document.environment.sky.skyAsset,
-            "Scene Environment",
-            "Sky",
-            assetDatabase,
-            summary);
+        if (document.environment.sky.skyAsset != RENDER3D::LIGHTING::kDefaultSkyAssetName) {
+            AddReference(document.environment.sky.skyAsset,
+                "Scene Environment", "Sky", assetDatabase, summary);
+        }
         AddReference(
             document.environment.sky.panoramaCloudAsset,
             "Scene Environment",
@@ -260,6 +260,14 @@ namespace HIKARI {
                                 summary,
                                 visitedMaterials);
                         }
+                    }
+                } else if (component.type == "ProceduralMeshComponent") {
+                    const auto material = component.properties.value("materialSelection", std::string{});
+                    if (!ASSETS::MATERIAL::IsBuiltInWhiteMaterialAssetId(material) &&
+                        !ASSETS::MATERIAL::IsBuiltInCheckerMaterialAssetId(material) &&
+                        !ASSETS::MATERIAL::IsBuiltInSandMaterialAssetId(material)) {
+                        AddReference(material, owner, "Procedural Material", assetDatabase, summary);
+                        AddMaterialReferences(material, owner, assetDatabase, summary, visitedMaterials);
                     }
                 } else if (component.type ==
                         "SequencePlayerComponent") {

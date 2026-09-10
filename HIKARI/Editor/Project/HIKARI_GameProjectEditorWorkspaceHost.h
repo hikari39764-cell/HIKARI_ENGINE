@@ -5,7 +5,9 @@
 #include <string_view>
 
 #include "Editor/Project/HIKARI_GameProjectEditorWorkspaceRegistry.h"
+#include "Editor/Workspaces/HIKARI_EditorWorkspaceHost.h"
 
+namespace HIKARI { class AssetDatabase; class AssetRegistry; }
 namespace HIKARI::EDITOR {
 
     class GameProjectEditorModuleLibrary;
@@ -26,7 +28,9 @@ namespace HIKARI::EDITOR {
             std::string_view projectRootUtf8,
             std::string& outMessage);
         void ReportModuleFailure(std::string message);
-        void Draw(float unscaledDeltaSeconds);
+        void RequestWorkspace(std::string workspaceId) { requestedWorkspace_=std::move(workspaceId); }
+        void DrawNavigation(EditorWorkspaceHost& host, float unscaledDeltaSeconds);
+        void Draw(EditorWorkspaceHost& host, float unscaledDeltaSeconds, AssetDatabase&, AssetRegistry&);
         void Shutdown() noexcept;
 
         bool IsAvailable() const noexcept;
@@ -35,13 +39,16 @@ namespace HIKARI::EDITOR {
         const GameProjectEditorWorkspaceRegistry& Registry() const noexcept;
 
     private:
-        void DrawWorkspaceSelector();
+        void DrawWorkspaceSelector(EditorWorkspaceHost& host);
         void DrawClosePrompt();
 
         GameProjectEditorWorkspaceRegistry registry_{};
         std::unique_ptr<GameProjectEditorWorkspaceUi> ui_{};
         std::string moduleFailureMessage_{};
         bool closePromptWasPending_ = false;
+        std::string requestedWorkspace_{};
+        std::optional<EditorWorkspaceOpenRequest> guardedNavigation_{};
+        bool resetLayout_ = false;
     };
 
 } // namespace HIKARI::EDITOR

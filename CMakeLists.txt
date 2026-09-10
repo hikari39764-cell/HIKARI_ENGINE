@@ -80,10 +80,11 @@ if(HIKARI_STREAMLINE_ENABLED)
         HIKARI_RUNTIME_PRIVATE_LINK_LIBRARIES
         HIKARI::Streamline)
 endif()
+# DXGI/D3D12 の生成関数は native import より先に Streamline へ解決する。
 set(
     HIKARI_RUNTIME_BUILD_DEPENDENCIES
-    ${HIKARI_RUNTIME_PUBLIC_LINK_LIBRARIES}
-    ${HIKARI_RUNTIME_PRIVATE_LINK_LIBRARIES})
+    ${HIKARI_RUNTIME_PRIVATE_LINK_LIBRARIES}
+    ${HIKARI_RUNTIME_PUBLIC_LINK_LIBRARIES})
 hikari_define_runtime_modules(HIKARI_RUNTIME_MODULE_TARGETS)
 target_link_libraries(
     hikari_runtime_foundation
@@ -134,8 +135,8 @@ target_link_libraries(
     HIKARI_Runtime
     INTERFACE
         ${HIKARI_RUNTIME_MODULE_TARGETS}
-        ${HIKARI_RUNTIME_PUBLIC_LINK_LIBRARIES}
-        ${HIKARI_RUNTIME_PRIVATE_LINK_LIBRARIES})
+        ${HIKARI_RUNTIME_PRIVATE_LINK_LIBRARIES}
+        ${HIKARI_RUNTIME_PUBLIC_LINK_LIBRARIES})
 
 add_executable(
     HIKARI_BuiltinShaderCookTool
@@ -411,6 +412,14 @@ foreach(runtime_contract IN ITEMS
 endforeach()
 
 if(HIKARI_WITH_EDITOR_BUILD)
+    hikari_add_runtime_contract(HIKARI_SceneFolderContracts "Tools/Tests/HIKARI_SceneFolderContracts.cpp")
+    target_sources(HIKARI_SceneFolderContracts PRIVATE
+        "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Authoring/HIKARI_SceneFolderAuthoring.cpp"
+        "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Authoring/HIKARI_SceneFolderOperations.cpp"
+        "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Commands/HIKARI_EditorOperationRegistry.cpp"
+        "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/History/HIKARI_EditorDocumentHistory.cpp")
+    add_test(NAME HIKARI_SceneFolderContracts COMMAND "$<TARGET_FILE:HIKARI_SceneFolderContracts>")
+    set_tests_properties(HIKARI_SceneFolderContracts PROPERTIES LABELS "EditorContracts" TIMEOUT 30)
     add_library(HIKARI_Editor STATIC)
     add_library(HIKARI::Editor ALIAS HIKARI_Editor)
     target_sources(
@@ -432,6 +441,11 @@ if(HIKARI_WITH_EDITOR_BUILD)
         TREE "${HIKARI_SOURCE_ROOT}"
         FILES
             ${HIKARI_EDITOR_SOURCES})
+
+    hikari_add_runtime_contract(HIKARI_AssetBrowserContracts "Tools/Tests/HIKARI_AssetBrowserContracts.cpp" NO_TOOLING_STUBS)
+    target_link_libraries(HIKARI_AssetBrowserContracts PRIVATE HIKARI::Editor)
+    add_test(NAME HIKARI_AssetBrowserContracts COMMAND "$<TARGET_FILE:HIKARI_AssetBrowserContracts>")
+    set_tests_properties(HIKARI_AssetBrowserContracts PROPERTIES LABELS "EditorContracts" TIMEOUT 30)
 
     add_executable(
         HIKARI_GameProjectEditorWorkspaceRegistrySmoke

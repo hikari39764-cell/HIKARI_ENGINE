@@ -62,6 +62,11 @@ float4 main(HikariPostEffectInput input) : SV_TARGET
     }
 
     color = max((color - 0.18f) * contrast + 0.18f, 0.0f);
+    float2 screenUv = input.uv * 2.0f - 1.0f;
+    screenUv *= 1.0f + gUser[2].y * gUser[2].z * dot(screenUv, screenUv);
+    const float2 resolution = max(float2(gResolutionX, gResolutionY), 1.0f.xx);
+    const float readability = HikariScreenReadability(screenUv * .5f + .5f, resolution);
+    color = lerp(color, max(sceneColor.rgb, 0.0f), readability);
     color = pow(saturate(color), 1.0f / gamma);
     return float4(color, sceneColor.a);
 }

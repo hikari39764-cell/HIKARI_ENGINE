@@ -26,6 +26,11 @@ namespace HIKARI {
             GetFrameIndex() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool GetPointerState(
             GameProjectPointerState& outState) const noexcept;
+        // 所有スレッドから毎フレーム指定する。非表示は Play 中の有効な
+        // ポインターに限り受理し、省略・フォーカス喪失時は自動で戻る。
+        // UI スプライトの送信成功後に呼ぶ。座標とキャプチャは変更しない。
+        HIKARI_GAME_PROJECT_SDK_API bool SetPointerCursorVisible(
+            uint8_t visible) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool SetContextActive(
             std::string_view contextId,
             uint8_t active) const noexcept;
@@ -233,6 +238,16 @@ namespace HIKARI {
             const GameProjectCameraRollModifier& modifier) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool GetControlPose(
             GameProjectCameraPose& outPose) const noexcept;
+        // ワールド更新スレッドで、直近に解決した実行時の描画カメラをコピーする。
+        // カメラ未解決・実行停止時は false を返し、出力を初期化する。
+        HIKARI_GAME_PROJECT_SDK_API bool GetRenderedPose(
+            GameProjectCameraPose& outPose) const noexcept;
+        // 同スレッドで有効な全画面の放射状歪みを取得する。歪みなしは 0、0。
+        // 実行停止・描画未初期化時は false。時間変化するグリッチは含まない。
+        HIKARI_GAME_PROJECT_SDK_API bool GetRadialScreenWarp(
+            float& outCurvature, float& outStrength) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool SubmitPose(
+            const GameProjectCameraPoseRequest& request) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool IsReady() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool SubmitTargetFraming(
             const GameProjectCameraTargetFramingRequest& request)
@@ -295,6 +310,9 @@ namespace HIKARI {
         HIKARI_GAME_PROJECT_SDK_API bool TriggerPerfectGuardWave(
             const GameProjectPerfectGuardWaveRequest& request)
             const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool SubmitPostProfileParameter(
+            std::string_view profileId,
+            const GameProjectPostProfileParameterRequest& request) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool SubmitActionCinematicGrade(
             const GameProjectActionCinematicGradeRequest& request)
             const noexcept;

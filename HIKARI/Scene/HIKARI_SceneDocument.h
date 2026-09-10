@@ -15,7 +15,7 @@
 
 namespace HIKARI {
 
-    inline constexpr uint32_t kCurrentSceneDocumentVersion = 7;
+    inline constexpr uint32_t kCurrentSceneDocumentVersion = 8;
 
     struct TransformData {
         MATH::Vec3 position{ 0.0f, 0.0f, 0.0f };
@@ -39,6 +39,7 @@ namespace HIKARI {
         bool editorVisible = true;
         bool editorLocked = false;
         bool enabled = true;
+        std::string editorFolder{};
     };
 
     struct SceneSystemData {
@@ -141,6 +142,7 @@ namespace HIKARI {
         SceneCinematicsSettings cinematics{};
         std::vector<SceneObjectData> objects{};
         std::vector<SceneSystemData> systems{};
+        std::vector<std::string> editorFolders{};
     };
 
 } // namespace HIKARI

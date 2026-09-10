@@ -7,6 +7,32 @@
 
 #include "HIKARI/Project/GameProjectModule.h"
 
+#if defined(HIKARI_GAME_PROJECT_HOST_IMPORT_NAME)
+#include <Windows.h>
+#include <delayimp.h>
+#include <cstring>
+
+namespace {
+    FARPROC WINAPI BindRunningGameHost(unsigned notification, PDelayLoadInfo info) {
+        if (notification == dliNotePreLoadLibrary && info &&
+            std::strcmp(info->szDll, HIKARI_GAME_PROJECT_HOST_IMPORT_NAME) == 0) {
+            return reinterpret_cast<FARPROC>(GetModuleHandleW(nullptr));
+        }
+        return nullptr;
+    }
+    bool ResolveRunningGameHost() noexcept {
+        __try {
+            const HRESULT result = __HrLoadAllImportsForDll(HIKARI_GAME_PROJECT_HOST_IMPORT_NAME);
+            return SUCCEEDED(result) || result == HRESULT_FROM_WIN32(ERROR_MOD_NOT_FOUND);
+        } __except(EXCEPTION_EXECUTE_HANDLER) {
+            OutputDebugStringA("[GameProject] Running host does not provide the required SDK exports.\n");
+            return false;
+        }
+    }
+}
+extern "C" const PfnDliHook __pfnDliNotifyHook2 = BindRunningGameHost;
+#endif
+
 namespace HIKARI::RUNTIME {
 namespace {
 
@@ -102,6 +128,10 @@ extern "C" __declspec(dllexport)
 const HIKARI::RUNTIME::GameProjectModuleApi*
     HIKARI_GetGameProjectModuleApi(
         uint32_t hostAbiVersion) noexcept {
+
+#if defined(HIKARI_GAME_PROJECT_HOST_IMPORT_NAME)
+    if (!ResolveRunningGameHost()) return nullptr;
+#endif
 
     return hostAbiVersion ==
         HIKARI::RUNTIME::kGameProjectModuleAbiVersion

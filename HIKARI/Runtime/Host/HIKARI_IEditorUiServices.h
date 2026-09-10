@@ -1,6 +1,12 @@
 #pragma once
 
+#include <cstdint>
+
 namespace HIKARI {
+
+    namespace INPUT {
+        struct InputPointerState;
+    }
 
     namespace GFX {
         struct Context;
@@ -29,6 +35,10 @@ namespace HIKARI {
                 bool produceEditorUiFrame) = 0;
             virtual void Shutdown(
                 PLATFORM::Win32Window& window) noexcept = 0;
+            virtual bool IsGameViewportPlayInputActive() const noexcept = 0;
+            virtual bool TryGetGameViewportPointer(
+                INPUT::InputPointerState& pointer,
+                uint32_t& width, uint32_t& height) const noexcept = 0;
         };
 
         bool RegisterEditorUiServices(

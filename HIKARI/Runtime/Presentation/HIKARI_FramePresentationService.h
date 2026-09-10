@@ -1,4 +1,5 @@
 #pragma once
+#include <filesystem>
 
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineRuntime.h"
@@ -24,6 +25,7 @@ namespace HIKARI::SERVICES {
     void ClearPendingWindowResize();
     bool ApplyPendingWindowResize();
     bool ApplyWindowPresentationSettings();
+    bool QueueRenderQualitySettings(const RENDER3D::RenderQualitySettings& settings);
     FrameSceneResolutionPlan ResolveFrameSceneResolutionPlan();
     void ApplyFrameSceneCaptureSize();
 
@@ -33,4 +35,5 @@ namespace HIKARI::SERVICES {
         FramePresentationDestination destination =
             FramePresentationDestination::EditorViewport);
     bool EndFrame();
+    bool RequestFrameCapture(const std::filesystem::path& output);
 } // namespace HIKARI::SERVICES

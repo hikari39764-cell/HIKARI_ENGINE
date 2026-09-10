@@ -3,6 +3,7 @@
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Render2D/HIKARI_DxRenderer.h"
 #include "Render2D/HIKARI_GameUiEffectRenderer.h"
+#include "Core/Presentation/HIKARI_LogicalDisplayDefaults.h"
 #include "Vfx/Post/HIKARI_PostQuadDrawer.h"
 
 #include <array>
@@ -116,7 +117,8 @@ namespace HIKARI::POST {
         int outputHeight,
         int logicalWidth,
         int logicalHeight,
-        uint64_t frameIndex) {
+        uint64_t frameIndex,
+        bool fitScene) {
 
         if (active_) {
             uiColorAndAlpha_.EndCapture();
@@ -124,7 +126,24 @@ namespace HIKARI::POST {
         }
         InvalidateFrame();
 
+        D3D12_RECT sceneRect{0, 0, outputWidth, outputHeight};
+        if (fitScene) {
+            GameProjectUiCanvasFit fit{};
+            if (!ResolveGameProjectUiCanvasFit(outputWidth, outputHeight,
+                    static_cast<float>(PRESENTATION::kDefaultLogicalWidth),
+                    static_cast<float>(PRESENTATION::kDefaultLogicalHeight), fit)) {
+                return false;
+            }
+            const int width = static_cast<int>(fit.fittedWidth + 0.5f);
+            const int height = static_cast<int>(fit.fittedHeight + 0.5f);
+            sceneRect.left = (outputWidth - width) / 2;
+            sceneRect.top = (outputHeight - height) / 2;
+            sceneRect.right = sceneRect.left + width;
+            sceneRect.bottom = sceneRect.top + height;
+        }
         const bool canAliasHudless =
+            sceneRect.right - sceneRect.left == outputWidth &&
+            sceneRect.bottom - sceneRect.top == outputHeight &&
             sceneColor.GetWidth() == outputWidth &&
             sceneColor.GetHeight() == outputHeight &&
             sceneColor.GetFormat() == kPresentationFormat;
@@ -141,6 +160,12 @@ namespace HIKARI::POST {
         RenderTarget2D* hudless = &sceneColor;
         if (!canAliasHudless) {
             hudlessColor_.BeginCapture(0.0f, 0.0f, 0.0f, 1.0f);
+            const D3D12_VIEWPORT viewport{
+                static_cast<float>(sceneRect.left), static_cast<float>(sceneRect.top),
+                static_cast<float>(sceneRect.right - sceneRect.left),
+                static_cast<float>(sceneRect.bottom - sceneRect.top), 0.0f, 1.0f};
+            context_.cmdList->RSSetViewports(1, &viewport);
+            context_.cmdList->RSSetScissorRects(1, &sceneRect);
             quad.DrawFullscreen(
                 sceneColor.GetSrvHeap(),
                 sceneColor.GetSrvGpu());
@@ -175,6 +200,7 @@ namespace HIKARI::POST {
         frame_.height = outputHeight;
         frame_.uiLogicalWidth = logicalWidth;
         frame_.uiLogicalHeight = logicalHeight;
+        frame_.sceneRect = sceneRect;
         frame_.format = kPresentationFormat;
         frame_.hudlessColor = hudless;
         frame_.uiColorAndAlpha = &uiColorAndAlpha_;

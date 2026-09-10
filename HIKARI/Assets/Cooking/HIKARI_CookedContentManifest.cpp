@@ -14,6 +14,68 @@
 namespace HIKARI::ASSETS::COOKING {
     namespace {
 
+        constexpr const char* kTextureMetadataBooleanFields[] = {
+            "sourceHasAlphaChannel",
+            "sourceHasMeaningfulAlpha",
+            "sourceHasTranslucentAlpha",
+            "sourceHasCutoutAlpha",
+        };
+
+        nlohmann::json SerializeTextureMetadata(const AssetRecord& record) {
+            nlohmann::json result = nlohmann::json::object();
+            if (record.type != AssetType::Texture) {
+                return result;
+            }
+            const auto diagnostics = nlohmann::json::parse(
+                record.artifactManifest.diagnosticsJson, nullptr, false);
+            if (!diagnostics.is_object()) {
+                return result;
+            }
+            const auto texture = diagnostics.find("texture");
+            if (texture == diagnostics.end() || !texture->is_object()) {
+                return result;
+            }
+            for (const char* key : kTextureMetadataBooleanFields) {
+                const auto value = texture->find(key);
+                if (value != texture->end() && value->is_boolean()) {
+                    result[key] = *value;
+                }
+            }
+            return result;
+        }
+
+        bool ParseTextureMetadata(
+            const nlohmann::json& node,
+            AssetRecord& record,
+            std::string& outMessage) {
+
+            const auto metadata = node.find("textureMetadata");
+            if (metadata == node.end()) {
+                return true;
+            }
+            if (record.type != AssetType::Texture || !metadata->is_object()) {
+                outMessage = "Cooked texture metadata requires a texture asset and an object: " +
+                    record.guid.value;
+                return false;
+            }
+            nlohmann::json texture = nlohmann::json::object();
+            for (const char* key : kTextureMetadataBooleanFields) {
+                const auto value = metadata->find(key);
+                if (value == metadata->end()) {
+                    continue;
+                }
+                if (!value->is_boolean()) {
+                    outMessage = "Cooked texture metadata field must be boolean: " +
+                        record.guid.value + " (" + key + ").";
+                    return false;
+                }
+                texture[key] = *value;
+            }
+            record.artifactManifest.diagnosticsJson =
+                nlohmann::json{ { "texture", std::move(texture) } }.dump();
+            return true;
+        }
+
         void SetMessage(
             std::string* outMessage,
             std::string message) {
@@ -211,6 +273,10 @@ namespace HIKARI::ASSETS::COOKING {
             record.meta.displayName = record.displayName;
             record.meta.importSettingsJson =
                 node.value("importSettingsJson", "");
+
+            if (!ParseTextureMetadata(node, record, outMessage)) {
+                return false;
+            }
 
             if (!node.contains("dependencies") ||
                 !ParseDependencies(
@@ -467,6 +533,10 @@ namespace HIKARI::ASSETS::COOKING {
                         record->artifactManifest.artifacts)
                 },
             });
+            nlohmann::json textureMetadata = SerializeTextureMetadata(*record);
+            if (!textureMetadata.empty()) {
+                assets.back()["textureMetadata"] = std::move(textureMetadata);
+            }
         }
 
         const nlohmann::json root{

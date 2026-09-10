@@ -430,8 +430,7 @@ namespace HIKARI {
         };
         if (playSession.IsEmbeddedRunning()) {
             if (playSession.HasEmbeddedInput()) {
-                if (!gameViewFocused ||
-                    ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+                if (!EDITOR::IsGameViewportPlayInputActive()) {
                     playSession.ReleaseEmbeddedInput();
                 } else {
                     playSession.UpdateEmbeddedInputRegion(

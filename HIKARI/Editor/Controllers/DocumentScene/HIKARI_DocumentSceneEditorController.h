@@ -13,6 +13,7 @@
 #include "Editor/AI/HIKARI_AI_LocalBridge.h"
 #include "Editor/HIKARI_DebugCameraPanel.h"
 #include "Editor/HIKARI_DebugMenuBar.h"
+#include "Editor/Export/HIKARI_GameExportJob.h"
 #include "Editor/HIKARI_EditorContext.h"
 #include "Editor/History/HIKARI_EditorDocumentHistory.h"
 #include "Editor/History/HIKARI_SceneObjectTransformHistorySession.h"
@@ -55,12 +56,16 @@ namespace HIKARI {
     namespace EDITOR {
         class EditorProjectSessionController;
         class EditorPlaySession;
+        class GameProjectEditorWorkspaceHost;
     }
 
     class DocumentSceneEditorController {
     public:
         DocumentSceneEditorController();
         ~DocumentSceneEditorController();
+        void SetProjectWorkspaceHost(EDITOR::GameProjectEditorWorkspaceHost* host) noexcept {
+            projectWorkspaceHost_ = host;
+        }
 
         void Draw(
             DocumentSceneBase& scene,
@@ -70,10 +75,14 @@ namespace HIKARI {
 
     private:
         void RegisterEditorOperations();
+        void RegisterSceneFolderOperations();
+        EDITOR::EditorOperationResult ExecuteSceneFolderOperation(std::string_view operation, const nlohmann::json& parameters);
         EditorContext context_{};
         SelectionSyncService selectionSync_{};
 
         DebugMenuBar debugMenuBar_{};
+        EDITOR::GameExportJob exportJob_{};
+        bool exportStartAllowed_ = false;
         DocumentToolbarController documentToolbarController_{};
         EDITOR::SceneObjectCommandService sceneObjectCommands_{};
         EDITOR::SceneCreationPanel sceneCreationPanel_{};
@@ -96,6 +105,7 @@ namespace HIKARI {
         EDITOR::EditorToolHost toolHost_{};
         EDITOR::SystemAuthoringRegistry systemAuthoringRegistry_{};
         EDITOR::EditorWorkspaceHost workspaceHost_{};
+        EDITOR::GameProjectEditorWorkspaceHost* projectWorkspaceHost_ = nullptr;
         EDITOR::EditorOperationRegistry operationRegistry_{};
         DocumentSceneBase* aiOperationScene_ = nullptr;
         EDITOR::CinematicsWorkspaceController cinematicsWorkspaceController_{};

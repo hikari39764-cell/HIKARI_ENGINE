@@ -187,13 +187,39 @@ void WorldSpriteMS(
     }
 }
 
+float4 LoadWorldSpritePremultiplied(uint textureIndex, int2 pixel, int2 lastPixel)
+{
+    const float4 texel = gWorldSpriteTextures[NonUniformResourceIndex(textureIndex)].Load(
+        int3(clamp(pixel, int2(0, 0), lastPixel), 0));
+    return float4(texel.rgb * texel.a, texel.a);
+}
+
+float4 SampleWorldSpriteAlphaAware(uint textureIndex, float2 uv)
+{
+    uint width = 1u, height = 1u;
+    gWorldSpriteTextures[NonUniformResourceIndex(textureIndex)].GetDimensions(width, height);
+    const uint2 dimensions = max(uint2(width, height), uint2(1u, 1u));
+    const int2 lastPixel = int2(dimensions) - int2(1, 1);
+    const float2 pixel = saturate(uv) * float2(dimensions) - 0.5f;
+    const int2 basePixel = int2(floor(pixel));
+    const float2 blend = frac(pixel);
+    const float4 p00 = LoadWorldSpritePremultiplied(textureIndex, basePixel, lastPixel);
+    const float4 p10 = LoadWorldSpritePremultiplied(textureIndex, basePixel + int2(1, 0), lastPixel);
+    const float4 p01 = LoadWorldSpritePremultiplied(textureIndex, basePixel + int2(0, 1), lastPixel);
+    const float4 p11 = LoadWorldSpritePremultiplied(textureIndex, basePixel + int2(1, 1), lastPixel);
+    const float4 filtered = lerp(lerp(p00, p10, blend.x), lerp(p01, p11, blend.x), blend.y);
+    return float4(filtered.rgb / max(filtered.a, 1.0e-6f), filtered.a);
+}
+
 float4 WorldSpritePS(WorldSpriteVertex input) : SV_TARGET
 {
     const uint textureIndex = NonUniformResourceIndex(
         input.textureDescriptorIndex);
-    const float4 sampled = gWorldSpriteTextures[textureIndex].Sample(
-        gWorldSpriteSampler,
-        input.uv);
+    float4 sampled;
+    if (input.alphaMode == HIKARI_WORLD_SPRITE_ALPHA_OPAQUE)
+        sampled = gWorldSpriteTextures[textureIndex].Sample(gWorldSpriteSampler, input.uv);
+    else
+        sampled = SampleWorldSpriteAlphaAware(textureIndex, input.uv);
     const float alpha = saturate(
         sampled.a * input.tintOpacity.a);
     float3 color = sampled.rgb * input.tintOpacity.rgb;

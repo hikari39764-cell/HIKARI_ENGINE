@@ -14,6 +14,8 @@
 #include <json.hpp>
 
 #include "Core/Text/HIKARI_AsciiCase.h"
+#include "Core/Text/HIKARI_UtfPath.h"
+#include "Editor/Export/HIKARI_GameExportIdentity.h"
 #include "Editor/Export/HIKARI_GamePackageHash.h"
 #include "Project/HIKARI_ProjectContext.h"
 #include "Project/HIKARI_ProjectDescriptor.h"
@@ -253,7 +255,9 @@ namespace {
                             TEXT::ToLowerAsciiCopy(
                                 relative.generic_string());
                         if (relativeKey == "editor" ||
-                            relativeKey.starts_with("editor/")) {
+                            relativeKey.starts_with("editor/") ||
+                            relativeKey == "assets/cooking" ||
+                            relativeKey.starts_with("assets/cooking/")) {
                             if (iterator->is_directory(ec)) {
                                 iterator.disable_recursion_pending();
                             }
@@ -291,7 +295,8 @@ namespace {
                 nlohmann::json state{};
                 if (!stateStream || !(stateStream >> state) ||
                     !state.is_object() ||
-                    state.value("schemaVersion", 0) != 1 ||
+                    (state.value("schemaVersion", 0) != 1 && state.value("schemaVersion", 0) != 2) ||
+                    (state.value("schemaVersion", 0) == 2 && state.value("editorModulePresent", true)) ||
                     state.value("preset", std::string{}) !=
                         "game-shipping" ||
                     state.value("configuration", std::string{}) !=
@@ -394,6 +399,23 @@ namespace {
 
 
 } // namespace
+
+    bool ResolveGameShippingHostExecutable(const std::filesystem::path& runtimeRoot,
+        std::filesystem::path& executable, std::string& message) {
+        try {
+            std::ifstream stream(runtimeRoot / "Sdk/lib/cmake/HIKARI/HIKARI_GameHost.json");
+            auto manifest = nlohmann::json::parse(stream, nullptr, false);
+            if (!manifest.is_object() || manifest.value("schemaVersion", 0) != 1 ||
+                manifest.value("sdkBinding", std::string{}) != "currentProcess") {
+                message = "Shipping SDK を更新してください。EXE 名を変更できるランタイムが必要です。";
+                return false;
+            }
+            std::filesystem::path filename;
+            if (!ResolveExportExecutableFileName(manifest.at("executable").get<std::string>(), filename, message)) return false;
+            executable = runtimeRoot / filename;
+            return true;
+        } catch (const std::exception& error) { message = error.what(); return false; }
+    }
 
     bool ValidateGameShippingArtifacts(
         const std::filesystem::path& projectRoot,

@@ -14,9 +14,10 @@ namespace HIKARI::ASSETS::SHADER {
             "EngineSdk/Project/Fullscreen.hlsli";
     inline constexpr std::string_view
         kProjectFullscreenRootLayoutCanonical =
-            "HIKARI.Project.Fullscreen.Root.v1|"
+            "HIKARI.Project.Fullscreen.Root.v2|"
             "0:SRVTable(t0,space0,count1,Pixel)|"
             "1:CBV(b0,space0,Pixel)|"
+            "2:Constants(b1,space0,count36,Pixel)|"
             "StaticSampler(s0,space0,LinearClamp,Pixel)";
 
     inline ShaderAssetContractExpectation
@@ -85,7 +86,7 @@ namespace HIKARI::ASSETS::SHADER {
                 "fullscreen artifact is missing its canonical HLSL interface";
             return false;
         }
-        if (!vertex.bindings.empty() || pixel.bindings.size() != 2u) {
+        if (!vertex.bindings.empty() || pixel.bindings.size() < 2u || pixel.bindings.size() > 3u) {
             outDiagnostic =
                 "fullscreen reflection must contain VS:none and PS:t0/s0";
             return false;
@@ -94,7 +95,12 @@ namespace HIKARI::ASSETS::SHADER {
             1u << static_cast<uint32_t>(ShaderStage::Pixel);
         bool hasTexture = false;
         bool hasSampler = false;
+        bool hasReadability = false;
         for (const ShaderResourceBinding& binding : pixel.bindings) {
+            hasReadability = hasReadability || (binding.registerSpace == 0u &&
+                binding.registerIndex == 1u && binding.count == 1u &&
+                binding.visibilityMask == pixelVisibility &&
+                binding.kind == ShaderResourceBindingKind::ConstantBuffer);
             const bool common = binding.registerSpace == 0u &&
                 binding.registerIndex == 0u && binding.count == 1u &&
                 binding.visibilityMask == pixelVisibility;
@@ -105,7 +111,7 @@ namespace HIKARI::ASSETS::SHADER {
                 (common && binding.kind ==
                     ShaderResourceBindingKind::Sampler);
         }
-        if (!hasTexture || !hasSampler) {
+        if (!hasTexture || !hasSampler || (pixel.bindings.size() == 3u && !hasReadability)) {
             outDiagnostic =
                 "fullscreen pixel reflection does not match t0/s0";
             return false;

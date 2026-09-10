@@ -2,12 +2,24 @@
 
 #include <cstddef>
 #include <cstdint>
+#include "HIKARI/Project/UiTypes.h"
 #include <string_view>
 #include <type_traits>
 
 namespace HIKARI::EDITOR_PROJECT {
 
-    inline constexpr uint32_t kEditorWorkspaceApiVersion = 1u;
+    inline constexpr uint32_t kEditorWorkspaceApiVersion = 3u;
+
+    enum class EditorWorkspaceDockRegion : uint32_t {
+        Center, Toolbar, Left, Right, Bottom, Count,
+    };
+
+    struct EditorWorkspaceInteraction {
+        uint32_t editing = 0u;
+        uint32_t undoPressed = 0u;
+        uint32_t redoPressed = 0u;
+        uint32_t deletePressed = 0u;
+    };
 
     enum class EditorWorkspaceCloseReason : uint32_t {
         SwitchWorkspace = 0u,
@@ -81,6 +93,10 @@ namespace HIKARI::EDITOR_PROJECT {
         uint32_t pressedButtons = 0u;
         uint32_t releasedButtons = 0u;
         uint32_t hovered = 0u;
+        float wheel = 0.0f;
+        uint32_t shift = 0u;
+        uint32_t control = 0u;
+        uint32_t reserved = 0u;
     };
 
     class IEditorWorkspaceUi {
@@ -92,7 +108,12 @@ namespace HIKARI::EDITOR_PROJECT {
         virtual bool BeginPanel(
             std::string_view stablePanelId,
             std::string_view displayName,
-            bool* open = nullptr) = 0;
+            bool* open = nullptr,
+            EditorWorkspaceDockRegion region = EditorWorkspaceDockRegion::Center) = 0;
+        virtual EditorWorkspaceInteraction GetInteraction() const = 0;
+        virtual bool InputTextMultiline(std::string_view stableControlId,
+            std::string_view label, char* utf8Buffer, size_t bufferCapacity,
+            float height = 120.0f) = 0;
         virtual void EndPanel() = 0;
         virtual void Text(std::string_view utf8Text) = 0;
         virtual void Separator() = 0;
@@ -162,6 +183,18 @@ namespace HIKARI::EDITOR_PROJECT {
             EditorWorkspacePoint position,
             EditorWorkspaceColor color,
             std::string_view utf8Text) = 0;
+        virtual bool TextureField(std::string_view stableControlId, std::string_view label,
+            char* assetGuidUtf8, size_t bufferCapacity) = 0;
+        virtual bool CanvasImage(std::string_view textureAssetGuid, EditorWorkspacePoint minimum,
+            EditorWorkspacePoint maximum, EditorWorkspaceColor tint = {}) = 0;
+        virtual void CanvasFill(EditorWorkspacePoint minimum, EditorWorkspacePoint maximum,
+            EditorWorkspaceColor color) = 0;
+        virtual void CanvasStyledText(EditorWorkspacePoint position, float pixelHeight, float wrapWidth,
+            EditorWorkspaceColor color, std::string_view utf8Text) = 0;
+        virtual bool BeginCanvasPreview(uint32_t width,uint32_t height,GameProjectUiColor clearColor) = 0;
+        virtual bool CanvasPreviewSprite(std::string_view textureGuid,const GameProjectUiSpriteRequest&) = 0;
+        virtual bool CanvasPreviewText(std::string_view fontPath,std::string_view text,const GameProjectUiTextRequest&) = 0;
+        virtual bool EndCanvasPreview(EditorWorkspacePoint minimum,EditorWorkspacePoint maximum) = 0;
     };
 
     class IEditorWorkspaceCommands {
@@ -202,12 +235,16 @@ namespace HIKARI::EDITOR_PROJECT {
         // Every other callback runs synchronously on the Editor UI thread;
         // context pointers must not be retained beyond that callback.
         virtual EditorWorkspaceDescriptor GetDescriptor() const = 0;
+        // Workspaces editing the same live document can switch without closing it.
+        virtual std::string_view GetDocumentIdentity() const { return {}; }
         virtual void OnActivate(EditorWorkspaceHostContext& context) = 0;
         virtual void OnDeactivate(EditorWorkspaceHostContext& context) = 0;
         virtual void Draw(EditorWorkspaceHostContext& context) = 0;
         virtual bool IsDirty() const = 0;
         virtual EditorWorkspaceSaveResult Save(
             EditorWorkspaceHostContext& context) = 0;
+        // Called exactly once when the author explicitly discards a draft.
+        virtual void DiscardChanges(EditorWorkspaceHostContext&) {}
         virtual EditorWorkspaceCloseDisposition QueryClose(
             EditorWorkspaceCloseReason reason) const = 0;
     };
@@ -236,7 +273,7 @@ namespace HIKARI::EDITOR_PROJECT {
     static_assert(sizeof(EditorWorkspaceFloatInputOptions) == 16u);
     static_assert(std::is_standard_layout_v<EditorWorkspaceCanvasInput>);
     static_assert(std::is_trivially_copyable_v<EditorWorkspaceCanvasInput>);
-    static_assert(sizeof(EditorWorkspaceCanvasInput) == 32u);
+    static_assert(sizeof(EditorWorkspaceCanvasInput) == 48u);
     static_assert(offsetof(EditorWorkspaceCanvasInput, size) == 0u);
     static_assert(offsetof(EditorWorkspaceCanvasInput, pointer) == 8u);
     static_assert(offsetof(EditorWorkspaceCanvasInput, heldButtons) == 16u);

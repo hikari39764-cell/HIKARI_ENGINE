@@ -849,6 +849,11 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
 
         record.forwardCandidate = record.visible;
         record.shadowCandidate = record.visible && record.castShadow;
+        if (!record.visible && !record.waterSurface && !surfaceInstance.sandSurface) {
+            // 非表示ノードは識別情報だけを保持し、表示時に資源を解決する。
+            record.valid = surfaceInstance.valid;
+            return record;
+        }
         record.key = BuildResourceKey(record);
 
         const GpuSceneSurfaceValidationResult validation =

@@ -113,7 +113,7 @@ namespace {
         range.OffsetInDescriptorsFromTableStart =
             D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-        D3D12_ROOT_PARAMETER parameters[2]{};
+        D3D12_ROOT_PARAMETER parameters[3]{};
         parameters[0].ParameterType =
             D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
         parameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
@@ -124,6 +124,9 @@ namespace {
         parameters[1].Descriptor.ShaderRegister = 0u;
         parameters[1].Descriptor.RegisterSpace = 0u;
 
+        parameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+        parameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        parameters[2].Constants = {1u, 0u, 36u};
         D3D12_STATIC_SAMPLER_DESC sampler{};
         sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
         sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
@@ -140,7 +143,7 @@ namespace {
         sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
         D3D12_ROOT_SIGNATURE_DESC description{};
-        description.NumParameters = 2u;
+        description.NumParameters = 3u;
         description.pParameters = parameters;
         description.NumStaticSamplers = 1u;
         description.pStaticSamplers = &sampler;
@@ -392,6 +395,7 @@ bool DrawProjectFullscreenShader(
     const RenderTextureView& input,
     uint32_t width,
     uint32_t height,
+    const ScreenReadabilityFrame& readability,
     std::string& outDiagnostic) noexcept {
     try {
         outDiagnostic.clear();
@@ -420,6 +424,7 @@ bool DrawProjectFullscreenShader(
             state.rootSignature.Get());
         graphics.cmdList->SetPipelineState(pipeline);
         graphics.cmdList->SetGraphicsRootDescriptorTable(0u, input.srv);
+        graphics.cmdList->SetGraphicsRoot32BitConstants(2u, 36u, &readability, 0u);
 
         const D3D12_VIEWPORT viewport{
             0.0f,

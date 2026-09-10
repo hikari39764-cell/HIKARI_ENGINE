@@ -1,6 +1,9 @@
 #pragma once
 
 #include <cstdint>
+#include <array>
+#include <limits>
+#include <string_view>
 #include <memory>
 #include <string>
 #include <vector>
@@ -44,7 +47,11 @@ namespace HIKARI::POST {
         bool SetGlobalProfile(
             const std::string& profileId,
             const DirectX::XMFLOAT4(&values)[16]);
+        bool SubmitProfileParameter(std::string_view profileId, uint32_t index,
+            uint32_t channelMask, const DirectX::XMFLOAT4& value,
+            int32_t priority, uint64_t sourceId);
         void ClearGlobalProfile();
+        void GetRadialScreenWarp(float& curvature, float& strength) const noexcept;
         void SetBloomSettings(const BloomSettings& settings);
         void SetToneMappingSettings(const ToneMappingSettings& settings);
         void SetFxaaSettings(const FxaaSettings& settings);
@@ -108,6 +115,15 @@ namespace HIKARI::POST {
         std::string DumpState() const;
 
     private:
+        CommonParams ResolveGlobalFrameParams() const noexcept;
+        struct ProfileChannelOverride {
+            float value = 0.f;
+            int32_t priority = 0;
+            uint64_t sourceId = 0u;
+        };
+        std::array<std::array<ProfileChannelOverride, 4>, 16> profileOverrides_{};
+        uint64_t profileOverrideFrame_ = (std::numeric_limits<uint64_t>::max)();
+        std::string profileOverrideId_;
         bool EnsureToneMappingEffect();
         bool EnsureFxaaEffect();
         bool EnsureBloomEffects(uint32_t blurPairCount);

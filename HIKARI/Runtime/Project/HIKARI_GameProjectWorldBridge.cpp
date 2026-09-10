@@ -1,5 +1,6 @@
 #include "HIKARI/Project/WorldView.h"
 #include "HIKARI/Project/TerrainView.h"
+#include "HIKARI/Project/PresentationTypes.h"
 
 #include <algorithm>
 #include <cmath>
@@ -311,6 +312,48 @@ namespace HIKARI {
                 GameProjectWorldResultCode::InternalError,
                 handle_);
         }
+    }
+
+    bool ObjectView::TryGetRuntimeModelAppearance(GameProjectModelAppearance& value) const noexcept {
+        value={};
+        try {
+            auto* object=GameProjectSdkAccess::GetObject(*this);
+            auto* world=object?object->GetWorld():nullptr;
+            if(!world || !world->IsOwnerThread() || GameProjectSdkAccess::IsWorldClosing(*world))return false;
+            const auto* model=object->GetComponent<ModelComponent>();
+            if(!model || model->GetAssetId().size()>=sizeof(value.assetId) || model->GetMaterialSetAssetGuid().value.size()>=sizeof(value.materialSetAssetGuid))return false;
+            std::copy(model->GetAssetId().begin(),model->GetAssetId().end(),value.assetId);
+            const auto& material=model->GetMaterialSetAssetGuid().value;
+            std::copy(material.begin(),material.end(),value.materialSetAssetGuid);
+            return true;
+        } catch(...) {return false;}
+    }
+    bool ObjectView::ApplyRuntimeModelAppearance(const GameProjectModelAppearance& value) const noexcept {
+        try {
+            auto* object=GameProjectSdkAccess::GetObject(*this);
+            auto* world=object?object->GetWorld():nullptr;
+            if(!world || !world->IsOwnerThread() || GameProjectSdkAccess::IsWorldClosing(*world) || value.structSize!=sizeof(value) || value.version!=1)return false;
+            const auto* end=std::find(std::begin(value.assetId),std::end(value.assetId),'\0');
+            const auto* matEnd=std::find(std::begin(value.materialSetAssetGuid),std::end(value.materialSetAssetGuid),'\0');
+            if(end==std::end(value.assetId) || matEnd==std::end(value.materialSetAssetGuid) || end==value.assetId)return false;
+            auto* model=object->GetComponent<ModelComponent>();if(!model)return false;
+            std::string asset(value.assetId,end), material(value.materialSetAssetGuid,matEnd);
+            if(model->GetAssetId()!=asset)model->SetAssetId(std::move(asset));
+            if(model->GetMaterialSetAssetGuid().value!=material)model->SetMaterialSetAssetGuid(AssetGuid{std::move(material)});
+            return true;
+        } catch(...) {return false;}
+    }
+    bool ObjectView::SetRuntimeWorldSpriteTexture(std::string_view guid) const noexcept {
+        try {
+            auto* object=GameProjectSdkAccess::GetObject(*this);
+            auto* world=object?object->GetWorld():nullptr;
+            if(!world || !world->IsOwnerThread() || GameProjectSdkAccess::IsWorldClosing(*world) ||
+                guid.size()>128 || guid.find('\0')!=std::string_view::npos) return false;
+            auto* sprite=object->GetComponent<WorldSpriteComponent>();
+            if(!sprite) return false;
+            sprite->SetTextureAssetGuid(AssetGuid{std::string(guid)});
+            return true;
+        } catch(...) { return false; }
     }
 
     bool ObjectView::TryGetRuntimeWorldSpriteState(

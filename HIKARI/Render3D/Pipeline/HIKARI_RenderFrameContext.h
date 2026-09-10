@@ -84,6 +84,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
 
     // Immutable per-frame contract shared by renderer stages.
     struct RenderFrameContext {
+        ScreenReadabilityFrame screenReadability{};
         RenderViewId viewId{ kPrimaryRenderViewId };
         RenderViewPurpose purpose = RenderViewPurpose::Game;
         bool cameraCut = false;

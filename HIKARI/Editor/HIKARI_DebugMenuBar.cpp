@@ -2,6 +2,10 @@
 #include "Core/Text/HIKARI_Localization.h"
 #include "Editor/HIKARI_EditorContext.h"
 #include "Editor/Export/HIKARI_GameExporter.h"
+#include "Editor/Export/HIKARI_GameExportJob.h"
+#include "Editor/Export/HIKARI_GameExportIdentityPanel.h"
+#include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
+#include "Core/Text/HIKARI_UtfPath.h"
 #include "Editor/Menus/HIKARI_EditorDocumentMenu.h"
 #include "Editor/Platform/HIKARI_EditorFileDialog.h"
 #include "Editor/Platform/HIKARI_EditorShellActions.h"
@@ -32,6 +36,7 @@ namespace HIKARI {
         constexpr size_t kExportPathBufferSize = 1024;
 
         bool g_showGameExportWindow = false;
+        EDITOR::GameExportIdentityPanel g_exportIdentity;
         std::array<char, kExportPathBufferSize> g_exportPathBuffer{};
         std::string g_exportStatus{};
         std::vector<EDITOR::GameExportSceneInfo> g_exportScenes{};
@@ -50,11 +55,11 @@ namespace HIKARI {
         }
 
         void CopyPathToExportPathBuffer(const std::filesystem::path& path) {
-            CopyTextToExportPathBuffer(path.string());
+            CopyTextToExportPathBuffer(TEXT::PathToUtf8(path));
         }
 
         std::filesystem::path ExportPathFromBuffer() {
-            return std::filesystem::path(g_exportPathBuffer.data());
+            return TEXT::PathFromUtf8(g_exportPathBuffer.data());
         }
 
         bool ContainsGuid(const std::vector<std::string>& guids, const std::string& guid) {
@@ -133,6 +138,7 @@ namespace HIKARI {
         }
 
         void OpenGameExportWindow() {
+            g_exportIdentity.Reset();
             CopyPathToExportPathBuffer(EDITOR::GameExporter::GetDefaultOutputDirectory());
             RefreshExportScenes();
             g_showGameExportWindow = true;
@@ -264,7 +270,8 @@ namespace HIKARI {
                 static_cast<int>(g_exportScenes.size()));
         }
 
-        void DrawGameExportWindow() {
+        void DrawGameExportWindow(EDITOR::GameExportJob& job, EDITOR::EditorOperationRegistry& operations,
+            bool canPrepare) {
             if (!g_showGameExportWindow) {
                 return;
             }
@@ -273,8 +280,13 @@ namespace HIKARI {
                 CopyPathToExportPathBuffer(EDITOR::GameExporter::GetDefaultOutputDirectory());
             }
 
-            ImGui::SetNextWindowSize(ImVec2(720.0f, 520.0f), ImGuiCond_FirstUseEver);
+            ImGui::SetNextWindowSize(ImVec2(760.0f, 760.0f), ImGuiCond_FirstUseEver);
             if (ImGui::Begin("Export Game", &g_showGameExportWindow)) {
+                ImGui::TextWrapped("Shipping build > asset validation > cook > package validation > publish");
+                ImGui::TextDisabled("Uses saved project files. Previous exports are preserved if preparation fails.");
+                if (!canPrepare) ImGui::TextWrapped("Stop Play and save project changes before exporting.");
+                g_exportIdentity.Draw(operations, job.IsRunning());
+                ImGui::BeginDisabled(job.IsRunning());
                 ImGui::TextUnformatted("Output Path");
                 ImGui::PushItemWidth(-110.0f);
                 ImGui::InputText("##GameExportOutputPath", g_exportPathBuffer.data(), g_exportPathBuffer.size());
@@ -332,6 +344,7 @@ namespace HIKARI {
                 DrawSceneExportControls();
 
                 const bool canExport =
+                    canPrepare && g_exportIdentity.IsSaved() && !job.IsRunning() &&
                     !g_exportScenes.empty() &&
                     !g_selectedSceneGuids.empty() &&
                     !g_startupSceneGuid.empty();
@@ -344,14 +357,19 @@ namespace HIKARI {
                     options.startupSceneGuid = g_startupSceneGuid;
                     options.sceneGuids = SelectedSceneGuidsInDisplayOrder();
                     options.windowMode = g_exportWindowMode;
-                    const EDITOR::GameExportResult result = EDITOR::GameExporter::Export(options);
+                    const auto result = operations.Execute("export.start", {
+                        {"outputDirectory", TEXT::PathToUtf8(options.outputDirectory)},
+                        {"startupSceneGuid", options.startupSceneGuid}, {"sceneGuids", options.sceneGuids},
+                        {"windowMode", static_cast<int>(options.windowMode)}});
                     g_exportStatus = result.message;
-                    if (result.success) {
-                        CopyPathToExportPathBuffer(result.outputDirectory);
-                    }
                 }
                 if (!canExport) {
                     ImGui::EndDisabled();
+                }
+                ImGui::EndDisabled();
+                if (job.IsRunning()) {
+                    ImGui::SameLine();
+                    if (ImGui::Button("Cancel")) (void)operations.Execute("export.cancel");
                 }
 
                 const std::filesystem::path currentOutputPath = ExportPathFromBuffer();
@@ -370,6 +388,13 @@ namespace HIKARI {
                     ImGui::EndDisabled();
                 }
 
+                const auto& status = job.Status();
+                if (!status.value("message", std::string{}).empty()) {
+                    ImGui::ProgressBar(status.value("progress", 0.0f));
+                    ImGui::TextWrapped("%s", status.value("message", std::string{}).c_str());
+                    if (status.contains("logDirectory") && ImGui::Button("Open Build Logs"))
+                        EDITOR::SHELL::OpenFolderInExplorer(TEXT::PathFromUtf8(status.at("logDirectory").get<std::string>()));
+                }
                 if (!g_exportStatus.empty()) {
                     ImGui::Separator();
                     ImGui::TextWrapped("%s", g_exportStatus.c_str());
@@ -390,7 +415,9 @@ namespace HIKARI {
         EDITOR::EditorProjectSessionController&
             projectSession,
         bool projectTransitionAllowed,
-        bool hasUnsavedProjectChanges) const {
+        bool hasUnsavedProjectChanges,
+        EDITOR::GameExportJob& exportJob,
+        EDITOR::EditorOperationRegistry& operations) const {
         if (!ImGui::BeginMainMenuBar()) {
             return;
         }
@@ -601,7 +628,7 @@ namespace HIKARI {
         }
 
         ImGui::EndMainMenuBar();
-        DrawGameExportWindow();
+        DrawGameExportWindow(exportJob, operations, projectTransitionAllowed && !hasUnsavedProjectChanges);
     }
 #else
     void DebugMenuBar::Draw(
@@ -614,7 +641,9 @@ namespace HIKARI {
         EDITOR::EditorCommandRouter&,
         EDITOR::EditorProjectSessionController&,
         bool,
-        bool) const {}
+        bool,
+        EDITOR::GameExportJob&,
+        EDITOR::EditorOperationRegistry&) const {}
 #endif
 
 } // namespace HIKARI

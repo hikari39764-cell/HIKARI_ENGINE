@@ -248,8 +248,14 @@ namespace HIKARI::RENDER3D::RUNTIME {
         void MarkAllSurfaceInstancesDirty();
         void RefreshStats();
 
+        struct ObjectSurfaceRange {
+            size_t begin = 0;
+            size_t count = 0;
+        };
+
         std::vector<SceneRenderObject> objects_{};
         std::vector<SceneSurfaceInstance> surfaceInstances_{};
+        std::vector<ObjectSurfaceRange> objectSurfaceRanges_{};
         std::vector<float> sandSurfaceHeights_{};
         std::vector<uint32_t> dirtySurfaceIndices_{};
         std::unordered_map<uint64_t, size_t> indexById_{};

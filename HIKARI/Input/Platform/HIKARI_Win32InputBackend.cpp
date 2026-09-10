@@ -120,11 +120,13 @@ bool IsHostActive(HWND host) {
 } // namespace
 
 Win32InputBackend::~Win32InputBackend() {
+    SetPointerCursorVisible(true);
     ReleaseRelativeMouseCapture();
 }
 
 void Win32InputBackend::SetHostWindow(void* nativeWindow) {
     if (hostWindow_ != nativeWindow) {
+        SetPointerCursorVisible(true);
         ReleaseRelativeMouseCapture();
         hostWindow_ = nativeWindow;
         hasPreviousMouse_ = false;
@@ -167,7 +169,22 @@ void Win32InputBackend::SetExternalMouseWheel(float delta) {
     externalWheel_ += delta;
 }
 
+void Win32InputBackend::SetPointerCursorVisible(bool visible) {
+    const HWND window = ::GetForegroundWindow();
+    POINT point{};
+    RECT rect{};
+    const bool inside = window &&
+        ::GetWindowThreadProcessId(window, nullptr) == ::GetCurrentThreadId() &&
+        ::GetCursorPos(&point) && ::ScreenToClient(window, &point) &&
+        ::GetClientRect(window, &rect) && ::PtInRect(&rect, point);
+    const bool hidden = !visible && inside;
+    if (hidden == pointerCursorHidden_) return;
+    (void)::ShowCursor(hidden ? FALSE : TRUE);
+    pointerCursorHidden_ = hidden;
+}
+
 void Win32InputBackend::Reset() {
+    SetPointerCursorVisible(true);
     ReleaseRelativeMouseCapture();
     mouseCaptureMode_ = MouseCaptureMode::Free;
     mouseCaptureRegion_.reset();
@@ -296,6 +313,8 @@ void Win32InputBackend::Poll(InputDeviceState& out) {
         out.mouseWheel = externalWheel_;
     } else {
         ReleaseRelativeMouseCapture();
+        if (::GetWindowThreadProcessId(::GetForegroundWindow(), nullptr) != ::GetCurrentThreadId())
+            SetPointerCursorVisible(true);
     }
     externalWheel_ = 0.0f;
 

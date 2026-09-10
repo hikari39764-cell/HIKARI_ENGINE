@@ -28,6 +28,7 @@
 #include "Render3D/Lighting/HIKARI_PanoramaSkyLayerStage.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
+#include "Render3D/Render/HIKARI_ModelRenderer.h"
 #include "Render3D/Material/HIKARI_DefaultPbrResources.h"
 #include "Render3D/Material/Program/HIKARI_MaterialProgramRegistry.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameGraphSession.h"
@@ -187,9 +188,7 @@ namespace HIKARI {
             gStreamlineEnabled = cfg.enableStreamline;
             const bool enableFrameGenerationPlugins =
                 IsEditorHostMode(cfg.hostMode) ||
-                (IsStandaloneGameHostMode(cfg.hostMode) &&
-                    RENDER3D::GetRenderQualitySettings().frameGenerationMode ==
-                        RENDER3D::RenderFrameGenerationMode::Dlss);
+                IsStandaloneGameHostMode(cfg.hostMode);
             if (gStreamlineEnabled) {
                 gStreamlineEnabled =
                     RENDER3D::UPSCALING::InitializeStreamlineEarly(
@@ -465,6 +464,8 @@ namespace HIKARI {
                 if (gStreamlineEnabled) {
                     HIKARI_LOG_INFO("Streamline shutdown.");
                 }
+                MODELRENDERER::Reset();
+                HIKARI_LOG_INFO("Model renderer and scene captures finalized.");
                 MESHRENDERER::ShutdownParticleGpuDrivenPass();
                 HIKARI_LOG_INFO("Particle GPU-driven pass finalized.");
                 MESHRENDERER::ShutdownWorldSpritePass();

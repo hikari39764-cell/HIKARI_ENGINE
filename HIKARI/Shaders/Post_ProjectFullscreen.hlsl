@@ -18,5 +18,11 @@ HikariProjectFullscreenVertex FullscreenVS(uint vertexId : SV_VertexID) {
 }
 
 float4 CopyPS(HikariProjectFullscreenVertex input) : SV_TARGET {
-    return HikariProjectInput.Sample(HikariProjectLinearClamp, input.uv);
+    float4 color = HikariProjectInput.Sample(HikariProjectLinearClamp, input.uv);
+    if (gReadabilityAttenuateCopy != 0u) {
+        uint width, height;
+        HikariProjectInput.GetDimensions(width, height);
+        color *= 1.0f - .9f * HikariScreenReadabilityAfterWarp(input.uv, float2(width, height));
+    }
+    return color;
 }

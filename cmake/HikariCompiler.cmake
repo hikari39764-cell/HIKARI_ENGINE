@@ -32,6 +32,14 @@ function(hikari_configure_engine_target target_name)
     target_compile_features("${target_name}" PRIVATE cxx_std_20)
     hikari_set_msvc_runtime("${target_name}")
 
+    get_target_property(hikari_target_type "${target_name}" TYPE)
+    if(WIN32 AND MSVC AND hikari_target_type STREQUAL "EXECUTABLE")
+        target_sources(
+            "${target_name}"
+            PRIVATE
+                "${HIKARI_SOURCE_ROOT}/HIKARI/Platform/HIKARI_WindowsApplication.manifest")
+    endif()
+
     target_compile_definitions(
         "${target_name}"
         PRIVATE

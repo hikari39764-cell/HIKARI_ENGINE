@@ -1,4 +1,5 @@
 #include "Editor/Play/HIKARI_EditorPlaySession.h"
+#include "Editor/HIKARI_EditorViewportInput.h"
 
 #include <utility>
 
@@ -65,7 +66,9 @@ namespace HIKARI::EDITOR {
         }
         INPUT::InputService& input = SERVICES::GetInputService();
         input.SetMouseCaptureRegion(region);
-        input.SetMouseCaptureMode(INPUT::MouseCaptureMode::Relative);
+        input.SetMouseCaptureMode(input.IsUiInteractionActive()
+            ? INPUT::MouseCaptureMode::Free : INPUT::MouseCaptureMode::Relative);
+        SetGameViewportPlayInputEnabled(true);
         SetGameplayInputEnabled(true);
         embeddedInputCaptured_ = true;
         statusMessage_ = "Embedded Play is receiving input. Press Esc to release.";
@@ -86,6 +89,7 @@ namespace HIKARI::EDITOR {
             return;
         }
         INPUT::InputService& input = SERVICES::GetInputService();
+        SetGameViewportPlayInputEnabled(false);
         input.SetMouseCaptureMode(INPUT::MouseCaptureMode::Free);
         input.ClearMouseCaptureRegion();
         SetGameplayInputEnabled(false);

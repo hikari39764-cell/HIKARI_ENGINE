@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include "HIKARI/Project/UiCanvasTypes.h"
+#include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 
 #include "Render2D/HIKARI_GameUiRenderData.h"
 
@@ -22,9 +24,15 @@ namespace HIKARI::GAME_UI {
         uint64_t frameIndex,
         int logicalWidth,
         int logicalHeight) noexcept;
+    bool RenderGameUiWorkspacePreviewFrame(const GameUiFrameSource& source,int width,int height) noexcept;
     bool GetGameUiBackdropRequest(
         uint64_t frameIndex,
         GameProjectUiBackdropRequest& outRequest) noexcept;
+    bool RenderGameUiCanvasTarget(uint32_t slot, uint64_t worldIdentity,
+        const GameUiFrameSource& source, uint64_t revision, uint32_t width, uint32_t height,
+        GameProjectUiColor clearColor, RENDER3D::TextureResourceHandle& output,
+        uint64_t& renderedRevision, uint64_t& renderedFrame) noexcept;
+    void ResetGameUiCanvasTarget(uint32_t slot) noexcept;
     void ShutdownGameUiRenderer() noexcept;
 
 } // namespace HIKARI::GAME_UI

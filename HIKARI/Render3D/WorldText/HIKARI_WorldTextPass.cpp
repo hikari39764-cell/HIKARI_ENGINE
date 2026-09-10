@@ -243,6 +243,11 @@ namespace HIKARI::RENDER3D::WORLD_TEXT {
             mappedGlyphs{};
         std::vector<DrawBatch> batches{};
         TEXT_RENDERING::SdfTextLayoutLease atlasLease{};
+        std::vector<TEXT_RENDERING::SdfTextLayoutRequest> cachedLayoutRequests{};
+        std::vector<TEXT_RENDERING::SdfTextGlyphDraw> layoutGlyphs{};
+        TEXT_RENDERING::SdfTextLayoutStats layoutStats{};
+        uint64_t layoutWorldIdentity{};
+        bool layoutCacheValid{};
         WorldTextPassStats stats{};
         uint32_t capacity = 0u;
         uint32_t activeFrameSlot = 0u;
@@ -348,6 +353,8 @@ namespace HIKARI::RENDER3D::WORLD_TEXT {
             }
             batches.clear();
             atlasLease.Reset();
+            cachedLayoutRequests.clear();layoutGlyphs.clear();layoutStats={};
+            layoutCacheValid=false;layoutWorldIdentity=0;
             pipeline.Reset();
             rootSignature.Reset();
             stats = {};
@@ -365,8 +372,10 @@ namespace HIKARI::RENDER3D::WORLD_TEXT {
             stats = {};
             stats.ready = ready;
             batches.clear();
-            atlasLease.Reset();
-            if (source == nullptr || source->instances.empty()) return true;
+            if (source == nullptr || source->instances.empty()) {
+                atlasLease.Reset();cachedLayoutRequests.clear();layoutGlyphs.clear();layoutCacheValid=false;
+                return true;
+            }
             stats.requestedTextCount = static_cast<uint32_t>((std::min)(
                 source->instances.size(),
                 static_cast<size_t>(
@@ -417,19 +426,18 @@ namespace HIKARI::RENDER3D::WORLD_TEXT {
                 requestInstances.push_back(&instance);
             }
 
-            std::vector<TEXT_RENDERING::SdfTextGlyphDraw> layoutGlyphs{};
-            TEXT_RENDERING::SdfTextLayoutStats layoutStats{};
-            if (!TEXT_RENDERING::BuildSdfTextGlyphDraws(
-                    requests,
-                    layoutGlyphs,
-                    &layoutStats,
-                    capacity,
-                    &atlasLease)) {
-                stats.failedTextRequestCount = static_cast<uint32_t>(
-                    requests.size());
-                stats.droppedTextCount += static_cast<uint32_t>(
-                    requests.size());
-                return true;
+            if (!layoutCacheValid || layoutWorldIdentity != source->worldIdentity || requests != cachedLayoutRequests) {
+                layoutCacheValid = false;
+                if (!TEXT_RENDERING::BuildSdfTextGlyphDraws(
+                        requests, layoutGlyphs, &layoutStats, capacity, &atlasLease)) {
+                    stats.failedTextRequestCount = static_cast<uint32_t>(requests.size());
+                    stats.droppedTextCount += static_cast<uint32_t>(requests.size());
+                    return true;
+                }
+                cachedLayoutRequests = requests;
+                layoutWorldIdentity = source->worldIdentity;
+                layoutCacheValid = layoutStats.failedRequestCount == 0 &&
+                    layoutStats.readyRequestCount == requests.size();
             }
             stats.failedTextRequestCount = layoutStats.failedRequestCount;
             stats.droppedGlyphCount = layoutStats.droppedGlyphCount;

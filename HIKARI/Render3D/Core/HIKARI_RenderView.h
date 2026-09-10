@@ -1,4 +1,5 @@
 #pragma once
+#include "Render3D/ScreenSpace/HIKARI_ScreenReadability.h"
 
 #include <cstdint>
 
@@ -84,6 +85,7 @@ namespace HIKARI::RENDER3D {
     };
 
     struct RenderViewContext {
+        ScreenReadabilityWorldFrame screenReadability{};
         RenderViewId viewId{};
         RenderViewPurpose purpose = RenderViewPurpose::Game;
         const ResolvedCameraFrame* cameraFrame = nullptr;

@@ -12,6 +12,7 @@ namespace HIKARI::GAME_UI {
         GameProjectUiColor glowColor{};
         float glowWidth = 0.0f;
         float glowIntensity = 0.0f;
+        bool operator==(const GameUiTextEffectStyle&) const noexcept = default;
     };
 
     struct GameUiSpriteDraw {

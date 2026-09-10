@@ -1,10 +1,13 @@
 #include "HIKARI_EditorViewportInput.h"
 
+#include <cmath>
+
 #include "Editor/Views/HIKARI_EditorViewInputGate.h"
 #include "Render3D/Debug/HIKARI_DebugCameraController3D.h"
 
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
+#include "imgui_internal.h"
 #endif
 
 namespace HIKARI::EDITOR {
@@ -15,6 +18,8 @@ namespace HIKARI::EDITOR {
             bool windowFocused = false;
             bool mouseCaptured = false;
             bool gizmoCaptured = false;
+            bool playInputEnabled = false;
+            uint32_t windowId = 0u;
             float x = 0.0f;
             float y = 0.0f;
             float width = 0.0f;
@@ -101,6 +106,8 @@ namespace HIKARI::EDITOR {
 
         gGameViewportInput.hasRect = true;
         gGameViewportInput.windowFocused = windowFocused;
+        gGameViewportInput.windowId = HasImGuiContext() && ImGui::GetCurrentContext()->CurrentWindow
+            ? ImGui::GetCurrentWindow()->ID : 0u;
         gGameViewportInput.x = x;
         gGameViewportInput.y = y;
         gGameViewportInput.width = width;
@@ -122,7 +129,7 @@ namespace HIKARI::EDITOR {
     void SetGameViewportGizmoCapture(bool captured)
     {
 #if defined(HIKARI_WITH_EDITOR)
-        // ImGuizmo 操作中は DebugCamera の入力取得を一時停止する、E        gGameViewportInput.gizmoCaptured = captured;
+        gGameViewportInput.gizmoCaptured = captured;
 #else
         (void)captured;
 #endif
@@ -131,6 +138,67 @@ namespace HIKARI::EDITOR {
     bool HasGameViewportInputRect()
     {
         return gGameViewportInput.hasRect;
+    }
+
+    void SetGameViewportPlayInputEnabled(bool enabled)
+    {
+        gGameViewportInput.playInputEnabled = enabled;
+    }
+
+    bool IsGameViewportPlayInputActive() noexcept
+    {
+#if defined(HIKARI_WITH_EDITOR)
+        if (!gGameViewportInput.playInputEnabled) {
+            return false;
+        }
+        const ImGuiContext* context = ImGui::GetCurrentContext();
+        ImGuiWindow* window = context && gGameViewportInput.windowId
+            ? ImGui::FindWindowByID(gGameViewportInput.windowId) : nullptr;
+        const bool ownsWindows = window && context->NavWindow && context->HoveredWindow &&
+            ImGui::IsWindowChildOf(context->NavWindow, window, false, false) &&
+            ImGui::IsWindowChildOf(context->HoveredWindow, window, false, false);
+        const bool editorItemActive = context && context->ActiveId != 0u &&
+            !(window && context->ActiveIdWindow == window && context->ActiveId == window->MoveId);
+        const bool active = ownsWindows && context->WithinFrameScope &&
+            !gGameViewportInput.gizmoCaptured &&
+            !context->IO.AppFocusLost && !context->IO.WantTextInput && !editorItemActive &&
+            !QueryEditorViewInputBlockState().pointer && IsMouseInsideGameViewport() &&
+            !ImGui::IsKeyPressed(ImGuiKey_Escape, false);
+        if (!active) {
+            gGameViewportInput.playInputEnabled = false;
+        }
+        return active;
+#else
+        return false;
+#endif
+    }
+
+    bool TryGetGameViewportPointer(INPUT::InputPointerState& pointer,
+        uint32_t& width, uint32_t& height) noexcept
+    {
+        pointer = {};
+        width = height = 0u;
+#if defined(HIKARI_WITH_EDITOR)
+        if (!IsGameViewportPlayInputActive()) {
+            return false;
+        }
+        const ImGuiIO& io = ImGui::GetIO();
+        if (io.AppFocusLost || !std::isfinite(gGameViewportInput.width) ||
+            !std::isfinite(gGameViewportInput.height)) {
+            return false;
+        }
+        width = static_cast<uint32_t>(std::lround(gGameViewportInput.width));
+        height = static_cast<uint32_t>(std::lround(gGameViewportInput.height));
+        pointer.normalizedX = (io.MousePos.x - gGameViewportInput.x) / gGameViewportInput.width;
+        pointer.normalizedY = (io.MousePos.y - gGameViewportInput.y) / gGameViewportInput.height;
+        pointer.x = pointer.normalizedX * static_cast<float>(width);
+        pointer.y = pointer.normalizedY * static_cast<float>(height);
+        pointer.primaryDown = io.MouseDown[ImGuiMouseButton_Left];
+        pointer.secondaryDown = io.MouseDown[ImGuiMouseButton_Right];
+        return width > 0u && height > 0u;
+#else
+        return false;
+#endif
     }
 
     bool IsGameViewportMouseHovered()

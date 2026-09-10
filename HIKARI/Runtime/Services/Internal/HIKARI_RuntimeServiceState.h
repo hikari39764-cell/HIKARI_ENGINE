@@ -43,6 +43,8 @@ namespace HIKARI::SERVICES::INTERNAL {
         int editorGameViewportHeight = 0;
         bool renderQualityRuntimeInitialized = false;
         RENDER3D::RenderQualitySettings appliedRenderQuality{};
+        RENDER3D::RenderQualitySettings requestedRenderQuality{};
+        bool hasRequestedRenderQuality = false;
         uint64_t renderQualityTransitionCount = 0;
         std::wstring runtimeWindowBaseTitle{};
         double previewTelemetrySeconds = 0.0;

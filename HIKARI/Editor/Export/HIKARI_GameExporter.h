@@ -1,6 +1,9 @@
 #pragma once
 
 #include <filesystem>
+#include <functional>
+#include <optional>
+#include "Editor/Export/HIKARI_GameExportIdentity.h"
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -28,12 +31,12 @@ namespace HIKARI::EDITOR {
 
     struct GameExportOptions {
         std::filesystem::path outputDirectory{};
-        std::string executableFileName{};
-        std::string windowTitle{};
+        std::optional<GameExportIdentity> identity;
         std::string startupSceneGuid{};
         std::vector<std::string> sceneGuids{};
         GameExportWindowMode windowMode =
             GameExportWindowMode::BorderlessFullscreen;
+        std::function<bool(const std::string&, float)> progress{};
     };
 
     class GameExporter {

@@ -359,6 +359,12 @@ namespace {
             }
         }
 
+        if (resolution == GameProjectWorkspaceCloseResolution::Discard) {
+            Entry& entry = entries_[*active_];
+            auto context = MakeContext(entry);
+            try { entry.workspace->DiscardChanges(context); }
+            catch (...) { Disable(*active_, "DiscardChanges", "unknown exception"); return; }
+        }
         const std::optional<size_t> target = awaitingClose_->target;
         awaitingClose_.reset();
         ApplyNavigation(target);
@@ -605,6 +611,10 @@ namespace {
             EDITOR_PROJECT::EditorWorkspaceCloseDisposition::Block;
         try {
             disposition = entry.workspace->QueryClose(request.reason);
+            const auto document=entry.workspace->GetDocumentIdentity();
+            if(!document.empty() && request.target &&
+                entries_[*request.target].workspace->GetDocumentIdentity()==document)
+                disposition=EDITOR_PROJECT::EditorWorkspaceCloseDisposition::Allow;
         }
         catch (const std::exception& exception) {
             Disable(*active_, "QueryClose", ExceptionDetail(exception));
