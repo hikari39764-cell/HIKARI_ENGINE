@@ -196,9 +196,10 @@ namespace HIKARI {
         std::shared_ptr<QueuedImportBatch> queuedImportBatch_{};
         AssetImportBatchStatus lastCompletedImportBatch_{};
         bool completedImportBatchPending_ = false;
-        AssetTaskService assetTaskService_{};
         mutable std::mutex ownerThreadMutex_{};
         std::thread::id ownerThread_{};
+        // worker が参照する record/importer/mutex より先に停止・join する。
+        AssetTaskService assetTaskService_{};
     };
 
 } // namespace HIKARI

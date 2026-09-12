@@ -94,7 +94,7 @@ namespace HIKARI {
             (context.importedDirectory / "effect.hvfxc")
                 .lexically_normal();
         if (!VFX::WriteHvfxcFile(
-                outputPath,
+                context.StageFile(outputPath),
                 compileResult.program,
                 error)) {
             result.message =

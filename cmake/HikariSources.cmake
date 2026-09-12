@@ -346,6 +346,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Cooking/HIKARI_CookedContentManifest.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Tasks/HIKARI_AssetImportQueue.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Tasks/HIKARI_AssetTaskService.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Tasks/HIKARI_AssetImportPublication.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/HIKARI_AssetGuid.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/HIKARI_AssetImportState.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/HIKARI_AssetRegistry.cpp"

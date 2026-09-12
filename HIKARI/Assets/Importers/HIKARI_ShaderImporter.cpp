@@ -102,7 +102,8 @@ namespace HIKARI {
         }
         void RemoveStaleShaderArtifacts(
             const std::filesystem::path& importedDirectory,
-            const std::filesystem::path& retainedArtifact) noexcept {
+            const std::filesystem::path& retainedArtifact,
+            AssetImportPublication* publication) {
             std::error_code error{};
             for (std::filesystem::directory_iterator iterator(
                      importedDirectory,
@@ -124,7 +125,10 @@ namespace HIKARI {
                     error.clear();
                     continue;
                 }
-                if (!std::filesystem::equivalent(
+                if (publication) {
+                    if (candidate.lexically_normal() != retainedArtifact.lexically_normal())
+                        publication->DeleteOnPublish(candidate);
+                } else if (!std::filesystem::equivalent(
                         candidate,
                         retainedArtifact,
                         error) &&
@@ -258,7 +262,8 @@ namespace HIKARI {
         const bool artifactExisted = std::filesystem::is_regular_file(
             outputPath,
             existsError) && !existsError;
-        if (!SHADER::WriteHshadercFile(outputPath, artifact, error)) {
+        const auto preparedPath = context.StageFile(outputPath);
+        if (!SHADER::WriteHshadercFile(preparedPath, artifact, error)) {
             result.message =
                 "[ShaderImporter][ERROR] artifact publication failed: " +
                 error;
@@ -270,16 +275,23 @@ namespace HIKARI {
                 manifestPath,
                 manifestHash,
                 error)) {
-            if (!artifactExisted) {
+            if (context.publication || !artifactExisted) {
                 std::error_code removeError{};
-                std::filesystem::remove(outputPath, removeError);
+                std::filesystem::remove(preparedPath, removeError);
             }
             result.message =
                 "[ShaderImporter][ERROR] source closure changed before "
                 "publication: " + error;
             return result;
         }
-        RemoveStaleShaderArtifacts(importedDirectory, outputPath);
+        RemoveStaleShaderArtifacts(importedDirectory, outputPath, context.publication.get());
+        if (context.publication) {
+            context.publication->AddValidation(
+                [request, dependencies = compiled.dependencies, manifestPath, manifestHash](std::string& message) {
+                    return ASSETS::IMPORTERS::INTERNAL::VerifyShaderImportSourceState(
+                        request, dependencies, manifestPath, manifestHash, message);
+                });
+        }
         ASSETS::IMPORTERS::INTERNAL::AppendShaderProjectDependencies(
             artifact,
             "Project/" + manifest.sourcePath.generic_string(),

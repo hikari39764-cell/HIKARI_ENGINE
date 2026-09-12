@@ -391,6 +391,8 @@ namespace HIKARI {
                         }
 
                         try {
+                            context.publication = std::make_shared<AssetImportPublication>(
+                                context.projectRoot, context.libraryRoot, context.sourceMetaRoot);
                             *preparedResult = item.importer->Import(
                                 item.sourceSnapshot,
                                 context);
@@ -405,6 +407,7 @@ namespace HIKARI {
                             preparedResult->message =
                                 "[AssetDatabase] importer exception: unknown";
                         }
+                        preparedResult->publication = context.publication;
 
                         if (task.IsCancellationRequested() &&
                             !preparedResult->success) {

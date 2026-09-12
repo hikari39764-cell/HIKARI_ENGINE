@@ -86,16 +86,25 @@ namespace HIKARI {
         std::function<AssetTaskOutcome(const AssetTaskOutcome&)> finalize{};
     };
 
+    struct AssetTaskServiceLimits {
+        uint32_t maxPendingTasks = 256u;
+        uint32_t maxCompletionsPerPump = 8u;
+        double maxFinalizeMilliseconds = 2.0;
+    };
+
     class AssetTaskService {
     public:
-        explicit AssetTaskService(uint32_t workerCount = 0u);
+        explicit AssetTaskService(uint32_t workerCount = 0u,
+            AssetTaskServiceLimits limits = {});
         ~AssetTaskService();
 
         AssetTaskService(const AssetTaskService&) = delete;
         AssetTaskService& operator=(const AssetTaskService&) = delete;
 
         AssetTaskId Submit(AssetTaskRequest request);
+        // 作成スレッドだけで呼ぶ。予算は callback 間で検査し、callback 自体は分断しない。
         void PumpMainThreadCompletions();
+        // finalize 開始前まで受け付ける。受理した取消は finalize に Canceled として渡す。
         bool RequestCancel(AssetTaskId taskId);
         std::optional<AssetTaskSnapshot> FindSnapshot(
             AssetTaskId taskId) const;

@@ -964,7 +964,7 @@ namespace HIKARI {
                         std::to_string(materialIndex) +
                         "_metallic_roughness.dds");
                 const std::filesystem::path stagedPath =
-                    finalPath.parent_path() /
+                    context.publication ? context.StageFile(finalPath) : finalPath.parent_path() /
                     (finalPath.stem().string() +
                         ".importing.dds");
                 std::error_code removeEc{};
@@ -975,6 +975,7 @@ namespace HIKARI {
                         request,
                         stagedPath,
                         packMessage)) {
+                    if (context.publication) context.publication->DiscardFile(finalPath);
                     ++model.importDiagnostics.unsupportedFeatureCount;
                     model.importDiagnostics.messages.push_back(
                         "[MaterialImport] failed to pack metallic-roughness texture. material=" +
@@ -984,7 +985,7 @@ namespace HIKARI {
                 }
 
                 std::string commitMessage{};
-                if (!IO::CommitStagedFile(
+                if (!context.publication && !IO::CommitStagedFile(
                         stagedPath,
                         finalPath,
                         commitMessage)) {
@@ -1312,7 +1313,8 @@ namespace HIKARI {
         }
 
         const std::filesystem::path finalPath = context.importedDirectory / "model.hmodel";
-        const std::filesystem::path tempPath = context.importedDirectory / "model.importing.hmodel";
+        const std::filesystem::path tempPath = context.publication ? context.StageFile(finalPath)
+            : context.importedDirectory / "model.importing.hmodel";
 
         reportStage("Writing HMODEL", 0.36f);
         std::error_code removeEc{};
@@ -1333,7 +1335,7 @@ namespace HIKARI {
         }
 
         std::string hmodelCommitMessage{};
-        if (!IO::CommitStagedFile(
+        if (!context.publication && !IO::CommitStagedFile(
             tempPath,
             finalPath,
             hmodelCommitMessage)) {
@@ -1376,7 +1378,8 @@ namespace HIKARI {
                 if (clusteredValidation.valid) {
                     reportStage("Writing HCMESH", 0.76f);
                     const std::filesystem::path finalHcmeshPath = context.importedDirectory / "clustered_mesh.hcmesh";
-                    const std::filesystem::path tempHcmeshPath = context.importedDirectory / "clustered_mesh.importing.hcmesh";
+                    const std::filesystem::path tempHcmeshPath = context.publication ? context.StageFile(finalHcmeshPath)
+                        : context.importedDirectory / "clustered_mesh.importing.hcmesh";
                     std::error_code removeHcmeshEc{};
                     std::filesystem::remove(tempHcmeshPath, removeHcmeshEc);
                     if (removeHcmeshEc) {
@@ -1387,7 +1390,7 @@ namespace HIKARI {
                         clusteredGeometry,
                         hcmeshMessage)) {
                         std::string commitMessage{};
-                        if (IO::CommitStagedFile(
+                        if (context.publication || IO::CommitStagedFile(
                             tempHcmeshPath,
                             finalHcmeshPath,
                             commitMessage)) {
@@ -1425,6 +1428,9 @@ namespace HIKARI {
             }
         }
 
+        if (!hcmeshReady && context.publication) {
+            context.publication->DiscardFile(context.importedDirectory / "clustered_mesh.hcmesh");
+        }
         if (canceled()) {
             result.message = "[AssetImporter] model import canceled";
             return result;
@@ -1435,7 +1441,8 @@ namespace HIKARI {
                 ASSETS::COLLISION::BuildModelCollisionArtifact(
                     record,
                     context.projectRoot,
-                    context.importedDirectory);
+                    context.publication ? context.publication->StageDirectory(context.importedDirectory)
+                        : context.importedDirectory);
         const bool hcollisionReady = collisionArtifact.ready;
         if (!collisionArtifact.success) {
             result.message =
@@ -1445,11 +1452,16 @@ namespace HIKARI {
             return result;
         }
         if (hcollisionReady) {
+            const auto collisionPath = context.importedDirectory / collisionArtifact.path.filename();
+            if (context.publication) context.StageFile(collisionPath);
             result.artifacts.push_back(ASSETS::SEMANTICS::MakeAssetArtifact(
                 ASSETS::SEMANTICS::AssetArtifactKind::CollisionGeometry,
                 PROJECT_PATHS::MakeProjectRelativePath(
                     context.projectRoot,
-                    collisionArtifact.path).generic_string()));
+                    collisionPath).generic_string()));
+        }
+        if (collisionArtifact.removeExisting && context.publication) {
+            context.publication->DeleteOnPublish(context.importedDirectory / "collision_geometry.hcollision");
         }
 
         result.success = true;

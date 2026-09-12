@@ -282,6 +282,12 @@ hikari_add_runtime_contract(
     "Tools/Tests/HIKARI_RenderReferenceFixture.cpp")
 
 hikari_add_runtime_contract(
+    HIKARI_AssetDatabaseImportContracts
+    "Tools/Tests/HIKARI_AssetDatabaseImportContracts.cpp")
+add_test(NAME HIKARI_AssetDatabaseImportContracts COMMAND "$<TARGET_FILE:HIKARI_AssetDatabaseImportContracts>")
+set_tests_properties(HIKARI_AssetDatabaseImportContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 120)
+
+hikari_add_runtime_contract(
     HIKARI_NavigationRuntimeContracts
     "Tools/Tests/HIKARI_NavigationRuntimeContracts.cpp")
 hikari_add_runtime_contract(
@@ -467,6 +473,26 @@ hikari_configure_engine_target(HIKARI_GeometryFrameContracts)
 hikari_configure_contract_output(HIKARI_GeometryFrameContracts "RuntimeContracts")
 add_test(NAME HIKARI_GeometryFrameContracts COMMAND "$<TARGET_FILE:HIKARI_GeometryFrameContracts>")
 set_tests_properties(HIKARI_GeometryFrameContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
+
+add_executable(HIKARI_AssetTaskLifecycleContracts EXCLUDE_FROM_ALL
+    "Tools/Tests/HIKARI_AssetTaskLifecycleContracts.cpp"
+    "HIKARI/Assets/Tasks/HIKARI_AssetTaskService.cpp"
+    "HIKARI/Core/Tasks/HIKARI_TaskExecutor.cpp")
+target_include_directories(HIKARI_AssetTaskLifecycleContracts PRIVATE "${HIKARI_SOURCE_ROOT}/HIKARI")
+hikari_configure_engine_target(HIKARI_AssetTaskLifecycleContracts)
+hikari_configure_contract_output(HIKARI_AssetTaskLifecycleContracts "RuntimeContracts")
+add_test(NAME HIKARI_AssetTaskLifecycleContracts COMMAND "$<TARGET_FILE:HIKARI_AssetTaskLifecycleContracts>")
+set_tests_properties(HIKARI_AssetTaskLifecycleContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
+
+add_executable(HIKARI_AssetImportPublicationContracts EXCLUDE_FROM_ALL
+    "Tools/Tests/HIKARI_AssetImportPublicationContracts.cpp"
+    "HIKARI/Assets/Tasks/HIKARI_AssetImportPublication.cpp"
+    "HIKARI/Core/IO/HIKARI_FileReplacementTransaction.cpp")
+target_include_directories(HIKARI_AssetImportPublicationContracts PRIVATE "${HIKARI_SOURCE_ROOT}/HIKARI")
+hikari_configure_engine_target(HIKARI_AssetImportPublicationContracts)
+hikari_configure_contract_output(HIKARI_AssetImportPublicationContracts "RuntimeContracts")
+add_test(NAME HIKARI_AssetImportPublicationContracts COMMAND "$<TARGET_FILE:HIKARI_AssetImportPublicationContracts>")
+set_tests_properties(HIKARI_AssetImportPublicationContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
 foreach(runtime_contract IN ITEMS
     HIKARI_GameComponentBindingLifecycleSmoke
     HIKARI_WorldSdkSmoke

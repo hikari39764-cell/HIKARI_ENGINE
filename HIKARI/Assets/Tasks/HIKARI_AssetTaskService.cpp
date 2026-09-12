@@ -3,9 +3,11 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <deque>
 #include <exception>
 #include <mutex>
+#include <thread>
 #include <utility>
 
 #include "Core/Tasks/HIKARI_TaskExecutor.h"
@@ -24,6 +26,7 @@ namespace HIKARI {
             Clock::time_point startedAt{};
             Clock::time_point finishedAt{};
             std::atomic_bool cancellationRequested{ false };
+            bool finalizationStarted = false;
         };
 
         struct QueuedTask {
@@ -37,8 +40,13 @@ namespace HIKARI {
             AssetTaskOutcome workOutcome{};
         };
 
-        explicit Impl(uint32_t requestedWorkerCount)
-            : executor(requestedWorkerCount) {}
+        explicit Impl(uint32_t requestedWorkerCount, AssetTaskServiceLimits requestedLimits)
+            : limits(requestedLimits), executor(requestedWorkerCount) {
+            limits.maxPendingTasks = std::clamp(limits.maxPendingTasks, 1u, 4096u);
+            limits.maxCompletionsPerPump = std::clamp(limits.maxCompletionsPerPump, 1u, 256u);
+            limits.maxFinalizeMilliseconds = std::isfinite(limits.maxFinalizeMilliseconds)
+                ? std::clamp(limits.maxFinalizeMilliseconds, 0.1, 100.0) : 2.0;
+        }
 
         ~Impl() {
             stopping.store(true, std::memory_order_relaxed);
@@ -90,10 +98,8 @@ namespace HIKARI {
                         if (!locked) {
                             return;
                         }
-                        progress.normalized = (std::clamp)(
-                            progress.normalized,
-                            0.0f,
-                            1.0f);
+                        progress.normalized = std::isfinite(progress.normalized)
+                            ? std::clamp(progress.normalized, 0.0f, 1.0f) : 0.0f;
                         std::lock_guard stateLock(locked->mutex);
                         locked->snapshot.progress =
                             std::move(progress);
@@ -150,6 +156,9 @@ namespace HIKARI {
 
         mutable std::mutex completionMutex{};
         std::deque<FinishedTask> finishedTasks{};
+        const std::thread::id ownerThread = std::this_thread::get_id();
+        AssetTaskServiceLimits limits{};
+        bool pumping = false;
         TASKS::TaskExecutor executor;
     };
 
@@ -196,8 +205,8 @@ namespace HIKARI {
         Report(std::move(progress));
     }
 
-    AssetTaskService::AssetTaskService(uint32_t workerCount)
-        : impl_(std::make_unique<Impl>(workerCount)) {
+    AssetTaskService::AssetTaskService(uint32_t workerCount, AssetTaskServiceLimits limits)
+        : impl_(std::make_unique<Impl>(workerCount, limits)) {
     }
 
     AssetTaskService::~AssetTaskService() = default;
@@ -223,6 +232,12 @@ namespace HIKARI {
 
         {
             std::lock_guard lock(impl_->stateListMutex);
+            uint32_t pendingCount = 0;
+            for (const auto& candidate : impl_->states) {
+                std::lock_guard stateLock(candidate->mutex);
+                if (!IsTerminal(candidate->snapshot.state)) ++pendingCount;
+            }
+            if (pendingCount >= impl_->limits.maxPendingTasks) return 0u;
             impl_->states.push_back(state);
             if (impl_->states.size() > 256u) {
                 std::erase_if(
@@ -252,17 +267,29 @@ namespace HIKARI {
     }
 
     void AssetTaskService::PumpMainThreadCompletions() {
-        if (!impl_) {
+        if (!impl_ || std::this_thread::get_id() != impl_->ownerThread || impl_->pumping) {
             return;
         }
-
-        std::deque<Impl::FinishedTask> completed{};
-        {
-            std::lock_guard lock(impl_->completionMutex);
-            completed.swap(impl_->finishedTasks);
-        }
-
-        for (Impl::FinishedTask& task : completed) {
+        impl_->pumping = true;
+        struct PumpScope { bool& flag; ~PumpScope() { flag = false; } } scope{impl_->pumping};
+        const auto start = Clock::now();
+        for (uint32_t count = 0; count < impl_->limits.maxCompletionsPerPump; ++count) {
+            if (count != 0 && std::chrono::duration<double, std::milli>(Clock::now() - start).count()
+                    >= impl_->limits.maxFinalizeMilliseconds) break;
+            Impl::FinishedTask task{};
+            {
+                std::lock_guard lock(impl_->completionMutex);
+                if (impl_->finishedTasks.empty()) break;
+                task = std::move(impl_->finishedTasks.front());
+                impl_->finishedTasks.pop_front();
+            }
+            if (task.state) {
+                std::lock_guard lock(task.state->mutex);
+                task.state->finalizationStarted = true;
+                if (task.state->cancellationRequested.load(std::memory_order_relaxed)) {
+                    task.workOutcome = AssetTaskOutcome::Canceled("canceled before result publication");
+                }
+            }
             AssetTaskOutcome finalOutcome = task.workOutcome;
             try {
                 if (task.request.finalize) {
@@ -277,6 +304,7 @@ namespace HIKARI {
                 finalOutcome = AssetTaskOutcome::Failed(
                     "task finalize exception: unknown");
             }
+            if (task.workOutcome.canceled) finalOutcome = task.workOutcome;
 
             if (!task.state) {
                 continue;
@@ -314,6 +342,7 @@ namespace HIKARI {
             std::lock_guard stateLock(state->mutex);
             if (state->snapshot.id != taskId ||
                 IsTerminal(state->snapshot.state) ||
+                state->finalizationStarted ||
                 !state->snapshot.cancelable) {
                 continue;
             }

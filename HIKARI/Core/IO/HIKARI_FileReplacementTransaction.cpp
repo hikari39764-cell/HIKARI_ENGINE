@@ -3,6 +3,7 @@
 #include <chrono>
 #include <unordered_set>
 #include <vector>
+#include "Core/Text/HIKARI_UtfPath.h"
 
 namespace HIKARI::IO {
     namespace {
@@ -20,10 +21,9 @@ namespace HIKARI::IO {
             size_t index) {
             const auto nonce = std::chrono::steady_clock::now()
                 .time_since_epoch().count();
-            return std::filesystem::path(
-                finalPath.string() + ".hikari-backup-" +
-                std::to_string(nonce) + "-" +
-                std::to_string(index));
+            auto backup = finalPath;
+            backup += ".hikari-backup-" + std::to_string(nonce) + "-" + std::to_string(index);
+            return backup;
         }
 
         void RemoveIfPresent(
@@ -72,7 +72,7 @@ namespace HIKARI::IO {
                 return false;
             }
             const std::string destination =
-                operation.finalPath.lexically_normal().generic_string();
+                TEXT::PathToUtf8(operation.finalPath.lexically_normal());
             if (!destinations.insert(destination).second) {
                 outMessage =
                     "file transaction contains a duplicate destination";
@@ -84,7 +84,7 @@ namespace HIKARI::IO {
                     operation.stagedPath,
                     ec)) {
                 outMessage = "staged file is missing: " +
-                    operation.stagedPath.generic_string();
+                    TEXT::PathToUtf8(operation.stagedPath);
                 return false;
             }
             PreparedOperation item{};

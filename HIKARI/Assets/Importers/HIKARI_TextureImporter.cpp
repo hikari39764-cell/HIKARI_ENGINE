@@ -87,9 +87,11 @@ namespace HIKARI {
         }
 
         const std::filesystem::path finalPath = context.importedDirectory / "texture.dds";
-        const std::filesystem::path tempPath = context.importedDirectory / "texture.importing.dds";
+        const std::filesystem::path tempPath = context.publication
+            ? context.StageFile(finalPath) : context.importedDirectory / "texture.importing.dds";
         const std::filesystem::path finalHtexPath = context.importedDirectory / "texture.htex";
-        const std::filesystem::path tempHtexPath = context.importedDirectory / "texture.importing.htex";
+        const std::filesystem::path tempHtexPath = context.publication
+            ? context.StageFile(finalHtexPath) : context.importedDirectory / "texture.importing.htex";
 
         if (context.task != nullptr) {
             context.task->ReportStage(
@@ -171,7 +173,7 @@ namespace HIKARI {
             },
         };
         std::string commitMessage{};
-        if (!IO::CommitFileReplacementTransaction(
+        if (!context.publication && !IO::CommitFileReplacementTransaction(
             replacements,
             commitMessage)) {
             std::error_code cleanupEc{};

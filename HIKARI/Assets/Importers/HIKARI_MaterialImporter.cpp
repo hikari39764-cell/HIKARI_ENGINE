@@ -120,7 +120,7 @@ namespace HIKARI {
         }
 
         std::string writeMessage{};
-        if (!WriteHmatFile(outputPath, data, compileResult, writeMessage)) {
+        if (!WriteHmatFile(context.StageFile(outputPath), data, compileResult, writeMessage)) {
             result.message = "[MaterialImporter][ERROR] HMAT write failed: " + writeMessage;
             HIKARI_LOG_ERROR(result.message);
             return result;

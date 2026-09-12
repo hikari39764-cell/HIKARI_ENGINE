@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -9,6 +10,7 @@
 #include "Assets/HIKARI_AssetMeta.h"
 #include "Assets/HIKARI_AssetRecord.h"
 #include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
+#include "Assets/Tasks/HIKARI_AssetImportPublication.h"
 
 namespace HIKARI {
 
@@ -23,6 +25,11 @@ namespace HIKARI {
         std::filesystem::path importedDirectory{};
         const AssetDatabase* assetDatabase = nullptr;
         AssetTaskContext* task = nullptr;
+        std::shared_ptr<AssetImportPublication> publication{};
+
+        std::filesystem::path StageFile(const std::filesystem::path& finalPath) const {
+            return publication ? publication->StageFile(finalPath) : finalPath;
+        }
     };
 
     struct AssetImportResult {
@@ -31,6 +38,7 @@ namespace HIKARI {
         std::string diagnosticsJson{};
         std::vector<AssetArtifactDesc> artifacts{};
         std::vector<AssetDependencyDesc> dependencies{};
+        std::shared_ptr<AssetImportPublication> publication{};
     };
 
     class IAssetImporter {

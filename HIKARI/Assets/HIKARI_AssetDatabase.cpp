@@ -172,6 +172,10 @@ namespace HIKARI {
     }
 
     bool AssetDatabase::Initialize(const std::filesystem::path& projectRoot) {
+        if (assetTaskService_.HasActiveTasks()) {
+            HIKARI_LOG_ERROR("[AssetDatabase] initialization rejected while imports are active.");
+            return false;
+        }
         const std::thread::id currentThread =
             std::this_thread::get_id();
         {
@@ -634,6 +638,8 @@ namespace HIKARI {
 
         AssetImportResult result{};
         try {
+            context.publication = std::make_shared<AssetImportPublication>(
+                projectRoot_, libraryRoot_, sourceMetaRoot_);
             result = importer->Import(*record, context);
         } catch (const std::exception& ex) {
             result.success = false;
@@ -644,6 +650,7 @@ namespace HIKARI {
             result.message = "[AssetDatabase] importer exception: unknown";
             HIKARI_LOG_ERROR(result.message + " source=" + TEXT::PathToUtf8(record->sourcePath) + " guid=" + record->guid.value);
         }
+        result.publication = context.publication;
         std::string commitMessage{};
         return CommitPreparedImport(
             sourceSnapshot,
@@ -674,6 +681,9 @@ namespace HIKARI {
         }
 
         if (result.success) {
+            AssetRecord updated = *record;
+            AssetRecord* const originalRecord = record;
+            record = &updated;
             record->meta.importerVersion = importerVersion;
             record->meta.sourcePath = TEXT::PathToUtf8(record->sourcePath);
             record->meta.displayName = record->displayName.empty()
@@ -695,15 +705,39 @@ namespace HIKARI {
             record->artifactManifest.artifacts = result.artifacts;
             record->artifactManifest.dependencies =
                 result.dependencies;
-            if (!WriteMeta(*record)) {
+            const auto metaPath = record->metaPath;
+            const auto manifestPath = record->artifactManifestPath;
+            try {
+                if (result.publication) {
+                    record->metaPath = result.publication->StageFile(metaPath);
+                    record->artifactManifestPath = result.publication->StageFile(manifestPath);
+                }
+                if (!WriteMeta(*record)) {
+                    result.success = false;
+                    result.message =
+                        "[AssetDatabase] import succeeded but meta write failed";
+                } else if (!WriteArtifactManifest(*record, result)) {
+                    result.success = false;
+                    result.message =
+                        "[AssetDatabase] import succeeded but artifact manifest write failed";
+                }
+                if (result.success && result.publication) {
+                    std::string publicationMessage;
+                    if (!result.publication->Publish(publicationMessage)) {
+                        result.success = false;
+                        result.message = std::move(publicationMessage);
+                    }
+                }
+            } catch (const std::exception& error) {
                 result.success = false;
-                result.message =
-                    "[AssetDatabase] import succeeded but meta write failed";
-            } else if (!WriteArtifactManifest(*record, result)) {
-                result.success = false;
-                result.message =
-                    "[AssetDatabase] import succeeded but artifact manifest write failed";
+                result.message = std::string("[AssetDatabase] publication failed: ") + error.what();
             }
+            if (result.success) {
+                updated.metaPath = metaPath;
+                updated.artifactManifestPath = manifestPath;
+                *originalRecord = std::move(updated);
+            }
+            record = originalRecord;
         }
 
         WriteImportReport(*record, result);

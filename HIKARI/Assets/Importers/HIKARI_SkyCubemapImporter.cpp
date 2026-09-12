@@ -117,7 +117,8 @@ namespace HIKARI {
         }
 
         const std::filesystem::path finalPath = context.importedDirectory / "sky.dds";
-        const std::filesystem::path tempPath = context.importedDirectory / "sky.dds.tmp";
+        const std::filesystem::path tempPath = context.publication ? context.StageFile(finalPath)
+            : context.importedDirectory / "sky.dds.tmp";
         const bool copySkyCubemap = settingsJson.value("copySkyCubemap", true);
 
         if (copySkyCubemap) {
@@ -134,7 +135,7 @@ namespace HIKARI {
         }
 
         std::string commitMessage{};
-        if (!IO::CommitStagedFile(
+        if (!context.publication && !IO::CommitStagedFile(
             tempPath,
             finalPath,
             commitMessage)) {
@@ -167,24 +168,31 @@ namespace HIKARI {
             iblSettings.brdfSampleCount = settingsJson.value("brdfSampleCount", 1024u);
 
             const IblBakeResult bake = IblBaker::BakeSkyCubemapToIbl(
-                finalPath,
-                context.importedDirectory / "IBL",
+                context.publication ? tempPath : finalPath,
+                context.publication ? context.publication->StageDirectory(context.importedDirectory / "IBL")
+                    : context.importedDirectory / "IBL",
                 context.projectRoot / "Library" / "Generated" / "IBL",
                 iblSettings);
 
             if (bake.success) {
+                const auto irradiancePath = context.importedDirectory / "IBL" / bake.irradiancePath.filename();
+                const auto prefilteredPath = context.importedDirectory / "IBL" / bake.prefilteredPath.filename();
+                if (context.publication) {
+                    context.StageFile(irradiancePath);
+                    context.StageFile(prefilteredPath);
+                }
                 result.artifacts.push_back(
                     ASSETS::SEMANTICS::MakeAssetArtifact(
                         ASSETS::SEMANTICS::AssetArtifactKind::IblIrradiance,
                         PROJECT_PATHS::MakeProjectRelativeString(
                             context.projectRoot,
-                            bake.irradiancePath)));
+                            irradiancePath)));
                 result.artifacts.push_back(
                     ASSETS::SEMANTICS::MakeAssetArtifact(
                         ASSETS::SEMANTICS::AssetArtifactKind::IblPrefiltered,
                         PROJECT_PATHS::MakeProjectRelativeString(
                             context.projectRoot,
-                            bake.prefilteredPath)));
+                            prefilteredPath)));
                 result.artifacts.push_back(
                     ASSETS::SEMANTICS::MakeAssetArtifact(
                         ASSETS::SEMANTICS::AssetArtifactKind::BrdfLut,
