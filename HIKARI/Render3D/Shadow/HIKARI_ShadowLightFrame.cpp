@@ -54,44 +54,15 @@ namespace HIKARI::SHADOW {
             float splitFar) {
 
             const MATH::Vec3 cameraForward = SafeCameraForward(camera);
-            MATH::Vec3 cameraRight =
-                MATH::Normalize(MATH::Cross(cameraForward, camera.GetUp()));
-            if (MATH::Length(cameraRight) <= 1e-6f) {
-                cameraRight = { 1.0f, 0.0f, 0.0f };
-            }
-            const MATH::Vec3 cameraUp =
-                MATH::Normalize(MATH::Cross(cameraRight, cameraForward));
-            const float tanHalfFov =
-                std::tan((std::max)(0.01f, camera.GetFovYRad()) * 0.5f);
-            const float nearHalfHeight = splitNear * tanHalfFov;
+            // Frustum の外接半径はカメラ空間で求め、ワールド座標の丸めでスケールを変えない。
+            const float tanHalfFov = std::tan(camera.GetFovYRad() * 0.5f);
+            const float halfDepth = (splitFar - splitNear) * 0.5f;
             const float farHalfHeight = splitFar * tanHalfFov;
-            const float nearHalfWidth = nearHalfHeight * camera.GetAspect();
             const float farHalfWidth = farHalfHeight * camera.GetAspect();
-            const MATH::Vec3 nearCenter =
-                camera.GetPosition() + cameraForward * splitNear;
-            const MATH::Vec3 farCenter =
-                camera.GetPosition() + cameraForward * splitFar;
-            const std::array<MATH::Vec3, 8> corners = {
-                nearCenter - cameraRight * nearHalfWidth - cameraUp * nearHalfHeight,
-                nearCenter + cameraRight * nearHalfWidth - cameraUp * nearHalfHeight,
-                nearCenter + cameraRight * nearHalfWidth + cameraUp * nearHalfHeight,
-                nearCenter - cameraRight * nearHalfWidth + cameraUp * nearHalfHeight,
-                farCenter - cameraRight * farHalfWidth - cameraUp * farHalfHeight,
-                farCenter + cameraRight * farHalfWidth - cameraUp * farHalfHeight,
-                farCenter + cameraRight * farHalfWidth + cameraUp * farHalfHeight,
-                farCenter - cameraRight * farHalfWidth + cameraUp * farHalfHeight,
-            };
-
-            MATH::Vec3 center{};
-            for (const MATH::Vec3& corner : corners) {
-                center = center + corner;
-            }
-            center = center * (1.0f / static_cast<float>(corners.size()));
-
-            float radius = 1.0f;
-            for (const MATH::Vec3& corner : corners) {
-                radius = (std::max)(radius, MATH::Length(corner - center));
-            }
+            const MATH::Vec3 center = camera.GetPosition() +
+                cameraForward * ((splitNear + splitFar) * 0.5f);
+            float radius = (std::max)(1.0f, std::sqrt(
+                halfDepth * halfDepth + farHalfHeight * farHalfHeight + farHalfWidth * farHalfWidth));
             radius = std::ceil(radius * 16.0f) / 16.0f;
 
             const MATH::Vec3 lightDir = ResolveLightDirection(environment);
@@ -103,22 +74,12 @@ namespace HIKARI::SHADOW {
             MATH::Vec3 actualUp = MATH::Normalize(MATH::Cross(lightDir, right));
 
             const float baseOrthoSize = radius * 2.0f;
-            const float baseTexelWorldSize =
-                baseOrthoSize /
-                static_cast<float>((std::max)(1u, resolution));
-            const float guardTexels =
-                (std::max)(
-                    2.0f,
-                    std::ceil(std::clamp(
-                        environment.directionalShadow.pcfRadius,
-                        0.0f,
-                        4.0f)) +
-                        1.0f);
-            // Snap による最大半 Texel の移動と PCF 範囲を含む Guard を確保し、
-            // Frustum 端の Receiver が Cascade 外へ抜けないようにする。
-            const float orthoSize =
-                baseOrthoSize +
-                baseTexelWorldSize * guardTexels * 2.0f;
+            // 5x5 PCF の最大 2*radius、線形比較の半 Texel、Snap の半 Texel を確保する。
+            const float guardTexels = (std::max)(2.0f,
+                std::ceil(2.0f * std::clamp(environment.directionalShadow.pcfRadius, 0.0f, 4.0f)) + 1.0f);
+            const float usableFraction = 1.0f - 2.0f * guardTexels /
+                static_cast<float>((std::max)(32u, resolution));
+            const float orthoSize = baseOrthoSize / usableFraction;
             const float anchorGrid =
                 ResolveShadowAnchorGrid(environment, orthoSize, resolution);
             MATH::Vec3 anchor = center;
@@ -128,7 +89,8 @@ namespace HIKARI::SHADOW {
                         MATH::Dot(center, right), anchorGrid) +
                     actualUp * SnapShadowAnchorValue(
                         MATH::Dot(center, actualUp), anchorGrid) +
-                    lightDir * MATH::Dot(center, lightDir);
+                    lightDir * SnapShadowAnchorValue(
+                        MATH::Dot(center, lightDir), anchorGrid);
             }
 
             const float depthPadding =
@@ -141,7 +103,9 @@ namespace HIKARI::SHADOW {
             const MATH::Vec3 lightPos = anchor - lightDir * lightDistance;
 
             ShadowLightFrame frame{};
-            frame.view = MATH::Mat4::LookAtRH(lightPos, anchor, actualUp);
+            // 原点で固定基底を作り、遠方の eye/target の差分による回転誤差を避ける。
+            frame.view = MATH::Mat4::LookAtRH({}, lightDir, actualUp) *
+                MATH::Mat4::Translate(lightPos * -1.0f);
             frame.viewProj =
                 MATH::Mat4::OrthoRH_ZO(
                     orthoSize, orthoSize, nearPlane, farPlane) *
@@ -192,7 +156,10 @@ namespace HIKARI::SHADOW {
             0.0f,
             1.0f);
 
+        const float blend = std::clamp(environment.directionalShadow.cascadeBlend, 0.0f, 0.3f);
+        std::array<float, kMaxDirectionalShadowCascades> splitDistances{};
         float splitNear = nearDistance;
+        float fitNear = nearDistance;
         for (uint32_t cascadeIndex = 0;
              cascadeIndex < result.cascadeCount;
              ++cascadeIndex) {
@@ -211,9 +178,11 @@ namespace HIKARI::SHADOW {
                 environment,
                 camera,
                 cascadeResolution,
-                splitNear,
+                fitNear,
                 splitFar);
-            (&result.splitDistances.x)[cascadeIndex] = splitFar;
+            // Shader は前の区間の末尾から次 Cascade を混ぜるため、その帯域も次の Frustum に含める。
+            fitNear = splitFar - (splitFar - (cascadeIndex == 0u ? 0.0f : splitNear)) * blend;
+            splitDistances[cascadeIndex] = splitFar;
             splitNear = splitFar;
         }
         for (uint32_t cascadeIndex = result.cascadeCount;
@@ -221,8 +190,10 @@ namespace HIKARI::SHADOW {
              ++cascadeIndex) {
             result.cascades[cascadeIndex] =
                 result.cascades[result.cascadeCount - 1u];
-            (&result.splitDistances.x)[cascadeIndex] = farDistance;
+            splitDistances[cascadeIndex] = farDistance;
         }
+        result.splitDistances = {
+            splitDistances[0], splitDistances[1], splitDistances[2], splitDistances[3]};
         return result;
     }
 

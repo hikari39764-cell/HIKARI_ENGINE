@@ -167,7 +167,7 @@ namespace HIKARI::SHADOW {
             if (!PrepareShadowSourceForDraw(graphics, source)) {
                 return false;
             }
-            bool renderedAny = false;
+            bool renderedAll = true;
             for (uint32_t cascadeIndex = 0;
                  cascadeIndex < gShadowRendererState.cascadeCount;
                  ++cascadeIndex) {
@@ -180,14 +180,14 @@ namespace HIKARI::SHADOW {
                 gShadowRendererState.lightAnchorGrid = cascade.anchorGrid;
                 PrepareFinalShadowMapForDepthWrite(cmd, clearDepth);
                 BuildShadowGpuDrivenWorkFrame(graphics);
-                if (ExecuteShadowGpuDrivenPass(
+                if (!ExecuteShadowGpuDrivenPass(
                         graphics,
                         traditionalPass,
                         meshletPass)) {
-                    renderedAny = true;
+                    renderedAll = false;
                 }
             }
-            return renderedAny;
+            return renderedAll;
         };
 
         if (gShadowRendererState.shadowCache.WasHitThisFrame()) {

@@ -1,18 +1,15 @@
 #include "Render3D/Shadow/HIKARI_ShadowCachePolicy.h"
 
-#include <cmath>
-
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenSceneSource.h"
 #include "Render3D/Shadow/HIKARI_ShadowMapRenderer.h"
 
 namespace HIKARI::SHADOW {
 
     namespace {
-        bool AlmostEqualMat4(const MATH::Mat4& lhs, const MATH::Mat4& rhs) {
-            constexpr float kEpsilon = 0.0001f;
+        bool SameShadowMatrix(const MATH::Mat4& lhs, const MATH::Mat4& rhs) {
             for (int col = 0; col < 4; ++col) {
                 for (int row = 0; row < 4; ++row) {
-                    if (std::fabs(lhs.m[col][row] - rhs.m[col][row]) > kEpsilon) {
+                    if (lhs.m[col][row] != rhs.m[col][row]) {
                         return false;
                     }
                 }
@@ -97,7 +94,7 @@ namespace HIKARI::SHADOW {
             for (uint32_t cascadeIndex = 0;
                  cascadeIndex < input.key.cascadeCount;
                  ++cascadeIndex) {
-                if (!AlmostEqualMat4(
+                if (!SameShadowMatrix(
                         key_.lightViewProj[cascadeIndex],
                         input.key.lightViewProj[cascadeIndex])) {
                     reason |= ShadowCacheMissReasonMatrix;

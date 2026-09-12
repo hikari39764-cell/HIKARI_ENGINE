@@ -48,13 +48,7 @@ float HikariSampleShadowPcf(
     const float2 texelSize =
         float2(gShadowTexelSizeX, gShadowTexelSizeY) * gShadowPcfRadius;
 
-    // Rotated 5x5 PCF (25 taps). The rotation follows the frame index so
-    // structured cross-shaped aliasing is broken up; TAA/DLAA then smooths the
-    // remaining temporal noise.
-    const float angle = gShadowPadding.x * 2.39996323f;
-    const float s = sin(angle);
-    const float c = cos(angle);
-
+    // 静止した Receiver のフィルタも静止させる。TAA/DLAA の履歴で揺れを隠さない。
     float sum = center;
     float count = 1.0f;
     [unroll]
@@ -68,11 +62,8 @@ float HikariSampleShadowPcf(
                 continue;
             }
             const float2 offset = float2((float)x, (float)y);
-            const float2 rotated = float2(
-                offset.x * c - offset.y * s,
-                offset.x * s + offset.y * c);
             sum += HikariSampleShadowCompare(
-                uv + rotated * texelSize,
+                uv + offset * texelSize,
                 currentDepth,
                 cascadeIndex);
             count += 1.0f;

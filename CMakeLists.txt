@@ -439,6 +439,19 @@ hikari_configure_contract_output(HIKARI_GpuProfilingContracts "RuntimeContracts"
 add_test(NAME HIKARI_GpuProfilingContracts COMMAND "$<TARGET_FILE:HIKARI_GpuProfilingContracts>")
 set_tests_properties(HIKARI_GpuProfilingContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
 
+add_executable(HIKARI_DirectionalShadowContracts EXCLUDE_FROM_ALL
+    "Tools/Tests/HIKARI_DirectionalShadowContracts.cpp"
+    "HIKARI/Render3D/Shadow/HIKARI_ShadowLightFrame.cpp"
+    "HIKARI/Render3D/Shadow/HIKARI_ShadowCachePolicy.cpp"
+    "HIKARI/Render3D/Core/HIKARI_Camera3D.cpp"
+    "HIKARI/Render3D/HIKARI_Math3D.cpp")
+target_include_directories(HIKARI_DirectionalShadowContracts PRIVATE "${HIKARI_SOURCE_ROOT}/HIKARI")
+target_link_libraries(HIKARI_DirectionalShadowContracts PRIVATE HIKARI::Nlohmann)
+hikari_configure_engine_target(HIKARI_DirectionalShadowContracts)
+hikari_configure_contract_output(HIKARI_DirectionalShadowContracts "RuntimeContracts")
+add_test(NAME HIKARI_DirectionalShadowContracts COMMAND "$<TARGET_FILE:HIKARI_DirectionalShadowContracts>")
+set_tests_properties(HIKARI_DirectionalShadowContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
+
 add_executable(HIKARI_DynamicUploadGpuContracts EXCLUDE_FROM_ALL
     "Tools/Tests/HIKARI_DynamicUploadGpuContracts.cpp"
     "HIKARI/Gfx/HIKARI_DynamicUploadBuffer.cpp"

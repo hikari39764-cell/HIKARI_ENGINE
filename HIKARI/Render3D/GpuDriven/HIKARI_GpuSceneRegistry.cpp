@@ -171,12 +171,6 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
 
         constexpr float kDepthVisibilityMinOccluderRadius = 0.35f;
         constexpr size_t kDepthVisibilityMaxOccluderRecords = 8192;
-        constexpr float kShadowCasterMinRadius = 0.28f;
-        constexpr float kShadowCasterMinMainArea = 0.06f;
-        constexpr float kShadowAlphaMaskMinRadius = 1.10f;
-        constexpr float kShadowAlphaMaskMinMainArea = 0.35f;
-        constexpr float kShadowDoubleSidedMinRadius = 0.85f;
-        constexpr float kShadowDoubleSidedMinMainArea = 0.20f;
 
         struct DepthPrepassOccluderCandidate {
             uint32_t recordIndex = RUNTIME::kInvalidRenderSurfaceIndex;
@@ -229,24 +223,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 return false;
             }
 
-            const float radius = ComputeWorldBoundsRadius(record.worldBounds);
-            const float mainArea = ComputeWorldBoundsMainAreaProxy(record.worldBounds);
-            if (radius < kShadowCasterMinRadius) {
-                return false;
-            }
-            if (mainArea < kShadowCasterMinMainArea) {
-                return false;
-            }
-            if (record.key.alphaMasked &&
-                (radius < kShadowAlphaMaskMinRadius ||
-                    mainArea < kShadowAlphaMaskMinMainArea)) {
-                return false;
-            }
-            if (record.key.doubleSided &&
-                (radius < kShadowDoubleSidedMinRadius ||
-                    mainArea < kShadowDoubleSidedMinMainArea)) {
-                return false;
-            }
+            // Shadow の可視性は light-space の GPU 剔除に任せる。ワールド寸法だけで欠落させない。
             return true;
         }
 
@@ -1020,22 +997,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 return false;
             }
 
-            const float radius = ComputeWorldBoundsRadius(record.worldBounds);
-            const float mainArea = ComputeWorldBoundsMainAreaProxy(record.worldBounds);
-            if (radius < kShadowCasterMinRadius ||
-                mainArea < kShadowCasterMinMainArea) {
-                return false;
-            }
-            if (record.key.alphaMasked &&
-                (radius < kShadowAlphaMaskMinRadius ||
-                    mainArea < kShadowAlphaMaskMinMainArea)) {
-                return false;
-            }
-            if (record.key.doubleSided &&
-                (radius < kShadowDoubleSidedMinRadius ||
-                    mainArea < kShadowDoubleSidedMinMainArea)) {
-                return false;
-            }
+            // Shadow の可視性は light-space の GPU 剔除に任せる。ワールド寸法だけで欠落させない。
             return true;
         }
     }
