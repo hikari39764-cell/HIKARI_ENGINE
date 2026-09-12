@@ -3,25 +3,24 @@
 #include <span>
 #include "Gfx/HIKARI_DynamicUploadBuffer.h"
 #include "Render3D/Material/HIKARI_MaterialSnapshot.h"
+#include "Render3D/Resources/HIKARI_TextureResourceSnapshot.h"
 
 namespace HIKARI::RENDER3D::MATERIAL {
 
-    // ジョブ専用の不変な材質テーブル。Asset cache の descriptor / lifetime を借りない。
+    // ジョブ専用の不変な材質テーブル。TextureResourceSnapshot の view index を消費する。
     // Reset / 破棄は通常の frame fence に GPU resource の解放を委譲する。
     class GpuMaterialSnapshot final {
     public:
         ~GpuMaterialSnapshot();
-        bool Initialize(ID3D12Device* device, std::span<const MaterialSnapshot> materials, std::string& error);
+        bool Initialize(ID3D12Device* device, std::span<const MaterialSnapshot> materials,
+            const TextureResourceSnapshot& textures, std::string& error);
         void Reset();
-        ID3D12DescriptorHeap* GetTextureHeap() const { return textureHeap_.Get(); }
         D3D12_GPU_VIRTUAL_ADDRESS GetMaterialAddress() const { return materialAddress_; }
         D3D12_GPU_VIRTUAL_ADDRESS GetParameterAddress() const { return parameterAddress_; }
         D3D12_GPU_VIRTUAL_ADDRESS GetResourceAddress() const { return resourceAddress_; }
 
     private:
         DX::DynamicUploadBuffer upload_{};
-        Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> textureHeap_{};
-        std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> textures_{};
         D3D12_GPU_VIRTUAL_ADDRESS materialAddress_ = 0;
         D3D12_GPU_VIRTUAL_ADDRESS parameterAddress_ = 0;
         D3D12_GPU_VIRTUAL_ADDRESS resourceAddress_ = 0;

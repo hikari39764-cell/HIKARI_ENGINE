@@ -146,7 +146,7 @@ namespace HIKARI::TOOLS::BAKING {
             return false;
         }
 
-        ID3D12DescriptorHeap* heaps[]{materialSnapshot_.GetTextureHeap()};
+        ID3D12DescriptorHeap* heaps[]{textureSnapshot_.GetHeap()};
         graphics.cmdList->SetDescriptorHeaps(1, heaps);
         graphics.cmdList->SetComputeRootSignature(
             rootSignature_.Get());
@@ -172,6 +172,9 @@ namespace HIKARI::TOOLS::BAKING {
         graphics.cmdList->SetComputeRootShaderResourceView(kRootParameters, materialSnapshot_.GetParameterAddress());
         graphics.cmdList->SetComputeRootShaderResourceView(kRootResources, materialSnapshot_.GetResourceAddress());
         graphics.cmdList->SetComputeRootDescriptorTable(kRootTextures, heaps[0]->GetGPUDescriptorHandleForHeapStart());
+        const uint32_t cubeIndex = environment_.skyMode == SkyMode::Cubemap ? skyDescriptorIndex_ :
+            RENDER3D::TextureResourceSnapshot::GetNullDescriptorIndex(RENDER3D::TextureResourceDimension::TextureCube);
+        graphics.cmdList->SetComputeRootDescriptorTable(kRootEnvironment, textureSnapshot_.GetDescriptor(cubeIndex));
 
         const uint32_t sampleEnd = (std::min)(
             status_.requestedSamples,
@@ -186,6 +189,8 @@ namespace HIKARI::TOOLS::BAKING {
             constants.bounceCount = bounceCount_;
             constants.triangleCount = triangleCount_;
             constants.lightCount = lightCount_;
+            constants.skyMode = static_cast<uint32_t>(environment_.skyMode);
+            constants.skyTextureIndex = skyDescriptorIndex_;
             constants.ambientSkyStrength = {
                 environment_.ambientRadiance.x,
                 environment_.ambientRadiance.y,
@@ -198,6 +203,7 @@ namespace HIKARI::TOOLS::BAKING {
             constants.skyTintExposure = environment_.skyTintExposure;
             constants.skyHorizon = ToPosition4(
                 environment_.skyHorizonRadiance);
+            constants.skyHorizon.w = environment_.skyYaw;
             constants.skyGround = ToPosition4(
                 environment_.skyGroundRadiance);
             graphics.cmdList->SetComputeRoot32BitConstants(

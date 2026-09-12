@@ -36,6 +36,13 @@ namespace HIKARI::RENDER3D {
         TextureResourceColorSpace colorSpace = TextureResourceColorSpace::Auto;
     };
 
+    struct TextureSnapshotSource {
+        TextureResourceLoadRequest load{};
+        TextureResourceHandle resource{};
+        TextureResourceDimension dimension = TextureResourceDimension::Texture2D;
+        bool enabled = false;
+    };
+
     struct TextureResourceBatchLoadStats {
         uint32_t requested = 0;
         uint32_t cacheHits = 0;

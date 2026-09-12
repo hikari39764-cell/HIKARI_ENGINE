@@ -100,6 +100,7 @@ namespace HIKARI::TOOLS::BAKING {
         GFX::RAYTRACING::DxrTriangleAccelerationStructure
             accelerationStructure_{};
         RENDER3D::MATERIAL::GpuMaterialSnapshot materialSnapshot_{};
+        RENDER3D::TextureResourceSnapshot textureSnapshot_{};
         Microsoft::WRL::ComPtr<ID3D12RootSignature>
             rootSignature_{};
         Microsoft::WRL::ComPtr<ID3D12PipelineState>
@@ -129,6 +130,7 @@ namespace HIKARI::TOOLS::BAKING {
         uint32_t bounceCount_ = 0u;
         uint32_t triangleCount_ = 0u;
         uint32_t lightCount_ = 0u;
+        uint32_t skyDescriptorIndex_ = UINT32_MAX;
         uint64_t readbackFenceValue_ = 0u;
         bool scenePrepared_ = false;
     };

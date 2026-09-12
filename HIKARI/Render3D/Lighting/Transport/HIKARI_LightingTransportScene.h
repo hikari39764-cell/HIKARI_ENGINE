@@ -10,6 +10,7 @@
 #include "Assets/Lighting/HIKARI_LightmapAtlasLayout.h"
 #include "Assets/Lighting/HIKARI_LightmapSurfaceContract.h"
 #include "Render3D/HIKARI_Math3D.h"
+#include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Material/HIKARI_MaterialSnapshot.h"
 
 namespace HIKARI::RENDER3D::LIGHTING::TRANSPORT {
@@ -85,6 +86,10 @@ namespace HIKARI::RENDER3D::LIGHTING::TRANSPORT {
         float skyStrength = 0.0f;
         float skyHorizonPower = 1.5f;
         MATH::Vec4 skyTintExposure{1, 1, 1, 1};
+        SkyMode skyMode = SkyMode::Gradient;
+        float skyYaw = 0;
+        TextureSnapshotSource skyTexture{};
+        std::string error{};
     };
 
     struct LightingTransportScene {

@@ -19,6 +19,7 @@
 #include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
 #include "Render3D/Lighting/HIKARI_LocalLightSemantics.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
+#include "Render3D/Lighting/HIKARI_SkyManager.h"
 #include "Render3D/Runtime/HIKARI_SceneRenderCache.h"
 #include "Scene/HIKARI_SceneDocument.h"
 
@@ -580,7 +581,8 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
             const SceneDocument& document,
             const SceneEnvironment& environment,
             const RENDER3D::LIGHTING::SceneLightingSet& lighting,
-            const RENDER3D::RUNTIME::SceneRenderCache& renderCache) {
+            const RENDER3D::RUNTIME::SceneRenderCache& renderCache,
+            const SkyManager* skyManager) {
 
         TRANSPORT::LightingTransportScene scene{};
         scene.environment.ambientRadiance =
@@ -595,8 +597,25 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
         scene.environment.skyHorizonPower = environment.sky.horizonPower;
         scene.environment.skyTintExposure = {environment.sky.tint.x, environment.sky.tint.y,
             environment.sky.tint.z, environment.sky.exposure};
+        scene.environment.skyMode = environment.sky.enabled && environment.sky.ambientFromSky > 0 ? environment.sky.mode : SkyMode::None;
+        scene.environment.skyYaw = environment.sky.yaw;
+        if (scene.environment.skyMode == SkyMode::Cubemap || scene.environment.skyMode == SkyMode::Texture2D) {
+            const auto* asset = skyManager ? skyManager->FindAsset(environment.sky.skyAsset) : nullptr;
+            if (!asset || asset->texturePath.empty()) {
+                scene.environment.error = "Sky asset is unavailable for DXR baking: " + environment.sky.skyAsset;
+            } else {
+                auto& texture = scene.environment.skyTexture;
+                texture.enabled = true;
+                texture.dimension = scene.environment.skyMode == SkyMode::Cubemap ?
+                    RENDER3D::TextureResourceDimension::TextureCube : RENDER3D::TextureResourceDimension::Texture2D;
+                texture.load = {"lighting_transport/sky", asset->texturePath, asset->textureIsLinear ?
+                    RENDER3D::TextureResourceColorSpace::Linear : RENDER3D::TextureResourceColorSpace::Srgb};
+            }
+        } else if (scene.environment.skyMode == SkyMode::Atmosphere) {
+            scene.environment.error = "DXR static sky capture requires a gradient or texture environment; atmosphere transport is unavailable.";
+        }
         scene.environment.skyStrength =
-            environment.sky.enabled
+            scene.environment.skyMode != SkyMode::None
             ? (std::max)(
                 0.0f,
                 environment.sky.ambientFromSky)

@@ -8,7 +8,7 @@ namespace HIKARI::TOOLS::BAKING {
     namespace INTERNAL {
         enum DxrLightmapRootParameter : uint32_t {
             kRootConstants, kRootScene, kRootTriangles, kRootTexels, kRootLights, kRootOutput,
-            kRootMaterials, kRootTextures, kRootParameters, kRootResources, kRootParameterCount
+            kRootMaterials, kRootTextures, kRootParameters, kRootResources, kRootEnvironment, kRootParameterCount
         };
     }
 
@@ -42,8 +42,8 @@ namespace HIKARI::TOOLS::BAKING {
         uint32_t bounceCount = 0u;
         uint32_t triangleCount = 0u;
         uint32_t lightCount = 0u;
-        uint32_t padding0 = 0u;
-        uint32_t padding1 = 0u;
+        uint32_t skyMode = 0u;
+        uint32_t skyTextureIndex = UINT32_MAX;
         MATH::Vec4 ambientSkyStrength{};
         MATH::Vec4 skyZenith{}; // w: horizon power
         MATH::Vec4 skyHorizon{};

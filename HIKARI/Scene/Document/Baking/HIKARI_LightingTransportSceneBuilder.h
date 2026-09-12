@@ -3,6 +3,7 @@
 #include "Render3D/Lighting/Transport/HIKARI_LightingTransportScene.h"
 
 namespace HIKARI {
+    class SkyManager;
 
     struct SceneDocument;
     struct SceneEnvironment;
@@ -24,7 +25,8 @@ namespace HIKARI {
                 const RENDER3D::LIGHTING::SceneLightingSet&
                     lighting,
                 const RENDER3D::RUNTIME::SceneRenderCache&
-                    renderCache);
+                    renderCache,
+                const SkyManager* skyManager = nullptr);
 
     } // namespace DOCUMENT_SCENE_BAKING
 

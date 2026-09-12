@@ -6,9 +6,9 @@
 
 namespace HIKARI::RENDER3D::MATERIAL {
     namespace {
-        MaterialTextureSnapshotSource CaptureRuntimeTexture(const RuntimeTextureSlot& slot,
+        TextureSnapshotSource CaptureRuntimeTexture(const RuntimeTextureSlot& slot,
             TextureResourceColorSpace colorSpace) {
-            MaterialTextureSnapshotSource result{};
+            TextureSnapshotSource result{};
             result.enabled = slot.enabled;
             if (!result.enabled) return result;
             result.load.path = GetMaterialTextureRuntimePath(slot);
@@ -20,6 +20,15 @@ namespace HIKARI::RENDER3D::MATERIAL {
                 result.resource = RegisterTextureResourceFromBackendHandle(backendHandle);
             return result;
         }
+    }
+
+    std::vector<TextureSnapshotSource> CollectMaterialSnapshotTextures(std::span<const MaterialSnapshot> materials) {
+        std::vector<TextureSnapshotSource> sources;
+        for (const auto& material : materials) {
+            for (const auto& source : material.textures) if (source.enabled) sources.push_back(source);
+            for (const auto& source : material.programTextures) if (source.enabled) sources.push_back(source);
+        }
+        return sources;
     }
 
     MaterialSnapshot CaptureMaterialSnapshot(

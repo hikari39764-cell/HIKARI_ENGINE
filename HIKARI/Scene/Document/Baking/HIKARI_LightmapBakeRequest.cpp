@@ -84,7 +84,8 @@ namespace HIKARI {
                     scene.state_->lighting.environment,
                     lighting,
                     RenderSubmissionSystem::
-                        GetSceneRenderCache());
+                        GetSceneRenderCache(),
+                    &scene.GetSkyManager());
         const auto target = std::find_if(
             transportScene.targets.begin(),
             transportScene.targets.end(),

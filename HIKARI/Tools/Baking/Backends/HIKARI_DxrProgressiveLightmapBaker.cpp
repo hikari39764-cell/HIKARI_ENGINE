@@ -139,6 +139,17 @@ namespace HIKARI::TOOLS::BAKING {
         std::string* outMessage) {
 
         Reset();
+        if (!scene.environment.error.empty()) {
+            SetMessage(outMessage, scene.environment.error);
+            return false;
+        }
+        if ((scene.environment.skyMode == SkyMode::Cubemap || scene.environment.skyMode == SkyMode::Texture2D) &&
+            (!scene.environment.skyTexture.enabled || scene.environment.skyTexture.dimension !=
+                (scene.environment.skyMode == SkyMode::Cubemap ? RENDER3D::TextureResourceDimension::TextureCube :
+                    RENDER3D::TextureResourceDimension::Texture2D))) {
+            SetMessage(outMessage, "DXR sky texture is missing or has the wrong dimension.");
+            return false;
+        }
         if (!GetCapabilities(graphics).available ||
             scene.triangles.empty()) {
             SetMessage(
@@ -157,11 +168,15 @@ namespace HIKARI::TOOLS::BAKING {
             }
         }
         std::string materialError;
-        if (!materialSnapshot_.Initialize(graphics.device, scene.materials, materialError)) {
+        auto textureSources = RENDER3D::MATERIAL::CollectMaterialSnapshotTextures(scene.materials);
+        if (scene.environment.skyTexture.enabled) textureSources.push_back(scene.environment.skyTexture);
+        if (!textureSnapshot_.Initialize(graphics.device, textureSources, materialError) ||
+            !materialSnapshot_.Initialize(graphics.device, scene.materials, textureSnapshot_, materialError)) {
             SetMessage(outMessage, "DXR lightmap: " + materialError);
             Reset();
             return false;
         }
+        skyDescriptorIndex_ = textureSnapshot_.GetDescriptorIndex(scene.environment.skyTexture);
 
         std::vector<GFX::RAYTRACING::DxrPosition>
             positions{};
@@ -296,6 +311,7 @@ namespace HIKARI::TOOLS::BAKING {
     void DxrProgressiveLightmapBaker::Reset() {
         ResetTarget();
         materialSnapshot_.Reset();
+        textureSnapshot_.Reset();
         GFX::RetireD3D12ObjectForCurrentFrame(lightBuffer_, "Lightmap.Lights");
         GFX::RetireD3D12ObjectForCurrentFrame(triangleBuffer_, "Lightmap.Triangles");
         GFX::RetireD3D12ObjectForCurrentFrame(pipelineState_, "Lightmap.Pipeline");
@@ -304,6 +320,7 @@ namespace HIKARI::TOOLS::BAKING {
         environment_ = {};
         triangleCount_ = 0u;
         lightCount_ = 0u;
+        skyDescriptorIndex_ = UINT32_MAX;
         scenePrepared_ = false;
     }
 
@@ -339,15 +356,21 @@ namespace HIKARI::TOOLS::BAKING {
             GFX::DESCRIPTOR::kUserSrvCount, 20);
         parameters[kRootTextures].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
         parameters[kRootTextures].DescriptorTable = {1, &textures};
-        const CD3DX12_STATIC_SAMPLER_DESC sampler(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR,
-            D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP);
+        const CD3DX12_DESCRIPTOR_RANGE environmentTexture(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4);
+        parameters[kRootEnvironment].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        parameters[kRootEnvironment].DescriptorTable = {1, &environmentTexture};
+        const CD3DX12_STATIC_SAMPLER_DESC samplers[]{
+            {0, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_WRAP,
+                D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP},
+            {1, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_WRAP,
+                D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP}};
 
         D3D12_ROOT_SIGNATURE_DESC rootDescription{};
         rootDescription.NumParameters =
             static_cast<UINT>(std::size(parameters));
         rootDescription.pParameters = parameters;
-        rootDescription.NumStaticSamplers = 1;
-        rootDescription.pStaticSamplers = &sampler;
+        rootDescription.NumStaticSamplers = static_cast<UINT>(std::size(samplers));
+        rootDescription.pStaticSamplers = samplers;
 
         Microsoft::WRL::ComPtr<ID3DBlob> signature{};
         Microsoft::WRL::ComPtr<ID3DBlob> errors{};

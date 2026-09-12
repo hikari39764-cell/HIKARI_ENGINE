@@ -1,6 +1,7 @@
 #include "../Include/Lighting/HIKARI_LocalLightContract.hlsli"
 #include "../Include/Lighting/HIKARI_LightingTransportMaterial.hlsli"
 #include "../Include/Sky/HIKARI_SkyRadiance.hlsli"
+#include "../Include/Sky/HIKARI_EquirectangularSampling.hlsli"
 
 struct TransportTriangle
 {
@@ -41,7 +42,8 @@ cbuffer BakeConstants : register(b0)
     uint gBounceCount;
     uint gTriangleCount;
     uint gLightCount;
-    uint2 gPadding;
+    uint gSkyMode;
+    uint gSkyTextureIndex;
     float4 gAmbientSkyStrength;
     float4 gSkyZenith;
     float4 gSkyHorizon;
@@ -53,8 +55,10 @@ RaytracingAccelerationStructure gScene : register(t0);
 StructuredBuffer<TransportTriangle> gTriangles : register(t1);
 StructuredBuffer<TransportTexel> gTexels : register(t2);
 StructuredBuffer<TransportLight> gLights : register(t3);
+TextureCube gEnvironmentCube : register(t4);
 RWStructuredBuffer<float4> gOutput : register(u0);
 SamplerState gMaterialSampler : register(s0);
+SamplerState gEnvironmentSampler : register(s1);
 
 static const float HIKARI_PI = 3.14159265359f;
 static const float HIKARI_FLOAT_MAX = 3.402823e+38f;
@@ -110,9 +114,12 @@ float Random01(inout uint state)
 
 float3 EvaluateSky(float3 direction)
 {
-    const float3 sky = HikariApplySkyRadianceScale(HikariEvaluateGradientSky(direction,
-        gSkyZenith.rgb, gSkyHorizon.rgb, gSkyGround.rgb, gSkyZenith.w),
-        gSkyTintExposure.rgb, gSkyTintExposure.w);
+    const float3 skyDirection = HikariRotateSkyYaw(direction, gSkyHorizon.w);
+    float3 sky = HikariEvaluateGradientSky(skyDirection, gSkyZenith.rgb, gSkyHorizon.rgb, gSkyGround.rgb, gSkyZenith.w);
+    if (gSkyMode == 2u) sky = gEnvironmentCube.SampleLevel(gEnvironmentSampler, skyDirection, 0).rgb;
+    else if (gSkyMode == 3u) sky = HikariSampleMaterialTexture(gSkyTextureIndex, gEnvironmentSampler,
+        HikariDirectionToEquirectangularUv(skyDirection), float4(sky, 1)).rgb;
+    sky = HikariApplySkyRadianceScale(sky, gSkyTintExposure.rgb, gSkyTintExposure.w);
     return HikariBlendAmbientWithSky(gAmbientSkyStrength.rgb, sky, gAmbientSkyStrength.w);
 }
 
