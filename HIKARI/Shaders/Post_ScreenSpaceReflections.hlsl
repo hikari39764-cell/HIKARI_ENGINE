@@ -146,7 +146,8 @@ float4 PSTrace(FullscreenVertex input) : SV_TARGET
 float4 ResolveHalfResolutionTrace(
     float2 uv,
     float centerDepth,
-    float3 centerNormal)
+    float3 centerNormal,
+    float centerRoughness)
 {
     const float2 tracePosition =
         uv * gTraceScreenParams.xy - 0.5f;
@@ -205,6 +206,8 @@ float4 ResolveHalfResolutionTrace(
                     2.0f);
             const float normalWeight =
                 pow(saturate(dot(centerNormal, sampleNormal)), 12.0f);
+            const float roughnessWeight =
+                pow(saturate(1.0f - abs(centerRoughness - sampleRoughness) * 8.0f), 2.0f);
             const float2 axisWeight =
                 float2(
                     x == 0 ? 1.0f - fraction.x : fraction.x,
@@ -213,27 +216,35 @@ float4 ResolveHalfResolutionTrace(
                 axisWeight.x *
                 axisWeight.y *
                 depthWeight *
-                normalWeight;
+                normalWeight *
+                roughnessWeight;
+            if (!HikariIsFiniteFloat(weight) || weight <= 0.0f)
+            {
+                continue;
+            }
+            // 未命中・無効な trace も表面の支持領域に残し、信頼度を水増ししない。
+            accumulatedWeight += weight;
             const float4 traceSample =
                 gSsrTrace.Load(int3(tracePixel, 0));
             if (!HikariIsValidScreenSpaceReflectionRadiance(
                     traceSample.rgb) ||
-                traceSample.a != traceSample.a ||
+                !HikariIsFiniteFloat(traceSample.a) ||
                 traceSample.a < 0.0f ||
                 traceSample.a > 1.0f)
             {
                 continue;
             }
-            accumulated += traceSample * weight;
-            accumulatedWeight += weight;
+            accumulated += float4(traceSample.rgb * traceSample.a, traceSample.a) * weight;
         }
     }
 
-    if (accumulatedWeight <= 1.0e-5f)
+    if (accumulatedWeight <= 1.0e-5f || accumulated.a <= 1.0e-5f)
     {
         return 0.0f.xxxx;
     }
-    return accumulated / accumulatedWeight;
+    // 放射輝度と confidence を分離し、合成時の一度だけ減衰させる。
+    return float4(accumulated.rgb / accumulated.a,
+        saturate(accumulated.a / accumulatedWeight));
 }
 
 float4 PSResolve(FullscreenVertex input) : SV_TARGET
@@ -255,10 +266,14 @@ float4 PSResolve(FullscreenVertex input) : SV_TARGET
         normal,
         roughness,
         metallic);
+    if (!HikariIsFiniteFloat(roughness) || roughness >= gMaxRoughness)
+    {
+        return baseSceneColor;
+    }
     const float4 trace =
-        ResolveHalfResolutionTrace(input.uv, depth, normal);
+        ResolveHalfResolutionTrace(input.uv, depth, normal, roughness);
     if (!HikariIsValidScreenSpaceReflectionRadiance(trace.rgb) ||
-        trace.a != trace.a)
+        !HikariIsFiniteFloat(trace.a))
     {
         return baseSceneColor;
     }
