@@ -197,13 +197,22 @@ namespace HIKARI::IBL {
         }
     }
 
+    bool IblEnvironmentSource::IsComplete() const noexcept {
+        IblEnvironmentData resolved{};
+        resolved.irradianceResource = irradianceResource;
+        resolved.prefilteredResource = prefilteredResource;
+        resolved.brdfLutResource = brdfLutResource;
+        RefreshResolvedHandles(resolved, prefilteredMipCount);
+        return resolved.hasIrradiance && resolved.hasPrefiltered && resolved.hasBrdfLut;
+    }
+
     void Reset() {
         gData = {};
         gRequestedPrefilteredMipCount = 1;
         RefreshResolvedHandles(gData, gRequestedPrefilteredMipCount);
     }
 
-    void SetFromTextureResources(
+    bool SetFromTextureResources(
         RENDER3D::TextureResourceHandle irradianceResource,
         RENDER3D::TextureResourceHandle prefilteredResource,
         RENDER3D::TextureResourceHandle brdfLutResource,
@@ -214,6 +223,7 @@ namespace HIKARI::IBL {
         gRequestedPrefilteredMipCount = std::max<uint32_t>(1u, prefilteredMipCount);
         RefreshResolvedHandles(gData, gRequestedPrefilteredMipCount);
         LogIblStateIfChanged();
+        return gData.hasIrradiance && gData.hasPrefiltered && gData.hasBrdfLut;
     }
 
     void SetFromTextureHandles(

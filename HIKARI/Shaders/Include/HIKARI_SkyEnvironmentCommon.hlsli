@@ -52,6 +52,20 @@ float3 HikariEvaluateAtmosphereDiffuse(float3 normal)
     return HikariEvaluateAtmosphereSky(representativeDirection);
 }
 
+float3 HikariEvaluateSkyDiffuseIrradiance(float3 normal)
+{
+    if ((uint)(gSkyMode + 0.5f) == 4u && gAtmosphereSunEnabled > 0.5f)
+        return HikariEvaluateAtmosphereDiffuse(normal);
+    if (gIblHasIrradiance > 0.5f)
+    {
+        const float3 irradiance = gIblIrradianceTex.Sample(gLinearWrap,
+            normalize(HikariRotateSkyYaw(normal, gSkyYaw))).rgb;
+        return HikariApplySkyRadianceScale(irradiance, gSkyTint, gSkyExposure);
+    }
+    return HikariApplySkyRadianceScale(
+        HikariEvaluateGradientSkyIrradiance(normal, gGradientSkyIrradiance), gSkyTint, gSkyExposure);
+}
+
 float3 HikariEvaluateAtmosphereSunTerm(float3 dir)
 {
     // gAtmosphereSunColorRadiance.a is source radiance. A narrow reflected

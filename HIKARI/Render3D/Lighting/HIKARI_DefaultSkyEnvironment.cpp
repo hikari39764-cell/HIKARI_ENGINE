@@ -94,13 +94,7 @@ namespace HIKARI::RENDER3D::LIGHTING {
                 brdfPath.generic_string());
         }
         gDefaultSkyIblSource.prefilteredMipCount = 7u;
-        result.iblLoaded =
-            IsTextureResourceValid(
-                gDefaultSkyIblSource.irradianceResource) &&
-            IsTextureResourceValid(
-                gDefaultSkyIblSource.prefilteredResource) &&
-            IsTextureResourceValid(
-                gDefaultSkyIblSource.brdfLutResource);
+        result.iblLoaded = gDefaultSkyIblSource.IsComplete();
         if (!result.iblLoaded) {
             // A partial environment can combine a current sky with stale
             // fallback descriptors. Preview/runtime may only bind the set as
@@ -123,11 +117,12 @@ namespace HIKARI::RENDER3D::LIGHTING {
             return result;
         }
 
-        IBL::SetFromTextureResources(
+        result.iblLoaded = IBL::SetFromTextureResources(
             gDefaultSkyIblSource.irradianceResource,
             gDefaultSkyIblSource.prefilteredResource,
             gDefaultSkyIblSource.brdfLutResource,
             gDefaultSkyIblSource.prefilteredMipCount);
+        if (!result.iblLoaded) IBL::Reset();
         return result;
     }
 

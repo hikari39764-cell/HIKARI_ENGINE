@@ -8,6 +8,7 @@
 
 #include "Render3D/HIKARI_Math3D.h"
 #include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
+#include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Lighting/HIKARI_SceneLightingRuntimeData.h"
 
 namespace HIKARI {
@@ -21,6 +22,7 @@ namespace HIKARI {
             std::string sceneGuid{};
             std::filesystem::path projectRoot{};
             std::unordered_set<std::string> skyAssetIds{};
+            SkySettings sky{};
             std::string expectedSceneHash{};
             std::unordered_map<std::string, std::string>
                 expectedBakeAuthoringHashes{};

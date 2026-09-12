@@ -513,24 +513,19 @@ namespace HIKARI::RENDER3D::LIGHTING {
         SceneLightingRuntimeData& runtimeData,
         std::vector<std::string>& messages) const {
 
-        if (request.skyAssetIds.empty()) {
-            const DefaultSkyEnvironmentResult defaultSky =
-                ActivateDefaultSkyEnvironment(skyManager);
-            runtimeData.skyLoaded = defaultSky.skyRegistered;
-            runtimeData.globalIblLoaded = defaultSky.iblLoaded;
-            runtimeData.activeSkyAssetId =
-                defaultSky.skyRegistered
-                    ? kDefaultSkyAssetName
-                    : std::string{};
-            AppendMessage(
-                messages,
-                "[LightingRuntimeLoader][DefaultSky] " +
-                    defaultSky.message);
-            return;
-        }
+        // 依存集合には雲レイヤーも含まれる。表示中の空だけが IBL を選択する。
+        IBL::Reset();
+        const bool usesSkyTexture = request.sky.enabled &&
+            (request.sky.mode == SkyMode::Cubemap || request.sky.mode == SkyMode::Texture2D);
+        const bool usesCubemapIbl = usesSkyTexture && request.sky.mode == SkyMode::Cubemap;
+        const std::string activeSkyId = usesSkyTexture ? request.sky.skyAsset : std::string{};
+        auto skyAssetIds = request.skyAssetIds;
+        if (!activeSkyId.empty()) skyAssetIds.insert(activeSkyId);
 
         for (const std::string& skyId :
-             request.skyAssetIds) {
+             skyAssetIds) {
+            const bool isActiveSky = !activeSkyId.empty() && skyId == activeSkyId;
+            if (skyId == kDefaultSkyAssetName && (!isActiveSky || !usesCubemapIbl)) continue;
             const auto* descriptor =
                 assetRegistry.FindAs<SkyAssetDescriptor>(
                     AssetId{ skyId });
@@ -548,8 +543,8 @@ namespace HIKARI::RENDER3D::LIGHTING {
                         texture->colorSpace ==
                             TextureAssetColorSpace::Linear,
                     });
-                    runtimeData.skyLoaded = true;
-                    if (runtimeData.activeSkyAssetId.empty()) {
+                    if (isActiveSky) {
+                        runtimeData.skyLoaded = true;
                         runtimeData.activeSkyAssetId = texture->id.value;
                     }
                     AppendMessage(
@@ -558,7 +553,7 @@ namespace HIKARI::RENDER3D::LIGHTING {
                             texture->id.value);
                     continue;
                 }
-                if (skyId == kDefaultSkyAssetName) {
+                if (skyId == kDefaultSkyAssetName && isActiveSky && usesCubemapIbl) {
                     const DefaultSkyEnvironmentResult defaultSky =
                         ActivateDefaultSkyEnvironment(skyManager);
                     runtimeData.skyLoaded =
@@ -601,9 +596,12 @@ namespace HIKARI::RENDER3D::LIGHTING {
                 descriptor->preferredMode,
                 false
             });
-            runtimeData.skyLoaded = true;
-            runtimeData.activeSkyAssetId =
-                descriptor->id.value;
+            if (isActiveSky) {
+                runtimeData.skyLoaded = true;
+                runtimeData.activeSkyAssetId = descriptor->id.value;
+            }
+
+            if (!isActiveSky || !usesCubemapIbl) continue;
 
             if (!descriptor->hasIbl) {
                 AppendMessage(
@@ -639,23 +637,9 @@ namespace HIKARI::RENDER3D::LIGHTING {
                     "ibl/brdf_lut",
                     brdfLutPath);
             }
-            IBL::SetFromTextureResources(
-                irradiance,
-                prefiltered,
-                brdf,
+            runtimeData.globalIblLoaded = IBL::SetFromTextureResources(irradiance, prefiltered, brdf,
                 descriptor->prefilteredMipCount);
-            runtimeData.globalIblLoaded =
-                IsTextureResourceValid(irradiance) &&
-                IsTextureResourceValid(prefiltered) &&
-                IsTextureResourceValid(brdf);
-        }
-
-        if (!runtimeData.globalIblLoaded) {
-            // The visible panorama/gradient/atmosphere is the only valid
-            // fallback when no matching convolved artifacts were authored.
-            // Reset once after the full set so a missing auxiliary sky cannot
-            // erase a later valid provider during iteration.
-            IBL::Reset();
+            if (!runtimeData.globalIblLoaded) IBL::Reset();
         }
     }
 

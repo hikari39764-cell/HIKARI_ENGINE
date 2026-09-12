@@ -427,6 +427,7 @@ namespace HIKARI {
         const SceneDocument& document,
         const ComponentRegistry* enabledComponents) const {
         SceneDependencySet deps{};
+        deps.sky = document.environment.sky;
 
         if (!document.environment.sky.skyAsset.empty()) {
             deps.skyAssetIds.insert(document.environment.sky.skyAsset);
@@ -705,6 +706,7 @@ namespace HIKARI {
         request.sceneGuid = sceneGuid;
         request.projectRoot = projectRoot;
         request.skyAssetIds = dependencies.skyAssetIds;
+        request.sky = dependencies.sky;
         request.expectedSceneHash =
             dependencies.lightingSceneHash;
         request.expectedBakeAuthoringHashes =

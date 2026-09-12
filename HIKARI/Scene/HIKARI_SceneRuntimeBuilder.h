@@ -26,6 +26,7 @@ namespace HIKARI {
     struct SceneDependencySet {
         std::unordered_set<std::string> modelAssetIds{};
         std::unordered_set<std::string> skyAssetIds{};
+        SkySettings sky{};
         std::unordered_set<std::string> textureAssetIds{};
         std::unordered_set<std::string> materialAssetIds{};
         std::unordered_set<std::string> modelMaterialSetAssetIds{};

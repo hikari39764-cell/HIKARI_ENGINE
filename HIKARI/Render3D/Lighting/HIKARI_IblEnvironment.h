@@ -20,11 +20,7 @@ namespace HIKARI::IBL {
                 brdfLutResource.IsValid();
         }
 
-        constexpr bool IsComplete() const noexcept {
-            return irradianceResource.IsValid() &&
-                prefilteredResource.IsValid() &&
-                brdfLutResource.IsValid();
-        }
+        bool IsComplete() const noexcept;
     };
 
     struct IblEnvironmentData {
@@ -57,7 +53,9 @@ namespace HIKARI::IBL {
 
     void Reset();
 
-    void SetFromTextureResources(
+    // グローバル設定を反映し、dimension/mip 検証後に三つの要素が揃っているかを返す。
+    // ScopedEnvironmentOverride の有無はこの判定に影響しない。
+    bool SetFromTextureResources(
         RENDER3D::TextureResourceHandle irradianceResource,
         RENDER3D::TextureResourceHandle prefilteredResource,
         RENDER3D::TextureResourceHandle brdfLutResource,

@@ -68,6 +68,7 @@ namespace HIKARI {
 
     bool DocumentSceneBase::RefreshLightingRuntime() {
         SceneDependencySet deps{};
+        deps.sky = state_->lighting.environment.sky;
         if (!state_->lighting.environment.sky.skyAsset.empty()) {
             deps.skyAssetIds.insert(state_->lighting.environment.sky.skyAsset);
         }

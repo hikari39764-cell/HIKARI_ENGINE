@@ -38,14 +38,9 @@ HikariAmbientIblLobes HikariEvaluateAmbientIblApproxLobes(
     const float3 kD = context.diffuseEnergyWeight;
     float3 diffuseAmbient =
         gAmbientColor.rgb * gAmbientIntensity;
-    const uint skyMode = (uint)(gSkyMode + 0.5f);
-
     if (gSkyAmbientFromSky > 0.0001f)
     {
-        float3 skyDiffuse = skyMode == 4u &&
-            gAtmosphereSunEnabled > 0.5f
-            ? HikariEvaluateAtmosphereDiffuse(n)
-            : HikariApplySkyRadianceScale(HikariEvaluateGradientSkyIrradiance(n, gGradientSkyIrradiance), gSkyTint, gSkyExposure);
+        const float3 skyDiffuse = HikariEvaluateSkyDiffuseIrradiance(n);
         diffuseAmbient = HikariBlendAmbientWithSky(diffuseAmbient, skyDiffuse, gSkyAmbientFromSky);
     }
 
@@ -136,33 +131,9 @@ HikariAmbientIblLobes HikariEvaluateAmbientIblLobes(
 
     float3 diffuseIbl =
         gAmbientColor.rgb * gAmbientIntensity;
-    const uint skyMode = (uint)(gSkyMode + 0.5f);
-    if (skyMode == 4u &&
-        gAtmosphereSunEnabled > 0.5f &&
-        gSkyAmbientFromSky > 0.0001f)
+    if (gSkyAmbientFromSky > 0.0001f)
     {
-        const float3 skyDiffuse =
-            HikariEvaluateAtmosphereDiffuse(n);
-        diffuseIbl = HikariBlendAmbientWithSky(diffuseIbl, skyDiffuse, gSkyAmbientFromSky);
-    }
-    else if (gIblHasIrradiance > 0.5f &&
-        gSkyAmbientFromSky > 0.0001f)
-    {
-        float3 skyDiffuse =
-            gIblIrradianceTex.Sample(
-                gLinearWrap,
-                normalize(
-                    HikariRotateSkyYaw(
-                        n,
-                        gSkyYaw))).rgb *
-            max(gSkyTint, 0.0f.xxx) *
-            max(0.0f, gSkyExposure);
-        diffuseIbl = HikariBlendAmbientWithSky(diffuseIbl, skyDiffuse, gSkyAmbientFromSky);
-    }
-    else if (gSkyAmbientFromSky > 0.0001f)
-    {
-        const float3 skyDiffuse = HikariApplySkyRadianceScale(
-            HikariEvaluateGradientSkyIrradiance(n, gGradientSkyIrradiance), gSkyTint, gSkyExposure);
+        const float3 skyDiffuse = HikariEvaluateSkyDiffuseIrradiance(n);
         diffuseIbl = HikariBlendAmbientWithSky(diffuseIbl, skyDiffuse, gSkyAmbientFromSky);
     }
     diffuseIbl = HikariBlendLightProbeDiffuse(
