@@ -23,7 +23,7 @@ namespace HIKARI::ASSETS::SEMANTICS {
                 AssetImporterKind::Texture,
                 AssetType::Texture,
                 "TextureImporter",
-                6u,
+                7u,
                 ".png, .jpg, .jpeg, .tga, .bmp, .dds, .hdr",
             },
             {

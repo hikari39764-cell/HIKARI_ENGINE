@@ -493,6 +493,21 @@ hikari_configure_engine_target(HIKARI_AssetImportPublicationContracts)
 hikari_configure_contract_output(HIKARI_AssetImportPublicationContracts "RuntimeContracts")
 add_test(NAME HIKARI_AssetImportPublicationContracts COMMAND "$<TARGET_FILE:HIKARI_AssetImportPublicationContracts>")
 set_tests_properties(HIKARI_AssetImportPublicationContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
+
+add_executable(HIKARI_TextureCookContracts EXCLUDE_FROM_ALL
+    "Tools/Tests/HIKARI_TextureCookContracts.cpp"
+    "HIKARI/Assets/Importers/HIKARI_TextureImportBackend_DirectXTex.cpp"
+    "HIKARI/Assets/Formats/HIKARI_HtexFormat.cpp"
+    "HIKARI/Assets/Tasks/HIKARI_AssetTaskService.cpp"
+    "HIKARI/Core/Tasks/HIKARI_TaskExecutor.cpp"
+    "HIKARI/Core/HIKARI_Logger.cpp"
+    "HIKARI/Core/Text/HIKARI_AsciiCase.cpp")
+target_include_directories(HIKARI_TextureCookContracts PRIVATE "${HIKARI_SOURCE_ROOT}/HIKARI")
+target_link_libraries(HIKARI_TextureCookContracts PRIVATE HIKARI::DirectXTex windowscodecs ole32)
+hikari_configure_engine_target(HIKARI_TextureCookContracts)
+hikari_configure_contract_output(HIKARI_TextureCookContracts "RuntimeContracts")
+add_test(NAME HIKARI_TextureCookContracts COMMAND "$<TARGET_FILE:HIKARI_TextureCookContracts>")
+set_tests_properties(HIKARI_TextureCookContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 60)
 foreach(runtime_contract IN ITEMS
     HIKARI_GameComponentBindingLifecycleSmoke
     HIKARI_WorldSdkSmoke

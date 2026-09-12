@@ -5,12 +5,14 @@
 #include <DirectXTex.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <iomanip>
 #include <limits>
 #include <sstream>
 #include <utility>
+#include <vector>
 
 #include "Assets/Formats/HIKARI_HtexFormat.h"
 #include "Core/HIKARI_Logger.h"
@@ -163,9 +165,9 @@ namespace HIKARI {
         DirectX::TEX_FILTER_FLAGS ResolveFilterFlags(TextureAssetColorSpace colorSpace) {
             if (colorSpace == TextureAssetColorSpace::Srgb) {
                 return static_cast<DirectX::TEX_FILTER_FLAGS>(
-                    DirectX::TEX_FILTER_DEFAULT | DirectX::TEX_FILTER_SRGB);
+                    DirectX::TEX_FILTER_FORCE_NON_WIC | DirectX::TEX_FILTER_SRGB);
             }
-            return DirectX::TEX_FILTER_DEFAULT;
+            return DirectX::TEX_FILTER_FORCE_NON_WIC;
         }
 
         DirectX::TEX_COMPRESS_FLAGS ResolveCompressFlags(
@@ -200,14 +202,47 @@ namespace HIKARI {
                 settings.mipPolicy == TextureMipPolicy::Preserve) {
                 return false;
             }
-            if (metadata.IsCubemap()) {
-                return false;
-            }
-            return metadata.mipLevels <= 1;
+            return settings.mipPolicy == TextureMipPolicy::Generate ||
+                (!metadata.IsCubemap() && metadata.mipLevels <= 1);
         }
 
-        const DirectX::ScratchImage& SelectImage(const DirectX::ScratchImage& source, const DirectX::ScratchImage& candidate) {
-            return candidate.GetImageCount() > 0 ? candidate : source;
+        HRESULT KeepTopMip(DirectX::ScratchImage& image) {
+            const auto metadata = image.GetMetadata();
+            if (metadata.mipLevels <= 1) return S_OK;
+            std::vector<DirectX::Image> topImages;
+            topImages.reserve(metadata.arraySize);
+            for (size_t item = 0; item < metadata.arraySize; ++item)
+                topImages.push_back(*image.GetImage(0, item, 0));
+            DirectX::ScratchImage top;
+            const HRESULT hr = metadata.IsCubemap()
+                ? top.InitializeCubeFromImages(topImages.data(), topImages.size())
+                : top.InitializeArrayFromImages(topImages.data(), topImages.size());
+            if (SUCCEEDED(hr)) image = std::move(top);
+            return hr;
+        }
+
+        HRESULT FilterNormalDirections(const DirectX::ScratchImage& input,
+            bool reconstructZ, DirectX::ScratchImage& output) {
+            // Runtime の XY・正半球契約に合わせ、縮小前に Z を復元する。
+            // 全 mip を平均した後に正規化し、次の mip に正規化の偏りを伝えない。
+            return DirectX::TransformImage(input.GetImages(), input.GetImageCount(), input.GetMetadata(),
+                [reconstructZ](DirectX::XMVECTOR* out, const DirectX::XMVECTOR* in, size_t width, size_t) {
+                    for (size_t x = 0; x < width; ++x) {
+                        DirectX::XMFLOAT4 pixel;
+                        DirectX::XMStoreFloat4(&pixel, in[x]);
+                        float nx = pixel.x * 2.0f - 1.0f, ny = pixel.y * 2.0f - 1.0f;
+                        float nz = reconstructZ ? std::sqrt((std::max)(0.0f, 1.0f - nx * nx - ny * ny))
+                            : pixel.z * 2.0f - 1.0f;
+                        const float length = std::sqrt(nx * nx + ny * ny + nz * nz);
+                        if (!std::isfinite(length) || length < 1.0e-5f) {
+                            nx = ny = 0.0f; nz = 1.0f;
+                        } else {
+                            nx /= length; ny /= length; nz /= length;
+                        }
+                        out[x] = DirectX::XMVectorSet(nx * 0.5f + 0.5f, ny * 0.5f + 0.5f,
+                            nz * 0.5f + 0.5f, pixel.w);
+                    }
+                }, output);
         }
 
         bool SaveScratchImageToDds(
@@ -296,7 +331,8 @@ namespace HIKARI {
             texture.dimension = metadata.IsCubemap()
                 ? HtexTextureDimension::TextureCube
                 : HtexTextureDimension::Texture2D;
-            texture.colorSpace = settings.colorSpace;
+            texture.colorSpace = DirectX::IsSRGB(metadata.format)
+                ? TextureAssetColorSpace::Srgb : TextureAssetColorSpace::Linear;
             texture.usage = settings.usage;
             texture.compression = CompressionFromDxgiFormat(metadata.format, settings.compression);
 
@@ -330,7 +366,7 @@ namespace HIKARI {
 
         bool CookTextureImage(
             const std::filesystem::path& sourcePath,
-            const TextureImportSettings& settings,
+            TextureImportSettings settings,
             DirectX::ScratchImage& outImage,
             std::string& outMessage,
             AssetTaskContext* task) {
@@ -361,9 +397,47 @@ namespace HIKARI {
                 return false;
             }
 
+            if (metadata.dimension != DirectX::TEX_DIMENSION_TEXTURE2D) {
+                outMessage = "[DirectXTexBackend] runtime texture artifacts require 2D or cube sources";
+                return false;
+            }
+            if (settings.usage == TextureUsage::Normal) {
+                settings.colorSpace = TextureAssetColorSpace::Linear;
+            } else if (settings.colorSpace == TextureAssetColorSpace::Auto) {
+                settings.colorSpace = DirectX::IsSRGB(metadata.format)
+                    ? TextureAssetColorSpace::Srgb : TextureAssetColorSpace::Linear;
+            }
+            // import の colorSpace は入力 channel の解釈。法線/data に sRGB 変換を掛けない。
+            const auto interpretedFormat = settings.colorSpace == TextureAssetColorSpace::Srgb
+                ? DirectX::MakeSRGB(metadata.format) : DirectX::MakeLinear(metadata.format);
+            if (!loaded.OverrideFormat(interpretedFormat)) {
+                outMessage = "[DirectXTexBackend] source color interpretation is unsupported";
+                return false;
+            }
+            metadata = loaded.GetMetadata();
+            if (DirectX::IsCompressed(metadata.format)) {
+                DirectX::ScratchImage decompressed;
+                hr = DirectX::Decompress(loaded.GetImages(), loaded.GetImageCount(), metadata,
+                    DXGI_FORMAT_UNKNOWN, decompressed);
+                if (FAILED(hr)) {
+                    outMessage = "[DirectXTexBackend] block decompression failed: " + ToHexHr(hr);
+                    return false;
+                }
+                loaded = std::move(decompressed);
+                metadata = loaded.GetMetadata();
+            }
+            if (settings.mipPolicy == TextureMipPolicy::None || settings.mipPolicy == TextureMipPolicy::Generate) {
+                hr = KeepTopMip(loaded);
+                if (FAILED(hr)) {
+                    outMessage = "[DirectXTexBackend] top mip extraction failed: " + ToHexHr(hr);
+                    return false;
+                }
+                metadata = loaded.GetMetadata();
+            }
+
             DirectX::ScratchImage working{};
             const DXGI_FORMAT workingFormat = ResolveWorkingFormat(sourcePath, metadata, settings);
-            if (metadata.format != workingFormat && !metadata.IsCubemap()) {
+            if (metadata.format != workingFormat) {
                 if (task != nullptr) {
                     task->ReportStage(
                         "Converting texture format",
@@ -389,9 +463,18 @@ namespace HIKARI {
                 }
             }
 
-            const DirectX::ScratchImage& converted = SelectImage(loaded, working);
+            if (working.GetImageCount() > 0) loaded = std::move(working);
+            DirectX::ScratchImage normalDirections;
+            if (settings.usage == TextureUsage::Normal &&
+                FAILED(hr = FilterNormalDirections(loaded, true, normalDirections))) {
+                outMessage = "[DirectXTexBackend] normal direction decoding failed: " + ToHexHr(hr);
+                return false;
+            }
+            if (normalDirections.GetImageCount() > 0) loaded = std::move(normalDirections);
+            const DirectX::ScratchImage& converted = loaded;
             const DirectX::TexMetadata convertedMetadata = converted.GetMetadata();
             DirectX::ScratchImage resized{};
+            bool directionsFiltered = false;
             if (settings.allowResize && convertedMetadata.dimension == DirectX::TEX_DIMENSION_TEXTURE2D) {
                 const size_t maximumSize = (std::max)(size_t{1}, static_cast<size_t>(settings.maxSize));
                 const size_t longestSide = (std::max)(convertedMetadata.width, convertedMetadata.height);
@@ -426,7 +509,11 @@ namespace HIKARI {
                     }
                 }
             }
-            const DirectX::ScratchImage& mipInput = SelectImage(converted, resized);
+            if (resized.GetImageCount() > 0) {
+                loaded = std::move(resized);
+                directionsFiltered = true;
+            }
+            const DirectX::ScratchImage& mipInput = loaded;
             const DirectX::TexMetadata mipInputMetadata = mipInput.GetMetadata();
             DirectX::ScratchImage mipmapped{};
             if (NeedsMipGeneration(settings, mipInputMetadata) && !DirectX::IsCompressed(mipInputMetadata.format)) {
@@ -449,20 +536,34 @@ namespace HIKARI {
                     0,
                     mipmapped);
                 if (FAILED(hr)) {
-                    outMessage = "[DirectXTexBackend] mipmap generation failed, falling back to source mip: " +
+                    outMessage = "[DirectXTexBackend] mipmap generation failed: " +
                         sourcePath.generic_string() +
                         " hr=" +
                         ToHexHr(hr);
-                    HIKARI_LOG_WARN(outMessage);
+                    HIKARI_LOG_ERROR(outMessage);
+                    return false;
                 }
             }
 
-            const DirectX::ScratchImage& mipSource = SelectImage(mipInput, mipmapped);
+            if (mipmapped.GetImageCount() > 0) {
+                loaded = std::move(mipmapped);
+                directionsFiltered = true;
+            }
+            DirectX::ScratchImage normalizedMips;
+            if (settings.usage == TextureUsage::Normal && directionsFiltered &&
+                FAILED(hr = FilterNormalDirections(loaded, false, normalizedMips))) {
+                outMessage = "[DirectXTexBackend] normal mip normalization failed: " + ToHexHr(hr);
+                return false;
+            }
+            if (normalizedMips.GetImageCount() > 0) loaded = std::move(normalizedMips);
+            const DirectX::ScratchImage& mipSource = loaded;
             const DirectX::TexMetadata mipMetadata = mipSource.GetMetadata();
 
             DirectX::ScratchImage compressed{};
             const DXGI_FORMAT compressedFormat = ResolveCompressedFormat(sourcePath, mipMetadata, settings);
-            if (compressedFormat != DXGI_FORMAT_UNKNOWN && !mipMetadata.IsCubemap()) {
+            // 非整列 BC の top mip は古い D3D12 device で作成できない。
+            if (compressedFormat != DXGI_FORMAT_UNKNOWN &&
+                mipMetadata.width % 4 == 0 && mipMetadata.height % 4 == 0) {
                 if (task != nullptr) {
                     if (task->IsCancellationRequested()) {
                         outMessage = "[DirectXTexBackend] import canceled";
@@ -484,6 +585,7 @@ namespace HIKARI {
                     DirectX::TEX_THRESHOLD_DEFAULT,
                     compressed);
                 if (FAILED(hr)) {
+                    compressed.Release();
                     outMessage = "[DirectXTexBackend] block compression failed, writing uncompressed DDS: " +
                         sourcePath.generic_string() +
                         " hr=" +
@@ -494,12 +596,6 @@ namespace HIKARI {
 
             if (compressed.GetImageCount() > 0) {
                 outImage = std::move(compressed);
-            } else if (mipmapped.GetImageCount() > 0) {
-                outImage = std::move(mipmapped);
-            } else if (resized.GetImageCount() > 0) {
-                outImage = std::move(resized);
-            } else if (working.GetImageCount() > 0) {
-                outImage = std::move(working);
             } else {
                 outImage = std::move(loaded);
             }
