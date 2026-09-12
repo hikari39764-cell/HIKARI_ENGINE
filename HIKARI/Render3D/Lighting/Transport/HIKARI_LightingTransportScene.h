@@ -83,6 +83,8 @@ namespace HIKARI::RENDER3D::LIGHTING::TRANSPORT {
             0.08f, 0.08f, 0.10f
         };
         float skyStrength = 0.0f;
+        float skyHorizonPower = 1.5f;
+        MATH::Vec4 skyTintExposure{1, 1, 1, 1};
     };
 
     struct LightingTransportScene {

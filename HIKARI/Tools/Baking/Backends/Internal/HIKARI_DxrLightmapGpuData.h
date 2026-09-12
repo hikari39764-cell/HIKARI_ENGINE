@@ -45,9 +45,10 @@ namespace HIKARI::TOOLS::BAKING {
         uint32_t padding0 = 0u;
         uint32_t padding1 = 0u;
         MATH::Vec4 ambientSkyStrength{};
-        MATH::Vec4 skyZenith{};
+        MATH::Vec4 skyZenith{}; // w: horizon power
         MATH::Vec4 skyHorizon{};
         MATH::Vec4 skyGround{};
+        MATH::Vec4 skyTintExposure{};
     };
 
     static_assert(
@@ -61,6 +62,6 @@ namespace HIKARI::TOOLS::BAKING {
             64u);
     static_assert(
         sizeof(DxrProgressiveLightmapBaker::DispatchConstants) ==
-            96u);
+            112u);
 
 } // namespace HIKARI::TOOLS::BAKING

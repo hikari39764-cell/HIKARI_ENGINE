@@ -44,17 +44,12 @@ HikariAmbientIblLobes HikariEvaluateAmbientIblApproxLobes(
     {
         float3 skyDiffuse = skyMode == 4u &&
             gAtmosphereSunEnabled > 0.5f
-            ? HikariEvaluateAtmosphereDiffuse(n) *
-                max(0.0f, gSkyAmbientFromSky)
-            : lerp(
+            ? HikariEvaluateAtmosphereDiffuse(n)
+            : HikariApplySkyRadianceScale(lerp(
                 gSkyGroundColor,
                 gSkyHorizonColor,
-                saturate(n.y * 0.5f + 0.5f)) *
-                gSkyExposure * gSkyAmbientFromSky;
-        diffuseAmbient = lerp(
-            diffuseAmbient,
-            skyDiffuse,
-            saturate(gSkyAmbientFromSky));
+                saturate(n.y * 0.5f + 0.5f)), gSkyTint, gSkyExposure);
+        diffuseAmbient = HikariBlendAmbientWithSky(diffuseAmbient, skyDiffuse, gSkyAmbientFromSky);
     }
 
     diffuseAmbient = HikariBlendLightProbeDiffuse(
@@ -69,11 +64,6 @@ HikariAmbientIblLobes HikariEvaluateAmbientIblApproxLobes(
         kD * baseColor * diffuseAmbient;
 
     float3 r = normalize(reflect(-v, n));
-    if (!(skyMode == 2u && gSkyHasCubemap > 0.5f))
-    {
-        r.y = abs(r.y);
-    }
-
     float3 specEnv = HikariSampleSkyEnvironment(r);
     specEnv *= max(0.0f, gSkyReflectionIntensity);
 
@@ -155,12 +145,8 @@ HikariAmbientIblLobes HikariEvaluateAmbientIblLobes(
         gSkyAmbientFromSky > 0.0001f)
     {
         const float3 skyDiffuse =
-            HikariEvaluateAtmosphereDiffuse(n) *
-            max(0.0f, gSkyAmbientFromSky);
-        diffuseIbl = lerp(
-            diffuseIbl,
-            skyDiffuse,
-            saturate(gSkyAmbientFromSky));
+            HikariEvaluateAtmosphereDiffuse(n);
+        diffuseIbl = HikariBlendAmbientWithSky(diffuseIbl, skyDiffuse, gSkyAmbientFromSky);
     }
     else if (gIblHasIrradiance > 0.5f &&
         gSkyAmbientFromSky > 0.0001f)
@@ -173,12 +159,8 @@ HikariAmbientIblLobes HikariEvaluateAmbientIblLobes(
                         n,
                         gSkyYaw))).rgb *
             max(gSkyTint, 0.0f.xxx) *
-            max(0.0f, gSkyExposure) *
-            max(0.0f, gSkyAmbientFromSky);
-        diffuseIbl = lerp(
-            diffuseIbl,
-            skyDiffuse,
-            saturate(gSkyAmbientFromSky));
+            max(0.0f, gSkyExposure);
+        diffuseIbl = HikariBlendAmbientWithSky(diffuseIbl, skyDiffuse, gSkyAmbientFromSky);
     }
     diffuseIbl = HikariBlendLightProbeDiffuse(
         diffuseIbl,

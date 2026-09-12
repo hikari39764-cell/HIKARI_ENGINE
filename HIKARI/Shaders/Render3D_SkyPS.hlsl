@@ -27,19 +27,13 @@ SamplerState gLinearClamp : register(s0);
 
 #include "Include/Atmosphere/HIKARI_AtmosphereScattering.hlsli"
 #include "Include/Sky/HIKARI_EquirectangularSampling.hlsli"
+#include "Include/Sky/HIKARI_SkyRadiance.hlsli"
 
 struct PSInput
 {
     float4 position : SV_POSITION;
     float2 ndc : TEXCOORD0;
 };
-
-float3 RotateYaw(float3 dir, float yaw)
-{
-    float s = sin(yaw);
-    float c = cos(yaw);
-    return float3(dir.x * c - dir.z * s, dir.y, dir.x * s + dir.z * c);
-}
 
 float3 ReconstructWorldRay(float2 ndc)
 {
@@ -63,26 +57,6 @@ float3 ReconstructWorldRay(float2 ndc)
         return float3(0.0f, 0.0f, 1.0f);
     }
     return direction * rsqrt(lengthSquared);
-}
-
-float3 SampleGradient(float3 dir)
-{
-    // Both hemispheres start from the exact same authored horizon color.
-    // The previous 0..1 remap evaluated each branch at its midpoint when
-    // dir.y == 0, producing a visible discontinuity around an open ocean.
-    float elevation = saturate(abs(dir.y));
-    float gradientPosition = smoothstep(0.0f, 1.0f, elevation);
-    float3 hemisphereTarget = dir.y >= 0.0f
-        ? gSkyZenithExposure.rgb
-        : gSkyGroundYaw.rgb;
-    float3 color = lerp(
-        gSkyHorizonPower.rgb,
-        hemisphereTarget,
-        gradientPosition);
-    float horizonBand = pow(
-        saturate(1.0f - elevation),
-        max(0.01f, gSkyHorizonPower.a));
-    return lerp(color, gSkyHorizonPower.rgb, horizonBand * 0.12f);
 }
 
 float3 AddSunDisk(float3 color, float3 dir)
@@ -148,10 +122,11 @@ float3 SampleAtmosphereSkyView(float3 dir)
 float4 main(PSInput input) : SV_TARGET
 {
     float3 worldRayDir = ReconstructWorldRay(input.ndc);
-    float3 skySampleDir = normalize(RotateYaw(worldRayDir, gSkyGroundYaw.a));
+    float3 skySampleDir = normalize(HikariRotateSkyYaw(worldRayDir, gSkyGroundYaw.a));
     uint mode = (uint)(gSkyTintMode.a + 0.5f);
 
-    float3 sky = SampleGradient(skySampleDir);
+    float3 sky = HikariEvaluateGradientSky(skySampleDir, gSkyZenithExposure.rgb,
+        gSkyHorizonPower.rgb, gSkyGroundYaw.rgb, gSkyHorizonPower.a);
     if (mode == 4u && gAtmosphereSunDirection.w > 0.5f)
     {
         sky = gAtmosphereSunDirection.w > 1.5f
@@ -185,8 +160,7 @@ float4 main(PSInput input) : SV_TARGET
     {
         sky = AddSunDisk(sky, skySampleDir);
     }
-    sky *= gSkyTintMode.rgb;
-    sky *= gSkyZenithExposure.a;
+    sky = HikariApplySkyRadianceScale(sky, gSkyTintMode.rgb, gSkyZenithExposure.a);
     if (!all(isfinite(sky)))
     {
         sky = 0.0f.xxx;

@@ -194,6 +194,8 @@ namespace HIKARI::TOOLS::BAKING {
             };
             constants.skyZenith = ToPosition4(
                 environment_.skyZenithRadiance);
+            constants.skyZenith.w = environment_.skyHorizonPower;
+            constants.skyTintExposure = environment_.skyTintExposure;
             constants.skyHorizon = ToPosition4(
                 environment_.skyHorizonRadiance);
             constants.skyGround = ToPosition4(

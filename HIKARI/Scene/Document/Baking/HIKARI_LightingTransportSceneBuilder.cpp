@@ -587,14 +587,14 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
             environment.ambient.color *
             (std::max)(0.0f, environment.ambient.intensity);
         scene.environment.skyZenithRadiance =
-            environment.sky.zenithColor *
-            environment.sky.exposure;
+            environment.sky.zenithColor;
         scene.environment.skyHorizonRadiance =
-            environment.sky.horizonColor *
-            environment.sky.exposure;
+            environment.sky.horizonColor;
         scene.environment.skyGroundRadiance =
-            environment.sky.groundColor *
-            environment.sky.exposure;
+            environment.sky.groundColor;
+        scene.environment.skyHorizonPower = environment.sky.horizonPower;
+        scene.environment.skyTintExposure = {environment.sky.tint.x, environment.sky.tint.y,
+            environment.sky.tint.z, environment.sky.exposure};
         scene.environment.skyStrength =
             environment.sky.enabled
             ? (std::max)(

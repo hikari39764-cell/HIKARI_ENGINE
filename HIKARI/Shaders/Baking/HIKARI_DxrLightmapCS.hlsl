@@ -1,5 +1,6 @@
 #include "../Include/Lighting/HIKARI_LocalLightContract.hlsli"
 #include "../Include/Lighting/HIKARI_LightingTransportMaterial.hlsli"
+#include "../Include/Sky/HIKARI_SkyRadiance.hlsli"
 
 struct TransportTriangle
 {
@@ -45,6 +46,7 @@ cbuffer BakeConstants : register(b0)
     float4 gSkyZenith;
     float4 gSkyHorizon;
     float4 gSkyGround;
+    float4 gSkyTintExposure;
 };
 
 RaytracingAccelerationStructure gScene : register(t0);
@@ -108,17 +110,10 @@ float Random01(inout uint state)
 
 float3 EvaluateSky(float3 direction)
 {
-    float horizonWeight =
-        pow(saturate(1.0f - abs(direction.y)), 1.5f);
-    float3 hemisphere =
-        direction.y >= 0.0f
-        ? lerp(gSkyHorizon.rgb, gSkyZenith.rgb, direction.y)
-        : lerp(gSkyHorizon.rgb, gSkyGround.rgb, -direction.y);
-    float3 sky = lerp(hemisphere, gSkyHorizon.rgb, horizonWeight);
-    return lerp(
-        gAmbientSkyStrength.rgb,
-        sky,
-        saturate(gAmbientSkyStrength.w));
+    const float3 sky = HikariApplySkyRadianceScale(HikariEvaluateGradientSky(direction,
+        gSkyZenith.rgb, gSkyHorizon.rgb, gSkyGround.rgb, gSkyZenith.w),
+        gSkyTintExposure.rgb, gSkyTintExposure.w);
+    return HikariBlendAmbientWithSky(gAmbientSkyStrength.rgb, sky, gAmbientSkyStrength.w);
 }
 
 bool BuildBasis(
