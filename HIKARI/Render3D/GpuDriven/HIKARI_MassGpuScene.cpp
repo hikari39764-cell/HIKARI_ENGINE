@@ -256,10 +256,6 @@ namespace {
         publicationGeneration = 0u;
     }
 
-    bool MassGpuSceneSource::HasInstances() const noexcept {
-        return !instances.empty();
-    }
-
     bool MassGpuSceneSource::CollectDirtyRangesSince(
         uint64_t baseSourceVersion,
         std::vector<RUNTIME::MassRenderDirtyRange>& outRanges) const {

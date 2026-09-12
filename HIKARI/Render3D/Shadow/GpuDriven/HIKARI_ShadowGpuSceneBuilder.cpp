@@ -355,7 +355,7 @@ namespace HIKARI::SHADOW::INTERNAL {
                 sourcePass->traditionalIndirect,
                 0u,
                 staticTraditionalCount,
-                false)) {
+                &IsStaticPrimaryShadowCaster)) {
             HydrateShadowTraditionalIndirectStream(
                 graphics,
                 gShadowStaticTraditionalIndirectStream);
@@ -378,14 +378,16 @@ namespace HIKARI::SHADOW::INTERNAL {
             BuildShadowSourceContentHash(staticPass);
         gShadowRendererState.staticShadowSceneSource.dirtyBaseSourceVersion = 0u;
 
-        const size_t skinnedTraditionalCount =
+        const size_t totalTraditionalCount = staticTraditionalCount +
             static_cast<size_t>(sourcePass->traditionalIndirect.skinnedCommandCount);
-        if (skinnedTraditionalCount != 0u &&
+        if (totalTraditionalCount != 0u &&
             gShadowDynamicTraditionalIndirectStream.CopyRangeFrom(
                 sourcePass->traditionalIndirect,
-                staticTraditionalCount,
-                skinnedTraditionalCount,
-                true)) {
+                0u,
+                totalTraditionalCount,
+                [](const RENDER3D::RUNTIME::SurfaceGpuSceneInstance& instance) {
+                    return IsPrimaryShadowCaster(instance) && !IsStaticPrimaryShadowCaster(instance);
+                })) {
             HydrateShadowTraditionalIndirectStream(
                 graphics,
                 gShadowDynamicTraditionalIndirectStream);

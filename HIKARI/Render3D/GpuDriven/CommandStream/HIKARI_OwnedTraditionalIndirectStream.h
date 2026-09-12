@@ -30,7 +30,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             const GpuDrivenTraditionalIndirectView& view,
             size_t firstCommand,
             size_t commandCount,
-            bool skinnedRange);
+            bool (*includeInstance)(const RUNTIME::SurfaceGpuSceneInstance&) = nullptr);
         GpuDrivenTraditionalIndirectView GetView() const;
         void AttachTo(GpuDrivenPassSource& pass) const;
     };

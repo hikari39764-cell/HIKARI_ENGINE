@@ -52,7 +52,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         const GpuDrivenTraditionalIndirectView& view,
         size_t firstCommand,
         size_t commandCount,
-        bool skinnedRange) {
+        bool (*includeInstance)(const RUNTIME::SurfaceGpuSceneInstance&)) {
 
         Clear();
         if (!view.HasCommands() ||
@@ -66,10 +66,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             return false;
         }
 
-        const size_t endCommand =
-            (std::min)(
-                view.commands->size(),
-                firstCommand + commandCount);
+        const size_t endCommand = firstCommand + (std::min)(
+            view.commands->size() - firstCommand, commandCount);
         if (endCommand <= firstCommand) {
             return false;
         }
@@ -89,6 +87,9 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             sourceIndex < endCommand;
             ++sourceIndex) {
 
+            if (includeInstance != nullptr && !includeInstance((*view.instances)[sourceIndex])) {
+                continue;
+            }
             const uint32_t localIndex =
                 static_cast<uint32_t>(records.size());
             records.push_back((*view.records)[sourceIndex]);
@@ -114,19 +115,18 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             command.firstRecordIndex = localIndex;
             command.firstGpuSceneInstanceIndex = localIndex;
             commands.push_back(command);
+            // 形状形式と陰影の時間変化は別の分類。動的ストリームにも静的 VB が入る。
+            if (records.back().skinned) {
+                ++skinnedCommandCount;
+            } else {
+                ++staticCommandCount;
+            }
         }
 
         gpuSceneBaseIndex = 0;
         gpuSceneInstanceCount =
             static_cast<uint32_t>(instances.size());
-        if (skinnedRange) {
-            skinnedCommandCount =
-                static_cast<uint32_t>(commands.size());
-        } else {
-            staticCommandCount =
-                static_cast<uint32_t>(commands.size());
-        }
-        return true;
+        return !commands.empty();
     }
 
     GpuDrivenTraditionalIndirectView

@@ -27,7 +27,16 @@ namespace HIKARI::SHADOW::INTERNAL {
     bool IsStaticPrimaryShadowCaster(
         const RENDER3D::RUNTIME::SurfaceGpuSceneInstance& instance) {
 
+        using Flag = RENDER3D::RUNTIME::SurfaceGpuSceneInstanceFlags;
+        // StaticGeometry でも Shader による変形・Opacity が時間で変わる場合がある。
+        constexpr uint32_t dynamicDepthFlags =
+            static_cast<uint32_t>(Flag::Skinned) |
+            static_cast<uint32_t>(Flag::FoliageWind) |
+            static_cast<uint32_t>(Flag::WaterSurface) |
+            static_cast<uint32_t>(Flag::SandSurface) |
+            static_cast<uint32_t>(Flag::MaterialFx);
         return IsPrimaryShadowCaster(instance) &&
+            (instance.flags & dynamicDepthFlags) == 0u &&
             HasSurfaceGpuSceneFlag(
                 instance,
                 RENDER3D::RUNTIME::SurfaceGpuSceneInstanceFlags::StaticGeometry);
@@ -87,6 +96,10 @@ namespace HIKARI::SHADOW::INTERNAL {
         seed = AppendShadowHashValue(seed, source.sourceSurfaceInstanceIndex);
         seed = AppendShadowHashValue(seed, source.materialIndex);
         seed = AppendShadowHashValue(seed, source.materialKey);
+        seed = AppendShadowHashValue(seed, source.materialResource.index);
+        seed = AppendShadowHashValue(seed, source.materialResource.generation);
+        seed = AppendShadowHashValue(seed, source.materialRevision);
+        seed = AppendShadowHashValue(seed, source.materialProgramFlags);
         seed = AppendShadowHashBytes(seed, &source.world, sizeof(source.world));
         seed = AppendShadowHashBytes(seed, &source.normalMatrix, sizeof(source.normalMatrix));
         seed = AppendShadowHashValue(seed, source.receiveShadow ? 1u : 0u);

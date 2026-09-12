@@ -62,7 +62,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         uint64_t publicationGeneration = 0u;
 
         void Reset();
-        bool HasInstances() const noexcept;
+        bool HasInstances() const noexcept { return !instances.empty(); }
         bool CollectDirtyRangesSince(
             uint64_t baseSourceVersion,
             std::vector<RUNTIME::MassRenderDirtyRange>& outRanges) const;

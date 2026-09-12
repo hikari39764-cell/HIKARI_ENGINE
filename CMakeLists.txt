@@ -471,6 +471,11 @@ set_tests_properties(HIKARI_VolumetricGpuContracts PROPERTIES LABELS "RuntimeCon
 
 add_executable(HIKARI_DirectionalShadowContracts EXCLUDE_FROM_ALL
     "Tools/Tests/HIKARI_DirectionalShadowContracts.cpp"
+    "HIKARI/Render3D/Shadow/GpuDriven/HIKARI_ShadowSceneSourceAnalysis.cpp"
+    "HIKARI/Render3D/Shadow/GpuDriven/HIKARI_ShadowContentHash.cpp"
+    "HIKARI/Render3D/GpuDriven/CommandStream/HIKARI_OwnedTraditionalIndirectStream.cpp"
+    "HIKARI/Render3D/GpuDriven/HIKARI_GpuDrivenSceneSource.cpp"
+    "HIKARI/Render3D/GpuDriven/HIKARI_GpuDrivenFrame.cpp"
     "HIKARI/Render3D/Shadow/HIKARI_ShadowLightFrame.cpp"
     "HIKARI/Render3D/Shadow/HIKARI_ShadowCachePolicy.cpp"
     "HIKARI/Render3D/Core/HIKARI_Camera3D.cpp"
