@@ -44,120 +44,72 @@ namespace HIKARI::ASSETS::LIGHTING {
             return std::abs(twiceArea) <= 1.0e-8f;
         }
 
-        float Edge(
-            const MATH::Vec2& first,
-            const MATH::Vec2& second,
-            const MATH::Vec2& point) {
-            return
-                (point.x - first.x) *
-                    (second.y - first.y) -
-                (point.y - first.y) *
-                    (second.x - first.x);
-        }
+        using UvTriangle = std::array<MATH::Vec2, 3>;
 
-        constexpr uint32_t kOverlapGridResolution = 32u;
-
-        void RasterizeUvOverlapSamples(
-            const MATH::Vec2 (&uv)[3],
-            std::array<
-                uint8_t,
-                kOverlapGridResolution *
-                    kOverlapGridResolution>& occupancy,
-            LightmapSurfaceAnalysis& analysis) {
-
-            MATH::Vec2 pixelUv[3]{};
-            for (uint32_t corner = 0u;
-                corner < 3u;
-                ++corner) {
-                pixelUv[corner] = uv[corner] *
-                    static_cast<float>(
-                        kOverlapGridResolution);
-            }
-            const float area =
-                Edge(
-                    pixelUv[0],
-                    pixelUv[1],
-                    pixelUv[2]);
-            if (std::abs(area) <= 1.0e-8f) {
-                return;
-            }
-            const float inverseArea = 1.0f / area;
-            const int minX = std::clamp(
-                static_cast<int>(
-                    std::floor((std::min)({
-                        pixelUv[0].x,
-                        pixelUv[1].x,
-                        pixelUv[2].x }))),
-                0,
-                static_cast<int>(
-                    kOverlapGridResolution) - 1);
-            const int maxX = std::clamp(
-                static_cast<int>(
-                    std::ceil((std::max)({
-                        pixelUv[0].x,
-                        pixelUv[1].x,
-                        pixelUv[2].x }))),
-                0,
-                static_cast<int>(
-                    kOverlapGridResolution) - 1);
-            const int minY = std::clamp(
-                static_cast<int>(
-                    std::floor((std::min)({
-                        pixelUv[0].y,
-                        pixelUv[1].y,
-                        pixelUv[2].y }))),
-                0,
-                static_cast<int>(
-                    kOverlapGridResolution) - 1);
-            const int maxY = std::clamp(
-                static_cast<int>(
-                    std::ceil((std::max)({
-                        pixelUv[0].y,
-                        pixelUv[1].y,
-                        pixelUv[2].y }))),
-                0,
-                static_cast<int>(
-                    kOverlapGridResolution) - 1);
-
-            for (int y = minY; y <= maxY; ++y) {
-                for (int x = minX; x <= maxX; ++x) {
-                    const MATH::Vec2 sample{
-                        static_cast<float>(x) + 0.5f,
-                        static_cast<float>(y) + 0.5f
-                    };
-                    const float weights[3]{
-                        Edge(
-                            pixelUv[1],
-                            pixelUv[2],
-                            sample) * inverseArea,
-                        Edge(
-                            pixelUv[2],
-                            pixelUv[0],
-                            sample) * inverseArea,
-                        Edge(
-                            pixelUv[0],
-                            pixelUv[1],
-                            sample) * inverseArea
-                    };
-                    constexpr float kInteriorEpsilon =
-                        1.0e-5f;
-                    if (weights[0] <= kInteriorEpsilon ||
-                        weights[1] <= kInteriorEpsilon ||
-                        weights[2] <= kInteriorEpsilon) {
-                        continue;
-                    }
-                    const size_t sampleIndex =
-                        static_cast<size_t>(y) *
-                            kOverlapGridResolution +
-                        static_cast<size_t>(x);
-                    if (occupancy[sampleIndex] != 0u) {
-                        ++analysis.uvOverlapSampleCount;
-                    } else {
-                        occupancy[sampleIndex] = 1u;
-                        ++analysis.uvCoveredSampleCount;
-                    }
+        bool HasSeparatingUvEdge(const UvTriangle& axes, const UvTriangle& other) {
+            for (size_t edge = 0u; edge < 3u; ++edge) {
+                const auto& a = axes[edge];
+                const auto& b = axes[(edge + 1u) % 3u];
+                const double nx = static_cast<double>(a.y) - b.y;
+                const double ny = static_cast<double>(b.x) - a.x;
+                const auto project = [nx, ny](const MATH::Vec2& point) {
+                    return nx * point.x + ny * point.y;
+                };
+                double firstMin = project(axes[0]), firstMax = firstMin;
+                double secondMin = project(other[0]), secondMax = secondMin;
+                for (size_t corner = 1u; corner < 3u; ++corner) {
+                    const double first = project(axes[corner]);
+                    const double second = project(other[corner]);
+                    firstMin = (std::min)(firstMin, first);
+                    firstMax = (std::max)(firstMax, first);
+                    secondMin = (std::min)(secondMin, second);
+                    secondMax = (std::max)(secondMax, second);
+                }
+                // 面積を持たない共有辺・共有頂点は重複ではない。Texel サイズには依存させない。
+                const double tolerance = 1.0e-12 * (std::abs(nx) + std::abs(ny));
+                if (firstMax <= secondMin + tolerance || secondMax <= firstMin + tolerance) {
+                    return true;
                 }
             }
+            return false;
+        }
+
+        bool HasOverlappingUvTriangles(const std::vector<UvTriangle>& triangles) {
+            // Grid は候補の絞り込み専用。小島でも交差判定そのものは幾何学的に行う。
+            constexpr int kGridSize = 32;
+            std::array<std::vector<size_t>, kGridSize * kGridSize> cells{};
+            std::vector<size_t> visited(triangles.size(), triangles.size());
+            struct Bounds2D { double minX, minY, maxX, maxY; };
+            std::vector<Bounds2D> bounds;
+            bounds.reserve(triangles.size());
+            const auto gridCell = [](double uv) {
+                return std::clamp(static_cast<int>(std::floor(uv * kGridSize)), 0, kGridSize - 1);
+            };
+            for (size_t index = 0u; index < triangles.size(); ++index) {
+                const auto& triangle = triangles[index];
+                const Bounds2D box{
+                    (std::min)({triangle[0].x, triangle[1].x, triangle[2].x}),
+                    (std::min)({triangle[0].y, triangle[1].y, triangle[2].y}),
+                    (std::max)({triangle[0].x, triangle[1].x, triangle[2].x}),
+                    (std::max)({triangle[0].y, triangle[1].y, triangle[2].y})};
+                const int x0 = gridCell(box.minX), x1 = gridCell(box.maxX);
+                const int y0 = gridCell(box.minY), y1 = gridCell(box.maxY);
+                for (int y = y0; y <= y1; ++y) for (int x = x0; x <= x1; ++x) {
+                    auto& cell = cells[y * kGridSize + x];
+                    for (const size_t candidate : cell) {
+                        if (visited[candidate] == index) continue;
+                        visited[candidate] = index;
+                        const auto& previous = bounds[candidate];
+                        if (box.maxX <= previous.minX || previous.maxX <= box.minX ||
+                            box.maxY <= previous.minY || previous.maxY <= box.minY) continue;
+                        if (!HasSeparatingUvEdge(triangle, triangles[candidate]) &&
+                            !HasSeparatingUvEdge(triangles[candidate], triangle)) return true;
+                    }
+                    cell.push_back(index);
+                }
+                bounds.push_back(box);
+            }
+            return false;
         }
 
         void AppendIssue(
@@ -230,10 +182,8 @@ namespace HIKARI::ASSETS::LIGHTING {
             return analysis;
         }
 
-        std::array<
-            uint8_t,
-            kOverlapGridResolution *
-                kOverlapGridResolution> uvOccupancy{};
+        std::vector<UvTriangle> uvTriangles;
+        uvTriangles.reserve(primitive.indices.size() / 3u);
         for (size_t index = 0u;
             index + 2u < primitive.indices.size();
             index += 3u) {
@@ -291,15 +241,11 @@ namespace HIKARI::ASSETS::LIGHTING {
                 !analysis.HasIssue(
                     LightmapSurfaceIssue::
                         UvOutsideUnitRange)) {
-                RasterizeUvOverlapSamples(
-                    uv,
-                    uvOccupancy,
-                    analysis);
+                uvTriangles.push_back({uv[0], uv[1], uv[2]});
             }
             ++analysis.triangleCount;
         }
-        if (analysis.uvOverlapSampleCount >
-            analysis.uvCoveredSampleCount / 100u + 2u) {
+        if (HasOverlappingUvTriangles(uvTriangles)) {
             AddIssue(
                 analysis,
                 LightmapSurfaceIssue::UvOverlap);

@@ -86,8 +86,7 @@ namespace HIKARI::TOOLS::BAKING {
             rasterization.overlapTexelCount;
         if (status_.coveredTexelCount == 0u ||
             rasterization.uncoveredAllocationCount > 0u ||
-            status_.overlapTexelCount >
-                status_.coveredTexelCount / 100u + 8u) {
+            status_.overlapTexelCount > 0u) {
             status_.state =
                 ProgressiveLightmapBakeState::Failed;
             status_.message =

@@ -25,8 +25,6 @@ namespace HIKARI::ASSETS::LIGHTING {
     struct LightmapSurfaceAnalysis {
         uint32_t issueMask = 0u;
         uint32_t triangleCount = 0u;
-        uint32_t uvCoveredSampleCount = 0u;
-        uint32_t uvOverlapSampleCount = 0u;
 
         bool IsEligible() const noexcept {
             return issueMask == 0u &&

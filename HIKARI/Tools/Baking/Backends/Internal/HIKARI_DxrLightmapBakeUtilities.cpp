@@ -26,6 +26,23 @@ namespace HIKARI::TOOLS::BAKING::INTERNAL {
                 (p.y - a.y) * (b.x - a.x);
         }
 
+        bool IsUvTriangleInterior(
+            const MATH::Vec2 (&uv)[3],
+            const MATH::Vec2& point) {
+            const auto edge = [](const MATH::Vec2& a, const MATH::Vec2& b, const MATH::Vec2& p) {
+                return (static_cast<double>(p.x) - a.x) * (static_cast<double>(b.y) - a.y) -
+                    (static_cast<double>(p.y) - a.y) * (static_cast<double>(b.x) - a.x);
+            };
+            const double area = edge(uv[0], uv[1], uv[2]);
+            if (std::abs(area) <= 1.0e-12) {
+                return false;
+            }
+            // 共有辺は面積を持たないため、両 Triangle の厳密な内部だけを重複とする。
+            return edge(uv[1], uv[2], point) / area > 1.0e-8 &&
+                edge(uv[2], uv[0], point) / area > 1.0e-8 &&
+                edge(uv[0], uv[1], point) / area > 1.0e-8;
+        }
+
         void SetMessage(
             std::string* outMessage,
             std::string message) {
@@ -171,7 +188,8 @@ namespace HIKARI::TOOLS::BAKING::INTERNAL {
         result.validTexels.assign(
             result.texels.size(),
             0u);
-        result.ownerIndices.assign(
+        // 診断中は最初の Triangle を保持し、戻す前に永続的な Allocation 所有者へ変換する。
+        std::vector<uint32_t> triangleOwners(
             result.texels.size(),
             ASSETS::LIGHTING::
                 kInvalidLightmapSurfaceIndex);
@@ -294,9 +312,13 @@ namespace HIKARI::TOOLS::BAKING::INTERNAL {
                         static_cast<size_t>(y) * width +
                         static_cast<size_t>(x);
                     if (result.validTexels[texelIndex] != 0u) {
-                        if (result.ownerIndices[texelIndex] !=
-                            triangle.
-                                lightmapAllocationIndex) {
+                        const auto& previous = scene.triangles[triangleOwners[texelIndex]];
+                        const MATH::Vec2 uvSample{
+                            sample.x / static_cast<float>(width), sample.y / static_cast<float>(height)};
+                        const bool interiorsOverlap =
+                            IsUvTriangleInterior(triangle.lightmapUv, uvSample) &&
+                            IsUvTriangleInterior(previous.lightmapUv, uvSample);
+                        if (previous.lightmapAllocationIndex != triangle.lightmapAllocationIndex || interiorsOverlap) {
                             ++result.overlapTexelCount;
                         }
                         continue;
@@ -329,8 +351,7 @@ namespace HIKARI::TOOLS::BAKING::INTERNAL {
                     }
 
                     result.validTexels[texelIndex] = 1u;
-                    result.ownerIndices[texelIndex] =
-                        triangle.lightmapAllocationIndex;
+                    triangleOwners[texelIndex] = triangleIndex;
                     ++result.coveredTexelCount;
                     ++allocationCoverage[
                         triangle.lightmapAllocationIndex];
@@ -347,6 +368,12 @@ namespace HIKARI::TOOLS::BAKING::INTERNAL {
                         1.0f
                     };
                 }
+            }
+        }
+        result.ownerIndices = std::move(triangleOwners);
+        for (auto& owner : result.ownerIndices) {
+            if (owner != ASSETS::LIGHTING::kInvalidLightmapSurfaceIndex) {
+                owner = scene.triangles[owner].lightmapAllocationIndex;
             }
         }
         result.uncoveredAllocationCount =

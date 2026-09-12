@@ -439,6 +439,19 @@ hikari_configure_contract_output(HIKARI_GpuProfilingContracts "RuntimeContracts"
 add_test(NAME HIKARI_GpuProfilingContracts COMMAND "$<TARGET_FILE:HIKARI_GpuProfilingContracts>")
 set_tests_properties(HIKARI_GpuProfilingContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
 
+add_executable(HIKARI_LightmapSurfaceContracts EXCLUDE_FROM_ALL
+    "Tools/Tests/HIKARI_LightmapSurfaceContracts.cpp"
+    "HIKARI/Assets/Lighting/HIKARI_LightmapSurfaceAnalysis.cpp"
+    "HIKARI/Core/Math/HIKARI_MathValidation.cpp"
+    "HIKARI/Tools/Baking/Backends/Internal/HIKARI_DxrLightmapBakeUtilities.cpp"
+    "HIKARI/Render3D/HIKARI_Math3D.cpp")
+target_include_directories(HIKARI_LightmapSurfaceContracts PRIVATE "${HIKARI_SOURCE_ROOT}/HIKARI")
+target_link_libraries(HIKARI_LightmapSurfaceContracts PRIVATE HIKARI::DirectXTex HIKARI::Nlohmann windowscodecs ole32)
+hikari_configure_engine_target(HIKARI_LightmapSurfaceContracts)
+hikari_configure_contract_output(HIKARI_LightmapSurfaceContracts "RuntimeContracts")
+add_test(NAME HIKARI_LightmapSurfaceContracts COMMAND "$<TARGET_FILE:HIKARI_LightmapSurfaceContracts>")
+set_tests_properties(HIKARI_LightmapSurfaceContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
+
 add_executable(HIKARI_DirectionalShadowContracts EXCLUDE_FROM_ALL
     "Tools/Tests/HIKARI_DirectionalShadowContracts.cpp"
     "HIKARI/Render3D/Shadow/HIKARI_ShadowLightFrame.cpp"
