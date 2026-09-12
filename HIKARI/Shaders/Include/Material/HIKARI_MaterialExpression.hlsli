@@ -114,6 +114,11 @@ uint HikariExpressionByte(uint packed, uint index)
     return (packed >> (index * 8u)) & 0xffu;
 }
 
+bool HikariExpressionSourceValid(uint source, uint registerCount)
+{
+    return source < registerCount || source == HIKARI_MATERIAL_EXPRESSION_INVALID_REGISTER;
+}
+
 float4 HikariExpressionRegister(
     float4 registers[HIKARI_MATERIAL_EXPRESSION_MAX_REGISTERS],
     uint index)
@@ -181,7 +186,8 @@ HikariMaterialExpressionResult HikariEvaluateMaterialExpression(
     if (header.x != HIKARI_MATERIAL_EXPRESSION_MAGIC ||
         header.y != HIKARI_MATERIAL_EXPRESSION_VERSION ||
         header.z > HIKARI_MATERIAL_EXPRESSION_MAX_INSTRUCTIONS ||
-        header.w > HIKARI_MATERIAL_EXPRESSION_MAX_REGISTERS)
+        header.w > HIKARI_MATERIAL_EXPRESSION_MAX_REGISTERS ||
+        materialData.parameterBlockCount < HIKARI_MATERIAL_EXPRESSION_INSTRUCTION_BASE + header.z)
     {
         return result;
     }
@@ -190,7 +196,20 @@ HikariMaterialExpressionResult HikariEvaluateMaterialExpression(
         materialData,
         HIKARI_MATERIAL_EXPRESSION_HEADER_BASE + 1u,
         0.0f.xxxx));
-    result.outputMask = outputHeader.x;
+    const uint4 valueHeader = asuint(HikariLoadMaterialProgramParameter(
+        materialData, HIKARI_MATERIAL_EXPRESSION_HEADER_BASE + 2u, 0.0f.xxxx));
+    if (valueHeader.x > HIKARI_MATERIAL_EXPRESSION_INSTRUCTION_BASE - HIKARI_MATERIAL_EXPRESSION_VALUE_BASE ||
+        valueHeader.y != HIKARI_MATERIAL_EXPRESSION_VALUE_BASE ||
+        valueHeader.z != HIKARI_MATERIAL_EXPRESSION_INSTRUCTION_BASE ||
+        (outputHeader.x & ~0x3ffu) != 0u)
+        return result;
+    [unroll]
+    for (uint output = 0u; output < 10u; ++output)
+    {
+        if ((outputHeader.x & (1u << output)) != 0u &&
+            HikariExpressionByte(outputHeader[1u + output / 4u], output % 4u) >= header.w)
+            return result;
+    }
     float4 registers[HIKARI_MATERIAL_EXPRESSION_MAX_REGISTERS];
     [unroll]
     for (uint registerIndex = 0u;
@@ -223,6 +242,25 @@ HikariMaterialExpressionResult HikariEvaluateMaterialExpression(
         const uint binding = HikariExpressionByte(packedData, 1u);
         const uint valueIndex = HikariExpressionByte(packedData, 2u);
         const uint auxiliary = HikariExpressionByte(packedData, 3u);
+        const uint maxOutputs = opcode == HIKARI_EXPRESSION_TEXTURE_SAMPLE ? 7u :
+            opcode == HIKARI_EXPRESSION_SPLIT || opcode == HIKARI_EXPRESSION_TIME ? 4u :
+            opcode == HIKARI_EXPRESSION_TEXTURE_COORDINATE ? 2u : 1u;
+        // 書き込み前に範囲を検査し、不正なプログラムは部分結果を公開しない。
+        if (opcode > HIKARI_EXPRESSION_FRESNEL || components < 1u || components > 4u ||
+            outputCount < 1u || outputCount > maxOutputs ||
+            destination + outputCount > header.w ||
+            !HikariExpressionSourceValid(source0, header.w) ||
+            !HikariExpressionSourceValid(source1, header.w) ||
+            !HikariExpressionSourceValid(source2, header.w) ||
+            !HikariExpressionSourceValid(source3, header.w) ||
+            !HikariExpressionSourceValid(source4, header.w))
+            return result;
+        if ((opcode == HIKARI_EXPRESSION_CONSTANT || opcode == HIKARI_EXPRESSION_PARAMETER ||
+             opcode == HIKARI_EXPRESSION_TEXTURE_SAMPLE) && valueIndex >= valueHeader.x)
+            return result;
+        if (opcode == HIKARI_EXPRESSION_TEXTURE_SAMPLE &&
+            (binding >= HIKARI_MATERIAL_PROGRAM_RESOURCE_SLOTS || auxiliary > 1u))
+            return result;
         const float4 a = HikariExpressionRegister(registers, source0);
         const float4 b = HikariExpressionRegister(registers, source1);
         const float4 c = HikariExpressionRegister(registers, source2);
@@ -442,6 +480,7 @@ HikariMaterialExpressionResult HikariEvaluateMaterialExpression(
         registers[destination] = HikariExpressionSplatScalar(value, components);
     }
 
+    result.outputMask = outputHeader.x;
     const uint packed0 = outputHeader.y;
     const uint packed1 = outputHeader.z;
     const uint packed2 = outputHeader.w;

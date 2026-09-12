@@ -95,7 +95,8 @@ float4 HikariLoadMaterialProgramParameter(
     }
     if (!HikariMaterialProgramUsesBlock(materialData) ||
         slot >= materialData.parameterBlockCount ||
-        slot >= HIKARI_MATERIAL_PROGRAM_PARAMETER_SLOTS)
+        slot >= HIKARI_MATERIAL_PROGRAM_PARAMETER_SLOTS ||
+        materialData.parameterBlockOffset >= HIKARI_MATERIAL_PROGRAM_PARAMETER_CAPACITY)
     {
         return fallbackValue;
     }
@@ -116,7 +117,8 @@ uint HikariLoadMaterialProgramResource(
         return HIKARI_INVALID_TEXTURE_DESCRIPTOR_INDEX;
     }
     if (!HikariMaterialProgramUsesBlock(materialData) ||
-        slot >= HIKARI_MATERIAL_PROGRAM_RESOURCE_SLOTS)
+        slot >= HIKARI_MATERIAL_PROGRAM_RESOURCE_SLOTS ||
+        materialData.resourceTableOffset >= HIKARI_MATERIAL_PROGRAM_RESOURCE_CAPACITY)
     {
         return HIKARI_INVALID_TEXTURE_DESCRIPTOR_INDEX;
     }
