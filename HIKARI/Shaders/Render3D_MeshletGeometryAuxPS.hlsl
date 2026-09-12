@@ -1,11 +1,12 @@
 #define HIKARI_MATERIAL_TEXTURE_POOL_SAMPLING 1
 #include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
+#include "Include/Render3D/HIKARI_MeshCameraData.hlsli"
 #include "Include/HIKARI_MeshMaterialData.hlsli"
 #include "Include/HIKARI_SurfaceGpuScene.hlsli"
 #include "Include/Forward/HIKARI_SurfaceFeatureCoverage.hlsli"
 #include "Include/Surface/HIKARI_SceneSurfaceContract.hlsli"
 #include "Include/HIKARI_PbrCommon.hlsli"
-#include "Include/Material/HIKARI_MaterialPbrInputs.hlsli"
+#include "Include/Material/HIKARI_MaterialExpressionSurface.hlsli"
 #include "Include/Surface/HIKARI_SurfaceShadingNormal.hlsli"
 #include "Include/Surface/HIKARI_SandSurfaceParams.hlsli"
 #include "Include/Surface/HIKARI_SandSurfaceNormal.hlsli"
@@ -50,6 +51,21 @@ float4 main(PSInput input) : SV_TARGET
 {
     HikariMeshMaterialData materialData =
         HikariGetMeshMaterialData(input.materialDataIndex);
+    const float3 geometricNormal =
+        (materialData.instanceFlags & HIKARI_PROGRAM_FLAG_DOUBLE_SIDED) != 0u && !input.isFrontFace
+            ? -normalize(input.normalWS) : normalize(input.normalWS);
+    HikariMaterialExpressionResult materialExpression = (HikariMaterialExpressionResult)0;
+    if (!HikariSurfaceHasSandSurface(input.surfaceFeatureFlags) &&
+        materialData.materialProgramIndex != HIKARI_STANDARD_PBR_MATERIAL_PROGRAM)
+    {
+        const HikariMaterialExpressionContext expressionContext =
+            HikariBuildMaterialExpressionContext(
+                input.uv, input.uv1, gTimeParams, input.worldPosWS,
+                geometricNormal, input.tangentWS, gCameraPos.xyz,
+                input.position, gScreenParams.zw);
+        materialExpression = HikariEvaluateMaterialExpression(
+            materialData, expressionContext, gLinearWrap);
+    }
     float4 albedo = materialData.baseColor;
     if (materialData.hasBaseColorTexture != 0)
     {
@@ -65,8 +81,10 @@ float4 main(PSInput input) : SV_TARGET
             baseColorUv,
             float4(1.0f, 1.0f, 1.0f, 1.0f));
     }
+    float alphaClipThreshold = materialData.pbrParams.w;
+    HikariApplyMaterialExpressionCoverage(materialExpression, albedo, alphaClipThreshold);
     if ((materialData.materialFlags & MATERIAL_ALPHA_MASK) != 0u &&
-        albedo.a < materialData.pbrParams.w)
+        albedo.a < alphaClipThreshold)
     {
         discard;
     }
@@ -89,14 +107,12 @@ float4 main(PSInput input) : SV_TARGET
             input.uv1);
     }
 
-    const HikariMaterialPbrInputs pbrInputs = HikariResolveMaterialPbrInputs(
+    HikariMaterialPbrInputs pbrInputs = HikariResolveMaterialPbrInputs(
         materialData, input.uv, input.uv1, gLinearWrap);
+    HikariApplyMaterialExpressionPbr(materialExpression, pbrInputs);
     float roughness = pbrInputs.roughness;
     const float metallic = pbrInputs.metallic;
 
-    const float3 geometricNormal =
-        (materialData.instanceFlags & HIKARI_PROGRAM_FLAG_DOUBLE_SIDED) != 0u && !input.isFrontFace
-            ? -input.normalWS : input.normalWS;
     float3 n = normalize(geometricNormal);
     if (HikariSurfaceHasSandSurface(input.surfaceFeatureFlags))
     {
@@ -124,6 +140,8 @@ float4 main(PSInput input) : SV_TARGET
     }
     if (!HikariSurfaceHasSandSurface(input.surfaceFeatureFlags))
     {
+        n = HikariResolveMaterialExpressionNormal(
+            materialExpression, materialData.normalScale, geometricNormal, input.tangentWS, n);
         roughness = HikariFilterPerceptualRoughness(roughness, ddx(n), ddy(n));
     }
     const float4 packedSurface = HikariPackSceneSurface(n, roughness, metallic);

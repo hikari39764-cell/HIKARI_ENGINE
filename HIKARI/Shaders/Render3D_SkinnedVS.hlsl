@@ -9,15 +9,7 @@
 #define gFxUser6 gFxUser[6]
 #define gFxUser7 gFxUser[7]
 
-cbuffer CameraCB : register(b0)
-{
-    float4x4 gViewProj;
-    float4x4 gInvViewProj;
-    float4 gCameraPos;
-    float4 gTimeParams;
-    float4 gSimulationTimeParams;
-    float4 gScreenParams;
-};
+#include "Include/Render3D/HIKARI_MeshCameraData.hlsli"
 
 cbuffer ObjectCB : register(b1)
 {

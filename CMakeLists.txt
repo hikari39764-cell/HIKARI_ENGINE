@@ -447,6 +447,12 @@ hikari_configure_contract_output(HIKARI_PbrRasterContracts "RuntimeContracts")
 add_test(NAME HIKARI_PbrRasterContracts COMMAND "$<TARGET_FILE:HIKARI_PbrRasterContracts>")
 set_tests_properties(HIKARI_PbrRasterContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
 
+hikari_add_runtime_contract(HIKARI_MaterialSurfaceContracts "Tools/Tests/HIKARI_MaterialSurfaceContracts.cpp")
+target_include_directories(HIKARI_MaterialSurfaceContracts PRIVATE "${HIKARI_SOURCE_ROOT}/ThirdParty/DirectXTex/Common")
+target_compile_definitions(HIKARI_MaterialSurfaceContracts PRIVATE HIKARI_CONTRACT_SOURCE_ROOT="${HIKARI_SOURCE_ROOT}")
+add_test(NAME HIKARI_MaterialSurfaceContracts COMMAND "$<TARGET_FILE:HIKARI_MaterialSurfaceContracts>")
+set_tests_properties(HIKARI_MaterialSurfaceContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 60)
+
 add_executable(HIKARI_IblBakeContracts EXCLUDE_FROM_ALL
     "Tools/Tests/HIKARI_IblBakeContracts.cpp"
     "HIKARI/Assets/Importers/HIKARI_IblBaker.cpp"

@@ -2,7 +2,7 @@
 #include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
 #include "Include/Surface/HIKARI_SurfaceShadingNormal.hlsli"
 #include "Include/Material/HIKARI_MaterialProgramData.hlsli"
-#include "Include/Material/HIKARI_MaterialExpression.hlsli"
+#include "Include/Material/HIKARI_MaterialExpressionSurface.hlsli"
 #include "Include/Material/HIKARI_StylizedMaterial.hlsli"
 #include "Include/Forward/HIKARI_SurfaceFeatureCoverage.hlsli"
 
@@ -133,19 +133,11 @@ float4 main(PSInput input) : SV_TARGET
         materialData.materialProgramIndex !=
             HIKARI_STANDARD_PBR_MATERIAL_PROGRAM)
     {
-        HikariMaterialExpressionContext expressionContext;
-        expressionContext.uv0 = input.uv;
-        expressionContext.uv1 = input.uv1;
-        expressionContext.time = gTimeParams;
-        expressionContext.worldPosition = input.worldPosWS;
-        expressionContext.worldNormal = geometricNormal;
-        expressionContext.worldTangent = input.tangentWS;
-        expressionContext.viewDirection = v;
-        expressionContext.cameraPosition = gCameraPos.xyz;
-        expressionContext.screenPosition = float4(
-            input.position.xy * gScreenParams.zw,
-            input.position.z,
-            input.position.w);
+        const HikariMaterialExpressionContext expressionContext =
+            HikariBuildMaterialExpressionContext(
+                input.uv, input.uv1, gTimeParams, input.worldPosWS,
+                geometricNormal, input.tangentWS, gCameraPos.xyz,
+                input.position, gScreenParams.zw);
         materialExpression = HikariEvaluateMaterialExpression(
             materialData, expressionContext, gLinearWrap);
     }
@@ -197,21 +189,8 @@ float4 main(PSInput input) : SV_TARGET
         }
         albedo *= baseColorSample;
     }
-    if ((materialExpression.outputMask &
-         HIKARI_EXPRESSION_OUTPUT_BASE_COLOR) != 0u)
-    {
-        albedo = materialExpression.baseColor;
-    }
-    if ((materialExpression.outputMask &
-         HIKARI_EXPRESSION_OUTPUT_OPACITY) != 0u)
-    {
-        albedo.a = saturate(materialExpression.opacity);
-    }
-    const float alphaClipThreshold =
-        (materialExpression.outputMask &
-         HIKARI_EXPRESSION_OUTPUT_ALPHA_CLIP) != 0u
-        ? saturate(materialExpression.alphaClipThreshold)
-        : materialData.pbrParams.w;
+    float alphaClipThreshold = materialData.pbrParams.w;
+    HikariApplyMaterialExpressionCoverage(materialExpression, albedo, alphaClipThreshold);
     if (!neutralClay &&
         (materialData.materialFlags & MATERIAL_ALPHA_MASK) != 0 &&
         albedo.a < alphaClipThreshold)
@@ -258,33 +237,8 @@ float4 main(PSInput input) : SV_TARGET
             input.uv,
             input.uv1,
             gLinearWrap);
-    if ((materialExpression.outputMask &
-         HIKARI_EXPRESSION_OUTPUT_NORMAL) != 0u)
-    {
-        const float normalLengthSquared = dot(
-            materialExpression.normalTS,
-            materialExpression.normalTS);
-        const float3 expressionNormal = normalLengthSquared > 1.0e-10f
-            ? materialExpression.normalTS * rsqrt(normalLengthSquared)
-            : float3(0.0f, 0.0f, 1.0f);
-        // Expression-authored tangent-space normals follow the same strength
-        // contract as PBR normal maps: scale XY by normalScale, then rebuild
-        // Z so steep inputs never flatten.
-        const float2 scaledNormalXY = expressionNormal.xy *
-            max(materialData.normalScale, 0.0f);
-        const float scaledNormalLengthSquared =
-            dot(scaledNormalXY, scaledNormalXY);
-        const float3 scaledExpressionNormal =
-            scaledNormalLengthSquared < 1.0f
-                ? float3(
-                    scaledNormalXY,
-                    sqrt(1.0f - scaledNormalLengthSquared))
-                : normalize(float3(scaledNormalXY, 0.0f));
-        n = HikariTransformTangentNormalToWorld(
-            scaledExpressionNormal,
-            geometricNormal,
-            input.tangentWS);
-    }
+    n = HikariResolveMaterialExpressionNormal(
+        materialExpression, materialData.normalScale, geometricNormal, input.tangentWS, n);
     if (gDebugView == 1)
     {
         return float4(normalize(n) * 0.5f + 0.5f, albedo.a);
@@ -348,62 +302,34 @@ float4 main(PSInput input) : SV_TARGET
         return float4(ndotl.xxx, albedo.a);
     }
 
-    float metallic = 0.0f;
-    float roughness = 1.0f;
-    float occlusion = 1.0f;
-    float3 specularColor = 1.0f.xxx;
-    float specularFactor = 1.0f;
+    HikariMaterialPbrInputs pbrInputs;
     if (neutralClay)
     {
-        metallic = 0.0f;
-        roughness = 1.0f;
-        occlusion = 1.0f;
-        specularColor = 0.0f.xxx;
-        specularFactor = 0.0f;
+        pbrInputs.metallic = 0.0f;
+        pbrInputs.roughness = 1.0f;
+        pbrInputs.occlusion = 1.0f;
+        pbrInputs.specularColor = 0.0f.xxx;
+        pbrInputs.specularFactor = 0.0f;
     }
     else if (costNoMaterialExtras)
     {
-        metallic = saturate(materialData.pbrParams.x);
-        roughness = clamp(materialData.pbrParams.y, 0.04f, 1.0f);
-        occlusion = 1.0f;
-        specularColor = max(0.0f.xxx, materialData.specularParams.rgb);
-        specularFactor = max(0.0f, materialData.specularParams.w);
+        pbrInputs.metallic = saturate(materialData.pbrParams.x);
+        pbrInputs.roughness = clamp(materialData.pbrParams.y, 0.04f, 1.0f);
+        pbrInputs.occlusion = 1.0f;
+        pbrInputs.specularColor = max(0.0f.xxx, materialData.specularParams.rgb);
+        pbrInputs.specularFactor = max(0.0f, materialData.specularParams.w);
     }
     else
     {
-        const HikariMaterialPbrInputs pbrInputs = HikariResolveMaterialPbrInputs(
+        pbrInputs = HikariResolveMaterialPbrInputs(
             materialData, input.uv, input.uv1, gLinearWrap);
-        metallic = pbrInputs.metallic;
-        roughness = pbrInputs.roughness;
-        occlusion = pbrInputs.occlusion;
-        specularColor = pbrInputs.specularColor;
-        specularFactor = pbrInputs.specularFactor;
     }
-    if ((materialExpression.outputMask &
-         HIKARI_EXPRESSION_OUTPUT_METALLIC) != 0u)
-    {
-        metallic = saturate(materialExpression.metallic);
-    }
-    if ((materialExpression.outputMask &
-         HIKARI_EXPRESSION_OUTPUT_ROUGHNESS) != 0u)
-    {
-        roughness = clamp(materialExpression.roughness, 0.04f, 1.0f);
-    }
-    if ((materialExpression.outputMask &
-         HIKARI_EXPRESSION_OUTPUT_OCCLUSION) != 0u)
-    {
-        occlusion = saturate(materialExpression.occlusion);
-    }
-    if ((materialExpression.outputMask &
-         HIKARI_EXPRESSION_OUTPUT_SPECULAR) != 0u)
-    {
-        specularFactor = max(0.0f, materialExpression.specular);
-    }
-    if ((materialExpression.outputMask &
-         HIKARI_EXPRESSION_OUTPUT_SPECULAR_COLOR) != 0u)
-    {
-        specularColor = max(0.0f.xxx, materialExpression.specularColor);
-    }
+    HikariApplyMaterialExpressionPbr(materialExpression, pbrInputs);
+    const float metallic = pbrInputs.metallic;
+    const float roughness = pbrInputs.roughness;
+    const float occlusion = pbrInputs.occlusion;
+    const float3 specularColor = pbrInputs.specularColor;
+    const float specularFactor = pbrInputs.specularFactor;
     if (gDebugView == 5)
     {
         return float4(roughness.xxx, albedo.a);

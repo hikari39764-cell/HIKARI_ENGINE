@@ -1,15 +1,7 @@
 #ifndef HIKARI_MESHLET_MS_COMMON_INCLUDED
 #define HIKARI_MESHLET_MS_COMMON_INCLUDED
 
-cbuffer CameraCB : register(b0)
-{
-    float4x4 gViewProj;
-    float4x4 gInvViewProj;
-    float4 gCameraPos;
-    float4 gTimeParams;
-    float4 gSimulationTimeParams;
-    float4 gScreenParams;
-};
+#include "Include/Render3D/HIKARI_MeshCameraData.hlsli"
 
 #include "Include/Meshlet/HIKARI_MeshletDraw.hlsli"
 #define HIKARI_SURFACE_GPU_SCENE_SKIP_CONTROL_CB 1
