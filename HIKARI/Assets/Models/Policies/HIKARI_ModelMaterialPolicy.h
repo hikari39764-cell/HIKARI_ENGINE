@@ -18,6 +18,17 @@ namespace HIKARI {
 
     namespace MATERIAL_POLICY {
 
+        inline bool UsesTextureCoordinateSet(const MaterialAsset& material, int uvSet) noexcept {
+            for (const TextureSlot* slot : {&material.baseColorTexture, &material.normalTexture,
+                &material.metallicRoughnessTexture, &material.occlusionTexture, &material.emissiveTexture,
+                &material.specularTexture, &material.specularColorTexture}) {
+                if (slot->textureIndex >= 0 && slot->texCoord == uvSet) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         constexpr float kOpticalTransparencyFallbackOpacity =
             0.35f;
 

@@ -22,14 +22,13 @@ namespace HIKARI::ASSETS::IMPORT_POLICY {
             settings.outputFormat = CookedAssetFormat::DDS;
 
             const std::string key = TEXT::ToLowerAsciiCopy(
-                sourcePath.stem().string() + " " +
-                sourcePath.generic_string());
+                sourcePath.stem().string());
             const std::string extension =
                 TEXT::ToLowerAsciiCopy(sourcePath.extension().string());
 
             if (key.find("normal") != std::string::npos ||
                 key.find("_nrm") != std::string::npos ||
-                key.find("_n.") != std::string::npos) {
+                EndsWith(key, "_n")) {
                 settings.usage = TextureUsage::Normal;
                 settings.colorSpace = TextureAssetColorSpace::Linear;
                 settings.compression = TextureCompression::BC7;
@@ -47,6 +46,8 @@ namespace HIKARI::ASSETS::IMPORT_POLICY {
             } else if (
                 key.find("metallicroughness") != std::string::npos ||
                 key.find("metallic_roughness") != std::string::npos ||
+                key.find("metalrough") != std::string::npos ||
+                key.find("metal_rough") != std::string::npos ||
                 key.find("roughness") != std::string::npos ||
                 key.find("metallic") != std::string::npos ||
                 key.find("_orm") != std::string::npos ||
@@ -244,7 +245,7 @@ namespace HIKARI::ASSETS::IMPORT_POLICY {
             settings.maxSize = root.value("maxSize", settings.maxSize);
         }
 
-        if (settings.usage == TextureUsage::Normal) {
+        if (IsDataTextureUsage(settings.usage)) {
             settings.colorSpace = TextureAssetColorSpace::Linear;
             if (settings.compression == TextureCompression::Auto) {
                 settings.compression = TextureCompression::BC7;

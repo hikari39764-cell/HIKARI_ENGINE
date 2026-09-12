@@ -401,7 +401,7 @@ namespace HIKARI {
                 outMessage = "[DirectXTexBackend] runtime texture artifacts require 2D or cube sources";
                 return false;
             }
-            if (settings.usage == TextureUsage::Normal) {
+            if (IsDataTextureUsage(settings.usage)) {
                 settings.colorSpace = TextureAssetColorSpace::Linear;
             } else if (settings.colorSpace == TextureAssetColorSpace::Auto) {
                 settings.colorSpace = DirectX::IsSRGB(metadata.format)

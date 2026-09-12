@@ -6,6 +6,11 @@
 
 namespace HIKARI {
 
+    constexpr bool IsDataTextureUsage(TextureUsage usage) noexcept {
+        return usage == TextureUsage::Normal || usage == TextureUsage::MetallicRoughness ||
+            usage == TextureUsage::Occlusion || usage == TextureUsage::Mask;
+    }
+
     struct TextureImportSettings {
         TextureUsage usage = TextureUsage::Auto;
         TextureAssetDimension dimension = TextureAssetDimension::Texture2D;

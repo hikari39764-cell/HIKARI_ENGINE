@@ -13,6 +13,7 @@
 #endif
 
 #include "Assets/Lighting/HIKARI_LightmapSurfaceAnalysis.h"
+#include "Assets/Lighting/HIKARI_LightingBakePolicy.h"
 #include "Assets/Lighting/HIKARI_LightmapUvGenerationInput.h"
 #include "Assets/Models/HIKARI_ModelAsset.h"
 
@@ -405,6 +406,18 @@ namespace HIKARI::ASSETS::LIGHTING {
 
 #if defined(HIKARI_WITH_EDITOR)
                 std::string message{};
+                // UV1 を材質が参照する場合、Lightmap 用の展開で著者の座標を上書きしない。
+                if (primitive.materialIndex < model.materials.size() &&
+                    MATERIAL_POLICY::UsesTextureCoordinateSet(
+                        model.materials[primitive.materialIndex], static_cast<int>(kSurfaceLightmapUvSet))) {
+                    ++outReport.skippedUnsupportedCount;
+                    if (outReport.messages.size() < 16u) {
+                        outReport.messages.push_back(primitive.name +
+                            ": lightmap UV generation skipped because a material texture uses TEXCOORD_1. "
+                            "Preserve the authored UV1; provide non-overlapping UV1 or move material textures to UV0.");
+                    }
+                    continue;
+                }
                 const PrimitiveGenerationResult
                     generationResult =
                     GeneratePrimitiveLightmapUv(
