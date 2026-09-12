@@ -167,10 +167,8 @@ namespace HIKARI::SHADOW::INTERNAL {
             return false;
         }
         PrepareShadowSurfaceGpuSceneMaterialFrame();
-        CommitShadowMaterialDataFrame(graphics.cmdList);
-        gShadowRendererState.gpuDrivenLayer.CommitSurfaceGpuSceneMaterialFrame(
-            graphics.cmdList);
-        return true;
+        return CommitShadowMaterialDataFrame(graphics) &&
+            gShadowRendererState.gpuDrivenLayer.CommitSurfaceGpuSceneMaterialFrame(graphics.cmdList);
     }
 
     void ResetShadowGpuDrivenWorkFrame(const GFX::Context& graphics) {

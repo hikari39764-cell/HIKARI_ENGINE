@@ -60,19 +60,19 @@ namespace HIKARI::SHADOW::INTERNAL {
         return uploadCount;
     }
 
-    void CommitMappedBufferToGpu(
-        ID3D12GraphicsCommandList* commandList,
-        ID3D12Resource* uploadResource,
-        ID3D12Resource* defaultResource,
-        D3D12_RESOURCE_STATES& defaultState,
-        UINT64 byteCount) {
-
-        if (commandList == nullptr ||
-            uploadResource == nullptr ||
-            defaultResource == nullptr ||
-            byteCount == 0) {
-            return;
-        }
+    bool CommitShadowMaterialDataFrame(const GFX::Context& graphics) {
+        ShadowFrameResources& frame = GetActiveShadowFrameResources();
+        ID3D12GraphicsCommandList* commandList = graphics.cmdList;
+        ID3D12Resource* defaultResource = frame.materialDataBuffer.Get();
+        D3D12_RESOURCE_STATES& defaultState = frame.materialDataState;
+        const size_t materialCount = gShadowRendererState.materialDataFrameTable.count;
+        if (commandList == nullptr || defaultResource == nullptr ||
+            materialCount == 0 || materialCount > frame.materialDataStaging.size()) return false;
+        const size_t byteCount = sizeof(MESHRENDERER::MaterialGpuData) * materialCount;
+        frame.materialUploads.ResetForFrame(graphics.currentFrameRetireFenceValue);
+        const DX::UploadAllocation upload = frame.materialUploads.Allocate(byteCount);
+        if (!upload) return false;
+        std::memcpy(upload.cpuAddress, frame.materialDataStaging.data(), byteCount);
 
         if (defaultState != D3D12_RESOURCE_STATE_COPY_DEST) {
             const auto toCopyDest = CD3DX12_RESOURCE_BARRIER::Transition(
@@ -83,7 +83,7 @@ namespace HIKARI::SHADOW::INTERNAL {
             defaultState = D3D12_RESOURCE_STATE_COPY_DEST;
         }
 
-        commandList->CopyBufferRegion(defaultResource, 0, uploadResource, 0, byteCount);
+        commandList->CopyBufferRegion(defaultResource, 0, upload.resource, upload.offset, byteCount);
 
         const D3D12_RESOURCE_STATES shaderState =
             D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE |
@@ -94,26 +94,7 @@ namespace HIKARI::SHADOW::INTERNAL {
             shaderState);
         commandList->ResourceBarrier(1, &toShader);
         defaultState = shaderState;
-    }
-
-    void CommitShadowMaterialDataFrame(ID3D12GraphicsCommandList* commandList) {
-        ShadowFrameResources& frame = GetActiveShadowFrameResources();
-        const UINT64 materialBytes =
-            static_cast<UINT64>(sizeof(MESHRENDERER::MaterialGpuData)) *
-            static_cast<UINT64>(
-                (std::min)(
-                    static_cast<size_t>(gShadowRendererState.materialDataFrameTable.count),
-                    static_cast<size_t>(MESHRENDERER::kMaxMaterialDataCount)));
-        if (materialBytes == 0u) {
-            return;
-        }
-
-        CommitMappedBufferToGpu(
-            commandList,
-            frame.materialDataUploadBuffer.Get(),
-            frame.materialDataBuffer.Get(),
-            frame.materialDataState,
-            materialBytes);
+        return true;
     }
 
     void ActivateShadowFrameResources(uint32_t frameIndex) {
@@ -165,17 +146,21 @@ namespace HIKARI::SHADOW::INTERNAL {
 
         for (uint32_t frameIndex = 0; frameIndex < GFX::kFrameResourceCount; ++frameIndex) {
             ShadowFrameResources& frame = gShadowRendererState.frameResources[frameIndex];
+            try {
+                frame.materialDataStaging.resize(MESHRENDERER::kMaxMaterialDataCount);
+            } catch (...) {
+                return false;
+            }
+            if (!frame.materialUploads.Init(device, 65536u)) return false;
             if (!GFX::D3D12_BUFFER::CreateMappedUploadBuffer(
                 device,
                 cameraBytes,
                 frame.cameraCB,
                 reinterpret_cast<void**>(&frame.cameraMapped)) ||
-                !GFX::D3D12_BUFFER::CreateGpuResidentMappedBuffer(
+                !GFX::D3D12_BUFFER::CreateDefaultBuffer(
                     device,
                     materialDataBytes,
-                    frame.materialDataUploadBuffer,
-                    frame.materialDataBuffer,
-                    reinterpret_cast<void**>(&frame.materialDataMapped)) ||
+                    frame.materialDataBuffer) ||
                 !GFX::D3D12_BUFFER::CreateMappedUploadBuffer(
                     device,
                     paletteBytes,

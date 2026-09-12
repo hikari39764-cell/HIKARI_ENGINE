@@ -101,7 +101,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             uint32_t transparentBaseIndex,
             uint32_t shadowBaseIndex,
             bool sceneResident);
-        void CommitSurfaceGpuSceneMaterialFrame(ID3D12GraphicsCommandList* commandList);
+        bool CommitSurfaceGpuSceneMaterialFrame(ID3D12GraphicsCommandList* commandList);
         void ImportProducerOutput(
             const GpuDrivenProducerFrameOutput& output);
         void SetBackendAvailability(

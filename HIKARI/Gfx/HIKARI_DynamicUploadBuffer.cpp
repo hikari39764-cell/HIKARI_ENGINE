@@ -99,7 +99,12 @@ bool DynamicUploadBuffer::CreatePage(size_t capacity) {
 void* DynamicUploadBuffer::Allocate(
     size_t size,
     D3D12_GPU_VIRTUAL_ADDRESS& gpuAddress) {
-    gpuAddress = 0u;
+    const UploadAllocation allocation = Allocate(size);
+    gpuAddress = allocation.gpuAddress;
+    return allocation.cpuAddress;
+}
+
+UploadAllocation DynamicUploadBuffer::Allocate(size_t size) {
     HIKARI::GFX::UploadPageReservation reservation{};
     if (!HIKARI::GFX::TryReserveUploadPageRange(
             pageRanges_,
@@ -112,7 +117,7 @@ void* DynamicUploadBuffer::Allocate(
                 size,
                 kUploadAlignment,
                 alignedSize)) {
-            return nullptr;
+            return {};
         }
         const size_t newPageSize =
             std::max(defaultPageSize_, alignedSize);
@@ -123,16 +128,16 @@ void* DynamicUploadBuffer::Allocate(
                 size,
                 kUploadAlignment,
                 reservation)) {
-            return nullptr;
+            return {};
         }
     }
 
     if (reservation.pageIndex >= pages_.size()) {
-        return nullptr;
+        return {};
     }
     Page& page = pages_[reservation.pageIndex];
-    gpuAddress = page.gpuBase + reservation.offset;
-    return page.cpuBase + reservation.offset;
+    return {page.cpuBase + reservation.offset, page.resource.Get(),
+        page.gpuBase + reservation.offset, reservation.offset};
 }
 
 void DynamicUploadBuffer::Finalize(const HIKARI::GFX::Context* retireContext) {

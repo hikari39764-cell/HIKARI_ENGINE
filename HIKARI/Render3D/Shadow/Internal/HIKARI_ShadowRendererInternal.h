@@ -13,6 +13,7 @@
 #include <wrl/client.h>
 
 #include "Gfx/HIKARI_GfxContext.h"
+#include "Gfx/HIKARI_DynamicUploadBuffer.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Render3D/Cluster/HIKARI_ClusterGpuCullingPass.h"
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
@@ -57,11 +58,11 @@ namespace HIKARI::SHADOW::INTERNAL {
 
     struct ShadowFrameResources {
         ComPtr<ID3D12Resource> cameraCB;
-        ComPtr<ID3D12Resource> materialDataUploadBuffer;
+        DX::DynamicUploadBuffer materialUploads;
+        std::vector<MESHRENDERER::MaterialGpuData> materialDataStaging;
         ComPtr<ID3D12Resource> materialDataBuffer;
         ComPtr<ID3D12Resource> jointPaletteCB;
         ShadowCameraCB* cameraMapped = nullptr;
-        MESHRENDERER::MaterialGpuData* materialDataMapped = nullptr;
         ShadowJointPaletteCB* jointPaletteMapped = nullptr;
         D3D12_GPU_DESCRIPTOR_HANDLE materialDataSrvGpu{};
         D3D12_RESOURCE_STATES materialDataState = D3D12_RESOURCE_STATE_COMMON;
@@ -226,8 +227,7 @@ namespace HIKARI::SHADOW::INTERNAL {
     size_t UploadShadowJointPalette(
         size_t objectIndex,
         const std::vector<MATH::Mat4>& palette);
-    void CommitShadowMaterialDataFrame(
-        ID3D12GraphicsCommandList* commandList);
+    bool CommitShadowMaterialDataFrame(const GFX::Context& graphics);
     void ActivateShadowFrameResources(uint32_t frameIndex);
     bool CreateShadowFrameResources(const GFX::Context& graphics);
 

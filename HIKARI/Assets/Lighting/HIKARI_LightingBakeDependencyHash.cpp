@@ -259,6 +259,7 @@ namespace HIKARI::ASSETS::LIGHTING {
 
             return {
                 { "kind", "IrradianceVolume" },
+                { "bakePolicyVersion", kIrradianceVolumeBakePolicyVersion },
                 { "origin",
                     JsonMath::ToJsonArray(
                         volume.settings.origin) },

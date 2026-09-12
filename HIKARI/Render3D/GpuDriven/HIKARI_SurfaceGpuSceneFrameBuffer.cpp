@@ -103,22 +103,13 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 slot.srvCpu = srvCpu[slotIndex];
                 slot.srvGpu = srvGpu[slotIndex];
 
-                auto uploadHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-                if (FAILED(device->CreateCommittedResource(
-                    &uploadHeap,
-                    D3D12_HEAP_FLAG_NONE,
-                    &desc,
-                    D3D12_RESOURCE_STATE_GENERIC_READ,
-                    nullptr,
-                    IID_PPV_ARGS(slot.uploadBuffer.GetAddressOf())))) {
+                try {
+                    slot.staged.resize(attemptCapacity);
+                } catch (...) {
                     allSlotsReady = false;
                     break;
                 }
-
-                if (FAILED(slot.uploadBuffer->Map(
-                    0,
-                    nullptr,
-                    reinterpret_cast<void**>(&slot.mapped)))) {
+                if (!slot.uploads.Init(device, (std::min)(size_t(bufferBytes), size_t(65536)))) {
                     allSlotsReady = false;
                     break;
                 }
@@ -197,11 +188,12 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         stats_.initialized =
             capacity_ != 0 &&
             slot != nullptr &&
-            slot->mapped != nullptr &&
+            !slot->staged.empty() &&
             slot->defaultBuffer != nullptr;
         stats_.srv = slot != nullptr ? slot->srvGpu : D3D12_GPU_DESCRIPTOR_HANDLE{};
 
         if (slot != nullptr) {
+            slot->uploads.ResetForFrame(GFX::GetCurrentContext().currentFrameRetireFenceValue);
             slot->cursor = 0;
             slot->dirty = false;
             slot->dirtyFirstInstance = 0;
@@ -288,7 +280,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                     capacity_));
         if (slot != nullptr) {
             // BeginFrame はフレーム統計を初期化するため cursor を 0 に戻すが、
-            // resident reuse では mapped 側にも同じ論理範囲が残っている。
+            // resident reuse では CPU staging 側にも同じ論理範囲が残っている。
             // 材質 binding version が変わった場合に全 resident instance を再 patch
             // できるよう、論理的な使用範囲を復元する。
             slot->cursor = residentCount;
@@ -318,7 +310,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         if (instances == nullptr || count == 0) {
             return;
         }
-        if (slot == nullptr || slot->mapped == nullptr || capacity_ == 0) {
+        if (slot == nullptr || slot->staged.empty() || capacity_ == 0) {
             stats_.overflowInstanceCount += count;
             return;
         }
@@ -329,7 +321,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         if (uploadCount > 0) {
             const size_t firstUploadedInstance = slot->cursor;
             std::memcpy(
-                slot->mapped + slot->cursor,
+                slot->staged.data() + slot->cursor,
                 instances,
                 sizeof(RUNTIME::SurfaceGpuSceneInstance) * uploadCount);
             slot->cursor += uploadCount;
@@ -359,7 +351,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             return true;
         }
         if (slot == nullptr ||
-            slot->mapped == nullptr ||
+            slot->staged.empty() ||
             firstInstance >= capacity_ ||
             count > capacity_ - firstInstance) {
             stats_.overflowInstanceCount += count;
@@ -367,7 +359,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         }
 
         std::memcpy(
-            slot->mapped + firstInstance,
+            slot->staged.data() + firstInstance,
             instances,
             sizeof(RUNTIME::SurfaceGpuSceneInstance) * count);
         stats_.uploadedInstanceCount =
@@ -383,19 +375,19 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
 
         FrameSlot* slot = ActiveSlot();
         if (slot == nullptr ||
-            slot->mapped == nullptr ||
+            slot->staged.empty() ||
             instanceIndex >= stats_.uploadedInstanceCount ||
             instanceIndex >= capacity_) {
             return false;
         }
 
         ++stats_.materialPatchCount;
-        if (slot->mapped[instanceIndex].materialDataIndex == materialDataIndex) {
+        if (slot->staged[instanceIndex].materialDataIndex == materialDataIndex) {
             ++stats_.materialPatchUnchangedCount;
             return true;
         }
 
-        slot->mapped[instanceIndex].materialDataIndex = materialDataIndex;
+        slot->staged[instanceIndex].materialDataIndex = materialDataIndex;
         MarkDirtyRange(*slot, instanceIndex, instanceIndex + 1);
         ++stats_.materialPatchChangedCount;
         return true;
@@ -409,13 +401,13 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
 
         FrameSlot* slot = ActiveSlot();
         if (slot == nullptr ||
-            slot->mapped == nullptr ||
+            slot->staged.empty() ||
             instanceIndex >= stats_.uploadedInstanceCount ||
             instanceIndex >= capacity_) {
             return false;
         }
 
-        const RUNTIME::SurfaceGpuSceneInstance& instance = slot->mapped[instanceIndex];
+        const RUNTIME::SurfaceGpuSceneInstance& instance = slot->staged[instanceIndex];
         if (expectedSourceRecordIndex != RUNTIME::kInvalidRenderSurfaceIndex &&
             instance.sourceRecordIndex != expectedSourceRecordIndex) {
             return false;
@@ -433,7 +425,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         uint64_t bindingVersion) {
 
         FrameSlot* slot = ActiveSlot();
-        if (slot == nullptr || slot->mapped == nullptr) {
+        if (slot == nullptr || slot->staged.empty()) {
             return;
         }
 
@@ -469,7 +461,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             ++instanceIndex) {
 
             RUNTIME::SurfaceGpuSceneInstance& instance =
-                slot->mapped[instanceIndex];
+                slot->staged[instanceIndex];
             uint32_t materialSlot = 0u;
             if (instance.sourceRecordIndex < materialSlotBySourceRecord.size()) {
                 const uint32_t resolved =
@@ -506,14 +498,14 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
     bool SurfaceGpuSceneFrameBuffer::HasMaterialDataIndex(size_t instanceIndex) const {
         const FrameSlot* slot = ActiveSlot();
         if (slot == nullptr ||
-            slot->mapped == nullptr ||
+            slot->staged.empty() ||
             instanceIndex >= stats_.uploadedInstanceCount ||
             instanceIndex >= capacity_) {
             return false;
         }
 
         return
-            slot->mapped[instanceIndex].materialDataIndex !=
+            slot->staged[instanceIndex].materialDataIndex !=
             RUNTIME::kInvalidRenderSurfaceIndex;
     }
 
@@ -535,16 +527,15 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         slot->sourceVersion = sourceVersion;
     }
 
-    void SurfaceGpuSceneFrameBuffer::CommitFrame(ID3D12GraphicsCommandList* commandList) {
+    bool SurfaceGpuSceneFrameBuffer::CommitFrame(ID3D12GraphicsCommandList* commandList) {
         FrameSlot* slot = ActiveSlot();
         if (slot == nullptr ||
             commandList == nullptr ||
-            slot->uploadBuffer == nullptr ||
-            slot->defaultBuffer == nullptr ||
-            !slot->dirty ||
-            stats_.uploadedInstanceCount == 0u) {
-            return;
+            slot->staged.empty() ||
+            slot->defaultBuffer == nullptr) {
+            return false;
         }
+        if (!slot->dirty || stats_.uploadedInstanceCount == 0u) return true;
 
         const size_t dirtyFirst =
             slot->dirtyEndInstance > slot->dirtyFirstInstance
@@ -562,7 +553,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             slot->dirty = false;
             slot->dirtyFirstInstance = 0;
             slot->dirtyEndInstance = 0;
-            return;
+            return true;
         }
 
         const UINT64 copyOffset =
@@ -572,8 +563,16 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             static_cast<UINT64>(sizeof(RUNTIME::SurfaceGpuSceneInstance)) *
             static_cast<UINT64>(clampedDirtyEnd - clampedDirtyFirst);
         if (copyBytes == 0u) {
-            return;
+            return true;
         }
+
+        const DX::UploadAllocation upload = slot->uploads.Allocate(static_cast<size_t>(copyBytes));
+        if (!upload) {
+            slot->resident = false;
+            return false;
+        }
+        // CPU staging は後続の View/材質パッチで更新されるため、記録時点の範囲を固定する。
+        std::memcpy(upload.cpuAddress, slot->staged.data() + clampedDirtyFirst, static_cast<size_t>(copyBytes));
 
         if (slot->defaultState != D3D12_RESOURCE_STATE_COPY_DEST) {
             const auto toCopyDest = CD3DX12_RESOURCE_BARRIER::Transition(
@@ -587,8 +586,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         commandList->CopyBufferRegion(
             slot->defaultBuffer.Get(),
             copyOffset,
-            slot->uploadBuffer.Get(),
-            copyOffset,
+            upload.resource,
+            upload.offset,
             copyBytes);
         stats_.committedInstanceCount += clampedDirtyEnd - clampedDirtyFirst;
         stats_.committedBytes += static_cast<size_t>(copyBytes);
@@ -605,6 +604,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         slot->dirty = false;
         slot->dirtyFirstInstance = 0;
         slot->dirtyEndInstance = 0;
+        return true;
     }
 
     D3D12_GPU_DESCRIPTOR_HANDLE SurfaceGpuSceneFrameBuffer::GetSrv() const {

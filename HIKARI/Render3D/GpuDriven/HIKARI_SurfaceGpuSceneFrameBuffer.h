@@ -10,6 +10,7 @@
 #include <wrl/client.h>
 
 #include "Gfx/HIKARI_GfxContext.h"
+#include "Gfx/HIKARI_DynamicUploadBuffer.h"
 #include "Render3D/Runtime/HIKARI_SurfaceGpuScene.h"
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
@@ -87,7 +88,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             uint64_t layoutVersion,
             uint64_t sourceVersion,
             size_t instanceCount);
-        void CommitFrame(ID3D12GraphicsCommandList* commandList);
+        bool CommitFrame(ID3D12GraphicsCommandList* commandList);
 
         D3D12_GPU_DESCRIPTOR_HANDLE GetSrv() const;
         D3D12_GPU_VIRTUAL_ADDRESS GetGpuVirtualAddress() const;
@@ -95,9 +96,9 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
 
     private:
         struct FrameSlot {
-            Microsoft::WRL::ComPtr<ID3D12Resource> uploadBuffer;
+            DX::DynamicUploadBuffer uploads;
+            std::vector<RUNTIME::SurfaceGpuSceneInstance> staged;
             Microsoft::WRL::ComPtr<ID3D12Resource> defaultBuffer;
-            RUNTIME::SurfaceGpuSceneInstance* mapped = nullptr;
             D3D12_CPU_DESCRIPTOR_HANDLE srvCpu{};
             D3D12_GPU_DESCRIPTOR_HANDLE srvGpu{};
             D3D12_RESOURCE_STATES defaultState = D3D12_RESOURCE_STATE_COMMON;

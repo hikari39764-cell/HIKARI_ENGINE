@@ -490,6 +490,8 @@ set_tests_properties(HIKARI_DirectionalShadowContracts PROPERTIES LABELS "Runtim
 
 add_executable(HIKARI_DynamicUploadGpuContracts EXCLUDE_FROM_ALL
     "Tools/Tests/HIKARI_DynamicUploadGpuContracts.cpp"
+    "HIKARI/Render3D/GpuDriven/HIKARI_SurfaceGpuSceneFrameBuffer.cpp"
+    "HIKARI/Render3D/HIKARI_Math3D.cpp"
     "HIKARI/Gfx/HIKARI_DynamicUploadBuffer.cpp"
     "HIKARI/Gfx/HIKARI_GpuDeferredReleaseQueue.cpp"
     "HIKARI/Gfx/HIKARI_GfxContext.cpp"

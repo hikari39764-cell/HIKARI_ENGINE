@@ -54,9 +54,8 @@ namespace HIKARI::SHADOW::INTERNAL {
         uint64_t key,
         const MESHRENDERER::MaterialGpuData& data) {
 
-        MESHRENDERER::MaterialGpuData* materialData =
-            GetActiveShadowFrameResources().materialDataMapped;
-        if (materialData == nullptr) {
+        auto& materialData = GetActiveShadowFrameResources().materialDataStaging;
+        if (materialData.empty()) {
             return MESHRENDERER::kInvalidMaterialDataIndex;
         }
 
@@ -88,7 +87,7 @@ namespace HIKARI::SHADOW::INTERNAL {
 
     void ResetShadowMaterialFrame() {
         gShadowRendererState.materialDataFrameTable.Clear();
-        if (GetActiveShadowFrameResources().materialDataMapped == nullptr) {
+        if (GetActiveShadowFrameResources().materialDataStaging.empty()) {
             return;
         }
 

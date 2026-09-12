@@ -485,6 +485,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             sceneUploadStats_.uploadedFullScene = true;
         }
 
+        bool sceneCommitted = true;
         if (sourceInstanceCount != 0u) {
             if (desc.materialSlotBySourceRecord != nullptr &&
                 desc.materialSourceRecordCount != 0u) {
@@ -500,11 +501,12 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 layoutVersion,
                 sourceVersion,
                 sourceInstanceCount);
-            sceneBuffer_->CommitFrame(desc.commandList);
+            sceneCommitted = sceneBuffer_->CommitFrame(desc.commandList);
         }
 
         sceneUploadStats_.bufferStats = sceneBuffer_->GetStats();
         sceneUploadStats_.sceneResident =
+            sceneCommitted &&
             sourceInstanceCount != 0u &&
             waterSurfaceDataResident &&
             sandSurfaceDataResident &&
@@ -563,12 +565,13 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         frameContext_.stats.sceneResident = sceneResident;
     }
 
-    void GpuDrivenLayer::CommitSurfaceGpuSceneMaterialFrame(
+    bool GpuDrivenLayer::CommitSurfaceGpuSceneMaterialFrame(
         ID3D12GraphicsCommandList* commandList) {
 
         if (sceneBuffer_ != nullptr) {
-            sceneBuffer_->CommitFrame(commandList);
+            return sceneBuffer_->CommitFrame(commandList);
         }
+        return false;
     }
 
     void GpuDrivenLayer::ImportProducerOutput(
