@@ -799,7 +799,7 @@ namespace HIKARI {
                 auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
                     load.textureResource.Get(),
                     D3D12_RESOURCE_STATE_COPY_DEST,
-                    D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+                    D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
                 uploadCmdList_->ResourceBarrier(1, &barrier);
             }
 
@@ -1264,7 +1264,7 @@ namespace HIKARI {
             auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
                 texResource.Get(),
                 D3D12_RESOURCE_STATE_COPY_DEST,
-                D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+                D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
             uploadCmdList_->ResourceBarrier(1, &barrier);
 
             hr = uploadCmdList_->Close();
@@ -1361,7 +1361,7 @@ namespace HIKARI {
             auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
                 texResource.Get(),
                 D3D12_RESOURCE_STATE_COPY_DEST,
-                D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+                D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
             uploadCmdList_->ResourceBarrier(1, &barrier);
 
             hr = uploadCmdList_->Close();
@@ -1461,7 +1461,7 @@ namespace HIKARI {
             auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
                 texResource.Get(),
                 D3D12_RESOURCE_STATE_COPY_DEST,
-                D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+                D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
             uploadCmdList_->ResourceBarrier(1, &barrier);
 
             hr = uploadCmdList_->Close();
@@ -1624,7 +1624,7 @@ namespace HIKARI {
             auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
                 texResource.Get(),
                 D3D12_RESOURCE_STATE_COPY_DEST,
-                D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+                D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
             uploadCmdList_->ResourceBarrier(1, &barrier);
 
             hr = uploadCmdList_->Close();
@@ -1738,7 +1738,7 @@ namespace HIKARI {
             auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
                 texResource.Get(),
                 D3D12_RESOURCE_STATE_COPY_DEST,
-                D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+                D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
             uploadCmdList_->ResourceBarrier(1, &barrier);
 
             hr = uploadCmdList_->Close();

@@ -542,6 +542,12 @@ hikari_add_runtime_contract(HIKARI_LightingTransportMaterialContracts "Tools/Tes
 add_test(NAME HIKARI_LightingTransportMaterialContracts COMMAND "$<TARGET_FILE:HIKARI_LightingTransportMaterialContracts>")
 set_tests_properties(HIKARI_LightingTransportMaterialContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
 
+hikari_add_runtime_contract(HIKARI_TextureComputeGpuContracts "Tools/Tests/HIKARI_TextureComputeGpuContracts.cpp")
+target_include_directories(HIKARI_TextureComputeGpuContracts PRIVATE "${HIKARI_SOURCE_ROOT}/ThirdParty/DirectXTex/Common")
+target_link_libraries(HIKARI_TextureComputeGpuContracts PRIVATE d3dcompiler)
+add_test(NAME HIKARI_TextureComputeGpuContracts COMMAND "$<TARGET_FILE:HIKARI_TextureComputeGpuContracts>")
+set_tests_properties(HIKARI_TextureComputeGpuContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
+
 hikari_add_runtime_contract(HIKARI_SsrReconstructionContracts "Tools/Tests/HIKARI_SsrReconstructionContracts.cpp")
 target_include_directories(HIKARI_SsrReconstructionContracts PRIVATE "${HIKARI_SOURCE_ROOT}/ThirdParty/DirectXTex/Common")
 target_compile_definitions(HIKARI_SsrReconstructionContracts PRIVATE HIKARI_CONTRACT_SOURCE_ROOT="${HIKARI_SOURCE_ROOT}")
