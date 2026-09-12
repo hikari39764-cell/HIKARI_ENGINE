@@ -1,4 +1,5 @@
 #include "Render3D/Material/Program/HIKARI_MaterialProgramStaticEvaluator.h"
+#include "Render3D/Material/Program/HIKARI_MaterialProgram.h"
 
 #include <algorithm>
 #include <cctype>
@@ -136,14 +137,7 @@ using StaticRegisterFile =
 const MaterialValueData* ReadStaticInput(
     const MaterialProgramInstruction& instruction, std::string_view pin,
     const StaticRegisterFile& registers) noexcept {
-  const auto found = std::find(instruction.inputPins.begin(),
-                               instruction.inputPins.end(), pin);
-  if (found == instruction.inputPins.end()) {
-    return nullptr;
-  }
-  const size_t index = static_cast<size_t>(
-      std::distance(instruction.inputPins.begin(), found));
-  const uint32_t registerIndex = instruction.inputRegisters[index];
+  const uint32_t registerIndex = FindMaterialProgramInputRegister(instruction, pin);
   if (registerIndex == kInvalidMaterialProgramRegister ||
       registerIndex >= registers.size() ||
       !registers[registerIndex].has_value()) {

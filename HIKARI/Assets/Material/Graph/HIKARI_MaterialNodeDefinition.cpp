@@ -134,11 +134,10 @@ constexpr std::array kSpecularResponse{
     Fixed("Response", MaterialValueType::SpecularResponse),
 };
 constexpr std::array kGenericFresnelInputs{
+    Fixed("Normal", MaterialValueType::Float3, true),
+    Fixed("ViewDirection", MaterialValueType::Float3, true),
+    Fixed("F0", MaterialValueType::Float1),
     Fixed("Power", MaterialValueType::Float1),
-    Fixed("Width", MaterialValueType::Float1),
-    Fixed("Color", MaterialValueType::Float3),
-    Fixed("Intensity", MaterialValueType::Float1),
-    Fixed("LightAlignment", MaterialValueType::Float1),
 };
 constexpr std::array kColorOutput{Fixed("Color", MaterialValueType::Float3)};
 constexpr std::array kMatCapInputs{
@@ -500,7 +499,7 @@ constexpr std::array kDefinitions{
         kNoiseInputs, kFloatResult, false, OutputRoute::Unrestricted, "Voronoi distance noise from UV; Scale defaults to 8."},
     MaterialNodeDefinition{MaterialNodeKind::Fresnel, "math.fresnel",
         MaterialValueType::Float1, NodeClass::Math, true,
-        kGenericFresnelInputs, kFloatResult, false, OutputRoute::Unrestricted, "Fresnel factor from normal/view; scalar 0..1."},
+        kGenericFresnelInputs, kFloatResult, false, OutputRoute::Unrestricted, "Scalar Fresnel from world normal/view; optional F0 defaults to 0.04 and Power to 5. Output stays in 0..1."},
     MaterialNodeDefinition{MaterialNodeKind::Variable, "Variable",
         MaterialValueType::Float1, NodeClass::Input, true,
         {}, kVariableOutputs, false, OutputRoute::Unrestricted, "Reads one typed project runtime variable with an authored fallback."},

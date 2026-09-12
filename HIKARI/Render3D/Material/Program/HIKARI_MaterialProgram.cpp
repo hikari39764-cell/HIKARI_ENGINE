@@ -1,8 +1,17 @@
 #include "Render3D/Material/Program/HIKARI_MaterialProgram.h"
 
 #include <functional>
+#include <algorithm>
 
 namespace HIKARI::RENDER3D::MATERIAL {
+    uint32_t FindMaterialProgramInputRegister(
+        const MaterialProgramInstruction& instruction, std::string_view pin) noexcept {
+        const auto found = std::find(instruction.inputPins.begin(), instruction.inputPins.end(), pin);
+        const size_t index = static_cast<size_t>(found - instruction.inputPins.begin());
+        return found != instruction.inputPins.end() && index < instruction.inputRegisters.size()
+            ? instruction.inputRegisters[index] : kInvalidMaterialProgramRegister;
+    }
+
     namespace {
         constexpr bool HasMaterialCapability(
             uint64_t capabilities,

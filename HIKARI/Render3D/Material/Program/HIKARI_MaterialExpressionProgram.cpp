@@ -1,4 +1,5 @@
 #include "Render3D/Material/Program/HIKARI_MaterialExpressionProgram.h"
+#include "Render3D/Material/Program/HIKARI_MaterialProgram.h"
 
 #include <algorithm>
 #include <array>
@@ -78,18 +79,6 @@ const MaterialProgramInstruction* FindMaterialExpressionOutput(
     return found == program.instructions.end() ? nullptr : &*found;
 }
 
-uint32_t FindInputRegister(
-    const MaterialProgramInstruction& instruction,
-    std::string_view pin) noexcept {
-    const auto found = std::find(
-        instruction.inputPins.begin(), instruction.inputPins.end(), pin);
-    if (found == instruction.inputPins.end()) {
-        return kInvalidMaterialProgramRegister;
-    }
-    return instruction.inputRegisters[
-        static_cast<size_t>(found - instruction.inputPins.begin())];
-}
-
 struct OutputRoot {
     std::string_view pin{};
     uint32_t mask = 0u;
@@ -124,7 +113,7 @@ std::vector<OutputRoot> CollectDynamicOutputs(
     std::vector<OutputRoot> roots{};
     const auto append = [&roots, output](const auto& outputs) {
       for (const auto& [pin, mask] : outputs) {
-        const uint32_t materialRegister = FindInputRegister(*output, pin);
+        const uint32_t materialRegister = FindMaterialProgramInputRegister(*output, pin);
         if (materialRegister == kInvalidMaterialProgramRegister) {
             continue;
         }
@@ -369,6 +358,25 @@ bool BuildMaterialExpressionRuntimeProgram(
             inputIndex < inputs.size(); ++inputIndex) {
             inputs[inputIndex] = CompactRegister(
                 registers, instruction.inputRegisters[inputIndex]);
+        }
+        if (instruction.opcode == MaterialProgramOpcode::Fresnel) {
+            // pin 名を解決し、旧 IR の Power を法線として解釈しない。
+            constexpr std::array<std::string_view, 4> pins{"Normal", "ViewDirection", "F0", "Power"};
+            for (size_t i = 0; i < instruction.inputPins.size(); ++i) {
+                if (std::find(pins.begin(), pins.end(), instruction.inputPins[i]) == pins.end() &&
+                    i < instruction.inputRegisters.size() && instruction.inputRegisters[i] != kInvalidMaterialProgramRegister) {
+                    outError = "Fresnel has an unsupported legacy input '" + instruction.inputPins[i] +
+                        "'; reconnect the math inputs or use Fresnel Rim.";
+                    return false;
+                }
+            }
+            if (instruction.inputPins.empty() && !instruction.inputRegisters.empty()) {
+                outError = "Fresnel requires named inputs; reimport the source material.";
+                return false;
+            }
+            inputs.fill(kInvalidRegister);
+            for (size_t i = 0; i < pins.size(); ++i)
+                inputs[i] = CompactRegister(registers, FindMaterialProgramInputRegister(instruction, pins[i]));
         }
         uint8_t binding = kInvalidRegister;
         uint8_t valueIndex = kInvalidRegister;

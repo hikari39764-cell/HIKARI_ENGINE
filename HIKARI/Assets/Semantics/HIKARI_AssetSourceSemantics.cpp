@@ -65,7 +65,7 @@ namespace HIKARI::ASSETS::SEMANTICS {
                 AssetImporterKind::Material,
                 AssetType::Material,
                 "MaterialImporter",
-                5u,
+                6u,
                 ".material.json",
             },
             {

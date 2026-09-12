@@ -149,10 +149,11 @@ float HikariExpressionDot(float4 a, float4 b, uint components)
 
 float4 HikariExpressionNormalize(float4 value, uint components)
 {
+    if (!all(isfinite(value))) return 0.0f.xxxx;
     if (components <= 1u) return sign(value.x).xxxx;
     const float lengthSquared = HikariExpressionDot(
         value, value, components);
-    if (lengthSquared <= 1.0e-10f) return 0.0f.xxxx;
+    if (!isfinite(lengthSquared) || lengthSquared <= 1.0e-10f) return 0.0f.xxxx;
     return value * rsqrt(lengthSquared);
 }
 
@@ -462,21 +463,21 @@ HikariMaterialExpressionResult HikariEvaluateMaterialExpression(
         }
         else if (opcode == HIKARI_EXPRESSION_FRESNEL)
         {
-            const float3 n =
+            const float3 n = HikariExpressionNormalize(float4(
                 source0 != HIKARI_MATERIAL_EXPRESSION_INVALID_REGISTER
-                    ? normalize(a.xyz) : normalize(context.worldNormal);
-            const float3 v =
+                    ? a.xyz : context.worldNormal, 0), 3u).xyz;
+            const float3 v = HikariExpressionNormalize(float4(
                 source1 != HIKARI_MATERIAL_EXPRESSION_INVALID_REGISTER
-                    ? normalize(b.xyz) : normalize(context.viewDirection);
+                    ? b.xyz : context.viewDirection, 0), 3u).xyz;
             const float f0 =
-                source2 != HIKARI_MATERIAL_EXPRESSION_INVALID_REGISTER
-                    ? c.x : 0.04f;
+                source2 != HIKARI_MATERIAL_EXPRESSION_INVALID_REGISTER && isfinite(c.x)
+                    ? saturate(c.x) : 0.04f;
             const float power =
-                source3 != HIKARI_MATERIAL_EXPRESSION_INVALID_REGISTER
-                    ? d.x : 5.0f;
+                source3 != HIKARI_MATERIAL_EXPRESSION_INVALID_REGISTER && isfinite(d.x)
+                    ? max(d.x, 0.0f) : 5.0f;
             const float ndv = abs(dot(n, v));
-            value = (f0 + (1.0f - f0) *
-                pow(1.0f - saturate(ndv), power)).xxxx;
+            const float falloff = power == 0.0f ? 1.0f : pow(1.0f - saturate(ndv), power);
+            value = (f0 + (1.0f - f0) * falloff).xxxx;
         }
 
         registers[destination] = HikariExpressionSplatScalar(value, components);

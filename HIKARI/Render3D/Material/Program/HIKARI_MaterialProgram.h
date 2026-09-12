@@ -83,6 +83,9 @@ namespace HIKARI::RENDER3D::MATERIAL {
     MaterialProgramRuntimeCapabilities BuildMaterialProgramRuntimeCapabilities(
         const MaterialProgramIR& program) noexcept;
 
+    uint32_t FindMaterialProgramInputRegister(
+        const MaterialProgramInstruction& instruction, std::string_view pin) noexcept;
+
     RuntimeMaterialProgram BuildRuntimeMaterialProgram(
         MaterialProgramId id,
         const MaterialProgramIR& program,
