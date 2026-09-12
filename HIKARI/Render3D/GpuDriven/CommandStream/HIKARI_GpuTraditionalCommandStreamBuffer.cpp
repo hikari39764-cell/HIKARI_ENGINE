@@ -281,19 +281,17 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         }
 
         auto resetGpuBuffers = [this]() {
-            for (auto& upload : constantUploads_) {
+            for (auto& upload : frameUploads_) {
                 upload.Finalize(&GFX::GetCurrentContext());
             }
             GFX::RetireD3D12ObjectForCurrentFrame(argumentBuffer_, "GpuTraditionalCommandStream.Active.ArgumentBuffer");
             GFX::RetireD3D12ObjectForCurrentFrame(skinnedArgumentBuffer_, "GpuTraditionalCommandStream.Active.SkinnedArgumentBuffer");
             GFX::RetireD3D12ObjectForCurrentFrame(seedBuffer_, "GpuTraditionalCommandStream.Active.SeedBuffer");
-            GFX::RetireD3D12ObjectForCurrentFrame(seedUploadBuffer_, "GpuTraditionalCommandStream.Active.SeedUploadBuffer");
             GFX::RetireD3D12ObjectForCurrentFrame(payloadBuffer_, "GpuTraditionalCommandStream.Active.PayloadBuffer");
-            GFX::RetireD3D12ObjectForCurrentFrame(payloadUploadBuffer_, "GpuTraditionalCommandStream.Active.PayloadUploadBuffer");
             GFX::RetireD3D12ObjectForCurrentFrame(counterBuffer_, "GpuTraditionalCommandStream.Active.CounterBuffer");
             GFX::RetireD3D12ObjectForCurrentFrame(counterResetUploadBuffer_, "GpuTraditionalCommandStream.Active.CounterResetUploadBuffer");
-            seedMapped_ = nullptr;
-            payloadMapped_ = nullptr;
+            seedStagingData_ = nullptr;
+            payloadStagingData_ = nullptr;
             counterResetMapped_ = nullptr;
             argumentBufferState_ = D3D12_RESOURCE_STATE_COMMON;
             skinnedArgumentBufferState_ = D3D12_RESOURCE_STATE_COMMON;
@@ -304,9 +302,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 GFX::RetireD3D12ObjectForCurrentFrame(frame.argumentBuffer, "GpuTraditionalCommandStream.Frame.ArgumentBuffer");
                 GFX::RetireD3D12ObjectForCurrentFrame(frame.skinnedArgumentBuffer, "GpuTraditionalCommandStream.Frame.SkinnedArgumentBuffer");
                 GFX::RetireD3D12ObjectForCurrentFrame(frame.seedBuffer, "GpuTraditionalCommandStream.Frame.SeedBuffer");
-                GFX::RetireD3D12ObjectForCurrentFrame(frame.seedUploadBuffer, "GpuTraditionalCommandStream.Frame.SeedUploadBuffer");
                 GFX::RetireD3D12ObjectForCurrentFrame(frame.payloadBuffer, "GpuTraditionalCommandStream.Frame.PayloadBuffer");
-                GFX::RetireD3D12ObjectForCurrentFrame(frame.payloadUploadBuffer, "GpuTraditionalCommandStream.Frame.PayloadUploadBuffer");
                 GFX::RetireD3D12ObjectForCurrentFrame(frame.counterBuffer, "GpuTraditionalCommandStream.Frame.CounterBuffer");
                 GFX::RetireD3D12ObjectForCurrentFrame(frame.counterResetUploadBuffer, "GpuTraditionalCommandStream.Frame.CounterResetUploadBuffer");
                 frame = FrameResources{};
@@ -351,7 +347,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             static_cast<UINT64>(sizeof(GpuTraditionalCommandSeed)) *
             static_cast<UINT64>(capacity);
         auto seedDesc = CD3DX12_RESOURCE_DESC::Buffer(seedBytes);
-        auto seedUploadHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+        auto counterUploadHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
         const UINT64 payloadBytes =
             static_cast<UINT64>(sizeof(GpuTraditionalCommandPayload)) *
             static_cast<UINT64>(capacity);
@@ -364,6 +360,12 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
 
         auto createFrameResources = [&](FrameResources& frame) -> bool {
             frame = FrameResources{};
+            try {
+                frame.seedStaging.resize(static_cast<size_t>(seedBytes));
+                frame.payloadStaging.resize(static_cast<size_t>(payloadBytes));
+            } catch (...) {
+                return false;
+            }
 
             if (FAILED(device->CreateCommittedResource(
                 &argumentHeap,
@@ -405,26 +407,6 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 L"GPU Traditional Command Stream Draw Seed Buffer");
 
             if (FAILED(device->CreateCommittedResource(
-                &seedUploadHeap,
-                D3D12_HEAP_FLAG_NONE,
-                &seedDesc,
-                D3D12_RESOURCE_STATE_GENERIC_READ,
-                nullptr,
-                IID_PPV_ARGS(frame.seedUploadBuffer.GetAddressOf())))) {
-                return false;
-            }
-            if (FAILED(frame.seedUploadBuffer->Map(
-                0,
-                nullptr,
-                reinterpret_cast<void**>(&frame.seedMapped)))) {
-                frame.seedMapped = nullptr;
-                return false;
-            }
-            GFX::SetD3D12Name(
-                frame.seedUploadBuffer.Get(),
-                L"GPU Traditional Command Stream Draw Seed Upload Buffer");
-
-            if (FAILED(device->CreateCommittedResource(
                 &argumentHeap,
                 D3D12_HEAP_FLAG_NONE,
                 &payloadDesc,
@@ -436,26 +418,6 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             GFX::SetD3D12Name(
                 frame.payloadBuffer.Get(),
                 L"GPU Traditional Command Stream Draw Payload Buffer");
-
-            if (FAILED(device->CreateCommittedResource(
-                &seedUploadHeap,
-                D3D12_HEAP_FLAG_NONE,
-                &payloadDesc,
-                D3D12_RESOURCE_STATE_GENERIC_READ,
-                nullptr,
-                IID_PPV_ARGS(frame.payloadUploadBuffer.GetAddressOf())))) {
-                return false;
-            }
-            if (FAILED(frame.payloadUploadBuffer->Map(
-                0,
-                nullptr,
-                reinterpret_cast<void**>(&frame.payloadMapped)))) {
-                frame.payloadMapped = nullptr;
-                return false;
-            }
-            GFX::SetD3D12Name(
-                frame.payloadUploadBuffer.Get(),
-                L"GPU Traditional Command Stream Draw Payload Upload Buffer");
 
             if (FAILED(device->CreateCommittedResource(
                 &argumentHeap,
@@ -471,7 +433,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 L"GPU Traditional Command Stream Draw Counters");
 
             if (FAILED(device->CreateCommittedResource(
-                &seedUploadHeap,
+                &counterUploadHeap,
                 D3D12_HEAP_FLAG_NONE,
                 &counterUploadDesc,
                 D3D12_RESOURCE_STATE_GENERIC_READ,
@@ -493,7 +455,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             return true;
         };
 
-        for (auto& upload : constantUploads_) {
+        for (auto& upload : frameUploads_) {
             if (!upload.Init(device, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT)) {
                 resetGpuBuffers();
                 return false;
@@ -611,18 +573,16 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
     void GpuTraditionalCommandStreamBuffer::BindFrameResources(uint32_t frameIndex) {
         activeFrameResourceIndex_ = frameIndex % GFX::kFrameResourceCount;
         FrameResources& frame = frameResources_[activeFrameResourceIndex_];
-        constantUploads_[activeFrameResourceIndex_].ResetForFrame(
+        frameUploads_[activeFrameResourceIndex_].ResetForFrame(
             GFX::GetCurrentContext().currentFrameRetireFenceValue);
         argumentBuffer_ = frame.argumentBuffer;
         skinnedArgumentBuffer_ = frame.skinnedArgumentBuffer;
         seedBuffer_ = frame.seedBuffer;
-        seedUploadBuffer_ = frame.seedUploadBuffer;
         payloadBuffer_ = frame.payloadBuffer;
-        payloadUploadBuffer_ = frame.payloadUploadBuffer;
         counterBuffer_ = frame.counterBuffer;
         counterResetUploadBuffer_ = frame.counterResetUploadBuffer;
-        seedMapped_ = frame.seedMapped;
-        payloadMapped_ = frame.payloadMapped;
+        seedStagingData_ = frame.seedStaging.data();
+        payloadStagingData_ = frame.payloadStaging.data();
         counterResetMapped_ = frame.counterResetMapped;
         argumentBufferState_ = frame.argumentBufferState;
         skinnedArgumentBufferState_ = frame.skinnedArgumentBufferState;
@@ -659,18 +619,16 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
 
         const size_t capacity = capacity_;
         const bool initialized =
-            seedMapped_ != nullptr &&
+            seedStagingData_ != nullptr &&
             counterResetMapped_ != nullptr &&
             argumentBuffer_ != nullptr &&
             skinnedArgumentBuffer_ != nullptr &&
             seedBuffer_ != nullptr &&
-            seedUploadBuffer_ != nullptr &&
             payloadBuffer_ != nullptr &&
-            payloadUploadBuffer_ != nullptr &&
-            payloadMapped_ != nullptr &&
+            payloadStagingData_ != nullptr &&
             counterBuffer_ != nullptr &&
             counterResetUploadBuffer_ != nullptr &&
-            constantUploads_[activeFrameResourceIndex_].IsInitialized();
+            frameUploads_[activeFrameResourceIndex_].IsInitialized();
         const bool signatureReady = commandSignature_ != nullptr;
         const bool skinnedSignatureReady = skinnedCommandSignature_ != nullptr;
         const D3D12_GPU_VIRTUAL_ADDRESS address =
@@ -684,9 +642,9 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         stats_.initialized = initialized;
         stats_.commandSignatureReady = signatureReady;
         stats_.skinnedCommandSignatureReady = skinnedSignatureReady;
-        stats_.seedBufferReady = seedBuffer_ != nullptr && seedUploadBuffer_ != nullptr;
+        stats_.seedBufferReady = seedBuffer_ != nullptr && seedStagingData_ != nullptr;
         stats_.payloadBufferReady =
-            payloadBuffer_ != nullptr && payloadUploadBuffer_ != nullptr;
+            payloadBuffer_ != nullptr && payloadStagingData_ != nullptr;
         stats_.counterBufferReady = counterBuffer_ != nullptr;
         stats_.gpuCompactionPipelineReady =
             computeRootSignature_ != nullptr &&
@@ -746,8 +704,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
 
         stats_.requestedCommandCount += view.commands->size();
         ++stats_.uploadCallCount;
-        if (seedMapped_ == nullptr ||
-            payloadMapped_ == nullptr ||
+        if (seedStagingData_ == nullptr ||
+            payloadStagingData_ == nullptr ||
             capacity_ == 0) {
             stats_.overflowCommandCount += view.commands->size();
             return;
@@ -793,7 +751,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             }
 
             auto* payloads =
-                reinterpret_cast<GpuTraditionalCommandPayload*>(payloadMapped_);
+                reinterpret_cast<GpuTraditionalCommandPayload*>(payloadStagingData_);
             size_t payloadIndex = 0;
             const uint64_t payloadKey =
                 BuildPayloadKey(
@@ -827,7 +785,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             payload.jointPalette = command.jointPaletteGpuAddress;
             payload.flags = BuildPayloadFlags(command, skinnedCommand);
 
-            auto* seeds = reinterpret_cast<GpuTraditionalCommandSeed*>(seedMapped_);
+            auto* seeds = reinterpret_cast<GpuTraditionalCommandSeed*>(seedStagingData_);
             GpuTraditionalCommandSeed& seed = seeds[seedCursor_++];
             seed = {};
             seed.boundsCenterRadius = boundsCenterRadius;
@@ -858,15 +816,13 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             seedCursor_ == 0 ||
             capacity_ == 0 ||
             seedBuffer_ == nullptr ||
-            seedUploadBuffer_ == nullptr ||
             payloadBuffer_ == nullptr ||
-            payloadUploadBuffer_ == nullptr ||
             argumentBuffer_ == nullptr ||
             skinnedArgumentBuffer_ == nullptr ||
             counterBuffer_ == nullptr ||
             counterResetUploadBuffer_ == nullptr ||
-            !constantUploads_[activeFrameResourceIndex_].IsInitialized() ||
-            payloadMapped_ == nullptr ||
+            !frameUploads_[activeFrameResourceIndex_].IsInitialized() ||
+            payloadStagingData_ == nullptr ||
             counterResetMapped_ == nullptr ||
             computeRootSignature_ == nullptr ||
             compactPipelineState_ == nullptr) {
@@ -883,7 +839,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         constants.payloadCount = static_cast<uint32_t>(
             (std::min)(payloadCursor_, static_cast<size_t>(UINT32_MAX)));
         D3D12_GPU_VIRTUAL_ADDRESS constantsAddress = 0u;
-        void* constantsData = constantUploads_[activeFrameResourceIndex_].Allocate(
+        void* constantsData = frameUploads_[activeFrameResourceIndex_].Allocate(
             sizeof(constants), constantsAddress);
         if (constantsData == nullptr) {
             return false;
@@ -902,6 +858,17 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             static_cast<UINT64>(payloadCursor_) *
             static_cast<UINT64>(sizeof(GpuTraditionalCommandPayload));
         if (inputUploadPending_) {
+            DX::UploadAllocation seedUpload{}, payloadUpload{};
+            if (seedBytes != 0u) {
+                seedUpload = frameUploads_[activeFrameResourceIndex_].Allocate(static_cast<size_t>(seedBytes));
+                if (!seedUpload) return false;
+                std::memcpy(seedUpload.cpuAddress, seedStagingData_, static_cast<size_t>(seedBytes));
+            }
+            if (payloadBytes != 0u) {
+                payloadUpload = frameUploads_[activeFrameResourceIndex_].Allocate(static_cast<size_t>(payloadBytes));
+                if (!payloadUpload) return false;
+                std::memcpy(payloadUpload.cpuAddress, payloadStagingData_, static_cast<size_t>(payloadBytes));
+            }
             if (seedBufferState_ != D3D12_RESOURCE_STATE_COPY_DEST) {
                 auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
                     seedBuffer_.Get(),
@@ -923,8 +890,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 commandList->CopyBufferRegion(
                     seedBuffer_.Get(),
                     0,
-                    seedUploadBuffer_.Get(),
-                    0,
+                    seedUpload.resource,
+                    seedUpload.offset,
                     seedBytes);
                 ++stats_.inputUploadCopyCount;
             }
@@ -932,8 +899,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 commandList->CopyBufferRegion(
                     payloadBuffer_.Get(),
                     0,
-                    payloadUploadBuffer_.Get(),
-                    0,
+                    payloadUpload.resource,
+                    payloadUpload.offset,
                     payloadBytes);
                 ++stats_.inputUploadCopyCount;
             }

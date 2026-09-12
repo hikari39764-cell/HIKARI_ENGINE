@@ -132,13 +132,11 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             Microsoft::WRL::ComPtr<ID3D12Resource> argumentBuffer;
             Microsoft::WRL::ComPtr<ID3D12Resource> skinnedArgumentBuffer;
             Microsoft::WRL::ComPtr<ID3D12Resource> seedBuffer;
-            Microsoft::WRL::ComPtr<ID3D12Resource> seedUploadBuffer;
+            std::vector<std::byte> seedStaging;
             Microsoft::WRL::ComPtr<ID3D12Resource> payloadBuffer;
-            Microsoft::WRL::ComPtr<ID3D12Resource> payloadUploadBuffer;
+            std::vector<std::byte> payloadStaging;
             Microsoft::WRL::ComPtr<ID3D12Resource> counterBuffer;
             Microsoft::WRL::ComPtr<ID3D12Resource> counterResetUploadBuffer;
-            std::byte* seedMapped = nullptr;
-            std::byte* payloadMapped = nullptr;
             std::byte* counterResetMapped = nullptr;
             D3D12_RESOURCE_STATES argumentBufferState =
                 D3D12_RESOURCE_STATE_COMMON;
@@ -165,17 +163,15 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         Microsoft::WRL::ComPtr<ID3D12Resource> argumentBuffer_;
         Microsoft::WRL::ComPtr<ID3D12Resource> skinnedArgumentBuffer_;
         Microsoft::WRL::ComPtr<ID3D12Resource> seedBuffer_;
-        Microsoft::WRL::ComPtr<ID3D12Resource> seedUploadBuffer_;
         Microsoft::WRL::ComPtr<ID3D12Resource> payloadBuffer_;
-        Microsoft::WRL::ComPtr<ID3D12Resource> payloadUploadBuffer_;
         Microsoft::WRL::ComPtr<ID3D12Resource> counterBuffer_;
         Microsoft::WRL::ComPtr<ID3D12Resource> counterResetUploadBuffer_;
         Microsoft::WRL::ComPtr<ID3D12RootSignature> computeRootSignature_;
         Microsoft::WRL::ComPtr<ID3D12PipelineState> compactPipelineState_;
         Microsoft::WRL::ComPtr<ID3D12CommandSignature> commandSignature_;
         Microsoft::WRL::ComPtr<ID3D12CommandSignature> skinnedCommandSignature_;
-        std::byte* seedMapped_ = nullptr;
-        std::byte* payloadMapped_ = nullptr;
+        std::byte* seedStagingData_ = nullptr;
+        std::byte* payloadStagingData_ = nullptr;
         std::byte* counterResetMapped_ = nullptr;
         size_t capacity_ = 0;
         size_t seedCursor_ = 0;
@@ -192,7 +188,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         D3D12_RESOURCE_STATES counterBufferState_ =
             D3D12_RESOURCE_STATE_COMMON;
         std::array<FrameResources, GFX::kFrameResourceCount> frameResources_{};
-        std::array<DX::DynamicUploadBuffer, GFX::kFrameResourceCount> constantUploads_{};
+        std::array<DX::DynamicUploadBuffer, GFX::kFrameResourceCount> frameUploads_{};
         uint32_t activeFrameResourceIndex_ = 0;
         uintptr_t pendingInputSourceIdentity_ = 0;
         uint64_t pendingInputLayoutVersion_ = 0;
