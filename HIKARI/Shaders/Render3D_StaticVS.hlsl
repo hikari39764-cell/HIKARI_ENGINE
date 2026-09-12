@@ -1,5 +1,6 @@
 
 #include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
+#include "Include/Surface/HIKARI_SurfaceTangentFrame.hlsli"
 
 #define gFxUser0 gFxUser[0]
 #define gFxUser1 gFxUser[1]
@@ -115,7 +116,8 @@ VSOutput main(VSInput input)
 #else
     output.position = mul(gViewProj, worldPos);
 #endif
-    output.tangentWS = float4(normalize(mul((float3x3)objectData.normalMatrix, input.tangent.xyz)), input.tangent.w);
+    output.tangentWS = HikariTransformSurfaceTangent(
+        input.tangent, (float3x3)objectData.world);
     output.uv = input.uv;
     output.uv1 = input.uv1;
     output.materialDataIndex = objectData.materialDataIndex;
@@ -125,9 +127,9 @@ VSOutput main(VSInput input)
     output.surfaceGpuSceneIndex = surfaceGpuSceneIndex;
     output.debugSurfaceId = 0u;
     output.characterRightWS = normalize(
-        mul((float3x3)objectData.normalMatrix, float3(1.0f, 0.0f, 0.0f)));
+        mul((float3x3)objectData.world, float3(1.0f, 0.0f, 0.0f)));
     output.characterForwardWS = normalize(
-        mul((float3x3)objectData.normalMatrix, float3(0.0f, 0.0f, 1.0f)));
+        mul((float3x3)objectData.world, float3(0.0f, 0.0f, 1.0f)));
     output.surfaceFeatureFlags =
         gUseSurfaceGpuScene != 0u ? surfaceInstance.flags : 0u;
     return output;

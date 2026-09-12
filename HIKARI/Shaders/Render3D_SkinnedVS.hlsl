@@ -1,5 +1,6 @@
 #define gFxUser0 gFxUser[0]
 #include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
+#include "Include/Surface/HIKARI_SurfaceTangentFrame.hlsli"
 #define gFxUser1 gFxUser[1]
 #define gFxUser2 gFxUser[2]
 #define gFxUser3 gFxUser[3]
@@ -167,7 +168,8 @@ VSOutput main(VSInput input)
 #else
     output.position = mul(gViewProj, worldPos);
 #endif
-    output.tangentWS = float4(normalize(mul((float3x3)normalMatrix, normalize(localTangent))), input.tangent.w);
+    output.tangentWS = HikariTransformSurfaceTangent(
+        float4(localTangent, input.tangent.w), (float3x3)world);
     output.uv = input.uv0;
     output.uv1 = input.uv1;
     output.materialDataIndex = materialDataIndex;
@@ -179,12 +181,12 @@ VSOutput main(VSInput input)
     output.surfaceFeatureFlags = surfaceFeatureFlags;
     output.waterSurfaceData = float3(localPos.xz, 0.0f);
     output.characterRightWS = normalize(
-        mul((float3x3)normalMatrix,
+        mul((float3x3)world,
             dot(localCharacterRight, localCharacterRight) > 1.0e-6f
                 ? localCharacterRight
                 : float3(1.0f, 0.0f, 0.0f)));
     output.characterForwardWS = normalize(
-        mul((float3x3)normalMatrix,
+        mul((float3x3)world,
             dot(localCharacterForward, localCharacterForward) > 1.0e-6f
                 ? localCharacterForward
                 : float3(0.0f, 0.0f, 1.0f)));

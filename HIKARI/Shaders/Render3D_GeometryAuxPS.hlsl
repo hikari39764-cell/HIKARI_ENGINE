@@ -7,8 +7,8 @@
 #include "Include/Surface/HIKARI_SurfaceShadingNormal.hlsli"
 #include "Include/Surface/HIKARI_SandSurfaceParams.hlsli"
 #include "Include/Surface/HIKARI_SandSurfaceNormal.hlsli"
-#if defined(HIKARI_GEOMETRY_AUX_WRITE_FEATURE_MASK)
 #include "Include/Material/HIKARI_MaterialProgramData.hlsli"
+#if defined(HIKARI_GEOMETRY_AUX_WRITE_FEATURE_MASK)
 #include "Include/Features/HIKARI_StylizedFeatureMask.hlsli"
 #endif
 
@@ -33,6 +33,7 @@ struct PSInput
     nointerpolation uint surfaceGpuSceneIndex : TEXCOORD5;
     nointerpolation uint debugSurfaceId : TEXCOORD6;
     nointerpolation uint surfaceFeatureFlags : TEXCOORD7;
+    bool isFrontFace : SV_IsFrontFace;
 };
 
 #if defined(HIKARI_GEOMETRY_AUX_WRITE_FEATURE_MASK)
@@ -95,7 +96,10 @@ float4 main(PSInput input) : SV_TARGET
         metallic = saturate(metallic * metallicRoughness.b);
     }
 
-    float3 n = normalize(input.normalWS);
+    const float3 geometricNormal =
+        (materialData.instanceFlags & HIKARI_PROGRAM_FLAG_DOUBLE_SIDED) != 0u && !input.isFrontFace
+            ? -input.normalWS : input.normalWS;
+    float3 n = normalize(geometricNormal);
     if (HikariSurfaceHasSandSurface(input.surfaceFeatureFlags))
     {
         const HikariSurfaceGpuSceneInstance sandInstance =
@@ -114,7 +118,7 @@ float4 main(PSInput input) : SV_TARGET
     {
         n = HikariResolveSurfaceShadingNormal(
             materialData,
-            input.normalWS,
+            geometricNormal,
             input.tangentWS,
             input.uv,
             input.uv1,

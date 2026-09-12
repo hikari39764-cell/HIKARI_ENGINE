@@ -1,4 +1,5 @@
 #include "Include/Meshlet/HIKARI_MeshletMSCommon.hlsli"
+#include "Include/Surface/HIKARI_SurfaceTangentFrame.hlsli"
 
 #ifndef HIKARI_MESHLET_ENABLE_WATER_DEFORM
 #define HIKARI_MESHLET_ENABLE_WATER_DEFORM 0
@@ -99,9 +100,8 @@ HikariMeshletVertexOut HikariBuildMeshletVertex(
 #else
     output.position = clipPosition;
 #endif
-    output.tangentWS = float4(
-        normalize(mul((float3x3)instance.clusterNormalMatrix, vertex.tangent.xyz)),
-        vertex.tangent.w);
+    output.tangentWS = HikariTransformSurfaceTangent(
+        vertex.tangent, (float3x3)instance.clusterWorld);
     output.uv = vertex.uv01.xy;
     output.uv1 = vertex.uv01.zw;
     output.materialDataIndex = instance.materialDataIndex;
@@ -116,9 +116,9 @@ HikariMeshletVertexOut HikariBuildMeshletVertex(
         resolved.visible.clusterSurfaceIndex * 4099u + resolved.visible.sectionIndex;
     output.surfaceFeatureFlags = instance.flags;
     output.characterRightWS = normalize(
-        mul((float3x3)instance.clusterNormalMatrix, localCharacterRight));
+        mul((float3x3)instance.clusterWorld, localCharacterRight));
     output.characterForwardWS = normalize(
-        mul((float3x3)instance.clusterNormalMatrix, localCharacterForward));
+        mul((float3x3)instance.clusterWorld, localCharacterForward));
     // 沙地/水面は deform が surfaceFeatureData を書いたので上書きしない。
     if ((instance.flags & (HIKARI_SURFACE_GPU_SCENE_FLAG_SAND_SURFACE |
                            HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_SURFACE)) == 0u)

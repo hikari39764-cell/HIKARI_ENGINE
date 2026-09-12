@@ -1,27 +1,7 @@
 #ifndef HIKARI_SURFACE_SHADING_NORMAL_INCLUDED
 #define HIKARI_SURFACE_SHADING_NORMAL_INCLUDED
 
-float3 HikariTransformTangentNormalToWorld(
-    float3 normalTS,
-    float3 normalWS,
-    float4 tangentWS)
-{
-    const float3 n = normalize(normalWS);
-    float3 t = tangentWS.xyz;
-    if (dot(t, t) < 1.0e-5f)
-    {
-        return n;
-    }
-    t = normalize(t);
-    t -= n * dot(n, t);
-    if (dot(t, t) < 1.0e-5f)
-    {
-        return n;
-    }
-    t = normalize(t);
-    const float3 b = normalize(cross(n, t) * tangentWS.w);
-    return normalize(normalTS.x * t + normalTS.y * b + normalTS.z * n);
-}
+#include "HIKARI_SurfaceTangentFrame.hlsli"
 
 // Resolves the world-space shading normal used by both forward lighting and the
 // shared SceneSurface pass. Keeping this path common prevents SSR/AO from

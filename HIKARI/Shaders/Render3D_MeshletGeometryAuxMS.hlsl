@@ -1,5 +1,6 @@
 #include "Include/HIKARI_MeshletMSCommon.hlsli"
 #include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
+#include "Include/Surface/HIKARI_SurfaceTangentFrame.hlsli"
 #include "Include/Meshlet/HIKARI_WaterSurfaceDeform.hlsli"
 #include "Include/Surface/HIKARI_SandSurfaceDeform.hlsli"
 #include "Include/Surface/HIKARI_FoliageWind.hlsli"
@@ -77,11 +78,8 @@ HikariMeshletGeometryAuxVertexOut HikariBuildMeshletGeometryAuxVertex(
     output.position = clipPosition;
     output.normalWS =
         normalize(mul((float3x3)instance.clusterNormalMatrix, localNormal));
-    output.tangentWS = float4(
-        normalize(mul(
-            (float3x3)instance.clusterNormalMatrix,
-            localTangent)),
-        vertex.tangent.w);
+    output.tangentWS = HikariTransformSurfaceTangent(
+        float4(localTangent, vertex.tangent.w), (float3x3)instance.clusterWorld);
     output.uv = uv01.xy;
     output.uv1 = uv01.zw;
     output.materialDataIndex = instance.materialDataIndex;
