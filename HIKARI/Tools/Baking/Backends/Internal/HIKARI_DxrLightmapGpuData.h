@@ -5,6 +5,13 @@
 
 namespace HIKARI::TOOLS::BAKING {
 
+    namespace INTERNAL {
+        enum DxrLightmapRootParameter : uint32_t {
+            kRootConstants, kRootScene, kRootTriangles, kRootTexels, kRootLights, kRootOutput,
+            kRootMaterials, kRootTextures, kRootParameters, kRootResources, kRootParameterCount
+        };
+    }
+
     struct DxrProgressiveLightmapBaker::GpuTriangle {
         MATH::Vec4 position0{};
         MATH::Vec4 position1{};
@@ -12,8 +19,10 @@ namespace HIKARI::TOOLS::BAKING {
         MATH::Vec4 normal0{};
         MATH::Vec4 normal1{};
         MATH::Vec4 normal2{};
-        MATH::Vec4 diffuse{};
-        MATH::Vec4 emissive{};
+        MATH::Vec4 tangent[3]{};
+        MATH::Vec4 materialUv[3]{};
+        uint32_t materialIndex = 0;
+        uint32_t padding[3]{};
     };
 
     struct DxrProgressiveLightmapBaker::GpuLight {
@@ -43,7 +52,8 @@ namespace HIKARI::TOOLS::BAKING {
 
     static_assert(
         sizeof(DxrProgressiveLightmapBaker::GpuTriangle) ==
-            128u);
+            208u);
+    static_assert(offsetof(DxrProgressiveLightmapBaker::GpuTriangle, materialIndex) == 192u);
     static_assert(
         sizeof(INTERNAL::DxrLightmapSurfaceTexel) == 32u);
     static_assert(

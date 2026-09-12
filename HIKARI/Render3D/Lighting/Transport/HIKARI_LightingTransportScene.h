@@ -10,6 +10,7 @@
 #include "Assets/Lighting/HIKARI_LightmapAtlasLayout.h"
 #include "Assets/Lighting/HIKARI_LightmapSurfaceContract.h"
 #include "Render3D/HIKARI_Math3D.h"
+#include "Render3D/Material/HIKARI_MaterialSnapshot.h"
 
 namespace HIKARI::RENDER3D::LIGHTING::TRANSPORT {
 
@@ -17,10 +18,11 @@ namespace HIKARI::RENDER3D::LIGHTING::TRANSPORT {
         MATH::Vec3 position[3]{};
         MATH::Vec3 normal[3]{};
         MATH::Vec2 lightmapUv[3]{};
-        MATH::Vec3 diffuseReflectance{
-            1.0f, 1.0f, 1.0f
-        };
-        MATH::Vec3 emissiveRadiance{};
+        // atlas 配置で lightmapUv を変更しても、材質の UV は保持する。
+        MATH::Vec2 materialUv0[3]{};
+        MATH::Vec2 materialUv1[3]{};
+        MATH::Vec4 tangent[3]{};
+        uint32_t materialIndex = MATERIAL::kInvalidGpuMaterialIndex;
         uint64_t objectId = 0u;
         uint32_t lightmapAllocationIndex =
             ASSETS::LIGHTING::
@@ -85,6 +87,7 @@ namespace HIKARI::RENDER3D::LIGHTING::TRANSPORT {
 
     struct LightingTransportScene {
         std::vector<LightingTransportTriangle> triangles{};
+        std::vector<MATERIAL::MaterialSnapshot> materials{};
         std::vector<LightingTransportSurfaceTarget> targets{};
         std::vector<LightingTransportLight> lights{};
         LightingTransportEnvironment environment{};

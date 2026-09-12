@@ -1,4 +1,5 @@
 #include "Gfx/RayTracing/HIKARI_DxrAccelerationStructure.h"
+#include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 
 #include <algorithm>
 #include <cstring>
@@ -311,14 +312,16 @@ namespace HIKARI::GFX::RAYTRACING {
         return true;
     }
 
+    DxrTriangleAccelerationStructure::~DxrTriangleAccelerationStructure() { Reset(); }
+
     void DxrTriangleAccelerationStructure::Reset() {
-        topLevel_.Reset();
-        topScratch_.Reset();
-        bottomLevel_.Reset();
-        bottomScratch_.Reset();
-        instanceBuffer_.Reset();
-        indexBuffer_.Reset();
-        vertexBuffer_.Reset();
+        RetireD3D12ObjectForCurrentFrame(topLevel_, "DXR.TopLevel");
+        RetireD3D12ObjectForCurrentFrame(topScratch_, "DXR.TopScratch");
+        RetireD3D12ObjectForCurrentFrame(bottomLevel_, "DXR.BottomLevel");
+        RetireD3D12ObjectForCurrentFrame(bottomScratch_, "DXR.BottomScratch");
+        RetireD3D12ObjectForCurrentFrame(instanceBuffer_, "DXR.Instances");
+        RetireD3D12ObjectForCurrentFrame(indexBuffer_, "DXR.Indices");
+        RetireD3D12ObjectForCurrentFrame(vertexBuffer_, "DXR.Vertices");
     }
 
     bool DxrTriangleAccelerationStructure::IsReady() const noexcept {

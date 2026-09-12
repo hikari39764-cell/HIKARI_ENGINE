@@ -627,6 +627,8 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Material/HIKARI_MaterialTextureUsage.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Material/HIKARI_DefaultPbrResources.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Material/HIKARI_GpuMaterialProjection.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Material/HIKARI_MaterialSnapshot.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Material/HIKARI_GpuMaterialSnapshot.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Material/HIKARI_GpuMaterialRegistry.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Material/HIKARI_GpuMaterialProgramBlockStore.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Material/Program/HIKARI_MaterialProgram.cpp"

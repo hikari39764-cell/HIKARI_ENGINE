@@ -23,6 +23,11 @@ namespace HIKARI::RENDER3D::MATERIAL {
         Count,
     };
 
+    inline constexpr std::array<MaterialTextureUsage, static_cast<size_t>(GpuMaterialTextureChannel::Count)>
+        kGpuMaterialTextureUsages{MaterialTextureUsage::BaseColor, MaterialTextureUsage::Normal,
+            MaterialTextureUsage::Emissive, MaterialTextureUsage::MetallicRoughness,
+            MaterialTextureUsage::Occlusion, MaterialTextureUsage::Specular, MaterialTextureUsage::SpecularColor};
+
     struct GpuMaterialTextureProjection {
         int32_t backendHandle = -1;
         uint32_t descriptorIndex = kInvalidTextureDescriptorIndex;

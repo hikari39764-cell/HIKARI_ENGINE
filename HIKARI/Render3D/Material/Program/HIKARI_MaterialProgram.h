@@ -54,6 +54,15 @@ namespace HIKARI::RENDER3D::MATERIAL {
         uint32_t backendMask = 0u;
         uint32_t passMask = 0u;
         uint32_t requiredVertexSemanticMask = 0u;
+        // ラスタライズやフレームに依存する式は静的な光輸送へ持ち込まない。
+        bool usesTime = false;
+        bool usesView = false;
+        bool usesScreen = false;
+        bool usesDerivatives = false;
+
+        bool SupportsStaticSurfaceEvaluation() const noexcept {
+            return !usesTime && !usesView && !usesScreen && !usesDerivatives;
+        }
 
         bool Supports(MaterialProgramBackendCapability capability) const noexcept;
         bool Supports(MaterialProgramPassCapability capability) const noexcept;

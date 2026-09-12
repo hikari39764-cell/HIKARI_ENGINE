@@ -3,9 +3,12 @@
 #include <algorithm>
 #include <cstring>
 #include <utility>
+#include <d3dx12.h>
 
 #include "Gfx/HIKARI_D3DBlobCompat.h"
 #include "Gfx/HIKARI_GfxContext.h"
+#include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
+#include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
 #include "Gfx/RayTracing/HIKARI_DxrCapabilities.h"
 #include "Tools/Baking/Backends/Internal/HIKARI_DxrLightmapBakeUtilities.h"
@@ -18,12 +21,7 @@ namespace HIKARI::TOOLS::BAKING {
 
     namespace {
 
-        constexpr uint32_t kRootConstants = 0u;
-        constexpr uint32_t kRootScene = 1u;
-        constexpr uint32_t kRootTriangles = 2u;
-        constexpr uint32_t kRootTexels = 3u;
-        constexpr uint32_t kRootLights = 4u;
-        constexpr uint32_t kRootOutput = 5u;
+        using enum INTERNAL::DxrLightmapRootParameter;
 
         void SetMessage(
             std::string* outMessage,
@@ -151,6 +149,19 @@ namespace HIKARI::TOOLS::BAKING {
         if (!CreatePipeline(graphics.device, outMessage)) {
             return false;
         }
+        for (size_t i = 0; i < scene.materials.size(); ++i) {
+            if (!scene.materials[i].supportsStaticEvaluation) {
+                SetMessage(outMessage, "DXR lightmap material " + std::to_string(i) +
+                    " uses time, view, screen or derivative nodes; static surface evaluation is required.");
+                return false;
+            }
+        }
+        std::string materialError;
+        if (!materialSnapshot_.Initialize(graphics.device, scene.materials, materialError)) {
+            SetMessage(outMessage, "DXR lightmap: " + materialError);
+            Reset();
+            return false;
+        }
 
         std::vector<GFX::RAYTRACING::DxrPosition>
             positions{};
@@ -168,21 +179,18 @@ namespace HIKARI::TOOLS::BAKING {
             triangle.normal0 = ToDirection4(source.normal[0]);
             triangle.normal1 = ToDirection4(source.normal[1]);
             triangle.normal2 = ToDirection4(source.normal[2]);
-            triangle.diffuse = {
-                source.diffuseReflectance.x,
-                source.diffuseReflectance.y,
-                source.diffuseReflectance.z,
-                1.0f
-            };
-            triangle.emissive = {
-                source.emissiveRadiance.x,
-                source.emissiveRadiance.y,
-                source.emissiveRadiance.z,
-                0.0f
-            };
+            if (source.materialIndex >= scene.materials.size()) {
+                SetMessage(outMessage, "DXR transport triangle has no material snapshot.");
+                Reset();
+                return false;
+            }
+            triangle.materialIndex = source.materialIndex;
             for (uint32_t corner = 0u;
                 corner < 3u;
                 ++corner) {
+                triangle.tangent[corner] = source.tangent[corner];
+                triangle.materialUv[corner] = {source.materialUv0[corner].x, source.materialUv0[corner].y,
+                    source.materialUv1[corner].x, source.materialUv1[corner].y};
                 positions.push_back({
                     source.position[corner].x,
                     source.position[corner].y,
@@ -268,11 +276,13 @@ namespace HIKARI::TOOLS::BAKING {
         return true;
     }
 
+    DxrProgressiveLightmapBaker::~DxrProgressiveLightmapBaker() { Reset(); }
+
     void DxrProgressiveLightmapBaker::ResetTarget() {
-        readbackBuffer_.Reset();
-        outputInitializationBuffer_.Reset();
-        outputBuffer_.Reset();
-        texelBuffer_.Reset();
+        GFX::RetireD3D12ObjectForCurrentFrame(readbackBuffer_, "Lightmap.Readback");
+        GFX::RetireD3D12ObjectForCurrentFrame(outputInitializationBuffer_, "Lightmap.Initialization");
+        GFX::RetireD3D12ObjectForCurrentFrame(outputBuffer_, "Lightmap.Output");
+        GFX::RetireD3D12ObjectForCurrentFrame(texelBuffer_, "Lightmap.Texels");
         validTexels_.clear();
         texelOwnerIndices_.clear();
         atlasAllocations_.clear();
@@ -285,10 +295,11 @@ namespace HIKARI::TOOLS::BAKING {
 
     void DxrProgressiveLightmapBaker::Reset() {
         ResetTarget();
-        lightBuffer_.Reset();
-        triangleBuffer_.Reset();
-        pipelineState_.Reset();
-        rootSignature_.Reset();
+        materialSnapshot_.Reset();
+        GFX::RetireD3D12ObjectForCurrentFrame(lightBuffer_, "Lightmap.Lights");
+        GFX::RetireD3D12ObjectForCurrentFrame(triangleBuffer_, "Lightmap.Triangles");
+        GFX::RetireD3D12ObjectForCurrentFrame(pipelineState_, "Lightmap.Pipeline");
+        GFX::RetireD3D12ObjectForCurrentFrame(rootSignature_, "Lightmap.RootSignature");
         accelerationStructure_.Reset();
         environment_ = {};
         triangleCount_ = 0u;
@@ -300,7 +311,7 @@ namespace HIKARI::TOOLS::BAKING {
         ID3D12Device* device,
         std::string* outMessage) {
 
-        D3D12_ROOT_PARAMETER parameters[6]{};
+        D3D12_ROOT_PARAMETER parameters[kRootParameterCount]{};
         parameters[kRootConstants].ParameterType =
             D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
         parameters[kRootConstants].Constants.ShaderRegister = 0u;
@@ -318,11 +329,25 @@ namespace HIKARI::TOOLS::BAKING {
         parameters[kRootOutput].ParameterType =
             D3D12_ROOT_PARAMETER_TYPE_UAV;
         parameters[kRootOutput].Descriptor.ShaderRegister = 0u;
+        parameters[kRootMaterials].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
+        parameters[kRootMaterials].Descriptor.ShaderRegister = 16;
+        parameters[kRootParameters].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
+        parameters[kRootParameters].Descriptor = {0, 6};
+        parameters[kRootResources].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
+        parameters[kRootResources].Descriptor = {1, 6};
+        const CD3DX12_DESCRIPTOR_RANGE textures(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
+            GFX::DESCRIPTOR::kUserSrvCount, 20);
+        parameters[kRootTextures].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        parameters[kRootTextures].DescriptorTable = {1, &textures};
+        const CD3DX12_STATIC_SAMPLER_DESC sampler(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR,
+            D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP);
 
         D3D12_ROOT_SIGNATURE_DESC rootDescription{};
         rootDescription.NumParameters =
             static_cast<UINT>(std::size(parameters));
         rootDescription.pParameters = parameters;
+        rootDescription.NumStaticSamplers = 1;
+        rootDescription.pStaticSamplers = &sampler;
 
         Microsoft::WRL::ComPtr<ID3DBlob> signature{};
         Microsoft::WRL::ComPtr<ID3DBlob> errors{};

@@ -21,6 +21,7 @@ namespace HIKARI::GFX::RAYTRACING {
 
     class DxrTriangleAccelerationStructure final {
     public:
+        ~DxrTriangleAccelerationStructure();
         bool Build(
             const Context& graphics,
             const std::vector<DxrPosition>& positions,

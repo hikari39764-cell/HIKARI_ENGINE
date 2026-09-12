@@ -14,12 +14,7 @@ namespace HIKARI::TOOLS::BAKING {
 
     namespace {
 
-        constexpr uint32_t kRootConstants = 0u;
-        constexpr uint32_t kRootScene = 1u;
-        constexpr uint32_t kRootTriangles = 2u;
-        constexpr uint32_t kRootTexels = 3u;
-        constexpr uint32_t kRootLights = 4u;
-        constexpr uint32_t kRootOutput = 5u;
+        using enum INTERNAL::DxrLightmapRootParameter;
 
         void SetMessage(
             std::string* outMessage,
@@ -151,6 +146,8 @@ namespace HIKARI::TOOLS::BAKING {
             return false;
         }
 
+        ID3D12DescriptorHeap* heaps[]{materialSnapshot_.GetTextureHeap()};
+        graphics.cmdList->SetDescriptorHeaps(1, heaps);
         graphics.cmdList->SetComputeRootSignature(
             rootSignature_.Get());
         graphics.cmdList->SetPipelineState(
@@ -171,6 +168,10 @@ namespace HIKARI::TOOLS::BAKING {
         graphics.cmdList->SetComputeRootUnorderedAccessView(
             kRootOutput,
             outputBuffer_->GetGPUVirtualAddress());
+        graphics.cmdList->SetComputeRootShaderResourceView(kRootMaterials, materialSnapshot_.GetMaterialAddress());
+        graphics.cmdList->SetComputeRootShaderResourceView(kRootParameters, materialSnapshot_.GetParameterAddress());
+        graphics.cmdList->SetComputeRootShaderResourceView(kRootResources, materialSnapshot_.GetResourceAddress());
+        graphics.cmdList->SetComputeRootDescriptorTable(kRootTextures, heaps[0]->GetGPUDescriptorHandleForHeapStart());
 
         const uint32_t sampleEnd = (std::min)(
             status_.requestedSamples,
@@ -216,6 +217,9 @@ namespace HIKARI::TOOLS::BAKING {
                 &uavBarrier);
             ++status_.completedSamples;
         }
+        // 後続の Editor 描画は通常の texture heap と自身の root table を再バインドする。
+        if (auto* textureHeap = RENDER3D::GetTextureResourceSrvHeap())
+            graphics.cmdList->SetDescriptorHeaps(1, &textureHeap);
         return true;
     }
 

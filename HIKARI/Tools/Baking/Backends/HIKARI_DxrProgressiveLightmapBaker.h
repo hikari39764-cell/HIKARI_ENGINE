@@ -10,6 +10,7 @@
 #include <wrl/client.h>
 
 #include "Gfx/RayTracing/HIKARI_DxrAccelerationStructure.h"
+#include "Render3D/Material/HIKARI_GpuMaterialSnapshot.h"
 #include "Render3D/Lighting/Transport/HIKARI_LightingTransportContract.h"
 #include "Render3D/Lighting/Transport/HIKARI_LightingTransportScene.h"
 
@@ -39,6 +40,7 @@ namespace HIKARI::TOOLS::BAKING {
 
     class DxrProgressiveLightmapBaker final {
     public:
+        ~DxrProgressiveLightmapBaker();
         RENDER3D::LIGHTING::TRANSPORT::
             LightingTransportBackendCapabilities
             GetCapabilities(
@@ -97,6 +99,7 @@ namespace HIKARI::TOOLS::BAKING {
 
         GFX::RAYTRACING::DxrTriangleAccelerationStructure
             accelerationStructure_{};
+        RENDER3D::MATERIAL::GpuMaterialSnapshot materialSnapshot_{};
         Microsoft::WRL::ComPtr<ID3D12RootSignature>
             rootSignature_{};
         Microsoft::WRL::ComPtr<ID3D12PipelineState>

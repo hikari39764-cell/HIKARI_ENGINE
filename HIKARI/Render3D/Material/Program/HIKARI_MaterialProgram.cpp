@@ -84,6 +84,19 @@ namespace HIKARI::RENDER3D::MATERIAL {
     MaterialProgramRuntimeCapabilities BuildMaterialProgramRuntimeCapabilities(
         const MaterialProgramIR& program) noexcept {
         MaterialProgramRuntimeCapabilities result{};
+        for (const auto& instruction : program.instructions) {
+            switch (instruction.opcode) {
+            case MaterialNodeKind::Time: result.usesTime = true; break;
+            case MaterialNodeKind::ViewDirection:
+            case MaterialNodeKind::CameraPosition:
+            case MaterialNodeKind::Fresnel: result.usesView = true; break;
+            case MaterialNodeKind::ScreenPosition: result.usesScreen = true; break;
+            case MaterialNodeKind::DerivativeX:
+            case MaterialNodeKind::DerivativeY:
+            case MaterialNodeKind::FilterWidth: result.usesDerivatives = true; break;
+            default: break;
+            }
+        }
         result.materialCapabilityMask = program.capabilities;
         result.backendMask =
             MaterialProgramCapabilityBit(MaterialProgramBackendCapability::StaticVsPs) |

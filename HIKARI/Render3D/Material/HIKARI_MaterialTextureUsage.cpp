@@ -68,4 +68,8 @@ namespace HIKARI {
         return texture.resolvedPath.empty() ? texture.sourcePath : texture.resolvedPath;
     }
 
+    const std::string& GetMaterialTextureRuntimePath(const RuntimeTextureSlot& texture) {
+        return texture.resolvedPath.empty() ? texture.sourcePath : texture.resolvedPath;
+    }
+
 } // namespace HIKARI

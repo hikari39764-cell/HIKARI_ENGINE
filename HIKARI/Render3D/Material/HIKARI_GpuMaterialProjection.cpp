@@ -130,27 +130,8 @@ namespace HIKARI::RENDER3D::MATERIAL {
 
     GpuMaterialProjection BuildRuntimeMaterialGpuProjection(const Material& material) {
         GpuMaterialProjection result{BuildMaterialFactorProjection(nullptr, &material)};
-        Texture(result, GpuMaterialTextureChannel::BaseColor) =
-            ProjectTexture(material.GetTextureSlot(
-                MaterialTextureUsage::BaseColor));
-        Texture(result, GpuMaterialTextureChannel::Normal) =
-            ProjectTexture(material.GetTextureSlot(
-                MaterialTextureUsage::Normal));
-        Texture(result, GpuMaterialTextureChannel::Emissive) =
-            ProjectTexture(material.GetTextureSlot(
-                MaterialTextureUsage::Emissive));
-        Texture(result, GpuMaterialTextureChannel::MetallicRoughness) =
-            ProjectTexture(material.GetTextureSlot(
-                MaterialTextureUsage::MetallicRoughness));
-        Texture(result, GpuMaterialTextureChannel::Occlusion) =
-            ProjectTexture(material.GetTextureSlot(
-                MaterialTextureUsage::Occlusion));
-        Texture(result, GpuMaterialTextureChannel::Specular) =
-            ProjectTexture(material.GetTextureSlot(
-                MaterialTextureUsage::Specular));
-        Texture(result, GpuMaterialTextureChannel::SpecularColor) =
-            ProjectTexture(material.GetTextureSlot(
-                MaterialTextureUsage::SpecularColor));
+        for (size_t i = 0; i < kGpuMaterialTextureUsages.size(); ++i)
+            result.textures[i] = ProjectTexture(material.GetTextureSlot(kGpuMaterialTextureUsages[i]));
         return result;
     }
 

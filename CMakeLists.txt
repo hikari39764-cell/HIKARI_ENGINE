@@ -548,6 +548,15 @@ target_link_libraries(HIKARI_TextureComputeGpuContracts PRIVATE d3dcompiler)
 add_test(NAME HIKARI_TextureComputeGpuContracts COMMAND "$<TARGET_FILE:HIKARI_TextureComputeGpuContracts>")
 set_tests_properties(HIKARI_TextureComputeGpuContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
 
+hikari_add_runtime_contract(HIKARI_MaterialSnapshotGpuContracts "Tools/Tests/HIKARI_MaterialSnapshotGpuContracts.cpp")
+target_include_directories(HIKARI_MaterialSnapshotGpuContracts PRIVATE "${HIKARI_SOURCE_ROOT}/ThirdParty/DirectXTex/Common")
+add_test(NAME HIKARI_MaterialSnapshotGpuContracts COMMAND "$<TARGET_FILE:HIKARI_MaterialSnapshotGpuContracts>")
+set_tests_properties(HIKARI_MaterialSnapshotGpuContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 60)
+
+hikari_add_runtime_contract(HIKARI_DxrLightmapGpuContracts "Tools/Tests/HIKARI_DxrLightmapGpuContracts.cpp")
+add_test(NAME HIKARI_DxrLightmapGpuContracts COMMAND "$<TARGET_FILE:HIKARI_DxrLightmapGpuContracts>")
+set_tests_properties(HIKARI_DxrLightmapGpuContracts PROPERTIES LABELS "RuntimeContracts;HardwareGpu" TIMEOUT 60 SKIP_RETURN_CODE 77)
+
 hikari_add_runtime_contract(HIKARI_SsrReconstructionContracts "Tools/Tests/HIKARI_SsrReconstructionContracts.cpp")
 target_include_directories(HIKARI_SsrReconstructionContracts PRIVATE "${HIKARI_SOURCE_ROOT}/ThirdParty/DirectXTex/Common")
 target_compile_definitions(HIKARI_SsrReconstructionContracts PRIVATE HIKARI_CONTRACT_SOURCE_ROOT="${HIKARI_SOURCE_ROOT}")

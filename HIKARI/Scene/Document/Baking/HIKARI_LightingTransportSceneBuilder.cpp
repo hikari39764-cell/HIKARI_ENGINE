@@ -13,6 +13,7 @@
 #include "Assets/Lighting/HIKARI_LightmapAtlasLayout.h"
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Core/Math/HIKARI_NormalMatrix.h"
+#include "Core/Math/HIKARI_TangentFrame.h"
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Render3D/Material/HIKARI_GpuMaterialProjection.h"
 #include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
@@ -27,6 +28,9 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
         RENDER3D::LIGHTING::TRANSPORT;
 
     namespace {
+
+        using MaterialSnapshotIndices = std::unordered_map<const MaterialAsset*,
+            std::unordered_map<const Material*, uint32_t>>;
 
         struct ObjectBakePolicy {
             std::string name{};
@@ -129,6 +133,7 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
             AppendSurfaceTriangles(
             const RENDER3D::RUNTIME::SceneSurfaceInstance& surface,
             TRANSPORT::LightingTransportScene& scene,
+            MaterialSnapshotIndices& materialIndices,
             PendingLightmapSurface& pendingSurface) {
 
             if (surface.model == nullptr ||
@@ -186,11 +191,6 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
 
             const MaterialAsset* material = surface.materialIndex < surface.model->materials.size()
                 ? &surface.model->materials[surface.materialIndex] : nullptr;
-            const auto factors = RENDER3D::MATERIAL::BuildMaterialFactorProjection(material, surface.materialOverride);
-            const float diffuseWeight = 1.0f - std::clamp(factors.pbrParams.x, 0.0f, 1.0f);
-            const MATH::Vec3 diffuse = MATH::Vec3{factors.baseColor.x, factors.baseColor.y, factors.baseColor.z} * diffuseWeight;
-            const MATH::Vec3 emissive = MATH::Vec3{factors.emissiveFactor.x, factors.emissiveFactor.y,
-                factors.emissiveFactor.z} * factors.emissiveFactor.w;
             const AlphaMode alphaMode = RENDER3D::MATERIAL::ResolveMaterialAlphaMode(material, surface.materialOverride);
             const ASSETS::LIGHTING::LightmapSurfaceAnalysis
                 analysis =
@@ -223,6 +223,11 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
             const MATH::Mat4 normalMatrix =
                 MATH::BuildNormalMatrixFromWorld(
                     surface.drawWorldMatrix);
+            auto& overrides = materialIndices[material];
+            const auto [binding, inserted] = overrides.try_emplace(surface.materialOverride,
+                static_cast<uint32_t>(scene.materials.size()));
+            if (inserted) scene.materials.push_back(RENDER3D::MATERIAL::CaptureMaterialSnapshot(
+                surface.model, material, surface.materialOverride));
             for (size_t index = 0;
                 index + 2u < primitive.indices.size();
                 index += 3u) {
@@ -239,8 +244,7 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
 
                 TRANSPORT::LightingTransportTriangle triangle{};
                 triangle.objectId = surface.objectId.value;
-                triangle.diffuseReflectance = diffuse;
-                triangle.emissiveRadiance = emissive;
+                triangle.materialIndex = binding->second;
                 for (uint32_t corner = 0u;
                     corner < 3u;
                     ++corner) {
@@ -257,6 +261,9 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
                             vertex.normal);
                     triangle.lightmapUv[corner] =
                         vertex.uv1;
+                    triangle.materialUv0[corner] = vertex.uv0;
+                    triangle.materialUv1[corner] = vertex.uv1;
+                    triangle.tangent[corner] = MATH::TransformSurfaceTangent(surface.drawWorldMatrix, vertex.tangent);
                 }
                 const uint32_t triangleIndex =
                     static_cast<uint32_t>(
@@ -603,6 +610,7 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
         }
 
         const auto policies = BuildObjectPolicies(document);
+        MaterialSnapshotIndices materialIndices{};
         std::unordered_map<uint64_t, size_t> targetByObject{};
         std::vector<std::vector<PendingLightmapSurface>>
             pendingSurfacesByTarget{};
@@ -654,6 +662,7 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
                     AppendSurfaceTriangles(
                         surface,
                         scene,
+                        materialIndices,
                         pendingSurface);
             AccumulateSurfaceAnalysis(
                 target,

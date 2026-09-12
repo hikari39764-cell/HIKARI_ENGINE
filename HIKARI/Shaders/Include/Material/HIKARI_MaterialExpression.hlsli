@@ -371,9 +371,11 @@ HikariMaterialExpressionResult HikariEvaluateMaterialExpression(
         else if (opcode == HIKARI_EXPRESSION_VIEW_DIRECTION) value = float4(context.viewDirection, 0.0f);
         else if (opcode == HIKARI_EXPRESSION_CAMERA_POSITION) value = float4(context.cameraPosition, 0.0f);
         else if (opcode == HIKARI_EXPRESSION_SCREEN_POSITION) value = context.screenPosition;
+#if !defined(HIKARI_MATERIAL_EXPLICIT_LOD)
         else if (opcode == HIKARI_EXPRESSION_DERIVATIVE_X) value = ddx(a);
         else if (opcode == HIKARI_EXPRESSION_DERIVATIVE_Y) value = ddy(a);
         else if (opcode == HIKARI_EXPRESSION_FILTER_WIDTH) value = fwidth(a);
+#endif
         else if (opcode == HIKARI_EXPRESSION_ATAN2)
             value = float4(atan2(a.x, b.x), 0.0f, 0.0f, 0.0f);
         else if (opcode == HIKARI_EXPRESSION_EXP) value = exp(a);

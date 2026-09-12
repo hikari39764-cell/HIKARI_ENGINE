@@ -231,7 +231,12 @@ float4 HikariSampleMaterialTexture(
         return fallbackValue;
     }
 
+#if defined(HIKARI_MATERIAL_EXPLICIT_LOD)
+    // Compute / ray query には raster derivative がない。オフライン表面は原解像度を使用する。
+    return gMaterialTexturePool[NonUniformResourceIndex(descriptorIndex)].SampleLevel(samplerState, uv, HIKARI_MATERIAL_EXPLICIT_LOD);
+#else
     return gMaterialTexturePool[NonUniformResourceIndex(descriptorIndex)].Sample(samplerState, uv);
+#endif
 }
 
 float4 HikariSampleMaterialTextureGrad(

@@ -1,4 +1,5 @@
 #include "../Include/Lighting/HIKARI_LocalLightContract.hlsli"
+#include "../Include/Lighting/HIKARI_LightingTransportMaterial.hlsli"
 
 struct TransportTriangle
 {
@@ -8,8 +9,10 @@ struct TransportTriangle
     float4 normal0;
     float4 normal1;
     float4 normal2;
-    float4 diffuse;
-    float4 emissive;
+    float4 tangent[3];
+    float4 materialUv[3];
+    uint materialIndex;
+    uint3 padding;
 };
 
 struct TransportTexel
@@ -49,6 +52,7 @@ StructuredBuffer<TransportTriangle> gTriangles : register(t1);
 StructuredBuffer<TransportTexel> gTexels : register(t2);
 StructuredBuffer<TransportLight> gLights : register(t3);
 RWStructuredBuffer<float4> gOutput : register(u0);
+SamplerState gMaterialSampler : register(s0);
 
 static const float HIKARI_PI = 3.14159265359f;
 static const float HIKARI_FLOAT_MAX = 3.402823e+38f;
@@ -180,6 +184,7 @@ bool TraceAny(float3 origin, float3 direction, float maximumDistance)
 bool EvaluateDirect(
     float3 position,
     float3 normal,
+    float3 geometricNormal,
     out float3 result)
 {
     result = 0.0f.xxx;
@@ -252,9 +257,9 @@ bool EvaluateDirect(
             return false;
         }
         float ndotl = saturate(dot(normal, directionToLight));
-        if (ndotl <= 0.0f ||
+        if (ndotl <= 0.0f || dot(geometricNormal, directionToLight) <= 0.0f ||
             TraceAny(
-                position + normal * 0.002f,
+                position + geometricNormal * 0.002f,
                 directionToLight,
                 max(distanceToLight - 0.003f, 0.001f)))
         {
@@ -278,12 +283,14 @@ bool TraceSurface(
     float3 direction,
     out float3 position,
     out float3 normal,
+    out float3 geometricNormal,
     out float3 diffuse,
     out float3 emissive,
     out bool surfaceValid)
 {
     position = 0.0f.xxx;
     normal = 0.0f.xxx;
+    geometricNormal = 0.0f.xxx;
     diffuse = 0.0f.xxx;
     emissive = 0.0f.xxx;
     surfaceValid = true;
@@ -325,38 +332,40 @@ bool TraceSurface(
         surfaceTriangle.normal0.xyz * barycentricWeights.x +
         surfaceTriangle.normal1.xyz * barycentricWeights.y +
         surfaceTriangle.normal2.xyz * barycentricWeights.z;
+    const float3 edge01 = surfaceTriangle.position1.xyz - surfaceTriangle.position0.xyz;
+    const float3 edge02 = surfaceTriangle.position2.xyz - surfaceTriangle.position0.xyz;
+    if (!TryNormalizeVector(cross(edge01, edge02), geometricNormal))
+    {
+        surfaceValid = false;
+        return false;
+    }
+    if (dot(geometricNormal, direction) > 0.0f) geometricNormal = -geometricNormal;
     if (!TryNormalizeVector(
             interpolatedNormal,
             normal))
     {
-        const float3 edge01 =
-            surfaceTriangle.position1.xyz -
-            surfaceTriangle.position0.xyz;
-        const float3 edge02 =
-            surfaceTriangle.position2.xyz -
-            surfaceTriangle.position0.xyz;
-        if (!TryNormalizeVector(
-                cross(edge01, edge02),
-                normal))
-        {
-            surfaceValid = false;
-            return false;
-        }
+        normal = geometricNormal;
     }
     if (dot(normal, direction) > 0.0f)
     {
         normal = -normal;
     }
+    const float4 uv = surfaceTriangle.materialUv[0] * barycentricWeights.x +
+        surfaceTriangle.materialUv[1] * barycentricWeights.y + surfaceTriangle.materialUv[2] * barycentricWeights.z;
+    const float4 tangent = surfaceTriangle.tangent[0] * barycentricWeights.x +
+        surfaceTriangle.tangent[1] * barycentricWeights.y + surfaceTriangle.tangent[2] * barycentricWeights.z;
+    const HikariLightingTransportMaterial material = HikariEvaluateLightingTransportMaterial(
+        surfaceTriangle.materialIndex, uv.xy, uv.zw, position, normal, tangent, gMaterialSampler);
     if (!IsFiniteFloat3(position) ||
-        !IsValidRadiance(surfaceTriangle.diffuse.rgb) ||
-        !IsValidRadiance(surfaceTriangle.emissive.rgb))
+        !IsValidRadiance(material.diffuse) ||
+        !IsValidRadiance(material.emissive) ||
+        !TryNormalizeVector(material.normal, normal))
     {
         surfaceValid = false;
         return false;
     }
-    diffuse = saturate(
-        surfaceTriangle.diffuse.rgb);
-    emissive = surfaceTriangle.emissive.rgb;
+    diffuse = material.diffuse;
+    emissive = material.emissive;
     return true;
 }
 
@@ -397,6 +406,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     float3 radiance = 0.0f.xxx;
     float3 throughput = 1.0f.xxx;
     bool sampleValid = true;
+    float3 geometricNormal = normal;
 
     [loop]
     for (uint bounce = 0u; bounce < gBounceCount; ++bounce)
@@ -412,14 +422,17 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
         }
         float3 hitPosition;
         float3 hitNormal;
+        float3 hitGeometricNormal;
+        if (dot(direction, geometricNormal) <= 0.0f) break;
         float3 hitDiffuse;
         float3 hitEmissive;
         bool surfaceValid;
         const bool hit = TraceSurface(
-                position + normal * 0.002f,
+                position + geometricNormal * 0.002f,
                 direction,
                 hitPosition,
                 hitNormal,
+                hitGeometricNormal,
                 hitDiffuse,
                 hitEmissive,
                 surfaceValid);
@@ -449,6 +462,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
             !EvaluateDirect(
                 hitPosition,
                 hitNormal,
+                hitGeometricNormal,
                 directRadiance))
         {
             sampleValid = false;
@@ -457,6 +471,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
         radiance += throughput * directRadiance;
         position = hitPosition;
         normal = hitNormal;
+        geometricNormal = hitGeometricNormal;
 
         if (bounce >= 1u)
         {

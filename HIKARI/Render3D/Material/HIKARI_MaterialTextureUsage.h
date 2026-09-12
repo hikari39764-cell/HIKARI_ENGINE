@@ -35,5 +35,6 @@ namespace HIKARI {
     // nullptr はモデル継承。無効 slot の非 nullptr は、継承を明示的に止める。
     const RuntimeTextureSlot* ResolveMaterialTextureOverride(const Material* material, MaterialTextureUsage usage);
     const std::string& GetMaterialTextureRuntimePath(const TextureAsset3D& texture);
+    const std::string& GetMaterialTextureRuntimePath(const RuntimeTextureSlot& texture);
 
 } // namespace HIKARI
