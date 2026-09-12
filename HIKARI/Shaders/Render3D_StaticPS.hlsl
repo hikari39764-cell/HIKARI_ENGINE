@@ -371,9 +371,13 @@ float4 main(PSInput input) : SV_TARGET
     }
     else
     {
-        ResolvePbrInputs(materialData, input.uv, input.uv1, metallic, roughness, occlusion);
-        ResolveSpecularInputs(materialData, input.uv, input.uv1, specularColor, specularFactor);
-        ApplyPbrMaterialCompatibility(materialData, roughness, specularColor, specularFactor);
+        const HikariMaterialPbrInputs pbrInputs = HikariResolveMaterialPbrInputs(
+            materialData, input.uv, input.uv1, gLinearWrap);
+        metallic = pbrInputs.metallic;
+        roughness = pbrInputs.roughness;
+        occlusion = pbrInputs.occlusion;
+        specularColor = pbrInputs.specularColor;
+        specularFactor = pbrInputs.specularFactor;
     }
     if ((materialExpression.outputMask &
          HIKARI_EXPRESSION_OUTPUT_METALLIC) != 0u)
@@ -432,7 +436,7 @@ float4 main(PSInput input) : SV_TARGET
     float3 emissive = (!neutralClay &&
         !costNoMaterialExtras &&
         (materialData.materialFlags & MATERIAL_EMISSIVE) != 0)
-        ? ResolveEmissive(materialData, input.uv, input.uv1)
+        ? HikariResolveMaterialEmissive(materialData, input.uv, input.uv1, gLinearWrap)
         : 0.0f.xxx;
     if ((materialExpression.outputMask &
          HIKARI_EXPRESSION_OUTPUT_EMISSIVE) != 0u)

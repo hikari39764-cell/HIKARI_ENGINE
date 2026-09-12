@@ -41,11 +41,11 @@ cbuffer CameraCB : register(b0)
 #define gFxUser pixelObjectData.fxUser
 #endif
 
-static const uint MATERIAL_UNLIT = 1u << 0;
-static const uint MATERIAL_ALPHA_MASK = 1u << 1;
-static const uint MATERIAL_EMISSIVE = 1u << 2;
-static const uint MATERIAL_ALPHA_BLEND = 1u << 3;
-static const uint MATERIAL_SPECULAR_GLOSS_COMPAT = 1u << 4;
+static const uint MATERIAL_UNLIT = HIKARI_MATERIAL_FLAG_UNLIT;
+static const uint MATERIAL_ALPHA_MASK = HIKARI_MATERIAL_FLAG_ALPHA_MASK;
+static const uint MATERIAL_EMISSIVE = HIKARI_MATERIAL_FLAG_EMISSIVE;
+static const uint MATERIAL_ALPHA_BLEND = HIKARI_MATERIAL_FLAG_ALPHA_BLEND;
+static const uint MATERIAL_SPECULAR_GLOSS_COMPAT = HIKARI_MATERIAL_FLAG_LEGACY_SPECULAR;
 
 #ifndef HIKARI_USE_COOK_TORRANCE_PBR
 #define HIKARI_USE_COOK_TORRANCE_PBR 1

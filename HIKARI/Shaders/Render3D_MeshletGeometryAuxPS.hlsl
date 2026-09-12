@@ -5,6 +5,7 @@
 #include "Include/Forward/HIKARI_SurfaceFeatureCoverage.hlsli"
 #include "Include/Surface/HIKARI_SceneSurfaceContract.hlsli"
 #include "Include/HIKARI_PbrCommon.hlsli"
+#include "Include/Material/HIKARI_MaterialPbrInputs.hlsli"
 #include "Include/Surface/HIKARI_SurfaceShadingNormal.hlsli"
 #include "Include/Surface/HIKARI_SandSurfaceParams.hlsli"
 #include "Include/Surface/HIKARI_SandSurfaceNormal.hlsli"
@@ -13,7 +14,7 @@
 #include "Include/Features/HIKARI_StylizedFeatureMask.hlsli"
 #endif
 
-static const uint MATERIAL_ALPHA_MASK = 1u << 1;
+static const uint MATERIAL_ALPHA_MASK = HIKARI_MATERIAL_FLAG_ALPHA_MASK;
 
 SamplerState gLinearWrap : register(s0);
 SamplerState gLinearClamp : register(s2);
@@ -88,28 +89,10 @@ float4 main(PSInput input) : SV_TARGET
             input.uv1);
     }
 
-    float roughness = clamp(materialData.pbrParams.y, 0.04f, 1.0f);
-    float metallic = saturate(materialData.pbrParams.x);
-    if (materialData.hasMetallicRoughnessTexture != 0)
-    {
-        const float2 metallicRoughnessUv =
-            HikariResolveMaterialUv(
-                materialData,
-                HIKARI_MATERIAL_UV_METALLIC_ROUGHNESS,
-                input.uv,
-                input.uv1);
-        const float4 metallicRoughness =
-            HikariSampleMaterialTexture(
-                    materialData.metallicRoughnessTextureDescriptorIndex,
-                    gLinearWrap,
-                    metallicRoughnessUv,
-                    float4(1.0f, 1.0f, 1.0f, 1.0f));
-        roughness = clamp(
-            roughness * metallicRoughness.g,
-            0.04f,
-            1.0f);
-        metallic = saturate(metallic * metallicRoughness.b);
-    }
+    const HikariMaterialPbrInputs pbrInputs = HikariResolveMaterialPbrInputs(
+        materialData, input.uv, input.uv1, gLinearWrap);
+    float roughness = pbrInputs.roughness;
+    const float metallic = pbrInputs.metallic;
 
     const float3 geometricNormal =
         (materialData.instanceFlags & HIKARI_PROGRAM_FLAG_DOUBLE_SIDED) != 0u && !input.isFrontFace

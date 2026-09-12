@@ -3,6 +3,13 @@
 
 #include "Include/Contracts/HIKARI_ShaderResourceBindings.hlsli"
 
+// C++ MATERIAL_FEATURES の wire bits。描画パスごとに再定義しない。
+static const uint HIKARI_MATERIAL_FLAG_UNLIT = 1u << 0u;
+static const uint HIKARI_MATERIAL_FLAG_ALPHA_MASK = 1u << 1u;
+static const uint HIKARI_MATERIAL_FLAG_EMISSIVE = 1u << 2u;
+static const uint HIKARI_MATERIAL_FLAG_ALPHA_BLEND = 1u << 3u;
+static const uint HIKARI_MATERIAL_FLAG_LEGACY_SPECULAR = 1u << 4u;
+
 // Keep this layout in sync with C++ MaterialGpuData.
 struct HikariMeshMaterialData
 {
