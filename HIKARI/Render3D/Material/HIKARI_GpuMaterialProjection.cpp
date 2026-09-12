@@ -165,27 +165,14 @@ namespace HIKARI::RENDER3D::MATERIAL {
             outTexture.uvRotation = slot.uvRotation;
             outTexture.uvSet = static_cast<uint32_t>(std::clamp(slot.texCoord, 0, 1));
         };
-        if (runtimeMaterial != nullptr) {
-            const RuntimeTextureSlot& slot = runtimeMaterial->GetTextureSlot(usage);
-            if (!runtimeMaterial->InheritsModelTextures() || slot.enabled) {
-                apply(slot);
-                return;
-            }
+        if (const auto* slot = ResolveMaterialTextureOverride(runtimeMaterial, usage)) {
+            apply(*slot);
+            return;
         }
         outTexture.uvTransform = {1.0f, 1.0f, 0.0f, 0.0f};
         outTexture.uvRotation = 0.0f;
         outTexture.uvSet = 0u;
-        if (modelMaterial == nullptr) return;
-        switch (usage) {
-        case MaterialTextureUsage::BaseColor: apply(modelMaterial->baseColorTexture); break;
-        case MaterialTextureUsage::Normal: apply(modelMaterial->normalTexture); break;
-        case MaterialTextureUsage::Emissive: apply(modelMaterial->emissiveTexture); break;
-        case MaterialTextureUsage::MetallicRoughness: apply(modelMaterial->metallicRoughnessTexture); break;
-        case MaterialTextureUsage::Occlusion: apply(modelMaterial->occlusionTexture); break;
-        case MaterialTextureUsage::Specular: apply(modelMaterial->specularTexture); break;
-        case MaterialTextureUsage::SpecularColor: apply(modelMaterial->specularColorTexture); break;
-        default: break;
-        }
+        if (const auto* slot = GetModelMaterialTextureSlot(modelMaterial, usage)) apply(*slot);
     }
 
     GpuMaterialData PackGpuMaterialData(

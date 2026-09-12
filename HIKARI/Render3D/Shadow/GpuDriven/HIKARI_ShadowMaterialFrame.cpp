@@ -22,18 +22,14 @@ namespace HIKARI::SHADOW::INTERNAL {
     }
 
     RENDER3D::TextureResourceHandle ResolvePrimitiveTextureResource(const ModelAsset& asset, const MaterialAsset* materialAsset) {
-        if (materialAsset == nullptr ||
-            materialAsset->baseColorTexture.textureIndex < 0 ||
-            materialAsset->baseColorTexture.textureIndex >= static_cast<int>(asset.textures.size())) {
+        const TextureSlot* slot = GetModelMaterialTextureSlot(materialAsset, MaterialTextureUsage::BaseColor);
+        if (slot == nullptr || slot->textureIndex < 0 ||
+            static_cast<size_t>(slot->textureIndex) >= asset.textures.size()) {
             return gShadowRendererState.fallbackTextureResource;
         }
-
-        const TextureAsset3D& texture = asset.textures[static_cast<size_t>(materialAsset->baseColorTexture.textureIndex)];
-        if (texture.sourcePath.empty()) {
-            return gShadowRendererState.fallbackTextureResource;
-        }
-
-        const std::string cacheKey = "shadow:base:" + texture.sourcePath;
+        const auto& texturePath = GetMaterialTextureRuntimePath(asset.textures[static_cast<size_t>(slot->textureIndex)]);
+        if (texturePath.empty()) return gShadowRendererState.fallbackTextureResource;
+        const std::string cacheKey = "shadow:base:" + texturePath;
         auto found = gShadowRendererState.materialTextureCache.find(cacheKey);
         if (found != gShadowRendererState.materialTextureCache.end() &&
             RENDER3D::IsTextureResourceValid(found->second)) {
@@ -41,7 +37,8 @@ namespace HIKARI::SHADOW::INTERNAL {
         }
 
         RENDER3D::TextureResourceHandle resource =
-            RENDER3D::LoadTextureResourceSrgb(cacheKey, texture.sourcePath);
+            RENDER3D::LoadTextureResourceWithColorSpace(cacheKey, texturePath,
+                MaterialTextureColorSpace(MaterialTextureUsage::BaseColor));
         gShadowRendererState.materialTextureCache[cacheKey] = resource;
         return RENDER3D::IsTextureResourceValid(resource) ? resource : gShadowRendererState.fallbackTextureResource;
     }
@@ -118,18 +115,13 @@ namespace HIKARI::SHADOW::INTERNAL {
         using namespace RENDER3D::MATERIAL;
         const MaterialAsset* materialAsset = source.model != nullptr
             ? GetPrimitiveMaterial(*source.model, source.materialIndex) : nullptr;
-        const RENDER3D::TextureResourceHandle baseColorTexture = source.model != nullptr
-            ? ResolvePrimitiveTextureResource(*source.model, materialAsset)
-            : gShadowRendererState.fallbackTextureResource;
-
         GpuMaterialProjection projection{BuildMaterialFactorProjection(materialAsset, source.materialOverride)};
-        int baseColorHandle = RENDER3D::GetTextureResourceBackendHandle(baseColorTexture);
-        if (source.materialOverride != nullptr) {
-            if (!source.materialOverride->InheritsModelTextures())
-                baseColorHandle = gShadowRendererState.fallbackTextureHandle;
-            const RuntimeTextureSlot& slot =
-                source.materialOverride->GetTextureSlot(MaterialTextureUsage::BaseColor);
-            if (slot.enabled) baseColorHandle = slot.ResolveBackendHandle();
+        int baseColorHandle = gShadowRendererState.fallbackTextureHandle;
+        if (const auto* slot = ResolveMaterialTextureOverride(source.materialOverride, MaterialTextureUsage::BaseColor)) {
+            if (slot->enabled) baseColorHandle = slot->ResolveBackendHandle();
+        } else if (source.model != nullptr) {
+            baseColorHandle = RENDER3D::GetTextureResourceBackendHandle(
+                ResolvePrimitiveTextureResource(*source.model, materialAsset));
         }
         if (baseColorHandle < 0) baseColorHandle = gShadowRendererState.fallbackTextureHandle;
         auto& baseColor = projection.textures[static_cast<size_t>(GpuMaterialTextureChannel::BaseColor)];

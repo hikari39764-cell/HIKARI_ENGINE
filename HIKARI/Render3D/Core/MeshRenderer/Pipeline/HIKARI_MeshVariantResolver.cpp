@@ -3,6 +3,7 @@
 #include <utility>
 
 #include "Render3D/Core/HIKARI_Material.h"
+#include "Render3D/Material/HIKARI_GpuMaterialProjection.h"
 #include "Assets/Models/HIKARI_ModelAsset.h"
 
 namespace HIKARI::MESHRENDERER {
@@ -90,11 +91,8 @@ namespace HIKARI::MESHRENDERER {
         const MaterialAsset* materialAsset,
         const MeshPrimitive* primitiveAsset) {
         VFX::VariantKey variant = item.variant;
-        const bool materialAlphaBlend = item.materialOverride != nullptr
-            ? item.materialOverride->GetMaterialAlphaMode() ==
-                RuntimeMaterialAlphaMode::Blend
-            : materialAsset != nullptr &&
-                materialAsset->alphaMode == AlphaMode::Blend;
+        const bool materialAlphaBlend = RENDER3D::MATERIAL::ResolveMaterialAlphaMode(
+            materialAsset, item.materialOverride) == AlphaMode::Blend;
 
         if (item.materialOverride != nullptr) {
             variant.shaderId = item.materialOverride->GetShaderProfileId();

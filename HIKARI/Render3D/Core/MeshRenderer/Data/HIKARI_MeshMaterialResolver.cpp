@@ -13,13 +13,6 @@ namespace HIKARI::MESHRENDERER {
             return &asset.textures[static_cast<size_t>(textureIndex)];
         }
 
-        const std::string& SelectRuntimeTexturePath(const TextureAsset3D& texture) {
-            return texture.resolvedPath.empty() ? texture.sourcePath : texture.resolvedPath;
-
-            // Asset pipeline 済みなら cooked path、未解決なら元画像へフォールバックする。
-            return texture.resolvedPath.empty() ? texture.sourcePath : texture.resolvedPath;
-        }
-
         int BackendOrFallback(RENDER3D::TextureResourceHandle resource, int fallbackHandle) {
             const int handle = RENDER3D::GetTextureResourceBackendHandle(resource);
             return handle >= 0 ? handle : fallbackHandle;
@@ -131,7 +124,7 @@ namespace HIKARI::MESHRENDERER {
             return fallbacks_.whiteTexture;
         }
 
-        const std::string& texturePath = SelectRuntimeTexturePath(*texture);
+        const std::string& texturePath = GetMaterialTextureRuntimePath(*texture);
         if (texturePath.empty()) {
             return fallbacks_.whiteTexture;
         }
@@ -190,7 +183,7 @@ namespace HIKARI::MESHRENDERER {
             return fallbacks_.normalTexture;
         }
 
-        const std::string& texturePath = SelectRuntimeTexturePath(*texture);
+        const std::string& texturePath = GetMaterialTextureRuntimePath(*texture);
         if (texturePath.empty()) {
             if (stats != nullptr) {
                 ++stats->normalMapFallbackCount;
@@ -253,7 +246,7 @@ namespace HIKARI::MESHRENDERER {
             return fallbacks_.blackTexture;
         }
 
-        const std::string& texturePath = SelectRuntimeTexturePath(*texture);
+        const std::string& texturePath = GetMaterialTextureRuntimePath(*texture);
         if (texturePath.empty()) {
             if (stats != nullptr) {
                 ++stats->emissiveMapFallbackCount;
@@ -313,7 +306,7 @@ namespace HIKARI::MESHRENDERER {
             return fallbacks_.whiteTexture;
         }
 
-        const std::string& texturePath = SelectRuntimeTexturePath(*texture);
+        const std::string& texturePath = GetMaterialTextureRuntimePath(*texture);
         if (texturePath.empty()) {
             return fallbacks_.whiteTexture;
         }
@@ -366,7 +359,7 @@ namespace HIKARI::MESHRENDERER {
             return fallbacks_.whiteTexture;
         }
 
-        const std::string& texturePath = SelectRuntimeTexturePath(*texture);
+        const std::string& texturePath = GetMaterialTextureRuntimePath(*texture);
         if (texturePath.empty()) {
             return fallbacks_.whiteTexture;
         }
@@ -419,7 +412,7 @@ namespace HIKARI::MESHRENDERER {
             return fallbacks_.whiteTexture;
         }
 
-        const std::string& texturePath = SelectRuntimeTexturePath(*texture);
+        const std::string& texturePath = GetMaterialTextureRuntimePath(*texture);
         if (texturePath.empty()) {
             return fallbacks_.whiteTexture;
         }
@@ -476,7 +469,7 @@ namespace HIKARI::MESHRENDERER {
             return fallbacks_.whiteTexture;
         }
 
-        const std::string& texturePath = SelectRuntimeTexturePath(*texture);
+        const std::string& texturePath = GetMaterialTextureRuntimePath(*texture);
         if (texturePath.empty()) {
             return fallbacks_.whiteTexture;
         }
