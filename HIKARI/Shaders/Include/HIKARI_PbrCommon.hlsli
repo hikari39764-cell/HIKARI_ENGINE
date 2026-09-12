@@ -80,8 +80,7 @@ struct HikariPbrShadingContext
     float ndotView;
     float3 view;
     float distributionAlphaSquared;
-    float geometryK;
-    float geometryView;
+    float visibilityViewRoot;
 };
 
 HikariPbrShadingContext HikariBuildPbrShadingContext(
@@ -110,15 +109,8 @@ HikariPbrShadingContext HikariBuildPbrShadingContext(
     context.ndotView = ndotView;
     const float alpha = context.roughness * context.roughness;
     context.distributionAlphaSquared = alpha * alpha;
-    const float geometryRoughness = context.roughness + 1.0f;
-    context.geometryK =
-        (geometryRoughness * geometryRoughness) / 8.0f;
-    context.geometryView =
-        ndotView /
-        max(
-            ndotView * (1.0f - context.geometryK) +
-                context.geometryK,
-            0.00001f);
+    context.visibilityViewRoot = sqrt(context.distributionAlphaSquared +
+        (1.0f-context.distributionAlphaSquared) * ndotView * ndotView);
     return context;
 }
 
@@ -138,29 +130,32 @@ float HikariDistributionGGX(
         max(HIKARI_PI * denom * denom, 1.0e-12f);
 }
 
-float HikariGeometrySchlickGGX(
-    float ndotDirection,
-    float geometryK)
+float HikariVisibilitySmithGGX(HikariPbrShadingContext context, float ndotLight)
 {
-    return ndotDirection /
-        max(
-            ndotDirection * (1.0f - geometryK) +
-                geometryK,
-            0.00001f);
+    // Height-correlated Smith。直接光と IBL Baker は同じ GGX 遮蔽を積分する。
+    const float lightRoot = sqrt(context.distributionAlphaSquared +
+        (1.0f-context.distributionAlphaSquared) * ndotLight * ndotLight);
+    return 0.5f / max(ndotLight * context.visibilityViewRoot + context.ndotView * lightRoot, 1.0e-8f);
 }
 
-float3 HikariEvaluateDirectPbr(
+struct HikariDirectPbrLobes
+{
+    float3 diffuse;
+    float3 specular;
+};
+
+HikariDirectPbrLobes HikariEvaluateDirectPbrLobes(
     HikariPbrShadingContext context,
     float3 l,
-    float3 lightColor,
-    float lightIntensity)
+    float3 radiance)
 {
+    HikariDirectPbrLobes result = (HikariDirectPbrLobes)0;
     float ndotl = saturate(
         dot(context.normal, l));
 
     if (ndotl <= 0.0f)
     {
-        return 0.0f.xxx;
+        return result;
     }
 
     float3 h = normalize(context.view + l);
@@ -170,17 +165,7 @@ float3 HikariEvaluateDirectPbr(
     float D = HikariDistributionGGX(
         context,
         h);
-    float G =
-        context.geometryView *
-        HikariGeometrySchlickGGX(
-            ndotl,
-            context.geometryK);
-
-    float3 numerator = D * G * F;
-    float denominator = max(
-        4.0f * max(context.ndotView, 0.0001f) * ndotl,
-        0.0001f);
-    float3 specular = numerator / denominator;
+    float3 specular = D * HikariVisibilitySmithGGX(context, ndotl) * F;
 
     float3 kS = F;
     float3 kD =
@@ -189,10 +174,16 @@ float3 HikariEvaluateDirectPbr(
     float3 diffuse =
         kD * context.baseColor / HIKARI_PI;
 
-    return (diffuse + specular) *
-        lightColor *
-        lightIntensity *
-        ndotl;
+    result.diffuse = diffuse * radiance * ndotl;
+    result.specular = specular * radiance * ndotl;
+    return result;
+}
+
+float3 HikariEvaluateDirectPbr(
+    HikariPbrShadingContext context, float3 l, float3 lightColor, float lightIntensity)
+{
+    const HikariDirectPbrLobes lobes = HikariEvaluateDirectPbrLobes(context, l, lightColor * lightIntensity);
+    return lobes.diffuse + lobes.specular;
 }
 
 #endif

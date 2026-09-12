@@ -16,7 +16,7 @@ namespace HIKARI::ASSETS::SEMANTICS {
                 AssetImporterKind::SkyCubemap,
                 AssetType::Sky,
                 "SkyCubemapImporter",
-                2u,
+                3u,
                 ".dds under an Assets/Skies or Assets/Sky directory",
             },
             {

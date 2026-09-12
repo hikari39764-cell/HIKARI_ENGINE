@@ -1,0 +1,6 @@
+{
+  "integrationVersion": 2,
+  "samples": 4096,
+  "sampling": "ggx-visible",
+  "size": 256
+}

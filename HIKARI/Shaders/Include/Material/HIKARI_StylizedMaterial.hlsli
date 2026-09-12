@@ -14,25 +14,10 @@ HikariStylizedDirectLobes HikariEvaluatePbrDirectLobes(
     float3 lightDirection,
     float3 radiance)
 {
-    HikariStylizedDirectLobes lobes = (HikariStylizedDirectLobes)0;
-    const float ndotl = saturate(dot(context.normal, lightDirection));
-    if (ndotl <= 0.0f)
-    {
-        return lobes;
-    }
-    const float3 halfVector = normalize(context.view + lightDirection);
-    const float3 fresnel = HikariFresnelSchlick(
-        saturate(dot(halfVector, context.view)),
-        context.specularF0);
-    const float distribution = HikariDistributionGGX(context, halfVector);
-    const float geometry = context.geometryView *
-        HikariGeometrySchlickGGX(ndotl, context.geometryK);
-    lobes.specular = distribution * geometry * fresnel /
-        max(4.0f * max(context.ndotView, 0.0001f) * ndotl, 0.0001f);
-    lobes.diffuse = (1.0f.xxx - fresnel) *
-        (1.0f - context.metallic) * context.baseColor / HIKARI_PI;
-    lobes.diffuse *= radiance * ndotl;
-    lobes.specular *= radiance * ndotl;
+    const HikariDirectPbrLobes physical = HikariEvaluateDirectPbrLobes(context, lightDirection, radiance);
+    HikariStylizedDirectLobes lobes;
+    lobes.diffuse = physical.diffuse;
+    lobes.specular = physical.specular;
     return lobes;
 }
 

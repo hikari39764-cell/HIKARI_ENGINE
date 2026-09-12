@@ -528,6 +528,22 @@ target_compile_definitions(HIKARI_SceneReflectionCaptureContracts PRIVATE HIKARI
 add_test(NAME HIKARI_SceneReflectionCaptureContracts COMMAND "$<TARGET_FILE:HIKARI_SceneReflectionCaptureContracts>")
 set_tests_properties(HIKARI_SceneReflectionCaptureContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 60)
 
+add_executable(HIKARI_IblBakeTool EXCLUDE_FROM_ALL
+    "Tools/Baking/HIKARI_IblBakeMain.cpp"
+    "HIKARI/Assets/Importers/HIKARI_IblBaker.cpp"
+    "HIKARI/Render3D/HIKARI_Math3D.cpp"
+    "HIKARI/Core/HIKARI_Logger.cpp"
+    "HIKARI/Core/Serialization/Json/HIKARI_JsonFile.cpp"
+    "HIKARI/Core/IO/HIKARI_FileReplacementTransaction.cpp")
+target_include_directories(HIKARI_IblBakeTool PRIVATE "${HIKARI_SOURCE_ROOT}/HIKARI")
+target_link_libraries(HIKARI_IblBakeTool PRIVATE HIKARI::DirectXTex HIKARI::Nlohmann windowscodecs ole32)
+hikari_configure_engine_target(HIKARI_IblBakeTool)
+set_target_properties(HIKARI_IblBakeTool PROPERTIES FOLDER "Engine/Tools" RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tools")
+foreach(configuration IN ITEMS Debug EditorRelease Shipping)
+    string(TOUPPER "${configuration}" configuration_upper)
+    set_target_properties(HIKARI_IblBakeTool PROPERTIES "RUNTIME_OUTPUT_DIRECTORY_${configuration_upper}" "${CMAKE_BINARY_DIR}/tools")
+endforeach()
+
 add_executable(HIKARI_IblBakeContracts EXCLUDE_FROM_ALL
     "Tools/Tests/HIKARI_IblBakeContracts.cpp"
     "HIKARI/Assets/Importers/HIKARI_IblBaker.cpp"

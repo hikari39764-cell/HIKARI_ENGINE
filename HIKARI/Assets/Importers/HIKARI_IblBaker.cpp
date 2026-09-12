@@ -474,33 +474,48 @@ namespace HIKARI {
             return output;
         }
 
-        float GeometrySchlickGgx(float noV, float roughness) {
-            const float a = roughness;
-            const float k = (a * a) * 0.5f;
-            return noV / std::max(noV * (1.0f - k) + k, kEpsilon);
-        }
-
         float GeometrySmith(float noV, float noL, float roughness) {
-            return GeometrySchlickGgx(noV, roughness) * GeometrySchlickGgx(noL, roughness);
+            const float alpha = roughness * roughness;
+            const float alphaSquared = alpha * alpha;
+            const float viewTerm = noL * std::sqrt(alphaSquared + (1.0f-alphaSquared)*noV*noV);
+            const float lightTerm = noV * std::sqrt(alphaSquared + (1.0f-alphaSquared)*noL*noL);
+            return 2.0f * noV * noL / std::max(viewTerm + lightTerm, 1.0e-8f);
         }
 
         std::pair<float, float> IntegrateBrdf(float noV, float roughness, uint32_t sampleCount) {
             const MATH::Vec3 v{ std::sqrt(std::max(0.0f, 1.0f - noV * noV)), 0.0f, noV };
+            const float alpha = roughness * roughness;
+            const MATH::Vec3 visibleView = MATH::Normalize({alpha * v.x, 0.0f, noV});
+            const float projectedBlend = 0.5f * (1.0f + visibleView.z);
+            const float viewRoot = std::sqrt(alpha*alpha + (1.0f-alpha*alpha)*noV*noV);
+            const float maskingView = 2.0f * noV / (noV + viewRoot);
+            // Heitz 2018 の可視法線分布。LUT の View は XZ 平面なので基底を固定できる。
+            // https://jcgt.org/published/0007/04/01/
+            const auto sampleVisibleNormal = [&](float u1, float u2) {
+                const float radius = std::sqrt(u1);
+                const float phi = 2.0f * kPi * u2;
+                const float diskX = radius * std::cos(phi);
+                const float diskY = (1.0f-projectedBlend) * std::sqrt(std::max(0.0f, 1.0f-diskX*diskX)) +
+                    projectedBlend * radius * std::sin(phi);
+                const float diskZ = std::sqrt(std::max(0.0f, 1.0f-diskX*diskX-diskY*diskY));
+                return MATH::Normalize(MATH::Vec3{
+                    alpha * (visibleView.x*diskZ-visibleView.z*diskY), alpha*diskX,
+                    std::max(0.0f, visibleView.x*diskY+visibleView.z*diskZ)});
+            };
             float a = 0.0f;
             float b = 0.0f;
 
             for (uint32_t i = 0; i < sampleCount; ++i) {
                 const float u1 = static_cast<float>(i) / static_cast<float>(sampleCount);
                 const float u2 = RadicalInverseVdc(i);
-                const MATH::Vec3 h = ImportanceSampleGGX(u1, u2, { 0.0f, 0.0f, 1.0f }, roughness);
+                const MATH::Vec3 h = sampleVisibleNormal(u1, u2);
                 const MATH::Vec3 l = MATH::Normalize(Sub(Mul(h, 2.0f * MATH::Dot(v, h)), v));
                 const float noL = Saturate(l.z);
-                const float noH = Saturate(h.z);
                 const float voH = Saturate(MATH::Dot(v, h));
 
                 if (noL > 0.0f) {
                     const float g = GeometrySmith(noV, noL, roughness);
-                    const float gVis = (g * voH) / std::max(noH * noV, kEpsilon);
+                    const float gVis = g / maskingView;
                     const float fc = std::pow(1.0f - voH, 5.0f);
                     a += (1.0f - fc) * gVis;
                     b += fc * gVis;
@@ -716,8 +731,8 @@ namespace HIKARI {
         std::string* outMessage) {
 
         const uint32_t size = ClampPowerOfTwoSize(brdfLutSize, 64, 256);
-        const uint32_t samples = std::clamp(sampleCount, 64u, 512u);
-        const nlohmann::json identity{{"integrationVersion", 1}, {"size", size}, {"samples", samples}};
+        const uint32_t samples = std::clamp(sampleCount, 64u, 4096u);
+        const nlohmann::json identity{{"integrationVersion", 2}, {"sampling", "ggx-visible"}, {"size", size}, {"samples", samples}};
         auto stampPath = outputBrdfLutDds;
         stampPath += ".bake.json";
         nlohmann::json previousIdentity;
@@ -781,7 +796,7 @@ namespace HIKARI {
         const uint32_t irradianceSamples = std::clamp(settings.irradianceSampleCount, 16u, 256u);
         const uint32_t prefilteredSamples = std::clamp(settings.prefilteredSampleCount, 32u, 256u);
         const uint32_t brdfSize = ClampPowerOfTwoSize(settings.brdfLutSize, 64, 256);
-        const uint32_t brdfSamples = std::clamp(settings.brdfSampleCount, 64u, 512u);
+        const uint32_t brdfSamples = settings.brdfSampleCount;
 
         result.irradianceSize = irradianceSize;
         result.prefilteredSize = prefilteredSize;
