@@ -460,8 +460,7 @@ namespace HIKARI::SHADOW::INTERNAL {
         availability.traditionalIndirectPipelineReady =
             gShadowRendererState.rootSig != nullptr &&
             gShadowRendererState.skinnedRootSig != nullptr &&
-            gShadowRendererState.staticPso != nullptr &&
-            gShadowRendererState.skinnedPso != nullptr;
+            gShadowRendererState.depthPipelines.IsReady();
         gShadowRendererState.gpuDrivenLayer.SetBackendAvailability(availability);
     }
 

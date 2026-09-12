@@ -30,6 +30,7 @@
 #include "Render3D/Shadow/HIKARI_ShadowCachePolicy.h"
 #include "Render3D/Shadow/HIKARI_ShadowLightFrame.h"
 #include "Render3D/Shadow/HIKARI_ShadowMapRenderer.h"
+#include "Render3D/Shadow/Pipeline/HIKARI_ShadowDepthPipelines.h"
 
 namespace HIKARI::SHADOW::INTERNAL {
 
@@ -111,8 +112,7 @@ namespace HIKARI::SHADOW::INTERNAL {
 
         ComPtr<ID3D12RootSignature> rootSig;
         ComPtr<ID3D12RootSignature> skinnedRootSig;
-        ComPtr<ID3D12PipelineState> staticPso;
-        ComPtr<ID3D12PipelineState> skinnedPso;
+        PIPELINE::ShadowDepthPipelines depthPipelines{};
         std::array<ShadowFrameResources, GFX::kFrameResourceCount> frameResources{};
         uint32_t activeFrameResourceIndex = 0;
         ShadowMaterialFrameTable materialDataFrameTable{};

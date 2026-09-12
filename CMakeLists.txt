@@ -503,6 +503,17 @@ hikari_configure_contract_output(HIKARI_DynamicUploadGpuContracts "RuntimeContra
 add_test(NAME HIKARI_DynamicUploadGpuContracts COMMAND "$<TARGET_FILE:HIKARI_DynamicUploadGpuContracts>")
 set_tests_properties(HIKARI_DynamicUploadGpuContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
 
+add_executable(HIKARI_ShadowDepthGpuContracts EXCLUDE_FROM_ALL
+    "Tools/Tests/HIKARI_ShadowDepthGpuContracts.cpp"
+    "HIKARI/Render3D/Shadow/Pipeline/HIKARI_ShadowDepthPipelines.cpp")
+target_include_directories(HIKARI_ShadowDepthGpuContracts PRIVATE
+    "${HIKARI_SOURCE_ROOT}/HIKARI" "${HIKARI_SOURCE_ROOT}/ThirdParty/DirectXTex/Common")
+target_link_libraries(HIKARI_ShadowDepthGpuContracts PRIVATE d3d12 dxgi d3dcompiler)
+hikari_configure_engine_target(HIKARI_ShadowDepthGpuContracts)
+hikari_configure_contract_output(HIKARI_ShadowDepthGpuContracts "RuntimeContracts")
+add_test(NAME HIKARI_ShadowDepthGpuContracts COMMAND "$<TARGET_FILE:HIKARI_ShadowDepthGpuContracts>")
+set_tests_properties(HIKARI_ShadowDepthGpuContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
+
 add_executable(HIKARI_RenderMathContracts EXCLUDE_FROM_ALL "Tools/Tests/HIKARI_RenderMathContracts.cpp")
 target_include_directories(HIKARI_RenderMathContracts PRIVATE "${HIKARI_SOURCE_ROOT}/ThirdParty/DirectXTex/Common")
 target_compile_definitions(HIKARI_RenderMathContracts PRIVATE HIKARI_CONTRACT_SOURCE_ROOT="${HIKARI_SOURCE_ROOT}")

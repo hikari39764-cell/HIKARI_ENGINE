@@ -307,6 +307,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Shadow/GpuDriven/HIKARI_ShadowSceneSourceAnalysis.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Shadow/Internal/HIKARI_ShadowRendererState.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Shadow/Pipeline/HIKARI_ShadowPipelineState.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Shadow/Pipeline/HIKARI_ShadowDepthPipelines.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Shadow/Recording/HIKARI_ShadowFrameBindings.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Shadow/Recording/HIKARI_ShadowPassRecorder.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Shadow/Resources/HIKARI_ShadowFrameResources.cpp"

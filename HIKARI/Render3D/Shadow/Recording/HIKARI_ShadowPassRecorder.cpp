@@ -293,10 +293,14 @@ namespace HIKARI::SHADOW::INTERNAL {
                 range->skinnedCommandSignature != nullptr &&
                 skinnedBucketLayoutReady &&
                 range->skinnedCommandCount != 0;
-            if (!hasStaticStream && !hasSkinnedStream) {
+            if ((!hasStaticStream && !hasSkinnedStream) || !gShadowRendererState.depthPipelines.IsReady()) {
                 return false;
             }
 
+            const auto* bucketVariants = range->traditionalIndirect != nullptr
+                ? range->traditionalIndirect->bucketVariants : nullptr;
+            if (bucketVariants == nullptr || bucketVariants->empty()) return false;
+            const size_t executableBucketCount = (std::min)(commandBucketCount, bucketVariants->size());
             bool executed = false;
             const size_t uintMaxCommandCount =
                 static_cast<size_t>((std::numeric_limits<UINT>::max)());
@@ -312,13 +316,14 @@ namespace HIKARI::SHADOW::INTERNAL {
             GFX::GPU_PROFILE::ScopedGpuTimer gpuDraw(
                 cmd,
                 traditionalProfilePass);
-            if (hasStaticStream && gShadowRendererState.staticPso != nullptr) {
+            if (hasStaticStream) {
                 BindShadowGpuDrivenFrameResources(
                     graphics,
                     cmd,
                     nullptr);
-                cmd->SetPipelineState(gShadowRendererState.staticPso.Get());
-                for (size_t bucketIndex = 0; bucketIndex < commandBucketCount; ++bucketIndex) {
+                for (size_t bucketIndex = 0; bucketIndex < executableBucketCount; ++bucketIndex) {
+                    cmd->SetPipelineState(gShadowRendererState.depthPipelines.Resolve(
+                        false, (*bucketVariants)[bucketIndex].doubleSided));
                     cmd->ExecuteIndirect(
                         range->commandSignature,
                         maxStaticCommandCount,
@@ -334,15 +339,16 @@ namespace HIKARI::SHADOW::INTERNAL {
                 executed = true;
             }
 
-            if (hasSkinnedStream && gShadowRendererState.skinnedPso != nullptr) {
+            if (hasSkinnedStream) {
                 BindShadowGpuDrivenFrameResources(
                     graphics,
                     cmd,
                     nullptr,
                     nullptr,
                     true);
-                cmd->SetPipelineState(gShadowRendererState.skinnedPso.Get());
-                for (size_t bucketIndex = 0; bucketIndex < commandBucketCount; ++bucketIndex) {
+                for (size_t bucketIndex = 0; bucketIndex < executableBucketCount; ++bucketIndex) {
+                    cmd->SetPipelineState(gShadowRendererState.depthPipelines.Resolve(
+                        true, (*bucketVariants)[bucketIndex].doubleSided));
                     cmd->ExecuteIndirect(
                         range->skinnedCommandSignature,
                         maxSkinnedCommandCount,
