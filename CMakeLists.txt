@@ -452,6 +452,16 @@ hikari_configure_contract_output(HIKARI_LightmapSurfaceContracts "RuntimeContrac
 add_test(NAME HIKARI_LightmapSurfaceContracts COMMAND "$<TARGET_FILE:HIKARI_LightmapSurfaceContracts>")
 set_tests_properties(HIKARI_LightmapSurfaceContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
 
+add_executable(HIKARI_VolumetricGpuContracts EXCLUDE_FROM_ALL
+    "Tools/Tests/HIKARI_VolumetricGpuContracts.cpp")
+target_include_directories(HIKARI_VolumetricGpuContracts PRIVATE "${HIKARI_SOURCE_ROOT}/HIKARI")
+target_link_libraries(HIKARI_VolumetricGpuContracts PRIVATE HIKARI::DirectXTex d3d12 dxgi d3dcompiler)
+target_compile_definitions(HIKARI_VolumetricGpuContracts PRIVATE HIKARI_CONTRACT_SOURCE_ROOT="${HIKARI_SOURCE_ROOT}")
+hikari_configure_engine_target(HIKARI_VolumetricGpuContracts)
+hikari_configure_contract_output(HIKARI_VolumetricGpuContracts "RuntimeContracts")
+add_test(NAME HIKARI_VolumetricGpuContracts COMMAND "$<TARGET_FILE:HIKARI_VolumetricGpuContracts>")
+set_tests_properties(HIKARI_VolumetricGpuContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
+
 add_executable(HIKARI_DirectionalShadowContracts EXCLUDE_FROM_ALL
     "Tools/Tests/HIKARI_DirectionalShadowContracts.cpp"
     "HIKARI/Render3D/Shadow/HIKARI_ShadowLightFrame.cpp"

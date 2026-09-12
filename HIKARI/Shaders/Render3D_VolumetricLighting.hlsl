@@ -1,4 +1,5 @@
 #include "Include/Lighting/HIKARI_LocalLightContract.hlsli"
+#include "Include/Lighting/HIKARI_ShadowCascadeContract.hlsli"
 
 cbuffer VolumetricCB : register(b0)
 {
@@ -7,6 +8,7 @@ cbuffer VolumetricCB : register(b0)
     float4x4 gLightViewProj[4];
     float4 gShadowCascadeSplits;
     float4 gShadowCascadeParams;
+    float4 gShadowSampling; // depth bias, atlas texel size xy, reserved
     float4 gCameraPos;
     float4 gPrevCameraPos;
     float4 gFogColorDensity;
@@ -44,8 +46,10 @@ float DistanceToSlice(float distanceToCamera)
 {
     const float nearDistance = max(0.01f, gFogDistances.x);
     const float farDistance = max(nearDistance + 0.01f, gFogDistances.y);
-    return saturate(log(max(distanceToCamera, nearDistance) / nearDistance) /
+    const float normalized = saturate(log(max(distanceToCamera, nearDistance) / nearDistance) /
         log(farDistance / nearDistance));
+    // 最初/最後の格納点は near/far 境界。Texture の Texel 中心へ写像する。
+    return (normalized * (gVolumeSize.z - 1.0f) + 0.5f) / gVolumeSize.z;
 }
 
 float3 ReconstructRay(float2 uv)
@@ -56,48 +60,36 @@ float3 ReconstructRay(float2 uv)
     return normalize(world.xyz - gCameraPos.xyz);
 }
 
-float ShadowVisibility(
-    float3 worldPosition,
-    float3 cameraForward)
+float SampleVolumeShadowCascade(float3 worldPosition, uint cascadeIndex, out bool valid)
 {
-    if (gFrameParams.z < 0.5f)
+    const float4 clip = mul(gLightViewProj[cascadeIndex], float4(worldPosition, 1.0f));
+    const float3 ndc = clip.xyz / max(abs(clip.w), 1e-6f);
+    const float2 uv = float2(ndc.x * 0.5f + 0.5f, 0.5f - ndc.y * 0.5f);
+    valid = all(uv >= 0.0f) && all(uv <= 1.0f) && ndc.z >= 0.0f && ndc.z <= 1.0f;
+    if (!valid) return 1.0f;
+    const float2 atlasUv = uv * gShadowCascadeParams.zw + HikariShadowAtlasTileOrigin(cascadeIndex);
+    return gShadowMap.SampleCmpLevelZero(gShadowSampler,
+        HikariClampShadowAtlasTileUv(atlasUv, cascadeIndex, gShadowCascadeParams.zw, gShadowSampling.yz),
+        ndc.z - gShadowSampling.x);
+}
+
+float ShadowVisibility(float3 worldPosition, float3 cameraForward)
+{
+    if (gFrameParams.z < 0.5f) return 1.0f;
+    const float viewDepth = max(dot(worldPosition - gCameraPos.xyz, cameraForward), 0.0f);
+    const uint cascadeCount = clamp((uint)round(gShadowCascadeParams.x), 1u, 4u);
+    const uint cascade = HikariSelectShadowCascade(viewDepth, gShadowCascadeSplits, cascadeCount);
+    bool valid;
+    float visibility = SampleVolumeShadowCascade(worldPosition, cascade, valid);
+    const float blend = HikariShadowCascadeBlendWeight(
+        viewDepth, gShadowCascadeSplits, cascade, gShadowCascadeParams.y);
+    if (cascade + 1u < cascadeCount && (!valid || blend > 0.0f))
     {
-        return 1.0f;
+        bool nextValid;
+        const float nextVisibility = SampleVolumeShadowCascade(worldPosition, cascade + 1u, nextValid);
+        if (nextValid) visibility = valid ? lerp(visibility, nextVisibility, blend) : nextVisibility;
     }
-    const float viewDistance =
-        max(
-            dot(
-                worldPosition - gCameraPos.xyz,
-                cameraForward),
-            0.0f);
-    const uint cascadeCount =
-        clamp((uint)round(gShadowCascadeParams.x), 1u, 4u);
-    uint cascadeIndex = 0u;
-    [unroll]
-    for (uint index = 0u; index < 3u; ++index)
-    {
-        if (index + 1u < cascadeCount &&
-            viewDistance > gShadowCascadeSplits[index])
-        {
-            cascadeIndex = index + 1u;
-        }
-    }
-    float4 lightClip =
-        mul(gLightViewProj[cascadeIndex], float4(worldPosition, 1.0f));
-    float3 lightNdc = lightClip.xyz / max(abs(lightClip.w), 1e-6f);
-    float2 uv = float2(lightNdc.x * 0.5f + 0.5f, 0.5f - lightNdc.y * 0.5f);
-    if (any(uv < 0.0f) || any(uv > 1.0f) || lightNdc.z <= 0.0f || lightNdc.z >= 1.0f)
-    {
-        return 1.0f;
-    }
-    const float2 tile =
-        float2((float)(cascadeIndex & 1u), (float)(cascadeIndex >> 1u));
-    const float2 atlasUv =
-        uv * gShadowCascadeParams.zw + tile * 0.5f;
-    return gShadowMap.SampleCmpLevelZero(
-        gShadowSampler,
-        atlasUv,
-        lightNdc.z - 0.0005f);
+    return visibility;
 }
 
 float HenyeyGreenstein(float cosTheta, float anisotropy)
@@ -195,22 +187,22 @@ void InjectAndIntegrateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         max(0.01f, gFogDistances.x);
     const float farDistance =
         max(nearDistance + 0.01f, gFogDistances.y);
+    // 光源 Cluster は放射状距離ではなく CPU と同じ視線軸の深度を使う。
+    const float rayForwardCos = max(dot(ray, cameraForward), 1e-5f);
     const float fogLogStep =
         log(farDistance / nearDistance) /
-        max((float)volumeSize.z, 1.0f);
+        max((float)volumeSize.z - 1.0f, 1.0f);
     const float sliceDistanceMultiplier =
         exp(fogLogStep);
-    float distanceToCamera =
-        nearDistance * exp(fogLogStep * 0.5f);
-    float logDistanceToCamera =
-        log(nearDistance) + fogLogStep * 0.5f;
+    float distanceToCamera = nearDistance;
     float previousDistance = nearDistance;
 
     [loop]
     for (uint slice = 0; slice < volumeSize.z; ++slice)
     {
-        const float stepLength = max(0.001f, distanceToCamera - previousDistance);
-        const float3 worldPosition = gCameraPos.xyz + ray * distanceToCamera;
+        const float stepLength = max(0.0f, distanceToCamera - previousDistance);
+        const float sampleDistance = (distanceToCamera + previousDistance) * 0.5f;
+        const float3 worldPosition = gCameraPos.xyz + ray * sampleDistance;
         const float heightAboveBase = max(
             worldPosition.y - gVolumetricOptics.x,
             0.0f);
@@ -219,8 +211,7 @@ void InjectAndIntegrateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         const float extinction = max(0.0f, gFogColorDensity.a) * heightDensity;
         const float stepTransmittance = exp(-extinction * stepLength);
         const uint localLightDepthSlice =
-            HikariResolveLocalLightDepthSliceFromLogDistance(
-                logDistanceToCamera);
+            HikariResolveLocalLightDepthSlice(sampleDistance * rayForwardCos);
         const float3 lighting = EvaluateLighting(
             worldPosition,
             ray,
@@ -237,14 +228,15 @@ void InjectAndIntegrateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         float4 integrated = float4(integratedScattering, integratedTransmittance);
         if (gVolumeSize.w > 0.5f && gFrameParams.x > 0.0f)
         {
-            float4 previousClip = mul(gPrevViewProj, float4(worldPosition, 1.0f));
+            const float3 endpoint = gCameraPos.xyz + ray * distanceToCamera;
+            float4 previousClip = mul(gPrevViewProj, float4(endpoint, 1.0f));
             float3 previousNdc = previousClip.xyz / max(abs(previousClip.w), 1e-6f);
             float2 previousUv = float2(
                 previousNdc.x * 0.5f + 0.5f,
                 0.5f - previousNdc.y * 0.5f);
             const float previousSlice = DistanceToSlice(
-                length(worldPosition - gPrevCameraPos.xyz));
-            if (all(previousUv >= 0.0f) && all(previousUv <= 1.0f) &&
+                length(endpoint - gPrevCameraPos.xyz));
+            if (previousClip.w > 0.0f && all(previousUv >= 0.0f) && all(previousUv <= 1.0f) &&
                 previousNdc.z >= 0.0f && previousNdc.z <= 1.0f)
             {
                 const float4 history = gHistoryVolume.SampleLevel(
@@ -265,7 +257,6 @@ void InjectAndIntegrateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         gOutputVolume[uint3(dispatchThreadId.xy, slice)] = integrated;
         previousDistance = distanceToCamera;
         distanceToCamera *= sliceDistanceMultiplier;
-        logDistanceToCamera += fogLogStep;
     }
 }
 
@@ -319,8 +310,9 @@ void CompositeCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         ? gFogDistances.y
         : length(world.xyz - gCameraPos.xyz);
     const float slice = DistanceToSlice(distanceToCamera);
-    const float4 fog = gIntegratedVolume.SampleLevel(
-        gLinearClamp, float3(uv, slice), 0.0f);
+    const float4 fog = distanceToCamera <= gFogDistances.x
+        ? float4(0.0f, 0.0f, 0.0f, 1.0f)
+        : gIntegratedVolume.SampleLevel(gLinearClamp, float3(uv, slice), 0.0f);
 
     const uint debugMode =
         (uint)(gVolumetricDebugMode + 0.5f);

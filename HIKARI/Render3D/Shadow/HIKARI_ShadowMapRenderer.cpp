@@ -314,6 +314,10 @@ namespace HIKARI::SHADOW {
         return gShadowRendererState.resolution;
     }
 
+    float GetShadowAtlasTexelSize() {
+        return 0.5f / static_cast<float>((std::max)(gShadowRendererState.resolution, 1u));
+    }
+
     const ShadowMapDebugStats& GetDebugStats() {
         return gShadowRendererState.debugStats;
     }

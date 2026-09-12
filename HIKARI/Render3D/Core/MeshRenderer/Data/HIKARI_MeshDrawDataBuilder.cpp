@@ -233,9 +233,8 @@ namespace HIKARI::MESHRENDERER {
         out.strength = std::clamp(environment.directionalShadow.strength, 0.0f, 1.0f);
         out.pcfEnabled = environment.directionalShadow.pcfEnabled ? 1u : 0u;
         out.pcfRadius = std::clamp(environment.directionalShadow.pcfRadius, 0.0f, 4.0f);
-        const float resolution = static_cast<float>(std::max(1u, SHADOW::GetShadowResolution()));
-        out.texelSizeX = 1.0f / (resolution * 2.0f);
-        out.texelSizeY = 1.0f / (resolution * 2.0f);
+        out.texelSizeX = SHADOW::GetShadowAtlasTexelSize();
+        out.texelSizeY = out.texelSizeX;
         out.edgeFade = 0.04f;
         // ShadowCB.padding[0] carries the frame index for rotated PCF taps.
         out.padding[0] =

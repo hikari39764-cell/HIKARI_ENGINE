@@ -115,6 +115,7 @@ namespace HIKARI::SHADOW {
     uint32_t GetDirectionalCascadeCount();
     D3D12_GPU_DESCRIPTOR_HANDLE GetDirectionalShadowSrv();
     uint32_t GetShadowResolution();
+    float GetShadowAtlasTexelSize();
     const ShadowMapDebugStats& GetDebugStats();
 
 } // namespace HIKARI::SHADOW

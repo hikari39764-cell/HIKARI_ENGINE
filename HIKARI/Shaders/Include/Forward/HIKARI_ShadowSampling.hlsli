@@ -1,25 +1,12 @@
 #ifndef HIKARI_FORWARD_SHADOW_SAMPLING_INCLUDED
 #define HIKARI_FORWARD_SHADOW_SAMPLING_INCLUDED
 
-float2 HikariShadowAtlasTileOrigin(uint cascadeIndex)
-{
-    return
-        float2(
-            (float)(cascadeIndex & 1u),
-            (float)(cascadeIndex >> 1u)) *
-        0.5f;
-}
+#include "Include/Lighting/HIKARI_ShadowCascadeContract.hlsli"
 
 float2 HikariClampShadowAtlasUv(float2 uv, uint cascadeIndex)
 {
-    const float2 tileOrigin =
-        HikariShadowAtlasTileOrigin(cascadeIndex);
-    const float2 halfTexel =
-        float2(gShadowTexelSizeX, gShadowTexelSizeY) * 0.5f;
-    return clamp(
-        uv,
-        tileOrigin + halfTexel,
-        tileOrigin + gShadowCascadeParams.zw - halfTexel);
+    return HikariClampShadowAtlasTileUv(uv, cascadeIndex, gShadowCascadeParams.zw,
+        float2(gShadowTexelSizeX, gShadowTexelSizeY));
 }
 
 float HikariSampleShadowCompare(
@@ -82,23 +69,6 @@ float HikariShadowReceiverFade(float2 uv)
     const float edgeDistance =
         min(min(uv.x, 1.0f - uv.x), min(uv.y, 1.0f - uv.y));
     return saturate(edgeDistance / gShadowEdgeFade);
-}
-
-uint HikariSelectShadowCascade(float viewDistance)
-{
-    const uint cascadeCount =
-        clamp((uint)round(gShadowCascadeParams.x), 1u, 4u);
-    uint cascadeIndex = 0u;
-    [unroll]
-    for (uint index = 0u; index < 3u; ++index)
-    {
-        if (index + 1u < cascadeCount &&
-            viewDistance > gShadowCascadeSplits[index])
-        {
-            cascadeIndex = index + 1u;
-        }
-    }
-    return cascadeIndex;
 }
 
 float2 HikariShadowAtlasUv(float2 cascadeUv, uint cascadeIndex)
@@ -201,9 +171,10 @@ float SampleDirectionalShadow(float3 worldPosWS, float3 geometricNormalWS, uint 
         max(
             mul(gViewProj, float4(worldPosWS, 1.0f)).w,
             0.0f);
-    const uint cascadeIndex = HikariSelectShadowCascade(viewDistance);
     const uint cascadeCount =
         clamp((uint)round(gShadowCascadeParams.x), 1u, 4u);
+    const uint cascadeIndex = HikariSelectShadowCascade(
+        viewDistance, gShadowCascadeSplits, cascadeCount);
     bool cascadeValid = false;
     float visibility =
         HikariSampleDirectionalShadowCascade(
@@ -221,15 +192,9 @@ float SampleDirectionalShadow(float3 worldPosWS, float3 geometricNormalWS, uint 
                 cascadeValid);
     }
 
-    const float cascadeNear =
-        cascadeIndex == 0u
-            ? 0.0f
-            : gShadowCascadeSplits[cascadeIndex - 1u];
-    const float cascadeFar = gShadowCascadeSplits[cascadeIndex];
-    const float blendWidth =
-        max((cascadeFar - cascadeNear) * gShadowCascadeParams.y, 0.0001f);
-    if (cascadeIndex + 1u < cascadeCount &&
-        viewDistance > cascadeFar - blendWidth)
+    const float blend = HikariShadowCascadeBlendWeight(
+        viewDistance, gShadowCascadeSplits, cascadeIndex, gShadowCascadeParams.y);
+    if (cascadeIndex + 1u < cascadeCount && blend > 0.0f)
     {
         bool nextCascadeValid = false;
         const float nextVisibility =
@@ -240,10 +205,6 @@ float SampleDirectionalShadow(float3 worldPosWS, float3 geometricNormalWS, uint 
                 nextCascadeValid);
         if (nextCascadeValid)
         {
-            const float blend =
-                saturate(
-                    (viewDistance - (cascadeFar - blendWidth)) /
-                    blendWidth);
             visibility = lerp(visibility, nextVisibility, blend);
         }
     }

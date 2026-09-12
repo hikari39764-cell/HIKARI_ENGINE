@@ -39,6 +39,7 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
                 SHADOW::kMaxDirectionalShadowCascades]{};
             MATH::Vec4 shadowCascadeSplits{};
             MATH::Vec4 shadowCascadeParams{};
+            MATH::Vec4 shadowSampling{};
             MATH::Vec4 cameraPos{};
             MATH::Vec4 prevCameraPos{};
             MATH::Vec4 fogColorDensity{};
@@ -61,7 +62,7 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
         };
 
         static_assert(
-            sizeof(VolumetricConstants) == 624u);
+            sizeof(VolumetricConstants) == 640u);
 
         struct VolumeResource {
             ComPtr<ID3D12Resource> texture{};
@@ -169,6 +170,12 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
             Add(environment.directional.intensity);
             Add(environment.directionalShadow.enabled);
             Add(environment.directionalShadow.strength);
+            Add(environment.directionalShadow.depthBias);
+            Add(environment.directionalShadow.cascadeBlend);
+            Add(environment.directionalShadow.cascadeCount);
+            Add(environment.directionalShadow.cascadeSplitLambda);
+            Add(environment.directionalShadow.shadowDistance);
+            Add(environment.directionalShadow.resolution);
             Add(environment.ambient.color);
             Add(environment.ambient.intensity);
             Add(quality);
@@ -513,6 +520,11 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
             0.5f
         };
         constants.cameraPos = frame.camera.cameraPos;
+        const float shadowAtlasTexel = SHADOW::GetShadowAtlasTexelSize();
+        constants.shadowSampling = {
+            (std::max)(environment.directionalShadow.depthBias, 0.0f),
+            shadowAtlasTexel, shadowAtlasTexel, 0.0f
+        };
         constants.prevCameraPos = frame.camera.prevCameraPos;
         // Prepare runs before the current frame's SkyRenderer pass.  Resolve
         // the authored horizon directly instead of reading last frame's sky
@@ -643,7 +655,7 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
         };
         state.constants = constants;
         state.preparedFrameIndex = frame.frameIndex;
-        state.constantFrameSlot = static_cast<uint32_t>(frame.frameIndex % GFX::kFrameResourceCount);
+        state.constantFrameSlot = context.frameIndex;
         state.writeIndex = static_cast<uint32_t>(frame.frameIndex & 1u);
         state.debugView = debugView;
         state.localLights = localLights;
