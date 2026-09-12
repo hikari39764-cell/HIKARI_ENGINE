@@ -1,5 +1,7 @@
+#include "Core/HIKARI_StartupTimer.h"
 #include "Runtime/Host/HIKARI_EngineHostRunner.h"
 #include "Core/Text/HIKARI_UtfPath.h"
+#include "Platform/HIKARI_StartupSplash.h"
 
 #include <filesystem>
 
@@ -111,6 +113,10 @@ namespace HIKARI::RUNTIME {
                 "HIKARI could not start.\n\n" +
                 message;
             OutputDebugStringA(displayMessage.c_str());
+            // 自身の window の終了処理で残った WM_QUIT によって、
+            // エラーダイアログの modal loop が即時終了しないようにする。
+            MSG quit{};
+            while (PeekMessageW(&quit, nullptr, WM_QUIT, WM_QUIT, PM_REMOVE)) {}
             MessageBoxA(
                 nullptr,
                 displayMessage.c_str(),
@@ -125,12 +131,19 @@ namespace HIKARI::RUNTIME {
         IHostApplication& application,
         const EngineHostRunOptions& options) {
 
+        const auto startupStarted = CORE::StartupTimer::Clock::now();
         EnableProcessDpiAwareness();
+        PLATFORM::StartupSplash splash;
+        const bool splashShown = splash.Start();
+        const auto launchFailure = [&splash](const std::string& message) {
+            splash.Stop();
+            return ReportLaunchFailure(message);
+        };
 
         std::string engineContentMessage{};
         if (!CONTENT::OpenEngineContentForLaunch(
                 &engineContentMessage)) {
-            return ReportLaunchFailure(
+            return launchFailure(
                 engineContentMessage);
         }
 
@@ -157,7 +170,7 @@ namespace HIKARI::RUNTIME {
                     &projectMessage)) {
                 GetProjectContext().Close();
                 CONTENT::GetEngineContentContext().Close();
-                return ReportLaunchFailure(
+                return launchFailure(
                     projectMessage);
             }
         }
@@ -183,7 +196,7 @@ namespace HIKARI::RUNTIME {
                 cookedManifestError) {
                 GetProjectContext().Close();
                 CONTENT::GetEngineContentContext().Close();
-                return ReportLaunchFailure(
+                return launchFailure(
                     "Shipping builds require cooked content. Missing " +
                     cookedManifestPath.generic_string());
             }
@@ -195,14 +208,19 @@ namespace HIKARI::RUNTIME {
             !runtimeConfig.windowTitle->empty()) {
             resolvedWindowTitle = runtimeConfig.windowTitle->c_str();
         }
+        std::string initializationError;
         if (!SERVICES::Initialize(
                 resolvedWindowTitle,
-                servicesConfig)) {
+                servicesConfig,
+                &initializationError,
+                splashShown)) {
+            const auto logPath = CORE::GetLogFilePath();
             SERVICES::FinalizeAll();
             GetProjectContext().Close();
             CONTENT::GetEngineContentContext().Close();
-            return -1;
+            return launchFailure(initializationError + "\n\nLog: " + TEXT::PathToUtf8(logPath));
         }
+        if (!splashShown) HIKARI_LOG_WARN("[Startup] native logo unavailable; using the application window.");
         const CONTENT::EngineContentContext& engineContent =
             CONTENT::GetEngineContentContext();
         HIKARI_LOG_INFO(
@@ -227,6 +245,7 @@ namespace HIKARI::RUNTIME {
         }
 
         MATH::RunMathConventionSelfCheck();
+        CORE::StartupTimer openingLoadTimer("Opening.load");
         SpineActor openingAnimation;
         const std::filesystem::path openingRoot =
             IsExportedGameHostMode(
@@ -264,11 +283,16 @@ namespace HIKARI::RUNTIME {
                 "starting application immediately");
         }
 
-        if (!application.Initialize()) {
+        openingLoadTimer.Finish();
+        CORE::StartupTimer applicationInitTimer("Application.initialize");
+        const bool applicationInitialized = application.Initialize();
+        applicationInitTimer.Finish();
+        if (!applicationInitialized) {
+            const auto logPath = CORE::GetLogFilePath();
             SERVICES::FinalizeAll();
             GetProjectContext().Close();
             CONTENT::GetEngineContentContext().Close();
-            return -1;
+            return launchFailure("Application initialization failed.\n\nLog: " + TEXT::PathToUtf8(logPath));
         }
 
         // Explicit diagnostic launch options; no automatic screenshots in normal play.
@@ -276,6 +300,8 @@ namespace HIKARI::RUNTIME {
         const auto captureFrame=ReadRuntimeCommandLineUint32(L"--capture-frame").value_or(180u);
         const auto exitFrame=ReadRuntimeCommandLineUint32(L"--exit-after-frame");
         uint64_t presentedFrames=0;
+        bool applicationPresented = false;
+        TIME::ResetFrameClock();
         while (SERVICES::PumpMessages()) {
             application.UpdateHostSessions();
             if (application.ShouldExitHost()) {
@@ -292,6 +318,7 @@ namespace HIKARI::RUNTIME {
                 TIME::GetFrameContext();
 
             bool renderHostUi = false;
+            bool renderingApplication = false;
             if (openingAnimationActive &&
                 !openingAnimation.IsAnimationFinished("op")) {
                 {
@@ -341,6 +368,9 @@ namespace HIKARI::RUNTIME {
                 {
                     CPU_PROFILE::ScopedCpuTimer cpuUpdate(
                         CPU_PROFILE::Pass::AppUpdate);
+                    renderingApplication = true;
+                    CORE::StartupTimer firstUpdateTimer(
+                        "Application.first_update", !applicationPresented);
                     application.Update(frame.gameDt);
                 }
                 RENDER3D::UPSCALING::
@@ -348,6 +378,8 @@ namespace HIKARI::RUNTIME {
                 {
                     CPU_PROFILE::ScopedCpuTimer cpuRender(
                         CPU_PROFILE::Pass::AppRender);
+                    CORE::StartupTimer firstRenderTimer(
+                        "Application.first_render", !applicationPresented);
                     application.Render();
                 }
                 renderHostUi =
@@ -391,6 +423,14 @@ namespace HIKARI::RUNTIME {
             if (!SERVICES::EndFrame()) {
                 break;
             }
+            if (presentedFrames == 1u) {
+                splash.Stop();
+                CORE::StartupTimer::ReportSince("Host.first_present", startupStarted);
+            }
+            if (renderingApplication && !applicationPresented) {
+                applicationPresented = true;
+                CORE::StartupTimer::ReportSince("Host.first_application_present", startupStarted);
+            }
             if (application.ShouldExitHost()) {
                 break;
             }
@@ -407,6 +447,7 @@ namespace HIKARI::RUNTIME {
             }
         }
 
+        splash.Stop();
         application.Shutdown();
         SERVICES::FinalizeAll();
         GetProjectContext().Close();

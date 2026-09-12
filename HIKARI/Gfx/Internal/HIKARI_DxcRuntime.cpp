@@ -275,8 +275,13 @@ namespace HIKARI::GFX::INTERNAL {
                         state,
                         hostDirectory,
                         false)) &&
+#if defined(HIKARI_SHIPPING)
+                    true
+#else
                     !TryLoadDefault(state) &&
-                    !TryLoadFromWindowsKits(state)) {
+                    !TryLoadFromWindowsKits(state)
+#endif
+                    ) {
                     state.lastError =
                         "dxcompiler.dll and dxil.dll were not found";
                     return false;

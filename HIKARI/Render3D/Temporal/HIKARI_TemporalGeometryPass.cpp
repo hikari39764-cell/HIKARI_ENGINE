@@ -15,7 +15,7 @@
 #include "Gfx/D3D12/HIKARI_D3D12BufferAlignment.h"
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_PixProfiler.h"
-#include "Gfx/HIKARI_ShaderCompiler.h"
+#include "Render3D/Temporal/Internal/HIKARI_TemporalShader.h"
 #include "Render2D/HIKARI_RenderTarget2D.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/HIKARI_Mesh.h"
@@ -45,6 +45,12 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             MATH::Mat4 previous[kMaxJointCount]{};
         };
 
+        static_assert(sizeof(GeometryConstants) == 352u);
+        static_assert(offsetof(GeometryConstants, screenParams) == 320u);
+        static_assert(offsetof(GeometryConstants, temporalParams) == 336u);
+        static_assert(sizeof(SkinConstants) == 16384u);
+        static_assert(offsetof(SkinConstants, previous) == 8192u);
+
         struct TemporalGeometryPassState {
             ComPtr<ID3D12RootSignature> rootSignature{};
             ComPtr<ID3D12PipelineState> staticPso[2]{};
@@ -62,8 +68,8 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         bool CreatePipelineVariant(
             ID3D12Device* device,
             ID3D12RootSignature* rootSignature,
-            ID3DBlob* vertexShader,
-            ID3DBlob* pixelShader,
+            D3D12_SHADER_BYTECODE vertexShader,
+            D3D12_SHADER_BYTECODE pixelShader,
             const D3D12_INPUT_ELEMENT_DESC* inputElements,
             UINT inputElementCount,
             bool doubleSided,
@@ -71,14 +77,8 @@ namespace HIKARI::RENDER3D::TEMPORAL {
 
             D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
             desc.pRootSignature = rootSignature;
-            desc.VS = {
-                vertexShader->GetBufferPointer(),
-                vertexShader->GetBufferSize()
-            };
-            desc.PS = {
-                pixelShader->GetBufferPointer(),
-                pixelShader->GetBufferSize()
-            };
+            desc.VS = vertexShader;
+            desc.PS = pixelShader;
             desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
             desc.SampleMask = UINT_MAX;
             desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
@@ -164,24 +164,16 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             }
             rootSignature->SetName(L"HIKARI.Temporal.GeometryRootSignature");
 
-            ComPtr<ID3DBlob> staticVs;
-            ComPtr<ID3DBlob> skinnedVs;
-            ComPtr<ID3DBlob> ps;
-            if (!GFX::CompileShaderFileSm6(
-                    L"HIKARI/Shaders/Temporal_GeometryMotion.hlsl",
-                    "VSStatic",
-                    GFX::ShaderStage::Vertex,
-                    staticVs.GetAddressOf()) ||
-                !GFX::CompileShaderFileSm6(
-                    L"HIKARI/Shaders/Temporal_GeometryMotion.hlsl",
-                    "VSSkinned",
-                    GFX::ShaderStage::Vertex,
-                    skinnedVs.GetAddressOf()) ||
-                !GFX::CompileShaderFileSm6(
-                    L"HIKARI/Shaders/Temporal_GeometryMotion.hlsl",
-                    "PSMain",
-                    GFX::ShaderStage::Pixel,
-                    ps.GetAddressOf())) {
+            const auto staticVs = INTERNAL::LoadTemporalShader(
+                ASSETS::SHADER::TemporalShaderPass::Geometry, "VSStatic",
+                ASSETS::SHADER::ShaderStage::Vertex);
+            const auto skinnedVs = INTERNAL::LoadTemporalShader(
+                ASSETS::SHADER::TemporalShaderPass::Geometry, "VSSkinned",
+                ASSETS::SHADER::ShaderStage::Vertex);
+            const auto ps = INTERNAL::LoadTemporalShader(
+                ASSETS::SHADER::TemporalShaderPass::Geometry, "PSMain",
+                ASSETS::SHADER::ShaderStage::Pixel);
+            if (!staticVs || !skinnedVs || !ps) {
                 return false;
             }
 
@@ -206,8 +198,8 @@ namespace HIKARI::RENDER3D::TEMPORAL {
                 if (!CreatePipelineVariant(
                         device,
                         rootSignature.Get(),
-                        staticVs.Get(),
-                        ps.Get(),
+                        INTERNAL::TemporalShaderBytecode(staticVs),
+                        INTERNAL::TemporalShaderBytecode(ps),
                         staticLayout,
                         static_cast<UINT>(std::size(staticLayout)),
                         doubleSided != 0u,
@@ -215,8 +207,8 @@ namespace HIKARI::RENDER3D::TEMPORAL {
                     !CreatePipelineVariant(
                         device,
                         rootSignature.Get(),
-                        skinnedVs.Get(),
-                        ps.Get(),
+                        INTERNAL::TemporalShaderBytecode(skinnedVs),
+                        INTERNAL::TemporalShaderBytecode(ps),
                         skinnedLayout,
                         static_cast<UINT>(std::size(skinnedLayout)),
                         doubleSided != 0u,

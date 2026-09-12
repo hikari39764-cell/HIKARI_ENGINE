@@ -5,6 +5,8 @@
 
 namespace HIKARI::EDITOR {
 
+    std::filesystem::path ResolveExportEngineSourceRoot();
+
     bool ResolveGameShippingHostExecutable(const std::filesystem::path& runtimeRoot,
         std::filesystem::path& executable, std::string& message);
 

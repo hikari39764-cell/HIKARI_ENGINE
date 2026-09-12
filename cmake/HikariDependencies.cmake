@@ -188,6 +188,26 @@ target_include_directories(
         "${HIKARI_COACD_ROOT}/include")
 
 set(HIKARI_RUNTIME_DEPENDENCIES)
+if(MSVC)
+    # /MT does not cover OpenMP or the CRT imported by vendor DLLs.
+    # Resolve redistributables from the selected Visual Studio toolchain.
+    set(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_SKIP TRUE)
+    set(CMAKE_INSTALL_OPENMP_LIBRARIES TRUE)
+    include(InstallRequiredSystemLibraries)
+    foreach(required_runtime vcomp140.dll msvcp140.dll vcruntime140.dll vcruntime140_1.dll)
+        set(runtime_found FALSE)
+        foreach(runtime_file IN LISTS CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS)
+            get_filename_component(runtime_name "${runtime_file}" NAME)
+            if(runtime_name STREQUAL required_runtime)
+                set(runtime_found TRUE)
+            endif()
+        endforeach()
+        if(NOT runtime_found)
+            message(FATAL_ERROR "Missing MSVC x64 redistributable: ${required_runtime}. Install the Visual Studio C++ redistributable toolchain component.")
+        endif()
+    endforeach()
+    list(APPEND HIKARI_RUNTIME_DEPENDENCIES ${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS})
+endif()
 if(HIKARI_WITH_EDITOR_BUILD)
     if(HIKARI_PRODUCT STREQUAL "Debug")
         set(

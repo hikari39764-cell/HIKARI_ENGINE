@@ -1,4 +1,5 @@
 #include "HIKARI_Dx12Core.h"
+#include "Gfx/HIKARI_GpuCompletion.h"
 #include <DirectXTex.h>
 #include "Core/Presentation/HIKARI_LogicalDisplayDefaults.h"
 
@@ -133,6 +134,7 @@ bool Dx12Core::Initialize(
     bool enableDebugLayer,
     const GraphicsBootstrapCallbacks& callbacks) {
     HIKARI_LOG_D3D12("Dx12Core initialization started.");
+    initializationError_.clear();
     shutdownUnsafe_ = false;
 
     graphicsBootstrapCallbacks_ = callbacks;
@@ -181,22 +183,38 @@ bool Dx12Core::Initialize(
         swapChainFlags_ |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
     }
 
-    for (UINT i = 0; factory_->EnumAdapterByGpuPreference(i, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IID_PPV_ARGS(&adapter_)) != DXGI_ERROR_NOT_FOUND; ++i) {
-        DXGI_ADAPTER_DESC3 desc{};
-        adapter_->GetDesc3(&desc);
-        if (!(desc.Flags & DXGI_ADAPTER_FLAG3_SOFTWARE)) break;
-    }
-    HIKARI_LOG_D3D12("Adapter selected.");
-
-    hr = D3D12CreateDevice(adapter_.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&device_));
-    if (FAILED(hr)) {
-        // adapter_ が取れない環境向けフォールバック
-        hr = D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&device_));
-        if (FAILED(hr)) {
-            LogHr("D3D12CreateDevice", hr);
+    // 候補ごとに作成と必要能力を検証し、互換 GPU が見つかるまで進める。
+    for (UINT i = 0; ; ++i) {
+        ComPtr<IDXGIAdapter4> candidate;
+        hr = factory_->EnumAdapterByGpuPreference(i, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IID_PPV_ARGS(&candidate));
+        if (hr == DXGI_ERROR_NOT_FOUND) break;
+        if (FAILED(hr) || !candidate) {
+            LogHr("EnumAdapterByGpuPreference", hr);
+            initializationError_ = "Could not enumerate graphics adapters. Update the graphics driver.";
             return false;
         }
+        DXGI_ADAPTER_DESC3 desc{};
+        if (FAILED(candidate->GetDesc3(&desc)) || (desc.Flags & DXGI_ADAPTER_FLAG3_SOFTWARE)) continue;
+        ComPtr<ID3D12Device> candidateDevice;
+        hr = D3D12CreateDevice(candidate.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&candidateDevice));
+        if (FAILED(hr)) continue;
+        std::string diagnostic;
+        if (callbacks.acceptDevice && !callbacks.acceptDevice(candidateDevice.Get(), diagnostic)) {
+            initializationError_ = diagnostic;
+            HIKARI_LOG_WARN("[D3D12] adapter rejected: " + diagnostic);
+            continue;
+        }
+        adapter_ = std::move(candidate);
+        device_ = std::move(candidateDevice);
+        initializationError_.clear();
+        break;
     }
+    if (!device_) {
+        if (initializationError_.empty()) initializationError_ = "No compatible Direct3D 12 graphics adapter was found.";
+        HIKARI_LOG_ERROR(initializationError_);
+        return false;
+    }
+    HIKARI_LOG_D3D12("Compatible adapter selected.");
     deviceGeneration_ = AllocateDeviceGeneration();
     ConfigureD3D12InfoQueue(device_.Get());
     SetD3D12Name(device_.Get(), L"HIKARI D3D12 Device");
@@ -661,16 +679,13 @@ bool Dx12Core::WaitGPU() {
         return false;
     }
     fenceValue_++;
-    if (fence_->GetCompletedValue() < signal) {
-        const HRESULT eventHr = fence_->SetEventOnCompletion(signal, fenceEvent_);
-        if (FAILED(eventHr)) {
-            HIKARI_DX_CHECK(eventHr, "Dx12Core::WaitGPU SetEventOnCompletion");
-            CheckDeviceRemoved("Dx12Core::WaitGPU SetEventOnCompletion", eventHr);
-            return false;
-        }
+    {
         CPU_PROFILE::ScopedCpuTimer cpuWait(
             CPU_PROFILE::Pass::FenceWait);
-        WaitForSingleObject(fenceEvent_, INFINITE);
+        if (!WaitForGpuCompletion(device_.Get(), fence_.Get(), signal, fenceEvent_, "Dx12Core::WaitGPU")) {
+            CheckDeviceRemoved("Dx12Core::WaitGPU", device_->GetDeviceRemovedReason());
+            return false;
+        }
     }
     deferredReleaseQueue_.Collect(fence_->GetCompletedValue());
     return true;
@@ -700,19 +715,14 @@ bool Dx12Core::MoveToNextFrame() {
     // Frame resources are triple-buffered; only wait when the next swapchain
     // back buffer would reuse resources whose submitted work is still pending.
     const uint64_t frameFenceToWait = frameFenceValues_[frameIndex_];
-    if (frameFenceToWait != 0 &&
-        fence_->GetCompletedValue() < frameFenceToWait) {
-        const HRESULT eventHr =
-            fence_->SetEventOnCompletion(frameFenceToWait, fenceEvent_);
-        if (FAILED(eventHr)) {
-            HIKARI_DX_CHECK(eventHr, "Dx12Core::MoveToNextFrame SetEventOnCompletion");
-            CheckDeviceRemoved("Dx12Core::MoveToNextFrame SetEventOnCompletion", eventHr);
-            return false;
-        }
+    if (frameFenceToWait != 0) {
 
         CPU_PROFILE::ScopedCpuTimer cpuWait(
             CPU_PROFILE::Pass::FenceWait);
-        WaitForSingleObject(fenceEvent_, INFINITE);
+        if (!WaitForGpuCompletion(device_.Get(), fence_.Get(), frameFenceToWait, fenceEvent_, "Dx12Core::MoveToNextFrame")) {
+            CheckDeviceRemoved("Dx12Core::MoveToNextFrame", device_->GetDeviceRemovedReason());
+            return false;
+        }
     }
 
     deferredReleaseQueue_.Collect(fence_->GetCompletedValue());

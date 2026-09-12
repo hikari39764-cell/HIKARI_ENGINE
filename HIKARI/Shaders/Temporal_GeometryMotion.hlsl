@@ -1,21 +1,5 @@
-#define MAX_JOINTS 128
-
-cbuffer TemporalGeometryCB : register(b0)
-{
-    float4x4 gRenderViewProj;
-    float4x4 gCurrentViewProj;
-    float4x4 gPreviousViewProj;
-    float4x4 gCurrentWorld;
-    float4x4 gPreviousWorld;
-    float4 gScreenParams;
-    float4 gTemporalParams; // x: history valid
-};
-
-cbuffer TemporalSkinCB : register(b1)
-{
-    float4x4 gCurrentJoints[MAX_JOINTS];
-    float4x4 gPreviousJoints[MAX_JOINTS];
-};
+#define HIKARI_TEMPORAL_GEOMETRY
+#include "Include/Temporal/HIKARI_TemporalShaderInterface.hlsli"
 
 struct StaticInput
 {

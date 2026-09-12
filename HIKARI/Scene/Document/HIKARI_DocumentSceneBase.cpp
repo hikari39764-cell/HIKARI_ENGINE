@@ -1,3 +1,4 @@
+#include "Core/HIKARI_StartupTimer.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/Document/Internal/HIKARI_DocumentSceneState.h"
 
@@ -150,6 +151,7 @@ namespace HIKARI {
     DocumentSceneBase::~DocumentSceneBase() = default;
 
     void DocumentSceneBase::OnEnter() {
+        CORE::StartupTimer sceneTimer("Scene.enter");
         state_->runtime.initialized = true;
         state_->camera.editorCamera.SetPerspective(
             60.0f * std::numbers::pi_v<float> / 180.0f,

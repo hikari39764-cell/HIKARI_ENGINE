@@ -1,5 +1,7 @@
 #pragma once
 
+#include <filesystem>
+
 namespace HIKARI::AUDIO {
 
 struct IAudioBackend {
@@ -8,6 +10,7 @@ struct IAudioBackend {
     virtual void Shutdown() = 0;
 
     virtual int Load(const char* path) = 0;
+    virtual void PreloadDirectory(const std::filesystem::path&) {}
     virtual int Play(int soundHandle, bool loop, float volume) = 0;
     virtual void Stop(int playHandle) = 0;
     virtual void Pause(int playHandle) = 0;

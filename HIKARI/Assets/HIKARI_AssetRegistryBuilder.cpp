@@ -1,6 +1,10 @@
 #include "HIKARI_AssetRegistryBuilder.h"
 
 #include <filesystem>
+#include <future>
+#include <thread>
+#include <algorithm>
+#include "Core/HIKARI_StartupTimer.h"
 #include <memory>
 #include <system_error>
 
@@ -147,7 +151,6 @@ namespace HIKARI {
                         ASSETS::MATERIAL::MakeMaterialCompileOptions(
                             assetDatabase),
                         readMessage)) {
-                    HIKARI_LOG_INFO("[AssetRegistryBuilder][Material] loaded HMAT: " + hmatArtifact);
                     return true;
                 }
 
@@ -163,15 +166,26 @@ namespace HIKARI {
                 assetDatabase, record, outData, outCompileResult);
         }
 
+        struct PreparedMaterialRead {
+            MaterialAssetData source;
+            MaterialCompileResult compile;
+            bool loaded = false;
+        };
+
         bool LoadMaterialDataForRegistry(
             const AssetDatabase& assetDatabase,
             const AssetRecord& record,
             MaterialAssetData& outData,
-            MaterialCompileResult& outCompileResult) {
+            MaterialCompileResult& outCompileResult,
+            PreparedMaterialRead* prepared = nullptr) {
 
             MaterialAssetData source{};
             MaterialCompileResult sourceCompile{};
-            if (!LoadRawMaterialDataForRegistry(
+            if (prepared) {
+                if (!prepared->loaded) return false;
+                source = std::move(prepared->source);
+                sourceCompile = std::move(prepared->compile);
+            } else if (!LoadRawMaterialDataForRegistry(
                     assetDatabase, record, source, sourceCompile)) {
                 return false;
             }
@@ -494,7 +508,31 @@ namespace HIKARI {
                         ShaderAssetRegistryAdmissionMode::Authoring
             };
 
-        for (const AssetRecord* record : assetDatabase.CollectAll()) {
+        const auto records = assetDatabase.CollectAll();
+        std::vector<PreparedMaterialRead> preparedMaterials;
+        if (assetDatabase.IsCookedContent()) {
+            CORE::StartupTimer materialTimer("Assets.read_cooked_materials");
+            preparedMaterials.resize(records.size());
+            // 不変の cooked snapshot だけを読む。全 worker の終了後、同じ順で
+            // registry に公開する。Editor の import/authoring は並列化しない。
+            const size_t workerCount = (std::min)(size_t(4),
+                size_t((std::max)(1u, std::thread::hardware_concurrency())));
+            std::vector<std::future<void>> workers;
+            for (size_t worker = 0; worker < workerCount; ++worker) {
+                workers.push_back(std::async(std::launch::async, [&, worker] {
+                    for (size_t index = worker; index < records.size(); index += workerCount) {
+                        const auto* record = records[index];
+                        if (!record || !record->guid.IsValid() || record->duplicateGuid || record->type != AssetType::Material) continue;
+                        auto& prepared = preparedMaterials[index];
+                        prepared.loaded = LoadRawMaterialDataForRegistry(assetDatabase,
+                            *record, prepared.source, prepared.compile);
+                    }
+                }));
+            }
+            for (auto& worker : workers) worker.get();
+        }
+        for (size_t recordIndex = 0; recordIndex < records.size(); ++recordIndex) {
+            const AssetRecord* record = records[recordIndex];
             if (!record || !record->guid.IsValid() || record->duplicateGuid) {
                 continue;
             }
@@ -621,7 +659,8 @@ namespace HIKARI {
                         assetDatabase,
                         *record,
                         descriptor->sourceData,
-                        descriptor->compileResult)) {
+                        descriptor->compileResult,
+                        preparedMaterials.empty() ? nullptr : &preparedMaterials[recordIndex])) {
                     PbrMaterialAssetData fallback{};
                     fallback.materialName = record->displayName.empty()
                         ? record->sourcePath.stem().string()

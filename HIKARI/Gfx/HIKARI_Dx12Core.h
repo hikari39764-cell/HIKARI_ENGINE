@@ -25,6 +25,7 @@ struct FrameSubmissionCallbacks {
 
 // Dx12Core 初期化時に Device / SwapChain の生成完了を外部へ通知するコールバック。
 struct GraphicsBootstrapCallbacks {
+    std::function<bool(ID3D12Device*, std::string&)> acceptDevice{};
     std::function<void(ID3D12Device*)> deviceCreated{};
     std::function<void(IDXGISwapChain4*)> swapChainCreated{};
 };
@@ -98,6 +99,7 @@ public:
     // ── 状態 / 設定 ─────────────────────────────────────────────
 
     bool IsDeviceLost() const { return deviceLost_; }
+    const std::string& InitializationError() const { return initializationError_; }
     void SetVSyncEnabled(bool enabled) { vSyncEnabled_ = enabled; }
     bool IsVSyncEnabled() const { return vSyncEnabled_; }
     HWND PresentationWindow() const;
@@ -114,6 +116,7 @@ public:
     Context BuildContext() const;
 
 private:
+    std::string initializationError_;
     std::filesystem::path capturePath_;
     // ── 内部メソッド ──────────────────────────────────────────────
     bool WaitGPU();
@@ -124,7 +127,7 @@ private:
     bool CheckDeviceRemoved(const char* reason, HRESULT hr);
 
     // ── DXGI / Device 基盤 ───────────────────────────────────────
-    Microsoft::WRL::ComPtr<IDXGIFactory7> factory_;
+    Microsoft::WRL::ComPtr<IDXGIFactory6> factory_;
     Microsoft::WRL::ComPtr<IDXGIAdapter4> adapter_;
     Microsoft::WRL::ComPtr<ID3D12Device> device_;
     uint64_t deviceGeneration_{};

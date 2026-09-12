@@ -9,6 +9,7 @@
 #include <dxgi1_6.h>
 
 #include "Core/HIKARI_Logger.h"
+#include "Core/HIKARI_StartupTimer.h"
 #include "Platform/Paths/HIKARI_ExecutablePath.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineReflex.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineInternal.h"
@@ -124,6 +125,7 @@ namespace HIKARI::RENDER3D::UPSCALING {
             PLATFORM::GetExecutableDirectory();
         const std::filesystem::path interposerPath =
             moduleDirectory / L"sl.interposer.dll";
+        CORE::StartupTimer signatureTimer("Streamline.verify_signature");
         if (moduleDirectory.empty() ||
             !std::filesystem::is_regular_file(interposerPath) ||
             !sl::security::verifyEmbeddedSignature(interposerPath.c_str())) {
@@ -135,6 +137,7 @@ namespace HIKARI::RENDER3D::UPSCALING {
             return false;
         }
 
+        signatureTimer.Finish();
         state.pluginPath = moduleDirectory.wstring();
         const std::filesystem::path logDirectory =
             requestedLogDirectory.empty()
@@ -203,6 +206,7 @@ namespace HIKARI::RENDER3D::UPSCALING {
         preferences.projectId = "e7cc83d6-d200-4d4a-85e4-7d93e060b066";
         preferences.renderAPI = sl::RenderAPI::eD3D12;
 
+        CORE::StartupTimer initTimer("Streamline.slInit");
         if (!INTERNAL::RecordResult(
                 state,
                 "slInit",
@@ -238,11 +242,14 @@ namespace HIKARI::RENDER3D::UPSCALING {
             state.stats.status = StreamlineRuntimeStatus::DeviceFailed;
             return false;
         }
+        CORE::StartupTimer attachTimer("Streamline.slSetD3DDevice");
         if (!INTERNAL::RecordResult(state, "slSetD3DDevice", slSetD3DDevice(device))) {
             state.stats.status = StreamlineRuntimeStatus::DeviceFailed;
             return false;
         }
         state.stats.deviceAttached = true;
+        attachTimer.Finish();
+        CORE::StartupTimer supportTimer("Streamline.query_support");
 
         LUID luid = device->GetAdapterLuid();
         sl::AdapterInfo adapter{};

@@ -393,11 +393,12 @@ namespace HIKARI::RENDER3D::UPSCALING {
             return false;
         }
 
-        const sl::Extent outputExtent{
-            static_cast<uint32_t>(sceneRect.left),
-            static_cast<uint32_t>(sceneRect.top),
-            static_cast<uint32_t>(sceneRect.right - sceneRect.left),
-            static_cast<uint32_t>(sceneRect.bottom - sceneRect.top) };
+        // SDK のフィールド順は top, left。名前で指定して黒帯の軸を取り違えない。
+        sl::Extent outputExtent{};
+        outputExtent.top = static_cast<uint32_t>(sceneRect.top);
+        outputExtent.left = static_cast<uint32_t>(sceneRect.left);
+        outputExtent.width = static_cast<uint32_t>(sceneRect.right - sceneRect.left);
+        outputExtent.height = static_cast<uint32_t>(sceneRect.bottom - sceneRect.top);
         const sl::ResourceTag backBufferTag(
             nullptr,
             sl::kBufferTypeBackbuffer,

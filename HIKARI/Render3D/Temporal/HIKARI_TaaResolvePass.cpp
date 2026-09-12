@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstddef>
 #include <cstring>
 #include <iterator>
 #include <string>
@@ -16,7 +17,7 @@
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
-#include "Gfx/HIKARI_ShaderCompiler.h"
+#include "Render3D/Temporal/Internal/HIKARI_TemporalShader.h"
 #include "Render2D/HIKARI_RenderTarget2D.h"
 #include "Render3D/Temporal/HIKARI_TemporalResourceSystem.h"
 #include "Render3D/Temporal/Internal/HIKARI_TemporalPassScratch.h"
@@ -30,6 +31,8 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             MATH::Vec4 taaParams{};
             MATH::Vec4 rejectionParams{};
         };
+
+        static_assert(sizeof(TaaResolveConstants) == 48u);
 
         struct TaaResolvePassState {
             ComPtr<ID3D12RootSignature> rootSignature{};
@@ -135,25 +138,20 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             }
             rootSignature->SetName(L"HIKARI.Temporal.TaaResolveRootSignature");
 
-            ComPtr<ID3DBlob> vs;
-            ComPtr<ID3DBlob> ps;
-            if (!GFX::CompileShaderFileSm6(
-                    L"HIKARI/Shaders/Temporal_TaaResolve.hlsl",
-                    "VSMain",
-                    GFX::ShaderStage::Vertex,
-                    vs.GetAddressOf()) ||
-                !GFX::CompileShaderFileSm6(
-                    L"HIKARI/Shaders/Temporal_TaaResolve.hlsl",
-                    "PSMain",
-                    GFX::ShaderStage::Pixel,
-                    ps.GetAddressOf())) {
+            const auto vs = INTERNAL::LoadTemporalShader(
+                ASSETS::SHADER::TemporalShaderPass::TaaResolve, "VSMain",
+                ASSETS::SHADER::ShaderStage::Vertex);
+            const auto ps = INTERNAL::LoadTemporalShader(
+                ASSETS::SHADER::TemporalShaderPass::TaaResolve, "PSMain",
+                ASSETS::SHADER::ShaderStage::Pixel);
+            if (!vs || !ps) {
                 return false;
             }
 
             D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc{};
             psoDesc.pRootSignature = rootSignature.Get();
-            psoDesc.VS = { vs->GetBufferPointer(), vs->GetBufferSize() };
-            psoDesc.PS = { ps->GetBufferPointer(), ps->GetBufferSize() };
+            psoDesc.VS = INTERNAL::TemporalShaderBytecode(vs);
+            psoDesc.PS = INTERNAL::TemporalShaderBytecode(ps);
             psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
             psoDesc.SampleMask = UINT_MAX;
             psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);

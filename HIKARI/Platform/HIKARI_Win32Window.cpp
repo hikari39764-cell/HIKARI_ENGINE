@@ -174,7 +174,8 @@ bool Win32Window::Initialize(
     int height,
     bool resizable,
     WindowCloseBehavior closeBehavior,
-    bool dispatchHostMessages) {
+    bool dispatchHostMessages,
+    bool startHidden) {
     HIKARI_LOG_INFO("Win32Window initialization started.");
 
     hInstance_ = GetModuleHandleW(nullptr);
@@ -183,6 +184,7 @@ bool Win32Window::Initialize(
     resizable_ = resizable;
     closeBehavior_ = closeBehavior;
     dispatchHostMessages_ = dispatchHostMessages;
+    startupHidden_ = startHidden;
     closeRequested_ = false;
 
     WNDCLASSW wc{};
@@ -261,10 +263,8 @@ bool Win32Window::Initialize(
         if (icon) SendMessageW(hwnd_, WM_SETICON, useSmallIcon ? ICON_SMALL : ICON_BIG, reinterpret_cast<LPARAM>(icon));
     }
 
-    ShowWindow(hwnd_, SW_SHOW);
+    if (!startupHidden_) Show();
     DragAcceptFiles(hwnd_, TRUE);
-    UpdateWindow(hwnd_);
-    HIKARI_LOG_INFO("Window shown.");
     // 创建后以实际客户端区为准，消除 AdjustWindowRect 边框估算与真实值的偏差。
     RefreshClientSize();
     running_ = true;
@@ -381,7 +381,7 @@ bool Win32Window::ApplyWindowMode(WindowMode mode, int clientWidth, int clientHe
             clampWindowRectToWorkArea(monitorInfo.rcWork, windowWidth, windowHeight, desiredCenter);
 
         SetWindowLongPtrW(hwnd_, GWL_STYLE, static_cast<LONG_PTR>(style));
-        ShowWindow(hwnd_, SW_RESTORE);
+        if (!startupHidden_) ShowWindow(hwnd_, SW_RESTORE);
         const BOOL moved = SetWindowPos(
             hwnd_,
             HWND_NOTOPMOST,
@@ -389,7 +389,7 @@ bool Win32Window::ApplyWindowMode(WindowMode mode, int clientWidth, int clientHe
             target.y,
             windowWidth,
             windowHeight,
-            SWP_NOOWNERZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+            SWP_NOOWNERZORDER | SWP_FRAMECHANGED | (startupHidden_ ? SWP_NOACTIVATE : SWP_SHOWWINDOW));
         if (!moved) {
             return false;
         }
@@ -404,7 +404,7 @@ bool Win32Window::ApplyWindowMode(WindowMode mode, int clientWidth, int clientHe
 
     const MONITORINFO monitorInfo = getMonitorInfo();
 
-    SetWindowLongPtrW(hwnd_, GWL_STYLE, static_cast<LONG_PTR>(WS_POPUP | WS_VISIBLE));
+    SetWindowLongPtrW(hwnd_, GWL_STYLE, static_cast<LONG_PTR>(WS_POPUP | (startupHidden_ ? 0 : WS_VISIBLE)));
     const RECT& target = monitorInfo.rcMonitor;
     const BOOL moved = SetWindowPos(
         hwnd_,
@@ -413,7 +413,7 @@ bool Win32Window::ApplyWindowMode(WindowMode mode, int clientWidth, int clientHe
         target.top,
         target.right - target.left,
         target.bottom - target.top,
-        SWP_NOOWNERZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+        SWP_NOOWNERZORDER | SWP_FRAMECHANGED | (startupHidden_ ? SWP_NOACTIVATE : SWP_SHOWWINDOW));
     if (!moved) {
         return false;
     }
@@ -465,6 +465,15 @@ LRESULT CALLBACK Win32Window::StaticWndProc(HWND hwnd, UINT msg, WPARAM wparam, 
         return window->WndProc(hwnd, msg, wparam, lparam);
     }
     return DefWindowProcW(hwnd, msg, wparam, lparam);
+}
+
+void Win32Window::Show() {
+    if (hwnd_) {
+        startupHidden_ = false;
+        ShowWindow(hwnd_, SW_SHOW);
+        UpdateWindow(hwnd_);
+        HIKARI_LOG_INFO("Window shown.");
+    }
 }
 
 LRESULT Win32Window::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {

@@ -1,5 +1,5 @@
-Texture2D<float4> gCompositionBase : register(t0);
-Texture2D<float4> gCompositedColor : register(t1);
+#define HIKARI_TEMPORAL_MASKS
+#include "Include/Temporal/HIKARI_TemporalShaderInterface.hlsli"
 
 struct VSOut
 {

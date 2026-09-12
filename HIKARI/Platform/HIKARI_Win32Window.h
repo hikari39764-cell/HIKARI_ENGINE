@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <functional>
 #include <vector>
+#include <string>
 
 namespace HIKARI::PLATFORM {
 
@@ -33,12 +34,15 @@ public:
         int height,
         bool resizable = true,
         WindowCloseBehavior closeBehavior = WindowCloseBehavior::QuitApplication,
-        bool dispatchHostMessages = true);
+        bool dispatchHostMessages = true,
+        bool startHidden = false);
     void Shutdown();
 
     bool PumpMessages();
     float ConsumeMouseWheelDelta();
     bool SetTitle(const wchar_t* title);
+    void Show();
+    bool IsStartupHidden() const { return startupHidden_; }
     // Refreshes the cached client dimensions without dispatching the resize
     // callback. Presentation handoffs use this before synchronizing a surface.
     bool RefreshClientSize();
@@ -63,6 +67,7 @@ private:
 
 private:
     HWND hwnd_{};
+    bool startupHidden_ = false;
     HINSTANCE hInstance_{};
     int width_{};
     int height_{};

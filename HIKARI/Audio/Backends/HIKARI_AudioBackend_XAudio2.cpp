@@ -1,6 +1,14 @@
 #include "HIKARI_AudioBackend_XAudio2.h"
 
 #include "Core/HIKARI_Logger.h"
+#include "Core/Tasks/HIKARI_TaskExecutor.h"
+#include "Core/Text/HIKARI_UtfPath.h"
+
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
+#include <unordered_map>
+#include <unordered_set>
 
 #include <algorithm>
 #include <cstdint>
@@ -26,6 +34,50 @@
 namespace HIKARI::AUDIO {
 
 namespace {
+
+    // Windows N では省略可能な Media Foundation を起動時依存にしない。
+    // 関数と COM オブジェクトが存続する間、モジュールを保持する。
+    struct MediaFoundationApi {
+        HMODULE platform = nullptr;
+        HMODULE reader = nullptr;
+        decltype(&MFStartup) startup = nullptr;
+        decltype(&MFShutdown) shutdown = nullptr;
+        decltype(&MFCreateSourceReaderFromURL) createReader = nullptr;
+        decltype(&MFCreateMediaType) createType = nullptr;
+        decltype(&MFCreateWaveFormatExFromMFMediaType) createWaveFormat = nullptr;
+
+        MediaFoundationApi() {
+            platform = LoadLibraryExW(L"mfplat.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+            reader = LoadLibraryExW(L"mfreadwrite.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+            if (!platform || !reader) return;
+            startup = reinterpret_cast<decltype(startup)>(GetProcAddress(platform, "MFStartup"));
+            shutdown = reinterpret_cast<decltype(shutdown)>(GetProcAddress(platform, "MFShutdown"));
+            createReader = reinterpret_cast<decltype(createReader)>(GetProcAddress(reader, "MFCreateSourceReaderFromURL"));
+            createType = reinterpret_cast<decltype(createType)>(GetProcAddress(platform, "MFCreateMediaType"));
+            createWaveFormat = reinterpret_cast<decltype(createWaveFormat)>(GetProcAddress(platform, "MFCreateWaveFormatExFromMFMediaType"));
+        }
+        ~MediaFoundationApi() {
+            if (reader) FreeLibrary(reader);
+            if (platform) FreeLibrary(platform);
+        }
+        bool Ready() const {
+            return startup && shutdown && createReader && createType && createWaveFormat;
+        }
+    };
+
+    const MediaFoundationApi& GetMediaFoundationApi() {
+        static const MediaFoundationApi api;
+        return api;
+    }
+
+    constexpr size_t kMaximumDecodedSoundBytes = 128u * 1024u * 1024u;
+    constexpr size_t kMaximumPreloadBytes = 128u * 1024u * 1024u;
+
+    std::wstring AudioCacheKey(const std::filesystem::path& source) {
+        std::error_code error;
+        auto absolute = std::filesystem::absolute(source, error);
+        return error ? std::wstring{} : absolute.lexically_normal().make_preferred().wstring();
+    }
 
     constexpr uint32_t MakeFourCc(char a, char b, char c, char d)
     {
@@ -86,13 +138,101 @@ namespace {
 
 } // namespace
 
+struct AudioBackendXAudio2::DecodeCache {
+    struct Job {
+        SoundData sound;
+        bool requested{}, done{}, succeeded{};
+    };
+    std::mutex mutex;
+    std::condition_variable changed;
+    std::unordered_map<std::wstring, std::shared_ptr<Job>> jobs;
+    std::unordered_set<std::wstring> requested;
+    std::atomic<bool> cancelled{false};
+    size_t bytes{};
+    // 最後に宣言して最初に破棄する。キャッシュと MF の破棄前に worker を join する。
+    TASKS::TaskExecutor worker{1u};
+};
+
+AudioBackendXAudio2::AudioBackendXAudio2() = default;
+AudioBackendXAudio2::~AudioBackendXAudio2() { Shutdown(); }
+
+void AudioBackendXAudio2::PreloadDirectory(const std::filesystem::path& root) {
+    if (!engine_ || root.empty() || decodeCache_) return;
+    try {
+        decodeCache_ = std::make_unique<DecodeCache>();
+        auto* cache = decodeCache_.get();
+        const bool submitted = cache->worker.Submit([this, cache, root] {
+            const HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+            struct ComScope { bool active; ~ComScope() { if (active) CoUninitialize(); } } comScope{SUCCEEDED(com)};
+            if (FAILED(com)) return;
+            try {
+                std::error_code error;
+                std::filesystem::recursive_directory_iterator it(root,
+                    std::filesystem::directory_options::skip_permission_denied, error), end;
+                std::vector<std::filesystem::path> paths;
+                for (; !error && it != end && !cache->cancelled.load(); it.increment(error)) {
+                    if (!it->is_regular_file(error)) { error.clear(); continue; }
+                    auto ext = it->path().extension().wstring();
+                    std::transform(ext.begin(), ext.end(), ext.begin(), [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
+                    if (ext == L".wav" || ext == L".mp3" || ext == L".ogg" || ext == L".flac") {
+                        paths.push_back(it->path());
+                        if (paths.size() >= 256u) break;
+                    }
+                }
+                std::sort(paths.begin(), paths.end());
+                for (const auto& source : paths) {
+                    if (cache->cancelled.load()) break;
+                    const auto key = AudioCacheKey(source);
+                    if (key.empty()) continue;
+                    auto job = std::make_shared<DecodeCache::Job>();
+                    {
+                        std::lock_guard lock(cache->mutex);
+                        if (cache->bytes >= kMaximumPreloadBytes) break;
+                        if (cache->requested.contains(key) || cache->jobs.contains(key)) continue;
+                        cache->jobs.emplace(key, job);
+                    }
+                    SoundData decoded;
+                    bool succeeded = false;
+                    try {
+                        const auto path = TEXT::PathToUtf8(source);
+                        succeeded = DecodeSound(path.c_str(), decoded, &cache->cancelled);
+                    } catch (...) {
+                        HIKARI_LOG_WARN("[Audio][Preload] decode failed; normal Load remains available.");
+                    }
+                    {
+                        std::lock_guard lock(cache->mutex);
+                        const auto bytes = decoded.audioBytes.size() + decoded.formatBytes.size();
+                        if (succeeded && !cache->cancelled.load() &&
+                            (job->requested || bytes <= kMaximumPreloadBytes - (std::min)(cache->bytes, kMaximumPreloadBytes))) {
+                            job->sound = std::move(decoded);
+                            job->succeeded = true;
+                            cache->bytes += bytes;
+                        }
+                        job->done = true;
+                    }
+                    cache->changed.notify_all();
+                }
+                HIKARI_LOG_INFO("[Audio][Preload] background warmup finished.");
+            } catch (...) {
+                HIKARI_LOG_WARN("[Audio][Preload] warmup stopped; normal Load remains available.");
+            }
+        });
+        if (!submitted) decodeCache_.reset();
+    } catch (...) {
+        decodeCache_.reset();
+        HIKARI_LOG_WARN("[Audio][Preload] worker unavailable; using normal Load.");
+    }
+}
+
 bool AudioBackendXAudio2::Initialize()
 {
     const HRESULT comResult = CoInitializeEx(
         nullptr,
         COINIT_MULTITHREADED);
     comInitialized_ = SUCCEEDED(comResult);
-    const HRESULT mediaResult = MFStartup(MF_VERSION, MFSTARTUP_LITE);
+    const auto& media = GetMediaFoundationApi();
+    const HRESULT mediaResult = media.Ready()
+        ? media.startup(MF_VERSION, MFSTARTUP_LITE) : E_NOINTERFACE;
     mediaFoundationStarted_ = SUCCEEDED(mediaResult);
     if (!mediaFoundationStarted_) {
         HIKARI_LOG_WARN(
@@ -122,6 +262,11 @@ bool AudioBackendXAudio2::Initialize()
 
 void AudioBackendXAudio2::Shutdown()
 {
+    if (decodeCache_) {
+        decodeCache_->cancelled.store(true);
+        decodeCache_->changed.notify_all();
+        decodeCache_.reset();
+    }
     for (size_t i = 0; i < voices_.size(); ++i) {
         DestroyVoiceSlot(static_cast<int>(i));
     }
@@ -135,7 +280,7 @@ void AudioBackendXAudio2::Shutdown()
 
     engine_.reset();
     if (mediaFoundationStarted_) {
-        (void)MFShutdown();
+        (void)GetMediaFoundationApi().shutdown();
         mediaFoundationStarted_ = false;
     }
     if (comInitialized_) {
@@ -144,35 +289,53 @@ void AudioBackendXAudio2::Shutdown()
     }
 }
 
-int AudioBackendXAudio2::Load(const char* path)
-{
-    if (!path || !engine_) {
-        return -1;
-    }
+bool AudioBackendXAudio2::DecodeSound(const char* path, SoundData& sound,
+    const std::atomic<bool>* cancel) const {
+    const auto source = PathFromUtf8(path);
+    if (source.empty() || (cancel && cancel->load())) return false;
+    auto extension = source.extension().wstring();
+    std::transform(extension.begin(), extension.end(), extension.begin(),
+        [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
+    return extension == L".wav" ? LoadWaveFile(path, sound, cancel)
+        : mediaFoundationStarted_ && LoadMediaFile(path, sound, cancel);
+}
 
-    SoundData sound{};
-    const std::filesystem::path source = PathFromUtf8(path);
-    if (source.empty()) {
+int AudioBackendXAudio2::Load(const char* path) {
+    if (!path || !path[0] || !engine_) return -1;
+    try {
+        SoundData sound;
+        bool loaded = false;
+        if (decodeCache_) {
+            const auto key = AudioCacheKey(PathFromUtf8(path));
+            std::unique_lock lock(decodeCache_->mutex);
+            decodeCache_->requested.insert(key);
+            const auto found = decodeCache_->jobs.find(key);
+            if (found != decodeCache_->jobs.end()) {
+                const auto job = found->second;
+                job->requested = true;
+                if (!decodeCache_->changed.wait_for(lock, std::chrono::seconds(2),
+                        [&] { return job->done || decodeCache_->cancelled.load(); })) {
+                    // デコーダ異常でメインスレッドまで永久停止させない。
+                    HIKARI_LOG_WARN("[Audio][Preload] pending decode exceeded Load wait budget; playback skipped.");
+                    return -1;
+                }
+                if (job->succeeded) {
+                    decodeCache_->bytes -= job->sound.audioBytes.size() + job->sound.formatBytes.size();
+                    sound = std::move(job->sound);
+                    loaded = true;
+                }
+                // wait 中の rehash に備え、iterator は保持しない。
+                decodeCache_->jobs.erase(key);
+            }
+        }
+        if (!loaded && !DecodeSound(path, sound)) return -1;
+        const int handle = static_cast<int>(sounds_.size());
+        sounds_.push_back(std::move(sound));
+        return handle;
+    } catch (...) {
+        HIKARI_LOG_ERROR("[Audio][XAudio2] sound load failed; playback skipped.");
         return -1;
     }
-    std::wstring extension = source.extension().wstring();
-    std::transform(
-        extension.begin(),
-        extension.end(),
-        extension.begin(),
-        [](wchar_t value) {
-            return static_cast<wchar_t>(std::towlower(value));
-        });
-    const bool loaded = extension == L".wav"
-        ? LoadWaveFile(path, sound)
-        : mediaFoundationStarted_ && LoadMediaFile(path, sound);
-    if (!loaded) {
-        return -1;
-    }
-
-    const int handle = static_cast<int>(sounds_.size());
-    sounds_.push_back(std::move(sound));
-    return handle;
 }
 
 int AudioBackendXAudio2::Play(int soundHandle, bool loop, float volume)
@@ -298,7 +461,7 @@ bool AudioBackendXAudio2::IsPlaying(int playHandle)
     return true;
 }
 
-bool AudioBackendXAudio2::LoadWaveFile(const char* path, SoundData& outSound) const
+bool AudioBackendXAudio2::LoadWaveFile(const char* path, SoundData& outSound, const std::atomic<bool>* cancel) const
 {
     const std::filesystem::path source = PathFromUtf8(path);
     std::ifstream file(source, std::ios::binary);
@@ -321,20 +484,31 @@ bool AudioBackendXAudio2::LoadWaveFile(const char* path, SoundData& outSound) co
     std::vector<uint8_t> formatBytes{};
     std::vector<uint8_t> audioBytes{};
 
+    std::error_code sizeError;
+    const auto fileBytes = std::filesystem::file_size(source, sizeError);
+    if (sizeError) return false;
+
     while (file.peek() != EOF) {
+        if (cancel && cancel->load()) return false;
         uint32_t chunkId = 0;
         uint32_t chunkSize = 0;
         if (!ReadU32(file, chunkId) || !ReadU32(file, chunkSize)) {
             break;
         }
 
+        const auto position = file.tellg();
+        const auto offset = static_cast<std::streamoff>(position);
+        if (offset < 0 || static_cast<uint64_t>(offset) > fileBytes ||
+            chunkSize > fileBytes - static_cast<uint64_t>(offset)) return false;
         if (chunkId == MakeFourCc('f', 'm', 't', ' ')) {
+            if (chunkSize < 16u || chunkSize > 65536u) return false;
             // WAV の fmt は PCM だと 16 bytes のため、XAudio2 用にゼロ埋めして保持する。
             const size_t storedSize = std::max<size_t>(chunkSize, sizeof(WAVEFORMATEX));
             formatBytes.assign(storedSize, 0);
             file.read(reinterpret_cast<char*>(formatBytes.data()), chunkSize);
         }
         else if (chunkId == MakeFourCc('d', 'a', 't', 'a')) {
+            if (chunkSize > kMaximumDecodedSoundBytes) return false;
             audioBytes.resize(chunkSize);
             file.read(reinterpret_cast<char*>(audioBytes.data()), chunkSize);
         }
@@ -361,7 +535,9 @@ bool AudioBackendXAudio2::LoadWaveFile(const char* path, SoundData& outSound) co
     if (!format || !IsWaveFormatSupported(*format) ||
         format->nChannels == 0 ||
         format->nSamplesPerSec == 0 ||
-        format->nBlockAlign == 0) {
+        format->nBlockAlign == 0 ||
+        format->cbSize > formatBytes.size() - sizeof(WAVEFORMATEX) ||
+        (format->wFormatTag == WAVE_FORMAT_EXTENSIBLE && format->cbSize < 22u)) {
         HIKARI_LOG_ERROR(std::string("[Audio][XAudio2] unsupported wave format: ") + path);
         return false;
     }
@@ -374,7 +550,7 @@ bool AudioBackendXAudio2::LoadWaveFile(const char* path, SoundData& outSound) co
 
 bool AudioBackendXAudio2::LoadMediaFile(
     const char* path,
-    SoundData& outSound) const
+    SoundData& outSound, const std::atomic<bool>* cancel) const
 {
     using Microsoft::WRL::ComPtr;
     if (path == nullptr || !mediaFoundationStarted_) {
@@ -386,7 +562,8 @@ bool AudioBackendXAudio2::LoadMediaFile(
     }
     const std::wstring widePath = source.wstring();
     ComPtr<IMFSourceReader> reader{};
-    HRESULT result = MFCreateSourceReaderFromURL(
+    const auto& media = GetMediaFoundationApi();
+    HRESULT result = media.createReader(
         widePath.c_str(),
         nullptr,
         reader.GetAddressOf());
@@ -415,7 +592,8 @@ bool AudioBackendXAudio2::LoadMediaFile(
             MF_MT_AUDIO_NUM_CHANNELS, &channels)) ||
         FAILED(nativeType->GetUINT32(
             MF_MT_AUDIO_SAMPLES_PER_SECOND, &sampleRate)) ||
-        channels == 0u || sampleRate == 0u) {
+        channels == 0u || channels > XAUDIO2_MAX_AUDIO_CHANNELS ||
+        sampleRate < XAUDIO2_MIN_SAMPLE_RATE || sampleRate > XAUDIO2_MAX_SAMPLE_RATE) {
         HIKARI_LOG_ERROR(
             std::string("[Audio][XAudio2] media format query failed: ") +
             path);
@@ -423,7 +601,7 @@ bool AudioBackendXAudio2::LoadMediaFile(
     }
 
     ComPtr<IMFMediaType> outputType{};
-    result = MFCreateMediaType(outputType.GetAddressOf());
+    result = media.createType(outputType.GetAddressOf());
     if (FAILED(result) || outputType == nullptr ||
         FAILED(outputType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio)) ||
         FAILED(outputType->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_PCM)) ||
@@ -454,13 +632,15 @@ bool AudioBackendXAudio2::LoadMediaFile(
     WAVEFORMATEX* waveFormat = nullptr;
     UINT32 waveFormatBytes = 0u;
     if (FAILED(result) || currentType == nullptr ||
-        FAILED(MFCreateWaveFormatExFromMFMediaType(
+        FAILED(media.createWaveFormat(
             currentType.Get(),
             &waveFormat,
             &waveFormatBytes,
             MFWaveFormatExConvertFlag_Normal)) ||
         waveFormat == nullptr || waveFormatBytes < sizeof(WAVEFORMATEX) ||
-        !IsWaveFormatSupported(*waveFormat)) {
+        waveFormatBytes > 65536u || !IsWaveFormatSupported(*waveFormat) ||
+        waveFormat->cbSize > waveFormatBytes - sizeof(WAVEFORMATEX) ||
+        (waveFormat->wFormatTag == WAVE_FORMAT_EXTENSIBLE && waveFormat->cbSize < 22u)) {
         if (waveFormat != nullptr) {
             CoTaskMemFree(waveFormat);
         }
@@ -469,13 +649,21 @@ bool AudioBackendXAudio2::LoadMediaFile(
             path);
         return false;
     }
+    std::unique_ptr<WAVEFORMATEX, decltype(&CoTaskMemFree)> waveFormatOwner(waveFormat, &CoTaskMemFree);
     std::vector<uint8_t> formatBytes(
         reinterpret_cast<uint8_t*>(waveFormat),
         reinterpret_cast<uint8_t*>(waveFormat) + waveFormatBytes);
-    CoTaskMemFree(waveFormat);
+    waveFormatOwner.reset();
 
     std::vector<uint8_t> audioBytes{};
+    const auto started = std::chrono::steady_clock::now();
+    unsigned emptySamples = 0;
     for (;;) {
+        if ((cancel && cancel->load()) ||
+            std::chrono::steady_clock::now() - started > std::chrono::seconds(30)) {
+            HIKARI_LOG_WARN("[Audio][XAudio2] decode cancelled or timed out.");
+            return false;
+        }
         DWORD streamIndex = 0u;
         DWORD flags = 0u;
         LONGLONG timestamp = 0;
@@ -499,8 +687,10 @@ bool AudioBackendXAudio2::LoadMediaFile(
             break;
         }
         if (sample == nullptr) {
+            if (++emptySamples > 1024u) return false;
             continue;
         }
+        emptySamples = 0;
         ComPtr<IMFMediaBuffer> buffer{};
         if (FAILED(sample->ConvertToContiguousBuffer(
                 buffer.GetAddressOf())) ||
@@ -513,16 +703,22 @@ bool AudioBackendXAudio2::LoadMediaFile(
         if (FAILED(buffer->Lock(
                 &bytes,
                 &maximumLength,
-                &currentLength)) ||
-            bytes == nullptr) {
+                &currentLength))) {
             return false;
         }
-        (void)maximumLength;
+        struct BufferUnlock {
+            IMFMediaBuffer* buffer;
+            ~BufferUnlock() { (void)buffer->Unlock(); }
+        } unlock{buffer.Get()};
+        if (!bytes) return false;
+        if (currentLength > maximumLength || currentLength > kMaximumDecodedSoundBytes - audioBytes.size()) {
+            HIKARI_LOG_ERROR("[Audio][XAudio2] decoded sound exceeds the memory budget.");
+            return false;
+        }
         audioBytes.insert(
             audioBytes.end(),
             bytes,
             bytes + currentLength);
-        (void)buffer->Unlock();
     }
     if (audioBytes.empty()) {
         HIKARI_LOG_ERROR(

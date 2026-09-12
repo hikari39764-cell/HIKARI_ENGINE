@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstddef>
 #include <cstring>
 #include <iterator>
 #include <string>
@@ -16,7 +17,7 @@
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
-#include "Gfx/HIKARI_ShaderCompiler.h"
+#include "Render3D/Temporal/Internal/HIKARI_TemporalShader.h"
 #include "Render3D/Temporal/HIKARI_TemporalResourceSystem.h"
 #include "Render3D/Temporal/Internal/HIKARI_TemporalPassScratch.h"
 
@@ -33,6 +34,10 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             MATH::Vec4 cameraPos{};
             MATH::Vec4 prevCameraPos{};
         };
+
+        static_assert(sizeof(MotionVectorConstants) == 256u);
+        static_assert(offsetof(MotionVectorConstants, screenParams) == 192u);
+        static_assert(offsetof(MotionVectorConstants, prevCameraPos) == 240u);
 
         struct MotionVectorPassState {
             ComPtr<ID3D12RootSignature> rootSignature{};
@@ -117,25 +122,20 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             }
             rootSignature->SetName(L"HIKARI.Temporal.MotionVectorRootSignature");
 
-            ComPtr<ID3DBlob> vs;
-            ComPtr<ID3DBlob> ps;
-            if (!GFX::CompileShaderFileSm6(
-                    L"HIKARI/Shaders/Temporal_MotionVector.hlsl",
-                    "VSMain",
-                    GFX::ShaderStage::Vertex,
-                    vs.GetAddressOf()) ||
-                !GFX::CompileShaderFileSm6(
-                    L"HIKARI/Shaders/Temporal_MotionVector.hlsl",
-                    "PSMain",
-                    GFX::ShaderStage::Pixel,
-                    ps.GetAddressOf())) {
+            const auto vs = INTERNAL::LoadTemporalShader(
+                ASSETS::SHADER::TemporalShaderPass::MotionVector, "VSMain",
+                ASSETS::SHADER::ShaderStage::Vertex);
+            const auto ps = INTERNAL::LoadTemporalShader(
+                ASSETS::SHADER::TemporalShaderPass::MotionVector, "PSMain",
+                ASSETS::SHADER::ShaderStage::Pixel);
+            if (!vs || !ps) {
                 return false;
             }
 
             D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc{};
             psoDesc.pRootSignature = rootSignature.Get();
-            psoDesc.VS = { vs->GetBufferPointer(), vs->GetBufferSize() };
-            psoDesc.PS = { ps->GetBufferPointer(), ps->GetBufferSize() };
+            psoDesc.VS = INTERNAL::TemporalShaderBytecode(vs);
+            psoDesc.PS = INTERNAL::TemporalShaderBytecode(ps);
             psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
             psoDesc.SampleMask = UINT_MAX;
             psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);

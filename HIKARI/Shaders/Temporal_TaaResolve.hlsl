@@ -1,21 +1,5 @@
-cbuffer TemporalTaaCB : register(b0)
-{
-    float4 gScreenParams; // xy: render size, zw: inverse render size
-    float4 gTaaParams;    // x: history valid, y: history weight, z: exposure valid, w: clip gamma
-    float4 gRejectParams; // x: depth threshold, y: luma threshold, z: sharpness, w: debug mode
-};
-
-Texture2D<float4> gCurrentColor : register(t0);
-Texture2D<float4> gHistoryColor : register(t1);
-Texture2D<float2> gMotionVectors : register(t2);
-Texture2D<float2> gMotionMetadata : register(t3);
-Texture2D<float> gSceneDepth : register(t4);
-Texture2D<float> gHistoryDepth : register(t5);
-Texture2D<float> gReactiveMask : register(t6);
-Texture2D<float> gTransparencyMask : register(t7);
-Texture2D<float> gInvalidDepthMotionMask : register(t8);
-Texture2D<float> gExposure : register(t9);
-SamplerState gLinearClamp : register(s0);
+#define HIKARI_TEMPORAL_TAARESOLVE
+#include "Include/Temporal/HIKARI_TemporalShaderInterface.hlsli"
 
 struct VSOut
 {

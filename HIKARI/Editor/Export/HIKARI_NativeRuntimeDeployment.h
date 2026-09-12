@@ -16,4 +16,8 @@ namespace HIKARI::EDITOR {
         const std::filesystem::path& sourceDirectory,
         const std::filesystem::path& outputDirectory);
 
+    bool ValidateNativeRuntimeDependencies(
+        const std::filesystem::path& packageDirectory,
+        std::string& message);
+
 } // namespace HIKARI::EDITOR

@@ -1,4 +1,5 @@
 #include "Gfx/HIKARI_ShaderCompiler.h"
+#include "Core/HIKARI_StartupTimer.h"
 
 #include <Windows.h>
 
@@ -307,6 +308,10 @@ namespace HIKARI::GFX {
         if (path == nullptr) {
             return false;
         }
+        const std::string compileStage = "Shader.compile." +
+            std::filesystem::path(path).filename().string() + "/" +
+            (entry != nullptr ? entry : "<null>");
+        CORE::StartupTimer compileTimer(compileStage);
         INTERNAL::DxcRuntimeSnapshot runtime{};
         std::string runtimeError{};
         if (!INTERNAL::AcquireDxcRuntime(

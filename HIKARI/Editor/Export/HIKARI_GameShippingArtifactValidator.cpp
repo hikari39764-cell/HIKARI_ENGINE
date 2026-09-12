@@ -18,6 +18,7 @@
 #include "Editor/Export/HIKARI_GameExportIdentity.h"
 #include "Editor/Export/HIKARI_GamePackageHash.h"
 #include "Project/HIKARI_ProjectContext.h"
+#include "Platform/Paths/HIKARI_ExecutablePath.h"
 #include "Project/HIKARI_ProjectDescriptor.h"
 
 namespace HIKARI::EDITOR {
@@ -177,7 +178,7 @@ namespace {
 
         std::filesystem::path ResolveEngineSourceRoot() {
             std::filesystem::path candidate =
-                std::filesystem::path(__FILE__).parent_path();
+                PLATFORM::GetExecutableDirectory();
             std::error_code ec{};
             if (candidate.is_relative()) {
                 candidate = std::filesystem::absolute(candidate, ec);
@@ -207,77 +208,17 @@ namespace {
                 // and SDK fingerprints still prove their binary pairing.
                 return true;
             }
-            std::error_code ec{};
-            const auto productTime =
-                std::filesystem::last_write_time(sourceExe, ec);
-            if (ec) {
-                outMessage =
-                    "Could not inspect GameShipping executable time.";
+            // Source exports run the canonical incremental build before reaching
+            // validation. Compare products, not source timestamps (shader/content
+            // updates need not relink the executable).
+            const auto builtExe = sourceRoot / "out/build/game-shipping/bin" /
+                sourceExe.filename();
+            std::string installedHash, builtHash;
+            if (!ComputeGamePackageFileSha256(sourceExe, installedHash, &outMessage) ||
+                !ComputeGamePackageFileSha256(builtExe, builtHash, &outMessage)) return false;
+            if (installedHash != builtHash) {
+                outMessage = "Shipping runtime differs from the prepared source build. Run the export preparation again.";
                 return false;
-            }
-            const auto newerInput = [&](
-                const std::filesystem::path& file) {
-                ec.clear();
-                return std::filesystem::is_regular_file(file, ec) && !ec &&
-                    std::filesystem::last_write_time(file, ec) > productTime &&
-                    !ec;
-            };
-            for (const std::filesystem::path& file : {
-                    sourceRoot / "CMakeLists.txt",
-                    sourceRoot / "CMakePresets.json" }) {
-                if (newerInput(file)) {
-                    outMessage =
-                        "GameShipping executable is stale relative to " +
-                        file.string();
-                    return false;
-                }
-            }
-            for (const std::filesystem::path& directory : {
-                    sourceRoot / "HIKARI",
-                    sourceRoot / "include",
-                    sourceRoot / "cmake" }) {
-                ec.clear();
-                std::filesystem::recursive_directory_iterator iterator(
-                    directory,
-                    std::filesystem::directory_options::
-                        skip_permission_denied,
-                    ec);
-                const std::filesystem::recursive_directory_iterator end{};
-                for (; !ec && iterator != end; iterator.increment(ec)) {
-                    if (directory.filename() == "HIKARI") {
-                        const std::filesystem::path relative =
-                            std::filesystem::relative(
-                                iterator->path(), directory, ec);
-                        if (ec) {
-                            break;
-                        }
-                        const std::string relativeKey =
-                            TEXT::ToLowerAsciiCopy(
-                                relative.generic_string());
-                        if (relativeKey == "editor" ||
-                            relativeKey.starts_with("editor/") ||
-                            relativeKey == "assets/cooking" ||
-                            relativeKey.starts_with("assets/cooking/")) {
-                            if (iterator->is_directory(ec)) {
-                                iterator.disable_recursion_pending();
-                            }
-                            ec.clear();
-                            continue;
-                        }
-                    }
-                    if (newerInput(iterator->path())) {
-                        outMessage =
-                            "GameShipping executable is stale relative to " +
-                            iterator->path().string();
-                        return false;
-                    }
-                }
-                if (ec) {
-                    outMessage =
-                        "Could not inspect GameShipping engine inputs: " +
-                        ec.message();
-                    return false;
-                }
             }
             return true;
         }
@@ -399,6 +340,10 @@ namespace {
 
 
 } // namespace
+
+    std::filesystem::path ResolveExportEngineSourceRoot() {
+        return ResolveEngineSourceRoot();
+    }
 
     bool ResolveGameShippingHostExecutable(const std::filesystem::path& runtimeRoot,
         std::filesystem::path& executable, std::string& message) {

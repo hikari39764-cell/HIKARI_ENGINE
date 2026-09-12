@@ -89,6 +89,10 @@ void Shutdown() {
     g_loaded.clear();
 }
 
+void PreloadDirectory(const std::filesystem::path& root) {
+    if (g_backend) g_backend->PreloadDirectory(root);
+}
+
 int Load(const char* path) {
     if (!g_backend || path == nullptr || path[0] == '\0') {
         return -1;

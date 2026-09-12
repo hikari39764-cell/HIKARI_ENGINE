@@ -15,6 +15,7 @@ namespace HIKARI::CORE {
     void InitializeLogger(
         const std::filesystem::path& logDirectory = {});
     void ShutdownLogger();
+    std::filesystem::path GetLogFilePath();
     void Log(LogLevel level, std::string_view message);
     void LogInfo(std::string_view message);
     void LogWarn(std::string_view message);

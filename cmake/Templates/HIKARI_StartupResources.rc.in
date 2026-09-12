@@ -1,0 +1,2 @@
+#include <windows.h>
+HIKARI_STARTUP_LOGO RCDATA "@HIKARI_SOURCE_ROOT@/HIKARI/Platform/Resources/HIKARI_StartupLogo.png"

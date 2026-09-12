@@ -1,3 +1,4 @@
+#include "Core/HIKARI_StartupTimer.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Runtime/Presentation/HIKARI_GamePresentationService.h"
@@ -16,6 +17,7 @@
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_GfxContext.h"
+#include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Project/HIKARI_ProjectContext.h"
 #include "Platform/Paths/HIKARI_UserDataPath.h"
@@ -163,7 +165,15 @@ namespace HIKARI {
 
         bool Initialize(
             const char* title,
-            const RUNTIME::HostBootstrapConfig& cfg) {
+            const RUNTIME::HostBootstrapConfig& cfg,
+            std::string* error,
+            bool startHidden) {
+            if (error) error->clear();
+            const auto fail = [error](std::string message) {
+                HIKARI_LOG_ERROR(message);
+                if (error) *error = std::move(message);
+                return false;
+            };
             gActionTimeDilationService.Reset();
             gRuntimeSessionEndRequested = false;
             INTERNAL::GetRuntimeServiceState().renderQualityRuntimeInitialized =
@@ -185,22 +195,7 @@ namespace HIKARI {
                     ? std::filesystem::path{}
                     : logRoot / "Renderer");
             CORE::InitializeLogger(logRoot);
-            gStreamlineEnabled = cfg.enableStreamline;
-            const bool enableFrameGenerationPlugins =
-                IsEditorHostMode(cfg.hostMode) ||
-                IsStandaloneGameHostMode(cfg.hostMode);
-            if (gStreamlineEnabled) {
-                gStreamlineEnabled =
-                    RENDER3D::UPSCALING::InitializeStreamlineEarly(
-                    enableFrameGenerationPlugins,
-                    logRoot.empty()
-                        ? std::filesystem::path{}
-                        : logRoot / "Streamline");
-            }
-            else {
-                HIKARI_LOG_INFO(
-                    "[Streamline] bootstrap disabled for this host.");
-            }
+            CORE::StartupTimer servicesTimer("Services.initialize");
             HIKARI_LOG_INFO("HIKARI boot started.");
             {
                 const RENDER3D::RenderQualitySettings& quality =
@@ -250,14 +245,16 @@ namespace HIKARI {
             gPreviewTelemetryRenderFrames = 0;
             gPreviewTelemetryPresentedFrames = 0;
 
+            CORE::StartupTimer windowTimer("Window.initialize");
             HIKARI_LOG_INFO("Window initialization started.");
-            if (!gWindow.Initialize(wTitle.c_str(), cfg.windowWidth, cfg.windowHeight, cfg.resizableWindow)) {
+            if (!gWindow.Initialize(wTitle.c_str(), cfg.windowWidth, cfg.windowHeight, cfg.resizableWindow,
+                    PLATFORM::WindowCloseBehavior::QuitApplication, true, startHidden)) {
                 HIKARI_LOG_ERROR("Window initialization failed.");
                 if (gStreamlineEnabled) {
                     gStreamlineEnabled =
                         !RENDER3D::UPSCALING::ShutdownStreamline();
                 }
-                return false;
+                return fail("Could not create the application window.");
             }
             GFX::PIX::Initialize(gWindow.GetHWND());
             {
@@ -266,10 +263,59 @@ namespace HIKARI {
                     << " resizable=" << (cfg.resizableWindow ? "true" : "false");
                 HIKARI_LOG_INFO(oss.str());
             }
+            windowTimer.Finish();
+            CORE::StartupTimer audioTimer("Audio.initialize");
+            if (AUDIO::Initialize(AUDIO::BackendType::XAudio2)) {
+                HIKARI_LOG_INFO("Audio initialized.");
+            }
+            else {
+                HIKARI_LOG_WARN("Audio initialized with Null fallback.");
+            }
+            audioTimer.Finish();
+            // 独立した音声デコードを GPU 初期化・起動演出の時間に重ねる。
+            // Shipping はパッケージ済み RuntimePayload のみを先読みする。
+            if (IsExportedGameHostMode(cfg.hostMode) && launchProject.IsOpen()) {
+                AUDIO::PreloadDirectory(launchProject.Resolve("RuntimePayload"));
+            }
+
+            CORE::StartupTimer streamlineTimer("Streamline.early");
+            gStreamlineEnabled = cfg.enableStreamline;
+            const bool enableFrameGenerationPlugins =
+                IsEditorHostMode(cfg.hostMode) ||
+                IsStandaloneGameHostMode(cfg.hostMode);
+            if (gStreamlineEnabled) {
+                gStreamlineEnabled =
+                    RENDER3D::UPSCALING::InitializeStreamlineEarly(
+                    enableFrameGenerationPlugins,
+                    logRoot.empty()
+                        ? std::filesystem::path{}
+                        : logRoot / "Streamline");
+            }
+            else {
+                HIKARI_LOG_INFO(
+                    "[Streamline] bootstrap disabled for this host.");
+            }
+            streamlineTimer.Finish();
+
+            CORE::StartupTimer graphicsTimer("D3D12.initialize");
             HIKARI_LOG_INFO("D3D12 core initialization started.");
             GFX::GraphicsBootstrapCallbacks graphicsCallbacks{};
+            graphicsCallbacks.acceptDevice = [](ID3D12Device* device, std::string& message) {
+                const auto caps = GFX::QueryShaderDeviceCapabilities(device);
+                if (caps.shaderModel < 60) {
+                    message = "Shader Model 6.0 is required. Update the graphics driver or select a compatible GPU.";
+                    return false;
+                }
+                if (RENDER3D::GetRenderQualitySettings().geometryPipeline == RENDER3D::GeometryPipelineMode::MeshShader &&
+                    (caps.shaderModel < 65 || !(caps.featureMask & GFX::ShaderDeviceFeature::MeshShader))) {
+                    message = "This project's Mesh Shader renderer requires Shader Model 6.5 and Mesh Shader support. Update the driver or use a compatible GPU.";
+                    return false;
+                }
+                return true;
+            };
             if (gStreamlineEnabled) {
                 graphicsCallbacks.deviceCreated = [](ID3D12Device* device) {
+                    CORE::StartupTimer attachTimer("Streamline.attach_device");
                     (void)RENDER3D::UPSCALING::AttachStreamlineDevice(device);
                     if (IsEditorHost() &&
                         !RENDER3D::UPSCALING::SetStreamlineFrameGenerationFeatureLoaded(false)) {
@@ -296,9 +342,16 @@ namespace HIKARI {
                     gStreamlineEnabled =
                         !RENDER3D::UPSCALING::ShutdownStreamline();
                 }
-                return false;
+                return fail(gGraphicsCore.InitializationError().empty()
+                    ? "Could not initialize Direct3D 12. See the log for the graphics driver error."
+                    : gGraphicsCore.InitializationError());
             }
             GFX::FrameSubmissionCallbacks submissionCallbacks{};
+            submissionCallbacks.presentStart = [] {
+                // 最初の描画コマンドを送出してから本体ウィンドウを公開する。
+                if (gWindow.IsStartupHidden()) gWindow.Show();
+                if (gStreamlineEnabled) RENDER3D::UPSCALING::MarkStreamlineReflexPresentStart();
+            };
             if (gStreamlineEnabled) {
                 submissionCallbacks.renderSubmitStart = [] {
                     RENDER3D::UPSCALING::MarkStreamlineReflexRenderSubmitStart();
@@ -306,14 +359,12 @@ namespace HIKARI {
                 submissionCallbacks.renderSubmitEnd = [] {
                     RENDER3D::UPSCALING::MarkStreamlineReflexRenderSubmitEnd();
                 };
-                submissionCallbacks.presentStart = [] {
-                    RENDER3D::UPSCALING::MarkStreamlineReflexPresentStart();
-                };
                 submissionCallbacks.presentEnd = [] {
                     RENDER3D::UPSCALING::MarkStreamlineReflexPresentEnd();
                 };
             }
             gGraphicsCore.SetFrameSubmissionCallbacks(std::move(submissionCallbacks));
+            graphicsTimer.Finish();
             HIKARI_LOG_INFO("D3D12 core initialized.");
 
             const int logicalScreenW = cfg.windowWidth;
@@ -331,30 +382,35 @@ namespace HIKARI {
                 RENDER3D::UPSCALING::UpdateStreamlineContext(graphicsContext);
             }
 
-            DXTEX::DxTextureManager::Init(graphicsContext);
+            CORE::StartupTimer textureTimer("Textures.initialize");
+            if (!DXTEX::DxTextureManager::Init(graphicsContext)) {
+                return fail("Could not initialize texture resources. Check available graphics memory and the driver.");
+            }
+            textureTimer.Finish();
             HIKARI_LOG_INFO("TextureManager initialized.");
             RENDER3D::UpdateRenderResourceDescriptorPoolContext(graphicsContext);
             RENDER3D::UpdateClusterGeometryResourceContext(graphicsContext);
+            CORE::StartupTimer pbrTimer("PbrDefaults.initialize");
             HIKARI::DefaultPbrResources::Initialize();
+            pbrTimer.Finish();
             HIKARI_LOG_INFO("Default PBR resources initialized.");
-            DX::DxRenderer::Init(graphicsContext);
+            CORE::StartupTimer rendererTimer("Renderer2D.initialize");
+            if (!DX::DxRenderer::Init(graphicsContext)) {
+                return fail("Could not initialize the 2D renderer. Check the shader package, graphics capabilities and available memory.");
+            }
+            rendererTimer.Finish();
             HIKARI_LOG_INFO("DxRenderer initialized.");
+            CORE::StartupTimer postTimer("Post.initialize");
             POST::PostSystem::Initialize(graphicsContext);
+            postTimer.Finish();
             HIKARI_LOG_INFO("PostSystem initialized.");
-            if (AUDIO::Initialize(AUDIO::BackendType::XAudio2)) {
-                HIKARI_LOG_INFO("Audio initialized.");
-            }
-            else {
-                HIKARI_LOG_WARN("Audio initialized with Null fallback.");
-            }
             const ProjectContext& projectContext =
                 GetProjectContext();
             const bool inputInitialized = projectContext.IsOpen()
                 ? gInputService.Initialize(projectContext.GetRoot())
                 : gInputService.InitializeTransient();
             if (!inputInitialized) {
-                HIKARI_LOG_ERROR("Input service initialization failed.");
-                return false;
+                return fail("Input service initialization failed.");
             }
             if (projectContext.IsOpen()) {
                 std::string saveStorageMessage{};
@@ -365,7 +421,7 @@ namespace HIKARI {
                     HIKARI_LOG_ERROR(
                         "GameProject save storage initialization failed: " +
                         saveStorageMessage);
-                    return false;
+                    return fail("Could not initialize save storage: " + saveStorageMessage);
                 }
             }
             else {

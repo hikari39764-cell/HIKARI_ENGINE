@@ -15,6 +15,7 @@
 #include "Assets/Shader/HIKARI_PostEffectShaderContract.h"
 #include "Assets/Shader/HIKARI_Render2DBuiltinShaderContract.h"
 #include "Assets/Shader/HIKARI_RenderGeometryShaderContract.h"
+#include "Assets/Shader/HIKARI_TemporalShaderContract.h"
 #include "Assets/Shader/HIKARI_ShaderCookedArtifactBuilder.h"
 #include "Core/Hashing/HIKARI_Sha256.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
@@ -163,6 +164,10 @@ namespace {
             !SHADER::ValidateRenderGeometryShaderArtifact(
                 artifact,
                 outError)) {
+            return false;
+        }
+        if (program.contract.engineInterfaceId == SHADER::kTemporalEngineInterfaceId &&
+            !SHADER::ValidateTemporalShaderArtifact(artifact, outError)) {
             return false;
         }
         std::vector<uint8_t> bytes{};

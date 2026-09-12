@@ -1,3 +1,4 @@
+#include "Core/HIKARI_StartupTimer.h"
 #include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
 
 #include <mutex>
@@ -37,6 +38,7 @@ namespace {
             return !state.failed;
         }
         state.initialized = true;
+        CORE::StartupTimer bundleTimer("Shaders.load_builtin_bundle");
         state.programs.clear();
         state.failed = !LoadBuiltinShaderArtifactBundle(
             GFX::ResolveShaderSourcePath(L"HIKARI/Shaders"),

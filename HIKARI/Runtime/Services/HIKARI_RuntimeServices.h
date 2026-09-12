@@ -37,7 +37,9 @@ namespace HIKARI::SERVICES {
 
     bool Initialize(
         const char* title,
-        const RUNTIME::HostBootstrapConfig& cfg = {});
+        const RUNTIME::HostBootstrapConfig& cfg = {},
+        std::string* error = nullptr,
+        bool startHidden = false);
     void FinalizeAll();
     bool PumpMessages();
 } // namespace HIKARI::SERVICES

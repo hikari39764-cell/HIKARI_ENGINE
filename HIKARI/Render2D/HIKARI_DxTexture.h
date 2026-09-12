@@ -52,7 +52,7 @@ namespace HIKARI {
 
         class DxTextureManager {
         public:
-            static void Init(const GFX::Context& ctx, int maxTextures = GFX::DESCRIPTOR::kUserSrvCount);
+            static bool Init(const GFX::Context& ctx, int maxTextures = GFX::DESCRIPTOR::kUserSrvCount);
             static void Finalize();
             static void UpdateContext(const GFX::Context& ctx);
 

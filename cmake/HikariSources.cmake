@@ -604,6 +604,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Document/Persistence/HIKARI_DocumentScenePersistence.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Document/Runtime/HIKARI_DocumentSceneRuntime.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Platform/HIKARI_Win32Window.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Platform/HIKARI_StartupSplash.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Gfx/HIKARI_Dx12Core.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Gfx/RayTracing/HIKARI_DxrCapabilities.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Gfx/RayTracing/HIKARI_DxrAccelerationStructure.cpp"

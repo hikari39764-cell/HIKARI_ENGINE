@@ -12,7 +12,7 @@ using Microsoft::WRL::ComPtr;
 namespace HIKARI::GFX {
 
     bool PresentationSurface::Initialize(
-        IDXGIFactory7* factory,
+        IDXGIFactory2* factory,
         ID3D12CommandQueue* queue,
         ID3D12Device* device,
         HWND window,

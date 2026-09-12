@@ -1,15 +1,5 @@
-cbuffer TemporalMotionVectorCB : register(b0)
-{
-    float4x4 gInvViewProj;
-    float4x4 gViewProj;
-    float4x4 gPrevViewProj;
-    float4 gScreenParams;  // xy: render size, zw: inverse render size
-    float4 gHistoryParams; // x: history valid, y: depth valid, z: far plane
-    float4 gCameraPos;
-    float4 gPrevCameraPos;
-};
-
-Texture2D<float> gSceneDepth : register(t0);
+#define HIKARI_TEMPORAL_MOTIONVECTOR
+#include "Include/Temporal/HIKARI_TemporalShaderInterface.hlsli"
 
 struct VSOut
 {

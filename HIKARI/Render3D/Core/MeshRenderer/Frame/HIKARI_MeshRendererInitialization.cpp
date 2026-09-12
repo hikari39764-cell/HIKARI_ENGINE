@@ -5,6 +5,7 @@
 #include <string>
 
 #include "Core/HIKARI_Logger.h"
+#include "Core/HIKARI_StartupTimer.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshPipelineStore.h"
@@ -87,6 +88,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         if (!device || !graphics.srvHeap) {
             return false;
         }
+
+        CORE::StartupTimer initializationTimer("Renderer3D.initialize");
 
         const auto failInitialization = [](const char* message) {
             DEBUGLOG::PushRenderError(message);

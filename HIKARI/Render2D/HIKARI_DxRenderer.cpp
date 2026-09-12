@@ -215,7 +215,7 @@ namespace HIKARI {
         Microsoft::WRL::ComPtr<ID3D12RootSignature> DxRenderer::rootSig_;
         BlendMode DxRenderer::currentBlendMode_ = BlendMode::StraightAlpha;
 
-        void DxRenderer::Init(const GFX::Context& ctx)
+        bool DxRenderer::Init(const GFX::Context& ctx)
         {
             g_ctx = ctx;
             g_screenW = (ctx.backBufferWidth > 0)
@@ -236,7 +236,7 @@ namespace HIKARI {
             g_outputFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
             if (device == nullptr) {
                 HIKARI_LOG_ERROR("[DxRenderer] D3D12 device is unavailable");
-                return;
+                return false;
             }
 
             // === UploadBuffers ===
@@ -254,6 +254,7 @@ namespace HIKARI {
             if (!uploadBuffersReady) {
                 HIKARI_LOG_ERROR(
                     "[DxRenderer] dynamic upload page initialization failed");
+                return false;
             }
 
             const GFX::ShaderDeviceCapabilities capabilities =
@@ -300,7 +301,7 @@ namespace HIKARI {
                     ASSETS::SHADER::ShaderStage::Pixel,
                     "ps_6_0",
                     linePs)) {
-                return;
+                return false;
             }
             std::string shaderDiagnostic{};
             if (!ASSETS::SHADER::ValidateRender2DBuiltinShaderArtifact(
@@ -309,7 +310,7 @@ namespace HIKARI {
                 HIKARI_LOG_ERROR(
                     std::string("[DxRenderer] cooked Shader contract failed: ") +
                     shaderDiagnostic);
-                return;
+                return false;
             }
 
             // === RootSignature (Global + texture + optional mask) ===
@@ -356,14 +357,14 @@ namespace HIKARI {
                             static_cast<const char*>(
                                 errBlob->GetBufferPointer()));
                     }
-                    return;
+                    return false;
                 }
 
                 hr = device->CreateRootSignature(0, sigBlob->GetBufferPointer(), sigBlob->GetBufferSize(), IID_PPV_ARGS(&rootSig_));
                 if (!HIKARI_DX_CHECK(
                         hr,
                         "DxRenderer::CreateRootSignature")) {
-                    return;
+                    return false;
                 }
             }
 
@@ -410,7 +411,7 @@ namespace HIKARI {
                                 "DxRenderer::CreateColorPipeline")) {
                             g_pipelineSets = {};
                             rootSig_.Reset();
-                            return;
+                            return false;
                         }
                     }
                 }
@@ -429,7 +430,7 @@ namespace HIKARI {
                             "DxRenderer::CreateMaskPipeline")) {
                         g_pipelineSets = {};
                         rootSig_.Reset();
-                        return;
+                        return false;
                     }
                 }
             }
@@ -467,12 +468,13 @@ namespace HIKARI {
                             "DxRenderer::CreateLinePipeline")) {
                         g_pipelineSets = {};
                         rootSig_.Reset();
-                        return;
+                        return false;
                     }
                 }
             }
 
             OutputDebugStringA("[DxRenderer] Init OK.\n");
+            return true;
         }
 
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <filesystem>
 
 namespace HIKARI::AUDIO {
 
@@ -21,6 +22,8 @@ bool Initialize(BackendType type = BackendType::XAudio2);
 void Shutdown();
 
 int Load(const char* path);
+// 任意の先読み。Load の同期完了・失敗契約は変更しない。
+void PreloadDirectory(const std::filesystem::path& root);
 int Play(int soundHandle, bool loop, float volume);
 int PlayOnBus(
     int soundHandle,

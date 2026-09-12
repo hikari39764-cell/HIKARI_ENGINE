@@ -1,4 +1,5 @@
 #include "Editor/Export/HIKARI_GameExportJob.h"
+#include "Editor/Export/HIKARI_GameShippingArtifactValidator.h"
 #include "Editor/Projects/HIKARI_ProjectProcess.h"
 #include "Platform/Paths/HIKARI_ExecutablePath.h"
 #include "Core/Text/HIKARI_UtfPath.h"
@@ -85,19 +86,25 @@ namespace HIKARI::EDITOR {
         }
         bool PrepareShipping(const std::filesystem::path& project, const std::filesystem::path& jobRoot,
             std::string& message) {
-            auto runtime = PLATFORM::GetExecutableDirectory() / "Runtime/Shipping";
-            if (!std::filesystem::is_regular_file(runtime / "Sdk/Tools/Build-HikariProject.ps1"))
-                runtime = project / "out/install/game-shipping";
-            const auto sdk = runtime / "Sdk";
-            const auto script = sdk / "Tools/Build-HikariProject.ps1";
+            const auto sourceRoot = ResolveExportEngineSourceRoot();
+            std::filesystem::path script;
+            std::vector<std::wstring> arguments{L"-NoProfile", L"-ExecutionPolicy", L"Bypass", L"-File"};
+            if (!sourceRoot.empty()) {
+                script = sourceRoot / "Tools/Build/Build-Hikari.ps1";
+                arguments.insert(arguments.end(), {script.wstring(), L"-Preset", L"game-shipping",
+                    L"-Project", project.wstring(), L"-Install"});
+            } else {
+                const auto runtime = PLATFORM::GetExecutableDirectory() / "Runtime/Shipping";
+                const auto sdk = runtime / "Sdk";
+                script = sdk / "Tools/Build-HikariProject.ps1";
+                arguments.insert(arguments.end(), {script.wstring(), L"-Project", project.wstring(),
+                    L"-Preset", L"game-shipping", L"-SdkRoot", sdk.wstring(), L"-PrepareGameExport"});
+            }
             if (!std::filesystem::is_regular_file(script)) {
-                message = "Shipping runtime kit is missing. Install an engine distribution containing Runtime/Shipping, or run Tools/Build/Build-Hikari.ps1 -Preset game-shipping -Project \"" +
-                    TEXT::PathToUtf8(project) + "\" -Install from the engine source.";
+                message = "Paired Shipping runtime kit is missing. Reinstall the complete Editor distribution (Runtime/Shipping).";
                 return false;
             }
             ExportProcess build;
-            const std::vector<std::wstring> arguments{ L"-NoProfile", L"-ExecutionPolicy", L"Bypass", L"-File", script.wstring(),
-                L"-Project", project.wstring(), L"-Preset", L"game-shipping", L"-SdkRoot", sdk.wstring(), L"-PrepareGameExport" };
             if (!build.Start(PowerShell(), arguments, project, jobRoot / "shipping-build.log", message, true)) return false;
             while (build.Running()) {
                 if (std::filesystem::exists(jobRoot / "cancel")) {

@@ -14,6 +14,7 @@ namespace HIKARI::CORE {
         std::mutex gLogMutex;
         std::ofstream gLogFile;
         bool gInitialized = false;
+        std::filesystem::path gLogPath;
 
         std::tm ToLocalTime(std::time_t value) {
             std::tm tm{};
@@ -80,8 +81,14 @@ namespace HIKARI::CORE {
 
         const std::filesystem::path path = MakeLogFilePathOnce(
             logDirectory);
+        gLogPath = path;
         gLogFile.open(path, std::ios::out | std::ios::app);
         gInitialized = true;
+    }
+
+    std::filesystem::path GetLogFilePath() {
+        std::lock_guard lock(gLogMutex);
+        return gLogPath;
     }
 
     void ShutdownLogger() {

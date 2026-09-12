@@ -16,6 +16,7 @@
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
+#include "Gfx/HIKARI_GpuCompletion.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "Render3D/Resources/HIKARI_RenderResourceSystem.h"
 #include "Render3D/Resources/Internal/HIKARI_ClusterGeometrySourceIdentity.h"
@@ -294,19 +295,12 @@ namespace HIKARI::RENDER3D {
             ++state.stats.uploadSubmitCount;
 
             const uint64_t signalValue = state.uploadFenceValue++;
-            hr = state.context.queue->Signal(state.uploadFence.Get(), signalValue);
-            if (FAILED(hr)) {
-                HIKARI_DX_CHECK(hr, "ClusterGeometryResourceSystem::Signal upload fence");
+            ++state.stats.fenceWaitCount;
+            if (!GFX::SignalAndWaitForGpuCompletion(state.context.device,
+                    state.context.queue, state.uploadFence.Get(), signalValue,
+                    state.uploadFenceEvent, "ClusterGeometryResourceSystem::Upload")) {
+                // false はデバイス喪失時のみ。GPU が動いている間の早期解放を防ぐ。
                 return false;
-            }
-            if (state.uploadFence->GetCompletedValue() < signalValue) {
-                hr = state.uploadFence->SetEventOnCompletion(signalValue, state.uploadFenceEvent);
-                if (FAILED(hr)) {
-                    HIKARI_DX_CHECK(hr, "ClusterGeometryResourceSystem::Set upload fence event");
-                    return false;
-                }
-                ++state.stats.fenceWaitCount;
-                WaitForSingleObject(state.uploadFenceEvent, INFINITE);
             }
 
             geometry.upload.Reset();

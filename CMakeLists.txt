@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(HIKARI_Engine LANGUAGES CXX)
+project(HIKARI_Engine LANGUAGES CXX RC)
 
 if(NOT WIN32)
     message(FATAL_ERROR "HIKARI currently supports Windows only.")
@@ -22,6 +22,13 @@ include(HikariRuntimeModules)
 include(HikariDependencies)
 include(HikariRuntimeDeployment)
 include(HikariSdk)
+
+configure_file(
+    "${HIKARI_SOURCE_ROOT}/cmake/Templates/HIKARI_StartupResources.rc.in"
+    "${CMAKE_BINARY_DIR}/generated/HIKARI_StartupResources.rc" @ONLY)
+set_source_files_properties("${CMAKE_BINARY_DIR}/generated/HIKARI_StartupResources.rc"
+    PROPERTIES OBJECT_DEPENDS "${HIKARI_SOURCE_ROOT}/HIKARI/Platform/Resources/HIKARI_StartupLogo.png")
+add_library(HIKARI_StartupResources OBJECT "${CMAKE_BINARY_DIR}/generated/HIKARI_StartupResources.rc")
 
 file(
     SHA256
@@ -89,9 +96,8 @@ hikari_define_runtime_modules(HIKARI_RUNTIME_MODULE_TARGETS)
 target_link_libraries(
     hikari_runtime_foundation
     PRIVATE
-        mfplat
-        mfreadwrite
         mfuuid
+        windowscodecs
         Bcrypt)
 target_link_libraries(
     hikari_runtime_navigation
@@ -226,12 +232,26 @@ function(hikari_add_runtime_contract target_name source_path)
         PRIVATE
             HIKARI::Runtime)
     hikari_configure_engine_target("${target_name}")
+    hikari_configure_contract_output("${target_name}" "RuntimeContracts")
 
+    foreach(runtime_file IN LISTS HIKARI_RUNTIME_DEPENDENCIES)
+        add_custom_command(
+            TARGET "${target_name}"
+            POST_BUILD
+            COMMAND
+                "${CMAKE_COMMAND}" -E copy_if_different
+                "${runtime_file}"
+                "$<TARGET_FILE_DIR:${target_name}>"
+            VERBATIM)
+    endforeach()
+endfunction()
+
+function(hikari_configure_contract_output target_name category)
     set(hikari_contract_output_directory "${CMAKE_BINARY_DIR}/tests")
     set_target_properties(
         "${target_name}"
         PROPERTIES
-            FOLDER "Tests/RuntimeContracts"
+            FOLDER "Tests/${category}"
             EXCLUDE_FROM_DEFAULT_BUILD TRUE
             ARCHIVE_OUTPUT_DIRECTORY "${hikari_contract_output_directory}"
             RUNTIME_OUTPUT_DIRECTORY "${hikari_contract_output_directory}"
@@ -255,16 +275,6 @@ function(hikari_add_runtime_contract target_name source_path)
                     "${hikari_contract_output_directory}")
     endforeach()
 
-    foreach(runtime_file IN LISTS HIKARI_RUNTIME_DEPENDENCIES)
-        add_custom_command(
-            TARGET "${target_name}"
-            POST_BUILD
-            COMMAND
-                "${CMAKE_COMMAND}" -E copy_if_different
-                "${runtime_file}"
-                "$<TARGET_FILE_DIR:${target_name}>"
-            VERBATIM)
-    endforeach()
 endfunction()
 
 hikari_add_runtime_contract(
@@ -413,6 +423,22 @@ endforeach()
 
 if(HIKARI_WITH_EDITOR_BUILD)
     hikari_add_runtime_contract(HIKARI_SceneFolderContracts "Tools/Tests/HIKARI_SceneFolderContracts.cpp")
+    add_executable(HIKARI_ExportStartupContracts EXCLUDE_FROM_ALL
+        "Tools/Tests/HIKARI_ExportStartupContracts.cpp"
+        "HIKARI/Editor/Export/HIKARI_NativeRuntimeDeployment.cpp"
+        "HIKARI/Editor/Export/HIKARI_GameExportPublication.cpp"
+        "HIKARI/Core/Text/HIKARI_AsciiCase.cpp"
+        "HIKARI/Core/HIKARI_Logger.cpp")
+    target_sources(HIKARI_ExportStartupContracts PRIVATE
+        "HIKARI/Platform/HIKARI_StartupSplash.cpp"
+        "HIKARI/Platform/HIKARI_Win32Window.cpp"
+        $<TARGET_OBJECTS:HIKARI_StartupResources>)
+    target_include_directories(HIKARI_ExportStartupContracts PRIVATE "${HIKARI_SOURCE_ROOT}" "${HIKARI_SOURCE_ROOT}/HIKARI")
+    target_link_libraries(HIKARI_ExportStartupContracts PRIVATE d3d12 dxgi user32 gdi32 ole32 windowscodecs comctl32 shell32)
+    hikari_configure_engine_target(HIKARI_ExportStartupContracts)
+    hikari_configure_contract_output(HIKARI_ExportStartupContracts "EditorContracts")
+    add_test(NAME HIKARI_ExportStartupContracts COMMAND "$<TARGET_FILE:HIKARI_ExportStartupContracts>")
+    set_tests_properties(HIKARI_ExportStartupContracts PROPERTIES LABELS "EditorContracts" TIMEOUT 30)
     target_sources(HIKARI_SceneFolderContracts PRIVATE
         "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Authoring/HIKARI_SceneFolderAuthoring.cpp"
         "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Authoring/HIKARI_SceneFolderOperations.cpp"
@@ -457,38 +483,8 @@ if(HIKARI_WITH_EDITOR_BUILD)
             HIKARI::Editor)
     hikari_configure_engine_target(
         HIKARI_GameProjectEditorWorkspaceRegistrySmoke)
-    set(
-        hikari_editor_contract_output_directory
-        "${CMAKE_BINARY_DIR}/tests")
-    set_target_properties(
-        HIKARI_GameProjectEditorWorkspaceRegistrySmoke
-        PROPERTIES
-            FOLDER "Tests/EditorContracts"
-            EXCLUDE_FROM_DEFAULT_BUILD TRUE
-            ARCHIVE_OUTPUT_DIRECTORY
-                "${hikari_editor_contract_output_directory}"
-            RUNTIME_OUTPUT_DIRECTORY
-                "${hikari_editor_contract_output_directory}"
-            PDB_OUTPUT_DIRECTORY
-                "${hikari_editor_contract_output_directory}"
-            COMPILE_PDB_OUTPUT_DIRECTORY
-                "${hikari_editor_contract_output_directory}"
-            VS_DEBUGGER_WORKING_DIRECTORY "${HIKARI_SOURCE_ROOT}")
-    foreach(configuration IN ITEMS Debug EditorRelease Shipping)
-        string(TOUPPER "${configuration}" configuration_upper)
-        set_target_properties(
-            HIKARI_GameProjectEditorWorkspaceRegistrySmoke
-            PROPERTIES
-                "EXCLUDE_FROM_DEFAULT_BUILD_${configuration_upper}" TRUE
-                "ARCHIVE_OUTPUT_DIRECTORY_${configuration_upper}"
-                    "${hikari_editor_contract_output_directory}"
-                "RUNTIME_OUTPUT_DIRECTORY_${configuration_upper}"
-                    "${hikari_editor_contract_output_directory}"
-                "PDB_OUTPUT_DIRECTORY_${configuration_upper}"
-                    "${hikari_editor_contract_output_directory}"
-                "COMPILE_PDB_OUTPUT_DIRECTORY_${configuration_upper}"
-                    "${hikari_editor_contract_output_directory}")
-    endforeach()
+    hikari_configure_contract_output(
+        HIKARI_GameProjectEditorWorkspaceRegistrySmoke "EditorContracts")
     foreach(runtime_file IN LISTS HIKARI_RUNTIME_DEPENDENCIES)
         add_custom_command(
             TARGET HIKARI_GameProjectEditorWorkspaceRegistrySmoke
@@ -511,6 +507,7 @@ if(HIKARI_WITH_EDITOR_BUILD)
             TIMEOUT 30)
 
     add_executable(HIKARI_EditorHost WIN32)
+    target_sources(HIKARI_EditorHost PRIVATE $<TARGET_OBJECTS:HIKARI_StartupResources>)
     target_sources(
         HIKARI_EditorHost
         PRIVATE
@@ -535,6 +532,7 @@ if(HIKARI_WITH_EDITOR_BUILD)
             ${HIKARI_EDITOR_HOST_SOURCES})
 
     add_executable(HIKARI_ProjectLauncher WIN32)
+    target_sources(HIKARI_ProjectLauncher PRIVATE $<TARGET_OBJECTS:HIKARI_StartupResources>)
     target_sources(
         HIKARI_ProjectLauncher
         PRIVATE
@@ -557,6 +555,7 @@ if(HIKARI_WITH_EDITOR_BUILD)
     set(HIKARI_STARTUP_TARGET HIKARI_ProjectLauncher)
 else()
     add_executable(HIKARI_GameHost WIN32)
+    target_sources(HIKARI_GameHost PRIVATE $<TARGET_OBJECTS:HIKARI_StartupResources>)
     target_sources(
         HIKARI_GameHost
         PRIVATE

@@ -27,7 +27,7 @@ namespace HIKARI {
 
         class DxRenderer {
         public:
-            static void Init(const GFX::Context& ctx);
+            static bool Init(const GFX::Context& ctx);
             static void UpdateContext(const GFX::Context& ctx);
             static void SetScreenSize(int width, int height);
             static bool SetOutputTarget(

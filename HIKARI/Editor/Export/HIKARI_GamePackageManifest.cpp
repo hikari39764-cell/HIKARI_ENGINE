@@ -1,5 +1,6 @@
 #include "Editor/Export/HIKARI_GamePackageManifest.h"
 #include "Editor/Export/HIKARI_GamePackageHash.h"
+#include "Editor/Export/HIKARI_NativeRuntimeDeployment.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -203,6 +204,9 @@ namespace HIKARI::EDITOR {
                     outMessage)) {
                 return false;
             }
+        }
+        if (!ValidateNativeRuntimeDependencies(packageRoot, outMessage)) {
+            return false;
         }
         std::vector<ASSETS::SHADER::BuiltinShaderArtifactProgram>
             packagedShaders{};

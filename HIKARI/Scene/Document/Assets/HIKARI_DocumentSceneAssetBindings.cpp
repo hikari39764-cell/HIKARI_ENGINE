@@ -1,3 +1,4 @@
+#include "Core/HIKARI_StartupTimer.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/Document/Assets/HIKARI_DocumentSceneAssetBindings.h"
 #include "Scene/Document/Internal/HIKARI_DocumentSceneState.h"
@@ -138,6 +139,7 @@ namespace HIKARI {
     }
 
     bool DocumentSceneAssetBindings::ReloadAssets() {
+        CORE::StartupTimer assetsTimer("Scene.reload_assets");
         if (database_.GetProjectRoot().empty()) {
             if (!database_.Initialize({})) {
                 return false;
