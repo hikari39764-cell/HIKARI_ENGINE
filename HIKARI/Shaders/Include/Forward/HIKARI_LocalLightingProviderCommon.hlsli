@@ -1,6 +1,8 @@
 #ifndef HIKARI_LOCAL_LIGHTING_PROVIDER_COMMON_HLSLI
 #define HIKARI_LOCAL_LIGHTING_PROVIDER_COMMON_HLSLI
 
+#include "../Lighting/HIKARI_IrradianceSh9.hlsli"
+
 float3 HikariSampleLightProbeCoefficient(
     uint providerSlot,
     uint coefficientIndex,
@@ -58,32 +60,6 @@ float3 HikariEvaluateLightProbeVolumeDiffuse(
     float3 uvw =
         (gridCoord + 0.5f) / floatCounts;
 
-    float x = n.x;
-    float y = n.y;
-    float z = n.z;
-    float basis[9] = {
-        0.282095f,
-        0.488603f * y,
-        0.488603f * z,
-        0.488603f * x,
-        1.092548f * x * y,
-        1.092548f * y * z,
-        0.315392f * (3.0f * z * z - 1.0f),
-        1.092548f * x * z,
-        0.546274f * (x * x - y * y)
-    };
-    float convolution[9] = {
-        3.14159265f,
-        2.09439510f,
-        2.09439510f,
-        2.09439510f,
-        0.78539816f,
-        0.78539816f,
-        0.78539816f,
-        0.78539816f,
-        0.78539816f
-    };
-
     float3 result = 0.0f.xxx;
     [unroll]
     for (uint coefficient = 0u;
@@ -94,8 +70,7 @@ float3 HikariEvaluateLightProbeVolumeDiffuse(
             providerSlot,
             coefficient,
             uvw) *
-            (basis[coefficient] *
-                convolution[coefficient]);
+            HikariSh9DiffuseWeight(n, coefficient);
     }
     return max(result, 0.0f.xxx);
 }
