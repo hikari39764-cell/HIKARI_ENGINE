@@ -277,9 +277,19 @@ function(hikari_configure_contract_output target_name category)
 
 endfunction()
 
-hikari_add_runtime_contract(
-    HIKARI_RenderReferenceFixture
-    "Tools/Tests/HIKARI_RenderReferenceFixture.cpp")
+if(HIKARI_WITH_EDITOR_BUILD)
+    hikari_add_runtime_contract(HIKARI_RenderReferenceFixture
+        "Tools/Tests/HIKARI_RenderReferenceFixture.cpp" NO_TOOLING_STUBS)
+    target_link_libraries(HIKARI_RenderReferenceFixture PRIVATE HIKARI::Editor)
+    target_sources(HIKARI_RenderReferenceFixture PRIVATE
+        "Tools/Tests/RenderReference/HIKARI_RenderValidationProject.cpp"
+        "Tools/Tests/RenderReference/HIKARI_RenderValidationScenes.cpp")
+    target_compile_definitions(HIKARI_RenderReferenceFixture PRIVATE HIKARI_REFERENCE_PROJECT=1)
+    target_include_directories(HIKARI_RenderReferenceFixture PRIVATE "${HIKARI_SOURCE_ROOT}/ThirdParty/DirectXTex/Common")
+else()
+    hikari_add_runtime_contract(HIKARI_RenderReferenceFixture
+        "Tools/Tests/HIKARI_RenderReferenceFixture.cpp")
+endif()
 
 hikari_add_runtime_contract(
     HIKARI_AssetDatabaseImportContracts
