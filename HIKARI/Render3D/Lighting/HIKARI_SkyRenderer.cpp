@@ -821,23 +821,10 @@ namespace HIKARI::SKYRENDERER {
         g.environmentData.cubemapHandle = g.debug.cubemapHandle;
         g.environmentData.textureHandle = g.debug.textureHandle;
         g.environmentData.cubemapSrv = cubeSrv;
-        g.environmentData.zenithColor = {
-            settings.zenithColor.x * settings.tint.x,
-            settings.zenithColor.y * settings.tint.y,
-            settings.zenithColor.z * settings.tint.z
-        };
-
-        g.environmentData.horizonColor = {
-            settings.horizonColor.x * settings.tint.x,
-            settings.horizonColor.y * settings.tint.y,
-            settings.horizonColor.z * settings.tint.z
-        };
-
-        g.environmentData.groundColor = {
-            settings.groundColor.x * settings.tint.x,
-            settings.groundColor.y * settings.tint.y,
-            settings.groundColor.z * settings.tint.z
-        };
+        g.environmentData.zenithColor = settings.zenithColor;
+        g.environmentData.horizonColor = settings.horizonColor;
+        g.environmentData.groundColor = settings.groundColor;
+        g.environmentData.gradientIrradiance = RENDER3D::LIGHTING::BuildGradientSkyIrradiance(settings);
         g.environmentData.tint = settings.tint;
         g.environmentData.exposure = std::max(0.0f, settings.exposure);
         g.environmentData.ambientFromSky = std::max(0.0f, settings.ambientFromSky);

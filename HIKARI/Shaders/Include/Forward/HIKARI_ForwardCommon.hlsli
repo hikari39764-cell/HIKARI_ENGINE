@@ -140,6 +140,7 @@ cbuffer SkyEnvironmentCB : register(b5)
     float4 gAtmosphereOzoneParams;
     float4 gAtmosphereSunDirection;
     float4 gAtmosphereSunColorRadiance;
+    float4 gGradientSkyIrradiance[3];
 };
 
 #define gSkyZenithColor gSkyZenithExposure.rgb

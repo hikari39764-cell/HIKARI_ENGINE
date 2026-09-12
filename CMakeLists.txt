@@ -515,7 +515,8 @@ add_test(NAME HIKARI_ShadowDepthGpuContracts COMMAND "$<TARGET_FILE:HIKARI_Shado
 set_tests_properties(HIKARI_ShadowDepthGpuContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
 
 add_executable(HIKARI_RenderMathContracts EXCLUDE_FROM_ALL "Tools/Tests/HIKARI_RenderMathContracts.cpp")
-target_include_directories(HIKARI_RenderMathContracts PRIVATE "${HIKARI_SOURCE_ROOT}/ThirdParty/DirectXTex/Common")
+target_sources(HIKARI_RenderMathContracts PRIVATE "HIKARI/Render3D/Lighting/HIKARI_SkyIrradiance.cpp")
+target_include_directories(HIKARI_RenderMathContracts PRIVATE "${HIKARI_SOURCE_ROOT}/HIKARI" "${HIKARI_SOURCE_ROOT}/ThirdParty/DirectXTex/Common")
 target_compile_definitions(HIKARI_RenderMathContracts PRIVATE HIKARI_CONTRACT_SOURCE_ROOT="${HIKARI_SOURCE_ROOT}")
 target_link_libraries(HIKARI_RenderMathContracts PRIVATE d3d12 dxgi d3dcompiler)
 hikari_configure_engine_target(HIKARI_RenderMathContracts)

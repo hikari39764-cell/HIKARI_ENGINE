@@ -10,6 +10,7 @@
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Lighting/Atmosphere/HIKARI_AtmosphereParameters.h"
 #include "Render3D/Lighting/HIKARI_SkyManager.h"
+#include "Render3D/Lighting/HIKARI_SkyIrradiance.h"
 #include "Render3D/Resources/HIKARI_RenderResourceHandle.h"
 
 namespace HIKARI::SKYRENDERER {
@@ -50,6 +51,7 @@ namespace HIKARI::SKYRENDERER {
         MATH::Vec3 zenithColor{ 0.0f, 0.0f, 0.0f };
         MATH::Vec3 horizonColor{ 0.0f, 0.0f, 0.0f };
         MATH::Vec3 groundColor{ 0.0f, 0.0f, 0.0f };
+        RENDER3D::LIGHTING::GradientSkyIrradiance gradientIrradiance{};
         MATH::Vec3 tint{ 1.0f, 1.0f, 1.0f };
         float exposure = 1.0f;
         float ambientFromSky = 0.0f;

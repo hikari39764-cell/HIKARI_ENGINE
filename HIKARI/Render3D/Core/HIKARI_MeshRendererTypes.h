@@ -210,11 +210,13 @@ namespace HIKARI::MESHRENDERER {
         MATH::Vec4 atmosphereOzoneParams{};
         MATH::Vec4 atmosphereSunDirection{};
         MATH::Vec4 atmosphereSunColorRadiance{};
+        MATH::Vec4 gradientSkyIrradiance[3]{};
     };
 
     static_assert(
         offsetof(SkyEnvironmentCB, atmospherePlanetParams) == 528u);
-    static_assert(sizeof(SkyEnvironmentCB) == 640u);
+    static_assert(offsetof(SkyEnvironmentCB, gradientSkyIrradiance) == 640u);
+    static_assert(sizeof(SkyEnvironmentCB) == 688u);
 
     struct ShadowCB {
         MATH::Mat4 lightViewProj[SHADOW::kMaxDirectionalShadowCascades]{};

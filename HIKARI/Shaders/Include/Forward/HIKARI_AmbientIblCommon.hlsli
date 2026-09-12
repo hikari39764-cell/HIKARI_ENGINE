@@ -45,10 +45,7 @@ HikariAmbientIblLobes HikariEvaluateAmbientIblApproxLobes(
         float3 skyDiffuse = skyMode == 4u &&
             gAtmosphereSunEnabled > 0.5f
             ? HikariEvaluateAtmosphereDiffuse(n)
-            : HikariApplySkyRadianceScale(lerp(
-                gSkyGroundColor,
-                gSkyHorizonColor,
-                saturate(n.y * 0.5f + 0.5f)), gSkyTint, gSkyExposure);
+            : HikariApplySkyRadianceScale(HikariEvaluateGradientSkyIrradiance(n, gGradientSkyIrradiance), gSkyTint, gSkyExposure);
         diffuseAmbient = HikariBlendAmbientWithSky(diffuseAmbient, skyDiffuse, gSkyAmbientFromSky);
     }
 
@@ -160,6 +157,12 @@ HikariAmbientIblLobes HikariEvaluateAmbientIblLobes(
                         gSkyYaw))).rgb *
             max(gSkyTint, 0.0f.xxx) *
             max(0.0f, gSkyExposure);
+        diffuseIbl = HikariBlendAmbientWithSky(diffuseIbl, skyDiffuse, gSkyAmbientFromSky);
+    }
+    else if (gSkyAmbientFromSky > 0.0001f)
+    {
+        const float3 skyDiffuse = HikariApplySkyRadianceScale(
+            HikariEvaluateGradientSkyIrradiance(n, gGradientSkyIrradiance), gSkyTint, gSkyExposure);
         diffuseIbl = HikariBlendAmbientWithSky(diffuseIbl, skyDiffuse, gSkyAmbientFromSky);
     }
     diffuseIbl = HikariBlendLightProbeDiffuse(

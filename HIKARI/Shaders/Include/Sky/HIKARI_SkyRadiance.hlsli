@@ -25,6 +25,13 @@ float3 HikariApplySkyRadianceScale(float3 radiance, float3 tint, float exposure)
     return max(0.0f.xxx, radiance) * max(0.0f.xxx, tint) * max(0.0f, exposure);
 }
 
+// L2 の畳み込み済み係数。albedo と tint/exposure は呼び出し側が一度だけ適用する。
+float3 HikariEvaluateGradientSkyIrradiance(float3 normal, float4 coefficients[3])
+{
+    const float y = clamp(normal.y, -1.0f, 1.0f);
+    return max(0.0f.xxx, coefficients[0].rgb + y * coefficients[1].rgb + y * y * coefficients[2].rgb);
+}
+
 // 既存の ambientFromSky の blend / intensity 契約を全経路で保持する。
 float3 HikariBlendAmbientWithSky(float3 ambient, float3 sky, float strength)
 {

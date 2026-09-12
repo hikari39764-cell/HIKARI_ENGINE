@@ -449,6 +449,8 @@ namespace HIKARI::MESHRENDERER {
         out.atmosphereOzoneParams = skyData.atmosphereConstants.ozoneParams;
         out.atmosphereSunDirection = skyData.atmosphereConstants.sunDirection;
         out.atmosphereSunColorRadiance = skyData.atmosphereConstants.sunColorRadiance;
+        std::copy(std::begin(skyData.gradientIrradiance.coefficients), std::end(skyData.gradientIrradiance.coefficients),
+            std::begin(out.gradientSkyIrradiance));
 
     }
 

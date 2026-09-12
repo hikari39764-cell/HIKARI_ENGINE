@@ -331,6 +331,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/ScreenSpace/HIKARI_ScreenSpacePasses.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/ScreenSpace/HIKARI_SsaoRenderer.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Lighting/HIKARI_SkyRenderer.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Lighting/HIKARI_SkyIrradiance.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Lighting/HIKARI_PanoramaSkyLayerStage.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Lighting/HIKARI_StylizedCloudStage.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Lighting/HIKARI_VolumetricLightingStage.cpp"
