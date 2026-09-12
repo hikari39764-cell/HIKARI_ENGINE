@@ -86,6 +86,7 @@ cbuffer ShadowCB : register(b4)
     float4x4 gShadowLightViewProj[4];
     float4 gShadowCascadeSplits;
     float4 gShadowCascadeParams;
+    float4 gShadowCascadeDepthBiasScales;
     uint gShadowEnabled;
     float gShadowDepthBias;
     float gShadowNormalBias;

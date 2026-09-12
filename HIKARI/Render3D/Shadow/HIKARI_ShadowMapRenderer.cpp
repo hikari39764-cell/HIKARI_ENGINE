@@ -69,8 +69,28 @@ namespace HIKARI::SHADOW {
             }
             gShadowRendererState.debugStats.shadowMapRecreateCount = gShadowRendererState.shadowMapRecreateCount;
         }
-        const DirectionalShadowFrameSet shadowFrames =
+        DirectionalShadowFrameSet shadowFrames =
             BuildDirectionalShadowFrameSet(environment, camera, resolution);
+        std::array<float, kMaxDirectionalShadowCascades> minimumDepths{};
+        for (uint32_t i = 0; i < shadowFrames.cascadeCount; ++i)
+            minimumDepths[i] = shadowFrames.cascades[i].lightNear;
+        const auto includeCasters = [&](const auto* instances) {
+            if (instances == nullptr) return;
+            for (const auto& instance : *instances) {
+                if (!IsPrimaryShadowCaster(instance)) continue;
+                for (uint32_t i = 0; i < shadowFrames.cascadeCount; ++i)
+                    minimumDepths[i] = (std::min)(minimumDepths[i],
+                        GetShadowCasterMinimumDepth(shadowFrames.cascades[i], instance.boundsCenterRadius));
+            }
+        };
+        const auto& casterPass = gShadowRendererState.shadowSceneSource.GetPass(
+            RENDER3D::GPUDRIVEN::GpuDrivenPassKind::Shadow);
+        includeCasters(casterPass.instances);
+        includeCasters(casterPass.traditionalIndirect.instances);
+        for (uint32_t i = 0; i < shadowFrames.cascadeCount; ++i)
+            ExtendShadowCasterDepth(shadowFrames.cascades[i], minimumDepths[i]);
+        for (uint32_t i = shadowFrames.cascadeCount; i < kMaxDirectionalShadowCascades; ++i)
+            shadowFrames.cascades[i] = shadowFrames.cascades[shadowFrames.cascadeCount - 1u];
         gShadowRendererState.cascadeCount = shadowFrames.cascadeCount;
         gShadowRendererState.cascadeSplitDistances =
             shadowFrames.splitDistances;
@@ -312,6 +332,12 @@ namespace HIKARI::SHADOW {
 
     uint32_t GetShadowResolution() {
         return gShadowRendererState.resolution;
+    }
+
+    MATH::Vec4 GetDirectionalCascadeDepthBiasScales() {
+        const auto& frames = gShadowRendererState.cascadeFrames;
+        return {frames[0].depthBiasScale, frames[1].depthBiasScale,
+            frames[2].depthBiasScale, frames[3].depthBiasScale};
     }
 
     float GetShadowAtlasTexelSize() {

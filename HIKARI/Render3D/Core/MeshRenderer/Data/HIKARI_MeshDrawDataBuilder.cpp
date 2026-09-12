@@ -218,6 +218,7 @@ namespace HIKARI::MESHRENDERER {
         }
         out.cascadeSplitDistances =
             SHADOW::GetDirectionalCascadeSplitDistances();
+        out.cascadeDepthBiasScales = SHADOW::GetDirectionalCascadeDepthBiasScales();
         out.cascadeParams = {
             static_cast<float>(SHADOW::GetDirectionalCascadeCount()),
             std::clamp(

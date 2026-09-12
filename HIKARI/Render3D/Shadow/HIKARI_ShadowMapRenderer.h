@@ -112,6 +112,7 @@ namespace HIKARI::SHADOW {
     const std::array<MATH::Mat4, kMaxDirectionalShadowCascades>&
         GetDirectionalCascadeLightViewProj();
     const MATH::Vec4& GetDirectionalCascadeSplitDistances();
+    MATH::Vec4 GetDirectionalCascadeDepthBiasScales();
     uint32_t GetDirectionalCascadeCount();
     D3D12_GPU_DESCRIPTOR_HANDLE GetDirectionalShadowSrv();
     uint32_t GetShadowResolution();

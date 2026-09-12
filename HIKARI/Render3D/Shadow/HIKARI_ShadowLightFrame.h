@@ -24,6 +24,7 @@ namespace HIKARI::SHADOW {
         float orthoSize = 0.0f;
         float lightNear = 0.0f;
         float lightFar = 0.0f;
+        float depthBiasScale = 1.0f;
     };
 
     struct DirectionalShadowFrameSet {
@@ -38,5 +39,10 @@ namespace HIKARI::SHADOW {
         const SceneEnvironment& environment,
         const Camera3D& camera,
         uint32_t cascadeResolution);
+
+    // XY 受光範囲と交差する投影球だけが、光の上流側の深度を拡張する。
+    float GetShadowCasterMinimumDepth(
+        const ShadowLightFrame& frame, const MATH::Vec4& worldCenterRadius) noexcept;
+    void ExtendShadowCasterDepth(ShadowLightFrame& frame, float minimumDepth) noexcept;
 
 } // namespace HIKARI::SHADOW

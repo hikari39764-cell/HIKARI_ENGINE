@@ -9,6 +9,7 @@ cbuffer VolumetricCB : register(b0)
     float4 gShadowCascadeSplits;
     float4 gShadowCascadeParams;
     float4 gShadowSampling; // depth bias, atlas texel size xy, reserved
+    float4 gShadowCascadeDepthBiasScales;
     float4 gCameraPos;
     float4 gPrevCameraPos;
     float4 gFogColorDensity;
@@ -70,7 +71,7 @@ float SampleVolumeShadowCascade(float3 worldPosition, uint cascadeIndex, out boo
     const float2 atlasUv = uv * gShadowCascadeParams.zw + HikariShadowAtlasTileOrigin(cascadeIndex);
     return gShadowMap.SampleCmpLevelZero(gShadowSampler,
         HikariClampShadowAtlasTileUv(atlasUv, cascadeIndex, gShadowCascadeParams.zw, gShadowSampling.yz),
-        ndc.z - gShadowSampling.x);
+        ndc.z - gShadowSampling.x * gShadowCascadeDepthBiasScales[cascadeIndex]);
 }
 
 float ShadowVisibility(float3 worldPosition, float3 cameraForward)

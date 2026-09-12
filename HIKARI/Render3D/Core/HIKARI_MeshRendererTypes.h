@@ -220,6 +220,7 @@ namespace HIKARI::MESHRENDERER {
         MATH::Mat4 lightViewProj[SHADOW::kMaxDirectionalShadowCascades]{};
         MATH::Vec4 cascadeSplitDistances{};
         MATH::Vec4 cascadeParams{};
+        MATH::Vec4 cascadeDepthBiasScales{1.0f, 1.0f, 1.0f, 1.0f};
         uint32_t enabled = 0;
         float depthBias = 0.001f;
         float normalBias = 0.02f;
@@ -233,6 +234,7 @@ namespace HIKARI::MESHRENDERER {
     };
 
     constexpr size_t kMaxJointPaletteMatrices = 128u;
+    static_assert(sizeof(ShadowCB) == 352u);
     constexpr UINT kMaxObjectCount = 2048u;
     constexpr UINT kMaxMaterialDataCount =
         RENDER3D::MATERIAL::kDefaultGpuMaterialCapacity;

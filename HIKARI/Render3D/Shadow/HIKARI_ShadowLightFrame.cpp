@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include "Core/Math/HIKARI_MathValidation.h"
 
 namespace HIKARI::SHADOW {
 
@@ -123,6 +124,33 @@ namespace HIKARI::SHADOW {
             frame.lightFar = farPlane;
             return frame;
         }
+    }
+
+    float GetShadowCasterMinimumDepth(
+        const ShadowLightFrame& frame, const MATH::Vec4& bounds) noexcept {
+        if (!MATH::IsFinite(bounds) || bounds.w < 0.0f) return frame.lightNear;
+        const MATH::Vec3 relative = MATH::Vec3{bounds.x, bounds.y, bounds.z} - frame.anchor;
+        const float half = frame.orthoSize * 0.5f + bounds.w;
+        if (std::abs(MATH::Dot(relative, frame.right)) > half ||
+            std::abs(MATH::Dot(relative, frame.up)) > half) return frame.lightNear;
+        const auto view = frame.view.TransformPoint({bounds.x, bounds.y, bounds.z, 1.0f});
+        const float minimumDepth = -view.z - bounds.w;
+        return std::isfinite(minimumDepth) ? (std::min)(frame.lightNear, minimumDepth) : frame.lightNear;
+    }
+
+    void ExtendShadowCasterDepth(ShadowLightFrame& frame, float minimumDepth) noexcept {
+        if (!std::isfinite(minimumDepth) || minimumDepth >= frame.lightNear) return;
+        const float quantum = (std::max)(1.0f, frame.anchorGrid);
+        const float shift = std::ceil((frame.lightNear - minimumDepth) / quantum) * quantum;
+        const float expandedFar = frame.lightFar + shift;
+        if (!std::isfinite(expandedFar) || expandedFar <= frame.lightNear) return;
+        frame.depthBiasScale *= (frame.lightFar - frame.lightNear) / (expandedFar - frame.lightNear);
+        frame.lightFar = expandedFar;
+        frame.lightPosition = frame.lightPosition - frame.lightDirection * shift;
+        // Z 行だけを動かし、XY の Texel 固定を浮動小数の再計算から保護する。
+        frame.view.m[3][2] -= shift;
+        frame.viewProj = MATH::Mat4::OrthoRH_ZO(frame.orthoSize, frame.orthoSize,
+            frame.lightNear, frame.lightFar) * frame.view;
     }
 
     uint32_t ResolveShadowResolution(uint32_t resolution) {

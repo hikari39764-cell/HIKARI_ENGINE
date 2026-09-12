@@ -102,7 +102,7 @@ float3 HikariApplyBoundedShadowNormalBias(
             ? maximumProjectedOffset / projectedXY
             : 1.0f;
     const float maximumDepthOffset =
-        max(gShadowDepthBias * 4.0f, 0.002f);
+        max(gShadowDepthBias * 4.0f, 0.002f) * gShadowCascadeDepthBiasScales[cascadeIndex];
     const float projectedZ = abs(projectedOffset.z);
     const float depthScale =
         projectedZ > maximumDepthOffset
@@ -144,7 +144,7 @@ float HikariSampleDirectionalShadowCascade(
     cascadeValid = true;
     const float2 atlasUv =
         HikariShadowAtlasUv(cascadeUv, cascadeIndex);
-    const float currentDepth = proj.z - gShadowDepthBias;
+    const float currentDepth = proj.z - gShadowDepthBias * gShadowCascadeDepthBiasScales[cascadeIndex];
     const float sampledVisibility =
         HikariSampleShadowPcf(
             atlasUv,

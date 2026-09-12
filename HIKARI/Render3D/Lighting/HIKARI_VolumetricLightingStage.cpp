@@ -41,6 +41,7 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
             MATH::Vec4 shadowCascadeSplits{};
             MATH::Vec4 shadowCascadeParams{};
             MATH::Vec4 shadowSampling{};
+            MATH::Vec4 shadowCascadeDepthBiasScales{};
             MATH::Vec4 cameraPos{};
             MATH::Vec4 prevCameraPos{};
             MATH::Vec4 fogColorDensity{};
@@ -63,7 +64,7 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
         };
 
         static_assert(
-            sizeof(VolumetricConstants) == 640u);
+            sizeof(VolumetricConstants) == 656u);
 
         struct VolumeResource {
             ComPtr<ID3D12Resource> texture{};
@@ -502,6 +503,7 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
         }
         constants.shadowCascadeSplits =
             SHADOW::GetDirectionalCascadeSplitDistances();
+        constants.shadowCascadeDepthBiasScales = SHADOW::GetDirectionalCascadeDepthBiasScales();
         constants.shadowCascadeParams = {
             static_cast<float>(SHADOW::GetDirectionalCascadeCount()),
             std::clamp(
