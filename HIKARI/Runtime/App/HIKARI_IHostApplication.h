@@ -1,5 +1,7 @@
 #pragma once
 
+namespace HIKARI { class IScene; }
+
 namespace HIKARI::RUNTIME {
 
     class IHostApplication {
@@ -10,6 +12,7 @@ namespace HIKARI::RUNTIME {
         virtual void Update(float deltaTime) = 0;
         virtual void Render() = 0;
         virtual void RenderHostUi() {}
+        virtual const IScene* GetCurrentScene() const { return nullptr; }
         virtual void UpdateHostSessions() {}
         virtual void RequestHostStop() {}
         virtual bool IsWindowedHostSessionRunning() const {

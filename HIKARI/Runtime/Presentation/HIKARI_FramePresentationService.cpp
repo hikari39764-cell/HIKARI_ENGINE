@@ -488,7 +488,7 @@ namespace HIKARI {
                 static const auto graphicsPass =
                     CPU_PROFILE::RegisterDynamicPass("Frame.GraphicsBegin");
                 CPU_PROFILE::ScopedDynamicCpuTimer graphicsTimer(graphicsPass);
-                if (!gGraphicsCore.BeginFrame(0.05f, 0.08f, 0.12f, 1.0f)) {
+                if (!gGraphicsCore.BeginFrame(0.05f, 0.08f, 0.12f, 1.0f, frame.frameIndex)) {
                     HIKARI_LOG_ERROR("D3D12 BeginFrame failed; skipping frame.");
                     return false;
                 }

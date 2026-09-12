@@ -3,6 +3,18 @@
 
 static const float HIKARI_PI = 3.14159265359f;
 
+float2 HikariAnalyticEnvBrdf(float ndotv, float roughness)
+{
+    // Karis の環境 BRDF 近似。入力は知覚的粗さと F0 用の scale/bias。
+    // https://www.unrealengine.com/en-US/blog/physically-based-shading-on-mobile
+    const float4 r = saturate(roughness) * float4(-1.0f, -0.0275f, -0.572f, 0.022f)
+        + float4(1.0f, 0.0425f, 1.04f, -0.04f);
+    const float grazing = min(r.x * r.x, exp2(-9.28f * saturate(ndotv))) * r.x + r.y;
+    const float2 fit = max(float2(-1.04f, 1.04f) * grazing + r.zw, 0.0f.xx);
+    // 近似の掠射角端点でも、単位反射体の入射エネルギーを超えない。
+    return fit / max(1.0f, fit.x + fit.y);
+}
+
 float HikariPow5(float x)
 {
     float x2 = x * x;
@@ -79,7 +91,7 @@ HikariPbrShadingContext HikariBuildPbrShadingContext(
     // undersampled highlights and metal edges do not alias or shimmer.
     const float3 normalDerivative = fwidth(normal);
     const float curvature = 2.0f * length(normalDerivative);
-    context.roughness = saturate(max(roughness, curvature));
+    context.roughness = clamp(max(roughness, curvature), 0.04f, 1.0f);
     context.normal = normal;
     context.view = view;
 
@@ -105,16 +117,14 @@ float HikariDistributionGGX(
 {
     float ndoth = saturate(
         dot(context.normal, halfVector));
-    float ndoth2 = ndoth * ndoth;
-
-    float denom =
-        ndoth2 *
-            (context.distributionAlphaSquared - 1.0f) +
-        1.0f;
-    denom = HIKARI_PI * denom * denom;
-
+    if (ndoth <= 0.0f) return 0.0f;
+    // |N x H|^2 は 1-NdotH^2 の差し引き誤差を避ける。
+    // 分母を大きく切り上げると、滑らかな GGX ローブの頂点が消失する。
+    const float3 crossNormalHalf = cross(context.normal, halfVector);
+    const float denom = dot(crossNormalHalf, crossNormalHalf) +
+        ndoth * ndoth * context.distributionAlphaSquared;
     return context.distributionAlphaSquared /
-        max(denom, 0.00001f);
+        max(HIKARI_PI * denom * denom, 1.0e-12f);
 }
 
 float HikariGeometrySchlickGGX(

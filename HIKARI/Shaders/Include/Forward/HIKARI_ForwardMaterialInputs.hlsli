@@ -203,40 +203,18 @@ void ResolvePbrInputs(
     }
 }
 
-bool HikariNeedsSpecularGlossCompatibility(
-    HikariMeshMaterialData materialData,
-    float metallic)
-{
-    if ((materialData.materialFlags & MATERIAL_SPECULAR_GLOSS_COMPAT) != 0)
-    {
-        return true;
-    }
-    return materialData.hasSpecularColorTexture != 0 &&
-        materialData.hasMetallicRoughnessTexture == 0 &&
-        metallic < 0.001f;
-}
+#include "HIKARI_PbrMaterialPolicy.hlsli"
 
 void ApplyPbrMaterialCompatibility(
     HikariMeshMaterialData materialData,
-    float metallic,
     inout float roughness,
     inout float3 specularColor,
     inout float specularFactor)
 {
-    const bool alphaMasked =
-        (materialData.materialFlags & MATERIAL_ALPHA_MASK) != 0;
-    if (alphaMasked)
-    {
-        roughness = max(roughness, 0.72f);
-        specularFactor *= 0.75f;
-    }
-    if (!HikariNeedsSpecularGlossCompatibility(materialData, metallic))
-    {
-        return;
-    }
-    roughness = max(roughness, alphaMasked ? 0.86f : 0.72f);
-    specularFactor *= alphaMasked ? 0.45f : 0.65f;
-    specularColor *= alphaMasked ? 0.70f : 0.85f;
+    HikariApplyLegacySpecularResponse(
+        (materialData.materialFlags & MATERIAL_SPECULAR_GLOSS_COMPAT) != 0,
+        (materialData.materialFlags & MATERIAL_ALPHA_MASK) != 0,
+        roughness, specularColor, specularFactor);
 }
 
 float3 ApplyFog(float3 color, float3 worldPosWS)

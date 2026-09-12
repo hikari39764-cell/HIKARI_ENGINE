@@ -53,6 +53,7 @@ namespace HIKARI::GFX::GPU_PROFILE {
         WaterVisibilityDepth,
         StylizedClouds,
         SceneCaptures,
+        CommandFrame,
         Count
     };
 
@@ -81,7 +82,7 @@ namespace HIKARI::GFX::GPU_PROFILE {
         ID3D12Device* device,
         ID3D12CommandQueue* queue,
         ID3D12GraphicsCommandList* cmd,
-        uint64_t frameIndex);
+        uint64_t frameIndex, uint64_t completedFence, uint64_t retireFence);
     void EndFrame(ID3D12GraphicsCommandList* cmd);
     void Shutdown();
 

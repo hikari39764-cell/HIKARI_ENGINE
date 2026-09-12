@@ -12,6 +12,7 @@ namespace HIKARI {
         constexpr uint32_t AlphaMask = 1u << 1;
         constexpr uint32_t Emissive = 1u << 2;
         constexpr uint32_t ThinTransparentSurface = 1u << 3;
+        // v37 以前の生成物のみが使用する旧反射応答。新規インポートには付与しない。
         constexpr uint32_t SpecularGlossCompatibility = 1u << 4;
     }
 

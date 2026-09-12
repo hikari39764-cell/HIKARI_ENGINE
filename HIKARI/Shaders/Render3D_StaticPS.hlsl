@@ -373,7 +373,7 @@ float4 main(PSInput input) : SV_TARGET
     {
         ResolvePbrInputs(materialData, input.uv, input.uv1, metallic, roughness, occlusion);
         ResolveSpecularInputs(materialData, input.uv, input.uv1, specularColor, specularFactor);
-        ApplyPbrMaterialCompatibility(materialData, metallic, roughness, specularColor, specularFactor);
+        ApplyPbrMaterialCompatibility(materialData, roughness, specularColor, specularFactor);
     }
     if ((materialExpression.outputMask &
          HIKARI_EXPRESSION_OUTPUT_METALLIC) != 0u)

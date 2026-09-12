@@ -278,6 +278,10 @@ function(hikari_configure_contract_output target_name category)
 endfunction()
 
 hikari_add_runtime_contract(
+    HIKARI_RenderReferenceFixture
+    "Tools/Tests/HIKARI_RenderReferenceFixture.cpp")
+
+hikari_add_runtime_contract(
     HIKARI_NavigationRuntimeContracts
     "Tools/Tests/HIKARI_NavigationRuntimeContracts.cpp")
 hikari_add_runtime_contract(
@@ -385,6 +389,84 @@ hikari_add_runtime_contract(
     HIKARI_WorldTextContracts
     "Tools/Tests/HIKARI_WorldTextContracts.cpp")
 enable_testing()
+
+add_executable(HIKARI_FrameDiagnosticsContracts EXCLUDE_FROM_ALL
+    "Tools/Tests/HIKARI_FrameDiagnosticsContracts.cpp"
+    "HIKARI/Core/HIKARI_TimeService.cpp"
+    "HIKARI/Diagnostics/HIKARI_BenchmarkRun.cpp")
+target_include_directories(HIKARI_FrameDiagnosticsContracts PRIVATE
+    "${HIKARI_SOURCE_ROOT}/HIKARI" "${HIKARI_SOURCE_ROOT}/include"
+    "${HIKARI_SOURCE_ROOT}/ThirdParty/nlohmann")
+hikari_configure_engine_target(HIKARI_FrameDiagnosticsContracts)
+hikari_configure_contract_output(HIKARI_FrameDiagnosticsContracts "RuntimeContracts")
+add_test(NAME HIKARI_FrameDiagnosticsContracts COMMAND "$<TARGET_FILE:HIKARI_FrameDiagnosticsContracts>")
+set_tests_properties(HIKARI_FrameDiagnosticsContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
+
+add_executable(HIKARI_GpuProfilingContracts EXCLUDE_FROM_ALL
+    "Tools/Tests/HIKARI_GpuProfilingContracts.cpp"
+    "HIKARI/Gfx/HIKARI_GpuFrameProfiler.cpp"
+    "HIKARI/Gfx/HIKARI_GpuPipelineStatsProfiler.cpp"
+    "HIKARI/Gfx/HIKARI_DXCheck.cpp"
+    "HIKARI/Core/HIKARI_Logger.cpp"
+    "HIKARI/Diagnostics/HIKARI_DebugLogBuffer.cpp")
+target_include_directories(HIKARI_GpuProfilingContracts PRIVATE
+    "${HIKARI_SOURCE_ROOT}/HIKARI" "${HIKARI_SOURCE_ROOT}/ThirdParty/DirectXTex/Common")
+target_link_libraries(HIKARI_GpuProfilingContracts PRIVATE d3d12 dxgi)
+hikari_configure_engine_target(HIKARI_GpuProfilingContracts)
+hikari_configure_contract_output(HIKARI_GpuProfilingContracts "RuntimeContracts")
+add_test(NAME HIKARI_GpuProfilingContracts COMMAND "$<TARGET_FILE:HIKARI_GpuProfilingContracts>")
+set_tests_properties(HIKARI_GpuProfilingContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
+
+add_executable(HIKARI_RenderMathContracts EXCLUDE_FROM_ALL "Tools/Tests/HIKARI_RenderMathContracts.cpp")
+target_include_directories(HIKARI_RenderMathContracts PRIVATE "${HIKARI_SOURCE_ROOT}/ThirdParty/DirectXTex/Common")
+target_compile_definitions(HIKARI_RenderMathContracts PRIVATE HIKARI_CONTRACT_SOURCE_ROOT="${HIKARI_SOURCE_ROOT}")
+target_link_libraries(HIKARI_RenderMathContracts PRIVATE d3d12 dxgi d3dcompiler)
+hikari_configure_engine_target(HIKARI_RenderMathContracts)
+hikari_configure_contract_output(HIKARI_RenderMathContracts "RuntimeContracts")
+add_test(NAME HIKARI_RenderMathContracts COMMAND "$<TARGET_FILE:HIKARI_RenderMathContracts>")
+set_tests_properties(HIKARI_RenderMathContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
+
+add_executable(HIKARI_IblBakeContracts EXCLUDE_FROM_ALL
+    "Tools/Tests/HIKARI_IblBakeContracts.cpp"
+    "HIKARI/Assets/Importers/HIKARI_IblBaker.cpp"
+    "HIKARI/Render3D/HIKARI_Math3D.cpp"
+    "HIKARI/Core/HIKARI_Logger.cpp"
+    "HIKARI/Core/Serialization/Json/HIKARI_JsonFile.cpp"
+    "HIKARI/Core/IO/HIKARI_FileReplacementTransaction.cpp")
+target_include_directories(HIKARI_IblBakeContracts PRIVATE "${HIKARI_SOURCE_ROOT}/HIKARI")
+target_link_libraries(HIKARI_IblBakeContracts PRIVATE HIKARI::DirectXTex HIKARI::Nlohmann windowscodecs ole32)
+hikari_configure_engine_target(HIKARI_IblBakeContracts)
+hikari_configure_contract_output(HIKARI_IblBakeContracts "RuntimeContracts")
+add_test(NAME HIKARI_IblBakeContracts COMMAND "$<TARGET_FILE:HIKARI_IblBakeContracts>")
+set_tests_properties(HIKARI_IblBakeContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 60)
+
+add_executable(HIKARI_LocalLightSelectionContracts EXCLUDE_FROM_ALL
+    "Tools/Tests/HIKARI_LocalLightSelectionContracts.cpp"
+    "HIKARI/Render3D/Lighting/HIKARI_LocalLightList.cpp"
+    "HIKARI/Render3D/Lighting/HIKARI_LocalLightSemantics.cpp"
+    "HIKARI/Render3D/Core/HIKARI_Camera3D.cpp"
+    "HIKARI/Render3D/HIKARI_Math3D.cpp")
+target_include_directories(HIKARI_LocalLightSelectionContracts PRIVATE "${HIKARI_SOURCE_ROOT}/HIKARI")
+hikari_configure_engine_target(HIKARI_LocalLightSelectionContracts)
+hikari_configure_contract_output(HIKARI_LocalLightSelectionContracts "RuntimeContracts")
+add_test(NAME HIKARI_LocalLightSelectionContracts COMMAND "$<TARGET_FILE:HIKARI_LocalLightSelectionContracts>")
+set_tests_properties(HIKARI_LocalLightSelectionContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
+
+add_executable(HIKARI_GeometryFrameContracts EXCLUDE_FROM_ALL
+    "Tools/Tests/HIKARI_GeometryFrameContracts.cpp"
+    "HIKARI/Assets/Geometry/Cooking/HIKARI_ClusteredGeometrySourcePreparation.cpp"
+    "HIKARI/Assets/Geometry/Cooking/HIKARI_ClusteredGeometrySurfacePartitioner.cpp"
+    "HIKARI/Assets/Geometry/Cooking/HIKARI_ClusterTriangleGroupBuilder.cpp"
+    "HIKARI/Core/Math/HIKARI_NormalMatrix.cpp"
+    "HIKARI/Core/Math/HIKARI_MathValidation.cpp"
+    "HIKARI/Core/Text/HIKARI_AsciiCase.cpp"
+    "HIKARI/Render3D/HIKARI_Math3D.cpp")
+target_include_directories(HIKARI_GeometryFrameContracts PRIVATE "${HIKARI_SOURCE_ROOT}/HIKARI")
+target_link_libraries(HIKARI_GeometryFrameContracts PRIVATE HIKARI::Nlohmann HIKARI::Meshoptimizer)
+hikari_configure_engine_target(HIKARI_GeometryFrameContracts)
+hikari_configure_contract_output(HIKARI_GeometryFrameContracts "RuntimeContracts")
+add_test(NAME HIKARI_GeometryFrameContracts COMMAND "$<TARGET_FILE:HIKARI_GeometryFrameContracts>")
+set_tests_properties(HIKARI_GeometryFrameContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
 foreach(runtime_contract IN ITEMS
     HIKARI_GameComponentBindingLifecycleSmoke
     HIKARI_WorldSdkSmoke

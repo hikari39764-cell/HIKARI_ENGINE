@@ -20,7 +20,7 @@ namespace HIKARI::RUNTIME {
         bool ShouldExitHost() const override;
 
         IScene* GetCurrentScene();
-        const IScene* GetCurrentScene() const;
+        const IScene* GetCurrentScene() const override;
 
     private:
         GameProjectModuleLibrary gameProjectModule_{};

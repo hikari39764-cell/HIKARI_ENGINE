@@ -22,6 +22,7 @@ namespace HIKARI::GFX::GPU_PIPELINE_STATS {
             std::array<uint8_t, kPassCount> active{};
             bool resolved = false;
             uint64_t frameIndex = 0;
+            uint64_t retireFence = 0;
         };
 
         struct ProfilerState {
@@ -192,7 +193,7 @@ namespace HIKARI::GFX::GPU_PIPELINE_STATS {
     void BeginFrame(
         ID3D12Device* device,
         ID3D12GraphicsCommandList* cmd,
-        uint64_t frameIndex) {
+        uint64_t frameIndex, uint64_t completedFence, uint64_t retireFence) {
         if (!gState.enabled) {
             gState.currentSlot = nullptr;
             ResetUnavailableSnapshot(gState.unavailableReason);
@@ -204,8 +205,14 @@ namespace HIKARI::GFX::GPU_PIPELINE_STATS {
         }
 
         FrameSlot& slot = gState.slots[gState.writeSlotIndex % kBufferedFrameCount];
+        if (completedFence == UINT64_MAX || retireFence == 0 ||
+            (slot.resolved && completedFence < slot.retireFence)) {
+            gState.currentSlot = nullptr;
+            return;
+        }
         CollectResolvedSlot(slot);
         ResetSlot(slot, frameIndex);
+        slot.retireFence = retireFence;
         gState.currentSlot = &slot;
         ++gState.writeSlotIndex;
     }

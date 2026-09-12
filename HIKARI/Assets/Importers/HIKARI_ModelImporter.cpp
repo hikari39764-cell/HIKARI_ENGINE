@@ -836,13 +836,6 @@ namespace HIKARI {
             return stats;
         }
 
-        bool ShouldUseSpecularGlossCompatibility(const MaterialAsset& material) {
-            return
-                material.specularColorTexture.textureIndex >= 0 &&
-                material.metallicRoughnessTexture.textureIndex < 0 &&
-                material.metallicFactor <= 0.001f;
-        }
-
         bool NearlyEqual(float lhs, float rhs) {
             return std::abs(lhs - rhs) <= 1.0e-5f;
         }
@@ -1043,12 +1036,8 @@ namespace HIKARI {
             for (MaterialAsset& material : model.materials) {
                 material.featureBits &=
                     ~MATERIAL_FEATURES::SpecularGlossCompatibility;
-                if (ShouldUseSpecularGlossCompatibility(material)) {
-                    material.featureBits |=
-                        MATERIAL_FEATURES::
-                            SpecularGlossCompatibility;
-                }
-
+                // 旧生成物の応答補正は再インポートで除去する。テクスチャの有無から
+                // 材質ワークフローを推測して粗さや反射率を上書きしない。
                 material.roughnessFactor = std::clamp(
                     FiniteOr(material.roughnessFactor, 1.0f),
                     0.04f,

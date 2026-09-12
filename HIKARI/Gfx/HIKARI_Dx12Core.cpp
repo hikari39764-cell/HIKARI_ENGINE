@@ -492,7 +492,7 @@ GraphicsShutdownResult Dx12Core::Shutdown() {
     return result;
 }
 // フレームの開始処理
-bool Dx12Core::BeginFrame(float clearR, float clearG, float clearB, float clearA) {
+bool Dx12Core::BeginFrame(float clearR, float clearG, float clearB, float clearA, uint64_t logicalFrameId) {
     frameOpen_ = false;
     if (deviceLost_ ||
         cmdList_ == nullptr ||
@@ -529,8 +529,12 @@ bool Dx12Core::BeginFrame(float clearR, float clearG, float clearB, float clearA
         debugConfig.enableDebugLayer ?
             "Pipeline stats profiler is disabled while D3D12 Debug Layer is enabled." :
             "Pipeline stats profiler is disabled by GfxDebugConfig.");
-    GPU_PROFILE::BeginFrame(device_.Get(), queue_.Get(), cmdList_.Get(), frameIndex_);
-    GPU_PIPELINE_STATS::BeginFrame(device_.Get(), cmdList_.Get(), frameIndex_);
+    // バックバッファ番号と論理フレーム番号を混同しない。回読は fence 完了後のみ。
+    const uint64_t completedFence = fence_->GetCompletedValue();
+    GPU_PROFILE::BeginFrame(device_.Get(), queue_.Get(), cmdList_.Get(),
+        logicalFrameId, completedFence, fenceValue_);
+    GPU_PIPELINE_STATS::BeginFrame(device_.Get(), cmdList_.Get(),
+        logicalFrameId, completedFence, fenceValue_);
     PIX::BeginGpuEvent(cmdList_.Get(), PIX::kColorFrame, "Frame");
 
     resourceStates_.Transition(

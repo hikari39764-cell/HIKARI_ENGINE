@@ -31,6 +31,14 @@ float HikariLocalLightRangeAttenuation(
     return attenuation * attenuation;
 }
 
+float HikariLocalLightConeAttenuation(
+    float coneCos, float innerCos, float outerCos, float angularFalloff)
+{
+    const float weight = saturate((coneCos - outerCos) /
+        max(innerCos - outerCos, 1e-4f));
+    return pow(weight, max(angularFalloff, 0.1f));
+}
+
 bool HikariResolveLocalLightSample(
     HikariLocalLightGpuData light,
     float3 worldPosition,
@@ -71,12 +79,8 @@ bool HikariResolveLocalLightSample(
         const float innerCos = light.directionInnerCos.w;
         const float outerCos =
             light.outerCosFalloffTypeFlags.x;
-        const float coneWeight = saturate(
-            (coneCos - outerCos) /
-            max(innerCos - outerCos, 1e-4f));
-        attenuation *= pow(
-            coneWeight,
-            max(light.outerCosFalloffTypeFlags.y, 0.1f));
+        attenuation *= HikariLocalLightConeAttenuation(
+            coneCos, innerCos, outerCos, light.outerCosFalloffTypeFlags.y);
     }
 
     sample.radiance =

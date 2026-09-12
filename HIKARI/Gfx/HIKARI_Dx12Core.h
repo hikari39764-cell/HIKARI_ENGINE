@@ -58,7 +58,7 @@ public:
 
     // ── フレームループ ──────────────────────────────────────────
 
-    bool BeginFrame(float clearR, float clearG, float clearB, float clearA);
+    bool BeginFrame(float clearR, float clearG, float clearB, float clearA, uint64_t logicalFrameId);
     bool EndFrame();
     bool RequestFrameCapture(std::filesystem::path output) {
         if(!capturePath_.empty() || output.empty())return false;

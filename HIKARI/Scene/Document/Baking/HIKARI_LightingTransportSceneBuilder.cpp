@@ -15,6 +15,7 @@
 #include "Core/Math/HIKARI_NormalMatrix.h"
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
+#include "Render3D/Lighting/HIKARI_LocalLightSemantics.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Runtime/HIKARI_SceneRenderCache.h"
 #include "Scene/HIKARI_SceneDocument.h"
@@ -606,14 +607,11 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
                 (std::max)(0.0f, source.intensity);
             if (source.type ==
                 RENDER3D::LIGHTING::SceneLightType::Spot) {
-                constexpr float kDegreesToRadians =
-                    MATH::kDegreesToRadians;
-                light.innerConeCos = std::cos(
-                    source.innerConeAngleDegrees *
-                    kDegreesToRadians);
-                light.outerConeCos = std::cos(
-                    source.outerConeAngleDegrees *
-                    kDegreesToRadians);
+                const auto cone = RENDER3D::LIGHTING::ResolveSpotLightCone(source);
+                light.direction = RENDER3D::LIGHTING::ResolveSpotLightDirection(source);
+                light.innerConeCos = cone.innerCos;
+                light.outerConeCos = cone.outerCos;
+                light.angularFalloff = cone.angularFalloff;
             }
             return light;
         }
@@ -648,7 +646,8 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
             : 0.0f;
 
         for (const auto& light : lighting.lights) {
-            if (light.enabled) {
+            if (light.enabled && (light.type == RENDER3D::LIGHTING::SceneLightType::Directional ||
+                RENDER3D::LIGHTING::IsLocalLightUploadable(light))) {
                 scene.lights.push_back(ConvertLight(light));
             }
         }

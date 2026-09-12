@@ -61,6 +61,7 @@ namespace HIKARI::RENDER3D::LIGHTING::TRANSPORT {
         float outerConeCos = -1.0f;
         MATH::Vec3 radiance{ 1.0f, 1.0f, 1.0f };
         float innerConeCos = -1.0f;
+        float angularFalloff = 1.0f;
     };
 
     struct LightingTransportEnvironment {

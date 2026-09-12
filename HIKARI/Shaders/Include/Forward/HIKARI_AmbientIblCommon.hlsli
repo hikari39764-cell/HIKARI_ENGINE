@@ -1,18 +1,6 @@
 #ifndef HIKARI_AMBIENT_IBL_COMMON_HLSLI
 #define HIKARI_AMBIENT_IBL_COMMON_HLSLI
 
-float2 HikariAnalyticEnvBrdf(float ndotv, float roughness)
-{
-    const float nv = saturate(ndotv);
-    const float a = saturate(roughness) * saturate(roughness);
-    // Karis "Average BRDF" analytic fit used by the no-prefilter fallback so
-    // rough surfaces keep an energy-conserving tint instead of fading to grey.
-    const float2 c = float2(-1.0f, -0.0275f);
-    const float2 e = float2(1.0f, 0.0280f);
-    const float2 t = float2(0.0f, 0.25f);
-    return max(e - c * exp2(t * a), 0.0f.xx);
-}
-
 float3 HikariEvaluateAmbientIblApprox(
     HikariPbrShadingContext context,
     float occlusion,
@@ -76,7 +64,7 @@ float3 HikariEvaluateAmbientIblApprox(
 
     const float2 envBrdf =
         HikariAnalyticEnvBrdf(ndotv, roughness);
-    float3 specular = specEnv * (F * envBrdf.x + envBrdf.y);
+    float3 specular = specEnv * (F0 * envBrdf.x + envBrdf.y);
 
     float materialAo = saturate(occlusion);
     float ssao = saturate(screenAo);
@@ -194,7 +182,7 @@ float3 HikariEvaluateAmbientIbl(
     float3 diffuse =
         kD * baseColor * diffuseIbl;
 
-    float2 envBrdf = float2(1.0f, 0.0f);
+    float2 envBrdf = HikariAnalyticEnvBrdf(ndotv, roughness);
     if (gIblHasBrdfLut > 0.5f ||
         gReflectionProbes[0].params.z > 0.5f ||
         gReflectionProbes[1].params.z > 0.5f)
@@ -223,17 +211,14 @@ float3 HikariEvaluateAmbientIbl(
                 mip).rgb *
             max(gSkyTint, 0.0f.xxx) *
             max(0.0f, gSkyExposure);
-        skySpecular = gIblHasBrdfLut > 0.5f
-            ? prefiltered *
-                (F * envBrdf.x + envBrdf.y)
-            : prefiltered * F;
+        skySpecular = prefiltered * (F0 * envBrdf.x + envBrdf.y);
     }
     else
     {
         const float2 envBrdf =
             HikariAnalyticEnvBrdf(ndotv, roughness);
         skySpecular = HikariSampleSkyEnvironment(r) *
-            (F * envBrdf.x + envBrdf.y);
+            (F0 * envBrdf.x + envBrdf.y);
     }
     skySpecular *=
         max(0.0f, gSkyReflectionIntensity);
@@ -276,11 +261,7 @@ float3 HikariEvaluateAmbientIbl(
                 (uint)slot,
                 probeDirection,
                 mip);
-        probeSpecular[slot] =
-            probe.params.z > 0.5f
-            ? prefiltered *
-                (F * envBrdf.x + envBrdf.y)
-            : prefiltered * F;
+        probeSpecular[slot] = prefiltered * (F0 * envBrdf.x + envBrdf.y);
         probeSpecular[slot] *=
             max(0.0f, probe.intensity.x);
     }

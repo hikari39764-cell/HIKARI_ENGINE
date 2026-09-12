@@ -1,3 +1,5 @@
+#include "../Include/Lighting/HIKARI_LocalLightContract.hlsli"
+
 struct TransportTriangle
 {
     float4 position0;
@@ -22,7 +24,8 @@ struct TransportLight
     float4 directionOuterCone;
     float4 radianceInnerCone;
     uint type;
-    uint3 padding;
+    float angularFalloff;
+    uint2 padding;
 };
 
 cbuffer BakeConstants : register(b0)
@@ -220,13 +223,9 @@ bool EvaluateDirect(
                 continue;
             }
             directionToLight = offset / distanceToLight;
-            float rangeWeight =
-                saturate(1.0f -
-                    distanceToLight /
-                        max(light.positionRange.w, 0.001f));
-            attenuation =
-                rangeWeight * rangeWeight /
-                max(distanceSquared, 0.01f);
+            // 既存シーンの強度は realtime と同じ range 正規化の単位を使う。
+            attenuation = HikariLocalLightRangeAttenuation(
+                distanceToLight, light.positionRange.w);
             if (light.type == 2u)
             {
                 float3 spotDirection;
@@ -240,13 +239,9 @@ bool EvaluateDirect(
                     dot(
                         spotDirection,
                         -directionToLight);
-                float coneWeight = saturate(
-                    (cone - light.directionOuterCone.w) /
-                    max(
-                        light.radianceInnerCone.w -
-                            light.directionOuterCone.w,
-                        0.0001f));
-                attenuation *= coneWeight * coneWeight;
+                attenuation *= HikariLocalLightConeAttenuation(cone,
+                    light.radianceInnerCone.w, light.directionOuterCone.w,
+                    light.angularFalloff);
             }
         }
         if (!IsValidRadiance(
@@ -445,8 +440,8 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
             break;
         }
 
-        throughput *= hitDiffuse;
         radiance += throughput * hitEmissive;
+        throughput *= hitDiffuse;
         float3 directRadiance;
         if (!IsValidRadiance(throughput) ||
             !IsValidRadiance(radiance) ||

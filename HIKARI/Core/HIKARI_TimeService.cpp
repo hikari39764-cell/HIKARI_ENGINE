@@ -1,7 +1,9 @@
 #include "Core/HIKARI_TimeService.h"
+#include "Core/Internal/HIKARI_FrameClock.h"
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 
 namespace HIKARI::TIME {
 namespace {
@@ -37,7 +39,10 @@ void ResetFrameClock() {
 }
 
 const FrameContext& BeginFrame() {
-    const Clock::time_point now = Clock::now();
+    return INTERNAL::BeginFrameAt(Clock::now());
+}
+
+const FrameContext& INTERNAL::BeginFrameAt(Clock::time_point now) {
 
     float rawDt = gFrame.fixedDt;
     if (gHasLastTick) {
@@ -48,16 +53,15 @@ const FrameContext& BeginFrame() {
     gLastTick = now;
     gHasLastTick = true;
 
-    if (gMaxDeltaSeconds > 0.0f) {
-        rawDt = std::min(rawDt, gMaxDeltaSeconds);
-    }
-    if (rawDt < 0.0f) {
+    if (!std::isfinite(rawDt) || rawDt < 0.0f) {
         rawDt = 0.0f;
     }
 
+    // 計測値は保持し、シミュレーションに渡す時間だけを制限する。
     gFrame.rawDt = rawDt;
-    gFrame.unscaledDt = rawDt;
-    gFrame.gameDt = gFrame.paused ? 0.0f : (rawDt * gFrame.gameTimeScale);
+    gFrame.unscaledDt = gMaxDeltaSeconds > 0.0f
+        ? (std::min)(rawDt, gMaxDeltaSeconds) : rawDt;
+    gFrame.gameDt = gFrame.paused ? 0.0f : (gFrame.unscaledDt * gFrame.gameTimeScale);
     gUnscaledElapsedSeconds += gFrame.unscaledDt;
     gGameElapsedSeconds += gFrame.gameDt;
     gFrame.fixedStepIndex = 0;
@@ -90,7 +94,7 @@ float GetInterpolatedSimulationTimeSeconds() {
 }
 
 void SetGameTimeScale(float scale) {
-    gFrame.gameTimeScale = (scale < 0.0f) ? 0.0f : scale;
+    gFrame.gameTimeScale = std::isfinite(scale) ? (std::max)(scale, 0.0f) : 1.0f;
 }
 
 float GetGameTimeScale() {
@@ -106,12 +110,13 @@ bool IsPaused() {
 }
 
 void SetMaxDeltaSeconds(float maxDelta) {
-    gMaxDeltaSeconds = (maxDelta < 0.0f) ? 0.0f : maxDelta;
+    gMaxDeltaSeconds = std::isfinite(maxDelta) ? (std::max)(maxDelta, 0.0f) : 0.1f;
 }
 
 void SetFixedDeltaSeconds(float fixedDelta) {
     constexpr float kMinimumFixedDelta = 1.0f / 1000.0f;
-    gFrame.fixedDt = (std::max)(fixedDelta, kMinimumFixedDelta);
+    gFrame.fixedDt = std::isfinite(fixedDelta)
+        ? (std::max)(fixedDelta, kMinimumFixedDelta) : 1.0f / 60.0f;
 }
 
 float GetFixedDeltaSeconds() {

@@ -16,7 +16,7 @@ namespace HIKARI::ASSETS::SEMANTICS {
                 AssetImporterKind::SkyCubemap,
                 AssetType::Sky,
                 "SkyCubemapImporter",
-                1u,
+                2u,
                 ".dds under an Assets/Skies or Assets/Sky directory",
             },
             {
@@ -30,7 +30,7 @@ namespace HIKARI::ASSETS::SEMANTICS {
                 AssetImporterKind::Model,
                 AssetType::Model,
                 "ModelImporter",
-                37u,
+                38u,
                 ".gltf, .obj, .fbx",
             },
             {

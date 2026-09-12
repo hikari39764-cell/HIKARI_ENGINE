@@ -238,6 +238,7 @@ namespace HIKARI::TOOLS::BAKING {
                 source.innerConeCos
             };
             light.type = source.type;
+            light.angularFalloff = source.angularFalloff;
             lights.push_back(light);
         }
         if (lights.empty()) {

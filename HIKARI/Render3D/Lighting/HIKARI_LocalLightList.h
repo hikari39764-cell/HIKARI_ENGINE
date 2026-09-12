@@ -50,6 +50,7 @@ namespace HIKARI::RENDER3D::LIGHTING {
         uint32_t sourceCount = 0u;
         uint32_t uploadableCount = 0u;
         uint32_t rejectedCount = 0u;
+        uint32_t culledCount = 0u;
         uint32_t overflowCount = 0u;
         uint32_t pointLightCount = 0u;
         uint32_t spotLightCount = 0u;

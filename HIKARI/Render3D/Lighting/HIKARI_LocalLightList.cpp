@@ -7,20 +7,10 @@
 #include <vector>
 
 #include "Render3D/Core/HIKARI_Camera3D.h"
+#include "Render3D/Lighting/HIKARI_LocalLightSemantics.h"
 
 namespace HIKARI::RENDER3D::LIGHTING {
     namespace {
-
-        constexpr float kPi = 3.14159265358979323846f;
-
-        bool IsUploadable(const SceneLightProvider& light) {
-            return light.enabled &&
-                light.type != SceneLightType::Directional &&
-                std::isfinite(light.intensity) &&
-                std::isfinite(light.range) &&
-                light.intensity > 0.0f &&
-                light.range > 0.0f;
-        }
 
         LocalLightGpuData ToGpuData(
             const SceneLightProvider& light) {
@@ -40,24 +30,17 @@ namespace HIKARI::RENDER3D::LIGHTING {
             };
             if (light.type == SceneLightType::Spot) {
                 const MATH::Vec3 direction =
-                    MATH::Normalize(light.direction);
-                const float innerAngle = std::clamp(
-                    light.innerConeAngleDegrees,
-                    0.1f,
-                    89.0f);
-                const float outerAngle = std::clamp(
-                    light.outerConeAngleDegrees,
-                    innerAngle,
-                    89.0f);
+                    ResolveSpotLightDirection(light);
+                const SpotLightCone cone = ResolveSpotLightCone(light);
                 gpu.directionInnerCos = {
                     direction.x,
                     direction.y,
                     direction.z,
-                    std::cos(innerAngle * kPi / 180.0f)
+                    cone.innerCos
                 };
                 gpu.outerCosFalloffTypeFlags = {
-                    std::cos(outerAngle * kPi / 180.0f),
-                    std::clamp(light.angularFalloff, 0.05f, 8.0f),
+                    cone.outerCos,
+                    cone.angularFalloff,
                     static_cast<float>(LocalLightType::Spot),
                     0.0f
                 };
@@ -361,11 +344,19 @@ namespace HIKARI::RENDER3D::LIGHTING {
             if (light.type == SceneLightType::Directional) {
                 continue;
             }
-            if (!IsUploadable(light)) {
+            if (!IsLocalLightUploadable(light)) {
                 ++view.rejectedCount;
                 continue;
             }
             ++view.uploadableCount;
+            const ClusterBounds bounds = ProjectLightBounds(
+                light, camera, screenWidth, screenHeight, view.tileSizePixels,
+                view.clusterCountX, view.clusterCountY, view.nearDistance,
+                view.farDistance, view.depthScale, view.depthBias);
+            if (!bounds.visible) {
+                ++view.culledCount;
+                continue;
+            }
             if (view.lightCount >=
                 (std::min)(
                     output.lightCapacity,
@@ -380,21 +371,6 @@ namespace HIKARI::RENDER3D::LIGHTING {
                 ++view.spotLightCount;
             } else {
                 ++view.pointLightCount;
-            }
-            const ClusterBounds bounds = ProjectLightBounds(
-                light,
-                camera,
-                screenWidth,
-                screenHeight,
-                view.tileSizePixels,
-                view.clusterCountX,
-                view.clusterCountY,
-                view.nearDistance,
-                view.farDistance,
-                view.depthScale,
-                view.depthBias);
-            if (!bounds.visible) {
-                continue;
             }
             uploadedBounds.push_back({
                 lightIndex,

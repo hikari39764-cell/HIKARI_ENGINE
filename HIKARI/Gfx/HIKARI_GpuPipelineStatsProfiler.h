@@ -31,7 +31,7 @@ namespace HIKARI::GFX::GPU_PIPELINE_STATS {
     void BeginFrame(
         ID3D12Device* device,
         ID3D12GraphicsCommandList* cmd,
-        uint64_t frameIndex);
+        uint64_t frameIndex, uint64_t completedFence, uint64_t retireFence);
     void EndFrame(ID3D12GraphicsCommandList* cmd);
     void Shutdown();
 

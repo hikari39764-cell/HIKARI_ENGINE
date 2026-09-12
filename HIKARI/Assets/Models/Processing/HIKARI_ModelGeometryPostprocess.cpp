@@ -2,20 +2,9 @@
 
 #include <cmath>
 #include <vector>
+#include "Core/Math/HIKARI_TangentFrame.h"
 
 namespace HIKARI::ASSETS::MODELS {
-
-    namespace {
-
-        MATH::Vec3 BuildFallbackTangent(const MATH::Vec3& normal) {
-            const MATH::Vec3 reference =
-                std::abs(normal.y) < 0.999f
-                    ? MATH::Vec3{ 0.0f, 1.0f, 0.0f }
-                    : MATH::Vec3{ 1.0f, 0.0f, 0.0f };
-            return MATH::Normalize(MATH::Cross(reference, normal));
-        }
-
-    } // namespace
 
     void GenerateModelPrimitiveNormals(MeshPrimitive& primitive) {
         for (Vertex3D& vertex : primitive.staticVertices) {
@@ -109,7 +98,7 @@ namespace HIKARI::ASSETS::MODELS {
                 tangentAccum[i] - normal * MATH::Dot(normal, tangentAccum[i]);
             tangent = MATH::Normalize(tangent);
             if (MATH::Length(tangent) <= 1.0e-6f) {
-                tangent = BuildFallbackTangent(normal);
+                tangent = MATH::BuildFallbackTangent(normal);
             }
             if (MATH::Length(tangent) <= 1.0e-6f) {
                 tangent = { 1.0f, 0.0f, 0.0f };

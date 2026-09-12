@@ -13,6 +13,7 @@
 #endif
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <filesystem>
@@ -21,6 +22,8 @@
 #include <vector>
 
 #include "Core/HIKARI_Logger.h"
+#include "Core/IO/HIKARI_FileReplacementTransaction.h"
+#include "Core/Serialization/Json/HIKARI_JsonFile.h"
 #include "Render3D/HIKARI_Math3D.h"
 
 namespace HIKARI {
@@ -242,8 +245,8 @@ namespace HIKARI {
                 return {};
             }
 
-            const float fx = u * static_cast<float>(size - 1u);
-            const float fy = v * static_cast<float>(size - 1u);
+            const float fx = std::clamp(u * static_cast<float>(size) - 0.5f, 0.0f, static_cast<float>(size - 1u));
+            const float fy = std::clamp(v * static_cast<float>(size) - 0.5f, 0.0f, static_cast<float>(size - 1u));
             const uint32_t x0 = static_cast<uint32_t>(std::floor(fx));
             const uint32_t y0 = static_cast<uint32_t>(std::floor(fy));
             const uint32_t x1 = std::min(x0 + 1u, size - 1u);
@@ -309,7 +312,7 @@ namespace HIKARI {
                     sourceImageCount,
                     sourceMetadata,
                     DXGI_FORMAT_R32G32B32A32_FLOAT,
-                    DirectX::TEX_FILTER_DEFAULT,
+                    DirectX::TEX_FILTER_FORCE_NON_WIC,
                     0.0f,
                     linear);
                 if (FAILED(hr)) {
@@ -321,6 +324,19 @@ namespace HIKARI {
                 sourceImages = linear.GetImages();
                 sourceMetadata = linear.GetMetadata();
                 readImage = &linear;
+            }
+
+            // PDF に応じた粗い mip の参照に備え、単一 mip 入力にも平均輝度を用意する。
+            DirectX::ScratchImage generatedMips;
+            if (sourceMetadata.mipLevels == 1 && sourceMetadata.width > 1) {
+                hr = DirectX::GenerateMipMaps(readImage->GetImages(), readImage->GetImageCount(),
+                    readImage->GetMetadata(), DirectX::TEX_FILTER_BOX, 0, generatedMips);
+                if (FAILED(hr)) {
+                    outError = "failed to generate source cubemap mip chain";
+                    return {};
+                }
+                readImage = &generatedMips;
+                sourceMetadata = generatedMips.GetMetadata();
             }
 
             CubemapImage cube{};
@@ -376,18 +392,16 @@ namespace HIKARI {
                     for (uint32_t x = 0; x < size; ++x) {
                         const MATH::Vec3 n = CubeFaceTexelDirection(face, x, y, size);
                         Float4 sum{};
-                        float weightSum = 0.0f;
                         for (uint32_t i = 0; i < sampleCount; ++i) {
                             const float u1 = static_cast<float>(i) / static_cast<float>(sampleCount);
                             const float u2 = RadicalInverseVdc(i);
                             const MATH::Vec3 l = ImportanceSampleCosineHemisphere(u1, u2, n);
-                            const float weight = std::max(0.0f, MATH::Dot(n, l));
-                            sum = Add(sum, Mul(SampleCubemapLinear(source, l), weight));
-                            weightSum += weight;
+                            // p(w)=NdotL/pi の標本なので、E/pi は放射輝度の単純平均。
+                            sum = Add(sum, SampleCubemapLinear(source, l));
                         }
 
                         output.faces[face][0][static_cast<size_t>(y) * size + x] =
-                            weightSum > kEpsilon ? Mul(sum, 1.0f / weightSum) : Float4{};
+                            sampleCount > 0 ? Mul(sum, 1.0f / static_cast<float>(sampleCount)) : Float4{};
                     }
                 }
             }
@@ -430,7 +444,22 @@ namespace HIKARI {
                                 const MATH::Vec3 l = MATH::Normalize(Sub(Mul(h, 2.0f * MATH::Dot(v, h)), v));
                                 const float noL = std::max(0.0f, MATH::Dot(n, l));
                                 if (noL > 0.0f) {
-                                    sum = Add(sum, Mul(SampleCubemapLinear(source, l), noL));
+                                    const float alpha = std::max(roughness * roughness, 0.001f);
+                                    const float alpha2 = alpha * alpha;
+                                    const float noH = std::max(MATH::Dot(n, h), 0.0f);
+                                    const float voH = std::max(MATH::Dot(v, h), 1.0e-6f);
+                                    const float denominator = noH * noH * (alpha2 - 1.0f) + 1.0f;
+                                    const float distribution = alpha2 / std::max(kPi * denominator * denominator, 1.0e-12f);
+                                    const float pdf = std::max(distribution * noH / (4.0f * voH), 1.0e-6f);
+                                    const float texelSolidAngle = 4.0f * kPi / (6.0f * source.width * source.width);
+                                    const float sampleSolidAngle = 1.0f / (static_cast<float>(sampleCount) * pdf);
+                                    const float sourceMip = roughness <= 0.0f ? 0.0f : std::clamp(
+                                        0.5f * std::log2(sampleSolidAngle / texelSolidAngle),
+                                        0.0f, static_cast<float>(source.mipLevels - 1));
+                                    const uint32_t mip0 = static_cast<uint32_t>(sourceMip);
+                                    const Float4 filtered = Lerp(SampleCubemapLinear(source, l, mip0),
+                                        SampleCubemapLinear(source, l, mip0 + 1), sourceMip - mip0);
+                                    sum = Add(sum, Mul(filtered, noL));
                                     totalWeight += noL;
                                 }
                             }
@@ -506,6 +535,26 @@ namespace HIKARI {
             return image;
         }
 
+        std::filesystem::path MakeIblStagedPath(const std::filesystem::path& outputPath) {
+            static std::atomic_uint64_t sequence{0};
+            auto staged = outputPath;
+            staged += ".ibl-stage-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) +
+                "-" + std::to_string(sequence.fetch_add(1, std::memory_order_relaxed));
+            return staged;
+        }
+
+        bool SaveDdsAtomically(const DirectX::ScratchImage& image,
+            const std::filesystem::path& outputPath, std::string& outError) {
+            const auto staged = MakeIblStagedPath(outputPath);
+            const HRESULT hr = DirectX::SaveToDDSFile(image.GetImages(), image.GetImageCount(),
+                image.GetMetadata(), DirectX::DDS_FLAGS_NONE, staged.c_str());
+            if (SUCCEEDED(hr) && IO::CommitStagedFile(staged, outputPath, outError)) return true;
+            if (FAILED(hr)) outError = "failed to write staged IBL DDS";
+            std::error_code ignored;
+            std::filesystem::remove(staged, ignored);
+            return false;
+        }
+
         bool SaveCubemapToDds(
             const CubemapImage& cube,
             const std::filesystem::path& outputPath,
@@ -560,7 +609,7 @@ namespace HIKARI {
                     scratch.GetImageCount(),
                     scratch.GetMetadata(),
                     format,
-                    DirectX::TEX_FILTER_DEFAULT,
+                    DirectX::TEX_FILTER_FORCE_NON_WIC,
                     0.0f,
                     converted);
                 if (FAILED(hr)) {
@@ -572,19 +621,7 @@ namespace HIKARI {
                 saveImage = &converted;
             }
 
-            hr = DirectX::SaveToDDSFile(
-                saveImage->GetImages(),
-                saveImage->GetImageCount(),
-                saveImage->GetMetadata(),
-                DirectX::DDS_FLAGS_NONE,
-                outputPath.wstring().c_str());
-            if (FAILED(hr)) {
-                std::ostringstream oss;
-                oss << "SaveToDDSFile failed hr=0x" << std::hex << static_cast<unsigned long>(hr);
-                outError = oss.str();
-                return false;
-            }
-            return true;
+            return SaveDdsAtomically(*saveImage, outputPath, outError);
         }
 
         bool SaveScratchToDds(
@@ -608,7 +645,7 @@ namespace HIKARI {
                     source.GetImageCount(),
                     source.GetMetadata(),
                     format,
-                    DirectX::TEX_FILTER_DEFAULT,
+                    DirectX::TEX_FILTER_FORCE_NON_WIC,
                     0.0f,
                     converted);
                 if (FAILED(hr)) {
@@ -620,19 +657,7 @@ namespace HIKARI {
                 saveImage = &converted;
             }
 
-            const HRESULT hr = DirectX::SaveToDDSFile(
-                saveImage->GetImages(),
-                saveImage->GetImageCount(),
-                saveImage->GetMetadata(),
-                DirectX::DDS_FLAGS_NONE,
-                outputPath.wstring().c_str());
-            if (FAILED(hr)) {
-                std::ostringstream oss;
-                oss << "Save BRDF LUT failed hr=0x" << std::hex << static_cast<unsigned long>(hr);
-                outError = oss.str();
-                return false;
-            }
-            return true;
+            return SaveDdsAtomically(*saveImage, outputPath, outError);
         }
 
         void SetMessage(std::string* outMessage, std::string message) {
@@ -690,13 +715,24 @@ namespace HIKARI {
         bool forceRebake,
         std::string* outMessage) {
 
-        if (!forceRebake && std::filesystem::exists(outputBrdfLutDds)) {
+        const uint32_t size = ClampPowerOfTwoSize(brdfLutSize, 64, 256);
+        const uint32_t samples = std::clamp(sampleCount, 64u, 512u);
+        const nlohmann::json identity{{"integrationVersion", 1}, {"size", size}, {"samples", samples}};
+        auto stampPath = outputBrdfLutDds;
+        stampPath += ".bake.json";
+        nlohmann::json previousIdentity;
+        DirectX::TexMetadata previousMetadata{};
+        DirectX::ScratchImage previousLut;
+        if (!forceRebake && SERIALIZATION::JSON::ReadJsonFile(stampPath, previousIdentity) &&
+            previousIdentity == identity && SUCCEEDED(DirectX::LoadFromDDSFile(
+                outputBrdfLutDds.c_str(), DirectX::DDS_FLAGS_NONE, &previousMetadata, previousLut)) &&
+            previousMetadata.width == size && previousMetadata.height == size &&
+            previousMetadata.arraySize == 1 && previousMetadata.mipLevels == 1 &&
+            previousMetadata.format == DXGI_FORMAT_R16G16B16A16_FLOAT) {
             SetMessage(outMessage, "BRDF LUT reused: " + outputBrdfLutDds.generic_string());
             return true;
         }
 
-        const uint32_t size = ClampPowerOfTwoSize(brdfLutSize, 64, 256);
-        const uint32_t samples = std::clamp(sampleCount, 64u, 512u);
         std::string error{};
         {
             ScopedTimer timer("bake shared brdf lut size=" + std::to_string(size) +
@@ -706,8 +742,18 @@ namespace HIKARI {
                 SetMessage(outMessage, "BRDF LUT generation failed");
                 return false;
             }
-            if (!SaveScratchToDds(brdf, outputBrdfLutDds, DXGI_FORMAT_R16G16B16A16_FLOAT, error)) {
-                SetMessage(outMessage, "BRDF LUT save failed: " + error);
+            const auto stagedDds = MakeIblStagedPath(outputBrdfLutDds);
+            const auto stagedStamp = MakeIblStagedPath(stampPath);
+            const std::array<IO::FileReplacementOperation, 2> replacements{{
+                {outputBrdfLutDds, stagedDds, false}, {stampPath, stagedStamp, false}}};
+            // DDS と焼き付け条件を同一トランザクションで公開する。
+            if (!SaveScratchToDds(brdf, stagedDds, DXGI_FORMAT_R16G16B16A16_FLOAT, error) ||
+                !SERIALIZATION::JSON::WriteJsonFile(stagedStamp, identity, &error) ||
+                !IO::CommitFileReplacementTransaction(replacements, error)) {
+                std::error_code ignored;
+                std::filesystem::remove(stagedDds, ignored);
+                std::filesystem::remove(stagedStamp, ignored);
+                SetMessage(outMessage, "BRDF LUT publication failed: " + error);
                 return false;
             }
         }
@@ -776,20 +822,9 @@ namespace HIKARI {
             }
         }
 
-        if (settings.forceRebake || !std::filesystem::exists(result.brdfLutPath)) {
-            ScopedTimer timer("bake brdf lut size=" + std::to_string(brdfSize) +
-                " samples=" + std::to_string(brdfSamples));
-            DirectX::ScratchImage brdf = GenerateBrdfLutImage(brdfSize, brdfSamples);
-            if (brdf.GetImageCount() == 0) {
-                result.message = "BRDF LUT generation failed";
-                return result;
-            }
-            if (!SaveScratchToDds(brdf, result.brdfLutPath, DXGI_FORMAT_R16G16B16A16_FLOAT, error)) {
-                result.message = "BRDF LUT save failed: " + error;
-                return result;
-            }
-        } else {
-            HIKARI_LOG_INFO("[IblBaker] reuse BRDF LUT " + result.brdfLutPath.generic_string());
+        if (!EnsureSharedBrdfLut(result.brdfLutPath, brdfSize, brdfSamples, settings.forceRebake, &error)) {
+            result.message = error;
+            return result;
         }
 
         result.success = true;

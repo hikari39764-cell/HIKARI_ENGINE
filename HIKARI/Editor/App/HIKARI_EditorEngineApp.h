@@ -18,6 +18,7 @@ namespace HIKARI::EDITOR {
         void Update(float deltaTime) override;
         void Render() override;
         void RenderHostUi() override;
+        const IScene* GetCurrentScene() const override { return runtimeApp_.GetCurrentScene(); }
         void UpdateHostSessions() override;
         void RequestHostStop() override;
         bool IsWindowedHostSessionRunning() const override;

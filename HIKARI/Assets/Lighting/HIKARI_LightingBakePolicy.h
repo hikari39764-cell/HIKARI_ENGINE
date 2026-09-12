@@ -5,7 +5,7 @@
 namespace HIKARI::ASSETS::LIGHTING {
 
     inline constexpr uint32_t
-        kSurfaceLightmapBakePolicyVersion = 3u;
+        kSurfaceLightmapBakePolicyVersion = 4u;
     inline constexpr uint32_t
         kSurfaceLightmapUvSet = 1u;
     inline constexpr uint32_t

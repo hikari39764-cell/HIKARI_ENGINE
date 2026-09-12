@@ -70,6 +70,7 @@ bool IsNestedGpuSubpass(GFX::GPU_PROFILE::Pass pass) {
 }
 
 const char *TimingScopeText(GFX::GPU_PROFILE::Pass pass) {
+  if (pass == GFX::GPU_PROFILE::Pass::CommandFrame) return "Whole Command Frame (overlaps all passes)";
   if (pass == GFX::GPU_PROFILE::Pass::SceneCaptures) return "SceneLayers Subpass";
   if (IsShadowSubpass(pass)) {
     return "Shadow Subpass";
@@ -200,7 +201,8 @@ double SumGpuMsByScope(const GFX::GPU_PROFILE::FrameSnapshot &profile,
   for (size_t i = 0; i < profile.passes.size(); ++i) {
     const GFX::GPU_PROFILE::Pass pass = static_cast<GFX::GPU_PROFILE::Pass>(i);
     const GFX::GPU_PROFILE::PassTiming &timing = profile.passes[i];
-    if (timing.valid && IsNestedGpuSubpass(pass) == nestedSubpass) {
+    if (pass != GFX::GPU_PROFILE::Pass::CommandFrame &&
+        timing.valid && IsNestedGpuSubpass(pass) == nestedSubpass) {
       total += timing.gpuMs;
     }
   }

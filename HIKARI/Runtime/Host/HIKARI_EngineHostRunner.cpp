@@ -21,6 +21,7 @@
 #include "Render3D/HIKARI_Math3D.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineReflex.h"
 #include "Runtime/App/HIKARI_IHostApplication.h"
+#include "Runtime/Diagnostics/HIKARI_RuntimeBenchmark.h"
 #include "Runtime/HIKARI_RuntimeLaunchConfig.h"
 #include "Runtime/Host/HIKARI_HostBootstrapConfig.h"
 #include "Runtime/Host/HIKARI_IEditorUiServices.h"
@@ -299,6 +300,7 @@ namespace HIKARI::RUNTIME {
         const auto captureOutput=ReadRuntimeCommandLinePath(L"--capture-output");
         const auto captureFrame=ReadRuntimeCommandLineUint32(L"--capture-frame").value_or(180u);
         const auto exitFrame=ReadRuntimeCommandLineUint32(L"--exit-after-frame");
+        auto benchmark = RuntimeBenchmark::FromCommandLine(startupStarted);
         uint64_t presentedFrames=0;
         bool applicationPresented = false;
         TIME::ResetFrameClock();
@@ -431,6 +433,10 @@ namespace HIKARI::RUNTIME {
                 applicationPresented = true;
                 CORE::StartupTimer::ReportSince("Host.first_application_present", startupStarted);
             }
+            if (benchmark) {
+                benchmark->OnPresentedFrame(frame.frameIndex, renderingApplication, application.GetCurrentScene());
+                if (benchmark->ShouldExit()) break;
+            }
             if (application.ShouldExitHost()) {
                 break;
             }
@@ -447,12 +453,14 @@ namespace HIKARI::RUNTIME {
             }
         }
 
+        if (benchmark) benchmark->Finish();
+        const int benchmarkExitCode = benchmark ? benchmark->ExitCode() : 0;
         splash.Stop();
         application.Shutdown();
         SERVICES::FinalizeAll();
         GetProjectContext().Close();
         CONTENT::GetEngineContentContext().Close();
-        return 0;
+        return benchmarkExitCode;
     }
 
 } // namespace HIKARI::RUNTIME

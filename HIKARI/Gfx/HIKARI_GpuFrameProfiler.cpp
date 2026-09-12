@@ -25,6 +25,7 @@ namespace HIKARI::GFX::GPU_PROFILE {
             std::array<uint8_t, kPassCount> active{};
             bool resolved = false;
             uint64_t frameIndex = 0;
+            uint64_t retireFence = 0;
         };
 
         struct ProfilerState {
@@ -239,6 +240,7 @@ namespace HIKARI::GFX::GPU_PROFILE {
         case Pass::WaterVisibilityDepth: return "Water Visibility Depth";
         case Pass::StylizedClouds: return "Stylized Clouds";
         case Pass::SceneCaptures: return "Scene Captures";
+        case Pass::CommandFrame: return "Command Frame";
         case Pass::Count:
         default: return "";
         }
@@ -248,7 +250,7 @@ namespace HIKARI::GFX::GPU_PROFILE {
         ID3D12Device* device,
         ID3D12CommandQueue* queue,
         ID3D12GraphicsCommandList* cmd,
-        uint64_t frameIndex) {
+        uint64_t frameIndex, uint64_t completedFence, uint64_t retireFence) {
         if (!gState.enabled) {
             gState.currentSlot = nullptr;
             ResetUnavailableSnapshot(gState.unavailableReason);
@@ -260,11 +262,19 @@ namespace HIKARI::GFX::GPU_PROFILE {
         }
 
         FrameSlot& slot = gState.slots[gState.writeSlotIndex % kBufferedFrameCount];
+        // 計測のために待機しない。未完了の query/readback はそのまま保持する。
+        if (completedFence == UINT64_MAX || retireFence == 0 ||
+            (slot.resolved && completedFence < slot.retireFence)) {
+            gState.currentSlot = nullptr;
+            return;
+        }
         // 前回この slot に解決した timestamp を読み、今フレーム用に再利用する。
         CollectResolvedSlot(slot);
         ResetSlot(slot, frameIndex);
+        slot.retireFence = retireFence;
         gState.currentSlot = &slot;
         ++gState.writeSlotIndex;
+        BeginPass(cmd, Pass::CommandFrame);
     }
 
     void EndFrame(ID3D12GraphicsCommandList* cmd) {
@@ -274,6 +284,7 @@ namespace HIKARI::GFX::GPU_PROFILE {
             return;
         }
 
+        EndPass(cmd, Pass::CommandFrame);
         for (uint32_t i = 0; i < kPassCount; ++i) {
             if (slot->active[i] != 0) {
                 const Pass pass = static_cast<Pass>(i);

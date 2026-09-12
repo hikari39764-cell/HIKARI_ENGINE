@@ -9,6 +9,8 @@ namespace HIKARI {
 
 namespace HIKARI::RENDER3D::LIGHTING {
 
+    struct SceneLightProvider;
+
     struct SpotLightCone {
         float innerAngleDegrees = 25.0f;
         float outerAngleDegrees = 35.0f;
@@ -19,11 +21,14 @@ namespace HIKARI::RENDER3D::LIGHTING {
 
     bool IsLocalLightUploadable(const PointLight& light) noexcept;
     bool IsLocalLightUploadable(const SpotLight& light) noexcept;
+    bool IsLocalLightUploadable(const SceneLightProvider& light) noexcept;
 
     MATH::Vec3 ResolveSpotLightDirection(
         const SpotLight& light) noexcept;
     SpotLightCone ResolveSpotLightCone(
         const SpotLight& light) noexcept;
+    MATH::Vec3 ResolveSpotLightDirection(const SceneLightProvider& light) noexcept;
+    SpotLightCone ResolveSpotLightCone(const SceneLightProvider& light) noexcept;
     void SanitizeSpotLight(SpotLight& light) noexcept;
 
 } // namespace HIKARI::RENDER3D::LIGHTING

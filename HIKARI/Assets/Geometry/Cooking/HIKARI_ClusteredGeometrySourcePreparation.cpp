@@ -8,6 +8,7 @@
 
 #include "Core/Math/HIKARI_MathValidation.h"
 #include "Core/Math/HIKARI_NormalMatrix.h"
+#include "Core/Math/HIKARI_TangentFrame.h"
 #include "Render3D/Core/HIKARI_BoundsUtils.h"
 
 namespace HIKARI::ASSETS::GEOMETRY::COOKING {
@@ -26,17 +27,18 @@ namespace HIKARI::ASSETS::GEOMETRY::COOKING {
         const MATH::Vec4 p = matrix.TransformPoint({ source.position.x, source.position.y, source.position.z, 1.0f });
         out.position = { p.x, p.y, p.z };
         out.normal = MATH::Normalize(TransformVector(normalMatrix, source.normal));
-        if (MATH::Length(out.normal) <= 1e-5f) {
-            out.normal = { 0.0f, 1.0f, 0.0f };
-        }
-        const MATH::Vec3 tangent = MATH::Normalize(TransformVector(
-            normalMatrix,
-            { source.tangent.x, source.tangent.y, source.tangent.z }));
+        // 接線は位置の微分なので world 行列を使う。法線のみ逆転置で変換する。
+        const MATH::Vec3 sourceTangent{ source.tangent.x, source.tangent.y, source.tangent.z };
+        MATH::Vec3 tangent = TransformVector(matrix, sourceTangent);
+        tangent = MATH::Normalize(tangent - out.normal * MATH::Dot(out.normal, tangent));
+        const MATH::Vec3 bitangent = TransformVector(matrix,
+            MATH::Cross(source.normal, sourceTangent)) *
+            (source.tangent.w < 0.0f ? -1.0f : 1.0f);
         out.tangent = {
             tangent.x,
             tangent.y,
             tangent.z,
-            source.tangent.w == 0.0f ? 1.0f : source.tangent.w
+            MATH::Dot(MATH::Cross(out.normal, tangent), bitangent) < 0.0f ? -1.0f : 1.0f
         };
         out.uv0 = source.uv0;
         out.uv1 = source.uv1;
@@ -48,17 +50,11 @@ namespace HIKARI::ASSETS::GEOMETRY::COOKING {
         ClusterVertex out{};
         out.position = source.position;
         out.normal = MATH::Normalize(source.normal);
-        if (MATH::Length(out.normal) <= 1e-5f) {
-            out.normal = { 0.0f, 1.0f, 0.0f };
-        }
         MATH::Vec3 tangent = MATH::Normalize({
             source.tangent.x,
             source.tangent.y,
             source.tangent.z
         });
-        if (MATH::Length(tangent) <= 1e-5f) {
-            tangent = { 1.0f, 0.0f, 0.0f };
-        }
         out.tangent = {
             tangent.x,
             tangent.y,
@@ -149,7 +145,7 @@ namespace HIKARI::ASSETS::GEOMETRY::COOKING {
 
     bool HasMissingNormals(const std::vector<ClusterVertex>& vertices) {
         for (const ClusterVertex& vertex : vertices) {
-            if (MATH::Length(vertex.normal) <= 1e-5f) {
+            if (!MATH::IsFinite(vertex.normal) || MATH::Length(vertex.normal) <= 1e-5f) {
                 return true;
             }
         }
@@ -159,7 +155,7 @@ namespace HIKARI::ASSETS::GEOMETRY::COOKING {
     bool HasMissingTangents(const std::vector<ClusterVertex>& vertices) {
         for (const ClusterVertex& vertex : vertices) {
             const MATH::Vec3 t{ vertex.tangent.x, vertex.tangent.y, vertex.tangent.z };
-            if (MATH::Length(t) <= 1e-5f) {
+            if (!MATH::IsFinite(t) || MATH::Length(t) <= 1e-5f) {
                 return true;
             }
         }
@@ -196,6 +192,7 @@ namespace HIKARI::ASSETS::GEOMETRY::COOKING {
 
     void GenerateTangents(std::vector<ClusterVertex>& vertices, const std::vector<uint32_t>& indices) {
         std::vector<MATH::Vec3> sums(vertices.size(), {});
+        std::vector<MATH::Vec3> bitangentSums(vertices.size(), {});
         for (size_t i = 0; i + 2u < indices.size(); i += 3u) {
             const uint32_t i0 = indices[i + 0u];
             const uint32_t i1 = indices[i + 1u];
@@ -220,9 +217,13 @@ namespace HIKARI::ASSETS::GEOMETRY::COOKING {
             }
             const float r = 1.0f / denom;
             const MATH::Vec3 tangent = (e1 * duv2.y - e2 * duv1.y) * r;
+            const MATH::Vec3 bitangent = (e2 * duv1.x - e1 * duv2.x) * r;
             sums[i0] = sums[i0] + tangent;
             sums[i1] = sums[i1] + tangent;
             sums[i2] = sums[i2] + tangent;
+            bitangentSums[i0] = bitangentSums[i0] + bitangent;
+            bitangentSums[i1] = bitangentSums[i1] + bitangent;
+            bitangentSums[i2] = bitangentSums[i2] + bitangent;
         }
 
         for (size_t i = 0; i < vertices.size(); ++i) {
@@ -231,9 +232,10 @@ namespace HIKARI::ASSETS::GEOMETRY::COOKING {
             t = t - n * MATH::Dot(n, t);
             t = MATH::Normalize(t);
             if (MATH::Length(t) <= 1e-5f) {
-                t = { 1.0f, 0.0f, 0.0f };
+                t = MATH::BuildFallbackTangent(n);
             }
-            vertices[i].tangent = { t.x, t.y, t.z, 1.0f };
+            const float sign = MATH::Dot(MATH::Cross(n, t), bitangentSums[i]) < 0.0f ? -1.0f : 1.0f;
+            vertices[i].tangent = { t.x, t.y, t.z, sign };
         }
     }
 
@@ -730,7 +732,7 @@ namespace HIKARI::ASSETS::GEOMETRY::COOKING {
             skinned
                 ? primitive.skinnedVertices.size()
                 : primitive.staticVertices.size());
-        // 位置は node global を焼き込むが、法線と接線は逆転置で焼き込む。
+        // 欠損した法線・接線はゼロのまま保持し、下の生成判定へ渡す。
         if (skinned) {
             for (const SkinnedVertex3D& vertex : primitive.skinnedVertices) {
                 outWork.vertices.push_back(ToClusterVertex(vertex));
@@ -742,12 +744,19 @@ namespace HIKARI::ASSETS::GEOMETRY::COOKING {
             }
         }
         outWork.indices = primitive.indices;
+        if (!skinned && MATH::Dot(MATH::Cross(
+                TransformVector(matrix, { 1, 0, 0 }),
+                TransformVector(matrix, { 0, 1, 0 })),
+                TransformVector(matrix, { 0, 0, 1 })) < 0.0f) {
+            for (size_t i = 0; i + 2 < outWork.indices.size(); i += 3) {
+                std::swap(outWork.indices[i + 1], outWork.indices[i + 2]);
+            }
+        }
 
         if (settings.generateMissingNormals && HasMissingNormals(outWork.vertices)) {
             GenerateNormals(outWork.vertices, outWork.indices);
         }
         if (settings.generateMissingTangents &&
-            HasNormalMap(model, primitive.materialIndex) &&
             HasMissingTangents(outWork.vertices)) {
             GenerateTangents(outWork.vertices, outWork.indices);
         }
