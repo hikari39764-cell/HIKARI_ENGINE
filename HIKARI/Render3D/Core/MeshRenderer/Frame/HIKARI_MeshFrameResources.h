@@ -9,6 +9,7 @@
 #include <wrl/client.h>
 
 #include "Gfx/HIKARI_GfxContext.h"
+#include "Gfx/HIKARI_DynamicUploadBuffer.h"
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
 #include "Render3D/Lighting/HIKARI_LocalLightList.h"
 #include "Render3D/Material/HIKARI_GpuMaterialRegistry.h"
@@ -21,12 +22,15 @@ namespace HIKARI::MESHRENDERER {
         Microsoft::WRL::ComPtr<ID3D12Resource> objectCB;
         Microsoft::WRL::ComPtr<ID3D12Resource> objectDataUploadBuffer;
         Microsoft::WRL::ComPtr<ID3D12Resource> objectDataBuffer;
-        Microsoft::WRL::ComPtr<ID3D12Resource> materialDataUploadBuffer;
         Microsoft::WRL::ComPtr<ID3D12Resource> materialDataBuffer;
-        Microsoft::WRL::ComPtr<ID3D12Resource> materialProgramParameterUploadBuffer;
         Microsoft::WRL::ComPtr<ID3D12Resource> materialProgramParameterBuffer;
-        Microsoft::WRL::ComPtr<ID3D12Resource> materialProgramResourceUploadBuffer;
         Microsoft::WRL::ComPtr<ID3D12Resource> materialProgramResourceBuffer;
+        std::vector<MaterialGpuData> materialDataStaging;
+        std::vector<MATH::Vec4> materialProgramParameterStaging;
+        std::vector<uint32_t> materialProgramResourceStaging;
+        DX::DynamicUploadBuffer materialUploads;
+        bool materialUploadNeedsRetry = false;
+        bool materialProgramUploadNeedsRetry = false;
         Microsoft::WRL::ComPtr<ID3D12Resource> lightCB;
         Microsoft::WRL::ComPtr<ID3D12Resource> localLightBuffer;
         Microsoft::WRL::ComPtr<ID3D12Resource> localLightClusterHeaderBuffer;
@@ -39,9 +43,6 @@ namespace HIKARI::MESHRENDERER {
         CameraCB* cullingCameraMapped = nullptr;
         ObjectCB* objectMapped = nullptr;
         ObjectGpuData* objectDataMapped = nullptr;
-        MaterialGpuData* materialDataMapped = nullptr;
-        MATH::Vec4* materialProgramParameterMapped = nullptr;
-        uint32_t* materialProgramResourceMapped = nullptr;
         LightCB* lightMapped = nullptr;
         RENDER3D::LIGHTING::LocalLightGpuData* localLightMapped = nullptr;
         RENDER3D::LIGHTING::LocalLightClusterHeader*
@@ -86,12 +87,11 @@ namespace HIKARI::MESHRENDERER {
 
         bool HasActiveDrawResources() const;
 
-        void CommitActiveMaterialRanges(
+        bool CommitActiveMaterialRanges(
             ID3D12GraphicsCommandList* commandList,
-            size_t elementStride,
             const std::vector<RENDER3D::MATERIAL::GpuMaterialUploadRange>& ranges);
 
-        void CommitActiveMaterialProgramBlockRanges(
+        bool CommitActiveMaterialProgramBlockRanges(
             ID3D12GraphicsCommandList* commandList,
             const std::vector<RENDER3D::MATERIAL::GpuMaterialUploadRange>& ranges);
 

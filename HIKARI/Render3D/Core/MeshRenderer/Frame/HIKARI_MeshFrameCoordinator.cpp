@@ -292,7 +292,6 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         ctx.jointPaletteCB = frame.jointPaletteCB.Get();
         ctx.objectMapped = frame.objectMapped;
         ctx.objectDataMapped = frame.objectDataMapped;
-        ctx.materialDataMapped = frame.materialDataMapped;
         ctx.materialProgramParametersAddress =
             frame.materialProgramParameterBuffer
                 ? frame.materialProgramParameterBuffer->GetGPUVirtualAddress()
@@ -494,7 +493,9 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                 "[MeshRenderer][WARN] World Text frame preparation failed; "
                 "mesh rendering continues without World Text.");
         }
-        CommitActiveMaterialDataFrame(cmd);
+        if (!CommitActiveMaterialDataFrame(cmd)) {
+            return false;
+        }
         if (HasGpuDrivenSceneSource()) {
             UploadMeshShaderJointPalettes();
             gMeshRendererState.traditionalIndirectOwner.RefreshForActivePipeline(

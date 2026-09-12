@@ -547,6 +547,10 @@ hikari_add_runtime_contract(HIKARI_IndirectCommandGpuContracts "Tools/Tests/HIKA
 add_dependencies(HIKARI_IndirectCommandGpuContracts HIKARI_BuiltinShaderArtifacts)
 add_test(NAME HIKARI_IndirectCommandGpuContracts COMMAND "$<TARGET_FILE:HIKARI_IndirectCommandGpuContracts>")
 set_tests_properties(HIKARI_IndirectCommandGpuContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
+
+hikari_add_runtime_contract(HIKARI_MeshMaterialUploadGpuContracts "Tools/Tests/HIKARI_MeshMaterialUploadGpuContracts.cpp")
+add_test(NAME HIKARI_MeshMaterialUploadGpuContracts COMMAND "$<TARGET_FILE:HIKARI_MeshMaterialUploadGpuContracts>")
+set_tests_properties(HIKARI_MeshMaterialUploadGpuContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
 add_test(NAME HIKARI_SkyLightingRuntimeContracts COMMAND "$<TARGET_FILE:HIKARI_SkyLightingRuntimeContracts>")
 set_tests_properties(HIKARI_SkyLightingRuntimeContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
 hikari_add_runtime_contract(HIKARI_SunGlareFrameContracts "Tools/Tests/HIKARI_SunGlareFrameContracts.cpp")

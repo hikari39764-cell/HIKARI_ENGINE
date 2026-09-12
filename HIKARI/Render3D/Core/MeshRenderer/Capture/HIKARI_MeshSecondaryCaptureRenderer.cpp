@@ -37,6 +37,7 @@ namespace HIKARI::MESHRENDERER {
             ViewResourcesUnavailable,
             FrameResourcesUnavailable,
             ParticlePreparationFailed,
+            MaterialUploadFailed,
             SceneResidencyUnavailable,
             OpaqueBackendUnavailable,
             TransparentBackendUnavailable,
@@ -58,6 +59,8 @@ namespace HIKARI::MESHRENDERER {
                 return "FrameResourcesUnavailable";
             case CaptureFailureStage::ParticlePreparationFailed:
                 return "ParticlePreparationFailed";
+            case CaptureFailureStage::MaterialUploadFailed:
+                return "MaterialUploadFailed";
             case CaptureFailureStage::SceneResidencyUnavailable:
                 return "SceneResidencyUnavailable";
             case CaptureFailureStage::OpaqueBackendUnavailable:
@@ -516,7 +519,10 @@ namespace HIKARI::MESHRENDERER {
                 "[SecondarySceneCapture] World Text preparation failed; "
                 "capture remains available without World Text.");
         }
-        CommitActiveMaterialDataFrame(graphics.cmdList);
+        if (!CommitActiveMaterialDataFrame(graphics.cmdList)) {
+            ReportCaptureFailure(CaptureFailureStage::MaterialUploadFailed);
+            return false;
+        }
 
         RENDER3D::GPUDRIVEN::GpuDrivenLayer& layer =
             resources.gpuDrivenLayer;

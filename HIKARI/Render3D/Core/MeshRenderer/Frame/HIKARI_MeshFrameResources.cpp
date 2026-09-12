@@ -1,6 +1,9 @@
 #include "Render3D/Core/MeshRenderer/Frame/HIKARI_MeshFrameResources.h"
 
 #include <d3dx12.h>
+#include <cstring>
+#include <limits>
+#include <span>
 
 #include "Gfx/D3D12/HIKARI_D3D12BufferAlignment.h"
 #include "Gfx/D3D12/HIKARI_D3D12BufferFactory.h"
@@ -10,20 +13,41 @@ namespace HIKARI::MESHRENDERER {
 
     namespace {
 
-        void CommitMappedBufferRangesToGpu(
+        bool CommitStagedBufferRangesToGpu(
             ID3D12GraphicsCommandList* commandList,
-            ID3D12Resource* uploadResource,
+            DX::DynamicUploadBuffer& uploads,
+            std::span<const std::byte> staged,
             ID3D12Resource* defaultResource,
             D3D12_RESOURCE_STATES& defaultState,
             size_t elementStride,
-            const std::vector<RENDER3D::MATERIAL::GpuMaterialUploadRange>& ranges) {
+            std::span<const RENDER3D::MATERIAL::GpuMaterialUploadRange> ranges) {
 
+            if (ranges.empty()) return true;
             if (commandList == nullptr ||
-                uploadResource == nullptr ||
                 defaultResource == nullptr ||
-                elementStride == 0u ||
-                ranges.empty()) {
-                return;
+                elementStride == 0u) {
+                return false;
+            }
+
+            size_t uploadBytes = 0u;
+            for (const auto& range : ranges) {
+                const size_t capacity = staged.size() / elementStride;
+                if (range.firstSlot > capacity || range.slotCount > capacity - range.firstSlot) {
+                    return false;
+                }
+                const size_t byteCount = elementStride * range.slotCount;
+                if (byteCount > (std::numeric_limits<size_t>::max)() - uploadBytes) return false;
+                uploadBytes += byteCount;
+            }
+            if (uploadBytes == 0u) return true;
+            const DX::UploadAllocation upload = uploads.Allocate(uploadBytes);
+            if (!upload) return false;
+            size_t packedOffset = 0u;
+            for (const auto& range : ranges) {
+                const size_t byteCount = elementStride * range.slotCount;
+                std::memcpy(static_cast<std::byte*>(upload.cpuAddress) + packedOffset,
+                    staged.data() + elementStride * range.firstSlot, byteCount);
+                packedOffset += byteCount;
             }
 
             if (defaultState != D3D12_RESOURCE_STATE_COPY_DEST) {
@@ -35,6 +59,7 @@ namespace HIKARI::MESHRENDERER {
                 defaultState = D3D12_RESOURCE_STATE_COPY_DEST;
             }
 
+            packedOffset = 0u;
             for (const RENDER3D::MATERIAL::GpuMaterialUploadRange& range : ranges) {
                 if (range.slotCount == 0u) {
                     continue;
@@ -46,9 +71,10 @@ namespace HIKARI::MESHRENDERER {
                 commandList->CopyBufferRegion(
                     defaultResource,
                     byteOffset,
-                    uploadResource,
-                    byteOffset,
+                    upload.resource,
+                    upload.offset + packedOffset,
                     byteCount);
+                packedOffset += static_cast<size_t>(byteCount);
             }
 
             const D3D12_RESOURCE_STATES shaderState =
@@ -60,6 +86,7 @@ namespace HIKARI::MESHRENDERER {
                 shaderState);
             commandList->ResourceBarrier(1, &toShader);
             defaultState = shaderState;
+            return true;
         }
 
     } // namespace
@@ -133,6 +160,20 @@ namespace HIKARI::MESHRENDERER {
             ++frameIndex) {
 
             MeshFrameResources& frame = frames_[frameIndex];
+            try {
+                frame.materialDataStaging.resize(kMaxMaterialDataCount);
+                frame.materialProgramParameterStaging.resize(
+                    materialProgramParameterBytes / sizeof(MATH::Vec4));
+                frame.materialProgramResourceStaging.resize(
+                    materialProgramResourceBytes / sizeof(uint32_t));
+            } catch (...) {
+                return false;
+            }
+            if (!frame.materialUploads.Init(device, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT)) {
+                return false;
+            }
+            frame.materialUploadNeedsRetry = false;
+            frame.materialProgramUploadNeedsRetry = false;
             if (!GFX::D3D12_BUFFER::CreateMappedUploadBuffer(
                     device,
                     cameraBytes,
@@ -154,26 +195,18 @@ namespace HIKARI::MESHRENDERER {
                     frame.objectDataUploadBuffer,
                     frame.objectDataBuffer,
                     reinterpret_cast<void**>(&frame.objectDataMapped)) ||
-                !GFX::D3D12_BUFFER::CreateGpuResidentMappedBuffer(
+                !GFX::D3D12_BUFFER::CreateDefaultBuffer(
                     device,
                     materialDataBytes,
-                    frame.materialDataUploadBuffer,
-                    frame.materialDataBuffer,
-                    reinterpret_cast<void**>(&frame.materialDataMapped)) ||
-                !GFX::D3D12_BUFFER::CreateGpuResidentMappedBuffer(
+                    frame.materialDataBuffer) ||
+                !GFX::D3D12_BUFFER::CreateDefaultBuffer(
                     device,
                     materialProgramParameterBytes,
-                    frame.materialProgramParameterUploadBuffer,
-                    frame.materialProgramParameterBuffer,
-                    reinterpret_cast<void**>(
-                        &frame.materialProgramParameterMapped)) ||
-                !GFX::D3D12_BUFFER::CreateGpuResidentMappedBuffer(
+                    frame.materialProgramParameterBuffer) ||
+                !GFX::D3D12_BUFFER::CreateDefaultBuffer(
                     device,
                     materialProgramResourceBytes,
-                    frame.materialProgramResourceUploadBuffer,
-                    frame.materialProgramResourceBuffer,
-                    reinterpret_cast<void**>(
-                        &frame.materialProgramResourceMapped)) ||
+                    frame.materialProgramResourceBuffer) ||
                 !GFX::D3D12_BUFFER::CreateMappedUploadBuffer(
                     device,
                     lightBytes,
@@ -261,6 +294,8 @@ namespace HIKARI::MESHRENDERER {
 
     void MeshFrameResourceStore::Activate(uint32_t frameIndex) {
         activeFrameIndex_ = frameIndex % GFX::kFrameResourceCount;
+        Active().materialUploads.ResetForFrame(
+            GFX::GetCurrentContext().currentFrameRetireFenceValue);
     }
 
     bool MeshFrameResourceStore::HasActiveDrawResources() const {
@@ -270,49 +305,60 @@ namespace HIKARI::MESHRENDERER {
             frame.objectCB != nullptr &&
             frame.objectDataMapped != nullptr &&
             frame.objectDataBuffer != nullptr &&
-            frame.materialDataMapped != nullptr &&
+            !frame.materialDataStaging.empty() &&
             frame.materialDataBuffer != nullptr &&
-            frame.materialProgramParameterMapped != nullptr &&
+            !frame.materialProgramParameterStaging.empty() &&
             frame.materialProgramParameterBuffer != nullptr &&
-            frame.materialProgramResourceMapped != nullptr &&
+            !frame.materialProgramResourceStaging.empty() &&
             frame.materialProgramResourceBuffer != nullptr;
     }
 
-    void MeshFrameResourceStore::CommitActiveMaterialRanges(
+    bool MeshFrameResourceStore::CommitActiveMaterialRanges(
         ID3D12GraphicsCommandList* commandList,
-        size_t elementStride,
         const std::vector<RENDER3D::MATERIAL::GpuMaterialUploadRange>& ranges) {
 
         MeshFrameResources& frame = Active();
-        CommitMappedBufferRangesToGpu(
+        const RENDER3D::MATERIAL::GpuMaterialUploadRange retryRange{0, kMaxMaterialDataCount};
+        // StageFrame が消費した dirty 情報は、コピー失敗時も CPU staging から復元する。
+        const bool committed = CommitStagedBufferRangesToGpu(
             commandList,
-            frame.materialDataUploadBuffer.Get(),
+            frame.materialUploads,
+            std::as_bytes(std::span(frame.materialDataStaging)),
             frame.materialDataBuffer.Get(),
             frame.materialDataState,
-            elementStride,
-            ranges);
+            sizeof(MaterialGpuData),
+            frame.materialUploadNeedsRetry
+                ? std::span(&retryRange, 1u) : std::span(ranges));
+        frame.materialUploadNeedsRetry = !committed;
+        return committed;
     }
 
-    void MeshFrameResourceStore::CommitActiveMaterialProgramBlockRanges(
+    bool MeshFrameResourceStore::CommitActiveMaterialProgramBlockRanges(
         ID3D12GraphicsCommandList* commandList,
         const std::vector<RENDER3D::MATERIAL::GpuMaterialUploadRange>& ranges) {
         MeshFrameResources& frame = Active();
-        CommitMappedBufferRangesToGpu(
+        const RENDER3D::MATERIAL::GpuMaterialUploadRange retryRange{0, kMaxMaterialDataCount};
+        const auto uploads = frame.materialProgramUploadNeedsRetry
+            ? std::span(&retryRange, 1u) : std::span(ranges);
+        const bool committed = CommitStagedBufferRangesToGpu(
             commandList,
-            frame.materialProgramParameterUploadBuffer.Get(),
+            frame.materialUploads,
+            std::as_bytes(std::span(frame.materialProgramParameterStaging)),
             frame.materialProgramParameterBuffer.Get(),
             frame.materialProgramParameterState,
             sizeof(MATH::Vec4) *
                 RENDER3D::MATERIAL::kGpuMaterialProgramParameterSlotCount,
-            ranges);
-        CommitMappedBufferRangesToGpu(
+            uploads) && CommitStagedBufferRangesToGpu(
             commandList,
-            frame.materialProgramResourceUploadBuffer.Get(),
+            frame.materialUploads,
+            std::as_bytes(std::span(frame.materialProgramResourceStaging)),
             frame.materialProgramResourceBuffer.Get(),
             frame.materialProgramResourceState,
             sizeof(uint32_t) *
                 RENDER3D::MATERIAL::kGpuMaterialProgramResourceSlotCount,
-            ranges);
+            uploads);
+        frame.materialProgramUploadNeedsRetry = !committed;
+        return committed;
     }
 
 } // namespace HIKARI::MESHRENDERER

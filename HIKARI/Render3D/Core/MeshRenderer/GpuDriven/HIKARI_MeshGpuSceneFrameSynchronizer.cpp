@@ -50,32 +50,33 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         gMeshRendererState.debugStats.gpuSceneUpload = uploadStats;
     }
 
-    void CommitActiveMaterialDataFrame(ID3D12GraphicsCommandList* commandList) {
+    bool CommitActiveMaterialDataFrame(ID3D12GraphicsCommandList* commandList) {
         CPU_PROFILE::ScopedCpuTimer cpuTimer(
             CPU_PROFILE::Pass::MaterialPrepare);
         MeshFrameResources& frame = GetActiveMeshFrameResources();
         if (!gMeshRendererState.gpuMaterialRegistry.StageFrame(
                 gMeshRendererState.frameResources.GetActiveFrameIndex(),
-                frame.materialDataMapped,
+                frame.materialDataStaging.data(),
                 kMaxMaterialDataCount,
                 gMeshRendererState.materialUploadRanges)) {
-            return;
+            return false;
         }
 
-        gMeshRendererState.frameResources.CommitActiveMaterialRanges(
+        if (!gMeshRendererState.frameResources.CommitActiveMaterialRanges(
             commandList,
-            sizeof(MaterialGpuData),
-            gMeshRendererState.materialUploadRanges);
+            gMeshRendererState.materialUploadRanges)) {
+            return false;
+        }
 
         if (!gMeshRendererState.gpuMaterialRegistry.StageProgramBlocksFrame(
                 gMeshRendererState.frameResources.GetActiveFrameIndex(),
-                frame.materialProgramParameterMapped,
-                frame.materialProgramResourceMapped,
+                frame.materialProgramParameterStaging.data(),
+                frame.materialProgramResourceStaging.data(),
                 kMaxMaterialDataCount,
                 gMeshRendererState.materialUploadRanges)) {
-            return;
+            return false;
         }
-        gMeshRendererState.frameResources.
+        return gMeshRendererState.frameResources.
             CommitActiveMaterialProgramBlockRanges(
                 commandList,
                 gMeshRendererState.materialUploadRanges);

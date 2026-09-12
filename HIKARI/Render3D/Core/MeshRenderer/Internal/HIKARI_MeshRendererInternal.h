@@ -53,7 +53,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         uint32_t screenHeight,
         RenderDebugView debugView,
         const MeshFrameCameraOverrides* cameraOverrides);
-    void CommitActiveMaterialDataFrame(
+    bool CommitActiveMaterialDataFrame(
         ID3D12GraphicsCommandList* commandList);
     bool ExecutePreparedParticleForwardTransparent(
         const GFX::Context& graphics,

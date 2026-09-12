@@ -230,7 +230,9 @@ namespace HIKARI::MESHRENDERER {
             return EditorInteractiveMeshRenderResult::
                 MaterialFrameUnavailable;
         }
-        CommitActiveMaterialDataFrame(graphics.cmdList);
+        if (!CommitActiveMaterialDataFrame(graphics.cmdList)) {
+            return EditorInteractiveMeshRenderResult::MaterialFrameUnavailable;
+        }
 
         RENDER3D::GPUDRIVEN::GpuDrivenLayer& layer =
             gMeshRendererState.editorInteractive.gpuDrivenLayer;
