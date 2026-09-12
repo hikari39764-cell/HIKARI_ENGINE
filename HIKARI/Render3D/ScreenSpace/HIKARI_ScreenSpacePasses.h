@@ -11,6 +11,7 @@
 #include "Render3D/Resources/HIKARI_RenderResourceHandle.h"
 #include "Render3D/Resources/HIKARI_RenderTextureView.h"
 #include "Render3D/Surface/HIKARI_SceneSurfaceBuffer.h"
+#include "Render3D/Surface/HIKARI_SceneReflectionBuffer.h"
 #include "Render3D/ScreenSpace/HIKARI_SsaoRenderer.h"
 
 namespace HIKARI {
@@ -43,6 +44,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
 
     struct ScreenSpaceRuntimeState {
         SURFACE::SceneSurfaceBuffer surfaceBuffer{};
+        SURFACE::SceneReflectionBuffer reflectionBuffer{};
         SsaoRenderer ssaoRenderer{};
         RENDER3D::GPUDRIVEN::GpuDepthVisibilityLayer depthVisibility{};
         RENDER3D::GPUDRIVEN::GpuDepthVisibilityStats frozenCullingDepthStats{};

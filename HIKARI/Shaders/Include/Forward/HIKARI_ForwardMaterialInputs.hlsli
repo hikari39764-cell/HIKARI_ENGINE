@@ -101,18 +101,27 @@ float3 AccumulateLocalLightsPbr(
 
 #include "../Material/HIKARI_MaterialPbrInputs.hlsli"
 
-float3 ApplyFog(float3 color, float3 worldPosWS)
+float HikariForwardFogFactor(float3 worldPosWS)
 {
     if (gFogParams.x < 0.5f)
     {
-        return color;
+        return 0.0f;
     }
     const float dist = length(gCameraPos.xyz - worldPosWS) * 0.8f;
     const float fogRange = max(0.001f, gFogParams.z - gFogParams.y);
     float fogFactor = saturate((dist - gFogParams.y) / fogRange);
     fogFactor = saturate(
         fogFactor * max(0.0f, gFogColorDensity.a) * dist);
-    return lerp(color, gFogColorDensity.rgb, fogFactor);
+    return fogFactor;
+}
+
+float3 ApplyFog(float3 color, float3 worldPosWS)
+{
+    if (gFogParams.x < 0.5f)
+    {
+        return color;
+    }
+    return lerp(color, gFogColorDensity.rgb, HikariForwardFogFactor(worldPosWS));
 }
 
 #endif

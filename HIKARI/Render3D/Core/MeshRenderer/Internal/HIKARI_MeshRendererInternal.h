@@ -105,6 +105,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         MeshDrawPassKind passKind,
         RENDER3D::GPUDRIVEN::GpuDrivenLayer* layerOverride = nullptr,
         const MeshFrameBindingOverrides* bindingOverrides = nullptr);
+    bool PrepareForwardReflectionCapturePipelines(const GFX::Context& graphics);
+
     GeometryBackendExecutionResult ExecuteGeometryBackendPlan(
         const GFX::Context& graphics,
         RENDER3D::GPUDRIVEN::GpuDrivenPassKind pass,

@@ -95,7 +95,9 @@ namespace HIKARI::RENDER3D::REFLECTION {
             surfaces.TryGetDepthPyramid(
                 GRAPH::RenderGraphSurfaceKey{
                     Semantic::CurrentDepthPyramid, Phase::PostOpaque });
-        debugState_.sceneSurfaceReady = surfaces.HasOpaqueSurface();
+        const auto* reflectionFallback = surfaces.TryGetTexture({Semantic::ReflectionFallbackSpecular, Phase::Opaque});
+        const auto* reflectionResponse = surfaces.TryGetTexture({Semantic::ReflectionSpecularResponse, Phase::Opaque});
+        debugState_.sceneSurfaceReady = surfaces.HasOpaqueSurface() && reflectionFallback && reflectionResponse;
         debugState_.currentHzbReady = surfaces.HasCurrentDepthHierarchy();
         debugState_.hzbMipCount =
             currentDepthPyramid != nullptr
@@ -126,6 +128,8 @@ namespace HIKARI::RENDER3D::REFLECTION {
             graphics.srvHeap == nullptr) {
             return false;
         }
+        if (reflectionFallback->width != sceneDepth->width || reflectionFallback->height != sceneDepth->height ||
+            reflectionResponse->width != sceneDepth->width || reflectionResponse->height != sceneDepth->height) return false;
         if (!EnsurePipeline(graphics.device) ||
             !EnsureConstantBuffer(graphics.device) ||
             !EnsureTraceTarget(
@@ -215,6 +219,8 @@ namespace HIKARI::RENDER3D::REFLECTION {
         cmd->SetGraphicsRootDescriptorTable(
             4,
             currentDepthPyramid->pyramidSrv);
+        cmd->SetGraphicsRootDescriptorTable(6, reflectionFallback->srv);
+        cmd->SetGraphicsRootDescriptorTable(7, reflectionResponse->srv);
         cmd->IASetPrimitiveTopology(
             D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         cmd->IASetVertexBuffers(0, 0, nullptr);
@@ -275,6 +281,8 @@ namespace HIKARI::RENDER3D::REFLECTION {
             4,
             currentDepthPyramid->pyramidSrv);
         cmd->SetGraphicsRootDescriptorTable(5, traceSrv_);
+        cmd->SetGraphicsRootDescriptorTable(6, reflectionFallback->srv);
+        cmd->SetGraphicsRootDescriptorTable(7, reflectionResponse->srv);
         cmd->DrawInstanced(3, 1, 0, 0);
         targetAccess.EndDepthRead();
         debugState_.rendered = true;
@@ -295,8 +303,8 @@ namespace HIKARI::RENDER3D::REFLECTION {
         tracePipelineState_.Reset();
         resolvePipelineState_.Reset();
 
-        std::array<D3D12_DESCRIPTOR_RANGE, 5> ranges{};
-        std::array<D3D12_ROOT_PARAMETER, 6> parameters{};
+        std::array<D3D12_DESCRIPTOR_RANGE, 7> ranges{};
+        std::array<D3D12_ROOT_PARAMETER, 8> parameters{};
         parameters[0].ParameterType =
             D3D12_ROOT_PARAMETER_TYPE_CBV;
         parameters[0].ShaderVisibility =

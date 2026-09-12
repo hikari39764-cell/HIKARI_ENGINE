@@ -86,6 +86,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         ctx.visibility = backendContext.visibility;
         ctx.drawCommandRange = backendContext.drawCommandRange;
         ctx.pipelineKind = pipelineKind;
+        ctx.reflectionCapture = passResources.reflectionCapture;
         const bool executed = gMeshRendererState.meshletRenderBackend.Execute(ctx);
         UpdateMeshletBackendDebugStats();
         return executed;
@@ -95,7 +96,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         const GFX::Context& graphics,
         MeshDrawPassKind passKind,
         RENDER3D::GPUDRIVEN::GpuDrivenPassKind gpuPass,
-        const VFX::VariantKey& bucketVariant) {
+        const VFX::VariantKey& bucketVariant,
+        bool reflectionCapture) {
 
         (void)gpuPass;
 
@@ -128,14 +130,16 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             gMeshRendererState.debugStats,
             bucketVariant,
             false,
-            false);
+            false,
+            reflectionCapture);
     }
 
     ID3D12PipelineState* ResolveTraditionalSkinnedPso(
         const GFX::Context& graphics,
         MeshDrawPassKind passKind,
         RENDER3D::GPUDRIVEN::GpuDrivenPassKind gpuPass,
-        const VFX::VariantKey& bucketVariant) {
+        const VFX::VariantKey& bucketVariant,
+        bool reflectionCapture) {
 
         (void)gpuPass;
 
@@ -175,7 +179,37 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             gMeshRendererState.debugStats,
             key,
             true,
-            false);
+            false,
+            reflectionCapture);
+    }
+
+    bool PrepareForwardReflectionCapturePipelines(const GFX::Context& graphics) {
+        using namespace RENDER3D::GPUDRIVEN;
+        if (!graphics.device || !graphics.cmdList) return false;
+        SyncGpuDrivenBackendAvailability();
+        auto& layer = gMeshRendererState.gpuDrivenLayer;
+        const auto pass = GpuDrivenPassKind::ForwardOpaque;
+        const auto plan = layer.GetPassExecutionPlan(pass);
+        if (plan.gpuBackendCount == 0) return false;
+        for (size_t i = 0; i < plan.gpuBackendCount; ++i) {
+            if (plan.gpuBackends[i] == GeometryBackendKind::GpuDrivenMeshShader) {
+                if (!gMeshRendererState.meshletRenderBackend.PrepareReflectionCapture()) return false;
+                continue;
+            }
+            if (plan.gpuBackends[i] != GeometryBackendKind::GpuDrivenTraditionalVsPs) return false;
+            const auto backend = layer.BuildGeometryBackendContext(graphics.cmdList, pass, plan.gpuBackends[i]);
+            const auto* range = backend.drawCommandRange;
+            if (!range || !range->traditionalIndirect || !range->traditionalIndirect->bucketVariants) return false;
+            const auto& variants = *range->traditionalIndirect->bucketVariants;
+            if (range->commandBucketCount > variants.size()) return false;
+            for (size_t bucket = 0; bucket < range->commandBucketCount; ++bucket) {
+                if (range->staticCommandCount && !ResolveTraditionalStaticPso(graphics,
+                    MeshDrawPassKind::Forward, pass, variants[bucket], true)) return false;
+                if (range->skinnedCommandCount && !ResolveTraditionalSkinnedPso(graphics,
+                    MeshDrawPassKind::Forward, pass, variants[bucket], true)) return false;
+            }
+        }
+        return true;
     }
 
     bool ExecuteTraditionalDrawFrame(
@@ -283,7 +317,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                         graphics,
                         passKind,
                         gpuPass,
-                        bucketVariant);
+                        bucketVariant,
+                        passResources.reflectionCapture);
                 if (bucketPso == nullptr) {
                     continue;
                 }
@@ -353,7 +388,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                         graphics,
                         passKind,
                         gpuPass,
-                        bucketVariant);
+                        bucketVariant,
+                        passResources.reflectionCapture);
                 if (bucketPso == nullptr) {
                     continue;
                 }

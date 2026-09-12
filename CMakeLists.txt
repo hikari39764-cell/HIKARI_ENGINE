@@ -459,6 +459,12 @@ target_compile_definitions(HIKARI_SsrReconstructionContracts PRIVATE HIKARI_CONT
 add_test(NAME HIKARI_SsrReconstructionContracts COMMAND "$<TARGET_FILE:HIKARI_SsrReconstructionContracts>")
 set_tests_properties(HIKARI_SsrReconstructionContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 60)
 
+hikari_add_runtime_contract(HIKARI_SceneReflectionCaptureContracts "Tools/Tests/HIKARI_SceneReflectionCaptureContracts.cpp")
+target_include_directories(HIKARI_SceneReflectionCaptureContracts PRIVATE "${HIKARI_SOURCE_ROOT}/ThirdParty/DirectXTex/Common")
+target_compile_definitions(HIKARI_SceneReflectionCaptureContracts PRIVATE HIKARI_CONTRACT_SOURCE_ROOT="${HIKARI_SOURCE_ROOT}")
+add_test(NAME HIKARI_SceneReflectionCaptureContracts COMMAND "$<TARGET_FILE:HIKARI_SceneReflectionCaptureContracts>")
+set_tests_properties(HIKARI_SceneReflectionCaptureContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 60)
+
 add_executable(HIKARI_IblBakeContracts EXCLUDE_FROM_ALL
     "Tools/Tests/HIKARI_IblBakeContracts.cpp"
     "HIKARI/Assets/Importers/HIKARI_IblBaker.cpp"

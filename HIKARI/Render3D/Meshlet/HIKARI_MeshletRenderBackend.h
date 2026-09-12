@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <array>
 #include <cstddef>
@@ -103,6 +103,7 @@ namespace HIKARI::RENDER3D::MESHLET {
         const GPUDRIVEN::GpuDrivenDrawCommandRange* drawCommandRange = nullptr;
         MeshletPipelineKind pipelineKind = MeshletPipelineKind::ForwardOpaque;
         GFX::GPU_PROFILE::Pass profilePass = GFX::GPU_PROFILE::Pass::Count;
+        bool reflectionCapture = false;
     };
 
     class MeshletRenderBackend final {
@@ -117,6 +118,7 @@ namespace HIKARI::RENDER3D::MESHLET {
             ID3D12Device* device,
             ID3D12RootSignature* rootSignature,
             uint32_t pipelineMask);
+        bool PrepareReflectionCapture();
         void Reset();
         void ResetFrame();
         bool Execute(const MeshletRenderExecutionContext& ctx);
@@ -127,6 +129,10 @@ namespace HIKARI::RENDER3D::MESHLET {
             GPUDRIVEN::GpuDrivenCommandBucket bucket) const;
 
     private:
+        Microsoft::WRL::ComPtr<ID3D12Device> device_{};
+        Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignature_{};
+        PipelineBucketArray reflectionPipelineStates_{};
+        bool reflectionCaptureAttempted_ = false;
         ForwardPipelineVariantArray forwardPipelineStates_{};
         PipelineBucketArray depthAwarePipelineStates_{};
         PipelineBucketArray transparentPipelineStates_{};

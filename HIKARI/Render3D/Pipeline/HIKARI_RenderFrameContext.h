@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <span>
 
 #include <d3d12.h>
 
@@ -21,6 +22,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
     // Explicit render-target operations exposed to pipeline stages.
     struct RenderTargetAccess {
         using RebindCallback = bool (*)(void* userData);
+        using BindAdditionalColorsCallback = bool (*)(void*, std::span<const D3D12_CPU_DESCRIPTOR_HANDLE>);
         using BeginDepthReadCallback = bool (*)(void* userData);
         using EndDepthReadCallback = void (*)(void* userData);
         using ClearColorCallback = bool (*)(
@@ -38,6 +40,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
 
         void* userData = nullptr;
         RebindCallback rebind = nullptr;
+        BindAdditionalColorsCallback bindAdditionalColors = nullptr;
         BeginDepthReadCallback beginDepthRead = nullptr;
         EndDepthReadCallback endDepthRead = nullptr;
         ClearColorCallback clearColor = nullptr;
@@ -45,6 +48,10 @@ namespace HIKARI::RENDER3D::PIPELINE {
 
         bool Rebind() const {
             return rebind != nullptr && rebind(userData);
+        }
+
+        bool BindAdditionalColors(std::span<const D3D12_CPU_DESCRIPTOR_HANDLE> colors) const {
+            return bindAdditionalColors != nullptr && bindAdditionalColors(userData, colors);
         }
 
         bool BeginDepthRead() const {

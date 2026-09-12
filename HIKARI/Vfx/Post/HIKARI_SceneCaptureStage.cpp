@@ -156,6 +156,22 @@ namespace HIKARI::POST {
         return true;
     }
 
+    bool SceneCaptureStage::BindAdditionalColors(
+        std::span<const D3D12_CPU_DESCRIPTOR_HANDLE> colors) {
+        if (!HasCurrentTarget() || !context_.cmdList || colors.size() > 7) return false;
+        std::array<D3D12_CPU_DESCRIPTOR_HANDLE, 8> targets{};
+        targets[0] = currentTarget_->GetRtvHandle();
+        for (size_t i = 0; i < colors.size(); ++i) {
+            if (!colors[i].ptr) return false;
+            targets[i + 1] = colors[i];
+        }
+        currentTarget_->Rebind();
+        const auto dsv = currentTarget_->GetDsvHandle();
+        context_.cmdList->OMSetRenderTargets(static_cast<UINT>(colors.size() + 1),
+            targets.data(), FALSE, dsv.ptr ? &dsv : nullptr);
+        return true;
+    }
+
     bool SceneCaptureStage::ClearCurrentColor(
         float r,
         float g,

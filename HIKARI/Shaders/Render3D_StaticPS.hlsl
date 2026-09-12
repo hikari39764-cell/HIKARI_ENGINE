@@ -41,8 +41,30 @@ struct PSInput
 #include "Render3D_WaterSurfacePS.hlsl"
 #undef HIKARI_WATER_EMBEDDED
 
-float4 main(PSInput input) : SV_TARGET
+#ifndef HIKARI_FORWARD_REFLECTION_CAPTURE
+#define HIKARI_FORWARD_REFLECTION_CAPTURE 0
+#endif
+
+#if HIKARI_FORWARD_REFLECTION_CAPTURE
+#include "Include/Surface/HIKARI_SceneReflectionContribution.hlsli"
+struct HikariForwardReflectionOutput
 {
+    float4 color : SV_Target0;
+    float4 fallbackSpecular : SV_Target1;
+    float4 specularResponse : SV_Target2;
+};
+
+float4 HikariShadeForwardWithReflections(PSInput input,
+    out float4 fallbackSpecular, out float4 specularResponse)
+#else
+float4 main(PSInput input) : SV_TARGET
+#endif
+{
+#if HIKARI_FORWARD_REFLECTION_CAPTURE
+    // 未対応の早期 return も必ず無効値を書き、背後の面の反射を残さない。
+    fallbackSpecular = 0.0f.xxxx;
+    specularResponse = 0.0f.xxxx;
+#endif
     const bool neutralClay =
         gDebugView == HIKARI_DEBUG_VIEW_NEUTRAL_CLAY;
     const bool sandSurface =
@@ -421,7 +443,7 @@ float4 main(PSInput input) : SV_TARGET
                 albedo.a);
         }
 
-        float3 ambient = HikariEvaluateAmbientIbl(
+        const HikariAmbientIblLobes ambient = HikariEvaluateAmbientIblLobes(
             pbrContext,
             occlusion,
             screenAo,
@@ -429,7 +451,14 @@ float4 main(PSInput input) : SV_TARGET
             surfaceLightmapIrradiance,
             surfaceLightmapWeight);
 
-        shadedColor = direct + pointDirect + ambient;
+        shadedColor = direct + pointDirect + (ambient.diffuse + ambient.specular);
+#if HIKARI_FORWARD_REFLECTION_CAPTURE
+        if ((gDebugView == 0u || gDebugView == 26u || gDebugView == 27u) && !neutralClay)
+        {
+            fallbackSpecular = float4(ambient.specular, 1.0f);
+            specularResponse = float4(ambient.specularResponse, 1.0f);
+        }
+#endif
         }
         else
         {
@@ -543,7 +572,28 @@ float4 main(PSInput input) : SV_TARGET
         (materialData.materialFlags & MATERIAL_ALPHA_BLEND) != 0u ||
         (materialData.instanceFlags &
          HIKARI_PROGRAM_FLAG_ALPHA_BLEND) != 0u;
+#if HIKARI_FORWARD_REFLECTION_CAPTURE
+    bool reflectionSupported = !neutralClay && (gDebugView == 0u || gDebugView == 26u || gDebugView == 27u) && !alphaBlended &&
+        (materialData.materialFlags & MATERIAL_UNLIT) == 0u &&
+        materialData.materialProgramIndex == HIKARI_STANDARD_PBR_MATERIAL_PROGRAM;
+#if HIKARI_FORWARD_ENABLE_MATERIAL_FX
+    reflectionSupported = reflectionSupported && !hasStaticMaterialFx;
+#endif
+    // 既存の非単位 alpha 合成は複数面を含むため、単一表面の置換対象にしない。
+    reflectionSupported = reflectionSupported && albedo.a == 1.0f;
+    HikariAttenuateReflectionContribution(fallbackSpecular, specularResponse,
+        1.0f - HikariForwardFogFactor(input.worldPosWS), reflectionSupported);
+#endif
     return float4(
         alphaBlended ? finalColor * albedo.a : finalColor,
         albedo.a);
 }
+
+#if HIKARI_FORWARD_REFLECTION_CAPTURE
+HikariForwardReflectionOutput main(PSInput input)
+{
+    HikariForwardReflectionOutput result;
+    result.color = HikariShadeForwardWithReflections(input, result.fallbackSpecular, result.specularResponse);
+    return result;
+}
+#endif

@@ -382,6 +382,8 @@ namespace HIKARI::RENDER3D::GRAPH {
             return "InvalidDepthMotionMask";
         case RenderGraphSemantic::ProjectDispatchOutput:
             return "ProjectDispatchOutput";
+        case RenderGraphSemantic::ReflectionFallbackSpecular: return "ReflectionFallbackSpecular";
+        case RenderGraphSemantic::ReflectionSpecularResponse: return "ReflectionSpecularResponse";
         case RenderGraphSemantic::Count: break;
         }
         return "Unknown";

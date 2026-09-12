@@ -43,24 +43,14 @@ namespace HIKARI::MESHRENDERER {
             const char* profile,
             ASSETS::SHADER::ShaderAssetEntryLease& outShader) {
             ASSETS::SHADER::ShaderAssetResolveResult resolved =
-                ASSETS::SHADER::ResolveBuiltinShaderEntry(
+                ASSETS::SHADER::ResolveBuiltinRenderGeometryShaderEntry(
                     programId,
                     { "Main", stage, profile },
                     contract);
-            std::string diagnostic{};
-            const ASSETS::SHADER::ShaderCookedArtifact* artifact =
-                resolved ? resolved.lease.GetArtifact() : nullptr;
-            if (!resolved || artifact == nullptr ||
-                !ASSETS::SHADER::ValidateRenderGeometryShaderArtifact(
-                    *artifact,
-                    diagnostic) ||
-                resolved.lease.GetDxil().empty()) {
-                if (diagnostic.empty()) {
-                    diagnostic = resolved.diagnostic;
-                }
+            if (!resolved) {
                 DEBUGLOG::PushRenderError(
                     std::string("[MeshRenderer][Shader][ERROR] ") +
-                    programId + ": " + diagnostic);
+                    programId + ": " + resolved.diagnostic);
                 return false;
             }
             outShader = std::move(resolved.lease);

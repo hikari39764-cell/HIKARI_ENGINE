@@ -127,6 +127,8 @@ namespace HIKARI::MESHRENDERER {
     bool FinalizeGpuDrivenVisibilityFromDepth(
         const GFX::Context& graphics,
         const RENDER3D::GPUDRIVEN::GpuDepthVisibilityStats& depthVisibilityStats);
+    bool PrepareForwardReflectionCapture(const GFX::Context& graphics);
+
     bool RenderForwardOpaquePass(
         const GFX::Context& graphics,
         const MeshPassResources& passResources);

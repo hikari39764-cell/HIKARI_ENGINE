@@ -141,6 +141,18 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
                 SURFACE::SceneSurfaceProducer::ProjectDispatch,
                 GRAPH::RenderGraphResourceRequirement::Optional);
         }
+        GRAPH::RenderGraphResourceId reflectionFallback{}, reflectionResponse{};
+        if (options.includeSsr) {
+            reflectionFallback = AddRenderFrameGraphSurfaceResource(graph, "ReflectionFallbackSpecular",
+                GRAPH::RenderGraphSemantic::ReflectionFallbackSpecular, false,
+                GRAPH::RenderGraphSemanticPhase::Opaque, SURFACE::SceneSurfaceProducer::ForwardOpaque,
+                GRAPH::RenderGraphResourceRequirement::Optional);
+            reflectionResponse = AddRenderFrameGraphSurfaceResource(graph, "ReflectionSpecularResponse",
+                GRAPH::RenderGraphSemantic::ReflectionSpecularResponse, false,
+                GRAPH::RenderGraphSemanticPhase::Opaque, SURFACE::SceneSurfaceProducer::ForwardOpaque,
+                GRAPH::RenderGraphResourceRequirement::Optional);
+            if (!reflectionFallback.IsValid() || !reflectionResponse.IsValid()) return false;
+        }
         const auto forwardComplete = AddRenderFrameGraphCompletionMarker(
             graph, "ForwardOpaque.Complete");
         const auto postOpaqueComplete = AddRenderFrameGraphCompletionMarker(
@@ -209,12 +221,16 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             GRAPH::RenderGraphResourceUse{
                 forwardComplete,
                 GRAPH::RenderGraphAccess::WriteDependency
-            }
+            },
+            GRAPH::RenderGraphResourceUse{reflectionFallback, GRAPH::RenderGraphAccess::WriteColor,
+                SURFACE::SceneSurfaceProducer::ForwardOpaque},
+            GRAPH::RenderGraphResourceUse{reflectionResponse, GRAPH::RenderGraphAccess::WriteColor,
+                SURFACE::SceneSurfaceProducer::ForwardOpaque}
         };
         if (!graph.AddPass(GRAPH::RenderGraphPassDesc{
                 "ForwardOpaque",
                 forwardReads,
-                forwardWrites,
+                std::span(forwardWrites.data(), options.includeSsr ? 3u : 1u),
                 callbacks.forwardOpaque,
                 userData
             })) {
@@ -417,7 +433,9 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
                 GRAPH::RenderGraphResourceUse{
                     currentDepthPyramid,
                     GRAPH::RenderGraphAccess::ReadSampled
-                }
+                },
+                GRAPH::RenderGraphResourceUse{reflectionFallback, GRAPH::RenderGraphAccess::ReadSampled},
+                GRAPH::RenderGraphResourceUse{reflectionResponse, GRAPH::RenderGraphAccess::ReadSampled}
             };
             const std::array ssrWrites{
                 GRAPH::RenderGraphResourceUse{

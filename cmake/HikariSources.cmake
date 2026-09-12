@@ -322,6 +322,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Reflection/HIKARI_ReflectionProbeRuntime.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Reflection/HIKARI_ScreenSpaceReflectionRenderer.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Surface/HIKARI_SceneSurfaceBuffer.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Surface/HIKARI_SceneReflectionBuffer.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Surface/HIKARI_RenderFrameSurfaceRegistry.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Surface/HIKARI_SceneSurfaceSet.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/ScreenSpace/HIKARI_ScreenSpacePasses.cpp"

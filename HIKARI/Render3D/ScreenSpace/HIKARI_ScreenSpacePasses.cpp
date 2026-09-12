@@ -267,6 +267,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
 
     void ReleaseScreenSpaceRuntimeState() {
         gScreenSpaceState.surfaceBuffer.Release();
+        gScreenSpaceState.reflectionBuffer.Release();
         gScreenSpaceState.ssaoRenderer.Release();
         gScreenSpaceState.depthVisibility.Release();
         RENDER3D::ReleaseTextureResource(gScreenSpaceState.fallbackAoTextureResource);

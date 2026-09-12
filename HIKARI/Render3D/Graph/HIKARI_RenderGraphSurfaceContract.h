@@ -29,6 +29,8 @@ namespace HIKARI::RENDER3D::GRAPH {
         TransparencyMask,
         InvalidDepthMotionMask,
         ProjectDispatchOutput,
+        ReflectionFallbackSpecular,
+        ReflectionSpecularResponse,
         Count,
     };
 
@@ -191,6 +193,8 @@ namespace HIKARI::RENDER3D::SURFACE {
             };
             switch (semantic) {
             case Semantic::SceneDepth: return bit(Phase::Imported);
+            case Semantic::ReflectionFallbackSpecular:
+            case Semantic::ReflectionSpecularResponse:
             case Semantic::SceneColorOpaque: return bit(Phase::Opaque);
             case Semantic::SceneColorPostOpaque: return bit(Phase::PostOpaque);
             case Semantic::SceneColorFinal: return bit(Phase::Final);
@@ -227,6 +231,9 @@ namespace HIKARI::RENDER3D::SURFACE {
             case Semantic::SceneDepth:
                 return SceneSurfaceProducerBit(Producer::PostSceneDepth) |
                     SceneSurfaceProducerBit(Producer::EditorInteractive);
+            case Semantic::ReflectionFallbackSpecular:
+            case Semantic::ReflectionSpecularResponse:
+                return SceneSurfaceProducerBit(Producer::ForwardOpaque);
             case Semantic::SceneColorOpaque:
                 return SceneSurfaceProducerBit(Producer::ForwardOpaque) |
                     SceneSurfaceProducerBit(Producer::SceneColorCapture) |
@@ -382,6 +389,12 @@ namespace HIKARI::RENDER3D::SURFACE {
                     Lifetime::FrameLocal, Fallback::SkipProvider,
                     SurfaceAccessMask(Access::Sampled, Access::WriteUav,
                         Access::CopySource)),
+                SurfaceDesc(Semantic::ReflectionFallbackSpecular, Kind::Texture2D,
+                    Format::R16G16B16A16Float, Lifetime::FrameLocal, Fallback::SkipProvider,
+                    SurfaceAccessMask(Access::Sampled, Access::WriteColor)),
+                SurfaceDesc(Semantic::ReflectionSpecularResponse, Kind::Texture2D,
+                    Format::R16G16B16A16Float, Lifetime::FrameLocal, Fallback::SkipProvider,
+                    SurfaceAccessMask(Access::Sampled, Access::WriteColor)),
             };
     }
 

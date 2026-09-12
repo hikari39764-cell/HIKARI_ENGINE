@@ -1,4 +1,5 @@
 #include "Include/Surface/HIKARI_ScreenSpaceReflectionTrace.hlsli"
+#include "Include/Surface/HIKARI_SceneReflectionContribution.hlsli"
 
 cbuffer ScreenSpaceReflectionCB : register(b0)
 {
@@ -27,6 +28,8 @@ Texture2D<float> gSceneDepth : register(t1);
 Texture2D<float4> gSceneSurface : register(t2);
 Texture2D<float> gCurrentHzb : register(t3);
 Texture2D<float4> gSsrTrace : register(t4);
+Texture2D<float4> gReflectionFallback : register(t5);
+Texture2D<float4> gReflectionResponse : register(t6);
 SamplerState gLinearClamp : register(s0);
 SamplerState gPointClamp : register(s1);
 
@@ -71,6 +74,9 @@ float ReconstructViewDepth(float2 uv, float depth)
 
 float4 PSTrace(FullscreenVertex input) : SV_TARGET
 {
+    if (!HikariHasReflectionContribution(
+        gReflectionFallback.SampleLevel(gPointClamp, input.uv, 0),
+        gReflectionResponse.SampleLevel(gPointClamp, input.uv, 0))) return 0.0f.xxxx;
     const float depth =
         gSceneDepth.SampleLevel(gPointClamp, input.uv, 0.0f);
     if (!HikariIsValidSceneDepth(depth))
@@ -131,16 +137,7 @@ float4 PSTrace(FullscreenVertex input) : SV_TARGET
         return 0.0f.xxxx;
     }
 
-    const float3 incident =
-        normalize(worldPosition - gCameraPosition.xyz);
-    const float viewNormal = saturate(dot(-incident, normal));
-    const float dielectricFresnel =
-        0.04f + 0.96f * pow(1.0f - viewNormal, 5.0f);
-    const float reflectivity =
-        saturate(lerp(dielectricFresnel, 0.85f, metallic));
-    const float replacementWeight = saturate(
-        trace.confidence * reflectivity * gIntensity);
-    return float4(trace.radiance, replacementWeight);
+    return float4(trace.radiance, saturate(trace.confidence));
 }
 
 float4 ResolveHalfResolutionTrace(
@@ -289,31 +286,18 @@ float4 PSResolve(FullscreenVertex input) : SV_TARGET
             0.0f);
     }
 
-    const float replacementWeight = saturate(trace.a);
+    const float replacementWeight = saturate(trace.a * gIntensity);
     if (replacementWeight <= 0.0001f)
     {
         return baseSceneColor;
     }
 
-    const float3 worldPosition =
-        ReconstructWorldPosition(input.uv, depth);
-    const float3 incident =
-        normalize(worldPosition - gCameraPosition.xyz);
-    const float viewNormal = saturate(dot(-incident, normal));
-    const float dielectricFresnel =
-        0.04f + 0.96f * pow(1.0f - viewNormal, 5.0f);
-    const float reflectivity =
-        saturate(lerp(dielectricFresnel, 0.85f, metallic));
-
-    // Forward は既に Probe/Sky の反射を含むため、SSR は画面内で確認できた
-    // 信頼度分だけ既存の近似を置換し、加算による二重反射を避ける。
-    const float3 estimatedFallback =
-        baseSceneColor.rgb * reflectivity * 0.25f;
-    const float3 resolved =
-        max(
-            baseSceneColor.rgb -
-                estimatedFallback * replacementWeight,
-            0.0f) +
-        trace.rgb * replacementWeight;
+    const float4 fallback = gReflectionFallback.SampleLevel(gPointClamp, input.uv, 0);
+    const float4 response = gReflectionResponse.SampleLevel(gPointClamp, input.uv, 0);
+    if (!HikariHasReflectionContribution(fallback, response)) return baseSceneColor;
+    // 同じ Forward ピクセルが保存した環境鏡面成分のみを信頼度の分だけ置換する。
+    const float3 resolved = max(0.0f, baseSceneColor.rgb +
+        replacementWeight * (trace.rgb * response.rgb - fallback.rgb));
+    if (!HikariIsValidScreenSpaceReflectionRadiance(resolved)) return baseSceneColor;
     return float4(resolved, baseSceneColor.a);
 }

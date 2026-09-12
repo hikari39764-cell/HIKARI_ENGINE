@@ -115,6 +115,9 @@ namespace HIKARI::RENDER3D::PIPELINE {
         };
 
         bool RebindPostRenderTarget(void*) { return POST::PostSystem::RebindCurrentRenderTarget(); }
+        bool BindPostAdditionalColors(void*, std::span<const D3D12_CPU_DESCRIPTOR_HANDLE> colors) {
+            return POST::PostSystem::BindAdditionalColors(colors);
+        }
         bool BeginPostDepthRead(void*) { return POST::PostSystem::BeginCurrentRenderTargetDepthRead(); }
         void EndPostDepthRead(void*) { POST::PostSystem::EndCurrentRenderTargetDepthRead(); }
         bool ClearPostColor(
@@ -183,6 +186,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
             context.scene.readOnlyDsv =
                 POST::PostSystem::GetCurrentRenderTargetReadOnlyDsv();
             context.targetAccess.rebind = RebindPostRenderTarget;
+            context.targetAccess.bindAdditionalColors = BindPostAdditionalColors;
             context.targetAccess.beginDepthRead = BeginPostDepthRead;
             context.targetAccess.endDepthRead = EndPostDepthRead;
             context.targetAccess.clearColor = ClearPostColor;

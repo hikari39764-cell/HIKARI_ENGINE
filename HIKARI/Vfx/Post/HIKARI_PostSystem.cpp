@@ -484,6 +484,9 @@ namespace HIKARI::POST {
     bool PostSystem::IsSceneCaptureActive() { return captureStage_.IsActive(); }
     bool PostSystem::HasCurrentRenderTarget() { return initialized_ && captureStage_.HasCurrentTarget(); }
     bool PostSystem::RebindCurrentRenderTarget() { return captureStage_.RebindCurrentTarget(); }
+    bool PostSystem::BindAdditionalColors(std::span<const D3D12_CPU_DESCRIPTOR_HANDLE> colors) {
+        return captureStage_.BindAdditionalColors(colors);
+    }
     bool PostSystem::ClearCurrentRenderTargetColor(
         float red,
         float green,

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <span>
+
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -119,6 +121,7 @@ namespace HIKARI::POST {
         static bool IsSceneCaptureActive();
         static bool HasCurrentRenderTarget();
         static bool RebindCurrentRenderTarget();
+        static bool BindAdditionalColors(std::span<const D3D12_CPU_DESCRIPTOR_HANDLE> colors);
         static bool ClearCurrentRenderTargetColor(
             float red,
             float green,

@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <span>
 
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render2D/HIKARI_RenderTarget2D.h"
@@ -23,6 +24,7 @@ namespace HIKARI::POST {
         bool IsActive() const;
         bool HasCurrentTarget() const;
         bool RebindCurrentTarget();
+        bool BindAdditionalColors(std::span<const D3D12_CPU_DESCRIPTOR_HANDLE> colors);
         bool ClearCurrentColor(float r, float g, float b, float a);
         bool CopyToCurrentColor(
             ID3D12Resource* source,

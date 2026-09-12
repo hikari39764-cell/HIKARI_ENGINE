@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "Gfx/HIKARI_ShaderCompiler.h"
+#include "Assets/Shader/HIKARI_RenderGeometryShaderContract.h"
 
 namespace HIKARI::ASSETS::SHADER {
 namespace {
@@ -88,6 +89,26 @@ ShaderAssetResolveResult ResolveBuiltinShaderEntry(
         return Failure(
             ShaderAssetResolveCode::ArtifactInvalid,
             "built-in Shader resolver threw an exception");
+    }
+}
+
+ShaderAssetResolveResult ResolveBuiltinRenderGeometryShaderEntry(
+    std::string_view programId,
+    const ShaderAssetEntryExpectation& entry,
+    const ShaderAssetContractExpectation& contract) noexcept {
+    auto resolved = ResolveBuiltinShaderEntry(programId, entry, contract);
+    if (!resolved) return resolved;
+    try {
+        const auto* artifact = resolved.lease.GetArtifact();
+        std::string diagnostic;
+        if (!artifact || !ValidateRenderGeometryShaderArtifact(*artifact, diagnostic) ||
+            resolved.lease.GetDxil().empty()) {
+            return Failure(ShaderAssetResolveCode::ArtifactInvalid,
+                diagnostic.empty() ? "invalid RenderGeometry shader artifact" : diagnostic);
+        }
+        return resolved;
+    } catch (...) {
+        return Failure(ShaderAssetResolveCode::ArtifactInvalid, "RenderGeometry validation failed");
     }
 }
 

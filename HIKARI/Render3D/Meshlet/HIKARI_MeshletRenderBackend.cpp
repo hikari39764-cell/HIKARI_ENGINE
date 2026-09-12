@@ -1,4 +1,5 @@
 #include "Render3D/Meshlet/HIKARI_MeshletRenderBackend.h"
+#include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 
 #include <algorithm>
 #include <limits>
@@ -569,6 +570,8 @@ namespace HIKARI::RENDER3D::MESHLET {
         uint32_t pipelineMask) {
 
         Reset();
+        device_ = device;
+        rootSignature_ = rootSignature;
         pipelineMask_ = pipelineMask & MeshletPipelineMask::All;
         stats_.initialized = device != nullptr && rootSignature != nullptr;
         if (!stats_.initialized) {
@@ -598,24 +601,14 @@ namespace HIKARI::RENDER3D::MESHLET {
             const char* profile,
             ASSETS::SHADER::ShaderAssetEntryLease& outShader) {
             ASSETS::SHADER::ShaderAssetResolveResult resolved =
-                ASSETS::SHADER::ResolveBuiltinShaderEntry(
+                ASSETS::SHADER::ResolveBuiltinRenderGeometryShaderEntry(
                     programId,
                     { "Main", stage, profile },
                     shaderContract);
-            std::string diagnostic{};
-            const ASSETS::SHADER::ShaderCookedArtifact* artifact =
-                resolved ? resolved.lease.GetArtifact() : nullptr;
-            if (!resolved || artifact == nullptr ||
-                !ASSETS::SHADER::ValidateRenderGeometryShaderArtifact(
-                    *artifact,
-                    diagnostic) ||
-                resolved.lease.GetDxil().empty()) {
-                if (diagnostic.empty()) {
-                    diagnostic = resolved.diagnostic;
-                }
+            if (!resolved) {
                 HIKARI_LOG_ERROR(
                     std::string("[MeshletBackend][Shader] ") +
-                    programId + ": " + diagnostic);
+                    programId + ": " + resolved.diagnostic);
                 return false;
             }
             outShader = std::move(resolved.lease);
@@ -1094,7 +1087,49 @@ namespace HIKARI::RENDER3D::MESHLET {
         return stats_.pipelineReady;
     }
 
+    bool MeshletRenderBackend::PrepareReflectionCapture() {
+        if (reflectionCaptureAttempted_) return ArePipelinesReady(reflectionPipelineStates_);
+        reflectionCaptureAttempted_ = true;
+        if (!device_ || !rootSignature_ || !stats_.forwardPipelineReady) return false;
+        const auto caps = GFX::QueryShaderDeviceCapabilities(device_.Get());
+        const auto contract = ASSETS::SHADER::MakeRenderGeometryShaderContract(
+            ASSETS::SHADER::RenderGeometryRootLayout::MeshGraphics,
+            {caps.shaderModel, caps.rootSignatureVersion, caps.featureMask});
+        const auto as = ASSETS::SHADER::ResolveBuiltinRenderGeometryShaderEntry(
+            "HIKARI.EngineShader.Render3D_MeshletAS",
+            {"Main", ASSETS::SHADER::ShaderStage::Amplification, "as_6_5"}, contract);
+        const auto ms = ASSETS::SHADER::ResolveBuiltinRenderGeometryShaderEntry(
+            "HIKARI.EngineShader.Render3D_MeshletMS",
+            {"Main", ASSETS::SHADER::ShaderStage::Mesh, "ms_6_5"}, contract);
+        const auto ps = ASSETS::SHADER::ResolveBuiltinRenderGeometryShaderEntry(
+            "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueReflectionPS",
+            {"Main", ASSETS::SHADER::ShaderStage::Pixel, "ps_6_0"}, contract);
+        if (!as || !ms || !ps) {
+            DEBUGLOG::PushRenderError("[MeshletBackend][SSR] Capture shaders unavailable; environment fallback retained.");
+            return false;
+        }
+        const auto bytecode = [](const ASSETS::SHADER::ShaderAssetResolveResult& shader) {
+            const auto bytes = shader.lease.GetDxil();
+            return D3D12_SHADER_BYTECODE{bytes.data(), bytes.size()};
+        };
+        PipelineBucketArray replacements{};
+        for (size_t i = 0; i < replacements.size(); ++i) {
+            if (!CreateMeshletPipelineState(device_.Get(), rootSignature_.Get(),
+                bytecode(as), bytecode(ms), bytecode(ps), DXGI_FORMAT_R16G16B16A16_FLOAT,
+                CullModeForBucket(static_cast<GPUDRIVEN::GpuDrivenCommandBucket>(i)),
+                false, true, true, L"Meshlet.ForwardReflectionCapture", replacements[i].GetAddressOf(),
+                DXGI_FORMAT_R16G16B16A16_FLOAT, D3D12_COMPARISON_FUNC_LESS_EQUAL,
+                DXGI_FORMAT_R16G16B16A16_FLOAT)) return false;
+        }
+        reflectionPipelineStates_.swap(replacements);
+        return true;
+    }
+
     void MeshletRenderBackend::Reset() {
+        for (auto& pipeline : reflectionPipelineStates_)
+            GFX::RetireD3D12ObjectForCurrentFrame(pipeline, "Meshlet.ReflectionCapturePSO");
+        device_.Reset(); rootSignature_.Reset();
+        reflectionCaptureAttempted_ = false;
         for (auto& variant : forwardPipelineStates_) {
             for (auto& pipeline : variant) {
                 pipeline.Reset();
@@ -1206,6 +1241,8 @@ namespace HIKARI::RENDER3D::MESHLET {
     }
 
     bool MeshletRenderBackend::Execute(const MeshletRenderExecutionContext& ctx) {
+        if (ctx.reflectionCapture && (ctx.pipelineKind != MeshletPipelineKind::ForwardOpaque ||
+            !ArePipelinesReady(reflectionPipelineStates_))) return false;
         if (ctx.visibility == nullptr || ctx.drawCommandRange == nullptr) {
             return false;
         }
@@ -1340,7 +1377,8 @@ namespace HIKARI::RENDER3D::MESHLET {
             }
 
             ID3D12PipelineState* selectedPipeline =
-                GetPipelineState(ctx.pipelineKind, bucket);
+                ctx.reflectionCapture ? reflectionPipelineStates_[bucketIndex].Get() :
+                    GetPipelineState(ctx.pipelineKind, bucket);
             if (selectedPipeline == nullptr) {
                 continue;
             }

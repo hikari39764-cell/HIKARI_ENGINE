@@ -13,6 +13,7 @@ namespace HIKARI::MESHRENDERER {
         RENDER3D::RenderTextureView ambientOcclusion{};
         RENDER3D::DEPTH::DepthPyramidView depthPyramid{};
         int fallbackAoTextureHandle = -1;
+        bool reflectionCapture = false;
     };
 
 } // namespace HIKARI::MESHRENDERER

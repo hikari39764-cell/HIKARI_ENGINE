@@ -91,21 +91,63 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         if (!ValidateRenderFrameGraphPassContext(graphPass, state)) {
             return false;
         }
+        const auto& context = *state.context;
+        auto& buffer = SCREENSPACE::GetScreenSpaceRuntimeState().reflectionBuffer;
+        constexpr GRAPH::RenderGraphSurfaceKey fallbackKey{
+            GRAPH::RenderGraphSemantic::ReflectionFallbackSpecular, GRAPH::RenderGraphSemanticPhase::Opaque};
+        constexpr GRAPH::RenderGraphSurfaceKey responseKey{
+            GRAPH::RenderGraphSemantic::ReflectionSpecularResponse, GRAPH::RenderGraphSemanticPhase::Opaque};
+        (void)context.sceneSurfaces.Invalidate(fallbackKey);
+        (void)context.sceneSurfaces.Invalidate(responseKey);
+        bool beganCapture = false;
         try {
-            GFX::PIX::ScopedGpuEvent pixForward(
-                state.context->frame.graphics.cmdList,
-                GFX::PIX::kColorRender,
-                "ForwardOpaque");
-            GFX::GPU_PROFILE::ScopedGpuTimer gpuForward(
-                state.context->frame.graphics.cmdList,
-                GFX::GPU_PROFILE::Pass::ForwardOpaque);
-            state.result.opaqueSucceeded =
-                MESHRENDERER::RenderForwardOpaquePass(
-                    state.context->frame.graphics,
-                    state.context->opaqueResources);
+            const auto& frame = context.frame;
+            const bool cloudComposite = context.environment.clouds.enabled &&
+                context.environment.clouds.density > 0.0f &&
+                (frame.purpose == RenderViewPurpose::Game || frame.purpose == RenderViewPurpose::EditorScene);
+            const bool eligible = context.hasSsrWork && context.cameraConstants && !cloudComposite &&
+                context.renderQuality.forwardCostMode == ForwardShadingCostMode::Full &&
+                (context.debugView == RenderDebugView::None || context.debugView == RenderDebugView::SsrConfidence ||
+                 context.debugView == RenderDebugView::SsrHit) && frame.targetAccess.bindAdditionalColors;
+            MESHRENDERER::MeshPassResources resources = context.opaqueResources;
+            resources.reflectionCapture = false;
+            // 任意の capture 準備に失敗しても、通常の Forward 描画は続ける。
+            try {
+                const bool captureReady = eligible && MESHRENDERER::PrepareForwardReflectionCapture(frame.graphics);
+                if (buffer.Ensure(frame.graphics, frame.renderWidth, frame.renderHeight, captureReady)) {
+                    beganCapture = buffer.BeginWrite(frame.graphics.cmdList);
+                    resources.reflectionCapture = beganCapture && frame.targetAccess.BindAdditionalColors(buffer.GetRtvs());
+                }
+            } catch (...) {
+                resources.reflectionCapture = false;
+            }
+            if (beganCapture && !resources.reflectionCapture) {
+                buffer.EndWrite(frame.graphics.cmdList, false);
+                beganCapture = false;
+                if (!frame.targetAccess.Rebind()) return false;
+            }
+            GFX::PIX::ScopedGpuEvent pixForward(frame.graphics.cmdList, GFX::PIX::kColorRender, "ForwardOpaque");
+            GFX::GPU_PROFILE::ScopedGpuTimer gpuForward(frame.graphics.cmdList, GFX::GPU_PROFILE::Pass::ForwardOpaque);
+            state.result.opaqueSucceeded = MESHRENDERER::RenderForwardOpaquePass(frame.graphics, resources);
+            if (beganCapture) {
+                buffer.EndWrite(frame.graphics.cmdList, state.result.opaqueSucceeded);
+                beganCapture = false;
+                if (!frame.targetAccess.Rebind()) return false;
+                if (state.result.opaqueSucceeded &&
+                    (!ReplaceTexturePublication(context.sceneSurfaces, fallbackKey, buffer.GetFallbackSpecularView(),
+                        SURFACE::SceneSurfaceProducer::ForwardOpaque) ||
+                     !ReplaceTexturePublication(context.sceneSurfaces, responseKey, buffer.GetSpecularResponseView(),
+                        SURFACE::SceneSurfaceProducer::ForwardOpaque))) {
+                    (void)context.sceneSurfaces.Invalidate(fallbackKey);
+                    (void)context.sceneSurfaces.Invalidate(responseKey);
+                }
+            }
             return state.result.opaqueSucceeded;
-        }
-        catch (...) {
+        } catch (...) {
+            if (beganCapture) {
+                buffer.EndWrite(context.frame.graphics.cmdList, false);
+                try { (void)context.frame.targetAccess.Rebind(); } catch (...) {}
+            }
             state.result.opaqueSucceeded = false;
             return false;
         }
@@ -386,20 +428,28 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             return true;
         }
         if (!context.sceneSurfaces.HasOpaqueSurface() ||
-            !context.sceneSurfaces.HasCurrentDepthHierarchy()) {
+            !context.sceneSurfaces.HasCurrentDepthHierarchy() ||
+            !context.sceneSurfaces.TryGetTexture({GRAPH::RenderGraphSemantic::ReflectionFallbackSpecular,
+                GRAPH::RenderGraphSemanticPhase::Opaque}) ||
+            !context.sceneSurfaces.TryGetTexture({GRAPH::RenderGraphSemantic::ReflectionSpecularResponse,
+                GRAPH::RenderGraphSemanticPhase::Opaque})) {
             return true;
         }
         try {
-            return gSsrRenderer.Render(
+            if (gSsrRenderer.Render(
                 context.frame.graphics,
                 context.frame.targetAccess,
                 context.sceneSurfaces,
                 *context.cameraConstants,
                 context.environment.screenSpaceReflections,
-                context.debugView);
+                context.debugView)) return true;
+            return context.frame.targetAccess.Rebind();
         }
         catch (...) {
-            return false;
+            try {
+                context.frame.targetAccess.EndDepthRead();
+                return context.frame.targetAccess.Rebind();
+            } catch (...) { return false; }
         }
     }
 

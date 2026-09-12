@@ -436,6 +436,12 @@ namespace HIKARI::MESHRENDERER {
         return true;
     }
 
+    bool PrepareForwardReflectionCapture(const GFX::Context& graphics) {
+        if (gMeshRendererState.worldSpritePass.HasOpaqueWork()) return false;
+        return !HasGpuDrivenPassSource(RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardOpaque) ||
+            PrepareForwardReflectionCapturePipelines(graphics);
+    }
+
     bool RenderForwardOpaquePass(
         const GFX::Context& graphics,
         const MeshPassResources& passResources) {

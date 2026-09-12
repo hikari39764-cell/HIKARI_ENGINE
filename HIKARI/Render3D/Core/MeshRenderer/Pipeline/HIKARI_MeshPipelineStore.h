@@ -13,8 +13,28 @@
 
 namespace HIKARI::MESHRENDERER {
 
+    struct MeshPipelineVariantKey {
+        VFX::VariantKey material;
+        bool reflectionCapture = false;
+        bool operator==(const MeshPipelineVariantKey&) const = default;
+    };
+
+    struct MeshPipelineVariantQuery {
+        const VFX::VariantKey& material;
+        bool reflectionCapture = false;
+    };
     struct VariantKeyHasher {
-        size_t operator()(const VFX::VariantKey& key) const noexcept;
+        using is_transparent = void;
+        size_t operator()(const MeshPipelineVariantQuery& key) const noexcept;
+        size_t operator()(const MeshPipelineVariantKey& key) const noexcept {
+            return operator()(MeshPipelineVariantQuery{key.material, key.reflectionCapture});
+        }
+    };
+    struct VariantKeyEqual {
+        using is_transparent = void;
+        template<class L, class R> bool operator()(const L& left, const R& right) const noexcept {
+            return left.reflectionCapture == right.reflectionCapture && left.material == right.material;
+        }
     };
 
     struct MeshPipelineStore {
@@ -38,6 +58,9 @@ namespace HIKARI::MESHRENDERER {
         ASSETS::SHADER::ShaderAssetEntryLease skinnedVsShader{};
         ASSETS::SHADER::ShaderAssetEntryLease psShader{};
         ASSETS::SHADER::ShaderAssetEntryLease materialFxPsShader{};
+        ASSETS::SHADER::ShaderAssetEntryLease reflectionPsShader{};
+        ASSETS::SHADER::ShaderAssetEntryLease reflectionFxPsShader{};
+        bool reflectionShadersAttempted = false;
         ASSETS::SHADER::ShaderAssetEntryLease waterDepthPsShader{};
         ASSETS::SHADER::ShaderAssetEntryLease geometryPsShader{};
         ASSETS::SHADER::ShaderAssetEntryLease geometryFeatureMaskPsShader{};
@@ -45,10 +68,10 @@ namespace HIKARI::MESHRENDERER {
         ASSETS::SHADER::ShaderAssetEntryLease geometryOutlineSkinnedVsShader{};
         ASSETS::SHADER::ShaderAssetEntryLease geometryOutlinePsShader{};
         ASSETS::SHADER::ShaderAssetEntryLease visibilityOverlayPsShader{};
-        std::unordered_map<VFX::VariantKey, Microsoft::WRL::ComPtr<ID3D12PipelineState>, VariantKeyHasher> variantPsoCache;
-        std::unordered_map<VFX::VariantKey, Microsoft::WRL::ComPtr<ID3D12PipelineState>, VariantKeyHasher> skinnedVariantPsoCache;
-        std::unordered_map<VFX::VariantKey, Microsoft::WRL::ComPtr<ID3D12PipelineState>, VariantKeyHasher> wireVariantPsoCache;
-        std::unordered_map<VFX::VariantKey, Microsoft::WRL::ComPtr<ID3D12PipelineState>, VariantKeyHasher> skinnedWireVariantPsoCache;
+        std::unordered_map<MeshPipelineVariantKey, Microsoft::WRL::ComPtr<ID3D12PipelineState>, VariantKeyHasher, VariantKeyEqual> variantPsoCache;
+        std::unordered_map<MeshPipelineVariantKey, Microsoft::WRL::ComPtr<ID3D12PipelineState>, VariantKeyHasher, VariantKeyEqual> skinnedVariantPsoCache;
+        std::unordered_map<MeshPipelineVariantKey, Microsoft::WRL::ComPtr<ID3D12PipelineState>, VariantKeyHasher, VariantKeyEqual> wireVariantPsoCache;
+        std::unordered_map<MeshPipelineVariantKey, Microsoft::WRL::ComPtr<ID3D12PipelineState>, VariantKeyHasher, VariantKeyEqual> skinnedWireVariantPsoCache;
     };
 
     bool InitializeMeshPipelines(ID3D12Device* device, MeshPipelineStore& store);
@@ -76,8 +99,10 @@ namespace HIKARI::MESHRENDERER {
         MeshRendererDebugStats& stats,
         const VFX::VariantKey& key,
         bool skinned,
-        bool wireframe);
+        bool wireframe,
+        bool reflectionCapture = false);
 
-    void ApplyCompositeBlendState(D3D12_BLEND_DESC& blendState, VFX::CompositeMode composite);
+    void ApplyCompositeBlendState(D3D12_BLEND_DESC& blendState, VFX::CompositeMode composite,
+        bool reflectionCapture = false);
 
 } // namespace HIKARI::MESHRENDERER

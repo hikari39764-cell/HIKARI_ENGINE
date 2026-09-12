@@ -29,6 +29,12 @@ namespace HIKARI::ASSETS::SHADER {
         const ShaderAssetEntryExpectation& entry,
         const ShaderAssetContractExpectation& contract) noexcept;
 
+    // RenderGeometry の詳細な成果物契約も検証する共通入口。
+    ShaderAssetResolveResult ResolveBuiltinRenderGeometryShaderEntry(
+        std::string_view programId,
+        const ShaderAssetEntryExpectation& entry,
+        const ShaderAssetContractExpectation& contract) noexcept;
+
     void ResetBuiltinShaderArtifactResolver() noexcept;
 
 } // namespace HIKARI::ASSETS::SHADER
