@@ -551,6 +551,11 @@ set_tests_properties(HIKARI_IndirectCommandGpuContracts PROPERTIES LABELS "Runti
 hikari_add_runtime_contract(HIKARI_MeshMaterialUploadGpuContracts "Tools/Tests/HIKARI_MeshMaterialUploadGpuContracts.cpp")
 add_test(NAME HIKARI_MeshMaterialUploadGpuContracts COMMAND "$<TARGET_FILE:HIKARI_MeshMaterialUploadGpuContracts>")
 set_tests_properties(HIKARI_MeshMaterialUploadGpuContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
+
+hikari_add_runtime_contract(HIKARI_MassGpuSceneUploadContracts "Tools/Tests/HIKARI_MassGpuSceneUploadContracts.cpp")
+target_link_libraries(HIKARI_MassGpuSceneUploadContracts PRIVATE d3dcompiler)
+add_test(NAME HIKARI_MassGpuSceneUploadContracts COMMAND "$<TARGET_FILE:HIKARI_MassGpuSceneUploadContracts>")
+set_tests_properties(HIKARI_MassGpuSceneUploadContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
 add_test(NAME HIKARI_SkyLightingRuntimeContracts COMMAND "$<TARGET_FILE:HIKARI_SkyLightingRuntimeContracts>")
 set_tests_properties(HIKARI_SkyLightingRuntimeContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
 hikari_add_runtime_contract(HIKARI_SunGlareFrameContracts "Tools/Tests/HIKARI_SunGlareFrameContracts.cpp")

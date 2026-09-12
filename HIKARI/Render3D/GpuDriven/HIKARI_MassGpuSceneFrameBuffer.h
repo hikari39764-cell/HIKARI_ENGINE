@@ -10,6 +10,7 @@
 #include <wrl/client.h>
 
 #include "Gfx/HIKARI_GfxContext.h"
+#include "Gfx/HIKARI_DynamicUploadBuffer.h"
 #include "Render3D/GpuDriven/HIKARI_MassGpuScene.h"
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
@@ -65,9 +66,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
 
     private:
         struct FrameSlot {
-            Microsoft::WRL::ComPtr<ID3D12Resource> uploadBuffer{};
+            DX::DynamicUploadBuffer uploads;
             Microsoft::WRL::ComPtr<ID3D12Resource> defaultBuffer{};
-            RUNTIME::MassRenderProxyGpuRecord* mapped = nullptr;
             D3D12_CPU_DESCRIPTOR_HANDLE srvCpu{};
             D3D12_GPU_DESCRIPTOR_HANDLE srvGpu{};
             D3D12_RESOURCE_STATES defaultState =

@@ -165,23 +165,14 @@ namespace {
         }
         const UINT64 bytes = static_cast<UINT64>(capacity) *
             sizeof(RUNTIME::MassRenderProxyGpuRecord);
-        const auto uploadHeap = CD3DX12_HEAP_PROPERTIES(
-            D3D12_HEAP_TYPE_UPLOAD);
         const auto defaultHeap = CD3DX12_HEAP_PROPERTIES(
             D3D12_HEAP_TYPE_DEFAULT);
         const auto bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(bytes);
 
-        HRESULT hr = device_->CreateCommittedResource(
-                &uploadHeap,
-                D3D12_HEAP_FLAG_NONE,
-                &bufferDesc,
-                D3D12_RESOURCE_STATE_GENERIC_READ,
-                nullptr,
-                IID_PPV_ARGS(slot.uploadBuffer.GetAddressOf()));
-        if (!HIKARI_DX_CHECK(hr, "MassGpuScene::CreateUpload")) {
+        if (!slot.uploads.Init(device_, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT)) {
             return false;
         }
-        hr = device_->CreateCommittedResource(
+        const HRESULT hr = device_->CreateCommittedResource(
                 &defaultHeap,
                 D3D12_HEAP_FLAG_NONE,
                 &bufferDesc,
@@ -189,13 +180,6 @@ namespace {
                 nullptr,
                 IID_PPV_ARGS(slot.defaultBuffer.GetAddressOf()));
         if (!HIKARI_DX_CHECK(hr, "MassGpuScene::CreateDefault")) {
-            return false;
-        }
-        if (FAILED(slot.uploadBuffer->Map(
-                    0u,
-                    nullptr,
-                    reinterpret_cast<void**>(&slot.mapped))) ||
-                slot.mapped == nullptr) {
             return false;
         }
 
@@ -220,13 +204,7 @@ namespace {
 
     void MassGpuSceneFrameBuffer::RetireSlot(
         FrameSlot& slot) noexcept {
-        if (slot.uploadBuffer != nullptr && slot.mapped != nullptr) {
-            slot.uploadBuffer->Unmap(0u, nullptr);
-            slot.mapped = nullptr;
-        }
-        GFX::RetireD3D12ObjectForCurrentFrame(
-            slot.uploadBuffer,
-            "MassGpuScene.Upload");
+        slot.uploads.Finalize(&GFX::GetCurrentContext());
         GFX::RetireD3D12ObjectForCurrentFrame(
             slot.defaultBuffer,
             "MassGpuScene.Default");
@@ -313,10 +291,11 @@ namespace {
         stats_.sourceVersion = source->sourceVersion;
         stats_.requestedInstanceCount = source->instances.size();
         FrameSlot* slot = ActiveSlot();
-        if (slot == nullptr || slot->mapped == nullptr ||
+        if (slot == nullptr || !slot->uploads.IsInitialized() ||
             slot->defaultBuffer == nullptr || commandList == nullptr) {
             return false;
         }
+        slot->uploads.ResetForFrame(GFX::GetCurrentContext().currentFrameRetireFenceValue);
 
         const bool sameLayout = slot->resident &&
             slot->worldIdentity == source->worldIdentity &&
@@ -349,6 +328,7 @@ namespace {
             stats_.patchedDirtyRanges = !uploadRanges_.empty();
         }
 
+        size_t uploadInstanceCount = 0u;
         for (const RUNTIME::MassRenderDirtyRange& range : uploadRanges_) {
             if (range.instanceCount == 0u ||
                 range.firstInstance >= source->instances.size() ||
@@ -356,8 +336,21 @@ namespace {
                     range.firstInstance) {
                 return false;
             }
+            uploadInstanceCount += range.instanceCount;
+        }
+        DX::UploadAllocation upload{};
+        if (uploadInstanceCount != 0u) {
+            upload = slot->uploads.Allocate(uploadInstanceCount * sizeof(RUNTIME::MassRenderProxyGpuRecord));
+            if (!upload) {
+                slot->resident = false;
+                return false;
+            }
+        }
+        size_t packedInstanceOffset = 0u;
+        for (const RUNTIME::MassRenderDirtyRange& range : uploadRanges_) {
+            auto* records = static_cast<RUNTIME::MassRenderProxyGpuRecord*>(upload.cpuAddress) + packedInstanceOffset;
             std::memcpy(
-                slot->mapped + range.firstInstance,
+                records,
                 source->instances.data() + range.firstInstance,
                 static_cast<size_t>(range.instanceCount) *
                     sizeof(RUNTIME::MassRenderProxyGpuRecord));
@@ -365,7 +358,7 @@ namespace {
                 offset < range.instanceCount;
                 ++offset) {
                 RUNTIME::MassRenderProxyGpuRecord& record =
-                    slot->mapped[range.firstInstance + offset];
+                    records[offset];
                 ++stats_.materialBindingVisitCount;
                 if (record.sourceRecordIndex >= materialBindings.size() ||
                     materialBindings[record.sourceRecordIndex] ==
@@ -379,6 +372,7 @@ namespace {
                         materialBindings[record.sourceRecordIndex];
                 }
             }
+            packedInstanceOffset += range.instanceCount;
         }
 
         if (!uploadRanges_.empty()) {
@@ -390,6 +384,7 @@ namespace {
                 commandList->ResourceBarrier(1u, &barrier);
                 slot->defaultState = D3D12_RESOURCE_STATE_COPY_DEST;
             }
+            size_t packedByteOffset = 0u;
             for (const RUNTIME::MassRenderDirtyRange& range : uploadRanges_) {
                 const UINT64 offsetBytes =
                     static_cast<UINT64>(range.firstInstance) *
@@ -400,9 +395,10 @@ namespace {
                 commandList->CopyBufferRegion(
                     slot->defaultBuffer.Get(),
                     offsetBytes,
-                    slot->uploadBuffer.Get(),
-                    offsetBytes,
+                    upload.resource,
+                    upload.offset + packedByteOffset,
                     copyBytes);
+                packedByteOffset += static_cast<size_t>(copyBytes);
                 stats_.uploadedInstanceCount += range.instanceCount;
                 stats_.uploadedBytes += static_cast<size_t>(copyBytes);
                 ++stats_.uploadRangeCount;
