@@ -504,7 +504,7 @@ set_tests_properties(HIKARI_RenderMathContracts PROPERTIES LABELS "RuntimeContra
 add_executable(HIKARI_PbrRasterContracts EXCLUDE_FROM_ALL "Tools/Tests/HIKARI_PbrRasterContracts.cpp")
 target_include_directories(HIKARI_PbrRasterContracts PRIVATE "${HIKARI_SOURCE_ROOT}/ThirdParty/DirectXTex/Common")
 target_compile_definitions(HIKARI_PbrRasterContracts PRIVATE HIKARI_CONTRACT_SOURCE_ROOT="${HIKARI_SOURCE_ROOT}")
-target_link_libraries(HIKARI_PbrRasterContracts PRIVATE d3d12 dxgi d3dcompiler)
+target_link_libraries(HIKARI_PbrRasterContracts PRIVATE HIKARI::DirectXTex d3d12 dxgi d3dcompiler)
 hikari_configure_engine_target(HIKARI_PbrRasterContracts)
 hikari_configure_contract_output(HIKARI_PbrRasterContracts "RuntimeContracts")
 add_test(NAME HIKARI_PbrRasterContracts COMMAND "$<TARGET_FILE:HIKARI_PbrRasterContracts>")

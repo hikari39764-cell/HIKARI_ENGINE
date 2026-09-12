@@ -544,15 +544,14 @@ float4 HikariShadeWaterSurface(
             microSlopeWeight);
     }
     HikariPbrShadingContext reflectionContext =
-        HikariBuildPbrShadingContext(
+        HikariBuildForwardPbrShadingContext(
             0.0f.xxx,
             0.0f,
             roughness,
             1.0f.xxx,
-            1.0f,
+            waterF0 / 0.04f,
             normalWS,
             view);
-    reflectionContext.specularF0 = waterF0.xxx;
     const float shadowVisibility = saturate(HikariFiniteOr(
         SampleDirectionalShadow(
             input.worldPosWS,

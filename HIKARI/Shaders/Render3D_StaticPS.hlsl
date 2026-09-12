@@ -402,7 +402,7 @@ float4 main(PSInput input) : SV_TARGET
     {
 #if HIKARI_USE_COOK_TORRANCE_PBR
         HikariPbrShadingContext pbrContext =
-            HikariBuildPbrShadingContext(
+            HikariBuildForwardPbrShadingContext(
                 albedo.rgb,
                 metallic,
                 roughness,

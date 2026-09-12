@@ -81,7 +81,25 @@ struct HikariPbrShadingContext
     float3 view;
     float distributionAlphaSquared;
     float visibilityViewRoot;
+    float3 specularEnergyCompensation;
+    float3 environmentSpecularResponse;
+    float3 diffuseEnergyWeight;
 };
+
+void HikariSetPbrEnvironmentBrdf(inout HikariPbrShadingContext context, float2 envBrdf)
+{
+    if (!all(isfinite(envBrdf)) || envBrdf.x + envBrdf.y < 1.0e-4f)
+        envBrdf = HikariAnalyticEnvBrdf(context.ndotView, context.roughness);
+    envBrdf = max(envBrdf, 0.0f.xx);
+    envBrdf /= max(1.0f, envBrdf.x + envBrdf.y);
+    const float singleScatterEnergy = max(envBrdf.x + envBrdf.y, 1.0e-4f);
+    // Turquin の GGX 多重散乱近似。LUT は A/B なので単位 Fresnel の積分は A+B。
+    context.specularEnergyCompensation = 1.0f.xxx + context.specularF0 * (1.0f/singleScatterEnergy-1.0f);
+    context.environmentSpecularResponse = saturate(
+        (context.specularF0 * envBrdf.x + envBrdf.y) * context.specularEnergyCompensation);
+    // 指向半球反射率の残りを Lambert 拡散へ割り当て、白色炉内で二重にエネルギーを使わない。
+    context.diffuseEnergyWeight = (1.0f.xxx-context.environmentSpecularResponse) * (1.0f-context.metallic);
+}
 
 HikariPbrShadingContext HikariBuildPbrShadingContext(
     float3 baseColor,
@@ -111,6 +129,7 @@ HikariPbrShadingContext HikariBuildPbrShadingContext(
     context.distributionAlphaSquared = alpha * alpha;
     context.visibilityViewRoot = sqrt(context.distributionAlphaSquared +
         (1.0f-context.distributionAlphaSquared) * ndotView * ndotView);
+    HikariSetPbrEnvironmentBrdf(context, HikariAnalyticEnvBrdf(ndotView, context.roughness));
     return context;
 }
 
@@ -165,14 +184,9 @@ HikariDirectPbrLobes HikariEvaluateDirectPbrLobes(
     float D = HikariDistributionGGX(
         context,
         h);
-    float3 specular = D * HikariVisibilitySmithGGX(context, ndotl) * F;
-
-    float3 kS = F;
-    float3 kD =
-        (1.0f.xxx - kS) *
-        (1.0f - context.metallic);
+    float3 specular = D * HikariVisibilitySmithGGX(context, ndotl) * F * context.specularEnergyCompensation;
     float3 diffuse =
-        kD * context.baseColor / HIKARI_PI;
+        context.diffuseEnergyWeight * context.baseColor / HIKARI_PI;
 
     result.diffuse = diffuse * radiance * ndotl;
     result.specular = specular * radiance * ndotl;

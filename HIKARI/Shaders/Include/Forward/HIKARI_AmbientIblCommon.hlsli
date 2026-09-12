@@ -8,6 +8,21 @@ struct HikariAmbientIblLobes
     float3 specularResponse;
 };
 
+HikariPbrShadingContext HikariBuildForwardPbrShadingContext(
+    float3 baseColor, float metallic, float roughness, float3 specularColor,
+    float specularFactor, float3 normal, float3 view)
+{
+    HikariPbrShadingContext context = HikariBuildPbrShadingContext(
+        baseColor, metallic, roughness, specularColor, specularFactor, normal, view);
+    if (gIblHasBrdfLut > 0.5f || gReflectionProbes[0].params.z > 0.5f || gReflectionProbes[1].params.z > 0.5f)
+    {
+        // View/材質ごとに一度だけ解決し、直接光と環境光へ同じエネルギー応答を渡す。
+        HikariSetPbrEnvironmentBrdf(context, gIblBrdfLutTex.SampleLevel(
+            gLinearClamp, saturate(float2(context.ndotView, context.roughness)), 0.0f).rg);
+    }
+    return context;
+}
+
 HikariAmbientIblLobes HikariEvaluateAmbientIblApproxLobes(
     HikariPbrShadingContext context,
     float occlusion,
@@ -17,17 +32,10 @@ HikariAmbientIblLobes HikariEvaluateAmbientIblApproxLobes(
     float surfaceLightmapWeight)
 {
     const float3 baseColor = context.baseColor;
-    const float metallic = context.metallic;
     const float roughness = context.roughness;
     const float3 n = context.normal;
     const float3 v = context.view;
-    const float3 F0 = context.specularF0;
-    const float ndotv = context.ndotView;
-    float3 F =
-        HikariFresnelSchlickRoughness(ndotv, F0, roughness);
-
-    float3 kS = F;
-    float3 kD = (1.0f.xxx - kS) * (1.0f - metallic);
+    const float3 kD = context.diffuseEnergyWeight;
     float3 diffuseAmbient =
         gAmbientColor.rgb * gAmbientIntensity;
     const uint skyMode = (uint)(gSkyMode + 0.5f);
@@ -69,9 +77,7 @@ HikariAmbientIblLobes HikariEvaluateAmbientIblApproxLobes(
     float3 specEnv = HikariSampleSkyEnvironment(r);
     specEnv *= max(0.0f, gSkyReflectionIntensity);
 
-    const float2 envBrdf =
-        HikariAnalyticEnvBrdf(ndotv, roughness);
-    float3 specular = specEnv * (F0 * envBrdf.x + envBrdf.y);
+    float3 specular = specEnv * context.environmentSpecularResponse;
 
     float materialAo = saturate(occlusion);
     float ssao = saturate(screenAo);
@@ -89,7 +95,7 @@ HikariAmbientIblLobes HikariEvaluateAmbientIblApproxLobes(
     HikariAmbientIblLobes result;
     result.diffuse = diffuse * diffuseAo;
     result.specular = specular * specularAo;
-    result.specularResponse = (F0 * envBrdf.x + envBrdf.y) * specularAo;
+    result.specularResponse = context.environmentSpecularResponse * specularAo;
     return result;
 }
 
@@ -118,7 +124,6 @@ HikariAmbientIblLobes HikariEvaluateAmbientIblLobes(
     float surfaceLightmapWeight)
 {
     const float3 baseColor = context.baseColor;
-    const float metallic = context.metallic;
     const float roughness = context.roughness;
     const float3 n = context.normal;
     const float3 v = context.view;
@@ -140,13 +145,7 @@ HikariAmbientIblLobes HikariEvaluateAmbientIblLobes(
             surfaceLightmapWeight);
     }
 
-    const float3 F0 = context.specularF0;
-    const float ndotv = context.ndotView;
-    float3 F =
-        HikariFresnelSchlickRoughness(ndotv, F0, roughness);
-    float3 kS = F;
-    float3 kD =
-        (1.0f.xxx - kS) * (1.0f - metallic);
+    const float3 kD = context.diffuseEnergyWeight;
 
     float3 diffuseIbl =
         gAmbientColor.rgb * gAmbientIntensity;
@@ -192,19 +191,6 @@ HikariAmbientIblLobes HikariEvaluateAmbientIblLobes(
     float3 diffuse =
         kD * baseColor * diffuseIbl;
 
-    float2 envBrdf = HikariAnalyticEnvBrdf(ndotv, roughness);
-    if (gIblHasBrdfLut > 0.5f ||
-        gReflectionProbes[0].params.z > 0.5f ||
-        gReflectionProbes[1].params.z > 0.5f)
-    {
-        // BRDF LUT は (NdotV, roughness) の有限領域であり、Wrap すると
-        // 1.0 の端が 0.0 側へ混ざって粗い面に鋭い白斑が発生する。
-        envBrdf = gIblBrdfLutTex.SampleLevel(
-            gLinearClamp,
-            saturate(float2(ndotv, roughness)),
-            0.0f).rg;
-    }
-
     float3 r = normalize(reflect(-v, n));
     float3 skySpecular = 0.0f.xxx;
     if (gIblHasPrefiltered > 0.5f)
@@ -221,12 +207,12 @@ HikariAmbientIblLobes HikariEvaluateAmbientIblLobes(
                 mip).rgb *
             max(gSkyTint, 0.0f.xxx) *
             max(0.0f, gSkyExposure);
-        skySpecular = prefiltered * (F0 * envBrdf.x + envBrdf.y);
+        skySpecular = prefiltered * context.environmentSpecularResponse;
     }
     else
     {
         skySpecular = HikariSampleSkyEnvironment(r) *
-            (F0 * envBrdf.x + envBrdf.y);
+            context.environmentSpecularResponse;
     }
     skySpecular *=
         max(0.0f, gSkyReflectionIntensity);
@@ -269,7 +255,7 @@ HikariAmbientIblLobes HikariEvaluateAmbientIblLobes(
                 (uint)slot,
                 probeDirection,
                 mip);
-        probeSpecular[slot] = prefiltered * (F0 * envBrdf.x + envBrdf.y);
+        probeSpecular[slot] = prefiltered * context.environmentSpecularResponse;
         probeSpecular[slot] *=
             max(0.0f, probe.intensity.x);
     }
@@ -336,7 +322,7 @@ HikariAmbientIblLobes HikariEvaluateAmbientIblLobes(
     HikariAmbientIblLobes result;
     result.diffuse = diffuse * diffuseAo;
     result.specular = specular * specularAo;
-    result.specularResponse = (F0 * envBrdf.x + envBrdf.y) * specularAo;
+    result.specularResponse = context.environmentSpecularResponse * specularAo;
     return result;
 }
 
