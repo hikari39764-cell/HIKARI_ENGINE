@@ -170,8 +170,6 @@ namespace HIKARI::SHADOW::INTERNAL {
         CommitShadowMaterialDataFrame(graphics.cmdList);
         gShadowRendererState.gpuDrivenLayer.CommitSurfaceGpuSceneMaterialFrame(
             graphics.cmdList);
-        BuildShadowGpuDrivenWorkFrame(graphics);
-        UploadShadowIndirectDrawFrame(graphics);
         return true;
     }
 
@@ -182,11 +180,7 @@ namespace HIKARI::SHADOW::INTERNAL {
             gShadowRendererState.clusterGpuDrivenProducer.BuildFrameOutput());
         gShadowRendererState.meshletRenderBackend.ResetFrame();
         SyncShadowGpuDrivenBackendAvailability();
-        RENDER3D::GPUDRIVEN::GpuDrivenCommandFrameDesc commandFrameDesc{};
-        commandFrameDesc.commandList = graphics.cmdList;
-        commandFrameDesc.cullViewProj = &gShadowRendererState.lightViewProj;
-        commandFrameDesc.frameIndex = graphics.frameIndex;
-        gShadowRendererState.gpuDrivenLayer.BuildCommandFrame(commandFrameDesc);
+        UploadShadowIndirectDrawFrame(graphics);
     }
 
     void BuildShadowGpuDrivenWorkFrame(const GFX::Context& graphics) {
@@ -227,11 +221,7 @@ namespace HIKARI::SHADOW::INTERNAL {
         gShadowRendererState.gpuDrivenLayer.BuildCommandBuffers();
         gShadowRendererState.meshletRenderBackend.ResetFrame();
         SyncShadowGpuDrivenBackendAvailability();
-        RENDER3D::GPUDRIVEN::GpuDrivenCommandFrameDesc commandFrameDesc{};
-        commandFrameDesc.commandList = graphics.cmdList;
-        commandFrameDesc.cullViewProj = &gShadowRendererState.lightViewProj;
-        commandFrameDesc.frameIndex = graphics.frameIndex;
-        gShadowRendererState.gpuDrivenLayer.BuildCommandFrame(commandFrameDesc);
+        UploadShadowIndirectDrawFrame(graphics);
     }
 
     void UploadShadowIndirectDrawFrame(const GFX::Context& graphics) {

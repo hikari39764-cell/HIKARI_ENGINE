@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <cstddef>
 #include <cstdint>
@@ -8,6 +8,7 @@
 #include <wrl/client.h>
 
 #include "Gfx/HIKARI_GfxContext.h"
+#include "Gfx/HIKARI_DynamicUploadBuffer.h"
 #include "Render3D/Cluster/HIKARI_ClusterGpuCullingTypes.h"
 #include "Render3D/Resources/HIKARI_RenderResourcePool.h"
 #include "Render3D/Runtime/HIKARI_SurfaceGpuScene.h"
@@ -278,7 +279,6 @@ namespace HIKARI::RENDER3D::CLUSTER {
         Microsoft::WRL::ComPtr<ID3D12CommandSignature> meshletDispatchCommandSignature_;
         ID3D12DescriptorHeap* descriptorHeap_ = nullptr;
         struct FrameResources {
-            Microsoft::WRL::ComPtr<ID3D12Resource> constantsUploadBuffer;
             Microsoft::WRL::ComPtr<ID3D12Resource> counterResetUploadBuffer;
             Microsoft::WRL::ComPtr<ID3D12Resource> pageTaskBuffer;
             Microsoft::WRL::ComPtr<ID3D12Resource> visibleRangeBuffer;
@@ -286,7 +286,6 @@ namespace HIKARI::RENDER3D::CLUSTER {
             Microsoft::WRL::ComPtr<ID3D12Resource> meshletDispatchArgumentBuffer;
             Microsoft::WRL::ComPtr<ID3D12Resource> dispatchArgumentBuffer;
             Microsoft::WRL::ComPtr<ID3D12Resource> counterBuffer;
-            uint8_t* constantsMapped = nullptr;
             GpuCounterBuffer* counterResetMapped = nullptr;
             D3D12_RESOURCE_STATES pageTaskBufferState = D3D12_RESOURCE_STATE_COMMON;
             D3D12_RESOURCE_STATES visibleRangeBufferState = D3D12_RESOURCE_STATE_COMMON;
@@ -296,9 +295,9 @@ namespace HIKARI::RENDER3D::CLUSTER {
             D3D12_RESOURCE_STATES counterBufferState = D3D12_RESOURCE_STATE_COMMON;
         };
         std::array<FrameResources, GFX::kFrameResourceCount> frameResources_{};
+        std::array<DX::DynamicUploadBuffer, GFX::kFrameResourceCount> constantUploads_{};
         uint32_t activeFrameResourceIndex_ = 0;
 
-        Microsoft::WRL::ComPtr<ID3D12Resource> constantsUploadBuffer_;
         Microsoft::WRL::ComPtr<ID3D12Resource> counterResetUploadBuffer_;
         Microsoft::WRL::ComPtr<ID3D12Resource> pageTaskBuffer_;
         Microsoft::WRL::ComPtr<ID3D12Resource> visibleRangeBuffer_;
@@ -311,7 +310,6 @@ namespace HIKARI::RENDER3D::CLUSTER {
         RenderResourceView fallbackHzbSrv_{};
         std::array<CounterReadbackSlot, 3> counterReadbackSlots_{};
 
-        uint8_t* constantsMapped_ = nullptr;
         GpuCounterBuffer* counterResetMapped_ = nullptr;
         GpuCounterBuffer latestGpuCounters_{};
         size_t pageTaskCapacity_ = 0;

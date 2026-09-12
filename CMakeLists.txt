@@ -439,6 +439,21 @@ hikari_configure_contract_output(HIKARI_GpuProfilingContracts "RuntimeContracts"
 add_test(NAME HIKARI_GpuProfilingContracts COMMAND "$<TARGET_FILE:HIKARI_GpuProfilingContracts>")
 set_tests_properties(HIKARI_GpuProfilingContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
 
+add_executable(HIKARI_DynamicUploadGpuContracts EXCLUDE_FROM_ALL
+    "Tools/Tests/HIKARI_DynamicUploadGpuContracts.cpp"
+    "HIKARI/Gfx/HIKARI_DynamicUploadBuffer.cpp"
+    "HIKARI/Gfx/HIKARI_GpuDeferredReleaseQueue.cpp"
+    "HIKARI/Gfx/HIKARI_GfxContext.cpp"
+    "HIKARI/Gfx/HIKARI_DXCheck.cpp"
+    "HIKARI/Diagnostics/HIKARI_DebugLogBuffer.cpp")
+target_include_directories(HIKARI_DynamicUploadGpuContracts PRIVATE
+    "${HIKARI_SOURCE_ROOT}/HIKARI" "${HIKARI_SOURCE_ROOT}/ThirdParty/DirectXTex/Common")
+target_link_libraries(HIKARI_DynamicUploadGpuContracts PRIVATE d3d12 dxgi d3dcompiler)
+hikari_configure_engine_target(HIKARI_DynamicUploadGpuContracts)
+hikari_configure_contract_output(HIKARI_DynamicUploadGpuContracts "RuntimeContracts")
+add_test(NAME HIKARI_DynamicUploadGpuContracts COMMAND "$<TARGET_FILE:HIKARI_DynamicUploadGpuContracts>")
+set_tests_properties(HIKARI_DynamicUploadGpuContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
+
 add_executable(HIKARI_RenderMathContracts EXCLUDE_FROM_ALL "Tools/Tests/HIKARI_RenderMathContracts.cpp")
 target_include_directories(HIKARI_RenderMathContracts PRIVATE "${HIKARI_SOURCE_ROOT}/ThirdParty/DirectXTex/Common")
 target_compile_definitions(HIKARI_RenderMathContracts PRIVATE HIKARI_CONTRACT_SOURCE_ROOT="${HIKARI_SOURCE_ROOT}")

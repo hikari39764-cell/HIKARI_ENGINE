@@ -233,10 +233,11 @@ namespace HIKARI::RENDER3D::CLUSTER {
 	// ClusterGpuCullingPassのリソースをリセットし、関連するD3D12オブジェクトを解放します。
     void ClusterGpuCullingPass::Reset() {
         descriptorHeap_ = nullptr;
-        constantsMapped_ = nullptr;
+        for (auto& upload : constantUploads_) {
+            upload.Finalize(&GFX::GetCurrentContext());
+        }
         counterResetMapped_ = nullptr;
         for (FrameResources& frame : frameResources_) {
-            GFX::RetireD3D12ObjectForCurrentFrame(frame.constantsUploadBuffer, "ClusterGpuCulling.Frame.ConstantsUpload");
             GFX::RetireD3D12ObjectForCurrentFrame(frame.counterResetUploadBuffer, "ClusterGpuCulling.Frame.CounterResetUpload");
             GFX::RetireD3D12ObjectForCurrentFrame(frame.pageTaskBuffer, "ClusterGpuCulling.Frame.PageTaskBuffer");
             GFX::RetireD3D12ObjectForCurrentFrame(frame.visibleRangeBuffer, "ClusterGpuCulling.Frame.VisibleRangeBuffer");
@@ -244,7 +245,6 @@ namespace HIKARI::RENDER3D::CLUSTER {
             GFX::RetireD3D12ObjectForCurrentFrame(frame.meshletDispatchArgumentBuffer, "ClusterGpuCulling.Frame.MeshletDispatchArgumentBuffer");
             GFX::RetireD3D12ObjectForCurrentFrame(frame.dispatchArgumentBuffer, "ClusterGpuCulling.Frame.DispatchArgumentBuffer");
             GFX::RetireD3D12ObjectForCurrentFrame(frame.counterBuffer, "ClusterGpuCulling.Frame.CounterBuffer");
-            frame.constantsMapped = nullptr;
             frame.counterResetMapped = nullptr;
             frame.pageTaskBufferState = D3D12_RESOURCE_STATE_COMMON;
             frame.visibleRangeBufferState = D3D12_RESOURCE_STATE_COMMON;
@@ -254,7 +254,6 @@ namespace HIKARI::RENDER3D::CLUSTER {
             frame.counterBufferState = D3D12_RESOURCE_STATE_COMMON;
         }
         activeFrameResourceIndex_ = 0;
-        GFX::RetireD3D12ObjectForCurrentFrame(constantsUploadBuffer_, "ClusterGpuCulling.ConstantsUpload");
         GFX::RetireD3D12ObjectForCurrentFrame(counterResetUploadBuffer_, "ClusterGpuCulling.CounterResetUpload");
         GFX::RetireD3D12ObjectForCurrentFrame(pageTaskBuffer_, "ClusterGpuCulling.PageTaskBuffer");
         GFX::RetireD3D12ObjectForCurrentFrame(visibleRangeBuffer_, "ClusterGpuCulling.VisibleRangeBuffer");
@@ -296,7 +295,7 @@ namespace HIKARI::RENDER3D::CLUSTER {
     }
 
     void ClusterGpuCullingPass::BeginFrame(bool collectCounterReadback) {
-        BindFrameResources(static_cast<uint32_t>(TIME::GetFrameContext().frameIndex));
+        BindFrameResources(GFX::GetCurrentContext().frameIndex);
         if (collectCounterReadback && !counterReadbackSlots_.empty()) {
             CollectCounterReadback(
                 counterReadbackSlots_[counterReadbackWriteIndex_ % counterReadbackSlots_.size()]);
@@ -313,8 +312,9 @@ namespace HIKARI::RENDER3D::CLUSTER {
     void ClusterGpuCullingPass::BindFrameResources(uint32_t frameIndex) {
         activeFrameResourceIndex_ = frameIndex % GFX::kFrameResourceCount;
         FrameResources& frame = frameResources_[activeFrameResourceIndex_];
+        constantUploads_[activeFrameResourceIndex_].ResetForFrame(
+            GFX::GetCurrentContext().currentFrameRetireFenceValue);
 
-        constantsUploadBuffer_ = frame.constantsUploadBuffer;
         counterResetUploadBuffer_ = frame.counterResetUploadBuffer;
         pageTaskBuffer_ = frame.pageTaskBuffer;
         visibleRangeBuffer_ = frame.visibleRangeBuffer;
@@ -323,7 +323,6 @@ namespace HIKARI::RENDER3D::CLUSTER {
         dispatchArgumentBuffer_ = frame.dispatchArgumentBuffer;
         counterBuffer_ = frame.counterBuffer;
 
-        constantsMapped_ = frame.constantsMapped;
         counterResetMapped_ = frame.counterResetMapped;
         pageTaskBufferState_ = frame.pageTaskBufferState;
         visibleRangeBufferState_ = frame.visibleRangeBufferState;
@@ -626,7 +625,7 @@ namespace HIKARI::RENDER3D::CLUSTER {
                         requestedPageTaskCapacity * 8u),
                     kClusterCullOcclusionHistoryMinCapacity),
                 kClusterCullOcclusionHistoryMaxCapacity);
-        if (constantsUploadBuffer_ != nullptr &&
+        if (constantUploads_[activeFrameResourceIndex_].IsInitialized() &&
             counterResetUploadBuffer_ != nullptr &&
             pageTaskBuffer_ != nullptr &&
             visibleRangeBuffer_ != nullptr &&
@@ -644,10 +643,11 @@ namespace HIKARI::RENDER3D::CLUSTER {
             return true;
         }
 
-        constantsMapped_ = nullptr;
+        for (auto& upload : constantUploads_) {
+            upload.Finalize(&GFX::GetCurrentContext());
+        }
         counterResetMapped_ = nullptr;
         for (FrameResources& frame : frameResources_) {
-            GFX::RetireD3D12ObjectForCurrentFrame(frame.constantsUploadBuffer, "ClusterGpuCulling.Frame.ConstantsUpload.Resize");
             GFX::RetireD3D12ObjectForCurrentFrame(frame.counterResetUploadBuffer, "ClusterGpuCulling.Frame.CounterResetUpload.Resize");
             GFX::RetireD3D12ObjectForCurrentFrame(frame.pageTaskBuffer, "ClusterGpuCulling.Frame.PageTaskBuffer.Resize");
             GFX::RetireD3D12ObjectForCurrentFrame(frame.visibleRangeBuffer, "ClusterGpuCulling.Frame.VisibleRangeBuffer.Resize");
@@ -655,7 +655,6 @@ namespace HIKARI::RENDER3D::CLUSTER {
             GFX::RetireD3D12ObjectForCurrentFrame(frame.meshletDispatchArgumentBuffer, "ClusterGpuCulling.Frame.MeshletDispatchArgumentBuffer.Resize");
             GFX::RetireD3D12ObjectForCurrentFrame(frame.dispatchArgumentBuffer, "ClusterGpuCulling.Frame.DispatchArgumentBuffer.Resize");
             GFX::RetireD3D12ObjectForCurrentFrame(frame.counterBuffer, "ClusterGpuCulling.Frame.CounterBuffer.Resize");
-            frame.constantsMapped = nullptr;
             frame.counterResetMapped = nullptr;
             frame.pageTaskBufferState = D3D12_RESOURCE_STATE_COMMON;
             frame.visibleRangeBufferState = D3D12_RESOURCE_STATE_COMMON;
@@ -665,7 +664,6 @@ namespace HIKARI::RENDER3D::CLUSTER {
             frame.counterBufferState = D3D12_RESOURCE_STATE_COMMON;
         }
         activeFrameResourceIndex_ = 0;
-        GFX::RetireD3D12ObjectForCurrentFrame(constantsUploadBuffer_, "ClusterGpuCulling.ConstantsUpload.Resize");
         GFX::RetireD3D12ObjectForCurrentFrame(counterResetUploadBuffer_, "ClusterGpuCulling.CounterResetUpload.Resize");
         GFX::RetireD3D12ObjectForCurrentFrame(pageTaskBuffer_, "ClusterGpuCulling.PageTaskBuffer.Resize");
         GFX::RetireD3D12ObjectForCurrentFrame(visibleRangeBuffer_, "ClusterGpuCulling.VisibleRangeBuffer.Resize");
@@ -698,26 +696,12 @@ namespace HIKARI::RENDER3D::CLUSTER {
         const auto defaultHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
         const auto readbackHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK);
 
-        const UINT constantsStride = GFX::AlignD3D12ConstantBufferByteSize(sizeof(GpuConstants));
-        auto constantsDesc =
-            CD3DX12_RESOURCE_DESC::Buffer(
-                static_cast<UINT64>(constantsStride) *
-                static_cast<UINT64>(kClusterGpuCullingMaxSourceRangeCount));
-        HRESULT hr = device->CreateCommittedResource(
-            &uploadHeap,
-            D3D12_HEAP_FLAG_NONE,
-            &constantsDesc,
-            D3D12_RESOURCE_STATE_GENERIC_READ,
-            nullptr,
-            IID_PPV_ARGS(constantsUploadBuffer_.GetAddressOf()));
-        if (!HIKARI_DX_CHECK(hr, "ClusterGpuCulling::CreateConstantsUpload")) {
-            return false;
+        for (auto& upload : constantUploads_) {
+            if (!upload.Init(device, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT)) {
+                return false;
+            }
         }
-        if (FAILED(constantsUploadBuffer_->Map(0, nullptr, reinterpret_cast<void**>(&constantsMapped_)))) {
-            constantsMapped_ = nullptr;
-            return false;
-        }
-        GFX::SetD3D12Name(constantsUploadBuffer_.Get(), L"Cluster GPU Culling Constants");
+        HRESULT hr = S_OK;
 
         auto counterUploadDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(GpuCounterBuffer));
         hr = device->CreateCommittedResource(
@@ -843,7 +827,6 @@ namespace HIKARI::RENDER3D::CLUSTER {
         GFX::SetD3D12Name(counterBuffer_.Get(), L"Cluster GPU Culling Counters");
 
         FrameResources& frame0 = frameResources_[0];
-        frame0.constantsUploadBuffer = constantsUploadBuffer_;
         frame0.counterResetUploadBuffer = counterResetUploadBuffer_;
         frame0.pageTaskBuffer = pageTaskBuffer_;
         frame0.visibleRangeBuffer = visibleRangeBuffer_;
@@ -851,7 +834,6 @@ namespace HIKARI::RENDER3D::CLUSTER {
         frame0.meshletDispatchArgumentBuffer = meshletDispatchArgumentBuffer_;
         frame0.dispatchArgumentBuffer = dispatchArgumentBuffer_;
         frame0.counterBuffer = counterBuffer_;
-        frame0.constantsMapped = constantsMapped_;
         frame0.counterResetMapped = counterResetMapped_;
         frame0.pageTaskBufferState = pageTaskBufferState_;
         frame0.visibleRangeBufferState = visibleRangeBufferState_;
@@ -862,25 +844,6 @@ namespace HIKARI::RENDER3D::CLUSTER {
 
         for (uint32_t frameIndex = 1; frameIndex < GFX::kFrameResourceCount; ++frameIndex) {
             FrameResources& frame = frameResources_[frameIndex];
-
-            hr = device->CreateCommittedResource(
-                &uploadHeap,
-                D3D12_HEAP_FLAG_NONE,
-                &constantsDesc,
-                D3D12_RESOURCE_STATE_GENERIC_READ,
-                nullptr,
-                IID_PPV_ARGS(frame.constantsUploadBuffer.GetAddressOf()));
-            if (!HIKARI_DX_CHECK(hr, "ClusterGpuCulling::CreateConstantsUpload.Frame")) {
-                return false;
-            }
-            if (FAILED(frame.constantsUploadBuffer->Map(
-                0,
-                nullptr,
-                reinterpret_cast<void**>(&frame.constantsMapped)))) {
-                frame.constantsMapped = nullptr;
-                return false;
-            }
-            GFX::SetD3D12Name(frame.constantsUploadBuffer.Get(), L"Cluster GPU Culling Constants");
 
             hr = device->CreateCommittedResource(
                 &uploadHeap,
@@ -1080,7 +1043,7 @@ namespace HIKARI::RENDER3D::CLUSTER {
             finalizeMeshletDispatchPipelineState_ != nullptr &&
             cullPageTasksPipelineState_ != nullptr &&
             transparentSortPipelineState_ != nullptr &&
-            constantsUploadBuffer_ != nullptr &&
+            constantUploads_[activeFrameResourceIndex_].IsInitialized() &&
             counterResetUploadBuffer_ != nullptr &&
             pageTaskBuffer_ != nullptr &&
             visibleRangeBuffer_ != nullptr &&
@@ -1365,7 +1328,7 @@ namespace HIKARI::RENDER3D::CLUSTER {
 
         if (!stats_.initialized ||
             commandList == nullptr ||
-            constantsMapped_ == nullptr ||
+            !constantUploads_[activeFrameResourceIndex_].IsInitialized() ||
             counterResetMapped_ == nullptr ||
             clusterGeometryPoolSrv.ptr == 0 ||
             surfaceGpuSceneGpuAddress == 0 ||
@@ -1474,6 +1437,14 @@ namespace HIKARI::RENDER3D::CLUSTER {
             baseConstants.lodErrorRelaxPerLevel;
 
         const UINT constantsStride = GFX::AlignD3D12ConstantBufferByteSize(sizeof(GpuConstants));
+        // 各 Dispatch が専有する CBV。次の Cascade が記録済みの値を上書きしない。
+        D3D12_GPU_VIRTUAL_ADDRESS constantsAddress = 0u;
+        auto* constantsData = static_cast<uint8_t*>(
+            constantUploads_[activeFrameResourceIndex_].Allocate(
+                static_cast<size_t>(constantsStride) * rangeCount, constantsAddress));
+        if (constantsData == nullptr) {
+            return false;
+        }
         std::array<UINT, kClusterGpuCullingMaxSourceRangeCount> expandGroupCounts{};
         size_t activeRangeCount = 0;
         size_t transparentConstantsSlot =
@@ -1489,7 +1460,7 @@ namespace HIKARI::RENDER3D::CLUSTER {
             constants.surfaceGpuSceneBaseIndex = range.surfaceGpuSceneBaseIndex;
             constants.passKind = static_cast<uint32_t>(range.passKind);
             auto* constantsSlot = reinterpret_cast<GpuConstants*>(
-                constantsMapped_ +
+                constantsData +
                 static_cast<size_t>(constantsStride) * activeRangeCount);
             *constantsSlot = constants;
             if (range.passKind ==
@@ -1633,7 +1604,7 @@ namespace HIKARI::RENDER3D::CLUSTER {
             for (size_t slot = 0; slot < activeRangeCount; ++slot) {
                 commandList->SetComputeRootConstantBufferView(
                     0,
-                    constantsUploadBuffer_->GetGPUVirtualAddress() +
+                    constantsAddress +
                         static_cast<UINT64>(constantsStride) *
                         static_cast<UINT64>(slot));
                 commandList->Dispatch(expandGroupCounts[slot], 1u, 1u);
@@ -1712,7 +1683,7 @@ namespace HIKARI::RENDER3D::CLUSTER {
                 "ClusterGpuCulling.SortTransparentBackToFront");
             commandList->SetComputeRootConstantBufferView(
                 0,
-                constantsUploadBuffer_->GetGPUVirtualAddress() +
+                constantsAddress +
                     static_cast<UINT64>(constantsStride) *
                     static_cast<UINT64>(transparentConstantsSlot));
             commandList->SetPipelineState(

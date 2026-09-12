@@ -281,6 +281,9 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         }
 
         auto resetGpuBuffers = [this]() {
+            for (auto& upload : constantUploads_) {
+                upload.Finalize(&GFX::GetCurrentContext());
+            }
             GFX::RetireD3D12ObjectForCurrentFrame(argumentBuffer_, "GpuTraditionalCommandStream.Active.ArgumentBuffer");
             GFX::RetireD3D12ObjectForCurrentFrame(skinnedArgumentBuffer_, "GpuTraditionalCommandStream.Active.SkinnedArgumentBuffer");
             GFX::RetireD3D12ObjectForCurrentFrame(seedBuffer_, "GpuTraditionalCommandStream.Active.SeedBuffer");
@@ -289,11 +292,9 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             GFX::RetireD3D12ObjectForCurrentFrame(payloadUploadBuffer_, "GpuTraditionalCommandStream.Active.PayloadUploadBuffer");
             GFX::RetireD3D12ObjectForCurrentFrame(counterBuffer_, "GpuTraditionalCommandStream.Active.CounterBuffer");
             GFX::RetireD3D12ObjectForCurrentFrame(counterResetUploadBuffer_, "GpuTraditionalCommandStream.Active.CounterResetUploadBuffer");
-            GFX::RetireD3D12ObjectForCurrentFrame(constantsUploadBuffer_, "GpuTraditionalCommandStream.Active.ConstantsUploadBuffer");
             seedMapped_ = nullptr;
             payloadMapped_ = nullptr;
             counterResetMapped_ = nullptr;
-            constantsMapped_ = nullptr;
             argumentBufferState_ = D3D12_RESOURCE_STATE_COMMON;
             skinnedArgumentBufferState_ = D3D12_RESOURCE_STATE_COMMON;
             seedBufferState_ = D3D12_RESOURCE_STATE_COMMON;
@@ -308,7 +309,6 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 GFX::RetireD3D12ObjectForCurrentFrame(frame.payloadUploadBuffer, "GpuTraditionalCommandStream.Frame.PayloadUploadBuffer");
                 GFX::RetireD3D12ObjectForCurrentFrame(frame.counterBuffer, "GpuTraditionalCommandStream.Frame.CounterBuffer");
                 GFX::RetireD3D12ObjectForCurrentFrame(frame.counterResetUploadBuffer, "GpuTraditionalCommandStream.Frame.CounterResetUploadBuffer");
-                GFX::RetireD3D12ObjectForCurrentFrame(frame.constantsUploadBuffer, "GpuTraditionalCommandStream.Frame.ConstantsUploadBuffer");
                 frame = FrameResources{};
             }
             activeFrameResourceIndex_ = 0;
@@ -361,9 +361,6 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
         auto counterUploadDesc =
             CD3DX12_RESOURCE_DESC::Buffer(kGpuTraditionalCommandStreamCounterBufferBytes);
-        const UINT constantsBytes =
-            GFX::AlignD3D12ConstantBufferByteSize(sizeof(GpuTraditionalCommandStreamCullingConstants));
-        auto constantsDesc = CD3DX12_RESOURCE_DESC::Buffer(constantsBytes);
 
         auto createFrameResources = [&](FrameResources& frame) -> bool {
             frame = FrameResources{};
@@ -493,29 +490,15 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 frame.counterResetUploadBuffer.Get(),
                 L"GPU Traditional Command Stream Draw Counter Reset");
 
-            if (FAILED(device->CreateCommittedResource(
-                &seedUploadHeap,
-                D3D12_HEAP_FLAG_NONE,
-                &constantsDesc,
-                D3D12_RESOURCE_STATE_GENERIC_READ,
-                nullptr,
-                IID_PPV_ARGS(frame.constantsUploadBuffer.GetAddressOf())))) {
-                return false;
-            }
-            if (FAILED(frame.constantsUploadBuffer->Map(
-                0,
-                nullptr,
-                reinterpret_cast<void**>(&frame.constantsMapped)))) {
-                frame.constantsMapped = nullptr;
-                return false;
-            }
-            GFX::SetD3D12Name(
-                frame.constantsUploadBuffer.Get(),
-                L"GPU Traditional Command Stream Draw Culling Constants");
-
             return true;
         };
 
+        for (auto& upload : constantUploads_) {
+            if (!upload.Init(device, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT)) {
+                resetGpuBuffers();
+                return false;
+            }
+        }
         for (FrameResources& frame : frameResources_) {
             if (!createFrameResources(frame)) {
                 resetGpuBuffers();
@@ -628,6 +611,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
     void GpuTraditionalCommandStreamBuffer::BindFrameResources(uint32_t frameIndex) {
         activeFrameResourceIndex_ = frameIndex % GFX::kFrameResourceCount;
         FrameResources& frame = frameResources_[activeFrameResourceIndex_];
+        constantUploads_[activeFrameResourceIndex_].ResetForFrame(
+            GFX::GetCurrentContext().currentFrameRetireFenceValue);
         argumentBuffer_ = frame.argumentBuffer;
         skinnedArgumentBuffer_ = frame.skinnedArgumentBuffer;
         seedBuffer_ = frame.seedBuffer;
@@ -636,11 +621,9 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         payloadUploadBuffer_ = frame.payloadUploadBuffer;
         counterBuffer_ = frame.counterBuffer;
         counterResetUploadBuffer_ = frame.counterResetUploadBuffer;
-        constantsUploadBuffer_ = frame.constantsUploadBuffer;
         seedMapped_ = frame.seedMapped;
         payloadMapped_ = frame.payloadMapped;
         counterResetMapped_ = frame.counterResetMapped;
-        constantsMapped_ = frame.constantsMapped;
         argumentBufferState_ = frame.argumentBufferState;
         skinnedArgumentBufferState_ = frame.skinnedArgumentBufferState;
         seedBufferState_ = frame.seedBufferState;
@@ -678,7 +661,6 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         const bool initialized =
             seedMapped_ != nullptr &&
             counterResetMapped_ != nullptr &&
-            constantsMapped_ != nullptr &&
             argumentBuffer_ != nullptr &&
             skinnedArgumentBuffer_ != nullptr &&
             seedBuffer_ != nullptr &&
@@ -688,7 +670,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             payloadMapped_ != nullptr &&
             counterBuffer_ != nullptr &&
             counterResetUploadBuffer_ != nullptr &&
-            constantsUploadBuffer_ != nullptr;
+            constantUploads_[activeFrameResourceIndex_].IsInitialized();
         const bool signatureReady = commandSignature_ != nullptr;
         const bool skinnedSignatureReady = skinnedCommandSignature_ != nullptr;
         const D3D12_GPU_VIRTUAL_ADDRESS address =
@@ -883,9 +865,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             skinnedArgumentBuffer_ == nullptr ||
             counterBuffer_ == nullptr ||
             counterResetUploadBuffer_ == nullptr ||
-            constantsUploadBuffer_ == nullptr ||
+            !constantUploads_[activeFrameResourceIndex_].IsInitialized() ||
             payloadMapped_ == nullptr ||
-            constantsMapped_ == nullptr ||
             counterResetMapped_ == nullptr ||
             computeRootSignature_ == nullptr ||
             compactPipelineState_ == nullptr) {
@@ -901,8 +882,13 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         constants.enableFrustumCull = enableFrustumCull ? 1u : 0u;
         constants.payloadCount = static_cast<uint32_t>(
             (std::min)(payloadCursor_, static_cast<size_t>(UINT32_MAX)));
-        *reinterpret_cast<GpuTraditionalCommandStreamCullingConstants*>(constantsMapped_) =
-            constants;
+        D3D12_GPU_VIRTUAL_ADDRESS constantsAddress = 0u;
+        void* constantsData = constantUploads_[activeFrameResourceIndex_].Allocate(
+            sizeof(constants), constantsAddress);
+        if (constantsData == nullptr) {
+            return false;
+        }
+        std::memcpy(constantsData, &constants, sizeof(constants));
 
         std::fill(
             counterResetMapped_,
@@ -1020,7 +1006,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         commandList->SetPipelineState(compactPipelineState_.Get());
         commandList->SetComputeRootConstantBufferView(
             0,
-            constantsUploadBuffer_->GetGPUVirtualAddress());
+            constantsAddress);
         commandList->SetComputeRootShaderResourceView(
             1,
             seedBuffer_->GetGPUVirtualAddress());

@@ -1,5 +1,6 @@
 ﻿#include "HIKARI_DynamicUploadBuffer.h"
 #include "Gfx/HIKARI_DXCheck.h"
+#include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 
 #include <algorithm>
 #include <utility>
@@ -16,6 +17,20 @@ constexpr size_t kUploadAlignment = 256u;
 DynamicUploadBuffer::DynamicUploadBuffer() {}
 DynamicUploadBuffer::~DynamicUploadBuffer() {
     Finalize();
+}
+
+DynamicUploadBuffer& DynamicUploadBuffer::operator=(DynamicUploadBuffer&& other) noexcept {
+    if (this != &other) {
+        Finalize();
+        device_ = std::move(other.device_);
+        pages_ = std::move(other.pages_);
+        pageRanges_ = std::move(other.pageRanges_);
+        defaultPageSize_ = std::exchange(other.defaultPageSize_, 0u);
+        activePageIndex_ = std::exchange(other.activePageIndex_, 0u);
+        frameSerial_ = other.frameSerial_;
+        hasFrameSerial_ = std::exchange(other.hasFrameSerial_, false);
+    }
+    return *this;
 }
 
 bool DynamicUploadBuffer::Init(
@@ -120,12 +135,17 @@ void* DynamicUploadBuffer::Allocate(
     return page.cpuBase + reservation.offset;
 }
 
-void DynamicUploadBuffer::Finalize() {
+void DynamicUploadBuffer::Finalize(const HIKARI::GFX::Context* retireContext) {
     for (Page& page : pages_) {
         if (page.resource != nullptr && page.cpuBase != nullptr) {
             page.resource->Unmap(0u, nullptr);
         }
-        page.resource.Reset();
+        if (retireContext != nullptr) {
+            HIKARI::GFX::RetireD3D12ObjectForFrame(
+                page.resource, *retireContext, "DynamicUploadBuffer.Page");
+        } else {
+            page.resource.Reset();
+        }
         page.cpuBase = nullptr;
         page.gpuBase = 0u;
     }
@@ -134,9 +154,19 @@ void DynamicUploadBuffer::Finalize() {
     device_.Reset();
     defaultPageSize_ = 0u;
     activePageIndex_ = 0u;
+    hasFrameSerial_ = false;
 }
 
 void DynamicUploadBuffer::Reset() {
     HIKARI::GFX::ResetUploadPageRanges(
         pageRanges_, activePageIndex_);
+    hasFrameSerial_ = false;
+}
+
+void DynamicUploadBuffer::ResetForFrame(uint64_t frameSerial) {
+    if (!hasFrameSerial_ || frameSerial_ != frameSerial) {
+        Reset();
+        frameSerial_ = frameSerial;
+        hasFrameSerial_ = true;
+    }
 }

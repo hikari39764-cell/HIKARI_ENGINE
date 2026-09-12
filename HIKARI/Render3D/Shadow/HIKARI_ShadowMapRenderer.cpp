@@ -163,6 +163,10 @@ namespace HIKARI::SHADOW {
             bool clearDepth,
             GFX::GPU_PROFILE::Pass traditionalPass,
             GFX::GPU_PROFILE::Pass meshletPass) {
+            // Scene / Material は全 Cascade で不変。視点依存の剔除だけを各回記録する。
+            if (!PrepareShadowSourceForDraw(graphics, source)) {
+                return false;
+            }
             bool renderedAny = false;
             for (uint32_t cascadeIndex = 0;
                  cascadeIndex < gShadowRendererState.cascadeCount;
@@ -175,8 +179,8 @@ namespace HIKARI::SHADOW {
                 gShadowRendererState.lightAnchor = cascade.anchor;
                 gShadowRendererState.lightAnchorGrid = cascade.anchorGrid;
                 PrepareFinalShadowMapForDepthWrite(cmd, clearDepth);
-                if (PrepareShadowSourceForDraw(graphics, source) &&
-                    ExecuteShadowGpuDrivenPass(
+                BuildShadowGpuDrivenWorkFrame(graphics);
+                if (ExecuteShadowGpuDrivenPass(
                         graphics,
                         traditionalPass,
                         meshletPass)) {

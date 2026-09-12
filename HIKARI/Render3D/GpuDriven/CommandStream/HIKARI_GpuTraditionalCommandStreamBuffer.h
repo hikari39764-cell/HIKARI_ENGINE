@@ -10,6 +10,7 @@
 #include <wrl/client.h>
 
 #include "Gfx/HIKARI_GfxContext.h"
+#include "Gfx/HIKARI_DynamicUploadBuffer.h"
 #include "Render3D/HIKARI_Math3D.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenPass.h"
 #include "Render3D/Runtime/HIKARI_SurfaceDrawPlan.h"
@@ -136,11 +137,9 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             Microsoft::WRL::ComPtr<ID3D12Resource> payloadUploadBuffer;
             Microsoft::WRL::ComPtr<ID3D12Resource> counterBuffer;
             Microsoft::WRL::ComPtr<ID3D12Resource> counterResetUploadBuffer;
-            Microsoft::WRL::ComPtr<ID3D12Resource> constantsUploadBuffer;
             std::byte* seedMapped = nullptr;
             std::byte* payloadMapped = nullptr;
             std::byte* counterResetMapped = nullptr;
-            std::byte* constantsMapped = nullptr;
             D3D12_RESOURCE_STATES argumentBufferState =
                 D3D12_RESOURCE_STATE_COMMON;
             D3D12_RESOURCE_STATES skinnedArgumentBufferState =
@@ -171,7 +170,6 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         Microsoft::WRL::ComPtr<ID3D12Resource> payloadUploadBuffer_;
         Microsoft::WRL::ComPtr<ID3D12Resource> counterBuffer_;
         Microsoft::WRL::ComPtr<ID3D12Resource> counterResetUploadBuffer_;
-        Microsoft::WRL::ComPtr<ID3D12Resource> constantsUploadBuffer_;
         Microsoft::WRL::ComPtr<ID3D12RootSignature> computeRootSignature_;
         Microsoft::WRL::ComPtr<ID3D12PipelineState> compactPipelineState_;
         Microsoft::WRL::ComPtr<ID3D12CommandSignature> commandSignature_;
@@ -179,7 +177,6 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         std::byte* seedMapped_ = nullptr;
         std::byte* payloadMapped_ = nullptr;
         std::byte* counterResetMapped_ = nullptr;
-        std::byte* constantsMapped_ = nullptr;
         size_t capacity_ = 0;
         size_t seedCursor_ = 0;
         size_t payloadCursor_ = 0;
@@ -195,6 +192,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         D3D12_RESOURCE_STATES counterBufferState_ =
             D3D12_RESOURCE_STATE_COMMON;
         std::array<FrameResources, GFX::kFrameResourceCount> frameResources_{};
+        std::array<DX::DynamicUploadBuffer, GFX::kFrameResourceCount> constantUploads_{};
         uint32_t activeFrameResourceIndex_ = 0;
         uintptr_t pendingInputSourceIdentity_ = 0;
         uint64_t pendingInputLayoutVersion_ = 0;
