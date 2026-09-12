@@ -10,6 +10,7 @@
 #include <wrl/client.h>
 
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
+#include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
@@ -129,24 +130,15 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
             }
         }
 
-        void HashBytes(
-            uint64_t& hash,
-            const void* data,
-            size_t size) noexcept {
-            const auto* bytes = static_cast<const uint8_t*>(data);
-            for (size_t index = 0u; index < size; ++index) {
-                hash ^= static_cast<uint64_t>(bytes[index]);
-                hash *= 1099511628211ull;
-            }
-        }
-
         uint64_t HashVolumetricSettings(
             const SceneEnvironment& environment,
-            VolumetricLightingQuality quality) noexcept {
-            uint64_t hash = 1469598103934665603ull;
+            VolumetricLightingQuality quality,
+            uint64_t localLightingContentHash) noexcept {
+            uint64_t hash = HASH::kFnv1a64OffsetBasis;
             const auto Add = [&hash](const auto& value) {
-                HashBytes(hash, &value, sizeof(value));
+                hash = HASH::Fnv1aBytes(hash, &value, sizeof(value));
             };
+            Add(localLightingContentHash);
             Add(environment.fog.enabled);
             Add(environment.fog.volumetric);
             Add(environment.fog.color);
@@ -608,7 +600,7 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
         };
 
         const uint64_t settingsSignature =
-            HashVolumetricSettings(environment, quality);
+            HashVolumetricSettings(environment, quality, localLights.view.lightingContentHash);
         if (state.lastSettingsSignature != 0u &&
             state.lastSettingsSignature != settingsSignature &&
             state.volumeHistoryValid) {

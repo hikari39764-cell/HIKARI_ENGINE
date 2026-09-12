@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "Render3D/Core/HIKARI_Camera3D.h"
+#include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Render3D/Lighting/HIKARI_LocalLightSemantics.h"
 
 namespace HIKARI::RENDER3D::LIGHTING {
@@ -467,6 +468,8 @@ namespace HIKARI::RENDER3D::LIGHTING {
                 static_cast<size_t>(view.clusterIndexCount) *
                     sizeof(uint32_t));
         }
+        view.lightingContentHash = HASH::Fnv1aBytes(HASH::kFnv1a64OffsetBasis,
+            output.lights, static_cast<size_t>(view.lightCount) * sizeof(LocalLightGpuData));
         return view;
     }
 

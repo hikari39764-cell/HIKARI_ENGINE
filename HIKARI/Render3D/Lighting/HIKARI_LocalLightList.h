@@ -36,6 +36,8 @@ namespace HIKARI::RENDER3D::LIGHTING {
     };
 
     struct LocalLightListView {
+        // 選択済み GPU 光源内容のみ。カメラ行列とクラスタ配置は含めない。
+        uint64_t lightingContentHash = 0u;
         uint32_t lightCount = 0u;
         uint32_t clusterCountX = 0u;
         uint32_t clusterCountY = 0u;
