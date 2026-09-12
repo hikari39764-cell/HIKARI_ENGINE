@@ -1,7 +1,14 @@
 #ifndef HIKARI_AMBIENT_IBL_COMMON_HLSLI
 #define HIKARI_AMBIENT_IBL_COMMON_HLSLI
 
-float3 HikariEvaluateAmbientIblApprox(
+struct HikariAmbientIblLobes
+{
+    float3 diffuse;
+    float3 specular;
+    float3 specularResponse;
+};
+
+HikariAmbientIblLobes HikariEvaluateAmbientIblApproxLobes(
     HikariPbrShadingContext context,
     float occlusion,
     float screenAo,
@@ -79,8 +86,11 @@ float3 HikariEvaluateAmbientIblApprox(
         materialAo * ssao,
         saturate(roughness * roughness) *
             saturate(gSsaoSpecularStrength));
-    return diffuse * diffuseAo +
-        specular * specularAo;
+    HikariAmbientIblLobes result;
+    result.diffuse = diffuse * diffuseAo;
+    result.specular = specular * specularAo;
+    result.specularResponse = (F0 * envBrdf.x + envBrdf.y) * specularAo;
+    return result;
 }
 
 float3 HikariSampleReflectionProbePrefiltered(
@@ -99,7 +109,7 @@ float3 HikariSampleReflectionProbePrefiltered(
             mip).rgb;
 }
 
-float3 HikariEvaluateAmbientIbl(
+HikariAmbientIblLobes HikariEvaluateAmbientIblLobes(
     HikariPbrShadingContext context,
     float occlusion,
     float screenAo,
@@ -121,7 +131,7 @@ float3 HikariEvaluateAmbientIbl(
         gIblHasPrefiltered < 0.5f &&
         !hasLocalProbe)
     {
-        return HikariEvaluateAmbientIblApprox(
+        return HikariEvaluateAmbientIblApproxLobes(
             context,
             occlusion,
             screenAo,
@@ -215,8 +225,6 @@ float3 HikariEvaluateAmbientIbl(
     }
     else
     {
-        const float2 envBrdf =
-            HikariAnalyticEnvBrdf(ndotv, roughness);
         skySpecular = HikariSampleSkyEnvironment(r) *
             (F0 * envBrdf.x + envBrdf.y);
     }
@@ -325,8 +333,24 @@ float3 HikariEvaluateAmbientIbl(
         materialAo * ssao,
         saturate(roughness * roughness) *
             saturate(gSsaoSpecularStrength));
-    return diffuse * diffuseAo +
-        specular * specularAo;
+    HikariAmbientIblLobes result;
+    result.diffuse = diffuse * diffuseAo;
+    result.specular = specular * specularAo;
+    result.specularResponse = (F0 * envBrdf.x + envBrdf.y) * specularAo;
+    return result;
+}
+
+float3 HikariEvaluateAmbientIbl(
+    HikariPbrShadingContext context,
+    float occlusion,
+    float screenAo,
+    float3 worldPos,
+    float3 surfaceLightmapIrradiance,
+    float surfaceLightmapWeight)
+{
+    const HikariAmbientIblLobes lobes = HikariEvaluateAmbientIblLobes(
+        context, occlusion, screenAo, worldPos, surfaceLightmapIrradiance, surfaceLightmapWeight);
+    return lobes.diffuse + lobes.specular;
 }
 
 #endif
