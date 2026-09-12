@@ -8,7 +8,7 @@
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Render3D/Material/HIKARI_GpuMaterialTypes.h"
 
-namespace HIKARI { struct MaterialAsset; }
+namespace HIKARI { struct MaterialAsset; enum class AlphaMode; }
 
 namespace HIKARI::RENDER3D::MATERIAL {
 
@@ -32,20 +32,29 @@ namespace HIKARI::RENDER3D::MATERIAL {
         bool enabled = false;
     };
 
-    // Material-owned projection into the shared C++/HLSL layout. Renderers
-    // resolve scene/model override policy before filling this value; packing
-    // and descriptor semantics remain centralized here.
-    struct GpuMaterialProjection {
+    // CPU authoring の共通係数。係数だけを読む経路では texture 配列を作らない。
+    struct MaterialFactorProjection {
         MATH::Vec4 baseColor{1.0f, 1.0f, 1.0f, 1.0f};
-        MATH::Vec4 emissiveFactor{};
+        MATH::Vec4 emissiveFactor{0.0f, 0.0f, 0.0f, 1.0f};
         MATH::Vec4 pbrParams{0.0f, 1.0f, 1.0f, 0.5f};
         MATH::Vec4 specularParams{1.0f, 1.0f, 1.0f, 1.0f};
         uint32_t materialFlags = 0u;
         float normalScale = 1.0f;
+    };
+
+    // Material-owned projection into the shared C++/HLSL layout.
+    struct GpuMaterialProjection : MaterialFactorProjection {
+        GpuMaterialProjection() = default;
+        explicit GpuMaterialProjection(const MaterialFactorProjection& factors) : MaterialFactorProjection(factors) {}
         std::array<
             GpuMaterialTextureProjection,
             static_cast<size_t>(GpuMaterialTextureChannel::Count)> textures{};
     };
+
+    // モデル既定値と材質オーバーライドの共通解決。テクスチャのロードは行わない。
+    AlphaMode ResolveMaterialAlphaMode(const MaterialAsset* modelMaterial, const Material* runtimeMaterial);
+    MaterialFactorProjection BuildMaterialFactorProjection(
+        const MaterialAsset* modelMaterial, const Material* runtimeMaterial);
 
     GpuMaterialProjection BuildRuntimeMaterialGpuProjection(
         const Material& material);

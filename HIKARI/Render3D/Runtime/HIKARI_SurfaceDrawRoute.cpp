@@ -1,25 +1,10 @@
 #include "Render3D/Runtime/HIKARI_SurfaceDrawRoute.h"
 
 #include "Render3D/Core/HIKARI_Material.h"
+#include "Render3D/Material/HIKARI_GpuMaterialProjection.h"
 #include "Vfx/MaterialFx/HIKARI_MaterialFxProfile.h"
 
 namespace HIKARI::RENDER3D::RUNTIME {
-
-    namespace {
-
-        AlphaMode ToAssetAlphaMode(
-            RuntimeMaterialAlphaMode mode) noexcept {
-            switch (mode) {
-            case RuntimeMaterialAlphaMode::Mask:
-                return AlphaMode::Mask;
-            case RuntimeMaterialAlphaMode::Blend:
-                return AlphaMode::Blend;
-            default:
-                return AlphaMode::Opaque;
-            }
-        }
-
-    } // namespace
 
     bool IsSurfaceObjectDataVertexShader(std::string_view vertexShaderId) {
         return
@@ -51,13 +36,12 @@ namespace HIKARI::RENDER3D::RUNTIME {
                 route.shaderProfileId = "PBR";
             }
             route.featureBits = materialOverride->GetFeatureBits();
-            route.alphaMode = ToAssetAlphaMode(
-                materialOverride->GetMaterialAlphaMode());
+            route.alphaMode = MATERIAL::ResolveMaterialAlphaMode(materialAsset, materialOverride);
             route.doubleSided = materialOverride->IsDoubleSided();
         } else if (materialAsset != nullptr) {
             route.shaderProfileId = materialAsset->shaderProfileId.empty() ? "PBR" : materialAsset->shaderProfileId;
             route.featureBits = materialAsset->featureBits;
-            route.alphaMode = materialAsset->alphaMode;
+            route.alphaMode = MATERIAL::ResolveMaterialAlphaMode(materialAsset, nullptr);
             route.doubleSided = MATERIAL_POLICY::ShouldRenderDoubleSided(*materialAsset);
         }
 

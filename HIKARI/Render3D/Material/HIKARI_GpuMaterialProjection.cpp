@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "Assets/Models/HIKARI_ModelAssetTypes.h"
+#include "Assets/Models/Policies/HIKARI_ModelMaterialPolicy.h"
 #include "Render3D/Material/HIKARI_MaterialTextureUsage.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 
@@ -61,32 +62,74 @@ namespace HIKARI::RENDER3D::MATERIAL {
 
     } // namespace
 
-    GpuMaterialProjection BuildRuntimeMaterialGpuProjection(
-        const Material& material) {
-        GpuMaterialProjection result{};
-        result.baseColor = material.GetBaseColor();
-        const MATH::Vec3 emissive = material.GetEmissiveFactor();
-        result.emissiveFactor = {
-            emissive.x,
-            emissive.y,
-            emissive.z,
-            material.GetEmissiveStrength()
-        };
-        result.pbrParams = {
-            material.GetMetallicFactor(),
-            material.GetRoughnessFactor(),
-            material.GetOcclusionStrength(),
-            material.GetAlphaCutoff()
-        };
-        const MATH::Vec3 specular = material.GetSpecularColorFactor();
-        result.specularParams = {
-            specular.x,
-            specular.y,
-            specular.z,
-            material.GetSpecularFactor()
-        };
-        result.normalScale = material.GetNormalScale();
+    AlphaMode ResolveMaterialAlphaMode(const MaterialAsset* modelMaterial, const Material* runtimeMaterial) {
+        const uint32_t flags = runtimeMaterial != nullptr ? runtimeMaterial->GetFeatureBits()
+            : modelMaterial != nullptr ? modelMaterial->featureBits : 0u;
+        if (runtimeMaterial != nullptr) {
+            switch (runtimeMaterial->GetMaterialAlphaMode()) {
+            case RuntimeMaterialAlphaMode::Mask: return AlphaMode::Mask;
+            case RuntimeMaterialAlphaMode::Blend: return AlphaMode::Blend;
+            default: break;
+            }
+        } else if (modelMaterial != nullptr && modelMaterial->alphaMode != AlphaMode::Opaque) {
+            return modelMaterial->alphaMode;
+        }
+        // 旧 API の feature bits を保持する。Opaque の色 alpha から透明度を推測しない。
+        if ((flags & MATERIAL_FEATURES::AlphaMask) != 0u) return AlphaMode::Mask;
+        if ((flags & MATERIAL_FEATURES::ThinTransparentSurface) != 0u) return AlphaMode::Blend;
+        return AlphaMode::Opaque;
+    }
 
+    MaterialFactorProjection BuildMaterialFactorProjection(
+        const MaterialAsset* modelMaterial, const Material* runtimeMaterial) {
+        MaterialFactorProjection result{};
+        if (modelMaterial != nullptr) {
+            const auto& material = *modelMaterial;
+            result.baseColor = material.baseColorFactor;
+            result.emissiveFactor = {material.emissiveFactor.x, material.emissiveFactor.y,
+                material.emissiveFactor.z, material.emissiveStrength};
+            result.pbrParams = {material.metallicFactor, material.roughnessFactor,
+                material.occlusionTexture.strength, material.alphaCutoff};
+            result.specularParams = {material.specularColorFactor.x, material.specularColorFactor.y,
+                material.specularColorFactor.z, material.specularFactor};
+            result.normalScale = material.normalTexture.scale;
+            result.materialFlags = material.featureBits;
+        }
+        if (runtimeMaterial != nullptr) {
+            const auto& material = *runtimeMaterial;
+            result.baseColor = material.GetBaseColor();
+            const MATH::Vec3 emissive = material.GetEmissiveFactor();
+            result.emissiveFactor = {
+                emissive.x,
+                emissive.y,
+                emissive.z,
+                material.GetEmissiveStrength()
+            };
+            result.pbrParams = {
+                material.GetMetallicFactor(),
+                material.GetRoughnessFactor(),
+                material.GetOcclusionStrength(),
+                material.GetAlphaCutoff()
+            };
+            const MATH::Vec3 specular = material.GetSpecularColorFactor();
+            result.specularParams = {
+                specular.x,
+                specular.y,
+                specular.z,
+                material.GetSpecularFactor()
+            };
+            result.normalScale = material.GetNormalScale();
+            result.materialFlags = material.GetFeatureBits();
+        }
+        result.materialFlags &= ~(MATERIAL_FEATURES::AlphaMask | MATERIAL_FEATURES::ThinTransparentSurface);
+        const AlphaMode alpha = ResolveMaterialAlphaMode(modelMaterial, runtimeMaterial);
+        if (alpha == AlphaMode::Mask) result.materialFlags |= MATERIAL_FEATURES::AlphaMask;
+        if (alpha == AlphaMode::Blend) result.materialFlags |= MATERIAL_FEATURES::ThinTransparentSurface;
+        return result;
+    }
+
+    GpuMaterialProjection BuildRuntimeMaterialGpuProjection(const Material& material) {
+        GpuMaterialProjection result{BuildMaterialFactorProjection(nullptr, &material)};
         Texture(result, GpuMaterialTextureChannel::BaseColor) =
             ProjectTexture(material.GetTextureSlot(
                 MaterialTextureUsage::BaseColor));

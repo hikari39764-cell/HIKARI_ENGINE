@@ -122,19 +122,9 @@ namespace HIKARI::SHADOW::INTERNAL {
             ? ResolvePrimitiveTextureResource(*source.model, materialAsset)
             : gShadowRendererState.fallbackTextureResource;
 
-        GpuMaterialProjection projection{};
-        if (materialAsset != nullptr) {
-            projection.baseColor = materialAsset->baseColorFactor;
-            projection.pbrParams.w = materialAsset->alphaCutoff;
-            projection.materialFlags = materialAsset->featureBits;
-            if (materialAsset->alphaMode == AlphaMode::Mask)
-                projection.materialFlags |= MATERIAL_FEATURES::AlphaMask;
-        }
+        GpuMaterialProjection projection{BuildMaterialFactorProjection(materialAsset, source.materialOverride)};
         int baseColorHandle = RENDER3D::GetTextureResourceBackendHandle(baseColorTexture);
         if (source.materialOverride != nullptr) {
-            projection.baseColor = source.materialOverride->GetBaseColor();
-            projection.pbrParams.w = source.materialOverride->GetAlphaCutoff();
-            projection.materialFlags = source.materialOverride->GetFeatureBits();
             if (!source.materialOverride->InheritsModelTextures())
                 baseColorHandle = gShadowRendererState.fallbackTextureHandle;
             const RuntimeTextureSlot& slot =

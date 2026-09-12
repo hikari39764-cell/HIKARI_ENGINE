@@ -14,6 +14,7 @@
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Core/Math/HIKARI_NormalMatrix.h"
 #include "Render3D/Core/HIKARI_Material.h"
+#include "Render3D/Material/HIKARI_GpuMaterialProjection.h"
 #include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
 #include "Render3D/Lighting/HIKARI_LocalLightSemantics.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
@@ -124,59 +125,6 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
             });
         }
 
-        void ResolveMaterial(
-            const RENDER3D::RUNTIME::SceneSurfaceInstance& surface,
-            MATH::Vec3& outDiffuse,
-            MATH::Vec3& outEmissive,
-            AlphaMode& outAlphaMode) {
-
-            outDiffuse = { 1.0f, 1.0f, 1.0f };
-            outEmissive = {};
-            outAlphaMode = AlphaMode::Opaque;
-            if (surface.model != nullptr &&
-                surface.materialIndex <
-                    surface.model->materials.size()) {
-                const MaterialAsset& material =
-                    surface.model->materials[
-                        surface.materialIndex];
-                outDiffuse = {
-                    material.baseColorFactor.x,
-                    material.baseColorFactor.y,
-                    material.baseColorFactor.z
-                };
-                outEmissive =
-                    material.emissiveFactor *
-                    material.emissiveStrength;
-                outAlphaMode = material.alphaMode;
-            }
-
-            if (surface.materialOverride == nullptr) {
-                return;
-            }
-
-            const MATH::Vec4 color =
-                surface.materialOverride->GetBaseColor();
-            outDiffuse = { color.x, color.y, color.z };
-            const MATH::Vec3 emissive =
-                surface.materialOverride->GetEmissiveFactor();
-            const float strength =
-                surface.materialOverride->GetEmissiveStrength();
-            outEmissive = emissive * strength;
-            const uint32_t features =
-                surface.materialOverride->GetFeatureBits();
-            if ((features &
-                    MATERIAL_FEATURES::AlphaMask) != 0u) {
-                outAlphaMode = AlphaMode::Mask;
-            } else if (color.w < 0.999f ||
-                (features &
-                    MATERIAL_FEATURES::
-                        ThinTransparentSurface) != 0u) {
-                outAlphaMode = AlphaMode::Blend;
-            } else {
-                outAlphaMode = AlphaMode::Opaque;
-            }
-        }
-
         ASSETS::LIGHTING::LightmapSurfaceAnalysis
             AppendSurfaceTriangles(
             const RENDER3D::RUNTIME::SceneSurfaceInstance& surface,
@@ -236,14 +184,14 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
                             chartPadding);
             }
 
-            MATH::Vec3 diffuse{};
-            MATH::Vec3 emissive{};
-            AlphaMode alphaMode = AlphaMode::Opaque;
-            ResolveMaterial(
-                surface,
-                diffuse,
-                emissive,
-                alphaMode);
+            const MaterialAsset* material = surface.materialIndex < surface.model->materials.size()
+                ? &surface.model->materials[surface.materialIndex] : nullptr;
+            const auto factors = RENDER3D::MATERIAL::BuildMaterialFactorProjection(material, surface.materialOverride);
+            const float diffuseWeight = 1.0f - std::clamp(factors.pbrParams.x, 0.0f, 1.0f);
+            const MATH::Vec3 diffuse = MATH::Vec3{factors.baseColor.x, factors.baseColor.y, factors.baseColor.z} * diffuseWeight;
+            const MATH::Vec3 emissive = MATH::Vec3{factors.emissiveFactor.x, factors.emissiveFactor.y,
+                factors.emissiveFactor.z} * factors.emissiveFactor.w;
+            const AlphaMode alphaMode = RENDER3D::MATERIAL::ResolveMaterialAlphaMode(material, surface.materialOverride);
             const ASSETS::LIGHTING::LightmapSurfaceAnalysis
                 analysis =
                     ASSETS::LIGHTING::AnalyzeLightmapSurface(

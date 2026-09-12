@@ -76,29 +76,6 @@ namespace HIKARI::MESHRENDERER {
             return indices;
         }
 
-        MATH::Vec4 ResolveSpecularParams(
-            const MaterialAsset* materialAsset,
-            const Material* runtimeMaterial) {
-
-            MATH::Vec3 specularColor{ 1.0f, 1.0f, 1.0f };
-            float specularFactor = 1.0f;
-            if (materialAsset != nullptr) {
-                specularColor = materialAsset->specularColorFactor;
-                specularFactor = materialAsset->specularFactor;
-            }
-            if (runtimeMaterial != nullptr) {
-                specularColor = runtimeMaterial->GetSpecularColorFactor();
-                specularFactor = runtimeMaterial->GetSpecularFactor();
-            }
-            return {
-                specularColor.x,
-                specularColor.y,
-                specularColor.z,
-                specularFactor
-            };
-        }
-
-
         bool HasSpecularTextureSlot(
             const MaterialAsset* materialAsset,
             const Material* runtimeMaterial,
@@ -142,8 +119,8 @@ namespace HIKARI::MESHRENDERER {
                 obj.occlusionStrength,
                 obj.alphaCutoff
             };
-            projection.specularParams = ResolveSpecularParams(
-                materialAsset, runtimeMaterial);
+            projection.specularParams = RENDER3D::MATERIAL::BuildMaterialFactorProjection(
+                materialAsset, runtimeMaterial).specularParams;
             projection.materialFlags = obj.materialFlags;
             projection.normalScale = obj.normalScale;
 
@@ -248,27 +225,13 @@ namespace HIKARI::MESHRENDERER {
         }
 
         void FillRuntimeMaterialValues(ObjectCB& obj, const Material& material) {
-            obj.baseColor = material.GetBaseColor();
-            obj.alphaCutoff = material.GetAlphaCutoff();
+            FillMaterialFactorValues(obj, nullptr, &material);
             obj.hasBaseColorTexture = material.HasBaseColorTexture() ? 1u : 0u;
             obj.hasNormalTexture = material.HasTextureSlot(MaterialTextureUsage::Normal) ? 1u : 0u;
             obj.hasMetallicRoughnessTexture = material.HasTextureSlot(MaterialTextureUsage::MetallicRoughness) ? 1u : 0u;
             obj.hasOcclusionTexture = material.HasTextureSlot(MaterialTextureUsage::Occlusion) ? 1u : 0u;
             obj.hasEmissiveTexture = material.HasTextureSlot(MaterialTextureUsage::Emissive) ? 1u : 0u;
-            obj.normalScale = material.GetNormalScale();
-            obj.metallicFactor = material.GetMetallicFactor();
-            obj.roughnessFactor = material.GetRoughnessFactor();
-            obj.occlusionStrength = material.GetOcclusionStrength();
-            const MATH::Vec3& emissive = material.GetEmissiveFactor();
-            obj.emissiveFactor = {
-                emissive.x,
-                emissive.y,
-                emissive.z,
-                material.GetEmissiveStrength()
-            };
-            obj.materialFlags = material.GetFeatureBits();
         }
-
 
         ResolvedMaterialTextures ResolveGpuSceneMaterialSourceTextures(
             const MeshDrawContext& ctx,

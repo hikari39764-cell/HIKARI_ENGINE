@@ -7,6 +7,7 @@
 #include "Core/Math/HIKARI_NormalMatrix.h"
 #include "Gfx/D3D12/HIKARI_D3D12BufferAlignment.h"
 #include "Assets/Models/HIKARI_ModelAsset.h"
+#include "Render3D/Material/HIKARI_GpuMaterialProjection.h"
 #include "Render3D/Lighting/HIKARI_IblEnvironment.h"
 #include "Render3D/Lighting/HIKARI_LightProbeVolumeRuntime.h"
 #include "Render3D/Lighting/HIKARI_LocalLightList.h"
@@ -524,6 +525,19 @@ namespace HIKARI::MESHRENDERER {
         }
     }
 
+    void FillMaterialFactorValues(ObjectCB& obj,
+        const MaterialAsset* modelMaterial, const Material* runtimeMaterial) {
+        const auto projection = RENDER3D::MATERIAL::BuildMaterialFactorProjection(modelMaterial, runtimeMaterial);
+        obj.baseColor = projection.baseColor;
+        obj.emissiveFactor = projection.emissiveFactor;
+        obj.materialFlags = projection.materialFlags;
+        obj.metallicFactor = projection.pbrParams.x;
+        obj.roughnessFactor = projection.pbrParams.y;
+        obj.occlusionStrength = projection.pbrParams.z;
+        obj.alphaCutoff = projection.pbrParams.w;
+        obj.normalScale = projection.normalScale;
+    }
+
     void FillMaterialValues(
         ObjectCB& obj,
         const MaterialAsset* materialAsset,
@@ -532,18 +546,11 @@ namespace HIKARI::MESHRENDERER {
         int metallicRoughnessTextureHandle,
         int occlusionTextureHandle,
         const MeshMaterialFillContext& ctx) {
-        obj.baseColor = materialAsset ? materialAsset->baseColorFactor : MATH::Vec4{ 1, 1, 1, 1 };
-        obj.materialFlags = 0;
-        obj.alphaCutoff = materialAsset ? materialAsset->alphaCutoff : 0.5f;
-        obj.emissiveFactor = { 0.0f, 0.0f, 0.0f, 1.0f };
+        FillMaterialFactorValues(obj, materialAsset, nullptr);
         obj.hasNormalTexture = 0;
         obj.hasEmissiveTexture = 0;
-        obj.normalScale = materialAsset ? materialAsset->normalTexture.scale : 1.0f;
-        obj.metallicFactor = materialAsset ? materialAsset->metallicFactor : 0.0f;
-        obj.roughnessFactor = materialAsset ? materialAsset->roughnessFactor : 1.0f;
         obj.hasMetallicRoughnessTexture = 0;
         obj.hasOcclusionTexture = 0;
-        obj.occlusionStrength = materialAsset ? materialAsset->occlusionTexture.strength : 1.0f;
 
         if (materialAsset == nullptr) {
             return;
@@ -569,31 +576,6 @@ namespace HIKARI::MESHRENDERER {
             obj.hasOcclusionTexture = 1;
         }
 
-        if (materialAsset->alphaMode == AlphaMode::Mask) {
-            obj.materialFlags |= MATERIAL_FEATURES::AlphaMask;
-        }
-        if (materialAsset->alphaMode == AlphaMode::Blend ||
-            (materialAsset->featureBits &
-                MATERIAL_FEATURES::ThinTransparentSurface) != 0u) {
-            obj.materialFlags |=
-                MATERIAL_FEATURES::ThinTransparentSurface;
-        }
-        const bool isUnlit = (materialAsset->featureBits & MATERIAL_FEATURES::Unlit) != 0;
-        if (isUnlit) {
-            obj.materialFlags |= MATERIAL_FEATURES::Unlit;
-        }
-        if ((materialAsset->featureBits & MATERIAL_FEATURES::Emissive) != 0) {
-            obj.materialFlags |= MATERIAL_FEATURES::Emissive;
-        }
-        if ((materialAsset->featureBits & MATERIAL_FEATURES::SpecularGlossCompatibility) != 0) {
-            obj.materialFlags |= MATERIAL_FEATURES::SpecularGlossCompatibility;
-        }
-        obj.emissiveFactor = {
-            materialAsset->emissiveFactor.x,
-            materialAsset->emissiveFactor.y,
-            materialAsset->emissiveFactor.z,
-            materialAsset->emissiveStrength
-        };
     }
 
     size_t UploadJointPalette(

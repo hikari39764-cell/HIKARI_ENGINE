@@ -40,6 +40,8 @@ namespace HIKARI::MESHRENDERER {
     MATH::Mat4 BuildNormalMatrix(const Transform3D& transform);
 
     void FillFxValues(ObjectCB& obj, const DrawItem& item);
+    void FillMaterialFactorValues(ObjectCB& obj,
+        const MaterialAsset* modelMaterial, const Material* runtimeMaterial);
     void FillMaterialValues(
         ObjectCB& obj,
         const MaterialAsset* materialAsset,
