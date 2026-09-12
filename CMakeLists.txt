@@ -438,6 +438,15 @@ hikari_configure_contract_output(HIKARI_RenderMathContracts "RuntimeContracts")
 add_test(NAME HIKARI_RenderMathContracts COMMAND "$<TARGET_FILE:HIKARI_RenderMathContracts>")
 set_tests_properties(HIKARI_RenderMathContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
 
+add_executable(HIKARI_PbrRasterContracts EXCLUDE_FROM_ALL "Tools/Tests/HIKARI_PbrRasterContracts.cpp")
+target_include_directories(HIKARI_PbrRasterContracts PRIVATE "${HIKARI_SOURCE_ROOT}/ThirdParty/DirectXTex/Common")
+target_compile_definitions(HIKARI_PbrRasterContracts PRIVATE HIKARI_CONTRACT_SOURCE_ROOT="${HIKARI_SOURCE_ROOT}")
+target_link_libraries(HIKARI_PbrRasterContracts PRIVATE d3d12 dxgi d3dcompiler)
+hikari_configure_engine_target(HIKARI_PbrRasterContracts)
+hikari_configure_contract_output(HIKARI_PbrRasterContracts "RuntimeContracts")
+add_test(NAME HIKARI_PbrRasterContracts COMMAND "$<TARGET_FILE:HIKARI_PbrRasterContracts>")
+set_tests_properties(HIKARI_PbrRasterContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
+
 add_executable(HIKARI_IblBakeContracts EXCLUDE_FROM_ALL
     "Tools/Tests/HIKARI_IblBakeContracts.cpp"
     "HIKARI/Assets/Importers/HIKARI_IblBaker.cpp"

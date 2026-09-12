@@ -3,6 +3,21 @@
 
 static const float HIKARI_PI = 3.14159265359f;
 
+float HikariFilterPerceptualRoughness(
+    float perceptualRoughness,
+    float3 normalDx,
+    float3 normalDy)
+{
+    // 法線分散を GGX の alpha^2 に加える。知覚的粗さへ直接足すと
+    // 曲面の質感が失われるため、フィルタ幅を制限してから四乗根に戻す。
+    // Tokuyoshi/Kaplanyan の等方的法線フィルタ。分散は回転に依存しない。
+    const float roughness = clamp(perceptualRoughness, 0.04f, 1.0f);
+    const float alpha = roughness * roughness;
+    const float variance = 0.15f * (dot(normalDx, normalDx) + dot(normalDy, normalDy));
+    const float kernel = min(2.0f * variance, 0.18f);
+    return sqrt(sqrt(saturate(alpha * alpha + kernel)));
+}
+
 float2 HikariAnalyticEnvBrdf(float ndotv, float roughness)
 {
     // Karis の環境 BRDF 近似。入力は知覚的粗さと F0 用の scale/bias。
@@ -86,12 +101,8 @@ HikariPbrShadingContext HikariBuildPbrShadingContext(
         metallic,
         specularColor,
         specularFactor);
-    // Specular AA (Karis/Filament style): estimate local surface curvature
-    // from shading-normal derivatives and raise perceptual roughness so
-    // undersampled highlights and metal edges do not alias or shimmer.
-    const float3 normalDerivative = fwidth(normal);
-    const float curvature = 2.0f * length(normalDerivative);
-    context.roughness = clamp(max(roughness, curvature), 0.04f, 1.0f);
+    context.roughness = HikariFilterPerceptualRoughness(
+        roughness, ddx(normal), ddy(normal));
     context.normal = normal;
     context.view = view;
 

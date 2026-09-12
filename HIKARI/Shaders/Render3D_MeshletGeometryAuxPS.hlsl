@@ -4,6 +4,7 @@
 #include "Include/HIKARI_SurfaceGpuScene.hlsli"
 #include "Include/Forward/HIKARI_SurfaceFeatureCoverage.hlsli"
 #include "Include/Surface/HIKARI_SceneSurfaceContract.hlsli"
+#include "Include/HIKARI_PbrCommon.hlsli"
 #include "Include/Surface/HIKARI_SurfaceShadingNormal.hlsli"
 #include "Include/Surface/HIKARI_SandSurfaceParams.hlsli"
 #include "Include/Surface/HIKARI_SandSurfaceNormal.hlsli"
@@ -134,8 +135,11 @@ float4 main(PSInput input) : SV_TARGET
             input.uv1,
             gLinearWrap);
     }
-    const float4 packedSurface =
-        HikariPackSceneSurface(n, roughness, metallic);
+    if (!HikariSurfaceHasSandSurface(input.surfaceFeatureFlags))
+    {
+        roughness = HikariFilterPerceptualRoughness(roughness, ddx(n), ddy(n));
+    }
+    const float4 packedSurface = HikariPackSceneSurface(n, roughness, metallic);
 #if defined(HIKARI_GEOMETRY_AUX_WRITE_FEATURE_MASK)
     const HikariSurfaceGpuSceneInstance instance =
         HikariGetSurfaceGpuSceneInstanceAt(input.surfaceGpuSceneIndex);
