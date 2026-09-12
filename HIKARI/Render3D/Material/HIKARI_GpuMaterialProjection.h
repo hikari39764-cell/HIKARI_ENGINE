@@ -8,6 +8,8 @@
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Render3D/Material/HIKARI_GpuMaterialTypes.h"
 
+namespace HIKARI { struct MaterialAsset; }
+
 namespace HIKARI::RENDER3D::MATERIAL {
 
     enum class GpuMaterialTextureChannel : uint8_t {
@@ -47,6 +49,13 @@ namespace HIKARI::RENDER3D::MATERIAL {
 
     GpuMaterialProjection BuildRuntimeMaterialGpuProjection(
         const Material& material);
+
+    // テクスチャの所有権は変更せず、継承規則に従う UV だけを射影する。
+    void ProjectMaterialTextureUv(
+        const MaterialAsset* modelMaterial,
+        const Material* runtimeMaterial,
+        MaterialTextureUsage usage,
+        GpuMaterialTextureProjection& outTexture);
 
     GpuMaterialData PackGpuMaterialData(
         const GpuMaterialProjection& projection);

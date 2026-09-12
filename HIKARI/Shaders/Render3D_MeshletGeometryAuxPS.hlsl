@@ -1,5 +1,6 @@
 #define HIKARI_MATERIAL_TEXTURE_POOL_SAMPLING 1
 #include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
+#include "Include/Material/HIKARI_MaterialBaseColorInputs.hlsli"
 #include "Include/Render3D/HIKARI_MeshCameraData.hlsli"
 #include "Include/HIKARI_MeshMaterialData.hlsli"
 #include "Include/HIKARI_SurfaceGpuScene.hlsli"
@@ -66,21 +67,8 @@ float4 main(PSInput input) : SV_TARGET
         materialExpression = HikariEvaluateMaterialExpression(
             materialData, expressionContext, gLinearWrap);
     }
-    float4 albedo = materialData.baseColor;
-    if (materialData.hasBaseColorTexture != 0)
-    {
-        const float2 baseColorUv =
-            HikariResolveMaterialUv(
-                materialData,
-                HIKARI_MATERIAL_UV_BASE_COLOR,
-                input.uv,
-                input.uv1);
-        albedo *= HikariSampleMaterialTexture(
-            materialData.baseColorTextureDescriptorIndex,
-            gLinearWrap,
-            baseColorUv,
-            float4(1.0f, 1.0f, 1.0f, 1.0f));
-    }
+    float4 albedo = HikariResolveMaterialBaseColor(
+        materialData, input.uv, input.uv1, gLinearWrap);
     float alphaClipThreshold = materialData.pbrParams.w;
     HikariApplyMaterialExpressionCoverage(materialExpression, albedo, alphaClipThreshold);
     if ((materialData.materialFlags & MATERIAL_ALPHA_MASK) != 0u &&

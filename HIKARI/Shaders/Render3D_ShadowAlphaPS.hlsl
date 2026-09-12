@@ -1,15 +1,16 @@
 #define HIKARI_MASS_GPU_SCENE_DISABLED 1
-static const uint MATERIAL_ALPHA_MASK = 1u << 1;
 static const uint HIKARI_INVALID_SHADOW_MATERIAL_INDEX = 0xffffffffu;
 
 #define HIKARI_MATERIAL_TEXTURE_POOL_SAMPLING 1
 #include "Include/HIKARI_MeshMaterialData.hlsli"
+#include "Include/Material/HIKARI_MaterialBaseColorInputs.hlsli"
 #include "Include/HIKARI_SurfaceGpuScene.hlsli"
 #include "Include/Forward/HIKARI_SurfaceFeatureCoverage.hlsli"
 #include "Include/Surface/HIKARI_SandSurfaceParams.hlsli"
 
 Texture2D gBaseColorTex : register(t0);
 SamplerState gLinearWrap : register(s0);
+static const uint MATERIAL_ALPHA_MASK = HIKARI_MATERIAL_FLAG_ALPHA_MASK;
 
 struct PSInput
 {
@@ -44,13 +45,8 @@ void main(PSInput input)
     if (input.materialDataIndex != HIKARI_INVALID_SHADOW_MATERIAL_INDEX)
     {
         HikariMeshMaterialData materialData = HikariGetMeshMaterialData(input.materialDataIndex);
-        const float2 baseColorUv =
-            HikariResolveMaterialUv(materialData, HIKARI_MATERIAL_UV_BASE_COLOR, input.uv, input.uv1);
-        alpha = HikariSampleMaterialTexture(
-            materialData.baseColorTextureDescriptorIndex,
-            gLinearWrap,
-            baseColorUv,
-            float4(1.0f, 1.0f, 1.0f, 1.0f)).a;
+        alpha = HikariResolveMaterialBaseColor(
+            materialData, input.uv, input.uv1, gLinearWrap).a;
     }
     else
     {

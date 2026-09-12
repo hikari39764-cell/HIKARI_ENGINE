@@ -6,6 +6,7 @@
 #include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
+#include "Render3D/Material/HIKARI_GpuMaterialProjection.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI::SHADOW::INTERNAL {
@@ -114,81 +115,42 @@ namespace HIKARI::SHADOW::INTERNAL {
 
     MESHRENDERER::MaterialGpuData BuildShadowMaterialGpuData(
         const RENDER3D::RUNTIME::SurfaceGpuSceneMaterialSource& source) {
+        using namespace RENDER3D::MATERIAL;
+        const MaterialAsset* materialAsset = source.model != nullptr
+            ? GetPrimitiveMaterial(*source.model, source.materialIndex) : nullptr;
+        const RENDER3D::TextureResourceHandle baseColorTexture = source.model != nullptr
+            ? ResolvePrimitiveTextureResource(*source.model, materialAsset)
+            : gShadowRendererState.fallbackTextureResource;
 
-        const MaterialAsset* materialAsset =
-            source.model != nullptr
-                ? GetPrimitiveMaterial(*source.model, source.materialIndex)
-                : nullptr;
-        const RENDER3D::TextureResourceHandle baseColorTexture =
-            source.model != nullptr
-                ? ResolvePrimitiveTextureResource(*source.model, materialAsset)
-                : gShadowRendererState.fallbackTextureResource;
-
-        MESHRENDERER::MaterialGpuData data{};
-        data.baseColor = materialAsset != nullptr
-            ? materialAsset->baseColorFactor
-            : MATH::Vec4{ 1.0f, 1.0f, 1.0f, 1.0f };
-        data.emissiveFactor = {
-            materialAsset != nullptr ? materialAsset->emissiveFactor.x : 0.0f,
-            materialAsset != nullptr ? materialAsset->emissiveFactor.y : 0.0f,
-            materialAsset != nullptr ? materialAsset->emissiveFactor.z : 0.0f,
-            materialAsset != nullptr ? materialAsset->emissiveStrength : 1.0f
-        };
-        data.pbrParams = {
-            materialAsset != nullptr ? materialAsset->metallicFactor : 0.0f,
-            materialAsset != nullptr ? materialAsset->roughnessFactor : 1.0f,
-            materialAsset != nullptr ? materialAsset->occlusionTexture.strength : 1.0f,
-            materialAsset != nullptr ? materialAsset->alphaCutoff : 0.5f
-        };
-        data.materialFlags =
-            materialAsset != nullptr ? materialAsset->featureBits : 0u;
-        if (materialAsset != nullptr && materialAsset->alphaMode == AlphaMode::Mask) {
-            data.materialFlags |= MATERIAL_FEATURES::AlphaMask;
+        GpuMaterialProjection projection{};
+        if (materialAsset != nullptr) {
+            projection.baseColor = materialAsset->baseColorFactor;
+            projection.pbrParams.w = materialAsset->alphaCutoff;
+            projection.materialFlags = materialAsset->featureBits;
+            if (materialAsset->alphaMode == AlphaMode::Mask)
+                projection.materialFlags |= MATERIAL_FEATURES::AlphaMask;
         }
-
-        int baseColorHandle =
-            RENDER3D::GetTextureResourceBackendHandle(baseColorTexture);
+        int baseColorHandle = RENDER3D::GetTextureResourceBackendHandle(baseColorTexture);
         if (source.materialOverride != nullptr) {
-            data.baseColor = source.materialOverride->GetBaseColor();
-            data.materialFlags = source.materialOverride->GetFeatureBits();
-            if (!source.materialOverride->InheritsModelTextures()) {
+            projection.baseColor = source.materialOverride->GetBaseColor();
+            projection.pbrParams.w = source.materialOverride->GetAlphaCutoff();
+            projection.materialFlags = source.materialOverride->GetFeatureBits();
+            if (!source.materialOverride->InheritsModelTextures())
                 baseColorHandle = gShadowRendererState.fallbackTextureHandle;
-            }
-            const RuntimeTextureSlot& baseColorSlot =
-                source.materialOverride->GetTextureSlot(
-                    MaterialTextureUsage::BaseColor);
-            if (baseColorSlot.enabled) {
-                baseColorHandle =
-                    baseColorSlot.ResolveBackendHandle();
-            }
+            const RuntimeTextureSlot& slot =
+                source.materialOverride->GetTextureSlot(MaterialTextureUsage::BaseColor);
+            if (slot.enabled) baseColorHandle = slot.ResolveBackendHandle();
         }
-        if (baseColorHandle < 0) {
-            baseColorHandle = gShadowRendererState.fallbackTextureHandle;
-        }
-
-        data.hasBaseColorTexture =
-            baseColorHandle >= 0 && baseColorHandle != gShadowRendererState.fallbackTextureHandle ? 1u : 0u;
-        data.hasNormalTexture = 0u;
-        data.hasEmissiveTexture = 0u;
-        data.hasMetallicRoughnessTexture = 0u;
-        data.hasOcclusionTexture = 0u;
-        data.normalScale = 1.0f;
-        data.baseColorTextureHandle = baseColorHandle;
-        data.normalTextureHandle = -1;
-        data.emissiveTextureHandle = -1;
-        data.metallicRoughnessTextureHandle = -1;
-        data.occlusionTextureHandle = -1;
-        data.baseColorTextureDescriptorIndex =
-            ResolveTextureDescriptorIndex(baseColorHandle);
-        data.normalTextureDescriptorIndex =
-            MESHRENDERER::kInvalidTextureDescriptorIndex;
-        data.emissiveTextureDescriptorIndex =
-            MESHRENDERER::kInvalidTextureDescriptorIndex;
-        data.metallicRoughnessTextureDescriptorIndex =
-            MESHRENDERER::kInvalidTextureDescriptorIndex;
-        data.occlusionTextureDescriptorIndex =
-            MESHRENDERER::kInvalidTextureDescriptorIndex;
-        return data;
+        if (baseColorHandle < 0) baseColorHandle = gShadowRendererState.fallbackTextureHandle;
+        auto& baseColor = projection.textures[static_cast<size_t>(GpuMaterialTextureChannel::BaseColor)];
+        baseColor.backendHandle = baseColorHandle;
+        baseColor.descriptorIndex = ResolveTextureDescriptorIndex(baseColorHandle);
+        baseColor.enabled = baseColorHandle >= 0 &&
+            baseColorHandle != gShadowRendererState.fallbackTextureHandle &&
+            baseColor.descriptorIndex != kInvalidTextureDescriptorIndex;
+        ProjectMaterialTextureUv(
+            materialAsset, source.materialOverride, MaterialTextureUsage::BaseColor, baseColor);
+        return PackGpuMaterialData(projection);
     }
 
     void PrepareShadowSurfaceGpuSceneMaterialSources(

@@ -1,5 +1,6 @@
 #define HIKARI_MATERIAL_TEXTURE_POOL_SAMPLING 1
 #include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
+#include "Include/Material/HIKARI_MaterialBaseColorInputs.hlsli"
 #include "Include/HIKARI_MeshMaterialData.hlsli"
 #include "Include/Material/HIKARI_MaterialProgramData.hlsli"
 #include "Include/HIKARI_SurfaceGpuScene.hlsli"
@@ -46,20 +47,8 @@ float4 main(PSInput input) : SV_TARGET
     }
     if ((materialData.materialFlags & MATERIAL_ALPHA_MASK) != 0u)
     {
-        float alpha = materialData.baseColor.a;
-        if (materialData.hasBaseColorTexture != 0u)
-        {
-            const float2 baseColorUv = HikariResolveMaterialUv(
-                materialData,
-                HIKARI_MATERIAL_UV_BASE_COLOR,
-                input.uv,
-                input.uv1);
-            alpha *= HikariSampleMaterialTexture(
-                materialData.baseColorTextureDescriptorIndex,
-                gLinearWrap,
-                baseColorUv,
-                1.0f.xxxx).a;
-        }
+        const float alpha = HikariResolveMaterialBaseColor(
+            materialData, input.uv, input.uv1, gLinearWrap).a;
         if (alpha < materialData.pbrParams.w)
         {
             discard;
