@@ -25,10 +25,10 @@ uint HikariResolveLocalLightDepthSliceFromLogDistance(
         gLocalLightClusterCountZ - 1u);
 }
 
-uint HikariResolveLocalLightDepthSlice(float distanceToCamera)
+uint HikariResolveLocalLightDepthSlice(float viewDepth)
 {
     return HikariResolveLocalLightDepthSliceFromLogDistance(
-        log(max(distanceToCamera, 0.0001f)));
+        log(max(viewDepth, 0.0001f)));
 }
 
 uint HikariResolveLocalLightClusterIndex(
@@ -68,12 +68,12 @@ uint2 HikariResolveLocalLightClusterFromDepthSlice(
 
 uint2 HikariResolveLocalLightCluster(
     float2 pixelPosition,
-    float distanceToCamera)
+    float viewDepth)
 {
     return HikariResolveLocalLightClusterFromDepthSlice(
         pixelPosition,
         HikariResolveLocalLightDepthSlice(
-            distanceToCamera));
+            viewDepth));
 }
 
 #endif

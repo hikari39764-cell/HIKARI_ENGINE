@@ -115,6 +115,16 @@ namespace HIKARI::RENDER3D::LIGHTING {
             return scratch;
         }
 
+        MATH::Vec2 ProjectViewAxisBounds(
+            float center, float radius, float inverseNear, float inverseFar, float scale) {
+            // 球を含む View 空間 AABB の両深度面を投影する。画面端の遠近差も含める。
+            const float lowNear = (center - radius) * inverseNear * scale;
+            const float lowFar = (center - radius) * inverseFar * scale;
+            const float highNear = (center + radius) * inverseNear * scale;
+            const float highFar = (center + radius) * inverseFar * scale;
+            return {(std::min)(lowNear, lowFar), (std::max)(highNear, highFar)};
+        }
+
         ClusterBounds ProjectLightBounds(
             const SceneLightProvider& light,
             const Camera3D& camera,
@@ -153,22 +163,15 @@ namespace HIKARI::RENDER3D::LIGHTING {
                         viewDepth - range,
                         nearDistance);
                 const MATH::Mat4& projection = camera.GetProj();
-                const float centerNdcX =
-                    viewPosition.x * projection.m[0][0] /
-                    viewDepth;
-                const float centerNdcY =
-                    viewPosition.y * projection.m[1][1] /
-                    viewDepth;
-                const float radiusNdcX =
-                    range * projection.m[0][0] *
-                    inverseNearestDepth;
-                const float radiusNdcY =
-                    range * projection.m[1][1] *
-                    inverseNearestDepth;
-                minimumNdcX = centerNdcX - radiusNdcX;
-                maximumNdcX = centerNdcX + radiusNdcX;
-                minimumNdcY = centerNdcY - radiusNdcY;
-                maximumNdcY = centerNdcY + radiusNdcY;
+                const float inverseFarthestDepth = 1.0f / (viewDepth + range);
+                const auto xBounds = ProjectViewAxisBounds(viewPosition.x, range,
+                    inverseNearestDepth, inverseFarthestDepth, projection.m[0][0]);
+                const auto yBounds = ProjectViewAxisBounds(viewPosition.y, range,
+                    inverseNearestDepth, inverseFarthestDepth, projection.m[1][1]);
+                minimumNdcX = xBounds.x;
+                maximumNdcX = xBounds.y;
+                minimumNdcY = yBounds.x;
+                maximumNdcY = yBounds.y;
                 if (maximumNdcX < -1.0f ||
                     minimumNdcX > 1.0f ||
                     maximumNdcY < -1.0f ||
@@ -214,16 +217,14 @@ namespace HIKARI::RENDER3D::LIGHTING {
                 static_cast<uint32_t>(maximumPixelY) / tileSize,
                 clusterCountY - 1u);
 
-            const float cameraDistance =
-                MATH::Length(light.position - camera.GetPosition());
             bounds.minZ = ResolveDepthSlice(
-                (std::max)(cameraDistance - range, nearDistance),
+                (std::max)(viewDepth - range, nearDistance),
                 nearDistance,
                 farDistance,
                 depthScale,
                 depthBias);
             bounds.maxZ = ResolveDepthSlice(
-                (std::min)(cameraDistance + range, farDistance),
+                (std::min)(viewDepth + range, farDistance),
                 nearDistance,
                 farDistance,
                 depthScale,

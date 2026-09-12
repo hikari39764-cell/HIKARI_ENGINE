@@ -424,7 +424,6 @@ float4 main(PSInput input) : SV_TARGET
         float3 pointDirect = AccumulateLocalLightsPbr(
             pbrContext,
             input.worldPosWS,
-            distanceToCamera,
             input.position.xy);
 
         float3 surfaceLightmapIrradiance = 0.0f.xxx;
@@ -502,7 +501,6 @@ float4 main(PSInput input) : SV_TARGET
                     surface,
                     pbrContext,
                     input.worldPosWS,
-                    distanceToCamera,
                     input.position.xy,
                     input.tangentWS,
                     input.characterRightWS,
@@ -530,7 +528,6 @@ float4 main(PSInput input) : SV_TARGET
             n,
             input.worldPosWS,
             v,
-            distanceToCamera,
             input.position.xy);
     float3 lit = ambient + (diffuse + specular) * shadowFactor + pointLightContribution;
         shadedColor = albedo.rgb * lit;

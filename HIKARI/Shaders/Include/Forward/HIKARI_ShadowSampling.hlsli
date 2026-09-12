@@ -167,10 +167,7 @@ float SampleDirectionalShadow(float3 worldPosWS, float3 geometricNormalWS, uint 
 
     // CPU cascade fitting uses axial camera depth. Clip W preserves that same
     // contract even for receivers near the edges of a wide view.
-    const float viewDistance =
-        max(
-            mul(gViewProj, float4(worldPosWS, 1.0f)).w,
-            0.0f);
+    const float viewDistance = HikariCameraViewDepth(worldPosWS);
     const uint cascadeCount =
         clamp((uint)round(gShadowCascadeParams.x), 1u, 4u);
     const uint cascadeIndex = HikariSelectShadowCascade(

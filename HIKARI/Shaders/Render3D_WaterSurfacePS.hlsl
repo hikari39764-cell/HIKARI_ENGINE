@@ -214,19 +214,6 @@ float3 HikariSampleWaterRefraction(
         skyFallback);
 }
 
-float3 EvaluateWaterLocalLights(
-    HikariPbrShadingContext context,
-    float3 worldPosition,
-    float distanceToCamera,
-    float2 pixelPosition)
-{
-    return AccumulateLocalLightsPbr(
-        context,
-        worldPosition,
-        distanceToCamera,
-        pixelPosition);
-}
-
 float HikariWaterSmoothBand(float value, float threshold)
 {
     const float width = max(fwidth(value) * 1.5f, 0.006f);
@@ -574,10 +561,9 @@ float4 HikariShadeWaterSurface(
             max(p.directSunStrength, 0.0f) * directShadow,
         0.0f.xxx);
     const float3 localReflection = HikariFiniteOr(
-        EvaluateWaterLocalLights(
+        AccumulateLocalLightsPbr(
             reflectionContext,
             input.worldPosWS,
-            distanceToCamera,
             input.position.xy),
         0.0f.xxx);
     const float3 environmentReflection = HikariFiniteOr(

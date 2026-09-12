@@ -801,7 +801,6 @@ HikariMaterialLightingResponse HikariEvaluateStylizedMaterial(
     HikariMaterialSurfaceData surface,
     HikariPbrShadingContext pbrContext,
     float3 worldPosition,
-    float distanceToCamera,
     float2 pixelPosition,
     float4 tangentWS,
     float3 characterRightWS,
@@ -839,7 +838,7 @@ HikariMaterialLightingResponse HikariEvaluateStylizedMaterial(
 
     const uint2 cluster = HikariResolveLocalLightCluster(
         pixelPosition,
-        distanceToCamera);
+        HikariCameraViewDepth(worldPosition));
     [loop]
     for (uint slot = 0u; slot < cluster.y; ++slot)
     {

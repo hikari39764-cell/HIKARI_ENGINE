@@ -38,13 +38,12 @@ float3 AccumulateLocalLights(
     float3 normalWS,
     float3 worldPosWS,
     float3 viewDir,
-    float distanceToCamera,
     float2 pixelPosition)
 {
     float3 sum = 0.0f.xxx;
     const uint2 cluster = HikariResolveLocalLightCluster(
         pixelPosition,
-        distanceToCamera);
+        HikariCameraViewDepth(worldPosWS));
     [loop]
     for (uint slot = 0u; slot < cluster.y; ++slot)
     {
@@ -71,13 +70,12 @@ float3 AccumulateLocalLights(
 float3 AccumulateLocalLightsPbr(
     HikariPbrShadingContext pbrContext,
     float3 worldPosWS,
-    float distanceToCamera,
     float2 pixelPosition)
 {
     float3 sum = 0.0f.xxx;
     const uint2 cluster = HikariResolveLocalLightCluster(
         pixelPosition,
-        distanceToCamera);
+        HikariCameraViewDepth(worldPosWS));
     [loop]
     for (uint slot = 0u; slot < cluster.y; ++slot)
     {

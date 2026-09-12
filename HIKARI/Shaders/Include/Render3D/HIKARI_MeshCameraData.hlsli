@@ -12,4 +12,10 @@ cbuffer CameraCB : register(b0)
     float4 gScreenParams;
 };
 
+float HikariCameraViewDepth(float3 worldPosition)
+{
+    // Camera3D の RH perspective では clip W == -view Z。画面位置によらない軸深度。
+    return max(mul(gViewProj, float4(worldPosition, 1.0f)).w, 0.0f);
+}
+
 #endif
