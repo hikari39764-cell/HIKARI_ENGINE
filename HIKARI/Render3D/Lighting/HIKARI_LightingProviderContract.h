@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Render3D/Lighting/HIKARI_LocalLightSemantics.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -33,6 +35,7 @@ namespace HIKARI::RENDER3D::LIGHTING {
         float innerConeAngleDegrees = 25.0f;
         float outerConeAngleDegrees = 35.0f;
         float angularFalloff = 1.0f;
+        LocalLightFalloff distanceFalloff = LocalLightFalloff::LegacyRange;
         int priority = 0;
     };
 

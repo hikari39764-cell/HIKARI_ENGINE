@@ -42,7 +42,7 @@ namespace HIKARI::RENDER3D::LIGHTING {
                     cone.outerCos,
                     cone.angularFalloff,
                     static_cast<float>(LocalLightType::Spot),
-                    0.0f
+                    static_cast<float>(CanonicalLocalLightFalloff(light.distanceFalloff))
                 };
             } else {
                 gpu.directionInnerCos = {
@@ -55,7 +55,7 @@ namespace HIKARI::RENDER3D::LIGHTING {
                     -1.0f,
                     1.0f,
                     static_cast<float>(LocalLightType::Point),
-                    0.0f
+                    static_cast<float>(CanonicalLocalLightFalloff(light.distanceFalloff))
                 };
             }
             return gpu;

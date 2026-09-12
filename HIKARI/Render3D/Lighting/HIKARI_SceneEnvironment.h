@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Render3D/Lighting/HIKARI_LocalLightSemantics.h"
+
 #include <string>
 #include <vector>
 #include <cstdint>
@@ -50,6 +52,8 @@ namespace HIKARI {
         MATH::Vec3 color{ 1.0f, 1.0f, 1.0f };
         float intensity = 1.0f;
         int priority = 0;
+        RENDER3D::LIGHTING::LocalLightFalloff distanceFalloff =
+            RENDER3D::LIGHTING::LocalLightFalloff::LegacyRange;
     };
 
     struct SpotLight {
@@ -63,6 +67,8 @@ namespace HIKARI {
         MATH::Vec3 color{ 1.0f, 1.0f, 1.0f };
         float intensity = 1.0f;
         int priority = 0;
+        RENDER3D::LIGHTING::LocalLightFalloff distanceFalloff =
+            RENDER3D::LIGHTING::LocalLightFalloff::LegacyRange;
     };
 
     enum class SkyMode {

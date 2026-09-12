@@ -278,6 +278,11 @@ function(hikari_configure_contract_output target_name category)
 endfunction()
 
 if(HIKARI_WITH_EDITOR_BUILD)
+    hikari_add_runtime_contract(HIKARI_LightComponentIntegrationContracts
+        "Tools/Tests/HIKARI_LightComponentIntegrationContracts.cpp" NO_TOOLING_STUBS)
+    target_link_libraries(HIKARI_LightComponentIntegrationContracts PRIVATE HIKARI::Editor)
+    add_test(NAME HIKARI_LightComponentIntegrationContracts COMMAND "$<TARGET_FILE:HIKARI_LightComponentIntegrationContracts>")
+    set_tests_properties(HIKARI_LightComponentIntegrationContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
     hikari_add_runtime_contract(HIKARI_RenderReferenceFixture
         "Tools/Tests/HIKARI_RenderReferenceFixture.cpp" NO_TOOLING_STUBS)
     target_link_libraries(HIKARI_RenderReferenceFixture PRIVATE HIKARI::Editor)
@@ -560,11 +565,17 @@ set_tests_properties(HIKARI_IblBakeContracts PROPERTIES LABELS "RuntimeContracts
 
 add_executable(HIKARI_LocalLightSelectionContracts EXCLUDE_FROM_ALL
     "Tools/Tests/HIKARI_LocalLightSelectionContracts.cpp"
+    "HIKARI/Scene/Components/Lighting/HIKARI_LightComponent.cpp"
+    "HIKARI/Scene/Lighting/HIKARI_LightingAuthoringModel.cpp"
+    "HIKARI/Scene/Lighting/HIKARI_LightAuthoringModel.cpp"
+    "HIKARI/Scene/HIKARI_SceneDocumentQueries.cpp"
+    "HIKARI/Scene/HIKARI_SceneComponentId.cpp"
     "HIKARI/Render3D/Lighting/HIKARI_LocalLightList.cpp"
     "HIKARI/Render3D/Lighting/HIKARI_LocalLightSemantics.cpp"
     "HIKARI/Render3D/Core/HIKARI_Camera3D.cpp"
     "HIKARI/Render3D/HIKARI_Math3D.cpp")
 target_include_directories(HIKARI_LocalLightSelectionContracts PRIVATE "${HIKARI_SOURCE_ROOT}/HIKARI")
+target_link_libraries(HIKARI_LocalLightSelectionContracts PRIVATE HIKARI::Nlohmann)
 hikari_configure_engine_target(HIKARI_LocalLightSelectionContracts)
 hikari_configure_contract_output(HIKARI_LocalLightSelectionContracts "RuntimeContracts")
 add_test(NAME HIKARI_LocalLightSelectionContracts COMMAND "$<TARGET_FILE:HIKARI_LocalLightSelectionContracts>")

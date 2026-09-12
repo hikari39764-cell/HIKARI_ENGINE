@@ -46,6 +46,7 @@ namespace HIKARI {
             { "color", JsonMath::ToJsonArray(color_) },
             { "intensity", intensity_ },
             { "range", range_ },
+            { "distanceFalloff", RENDER3D::LIGHTING::ToString(distanceFalloff_) },
             { "innerConeAngleDegrees", innerConeAngleDegrees_ },
             { "outerConeAngleDegrees", outerConeAngleDegrees_ },
             { "angularFalloff", angularFalloff_ },
@@ -59,6 +60,7 @@ namespace HIKARI {
         const MATH::Vec3 previousColor = color_;
         const float previousIntensity = intensity_;
         const float previousRange = range_;
+        const auto previousDistanceFalloff = distanceFalloff_;
         const float previousInnerConeAngle = innerConeAngleDegrees_;
         const float previousOuterConeAngle = outerConeAngleDegrees_;
         const float previousAngularFalloff = angularFalloff_;
@@ -71,6 +73,9 @@ namespace HIKARI {
             color_);
         intensity_ = in.value("intensity", intensity_);
         range_ = in.value("range", range_);
+        // 旧シーンを読み直した際も、新規作成用の既定値で照度を変えない。
+        distanceFalloff_ = RENDER3D::LIGHTING::ParseLocalLightFalloff(
+            in.value("distanceFalloff", std::string("LegacyRange")));
         innerConeAngleDegrees_ = in.value(
             "innerConeAngleDegrees",
             innerConeAngleDegrees_);
@@ -91,6 +96,7 @@ namespace HIKARI {
             previousInnerConeAngle != innerConeAngleDegrees_ ||
             previousOuterConeAngle != outerConeAngleDegrees_ ||
             previousAngularFalloff != angularFalloff_ ||
+            previousDistanceFalloff != distanceFalloff_ ||
             previousPriority != priority_) {
             BumpStateRevision();
         }
@@ -174,6 +180,15 @@ namespace HIKARI {
         angularFalloff_ = angularFalloff;
         ClampSettings();
         if (previous != angularFalloff_) {
+            BumpStateRevision();
+        }
+    }
+
+    void LightComponent::SetDistanceFalloff(
+        RENDER3D::LIGHTING::LocalLightFalloff value) noexcept {
+        const auto canonical = RENDER3D::LIGHTING::CanonicalLocalLightFalloff(value);
+        if (distanceFalloff_ != canonical) {
+            distanceFalloff_ = canonical;
             BumpStateRevision();
         }
     }

@@ -103,6 +103,7 @@ namespace HIKARI::LIGHTING_AUTHORING {
                 lhs.outerConeAngleDegrees ==
                     rhs.outerConeAngleDegrees &&
                 lhs.angularFalloff == rhs.angularFalloff &&
+                lhs.distanceFalloff == rhs.distanceFalloff &&
                 lhs.priority == rhs.priority;
         }
 
@@ -183,6 +184,7 @@ namespace HIKARI::LIGHTING_AUTHORING {
             provider.color = component->GetColor();
             provider.intensity = component->GetIntensity();
             provider.range = component->GetRange();
+            provider.distanceFalloff = component->GetDistanceFalloff();
             provider.innerConeAngleDegrees =
                 component->GetInnerConeAngleDegrees();
             provider.outerConeAngleDegrees =
@@ -221,6 +223,7 @@ namespace HIKARI::LIGHTING_AUTHORING {
             provider.color = authored.color;
             provider.intensity = authored.intensity;
             provider.range = authored.range;
+            provider.distanceFalloff = authored.distanceFalloff;
             provider.innerConeAngleDegrees =
                 authored.innerConeAngleDegrees;
             provider.outerConeAngleDegrees =

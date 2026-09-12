@@ -3,6 +3,7 @@
 
 static const uint HIKARI_LOCAL_LIGHT_TYPE_POINT = 0u;
 static const uint HIKARI_LOCAL_LIGHT_TYPE_SPOT = 1u;
+static const uint HIKARI_LOCAL_LIGHT_FALLOFF_INVERSE_SQUARE = 1u;
 
 // Keep this layout synchronized with
 // RENDER3D::LIGHTING::LocalLightGpuData.
@@ -24,8 +25,20 @@ struct HikariLocalLightSample
 
 float HikariLocalLightRangeAttenuation(
     float distanceToLight,
-    float range)
+    float range,
+    uint distanceFalloff)
 {
+    if (range <= 0.0f || distanceToLight >= range)
+        return 0.0f;
+    // 距離の単位はワールド単位。近距離 0.01 以下の特異点だけを制限する。
+    // 範囲端を滑らかに切るため、範囲を変えても近傍の照度はほぼ一定。
+    if (distanceFalloff == HIKARI_LOCAL_LIGHT_FALLOFF_INVERSE_SQUARE)
+    {
+        const float normalizedDistance = distanceToLight / range;
+        const float squaredDistance = normalizedDistance * normalizedDistance;
+        const float window = saturate(1.0f - squaredDistance * squaredDistance);
+        return window * window / max(distanceToLight * distanceToLight, 1e-4f);
+    }
     float attenuation =
         saturate(1.0f - distanceToLight / max(range, 0.001f));
     return attenuation * attenuation;
@@ -62,7 +75,8 @@ bool HikariResolveLocalLightSample(
     const float distanceToLight = length(toLight);
     float attenuation = HikariLocalLightRangeAttenuation(
         distanceToLight,
-        light.positionRange.w);
+        light.positionRange.w,
+        (uint)round(light.outerCosFalloffTypeFlags.w));
 
     sample.directionToLight =
         distanceToLight > 1e-5f

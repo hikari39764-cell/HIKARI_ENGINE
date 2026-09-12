@@ -16,6 +16,7 @@ namespace HIKARI::RENDER3D::LIGHTING {
         MATH::Vec4 positionRange{};
         MATH::Vec4 colorIntensity{};
         MATH::Vec4 directionInnerCos{};
+        // w: LocalLightFalloff の数値。構造体サイズは 64 bytes を維持する。
         MATH::Vec4 outerCosFalloffTypeFlags{};
     };
 

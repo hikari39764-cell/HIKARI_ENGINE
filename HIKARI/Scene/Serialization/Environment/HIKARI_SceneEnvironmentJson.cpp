@@ -433,6 +433,7 @@ namespace HIKARI::SCENE::SERIALIZATION {
             out["pointLights"].push_back({ { "enabled", pointLight.enabled },
                                            { "position", JsonMath::ToJsonArray(pointLight.position) },
                                            { "range", pointLight.range },
+                { "distanceFalloff", RENDER3D::LIGHTING::ToString(pointLight.distanceFalloff) },
                                            { "color", JsonMath::ToJsonArray(pointLight.color) },
                                            { "intensity", pointLight.intensity },
                                            { "priority", pointLight.priority } });
@@ -444,6 +445,7 @@ namespace HIKARI::SCENE::SERIALIZATION {
                 { "enabled", spotLight.enabled },
                 { "position", JsonMath::ToJsonArray(spotLight.position) },
                 { "range", spotLight.range },
+                { "distanceFalloff", RENDER3D::LIGHTING::ToString(spotLight.distanceFalloff) },
                 { "direction", JsonMath::ToJsonArray(spotLight.direction) },
                 { "innerConeAngleDegrees", spotLight.innerConeAngleDegrees },
                 { "outerConeAngleDegrees", spotLight.outerConeAngleDegrees },
@@ -825,6 +827,8 @@ namespace HIKARI::SCENE::SERIALIZATION {
                 pointLight.enabled = pointNode.value("enabled", pointLight.enabled);
                 pointLight.position = JSONREAD::Vec3Or(pointNode.value("position", nlohmann::json::array()), pointLight.position);
                 pointLight.range = pointNode.value("range", pointLight.range);
+                pointLight.distanceFalloff = RENDER3D::LIGHTING::ParseLocalLightFalloff(
+                    pointNode.value("distanceFalloff", std::string("LegacyRange")));
                 pointLight.color = JSONREAD::Vec3Or(pointNode.value("color", nlohmann::json::array()), pointLight.color);
                 pointLight.intensity = pointNode.value("intensity", pointLight.intensity);
                 pointLight.priority = pointNode.value("priority", pointLight.priority);
@@ -843,6 +847,8 @@ namespace HIKARI::SCENE::SERIALIZATION {
                     spotLight.position);
                 spotLight.range =
                     spotNode.value("range", spotLight.range);
+                spotLight.distanceFalloff = RENDER3D::LIGHTING::ParseLocalLightFalloff(
+                    spotNode.value("distanceFalloff", std::string("LegacyRange")));
                 spotLight.direction = JSONREAD::Vec3Or(
                     spotNode.value("direction", nlohmann::json::array()),
                     spotLight.direction);

@@ -600,6 +600,8 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
             light.type = static_cast<uint32_t>(source.type);
             light.position = source.position;
             light.range = source.range;
+            light.distanceFalloff =
+                RENDER3D::LIGHTING::CanonicalLocalLightFalloff(source.distanceFalloff);
             light.direction =
                 MATH::Normalize(source.direction);
             light.radiance =

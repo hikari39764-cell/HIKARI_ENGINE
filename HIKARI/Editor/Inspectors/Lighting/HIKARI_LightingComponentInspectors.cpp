@@ -57,48 +57,61 @@ namespace HIKARI {
         const MATH::Vec3 previousColor = color_;
         const float previousIntensity = intensity_;
         const float previousRange = range_;
+        const auto previousDistanceFalloff = distanceFalloff_;
         const float previousInnerConeAngle = innerConeAngleDegrees_;
         const float previousOuterConeAngle = outerConeAngleDegrees_;
         const float previousAngularFalloff = angularFalloff_;
         const int previousPriority = priority_;
 
         builder.Text("Light");
-        builder.Bool("Enabled", enabled_);
+        builder.Bool(AuthoringFieldDescriptor{ "enabled", "Enabled" }, enabled_);
 
         int lightType = static_cast<int>(type_);
-        static constexpr std::array<const char*, 3> typeChoices{
-            "Directional",
-            "Point",
-            "Spot"
+        static constexpr std::array<AuthoringChoice, 3> typeChoices{
+            AuthoringChoice{ "Directional", "Directional" },
+            AuthoringChoice{ "Point", "Point" },
+            AuthoringChoice{ "Spot", "Spot" }
         };
-        if (builder.Choice("Type", lightType, typeChoices)) {
+        if (builder.Choice(AuthoringFieldDescriptor{ "type", "Type" }, lightType, typeChoices)) {
             type_ = static_cast<LightComponentType>(
                 std::clamp(lightType, 0, 2));
         }
 
-        builder.Color3("Color", color_.x, color_.y, color_.z);
-        builder.FloatRange("Intensity", intensity_, 0.0f, 100.0f, 0.05f);
-        builder.Int("Priority", priority_);
+        builder.Color3(AuthoringFieldDescriptor{ "color", "Color" }, color_.x, color_.y, color_.z);
+        builder.FloatRange(AuthoringFieldDescriptor{ "intensity", "Intensity" }, intensity_, 0.0f, 100.0f, 0.05f);
+        builder.Int(AuthoringFieldDescriptor{ "priority", "Priority" }, priority_);
 
         if (type_ != LightComponentType::Directional) {
-            builder.FloatRange("Range", range_, 0.05f, 1000.0f, 0.1f);
+            builder.FloatRange(AuthoringFieldDescriptor{ "range", "Range" }, range_, 0.05f, 1000.0f, 0.1f);
+            int falloff = static_cast<int>(distanceFalloff_);
+            static constexpr std::array<AuthoringChoice, 2> falloffChoices{
+                AuthoringChoice{ "LegacyRange", "Legacy Range" },
+                AuthoringChoice{ "InverseSquare", "Inverse Square" }
+            };
+            if (builder.Choice(AuthoringFieldDescriptor{
+                    "distanceFalloff", "Distance Falloff",
+                    "Inverse Square uses intensity per squared world distance with a smooth range cutoff. Legacy Range preserves older scenes."
+                }, falloff, falloffChoices)) {
+                distanceFalloff_ = RENDER3D::LIGHTING::CanonicalLocalLightFalloff(
+                    static_cast<RENDER3D::LIGHTING::LocalLightFalloff>(falloff));
+            }
         }
         if (type_ == LightComponentType::Spot) {
             builder.Text("Spot Cone (+Z forward)");
             builder.FloatRange(
-                "Inner Cone Angle",
+                AuthoringFieldDescriptor{ "innerConeAngleDegrees", "Inner Cone Angle" },
                 innerConeAngleDegrees_,
                 0.1f,
                 89.0f,
                 0.1f);
             builder.FloatRange(
-                "Outer Cone Angle",
+                AuthoringFieldDescriptor{ "outerConeAngleDegrees", "Outer Cone Angle" },
                 outerConeAngleDegrees_,
                 0.1f,
                 89.0f,
                 0.1f);
             builder.FloatRange(
-                "Angular Falloff",
+                AuthoringFieldDescriptor{ "angularFalloff", "Angular Falloff" },
                 angularFalloff_,
                 0.05f,
                 8.0f,
@@ -114,6 +127,7 @@ namespace HIKARI {
             previousInnerConeAngle != innerConeAngleDegrees_ ||
             previousOuterConeAngle != outerConeAngleDegrees_ ||
             previousAngularFalloff != angularFalloff_ ||
+            previousDistanceFalloff != distanceFalloff_ ||
             previousPriority != priority_) {
             BumpStateRevision();
         }

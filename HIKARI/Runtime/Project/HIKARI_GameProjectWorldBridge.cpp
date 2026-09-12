@@ -167,6 +167,8 @@ namespace HIKARI {
             outState.outerConeAngleDegrees =
                 light->GetOuterConeAngleDegrees();
             outState.angularFalloff = light->GetAngularFalloff();
+            outState.distanceFalloff = static_cast<GameProjectLightFalloff>(
+                light->GetDistanceFalloff());
             outState.priority = light->GetPriority();
             outState.stateRevision = light->GetStateRevision();
             return true;
@@ -243,12 +245,16 @@ namespace HIKARI {
              (!std::isfinite(patch.innerConeAngleDegrees) ||
               !std::isfinite(patch.outerConeAngleDegrees))) ||
             (Selected(GameProjectLightPatchField::AngularFalloff) &&
-             !std::isfinite(patch.angularFalloff))) {
+             !std::isfinite(patch.angularFalloff)) ||
+            (Selected(GameProjectLightPatchField::DistanceFalloff) &&
+             patch.distanceFalloff != GameProjectLightFalloff::LegacyRange &&
+             patch.distanceFalloff != GameProjectLightFalloff::InverseSquare)) {
             return PROJECT::INTERNAL::MakeWorldResult(
                 GameProjectWorldResultCode::InvalidRequest,
                 handle_);
         }
-        if ((Selected(GameProjectLightPatchField::Range) &&
+        if (((Selected(GameProjectLightPatchField::Range) ||
+              Selected(GameProjectLightPatchField::DistanceFalloff)) &&
              light->GetLightType() == LightComponentType::Directional) ||
             ((Selected(GameProjectLightPatchField::SpotCone) ||
               Selected(GameProjectLightPatchField::AngularFalloff)) &&
@@ -302,6 +308,10 @@ namespace HIKARI {
             }
             if (Selected(GameProjectLightPatchField::AngularFalloff)) {
                 light->SetAngularFalloff(angularFalloff);
+            }
+            if (Selected(GameProjectLightPatchField::DistanceFalloff)) {
+                light->SetDistanceFalloff(
+                    static_cast<RENDER3D::LIGHTING::LocalLightFalloff>(patch.distanceFalloff));
             }
             return PROJECT::INTERNAL::MakeWorldResult(
                 GameProjectWorldResultCode::Success,

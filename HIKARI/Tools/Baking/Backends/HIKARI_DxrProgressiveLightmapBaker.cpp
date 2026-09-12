@@ -239,6 +239,7 @@ namespace HIKARI::TOOLS::BAKING {
             };
             light.type = source.type;
             light.angularFalloff = source.angularFalloff;
+            light.distanceFalloff = static_cast<uint32_t>(source.distanceFalloff);
             lights.push_back(light);
         }
         if (lights.empty()) {

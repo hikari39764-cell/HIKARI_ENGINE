@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Render3D/Lighting/HIKARI_LocalLightSemantics.h"
+
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -62,6 +64,7 @@ namespace HIKARI::RENDER3D::LIGHTING::TRANSPORT {
         MATH::Vec3 radiance{ 1.0f, 1.0f, 1.0f };
         float innerConeCos = -1.0f;
         float angularFalloff = 1.0f;
+        LocalLightFalloff distanceFalloff = LocalLightFalloff::LegacyRange;
     };
 
     struct LightingTransportEnvironment {

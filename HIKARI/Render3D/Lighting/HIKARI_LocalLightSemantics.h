@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cstdint>
+#include <string_view>
+
 #include "Render3D/HIKARI_Math3D.h"
 
 namespace HIKARI {
@@ -8,6 +11,29 @@ namespace HIKARI {
 }
 
 namespace HIKARI::RENDER3D::LIGHTING {
+
+    // GPU と保存データで共有する値。既存シーンの未指定値は LegacyRange。
+    enum class LocalLightFalloff : uint32_t {
+        LegacyRange = 0u,
+        InverseSquare = 1u,
+    };
+
+    constexpr LocalLightFalloff CanonicalLocalLightFalloff(
+        LocalLightFalloff value) noexcept {
+        return value == LocalLightFalloff::InverseSquare
+            ? value : LocalLightFalloff::LegacyRange;
+    }
+
+    constexpr const char* ToString(LocalLightFalloff value) noexcept {
+        return value == LocalLightFalloff::InverseSquare
+            ? "InverseSquare" : "LegacyRange";
+    }
+
+    constexpr LocalLightFalloff ParseLocalLightFalloff(
+        std::string_view value) noexcept {
+        return value == "InverseSquare"
+            ? LocalLightFalloff::InverseSquare : LocalLightFalloff::LegacyRange;
+    }
 
     struct SceneLightProvider;
 

@@ -25,7 +25,8 @@ struct TransportLight
     float4 radianceInnerCone;
     uint type;
     float angularFalloff;
-    uint2 padding;
+    uint distanceFalloff;
+    uint padding;
 };
 
 cbuffer BakeConstants : register(b0)
@@ -223,9 +224,9 @@ bool EvaluateDirect(
                 continue;
             }
             directionToLight = offset / distanceToLight;
-            // 既存シーンの強度は realtime と同じ range 正規化の単位を使う。
+            // 保存された衰減モードを realtime と共通の契約で評価する。
             attenuation = HikariLocalLightRangeAttenuation(
-                distanceToLight, light.positionRange.w);
+                distanceToLight, light.positionRange.w, light.distanceFalloff);
             if (light.type == 2u)
             {
                 float3 spotDirection;

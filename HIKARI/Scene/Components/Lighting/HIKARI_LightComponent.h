@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Render3D/Lighting/HIKARI_LocalLightSemantics.h"
+
 #include <cstdint>
 #include <string_view>
 
@@ -38,6 +40,9 @@ namespace HIKARI {
         float GetAngularFalloff() const noexcept {
             return angularFalloff_;
         }
+        RENDER3D::LIGHTING::LocalLightFalloff GetDistanceFalloff() const noexcept {
+            return distanceFalloff_;
+        }
         int GetPriority() const noexcept { return priority_; }
         uint64_t GetStateRevision() const noexcept {
             return stateRevision_;
@@ -52,6 +57,7 @@ namespace HIKARI {
             float innerAngleDegrees,
             float outerAngleDegrees) noexcept;
         void SetAngularFalloff(float angularFalloff) noexcept;
+        void SetDistanceFalloff(RENDER3D::LIGHTING::LocalLightFalloff value) noexcept;
         void SetPriority(int priority) noexcept;
 
     private:
@@ -66,6 +72,8 @@ namespace HIKARI {
         float innerConeAngleDegrees_ = 25.0f;
         float outerConeAngleDegrees_ = 35.0f;
         float angularFalloff_ = 1.0f;
+        RENDER3D::LIGHTING::LocalLightFalloff distanceFalloff_ =
+            RENDER3D::LIGHTING::LocalLightFalloff::InverseSquare;
         int priority_ = 0;
         uint64_t stateRevision_ = 1u;
     };

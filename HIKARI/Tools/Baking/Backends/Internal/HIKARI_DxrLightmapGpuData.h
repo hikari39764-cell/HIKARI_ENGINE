@@ -22,7 +22,8 @@ namespace HIKARI::TOOLS::BAKING {
         MATH::Vec4 radianceInnerCone{};
         uint32_t type = 0u;
         float angularFalloff = 1.0f;
-        uint32_t padding[2]{};
+        uint32_t distanceFalloff = 0u;
+        uint32_t padding = 0u;
     };
 
     struct DxrProgressiveLightmapBaker::DispatchConstants {

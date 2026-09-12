@@ -157,7 +157,8 @@ bool EqualDirectionalShadowSettings(const DirectionalShadowSettings &lhs,
 bool EqualPointLight(const PointLight &lhs, const PointLight &rhs) {
   return lhs.enabled == rhs.enabled && EqualVec3(lhs.position, rhs.position) &&
          lhs.range == rhs.range && EqualVec3(lhs.color, rhs.color) &&
-         lhs.intensity == rhs.intensity && lhs.priority == rhs.priority;
+         lhs.intensity == rhs.intensity && lhs.priority == rhs.priority &&
+         lhs.distanceFalloff == rhs.distanceFalloff;
 }
 
 bool EqualSpotLight(const SpotLight &lhs, const SpotLight &rhs) {
@@ -167,7 +168,8 @@ bool EqualSpotLight(const SpotLight &lhs, const SpotLight &rhs) {
          lhs.outerConeAngleDegrees == rhs.outerConeAngleDegrees &&
          lhs.angularFalloff == rhs.angularFalloff &&
          EqualVec3(lhs.color, rhs.color) &&
-         lhs.intensity == rhs.intensity && lhs.priority == rhs.priority;
+         lhs.intensity == rhs.intensity && lhs.priority == rhs.priority &&
+         lhs.distanceFalloff == rhs.distanceFalloff;
 }
 
 bool EqualPostSettings(const ScenePostSettings &lhs,

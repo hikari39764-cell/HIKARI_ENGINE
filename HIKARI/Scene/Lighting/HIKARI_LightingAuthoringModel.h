@@ -34,6 +34,8 @@ namespace HIKARI::LIGHTING_AUTHORING {
         float innerConeAngleDegrees = 25.0f;
         float outerConeAngleDegrees = 35.0f;
         float angularFalloff = 1.0f;
+        RENDER3D::LIGHTING::LocalLightFalloff distanceFalloff =
+            RENDER3D::LIGHTING::LocalLightFalloff::InverseSquare;
         int priority = 0;
     };
 

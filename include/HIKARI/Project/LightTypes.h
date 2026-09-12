@@ -28,6 +28,12 @@ namespace HIKARI {
         Range = 1u << 3u,
         SpotCone = 1u << 4u,
         AngularFalloff = 1u << 5u,
+        DistanceFalloff = 1u << 6u,
+    };
+
+    enum class GameProjectLightFalloff : uint32_t {
+        LegacyRange = 0u,
+        InverseSquare = 1u,
     };
 
     constexpr GameProjectLightPatchField operator|(
@@ -50,7 +56,8 @@ namespace HIKARI {
         GameProjectLightPatchFields(GameProjectLightPatchField::Range) |
         GameProjectLightPatchFields(GameProjectLightPatchField::SpotCone) |
         GameProjectLightPatchFields(
-            GameProjectLightPatchField::AngularFalloff);
+            GameProjectLightPatchField::AngularFalloff) |
+        GameProjectLightPatchFields(GameProjectLightPatchField::DistanceFalloff);
 
     // Runtime snapshot. The values belong to the World instance and are not
     // persisted back to the Scene document.
@@ -67,7 +74,8 @@ namespace HIKARI {
         float outerConeAngleDegrees = 35.0f;
         float angularFalloff = 1.0f;
         int32_t priority = 0;
-        uint32_t reserved1 = 0u;
+        // SDK 2.26 uses the previously reserved word; all v1 offsets are stable.
+        GameProjectLightFalloff distanceFalloff = GameProjectLightFalloff::LegacyRange;
         uint64_t stateRevision = 0u;
     };
 
@@ -84,7 +92,10 @@ namespace HIKARI {
         float innerConeAngleDegrees = 25.0f;
         float outerConeAngleDegrees = 35.0f;
         float angularFalloff = 1.0f;
-        uint32_t reserved1[4] = { 0u, 0u, 0u, 0u };
+        // Read only when DistanceFalloff is selected; applies to Point/Spot.
+        // Older hosts reject that field mask without applying any part of it.
+        GameProjectLightFalloff distanceFalloff = GameProjectLightFalloff::LegacyRange;
+        uint32_t reserved1[3] = { 0u, 0u, 0u };
     };
 
     static_assert(std::is_standard_layout_v<GameProjectLightState>);
@@ -93,10 +104,12 @@ namespace HIKARI {
         kGameProjectLightStateV1Size);
     static_assert(offsetof(GameProjectLightState, color) == 16u);
     static_assert(offsetof(GameProjectLightState, stateRevision) == 56u);
+    static_assert(offsetof(GameProjectLightState, distanceFalloff) == 52u);
     static_assert(std::is_standard_layout_v<GameProjectLightPatch>);
     static_assert(std::is_trivially_copyable_v<GameProjectLightPatch>);
     static_assert(sizeof(GameProjectLightPatch) ==
         kGameProjectLightPatchV1Size);
     static_assert(offsetof(GameProjectLightPatch, color) == 16u);
+    static_assert(offsetof(GameProjectLightPatch, distanceFalloff) == 48u);
 
 } // namespace HIKARI

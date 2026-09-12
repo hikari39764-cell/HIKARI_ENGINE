@@ -103,6 +103,8 @@ namespace HIKARI::LIGHTING_AUTHORING {
                 ForwardFromEulerDegrees(
                     light.rotationEulerDeg);
             light.type = ReadLightType(properties);
+            light.distanceFalloff = RENDER3D::LIGHTING::ParseLocalLightFalloff(
+                properties.value("distanceFalloff", std::string("LegacyRange")));
             light.enabled =
                 object.enabled &&
                 properties.value("enabled", true);
@@ -236,6 +238,7 @@ namespace HIKARI::LIGHTING_AUTHORING {
                 },
                 { "intensity", light.intensity },
                 { "range", light.range },
+                { "distanceFalloff", RENDER3D::LIGHTING::ToString(light.distanceFalloff) },
                 {
                     "innerConeAngleDegrees",
                     light.innerConeAngleDegrees
@@ -302,6 +305,7 @@ namespace HIKARI::LIGHTING_AUTHORING {
                 point.color = legacy.color;
                 point.intensity = legacy.intensity;
                 point.range = legacy.range;
+                point.distanceFalloff = legacy.distanceFalloff;
                 point.priority = legacy.priority;
                 (void)AddLight(document, point);
             }
@@ -325,6 +329,7 @@ namespace HIKARI::LIGHTING_AUTHORING {
                 spot.color = legacy.color;
                 spot.intensity = legacy.intensity;
                 spot.range = legacy.range;
+                spot.distanceFalloff = legacy.distanceFalloff;
                 spot.innerConeAngleDegrees =
                     legacy.innerConeAngleDegrees;
                 spot.outerConeAngleDegrees =
