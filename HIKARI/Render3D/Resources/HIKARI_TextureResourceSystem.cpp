@@ -279,6 +279,9 @@ namespace HIKARI::RENDER3D {
         stats.fallbackLoads = backendStats.fallbackLoads;
         stats.failed = backendStats.failed;
         stats.uploadedBytes = backendStats.uploadedBytes;
+        stats.submissions = backendStats.submissions;
+        stats.peakPreparedBytes = backendStats.peakPreparedBytes;
+        stats.peakUploadBytes = backendStats.peakUploadBytes;
 
         const size_t count = (std::min)(requests.size(), backendResults.size());
         for (size_t i = 0; i < count; ++i) {

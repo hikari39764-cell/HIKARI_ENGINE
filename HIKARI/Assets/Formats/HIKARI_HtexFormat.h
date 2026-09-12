@@ -82,9 +82,11 @@ namespace HIKARI {
         HtexFileInfo& outInfo,
         std::string& outMessage);
 
+    // payload allocation 前に予算を検査する。失敗時は outTexture を変更しない。
     bool ReadHtexFile(
         const std::filesystem::path& path,
         HtexTexture& outTexture,
-        std::string& outMessage);
+        std::string& outMessage,
+        uint64_t maxPayloadBytes = 512ull * 1024 * 1024);
 
 } // namespace HIKARI

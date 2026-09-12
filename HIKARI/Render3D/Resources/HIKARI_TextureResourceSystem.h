@@ -44,6 +44,9 @@ namespace HIKARI::RENDER3D {
         uint32_t failed = 0;
         uint32_t registered = 0;
         uint64_t uploadedBytes = 0;
+        uint32_t submissions = 0;
+        uint64_t peakPreparedBytes = 0;
+        uint64_t peakUploadBytes = 0;
     };
 
     ID3D12DescriptorHeap* GetTextureResourceSrvHeap();

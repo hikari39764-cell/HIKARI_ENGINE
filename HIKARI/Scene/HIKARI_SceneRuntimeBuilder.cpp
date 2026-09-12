@@ -200,7 +200,10 @@ namespace HIKARI {
                     " uploaded=" + std::to_string(textureStats.uploaded) +
                     " registered=" + std::to_string(textureStats.registered) +
                     " failed=" + std::to_string(textureStats.failed) +
-                    " uploadBytes=" + std::to_string(textureStats.uploadedBytes));
+                    " uploadBytes=" + std::to_string(textureStats.uploadedBytes) +
+                    " submissions=" + std::to_string(textureStats.submissions) +
+                    " peakPreparedBytes=" + std::to_string(textureStats.peakPreparedBytes) +
+                    " peakUploadBytes=" + std::to_string(textureStats.peakUploadBytes));
             }
 
             uint32_t clusterLoaded = 0;

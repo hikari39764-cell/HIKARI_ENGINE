@@ -48,6 +48,17 @@ namespace HIKARI {
             uint32_t fallbackLoads = 0;
             uint32_t failed = 0;
             uint64_t uploadedBytes = 0;
+            uint32_t submissions = 0;
+            uint64_t peakPreparedBytes = 0;
+            uint64_t peakUploadBytes = 0;
+        };
+
+        struct TextureBatchLoadLimits {
+            uint32_t maxTexturesPerBatch = 32;
+            uint64_t maxPreparedBytes = 64ull * 1024 * 1024;
+            uint64_t maxUploadBytes = 64ull * 1024 * 1024;
+            // batch 予算を超える単独 texture は、この上限内で専用 batch を使う。
+            uint64_t maxSingleTextureBytes = 512ull * 1024 * 1024;
         };
 
         class DxTextureManager {
@@ -64,7 +75,8 @@ namespace HIKARI {
                 TextureColorSpace colorSpace);
             static std::vector<TextureLoadResult> LoadTexturesWithColorSpaceBatch(
                 const std::vector<TextureLoadRequest>& requests,
-                TextureBatchLoadStats* outStats = nullptr);
+                TextureBatchLoadStats* outStats = nullptr,
+                TextureBatchLoadLimits limits = {});
             static int LoadTextureSrgb(const std::string& name, const std::string& path);
             static int LoadTextureLinear(const std::string& name, const std::string& path);
             static int LoadCubemap(const std::string& name, const std::string& path, TextureColorSpace colorSpace = TextureColorSpace::Linear);
@@ -104,6 +116,9 @@ namespace HIKARI {
             static DXGI_FORMAT GetTextureFormat(int handle);
 
         private:
+            static std::vector<TextureLoadResult> LoadTextureBatch(
+                const std::vector<TextureLoadRequest>& requests, TextureBatchLoadStats* outStats,
+                uint64_t preparedBudget, uint64_t uploadBudget);
             static void EnsureInit();
             static int CreateTextureFromFile(const std::string& path, TextureColorSpace colorSpace = TextureColorSpace::Auto);
             static int CreateDdsTextureFromFile(const std::string& path, TextureColorSpace colorSpace);

@@ -7,6 +7,7 @@
 #include <cctype>
 #include <cstdio>
 #include <iomanip>
+#include <iterator>
 #include <sstream>
 #include <DirectXTex.h>
 #include <d3dx12.h>
@@ -458,7 +459,73 @@ namespace HIKARI {
 
         std::vector<TextureLoadResult> DxTextureManager::LoadTexturesWithColorSpaceBatch(
             const std::vector<TextureLoadRequest>& requests,
-            TextureBatchLoadStats* outStats)
+            TextureBatchLoadStats* outStats, TextureBatchLoadLimits limits)
+        {
+            EnsureInit();
+            constexpr uint64_t maximumBytes = 512ull * 1024 * 1024;
+            limits.maxSingleTextureBytes = std::clamp(limits.maxSingleTextureBytes, uint64_t{1}, maximumBytes);
+            limits.maxPreparedBytes = std::clamp(limits.maxPreparedBytes, uint64_t{1}, limits.maxSingleTextureBytes);
+            limits.maxUploadBytes = std::clamp(limits.maxUploadBytes, uint64_t{1}, limits.maxSingleTextureBytes);
+            limits.maxTexturesPerBatch = std::clamp(limits.maxTexturesPerBatch, 1u, 256u);
+            TextureBatchLoadStats total{};
+            std::vector<TextureLoadResult> results;
+            results.reserve(requests.size());
+            std::vector<TextureLoadRequest> batch;
+            batch.reserve(limits.maxTexturesPerBatch);
+            uint64_t preparedBytes = 0, uploadBytes = 0;
+            const auto flush = [&] {
+                if (batch.empty()) return;
+                TextureBatchLoadStats stats;
+                auto loaded = LoadTextureBatch(batch, &stats,
+                    (std::max)(limits.maxPreparedBytes, preparedBytes),
+                    (std::max)(limits.maxUploadBytes, uploadBytes));
+                results.insert(results.end(), std::make_move_iterator(loaded.begin()), std::make_move_iterator(loaded.end()));
+                total.requested += stats.requested; total.cacheHits += stats.cacheHits;
+                total.uploaded += stats.uploaded; total.fallbackLoads += stats.fallbackLoads;
+                total.failed += stats.failed; total.uploadedBytes += stats.uploadedBytes;
+                total.submissions += stats.submissions;
+                total.peakPreparedBytes = (std::max)(total.peakPreparedBytes, stats.peakPreparedBytes);
+                total.peakUploadBytes = (std::max)(total.peakUploadBytes, stats.peakUploadBytes);
+                batch.clear(); preparedBytes = uploadBytes = 0;
+            };
+            for (const auto& request : requests) {
+                uint64_t payload = 0, footprint = 0;
+                if (context_.device && ASSETS::SEMANTICS::ClassifyCookedAssetFormat(request.path) == CookedAssetFormat::HTEX &&
+                    FindLoadedTextureWithColorSpace(request.name, request.path, request.colorSpace) < 0) {
+                    HtexFileInfo info;
+                    std::string error;
+                    if (InspectHtexFile(TEXT::PathFromUtf8(request.path), info, error)) {
+                        payload = info.payloadSize;
+                        D3D12_RESOURCE_DESC desc{};
+                        desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+                        desc.Width = info.width; desc.Height = info.height;
+                        desc.DepthOrArraySize = static_cast<UINT16>(info.arraySize);
+                        desc.MipLevels = static_cast<UINT16>(info.mipLevels);
+                        desc.Format = info.format; desc.SampleDesc.Count = 1;
+                        context_.device->GetCopyableFootprints(&desc, 0,
+                            static_cast<UINT>(info.subresources.size()), 0, nullptr, nullptr, nullptr, &footprint);
+                    }
+                }
+                if (payload > limits.maxSingleTextureBytes || footprint > limits.maxSingleTextureBytes) {
+                    flush();
+                    results.push_back({request.name, request.path, request.colorSpace});
+                    ++total.requested; ++total.failed;
+                    HIKARI_LOG_ERROR("[DxTextureManager][HTEXBatch] single texture exceeds load budget: " + request.path);
+                    continue;
+                }
+                if (!batch.empty() && (batch.size() >= limits.maxTexturesPerBatch ||
+                    preparedBytes + payload > limits.maxPreparedBytes || uploadBytes + footprint > limits.maxUploadBytes)) flush();
+                batch.push_back(request);
+                preparedBytes += payload; uploadBytes += footprint;
+            }
+            flush();
+            if (outStats) *outStats = total;
+            return results;
+        }
+
+        std::vector<TextureLoadResult> DxTextureManager::LoadTextureBatch(
+            const std::vector<TextureLoadRequest>& requests, TextureBatchLoadStats* outStats,
+            uint64_t preparedBudget, uint64_t uploadBudget)
         {
             EnsureInit();
 
@@ -510,7 +577,7 @@ namespace HIKARI {
                     result.colorSpace);
 
                 const auto cached = nameToHandle_.find(cacheKey);
-                if (cached != nameToHandle_.end()) {
+                if (cached != nameToHandle_.end() && IsTextureHandleValid(cached->second)) {
                     result.handle = cached->second;
                     result.cacheHit = true;
                     result.loaded = true;
@@ -568,13 +635,17 @@ namespace HIKARI {
                 return results;
             }
 
+            uint64_t preparedBytes = 0, uploadBytes = 0;
             for (PendingHtexLoad& load : pendingHtexLoads) {
                 std::string htexMessage{};
-                if (!ReadHtexFile(load.request.path, load.htex, htexMessage)) {
+                if (!ReadHtexFile(TEXT::PathFromUtf8(load.request.path), load.htex, htexMessage,
+                    preparedBudget - preparedBytes)) {
                     HIKARI_LOG_ERROR(htexMessage);
                     failResults(load.resultIndices);
                     continue;
                 }
+                for (const auto& subresource : load.htex.subresources) preparedBytes += subresource.data.size();
+                stats.peakPreparedBytes = preparedBytes;
 
                 if (load.htex.width == 0 ||
                     load.htex.height == 0 ||
@@ -632,6 +703,11 @@ namespace HIKARI {
                     load.textureResource.Get(),
                     0,
                     static_cast<UINT>(load.subresources.size()));
+                if (load.uploadBytes == 0 || load.uploadBytes > uploadBudget - uploadBytes) {
+                    HIKARI_LOG_ERROR("[DxTextureManager][HTEXBatch] texture upload exceeds batch budget: " + load.request.path);
+                    failResults(load.resultIndices);
+                    continue;
+                }
 
                 auto uploadHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
                 auto uploadDesc = CD3DX12_RESOURCE_DESC::Buffer(load.uploadBytes);
@@ -658,7 +734,8 @@ namespace HIKARI {
                     : load.requestedColorSpace;
                 load.srvFormat = ResolveSrvFormat(load.htex.format, load.effectiveColorSpace);
                 load.readyForUpload = true;
-                stats.uploadedBytes += load.uploadBytes;
+                uploadBytes += load.uploadBytes;
+                stats.peakUploadBytes = uploadBytes;
             }
 
             const bool hasReadyUpload = std::any_of(
@@ -705,7 +782,7 @@ namespace HIKARI {
                     continue;
                 }
 
-                UpdateSubresources(
+                const auto copiedBytes = UpdateSubresources(
                     uploadCmdList_.Get(),
                     load.textureResource.Get(),
                     load.uploadResource.Get(),
@@ -713,6 +790,11 @@ namespace HIKARI {
                     0,
                     static_cast<UINT>(load.subresources.size()),
                     load.subresources.data());
+                if (copiedBytes == 0) {
+                    failResults(load.resultIndices);
+                    load.readyForUpload = false;
+                    continue;
+                }
 
                 auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
                     load.textureResource.Get(),
@@ -737,6 +819,7 @@ namespace HIKARI {
 
             ID3D12CommandList* lists[] = { uploadCmdList_.Get() };
             queue->ExecuteCommandLists(1, lists);
+            ++stats.submissions;
 
             const uint64_t signalValue = uploadFenceValue_++;
             if (!GFX::SignalAndWaitForGpuCompletion(device, queue, uploadFence_.Get(),
@@ -752,6 +835,8 @@ namespace HIKARI {
                 if (!load.readyForUpload) {
                     continue;
                 }
+
+                stats.uploadedBytes += load.uploadBytes;
 
                 const int handle = load.htex.dimension == HtexTextureDimension::TextureCube
                     ? RegisterCubeFromResourceAs(load.textureResource.Get(), load.srvFormat)
@@ -785,7 +870,9 @@ namespace HIKARI {
                     << " uploaded=" << stats.uploaded
                     << " fallbackLoads=" << stats.fallbackLoads
                     << " failed=" << stats.failed
-                    << " uploadBytes=" << stats.uploadedBytes;
+                    << " uploadBytes=" << stats.uploadedBytes
+                    << " peakPreparedBytes=" << stats.peakPreparedBytes
+                    << " peakUploadBytes=" << stats.peakUploadBytes;
                 HIKARI_LOG_INFO(oss.str());
             }
 
@@ -1296,131 +1383,9 @@ namespace HIKARI {
 
         int DxTextureManager::CreateTextureFromHtexFile(const std::string& path, TextureColorSpace colorSpace)
         {
-            auto* device = context_.device;
-            auto* queue = context_.queue;
-            if (!device || !queue || !uploadAllocator_ || !uploadCmdList_ || !uploadFence_ || !uploadFenceEvent_) {
-                HIKARI_LOG_ERROR("[DxTextureManager][HTEX][ERROR] invalid D3D12 context.");
-                return -1;
-            }
-
-            HtexTexture htex{};
-            std::string htexMessage{};
-            if (!ReadHtexFile(path, htex, htexMessage)) {
-                HIKARI_LOG_ERROR(htexMessage);
-                return -1;
-            }
-
-            if (htex.width == 0 || htex.height == 0 || htex.subresources.empty() ||
-                htex.format == DXGI_FORMAT_UNKNOWN || htex.arraySize > 0xffffu ||
-                htex.mipLevels > 0xffffu) {
-                HIKARI_LOG_ERROR("[DxTextureManager][HTEX][ERROR] invalid texture metadata: " + path);
-                return -1;
-            }
-
-            D3D12_RESOURCE_DESC textureDesc{};
-            textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-            textureDesc.Alignment = 0;
-            textureDesc.Width = htex.width;
-            textureDesc.Height = htex.height;
-            textureDesc.DepthOrArraySize = static_cast<UINT16>(htex.arraySize);
-            textureDesc.MipLevels = static_cast<UINT16>(htex.mipLevels);
-            textureDesc.Format = htex.format;
-            textureDesc.SampleDesc.Count = 1;
-            textureDesc.SampleDesc.Quality = 0;
-            textureDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-            textureDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
-
-            auto textureHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-            Microsoft::WRL::ComPtr<ID3D12Resource> texResource;
-            HRESULT hr = device->CreateCommittedResource(
-                &textureHeap,
-                D3D12_HEAP_FLAG_NONE,
-                &textureDesc,
-                D3D12_RESOURCE_STATE_COPY_DEST,
-                nullptr,
-                IID_PPV_ARGS(texResource.GetAddressOf()));
-            if (FAILED(hr) || !texResource) {
-                HIKARI_LOG_ERROR("[DxTextureManager][HTEX][ERROR] CreateCommittedResource failed: " + path);
-                return -1;
-            }
-
-            std::vector<D3D12_SUBRESOURCE_DATA> subresources;
-            subresources.reserve(htex.subresources.size());
-            for (const HtexSubresource& source : htex.subresources) {
-                D3D12_SUBRESOURCE_DATA subresource{};
-                subresource.pData = source.data.data();
-                subresource.RowPitch = static_cast<LONG_PTR>(source.rowPitch);
-                subresource.SlicePitch = static_cast<LONG_PTR>(source.slicePitch);
-                subresources.push_back(subresource);
-            }
-
-            const UINT64 uploadSize = GetRequiredIntermediateSize(
-                texResource.Get(),
-                0,
-                static_cast<UINT>(subresources.size()));
-            auto uploadHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-            auto uploadDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadSize);
-            Microsoft::WRL::ComPtr<ID3D12Resource> uploadResource;
-            hr = device->CreateCommittedResource(
-                &uploadHeap,
-                D3D12_HEAP_FLAG_NONE,
-                &uploadDesc,
-                D3D12_RESOURCE_STATE_GENERIC_READ,
-                nullptr,
-                IID_PPV_ARGS(uploadResource.GetAddressOf()));
-            if (FAILED(hr) || !uploadResource) {
-                HIKARI_LOG_ERROR("[DxTextureManager][HTEX][ERROR] upload buffer creation failed: " + path);
-                return -1;
-            }
-
-            hr = uploadAllocator_->Reset();
-            if (!HIKARI_DX_CHECK(hr, "Texture upload command recording")) return -1;
-            hr = uploadCmdList_->Reset(uploadAllocator_.Get(), nullptr);
-            if (!HIKARI_DX_CHECK(hr, "Texture upload command recording")) return -1;
-
-            UpdateSubresources(
-                uploadCmdList_.Get(),
-                texResource.Get(),
-                uploadResource.Get(),
-                0,
-                0,
-                static_cast<UINT>(subresources.size()),
-                subresources.data());
-            auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-                texResource.Get(),
-                D3D12_RESOURCE_STATE_COPY_DEST,
-                D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-            uploadCmdList_->ResourceBarrier(1, &barrier);
-
-            hr = uploadCmdList_->Close();
-            if (!HIKARI_DX_CHECK(hr, "Texture upload command recording")) return -1;
-            ID3D12CommandList* lists[] = { uploadCmdList_.Get() };
-            queue->ExecuteCommandLists(1, lists);
-
-            const uint64_t signalValue = uploadFenceValue_++;
-            if (!GFX::SignalAndWaitForGpuCompletion(device, queue, uploadFence_.Get(),
-                    signalValue, uploadFenceEvent_, "Texture upload")) return -1;
-
-            const TextureColorSpace embeddedColorSpace = ToRuntimeColorSpace(htex.colorSpace);
-            const TextureColorSpace effectiveColorSpace = colorSpace == TextureColorSpace::Auto
-                ? embeddedColorSpace
-                : colorSpace;
-            const DXGI_FORMAT srvFormat = ResolveSrvFormat(htex.format, effectiveColorSpace);
-
-            const int handle = htex.dimension == HtexTextureDimension::TextureCube
-                ? RegisterCubeFromResourceAs(texResource.Get(), srvFormat)
-                : RegisterFromResourceAs(texResource.Get(), srvFormat);
-            if (handle >= 0) {
-                LogTextureLoad(
-                    htex.dimension == HtexTextureDimension::TextureCube ? "HTEX Cube" : "HTEX 2D",
-                    path,
-                    effectiveColorSpace,
-                    srvFormat,
-                    handle);
-            }
-            return handle;
+            const auto loaded = LoadTexturesWithColorSpaceBatch({TextureLoadRequest{"", path, colorSpace}});
+            return loaded.empty() ? -1 : loaded.front().handle;
         }
-
         int DxTextureManager::CreateCubemapFromFile(const std::string& path, TextureColorSpace colorSpace)
         {
             auto* device = context_.device;

@@ -288,6 +288,12 @@ add_test(NAME HIKARI_AssetDatabaseImportContracts COMMAND "$<TARGET_FILE:HIKARI_
 set_tests_properties(HIKARI_AssetDatabaseImportContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 120)
 
 hikari_add_runtime_contract(
+    HIKARI_TextureUploadContracts
+    "Tools/Tests/HIKARI_TextureUploadContracts.cpp")
+add_test(NAME HIKARI_TextureUploadContracts COMMAND "$<TARGET_FILE:HIKARI_TextureUploadContracts>")
+set_tests_properties(HIKARI_TextureUploadContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 120)
+
+hikari_add_runtime_contract(
     HIKARI_NavigationRuntimeContracts
     "Tools/Tests/HIKARI_NavigationRuntimeContracts.cpp")
 hikari_add_runtime_contract(
@@ -508,6 +514,16 @@ hikari_configure_engine_target(HIKARI_TextureCookContracts)
 hikari_configure_contract_output(HIKARI_TextureCookContracts "RuntimeContracts")
 add_test(NAME HIKARI_TextureCookContracts COMMAND "$<TARGET_FILE:HIKARI_TextureCookContracts>")
 set_tests_properties(HIKARI_TextureCookContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 60)
+
+add_executable(HIKARI_HtexLayoutContracts EXCLUDE_FROM_ALL
+    "Tools/Tests/HIKARI_HtexLayoutContracts.cpp"
+    "HIKARI/Assets/Formats/HIKARI_HtexFormat.cpp")
+target_include_directories(HIKARI_HtexLayoutContracts PRIVATE "${HIKARI_SOURCE_ROOT}/HIKARI")
+target_link_libraries(HIKARI_HtexLayoutContracts PRIVATE HIKARI::DirectXTex)
+hikari_configure_engine_target(HIKARI_HtexLayoutContracts)
+hikari_configure_contract_output(HIKARI_HtexLayoutContracts "RuntimeContracts")
+add_test(NAME HIKARI_HtexLayoutContracts COMMAND "$<TARGET_FILE:HIKARI_HtexLayoutContracts>" "${HIKARI_SOURCE_ROOT}/HIKARI/EngineContent")
+set_tests_properties(HIKARI_HtexLayoutContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
 foreach(runtime_contract IN ITEMS
     HIKARI_GameComponentBindingLifecycleSmoke
     HIKARI_WorldSdkSmoke

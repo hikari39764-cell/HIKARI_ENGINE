@@ -2,8 +2,12 @@
 
 #include <fstream>
 #include <limits>
+#include <algorithm>
+#include <bit>
+#include <DirectXTex.h>
 
 #include "Core/Serialization/Binary/HIKARI_BinaryStream.h"
+#include "Core/Text/HIKARI_UtfPath.h"
 
 namespace HIKARI {
 
@@ -68,6 +72,46 @@ namespace HIKARI {
             return lhs > (std::numeric_limits<uint64_t>::max)() - rhs;
         }
 
+        bool ValidateShape(const HtexFileHeader& header) {
+            const auto format = static_cast<DXGI_FORMAT>(header.format);
+            return header.width > 0 && header.width <= 16384 &&
+                header.height > 0 && header.height <= 16384 && header.depth == 1 &&
+                header.arraySize > 0 && header.arraySize <= 2048 &&
+                header.mipLevels > 0 &&
+                header.mipLevels <= static_cast<uint32_t>(std::bit_width((std::max)(header.width, header.height))) &&
+                header.subresourceCount == header.arraySize * header.mipLevels &&
+                IsSupportedDimension(header.dimension) &&
+                (header.dimension != static_cast<uint32_t>(HtexTextureDimension::TextureCube) ||
+                    (header.width == header.height && header.arraySize % 6 == 0)) &&
+                DirectX::IsValid(format) && !DirectX::IsTypeless(format) &&
+                !DirectX::IsPlanar(format) && !DirectX::IsDepthStencil(format) &&
+                DirectX::BitsPerPixel(format) > 0;
+        }
+
+        bool ValidateSubresources(const HtexFileHeader& header,
+            const std::vector<HtexFileSubresource>& table) {
+            uint64_t previousEnd = header.payloadOffset;
+            const auto format = static_cast<DXGI_FORMAT>(header.format);
+            for (size_t index = 0; index < table.size(); ++index) {
+                const auto& entry = table[index];
+                const auto mip = static_cast<uint32_t>(index % header.mipLevels);
+                const auto width = (std::max)(1u, header.width >> mip);
+                const auto height = (std::max)(1u, header.height >> mip);
+                size_t rowBytes = 0, sliceBytes = 0;
+                const auto rows = DirectX::ComputeScanlines(format, height);
+                if (FAILED(DirectX::ComputePitch(format, width, height, rowBytes, sliceBytes)) ||
+                    rows == 0 || entry.mipLevel != mip || entry.arraySlice != index / header.mipLevels ||
+                    entry.width != width || entry.height != height || entry.depth != 1 ||
+                    entry.rowPitch < rowBytes || entry.rowPitch > UINT64_MAX / rows ||
+                    entry.slicePitch < entry.rowPitch * rows || entry.dataSize < entry.slicePitch ||
+                    entry.dataOffset < previousEnd || AddWouldOverflow(entry.dataOffset, entry.dataSize) ||
+                    entry.dataOffset + entry.dataSize > header.payloadOffset + header.payloadSize ||
+                    !FitsStreamOff(entry.dataOffset) || !FitsSizeT(entry.dataSize)) return false;
+                previousEnd = entry.dataOffset + entry.dataSize;
+            }
+            return true;
+        }
+
         uint32_t ResolveMipLevel(const HtexTexture& texture, size_t index) {
             const uint32_t mipLevels = texture.mipLevels == 0 ? 1u : texture.mipLevels;
             return static_cast<uint32_t>(index % mipLevels);
@@ -86,25 +130,21 @@ namespace HIKARI {
 
             std::ifstream ifs(path, std::ios::binary);
             if (!ifs.is_open()) {
-                outMessage = "[HTEX] failed to open: " + path.generic_string();
+                outMessage = "[HTEX] failed to open: " + TEXT::PathToUtf8(path);
                 return false;
             }
 
             HtexFileHeader header{};
             if (!ReadTrivial(ifs, header)) {
-                outMessage = "[HTEX] failed to read header: " + path.generic_string();
+                outMessage = "[HTEX] failed to read header: " + TEXT::PathToUtf8(path);
                 return false;
             }
 
             if (header.magic != kHtexMagic ||
                 header.version != kHtexVersion ||
                 header.headerSize != sizeof(HtexFileHeader) ||
-                header.subresourceCount == 0 ||
-                header.width == 0 ||
-                header.height == 0 ||
-                header.format == 0 ||
-                !IsSupportedDimension(header.dimension)) {
-                outMessage = "[HTEX] invalid or unsupported v2 file: " + path.generic_string();
+                !ValidateShape(header)) {
+                outMessage = "[HTEX] invalid or unsupported v2 file: " + TEXT::PathToUtf8(path);
                 return false;
             }
 
@@ -115,36 +155,27 @@ namespace HIKARI {
                 header.payloadOffset < header.subresourceTableOffset + tableBytes ||
                 AddWouldOverflow(header.payloadOffset, header.payloadSize) ||
                 !FitsStreamOff(header.subresourceTableOffset)) {
-                outMessage = "[HTEX] invalid v2 table or payload range: " + path.generic_string();
+                outMessage = "[HTEX] invalid v2 table or payload range: " + TEXT::PathToUtf8(path);
                 return false;
             }
 
             std::error_code ec{};
             const uint64_t fileSize = std::filesystem::file_size(path, ec);
             if (ec || header.payloadOffset + header.payloadSize > fileSize) {
-                outMessage = "[HTEX] truncated v2 payload: " + path.generic_string();
+                outMessage = "[HTEX] truncated v2 payload: " + TEXT::PathToUtf8(path);
                 return false;
             }
 
             std::vector<HtexFileSubresource> table(header.subresourceCount);
             ifs.seekg(static_cast<std::streamoff>(header.subresourceTableOffset), std::ios::beg);
             if (!ReadTrivialArray(ifs, table.data(), table.size())) {
-                outMessage = "[HTEX] failed to read v2 subresource table: " + path.generic_string();
+                outMessage = "[HTEX] failed to read v2 subresource table: " + TEXT::PathToUtf8(path);
                 return false;
             }
 
-            for (const HtexFileSubresource& entry : table) {
-                if (entry.width == 0 ||
-                    entry.height == 0 ||
-                    entry.mipLevel >= header.mipLevels ||
-                    entry.arraySlice >= header.arraySize ||
-                    entry.dataOffset < header.payloadOffset ||
-                    AddWouldOverflow(entry.dataOffset, entry.dataSize) ||
-                    entry.dataOffset + entry.dataSize > header.payloadOffset + header.payloadSize ||
-                    !FitsStreamOff(entry.dataOffset)) {
-                    outMessage = "[HTEX] invalid v2 subresource range: " + path.generic_string();
-                    return false;
-                }
+            if (!ValidateSubresources(header, table)) {
+                outMessage = "[HTEX] invalid v2 subresource layout: " + TEXT::PathToUtf8(path);
+                return false;
             }
 
             outHeader = header;
@@ -199,7 +230,7 @@ namespace HIKARI {
         if (texture.width == 0 ||
             texture.height == 0 ||
             texture.format == DXGI_FORMAT_UNKNOWN ||
-            texture.subresources.empty()) {
+            texture.subresources.empty() || texture.subresources.size() > 2048u * 15u) {
             outMessage = "[HTEX] invalid texture data";
             return false;
         }
@@ -229,6 +260,10 @@ namespace HIKARI {
         header.subresourceTableOffset = sizeof(HtexFileHeader);
         header.payloadOffset =
             sizeof(HtexFileHeader) + sizeof(HtexFileSubresource) * texture.subresources.size();
+        if (!ValidateShape(header)) {
+            outMessage = "[HTEX] invalid texture shape or format";
+            return false;
+        }
 
         uint64_t cursor = header.payloadOffset;
         for (size_t i = 0; i < texture.subresources.size(); ++i) {
@@ -243,14 +278,22 @@ namespace HIKARI {
             entry.slicePitch = source.slicePitch;
             entry.dataOffset = cursor;
             entry.dataSize = static_cast<uint64_t>(source.data.size());
+            if (AddWouldOverflow(cursor, entry.dataSize)) {
+                outMessage = "[HTEX] texture payload size overflow";
+                return false;
+            }
             cursor += entry.dataSize;
             table.push_back(entry);
         }
         header.payloadSize = cursor - header.payloadOffset;
+        if (!ValidateSubresources(header, table)) {
+            outMessage = "[HTEX] invalid texture subresource layout";
+            return false;
+        }
 
         std::ofstream ofs(path, std::ios::binary);
         if (!ofs.is_open()) {
-            outMessage = "[HTEX] failed to open for write: " + path.generic_string();
+            outMessage = "[HTEX] failed to open for write: " + TEXT::PathToUtf8(path);
             return false;
         }
 
@@ -266,11 +309,11 @@ namespace HIKARI {
         }
 
         if (!writeSucceeded || !ofs.good()) {
-            outMessage = "[HTEX] failed while writing: " + path.generic_string();
+            outMessage = "[HTEX] failed while writing: " + TEXT::PathToUtf8(path);
             return false;
         }
 
-        outMessage = "[HTEX] wrote v2 " + path.generic_string();
+        outMessage = "[HTEX] wrote v2 " + TEXT::PathToUtf8(path);
         return true;
     }
 
@@ -286,14 +329,15 @@ namespace HIKARI {
         }
 
         outInfo = MakeFileInfo(header, table);
-        outMessage = "[HTEX] inspected v2 " + path.generic_string();
+        outMessage = "[HTEX] inspected v2 " + TEXT::PathToUtf8(path);
         return true;
     }
 
     bool ReadHtexFile(
         const std::filesystem::path& path,
         HtexTexture& outTexture,
-        std::string& outMessage) {
+        std::string& outMessage,
+        uint64_t maxPayloadBytes) {
 
         HtexFileHeader header{};
         std::vector<HtexFileSubresource> table{};
@@ -301,9 +345,14 @@ namespace HIKARI {
             return false;
         }
 
+        if (header.payloadSize > maxPayloadBytes) {
+            outMessage = "[HTEX] texture payload exceeds the read budget";
+            return false;
+        }
+
         std::ifstream ifs(path, std::ios::binary);
         if (!ifs.is_open()) {
-            outMessage = "[HTEX] failed to open: " + path.generic_string();
+            outMessage = "[HTEX] failed to open: " + TEXT::PathToUtf8(path);
             return false;
         }
 
@@ -323,7 +372,7 @@ namespace HIKARI {
 
         for (const HtexFileSubresource& entry : table) {
             if (!FitsSizeT(entry.dataSize)) {
-                outMessage = "[HTEX] subresource too large for this platform: " + path.generic_string();
+                outMessage = "[HTEX] subresource too large for this platform: " + TEXT::PathToUtf8(path);
                 return false;
             }
 
@@ -342,7 +391,7 @@ namespace HIKARI {
                 ifs,
                 subresource.data.data(),
                 subresource.data.size())) {
-                outMessage = "[HTEX] failed to read v2 subresource payload: " + path.generic_string();
+                outMessage = "[HTEX] failed to read v2 subresource payload: " + TEXT::PathToUtf8(path);
                 return false;
             }
 
@@ -350,7 +399,7 @@ namespace HIKARI {
         }
 
         outTexture = std::move(texture);
-        outMessage = "[HTEX] read v2 " + path.generic_string();
+        outMessage = "[HTEX] read v2 " + TEXT::PathToUtf8(path);
         return true;
     }
 
