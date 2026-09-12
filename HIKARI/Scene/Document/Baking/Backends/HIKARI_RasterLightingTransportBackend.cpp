@@ -106,20 +106,8 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
                 scene.GetWorld());
         SceneEnvironment resolvedCaptureEnvironment =
             captureEnvironment;
-        const RENDER3D::LIGHTING::SceneLightProvider* directional =
-            RENDER3D::LIGHTING::SelectDirectionalLight(lighting);
-        resolvedCaptureEnvironment.directional.enabled =
-            directional != nullptr;
-        if (directional != nullptr) {
-            resolvedCaptureEnvironment.directional.direction =
-                directional->direction;
-            resolvedCaptureEnvironment.directional.color =
-                directional->color;
-            resolvedCaptureEnvironment.directional.intensity =
-                directional->intensity;
-        } else {
-            resolvedCaptureEnvironment.directional.intensity = 0.0f;
-        }
+        resolvedCaptureEnvironment.directional =
+            RENDER3D::LIGHTING::ResolveDirectionalLight(lighting);
 
         const auto renderFace = [&]() {
             RENDERER3D::Reset();

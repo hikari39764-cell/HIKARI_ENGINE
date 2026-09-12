@@ -279,6 +279,12 @@ namespace HIKARI::TOOLS::BAKING {
             return false;
         }
 
+        if (!CreateUploadBuffer(graphics.device,
+            std::vector{scene.environment.atmosphere}, atmosphereBuffer_)) {
+            SetMessage(outMessage, "Failed to upload atmosphere transport parameters.");
+            Reset();
+            return false;
+        }
         environment_ = scene.environment;
         triangleCount_ =
             static_cast<uint32_t>(scene.triangles.size());
@@ -313,6 +319,7 @@ namespace HIKARI::TOOLS::BAKING {
         materialSnapshot_.Reset();
         textureSnapshot_.Reset();
         GFX::RetireD3D12ObjectForCurrentFrame(lightBuffer_, "Lightmap.Lights");
+        GFX::RetireD3D12ObjectForCurrentFrame(atmosphereBuffer_, "Lightmap.Atmosphere");
         GFX::RetireD3D12ObjectForCurrentFrame(triangleBuffer_, "Lightmap.Triangles");
         GFX::RetireD3D12ObjectForCurrentFrame(pipelineState_, "Lightmap.Pipeline");
         GFX::RetireD3D12ObjectForCurrentFrame(rootSignature_, "Lightmap.RootSignature");
@@ -359,6 +366,8 @@ namespace HIKARI::TOOLS::BAKING {
         const CD3DX12_DESCRIPTOR_RANGE environmentTexture(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4);
         parameters[kRootEnvironment].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
         parameters[kRootEnvironment].DescriptorTable = {1, &environmentTexture};
+        parameters[kRootAtmosphere].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        parameters[kRootAtmosphere].Descriptor.ShaderRegister = 1;
         const CD3DX12_STATIC_SAMPLER_DESC samplers[]{
             {0, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_WRAP,
                 D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP},

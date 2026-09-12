@@ -4,6 +4,7 @@
 
 #include <d3d12.h>
 #include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
+#include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Lighting/HIKARI_LocalLightGpuData.h"
 
 namespace HIKARI {
@@ -80,5 +81,7 @@ namespace HIKARI::RENDER3D::LIGHTING {
 
     const SceneLightProvider* SelectDirectionalLight(
         const SceneLightingSet& lighting) noexcept;
+
+    DirectionalLight ResolveDirectionalLight(const SceneLightingSet& lighting) noexcept;
 
 } // namespace HIKARI::RENDER3D::LIGHTING

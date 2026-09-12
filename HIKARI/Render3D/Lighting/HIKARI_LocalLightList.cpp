@@ -249,6 +249,18 @@ namespace HIKARI::RENDER3D::LIGHTING {
         return nullptr;
     }
 
+    DirectionalLight ResolveDirectionalLight(const SceneLightingSet& lighting) noexcept {
+        DirectionalLight result{};
+        const auto* source = SelectDirectionalLight(lighting);
+        result.enabled = source != nullptr;
+        result.intensity = source ? source->intensity : 0.0f;
+        if (source) {
+            result.direction = source->direction;
+            result.color = source->color;
+        }
+        return result;
+    }
+
     LocalLightListView BuildLocalLightList(
         const SceneLightingSet& lighting,
         const Camera3D& camera,

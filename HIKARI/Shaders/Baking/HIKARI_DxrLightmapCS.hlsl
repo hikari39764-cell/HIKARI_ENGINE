@@ -51,6 +51,19 @@ cbuffer BakeConstants : register(b0)
     float4 gSkyTintExposure;
 };
 
+cbuffer AtmosphereCB : register(b1)
+{
+    float4 gAtmospherePlanetParams;
+    float4 gAtmosphereRayleigh;
+    float4 gAtmosphereMie;
+    float4 gAtmosphereOzone;
+    float4 gAtmosphereOzoneParams;
+    float4 gAtmosphereSunDirection;
+    float4 gAtmosphereSunColorRadiance;
+    float4 gAtmosphereGroundColor;
+};
+#include "../Include/Atmosphere/HIKARI_AtmosphereScattering.hlsli"
+
 RaytracingAccelerationStructure gScene : register(t0);
 StructuredBuffer<TransportTriangle> gTriangles : register(t1);
 StructuredBuffer<TransportTexel> gTexels : register(t2);
@@ -119,6 +132,10 @@ float3 EvaluateSky(float3 direction)
     if (gSkyMode == 2u) sky = gEnvironmentCube.SampleLevel(gEnvironmentSampler, skyDirection, 0).rgb;
     else if (gSkyMode == 3u) sky = HikariSampleMaterialTexture(gSkyTextureIndex, gEnvironmentSampler,
         HikariDirectionToEquirectangularUv(skyDirection), float4(sky, 1)).rgb;
+    // 大気は世界の太陽方向に従う。直接光の sun disk は二重積分しない。
+    else if (gSkyMode == 4u) sky = HikariAtmosphereEvaluateSkyRadiance(
+        float3(0, HikariAtmospherePlanetRadius() + 1.0f, 0), direction,
+        gAtmosphereGroundColor.rgb, gAtmosphereOzoneParams.w, gAtmosphereOzoneParams.y);
     sky = HikariApplySkyRadianceScale(sky, gSkyTintExposure.rgb, gSkyTintExposure.w);
     return HikariBlendAmbientWithSky(gAmbientSkyStrength.rgb, sky, gAmbientSkyStrength.w);
 }

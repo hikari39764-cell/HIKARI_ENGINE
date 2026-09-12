@@ -8,6 +8,7 @@
 #include "Render3D/Core/HIKARI_Camera3D.h"
 #include "Render3D/Models/HIKARI_ModelManager.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
+#include "Render3D/Lighting/Atmosphere/HIKARI_AtmosphereParameters.h"
 #include "Render3D/Lighting/HIKARI_SkyManager.h"
 #include "Render3D/Resources/HIKARI_RenderResourceHandle.h"
 
@@ -69,20 +70,7 @@ namespace HIKARI::SKYRENDERER {
         // sole direct surface-light authority.
         float sunSourceRadiance = 0.0f;
         float sunRadiance = 0.0f;
-        MATH::Vec3 rayleighScattering{ 0.0f, 0.0f, 0.0f };
-        MATH::Vec3 mieScattering{ 0.0f, 0.0f, 0.0f };
-        MATH::Vec3 ozoneAbsorption{ 0.0f, 0.0f, 0.0f };
-        float mieAnisotropy = 0.0f;
-        float planetRadius = 0.0f;
-        float atmosphereHeight = 0.0f;
-        float rayleighScaleHeight = 0.0f;
-        float mieScaleHeight = 0.0f;
-        float ozoneCenterHeight = 0.0f;
-        float ozoneWidth = 0.0f;
-        float groundAlbedo = 0.0f;
-        float sunIlluminance = 1.0f;
-        float sunExposure = 0.0f;
-        float aerialPerspectiveStrength = 1.0f;
+        ATMOSPHERE::AtmosphereLutConstants atmosphereConstants{};
         float sunAngularRadius = 0.004675f;
         SunGlareSettings sunGlare{};
     };

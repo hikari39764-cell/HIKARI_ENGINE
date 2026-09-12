@@ -10,6 +10,7 @@ cbuffer AtmosphereLutCB : register(b0)
     float4 gAtmosphereOzoneParams; // width, aerial perspective, observer sun T, albedo
     float4 gAtmosphereSunDirection;
     float4 gAtmosphereSunColorRadiance; // source color, source radiance
+    float4 gAtmosphereGroundColor;
 };
 
 Texture2D<float4> gAtmosphereTransmittance : register(t0);

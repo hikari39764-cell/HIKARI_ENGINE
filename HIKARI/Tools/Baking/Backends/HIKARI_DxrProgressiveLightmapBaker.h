@@ -109,6 +109,7 @@ namespace HIKARI::TOOLS::BAKING {
             triangleBuffer_{};
         Microsoft::WRL::ComPtr<ID3D12Resource>
             lightBuffer_{};
+        Microsoft::WRL::ComPtr<ID3D12Resource> atmosphereBuffer_{};
         Microsoft::WRL::ComPtr<ID3D12Resource>
             texelBuffer_{};
         Microsoft::WRL::ComPtr<ID3D12Resource>

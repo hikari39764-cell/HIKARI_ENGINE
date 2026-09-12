@@ -4,7 +4,7 @@
 // Shared atmosphere model used by the transmittance, multi-scattering and
 // sky-view LUTs as well as the forward sky fallback.  The cbuffer containing
 // the gAtmosphere* values is intentionally owned by the including shader so
-// the existing seven-float4 ABI and descriptor layout remain unchanged.
+// each consumer can retain its own binding and constant-buffer layout.
 
 static const float HIKARI_ATMOSPHERE_PI = 3.14159265359f;
 static const uint HIKARI_ATMOSPHERE_MAX_OPTICAL_STEPS = 40u;
@@ -531,11 +531,11 @@ float3 HikariAtmosphereEvaluateSkyRadianceWithSteps(
             HikariAtmosphereTransmittanceToSpace(
                 hitPosition + groundNormal * 0.5f,
                 sunDirection);
-        const float3 bounce = max(0.0f.xxx, groundColor) *
+        const float3 bounce = saturate(groundColor) *
             saturate(HikariAtmosphereFiniteOr(groundAlbedo, 0.1f)) *
             sunCosine * groundSunTransmittance *
-            integration.transmittance * 0.18f;
-        radiance += bounce * aerialStrength;
+            integration.transmittance / HIKARI_ATMOSPHERE_PI;
+        radiance += bounce * max(0.0f.xxx, gAtmosphereSunColorRadiance.rgb) * sourceRadiance * aerialStrength;
     }
 
     if (!all(isfinite(radiance)))

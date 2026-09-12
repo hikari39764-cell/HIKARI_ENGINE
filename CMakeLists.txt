@@ -539,6 +539,9 @@ add_test(NAME HIKARI_MaterialSurfaceContracts COMMAND "$<TARGET_FILE:HIKARI_Mate
 set_tests_properties(HIKARI_MaterialSurfaceContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 60)
 
 hikari_add_runtime_contract(HIKARI_LightingTransportMaterialContracts "Tools/Tests/HIKARI_LightingTransportMaterialContracts.cpp")
+hikari_add_runtime_contract(HIKARI_SunGlareFrameContracts "Tools/Tests/HIKARI_SunGlareFrameContracts.cpp")
+add_test(NAME HIKARI_SunGlareFrameContracts COMMAND "$<TARGET_FILE:HIKARI_SunGlareFrameContracts>")
+set_tests_properties(HIKARI_SunGlareFrameContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
 add_test(NAME HIKARI_LightingTransportMaterialContracts COMMAND "$<TARGET_FILE:HIKARI_LightingTransportMaterialContracts>")
 set_tests_properties(HIKARI_LightingTransportMaterialContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
 

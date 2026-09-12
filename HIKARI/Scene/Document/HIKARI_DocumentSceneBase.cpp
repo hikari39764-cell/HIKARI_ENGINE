@@ -490,20 +490,8 @@ namespace HIKARI {
                 light.intensity = 0.0f;
             }
         }
-        const auto* directional =
-            RENDER3D::LIGHTING::SelectDirectionalLight(sceneLighting);
-        activeEnvironment.directional.enabled =
-            directional != nullptr;
-        if (directional != nullptr) {
-            activeEnvironment.directional.direction =
-                directional->direction;
-            activeEnvironment.directional.color =
-                directional->color;
-            activeEnvironment.directional.intensity =
-                directional->intensity;
-        } else {
-            activeEnvironment.directional.intensity = 0.0f;
-        }
+        activeEnvironment.directional =
+            RENDER3D::LIGHTING::ResolveDirectionalLight(sceneLighting);
 
         MESHRENDERER::SetGpuDrivenCullingCameraFreezeEnabled(
             DrawDebugHelpers() && state_->editor.viewportDebugViewState.freezeCullingCamera);

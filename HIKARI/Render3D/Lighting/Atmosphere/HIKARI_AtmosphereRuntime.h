@@ -7,26 +7,10 @@
 #include <wrl/client.h>
 
 #include "Gfx/HIKARI_GfxContext.h"
-#include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
+#include "Render3D/Lighting/Atmosphere/HIKARI_AtmosphereParameters.h"
 #include "Render3D/Resources/HIKARI_RenderResourcePool.h"
 
 namespace HIKARI::ATMOSPHERE {
-
-    struct AtmosphereLutConstants {
-        MATH::Vec4 planetParams{};
-        MATH::Vec4 rayleighScattering{};
-        MATH::Vec4 mieScattering{};
-        MATH::Vec4 ozoneAbsorption{};
-        // ozone width, aerial strength, ground solar transmittance luminance,
-        // ground albedo.
-        MATH::Vec4 ozoneParams{};
-        MATH::Vec4 sunDirection{};
-        // Extraterrestrial/source solar color and scene-linear radiance.  The
-        // observed disk term applies ozoneParams.z exactly once.
-        MATH::Vec4 sunColorRadiance{};
-    };
-
-    static_assert(sizeof(AtmosphereLutConstants) == 112u);
 
     // Owns the reusable transmittance, multi-scattering, and sky-view LUTs.
     // The owner deliberately keeps the resources local to the atmosphere

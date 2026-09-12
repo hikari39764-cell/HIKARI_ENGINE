@@ -17,6 +17,7 @@
 #include "Render3D/Lighting/HIKARI_LocalLightList.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameContext.h"
+#include "Render3D/Pipeline/HIKARI_SunGlareFrameBuilder.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameGraphStage.h"
 #include "Render3D/Pipeline/Internal/HIKARI_RenderFrameGraphStageInternal.h"
 #include "Render3D/Surface/HIKARI_SceneSurfaceSet.h"
@@ -293,6 +294,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
         }
 
         const Camera3D& camera = view.cameraFrame->camera;
+        POST::PostSystem::SetSunGlareFrame(BuildSunGlareFrame(camera, environment));
         RENDER3D::SetRenderDebugOutputView(debugView);
         const RENDER3D::RenderDebugOutputRoute& debugRoute =
             RENDER3D::GetRenderDebugOutputRoute();

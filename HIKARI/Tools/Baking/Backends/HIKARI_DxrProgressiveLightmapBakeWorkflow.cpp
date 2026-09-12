@@ -175,6 +175,7 @@ namespace HIKARI::TOOLS::BAKING {
         const uint32_t cubeIndex = environment_.skyMode == SkyMode::Cubemap ? skyDescriptorIndex_ :
             RENDER3D::TextureResourceSnapshot::GetNullDescriptorIndex(RENDER3D::TextureResourceDimension::TextureCube);
         graphics.cmdList->SetComputeRootDescriptorTable(kRootEnvironment, textureSnapshot_.GetDescriptor(cubeIndex));
+        graphics.cmdList->SetComputeRootConstantBufferView(kRootAtmosphere, atmosphereBuffer_->GetGPUVirtualAddress());
 
         const uint32_t sampleEnd = (std::min)(
             status_.requestedSamples,

@@ -18,6 +18,7 @@
 #include "Render3D/Material/HIKARI_GpuMaterialProjection.h"
 #include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
 #include "Render3D/Lighting/HIKARI_LocalLightSemantics.h"
+#include "Render3D/Lighting/HIKARI_LocalLightList.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Lighting/HIKARI_SkyManager.h"
 #include "Render3D/Runtime/HIKARI_SceneRenderCache.h"
@@ -612,7 +613,11 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
                     RENDER3D::TextureResourceColorSpace::Linear : RENDER3D::TextureResourceColorSpace::Srgb};
             }
         } else if (scene.environment.skyMode == SkyMode::Atmosphere) {
-            scene.environment.error = "DXR static sky capture requires a gradient or texture environment; atmosphere transport is unavailable.";
+            SceneEnvironment resolved = environment;
+            resolved.directional = RENDER3D::LIGHTING::ResolveDirectionalLight(lighting);
+            const auto solar = ATMOSPHERE::BuildAtmosphereSolarState(resolved);
+            scene.environment.atmosphere = ATMOSPHERE::BuildAtmosphereLutConstants(resolved.atmosphere, solar, resolved.sky.groundColor);
+            if (!solar.atmosphereEnabled) scene.environment.skyMode = SkyMode::Gradient;
         }
         scene.environment.skyStrength =
             scene.environment.skyMode != SkyMode::None

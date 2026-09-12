@@ -8,7 +8,7 @@ namespace HIKARI::TOOLS::BAKING {
     namespace INTERNAL {
         enum DxrLightmapRootParameter : uint32_t {
             kRootConstants, kRootScene, kRootTriangles, kRootTexels, kRootLights, kRootOutput,
-            kRootMaterials, kRootTextures, kRootParameters, kRootResources, kRootEnvironment, kRootParameterCount
+            kRootMaterials, kRootTextures, kRootParameters, kRootResources, kRootEnvironment, kRootAtmosphere, kRootParameterCount
         };
     }
 

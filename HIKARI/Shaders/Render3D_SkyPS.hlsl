@@ -18,6 +18,7 @@ cbuffer AtmosphereCB : register(b1)
     float4 gAtmosphereOzoneParams;        // width, aerial, observer sun T, albedo
     float4 gAtmosphereSunDirection;       // authoritative direction, enabled/LUT flag
     float4 gAtmosphereSunColorRadiance;   // source color, source radiance
+    float4 gAtmosphereGroundColor;
 };
 
 Texture2D gSkyTex2D : register(t0);
@@ -91,7 +92,7 @@ float3 EvaluateAtmosphereSky(float3 dir)
     return HikariAtmosphereEvaluateSkyRadiance(
         observer,
         dir,
-        gSkyGroundYaw.rgb,
+        gAtmosphereGroundColor.rgb,
         gAtmosphereOzoneParams.w,
         gAtmosphereOzoneParams.y);
 }

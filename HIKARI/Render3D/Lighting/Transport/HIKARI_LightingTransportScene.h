@@ -11,6 +11,7 @@
 #include "Assets/Lighting/HIKARI_LightmapSurfaceContract.h"
 #include "Render3D/HIKARI_Math3D.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
+#include "Render3D/Lighting/Atmosphere/HIKARI_AtmosphereParameters.h"
 #include "Render3D/Material/HIKARI_MaterialSnapshot.h"
 
 namespace HIKARI::RENDER3D::LIGHTING::TRANSPORT {
@@ -71,6 +72,7 @@ namespace HIKARI::RENDER3D::LIGHTING::TRANSPORT {
     };
 
     struct LightingTransportEnvironment {
+        ATMOSPHERE::AtmosphereLutConstants atmosphere{};
         MATH::Vec3 ambientRadiance{
             0.05f, 0.05f, 0.05f
         };

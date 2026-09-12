@@ -10,6 +10,7 @@ cbuffer AtmosphereLutCB : register(b0)
     float4 gAtmosphereOzoneParams; // width, aerial perspective, observer sun T, albedo
     float4 gAtmosphereSunDirection;
     float4 gAtmosphereSunColorRadiance; // source color, source radiance
+    float4 gAtmosphereGroundColor;
 };
 
 Texture2D<float4> gAtmosphereTransmittance : register(t0);
@@ -39,7 +40,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
         elevation,
         sin(azimuth) * sqrt(max(0.0f, 1.0f - elevation * elevation))));
     // The LUT is authored for a stable ground observer. Per-frame camera
-    // altitude is not part of the existing seven-float4 contract, so the
+    // altitude is not part of the atmosphere parameter contract, so the
     // renderer keeps this fixed just above the planet surface.
     const float3 observer = float3(
         0.0f,
@@ -48,7 +49,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     const float aerialPerspectiveStrength = max(
         0.0f,
         HikariAtmosphereFiniteOr(gAtmosphereOzoneParams.y, 1.0f));
-    const float3 groundColor = float3(0.10f, 0.14f, 0.20f);
+    const float3 groundColor = gAtmosphereGroundColor.rgb;
     float3 radiance = HikariAtmosphereEvaluateSkyRadiance(
         observer,
         viewDirection,
