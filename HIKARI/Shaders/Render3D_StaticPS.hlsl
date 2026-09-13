@@ -366,15 +366,15 @@ float4 main(PSInput input) : SV_TARGET
     {
         screenAo = gSsaoTex.Load(int3(int2(input.position.xy), 0)).r;
     }
-    float shadowFactor = costNoShadow
+    float shadowVisibility = costNoShadow
         ? 1.0f
-        : SampleDirectionalShadow(
+        : SampleDirectionalVisibility(
             input.worldPosWS,
             geometricNormal,
             HikariForwardVertexMetaReceiveShadow(input.forwardMeta));
     if (gDebugView == 8)
     {
-        return float4(shadowFactor.xxx, albedo.a);
+        return float4(shadowVisibility.xxx, albedo.a);
     }
 
     float3 emissive = (!neutralClay &&
@@ -409,12 +409,13 @@ float4 main(PSInput input) : SV_TARGET
             HIKARI_STANDARD_PBR_MATERIAL_PROGRAM)
         {
         float3 direct =
-            HikariEvaluateDirectPbr(
+            HikariEvaluateDirectionalPbr(
                 pbrContext,
                 l,
                 gDirectionalColor.rgb,
-                gDirectionalIntensity);
-        direct *= shadowFactor;
+                gDirectionalIntensity,
+                gDirectionalDir.w);
+        direct *= shadowVisibility;
 
         float3 pointDirect = AccumulateLocalLightsPbr(
             pbrContext,
@@ -504,7 +505,7 @@ float4 main(PSInput input) : SV_TARGET
                     !doubleSidedBackFace,
                     l,
                     gDirectionalColor.rgb * gDirectionalIntensity,
-                    shadowFactor,
+                    HikariStylizedShadowFactor(shadowVisibility),
                     pbrIndirect);
             shadedColor = response.directDiffuse +
                 response.directSpecular +

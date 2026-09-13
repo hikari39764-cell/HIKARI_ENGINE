@@ -75,11 +75,10 @@ float3 AddSunDisk(float3 color, float3 dir)
         return color;
     }
     float3 sunDir = sunVector * rsqrt(sunLengthSquared);
-    float size = max(0.0001f, gSkySunSizeParams.x);
-    float sun = smoothstep(
-        1.0f - size,
-        1.0f,
-        dot(normalize(dir), sunDir));
+    // 1-dot の桁落ちを避け、小さい物理的な太陽でも同じ角半径を保つ。
+    const float size = max(1.0e-10f, gSkySunSizeParams.x);
+    const float3 delta = normalize(dir) - sunDir;
+    float sun = 1.0f - smoothstep(0.0f, size, 0.5f * dot(delta, delta));
     return color + sun * intensity;
 }
 

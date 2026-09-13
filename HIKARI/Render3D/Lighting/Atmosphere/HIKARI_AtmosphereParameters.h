@@ -31,6 +31,12 @@ namespace HIKARI::ATMOSPHERE {
     };
     static_assert(sizeof(AtmosphereLutConstants) == 128u);
 
+    inline constexpr float kMinSolarAngularRadius = 0.0001f;
+    inline constexpr float kMaxSolarAngularRadius = 0.25f;
+    // 旧 Sky の size は角度ではなく、円盤端での 1-cos(theta)。変換を共有する。
+    float SolarAngularRadiusFromDiskSize(float size) noexcept;
+    float SolarDiskSizeFromAngularRadius(float radius) noexcept;
+    float ResolveSolarAngularRadius(const SceneEnvironment& environment) noexcept;
     AtmosphereSolarState BuildAtmosphereSolarState(const SceneEnvironment& environment) noexcept;
     AtmosphereLutConstants BuildAtmosphereLutConstants(
         const AtmosphereSettings& settings, const AtmosphereSolarState& solar,

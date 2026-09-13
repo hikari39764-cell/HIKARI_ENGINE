@@ -29,9 +29,14 @@ float3 HikariSampleBloomInput(float2 uv)
 
 float4 main(HikariPostEffectInput input) : SV_TARGET
 {
-    // Bloom の見た目は従来どおり単一サンプルから抽出する。
-    // 非有限値と極端な HDR 値だけを除外し、通常のハイライトは減衰させない。
-    float3 color = HikariSampleBloomInput(input.uv);
+    // 1/4 解像度の各出力画素が覆う 4x4 領域を四つの bilinear tap で積分する。
+    // 中央だけ読むと細い高光を移動位相によって取りこぼす。重みの総和は 1。
+    const float2 offset = 0.25f * gUser[1].xy;
+    float3 color = 0.25f * (
+        HikariSampleBloomInput(input.uv + float2(-offset.x, -offset.y)) +
+        HikariSampleBloomInput(input.uv + float2( offset.x, -offset.y)) +
+        HikariSampleBloomInput(input.uv + float2(-offset.x,  offset.y)) +
+        HikariSampleBloomInput(input.uv + float2( offset.x,  offset.y)));
     float threshold = max(gUser[0].x, 0.0f);
     float intensity = max(gUser[0].y, 0.0f);
     float luminance = dot(color, float3(0.2126f, 0.7152f, 0.0722f));

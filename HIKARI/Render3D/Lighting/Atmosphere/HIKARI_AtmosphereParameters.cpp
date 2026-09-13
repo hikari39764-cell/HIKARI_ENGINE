@@ -116,6 +116,27 @@ namespace HIKARI::ATMOSPHERE {
 
     } // namespace
 
+    float SolarAngularRadiusFromDiskSize(float size) noexcept {
+        const float cosineWidth = SanitizeFiniteRange(size, 0.04f, 0.0f, 2.0f);
+        return std::clamp(2.0f * std::asin(std::sqrt(0.5f * cosineWidth)),
+            kMinSolarAngularRadius, kMaxSolarAngularRadius);
+    }
+
+    float SolarDiskSizeFromAngularRadius(float radius) noexcept {
+        const float safeRadius = SanitizeFiniteRange(radius, 0.004675f,
+            kMinSolarAngularRadius, kMaxSolarAngularRadius);
+        const float halfSine = std::sin(0.5f * safeRadius);
+        return 2.0f * halfSine * halfSine;
+    }
+
+    float ResolveSolarAngularRadius(const SceneEnvironment& environment) noexcept {
+        const bool atmosphere = environment.sky.enabled &&
+            environment.sky.mode == SkyMode::Atmosphere && environment.atmosphere.enabled;
+        return atmosphere ? SanitizeFiniteRange(environment.atmosphere.sunAngularRadius,
+            0.004675f, kMinSolarAngularRadius, kMaxSolarAngularRadius) :
+            SolarAngularRadiusFromDiskSize(environment.sky.sunDiskSize);
+    }
+
     AtmosphereSolarState BuildAtmosphereSolarState(const SceneEnvironment& environment) noexcept {
         AtmosphereSolarState result{};
         const DirectionalLight& sun = environment.directional;
@@ -175,17 +196,7 @@ namespace HIKARI::ATMOSPHERE {
                     transmittanceLuminance,
             });
         }
-        result.sunAngularRadius = result.atmosphereEnabled
-            ? SanitizeFiniteRange(
-                environment.atmosphere.sunAngularRadius,
-                0.004675f,
-                0.0001f,
-                0.25f)
-            : SanitizeFiniteRange(
-                environment.sky.sunDiskSize * 0.003f,
-                0.004675f,
-                0.0001f,
-                0.25f);
+        result.sunAngularRadius = ResolveSolarAngularRadius(environment);
         result.valid = sun.enabled;
         return result;
     }

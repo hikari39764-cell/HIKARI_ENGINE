@@ -150,15 +150,13 @@ float HikariSampleDirectionalShadowCascade(
             atlasUv,
             currentDepth,
             cascadeIndex);
-    const float shadowFactor =
-        lerp(1.0f - gShadowStrength, 1.0f, sampledVisibility);
     return lerp(
         1.0f,
-        shadowFactor,
+        sampledVisibility,
         HikariShadowReceiverFade(cascadeUv));
 }
 
-float SampleDirectionalShadow(float3 worldPosWS, float3 geometricNormalWS, uint receiveShadow)
+float SampleDirectionalVisibility(float3 worldPosWS, float3 geometricNormalWS, uint receiveShadow)
 {
     if (gShadowEnabled == 0 || receiveShadow == 0)
     {
@@ -206,6 +204,18 @@ float SampleDirectionalShadow(float3 worldPosWS, float3 geometricNormalWS, uint 
         }
     }
     return visibility;
+}
+
+float HikariStylizedShadowFactor(float visibility)
+{
+    // 陰影の演出強度は物理的な可視性とは別契約。PBR 直射光へ漏らさない。
+    return lerp(1.0f, saturate(visibility), saturate(gShadowStrength));
+}
+
+float SampleDirectionalShadow(float3 worldPosWS, float3 geometricNormalWS, uint receiveShadow)
+{
+    return HikariStylizedShadowFactor(
+        SampleDirectionalVisibility(worldPosWS, geometricNormalWS, receiveShadow));
 }
 
 #endif

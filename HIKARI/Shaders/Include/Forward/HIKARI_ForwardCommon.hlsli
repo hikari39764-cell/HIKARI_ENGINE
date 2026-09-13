@@ -41,7 +41,7 @@ static const uint MATERIAL_SPECULAR_GLOSS_COMPAT = HIKARI_MATERIAL_FLAG_LEGACY_S
 
 cbuffer LightCB : register(b2)
 {
-    float4 gDirectionalDir;
+    float4 gDirectionalDir; // xyz: ray direction, w: sin^2(solar angular radius / 2)
     float4 gDirectionalColor;
     float4 gAmbientColor;
     float4 gLightReserved;

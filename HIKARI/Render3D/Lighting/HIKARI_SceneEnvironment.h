@@ -36,6 +36,7 @@ namespace HIKARI {
         float farPlane = 80.0f;
         float depthBias = 0.001f;
         float normalBias = 0.02f;
+        // 様式化した陰影の演出用。Standard PBR は実際の可視性を直接使う。
         float strength = 0.75f;
         bool pcfEnabled = true;
         float pcfRadius = 1.0f;

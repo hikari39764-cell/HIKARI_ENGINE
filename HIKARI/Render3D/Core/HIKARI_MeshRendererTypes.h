@@ -137,6 +137,7 @@ namespace HIKARI::MESHRENDERER {
     using MaterialGpuData = RENDER3D::MATERIAL::GpuMaterialData;
 
     struct LightCB {
+        // xyz: 光線方向、w: 太陽角半径の半角の sin^2（正規化 GGX 円盤近似）。
         MATH::Vec4 directionalDir{};
         MATH::Vec4 directionalColor{};
         MATH::Vec4 ambientColor{};

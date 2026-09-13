@@ -11,6 +11,7 @@
 #include "Render3D/HIKARI_Math3D.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
+#include "Render3D/Lighting/Atmosphere/HIKARI_AtmosphereParameters.h"
 #include "Scene/HIKARI_RuntimeSceneContext.h"
 #include "Scene/HIKARI_SceneTransitionBus.h"
 #include "Vfx/Post/HIKARI_PostProfile.h"
@@ -35,6 +36,15 @@ using namespace EDITOR::ENVIRONMENT_PANEL;
 #if defined(HIKARI_WITH_EDITOR)
 namespace {
 constexpr const char *kDefaultGlobalPostProfileId = "Ani";
+
+bool DrawSolarAngularRadius(float& radius) {
+  float degrees = DirectX::XMConvertToDegrees(radius);
+  if (!ImGui::DragFloat(TEXT::Localize("ui.environment.sunAngularRadius").c_str(),
+      &degrees, 0.01f, DirectX::XMConvertToDegrees(ATMOSPHERE::kMinSolarAngularRadius),
+      DirectX::XMConvertToDegrees(ATMOSPHERE::kMaxSolarAngularRadius), "%.3f")) return false;
+  radius = DirectX::XMConvertToRadians(degrees);
+  return true;
+}
 
 } // namespace
 
@@ -273,9 +283,7 @@ EnvironmentPanel::Draw(SceneEnvironment &environment,
         ImGui::DragFloat(
             TEXT::Localize("ui.environment.aerialPerspectiveStrength").c_str(),
             &atmosphere.aerialPerspectiveStrength, 0.01f, 0.0f, 8.0f);
-        ImGui::DragFloat(
-            TEXT::Localize("ui.environment.sunAngularRadius").c_str(),
-            &atmosphere.sunAngularRadius, 0.0001f, 0.0001f, 0.25f);
+        DrawSolarAngularRadius(atmosphere.sunAngularRadius);
         ImGui::Checkbox(
             TEXT::Localize("ui.environment.preferAtmosphereLut").c_str(),
             &atmosphere.preferLut);
@@ -330,9 +338,11 @@ EnvironmentPanel::Draw(SceneEnvironment &environment,
       ImGui::DragFloat(
           TEXT::Localize("ui.environment.sunDiskIntensity").c_str(),
           &environment.sky.sunDiskIntensity, 0.01f, 0.0f, 32.0f);
-      ImGui::DragFloat(
-          TEXT::Localize("ui.environment.sunDiskSize").c_str(),
-          &environment.sky.sunDiskSize, 0.001f, 0.001f, 0.5f);
+      if (environment.sky.mode != SkyMode::Atmosphere) {
+        float radius = ATMOSPHERE::SolarAngularRadiusFromDiskSize(environment.sky.sunDiskSize);
+        if (DrawSolarAngularRadius(radius))
+          environment.sky.sunDiskSize = ATMOSPHERE::SolarDiskSizeFromAngularRadius(radius);
+      }
       ImGui::TreePop();
     }
     if (ImGui::TreeNode(

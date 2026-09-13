@@ -199,4 +199,25 @@ float3 HikariEvaluateDirectPbr(
     return lobes.diffuse + lobes.specular;
 }
 
+float3 HikariEvaluateDirectionalPbr(
+    HikariPbrShadingContext context, float3 l, float3 lightColor,
+    float lightIntensity, float sourceHalfAngleSineSquared)
+{
+    // 円盤光源を GGX 分布へ畳み込む近似。半角空間の幅を加え、正規化された
+    // D 項の分子・分母を共に更新する。頂点の方向を円盤内へ寄せるだけの
+    // 近似は平らな高光を作るため使わない。IBL の材質粗さは変更しない。
+    // 平面でも視線は画素内で変わる。既存の分散フィルタへ視線 footprint を渡し、
+    // 半角の中心サンプルだけでは未解像になる高光を保守的にフィルタする。
+    const float pixelRoughness = HikariFilterPerceptualRoughness(
+        context.roughness, ddx(context.view), ddy(context.view));
+    const float pixelAlpha = pixelRoughness * pixelRoughness;
+    const float sourceVariance = saturate(sourceHalfAngleSineSquared);
+    const float alphaSquared = pixelAlpha * pixelAlpha;
+    context.distributionAlphaSquared = saturate(alphaSquared +
+        (1.0f - alphaSquared) * sourceVariance);
+    context.visibilityViewRoot = sqrt(context.distributionAlphaSquared +
+        (1.0f - context.distributionAlphaSquared) * context.ndotView * context.ndotView);
+    return HikariEvaluateDirectPbr(context, l, lightColor, lightIntensity);
+}
+
 #endif

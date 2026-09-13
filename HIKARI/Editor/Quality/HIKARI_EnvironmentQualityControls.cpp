@@ -116,7 +116,7 @@ void DrawDirectionalShadow(SceneEnvironment &environment) {
         &environment.directionalShadow.normalBias,
         0.001f, 0.0f, 1.0f, "%.4f");
     ImGui::DragFloat(
-        TEXT::Localize("ui.quality.strength").c_str(),
+        TEXT::Localize("ui.quality.stylizedShadowStrength").c_str(),
         &environment.directionalShadow.strength, 0.01f, 0.0f, 1.0f);
     ImGui::Checkbox(
         TEXT::Localize("ui.quality.pcfEnabled").c_str(),

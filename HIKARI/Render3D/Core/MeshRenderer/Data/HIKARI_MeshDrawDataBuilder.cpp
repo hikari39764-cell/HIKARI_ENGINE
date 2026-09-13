@@ -10,6 +10,7 @@
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Render3D/Material/HIKARI_GpuMaterialProjection.h"
 #include "Render3D/Lighting/HIKARI_IblEnvironment.h"
+#include "Render3D/Lighting/Atmosphere/HIKARI_AtmosphereParameters.h"
 #include "Render3D/Lighting/HIKARI_LightProbeVolumeRuntime.h"
 #include "Render3D/Lighting/HIKARI_LocalLightList.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
@@ -102,7 +103,10 @@ namespace HIKARI::MESHRENDERER {
             dir = { 0.0f, -1.0f, 0.0f };
         }
 
-        out.directionalDir = { dir.x, dir.y, dir.z, 0.0f };
+        // 太陽の既存の角半径を共有し、surface 専用の第二の光源設定を作らない。
+        const float angularRadius = ATMOSPHERE::ResolveSolarAngularRadius(environment);
+        const float halfAngleSine = std::sin(0.5f * angularRadius);
+        out.directionalDir = { dir.x, dir.y, dir.z, halfAngleSine * halfAngleSine };
         out.directionalColor = { environment.directional.color.x, environment.directional.color.y, environment.directional.color.z, 1.0f };
         out.directionalIntensity = environment.directional.enabled ? std::max(0.0f, environment.directional.intensity) : 0.0f;
 

@@ -553,11 +553,12 @@ float4 HikariShadeWaterSurface(
         shadowVisibility,
         saturate(p.shadowStrength));
     const float3 directionalReflection = HikariFiniteOr(
-        HikariEvaluateDirectPbr(
+        HikariEvaluateDirectionalPbr(
             reflectionContext,
             light,
             gDirectionalColor.rgb,
-            gDirectionalIntensity) *
+            gDirectionalIntensity,
+            gDirectionalDir.w) *
             max(p.directSunStrength, 0.0f) * directShadow,
         0.0f.xxx);
     const float3 localReflection = HikariFiniteOr(

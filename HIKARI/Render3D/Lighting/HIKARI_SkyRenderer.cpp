@@ -742,7 +742,8 @@ namespace HIKARI::SKYRENDERER {
                 ? settings.sunDiskIntensity * sunDiskSourceRadiance
                 : 0.0f,
         };
-        constants.cpu->sunSizeParams = { std::max(0.0001f, settings.sunDiskSize), settings.ambientFromSky, settings.reflectionIntensity, sunIntensity };
+        constants.cpu->sunSizeParams = { ATMOSPHERE::SolarDiskSizeFromAngularRadius(solar.sunAngularRadius),
+            settings.ambientFromSky, settings.reflectionIntensity, sunIntensity };
         bool atmosphereLutsReady = false;
         if (renderMode == SkyMode::Atmosphere &&
             g.atmosphereFrame.atmosphereEnabled) {
