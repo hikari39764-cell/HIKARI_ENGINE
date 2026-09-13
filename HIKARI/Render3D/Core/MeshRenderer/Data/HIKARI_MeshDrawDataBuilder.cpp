@@ -394,12 +394,12 @@ namespace HIKARI::MESHRENDERER {
             };
             gpu.selectionParams = {
                 static_cast<float>(volume->priority),
-                1.0f,
+                static_cast<float>(volume->visibilityTextureDescriptorIndex + 1u),
                 std::clamp(
                     volume->normalBias,
                     0.0f,
                     0.5f),
-                0.0f
+                volume->visibilityDistanceScale
             };
         }
 

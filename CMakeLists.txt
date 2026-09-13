@@ -534,6 +534,8 @@ set_tests_properties(HIKARI_MaterialSurfaceContracts PROPERTIES LABELS "RuntimeC
 hikari_add_runtime_contract(HIKARI_LightingTransportMaterialContracts "Tools/Tests/HIKARI_LightingTransportMaterialContracts.cpp")
 hikari_add_runtime_contract(HIKARI_SkyLightingRuntimeContracts "Tools/Tests/HIKARI_SkyLightingRuntimeContracts.cpp")
 hikari_add_runtime_contract(HIKARI_IrradianceVolumeContracts "Tools/Tests/HIKARI_IrradianceVolumeContracts.cpp")
+target_compile_definitions(HIKARI_IrradianceVolumeContracts PRIVATE HIKARI_CONTRACT_SOURCE_ROOT="${HIKARI_SOURCE_ROOT}")
+target_link_libraries(HIKARI_IrradianceVolumeContracts PRIVATE HIKARI::DirectXTex d3dcompiler)
 add_test(NAME HIKARI_IrradianceVolumeContracts COMMAND "$<TARGET_FILE:HIKARI_IrradianceVolumeContracts>")
 set_tests_properties(HIKARI_IrradianceVolumeContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
 hikari_add_runtime_contract(HIKARI_IndirectCommandGpuContracts "Tools/Tests/HIKARI_IndirectCommandGpuContracts.cpp")

@@ -32,19 +32,24 @@ namespace HIKARI::ASSETS::LIGHTING {
             float spacing[3]{};
             uint32_t shOrder = kLightProbeShOrder;
             uint32_t coeffCount = kLightProbeShCoeffCount;
+            uint32_t visibilityResolution = kLightProbeVisibilityResolution;
+            float visibilityDistanceScale = 0.0f;
         };
-        static_assert(sizeof(HlpvHeader) == 68u);
+        static_assert(sizeof(HlpvHeader) == 76u);
 
         // GPU Texture3D の寸法上限。積は必ず 64 bit で検証してから確保する。
         constexpr uint32_t kMaximumGridDimension = 2048u;
-        constexpr uint64_t kMaximumProbeCount = 65536u;
-        constexpr uint64_t kProbePayloadBytes = kLightProbeShCoeffCount * 3u * sizeof(float);
+        constexpr uint64_t kMaximumProbeCount = 4096u;
+        constexpr uint64_t kProbePayloadBytes =
+            (kLightProbeShCoeffCount * 3u + kLightProbeVisibilityTexelCount * 2u) * sizeof(float);
 
         bool IsGridCountValid(uint32_t x, uint32_t y, uint32_t z, uint64_t count) {
             return x >= 2u && y >= 1u && z >= 2u &&
                 x <= kMaximumGridDimension && y <= kMaximumGridDimension &&
                 z <= kMaximumGridDimension && count > 0u && count <= kMaximumProbeCount &&
-                static_cast<uint64_t>(x) * y * z == count;
+                static_cast<uint64_t>(x) * y * z == count &&
+                static_cast<uint64_t>(x) * y * (kLightProbeVisibilityResolution + 2u) <= 16384u &&
+                static_cast<uint64_t>(z) * (kLightProbeVisibilityResolution + 2u) <= 16384u;
         }
 
         bool IsAxisValid(float origin, float size, float spacing, uint32_t count) {
@@ -95,6 +100,19 @@ namespace HIKARI::ASSETS::LIGHTING {
             SetMessage(outMessage, "Light probe grid bounds/spacing are non-finite or inconsistent.");
             return false;
         }
+        if (!std::isfinite(data.visibilityDistanceScale) || data.visibilityDistanceScale <= 0.0f ||
+            data.visibilityMoments.size() != data.probes.size() * kLightProbeVisibilityTexelCount) {
+            SetMessage(outMessage, "Light probe visibility data is missing or invalid; rebake the volume.");
+            return false;
+        }
+        for (const auto& moments : data.visibilityMoments) {
+            if (!std::isfinite(moments.x) || !std::isfinite(moments.y) ||
+                moments.x < 0.0f || moments.x > 1.0f || moments.y < 0.0f || moments.y > 1.0f ||
+                moments.y + 1.0e-5f < moments.x * moments.x || moments.y > moments.x + 1.0e-5f) {
+                SetMessage(outMessage, "Light probe visibility moments are non-finite or inconsistent.");
+                return false;
+            }
+        }
         for (const LightProbeSh9& probe : data.probes) {
             for (const MATH::Vec3& coeff : probe.coeffs) {
                 // SH は符号付き。負の係数は正常だが、半精度に入らない値は GPU を汚染する。
@@ -129,8 +147,9 @@ namespace HIKARI::ASSETS::LIGHTING {
 
         if (header.version != kLightProbeVolumeVersion ||
             header.shOrder != kLightProbeShOrder ||
-            header.coeffCount != kLightProbeShCoeffCount) {
-            SetMessage(outMessage, "HLPV version or SH layout is unsupported: " + path.generic_string());
+            header.coeffCount != kLightProbeShCoeffCount ||
+            header.visibilityResolution != kLightProbeVisibilityResolution) {
+            SetMessage(outMessage, "HLPV version/layout is unsupported; rebake for visibility-aware irradiance: " + path.generic_string());
             return false;
         }
 
@@ -159,6 +178,7 @@ namespace HIKARI::ASSETS::LIGHTING {
         data.origin = ReadVec3(header.origin);
         data.size = ReadVec3(header.size);
         data.spacing = ReadVec3(header.spacing);
+        data.visibilityDistanceScale = header.visibilityDistanceScale;
         data.probes.resize(header.probeCount);
 
         for (LightProbeSh9& probe : data.probes) {
@@ -170,6 +190,15 @@ namespace HIKARI::ASSETS::LIGHTING {
                 }
                 coeff = ReadVec3(raw);
             }
+        }
+        data.visibilityMoments.resize(data.probes.size() * kLightProbeVisibilityTexelCount);
+        for (auto& moments : data.visibilityMoments) {
+            float raw[2]{};
+            if (!ReadTrivialArray(ifs, raw, std::size(raw))) {
+                SetMessage(outMessage, "HLPV visibility payload is truncated: " + path.generic_string());
+                return false;
+            }
+            moments = {raw[0], raw[1]};
         }
 
         if (!ValidateLightProbeVolumeData(data, outMessage)) return false;
@@ -204,6 +233,7 @@ namespace HIKARI::ASSETS::LIGHTING {
         WriteVec3(data.spacing, header.spacing);
         header.shOrder = kLightProbeShOrder;
         header.coeffCount = kLightProbeShCoeffCount;
+        header.visibilityDistanceScale = data.visibilityDistanceScale;
 
         std::ofstream ofs(path, std::ios::binary);
         if (!ofs.is_open()) {
@@ -218,6 +248,10 @@ namespace HIKARI::ASSETS::LIGHTING {
                 writeSucceeded = writeSucceeded &&
                     WriteTrivialArray(ofs, raw, std::size(raw));
             }
+        }
+        for (const auto& moments : data.visibilityMoments) {
+            const float raw[2] = {moments.x, moments.y};
+            writeSucceeded = writeSucceeded && WriteTrivialArray(ofs, raw, std::size(raw));
         }
 
         if (!writeSucceeded || !ofs) {

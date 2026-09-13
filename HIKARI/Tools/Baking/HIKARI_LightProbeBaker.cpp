@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <numbers>
+#include <span>
 #include <sstream>
 #include <utility>
 
@@ -46,18 +47,6 @@ namespace HIKARI::TOOLS::BAKING {
                     denom * std::sqrt(denom));
         }
 
-        MATH::Vec3 CubemapDirection(uint32_t face, float u, float v) {
-            switch (face) {
-            case 0: return MATH::Normalize({ 1.0f, -v, -u });
-            case 1: return MATH::Normalize({ -1.0f, -v, u });
-            case 2: return MATH::Normalize({ u, 1.0f, v });
-            case 3: return MATH::Normalize({ u, -1.0f, -v });
-            case 4: return MATH::Normalize({ u, -v, 1.0f });
-            case 5: return MATH::Normalize({ -u, -v, -1.0f });
-            default: return { 0.0f, 1.0f, 0.0f };
-            }
-        }
-
         void EvaluateSh9Basis(const MATH::Vec3& dir, float outBasis[9]) {
             const float x = dir.x;
             const float y = dir.y;
@@ -73,7 +62,7 @@ namespace HIKARI::TOOLS::BAKING {
             outBasis[8] = 0.546274f * (x * x - y * y);
         }
 
-        MATH::Vec3 ReadPixelRgb(const DirectX::Image& image, uint32_t x, uint32_t y) {
+        MATH::Vec4 ReadPixel(const DirectX::Image& image, uint32_t x, uint32_t y) {
             const uint8_t* pixel =
                 image.pixels + static_cast<size_t>(image.rowPitch) * y + x * DirectX::BitsPerPixel(image.format) / 8u;
 
@@ -82,20 +71,13 @@ namespace HIKARI::TOOLS::BAKING {
                 return {
                     DirectX::PackedVector::XMConvertHalfToFloat(h[0]),
                     DirectX::PackedVector::XMConvertHalfToFloat(h[1]),
-                    DirectX::PackedVector::XMConvertHalfToFloat(h[2])
+                    DirectX::PackedVector::XMConvertHalfToFloat(h[2]),
+                    DirectX::PackedVector::XMConvertHalfToFloat(h[3])
                 };
             }
             if (image.format == DXGI_FORMAT_R32G32B32A32_FLOAT) {
                 const float* f = reinterpret_cast<const float*>(pixel);
-                return { f[0], f[1], f[2] };
-            }
-            if (image.format == DXGI_FORMAT_R8G8B8A8_UNORM ||
-                image.format == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB) {
-                return {
-                    static_cast<float>(pixel[0]) / 255.0f,
-                    static_cast<float>(pixel[1]) / 255.0f,
-                    static_cast<float>(pixel[2]) / 255.0f
-                };
+                return { f[0], f[1], f[2], f[3] };
             }
 
             return {};
@@ -104,6 +86,7 @@ namespace HIKARI::TOOLS::BAKING {
         bool ProjectCubemapToSh9(
             const std::filesystem::path& capturePath,
             ASSETS::LIGHTING::LightProbeSh9& outSh,
+            std::span<MATH::Vec2> visibility,
             std::string* outMessage) {
 
             DirectX::TexMetadata metadata{};
@@ -123,9 +106,12 @@ namespace HIKARI::TOOLS::BAKING {
             if (!metadata.IsCubemap() ||
                 metadata.arraySize < 6 ||
                 metadata.width == 0 ||
-                metadata.width != metadata.height) {
+                metadata.width != metadata.height ||
+                (metadata.format != DXGI_FORMAT_R16G16B16A16_FLOAT &&
+                    metadata.format != DXGI_FORMAT_R32G32B32A32_FLOAT) ||
+                visibility.size() != ASSETS::LIGHTING::kLightProbeVisibilityTexelCount) {
                 if (outMessage) {
-                    *outMessage = "light probe capture DDS is not a valid cubemap: " + capturePath.generic_string();
+                    *outMessage = "light probe capture requires a linear HDR cubemap with visibility depth: " + capturePath.generic_string();
                 }
                 return false;
             }
@@ -146,8 +132,15 @@ namespace HIKARI::TOOLS::BAKING {
                         const float u = ((static_cast<float>(x) + 0.5f) / static_cast<float>(resolution)) * 2.0f - 1.0f;
                         const float v = ((static_cast<float>(y) + 0.5f) / static_cast<float>(resolution)) * 2.0f - 1.0f;
                         const float weight = SolidAngleWeight(u, v, resolution);
-                        const MATH::Vec3 dir = CubemapDirection(face, u, v);
-                        const MATH::Vec3 radiance = ReadPixelRgb(*faceImage, x, y);
+                        const MATH::Vec3 dir = MATH::CubeFaceDirection(face, u * 0.5f + 0.5f, v * 0.5f + 0.5f);
+                        const auto pixel = ReadPixel(*faceImage, x, y);
+                        if (!std::isfinite(pixel.x) || !std::isfinite(pixel.y) || !std::isfinite(pixel.z) ||
+                            !std::isfinite(pixel.w) || pixel.x < 0 || pixel.y < 0 || pixel.z < 0 ||
+                            pixel.w < 0 || pixel.w > 1) {
+                            if (outMessage) *outMessage = "light probe capture contains invalid radiance or depth.";
+                            return false;
+                        }
+                        const MATH::Vec3 radiance{pixel.x, pixel.y, pixel.z};
 
                         float basis[9]{};
                         EvaluateSh9Basis(dir, basis);
@@ -166,6 +159,29 @@ namespace HIKARI::TOOLS::BAKING {
                     *outMessage = "light probe capture solid angle is invalid.";
                 }
                 return false;
+            }
+
+            // 距離と距離二乗を同じ方向フィルターへ通す。RGB の SH 投影とは混ぜない。
+            constexpr uint32_t side = ASSETS::LIGHTING::kLightProbeVisibilityResolution;
+            for (uint32_t y = 0; y < side; ++y) {
+                for (uint32_t x = 0; x < side; ++x) {
+                    double mean = 0.0, secondMoment = 0.0;
+                    for (uint32_t sy = 0; sy < 3; ++sy) {
+                        for (uint32_t sx = 0; sx < 3; ++sx) {
+                            const auto direction = MATH::DecodeOctahedralDirection({
+                                (x + (sx + 0.5f) / 3.0f) / side,
+                                (y + (sy + 0.5f) / 3.0f) / side});
+                            uint32_t face = 0; float u = 0, v = 0;
+                            MATH::DirectionToCubeFaceUv(direction, face, u, v);
+                            const uint32_t px = (std::min)(static_cast<uint32_t>(u * resolution), resolution - 1u);
+                            const uint32_t py = (std::min)(static_cast<uint32_t>(v * resolution), resolution - 1u);
+                            const double distance = ReadPixel(*image.GetImage(0, face, 0), px, py).w;
+                            mean += distance; secondMoment += distance * distance;
+                        }
+                    }
+                    visibility[y * side + x] = {
+                        static_cast<float>(mean / 9.0), static_cast<float>(secondMoment / 9.0)};
+                }
             }
 
             if (outMessage) {
@@ -217,7 +233,8 @@ namespace HIKARI::TOOLS::BAKING {
 
     LightProbeBakeResult LightProbeBaker::FinalizeCapturedVolume(
         const LightProbeBakeRequest& request,
-        const std::vector<std::filesystem::path>& probeCapturePaths) const {
+        const std::vector<std::filesystem::path>& probeCapturePaths,
+        float visibilityDistanceScale) const {
 
         LightProbeBakeResult result{};
         result.success = false;
@@ -253,11 +270,16 @@ namespace HIKARI::TOOLS::BAKING {
         volume.shOrder = ASSETS::LIGHTING::kLightProbeShOrder;
         volume.coeffCount = ASSETS::LIGHTING::kLightProbeShCoeffCount;
         volume.probes.resize(probeCount);
+        volume.visibilityDistanceScale = visibilityDistanceScale;
+        volume.visibilityMoments.resize(static_cast<size_t>(probeCount) * ASSETS::LIGHTING::kLightProbeVisibilityTexelCount);
 
         // Cubemap radiance を SH9 に投影し、diffuse indirect 用に保存する。
         for (uint32_t probe = 0; probe < probeCount; ++probe) {
             std::string message{};
-            if (!ProjectCubemapToSh9(probeCapturePaths[probe], volume.probes[probe], &message)) {
+            if (!ProjectCubemapToSh9(probeCapturePaths[probe], volume.probes[probe],
+                    std::span(volume.visibilityMoments).subspan(
+                        static_cast<size_t>(probe) * ASSETS::LIGHTING::kLightProbeVisibilityTexelCount,
+                        ASSETS::LIGHTING::kLightProbeVisibilityTexelCount), &message)) {
                 AddError(result, message);
                 return result;
             }

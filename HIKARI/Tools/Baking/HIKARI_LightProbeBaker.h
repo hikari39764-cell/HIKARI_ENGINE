@@ -44,7 +44,8 @@ namespace HIKARI::TOOLS::BAKING {
     public:
         LightProbeBakeResult FinalizeCapturedVolume(
             const LightProbeBakeRequest& request,
-            const std::vector<std::filesystem::path>& probeCapturePaths) const;
+            const std::vector<std::filesystem::path>& probeCapturePaths,
+            float visibilityDistanceScale) const;
     };
 
 } // namespace HIKARI::TOOLS::BAKING

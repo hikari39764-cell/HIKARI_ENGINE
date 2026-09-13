@@ -156,71 +156,6 @@ namespace HIKARI {
             return TangentToWorld(local, normal);
         }
 
-        void DirectionToCubeFaceUv(
-            const MATH::Vec3& dir,
-            uint32_t& outFace,
-            float& outU,
-            float& outV) {
-
-            const float ax = std::abs(dir.x);
-            const float ay = std::abs(dir.y);
-            const float az = std::abs(dir.z);
-
-            float u = 0.0f;
-            float v = 0.0f;
-            if (ax >= ay && ax >= az) {
-                if (dir.x >= 0.0f) {
-                    outFace = 0;
-                    u = -dir.z / ax;
-                    v = -dir.y / ax;
-                } else {
-                    outFace = 1;
-                    u = dir.z / ax;
-                    v = -dir.y / ax;
-                }
-            } else if (ay >= ax && ay >= az) {
-                if (dir.y >= 0.0f) {
-                    outFace = 2;
-                    u = dir.x / ay;
-                    v = dir.z / ay;
-                } else {
-                    outFace = 3;
-                    u = dir.x / ay;
-                    v = -dir.z / ay;
-                }
-            } else {
-                if (dir.z >= 0.0f) {
-                    outFace = 4;
-                    u = dir.x / az;
-                    v = -dir.y / az;
-                } else {
-                    outFace = 5;
-                    u = -dir.x / az;
-                    v = -dir.y / az;
-                }
-            }
-
-            outU = Saturate(u * 0.5f + 0.5f);
-            outV = Saturate(v * 0.5f + 0.5f);
-        }
-
-        MATH::Vec3 CubeFaceTexelDirection(uint32_t face, uint32_t x, uint32_t y, uint32_t size) {
-            const float u = (2.0f * (static_cast<float>(x) + 0.5f) / static_cast<float>(size)) - 1.0f;
-            const float v = (2.0f * (static_cast<float>(y) + 0.5f) / static_cast<float>(size)) - 1.0f;
-
-            MATH::Vec3 dir{};
-            switch (face) {
-            case 0: dir = { 1.0f, -v, -u }; break; // +X
-            case 1: dir = { -1.0f, -v, u }; break; // -X
-            case 2: dir = { u, 1.0f, v }; break; // +Y
-            case 3: dir = { u, -1.0f, -v }; break; // -Y
-            case 4: dir = { u, -v, 1.0f }; break; // +Z
-            case 5: dir = { -u, -v, -1.0f }; break; // -Z
-            default: dir = { 0.0f, 0.0f, 1.0f }; break;
-            }
-            return MATH::Normalize(dir);
-        }
-
         uint32_t MipSize(const CubemapImage& cube, uint32_t mip) {
             return std::max(1u, cube.width >> mip);
         }
@@ -237,7 +172,7 @@ namespace HIKARI {
             uint32_t face = 0;
             float u = 0.0f;
             float v = 0.0f;
-            DirectionToCubeFaceUv(MATH::Normalize(direction), face, u, v);
+            MATH::DirectionToCubeFaceUv(MATH::Normalize(direction), face, u, v);
             mipLevel = std::min(mipLevel, cube.mipLevels - 1u);
             const uint32_t size = MipSize(cube, mipLevel);
             const std::vector<Float4>& pixels = cube.faces[face][mipLevel];
@@ -390,7 +325,7 @@ namespace HIKARI {
                 output.faces[face][0].resize(static_cast<size_t>(size) * size);
                 for (uint32_t y = 0; y < size; ++y) {
                     for (uint32_t x = 0; x < size; ++x) {
-                        const MATH::Vec3 n = CubeFaceTexelDirection(face, x, y, size);
+                        const MATH::Vec3 n = MATH::CubeFaceDirection(face, (x + 0.5f) / size, (y + 0.5f) / size);
                         Float4 sum{};
                         for (uint32_t i = 0; i < sampleCount; ++i) {
                             const float u1 = static_cast<float>(i) / static_cast<float>(sampleCount);
@@ -431,7 +366,7 @@ namespace HIKARI {
                     output.faces[face][mip].resize(static_cast<size_t>(size) * size);
                     for (uint32_t y = 0; y < size; ++y) {
                         for (uint32_t x = 0; x < size; ++x) {
-                            const MATH::Vec3 r = CubeFaceTexelDirection(face, x, y, size);
+                            const MATH::Vec3 r = MATH::CubeFaceDirection(face, (x + 0.5f) / size, (y + 0.5f) / size);
                             const MATH::Vec3 n = r;
                             const MATH::Vec3 v = r;
 

@@ -130,7 +130,7 @@ float ResolveEdge(
     const float2 sampleUv = saturate(uv + offset);
     const float sampleDepth = gSceneDepth.SampleLevel(
         gPointClamp, sampleUv, 0.0f);
-    const float3 sampleNormal = HikariDecodeOctahedralNormal(
+    const float3 sampleNormal = HikariDecodeOctahedralDirection(
         gPackedSurface.SampleLevel(
             gPointClamp, sampleUv, 0.0f).rg);
     const float3 sampleColor = gSceneColor.SampleLevel(
@@ -206,7 +206,7 @@ float4 PSMain(FullscreenVertex input) : SV_TARGET
     const uint2 centerFeature = LoadSurfaceFeature(centerPixel);
     const float centerDepth = gSceneDepth.SampleLevel(
         gPointClamp, input.uv, 0.0f);
-    const float3 centerNormal = HikariDecodeOctahedralNormal(
+    const float3 centerNormal = HikariDecodeOctahedralDirection(
         gPackedSurface.SampleLevel(gPointClamp, input.uv, 0.0f).rg);
     float4 outlineStyle = 0.0f.xxxx;
     const bool outlineContext = ResolveOutlineContext(

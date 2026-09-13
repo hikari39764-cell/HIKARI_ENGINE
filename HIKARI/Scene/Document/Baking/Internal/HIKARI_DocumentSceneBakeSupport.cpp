@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "Project/Paths/HIKARI_ProjectPath.h"
+#include "Tools/Baking/HIKARI_ProbeCubemapCaptureTarget.h"
 
 namespace HIKARI::DOCUMENT_SCENE_BAKING {
         const char* ReflectionProbeInfluenceShapeName(
@@ -257,7 +258,7 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
             camera.SetPerspective(
                 std::numbers::pi_v<float> * 0.5f,
                 1.0f,
-                0.05f,
+                TOOLS::BAKING::kProbeCaptureNearPlane,
                 (std::max)(1.0f, farPlane));
             camera.SetLookAt(position, position + kDirections[face], kUps[face]);
             return camera;

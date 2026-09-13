@@ -23,6 +23,7 @@
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Render3D/Lighting/HIKARI_LightingProviderViewSelection.h"
+#include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI::RENDER3D::LIGHTPROBE {
 
@@ -32,6 +33,8 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
             GFX::DESCRIPTOR::kLightProbeShVolumeTextureCount;
         constexpr DXGI_FORMAT kShVolumeFormat =
             DXGI_FORMAT_R16G16B16A16_FLOAT;
+        constexpr uint32_t kUploadTextureCount = kShCoeffCount + 1u;
+        constexpr uint32_t kVisibilityTileSize = ASSETS::LIGHTING::kLightProbeVisibilityResolution + 2u;
         static_assert(
             kShCoeffCount ==
                 ASSETS::LIGHTING::kLightProbeShCoeffCount);
@@ -56,6 +59,8 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
                 Microsoft::WRL::ComPtr<ID3D12Resource>,
                 kShCoeffCount> shVolumes{};
             Microsoft::WRL::ComPtr<ID3D12Resource> uploadBuffer{};
+            Microsoft::WRL::ComPtr<ID3D12Resource> visibilityTexture{};
+            TextureResourceHandle visibilityResource{};
             ID3D12Device* volumeDevice = nullptr;
             ID3D12Device* srvDevice = nullptr;
             ID3D12DescriptorHeap* srvHeap = nullptr;
@@ -147,7 +152,7 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
                     GFX::GetCurrentContext().device) {
                 return false;
             }
-            return std::all_of(
+            return resident.visibilityTexture && IsTextureResourceValid(resident.visibilityResource) && std::all_of(
                 resident.shVolumes.begin(),
                 resident.shVolumes.end(),
                 [](const auto& volume) {
@@ -169,6 +174,9 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
         }
 
         void RetireResident(ResidentVolume& resident) {
+            if (resident.visibilityResource) ReleaseTextureResource(resident.visibilityResource);
+            resident.visibilityResource = {};
+            RetireResource(resident.visibilityTexture, "LightProbeVolume visibility texture");
             for (auto& volume : resident.shVolumes) {
                 RetireResource(
                     volume,
@@ -225,42 +233,23 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
             };
         }
 
-        std::vector<MATH::Vec3> BuildCpuCoeffs(
-            const ASSETS::LIGHTING::LightProbeVolumeFileData&
-                fileData) {
-
-            std::vector<MATH::Vec3> coeffs{};
-            coeffs.reserve(
-                fileData.probes.size() * kShCoeffCount);
-            for (const ASSETS::LIGHTING::LightProbeSh9& probe :
-                 fileData.probes) {
-                for (const MATH::Vec3& coeff : probe.coeffs) {
-                    coeffs.push_back(coeff);
-                }
-            }
-            return coeffs;
-        }
-
         bool UploadVolumes(
             ResidentVolume& resident,
             size_t residentIndex,
-            const std::vector<MATH::Vec3>& coeffs,
-            uint32_t countX,
-            uint32_t countY,
-            uint32_t countZ,
+            const ASSETS::LIGHTING::LightProbeVolumeFileData& fileData,
             std::string& outMessage) {
 
             ID3D12Device* device = GFX::GetCurrentContext().device;
             ID3D12CommandQueue* queue =
                 GFX::GetCurrentContext().queue;
+            const uint32_t countX = fileData.countX, countY = fileData.countY, countZ = fileData.countZ;
             const size_t probeCount =
                 static_cast<size_t>(countX) *
                 countY *
                 countZ;
             if (device == nullptr || queue == nullptr ||
                 probeCount == 0u ||
-                coeffs.size() !=
-                    probeCount * kShCoeffCount) {
+                !ASSETS::LIGHTING::ValidateLightProbeVolumeData(fileData, &outMessage)) {
                 outMessage =
                     "Light probe GPU upload context is missing.";
                 return false;
@@ -275,17 +264,22 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
                     1u);
             const CD3DX12_HEAP_PROPERTIES defaultHeap(
                 D3D12_HEAP_TYPE_DEFAULT);
+            std::array<D3D12_RESOURCE_DESC, kUploadTextureCount> descriptions;
+            std::fill_n(descriptions.begin(), kShCoeffCount, volumeDesc);
+            descriptions[kShCoeffCount] = CD3DX12_RESOURCE_DESC::Tex2D(
+                DXGI_FORMAT_R32G32_FLOAT, static_cast<UINT64>(countX) * countY * kVisibilityTileSize,
+                countZ * kVisibilityTileSize, 1u, 1u);
             std::array<
                 Microsoft::WRL::ComPtr<ID3D12Resource>,
-                kShCoeffCount> volumes{};
+                kUploadTextureCount> volumes{};
             for (uint32_t coeff = 0;
-                 coeff < kShCoeffCount;
+                 coeff < kUploadTextureCount;
                  ++coeff) {
                 const HRESULT hr =
                     device->CreateCommittedResource(
                         &defaultHeap,
                         D3D12_HEAP_FLAG_NONE,
-                        &volumeDesc,
+                        &descriptions[coeff],
                         D3D12_RESOURCE_STATE_COMMON,
                         nullptr,
                         IID_PPV_ARGS(
@@ -301,16 +295,16 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
 
             std::array<
                 D3D12_PLACED_SUBRESOURCE_FOOTPRINT,
-                kShCoeffCount> footprints{};
-            std::array<UINT, kShCoeffCount> rowCounts{};
-            std::array<UINT64, kShCoeffCount> rowBytes{};
+                kUploadTextureCount> footprints{};
+            std::array<UINT, kUploadTextureCount> rowCounts{};
+            std::array<UINT64, kUploadTextureCount> rowBytes{};
             UINT64 uploadBytes = 0;
             for (uint32_t coeff = 0;
-                 coeff < kShCoeffCount;
+                 coeff < kUploadTextureCount;
                  ++coeff) {
                 UINT64 total = 0;
                 device->GetCopyableFootprints(
-                    &volumeDesc,
+                    &descriptions[coeff],
                     0,
                     1,
                     uploadBytes,
@@ -384,11 +378,28 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
                                     countX +
                                 x;
                             row[x] = ToHalfTexel(
-                                coeffs[
-                                    probeIndex *
-                                        kShCoeffCount +
-                                    coeff]);
+                                fileData.probes[probeIndex].coeffs[coeff]);
                         }
+                    }
+                }
+            }
+            // 各 octahedral tile の一画素境界を折り返し、隣の probe を補間しない。
+            constexpr int side = ASSETS::LIGHTING::kLightProbeVisibilityResolution;
+            const auto& visibilityFootprint = footprints[kShCoeffCount];
+            for (uint32_t probe = 0; probe < probeCount; ++probe) {
+                const uint32_t tileX = (probe % (countX * countY)) * kVisibilityTileSize;
+                const uint32_t tileY = (probe / (countX * countY)) * kVisibilityTileSize;
+                for (int y = 0; y < static_cast<int>(kVisibilityTileSize); ++y) {
+                    auto* row = reinterpret_cast<MATH::Vec2*>(mapped + visibilityFootprint.Offset +
+                        static_cast<size_t>(tileY + y) * visibilityFootprint.Footprint.RowPitch);
+                    for (int x = 0; x < static_cast<int>(kVisibilityTileSize); ++x) {
+                        int sx = x - 1, sy = y - 1;
+                        if (sx < 0) { sx = 0; sy = side - 1 - sy; }
+                        else if (sx >= side) { sx = side - 1; sy = side - 1 - sy; }
+                        if (sy < 0) { sy = 0; sx = side - 1 - sx; }
+                        else if (sy >= side) { sy = side - 1; sx = side - 1 - sx; }
+                        row[tileX + x] = fileData.visibilityMoments[
+                            static_cast<size_t>(probe) * side * side + sy * side + sx];
                     }
                 }
             }
@@ -421,9 +432,9 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
 
             std::array<
                 D3D12_RESOURCE_BARRIER,
-                kShCoeffCount> toCopy{};
+                kUploadTextureCount> toCopy{};
             for (uint32_t coeff = 0;
-                 coeff < kShCoeffCount;
+                 coeff < kUploadTextureCount;
                  ++coeff) {
                 toCopy[coeff] =
                     CD3DX12_RESOURCE_BARRIER::Transition(
@@ -432,10 +443,10 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
                         D3D12_RESOURCE_STATE_COPY_DEST);
             }
             commandList->ResourceBarrier(
-                kShCoeffCount,
+                kUploadTextureCount,
                 toCopy.data());
             for (uint32_t coeff = 0;
-                 coeff < kShCoeffCount;
+                 coeff < kUploadTextureCount;
                  ++coeff) {
                 const CD3DX12_TEXTURE_COPY_LOCATION dst(
                     volumes[coeff].Get(),
@@ -453,18 +464,18 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
             }
             std::array<
                 D3D12_RESOURCE_BARRIER,
-                kShCoeffCount> toShader{};
+                kUploadTextureCount> toShader{};
             for (uint32_t coeff = 0;
-                 coeff < kShCoeffCount;
+                 coeff < kUploadTextureCount;
                  ++coeff) {
                 toShader[coeff] =
                     CD3DX12_RESOURCE_BARRIER::Transition(
                         volumes[coeff].Get(),
                         D3D12_RESOURCE_STATE_COPY_DEST,
-                        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+                        D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
             }
             commandList->ResourceBarrier(
-                kShCoeffCount,
+                kUploadTextureCount,
                 toShader.data());
             hr = commandList->Close();
             if (FAILED(hr)) {
@@ -511,8 +522,20 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
                 }
             }
 
+            RenderResourceDesc visibilityDesc{};
+            visibilityDesc.debugName = "LightProbeVolume.Visibility";
+            const TextureResourceHandle visibilityResource = RegisterTextureResourceFromNative(
+                volumes[kShCoeffCount].Get(), DXGI_FORMAT_R32G32_FLOAT, visibilityDesc);
+            if (!visibilityResource || GetTextureResourceSrvDescriptorIndex(visibilityResource) >= GFX::DESCRIPTOR::kUserSrvCount) {
+                if (visibilityResource) ReleaseTextureResource(visibilityResource);
+                outMessage = "Light probe visibility descriptor allocation failed.";
+                return false;
+            }
             RetireResident(resident);
-            resident.shVolumes = std::move(volumes);
+            for (uint32_t coefficient = 0; coefficient < kShCoeffCount; ++coefficient)
+                resident.shVolumes[coefficient] = std::move(volumes[coefficient]);
+            resident.visibilityTexture = std::move(volumes[kShCoeffCount]);
+            resident.visibilityResource = visibilityResource;
             resident.uploadBuffer = std::move(uploadBuffer);
             resident.volumeDevice = device;
             if (!WriteVolumeSrvs(
@@ -547,6 +570,8 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
                 resident.data.intensity > 0.0f &&
                 HasGpuResources(resident) &&
                 resident.srvReady;
+            resident.data.visibilityTextureDescriptorIndex = resident.data.valid
+                ? GetTextureResourceSrvDescriptorIndex(resident.visibilityResource) : UINT32_MAX;
         }
 
         bool LoadResident(
@@ -562,15 +587,10 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
                     &outMessage)) {
                 return false;
             }
-            const std::vector<MATH::Vec3> coeffs =
-                BuildCpuCoeffs(fileData);
             if (!UploadVolumes(
                     resident,
                     residentIndex,
-                    coeffs,
-                    fileData.countX,
-                    fileData.countY,
-                    fileData.countZ,
+                    fileData,
                     outMessage)) {
                 return false;
             }
@@ -585,6 +605,7 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
             resident.data.probeCount =
                 static_cast<uint32_t>(
                     fileData.probes.size());
+            resident.data.visibilityDistanceScale = fileData.visibilityDistanceScale;
             resident.data.intensity =
                 (std::max)(0.0f, request.intensity);
             resident.data.blendDistance =

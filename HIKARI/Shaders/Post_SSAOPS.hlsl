@@ -47,7 +47,7 @@ VSOut VSMain(uint vertexId : SV_VertexID)
 
 float3 DecodeNormal(float4 packed)
 {
-    return HikariDecodeOctahedralNormal(packed.rg);
+    return HikariDecodeOctahedralDirection(packed.rg);
 }
 
 float3 ReconstructWorld(float2 uv, float depth)

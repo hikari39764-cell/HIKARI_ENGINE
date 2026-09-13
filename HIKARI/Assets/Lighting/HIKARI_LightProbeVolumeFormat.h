@@ -9,9 +9,12 @@
 
 namespace HIKARI::ASSETS::LIGHTING {
 
-    constexpr uint32_t kLightProbeVolumeVersion = 1;
+    constexpr uint32_t kLightProbeVolumeVersion = 2;
     constexpr uint32_t kLightProbeShOrder = 3;
     constexpr uint32_t kLightProbeShCoeffCount = 9;
+    constexpr uint32_t kLightProbeVisibilityResolution = 16;
+    constexpr uint32_t kLightProbeVisibilityTexelCount =
+        kLightProbeVisibilityResolution * kLightProbeVisibilityResolution;
 
     struct LightProbeSh9 {
         MATH::Vec3 coeffs[kLightProbeShCoeffCount]{};
@@ -27,6 +30,9 @@ namespace HIKARI::ASSETS::LIGHTING {
         uint32_t shOrder = kLightProbeShOrder;
         uint32_t coeffCount = kLightProbeShCoeffCount;
         std::vector<LightProbeSh9> probes{};
+        float visibilityDistanceScale = 0.0f;
+        // probe-major octahedral distance moments E[d], E[d*d], normalized to [0,1].
+        std::vector<MATH::Vec2> visibilityMoments{};
     };
 
     // 保存と GPU 読み込みで同じ格子・SH データ契約を検証する。

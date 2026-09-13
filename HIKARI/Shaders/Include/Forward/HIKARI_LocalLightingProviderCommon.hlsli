@@ -2,6 +2,7 @@
 #define HIKARI_LOCAL_LIGHTING_PROVIDER_COMMON_HLSLI
 
 #include "../Lighting/HIKARI_IrradianceSh9.hlsli"
+#include "../HIKARI_DirectionEncoding.hlsli"
 
 float3 HikariSampleLightProbeCoefficient(
     uint providerSlot,
@@ -19,58 +20,85 @@ float3 HikariSampleLightProbeCoefficient(
             0.0f).rgb;
 }
 
-// SH9 係数を Texture3D 上で補間してから拡散照明を評価する。
-float3 HikariEvaluateLightProbeVolumeDiffuse(
-    uint providerSlot,
-    HikariIrradianceVolumeData volume,
-    float3 worldPos,
-    float3 n)
+// 可視性は probe から受光点への方向距離。位置補間は元の座標を維持する。
+float HikariLightProbeVisibility(HikariIrradianceVolumeData volume,
+    uint3 probeCoordinate, float3 worldPos, float requestedBias)
 {
-    uint3 counts = (uint3)(
-        volume.countsProbeCount.xyz + 0.5f);
-    uint probeCount = (uint)(
-        volume.countsProbeCount.w + 0.5f);
-    if (volume.originSampling.w < 0.5f ||
-        probeCount == 0u ||
-        any(counts < 1u))
+    const uint descriptorIndex = (uint)(volume.selectionParams.y + 0.5f) - 1u;
+    if (descriptorIndex >= HIKARI_MATERIAL_TEXTURE_POOL_COUNT || volume.selectionParams.w <= 0.0f)
+        return 0.0f;
+    const uint3 counts = (uint3)(volume.countsProbeCount.xyz + 0.5f);
+    const float3 probePosition = volume.originSampling.xyz + (float3)probeCoordinate * volume.spacingIntensity.xyz;
+    const float3 offset = worldPos - probePosition;
+    const float distance = length(offset);
+    if (distance <= 1e-6f) return 1.0f;
+    const float2 directionUv = HikariEncodeOctahedralDirection(offset / distance);
+    const uint2 tile = uint2(probeCoordinate.x + probeCoordinate.y * counts.x, probeCoordinate.z);
+    const float2 atlasSize = float2(counts.x * counts.y, counts.z) * 18.0f;
+    const float2 uv = ((float2)tile * 18.0f + 1.0f + directionUv * 16.0f) / atlasSize;
+    const float2 moments = gMaterialTexturePool[NonUniformResourceIndex(descriptorIndex)].SampleLevel(gLinearClamp, uv, 0.0f).rg;
+    // 大きな probe 間隔でも壁を越す位置オフセットにしない。距離比較の誤差だけ許容する。
+    const float bias = min(requestedBias, max(0.001f, distance * 0.001f));
+    const float delta = max(0.0f, (distance - bias) / volume.selectionParams.w - moments.x);
+    const float variance = max(0.0f, moments.y - moments.x * moments.x);
+    const float visibility = delta <= 0.0f ? 1.0f : variance / max(variance + delta * delta, 1e-20f);
+    return visibility * visibility * visibility;
+}
+
+float3 HikariLoadLightProbeCoefficient(uint providerSlot, uint coefficientIndex, uint3 coordinate)
+{
+    return providerSlot == 0u
+        ? gLightProbeShVolume0[coefficientIndex].Load(int4(coordinate, 0)).rgb
+        : gLightProbeShVolume1[coefficientIndex].Load(int4(coordinate, 0)).rgb;
+}
+
+float3 HikariEvaluateLightProbeVolumeDiffuse(
+    uint providerSlot, HikariIrradianceVolumeData volume, float3 worldPos, float3 n)
+{
+    const uint3 counts = (uint3)(volume.countsProbeCount.xyz + 0.5f);
+    if (volume.originSampling.w < 0.5f || volume.selectionParams.y < 0.5f ||
+        volume.countsProbeCount.w < 0.5f || any(counts < 1u)) return 0.0f.xxx;
+    const float3 grid = clamp((worldPos - volume.originSampling.xyz) /
+        max(volume.spacingIntensity.xyz, 0.0001f.xxx), 0.0f.xxx, (float3)(counts - 1u));
+    const uint3 base = (uint3)floor(grid);
+    const float3 fraction = frac(grid);
+    const float minimumSpacing = min(volume.spacingIntensity.x, min(volume.spacingIntensity.y, volume.spacingIntensity.z));
+    const float requestedBias = minimumSpacing * clamp(volume.selectionParams.z, 0.0f, 0.5f);
+    uint3 coordinates[8];
+    float weights[8];
+    float totalWeight = 0.0f;
+    bool allVisible = true;
+    [unroll] for (uint corner = 0u; corner < 8u; ++corner)
     {
-        return 0.0f.xxx;
+        const uint3 offset = uint3(corner & 1u, (corner >> 1u) & 1u, (corner >> 2u) & 1u);
+        coordinates[corner] = min(base + offset, counts - 1u);
+        const float3 axisWeight = lerp(1.0f.xxx - fraction, fraction, (float3)offset);
+        const float interpolationWeight = axisWeight.x * axisWeight.y * axisWeight.z;
+        const float visibility = interpolationWeight > 0.0f
+            ? HikariLightProbeVisibility(volume, coordinates[corner], worldPos, requestedBias) : 1.0f;
+        weights[corner] = interpolationWeight * visibility;
+        totalWeight += weights[corner];
+        allVisible = allVisible && visibility >= 0.9999f;
     }
-
-    float3 floatCounts = (float3)counts;
-    float spacingMinimum = min(
-        min(
-            volume.spacingIntensity.x,
-            volume.spacingIntensity.y),
-        volume.spacingIntensity.z);
-    float normalBiasDistance =
-        spacingMinimum *
-        clamp(volume.selectionParams.z, 0.0f, 0.5f);
-    float3 sampleWorldPosition =
-        worldPos + normalize(n) * normalBiasDistance;
-    float3 gridCoord =
-        (sampleWorldPosition - volume.originSampling.xyz) /
-        max(
-            volume.spacingIntensity.xyz,
-            0.0001f.xxx);
-    gridCoord = clamp(
-        gridCoord,
-        0.0f.xxx,
-        floatCounts - 1.0f);
-    float3 uvw =
-        (gridCoord + 0.5f) / floatCounts;
-
+    if (totalWeight <= 1e-5f) return 0.0f.xxx;
     float3 result = 0.0f.xxx;
-    [unroll]
-    for (uint coefficient = 0u;
-        coefficient < 9u;
-        ++coefficient)
+    const float3 uvw = (grid + 0.5f) / (float3)counts;
+    [unroll] for (uint coefficient = 0u; coefficient < 9u; ++coefficient)
     {
-        result += HikariSampleLightProbeCoefficient(
-            providerSlot,
-            coefficient,
-            uvw) *
-            HikariSh9DiffuseWeight(n, coefficient);
+        float3 value = 0.0f.xxx;
+        if (allVisible)
+        {
+            // 遮蔽物がない領域は既存の hardware trilinear を保ち、72 回の Load を避ける。
+            value = HikariSampleLightProbeCoefficient(providerSlot, coefficient, uvw);
+        }
+        else
+        {
+            [unroll] for (uint corner = 0u; corner < 8u; ++corner)
+                if (weights[corner] > 0.0f)
+                    value += HikariLoadLightProbeCoefficient(providerSlot, coefficient, coordinates[corner]) * weights[corner];
+            value /= totalWeight;
+        }
+        result += value * HikariSh9DiffuseWeight(n, coefficient);
     }
     return max(result, 0.0f.xxx);
 }

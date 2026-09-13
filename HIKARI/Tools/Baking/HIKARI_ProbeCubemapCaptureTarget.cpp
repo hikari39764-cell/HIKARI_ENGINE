@@ -2,15 +2,18 @@
 #include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <utility>
 
 #include <DirectXTex.h>
+#include <DirectXPackedVector.h>
 #include <d3dx12.h>
 
 #include "Core/HIKARI_Logger.h"
 #include "Gfx/HIKARI_DXCheck.h"
+#include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 
 namespace HIKARI::TOOLS::BAKING {
 
@@ -28,8 +31,13 @@ namespace HIKARI::TOOLS::BAKING {
 
     } // namespace
 
-    bool ProbeCubemapCaptureTarget::Initialize(uint32_t resolution, DXGI_FORMAT format) {
-        if (initialized_ && resolution_ == resolution && format_ == format) {
+    bool ProbeCubemapCaptureTarget::Initialize(uint32_t resolution, DXGI_FORMAT format,
+        float nearPlane, float farPlane) {
+        if (!std::isfinite(nearPlane) || !std::isfinite(farPlane * 1.7320508075688772f) ||
+            !((nearPlane == 0.0f && farPlane == 0.0f) ||
+                (nearPlane > 0.0f && farPlane > nearPlane && format == DXGI_FORMAT_R16G16B16A16_FLOAT))) return false;
+        if (initialized_ && resolution_ == resolution && format_ == format &&
+            nearPlane_ == nearPlane && farPlane_ == farPlane) {
             return true;
         }
 
@@ -37,6 +45,8 @@ namespace HIKARI::TOOLS::BAKING {
 
         resolution_ = std::max(16u, resolution);
         format_ = format;
+        nearPlane_ = nearPlane;
+        farPlane_ = farPlane;
 
         for (uint32_t face = 0; face < 6u; ++face) {
             faces_[face].UpdateContext(GFX::GetCurrentContext());
@@ -62,11 +72,17 @@ namespace HIKARI::TOOLS::BAKING {
             face.Finalize();
         }
         for (FaceReadback& readback : readbacks_) {
+            GFX::RetireD3D12ObjectForCurrentFrame(readback.buffer, "Probe capture color readback");
+            readback = {};
+        }
+        for (FaceReadback& readback : depthReadbacks_) {
+            GFX::RetireD3D12ObjectForCurrentFrame(readback.buffer, "Probe capture depth readback");
             readback = {};
         }
 
         resolution_ = 0;
         format_ = DXGI_FORMAT_UNKNOWN;
+        nearPlane_ = farPlane_ = 0.0f;
         initialized_ = false;
     }
 
@@ -95,23 +111,16 @@ namespace HIKARI::TOOLS::BAKING {
         faces_[faceIndex].EndCapture();
     }
 
-    bool ProbeCubemapCaptureTarget::CreateReadbackForFace(
-        uint32_t faceIndex,
+    bool ProbeCubemapCaptureTarget::CreateReadback(
+        ID3D12Resource* resource,
+        FaceReadback& readback,
         std::string* outMessage) {
-
-        if (!initialized_ || !IsValidFace(faceIndex)) {
-            SetMessage(outMessage, "Invalid capture face index.");
-            return false;
-        }
-
         ID3D12Device* device = GFX::GetCurrentContext().device;
-        ID3D12Resource* resource = faces_[faceIndex].GetResource();
         if (device == nullptr || resource == nullptr) {
             SetMessage(outMessage, "Capture face resource is missing.");
             return false;
         }
 
-        FaceReadback& readback = readbacks_[faceIndex];
         const D3D12_RESOURCE_DESC desc = resource->GetDesc();
         device->GetCopyableFootprints(
             &desc,
@@ -123,6 +132,10 @@ namespace HIKARI::TOOLS::BAKING {
             &readback.rowSizeInBytes,
             &readback.totalBytes);
 
+        // 前の capture は workflow の fence 待機後に読み終わる。同寸法の buffer は再利用する。
+        if (readback.buffer && readback.buffer->GetDesc().Width >= readback.totalBytes) return true;
+        GFX::RetireD3D12ObjectForCurrentFrame(readback.buffer, "Probe capture resized readback");
+
         const CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_READBACK);
         const CD3DX12_RESOURCE_DESC bufferDesc =
             CD3DX12_RESOURCE_DESC::Buffer(readback.totalBytes);
@@ -133,8 +146,8 @@ namespace HIKARI::TOOLS::BAKING {
             &bufferDesc,
             D3D12_RESOURCE_STATE_COPY_DEST,
             nullptr,
-            IID_PPV_ARGS(readback.buffer.ReleaseAndGetAddressOf()));
-        if (!HIKARI_DX_CHECK(hr, "ProbeCubemapCaptureTarget::CreateReadbackForFace")) {
+            IID_PPV_ARGS(readback.buffer.GetAddressOf()));
+        if (!HIKARI_DX_CHECK(hr, "ProbeCubemapCaptureTarget::CreateReadback")) {
             SetMessage(outMessage, "Failed to create reflection probe readback buffer.");
             return false;
         }
@@ -154,7 +167,9 @@ namespace HIKARI::TOOLS::BAKING {
             return false;
         }
 
-        if (!CreateReadbackForFace(faceIndex, outMessage)) {
+        if (!CreateReadback(faces_[faceIndex].GetResource(), readbacks_[faceIndex], outMessage) ||
+            (farPlane_ > 0.0f && !CreateReadback(faces_[faceIndex].GetDepthResource(),
+                depthReadbacks_[faceIndex], outMessage))) {
             return false;
         }
 
@@ -173,10 +188,51 @@ namespace HIKARI::TOOLS::BAKING {
 
         // 現在の face だけを readback buffer にコピーする。
         cmd->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+        if (farPlane_ > 0.0f && !faces_[faceIndex].CopyDepthToReadback(
+            depthReadbacks_[faceIndex].buffer.Get(), depthReadbacks_[faceIndex].footprint)) {
+            SetMessage(outMessage, "Failed to copy probe visibility depth.");
+            return false;
+        }
 
         SetMessage(outMessage, "Reflection probe capture face readback queued: " +
             std::to_string(faceIndex));
         return true;
+    }
+
+    float ProbeCubemapCaptureTarget::GetVisibilityDistanceScale() const {
+        return farPlane_ * 1.7320508075688772f;
+    }
+
+    bool ProbeCubemapCaptureTarget::StoreDepthInCaptureAlpha(uint32_t faceIndex,
+        uint8_t* pixels, size_t rowPitch, std::string* outMessage) const {
+        if (farPlane_ <= 0.0f) return true;
+        const auto& readback = depthReadbacks_[faceIndex];
+        void* mapped = nullptr;
+        if (!readback.buffer || FAILED(readback.buffer->Map(0, nullptr, &mapped)) || !mapped) {
+            SetMessage(outMessage, "Probe visibility readback is missing.");
+            return false;
+        }
+        bool valid = true;
+        for (uint32_t y = 0; y < resolution_ && valid; ++y) {
+            const auto* depth = reinterpret_cast<const float*>(static_cast<const uint8_t*>(mapped) +
+                readback.footprint.Offset + static_cast<size_t>(y) * readback.footprint.Footprint.RowPitch);
+            auto* color = reinterpret_cast<uint16_t*>(pixels + static_cast<size_t>(y) * rowPitch);
+            for (uint32_t x = 0; x < resolution_; ++x) {
+                if (!std::isfinite(depth[x]) || depth[x] < 0.0f || depth[x] > 1.0f) { valid = false; break; }
+                float distance = 1.0f;
+                if (depth[x] < 1.0f) {
+                    const double z = static_cast<double>(nearPlane_) * farPlane_ /
+                        (farPlane_ - static_cast<double>(depth[x]) * (farPlane_ - nearPlane_));
+                    const double u = 2.0 * (x + 0.5) / resolution_ - 1.0;
+                    const double v = 2.0 * (y + 0.5) / resolution_ - 1.0;
+                    distance = static_cast<float>(z * std::sqrt(1.0 + u*u + v*v) / GetVisibilityDistanceScale());
+                }
+                color[x * 4u + 3u] = DirectX::PackedVector::XMConvertFloatToHalf(std::clamp(distance, 0.0f, 1.0f));
+            }
+        }
+        readback.buffer->Unmap(0, nullptr);
+        if (!valid) SetMessage(outMessage, "Probe visibility capture contains invalid depth.");
+        return valid;
     }
 
     bool ProbeCubemapCaptureTarget::SaveReadbackToCubemapDds(
@@ -228,6 +284,7 @@ namespace HIKARI::TOOLS::BAKING {
             }
 
             readback.buffer->Unmap(0, nullptr);
+            if (!StoreDepthInCaptureAlpha(face, image->pixels, image->rowPitch, outMessage)) return false;
         }
 
         std::error_code ec{};

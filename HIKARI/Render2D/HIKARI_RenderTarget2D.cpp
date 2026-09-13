@@ -382,6 +382,35 @@ bool RenderTarget2D::CreateResources()
         depthState_ = nextState;
     }
 
+    bool RenderTarget2D::CopyDepthToReadback(
+        ID3D12Resource* destination,
+        const D3D12_PLACED_SUBRESOURCE_FOOTPRINT& footprint)
+    {
+        if (!initialized_ || !depthTex_ || !destination || !context_.cmdList ||
+            footprint.Footprint.Width != static_cast<UINT>(width_) ||
+            footprint.Footprint.Height != static_cast<UINT>(height_) ||
+            footprint.Footprint.Depth != 1u ||
+            footprint.Offset % D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT != 0u ||
+            footprint.Footprint.RowPitch % D3D12_TEXTURE_DATA_PITCH_ALIGNMENT != 0u ||
+            footprint.Footprint.RowPitch < static_cast<UINT>(width_) * sizeof(float)) return false;
+        const auto format = footprint.Footprint.Format;
+        if (format != DXGI_FORMAT_R32_TYPELESS && format != DXGI_FORMAT_R32_FLOAT &&
+            format != DXGI_FORMAT_D32_FLOAT) return false;
+        const auto destinationDesc = destination->GetDesc();
+        const UINT64 requiredBytes = static_cast<UINT64>(height_ - 1) *
+            footprint.Footprint.RowPitch + static_cast<UINT64>(width_) * sizeof(float);
+        if (destinationDesc.Dimension != D3D12_RESOURCE_DIMENSION_BUFFER ||
+            footprint.Offset > destinationDesc.Width ||
+            requiredBytes > destinationDesc.Width - footprint.Offset) return false;
+        const auto previous = depthState_;
+        TransitionDepth(D3D12_RESOURCE_STATE_COPY_SOURCE);
+        const CD3DX12_TEXTURE_COPY_LOCATION source(depthTex_.Get(), 0u);
+        const CD3DX12_TEXTURE_COPY_LOCATION target(destination, footprint);
+        context_.cmdList->CopyTextureRegion(&target, 0, 0, 0, &source, nullptr);
+        TransitionDepth(previous);
+        return true;
+    }
+
     void RenderTarget2D::TransitionColor(D3D12_RESOURCE_STATES nextState)
     {
         if (!initialized_ || !colorTex_ || colorState_ == nextState) {

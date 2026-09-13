@@ -43,6 +43,8 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
         float normalBias = 0.2f;
         int priority = 0;
         std::string sourcePath{};
+        uint32_t visibilityTextureDescriptorIndex = UINT32_MAX;
+        float visibilityDistanceScale = 0.0f;
     };
 
     struct LightProbeVolumeViewSelection {

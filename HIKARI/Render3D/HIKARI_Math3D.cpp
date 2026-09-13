@@ -24,6 +24,50 @@ namespace HIKARI::MATH {
         return { v.x / len, v.y / len, v.z / len };
     }
 
+    Vec3 CubeFaceDirection(uint32_t face, float u, float v) {
+        u = u * 2.0f - 1.0f;
+        v = v * 2.0f - 1.0f;
+        switch (face) {
+        case 0: return Normalize({1.0f, -v, -u});
+        case 1: return Normalize({-1.0f, -v, u});
+        case 2: return Normalize({u, 1.0f, v});
+        case 3: return Normalize({u, -1.0f, -v});
+        case 4: return Normalize({u, -v, 1.0f});
+        case 5: return Normalize({-u, -v, -1.0f});
+        default: return {0.0f, 0.0f, 1.0f};
+        }
+    }
+
+    void DirectionToCubeFaceUv(const Vec3& dir, uint32_t& face, float& outU, float& outV) {
+        const float ax = std::abs(dir.x), ay = std::abs(dir.y), az = std::abs(dir.z);
+        face = 4; outU = outV = 0.5f;
+        const float magnitude = (std::max)({ax, ay, az});
+        if (!std::isfinite(magnitude) || magnitude <= 1e-12f) return;
+        float u = 0.0f, v = 0.0f;
+        if (ax >= ay && ax >= az) {
+            if (dir.x >= 0.0f) { face = 0; u = -dir.z / ax; v = -dir.y / ax; }
+            else { face = 1; u = dir.z / ax; v = -dir.y / ax; }
+        } else if (ay >= ax && ay >= az) {
+            if (dir.y >= 0.0f) { face = 2; u = dir.x / ay; v = dir.z / ay; }
+            else { face = 3; u = dir.x / ay; v = -dir.z / ay; }
+        } else {
+            if (dir.z >= 0.0f) { face = 4; u = dir.x / az; v = -dir.y / az; }
+            else { face = 5; u = -dir.x / az; v = -dir.y / az; }
+        }
+        outU = std::clamp(u * 0.5f + 0.5f, 0.0f, 1.0f);
+        outV = std::clamp(v * 0.5f + 0.5f, 0.0f, 1.0f);
+    }
+
+    Vec3 DecodeOctahedralDirection(const Vec2& uv) {
+        const float x = uv.x * 2.0f - 1.0f, y = uv.y * 2.0f - 1.0f;
+        Vec3 direction{x, y, 1.0f - std::abs(x) - std::abs(y)};
+        if (direction.z < 0.0f) {
+            direction.x = (1.0f - std::abs(y)) * (x >= 0.0f ? 1.0f : -1.0f);
+            direction.y = (1.0f - std::abs(x)) * (y >= 0.0f ? 1.0f : -1.0f);
+        }
+        return Normalize(direction);
+    }
+
     Quat NormalizeQ(const Quat& q) {
         const float len = std::sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
         if (len <= 1e-6f) {

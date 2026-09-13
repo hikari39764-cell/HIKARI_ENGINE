@@ -49,7 +49,8 @@ namespace HIKARI {
             hasLastReport_ = true;
 
             const uint32_t resolution = NormalizeLightProbeCaptureResolution(settings.captureResolution);
-            if (!job.captureTarget.Initialize(resolution, DXGI_FORMAT_R16G16B16A16_FLOAT)) {
+            if (!job.captureTarget.Initialize(resolution, DXGI_FORMAT_R16G16B16A16_FLOAT,
+                    TOOLS::BAKING::kProbeCaptureNearPlane, GetLightProbeCaptureFarPlane(settings))) {
                 AddBakeError(job.report, "Failed to initialize light probe capture target.");
                 job.state = TOOLS::BAKING::LightingBakeJobState::Failed;
                 SetBakeJobState(job.report, job.state);
@@ -183,7 +184,8 @@ namespace HIKARI {
         if (job.state == TOOLS::BAKING::LightingBakeJobState::ProjectingSH) {
             TOOLS::BAKING::LightProbeBaker baker{};
             const TOOLS::BAKING::LightProbeBakeResult bake =
-                baker.FinalizeCapturedVolume(job.request, job.probeCapturePaths);
+                baker.FinalizeCapturedVolume(job.request, job.probeCapturePaths,
+                    job.captureTarget.GetVisibilityDistanceScale());
 
             job.report.lightProbeBaked = bake.success;
             job.report.lightProbeVolumeWritten = bake.volumeWritten;

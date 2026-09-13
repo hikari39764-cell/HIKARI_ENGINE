@@ -1,6 +1,7 @@
 #pragma once
 #include <cmath>
 #include <array>
+#include <cstdint>
 
 namespace HIKARI::MATH {
 
@@ -61,6 +62,10 @@ namespace HIKARI::MATH {
     Vec3 Cross(const Vec3& a, const Vec3& b);
     float Length(const Vec3& v);
     Vec3 Normalize(const Vec3& v);
+    // DirectX cubemap の +X,-X,+Y,-Y,+Z,-Z と [0,1] UV。
+    Vec3 CubeFaceDirection(uint32_t face, float u, float v);
+    void DirectionToCubeFaceUv(const Vec3& direction, uint32_t& face, float& u, float& v);
+    Vec3 DecodeOctahedralDirection(const Vec2& uv);
     Quat NormalizeQ(const Quat& q);
     Mat4 Inverse(const Mat4& value);
     bool DecomposeTRS(
