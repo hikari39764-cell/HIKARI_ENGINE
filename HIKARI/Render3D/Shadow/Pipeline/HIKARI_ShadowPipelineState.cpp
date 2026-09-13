@@ -6,10 +6,12 @@
 #include <d3dcompiler.h>
 #include <d3dx12.h>
 
+#include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
+#include "Assets/Shader/HIKARI_RenderGeometryShaderContract.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/HIKARI_DXCheck.h"
-#include "Gfx/HIKARI_ShaderCompiler.h"
+#include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
 #include "Render3D/Shadow/Pipeline/HIKARI_ShadowRootParameters.h"
 
 namespace HIKARI::SHADOW::INTERNAL {
@@ -107,28 +109,30 @@ namespace HIKARI::SHADOW::INTERNAL {
 
     } // namespace
 
-    bool CreateShadowPipelineState(const GFX::Context& graphics) {
+    bool CreateShadowDepthPipelineState(const GFX::Context& graphics) {
         ID3D12Device* device = graphics.device;
-        if (!GFX::SupportsShaderModel6(device)) {
+        const auto caps = GFX::QueryShaderDeviceCapabilities(device);
+        if (caps.shaderModel < 60u) {
             DEBUGLOG::PushRenderError("[Shadow][ERROR] Shader Model 6.0 is not supported by this device.");
             return false;
         }
 
-        ComPtr<ID3DBlob> staticVs;
-        ComPtr<ID3DBlob> skinnedVs;
-        ComPtr<ID3DBlob> ps;
-        if (!GFX::CompileShaderFileSm6(L"HIKARI/Shaders/Render3D_ShadowStaticVS.hlsl", "main", GFX::ShaderStage::Vertex, staticVs.GetAddressOf())) {
-            DEBUGLOG::PushRenderError("[Shadow][ERROR] Compile ShadowStaticVS failed.");
-            return false;
-        }
-        if (!GFX::CompileShaderFileSm6(L"HIKARI/Shaders/Render3D_ShadowSkinnedVS.hlsl", "main", GFX::ShaderStage::Vertex, skinnedVs.GetAddressOf())) {
-            DEBUGLOG::PushRenderError("[Shadow][ERROR] Compile ShadowSkinnedVS failed.");
-            return false;
-        }
-        if (!GFX::CompileShaderFileSm6(L"HIKARI/Shaders/Render3D_ShadowAlphaPS.hlsl", "main", GFX::ShaderStage::Pixel, ps.GetAddressOf())) {
-            DEBUGLOG::PushRenderError("[Shadow][ERROR] Compile ShadowAlphaPS failed.");
-            return false;
-        }
+        using namespace ASSETS::SHADER;
+        const auto contract = MakeRenderGeometryShaderContract(RenderGeometryRootLayout::ShadowGraphics,
+            {caps.shaderModel, caps.rootSignatureVersion, caps.featureMask});
+        const auto resolve = [&](const char* program, ShaderStage stage, const char* profile) {
+            auto result = ResolveBuiltinRenderGeometryShaderEntry(program, {"Main", stage, profile}, contract);
+            if (!result) DEBUGLOG::PushRenderError("[Shadow][Shader] " + std::string(program) + ": " + result.diagnostic);
+            return result;
+        };
+        const auto staticVs = resolve("HIKARI.EngineShader.Render3D_ShadowStaticVS", ShaderStage::Vertex, "vs_6_0");
+        const auto skinnedVs = resolve("HIKARI.EngineShader.Render3D_ShadowSkinnedVS", ShaderStage::Vertex, "vs_6_0");
+        const auto ps = resolve("HIKARI.EngineShader.Render3D_ShadowAlphaPS", ShaderStage::Pixel, "ps_6_0");
+        if (!staticVs || !skinnedVs || !ps) return false;
+        const auto bytecode = [](const ShaderAssetResolveResult& shader) {
+            const auto bytes = shader.lease.GetDxil();
+            return D3D12_SHADER_BYTECODE{bytes.data(), bytes.size()};
+        };
 
         const D3D12_DESCRIPTOR_RANGE textureRange = MakeSrvRange(1, 0);
         const D3D12_DESCRIPTOR_RANGE materialDataRange = MakeSrvRange(1, 16);
@@ -142,7 +146,7 @@ namespace HIKARI::SHADOW::INTERNAL {
                 0,
                 1);
 
-        D3D12_ROOT_PARAMETER params[PIPELINE::kShadowStaticRootParamSandSurfaceHeights + 1]{};
+        D3D12_ROOT_PARAMETER params[PIPELINE::kShadowStaticRootParamMaterialCamera + 1]{};
         params[PIPELINE::kShadowStaticRootParamCamera] =
             MakeRootDescriptor(D3D12_ROOT_PARAMETER_TYPE_CBV, 0);
         params[PIPELINE::kShadowStaticRootParamObject] =
@@ -181,6 +185,12 @@ namespace HIKARI::SHADOW::INTERNAL {
             MakeRootDescriptor(D3D12_ROOT_PARAMETER_TYPE_SRV, 4, 7);
         params[PIPELINE::kShadowStaticRootParamSandSurfaceHeights] =
             MakeRootDescriptor(D3D12_ROOT_PARAMETER_TYPE_SRV, 1, 7);
+        params[PIPELINE::kShadowStaticRootParamMaterialProgramParameters] =
+            MakeRootDescriptor(D3D12_ROOT_PARAMETER_TYPE_SRV, 0, 6);
+        params[PIPELINE::kShadowStaticRootParamMaterialProgramResources] =
+            MakeRootDescriptor(D3D12_ROOT_PARAMETER_TYPE_SRV, 1, 6);
+        params[PIPELINE::kShadowStaticRootParamMaterialCamera] =
+            MakeRootDescriptor(D3D12_ROOT_PARAMETER_TYPE_CBV, 10);
         D3D12_STATIC_SAMPLER_DESC sampler{};
         sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
         sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
@@ -228,11 +238,15 @@ namespace HIKARI::SHADOW::INTERNAL {
 
         if (!HIKARI_DX_CHECK(gShadowRendererState.depthPipelines.Initialize(
             device, gShadowRendererState.rootSig.Get(), gShadowRendererState.skinnedRootSig.Get(),
-            {staticVs->GetBufferPointer(), staticVs->GetBufferSize()},
-            {skinnedVs->GetBufferPointer(), skinnedVs->GetBufferSize()},
-            {ps->GetBufferPointer(), ps->GetBufferSize()}), "Create PSO: Shadow depth pipelines")) {
+            bytecode(staticVs), bytecode(skinnedVs), bytecode(ps)), "Create PSO: Shadow depth pipelines")) {
             return false;
         }
+        return true;
+    }
+
+    bool CreateShadowPipelineState(const GFX::Context& graphics) {
+        if (!CreateShadowDepthPipelineState(graphics)) return false;
+        ID3D12Device* device = graphics.device;
         if (!gShadowRendererState.traditionalCommandStreamBuffer.Initialize(
             device,
             gShadowRendererState.rootSig.Get(),

@@ -7,6 +7,7 @@
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
 #include "Render3D/Material/HIKARI_GpuMaterialProjection.h"
+#include "Render3D/Material/Program/HIKARI_GpuMaterialProgramBinding.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI::SHADOW::INTERNAL {
@@ -51,38 +52,50 @@ namespace HIKARI::SHADOW::INTERNAL {
             : static_cast<uint32_t>(descriptorIndex);
     }
     uint32_t UploadShadowMaterialData(
-        uint64_t key,
-        const MESHRENDERER::MaterialGpuData& data) {
+        uint64_t stableMaterialKey,
+        MESHRENDERER::MaterialGpuData data,
+        const Material* programMaterial = nullptr) {
 
+        using namespace RENDER3D::MATERIAL;
+        auto& table = gShadowRendererState.materialDataFrameTable;
         auto& materialData = GetActiveShadowFrameResources().materialDataStaging;
         if (materialData.empty()) {
             return MESHRENDERER::kInvalidMaterialDataIndex;
         }
 
-        auto found = gShadowRendererState.materialDataFrameTable.indexByKey.find(key);
-        if (found != gShadowRendererState.materialDataFrameTable.indexByKey.end()) {
+        GpuMaterialProgramBinding binding{};
+        std::span<const MATH::Vec4> parameters;
+        std::vector<uint32_t> resources;
+        const bool hasProgram = programMaterial != nullptr && programMaterial->GetMaterialProgramId();
+        if (hasProgram) {
+            if (!BuildGpuMaterialProgramBinding(*programMaterial, {}, binding)) {
+                table.complete = false;
+                return MESHRENDERER::kInvalidMaterialDataIndex;
+            }
+            parameters = programMaterial->GetMaterialProgramParameterBlock();
+            resources = ResolveMaterialProgramResourceDescriptorIndices(*programMaterial);
+            ApplyGpuMaterialProgramBinding(data, binding);
+        }
+        uint64_t key = AppendShadowHashValue(HASH::kFnv1a64OffsetBasis, stableMaterialKey);
+        key = AppendShadowHashBytes(key, &data, sizeof(data));
+        if (!parameters.empty()) key = AppendShadowHashBytes(key, parameters.data(), parameters.size_bytes());
+        if (!resources.empty()) key = AppendShadowHashBytes(key, resources.data(), resources.size() * sizeof(uint32_t));
+        const auto found = table.indexByKey.find(key);
+        if (found != table.indexByKey.end()) {
             return found->second;
         }
 
-        if (gShadowRendererState.materialDataFrameTable.count >= MESHRENDERER::kMaxMaterialDataCount) {
+        if (table.count >= MESHRENDERER::kMaxMaterialDataCount ||
+            (hasProgram && !AppendGpuMaterialProgramBlock(data, binding, parameters, resources,
+                table.programParameters, table.programResources))) {
+            table.complete = false;
             return MESHRENDERER::kInvalidMaterialDataIndex;
         }
 
-        const uint32_t index = gShadowRendererState.materialDataFrameTable.count++;
+        const uint32_t index = table.count++;
         materialData[index] = data;
-        gShadowRendererState.materialDataFrameTable.indexByKey.emplace(key, index);
-        if (data.baseColorTextureDescriptorIndex != MESHRENDERER::kInvalidTextureDescriptorIndex) {
-            gShadowRendererState.materialDataFrameTable.textureDescriptorIndices.insert(data.baseColorTextureDescriptorIndex);
-        }
+        table.indexByKey.emplace(key, index);
         return index;
-    }
-
-    uint64_t BuildShadowMaterialDataKey(
-        uint64_t stableMaterialKey,
-        const MESHRENDERER::MaterialGpuData& data) {
-
-        uint64_t seed = AppendShadowHashValue(HASH::kFnv1a64OffsetBasis, stableMaterialKey);
-        return AppendShadowHashBytes(seed, &data, sizeof(data));
     }
 
     void ResetShadowMaterialFrame() {
@@ -152,8 +165,7 @@ namespace HIKARI::SHADOW::INTERNAL {
             const MESHRENDERER::MaterialGpuData data =
                 BuildShadowMaterialGpuData(source);
             const uint32_t materialDataIndex = UploadShadowMaterialData(
-                BuildShadowMaterialDataKey(source.materialKey, data),
-                data);
+                source.materialKey, data, source.materialOverride);
             gShadowRendererState.surfaceGpuSceneBuffer.PatchMaterialDataIndex(
                 static_cast<size_t>(baseIndex) + sourceIndex,
                 materialDataIndex == MESHRENDERER::kInvalidMaterialDataIndex

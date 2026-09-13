@@ -6,7 +6,6 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 #include <d3d12.h>
@@ -60,6 +59,9 @@ namespace HIKARI::SHADOW::INTERNAL {
         ComPtr<ID3D12Resource> cameraCB;
         DX::DynamicUploadBuffer materialUploads;
         std::vector<MESHRENDERER::MaterialGpuData> materialDataStaging;
+        D3D12_GPU_VIRTUAL_ADDRESS materialProgramParametersAddress = 0;
+        D3D12_GPU_VIRTUAL_ADDRESS materialProgramResourcesAddress = 0;
+        D3D12_GPU_VIRTUAL_ADDRESS materialCameraAddress = 0;
         ComPtr<ID3D12Resource> materialDataBuffer;
         ComPtr<ID3D12Resource> jointPaletteCB;
         ShadowCameraCB* cameraMapped = nullptr;
@@ -70,17 +72,22 @@ namespace HIKARI::SHADOW::INTERNAL {
 
     struct ShadowMaterialFrameTable {
         std::unordered_map<uint64_t, uint32_t> indexByKey{};
-        std::unordered_set<uint32_t> textureDescriptorIndices{};
+        std::vector<MATH::Vec4> programParameters;
+        std::vector<uint32_t> programResources;
         uint32_t count = 0;
+        bool complete = true;
 
         void Clear() {
             indexByKey.clear();
-            textureDescriptorIndices.clear();
+            programParameters.clear();
+            programResources.clear();
             count = 0;
+            complete = true;
         }
     };
 
     struct ShadowRendererState {
+        MESHRENDERER::CameraCB materialCamera{};
         bool initialized = false;
         bool frameEnabled = false;
         bool frameHasShadowWork = false;
@@ -210,7 +217,8 @@ namespace HIKARI::SHADOW::INTERNAL {
     bool IsPrimaryShadowCaster(
         const RENDER3D::RUNTIME::SurfaceGpuSceneInstance& instance);
     bool IsStaticPrimaryShadowCaster(
-        const RENDER3D::RUNTIME::SurfaceGpuSceneInstance& instance);
+        const RENDER3D::RUNTIME::SurfaceGpuSceneInstance& instance,
+        const RENDER3D::RUNTIME::SurfaceGpuSceneMaterialSource* material = nullptr);
     void AppendShadowPrimaryInstance(
         const RENDER3D::RUNTIME::SurfaceGpuSceneInstance& sourceInstance,
         const RENDER3D::RUNTIME::SurfaceGpuSceneMaterialSource* sourceMaterial,
@@ -246,6 +254,7 @@ namespace HIKARI::SHADOW::INTERNAL {
     bool UpdateStaticShadowCacheFromFinal(
         ID3D12GraphicsCommandList* commandList);
 
+    bool CreateShadowDepthPipelineState(const GFX::Context& graphics);
     bool CreateShadowPipelineState(const GFX::Context& graphics);
     bool EnsureShadowRendererInitialized(const GFX::Context& graphics);
 

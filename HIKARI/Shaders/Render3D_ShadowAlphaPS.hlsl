@@ -1,4 +1,5 @@
 #define HIKARI_MASS_GPU_SCENE_DISABLED 1
+#include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
 static const uint HIKARI_INVALID_SHADOW_MATERIAL_INDEX = 0xffffffffu;
 
 #define HIKARI_MATERIAL_TEXTURE_POOL_SAMPLING 1
@@ -7,6 +8,7 @@ static const uint HIKARI_INVALID_SHADOW_MATERIAL_INDEX = 0xffffffffu;
 #include "Include/HIKARI_SurfaceGpuScene.hlsli"
 #include "Include/Forward/HIKARI_SurfaceFeatureCoverage.hlsli"
 #include "Include/Surface/HIKARI_SandSurfaceParams.hlsli"
+#include "Include/Lighting/HIKARI_ShadowMaterialCoverage.hlsli"
 
 Texture2D gBaseColorTex : register(t0);
 SamplerState gLinearWrap : register(s0);
@@ -22,6 +24,9 @@ struct PSInput
     nointerpolation uint materialDataIndex : MATERIALINDEX;
     nointerpolation uint surfaceGpuSceneIndex : TEXCOORD2;
     nointerpolation uint surfaceFeatureFlags : TEXCOORD3;
+    float3 worldPosWS : TEXCOORD4;
+    float3 normalWS : NORMAL;
+    float4 tangentWS : TANGENT;
 };
 
 void main(PSInput input)
@@ -41,20 +46,12 @@ void main(PSInput input)
         return;
     }
 
-    float alpha = 1.0f;
     if (input.materialDataIndex != HIKARI_INVALID_SHADOW_MATERIAL_INDEX)
     {
         HikariMeshMaterialData materialData = HikariGetMeshMaterialData(input.materialDataIndex);
-        alpha = HikariResolveMaterialBaseColor(
-            materialData, input.uv, input.uv1, gLinearWrap).a;
+        HikariClipShadowMaterial(materialData, input.uv, input.uv1,
+            input.worldPosWS, input.normalWS, input.tangentWS, gLinearWrap);
+        return;
     }
-    else
-    {
-        alpha = gBaseColorTex.Sample(gLinearWrap, input.uv).a;
-    }
-
-    if (alpha < input.alphaCutoff)
-    {
-        discard;
-    }
+    clip(gBaseColorTex.Sample(gLinearWrap, input.uv).a - input.alphaCutoff);
 }

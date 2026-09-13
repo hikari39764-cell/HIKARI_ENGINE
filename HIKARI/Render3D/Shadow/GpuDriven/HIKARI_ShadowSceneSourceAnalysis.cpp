@@ -5,6 +5,8 @@
 #include <vector>
 
 #include "Core/Hashing/HIKARI_FnvHash.h"
+#include "Render3D/Core/HIKARI_Material.h"
+#include "Render3D/Material/Program/HIKARI_MaterialProgramRegistry.h"
 
 namespace HIKARI::SHADOW::INTERNAL {
 
@@ -25,7 +27,8 @@ namespace HIKARI::SHADOW::INTERNAL {
     }
 
     bool IsStaticPrimaryShadowCaster(
-        const RENDER3D::RUNTIME::SurfaceGpuSceneInstance& instance) {
+        const RENDER3D::RUNTIME::SurfaceGpuSceneInstance& instance,
+        const RENDER3D::RUNTIME::SurfaceGpuSceneMaterialSource* material) {
 
         using Flag = RENDER3D::RUNTIME::SurfaceGpuSceneInstanceFlags;
         // StaticGeometry でも Shader による変形・Opacity が時間で変わる場合がある。
@@ -35,11 +38,15 @@ namespace HIKARI::SHADOW::INTERNAL {
             static_cast<uint32_t>(Flag::WaterSurface) |
             static_cast<uint32_t>(Flag::SandSurface) |
             static_cast<uint32_t>(Flag::MaterialFx);
-        return IsPrimaryShadowCaster(instance) &&
-            (instance.flags & dynamicDepthFlags) == 0u &&
-            HasSurfaceGpuSceneFlag(
-                instance,
-                RENDER3D::RUNTIME::SurfaceGpuSceneInstanceFlags::StaticGeometry);
+        if (!IsPrimaryShadowCaster(instance) || (instance.flags & dynamicDepthFlags) != 0u ||
+            !HasSurfaceGpuSceneFlag(instance, Flag::StaticGeometry)) return false;
+        if (HasSurfaceGpuSceneFlag(instance, Flag::AlphaMasked) &&
+            material != nullptr && material->materialOverride != nullptr) {
+            const auto* program = RENDER3D::MATERIAL::GetRuntimeMaterialProgramRegistry().Find(
+                material->materialOverride->GetMaterialProgramId());
+            return program != nullptr && program->capabilities.SupportsStaticSurfaceEvaluation();
+        }
+        return true;
     }
 
     uint64_t HashSurfaceGpuSceneInstanceForShadow(

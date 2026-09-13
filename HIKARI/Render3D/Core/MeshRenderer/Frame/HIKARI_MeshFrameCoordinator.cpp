@@ -174,46 +174,19 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             return false;
         }
 
-        frameResources.cameraMapped->viewProj =
+        const MATH::Mat4 viewProj =
             cameraOverrides != nullptr && cameraOverrides->HasRenderMatrices()
-                ? *cameraOverrides->renderViewProj
-                : camera.GetViewProj();
-        frameResources.cameraMapped->invViewProj =
+                ? *cameraOverrides->renderViewProj : camera.GetViewProj();
+        const MATH::Mat4 inverseViewProj =
             cameraOverrides != nullptr && cameraOverrides->HasRenderMatrices()
-                ? *cameraOverrides->renderInvViewProj
-                : MATH::Inverse(frameResources.cameraMapped->viewProj);
+                ? *cameraOverrides->renderInvViewProj : MATH::Inverse(viewProj);
         const MATH::Vec3 cameraPos = camera.GetPosition();
-        frameResources.cameraMapped->cameraPos = {
-            cameraPos.x,
-            cameraPos.y,
-            cameraPos.z,
-            1.0f
-        };
-        const FrameContext& frame = TIME::GetFrameContext();
-        frameResources.cameraMapped->timeParams = {
-            TIME::GetUnscaledElapsedSeconds(),
-            frame.unscaledDt,
-            frame.gameDt,
-            static_cast<float>(frame.frameIndex)
-        };
-        frameResources.cameraMapped->simulationTimeParams = {
-            TIME::GetInterpolatedSimulationTimeSeconds(),
-            frame.fixedDt,
-            frame.fixedInterpolationAlpha,
-            static_cast<float>(frame.fixedTickIndex)
-        };
-        int screenW = static_cast<int>(overrideScreenWidth);
-        int screenH = static_cast<int>(overrideScreenHeight);
-        if (screenW <= 0 || screenH <= 0) {
-            screenW = std::max(1, graphics.backBufferWidth);
-            screenH = std::max(1, graphics.backBufferHeight);
-        }
-        frameResources.cameraMapped->screenParams = {
-            static_cast<float>(screenW),
-            static_cast<float>(screenH),
-            1.0f / static_cast<float>(screenW),
-            1.0f / static_cast<float>(screenH)
-        };
+        const uint32_t screenW = overrideScreenWidth != 0u && overrideScreenHeight != 0u
+            ? overrideScreenWidth : static_cast<uint32_t>(std::max(1, graphics.backBufferWidth));
+        const uint32_t screenH = overrideScreenWidth != 0u && overrideScreenHeight != 0u
+            ? overrideScreenHeight : static_cast<uint32_t>(std::max(1, graphics.backBufferHeight));
+        FillCameraCB(viewProj, inverseViewProj, cameraPos, screenW, screenH,
+            *frameResources.cameraMapped);
         CameraCB cullingCamera = *frameResources.cameraMapped;
         if (cameraOverrides != nullptr && cameraOverrides->HasCullingMatrices()) {
             cullingCamera.viewProj = *cameraOverrides->cullingViewProj;
@@ -265,7 +238,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             gMeshRendererState.debugStats);
         FillShadowCB(
             environment,
-            frame.frameIndex,
+            TIME::GetFrameContext().frameIndex,
             *frameResources.shadowMapped);
         FillSkyEnvironmentCB(
             environment,

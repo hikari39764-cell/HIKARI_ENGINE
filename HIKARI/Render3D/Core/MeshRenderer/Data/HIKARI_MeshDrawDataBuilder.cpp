@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "Core/Math/HIKARI_NormalMatrix.h"
+#include "Core/HIKARI_TimeService.h"
 #include "Gfx/D3D12/HIKARI_D3D12BufferAlignment.h"
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Render3D/Material/HIKARI_GpuMaterialProjection.h"
@@ -25,6 +26,26 @@
 #endif
 
 namespace HIKARI::MESHRENDERER {
+
+    void FillCameraCB(
+        const MATH::Mat4& viewProj,
+        const MATH::Mat4& inverseViewProj,
+        const MATH::Vec3& cameraPosition,
+        uint32_t width,
+        uint32_t height,
+        CameraCB& out) {
+        const FrameContext& frame = TIME::GetFrameContext();
+        const float screenWidth = static_cast<float>(std::max(1u, width));
+        const float screenHeight = static_cast<float>(std::max(1u, height));
+        out.viewProj = viewProj;
+        out.invViewProj = inverseViewProj;
+        out.cameraPos = {cameraPosition.x, cameraPosition.y, cameraPosition.z, 1.0f};
+        out.timeParams = {TIME::GetUnscaledElapsedSeconds(), frame.unscaledDt,
+            frame.gameDt, static_cast<float>(frame.frameIndex)};
+        out.simulationTimeParams = {TIME::GetInterpolatedSimulationTimeSeconds(),
+            frame.fixedDt, frame.fixedInterpolationAlpha, static_cast<float>(frame.fixedTickIndex)};
+        out.screenParams = {screenWidth, screenHeight, 1.0f / screenWidth, 1.0f / screenHeight};
+    }
 
     namespace {
         MATH::Vec3 ClampProbeBoxSize(const MATH::Vec3& size) {

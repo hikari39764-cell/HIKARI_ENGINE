@@ -8,6 +8,7 @@ static const uint HIKARI_INVALID_MESHLET_SHADOW_MATERIAL_INDEX = 0xffffffffu;
 #include "Include/HIKARI_SurfaceGpuScene.hlsli"
 #include "Include/Forward/HIKARI_SurfaceFeatureCoverage.hlsli"
 #include "Include/Surface/HIKARI_SandSurfaceParams.hlsli"
+#include "Include/Lighting/HIKARI_ShadowMaterialCoverage.hlsli"
 
 SamplerState gLinearWrap : register(s0);
 static const uint MATERIAL_ALPHA_MASK = HIKARI_MATERIAL_FLAG_ALPHA_MASK;
@@ -21,6 +22,8 @@ struct PSInput
     float3 worldPosWS : TEXCOORD3;
     nointerpolation uint surfaceGpuSceneIndex : TEXCOORD4;
     nointerpolation uint surfaceFeatureFlags : TEXCOORD5;
+    float3 normalWS : NORMAL;
+    float4 tangentWS : TANGENT;
 };
 
 float main(PSInput input) : SV_Depth
@@ -42,16 +45,7 @@ float main(PSInput input) : SV_Depth
 
     HikariMeshMaterialData materialData =
         HikariGetMeshMaterialData(input.materialDataIndex);
-    if ((materialData.materialFlags & MATERIAL_ALPHA_MASK) == 0u)
-    {
-        return input.position.z;
-    }
-
-    const float alpha = HikariResolveMaterialBaseColor(
-        materialData, input.uv, input.uv1, gLinearWrap).a;
-    if (alpha < materialData.pbrParams.w)
-    {
-        discard;
-    }
+    HikariClipShadowMaterial(materialData, input.uv, input.uv1,
+        input.worldPosWS, input.normalWS, input.tangentWS, gLinearWrap);
     return input.position.z;
 }

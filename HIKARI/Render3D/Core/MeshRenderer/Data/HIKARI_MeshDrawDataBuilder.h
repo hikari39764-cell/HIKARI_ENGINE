@@ -21,6 +21,14 @@ namespace HIKARI::MESHRENDERER {
         MeshRendererDebugStats* stats = nullptr;
     };
 
+    void FillCameraCB(
+        const MATH::Mat4& viewProj,
+        const MATH::Mat4& inverseViewProj,
+        const MATH::Vec3& cameraPosition,
+        uint32_t width,
+        uint32_t height,
+        CameraCB& out);
+
     void FillLightCB(
         const SceneEnvironment& environment,
         const RENDER3D::LIGHTING::LocalLightListView& localLightList,

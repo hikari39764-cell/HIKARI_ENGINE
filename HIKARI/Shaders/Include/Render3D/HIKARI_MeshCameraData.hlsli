@@ -2,7 +2,10 @@
 #define HIKARI_MESH_CAMERA_DATA_INCLUDED
 
 // C++ CameraCB と同一の順序。Forward、SceneSurface、VS/MS で共有する。
-cbuffer CameraCB : register(b0)
+#ifndef HIKARI_CAMERA_CBUFFER_REGISTER
+#define HIKARI_CAMERA_CBUFFER_REGISTER b0
+#endif
+cbuffer CameraCB : register(HIKARI_CAMERA_CBUFFER_REGISTER)
 {
     float4x4 gViewProj;
     float4x4 gInvViewProj;

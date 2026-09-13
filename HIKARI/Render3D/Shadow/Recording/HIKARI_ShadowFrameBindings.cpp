@@ -21,6 +21,12 @@ namespace HIKARI::SHADOW::INTERNAL {
 
         ShadowFrameResources& frame = GetActiveShadowFrameResources();
         cmd->SetGraphicsRootSignature(rootSig);
+        cmd->SetGraphicsRootShaderResourceView(
+            PIPELINE::kShadowStaticRootParamMaterialProgramParameters, frame.materialProgramParametersAddress);
+        cmd->SetGraphicsRootShaderResourceView(
+            PIPELINE::kShadowStaticRootParamMaterialProgramResources, frame.materialProgramResourcesAddress);
+        cmd->SetGraphicsRootConstantBufferView(
+            PIPELINE::kShadowStaticRootParamMaterialCamera, frame.materialCameraAddress);
         cmd->SetGraphicsRootConstantBufferView(
             PIPELINE::kShadowStaticRootParamCamera,
             GetActiveShadowCameraGpuAddress());

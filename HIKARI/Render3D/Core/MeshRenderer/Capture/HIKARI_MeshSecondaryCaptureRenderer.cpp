@@ -365,28 +365,9 @@ namespace HIKARI::MESHRENDERER {
             uint32_t height) {
 
             CameraCB& cameraData = *frame.cameraMapped;
-            cameraData = {};
-            cameraData.viewProj = camera.GetViewProj();
-            cameraData.invViewProj = MATH::Inverse(cameraData.viewProj);
             const MATH::Vec3 position = camera.GetPosition();
-            cameraData.cameraPos = {
-                position.x, position.y, position.z, 1.0f };
-            const FrameContext& timeFrame = TIME::GetFrameContext();
-            cameraData.timeParams = {
-                TIME::GetUnscaledElapsedSeconds(),
-                timeFrame.unscaledDt,
-                timeFrame.gameDt,
-                static_cast<float>(timeFrame.frameIndex) };
-            cameraData.simulationTimeParams = {
-                TIME::GetInterpolatedSimulationTimeSeconds(),
-                timeFrame.fixedDt,
-                timeFrame.fixedInterpolationAlpha,
-                static_cast<float>(timeFrame.fixedTickIndex) };
-            cameraData.screenParams = {
-                static_cast<float>(width),
-                static_cast<float>(height),
-                1.0f / static_cast<float>(width),
-                1.0f / static_cast<float>(height) };
+            const MATH::Mat4 viewProj = camera.GetViewProj();
+            FillCameraCB(viewProj, MATH::Inverse(viewProj), position, width, height, cameraData);
             frame.localLightListView =
                 RENDER3D::LIGHTING::BuildLocalLightList(
                     lighting,
@@ -409,7 +390,7 @@ namespace HIKARI::MESHRENDERER {
                 gMeshRendererState.debugStats);
             FillShadowCB(
                 environment,
-                timeFrame.frameIndex,
+                TIME::GetFrameContext().frameIndex,
                 *frame.shadowMapped);
             FillSkyEnvironmentCB(
                 environment,

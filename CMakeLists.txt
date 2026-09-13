@@ -192,8 +192,13 @@ add_custom_target(
         "${HIKARI_SOURCE_ROOT}/HIKARI/Shaders"
         --output-root
         "${HIKARI_BUILTIN_SHADER_ARTIFACT_ROOT}"
+    COMMAND
+        "${CMAKE_COMMAND}" -E copy_if_different
+        "${HIKARI_BUILTIN_SHADER_CATALOG_PATH}"
+        "${HIKARI_BUILTIN_SHADER_ARTIFACT_ROOT}/../BuiltinShaderCatalog.json"
     BYPRODUCTS
         "${HIKARI_BUILTIN_SHADER_ARTIFACT_ROOT}/BuiltinShaderArtifacts.json"
+        "${HIKARI_BUILTIN_SHADER_ARTIFACT_ROOT}/../BuiltinShaderCatalog.json"
     DEPENDS
         HIKARI_BuiltinShaderCookTool
         "${HIKARI_BUILTIN_SHADER_CATALOG_PATH}"
@@ -469,22 +474,7 @@ hikari_configure_contract_output(HIKARI_VolumetricGpuContracts "RuntimeContracts
 add_test(NAME HIKARI_VolumetricGpuContracts COMMAND "$<TARGET_FILE:HIKARI_VolumetricGpuContracts>")
 set_tests_properties(HIKARI_VolumetricGpuContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
 
-add_executable(HIKARI_DirectionalShadowContracts EXCLUDE_FROM_ALL
-    "Tools/Tests/HIKARI_DirectionalShadowContracts.cpp"
-    "HIKARI/Core/Math/HIKARI_MathValidation.cpp"
-    "HIKARI/Render3D/Shadow/GpuDriven/HIKARI_ShadowSceneSourceAnalysis.cpp"
-    "HIKARI/Render3D/Shadow/GpuDriven/HIKARI_ShadowContentHash.cpp"
-    "HIKARI/Render3D/GpuDriven/CommandStream/HIKARI_OwnedTraditionalIndirectStream.cpp"
-    "HIKARI/Render3D/GpuDriven/HIKARI_GpuDrivenSceneSource.cpp"
-    "HIKARI/Render3D/GpuDriven/HIKARI_GpuDrivenFrame.cpp"
-    "HIKARI/Render3D/Shadow/HIKARI_ShadowLightFrame.cpp"
-    "HIKARI/Render3D/Shadow/HIKARI_ShadowCachePolicy.cpp"
-    "HIKARI/Render3D/Core/HIKARI_Camera3D.cpp"
-    "HIKARI/Render3D/HIKARI_Math3D.cpp")
-target_include_directories(HIKARI_DirectionalShadowContracts PRIVATE "${HIKARI_SOURCE_ROOT}/HIKARI")
-target_link_libraries(HIKARI_DirectionalShadowContracts PRIVATE HIKARI::Nlohmann)
-hikari_configure_engine_target(HIKARI_DirectionalShadowContracts)
-hikari_configure_contract_output(HIKARI_DirectionalShadowContracts "RuntimeContracts")
+hikari_add_runtime_contract(HIKARI_DirectionalShadowContracts "Tools/Tests/HIKARI_DirectionalShadowContracts.cpp")
 add_test(NAME HIKARI_DirectionalShadowContracts COMMAND "$<TARGET_FILE:HIKARI_DirectionalShadowContracts>")
 set_tests_properties(HIKARI_DirectionalShadowContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
 
@@ -556,6 +546,11 @@ hikari_add_runtime_contract(HIKARI_MassGpuSceneUploadContracts "Tools/Tests/HIKA
 target_link_libraries(HIKARI_MassGpuSceneUploadContracts PRIVATE d3dcompiler)
 add_test(NAME HIKARI_MassGpuSceneUploadContracts COMMAND "$<TARGET_FILE:HIKARI_MassGpuSceneUploadContracts>")
 set_tests_properties(HIKARI_MassGpuSceneUploadContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
+
+hikari_add_runtime_contract(HIKARI_ShadowMaterialCoverageGpuContracts "Tools/Tests/HIKARI_ShadowMaterialCoverageGpuContracts.cpp")
+add_dependencies(HIKARI_ShadowMaterialCoverageGpuContracts HIKARI_BuiltinShaderArtifacts)
+add_test(NAME HIKARI_ShadowMaterialCoverageGpuContracts COMMAND "$<TARGET_FILE:HIKARI_ShadowMaterialCoverageGpuContracts>")
+set_tests_properties(HIKARI_ShadowMaterialCoverageGpuContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
 add_test(NAME HIKARI_SkyLightingRuntimeContracts COMMAND "$<TARGET_FILE:HIKARI_SkyLightingRuntimeContracts>")
 set_tests_properties(HIKARI_SkyLightingRuntimeContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
 hikari_add_runtime_contract(HIKARI_SunGlareFrameContracts "Tools/Tests/HIKARI_SunGlareFrameContracts.cpp")

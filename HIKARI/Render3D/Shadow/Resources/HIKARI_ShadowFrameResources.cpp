@@ -65,14 +65,32 @@ namespace HIKARI::SHADOW::INTERNAL {
         ID3D12GraphicsCommandList* commandList = graphics.cmdList;
         ID3D12Resource* defaultResource = frame.materialDataBuffer.Get();
         D3D12_RESOURCE_STATES& defaultState = frame.materialDataState;
-        const size_t materialCount = gShadowRendererState.materialDataFrameTable.count;
+        const auto& table = gShadowRendererState.materialDataFrameTable;
+        const size_t materialCount = table.count;
         if (commandList == nullptr || defaultResource == nullptr ||
-            materialCount == 0 || materialCount > frame.materialDataStaging.size()) return false;
+            !table.complete || materialCount == 0 || materialCount > frame.materialDataStaging.size()) return false;
         const size_t byteCount = sizeof(MESHRENDERER::MaterialGpuData) * materialCount;
         frame.materialUploads.ResetForFrame(graphics.currentFrameRetireFenceValue);
         const DX::UploadAllocation upload = frame.materialUploads.Allocate(byteCount);
         if (!upload) return false;
         std::memcpy(upload.cpuAddress, frame.materialDataStaging.data(), byteCount);
+        const auto snapshot = [&](const void* data, size_t bytes, D3D12_GPU_VIRTUAL_ADDRESS& address) {
+            void* destination = frame.materialUploads.Allocate(bytes, address);
+            if (destination == nullptr) return false;
+            std::memcpy(destination, data, bytes);
+            return true;
+        };
+        const MATH::Vec4 emptyParameter{};
+        const uint32_t emptyResource = MESHRENDERER::kInvalidTextureDescriptorIndex;
+        if (!snapshot(table.programParameters.empty() ? &emptyParameter : table.programParameters.data(),
+                (std::max)(size_t(1), table.programParameters.size()) * sizeof(MATH::Vec4),
+                frame.materialProgramParametersAddress) ||
+            !snapshot(table.programResources.empty() ? &emptyResource : table.programResources.data(),
+                (std::max)(size_t(1), table.programResources.size()) * sizeof(uint32_t),
+                frame.materialProgramResourcesAddress) ||
+            !snapshot(&gShadowRendererState.materialCamera, sizeof(MESHRENDERER::CameraCB), frame.materialCameraAddress)) {
+            return false;
+        }
 
         if (defaultState != D3D12_RESOURCE_STATE_COPY_DEST) {
             const auto toCopyDest = CD3DX12_RESOURCE_BARRIER::Transition(

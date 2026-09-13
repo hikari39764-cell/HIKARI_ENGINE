@@ -314,7 +314,7 @@ namespace HIKARI::SHADOW::INTERNAL {
                         sourceIndex < sourceMaterials->size()
                     ? &(*sourceMaterials)[sourceIndex]
                     : nullptr;
-                if (IsStaticPrimaryShadowCaster(instance)) {
+                if (IsStaticPrimaryShadowCaster(instance, material)) {
                     AppendShadowPrimaryInstance(
                         instance,
                         material,
@@ -385,8 +385,9 @@ namespace HIKARI::SHADOW::INTERNAL {
                 sourcePass->traditionalIndirect,
                 0u,
                 totalTraditionalCount,
-                [](const RENDER3D::RUNTIME::SurfaceGpuSceneInstance& instance) {
-                    return IsPrimaryShadowCaster(instance) && !IsStaticPrimaryShadowCaster(instance);
+                [](const RENDER3D::RUNTIME::SurfaceGpuSceneInstance& instance,
+                    const RENDER3D::RUNTIME::SurfaceGpuSceneMaterialSource* material) {
+                    return IsPrimaryShadowCaster(instance) && !IsStaticPrimaryShadowCaster(instance, material);
                 })) {
             HydrateShadowTraditionalIndirectStream(
                 graphics,

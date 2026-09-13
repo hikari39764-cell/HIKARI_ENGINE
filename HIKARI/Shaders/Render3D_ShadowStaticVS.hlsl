@@ -1,8 +1,6 @@
 #define HIKARI_MASS_GPU_SCENE_DISABLED 1
-cbuffer ShadowCameraCB : register(b0)
-{
-    float4x4 gLightViewProj;
-};
+#include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
+#include "Include/Render3D/HIKARI_MeshCameraData.hlsli"
 
 cbuffer ShadowObjectCB : register(b1)
 {
@@ -15,6 +13,8 @@ cbuffer ShadowObjectCB : register(b1)
 #include "Include/HIKARI_MeshMaterialData.hlsli"
 #include "Include/HIKARI_SurfaceGpuScene.hlsli"
 #include "Include/Surface/HIKARI_SandSurfaceDeform.hlsli"
+#include "Include/Surface/HIKARI_FoliageWind.hlsli"
+#include "Include/Surface/HIKARI_SurfaceTangentFrame.hlsli"
 
 static const uint HIKARI_INVALID_SHADOW_MATERIAL_INDEX = 0xffffffffu;
 
@@ -38,6 +38,9 @@ struct VSOutput
     nointerpolation uint materialDataIndex : MATERIALINDEX;
     nointerpolation uint surfaceGpuSceneIndex : TEXCOORD2;
     nointerpolation uint surfaceFeatureFlags : TEXCOORD3;
+    float3 worldPosWS : TEXCOORD4;
+    float3 normalWS : NORMAL;
+    float4 tangentWS : TANGENT;
 };
 
 VSOutput main(VSInput input)
@@ -50,14 +53,17 @@ VSOutput main(VSInput input)
     uint surfaceGpuSceneIndex = 0u;
     uint surfaceFeatureFlags = 0u;
     float3 localPosition = input.position;
+    float3 localNormal = input.normal;
+    float3x3 normalMatrix = (float3x3)world;
+    HikariSurfaceGpuSceneInstance instance = (HikariSurfaceGpuSceneInstance)0;
 
     if (gUseSurfaceGpuScene != 0)
     {
-        HikariSurfaceGpuSceneInstance instance = HikariGetSurfaceGpuSceneInstance(input.instanceId);
+        instance = HikariGetSurfaceGpuSceneInstance(input.instanceId);
         world = instance.world;
-        surfaceGpuSceneIndex = input.instanceId;
+        normalMatrix = (float3x3)instance.normalMatrix;
+        surfaceGpuSceneIndex = HikariGetSurfaceGpuSceneAbsoluteIndex(input.instanceId);
         surfaceFeatureFlags = instance.flags;
-        float3 localNormal = input.normal;
         float3 sandSurfaceData = float3(0.0f, 0.0f, 0.0f);
         HikariApplySandSurfaceDeform(
             instance,
@@ -71,7 +77,8 @@ VSOutput main(VSInput input)
     }
 
     float4 worldPos = mul(world, float4(localPosition, 1.0f));
-    output.position = mul(gLightViewProj, worldPos);
+    worldPos = HikariApplyFoliageWindWorldPosition(instance, gTimeParams.x, input.uv, worldPos);
+    output.position = mul(gViewProj, worldPos);
     output.uv = input.uv;
     output.uv1 = input.uv1;
     output.materialFlags = materialFlags;
@@ -79,5 +86,8 @@ VSOutput main(VSInput input)
     output.materialDataIndex = materialDataIndex;
     output.surfaceGpuSceneIndex = surfaceGpuSceneIndex;
     output.surfaceFeatureFlags = surfaceFeatureFlags;
+    output.worldPosWS = worldPos.xyz;
+    output.normalWS = mul(normalMatrix, localNormal);
+    output.tangentWS = HikariTransformSurfaceTangent(input.tangent, (float3x3)world);
     return output;
 }

@@ -12,6 +12,9 @@
 #endif
 #include "Include/Surface/HIKARI_SandSurfaceDeform.hlsli"
 #include "Include/Surface/HIKARI_FoliageWind.hlsli"
+#if HIKARI_MESHLET_DEPTH_MATERIAL_CONTEXT
+#include "Include/Surface/HIKARI_SurfaceTangentFrame.hlsli"
+#endif
 
 struct HikariMeshletDepthVertexOut
 {
@@ -22,6 +25,10 @@ struct HikariMeshletDepthVertexOut
     float3 worldPosWS : TEXCOORD3;
     nointerpolation uint surfaceGpuSceneIndex : TEXCOORD4;
     nointerpolation uint surfaceFeatureFlags : TEXCOORD5;
+#if HIKARI_MESHLET_DEPTH_MATERIAL_CONTEXT
+    float3 normalWS : NORMAL;
+    float4 tangentWS : TANGENT;
+#endif
 };
 
 HikariMeshletDepthVertexOut HikariBuildEmptyMeshletDepthVertex()
@@ -49,6 +56,16 @@ HikariMeshletDepthVertexOut HikariBuildMeshletDepthVertex(
         HikariLoadClusterVertexPosition(geometry, resolved.header, vertexIndex).xyz;
     float3 localNormal = float3(0.0f, 1.0f, 0.0f);
     float3 localTangent = float3(1.0f, 0.0f, 0.0f);
+#if HIKARI_MESHLET_DEPTH_MATERIAL_CONTEXT
+    float tangentHandedness = 1.0f;
+    if ((instance.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_ALPHA_MASKED) != 0u)
+    {
+        const HikariClusterVertex vertex = HikariLoadClusterVertex(geometry, resolved.header, vertexIndex);
+        localNormal = vertex.normal.xyz;
+        localTangent = vertex.tangent.xyz;
+        tangentHandedness = vertex.tangent.w;
+    }
+#endif
     HikariApplyGpuDrivenSkinning(
         geometry,
         instance,
@@ -113,6 +130,11 @@ HikariMeshletDepthVertexOut HikariBuildMeshletDepthVertex(
         output.worldPosWS = worldPos.xyz;
         output.surfaceGpuSceneIndex = resolved.visible.gpuSceneInstanceIndex;
         output.surfaceFeatureFlags = instance.flags;
+#if HIKARI_MESHLET_DEPTH_MATERIAL_CONTEXT
+        output.normalWS = mul((float3x3)instance.clusterNormalMatrix, localNormal);
+        output.tangentWS = HikariTransformSurfaceTangent(
+            float4(localTangent, tangentHandedness), (float3x3)instance.clusterWorld);
+#endif
     }
     return output;
 }

@@ -27,6 +27,7 @@ namespace HIKARI::ASSETS::SHADER {
         ParticleDraw,
         WorldSpriteDraw,
         WorldTextDraw,
+        ShadowGraphics,
     };
 
     inline constexpr std::string_view kMeshGraphicsRootLayoutId =
@@ -135,6 +136,39 @@ namespace HIKARI::ASSETS::SHADER {
         "StaticSampler(s0,LinearClamp,Pixel)|"
         "Pipeline(Mesh,Pixel)|Flags(None)";
 
+    inline constexpr std::string_view kShadowGraphicsRootLayoutId =
+        "HIKARI.RenderGeometry.ShadowGraphics.Root";
+    inline constexpr uint32_t kShadowGraphicsRootLayoutVersion = 1u;
+    inline constexpr std::string_view kShadowGraphicsRootLayoutHash =
+        "0c88257c0bd386ae18146e7525f149db944599f20e840e57b2e7b05a621bd6a3";
+    inline constexpr std::string_view kShadowGraphicsRootLayoutCanonical =
+        "HIKARI.RenderGeometry.ShadowGraphics.Root.v1|"
+        "0:CBV(b0,space0,All)|"
+        "1:CBV(b1,space0,All)|"
+        "2:Table(SRV(t0,space0,count1),Pixel)|"
+        "3:Table(SRV(t16,space0,count1),All)|"
+        "4:Table(SRV(t17,space0,count1),All)|"
+        "5:Constants(b8,space0,count4,All)|"
+        "6:Table(SRV(t20,space0,count3968),Pixel)|"
+        "7:Constants(b7,space0,count1,All)|"
+        "8:Table(SRV(t15,space0,count1),All)|"
+        "9:Table(SRV(t0,space1,count1024),All)|"
+        "10:SRV(t18,space0,All)|"
+        "11:SRV(t19,space0,All)|"
+        "12:CBV(b9,space0,All)|"
+        "13:SRV(t0,space3,All)|"
+        "14:SRV(t4,space7,All)|"
+        "15:SRV(t1,space7,All)|"
+        "16:SRV(t0,space6,All)|"
+        "17:SRV(t1,space6,All)|"
+        "18:CBV(b10,space0,All)|"
+        "SkinnedAppend(19:CBV(b3,space0,All))|"
+        "RootParameters(Static19,Skinned20)|"
+        "DwordCost(Static33,Skinned35)|"
+        "StaticSampler(s0,LinearWrap,Pixel)|"
+        "Pipeline(Graphics,Amplification,Mesh)|"
+        "Flags(AllowInputAssembler)";
+
     inline std::string_view RenderGeometryRootLayoutId(
         RenderGeometryRootLayout layout) noexcept {
         switch (layout) {
@@ -154,6 +188,8 @@ namespace HIKARI::ASSETS::SHADER {
             return kWorldSpriteDrawRootLayoutId;
         case RenderGeometryRootLayout::WorldTextDraw:
             return kWorldTextDrawRootLayoutId;
+        case RenderGeometryRootLayout::ShadowGraphics:
+            return kShadowGraphicsRootLayoutId;
         }
         return {};
     }
@@ -163,7 +199,7 @@ namespace HIKARI::ASSETS::SHADER {
         RenderGeometryRootLayout& outLayout) noexcept {
         for (uint8_t raw = 0u;
              raw <= static_cast<uint8_t>(
-                 RenderGeometryRootLayout::WorldTextDraw);
+                 RenderGeometryRootLayout::ShadowGraphics);
              ++raw) {
             const auto layout =
                 static_cast<RenderGeometryRootLayout>(raw);
@@ -182,6 +218,15 @@ namespace HIKARI::ASSETS::SHADER {
             "HIKARI.EngineShader.Render3D_";
         if (programId.rfind(prefix, 0u) != 0u) {
             return false;
+        }
+        if (programId == "HIKARI.EngineShader.Render3D_ShadowStaticVS" ||
+            programId == "HIKARI.EngineShader.Render3D_ShadowSkinnedVS" ||
+            programId == "HIKARI.EngineShader.Render3D_ShadowAlphaPS" ||
+            programId == "HIKARI.EngineShader.Render3D_MeshletShadowAS" ||
+            programId == "HIKARI.EngineShader.Render3D_MeshletShadowMS" ||
+            programId == "HIKARI.EngineShader.Render3D_MeshletShadowPS") {
+            outLayout = RenderGeometryRootLayout::ShadowGraphics;
+            return true;
         }
         if (programId ==
                 "HIKARI.EngineShader."
@@ -248,6 +293,8 @@ namespace HIKARI::ASSETS::SHADER {
             return kWorldSpriteDrawRootLayoutHash;
         case RenderGeometryRootLayout::WorldTextDraw:
             return kWorldTextDrawRootLayoutHash;
+        case RenderGeometryRootLayout::ShadowGraphics:
+            return kShadowGraphicsRootLayoutHash;
         }
         return {};
     }
@@ -271,6 +318,8 @@ namespace HIKARI::ASSETS::SHADER {
             return kWorldSpriteDrawRootLayoutCanonical;
         case RenderGeometryRootLayout::WorldTextDraw:
             return kWorldTextDrawRootLayoutCanonical;
+        case RenderGeometryRootLayout::ShadowGraphics:
+            return kShadowGraphicsRootLayoutCanonical;
         }
         return {};
     }
@@ -294,6 +343,8 @@ namespace HIKARI::ASSETS::SHADER {
             return kWorldSpriteDrawRootLayoutVersion;
         case RenderGeometryRootLayout::WorldTextDraw:
             return kWorldTextDrawRootLayoutVersion;
+        case RenderGeometryRootLayout::ShadowGraphics:
+            return kShadowGraphicsRootLayoutVersion;
         }
         return 0u;
     }
@@ -353,6 +404,7 @@ namespace HIKARI::ASSETS::SHADER {
         const std::string_view id = entry.entry.id;
         switch (layout) {
         case RenderGeometryRootLayout::MeshGraphics:
+        case RenderGeometryRootLayout::ShadowGraphics:
             return id == "Main" && entry.entry.entry == "main";
         case RenderGeometryRootLayout::TraditionalCommand:
             return id == "CompactGpuTraditionalCommandStreamCS" &&
@@ -417,6 +469,23 @@ namespace HIKARI::ASSETS::SHADER {
         const ShaderResourceBinding& binding) noexcept {
         using Kind = ShaderResourceBindingKind;
         switch (layout) {
+        case RenderGeometryRootLayout::ShadowGraphics:
+            if (binding.kind == Kind::ConstantBuffer)
+                return binding.registerSpace == 0u && binding.count == 1u &&
+                    (binding.registerIndex <= 1u || binding.registerIndex == 3u ||
+                     (binding.registerIndex >= 7u && binding.registerIndex <= 10u));
+            if (binding.kind == Kind::Sampler)
+                return MatchesRenderGeometryBinding(binding, Kind::Sampler, 0u, 0u);
+            if (binding.kind != Kind::ShaderResource) return false;
+            return (binding.registerSpace == 0u && binding.count == 1u &&
+                    (binding.registerIndex == 0u ||
+                     (binding.registerIndex >= 15u && binding.registerIndex <= 19u))) ||
+                MatchesRenderGeometryBinding(binding, Kind::ShaderResource, 0u, 20u, 3968u) ||
+                MatchesRenderGeometryBinding(binding, Kind::ShaderResource, 1u, 0u, 1024u) ||
+                MatchesRenderGeometryBinding(binding, Kind::ShaderResource, 3u, 0u) ||
+                (binding.registerSpace == 6u && binding.registerIndex <= 1u && binding.count == 1u) ||
+                (binding.registerSpace == 7u && binding.count == 1u &&
+                    (binding.registerIndex == 1u || binding.registerIndex == 4u));
         case RenderGeometryRootLayout::MeshGraphics:
             if (binding.kind == Kind::ConstantBuffer) {
                 return binding.registerSpace == 0u &&

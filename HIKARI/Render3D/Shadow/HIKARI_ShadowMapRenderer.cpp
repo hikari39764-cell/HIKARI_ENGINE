@@ -6,6 +6,7 @@
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Render3D/Shadow/HIKARI_ShadowLightFrame.h"
+#include "Render3D/Core/MeshRenderer/Data/HIKARI_MeshDrawDataBuilder.h"
 #include "Render3D/Shadow/Internal/HIKARI_ShadowRendererInternal.h"
 
 namespace HIKARI::SHADOW {
@@ -56,6 +57,10 @@ namespace HIKARI::SHADOW {
             return;
         }
         ActivateShadowFrameResources(graphics.frameIndex);
+        const MATH::Mat4 materialViewProj = camera.GetViewProj();
+        MESHRENDERER::FillCameraCB(materialViewProj, MATH::Inverse(materialViewProj), camera.GetPosition(),
+            static_cast<uint32_t>((std::max)(1, graphics.backBufferWidth)),
+            static_cast<uint32_t>((std::max)(1, graphics.backBufferHeight)), gShadowRendererState.materialCamera);
         UploadShadowMeshShaderJointPalettes();
 
         const uint32_t resolution = ResolveShadowResolution(environment.directionalShadow.resolution);

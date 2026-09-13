@@ -1,8 +1,6 @@
 #define HIKARI_MASS_GPU_SCENE_DISABLED 1
-cbuffer ShadowCameraCB : register(b0)
-{
-    float4x4 gLightViewProj;
-};
+#include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
+#include "Include/Render3D/HIKARI_MeshCameraData.hlsli"
 
 cbuffer ShadowObjectCB : register(b1)
 {
@@ -21,6 +19,7 @@ cbuffer JointPaletteCB : register(b3)
 
 #include "Include/HIKARI_MeshMaterialData.hlsli"
 #include "Include/HIKARI_SurfaceGpuScene.hlsli"
+#include "Include/Surface/HIKARI_SurfaceTangentFrame.hlsli"
 
 static const uint HIKARI_INVALID_SHADOW_MATERIAL_INDEX = 0xffffffffu;
 
@@ -47,6 +46,9 @@ struct VSOutput
     nointerpolation uint materialDataIndex : MATERIALINDEX;
     nointerpolation uint surfaceGpuSceneIndex : TEXCOORD2;
     nointerpolation uint surfaceFeatureFlags : TEXCOORD3;
+    float3 worldPosWS : TEXCOORD4;
+    float3 normalWS : NORMAL;
+    float4 tangentWS : TANGENT;
 };
 
 float4x4 ResolveJointMatrix(uint jointIndex)
@@ -64,6 +66,7 @@ VSOutput main(VSInput input)
         mul(ResolveJointMatrix(input.joints.w), float4(input.position, 1.0f)) * input.weights.w;
 
     float4x4 world = gWorld;
+    float3x3 normalMatrix = (float3x3)world;
     uint materialFlags = gMaterialFlags;
     float alphaCutoff = gAlphaCutoff;
     uint materialDataIndex = HIKARI_INVALID_SHADOW_MATERIAL_INDEX;
@@ -75,7 +78,8 @@ VSOutput main(VSInput input)
         HikariSurfaceGpuSceneInstance instance =
             HikariGetSurfaceGpuSceneInstance(input.instanceId);
         world = instance.world;
-        surfaceGpuSceneIndex = input.instanceId;
+        normalMatrix = (float3x3)instance.normalMatrix;
+        surfaceGpuSceneIndex = HikariGetSurfaceGpuSceneAbsoluteIndex(input.instanceId);
         surfaceFeatureFlags = instance.flags;
         materialDataIndex = instance.materialDataIndex;
         HikariMeshMaterialData materialData = HikariGetMeshMaterialData(materialDataIndex);
@@ -84,7 +88,7 @@ VSOutput main(VSInput input)
     }
 
     float4 worldPos = mul(world, float4(localPos.xyz, 1.0f));
-    output.position = mul(gLightViewProj, worldPos);
+    output.position = mul(gViewProj, worldPos);
     output.uv = input.uv0;
     output.uv1 = input.uv1;
     output.materialFlags = materialFlags;
@@ -92,5 +96,19 @@ VSOutput main(VSInput input)
     output.materialDataIndex = materialDataIndex;
     output.surfaceGpuSceneIndex = surfaceGpuSceneIndex;
     output.surfaceFeatureFlags = surfaceFeatureFlags;
+    output.worldPosWS = worldPos.xyz;
+    output.normalWS = 0.0f.xxx;
+    output.tangentWS = 0.0f.xxxx;
+    if ((materialFlags & HIKARI_MATERIAL_FLAG_ALPHA_MASK) != 0u)
+    {
+        const float3x3 skin =
+            (float3x3)ResolveJointMatrix(input.joints.x) * input.weights.x +
+            (float3x3)ResolveJointMatrix(input.joints.y) * input.weights.y +
+            (float3x3)ResolveJointMatrix(input.joints.z) * input.weights.z +
+            (float3x3)ResolveJointMatrix(input.joints.w) * input.weights.w;
+        output.normalWS = mul(normalMatrix, mul(skin, input.normal));
+        output.tangentWS = HikariTransformSurfaceTangent(
+            float4(mul(skin, input.tangent.xyz), input.tangent.w), (float3x3)world);
+    }
     return output;
 }

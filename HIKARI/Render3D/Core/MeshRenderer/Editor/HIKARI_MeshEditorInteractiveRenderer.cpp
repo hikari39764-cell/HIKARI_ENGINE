@@ -100,35 +100,10 @@ namespace HIKARI::MESHRENDERER {
 
         const Camera3D& camera = view.cameraFrame->camera;
         CameraCB& cameraData = *editorFrame.cameraMapped;
-        cameraData = {};
-        cameraData.viewProj = camera.GetViewProj();
-        cameraData.invViewProj = MATH::Inverse(cameraData.viewProj);
         const MATH::Vec3 cameraPosition = camera.GetPosition();
-        cameraData.cameraPos = {
-            cameraPosition.x,
-            cameraPosition.y,
-            cameraPosition.z,
-            1.0f
-        };
-        const FrameContext& timeFrame = TIME::GetFrameContext();
-        cameraData.timeParams = {
-            TIME::GetUnscaledElapsedSeconds(),
-            timeFrame.unscaledDt,
-            timeFrame.gameDt,
-            static_cast<float>(timeFrame.frameIndex)
-        };
-        cameraData.simulationTimeParams = {
-            TIME::GetInterpolatedSimulationTimeSeconds(),
-            timeFrame.fixedDt,
-            timeFrame.fixedInterpolationAlpha,
-            static_cast<float>(timeFrame.fixedTickIndex)
-        };
-        cameraData.screenParams = {
-            static_cast<float>(screenWidth),
-            static_cast<float>(screenHeight),
-            1.0f / static_cast<float>(screenWidth),
-            1.0f / static_cast<float>(screenHeight)
-        };
+        const MATH::Mat4 viewProj = camera.GetViewProj();
+        FillCameraCB(viewProj, MATH::Inverse(viewProj), cameraPosition,
+            screenWidth, screenHeight, cameraData);
         editorFrame.localLightListView = {};
         if (!settings.neutralLighting) {
             editorFrame.localLightListView =

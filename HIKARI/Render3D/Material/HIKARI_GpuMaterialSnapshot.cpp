@@ -48,16 +48,13 @@ namespace HIKARI::RENDER3D::MATERIAL {
             }
             auto data = PackGpuMaterialData(projection);
             if (material.hasProgram) {
-                auto binding = material.programBinding;
-                binding.parameterBlockOffset = static_cast<uint32_t>(parameters.size());
-                binding.resourceTableOffset = static_cast<uint32_t>(resources.size());
-                binding.parameterBlockCount = static_cast<uint32_t>(material.programParameters.size());
-                ApplyGpuMaterialProgramBinding(data, binding);
-                parameters.insert(parameters.end(), material.programParameters.begin(), material.programParameters.end());
-                // HLSL の resource slot 読み出しは固定長32。隣の材質へ読み越さない。
-                resources.resize(resources.size() + kGpuMaterialProgramResourceSlotCount, kInvalidTextureDescriptorIndex);
+                GpuMaterialProgramResourceBlock resolvedResources;
+                resolvedResources.fill(kInvalidTextureDescriptorIndex);
                 for (size_t i = 0; i < material.programTextures.size(); ++i)
-                    if (!resolve(material.programTextures[i], resources[binding.resourceTableOffset + i])) return fail(error);
+                    if (!resolve(material.programTextures[i], resolvedResources[i])) return fail(error);
+                if (!AppendGpuMaterialProgramBlock(data, material.programBinding,
+                    material.programParameters, resolvedResources, parameters, resources))
+                    return fail("Failed to pack material program snapshot.");
             }
             table.push_back(data);
         }

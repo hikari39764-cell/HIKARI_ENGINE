@@ -589,17 +589,15 @@ namespace HIKARI::RENDER3D::MESHLET {
 
         const GFX::ShaderDeviceCapabilities capabilities =
             GFX::QueryShaderDeviceCapabilities(device);
-        const ASSETS::SHADER::ShaderAssetContractExpectation shaderContract =
-            ASSETS::SHADER::MakeRenderGeometryShaderContract(
-                ASSETS::SHADER::RenderGeometryRootLayout::MeshGraphics,
-                { capabilities.shaderModel,
-                  capabilities.rootSignatureVersion,
-                  capabilities.featureMask });
-        const auto resolveShader = [&shaderContract](
+        const auto resolveShader = [&capabilities](
             const char* programId,
             ASSETS::SHADER::ShaderStage stage,
             const char* profile,
             ASSETS::SHADER::ShaderAssetEntryLease& outShader) {
+            ASSETS::SHADER::RenderGeometryRootLayout layout{};
+            if (!ASSETS::SHADER::TryResolveRenderGeometryProgramRootLayout(programId, layout)) return false;
+            const auto shaderContract = ASSETS::SHADER::MakeRenderGeometryShaderContract(layout,
+                {capabilities.shaderModel, capabilities.rootSignatureVersion, capabilities.featureMask});
             ASSETS::SHADER::ShaderAssetResolveResult resolved =
                 ASSETS::SHADER::ResolveBuiltinRenderGeometryShaderEntry(
                     programId,

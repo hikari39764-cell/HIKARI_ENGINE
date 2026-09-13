@@ -52,7 +52,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         const GpuDrivenTraditionalIndirectView& view,
         size_t firstCommand,
         size_t commandCount,
-        bool (*includeInstance)(const RUNTIME::SurfaceGpuSceneInstance&)) {
+        bool (*includeInstance)(const RUNTIME::SurfaceGpuSceneInstance&,
+            const RUNTIME::SurfaceGpuSceneMaterialSource*)) {
 
         Clear();
         if (!view.HasCommands() ||
@@ -87,7 +88,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             sourceIndex < endCommand;
             ++sourceIndex) {
 
-            if (includeInstance != nullptr && !includeInstance((*view.instances)[sourceIndex])) {
+            if (includeInstance != nullptr && !includeInstance(
+                (*view.instances)[sourceIndex], &(*view.materialSources)[sourceIndex])) {
                 continue;
             }
             const uint32_t localIndex =
