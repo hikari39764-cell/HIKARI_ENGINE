@@ -96,33 +96,6 @@ namespace HIKARI::MESHRENDERER {
             gLastCaptureFailureStage = CaptureFailureStage::None;
         }
 
-        template <typename T>
-        bool CreateMappedConstantBuffer(
-            ID3D12Device* device,
-            Microsoft::WRL::ComPtr<ID3D12Resource>& resource,
-            T*& mapped) {
-
-            return GFX::D3D12_BUFFER::CreateMappedUploadBuffer(
-                device,
-                GFX::AlignD3D12ConstantBufferByteSize(sizeof(T)),
-                resource,
-                reinterpret_cast<void**>(&mapped));
-        }
-
-        template <typename T>
-        bool CreateMappedArrayBuffer(
-            ID3D12Device* device,
-            uint32_t count,
-            Microsoft::WRL::ComPtr<ID3D12Resource>& resource,
-            T*& mapped) {
-
-            return GFX::D3D12_BUFFER::CreateMappedUploadBuffer(
-                device,
-                static_cast<UINT64>(sizeof(T)) * count,
-                resource,
-                reinterpret_cast<void**>(&mapped));
-        }
-
         void ResetCaptureResources(
             SecondaryMeshViewResources& resources) noexcept {
 
@@ -130,31 +103,6 @@ namespace HIKARI::MESHRENDERER {
             resources.worldSpritePass.Shutdown();
             resources.worldTextPass.Shutdown();
             for (SecondaryMeshViewFrameResources& frame : resources.frames) {
-                if (frame.cameraCB != nullptr && frame.cameraMapped != nullptr) {
-                    frame.cameraCB->Unmap(0, nullptr);
-                }
-                if (frame.lightCB != nullptr && frame.lightMapped != nullptr) {
-                    frame.lightCB->Unmap(0, nullptr);
-                }
-                if (frame.localLightBuffer != nullptr &&
-                    frame.localLightMapped != nullptr) {
-                    frame.localLightBuffer->Unmap(0, nullptr);
-                }
-                if (frame.localLightClusterHeaderBuffer != nullptr &&
-                    frame.localLightClusterHeaderMapped != nullptr) {
-                    frame.localLightClusterHeaderBuffer->Unmap(0, nullptr);
-                }
-                if (frame.localLightClusterIndexBuffer != nullptr &&
-                    frame.localLightClusterIndexMapped != nullptr) {
-                    frame.localLightClusterIndexBuffer->Unmap(0, nullptr);
-                }
-                if (frame.shadowCB != nullptr && frame.shadowMapped != nullptr) {
-                    frame.shadowCB->Unmap(0, nullptr);
-                }
-                if (frame.skyEnvironmentCB != nullptr &&
-                    frame.skyEnvironmentMapped != nullptr) {
-                    frame.skyEnvironmentCB->Unmap(0, nullptr);
-                }
                 if (frame.jointPaletteCB != nullptr &&
                     frame.jointPaletteMapped != nullptr) {
                     frame.jointPaletteCB->Unmap(0, nullptr);
@@ -210,31 +158,7 @@ namespace HIKARI::MESHRENDERER {
                 return true;
             }
             for (SecondaryMeshViewFrameResources& frame : resources.frames) {
-                if (!CreateMappedConstantBuffer(
-                        device, frame.cameraCB, frame.cameraMapped) ||
-                    !CreateMappedConstantBuffer(
-                        device, frame.lightCB, frame.lightMapped) ||
-                    !CreateMappedArrayBuffer(
-                        device,
-                        RENDER3D::LIGHTING::kMaximumLocalLightCount,
-                        frame.localLightBuffer,
-                        frame.localLightMapped) ||
-                    !CreateMappedArrayBuffer(
-                        device,
-                        RENDER3D::LIGHTING::kMaximumLocalLightClusterCount,
-                        frame.localLightClusterHeaderBuffer,
-                        frame.localLightClusterHeaderMapped) ||
-                    !CreateMappedArrayBuffer(
-                        device,
-                        RENDER3D::LIGHTING::kMaximumLocalLightClusterIndexCount,
-                        frame.localLightClusterIndexBuffer,
-                        frame.localLightClusterIndexMapped) ||
-                    !CreateMappedConstantBuffer(
-                        device, frame.shadowCB, frame.shadowMapped) ||
-                    !CreateMappedConstantBuffer(
-                        device,
-                        frame.skyEnvironmentCB,
-                        frame.skyEnvironmentMapped) ||
+                if (!frame.view.Initialize(device) ||
                     !GFX::D3D12_BUFFER::CreateMappedUploadBuffer(
                         device,
                         static_cast<UINT64>(
@@ -364,39 +288,26 @@ namespace HIKARI::MESHRENDERER {
             uint32_t width,
             uint32_t height) {
 
-            CameraCB& cameraData = *frame.cameraMapped;
+            CameraCB& cameraData = frame.view.camera;
             const MATH::Vec3 position = camera.GetPosition();
             const MATH::Mat4 viewProj = camera.GetViewProj();
             FillCameraCB(viewProj, MATH::Inverse(viewProj), position, width, height, cameraData);
-            frame.localLightListView =
-                RENDER3D::LIGHTING::BuildLocalLightList(
-                    lighting,
-                    camera,
-                    width,
-                    height,
-                    {
-                        frame.localLightMapped,
-                        RENDER3D::LIGHTING::kMaximumLocalLightCount,
-                        frame.localLightClusterHeaderMapped,
-                        RENDER3D::LIGHTING::kMaximumLocalLightClusterCount,
-                        frame.localLightClusterIndexMapped,
-                        RENDER3D::LIGHTING::kMaximumLocalLightClusterIndexCount
-                    });
+            frame.view.BuildLocalLights(lighting, camera, width, height);
             FillLightCB(
                 environment,
-                frame.localLightListView,
+                frame.view.localLightList,
                 RenderDebugView::None,
-                *frame.lightMapped,
+                frame.view.light,
                 gMeshRendererState.debugStats);
             FillShadowCB(
                 environment,
                 TIME::GetFrameContext().frameIndex,
-                *frame.shadowMapped);
+                frame.view.shadow);
             FillSkyEnvironmentCB(
                 environment,
                 position,
                 camera.GetTarget(),
-                *frame.skyEnvironmentMapped);
+                frame.view.skyEnvironment);
         }
     } // namespace
 
@@ -455,6 +366,10 @@ namespace HIKARI::MESHRENDERER {
             lighting,
             screenWidth,
             screenHeight);
+        if (!captureFrame.view.Publish(graphics)) {
+            ReportCaptureFailure(CaptureFailureStage::FrameResourcesUnavailable);
+            return false;
+        }
 
         const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& sceneSource =
             gMeshRendererState.gpuDrivenSceneSource;
@@ -549,7 +464,7 @@ namespace HIKARI::MESHRENDERER {
             gMeshRendererState.pipelines.depthSkinnedPso != nullptr;
         layer.SetBackendAvailability(availability);
 
-        const MATH::Mat4 cullViewProj = captureFrame.cameraMapped->viewProj;
+        const MATH::Mat4 cullViewProj = captureFrame.view.camera.viewProj;
         RENDER3D::GPUDRIVEN::GpuDrivenFrame gpuDrivenFrame =
             RENDER3D::GPUDRIVEN::BuildGpuDrivenFrame(
                 RENDER3D::GPUDRIVEN::BuildGpuDrivenFrameInput(sceneSource));
@@ -586,22 +501,20 @@ namespace HIKARI::MESHRENDERER {
 
         MeshFrameBindingOverrides overrides{};
         overrides.cameraAddress =
-            captureFrame.cameraCB->GetGPUVirtualAddress();
+            captureFrame.view.Bindings().camera;
         overrides.cullingCameraAddress = overrides.cameraAddress;
         overrides.lightAddress =
-            captureFrame.lightCB->GetGPUVirtualAddress();
+            captureFrame.view.Bindings().light;
         overrides.localLightsAddress =
-            captureFrame.localLightBuffer->GetGPUVirtualAddress();
+            captureFrame.view.Bindings().localLights.lights;
         overrides.localLightClusterHeadersAddress =
-            captureFrame.localLightClusterHeaderBuffer->
-                GetGPUVirtualAddress();
+            captureFrame.view.Bindings().localLights.clusterHeaders;
         overrides.localLightClusterIndicesAddress =
-            captureFrame.localLightClusterIndexBuffer->
-                GetGPUVirtualAddress();
+            captureFrame.view.Bindings().localLights.clusterIndices;
         overrides.shadowAddress =
-            captureFrame.shadowCB->GetGPUVirtualAddress();
+            captureFrame.view.Bindings().shadow;
         overrides.skyEnvironmentAddress =
-            captureFrame.skyEnvironmentCB->GetGPUVirtualAddress();
+            captureFrame.view.Bindings().skyEnvironment;
         overrides.jointPaletteAddress =
             captureFrame.jointPaletteCB->GetGPUVirtualAddress();
         overrides.surfaceGpuSceneFrameBuffer =

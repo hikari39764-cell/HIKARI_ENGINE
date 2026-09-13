@@ -10,15 +10,14 @@
 
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Gfx/HIKARI_DynamicUploadBuffer.h"
-#include "Render3D/Core/HIKARI_MeshRendererTypes.h"
+#include "Render3D/Core/MeshRenderer/Frame/HIKARI_MeshViewFrameResources.h"
 #include "Render3D/Lighting/HIKARI_LocalLightList.h"
 #include "Render3D/Material/HIKARI_GpuMaterialRegistry.h"
 
 namespace HIKARI::MESHRENDERER {
 
     struct MeshFrameResources {
-        Microsoft::WRL::ComPtr<ID3D12Resource> cameraCB;
-        Microsoft::WRL::ComPtr<ID3D12Resource> cullingCameraCB;
+        MeshViewFrameResources view;
         Microsoft::WRL::ComPtr<ID3D12Resource> objectCB;
         Microsoft::WRL::ComPtr<ID3D12Resource> objectDataUploadBuffer;
         Microsoft::WRL::ComPtr<ID3D12Resource> objectDataBuffer;
@@ -31,26 +30,10 @@ namespace HIKARI::MESHRENDERER {
         DX::DynamicUploadBuffer materialUploads;
         bool materialUploadNeedsRetry = false;
         bool materialProgramUploadNeedsRetry = false;
-        Microsoft::WRL::ComPtr<ID3D12Resource> lightCB;
-        Microsoft::WRL::ComPtr<ID3D12Resource> localLightBuffer;
-        Microsoft::WRL::ComPtr<ID3D12Resource> localLightClusterHeaderBuffer;
-        Microsoft::WRL::ComPtr<ID3D12Resource> localLightClusterIndexBuffer;
-        Microsoft::WRL::ComPtr<ID3D12Resource> shadowCB;
-        Microsoft::WRL::ComPtr<ID3D12Resource> skyEnvironmentCB;
         Microsoft::WRL::ComPtr<ID3D12Resource> jointPaletteCB;
 
-        CameraCB* cameraMapped = nullptr;
-        CameraCB* cullingCameraMapped = nullptr;
         ObjectCB* objectMapped = nullptr;
         ObjectGpuData* objectDataMapped = nullptr;
-        LightCB* lightMapped = nullptr;
-        RENDER3D::LIGHTING::LocalLightGpuData* localLightMapped = nullptr;
-        RENDER3D::LIGHTING::LocalLightClusterHeader*
-            localLightClusterHeaderMapped = nullptr;
-        uint32_t* localLightClusterIndexMapped = nullptr;
-        RENDER3D::LIGHTING::LocalLightListView localLightListView{};
-        ShadowCB* shadowMapped = nullptr;
-        SkyEnvironmentCB* skyEnvironmentMapped = nullptr;
         JointPaletteCB* jointPaletteMapped = nullptr;
 
         D3D12_CPU_DESCRIPTOR_HANDLE objectDataSrvCpu{};

@@ -35,45 +35,12 @@
 namespace HIKARI::MESHRENDERER {
 
     struct SecondaryMeshViewFrameResources {
-        Microsoft::WRL::ComPtr<ID3D12Resource> cameraCB{};
-        Microsoft::WRL::ComPtr<ID3D12Resource> lightCB{};
-        Microsoft::WRL::ComPtr<ID3D12Resource> localLightBuffer{};
-        Microsoft::WRL::ComPtr<ID3D12Resource>
-            localLightClusterHeaderBuffer{};
-        Microsoft::WRL::ComPtr<ID3D12Resource>
-            localLightClusterIndexBuffer{};
-        Microsoft::WRL::ComPtr<ID3D12Resource> shadowCB{};
-        Microsoft::WRL::ComPtr<ID3D12Resource> skyEnvironmentCB{};
+        MeshViewFrameResources view{};
         Microsoft::WRL::ComPtr<ID3D12Resource> jointPaletteCB{};
-        CameraCB* cameraMapped = nullptr;
-        LightCB* lightMapped = nullptr;
-        RENDER3D::LIGHTING::LocalLightGpuData*
-            localLightMapped = nullptr;
-        RENDER3D::LIGHTING::LocalLightClusterHeader*
-            localLightClusterHeaderMapped = nullptr;
-        uint32_t* localLightClusterIndexMapped = nullptr;
-        RENDER3D::LIGHTING::LocalLightListView localLightListView{};
-        ShadowCB* shadowMapped = nullptr;
-        SkyEnvironmentCB* skyEnvironmentMapped = nullptr;
         JointPaletteCB* jointPaletteMapped = nullptr;
 
         bool IsReady() const {
-            return cameraCB != nullptr &&
-                lightCB != nullptr &&
-                localLightBuffer != nullptr &&
-                localLightClusterHeaderBuffer != nullptr &&
-                localLightClusterIndexBuffer != nullptr &&
-                shadowCB != nullptr &&
-                skyEnvironmentCB != nullptr &&
-                jointPaletteCB != nullptr &&
-                cameraMapped != nullptr &&
-                lightMapped != nullptr &&
-                localLightMapped != nullptr &&
-                localLightClusterHeaderMapped != nullptr &&
-                localLightClusterIndexMapped != nullptr &&
-                shadowMapped != nullptr &&
-                skyEnvironmentMapped != nullptr &&
-                jointPaletteMapped != nullptr;
+            return view.IsInitialized() && jointPaletteCB != nullptr && jointPaletteMapped != nullptr;
         }
     };
 

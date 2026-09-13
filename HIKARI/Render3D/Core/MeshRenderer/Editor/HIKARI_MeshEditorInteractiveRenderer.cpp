@@ -99,47 +99,32 @@ namespace HIKARI::MESHRENDERER {
         }
 
         const Camera3D& camera = view.cameraFrame->camera;
-        CameraCB& cameraData = *editorFrame.cameraMapped;
+        CameraCB& cameraData = editorFrame.view.camera;
         const MATH::Vec3 cameraPosition = camera.GetPosition();
         const MATH::Mat4 viewProj = camera.GetViewProj();
         FillCameraCB(viewProj, MATH::Inverse(viewProj), cameraPosition,
             screenWidth, screenHeight, cameraData);
-        editorFrame.localLightListView = {};
+        editorFrame.view.ClearLocalLights();
         if (!settings.neutralLighting) {
-            editorFrame.localLightListView =
-                RENDER3D::LIGHTING::BuildLocalLightList(
-                    lighting,
-                    camera,
-                    screenWidth,
-                    screenHeight,
-                    {
-                        editorFrame.localLightMapped,
-                        RENDER3D::LIGHTING::kMaximumLocalLightCount,
-                        editorFrame.localLightClusterHeaderMapped,
-                        RENDER3D::LIGHTING::
-                            kMaximumLocalLightClusterCount,
-                        editorFrame.localLightClusterIndexMapped,
-                        RENDER3D::LIGHTING::
-                            kMaximumLocalLightClusterIndexCount
-                    });
+            editorFrame.view.BuildLocalLights(lighting, camera, screenWidth, screenHeight);
         }
         FillLightCB(
             *renderEnvironment,
-            editorFrame.localLightListView,
+            editorFrame.view.localLightList,
             settings.debugView,
-            *editorFrame.lightMapped,
+            editorFrame.view.light,
             gMeshRendererState.debugStats);
         FillShadowCB(
             *renderEnvironment,
             GFX::GetCurrentContext().frameIndex,
-            *editorFrame.shadowMapped);
+            editorFrame.view.shadow);
         FillSkyEnvironmentCB(
             *renderEnvironment,
             cameraPosition,
             camera.GetTarget(),
-            *editorFrame.skyEnvironmentMapped);
+            editorFrame.view.skyEnvironment);
         if (settings.neutralLighting) {
-            LightCB& light = *editorFrame.lightMapped;
+            LightCB& light = editorFrame.view.light;
             light.directionalDir = { 0.35f, -0.82f, 0.45f, 0.0f };
             light.directionalColor = { 1.0f, 0.98f, 0.94f, 1.0f };
             light.directionalIntensity = 0.75f;
@@ -148,10 +133,13 @@ namespace HIKARI::MESHRENDERER {
             light.specularParams.x = 0.12f;
             light.localLightCount = 0;
             light.fogParams.x = 0.0f;
-            editorFrame.shadowMapped->enabled = 0;
+            editorFrame.view.shadow.enabled = 0;
         }
         if (settings.neutralClayMaterial) {
-            *editorFrame.skyEnvironmentMapped = {};
+            editorFrame.view.skyEnvironment = {};
+        }
+        if (!editorFrame.view.Publish(graphics)) {
+            return EditorInteractiveMeshRenderResult::FrameResourcesUnavailable;
         }
 
         const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& sceneSource =
@@ -300,22 +288,20 @@ namespace HIKARI::MESHRENDERER {
 
         MeshFrameBindingOverrides overrides{};
         overrides.cameraAddress =
-            editorFrame.cameraCB->GetGPUVirtualAddress();
+            editorFrame.view.Bindings().camera;
         overrides.cullingCameraAddress = overrides.cameraAddress;
         overrides.lightAddress =
-            editorFrame.lightCB->GetGPUVirtualAddress();
+            editorFrame.view.Bindings().light;
         overrides.localLightsAddress =
-            editorFrame.localLightBuffer->GetGPUVirtualAddress();
+            editorFrame.view.Bindings().localLights.lights;
         overrides.localLightClusterHeadersAddress =
-            editorFrame.localLightClusterHeaderBuffer->
-                GetGPUVirtualAddress();
+            editorFrame.view.Bindings().localLights.clusterHeaders;
         overrides.localLightClusterIndicesAddress =
-            editorFrame.localLightClusterIndexBuffer->
-                GetGPUVirtualAddress();
+            editorFrame.view.Bindings().localLights.clusterIndices;
         overrides.shadowAddress =
-            editorFrame.shadowCB->GetGPUVirtualAddress();
+            editorFrame.view.Bindings().shadow;
         overrides.skyEnvironmentAddress =
-            editorFrame.skyEnvironmentCB->GetGPUVirtualAddress();
+            editorFrame.view.Bindings().skyEnvironment;
         overrides.jointPaletteAddress =
             editorFrame.jointPaletteCB->GetGPUVirtualAddress();
         overrides.surfaceGpuSceneFrameBuffer =

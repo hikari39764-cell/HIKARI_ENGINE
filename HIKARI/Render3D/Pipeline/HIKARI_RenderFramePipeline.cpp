@@ -566,7 +566,10 @@ namespace HIKARI::RENDER3D::PIPELINE {
             }
         }
 
-        MESHRENDERER::SetAmbientOcclusionRuntimeEnabled(screenResult.ssaoRendered);
+        if (!MESHRENDERER::SetAmbientOcclusionRuntimeEnabled(screenResult.ssaoRendered)) {
+            MESHRENDERER::EndFrame();
+            return false;
+        }
         if (!PublishOptionalTexture(
                 sceneTextures,
                 GRAPH::RenderGraphSurfaceKey{
@@ -690,7 +693,10 @@ namespace HIKARI::RENDER3D::PIPELINE {
         }
         (void)MESHRENDERER::FinalizeGpuDrivenVisibilityWithoutDepth(graphics);
 
-        MESHRENDERER::SetAmbientOcclusionRuntimeEnabled(false);
+        if (!MESHRENDERER::SetAmbientOcclusionRuntimeEnabled(false)) {
+            MESHRENDERER::EndFrame();
+            return false;
+        }
 
         // Capture は後処理と depth-aware phase を含めない。
         const MESHRENDERER::MeshPassResources captureResources{};

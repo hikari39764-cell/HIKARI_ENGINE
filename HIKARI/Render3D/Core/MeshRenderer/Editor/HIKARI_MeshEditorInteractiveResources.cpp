@@ -19,33 +19,6 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         constexpr size_t kEditorPreviewVisibleRangeCapacity = 131072u;
         constexpr size_t kEditorPreviewCandidateCommandCapacity = 131072u;
 
-        template <typename T>
-        bool CreateMappedConstantBuffer(
-            ID3D12Device* device,
-            Microsoft::WRL::ComPtr<ID3D12Resource>& resource,
-            T*& mapped) {
-
-            return GFX::D3D12_BUFFER::CreateMappedUploadBuffer(
-                device,
-                GFX::AlignD3D12ConstantBufferByteSize(sizeof(T)),
-                resource,
-                reinterpret_cast<void**>(&mapped));
-        }
-
-        template <typename T>
-        bool CreateMappedArrayBuffer(
-            ID3D12Device* device,
-            uint32_t count,
-            Microsoft::WRL::ComPtr<ID3D12Resource>& resource,
-            T*& mapped) {
-
-            return GFX::D3D12_BUFFER::CreateMappedUploadBuffer(
-                device,
-                static_cast<UINT64>(sizeof(T)) * count,
-                resource,
-                reinterpret_cast<void**>(&mapped));
-        }
-
     } // namespace
 
     void ResetEditorInteractiveResources() {
@@ -54,35 +27,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         for (EditorInteractiveMeshFrameResources& frame :
             gMeshRendererState.editorInteractive.frames) {
 
-            if (frame.cameraCB != nullptr && frame.cameraMapped != nullptr) {
-                frame.cameraCB->Unmap(0, nullptr);
-            }
-            if (frame.lightCB != nullptr && frame.lightMapped != nullptr) {
-                frame.lightCB->Unmap(0, nullptr);
-            }
-            if (frame.localLightBuffer != nullptr &&
-                frame.localLightMapped != nullptr) {
-                frame.localLightBuffer->Unmap(0, nullptr);
-            }
-            if (frame.localLightClusterHeaderBuffer != nullptr &&
-                frame.localLightClusterHeaderMapped != nullptr) {
-                frame.localLightClusterHeaderBuffer->Unmap(
-                    0,
-                    nullptr);
-            }
-            if (frame.localLightClusterIndexBuffer != nullptr &&
-                frame.localLightClusterIndexMapped != nullptr) {
-                frame.localLightClusterIndexBuffer->Unmap(
-                    0,
-                    nullptr);
-            }
-            if (frame.shadowCB != nullptr && frame.shadowMapped != nullptr) {
-                frame.shadowCB->Unmap(0, nullptr);
-            }
-            if (frame.skyEnvironmentCB != nullptr &&
-                frame.skyEnvironmentMapped != nullptr) {
-                frame.skyEnvironmentCB->Unmap(0, nullptr);
-            }
+
             if (frame.jointPaletteCB != nullptr &&
                 frame.jointPaletteMapped != nullptr) {
                 frame.jointPaletteCB->Unmap(0, nullptr);
@@ -129,39 +74,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         for (EditorInteractiveMeshFrameResources& frame :
             gMeshRendererState.editorInteractive.frames) {
 
-            if (!CreateMappedConstantBuffer(
-                    device,
-                    frame.cameraCB,
-                    frame.cameraMapped) ||
-                !CreateMappedConstantBuffer(
-                    device,
-                    frame.lightCB,
-                    frame.lightMapped) ||
-                !CreateMappedArrayBuffer(
-                    device,
-                    RENDER3D::LIGHTING::kMaximumLocalLightCount,
-                    frame.localLightBuffer,
-                    frame.localLightMapped) ||
-                !CreateMappedArrayBuffer(
-                    device,
-                    RENDER3D::LIGHTING::
-                        kMaximumLocalLightClusterCount,
-                    frame.localLightClusterHeaderBuffer,
-                    frame.localLightClusterHeaderMapped) ||
-                !CreateMappedArrayBuffer(
-                    device,
-                    RENDER3D::LIGHTING::
-                        kMaximumLocalLightClusterIndexCount,
-                    frame.localLightClusterIndexBuffer,
-                    frame.localLightClusterIndexMapped) ||
-                !CreateMappedConstantBuffer(
-                    device,
-                    frame.shadowCB,
-                    frame.shadowMapped) ||
-                !CreateMappedConstantBuffer(
-                    device,
-                    frame.skyEnvironmentCB,
-                    frame.skyEnvironmentMapped) ||
+            if (!frame.view.Initialize(device) ||
                 !GFX::D3D12_BUFFER::CreateMappedUploadBuffer(
                     device,
                     static_cast<UINT64>(

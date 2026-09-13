@@ -69,36 +69,30 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
 
     MATH::Mat4 ResolveGpuDrivenCullingViewProj() {
         const MeshFrameResources& frame = GetActiveMeshFrameResources();
-        return frame.cullingCameraMapped != nullptr
-            ? frame.cullingCameraMapped->viewProj
+        return frame.view.IsInitialized()
+            ? frame.view.cullingCamera.viewProj
             : MATH::Mat4::Identity();
     }
 
     MATH::Vec3 ResolveGpuDrivenCullingCameraPosition() {
         const MeshFrameResources& frame = GetActiveMeshFrameResources();
-        return frame.cullingCameraMapped != nullptr
+        return frame.view.IsInitialized()
             ? MATH::Vec3{
-                frame.cullingCameraMapped->cameraPos.x,
-                frame.cullingCameraMapped->cameraPos.y,
-                frame.cullingCameraMapped->cameraPos.z
+                frame.view.cullingCamera.cameraPos.x,
+                frame.view.cullingCamera.cameraPos.y,
+                frame.view.cullingCamera.cameraPos.z
             }
             : MATH::Vec3{};
     }
 
     D3D12_GPU_VIRTUAL_ADDRESS ResolveCameraAddress() {
         const MeshFrameResources& frame = GetActiveMeshFrameResources();
-        return frame.cameraCB != nullptr
-            ? frame.cameraCB->GetGPUVirtualAddress()
-            : 0;
+        return frame.view.Bindings().camera;
     }
 
     D3D12_GPU_VIRTUAL_ADDRESS ResolveCullingCameraAddress() {
         const MeshFrameResources& frame = GetActiveMeshFrameResources();
-        return frame.cullingCameraCB != nullptr
-            ? frame.cullingCameraCB->GetGPUVirtualAddress()
-            : (frame.cameraCB != nullptr
-                ? frame.cameraCB->GetGPUVirtualAddress()
-                : 0);
+        return frame.view.Bindings().cullingCamera;
     }
 
     const RENDER3D::GPUDRIVEN::GpuDrivenPassSource& GetSceneSourcePass(
@@ -166,13 +160,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         uint32_t overrideScreenHeight = 0,
         const MeshFrameCameraOverrides* cameraOverrides = nullptr) {
         MeshFrameResources& frameResources = GetActiveMeshFrameResources();
-        if (frameResources.cameraMapped == nullptr ||
-            frameResources.cullingCameraMapped == nullptr ||
-            frameResources.lightMapped == nullptr ||
-            frameResources.shadowMapped == nullptr ||
-            frameResources.skyEnvironmentMapped == nullptr) {
-            return false;
-        }
+        if (!frameResources.view.IsInitialized()) return false;
 
         const MATH::Mat4 viewProj =
             cameraOverrides != nullptr && cameraOverrides->HasRenderMatrices()
@@ -186,8 +174,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         const uint32_t screenH = overrideScreenWidth != 0u && overrideScreenHeight != 0u
             ? overrideScreenHeight : static_cast<uint32_t>(std::max(1, graphics.backBufferHeight));
         FillCameraCB(viewProj, inverseViewProj, cameraPos, screenW, screenH,
-            *frameResources.cameraMapped);
-        CameraCB cullingCamera = *frameResources.cameraMapped;
+            frameResources.view.camera);
+        CameraCB cullingCamera = frameResources.view.camera;
         if (cameraOverrides != nullptr && cameraOverrides->HasCullingMatrices()) {
             cullingCamera.viewProj = *cameraOverrides->cullingViewProj;
             cullingCamera.invViewProj = *cameraOverrides->cullingInvViewProj;
@@ -204,48 +192,33 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                 gMeshRendererState.frozenCullingCameraWidth = cullingWidth;
                 gMeshRendererState.frozenCullingCameraHeight = cullingHeight;
             }
-            *frameResources.cullingCameraMapped = gMeshRendererState.frozenCullingCamera;
+            frameResources.view.cullingCamera = gMeshRendererState.frozenCullingCamera;
         } else {
             gMeshRendererState.frozenCullingCameraValid = false;
             gMeshRendererState.frozenCullingCameraWidth = 0;
             gMeshRendererState.frozenCullingCameraHeight = 0;
-            *frameResources.cullingCameraMapped = cullingCamera;
+            frameResources.view.cullingCamera = cullingCamera;
         }
         gMeshRendererState.debugStats.gpuDrivenCullingCameraFrozen =
             gMeshRendererState.freezeGpuDrivenCullingCamera && gMeshRendererState.frozenCullingCameraValid;
 
-        frameResources.localLightListView =
-            RENDER3D::LIGHTING::BuildLocalLightList(
-                lighting,
-                camera,
-                static_cast<uint32_t>(screenW),
-                static_cast<uint32_t>(screenH),
-                {
-                    frameResources.localLightMapped,
-                    RENDER3D::LIGHTING::kMaximumLocalLightCount,
-                    frameResources.localLightClusterHeaderMapped,
-                    RENDER3D::LIGHTING::
-                        kMaximumLocalLightClusterCount,
-                    frameResources.localLightClusterIndexMapped,
-                    RENDER3D::LIGHTING::
-                        kMaximumLocalLightClusterIndexCount
-                });
+        frameResources.view.BuildLocalLights(lighting, camera, static_cast<uint32_t>(screenW), static_cast<uint32_t>(screenH));
         FillLightCB(
             environment,
-            frameResources.localLightListView,
+            frameResources.view.localLightList,
             debugView,
-            *frameResources.lightMapped,
+            frameResources.view.light,
             gMeshRendererState.debugStats);
         FillShadowCB(
             environment,
             TIME::GetFrameContext().frameIndex,
-            *frameResources.shadowMapped);
+            frameResources.view.shadow);
         FillSkyEnvironmentCB(
             environment,
             cameraPos,
             camera.GetTarget(),
-            *frameResources.skyEnvironmentMapped);
-        return true;
+            frameResources.view.skyEnvironment);
+        return frameResources.view.Publish(graphics, &frameResources.view.cullingCamera);
     }
 
     MeshDrawContext BuildDrawContext(
@@ -306,46 +279,31 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         ctx.lightAddress =
             overrides != nullptr && overrides->lightAddress != 0
                 ? overrides->lightAddress
-                : (frame.lightCB
-                    ? frame.lightCB->GetGPUVirtualAddress()
-                    : 0);
+                : frame.view.Bindings().light;
         ctx.localLightsAddress =
             overrides != nullptr &&
                 overrides->localLightsAddress != 0
                 ? overrides->localLightsAddress
-                : (frame.localLightBuffer
-                    ? frame.localLightBuffer->
-                        GetGPUVirtualAddress()
-                    : 0);
+                : frame.view.Bindings().localLights.lights;
         ctx.localLightClusterHeadersAddress =
             overrides != nullptr &&
                 overrides->localLightClusterHeadersAddress != 0
                 ? overrides->localLightClusterHeadersAddress
-                : (frame.localLightClusterHeaderBuffer
-                    ? frame.localLightClusterHeaderBuffer->
-                        GetGPUVirtualAddress()
-                    : 0);
+                : frame.view.Bindings().localLights.clusterHeaders;
         ctx.localLightClusterIndicesAddress =
             overrides != nullptr &&
                 overrides->localLightClusterIndicesAddress != 0
                 ? overrides->localLightClusterIndicesAddress
-                : (frame.localLightClusterIndexBuffer
-                    ? frame.localLightClusterIndexBuffer->
-                        GetGPUVirtualAddress()
-                    : 0);
+                : frame.view.Bindings().localLights.clusterIndices;
         ctx.shadowAddress =
             overrides != nullptr && overrides->shadowAddress != 0
                 ? overrides->shadowAddress
-                : (frame.shadowCB
-                    ? frame.shadowCB->GetGPUVirtualAddress()
-                    : 0);
+                : frame.view.Bindings().shadow;
         ctx.skyEnvironmentAddress =
             overrides != nullptr &&
                 overrides->skyEnvironmentAddress != 0
                 ? overrides->skyEnvironmentAddress
-                : (frame.skyEnvironmentCB
-                    ? frame.skyEnvironmentCB->GetGPUVirtualAddress()
-                    : 0);
+                : frame.view.Bindings().skyEnvironment;
         ctx.surfaceFeatureDataAddress =
             waterSurfaceBuffer != nullptr
                 ? waterSurfaceBuffer->GetRecordGpuVirtualAddress()

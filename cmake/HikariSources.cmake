@@ -203,6 +203,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Core/MeshRenderer/Passes/HIKARI_MeshRenderPasses.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Core/MeshRenderer/Passes/HIKARI_MeshTemporalVelocityCollector.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Core/MeshRenderer/Frame/HIKARI_MeshFrameResources.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Core/MeshRenderer/Frame/HIKARI_MeshViewFrameResources.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Core/MeshRenderer/Execution/HIKARI_MeshTraditionalIndirectOwner.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Core/MeshRenderer/Bindings/HIKARI_MeshResourceBindings.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Core/MeshRenderer/Capture/HIKARI_MeshSecondaryCaptureRenderer.cpp"

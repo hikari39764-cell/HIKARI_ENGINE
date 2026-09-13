@@ -99,7 +99,6 @@ namespace HIKARI::MESHRENDERER {
             return false;
         }
 
-        const UINT cameraBytes = GFX::AlignD3D12ConstantBufferByteSize(sizeof(CameraCB));
         const UINT objectBytes =
             GFX::AlignD3D12ConstantBufferByteSize(sizeof(ObjectCB)) * kMaxObjectCount;
         const UINT objectDataBytes =
@@ -114,20 +113,6 @@ namespace HIKARI::MESHRENDERER {
             sizeof(uint32_t) *
             RENDER3D::MATERIAL::kGpuMaterialProgramResourceSlotCount *
             kMaxMaterialDataCount);
-        const UINT lightBytes = GFX::AlignD3D12ConstantBufferByteSize(sizeof(LightCB));
-        const UINT localLightBytes = static_cast<UINT>(
-            sizeof(RENDER3D::LIGHTING::LocalLightGpuData) *
-            RENDER3D::LIGHTING::kMaximumLocalLightCount);
-        const UINT localLightClusterHeaderBytes = static_cast<UINT>(
-            sizeof(RENDER3D::LIGHTING::LocalLightClusterHeader) *
-            RENDER3D::LIGHTING::kMaximumLocalLightClusterCount);
-        const UINT localLightClusterIndexBytes = static_cast<UINT>(
-            sizeof(uint32_t) *
-            RENDER3D::LIGHTING::
-                kMaximumLocalLightClusterIndexCount);
-        const UINT shadowBytes = GFX::AlignD3D12ConstantBufferByteSize(sizeof(ShadowCB));
-        const UINT skyEnvironmentBytes =
-            GFX::AlignD3D12ConstantBufferByteSize(sizeof(SkyEnvironmentCB));
         const UINT jointPaletteBytes =
             GFX::AlignD3D12ConstantBufferByteSize(sizeof(JointPaletteCB)) * kMaxObjectCount;
 
@@ -169,22 +154,13 @@ namespace HIKARI::MESHRENDERER {
             } catch (...) {
                 return false;
             }
-            if (!frame.materialUploads.Init(device, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT)) {
+            if (!frame.view.Initialize(device) ||
+                !frame.materialUploads.Init(device, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT)) {
                 return false;
             }
             frame.materialUploadNeedsRetry = false;
             frame.materialProgramUploadNeedsRetry = false;
             if (!GFX::D3D12_BUFFER::CreateMappedUploadBuffer(
-                    device,
-                    cameraBytes,
-                    frame.cameraCB,
-                    reinterpret_cast<void**>(&frame.cameraMapped)) ||
-                !GFX::D3D12_BUFFER::CreateMappedUploadBuffer(
-                    device,
-                    cameraBytes,
-                    frame.cullingCameraCB,
-                    reinterpret_cast<void**>(&frame.cullingCameraMapped)) ||
-                !GFX::D3D12_BUFFER::CreateMappedUploadBuffer(
                     device,
                     objectBytes,
                     frame.objectCB,
@@ -207,39 +183,6 @@ namespace HIKARI::MESHRENDERER {
                     device,
                     materialProgramResourceBytes,
                     frame.materialProgramResourceBuffer) ||
-                !GFX::D3D12_BUFFER::CreateMappedUploadBuffer(
-                    device,
-                    lightBytes,
-                    frame.lightCB,
-                    reinterpret_cast<void**>(&frame.lightMapped)) ||
-                !GFX::D3D12_BUFFER::CreateMappedUploadBuffer(
-                    device,
-                    localLightBytes,
-                    frame.localLightBuffer,
-                    reinterpret_cast<void**>(
-                        &frame.localLightMapped)) ||
-                !GFX::D3D12_BUFFER::CreateMappedUploadBuffer(
-                    device,
-                    localLightClusterHeaderBytes,
-                    frame.localLightClusterHeaderBuffer,
-                    reinterpret_cast<void**>(
-                        &frame.localLightClusterHeaderMapped)) ||
-                !GFX::D3D12_BUFFER::CreateMappedUploadBuffer(
-                    device,
-                    localLightClusterIndexBytes,
-                    frame.localLightClusterIndexBuffer,
-                    reinterpret_cast<void**>(
-                        &frame.localLightClusterIndexMapped)) ||
-                !GFX::D3D12_BUFFER::CreateMappedUploadBuffer(
-                    device,
-                    shadowBytes,
-                    frame.shadowCB,
-                    reinterpret_cast<void**>(&frame.shadowMapped)) ||
-                !GFX::D3D12_BUFFER::CreateMappedUploadBuffer(
-                    device,
-                    skyEnvironmentBytes,
-                    frame.skyEnvironmentCB,
-                    reinterpret_cast<void**>(&frame.skyEnvironmentMapped)) ||
                 !GFX::D3D12_BUFFER::CreateMappedUploadBuffer(
                     device,
                     jointPaletteBytes,

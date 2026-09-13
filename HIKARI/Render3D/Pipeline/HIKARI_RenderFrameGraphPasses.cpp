@@ -173,8 +173,8 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
                     context.screenResult)) {
                 return false;
             }
-            MESHRENDERER::SetAmbientOcclusionRuntimeEnabled(
-                context.screenResult.ssaoRendered);
+            if (!MESHRENDERER::SetAmbientOcclusionRuntimeEnabled(
+                    context.screenResult.ssaoRendered)) return false;
             (void)context.sceneSurfaces.Invalidate(
                 GRAPH::RenderGraphSurfaceKey{
                     GRAPH::RenderGraphSemantic::VisibilityDepthPyramid,

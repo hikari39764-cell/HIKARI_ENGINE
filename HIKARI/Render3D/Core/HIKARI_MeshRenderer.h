@@ -145,7 +145,7 @@ namespace HIKARI::MESHRENDERER {
         std::vector<TemporalVelocityDraw>& outDraws,
         uint32_t maximumDrawCount,
         uint32_t maximumSkinnedDrawCount);
-    void SetAmbientOcclusionRuntimeEnabled(bool enabled);
+    bool SetAmbientOcclusionRuntimeEnabled(bool enabled);
     void EndFrame();
     MeshRendererFrameResult RenderAll(
         const GFX::Context& graphics,

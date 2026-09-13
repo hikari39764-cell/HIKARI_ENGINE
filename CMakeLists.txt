@@ -563,6 +563,11 @@ target_compile_definitions(HIKARI_ClusterVertexDecodeGpuContracts PRIVATE HIKARI
 add_test(NAME HIKARI_ClusterVertexDecodeGpuContracts COMMAND "$<TARGET_FILE:HIKARI_ClusterVertexDecodeGpuContracts>")
 set_tests_properties(HIKARI_ClusterVertexDecodeGpuContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
 
+hikari_add_runtime_contract(HIKARI_MeshViewUploadGpuContracts "Tools/Tests/HIKARI_MeshViewUploadGpuContracts.cpp")
+target_link_libraries(HIKARI_MeshViewUploadGpuContracts PRIVATE d3dcompiler)
+add_test(NAME HIKARI_MeshViewUploadGpuContracts COMMAND "$<TARGET_FILE:HIKARI_MeshViewUploadGpuContracts>")
+set_tests_properties(HIKARI_MeshViewUploadGpuContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
+
 add_executable(HIKARI_SceneSurfaceFloatPoolContracts EXCLUDE_FROM_ALL "Tools/Tests/HIKARI_SceneSurfaceFloatPoolContracts.cpp")
 target_include_directories(HIKARI_SceneSurfaceFloatPoolContracts PRIVATE "${HIKARI_SOURCE_ROOT}/HIKARI")
 hikari_configure_engine_target(HIKARI_SceneSurfaceFloatPoolContracts)

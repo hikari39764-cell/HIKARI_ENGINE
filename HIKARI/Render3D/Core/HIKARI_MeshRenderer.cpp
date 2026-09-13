@@ -183,14 +183,13 @@ namespace HIKARI::MESHRENDERER {
     }
 
     const CameraCB* GetCameraConstants() {
-        return GetActiveMeshFrameResources().cameraMapped;
+        const auto& view = GetActiveMeshFrameResources().view;
+        return view.IsInitialized() ? &view.camera : nullptr;
     }
 
     const CameraCB* GetGpuDrivenCullingCameraConstants() {
         const MeshFrameResources& frame = GetActiveMeshFrameResources();
-        return frame.cullingCameraMapped != nullptr
-            ? frame.cullingCameraMapped
-            : frame.cameraMapped;
+        return frame.view.IsInitialized() ? &frame.view.cullingCamera : nullptr;
     }
 
     RENDER3D::LIGHTING::LocalLightListGpuBindings
@@ -198,22 +197,7 @@ namespace HIKARI::MESHRENDERER {
 
         const MeshFrameResources& frame =
             GetActiveMeshFrameResources();
-        RENDER3D::LIGHTING::LocalLightListGpuBindings bindings{};
-        bindings.lights = frame.localLightBuffer
-            ? frame.localLightBuffer->GetGPUVirtualAddress()
-            : 0u;
-        bindings.clusterHeaders =
-            frame.localLightClusterHeaderBuffer
-                ? frame.localLightClusterHeaderBuffer->
-                    GetGPUVirtualAddress()
-                : 0u;
-        bindings.clusterIndices =
-            frame.localLightClusterIndexBuffer
-                ? frame.localLightClusterIndexBuffer->
-                    GetGPUVirtualAddress()
-                : 0u;
-        bindings.view = frame.localLightListView;
-        return bindings;
+        return frame.view.Bindings().localLights;
     }
 
     void EndFrame() {

@@ -56,7 +56,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             return false;
         }
 
-        const CameraCB* camera = GetActiveMeshFrameResources().cameraMapped;
+        const CameraCB* camera = GetCameraConstants();
         const uint32_t width = static_cast<uint32_t>(
             (std::max)(1.0f, camera ? camera->screenParams.x : 1.0f));
         const uint32_t height = static_cast<uint32_t>(
@@ -105,7 +105,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             return false;
         }
 
-        const CameraCB* camera = GetActiveMeshFrameResources().cameraMapped;
+        const CameraCB* camera = GetCameraConstants();
         const uint32_t width = static_cast<uint32_t>(
             (std::max)(1.0f, camera ? camera->screenParams.x : 1.0f));
         const uint32_t height = static_cast<uint32_t>(
@@ -146,7 +146,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             return false;
         }
 
-        const CameraCB* camera = GetActiveMeshFrameResources().cameraMapped;
+        const CameraCB* camera = GetCameraConstants();
         const uint32_t width = static_cast<uint32_t>(
             (std::max)(1.0f, camera ? camera->screenParams.x :
                 static_cast<float>(passResources.sceneDepth.width)));
@@ -231,11 +231,11 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
 
         MATH::Vec3 cameraPosition{};
         const MeshFrameResources& frame = GetActiveMeshFrameResources();
-        if (frame.cameraMapped != nullptr) {
+        if (frame.view.IsInitialized()) {
             cameraPosition = {
-                frame.cameraMapped->cameraPos.x,
-                frame.cameraMapped->cameraPos.y,
-                frame.cameraMapped->cameraPos.z,
+                frame.view.camera.cameraPos.x,
+                frame.view.camera.cameraPos.y,
+                frame.view.camera.cameraPos.z,
             };
         }
             return ExecuteParticleForwardTransparent(
@@ -469,9 +469,7 @@ namespace HIKARI::MESHRENDERER {
         const bool spritesExecuted =
             ExecutePreparedWorldSpriteForwardOpaque(
                 graphics,
-                frame.cameraCB != nullptr
-                    ? frame.cameraCB->GetGPUVirtualAddress()
-                    : 0u);
+                frame.view.Bindings().camera);
         return surfaceExecuted && spritesExecuted;
     }
 
@@ -494,22 +492,16 @@ namespace HIKARI::MESHRENDERER {
         const bool spritesExecuted =
             ExecutePreparedWorldSpriteForwardTransparent(
                 graphics,
-                frame.cameraCB != nullptr
-                    ? frame.cameraCB->GetGPUVirtualAddress()
-                    : 0u);
+                frame.view.Bindings().camera);
         const bool particlesExecuted =
             ExecutePreparedParticleForwardTransparent(
                 graphics,
-                frame.cameraCB != nullptr
-                    ? frame.cameraCB->GetGPUVirtualAddress()
-                    : 0u,
+                frame.view.Bindings().camera,
                 passResources);
         const bool textExecuted =
             ExecutePreparedWorldTextForwardTransparent(
                 graphics,
-                frame.cameraCB != nullptr
-                    ? frame.cameraCB->GetGPUVirtualAddress()
-                    : 0u);
+                frame.view.Bindings().camera);
         return surfaceExecuted && spritesExecuted && particlesExecuted &&
             textExecuted;
     }
@@ -544,13 +536,16 @@ namespace HIKARI::MESHRENDERER {
         return backendResult.gpuBackendExecuted;
     }
 
-    void SetAmbientOcclusionRuntimeEnabled(bool enabled) {
-        SkyEnvironmentCB* skyEnvironment =
-            GetActiveMeshFrameResources().skyEnvironmentMapped;
-        if (skyEnvironment != nullptr) {
-            skyEnvironment->ambientSamplingParams.x =
-                enabled ? 1.0f : 0.0f;
-        }
+    bool SetAmbientOcclusionRuntimeEnabled(bool enabled) {
+        auto& view = GetActiveMeshFrameResources().view;
+        if (!view.IsInitialized()) return false;
+        const float value = enabled ? 1.0f : 0.0f;
+        if (view.skyEnvironment.ambientSamplingParams.x == value) return true;
+        const float previous = view.skyEnvironment.ambientSamplingParams.x;
+        view.skyEnvironment.ambientSamplingParams.x = value;
+        if (view.PublishSkyEnvironment(GFX::GetCurrentContext())) return true;
+        view.skyEnvironment.ambientSamplingParams.x = previous;
+        return false;
     }
 
 
