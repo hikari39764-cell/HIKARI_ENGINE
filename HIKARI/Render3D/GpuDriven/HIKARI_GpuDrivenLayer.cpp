@@ -363,6 +363,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             waterSurfaceBuffer_ == nullptr ||
             waterSurfaceBuffer_->UploadFrame(
                 desc.frameIndex,
+                desc.commandList,
                 frameSource_ != nullptr
                     ? frameSource_->waterSurfaceGpuData
                     : nullptr);
@@ -373,6 +374,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             sandSurfaceBuffer_ == nullptr ||
             sandSurfaceBuffer_->UploadFrame(
                 desc.frameIndex,
+                desc.commandList,
                 frameSource_ != nullptr
                     ? frameSource_->sandSurfaceGpuData
                     : nullptr,

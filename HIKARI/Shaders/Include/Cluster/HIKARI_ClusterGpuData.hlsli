@@ -441,7 +441,11 @@ float HikariUnpackHalf16(uint value)
 
 float2 HikariUnpackHalf16x2(uint packed)
 {
-    return f16tof32(packed);
+    // f16tof32 は各 uint の下位 16 bit だけを変換する。
+    // scalar の暗黙複製では UV1.x が UV0.y に置き換わってしまう。
+    return float2(
+        HikariUnpackHalf16(packed),
+        HikariUnpackHalf16(packed >> 16u));
 }
 
 float3 HikariNormalizeOrDefault(float3 value, float3 fallbackValue)
