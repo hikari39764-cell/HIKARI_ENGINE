@@ -314,10 +314,6 @@ float4 main(PSInput input) : SV_TARGET
             albedo.a);
     }
 
-#if !HIKARI_USE_COOK_TORRANCE_PBR
-    float3 h = normalize(l + v);
-#endif
-
     float ndotl = saturate(dot(n, l));
     if (gDebugView == 9)
     {
@@ -400,7 +396,6 @@ float4 main(PSInput input) : SV_TARGET
     if (neutralClay ||
         (materialData.materialFlags & MATERIAL_UNLIT) == 0)
     {
-#if HIKARI_USE_COOK_TORRANCE_PBR
         HikariPbrShadingContext pbrContext =
             HikariBuildForwardPbrShadingContext(
                 albedo.rgb,
@@ -516,22 +511,6 @@ float4 main(PSInput input) : SV_TARGET
                 response.indirect +
                 response.additive;
         }
-#else
-    float specPower = lerp(gSpecularParams.y, 8.0f, roughness);
-    float spec = pow(saturate(dot(n, h)), max(1.0f, specPower));
-
-    float3 ambient = gAmbientColor.rgb * gAmbientIntensity * occlusion;
-    float3 diffuse = gDirectionalColor.rgb * (gDirectionalIntensity * ndotl) * (1.0f - metallic * 0.65f);
-    float3 specular = gDirectionalColor.rgb * (gDirectionalIntensity * gSpecularParams.x * spec) * lerp(1.0f, 1.8f, metallic);
-    float3 pointLightContribution =
-        AccumulateLocalLights(
-            n,
-            input.worldPosWS,
-            v,
-            input.position.xy);
-    float3 lit = ambient + (diffuse + specular) * shadowFactor + pointLightContribution;
-        shadedColor = albedo.rgb * lit;
-#endif
     }
     if (gDebugView == 3)
     {

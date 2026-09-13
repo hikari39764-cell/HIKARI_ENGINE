@@ -132,12 +132,6 @@ namespace HIKARI::MESHRENDERER {
 
         out.ambientColor = { ambientColor.x, ambientColor.y, ambientColor.z, 1.0f };
         out.ambientIntensity = std::max(0.0f, environment.ambient.intensity);
-        out.specularParams = {
-            std::max(0.0f, environment.specularIntensity),
-            std::max(1.0f, environment.specularPower),
-            0.0f,
-            0.0f
-        };
         out.fogColorDensity = {
             fogColor.x,
             fogColor.y,
@@ -221,8 +215,6 @@ namespace HIKARI::MESHRENDERER {
             localLightList.clusterIndexCount;
         stats.localLightClusterOverflowCount =
             localLightList.overflowCount;
-        stats.specularIntensity = out.specularParams.x;
-        stats.specularPower = out.specularParams.y;
     }
 
     void FillShadowCB(

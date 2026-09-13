@@ -120,17 +120,6 @@ EnvironmentPanel::Draw(SceneEnvironment &environment,
 
   DrawEnvironmentLightingControls(environment);
 
-  if (ImGui::TreeNode(
-          TEXT::Localize("ui.environment.specular").c_str())) {
-    ImGui::DragFloat(
-        TEXT::Localize("ui.environment.specularIntensity").c_str(),
-        &environment.specularIntensity, 0.01f, 0.0f, 10.0f);
-    ImGui::DragFloat(
-        TEXT::Localize("ui.environment.specularPower").c_str(),
-        &environment.specularPower, 1.0f, 1.0f, 256.0f);
-    ImGui::TreePop();
-  }
-
   if (ImGui::TreeNode(TEXT::Localize("ui.environment.sky").c_str())) {
     ImGui::Checkbox(
         TEXT::Localize("ui.environment.skyEnabled").c_str(),

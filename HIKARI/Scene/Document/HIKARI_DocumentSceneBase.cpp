@@ -485,7 +485,6 @@ namespace HIKARI {
         activeEnvironment.ambientOcclusion.editorViewportSuppressed = editorSsaoSuppressed;
         if (!UseEnvironmentLighting()) {
             activeEnvironment.ambient.intensity = 0.0f;
-            activeEnvironment.specularIntensity = 0.0f;
             for (auto& light : sceneLighting.lights) {
                 light.intensity = 0.0f;
             }

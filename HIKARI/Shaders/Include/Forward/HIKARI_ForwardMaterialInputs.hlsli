@@ -34,39 +34,6 @@ void ResolveSurfaceLightmap(
 #endif
 }
 
-float3 AccumulateLocalLights(
-    float3 normalWS,
-    float3 worldPosWS,
-    float3 viewDir,
-    float2 pixelPosition)
-{
-    float3 sum = 0.0f.xxx;
-    const uint2 cluster = HikariResolveLocalLightCluster(
-        pixelPosition,
-        HikariCameraViewDepth(worldPosWS));
-    [loop]
-    for (uint slot = 0u; slot < cluster.y; ++slot)
-    {
-        const uint i = gHikariLocalLightClusterIndices[cluster.x + slot];
-        HikariLocalLightSample lightSample;
-        if (!HikariResolveLocalLightSample(
-                gHikariLocalLights[i],
-                worldPosWS,
-                lightSample))
-        {
-            continue;
-        }
-        const float ndotl =
-            saturate(dot(normalWS, lightSample.directionToLight));
-        const float3 h = normalize(lightSample.directionToLight + viewDir);
-        const float spec =
-            pow(saturate(dot(normalWS, h)), gSpecularParams.y);
-        sum += lightSample.radiance *
-            (ndotl + gSpecularParams.x * spec);
-    }
-    return sum;
-}
-
 float3 AccumulateLocalLightsPbr(
     HikariPbrShadingContext pbrContext,
     float3 worldPosWS,

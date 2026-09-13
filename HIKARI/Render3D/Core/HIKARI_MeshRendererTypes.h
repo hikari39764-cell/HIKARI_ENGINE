@@ -140,7 +140,8 @@ namespace HIKARI::MESHRENDERER {
         MATH::Vec4 directionalDir{};
         MATH::Vec4 directionalColor{};
         MATH::Vec4 ambientColor{};
-        MATH::Vec4 specularParams{};
+        // 旧 Phong 定数の領域を予約し、後続の LightCB オフセットを保持する。
+        MATH::Vec4 lightReserved{};
         float directionalIntensity = 1.0f;
         float ambientIntensity = 0.25f;
         uint32_t localLightCount = 0;
@@ -331,8 +332,6 @@ namespace HIKARI::MESHRENDERER {
         size_t localLightClusterCount = 0;
         size_t localLightClusterIndexCount = 0;
         size_t localLightClusterOverflowCount = 0;
-        float specularIntensity = 0.0f;
-        float specularPower = 0.0f;
     };
 
 } // namespace HIKARI::MESHRENDERER

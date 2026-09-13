@@ -255,8 +255,6 @@ bool AreSceneEnvironmentValuesEqual(const SceneEnvironment &lhs,
       lhs.toneMapping.saturation != rhs.toneMapping.saturation ||
       lhs.toneMapping.gamma != rhs.toneMapping.gamma ||
       lhs.toneMapping.mode != rhs.toneMapping.mode ||
-      lhs.specularIntensity != rhs.specularIntensity ||
-      lhs.specularPower != rhs.specularPower ||
       lhs.showLightDebug != rhs.showLightDebug ||
       lhs.showSkyDebugInfo != rhs.showSkyDebugInfo ||
       !EqualPostSettings(lhs.post, rhs.post) ||

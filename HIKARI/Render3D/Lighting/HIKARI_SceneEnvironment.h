@@ -326,8 +326,6 @@ namespace HIKARI {
         BloomSettings bloom{};
         FogSettings fog{};
         ToneMappingSettings toneMapping{};
-        float specularIntensity = 0.2f;
-        float specularPower = 32.0f;
         bool showLightDebug = true;
         bool showSkyDebugInfo = false;
         ScenePostSettings post{};

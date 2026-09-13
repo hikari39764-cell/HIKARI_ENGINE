@@ -738,8 +738,6 @@ namespace HIKARI::SCENE::SERIALIZATION {
         out["toneMapping"]["gamma"] = environment.toneMapping.gamma;
         out["toneMapping"]["mode"] = environment.toneMapping.mode;
 
-        out["specularIntensity"] = environment.specularIntensity;
-        out["specularPower"] = environment.specularPower;
         out["showLightDebug"] = environment.showLightDebug;
         out["showSkyDebugInfo"] = environment.showSkyDebugInfo;
 
@@ -1334,8 +1332,8 @@ namespace HIKARI::SCENE::SERIALIZATION {
             outEnvironment.toneMapping.mode = toneMapping.value("mode", outEnvironment.toneMapping.mode);
         }
 
-        outEnvironment.specularIntensity = node.value("specularIntensity", outEnvironment.specularIntensity);
-        outEnvironment.specularPower = node.value("specularPower", outEnvironment.specularPower);
+        // 旧 Phong の specularIntensity/specularPower は PBR では使わない。
+        // 既存 Scene に残るキーは他の未知キーと同様に読み飛ばす。
         outEnvironment.showLightDebug = node.value("showLightDebug", outEnvironment.showLightDebug);
         outEnvironment.showSkyDebugInfo = node.value("showSkyDebugInfo", outEnvironment.showSkyDebugInfo);
 

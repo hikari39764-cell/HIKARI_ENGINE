@@ -565,6 +565,11 @@ add_dependencies(HIKARI_ShadowMaterialCoverageGpuContracts HIKARI_BuiltinShaderA
 add_test(NAME HIKARI_ShadowMaterialCoverageGpuContracts COMMAND "$<TARGET_FILE:HIKARI_ShadowMaterialCoverageGpuContracts>")
 set_tests_properties(HIKARI_ShadowMaterialCoverageGpuContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 30)
 
+hikari_add_runtime_contract(HIKARI_ForwardLightingGpuContracts "Tools/Tests/HIKARI_ForwardLightingGpuContracts.cpp")
+add_dependencies(HIKARI_ForwardLightingGpuContracts HIKARI_BuiltinShaderArtifacts)
+add_test(NAME HIKARI_ForwardLightingGpuContracts COMMAND "$<TARGET_FILE:HIKARI_ForwardLightingGpuContracts>")
+set_tests_properties(HIKARI_ForwardLightingGpuContracts PROPERTIES LABELS "RuntimeContracts;HardwareGpu" TIMEOUT 60 SKIP_RETURN_CODE 77)
+
 hikari_add_runtime_contract(HIKARI_SurfaceFeatureUploadGpuContracts "Tools/Tests/HIKARI_SurfaceFeatureUploadGpuContracts.cpp")
 target_link_libraries(HIKARI_SurfaceFeatureUploadGpuContracts PRIVATE d3dcompiler)
 add_test(NAME HIKARI_SurfaceFeatureUploadGpuContracts COMMAND "$<TARGET_FILE:HIKARI_SurfaceFeatureUploadGpuContracts>")

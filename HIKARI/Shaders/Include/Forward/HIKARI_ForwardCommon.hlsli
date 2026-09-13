@@ -39,16 +39,12 @@ static const uint MATERIAL_EMISSIVE = HIKARI_MATERIAL_FLAG_EMISSIVE;
 static const uint MATERIAL_ALPHA_BLEND = HIKARI_MATERIAL_FLAG_ALPHA_BLEND;
 static const uint MATERIAL_SPECULAR_GLOSS_COMPAT = HIKARI_MATERIAL_FLAG_LEGACY_SPECULAR;
 
-#ifndef HIKARI_USE_COOK_TORRANCE_PBR
-#define HIKARI_USE_COOK_TORRANCE_PBR 1
-#endif
-
 cbuffer LightCB : register(b2)
 {
     float4 gDirectionalDir;
     float4 gDirectionalColor;
     float4 gAmbientColor;
-    float4 gSpecularParams;
+    float4 gLightReserved;
     float gDirectionalIntensity;
     float gAmbientIntensity;
     uint gLocalLightCount;
