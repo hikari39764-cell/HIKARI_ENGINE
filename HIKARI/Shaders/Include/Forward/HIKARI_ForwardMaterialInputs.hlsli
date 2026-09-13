@@ -34,12 +34,14 @@ void ResolveSurfaceLightmap(
 #endif
 }
 
-float3 AccumulateLocalLightsPbr(
+HikariDirectPbrLobes AccumulateLocalLightPbrLobes(
     HikariPbrShadingContext pbrContext,
     float3 worldPosWS,
     float2 pixelPosition)
 {
-    float3 sum = 0.0f.xxx;
+    HikariDirectPbrLobes sum = (HikariDirectPbrLobes)0;
+    // Cluster のリストは隣接画素と異なるため、微分はループの外で一度だけ取る。
+    const HikariPbrPixelFootprint footprint = HikariBuildPbrPixelFootprint(pbrContext, worldPosWS);
     const uint2 cluster = HikariResolveLocalLightCluster(
         pixelPosition,
         HikariCameraViewDepth(worldPosWS));
@@ -55,13 +57,20 @@ float3 AccumulateLocalLightsPbr(
         {
             continue;
         }
-        sum += HikariEvaluateDirectPbr(
-            pbrContext,
-            lightSample.directionToLight,
-            lightSample.radiance,
-            1.0f);
+        const HikariDirectPbrLobes lobes = HikariEvaluateDirectPbrLobes(
+            HikariFilterLocalPbrContext(pbrContext, footprint, lightSample.directionToLight, lightSample.distanceToLight),
+            lightSample.directionToLight, lightSample.radiance);
+        sum.diffuse += lobes.diffuse;
+        sum.specular += lobes.specular;
     }
     return sum;
+}
+
+float3 AccumulateLocalLightsPbr(
+    HikariPbrShadingContext context, float3 worldPosWS, float2 pixelPosition)
+{
+    const HikariDirectPbrLobes lobes = AccumulateLocalLightPbrLobes(context, worldPosWS, pixelPosition);
+    return lobes.diffuse + lobes.specular;
 }
 
 #include "../Material/HIKARI_MaterialPbrInputs.hlsli"

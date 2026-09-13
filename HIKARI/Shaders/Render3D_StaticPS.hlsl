@@ -202,16 +202,11 @@ float4 main(PSInput input) : SV_TARGET
             v,
             l,
             gDirectionalColor.rgb * gDirectionalIntensity);
-        if ((materialData.instanceFlags &
-             HIKARI_PROGRAM_FLAG_PREMULTIPLIED_ALPHA_INPUT) != 0u)
-        {
-            baseColorSample.rgb = baseColorSample.a > 1.0e-5f
-                ? baseColorSample.rgb / baseColorSample.a
-                : 0.0f.xxx;
-        }
+        baseColorSample = HikariResolveMaterialSourceColor(materialData, baseColorSample);
         albedo *= baseColorSample;
     }
     float alphaClipThreshold = materialData.pbrParams.w;
+    materialExpression.baseColor = HikariResolveMaterialSourceColor(materialData, materialExpression.baseColor);
     HikariApplyMaterialExpressionCoverage(materialExpression, albedo, alphaClipThreshold);
     if (!neutralClay &&
         (materialData.materialFlags & MATERIAL_ALPHA_MASK) != 0 &&
@@ -405,19 +400,18 @@ float4 main(PSInput input) : SV_TARGET
                 specularFactor,
                 n,
                 v);
-        if (materialData.materialProgramIndex ==
-            HIKARI_STANDARD_PBR_MATERIAL_PROGRAM)
+        if (HikariMaterialUsesStandardPbrLighting(materialData))
         {
-        float3 direct =
-            HikariEvaluateDirectionalPbr(
+        HikariDirectPbrLobes directional =
+            HikariEvaluateDirectionalPbrLobes(
                 pbrContext,
                 l,
-                gDirectionalColor.rgb,
-                gDirectionalIntensity,
+                gDirectionalColor.rgb * gDirectionalIntensity,
                 gDirectionalDir.w);
-        direct *= shadowVisibility;
+        directional.diffuse *= shadowVisibility;
+        directional.specular *= shadowVisibility;
 
-        float3 pointDirect = AccumulateLocalLightsPbr(
+        const HikariDirectPbrLobes local = AccumulateLocalLightPbrLobes(
             pbrContext,
             input.worldPosWS,
             input.position.xy);
@@ -446,7 +440,20 @@ float4 main(PSInput input) : SV_TARGET
             surfaceLightmapIrradiance,
             surfaceLightmapWeight);
 
-        shadedColor = direct + pointDirect + (ambient.diffuse + ambient.specular);
+        shadedColor = directional.diffuse + directional.specular +
+            local.diffuse + local.specular + ambient.diffuse + ambient.specular;
+        // Lit と同じローブを分離し、別のデバッグ用 BRDF を持たない。
+        // Post/Fog/SSR を混ぜずに材質と各光源の寄与を調べるための HDR 出力。
+        if (gDebugView == HIKARI_DEBUG_VIEW_DIRECT_DIFFUSE)
+            return float4(directional.diffuse + local.diffuse, albedo.a);
+        if (gDebugView == HIKARI_DEBUG_VIEW_DIRECTIONAL_SPECULAR)
+            return float4(directional.specular, albedo.a);
+        if (gDebugView == HIKARI_DEBUG_VIEW_LOCAL_SPECULAR)
+            return float4(local.specular, albedo.a);
+        if (gDebugView == HIKARI_DEBUG_VIEW_INDIRECT_DIFFUSE)
+            return float4(ambient.diffuse, albedo.a);
+        if (gDebugView == HIKARI_DEBUG_VIEW_INDIRECT_SPECULAR)
+            return float4(ambient.specular, albedo.a);
 #if HIKARI_FORWARD_REFLECTION_CAPTURE
         if ((gDebugView == 0u || gDebugView == 26u || gDebugView == 27u) && !neutralClay)
         {
@@ -505,7 +512,7 @@ float4 main(PSInput input) : SV_TARGET
                     !doubleSidedBackFace,
                     l,
                     gDirectionalColor.rgb * gDirectionalIntensity,
-                    HikariStylizedShadowFactor(shadowVisibility),
+                    shadowVisibility,
                     pbrIndirect);
             shadedColor = response.directDiffuse +
                 response.directSpecular +
@@ -552,7 +559,7 @@ float4 main(PSInput input) : SV_TARGET
 #if HIKARI_FORWARD_REFLECTION_CAPTURE
     bool reflectionSupported = !neutralClay && (gDebugView == 0u || gDebugView == 26u || gDebugView == 27u) && !alphaBlended &&
         (materialData.materialFlags & MATERIAL_UNLIT) == 0u &&
-        materialData.materialProgramIndex == HIKARI_STANDARD_PBR_MATERIAL_PROGRAM;
+        HikariMaterialUsesStandardPbrLighting(materialData);
 #if HIKARI_FORWARD_ENABLE_MATERIAL_FX
     reflectionSupported = reflectionSupported && !hasStaticMaterialFx;
 #endif

@@ -111,7 +111,8 @@ namespace HIKARI::MESHRENDERER {
         out.directionalIntensity = environment.directional.enabled ? std::max(0.0f, environment.directional.intensity) : 0.0f;
 
         MATH::Vec3 ambientColor = environment.ambient.color;
-        if (environment.ambient.useSkyColor && skyData.valid) {
+        const bool skyEnabled = environment.sky.enabled && environment.sky.mode != SkyMode::None;
+        if (environment.ambient.useSkyColor && skyEnabled && skyData.valid) {
             const MATH::Vec3 skyAmbient = {
                 (skyData.horizonColor.x * 0.65f + skyData.groundColor.x * 0.35f) * skyData.exposure * skyData.ambientFromSky,
                 (skyData.horizonColor.y * 0.65f + skyData.groundColor.y * 0.35f) * skyData.exposure * skyData.ambientFromSky,
@@ -126,7 +127,7 @@ namespace HIKARI::MESHRENDERER {
         }
 
         MATH::Vec3 fogColor = environment.fog.color;
-        if (environment.fog.useSkyHorizonColor && skyData.valid) {
+        if (environment.fog.useSkyHorizonColor && skyEnabled && skyData.valid) {
             fogColor = {
                 skyData.horizonColor.x * skyData.exposure,
                 skyData.horizonColor.y * skyData.exposure,
@@ -267,9 +268,10 @@ namespace HIKARI::MESHRENDERER {
         SkyEnvironmentCB& out) {
         out = {};
         const IBL::IblEnvironmentData& iblData = IBL::GetEnvironmentData();
+        const bool skyEnabled = environment.sky.enabled && environment.sky.mode != SkyMode::None;
         out.iblParams = {
-            iblData.hasIrradiance ? 1.0f : 0.0f,
-            iblData.hasPrefiltered ? 1.0f : 0.0f,
+            skyEnabled && iblData.hasIrradiance ? 1.0f : 0.0f,
+            skyEnabled && iblData.hasPrefiltered ? 1.0f : 0.0f,
             iblData.hasBrdfLut ? 1.0f : 0.0f,
             static_cast<float>(std::max<uint32_t>(1u, iblData.prefilteredMipCount))
         };
@@ -400,7 +402,7 @@ namespace HIKARI::MESHRENDERER {
         }
 
         const SKYRENDERER::SkyEnvironmentData& skyData = SKYRENDERER::GetEnvironmentData();
-        if (!skyData.valid) {
+        if (!skyEnabled || !skyData.valid) {
             return;
         }
 

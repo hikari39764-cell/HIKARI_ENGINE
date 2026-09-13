@@ -76,6 +76,31 @@ struct HikariMaterialLightingResponse
     float3 additive;
 };
 
+bool HikariMaterialUsesStandardPbrLighting(HikariMeshMaterialData materialData)
+{
+    // Program ID は格納場所。式や Outline を持つ PBR も専用 ID を持つ。
+    // 光応答を変更する能力だけで分岐し、PBR の遮蔽・高光・反射 provider を共有する。
+    const uint stylizedResponse = HIKARI_PROGRAM_FLAG_RAMP_DIFFUSE |
+        HIKARI_PROGRAM_FLAG_MULTI_RAMP | HIKARI_PROGRAM_FLAG_SPECULAR_BAND |
+        HIKARI_PROGRAM_FLAG_FRESNEL_RIM | HIKARI_PROGRAM_FLAG_MATCAP |
+        HIKARI_PROGRAM_FLAG_ANISOTROPIC_HAIR | HIKARI_PROGRAM_FLAG_FACE_SDF |
+        HIKARI_PROGRAM_FLAG_EYE_LIGHTING | HIKARI_PROGRAM_FLAG_CORNEA_HIGHLIGHT |
+        HIKARI_PROGRAM_FLAG_TEMPLATE_SKIN | HIKARI_PROGRAM_FLAG_TEMPLATE_CLOTH |
+        HIKARI_PROGRAM_FLAG_TEMPLATE_HYBRID | HIKARI_PROGRAM_FLAG_HAIR_SHADOW;
+    return materialData.materialProgramIndex == HIKARI_STANDARD_PBR_MATERIAL_PROGRAM ||
+        ((materialData.instanceFlags & HIKARI_PROGRAM_FLAG_STANDARD_PBR) != 0u &&
+         (materialData.instanceFlags & stylizedResponse) == 0u);
+}
+
+float4 HikariResolveMaterialSourceColor(HikariMeshMaterialData materialData, float4 sourceColor)
+{
+    // 通常の色テクスチャと式の BaseColor に同じ入力表現を適用する。
+    // Opacity は独立した被覆率。上書きされる前の入力 Alpha で RGB を戻す。
+    if ((materialData.instanceFlags & HIKARI_PROGRAM_FLAG_PREMULTIPLIED_ALPHA_INPUT) != 0u)
+        sourceColor.rgb = sourceColor.a > 1.0e-5f ? sourceColor.rgb / sourceColor.a : 0.0f.xxx;
+    return sourceColor;
+}
+
 bool HikariMaterialProgramUsesBlock(HikariMeshMaterialData materialData)
 {
     return materialData.materialProgramIndex !=

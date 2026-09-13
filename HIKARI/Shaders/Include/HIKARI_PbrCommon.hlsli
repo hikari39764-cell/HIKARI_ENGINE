@@ -3,6 +3,12 @@
 
 static const float HIKARI_PI = 3.14159265359f;
 
+float HikariSpecularFootprintVariance(float3 directionDx, float3 directionDy)
+{
+    const float variance = 0.15f * (dot(directionDx, directionDx) + dot(directionDy, directionDy));
+    return min(2.0f * variance, 0.18f);
+}
+
 float HikariFilterPerceptualRoughness(
     float perceptualRoughness,
     float3 normalDx,
@@ -13,8 +19,7 @@ float HikariFilterPerceptualRoughness(
     // Tokuyoshi/Kaplanyan の等方的法線フィルタ。分散は回転に依存しない。
     const float roughness = clamp(perceptualRoughness, 0.04f, 1.0f);
     const float alpha = roughness * roughness;
-    const float variance = 0.15f * (dot(normalDx, normalDx) + dot(normalDy, normalDy));
-    const float kernel = min(2.0f * variance, 0.18f);
+    const float kernel = HikariSpecularFootprintVariance(normalDx, normalDy);
     return sqrt(sqrt(saturate(alpha * alpha + kernel)));
 }
 
@@ -199,25 +204,70 @@ float3 HikariEvaluateDirectPbr(
     return lobes.diffuse + lobes.specular;
 }
 
-float3 HikariEvaluateDirectionalPbr(
-    HikariPbrShadingContext context, float3 l, float3 lightColor,
-    float lightIntensity, float sourceHalfAngleSineSquared)
+HikariPbrShadingContext HikariFilterDirectPbrContext(
+    HikariPbrShadingContext context, float3 directionDx, float3 directionDy,
+    float sourceHalfAngleSineSquared)
 {
     // 円盤光源を GGX 分布へ畳み込む近似。半角空間の幅を加え、正規化された
     // D 項の分子・分母を共に更新する。頂点の方向を円盤内へ寄せるだけの
     // 近似は平らな高光を作るため使わない。IBL の材質粗さは変更しない。
     // 平面でも視線は画素内で変わる。既存の分散フィルタへ視線 footprint を渡し、
     // 半角の中心サンプルだけでは未解像になる高光を保守的にフィルタする。
-    const float pixelRoughness = HikariFilterPerceptualRoughness(
-        context.roughness, ddx(context.view), ddy(context.view));
-    const float pixelAlpha = pixelRoughness * pixelRoughness;
+    // alpha^2 は既に context にある。各局所光で四乗根を取り直して四乗しない。
+    const float alphaSquared = saturate(context.distributionAlphaSquared +
+        HikariSpecularFootprintVariance(directionDx, directionDy));
     const float sourceVariance = saturate(sourceHalfAngleSineSquared);
-    const float alphaSquared = pixelAlpha * pixelAlpha;
     context.distributionAlphaSquared = saturate(alphaSquared +
         (1.0f - alphaSquared) * sourceVariance);
     context.visibilityViewRoot = sqrt(context.distributionAlphaSquared +
         (1.0f - context.distributionAlphaSquared) * context.ndotView * context.ndotView);
-    return HikariEvaluateDirectPbr(context, l, lightColor, lightIntensity);
+    return context;
+}
+
+struct HikariPbrPixelFootprint
+{
+    float3 positionDx;
+    float3 positionDy;
+    float3 viewDx;
+    float3 viewDy;
+};
+
+HikariPbrPixelFootprint HikariBuildPbrPixelFootprint(HikariPbrShadingContext context, float3 worldPosition)
+{
+    HikariPbrPixelFootprint footprint;
+    footprint.positionDx = ddx(worldPosition);
+    footprint.positionDy = ddy(worldPosition);
+    footprint.viewDx = ddx(context.view);
+    footprint.viewDy = ddy(context.view);
+    return footprint;
+}
+
+HikariPbrShadingContext HikariFilterLocalPbrContext(HikariPbrShadingContext context,
+    HikariPbrPixelFootprint footprint, float3 lightDirection, float lightDistance)
+{
+    // d(normalize(lightPosition-P)) = (L*dot(L,dP)-dP)/distance。
+    // 可変長 cluster ループでも ddx/ddy を取らず、同一の光源の微分を解決する。
+    const float inverseDistance = rcp(max(lightDistance, 1.0e-4f));
+    const float3 lightDx = (lightDirection * dot(lightDirection, footprint.positionDx) - footprint.positionDx) * inverseDistance;
+    const float3 lightDy = (lightDirection * dot(lightDirection, footprint.positionDy) - footprint.positionDy) * inverseDistance;
+    return HikariFilterDirectPbrContext(context, footprint.viewDx + lightDx, footprint.viewDy + lightDy, 0.0f);
+}
+
+HikariDirectPbrLobes HikariEvaluateDirectionalPbrLobes(
+    HikariPbrShadingContext context, float3 l, float3 radiance,
+    float sourceHalfAngleSineSquared)
+{
+    return HikariEvaluateDirectPbrLobes(HikariFilterDirectPbrContext(
+        context, ddx(context.view), ddy(context.view), sourceHalfAngleSineSquared), l, radiance);
+}
+
+float3 HikariEvaluateDirectionalPbr(
+    HikariPbrShadingContext context, float3 l, float3 lightColor,
+    float lightIntensity, float sourceHalfAngleSineSquared)
+{
+    const HikariDirectPbrLobes lobes = HikariEvaluateDirectionalPbrLobes(
+        context, l, lightColor * lightIntensity, sourceHalfAngleSineSquared);
+    return lobes.diffuse + lobes.specular;
 }
 
 #endif

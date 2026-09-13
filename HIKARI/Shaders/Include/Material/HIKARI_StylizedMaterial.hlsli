@@ -1,25 +1,7 @@
 #ifndef HIKARI_STYLIZED_MATERIAL_INCLUDED
 #define HIKARI_STYLIZED_MATERIAL_INCLUDED
 
-struct HikariStylizedDirectLobes
-{
-    float3 diffuse;
-    float3 specular;
-};
-
 #include "HIKARI_StylizedEyeMaterial.hlsli"
-
-HikariStylizedDirectLobes HikariEvaluatePbrDirectLobes(
-    HikariPbrShadingContext context,
-    float3 lightDirection,
-    float3 radiance)
-{
-    const HikariDirectPbrLobes physical = HikariEvaluateDirectPbrLobes(context, lightDirection, radiance);
-    HikariStylizedDirectLobes lobes;
-    lobes.diffuse = physical.diffuse;
-    lobes.specular = physical.specular;
-    return lobes;
-}
 
 float3 HikariEvaluateAnalyticRamp(
     HikariMeshMaterialData materialData,
@@ -282,7 +264,7 @@ float3 HikariResolveRampColor(
     return lerp(1.0f.xxx, color, saturate(rampControl.w) * maskWeight);
 }
 
-HikariStylizedDirectLobes HikariEvaluateStylizedDirectLobes(
+HikariDirectPbrLobes HikariEvaluateStylizedDirectLobes(
     HikariMeshMaterialData materialData,
     HikariMaterialSurfaceData surface,
     HikariPbrShadingContext pbrContext,
@@ -293,13 +275,17 @@ HikariStylizedDirectLobes HikariEvaluateStylizedDirectLobes(
     float3 characterForwardWS,
     float2 uv,
     float4 mask,
-    bool frontFace)
+    bool frontFace,
+    float visibility,
+    float stylizedVisibility)
 {
-    const HikariStylizedDirectLobes pbr = HikariEvaluatePbrDirectLobes(
+    const HikariDirectPbrLobes pbr = HikariEvaluateDirectPbrLobes(
         pbrContext,
         lightDirection,
-        radiance);
-    HikariStylizedDirectLobes lobes = pbr;
+        radiance * visibility);
+    HikariDirectPbrLobes lobes = pbr;
+    // 遮蔽後のローブを混ぜる。PBR 端点へ NPR の影の明るさを漏らさない。
+    const float3 stylizedRadiance = radiance * stylizedVisibility;
     const bool usesStylizedDiffuse =
         (materialData.instanceFlags &
             (HIKARI_PROGRAM_FLAG_RAMP_DIFFUSE |
@@ -341,7 +327,7 @@ HikariStylizedDirectLobes HikariEvaluateStylizedDirectLobes(
             materialData,
             0u,
             float4(0.50f, 0.08f, 0.72f, 1.0f)).w;
-        lobes.diffuse = surface.baseColor * rampColor * radiance *
+        lobes.diffuse = surface.baseColor * rampColor * stylizedRadiance *
             max(0.0f, directGain) / HIKARI_PI;
     }
     if ((materialData.instanceFlags & HIKARI_PROGRAM_FLAG_TEMPLATE_SKIN) != 0u)
@@ -356,7 +342,7 @@ HikariStylizedDirectLobes HikariEvaluateStylizedDirectLobes(
             float4(1.0f, 0.42f, 0.32f, 1.0f)).rgb;
         const float backLight = saturate(
             -dot(surface.normalWS, lightDirection));
-        lobes.diffuse += surface.baseColor * scatterTint * radiance *
+        lobes.diffuse += surface.baseColor * scatterTint * stylizedRadiance *
             (backLight * skin.y * mask.g);
     }
     if ((materialData.instanceFlags & HIKARI_PROGRAM_FLAG_HAIR_SHADOW) != 0u)
@@ -406,7 +392,7 @@ HikariStylizedDirectLobes HikariEvaluateStylizedDirectLobes(
             5u,
             1.0f.xxxx);
         lobes.specular = tint.rgb * tint.w * control.z *
-            band * radiance * mask.g;
+            band * stylizedRadiance * mask.g;
     }
 
     if ((materialData.instanceFlags & HIKARI_PROGRAM_FLAG_ANISOTROPIC_HAIR) != 0u)
@@ -490,7 +476,7 @@ HikariStylizedDirectLobes HikariEvaluateStylizedDirectLobes(
             materialData,
             5u,
             1.0f.xxxx).rgb;
-        lobes.specular += hairTint * radiance * hairMask * hair.w *
+        lobes.specular += hairTint * stylizedRadiance * hairMask * hair.w *
             (primary + max(0.0f, hairLobes.z) * secondary);
     }
 
@@ -809,22 +795,23 @@ HikariMaterialLightingResponse HikariEvaluateStylizedMaterial(
     bool frontFace,
     float3 directionalLight,
     float3 directionalRadiance,
-    float shadowFactor,
+    float shadowVisibility,
     float3 pbrIndirect)
 {
     HikariMaterialLightingResponse response =
         (HikariMaterialLightingResponse)0;
+    const HikariPbrPixelFootprint footprint = HikariBuildPbrPixelFootprint(pbrContext, worldPosition);
     const float4 mask = HikariSampleMaterialProgramTexture(
         materialData,
         HIKARI_PROGRAM_RESOURCE_MASK,
         gLinearWrap,
         uv,
         1.0f.xxxx);
-    HikariStylizedDirectLobes directional =
+    const HikariDirectPbrLobes directional =
         HikariEvaluateStylizedDirectLobes(
             materialData,
             surface,
-            pbrContext,
+            HikariFilterDirectPbrContext(pbrContext, footprint.viewDx, footprint.viewDy, gDirectionalDir.w),
             directionalLight,
             directionalRadiance,
             tangentWS,
@@ -832,9 +819,11 @@ HikariMaterialLightingResponse HikariEvaluateStylizedMaterial(
             characterForwardWS,
             uv,
             mask,
-            frontFace);
-    response.directDiffuse = directional.diffuse * shadowFactor;
-    response.directSpecular = directional.specular * shadowFactor;
+            frontFace,
+            shadowVisibility,
+            HikariStylizedShadowFactor(shadowVisibility));
+    response.directDiffuse = directional.diffuse;
+    response.directSpecular = directional.specular;
 
     const uint2 cluster = HikariResolveLocalLightCluster(
         pixelPosition,
@@ -852,11 +841,11 @@ HikariMaterialLightingResponse HikariEvaluateStylizedMaterial(
         {
             continue;
         }
-        const HikariStylizedDirectLobes local =
+        const HikariDirectPbrLobes local =
             HikariEvaluateStylizedDirectLobes(
                 materialData,
                 surface,
-                pbrContext,
+                HikariFilterLocalPbrContext(pbrContext, footprint, lightSample.directionToLight, lightSample.distanceToLight),
                 lightSample.directionToLight,
                 lightSample.radiance,
                 tangentWS,
@@ -864,7 +853,9 @@ HikariMaterialLightingResponse HikariEvaluateStylizedMaterial(
                 characterForwardWS,
                 uv,
                 mask,
-                frontFace);
+                frontFace,
+                1.0f,
+                1.0f);
         response.directDiffuse += local.diffuse;
         response.directSpecular += local.specular;
     }

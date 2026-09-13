@@ -194,13 +194,15 @@ namespace HIKARI::MESHRENDERER {
     };
 
     struct SkyEnvironmentCB {
-        MATH::Vec4 skyZenithExposure{};
-        MATH::Vec4 skyHorizonReflection{};
-        MATH::Vec4 skyGroundAmbient{};
-        MATH::Vec4 skyParams{};
+        // Vec4{} は w=1。未設定の空は露出・反射・ambient blend・descriptor を
+        // 全て無効にし、黒い空で authored ambient を上書きしてはならない。
+        MATH::Vec4 skyZenithExposure{0,0,0,0};
+        MATH::Vec4 skyHorizonReflection{0,0,0,0};
+        MATH::Vec4 skyGroundAmbient{0,0,0,0};
+        MATH::Vec4 skyParams{0,0,0,0};
         // rgb tint, w Texture2D user-SRV descriptor index plus one.
-        MATH::Vec4 skyTintLighting{};
-        MATH::Vec4 iblParams{};
+        MATH::Vec4 skyTintLighting{0,0,0,0};
+        MATH::Vec4 iblParams{0,0,0,0};
         ReflectionProbeGpuData reflectionProbes[2]{};
         MATH::Vec4 ambientSamplingParams{};
         IrradianceVolumeGpuData irradianceVolumes[2]{};
@@ -210,7 +212,7 @@ namespace HIKARI::MESHRENDERER {
         MATH::Vec4 atmosphereMie{};
         MATH::Vec4 atmosphereOzone{};
         MATH::Vec4 atmosphereOzoneParams{};
-        MATH::Vec4 atmosphereSunDirection{};
+        MATH::Vec4 atmosphereSunDirection{0,0,0,0};
         MATH::Vec4 atmosphereSunColorRadiance{};
         MATH::Vec4 gradientSkyIrradiance[3]{};
     };

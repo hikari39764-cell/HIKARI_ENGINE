@@ -42,6 +42,11 @@ namespace HIKARI {
         LodLevel = 35,
         LodHeat = 36,
         DrawBucket = 37,
+        DirectDiffuse = 38,
+        DirectionalSpecular = 39,
+        LocalSpecular = 40,
+        IndirectDiffuse = 41,
+        IndirectSpecular = 42,
     };
 
     inline const char* ToString(RenderDebugView view) {
@@ -81,6 +86,11 @@ namespace HIKARI {
         case RenderDebugView::LodLevel: return "LOD Level";
         case RenderDebugView::LodHeat: return "LOD Heat";
         case RenderDebugView::DrawBucket: return "Draw Bucket";
+        case RenderDebugView::DirectDiffuse: return "PBR Direct Diffuse";
+        case RenderDebugView::DirectionalSpecular: return "PBR Directional Specular";
+        case RenderDebugView::LocalSpecular: return "PBR Point / Spot Specular";
+        case RenderDebugView::IndirectDiffuse: return "PBR Indirect Diffuse";
+        case RenderDebugView::IndirectSpecular: return "PBR Indirect Specular";
         case RenderDebugView::None:
         default: return "Lit";
         }

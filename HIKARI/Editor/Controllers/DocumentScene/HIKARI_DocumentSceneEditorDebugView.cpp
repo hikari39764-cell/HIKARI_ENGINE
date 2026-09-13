@@ -80,6 +80,11 @@ namespace HIKARI {
                 RenderDebugView::Shadow,
                 RenderDebugView::NdotL,
                 RenderDebugView::Emissive,
+                RenderDebugView::DirectDiffuse,
+                RenderDebugView::DirectionalSpecular,
+                RenderDebugView::LocalSpecular,
+                RenderDebugView::IndirectDiffuse,
+                RenderDebugView::IndirectSpecular,
                 RenderDebugView::SceneDepth,
             };
             for (RenderDebugView mode : shadingModes) {

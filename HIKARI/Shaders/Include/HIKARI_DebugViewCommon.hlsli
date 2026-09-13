@@ -10,6 +10,11 @@ static const uint HIKARI_DEBUG_VIEW_SURFACE_ID = 34u;
 static const uint HIKARI_DEBUG_VIEW_LOD_LEVEL = 35u;
 static const uint HIKARI_DEBUG_VIEW_LOD_HEAT = 36u;
 static const uint HIKARI_DEBUG_VIEW_DRAW_BUCKET = 37u;
+static const uint HIKARI_DEBUG_VIEW_DIRECT_DIFFUSE = 38u;
+static const uint HIKARI_DEBUG_VIEW_DIRECTIONAL_SPECULAR = 39u;
+static const uint HIKARI_DEBUG_VIEW_LOCAL_SPECULAR = 40u;
+static const uint HIKARI_DEBUG_VIEW_INDIRECT_DIFFUSE = 41u;
+static const uint HIKARI_DEBUG_VIEW_INDIRECT_SPECULAR = 42u;
 
 uint HikariHashDebugId(uint value)
 {
