@@ -56,7 +56,6 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
                 Microsoft::WRL::ComPtr<ID3D12Resource>,
                 kShCoeffCount> shVolumes{};
             Microsoft::WRL::ComPtr<ID3D12Resource> uploadBuffer{};
-            std::vector<MATH::Vec3> cpuShCoeffs{};
             ID3D12Device* volumeDevice = nullptr;
             ID3D12Device* srvDevice = nullptr;
             ID3D12DescriptorHeap* srvHeap = nullptr;
@@ -516,7 +515,6 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
             resident.shVolumes = std::move(volumes);
             resident.uploadBuffer = std::move(uploadBuffer);
             resident.volumeDevice = device;
-            resident.cpuShCoeffs = coeffs;
             if (!WriteVolumeSrvs(
                     resident,
                     residentIndex)) {

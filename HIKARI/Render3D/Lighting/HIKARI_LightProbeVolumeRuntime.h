@@ -18,10 +18,6 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
         LIGHTING::kLightingProviderViewSlotCount;
     inline constexpr size_t kLightProbeVolumeResidentBudget = 8u;
 
-    struct Sh9Color {
-        MATH::Vec3 coeffs[9]{};
-    };
-
     struct LightProbeVolumeLoadRequest {
         std::string id{};
         std::filesystem::path path{};

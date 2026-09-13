@@ -29,6 +29,11 @@ namespace HIKARI::ASSETS::LIGHTING {
         std::vector<LightProbeSh9> probes{};
     };
 
+    // 保存と GPU 読み込みで同じ格子・SH データ契約を検証する。
+    bool ValidateLightProbeVolumeData(
+        const LightProbeVolumeFileData& data,
+        std::string* outMessage = nullptr);
+
     bool LoadLightProbeVolumeFile(
         const std::filesystem::path& path,
         LightProbeVolumeFileData& outData,

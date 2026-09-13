@@ -22,7 +22,6 @@ namespace HIKARI::TOOLS::BAKING {
         void EndFace(uint32_t faceIndex);
 
         bool QueueReadbackFace(uint32_t faceIndex, std::string* outMessage = nullptr);
-        bool QueueReadback(std::string* outMessage = nullptr);
         bool SaveReadbackToCubemapDds(
             const std::filesystem::path& outputPath,
             std::string* outMessage = nullptr) const;

@@ -179,22 +179,6 @@ namespace HIKARI::TOOLS::BAKING {
         return true;
     }
 
-    bool ProbeCubemapCaptureTarget::QueueReadback(std::string* outMessage) {
-        if (!initialized_) {
-            SetMessage(outMessage, "Probe capture target is not initialized.");
-            return false;
-        }
-
-        for (uint32_t face = 0; face < 6u; ++face) {
-            if (!QueueReadbackFace(face, outMessage)) {
-                return false;
-            }
-        }
-
-        SetMessage(outMessage, "Reflection probe capture readback queued.");
-        return true;
-    }
-
     bool ProbeCubemapCaptureTarget::SaveReadbackToCubemapDds(
         const std::filesystem::path& outputPath,
         std::string* outMessage) const {
