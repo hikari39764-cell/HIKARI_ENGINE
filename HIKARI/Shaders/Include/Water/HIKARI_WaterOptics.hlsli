@@ -96,7 +96,7 @@ float HikariWaterResolveFresnel(
             1.0f,
             1.333f)
         : saturate(HikariFiniteOr(
-            HikariFresnelSchlick(cosine, f0.xxx).x,
+            HikariFresnelSchlick(cosine, f0.xxx, 1.0f).x,
             f0));
 }
 

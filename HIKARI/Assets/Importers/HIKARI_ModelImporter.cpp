@@ -1051,24 +1051,12 @@ namespace HIKARI {
                     FiniteOr(material.specularFactor, 1.0f),
                     0.0f,
                     1.0f);
-                material.specularColorFactor.x = std::clamp(
-                    FiniteOr(
-                        material.specularColorFactor.x,
-                        1.0f),
-                    0.0f,
-                    1.0f);
-                material.specularColorFactor.y = std::clamp(
-                    FiniteOr(
-                        material.specularColorFactor.y,
-                        1.0f),
-                    0.0f,
-                    1.0f);
-                material.specularColorFactor.z = std::clamp(
-                    FiniteOr(
-                        material.specularColorFactor.z,
-                        1.0f),
-                    0.0f,
-                    1.0f);
+                // KHR_materials_specular の色係数には上限 1 がない。
+                // ソース値を保持し、最終反射率の上限は共有 PBR 評価で適用する。
+                for (float* channel : { &material.specularColorFactor.x,
+                    &material.specularColorFactor.y, &material.specularColorFactor.z }) {
+                    *channel = (std::max)(0.0f, FiniteOr(*channel, 1.0f));
+                }
             }
         }
 

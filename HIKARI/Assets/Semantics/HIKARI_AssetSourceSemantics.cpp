@@ -30,7 +30,7 @@ namespace HIKARI::ASSETS::SEMANTICS {
                 AssetImporterKind::Model,
                 AssetType::Model,
                 "ModelImporter",
-                39u,
+                40u,
                 ".gltf, .obj, .fbx",
             },
             {

@@ -301,9 +301,17 @@ else()
         "Tools/Tests/HIKARI_RenderReferenceFixture.cpp")
 endif()
 
+set(hikari_import_contract_options)
+if(HIKARI_WITH_EDITOR_BUILD)
+    list(APPEND hikari_import_contract_options NO_TOOLING_STUBS)
+endif()
 hikari_add_runtime_contract(
     HIKARI_AssetDatabaseImportContracts
-    "Tools/Tests/HIKARI_AssetDatabaseImportContracts.cpp")
+    "Tools/Tests/HIKARI_AssetDatabaseImportContracts.cpp"
+    ${hikari_import_contract_options})
+if(HIKARI_WITH_EDITOR_BUILD)
+    target_link_libraries(HIKARI_AssetDatabaseImportContracts PRIVATE HIKARI::Editor)
+endif()
 add_test(NAME HIKARI_AssetDatabaseImportContracts COMMAND "$<TARGET_FILE:HIKARI_AssetDatabaseImportContracts>")
 set_tests_properties(HIKARI_AssetDatabaseImportContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 120)
 

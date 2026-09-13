@@ -13,22 +13,7 @@
 
 namespace HIKARI::ASSETS::MODELS::GLTF {
 
-    namespace {
-        using nlohmann::json;
-
-        float ClampGltfUnitFactor(float value) {
-            return std::clamp(value, 0.0f, 1.0f);
-        }
-
-        MATH::Vec3 ClampGltfUnitColor(const MATH::Vec3& value) {
-            return {
-                ClampGltfUnitFactor(value.x),
-                ClampGltfUnitFactor(value.y),
-                ClampGltfUnitFactor(value.z)
-            };
-        }
-
-    } // namespace
+    using nlohmann::json;
 
     void ReadMaterials(
         const std::filesystem::path& gltfPath,
@@ -183,8 +168,6 @@ namespace HIKARI::ASSETS::MODELS::GLTF {
                             readTextureSlot(specular["specularColorTexture"], mat.specularColorTexture);
                         }
                     }
-                    mat.specularFactor = ClampGltfUnitFactor(mat.specularFactor);
-                    mat.specularColorFactor = ClampGltfUnitColor(mat.specularColorFactor);
                     for (auto it = extensions.begin(); it != extensions.end(); ++it) {
                         if (it.key() == "KHR_materials_unlit" ||
                             it.key() == "KHR_materials_emissive_strength" ||

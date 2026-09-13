@@ -36,9 +36,9 @@ float HikariPow5(float x)
     return x2 * x2 * x;
 }
 
-float3 HikariFresnelSchlick(float cosTheta, float3 F0)
+float3 HikariFresnelSchlick(float cosTheta, float3 F0, float F90)
 {
-    return F0 + (1.0f.xxx - F0) * HikariPow5(1.0f - saturate(cosTheta));
+    return F0 + (F90.xxx - F0) * HikariPow5(1.0f - saturate(cosTheta));
 }
 
 float HikariDielectricF0FromIor(float incidentIor, float transmittedIor)
@@ -51,23 +51,16 @@ float HikariDielectricF0FromIor(float incidentIor, float transmittedIor)
     return ratio * ratio;
 }
 
-// 環境光 (IBL) 用 Fresnel。粗い表面はミクロ面の遮蔽により掠射角でも反射が
-// 立ち上がらないため、F90 を粗さで減衰させる (Karis の ambient fresnel)。
-// これが無いと粗い表面 (植生など) の縁が空の色で白く洗われる。
-float3 HikariFresnelSchlickRoughness(float cosTheta, float3 F0, float roughness)
-{
-    float3 f90 = max((1.0f - roughness).xxx, F0);
-    return F0 + (f90 - F0) * HikariPow5(1.0f - saturate(cosTheta));
-}
-
 float3 HikariSpecularF0(
     float3 baseColor,
     float metallic,
     float3 specularColor,
     float specularFactor)
 {
-    float3 dielectricF0 = saturate(0.04f.xxx * max(0.0f, specularFactor) * max(0.0f.xxx, specularColor));
-    return lerp(dielectricF0, baseColor, saturate(metallic));
+    // 色係数は 1 を超えてよい。反射率を制限してから層の強度を掛ける。
+    float3 dielectricF0 = saturate(0.04f.xxx * max(0.0f.xxx, specularColor));
+    dielectricF0 = saturate(dielectricF0 * max(0.0f, specularFactor));
+    return lerp(dielectricF0, saturate(baseColor), saturate(metallic));
 }
 
 struct HikariPbrShadingContext
@@ -75,6 +68,7 @@ struct HikariPbrShadingContext
     float3 baseColor;
     float metallic;
     float3 specularF0;
+    float specularF90;
     float roughness;
     float3 normal;
     float ndotView;
@@ -96,9 +90,11 @@ void HikariSetPbrEnvironmentBrdf(inout HikariPbrShadingContext context, float2 e
     // Turquin の GGX 多重散乱近似。LUT は A/B なので単位 Fresnel の積分は A+B。
     context.specularEnergyCompensation = 1.0f.xxx + context.specularF0 * (1.0f/singleScatterEnergy-1.0f);
     context.environmentSpecularResponse = saturate(
-        (context.specularF0 * envBrdf.x + envBrdf.y) * context.specularEnergyCompensation);
+        (context.specularF0 * envBrdf.x + context.specularF90 * envBrdf.y) * context.specularEnergyCompensation);
     // 指向半球反射率の残りを Lambert 拡散へ割り当て、白色炉内で二重にエネルギーを使わない。
-    context.diffuseEnergyWeight = (1.0f.xxx-context.environmentSpecularResponse) * (1.0f-context.metallic);
+    const float reflectedEnergy = max(context.environmentSpecularResponse.r,
+        max(context.environmentSpecularResponse.g, context.environmentSpecularResponse.b));
+    context.diffuseEnergyWeight = (1.0f-reflectedEnergy).xxx * (1.0f-context.metallic);
 }
 
 HikariPbrShadingContext HikariBuildPbrShadingContext(
@@ -118,6 +114,8 @@ HikariPbrShadingContext HikariBuildPbrShadingContext(
         metallic,
         specularColor,
         specularFactor);
+    // Specular=0 は全角度で誘電体の反射を止める。金属と水の物理 F90 は 1。
+    context.specularF90 = lerp(saturate(specularFactor), 1.0f, saturate(metallic));
     context.roughness = HikariFilterPerceptualRoughness(
         roughness, ddx(normal), ddy(normal));
     context.normal = normal;
@@ -172,7 +170,7 @@ HikariDirectPbrLobes HikariEvaluateDirectPbrLobes(
     float ndotl = saturate(
         dot(context.normal, l));
 
-    if (ndotl <= 0.0f)
+    if (ndotl <= 0.0f || context.ndotView <= 0.0f)
     {
         return result;
     }
@@ -180,7 +178,8 @@ HikariDirectPbrLobes HikariEvaluateDirectPbrLobes(
     float3 h = normalize(context.view + l);
     float3 F = HikariFresnelSchlick(
         saturate(dot(h, context.view)),
-        context.specularF0);
+        context.specularF0,
+        context.specularF90);
     float D = HikariDistributionGGX(
         context,
         h);
