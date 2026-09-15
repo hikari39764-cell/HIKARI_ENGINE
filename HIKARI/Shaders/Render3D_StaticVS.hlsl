@@ -32,26 +32,7 @@ struct VSInput
     uint instanceId : SV_InstanceID;
 };
 
-struct VSOutput
-{
-    float4 position : SV_POSITION;
-    float3 worldPosWS : TEXCOORD1;
-    float3 normalWS : NORMAL;
-    float4 tangentWS : TANGENT;
-    float2 uv : TEXCOORD0;
-    float2 uv1 : TEXCOORD10;
-    nointerpolation uint materialDataIndex : TEXCOORD2;
-    nointerpolation uint forwardMeta : TEXCOORD3;
-    nointerpolation uint objectDataIndex : TEXCOORD4;
-    nointerpolation uint surfaceGpuSceneIndex : TEXCOORD5;
-    nointerpolation uint debugSurfaceId : TEXCOORD6;
-    float3 characterRightWS : TEXCOORD8;
-    float3 characterForwardWS : TEXCOORD9;
-    nointerpolation uint surfaceFeatureFlags : TEXCOORD7;
-    // 水面と沙地が共有する surface feature 出力。TEXCOORD11 を一つに
-    // 統合し、フラグに応じてどちらかの変形関数が値を書き込む。
-    float3 surfaceFeatureData : TEXCOORD11;
-};
+typedef HikariForwardVertexOutput VSOutput;
 
 VSOutput main(VSInput input)
 {

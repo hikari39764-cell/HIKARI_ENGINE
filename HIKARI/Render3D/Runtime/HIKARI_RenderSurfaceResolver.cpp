@@ -1,3 +1,4 @@
+#include "Core/Math/HIKARI_MathValidation.h"
 #include "Render3D/Runtime/HIKARI_RenderSurfaceResolver.h"
 
 #include <cmath>
@@ -7,17 +8,6 @@
 namespace HIKARI::RENDER3D::RUNTIME {
 
     namespace {
-        bool IsFiniteMatrix(const MATH::Mat4& matrix) noexcept {
-            for (int column = 0; column < 4; ++column) {
-                for (int row = 0; row < 4; ++row) {
-                    if (!std::isfinite(matrix.m[column][row])) {
-                        return false;
-                    }
-                }
-            }
-            return true;
-        }
-
         MATH::Mat4 BuildNodeGlobalRecursive(
             const RenderModelAsset& renderModel,
             size_t nodeIndex,
@@ -176,7 +166,7 @@ namespace HIKARI::RENDER3D::RUNTIME {
             surface.nodeIndex == kInvalidRenderModelIndex ||
             surface.nodeIndex >= posedNodeGlobals.size() ||
             surface.nodeIndex >= bindNodeGlobals.size()) {
-            return IsFiniteMatrix(outClusterWorldMatrix);
+            return MATH::IsFinite(outClusterWorldMatrix);
         }
 
         // HCMESH の非スキン頂点は bind 時の node global を bake 済み。
@@ -186,8 +176,8 @@ namespace HIKARI::RENDER3D::RUNTIME {
         const MATH::Mat4 candidate =
             objectWorldTransform.GetWorldMatrix() *
             posedNodeGlobals[surface.nodeIndex] * inverseBind;
-        if (!IsFiniteMatrix(candidate)) {
-            return IsFiniteMatrix(outClusterWorldMatrix);
+        if (!MATH::IsFinite(candidate)) {
+            return MATH::IsFinite(outClusterWorldMatrix);
         }
         outClusterWorldMatrix = candidate;
         return true;

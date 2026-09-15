@@ -61,6 +61,18 @@ namespace HIKARI::RENDER3D {
             { VolumetricLightingQuality::Balanced, "Balanced" },
             { VolumetricLightingQuality::High, "High" },
         } };
+        constexpr EnumNames<DynamicGiQuality, 4> kDynamicGiNames{ {
+            { DynamicGiQuality::Off, "Off" },
+            { DynamicGiQuality::Low, "Low" },
+            { DynamicGiQuality::Balanced, "Balanced" },
+            { DynamicGiQuality::High, "High" },
+        } };
+        constexpr EnumNames<LocalShadowQuality, 4> kLocalShadowNames{ {
+            { LocalShadowQuality::Off, "Off" },
+            { LocalShadowQuality::Low, "Low" },
+            { LocalShadowQuality::Balanced, "Balanced" },
+            { LocalShadowQuality::High, "High" },
+        } };
         constexpr EnumNames<StylizedCloudQuality, 3> kStylizedCloudNames{ {
             { StylizedCloudQuality::Low, "Low" },
             { StylizedCloudQuality::Balanced, "Balanced" },
@@ -133,6 +145,8 @@ namespace HIKARI::RENDER3D {
             { "frameGenerationMultiplier", settings.frameGenerationMultiplier },
             { "volumetricLightingQuality", EnumName(settings.volumetricLightingQuality, kVolumetricNames) },
             { "stylizedCloudQuality", EnumName(settings.stylizedCloudQuality, kStylizedCloudNames) },
+            { "dynamicGiQuality", EnumName(settings.dynamicGiQuality, kDynamicGiNames) },
+            { "localShadowQuality", EnumName(settings.localShadowQuality, kLocalShadowNames) },
             { "taaHistoryWeight", settings.taaHistoryWeight },
             { "taaVarianceClipGamma", settings.taaVarianceClipGamma },
             { "taaDepthRejection", settings.taaDepthRejection },
@@ -169,6 +183,8 @@ namespace HIKARI::RENDER3D {
             ReadValue(node, "frameGenerationMultiplier", parsed.frameGenerationMultiplier) &&
             ReadEnum(node, "volumetricLightingQuality", kVolumetricNames, parsed.volumetricLightingQuality) &&
             ReadEnum(node, "stylizedCloudQuality", kStylizedCloudNames, parsed.stylizedCloudQuality) &&
+            ReadEnum(node, "dynamicGiQuality", kDynamicGiNames, parsed.dynamicGiQuality) &&
+            ReadEnum(node, "localShadowQuality", kLocalShadowNames, parsed.localShadowQuality) &&
             ReadValue(node, "taaHistoryWeight", parsed.taaHistoryWeight) &&
             ReadValue(node, "taaVarianceClipGamma", parsed.taaVarianceClipGamma) &&
             ReadValue(node, "taaDepthRejection", parsed.taaDepthRejection) &&

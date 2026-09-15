@@ -275,58 +275,20 @@ bool DrawFrameGenerationModeCombo(RENDER3D::RenderFrameGenerationMode &mode) {
   return changed;
 }
 
-bool DrawVolumetricLightingQualityCombo(
-    RENDER3D::VolumetricLightingQuality &quality) {
-
+template <typename Quality>
+bool DrawLightingQualityCombo(const char* label, Quality& quality,
+    std::initializer_list<Quality> levels, const char* (*name)(Quality)) {
   bool changed = false;
-  ImGui::PushID("Volumetric Lighting");
-  EDITOR::PropertyLabel(
-      TEXT::Localize("ui.quality.volumetricLighting").c_str());
-  if (ImGui::BeginCombo("##Value",
-                        RENDER3D::VolumetricLightingQualityLabel(quality))) {
-    const RENDER3D::VolumetricLightingQuality levels[] = {
-        RENDER3D::VolumetricLightingQuality::Low,
-        RENDER3D::VolumetricLightingQuality::Balanced,
-        RENDER3D::VolumetricLightingQuality::High,
-    };
-    for (RENDER3D::VolumetricLightingQuality candidate : levels) {
+  ImGui::PushID(label);
+  EDITOR::PropertyLabel(label);
+  if (ImGui::BeginCombo("##Value", name(quality))) {
+    for (Quality candidate : levels) {
       const bool selected = quality == candidate;
-      if (ImGui::Selectable(RENDER3D::VolumetricLightingQualityLabel(candidate),
-                            selected)) {
+      if (ImGui::Selectable(name(candidate), selected)) {
         quality = candidate;
         changed = true;
       }
-      if (selected)
-        ImGui::SetItemDefaultFocus();
-    }
-    ImGui::EndCombo();
-  }
-  ImGui::PopID();
-  return changed;
-}
-
-bool DrawStylizedCloudQualityCombo(
-    RENDER3D::StylizedCloudQuality &quality) {
-  bool changed = false;
-  ImGui::PushID("Stylized Clouds");
-  EDITOR::PropertyLabel("Stylized Clouds");
-  if (ImGui::BeginCombo("##Value",
-                        RENDER3D::StylizedCloudQualityLabel(quality))) {
-    const RENDER3D::StylizedCloudQuality levels[] = {
-        RENDER3D::StylizedCloudQuality::Low,
-        RENDER3D::StylizedCloudQuality::Balanced,
-        RENDER3D::StylizedCloudQuality::High,
-    };
-    for (RENDER3D::StylizedCloudQuality candidate : levels) {
-      const bool selected = quality == candidate;
-      if (ImGui::Selectable(RENDER3D::StylizedCloudQualityLabel(candidate),
-                            selected)) {
-        quality = candidate;
-        changed = true;
-      }
-      if (selected) {
-        ImGui::SetItemDefaultFocus();
-      }
+      if (selected) ImGui::SetItemDefaultFocus();
     }
     ImGui::EndCombo();
   }
@@ -410,9 +372,21 @@ bool DrawRenderSettings() {
       changed |= DrawForwardCostModeCombo(settings.forwardCostMode);
       changed |=
           DrawLightProbeVolumeSamplingCombo(settings.lightProbeVolumeSampling);
-      changed |= DrawVolumetricLightingQualityCombo(
-          settings.volumetricLightingQuality);
-      changed |= DrawStylizedCloudQualityCombo(settings.stylizedCloudQuality);
+      changed |= DrawLightingQualityCombo(
+          TEXT::Localize("ui.quality.volumetricLighting").c_str(), settings.volumetricLightingQuality,
+          {RENDER3D::VolumetricLightingQuality::Low, RENDER3D::VolumetricLightingQuality::Balanced,
+           RENDER3D::VolumetricLightingQuality::High}, RENDER3D::VolumetricLightingQualityLabel);
+      changed |= DrawLightingQualityCombo("Stylized Clouds", settings.stylizedCloudQuality,
+          {RENDER3D::StylizedCloudQuality::Low, RENDER3D::StylizedCloudQuality::Balanced,
+           RENDER3D::StylizedCloudQuality::High}, RENDER3D::StylizedCloudQualityLabel);
+      changed |= DrawLightingQualityCombo("Dynamic Diffuse GI", settings.dynamicGiQuality,
+          {RENDER3D::DynamicGiQuality::Off, RENDER3D::DynamicGiQuality::Low,
+           RENDER3D::DynamicGiQuality::Balanced, RENDER3D::DynamicGiQuality::High},
+          RENDER3D::DynamicGiQualityLabel);
+      changed |= DrawLightingQualityCombo("Local Shadows", settings.localShadowQuality,
+          {RENDER3D::LocalShadowQuality::Off, RENDER3D::LocalShadowQuality::Low,
+           RENDER3D::LocalShadowQuality::Balanced, RENDER3D::LocalShadowQuality::High},
+          RENDER3D::LocalShadowQualityLabel);
       changed |= DrawAntiAliasingModeCombo(settings.antiAliasingMode);
       if (settings.antiAliasingMode == RENDER3D::RenderAntiAliasingMode::DLSS) {
         changed |= DrawDlssQualityModeCombo(settings.dlssQualityMode);

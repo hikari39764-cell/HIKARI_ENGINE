@@ -105,7 +105,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         MeshDrawPassKind passKind,
         RENDER3D::GPUDRIVEN::GpuDrivenLayer* layerOverride = nullptr,
         const MeshFrameBindingOverrides* bindingOverrides = nullptr);
-    bool PrepareForwardReflectionCapturePipelines(const GFX::Context& graphics);
+    bool PrepareForwardReflectionCapturePipelines(const GFX::Context& graphics, bool captureMaterial);
 
     GeometryBackendExecutionResult ExecuteGeometryBackendPlan(
         const GFX::Context& graphics,
@@ -113,10 +113,12 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         const MeshPassResources& passResources,
         MeshDrawPassKind passKind,
         RENDER3D::MESHLET::MeshletPipelineKind meshletPipelineKind);
+    struct MeshFrameBindingOverrides;
     GeometryBackendExecutionResult ExecuteDepthVisibilityBackendPlan(
         const GFX::Context& graphics,
         RENDER3D::GPUDRIVEN::GpuDrivenPassKind pass,
-        const MeshPassResources& passResources);
+        const MeshPassResources& passResources,
+        const MeshFrameBindingOverrides* bindingOverrides = nullptr);
 
     struct MeshFrameBindingOverrides {
         D3D12_GPU_VIRTUAL_ADDRESS cameraAddress = 0;

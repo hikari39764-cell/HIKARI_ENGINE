@@ -53,20 +53,6 @@ namespace HIKARI::ASSETS::SHADER {
                 generic.find(':') == std::string::npos;
         }
 
-        std::string_view ExpectedProfile(
-            ShaderStage stage) noexcept {
-            switch (stage) {
-            case ShaderStage::Vertex: return "vs_6_0";
-            case ShaderStage::Pixel: return "ps_6_0";
-            case ShaderStage::Compute: return "cs_6_0";
-            case ShaderStage::Amplification: return "as_6_5";
-            case ShaderStage::Mesh: return "ms_6_5";
-            case ShaderStage::Geometry: return "gs_6_0";
-            case ShaderStage::Count: break;
-            }
-            return {};
-        }
-
         bool ContractIsEmpty(
             const BuiltinShaderCookContract& contract) noexcept {
             return contract.engineInterfaceId.empty() &&
@@ -105,10 +91,13 @@ namespace HIKARI::ASSETS::SHADER {
             std::string previousEntry{};
             std::unordered_set<std::string> symbols{};
             for (const ShaderEntryPoint& entry : program.entries) {
+                uint32_t shaderModel=0;
                 if (!IsIdentifier(entry.id, true) ||
                     !IsIdentifier(entry.entry, false) ||
                     entry.stage >= ShaderStage::Count ||
-                    entry.profile != ExpectedProfile(entry.stage) ||
+                    !ValidateShaderEntryProfile(entry.stage,entry.profile,shaderModel) ||
+                    (program.state == BuiltinShaderProgramState::Cooked &&
+                     program.contract.requiredCaps.minimumShaderModel < shaderModel) ||
                     (!previousEntry.empty() &&
                      entry.id <= previousEntry) ||
                     !symbols.insert(

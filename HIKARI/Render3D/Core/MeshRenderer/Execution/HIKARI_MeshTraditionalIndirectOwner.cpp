@@ -1,6 +1,5 @@
 #include "Render3D/Core/MeshRenderer/Execution/HIKARI_MeshTraditionalIndirectOwner.h"
 
-#include "Gfx/D3D12/HIKARI_D3D12BufferAlignment.h"
 #include "Render3D/Core/MeshRenderer/Resources/HIKARI_MeshPrimitiveCache.h"
 #include "Render3D/Core/MeshRenderer/Data/HIKARI_MeshDrawDataBuilder.h"
 #include "Render3D/HIKARI_Mesh.h"
@@ -47,14 +46,14 @@ namespace HIKARI::MESHRENDERER {
         }
     }
 
-    void MeshTraditionalIndirectOwner::HydrateStream(
+    bool MeshTraditionalIndirectOwner::HydrateStream(
         OwnedStream& stream,
         const MeshRendererTraditionalIndirectHydrationContext& context) {
 
         if (stream.commands.empty() ||
             stream.records.empty() ||
             stream.executableRecordIndices.empty()) {
-            return;
+            return true;
         }
 
         for (RENDER3D::RUNTIME::SurfaceDrawCommand& command : stream.commands) {
@@ -112,44 +111,32 @@ namespace HIKARI::MESHRENDERER {
                 continue;
             }
 
-            const size_t paletteSlot =
-                static_cast<size_t>(stream.gpuSceneBaseIndex) +
-                static_cast<size_t>(command.firstGpuSceneInstanceIndex);
-            if (paletteSlot >= kMaxObjectCount ||
-                context.jointPaletteMapped == nullptr ||
-                context.jointPaletteBuffer == nullptr) {
-                command.jointPaletteGpuAddress = 0;
-                continue;
-            }
-
-            (void)UploadJointPalette(
-                context.jointPaletteMapped,
-                paletteSlot,
-                stream.jointPalettes[command.firstRecordIndex]);
-            constexpr UINT kJointPaletteStride =
-                GFX::AlignD3D12ConstantBufferByteSize(sizeof(JointPaletteCB));
-            command.jointPaletteGpuAddress =
-                context.jointPaletteBuffer->GetGPUVirtualAddress() +
-                static_cast<UINT64>(kJointPaletteStride) * paletteSlot;
+            if (context.graphics == nullptr || context.deformationUploads == nullptr) return false;
+            command.jointPaletteGpuAddress = UploadJointPalettes(
+                *context.graphics, *context.deformationUploads,
+                &stream.jointPalettes[command.firstRecordIndex], 1u);
+            if (command.jointPaletteGpuAddress == 0u) return false;
         }
+        return true;
     }
 
-    void MeshTraditionalIndirectOwner::RefreshForActivePipeline(
+    bool MeshTraditionalIndirectOwner::RefreshForActivePipeline(
         RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& source,
         const MeshRendererTraditionalIndirectHydrationContext& context) {
 
         if (!HasSourceCommands(source)) {
             AttachToSceneSource(source);
-            return;
+            return true;
         }
 
         for (size_t passIndex = 0;
             passIndex < RENDER3D::GPUDRIVEN::kGpuDrivenPassCount;
             ++passIndex) {
 
-            HydrateStream(streams_[passIndex], context);
+            if (!HydrateStream(streams_[passIndex], context)) return false;
             streams_[passIndex].AttachTo(source.passes[passIndex]);
         }
+        return true;
     }
 
     RENDER3D::GPUDRIVEN::GpuDrivenTraditionalIndirectView

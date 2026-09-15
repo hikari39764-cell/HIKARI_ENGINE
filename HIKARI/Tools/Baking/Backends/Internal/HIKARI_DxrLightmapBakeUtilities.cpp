@@ -14,8 +14,6 @@ namespace HIKARI::TOOLS::BAKING::INTERNAL {
 
     namespace {
 
-        constexpr float kMinimumNormalLengthSquared =
-            1.0e-12f;
         constexpr float kMaximumHalfFloat = 65504.0f;
 
         float Edge(
@@ -55,20 +53,31 @@ namespace HIKARI::TOOLS::BAKING::INTERNAL {
             const MATH::Vec3& value,
             MATH::Vec3& outNormal) {
 
-            const float lengthSquared =
-                MATH::Dot(value, value);
-            if (!MATH::IsFinite(value) ||
-                !MATH::IsFinite(lengthSquared) ||
-                lengthSquared <=
-                    kMinimumNormalLengthSquared) {
+            // DXR と同様に尺度を除く。微小面を退化面として取り除かない。
+            const float scale = (std::max)(std::abs(value.x),
+                (std::max)(std::abs(value.y), std::abs(value.z)));
+            if (!MATH::IsFinite(value) || scale <= 0.0f) {
                 outNormal = {};
                 return false;
             }
 
-            const float inverseLength =
-                1.0f / std::sqrt(lengthSquared);
-            outNormal = value * inverseLength;
+            const MATH::Vec3 scaled{value.x / scale, value.y / scale, value.z / scale};
+            outNormal = scaled * (1.0f / std::sqrt(MATH::Dot(scaled, scaled)));
             return MATH::IsFinite(outNormal);
+        }
+
+        float WorldTexelFootprint(const RENDER3D::LIGHTING::TRANSPORT::LightingTransportTriangle& triangle,
+                                  uint32_t width, uint32_t height) {
+            const auto a = triangle.lightmapUv[1] - triangle.lightmapUv[0];
+            const auto b = triangle.lightmapUv[2] - triangle.lightmapUv[0];
+            const float determinant = a.x * b.y - a.y * b.x;
+            if (determinant == 0 || !MATH::IsFinite(determinant)) return 0;
+            const auto p = triangle.position[1] - triangle.position[0];
+            const auto q = triangle.position[2] - triangle.position[0];
+            const auto dx = (p * b.y - q * a.y) * (1.0f / (determinant * width));
+            const auto dy = (q * a.x - p * b.x) * (1.0f / (determinant * height));
+            const float footprint = std::sqrt((std::max)(MATH::Dot(dx,dx), MATH::Dot(dy,dy)));
+            return MATH::IsFinite(footprint) ? footprint : 0;
         }
 
         bool DilateLightmapAllocations(
@@ -178,7 +187,7 @@ namespace HIKARI::TOOLS::BAKING::INTERNAL {
         const RENDER3D::LIGHTING::TRANSPORT::
             LightingTransportScene& scene,
         const RENDER3D::LIGHTING::TRANSPORT::
-            LightingTransportSurfaceTarget& target,
+            LightingTransportLightmapPage& target,
         uint32_t width,
         uint32_t height) {
 
@@ -196,6 +205,56 @@ namespace HIKARI::TOOLS::BAKING::INTERNAL {
         std::vector<uint32_t> allocationCoverage(
             target.atlasAllocations.size(),
             0u);
+
+        std::vector<uint8_t> triangleHasCenter(scene.triangles.size(), 0u);
+        const auto storeTexel = [&](uint32_t triangleIndex, size_t texelIndex,
+                                    const float (&weights)[3], const MATH::Vec3& geometricNormal,
+                                    float footprint) {
+            const auto& triangle = scene.triangles[triangleIndex];
+            MATH::Vec3 position{};
+            MATH::Vec3 normal{};
+            for (uint32_t corner = 0u;
+                corner < 3u;
+                ++corner) {
+                position = position +
+                    triangle.position[corner] *
+                        weights[corner];
+                normal = normal +
+                    triangle.normal[corner] *
+                        weights[corner];
+            }
+            if (!MATH::IsFinite(position) || footprint <= 0) {
+                return;
+            }
+            MATH::Vec3 normalizedNormal{};
+            if (!TryNormalize(
+                    normal,
+                    normalizedNormal)) {
+                normalizedNormal =
+                    geometricNormal;
+            }
+            if (!MATH::IsFinite(normalizedNormal)) {
+                return;
+            }
+
+            result.validTexels[texelIndex] = 1u;
+            triangleOwners[texelIndex] = triangleIndex;
+            ++result.coveredTexelCount;
+            ++allocationCoverage[
+                triangle.lightmapAllocationIndex];
+            result.texels[texelIndex].position = {
+                position.x,
+                position.y,
+                position.z,
+                footprint
+            };
+            result.texels[texelIndex].normal = {
+                normalizedNormal.x,
+                normalizedNormal.y,
+                normalizedNormal.z,
+                1.0f
+            };
+        };
 
         for (const uint32_t triangleIndex :
              target.triangleIndices) {
@@ -253,6 +312,7 @@ namespace HIKARI::TOOLS::BAKING::INTERNAL {
                 continue;
             }
             const float inverseArea = 1.0f / area;
+            const float footprint = WorldTexelFootprint(triangle, width, height);
             const int minX = std::clamp(
                 static_cast<int>(std::floor((std::min)({
                     pixelUv[0].x,
@@ -308,6 +368,7 @@ namespace HIKARI::TOOLS::BAKING::INTERNAL {
                         continue;
                     }
 
+                    triangleHasCenter[triangleIndex] = 1u;
                     const size_t texelIndex =
                         static_cast<size_t>(y) * width +
                         static_cast<size_t>(x);
@@ -324,51 +385,32 @@ namespace HIKARI::TOOLS::BAKING::INTERNAL {
                         continue;
                     }
 
-                    MATH::Vec3 position{};
-                    MATH::Vec3 normal{};
-                    for (uint32_t corner = 0u;
-                        corner < 3u;
-                        ++corner) {
-                        position = position +
-                            triangle.position[corner] *
-                                weights[corner];
-                        normal = normal +
-                            triangle.normal[corner] *
-                                weights[corner];
-                    }
-                    if (!MATH::IsFinite(position)) {
-                        continue;
-                    }
-                    MATH::Vec3 normalizedNormal{};
-                    if (!TryNormalize(
-                            normal,
-                            normalizedNormal)) {
-                        normalizedNormal =
-                            geometricNormal;
-                    }
-                    if (!MATH::IsFinite(normalizedNormal)) {
-                        continue;
-                    }
-
-                    result.validTexels[texelIndex] = 1u;
-                    triangleOwners[texelIndex] = triangleIndex;
-                    ++result.coveredTexelCount;
-                    ++allocationCoverage[
-                        triangle.lightmapAllocationIndex];
-                    result.texels[texelIndex].position = {
-                        position.x,
-                        position.y,
-                        position.z,
-                        1.0f
-                    };
-                    result.texels[texelIndex].normal = {
-                        normalizedNormal.x,
-                        normalizedNormal.y,
-                        normalizedNormal.z,
-                        1.0f
-                    };
+                    storeTexel(triangleIndex, texelIndex, weights, geometricNormal, footprint);
                 }
             }
+        }
+        // 中心を横切らない細い UV island も有効な表面。中心 sample を優先した後、
+        // 空き texel に三角形内部の重心 sample を置く（面外への barycentric 外挿はしない）。
+        for (const uint32_t triangleIndex : target.triangleIndices) {
+            if (triangleIndex >= scene.triangles.size() || triangleHasCenter[triangleIndex]) continue;
+            const auto& triangle = scene.triangles[triangleIndex];
+            if (triangle.lightmapAllocationIndex >= target.atlasAllocations.size()) continue;
+            const auto uv = (triangle.lightmapUv[0] + triangle.lightmapUv[1] + triangle.lightmapUv[2]) * (1.0f / 3.0f);
+            if (!MATH::IsFinite(uv) || uv.x < 0 || uv.y < 0 || uv.x >= 1 || uv.y >= 1) continue;
+            MATH::Vec3 normal;
+            if (!TryNormalize(MATH::Cross(triangle.position[1]-triangle.position[0],
+                    triangle.position[2]-triangle.position[0]), normal)) continue;
+            if (MATH::Dot(normal, triangle.normal[0]+triangle.normal[1]+triangle.normal[2]) < 0) normal = normal * -1.0f;
+            const size_t texelIndex = size_t(uv.y * height) * width + size_t(uv.x * width);
+            if (result.validTexels[texelIndex]) {
+                const auto& previous = scene.triangles[triangleOwners[texelIndex]];
+                if (previous.lightmapAllocationIndex != triangle.lightmapAllocationIndex ||
+                    (IsUvTriangleInterior(triangle.lightmapUv, uv) &&
+                     IsUvTriangleInterior(previous.lightmapUv, uv))) ++result.overlapTexelCount;
+                continue;
+            }
+            constexpr float barycentric[3]{1.0f/3.0f, 1.0f/3.0f, 1.0f/3.0f};
+            storeTexel(triangleIndex, texelIndex, barycentric, normal, WorldTexelFootprint(triangle,width,height));
         }
         result.ownerIndices = std::move(triangleOwners);
         for (auto& owner : result.ownerIndices) {
@@ -384,6 +426,73 @@ namespace HIKARI::TOOLS::BAKING::INTERNAL {
         return result;
     }
 
+    bool FilterLightmapIrradiance(
+        std::span<MATH::Vec4> pixels,
+        std::span<const DxrLightmapSurfaceTexel> surfaces,
+        std::span<const uint8_t> validTexels,
+        std::span<const uint32_t> ownerIndices,
+        std::span<const ASSETS::LIGHTING::LightmapAtlasAllocation> allocations,
+        uint32_t width, uint32_t height) {
+        const size_t count = static_cast<size_t>(width) * height;
+        if (width == 0 || height == 0 || pixels.size() != count || surfaces.size() != count ||
+            validTexels.size() != count || ownerIndices.size() != count) return false;
+        // 作業領域は一 allocation 分。UPLOAD heap を tap ごとに CPU read しない。
+        std::vector<MATH::Vec4> filtered;
+        std::vector<DxrLightmapSurfaceTexel> guides;
+        for (uint32_t owner = 0; owner < allocations.size(); ++owner) {
+            const auto& rect = allocations[owner].outerRect;
+            if (!rect.width || !rect.height || uint64_t(rect.x)+rect.width > width ||
+                uint64_t(rect.y)+rect.height > height) return false;
+            const size_t tileCount = static_cast<size_t>(rect.width) * rect.height;
+            filtered.resize(tileCount); guides.resize(tileCount);
+            for (uint32_t y = 0; y < rect.height; ++y)
+                std::memcpy(guides.data()+size_t(y)*rect.width,
+                    surfaces.data()+size_t(y+rect.y)*width+rect.x, size_t(rect.width)*sizeof(guides[0]));
+            const auto globalIndex = [&](uint32_t x, uint32_t y) { return size_t(y+rect.y)*width+x+rect.x; };
+            const auto admitted = [&](uint32_t x, uint32_t y) {
+                const auto i = globalIndex(x,y);
+                return validTexels[i] != 0 && ownerIndices[i] == owner;
+            };
+            for (const int step : {1,2}) {
+                for (uint32_t y = 0; y < rect.height; ++y) for (uint32_t x = 0; x < rect.width; ++x) {
+                    if (!admitted(x,y)) continue;
+                    const size_t local = size_t(y)*rect.width+x, global = globalIndex(x,y);
+                    const auto& center = guides[local];
+                    const MATH::Vec3 n{center.normal.x,center.normal.y,center.normal.z};
+                    const auto color = pixels[global];
+                    if (!MATH::IsFinite(center.position) || !MATH::IsFinite(n) || center.position.w <= 0) return false;
+                    MATH::Vec3 sum{}; float total = 0;
+                    for (int dy = -1; dy <= 1; ++dy) for (int dx = -1; dx <= 1; ++dx) {
+                        const int tx = int(x)+dx*step, ty = int(y)+dy*step;
+                        if (tx < 0 || ty < 0 || tx >= int(rect.width) || ty >= int(rect.height) || !admitted(tx,ty)) continue;
+                        // 穴や chart の余白を飛び越えて近傍の面を混ぜない。
+                        if (step == 2 && !admitted(uint32_t(int(x)+dx),uint32_t(int(y)+dy))) continue;
+                        const auto& tap = guides[size_t(ty)*rect.width+tx];
+                        const MATH::Vec3 tn{tap.normal.x,tap.normal.y,tap.normal.z};
+                        const MATH::Vec3 delta{tap.position.x-center.position.x,
+                            tap.position.y-center.position.y,tap.position.z-center.position.z};
+                        const float size = (std::min)(center.position.w,tap.position.w);
+                        if (MATH::Dot(n,tn) < 0.95f || size <= 0 ||
+                            MATH::Dot(delta,delta) > 4.0f*step*step*size*size ||
+                            (std::max)(std::abs(MATH::Dot(delta,n)),std::abs(MATH::Dot(delta,tn))) > 0.25f*step*size) continue;
+                        const auto value = pixels[globalIndex(tx,ty)];
+                        const float difference = (std::max)({std::abs(value.x-color.x),std::abs(value.y-color.y),std::abs(value.z-color.z)});
+                        const float scale = (std::max)(1.0e-6f,(std::max)({value.x,value.y,value.z})+(std::max)({color.x,color.y,color.z}));
+                        const float ratio = difference / scale;
+                        // 強い照度境界には重みの裾を残さず、暗い面への光漏れを防ぐ。
+                        const float rangeWeight = (std::max)(0.0f,1.0f-4.0f*ratio*ratio);
+                        const float weight = float((dx == 0 ? 2 : 1)*(dy == 0 ? 2 : 1))*rangeWeight*rangeWeight;
+                        sum = sum + MATH::Vec3{value.x,value.y,value.z}*weight; total += weight;
+                    }
+                    filtered[local] = total > 0 ? MATH::Vec4{sum.x/total,sum.y/total,sum.z/total,color.w} : color;
+                }
+                for (uint32_t y = 0; y < rect.height; ++y) for (uint32_t x = 0; x < rect.width; ++x)
+                    if (admitted(x,y)) pixels[globalIndex(x,y)] = filtered[size_t(y)*rect.width+x];
+            }
+        }
+        return true;
+    }
+
     bool WriteProgressiveLightmapDds(
         const std::filesystem::path& outputPath,
         uint32_t width,
@@ -394,7 +503,8 @@ namespace HIKARI::TOOLS::BAKING::INTERNAL {
         std::vector<uint32_t> ownerIndices,
         const std::vector<ASSETS::LIGHTING::
             LightmapAtlasAllocation>& allocations,
-        std::string* outMessage) {
+        std::string* outMessage,
+        std::span<const DxrLightmapSurfaceTexel> surfaces) {
 
         if (accumulation == nullptr ||
             expectedSampleCount == 0u ||
@@ -412,6 +522,7 @@ namespace HIKARI::TOOLS::BAKING::INTERNAL {
             static_cast<size_t>(width) * height;
         std::vector<MATH::Vec4> pixels(pixelCount);
         uint32_t incompleteSampleTexelCount = 0u;
+        size_t firstIncompleteTexel = pixelCount;
         uint32_t nonFiniteTexelCount = 0u;
         uint32_t negativeTexelCount = 0u;
         uint32_t halfFloatOverflowTexelCount = 0u;
@@ -433,6 +544,7 @@ namespace HIKARI::TOOLS::BAKING::INTERNAL {
                     accumulated.w -
                     expectedSamples) > 0.25f) {
                 ++incompleteSampleTexelCount;
+                if (firstIncompleteTexel == pixelCount) firstIncompleteTexel = i;
                 continue;
             }
 
@@ -482,8 +594,20 @@ namespace HIKARI::TOOLS::BAKING::INTERNAL {
             stream
                 << "DXR lightmap rejected invalid transport output:"
                 << " incomplete-sample texels="
-                << incompleteSampleTexelCount
-                << ", non-finite texels="
+                << incompleteSampleTexelCount;
+            if (firstIncompleteTexel != pixelCount) {
+                stream << " (first pixel=" << firstIncompleteTexel % width << ','
+                    << firstIncompleteTexel / width << ", samples="
+                    << accumulation[firstIncompleteTexel].w << '/' << expectedSampleCount;
+                const auto owner = ownerIndices[firstIncompleteTexel];
+                if (owner < allocations.size()) {
+                    const auto& surface = allocations[owner].surface;
+                    stream << ", surface=" << surface.nodeIndex << '/'
+                        << surface.meshIndex << '/' << surface.primitiveIndex;
+                }
+                stream << ')';
+            }
+            stream << ", non-finite texels="
                 << nonFiniteTexelCount
                 << ", negative texels="
                 << negativeTexelCount
@@ -491,6 +615,11 @@ namespace HIKARI::TOOLS::BAKING::INTERNAL {
                 << halfFloatOverflowTexelCount
                 << ". No artifact was written.";
             SetMessage(outMessage, stream.str());
+            return false;
+        }
+        if (!surfaces.empty() && !FilterLightmapIrradiance(
+                pixels, surfaces, validTexels, ownerIndices, allocations, width, height)) {
+            SetMessage(outMessage, "Lightmap surface-guided filtering failed; no artifact was written.");
             return false;
         }
         if (!DilateLightmapAllocations(

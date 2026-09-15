@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <string>
+#include <optional>
 
 #include "Core/HIKARI_Logger.h"
 #include "Core/HIKARI_TimeService.h"
@@ -15,7 +16,11 @@
 #include "Render3D/Features/HIKARI_StylizedScreenFeatureRenderer.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Lighting/HIKARI_LocalLightList.h"
+#include "Render3D/Lighting/HIKARI_DynamicDiffuseGi.h"
+#include "Render3D/Lighting/HIKARI_StylizedCloudStage.h"
+#include "Render3D/Core/HIKARI_Camera3D.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
+#include "Render3D/Shadow/HIKARI_LocalLightShadowRenderer.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameContext.h"
 #include "Render3D/Pipeline/HIKARI_SunGlareFrameBuilder.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameGraphStage.h"
@@ -32,6 +37,9 @@ namespace HIKARI::RENDER3D::PIPELINE {
 
     namespace {
         FEATURES::StylizedScreenFeatureRenderer gStylizedScreenFeatures{};
+        RAYTRACING::RuntimeRayTracingScene gRuntimeRayScene;
+        RAYTRACING::RuntimeRayTracingLighting gRuntimeRayLighting;
+        DYNAMICGI::DynamicDiffuseGi gDynamicDiffuseGi;
 
         void LogPrimaryPipelineFailure(
             uint64_t frameIndex,
@@ -202,6 +210,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 static_cast<uint32_t>((std::max)(1, renderHeight));
             context.scene.depth =
                 POST::PostSystem::GetCurrentRenderTargetDepthView();
+            context.scene.color = POST::PostSystem::GetCurrentRenderTargetColorView();
             if (!context.scene.depth.IsSampleable() &&
                 context.graphics.sceneDepthSrv.ptr != 0) {
                 context.scene.depth.srv = context.graphics.sceneDepthSrv;
@@ -246,13 +255,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
             if (!settings.sceneDepthPrepass) {
                 return false;
             }
-            switch (settings.forwardCostMode) {
-            case RENDER3D::ForwardShadingCostMode::AlbedoOnly:
-            case RENDER3D::ForwardShadingCostMode::NoMaterialExtras:
-                return false;
-            default:
-                return true;
-            }
+            return settings.forwardCostMode != RENDER3D::ForwardShadingCostMode::AlbedoOnly;
         }
 
         bool PublishOptionalTexture(
@@ -322,7 +325,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
             frame.graphics.cmdList,
             GFX::PIX::kColorRender,
             "RenderFrame.MeshLighting");
-        const ScreenSpacePassContext screenSpaceContext =
+        ScreenSpacePassContext screenSpaceContext =
             BuildScreenSpaceContext(frame);
         SURFACE::SceneSurfaceSet* sceneTextureRegistry =
             SURFACE::TryGetRenderFrameSurfaces(frame.surfaceReceipt);
@@ -427,6 +430,8 @@ namespace HIKARI::RENDER3D::PIPELINE {
             return false;
         }
         MESHRENDERER::MeshFrameCameraOverrides cameraOverrides{};
+        const auto cloudSolarVisibility=CLOUDS::PrepareCloudSolarVisibilityFrame(frame,temporalFrame,
+            environment.clouds,renderQuality.stylizedCloudQuality);
         if (temporalFrame.camera.valid) {
             cameraOverrides.renderViewProj = &temporalFrame.camera.viewProj;
             cameraOverrides.renderInvViewProj = &temporalFrame.camera.invViewProj;
@@ -448,6 +453,36 @@ namespace HIKARI::RENDER3D::PIPELINE {
             temporalFrame.camera.valid ? &cameraOverrides : nullptr)) {
             MESHRENDERER::EndFrame();
             return false;
+        }
+        DYNAMICGI::Frame dynamicGi;
+        RAYTRACING::RuntimeRayLightingFrame rayLighting;
+        std::optional<LIGHTPROBE::ScopedLightProbeVolumeOverride> dynamicGiScope;
+        {
+            const auto& source = MESHRENDERER::GetActiveGpuDrivenSceneSource();
+            const auto& clock = TIME::GetFrameContext();
+            const auto giQuality=renderQuality.lightProbeVolumeSampling==LightProbeVolumeSamplingMode::Off
+                ? DynamicGiQuality::Off : renderQuality.dynamicGiQuality;
+            const auto materials=MESHRENDERER::GetMaterialGpuFrameView(frame.graphics);
+            RAYTRACING::RuntimeRayTracingFrame rayScene;
+            if(giQuality!=DynamicGiQuality::Off && materials) {
+                GFX::GPU_PROFILE::ScopedGpuTimer rayTimer(frame.graphics.cmdList,
+                    GFX::GPU_PROFILE::Pass::RuntimeRayScenePreparation);
+                rayScene=gRuntimeRayScene.Prepare(frame.graphics,source,materials.materialSlots,materials.materialData,{},
+                    {materials.dataVersion,materials.bindingVersion});
+            } else {
+                gRuntimeRayScene.Reset(frame.graphics);
+                gRuntimeRayLighting.Reset(frame.graphics);
+            }
+            rayLighting=gRuntimeRayLighting.Prepare(frame.graphics,rayScene,materials,environment,lighting,
+                {TIME::GetUnscaledElapsedSeconds(),clock.unscaledDt,clock.gameDt,static_cast<float>(clock.frameIndex)},cloudSolarVisibility.data);
+            dynamicGi = gDynamicDiffuseGi.Prepare(frame.graphics, rayScene,
+                materials, rayLighting, camera.GetPosition(), giQuality, frame.frameIndex);
+            if (dynamicGi) {
+                dynamicGiScope.emplace(dynamicGi.volume,dynamicGi.shTable);
+            }
+            if (!MESHRENDERER::RefreshLightingProviders(frame.graphics,cloudSolarVisibility.data)) {
+                MESHRENDERER::EndFrame(); return false;
+            }
         }
         const FEATURES::RenderFeatureRequestSet featureRequests =
             FEATURES::AnalyzeRenderFeatureRequests(
@@ -481,14 +516,22 @@ namespace HIKARI::RENDER3D::PIPELINE {
             stylizedScreenMaskRequired || hasSsrWork;
         screenSurfaceRequirements.requireFeatureMask =
             stylizedScreenMaskRequired;
-        (void)RENDER3D::VOLUMETRIC::PrepareVolumetricLightingFrame(
+        const bool volumetricFogReady = RENDER3D::VOLUMETRIC::PrepareVolumetricLightingFrame(
             frame.graphics,
             temporalFrame,
+            frame.scene.color,
+            frame.scene.depth,
             environment,
             MESHRENDERER::GetLocalLightListGpuBindings(),
             renderQuality.volumetricLightingQuality,
-            volumetricDebugView ? debugView : RenderDebugView::None);
+            volumetricDebugView ? debugView : RenderDebugView::None,
+            SHADOW::GetLocalLightShadowFrame(frame.graphics, lighting, camera), &cloudSolarVisibility);
+        if (!MESHRENDERER::FinalizeVolumetricFog(frame.graphics, volumetricFogReady)) {
+            MESHRENDERER::EndFrame();
+            return false;
+        }
 
+        screenSpaceContext.jitteredViewProj = temporalFrame.camera.jittered;
         const MESHRENDERER::CameraCB* cameraCb = MESHRENDERER::GetCameraConstants();
         const MESHRENDERER::CameraCB* cullingCameraCb =
             MESHRENDERER::GetGpuDrivenCullingCameraConstants();
@@ -518,7 +561,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
             ShouldRunSceneDepthPrepass(RENDER3D::GetRenderQualitySettings());
         const bool sceneDsvReady = screenSpaceContext.sceneDsv.ptr != 0;
         const bool depthPrepassWorkReady = MESHRENDERER::HasDepthPrepassWork();
-        if (scenePrepassEnabled && sceneDsvReady && depthPrepassWorkReady) {
+        if (scenePrepassEnabled && !screenResult.geometryAuxWritten && sceneDsvReady && depthPrepassWorkReady) {
             bool prepassExecuted = false;
             {
                 GFX::PIX::ScopedGpuEvent pixScenePrepass(
@@ -605,6 +648,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 sceneTextures,
                 GRAPH::RenderGraphSemanticPhase::PreOpaque,
                 screenResult.fallbackAoTextureHandle);
+        opaqueResources.visibilityDepthPyramid = screenResult.visibilityDepthPyramid;
         MESHRENDERER::MeshPassResources postOpaqueResources = opaqueResources;
         FEATURES::RenderFeaturePlan renderFeaturePlan{};
 
@@ -708,11 +752,18 @@ namespace HIKARI::RENDER3D::PIPELINE {
 
     void ShutdownRenderFramePipelineResources() noexcept {
         try {
+            gDynamicDiffuseGi.Reset(GFX::GetCurrentContext());
+            gRuntimeRayLighting.Reset(GFX::GetCurrentContext());
+            gRuntimeRayScene.Reset(GFX::GetCurrentContext());
             gStylizedScreenFeatures.Release();
         }
         catch (...) {
         }
         INTERNAL::ReleaseRenderFrameGraphPassResources();
     }
+
+    const RAYTRACING::RuntimeRayTracingStats& GetRuntimeRayTracingStats() noexcept { return gRuntimeRayScene.GetStats(); }
+
+    const DYNAMICGI::Stats& GetDynamicDiffuseGiStats() noexcept { return gDynamicDiffuseGi.GetStats(); }
 
 } // namespace HIKARI::RENDER3D::PIPELINE

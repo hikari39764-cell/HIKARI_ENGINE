@@ -57,11 +57,12 @@ namespace HIKARI::MESHRENDERER {
 
     void MeshViewFrameResources::BuildLocalLights(
         const RENDER3D::LIGHTING::SceneLightingSet& lighting,
-        const Camera3D& viewCamera, uint32_t width, uint32_t height) {
+        const Camera3D& viewCamera, uint32_t width, uint32_t height,
+        std::span<const RENDER3D::LIGHTING::LocalLightShadowAssignment> shadows) {
         localLightList = RENDER3D::LIGHTING::BuildLocalLightList(lighting, viewCamera, width, height,
             {lights_.data(), static_cast<uint32_t>(lights_.size()),
              headers_.data(), static_cast<uint32_t>(headers_.size()),
-             indices_.data(), static_cast<uint32_t>(indices_.size())});
+             indices_.data(), static_cast<uint32_t>(indices_.size())}, shadows);
     }
 
     bool MeshViewFrameResources::Publish(const GFX::Context& graphics, const CameraCB* cullingOverride) {
@@ -105,13 +106,22 @@ namespace HIKARI::MESHRENDERER {
     }
 
     bool MeshViewFrameResources::PublishSkyEnvironment(const GFX::Context& graphics) {
+        return PublishConstant(graphics, &skyEnvironment, sizeof(skyEnvironment), bindings_.skyEnvironment);
+    }
+
+    bool MeshViewFrameResources::PublishLight(const GFX::Context& graphics) {
+        return PublishConstant(graphics, &light, sizeof(light), bindings_.light);
+    }
+
+    bool MeshViewFrameResources::PublishConstant(const GFX::Context& graphics,
+        const void* data, size_t bytes, D3D12_GPU_VIRTUAL_ADDRESS& binding) {
         if (!IsInitialized() || bindings_.camera == 0u) return false;
         uploads_.ResetForFrame(graphics.currentFrameRetireFenceValue);
-        const DX::UploadAllocation allocation = uploads_.Allocate(sizeof(skyEnvironment));
+        const DX::UploadAllocation allocation = uploads_.Allocate(bytes);
         if (!allocation) return false;
-        // AO の段階切替では小さな CB だけを再提出し、光源クラスタを再コピーしない。
-        std::memcpy(allocation.cpuAddress, &skyEnvironment, sizeof(skyEnvironment));
-        bindings_.skyEnvironment = allocation.gpuAddress;
+        // 段階切替では変更した CB だけを提出し、以前の GPU 入力を上書きしない。
+        std::memcpy(allocation.cpuAddress, data, bytes);
+        binding = allocation.gpuAddress;
         return true;
     }
 

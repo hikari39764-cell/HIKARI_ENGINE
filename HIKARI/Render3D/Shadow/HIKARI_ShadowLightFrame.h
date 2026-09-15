@@ -9,6 +9,7 @@
 namespace HIKARI::SHADOW {
 
     inline constexpr uint32_t kMaxDirectionalShadowCascades = 4u;
+    inline constexpr uint32_t kMaxLocalLightShadowFaces = 6u;
 
     struct ShadowLightFrame {
         MATH::Mat4 view{};
@@ -32,6 +33,15 @@ namespace HIKARI::SHADOW {
         uint32_t cascadeCount = 1u;
         MATH::Vec4 splitDistances{};
     };
+
+    struct LocalLightShadowFrameSet {
+        std::array<ShadowLightFrame, kMaxLocalLightShadowFaces> faces{};
+        uint32_t faceCount = 0;
+    };
+
+    // Point: +X,-X,+Y,-Y,+Z,-Z。Spot は一面。range と cone は照明と同じ契約。
+    LocalLightShadowFrameSet BuildLocalLightShadowFrameSet(
+        const RENDER3D::LIGHTING::SceneLightProvider& light, uint32_t faceResolution) noexcept;
 
     uint32_t ResolveShadowResolution(uint32_t resolution);
 

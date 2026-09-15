@@ -46,6 +46,8 @@ namespace HIKARI {
             { "color", JsonMath::ToJsonArray(color_) },
             { "intensity", intensity_ },
             { "range", range_ },
+            { "sourceRadius", sourceRadius_ },
+            { "castsShadows", castsShadows_ },
             { "distanceFalloff", RENDER3D::LIGHTING::ToString(distanceFalloff_) },
             { "innerConeAngleDegrees", innerConeAngleDegrees_ },
             { "outerConeAngleDegrees", outerConeAngleDegrees_ },
@@ -60,6 +62,8 @@ namespace HIKARI {
         const MATH::Vec3 previousColor = color_;
         const float previousIntensity = intensity_;
         const float previousRange = range_;
+        const float previousSourceRadius = sourceRadius_;
+        const bool previousCastsShadows = castsShadows_;
         const auto previousDistanceFalloff = distanceFalloff_;
         const float previousInnerConeAngle = innerConeAngleDegrees_;
         const float previousOuterConeAngle = outerConeAngleDegrees_;
@@ -73,6 +77,8 @@ namespace HIKARI {
             color_);
         intensity_ = in.value("intensity", intensity_);
         range_ = in.value("range", range_);
+        sourceRadius_ = in.value("sourceRadius", 0.0f);
+        castsShadows_ = in.value("castsShadows", false);
         // 旧シーンを読み直した際も、新規作成用の既定値で照度を変えない。
         distanceFalloff_ = RENDER3D::LIGHTING::ParseLocalLightFalloff(
             in.value("distanceFalloff", std::string("LegacyRange")));
@@ -93,6 +99,7 @@ namespace HIKARI {
             previousColor.y != color_.y ||
             previousColor.z != color_.z ||
             previousIntensity != intensity_ || previousRange != range_ ||
+            previousSourceRadius != sourceRadius_ || previousCastsShadows != castsShadows_ ||
             previousInnerConeAngle != innerConeAngleDegrees_ ||
             previousOuterConeAngle != outerConeAngleDegrees_ ||
             previousAngularFalloff != angularFalloff_ ||
@@ -158,6 +165,21 @@ namespace HIKARI {
         }
     }
 
+    void LightComponent::SetCastsShadows(bool value) noexcept {
+        if (castsShadows_ != value) {
+            castsShadows_ = value;
+            BumpStateRevision();
+        }
+    }
+
+    void LightComponent::SetSourceRadius(float radius) noexcept {
+        const float canonical = RENDER3D::LIGHTING::SanitizeLocalLightSourceRadius(radius);
+        if (sourceRadius_ != canonical) {
+            sourceRadius_ = canonical;
+            BumpStateRevision();
+        }
+    }
+
     void LightComponent::SetSpotConeAnglesDegrees(
         float innerAngleDegrees,
         float outerAngleDegrees) noexcept {
@@ -208,6 +230,7 @@ namespace HIKARI {
     }
 
     void LightComponent::ClampSettings() noexcept {
+        sourceRadius_ = RENDER3D::LIGHTING::SanitizeLocalLightSourceRadius(sourceRadius_);
         color_.x = std::clamp(
             std::isfinite(color_.x) ? color_.x : 1.0f,
             0.0f,

@@ -1,3 +1,4 @@
+#include "Core/HIKARI_MathConfig.h"
 #include "Render3D/Temporal/HIKARI_TemporalGeometryPass.h"
 #include "Gfx/HIKARI_GfxContext.h"
 
@@ -82,6 +83,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
             desc.SampleMask = UINT_MAX;
             desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+            desc.RasterizerState.FrontCounterClockwise = MATH::kFrontFaceCounterClockwise ? TRUE : FALSE;
             desc.RasterizerState.CullMode =
                 doubleSided ? D3D12_CULL_MODE_NONE : D3D12_CULL_MODE_BACK;
             desc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
@@ -94,8 +96,8 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             desc.InputLayout = { inputElements, inputElementCount };
             desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
             desc.NumRenderTargets = 2;
-            desc.RTVFormats[0] = DXGI_FORMAT_R16G16_FLOAT;
-            desc.RTVFormats[1] = DXGI_FORMAT_R16G16_FLOAT;
+            desc.RTVFormats[0] = kTemporalMotionVectorFormat;
+            desc.RTVFormats[1] = kTemporalMotionMetadataFormat;
             desc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
             desc.SampleDesc.Count = 1;
             return SUCCEEDED(device->CreateGraphicsPipelineState(

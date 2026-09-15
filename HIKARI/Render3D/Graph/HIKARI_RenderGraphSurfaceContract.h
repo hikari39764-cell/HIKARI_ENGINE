@@ -31,6 +31,7 @@ namespace HIKARI::RENDER3D::GRAPH {
         ProjectDispatchOutput,
         ReflectionFallbackSpecular,
         ReflectionSpecularResponse,
+        ReflectionMaterial,
         Count,
     };
 
@@ -120,6 +121,7 @@ namespace HIKARI::RENDER3D::SURFACE {
         R16G16B16A16Float,
         R32Float,
         R32G32Uint,
+        R32G32Float,
     };
 
     enum class SceneSurfaceLifetime : uint8_t {
@@ -195,6 +197,7 @@ namespace HIKARI::RENDER3D::SURFACE {
             case Semantic::SceneDepth: return bit(Phase::Imported);
             case Semantic::ReflectionFallbackSpecular:
             case Semantic::ReflectionSpecularResponse:
+            case Semantic::ReflectionMaterial:
             case Semantic::SceneColorOpaque: return bit(Phase::Opaque);
             case Semantic::SceneColorPostOpaque: return bit(Phase::PostOpaque);
             case Semantic::SceneColorFinal: return bit(Phase::Final);
@@ -233,6 +236,7 @@ namespace HIKARI::RENDER3D::SURFACE {
                     SceneSurfaceProducerBit(Producer::EditorInteractive);
             case Semantic::ReflectionFallbackSpecular:
             case Semantic::ReflectionSpecularResponse:
+            case Semantic::ReflectionMaterial:
                 return SceneSurfaceProducerBit(Producer::ForwardOpaque);
             case Semantic::SceneColorOpaque:
                 return SceneSurfaceProducerBit(Producer::ForwardOpaque) |
@@ -345,7 +349,7 @@ namespace HIKARI::RENDER3D::SURFACE {
                     Fallback::NoHistory,
                     SurfaceAccessMask(Access::Sampled, Access::WriteColor)),
                 SurfaceDesc(Semantic::MotionMetadata, Kind::Texture2D,
-                    Format::R16G16Float, Lifetime::FrameLocal,
+                    Format::R32G32Float, Lifetime::FrameLocal,
                     Fallback::NoHistory,
                     SurfaceAccessMask(Access::Sampled, Access::WriteColor)),
                 SurfaceDesc(Semantic::CurrentDepthPyramid,
@@ -393,6 +397,9 @@ namespace HIKARI::RENDER3D::SURFACE {
                     Format::R16G16B16A16Float, Lifetime::FrameLocal, Fallback::SkipProvider,
                     SurfaceAccessMask(Access::Sampled, Access::WriteColor)),
                 SurfaceDesc(Semantic::ReflectionSpecularResponse, Kind::Texture2D,
+                    Format::R16G16B16A16Float, Lifetime::FrameLocal, Fallback::SkipProvider,
+                    SurfaceAccessMask(Access::Sampled, Access::WriteColor)),
+                SurfaceDesc(Semantic::ReflectionMaterial, Kind::Texture2D,
                     Format::R16G16B16A16Float, Lifetime::FrameLocal, Fallback::SkipProvider,
                     SurfaceAccessMask(Access::Sampled, Access::WriteColor)),
             };

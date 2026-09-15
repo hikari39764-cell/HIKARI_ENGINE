@@ -1,3 +1,4 @@
+#include "Core/HIKARI_MathConfig.h"
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshPipelineStore.h"
 
 #include <array>
@@ -465,10 +466,21 @@ namespace HIKARI::MESHRENDERER {
         params[ROOT_PARAM::MeshletVisibleRanges].Descriptor.ShaderRegister = 18;
         params[ROOT_PARAM::MeshletVisibleRanges].Descriptor.RegisterSpace = 0;
 
-        params[ROOT_PARAM::MeshletVisibleClusterList].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
-        params[ROOT_PARAM::MeshletVisibleClusterList].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        params[ROOT_PARAM::MeshletVisibleClusterList].Descriptor.ShaderRegister = 19;
-        params[ROOT_PARAM::MeshletVisibleClusterList].Descriptor.RegisterSpace = 0;
+        D3D12_DESCRIPTOR_RANGE meshletOcclusionRanges[3]{};
+        meshletOcclusionRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+        meshletOcclusionRanges[0].NumDescriptors = 1u;
+        meshletOcclusionRanges[0].BaseShaderRegister = 19u;
+        meshletOcclusionRanges[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+        meshletOcclusionRanges[1].NumDescriptors = 1u;
+        meshletOcclusionRanges[1].RegisterSpace = 8u;
+        meshletOcclusionRanges[1].OffsetInDescriptorsFromTableStart = 1u;
+        meshletOcclusionRanges[2].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+        meshletOcclusionRanges[2].NumDescriptors = 1u;
+        meshletOcclusionRanges[2].BaseShaderRegister = 12u;
+        meshletOcclusionRanges[2].OffsetInDescriptorsFromTableStart = 2u;
+        params[ROOT_PARAM::MeshletOcclusionDepth].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        params[ROOT_PARAM::MeshletOcclusionDepth].ShaderVisibility = D3D12_SHADER_VISIBILITY_AMPLIFICATION;
+        params[ROOT_PARAM::MeshletOcclusionDepth].DescriptorTable = {3u, meshletOcclusionRanges};
 
         params[ROOT_PARAM::LocalLights].ParameterType =
             D3D12_ROOT_PARAMETER_TYPE_SRV;
@@ -683,6 +695,7 @@ namespace HIKARI::MESHRENDERER {
         psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
         psoDesc.SampleMask = UINT_MAX;
         psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+        psoDesc.RasterizerState.FrontCounterClockwise = MATH::kFrontFaceCounterClockwise ? TRUE : FALSE;
         psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
         psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
         psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
@@ -696,19 +709,10 @@ namespace HIKARI::MESHRENDERER {
         psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
         psoDesc.SampleDesc.Count = 1;
 
-        if (FAILED(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(store.pso.GetAddressOf())))) {
-            return false;
-        }
-
+        // 通常描画は既存 variant cache が必要な PSO を作る。未使用の
+        // traditional fallback を Mesh Shader 起動時に先行コンパイルしない。
+        store.fallbackDesc = psoDesc;
         const auto skinnedInputElements = GetSkinnedMeshInputLayout();
-
-        D3D12_GRAPHICS_PIPELINE_STATE_DESC skinnedPsoDesc = psoDesc;
-        skinnedPsoDesc.pRootSignature = store.skinnedRootSig.Get();
-        skinnedPsoDesc.VS = shaderBytecode(store.skinnedVsShader);
-        skinnedPsoDesc.InputLayout = { skinnedInputElements.data(), static_cast<UINT>(skinnedInputElements.size()) };
-        if (FAILED(device->CreateGraphicsPipelineState(&skinnedPsoDesc, IID_PPV_ARGS(store.skinnedPso.GetAddressOf())))) {
-            return false;
-        }
 
         D3D12_GRAPHICS_PIPELINE_STATE_DESC depthPsoDesc = psoDesc;
         depthPsoDesc.PS = {};

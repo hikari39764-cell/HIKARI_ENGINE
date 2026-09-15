@@ -23,6 +23,7 @@
 #include "Render3D/GpuDriven/HIKARI_GpuSceneSurfaceRecord.h"
 #include "Render3D/GpuDriven/HIKARI_SurfaceGpuSceneFrameBuffer.h"
 #include "Render3D/GpuDriven/CommandStream/HIKARI_GpuTraditionalCommandStreamBuffer.h"
+#include "Render3D/GpuDriven/CommandStream/HIKARI_OwnedTraditionalIndirectStream.h"
 #include "Render3D/HIKARI_Mesh.h"
 #include "Render3D/Meshlet/HIKARI_MeshletRenderBackend.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
@@ -36,8 +37,6 @@ namespace HIKARI::SHADOW::INTERNAL {
 
     using Microsoft::WRL::ComPtr;
 
-    inline constexpr UINT kMaxShadowCasterObjects = 2048u;
-    inline constexpr size_t kMaxShadowJointPaletteMatrices = 128u;
     inline constexpr D3D12_RESOURCE_STATES kShadowShaderReadState =
         D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE |
         D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
@@ -51,21 +50,15 @@ namespace HIKARI::SHADOW::INTERNAL {
         MATH::Vec4 screenParams{};
     };
 
-    struct ShadowJointPaletteCB {
-        MATH::Mat4 jointMatrices[kMaxShadowJointPaletteMatrices]{};
-    };
-
     struct ShadowFrameResources {
-        ComPtr<ID3D12Resource> cameraCB;
-        DX::DynamicUploadBuffer materialUploads;
+        std::array<D3D12_GPU_VIRTUAL_ADDRESS, kMaxDirectionalShadowCascades> cameraAddresses{};
+        DX::DynamicUploadBuffer frameUploads;
         std::vector<MESHRENDERER::MaterialGpuData> materialDataStaging;
         D3D12_GPU_VIRTUAL_ADDRESS materialProgramParametersAddress = 0;
         D3D12_GPU_VIRTUAL_ADDRESS materialProgramResourcesAddress = 0;
         D3D12_GPU_VIRTUAL_ADDRESS materialCameraAddress = 0;
         ComPtr<ID3D12Resource> materialDataBuffer;
-        ComPtr<ID3D12Resource> jointPaletteCB;
-        ShadowCameraCB* cameraMapped = nullptr;
-        ShadowJointPaletteCB* jointPaletteMapped = nullptr;
+        D3D12_GPU_VIRTUAL_ADDRESS meshJointPaletteAddress = 0;
         D3D12_GPU_DESCRIPTOR_HANDLE materialDataSrvGpu{};
         D3D12_RESOURCE_STATES materialDataState = D3D12_RESOURCE_STATE_COMMON;
     };
@@ -95,6 +88,7 @@ namespace HIKARI::SHADOW::INTERNAL {
         bool frameHasDynamicShadowWork = false;
         uint32_t resolution = 0;
         uint32_t atlasResolution = 0;
+        uint32_t atlasTilesPerRow = 2;
         uint32_t activeCascadeIndex = 0;
         uint32_t cascadeCount = 1;
         D3D12_RESOURCE_STATES shadowState = kShadowShaderReadState;
@@ -122,6 +116,7 @@ namespace HIKARI::SHADOW::INTERNAL {
         ComPtr<ID3D12RootSignature> skinnedRootSig;
         PIPELINE::ShadowDepthPipelines depthPipelines{};
         std::array<ShadowFrameResources, GFX::kFrameResourceCount> frameResources{};
+        std::vector<RENDER3D::RenderResourceView> frameDescriptors{};
         uint32_t activeFrameResourceIndex = 0;
         ShadowMaterialFrameTable materialDataFrameTable{};
 
@@ -138,6 +133,13 @@ namespace HIKARI::SHADOW::INTERNAL {
             dynamicShadowPrimaryInstances{};
         std::vector<RENDER3D::RUNTIME::SurfaceGpuSceneMaterialSource>
             dynamicShadowPrimaryMaterialSources{};
+        RENDER3D::GPUDRIVEN::OwnedTraditionalIndirectStream staticTraditionalIndirectStream{};
+        RENDER3D::GPUDRIVEN::OwnedTraditionalIndirectStream dynamicTraditionalIndirectStream{};
+        struct ShadowPrimaryLocation {
+            uint32_t localIndex = RENDER3D::RUNTIME::kInvalidRenderSurfaceIndex;
+            bool staticCaster = false;
+        };
+        std::vector<ShadowPrimaryLocation> shadowPrimaryLocations{};
         ShadowSourceCacheState shadowSourceCache{};
         RENDER3D::GPUDRIVEN::SurfaceGpuSceneFrameBuffer surfaceGpuSceneBuffer{};
         RENDER3D::SAND::SandSurfaceGpuFrameBuffer sandSurfaceGpuFrameBuffer{};
@@ -162,50 +164,43 @@ namespace HIKARI::SHADOW::INTERNAL {
 
     extern ShadowRendererState gShadowRendererState;
 
-    inline ShadowFrameResources& GetActiveShadowFrameResources() {
-        return gShadowRendererState.frameResources[
-            gShadowRendererState.activeFrameResourceIndex %
+    inline ShadowFrameResources& GetActiveShadowFrameResources(ShadowRendererState& state) {
+        return state.frameResources[
+            state.activeFrameResourceIndex %
             GFX::kFrameResourceCount];
     }
 
-    inline UINT ShadowCameraConstantStride() {
-        return (sizeof(ShadowCameraCB) + 255u) & ~255u;
-    }
-
-    inline D3D12_GPU_VIRTUAL_ADDRESS GetActiveShadowCameraGpuAddress() {
-        ShadowFrameResources& frame = GetActiveShadowFrameResources();
-        return frame.cameraCB != nullptr
-            ? frame.cameraCB->GetGPUVirtualAddress() +
-                static_cast<UINT64>(ShadowCameraConstantStride()) *
-                    gShadowRendererState.activeCascadeIndex
+    inline D3D12_GPU_VIRTUAL_ADDRESS GetActiveShadowCameraGpuAddress(ShadowRendererState& state) {
+        ShadowFrameResources& frame = GetActiveShadowFrameResources(state);
+        return state.activeCascadeIndex < frame.cameraAddresses.size()
+            ? frame.cameraAddresses[state.activeCascadeIndex]
             : 0u;
     }
 
-    void InvalidateShadowSourceCache();
-    bool CanReuseShadowSourceCache();
-    void PublishShadowCacheStats();
-    void InvalidateShadowCache();
-    bool CanReuseShadowCache(uint32_t resolution);
+    void InvalidateShadowSourceCache(ShadowRendererState& state);
+    bool CanReuseShadowSourceCache(ShadowRendererState& state);
+    void PublishShadowCacheStats(ShadowRendererState& state);
+    void InvalidateShadowCache(ShadowRendererState& state);
+    bool CanReuseShadowCache(ShadowRendererState& state, uint32_t resolution);
     void AccumulateShadowMeshletStatsDelta(
-        const RENDER3D::MESHLET::MeshletRenderBackendStats& before,
+        ShadowRendererState& state, const RENDER3D::MESHLET::MeshletRenderBackendStats& before,
         const RENDER3D::MESHLET::MeshletRenderBackendStats& after);
-    void MarkShadowCacheHit();
-    void MarkShadowCacheMiss();
-    void MarkShadowCacheValidAfterRender();
+    void MarkShadowCacheHit(ShadowRendererState& state);
+    void MarkShadowCacheMiss(ShadowRendererState& state);
+    void MarkShadowCacheValidAfterRender(ShadowRendererState& state);
 
-    void ClearShadowTraditionalIndirectStreams();
-    void UploadShadowMeshShaderJointPalettes();
-    bool BuildShadowGpuDrivenSceneSources(const GFX::Context& graphics);
-    void SyncShadowGpuDrivenBackendAvailability();
+    void ClearShadowTraditionalIndirectStreams(ShadowRendererState& state);
+    bool PrepareShadowDeformation(ShadowRendererState& state, const GFX::Context& graphics);
+    bool BuildShadowGpuDrivenSceneSources(ShadowRendererState& state);
+    void SyncShadowGpuDrivenBackendAvailability(ShadowRendererState& state);
 
     void BindShadowGpuDrivenFrameResources(
-        const GFX::Context& graphics,
+        ShadowRendererState& state, const GFX::Context& graphics,
         ID3D12GraphicsCommandList* commandList,
         ID3D12Resource* meshletVisibleRangeBuffer,
-        ID3D12Resource* meshletVisibleClusterListBuffer = nullptr,
         bool skinnedRoot = false);
-    void ResetShadowMaterialFrame();
-    void PrepareShadowSurfaceGpuSceneMaterialFrame();
+    void ResetShadowMaterialFrame(ShadowRendererState& state);
+    void PrepareShadowSurfaceGpuSceneMaterialFrame(ShadowRendererState& state);
     uint64_t AppendShadowHashValue(uint64_t seed, uint64_t value);
     uint64_t AppendShadowHashBytes(
         uint64_t seed,
@@ -219,6 +214,12 @@ namespace HIKARI::SHADOW::INTERNAL {
     bool IsStaticPrimaryShadowCaster(
         const RENDER3D::RUNTIME::SurfaceGpuSceneInstance& instance,
         const RENDER3D::RUNTIME::SurfaceGpuSceneMaterialSource* material = nullptr);
+    bool UpdateShadowPrimaryInstance(
+        const RENDER3D::RUNTIME::SurfaceGpuSceneInstance& sourceInstance,
+        const RENDER3D::RUNTIME::SurfaceGpuSceneMaterialSource* sourceMaterial,
+        uint32_t localIndex,
+        RENDER3D::RUNTIME::SurfaceGpuSceneInstance& instance,
+        RENDER3D::RUNTIME::SurfaceGpuSceneMaterialSource& material);
     void AppendShadowPrimaryInstance(
         const RENDER3D::RUNTIME::SurfaceGpuSceneInstance& sourceInstance,
         const RENDER3D::RUNTIME::SurfaceGpuSceneMaterialSource* sourceMaterial,
@@ -230,50 +231,58 @@ namespace HIKARI::SHADOW::INTERNAL {
     uint64_t BuildShadowSourceContentHash(
         const RENDER3D::GPUDRIVEN::GpuDrivenPassSource& pass);
 
-    D3D12_GPU_VIRTUAL_ADDRESS ResolveShadowJointPaletteAddress(
-        size_t objectIndex);
-    size_t UploadShadowJointPalette(
-        size_t objectIndex,
-        const std::vector<MATH::Mat4>& palette);
-    bool CommitShadowMaterialDataFrame(const GFX::Context& graphics);
-    void ActivateShadowFrameResources(uint32_t frameIndex);
-    bool CreateShadowFrameResources(const GFX::Context& graphics);
+    bool CommitShadowMaterialDataFrame(ShadowRendererState& state, const GFX::Context& graphics);
+    void ActivateShadowFrameResources(ShadowRendererState& state, uint32_t frameIndex);
+    bool CreateShadowFrameResources(ShadowRendererState& state, const GFX::Context& graphics);
+    void ReleaseShadowFrameResources(ShadowRendererState& state, const GFX::Context& graphics);
 
+    struct ShadowMapAllocationDesc {
+        uint32_t tileResolution = 0;
+        uint32_t tilesPerRow = 2;
+        bool cacheStaticDepth = true;
+        const char* sourceKey = nullptr;
+    };
     bool CreateShadowMapResources(
-        const GFX::Context& graphics,
-        uint32_t resolution);
+        ShadowRendererState& state, const GFX::Context& graphics,
+        const ShadowMapAllocationDesc& allocation);
     void RestoreMainRenderTarget(const GFX::Context& graphics);
     void PrepareFinalShadowMapForDepthWrite(
-        ID3D12GraphicsCommandList* commandList,
+        ShadowRendererState& state, ID3D12GraphicsCommandList* commandList,
         bool clearDepth);
+    bool PrepareShadowMapDepthRegion(ShadowRendererState& state,
+        ID3D12GraphicsCommandList* commandList, const D3D12_RECT& region, bool clearDepth);
     void FinishFinalShadowMap(
-        const GFX::Context& graphics,
+        ShadowRendererState& state, const GFX::Context& graphics,
         ID3D12GraphicsCommandList* commandList);
     bool CopyStaticShadowCacheToFinal(
-        ID3D12GraphicsCommandList* commandList);
+        ShadowRendererState& state, ID3D12GraphicsCommandList* commandList);
     bool UpdateStaticShadowCacheFromFinal(
-        ID3D12GraphicsCommandList* commandList);
+        ShadowRendererState& state, ID3D12GraphicsCommandList* commandList);
 
-    bool CreateShadowDepthPipelineState(const GFX::Context& graphics);
-    bool CreateShadowPipelineState(const GFX::Context& graphics);
-    bool EnsureShadowRendererInitialized(const GFX::Context& graphics);
+    bool CreateShadowDepthPipelineState(ShadowRendererState& state, const GFX::Context& graphics);
+    bool CreateShadowPipelineState(ShadowRendererState& state, const GFX::Context& graphics);
+    bool EnsureShadowRendererInitialized(ShadowRendererState& state, const GFX::Context& graphics);
 
-    void UploadShadowCameraConstants(
+    bool UploadShadowCameraConstants(
+        ShadowRendererState& state, const GFX::Context& graphics,
         const ShadowLightFrame& frame,
         uint32_t cascadeIndex);
     void SubmitShadowDebugFrustum(
-        const SceneEnvironment& environment,
+        ShadowRendererState& state, const SceneEnvironment& environment,
         const Camera3D& camera);
-    void ClearShadowFrameSubmissions();
+    void ClearShadowFrameSubmissions(ShadowRendererState& state);
     bool PrepareShadowSourceForDraw(
-        const GFX::Context& graphics,
+        ShadowRendererState& state, const GFX::Context& graphics,
         const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& source);
-    void ResetShadowGpuDrivenWorkFrame(const GFX::Context& graphics);
-    void BuildShadowGpuDrivenWorkFrame(const GFX::Context& graphics);
-    void UploadShadowIndirectDrawFrame(const GFX::Context& graphics);
+    void ResetShadowGpuDrivenWorkFrame(ShadowRendererState& state, const GFX::Context& graphics);
+    void BuildShadowGpuDrivenWorkFrame(ShadowRendererState& state, const GFX::Context& graphics);
+    void UploadShadowIndirectDrawFrame(ShadowRendererState& state, const GFX::Context& graphics);
     bool ExecuteShadowGpuDrivenPass(
-        const GFX::Context& graphics,
+        ShadowRendererState& state, const GFX::Context& graphics,
         GFX::GPU_PROFILE::Pass traditionalProfilePass,
         GFX::GPU_PROFILE::Pass meshletProfilePass);
+    bool RecordShadowView(ShadowRendererState& state, const GFX::Context& graphics,
+        const ShadowLightFrame& frame, const D3D12_RECT& region, bool clearDepth,
+        GFX::GPU_PROFILE::Pass traditionalProfilePass, GFX::GPU_PROFILE::Pass meshletProfilePass);
 
 } // namespace HIKARI::SHADOW::INTERNAL

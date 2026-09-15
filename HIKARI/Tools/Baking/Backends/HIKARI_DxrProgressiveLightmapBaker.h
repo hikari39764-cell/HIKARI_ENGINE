@@ -57,7 +57,7 @@ namespace HIKARI::TOOLS::BAKING {
             const RENDER3D::LIGHTING::TRANSPORT::
                 LightingTransportScene& scene,
             const RENDER3D::LIGHTING::TRANSPORT::
-                LightingTransportSurfaceTarget& target,
+                LightingTransportLightmapPage& target,
             const RENDER3D::LIGHTING::TRANSPORT::
                 LightingTransportBakeSettings& settings,
             std::string* outMessage = nullptr);

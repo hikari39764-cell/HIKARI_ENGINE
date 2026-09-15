@@ -89,14 +89,14 @@ namespace HIKARI {
         if (!wantMouse && rightMouseDown) {
             const std::array<float, 2> look = input.GetAxis2D(
                 INPUT::ActionIds::EditorCameraLook);
-            yaw_ += look[0] * settings_.mouseLookSensitivity;
+            yaw_ -= look[0] * settings_.mouseLookSensitivity;
             pitch_ -= look[1] * settings_.mouseLookSensitivity;
             pitch_ = ClampPitch(pitch_);
         }
 
         const MATH::Vec3 forward = ComputeForward(yaw_, pitch_);
         const MATH::Vec3 worldUp{ 0.0f, 1.0f, 0.0f };
-        const MATH::Vec3 right = MATH::Normalize(MATH::Cross(worldUp, forward));
+        const MATH::Vec3 right = MATH::BuildViewBasisRH(forward, worldUp).right;
 
         // WASD/QE は右クリック中だけ飛行カメラとして扱う。
         const bool movementInputActive =

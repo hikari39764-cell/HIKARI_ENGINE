@@ -1,23 +1,16 @@
 #ifndef HIKARI_ATMOSPHERE_SKY_VIEW_CS_INCLUDED
 #define HIKARI_ATMOSPHERE_SKY_VIEW_CS_INCLUDED
 
-cbuffer AtmosphereLutCB : register(b0)
-{
-    float4 gAtmospherePlanetParams;
-    float4 gAtmosphereRayleigh;
-    float4 gAtmosphereMie;
-    float4 gAtmosphereOzone;
-    float4 gAtmosphereOzoneParams; // width, aerial perspective, observer sun T, albedo
-    float4 gAtmosphereSunDirection;
-    float4 gAtmosphereSunColorRadiance; // source color, source radiance
-    float4 gAtmosphereGroundColor;
-};
+#define HIKARI_ATMOSPHERE_DECLARE_LUT_CB
+
 
 Texture2D<float4> gAtmosphereTransmittance : register(t0);
 Texture2D<float4> gAtmosphereMultiScattering : register(t1);
 RWTexture2D<float4> gAtmosphereSkyView : register(u0);
 SamplerState gLinearClamp : register(s0);
 
+#define HIKARI_ATMOSPHERE_USE_TRANSMITTANCE_LUT
+#define HIKARI_ATMOSPHERE_USE_MULTISCATTERING_LUT
 #include "Include/Atmosphere/HIKARI_AtmosphereScattering.hlsli"
 
 [numthreads(8, 8, 1)]
@@ -56,20 +49,6 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
         groundColor,
         gAtmosphereOzoneParams.w,
         aerialPerspectiveStrength);
-    const float3 sunDirection = HikariAtmosphereSafeNormalize(
-        gAtmosphereSunDirection.xyz);
-    const float sunCosine = dot(float3(0.0f, 1.0f, 0.0f), sunDirection);
-    const float radiusUv = saturate(1.0f /
-        HikariAtmosphereTopHeight());
-    const float2 multiUv = float2(
-        saturate(sunCosine * 0.5f + 0.5f),
-        radiusUv);
-    const float3 multi = gAtmosphereMultiScattering.SampleLevel(
-        gLinearClamp, multiUv, 0.0f).rgb;
-    radiance += max(0.0f.xxx, gAtmosphereSunColorRadiance.rgb) *
-        max(0.0f, HikariAtmosphereFiniteOr(
-            gAtmosphereSunColorRadiance.a,
-            0.0f)) * multi * aerialPerspectiveStrength;
     gAtmosphereSkyView[dispatchThreadId.xy] =
         float4(
             all(isfinite(radiance)) ? max(0.0f.xxx, radiance) : 0.0f.xxx,

@@ -64,24 +64,7 @@ struct VSInput
     uint instanceId : SV_InstanceID;
 };
 
-struct VSOutput
-{
-    float4 position : SV_POSITION;
-    float3 worldPosWS : TEXCOORD1;
-    float3 normalWS : NORMAL;
-    float4 tangentWS : TANGENT;
-    float2 uv : TEXCOORD0;
-    float2 uv1 : TEXCOORD10;
-    nointerpolation uint materialDataIndex : TEXCOORD2;
-    nointerpolation uint forwardMeta : TEXCOORD3;
-    nointerpolation uint objectDataIndex : TEXCOORD4;
-    nointerpolation uint surfaceGpuSceneIndex : TEXCOORD5;
-    nointerpolation uint debugSurfaceId : TEXCOORD6;
-    float3 characterRightWS : TEXCOORD8;
-    float3 characterForwardWS : TEXCOORD9;
-    nointerpolation uint surfaceFeatureFlags : TEXCOORD7;
-    float3 waterSurfaceData : TEXCOORD11;
-};
+typedef HikariForwardVertexOutput VSOutput;
 
 float4x4 ResolveJointMatrix(uint jointIndex)
 {
@@ -171,7 +154,7 @@ VSOutput main(VSInput input)
     output.surfaceGpuSceneIndex = surfaceGpuSceneIndex;
     output.debugSurfaceId = debugSurfaceId;
     output.surfaceFeatureFlags = surfaceFeatureFlags;
-    output.waterSurfaceData = float3(localPos.xz, 0.0f);
+    output.surfaceFeatureData = float3(localPos.xz, 0.0f);
     output.characterRightWS = normalize(
         mul((float3x3)world,
             dot(localCharacterRight, localCharacterRight) > 1.0e-6f

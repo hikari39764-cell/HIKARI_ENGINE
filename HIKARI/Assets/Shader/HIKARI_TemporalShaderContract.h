@@ -13,7 +13,7 @@ namespace HIKARI::ASSETS::SHADER {
     inline constexpr std::string_view kTemporalInterfaceDependency =
         "EngineSdk/Include/Temporal/HIKARI_TemporalShaderInterface.hlsli";
     inline constexpr std::string_view kTemporalEngineInterfaceHash =
-        "de3b1faf6870cd737485e21ae917687558ebcf884f14089ed826e482e32a31f0";
+        "7be1946c9cb933f998fe1a2966ae849a109882ebd727c20fc2ad48f239653385";
 
     enum class TemporalShaderPass : uint8_t {
         Geometry, Masks, MotionVector, TaaResolve, Count

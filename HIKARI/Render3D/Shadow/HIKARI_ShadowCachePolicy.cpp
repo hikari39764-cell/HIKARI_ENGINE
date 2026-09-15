@@ -22,7 +22,6 @@ namespace HIKARI::SHADOW {
         identity_ = nullptr;
         layoutVersion_ = 0;
         sourceVersion_ = 0;
-        dirtyBaseVersion_ = 0;
         instanceCount_ = 0;
         valid_ = false;
     }
@@ -36,8 +35,16 @@ namespace HIKARI::SHADOW {
             identity_ == source &&
             layoutVersion_ == source->layoutVersion &&
             sourceVersion_ == source->sourceVersion &&
-            dirtyBaseVersion_ == source->dirtyBaseSourceVersion &&
             instanceCount_ == source->sourceInstanceCount;
+    }
+
+    bool ShadowSourceCacheState::CanPatch(
+        const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource* source) const {
+        return valid_ && source != nullptr && identity_ == source &&
+            layoutVersion_ == source->layoutVersion &&
+            instanceCount_ == source->sourceInstanceCount &&
+            sourceVersion_ != source->sourceVersion && sourceVersion_ != 0u &&
+            sourceVersion_ == source->dirtyBaseSourceVersion;
     }
 
     void ShadowSourceCacheState::Capture(
@@ -46,7 +53,6 @@ namespace HIKARI::SHADOW {
         identity_ = &source;
         layoutVersion_ = source.layoutVersion;
         sourceVersion_ = source.sourceVersion;
-        dirtyBaseVersion_ = source.dirtyBaseSourceVersion;
         instanceCount_ = source.sourceInstanceCount;
         valid_ = true;
     }

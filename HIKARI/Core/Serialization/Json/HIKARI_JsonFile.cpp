@@ -52,7 +52,7 @@ namespace HIKARI::SERIALIZATION::JSON {
         nlohmann::json& outDocument,
         std::string* outMessage) {
 
-        std::ifstream input(path);
+        std::ifstream input(path, std::ios::binary | std::ios::ate);
         if (!input.is_open()) {
             SetMessage(
                 outMessage,
@@ -60,8 +60,26 @@ namespace HIKARI::SERIALIZATION::JSON {
             return false;
         }
 
-        nlohmann::json document =
-            nlohmann::json::parse(input, nullptr, false);
+        // MSVC の file stream を JSON の文字ごとに呼ばない。追加メモリは
+        // 64 MiB に制限し、大きな文書は従来のストリーム経路で読む。
+        const auto byteCount = input.tellg();
+        input.seekg(0, std::ios::beg);
+        nlohmann::json document;
+        if (byteCount >= 0 && byteCount <= 64 * 1024 * 1024) {
+            std::string bytes(static_cast<size_t>(byteCount), '\0');
+            if (!input.read(bytes.data(), static_cast<std::streamsize>(bytes.size())) ||
+                input.peek() != std::char_traits<char>::eof() || input.bad()) {
+                SetMessage(outMessage, "JSON file changed or could not be read: " + path.generic_string());
+                return false;
+            }
+            if (bytes.find('\0') != std::string::npos) {
+                SetMessage(outMessage, "JSON file contains a raw NUL: " + path.generic_string());
+                return false;
+            }
+            document = nlohmann::json::parse(bytes, nullptr, false);
+        } else {
+            document = nlohmann::json::parse(input, nullptr, false);
+        }
         if (document.is_discarded()) {
             SetMessage(
                 outMessage,

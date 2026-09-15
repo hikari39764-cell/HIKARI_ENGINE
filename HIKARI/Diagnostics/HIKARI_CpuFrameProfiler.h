@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/HIKARI_RollingTimingWindow.h"
+
 #include <array>
 #include <chrono>
 #include <cstddef>
@@ -9,7 +11,7 @@
 
 namespace HIKARI::CPU_PROFILE {
 
-    inline constexpr std::size_t kRollingWindowFrameCount = 300u;
+    inline constexpr std::size_t kRollingWindowFrameCount = PERFORMANCE::kTimingWindowSampleCount;
     inline constexpr std::size_t kMaximumDynamicPasses = 128u;
     using DynamicPassHandle = uint32_t;
     inline constexpr DynamicPassHandle kInvalidDynamicPassHandle =

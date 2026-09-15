@@ -796,7 +796,7 @@ HikariMaterialLightingResponse HikariEvaluateStylizedMaterial(
     float3 directionalLight,
     float3 directionalRadiance,
     float shadowVisibility,
-    float3 pbrIndirect)
+    float3 pbrIndirect, uint receiveShadow)
 {
     HikariMaterialLightingResponse response =
         (HikariMaterialLightingResponse)0;
@@ -841,11 +841,14 @@ HikariMaterialLightingResponse HikariEvaluateStylizedMaterial(
         {
             continue;
         }
+        const float localVisibility = SampleLocalLightVisibility(
+            gHikariLocalLights[index], worldPosition, surface.geometricNormalWS, receiveShadow);
         const HikariDirectPbrLobes local =
             HikariEvaluateStylizedDirectLobes(
                 materialData,
                 surface,
-                HikariFilterLocalPbrContext(pbrContext, footprint, lightSample.directionToLight, lightSample.distanceToLight),
+                HikariFilterLocalPbrContext(pbrContext, footprint, lightSample.directionToLight,
+                    lightSample.distanceToLight, lightSample.sourceHalfAngleSineSquared),
                 lightSample.directionToLight,
                 lightSample.radiance,
                 tangentWS,
@@ -854,8 +857,8 @@ HikariMaterialLightingResponse HikariEvaluateStylizedMaterial(
                 uv,
                 mask,
                 frontFace,
-                1.0f,
-                1.0f);
+                localVisibility,
+                HikariStylizedShadowFactor(localVisibility));
         response.directDiffuse += local.diffuse;
         response.directSpecular += local.specular;
     }

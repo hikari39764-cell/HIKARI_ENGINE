@@ -31,6 +31,11 @@ namespace HIKARI::RENDER3D::LIGHTING {
 
     } // namespace
 
+    float SanitizeLocalLightSourceRadius(float radius) noexcept {
+        return std::isfinite(radius)
+            ? std::clamp(radius, 0.0f, kMaximumLocalLightSourceRadius) : 0.0f;
+    }
+
     bool IsLocalLightUploadable(const PointLight& light) noexcept {
         return ValidLocalSource(light);
     }

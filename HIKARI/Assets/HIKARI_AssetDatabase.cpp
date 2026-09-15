@@ -1691,8 +1691,20 @@ namespace HIKARI {
             shaderNeedsArtifact;
 
         const std::filesystem::path reportPath = record.importedDirectory / "import_report.json";
+        // manifest と report は同じ import 結果を持つ。大きな diagnostics を
+        // 起動ごとに二度 parse しない。失敗時は report だけが更新され得る。
+        bool needsReport = true;
+        if (record.guid.IsValid() && record.artifactManifest.guid == record.guid) {
+            record.lastImportSucceeded = record.artifactManifest.lastImportSucceeded;
+            record.lastImportMessage = record.artifactManifest.lastImportMessage;
+            std::error_code reportError{}, manifestError{};
+            const auto reportTime = std::filesystem::last_write_time(reportPath, reportError);
+            const auto manifestTime = std::filesystem::last_write_time(record.artifactManifestPath, manifestError);
+            // 同一時刻は低精度 filesystem 上の更新順を決められないため保守的に読む。
+            needsReport = !reportError && (manifestError || reportTime >= manifestTime);
+        }
         nlohmann::json report;
-        if (!record.importedDirectory.empty() &&
+        if (needsReport && !record.importedDirectory.empty() &&
             SERIALIZATION::JSON::ReadJsonFile(reportPath, report) &&
             report.is_object()) {
             record.lastImportSucceeded = report.value("success", false);

@@ -6,7 +6,12 @@
 
 #include "Render3D/Resources/HIKARI_RenderResourceHandle.h"
 
+namespace HIKARI { struct SkySettings; }
+namespace HIKARI::GFX { struct Context; }
+namespace HIKARI::ATMOSPHERE { struct AtmosphereLutConstants; }
+
 namespace HIKARI::IBL {
+    struct EnvironmentLightingCacheStatus;
 
     struct IblEnvironmentSource {
         RENDER3D::TextureResourceHandle irradianceResource{};
@@ -52,6 +57,13 @@ namespace HIKARI::IBL {
     };
 
     void Reset();
+    void BeginEnvironmentFrame();
+    void PrepareEnvironmentLighting(const GFX::Context& graphics, const SkySettings& sky,
+        const ATMOSPHERE::AtmosphereLutConstants& atmosphere,
+        RENDER3D::TextureResourceHandle source, D3D12_GPU_DESCRIPTOR_HANDLE atmosphereSkyView,
+        uint64_t frameIndex);
+    void ShutdownEnvironmentLighting(const GFX::Context& graphics);
+    const EnvironmentLightingCacheStatus& GetEnvironmentLightingCacheStatus();
 
     // グローバル設定を反映し、dimension/mip 検証後に三つの要素が揃っているかを返す。
     // ScopedEnvironmentOverride の有無はこの判定に影響しない。

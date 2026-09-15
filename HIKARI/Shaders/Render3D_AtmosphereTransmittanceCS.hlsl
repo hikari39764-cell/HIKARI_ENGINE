@@ -3,17 +3,8 @@
 
 // Runtime LUT pass dispatched by AtmosphereLutOwner. The owner supplies UAV
 // allocation, state transitions, and frame-fenced resource replacement.
-cbuffer AtmosphereLutCB : register(b0)
-{
-    float4 gAtmospherePlanetParams; // radius, top radius, Rayleigh H, Mie H
-    float4 gAtmosphereRayleigh;     // scattering RGB, sun angular radius
-    float4 gAtmosphereMie;          // scattering RGB, anisotropy
-    float4 gAtmosphereOzone;        // absorption RGB, center height
-    float4 gAtmosphereOzoneParams;   // width, aerial perspective, observer sun T, albedo
-    float4 gAtmosphereSunDirection;
-    float4 gAtmosphereSunColorRadiance; // source color, source radiance
-    float4 gAtmosphereGroundColor;
-};
+#define HIKARI_ATMOSPHERE_DECLARE_LUT_CB
+
 
 RWTexture2D<float4> gAtmosphereTransmittance : register(u0);
 
@@ -30,15 +21,8 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
         return;
     }
 
-    const float2 uv = (float2(dispatchThreadId.xy) + 0.5f) /
-        float2(max(1u, width), max(1u, height));
-    // X is mu (view angle), Y is normalized radius. This is the usual
-    // (r, mu) transmittance parameterization while retaining the existing
-    // 256x64 texture orientation.
-    const float radius = lerp(
-        HikariAtmospherePlanetRadius() + 0.5f,
-        HikariAtmosphereTopRadius() - 0.5f,
-        uv.y);
+    const float2 uv = float2(dispatchThreadId.xy) / float2(max(1u, width-1u), max(1u, height-1u));
+    const float radius = HikariAtmosphereLutRadius(uv.y);
     const float mu = uv.x * 2.0f - 1.0f;
     const float3 origin = HikariAtmospherePositionFromRadius(radius);
     const float3 direction = HikariAtmosphereDirectionFromMu(mu);

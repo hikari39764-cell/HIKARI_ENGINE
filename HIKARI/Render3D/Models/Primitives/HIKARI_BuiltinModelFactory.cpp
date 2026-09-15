@@ -43,8 +43,9 @@ namespace HIKARI::RENDER3D::MODELS {
             vertices.push_back(v1);
             vertices.push_back(v2);
             indices.push_back(base + 0);
-            indices.push_back(base + 1);
+            // 旧 fallback cube の順序も外向き法線と RH winding に揃える。
             indices.push_back(base + 2);
+            indices.push_back(base + 1);
         };
 
         pushTri(0, 1, 2, { 0, 0, -1 }); pushTri(0, 2, 3, { 0, 0, -1 });

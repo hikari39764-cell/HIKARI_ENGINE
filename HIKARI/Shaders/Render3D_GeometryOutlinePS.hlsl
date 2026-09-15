@@ -1,3 +1,4 @@
+#include "Include/Forward/HIKARI_ForwardVertexMeta.hlsli"
 #define HIKARI_MATERIAL_TEXTURE_POOL_SAMPLING 1
 #include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
 #include "Include/Material/HIKARI_MaterialBaseColorInputs.hlsli"
@@ -5,20 +6,7 @@
 #include "Include/Material/HIKARI_MaterialProgramData.hlsli"
 #include "Include/HIKARI_SurfaceGpuScene.hlsli"
 
-struct PSInput
-{
-    float4 position : SV_POSITION;
-    float3 worldPosWS : TEXCOORD1;
-    float3 normalWS : NORMAL;
-    float4 tangentWS : TANGENT;
-    float2 uv : TEXCOORD0;
-    float2 uv1 : TEXCOORD10;
-    nointerpolation uint materialDataIndex : TEXCOORD2;
-    nointerpolation uint forwardMeta : TEXCOORD3;
-    nointerpolation uint objectDataIndex : TEXCOORD4;
-    nointerpolation uint surfaceGpuSceneIndex : TEXCOORD5;
-    nointerpolation uint debugSurfaceId : TEXCOORD6;
-};
+typedef HikariForwardPixelInput PSInput;
 
 static const uint MATERIAL_ALPHA_MASK = 1u << 1u;
 SamplerState gLinearWrap : register(s0);

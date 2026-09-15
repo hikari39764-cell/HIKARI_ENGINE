@@ -573,35 +573,6 @@ namespace HIKARI::MESHRENDERER {
         }
     }
 
-    void BindMeshletVisibleClusterList(
-        const MeshBindingContext& ctx,
-        D3D12_GPU_VIRTUAL_ADDRESS visibleClusterListAddress) {
-
-        if (ctx.cmd == nullptr ||
-            visibleClusterListAddress == 0 ||
-            ROOT_PARAM::MeshletVisibleClusterList >= kTrackedRootParamCount) {
-            return;
-        }
-
-        MeshBindingStateCache* cache = ctx.cache;
-        if (cache != nullptr && cache->rootSignature == nullptr) {
-            return;
-        }
-        if (cache != nullptr &&
-            cache->cbvAddresses[ROOT_PARAM::MeshletVisibleClusterList] ==
-                visibleClusterListAddress) {
-            return;
-        }
-
-        ctx.cmd->SetGraphicsRootShaderResourceView(
-            ROOT_PARAM::MeshletVisibleClusterList,
-            visibleClusterListAddress);
-        if (cache != nullptr) {
-            cache->cbvAddresses[ROOT_PARAM::MeshletVisibleClusterList] =
-                visibleClusterListAddress;
-        }
-    }
-
     void BindMeshletDeformationPalettes(
         const MeshBindingContext& ctx,
         D3D12_GPU_VIRTUAL_ADDRESS paletteAddress) {

@@ -91,6 +91,8 @@ bool EqualStylizedCloudSettings(const StylizedCloudSettings &lhs,
          lhs.windSpeed == rhs.windSpeed &&
          lhs.shapeDetail == rhs.shapeDetail &&
          lhs.softness == rhs.softness &&
+         lhs.physicallyBasedLighting == rhs.physicallyBasedLighting &&
+         lhs.anisotropy == rhs.anisotropy &&
          lhs.lightAbsorption == rhs.lightAbsorption &&
          lhs.silverLining == rhs.silverLining &&
          lhs.horizonFade == rhs.horizonFade &&
@@ -135,7 +137,8 @@ bool EqualScreenSpaceReflectionSettings(
          lhs.maxDistance == rhs.maxDistance &&
          lhs.thickness == rhs.thickness &&
          lhs.maxRoughness == rhs.maxRoughness &&
-         lhs.edgeFade == rhs.edgeFade && lhs.stride == rhs.stride;
+         lhs.edgeFade == rhs.edgeFade && lhs.stride == rhs.stride &&
+         lhs.rayTracingFallback == rhs.rayTracingFallback;
 }
 
 bool EqualDirectionalShadowSettings(const DirectionalShadowSettings &lhs,
@@ -156,6 +159,7 @@ bool EqualDirectionalShadowSettings(const DirectionalShadowSettings &lhs,
 
 bool EqualPointLight(const PointLight &lhs, const PointLight &rhs) {
   return lhs.enabled == rhs.enabled && EqualVec3(lhs.position, rhs.position) &&
+         lhs.sourceRadius == rhs.sourceRadius &&
          lhs.range == rhs.range && EqualVec3(lhs.color, rhs.color) &&
          lhs.intensity == rhs.intensity && lhs.priority == rhs.priority &&
          lhs.distanceFalloff == rhs.distanceFalloff;
@@ -163,6 +167,7 @@ bool EqualPointLight(const PointLight &lhs, const PointLight &rhs) {
 
 bool EqualSpotLight(const SpotLight &lhs, const SpotLight &rhs) {
   return lhs.enabled == rhs.enabled && EqualVec3(lhs.position, rhs.position) &&
+         lhs.sourceRadius == rhs.sourceRadius &&
          lhs.range == rhs.range && EqualVec3(lhs.direction, rhs.direction) &&
          lhs.innerConeAngleDegrees == rhs.innerConeAngleDegrees &&
          lhs.outerConeAngleDegrees == rhs.outerConeAngleDegrees &&

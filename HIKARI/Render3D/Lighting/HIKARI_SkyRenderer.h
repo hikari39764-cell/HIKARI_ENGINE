@@ -112,6 +112,7 @@ namespace HIKARI::SKYRENDERER {
         SkyManager& skyManager);
     const SkyRendererDebugState& GetDebugState();
     const SkyEnvironmentData& GetEnvironmentData();
+    MATH::Vec3 ResolveAmbientLightColor(const SceneEnvironment& environment);
     AtmosphereFrameData BuildAtmosphereFrameData(
         const SceneEnvironment& environment);
     AtmosphereFrameData BuildAtmosphereFrameData(

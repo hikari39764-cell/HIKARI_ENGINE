@@ -71,6 +71,12 @@ namespace HIKARI::RENDER3D {
             static_cast<uint8_t>(VolumetricLightingQuality::High)) {
             settings.volumetricLightingQuality = VolumetricLightingQuality::Balanced;
         }
+        if (static_cast<uint8_t>(settings.dynamicGiQuality) > static_cast<uint8_t>(DynamicGiQuality::High)) {
+            settings.dynamicGiQuality = DynamicGiQuality::Off;
+        }
+        if (static_cast<uint8_t>(settings.localShadowQuality) > static_cast<uint8_t>(LocalShadowQuality::High)) {
+            settings.localShadowQuality = LocalShadowQuality::Balanced;
+        }
         if (static_cast<uint8_t>(settings.stylizedCloudQuality) >
             static_cast<uint8_t>(StylizedCloudQuality::High)) {
             settings.stylizedCloudQuality = StylizedCloudQuality::Balanced;
@@ -104,6 +110,8 @@ namespace HIKARI::RENDER3D {
             lhs.frameGenerationMultiplier == rhs.frameGenerationMultiplier &&
             lhs.volumetricLightingQuality == rhs.volumetricLightingQuality &&
             lhs.stylizedCloudQuality == rhs.stylizedCloudQuality &&
+            lhs.dynamicGiQuality == rhs.dynamicGiQuality &&
+            lhs.localShadowQuality == rhs.localShadowQuality &&
             lhs.taaHistoryWeight == rhs.taaHistoryWeight &&
             lhs.taaVarianceClipGamma == rhs.taaVarianceClipGamma &&
             lhs.taaDepthRejection == rhs.taaDepthRejection &&
@@ -246,6 +254,24 @@ namespace HIKARI::RENDER3D {
         case VolumetricLightingQuality::Balanced: return "Balanced";
         case VolumetricLightingQuality::High: return "High";
         default: return "Unknown";
+        }
+    }
+
+    const char* DynamicGiQualityLabel(DynamicGiQuality quality) {
+        switch (quality) {
+        case DynamicGiQuality::Off: return "Off";
+        case DynamicGiQuality::Low: return "Low";
+        case DynamicGiQuality::High: return "High";
+        default: return "Balanced";
+        }
+    }
+
+    const char* LocalShadowQualityLabel(LocalShadowQuality quality) {
+        switch (quality) {
+        case LocalShadowQuality::Off: return "Off";
+        case LocalShadowQuality::Low: return "Low";
+        case LocalShadowQuality::High: return "High";
+        default: return "Balanced";
         }
     }
 

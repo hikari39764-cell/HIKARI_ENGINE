@@ -2,634 +2,350 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstring>
-#include <utility>
-
-#include <d3dcompiler.h>
 #include <d3dx12.h>
-
+#include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
+#include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
+#include "Gfx/HIKARI_DynamicUploadBuffer.h"
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
-#include "Gfx/HIKARI_ShaderCompiler.h"
-#include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
+#include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
+#include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 
 namespace HIKARI::RENDER3D::REFLECTION {
-
     namespace {
-        struct alignas(16) ScreenSpaceReflectionConstants {
-            MATH::Mat4 viewProj{};
-            MATH::Mat4 invViewProj{};
-            MATH::Vec4 cameraPosition{};
-            MATH::Vec4 screenParams{};
-            MATH::Vec4 traceScreenParams{};
-            MATH::Vec4 traceParams{};
-            MATH::Vec4 resolveParams{};
-            MATH::Vec4 frameParams{};
+        using Microsoft::WRL::ComPtr;
+        constexpr uint32_t kResidentViews = 2;
+        constexpr uint64_t kViewTargetBudget = 32ull * 1024 * 1024;
+        constexpr DXGI_FORMAT kFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        constexpr auto kReadState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        struct alignas(16) Constants {
+            MATH::Mat4 viewProj{}, invViewProj{};
+            MATH::Vec4 cameraPosition{}, screenParams{}, traceScreenParams{};
+            MATH::Vec4 traceParams{}, resolveParams{}, frameParams{};
+            MATH::Mat4 previousInvViewProj{};
+            MATH::Vec4 previousCameraPosition{}, jitterPixels{};
         };
+        static_assert(sizeof(Constants) == 320);
 
-        static_assert(sizeof(ScreenSpaceReflectionConstants) == 224u);
-
-        uint32_t AlignConstantBufferSize(uint32_t size) {
-            return (size + 255u) & ~255u;
+        float FiniteClamp(float value, float lower, float upper, float fallback) {
+            return std::isfinite(value) ? std::clamp(value, lower, upper) : fallback;
         }
 
-        uint32_t ResolveDebugMode(RenderDebugView debugView) {
-            if (debugView == RenderDebugView::SsrConfidence) {
-                return 1u;
+        // SSR の半解像度 trace と検証用の履歴のみ。Scene の depth/HZB/Motion は借りる。
+        struct Target {
+            ComPtr<ID3D12Resource> resource;
+            RenderResourceView srv;
+            D3D12_CPU_DESCRIPTOR_HANDLE rtv{};
+            D3D12_RESOURCE_STATES state = kReadState;
+            uint64_t allocatedBytes = 0;
+            void Reset(const GFX::Context& graphics, bool completed = false) {
+                if (completed) {
+                    ReleaseRenderResourceDescriptor(srv); srv = {};
+                    resource.Reset();
+                } else {
+                    RetireRenderResourceDescriptor(srv, graphics, "SSR.SRV");
+                    GFX::RetireD3D12ObjectForFrame(resource, graphics, "SSR.Target");
+                }
+                rtv = {}; state = kReadState; allocatedBytes = 0;
             }
-            if (debugView == RenderDebugView::SsrHit) {
-                return 2u;
+            void Transition(ID3D12GraphicsCommandList* commands, D3D12_RESOURCE_STATES next) {
+                if (state == next) return;
+                const auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(resource.Get(), state, next);
+                commands->ResourceBarrier(1, &barrier);
+                state = next;
             }
-            return 0u;
-        }
-
-        void TransitionResource(
-            ID3D12GraphicsCommandList* cmd,
-            ID3D12Resource* resource,
-            D3D12_RESOURCE_STATES& currentState,
-            D3D12_RESOURCE_STATES targetState) {
-
-            if (cmd == nullptr ||
-                resource == nullptr ||
-                currentState == targetState) {
-                return;
+        };
+        struct ViewResources {
+            TEMPORAL::TemporalViewLease lease{};
+            uint64_t lastFrame = 0, settingsKey = 0, useSerial = 0, lastRetireFence = 0;
+            uint32_t width = 0, height = 0, writeIndex = 0, targetCount = 0;
+            uint32_t sourceWidth = 0, sourceHeight = 0;
+            bool valid = false;
+            // trace, radiance[2], validation[2] (oct-normal, roughness, linear distance)
+            std::array<Target, 5> targets;
+            ComPtr<ID3D12DescriptorHeap> rtvHeap;
+            void Reset(const GFX::Context& graphics, bool completed = false) {
+                for (auto& target : targets) target.Reset(graphics, completed);
+                if (completed) rtvHeap.Reset();
+                else GFX::RetireD3D12ObjectForFrame(rtvHeap, graphics, "SSR.RTVHeap");
+                lease = {}; lastFrame = settingsKey = useSerial = lastRetireFence = 0;
+                width = height = sourceWidth = sourceHeight = writeIndex = targetCount = 0; valid = false;
             }
-            const D3D12_RESOURCE_BARRIER barrier =
-                CD3DX12_RESOURCE_BARRIER::Transition(
-                    resource,
-                    currentState,
-                    targetState);
-            cmd->ResourceBarrier(1u, &barrier);
-            currentState = targetState;
-        }
+            bool Ensure(const GFX::Context& graphics, uint32_t requestedWidth, uint32_t requestedHeight,
+                bool history, TEMPORAL::TemporalViewLease requestedLease, bool& deferred) {
+                const uint32_t count = history ? 5u : 1u;
+                if (sourceWidth == requestedWidth && sourceHeight == requestedHeight && targetCount == count &&
+                    lease.Matches(requestedLease)) return true;
+                const auto completed = graphics.frameFence->GetCompletedValue();
+                if (completed == UINT64_MAX || completed < lastRetireFence) { deferred = true; return false; }
+                // GPU が使う旧 target を積み増さない。未完了なら今 frame は既存 reflection fallback を使う。
+                Reset(graphics, true);
+                uint32_t resolvedWidth = requestedWidth, resolvedHeight = requestedHeight;
+                auto desc = CD3DX12_RESOURCE_DESC::Tex2D(kFormat, resolvedWidth, resolvedHeight,
+                    1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+                uint64_t allocationBytes = 0;
+                for (;;) {
+                    allocationBytes = graphics.device->GetResourceAllocationInfo(0, 1, &desc).SizeInBytes;
+                    if (!allocationBytes || allocationBytes == UINT64_MAX) return false;
+                    if (allocationBytes <= kViewTargetBudget / count) break;
+                    if (resolvedWidth == 1 && resolvedHeight == 1) return false;
+                    // アラインメントを含む実 allocation で判定し、縦横比を保って縮小する。
+                    const double scale = std::min(0.95, std::sqrt(double(kViewTargetBudget / count) / allocationBytes));
+                    resolvedWidth = std::max(1u, uint32_t(resolvedWidth * scale));
+                    resolvedHeight = std::max(1u, uint32_t(resolvedHeight * scale));
+                    desc.Width = resolvedWidth; desc.Height = resolvedHeight;
+                }
+                const D3D12_DESCRIPTOR_HEAP_DESC heapDesc{D3D12_DESCRIPTOR_HEAP_TYPE_RTV, count};
+                if (FAILED(graphics.device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&rtvHeap)))) return false;
+                const CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_DEFAULT);
+                const D3D12_CLEAR_VALUE clear{kFormat, {0, 0, 0, 0}};
+                const UINT stride = graphics.device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+                for (uint32_t i = 0; i < count; ++i) {
+                    auto& target = targets[i];
+                    if (FAILED(graphics.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc,
+                        kReadState, &clear, IID_PPV_ARGS(&target.resource)))) { Reset(graphics, true); return false; }
+                    target.srv = AllocateRenderResourceDescriptor();
+                    if (!target.srv.IsValid()) { Reset(graphics, true); return false; }
+                    D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
+                    srv.Format = kFormat; srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+                    srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+                    srv.Texture2D.MipLevels = 1;
+                    graphics.device->CreateShaderResourceView(target.resource.Get(), &srv, target.srv.cpu);
+                    target.rtv = rtvHeap->GetCPUDescriptorHandleForHeapStart(); target.rtv.ptr += i * stride;
+                    graphics.device->CreateRenderTargetView(target.resource.Get(), nullptr, target.rtv);
+                    target.resource->SetName(i == 0 ? L"HIKARI.SSR.Trace" : i < 3 ?
+                        L"HIKARI.SSR.HistoryRadiance" : L"HIKARI.SSR.HistoryValidation");
+                    target.allocatedBytes = allocationBytes;
+                }
+                sourceWidth = requestedWidth; sourceHeight = requestedHeight;
+                width = resolvedWidth; height = resolvedHeight; targetCount = count; lease = requestedLease;
+                return true;
+            }
+        };
     }
 
-    bool ScreenSpaceReflectionRenderer::Render(
-        const GFX::Context& graphics,
-        const PIPELINE::RenderTargetAccess& targetAccess,
-        const SURFACE::SceneSurfaceSet& surfaces,
-        const MESHRENDERER::CameraCB& camera,
-        const ScreenSpaceReflectionSettings& settings,
-        RenderDebugView debugView) {
+    struct ScreenSpaceReflectionRenderer::State {
+        ComPtr<ID3D12RootSignature> root;
+        ComPtr<ID3D12PipelineState> tracePipeline, historyPipeline, resolvePipeline;
+        std::array<DX::DynamicUploadBuffer, GFX::kFrameResourceCount> uploads;
+        std::array<ViewResources, kResidentViews> views;
+        GFX::Context context{};
+        uint64_t useSerial = 0, pipelineRetryFrame = 0;
 
+        bool EnsurePipeline(const GFX::Context& graphics) {
+            if (root && tracePipeline && historyPipeline && resolvePipeline) return true;
+            std::array<CD3DX12_DESCRIPTOR_RANGE, 11> ranges;
+            std::array<CD3DX12_ROOT_PARAMETER, 12> parameters;
+            parameters[0].InitAsConstantBufferView(0, 0, D3D12_SHADER_VISIBILITY_PIXEL);
+            for (UINT i = 0; i < ranges.size(); ++i) {
+                ranges[i].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, i);
+                parameters[i + 1].InitAsDescriptorTable(1, &ranges[i], D3D12_SHADER_VISIBILITY_PIXEL);
+            }
+            std::array<CD3DX12_STATIC_SAMPLER_DESC, 2> samplers;
+            for (UINT i = 0; i < samplers.size(); ++i)
+                samplers[i].Init(i, i == 0 ? D3D12_FILTER_MIN_MAG_MIP_LINEAR : D3D12_FILTER_MIN_MAG_MIP_POINT,
+                    D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+            const CD3DX12_ROOT_SIGNATURE_DESC rootDesc(UINT(parameters.size()), parameters.data(),
+                UINT(samplers.size()), samplers.data());
+            ComPtr<ID3DBlob> signature, errors;
+            if (!HIKARI_DX_CHECK(D3D12SerializeRootSignature(&rootDesc, D3D_ROOT_SIGNATURE_VERSION_1,
+                &signature, &errors), "SSR root serialization") ||
+                !HIKARI_DX_CHECK(graphics.device->CreateRootSignature(0, signature->GetBufferPointer(),
+                    signature->GetBufferSize(), IID_PPV_ARGS(&root)), "SSR root creation")) return false;
+            namespace SHADER = ASSETS::SHADER;
+            SHADER::ShaderAssetContractExpectation contract{};
+            contract.engineInterfaceId = "HIKARI.ScreenSpaceReflection"; contract.engineInterfaceVersion = 1;
+            contract.rootLayoutId = "HIKARI.ScreenSpaceReflection.Root"; contract.rootLayoutVersion = 1;
+            if (!HASH::ComputeSha256("SSR:320;scene-linear radiance/confidence;half-resolution validated history;unjittered motion pixels;metadata RG32F",
+                contract.engineInterfaceHash) || !HASH::ComputeSha256("CBV(b0);SRV(t0..t10,individual);Sampler(s0,linearClamp);Sampler(s1,pointClamp)",
+                    contract.rootLayoutHash)) return false;
+            const auto caps = GFX::QueryShaderDeviceCapabilities(graphics.device);
+            contract.availableDeviceCaps = {caps.shaderModel, caps.rootSignatureVersion, caps.featureMask};
+            const auto load = [&](const char* entry, SHADER::ShaderStage stage) {
+                auto result = SHADER::ResolveBuiltinShaderEntry("HIKARI.EngineShader.Post_ScreenSpaceReflections",
+                    {entry, stage, stage == SHADER::ShaderStage::Vertex ? "vs_6_0" : "ps_6_0"}, contract);
+                if (!result) DEBUGLOG::PushRenderError("SSR cooked shader unavailable: " + result.diagnostic);
+                return result;
+            };
+            const auto vertex = load("VSMain", SHADER::ShaderStage::Vertex);
+            if (!vertex) return false;
+            D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
+            desc.pRootSignature = root.Get();
+            const auto vs = vertex.lease.GetDxil(); desc.VS = {vs.data(), vs.size()};
+            desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); desc.SampleMask = UINT_MAX;
+            desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT); desc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+            desc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+            desc.DepthStencilState.DepthEnable = FALSE; desc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+            desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+            desc.SampleDesc.Count = 1; desc.RTVFormats[0] = kFormat;
+            for (UINT i = 0; i < 3; ++i) {
+                const auto pixel = load(i == 0 ? "PSTrace" : i == 1 ? "PSHistory" : "PSResolve", SHADER::ShaderStage::Pixel);
+                if (!pixel) return false;
+                const auto ps = pixel.lease.GetDxil(); desc.PS = {ps.data(), ps.size()};
+                desc.NumRenderTargets = i == 1 ? 2u : 1u;
+                desc.RTVFormats[1] = i == 1 ? kFormat : DXGI_FORMAT_UNKNOWN;
+                auto& pipeline = i == 0 ? tracePipeline : i == 1 ? historyPipeline : resolvePipeline;
+                if (!HIKARI_DX_CHECK(graphics.device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline)), "SSR pipeline creation")) return false;
+            }
+            return true;
+        }
+    };
+
+    ScreenSpaceReflectionRenderer::ScreenSpaceReflectionRenderer() : state_(std::make_unique<State>()) {}
+    ScreenSpaceReflectionRenderer::~ScreenSpaceReflectionRenderer() = default;
+
+    bool ScreenSpaceReflectionRenderer::Render(const GFX::Context& graphics,
+        const PIPELINE::RenderTargetAccess& targetAccess, const SURFACE::SceneSurfaceSet& surfaces,
+        const MESHRENDERER::CameraCB& camera, const ScreenSpaceReflectionSettings& settings,
+        RenderDebugView debugView, const TEMPORAL::TemporalFrameState& temporal) {
         debugState_ = {};
-        debugState_.requested =
-            settings.enabled &&
-            settings.quality != ScreenSpaceReflectionQuality::Off;
+        debugState_.requested = settings.enabled && settings.quality != ScreenSpaceReflectionQuality::Off;
         using Semantic = GRAPH::RenderGraphSemantic;
         using Phase = GRAPH::RenderGraphSemanticPhase;
-        const RenderTextureView* sceneColorOpaque =
-            surfaces.TryGetTexture(
-                GRAPH::RenderGraphSurfaceKey{
-                    Semantic::SceneColorOpaque, Phase::Opaque });
-        const RenderTextureView* sceneDepth = surfaces.TryGetTexture(
-            GRAPH::RenderGraphSurfaceKey{
-                Semantic::SceneDepth, Phase::Imported });
-        const RenderTextureView* packedSurface = surfaces.TryGetTexture(
-            GRAPH::RenderGraphSurfaceKey{
-                Semantic::PackedSurface, Phase::PostOpaque });
-        const DEPTH::DepthPyramidView* currentDepthPyramid =
-            surfaces.TryGetDepthPyramid(
-                GRAPH::RenderGraphSurfaceKey{
-                    Semantic::CurrentDepthPyramid, Phase::PostOpaque });
-        const auto* reflectionFallback = surfaces.TryGetTexture({Semantic::ReflectionFallbackSpecular, Phase::Opaque});
-        const auto* reflectionResponse = surfaces.TryGetTexture({Semantic::ReflectionSpecularResponse, Phase::Opaque});
-        debugState_.sceneSurfaceReady = surfaces.HasOpaqueSurface() && reflectionFallback && reflectionResponse;
+        const auto* color = surfaces.TryGetTexture({Semantic::SceneColorOpaque, Phase::Opaque});
+        const auto* depth = surfaces.TryGetTexture({Semantic::SceneDepth, Phase::Imported});
+        const auto* surface = surfaces.TryGetTexture({Semantic::PackedSurface, Phase::PostOpaque});
+        const auto* hzb = surfaces.TryGetDepthPyramid({Semantic::CurrentDepthPyramid, Phase::PostOpaque});
+        const auto* fallback = surfaces.TryGetTexture({Semantic::ReflectionFallbackSpecular, Phase::Opaque});
+        const auto* response = surfaces.TryGetTexture({Semantic::ReflectionSpecularResponse, Phase::Opaque});
+        const auto* motion = surfaces.TryGetTexture({Semantic::MotionVectors, Phase::Temporal});
+        const auto* metadata = surfaces.TryGetTexture({Semantic::MotionMetadata, Phase::Temporal});
+        debugState_.sceneSurfaceReady = color && depth && surface && fallback && response;
         debugState_.currentHzbReady = surfaces.HasCurrentDepthHierarchy();
-        debugState_.hzbMipCount =
-            currentDepthPyramid != nullptr
-                ? currentDepthPyramid->mipCount
-                : 0u;
-        debugState_.maxDistance = settings.maxDistance;
-        debugState_.maxRoughness = settings.maxRoughness;
-        debugState_.maxSteps =
-            ResolveScreenSpaceReflectionMaxSteps(settings.quality);
-        debugState_.traceWidth =
-            sceneDepth != nullptr
-                ? (sceneDepth->width + 1u) / 2u
-                : 0u;
-        debugState_.traceHeight =
-            sceneDepth != nullptr
-                ? (sceneDepth->height + 1u) / 2u
-                : 0u;
-
-        if (!debugState_.requested ||
-            !debugState_.sceneSurfaceReady ||
-            !debugState_.currentHzbReady ||
-            sceneColorOpaque == nullptr ||
-            sceneDepth == nullptr ||
-            packedSurface == nullptr ||
-            currentDepthPyramid == nullptr ||
-            graphics.device == nullptr ||
-            graphics.cmdList == nullptr ||
-            graphics.srvHeap == nullptr) {
-            return false;
-        }
-        if (reflectionFallback->width != sceneDepth->width || reflectionFallback->height != sceneDepth->height ||
-            reflectionResponse->width != sceneDepth->width || reflectionResponse->height != sceneDepth->height) return false;
-        if (!EnsurePipeline(graphics.device) ||
-            !EnsureConstantBuffer(graphics.device) ||
-            !EnsureTraceTarget(
-                graphics.device,
-                debugState_.traceWidth,
-                debugState_.traceHeight)) {
-            return false;
-        }
+        auto& state = *state_;
+        if (!debugState_.requested || !debugState_.sceneSurfaceReady || !debugState_.currentHzbReady || !hzb || !graphics.device ||
+            !graphics.cmdList || !graphics.srvHeap || !graphics.deviceGeneration || !graphics.frameFence ||
+            !graphics.currentFrameRetireFenceValue || graphics.frameIndex >= GFX::kFrameResourceCount ||
+            !temporal.view.IsValid() || !surfaces.MatchesFrame(temporal.publication) ||
+            surfaces.GetDeviceGeneration() != graphics.deviceGeneration) return false;
+        for (const auto* input : {color, surface, fallback, response})
+            if (input->width != depth->width || input->height != depth->height) return false;
+        // 別 device/heap の履歴や PSO は使わない。既存 shutdown が Release を所有する。
+        if (state.context.device && (state.context.device != graphics.device ||
+            state.context.deviceGeneration != graphics.deviceGeneration || state.context.srvHeap != graphics.srvHeap ||
+            state.context.frameFence != graphics.frameFence)) return false;
+        state.context = graphics;
+        UpdateRenderResourceDescriptorPoolContext(graphics);
+        const auto pool = GetRenderResourceDescriptorPoolStats();
+        if (!pool.contextAvailable || !pool.contextCompatible || temporal.frameIndex < state.pipelineRetryFrame) return false;
+        if (!state.EnsurePipeline(graphics)) { state.pipelineRetryFrame = temporal.frameIndex + 60; return false; }
         debugState_.pipelineReady = true;
-
-        const uint32_t frameSlot =
-            graphics.frameIndex % GFX::kFrameResourceCount;
-        ScreenSpaceReflectionConstants constants{};
-        constants.viewProj = camera.viewProj;
-        constants.invViewProj = camera.invViewProj;
+        debugState_.hzbMipCount = hzb->mipCount;
+        debugState_.maxSteps = ResolveScreenSpaceReflectionMaxSteps(settings.quality);
+        debugState_.traceWidth = depth->width / 2u + depth->width % 2u;
+        debugState_.traceHeight = depth->height / 2u + depth->height % 2u;
+        debugState_.maxDistance = FiniteClamp(settings.maxDistance, 1, 200, 30);
+        debugState_.maxRoughness = FiniteClamp(settings.maxRoughness, 0.05f, 1, 0.8f);
+        const bool useHistory = settings.quality != ScreenSpaceReflectionQuality::Low &&
+            debugView != RenderDebugView::SsrHit && debugView != RenderDebugView::SsrConfidence;
+        auto* view = &state.views[0];
+        for (auto& candidate : state.views) {
+            if (candidate.lease.Matches(temporal.view)) { view = &candidate; break; }
+            if (candidate.useSerial < view->useSerial) view = &candidate;
+        }
+        if (view->lease.Matches(temporal.view) && view->useSerial != 0 && view->lastFrame == temporal.frameIndex) return false;
+        const bool ready = view->Ensure(graphics, debugState_.traceWidth, debugState_.traceHeight,
+            useHistory, temporal.view, debugState_.resizeDeferred);
+        for (const auto& resident : state.views) {
+            debugState_.residentViews += resident.targetCount != 0;
+            for (const auto& target : resident.targets) debugState_.workingSetBytes += target.allocatedBytes;
+        }
+        if (!ready) return false;
+        debugState_.resolutionLimited = view->width != debugState_.traceWidth || view->height != debugState_.traceHeight;
+        debugState_.traceWidth = view->width; debugState_.traceHeight = view->height;
+        view->useSerial = ++state.useSerial;
+        Constants constants{};
+        constants.viewProj = camera.viewProj; constants.invViewProj = camera.invViewProj;
         constants.cameraPosition = camera.cameraPos;
-        constants.screenParams = {
-            static_cast<float>(sceneDepth->width),
-            static_cast<float>(sceneDepth->height),
-            1.0f / static_cast<float>(
-                (std::max)(1u, sceneDepth->width)),
-                1.0f / static_cast<float>(
-                    (std::max)(1u, sceneDepth->height))
+        constants.screenParams = {float(depth->width), float(depth->height), 1.0f / depth->width, 1.0f / depth->height};
+        constants.traceScreenParams = {float(view->width), float(view->height), 1.0f / view->width, 1.0f / view->height};
+        constants.traceParams = {debugState_.maxDistance, FiniteClamp(settings.thickness, 0.0001f, 0.05f, 0.002f),
+            FiniteClamp(settings.intensity, 0, 2, 1), debugState_.maxRoughness};
+        constants.resolveParams = {FiniteClamp(settings.stride, 0.02f, 2, 0.1f), float(debugState_.maxSteps),
+            float(std::max(1u, hzb->mipCount)), FiniteClamp(settings.edgeFade, 0.01f, 0.35f, 0.1f)};
+        uint64_t key = HASH::Fnv1aBytes(HASH::kFnv1a64OffsetBasis, &constants.traceParams, sizeof(constants.traceParams));
+        key = HASH::Fnv1aBytes(key, &constants.resolveParams, sizeof(constants.resolveParams));
+        const bool motionReady = motion && metadata && motion->width == depth->width && motion->height == depth->height &&
+            metadata->width == depth->width && metadata->height == depth->height;
+        debugState_.historyUsed = useHistory && view->valid && temporal.historyValid && !temporal.resetHistory &&
+            temporal.camera.previousValid && view->lastFrame + 1 == temporal.frameIndex && view->settingsKey == key && motionReady;
+        constants.frameParams = {debugView == RenderDebugView::SsrConfidence ? 1.0f : debugView == RenderDebugView::SsrHit ? 2.0f : 0.0f,
+            float(temporal.frameIndex & 0xffffu), debugState_.historyUsed ? 1.0f : 0.0f, 0.9f};
+        constants.previousInvViewProj = MATH::Inverse(temporal.camera.prevViewProj);
+        constants.previousCameraPosition = temporal.camera.prevCameraPos;
+        constants.jitterPixels = {temporal.camera.jitter.x, temporal.camera.jitter.y, temporal.camera.prevJitter.x, temporal.camera.prevJitter.y};
+        // 失敗した frame の履歴は公開しない。CB は view ごとに immutable な upload slice を持つ。
+        view->valid = false;
+        auto& upload = state.uploads[graphics.frameIndex];
+        if (!upload.IsInitialized() && !upload.Init(graphics.device, 4096)) return false;
+        upload.ResetForFrame(graphics.currentFrameRetireFenceValue);
+        const auto slice = upload.Allocate(sizeof(Constants));
+        if (!slice) return false;
+        std::memcpy(slice.cpuAddress, &constants, sizeof(constants));
+        if (!targetAccess.BeginDepthRead()) return false;
+        // composite が失敗しても trace/history の GPU 使用と同一 frame の再入を記録する。
+        view->lastRetireFence = graphics.currentFrameRetireFenceValue;
+        view->lastFrame = temporal.frameIndex;
+        auto* commands = graphics.cmdList;
+        GFX::PIX::ScopedGpuEvent event(commands, GFX::PIX::kColorPost, "ScreenSpaceReflections");
+        GFX::GPU_PROFILE::ScopedGpuTimer timer(commands, GFX::GPU_PROFILE::Pass::ScreenSpaceReflections);
+        auto& trace = view->targets[0];
+        const auto bind = [&](D3D12_GPU_DESCRIPTOR_HANDLE traceSrv) {
+            ID3D12DescriptorHeap* heaps[]{graphics.srvHeap}; commands->SetDescriptorHeaps(1, heaps);
+            commands->SetGraphicsRootSignature(state.root.Get());
+            commands->SetGraphicsRootConstantBufferView(0, slice.gpuAddress);
+            const auto& history = view->targets[1 + (1 - view->writeIndex)];
+            const auto& validation = view->targets[3 + (1 - view->writeIndex)];
+            const std::array srvs{color->srv, depth->srv, surface->srv, hzb->pyramidSrv, traceSrv, fallback->srv, response->srv,
+                useHistory ? history.srv.gpu : trace.srv.gpu, useHistory ? validation.srv.gpu : trace.srv.gpu,
+                motionReady ? motion->srv : color->srv, motionReady ? metadata->srv : color->srv};
+            for (UINT i = 0; i < srvs.size(); ++i) commands->SetGraphicsRootDescriptorTable(i + 1, srvs[i]);
+            commands->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            commands->IASetVertexBuffers(0, 0, nullptr); commands->IASetIndexBuffer(nullptr);
         };
-        constants.traceScreenParams = {
-            static_cast<float>(traceWidth_),
-            static_cast<float>(traceHeight_),
-            1.0f / static_cast<float>((std::max)(1u, traceWidth_)),
-            1.0f / static_cast<float>((std::max)(1u, traceHeight_))
-        };
-        constants.traceParams = {
-            std::clamp(settings.maxDistance, 1.0f, 200.0f),
-            std::clamp(settings.thickness, 0.0001f, 0.05f),
-            std::clamp(settings.intensity, 0.0f, 2.0f),
-            std::clamp(settings.maxRoughness, 0.05f, 1.0f)
-        };
-        constants.resolveParams = {
-            std::clamp(settings.stride, 0.02f, 2.0f),
-            static_cast<float>(debugState_.maxSteps),
-            static_cast<float>(
-                (std::max)(
-                    1u,
-                    currentDepthPyramid->mipCount)),
-            std::clamp(settings.edgeFade, 0.01f, 0.35f)
-        };
-        constants.frameParams = {
-            static_cast<float>(ResolveDebugMode(debugView)),
-            static_cast<float>(graphics.frameIndex & 0xffffu),
-            0.0f,
-            0.0f
-        };
-        std::memcpy(
-            constantMapped_ +
-                static_cast<size_t>(constantStride_) * frameSlot,
-            &constants,
-            sizeof(constants));
-
-        if (!targetAccess.BeginDepthRead()) {
-            return false;
+        const D3D12_VIEWPORT viewport{0, 0, float(view->width), float(view->height), 0, 1};
+        const D3D12_RECT scissor{0, 0, LONG(view->width), LONG(view->height)};
+        commands->RSSetViewports(1, &viewport); commands->RSSetScissorRects(1, &scissor);
+        bind(trace.srv.gpu);
+        trace.Transition(commands, D3D12_RESOURCE_STATE_RENDER_TARGET);
+        commands->OMSetRenderTargets(1, &trace.rtv, FALSE, nullptr);
+        commands->SetPipelineState(state.tracePipeline.Get()); commands->DrawInstanced(3, 1, 0, 0);
+        trace.Transition(commands, kReadState);
+        auto resolvedTrace = trace.srv.gpu;
+        if (useHistory) {
+            auto& history = view->targets[1 + view->writeIndex];
+            auto& validation = view->targets[3 + view->writeIndex];
+            history.Transition(commands, D3D12_RESOURCE_STATE_RENDER_TARGET);
+            validation.Transition(commands, D3D12_RESOURCE_STATE_RENDER_TARGET);
+            const std::array rtvs{history.rtv, validation.rtv};
+            commands->OMSetRenderTargets(2, rtvs.data(), FALSE, nullptr);
+            commands->SetPipelineState(state.historyPipeline.Get()); commands->DrawInstanced(3, 1, 0, 0);
+            history.Transition(commands, kReadState); validation.Transition(commands, kReadState);
+            resolvedTrace = history.srv.gpu;
         }
-
-        ID3D12GraphicsCommandList* cmd = graphics.cmdList;
-        GFX::PIX::ScopedGpuEvent pixEvent(
-            cmd,
-            GFX::PIX::kColorPost,
-            "ScreenSpaceReflections");
-        GFX::GPU_PROFILE::ScopedGpuTimer gpuTimer(
-            cmd,
-            GFX::GPU_PROFILE::Pass::ScreenSpaceReflections);
-
-        ID3D12DescriptorHeap* heaps[] = { graphics.srvHeap };
-        cmd->SetDescriptorHeaps(1, heaps);
-        cmd->SetGraphicsRootSignature(rootSignature_.Get());
-        cmd->SetGraphicsRootConstantBufferView(
-            0,
-            constantBuffer_->GetGPUVirtualAddress() +
-                static_cast<UINT64>(constantStride_) * frameSlot);
-        cmd->SetGraphicsRootDescriptorTable(
-            1,
-            sceneColorOpaque->srv);
-        cmd->SetGraphicsRootDescriptorTable(
-            2,
-            sceneDepth->srv);
-        cmd->SetGraphicsRootDescriptorTable(
-            3,
-            packedSurface->srv);
-        cmd->SetGraphicsRootDescriptorTable(
-            4,
-            currentDepthPyramid->pyramidSrv);
-        cmd->SetGraphicsRootDescriptorTable(6, reflectionFallback->srv);
-        cmd->SetGraphicsRootDescriptorTable(7, reflectionResponse->srv);
-        cmd->IASetPrimitiveTopology(
-            D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-        cmd->IASetVertexBuffers(0, 0, nullptr);
-        cmd->IASetIndexBuffer(nullptr);
-
-        TransitionResource(
-            cmd,
-            traceTarget_.Get(),
-            traceTargetState_,
-            D3D12_RESOURCE_STATE_RENDER_TARGET);
-        D3D12_VIEWPORT traceViewport{};
-        traceViewport.Width =
-            static_cast<float>(traceWidth_);
-        traceViewport.Height =
-            static_cast<float>(traceHeight_);
-        traceViewport.MaxDepth = 1.0f;
-        const D3D12_RECT traceScissor{
-            0,
-            0,
-            static_cast<LONG>(traceWidth_),
-            static_cast<LONG>(traceHeight_)
-        };
-        cmd->RSSetViewports(1u, &traceViewport);
-        cmd->RSSetScissorRects(1u, &traceScissor);
-        cmd->OMSetRenderTargets(
-            1u,
-            &traceRtv_,
-            FALSE,
-            nullptr);
-        cmd->SetPipelineState(tracePipelineState_.Get());
-        cmd->DrawInstanced(3, 1, 0, 0);
-
-        TransitionResource(
-            cmd,
-            traceTarget_.Get(),
-            traceTargetState_,
-            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-        if (!targetAccess.BeginDepthRead()) {
-            targetAccess.EndDepthRead();
-            return false;
-        }
-        cmd->SetGraphicsRootSignature(rootSignature_.Get());
-        cmd->SetPipelineState(resolvePipelineState_.Get());
-        cmd->SetGraphicsRootConstantBufferView(
-            0,
-            constantBuffer_->GetGPUVirtualAddress() +
-                static_cast<UINT64>(constantStride_) * frameSlot);
-        cmd->SetGraphicsRootDescriptorTable(
-            1,
-            sceneColorOpaque->srv);
-        cmd->SetGraphicsRootDescriptorTable(
-            2,
-            sceneDepth->srv);
-        cmd->SetGraphicsRootDescriptorTable(
-            3,
-            packedSurface->srv);
-        cmd->SetGraphicsRootDescriptorTable(
-            4,
-            currentDepthPyramid->pyramidSrv);
-        cmd->SetGraphicsRootDescriptorTable(5, traceSrv_);
-        cmd->SetGraphicsRootDescriptorTable(6, reflectionFallback->srv);
-        cmd->SetGraphicsRootDescriptorTable(7, reflectionResponse->srv);
-        cmd->DrawInstanced(3, 1, 0, 0);
+        if (!targetAccess.BeginDepthRead()) { targetAccess.EndDepthRead(); return false; }
+        bind(resolvedTrace);
+        commands->SetPipelineState(state.resolvePipeline.Get()); commands->DrawInstanced(3, 1, 0, 0);
         targetAccess.EndDepthRead();
+        view->valid = useHistory && motionReady;
+        view->lastFrame = temporal.frameIndex; view->settingsKey = key; view->writeIndex = 1 - view->writeIndex;
         debugState_.rendered = true;
         return true;
     }
 
-    bool ScreenSpaceReflectionRenderer::EnsurePipeline(
-        ID3D12Device* device) {
-        if (rootSignature_ != nullptr &&
-            tracePipelineState_ != nullptr &&
-            resolvePipelineState_ != nullptr) {
-            return true;
-        }
-        if (device == nullptr) {
-            return false;
-        }
-        rootSignature_.Reset();
-        tracePipelineState_.Reset();
-        resolvePipelineState_.Reset();
-
-        std::array<D3D12_DESCRIPTOR_RANGE, 7> ranges{};
-        std::array<D3D12_ROOT_PARAMETER, 8> parameters{};
-        parameters[0].ParameterType =
-            D3D12_ROOT_PARAMETER_TYPE_CBV;
-        parameters[0].ShaderVisibility =
-            D3D12_SHADER_VISIBILITY_PIXEL;
-        parameters[0].Descriptor.ShaderRegister = 0u;
-        for (uint32_t index = 0; index < ranges.size(); ++index) {
-            ranges[index].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-            ranges[index].NumDescriptors = 1u;
-            ranges[index].BaseShaderRegister = index;
-            ranges[index].OffsetInDescriptorsFromTableStart =
-                D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
-            parameters[index + 1u].ParameterType =
-                D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-            parameters[index + 1u].ShaderVisibility =
-                D3D12_SHADER_VISIBILITY_PIXEL;
-            parameters[index + 1u].DescriptorTable.NumDescriptorRanges =
-                1u;
-            parameters[index + 1u].DescriptorTable.pDescriptorRanges =
-                &ranges[index];
-        }
-
-        D3D12_STATIC_SAMPLER_DESC linearSampler{};
-        linearSampler.Filter =
-            D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-        linearSampler.AddressU =
-            D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-        linearSampler.AddressV =
-            D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-        linearSampler.AddressW =
-            D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-        linearSampler.ComparisonFunc =
-            D3D12_COMPARISON_FUNC_ALWAYS;
-        linearSampler.MaxLOD = D3D12_FLOAT32_MAX;
-        linearSampler.ShaderRegister = 0u;
-        linearSampler.ShaderVisibility =
-            D3D12_SHADER_VISIBILITY_PIXEL;
-        D3D12_STATIC_SAMPLER_DESC pointSampler = linearSampler;
-        pointSampler.Filter =
-            D3D12_FILTER_MIN_MAG_MIP_POINT;
-        pointSampler.ShaderRegister = 1u;
-        const D3D12_STATIC_SAMPLER_DESC samplers[] = {
-            linearSampler,
-            pointSampler
-        };
-
-        D3D12_ROOT_SIGNATURE_DESC rootDesc{};
-        rootDesc.NumParameters =
-            static_cast<UINT>(parameters.size());
-        rootDesc.pParameters = parameters.data();
-        rootDesc.NumStaticSamplers =
-            static_cast<UINT>(std::size(samplers));
-        rootDesc.pStaticSamplers = samplers;
-        rootDesc.Flags =
-            D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
-
-        Microsoft::WRL::ComPtr<ID3DBlob> signature;
-        Microsoft::WRL::ComPtr<ID3DBlob> errors;
-        const HRESULT serializeResult =
-            D3D12SerializeRootSignature(
-                &rootDesc,
-                D3D_ROOT_SIGNATURE_VERSION_1,
-                signature.GetAddressOf(),
-                errors.GetAddressOf());
-        if (!HIKARI_DX_CHECK(
-                serializeResult,
-                "ScreenSpaceReflectionRenderer::SerializeRootSignature")) {
-            return false;
-        }
-        if (!HIKARI_DX_CHECK(
-                device->CreateRootSignature(
-                    0u,
-                    signature->GetBufferPointer(),
-                    signature->GetBufferSize(),
-                    IID_PPV_ARGS(rootSignature_.GetAddressOf())),
-                "ScreenSpaceReflectionRenderer::CreateRootSignature")) {
-            return false;
-        }
-
-        Microsoft::WRL::ComPtr<ID3DBlob> vertexShader;
-        Microsoft::WRL::ComPtr<ID3DBlob> tracePixelShader;
-        Microsoft::WRL::ComPtr<ID3DBlob> resolvePixelShader;
-        if (!GFX::CompileShaderFileSm6(
-                L"HIKARI/Shaders/Post_ScreenSpaceReflections.hlsl",
-                "VSMain",
-                GFX::ShaderStage::Vertex,
-                vertexShader.GetAddressOf()) ||
-            !GFX::CompileShaderFileSm6(
-                L"HIKARI/Shaders/Post_ScreenSpaceReflections.hlsl",
-                "PSTrace",
-                GFX::ShaderStage::Pixel,
-                tracePixelShader.GetAddressOf()) ||
-            !GFX::CompileShaderFileSm6(
-                L"HIKARI/Shaders/Post_ScreenSpaceReflections.hlsl",
-                "PSResolve",
-                GFX::ShaderStage::Pixel,
-                resolvePixelShader.GetAddressOf())) {
-            DEBUGLOG::PushRenderError(
-                "[SSR][ERROR] shader compilation failed.");
-            return false;
-        }
-
-        D3D12_GRAPHICS_PIPELINE_STATE_DESC pipelineDesc{};
-        pipelineDesc.pRootSignature = rootSignature_.Get();
-        pipelineDesc.VS = {
-            vertexShader->GetBufferPointer(),
-            vertexShader->GetBufferSize()
-        };
-        pipelineDesc.PS = {
-            tracePixelShader->GetBufferPointer(),
-            tracePixelShader->GetBufferSize()
-        };
-        pipelineDesc.BlendState =
-            CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-        pipelineDesc.SampleMask = UINT_MAX;
-        pipelineDesc.RasterizerState =
-            CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-        pipelineDesc.RasterizerState.CullMode =
-            D3D12_CULL_MODE_NONE;
-        pipelineDesc.DepthStencilState =
-            CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-        pipelineDesc.DepthStencilState.DepthEnable = FALSE;
-        pipelineDesc.DepthStencilState.DepthWriteMask =
-            D3D12_DEPTH_WRITE_MASK_ZERO;
-        pipelineDesc.InputLayout = { nullptr, 0u };
-        pipelineDesc.PrimitiveTopologyType =
-            D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-        pipelineDesc.NumRenderTargets = 1u;
-        pipelineDesc.RTVFormats[0] =
-            DXGI_FORMAT_R16G16B16A16_FLOAT;
-        pipelineDesc.SampleDesc.Count = 1u;
-        if (!HIKARI_DX_CHECK(
-                device->CreateGraphicsPipelineState(
-                    &pipelineDesc,
-                    IID_PPV_ARGS(
-                        tracePipelineState_.GetAddressOf())),
-                "ScreenSpaceReflectionRenderer::CreateTracePipelineState")) {
-            return false;
-        }
-
-        pipelineDesc.PS = {
-            resolvePixelShader->GetBufferPointer(),
-            resolvePixelShader->GetBufferSize()
-        };
-        return HIKARI_DX_CHECK(
-            device->CreateGraphicsPipelineState(
-                &pipelineDesc,
-                IID_PPV_ARGS(
-                    resolvePipelineState_.GetAddressOf())),
-            "ScreenSpaceReflectionRenderer::CreateResolvePipelineState");
-    }
-
-    bool ScreenSpaceReflectionRenderer::EnsureTraceTarget(
-        ID3D12Device* device,
-        uint32_t width,
-        uint32_t height) {
-
-        width = (std::max)(1u, width);
-        height = (std::max)(1u, height);
-        if (traceTarget_ != nullptr &&
-            traceTexture_ &&
-            traceWidth_ == width &&
-            traceHeight_ == height) {
-            return true;
-        }
-        if (device == nullptr) {
-            return false;
-        }
-
-        ReleaseTraceTarget();
-        if (traceRtvHeap_ == nullptr) {
-            D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
-            heapDesc.Type =
-                D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-            heapDesc.NumDescriptors = 1u;
-            if (!HIKARI_DX_CHECK(
-                    device->CreateDescriptorHeap(
-                        &heapDesc,
-                        IID_PPV_ARGS(
-                            traceRtvHeap_.GetAddressOf())),
-                    "ScreenSpaceReflectionRenderer::CreateTraceRtvHeap")) {
-                return false;
-            }
-        }
-
-        constexpr DXGI_FORMAT kTraceFormat =
-            DXGI_FORMAT_R16G16B16A16_FLOAT;
-        const D3D12_HEAP_PROPERTIES heapProperties =
-            CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-        const D3D12_RESOURCE_DESC textureDesc =
-            CD3DX12_RESOURCE_DESC::Tex2D(
-                kTraceFormat,
-                width,
-                height,
-                1u,
-                1u,
-                1u,
-                0u,
-                D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
-        D3D12_CLEAR_VALUE clearValue{};
-        clearValue.Format = kTraceFormat;
-        if (!HIKARI_DX_CHECK(
-                device->CreateCommittedResource(
-                    &heapProperties,
-                    D3D12_HEAP_FLAG_NONE,
-                    &textureDesc,
-                    D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-                    &clearValue,
-                    IID_PPV_ARGS(traceTarget_.GetAddressOf())),
-                "ScreenSpaceReflectionRenderer::CreateTraceTarget")) {
-            return false;
-        }
-        traceTarget_->SetName(L"HIKARI.SSR.HalfResolutionTrace");
-
-        traceRtv_ =
-            traceRtvHeap_->GetCPUDescriptorHandleForHeapStart();
-        device->CreateRenderTargetView(
-            traceTarget_.Get(),
-            nullptr,
-            traceRtv_);
-
-        RenderResourceDesc resourceDesc{};
-        resourceDesc.usage =
-            RenderResourceUsageFlags::RenderTarget |
-            RenderResourceUsageFlags::ShaderResource;
-        resourceDesc.lifetime =
-            RenderResourceLifetime::External;
-        resourceDesc.debugName = "ssr_half_resolution_trace";
-        resourceDesc.sourceKey = "render/ssr/half_resolution_trace";
-        resourceDesc.width = width;
-        resourceDesc.height = height;
-        resourceDesc.mipLevels = 1u;
-        resourceDesc.depthOrArraySize = 1u;
-        resourceDesc.format = kTraceFormat;
-        traceTexture_ =
-            RegisterTextureResourceFromNative(
-                traceTarget_.Get(),
-                kTraceFormat,
-                std::move(resourceDesc));
-        if (!traceTexture_) {
-            traceTarget_.Reset();
-            return false;
-        }
-
-        traceSrv_ =
-            GetTextureResourceSrvGpuHandle(traceTexture_);
-        traceWidth_ = width;
-        traceHeight_ = height;
-        traceTargetState_ =
-            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-        return traceSrv_.ptr != 0u;
-    }
-
-    void ScreenSpaceReflectionRenderer::ReleaseTraceTarget() {
-        if (traceTexture_) {
-            ReleaseTextureResource(traceTexture_);
-            traceTexture_ = {};
-        }
-        traceTarget_.Reset();
-        traceRtv_ = {};
-        traceSrv_ = {};
-        traceWidth_ = 0u;
-        traceHeight_ = 0u;
-        traceTargetState_ =
-            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-    }
-
-    bool ScreenSpaceReflectionRenderer::EnsureConstantBuffer(
-        ID3D12Device* device) {
-        if (constantBuffer_ != nullptr && constantMapped_ != nullptr) {
-            return true;
-        }
-        constantStride_ = AlignConstantBufferSize(
-            sizeof(ScreenSpaceReflectionConstants));
-        const UINT64 bufferSize =
-            static_cast<UINT64>(constantStride_) *
-            GFX::kFrameResourceCount;
-        const auto heapProperties =
-            CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-        const auto resourceDesc =
-            CD3DX12_RESOURCE_DESC::Buffer(bufferSize);
-        if (!HIKARI_DX_CHECK(
-                device->CreateCommittedResource(
-                    &heapProperties,
-                    D3D12_HEAP_FLAG_NONE,
-                    &resourceDesc,
-                    D3D12_RESOURCE_STATE_GENERIC_READ,
-                    nullptr,
-                    IID_PPV_ARGS(constantBuffer_.GetAddressOf())),
-                "ScreenSpaceReflectionRenderer::CreateConstantBuffer")) {
-            return false;
-        }
-        if (!HIKARI_DX_CHECK(
-                constantBuffer_->Map(
-                    0u,
-                    nullptr,
-                    reinterpret_cast<void**>(&constantMapped_)),
-                "ScreenSpaceReflectionRenderer::MapConstantBuffer")) {
-            constantBuffer_.Reset();
-            return false;
-        }
-        constantBuffer_->SetName(L"HIKARI.SSR.Constants");
-        return true;
-    }
-
     void ScreenSpaceReflectionRenderer::Release() {
-        if (constantBuffer_ != nullptr && constantMapped_ != nullptr) {
-            constantBuffer_->Unmap(0u, nullptr);
-            constantMapped_ = nullptr;
-        }
-        GFX::RetireD3D12ObjectForCurrentFrame(
-            constantBuffer_,
-            "SSR.ConstantBuffer");
-        GFX::RetireD3D12ObjectForCurrentFrame(
-            tracePipelineState_,
-            "SSR.TracePipelineState");
-        GFX::RetireD3D12ObjectForCurrentFrame(
-            resolvePipelineState_,
-            "SSR.ResolvePipelineState");
-        GFX::RetireD3D12ObjectForCurrentFrame(
-            rootSignature_,
-            "SSR.RootSignature");
-        ReleaseTraceTarget();
-        traceRtvHeap_.Reset();
-        constantStride_ = 0u;
-        debugState_ = {};
+        auto& state = *state_;
+        for (auto& view : state.views) view.Reset(state.context);
+        for (auto& upload : state.uploads) upload.Finalize(&state.context);
+        GFX::RetireD3D12ObjectForFrame(state.tracePipeline, state.context, "SSR.TracePSO");
+        GFX::RetireD3D12ObjectForFrame(state.historyPipeline, state.context, "SSR.HistoryPSO");
+        GFX::RetireD3D12ObjectForFrame(state.resolvePipeline, state.context, "SSR.ResolvePSO");
+        GFX::RetireD3D12ObjectForFrame(state.root, state.context, "SSR.Root");
+        state.context = {}; state.useSerial = state.pipelineRetryFrame = 0; debugState_ = {};
     }
-
-} // namespace HIKARI::RENDER3D::REFLECTION
+}

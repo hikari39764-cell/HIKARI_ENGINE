@@ -6,6 +6,7 @@
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Render3D/Shadow/HIKARI_ShadowLightFrame.h"
+#include "Render3D/Shadow/HIKARI_LocalLightShadowRenderer.h"
 #include "Render3D/Core/MeshRenderer/Data/HIKARI_MeshDrawDataBuilder.h"
 #include "Render3D/Shadow/Internal/HIKARI_ShadowRendererInternal.h"
 
@@ -14,8 +15,9 @@ namespace HIKARI::SHADOW {
     using namespace INTERNAL;
 
     void Reset() {
-        ClearShadowFrameSubmissions();
-        InvalidateShadowCache();
+        ResetLocalLightShadows();
+        ClearShadowFrameSubmissions(gShadowRendererState);
+        InvalidateShadowCache(gShadowRendererState);
         SetGpuDrivenSceneSource(nullptr);
     }
 
@@ -25,7 +27,7 @@ namespace HIKARI::SHADOW {
         const Camera3D& camera) {
         CPU_PROFILE::ScopedCpuTimer cpuTimer(
             CPU_PROFILE::Pass::ShadowPrepare);
-        ClearShadowFrameSubmissions();
+        ClearShadowFrameSubmissions(gShadowRendererState);
         gShadowRendererState.frameEnabled = environment.directional.enabled && environment.directionalShadow.enabled;
         gShadowRendererState.debugStats.enabled = gShadowRendererState.frameEnabled;
         gShadowRendererState.debugStats.resolution = ResolveShadowResolution(environment.directionalShadow.resolution);
@@ -40,36 +42,42 @@ namespace HIKARI::SHADOW {
         gShadowRendererState.debugStats.normalBias = environment.directionalShadow.normalBias;
         gShadowRendererState.debugStats.strength = environment.directionalShadow.strength;
         if (!gShadowRendererState.frameEnabled) {
-            PublishShadowCacheStats();
+            PublishShadowCacheStats(gShadowRendererState);
             return;
         }
         gShadowRendererState.frameHasShadowWork =
-            BuildShadowGpuDrivenSceneSources(graphics);
+            BuildShadowGpuDrivenSceneSources(gShadowRendererState);
         if (!gShadowRendererState.frameHasShadowWork) {
-            PublishShadowCacheStats();
+            PublishShadowCacheStats(gShadowRendererState);
             return;
         }
-        if (!EnsureShadowRendererInitialized(graphics)) {
+        if (!EnsureShadowRendererInitialized(gShadowRendererState, graphics)) {
             gShadowRendererState.frameEnabled = false;
             gShadowRendererState.debugStats.enabled = false;
             gShadowRendererState.frameHasShadowWork = false;
-            InvalidateShadowCache();
+            InvalidateShadowCache(gShadowRendererState);
             return;
         }
-        ActivateShadowFrameResources(graphics.frameIndex);
+        ActivateShadowFrameResources(gShadowRendererState, graphics.frameIndex);
         const MATH::Mat4 materialViewProj = camera.GetViewProj();
         MESHRENDERER::FillCameraCB(materialViewProj, MATH::Inverse(materialViewProj), camera.GetPosition(),
             static_cast<uint32_t>((std::max)(1, graphics.backBufferWidth)),
             static_cast<uint32_t>((std::max)(1, graphics.backBufferHeight)), gShadowRendererState.materialCamera);
-        UploadShadowMeshShaderJointPalettes();
+        if (!PrepareShadowDeformation(gShadowRendererState, graphics)) {
+            gShadowRendererState.frameEnabled = false;
+            gShadowRendererState.debugStats.enabled = false;
+            gShadowRendererState.frameHasShadowWork = false;
+            InvalidateShadowCache(gShadowRendererState);
+            return;
+        }
 
         const uint32_t resolution = ResolveShadowResolution(environment.directionalShadow.resolution);
         if (gShadowRendererState.shadowMap == nullptr || gShadowRendererState.resolution != resolution) {
-            if (!CreateShadowMapResources(graphics, resolution)) {
+            if (!CreateShadowMapResources(gShadowRendererState, graphics, {resolution, 2, true, "shadow/directional_map"})) {
                 gShadowRendererState.frameEnabled = false;
                 gShadowRendererState.debugStats.enabled = false;
                 gShadowRendererState.frameHasShadowWork = false;
-                InvalidateShadowCache();
+                InvalidateShadowCache(gShadowRendererState);
                 return;
             }
             gShadowRendererState.debugStats.shadowMapRecreateCount = gShadowRendererState.shadowMapRecreateCount;
@@ -108,9 +116,6 @@ namespace HIKARI::SHADOW {
                 shadowFrames.cascades[cascadeIndex];
             gShadowRendererState.cascadeLightViewProj[cascadeIndex] =
                 shadowFrames.cascades[cascadeIndex].viewProj;
-            UploadShadowCameraConstants(
-                shadowFrames.cascades[cascadeIndex],
-                cascadeIndex);
         }
         const ShadowLightFrame& primaryFrame = shadowFrames.cascades[0];
         gShadowRendererState.debugStats.orthoSize = primaryFrame.orthoSize;
@@ -124,14 +129,14 @@ namespace HIKARI::SHADOW {
         gShadowRendererState.lightCullPosition = primaryFrame.lightPosition;
         gShadowRendererState.lightAnchor = primaryFrame.anchor;
         gShadowRendererState.lightAnchorGrid = primaryFrame.anchorGrid;
-        if (CanReuseShadowCache(resolution)) {
-            MarkShadowCacheHit();
-            SubmitShadowDebugFrustum(environment, camera);
+        if (CanReuseShadowCache(gShadowRendererState, resolution)) {
+            MarkShadowCacheHit(gShadowRendererState);
+            SubmitShadowDebugFrustum(gShadowRendererState, environment, camera);
             return;
         }
 
-        MarkShadowCacheMiss();
-        SubmitShadowDebugFrustum(environment, camera);
+        MarkShadowCacheMiss(gShadowRendererState);
+        SubmitShadowDebugFrustum(gShadowRendererState, environment, camera);
     }
 
     void SetGpuDrivenSceneSource(
@@ -147,8 +152,8 @@ namespace HIKARI::SHADOW {
             gShadowRendererState.staticShadowPrimaryMaterialSources.clear();
             gShadowRendererState.dynamicShadowPrimaryInstances.clear();
             gShadowRendererState.dynamicShadowPrimaryMaterialSources.clear();
-            ClearShadowTraditionalIndirectStreams();
-            InvalidateShadowSourceCache();
+            ClearShadowTraditionalIndirectStreams(gShadowRendererState);
+            InvalidateShadowSourceCache(gShadowRendererState);
             gShadowRendererState.surfaceGpuSceneBuffer.InvalidateResidency();
             gShadowRendererState.gpuDrivenLayer.ResetFrame();
         }
@@ -159,12 +164,12 @@ namespace HIKARI::SHADOW {
         gShadowRendererState.staticShadowSceneSource.Reset();
         gShadowRendererState.dynamicShadowSceneSource.Reset();
         gShadowRendererState.activeShadowSceneSource.Reset();
-        ClearShadowTraditionalIndirectStreams();
+        ClearShadowTraditionalIndirectStreams(gShadowRendererState);
         // Keep the static depth cache as a candidate.  The next rebuilt static
         // source is checked against its content key before any reuse, allowing a
         // dynamic-only refresh to keep valid static shadows without accepting
         // stale static geometry.
-        InvalidateShadowSourceCache();
+        InvalidateShadowSourceCache(gShadowRendererState);
     }
 
     void RenderDirectionalShadowMap(const GFX::Context& graphics) {
@@ -180,7 +185,6 @@ namespace HIKARI::SHADOW {
         bool finalHasDepth = false;
         bool staticRendered = false;
         bool dynamicRendered = false;
-        bool unifiedRendered = false;
         bool fallbackRendered = false;
 
         const auto renderCascades = [&](
@@ -189,7 +193,7 @@ namespace HIKARI::SHADOW {
             GFX::GPU_PROFILE::Pass traditionalPass,
             GFX::GPU_PROFILE::Pass meshletPass) {
             // Scene / Material は全 Cascade で不変。視点依存の剔除だけを各回記録する。
-            if (!PrepareShadowSourceForDraw(graphics, source)) {
+            if (!PrepareShadowSourceForDraw(gShadowRendererState, graphics, source)) {
                 return false;
             }
             bool renderedAll = true;
@@ -198,17 +202,12 @@ namespace HIKARI::SHADOW {
                  ++cascadeIndex) {
                 const ShadowLightFrame& cascade =
                     gShadowRendererState.cascadeFrames[cascadeIndex];
-                gShadowRendererState.activeCascadeIndex = cascadeIndex;
-                gShadowRendererState.lightViewProj = cascade.viewProj;
-                gShadowRendererState.lightCullPosition = cascade.lightPosition;
-                gShadowRendererState.lightAnchor = cascade.anchor;
-                gShadowRendererState.lightAnchorGrid = cascade.anchorGrid;
-                PrepareFinalShadowMapForDepthWrite(cmd, clearDepth);
-                BuildShadowGpuDrivenWorkFrame(graphics);
-                if (!ExecuteShadowGpuDrivenPass(
-                        graphics,
-                        traditionalPass,
-                        meshletPass)) {
+                const LONG resolution = LONG(gShadowRendererState.resolution);
+                const LONG left = LONG(cascadeIndex % 2u) * resolution;
+                const LONG top = LONG(cascadeIndex / 2u) * resolution;
+                if (!RecordShadowView(gShadowRendererState, graphics, cascade,
+                        {left, top, left + resolution, top + resolution}, clearDepth,
+                        traditionalPass, meshletPass)) {
                     renderedAll = false;
                 }
             }
@@ -216,75 +215,57 @@ namespace HIKARI::SHADOW {
         };
 
         if (gShadowRendererState.shadowCache.WasHitThisFrame()) {
-            if (!CopyStaticShadowCacheToFinal(cmd)) {
-                MarkShadowCacheMiss();
+            if (!CopyStaticShadowCacheToFinal(gShadowRendererState, cmd)) {
+                MarkShadowCacheMiss(gShadowRendererState);
             } else {
                 finalHasDepth = true;
             }
         }
 
-        // The shadow GPU-driven context owns one transient upload/cull submission
-        // per frame.  Preparing static and dynamic sources back-to-back would make
-        // both queued GPU copies read the last CPU upload page, corrupting the
-        // static cache exactly when a skinned caster enters the scene.  If there
-        // is no reusable static depth, render the combined source once instead.
-        const bool needsUnifiedDynamicRender =
-            gShadowRendererState.frameHasDynamicShadowWork && !finalHasDepth;
-        if (needsUnifiedDynamicRender) {
-            unifiedRendered = renderCascades(
+        // 静的深度を確立してから動的 caster を重ねる。各提出の upload は不変。
+        if (!finalHasDepth && gShadowRendererState.frameHasStaticShadowWork) {
+            staticRendered = renderCascades(
+                gShadowRendererState.staticShadowSceneSource,
+                true,
+                GFX::GPU_PROFILE::Pass::TraditionalDrawShadowStatic,
+                GFX::GPU_PROFILE::Pass::MeshletDrawShadowStatic);
+            if (staticRendered) {
+                finalHasDepth = true;
+                if (!UpdateStaticShadowCacheFromFinal(gShadowRendererState, cmd)) InvalidateShadowCache(gShadowRendererState);
+                gShadowRendererState.shadowCache.SetFinalMatchesStaticCache(
+                    gShadowRendererState.shadowCache.IsValid());
+            } else {
+                InvalidateShadowCache(gShadowRendererState);
+            }
+        }
+
+        const bool staticSplitFailed =
+            !gShadowRendererState.shadowCache.WasHitThisFrame() &&
+            gShadowRendererState.frameHasStaticShadowWork && !staticRendered;
+        bool dynamicSplitFailed = false;
+        if (!staticSplitFailed && gShadowRendererState.frameHasDynamicShadowWork) {
+            dynamicRendered = renderCascades(
+                gShadowRendererState.dynamicShadowSceneSource,
+                !finalHasDepth,
+                GFX::GPU_PROFILE::Pass::TraditionalDrawShadowDynamic,
+                GFX::GPU_PROFILE::Pass::MeshletDrawShadowDynamic);
+            if (dynamicRendered) {
+                finalHasDepth = true;
+                gShadowRendererState.shadowCache.SetFinalMatchesStaticCache(false);
+            } else {
+                dynamicSplitFailed = true;
+                InvalidateShadowCache(gShadowRendererState);
+            }
+        }
+
+        if (staticSplitFailed || dynamicSplitFailed) {
+            fallbackRendered = renderCascades(
                 gShadowRendererState.shadowSceneSource,
                 true,
                 GFX::GPU_PROFILE::Pass::TraditionalDrawShadowFallback,
                 GFX::GPU_PROFILE::Pass::MeshletDrawShadowFallback);
-            finalHasDepth = unifiedRendered;
+            finalHasDepth = fallbackRendered;
             gShadowRendererState.shadowCache.SetFinalMatchesStaticCache(false);
-        } else {
-            if (!finalHasDepth && gShadowRendererState.frameHasStaticShadowWork) {
-                staticRendered = renderCascades(
-                    gShadowRendererState.staticShadowSceneSource,
-                    true,
-                    GFX::GPU_PROFILE::Pass::TraditionalDrawShadowStatic,
-                    GFX::GPU_PROFILE::Pass::MeshletDrawShadowStatic);
-                if (staticRendered) {
-                    finalHasDepth = true;
-                    (void)UpdateStaticShadowCacheFromFinal(cmd);
-                    gShadowRendererState.shadowCache.SetFinalMatchesStaticCache(true);
-                } else {
-                    InvalidateShadowCache();
-                }
-            }
-
-            const bool staticSplitFailed =
-                !gShadowRendererState.shadowCache.WasHitThisFrame() &&
-                gShadowRendererState.frameHasStaticShadowWork &&
-                !staticRendered;
-
-            if (!staticSplitFailed && gShadowRendererState.frameHasDynamicShadowWork) {
-                dynamicRendered = renderCascades(
-                    gShadowRendererState.dynamicShadowSceneSource,
-                    false,
-                    GFX::GPU_PROFILE::Pass::TraditionalDrawShadowDynamic,
-                    GFX::GPU_PROFILE::Pass::MeshletDrawShadowDynamic);
-                if (dynamicRendered) {
-                    gShadowRendererState.shadowCache.SetFinalMatchesStaticCache(false);
-                } else {
-                    // Keep the copied static depth this frame.  Invalidating the
-                    // cache makes the next frame use the single-submit unified path.
-                    InvalidateShadowCache();
-                }
-            }
-
-            if (staticSplitFailed) {
-                fallbackRendered = renderCascades(
-                    gShadowRendererState.shadowSceneSource,
-                    true,
-                    GFX::GPU_PROFILE::Pass::TraditionalDrawShadowFallback,
-                    GFX::GPU_PROFILE::Pass::MeshletDrawShadowFallback);
-                finalHasDepth = fallbackRendered;
-                if (fallbackRendered) {
-                    gShadowRendererState.shadowCache.SetFinalMatchesStaticCache(false);
-                }
-            }
         }
 
         if (!finalHasDepth) {
@@ -292,19 +273,18 @@ namespace HIKARI::SHADOW {
                  cascadeIndex < gShadowRendererState.cascadeCount;
                  ++cascadeIndex) {
                 gShadowRendererState.activeCascadeIndex = cascadeIndex;
-                PrepareFinalShadowMapForDepthWrite(cmd, true);
+                PrepareFinalShadowMapForDepthWrite(gShadowRendererState, cmd, true);
             }
             finalHasDepth = true;
         }
 
         gShadowRendererState.debugStats.shadowStaticRendered = staticRendered;
         gShadowRendererState.debugStats.shadowDynamicRendered = dynamicRendered;
-        gShadowRendererState.debugStats.shadowUnifiedRendered = unifiedRendered;
         gShadowRendererState.debugStats.shadowFallbackRendered = fallbackRendered;
         gShadowRendererState.activeCascadeIndex = 0u;
         gShadowRendererState.lightViewProj =
             gShadowRendererState.cascadeLightViewProj[0];
-        FinishFinalShadowMap(graphics, cmd);
+        FinishFinalShadowMap(gShadowRendererState, graphics, cmd);
     }
 
     bool IsDirectionalShadowEnabled() {

@@ -14,7 +14,7 @@ namespace HIKARI::ASSETS::SHADER {
         "HIKARI.RenderGeometry";
     inline constexpr uint32_t kRenderGeometryEngineInterfaceVersion = 1u;
     inline constexpr std::string_view kRenderGeometryEngineInterfaceHash =
-        "630237ae301298e15328be80f98b8d771aba449eecaf0a577a58eaa0cbe16f6e";
+        "149db821112434114f8dacb1850eedf4716872a72114f838f9dc0c916cc68ad3";
     inline constexpr std::string_view kRenderGeometryInterfaceDependency =
         "EngineSdk/Include/Render3D/HIKARI_RenderGeometryInterface.hlsli";
 
@@ -28,16 +28,28 @@ namespace HIKARI::ASSETS::SHADER {
         WorldSpriteDraw,
         WorldTextDraw,
         ShadowGraphics,
+        ClusterRayTracing,
     };
+
+    inline constexpr std::string_view kClusterRayTracingRootLayoutId =
+        "HIKARI.RenderGeometry.ClusterRayTracing.Root";
+    inline constexpr uint32_t kClusterRayTracingRootLayoutVersion = 1u;
+    inline constexpr std::string_view kClusterRayTracingRootLayoutHash =
+        "6d1ca3b9897f9c559932321f5383aaa2df1932d7ade4269a9ffd2e539ba65750";
+    inline constexpr std::string_view kClusterRayTracingRootLayoutCanonical =
+        "HIKARI.RenderGeometry.ClusterRayTracing.Root.v1|"
+        "0:SRV(t0,space0,All)|1:SRV(t1,space0,All)|"
+        "2:UAV(u0,space0,All)|3:Constants(b0,space0,count4,All)|"
+        "Pipeline(Compute)|Flags(None)";
 
     inline constexpr std::string_view kMeshGraphicsRootLayoutId =
         "HIKARI.RenderGeometry.MeshGraphics.Root";
-    inline constexpr uint32_t kMeshGraphicsRootLayoutVersion = 2u;
+    inline constexpr uint32_t kMeshGraphicsRootLayoutVersion = 5u;
     inline constexpr std::string_view kMeshGraphicsRootLayoutHash =
-        "1c75089db047316ada763cac4e8028374fa33bfb29dc21eb8c5b1e7a67deb535";
+        "732b0328153e59a64910af99b760d22aadef59d83b4c83a6cc08f78c11e67981";
     inline constexpr std::string_view kMeshGraphicsRootLayoutCanonical =
-        "HIKARI.RenderGeometry.MeshGraphics.Root.v2|"
-        "RootParameters(42)|DwordCost(64)|"
+        "HIKARI.RenderGeometry.MeshGraphics.Root.v5|"
+        "RootParameters(42)|DwordCost(63)|ASVisibility(Table(t19,u0space8,b12),QueryBytes(80,viewProj+control))|VisibleRangeBytes(80)|PayloadBytes(824)|"
         "JointPaletteVariant(StaticSRV(t0,space3),SkinnedCBV(b3,space0))|"
         "SurfaceControlAlias(b8,TraditionalSurfaceGpuScene,MeshletDrawControl)|"
         "ClusterGeometryTable(SRV(t0,space1,count1024))|"
@@ -58,18 +70,18 @@ namespace HIKARI::ASSETS::SHADER {
 
     inline constexpr std::string_view kClusterCullingRootLayoutId =
         "HIKARI.RenderGeometry.ClusterCulling.Root";
-    inline constexpr uint32_t kClusterCullingRootLayoutVersion = 2u;
+    inline constexpr uint32_t kClusterCullingRootLayoutVersion = 3u;
     inline constexpr std::string_view kClusterCullingRootLayoutHash =
-        "e77c127740329fffd4c7bffbe4d2872c038e7f8d0210c3e5f08aff3b23a88547";
+        "3829d1ca88a7f85730bcb0352717bbbf463083f946afc479c2f90c2d114869be";
     inline constexpr std::string_view kClusterCullingRootLayoutCanonical =
-        "HIKARI.RenderGeometry.ClusterCulling.Root.v2|"
+        "HIKARI.RenderGeometry.ClusterCulling.Root.v3|"
         "0:CBV(b0,space0,All)|1:SRV(t17,space0,All)|"
         "2:UAV(u0,space0,All)|3:UAV(u1,space0,All)|"
         "4:Table(SRV(t0,space1,count1024),All)|"
         "5:UAV(u3,space0,All)|6:UAV(u4,space0,All)|"
         "7:UAV(u5,space0,All)|8:Table(SRV(t18,space0,count1),All)|"
-        "9:UAV(u6,space0,All)|10:UAV(u7,space0,All)|"
-        "11:SRV(t0,space8,All)|Pipeline(Compute)|Flags(None)";
+        "9:UAV(u6,space0,All)|"
+        "10:SRV(t0,space8,All)|MeshletDispatchSlots(PassBucket)|Pipeline(Compute)|Flags(None)";
 
     inline constexpr std::string_view kParticleSimulationRootLayoutId =
         "HIKARI.RenderGeometry.ParticleSimulation.Root";
@@ -138,11 +150,11 @@ namespace HIKARI::ASSETS::SHADER {
 
     inline constexpr std::string_view kShadowGraphicsRootLayoutId =
         "HIKARI.RenderGeometry.ShadowGraphics.Root";
-    inline constexpr uint32_t kShadowGraphicsRootLayoutVersion = 1u;
+    inline constexpr uint32_t kShadowGraphicsRootLayoutVersion = 2u;
     inline constexpr std::string_view kShadowGraphicsRootLayoutHash =
-        "0c88257c0bd386ae18146e7525f149db944599f20e840e57b2e7b05a621bd6a3";
+        "b3a7556a0b35c164f85f551522484be832bc745e970af90d66db03f881f7a88c";
     inline constexpr std::string_view kShadowGraphicsRootLayoutCanonical =
-        "HIKARI.RenderGeometry.ShadowGraphics.Root.v1|"
+        "HIKARI.RenderGeometry.ShadowGraphics.Root.v2|"
         "0:CBV(b0,space0,All)|"
         "1:CBV(b1,space0,All)|"
         "2:Table(SRV(t0,space0,count1),Pixel)|"
@@ -154,17 +166,16 @@ namespace HIKARI::ASSETS::SHADER {
         "8:Table(SRV(t15,space0,count1),All)|"
         "9:Table(SRV(t0,space1,count1024),All)|"
         "10:SRV(t18,space0,All)|"
-        "11:SRV(t19,space0,All)|"
-        "12:CBV(b9,space0,All)|"
-        "13:SRV(t0,space3,All)|"
-        "14:SRV(t4,space7,All)|"
-        "15:SRV(t1,space7,All)|"
-        "16:SRV(t0,space6,All)|"
-        "17:SRV(t1,space6,All)|"
-        "18:CBV(b10,space0,All)|"
-        "SkinnedAppend(19:CBV(b3,space0,All))|"
-        "RootParameters(Static19,Skinned20)|"
-        "DwordCost(Static33,Skinned35)|"
+        "11:CBV(b9,space0,All)|"
+        "12:SRV(t0,space3,All)|"
+        "13:SRV(t4,space7,All)|"
+        "14:SRV(t1,space7,All)|"
+        "15:SRV(t0,space6,All)|"
+        "16:SRV(t1,space6,All)|"
+        "17:CBV(b10,space0,All)|"
+        "SkinnedAppend(18:CBV(b3,space0,All))|"
+        "RootParameters(Static18,Skinned19)|"
+        "DwordCost(Static31,Skinned33)|"
         "StaticSampler(s0,LinearWrap,Pixel)|"
         "Pipeline(Graphics,Amplification,Mesh)|"
         "Flags(AllowInputAssembler)";
@@ -190,6 +201,8 @@ namespace HIKARI::ASSETS::SHADER {
             return kWorldTextDrawRootLayoutId;
         case RenderGeometryRootLayout::ShadowGraphics:
             return kShadowGraphicsRootLayoutId;
+        case RenderGeometryRootLayout::ClusterRayTracing:
+            return kClusterRayTracingRootLayoutId;
         }
         return {};
     }
@@ -199,7 +212,7 @@ namespace HIKARI::ASSETS::SHADER {
         RenderGeometryRootLayout& outLayout) noexcept {
         for (uint8_t raw = 0u;
              raw <= static_cast<uint8_t>(
-                 RenderGeometryRootLayout::ShadowGraphics);
+                 RenderGeometryRootLayout::ClusterRayTracing);
              ++raw) {
             const auto layout =
                 static_cast<RenderGeometryRootLayout>(raw);
@@ -232,6 +245,10 @@ namespace HIKARI::ASSETS::SHADER {
                 "HIKARI.EngineShader."
                 "Render3D_GpuTraditionalCommandCompactCS") {
             outLayout = RenderGeometryRootLayout::TraditionalCommand;
+            return true;
+        }
+        if (programId == "HIKARI.EngineShader.Render3D_ClusterRayTracingCS") {
+            outLayout = RenderGeometryRootLayout::ClusterRayTracing;
             return true;
         }
         if (programId.rfind(
@@ -295,6 +312,8 @@ namespace HIKARI::ASSETS::SHADER {
             return kWorldTextDrawRootLayoutHash;
         case RenderGeometryRootLayout::ShadowGraphics:
             return kShadowGraphicsRootLayoutHash;
+        case RenderGeometryRootLayout::ClusterRayTracing:
+            return kClusterRayTracingRootLayoutHash;
         }
         return {};
     }
@@ -320,6 +339,8 @@ namespace HIKARI::ASSETS::SHADER {
             return kWorldTextDrawRootLayoutCanonical;
         case RenderGeometryRootLayout::ShadowGraphics:
             return kShadowGraphicsRootLayoutCanonical;
+        case RenderGeometryRootLayout::ClusterRayTracing:
+            return kClusterRayTracingRootLayoutCanonical;
         }
         return {};
     }
@@ -345,6 +366,8 @@ namespace HIKARI::ASSETS::SHADER {
             return kWorldTextDrawRootLayoutVersion;
         case RenderGeometryRootLayout::ShadowGraphics:
             return kShadowGraphicsRootLayoutVersion;
+        case RenderGeometryRootLayout::ClusterRayTracing:
+            return kClusterRayTracingRootLayoutVersion;
         }
         return 0u;
     }
@@ -405,6 +428,7 @@ namespace HIKARI::ASSETS::SHADER {
         switch (layout) {
         case RenderGeometryRootLayout::MeshGraphics:
         case RenderGeometryRootLayout::ShadowGraphics:
+        case RenderGeometryRootLayout::ClusterRayTracing:
             return id == "Main" && entry.entry.entry == "main";
         case RenderGeometryRootLayout::TraditionalCommand:
             return id == "CompactGpuTraditionalCommandStreamCS" &&
@@ -469,6 +493,11 @@ namespace HIKARI::ASSETS::SHADER {
         const ShaderResourceBinding& binding) noexcept {
         using Kind = ShaderResourceBindingKind;
         switch (layout) {
+        case RenderGeometryRootLayout::ClusterRayTracing:
+            return MatchesRenderGeometryBinding(binding, Kind::ShaderResource, 0u, 0u) ||
+                MatchesRenderGeometryBinding(binding, Kind::ShaderResource, 0u, 1u) ||
+                MatchesRenderGeometryBinding(binding, Kind::UnorderedAccess, 0u, 0u) ||
+                MatchesRenderGeometryBinding(binding, Kind::ConstantBuffer, 0u, 0u);
         case RenderGeometryRootLayout::ShadowGraphics:
             if (binding.kind == Kind::ConstantBuffer)
                 return binding.registerSpace == 0u && binding.count == 1u &&
@@ -487,9 +516,13 @@ namespace HIKARI::ASSETS::SHADER {
                 (binding.registerSpace == 7u && binding.count == 1u &&
                     (binding.registerIndex == 1u || binding.registerIndex == 4u));
         case RenderGeometryRootLayout::MeshGraphics:
+            if (binding.kind == Kind::UnorderedAccess) {
+                return MatchesRenderGeometryBinding(binding, Kind::UnorderedAccess, 8u, 0u) &&
+                    binding.visibilityMask == (1u << static_cast<uint32_t>(ShaderStage::Amplification));
+            }
             if (binding.kind == Kind::ConstantBuffer) {
                 return binding.registerSpace == 0u &&
-                    binding.registerIndex <= 11u &&
+                    binding.registerIndex <= 12u &&
                     binding.count == 1u;
             }
             if (binding.kind == Kind::Sampler) {

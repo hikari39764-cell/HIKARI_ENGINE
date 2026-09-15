@@ -14,6 +14,8 @@
 #include "Render3D/Pipeline/HIKARI_RenderFramePipeline.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 #include "Render3D/Shadow/HIKARI_ShadowMapRenderer.h"
+#include "Render3D/Shadow/HIKARI_LocalLightShadowRenderer.h"
+#include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 
 namespace HIKARI::MODELRENDERER {
@@ -105,6 +107,9 @@ namespace HIKARI::MODELRENDERER {
         BeginModelRendererFrame(ModelRendererFrameKind::MainView);
         SHADOW::BeginFrame(graphics, environment, camera);
         SHADOW::RenderDirectionalShadowMap(graphics);
+        SHADOW::RenderLocalLightShadows(graphics, lighting, camera,
+            MESHRENDERER::GetActiveGpuDrivenSceneSource(),
+            SHADOW::ResolveLocalShadowBudget(RENDER3D::GetRenderQualitySettings().localShadowQuality));
         return MESHRENDERER::RenderAll(
             graphics,
             view,

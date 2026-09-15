@@ -4,26 +4,27 @@
 
 namespace HIKARI::SHADOW::INTERNAL {
 
-    void InvalidateShadowSourceCache() {
-        gShadowRendererState.shadowSourceCache.Invalidate();
+    void InvalidateShadowSourceCache(ShadowRendererState& state) {
+        state.shadowSourceCache.Invalidate();
+        state.shadowPrimaryLocations.clear();
     }
 
-    bool CanReuseShadowSourceCache() {
-        return gShadowRendererState.shadowSourceCache.Matches(gShadowRendererState.gpuDrivenSceneSource);
+    bool CanReuseShadowSourceCache(ShadowRendererState& state) {
+        return state.shadowSourceCache.Matches(state.gpuDrivenSceneSource);
     }
 
-    void PublishShadowCacheStats() {
-        gShadowRendererState.shadowCache.PublishStats(gShadowRendererState.debugStats);
+    void PublishShadowCacheStats(ShadowRendererState& state) {
+        state.shadowCache.PublishStats(state.debugStats);
     }
 
-    void InvalidateShadowCache() {
-        gShadowRendererState.shadowCache.Invalidate();
-        PublishShadowCacheStats();
+    void InvalidateShadowCache(ShadowRendererState& state) {
+        state.shadowCache.Invalidate();
+        PublishShadowCacheStats(state);
     }
 
-    bool HasStaticShadowDirtyRanges() {
+    bool HasStaticShadowDirtyRanges(ShadowRendererState& state) {
         const RENDER3D::GPUDRIVEN::GpuDrivenPassSource& shadowPass =
-            gShadowRendererState.staticShadowSceneSource.GetPass(
+            state.staticShadowSceneSource.GetPass(
                 RENDER3D::GPUDRIVEN::GpuDrivenPassKind::Shadow);
         if (shadowPass.instances == nullptr ||
             shadowPass.instances->empty() ||
@@ -51,26 +52,26 @@ namespace HIKARI::SHADOW::INTERNAL {
         return false;
     }
 
-    bool CanReuseShadowCache(uint32_t resolution) {
+    bool CanReuseShadowCache(ShadowRendererState& state, uint32_t resolution) {
         ShadowCacheReuseInput input{};
-        input.key.layoutVersion = gShadowRendererState.staticShadowSceneSource.layoutVersion;
-        input.key.sourceVersion = gShadowRendererState.staticShadowSceneSource.sourceVersion;
+        input.key.layoutVersion = state.staticShadowSceneSource.layoutVersion;
+        input.key.sourceVersion = state.staticShadowSceneSource.sourceVersion;
         input.key.sourceInstanceCount =
-            gShadowRendererState.staticShadowSceneSource.sourceInstanceCount;
+            state.staticShadowSceneSource.sourceInstanceCount;
         input.key.resolution = resolution;
         input.key.lightViewProj =
-            gShadowRendererState.cascadeLightViewProj;
-        input.key.cascadeCount = gShadowRendererState.cascadeCount;
-        input.hasStaticWork = gShadowRendererState.frameHasStaticShadowWork;
+            state.cascadeLightViewProj;
+        input.key.cascadeCount = state.cascadeCount;
+        input.hasStaticWork = state.frameHasStaticShadowWork;
         input.resourcesReady =
-            gShadowRendererState.staticShadowMap != nullptr &&
-            gShadowRendererState.shadowMap != nullptr &&
-            RENDER3D::IsTextureResourceValid(gShadowRendererState.shadowSrvResource);
+            state.staticShadowMap != nullptr &&
+            state.shadowMap != nullptr &&
+            RENDER3D::IsTextureResourceValid(state.shadowSrvResource);
         input.stateReusable =
-            gShadowRendererState.staticShadowState == D3D12_RESOURCE_STATE_COPY_SOURCE ||
-            gShadowRendererState.staticShadowState == D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-        input.hasStaticDirtyRanges = HasStaticShadowDirtyRanges();
-        return gShadowRendererState.shadowCache.EvaluateReuse(input);
+            state.staticShadowState == D3D12_RESOURCE_STATE_COPY_SOURCE ||
+            state.staticShadowState == D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        input.hasStaticDirtyRanges = HasStaticShadowDirtyRanges(state);
+        return state.shadowCache.EvaluateReuse(input);
     }
 
     size_t StatDelta(size_t after, size_t before) {
@@ -78,51 +79,51 @@ namespace HIKARI::SHADOW::INTERNAL {
     }
 
     void AccumulateShadowMeshletStatsDelta(
-        const RENDER3D::MESHLET::MeshletRenderBackendStats& before,
+        ShadowRendererState& state, const RENDER3D::MESHLET::MeshletRenderBackendStats& before,
         const RENDER3D::MESHLET::MeshletRenderBackendStats& after) {
 
-        gShadowRendererState.debugStats.shadowMeshletRequestedDispatchCount +=
+        state.debugStats.shadowMeshletRequestedDispatchCount +=
             StatDelta(after.requestedDispatchCount, before.requestedDispatchCount);
-        gShadowRendererState.debugStats.shadowMeshletSubmittedDispatchCount +=
+        state.debugStats.shadowMeshletSubmittedDispatchCount +=
             StatDelta(after.shadowSubmittedDispatchCount, before.shadowSubmittedDispatchCount);
-        gShadowRendererState.debugStats.shadowMeshletSkippedDispatchCount +=
+        state.debugStats.shadowMeshletSkippedDispatchCount +=
             StatDelta(after.skippedDispatchCount, before.skippedDispatchCount);
-        gShadowRendererState.debugStats.shadowMeshletSubmitCallCount +=
+        state.debugStats.shadowMeshletSubmitCallCount +=
             StatDelta(after.submitCallCount, before.submitCallCount);
-        gShadowRendererState.debugStats.shadowMeshletSkippedBucketCount +=
+        state.debugStats.shadowMeshletSkippedBucketCount +=
             StatDelta(after.skippedBucketCount, before.skippedBucketCount);
-        gShadowRendererState.debugStats.shadowMeshletBackFaceSubmitCallCount +=
+        state.debugStats.shadowMeshletBackFaceSubmitCallCount +=
             StatDelta(after.backFaceSubmitCallCount, before.backFaceSubmitCallCount);
-        gShadowRendererState.debugStats.shadowMeshletDoubleSidedSubmitCallCount +=
+        state.debugStats.shadowMeshletDoubleSidedSubmitCallCount +=
             StatDelta(after.doubleSidedSubmitCallCount, before.doubleSidedSubmitCallCount);
-        gShadowRendererState.debugStats.shadowMeshletPipelineReady = after.shadowPipelineReady;
-        gShadowRendererState.debugStats.shadowMeshletDispatchArgumentBufferReady =
+        state.debugStats.shadowMeshletPipelineReady = after.shadowPipelineReady;
+        state.debugStats.shadowMeshletDispatchArgumentBufferReady =
             after.dispatchArgumentBufferReady;
-        gShadowRendererState.debugStats.shadowMeshletDispatchCommandSignatureReady =
+        state.debugStats.shadowMeshletDispatchCommandSignatureReady =
             after.dispatchCommandSignatureReady;
     }
 
-    void MarkShadowCacheHit() {
-        gShadowRendererState.shadowCache.MarkHit();
-        PublishShadowCacheStats();
+    void MarkShadowCacheHit(ShadowRendererState& state) {
+        state.shadowCache.MarkHit();
+        PublishShadowCacheStats(state);
     }
 
-    void MarkShadowCacheMiss() {
-        gShadowRendererState.shadowCache.MarkMiss();
-        PublishShadowCacheStats();
+    void MarkShadowCacheMiss(ShadowRendererState& state) {
+        state.shadowCache.MarkMiss();
+        PublishShadowCacheStats(state);
     }
 
-    void MarkShadowCacheValidAfterRender() {
+    void MarkShadowCacheValidAfterRender(ShadowRendererState& state) {
         ShadowCacheKey key{};
-        key.layoutVersion = gShadowRendererState.staticShadowSceneSource.layoutVersion;
-        key.sourceVersion = gShadowRendererState.staticShadowSceneSource.sourceVersion;
+        key.layoutVersion = state.staticShadowSceneSource.layoutVersion;
+        key.sourceVersion = state.staticShadowSceneSource.sourceVersion;
         key.sourceInstanceCount =
-            gShadowRendererState.staticShadowSceneSource.sourceInstanceCount;
-        key.resolution = gShadowRendererState.resolution;
-        key.lightViewProj = gShadowRendererState.cascadeLightViewProj;
-        key.cascadeCount = gShadowRendererState.cascadeCount;
-        gShadowRendererState.shadowCache.MarkValid(key);
-        PublishShadowCacheStats();
+            state.staticShadowSceneSource.sourceInstanceCount;
+        key.resolution = state.resolution;
+        key.lightViewProj = state.cascadeLightViewProj;
+        key.cascadeCount = state.cascadeCount;
+        state.shadowCache.MarkValid(key);
+        PublishShadowCacheStats(state);
     }
 
 } // namespace HIKARI::SHADOW::INTERNAL

@@ -2,13 +2,6 @@
 #include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
 #include "Include/Render3D/HIKARI_MeshCameraData.hlsli"
 
-cbuffer ShadowObjectCB : register(b1)
-{
-    float4x4 gWorld;
-    uint gMaterialFlags;
-    float gAlphaCutoff;
-    float2 gShadowObjectPadding;
-};
 
 #include "Include/HIKARI_MeshMaterialData.hlsli"
 #include "Include/HIKARI_SurfaceGpuScene.hlsli"
@@ -16,7 +9,6 @@ cbuffer ShadowObjectCB : register(b1)
 #include "Include/Surface/HIKARI_FoliageWind.hlsli"
 #include "Include/Surface/HIKARI_SurfaceTangentFrame.hlsli"
 
-static const uint HIKARI_INVALID_SHADOW_MATERIAL_INDEX = 0xffffffffu;
 
 struct VSInput
 {
@@ -46,35 +38,19 @@ struct VSOutput
 VSOutput main(VSInput input)
 {
     VSOutput output;
-    float4x4 world = gWorld;
-    uint materialFlags = gMaterialFlags;
-    float alphaCutoff = gAlphaCutoff;
-    uint materialDataIndex = HIKARI_INVALID_SHADOW_MATERIAL_INDEX;
-    uint surfaceGpuSceneIndex = 0u;
-    uint surfaceFeatureFlags = 0u;
+    const HikariSurfaceGpuSceneInstance instance = HikariGetSurfaceGpuSceneInstance(input.instanceId);
+    const float4x4 world = instance.world;
+    const float3x3 normalMatrix = (float3x3)instance.normalMatrix;
+    const uint surfaceGpuSceneIndex = HikariGetSurfaceGpuSceneAbsoluteIndex(input.instanceId);
+    const uint surfaceFeatureFlags = instance.flags;
+    const uint materialDataIndex = instance.materialDataIndex;
+    const HikariMeshMaterialData materialData = HikariGetMeshMaterialData(materialDataIndex);
+    const uint materialFlags = materialData.materialFlags;
+    const float alphaCutoff = materialData.pbrParams.w;
     float3 localPosition = input.position;
     float3 localNormal = input.normal;
-    float3x3 normalMatrix = (float3x3)world;
-    HikariSurfaceGpuSceneInstance instance = (HikariSurfaceGpuSceneInstance)0;
-
-    if (gUseSurfaceGpuScene != 0)
-    {
-        instance = HikariGetSurfaceGpuSceneInstance(input.instanceId);
-        world = instance.world;
-        normalMatrix = (float3x3)instance.normalMatrix;
-        surfaceGpuSceneIndex = HikariGetSurfaceGpuSceneAbsoluteIndex(input.instanceId);
-        surfaceFeatureFlags = instance.flags;
-        float3 sandSurfaceData = float3(0.0f, 0.0f, 0.0f);
-        HikariApplySandSurfaceDeform(
-            instance,
-            localPosition,
-            localNormal,
-            sandSurfaceData);
-        materialDataIndex = instance.materialDataIndex;
-        HikariMeshMaterialData materialData = HikariGetMeshMaterialData(materialDataIndex);
-        materialFlags = materialData.materialFlags;
-        alphaCutoff = materialData.pbrParams.w;
-    }
+    float3 sandSurfaceData = 0.0f.xxx;
+    HikariApplySandSurfaceDeform(instance, localPosition, localNormal, sandSurfaceData);
 
     float4 worldPos = mul(world, float4(localPosition, 1.0f));
     worldPos = HikariApplyFoliageWindWorldPosition(instance, gTimeParams.x, input.uv, worldPos);

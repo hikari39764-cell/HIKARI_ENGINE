@@ -1,4 +1,5 @@
 #include "Render3D/Lighting/HIKARI_IblEnvironment.h"
+#include "Render3D/Lighting/HIKARI_EnvironmentLightingCache.h"
 
 #include "Core/Text/HIKARI_BoolText.h"
 #include <algorithm>
@@ -12,6 +13,9 @@ namespace HIKARI::IBL {
 
     namespace {
         IblEnvironmentData gData{};
+        EnvironmentLightingCache gCache{};
+        IblEnvironmentData gRuntimeData{};
+        bool gRuntimeActive=false;
         ScopedEnvironmentOverride* gActiveOverride = nullptr;
         struct IblStateKey {
             bool valid = false;
@@ -207,6 +211,8 @@ namespace HIKARI::IBL {
     }
 
     void Reset() {
+        BeginEnvironmentFrame();
+        gCache.Invalidate();
         gData = {};
         gRequestedPrefilteredMipCount = 1;
         RefreshResolvedHandles(gData, gRequestedPrefilteredMipCount);
@@ -225,6 +231,32 @@ namespace HIKARI::IBL {
         LogIblStateIfChanged();
         return gData.hasIrradiance && gData.hasPrefiltered && gData.hasBrdfLut;
     }
+
+    void BeginEnvironmentFrame() { gRuntimeActive=false; }
+
+    void PrepareEnvironmentLighting(const GFX::Context& graphics, const SkySettings& sky,
+        const ATMOSPHERE::AtmosphereLutConstants& atmosphere, RENDER3D::TextureResourceHandle source,
+        D3D12_GPU_DESCRIPTOR_HANDLE atmosphereSkyView, uint64_t frameIndex) {
+        gRuntimeActive=false;
+        if (gActiveOverride) return;
+        RefreshResolvedHandles(gData,gRequestedPrefilteredMipCount);
+        if (sky.mode==SkyMode::Cubemap && gData.hasIrradiance && gData.hasPrefiltered) return;
+        if (!gCache.Update(graphics,sky,atmosphere,source,atmosphereSkyView,frameIndex)) return;
+        const auto cache=gCache.GetSource();
+        gRuntimeData={};
+        gRuntimeData.irradianceResource=cache.irradianceResource;
+        gRuntimeData.prefilteredResource=cache.prefilteredResource;
+        gRuntimeData.brdfLutResource=gData.brdfLutResource;
+        RefreshResolvedHandles(gRuntimeData,cache.prefilteredMipCount);
+        gRuntimeActive=gRuntimeData.hasIrradiance && gRuntimeData.hasPrefiltered;
+    }
+
+    void ShutdownEnvironmentLighting(const GFX::Context& graphics) {
+        BeginEnvironmentFrame();
+        gRuntimeData={};
+        gCache.Reset(graphics);
+    }
+    const EnvironmentLightingCacheStatus& GetEnvironmentLightingCacheStatus() { return gCache.GetStatus(); }
 
     void SetFromTextureHandles(
         int irradianceHandle,
@@ -263,6 +295,7 @@ namespace HIKARI::IBL {
             return gActiveOverride->resolved_;
         }
 
+        if (gRuntimeActive) return gRuntimeData;
         RefreshResolvedHandles(gData, gRequestedPrefilteredMipCount);
         LogIblStateIfChanged();
         return gData;

@@ -8,6 +8,7 @@
 #include <wrl/client.h>
 
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
+#include "Render3D/Meshlet/HIKARI_MeshletVisibility.h"
 #include "Render3D/GpuDriven/Backend/HIKARI_GeometryBackendContext.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenCommandBucket.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
@@ -60,6 +61,7 @@ namespace HIKARI::RENDER3D::MESHLET {
     }
 
     struct MeshletRenderBackendStats {
+        MeshletVisibilityStats visibility{};
         bool initialized = false;
         bool shaderModel65Supported = false;
         bool meshShaderSupported = false;
@@ -81,6 +83,8 @@ namespace HIKARI::RENDER3D::MESHLET {
         uint32_t meshShaderTier = 0;
         size_t pipelineCreateRequestCount = 0;
         size_t pipelineCreateReadyCount = 0;
+        size_t preparedForwardVariantCount = 0;
+        size_t failedForwardVariantCount = 0;
         size_t requestedDispatchCount = 0;
         size_t submittedDispatchCount = 0;
         size_t skippedDispatchCount = 0;
@@ -104,6 +108,8 @@ namespace HIKARI::RENDER3D::MESHLET {
         MeshletPipelineKind pipelineKind = MeshletPipelineKind::ForwardOpaque;
         GFX::GPU_PROFILE::Pass profilePass = GFX::GPU_PROFILE::Pass::Count;
         bool reflectionCapture = false;
+        bool reflectionMaterialCapture = false;
+        ForwardShadingCostMode forwardCostMode = ForwardShadingCostMode::Full;
     };
 
     class MeshletRenderBackend final {
@@ -118,22 +124,42 @@ namespace HIKARI::RENDER3D::MESHLET {
             ID3D12Device* device,
             ID3D12RootSignature* rootSignature,
             uint32_t pipelineMask);
-        bool PrepareReflectionCapture();
+        bool PrepareReflectionCapture(bool captureMaterial = false);
+        // 診断 variant は最初の要求時にだけ準備する。失敗は Reset まで再試行しない。
+        bool PrepareForwardVariant(ForwardShadingCostMode mode);
         void Reset();
         void ResetFrame();
+        void ResetVisibility() {
+            visibility_.Reset();
+            stats_.visibility = {};
+        }
         bool Execute(const MeshletRenderExecutionContext& ctx);
+        MeshletVisibilityBinding BeginVisibility(const GFX::Context& graphics,
+            const DEPTH::DepthPyramidView* depth, uint32_t phase) {
+            auto binding = visibility_.Begin(graphics, depth, phase);
+            stats_.visibility = visibility_.GetStats();
+            return binding;
+        }
+        void EndVisibility(const GFX::Context& graphics) {
+            visibility_.End(graphics);
+            stats_.visibility = visibility_.GetStats();
+        }
 
         const MeshletRenderBackendStats& GetStats() const;
+        // Query only: 未作成の診断 variant は nullptr。通常描画への fallback は Execute が決める。
         ID3D12PipelineState* GetPipelineState(
             MeshletPipelineKind kind,
-            GPUDRIVEN::GpuDrivenCommandBucket bucket) const;
+            GPUDRIVEN::GpuDrivenCommandBucket bucket,
+            ForwardShadingCostMode costMode = ForwardShadingCostMode::Full) const;
 
     private:
+        MeshletVisibility visibility_{};
         Microsoft::WRL::ComPtr<ID3D12Device> device_{};
         Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignature_{};
-        PipelineBucketArray reflectionPipelineStates_{};
-        bool reflectionCaptureAttempted_ = false;
+        std::array<PipelineBucketArray, 2> reflectionPipelineStates_{};
+        std::array<bool, 2> reflectionCaptureAttempted_{};
         ForwardPipelineVariantArray forwardPipelineStates_{};
+        std::array<bool, kForwardOpaquePipelineVariantCount> forwardVariantAttempted_{};
         PipelineBucketArray depthAwarePipelineStates_{};
         PipelineBucketArray transparentPipelineStates_{};
         PipelineBucketArray shadowPipelineStates_{};

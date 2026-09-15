@@ -1,5 +1,7 @@
 #include "Include/Lighting/HIKARI_LocalLightContract.hlsli"
 #include "Include/Lighting/HIKARI_ShadowCascadeContract.hlsli"
+#include "Include/Lighting/HIKARI_VolumetricScattering.hlsli"
+#include "Include/Lighting/HIKARI_CloudSolarVisibility.hlsli"
 
 cbuffer VolumetricCB : register(b0)
 {
@@ -32,12 +34,16 @@ cbuffer VolumetricCB : register(b0)
     uint gLocalLightClusterIndexCount;
     float gLocalLightNearDistance;
     float gLocalLightFarDistance;
+    HikariLocalShadowData gLocalShadow;
+    HikariCloudSolarVisibilityData gCloudSolarVisibility;
 };
 
 #include "Include/Lighting/HIKARI_LocalLightList.hlsli"
 
 Texture2D<float> gSceneDepth : register(t0);
 Texture2D<float> gShadowMap : register(t1);
+Texture2D gLocalShadowAtlas : register(t7);
+Texture2D<float4> gCloudSolarAtlas : register(t8);
 Texture3D<float4> gHistoryVolume : register(t2);
 RWTexture3D<float4> gOutputVolume : register(u0);
 SamplerState gLinearClamp : register(s0);
@@ -93,14 +99,6 @@ float ShadowVisibility(float3 worldPosition, float3 cameraForward)
     return visibility;
 }
 
-float HenyeyGreenstein(float cosTheta, float anisotropy)
-{
-    const float g = clamp(anisotropy, -0.8f, 0.8f);
-    const float g2 = g * g;
-    return (1.0f - g2) /
-        max(4.0f * 3.14159265f * pow(1.0f + g2 - 2.0f * g * cosTheta, 1.5f), 1e-4f);
-}
-
 float3 EvaluateLighting(
     float3 worldPosition,
     float3 viewRay,
@@ -113,10 +111,7 @@ float3 EvaluateLighting(
         gAmbientColorIntensity.a * max(gVolumetricOptics.z, 0.0f);
     lighting += directionalRadiance *
         max(gVolumetricOptics.w, 0.0f) *
-        lerp(
-            1.0f,
-            ShadowVisibility(worldPosition, cameraForward),
-            gDirectionalColorShadow.a);
+        ShadowVisibility(worldPosition, cameraForward)*HikariSampleCloudSolarVisibility(gCloudSolarAtlas,gCloudSolarVisibility,worldPosition);
 
     const uint2 localLightCluster =
         HikariResolveLocalLightClusterFromDepthSlice(
@@ -147,10 +142,12 @@ float3 EvaluateLighting(
         {
             continue;
         }
-        const float pointPhase = HenyeyGreenstein(
+        const float pointPhase = HikariHenyeyGreenstein(
             dot(viewRay, lightSample.directionToLight),
             gFogDistances.w);
-        lighting += lightSample.radiance * pointPhase;
+        const float visibility = HikariSampleLocalLightShadow(gLocalShadowAtlas, gShadowSampler,
+            gLocalShadow, gHikariLocalLights[lightIndex], worldPosition, 0.0f.xxx, false);
+        lighting += lightSample.radiance * pointPhase * visibility;
     }
     return lighting;
 }
@@ -175,7 +172,7 @@ void InjectAndIntegrateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         ReconstructRay(float2(0.5f, 0.5f));
     const float3 toDirectionalLight =
         normalize(-gDirectionalDirIntensity.xyz);
-    const float directionalPhase = HenyeyGreenstein(
+    const float directionalPhase = HikariHenyeyGreenstein(
         dot(ray, toDirectionalLight),
         gFogDistances.w);
     const float3 directionalRadiance =
@@ -247,7 +244,10 @@ void InjectAndIntegrateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
                 const float relativeLumaDelta = abs(historyLuma - currentLuma) /
                     max(max(historyLuma, currentLuma), 0.05f);
                 const float transmittanceDelta = abs(history.a - integrated.a);
-                const float historyConfidence = exp2(
+                // 遮蔽物が動いて暗くなった froxel へ以前の明るい散乱を持ち越さない。
+                const bool discontinuity = relativeLumaDelta > 0.25f || transmittanceDelta > 0.05f ||
+                    (currentLuma <= 1e-5f && historyLuma > 1e-5f);
+                const float historyConfidence = discontinuity ? 0.0f : exp2(
                     -relativeLumaDelta * 1.5f - transmittanceDelta * 8.0f);
                 integrated = lerp(
                     integrated,

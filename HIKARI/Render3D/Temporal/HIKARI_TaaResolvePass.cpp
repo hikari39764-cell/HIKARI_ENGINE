@@ -30,9 +30,10 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             MATH::Vec4 screenParams{};
             MATH::Vec4 taaParams{};
             MATH::Vec4 rejectionParams{};
+            MATH::Vec4 jitterPixels{};
         };
 
-        static_assert(sizeof(TaaResolveConstants) == 48u);
+        static_assert(sizeof(TaaResolveConstants) == 64u);
 
         struct TaaResolvePassState {
             ComPtr<ID3D12RootSignature> rootSignature{};
@@ -254,6 +255,8 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             inputs.historyDepthRead.valid;
         TaaResolveConstants constants{};
         constants.screenParams = inputs.frame.camera.screenParams;
+        constants.jitterPixels = {inputs.frame.camera.jitter.x, inputs.frame.camera.jitter.y,
+            inputs.frame.camera.prevJitter.x, inputs.frame.camera.prevJitter.y};
         constants.taaParams = {
             historyValid ? 1.0f : 0.0f,
             std::clamp(settings.historyWeight, 0.0f, 0.97f),

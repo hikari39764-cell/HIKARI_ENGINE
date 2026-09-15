@@ -30,11 +30,11 @@ namespace HIKARI::MESHRENDERER {
         DX::DynamicUploadBuffer materialUploads;
         bool materialUploadNeedsRetry = false;
         bool materialProgramUploadNeedsRetry = false;
-        Microsoft::WRL::ComPtr<ID3D12Resource> jointPaletteCB;
+        DX::DynamicUploadBuffer deformationUploads;
+        D3D12_GPU_VIRTUAL_ADDRESS jointPaletteAddress = 0;
 
         ObjectCB* objectMapped = nullptr;
         ObjectGpuData* objectDataMapped = nullptr;
-        JointPaletteCB* jointPaletteMapped = nullptr;
 
         D3D12_CPU_DESCRIPTOR_HANDLE objectDataSrvCpu{};
         D3D12_GPU_DESCRIPTOR_HANDLE objectDataSrvGpu{};

@@ -97,6 +97,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             return false;
         };
 
+        CORE::StartupTimer buffersTimer("Renderer3D.frame_resources");
         if (!CreateBuffers(graphics)) {
             return failInitialization(
                 "[MeshRenderer][ERROR] Required frame-resource initialization "
@@ -109,11 +110,15 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                 "[MeshRenderer][ERROR] GPU material registry initialization "
                 "failed. Rendering is disabled until process restart.");
         }
+        buffersTimer.Finish();
+        CORE::StartupTimer pipelinesTimer("Renderer3D.traditional_pipelines");
         if (!InitializeMeshPipelines(device, gMeshRendererState.pipelines)) {
             return failInitialization(
                 "[MeshRenderer][ERROR] Required mesh pipeline initialization "
                 "failed. Rendering is disabled until process restart.");
         }
+        pipelinesTimer.Finish();
+        CORE::StartupTimer cullingTimer("Renderer3D.culling_resources");
         if (!gMeshRendererState.traditionalCommandStreamBuffer.Initialize(
             device,
             GetStaticRootSignature(gMeshRendererState.pipelines),
@@ -134,29 +139,16 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             4u)) {
             DEBUGLOG::PushRenderError("[MeshRenderer][WARN] Cluster GPU culling pass initialization failed. Cluster draw seeds will be disabled.");
         }
+        cullingTimer.Finish();
+        CORE::StartupTimer meshletTimer("Renderer3D.meshlet_pipelines");
         if (!gMeshRendererState.meshletRenderBackend.Initialize(
             device,
             GetStaticRootSignature(gMeshRendererState.pipelines),
             RENDER3D::MESHLET::MeshletPipelineMask::MainRenderer)) {
             DEBUGLOG::PushRenderError("[MeshRenderer][WARN] Meshlet render backend is not ready. GPU-driven mesh shader route will be unavailable.");
         }
-        if (!gMeshRendererState.particlePass.Initialize(graphics)) {
-            DEBUGLOG::PushRenderError(
-                "[MeshRenderer][WARN] Particle GPU-driven pass initialization "
-                "failed. Particle submissions will remain unavailable.");
-        }
-        if (!gMeshRendererState.worldSpritePass.Initialize(graphics)) {
-            DEBUGLOG::PushRenderError(
-                "[MeshRenderer][WARN] World Sprite pass initialization "
-                "failed. WorldSpriteComponent submissions will remain "
-                "visible through diagnostics but cannot be drawn.");
-        }
-        if (!gMeshRendererState.worldTextPass.Initialize(graphics)) {
-            DEBUGLOG::PushRenderError(
-                "[MeshRenderer][WARN] World Text pass initialization "
-                "failed. WorldTextComponent submissions will remain "
-                "visible through diagnostics but cannot be drawn.");
-        }
+        meshletTimer.Finish();
+        // 任意の presentation pass は、最初の非空 PrepareFrame が初期化する。
         gMeshRendererState.clusterGpuDrivenProducer.Attach(&gMeshRendererState.clusterGpuCullingPass);
         gMeshRendererState.gpuDrivenLayer.Attach(
             &gMeshRendererState.surfaceGpuSceneBuffer,

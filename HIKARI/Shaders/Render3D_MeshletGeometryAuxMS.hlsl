@@ -1,4 +1,4 @@
-#include "Include/HIKARI_MeshletMSCommon.hlsli"
+#include "Include/Meshlet/HIKARI_MeshletMSCommon.hlsli"
 #include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
 #include "Include/Surface/HIKARI_SurfaceTangentFrame.hlsli"
 #include "Include/Meshlet/HIKARI_WaterSurfaceDeform.hlsli"
@@ -68,7 +68,7 @@ HikariMeshletGeometryAuxVertexOut HikariBuildMeshletGeometryAuxVertex(
     // Depth prepass (MeshletDepthMS) と深度を bit 一致させるため、
     // clip 位置の計算は各 MS で同一式 + precise に固定する。
     float4 worldPos = mul(instance.clusterWorld, float4(localPosition, 1.0f));
-    float4 uv01 = HikariLoadClusterVertexUv01(geometry, resolved.header, vertexIndex);
+    const float4 uv01 = vertex.uv01;
     worldPos = HikariApplyFoliageWindWorldPosition(
         instance,
         gTimeParams.x,

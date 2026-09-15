@@ -63,17 +63,6 @@ namespace HIKARI {
                 std::isfinite(value.w);
         }
 
-        bool IsFinite(const MATH::Mat4& value) noexcept {
-            for (size_t column = 0u; column < 4u; ++column) {
-                for (size_t row = 0u; row < 4u; ++row) {
-                    if (!std::isfinite(value.m[column][row])) {
-                        return false;
-                    }
-                }
-            }
-            return true;
-        }
-
         MATH::Vec3 ToRuntime(const GameProjectFloat3& value) noexcept {
             return { value.x, value.y, value.z };
         }
@@ -1348,7 +1337,7 @@ namespace HIKARI {
                     presentationTransforms->TryGetWorldMatrix(
                         object->GetRuntimeHandle(),
                         presentationWorld) &&
-                    IsFinite(presentationWorld)) {
+                    MATH::IsFinite(presentationWorld)) {
                     authoritativeObjectWorld = presentationWorld;
                 }
                 runtimeSpace = ANIMATION::AnimationSocketSpace::World;
@@ -1582,7 +1571,7 @@ namespace HIKARI {
                 if (presentation != nullptr &&
                     presentation->TryGetWorldMatrix(
                         object->GetRuntimeHandle(), presented) &&
-                    IsFinite(presented)) {
+                    MATH::IsFinite(presented)) {
                     objectWorld = presented;
                 }
                 worldSpace = true;
@@ -1591,7 +1580,7 @@ namespace HIKARI {
             default:
                 return false;
             }
-            if (worldSpace && !IsFinite(objectWorld)) {
+            if (worldSpace && !MATH::IsFinite(objectWorld)) {
                 return false;
             }
 

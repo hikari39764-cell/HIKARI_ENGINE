@@ -94,10 +94,15 @@ namespace HIKARI::MESHRENDERER {
         uint32_t screenHeight,
         RenderDebugView debugView = RenderDebugView::None,
         const MeshFrameCameraOverrides* cameraOverrides = nullptr);
+    // BeginFrame 後、Forward 提出前に一度確定。準備に失敗した体積霧は通常霧を消さない。
+    bool FinalizeVolumetricFog(const GFX::Context& graphics, bool volumetricFogReady);
     void SetGpuDrivenCullingCameraFreezeEnabled(bool enabled);
     bool IsGpuDrivenCullingCameraFrozen();
     const CameraCB* GetCameraConstants();
     const CameraCB* GetGpuDrivenCullingCameraConstants();
+    MeshMaterialGpuFrameView GetMaterialGpuFrameView(const GFX::Context& graphics);
+    bool RefreshLightingProviders(const GFX::Context& graphics,
+        const RENDER3D::LIGHTING::CloudSolarVisibilityGpuData& clouds);
     RENDER3D::LIGHTING::LocalLightListGpuBindings
         GetLocalLightListGpuBindings();
     bool RenderGeometryAuxPass(
@@ -117,7 +122,8 @@ namespace HIKARI::MESHRENDERER {
     bool HasDepthPrepassWork();
     bool RenderDepthPrepass(
         const GFX::Context& graphics,
-        D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv);
+        D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv,
+        bool useCullingCamera = false);
     bool RenderWaterVisibilityDepth(
         const GFX::Context& graphics,
         D3D12_CPU_DESCRIPTOR_HANDLE waterDsv,
@@ -127,7 +133,7 @@ namespace HIKARI::MESHRENDERER {
     bool FinalizeGpuDrivenVisibilityFromDepth(
         const GFX::Context& graphics,
         const RENDER3D::GPUDRIVEN::GpuDepthVisibilityStats& depthVisibilityStats);
-    bool PrepareForwardReflectionCapture(const GFX::Context& graphics);
+    bool PrepareForwardReflectionCapture(const GFX::Context& graphics, bool captureMaterial = false);
 
     bool RenderForwardOpaquePass(
         const GFX::Context& graphics,
@@ -217,6 +223,8 @@ namespace HIKARI::MESHRENDERER {
     void ResetSecondarySceneCaptureResources(uint32_t captureSlot) noexcept;
     void ResetSecondarySceneCaptureResources() noexcept;
     const MeshRendererDebugStats& GetDebugStats();
+    // GeometryAux に参加しない opaque depth writer の有無。frame pass owner が判定する。
+    bool HasOpaqueDepthOutsideGeometryAux();
     const RENDER3D::MATERIAL::GpuMaterialRegistryStats&
         GetGpuMaterialRegistryStats();
     const RENDER3D::GPUDRIVEN::MassGpuSceneFrameBufferStats&

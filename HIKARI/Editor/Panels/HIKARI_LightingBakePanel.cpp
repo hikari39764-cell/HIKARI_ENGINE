@@ -332,6 +332,11 @@ namespace HIKARI {
             lastReport_ = scene.GetLastLightingBakeReport();
             hasReport_ = true;
         }
+        if (hasReport_ && !lastReport_.errors.empty()) {
+            ImGui::PushStyleColor(ImGuiCol_Text, palette.error);
+            ImGui::TextWrapped("%s", lastReport_.errors.front().c_str());
+            ImGui::PopStyleColor();
+        }
         if (bakeBusy && hasReport_) {
             const float progress = ResolveProgress(lastReport_);
             const std::string label =

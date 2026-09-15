@@ -4,6 +4,7 @@
 #include <cstring>
 
 #include "Core/HIKARI_Logger.h"
+#include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Core/Numeric/HIKARI_IntegerConversion.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenSceneSource.h"
 #include "Render3D/GpuDriven/HIKARI_MassGpuScene.h"
@@ -26,6 +27,25 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 }
             }
             return false;
+        }
+
+        uint64_t TraditionalCommandInputVersion(const GpuDrivenSceneSource* source) {
+            if (source == nullptr) return 0u;
+            uint64_t hash = HASH::Fnv1aCombine(HASH::kFnv1a64OffsetBasis, source->sourceVersion);
+            // 内容版と GPU 配置の寿命は異なる。パディングや CPU ポインタは含めない。
+            for (const auto& pass : source->passes) {
+                if (pass.traditionalIndirect.commands == nullptr) continue;
+                for (const auto& command : *pass.traditionalIndirect.commands) {
+                    const auto& vertex = command.triangleMeshView.vertexBuffer;
+                    const auto& index = command.triangleMeshView.indexBuffer;
+                    hash = HASH::Fnv1aCombine(hash, vertex.BufferLocation);
+                    hash = HASH::Fnv1aCombine(hash, (uint64_t(vertex.SizeInBytes) << 32) | vertex.StrideInBytes);
+                    hash = HASH::Fnv1aCombine(hash, index.BufferLocation);
+                    hash = HASH::Fnv1aCombine(hash, (uint64_t(index.SizeInBytes) << 32) | uint32_t(index.Format));
+                    hash = HASH::Fnv1aCombine(hash, command.jointPaletteGpuAddress);
+                }
+            }
+            return hash;
         }
 
         GpuDrivenPassKind PassFromIndex(size_t index) {
@@ -335,6 +355,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         frameContext_.scene.instanceBuffer = sceneBuffer_;
         frameContext_.scene.massInstanceBuffer = massSceneBuffer_;
         frameSource_ = nullptr;
+        traditionalCommandInputVersion_ = 0u;
         sceneUploadStats_ = {};
         commandFrameStats_ = {};
         traditionalCommandFrameKey_ = {};
@@ -344,6 +365,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
     bool GpuDrivenLayer::BeginFrame(const GpuDrivenSceneSource* source) {
         ResetFrame();
         frameSource_ = source;
+        // BeginFrame で不変 view を受領する。Cascade 毎に全コマンドを再走査しない。
+        traditionalCommandInputVersion_ = TraditionalCommandInputVersion(source);
         frameContext_.stats.sourceInstanceCount =
             source != nullptr
                 ? source->CountGpuSceneInstances()
@@ -608,8 +631,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         key.valid = true;
         key.frameIndex = desc.frameIndex;
         key.source = frameSource_;
-        key.sourceVersion =
-            frameSource_ != nullptr ? frameSource_->sourceVersion : 0u;
+        key.sourceVersion = traditionalCommandInputVersion_;
         key.layoutVersion =
             frameSource_ != nullptr ? frameSource_->layoutVersion : 0u;
         key.hasCullViewProj = desc.cullViewProj != nullptr;
@@ -642,20 +664,19 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 const bool reusedResidentInput =
                     traditionalCommandStreamBuffer_->PrepareCommandInputs(
                         reinterpret_cast<uintptr_t>(frameSource_),
-                        frameSource_->layoutVersion,
-                        frameSource_->sourceVersion);
+                        key.layoutVersion,
+                        key.sourceVersion);
                 if (!reusedResidentInput) {
                     UploadTraditionalIndirectCommands(
                         *traditionalCommandStreamBuffer_,
                         *frameSource_);
                 }
-                if (desc.cullViewProj != nullptr) {
-                    (void)traditionalCommandStreamBuffer_->BuildGpuCompactedCommands(
+                const bool built = desc.cullViewProj != nullptr &&
+                    traditionalCommandStreamBuffer_->BuildGpuCompactedCommands(
                         desc.commandList,
                         *desc.cullViewProj,
                         desc.enableSurfaceFrustumCull);
-                }
-                traditionalCommandFrameKey_ = key;
+                traditionalCommandFrameKey_ = built ? key : TraditionalCommandFrameKey{};
             }
             commandFrameStats_.traditionalCommandStreamStats =
                 traditionalCommandStreamBuffer_->GetStats();
@@ -741,18 +762,11 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 pass,
                 GeometryBackendKind::GpuDrivenTraditionalVsPs);
 
-        if (preferredReady) {
-            plan.AddGpuBackend(policy.preferred);
-            if (policy.preferred ==
-                GeometryBackendKind::GpuDrivenMeshShader &&
-                sidecarReady) {
-                plan.AddGpuBackend(
-                    GeometryBackendKind::GpuDrivenTraditionalVsPs);
-            }
-            return plan;
-        }
-
-        if (!policy.forcePreferredOnly && secondaryReady) {
+        if (preferredReady) plan.AddGpuBackend(policy.preferred);
+        // sidecar は別の geometry 集合。主 Mesh Shader の仕事がない pass でも欠落させない。
+        if (policy.preferred == GeometryBackendKind::GpuDrivenMeshShader && sidecarReady) {
+            plan.AddGpuBackend(GeometryBackendKind::GpuDrivenTraditionalVsPs);
+        } else if (!preferredReady && !policy.forcePreferredOnly && secondaryReady) {
             plan.AddGpuBackend(policy.secondary);
         }
         return plan;

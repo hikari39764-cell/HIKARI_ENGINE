@@ -515,6 +515,9 @@ namespace HIKARI::POST {
     RENDER3D::RenderTextureView PostSystem::GetCurrentRenderTargetDepthView() {
         return captureStage_.GetCurrentDepthView();
     }
+    RENDER3D::RenderTextureView PostSystem::GetCurrentRenderTargetColorView() {
+        return captureStage_.GetCurrentColorView();
+    }
     D3D12_CPU_DESCRIPTOR_HANDLE PostSystem::GetCurrentRenderTargetDsv() { return captureStage_.GetCurrentDsv(); }
     D3D12_CPU_DESCRIPTOR_HANDLE PostSystem::GetCurrentRenderTargetReadOnlyDsv() { return captureStage_.GetCurrentReadOnlyDsv(); }
     bool PostSystem::BeginCurrentRenderTargetDepthRead() { return captureStage_.BeginCurrentDepthRead(); }

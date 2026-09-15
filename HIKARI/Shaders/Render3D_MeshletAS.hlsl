@@ -1,11 +1,11 @@
-#include "Include/HIKARI_MeshletDraw.hlsli"
+#include "Include/Meshlet/HIKARI_MeshletDraw.hlsli"
 #include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
 #define HIKARI_SURFACE_GPU_SCENE_SKIP_CONTROL_CB 1
 #define HIKARI_SURFACE_GPU_SCENE_SKIP_CONTROL_HELPERS 1
 #include "Include/HIKARI_SurfaceGpuScene.hlsli"
 #include "Include/HIKARI_ClusterGpuData.hlsli"
 #include "Include/HIKARI_RenderDescriptorLayout.hlsli"
-#include "Include/Meshlet/HIKARI_MeshletASCulling.hlsli"
+#include "Include/Cluster/HIKARI_ClusterCullingMath.hlsli"
 
 cbuffer CameraCB : register(b0)
 {
@@ -33,14 +33,46 @@ static const uint HIKARI_CLUSTER_DRAW_BUCKET_DOUBLE_SIDED = 1u;
 
 ByteAddressBuffer gClusterGeometryPool[HIKARI_CLUSTER_SRV_POOL_COUNT] : register(t0, space1);
 
+#if !defined(HIKARI_MESHLET_DISABLE_OCCLUSION)
+#include "Include/Depth/HIKARI_DepthOcclusion.hlsli"
+Texture2D<float> gMeshletOcclusionDepth : register(t19);
+cbuffer MeshletOcclusionQuery : register(b12)
+{
+    float4x4 gMeshletOcclusionViewProj;
+    uint gMeshletVisibilityControl;
+    uint3 gMeshletOcclusionPadding;
+};
+RWByteAddressBuffer gMeshletVisibilityCounters : register(u0, space8);
+
+void HikariMeshletAsRecordCount(uint offset, bool predicate)
+{
+    uint count = WaveActiveCountBits(predicate);
+    if (WaveIsFirstLane() && count != 0u) gMeshletVisibilityCounters.InterlockedAdd(offset, count);
+}
+
+bool HikariMeshletAsOccluded(float4x4 cullWorld, float4 cullMin, float4 cullMax,
+    out bool tested)
+{
+    tested = false;
+    uint mipCount = gMeshletVisibilityControl & 255u;
+    if (mipCount == 0u) return false;
+    uint width, height;
+    gMeshletOcclusionDepth.GetDimensions(width, height);
+    HikariDepthOcclusionQuery query;
+    if (!HikariBuildDepthOcclusionQuery(gMeshletOcclusionViewProj, cullWorld, cullMin.xyz,
+        cullMax.xyz, uint2(width, height), query)) return false;
+    tested = true;
+    return HikariDepthOccluded(gMeshletOcclusionDepth, query, uint2(width, height), mipCount, 0.0f);
+
+}
+#endif
+
 groupshared HikariMeshletPayload gMeshletAsPayload;
 #include "Include/Meshlet/HIKARI_MeshletASCompaction.hlsli"
 
-void HikariMeshletAsInitPayload(uint visibleRangeIndex)
+void HikariMeshletAsInitPayload()
 {
-    gMeshletAsPayload.visibleRangeIndex = visibleRangeIndex;
     gMeshletAsPayload.visibleClusterCount = 0u;
-    gMeshletAsPayload.clusterMode = HIKARI_MESHLET_AS_MODE_COMPACT;
     gMeshletAsPayload.clusterGeometryPoolIndex = 0u;
     gMeshletAsPayload.gpuSceneInstanceIndex = 0u;
     gMeshletAsPayload.clusterSurfaceIndex = 0u;
@@ -78,7 +110,7 @@ void HikariMeshletAsStoreRangePayload(
 
 bool HikariMeshletAsBuildPayloadCluster(
     HikariClusterGeometryHeader header,
-    uint clusterIndex,
+    uint relativeClusterIndex,
     HikariMeshCluster cluster,
     out HikariMeshletPayloadCluster payloadCluster)
 {
@@ -90,6 +122,7 @@ bool HikariMeshletAsBuildPayloadCluster(
         cluster.triangleCount,
         HIKARI_CLUSTER_GEOMETRY_MAX_MESHLET_PRIMITIVES);
     bool valid =
+        relativeClusterIndex < 65536u &&
         vertexCount != 0u &&
         primitiveCount != 0u &&
         cluster.firstVertex < header.vertexCount &&
@@ -108,46 +141,22 @@ bool HikariMeshletAsBuildPayloadCluster(
         return false;
     }
 
-    payloadCluster.clusterIndex = clusterIndex;
+    payloadCluster.clusterIndex = relativeClusterIndex;
     payloadCluster.firstVertex = cluster.firstVertex;
     payloadCluster.firstPrimitive = cluster.firstPrimitive;
     payloadCluster.packedCounts =
-        HikariMeshletPackPayloadCounts(vertexCount, primitiveCount);
+        HikariMeshletPackPayloadCounts(relativeClusterIndex, vertexCount, primitiveCount);
     return true;
-}
-
-uint HikariMeshletAsResolveSourceClusterIndex(
-    HikariMeshletVisibleRange visible,
-    bool clusterListRange,
-    bool packetRange,
-    uint groupIndex)
-{
-    if (clusterListRange)
-    {
-        uint listStart = HikariMeshletVisibleRangeClusterListStart(visible);
-        return listStart != 0xffffffffu
-            ? gMeshletVisibleClusterList[listStart + groupIndex]
-            : 0xffffffffu;
-    }
-    if (packetRange)
-    {
-        return HikariMeshletVisibleRangePacketIndex(visible, groupIndex);
-    }
-    return visible.firstCluster + groupIndex;
 }
 
 bool HikariMeshletAsCanConeCull(HikariMeshletVisibleRange visible)
 {
     return
+        !HikariSurfaceUsesVertexDeformation(visible.flags) &&
         visible.drawBucket != HIKARI_CLUSTER_DRAW_BUCKET_DOUBLE_SIDED &&
         (visible.flags & (
-            HIKARI_SURFACE_GPU_SCENE_FLAG_ALPHA_MASKED |
             HIKARI_SURFACE_GPU_SCENE_FLAG_TRANSPARENT |
-            HIKARI_SURFACE_GPU_SCENE_FLAG_DOUBLE_SIDED |
-            HIKARI_SURFACE_GPU_SCENE_FLAG_SKINNED |
-            HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_SURFACE |
-            HIKARI_SURFACE_GPU_SCENE_FLAG_SAND_SURFACE |
-            HIKARI_SURFACE_GPU_SCENE_FLAG_CAMERA_CENTERED_OCEAN)) == 0u;
+            HIKARI_SURFACE_GPU_SCENE_FLAG_DOUBLE_SIDED)) == 0u;
 }
 
 [numthreads(HIKARI_MESHLET_AS_MAX_CLUSTER_PAYLOAD, 1, 1)]
@@ -156,21 +165,15 @@ void main(uint groupIndex : SV_GroupIndex, uint3 groupId : SV_GroupID)
     const uint visibleRangeIndex = gMeshletVisibleRangeIndex + groupId.x;
     if (groupIndex == 0u)
     {
-        HikariMeshletAsInitPayload(visibleRangeIndex);
+        HikariMeshletAsInitPayload();
     }
     GroupMemoryBarrierWithGroupSync();
 
     HikariMeshletVisibleRange visible = gMeshletVisibleRanges[visibleRangeIndex];
-    const bool clusterListRange = HikariMeshletVisibleRangeUsesClusterList(visible);
-    const bool packetRange = HikariMeshletVisibleRangeUsesPacket(visible);
-    const bool preculledRange = HikariMeshletVisibleRangeIsPreculled(visible);
-    const bool amplificationFineCull =
-        HikariMeshletVisibleRangeRequiresAmplificationFineCull(visible);
-    const uint sourceClusterCount = clusterListRange
-        ? HikariMeshletVisibleRangeClusterListCount(visible)
-        : (packetRange
-            ? HikariMeshletVisibleRangePacketCount(visible)
-            : visible.clusterCount);
+    const uint sourceClusterCount = visible.clusterCount;
+    const bool candidateLane = groupIndex < min(sourceClusterCount, HIKARI_MESHLET_AS_MAX_CLUSTER_PAYLOAD);
+    bool frustumCulled = false, coneTested = false, coneCulled = false;
+    bool hzbTested = false, hzbCulled = false;
 
     bool rangeValid =
         sourceClusterCount != 0u &&
@@ -192,14 +195,6 @@ void main(uint groupIndex : SV_GroupIndex, uint3 groupId : SV_GroupID)
         HikariMeshletAsStoreRangePayload(visible, clusterGeometryPoolIndex);
     }
 
-    const bool denseRange =
-        rangeValid &&
-        preculledRange &&
-        !amplificationFineCull &&
-        !clusterListRange &&
-        !packetRange &&
-        visible.clusterCount > HIKARI_MESHLET_AS_MAX_CLUSTER_PAYLOAD;
-
     HikariClusterGeometryHeader header = (HikariClusterGeometryHeader)0;
     header.clusterOffsetBytes = visible.clusterOffsetBytes;
     header.vertexOffsetBytes = visible.vertexOffsetBytes;
@@ -211,17 +206,12 @@ void main(uint groupIndex : SV_GroupIndex, uint3 groupId : SV_GroupID)
     uint clusterIndex = 0xffffffffu;
     bool clusterValid =
         rangeValid &&
-        !denseRange &&
         groupIndex < min(
             sourceClusterCount,
             HIKARI_MESHLET_AS_MAX_CLUSTER_PAYLOAD);
     if (clusterValid)
     {
-        clusterIndex = HikariMeshletAsResolveSourceClusterIndex(
-            visible,
-            clusterListRange,
-            packetRange,
-            groupIndex);
+        clusterIndex = visible.firstCluster + groupIndex;
         clusterValid =
             clusterIndex != 0xffffffffu &&
             clusterIndex < header.clusterCount;
@@ -241,51 +231,73 @@ void main(uint groupIndex : SV_GroupIndex, uint3 groupId : SV_GroupID)
             cluster.surfaceIndex == visible.clusterSurfaceIndex;
     }
 
-    const bool vertexDeformedRange =
-        (visible.flags & (
-            HIKARI_SURFACE_GPU_SCENE_FLAG_SKINNED |
-            HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_SURFACE |
-            HIKARI_SURFACE_GPU_SCENE_FLAG_SAND_SURFACE |
-            HIKARI_SURFACE_GPU_SCENE_FLAG_CAMERA_CENTERED_OCEAN)) != 0u;
-    const bool requiresFineCull =
-        !vertexDeformedRange && (amplificationFineCull || !preculledRange);
+    float4x4 cullWorld = instance.clusterWorld;
+    float4 cullMin = cluster.boundsMin, cullMax = cluster.boundsMax;
+    const bool requiresFineCull = HikariClusterHasConservativeBounds(instance);
     if (clusterValid && requiresFineCull)
     {
-        const float4 worldSphere = HikariMeshletAsBuildWorldSphere(
-            instance.clusterWorld,
+        const float4 worldSphere = HikariClusterBuildCullSphere(
+            instance,
             cluster.sphereCenterRadius,
             cluster.boundsMin,
             cluster.boundsMax);
-        clusterValid = HikariMeshletAsSphereVisible(
+        clusterValid = HikariClusterSphereVisible(
             gCullViewProj,
             worldSphere);
-        if (clusterValid &&
+        if (clusterValid) {
+            HikariClusterBuildCullBox(instance, cullWorld, cullMin, cullMax);
+            clusterValid = HikariClusterBoxVisible(gCullViewProj, cullWorld, cullMin.xyz, cullMax.xyz);
+        }
+        frustumCulled = !clusterValid;
+        coneTested = clusterValid &&
             HikariMeshletAsCanConeCull(visible) &&
-            HikariMeshletAsConeBackfacing(
+            cluster.coneAxisCutoff.w >= 0.0f && cluster.coneAxisCutoff.w < 1.0f &&
+            dot(gCullViewProj[3].xyz, gCullViewProj[3].xyz) > 1e-12f;
+        if (coneTested && HikariClusterConeBackfacing(
                 instance.clusterWorld,
                 cluster,
-                worldSphere,
                 gCullCameraPos.xyz))
         {
+            coneCulled = true;
             clusterValid = false;
         }
     }
+
+#if !defined(HIKARI_MESHLET_DISABLE_OCCLUSION)
+    if (clusterValid && requiresFineCull) {
+        hzbCulled = HikariMeshletAsOccluded(cullWorld, cullMin, cullMax, hzbTested);
+        if (hzbCulled) clusterValid = false;
+    }
+#endif
 
     HikariMeshletPayloadCluster payloadCluster = (HikariMeshletPayloadCluster)0;
     const bool payloadValid =
         clusterValid &&
         HikariMeshletAsBuildPayloadCluster(
             header,
-            clusterIndex,
+            clusterIndex - visible.firstCluster,
             cluster,
             payloadCluster);
+#if !defined(HIKARI_MESHLET_DISABLE_OCCLUSION)
+    // 診断フレームだけ wave 単位で加算。通常フレームは UAV/atomic を実行しない。
+    if ((gMeshletVisibilityControl & 0x80000000u) != 0u) {
+        HikariMeshletAsRecordCount(0u, candidateLane);
+        HikariMeshletAsRecordCount(4u, frustumCulled);
+        HikariMeshletAsRecordCount(8u, coneTested);
+        HikariMeshletAsRecordCount(12u, coneCulled);
+        HikariMeshletAsRecordCount(16u, hzbTested);
+        HikariMeshletAsRecordCount(20u, hzbCulled);
+        HikariMeshletAsRecordCount(24u, candidateLane && !requiresFineCull);
+        HikariMeshletAsRecordCount(28u, payloadValid);
+        HikariMeshletAsRecordCount(32u, candidateLane && !payloadValid &&
+            !frustumCulled && !coneCulled && !hzbCulled);
+    }
+#endif
     const uint compactIndex = HikariMeshletAsCompactVisibleLane(
         payloadValid,
         groupIndex);
     if (payloadValid && compactIndex < HIKARI_MESHLET_AS_MAX_CLUSTER_PAYLOAD)
     {
-        gMeshletAsPayload.clusterIndices[compactIndex] =
-            payloadCluster.clusterIndex;
         gMeshletAsPayload.clusterFirstVertices[compactIndex] =
             payloadCluster.firstVertex;
         gMeshletAsPayload.clusterFirstPrimitives[compactIndex] =
@@ -295,19 +307,7 @@ void main(uint groupIndex : SV_GroupIndex, uint3 groupId : SV_GroupID)
     }
     GroupMemoryBarrierWithGroupSync();
 
-    if (groupIndex == 0u)
-    {
-        if (denseRange)
-        {
-            gMeshletAsPayload.visibleClusterCount = visible.clusterCount;
-            gMeshletAsPayload.clusterMode = HIKARI_MESHLET_AS_MODE_DENSE;
-        }
-        else
-        {
-            gMeshletAsPayload.visibleClusterCount = gMeshletAsVisibleCount;
-            gMeshletAsPayload.clusterMode = HIKARI_MESHLET_AS_MODE_COMPACT;
-        }
-    }
+    if (groupIndex == 0u) gMeshletAsPayload.visibleClusterCount = gMeshletAsVisibleCount;
     GroupMemoryBarrierWithGroupSync();
 
     DispatchMesh(

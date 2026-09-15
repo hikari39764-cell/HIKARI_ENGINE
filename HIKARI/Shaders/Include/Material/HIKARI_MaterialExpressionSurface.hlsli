@@ -10,7 +10,8 @@
 HikariMaterialExpressionContext HikariBuildMaterialExpressionContext(
     float2 uv0, float2 uv1, float4 time,
     float3 worldPosition, float3 geometricNormal, float4 worldTangent,
-    float3 cameraPosition, float4 pixelPosition, float2 inverseScreenSize)
+    float3 cameraPosition, float4 pixelPosition, float2 inverseScreenSize,
+    HikariMaterialTextureFootprint textureFootprint = (HikariMaterialTextureFootprint)0)
 {
     HikariMaterialExpressionContext context;
     context.uv0 = uv0;
@@ -24,6 +25,7 @@ HikariMaterialExpressionContext HikariBuildMaterialExpressionContext(
     context.cameraPosition = cameraPosition;
     context.screenPosition = float4(
         pixelPosition.xy * inverseScreenSize, pixelPosition.zw);
+    context.textureFootprint = textureFootprint;
     return context;
 }
 

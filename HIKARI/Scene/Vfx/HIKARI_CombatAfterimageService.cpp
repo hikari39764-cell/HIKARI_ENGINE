@@ -1,3 +1,4 @@
+#include "Core/Math/HIKARI_MathValidation.h"
 #include "Scene/Vfx/HIKARI_CombatAfterimageService.h"
 
 #include <algorithm>
@@ -43,26 +44,6 @@ namespace HIKARI::VFX {
         constexpr float kMaximumLifetime = 1.0f;
         constexpr float kSyntheticAgeSpacing = 0.018f;
 
-        bool IsFinite(float value) noexcept {
-            return std::isfinite(value);
-        }
-
-        bool IsFiniteVector(const MATH::Vec3& value) noexcept {
-            return IsFinite(value.x) && IsFinite(value.y) &&
-                IsFinite(value.z);
-        }
-
-        bool IsFinite(const MATH::Mat4& value) noexcept {
-            for (size_t column = 0u; column < 4u; ++column) {
-                for (size_t row = 0u; row < 4u; ++row) {
-                    if (!IsFinite(value.m[column][row])) {
-                        return false;
-                    }
-                }
-            }
-            return true;
-        }
-
         bool IsSkinnedPrimitive(const MeshPrimitive& primitive) noexcept {
             // The glTF importer keeps the legacy StaticPNTT tag while it
             // retains a populated skinnedVertices stream for JOINTS_0 /
@@ -88,14 +69,14 @@ namespace HIKARI::VFX {
                 request.silhouetteCount >
                     RENDER3D::COMBAT_VFX::
                         kMaximumCombatAfterimageSilhouettes ||
-                !IsFinite(request.intensity) ||
-                !IsFinite(request.uniformScale) ||
-                !IsFinite(request.lifetimeUnscaledSeconds) ||
-                !IsFinite(request.opacity) ||
-                !IsFinite(request.fresnelPower) ||
-                !IsFinite(request.dissolveStrength) ||
-                !IsFinite(request.shellOffsetWorld) ||
-                !IsFiniteVector(request.color)) {
+                !MATH::IsFinite(request.intensity) ||
+                !MATH::IsFinite(request.uniformScale) ||
+                !MATH::IsFinite(request.lifetimeUnscaledSeconds) ||
+                !MATH::IsFinite(request.opacity) ||
+                !MATH::IsFinite(request.fresnelPower) ||
+                !MATH::IsFinite(request.dissolveStrength) ||
+                !MATH::IsFinite(request.shellOffsetWorld) ||
+                !MATH::IsFinite(request.color)) {
                 return false;
             }
             return request.intensity >= 0.0f &&
@@ -148,12 +129,12 @@ namespace HIKARI::VFX {
                 return false;
             }
             for (const MATH::Mat4& matrix : nodeGlobals) {
-                if (!IsFinite(matrix)) {
+                if (!MATH::IsFinite(matrix)) {
                     return false;
                 }
             }
 
-            if (!IsFinite(objectWorld)) {
+            if (!MATH::IsFinite(objectWorld)) {
                 return false;
             }
 
@@ -172,7 +153,7 @@ namespace HIKARI::VFX {
                 }
                 const MATH::Mat4 drawWorld =
                     objectWorld * nodeGlobals[nodeIndex];
-                if (!IsFinite(drawWorld)) {
+                if (!MATH::IsFinite(drawWorld)) {
                     continue;
                 }
 
@@ -203,7 +184,7 @@ namespace HIKARI::VFX {
                             nodeGlobals[
                                 static_cast<size_t>(joint.nodeIndex)] *
                             joint.inverseBindMatrix;
-                        if (!IsFinite(palette[jointIndex])) {
+                        if (!MATH::IsFinite(palette[jointIndex])) {
                             validPalette = false;
                             break;
                         }
@@ -328,7 +309,7 @@ namespace HIKARI::VFX {
                     captureWorld = presentationWorld;
                 }
             }
-            if (!IsFinite(captureWorld)) {
+            if (!MATH::IsFinite(captureWorld)) {
                 return false;
             }
 
@@ -514,7 +495,7 @@ namespace HIKARI::VFX {
             }
             hasTicked_ = true;
             lastTickFrame_ = frameIndex;
-            const float delta = IsFinite(unscaledDeltaSeconds)
+            const float delta = MATH::IsFinite(unscaledDeltaSeconds)
                 ? std::clamp(unscaledDeltaSeconds, 0.0f, 0.25f)
                 : 0.0f;
             for (AfterimageState& state : states_) {

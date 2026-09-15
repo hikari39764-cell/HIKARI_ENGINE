@@ -10,6 +10,8 @@
 
 namespace HIKARI {
     struct MaterialAsset;
+    namespace GFX { struct Context; }
+    namespace DX { class DynamicUploadBuffer; }
 }
 
 namespace HIKARI::MESHRENDERER {
@@ -44,6 +46,7 @@ namespace HIKARI::MESHRENDERER {
         const MATH::Vec3& cameraPosition,
         const MATH::Vec3& viewFocusPosition,
         SkyEnvironmentCB& out);
+    void FillSelectedIrradianceVolumes(SkyEnvironmentCB& out);
 
     MATH::Mat4 BuildNormalMatrix(const Transform3D& transform);
 
@@ -59,9 +62,10 @@ namespace HIKARI::MESHRENDERER {
         int occlusionTextureHandle,
         const MeshMaterialFillContext& ctx);
 
-    size_t UploadJointPalette(
-        JointPaletteCB* jointPaletteMapped,
-        size_t objectIndex,
-        const std::vector<MATH::Mat4>& jointPalette);
+    D3D12_GPU_VIRTUAL_ADDRESS UploadJointPalettes(
+        const GFX::Context& graphics,
+        DX::DynamicUploadBuffer& uploads,
+        const std::vector<MATH::Mat4>* palettes,
+        size_t paletteCount);
 
 } // namespace HIKARI::MESHRENDERER

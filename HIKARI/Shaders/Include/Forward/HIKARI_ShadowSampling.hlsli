@@ -2,6 +2,7 @@
 #define HIKARI_FORWARD_SHADOW_SAMPLING_INCLUDED
 
 #include "Include/Lighting/HIKARI_ShadowCascadeContract.hlsli"
+#include "Include/Lighting/HIKARI_ShadowPcf.hlsli"
 
 float2 HikariClampShadowAtlasUv(float2 uv, uint cascadeIndex)
 {
@@ -9,54 +10,16 @@ float2 HikariClampShadowAtlasUv(float2 uv, uint cascadeIndex)
         float2(gShadowTexelSizeX, gShadowTexelSizeY));
 }
 
-float HikariSampleShadowCompare(
-    float2 uv,
-    float currentDepth,
-    uint cascadeIndex)
-{
-    return gShadowMap.SampleCmpLevelZero(
-        gShadowSampler,
-        HikariClampShadowAtlasUv(uv, cascadeIndex),
-        currentDepth);
-}
-
 float HikariSampleShadowPcf(
     float2 uv,
     float currentDepth,
     uint cascadeIndex)
 {
-    const float center =
-        HikariSampleShadowCompare(uv, currentDepth, cascadeIndex);
-    if (gShadowPcfEnabled == 0 || gShadowPcfRadius <= 0.00001f)
-    {
-        return center;
-    }
-
-    const float2 texelSize =
-        float2(gShadowTexelSizeX, gShadowTexelSizeY) * gShadowPcfRadius;
-
-    // 静止した Receiver のフィルタも静止させる。TAA/DLAA の履歴で揺れを隠さない。
-    float sum = center;
-    float count = 1.0f;
-    [unroll]
-    for (int y = -2; y <= 2; ++y)
-    {
-        [unroll]
-        for (int x = -2; x <= 2; ++x)
-        {
-            if (x == 0 && y == 0)
-            {
-                continue;
-            }
-            const float2 offset = float2((float)x, (float)y);
-            sum += HikariSampleShadowCompare(
-                uv + offset * texelSize,
-                currentDepth,
-                cascadeIndex);
-            count += 1.0f;
-        }
-    }
-    return sum / count;
+    return HikariShadowPcf5x5(gShadowMap, gShadowSampler, uv, currentDepth,
+        float2(gShadowTexelSizeX, gShadowTexelSizeY),
+        HikariClampShadowAtlasUv(0.0f.xx, cascadeIndex),
+        HikariClampShadowAtlasUv(1.0f.xx, cascadeIndex),
+        gShadowPcfEnabled != 0 ? gShadowPcfRadius : 0.0f);
 }
 
 float HikariShadowReceiverFade(float2 uv)
@@ -204,6 +167,21 @@ float SampleDirectionalVisibility(float3 worldPosWS, float3 geometricNormalWS, u
         }
     }
     return visibility;
+}
+
+float SampleLocalLightVisibility(HikariLocalLightGpuData light, float3 worldPosWS,
+    float3 geometricNormalWS, uint receiveShadow)
+{
+    if (receiveShadow == 0u || (light.kind >> 16u) == 0u || gLocalShadow.faceCount == 0u ||
+        gLocalShadow.textureDescriptorIndex >= HIKARI_MATERIAL_TEXTURE_POOL_COUNT) return 1.0f;
+#if HIKARI_FORWARD_COST_MODE_STATIC == 3
+    return 1.0f;
+#elif HIKARI_FORWARD_COST_MODE_STATIC == 255
+    if ((uint)(gForwardCostMode + 0.5f) == HIKARI_FORWARD_COST_NO_SHADOW) return 1.0f;
+#endif
+    return HikariSampleLocalLightShadow(
+        gMaterialTexturePool[NonUniformResourceIndex(gLocalShadow.textureDescriptorIndex)], gShadowSampler,
+        gLocalShadow, light, worldPosWS, geometricNormalWS);
 }
 
 float HikariStylizedShadowFactor(float visibility)

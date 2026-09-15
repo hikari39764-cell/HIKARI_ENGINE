@@ -1,3 +1,4 @@
+#include "Core/Math/HIKARI_MathValidation.h"
 #include "Render3D/Lighting/HIKARI_StylizedCloudStage.h"
 
 #include <algorithm>
@@ -16,13 +17,20 @@
 #include "Core/HIKARI_Logger.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_DXCheck.h"
+#include "Gfx/HIKARI_DescriptorHeapLayout.h"
+#include "Gfx/HIKARI_DynamicUploadBuffer.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
+#include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
+#include "Assets/Shader/HIKARI_VolumetricShaderContract.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
+#include "Render3D/Lighting/HIKARI_SkyRenderer.h"
+#include "Render3D/Lighting/Atmosphere/HIKARI_AtmosphereParameters.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameContext.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
+#include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 
 namespace HIKARI::RENDER3D::CLOUDS {
@@ -45,9 +53,8 @@ namespace HIKARI::RENDER3D::CLOUDS {
         constexpr uint32_t kCloudTextureCount = 6u;
         constexpr uint32_t kNoiseThreadGroupSize = 8u;
         constexpr uint32_t kRtvDescriptorCount = kCloudTextureCount;
-        constexpr uint32_t kNoiseDispatchCount = 3u;
         constexpr uint32_t kMaxCloudPrimarySteps = 64u;
-        constexpr uint32_t kMaxCloudLightSteps = 4u;
+        constexpr uint32_t kMaxCloudLightSteps = 8u;
         constexpr uint64_t kInvalidSignature = 0ull;
         static_assert(48u <= kMaxCloudPrimarySteps);
         static_assert(3u <= kMaxCloudLightSteps);
@@ -68,9 +75,11 @@ namespace HIKARI::RENDER3D::CLOUDS {
             MATH::Vec4 shadowColor{};
             MATH::Vec4 temporal{};
             MATH::Vec4 quality{};
+            MATH::Vec4 ambientLighting{};
+            MATH::Vec4 sunColorAnisotropy{};
         };
 
-        static_assert(sizeof(StylizedCloudConstants) == 336u);
+        static_assert(sizeof(StylizedCloudConstants) == 368u);
         static_assert(offsetof(StylizedCloudConstants, inverseViewProj) == 0u);
         static_assert(offsetof(StylizedCloudConstants, previousViewProj) == 64u);
         static_assert(offsetof(StylizedCloudConstants, cameraPositionTime) == 128u);
@@ -86,6 +95,8 @@ namespace HIKARI::RENDER3D::CLOUDS {
         static_assert(offsetof(StylizedCloudConstants, shadowColor) == 288u);
         static_assert(offsetof(StylizedCloudConstants, temporal) == 304u);
         static_assert(offsetof(StylizedCloudConstants, quality) == 320u);
+        static_assert(offsetof(StylizedCloudConstants, ambientLighting) == 336u);
+        static_assert(offsetof(StylizedCloudConstants, sunColorAnisotropy) == 352u);
 
         struct alignas(16) NoiseConstants {
             uint32_t size[3] = { 1u, 1u, 1u };
@@ -139,17 +150,15 @@ namespace HIKARI::RENDER3D::CLOUDS {
 
             ComPtr<ID3D12RootSignature> passRoot{};
             ComPtr<ID3D12RootSignature> noiseRoot{};
+            ComPtr<ID3D12RootSignature> solarRoot{};
+            ComPtr<ID3D12PipelineState> solarPso{};
             ComPtr<ID3D12PipelineState> tracePso{};
             ComPtr<ID3D12PipelineState> reprojectPso{};
             ComPtr<ID3D12PipelineState> compositePso{};
             std::array<ComPtr<ID3D12PipelineState>, 3u> noisePso{};
 
-            ComPtr<ID3D12Resource> constantBuffer{};
-            uint8_t* constantMapped = nullptr;
-            uint32_t constantStride = 0u;
-            ComPtr<ID3D12Resource> noiseConstantBuffer{};
-            uint8_t* noiseConstantMapped = nullptr;
-            uint32_t noiseConstantStride = 0u;
+            std::array<DX::DynamicUploadBuffer, GFX::kFrameResourceCount> uploads{};
+            D3D12_GPU_VIRTUAL_ADDRESS constantsAddress = 0;
 
             ComPtr<ID3D12DescriptorHeap> rtvHeap{};
             UINT rtvDescriptorSize = 0u;
@@ -157,6 +166,10 @@ namespace HIKARI::RENDER3D::CLOUDS {
             NoiseTexture shapeNoise{};
             NoiseTexture detailNoise{};
             NoiseTexture weatherNoise{};
+            NoiseTexture solarAtlas{};
+            TextureResourceHandle solarTexture{};
+            CloudSolarVisibilityFrame solarFrame{};
+            D3D12_GPU_DESCRIPTOR_HANDLE sceneDepthSrv{};
 
             CloudTexture currentColor{};
             CloudTexture currentDepth{};
@@ -164,13 +177,10 @@ namespace HIKARI::RENDER3D::CLOUDS {
             std::array<CloudTexture, 2u> historyDepth{};
 
             StylizedCloudConstants constants{};
-            NoiseConstants noiseConstants{};
             StylizedCloudStageStats stats{};
 
             uint32_t historyReadIndex = 0u;
             uint32_t historyWriteIndex = 1u;
-            uint32_t constantFrameSlot = 0u;
-            uint32_t noiseConstantFrameSlot = 0u;
             uint64_t preparedFrameIndex = 0u;
             uint64_t lastSignature = kInvalidSignature;
             RenderViewId lastViewId{};
@@ -178,6 +188,8 @@ namespace HIKARI::RENDER3D::CLOUDS {
             bool historyValid = false;
             bool noiseReady = false;
             bool pipelineReady = false;
+            uint64_t pipelineRetryFence = 0;
+            uint64_t solarRetryFence = 0;
             bool resourcesReady = false;
             bool prepared = false;
             bool hasExecutedFrame = false;
@@ -186,10 +198,6 @@ namespace HIKARI::RENDER3D::CLOUDS {
         StageState& State() {
             static StageState state{};
             return state;
-        }
-
-        uint32_t AlignConstantBufferSize(uint32_t size) noexcept {
-            return (size + 255u) & ~255u;
         }
 
         float SanitizeFiniteRange(
@@ -213,21 +221,6 @@ namespace HIKARI::RENDER3D::CLOUDS {
             };
         }
 
-        MATH::Vec3 SanitizeDirection(
-            const MATH::Vec3& value,
-            const MATH::Vec3& fallback) noexcept {
-            const MATH::Vec3 candidate = {
-                std::isfinite(value.x) ? value.x : fallback.x,
-                std::isfinite(value.y) ? value.y : fallback.y,
-                std::isfinite(value.z) ? value.z : fallback.z,
-            };
-            const float length = MATH::Length(candidate);
-            if (!std::isfinite(length) || length < 1.0e-5f) {
-                return MATH::Vec3{ 0.0f, -1.0f, 0.0f };
-            }
-            return candidate * (1.0f / length);
-        }
-
         MATH::Vec2 SanitizeWind(const MATH::Vec2& value) noexcept {
             const MATH::Vec2 fallback{ 1.0f, 0.22f };
             const MATH::Vec2 candidate{
@@ -239,17 +232,6 @@ namespace HIKARI::RENDER3D::CLOUDS {
                 return fallback;
             }
             return { candidate.x / length, candidate.y / length };
-        }
-
-        bool IsFiniteMatrix(const MATH::Mat4& matrix) noexcept {
-            for (const auto& column : matrix.m) {
-                for (float value : column) {
-                    if (!std::isfinite(value)) {
-                        return false;
-                    }
-                }
-            }
-            return true;
         }
 
         bool IsPrimaryPurpose(RenderViewPurpose purpose) noexcept {
@@ -299,8 +281,7 @@ namespace HIKARI::RENDER3D::CLOUDS {
             const PIPELINE::RenderFrameContext& frame,
             const StylizedCloudSettings& settings,
             StylizedCloudQuality quality,
-            const MATH::Vec3& sunDirection,
-            float sunIntensity,
+            const ATMOSPHERE::AtmosphereSolarState& solar,
             uint32_t traceWidth,
             uint32_t traceHeight) noexcept {
             uint64_t hash = 1469598103934665603ull;
@@ -325,8 +306,15 @@ namespace HIKARI::RENDER3D::CLOUDS {
             HashFloat(hash, settings.horizonFade);
             HashVec3(hash, settings.brightColor);
             HashVec3(hash, settings.shadowColor);
-            HashVec3(hash, sunDirection);
-            HashFloat(hash, sunIntensity);
+            HashVec3(hash, solar.sunDirection);
+            HashVec3(hash, solar.sunColor);
+            HashFloat(hash, solar.sunRadiance);
+            HashBytes(hash, &settings.physicallyBasedLighting, sizeof(settings.physicallyBasedLighting));
+            HashFloat(hash, settings.anisotropy);
+            if (frame.environment) {
+                HashVec3(hash, SKYRENDERER::ResolveAmbientLightColor(*frame.environment));
+                HashFloat(hash, frame.environment->ambient.intensity);
+            }
             return hash;
         }
 
@@ -504,7 +492,8 @@ namespace HIKARI::RENDER3D::CLOUDS {
             uint32_t width,
             uint32_t height,
             uint32_t depth,
-            const char* debugName) {
+            const char* debugName,
+            DXGI_FORMAT format = kCloudColorFormat) {
             D3D12_RESOURCE_DESC desc{};
             if (depth > 1u) {
                 desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE3D;
@@ -513,7 +502,7 @@ namespace HIKARI::RENDER3D::CLOUDS {
                 desc.DepthOrArraySize = static_cast<UINT16>(depth);
             } else {
                 desc = CD3DX12_RESOURCE_DESC::Tex2D(
-                    kCloudColorFormat,
+                    format,
                     width,
                     height,
                     1u,
@@ -523,7 +512,7 @@ namespace HIKARI::RENDER3D::CLOUDS {
                     D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
             }
             desc.MipLevels = 1u;
-            desc.Format = kCloudColorFormat;
+            desc.Format = format;
             desc.SampleDesc.Count = 1u;
             desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
             desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
@@ -549,24 +538,24 @@ namespace HIKARI::RENDER3D::CLOUDS {
             if (depth > 1u) {
                 texture.srv = AllocateTexture3DSrvDescriptor(
                     texture.resource.Get(),
-                    kCloudColorFormat,
+                    format,
                     0u,
                     1u);
                 texture.uav = AllocateTexture3DUavDescriptor(
                     texture.resource.Get(),
-                    kCloudColorFormat,
+                    format,
                     0u,
                     0u,
                     depth);
             } else {
                 texture.srv = AllocateTexture2DSrvDescriptor(
                     texture.resource.Get(),
-                    kCloudColorFormat,
+                    format,
                     0u,
                     1u);
                 texture.uav = AllocateTexture2DUavDescriptor(
                     texture.resource.Get(),
-                    kCloudColorFormat,
+                    format,
                     0u);
             }
             if (!texture.srv.IsValid() || !texture.uav.IsValid()) {
@@ -783,8 +772,8 @@ namespace HIKARI::RENDER3D::CLOUDS {
         }
 
         bool CreatePassRootSignature(StageState& state) {
-            std::array<D3D12_DESCRIPTOR_RANGE, 7u> ranges{};
-            std::array<D3D12_ROOT_PARAMETER, 8u> parameters{};
+            std::array<D3D12_DESCRIPTOR_RANGE, 8u> ranges{};
+            std::array<D3D12_ROOT_PARAMETER, 9u> parameters{};
             parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
             parameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
             parameters[0].Descriptor.ShaderRegister = 0u;
@@ -897,124 +886,59 @@ namespace HIKARI::RENDER3D::CLOUDS {
                 "StylizedCloudStage::CreateNoiseRootSignature");
         }
 
-        bool EnsureConstantBuffers(StageState& state) {
-            if (state.constantBuffer == nullptr) {
-                state.constantStride = AlignConstantBufferSize(
-                    sizeof(StylizedCloudConstants));
-                const auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-                const auto desc = CD3DX12_RESOURCE_DESC::Buffer(
-                    static_cast<UINT64>(state.constantStride) *
-                    GFX::kFrameResourceCount);
-                if (!HIKARI_DX_CHECK(
-                        state.device->CreateCommittedResource(
-                            &heap,
-                            D3D12_HEAP_FLAG_NONE,
-                            &desc,
-                            D3D12_RESOURCE_STATE_GENERIC_READ,
-                            nullptr,
-                            IID_PPV_ARGS(state.constantBuffer.GetAddressOf())),
-                        "StylizedCloudStage::CreateConstantBuffer") ||
-                    !HIKARI_DX_CHECK(
-                        state.constantBuffer->Map(
-                            0u,
-                            nullptr,
-                            reinterpret_cast<void**>(&state.constantMapped)),
-                        "StylizedCloudStage::MapConstantBuffer")) {
-                    state.constantBuffer.Reset();
-                    state.constantMapped = nullptr;
-                    state.constantStride = 0u;
-                    return false;
-                }
-                state.constantBuffer->SetName(L"HIKARI.StylizedCloud.Constants");
-            }
-            if (state.noiseConstantBuffer == nullptr) {
-                state.noiseConstantStride = AlignConstantBufferSize(
-                    sizeof(NoiseConstants));
-                const auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-                const auto desc = CD3DX12_RESOURCE_DESC::Buffer(
-                    static_cast<UINT64>(state.noiseConstantStride) *
-                    GFX::kFrameResourceCount * kNoiseDispatchCount);
-                if (!HIKARI_DX_CHECK(
-                        state.device->CreateCommittedResource(
-                            &heap,
-                            D3D12_HEAP_FLAG_NONE,
-                            &desc,
-                            D3D12_RESOURCE_STATE_GENERIC_READ,
-                            nullptr,
-                            IID_PPV_ARGS(state.noiseConstantBuffer.GetAddressOf())),
-                        "StylizedCloudStage::CreateNoiseConstantBuffer") ||
-                    !HIKARI_DX_CHECK(
-                        state.noiseConstantBuffer->Map(
-                            0u,
-                            nullptr,
-                            reinterpret_cast<void**>(&state.noiseConstantMapped)),
-                        "StylizedCloudStage::MapNoiseConstantBuffer")) {
-                    state.noiseConstantBuffer.Reset();
-                    state.noiseConstantMapped = nullptr;
-                    state.noiseConstantStride = 0u;
-                    return false;
-                }
-                state.noiseConstantBuffer->SetName(
-                    L"HIKARI.StylizedCloud.NoiseConstants");
-            }
+        bool PrepareFrameUploads(StageState& state) {
+            if (state.context.frameIndex >= GFX::kFrameResourceCount ||
+                state.context.currentFrameRetireFenceValue == 0) return false;
+            auto& uploads = state.uploads[state.context.frameIndex];
+            if (!uploads.IsInitialized() && !uploads.Init(state.device, 4096)) return false;
+            uploads.ResetForFrame(state.context.currentFrameRetireFenceValue);
             return true;
         }
 
+        bool CreateSolarRoot(StageState& state) {
+            std::array<CD3DX12_DESCRIPTOR_RANGE,4> ranges;
+            std::array<CD3DX12_ROOT_PARAMETER,6> parameters;
+            parameters[0].InitAsConstantBufferView(0); parameters[1].InitAsConstantBufferView(1);
+            for(UINT i=0;i<4;++i) {
+                ranges[i].Init(i==3 ? D3D12_DESCRIPTOR_RANGE_TYPE_UAV : D3D12_DESCRIPTOR_RANGE_TYPE_SRV,1,i==3 ? 0 : i);
+                parameters[i+2].InitAsDescriptorTable(1,&ranges[i]);
+            }
+            CD3DX12_STATIC_SAMPLER_DESC sampler(0,D3D12_FILTER_MIN_MAG_MIP_LINEAR,D3D12_TEXTURE_ADDRESS_MODE_WRAP,
+                D3D12_TEXTURE_ADDRESS_MODE_WRAP,D3D12_TEXTURE_ADDRESS_MODE_WRAP);
+            const CD3DX12_ROOT_SIGNATURE_DESC desc(UINT(parameters.size()),parameters.data(),1,&sampler);
+            ComPtr<ID3DBlob> signature;
+            return SUCCEEDED(D3D12SerializeRootSignature(&desc,D3D_ROOT_SIGNATURE_VERSION_1,&signature,nullptr)) &&
+                SUCCEEDED(state.device->CreateRootSignature(0,signature->GetBufferPointer(),signature->GetBufferSize(),IID_PPV_ARGS(&state.solarRoot)));
+        }
+
         bool EnsurePipeline(StageState& state) {
-            if (state.pipelineReady && state.constantBuffer != nullptr &&
-                state.noiseConstantBuffer != nullptr) {
+            if (state.pipelineReady) {
                 return true;
             }
+            if (state.context.currentFrameRetireFenceValue < state.pipelineRetryFence) return false;
+            state.pipelineRetryFence = state.context.currentFrameRetireFenceValue + 60;
             if (state.device == nullptr ||
                 !GFX::SupportsShaderModel6(state.device) ||
                 !CreatePassRootSignature(state) ||
                 !CreateNoiseRootSignature(state)) {
                 return false;
             }
-            ComPtr<ID3DBlob> vertexShader{};
-            ComPtr<ID3DBlob> traceShader{};
-            ComPtr<ID3DBlob> reprojectShader{};
-            ComPtr<ID3DBlob> compositeShader{};
-            std::array<ComPtr<ID3DBlob>, 3u> noiseShader{};
-            // These entry points are the private stage/shader contract. The
-            // stage deliberately does not fall back to the old planar SkyPS.
-            if (!GFX::CompileShaderFileSm6(
-                    L"HIKARI/Shaders/Render3D_StylizedCloudPass.hlsl",
-                    "FullscreenVS",
-                    GFX::ShaderStage::Vertex,
-                    vertexShader.GetAddressOf()) ||
-                !GFX::CompileShaderFileSm6(
-                    L"HIKARI/Shaders/Render3D_StylizedCloudPass.hlsl",
-                    "RenderCloudPS",
-                    GFX::ShaderStage::Pixel,
-                    traceShader.GetAddressOf()) ||
-                !GFX::CompileShaderFileSm6(
-                    L"HIKARI/Shaders/Render3D_StylizedCloudPass.hlsl",
-                    "ReprojectCloudPS",
-                    GFX::ShaderStage::Pixel,
-                    reprojectShader.GetAddressOf()) ||
-                !GFX::CompileShaderFileSm6(
-                    L"HIKARI/Shaders/Render3D_StylizedCloudPass.hlsl",
-                    "CompositeCloudPS",
-                    GFX::ShaderStage::Pixel,
-                    compositeShader.GetAddressOf()) ||
-                !GFX::CompileShaderFileSm6(
-                    L"HIKARI/Shaders/Render3D_StylizedCloudNoise.hlsl",
-                    "GenerateStylizedCloudShapeCS",
-                    GFX::ShaderStage::Compute,
-                    noiseShader[0].GetAddressOf()) ||
-                !GFX::CompileShaderFileSm6(
-                    L"HIKARI/Shaders/Render3D_StylizedCloudNoise.hlsl",
-                    "GenerateStylizedCloudDetailCS",
-                    GFX::ShaderStage::Compute,
-                    noiseShader[1].GetAddressOf()) ||
-                !GFX::CompileShaderFileSm6(
-                    L"HIKARI/Shaders/Render3D_StylizedCloudNoise.hlsl",
-                    "GenerateStylizedCloudWeatherCS",
-                    GFX::ShaderStage::Compute,
-                    noiseShader[2].GetAddressOf())) {
+            namespace SHADER=ASSETS::SHADER;
+            using Program=SHADER::VolumetricShaderProgram;
+            const auto deviceCaps=GFX::QueryShaderDeviceCapabilities(state.device);
+            const SHADER::ShaderRuntimeDeviceCapabilities caps{deviceCaps.shaderModel,deviceCaps.rootSignatureVersion,deviceCaps.featureMask};
+            const auto vertexShader=SHADER::ResolveVolumetricShaderEntry(Program::CloudPass,"FullscreenVS",SHADER::ShaderStage::Vertex,caps);
+            const auto traceShader=SHADER::ResolveVolumetricShaderEntry(Program::CloudPass,"RenderCloudPS",SHADER::ShaderStage::Pixel,caps);
+            const auto reprojectShader=SHADER::ResolveVolumetricShaderEntry(Program::CloudPass,"ReprojectCloudPS",SHADER::ShaderStage::Pixel,caps);
+            const auto compositeShader=SHADER::ResolveVolumetricShaderEntry(Program::CloudPass,"CompositeCloudPS",SHADER::ShaderStage::Pixel,caps);
+            const std::array noiseShader{
+                SHADER::ResolveVolumetricShaderEntry(Program::CloudNoise,"GenerateStylizedCloudShapeCS",SHADER::ShaderStage::Compute,caps),
+                SHADER::ResolveVolumetricShaderEntry(Program::CloudNoise,"GenerateStylizedCloudDetailCS",SHADER::ShaderStage::Compute,caps),
+                SHADER::ResolveVolumetricShaderEntry(Program::CloudNoise,"GenerateStylizedCloudWeatherCS",SHADER::ShaderStage::Compute,caps)};
+            if (!vertexShader || !traceShader || !reprojectShader || !compositeShader ||
+                !noiseShader[0] || !noiseShader[1] || !noiseShader[2]) {
                 DEBUGLOG::PushRenderError(
-                    "[StylizedCloudStage][ERROR] cloud shader compilation failed.");
+                    "[StylizedCloudStage][ERROR] cooked cloud shader unavailable or incompatible.");
                 state.passRoot.Reset();
                 state.noiseRoot.Reset();
                 return false;
@@ -1022,8 +946,8 @@ namespace HIKARI::RENDER3D::CLOUDS {
 
             D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
             desc.pRootSignature = state.passRoot.Get();
-            desc.VS = { vertexShader->GetBufferPointer(), vertexShader->GetBufferSize() };
-            desc.PS = { traceShader->GetBufferPointer(), traceShader->GetBufferSize() };
+            desc.VS = { vertexShader.lease.GetDxil().data(), vertexShader.lease.GetDxil().size() };
+            desc.PS = { traceShader.lease.GetDxil().data(), traceShader.lease.GetDxil().size() };
             desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
             desc.SampleMask = UINT_MAX;
             desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
@@ -1046,8 +970,8 @@ namespace HIKARI::RENDER3D::CLOUDS {
                 return false;
             }
             desc.PS = {
-                reprojectShader->GetBufferPointer(),
-                reprojectShader->GetBufferSize()
+                reprojectShader.lease.GetDxil().data(),
+                reprojectShader.lease.GetDxil().size()
             };
             if (!HIKARI_DX_CHECK(
                     state.device->CreateGraphicsPipelineState(
@@ -1058,14 +982,14 @@ namespace HIKARI::RENDER3D::CLOUDS {
             }
 
             desc.PS = {
-                compositeShader->GetBufferPointer(),
-                compositeShader->GetBufferSize()
+                compositeShader.lease.GetDxil().data(),
+                compositeShader.lease.GetDxil().size()
             };
             desc.NumRenderTargets = 1u;
             desc.RTVFormats[1] = DXGI_FORMAT_UNKNOWN;
             desc.RTVFormats[0] = kCloudColorFormat;
             desc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
-            desc.DepthStencilState.DepthEnable = TRUE;
+            desc.DepthStencilState.DepthEnable = FALSE;
             desc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
             desc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
             desc.BlendState.RenderTarget[0].BlendEnable = TRUE;
@@ -1087,8 +1011,8 @@ namespace HIKARI::RENDER3D::CLOUDS {
                 D3D12_COMPUTE_PIPELINE_STATE_DESC noiseDesc{};
                 noiseDesc.pRootSignature = state.noiseRoot.Get();
                 noiseDesc.CS = {
-                    noiseShader[index]->GetBufferPointer(),
-                    noiseShader[index]->GetBufferSize()
+                    noiseShader[index].lease.GetDxil().data(),
+                    noiseShader[index].lease.GetDxil().size()
                 };
                 if (!HIKARI_DX_CHECK(
                         state.device->CreateComputePipelineState(
@@ -1098,11 +1022,26 @@ namespace HIKARI::RENDER3D::CLOUDS {
                     return false;
                 }
             }
-            if (!EnsureConstantBuffers(state)) {
-                return false;
-            }
             state.pipelineReady = true;
             return true;
+        }
+
+        bool EnsureSolarPipeline(StageState& state) {
+            if (state.solarPso) return true;
+            if (state.context.currentFrameRetireFenceValue < state.solarRetryFence) return false;
+            state.solarRetryFence = state.context.currentFrameRetireFenceValue + 60;
+            if (!CreateSolarRoot(state)) return false;
+            namespace SHADER = ASSETS::SHADER;
+            const auto deviceCaps = GFX::QueryShaderDeviceCapabilities(state.device);
+            const SHADER::ShaderRuntimeDeviceCapabilities caps{deviceCaps.shaderModel, deviceCaps.rootSignatureVersion, deviceCaps.featureMask};
+            const auto shader = SHADER::ResolveVolumetricShaderEntry(SHADER::VolumetricShaderProgram::CloudPass,
+                "SunTransmittanceCS", SHADER::ShaderStage::Compute, caps);
+            if (!shader) return false;
+            D3D12_COMPUTE_PIPELINE_STATE_DESC desc{};
+            desc.pRootSignature = state.solarRoot.Get();
+            desc.CS = {shader.lease.GetDxil().data(), shader.lease.GetDxil().size()};
+            return HIKARI_DX_CHECK(state.device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&state.solarPso)),
+                "CloudSolar.CreatePSO");
         }
 
         void BindPassInputs(
@@ -1119,6 +1058,7 @@ namespace HIKARI::RENDER3D::CLOUDS {
             cmd->SetGraphicsRootDescriptorTable(5u, currentDepth);
             cmd->SetGraphicsRootDescriptorTable(6u, historyColor);
             cmd->SetGraphicsRootDescriptorTable(7u, historyDepth);
+            cmd->SetGraphicsRootDescriptorTable(8u, state.sceneDepthSrv);
         }
 
         void SetCloudViewport(
@@ -1139,26 +1079,12 @@ namespace HIKARI::RENDER3D::CLOUDS {
             cmd->RSSetScissorRects(1u, &scissor);
         }
 
-        UINT64 NoiseConstantOffset(
-            const StageState& state,
-            uint32_t kind) noexcept {
-            return static_cast<UINT64>(
-                state.noiseConstantFrameSlot * kNoiseDispatchCount + kind) *
-                state.noiseConstantStride;
-        }
-
-        void WriteNoiseConstants(StageState& state, uint32_t kind, const NoiseTexture& target) {
-            state.noiseConstants.size[0] = target.width;
-            state.noiseConstants.size[1] = target.height;
-            state.noiseConstants.size[2] = target.depth;
-            state.noiseConstants.kind = kind;
-            state.noiseConstantFrameSlot = static_cast<uint32_t>(
-                state.preparedFrameIndex % GFX::kFrameResourceCount);
-            const UINT64 offset = NoiseConstantOffset(state, kind);
-            std::memcpy(
-                state.noiseConstantMapped + offset,
-                &state.noiseConstants,
-                sizeof(state.noiseConstants));
+        D3D12_GPU_VIRTUAL_ADDRESS WriteNoiseConstants(StageState& state, uint32_t kind, const NoiseTexture& target) {
+            const NoiseConstants constants{{target.width, target.height, target.depth}, kind};
+            const auto allocation = state.uploads[state.context.frameIndex].Allocate(sizeof(constants));
+            if (!allocation) return 0;
+            std::memcpy(allocation.cpuAddress, &constants, sizeof(constants));
+            return allocation.gpuAddress;
         }
 
         bool GenerateNoise(StageState& state) {
@@ -1172,9 +1098,8 @@ namespace HIKARI::RENDER3D::CLOUDS {
             cmd->SetDescriptorHeaps(1u, heaps);
             cmd->SetComputeRootSignature(state.noiseRoot.Get());
             const auto DispatchNoise = [&](NoiseTexture& target, uint32_t kind) {
-                WriteNoiseConstants(state, kind, target);
-                const UINT64 address = state.noiseConstantBuffer->GetGPUVirtualAddress() +
-                    NoiseConstantOffset(state, kind);
+                const auto address = WriteNoiseConstants(state, kind, target);
+                if (!address) return false;
                 TransitionNoiseTexture(
                     cmd,
                     target,
@@ -1203,10 +1128,10 @@ namespace HIKARI::RENDER3D::CLOUDS {
                     target,
                     D3D12_RESOURCE_STATE_GENERIC_READ);
                 ++state.stats.noiseDispatchCount;
+                return true;
             };
-            DispatchNoise(state.shapeNoise, 0u);
-            DispatchNoise(state.detailNoise, 1u);
-            DispatchNoise(state.weatherNoise, 2u);
+            if (!DispatchNoise(state.shapeNoise, 0u) || !DispatchNoise(state.detailNoise, 1u) ||
+                !DispatchNoise(state.weatherNoise, 2u)) return false;
             state.noiseReady = true;
             state.stats.noiseReady = true;
             return true;
@@ -1218,8 +1143,7 @@ namespace HIKARI::RENDER3D::CLOUDS {
             const TEMPORAL::TemporalFrameState& temporalFrame,
             const StylizedCloudSettings& settings,
             const QualityPolicy& policy,
-            const MATH::Vec3& sunDirection,
-            float sunIntensity,
+            const ATMOSPHERE::AtmosphereSolarState& solar,
             uint64_t signature) {
             const auto& camera = temporalFrame.camera;
             const MATH::Vec3 cameraPosition{
@@ -1329,10 +1253,10 @@ namespace HIKARI::RENDER3D::CLOUDS {
                 useHistory ? policy.historyWeight : 0.0f
             };
             constants.sunDirectionIntensity = {
-                sunDirection.x,
-                sunDirection.y,
-                sunDirection.z,
-                SanitizeFiniteRange(sunIntensity, 0.0f, 0.0f, 64.0f)
+                solar.sunDirection.x,
+                solar.sunDirection.y,
+                solar.sunDirection.z,
+                solar.sunRadiance
             };
             const MATH::Vec3 bright = SanitizeColor(
                 settings.brightColor,
@@ -1340,7 +1264,19 @@ namespace HIKARI::RENDER3D::CLOUDS {
             const MATH::Vec3 shadow = SanitizeColor(
                 settings.shadowColor,
                 MATH::Vec3{ 0.48f, 0.67f, 0.86f });
-            constants.brightColor = { bright.x, bright.y, bright.z, 1.0f };
+            constants.brightColor = {
+                bright.x * solar.sunColor.x, bright.y * solar.sunColor.y,
+                bright.z * solar.sunColor.z, 1.0f };
+            if (settings.physicallyBasedLighting)
+                constants.brightColor = { std::clamp(bright.x, 0.0f, 1.0f), std::clamp(bright.y, 0.0f, 1.0f),
+                    std::clamp(bright.z, 0.0f, 1.0f), 1.0f };
+            const auto ambient = frame.environment
+                ? SKYRENDERER::ResolveAmbientLightColor(*frame.environment) *
+                    SanitizeFiniteRange(frame.environment->ambient.intensity, 0.0f, 0.0f, 1000000.0f)
+                : MATH::Vec3{};
+            constants.ambientLighting = { ambient.x, ambient.y, ambient.z, settings.physicallyBasedLighting ? 1.0f : 0.0f };
+            constants.sunColorAnisotropy = { solar.sunColor.x, solar.sunColor.y, solar.sunColor.z,
+                SanitizeFiniteRange(settings.anisotropy, 0.7f, -0.8f, 0.8f) };
             constants.shadowColor = { shadow.x, shadow.y, shadow.z, 1.0f };
             constants.temporal = {
                 static_cast<float>(temporalFrame.frameIndex & 0xffffu),
@@ -1355,14 +1291,10 @@ namespace HIKARI::RENDER3D::CLOUDS {
                 static_cast<float>(policy.qualityIndex)
             };
             state.constants = constants;
-            state.constantFrameSlot = static_cast<uint32_t>(
-                temporalFrame.frameIndex % GFX::kFrameResourceCount);
-            const UINT64 offset = static_cast<UINT64>(state.constantFrameSlot) *
-                state.constantStride;
-            std::memcpy(
-                state.constantMapped + offset,
-                &state.constants,
-                sizeof(state.constants));
+            const auto allocation = state.uploads[state.context.frameIndex].Allocate(sizeof(constants));
+            if (!allocation) return false;
+            std::memcpy(allocation.cpuAddress, &constants, sizeof(constants));
+            state.constantsAddress = allocation.gpuAddress;
             state.stats.primarySteps = policy.primarySteps;
             state.stats.lightSteps = policy.lightSteps;
             state.stats.resolutionDivisor = policy.resolutionDivisor;
@@ -1394,9 +1326,7 @@ namespace HIKARI::RENDER3D::CLOUDS {
             SetCloudViewport(cmd, state.stats.traceWidth, state.stats.traceHeight);
             cmd->SetGraphicsRootSignature(state.passRoot.Get());
             cmd->SetPipelineState(state.tracePso.Get());
-            const UINT64 cbAddress = state.constantBuffer->GetGPUVirtualAddress() +
-                static_cast<UINT64>(state.constantFrameSlot) * state.constantStride;
-            cmd->SetGraphicsRootConstantBufferView(0u, cbAddress);
+            cmd->SetGraphicsRootConstantBufferView(0u, state.constantsAddress);
             const uint32_t historyIndex = state.historyReadIndex;
             BindPassInputs(
                 cmd,
@@ -1444,9 +1374,7 @@ namespace HIKARI::RENDER3D::CLOUDS {
             SetCloudViewport(cmd, state.stats.traceWidth, state.stats.traceHeight);
             cmd->SetGraphicsRootSignature(state.passRoot.Get());
             cmd->SetPipelineState(state.reprojectPso.Get());
-            const UINT64 cbAddress = state.constantBuffer->GetGPUVirtualAddress() +
-                static_cast<UINT64>(state.constantFrameSlot) * state.constantStride;
-            cmd->SetGraphicsRootConstantBufferView(0u, cbAddress);
+            cmd->SetGraphicsRootConstantBufferView(0u, state.constantsAddress);
             BindPassInputs(
                 cmd,
                 state,
@@ -1486,9 +1414,7 @@ namespace HIKARI::RENDER3D::CLOUDS {
             SetCloudViewport(cmd, frame.renderWidth, frame.renderHeight);
             cmd->SetGraphicsRootSignature(state.passRoot.Get());
             cmd->SetPipelineState(state.compositePso.Get());
-            const UINT64 cbAddress = state.constantBuffer->GetGPUVirtualAddress() +
-                static_cast<UINT64>(state.constantFrameSlot) * state.constantStride;
-            cmd->SetGraphicsRootConstantBufferView(0u, cbAddress);
+            cmd->SetGraphicsRootConstantBufferView(0u, state.constantsAddress);
             const uint32_t resolvedIndex = state.historyReadIndex;
             BindPassInputs(
                 cmd,
@@ -1513,6 +1439,11 @@ namespace HIKARI::RENDER3D::CLOUDS {
         }
 
         void ReleaseGpuState(StageState& state) {
+            if(state.solarTexture) ReleaseTextureResource(state.solarTexture);
+            state.solarTexture={}; state.solarFrame={};
+            RetireNoiseTexture(state,state.solarAtlas,"CloudSolar.Atlas");
+            GFX::RetireD3D12ObjectForFrame(state.solarPso,state.context,"CloudSolar.PSO");
+            GFX::RetireD3D12ObjectForFrame(state.solarRoot,state.context,"CloudSolar.Root");
             RetireNoiseTexture(state, state.shapeNoise, "StylizedCloudStage.ShapeNoise");
             RetireNoiseTexture(state, state.detailNoise, "StylizedCloudStage.DetailNoise");
             RetireNoiseTexture(state, state.weatherNoise, "StylizedCloudStage.WeatherNoise");
@@ -1528,18 +1459,8 @@ namespace HIKARI::RENDER3D::CLOUDS {
                     state.historyDepth[index],
                     "StylizedCloudStage.HistoryDepth");
             }
-            if (state.constantBuffer != nullptr && state.constantMapped != nullptr) {
-                state.constantBuffer->Unmap(0u, nullptr);
-            }
-            if (state.noiseConstantBuffer != nullptr && state.noiseConstantMapped != nullptr) {
-                state.noiseConstantBuffer->Unmap(0u, nullptr);
-            }
-            state.constantMapped = nullptr;
-            state.noiseConstantMapped = nullptr;
-            state.constantStride = 0u;
-            state.noiseConstantStride = 0u;
-            RetireResource(state, state.constantBuffer, "StylizedCloudStage.ConstantBuffer");
-            RetireResource(state, state.noiseConstantBuffer, "StylizedCloudStage.NoiseConstantBuffer");
+            for (auto& uploads : state.uploads) uploads.Finalize(&state.context);
+            state.constantsAddress = 0;
             GFX::RetireD3D12ObjectForFrame(
                 state.tracePso,
                 state.context,
@@ -1573,6 +1494,9 @@ namespace HIKARI::RENDER3D::CLOUDS {
             state.rtvDescriptorSize = 0u;
             state.device = nullptr;
             state.pipelineReady = false;
+            state.pipelineRetryFence = state.solarRetryFence = 0;
+            state.stats.solarVisibilityReady = false;
+            state.stats.solarBytes = 0;
             state.resourcesReady = false;
             state.noiseReady = false;
             state.prepared = false;
@@ -1582,6 +1506,74 @@ namespace HIKARI::RENDER3D::CLOUDS {
         }
 
     } // namespace
+
+    CloudSolarVisibilityFrame PrepareCloudSolarVisibilityFrame(const PIPELINE::RenderFrameContext& frame,
+        const TEMPORAL::TemporalFrameState& temporalFrame, const StylizedCloudSettings& settings, StylizedCloudQuality quality) {
+        auto& state=State();
+        state.stats.solarVisibilityReady=false;
+        const auto& graphics=frame.graphics;
+        if(!settings.enabled || !settings.physicallyBasedLighting || settings.density<=0 || settings.coverage<=0 || !frame.environment ||
+            !IsPrimaryPurpose(frame.purpose) || frame.viewId!=kPrimaryRenderViewId || !temporalFrame.camera.valid ||
+            !graphics.device || !graphics.cmdList || !graphics.srvHeap || !graphics.frameFence ||
+            graphics.frameIndex>=GFX::kFrameResourceCount || !graphics.currentFrameRetireFenceValue) return {};
+        const auto solar=ATMOSPHERE::BuildAtmosphereSolarState(*frame.environment,settings.altitude);
+        if(solar.sunRadiance<=0 || !MATH::IsFinite(temporalFrame.camera.cameraPos)) return {};
+        if(state.device && (state.device!=graphics.device || state.context.deviceGeneration!=graphics.deviceGeneration ||
+            state.context.frameFence!=graphics.frameFence)) ReleaseGpuState(state);
+        state.context=graphics; state.device=graphics.device;
+        UpdateRenderResourceDescriptorPoolContext(graphics);
+        if(state.solarFrame && state.solarFrame.fenceValue==graphics.currentFrameRetireFenceValue) {
+            state.stats.solarVisibilityReady=true; return state.solarFrame;
+        }
+        const UINT resolution=quality==StylizedCloudQuality::Low ? 64 : quality==StylizedCloudQuality::High ? 128 : 96;
+        const UINT steps=quality==StylizedCloudQuality::Low ? 16 : quality==StylizedCloudQuality::High ? 32 : 24;
+        if(state.solarAtlas.IsValid() && state.solarAtlas.width!=resolution*8) {
+            if(graphics.frameFence->GetCompletedValue()<state.solarFrame.fenceValue) return {};
+            if(state.solarTexture) ReleaseTextureResource(state.solarTexture);
+            state.solarTexture={}; state.solarFrame={}; RetireNoiseTexture(state,state.solarAtlas,"CloudSolar.Resize");
+        }
+        D3D12_FEATURE_DATA_FORMAT_SUPPORT support{DXGI_FORMAT_R32G32_FLOAT};
+        if(FAILED(graphics.device->CheckFeatureSupport(D3D12_FEATURE_FORMAT_SUPPORT,&support,sizeof(support))) ||
+            !(support.Support2&D3D12_FORMAT_SUPPORT2_UAV_TYPED_STORE)) return {};
+        if(!PrepareFrameUploads(state) || !EnsurePipeline(state) || !EnsureSolarPipeline(state) || !EnsureNoiseResources(state) || !GenerateNoise(state)) return {};
+        if(!state.solarAtlas.IsValid()) {
+            if(!CreateNoiseTexture(state,state.solarAtlas,resolution*8,((steps+8)/8)*resolution,1,"CloudSolar.Transmittance",DXGI_FORMAT_R32G32_FLOAT)) return {};
+            state.solarTexture=RegisterTextureResourceFromNative(state.solarAtlas.resource.Get(),DXGI_FORMAT_R32G32_FLOAT);
+            if(!IsTextureResourceValid(state.solarTexture) || GetTextureResourceSrvDescriptorIndex(state.solarTexture)>=GFX::DESCRIPTOR::kUserSrvCount) {
+                if(state.solarTexture) ReleaseTextureResource(state.solarTexture);
+                state.solarTexture={}; RetireNoiseTexture(state,state.solarAtlas,"CloudSolar.RegisterFailed"); return {};
+            }
+        }
+        const auto policy=ResolveQualityPolicy(quality);
+        if(!BuildConstants(state,frame,temporalFrame,settings,policy,solar,0)) return {};
+        LIGHTING::CloudSolarVisibilityGpuData data;
+        const auto direction=solar.sunDirection;
+        const auto right=MATH::Normalize(MATH::Cross(std::abs(direction.y)<.99f ? MATH::Vec3{0,1,0} : MATH::Vec3{0,0,1},direction));
+        const auto up=MATH::Cross(direction,right);
+        const MATH::Vec3 camera{temporalFrame.camera.cameraPos.x,temporalFrame.camera.cameraPos.y,temporalFrame.camera.cameraPos.z};
+        constexpr float extent=1024;
+        const float cell=2*extent/float(resolution);
+        const auto origin=right*(std::floor(MATH::Dot(camera,right)/cell)*cell)+up*(std::floor(MATH::Dot(camera,up)/cell)*cell)+direction*MATH::Dot(camera,direction);
+        data.originDescriptor={origin.x,origin.y,origin.z,float(GetTextureResourceSrvDescriptorIndex(state.solarTexture)+1)};
+        data.rightExtent={right.x,right.y,right.z,extent}; data.upResolution={up.x,up.y,up.z,float(resolution)};
+        data.directionSteps={direction.x,direction.y,direction.z,float(steps)};
+        const auto allocation=state.uploads[graphics.frameIndex].Allocate(sizeof(data)); if(!allocation) return {};
+        std::memcpy(allocation.cpuAddress,&data,sizeof(data));
+        auto* commands=graphics.cmdList;
+        GFX::GPU_PROFILE::ScopedGpuTimer timer(commands,GFX::GPU_PROFILE::Pass::CloudSolarVisibility);
+        ID3D12DescriptorHeap* heaps[]{graphics.srvHeap}; commands->SetDescriptorHeaps(1,heaps);
+        TransitionNoiseTexture(commands,state.solarAtlas,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        commands->SetComputeRootSignature(state.solarRoot.Get()); commands->SetPipelineState(state.solarPso.Get());
+        commands->SetComputeRootConstantBufferView(0,state.constantsAddress); commands->SetComputeRootConstantBufferView(1,allocation.gpuAddress);
+        commands->SetComputeRootDescriptorTable(2,state.shapeNoise.srv.gpu); commands->SetComputeRootDescriptorTable(3,state.detailNoise.srv.gpu);
+        commands->SetComputeRootDescriptorTable(4,state.weatherNoise.srv.gpu); commands->SetComputeRootDescriptorTable(5,state.solarAtlas.uav.gpu);
+        commands->Dispatch((resolution+7)/8,(resolution+7)/8,1);
+        TransitionNoiseTexture(commands,state.solarAtlas,D3D12_RESOURCE_STATE_GENERIC_READ);
+        state.stats.solarVisibilityReady=true; state.stats.solarResolution=resolution; state.stats.solarSteps=steps;
+        const auto desc=state.solarAtlas.resource->GetDesc(); state.stats.solarBytes=graphics.device->GetResourceAllocationInfo(0,1,&desc).SizeInBytes;
+        state.solarFrame={data,state.solarAtlas.srv.gpu,graphics.currentFrameRetireFenceValue};
+        return state.solarFrame;
+    }
 
     bool ExecuteStylizedCloudStage(
         const PIPELINE::RenderFrameContext& frame,
@@ -1601,6 +1593,7 @@ namespace HIKARI::RENDER3D::CLOUDS {
         state.prepared = false;
 
         if (!settings.enabled || settings.density <= 0.0f ||
+            (settings.physicallyBasedLighting && settings.coverage <= 0.0f) ||
             !IsPrimaryPurpose(frame.purpose) ||
             !(frame.viewId == kPrimaryRenderViewId) ||
             frame.graphics.device == nullptr ||
@@ -1614,28 +1607,19 @@ namespace HIKARI::RENDER3D::CLOUDS {
             frame.targetAccess.endDepthRead == nullptr ||
             frame.targetAccess.rebind == nullptr ||
             !temporalFrame.camera.valid ||
-            !IsFiniteMatrix(temporalFrame.camera.invViewProj) ||
-            !IsFiniteMatrix(temporalFrame.camera.prevViewProj)) {
+            !MATH::IsFinite(temporalFrame.camera.invViewProj) ||
+            !MATH::IsFinite(temporalFrame.camera.prevViewProj)) {
             InvalidateHistory(state);
             return false;
         }
 
-        const MATH::Vec3 defaultSun{ 0.4f, -1.0f, -0.6f };
-        const MATH::Vec3 directionalDirection = SanitizeDirection(
-            frame.environment != nullptr
-                ? frame.environment->directional.direction
-                : defaultSun,
-            defaultSun);
-        const MATH::Vec3 sunDirection = {
-            -directionalDirection.x,
-            -directionalDirection.y,
-            -directionalDirection.z
-        };
-        const float sunIntensity = frame.environment != nullptr &&
-            frame.environment->directional.enabled
-            ? frame.environment->directional.intensity
-            : 0.0f;
-        const QualityPolicy policy = ResolveQualityPolicy(quality);
+        // 雲層高度の大気透過率を使う。地表色の clamp や独立した太陽を持たない。
+        const auto solar = frame.environment != nullptr
+            ? ATMOSPHERE::BuildAtmosphereSolarState(*frame.environment, settings.altitude)
+            : ATMOSPHERE::AtmosphereSolarState{};
+        QualityPolicy policy = ResolveQualityPolicy(quality);
+        if (settings.physicallyBasedLighting)
+            policy.lightSteps = (std::min)(kMaxCloudLightSteps, policy.lightSteps * 2u + 2u);
         const uint32_t traceWidth =
             (frame.renderWidth + policy.resolutionDivisor - 1u) /
             policy.resolutionDivisor;
@@ -1646,12 +1630,13 @@ namespace HIKARI::RENDER3D::CLOUDS {
             frame,
             settings,
             quality,
-            sunDirection,
-            sunIntensity,
+            solar,
             traceWidth,
             traceHeight);
 
-        if (state.device != nullptr && state.device != frame.graphics.device) {
+        if (state.device != nullptr && (state.device != frame.graphics.device ||
+            state.context.deviceGeneration != frame.graphics.deviceGeneration ||
+            state.context.frameFence != frame.graphics.frameFence)) {
             ReleaseGpuState(state);
         }
         state.context = frame.graphics;
@@ -1669,7 +1654,7 @@ namespace HIKARI::RENDER3D::CLOUDS {
         if (frame.cameraCut || temporalFrame.resetHistory) {
             InvalidateHistory(state);
         }
-        if (!EnsurePipeline(state) ||
+        if (!PrepareFrameUploads(state) || !EnsurePipeline(state) ||
             !EnsureNoiseResources(state) ||
             !EnsureCloudTargets(
                 state,
@@ -1694,8 +1679,7 @@ namespace HIKARI::RENDER3D::CLOUDS {
                 temporalFrame,
                 settings,
                 policy,
-                sunDirection,
-                sunIntensity,
+                solar,
                 signature)) {
             InvalidateHistory(state);
             return false;
@@ -1708,13 +1692,19 @@ namespace HIKARI::RENDER3D::CLOUDS {
         GFX::GPU_PROFILE::ScopedGpuTimer timer(
             state.context.cmdList,
             GFX::GPU_PROFILE::Pass::StylizedClouds);
+        if (!frame.targetAccess.BeginDepthRead()) return false;
+        state.sceneDepthSrv = frame.scene.depth.srv;
         if (!ExecuteTrace(state) || !ExecuteReproject(state)) {
+            frame.targetAccess.EndDepthRead();
+            (void)frame.targetAccess.Rebind();
             InvalidateHistory(state);
             return false;
         }
         state.stats.rendered = true;
         state.stats.temporalRendered = true;
         if (!ExecuteComposite(state, frame)) {
+            frame.targetAccess.EndDepthRead();
+            (void)frame.targetAccess.Rebind();
             InvalidateHistory(state);
             return false;
         }
@@ -1754,13 +1744,10 @@ namespace HIKARI::RENDER3D::CLOUDS {
         state.stats = {};
         state.historyReadIndex = 0u;
         state.historyWriteIndex = 1u;
-        state.constantFrameSlot = 0u;
-        state.noiseConstantFrameSlot = 0u;
         state.preparedFrameIndex = 0u;
         state.lastViewId = {};
         state.lastPurpose = RenderViewPurpose::Game;
         state.constants = {};
-        state.noiseConstants = {};
     }
 
 } // namespace HIKARI::RENDER3D::CLOUDS

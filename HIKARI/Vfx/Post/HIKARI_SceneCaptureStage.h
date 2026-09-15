@@ -32,6 +32,7 @@ namespace HIKARI::POST {
             uint32_t width,
             uint32_t height);
         RENDER3D::RenderTextureView GetCurrentDepthView() const;
+        RENDER3D::RenderTextureView GetCurrentColorView() const;
         D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentDsv() const;
         D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentReadOnlyDsv() const;
         bool BeginCurrentDepthRead();

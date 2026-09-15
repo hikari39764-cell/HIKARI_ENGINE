@@ -1,3 +1,4 @@
+#include "Core/Math/HIKARI_MathValidation.h"
 #include "Scene/HIKARI_PresentationModelRenderProjection.h"
 
 #include <algorithm>
@@ -93,17 +94,6 @@ namespace HIKARI::PRESENTATION_MODEL {
                 : nullptr;
         }
 
-        bool IsFiniteMatrix(const MATH::Mat4& matrix) noexcept {
-            for (int column = 0; column < 4; ++column) {
-                for (int row = 0; row < 4; ++row) {
-                    if (!std::isfinite(matrix.m[column][row])) {
-                        return false;
-                    }
-                }
-            }
-            return true;
-        }
-
         bool ResolveWorldMatrix(
             const PresentationModelRecord& record,
             World& world,
@@ -114,7 +104,7 @@ namespace HIKARI::PRESENTATION_MODEL {
             outWorldMatrix = MATH::Mat4::Identity();
             if (!record.attachmentEnabled) {
                 outWorldMatrix = record.worldTransform.GetWorldMatrix();
-                return IsFiniteMatrix(outWorldMatrix);
+                return MATH::IsFinite(outWorldMatrix);
             }
 
             GameObject* owner = world.FindObject(
@@ -141,11 +131,11 @@ namespace HIKARI::PRESENTATION_MODEL {
                 if (presentationTransforms->TryGetWorldMatrix(
                         owner->GetRuntimeHandle(),
                         presentationWorld) &&
-                    IsFiniteMatrix(presentationWorld)) {
+                    MATH::IsFinite(presentationWorld)) {
                     ownerWorld = presentationWorld;
                 }
             }
-            if (!IsFiniteMatrix(ownerWorld)) {
+            if (!MATH::IsFinite(ownerWorld)) {
                 return false;
             }
 
@@ -166,7 +156,7 @@ namespace HIKARI::PRESENTATION_MODEL {
 
             outWorldMatrix = socketTransform.GetWorldMatrix() *
                 record.localTransform.GetLocalMatrix();
-            return IsFiniteMatrix(outWorldMatrix);
+            return MATH::IsFinite(outWorldMatrix);
         }
 
         Bounds ResolveLocalBounds(

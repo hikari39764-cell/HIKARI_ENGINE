@@ -1896,6 +1896,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
     }
 
     void GpuSceneRegistry::RebuildForwardSceneSource() {
+        sceneSource_.surfaceRecords = &surfaceRecords_;
         sceneSource_.meshShaderJointPalettes = &meshShaderJointPalettes_;
         sceneSource_.waterSurfaceGpuData = &waterSurfaceGpuData_;
         sceneSource_.sandSurfaceGpuData = &sandSurfaceGpuData_;

@@ -113,8 +113,7 @@ namespace HIKARI::MESHRENDERER {
             sizeof(uint32_t) *
             RENDER3D::MATERIAL::kGpuMaterialProgramResourceSlotCount *
             kMaxMaterialDataCount);
-        const UINT jointPaletteBytes =
-            GFX::AlignD3D12ConstantBufferByteSize(sizeof(JointPaletteCB)) * kMaxObjectCount;
+
 
         const UINT descriptorSize =
             device->GetDescriptorHandleIncrementSize(
@@ -155,7 +154,8 @@ namespace HIKARI::MESHRENDERER {
                 return false;
             }
             if (!frame.view.Initialize(device) ||
-                !frame.materialUploads.Init(device, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT)) {
+                !frame.materialUploads.Init(device, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT) ||
+                !frame.deformationUploads.Init(device, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT)) {
                 return false;
             }
             frame.materialUploadNeedsRetry = false;
@@ -182,12 +182,7 @@ namespace HIKARI::MESHRENDERER {
                 !GFX::D3D12_BUFFER::CreateDefaultBuffer(
                     device,
                     materialProgramResourceBytes,
-                    frame.materialProgramResourceBuffer) ||
-                !GFX::D3D12_BUFFER::CreateMappedUploadBuffer(
-                    device,
-                    jointPaletteBytes,
-                    frame.jointPaletteCB,
-                    reinterpret_cast<void**>(&frame.jointPaletteMapped))) {
+                    frame.materialProgramResourceBuffer)) {
                 return false;
             }
 

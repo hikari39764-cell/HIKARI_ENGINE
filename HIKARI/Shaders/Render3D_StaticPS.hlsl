@@ -10,29 +10,7 @@
 #include "Include/Forward/HIKARI_SurfaceFeatureShading.hlsli"
 #endif
 
-struct PSInput
-{
-    float4 position : SV_POSITION;
-    float3 worldPosWS : TEXCOORD1;
-    float3 normalWS : NORMAL;
-    float4 tangentWS : TANGENT;
-    float2 uv : TEXCOORD0;
-    float2 uv1 : TEXCOORD10;
-    nointerpolation uint materialDataIndex : TEXCOORD2;
-    // VS/MS 側の TEXCOORD スロットと一致させ、PSO リンク時の再割り当てを避ける。
-    // forwardMeta のビットレイアウトは HIKARI_ForwardVertexMeta.hlsli を参照。
-    nointerpolation uint forwardMeta : TEXCOORD3;
-    nointerpolation uint objectDataIndex : TEXCOORD4;
-    nointerpolation uint surfaceGpuSceneIndex : TEXCOORD5;
-    nointerpolation uint debugSurfaceId : TEXCOORD6;
-    float3 characterRightWS : TEXCOORD8;
-    float3 characterForwardWS : TEXCOORD9;
-    nointerpolation uint surfaceFeatureFlags : TEXCOORD7;
-    // 水面と沙地が共有する surface feature 出力。TEXCOORD11 を一つに
-    // 統合し、フラグに応じてどちらかの変形データを読む。
-    float3 surfaceFeatureData : TEXCOORD11;
-    bool isFrontFace : SV_IsFrontFace;
-};
+typedef HikariForwardPixelInput PSInput;
 
 #include "Include/Surface/HIKARI_SandSurfaceShading.hlsli"
 #include "Include/Forward/HIKARI_ForwardMaterialInputs.hlsli"
@@ -52,10 +30,11 @@ struct HikariForwardReflectionOutput
     float4 color : SV_Target0;
     float4 fallbackSpecular : SV_Target1;
     float4 specularResponse : SV_Target2;
+    float4 reflectionMaterial : SV_Target3; // RGB=F0, A=F90 (減衰前の材質)
 };
 
 float4 HikariShadeForwardWithReflections(PSInput input,
-    out float4 fallbackSpecular, out float4 specularResponse)
+    out float4 fallbackSpecular, out float4 specularResponse, out float4 reflectionMaterial)
 #else
 float4 main(PSInput input) : SV_TARGET
 #endif
@@ -64,6 +43,7 @@ float4 main(PSInput input) : SV_TARGET
     // 未対応の早期 return も必ず無効値を書き、背後の面の反射を残さない。
     fallbackSpecular = 0.0f.xxxx;
     specularResponse = 0.0f.xxxx;
+    reflectionMaterial = 0.0f.xxxx;
 #endif
     const bool neutralClay =
         gDebugView == HIKARI_DEBUG_VIEW_NEUTRAL_CLAY;
@@ -148,6 +128,8 @@ float4 main(PSInput input) : SV_TARGET
     const float distanceToCamera = length(toCamera);
     const float3 v = toCamera / max(distanceToCamera, 0.00001f);
     const float3 l = normalize(-gDirectionalDir.xyz);
+    const float cloudSolarVisibility=costAlbedoOnly || (materialData.materialFlags & HIKARI_MATERIAL_FLAG_UNLIT)!=0u
+        ? 1.0f : HikariForwardCloudSolarVisibility(input.worldPosWS);
 
     HikariMaterialExpressionResult materialExpression =
         (HikariMaterialExpressionResult)0;
@@ -201,7 +183,7 @@ float4 main(PSInput input) : SV_TARGET
             input.tangentWS,
             v,
             l,
-            gDirectionalColor.rgb * gDirectionalIntensity);
+            gDirectionalColor.rgb * (gDirectionalIntensity * cloudSolarVisibility));
         baseColorSample = HikariResolveMaterialSourceColor(materialData, baseColorSample);
         albedo *= baseColorSample;
     }
@@ -406,7 +388,7 @@ float4 main(PSInput input) : SV_TARGET
             HikariEvaluateDirectionalPbrLobes(
                 pbrContext,
                 l,
-                gDirectionalColor.rgb * gDirectionalIntensity,
+                gDirectionalColor.rgb * (gDirectionalIntensity * cloudSolarVisibility),
                 gDirectionalDir.w);
         directional.diffuse *= shadowVisibility;
         directional.specular *= shadowVisibility;
@@ -414,7 +396,8 @@ float4 main(PSInput input) : SV_TARGET
         const HikariDirectPbrLobes local = AccumulateLocalLightPbrLobes(
             pbrContext,
             input.worldPosWS,
-            input.position.xy);
+            input.position.xy, geometricNormal,
+            HikariForwardVertexMetaReceiveShadow(input.forwardMeta));
 
         float3 surfaceLightmapIrradiance = 0.0f.xxx;
         float surfaceLightmapWeight = 0.0f;
@@ -459,6 +442,7 @@ float4 main(PSInput input) : SV_TARGET
         {
             fallbackSpecular = float4(ambient.specular, 1.0f);
             specularResponse = float4(ambient.specularResponse, 1.0f);
+            reflectionMaterial = float4(pbrContext.specularF0, pbrContext.specularF90);
         }
 #endif
         }
@@ -511,9 +495,9 @@ float4 main(PSInput input) : SV_TARGET
                     input.uv,
                     !doubleSidedBackFace,
                     l,
-                    gDirectionalColor.rgb * gDirectionalIntensity,
+                    gDirectionalColor.rgb * (gDirectionalIntensity * cloudSolarVisibility),
                     shadowVisibility,
-                    pbrIndirect);
+                    pbrIndirect, HikariForwardVertexMetaReceiveShadow(input.forwardMeta));
             shadedColor = response.directDiffuse +
                 response.directSpecular +
                 response.indirect +
@@ -567,6 +551,7 @@ float4 main(PSInput input) : SV_TARGET
     reflectionSupported = reflectionSupported && albedo.a == 1.0f;
     HikariAttenuateReflectionContribution(fallbackSpecular, specularResponse,
         1.0f - HikariForwardFogFactor(input.worldPosWS), reflectionSupported);
+    if (!HikariHasReflectionContribution(fallbackSpecular, specularResponse)) reflectionMaterial = 0.0f.xxxx;
 #endif
     return float4(
         alphaBlended ? finalColor * albedo.a : finalColor,
@@ -577,7 +562,7 @@ float4 main(PSInput input) : SV_TARGET
 HikariForwardReflectionOutput main(PSInput input)
 {
     HikariForwardReflectionOutput result;
-    result.color = HikariShadeForwardWithReflections(input, result.fallbackSpecular, result.specularResponse);
+    result.color = HikariShadeForwardWithReflections(input, result.fallbackSpecular, result.specularResponse, result.reflectionMaterial);
     return result;
 }
 #endif

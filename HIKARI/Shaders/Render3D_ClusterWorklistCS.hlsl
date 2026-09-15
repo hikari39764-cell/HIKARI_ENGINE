@@ -1,4 +1,4 @@
-﻿#include "HIKARI_ClusterCullCommon.hlsli"
+#include "HIKARI_ClusterCullCommon.hlsli"
 
 #include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
 
@@ -71,18 +71,18 @@ void ExpandPageTasksCS(uint3 dispatchThreadId : SV_DispatchThreadID)
             continue;
         }
 
-        float4 sectionWorldSphere = HikariClusterCullBuildWorldSphere(
-            instance.clusterWorld,
+        float4 sectionWorldSphere = HikariClusterBuildCullSphere(
+            instance,
             float4(0.0f, 0.0f, 0.0f, 0.0f),
             section.boundsMin,
             section.boundsMax);
-        const bool vertexDeformed =
-            (instance.flags & (
-                HIKARI_SURFACE_GPU_SCENE_FLAG_SKINNED |
-                HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_SURFACE |
-                HIKARI_SURFACE_GPU_SCENE_FLAG_SAND_SURFACE |
-                HIKARI_SURFACE_GPU_SCENE_FLAG_CAMERA_CENTERED_OCEAN)) != 0u;
-        if (!vertexDeformed && !HikariClusterCullSphereVisible(sectionWorldSphere))
+        float4x4 sectionCullWorld = instance.clusterWorld;
+        float4 sectionMin = section.boundsMin, sectionMax = section.boundsMax;
+        HikariClusterBuildCullBox(instance, sectionCullWorld, sectionMin, sectionMax);
+        if (HikariClusterHasConservativeBounds(instance) &&
+            (!HikariClusterCullSphereVisible(sectionWorldSphere) ||
+             (gClusterCullEnableFrustumCull != 0u && !HikariClusterBoxVisible(
+                gClusterCullViewProj, sectionCullWorld, sectionMin.xyz, sectionMax.xyz))))
         {
             if (gClusterCullEnableDebugCounters != 0u)
             {

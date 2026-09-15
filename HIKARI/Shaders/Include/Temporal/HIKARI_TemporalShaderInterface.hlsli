@@ -50,6 +50,7 @@ cbuffer TemporalTaaCB : register(b0)
     float4 gScreenParams; // xy: render size, zw: inverse render size
     float4 gTaaParams;    // x: history valid, y: history weight, z: exposure valid, w: clip gamma
     float4 gRejectParams; // x: depth threshold, y: luma threshold, z: sharpness, w: debug mode
+    float4 gJitterPixels; // xy: current, zw: previous raster jitter
 };
 
 Texture2D<float4> gCurrentColor : register(t0);

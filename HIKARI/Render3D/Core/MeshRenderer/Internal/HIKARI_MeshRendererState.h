@@ -36,11 +36,11 @@ namespace HIKARI::MESHRENDERER {
 
     struct SecondaryMeshViewFrameResources {
         MeshViewFrameResources view{};
-        Microsoft::WRL::ComPtr<ID3D12Resource> jointPaletteCB{};
-        JointPaletteCB* jointPaletteMapped = nullptr;
+        DX::DynamicUploadBuffer deformationUploads;
+        D3D12_GPU_VIRTUAL_ADDRESS jointPaletteAddress = 0;
 
         bool IsReady() const {
-            return view.IsInitialized() && jointPaletteCB != nullptr && jointPaletteMapped != nullptr;
+            return view.IsInitialized() && deformationUploads.IsInitialized();
         }
     };
 
@@ -88,6 +88,8 @@ namespace HIKARI::MESHRENDERER {
 
     struct MeshRendererState {
         bool initialized = false;
+        bool materialFrameReady = false;
+        GFX::Context materialFrameContext{};
         bool initializationFailed = false;
 
         MeshPipelineStore pipelines;

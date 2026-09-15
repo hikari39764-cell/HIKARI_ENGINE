@@ -97,26 +97,30 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             GRAPH::RenderGraphSemantic::ReflectionFallbackSpecular, GRAPH::RenderGraphSemanticPhase::Opaque};
         constexpr GRAPH::RenderGraphSurfaceKey responseKey{
             GRAPH::RenderGraphSemantic::ReflectionSpecularResponse, GRAPH::RenderGraphSemanticPhase::Opaque};
+        constexpr GRAPH::RenderGraphSurfaceKey materialKey{
+            GRAPH::RenderGraphSemantic::ReflectionMaterial, GRAPH::RenderGraphSemanticPhase::Opaque};
         (void)context.sceneSurfaces.Invalidate(fallbackKey);
         (void)context.sceneSurfaces.Invalidate(responseKey);
+        (void)context.sceneSurfaces.Invalidate(materialKey);
         bool beganCapture = false;
         try {
             const auto& frame = context.frame;
-            const bool cloudComposite = context.environment.clouds.enabled &&
-                context.environment.clouds.density > 0.0f &&
-                (frame.purpose == RenderViewPurpose::Game || frame.purpose == RenderViewPurpose::EditorScene);
-            const bool eligible = context.hasSsrWork && context.cameraConstants && !cloudComposite &&
-                context.renderQuality.forwardCostMode == ForwardShadingCostMode::Full &&
+            const bool eligible = context.hasSsrWork && context.cameraConstants &&
+                context.renderQuality.forwardCostMode != ForwardShadingCostMode::AlbedoOnly &&
                 (context.debugView == RenderDebugView::None || context.debugView == RenderDebugView::SsrConfidence ||
                  context.debugView == RenderDebugView::SsrHit) && frame.targetAccess.bindAdditionalColors;
             MESHRENDERER::MeshPassResources resources = context.opaqueResources;
             resources.reflectionCapture = false;
+            resources.reflectionMaterialCapture = false;
             // 任意の capture 準備に失敗しても、通常の Forward 描画は続ける。
             try {
-                const bool captureReady = eligible && MESHRENDERER::PrepareForwardReflectionCapture(frame.graphics);
-                if (buffer.Ensure(frame.graphics, frame.renderWidth, frame.renderHeight, captureReady)) {
+                const bool captureMaterial = context.environment.screenSpaceReflections.rayTracingFallback;
+                const bool captureReady = eligible && MESHRENDERER::PrepareForwardReflectionCapture(frame.graphics, captureMaterial);
+                if (buffer.Ensure(frame.graphics, frame.renderWidth, frame.renderHeight, captureReady,
+                    context.environment.screenSpaceReflections.rayTracingFallback)) {
                     beganCapture = buffer.BeginWrite(frame.graphics.cmdList);
                     resources.reflectionCapture = beganCapture && frame.targetAccess.BindAdditionalColors(buffer.GetRtvs());
+                    resources.reflectionMaterialCapture = resources.reflectionCapture && captureMaterial;
                 }
             } catch (...) {
                 resources.reflectionCapture = false;
@@ -141,6 +145,9 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
                     (void)context.sceneSurfaces.Invalidate(fallbackKey);
                     (void)context.sceneSurfaces.Invalidate(responseKey);
                 }
+                if (state.result.opaqueSucceeded && buffer.GetMaterialView().IsSampleable())
+                    (void)ReplaceTexturePublication(context.sceneSurfaces, materialKey, buffer.GetMaterialView(),
+                        SURFACE::SceneSurfaceProducer::ForwardOpaque);
             }
             return state.result.opaqueSucceeded;
         } catch (...) {
@@ -260,6 +267,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             context.frame.purpose == RenderViewPurpose::EditorScene;
         if (!context.environment.clouds.enabled ||
             context.environment.clouds.density <= 0.0f ||
+            (context.environment.clouds.physicallyBasedLighting && context.environment.clouds.coverage <= 0.0f) ||
             !supportedPurpose) {
             return true;
         }
@@ -442,7 +450,8 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
                 context.sceneSurfaces,
                 *context.cameraConstants,
                 context.environment.screenSpaceReflections,
-                context.debugView)) return true;
+                context.debugView,
+                context.temporalFrame)) return true;
             return context.frame.targetAccess.Rebind();
         }
         catch (...) {

@@ -1,6 +1,9 @@
 #include "Include/Sky/HIKARI_StylizedCloudVolume.hlsli"
+#include "Include/Lighting/HIKARI_VolumetricScattering.hlsli"
+#include "Include/Lighting/HIKARI_CloudSolarVisibility.hlsli"
+#include "Include/Surface/HIKARI_ScreenSpaceGeometry.hlsli"
 
-// Private 336-byte renderer contract.  Keep field order and offsets in lock
+// Private 368-byte renderer contract.  Keep field order and offsets in lock
 // step with StylizedCloudStage's C++ upload record.
 cbuffer HikariStylizedCloudPassCB : register(b0)
 {
@@ -19,7 +22,12 @@ cbuffer HikariStylizedCloudPassCB : register(b0)
     float4 gHikariStylizedCloudShadowColor;             // 288
     float4 gHikariStylizedCloudTemporal;                // 304
     float4 gHikariStylizedCloudQuality;                 // 320
+    float4 gHikariStylizedCloudAmbientLighting;         // 336: ambient radiance, physical mode
+    float4 gHikariStylizedCloudSunColorAnisotropy;       // 352
 };
+
+cbuffer CloudSolarVisibilityCB : register(b1) { HikariCloudSolarVisibilityData gCloudSolarField; };
+RWTexture2D<float2> gCloudSolarAtlas : register(u0);
 
 Texture3D<float4> gHikariStylizedCloudShapeVolume : register(t0);
 Texture3D<float4> gHikariStylizedCloudDetailVolume : register(t1);
@@ -28,6 +36,7 @@ Texture2D<float4> gHikariStylizedCloudCurrentColor : register(t3);
 Texture2D<float> gHikariStylizedCloudCurrentDepth : register(t4);
 Texture2D<float4> gHikariStylizedCloudPreviousHistoryColor : register(t5);
 Texture2D<float> gHikariStylizedCloudPreviousHistoryDepth : register(t6);
+Texture2D<float> gHikariStylizedCloudSceneDepth : register(t7);
 
 SamplerState gHikariStylizedCloudLinearWrap : register(s0);
 SamplerState gHikariStylizedCloudLinearClamp : register(s1);
@@ -233,10 +242,49 @@ float HikariStylizedCloudSampleFullDensity(
 
 float HikariStylizedCloudDensityToExtinction(float density)
 {
-    return density *
+    const float coverageWeight = gHikariStylizedCloudAmbientLighting.w > 0.5f
+        ? smoothstep(0.0f, 0.10f, saturate(gHikariStylizedCloudShape.x)) : 1.0f;
+    return density * coverageWeight *
         max(gHikariStylizedCloudShape.y, 0.0f) *
         3.4f /
         HikariStylizedCloudGetThickness();
+}
+
+[numthreads(8,8,1)]
+void SunTransmittanceCS(uint3 threadId : SV_DispatchThreadID)
+{
+    const uint resolution=uint(gCloudSolarField.upResolution.w),steps=uint(gCloudSolarField.directionSteps.w);
+    const uint2 column=threadId.xy;
+    if(any(column>=resolution)) return;
+    const float2 plane=(float2(column)+.5f)/float(resolution)*2-1;
+    const float3 origin=gCloudSolarField.originDescriptor.xyz+(plane.x*gCloudSolarField.rightExtent.xyz+
+        plane.y*gCloudSolarField.upResolution.xyz)*gCloudSolarField.rightExtent.w;
+    const float3 direction=gCloudSolarField.directionSteps.xyz;
+    float outerNear,outerFar,innerNear,innerFar;
+    const float3 relative=HikariStylizedCloudPlanetRelativePosition(origin);
+    const bool outerHit=HikariStylizedCloudRaySphereRoots(relative,direction,
+        HikariStylizedCloudGetInnerRadius()+HikariStylizedCloudGetThickness(),outerNear,outerFar);
+    const bool innerHit=HikariStylizedCloudRaySphereRoots(relative,direction,
+        HikariStylizedCloudGetInnerRadius(),innerNear,innerFar);
+    const float start=innerHit ? innerFar : outerNear;
+    const bool valid=outerHit && outerFar>start;
+    gCloudSolarAtlas[HikariCloudSolarAtlasPixel(column,0u,resolution)]=valid ? float2(start,outerFar) : 0.0f.xx;
+    const float stepLength=valid ? (outerFar-start)/float(steps) : 0;
+    float opticalDepth=0;
+    [loop] for(uint step=1u;step<=steps;++step)
+    {
+        if(valid && opticalDepth<12.0f)
+        {
+            [unroll] for(uint sampleIndex=0u;sampleIndex<2u;++sampleIndex)
+            {
+                const float distance=outerFar-(float(step-1u)+(float(sampleIndex)+.5f)*.5f)*stepLength;
+                const float3 position=origin+direction*distance;
+                const HikariStylizedCloudBaseSample base=HikariStylizedCloudSampleBase(position);
+                opticalDepth+=HikariStylizedCloudDensityToExtinction(HikariStylizedCloudSampleFullDensity(position,base))*stepLength*.5f;
+            }
+        }
+        gCloudSolarAtlas[HikariCloudSolarAtlasPixel(column,step,resolution)]=float2(exp(-opticalDepth),0);
+    }
 }
 
 float HikariStylizedCloudFrameJitter(uint2 pixel)
@@ -268,7 +316,9 @@ float HikariStylizedCloudLightTransmittance(
             gHikariStylizedCloudLayer.z,
             gHikariStylizedCloudLayer.x,
             gHikariStylizedCloudLayer.y,
-            min(gHikariStylizedCloudLayer.w, 12000.0f));
+            gHikariStylizedCloudAmbientLighting.w > 0.5f
+                ? 2.0f * (gHikariStylizedCloudLayer.z + gHikariStylizedCloudLayer.x + gHikariStylizedCloudLayer.y)
+                : min(gHikariStylizedCloudLayer.w, 12000.0f));
     if (interval.valid < 0.5f)
     {
         return 1.0f;
@@ -277,9 +327,7 @@ float HikariStylizedCloudLightTransmittance(
     uint lightSteps = min(
         max((uint)round(gHikariStylizedCloudQuality.y), 1u),
         HIKARI_CLOUD_MAX_LIGHT_STEPS);
-    float probeLength = min(
-        interval.farDistance,
-        max(HikariStylizedCloudGetThickness() * 1.6f, 96.0f));
+    float probeLength = interval.farDistance-interval.nearDistance;
     float stepLength = probeLength / (float)lightSteps;
     float opticalDepth = 0.0f;
 
@@ -290,7 +338,7 @@ float HikariStylizedCloudLightTransmittance(
         {
             break;
         }
-        float sampleDistance = (float(step) + 0.5f) * stepLength;
+        float sampleDistance = interval.nearDistance+(float(step) + 0.5f) * stepLength;
         HikariStylizedCloudBaseSample baseSample =
             HikariStylizedCloudSampleBase(
                 worldPosition + sunDirection * sampleDistance);
@@ -310,8 +358,9 @@ float HikariStylizedCloudLightTransmittance(
         }
     }
 
-    return exp(-opticalDepth *
-        max(gHikariStylizedCloudLighting.x, 0.0f));
+    // 物理モードは view ray と同じ消散係数。別倍率で遮蔽だけ変えない。
+    return exp(-opticalDepth * (gHikariStylizedCloudAmbientLighting.w > 0.5f
+        ? 1.0f : max(gHikariStylizedCloudLighting.x, 0.0f)));
 }
 
 float3 HikariStylizedCloudSampleLighting(
@@ -324,8 +373,13 @@ float3 HikariStylizedCloudSampleLighting(
     float lightTransmittance = HikariStylizedCloudLightTransmittance(
         worldPosition,
         sunDirection);
+    if (gHikariStylizedCloudAmbientLighting.w > 0.5f)
+        return HikariSingleScatteringSource(gHikariStylizedCloudBrightColor.rgb,
+            gHikariStylizedCloudAmbientLighting.rgb,
+            gHikariStylizedCloudSunColorAnisotropy.rgb*gHikariStylizedCloudSunDirectionIntensity.w,
+            lightTransmittance, dot(viewDirection,sunDirection), gHikariStylizedCloudSunColorAnisotropy.w);
     float sunElevation = saturate(sunDirection.y * 0.5f + 0.5f);
-    float viewToSun = saturate(dot(-viewDirection, sunDirection));
+    float viewToSun = saturate(dot(viewDirection, sunDirection));
     float valueBand = HikariStylizedCloudValueBand(
         lightTransmittance);
     float upperBodyLight = smoothstep(0.16f, 0.86f, heightFraction);
@@ -371,6 +425,19 @@ float3 HikariStylizedCloudReconstructRay(float2 uv)
         world.xyz * inverseW -
             gHikariStylizedCloudCameraPositionTime.xyz,
         float3(0.0f, 1.0f, 0.0f));
+}
+
+// Full-resolution scene depth と同じ共通 projection contract を使う。
+float HikariStylizedCloudSceneDistance(float2 uv)
+{
+    uint width, height;
+    gHikariStylizedCloudSceneDepth.GetDimensions(width, height);
+    const uint2 pixel = min(uint2(saturate(uv) * float2(width, height)), uint2(width, height) - 1u);
+    const float depth = gHikariStylizedCloudSceneDepth.Load(int3(pixel, 0));
+    float3 world;
+    return HikariReconstructWorldPosition((float2(pixel) + 0.5f) / float2(width, height), depth,
+        gHikariStylizedCloudInverseViewProj, world)
+        ? length(world - gHikariStylizedCloudCameraPositionTime.xyz) : 1.0e20f;
 }
 
 float2 HikariStylizedCloudProjectPreviousUv(float3 worldPosition)
@@ -480,6 +547,12 @@ HikariStylizedCloudMrtOutput HikariStylizedCloudRenderPixel(
         return output;
     }
 
+    if (gHikariStylizedCloudAmbientLighting.w > 0.5f)
+    {
+        interval.farDistance = min(interval.farDistance, HikariStylizedCloudSceneDistance(uv));
+        if (interval.farDistance <= interval.nearDistance) return output;
+    }
+
     uint primarySteps = min(
         max((uint)round(gHikariStylizedCloudQuality.x), 1u),
         HIKARI_CLOUD_MAX_PRIMARY_STEPS);
@@ -559,10 +632,12 @@ HikariStylizedCloudMrtOutput HikariStylizedCloudRenderPixel(
         0.002f,
         0.080f,
         saturate(gHikariStylizedCloudLighting.z));
-    float horizonWeight = smoothstep(
+    const bool cameraBelowClouds = length(HikariStylizedCloudPlanetRelativePosition(
+        gHikariStylizedCloudCameraPositionTime.xyz)) < HikariStylizedCloudGetInnerRadius();
+    float horizonWeight = cameraBelowClouds ? smoothstep(
         -horizonFade,
         0.0f,
-        rayDirection.y);
+        rayDirection.y) : 1.0f;
     float edgeWeight = horizonWeight;
     opacity *= edgeWeight;
     radiance *= edgeWeight;
@@ -646,6 +721,8 @@ HikariStylizedCloudMrtOutput HikariStylizedCloudReprojectPixel(
         gHikariStylizedCloudLinearClamp,
         previousUv,
         0.0f);
+    // 動く不透明境界が ray の長さを変えた場合、古い opacity を引きずらない。
+    if (abs(history.a - current.a) > 0.05f) return output;
     history = HikariStylizedCloudClampHistoryColor(
         int2(pixel),
         history);
@@ -667,166 +744,50 @@ HikariStylizedCloudMrtOutput ReprojectCloudPS(
         uint2(input.position.xy));
 }
 
-float4 HikariStylizedCloudSpatialComposite(float2 uv)
+// current/history 共通。空の tap も透過率の補間に含め、雲の輪郭を膨張させない。
+float4 HikariStylizedCloudSpatialComposite(Texture2D<float4> colors, Texture2D<float> depths,
+    float2 uv, float sceneDistance)
 {
-    uint traceWidth;
-    uint traceHeight;
-    gHikariStylizedCloudCurrentColor.GetDimensions(traceWidth, traceHeight);
-    float2 traceSize = float2(
-        max(traceWidth, 1u),
-        max(traceHeight, 1u));
-    float2 coordinate = uv * traceSize - 0.5f;
-    int2 basePixel = int2(floor(coordinate));
-    float2 fraction = frac(coordinate);
-    int2 referencePixel = clamp(
-        int2(floor(coordinate + 0.5f)),
-        int2(0, 0),
-        int2(traceSize) - 1);
-    float centerDepth = gHikariStylizedCloudCurrentDepth.Load(
-        int3(referencePixel, 0));
+    uint width, height;
+    colors.GetDimensions(width, height);
+    const int2 traceSize = int2(width, height);
+    const float2 coordinate = uv * float2(traceSize) - 0.5f;
+    const int2 basePixel = int2(floor(coordinate));
+    const float2 fraction = frac(coordinate);
+    const int2 referencePixel = clamp(int2(floor(coordinate + 0.5f)), 0, traceSize - 1);
+    const float centerDepth = depths.Load(int3(referencePixel, 0));
     float weightSum = 0.0f;
     float4 result = 0.0f.xxxx;
-
-    [unroll]
-    for (int y = 0; y <= 1; ++y)
+    [unroll] for (int y = 0; y <= 1; ++y)
+    [unroll] for (int x = 0; x <= 1; ++x)
     {
-        [unroll]
-        for (int x = 0; x <= 1; ++x)
-        {
-            int2 pixel = clamp(
-                basePixel + int2(x, y),
-                int2(0, 0),
-                int2(traceSize) - 1);
-            float depth = gHikariStylizedCloudCurrentDepth.Load(
-                int3(pixel, 0));
-            float4 color = gHikariStylizedCloudCurrentColor.Load(
-                int3(pixel, 0));
-            if (depth <= 0.0f || color.a <= 0.0001f)
-            {
-                continue;
-            }
-
-            if (centerDepth <= 0.0f)
-            {
-                centerDepth = depth;
-            }
-            float2 spatial = float2(
-                x == 0 ? 1.0f - fraction.x : fraction.x,
-                y == 0 ? 1.0f - fraction.y : fraction.y);
-            float spatialWeight = spatial.x * spatial.y;
-            float rangeScale = max(centerDepth * 0.10f, 12.0f);
-            float depthWeight = exp(-abs(depth - centerDepth) / rangeScale);
-            float weight = spatialWeight * depthWeight;
-            result += color * weight;
-            weightSum += weight;
-        }
+        const int2 pixel = clamp(basePixel + int2(x, y), 0, traceSize - 1);
+        const float depth = depths.Load(int3(pixel, 0));
+        const float4 color = colors.Load(int3(pixel, 0));
+        const float tapSceneDistance = HikariStylizedCloudSceneDistance((float2(pixel) + 0.5f) / float2(traceSize));
+        // 不透明面と空の境界、および別の奥行きの物体からの cloud color を混ぜない。
+        if ((sceneDistance < 1.0e19f) != (tapSceneDistance < 1.0e19f)) continue;
+        if (depth > 0.0f && depth >= sceneDistance) continue;
+        const float2 spatial = float2(x == 0 ? 1.0f - fraction.x : fraction.x,
+            y == 0 ? 1.0f - fraction.y : fraction.y);
+        const float cloudWeight = centerDepth > 0.0f && depth > 0.0f
+            ? exp(-abs(depth - centerDepth) / max(centerDepth * 0.10f, 12.0f)) : 1.0f;
+        const float surfaceWeight = exp(-abs(tapSceneDistance - sceneDistance) / max(sceneDistance * 0.02f, 2.0f));
+        const float weight = spatial.x * spatial.y * cloudWeight * surfaceWeight;
+        result += color * weight;
+        weightSum += weight;
     }
-
-    if (weightSum <= 0.0001f)
-    {
-        return 0.0f.xxxx;
-    }
-    return result / weightSum;
+    return weightSum > 0.0001f ? result / weightSum : 0.0f.xxxx;
 }
 
-float4 HikariStylizedCloudResolvedSpatialComposite(float2 uv)
+float4 CompositeCloudPS(HikariStylizedCloudFullscreenOutput input) : SV_TARGET
 {
-    uint traceWidth;
-    uint traceHeight;
-    gHikariStylizedCloudPreviousHistoryColor.GetDimensions(
-        traceWidth,
-        traceHeight);
-    float2 traceSize = float2(
-        max(traceWidth, 1u),
-        max(traceHeight, 1u));
-    float2 coordinate = uv * traceSize - 0.5f;
-    int2 basePixel = int2(floor(coordinate));
-    float2 fraction = frac(coordinate);
-    int2 referencePixel = clamp(
-        int2(floor(coordinate + 0.5f)),
-        int2(0, 0),
-        int2(traceSize) - 1);
-    float centerDepth = gHikariStylizedCloudPreviousHistoryDepth.Load(
-        int3(referencePixel, 0));
-    float weightSum = 0.0f;
-    float4 result = 0.0f.xxxx;
-
-    [unroll]
-    for (int y = 0; y <= 1; ++y)
-    {
-        [unroll]
-        for (int x = 0; x <= 1; ++x)
-        {
-            int2 pixel = clamp(
-                basePixel + int2(x, y),
-                int2(0, 0),
-                int2(traceSize) - 1);
-            float depth = gHikariStylizedCloudPreviousHistoryDepth.Load(
-                int3(pixel, 0));
-            float4 color = gHikariStylizedCloudPreviousHistoryColor.Load(
-                int3(pixel, 0));
-            if (depth <= 0.0f || color.a <= 0.0001f)
-            {
-                continue;
-            }
-
-            if (centerDepth <= 0.0f)
-            {
-                centerDepth = depth;
-            }
-            float2 spatial = float2(
-                x == 0 ? 1.0f - fraction.x : fraction.x,
-                y == 0 ? 1.0f - fraction.y : fraction.y);
-            float spatialWeight = spatial.x * spatial.y;
-            float rangeScale = max(centerDepth * 0.10f, 12.0f);
-            float depthWeight = exp(-abs(depth - centerDepth) / rangeScale);
-            float weight = spatialWeight * depthWeight;
-            result += color * weight;
-            weightSum += weight;
-        }
-    }
-
-    return weightSum > 0.0001f
-        ? result / weightSum
-        : 0.0f.xxxx;
-}
-
-float4 CompositeCloudPS(
-    HikariStylizedCloudFullscreenOutput input) : SV_TARGET
-{
-    // These center probes are validity gates only; the returned color is
-    // still produced by the depth-aware 2x2 reconstruction below.
-    float4 resolvedProbeColor =
-        gHikariStylizedCloudPreviousHistoryColor.SampleLevel(
-            gHikariStylizedCloudLinearClamp,
-            input.uv,
-            0.0f);
-    float resolvedProbeDepth =
-        gHikariStylizedCloudPreviousHistoryDepth.SampleLevel(
-            gHikariStylizedCloudLinearClamp,
-            input.uv,
-            0.0f);
-    // ReprojectCloudPS always writes a resolved current/history result to
-    // t5/t6.  Reconstruct that resolved pair with the same depth-aware
-    // bilateral taps; a single linear history sample would bypass the edge
-    // guard and reintroduce cloud-depth bleeding.
-    float4 resolved = HikariStylizedCloudResolvedSpatialComposite(input.uv);
-    float resolvedHistoryValid =
-        step(0.0001f, resolvedProbeColor.a) *
-        step(0.0001f, resolvedProbeDepth) *
-        step(0.0001f, resolved.a);
-    if (resolvedHistoryValid > 0.5f)
-    {
-        return resolved;
-    }
-
-    // Only empty/invalid resolved pixels pay for the current-frame fallback;
-    // this keeps the normal full-screen composite to one 2x2 depth-aware
-    // reconstruction instead of always sampling both pairs.
-    float4 spatial = HikariStylizedCloudSpatialComposite(input.uv);
-    // The graphics pass uses premultiplied source-over blending and a
-    // read-only scene DSV at far depth.  Opaque depth therefore rejects cloud
-    // fragments in front of geometry while this reconstruction avoids
-    // bleeding across cloud-depth discontinuities.
-    return spatial;
+    const float sceneDistance = HikariStylizedCloudSceneDistance(input.uv);
+    // 旧 artistic mode の背景専用動作を保持。physical mode は物体手前まで積分済み。
+    if (gHikariStylizedCloudAmbientLighting.w < 0.5f && sceneDistance < 1.0e19f) return 0.0f.xxxx;
+    const float4 resolved = HikariStylizedCloudSpatialComposite(
+        gHikariStylizedCloudPreviousHistoryColor, gHikariStylizedCloudPreviousHistoryDepth, input.uv, sceneDistance);
+    if (resolved.a > 0.0001f) return resolved;
+    return HikariStylizedCloudSpatialComposite(
+        gHikariStylizedCloudCurrentColor, gHikariStylizedCloudCurrentDepth, input.uv, sceneDistance);
 }

@@ -50,6 +50,7 @@ namespace HIKARI {
         bool enabled = true;
         MATH::Vec3 position{ 0.0f, 2.0f, 0.0f };
         float range = 5.0f;
+        float sourceRadius = 0.0f;
         MATH::Vec3 color{ 1.0f, 1.0f, 1.0f };
         float intensity = 1.0f;
         int priority = 0;
@@ -61,6 +62,7 @@ namespace HIKARI {
         bool enabled = true;
         MATH::Vec3 position{ 0.0f, 3.0f, 0.0f };
         float range = 8.0f;
+        float sourceRadius = 0.0f;
         MATH::Vec3 direction{ 0.0f, -1.0f, 0.0f };
         float innerConeAngleDegrees = 25.0f;
         float outerConeAngleDegrees = 35.0f;
@@ -160,6 +162,8 @@ namespace HIKARI {
 
     struct StylizedCloudSettings {
         bool enabled = false;
+        bool physicallyBasedLighting = true;
+        float anisotropy = 0.7f;
         float coverage = 0.46f;
         float density = 1.10f;
         float altitude = 180.0f;
@@ -256,6 +260,7 @@ namespace HIKARI {
         float maxRoughness = 0.72f;
         float edgeFade = 0.08f;
         float stride = 0.18f;
+        bool rayTracingFallback = false;
     };
 
     struct SurfaceLightmapSettings {

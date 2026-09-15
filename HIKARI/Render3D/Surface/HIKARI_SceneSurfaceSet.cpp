@@ -69,6 +69,8 @@ namespace HIKARI::RENDER3D::SURFACE {
             return SceneSurfaceFormat::R32Float;
         case DXGI_FORMAT_R32G32_UINT:
             return SceneSurfaceFormat::R32G32Uint;
+        case DXGI_FORMAT_R32G32_FLOAT:
+            return SceneSurfaceFormat::R32G32Float;
         default:
             return SceneSurfaceFormat::Unknown;
         }

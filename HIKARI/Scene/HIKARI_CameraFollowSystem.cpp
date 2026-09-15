@@ -295,22 +295,9 @@ namespace HIKARI {
                 MATH::Length(forward) <= kViewEpsilon) {
                 return result;
             }
-            MATH::Vec3 right = MATH::Normalize(MATH::Cross(
-                MATH::Vec3{ 0.0f, 1.0f, 0.0f },
-                forward));
-            if (!MATH::IsFinite(right) ||
-                MATH::Length(right) <= kViewEpsilon) {
-                right = MATH::Normalize(MATH::Cross(
-                    MATH::Vec3{ 1.0f, 0.0f, 0.0f },
-                    forward));
-            }
-            if (!MATH::IsFinite(right) ||
-                MATH::Length(right) <= kViewEpsilon) {
-                return result;
-            }
-            const MATH::Vec3 up = MATH::Normalize(MATH::Cross(
-                forward,
-                right));
+            const auto basis = MATH::BuildViewBasisRH(forward, {0, 1, 0});
+            const MATH::Vec3 right = basis.right;
+            const MATH::Vec3 up = basis.up;
             const MATH::Vec3 relative = point - eye;
             const float depth = MATH::Dot(relative, forward);
             const float clampedFov = std::clamp(
@@ -2203,8 +2190,8 @@ namespace HIKARI {
                     if (MATH::Length(viewForward) > kViewEpsilon) {
                         const float roll = relationshipRollRadians *
                             clampedRelationshipWeight;
-                        const MATH::Vec3 viewRight = MATH::Normalize(
-                            MATH::Cross(resolvedUp, viewForward));
+                        const MATH::Vec3 viewRight =
+                            MATH::BuildViewBasisRH(viewForward, resolvedUp).right;
                         resolvedUp = MATH::Normalize(
                             resolvedUp * std::cos(roll) +
                             viewRight * std::sin(roll));

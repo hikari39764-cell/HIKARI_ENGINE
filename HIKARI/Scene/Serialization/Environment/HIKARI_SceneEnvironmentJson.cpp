@@ -434,6 +434,7 @@ namespace HIKARI::SCENE::SERIALIZATION {
                                            { "position", JsonMath::ToJsonArray(pointLight.position) },
                                            { "range", pointLight.range },
                 { "distanceFalloff", RENDER3D::LIGHTING::ToString(pointLight.distanceFalloff) },
+                { "sourceRadius", RENDER3D::LIGHTING::SanitizeLocalLightSourceRadius(pointLight.sourceRadius) },
                                            { "color", JsonMath::ToJsonArray(pointLight.color) },
                                            { "intensity", pointLight.intensity },
                                            { "priority", pointLight.priority } });
@@ -446,6 +447,7 @@ namespace HIKARI::SCENE::SERIALIZATION {
                 { "position", JsonMath::ToJsonArray(spotLight.position) },
                 { "range", spotLight.range },
                 { "distanceFalloff", RENDER3D::LIGHTING::ToString(spotLight.distanceFalloff) },
+                { "sourceRadius", RENDER3D::LIGHTING::SanitizeLocalLightSourceRadius(spotLight.sourceRadius) },
                 { "direction", JsonMath::ToJsonArray(spotLight.direction) },
                 { "innerConeAngleDegrees", spotLight.innerConeAngleDegrees },
                 { "outerConeAngleDegrees", spotLight.outerConeAngleDegrees },
@@ -629,6 +631,8 @@ namespace HIKARI::SCENE::SERIALIZATION {
             clouds.shapeDetail, cloudDefaults.shapeDetail, 0.0f, 1.0f);
         out["clouds"]["softness"] = SanitizeCloudFloat(
             clouds.softness, cloudDefaults.softness, 0.0f, 1.0f);
+        out["clouds"]["physicallyBasedLighting"] = clouds.physicallyBasedLighting;
+        out["clouds"]["anisotropy"] = SanitizeCloudFloat(clouds.anisotropy, cloudDefaults.anisotropy, -0.8f, 0.8f);
         out["clouds"]["lightAbsorption"] = SanitizeCloudFloat(
             clouds.lightAbsorption, cloudDefaults.lightAbsorption, 0.0f, 8.0f);
         out["clouds"]["silverLining"] = SanitizeCloudFloat(
@@ -688,6 +692,7 @@ namespace HIKARI::SCENE::SERIALIZATION {
         out["screenSpaceReflections"]["maxRoughness"] = ssr.maxRoughness;
         out["screenSpaceReflections"]["edgeFade"] = ssr.edgeFade;
         out["screenSpaceReflections"]["stride"] = ssr.stride;
+        out["screenSpaceReflections"]["rayTracingFallback"] = ssr.rayTracingFallback;
 
         out["bloom"]["enabled"] = environment.bloom.enabled;
         out["bloom"]["threshold"] = environment.bloom.threshold;
@@ -827,6 +832,8 @@ namespace HIKARI::SCENE::SERIALIZATION {
                 pointLight.range = pointNode.value("range", pointLight.range);
                 pointLight.distanceFalloff = RENDER3D::LIGHTING::ParseLocalLightFalloff(
                     pointNode.value("distanceFalloff", std::string("LegacyRange")));
+                pointLight.sourceRadius = RENDER3D::LIGHTING::SanitizeLocalLightSourceRadius(
+                    pointNode.value("sourceRadius", 0.0f));
                 pointLight.color = JSONREAD::Vec3Or(pointNode.value("color", nlohmann::json::array()), pointLight.color);
                 pointLight.intensity = pointNode.value("intensity", pointLight.intensity);
                 pointLight.priority = pointNode.value("priority", pointLight.priority);
@@ -847,6 +854,8 @@ namespace HIKARI::SCENE::SERIALIZATION {
                     spotNode.value("range", spotLight.range);
                 spotLight.distanceFalloff = RENDER3D::LIGHTING::ParseLocalLightFalloff(
                     spotNode.value("distanceFalloff", std::string("LegacyRange")));
+                spotLight.sourceRadius = RENDER3D::LIGHTING::SanitizeLocalLightSourceRadius(
+                    spotNode.value("sourceRadius", 0.0f));
                 spotLight.direction = JSONREAD::Vec3Or(
                     spotNode.value("direction", nlohmann::json::array()),
                     spotLight.direction);
@@ -1101,6 +1110,9 @@ namespace HIKARI::SCENE::SERIALIZATION {
             const StylizedCloudSettings defaults{};
             clouds.enabled = JSONREAD::BooleanMemberOr(
                 cloudNode, "enabled", defaults.enabled);
+            // 旧 scene の色段階表現は保持し、新規 scene は物理散乱を既定にする。
+            clouds.physicallyBasedLighting = JSONREAD::BooleanMemberOr(cloudNode, "physicallyBasedLighting", false);
+            clouds.anisotropy = ReadCloudMember(cloudNode, "anisotropy", defaults.anisotropy, -0.8f, 0.8f);
             clouds.coverage = ReadCloudMember(
                 cloudNode, "coverage", defaults.coverage, 0.0f, 1.0f);
             clouds.density = ReadCloudMember(
@@ -1217,6 +1229,7 @@ namespace HIKARI::SCENE::SERIALIZATION {
             ScreenSpaceReflectionSettings& settings =
                 outEnvironment.screenSpaceReflections;
             settings.enabled = ssr.value("enabled", settings.enabled);
+            settings.rayTracingFallback = ssr.value("rayTracingFallback", settings.rayTracingFallback);
             settings.quality = ParseSsrQuality(
                 ssr.value("quality", nlohmann::json{}),
                 settings.quality);

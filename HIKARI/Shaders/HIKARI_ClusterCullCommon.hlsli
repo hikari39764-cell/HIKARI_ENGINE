@@ -2,100 +2,12 @@
 #define HIKARI_CLUSTER_CULL_COMMON_INCLUDED
 
 #include "Include/Cluster/HIKARI_ClusterCullContract.hlsli"
-
-float4 HikariClusterCullMatrixRow0(float4x4 matrix)
-{
-    return float4(
-        matrix._11,
-        matrix._12,
-        matrix._13,
-        matrix._14);
-}
-
-float4 HikariClusterCullMatrixRow1(float4x4 matrix)
-{
-    return float4(
-        matrix._21,
-        matrix._22,
-        matrix._23,
-        matrix._24);
-}
-
-float4 HikariClusterCullMatrixRow2(float4x4 matrix)
-{
-    return float4(
-        matrix._31,
-        matrix._32,
-        matrix._33,
-        matrix._34);
-}
-
-float4 HikariClusterCullMatrixRow3(float4x4 matrix)
-{
-    return float4(
-        matrix._41,
-        matrix._42,
-        matrix._43,
-        matrix._44);
-}
-
-float4 HikariClusterCullViewProjRow0()
-{
-    return HikariClusterCullMatrixRow0(gClusterCullViewProj);
-}
-
-float4 HikariClusterCullViewProjRow1()
-{
-    return HikariClusterCullMatrixRow1(gClusterCullViewProj);
-}
-
-float4 HikariClusterCullViewProjRow2()
-{
-    return HikariClusterCullMatrixRow2(gClusterCullViewProj);
-}
-
-float4 HikariClusterCullViewProjRow3()
-{
-    return HikariClusterCullMatrixRow3(gClusterCullViewProj);
-}
-
-bool HikariClusterCullPlaneVisible(float4 plane, float3 center, float radius)
-{
-    float planeLength = length(plane.xyz);
-    if (planeLength <= 0.000001f)
-    {
-        return true;
-    }
-
-    float distance = dot(plane.xyz, center) + plane.w;
-    return distance >= -radius * planeLength;
-}
+#include "Include/Cluster/HIKARI_ClusterCullingMath.hlsli"
 
 bool HikariClusterCullSphereVisible(float4 boundsCenterRadius)
 {
-    if (gClusterCullEnableFrustumCull == 0)
-    {
-        return true;
-    }
-
-    float3 center = boundsCenterRadius.xyz;
-    float radius = max(boundsCenterRadius.w, 0.0f);
-
-    // Surface bounds are still the draw seed here, so use clip-space plane tests
-    // instead of an NDC radius approximation. The latter over-culls at the
-    // screen edge and can drop a whole surface while part of it is still visible.
-    float4 row0 = HikariClusterCullViewProjRow0();
-    float4 row1 = HikariClusterCullViewProjRow1();
-    float4 row2 = HikariClusterCullViewProjRow2();
-    float4 row3 = HikariClusterCullViewProjRow3();
-
-    return
-        HikariClusterCullPlaneVisible(row3 + row0, center, radius) &&
-        HikariClusterCullPlaneVisible(row3 - row0, center, radius) &&
-        HikariClusterCullPlaneVisible(row3 + row1, center, radius) &&
-        HikariClusterCullPlaneVisible(row3 - row1, center, radius) &&
-        HikariClusterCullPlaneVisible(row2, center, radius) &&
-        HikariClusterCullPlaneVisible(row3 - row2, center, radius);
+    return gClusterCullEnableFrustumCull == 0u ||
+        HikariClusterSphereVisible(gClusterCullViewProj, boundsCenterRadius);
 }
 
 float HikariClusterCullProjectedWorldLengthWithMatrix(
@@ -107,8 +19,8 @@ float HikariClusterCullProjectedWorldLengthWithMatrix(
         mul(viewProj, float4(worldCenter, 1.0f));
     float projectionScale =
         max(
-            length(HikariClusterCullMatrixRow0(viewProj).xyz),
-            length(HikariClusterCullMatrixRow1(viewProj).xyz));
+            length(HikariClusterMatrixRow0(viewProj).xyz),
+            length(HikariClusterMatrixRow1(viewProj).xyz));
     return max(worldLength, 0.0f) *
         projectionScale /
         max(abs(clipCenter.w), 0.0001f);
@@ -313,245 +225,20 @@ bool HikariClusterCullHzbOcclusionAllowed(uint passKind)
         gClusterCullHzbHeight > 0u;
 }
 
-struct HikariClusterCullHzbQuery
-{
-    float2 minUv;
-    float2 maxUv;
-    float nearestDepth;
-    float maxExtentPixels;
-    uint flags;
-};
+#include "Include/Depth/HIKARI_DepthOcclusion.hlsli"
+typedef HikariDepthOcclusionQuery HikariClusterCullHzbQuery;
 
-uint HikariClusterCullMipDim(uint baseDim, uint mipLevel)
-{
-    return max(1u, baseDim >> min(mipLevel, 31u));
-}
-
-uint HikariClusterCullSelectHzbMip(float maxExtentPixels)
-{
-    if (gClusterCullHzbMipCount <= 1u)
-    {
-        return 0u;
-    }
-
-    // Pick a mip where the projected bounds cover a few texels. Sampling a
-    // projected rectangle is more stable than guessing from a sphere radius.
-    float desiredMip = floor(log2(max(maxExtentPixels * 0.5f, 1.0f)));
-    return min((uint)max(desiredMip, 0.0f), gClusterCullHzbMipCount - 1u);
-}
-
-float HikariClusterCullLoadHzbDepth(int2 pixel, uint mipLevel)
-{
-    int2 maxPixel = int2(
-        max((int)HikariClusterCullMipDim(gClusterCullHzbWidth, mipLevel) - 1, 0),
-        max((int)HikariClusterCullMipDim(gClusterCullHzbHeight, mipLevel) - 1, 0));
-    uint2 clampedPixel = (uint2)clamp(pixel, int2(0, 0), maxPixel);
-    return gClusterCullHzb.Load(int3(clampedPixel, mipLevel));
-}
-
-float HikariClusterCullLoadHzbMaxDepthInRect(
-    float2 minUv,
-    float2 maxUv,
-    uint mipLevel)
-{
-    uint mipWidth = HikariClusterCullMipDim(gClusterCullHzbWidth, mipLevel);
-    uint mipHeight = HikariClusterCullMipDim(gClusterCullHzbHeight, mipLevel);
-    float2 mipSize = float2((float)mipWidth, (float)mipHeight);
-    int2 minPixel = int2(floor(saturate(minUv) * mipSize));
-    int2 maxPixel = int2(ceil(saturate(maxUv) * mipSize - 1.0f));
-    maxPixel = max(maxPixel, minPixel);
-
-    float maxHzbDepth = 0.0f;
-    [unroll]
-    for (uint y = 0u; y < 3u; ++y)
-    {
-        [unroll]
-        for (uint x = 0u; x < 3u; ++x)
-        {
-            float2 t = float2((float)x, (float)y) * 0.5f;
-            int2 pixel = int2(round(lerp((float2)minPixel, (float2)maxPixel, t)));
-            maxHzbDepth = max(maxHzbDepth, HikariClusterCullLoadHzbDepth(pixel, mipLevel));
-        }
-    }
-    return maxHzbDepth;
-}
-
-float3 HikariClusterCullBoundsCorner(float4 boundsMin, float4 boundsMax, uint cornerIndex)
-{
-    return float3(
-        (cornerIndex & 1u) != 0u ? boundsMax.x : boundsMin.x,
-        (cornerIndex & 2u) != 0u ? boundsMax.y : boundsMin.y,
-        (cornerIndex & 4u) != 0u ? boundsMax.z : boundsMin.z);
-}
-
-uint HikariClusterCullBuildHzbQuery(
-    float4x4 world,
-    float4 boundsMin,
-    float4 boundsMax,
+uint HikariClusterCullBuildHzbQuery(float4x4 world, float4 boundsMin, float4 boundsMax,
     out HikariClusterCullHzbQuery query)
 {
-    query.minUv = float2(1.0f, 1.0f);
-    query.maxUv = float2(0.0f, 0.0f);
-    query.nearestDepth = 1.0f;
-    query.maxExtentPixels = 0.0f;
-    query.flags = 0u;
-
-    uint projectedCornerCount = 0u;
-    [unroll]
-    for (uint cornerIndex = 0u; cornerIndex < 8u; ++cornerIndex)
-    {
-        float3 localCorner =
-            HikariClusterCullBoundsCorner(boundsMin, boundsMax, cornerIndex);
-        float3 worldCorner = mul(world, float4(localCorner, 1.0f)).xyz;
-        float4 clip = mul(gClusterCullHzbViewProj, float4(worldCorner, 1.0f));
-        if (clip.w <= 0.0001f)
-        {
-            return HIKARI_CLUSTER_CULL_HZB_QUERY_REJECT_NEAR_PLANE;
-        }
-
-        float3 ndc = clip.xyz / clip.w;
-        if (ndc.z <= 0.0f)
-        {
-            return HIKARI_CLUSTER_CULL_HZB_QUERY_REJECT_NEAR_PLANE;
-        }
-
-        float2 uv = float2(ndc.x * 0.5f + 0.5f, 0.5f - ndc.y * 0.5f);
-        query.minUv = min(query.minUv, uv);
-        query.maxUv = max(query.maxUv, uv);
-        query.nearestDepth = min(query.nearestDepth, min(ndc.z, 1.0f));
-        ++projectedCornerCount;
-    }
-    if (projectedCornerCount == 0u)
-    {
-        return HIKARI_CLUSTER_CULL_HZB_QUERY_REJECT_INVALID;
-    }
-
-    if (query.maxUv.x <= 0.0f ||
-        query.minUv.x >= 1.0f ||
-        query.maxUv.y <= 0.0f ||
-        query.minUv.y >= 1.0f)
-    {
-        return HIKARI_CLUSTER_CULL_HZB_QUERY_REJECT_OFFSCREEN;
-    }
-
-    query.minUv = saturate(query.minUv);
-    query.maxUv = saturate(query.maxUv);
-    float2 extentPixels =
-        max((query.maxUv - query.minUv) *
-            float2((float)gClusterCullHzbWidth, (float)gClusterCullHzbHeight),
-            float2(1.0f, 1.0f));
-    query.maxExtentPixels = max(extentPixels.x, extentPixels.y);
-    if (query.maxExtentPixels <= 0.0f)
-    {
-        return HIKARI_CLUSTER_CULL_HZB_QUERY_REJECT_INVALID;
-    }
+    bool valid = HikariBuildDepthOcclusionQuery(gClusterCullHzbViewProj, world,
+        boundsMin.xyz, boundsMax.xyz, uint2(gClusterCullHzbWidth, gClusterCullHzbHeight), query);
     if (query.maxExtentPixels > max(gClusterCullHzbMaxScreenRadiusPixels, 1.0f))
-    {
         query.flags |= HIKARI_CLUSTER_CULL_HZB_QUERY_FLAG_LARGE_RECT;
-    }
-
-    return query.nearestDepth > 0.0f && query.nearestDepth < 1.0f
-        ? HIKARI_CLUSTER_CULL_HZB_QUERY_OK
-        : HIKARI_CLUSTER_CULL_HZB_QUERY_REJECT_NEAR_PLANE;
-}
-
-uint HikariClusterCullBuildHzbSphereQuery(
-    float4x4 world,
-    float4 boundsMin,
-    float4 boundsMax,
-    out HikariClusterCullHzbQuery query)
-{
-    query.minUv = float2(1.0f, 1.0f);
-    query.maxUv = float2(0.0f, 0.0f);
-    query.nearestDepth = 1.0f;
-    query.maxExtentPixels = 0.0f;
-    query.flags = 0u;
-
-    float3 localCenter = (boundsMin.xyz + boundsMax.xyz) * 0.5f;
-    float3 localExtents = max(boundsMax.xyz - localCenter, float3(0.0f, 0.0f, 0.0f));
-    float localRadius = length(localExtents);
-    if (localRadius <= 0.000001f)
-    {
-        return HIKARI_CLUSTER_CULL_HZB_QUERY_REJECT_INVALID;
-    }
-
-    float3 worldCenter = mul(world, float4(localCenter, 1.0f)).xyz;
-    float3 axisX = float3(world._11, world._21, world._31);
-    float3 axisY = float3(world._12, world._22, world._32);
-    float3 axisZ = float3(world._13, world._23, world._33);
-    float worldScale = max(length(axisX), max(length(axisY), length(axisZ)));
-    float worldRadius = max(localRadius * worldScale, 0.0f);
-    if (worldRadius <= 0.000001f)
-    {
-        return HIKARI_CLUSTER_CULL_HZB_QUERY_REJECT_INVALID;
-    }
-
-    float4 clipCenter = mul(gClusterCullHzbViewProj, float4(worldCenter, 1.0f));
-    float4 row2 = HikariClusterCullMatrixRow2(gClusterCullHzbViewProj);
-    float4 row3 = HikariClusterCullMatrixRow3(gClusterCullHzbViewProj);
-    float wRadius = length(row3.xyz) * worldRadius;
-    if (clipCenter.w <= wRadius + 0.0001f)
-    {
-        return HIKARI_CLUSTER_CULL_HZB_QUERY_REJECT_NEAR_PLANE;
-    }
-
-    float3 ndcCenter = clipCenter.xyz / clipCenter.w;
-    if (ndcCenter.z <= 0.0f)
-    {
-        return HIKARI_CLUSTER_CULL_HZB_QUERY_REJECT_NEAR_PLANE;
-    }
-    if (ndcCenter.z >= 1.0f)
-    {
-        return HIKARI_CLUSTER_CULL_HZB_QUERY_REJECT_OFFSCREEN;
-    }
-
-    float screenRadiusNdc =
-        HikariClusterCullProjectedWorldLengthWithMatrix(
-            gClusterCullHzbViewProj,
-            worldCenter,
-            worldRadius);
-    if (screenRadiusNdc <= 0.0f)
-    {
-        return HIKARI_CLUSTER_CULL_HZB_QUERY_REJECT_INVALID;
-    }
-
-    float2 centerUv = float2(
-        ndcCenter.x * 0.5f + 0.5f,
-        0.5f - ndcCenter.y * 0.5f);
-    float2 radiusUv = float2(screenRadiusNdc * 0.5f, screenRadiusNdc * 0.5f);
-    query.minUv = centerUv - radiusUv;
-    query.maxUv = centerUv + radiusUv;
-    if (query.maxUv.x <= 0.0f ||
-        query.minUv.x >= 1.0f ||
-        query.maxUv.y <= 0.0f ||
-        query.minUv.y >= 1.0f)
-    {
-        return HIKARI_CLUSTER_CULL_HZB_QUERY_REJECT_OFFSCREEN;
-    }
-
-    query.minUv = saturate(query.minUv);
-    query.maxUv = saturate(query.maxUv);
-    float2 extentPixels =
-        max((query.maxUv - query.minUv) *
-            float2((float)gClusterCullHzbWidth, (float)gClusterCullHzbHeight),
-            float2(1.0f, 1.0f));
-    query.maxExtentPixels = max(extentPixels.x, extentPixels.y);
-    if (query.maxExtentPixels <= 0.0f)
-    {
-        return HIKARI_CLUSTER_CULL_HZB_QUERY_REJECT_INVALID;
-    }
-    if (query.maxExtentPixels > max(gClusterCullHzbMaxScreenRadiusPixels, 1.0f))
-    {
-        query.flags |= HIKARI_CLUSTER_CULL_HZB_QUERY_FLAG_LARGE_RECT;
-    }
-
-    float zRadius = length(row2.xyz) * worldRadius;
-    float nearestClipZ = clipCenter.z - zRadius;
-    float nearestClipW = max(clipCenter.w + wRadius, 0.0001f);
-    query.nearestDepth = nearestClipZ / nearestClipW;
-    return query.nearestDepth > 0.0f && query.nearestDepth < 1.0f
-        ? HIKARI_CLUSTER_CULL_HZB_QUERY_OK
-        : HIKARI_CLUSTER_CULL_HZB_QUERY_REJECT_NEAR_PLANE;
+    if (valid) return HIKARI_CLUSTER_CULL_HZB_QUERY_OK;
+    if (query.rejectReason == 2u) return HIKARI_CLUSTER_CULL_HZB_QUERY_REJECT_NEAR_PLANE;
+    if (query.rejectReason == 3u) return HIKARI_CLUSTER_CULL_HZB_QUERY_REJECT_OFFSCREEN;
+    return HIKARI_CLUSTER_CULL_HZB_QUERY_REJECT_INVALID;
 }
 
 void HikariClusterCullRecordHzbQueryReject(uint rejectReason)
@@ -614,20 +301,8 @@ bool HikariClusterCullTryHzbOccluded(
             1);
         HikariClusterCullRecordHzbQueryReject(queryRejectReason);
 
-        queryRejectReason =
-            HikariClusterCullBuildHzbSphereQuery(world, boundsMin, boundsMax, query);
-        if (queryRejectReason != HIKARI_CLUSTER_CULL_HZB_QUERY_OK)
-        {
-            HikariClusterCullAddDebugCounter(
-                HIKARI_CLUSTER_CULL_COUNTER_HZB_SPHERE_REJECTED_COUNT,
-                1);
-            HikariClusterCullRecordHzbQueryReject(queryRejectReason);
-            HikariClusterCullHistoryResetVisible(occlusionKey);
-            return false;
-        }
-        HikariClusterCullAddDebugCounter(
-            HIKARI_CLUSTER_CULL_COUNTER_HZB_SPHERE_ACCEPTED_COUNT,
-            1);
+        HikariClusterCullHistoryResetVisible(occlusionKey);
+        return false;
     }
     else
     {
@@ -672,20 +347,9 @@ bool HikariClusterCullTryHzbOccluded(
     }
 
     tested = true;
-    uint mipLevel = HikariClusterCullSelectHzbMip(query.maxExtentPixels);
-    float maxHzbDepth =
-        HikariClusterCullLoadHzbMaxDepthInRect(query.minUv, query.maxUv, mipLevel);
-    if (!(maxHzbDepth > max(gClusterCullHzbDepthBias, 0.000001f)))
-    {
-        HikariClusterCullAddDebugCounter(
-            HIKARI_CLUSTER_CULL_COUNTER_HZB_INVALID_REJECTED_COUNT,
-            1);
-        HikariClusterCullHistoryResetVisible(occlusionKey);
-        return false;
-    }
-
-    bool rawOccluded =
-        query.nearestDepth > maxHzbDepth + max(gClusterCullHzbDepthBias, 0.0f);
+    bool rawOccluded = HikariDepthOccluded(gClusterCullHzb, query,
+        uint2(gClusterCullHzbWidth, gClusterCullHzbHeight), gClusterCullHzbMipCount,
+        gClusterCullHzbDepthBias);
     if (!rawOccluded)
     {
         HikariClusterCullHistoryResetVisible(occlusionKey);
@@ -705,29 +369,6 @@ float HikariClusterCullProjectedLodError(
     return HikariClusterCullProjectedWorldLength(
         boundsCenterRadius.xyz,
         range.geometricError);
-}
-
-float4 HikariClusterCullBuildWorldSphere(
-    float4x4 world,
-    float4 localSphere,
-    float4 boundsMin,
-    float4 boundsMax)
-{
-    float3 localCenter = localSphere.xyz;
-    float localRadius = localSphere.w;
-    if (localRadius <= 0.000001f)
-    {
-        localCenter = (boundsMin.xyz + boundsMax.xyz) * 0.5f;
-        float3 extents = max(boundsMax.xyz - localCenter, float3(0.0f, 0.0f, 0.0f));
-        localRadius = length(extents);
-    }
-
-    float3 worldCenter = mul(world, float4(localCenter, 1.0f)).xyz;
-    float3 axisX = float3(world._11, world._21, world._31);
-    float3 axisY = float3(world._12, world._22, world._32);
-    float3 axisZ = float3(world._13, world._23, world._33);
-    float worldScale = max(length(axisX), max(length(axisY), length(axisZ)));
-    return float4(worldCenter, max(localRadius * worldScale, 0.0f));
 }
 
 uint HikariClusterCullResolveBucket(uint flags)
@@ -776,34 +417,6 @@ uint HikariClusterCullPassDrawOverflowCounterOffset(uint passKind, uint bucket)
         bucketOffset;
 }
 
-uint HikariClusterCullMergeGapIndexLimit()
-{
-    return gClusterCullMergeGapIndexLimit != 0u
-        ? gClusterCullMergeGapIndexLimit
-        : HIKARI_CLUSTER_CULL_DEFAULT_MERGE_GAP_INDEX_LIMIT;
-}
-
-uint HikariClusterCullMergeRunGapBudget()
-{
-    return gClusterCullMergeRunGapIndexBudget != 0u
-        ? gClusterCullMergeRunGapIndexBudget
-        : HIKARI_CLUSTER_CULL_DEFAULT_MERGE_RUN_GAP_BUDGET;
-}
-
-uint HikariClusterCullMergeMaxIndexSpan()
-{
-    return gClusterCullMergeMaxIndexSpan != 0u
-        ? gClusterCullMergeMaxIndexSpan
-        : HIKARI_CLUSTER_CULL_DEFAULT_MERGE_MAX_INDEX_SPAN;
-}
-
-uint HikariClusterCullMergeClusterGapLimit()
-{
-    return gClusterCullMergeClusterGapLimit != 0u
-        ? gClusterCullMergeClusterGapLimit
-        : HIKARI_CLUSTER_CULL_DEFAULT_MERGE_CLUSTER_GAP_LIMIT;
-}
-
 uint HikariClusterCullPageTaskGroupSize()
 {
     return clamp(gClusterCullPageTaskGroupSize, 1u, 8u);
@@ -823,33 +436,6 @@ float HikariClusterCullApproxHzbScreenRadiusPixels(float4 worldSphere)
             worldSphere.w);
     return radiusNdc * 0.5f *
         (float)max(gClusterCullHzbWidth, gClusterCullHzbHeight);
-}
-
-bool HikariClusterCullShouldTestClusterHzb(float4 worldSphere)
-{
-    if (gClusterCullClusterHzbMinScreenPixels == 0u)
-    {
-        return true;
-    }
-
-    float screenRadius = HikariClusterCullApproxHzbScreenRadiusPixels(worldSphere);
-    if (screenRadius < (float)gClusterCullClusterHzbMinScreenPixels)
-    {
-        HikariClusterCullAddDebugCounter(
-            HIKARI_CLUSTER_CULL_COUNTER_CLUSTER_HZB_SMALL_SCREEN_SKIPPED_COUNT,
-            1);
-        return false;
-    }
-
-    if (screenRadius > max(gClusterCullHzbMaxScreenRadiusPixels, 1.0f))
-    {
-        HikariClusterCullAddDebugCounter(
-            HIKARI_CLUSTER_CULL_COUNTER_CLUSTER_HZB_LARGE_SCREEN_SKIPPED_COUNT,
-            1);
-        return false;
-    }
-
-    return true;
 }
 
 bool HikariClusterCullShouldTestPageHzb(float4 worldSphere)
@@ -872,269 +458,9 @@ bool HikariClusterCullShouldTestPageHzb(float4 worldSphere)
     return true;
 }
 
-float3 HikariClusterCullTransformNormalAxis(float4x4 world, float3 localAxis)
+void HikariClusterCullEmitDraw(ClusterCullInput input, uint firstCluster,
+    uint clusterCount, uint firstIndex, uint indexCount)
 {
-    float3 axisX = float3(world._11, world._21, world._31);
-    float3 axisY = float3(world._12, world._22, world._32);
-    float3 axisZ = float3(world._13, world._23, world._33);
-
-    float3 normalAxis =
-        localAxis.x * cross(axisY, axisZ) +
-        localAxis.y * cross(axisZ, axisX) +
-        localAxis.z * cross(axisX, axisY);
-    if (length(normalAxis) <= 0.000001f)
-    {
-        normalAxis = mul(world, float4(localAxis, 0.0f)).xyz;
-    }
-    if (length(normalAxis) <= 0.000001f)
-    {
-        return float3(0.0f, 0.0f, 0.0f);
-    }
-    return normalize(normalAxis);
-}
-
-float HikariClusterCullConeAxisSupportRadius(
-    float4x4 world,
-    float4 boundsMin,
-    float4 boundsMax,
-    float3 worldAxis)
-{
-    float3 localCenter = (boundsMin.xyz + boundsMax.xyz) * 0.5f;
-    float3 localExtents = max(boundsMax.xyz - localCenter, float3(0.0f, 0.0f, 0.0f));
-
-    float3 axisX = float3(world._11, world._21, world._31);
-    float3 axisY = float3(world._12, world._22, world._32);
-    float3 axisZ = float3(world._13, world._23, world._33);
-    return max(
-        abs(dot(worldAxis, axisX)) * localExtents.x +
-        abs(dot(worldAxis, axisY)) * localExtents.y +
-        abs(dot(worldAxis, axisZ)) * localExtents.z,
-        0.0f);
-}
-
-bool HikariClusterCullConeBackfacing(
-    float4x4 world,
-    HikariMeshCluster cluster,
-    float4 worldSphere)
-{
-    float3 localAxis = cluster.coneAxisCutoff.xyz;
-    float localAxisLength = length(localAxis);
-    float coneCutoff = cluster.coneAxisCutoff.w;
-    if (localAxisLength <= 0.000001f ||
-        coneCutoff <= 0.0f ||
-        coneCutoff >= 1.0f)
-    {
-        return false;
-    }
-
-    float3 axis = HikariClusterCullTransformNormalAxis(world, localAxis / localAxisLength);
-    if (length(axis) <= 0.000001f)
-    {
-        return false;
-    }
-
-    float sphereRadius = max(worldSphere.w, 0.0f);
-    if (sphereRadius <= 0.000001f)
-    {
-        return false;
-    }
-
-    float axisRadius = HikariClusterCullConeAxisSupportRadius(
-        world,
-        cluster.boundsMin,
-        cluster.boundsMax,
-        axis);
-    float coneRadius = min(
-        sphereRadius,
-        max(axisRadius, sphereRadius * HIKARI_CLUSTER_CULL_CONE_AXIS_RADIUS_FLOOR_SCALE));
-
-    float3 view = worldSphere.xyz - gClusterCullCameraPosition.xyz;
-    float viewLength = length(view);
-    if (viewLength <= max(0.0001f, coneRadius * HIKARI_CLUSTER_CULL_CONE_NEAR_RADIUS_SCALE))
-    {
-        return false;
-    }
-
-    // meshoptimizer 縺ｮ perspective cone 蛻､螳壹Ｆpsilon 縺ｯ蠅・阜縺ｮ縺｡繧峨▽縺阪ｒ謚代∴繧九◆繧∝ｰ代＠菫晏ｮ育噪縺ｫ縺吶ｋ縲・
-    // Sphere formula from meshoptimizer: dot(center - camera, axis) >=
-    // cutoff * distance + radius. The extra bias keeps the reject high-confidence.
-    float rejectThreshold = coneCutoff * viewLength + coneRadius;
-    float stabilityBias = max(
-        viewLength * HIKARI_CLUSTER_CULL_CONE_DISTANCE_BIAS,
-        coneRadius * HIKARI_CLUSTER_CULL_CONE_RADIUS_BIAS);
-    return dot(view, axis) >= rejectThreshold + stabilityBias;
-}
-
-uint4 HikariClusterCullEmptyPacket4()
-{
-    return uint4(0xffffffffu, 0xffffffffu, 0xffffffffu, 0xffffffffu);
-}
-
-void HikariClusterCullSetPacketIndex(
-    inout uint4 packet0,
-    inout uint4 packet1,
-    inout uint4 packet2,
-    inout uint4 packet3,
-    uint slot,
-    uint clusterIndex)
-{
-    if (slot < 4u)
-    {
-        packet0[slot] = clusterIndex;
-    }
-    else if (slot < 8u)
-    {
-        packet1[slot - 4u] = clusterIndex;
-    }
-    else if (slot < 12u)
-    {
-        packet2[slot - 8u] = clusterIndex;
-    }
-    else if (slot < 16u)
-    {
-        packet3[slot - 12u] = clusterIndex;
-    }
-}
-
-uint HikariClusterCullReserveVisibleClusterListRun()
-{
-    uint listStart = 0u;
-    gClusterCullCounters.InterlockedAdd(
-        HIKARI_CLUSTER_CULL_COUNTER_VISIBLE_CLUSTER_LIST_RESERVED_COUNT,
-        HIKARI_CLUSTER_CULL_VISIBLE_CLUSTER_LIST_PACK_CAPACITY,
-        listStart);
-    if (listStart + HIKARI_CLUSTER_CULL_VISIBLE_CLUSTER_LIST_PACK_CAPACITY >
-        gClusterCullVisibleClusterListCapacity)
-    {
-        gClusterCullCounters.InterlockedAdd(
-            HIKARI_CLUSTER_CULL_COUNTER_VISIBLE_CLUSTER_LIST_OVERFLOW_COUNT,
-            1u);
-        return 0xffffffffu;
-    }
-    return listStart;
-}
-
-void HikariClusterCullSetVisibleClusterListIndex(
-    uint listStart,
-    uint slot,
-    uint clusterIndex)
-{
-    if (listStart == 0xffffffffu ||
-        slot >= HIKARI_CLUSTER_CULL_VISIBLE_CLUSTER_LIST_PACK_CAPACITY ||
-        listStart + slot >= gClusterCullVisibleClusterListCapacity)
-    {
-        return;
-    }
-    gClusterCullVisibleClusterList[listStart + slot] = clusterIndex;
-}
-
-uint HikariClusterCullGetPacketIndex(
-    uint4 packet0,
-    uint4 packet1,
-    uint4 packet2,
-    uint4 packet3,
-    uint slot)
-{
-    if (slot < 4u)
-    {
-        return packet0[slot];
-    }
-    if (slot < 8u)
-    {
-        return packet1[slot - 4u];
-    }
-    if (slot < 12u)
-    {
-        return packet2[slot - 8u];
-    }
-    if (slot < HIKARI_CLUSTER_CULL_VISIBLE_PACKET_CAPACITY)
-    {
-        return packet3[slot - 12u];
-    }
-    return 0xffffffffu;
-}
-
-bool HikariClusterCullPromoteVisibleRunToClusterList(
-    inout uint runClusterListStart,
-    uint runFirstCluster,
-    uint runVisibleClusterCount,
-    uint runMergedGapCount,
-    uint4 packetClusterIndices0,
-    uint4 packetClusterIndices1,
-    uint4 packetClusterIndices2,
-    uint4 packetClusterIndices3)
-{
-    if (runClusterListStart != 0xffffffffu)
-    {
-        return true;
-    }
-
-    // Before promotion every stored index still lives in the 16-entry packet.
-    // Once a list exists the early return above owns subsequent appends.
-    if (runVisibleClusterCount >
-        HIKARI_CLUSTER_CULL_VISIBLE_PACKET_CAPACITY)
-    {
-        return false;
-    }
-
-    runClusterListStart = HikariClusterCullReserveVisibleClusterListRun();
-    if (runClusterListStart == 0xffffffffu)
-    {
-        return false;
-    }
-
-    [unroll]
-    for (uint slot = 0u;
-         slot < HIKARI_CLUSTER_CULL_VISIBLE_CLUSTER_LIST_PACK_CAPACITY;
-         ++slot)
-    {
-        if (slot >= runVisibleClusterCount)
-        {
-            continue;
-        }
-
-        const uint clusterIndex = runMergedGapCount == 0u
-            ? runFirstCluster + slot
-            : HikariClusterCullGetPacketIndex(
-                packetClusterIndices0,
-                packetClusterIndices1,
-                packetClusterIndices2,
-                packetClusterIndices3,
-                slot);
-        HikariClusterCullSetVisibleClusterListIndex(
-            runClusterListStart,
-            slot,
-            clusterIndex);
-    }
-
-    return true;
-}
-
-void HikariClusterCullEmitDraw(
-    ClusterCullInput input,
-    uint firstCluster,
-    uint clusterCount,
-    uint visibleClusterCount,
-    uint firstIndex,
-    uint indexCount,
-    uint mergedGapCount,
-    uint mergedGapIndexCount,
-    uint clusterListStart,
-    uint4 packetClusterIndices0,
-    uint4 packetClusterIndices1,
-    uint4 packetClusterIndices2,
-    uint4 packetClusterIndices3)
-{
-    if (mergedGapCount != 0u)
-    {
-        gClusterCullCounters.InterlockedAdd(
-            HIKARI_CLUSTER_CULL_COUNTER_MERGED_GAP_COUNT,
-            mergedGapCount);
-        gClusterCullCounters.InterlockedAdd(
-            HIKARI_CLUSTER_CULL_COUNTER_MERGED_GAP_INDEX_COUNT,
-            mergedGapIndexCount);
-    }
-
     uint bucket = HikariClusterCullResolveBucket(input.flags);
     uint aggregateDrawCounterOffset =
         HIKARI_CLUSTER_CULL_COUNTER_BACK_FACE_DRAW_COUNT + bucket * 4u;
@@ -1172,9 +498,9 @@ void HikariClusterCullEmitDraw(
     {
         gClusterCullCounters.InterlockedAdd(
             HIKARI_CLUSTER_CULL_COUNTER_VISIBLE_CLUSTER_COUNT,
-            visibleClusterCount);
+            clusterCount);
     }
-    ClusterCullVisibleRange visible;
+    ClusterCullVisibleRange visible = (ClusterCullVisibleRange)0;
     visible.gpuSceneInstanceIndex = input.gpuSceneInstanceIndex;
     visible.clusterGeometrySrvDescriptorIndex = input.clusterGeometrySrvDescriptorIndex;
     visible.firstCluster = firstCluster;
@@ -1193,290 +519,8 @@ void HikariClusterCullEmitDraw(
     visible.meshletPrimitiveOffsetBytes = input.meshletPrimitiveOffsetBytes;
     visible.meshletPrimitiveCount = input.meshletPrimitiveCount;
     visible.geometryClusterCount = input.geometryClusterCount;
-    const bool amplificationFineCull =
-        gClusterCullMeshletFineCullingOwner ==
-            HIKARI_CLUSTER_CULL_MESHLET_FINE_CULL_AMPLIFICATION;
-    const bool contiguousVisibleRange =
-        mergedGapCount == 0u &&
-        visibleClusterCount == clusterCount;
-    uint visibleRangeFlags = amplificationFineCull
-        ? HIKARI_CLUSTER_CULL_VISIBLE_RANGE_FLAG_AS_FINE_CULL
-        : (contiguousVisibleRange
-            ? HIKARI_CLUSTER_CULL_VISIBLE_RANGE_FLAG_PRECULLED
-            : 0u);
-    const bool useClusterList =
-        !amplificationFineCull &&
-        clusterListStart != 0xffffffffu &&
-        visibleClusterCount <= HIKARI_CLUSTER_CULL_VISIBLE_CLUSTER_LIST_PACK_CAPACITY;
-    const bool usePacket =
-        !amplificationFineCull &&
-        !useClusterList &&
-        visibleClusterCount <= HIKARI_CLUSTER_CULL_VISIBLE_PACKET_CAPACITY;
-    if (visibleClusterCount != 0u && usePacket)
-    {
-        HikariClusterCullAddDebugCounter(
-            HIKARI_CLUSTER_CULL_COUNTER_PACKET_RANGE_COUNT,
-            1u);
-        HikariClusterCullAddDebugCounter(
-            HIKARI_CLUSTER_CULL_COUNTER_PACKET_CLUSTER_COUNT,
-            visibleClusterCount);
-    }
-    if (useClusterList)
-    {
-        visibleRangeFlags |=
-            HIKARI_CLUSTER_CULL_VISIBLE_RANGE_FLAG_PRECULLED |
-            HIKARI_CLUSTER_CULL_VISIBLE_RANGE_FLAG_CLUSTER_LIST;
-    }
-    else if (usePacket)
-    {
-        visibleRangeFlags |=
-            HIKARI_CLUSTER_CULL_VISIBLE_RANGE_FLAG_PRECULLED |
-            HIKARI_CLUSTER_CULL_VISIBLE_RANGE_FLAG_PACKET;
-    }
-    visible.reserved0 = visibleRangeFlags;
-    uint visiblePayloadCount = 0u;
-    if (useClusterList || usePacket)
-    {
-        visiblePayloadCount = visibleClusterCount;
-    }
-    visible.reserved1 = visiblePayloadCount;
-    visible.packetClusterIndices0 = useClusterList
-        ? uint4(clusterListStart, 0u, 0u, 0u)
-        : packetClusterIndices0;
-    visible.packetClusterIndices1 = packetClusterIndices1;
-    visible.packetClusterIndices2 = packetClusterIndices2;
-    visible.packetClusterIndices3 = packetClusterIndices3;
+    visible.reserved0 = HIKARI_CLUSTER_CULL_VISIBLE_RANGE_FLAG_AS_FINE_CULL;
     gClusterCullVisibleRanges[visibleIndex] = visible;
-
-}
-
-void HikariClusterCullFlushVisibleRun(
-    ClusterCullInput input,
-    inout bool hasRun,
-    inout uint runFirstCluster,
-    inout uint runClusterCount,
-    inout uint runVisibleClusterCount,
-    inout uint runFirstIndex,
-    inout uint runIndexCount,
-    inout uint runMergedGapCount,
-    inout uint runMergedGapIndexCount,
-    inout uint runClusterListStart,
-    inout uint4 runPacketClusterIndices0,
-    inout uint4 runPacketClusterIndices1,
-    inout uint4 runPacketClusterIndices2,
-    inout uint4 runPacketClusterIndices3)
-{
-    if (!hasRun)
-    {
-        return;
-    }
-
-    HikariClusterCullEmitDraw(
-        input,
-        runFirstCluster,
-        runClusterCount,
-        runVisibleClusterCount,
-        runFirstIndex,
-        runIndexCount,
-        runMergedGapCount,
-        runMergedGapIndexCount,
-        runClusterListStart,
-        runPacketClusterIndices0,
-        runPacketClusterIndices1,
-        runPacketClusterIndices2,
-        runPacketClusterIndices3);
-
-    hasRun = false;
-    runFirstCluster = 0u;
-    runClusterCount = 0u;
-    runVisibleClusterCount = 0u;
-    runFirstIndex = 0u;
-    runIndexCount = 0u;
-    runMergedGapCount = 0u;
-    runMergedGapIndexCount = 0u;
-    runClusterListStart = 0xffffffffu;
-    runPacketClusterIndices0 = HikariClusterCullEmptyPacket4();
-    runPacketClusterIndices1 = HikariClusterCullEmptyPacket4();
-    runPacketClusterIndices2 = HikariClusterCullEmptyPacket4();
-    runPacketClusterIndices3 = HikariClusterCullEmptyPacket4();
-}
-
-void HikariClusterCullAppendVisibleCluster(
-    ClusterCullInput input,
-    uint clusterIndex,
-    HikariMeshCluster cluster,
-    inout bool hasRun,
-    inout uint runFirstCluster,
-    inout uint runClusterCount,
-    inout uint runVisibleClusterCount,
-    inout uint runFirstIndex,
-    inout uint runIndexCount,
-    inout uint runMergedGapCount,
-    inout uint runMergedGapIndexCount,
-    inout uint runClusterListStart,
-    inout uint4 runPacketClusterIndices0,
-    inout uint4 runPacketClusterIndices1,
-    inout uint4 runPacketClusterIndices2,
-    inout uint4 runPacketClusterIndices3)
-{
-    if (!hasRun)
-    {
-        hasRun = true;
-        runFirstCluster = clusterIndex;
-        runClusterCount = 1u;
-        runVisibleClusterCount = 1u;
-        runFirstIndex = cluster.firstIndex;
-        runIndexCount = cluster.indexCount;
-        runMergedGapCount = 0u;
-        runMergedGapIndexCount = 0u;
-        runClusterListStart = 0xffffffffu;
-        runPacketClusterIndices0 = HikariClusterCullEmptyPacket4();
-        runPacketClusterIndices1 = HikariClusterCullEmptyPacket4();
-        runPacketClusterIndices2 = HikariClusterCullEmptyPacket4();
-        runPacketClusterIndices3 = HikariClusterCullEmptyPacket4();
-        HikariClusterCullSetPacketIndex(
-            runPacketClusterIndices0,
-            runPacketClusterIndices1,
-            runPacketClusterIndices2,
-            runPacketClusterIndices3,
-            0u,
-            clusterIndex);
-        return;
-    }
-
-    uint runEndCluster = runFirstCluster + runClusterCount;
-    uint runEndIndex = runFirstIndex + runIndexCount;
-    bool clusterForward = clusterIndex >= runEndCluster;
-    uint clusterGap = clusterForward ? clusterIndex - runEndCluster : 0xffffffffu;
-    bool indexForward = cluster.firstIndex >= runEndIndex;
-    uint indexGap = indexForward ? cluster.firstIndex - runEndIndex : 0xffffffffu;
-    uint clusterEndIndex = cluster.firstIndex + cluster.indexCount;
-    uint mergedFirstIndex = min(runFirstIndex, cluster.firstIndex);
-    uint mergedEndIndex = max(runEndIndex, clusterEndIndex);
-    uint mergedIndexCount = mergedEndIndex >= mergedFirstIndex
-        ? mergedEndIndex - mergedFirstIndex
-        : 0xffffffffu;
-    uint mergedClusterCount = clusterIndex >= runFirstCluster
-        ? clusterIndex - runFirstCluster + 1u
-        : 0xffffffffu;
-
-    // 蜷御ｸ surface/page 蜀・・蟆上＆縺ｪ谺縺代□縺代ｒ蜷ｸ蜿弱＠縲∫ｴｰ縺九☆縺弱ｋ draw args 繧・GPU 蛛ｴ縺ｧ蝨ｧ邵ｮ縺吶ｋ縲・
-    bool contiguousMerge = runMergedGapCount == 0u && clusterGap == 0u && indexGap == 0u;
-    const uint nextVisibleClusterCount = runVisibleClusterCount + 1u;
-    const bool hasMergeGap = clusterGap != 0u || !indexForward || indexGap != 0u;
-    const bool fitsPacket =
-        nextVisibleClusterCount <= HIKARI_CLUSTER_CULL_VISIBLE_PACKET_CAPACITY;
-    const bool fitsClusterList =
-        nextVisibleClusterCount <= HIKARI_CLUSTER_CULL_VISIBLE_CLUSTER_LIST_PACK_CAPACITY;
-    const bool gapIndexWithinBudget =
-        indexForward &&
-        indexGap <= HikariClusterCullMergeGapIndexLimit() &&
-        runMergedGapIndexCount + indexGap <= HikariClusterCullMergeRunGapBudget();
-    const bool legacyCompactGapMerge =
-        hasMergeGap &&
-        gapIndexWithinBudget &&
-        (fitsPacket || fitsClusterList);
-    const bool meshletPreciseCompaction =
-        gClusterCullMeshletFineCullingOwner ==
-            HIKARI_CLUSTER_CULL_MESHLET_FINE_CULL_COMPUTE;
-    const bool meshletPreciseGapMerge =
-        meshletPreciseCompaction &&
-        hasMergeGap &&
-        fitsClusterList;
-    const bool legacyIndexSpanValid =
-        mergedIndexCount <= HikariClusterCullMergeMaxIndexSpan();
-    bool canMerge =
-        clusterForward &&
-        ((indexForward &&
-            (contiguousMerge ||
-                (legacyIndexSpanValid && legacyCompactGapMerge))) ||
-            meshletPreciseGapMerge);
-    if (canMerge &&
-        meshletPreciseCompaction &&
-        !fitsClusterList)
-    {
-        canMerge = false;
-    }
-    if (canMerge &&
-        meshletPreciseCompaction &&
-        !fitsPacket)
-    {
-        canMerge = HikariClusterCullPromoteVisibleRunToClusterList(
-            runClusterListStart,
-            runFirstCluster,
-            runVisibleClusterCount,
-            runMergedGapCount,
-            runPacketClusterIndices0,
-            runPacketClusterIndices1,
-            runPacketClusterIndices2,
-            runPacketClusterIndices3);
-    }
-    if (!canMerge)
-    {
-        HikariClusterCullFlushVisibleRun(
-            input,
-            hasRun,
-            runFirstCluster,
-            runClusterCount,
-            runVisibleClusterCount,
-            runFirstIndex,
-            runIndexCount,
-            runMergedGapCount,
-            runMergedGapIndexCount,
-            runClusterListStart,
-            runPacketClusterIndices0,
-            runPacketClusterIndices1,
-            runPacketClusterIndices2,
-            runPacketClusterIndices3);
-        hasRun = true;
-        runFirstCluster = clusterIndex;
-        runClusterCount = 1u;
-        runVisibleClusterCount = 1u;
-        runFirstIndex = cluster.firstIndex;
-        runIndexCount = cluster.indexCount;
-        runMergedGapCount = 0u;
-        runMergedGapIndexCount = 0u;
-        runClusterListStart = 0xffffffffu;
-        runPacketClusterIndices0 = HikariClusterCullEmptyPacket4();
-        runPacketClusterIndices1 = HikariClusterCullEmptyPacket4();
-        runPacketClusterIndices2 = HikariClusterCullEmptyPacket4();
-        runPacketClusterIndices3 = HikariClusterCullEmptyPacket4();
-        HikariClusterCullSetPacketIndex(
-            runPacketClusterIndices0,
-            runPacketClusterIndices1,
-            runPacketClusterIndices2,
-            runPacketClusterIndices3,
-            0u,
-            clusterIndex);
-        return;
-    }
-
-    if (runVisibleClusterCount < HIKARI_CLUSTER_CULL_VISIBLE_PACKET_CAPACITY)
-    {
-        HikariClusterCullSetPacketIndex(
-            runPacketClusterIndices0,
-            runPacketClusterIndices1,
-            runPacketClusterIndices2,
-            runPacketClusterIndices3,
-            runVisibleClusterCount,
-            clusterIndex);
-    }
-    if (runClusterListStart != 0xffffffffu)
-    {
-        HikariClusterCullSetVisibleClusterListIndex(
-            runClusterListStart,
-            runVisibleClusterCount,
-            clusterIndex);
-    }
-    runClusterCount = mergedClusterCount;
-    ++runVisibleClusterCount;
-    runFirstIndex = mergedFirstIndex;
-    runIndexCount = mergedIndexCount;
-    if (clusterGap != 0u || !indexForward || indexGap != 0u)
-    {
-        ++runMergedGapCount;
-        runMergedGapIndexCount += indexForward ? indexGap : 0u;
-    }
 }
 
 bool HikariClusterCullIsGpuSceneCandidate(HikariSurfaceGpuSceneInstance instance)
@@ -1584,7 +628,7 @@ float4 HikariClusterCullResolveSectionLodWorldSphere(
         return sectionWorldSphere;
     }
 
-    return HikariClusterCullBuildWorldSphere(
+    return HikariClusterBuildWorldSphere(
         instance.clusterWorld,
         section.lodMetricCenterRadius,
         section.boundsMin,
@@ -1778,11 +822,11 @@ ClusterCullInput HikariClusterCullBuildInput(
     return input;
 }
 
-ClusterCullInput HikariClusterCullBuildInputFromPageTask(ClusterCullPageTask task)
+ClusterCullInput HikariClusterCullBuildInputFromPageTask(ClusterCullPageTask task,
+    HikariSurfaceGpuSceneInstance instance)
 {
     ClusterCullInput input = (ClusterCullInput)0;
-    input.clusterWorld =
-        HikariGetSurfaceGpuSceneInstanceAt(task.gpuSceneInstanceIndex).clusterWorld;
+    input.clusterWorld = instance.clusterWorld;
     input.boundsCenterRadius = float4(0.0f, 0.0f, 0.0f, 0.0f);
     input.gpuSceneInstanceIndex = task.gpuSceneInstanceIndex;
     input.clusterGeometrySrvDescriptorIndex = task.clusterGeometrySrvDescriptorIndex;

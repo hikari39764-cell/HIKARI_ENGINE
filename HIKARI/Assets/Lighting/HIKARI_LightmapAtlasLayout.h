@@ -69,4 +69,11 @@ namespace HIKARI::ASSETS::LIGHTING {
         const LightmapAtlasSettings& settings,
         LightmapAtlasLayout& outLayout);
 
+    // 各 Surface は一つの Page に属し、UV chart の最小余白を維持する。
+    bool BuildLightmapAtlasPages(
+        const std::vector<LightmapAtlasSurfaceMetrics>& surfaces,
+        const LightmapAtlasSettings& settings,
+        std::vector<LightmapAtlasLayout>& outPages,
+        std::string& outMessage);
+
 } // namespace HIKARI::ASSETS::LIGHTING

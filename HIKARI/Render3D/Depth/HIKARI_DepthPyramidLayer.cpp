@@ -592,6 +592,7 @@ namespace HIKARI::RENDER3D::DEPTH {
         view.depthConvention = DepthPyramidDepthConvention::StandardD3DLessMax;
         view.viewKind = desc.viewKind;
         view.pyramidSrv = pyramidSrv_.gpu;
+        view.resource = texture_.Get();
         view.mip0Srv = !mips_.empty() ? mips_.front().srv.gpu : D3D12_GPU_DESCRIPTOR_HANDLE{};
         view.coarsestSrv = !mips_.empty() ? mips_.back().srv.gpu : D3D12_GPU_DESCRIPTOR_HANDLE{};
         view.sourceWidth = desc.sourceWidth;

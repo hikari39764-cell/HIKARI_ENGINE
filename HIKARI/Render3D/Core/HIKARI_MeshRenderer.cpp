@@ -21,6 +21,8 @@ namespace HIKARI::MESHRENDERER {
     }
 
     void Reset() {
+        gMeshRendererState.materialFrameReady = false;
+        gMeshRendererState.meshletRenderBackend.ResetVisibility();
         ResetSecondarySceneCaptureResources();
         gMeshRendererState.frameObjectIndex = 0;
         gMeshRendererState.gpuMaterialRegistry.Clear();
@@ -48,6 +50,8 @@ namespace HIKARI::MESHRENDERER {
 
     void SetGpuDrivenSceneSource(
         const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource* source) {
+
+        gMeshRendererState.materialFrameReady = false;
 
         if (source != nullptr &&
             gMeshRendererState.gpuDrivenSceneSourceIdentity == source &&
@@ -153,7 +157,8 @@ namespace HIKARI::MESHRENDERER {
         uint32_t screenHeight,
         RenderDebugView debugView,
         const MeshFrameCameraOverrides* cameraOverrides) {
-        return BeginFrameInternal(
+        gMeshRendererState.materialFrameReady = false;
+        const bool ready = BeginFrameInternal(
             graphics,
             camera,
             environment,
@@ -162,6 +167,9 @@ namespace HIKARI::MESHRENDERER {
             screenHeight,
             debugView,
             cameraOverrides);
+        gMeshRendererState.materialFrameContext = graphics;
+        gMeshRendererState.materialFrameReady = ready;
+        return ready;
     }
 
     void SetGpuDrivenCullingCameraFreezeEnabled(bool enabled) {
@@ -187,9 +195,41 @@ namespace HIKARI::MESHRENDERER {
         return view.IsInitialized() ? &view.camera : nullptr;
     }
 
+    bool FinalizeVolumetricFog(const GFX::Context& graphics, bool volumetricFogReady) {
+        auto& view = GetActiveMeshFrameResources().view;
+        if (!volumetricFogReady || view.light.fogParams.x == 0.0f) return true;
+        view.light.fogParams.x = 0.0f;
+        return view.PublishLight(graphics);
+    }
+
     const CameraCB* GetGpuDrivenCullingCameraConstants() {
         const MeshFrameResources& frame = GetActiveMeshFrameResources();
         return frame.view.IsInitialized() ? &frame.view.cullingCamera : nullptr;
+    }
+
+    MeshMaterialGpuFrameView GetMaterialGpuFrameView(const GFX::Context& graphics) {
+        const auto& published = gMeshRendererState.materialFrameContext;
+        if (!gMeshRendererState.materialFrameReady || published.device != graphics.device ||
+            published.deviceGeneration != graphics.deviceGeneration || published.cmdList != graphics.cmdList ||
+            published.frameIndex != graphics.frameIndex || published.frameFence != graphics.frameFence ||
+            published.currentFrameRetireFenceValue != graphics.currentFrameRetireFenceValue) return {};
+        const auto& frame = GetActiveMeshFrameResources();
+        if (!frame.materialDataBuffer || !frame.materialProgramParameterBuffer || !frame.materialProgramResourceBuffer ||
+            frame.materialUploadNeedsRetry || frame.materialProgramUploadNeedsRetry) return {};
+        const uintptr_t identity = reinterpret_cast<uintptr_t>(gMeshRendererState.gpuDrivenSceneSourceIdentity);
+        const auto& registry = gMeshRendererState.gpuMaterialRegistry;
+        return {registry.GetSourceBindings(identity), frame.materialDataStaging, frame.materialDataBuffer->GetGPUVirtualAddress(),
+            frame.materialProgramParameterBuffer->GetGPUVirtualAddress(), frame.materialProgramResourceBuffer->GetGPUVirtualAddress(),
+            registry.GetStats().dataVersion, registry.GetBindingVersion(identity),
+            static_cast<uint32_t>(frame.materialDataStaging.size())};
+    }
+
+    bool RefreshLightingProviders(const GFX::Context& graphics,
+        const RENDER3D::LIGHTING::CloudSolarVisibilityGpuData& clouds) {
+        auto& view = GetActiveMeshFrameResources().view;
+        FillSelectedIrradianceVolumes(view.skyEnvironment);
+        view.skyEnvironment.cloudSolarVisibility=clouds;
+        return view.PublishSkyEnvironment(graphics);
     }
 
     RENDER3D::LIGHTING::LocalLightListGpuBindings
@@ -201,6 +241,7 @@ namespace HIKARI::MESHRENDERER {
     }
 
     void EndFrame() {
+        gMeshRendererState.materialFrameReady = false;
         gMeshRendererState.frameObjectIndex = 0;
     }
 

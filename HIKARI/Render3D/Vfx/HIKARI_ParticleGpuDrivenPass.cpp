@@ -143,6 +143,7 @@ namespace HIKARI::RENDER3D::PARTICLES {
         uint64_t materialSyncRetryVersion = 0u;
         bool drawBuffersValid = false;
         bool initialized = false;
+        bool initializationAttempted = false;
 
         void ResetFrameStats() noexcept {
             stats.simulatedEmitters = 0u;
@@ -1206,6 +1207,7 @@ namespace HIKARI::RENDER3D::PARTICLES {
             materialSyncRetryVersion = 0u;
             drawBuffersValid = false;
             initialized = false;
+            initializationAttempted = false;
             context = {};
         }
     };
@@ -1260,6 +1262,11 @@ namespace HIKARI::RENDER3D::PARTICLES {
         const GFX::Context& context,
         const ParticleRenderFrameSource* source,
         MATERIAL::GpuMaterialRegistry& materialRegistry) {
+        if (impl_ && !impl_->initialized && !impl_->initializationAttempted &&
+            context.device && context.srvHeap && source && source->input && !source->input->emitters.empty()) {
+            (void)Initialize(context);
+            impl_->initializationAttempted = true;
+        }
         return impl_ != nullptr &&
             impl_->PrepareFrame(context, source, materialRegistry);
     }

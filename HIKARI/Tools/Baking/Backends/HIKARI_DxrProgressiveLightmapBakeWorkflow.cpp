@@ -1,6 +1,7 @@
 #include "Tools/Baking/Backends/HIKARI_DxrProgressiveLightmapBaker.h"
 
 #include <algorithm>
+#include <cmath>
 #include <utility>
 
 #include "Gfx/HIKARI_GfxContext.h"
@@ -33,27 +34,25 @@ namespace HIKARI::TOOLS::BAKING {
     bool DxrProgressiveLightmapBaker::BeginTarget(
         const GFX::Context& graphics,
         const TRANSPORT::LightingTransportScene& scene,
-        const TRANSPORT::LightingTransportSurfaceTarget& target,
+        const TRANSPORT::LightingTransportLightmapPage& target,
         const TRANSPORT::LightingTransportBakeSettings& settings,
         std::string* outMessage) {
 
         ResetTarget();
         if (!scenePrepared_ ||
-            !target.eligible ||
-            target.triangleIndices.empty()) {
+            target.triangleIndices.empty() || target.atlasAllocations.empty() ||
+            target.uvSet != ASSETS::LIGHTING::kSurfaceLightmapUvSet ||
+            target.outputResolution != settings.outputResolution || target.outputResolution < 32u ||
+            target.outputResolution > ASSETS::LIGHTING::kSurfaceLightmapMaximumAtlasResolution) {
             status_.state =
                 ProgressiveLightmapBakeState::Failed;
             status_.message =
-                "Lightmap target is not eligible.";
+                "Lightmap page is empty or its UV/resolution contract does not match the bake settings.";
             SetMessage(outMessage, status_.message);
             return false;
         }
 
-        width_ = std::clamp(
-            settings.outputResolution,
-            32u,
-            ASSETS::LIGHTING::
-                kSurfaceLightmapMaximumAtlasResolution);
+        width_ = target.outputResolution;
         height_ = width_;
         bounceCount_ = std::clamp(
             settings.bounceCount,
@@ -181,6 +180,8 @@ namespace HIKARI::TOOLS::BAKING {
             status_.requestedSamples,
             status_.completedSamples +
                 (std::max)(1u, maximumSamplesThisFrame));
+        uint32_t sampleGridWidth = static_cast<uint32_t>(std::sqrt(status_.requestedSamples));
+        while (status_.requestedSamples % sampleGridWidth != 0u) --sampleGridWidth;
         while (status_.completedSamples < sampleEnd) {
             DispatchConstants constants{};
             constants.width = width_;
@@ -192,6 +193,8 @@ namespace HIKARI::TOOLS::BAKING {
             constants.lightCount = lightCount_;
             constants.skyMode = static_cast<uint32_t>(environment_.skyMode);
             constants.skyTextureIndex = skyDescriptorIndex_;
+            constants.sampleGridWidth = sampleGridWidth;
+            constants.sampleGridHeight = status_.requestedSamples / sampleGridWidth;
             constants.ambientSkyStrength = {
                 environment_.ambientRadiance.x,
                 environment_.ambientRadiance.y,

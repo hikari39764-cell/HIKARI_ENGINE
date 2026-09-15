@@ -1,6 +1,16 @@
 #ifndef HIKARI_DIRECTION_ENCODING_INCLUDED
 #define HIKARI_DIRECTION_ENCODING_INCLUDED
 
+// Oct atlas の一 texel border。角では二つの折り返しを順に適用する。
+int2 HikariWrapOctahedralTexel(int2 coordinate, int size)
+{
+    if (coordinate.x < 0) coordinate = int2(-coordinate.x-1, size-1-coordinate.y);
+    else if (coordinate.x >= size) coordinate = int2(2*size-1-coordinate.x, size-1-coordinate.y);
+    if (coordinate.y < 0) coordinate = int2(size-1-coordinate.x, -coordinate.y-1);
+    else if (coordinate.y >= size) coordinate = int2(size-1-coordinate.x, 2*size-1-coordinate.y);
+    return coordinate;
+}
+
 float2 HikariEncodeOctahedralDirection(float3 normal)
 {
     normal /= max(abs(normal.x) + abs(normal.y) + abs(normal.z), 1e-6f);

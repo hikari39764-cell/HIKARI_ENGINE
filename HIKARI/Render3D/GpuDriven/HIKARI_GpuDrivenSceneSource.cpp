@@ -106,6 +106,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
     }
 
     void GpuDrivenSceneSource::Reset() {
+        surfaceRecords = nullptr;
         for (GpuDrivenPassSource& pass : passes) {
             pass.Reset();
         }

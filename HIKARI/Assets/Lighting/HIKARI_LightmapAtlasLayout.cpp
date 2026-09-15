@@ -1,5 +1,6 @@
 #include "Assets/Lighting/HIKARI_LightmapAtlasLayout.h"
 
+#include <algorithm>
 #include <cmath>
 #include <sstream>
 #include <utility>
@@ -14,6 +15,15 @@ namespace HIKARI::ASSETS::LIGHTING {
         bool IsPowerOfTwo(uint32_t value) {
             return value > 0u &&
                 (value & (value - 1u)) == 0u;
+        }
+
+        bool ValidAtlasSettings(const LightmapAtlasSettings& settings) {
+            return MATH::IsFinite(settings.targetTexelsPerWorldUnit) &&
+                settings.targetTexelsPerWorldUnit > 0 && IsPowerOfTwo(settings.minimumResolution) &&
+                IsPowerOfTwo(settings.maximumResolution) && settings.maximumResolution >= settings.minimumResolution &&
+                settings.maximumResolution <= kSurfaceLightmapMaximumAtlasResolution &&
+                settings.guardTexels > 0 && settings.guardTexels < settings.maximumResolution / 2 &&
+                settings.alignmentTexels > 0 && settings.alignmentTexels <= settings.maximumResolution;
         }
 
     } // namespace
@@ -31,15 +41,7 @@ namespace HIKARI::ASSETS::LIGHTING {
                 "Lightmap atlas has no eligible surfaces.";
             return false;
         }
-        if (!MATH::IsFinite(
-                settings.targetTexelsPerWorldUnit) ||
-            settings.targetTexelsPerWorldUnit <= 0.0f ||
-            !IsPowerOfTwo(settings.minimumResolution) ||
-            !IsPowerOfTwo(settings.maximumResolution) ||
-            settings.maximumResolution <
-                settings.minimumResolution ||
-            settings.guardTexels == 0u ||
-            settings.alignmentTexels == 0u) {
+        if (!ValidAtlasSettings(settings)) {
             outLayout.message =
                 "Lightmap atlas settings are invalid.";
             return false;
@@ -128,6 +130,65 @@ namespace HIKARI::ASSETS::LIGHTING {
         }
         message << '.';
         outLayout.message = message.str();
+        return true;
+    }
+
+    bool BuildLightmapAtlasPages(
+        const std::vector<LightmapAtlasSurfaceMetrics>& surfaces,
+        const LightmapAtlasSettings& settings,
+        std::vector<LightmapAtlasLayout>& outPages,
+        std::string& outMessage) {
+        outPages.clear();
+        LightmapAtlasLayout single{};
+        if (BuildLightmapAtlasLayout(surfaces, settings, single)) {
+            outMessage = single.message;
+            outPages.push_back(std::move(single));
+            return true;
+        }
+        outMessage = single.message;
+        if (surfaces.empty() || !ValidAtlasSettings(settings)) return false;
+
+        // 大きい chart から安定順で分割する。各 page の packing は既存 owner を使う。
+        auto remaining = surfaces;
+        std::stable_sort(remaining.begin(), remaining.end(), [](const auto& a, const auto& b) {
+            return uint64_t(a.minimumInteriorWidth) * a.minimumInteriorHeight >
+                uint64_t(b.minimumInteriorWidth) * b.minimumInteriorHeight;
+        });
+        std::vector<LightmapAtlasLayout> pages;
+        size_t first = 0;
+        while (first < remaining.size()) {
+            if (pages.size() >= kSurfaceLightmapMaximumAtlasPages) {
+                outMessage = "Lightmap exceeds the per-object atlas page limit; split the model into smaller static objects.";
+                return false;
+            }
+            size_t lower = 0, upper = remaining.size() - first;
+            while (lower < upper) {
+                const size_t count = lower + (upper - lower + 1) / 2;
+                const std::vector<LightmapAtlasSurfaceMetrics> candidate(
+                    remaining.begin() + first, remaining.begin() + first + count);
+                std::vector<LightmapAtlasAllocation> allocations;
+                std::string error;
+                if (INTERNAL::TryBuildLightmapAtlasAtResolution(candidate, settings, 0.0f,
+                        settings.maximumResolution, allocations, error)) lower = count;
+                else upper = count - 1;
+            }
+            if (lower == 0) {
+                outMessage = "A lightmap surface cannot fit an atlas page while preserving its UV chart padding.";
+                return false;
+            }
+            const std::vector<LightmapAtlasSurfaceMetrics> pageSurfaces(
+                remaining.begin() + first, remaining.begin() + first + lower);
+            LightmapAtlasLayout page;
+            if (!BuildLightmapAtlasLayout(pageSurfaces, settings, page)) {
+                outMessage = page.message;
+                return false;
+            }
+            pages.push_back(std::move(page));
+            first += lower;
+        }
+        outMessage = std::to_string(surfaces.size()) + " surface(s), " +
+            std::to_string(pages.size()) + " atlas pages; UV chart padding preserved.";
+        outPages = std::move(pages);
         return true;
     }
 

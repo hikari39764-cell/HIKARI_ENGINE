@@ -1,3 +1,4 @@
+#include "Core/HIKARI_MathConfig.h"
 #include "Render3D/Shadow/Pipeline/HIKARI_ShadowDepthPipelines.h"
 #include "Render3D/HIKARI_Mesh.h"
 
@@ -38,6 +39,7 @@ namespace HIKARI::SHADOW::PIPELINE {
         desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
         desc.SampleMask = UINT_MAX;
         desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+        desc.RasterizerState.FrontCounterClockwise = MATH::kFrontFaceCounterClockwise ? TRUE : FALSE;
         desc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
         desc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
         desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;

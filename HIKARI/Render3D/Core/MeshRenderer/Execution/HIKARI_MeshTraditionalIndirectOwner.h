@@ -9,6 +9,8 @@
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
 #include "Render3D/GpuDriven/CommandStream/HIKARI_OwnedTraditionalIndirectStream.h"
 
+namespace HIKARI { namespace DX { class DynamicUploadBuffer; } namespace GFX { struct Context; } }
+
 namespace HIKARI::MESHRENDERER {
 
     class MeshPrimitiveCache;
@@ -18,8 +20,8 @@ namespace HIKARI::MESHRENDERER {
         ID3D12Device* device = nullptr;
         MeshPrimitiveCache* primitiveCache = nullptr;
         MeshRendererDebugStats* debugStats = nullptr;
-        JointPaletteCB* jointPaletteMapped = nullptr;
-        ID3D12Resource* jointPaletteBuffer = nullptr;
+        const GFX::Context* graphics = nullptr;
+        DX::DynamicUploadBuffer* deformationUploads = nullptr;
     };
 
     // GpuDrivenSceneSource の traditionalIndirect は参照 view なので、
@@ -33,7 +35,7 @@ namespace HIKARI::MESHRENDERER {
             const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& source);
         void AttachToSceneSource(
             RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& source) const;
-        void RefreshForActivePipeline(
+        bool RefreshForActivePipeline(
             RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& source,
             const MeshRendererTraditionalIndirectHydrationContext& context);
 
@@ -46,7 +48,7 @@ namespace HIKARI::MESHRENDERER {
         using OwnedStream =
             RENDER3D::GPUDRIVEN::OwnedTraditionalIndirectStream;
 
-        void HydrateStream(
+        bool HydrateStream(
             OwnedStream& stream,
             const MeshRendererTraditionalIndirectHydrationContext& context);
 

@@ -1,4 +1,4 @@
-﻿#include "HIKARI_ClusterCullCommon.hlsli"
+#include "HIKARI_ClusterCullCommon.hlsli"
 
 #include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
 
@@ -13,9 +13,7 @@ void FinalizeMeshletDispatchCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         gClusterCullCounters.Load(
             HIKARI_CLUSTER_CULL_COUNTER_BACK_FACE_DRAW_OVERFLOW_COUNT) != 0u ||
         gClusterCullCounters.Load(
-            HIKARI_CLUSTER_CULL_COUNTER_DOUBLE_SIDED_DRAW_OVERFLOW_COUNT) != 0u ||
-        gClusterCullCounters.Load(
-            HIKARI_CLUSTER_CULL_COUNTER_VISIBLE_CLUSTER_LIST_OVERFLOW_COUNT) != 0u;
+            HIKARI_CLUSTER_CULL_COUNTER_DOUBLE_SIDED_DRAW_OVERFLOW_COUNT) != 0u;
     [unroll]
     for (uint passKind = 0u; passKind < HIKARI_CLUSTER_CULL_PASS_COUNT; ++passKind)
     {
@@ -42,7 +40,8 @@ void FinalizeMeshletDispatchCS(uint3 dispatchThreadId : SV_DispatchThreadID)
             meshletArgument.threadGroupCountY = 1u;
             meshletArgument.threadGroupCountZ = 1u;
             meshletArgument.reserved0 = 0u;
-            gClusterCullMeshletDispatchArguments[bucketBase] = meshletArgument;
+            // range の base は root constants、command 自体は連続した 10 slots。
+            gClusterCullMeshletDispatchArguments[passKind * HIKARI_CLUSTER_DRAW_BUCKET_COUNT + bucket] = meshletArgument;
         }
     }
 }

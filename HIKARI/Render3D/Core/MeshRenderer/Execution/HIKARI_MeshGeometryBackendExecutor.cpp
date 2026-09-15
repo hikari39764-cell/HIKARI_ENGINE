@@ -2,6 +2,7 @@
 #include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
+#include <cstring>
 #include <limits>
 #include <vector>
 
@@ -40,12 +41,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             backendContext.visibility != nullptr
                 ? backendContext.visibility->visibleMeshletRangeBuffer
                 : nullptr;
-        ID3D12Resource* visibleClusterListBuffer =
-            backendContext.visibility != nullptr
-                ? backendContext.visibility->visibleMeshletClusterListBuffer
-                : nullptr;
-        if (visibleRangeBuffer == nullptr ||
-            visibleClusterListBuffer == nullptr) {
+        if (visibleRangeBuffer == nullptr) {
             return false;
         }
 
@@ -64,14 +60,9 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         BindMeshletVisibleRanges(
             drawCtx.binding,
             visibleRangeBuffer->GetGPUVirtualAddress());
-        BindMeshletVisibleClusterList(
-            drawCtx.binding,
-            visibleClusterListBuffer->GetGPUVirtualAddress());
         const MeshFrameResources& frame = GetActiveMeshFrameResources();
         D3D12_GPU_VIRTUAL_ADDRESS jointPaletteAddress =
-            frame.jointPaletteCB != nullptr
-                ? frame.jointPaletteCB->GetGPUVirtualAddress()
-                : 0u;
+            frame.jointPaletteAddress;
         if (bindingOverrides != nullptr &&
             bindingOverrides->jointPaletteAddress != 0u) {
             jointPaletteAddress = bindingOverrides->jointPaletteAddress;
@@ -80,6 +71,26 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             drawCtx.binding,
             jointPaletteAddress);
 
+        const auto& visibilityDepth = passResources.visibilityDepthPyramid;
+        const bool occlusionValid =
+            gpuPass == RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardOpaque &&
+            // SSR 用 MRT は同じ視点の主描画。capture 出力形式で可視性を無効にしない。
+            passKind == MeshDrawPassKind::Forward &&
+            GetCameraConstants() != nullptr && GetGpuDrivenCullingCameraConstants() != nullptr &&
+            RENDER3D::MESHLET::IsMeshletOcclusionViewUsable(visibilityDepth,
+                GetCameraConstants()->viewProj, GetGpuDrivenCullingCameraConstants()->viewProj,
+                IsGpuDrivenCullingCameraFrozen());
+        const bool aux = passKind == MeshDrawPassKind::GeometryAux ||
+            passKind == MeshDrawPassKind::GeometryAuxFeatureMask;
+        const uint32_t visibilityPhase = aux ? 0u :
+            (passKind == MeshDrawPassKind::Forward &&
+             gpuPass == RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardOpaque ? 1u : 2u);
+        const auto visibilityBinding = gMeshRendererState.meshletRenderBackend.BeginVisibility(
+            graphics, occlusionValid ? &visibilityDepth : nullptr, visibilityPhase);
+        if (visibilityBinding.table.ptr == 0u) return false;
+        graphics.cmdList->SetGraphicsRootDescriptorTable(
+            ROOT_PARAM::MeshletOcclusionDepth, visibilityBinding.table);
+
         RENDER3D::MESHLET::MeshletRenderExecutionContext ctx{};
         ctx.commandList = backendContext.commandList;
         ctx.pass = backendContext.pass;
@@ -87,7 +98,10 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         ctx.drawCommandRange = backendContext.drawCommandRange;
         ctx.pipelineKind = pipelineKind;
         ctx.reflectionCapture = passResources.reflectionCapture;
+        ctx.reflectionMaterialCapture = passResources.reflectionMaterialCapture;
+        ctx.forwardCostMode = RENDER3D::GetRenderQualitySettings().forwardCostMode;
         const bool executed = gMeshRendererState.meshletRenderBackend.Execute(ctx);
+        gMeshRendererState.meshletRenderBackend.EndVisibility(graphics);
         UpdateMeshletBackendDebugStats();
         return executed;
     }
@@ -97,7 +111,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         MeshDrawPassKind passKind,
         RENDER3D::GPUDRIVEN::GpuDrivenPassKind gpuPass,
         const VFX::VariantKey& bucketVariant,
-        bool reflectionCapture) {
+        bool reflectionCapture, bool reflectionMaterialCapture) {
 
         (void)gpuPass;
 
@@ -121,7 +135,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         }
         if (passKind != MeshDrawPassKind::Forward ||
             graphics.device == nullptr) {
-            return gMeshRendererState.pipelines.pso.Get();
+            return GetOrCreateFallbackPso(gMeshRendererState.pipelines, graphics.device, false);
         }
 
         return GetOrCreateVariantPso(
@@ -131,7 +145,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             bucketVariant,
             false,
             false,
-            reflectionCapture);
+            reflectionCapture, reflectionMaterialCapture);
     }
 
     ID3D12PipelineState* ResolveTraditionalSkinnedPso(
@@ -139,7 +153,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         MeshDrawPassKind passKind,
         RENDER3D::GPUDRIVEN::GpuDrivenPassKind gpuPass,
         const VFX::VariantKey& bucketVariant,
-        bool reflectionCapture) {
+        bool reflectionCapture, bool reflectionMaterialCapture) {
 
         (void)gpuPass;
 
@@ -168,7 +182,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         }
         if (passKind != MeshDrawPassKind::Forward ||
             graphics.device == nullptr) {
-            return gMeshRendererState.pipelines.skinnedPso.Get();
+            return GetOrCreateFallbackPso(gMeshRendererState.pipelines, graphics.device, true);
         }
 
         VFX::VariantKey key = bucketVariant;
@@ -180,10 +194,10 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             key,
             true,
             false,
-            reflectionCapture);
+            reflectionCapture, reflectionMaterialCapture);
     }
 
-    bool PrepareForwardReflectionCapturePipelines(const GFX::Context& graphics) {
+    bool PrepareForwardReflectionCapturePipelines(const GFX::Context& graphics, bool captureMaterial) {
         using namespace RENDER3D::GPUDRIVEN;
         if (!graphics.device || !graphics.cmdList) return false;
         SyncGpuDrivenBackendAvailability();
@@ -193,7 +207,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         if (plan.gpuBackendCount == 0) return false;
         for (size_t i = 0; i < plan.gpuBackendCount; ++i) {
             if (plan.gpuBackends[i] == GeometryBackendKind::GpuDrivenMeshShader) {
-                if (!gMeshRendererState.meshletRenderBackend.PrepareReflectionCapture()) return false;
+                if (!gMeshRendererState.meshletRenderBackend.PrepareReflectionCapture(captureMaterial)) return false;
                 continue;
             }
             if (plan.gpuBackends[i] != GeometryBackendKind::GpuDrivenTraditionalVsPs) return false;
@@ -204,9 +218,9 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             if (range->commandBucketCount > variants.size()) return false;
             for (size_t bucket = 0; bucket < range->commandBucketCount; ++bucket) {
                 if (range->staticCommandCount && !ResolveTraditionalStaticPso(graphics,
-                    MeshDrawPassKind::Forward, pass, variants[bucket], true)) return false;
+                    MeshDrawPassKind::Forward, pass, variants[bucket], true, captureMaterial)) return false;
                 if (range->skinnedCommandCount && !ResolveTraditionalSkinnedPso(graphics,
-                    MeshDrawPassKind::Forward, pass, variants[bucket], true)) return false;
+                    MeshDrawPassKind::Forward, pass, variants[bucket], true, captureMaterial)) return false;
             }
         }
         return true;
@@ -318,7 +332,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                         passKind,
                         gpuPass,
                         bucketVariant,
-                        passResources.reflectionCapture);
+                        passResources.reflectionCapture, passResources.reflectionMaterialCapture);
                 if (bucketPso == nullptr) {
                     continue;
                 }
@@ -389,7 +403,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                         passKind,
                         gpuPass,
                         bucketVariant,
-                        passResources.reflectionCapture);
+                        passResources.reflectionCapture, passResources.reflectionMaterialCapture);
                 if (bucketPso == nullptr) {
                     continue;
                 }
@@ -547,7 +561,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
     GeometryBackendExecutionResult ExecuteDepthVisibilityBackendPlan(
         const GFX::Context& graphics,
         RENDER3D::GPUDRIVEN::GpuDrivenPassKind pass,
-        const MeshPassResources& passResources) {
+        const MeshPassResources& passResources,
+        const MeshFrameBindingOverrides* bindingOverrides) {
 
         GeometryBackendExecutionResult result{};
         SyncGpuDrivenBackendAvailability();
@@ -562,7 +577,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                 pass,
                 passResources,
                 MeshDrawPassKind::DepthPrepass,
-                RENDER3D::MESHLET::MeshletPipelineKind::DepthPrepass)) {
+                RENDER3D::MESHLET::MeshletPipelineKind::DepthPrepass,
+                nullptr, bindingOverrides)) {
                 continue;
             }
             result.RecordExecutedBackend(backend);

@@ -62,14 +62,16 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             ID3D12GraphicsCommandList* cmd,
             uint32_t width,
             uint32_t height,
-            const MATH::Mat4& viewProj);
+            const MATH::Mat4& viewProj,
+            bool jitteredViewProj = false);
         bool BuildDepthPyramidFromDepthSrv(
             const GFX::Context& graphics,
             ID3D12GraphicsCommandList* cmd,
             uint32_t width,
             uint32_t height,
             D3D12_GPU_DESCRIPTOR_HANDLE sourceDepthSrv,
-            const MATH::Mat4& viewProj);
+            const MATH::Mat4& viewProj,
+            bool jitteredViewProj = false);
 
         const GpuDepthVisibilityStats& GetStats() const { return stats_; }
 

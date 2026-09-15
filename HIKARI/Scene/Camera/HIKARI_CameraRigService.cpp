@@ -248,11 +248,9 @@ namespace HIKARI::CAMERA {
             std::abs(MATH::Dot(forward, up)) >= 0.999f) {
             up = { 0.0f, 1.0f, 0.0f };
         }
-        MATH::Vec3 right = MATH::Normalize(MATH::Cross(up, forward));
-        if (MATH::Length(right) <= kViewEpsilon) {
-            right = { 1.0f, 0.0f, 0.0f };
-        }
-        up = MATH::Normalize(MATH::Cross(forward, right));
+        auto basis = MATH::BuildViewBasisRH(forward, up);
+        MATH::Vec3 right = basis.right;
+        up = basis.up;
 
         float verticalFov = camera.GetFovYRad();
         float localRoll = 0.0f;
@@ -285,11 +283,9 @@ namespace HIKARI::CAMERA {
         if (MATH::Length(forward) <= kViewEpsilon) {
             forward = { 0.0f, 0.0f, 1.0f };
         }
-        right = MATH::Normalize(MATH::Cross(up, forward));
-        if (MATH::Length(right) <= kViewEpsilon) {
-            right = { 1.0f, 0.0f, 0.0f };
-        }
-        up = MATH::Normalize(MATH::Cross(forward, right));
+        basis = MATH::BuildViewBasisRH(forward, up);
+        right = basis.right;
+        up = basis.up;
         if (std::abs(localRoll) > kViewEpsilon) {
             up = MATH::Normalize(
                 up * std::cos(localRoll) +

@@ -54,6 +54,10 @@ namespace HIKARI::GFX::GPU_PROFILE {
         StylizedClouds,
         SceneCaptures,
         CommandFrame,
+        EnvironmentLighting,
+        DynamicDiffuseGi,
+        CloudSolarVisibility,
+        RuntimeRayScenePreparation,
         Count
     };
 
@@ -62,6 +66,13 @@ namespace HIKARI::GFX::GPU_PROFILE {
         bool valid = false;
         double gpuMs = 0.0;
         uint64_t ticks = 0;
+        Pass parentPass = Pass::Count;
+        double exclusiveGpuMs = 0.0;
+        double averageMs = 0.0;
+        double p95Ms = 0.0;
+        double p99Ms = 0.0;
+        double maximumMs = 0.0;
+        uint32_t rollingSampleCount = 0;
     };
 
     struct FrameSnapshot {

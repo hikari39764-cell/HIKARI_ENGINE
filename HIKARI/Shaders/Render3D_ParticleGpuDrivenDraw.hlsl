@@ -768,7 +768,7 @@ float4 ParticlePS(ParticleVertex input) : SV_TARGET
         HIKARI_STANDARD_PBR_MATERIAL_PROGRAM;
     if (hasMaterialExpression)
     {
-        HikariMaterialExpressionContext context;
+        HikariMaterialExpressionContext context = (HikariMaterialExpressionContext)0;
         context.uv0 = input.uv;
         context.uv1 = input.uv;
         context.time = gTimeParams;

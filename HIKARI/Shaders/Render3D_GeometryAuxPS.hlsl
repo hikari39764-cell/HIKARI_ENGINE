@@ -1,3 +1,4 @@
+#include "Include/Forward/HIKARI_ForwardVertexMeta.hlsli"
 #define HIKARI_MATERIAL_TEXTURE_POOL_SAMPLING 1
 #include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
 #include "Include/Material/HIKARI_MaterialBaseColorInputs.hlsli"
@@ -20,24 +21,24 @@ static const uint MATERIAL_ALPHA_MASK = HIKARI_MATERIAL_FLAG_ALPHA_MASK;
 SamplerState gLinearWrap : register(s0);
 SamplerState gLinearClamp : register(s2);
 
+#if defined(HIKARI_GEOMETRY_AUX_MESHLET_INPUT)
+// Mesh Shader の圧縮した補助パス入力を保ち、材質評価は従来パスと共有する。
 struct PSInput
 {
     float4 position : SV_POSITION;
-    float3 worldPosWS : TEXCOORD1;
     float3 normalWS : NORMAL;
     float4 tangentWS : TANGENT;
     float2 uv : TEXCOORD0;
-    float2 uv1 : TEXCOORD10;
+    float2 uv1 : TEXCOORD1;
     nointerpolation uint materialDataIndex : TEXCOORD2;
-    // Keep TEXCOORD slots aligned between VS and MeshletMS layouts for PSO linkage.
-    // forwardMeta bit layout: HIKARI_ForwardVertexMeta.hlsli.
-    nointerpolation uint forwardMeta : TEXCOORD3;
-    nointerpolation uint objectDataIndex : TEXCOORD4;
-    nointerpolation uint surfaceGpuSceneIndex : TEXCOORD5;
-    nointerpolation uint debugSurfaceId : TEXCOORD6;
-    nointerpolation uint surfaceFeatureFlags : TEXCOORD7;
+    float3 worldPosWS : TEXCOORD3;
+    nointerpolation uint surfaceGpuSceneIndex : TEXCOORD4;
+    nointerpolation uint surfaceFeatureFlags : TEXCOORD5;
     bool isFrontFace : SV_IsFrontFace;
 };
+#else
+typedef HikariForwardPixelInput PSInput;
+#endif
 
 #if defined(HIKARI_GEOMETRY_AUX_WRITE_FEATURE_MASK)
 struct PSOutput
@@ -70,13 +71,19 @@ float4 main(PSInput input) : SV_TARGET
         materialExpression = HikariEvaluateMaterialExpression(
             materialData, expressionContext, gLinearWrap);
     }
-    float4 albedo = HikariResolveMaterialBaseColor(
-        materialData, input.uv, input.uv1, gLinearWrap);
-    float alphaClipThreshold = materialData.pbrParams.w;
-    HikariApplyMaterialExpressionCoverage(materialExpression, albedo, alphaClipThreshold);
-    if ((materialData.materialFlags & MATERIAL_ALPHA_MASK) != 0 && albedo.a < alphaClipThreshold)
+    if ((materialData.materialFlags & MATERIAL_ALPHA_MASK) != 0)
     {
-        discard;
+        float4 albedo = HikariResolveMaterialBaseColor(materialData, input.uv, input.uv1, gLinearWrap);
+        float alphaClipThreshold = materialData.pbrParams.w;
+        HikariApplyMaterialExpressionCoverage(materialExpression, albedo, alphaClipThreshold);
+        if (albedo.a < alphaClipThreshold) discard;
+    }
+    if (HikariSurfaceHasMaterialFx(input.surfaceFeatureFlags))
+    {
+        const HikariSurfaceGpuSceneInstance instance =
+            HikariGetSurfaceGpuSceneInstanceAt(input.surfaceGpuSceneIndex);
+        HikariApplyStaticMaterialFxCoverage(
+            input.worldPosWS, instance.fxUser[0], instance.fxUser[1]);
     }
     if (HikariSurfaceHasSandSurface(input.surfaceFeatureFlags))
     {

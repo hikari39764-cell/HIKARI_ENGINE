@@ -103,10 +103,6 @@ namespace HIKARI::MESHRENDERER {
             resources.worldSpritePass.Shutdown();
             resources.worldTextPass.Shutdown();
             for (SecondaryMeshViewFrameResources& frame : resources.frames) {
-                if (frame.jointPaletteCB != nullptr &&
-                    frame.jointPaletteMapped != nullptr) {
-                    frame.jointPaletteCB->Unmap(0, nullptr);
-                }
                 frame = {};
             }
             resources.gpuDrivenLayer = {};
@@ -159,15 +155,7 @@ namespace HIKARI::MESHRENDERER {
             }
             for (SecondaryMeshViewFrameResources& frame : resources.frames) {
                 if (!frame.view.Initialize(device) ||
-                    !GFX::D3D12_BUFFER::CreateMappedUploadBuffer(
-                        device,
-                        static_cast<UINT64>(
-                            GFX::AlignD3D12ConstantBufferByteSize(
-                                sizeof(JointPaletteCB))) *
-                            kMaxObjectCount,
-                        frame.jointPaletteCB,
-                        reinterpret_cast<void**>(
-                            &frame.jointPaletteMapped))) {
+                    !frame.deformationUploads.Init(device, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT)) {
                     ResetCaptureResources(resources);
                     return false;
                 }
@@ -257,22 +245,9 @@ namespace HIKARI::MESHRENDERER {
                     device,
                     GetStaticRootSignature(gMeshRendererState.pipelines),
                     ROOT_PARAM::SurfaceGpuSceneControl,
-                    4u) ||
-                !resources.particlePass.Initialize(graphics)) {
+                    4u)) {
                 ResetCaptureResources(resources);
                 return false;
-            }
-            if (!resources.worldSpritePass.Initialize(graphics)) {
-                HIKARI_LOG_WARN(
-                    "[SecondarySceneCapture] World Sprite pass "
-                    "initialization failed; capture remains available "
-                    "without World Sprites.");
-            }
-            if (!resources.worldTextPass.Initialize(graphics)) {
-                HIKARI_LOG_WARN(
-                    "[SecondarySceneCapture] World Text pass "
-                    "initialization failed; capture remains available "
-                    "without World Text.");
             }
             resources.ownerDevice = device;
             resources.ownerDeviceGeneration = graphics.deviceGeneration;
@@ -374,18 +349,12 @@ namespace HIKARI::MESHRENDERER {
         const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& sceneSource =
             gMeshRendererState.gpuDrivenSceneSource;
         const auto* jointPalettes = sceneSource.meshShaderJointPalettes;
-        if (jointPalettes != nullptr) {
-            const size_t paletteCount = (std::min)(
-                jointPalettes->size(),
-                static_cast<size_t>(kMaxObjectCount));
-            for (size_t index = 0; index < paletteCount; ++index) {
-                if (!(*jointPalettes)[index].empty()) {
-                    (void)UploadJointPalette(
-                        captureFrame.jointPaletteMapped,
-                        index,
-                        (*jointPalettes)[index]);
-                }
-            }
+        captureFrame.jointPaletteAddress = UploadJointPalettes(graphics, captureFrame.deformationUploads,
+            jointPalettes != nullptr ? jointPalettes->data() : nullptr,
+            jointPalettes != nullptr ? jointPalettes->size() : 0u);
+        if (captureFrame.jointPaletteAddress == 0u) {
+            ReportCaptureFailure(CaptureFailureStage::FrameResourcesUnavailable);
+            return false;
         }
         const uintptr_t sourceIdentity =
             reinterpret_cast<uintptr_t>(&sceneSource);
@@ -456,12 +425,7 @@ namespace HIKARI::MESHRENDERER {
             meshletStats.geometryAuxPipelineReady;
         availability.traditionalIndirectPipelineReady =
             resources.traditionalCommandStreamReady &&
-            GetStaticRootSignature(gMeshRendererState.pipelines) != nullptr &&
-            GetSkinnedRootSignature(gMeshRendererState.pipelines) != nullptr &&
-            gMeshRendererState.pipelines.pso != nullptr &&
-            gMeshRendererState.pipelines.skinnedPso != nullptr &&
-            gMeshRendererState.pipelines.depthPso != nullptr &&
-            gMeshRendererState.pipelines.depthSkinnedPso != nullptr;
+            AreTraditionalMeshPipelineInputsReady(gMeshRendererState.pipelines);
         layer.SetBackendAvailability(availability);
 
         const MATH::Mat4 cullViewProj = captureFrame.view.camera.viewProj;
@@ -516,7 +480,7 @@ namespace HIKARI::MESHRENDERER {
         overrides.skyEnvironmentAddress =
             captureFrame.view.Bindings().skyEnvironment;
         overrides.jointPaletteAddress =
-            captureFrame.jointPaletteCB->GetGPUVirtualAddress();
+            captureFrame.jointPaletteAddress;
         overrides.surfaceGpuSceneFrameBuffer =
             &resources.surfaceGpuSceneBuffer;
         overrides.waterSurfaceGpuFrameBuffer =

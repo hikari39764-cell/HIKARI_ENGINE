@@ -145,26 +145,22 @@ bool EditorDirectorCameraController::Update(
 
   const MATH::Vec3 worldUp{0.0f, 1.0f, 0.0f};
   if (input.lookActive) {
-    yaw_ += input.mouseDeltaX * settings_.lookSensitivity;
+    yaw_ -= input.mouseDeltaX * settings_.lookSensitivity;
     pitch_ = ClampPitch(pitch_ - input.mouseDeltaY * settings_.lookSensitivity);
     orbitPivot_ = position_ + ComputeForward() * orbitDistance_;
   }
 
   if (input.orbitActive) {
-    yaw_ += input.mouseDeltaX * settings_.orbitSensitivity;
+    yaw_ -= input.mouseDeltaX * settings_.orbitSensitivity;
     pitch_ =
         ClampPitch(pitch_ - input.mouseDeltaY * settings_.orbitSensitivity);
     position_ = orbitPivot_ - ComputeForward() * orbitDistance_;
   }
 
   MATH::Vec3 forward = ComputeForward();
-  MATH::Vec3 right = MATH::Cross(worldUp, forward);
-  if (MATH::Length(right) <= 1.0e-5f) {
-    right = {1.0f, 0.0f, 0.0f};
-  } else {
-    right = MATH::Normalize(right);
-  }
-  const MATH::Vec3 up = MATH::Normalize(MATH::Cross(forward, right));
+  const auto basis = MATH::BuildViewBasisRH(forward, worldUp);
+  const MATH::Vec3 right = basis.right;
+  const MATH::Vec3 up = basis.up;
 
   if (input.panActive) {
     const float panScale =

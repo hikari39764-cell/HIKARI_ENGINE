@@ -37,23 +37,6 @@ struct HikariMeshletResolvedCluster
     HikariMeshCluster cluster;
 };
 
-HikariMeshletVisibleRange HikariLoadMeshletVisibleRange(uint visibleRangeIndex)
-{
-    return gMeshletVisibleRanges[visibleRangeIndex];
-}
-
-HikariClusterGeometryHeader HikariBuildMeshletHeader(HikariMeshletVisibleRange visible)
-{
-    HikariClusterGeometryHeader header = (HikariClusterGeometryHeader)0;
-    header.clusterOffsetBytes = visible.clusterOffsetBytes;
-    header.vertexOffsetBytes = visible.vertexOffsetBytes;
-    header.vertexCount = visible.vertexCount;
-    header.meshletPrimitiveOffsetBytes = visible.meshletPrimitiveOffsetBytes;
-    header.meshletPrimitiveCount = visible.meshletPrimitiveCount;
-    header.clusterCount = visible.geometryClusterCount;
-    return header;
-}
-
 HikariMeshletVisibleRange HikariBuildMeshletVisibleRangeFromPayload(
     HikariMeshletPayload payload)
 {
@@ -94,128 +77,60 @@ HikariMeshletResolvedCluster HikariResolveMeshletCluster(
 {
     HikariMeshletResolvedCluster result = (HikariMeshletResolvedCluster)0;
 
-    if (payload.clusterMode != HIKARI_MESHLET_AS_MODE_DENSE)
-    {
-        result.visible = HikariBuildMeshletVisibleRangeFromPayload(payload);
-        result.header = HikariBuildMeshletHeaderFromPayload(payload);
-        result.clusterGeometryPoolIndex =
-            min(payload.clusterGeometryPoolIndex, HIKARI_CLUSTER_SRV_POOL_COUNT - 1u);
-        result.clusterMetadataPoolIndex = 0u;
+    result.visible = HikariBuildMeshletVisibleRangeFromPayload(payload);
+    result.header = HikariBuildMeshletHeaderFromPayload(payload);
+    result.clusterGeometryPoolIndex =
+        min(payload.clusterGeometryPoolIndex, HIKARI_CLUSTER_SRV_POOL_COUNT - 1u);
+    result.clusterMetadataPoolIndex = 0u;
 
-        const bool slotValid =
-            payload.visibleClusterCount != 0u &&
-            groupId.x < payload.visibleClusterCount &&
-            groupId.x < HIKARI_MESHLET_AS_MAX_CLUSTER_PAYLOAD;
-        HikariMeshletPayloadCluster payloadCluster =
-            (HikariMeshletPayloadCluster)0;
-        if (slotValid)
-        {
-            payloadCluster.clusterIndex = payload.clusterIndices[groupId.x];
-            payloadCluster.firstVertex = payload.clusterFirstVertices[groupId.x];
-            payloadCluster.firstPrimitive = payload.clusterFirstPrimitives[groupId.x];
-            payloadCluster.packedCounts = payload.clusterPackedCounts[groupId.x];
-        }
-
-        result.clusterIndex = payloadCluster.clusterIndex;
-        result.firstVertex = payloadCluster.firstVertex;
-        result.firstPrimitive = payloadCluster.firstPrimitive;
-        result.vertexCount =
-            min(
-                HikariMeshletPayloadVertexCount(payloadCluster),
-                HIKARI_MESHLET_MAX_VERTICES);
-        result.primitiveCount =
-            min(
-                HikariMeshletPayloadPrimitiveCount(payloadCluster),
-                HIKARI_MESHLET_MAX_PRIMITIVES);
-        result.cluster.firstVertex = result.firstVertex;
-        result.cluster.vertexCount = result.vertexCount;
-        result.cluster.firstPrimitive = result.firstPrimitive;
-        result.cluster.triangleCount = result.primitiveCount;
-
-        const bool vertexSpanValid =
-            result.firstVertex < result.header.vertexCount &&
-            result.vertexCount <= result.header.vertexCount - result.firstVertex;
-        const bool primitiveSpanValid =
-            result.firstPrimitive < result.header.meshletPrimitiveCount &&
-            result.primitiveCount <=
-                result.header.meshletPrimitiveCount - result.firstPrimitive;
-        result.valid =
-            slotValid &&
-            payload.clusterGeometryPoolIndex < HIKARI_CLUSTER_SRV_POOL_COUNT &&
-            result.vertexCount != 0u &&
-            result.primitiveCount != 0u &&
-            vertexSpanValid &&
-            primitiveSpanValid;
-        if (!result.valid)
-        {
-            result.vertexCount = 0u;
-            result.primitiveCount = 0u;
-        }
-        return result;
-    }
-
-    result.visible = HikariLoadMeshletVisibleRange(payload.visibleRangeIndex);
-
-    bool valid =
+    const bool slotValid =
         payload.visibleClusterCount != 0u &&
         groupId.x < payload.visibleClusterCount &&
-        result.visible.clusterGeometrySrvDescriptorIndex >= HIKARI_CLUSTER_SRV_POOL_BEGIN &&
-        result.visible.clusterGeometryMetadataSrvDescriptorIndex >= HIKARI_CLUSTER_SRV_POOL_BEGIN;
+        groupId.x < HIKARI_MESHLET_AS_MAX_CLUSTER_PAYLOAD;
+    HikariMeshletPayloadCluster payloadCluster =
+        (HikariMeshletPayloadCluster)0;
+    if (slotValid)
+    {
+        payloadCluster.firstVertex = payload.clusterFirstVertices[groupId.x];
+        payloadCluster.firstPrimitive = payload.clusterFirstPrimitives[groupId.x];
+        payloadCluster.packedCounts = payload.clusterPackedCounts[groupId.x];
+    }
 
-    result.clusterGeometryPoolIndex =
-        valid
-            ? result.visible.clusterGeometrySrvDescriptorIndex - HIKARI_CLUSTER_SRV_POOL_BEGIN
-            : 0u;
-    result.clusterMetadataPoolIndex =
-        valid
-            ? result.visible.clusterGeometryMetadataSrvDescriptorIndex - HIKARI_CLUSTER_SRV_POOL_BEGIN
-            : 0u;
-    valid =
-        valid &&
-        result.clusterGeometryPoolIndex < HIKARI_CLUSTER_SRV_POOL_COUNT &&
-        result.clusterMetadataPoolIndex < HIKARI_CLUSTER_SRV_POOL_COUNT;
-    result.clusterGeometryPoolIndex =
-        min(result.clusterGeometryPoolIndex, HIKARI_CLUSTER_SRV_POOL_COUNT - 1u);
-    result.clusterMetadataPoolIndex =
-        min(result.clusterMetadataPoolIndex, HIKARI_CLUSTER_SRV_POOL_COUNT - 1u);
-    result.header = HikariBuildMeshletHeader(result.visible);
+    result.clusterIndex = payload.firstCluster + (payloadCluster.packedCounts & 0xffffu);
+    result.firstVertex = payloadCluster.firstVertex;
+    result.firstPrimitive = payloadCluster.firstPrimitive;
+    result.vertexCount =
+        min(
+            HikariMeshletPayloadVertexCount(payloadCluster),
+            HIKARI_MESHLET_MAX_VERTICES);
+    result.primitiveCount =
+        min(
+            HikariMeshletPayloadPrimitiveCount(payloadCluster),
+            HIKARI_MESHLET_MAX_PRIMITIVES);
+    result.cluster.firstVertex = result.firstVertex;
+    result.cluster.vertexCount = result.vertexCount;
+    result.cluster.firstPrimitive = result.firstPrimitive;
+    result.cluster.triangleCount = result.primitiveCount;
 
-    bool clusterIndexValid = groupId.x < result.visible.clusterCount;
-    result.clusterIndex = clusterIndexValid
-        ? result.visible.firstCluster + groupId.x
-        : 0xffffffffu;
-    valid =
-        valid &&
-        clusterIndexValid &&
-        result.clusterIndex < result.header.clusterCount;
-
-    ByteAddressBuffer metadata =
-        gClusterGeometryPool[NonUniformResourceIndex(result.clusterMetadataPoolIndex)];
-    result.cluster =
-        HikariLoadMeshCluster(
-            metadata,
-            result.header,
-            valid ? result.clusterIndex : 0u);
-
-    result.vertexCount = min(result.cluster.vertexCount, HIKARI_MESHLET_MAX_VERTICES);
-    result.primitiveCount = min(result.cluster.triangleCount, HIKARI_MESHLET_MAX_PRIMITIVES);
-    result.firstVertex = result.cluster.firstVertex;
-    result.firstPrimitive = result.cluster.firstPrimitive;
-    if (!valid ||
-        result.cluster.vertexCount == 0u ||
-        result.cluster.firstPrimitive >= result.header.meshletPrimitiveCount)
+    const bool vertexSpanValid =
+        result.firstVertex < result.header.vertexCount &&
+        result.vertexCount <= result.header.vertexCount - result.firstVertex;
+    const bool primitiveSpanValid =
+        result.firstPrimitive < result.header.meshletPrimitiveCount &&
+        result.primitiveCount <=
+            result.header.meshletPrimitiveCount - result.firstPrimitive;
+    result.valid =
+        slotValid &&
+        payload.clusterGeometryPoolIndex < HIKARI_CLUSTER_SRV_POOL_COUNT &&
+        result.vertexCount != 0u &&
+        result.primitiveCount != 0u &&
+        vertexSpanValid &&
+        primitiveSpanValid;
+    if (!result.valid)
     {
         result.vertexCount = 0u;
         result.primitiveCount = 0u;
     }
-    else
-    {
-        result.primitiveCount =
-            min(
-                result.primitiveCount,
-                result.header.meshletPrimitiveCount - result.cluster.firstPrimitive);
-    }
-    result.valid = valid && result.vertexCount != 0u && result.primitiveCount != 0u;
     return result;
 }
 

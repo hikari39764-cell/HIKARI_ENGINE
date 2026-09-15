@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
+#include "Render3D/Core/MeshRenderer/Data/HIKARI_MeshDrawDataBuilder.h"
 #include "Render3D/GpuDriven/CommandStream/HIKARI_OwnedTraditionalIndirectStream.h"
 
 namespace HIKARI::SHADOW::INTERNAL {
@@ -15,19 +16,17 @@ namespace HIKARI::SHADOW::INTERNAL {
     using OwnedShadowTraditionalIndirectStream =
         RENDER3D::GPUDRIVEN::OwnedTraditionalIndirectStream;
 
-    OwnedShadowTraditionalIndirectStream gShadowStaticTraditionalIndirectStream{};
-    OwnedShadowTraditionalIndirectStream gShadowDynamicTraditionalIndirectStream{};
 
-    void ClearShadowTraditionalIndirectStreams() {
-        gShadowStaticTraditionalIndirectStream.Clear();
-        gShadowDynamicTraditionalIndirectStream.Clear();
+    void ClearShadowTraditionalIndirectStreams(ShadowRendererState& state) {
+        state.staticTraditionalIndirectStream.Clear();
+        state.dynamicTraditionalIndirectStream.Clear();
     }
 
     Mesh* GetOrCreatePrimitiveMesh(
-        const GFX::Context& graphics,
+        ShadowRendererState& state, const GFX::Context& graphics,
         const MeshPrimitive& primitive) {
-        auto found = gShadowRendererState.primitiveMeshCache.find(&primitive);
-        if (found != gShadowRendererState.primitiveMeshCache.end()) {
+        auto found = state.primitiveMeshCache.find(&primitive);
+        if (found != state.primitiveMeshCache.end()) {
             return found->second.get();
         }
 
@@ -56,15 +55,15 @@ namespace HIKARI::SHADOW::INTERNAL {
             return nullptr;
         }
         Mesh* raw = mesh.get();
-        gShadowRendererState.primitiveMeshCache.emplace(&primitive, std::move(mesh));
+        state.primitiveMeshCache.emplace(&primitive, std::move(mesh));
         return raw;
     }
 
     Mesh* GetOrCreateSkinnedPrimitiveMesh(
-        const GFX::Context& graphics,
+        ShadowRendererState& state, const GFX::Context& graphics,
         const MeshPrimitive& primitive) {
-        auto found = gShadowRendererState.primitiveSkinnedMeshCache.find(&primitive);
-        if (found != gShadowRendererState.primitiveSkinnedMeshCache.end()) {
+        auto found = state.primitiveSkinnedMeshCache.find(&primitive);
+        if (found != state.primitiveSkinnedMeshCache.end()) {
             return found->second.get();
         }
 
@@ -94,7 +93,7 @@ namespace HIKARI::SHADOW::INTERNAL {
             return nullptr;
         }
         Mesh* raw = mesh.get();
-        gShadowRendererState.primitiveSkinnedMeshCache.emplace(&primitive, std::move(mesh));
+        state.primitiveSkinnedMeshCache.emplace(&primitive, std::move(mesh));
         return raw;
     }
 
@@ -114,32 +113,14 @@ namespace HIKARI::SHADOW::INTERNAL {
         return &meshAsset.primitives[record.primitiveIndex];
     }
 
-    void UploadShadowMeshShaderJointPalettes() {
-        if (gShadowRendererState.gpuDrivenSceneSource == nullptr ||
-            gShadowRendererState.gpuDrivenSceneSource->meshShaderJointPalettes == nullptr) {
-            return;
-        }
-        const auto& palettes =
-            *gShadowRendererState.gpuDrivenSceneSource->meshShaderJointPalettes;
-        const size_t paletteCount =
-            (std::min)(palettes.size(), static_cast<size_t>(kMaxShadowCasterObjects));
-        for (size_t paletteIndex = 0; paletteIndex < paletteCount; ++paletteIndex) {
-            if (!palettes[paletteIndex].empty()) {
-                (void)UploadShadowJointPalette(
-                    paletteIndex,
-                    palettes[paletteIndex]);
-            }
-        }
-    }
-
-    void HydrateShadowTraditionalIndirectStream(
-        const GFX::Context& graphics,
+    bool HydrateShadowTraditionalIndirectStream(
+        ShadowRendererState& state, const GFX::Context& graphics,
         OwnedShadowTraditionalIndirectStream& stream) {
 
         if (stream.records.empty() ||
             stream.executableRecordIndices.empty() ||
             stream.commands.empty()) {
-            return;
+            return true;
         }
 
         for (RENDER3D::RUNTIME::SurfaceDrawCommand& command :
@@ -174,8 +155,8 @@ namespace HIKARI::SHADOW::INTERNAL {
                 !stream.jointPalettes[command.firstRecordIndex].empty();
             const bool skinnedCommand = record.skinned && hasJointPalette;
             Mesh* mesh = skinnedCommand
-                ? GetOrCreateSkinnedPrimitiveMesh(graphics, *primitive)
-                : GetOrCreatePrimitiveMesh(graphics, *primitive);
+                ? GetOrCreateSkinnedPrimitiveMesh(state, graphics, *primitive)
+                : GetOrCreatePrimitiveMesh(state, graphics, *primitive);
             if (mesh == nullptr || !mesh->IsValid()) {
                 continue;
             }
@@ -186,100 +167,190 @@ namespace HIKARI::SHADOW::INTERNAL {
                 continue;
             }
 
-            const size_t paletteSlot =
-                static_cast<size_t>(stream.gpuSceneBaseIndex) +
-                static_cast<size_t>(command.firstGpuSceneInstanceIndex);
-            ShadowFrameResources& frame = GetActiveShadowFrameResources();
-            if (paletteSlot >= kMaxShadowCasterObjects ||
-                frame.jointPaletteMapped == nullptr ||
-                frame.jointPaletteCB == nullptr) {
-                continue;
-            }
-
-            (void)UploadShadowJointPalette(
-                paletteSlot,
-                stream.jointPalettes[command.firstRecordIndex]);
-            command.jointPaletteGpuAddress =
-                ResolveShadowJointPaletteAddress(paletteSlot);
+            command.jointPaletteGpuAddress = MESHRENDERER::UploadJointPalettes(
+                graphics, GetActiveShadowFrameResources(state).frameUploads, &stream.jointPalettes[command.firstRecordIndex], 1u);
+            if (command.jointPaletteGpuAddress == 0u) return false;
         }
+        return true;
     }
 
-    const RENDER3D::GPUDRIVEN::GpuDrivenPassSource* GetSourceShadowPass() {
-        if (gShadowRendererState.gpuDrivenSceneSource == nullptr) {
+    bool PrepareShadowDeformation(ShadowRendererState& state, const GFX::Context& graphics) {
+        ShadowFrameResources& frame = GetActiveShadowFrameResources(state);
+        frame.meshJointPaletteAddress = 0u;
+        const auto* source = state.gpuDrivenSceneSource;
+        if (source == nullptr) return false;
+        const auto* palettes = source->meshShaderJointPalettes;
+        // Mesh Shader の連続配列と従来描画の CBV は別の不変領域を使う。
+        frame.meshJointPaletteAddress = MESHRENDERER::UploadJointPalettes(graphics, frame.frameUploads,
+            palettes != nullptr ? palettes->data() : nullptr,
+            palettes != nullptr ? palettes->size() : 0u);
+        return frame.meshJointPaletteAddress != 0u &&
+            HydrateShadowTraditionalIndirectStream(state, graphics, state.staticTraditionalIndirectStream) &&
+            HydrateShadowTraditionalIndirectStream(state, graphics, state.dynamicTraditionalIndirectStream);
+    }
+
+    const RENDER3D::GPUDRIVEN::GpuDrivenPassSource* GetSourceShadowPass(ShadowRendererState& state) {
+        if (state.gpuDrivenSceneSource == nullptr) {
             return nullptr;
         }
         const RENDER3D::GPUDRIVEN::GpuDrivenPassSource& pass =
-            gShadowRendererState.gpuDrivenSceneSource->GetPass(
+            state.gpuDrivenSceneSource->GetPass(
                 RENDER3D::GPUDRIVEN::GpuDrivenPassKind::Shadow);
         return pass.HasGpuSceneInstances()
             ? &pass
             : nullptr;
     }
 
-    bool BuildShadowGpuDrivenSceneSources(const GFX::Context& graphics) {
+    namespace {
+        bool PublishShadowSceneSources(ShadowRendererState& state,
+            const RENDER3D::GPUDRIVEN::GpuDrivenPassSource& sourcePass) {
+            RENDER3D::GPUDRIVEN::GpuDrivenPassSource& shadowPass =
+                state.shadowSceneSource.GetPass(
+                    RENDER3D::GPUDRIVEN::GpuDrivenPassKind::Shadow);
+            shadowPass = sourcePass;
+            shadowPass.gpuSceneBaseIndex = 0;
+            shadowPass.preferredBackend =
+                RENDER3D::GPUDRIVEN::GpuDrivenBackendKind::MeshShader;
+            shadowPass.traditionalIndirect.gpuSceneBaseIndex =
+                shadowPass.gpuSceneInstanceCount;
+
+            state.shadowSceneSource.layoutVersion =
+                state.gpuDrivenSceneSource != nullptr
+                    ? state.gpuDrivenSceneSource->layoutVersion
+                    : 0u;
+            state.shadowSceneSource.sourceVersion =
+                state.gpuDrivenSceneSource != nullptr
+                    ? state.gpuDrivenSceneSource->sourceVersion
+                    : 0u;
+            state.shadowSceneSource.dirtyBaseSourceVersion =
+                state.gpuDrivenSceneSource != nullptr
+                    ? state.gpuDrivenSceneSource->dirtyBaseSourceVersion
+                    : 0u;
+            state.shadowSceneSource.sourceInstanceCount =
+                shadowPass.gpuSceneInstanceCount +
+                shadowPass.traditionalIndirect.gpuSceneInstanceCount;
+            for (auto* partition : { &state.shadowSceneSource, &state.staticShadowSceneSource, &state.dynamicShadowSceneSource }) {
+                partition->meshShaderJointPalettes = state.gpuDrivenSceneSource->meshShaderJointPalettes;
+                partition->waterSurfaceGpuData = state.gpuDrivenSceneSource->waterSurfaceGpuData;
+                partition->sandSurfaceGpuData = state.gpuDrivenSceneSource->sandSurfaceGpuData;
+                partition->sandSurfaceHeights = state.gpuDrivenSceneSource->sandSurfaceHeights;
+                partition->sandSurfaceHeightVersion = state.gpuDrivenSceneSource->sandSurfaceHeightVersion;
+            }
+
+            state.frameHasStaticShadowWork =
+                state.staticShadowSceneSource.sourceInstanceCount != 0u;
+            state.frameHasDynamicShadowWork =
+                state.dynamicShadowSceneSource.sourceInstanceCount != 0u;
+            state.debugStats.shadowStaticSourceInstanceCount =
+                state.staticShadowSceneSource.sourceInstanceCount;
+            state.debugStats.shadowDynamicSourceInstanceCount =
+                state.dynamicShadowSceneSource.sourceInstanceCount;
+
+            state.shadowSourceCache.Capture(*state.gpuDrivenSceneSource);
+            return state.shadowSceneSource.sourceInstanceCount != 0;
+        }
+
+        bool TryPatchShadowSceneSources(ShadowRendererState& state,
+            const RENDER3D::GPUDRIVEN::GpuDrivenPassSource& sourcePass) {
+            if (!state.shadowSourceCache.CanPatch(state.gpuDrivenSceneSource) ||
+                sourcePass.instances == nullptr || sourcePass.gpuSceneBaseIndex != 0u ||
+                sourcePass.instances->size() != state.shadowPrimaryLocations.size() ||
+                sourcePass.traditionalIndirect.HasCommands() ||
+                sourcePass.traditionalIndirect.gpuSceneInstanceCount != 0u ||
+                (sourcePass.materialSources != nullptr &&
+                 sourcePass.materialSources->size() != sourcePass.instances->size())) return false;
+
+            const auto materialAt = [&](size_t index) {
+                return sourcePass.materialSources != nullptr ? &(*sourcePass.materialSources)[index] : nullptr;
+            };
+            // 書き換え前に全 dirty range と partition の不変条件を確認する。
+            for (const auto& range : sourcePass.dirtyRanges) {
+                const size_t end = static_cast<size_t>(range.firstInstance) + range.instanceCount;
+                if (end > state.shadowPrimaryLocations.size()) return false;
+                for (size_t i = range.firstInstance; i < end; ++i) {
+                    const auto& instance = (*sourcePass.instances)[i];
+                    const auto& location = state.shadowPrimaryLocations[i];
+                    const bool caster = IsPrimaryShadowCaster(instance);
+                    if (caster != (location.localIndex != RENDER3D::RUNTIME::kInvalidRenderSurfaceIndex) ||
+                        (caster && location.staticCaster != IsStaticPrimaryShadowCaster(instance, materialAt(i))))
+                        return false;
+                }
+            }
+
+            bool staticChanged = false;
+            bool dynamicChanged = false;
+            for (const auto& range : sourcePass.dirtyRanges) {
+                const size_t end = static_cast<size_t>(range.firstInstance) + range.instanceCount;
+                for (size_t i = range.firstInstance; i < end; ++i) {
+                    const auto& location = state.shadowPrimaryLocations[i];
+                    if (location.localIndex == RENDER3D::RUNTIME::kInvalidRenderSurfaceIndex) continue;
+                    auto& instances = location.staticCaster ? state.staticShadowPrimaryInstances : state.dynamicShadowPrimaryInstances;
+                    auto& materials = location.staticCaster ? state.staticShadowPrimaryMaterialSources : state.dynamicShadowPrimaryMaterialSources;
+                    const bool changed = UpdateShadowPrimaryInstance((*sourcePass.instances)[i], materialAt(i),
+                        location.localIndex, instances[location.localIndex], materials[location.localIndex]);
+                    (location.staticCaster ? staticChanged : dynamicChanged) |= changed;
+                    ++state.debugStats.shadowSourceUpdatedInstanceCount;
+                }
+            }
+            const auto updateVersion = [&](RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& partition, bool changed) {
+                if (!changed) return;
+                const auto& pass = partition.GetPass(RENDER3D::GPUDRIVEN::GpuDrivenPassKind::Shadow);
+                partition.layoutVersion = BuildShadowSourceLayoutHash(pass);
+                partition.sourceVersion = BuildShadowSourceContentHash(pass);
+                partition.dirtyBaseSourceVersion = 0u;
+            };
+            updateVersion(state.staticShadowSceneSource, staticChanged);
+            updateVersion(state.dynamicShadowSceneSource, dynamicChanged);
+            ++state.debugStats.shadowSourcePatchCount;
+            return true;
+        }
+    }
+
+    bool BuildShadowGpuDrivenSceneSources(ShadowRendererState& state) {
         CPU_PROFILE::ScopedCpuTimer cpuTimer(
             CPU_PROFILE::Pass::ShadowSourceSync);
 
         const RENDER3D::GPUDRIVEN::GpuDrivenPassSource* sourcePass =
-            GetSourceShadowPass();
+            GetSourceShadowPass(state);
         if (sourcePass == nullptr ||
             !sourcePass->HasGpuSceneInstances()) {
 
-            gShadowRendererState.shadowSceneSource.Reset();
-            gShadowRendererState.staticShadowSceneSource.Reset();
-            gShadowRendererState.dynamicShadowSceneSource.Reset();
-            gShadowRendererState.activeShadowSceneSource.Reset();
-            gShadowRendererState.staticShadowPrimaryInstances.clear();
-            gShadowRendererState.staticShadowPrimaryMaterialSources.clear();
-            gShadowRendererState.dynamicShadowPrimaryInstances.clear();
-            gShadowRendererState.dynamicShadowPrimaryMaterialSources.clear();
-            gShadowStaticTraditionalIndirectStream.Clear();
-            gShadowDynamicTraditionalIndirectStream.Clear();
-            InvalidateShadowSourceCache();
+            state.shadowSceneSource.Reset();
+            state.staticShadowSceneSource.Reset();
+            state.dynamicShadowSceneSource.Reset();
+            state.activeShadowSceneSource.Reset();
+            state.staticShadowPrimaryInstances.clear();
+            state.staticShadowPrimaryMaterialSources.clear();
+            state.dynamicShadowPrimaryInstances.clear();
+            state.dynamicShadowPrimaryMaterialSources.clear();
+            state.staticTraditionalIndirectStream.Clear();
+            state.dynamicTraditionalIndirectStream.Clear();
+            InvalidateShadowSourceCache(state);
             return false;
         }
 
-        if (CanReuseShadowSourceCache()) {
-            gShadowRendererState.frameHasStaticShadowWork =
-                gShadowRendererState.staticShadowSceneSource.sourceInstanceCount != 0u;
-            gShadowRendererState.frameHasDynamicShadowWork =
-                gShadowRendererState.dynamicShadowSceneSource.sourceInstanceCount != 0u;
-            gShadowRendererState.debugStats.shadowStaticSourceInstanceCount =
-                gShadowRendererState.staticShadowSceneSource.sourceInstanceCount;
-            gShadowRendererState.debugStats.shadowDynamicSourceInstanceCount =
-                gShadowRendererState.dynamicShadowSceneSource.sourceInstanceCount;
-            return gShadowRendererState.shadowSceneSource.sourceInstanceCount != 0u;
+        if (CanReuseShadowSourceCache(state)) {
+            ++state.debugStats.shadowSourceReuseCount;
+            return PublishShadowSceneSources(state, *sourcePass);
         }
+        if (TryPatchShadowSceneSources(state, *sourcePass))
+            return PublishShadowSceneSources(state, *sourcePass);
 
-        gShadowRendererState.shadowSceneSource.Reset();
-        gShadowRendererState.staticShadowSceneSource.Reset();
-        gShadowRendererState.dynamicShadowSceneSource.Reset();
-        gShadowRendererState.activeShadowSceneSource.Reset();
-        gShadowRendererState.shadowSceneSource.meshShaderJointPalettes =
-            gShadowRendererState.gpuDrivenSceneSource->meshShaderJointPalettes;
-        gShadowRendererState.staticShadowSceneSource.meshShaderJointPalettes =
-            gShadowRendererState.gpuDrivenSceneSource->meshShaderJointPalettes;
-        gShadowRendererState.dynamicShadowSceneSource.meshShaderJointPalettes =
-            gShadowRendererState.gpuDrivenSceneSource->meshShaderJointPalettes;
-        const auto* sandGpuData =
-            gShadowRendererState.gpuDrivenSceneSource->sandSurfaceGpuData;
-        const auto* sandHeights =
-            gShadowRendererState.gpuDrivenSceneSource->sandSurfaceHeights;
-        gShadowRendererState.shadowSceneSource.sandSurfaceGpuData = sandGpuData;
-        gShadowRendererState.shadowSceneSource.sandSurfaceHeights = sandHeights;
-        gShadowRendererState.staticShadowSceneSource.sandSurfaceGpuData = sandGpuData;
-        gShadowRendererState.staticShadowSceneSource.sandSurfaceHeights = sandHeights;
-        gShadowRendererState.dynamicShadowSceneSource.sandSurfaceGpuData = sandGpuData;
-        gShadowRendererState.dynamicShadowSceneSource.sandSurfaceHeights = sandHeights;
-        gShadowRendererState.staticShadowPrimaryInstances.clear();
-        gShadowRendererState.staticShadowPrimaryMaterialSources.clear();
-        gShadowRendererState.dynamicShadowPrimaryInstances.clear();
-        gShadowRendererState.dynamicShadowPrimaryMaterialSources.clear();
-        gShadowStaticTraditionalIndirectStream.Clear();
-        gShadowDynamicTraditionalIndirectStream.Clear();
+        ++state.debugStats.shadowSourceFullSyncCount;
+        state.shadowPrimaryLocations.assign(sourcePass->instances != nullptr ? sourcePass->instances->size() : 0u, {});
+        state.shadowSceneSource.Reset();
+        state.staticShadowSceneSource.Reset();
+        state.dynamicShadowSceneSource.Reset();
+        state.activeShadowSceneSource.Reset();
+        state.staticShadowPrimaryInstances.clear();
+        state.staticShadowPrimaryMaterialSources.clear();
+        state.dynamicShadowPrimaryInstances.clear();
+        state.dynamicShadowPrimaryMaterialSources.clear();
+        state.staticTraditionalIndirectStream.Clear();
+        state.dynamicTraditionalIndirectStream.Clear();
 
         RENDER3D::GPUDRIVEN::GpuDrivenPassSource& staticPass =
-            gShadowRendererState.staticShadowSceneSource.GetPass(
+            state.staticShadowSceneSource.GetPass(
                 RENDER3D::GPUDRIVEN::GpuDrivenPassKind::Shadow);
         staticPass.Reset();
         staticPass.gpuSceneBaseIndex = 0;
@@ -288,7 +359,7 @@ namespace HIKARI::SHADOW::INTERNAL {
         staticPass.clusterEligible = sourcePass->clusterEligible;
 
         RENDER3D::GPUDRIVEN::GpuDrivenPassSource& dynamicPass =
-            gShadowRendererState.dynamicShadowSceneSource.GetPass(
+            state.dynamicShadowSceneSource.GetPass(
                 RENDER3D::GPUDRIVEN::GpuDrivenPassKind::Shadow);
         dynamicPass.Reset();
         dynamicPass.gpuSceneBaseIndex = 0;
@@ -314,54 +385,56 @@ namespace HIKARI::SHADOW::INTERNAL {
                         sourceIndex < sourceMaterials->size()
                     ? &(*sourceMaterials)[sourceIndex]
                     : nullptr;
-                if (IsStaticPrimaryShadowCaster(instance, material)) {
+                const bool staticCaster = IsStaticPrimaryShadowCaster(instance, material);
+                state.shadowPrimaryLocations[sourceIndex] = {
+                    static_cast<uint32_t>(staticCaster ? state.staticShadowPrimaryInstances.size() : state.dynamicShadowPrimaryInstances.size()),
+                    staticCaster };
+                ++state.debugStats.shadowSourceUpdatedInstanceCount;
+                if (staticCaster) {
                     AppendShadowPrimaryInstance(
                         instance,
                         material,
-                        gShadowRendererState.staticShadowPrimaryInstances,
-                        gShadowRendererState.staticShadowPrimaryMaterialSources);
+                        state.staticShadowPrimaryInstances,
+                        state.staticShadowPrimaryMaterialSources);
                 } else {
                     AppendShadowPrimaryInstance(
                         instance,
                         material,
-                        gShadowRendererState.dynamicShadowPrimaryInstances,
-                        gShadowRendererState.dynamicShadowPrimaryMaterialSources);
+                        state.dynamicShadowPrimaryInstances,
+                        state.dynamicShadowPrimaryMaterialSources);
                 }
             }
         }
 
-        if (!gShadowRendererState.staticShadowPrimaryInstances.empty()) {
-            staticPass.instances = &gShadowRendererState.staticShadowPrimaryInstances;
-            staticPass.materialSources = &gShadowRendererState.staticShadowPrimaryMaterialSources;
+        if (!state.staticShadowPrimaryInstances.empty()) {
+            staticPass.instances = &state.staticShadowPrimaryInstances;
+            staticPass.materialSources = &state.staticShadowPrimaryMaterialSources;
             staticPass.gpuSceneInstanceCount =
                 static_cast<uint32_t>((std::min)(
-                    gShadowRendererState.staticShadowPrimaryInstances.size(),
+                    state.staticShadowPrimaryInstances.size(),
                     static_cast<size_t>((std::numeric_limits<uint32_t>::max)())));
         }
 
-        if (!gShadowRendererState.dynamicShadowPrimaryInstances.empty()) {
-            dynamicPass.instances = &gShadowRendererState.dynamicShadowPrimaryInstances;
-            dynamicPass.materialSources = &gShadowRendererState.dynamicShadowPrimaryMaterialSources;
+        if (!state.dynamicShadowPrimaryInstances.empty()) {
+            dynamicPass.instances = &state.dynamicShadowPrimaryInstances;
+            dynamicPass.materialSources = &state.dynamicShadowPrimaryMaterialSources;
             dynamicPass.gpuSceneInstanceCount =
                 static_cast<uint32_t>((std::min)(
-                    gShadowRendererState.dynamicShadowPrimaryInstances.size(),
+                    state.dynamicShadowPrimaryInstances.size(),
                     static_cast<size_t>((std::numeric_limits<uint32_t>::max)())));
         }
 
         const size_t staticTraditionalCount =
             static_cast<size_t>(sourcePass->traditionalIndirect.staticCommandCount);
         if (staticTraditionalCount != 0u &&
-            gShadowStaticTraditionalIndirectStream.CopyRangeFrom(
+            state.staticTraditionalIndirectStream.CopyRangeFrom(
                 sourcePass->traditionalIndirect,
                 0u,
                 staticTraditionalCount,
                 &IsStaticPrimaryShadowCaster)) {
-            HydrateShadowTraditionalIndirectStream(
-                graphics,
-                gShadowStaticTraditionalIndirectStream);
-            gShadowStaticTraditionalIndirectStream.gpuSceneBaseIndex =
+            state.staticTraditionalIndirectStream.gpuSceneBaseIndex =
                 staticPass.gpuSceneInstanceCount;
-            gShadowStaticTraditionalIndirectStream.AttachTo(staticPass);
+            state.staticTraditionalIndirectStream.AttachTo(staticPass);
         }
         if (staticPass.gpuSceneInstanceCount == 0u &&
             staticPass.traditionalIndirect.HasCommands()) {
@@ -369,19 +442,19 @@ namespace HIKARI::SHADOW::INTERNAL {
                 RENDER3D::GPUDRIVEN::GpuDrivenBackendKind::TraditionalIndirect;
         }
 
-        gShadowRendererState.staticShadowSceneSource.sourceInstanceCount =
+        state.staticShadowSceneSource.sourceInstanceCount =
             staticPass.gpuSceneInstanceCount +
             staticPass.traditionalIndirect.gpuSceneInstanceCount;
-        gShadowRendererState.staticShadowSceneSource.layoutVersion =
+        state.staticShadowSceneSource.layoutVersion =
             BuildShadowSourceLayoutHash(staticPass);
-        gShadowRendererState.staticShadowSceneSource.sourceVersion =
+        state.staticShadowSceneSource.sourceVersion =
             BuildShadowSourceContentHash(staticPass);
-        gShadowRendererState.staticShadowSceneSource.dirtyBaseSourceVersion = 0u;
+        state.staticShadowSceneSource.dirtyBaseSourceVersion = 0u;
 
         const size_t totalTraditionalCount = staticTraditionalCount +
             static_cast<size_t>(sourcePass->traditionalIndirect.skinnedCommandCount);
         if (totalTraditionalCount != 0u &&
-            gShadowDynamicTraditionalIndirectStream.CopyRangeFrom(
+            state.dynamicTraditionalIndirectStream.CopyRangeFrom(
                 sourcePass->traditionalIndirect,
                 0u,
                 totalTraditionalCount,
@@ -389,12 +462,9 @@ namespace HIKARI::SHADOW::INTERNAL {
                     const RENDER3D::RUNTIME::SurfaceGpuSceneMaterialSource* material) {
                     return IsPrimaryShadowCaster(instance) && !IsStaticPrimaryShadowCaster(instance, material);
                 })) {
-            HydrateShadowTraditionalIndirectStream(
-                graphics,
-                gShadowDynamicTraditionalIndirectStream);
-            gShadowDynamicTraditionalIndirectStream.gpuSceneBaseIndex =
+            state.dynamicTraditionalIndirectStream.gpuSceneBaseIndex =
                 dynamicPass.gpuSceneInstanceCount;
-            gShadowDynamicTraditionalIndirectStream.AttachTo(dynamicPass);
+            state.dynamicTraditionalIndirectStream.AttachTo(dynamicPass);
         }
         if (dynamicPass.gpuSceneInstanceCount == 0u &&
             dynamicPass.traditionalIndirect.HasCommands()) {
@@ -402,67 +472,29 @@ namespace HIKARI::SHADOW::INTERNAL {
                 RENDER3D::GPUDRIVEN::GpuDrivenBackendKind::TraditionalIndirect;
         }
 
-        gShadowRendererState.dynamicShadowSceneSource.sourceInstanceCount =
+        state.dynamicShadowSceneSource.sourceInstanceCount =
             dynamicPass.gpuSceneInstanceCount +
             dynamicPass.traditionalIndirect.gpuSceneInstanceCount;
-        gShadowRendererState.dynamicShadowSceneSource.layoutVersion =
+        state.dynamicShadowSceneSource.layoutVersion =
             BuildShadowSourceLayoutHash(dynamicPass);
-        gShadowRendererState.dynamicShadowSceneSource.sourceVersion =
+        state.dynamicShadowSceneSource.sourceVersion =
             BuildShadowSourceContentHash(dynamicPass);
-        gShadowRendererState.dynamicShadowSceneSource.dirtyBaseSourceVersion = 0u;
+        state.dynamicShadowSceneSource.dirtyBaseSourceVersion = 0u;
 
-        RENDER3D::GPUDRIVEN::GpuDrivenPassSource& shadowPass =
-            gShadowRendererState.shadowSceneSource.GetPass(
-                RENDER3D::GPUDRIVEN::GpuDrivenPassKind::Shadow);
-        shadowPass = *sourcePass;
-        shadowPass.gpuSceneBaseIndex = 0;
-        shadowPass.preferredBackend =
-            RENDER3D::GPUDRIVEN::GpuDrivenBackendKind::MeshShader;
-        shadowPass.traditionalIndirect.gpuSceneBaseIndex =
-            shadowPass.gpuSceneInstanceCount;
-
-        gShadowRendererState.shadowSceneSource.layoutVersion =
-            gShadowRendererState.gpuDrivenSceneSource != nullptr
-                ? gShadowRendererState.gpuDrivenSceneSource->layoutVersion
-                : 0u;
-        gShadowRendererState.shadowSceneSource.sourceVersion =
-            gShadowRendererState.gpuDrivenSceneSource != nullptr
-                ? gShadowRendererState.gpuDrivenSceneSource->sourceVersion
-                : 0u;
-        gShadowRendererState.shadowSceneSource.dirtyBaseSourceVersion =
-            gShadowRendererState.gpuDrivenSceneSource != nullptr
-                ? gShadowRendererState.gpuDrivenSceneSource->dirtyBaseSourceVersion
-                : 0u;
-        gShadowRendererState.shadowSceneSource.sourceInstanceCount =
-            shadowPass.gpuSceneInstanceCount +
-            shadowPass.traditionalIndirect.gpuSceneInstanceCount;
-        gShadowRendererState.shadowSceneSource.meshShaderJointPalettes =
-            gShadowRendererState.gpuDrivenSceneSource->meshShaderJointPalettes;
-
-        gShadowRendererState.frameHasStaticShadowWork =
-            gShadowRendererState.staticShadowSceneSource.sourceInstanceCount != 0u;
-        gShadowRendererState.frameHasDynamicShadowWork =
-            gShadowRendererState.dynamicShadowSceneSource.sourceInstanceCount != 0u;
-        gShadowRendererState.debugStats.shadowStaticSourceInstanceCount =
-            gShadowRendererState.staticShadowSceneSource.sourceInstanceCount;
-        gShadowRendererState.debugStats.shadowDynamicSourceInstanceCount =
-            gShadowRendererState.dynamicShadowSceneSource.sourceInstanceCount;
-
-        gShadowRendererState.shadowSourceCache.Capture(*gShadowRendererState.gpuDrivenSceneSource);
-        return gShadowRendererState.shadowSceneSource.sourceInstanceCount != 0;
+        return PublishShadowSceneSources(state, *sourcePass);
     }
 
-    void SyncShadowGpuDrivenBackendAvailability() {
+    void SyncShadowGpuDrivenBackendAvailability(ShadowRendererState& state) {
         RENDER3D::GPUDRIVEN::GpuDrivenBackendAvailability availability{};
         const RENDER3D::MESHLET::MeshletRenderBackendStats& meshletStats =
-            gShadowRendererState.meshletRenderBackend.GetStats();
+            state.meshletRenderBackend.GetStats();
         availability.meshShaderForwardPipelineReady =
             meshletStats.shadowPipelineReady;
         availability.traditionalIndirectPipelineReady =
-            gShadowRendererState.rootSig != nullptr &&
-            gShadowRendererState.skinnedRootSig != nullptr &&
-            gShadowRendererState.depthPipelines.IsReady();
-        gShadowRendererState.gpuDrivenLayer.SetBackendAvailability(availability);
+            state.rootSig != nullptr &&
+            state.skinnedRootSig != nullptr &&
+            state.depthPipelines.IsReady();
+        state.gpuDrivenLayer.SetBackendAvailability(availability);
     }
 
 } // namespace HIKARI::SHADOW::INTERNAL

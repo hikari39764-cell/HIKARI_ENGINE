@@ -51,7 +51,7 @@ namespace HIKARI::ATMOSPHERE {
 
         MATH::Vec3 EstimateAtmosphereSunTransmittance(
             const AtmosphereLutConstants& atmosphere,
-            const MATH::Vec3& sunDirection) noexcept {
+            const MATH::Vec3& sunDirection, float observerHeight) noexcept {
             // Match the GPU atmosphere's spherical ground-to-space optical
             // path closely enough for the disk, glare, fog, and water to
             // share one observed solar term.  This is deliberately a small
@@ -64,7 +64,8 @@ namespace HIKARI::ATMOSPHERE {
             const float mieHeight = atmosphere.planetParams.w;
             const float ozoneWidth = atmosphere.ozoneParams.x;
             const float ozoneCenter = atmosphere.ozoneAbsorption.w;
-            const float observerRadius = planetRadius + 2.0f;
+            const float observerRadius = planetRadius + SanitizeFiniteRange(
+                observerHeight, 2.0f, 1.0f, std::max(1.0f, topRadius - planetRadius - 1.0f));
             const float mu = SanitizeFiniteRange(
                 sunDirection.y, 1.0f, -1.0f, 1.0f);
             const float topDiscriminant = observerRadius * observerRadius *
@@ -137,7 +138,8 @@ namespace HIKARI::ATMOSPHERE {
             SolarAngularRadiusFromDiskSize(environment.sky.sunDiskSize);
     }
 
-    AtmosphereSolarState BuildAtmosphereSolarState(const SceneEnvironment& environment) noexcept {
+    AtmosphereSolarState BuildAtmosphereSolarState(
+        const SceneEnvironment& environment, float observerHeight) noexcept {
         AtmosphereSolarState result{};
         const DirectionalLight& sun = environment.directional;
         const MATH::Vec3 directional = SanitizeDirection(
@@ -173,7 +175,7 @@ namespace HIKARI::ATMOSPHERE {
         if (result.atmosphereEnabled) {
             result.sunTransmittance = EstimateAtmosphereSunTransmittance(
                 BuildAtmosphereLutConstants(environment.atmosphere, result, environment.sky.groundColor),
-                result.sunDirection);
+                result.sunDirection, observerHeight);
         } else {
             result.sunTransmittance = { 1.0f, 1.0f, 1.0f };
         }
@@ -187,14 +189,15 @@ namespace HIKARI::ATMOSPHERE {
         result.sunRadiance = result.sunSourceRadiance *
             transmittanceLuminance;
         if (transmittanceLuminance > 1.0e-5f) {
-            result.sunColor = SanitizeRadianceColor({
+            // 正規化した色度を光源色の上限で再び clamp すると HDR の積が変わる。
+            result.sunColor = {
                 result.sunSourceColor.x * result.sunTransmittance.x /
                     transmittanceLuminance,
                 result.sunSourceColor.y * result.sunTransmittance.y /
                     transmittanceLuminance,
                 result.sunSourceColor.z * result.sunTransmittance.z /
                     transmittanceLuminance,
-            });
+            };
         }
         result.sunAngularRadius = ResolveSolarAngularRadius(environment);
         result.valid = sun.enabled;

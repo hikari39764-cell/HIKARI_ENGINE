@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <numbers>
 #include "Core/Math/HIKARI_MathValidation.h"
+#include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
 
 namespace HIKARI::SHADOW {
 
@@ -71,8 +73,9 @@ namespace HIKARI::SHADOW {
             if (std::abs(MATH::Dot(lightDir, up)) > 0.95f) {
                 up = { 1.0f, 0.0f, 0.0f };
             }
-            MATH::Vec3 right = MATH::Normalize(MATH::Cross(up, lightDir));
-            MATH::Vec3 actualUp = MATH::Normalize(MATH::Cross(lightDir, right));
+            const auto basis = MATH::BuildViewBasisRH(lightDir, up);
+            const MATH::Vec3 right = basis.right;
+            const MATH::Vec3 actualUp = basis.up;
 
             const float baseOrthoSize = radius * 2.0f;
             // 5x5 PCF の最大 2*radius、線形比較の半 Texel、Snap の半 Texel を確保する。
@@ -151,6 +154,43 @@ namespace HIKARI::SHADOW {
         frame.view.m[3][2] -= shift;
         frame.viewProj = MATH::Mat4::OrthoRH_ZO(frame.orthoSize, frame.orthoSize,
             frame.lightNear, frame.lightFar) * frame.view;
+    }
+
+    LocalLightShadowFrameSet BuildLocalLightShadowFrameSet(
+        const RENDER3D::LIGHTING::SceneLightProvider& light, uint32_t faceResolution) noexcept {
+        using namespace RENDER3D::LIGHTING;
+        LocalLightShadowFrameSet result{};
+        if (!IsLocalLightUploadable(light) || faceResolution < 32u) return result;
+        const bool point = light.type == SceneLightType::Point;
+        const float nearPlane = (std::max)(1e-4f, (std::min)(.05f, light.range * .001f));
+        if (light.range <= nearPlane) return result;
+        const float halfAngle = point ? std::numbers::pi_v<float> * .25f :
+            ResolveSpotLightCone(light).outerAngleDegrees * std::numbers::pi_v<float> / 180.f;
+        // 二 Texel の PCF、線形比較と狭い cone の行列丸め用に四 Texel を確保。
+        const float usable = 1.f - 8.f / float(faceResolution);
+        const float fov = 2.f * std::atan(std::tan(halfAngle) / usable);
+        const auto projection = MATH::Mat4::PerspectiveFovRH_ZO(fov, 1.f, nearPlane, light.range);
+        constexpr std::array<MATH::Vec3, 6> directions{{{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}}};
+        constexpr std::array<MATH::Vec3, 6> upVectors{{{0,1,0},{0,1,0},{0,0,-1},{0,0,1},{0,1,0},{0,1,0}}};
+        result.faceCount = point ? 6u : 1u;
+        for (uint32_t index = 0; index < result.faceCount; ++index) {
+            auto& frame = result.faces[index];
+            frame.lightPosition = light.position;
+            frame.lightDirection = point ? directions[index] : ResolveSpotLightDirection(light);
+            auto up = point ? upVectors[index] : MATH::Vec3{0,1,0};
+            if (std::abs(MATH::Dot(up, frame.lightDirection)) > .95f) up = {1,0,0};
+            // 固定原点の基底を使い、大きいワールド座標で方向を再計算しない。
+            frame.view = MATH::Mat4::LookAtRH({}, frame.lightDirection, up) *
+                MATH::Mat4::Translate(light.position * -1.f);
+            frame.viewProj = projection * frame.view;
+            if (!MATH::IsFinite(frame.viewProj)) return {};
+            frame.lightNear = nearPlane;
+            frame.lightFar = light.range;
+            const auto basis = MATH::BuildViewBasisRH(frame.lightDirection, up);
+            frame.right = basis.right;
+            frame.up = basis.up;
+        }
+        return result;
     }
 
     uint32_t ResolveShadowResolution(uint32_t resolution) {

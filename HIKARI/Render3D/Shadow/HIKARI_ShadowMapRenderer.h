@@ -26,6 +26,10 @@ namespace HIKARI::SHADOW {
         uint32_t cascadeCount = 0;
         float worldTexelSize = 0.0f;
         size_t submittedCasterCount = 0;
+        size_t shadowSourceFullSyncCount = 0;
+        size_t shadowSourcePatchCount = 0;
+        size_t shadowSourceReuseCount = 0;
+        size_t shadowSourceUpdatedInstanceCount = 0;
         size_t shadowRecordCasterDrawCount = 0;
         size_t shadowRecordSkippedCount = 0;
         size_t shadowRecordCommandCount = 0;
@@ -79,7 +83,6 @@ namespace HIKARI::SHADOW {
         size_t shadowDynamicSourceInstanceCount = 0;
         bool shadowStaticRendered = false;
         bool shadowDynamicRendered = false;
-        bool shadowUnifiedRendered = false;
         bool shadowFallbackRendered = false;
         size_t staticCasterDrawCount = 0;
         size_t skinnedCasterDrawCount = 0;

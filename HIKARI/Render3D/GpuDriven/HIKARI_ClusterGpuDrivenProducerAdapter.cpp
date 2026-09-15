@@ -1,4 +1,4 @@
-﻿#include "Render3D/GpuDriven/HIKARI_ClusterGpuDrivenProducerAdapter.h"
+#include "Render3D/GpuDriven/HIKARI_ClusterGpuDrivenProducerAdapter.h"
 
 #include <array>
 
@@ -143,8 +143,6 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             cullingPass_->GetVisibleRangeBuffer();
         output.visibility.visibleMeshletRangeBuffer =
             cullingPass_->GetVisibleRangeBuffer();
-        output.visibility.visibleMeshletClusterListBuffer =
-            cullingPass_->GetVisibleClusterListBuffer();
         output.visibility.counterBuffer =
             cullingPass_->GetCounterBuffer();
         output.visibilitySeedCount =
@@ -154,7 +152,6 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         output.visibilityReady =
             stats.initialized &&
             stats.visibleRangeBufferReady &&
-            stats.visibleClusterListBufferReady &&
             stats.counterBufferReady;
 
         output.commands.meshDispatchArgs =

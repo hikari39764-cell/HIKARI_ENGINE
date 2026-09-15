@@ -205,6 +205,25 @@ namespace HIKARI::ASSETS::GEOMETRY::COOKING {
             static_cast<size_t>((std::max)(1u, settings.maxTrianglesPerCluster))) {
             return false;
         }
+        // occupancy のために離れた島を結合すると AS の bounds/cone が
+        // 無意味になる。近傍探索だけでなく結合後の空間的な広がりを制限する。
+        const Bounds a = ComputeTriangleSubsetBounds(triangles, lhs);
+        const Bounds b = ComputeTriangleSubsetBounds(triangles, rhs);
+        if (!BOUNDS::IsUsable(a) || !BOUNDS::IsUsable(b)) return false;
+        const MATH::Vec3 extentA = a.max - a.min;
+        const MATH::Vec3 extentB = b.max - b.min;
+        const float gap = (std::max)({0.0f, a.min.x - b.max.x, b.min.x - a.max.x,
+            a.min.y - b.max.y, b.min.y - a.max.y, a.min.z - b.max.z, b.min.z - a.max.z});
+        const float smallerExtent = (std::min)(
+            (std::max)({extentA.x, extentA.y, extentA.z}),
+            (std::max)({extentB.x, extentB.y, extentB.z}));
+        const Bounds merged = MergeBounds(a, b);
+        const MATH::Vec3 mergedExtent = merged.max - merged.min;
+        if (gap > (std::max)(1.0e-5f, smallerExtent * 0.25f) ||
+            MATH::Dot(mergedExtent, mergedExtent) >
+                2.25f * (std::max)(MATH::Dot(extentA, extentA), MATH::Dot(extentB, extentB))) {
+            return false;
+        }
         if (!AreTriangleGroupsNormalCompatible(triangles, lhs, rhs, settings)) {
             return false;
         }
@@ -299,7 +318,7 @@ namespace HIKARI::ASSETS::GEOMETRY::COOKING {
                 size_t bestIndex = groups.size();
                 float bestScore = (std::numeric_limits<float>::max)();
                 for (size_t candidateIndex = groupIndex + 1u;
-                     candidateIndex < groups.size();
+                     candidateIndex < (std::min)(groups.size(), groupIndex + 65u);
                      ++candidateIndex) {
                     if (consumed[candidateIndex] || groups[candidateIndex].empty()) {
                         continue;
@@ -504,12 +523,6 @@ namespace HIKARI::ASSETS::GEOMETRY::COOKING {
             if (meshlet.triangle_count == 0u || meshlet.vertex_count == 0u) {
                 continue;
             }
-
-            meshopt_optimizeMeshlet(
-                meshletVertices.data() + meshlet.vertex_offset,
-                meshletTriangles.data() + meshlet.triangle_offset,
-                meshlet.triangle_count,
-                meshlet.vertex_count);
 
             std::vector<uint32_t> group{};
             group.reserve(meshlet.triangle_count);

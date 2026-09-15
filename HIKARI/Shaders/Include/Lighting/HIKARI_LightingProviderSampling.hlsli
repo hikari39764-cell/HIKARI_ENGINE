@@ -1,7 +1,7 @@
-#ifndef HIKARI_LOCAL_LIGHTING_PROVIDER_COMMON_HLSLI
-#define HIKARI_LOCAL_LIGHTING_PROVIDER_COMMON_HLSLI
+#ifndef HIKARI_LIGHTING_PROVIDER_SAMPLING_HLSLI
+#define HIKARI_LIGHTING_PROVIDER_SAMPLING_HLSLI
 
-#include "../Lighting/HIKARI_IrradianceSh9.hlsli"
+#include "HIKARI_IrradianceSh9.hlsli"
 #include "../HIKARI_DirectionEncoding.hlsli"
 
 float3 HikariSampleLightProbeCoefficient(
@@ -22,20 +22,21 @@ float3 HikariSampleLightProbeCoefficient(
 
 // 可視性は probe から受光点への方向距離。位置補間は元の座標を維持する。
 float HikariLightProbeVisibility(HikariIrradianceVolumeData volume,
-    uint3 probeCoordinate, float3 worldPos, float requestedBias)
+    uint3 probeCoordinate, float3 worldPos, float requestedBias, float3 relocation = 0.0f.xxx)
 {
     const uint descriptorIndex = (uint)(volume.selectionParams.y + 0.5f) - 1u;
     if (descriptorIndex >= HIKARI_MATERIAL_TEXTURE_POOL_COUNT || volume.selectionParams.w <= 0.0f)
         return 0.0f;
     const uint3 counts = (uint3)(volume.countsProbeCount.xyz + 0.5f);
-    const float3 probePosition = volume.originSampling.xyz + (float3)probeCoordinate * volume.spacingIntensity.xyz;
+    const float3 probePosition = volume.originSampling.xyz + ((float3)probeCoordinate + relocation) * volume.spacingIntensity.xyz;
     const float3 offset = worldPos - probePosition;
     const float distance = length(offset);
     if (distance <= 1e-6f) return 1.0f;
     const float2 directionUv = HikariEncodeOctahedralDirection(offset / distance);
     const uint2 tile = uint2(probeCoordinate.x + probeCoordinate.y * counts.x, probeCoordinate.z);
-    const float2 atlasSize = float2(counts.x * counts.y, counts.z) * 18.0f;
-    const float2 uv = ((float2)tile * 18.0f + 1.0f + directionUv * 16.0f) / atlasSize;
+    const float side = volume.originSampling.w >= 2.5f ? 8.0f : 16.0f;
+    const float2 atlasSize = float2(counts.x * counts.y, counts.z) * (side+2.0f);
+    const float2 uv = ((float2)tile * (side+2.0f) + 1.0f + directionUv * side) / atlasSize;
     const float2 moments = gMaterialTexturePool[NonUniformResourceIndex(descriptorIndex)].SampleLevel(gLinearClamp, uv, 0.0f).rg;
     // 大きな probe 間隔でも壁を越す位置オフセットにしない。距離比較の誤差だけ許容する。
     const float bias = min(requestedBias, max(0.001f, distance * 0.001f));
@@ -45,19 +46,37 @@ float HikariLightProbeVisibility(HikariIrradianceVolumeData volume,
     return visibility * visibility * visibility;
 }
 
-float3 HikariLoadLightProbeCoefficient(uint providerSlot, uint coefficientIndex, uint3 coordinate)
+float4 HikariLoadLightProbeTexel(uint providerSlot, uint coefficientIndex, uint3 coordinate)
 {
     return providerSlot == 0u
-        ? gLightProbeShVolume0[coefficientIndex].Load(int4(coordinate, 0)).rgb
-        : gLightProbeShVolume1[coefficientIndex].Load(int4(coordinate, 0)).rgb;
+        ? gLightProbeShVolume0[coefficientIndex].Load(int4(coordinate, 0))
+        : gLightProbeShVolume1[coefficientIndex].Load(int4(coordinate, 0));
 }
 
-float3 HikariEvaluateLightProbeVolumeDiffuse(
+float3 HikariLoadLightProbeCoefficient(uint providerSlot, uint coefficientIndex, uint3 coordinate)
+{
+    return HikariLoadLightProbeTexel(providerSlot, coefficientIndex, coordinate).rgb;
+}
+
+// データ不在と、正しく暗い（遮蔽された）照明を別に扱う。
+bool HikariHasIrradianceVolumeData(HikariIrradianceVolumeData volume)
+{
+    return volume.originSampling.w >= 0.5f && volume.selectionParams.y >= 0.5f &&
+        volume.selectionParams.y <= (float)HIKARI_MATERIAL_TEXTURE_POOL_COUNT &&
+        volume.selectionParams.w > 0.0f && isfinite(volume.selectionParams.w) &&
+        volume.countsProbeCount.w >= 0.5f && all(volume.countsProbeCount.xyz >= 1.0f.xxx) &&
+        all(isfinite(volume.countsProbeCount)) && all(isfinite(volume.spacingIntensity)) &&
+        all(volume.spacingIntensity.xyz > 0.0f.xxx) && volume.spacingIntensity.w >= 0.0f;
+}
+
+// RGB は E/pi、A は sample validity。空間 coverage は influence が所有する。
+float4 HikariEvaluateLightProbeVolumeDiffuse(
     uint providerSlot, HikariIrradianceVolumeData volume, float3 worldPos, float3 n)
 {
+    if (!HikariHasIrradianceVolumeData(volume)) return 0.0f.xxxx;
+    // 強度ゼロは有効な黒。下位の空へ切り替えると調整結果が逆転する。
+    if (volume.spacingIntensity.w == 0.0f) return float4(0,0,0,1);
     const uint3 counts = (uint3)(volume.countsProbeCount.xyz + 0.5f);
-    if (volume.originSampling.w < 0.5f || volume.selectionParams.y < 0.5f ||
-        volume.countsProbeCount.w < 0.5f || any(counts < 1u)) return 0.0f.xxx;
     const float3 grid = clamp((worldPos - volume.originSampling.xyz) /
         max(volume.spacingIntensity.xyz, 0.0001f.xxx), 0.0f.xxx, (float3)(counts - 1u));
     const uint3 base = (uint3)floor(grid);
@@ -67,40 +86,80 @@ float3 HikariEvaluateLightProbeVolumeDiffuse(
     uint3 coordinates[8];
     float weights[8];
     float totalWeight = 0.0f;
-    bool allVisible = true;
+    float validWeight = 0.0f;
+    const bool dynamic = volume.originSampling.w >= 2.5f;
+    bool allVisible = !dynamic;
     [unroll] for (uint corner = 0u; corner < 8u; ++corner)
     {
         const uint3 offset = uint3(corner & 1u, (corner >> 1u) & 1u, (corner >> 2u) & 1u);
         coordinates[corner] = min(base + offset, counts - 1u);
         const float3 axisWeight = lerp(1.0f.xxx - fraction, fraction, (float3)offset);
         const float interpolationWeight = axisWeight.x * axisWeight.y * axisWeight.z;
+        const float validity = dynamic ? saturate(HikariLoadLightProbeTexel(providerSlot, 0u, coordinates[corner]).a) : 1.0f;
+        float3 relocation = 0.0f.xxx;
+        if (dynamic && interpolationWeight > 0.0f && validity > 0.0f)
+            relocation = float3(HikariLoadLightProbeTexel(providerSlot, 1u, coordinates[corner]).a,
+                HikariLoadLightProbeTexel(providerSlot, 2u, coordinates[corner]).a,
+                HikariLoadLightProbeTexel(providerSlot, 3u, coordinates[corner]).a);
         const float visibility = interpolationWeight > 0.0f
-            ? HikariLightProbeVisibility(volume, coordinates[corner], worldPos, requestedBias) : 1.0f;
-        weights[corner] = interpolationWeight * visibility;
+            ? HikariLightProbeVisibility(volume, coordinates[corner], worldPos, requestedBias, relocation) : 1.0f;
+        weights[corner] = interpolationWeight * visibility * validity;
+        validWeight += interpolationWeight * validity;
         totalWeight += weights[corner];
         allVisible = allVisible && visibility >= 0.9999f;
     }
-    if (totalWeight <= 1e-5f) return 0.0f.xxx;
+    // 全 probe が壁の反対側でもデータは有効。sky fallback による漏光を作らない。
+    if (validWeight <= 1e-5f) return 0.0f.xxxx;
+    if (totalWeight <= 1e-5f) return float4(0,0,0,saturate(validWeight));
     float3 result = 0.0f.xxx;
-    const float3 uvw = (grid + 0.5f) / (float3)counts;
-    [unroll] for (uint coefficient = 0u; coefficient < 9u; ++coefficient)
+    [branch] if (allVisible)
     {
-        float3 value = 0.0f.xxx;
-        if (allVisible)
-        {
-            // 遮蔽物がない領域は既存の hardware trilinear を保ち、72 回の Load を避ける。
-            value = HikariSampleLightProbeCoefficient(providerSlot, coefficient, uvw);
-        }
-        else
-        {
-            [unroll] for (uint corner = 0u; corner < 8u; ++corner)
-                if (weights[corner] > 0.0f)
-                    value += HikariLoadLightProbeCoefficient(providerSlot, coefficient, coordinates[corner]) * weights[corner];
-            value /= totalWeight;
-        }
-        result += value * HikariSh9DiffuseWeight(n, coefficient);
+        const float3 uvw = (grid + 0.5f) / (float3)counts;
+        [unroll] for (uint coefficient = 0u; coefficient < 9u; ++coefficient)
+            result += HikariSampleLightProbeCoefficient(providerSlot, coefficient, uvw) *
+                HikariSh9DiffuseWeight(n, coefficient);
     }
-    return max(result, 0.0f.xxx);
+    else if (!dynamic && volume.originSampling.w >= 1.5f)
+    {
+        // Fast: 可視性で重み付けした x 方向の二点を hardware filtering 一回へ畳む。
+        // y/z は texel 中心に固定。遮蔽重みは省略せず、36 fetch で同じ SH 線形和を評価する。
+        [unroll] for (uint pair = 0u; pair < 4u; ++pair)
+        {
+            const uint corner = pair * 2u;
+            const float pairWeight = weights[corner] + weights[corner + 1u];
+            [branch] if (pairWeight > 0.0f)
+            {
+                const float fractionX = weights[corner + 1u] / pairWeight;
+                const float3 coordinate = lerp((float3)coordinates[corner],
+                    (float3)coordinates[corner + 1u], fractionX);
+                const float3 uvw = (coordinate + 0.5f) / (float3)counts;
+                float3 irradiance = 0.0f.xxx;
+                [unroll] for (uint coefficient = 0u; coefficient < 9u; ++coefficient)
+                    irradiance += HikariSampleLightProbeCoefficient(providerSlot, coefficient, uvw) *
+                        HikariSh9DiffuseWeight(n, coefficient);
+                result += irradiance * pairWeight;
+            }
+        }
+        result /= totalWeight;
+    }
+    else
+    {
+        // Full/dynamic: probe 単位で畳み込み、visibility の分岐を係数ごとに反復しない。
+        // SH は signed。probe ごとの clamp はせず、補間後にだけ非負にする。
+        [unroll] for (uint corner = 0u; corner < 8u; ++corner)
+        {
+            [branch] if (weights[corner] > 0.0f)
+            {
+                float3 irradiance = 0.0f.xxx;
+                [unroll] for (uint coefficient = 0u; coefficient < 9u; ++coefficient)
+                    irradiance += HikariLoadLightProbeCoefficient(providerSlot, coefficient, coordinates[corner]) *
+                        HikariSh9DiffuseWeight(n, coefficient);
+                result += irradiance * weights[corner];
+            }
+        }
+        result /= totalWeight;
+    }
+    return float4(max(result, 0.0f.xxx), saturate(validWeight));
 }
 
 float HikariSmoothLightingProviderWeight(float value)
@@ -113,11 +172,7 @@ float HikariEvaluateIrradianceVolumeInfluence(
     HikariIrradianceVolumeData volume,
     float3 worldPos)
 {
-    if (volume.selectionParams.y < 0.5f ||
-        volume.originSampling.w < 0.5f ||
-        volume.spacingIntensity.w <= 0.0001f ||
-        volume.countsProbeCount.w < 0.5f ||
-        any(volume.countsProbeCount.xyz < 0.5f.xxx))
+    if (!HikariHasIrradianceVolumeData(volume))
     {
         return 0.0f;
     }
@@ -153,6 +208,7 @@ float HikariEvaluateIrradianceVolumeInfluence(
         edgeDistance / blendDistance);
 }
 
+#if !defined(HIKARI_IRRADIANCE_SAMPLE_ONLY)
 float2 HikariEvaluateIrradianceProviderWeights(
     float3 worldPos)
 {
@@ -173,79 +229,44 @@ float HikariEvaluateProviderFallbackWeight(float2 weights)
         (1.0f - weights.y));
 }
 
-float3 HikariBlendLightProbeDiffuse(
-    float3 fallbackDiffuse,
-    float3 worldPos,
-    float3 n)
+// RGB は coverage 適用済みの E/pi、A は下位 provider を置換する coverage。
+// 呼び出し側は A<1 の場合にだけ Sky/Ambient を評価する。
+float4 HikariResolveLightProbeDiffuse(float3 worldPos, float3 n)
 {
-    float weights[2];
-    float3 samples[2];
-    [unroll]
-    for (uint slot = 0u; slot < 2u; ++slot)
+    float weights[2] = {0.0f, 0.0f};
+    float3 samples[2] = {0.0f.xxx, 0.0f.xxx};
+    const float priority0 = gIrradianceVolumes[0].selectionParams.x;
+    const float priority1 = gIrradianceVolumes[1].selectionParams.x;
+    const bool dynamicOverride = gIrradianceVolumes[0].originSampling.w >= 2.5f &&
+        gIrradianceVolumes[1].originSampling.w < 2.5f;
+    const bool ordered = priority0 != priority1 || dynamicOverride;
+    const uint firstSlot = priority1 > priority0 && !dynamicOverride ? 1u : 0u;
+    [unroll] for (uint order = 0u; order < 2u; ++order)
     {
-        HikariIrradianceVolumeData volume =
-            gIrradianceVolumes[slot];
-        weights[slot] =
-            HikariEvaluateIrradianceVolumeInfluence(
-                volume,
-                worldPos);
-        samples[slot] = weights[slot] > 0.0001f
-            ? HikariEvaluateLightProbeVolumeDiffuse(
-                slot,
-                volume,
-                worldPos,
-                n) *
-                max(0.0f, volume.spacingIntensity.w)
-            : 0.0f.xxx;
+        const uint slot = firstSlot ^ order;
+        const HikariIrradianceVolumeData volume = gIrradianceVolumes[slot];
+        const float influence = HikariEvaluateIrradianceVolumeInfluence(volume, worldPos);
+        [branch] if (influence > 0.0001f)
+        {
+            const float4 sample = HikariEvaluateLightProbeVolumeDiffuse(slot, volume, worldPos, n);
+            weights[slot] = influence * sample.a;
+            samples[slot] = sample.rgb * max(0.0f, volume.spacingIntensity.w);
+        }
+        // 優先 provider が全面を覆うなら、隠れた下位 provider の SH を読まない。
+        [branch] if (order == 0u && ordered && weights[slot] >= 1.0f)
+            return float4(samples[slot], 1.0f);
     }
-
-    if (weights[0] <= 0.0001f &&
-        weights[1] <= 0.0001f)
+    if (weights[0] <= 0.0001f && weights[1] <= 0.0001f) return 0.0f.xxxx;
+    const float coverage = saturate(1.0f - (1.0f - weights[0]) * (1.0f - weights[1]));
+    if (ordered)
     {
-        return fallbackDiffuse;
+        const uint lower = firstSlot ^ 1u;
+        return float4(samples[lower] * (weights[lower] * (1.0f - weights[firstSlot])) +
+            samples[firstSlot] * weights[firstSlot], coverage);
     }
-
-    float priority0 =
-        gIrradianceVolumes[0].selectionParams.x;
-    float priority1 =
-        gIrradianceVolumes[1].selectionParams.x;
-    if (priority0 > priority1)
-    {
-        float3 lower = lerp(
-            fallbackDiffuse,
-            samples[1],
-            weights[1]);
-        return lerp(
-            lower,
-            samples[0],
-            weights[0]);
-    }
-    if (priority1 > priority0)
-    {
-        float3 lower = lerp(
-            fallbackDiffuse,
-            samples[0],
-            weights[0]);
-        return lerp(
-            lower,
-            samples[1],
-            weights[1]);
-    }
-
-    float totalWeight =
-        weights[0] + weights[1];
-    float3 localDiffuse =
-        (samples[0] * weights[0] +
-            samples[1] * weights[1]) /
-        max(totalWeight, 0.0001f);
-    float localCoverage =
-        1.0f -
-        (1.0f - weights[0]) *
-        (1.0f - weights[1]);
-    return lerp(
-        fallbackDiffuse,
-        localDiffuse,
-        saturate(localCoverage));
+    const float3 localDiffuse = (samples[0] * weights[0] + samples[1] * weights[1]) /
+        max(weights[0] + weights[1], 0.0001f);
+    return float4(localDiffuse * coverage, coverage);
 }
 
 float HikariEvaluateSphereReflectionProbeInfluence(
@@ -422,4 +443,5 @@ float3 HikariComputeReflectionProbeSampleDirection(
         hitPosition - probe.positionRadius.xyz);
 }
 
+#endif // HIKARI_IRRADIANCE_SAMPLE_ONLY
 #endif

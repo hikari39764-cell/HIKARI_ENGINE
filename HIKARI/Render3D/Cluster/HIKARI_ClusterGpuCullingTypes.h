@@ -76,13 +76,11 @@ namespace HIKARI::RENDER3D::CLUSTER {
         bool inputBufferReady = false;
         bool pageTaskBufferReady = false;
         bool visibleRangeBufferReady = false;
-        bool visibleClusterListBufferReady = false;
         bool dispatchArgumentBufferReady = false;
         bool counterBufferReady = false;
         size_t inputCapacity = 0;
         size_t pageTaskCapacity = 0;
         size_t visibleRangeCapacity = 0;
-        size_t visibleClusterListCapacity = 0;
         size_t candidateCommandCapacity = 0;
         size_t occlusionHistoryCapacity = 0;
         size_t sourceInstanceCount = 0;
@@ -156,8 +154,6 @@ namespace HIKARI::RENDER3D::CLUSTER {
         uint32_t gpuMergedGapIndexCount = 0;
         uint32_t gpuPacketRangeCount = 0;
         uint32_t gpuPacketClusterCount = 0;
-        uint32_t gpuVisibleClusterListReservedCount = 0;
-        uint32_t gpuVisibleClusterListOverflowCount = 0;
         uint32_t gpuLod0SelectedCount = 0;
         uint32_t gpuLod1SelectedCount = 0;
         uint32_t gpuLod2SelectedCount = 0;

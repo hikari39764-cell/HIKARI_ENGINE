@@ -1,5 +1,6 @@
 #include "Include/Surface/HIKARI_ScreenSpaceReflectionTrace.hlsli"
 #include "Include/Surface/HIKARI_SceneReflectionContribution.hlsli"
+#include "Include/Temporal/HIKARI_TemporalReprojection.hlsli"
 
 cbuffer ScreenSpaceReflectionCB : register(b0)
 {
@@ -11,6 +12,9 @@ cbuffer ScreenSpaceReflectionCB : register(b0)
     float4 gTraceParams;
     float4 gResolveParams;
     float4 gFrameParams;
+    float4x4 gPreviousInvViewProj;
+    float4 gPreviousCameraPosition;
+    float4 gJitterPixels;
 };
 
 #define gMaxDistance gTraceParams.x
@@ -30,6 +34,10 @@ Texture2D<float> gCurrentHzb : register(t3);
 Texture2D<float4> gSsrTrace : register(t4);
 Texture2D<float4> gReflectionFallback : register(t5);
 Texture2D<float4> gReflectionResponse : register(t6);
+Texture2D<float4> gReflectionHistory : register(t7);
+Texture2D<float4> gReflectionHistoryValidation : register(t8);
+Texture2D<float2> gMotionVectors : register(t9);
+Texture2D<float2> gMotionMetadata : register(t10);
 SamplerState gLinearClamp : register(s0);
 SamplerState gPointClamp : register(s1);
 
@@ -242,6 +250,97 @@ float4 ResolveHalfResolutionTrace(
     // 放射輝度と confidence を分離し、合成時の一度だけ減衰させる。
     return float4(accumulated.rgb / accumulated.a,
         saturate(accumulated.a / accumulatedWeight));
+}
+
+struct ReflectionHistoryOutput
+{
+    float4 radiance : SV_TARGET0;
+    float4 validation : SV_TARGET1;
+};
+
+bool IsValidReflectionSample(float4 sample)
+{
+    return HikariIsValidScreenSpaceReflectionRadiance(sample.rgb) &&
+        isfinite(sample.a) && sample.a > 0.0001f && sample.a <= 1.0f;
+}
+
+ReflectionHistoryOutput PSHistory(FullscreenVertex input)
+{
+    ReflectionHistoryOutput output = (ReflectionHistoryOutput)0;
+    const int2 pixel = min(int2(input.position.xy), int2(gTraceScreenParams.xy) - 1);
+    const float depth = gSceneDepth.SampleLevel(gPointClamp, input.uv, 0);
+    if (!HikariIsValidSceneDepth(depth)) return output;
+    const float4 packed = gSceneSurface.SampleLevel(gPointClamp, input.uv, 0);
+    const float3 normal = HikariDecodeOctahedralDirection(packed.xy);
+    const float3 world = ReconstructWorldPosition(input.uv, depth);
+    const float distanceToCamera = length(world - gCameraPosition.xyz);
+    if (!all(isfinite(packed)) || !isfinite(distanceToCamera) || distanceToCamera >= 65500.0f) return output;
+    output.validation = float4(packed.xyz, distanceToCamera);
+    const float4 current = gSsrTrace.Load(int3(pixel, 0));
+    // 現在の ray が無効なら古い成功を復活させず、その frame から probe/sky へ戻す。
+    if (!IsValidReflectionSample(current)) return output;
+    output.radiance = current;
+    if (gFrameParams.z < 0.5f) return output;
+    const float2 motion = gMotionVectors.SampleLevel(gPointClamp, input.uv, 0);
+    const float2 metadata = gMotionMetadata.SampleLevel(gPointClamp, input.uv, 0);
+    if (!all(isfinite(motion)) || !all(isfinite(metadata)) || metadata.y < 0.5f ||
+        !HikariIsValidSceneDepth(metadata.x)) return output;
+    const float2 previousUv = HikariReprojectHistoryUv(input.uv, motion, gScreenParams.zw,
+        gJitterPixels.xy, gJitterPixels.zw);
+    if (any(previousUv <= 0) || any(previousUv >= 1)) return output;
+    float3 previousWorld;
+    if (!HikariReconstructWorldPosition(previousUv, metadata.x, gPreviousInvViewProj, previousWorld)) return output;
+    const float expectedDistance = length(previousWorld - gPreviousCameraPosition.xyz);
+    if (!isfinite(expectedDistance)) return output;
+
+    const float2 historyPosition = previousUv * gTraceScreenParams.xy - 0.5f;
+    const int2 basePixel = int2(floor(historyPosition));
+    const float2 fraction = frac(historyPosition);
+    float4 historySum = 0;
+    float historySupport = 0;
+    [unroll] for (int y = 0; y < 2; ++y) [unroll] for (int x = 0; x < 2; ++x)
+    {
+        const int2 historyPixel = basePixel + int2(x, y);
+        if (any(historyPixel < 0) || any(historyPixel >= int2(gTraceScreenParams.xy))) continue;
+        const float4 validation = gReflectionHistoryValidation.Load(int3(historyPixel, 0));
+        const float4 history = gReflectionHistory.Load(int3(historyPixel, 0));
+        if (!all(isfinite(validation)) || validation.w <= 0 || !IsValidReflectionSample(history)) continue;
+        const float3 previousNormal = HikariDecodeOctahedralDirection(validation.xy);
+        const float depthWeight = saturate(1.0f - abs(validation.w - expectedDistance) / max(expectedDistance * 0.01f, 0.03f));
+        const float normalWeight = saturate((dot(normal, previousNormal) - 0.9f) * 10.0f);
+        const float roughnessWeight = saturate(1.0f - abs(packed.z - validation.z) * 10.0f);
+        const float weight = (x == 0 ? 1 - fraction.x : fraction.x) * (y == 0 ? 1 - fraction.y : fraction.y) *
+            depthWeight * normalWeight * roughnessWeight;
+        historySum += float4(history.rgb * history.a, history.a) * weight;
+        historySupport += weight;
+    }
+    if (historySupport <= 0.01f || historySum.a <= 0.0001f) return output;
+    float3 historyRadiance = historySum.rgb / historySum.a;
+    const float historyConfidence = saturate(historySum.a / historySupport);
+    // 現在の同一面の近傍範囲に制限する。遮蔽境界をまたぐ色や照明変更を履歴で引きずらない。
+    float3 lower = current.rgb, upper = current.rgb;
+    [unroll] for (int y = -1; y <= 1; ++y) [unroll] for (int x = -1; x <= 1; ++x)
+    {
+        const int2 neighbor = clamp(pixel + int2(x, y), 0, int2(gTraceScreenParams.xy) - 1);
+        const float2 uv = (float2(neighbor) + 0.5f) * gTraceScreenParams.zw;
+        const float sampleDepth = gSceneDepth.SampleLevel(gPointClamp, uv, 0);
+        if (!HikariIsValidSceneDepth(sampleDepth)) continue;
+        const float4 sampleSurface = gSceneSurface.SampleLevel(gPointClamp, uv, 0);
+        if (dot(normal, HikariDecodeOctahedralDirection(sampleSurface.xy)) < 0.95f ||
+            abs(sampleSurface.z - packed.z) > 0.1f) continue;
+        const float sampleDistance = length(ReconstructWorldPosition(uv, sampleDepth) - gCameraPosition.xyz);
+        if (abs(sampleDistance - distanceToCamera) > max(distanceToCamera * 0.02f, 0.05f)) continue;
+        const float4 sample = gSsrTrace.Load(int3(neighbor, 0));
+        if (!IsValidReflectionSample(sample)) continue;
+        lower = min(lower, sample.rgb); upper = max(upper, sample.rgb);
+    }
+    historyRadiance = clamp(historyRadiance, lower, upper);
+    const float referenceMotion = length(motion) * (1080.0f / max(gScreenParams.y, 1.0f));
+    const float weight = saturate(gFrameParams.w) * saturate(historySupport) *
+        min(current.a, historyConfidence) / (1.0f + referenceMotion * 0.25f);
+    output.radiance = float4(lerp(current.rgb, historyRadiance, weight),
+        min(current.a, lerp(current.a, historyConfidence, weight)));
+    return output;
 }
 
 float4 PSResolve(FullscreenVertex input) : SV_TARGET

@@ -32,7 +32,7 @@ namespace HIKARI::TOOLS::BAKING {
         uint32_t type = 0u;
         float angularFalloff = 1.0f;
         uint32_t distanceFalloff = 0u;
-        uint32_t padding = 0u;
+        float sourceRadius = 0.0f;
     };
 
     struct DxrProgressiveLightmapBaker::DispatchConstants {
@@ -44,6 +44,9 @@ namespace HIKARI::TOOLS::BAKING {
         uint32_t lightCount = 0u;
         uint32_t skyMode = 0u;
         uint32_t skyTextureIndex = UINT32_MAX;
+        uint32_t sampleGridWidth = 1u;
+        uint32_t sampleGridHeight = 1u;
+        uint32_t padding[2]{};
         MATH::Vec4 ambientSkyStrength{};
         MATH::Vec4 skyZenith{}; // w: horizon power
         MATH::Vec4 skyHorizon{};
@@ -62,6 +65,6 @@ namespace HIKARI::TOOLS::BAKING {
             64u);
     static_assert(
         sizeof(DxrProgressiveLightmapBaker::DispatchConstants) ==
-            112u);
+            128u);
 
 } // namespace HIKARI::TOOLS::BAKING

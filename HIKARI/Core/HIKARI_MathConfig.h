@@ -9,6 +9,8 @@ namespace HIKARI::MATH {
     // - Vector convention: column vector
     // - Transform order: clip = Proj * View * World * local
     constexpr bool kRightHanded = true;
+    // RH view の外向き Triangle は render target 上で反時計回り。
+    constexpr bool kFrontFaceCounterClockwise = true;
     constexpr bool kNdcDepthZeroToOne = true;
     constexpr float kDegreesToRadians =
         0.01745329251994329577f;

@@ -1,4 +1,5 @@
 #include "Render3D/Core/MeshRenderer/Internal/HIKARI_MeshRendererInternal.h"
+#include "Render3D/Shadow/HIKARI_LocalLightShadowRenderer.h"
 #include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
@@ -120,35 +121,19 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         context.device = graphics.device;
         context.primitiveCache = &gMeshRendererState.primitiveCache;
         context.debugStats = &gMeshRendererState.debugStats;
-        context.jointPaletteMapped =
-            GetActiveMeshFrameResources().jointPaletteMapped;
-        context.jointPaletteBuffer =
-            GetActiveMeshFrameResources().jointPaletteCB.Get();
+        context.graphics = &graphics;
+        context.deformationUploads = &GetActiveMeshFrameResources().deformationUploads;
         return context;
     }
 
-    void UploadMeshShaderJointPalettes() {
+    bool UploadMeshShaderJointPalettes(const GFX::Context& graphics) {
         MeshFrameResources& frame = GetActiveMeshFrameResources();
-        const auto* palettes =
-            gMeshRendererState.gpuDrivenSceneSource.meshShaderJointPalettes;
-        if (frame.jointPaletteMapped == nullptr || palettes == nullptr) {
-            return;
-        }
-
-        const size_t paletteCount =
-            (std::min)(palettes->size(), static_cast<size_t>(kMaxObjectCount));
-        for (size_t paletteIndex = 0; paletteIndex < paletteCount; ++paletteIndex) {
-            const std::vector<MATH::Mat4>& palette = (*palettes)[paletteIndex];
-            if (palette.empty()) {
-                continue;
-            }
-            (void)UploadJointPalette(
-                frame.jointPaletteMapped,
-                paletteIndex,
-                palette);
-        }
+        const auto* palettes = gMeshRendererState.gpuDrivenSceneSource.meshShaderJointPalettes;
+        frame.jointPaletteAddress = UploadJointPalettes(graphics, frame.deformationUploads,
+            palettes != nullptr ? palettes->data() : nullptr,
+            palettes != nullptr ? palettes->size() : 0u);
+        return frame.jointPaletteAddress != 0u;
     }
-
 
     bool PrepareMeshFrame(
         const GFX::Context& graphics,
@@ -202,7 +187,12 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         gMeshRendererState.debugStats.gpuDrivenCullingCameraFrozen =
             gMeshRendererState.freezeGpuDrivenCullingCamera && gMeshRendererState.frozenCullingCameraValid;
 
-        frameResources.view.BuildLocalLights(lighting, camera, static_cast<uint32_t>(screenW), static_cast<uint32_t>(screenH));
+        const auto* localShadow = SHADOW::GetLocalLightShadowFrame(graphics, lighting, camera);
+        const std::span<const RENDER3D::LIGHTING::LocalLightShadowAssignment> shadows = localShadow
+            ? std::span(localShadow->assignments.data(), localShadow->assignmentCount)
+            : std::span<const RENDER3D::LIGHTING::LocalLightShadowAssignment>{};
+        frameResources.view.BuildLocalLights(lighting, camera, static_cast<uint32_t>(screenW),
+            static_cast<uint32_t>(screenH), shadows);
         FillLightCB(
             environment,
             frameResources.view.localLightList,
@@ -213,6 +203,9 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             environment,
             TIME::GetFrameContext().frameIndex,
             frameResources.view.shadow);
+        if (localShadow) {
+            frameResources.view.shadow.localShadow = localShadow->data;
+        }
         FillSkyEnvironmentCB(
             environment,
             cameraPos,
@@ -235,7 +228,6 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         ctx.objectCB = frame.objectCB.Get();
         ctx.objectDataBuffer = frame.objectDataBuffer.Get();
         ctx.materialDataBuffer = frame.materialDataBuffer.Get();
-        ctx.jointPaletteCB = frame.jointPaletteCB.Get();
         ctx.objectMapped = frame.objectMapped;
         ctx.objectDataMapped = frame.objectDataMapped;
         ctx.materialProgramParametersAddress =
@@ -248,7 +240,6 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                 : 0u;
         RENDER3D::WATER::WaterSurfaceGpuFrameBuffer* waterSurfaceBuffer =
             &gMeshRendererState.waterSurfaceGpuFrameBuffer;
-        ctx.jointPaletteMapped = frame.jointPaletteMapped;
         ctx.gpuMaterialRegistry = &gMeshRendererState.gpuMaterialRegistry;
         ctx.objectDataSrv = frame.objectDataSrvGpu;
         ctx.materialDataSrv = frame.materialDataSrvGpu;
@@ -428,10 +419,10 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             return false;
         }
         if (HasGpuDrivenSceneSource()) {
-            UploadMeshShaderJointPalettes();
-            gMeshRendererState.traditionalIndirectOwner.RefreshForActivePipeline(
-                gMeshRendererState.gpuDrivenSceneSource,
-                BuildTraditionalIndirectHydrationContext(graphics));
+            if (!UploadMeshShaderJointPalettes(graphics) ||
+                !gMeshRendererState.traditionalIndirectOwner.RefreshForActivePipeline(
+                    gMeshRendererState.gpuDrivenSceneSource,
+                    BuildTraditionalIndirectHydrationContext(graphics))) return false;
             PrepareGpuDrivenFrameState(graphics);
         } else {
             ResetGpuDrivenFrameState(graphics);

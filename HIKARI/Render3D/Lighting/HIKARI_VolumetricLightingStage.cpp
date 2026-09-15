@@ -12,18 +12,23 @@
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Gfx/HIKARI_DXCheck.h"
+#include "Gfx/HIKARI_DynamicUploadBuffer.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
-#include "Gfx/HIKARI_ShaderCompiler.h"
+#include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
+#include "Assets/Shader/HIKARI_VolumetricShaderContract.h"
 #include "Render2D/HIKARI_RenderTarget2D.h"
 #include "Render3D/Debug/HIKARI_RenderDebugView.h"
 #include "Render3D/Lighting/HIKARI_LocalLightList.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
+#include "Render3D/Lighting/HIKARI_StylizedCloudStage.h"
+#include "Render3D/Lighting/Atmosphere/HIKARI_AtmosphereParameters.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Shadow/HIKARI_ShadowMapRenderer.h"
+#include "Render3D/Shadow/HIKARI_LocalLightShadowRenderer.h"
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 #include "Render3D/Water/HIKARI_WaterVisibleDepth.h"
 
@@ -61,10 +66,12 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
             uint32_t localLightClusterIndexCount = 0u;
             float localLightNearDistance = 0.1f;
             float localLightFarDistance = 100.0f;
+            LIGHTING::LocalShadowGpuData localShadow{};
+            LIGHTING::CloudSolarVisibilityGpuData cloudSolarVisibility{};
         };
 
         static_assert(
-            sizeof(VolumetricConstants) == 656u);
+            sizeof(VolumetricConstants) == 1760u);
 
         struct VolumeResource {
             ComPtr<ID3D12Resource> texture{};
@@ -79,21 +86,22 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
             ComPtr<ID3D12RootSignature> compositeRoot{};
             ComPtr<ID3D12PipelineState> computePso{};
             ComPtr<ID3D12PipelineState> compositePso{};
-            ComPtr<ID3D12Resource> constantBuffer{};
-            uint8_t* constantMapped = nullptr;
-            uint32_t constantStride = 0;
-            uint32_t constantFrameSlot = 0;
+            std::array<DX::DynamicUploadBuffer, GFX::kFrameResourceCount> uploads;
+            D3D12_GPU_VIRTUAL_ADDRESS constantAddress = 0;
             VolumeResource volumes[2]{};
             RenderResourceView sceneColorUav{};
             RenderResourceView sceneDepthSrv{};
             D3D12_GPU_DESCRIPTOR_HANDLE waterDepthSrv{};
+            D3D12_GPU_DESCRIPTOR_HANDLE localShadowSrv{};
+            D3D12_GPU_DESCRIPTOR_HANDLE cloudSolarSrv{};
             WATER::WaterVisibleDepthView waterDepthView{};
             ID3D12Resource* sceneColorResource = nullptr;
             ID3D12Resource* sceneDepthResource = nullptr;
-            VolumetricConstants constants{};
             VolumetricLightingStats stats{};
             uint32_t writeIndex = 0;
             uint64_t preparedFrameIndex = 0;
+            uint64_t historyFrameIndex = 0;
+            TEMPORAL::TemporalViewLease preparedView{}, historyView{};
             RenderDebugView debugView = RenderDebugView::None;
             LIGHTING::LocalLightListGpuBindings localLights{};
             bool pipelineReady = false;
@@ -134,12 +142,16 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
         uint64_t HashVolumetricSettings(
             const SceneEnvironment& environment,
             VolumetricLightingQuality quality,
-            uint64_t localLightingContentHash) noexcept {
+            uint64_t localLightingContentHash,
+            const ATMOSPHERE::AtmosphereSolarState& solar) noexcept {
             uint64_t hash = HASH::kFnv1a64OffsetBasis;
             const auto Add = [&hash](const auto& value) {
                 hash = HASH::Fnv1aBytes(hash, &value, sizeof(value));
             };
             Add(localLightingContentHash);
+            Add(solar.sunDirection);
+            Add(solar.sunColor);
+            Add(solar.sunRadiance);
             Add(environment.fog.enabled);
             Add(environment.fog.volumetric);
             Add(environment.fog.color);
@@ -169,7 +181,16 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
             Add(environment.directionalShadow.cascadeSplitLambda);
             Add(environment.directionalShadow.shadowDistance);
             Add(environment.directionalShadow.resolution);
-            Add(environment.ambient.color);
+            Add(SKYRENDERER::ResolveAmbientLightColor(environment));
+            Add(environment.clouds.enabled);
+            Add(environment.clouds.physicallyBasedLighting);
+            Add(environment.clouds.coverage);
+            Add(environment.clouds.density);
+            Add(environment.clouds.altitude);
+            Add(environment.clouds.thickness);
+            Add(environment.clouds.scale);
+            Add(environment.clouds.shapeDetail);
+            Add(environment.clouds.softness);
             Add(environment.ambient.intensity);
             Add(quality);
             return hash == 0u ? 1u : hash;
@@ -220,8 +241,8 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
             ID3D12Device* device,
             bool injection,
             ID3D12RootSignature** output) {
-            std::array<D3D12_DESCRIPTOR_RANGE, 4> ranges{};
-            const uint32_t tableCount = injection ? 4u : 4u;
+            std::array<D3D12_DESCRIPTOR_RANGE, 6> ranges{};
+            constexpr uint32_t tableCount = 4u;
             for (uint32_t index = 0; index < tableCount; ++index) {
                 ranges[index].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
                 ranges[index].NumDescriptors = 1;
@@ -241,7 +262,7 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
                 ranges[index].OffsetInDescriptorsFromTableStart = 0;
             }
 
-            std::array<D3D12_ROOT_PARAMETER, 8> params{};
+            std::array<D3D12_ROOT_PARAMETER, 10> params{};
             params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
             params[0].Descriptor.ShaderRegister = 0;
             params[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
@@ -264,6 +285,18 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
                 }
             }
 
+            if (injection) {
+                ranges[4].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+                ranges[4].NumDescriptors = 1;
+                ranges[4].BaseShaderRegister = 7;
+                params[8].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+                params[8].DescriptorTable = {1, &ranges[4]};
+                params[8].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+                ranges[5]=ranges[4]; ranges[5].BaseShaderRegister=8;
+                params[9].ParameterType=D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+                params[9].DescriptorTable={1,&ranges[5]};
+                params[9].ShaderVisibility=D3D12_SHADER_VISIBILITY_ALL;
+            }
             std::array<D3D12_STATIC_SAMPLER_DESC, 2> samplers{};
             samplers[0].Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
             samplers[0].AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
@@ -284,7 +317,7 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
 
             D3D12_ROOT_SIGNATURE_DESC desc{};
             desc.NumParameters =
-                1u + tableCount + (injection ? 3u : 0u);
+                1u + tableCount + (injection ? 5u : 0u);
             desc.pParameters = params.data();
             desc.NumStaticSamplers = injection ? 2u : 1u;
             desc.pStaticSamplers = samplers.data();
@@ -314,16 +347,18 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
                 !CreateRootSignature(device, false, state.compositeRoot.GetAddressOf())) {
                 return false;
             }
-            ComPtr<ID3DBlob> cs;
-            ComPtr<ID3DBlob> compositeCs;
-            const wchar_t* shader = L"HIKARI/Shaders/Render3D_VolumetricLighting.hlsl";
-            if (!GFX::CompileShaderFileSm6(shader, "InjectAndIntegrateCS", GFX::ShaderStage::Compute, cs.GetAddressOf()) ||
-                !GFX::CompileShaderFileSm6(shader, "CompositeCS", GFX::ShaderStage::Compute, compositeCs.GetAddressOf())) {
+            namespace SHADER=ASSETS::SHADER;
+            const auto deviceCaps=GFX::QueryShaderDeviceCapabilities(device);
+            const SHADER::ShaderRuntimeDeviceCapabilities caps{deviceCaps.shaderModel,deviceCaps.rootSignatureVersion,deviceCaps.featureMask};
+            const auto cs=SHADER::ResolveVolumetricShaderEntry(SHADER::VolumetricShaderProgram::Fog,"InjectAndIntegrateCS",SHADER::ShaderStage::Compute,caps);
+            const auto compositeCs=SHADER::ResolveVolumetricShaderEntry(SHADER::VolumetricShaderProgram::Fog,"CompositeCS",SHADER::ShaderStage::Compute,caps);
+            if (!cs || !compositeCs) {
+                DEBUGLOG::PushRenderError("Volumetric fog: cooked shader unavailable or incompatible: "+(!cs ? cs.diagnostic : compositeCs.diagnostic));
                 return false;
             }
             D3D12_COMPUTE_PIPELINE_STATE_DESC computeDesc{};
             computeDesc.pRootSignature = state.computeRoot.Get();
-            computeDesc.CS = { cs->GetBufferPointer(), cs->GetBufferSize() };
+            computeDesc.CS = { cs.lease.GetDxil().data(), cs.lease.GetDxil().size() };
             if (!HIKARI_DX_CHECK(
                     device->CreateComputePipelineState(&computeDesc, IID_PPV_ARGS(state.computePso.GetAddressOf())),
                     "VolumetricLighting::CreateComputePSO")) return false;
@@ -331,8 +366,8 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
             D3D12_COMPUTE_PIPELINE_STATE_DESC compositeDesc{};
             compositeDesc.pRootSignature = state.compositeRoot.Get();
             compositeDesc.CS = {
-                compositeCs->GetBufferPointer(),
-                compositeCs->GetBufferSize()
+                compositeCs.lease.GetDxil().data(),
+                compositeCs.lease.GetDxil().size()
             };
             if (!HIKARI_DX_CHECK(
                     device->CreateComputePipelineState(
@@ -340,19 +375,6 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
                         IID_PPV_ARGS(state.compositePso.GetAddressOf())),
                     "VolumetricLighting::CreateCompositePSO")) return false;
 
-            state.constantStride = (sizeof(VolumetricConstants) + 255u) & ~255u;
-            const UINT cbSize = state.constantStride * GFX::kFrameResourceCount;
-            const auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-            const auto buffer = CD3DX12_RESOURCE_DESC::Buffer(cbSize);
-            if (!HIKARI_DX_CHECK(
-                    device->CreateCommittedResource(
-                        &heap, D3D12_HEAP_FLAG_NONE, &buffer,
-                        D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                        IID_PPV_ARGS(state.constantBuffer.GetAddressOf())),
-                    "VolumetricLighting::CreateConstantBuffer")) return false;
-            if (!HIKARI_DX_CHECK(
-                    state.constantBuffer->Map(0, nullptr, reinterpret_cast<void**>(&state.constantMapped)),
-                    "VolumetricLighting::MapConstantBuffer")) return false;
             state.pipelineReady = true;
             return true;
         }
@@ -423,21 +445,29 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
             return true;
         }
 
-        bool EnsureSceneViews(StageState& state, RenderTarget2D& scene) {
-            if (state.sceneColorResource == scene.GetResource() &&
-                state.sceneDepthResource == scene.GetDepthResource() &&
+        bool EnsureSceneViews(StageState& state, const RenderTextureView& color, const RenderTextureView& depth) {
+            if (!color.valid || !color.resource || !depth.IsSampleable() || !depth.resource ||
+                color.width != depth.width || color.height != depth.height) return false;
+            const auto colorDesc = color.resource->GetDesc(), depthDesc = depth.resource->GetDesc();
+            if (colorDesc.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D ||
+                depthDesc.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D ||
+                colorDesc.Width != color.width || colorDesc.Height != color.height ||
+                depthDesc.Width != depth.width || depthDesc.Height != depth.height ||
+                colorDesc.SampleDesc.Count != 1 || depthDesc.SampleDesc.Count != 1 ||
+                (colorDesc.Flags & D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS) == 0) return false;
+            if (state.sceneColorResource == color.resource &&
+                state.sceneDepthResource == depth.resource &&
                 state.sceneColorUav.IsValid() && state.sceneDepthSrv.IsValid()) return true;
             RetireView(state, state.sceneColorUav, "VolumetricLighting.SceneColorUAV");
             RetireView(state, state.sceneDepthSrv, "VolumetricLighting.SceneDepthSRV");
-            state.sceneColorResource = scene.GetResource();
-            state.sceneDepthResource = scene.GetDepthResource();
-            if (!scene.AllowsUnorderedAccess() ||
-                state.sceneColorResource == nullptr ||
-                state.sceneDepthResource == nullptr) {
-                return false;
-            }
+            state.sceneColorResource = color.resource;
+            state.sceneDepthResource = depth.resource;
+            D3D12_FEATURE_DATA_FORMAT_SUPPORT support{color.format};
+            if (FAILED(state.context.device->CheckFeatureSupport(D3D12_FEATURE_FORMAT_SUPPORT, &support, sizeof(support))) ||
+                (support.Support2 & D3D12_FORMAT_SUPPORT2_UAV_TYPED_LOAD) == 0 ||
+                (support.Support2 & D3D12_FORMAT_SUPPORT2_UAV_TYPED_STORE) == 0) return false;
             state.sceneColorUav = AllocateTexture2DUavDescriptor(
-                state.sceneColorResource, scene.GetFormat());
+                state.sceneColorResource, color.format);
             state.sceneDepthSrv = AllocateTexture2DSrvDescriptor(
                 state.sceneDepthResource, DXGI_FORMAT_R32_FLOAT);
             return state.sceneColorUav.IsValid() && state.sceneDepthSrv.IsValid();
@@ -458,24 +488,41 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
     bool PrepareVolumetricLightingFrame(
         const GFX::Context& context,
         const TEMPORAL::TemporalFrameState& frame,
+        const RenderTextureView& sceneColor,
+        const RenderTextureView& sceneDepth,
         const SceneEnvironment& environment,
         const LIGHTING::LocalLightListGpuBindings& localLights,
         VolumetricLightingQuality quality,
-        RenderDebugView debugView) {
+        RenderDebugView debugView,
+        const SHADOW::LocalLightShadowFrame* localShadows,
+        const CLOUDS::CloudSolarVisibilityFrame* clouds) {
         StageState& state = State();
-        state.context = context;
         state.stats.requested = environment.fog.enabled && environment.fog.volumetric;
         state.stats.active = false;
+        state.stats.sceneTargetsReady = false;
+        state.stats.localShadowFaces = 0;
         state.prepared = false;
+        state.localShadowSrv = {};
+        state.cloudSolarSrv = {};
+        state.constantAddress = 0;
         state.waterDepthView = {};
         state.waterDepthSrv = {};
         state.stats.waterDepthValid = false;
         state.stats.waterDepthFallback = true;
-        if (!state.stats.requested || environment.fog.density <= 0.0f ||
-            !frame.camera.valid || !context.device || !context.cmdList || !context.srvHeap) {
+        if (!state.stats.requested || !std::isfinite(environment.fog.density) || environment.fog.density <= 0.0f ||
+            !frame.camera.valid || !frame.view.IsValid() || !context.deviceGeneration ||
+            !context.device || !context.cmdList || !context.srvHeap ||
+            sceneColor.width != frame.renderWidth || sceneColor.height != frame.renderHeight) {
             return false;
         }
+        if (state.context.device && (state.context.device != context.device ||
+            state.context.deviceGeneration != context.deviceGeneration || state.context.srvHeap != context.srvHeap)) return false;
+        state.context = context;
         UpdateRenderResourceDescriptorPoolContext(context);
+        const auto descriptorPool = GetRenderResourceDescriptorPoolStats();
+        if (!descriptorPool.contextAvailable || !descriptorPool.contextCompatible ||
+            !EnsureSceneViews(state, sceneColor, sceneDepth)) return false;
+        state.stats.sceneTargetsReady = true;
         const QualityPolicy policy = ResolveQualityPolicy(quality);
         const uint32_t pixelSize = policy.froxelPixelSize;
         const uint32_t slices = policy.sliceCount;
@@ -483,12 +530,21 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
             !EnsureResources(state, frame.renderWidth, frame.renderHeight, pixelSize, slices)) {
             return false;
         }
-        if (frame.resetHistory && state.volumeHistoryValid) {
+        if ((frame.resetHistory || !state.historyView.Matches(frame.view) ||
+            state.historyFrameIndex + 1 != frame.frameIndex) && state.volumeHistoryValid) {
             state.volumeHistoryValid = false;
             ++state.stats.historyResetCount;
         }
 
         VolumetricConstants constants{};
+        if(clouds && *clouds && clouds->fenceValue==context.currentFrameRetireFenceValue) {
+            constants.cloudSolarVisibility=clouds->data; state.cloudSolarSrv=clouds->srv;
+        }
+        if (localShadows && localShadows->data.faceCount && IsTextureResourceValid(localShadows->atlas)) {
+            state.localShadowSrv = GetTextureResourceSrvGpuHandle(localShadows->atlas);
+            if (state.localShadowSrv.ptr) constants.localShadow = localShadows->data;
+        }
+        state.stats.localShadowFaces = constants.localShadow.faceCount;
         // The volume is indexed in the jittered render grid, so both depth
         // reconstruction and history reprojection must use that same grid.
         constants.invViewProj = frame.camera.invViewProj;
@@ -546,47 +602,17 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
             (std::max)(0.0f, environment.fog.heightFalloff),
             std::clamp(environment.fog.anisotropy, -0.8f, 0.8f)
         };
-        const SKYRENDERER::AtmosphereFrameData atmosphereFrame =
-            SKYRENDERER::BuildAtmosphereFrameData(environment);
-        const float sunTransmittanceLuminance = std::clamp(
-            atmosphereFrame.sunTransmittance.x * 0.2126f +
-                atmosphereFrame.sunTransmittance.y * 0.7152f +
-                atmosphereFrame.sunTransmittance.z * 0.0722f,
-            1.0e-4f,
-            1.0f);
-        const MATH::Vec3 solarTint{
-            std::clamp(
-                atmosphereFrame.sunTransmittance.x /
-                    sunTransmittanceLuminance,
-                0.35f,
-                2.0f),
-            std::clamp(
-                atmosphereFrame.sunTransmittance.y /
-                    sunTransmittanceLuminance,
-                0.35f,
-                2.0f),
-            std::clamp(
-                atmosphereFrame.sunTransmittance.z /
-                    sunTransmittanceLuminance,
-                0.35f,
-                2.0f),
-        };
+        const auto solar = ATMOSPHERE::BuildAtmosphereSolarState(environment);
         constants.directionalDirIntensity = {
-            environment.directional.direction.x,
-            environment.directional.direction.y,
-            environment.directional.direction.z,
-            environment.directional.enabled ? (std::max)(0.0f, environment.directional.intensity) : 0.0f
+            -solar.sunDirection.x, -solar.sunDirection.y, -solar.sunDirection.z,
+            solar.sunRadiance
         };
         constants.directionalColorShadow = {
-            environment.directional.color.x * solarTint.x,
-            environment.directional.color.y * solarTint.y,
-            environment.directional.color.z * solarTint.z,
-            std::clamp(environment.directionalShadow.strength, 0.0f, 1.0f)
+            solar.sunColor.x, solar.sunColor.y, solar.sunColor.z, 0.0f
         };
+        const auto ambientColor = SKYRENDERER::ResolveAmbientLightColor(environment);
         constants.ambientColorIntensity = {
-            environment.ambient.color.x,
-            environment.ambient.color.y,
-            environment.ambient.color.z,
+            ambientColor.x, ambientColor.y, ambientColor.z,
             (std::max)(0.0f, environment.ambient.intensity)
         };
         constants.volumetricOptics = {
@@ -602,7 +628,8 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
         };
 
         const uint64_t settingsSignature =
-            HashVolumetricSettings(environment, quality, localLights.view.lightingContentHash);
+            HASH::Fnv1aBytes(HashVolumetricSettings(environment, quality, localLights.view.lightingContentHash, solar),
+                &constants.cloudSolarVisibility.originDescriptor.w, sizeof(float));
         if (state.lastSettingsSignature != 0u &&
             state.lastSettingsSignature != settingsSignature &&
             state.volumeHistoryValid) {
@@ -647,9 +674,15 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
             localLights.view.depthBias,
             0.0f
         };
-        state.constants = constants;
         state.preparedFrameIndex = frame.frameIndex;
-        state.constantFrameSlot = context.frameIndex;
+        state.preparedView = frame.view;
+        auto& uploads = state.uploads[context.frameIndex % GFX::kFrameResourceCount];
+        if (!uploads.IsInitialized() && !uploads.Init(context.device, 4096)) return false;
+        uploads.ResetForFrame(context.currentFrameRetireFenceValue);
+        const auto constantUpload = uploads.Allocate(sizeof(constants));
+        if (!constantUpload) return false;
+        std::memcpy(constantUpload.cpuAddress, &constants, sizeof(constants));
+        state.constantAddress = constantUpload.gpuAddress;
         state.writeIndex = static_cast<uint32_t>(frame.frameIndex & 1u);
         state.debugView = debugView;
         state.localLights = localLights;
@@ -684,8 +717,13 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
 
     RenderTarget2D* ExecuteVolumetricLightingStage(RenderTarget2D& scene) {
         StageState& state = State();
-        if (!state.prepared || !state.stats.active ||
-            !EnsureSceneViews(state, scene) || !scene.BeginDepthShaderRead()) return &scene;
+        if (!state.prepared || !state.stats.active) return &scene;
+        // allocation は Forward より前に完了済み。ここで別の target を受け入れない。
+        if (state.sceneColorResource != scene.GetResource() || state.sceneDepthResource != scene.GetDepthResource() ||
+            !state.constantAddress || !scene.BeginDepthShaderRead()) {
+            state.prepared = state.stats.active = state.volumeHistoryValid = false;
+            return &scene;
+        }
 
         // SceneDepth remains authoritative and read-only. The water producer
         // must have run before MeshRenderer::EndFrame and publishes only a
@@ -709,16 +747,10 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
         ID3D12DescriptorHeap* heap = state.context.srvHeap;
         if (!cmd || !heap) {
             scene.EndDepthShaderRead();
+            state.prepared = state.stats.active = state.volumeHistoryValid = false;
             return &scene;
         }
-        const uint64_t constantOffset =
-            static_cast<uint64_t>(state.constantFrameSlot) * state.constantStride;
-        std::memcpy(
-            state.constantMapped + constantOffset,
-            &state.constants,
-            sizeof(state.constants));
-        const D3D12_GPU_VIRTUAL_ADDRESS constantAddress =
-            state.constantBuffer->GetGPUVirtualAddress() + constantOffset;
+        const D3D12_GPU_VIRTUAL_ADDRESS constantAddress = state.constantAddress;
         VolumeResource& output = state.volumes[state.writeIndex];
         VolumeResource& history = state.volumes[state.writeIndex ^ 1u];
 
@@ -738,6 +770,9 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
         cmd->SetComputeRootDescriptorTable(2, shadow);
         cmd->SetComputeRootDescriptorTable(3, history.srv.gpu);
         cmd->SetComputeRootDescriptorTable(4, output.uav.gpu);
+        cmd->SetComputeRootDescriptorTable(8, state.localShadowSrv.ptr
+            ? state.localShadowSrv : state.sceneDepthSrv.gpu);
+        cmd->SetComputeRootDescriptorTable(9,state.cloudSolarSrv.ptr ? state.cloudSolarSrv : state.sceneDepthSrv.gpu);
         if (state.localLights.IsValid()) {
             cmd->SetComputeRootShaderResourceView(
                 5,
@@ -781,6 +816,8 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
         scene.EndDepthShaderRead();
 
         state.volumeHistoryValid = true;
+        state.historyView = state.preparedView;
+        state.historyFrameIndex = state.preparedFrameIndex;
         ++state.stats.dispatchCount;
         return &scene;
     }
@@ -804,11 +841,8 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
         for (VolumeResource& volume : state.volumes) ReleaseVolume(volume);
         ReleaseView(state.sceneColorUav);
         ReleaseView(state.sceneDepthSrv);
-        if (state.constantBuffer && state.constantMapped) state.constantBuffer->Unmap(0, nullptr);
-        state.constantMapped = nullptr;
-        state.constantBuffer.Reset();
-        state.constantStride = 0;
-        state.constantFrameSlot = 0;
+        for (auto& uploads : state.uploads) uploads.Finalize(&state.context);
+        state.constantAddress = 0;
         state.computePso.Reset();
         state.compositePso.Reset();
         state.computeRoot.Reset();
@@ -817,15 +851,17 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
         state.sceneDepthResource = nullptr;
         state.waterDepthSrv = {};
         state.waterDepthView = {};
-        state.constants = {};
         state.stats = {};
         state.writeIndex = 0;
         state.preparedFrameIndex = 0;
+        state.historyFrameIndex = 0;
+        state.preparedView = state.historyView = {};
         state.lastSettingsSignature = 0u;
         state.debugView = RenderDebugView::None;
         state.pipelineReady = false;
         state.resourcesReady = false;
         state.prepared = false;
+        state.localShadowSrv = {};
         state.volumeHistoryValid = false;
         state.context = {};
     }

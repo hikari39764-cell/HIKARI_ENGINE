@@ -19,7 +19,8 @@ HikariMaterialPbrInputs HikariResolveMaterialPbrInputs(
     HikariMeshMaterialData materialData,
     float2 uv0,
     float2 uv1,
-    SamplerState materialSampler)
+    SamplerState materialSampler,
+    HikariMaterialTextureFootprint footprint = (HikariMaterialTextureFootprint)0)
 {
     HikariMaterialPbrInputs inputs;
     inputs.metallic = saturate(materialData.pbrParams.x);
@@ -29,34 +30,30 @@ HikariMaterialPbrInputs HikariResolveMaterialPbrInputs(
     inputs.specularFactor = max(0.0f, materialData.specularParams.w);
     if (materialData.hasMetallicRoughnessTexture != 0u)
     {
-        const float2 uv = HikariResolveMaterialUv(
-            materialData, HIKARI_MATERIAL_UV_METALLIC_ROUGHNESS, uv0, uv1);
-        const float4 mr = HikariSampleMaterialTexture(
-            materialData.metallicRoughnessTextureDescriptorIndex, materialSampler, uv, 1.0f.xxxx);
+        const float4 mr = HikariSampleMaterialTextureSlot(
+            materialData, HIKARI_MATERIAL_UV_METALLIC_ROUGHNESS, materialData.metallicRoughnessTextureDescriptorIndex,
+            materialSampler, uv0, uv1, 1.0f.xxxx, footprint);
         inputs.roughness = clamp(inputs.roughness * mr.g, 0.04f, 1.0f);
         inputs.metallic = saturate(inputs.metallic * mr.b);
     }
     if (materialData.hasOcclusionTexture != 0u)
     {
-        const float2 uv = HikariResolveMaterialUv(
-            materialData, HIKARI_MATERIAL_UV_OCCLUSION, uv0, uv1);
-        const float ao = HikariSampleMaterialTexture(
-            materialData.occlusionTextureDescriptorIndex, materialSampler, uv, 1.0f.xxxx).r;
+        const float ao = HikariSampleMaterialTextureSlot(
+            materialData, HIKARI_MATERIAL_UV_OCCLUSION, materialData.occlusionTextureDescriptorIndex,
+            materialSampler, uv0, uv1, 1.0f.xxxx, footprint).r;
         inputs.occlusion = lerp(1.0f, ao, saturate(materialData.pbrParams.z));
     }
     if (materialData.hasSpecularTexture != 0u)
     {
-        const float2 uv = HikariResolveMaterialUv(
-            materialData, HIKARI_MATERIAL_UV_SPECULAR, uv0, uv1);
-        inputs.specularFactor *= HikariSampleMaterialTexture(
-            materialData.specularTextureDescriptorIndex, materialSampler, uv, 1.0f.xxxx).a;
+        inputs.specularFactor *= HikariSampleMaterialTextureSlot(
+            materialData, HIKARI_MATERIAL_UV_SPECULAR, materialData.specularTextureDescriptorIndex,
+            materialSampler, uv0, uv1, 1.0f.xxxx, footprint).a;
     }
     if (materialData.hasSpecularColorTexture != 0u)
     {
-        const float2 uv = HikariResolveMaterialUv(
-            materialData, HIKARI_MATERIAL_UV_SPECULAR_COLOR, uv0, uv1);
-        inputs.specularColor *= HikariSampleMaterialTexture(
-            materialData.specularColorTextureDescriptorIndex, materialSampler, uv, 1.0f.xxxx).rgb;
+        inputs.specularColor *= HikariSampleMaterialTextureSlot(
+            materialData, HIKARI_MATERIAL_UV_SPECULAR_COLOR, materialData.specularColorTextureDescriptorIndex,
+            materialSampler, uv0, uv1, 1.0f.xxxx, footprint).rgb;
     }
     HikariApplyLegacySpecularResponse(
         (materialData.materialFlags & HIKARI_MATERIAL_FLAG_LEGACY_SPECULAR) != 0u,
@@ -69,16 +66,15 @@ float3 HikariResolveMaterialEmissive(
     HikariMeshMaterialData materialData,
     float2 uv0,
     float2 uv1,
-    SamplerState materialSampler)
+    SamplerState materialSampler,
+    HikariMaterialTextureFootprint footprint = (HikariMaterialTextureFootprint)0)
 {
     float3 emissive = materialData.emissiveFactor.rgb;
     if (materialData.hasEmissiveTexture != 0u)
     {
-        const float2 uv = HikariResolveMaterialUv(
-            materialData, HIKARI_MATERIAL_UV_EMISSIVE, uv0, uv1);
-        emissive *= HikariSampleMaterialTexture(
-            materialData.emissiveTextureDescriptorIndex, materialSampler, uv,
-            float4(0.0f, 0.0f, 0.0f, 1.0f)).rgb;
+        emissive *= HikariSampleMaterialTextureSlot(
+            materialData, HIKARI_MATERIAL_UV_EMISSIVE, materialData.emissiveTextureDescriptorIndex,
+            materialSampler, uv0, uv1, float4(0.0f, 0.0f, 0.0f, 1.0f), footprint).rgb;
     }
     return emissive * materialData.emissiveFactor.a;
 }

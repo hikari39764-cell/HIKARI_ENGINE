@@ -137,6 +137,7 @@ namespace HIKARI::POST {
         // this does not require an active Scene capture layer.
         static bool RebindPresentationBackBuffer();
         static RENDER3D::RenderTextureView GetCurrentRenderTargetDepthView();
+        static RENDER3D::RenderTextureView GetCurrentRenderTargetColorView();
         static D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentRenderTargetDsv();
         static D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentRenderTargetReadOnlyDsv();
         static bool BeginCurrentRenderTargetDepthRead();

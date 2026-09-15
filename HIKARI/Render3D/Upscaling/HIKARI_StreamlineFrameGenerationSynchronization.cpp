@@ -68,6 +68,7 @@ namespace HIKARI::RENDER3D::UPSCALING {
                 result,
                 false)) {
             stats.stateValid = false;
+            stats.presentedFrames = 0u;
             ++stats.failureCount;
             stats.status = StreamlineFrameGenerationStatus::RuntimeFailure;
             stats.statusReason = state.stats.lastResult;

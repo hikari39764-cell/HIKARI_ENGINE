@@ -41,6 +41,10 @@ namespace HIKARI::MATH {
         static Quat FromEulerXYZ(float rx, float ry, float rz);
     };
 
+    // 画面の右・上と注視方向。RH view の Z 軸は -forward。
+    struct ViewBasisRH { Vec3 right, up, forward; };
+    ViewBasisRH BuildViewBasisRH(const Vec3& forward, const Vec3& up);
+
     struct Mat4 {
         // Column-major storage: m[col][row]
         float m[4][4]{};

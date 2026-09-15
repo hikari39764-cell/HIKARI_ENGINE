@@ -119,8 +119,8 @@ namespace HIKARI::RENDER3D::MATERIAL {
         MATH::Vec4 occlusionUvTransform{ 1.0f, 1.0f, 0.0f, 0.0f };
         MATH::Vec4 specularUvTransform{ 1.0f, 1.0f, 0.0f, 0.0f };
         MATH::Vec4 specularColorUvTransform{ 1.0f, 1.0f, 0.0f, 0.0f };
-        MATH::Vec4 uvRotation0{}; // x: baseColor, y: normal, z: emissive, w: metallicRoughness
-        MATH::Vec4 uvRotation1{}; // x: occlusion, y: specular, z: specularColor
+        MATH::Vec4 uvRotation0{0,0,0,0}; // x: baseColor, y: normal, z: emissive, w: metallicRoughness
+        MATH::Vec4 uvRotation1{0,0,0,0}; // x: occlusion, y: specular, z: specularColor
         uint32_t uvSet0[4]{}; // x: baseColor, y: normal, z: emissive, w: metallicRoughness
         uint32_t uvSet1[4]{}; // x: occlusion, y: specular, z: specularColor
     };

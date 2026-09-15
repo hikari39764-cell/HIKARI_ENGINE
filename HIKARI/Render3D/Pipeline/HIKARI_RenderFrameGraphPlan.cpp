@@ -141,7 +141,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
                 SURFACE::SceneSurfaceProducer::ProjectDispatch,
                 GRAPH::RenderGraphResourceRequirement::Optional);
         }
-        GRAPH::RenderGraphResourceId reflectionFallback{}, reflectionResponse{};
+        GRAPH::RenderGraphResourceId reflectionFallback{}, reflectionResponse{}, reflectionMaterial{};
         if (options.includeSsr) {
             reflectionFallback = AddRenderFrameGraphSurfaceResource(graph, "ReflectionFallbackSpecular",
                 GRAPH::RenderGraphSemantic::ReflectionFallbackSpecular, false,
@@ -151,7 +151,11 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
                 GRAPH::RenderGraphSemantic::ReflectionSpecularResponse, false,
                 GRAPH::RenderGraphSemanticPhase::Opaque, SURFACE::SceneSurfaceProducer::ForwardOpaque,
                 GRAPH::RenderGraphResourceRequirement::Optional);
-            if (!reflectionFallback.IsValid() || !reflectionResponse.IsValid()) return false;
+            reflectionMaterial = AddRenderFrameGraphSurfaceResource(graph, "ReflectionMaterial",
+                GRAPH::RenderGraphSemantic::ReflectionMaterial, false,
+                GRAPH::RenderGraphSemanticPhase::Opaque, SURFACE::SceneSurfaceProducer::ForwardOpaque,
+                GRAPH::RenderGraphResourceRequirement::Optional);
+            if (!reflectionFallback.IsValid() || !reflectionResponse.IsValid() || !reflectionMaterial.IsValid()) return false;
         }
         const auto forwardComplete = AddRenderFrameGraphCompletionMarker(
             graph, "ForwardOpaque.Complete");
@@ -162,7 +166,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         const auto motionComplete = AddRenderFrameGraphCompletionMarker(
             graph, "MotionVectors.Complete");
         const auto preTailComplete = AddRenderFrameGraphCompletionMarker(
-            graph, "PrimarySurfacePasses.Complete");
+            graph, "OpaqueLighting.Complete");
         const auto motionVectors = AddRenderFrameGraphSurfaceResource(
             graph,
             "MotionVectors",
@@ -225,12 +229,14 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             GRAPH::RenderGraphResourceUse{reflectionFallback, GRAPH::RenderGraphAccess::WriteColor,
                 SURFACE::SceneSurfaceProducer::ForwardOpaque},
             GRAPH::RenderGraphResourceUse{reflectionResponse, GRAPH::RenderGraphAccess::WriteColor,
+                SURFACE::SceneSurfaceProducer::ForwardOpaque},
+            GRAPH::RenderGraphResourceUse{reflectionMaterial, GRAPH::RenderGraphAccess::WriteColor,
                 SURFACE::SceneSurfaceProducer::ForwardOpaque}
         };
         if (!graph.AddPass(GRAPH::RenderGraphPassDesc{
                 "ForwardOpaque",
                 forwardReads,
-                std::span(forwardWrites.data(), options.includeSsr ? 3u : 1u),
+                std::span(forwardWrites.data(), options.includeSsr ? 4u : 1u),
                 callbacks.forwardOpaque,
                 userData
             })) {
@@ -293,39 +299,13 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             return false;
         }
 
-        const std::array cloudReads{
-            GRAPH::RenderGraphResourceUse{
-                postOpaqueComplete,
-                GRAPH::RenderGraphAccess::ReadDependency
-            },
-            GRAPH::RenderGraphResourceUse{
-                sceneDepth,
-                GRAPH::RenderGraphAccess::ReadDepth
-            }
-        };
-        const std::array cloudWrites{
-            GRAPH::RenderGraphResourceUse{
-                cloudsComplete,
-                GRAPH::RenderGraphAccess::WriteDependency
-            }
-        };
-        if (!graph.AddPass(GRAPH::RenderGraphPassDesc{
-                "StylizedClouds",
-                cloudReads,
-                cloudWrites,
-                callbacks.clouds,
-                userData
-            })) {
-            return false;
-        }
-
         const std::array motionReads{
             GRAPH::RenderGraphResourceUse{
                 sceneDepth,
                 GRAPH::RenderGraphAccess::ReadDepth
             },
             GRAPH::RenderGraphResourceUse{
-                cloudsComplete,
+                postOpaqueComplete,
                 GRAPH::RenderGraphAccess::ReadDependency
             }
         };
@@ -435,7 +415,10 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
                     GRAPH::RenderGraphAccess::ReadSampled
                 },
                 GRAPH::RenderGraphResourceUse{reflectionFallback, GRAPH::RenderGraphAccess::ReadSampled},
-                GRAPH::RenderGraphResourceUse{reflectionResponse, GRAPH::RenderGraphAccess::ReadSampled}
+                GRAPH::RenderGraphResourceUse{reflectionResponse, GRAPH::RenderGraphAccess::ReadSampled},
+                GRAPH::RenderGraphResourceUse{reflectionMaterial, GRAPH::RenderGraphAccess::ReadSampled},
+                GRAPH::RenderGraphResourceUse{motionVectors, GRAPH::RenderGraphAccess::ReadSampled},
+                GRAPH::RenderGraphResourceUse{motionMetadata, GRAPH::RenderGraphAccess::ReadSampled}
             };
             const std::array ssrWrites{
                 GRAPH::RenderGraphResourceUse{
@@ -453,12 +436,23 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
                 return false;
             }
         }
+        // SSR は不透明面の fallback lobe を置換してから、雲の透過/散乱を合成する。
+        // 雲を含む SceneColor から未減衰の fallback を引くと反射のエネルギーが壊れる。
+        const std::array cloudReads{
+            GRAPH::RenderGraphResourceUse{preTailComplete, GRAPH::RenderGraphAccess::ReadDependency},
+            GRAPH::RenderGraphResourceUse{sceneDepth, GRAPH::RenderGraphAccess::ReadDepth}
+        };
+        const std::array cloudWrites{
+            GRAPH::RenderGraphResourceUse{cloudsComplete, GRAPH::RenderGraphAccess::WriteDependency}
+        };
+        if (!graph.AddPass(GRAPH::RenderGraphPassDesc{
+                "StylizedClouds", cloudReads, cloudWrites, callbacks.clouds, userData})) return false;
         return BuildRenderFrameGraphTailPlan(
             options,
             userData,
             callbacks,
             RenderFrameGraphTailResources{
-                preTailComplete,
+                cloudsComplete,
                 sceneDepth,
                 sceneColorOpaque,
                 packedSurface,

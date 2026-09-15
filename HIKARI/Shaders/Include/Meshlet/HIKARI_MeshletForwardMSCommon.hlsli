@@ -15,30 +15,7 @@
 #include "Include/Features/HIKARI_GeometryOutlineVertex.hlsli"
 #endif
 
-struct HikariMeshletVertexOut
-{
-    float4 position : SV_POSITION;
-    float3 worldPosWS : TEXCOORD1;
-    float3 normalWS : NORMAL;
-    float4 tangentWS : TANGENT;
-    float2 uv : TEXCOORD0;
-    float2 uv1 : TEXCOORD10;
-    nointerpolation uint materialDataIndex : TEXCOORD2;
-    nointerpolation uint forwardMeta : TEXCOORD3;
-    nointerpolation uint objectDataIndex : TEXCOORD4;
-    nointerpolation uint surfaceGpuSceneIndex : TEXCOORD5;
-    nointerpolation uint debugSurfaceId : TEXCOORD6;
-    float3 characterRightWS : TEXCOORD8;
-    float3 characterForwardWS : TEXCOORD9;
-    // Keep the shared VS/MS -> PS signature order identical to
-    // Render3D_StaticPS. DXIL assigns packed hardware registers in declaration
-    // order, so semantic names alone do not make a partial signature linkable.
-    nointerpolation uint surfaceFeatureFlags : TEXCOORD7;
-    // 水面と沙地が共有する surface feature 出力。水面は meshlet 変形が、
-    // 沙地は traditional VS/PS のみが値を書き込む。TEXCOORD11 を一つに
-    // 統合し、PSO が StaticPS と bit 一致でリンクできるよう保つ。
-    float3 surfaceFeatureData : TEXCOORD11;
-};
+typedef HikariForwardVertexOutput HikariMeshletVertexOut;
 
 HikariMeshletVertexOut HikariBuildEmptyMeshletVertex()
 {

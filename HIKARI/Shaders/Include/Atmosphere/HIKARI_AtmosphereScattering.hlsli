@@ -1,6 +1,22 @@
 #ifndef HIKARI_ATMOSPHERE_SCATTERING_HLSLI
 #define HIKARI_ATMOSPHERE_SCATTERING_HLSLI
 
+#include "../Lighting/HIKARI_VolumetricScattering.hlsli"
+
+#ifdef HIKARI_ATMOSPHERE_DECLARE_LUT_CB
+cbuffer AtmosphereLutCB : register(b0)
+{
+    float4 gAtmospherePlanetParams;
+    float4 gAtmosphereRayleigh;
+    float4 gAtmosphereMie;
+    float4 gAtmosphereOzone;
+    float4 gAtmosphereOzoneParams;
+    float4 gAtmosphereSunDirection;
+    float4 gAtmosphereSunColorRadiance;
+    float4 gAtmosphereGroundColor;
+};
+#endif
+
 // Shared atmosphere model used by the transmittance, multi-scattering and
 // sky-view LUTs as well as the forward sky fallback.  The cbuffer containing
 // the gAtmosphere* values is intentionally owned by the including shader so
@@ -15,6 +31,7 @@ struct HikariAtmosphereViewIntegration
 {
     float3 scattering;
     float3 transmittance;
+    float3 isotropicTransfer;
     float distance;
     float groundDistance;
 };
@@ -59,7 +76,8 @@ bool HikariAtmosphereIntersectSphere(
     direction = HikariAtmosphereSafeNormalize(direction);
     const float safeRadius = max(1.0f, HikariAtmosphereFiniteOr(radius, 1.0f));
     const float b = dot(origin, direction);
-    const float c = dot(origin, origin) - safeRadius * safeRadius;
+    const float originRadius = length(origin);
+    const float c = (originRadius - safeRadius) * (originRadius + safeRadius);
     const float discriminant = b * b - c;
     if (!isfinite(discriminant) || discriminant <= 0.0f)
     {
@@ -69,8 +87,11 @@ bool HikariAtmosphereIntersectSphere(
     }
 
     const float root = sqrt(max(0.0f, discriminant));
-    nearDistance = -b - root;
-    farDistance = -b + root;
+    // 地表付近の短い交点を巨大な半径同士の差から求めない。
+    const float q = -b - (b < 0.0f ? -root : root);
+    const float other = abs(q) > 1e-12f ? c / q : 0.0f;
+    nearDistance = min(q, other);
+    farDistance = max(q, other);
     return isfinite(nearDistance) && isfinite(farDistance) &&
         farDistance > 0.0f;
 }
@@ -313,172 +334,103 @@ float3 HikariAtmosphereTransmittanceToSpace(
         HIKARI_ATMOSPHERE_MAX_SUN_STEPS);
 }
 
-float3 HikariAtmosphereIntegrateLowOrderScattering(
-    float3 origin,
-    float3 direction,
-    float3 sunDirection,
-    uint requestedSteps)
+// LUT は低高度へ解像度を寄せる。producer と sampler は texel 中心を共有する。
+float HikariAtmosphereLutRadius(float heightUnit)
 {
+    return lerp(HikariAtmospherePlanetRadius() + 0.5f,
+        HikariAtmosphereTopRadius() - 0.5f, saturate(heightUnit) * saturate(heightUnit));
+}
+
+float2 HikariAtmosphereTransmittanceUvFromRadiusMu(float radius, float cosineToRadialUp)
+{
+    const float height = saturate((radius - HikariAtmospherePlanetRadius() - 0.5f) /
+        max(HikariAtmosphereTopHeight() - 1.0f, 1.0f));
+    return float2(saturate(cosineToRadialUp * 0.5f + 0.5f), sqrt(height));
+}
+
+float3 HikariAtmosphereSampleLut(Texture2D<float4> lut, SamplerState samplerState,
+    float3 position, float3 sunDirection)
+{
+    uint width, height;
+    lut.GetDimensions(width, height);
+    const float radius = length(position);
+    const float2 unitUv = HikariAtmosphereTransmittanceUvFromRadiusMu(
+        radius, dot(position / max(radius, 1.0f), sunDirection));
+    const float2 size = float2(width, height);
+    return lut.SampleLevel(samplerState, (unitUv * max(size - 1.0f, 0.0f) + 0.5f) / size, 0).rgb;
+}
+
+float3 HikariAtmosphereIntegrationSunTransmittance(float3 position, float3 direction, uint steps)
+{
+#ifdef HIKARI_ATMOSPHERE_USE_TRANSMITTANCE_LUT
+    // 地平線の両側を補間して、惑星を透過した太陽光を作らない。
+    if (HikariAtmosphereDistanceToGround(position, direction) > 0.0f) return 0.0f.xxx;
+    return HikariAtmosphereSampleLut(gAtmosphereTransmittance, gLinearClamp, position, direction);
+#else
+    return HikariAtmosphereTransmittanceToSpaceWithSteps(position, direction, steps);
+#endif
+}
+
+// 空と有限距離の aerial perspective が同じ輸送を利用する。
+// multiple-scattering producer だけ isotropic=true、太陽色/強度は consumer で一度適用。
+HikariAtmosphereViewIntegration HikariAtmosphereIntegrateSegment(
+    float3 origin, float3 direction, float3 sunDirection,
+    uint requestedViewSteps, uint requestedSunSteps, float maxDistance, bool isotropic)
+{
+    HikariAtmosphereViewIntegration result = (HikariAtmosphereViewIntegration)0;
+    result.transmittance = 1.0f.xxx;
+    result.groundDistance = -1.0f;
     direction = HikariAtmosphereSafeNormalize(direction);
     sunDirection = HikariAtmosphereSafeNormalize(sunDirection);
-    const float distanceToTop = HikariAtmosphereDistanceToTop(
-        origin,
-        direction);
-    if (distanceToTop <= 0.0f)
-    {
-        return 0.0f.xxx;
-    }
+    const float distanceToTop = HikariAtmosphereDistanceToTop(origin, direction);
+    if (distanceToTop <= 0.0f) return result;
+    const float ground = HikariAtmosphereDistanceToGround(origin, direction);
+    const bool hitsGround = ground > 0.0f && ground < distanceToTop && ground <= maxDistance;
+    const float distance = min(max(maxDistance, 0.0f), hitsGround ? ground : distanceToTop);
+    const uint steps = min(requestedViewSteps, HIKARI_ATMOSPHERE_MAX_SKY_STEPS);
+    if (distance <= 0.0f || steps == 0u) return result;
 
-    const float distanceToGround = HikariAtmosphereDistanceToGround(
-        origin + direction * 1.0e-2f,
-        direction);
-    const float viewDistance = distanceToGround > 0.0f &&
-        distanceToGround < distanceToTop
-        ? distanceToGround
-        : distanceToTop;
-    const uint steps = min(requestedSteps, HIKARI_ATMOSPHERE_MAX_SKY_STEPS);
-    if (viewDistance <= 1.0e-3f || steps == 0u)
-    {
-        return 0.0f.xxx;
-    }
-
-    const float stepLength = viewDistance / max(1.0f, (float)steps);
     const float cosine = dot(direction, sunDirection);
-    const float rayleighPhase = HikariAtmosphereRayleighPhase(cosine);
-    const float miePhase = HikariAtmosphereMiePhase(
-        cosine,
-        gAtmosphereMie.a);
-    float3 result = 0.0f.xxx;
-    float viewTransmittance = 1.0f;
+    const float rayleighPhase = isotropic ? 1.0f / (4.0f * HIKARI_ATMOSPHERE_PI) :
+        HikariAtmosphereRayleighPhase(cosine);
+    const float miePhase = isotropic ? rayleighPhase : HikariAtmosphereMiePhase(cosine, gAtmosphereMie.a);
     [loop]
-    for (uint index = 0u;
-         index < HIKARI_ATMOSPHERE_MAX_SKY_STEPS;
-         ++index)
+    for (uint index = 0u; index < steps; ++index)
     {
-        if (index >= steps)
-        {
-            break;
-        }
-        const float sampleDistance = ((float)index + 0.5f) * stepLength;
-        const float3 position = origin + direction * sampleDistance;
-        float rayleighDensity = 0.0f;
-        float mieDensity = 0.0f;
-        float ozoneDensity = 0.0f;
-        HikariAtmosphereDensities(
-            position,
-            rayleighDensity,
-            mieDensity,
-            ozoneDensity);
-        const float3 sunTransmittance = HikariAtmosphereTransmittanceToSpaceWithSteps(
-            position,
-            sunDirection,
-            min(requestedSteps, HIKARI_ATMOSPHERE_MAX_SUN_STEPS));
-        const float3 scattering = (
-            max(0.0f.xxx, gAtmosphereRayleigh.rgb) *
-                rayleighDensity * rayleighPhase +
-            max(0.0f.xxx, gAtmosphereMie.rgb) *
-                mieDensity * miePhase) * sunTransmittance;
-        result += scattering * viewTransmittance * stepLength;
-        float3 scatteringCoefficient = 0.0f.xxx;
-        const float3 extinction = HikariAtmosphereExtinction(
-            position,
-            scatteringCoefficient);
-        viewTransmittance *= exp(-max(0.0f, dot(extinction, 0.3333333f.xxx) * stepLength));
+        // 地表の密度勾配を少数サンプルで保持する。区間積分は Beer-Lambert。
+        const float a = float(index) / float(steps);
+        const float b = float(index + 1u) / float(steps);
+        const float stepLength = distance * (b*b - a*a);
+        const float3 position = origin + direction * (distance * 0.5f * (a*a + b*b));
+        float rayleighDensity, mieDensity, ozoneDensity;
+        HikariAtmosphereDensities(position, rayleighDensity, mieDensity, ozoneDensity);
+        const float3 rayleigh = max(gAtmosphereRayleigh.rgb, 0.0f.xxx) * rayleighDensity;
+        const float3 mie = max(gAtmosphereMie.rgb, 0.0f.xxx) * mieDensity;
+        const float3 scattering = rayleigh + mie;
+        const float3 extinction = scattering + max(gAtmosphereOzone.rgb, 0.0f.xxx) * ozoneDensity;
+        const float3 source = (rayleigh * rayleighPhase + mie * miePhase) *
+            HikariAtmosphereIntegrationSunTransmittance(position, sunDirection, requestedSunSteps);
+        const float3 weight = result.transmittance * HikariExtinctionIntegral(extinction, stepLength);
+        result.scattering += weight * source;
+        result.isotropicTransfer += weight * scattering;
+#ifdef HIKARI_ATMOSPHERE_USE_MULTISCATTERING_LUT
+        result.scattering += weight * scattering *
+            HikariAtmosphereSampleLut(gAtmosphereMultiScattering, gLinearClamp, position, sunDirection);
+#endif
+        result.transmittance *= exp(-extinction * stepLength);
     }
-    return max(0.0f.xxx, result);
+    result.transmittance = saturate(result.transmittance);
+    result.distance = distance;
+    result.groundDistance = hitsGround ? ground : -1.0f;
+    return result;
 }
 
 HikariAtmosphereViewIntegration HikariAtmosphereIntegrateViewWithSteps(
-    float3 origin,
-    float3 direction,
-    float3 sunDirection,
-    uint requestedViewSteps,
-    uint requestedSunSteps)
+    float3 origin, float3 direction, float3 sunDirection,
+    uint requestedViewSteps, uint requestedSunSteps)
 {
-    HikariAtmosphereViewIntegration result;
-    result.scattering = 0.0f.xxx;
-    result.transmittance = 1.0f.xxx;
-    result.distance = 0.0f;
-    result.groundDistance = -1.0f;
-
-    direction = HikariAtmosphereSafeNormalize(direction);
-    sunDirection = HikariAtmosphereSafeNormalize(sunDirection);
-    const float distanceToTop = HikariAtmosphereDistanceToTop(
-        origin,
-        direction);
-    if (distanceToTop <= 0.0f)
-    {
-        return result;
-    }
-
-    const float distanceToGround = HikariAtmosphereDistanceToGround(
-        origin + direction * 1.0e-2f,
-        direction);
-    const bool hitsGround = distanceToGround > 0.0f &&
-        distanceToGround < distanceToTop;
-    const float viewDistance = hitsGround
-        ? distanceToGround
-        : distanceToTop;
-    if (viewDistance <= 1.0e-3f)
-    {
-        result.groundDistance = hitsGround ? distanceToGround : -1.0f;
-        return result;
-    }
-
-    const uint steps = min(
-        requestedViewSteps,
-        HIKARI_ATMOSPHERE_MAX_SKY_STEPS);
-    if (steps == 0u)
-    {
-        return result;
-    }
-    const float stepLength = viewDistance / (float)steps;
-    const float cosine = dot(direction, sunDirection);
-    const float rayleighPhase = HikariAtmosphereRayleighPhase(cosine);
-    const float miePhase = HikariAtmosphereMiePhase(
-        cosine,
-        gAtmosphereMie.a);
-    float3 throughput = 1.0f.xxx;
-    [loop]
-    for (uint index = 0u;
-         index < HIKARI_ATMOSPHERE_MAX_SKY_STEPS;
-         ++index)
-    {
-        if (index >= steps)
-        {
-            break;
-        }
-        const float sampleDistance = ((float)index + 0.5f) * stepLength;
-        const float3 position = origin + direction * sampleDistance;
-        float3 scatteringCoefficient = 0.0f.xxx;
-        const float3 extinction = HikariAtmosphereExtinction(
-            position,
-            scatteringCoefficient);
-        float rayleighDensity = 0.0f;
-        float mieDensity = 0.0f;
-        float ozoneDensity = 0.0f;
-        HikariAtmosphereDensities(
-            position,
-            rayleighDensity,
-            mieDensity,
-            ozoneDensity);
-        const float3 sunTransmittance = HikariAtmosphereTransmittanceToSpaceWithSteps(
-            position,
-            sunDirection,
-            min(requestedSunSteps, HIKARI_ATMOSPHERE_MAX_SUN_STEPS));
-        const float3 inScatter = (
-            max(0.0f.xxx, gAtmosphereRayleigh.rgb) *
-                rayleighDensity * rayleighPhase +
-            max(0.0f.xxx, gAtmosphereMie.rgb) *
-                mieDensity * miePhase) * sunTransmittance;
-        result.scattering += throughput * inScatter * stepLength;
-        throughput *= exp(-max(0.0f.xxx, extinction * stepLength));
-    }
-
-    result.transmittance = saturate(throughput);
-    result.distance = viewDistance;
-    result.groundDistance = hitsGround ? distanceToGround : -1.0f;
-    return result;
+    return HikariAtmosphereIntegrateSegment(origin, direction, sunDirection,
+        requestedViewSteps, requestedSunSteps, 1e30f, false);
 }
 
 HikariAtmosphereViewIntegration HikariAtmosphereIntegrateView(
@@ -518,7 +470,7 @@ float3 HikariAtmosphereEvaluateSkyRadianceWithSteps(
     const float aerialStrength = max(
         0.0f,
         HikariAtmosphereFiniteOr(aerialPerspectiveStrength, 1.0f));
-    float3 radiance = integration.scattering * sourceRadiance * aerialStrength;
+    float3 radiance = integration.scattering * max(gAtmosphereSunColorRadiance.rgb, 0.0f.xxx) * sourceRadiance * aerialStrength;
 
     if (integration.groundDistance > 0.0f)
     {
@@ -528,9 +480,9 @@ float3 HikariAtmosphereEvaluateSkyRadianceWithSteps(
         const float3 groundNormal = HikariAtmosphereSafeNormalize(hitPosition);
         const float sunCosine = saturate(dot(groundNormal, sunDirection));
         const float3 groundSunTransmittance =
-            HikariAtmosphereTransmittanceToSpace(
+            HikariAtmosphereIntegrationSunTransmittance(
                 hitPosition + groundNormal * 0.5f,
-                sunDirection);
+                sunDirection, requestedSunSteps);
         const float3 bounce = saturate(groundColor) *
             saturate(HikariAtmosphereFiniteOr(groundAlbedo, 0.1f)) *
             sunCosine * groundSunTransmittance *
@@ -590,18 +542,6 @@ float3 HikariAtmosphereEvaluateSunDisk(
     const float3 radiance = max(0.0f.xxx, observerRadiance) *
         HikariAtmosphereObserverSunTransmittance();
     return disk * radiance;
-}
-
-float2 HikariAtmosphereTransmittanceUvFromRadiusMu(
-    float radius,
-    float cosineToRadialUp)
-{
-    // The transmittance LUT stores the physical pair (r, mu): X is mu for
-    // the high-resolution angular axis, Y is normalized radius.
-    const float radiusUv = saturate((radius - HikariAtmospherePlanetRadius()) /
-        HikariAtmosphereTopHeight());
-    const float muUv = saturate(cosineToRadialUp * 0.5f + 0.5f);
-    return float2(muUv, radiusUv);
 }
 
 float3 HikariAtmospherePositionFromRadius(float radius)

@@ -20,6 +20,7 @@
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
 #include "Render3D/Lighting/Atmosphere/HIKARI_AtmosphereRuntime.h"
+#include "Render3D/Lighting/HIKARI_IblEnvironment.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI::SKYRENDERER {
@@ -112,12 +113,6 @@ namespace HIKARI::SKYRENDERER {
                     "[SkyRenderer][PanoramaTexture] texture has no mip chain; "
                     "reimport it as mipmapped HTEX: " + path);
             }
-        }
-
-        uint64_t HashAtmosphereConstants(
-            const AtmosphereCB& constants) noexcept {
-            const uint64_t hash = HASH::Fnv1aBytes(HASH::kFnv1a64OffsetBasis, &constants, sizeof(constants));
-            return hash == 0u ? 1u : hash;
         }
 
         SunGlareSettings SanitizeSunGlare(
@@ -603,6 +598,7 @@ namespace HIKARI::SKYRENDERER {
     }
 
     void Reset() {
+        IBL::BeginEnvironmentFrame();
         g.environmentData = {};
         g.atmosphereFrame = {};
         g.debug.lastRenderSubmitted = false;
@@ -619,6 +615,7 @@ namespace HIKARI::SKYRENDERER {
     }
 
     void ShutdownAtmosphereRuntime() {
+        IBL::ShutdownEnvironmentLighting(GFX::GetCurrentContext());
         g.atmosphereLuts.Reset();
         g.atmosphereFrame = {};
     }
@@ -656,6 +653,7 @@ namespace HIKARI::SKYRENDERER {
         ModelManager&,
         SkyManager& skyManager) {
         const SkySettings& settings = environment.sky;
+        IBL::BeginEnvironmentFrame();
         const DirectionalLight& sun = environment.directional;
         g.atmosphereLuts.SetContext(graphics);
         const auto solar = ATMOSPHERE::BuildAtmosphereSolarState(environment);
@@ -755,7 +753,7 @@ namespace HIKARI::SKYRENDERER {
                 atmosphereLutsReady = g.atmosphereLuts.Dispatch(
                     graphics,
                     constants.atmosphereGpu,
-                    HashAtmosphereConstants(*constants.atmosphereCpu));
+                    *constants.atmosphereCpu);
             }
             constants.atmosphereCpu->sunDirection.w =
                 atmosphereLutsReady ? 2.0f : 1.0f;
@@ -853,12 +851,39 @@ namespace HIKARI::SKYRENDERER {
         g.environmentData.atmosphereConstants = *constants.atmosphereCpu;
 
         cmd->DrawInstanced(3, 1, 0, 0);
+        SkySettings lightingSky=settings;
+        lightingSky.mode=renderMode;
+        IBL::PrepareEnvironmentLighting(graphics,lightingSky,*constants.atmosphereCpu,
+            renderMode==SkyMode::Cubemap ? cubemapResource : texture2DResource,
+            atmosphereLutsReady ? g.atmosphereLuts.GetSkyViewSrv().gpu : D3D12_GPU_DESCRIPTOR_HANDLE{},
+            TIME::GetFrameContext().frameIndex);
         g.debug.lastRenderSubmitted = true;
         ++g.debug.drawCount;
     }
 
     const SkyRendererDebugState& GetDebugState() {
         return g.debug;
+    }
+
+    MATH::Vec3 ResolveAmbientLightColor(const SceneEnvironment& environment) {
+        const auto& skyData = GetEnvironmentData();
+        MATH::Vec3 ambientColor = environment.ambient.color;
+        const bool skyEnabled = environment.sky.enabled && environment.sky.mode != SkyMode::None;
+        if (environment.ambient.useSkyColor && skyEnabled && skyData.valid) {
+            const MATH::Vec3 skyAmbient = {
+                (skyData.horizonColor.x * 0.65f + skyData.groundColor.x * 0.35f) * skyData.exposure * skyData.ambientFromSky,
+                (skyData.horizonColor.y * 0.65f + skyData.groundColor.y * 0.35f) * skyData.exposure * skyData.ambientFromSky,
+                (skyData.horizonColor.z * 0.65f + skyData.groundColor.z * 0.35f) * skyData.exposure * skyData.ambientFromSky
+            };
+            const float blend = std::clamp(environment.ambient.skyBlend, 0.0f, 1.0f);
+            ambientColor = {
+                ambientColor.x * (1.0f - blend) + skyAmbient.x * blend,
+                ambientColor.y * (1.0f - blend) + skyAmbient.y * blend,
+                ambientColor.z * (1.0f - blend) + skyAmbient.z * blend
+            };
+        }
+
+        return ambientColor;
     }
 
     const SkyEnvironmentData& GetEnvironmentData() {

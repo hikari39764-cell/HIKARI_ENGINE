@@ -38,6 +38,8 @@ void DrawRenderPathTable(const RuntimePerformanceSnapshot &s) {
   ImGui::SeparatorText("Render Path");
   if (BeginMetricTable("RenderPathMetrics", 250.0f)) {
     MetricRowText("Route", ToString(s.submission.routeMode));
+    MetricRow("Mesh Forward Variants Ready / Failed", "%zu / %zu",
+              s.mesh.meshletBackend.preparedForwardVariantCount, s.mesh.meshletBackend.failedForwardVariantCount);
     MetricRow("Mainline / Strict / CPU Views Suppressed", "%s / %s / %u",
               s.submission.gpuDrivenMainRouteActive ? "on" : "off",
               s.gpuRegistry.strictGpuDrivenMainline ? "on" : "off",
@@ -245,10 +247,10 @@ void DrawGeometryPipelineTable(const RuntimePerformanceSnapshot &s) {
               asFineCull ? "AS" : "CS");
     MetricRow(asFineCull ? "Candidate Ranges / Meshlets / Dispatch Args"
                          : "Visible Ranges / Clusters / Draw Args",
-              "%zu / %zu / %zu", s.mesh.clusterGpuCull.gpuVisibleRangeCount,
+              "%u / %u / %u", s.mesh.clusterGpuCull.gpuVisibleRangeCount,
               s.mesh.clusterGpuCull.gpuVisibleClusterCount,
               s.mesh.clusterGpuCull.gpuDrawCommandCount);
-    MetricRow("Culling Camera Frozen / HZB Used", "%s / %s",
+    MetricRow("Culling Camera Frozen / HZB Published", "%s / %s",
               s.mesh.gpuDrivenCullingCameraFrozen ? "yes" : "no",
               s.depthVisibility.visibilityUsedHzb ? "yes" : "no");
     MetricRow(
@@ -257,29 +259,50 @@ void DrawGeometryPipelineTable(const RuntimePerformanceSnapshot &s) {
         RENDER3D::SCREENSPACE::ToString(s.depthVisibility.latestPyramidSource),
         s.depthVisibility.historyReady ? "ready" : "cold",
         s.depthVisibility.historyMatched ? "matched" : "moved");
-    MetricRow("HZB Enabled / Size / Budget Skipped", "%s / %zu x %zu / %zu",
+    MetricRow("CS HZB Enabled / Size / Budget Skipped", "%s / %u x %u / %u",
               s.mesh.clusterGpuCull.hzbOcclusionEnabled ? "yes" : "no",
               s.mesh.clusterGpuCull.hzbOcclusionWidth,
               s.mesh.clusterGpuCull.hzbOcclusionHeight,
               s.mesh.clusterGpuCull.gpuHzbBudgetSkippedCount);
-    MetricRow("HZB Page Tested / Culled | Cluster Tested / Culled",
-              "%zu / %zu | %zu / %zu",
+    const auto& visibility = s.mesh.meshletBackend.visibility;
+    MetricRow("Scene HZB Builds / Aux Depth Reused", "%u / %s",
+              s.depthVisibility.sceneDepthPyramidBuildCount,
+              s.depthVisibility.auxiliaryDepthReused ? "yes" : "no");
+    MetricRow("AS Forward HZB Bound / Size / Mips", "%s / %u x %u / %u",
+              visibility.forwardHzbBound ? "yes" : "no", visibility.width,
+              visibility.height, visibility.mipCount);
+    for (size_t phase = 0; phase < visibility.samples.size(); ++phase) {
+      const auto& sample = visibility.samples[phase];
+      MetricRow(phase == 0 ? "AS Aux Sample / Retire Fence" : "AS Forward Sample / Retire Fence",
+                "%s / %llu", sample.valid ? "ready (1/16 frames)" : "pending",
+                static_cast<unsigned long long>(sample.retireFence));
+      if (!sample.valid) continue;
+      const auto& c = sample.counters;
+      MetricRow(phase == 0 ? "AS Aux Candidates / Submitted / Invalid" : "AS Forward Candidates / Submitted / Invalid",
+                "%u / %u / %u", c.candidates, c.submitted, c.invalid);
+      MetricRow(phase == 0 ? "AS Aux Frustum / Cone Culled / Unbounded" : "AS Forward Frustum / Cone Culled / Unbounded",
+                "%u / %u / %u", c.frustumCulled, c.coneCulled, c.unbounded);
+      MetricRow(phase == 0 ? "AS Aux Cone Tested / HZB Tested / Culled" : "AS Forward Cone Tested / HZB Tested / Culled",
+                "%u / %u / %u", c.coneTested, c.hzbTested, c.hzbCulled);
+    }
+    MetricRow("CS HZB Page Tested / Culled | Cluster Tested / Culled",
+              "%u / %u | %u / %u",
               s.mesh.clusterGpuCull.gpuPageOcclusionTestedCount,
               s.mesh.clusterGpuCull.gpuPageOcclusionCulledCount,
               s.mesh.clusterGpuCull.gpuClusterOcclusionTestedCount,
               s.mesh.clusterGpuCull.gpuClusterOcclusionCulledCount);
-    MetricRow("HZB Raw / Confirmed / Pending / Reset", "%zu / %zu / %zu / %zu",
+    MetricRow("HZB Raw / Confirmed / Pending / Reset", "%u / %u / %u / %u",
               s.mesh.clusterGpuCull.gpuHzbRawOccludedCount,
               s.mesh.clusterGpuCull.gpuHzbTemporalConfirmedCount,
               s.mesh.clusterGpuCull.gpuHzbTemporalPendingCount,
               s.mesh.clusterGpuCull.gpuHzbTemporalResetCount);
-    MetricRow("GPU LOD Selected L0 / L1 / L2 / L3+", "%zu / %zu / %zu / %zu",
+    MetricRow("GPU LOD Selected L0 / L1 / L2 / L3+", "%u / %u / %u / %u",
               s.mesh.clusterGpuCull.gpuLod0SelectedCount,
               s.mesh.clusterGpuCull.gpuLod1SelectedCount,
               s.mesh.clusterGpuCull.gpuLod2SelectedCount,
               s.mesh.clusterGpuCull.gpuLod3PlusSelectedCount);
-    MetricRow("Double Sided Clusters / Draw Args / Cone Skips",
-              "%zu / %zu / %zu",
+    MetricRow("CS Double Sided Candidates / Draw Args / Cone Skips",
+              "%u / %u / %u",
               s.mesh.clusterGpuCull.gpuDoubleSidedClusterCount,
               s.mesh.clusterGpuCull.gpuDoubleSidedDrawCommandCount,
               s.mesh.clusterGpuCull.gpuConeSkippedDoubleSidedCount);

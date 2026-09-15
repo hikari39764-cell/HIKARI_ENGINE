@@ -12,7 +12,8 @@ float3 HikariResolveSurfaceShadingNormal(
     float4 tangentWS,
     float2 uv0,
     float2 uv1,
-    SamplerState materialSampler)
+    SamplerState materialSampler,
+    HikariMaterialTextureFootprint footprint = (HikariMaterialTextureFootprint)0)
 {
     const float3 n = normalize(normalWS);
     if (materialData.hasNormalTexture == 0u)
@@ -20,18 +21,12 @@ float3 HikariResolveSurfaceShadingNormal(
         return n;
     }
 
-    const float2 normalUv =
-        HikariResolveMaterialUv(
-            materialData,
-            HIKARI_MATERIAL_UV_NORMAL,
-            uv0,
-            uv1);
     float2 normalXY =
-        HikariSampleMaterialTexture(
+        HikariSampleMaterialTextureSlot(
+            materialData, HIKARI_MATERIAL_UV_NORMAL,
             materialData.normalTextureDescriptorIndex,
-            materialSampler,
-            normalUv,
-            float4(0.5f, 0.5f, 1.0f, 1.0f)).xy * 2.0f - 1.0f;
+            materialSampler, uv0, uv1,
+            float4(0.5f, 0.5f, 1.0f, 1.0f), footprint).xy * 2.0f - 1.0f;
     normalXY *= materialData.normalScale;
     // Tangent-space normals belong to the positive hemisphere. Reconstructing
     // Z keeps RGB normal maps and two-channel BC5/ATI2 sources on one contract;

@@ -205,46 +205,27 @@ void DrawGpuTimingTable(const RuntimePerformanceSnapshot &s) {
     return;
   }
 
-  const double parentMs = SumGpuMsByScope(s.gpu, false);
-  const double nestedSubpassMs = SumGpuMsByScope(s.gpu, true);
-  ImGui::Text("Frame %llu, passes %u, parent %.3f ms, nested subpass %.3f ms",
-              static_cast<unsigned long long>(s.gpu.frameIndex),
-              CountValidGpuPasses(s.gpu), parentMs, nestedSubpassMs);
-
-  if (ImGui::BeginTable("GpuDrivenTimingTable", 5,
-                        ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_RowBg |
-                            ImGuiTableFlags_SizingStretchProp)) {
-    ImGui::TableSetupColumn("Pass", ImGuiTableColumnFlags_WidthFixed, 190.0f);
-    ImGui::TableSetupColumn("Scope", ImGuiTableColumnFlags_WidthFixed, 110.0f);
-    ImGui::TableSetupColumn("GPU ms", ImGuiTableColumnFlags_WidthFixed, 90.0f);
-    ImGui::TableSetupColumn("Ticks", ImGuiTableColumnFlags_WidthFixed, 120.0f);
-    ImGui::TableSetupColumn("Share");
+  ImGui::Text("Frame %llu, %u measured passes",
+              static_cast<unsigned long long>(s.gpu.frameIndex), CountValidGpuPasses(s.gpu));
+  ImGui::TextDisabled("Sample includes child passes; Self excludes them. Avg/P95/P99: last 300 executions (quantiles refresh every 15).");
+  if (ImGui::BeginTable("GpuDrivenTimingTable", 8,
+                       ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_RowBg |
+                           ImGuiTableFlags_SizingStretchProp)) {
+    for (const char* title : {"Pass", "Parent", "Sample ms", "Self ms", "Avg ms", "P95 ms", "P99 ms", "Samples"})
+      ImGui::TableSetupColumn(title);
     ImGui::TableHeadersRow();
-
-    for (size_t i = 0; i < s.gpu.passes.size(); ++i) {
-      const GFX::GPU_PROFILE::Pass pass =
-          static_cast<GFX::GPU_PROFILE::Pass>(i);
-      const GFX::GPU_PROFILE::PassTiming &timing = s.gpu.passes[i];
-      if (!timing.valid) {
-        continue;
-      }
-
-      const bool nestedSubpass = IsNestedGpuSubpass(pass);
-      const double scopeTotal =
-          (std::max)(0.0001, nestedSubpass ? nestedSubpassMs : parentMs);
-
+    for (const auto& timing : s.gpu.passes) {
+      if (!timing.valid) continue;
       ImGui::TableNextRow();
-      ImGui::TableSetColumnIndex(0);
-      ImGui::TextUnformatted(timing.name);
+      ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted(timing.name);
       ImGui::TableSetColumnIndex(1);
-      ImGui::TextUnformatted(TimingScopeText(pass));
-      ImGui::TableSetColumnIndex(2);
-      ImGui::Text("%.3f", timing.gpuMs);
-      ImGui::TableSetColumnIndex(3);
-      ImGui::Text("%llu", static_cast<unsigned long long>(timing.ticks));
-      ImGui::TableSetColumnIndex(4);
-      ImGui::ProgressBar(static_cast<float>(timing.gpuMs / scopeTotal),
-                         ImVec2(-1.0f, 0.0f), "");
+      ImGui::TextUnformatted(timing.parentPass == GFX::GPU_PROFILE::Pass::Count ? "-" : GFX::GPU_PROFILE::ToString(timing.parentPass));
+      ImGui::TableSetColumnIndex(2); ImGui::Text("%.3f", timing.gpuMs);
+      ImGui::TableSetColumnIndex(3); ImGui::Text("%.3f", timing.exclusiveGpuMs);
+      ImGui::TableSetColumnIndex(4); ImGui::Text("%.3f", timing.averageMs);
+      ImGui::TableSetColumnIndex(5); ImGui::Text("%.3f", timing.p95Ms);
+      ImGui::TableSetColumnIndex(6); ImGui::Text("%.3f", timing.p99Ms);
+      ImGui::TableSetColumnIndex(7); ImGui::Text("%u", timing.rollingSampleCount);
     }
     ImGui::EndTable();
   }

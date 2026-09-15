@@ -16,8 +16,6 @@
 namespace HIKARI::RENDER3D::TEMPORAL {
 
     namespace DETAIL {
-        constexpr DXGI_FORMAT kMotionVectorFormat = DXGI_FORMAT_R16G16_FLOAT;
-        constexpr DXGI_FORMAT kMotionMetadataFormat = DXGI_FORMAT_R16G16_FLOAT;
         constexpr DXGI_FORMAT kHistoryColorFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
         constexpr DXGI_FORMAT kHistoryDepthFormat = DXGI_FORMAT_R32_FLOAT;
         constexpr DXGI_FORMAT kMaskFormat = DXGI_FORMAT_R8_UNORM;
@@ -287,7 +285,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
                 state.recordingContext,
                 width,
                 height,
-                kMotionVectorFormat,
+                kTemporalMotionVectorFormat,
                 "Temporal.MotionVectors",
                 { 0.0f, 0.0f, 0.0f, 0.0f }) && ok;
             ok = EnsureTarget(
@@ -296,7 +294,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
                 state.recordingContext,
                 width,
                 height,
-                kMotionMetadataFormat,
+                kTemporalMotionMetadataFormat,
                 "Temporal.MotionMetadata",
                 { 1.0f, 0.0f, 0.0f, 0.0f }) && ok;
             ok = EnsureTarget(
@@ -450,8 +448,8 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             state.stats.contextCompatible = state.contextCompatible;
             state.stats.width = state.frame.renderWidth;
             state.stats.height = state.frame.renderHeight;
-            state.stats.motionVectorFormat = kMotionVectorFormat;
-            state.stats.motionMetadataFormat = kMotionMetadataFormat;
+            state.stats.motionVectorFormat = kTemporalMotionVectorFormat;
+            state.stats.motionMetadataFormat = kTemporalMotionMetadataFormat;
             state.stats.historyColorFormat = kHistoryColorFormat;
             state.stats.historyDepthFormat = kHistoryDepthFormat;
             state.stats.sceneColorReady =

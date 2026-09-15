@@ -318,9 +318,11 @@ namespace HIKARI::TOOLS::BAKING {
                     ? std::string{}
                     : record->dependencyHash,
                 record != manifest.lightmaps.end() &&
-                    ProjectRelativeOutputExists(
-                        request.projectRoot,
-                        record->texturePath));
+                    !record->pages.empty() &&
+                    std::all_of(record->pages.begin(), record->pages.end(), [&](const auto& page) {
+                        return !page.surfaceBindings.empty() && ProjectRelativeOutputExists(
+                            request.projectRoot, page.texturePath);
+                    }));
             if (!item.enabled) {
                 item.dirtyReason =
                     "Surface target disabled or no longer Static";

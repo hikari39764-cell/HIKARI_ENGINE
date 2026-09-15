@@ -92,6 +92,7 @@ struct HikariMaterialExpressionContext
     float3 viewDirection;
     float3 cameraPosition;
     float4 screenPosition;
+    HikariMaterialTextureFootprint textureFootprint;
 };
 
 struct HikariMaterialExpressionResult
@@ -287,8 +288,21 @@ HikariMaterialExpressionResult HikariEvaluateMaterialExpression(
                 HIKARI_MATERIAL_EXPRESSION_VALUE_BASE + valueIndex,
                 float4(1.0f, 1.0f, 0.0f, 0.0f));
             uv = HikariApplyMaterialUvTransform(uv, transform, encoded.w);
-            value = HikariSampleMaterialProgramTexture(
-                materialData, binding, materialSampler, uv, 1.0f.xxxx);
+            if (context.textureFootprint.explicitGradients && source0 == HIKARI_MATERIAL_EXPRESSION_INVALID_REGISTER)
+            {
+                const float2 dx = auxiliary == 0u ? context.textureFootprint.uvDx.xy : context.textureFootprint.uvDx.zw;
+                const float2 dy = auxiliary == 0u ? context.textureFootprint.uvDy.xy : context.textureFootprint.uvDy.zw;
+                value = HikariSampleMaterialTextureGrad(HikariLoadMaterialProgramResource(materialData, binding),
+                    materialSampler, uv, HikariTransformMaterialUvGradient(dx, transform, encoded.w),
+                    HikariTransformMaterialUvGradient(dy, transform, encoded.w), 1.0f.xxxx);
+            }
+            else
+            {
+                // 接続 UV は任意の式で変形できる。UV0 の footprint を流用せず、
+                // 微分の伝播を持つまでは compute の既定 LOD を使用する。
+                value = HikariSampleMaterialProgramTexture(
+                    materialData, binding, materialSampler, uv, 1.0f.xxxx);
+            }
             registers[destination] = value;
             if (outputCount > 1u) registers[destination + 1u] = float4(value.rgb, 0.0f);
             if (outputCount > 2u) registers[destination + 2u] = value.r.xxxx;

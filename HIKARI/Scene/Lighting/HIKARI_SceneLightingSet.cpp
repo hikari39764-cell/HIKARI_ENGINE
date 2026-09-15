@@ -98,6 +98,7 @@ namespace HIKARI::LIGHTING_AUTHORING {
                 EqualVec3(lhs.color, rhs.color) &&
                 lhs.intensity == rhs.intensity &&
                 lhs.range == rhs.range &&
+                lhs.sourceRadius == rhs.sourceRadius && lhs.castsShadows == rhs.castsShadows &&
                 lhs.innerConeAngleDegrees ==
                     rhs.innerConeAngleDegrees &&
                 lhs.outerConeAngleDegrees ==
@@ -184,6 +185,8 @@ namespace HIKARI::LIGHTING_AUTHORING {
             provider.color = component->GetColor();
             provider.intensity = component->GetIntensity();
             provider.range = component->GetRange();
+            provider.sourceRadius = component->GetSourceRadius();
+            provider.castsShadows = component->CastsShadows();
             provider.distanceFalloff = component->GetDistanceFalloff();
             provider.innerConeAngleDegrees =
                 component->GetInnerConeAngleDegrees();
@@ -223,6 +226,8 @@ namespace HIKARI::LIGHTING_AUTHORING {
             provider.color = authored.color;
             provider.intensity = authored.intensity;
             provider.range = authored.range;
+            provider.sourceRadius = authored.sourceRadius;
+            provider.castsShadows = authored.castsShadows;
             provider.distanceFalloff = authored.distanceFalloff;
             provider.innerConeAngleDegrees =
                 authored.innerConeAngleDegrees;

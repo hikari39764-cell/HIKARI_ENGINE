@@ -219,6 +219,15 @@ namespace HIKARI::POST {
         };
     }
 
+    RENDER3D::RenderTextureView SceneCaptureStage::GetCurrentColorView() const {
+        if (!HasCurrentTarget()) return {};
+        const RenderTarget2D& target = *currentTarget_;
+        // 借用する storage のみ。描画中は owner が遷移するまで shader read してはいけない。
+        return {target.GetResource(), target.GetSrvGpu(), target.GetFormat(),
+            static_cast<uint32_t>(target.GetWidth()), static_cast<uint32_t>(target.GetHeight()),
+            1, target.GetColorState(), target.GetResource() != nullptr};
+    }
+
     D3D12_CPU_DESCRIPTOR_HANDLE SceneCaptureStage::GetCurrentDsv() const {
         return HasCurrentTarget() ? currentTarget_->GetDsvHandle() : D3D12_CPU_DESCRIPTOR_HANDLE{};
     }

@@ -12,9 +12,9 @@
 
 namespace HIKARI::ASSETS::LIGHTING {
 
-    constexpr uint32_t kLightingBakeManifestVersion = 6;
-    constexpr uint32_t kReflectionProbeBakePolicyVersion = 25;
-    constexpr uint32_t kIrradianceVolumeBakePolicyVersion = 11;
+    constexpr uint32_t kLightingBakeManifestVersion = 7;
+    constexpr uint32_t kReflectionProbeBakePolicyVersion = 28;
+    constexpr uint32_t kIrradianceVolumeBakePolicyVersion = 14;
 
     struct ReflectionProbeBakeRecord {
         std::string id{};
@@ -63,16 +63,20 @@ namespace HIKARI::ASSETS::LIGHTING {
         std::string scenario{ "Default" };
     };
 
-    struct LightmapBakeRecord {
-        std::string id{};
-        std::string name{};
-        uint64_t objectId = 0u;
+    struct LightmapBakePage {
         std::string texturePath{};
         uint32_t width = 0;
         uint32_t height = 0;
         uint32_t uvSet = kSurfaceLightmapUvSet;
         std::vector<LightmapSurfaceBinding>
             surfaceBindings{};
+    };
+
+    struct LightmapBakeRecord {
+        std::string id{};
+        std::string name{};
+        uint64_t objectId = 0u;
+        std::vector<LightmapBakePage> pages{};
         std::string encoding{ "RGB16F_Irradiance" };
         std::string authoringHash{};
         std::string captureSceneHash{};
@@ -80,6 +84,10 @@ namespace HIKARI::ASSETS::LIGHTING {
         std::string bakeSet{ "Default" };
         std::string scenario{ "Default" };
     };
+
+    inline std::string BuildLightmapPageResourceKey(const std::string& recordId, size_t pageIndex) {
+        return "lightmap/" + recordId + "/page_" + std::to_string(pageIndex);
+    }
 
     struct LightingBakeManifest {
         uint32_t version = kLightingBakeManifestVersion;

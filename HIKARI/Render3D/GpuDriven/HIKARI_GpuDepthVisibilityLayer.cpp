@@ -149,7 +149,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         ID3D12GraphicsCommandList* cmd,
         uint32_t width,
         uint32_t height,
-        const MATH::Mat4& viewProj) {
+        const MATH::Mat4& viewProj,
+        bool jitteredViewProj) {
 
         stats_.visibilityDepthReady =
             visibilityDepth_ != nullptr &&
@@ -177,7 +178,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         desc.viewKind = DEPTH::DepthPyramidViewKind::CurrentFrame;
         desc.viewProj = viewProj;
         desc.viewProjValid = true;
-        desc.jitteredViewProj = false;
+        desc.jitteredViewProj = jitteredViewProj;
         desc.frameIndex = graphics.frameIndex;
         desc.pixEventName = "DepthPyramid.Build.VisibilityPrepass";
 
@@ -194,7 +195,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         uint32_t width,
         uint32_t height,
         D3D12_GPU_DESCRIPTOR_HANDLE sourceDepthSrv,
-        const MATH::Mat4& viewProj) {
+        const MATH::Mat4& viewProj,
+        bool jitteredViewProj) {
 
         stats_.visibilityDepthReady =
             sourceDepthSrv.ptr != 0 &&
@@ -210,7 +212,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         desc.viewKind = DEPTH::DepthPyramidViewKind::CurrentFrame;
         desc.viewProj = viewProj;
         desc.viewProjValid = true;
-        desc.jitteredViewProj = false;
+        desc.jitteredViewProj = jitteredViewProj;
         desc.frameIndex = graphics.frameIndex;
         desc.pixEventName = "DepthPyramid.Build.SceneDepth";
 

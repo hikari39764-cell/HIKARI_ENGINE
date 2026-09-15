@@ -293,6 +293,7 @@ namespace HIKARI::RENDER3D::WORLD_SPRITES {
         uint32_t transparentOffset = 0u;
         uint32_t activeFrameSlot = 0u;
         bool initialized = false;
+        bool initializationAttempted = false;
 
         bool CreatePipelines(ID3D12Device* device) {
             if (!CreateRootSignature(
@@ -437,6 +438,7 @@ namespace HIKARI::RENDER3D::WORLD_SPRITES {
             transparentOffset = 0u;
             activeFrameSlot = 0u;
             initialized = false;
+            initializationAttempted = false;
         }
 
         bool PrepareFrame(
@@ -752,6 +754,13 @@ namespace HIKARI::RENDER3D::WORLD_SPRITES {
         const GFX::Context& context,
         const WorldSpriteFrameSource* source,
         const MATH::Vec3& cameraPosition) {
+        // 入力のない view に PSO/Upload/SRV を確保しない。失敗の再試行は
+        // Shutdown または明示 Initialize を所有者が行う時だけにする。
+        if (!impl_->initialized && !impl_->initializationAttempted &&
+            context.device && context.srvHeap && source && !source->instances.empty()) {
+            (void)Initialize(context);
+            impl_->initializationAttempted = true;
+        }
         return impl_->PrepareFrame(context, source, cameraPosition);
     }
 

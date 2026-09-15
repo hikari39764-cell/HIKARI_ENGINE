@@ -12,8 +12,11 @@ namespace HIKARI::MESHRENDERER {
         RENDER3D::RenderTextureView packedSceneSurface{};
         RENDER3D::RenderTextureView ambientOcclusion{};
         RENDER3D::DEPTH::DepthPyramidView depthPyramid{};
+        // AS は現在フレームの render camera に一致する深度のみ消費する。
+        RENDER3D::DEPTH::DepthPyramidView visibilityDepthPyramid{};
         int fallbackAoTextureHandle = -1;
         bool reflectionCapture = false;
+        bool reflectionMaterialCapture = false;
     };
 
 } // namespace HIKARI::MESHRENDERER

@@ -3,6 +3,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <limits>
+#include "Gfx/HIKARI_DynamicUploadBuffer.h"
+#include "Gfx/HIKARI_GfxContext.h"
 
 #include "Core/Math/HIKARI_NormalMatrix.h"
 #include "Core/HIKARI_TimeService.h"
@@ -98,33 +101,16 @@ namespace HIKARI::MESHRENDERER {
         out = {};
         const SKYRENDERER::SkyEnvironmentData& skyData = SKYRENDERER::GetEnvironmentData();
 
-        MATH::Vec3 dir = MATH::Normalize(environment.directional.direction);
-        if (MATH::Length(dir) <= 1e-6f) {
-            dir = { 0.0f, -1.0f, 0.0f };
-        }
-
-        // 太陽の既存の角半径を共有し、surface 専用の第二の光源設定を作らない。
-        const float angularRadius = ATMOSPHERE::ResolveSolarAngularRadius(environment);
-        const float halfAngleSine = std::sin(0.5f * angularRadius);
+        // 空・媒質・bake と同じ地表の太陽入力。透過率はここで一度だけ適用する。
+        const auto solar = ATMOSPHERE::BuildAtmosphereSolarState(environment);
+        const auto dir = solar.sunDirection * -1.0f;
+        const float halfAngleSine = std::sin(0.5f * solar.sunAngularRadius);
         out.directionalDir = { dir.x, dir.y, dir.z, halfAngleSine * halfAngleSine };
-        out.directionalColor = { environment.directional.color.x, environment.directional.color.y, environment.directional.color.z, 1.0f };
-        out.directionalIntensity = environment.directional.enabled ? std::max(0.0f, environment.directional.intensity) : 0.0f;
+        out.directionalColor = { solar.sunColor.x, solar.sunColor.y, solar.sunColor.z, 1.0f };
+        out.directionalIntensity = solar.sunRadiance;
 
-        MATH::Vec3 ambientColor = environment.ambient.color;
+        const auto ambientColor = SKYRENDERER::ResolveAmbientLightColor(environment);
         const bool skyEnabled = environment.sky.enabled && environment.sky.mode != SkyMode::None;
-        if (environment.ambient.useSkyColor && skyEnabled && skyData.valid) {
-            const MATH::Vec3 skyAmbient = {
-                (skyData.horizonColor.x * 0.65f + skyData.groundColor.x * 0.35f) * skyData.exposure * skyData.ambientFromSky,
-                (skyData.horizonColor.y * 0.65f + skyData.groundColor.y * 0.35f) * skyData.exposure * skyData.ambientFromSky,
-                (skyData.horizonColor.z * 0.65f + skyData.groundColor.z * 0.35f) * skyData.exposure * skyData.ambientFromSky
-            };
-            const float blend = std::clamp(environment.ambient.skyBlend, 0.0f, 1.0f);
-            ambientColor = {
-                ambientColor.x * (1.0f - blend) + skyAmbient.x * blend,
-                ambientColor.y * (1.0f - blend) + skyAmbient.y * blend,
-                ambientColor.z * (1.0f - blend) + skyAmbient.z * blend
-            };
-        }
 
         MATH::Vec3 fogColor = environment.fog.color;
         if (environment.fog.useSkyHorizonColor && skyEnabled && skyData.valid) {
@@ -143,13 +129,8 @@ namespace HIKARI::MESHRENDERER {
             fogColor.z,
             std::max(0.0f, environment.fog.density)
         };
-        const bool volumetricFogRequested =
-            environment.fog.enabled &&
-            environment.fog.volumetric &&
-            environment.fog.density > 0.0f;
         out.fogParams = {
-            (environment.fog.enabled &&
-                !volumetricFogRequested) ? 1.0f : 0.0f,
+            environment.fog.enabled ? 1.0f : 0.0f,
             std::max(0.0f, environment.fog.startDistance),
             std::max(0.1f, environment.fog.endDistance),
             std::max(0.0f, environment.fog.heightFalloff)
@@ -261,6 +242,39 @@ namespace HIKARI::MESHRENDERER {
             static_cast<float>(frameIndex & 0xffffu);
     }
 
+    void FillSelectedIrradianceVolumes(SkyEnvironmentCB& out) {
+        for (auto& volume : out.irradianceVolumes) volume = {};
+        const RENDER3D::LightProbeVolumeSamplingMode lightProbeSampling =
+            RENDER3D::GetRenderQualitySettings().lightProbeVolumeSampling;
+        float lightProbeSamplingMode = 0.0f;
+        switch (lightProbeSampling) {
+        case RENDER3D::LightProbeVolumeSamplingMode::FullTrilinear:
+            lightProbeSamplingMode = 1.0f;
+            break;
+        case RENDER3D::LightProbeVolumeSamplingMode::FastSmooth:
+            lightProbeSamplingMode = 2.0f;
+            break;
+        case RENDER3D::LightProbeVolumeSamplingMode::Off:
+        default:
+            lightProbeSamplingMode = 0.0f;
+            break;
+        }
+        for (size_t slot = 0;
+             slot <
+                 RENDER3D::LIGHTPROBE::
+                     kLightProbeVolumeViewSlotCount;
+             ++slot) {
+            const auto* volume =
+                RENDER3D::LIGHTPROBE::GetViewVolume(slot);
+            if (volume == nullptr || !volume->valid) {
+                continue;
+            }
+            out.irradianceVolumes[slot] = RENDER3D::LIGHTPROBE::BuildIrradianceVolumeGpuData(
+                *volume, lightProbeSamplingMode);
+        }
+
+    }
+
     void FillSkyEnvironmentCB(
         const SceneEnvironment& environment,
         const MATH::Vec3& cameraPosition,
@@ -336,70 +350,10 @@ namespace HIKARI::MESHRENDERER {
             std::clamp(environment.ambientOcclusion.specularStrength, 0.0f, 1.0f),
             environment.surfaceLightmaps.enabled ? 1.0f : 0.0f
         };
-        const RENDER3D::LightProbeVolumeSamplingMode lightProbeSampling =
-            RENDER3D::GetRenderQualitySettings().lightProbeVolumeSampling;
-        float lightProbeSamplingMode = 0.0f;
-        switch (lightProbeSampling) {
-        case RENDER3D::LightProbeVolumeSamplingMode::FullTrilinear:
-            lightProbeSamplingMode = 1.0f;
-            break;
-        case RENDER3D::LightProbeVolumeSamplingMode::FastSmooth:
-            lightProbeSamplingMode = 2.0f;
-            break;
-        case RENDER3D::LightProbeVolumeSamplingMode::Off:
-        default:
-            lightProbeSamplingMode = 0.0f;
-            break;
-        }
         RENDER3D::LIGHTPROBE::PrepareView(
             cameraPosition,
             viewFocusPosition);
-        for (size_t slot = 0;
-             slot <
-                 RENDER3D::LIGHTPROBE::
-                     kLightProbeVolumeViewSlotCount;
-             ++slot) {
-            const auto* volume =
-                RENDER3D::LIGHTPROBE::GetViewVolume(slot);
-            if (volume == nullptr || !volume->valid) {
-                continue;
-            }
-            IrradianceVolumeGpuData& gpu =
-                out.irradianceVolumes[slot];
-            gpu.originSampling = {
-                volume->origin.x,
-                volume->origin.y,
-                volume->origin.z,
-                lightProbeSamplingMode
-            };
-            gpu.spacingIntensity = {
-                std::max(0.0001f, volume->spacing.x),
-                std::max(0.0001f, volume->spacing.y),
-                std::max(0.0001f, volume->spacing.z),
-                std::max(0.0f, volume->intensity)
-            };
-            gpu.countsProbeCount = {
-                static_cast<float>(volume->countX),
-                static_cast<float>(volume->countY),
-                static_cast<float>(volume->countZ),
-                static_cast<float>(volume->probeCount)
-            };
-            gpu.sizeBlendDistance = {
-                volume->size.x,
-                volume->size.y,
-                volume->size.z,
-                std::max(0.0f, volume->blendDistance)
-            };
-            gpu.selectionParams = {
-                static_cast<float>(volume->priority),
-                static_cast<float>(volume->visibilityTextureDescriptorIndex + 1u),
-                std::clamp(
-                    volume->normalBias,
-                    0.0f,
-                    0.5f),
-                volume->visibilityDistanceScale
-            };
-        }
+        FillSelectedIrradianceVolumes(out);
 
         const SKYRENDERER::SkyEnvironmentData& skyData = SKYRENDERER::GetEnvironmentData();
         if (!skyEnabled || !skyData.valid) {
@@ -552,27 +506,30 @@ namespace HIKARI::MESHRENDERER {
 
     }
 
-    size_t UploadJointPalette(
-        JointPaletteCB* jointPaletteMapped,
-        size_t objectIndex,
-        const std::vector<MATH::Mat4>& jointPalette) {
-        if (jointPaletteMapped == nullptr) {
-            return 0;
-        }
+    D3D12_GPU_VIRTUAL_ADDRESS UploadJointPalettes(
+        const GFX::Context& graphics,
+        DX::DynamicUploadBuffer& uploads,
+        const std::vector<MATH::Mat4>* palettes,
+        size_t paletteCount) {
 
-        constexpr UINT kJointPaletteStride = GFX::AlignD3D12ConstantBufferByteSize(sizeof(JointPaletteCB));
-        uint8_t* dst = reinterpret_cast<uint8_t*>(jointPaletteMapped) + static_cast<size_t>(kJointPaletteStride) * objectIndex;
-        JointPaletteCB paletteCb{};
-        for (MATH::Mat4& jointMatrix : paletteCb.jointMatrices) {
-            jointMatrix = MATH::Mat4::Identity();
+        if ((paletteCount != 0u && palettes == nullptr) ||
+            paletteCount > (std::numeric_limits<size_t>::max)() / sizeof(JointPaletteCB)) {
+            return 0u;
         }
-
-        const size_t uploadedCount = std::min(jointPalette.size(), kMaxJointPaletteMatrices);
-        for (size_t i = 0; i < uploadedCount; ++i) {
-            paletteCb.jointMatrices[i] = jointPalette[i];
+        uploads.ResetForFrame(graphics.currentFrameRetireFenceValue);
+        const size_t count = (std::max)(size_t(1), paletteCount);
+        const auto upload = uploads.Allocate(count * sizeof(JointPaletteCB));
+        if (!upload) return 0u;
+        auto* destination = static_cast<JointPaletteCB*>(upload.cpuAddress);
+        for (size_t index = 0; index < count; ++index) {
+            auto& matrices = destination[index].jointMatrices;
+            for (auto& matrix : matrices) matrix = MATH::Mat4::Identity();
+            if (index < paletteCount) {
+                const auto& source = palettes[index];
+                std::copy_n(source.data(), (std::min)(source.size(), kMaxJointPaletteMatrices), matrices);
+            }
         }
-        std::memcpy(dst, &paletteCb, sizeof(JointPaletteCB));
-        return uploadedCount;
+        return upload.gpuAddress;
     }
 
 } // namespace HIKARI::MESHRENDERER

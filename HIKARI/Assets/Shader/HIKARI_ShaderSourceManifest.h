@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "Core/Hashing/HIKARI_Sha256.h"
+#include "Core/Shader/HIKARI_ShaderProfile.h"
 
 namespace HIKARI::ASSETS::SHADER {
 
@@ -102,6 +103,8 @@ namespace HIKARI::ASSETS::SHADER {
     bool ValidateShaderSourceManifest(
         const ShaderSourceManifest& manifest,
         std::string& outError);
+    // Catalog / source / cooked products は stage-profile と最低 SM を共通検証する。
+    using SHADERPROFILE::ValidateShaderEntryProfile;
     bool ParseShaderSourceManifest(
         std::string_view jsonText,
         ShaderSourceManifest& outManifest,

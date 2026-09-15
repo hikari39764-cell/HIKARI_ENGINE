@@ -1,6 +1,7 @@
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 
 #include <algorithm>
+#include "Core/HIKARI_RollingTimingWindow.h"
 
 #include <d3dx12.h>
 #include <wrl.h>
@@ -23,6 +24,9 @@ namespace HIKARI::GFX::GPU_PROFILE {
             ComPtr<ID3D12Resource> readbackBuffer{};
             std::array<uint8_t, kPassCount> used{};
             std::array<uint8_t, kPassCount> active{};
+            std::array<Pass, kPassCount> parents{};
+            std::array<Pass, kPassCount> activeStack{};
+            uint32_t activeDepth = 0;
             bool resolved = false;
             uint64_t frameIndex = 0;
             uint64_t retireFence = 0;
@@ -32,6 +36,7 @@ namespace HIKARI::GFX::GPU_PROFILE {
             std::array<FrameSlot, kBufferedFrameCount> slots{};
             FrameSlot* currentSlot = nullptr;
             FrameSnapshot latest{};
+            std::array<PERFORMANCE::RollingTimingWindow, kPassCount> rolling{};
             uint64_t timestampFrequency = 0;
             uint32_t writeSlotIndex = 0;
             uint32_t groupDepth = 0;
@@ -159,11 +164,27 @@ namespace HIKARI::GFX::GPU_PROFILE {
 
                 PassTiming& timing = snapshot.passes[i];
                 timing.valid = true;
+                timing.parentPass = slot.parents[i];
                 timing.ticks = end - start;
                 timing.gpuMs =
                     static_cast<double>(timing.ticks) * 1000.0 /
                     static_cast<double>(gState.timestampFrequency);
+                auto& window = gState.rolling[i];
+                window.Push(timing.gpuMs);
+                timing.averageMs = window.Average();
+                timing.p95Ms = window.p95;
+                timing.p99Ms = window.p99;
+                timing.maximumMs = window.maximum;
+                timing.rollingSampleCount = static_cast<uint32_t>(window.count);
             }
+
+            for (auto& timing : snapshot.passes) timing.exclusiveGpuMs = timing.gpuMs;
+            for (const auto& timing : snapshot.passes) {
+                if (timing.valid && IsValidPass(timing.parentPass))
+                    snapshot.passes[PassIndex(timing.parentPass)].exclusiveGpuMs -= timing.gpuMs;
+            }
+            for (auto& timing : snapshot.passes)
+                timing.exclusiveGpuMs = (std::max)(0.0, timing.exclusiveGpuMs);
 
             const D3D12_RANGE writeRange{ 0, 0 };
             slot.readbackBuffer->Unmap(0, &writeRange);
@@ -174,12 +195,19 @@ namespace HIKARI::GFX::GPU_PROFILE {
         void ResetSlot(FrameSlot& slot, uint64_t frameIndex) {
             slot.used.fill(0u);
             slot.active.fill(0u);
+            slot.parents.fill(Pass::Count);
+            slot.activeDepth = 0;
             slot.frameIndex = frameIndex;
             slot.resolved = false;
         }
     }
 
     void SetEnabled(bool enabled, const char* unavailableReason) {
+        if (gState.enabled != enabled) {
+            gState.rolling = {};
+            // 無効化前の readback を新しい測定窓へ混ぜない。再利用自体は fence で保護する。
+            for (auto& slot : gState.slots) slot.resolved = false;
+        }
         gState.enabled = enabled;
         gState.unavailableReason =
             enabled ? "" : (unavailableReason != nullptr ? unavailableReason : "");
@@ -239,6 +267,10 @@ namespace HIKARI::GFX::GPU_PROFILE {
         case Pass::ImGui: return "ImGui";
         case Pass::WaterVisibilityDepth: return "Water Visibility Depth";
         case Pass::StylizedClouds: return "Stylized Clouds";
+        case Pass::EnvironmentLighting: return "Environment Lighting";
+        case Pass::DynamicDiffuseGi: return "Dynamic Diffuse GI";
+        case Pass::CloudSolarVisibility: return "Cloud Solar Visibility";
+        case Pass::RuntimeRayScenePreparation: return "Shared Ray Scene Preparation";
         case Pass::SceneCaptures: return "Scene Captures";
         case Pass::CommandFrame: return "Command Frame";
         case Pass::Count:
@@ -264,7 +296,7 @@ namespace HIKARI::GFX::GPU_PROFILE {
         FrameSlot& slot = gState.slots[gState.writeSlotIndex % kBufferedFrameCount];
         // 計測のために待機しない。未完了の query/readback はそのまま保持する。
         if (completedFence == UINT64_MAX || retireFence == 0 ||
-            (slot.resolved && completedFence < slot.retireFence)) {
+            completedFence < slot.retireFence) {
             gState.currentSlot = nullptr;
             return;
         }
@@ -331,6 +363,9 @@ namespace HIKARI::GFX::GPU_PROFILE {
         }
 
         cmd->EndQuery(slot->queryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, QueryIndex(pass, 0u));
+        slot->parents[index] = slot->activeDepth > 0u
+            ? slot->activeStack[slot->activeDepth - 1u] : Pass::Count;
+        slot->activeStack[slot->activeDepth++] = pass;
         slot->active[index] = 1u;
         slot->used[index] = 1u;
         return true;
@@ -349,6 +384,13 @@ namespace HIKARI::GFX::GPU_PROFILE {
 
         cmd->EndQuery(slot->queryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, QueryIndex(pass, 1u));
         slot->active[index] = 0u;
+        for (uint32_t i = 0; i < slot->activeDepth; ++i) {
+            if (slot->activeStack[i] != pass) continue;
+            std::move(slot->activeStack.begin() + i + 1u,
+                slot->activeStack.begin() + slot->activeDepth, slot->activeStack.begin() + i);
+            --slot->activeDepth;
+            break;
+        }
     }
 
     const FrameSnapshot& GetLatestSnapshot() {

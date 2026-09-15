@@ -120,6 +120,9 @@ namespace HIKARI::LIGHTING_AUTHORING {
             light.range = (std::max)(
                 properties.value("range", 5.0f),
                 0.05f);
+            light.castsShadows = properties.value("castsShadows", false);
+            light.sourceRadius = RENDER3D::LIGHTING::SanitizeLocalLightSourceRadius(
+                properties.value("sourceRadius", 0.0f));
             light.innerConeAngleDegrees = std::clamp(
                 properties.value(
                     "innerConeAngleDegrees",
@@ -238,6 +241,8 @@ namespace HIKARI::LIGHTING_AUTHORING {
                 },
                 { "intensity", light.intensity },
                 { "range", light.range },
+                { "sourceRadius", RENDER3D::LIGHTING::SanitizeLocalLightSourceRadius(light.sourceRadius) },
+                { "castsShadows", light.castsShadows },
                 { "distanceFalloff", RENDER3D::LIGHTING::ToString(light.distanceFalloff) },
                 {
                     "innerConeAngleDegrees",
@@ -306,6 +311,8 @@ namespace HIKARI::LIGHTING_AUTHORING {
                 point.intensity = legacy.intensity;
                 point.range = legacy.range;
                 point.distanceFalloff = legacy.distanceFalloff;
+                point.sourceRadius = legacy.sourceRadius;
+                point.castsShadows = false;
                 point.priority = legacy.priority;
                 (void)AddLight(document, point);
             }
@@ -330,6 +337,8 @@ namespace HIKARI::LIGHTING_AUTHORING {
                 spot.intensity = legacy.intensity;
                 spot.range = legacy.range;
                 spot.distanceFalloff = legacy.distanceFalloff;
+                spot.sourceRadius = legacy.sourceRadius;
+                spot.castsShadows = false;
                 spot.innerConeAngleDegrees =
                     legacy.innerConeAngleDegrees;
                 spot.outerConeAngleDegrees =

@@ -55,8 +55,8 @@ namespace HIKARI::MESHRENDERER::ROOT_PARAM {
     constexpr UINT ClusterGeometryPool = 23;
     // Meshlet visible range buffer -> t18
     constexpr UINT MeshletVisibleRanges = 24;
-    // Meshlet visible cluster list buffer -> t19
-    constexpr UINT MeshletVisibleClusterList = 25;
+    // AS visibility table -> t19 + u0,space8 (AS only; unchanged DWORD budget)
+    constexpr UINT MeshletOcclusionDepth = 25;
     // Mesh-shader deformation palettes -> t0, space3. The skinned VS/PS root signature
     // overrides this same slot as the legacy b3 CBV during migration.
     constexpr UINT JointPalette = 26;
@@ -95,15 +95,15 @@ namespace HIKARI::MESHRENDERER::ROOT_PARAM {
 
     // Root descriptor は 2 DWORD、descriptor table は 1 DWORD。
     // Static/Skinned は JointPalette slot の型だけを置換し、同じ予算を使う。
-    constexpr UINT RootDescriptorCount = 17u;
-    constexpr UINT DescriptorTableCount = 20u;
+    constexpr UINT RootDescriptorCount = 16u;
+    constexpr UINT DescriptorTableCount = 21u;
     constexpr UINT RootConstantDwordCount = 10u;
     constexpr UINT DwordCost =
         RootDescriptorCount * 2u +
         DescriptorTableCount +
         RootConstantDwordCount;
     static_assert(Count == 42u, "Update the mesh root-signature budget.");
-    static_assert(DwordCost == 64u);
+    static_assert(DwordCost == 63u);
     static_assert(DwordCost <= 64u);
 
 } // namespace HIKARI::MESHRENDERER::ROOT_PARAM

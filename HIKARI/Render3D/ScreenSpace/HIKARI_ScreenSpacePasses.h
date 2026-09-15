@@ -38,6 +38,8 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         bool depthPyramidBuilt = false;
         bool visibilityUsedHzb = false;
         bool visibilityWithoutHzb = false;
+        uint32_t sceneDepthPyramidBuildCount = 0;
+        bool auxiliaryDepthReused = false;
         DepthVisibilitySource visibilitySource = DepthVisibilitySource::None;
         DepthVisibilitySource latestPyramidSource = DepthVisibilitySource::None;
     };
@@ -66,6 +68,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         bool depthPrepassWritten = false;
         bool hzbBuilt = false;
         bool geometryAuxWritten = false;
+        bool geometryAuxDepthComplete = false;
         bool ssaoRendered = false;
         RENDER3D::DEPTH::DepthPyramidView visibilityDepthPyramid{};
         RENDER3D::DEPTH::DepthPyramidView currentSceneDepthPyramid{};

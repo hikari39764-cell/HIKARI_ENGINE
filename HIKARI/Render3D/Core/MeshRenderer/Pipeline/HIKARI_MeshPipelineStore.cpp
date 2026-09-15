@@ -1,3 +1,4 @@
+#include "Core/HIKARI_MathConfig.h"
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshPipelineStore.h"
 
 #include <cstddef>
@@ -10,6 +11,8 @@
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
+#include "Core/HIKARI_StartupTimer.h"
+#include "Gfx/HIKARI_DXCheck.h"
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshInputLayouts.h"
 
 namespace HIKARI::MESHRENDERER {
@@ -26,7 +29,8 @@ namespace HIKARI::MESHRENDERER {
         seed ^= static_cast<size_t>(key.depthTest) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
         seed ^= static_cast<size_t>(key.depthWrite) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
         seed ^= static_cast<size_t>(key.doubleSided) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-        return seed ^ (static_cast<size_t>(variant.reflectionCapture) << 1);
+        return seed ^ (static_cast<size_t>(variant.reflectionCapture) << 1) ^
+            (static_cast<size_t>(variant.reflectionMaterialCapture) << 2);
     }
 
     namespace {
@@ -78,7 +82,7 @@ namespace HIKARI::MESHRENDERER {
         }
         
 		// メッシュの描画に使用するパイプラインステートオブジェクトを作成する。頂点シェーダとピクセルシェーダのバイナリを取得し、入力レイアウトやラスタライザステートなどを設定して、ID3D12PipelineStateを生成する。
-        bool CreateVariantPipeline(MeshPipelineStore& store, ID3D12Device* device, const VFX::VariantKey& key, bool wireframe, bool reflectionCapture, ID3D12PipelineState** outPso) {
+        bool CreateVariantPipeline(MeshPipelineStore& store, ID3D12Device* device, const VFX::VariantKey& key, bool wireframe, bool reflectionCapture, bool reflectionMaterialCapture, ID3D12PipelineState** outPso) {
             D3D12_SHADER_BYTECODE vertexShader{};
             if (!ResolveVertexShaderBytecode(
                     store,
@@ -103,6 +107,7 @@ namespace HIKARI::MESHRENDERER {
             ApplyCompositeBlendState(psoDesc.BlendState, key.composite, reflectionCapture);
             psoDesc.SampleMask = UINT_MAX;
             psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+            psoDesc.RasterizerState.FrontCounterClockwise = MATH::kFrontFaceCounterClockwise ? TRUE : FALSE;
             psoDesc.RasterizerState.FillMode = wireframe ? D3D12_FILL_MODE_WIREFRAME : D3D12_FILL_MODE_SOLID;
             psoDesc.RasterizerState.CullMode = key.doubleSided ? D3D12_CULL_MODE_NONE : D3D12_CULL_MODE_BACK;
             psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
@@ -111,15 +116,16 @@ namespace HIKARI::MESHRENDERER {
             psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
             psoDesc.InputLayout = { inputElements.data(), static_cast<UINT>(inputElements.size()) };
             psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-            psoDesc.NumRenderTargets = reflectionCapture ? 3 : 1;
+            psoDesc.NumRenderTargets = reflectionCapture ? 4 : 1;
             for (UINT i = 0; i < psoDesc.NumRenderTargets; ++i)
                 psoDesc.RTVFormats[i] = DXGI_FORMAT_R16G16B16A16_FLOAT;
+            if (reflectionCapture && !reflectionMaterialCapture) psoDesc.RTVFormats[3] = DXGI_FORMAT_UNKNOWN;
             psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
             psoDesc.SampleDesc.Count = 1;
             return SUCCEEDED(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(outPso)));
         }
 
-        bool CreateSkinnedVariantPipeline(MeshPipelineStore& store, ID3D12Device* device, const VFX::VariantKey& key, bool wireframe, bool reflectionCapture, ID3D12PipelineState** outPso) {
+        bool CreateSkinnedVariantPipeline(MeshPipelineStore& store, ID3D12Device* device, const VFX::VariantKey& key, bool wireframe, bool reflectionCapture, bool reflectionMaterialCapture, ID3D12PipelineState** outPso) {
             D3D12_SHADER_BYTECODE pixelShader{};
             const std::string psId = !key.pixelShaderId.empty() ? key.pixelShaderId : key.shaderId;
             const D3D12_SHADER_BYTECODE vertexShader =
@@ -142,6 +148,7 @@ namespace HIKARI::MESHRENDERER {
             ApplyCompositeBlendState(psoDesc.BlendState, key.composite, reflectionCapture);
             psoDesc.SampleMask = UINT_MAX;
             psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+            psoDesc.RasterizerState.FrontCounterClockwise = MATH::kFrontFaceCounterClockwise ? TRUE : FALSE;
             psoDesc.RasterizerState.FillMode = wireframe ? D3D12_FILL_MODE_WIREFRAME : D3D12_FILL_MODE_SOLID;
             psoDesc.RasterizerState.CullMode = key.doubleSided ? D3D12_CULL_MODE_NONE : D3D12_CULL_MODE_BACK;
             psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
@@ -150,9 +157,10 @@ namespace HIKARI::MESHRENDERER {
             psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
             psoDesc.InputLayout = { inputElements.data(), static_cast<UINT>(inputElements.size()) };
             psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-            psoDesc.NumRenderTargets = reflectionCapture ? 3 : 1;
+            psoDesc.NumRenderTargets = reflectionCapture ? 4 : 1;
             for (UINT i = 0; i < psoDesc.NumRenderTargets; ++i)
                 psoDesc.RTVFormats[i] = DXGI_FORMAT_R16G16B16A16_FLOAT;
+            if (reflectionCapture && !reflectionMaterialCapture) psoDesc.RTVFormats[3] = DXGI_FORMAT_UNKNOWN;
             psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
             psoDesc.SampleDesc.Count = 1;
             return SUCCEEDED(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(outPso)));
@@ -217,6 +225,8 @@ namespace HIKARI::MESHRENDERER {
     }
 
     void ShutdownMeshPipelines(MeshPipelineStore& store) {
+        store.fallbackDesc = {};
+        store.fallbackAttempted[0] = store.fallbackAttempted[1] = false;
         InvalidateMeshPipelineVariants(store);
         GFX::RetireD3D12ObjectForCurrentFrame(store.pso, "MeshRenderer.StaticPSO");
         GFX::RetireD3D12ObjectForCurrentFrame(store.skinnedPso, "MeshRenderer.SkinnedPSO");
@@ -255,6 +265,29 @@ namespace HIKARI::MESHRENDERER {
         RetirePipelineCache(store.skinnedVariantPsoCache, "MeshRenderer.SkinnedVariantPSO");
         RetirePipelineCache(store.wireVariantPsoCache, "MeshRenderer.WireVariantPSO");
         RetirePipelineCache(store.skinnedWireVariantPsoCache, "MeshRenderer.SkinnedWireVariantPSO");
+    }
+
+    bool AreTraditionalMeshPipelineInputsReady(const MeshPipelineStore& store) {
+        return store.rootSig && store.skinnedRootSig && store.vsShader && store.skinnedVsShader &&
+            store.psShader && store.depthPso && store.depthSkinnedPso;
+    }
+
+    ID3D12PipelineState* GetOrCreateFallbackPso(MeshPipelineStore& store, ID3D12Device* device, bool skinned) {
+        auto& pipeline = skinned ? store.skinnedPso : store.pso;
+        if (pipeline || store.fallbackAttempted[skinned] || !device || !AreTraditionalMeshPipelineInputsReady(store))
+            return pipeline.Get();
+        store.fallbackAttempted[skinned] = true;
+        auto desc = store.fallbackDesc;
+        if (skinned) {
+            const auto layout = GetSkinnedMeshInputLayout();
+            desc.pRootSignature = store.skinnedRootSig.Get();
+            desc.VS = CookedBytecode(store.skinnedVsShader);
+            desc.InputLayout = {layout.data(), static_cast<UINT>(layout.size())};
+        }
+        CORE::StartupTimer timer(skinned ? "PSO.TraditionalSkinnedFallback" : "PSO.TraditionalStaticFallback");
+        (void)HIKARI_DX_CHECK(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(pipeline.GetAddressOf())),
+            "MeshRenderer::CreateFallbackPipeline");
+        return pipeline.Get();
     }
 
     ID3D12RootSignature* GetStaticRootSignature(MeshPipelineStore& store) {
@@ -315,7 +348,9 @@ namespace HIKARI::MESHRENDERER {
         const VFX::VariantKey& key,
         bool skinned,
         bool wireframe,
-        bool reflectionCapture) {
+        bool reflectionCapture,
+        bool reflectionMaterialCapture) {
+        if (reflectionMaterialCapture && !reflectionCapture) return nullptr;
         if (reflectionCapture && (!device || wireframe ||
             (key.composite == VFX::CompositeMode::Additive || key.composite == VFX::CompositeMode::Multiply) || !key.depthTest || !key.depthWrite)) return nullptr;
         if (reflectionCapture && !store.reflectionShadersAttempted) {
@@ -339,14 +374,14 @@ namespace HIKARI::MESHRENDERER {
             ? (wireframe ? store.skinnedWireVariantPsoCache : store.skinnedVariantPsoCache)
             : (wireframe ? store.wireVariantPsoCache : store.variantPsoCache);
 
-        const MeshPipelineVariantQuery cacheKey{key, reflectionCapture};
+        const MeshPipelineVariantQuery cacheKey{key, reflectionCapture, reflectionMaterialCapture};
         auto found = cache.find(cacheKey);
         if (found == cache.end()) {
             ++stats.psoCacheMissCount;
             ComPtr<ID3D12PipelineState> variantPso;
             const bool created = skinned
-                ? CreateSkinnedVariantPipeline(store, device, key, wireframe, reflectionCapture, variantPso.GetAddressOf())
-                : CreateVariantPipeline(store, device, key, wireframe, reflectionCapture, variantPso.GetAddressOf());
+                ? CreateSkinnedVariantPipeline(store, device, key, wireframe, reflectionCapture, reflectionMaterialCapture, variantPso.GetAddressOf())
+                : CreateVariantPipeline(store, device, key, wireframe, reflectionCapture, reflectionMaterialCapture, variantPso.GetAddressOf());
             if (!created && !reflectionCapture) {
                 DEBUGLOG::PushRenderError(
                     std::string("[MeshRenderer][MaterialFx][WARN] Variant PSO create failed; fallback used. vs=") +
@@ -359,9 +394,9 @@ namespace HIKARI::MESHRENDERER {
                     (skinned ? "yes" : "no") +
                     " wireframe=" +
                     (wireframe ? "yes" : "no"));
-                variantPso = skinned ? (store.skinnedPso ? store.skinnedPso : store.pso) : store.pso;
+                variantPso = GetOrCreateFallbackPso(store, device, skinned);
             }
-            found = cache.emplace(MeshPipelineVariantKey{key, reflectionCapture}, std::move(variantPso)).first;
+            found = cache.emplace(MeshPipelineVariantKey{key, reflectionCapture, reflectionMaterialCapture}, std::move(variantPso)).first;
         } else {
             ++stats.psoCacheHitCount;
         }

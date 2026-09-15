@@ -330,6 +330,10 @@ namespace HIKARI::RENDER3D::UPSCALING {
             state.frameGeneration;
         StreamlineFrameGenerationStats& stats = frameGeneration.stats;
         stats.frameIndex = frameIndex;
+        if (!hostAllowed || !stats.supported || !stats.featureLoaded) {
+            stats.stateValid = false;
+            stats.presentedFrames = 0u;
+        }
         stats.hostAllowed = hostAllowed;
         stats.requested = frameGeneration.settings.enabled;
         stats.generatedFrames = frameGeneration.settings.generatedFrames;

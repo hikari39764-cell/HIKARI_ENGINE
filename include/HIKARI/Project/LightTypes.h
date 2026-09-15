@@ -8,8 +8,9 @@
 
 namespace HIKARI {
 
-    inline constexpr uint32_t kGameProjectLightStateVersion = 1u;
+    inline constexpr uint32_t kGameProjectLightStateVersion = 2u;
     inline constexpr uint32_t kGameProjectLightStateV1Size = 64u;
+    inline constexpr uint32_t kGameProjectLightStateV2Size = 72u;
     inline constexpr uint32_t kGameProjectLightPatchVersion = 1u;
     inline constexpr uint32_t kGameProjectLightPatchV1Size = 64u;
 
@@ -29,6 +30,8 @@ namespace HIKARI {
         SpotCone = 1u << 4u,
         AngularFalloff = 1u << 5u,
         DistanceFalloff = 1u << 6u,
+        SourceRadius = 1u << 7u,
+        CastShadows = 1u << 8u,
     };
 
     enum class GameProjectLightFalloff : uint32_t {
@@ -57,12 +60,16 @@ namespace HIKARI {
         GameProjectLightPatchFields(GameProjectLightPatchField::SpotCone) |
         GameProjectLightPatchFields(
             GameProjectLightPatchField::AngularFalloff) |
-        GameProjectLightPatchFields(GameProjectLightPatchField::DistanceFalloff);
+        GameProjectLightPatchFields(GameProjectLightPatchField::DistanceFalloff) |
+        GameProjectLightPatchFields(GameProjectLightPatchField::SourceRadius) |
+        GameProjectLightPatchFields(GameProjectLightPatchField::CastShadows);
 
     // Runtime snapshot. The values belong to the World instance and are not
-    // persisted back to the Scene document.
+    // persisted back to the Scene document. Initialize size/version before reading.
+    // Hosts accept v1/64-byte and v2/72-byte callers and only write that prefix.
+    // A pre-2.27 host returns v1; sourceRadius/castsShadows are only valid in a v2 result.
     struct GameProjectLightState {
-        uint32_t structSize = kGameProjectLightStateV1Size;
+        uint32_t structSize = kGameProjectLightStateV2Size;
         uint32_t version = kGameProjectLightStateVersion;
         GameProjectLightType type = GameProjectLightType::Point;
         uint8_t enabled = 1u;
@@ -77,6 +84,10 @@ namespace HIKARI {
         // SDK 2.26 uses the previously reserved word; all v1 offsets are stable.
         GameProjectLightFalloff distanceFalloff = GameProjectLightFalloff::LegacyRange;
         uint64_t stateRevision = 0u;
+        // Point/Spot physical emitter radius in world units; independent of Range.
+        float sourceRadius = 0.0f;
+        // Local-light shadow request; quality/resource budgets determine availability.
+        uint32_t castsShadows = 0u;
     };
 
     // Atomic runtime-only update. Only fields selected by fieldMask are read.
@@ -95,14 +106,21 @@ namespace HIKARI {
         // Read only when DistanceFalloff is selected; applies to Point/Spot.
         // Older hosts reject that field mask without applying any part of it.
         GameProjectLightFalloff distanceFalloff = GameProjectLightFalloff::LegacyRange;
-        uint32_t reserved1[3] = { 0u, 0u, 0u };
+        // SDK 2.27 consumes one reserved word without changing the v1 patch size.
+        // Read only for SourceRadius; old hosts reject the unknown mask atomically.
+        float sourceRadius = 0.0f;
+        // Read only for CastShadows. Must be 0 or 1; applies to Point/Spot.
+        uint32_t castsShadows = 0u;
+        uint32_t reserved1 = 0u;
     };
 
     static_assert(std::is_standard_layout_v<GameProjectLightState>);
     static_assert(std::is_trivially_copyable_v<GameProjectLightState>);
     static_assert(sizeof(GameProjectLightState) ==
-        kGameProjectLightStateV1Size);
+        kGameProjectLightStateV2Size);
     static_assert(offsetof(GameProjectLightState, color) == 16u);
+    static_assert(offsetof(GameProjectLightState, sourceRadius) == kGameProjectLightStateV1Size);
+    static_assert(offsetof(GameProjectLightState, castsShadows) == 68u);
     static_assert(offsetof(GameProjectLightState, stateRevision) == 56u);
     static_assert(offsetof(GameProjectLightState, distanceFalloff) == 52u);
     static_assert(std::is_standard_layout_v<GameProjectLightPatch>);
@@ -111,5 +129,7 @@ namespace HIKARI {
         kGameProjectLightPatchV1Size);
     static_assert(offsetof(GameProjectLightPatch, color) == 16u);
     static_assert(offsetof(GameProjectLightPatch, distanceFalloff) == 48u);
+    static_assert(offsetof(GameProjectLightPatch, sourceRadius) == 52u);
+    static_assert(offsetof(GameProjectLightPatch, castsShadows) == 56u);
 
 } // namespace HIKARI

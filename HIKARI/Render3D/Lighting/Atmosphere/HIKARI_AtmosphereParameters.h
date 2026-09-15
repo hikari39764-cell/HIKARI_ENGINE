@@ -12,6 +12,8 @@ namespace HIKARI::ATMOSPHERE {
         MATH::Vec3 sunSourceColor{ 1.0f, 1.0f, 1.0f };
         MATH::Vec3 sunColor{ 1.0f, 1.0f, 1.0f };
         MATH::Vec3 sunTransmittance{ 1.0f, 1.0f, 1.0f };
+        // 旧名 Radiance は光源強度の倍率。color * multiplier は面法線が太陽を
+        // 向くときの入射照度（scene-linear）。BRDF/phase/円盤が各々積分を所有する。
         float sunSourceRadiance = 0.0f;
         float sunRadiance = 0.0f;
         float sunAngularRadius = 0.004675f;
@@ -37,7 +39,8 @@ namespace HIKARI::ATMOSPHERE {
     float SolarAngularRadiusFromDiskSize(float size) noexcept;
     float SolarDiskSizeFromAngularRadius(float radius) noexcept;
     float ResolveSolarAngularRadius(const SceneEnvironment& environment) noexcept;
-    AtmosphereSolarState BuildAtmosphereSolarState(const SceneEnvironment& environment) noexcept;
+    AtmosphereSolarState BuildAtmosphereSolarState(
+        const SceneEnvironment& environment, float observerHeight = 2.0f) noexcept;
     AtmosphereLutConstants BuildAtmosphereLutConstants(
         const AtmosphereSettings& settings, const AtmosphereSolarState& solar,
         const MATH::Vec3& groundColor) noexcept;

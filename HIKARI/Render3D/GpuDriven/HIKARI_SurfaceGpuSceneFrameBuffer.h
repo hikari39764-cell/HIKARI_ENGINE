@@ -37,6 +37,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
 
     class SurfaceGpuSceneFrameBuffer final {
     public:
+        void Finalize(const GFX::Context& graphics);
         bool Initialize(
             ID3D12Device* device,
             D3D12_CPU_DESCRIPTOR_HANDLE srvCpu,

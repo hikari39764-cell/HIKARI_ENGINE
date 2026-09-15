@@ -146,24 +146,11 @@ namespace HIKARI::MESHRENDERER {
                 ? *settings.sceneSourceOverride
                 : gMeshRendererState.gpuDrivenSceneSource;
         const auto* jointPalettes = sceneSource.meshShaderJointPalettes;
-        if (jointPalettes != nullptr) {
-            const size_t paletteCount =
-                (std::min)(
-                    jointPalettes->size(),
-                    static_cast<size_t>(kMaxObjectCount));
-            for (size_t paletteIndex = 0;
-                paletteIndex < paletteCount;
-                ++paletteIndex) {
-
-                const std::vector<MATH::Mat4>& palette =
-                    (*jointPalettes)[paletteIndex];
-                if (!palette.empty()) {
-                    (void)UploadJointPalette(
-                        editorFrame.jointPaletteMapped,
-                        paletteIndex,
-                        palette);
-                }
-            }
+        editorFrame.jointPaletteAddress = UploadJointPalettes(graphics, editorFrame.deformationUploads,
+            jointPalettes != nullptr ? jointPalettes->data() : nullptr,
+            jointPalettes != nullptr ? jointPalettes->size() : 0u);
+        if (editorFrame.jointPaletteAddress == 0u) {
+            return EditorInteractiveMeshRenderResult::FrameResourcesUnavailable;
         }
         const uintptr_t sourceIdentity =
             reinterpret_cast<uintptr_t>(&sceneSource);
@@ -302,7 +289,7 @@ namespace HIKARI::MESHRENDERER {
         overrides.skyEnvironmentAddress =
             editorFrame.view.Bindings().skyEnvironment;
         overrides.jointPaletteAddress =
-            editorFrame.jointPaletteCB->GetGPUVirtualAddress();
+            editorFrame.jointPaletteAddress;
         overrides.surfaceGpuSceneFrameBuffer =
             &gMeshRendererState.editorInteractive.surfaceGpuSceneBuffer;
         overrides.waterSurfaceGpuFrameBuffer =

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 
 #include <d3d12.h>
 #include <wrl/client.h>
@@ -11,6 +12,7 @@
 #include "Render3D/Pipeline/HIKARI_RenderFrameContext.h"
 #include "Render3D/Resources/HIKARI_RenderResourceHandle.h"
 #include "Render3D/Surface/HIKARI_SceneSurfaceSet.h"
+#include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 
 namespace HIKARI::RENDER3D::REFLECTION {
 
@@ -20,6 +22,11 @@ namespace HIKARI::RENDER3D::REFLECTION {
         bool currentHzbReady = false;
         bool pipelineReady = false;
         bool rendered = false;
+        bool historyUsed = false;
+        bool resolutionLimited = false;
+        bool resizeDeferred = false;
+        uint32_t residentViews = 0;
+        uint64_t workingSetBytes = 0;
         uint32_t maxSteps = 0;
         uint32_t hzbMipCount = 0;
         uint32_t traceWidth = 0;
@@ -30,13 +37,18 @@ namespace HIKARI::RENDER3D::REFLECTION {
 
     class ScreenSpaceReflectionRenderer final {
     public:
+        ScreenSpaceReflectionRenderer();
+        ~ScreenSpaceReflectionRenderer();
+        ScreenSpaceReflectionRenderer(const ScreenSpaceReflectionRenderer&) = delete;
+        ScreenSpaceReflectionRenderer& operator=(const ScreenSpaceReflectionRenderer&) = delete;
         bool Render(
             const GFX::Context& graphics,
             const PIPELINE::RenderTargetAccess& targetAccess,
             const SURFACE::SceneSurfaceSet& surfaces,
             const MESHRENDERER::CameraCB& camera,
             const ScreenSpaceReflectionSettings& settings,
-            RenderDebugView debugView);
+            RenderDebugView debugView,
+            const TEMPORAL::TemporalFrameState& temporal);
         void Release();
 
         const ScreenSpaceReflectionDebugState& GetDebugState() const {
@@ -44,29 +56,8 @@ namespace HIKARI::RENDER3D::REFLECTION {
         }
 
     private:
-        bool EnsurePipeline(ID3D12Device* device);
-        bool EnsureConstantBuffer(ID3D12Device* device);
-        bool EnsureTraceTarget(
-            ID3D12Device* device,
-            uint32_t width,
-            uint32_t height);
-        void ReleaseTraceTarget();
-
-        Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignature_{};
-        Microsoft::WRL::ComPtr<ID3D12PipelineState> tracePipelineState_{};
-        Microsoft::WRL::ComPtr<ID3D12PipelineState> resolvePipelineState_{};
-        Microsoft::WRL::ComPtr<ID3D12Resource> constantBuffer_{};
-        Microsoft::WRL::ComPtr<ID3D12Resource> traceTarget_{};
-        Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> traceRtvHeap_{};
-        TextureResourceHandle traceTexture_{};
-        D3D12_CPU_DESCRIPTOR_HANDLE traceRtv_{};
-        D3D12_GPU_DESCRIPTOR_HANDLE traceSrv_{};
-        D3D12_RESOURCE_STATES traceTargetState_ =
-            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-        uint8_t* constantMapped_ = nullptr;
-        uint32_t constantStride_ = 0;
-        uint32_t traceWidth_ = 0;
-        uint32_t traceHeight_ = 0;
+        struct State;
+        std::unique_ptr<State> state_;
         ScreenSpaceReflectionDebugState debugState_{};
     };
 

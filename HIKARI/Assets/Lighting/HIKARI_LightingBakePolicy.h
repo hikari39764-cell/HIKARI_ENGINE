@@ -5,7 +5,7 @@
 namespace HIKARI::ASSETS::LIGHTING {
 
     inline constexpr uint32_t
-        kSurfaceLightmapBakePolicyVersion = 10u;
+        kSurfaceLightmapBakePolicyVersion = 14u;
     inline constexpr uint32_t
         kSurfaceLightmapUvSet = 1u;
     inline constexpr uint32_t
@@ -14,6 +14,8 @@ namespace HIKARI::ASSETS::LIGHTING {
         kSurfaceLightmapMinimumAtlasResolution = 128u;
     inline constexpr uint32_t
         kSurfaceLightmapMaximumAtlasResolution = 4096u;
+    inline constexpr uint32_t
+        kSurfaceLightmapMaximumAtlasPages = 16u;
     inline constexpr uint32_t
         kSurfaceLightmapAtlasGuardTexels = 8u;
     inline constexpr uint32_t

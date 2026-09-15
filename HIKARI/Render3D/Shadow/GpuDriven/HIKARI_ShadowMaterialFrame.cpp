@@ -22,17 +22,17 @@ namespace HIKARI::SHADOW::INTERNAL {
         return &asset.materials[static_cast<size_t>(materialIndex)];
     }
 
-    RENDER3D::TextureResourceHandle ResolvePrimitiveTextureResource(const ModelAsset& asset, const MaterialAsset* materialAsset) {
+    RENDER3D::TextureResourceHandle ResolvePrimitiveTextureResource(ShadowRendererState& state, const ModelAsset& asset, const MaterialAsset* materialAsset) {
         const TextureSlot* slot = GetModelMaterialTextureSlot(materialAsset, MaterialTextureUsage::BaseColor);
         if (slot == nullptr || slot->textureIndex < 0 ||
             static_cast<size_t>(slot->textureIndex) >= asset.textures.size()) {
-            return gShadowRendererState.fallbackTextureResource;
+            return state.fallbackTextureResource;
         }
         const auto& texturePath = GetMaterialTextureRuntimePath(asset.textures[static_cast<size_t>(slot->textureIndex)]);
-        if (texturePath.empty()) return gShadowRendererState.fallbackTextureResource;
+        if (texturePath.empty()) return state.fallbackTextureResource;
         const std::string cacheKey = "shadow:base:" + texturePath;
-        auto found = gShadowRendererState.materialTextureCache.find(cacheKey);
-        if (found != gShadowRendererState.materialTextureCache.end() &&
+        auto found = state.materialTextureCache.find(cacheKey);
+        if (found != state.materialTextureCache.end() &&
             RENDER3D::IsTextureResourceValid(found->second)) {
             return found->second;
         }
@@ -40,8 +40,8 @@ namespace HIKARI::SHADOW::INTERNAL {
         RENDER3D::TextureResourceHandle resource =
             RENDER3D::LoadTextureResourceWithColorSpace(cacheKey, texturePath,
                 MaterialTextureColorSpace(MaterialTextureUsage::BaseColor));
-        gShadowRendererState.materialTextureCache[cacheKey] = resource;
-        return RENDER3D::IsTextureResourceValid(resource) ? resource : gShadowRendererState.fallbackTextureResource;
+        state.materialTextureCache[cacheKey] = resource;
+        return RENDER3D::IsTextureResourceValid(resource) ? resource : state.fallbackTextureResource;
     }
 
     uint32_t ResolveTextureDescriptorIndex(int textureHandle) {
@@ -52,13 +52,13 @@ namespace HIKARI::SHADOW::INTERNAL {
             : static_cast<uint32_t>(descriptorIndex);
     }
     uint32_t UploadShadowMaterialData(
-        uint64_t stableMaterialKey,
+        ShadowRendererState& state, uint64_t stableMaterialKey,
         MESHRENDERER::MaterialGpuData data,
         const Material* programMaterial = nullptr) {
 
         using namespace RENDER3D::MATERIAL;
-        auto& table = gShadowRendererState.materialDataFrameTable;
-        auto& materialData = GetActiveShadowFrameResources().materialDataStaging;
+        auto& table = state.materialDataFrameTable;
+        auto& materialData = GetActiveShadowFrameResources(state).materialDataStaging;
         if (materialData.empty()) {
             return MESHRENDERER::kInvalidMaterialDataIndex;
         }
@@ -98,9 +98,9 @@ namespace HIKARI::SHADOW::INTERNAL {
         return index;
     }
 
-    void ResetShadowMaterialFrame() {
-        gShadowRendererState.materialDataFrameTable.Clear();
-        if (GetActiveShadowFrameResources().materialDataStaging.empty()) {
+    void ResetShadowMaterialFrame(ShadowRendererState& state) {
+        state.materialDataFrameTable.Clear();
+        if (GetActiveShadowFrameResources(state).materialDataStaging.empty()) {
             return;
         }
 
@@ -108,39 +108,39 @@ namespace HIKARI::SHADOW::INTERNAL {
         defaultData.baseColor = { 1.0f, 1.0f, 1.0f, 1.0f };
         defaultData.pbrParams = { 0.0f, 1.0f, 1.0f, 0.5f };
         defaultData.normalScale = 1.0f;
-        defaultData.baseColorTextureHandle = gShadowRendererState.fallbackTextureHandle;
+        defaultData.baseColorTextureHandle = state.fallbackTextureHandle;
         defaultData.normalTextureHandle = -1;
         defaultData.emissiveTextureHandle = -1;
         defaultData.metallicRoughnessTextureHandle = -1;
         defaultData.occlusionTextureHandle = -1;
         defaultData.baseColorTextureDescriptorIndex =
-            ResolveTextureDescriptorIndex(gShadowRendererState.fallbackTextureHandle);
+            ResolveTextureDescriptorIndex(state.fallbackTextureHandle);
         defaultData.normalTextureDescriptorIndex = MESHRENDERER::kInvalidTextureDescriptorIndex;
         defaultData.emissiveTextureDescriptorIndex = MESHRENDERER::kInvalidTextureDescriptorIndex;
         defaultData.metallicRoughnessTextureDescriptorIndex = MESHRENDERER::kInvalidTextureDescriptorIndex;
         defaultData.occlusionTextureDescriptorIndex = MESHRENDERER::kInvalidTextureDescriptorIndex;
-        (void)UploadShadowMaterialData(0u, defaultData);
+        (void)UploadShadowMaterialData(state, 0u, defaultData);
     }
 
     MESHRENDERER::MaterialGpuData BuildShadowMaterialGpuData(
-        const RENDER3D::RUNTIME::SurfaceGpuSceneMaterialSource& source) {
+        ShadowRendererState& state, const RENDER3D::RUNTIME::SurfaceGpuSceneMaterialSource& source) {
         using namespace RENDER3D::MATERIAL;
         const MaterialAsset* materialAsset = source.model != nullptr
             ? GetPrimitiveMaterial(*source.model, source.materialIndex) : nullptr;
         GpuMaterialProjection projection{BuildMaterialFactorProjection(materialAsset, source.materialOverride)};
-        int baseColorHandle = gShadowRendererState.fallbackTextureHandle;
+        int baseColorHandle = state.fallbackTextureHandle;
         if (const auto* slot = ResolveMaterialTextureOverride(source.materialOverride, MaterialTextureUsage::BaseColor)) {
             if (slot->enabled) baseColorHandle = slot->ResolveBackendHandle();
         } else if (source.model != nullptr) {
             baseColorHandle = RENDER3D::GetTextureResourceBackendHandle(
-                ResolvePrimitiveTextureResource(*source.model, materialAsset));
+                ResolvePrimitiveTextureResource(state, *source.model, materialAsset));
         }
-        if (baseColorHandle < 0) baseColorHandle = gShadowRendererState.fallbackTextureHandle;
+        if (baseColorHandle < 0) baseColorHandle = state.fallbackTextureHandle;
         auto& baseColor = projection.textures[static_cast<size_t>(GpuMaterialTextureChannel::BaseColor)];
         baseColor.backendHandle = baseColorHandle;
         baseColor.descriptorIndex = ResolveTextureDescriptorIndex(baseColorHandle);
         baseColor.enabled = baseColorHandle >= 0 &&
-            baseColorHandle != gShadowRendererState.fallbackTextureHandle &&
+            baseColorHandle != state.fallbackTextureHandle &&
             baseColor.descriptorIndex != kInvalidTextureDescriptorIndex;
         ProjectMaterialTextureUv(
             materialAsset, source.materialOverride, MaterialTextureUsage::BaseColor, baseColor);
@@ -148,7 +148,7 @@ namespace HIKARI::SHADOW::INTERNAL {
     }
 
     void PrepareShadowSurfaceGpuSceneMaterialSources(
-        uint32_t baseIndex,
+        ShadowRendererState& state, uint32_t baseIndex,
         const std::vector<RENDER3D::RUNTIME::SurfaceGpuSceneMaterialSource>* sources) {
 
         if (sources == nullptr || sources->empty()) {
@@ -163,10 +163,10 @@ namespace HIKARI::SHADOW::INTERNAL {
             }
 
             const MESHRENDERER::MaterialGpuData data =
-                BuildShadowMaterialGpuData(source);
+                BuildShadowMaterialGpuData(state, source);
             const uint32_t materialDataIndex = UploadShadowMaterialData(
-                source.materialKey, data, source.materialOverride);
-            gShadowRendererState.surfaceGpuSceneBuffer.PatchMaterialDataIndex(
+                state, source.materialKey, data, source.materialOverride);
+            state.surfaceGpuSceneBuffer.PatchMaterialDataIndex(
                 static_cast<size_t>(baseIndex) + sourceIndex,
                 materialDataIndex == MESHRENDERER::kInvalidMaterialDataIndex
                     ? 0u
@@ -174,15 +174,15 @@ namespace HIKARI::SHADOW::INTERNAL {
         }
     }
 
-    void PrepareShadowSurfaceGpuSceneMaterialFrame() {
+    void PrepareShadowSurfaceGpuSceneMaterialFrame(ShadowRendererState& state) {
         const RENDER3D::GPUDRIVEN::GpuDrivenPassSource& shadow =
-            gShadowRendererState.activeShadowSceneSource.GetPass(
+            state.activeShadowSceneSource.GetPass(
                 RENDER3D::GPUDRIVEN::GpuDrivenPassKind::Shadow);
         PrepareShadowSurfaceGpuSceneMaterialSources(
-            shadow.gpuSceneBaseIndex,
+            state, shadow.gpuSceneBaseIndex,
             shadow.materialSources);
         PrepareShadowSurfaceGpuSceneMaterialSources(
-            shadow.traditionalIndirect.gpuSceneBaseIndex,
+            state, shadow.traditionalIndirect.gpuSceneBaseIndex,
             shadow.traditionalIndirect.materialSources);
     }
 

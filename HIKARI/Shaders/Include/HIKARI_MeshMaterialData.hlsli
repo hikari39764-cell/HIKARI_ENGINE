@@ -209,6 +209,20 @@ float2 HikariResolveMaterialUv(HikariMeshMaterialData materialData, uint slot, f
 static const uint HIKARI_INVALID_TEXTURE_DESCRIPTOR_INDEX = 0xffffffffu;
 static const uint HIKARI_MATERIAL_TEXTURE_POOL_COUNT = HIKARI_SHADER_USER_SRV_COUNT;
 
+// Raster は既定の暗黙微分、ray consumer は交差面上の明示的 footprint を渡す。
+// xy=UV0, zw=UV1。共有/可変の shader global に格納しない。
+struct HikariMaterialTextureFootprint
+{
+    float4 uvDx;
+    float4 uvDy;
+    bool explicitGradients;
+};
+
+float2 HikariTransformMaterialUvGradient(float2 gradient, float4 transform, float rotation)
+{
+    return HikariApplyMaterialUvTransform(gradient, float4(transform.xy, 0.0f.xx), rotation);
+}
+
 #if defined(HIKARI_MATERIAL_TEXTURE_POOL_SAMPLING)
 
 // 材質テクスチャは descriptor index で SRV プールから参照する。
@@ -257,6 +271,23 @@ float4 HikariSampleMaterialTextureGrad(
         uv,
         uvDx,
         uvDy);
+}
+
+float4 HikariSampleMaterialTextureSlot(
+    HikariMeshMaterialData materialData, uint slot, uint descriptorIndex,
+    SamplerState samplerState, float2 uv0, float2 uv1, float4 fallbackValue,
+    HikariMaterialTextureFootprint footprint)
+{
+    const float2 uv = HikariResolveMaterialUv(materialData, slot, uv0, uv1);
+    if (!footprint.explicitGradients)
+        return HikariSampleMaterialTexture(descriptorIndex, samplerState, uv, fallbackValue);
+    const bool secondary = HikariGetMaterialUvSet(materialData, slot) == 1u;
+    const float4 transform = HikariGetMaterialUvTransform(materialData, slot);
+    const float rotation = HikariGetMaterialUvRotation(materialData, slot);
+    return HikariSampleMaterialTextureGrad(descriptorIndex, samplerState, uv,
+        HikariTransformMaterialUvGradient(secondary ? footprint.uvDx.zw : footprint.uvDx.xy, transform, rotation),
+        HikariTransformMaterialUvGradient(secondary ? footprint.uvDy.zw : footprint.uvDy.xy, transform, rotation),
+        fallbackValue);
 }
 #endif
 

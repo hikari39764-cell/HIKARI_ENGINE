@@ -214,30 +214,45 @@ namespace HIKARI::SHADOW::INTERNAL {
         return seed;
     }
 
+    namespace {
+        void CopyShadowPrimaryInstance(
+            const RENDER3D::RUNTIME::SurfaceGpuSceneInstance& sourceInstance,
+            const RENDER3D::RUNTIME::SurfaceGpuSceneMaterialSource* sourceMaterial,
+            uint32_t localIndex,
+            RENDER3D::RUNTIME::SurfaceGpuSceneInstance& instance,
+            RENDER3D::RUNTIME::SurfaceGpuSceneMaterialSource& material) {
+            instance = sourceInstance;
+            instance.materialDataIndex = RENDER3D::RUNTIME::kInvalidRenderSurfaceIndex;
+            material = sourceMaterial != nullptr ? *sourceMaterial : RENDER3D::RUNTIME::SurfaceGpuSceneMaterialSource{};
+            material.localGpuSceneInstanceIndex = localIndex;
+            material.sourceRecordIndex = sourceInstance.sourceRecordIndex;
+            material.sourceSurfaceInstanceIndex = sourceInstance.sourceSurfaceInstanceIndex;
+        }
+    }
+
+    bool UpdateShadowPrimaryInstance(
+        const RENDER3D::RUNTIME::SurfaceGpuSceneInstance& sourceInstance,
+        const RENDER3D::RUNTIME::SurfaceGpuSceneMaterialSource* sourceMaterial,
+        uint32_t localIndex,
+        RENDER3D::RUNTIME::SurfaceGpuSceneInstance& instance,
+        RENDER3D::RUNTIME::SurfaceGpuSceneMaterialSource& material) {
+        const uint64_t before = HashSurfaceGpuSceneMaterialSourceForShadow(
+            HashSurfaceGpuSceneInstanceForShadow(HASH::kFnv1a64OffsetBasis, instance), material);
+        CopyShadowPrimaryInstance(sourceInstance, sourceMaterial, localIndex, instance, material);
+        return before != HashSurfaceGpuSceneMaterialSourceForShadow(
+            HashSurfaceGpuSceneInstanceForShadow(HASH::kFnv1a64OffsetBasis, instance), material);
+    }
+
     void AppendShadowPrimaryInstance(
         const RENDER3D::RUNTIME::SurfaceGpuSceneInstance& sourceInstance,
         const RENDER3D::RUNTIME::SurfaceGpuSceneMaterialSource* sourceMaterial,
         std::vector<RENDER3D::RUNTIME::SurfaceGpuSceneInstance>& instances,
         std::vector<RENDER3D::RUNTIME::SurfaceGpuSceneMaterialSource>& materialSources) {
-
-        const uint32_t localIndex =
-            static_cast<uint32_t>((std::min)(
-                instances.size(),
-                static_cast<size_t>((std::numeric_limits<uint32_t>::max)())));
-        RENDER3D::RUNTIME::SurfaceGpuSceneInstance instance = sourceInstance;
-        instance.materialDataIndex =
-            RENDER3D::RUNTIME::kInvalidRenderSurfaceIndex;
-        instances.push_back(instance);
-
-        RENDER3D::RUNTIME::SurfaceGpuSceneMaterialSource material{};
-        if (sourceMaterial != nullptr) {
-            material = *sourceMaterial;
-        }
-        material.localGpuSceneInstanceIndex = localIndex;
-        material.sourceRecordIndex = sourceInstance.sourceRecordIndex;
-        material.sourceSurfaceInstanceIndex =
-            sourceInstance.sourceSurfaceInstanceIndex;
-        materialSources.push_back(material);
+        const uint32_t localIndex = static_cast<uint32_t>(instances.size());
+        instances.emplace_back();
+        materialSources.emplace_back();
+        CopyShadowPrimaryInstance(sourceInstance, sourceMaterial, localIndex,
+            instances.back(), materialSources.back());
     }
 
     uint64_t BuildShadowSourceLayoutHash(

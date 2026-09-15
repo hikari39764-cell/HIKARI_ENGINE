@@ -56,35 +56,6 @@ namespace HIKARI::ASSETS::SHADER {
             return true;
         }
 
-        std::string_view ExpectedProfile(
-            ShaderStage stage) noexcept {
-            switch (stage) {
-            case ShaderStage::Vertex: return "vs_6_0";
-            case ShaderStage::Pixel: return "ps_6_0";
-            case ShaderStage::Compute: return "cs_6_0";
-            case ShaderStage::Amplification: return "as_6_5";
-            case ShaderStage::Mesh: return "ms_6_5";
-            case ShaderStage::Geometry: return "gs_6_0";
-            case ShaderStage::Count: break;
-            }
-            return {};
-        }
-
-        bool ValidateProfile(
-            ShaderStage stage,
-            std::string_view profile,
-            uint32_t& outModel) noexcept {
-            const std::string_view expected = ExpectedProfile(stage);
-            if (expected.empty() || profile != expected) {
-                return false;
-            }
-            outModel = stage == ShaderStage::Mesh ||
-                stage == ShaderStage::Amplification
-                ? 65u
-                : 60u;
-            return true;
-        }
-
     } // namespace
 
     const char* ToString(ShaderStage stage) noexcept {
@@ -189,7 +160,7 @@ namespace HIKARI::ASSETS::SHADER {
             if (entry.stage >= ShaderStage::Count ||
                 !IsIdentifier(entry.id, true) ||
                 !IsIdentifier(entry.entry, false) ||
-                !ValidateProfile(
+                !ValidateShaderEntryProfile(
                     entry.stage,
                     entry.profile,
                     shaderModel) ||

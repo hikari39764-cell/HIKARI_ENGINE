@@ -20,32 +20,38 @@ namespace HIKARI::GFX {
         uint64_t featureMask = 0u;
     };
 
+    inline D3D_SHADER_MODEL QueryHighestShaderModel(ID3D12Device* device) noexcept {
+        if (device == nullptr) return static_cast<D3D_SHADER_MODEL>(0);
+        constexpr std::array models{
+            D3D_SHADER_MODEL_6_7,
+            D3D_SHADER_MODEL_6_6,
+            D3D_SHADER_MODEL_6_5,
+            D3D_SHADER_MODEL_6_4,
+            D3D_SHADER_MODEL_6_3,
+            D3D_SHADER_MODEL_6_2,
+            D3D_SHADER_MODEL_6_1,
+            D3D_SHADER_MODEL_6_0,
+            D3D_SHADER_MODEL_5_1,
+        };
+        for (D3D_SHADER_MODEL candidate : models) {
+            D3D12_FEATURE_DATA_SHADER_MODEL query{ candidate };
+            const HRESULT result = device->CheckFeatureSupport(
+                D3D12_FEATURE_SHADER_MODEL, &query, sizeof(query));
+            if (SUCCEEDED(result)) return query.HighestShaderModel;
+            // 古い Runtime が列挙値を知らない場合だけ下位 Model を試す。
+            if (result != E_INVALIDARG) break;
+        }
+        return static_cast<D3D_SHADER_MODEL>(0);
+    }
+
     inline ShaderDeviceCapabilities QueryShaderDeviceCapabilities(
         ID3D12Device* device) noexcept {
         ShaderDeviceCapabilities capabilities{};
         if (device == nullptr) {
             return capabilities;
         }
-        constexpr std::array models{
-            D3D_SHADER_MODEL_6_7,
-            D3D_SHADER_MODEL_6_6,
-            D3D_SHADER_MODEL_6_5,
-            D3D_SHADER_MODEL_6_0,
-        };
-        for (D3D_SHADER_MODEL candidate : models) {
-            D3D12_FEATURE_DATA_SHADER_MODEL query{ candidate };
-            if (SUCCEEDED(device->CheckFeatureSupport(
-                    D3D12_FEATURE_SHADER_MODEL,
-                    &query,
-                    sizeof(query)))) {
-                const uint32_t encoded =
-                    static_cast<uint32_t>(query.HighestShaderModel);
-                capabilities.shaderModel =
-                    ((encoded >> 4u) & 0x0fu) * 10u +
-                    (encoded & 0x0fu);
-                break;
-            }
-        }
+        const uint32_t encoded = static_cast<uint32_t>(QueryHighestShaderModel(device));
+        capabilities.shaderModel = ((encoded >> 4u) & 0x0fu) * 10u + (encoded & 0x0fu);
         D3D12_FEATURE_DATA_ROOT_SIGNATURE root{
             D3D_ROOT_SIGNATURE_VERSION_1_1
         };

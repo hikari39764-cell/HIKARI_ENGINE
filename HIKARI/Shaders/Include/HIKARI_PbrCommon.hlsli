@@ -102,14 +102,16 @@ void HikariSetPbrEnvironmentBrdf(inout HikariPbrShadingContext context, float2 e
     context.diffuseEnergyWeight = (1.0f-reflectedEnergy).xxx * (1.0f-context.metallic);
 }
 
-HikariPbrShadingContext HikariBuildPbrShadingContext(
+HikariPbrShadingContext HikariBuildPbrShadingContextWithFootprint(
     float3 baseColor,
     float metallic,
     float roughness,
     float3 specularColor,
     float specularFactor,
     float3 normal,
-    float3 view)
+    float3 view,
+    float3 normalDx,
+    float3 normalDy)
 {
     HikariPbrShadingContext context;
     context.baseColor = baseColor;
@@ -122,7 +124,7 @@ HikariPbrShadingContext HikariBuildPbrShadingContext(
     // Specular=0 は全角度で誘電体の反射を止める。金属と水の物理 F90 は 1。
     context.specularF90 = lerp(saturate(specularFactor), 1.0f, saturate(metallic));
     context.roughness = HikariFilterPerceptualRoughness(
-        roughness, ddx(normal), ddy(normal));
+        roughness, normalDx, normalDy);
     context.normal = normal;
     context.view = view;
 
@@ -224,6 +226,14 @@ HikariPbrShadingContext HikariFilterDirectPbrContext(
     return context;
 }
 
+// Raster は微分、ray consumer は ray footprint を渡す。同一の BRDF 初期化を使う。
+HikariPbrShadingContext HikariBuildPbrShadingContext(float3 baseColor, float metallic,
+    float roughness, float3 specularColor, float specularFactor, float3 normal, float3 view)
+{
+    return HikariBuildPbrShadingContextWithFootprint(baseColor, metallic, roughness,
+        specularColor, specularFactor, normal, view, ddx(normal), ddy(normal));
+}
+
 struct HikariPbrPixelFootprint
 {
     float3 positionDx;
@@ -243,14 +253,16 @@ HikariPbrPixelFootprint HikariBuildPbrPixelFootprint(HikariPbrShadingContext con
 }
 
 HikariPbrShadingContext HikariFilterLocalPbrContext(HikariPbrShadingContext context,
-    HikariPbrPixelFootprint footprint, float3 lightDirection, float lightDistance)
+    HikariPbrPixelFootprint footprint, float3 lightDirection, float lightDistance,
+    float sourceHalfAngleSineSquared)
 {
     // d(normalize(lightPosition-P)) = (L*dot(L,dP)-dP)/distance。
     // 可変長 cluster ループでも ddx/ddy を取らず、同一の光源の微分を解決する。
     const float inverseDistance = rcp(max(lightDistance, 1.0e-4f));
     const float3 lightDx = (lightDirection * dot(lightDirection, footprint.positionDx) - footprint.positionDx) * inverseDistance;
     const float3 lightDy = (lightDirection * dot(lightDirection, footprint.positionDy) - footprint.positionDy) * inverseDistance;
-    return HikariFilterDirectPbrContext(context, footprint.viewDx + lightDx, footprint.viewDy + lightDy, 0.0f);
+    return HikariFilterDirectPbrContext(context, footprint.viewDx + lightDx, footprint.viewDy + lightDy,
+        sourceHalfAngleSineSquared);
 }
 
 HikariDirectPbrLobes HikariEvaluateDirectionalPbrLobes(

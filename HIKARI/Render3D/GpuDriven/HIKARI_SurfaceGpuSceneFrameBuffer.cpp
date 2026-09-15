@@ -4,6 +4,7 @@
 #include <cstring>
 
 #include <d3dx12.h>
+#include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 
 #include "Render3D/Runtime/HIKARI_SurfaceGpuScene.h"
 
@@ -21,6 +22,17 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
             return srvDesc;
         }
+    }
+
+    void SurfaceGpuSceneFrameBuffer::Finalize(const GFX::Context& graphics) {
+        for (auto& slot : slots_) {
+            slot.uploads.Finalize(&graphics);
+            GFX::RetireD3D12ObjectForFrame(slot.defaultBuffer, graphics, "SurfaceGpuScene.Frame");
+            slot = {};
+        }
+        activeSlotIndex_ = 0;
+        capacity_ = 0;
+        stats_ = {};
     }
 
     bool SurfaceGpuSceneFrameBuffer::Initialize(
@@ -80,12 +92,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             }
         }
 
-        for (FrameSlot& slot : slots_) {
-            slot = {};
-        }
-        activeSlotIndex_ = 0;
-        capacity_ = 0;
-        stats_ = {};
+        Finalize(GFX::GetCurrentContext());
 
         for (size_t attemptCapacity = capacity;
             attemptCapacity > 0;

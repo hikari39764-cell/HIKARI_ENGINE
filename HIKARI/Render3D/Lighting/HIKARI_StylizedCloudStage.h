@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <d3d12.h>
+#include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
 
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 
@@ -44,7 +46,24 @@ namespace HIKARI::RENDER3D::CLOUDS {
         uint64_t resizeCount = 0;
         uint64_t historyResetCount = 0;
         uint64_t resourceFailureCount = 0;
+        bool solarVisibilityReady = false;
+        uint32_t solarResolution = 0;
+        uint32_t solarSteps = 0;
+        uint64_t solarBytes = 0;
     };
+
+    struct CloudSolarVisibilityFrame {
+        LIGHTING::CloudSolarVisibilityGpuData data{};
+        D3D12_GPU_DESCRIPTOR_HANDLE srv{};
+        uint64_t fenceValue = 0;
+        explicit operator bool() const noexcept { return data.originDescriptor.w>0 && srv.ptr!=0; }
+    };
+
+    CloudSolarVisibilityFrame PrepareCloudSolarVisibilityFrame(
+        const PIPELINE::RenderFrameContext& frame,
+        const TEMPORAL::TemporalFrameState& temporalFrame,
+        const StylizedCloudSettings& settings,
+        StylizedCloudQuality quality);
 
     bool ExecuteStylizedCloudStage(
         const PIPELINE::RenderFrameContext& frame,

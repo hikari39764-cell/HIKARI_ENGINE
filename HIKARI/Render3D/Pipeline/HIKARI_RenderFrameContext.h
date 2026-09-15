@@ -87,6 +87,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
         D3D12_CPU_DESCRIPTOR_HANDLE dsv{};
         D3D12_CPU_DESCRIPTOR_HANDLE readOnlyDsv{};
         RenderTextureView depth{};
+        RenderTextureView color{};
     };
 
     // Immutable per-frame contract shared by renderer stages.
@@ -117,6 +118,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
     // Narrow view consumed by screen-space passes.
     struct ScreenSpacePassContext {
         RenderFrameToken frame{};
+        bool jitteredViewProj = false;
         ID3D12GraphicsCommandList* cmd = nullptr;
         const GFX::Context* graphics = nullptr;
         uint32_t width = 1;

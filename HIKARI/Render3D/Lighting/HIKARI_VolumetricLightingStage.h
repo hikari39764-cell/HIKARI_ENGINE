@@ -4,6 +4,7 @@
 
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Lighting/HIKARI_LocalLightList.h"
+#include "Render3D/Resources/HIKARI_RenderTextureView.h"
 
 namespace HIKARI {
     class RenderTarget2D;
@@ -23,13 +24,19 @@ namespace HIKARI::RENDER3D::WATER {
     struct WaterVisibleDepthView;
 }
 
+namespace HIKARI::SHADOW { struct LocalLightShadowFrame; }
+
+namespace HIKARI::RENDER3D::CLOUDS { struct CloudSolarVisibilityFrame; }
+
 namespace HIKARI::RENDER3D::VOLUMETRIC {
 
     struct VolumetricLightingStats {
         bool requested = false;
         bool active = false;
+        bool sceneTargetsReady = false;
         bool historyValid = false;
         bool shadowed = false;
+        uint32_t localShadowFaces = 0;
         bool waterDepthValid = false;
         bool waterDepthFallback = true;
         uint32_t renderWidth = 0;
@@ -52,10 +59,14 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
     bool PrepareVolumetricLightingFrame(
         const GFX::Context& context,
         const TEMPORAL::TemporalFrameState& temporalFrame,
+        const RenderTextureView& sceneColor,
+        const RenderTextureView& sceneDepth,
         const SceneEnvironment& environment,
         const LIGHTING::LocalLightListGpuBindings& localLights,
         VolumetricLightingQuality quality,
-        RenderDebugView debugView);
+        RenderDebugView debugView,
+        const SHADOW::LocalLightShadowFrame* localShadows = nullptr,
+        const CLOUDS::CloudSolarVisibilityFrame* clouds = nullptr);
 
     RenderTarget2D* ExecuteVolumetricLightingStage(RenderTarget2D& sceneTarget);
     // Borrow a producer-owned water depth view for the prepared frame/view.

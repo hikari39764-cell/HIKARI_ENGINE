@@ -109,7 +109,7 @@ namespace HIKARI::SHADOW::INTERNAL {
 
     } // namespace
 
-    bool CreateShadowDepthPipelineState(const GFX::Context& graphics) {
+    bool CreateShadowDepthPipelineState(ShadowRendererState& state, const GFX::Context& graphics) {
         ID3D12Device* device = graphics.device;
         const auto caps = GFX::QueryShaderDeviceCapabilities(device);
         if (caps.shaderModel < 60u) {
@@ -175,8 +175,6 @@ namespace HIKARI::SHADOW::INTERNAL {
             MakeRootDescriptorTable(clusterGeometryPoolRange);
         params[PIPELINE::kShadowStaticRootParamMeshletVisibleRanges] =
             MakeRootDescriptor(D3D12_ROOT_PARAMETER_TYPE_SRV, 18);
-        params[PIPELINE::kShadowStaticRootParamMeshletVisibleClusterList] =
-            MakeRootDescriptor(D3D12_ROOT_PARAMETER_TYPE_SRV, 19);
         params[PIPELINE::kShadowStaticRootParamCullingCamera] =
             MakeRootDescriptor(D3D12_ROOT_PARAMETER_TYPE_CBV, 9);
         params[PIPELINE::kShadowStaticRootParamDeformationPalettes] =
@@ -211,7 +209,7 @@ namespace HIKARI::SHADOW::INTERNAL {
         if (!CreateNamedRootSignature(
             device,
             rsDesc,
-            gShadowRendererState.rootSig,
+            state.rootSig,
             "CreateRootSignature: Shadow static",
             L"Shadow Static RootSignature")) {
             return false;
@@ -230,60 +228,60 @@ namespace HIKARI::SHADOW::INTERNAL {
         if (!CreateNamedRootSignature(
             device,
             skinnedRsDesc,
-            gShadowRendererState.skinnedRootSig,
+            state.skinnedRootSig,
             "CreateRootSignature: Shadow skinned",
             L"Shadow Skinned RootSignature")) {
             return false;
         }
 
-        if (!HIKARI_DX_CHECK(gShadowRendererState.depthPipelines.Initialize(
-            device, gShadowRendererState.rootSig.Get(), gShadowRendererState.skinnedRootSig.Get(),
+        if (!HIKARI_DX_CHECK(state.depthPipelines.Initialize(
+            device, state.rootSig.Get(), state.skinnedRootSig.Get(),
             bytecode(staticVs), bytecode(skinnedVs), bytecode(ps)), "Create PSO: Shadow depth pipelines")) {
             return false;
         }
         return true;
     }
 
-    bool CreateShadowPipelineState(const GFX::Context& graphics) {
-        if (!CreateShadowDepthPipelineState(graphics)) return false;
+    bool CreateShadowPipelineState(ShadowRendererState& state, const GFX::Context& graphics) {
+        if (!CreateShadowDepthPipelineState(state, graphics)) return false;
         ID3D12Device* device = graphics.device;
-        if (!gShadowRendererState.traditionalCommandStreamBuffer.Initialize(
+        if (!state.traditionalCommandStreamBuffer.Initialize(
             device,
-            gShadowRendererState.rootSig.Get(),
+            state.rootSig.Get(),
             PIPELINE::kShadowStaticRootParamSurfaceGpuSceneControl,
             RENDER3D::GPUDRIVEN::kGpuTraditionalCommandStreamRootConstantCount)) {
             DEBUGLOG::PushRenderError("[ShadowMapRenderer][WARN] Shadow indirect draw buffer initialization failed. Direct shadow record path will be used.");
-        } else if (!gShadowRendererState.traditionalCommandStreamBuffer.InitializeSkinnedCommandStream(
+        } else if (!state.traditionalCommandStreamBuffer.InitializeSkinnedCommandStream(
             device,
-            gShadowRendererState.skinnedRootSig.Get(),
+            state.skinnedRootSig.Get(),
             PIPELINE::kShadowStaticRootParamSurfaceGpuSceneControl,
             PIPELINE::kShadowSkinnedRootParamJointPalette)) {
             DEBUGLOG::PushRenderError("[ShadowMapRenderer][WARN] Shadow skinned indirect command signature initialization failed. Skinned GPU-driven shadow stream will be unavailable.");
         }
-        if (!gShadowRendererState.clusterGpuCullingPass.Initialize(
+        if (!state.clusterGpuCullingPass.Initialize(
             graphics,
-            gShadowRendererState.rootSig.Get(),
+            state.rootSig.Get(),
             PIPELINE::kShadowStaticRootParamSurfaceGpuSceneControl,
             RENDER3D::GPUDRIVEN::kGpuTraditionalCommandStreamRootConstantCount)) {
             DEBUGLOG::PushRenderError("[ShadowMapRenderer][WARN] Shadow cluster GPU culling initialization failed. GPU-driven shadow pass will be unavailable.");
         }
-        if (!gShadowRendererState.meshletRenderBackend.Initialize(
+        if (!state.meshletRenderBackend.Initialize(
             device,
-            gShadowRendererState.rootSig.Get(),
+            state.rootSig.Get(),
             RENDER3D::MESHLET::MeshletPipelineMask::ShadowRenderer)) {
             DEBUGLOG::PushRenderError("[ShadowMapRenderer][WARN] Shadow meshlet backend initialization failed. GPU-driven shadow mesh shader route will be unavailable.");
         }
-        gShadowRendererState.clusterGpuDrivenProducer.Attach(&gShadowRendererState.clusterGpuCullingPass);
-        gShadowRendererState.gpuDrivenLayer.Attach(
-            &gShadowRendererState.surfaceGpuSceneBuffer,
+        state.clusterGpuDrivenProducer.Attach(&state.clusterGpuCullingPass);
+        state.gpuDrivenLayer.Attach(
+            &state.surfaceGpuSceneBuffer,
             nullptr,
-            &gShadowRendererState.traditionalCommandStreamBuffer,
-            &gShadowRendererState.clusterGpuDrivenProducer,
+            &state.traditionalCommandStreamBuffer,
+            &state.clusterGpuDrivenProducer,
             nullptr,
-            &gShadowRendererState.sandSurfaceGpuFrameBuffer);
-        if (!gShadowRendererState.gpuDrivenLayer.Initialize(
+            &state.sandSurfaceGpuFrameBuffer);
+        if (!state.gpuDrivenLayer.Initialize(
             device,
-            gShadowRendererState.rootSig.Get(),
+            state.rootSig.Get(),
             PIPELINE::kShadowStaticRootParamSurfaceGpuSceneControl,
             RENDER3D::GPUDRIVEN::kGpuTraditionalCommandStreamRootConstantCount)) {
             DEBUGLOG::PushRenderError("[ShadowMapRenderer][WARN] Shadow GPU-driven layer initialization failed. Shadow draw backend will be unavailable.");
@@ -291,31 +289,31 @@ namespace HIKARI::SHADOW::INTERNAL {
         return true;
     }
 
-    bool EnsureShadowRendererInitialized(const GFX::Context& graphics) {
-        if (gShadowRendererState.initialized) {
+    bool EnsureShadowRendererInitialized(ShadowRendererState& state, const GFX::Context& graphics) {
+        if (state.initialized) {
             return true;
         }
         auto* device = graphics.device;
         if (device == nullptr) {
             return false;
         }
-        gShadowRendererState.fallbackTextureResource =
+        state.fallbackTextureResource =
             RENDER3D::CreateSolidColorTextureResource(
             "shadow/fallback_white",
             0xffffffffu,
             RENDER3D::TextureResourceColorSpace::Linear);
-        gShadowRendererState.fallbackTextureHandle =
-            RENDER3D::GetTextureResourceBackendHandle(gShadowRendererState.fallbackTextureResource);
+        state.fallbackTextureHandle =
+            RENDER3D::GetTextureResourceBackendHandle(state.fallbackTextureResource);
         if (!RENDER3D::IsTextureResourceValid(
-                gShadowRendererState.fallbackTextureResource)) {
+                state.fallbackTextureResource)) {
             DEBUGLOG::PushRenderError(
                 "[Shadow][ERROR] Failed to create generated fallback white texture.");
             return false;
         }
-        gShadowRendererState.initialized =
-            CreateShadowFrameResources(graphics) &&
-            CreateShadowPipelineState(graphics);
-        return gShadowRendererState.initialized;
+        state.initialized =
+            CreateShadowFrameResources(state, graphics) &&
+            CreateShadowPipelineState(state, graphics);
+        return state.initialized;
     }
 
 } // namespace HIKARI::SHADOW::INTERNAL

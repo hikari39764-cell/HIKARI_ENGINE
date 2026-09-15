@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <atomic>
 #include <utility>
+#include "Assets/Models/Policies/HIKARI_ModelMaterialPolicy.h"
 
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 
@@ -232,15 +233,11 @@ namespace HIKARI {
     }
 
     void Material::SetUnlit(bool unlit) {
-        if (unlit_ == unlit) {
-            return;
-        }
-        unlit_ = unlit;
-        TouchRevision();
+        SetFeatureBits(unlit ? featureBits_ | MATERIAL_FEATURES::Unlit : featureBits_ & ~MATERIAL_FEATURES::Unlit);
     }
 
     bool Material::IsUnlit() const {
-        return unlit_;
+        return (featureBits_ & MATERIAL_FEATURES::Unlit) != 0;
     }
 
     void Material::SetTextureSlot(MaterialTextureUsage usage, RuntimeTextureSlot slot) {

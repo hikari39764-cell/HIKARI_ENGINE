@@ -252,6 +252,7 @@ namespace HIKARI::RENDER3D::WORLD_TEXT {
         uint32_t capacity = 0u;
         uint32_t activeFrameSlot = 0u;
         bool initialized = false;
+        bool initializationAttempted = false;
 
         bool CreatePipeline(ID3D12Device* device) {
             if (!CreateRootSignature(device, rootSignature.GetAddressOf())) {
@@ -361,6 +362,7 @@ namespace HIKARI::RENDER3D::WORLD_TEXT {
             capacity = 0u;
             activeFrameSlot = 0u;
             initialized = false;
+            initializationAttempted = false;
         }
 
         bool PrepareFrame(
@@ -640,6 +642,11 @@ namespace HIKARI::RENDER3D::WORLD_TEXT {
         const GFX::Context& context,
         const WorldTextFrameSource* source,
         const MATH::Vec3& cameraPosition) {
+        if (!impl_->initialized && !impl_->initializationAttempted &&
+            context.device && context.srvHeap && source && !source->instances.empty()) {
+            (void)Initialize(context);
+            impl_->initializationAttempted = true;
+        }
         return impl_->PrepareFrame(context, source, cameraPosition);
     }
 

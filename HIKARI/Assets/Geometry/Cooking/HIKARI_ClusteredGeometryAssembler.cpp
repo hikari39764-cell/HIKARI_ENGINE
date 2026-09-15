@@ -1,6 +1,7 @@
 #include "Assets/Geometry/Cooking/Internal/HIKARI_ClusteredGeometryCookInternal.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <numeric>
@@ -178,6 +179,42 @@ namespace HIKARI::ASSETS::GEOMETRY::COOKING {
                 }
                 return a.firstPrimitive < b.firstPrimitive;
             });
+
+        // metadata の Morton 順と実際の読み出し順を一致させる。range は
+        // 直前に append された一つの section/LOD で、他の range と共有しない。
+        uint32_t firstVertex = UINT32_MAX, firstIndex = UINT32_MAX, firstPrimitive = UINT32_MAX;
+        size_t vertexCount = 0, indexCount = 0, primitiveCount = 0;
+        for (auto cluster = begin; cluster != end; ++cluster) {
+            firstVertex = (std::min)(firstVertex, cluster->firstVertex);
+            firstIndex = (std::min)(firstIndex, cluster->firstIndex);
+            firstPrimitive = (std::min)(firstPrimitive, cluster->firstPrimitive);
+            vertexCount += cluster->vertexCount;
+            indexCount += cluster->indexCount;
+            primitiveCount += cluster->primitiveCount;
+        }
+        std::vector<ClusterVertex> vertices;
+        std::vector<uint32_t> indices;
+        std::vector<MeshletPrimitive> primitives;
+        vertices.reserve(vertexCount);
+        indices.reserve(indexCount);
+        primitives.reserve(primitiveCount);
+        for (auto cluster = begin; cluster != end; ++cluster) {
+            const uint32_t nextVertex = firstVertex + static_cast<uint32_t>(vertices.size());
+            const uint32_t nextIndex = firstIndex + static_cast<uint32_t>(indices.size());
+            const uint32_t nextPrimitive = firstPrimitive + static_cast<uint32_t>(primitives.size());
+            vertices.insert(vertices.end(), asset.packedVertices.begin() + cluster->firstVertex,
+                asset.packedVertices.begin() + cluster->firstVertex + cluster->vertexCount);
+            indices.insert(indices.end(), asset.packedIndices.begin() + cluster->firstIndex,
+                asset.packedIndices.begin() + cluster->firstIndex + cluster->indexCount);
+            primitives.insert(primitives.end(), asset.meshletPrimitives.begin() + cluster->firstPrimitive,
+                asset.meshletPrimitives.begin() + cluster->firstPrimitive + cluster->primitiveCount);
+            cluster->firstVertex = nextVertex;
+            cluster->firstIndex = nextIndex;
+            cluster->firstPrimitive = nextPrimitive;
+        }
+        std::copy(vertices.begin(), vertices.end(), asset.packedVertices.begin() + firstVertex);
+        std::copy(indices.begin(), indices.end(), asset.packedIndices.begin() + firstIndex);
+        std::copy(primitives.begin(), primitives.end(), asset.meshletPrimitives.begin() + firstPrimitive);
     }
 
 
@@ -239,6 +276,30 @@ namespace HIKARI::ASSETS::GEOMETRY::COOKING {
 
         cluster.indexCount = static_cast<uint32_t>(asset.packedIndices.size()) - cluster.firstIndex;
         cluster.vertexCount = static_cast<uint32_t>(asset.packedVertices.size()) - cluster.firstVertex;
+        // 最終 group 確定後に一度だけ最適化する。頂点属性/skin/UV と両 index
+        // stream を同じ remap で更新し、後段 compaction に順序を壊させない。
+        if (cluster.vertexCount <= RENDER3D::CLUSTER::kHcmeshMaxVerticesPerCluster &&
+            cluster.primitiveCount <= RENDER3D::CLUSTER::kHcmeshMaxTrianglesPerCluster) {
+            std::array<unsigned int, RENDER3D::CLUSTER::kHcmeshMaxVerticesPerCluster> remap{};
+            std::array<ClusterVertex, RENDER3D::CLUSTER::kHcmeshMaxVerticesPerCluster> vertices{};
+            std::array<unsigned char, RENDER3D::CLUSTER::kHcmeshMaxTrianglesPerCluster * 3u> indices{};
+            for (uint32_t i = 0; i < cluster.vertexCount; ++i) {
+                remap[i] = i;
+                vertices[i] = asset.packedVertices[cluster.firstVertex + i];
+            }
+            for (uint32_t i = 0; i < cluster.indexCount; ++i)
+                indices[i] = static_cast<unsigned char>(asset.packedIndices[cluster.firstIndex + i]);
+            meshopt_optimizeMeshlet(remap.data(), indices.data(), cluster.primitiveCount, cluster.vertexCount);
+            for (uint32_t i = 0; i < cluster.vertexCount; ++i)
+                asset.packedVertices[cluster.firstVertex + i] = vertices[remap[i]];
+            for (uint32_t i = 0; i < cluster.indexCount; ++i)
+                asset.packedIndices[cluster.firstIndex + i] = indices[i];
+            for (uint32_t i = 0; i < cluster.primitiveCount; ++i) {
+                auto& primitive = asset.meshletPrimitives[cluster.firstPrimitive + i];
+                primitive.i0 = indices[i * 3u]; primitive.i1 = indices[i * 3u + 1u];
+                primitive.i2 = indices[i * 3u + 2u];
+            }
+        }
         cluster.localBounds = hasBounds ? bounds : Bounds{};
         cluster.sphereCenter = (cluster.localBounds.min + cluster.localBounds.max) * 0.5f;
         cluster.sphereRadius = 0.0f;
@@ -429,6 +490,7 @@ namespace HIKARI::ASSETS::GEOMETRY::COOKING {
 
         SurfaceCookInput currentSource = sourceWork;
         uint32_t previousTriangleCount = section.primitiveCount;
+        float accumulatedError = 0.0f;
         const uint32_t maxLodCount = (std::min)(settings.maxSurfaceLodCount, 5u);
         for (uint32_t lodIndex = 1u; lodIndex < maxLodCount; ++lodIndex) {
             SurfaceLodResult lodResult{};
@@ -439,7 +501,8 @@ namespace HIKARI::ASSETS::GEOMETRY::COOKING {
                     settings,
                     lockSectionBorders,
                     lodResult)) {
-                break;
+                // L1 の厳しい予算で落とせなくても、遠景の L2-L4 は試す。
+                continue;
             }
 
             const uint32_t lodTriangleCount = CountSurfaceTriangles(lodResult.work);
@@ -453,10 +516,11 @@ namespace HIKARI::ASSETS::GEOMETRY::COOKING {
                     surfaceIndex,
                     lodIndex,
                     lodResult.work,
-                    lodResult.geometricError,
+                    accumulatedError + lodResult.geometricError,
                     settings,
                     asset)) {
                 previousTriangleCount = lodTriangleCount;
+                accumulatedError += lodResult.geometricError;
                 currentSource = std::move(lodResult.work);
             } else {
                 break;

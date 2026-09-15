@@ -21,6 +21,8 @@ namespace HIKARI::SHADOW {
         void Invalidate();
         bool Matches(
             const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource* source) const;
+        bool CanPatch(
+            const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource* source) const;
         void Capture(
             const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& source);
 
@@ -28,7 +30,6 @@ namespace HIKARI::SHADOW {
         const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource* identity_ = nullptr;
         uint64_t layoutVersion_ = 0;
         uint64_t sourceVersion_ = 0;
-        uint64_t dirtyBaseVersion_ = 0;
         size_t instanceCount_ = 0;
         bool valid_ = false;
     };

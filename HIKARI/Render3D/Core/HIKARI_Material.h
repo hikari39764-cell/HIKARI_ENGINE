@@ -157,7 +157,6 @@ namespace HIKARI {
             RuntimeMaterialAlphaMode::Opaque;
         float alphaCutoff_ = 0.5f;
         bool doubleSided_ = false;
-        bool unlit_ = false;
         uint64_t revision_ = 0;
     };
 

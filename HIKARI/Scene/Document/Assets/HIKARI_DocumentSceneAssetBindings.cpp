@@ -156,15 +156,19 @@ namespace HIKARI {
         };
         AssetRegistry nextRegistry{};
         try {
+            CORE::StartupTimer scanTimer("Assets.scan");
             if (!database_.ScanAssets(true)) {
                 restoreDatabase();
                 return false;
             }
+            scanTimer.Finish();
 #if defined(HIKARI_WITH_EDITOR)
+            CORE::StartupTimer shaderTimer("Assets.refresh_shader_artifacts");
             if (!ImportOutdatedShaderArtifacts(database_)) {
                 restoreDatabase();
                 return false;
             }
+            shaderTimer.Finish();
 #endif
 
             // Database and Registry publish together. A corrupt asset must
@@ -172,6 +176,7 @@ namespace HIKARI {
             // written metadata and cooked artifacts remain reusable inputs;
             // rollback applies to live publication only.
             AssetRegistryBuilder assetRegistryBuilder{};
+            CORE::StartupTimer registryTimer("Assets.build_registry");
             if (!assetRegistryBuilder.RebuildRegistry(
                     database_, nextRegistry)) {
                 restoreDatabase();

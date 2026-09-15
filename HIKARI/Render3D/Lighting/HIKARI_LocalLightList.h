@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <span>
 
 #include <d3d12.h>
 #include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
@@ -72,12 +73,26 @@ namespace HIKARI::RENDER3D::LIGHTING {
         }
     };
 
+    struct LocalLightShadowAssignment {
+        uint32_t sourceIndex = 0;
+        uint32_t firstFace = 0;
+    };
+
+    // IsLocalLightUploadable を満たす入力の共通 wire projection。選択/cluster は所有しない。
+    LocalLightGpuData BuildLocalLightGpuData(const SceneLightProvider& light) noexcept;
+
+    // クラスタの index buffer を作らず、同じ可視性/上限制限で光源を選択する。
+    LocalLightListView SelectVisibleLocalLights(const SceneLightingSet& lighting,
+        const Camera3D& camera, uint32_t screenWidth, uint32_t screenHeight,
+        std::span<uint32_t> sourceIndices);
+
     LocalLightListView BuildLocalLightList(
         const SceneLightingSet& lighting,
         const Camera3D& camera,
         uint32_t screenWidth,
         uint32_t screenHeight,
-        const LocalLightListBuildOutput& output);
+        const LocalLightListBuildOutput& output,
+        std::span<const LocalLightShadowAssignment> shadows = {});
 
     const SceneLightProvider* SelectDirectionalLight(
         const SceneLightingSet& lighting) noexcept;

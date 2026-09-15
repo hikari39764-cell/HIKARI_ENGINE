@@ -68,6 +68,8 @@ namespace HIKARI {
         HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult SetWorldTransform(
             const GameProjectTransform& transform) const noexcept;
         // Reads and updates the engine LightComponent attached to this object.
+        // Initialize outState size/version. Unsupported headers return false unchanged;
+        // valid headers receive only their negotiated prefix, neutral on lookup failure.
         // Runtime patches are immediate, owner-thread only, and never persist
         // into the authored Scene document.
         HIKARI_GAME_PROJECT_SDK_API bool TryGetRuntimeLightState(

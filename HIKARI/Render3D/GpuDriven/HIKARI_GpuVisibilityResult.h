@@ -94,7 +94,6 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         ID3D12Resource* visibleInstanceBuffer = nullptr;
         ID3D12Resource* visibleClusterRangeBuffer = nullptr;
         ID3D12Resource* visibleMeshletRangeBuffer = nullptr;
-        ID3D12Resource* visibleMeshletClusterListBuffer = nullptr;
         ID3D12Resource* counterBuffer = nullptr;
 
         std::array<GpuVisibilityPassResult, kGpuDrivenPassCount> passes{};

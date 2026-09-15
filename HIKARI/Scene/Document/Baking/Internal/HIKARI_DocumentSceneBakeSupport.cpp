@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "Project/Paths/HIKARI_ProjectPath.h"
+#include "Core/HIKARI_Logger.h"
 #include "Tools/Baking/HIKARI_ProbeCubemapCaptureTarget.h"
 
 namespace HIKARI::DOCUMENT_SCENE_BAKING {
@@ -34,6 +35,7 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
         }
 
         void AddBakeError(TOOLS::BAKING::LightingBakeReport& report, std::string message) {
+            HIKARI_LOG_ERROR("[LightingBake] " + message);
             report.success = false;
             report.errors.push_back(std::move(message));
         }

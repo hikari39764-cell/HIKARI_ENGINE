@@ -121,7 +121,11 @@ namespace HIKARI::ASSETS::GEOMETRY::COOKING {
             !lockSectionBorders &&
             !source.preserveLightmapUvSeams;
         lodSettings.protectGeometricBorders = permissiveOpaqueLod || lockSectionBorders;
-        lodSettings.pruneIsolatedComponents = false;
+        // 開放境界を動かさず、誤差予算より小さい独立した葉だけを除く。
+        // section の切断面は保護。残す頂点の UV/属性は変更しない。
+        lodSettings.pruneIsolatedComponents =
+            RENDER3D::CLUSTER::HasFlag(source.flags, ClusterSurfaceFlags::AlphaMask) &&
+            !lockSectionBorders;
 
         TOOLS::GEOMETRY::MeshLodGeneratorResult lodResult{};
         if (!TOOLS::GEOMETRY::GenerateClusterSurfaceLod(

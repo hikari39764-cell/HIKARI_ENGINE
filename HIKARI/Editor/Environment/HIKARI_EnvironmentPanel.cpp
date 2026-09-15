@@ -461,6 +461,9 @@ EnvironmentPanel::Draw(SceneEnvironment &environment,
     ImGui::Checkbox(
         TEXT::Localize("ui.environment.cloudsEnabled").c_str(),
         &clouds.enabled);
+    ImGui::Checkbox(TEXT::Localize("ui.environment.cloudPhysicalLighting").c_str(), &clouds.physicallyBasedLighting);
+    if (clouds.physicallyBasedLighting)
+        ImGui::SliderFloat(TEXT::Localize("ui.environment.cloudAnisotropy").c_str(), &clouds.anisotropy, -0.8f, 0.8f);
     ImGui::SliderFloat(
         TEXT::Localize("ui.environment.cloudCoverage").c_str(),
         &clouds.coverage, 0.0f, 1.0f);
@@ -488,21 +491,25 @@ EnvironmentPanel::Draw(SceneEnvironment &environment,
     ImGui::SliderFloat(
         TEXT::Localize("ui.environment.cloudSoftness").c_str(),
         &clouds.softness, 0.0f, 1.0f);
+    ImGui::BeginDisabled(clouds.physicallyBasedLighting);
     ImGui::DragFloat(
         TEXT::Localize("ui.environment.cloudLightAbsorption").c_str(),
         &clouds.lightAbsorption, 0.01f, 0.0f, 8.0f);
     ImGui::DragFloat(
         TEXT::Localize("ui.environment.cloudSilverLining").c_str(),
         &clouds.silverLining, 0.01f, 0.0f, 4.0f);
+    ImGui::EndDisabled();
     ImGui::SliderFloat(
         TEXT::Localize("ui.environment.cloudHorizonFade").c_str(),
         &clouds.horizonFade, 0.0f, 1.0f);
     ImGui::ColorEdit3(
-        TEXT::Localize("ui.environment.cloudBrightColor").c_str(),
+        TEXT::Localize(clouds.physicallyBasedLighting ? "ui.environment.cloudAlbedo" : "ui.environment.cloudBrightColor").c_str(),
         &clouds.brightColor.x);
+    ImGui::BeginDisabled(clouds.physicallyBasedLighting);
     ImGui::ColorEdit3(
         TEXT::Localize("ui.environment.cloudShadowColor").c_str(),
         &clouds.shadowColor.x);
+    ImGui::EndDisabled();
     ImGui::TreePop();
   }
 

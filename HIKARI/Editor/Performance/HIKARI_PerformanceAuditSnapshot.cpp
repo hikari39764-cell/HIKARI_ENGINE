@@ -42,45 +42,6 @@
 namespace HIKARI::EDITOR::PERFORMANCE_AUDIT {
 
 #if defined(HIKARI_WITH_EDITOR)
-bool IsClusterSubpass(GFX::GPU_PROFILE::Pass pass) {
-  return pass == GFX::GPU_PROFILE::Pass::ClusterCull ||
-         pass == GFX::GPU_PROFILE::Pass::TraditionalDrawGeometryAux ||
-         pass == GFX::GPU_PROFILE::Pass::TraditionalDrawForward ||
-         pass == GFX::GPU_PROFILE::Pass::MeshletDrawGeometryAux ||
-         pass == GFX::GPU_PROFILE::Pass::MeshletDrawDepthPrepass ||
-         pass == GFX::GPU_PROFILE::Pass::MeshletDrawForward ||
-         pass == GFX::GPU_PROFILE::Pass::MeshletDrawDepthAware ||
-         pass == GFX::GPU_PROFILE::Pass::MeshletDrawTransparent;
-}
-
-bool IsShadowSubpass(GFX::GPU_PROFILE::Pass pass) {
-  return pass == GFX::GPU_PROFILE::Pass::TraditionalDrawShadow ||
-         pass == GFX::GPU_PROFILE::Pass::MeshletDrawShadow ||
-         pass == GFX::GPU_PROFILE::Pass::TraditionalDrawShadowStatic ||
-         pass == GFX::GPU_PROFILE::Pass::MeshletDrawShadowStatic ||
-         pass == GFX::GPU_PROFILE::Pass::TraditionalDrawShadowDynamic ||
-         pass == GFX::GPU_PROFILE::Pass::MeshletDrawShadowDynamic ||
-         pass == GFX::GPU_PROFILE::Pass::TraditionalDrawShadowFallback ||
-         pass == GFX::GPU_PROFILE::Pass::MeshletDrawShadowFallback;
-}
-
-bool IsNestedGpuSubpass(GFX::GPU_PROFILE::Pass pass) {
-  return IsClusterSubpass(pass) || IsShadowSubpass(pass) ||
-         pass == GFX::GPU_PROFILE::Pass::ParticleDraw || pass == GFX::GPU_PROFILE::Pass::SceneCaptures;
-}
-
-const char *TimingScopeText(GFX::GPU_PROFILE::Pass pass) {
-  if (pass == GFX::GPU_PROFILE::Pass::CommandFrame) return "Whole Command Frame (overlaps all passes)";
-  if (pass == GFX::GPU_PROFILE::Pass::SceneCaptures) return "SceneLayers Subpass";
-  if (IsShadowSubpass(pass)) {
-    return "Shadow Subpass";
-  }
-  if (pass == GFX::GPU_PROFILE::Pass::ParticleDraw) {
-    return "Transparent Subpass";
-  }
-  return IsClusterSubpass(pass) ? "Cluster Subpass" : "Parent Pass";
-}
-
 const char *ReadyText(bool value) { return value ? "Ready" : "Missing"; }
 
 double SafeDivide(uint64_t numerator, uint64_t denominator) {
@@ -173,11 +134,15 @@ RuntimePerformanceSnapshot BuildSnapshot() {
   out.gpuMaterials = MESHRENDERER::GetGpuMaterialRegistryStats();
   out.mesh = MESHRENDERER::GetDebugStats();
   out.shadow = SHADOW::GetDebugStats();
+  out.localShadow = SHADOW::GetLocalLightShadowStats();
+  out.dynamicGi = RENDER3D::PIPELINE::GetDynamicDiffuseGiStats();
+  out.rayScene = RENDER3D::PIPELINE::GetRuntimeRayTracingStats();
   out.clusterResources = RENDER3D::GetClusterGeometryResourceSystemStats();
   out.descriptorPool = RENDER3D::GetRenderResourceDescriptorPoolStats();
   out.ssao = RENDER3D::SCREENSPACE::GetSsaoDebugState();
   out.depthVisibility = RENDER3D::SCREENSPACE::GetDepthVisibilityDebugState();
   out.volumetric = RENDER3D::VOLUMETRIC::GetVolumetricLightingStats();
+  out.clouds = RENDER3D::CLOUDS::GetStylizedCloudStageStats();
   out.temporalFrame = RENDER3D::TEMPORAL::GetLatestTemporalFrameState(
       RENDER3D::kPrimaryRenderViewId);
   out.temporalResources =
@@ -202,7 +167,8 @@ double SumGpuMsByScope(const GFX::GPU_PROFILE::FrameSnapshot &profile,
     const GFX::GPU_PROFILE::Pass pass = static_cast<GFX::GPU_PROFILE::Pass>(i);
     const GFX::GPU_PROFILE::PassTiming &timing = profile.passes[i];
     if (pass != GFX::GPU_PROFILE::Pass::CommandFrame &&
-        timing.valid && IsNestedGpuSubpass(pass) == nestedSubpass) {
+        timing.valid && (timing.parentPass != GFX::GPU_PROFILE::Pass::Count &&
+            timing.parentPass != GFX::GPU_PROFILE::Pass::CommandFrame) == nestedSubpass) {
       total += timing.gpuMs;
     }
   }
@@ -285,9 +251,42 @@ std::string BuildPerformanceReport(const RuntimePerformanceSnapshot& s) {
   for (size_t i=0; i<s.gpu.passes.size(); ++i) {
     const auto& pass=s.gpu.passes[i];
     if (pass.valid) out << "GPU " << pass.name << " ms: " << pass.gpuMs << " scope="
-        << TimingScopeText(static_cast<GFX::GPU_PROFILE::Pass>(i)) << '\n';
+        << (i == static_cast<size_t>(GFX::GPU_PROFILE::Pass::CommandFrame) ? "command-group" :
+            (pass.parentPass == GFX::GPU_PROFILE::Pass::CommandFrame || pass.parentPass == GFX::GPU_PROFILE::Pass::Count ? "parent" : "nested"))
+        << " parent=" << (pass.parentPass == GFX::GPU_PROFILE::Pass::Count ? "none" : GFX::GPU_PROFILE::ToString(pass.parentPass))
+        << " self=" << pass.exclusiveGpuMs << " avg/p95/p99/max=" << pass.averageMs << '/'
+        << pass.p95Ms << '/' << pass.p99Ms << '/' << pass.maximumMs
+        << " samples=" << pass.rollingSampleCount << '\n';
   }
   out << "GPU timings are pass samples, not additive frame time; nested passes overlap.\n";
+  out << "GPU rolling window: last 300 executions per pass; quantiles refresh every 15 samples.\n";
+  out << "Pipeline stats frame: " << s.pipelineStats.frameIndex
+      << " available=" << s.pipelineStats.pipelineStatsAvailable << '\n';
+  for (const auto& pass : s.pipelineStats.passes) {
+    if (pass.valid) out << "Pipeline " << pass.name << " PS/MS invocations; MS triangles: "
+        << pass.counters.PSInvocations << '/' << pass.counters.MSInvocations << "; "
+        << pass.counters.MSPrimitives << '\n';
+  }
+  out << "Scene HZB builds/Aux reused: " << s.depthVisibility.sceneDepthPyramidBuildCount << '/'
+      << s.depthVisibility.auxiliaryDepthReused << '\n';
+  const auto& visibility = s.mesh.meshletBackend.visibility;
+  out << "AS Forward HZB bound/width/height/mips: " << visibility.forwardHzbBound << '/'
+      << visibility.width << '/' << visibility.height << '/' << visibility.mipCount << '\n';
+  for (size_t phase = 0; phase < visibility.samples.size(); ++phase) {
+    const auto& sample = visibility.samples[phase];
+    out << "AS " << (phase == 0 ? "GeometryAux" : "Forward")
+        << " sampled(1/16) valid=" << sample.valid << " retireFence=" << sample.retireFence;
+    if (sample.valid) {
+      const auto& c = sample.counters;
+      out << " candidates/submitted/invalid=" << c.candidates << '/' << c.submitted << '/' << c.invalid
+          << " frustumCulled=" << c.frustumCulled << " coneTested/culled=" << c.coneTested << '/' << c.coneCulled
+          << " hzbTested/culled=" << c.hzbTested << '/' << c.hzbCulled << " unbounded=" << c.unbounded;
+    }
+    out << '\n';
+  }
+  out << "Shadow source full/patch/reuse; updated records: " << s.shadow.shadowSourceFullSyncCount << '/'
+      << s.shadow.shadowSourcePatchCount << '/' << s.shadow.shadowSourceReuseCount << "; "
+      << s.shadow.shadowSourceUpdatedInstanceCount << '\n';
   out << "Scene objects total/visible/hidden: " << s.scene.renderObjectCount << '/'
       << s.scene.visibleObjectCount << '/' << s.scene.hiddenObjectCount
       << "\nSurfaces total/dirty: " << s.scene.surfaceInstanceCount << '/' << s.scene.dirtySurfaceInstanceCount << '\n';

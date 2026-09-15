@@ -1,9 +1,11 @@
 #pragma once
+#include "Render3D/Lighting/HIKARI_LightProbeVolumeRuntime.h"
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <span>
 #include <vector>
 
 #include <DirectXMath.h>
@@ -13,6 +15,8 @@
 #include "Render3D/Cluster/HIKARI_ClusterGpuCullingPass.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenLayer.h"
 #include "Render3D/HIKARI_Math3D.h"
+#include "Render3D/Lighting/HIKARI_LocalLightGpuData.h"
+#include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
 #include "Render3D/HIKARI_Transform3D.h"
 #include "Render3D/Material/HIKARI_GpuMaterialTypes.h"
 #include "Render3D/Meshlet/HIKARI_MeshletRenderBackend.h"
@@ -25,6 +29,20 @@ namespace HIKARI {
 }
 
 namespace HIKARI::MESHRENDERER {
+
+    // BeginFrame 成功後から次の source/frame 切り替えまでの借用 publication。
+    // Material registry と同じ slot/buffer を RT/GI consumer へ渡す。
+    struct MeshMaterialGpuFrameView {
+        std::span<const uint32_t> materialSlots;
+        std::span<const RENDER3D::MATERIAL::GpuMaterialData> materialData;
+        D3D12_GPU_VIRTUAL_ADDRESS materials = 0;
+        D3D12_GPU_VIRTUAL_ADDRESS programParameters = 0;
+        D3D12_GPU_VIRTUAL_ADDRESS programResources = 0;
+        uint64_t dataVersion = 0;
+        uint64_t bindingVersion = 0;
+        uint32_t materialCapacity = 0;
+        explicit operator bool() const { return materials && programParameters && programResources; }
+    };
 
     // One resource set per simultaneous secondary scene capture. Keep this
     // equal to the public GameProject scene-capture capacity; the document
@@ -185,13 +203,7 @@ namespace HIKARI::MESHRENDERER {
         MATH::Vec4 shapeParams{};
     };
 
-    struct IrradianceVolumeGpuData {
-        MATH::Vec4 originSampling{};
-        MATH::Vec4 spacingIntensity{};
-        MATH::Vec4 countsProbeCount{};
-        MATH::Vec4 sizeBlendDistance{};
-        MATH::Vec4 selectionParams{};
-    };
+    using IrradianceVolumeGpuData = RENDER3D::LIGHTPROBE::IrradianceVolumeGpuData;
 
     struct SkyEnvironmentCB {
         // Vec4{} は w=1。未設定の空は露出・反射・ambient blend・descriptor を
@@ -215,12 +227,13 @@ namespace HIKARI::MESHRENDERER {
         MATH::Vec4 atmosphereSunDirection{0,0,0,0};
         MATH::Vec4 atmosphereSunColorRadiance{};
         MATH::Vec4 gradientSkyIrradiance[3]{};
+        RENDER3D::LIGHTING::CloudSolarVisibilityGpuData cloudSolarVisibility{};
     };
 
     static_assert(
         offsetof(SkyEnvironmentCB, atmospherePlanetParams) == 528u);
     static_assert(offsetof(SkyEnvironmentCB, gradientSkyIrradiance) == 640u);
-    static_assert(sizeof(SkyEnvironmentCB) == 688u);
+    static_assert(sizeof(SkyEnvironmentCB) == 752u);
 
     struct ShadowCB {
         MATH::Mat4 lightViewProj[SHADOW::kMaxDirectionalShadowCascades]{};
@@ -237,10 +250,11 @@ namespace HIKARI::MESHRENDERER {
         float texelSizeY = 1.0f / 2048.0f;
         float edgeFade = 0.04f;
         float padding[3]{};
+        RENDER3D::LIGHTING::LocalShadowGpuData localShadow{};
     };
 
     constexpr size_t kMaxJointPaletteMatrices = 128u;
-    static_assert(sizeof(ShadowCB) == 352u);
+    static_assert(sizeof(ShadowCB) == 1392u);
     constexpr UINT kMaxObjectCount = 2048u;
     constexpr UINT kMaxMaterialDataCount =
         RENDER3D::MATERIAL::kDefaultGpuMaterialCapacity;

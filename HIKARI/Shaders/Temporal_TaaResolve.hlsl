@@ -1,5 +1,6 @@
 #define HIKARI_TEMPORAL_TAARESOLVE
 #include "Include/Temporal/HIKARI_TemporalShaderInterface.hlsli"
+#include "Include/Temporal/HIKARI_TemporalReprojection.hlsli"
 
 struct VSOut
 {
@@ -397,7 +398,8 @@ PSOut PSMain(VSOut input)
 
     if (gTaaParams.x >= 0.5f && motion.valid >= 0.5f)
     {
-        float2 previousUv = input.uv + motion.pixels * gScreenParams.zw;
+        float2 previousUv = HikariReprojectHistoryUv(input.uv, motion.pixels,
+            gScreenParams.zw, gJitterPixels.xy, gJitterPixels.zw);
         if (all(previousUv >= 0.0f) && all(previousUv <= 1.0f))
         {
             float4 historySample = SampleHistoryCatmullRom(previousUv);

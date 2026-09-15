@@ -4,11 +4,13 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
+#include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI::RENDER3D::SCREENSPACE {
@@ -181,6 +183,8 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             const MESHRENDERER::CameraCB& cullingCameraCb,
             ScreenSpaceFrameResult& result) {
 
+            const bool frozen = MESHRENDERER::IsGpuDrivenCullingCameraFrozen();
+            const auto& depthCamera = frozen ? cullingCameraCb : *MESHRENDERER::GetCameraConstants();
             bool depthWritten = false;
             if (MESHRENDERER::HasDepthPrepassWork()) {
                 const D3D12_CPU_DESCRIPTOR_HANDLE visibilityDsv =
@@ -193,7 +197,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
                     visibilityDsv.ptr != 0 &&
                     MESHRENDERER::RenderDepthPrepass(
                         *context.graphics,
-                        visibilityDsv);
+                        visibilityDsv, frozen);
             }
             result.depthPrepassWritten = depthWritten;
             state.depthVisibility.RecordDepthPrepass(depthWritten);
@@ -205,19 +209,23 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
                         context.cmd,
                         context.width,
                         context.height,
-                        cullingCameraCb.viewProj);
+                        depthCamera.viewProj,
+                        !frozen && context.jitteredViewProj);
             }
 
             context.renderTargetAccess.Rebind();
             const RENDER3D::GPUDRIVEN::GpuDepthVisibilityStats& currentDepthStats =
                 state.depthVisibility.GetStats();
-            state.depthVisibilityValid =
+            // ResetFrame は旧 pyramid を保持する。今回の build 失敗を成功扱いしない。
+            state.depthVisibilityValid = depthWritten && result.hzbBuilt &&
+                std::memcmp(&currentDepthStats.depthPyramid.viewProj,
+                    &depthCamera.viewProj, sizeof(MATH::Mat4)) == 0 &&
                 IsDepthPyramidStatsUsable(
                     currentDepthStats,
                     context.width,
                     context.height);
             state.depthVisibilityViewProjValid = state.depthVisibilityValid;
-            state.depthVisibilityViewProj = cullingCameraCb.viewProj;
+            state.depthVisibilityViewProj = currentDepthStats.depthPyramid.viewProj;
             if (!state.depthVisibilityValid) {
                 RecordDepthVisibilityWithoutHzb();
                 (void)MESHRENDERER::FinalizeGpuDrivenVisibilityWithoutDepth(
@@ -229,7 +237,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             PublishVisibilityDepthPyramid(
                 result,
                 currentDepthStats.depthPyramid,
-                DEPTH::DepthPyramidViewKind::CurrentFrame,
+                frozen ? DEPTH::DepthPyramidViewKind::Frozen : DEPTH::DepthPyramidViewKind::CurrentFrame,
                 context.frame);
             RecordDepthVisibilitySource(DepthVisibilitySource::CurrentPrepass);
             (void)MESHRENDERER::FinalizeGpuDrivenVisibilityFromDepth(
@@ -354,6 +362,17 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
 
         const SsaoMode ssaoMode = ResolveEffectiveSsaoMode(environment.ambientOcclusion);
 
+        const bool ssrNeedsSurface =
+            environment.screenSpaceReflections.enabled &&
+            environment.screenSpaceReflections.quality !=
+                ScreenSpaceReflectionQuality::Off;
+        const bool geometryAuxRequired = ssrNeedsSurface || requirements.requirePackedSurface ||
+            (ssaoMode != SsaoMode::Off && ssaoMode != SsaoMode::Balanced &&
+                !environment.ambientOcclusion.editorViewportSuppressed);
+        const bool meshletCurrentDepth = geometryAuxRequired &&
+            GetRenderQualitySettings().geometryPipeline == GeometryPipelineMode::MeshShader &&
+            !MESHRENDERER::IsGpuDrivenCullingCameraFrozen();
+
         const CpuClock::time_point depthVisibilityStart = CpuClock::now();
         const bool depthVisibilityAllowedThisFrame = true;
         state.depthVisibilityBuildAllowedThisFrame =
@@ -364,20 +383,20 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             ClearFrozenCullingDepthStats(state);
         }
 
-        if (cullingCameraFrozen) {
-            if (!state.frozenCullingDepthStatsValid &&
-                historyDepthPyramidMatchesCullingView) {
-                state.frozenCullingDepthStats = historyDepthStats;
-                state.frozenCullingDepthStatsValid = true;
-            }
-
+        if (meshletCurrentDepth) {
+            // Aux の current depth から AS が主描画の meshlet 遮蔽を判定する。
+            // CS の候補作成は一度だけ。旧 depth による誤剔除を持ち越さない。
+            state.depthVisibilityValid = false;
+            RecordDepthVisibilityWithoutHzb();
+            (void)MESHRENDERER::FinalizeGpuDrivenVisibilityWithoutDepth(*context.graphics);
+        } else if (cullingCameraFrozen) {
+            // Frozen は専用 prepass の厳密な camera/depth 対を保持する。
+            // 通常 history の近似一致や jitter 差を frozen として承認しない。
             const bool frozenDepthReady =
                 state.frozenCullingDepthStatsValid &&
-                IsHistoryDepthPyramidUsableForCullingView(
-                    state.frozenCullingDepthStats,
-                    context.width,
-                    context.height,
-                    cullingCameraCb.viewProj);
+                IsDepthPyramidStatsUsable(state.frozenCullingDepthStats, context.width, context.height) &&
+                std::memcmp(&state.frozenCullingDepthStats.depthPyramid.viewProj,
+                    &cullingCameraCb.viewProj, sizeof(MATH::Mat4)) == 0;
             if (frozenDepthReady) {
                 GFX::PIX::ScopedGpuEvent pixFrozen(
                     context.cmd,
@@ -390,7 +409,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
                 PublishVisibilityDepthPyramid(
                     result,
                     state.frozenCullingDepthStats.depthPyramid,
-                    DEPTH::DepthPyramidViewKind::History,
+                    DEPTH::DepthPyramidViewKind::Frozen,
                     context.frame);
                 RecordDepthVisibilitySource(DepthVisibilitySource::Frozen);
                 (void)MESHRENDERER::FinalizeGpuDrivenVisibilityFromDepth(
@@ -448,10 +467,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
 
         const float depthVisibilityMs =
             ElapsedMs(depthVisibilityStart, CpuClock::now());
-        const bool ssrNeedsSurface =
-            environment.screenSpaceReflections.enabled &&
-            environment.screenSpaceReflections.quality !=
-                ScreenSpaceReflectionQuality::Off;
+
 
         // Off 時は GeometryAux も作らない。
         if (ssaoMode == SsaoMode::Off ||
@@ -501,6 +517,8 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             state.surfaceBuffer,
             context.sceneDsv,
             requirements.requireFeatureMask);
+        result.geometryAuxDepthComplete = result.geometryAuxWritten &&
+            !MESHRENDERER::HasOpaqueDepthOutsideGeometryAux();
         context.renderTargetAccess.Rebind();
         RecordSsaoGeometryAuxDebug(
             result.geometryAuxWritten,
@@ -520,6 +538,22 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
                     result.stylizedOutlineStyle =
                         state.surfaceBuffer.GetStylizedOutlineStyleView();
                 }
+            }
+        }
+        if (meshletCurrentDepth && state.geometryValid && context.sceneDepth.IsSampleable() &&
+            context.renderTargetAccess.BeginDepthRead()) {
+            result.hzbBuilt = state.depthVisibility.BuildDepthPyramidFromDepthSrv(
+                *context.graphics, context.cmd, context.width, context.height,
+                context.sceneDepth.srv, renderCameraCb.viewProj, context.jitteredViewProj);
+            context.renderTargetAccess.EndDepthRead();
+            context.renderTargetAccess.Rebind();
+            if (result.hzbBuilt) {
+                ++gDepthVisibilityDebugState.sceneDepthPyramidBuildCount;
+                state.depthVisibilityValid = true;
+                PublishVisibilityDepthPyramid(result, state.depthVisibility.GetStats().depthPyramid,
+                    DEPTH::DepthPyramidViewKind::CurrentFrame, context.frame);
+                RecordDepthPyramidSource(DepthVisibilitySource::CurrentSceneDepth);
+                RecordDepthVisibilitySource(DepthVisibilitySource::CurrentSceneDepth);
             }
         }
         if (!state.geometryValid ||
@@ -617,13 +651,23 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
 
             if (state.depthVisibilityBuildAllowedThisFrame &&
                 !MESHRENDERER::IsGpuDrivenCullingCameraFrozen()) {
-                result.hzbBuilt = state.depthVisibility.BuildDepthPyramidFromDepthSrv(
-                    *context.graphics,
-                    context.cmd,
-                    context.width,
-                    context.height,
-                    context.sceneDepth.srv,
-                    cameraCb.viewProj);
+                const auto& auxiliaryDepth = result.visibilityDepthPyramid;
+                const bool reuseAuxiliaryDepth = result.geometryAuxDepthComplete &&
+                    auxiliaryDepth.valid && auxiliaryDepth.viewProjValid &&
+                    auxiliaryDepth.viewKind == DEPTH::DepthPyramidViewKind::CurrentFrame &&
+                    auxiliaryDepth.sourceKind == DEPTH::DepthPyramidSourceKind::SceneDepth &&
+                    auxiliaryDepth.publication.Matches(context.frame) &&
+                    auxiliaryDepth.sourceWidth == context.width && auxiliaryDepth.sourceHeight == context.height &&
+                    MaxAbsDeltaMat4(auxiliaryDepth.viewProj, cameraCb.viewProj) == 0.0f;
+                if (reuseAuxiliaryDepth) {
+                    result.hzbBuilt = true;
+                    gDepthVisibilityDebugState.auxiliaryDepthReused = true;
+                } else {
+                    result.hzbBuilt = state.depthVisibility.BuildDepthPyramidFromDepthSrv(
+                        *context.graphics, context.cmd, context.width, context.height,
+                        context.sceneDepth.srv, cameraCb.viewProj, context.jitteredViewProj);
+                    if (result.hzbBuilt) ++gDepthVisibilityDebugState.sceneDepthPyramidBuildCount;
+                }
                 if (result.hzbBuilt) {
                     RecordDepthPyramidSource(DepthVisibilitySource::CurrentSceneDepth);
                     PublishCurrentSceneDepthPyramid(

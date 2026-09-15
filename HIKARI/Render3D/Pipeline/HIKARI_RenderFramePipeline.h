@@ -14,6 +14,9 @@ namespace HIKARI {
     }
 }
 
+namespace HIKARI::RENDER3D::DYNAMICGI { struct Stats; }
+namespace HIKARI::RENDER3D::RAYTRACING { struct RuntimeRayTracingStats; }
+
 namespace HIKARI::RENDER3D::PIPELINE {
 
     bool RenderMeshLightingFrame(
@@ -31,6 +34,8 @@ namespace HIKARI::RENDER3D::PIPELINE {
         uint32_t width,
         uint32_t height);
 
+    const RAYTRACING::RuntimeRayTracingStats& GetRuntimeRayTracingStats() noexcept;
+    const DYNAMICGI::Stats& GetDynamicDiffuseGiStats() noexcept;
     void ShutdownRenderFramePipelineResources() noexcept;
 
 } // namespace HIKARI::RENDER3D::PIPELINE

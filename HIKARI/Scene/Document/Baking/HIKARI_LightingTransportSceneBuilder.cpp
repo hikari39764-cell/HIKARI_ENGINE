@@ -47,6 +47,8 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
             std::vector<uint32_t> triangleIndices{};
             float worldArea = 0.0f;
             float uvArea = 0.0f;
+            MATH::Vec2 uvMin{1.0f, 1.0f};
+            MATH::Vec2 uvMax{0.0f, 0.0f};
             uint32_t minimumInteriorWidth =
                 ASSETS::LIGHTING::
                     kSurfaceLightmapMinimumAuthoredUvExtent;
@@ -290,6 +292,12 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
                                 MATH::Dot(
                                     worldCross,
                                     worldCross)));
+                    for (const auto& uv : appended.lightmapUv) {
+                        pendingSurface.uvMin.x = (std::min)(pendingSurface.uvMin.x, uv.x);
+                        pendingSurface.uvMin.y = (std::min)(pendingSurface.uvMin.y, uv.y);
+                        pendingSurface.uvMax.x = (std::max)(pendingSurface.uvMax.x, uv.x);
+                        pendingSurface.uvMax.y = (std::max)(pendingSurface.uvMax.y, uv.y);
+                    }
                     const MATH::Vec2 uvEdge0 =
                         appended.lightmapUv[1] -
                         appended.lightmapUv[0];
@@ -400,115 +408,125 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
                     item.surface = pending.identity;
                     item.worldArea = pending.worldArea;
                     item.uvArea = pending.uvArea;
-                    item.minimumInteriorWidth =
-                        pending.minimumInteriorWidth;
-                    item.minimumInteriorHeight =
-                        pending.minimumInteriorHeight;
+                    item.uvMin = pending.uvMin;
+                    item.uvMax = pending.uvMax;
+                    // 未使用の UV 領域を atlas へ持ち込まない。生成 chart の内部余白は
+                    // 元の UV 単位で維持し、外周の余白は atlas allocator が所有する。
+                    const auto croppedExtent = [](uint32_t reference, float span) {
+                        return (std::max)(ASSETS::LIGHTING::kSurfaceLightmapMinimumAuthoredUvExtent,
+                            static_cast<uint32_t>(std::ceil(reference * span)));
+                    };
+                    item.minimumInteriorWidth = croppedExtent(pending.minimumInteriorWidth,
+                        item.uvMax.x - item.uvMin.x);
+                    item.minimumInteriorHeight = croppedExtent(pending.minimumInteriorHeight,
+                        item.uvMax.y - item.uvMin.y);
                     metrics.push_back(item);
                 }
 
-                ASSETS::LIGHTING::LightmapAtlasLayout
-                    layout{};
+                std::vector<ASSETS::LIGHTING::LightmapAtlasLayout> layouts{};
+                std::string layoutMessage;
                 if (!ASSETS::LIGHTING::
-                        BuildLightmapAtlasLayout(
+                        BuildLightmapAtlasPages(
                             metrics,
                             {},
-                            layout)) {
+                            layouts, layoutMessage)) {
                     target.eligible = false;
                     target.eligibilityMessage =
-                        layout.message;
+                        layoutMessage;
                 } else {
-                    target.outputResolution =
-                        layout.resolution;
-                    target.requestedTexelsPerWorldUnit =
-                        layout.requestedTexelsPerWorldUnit;
-                    target.resolvedTexelsPerWorldUnit =
-                        layout.resolvedTexelsPerWorldUnit;
-                    target.atlasDensityReduced =
-                        layout.densityReduced;
-                    target.atlasAllocations =
-                        layout.allocations;
+                    target.eligible = true;
+                    target.eligibilityMessage = layoutMessage;
+                    for (const auto& layout : layouts) {
+                        auto& page = target.pages.emplace_back();
+                        page.outputResolution =
+                            layout.resolution;
+                        page.requestedTexelsPerWorldUnit =
+                            layout.requestedTexelsPerWorldUnit;
+                        page.resolvedTexelsPerWorldUnit =
+                            layout.resolvedTexelsPerWorldUnit;
+                        page.atlasDensityReduced =
+                            layout.densityReduced;
+                        page.atlasAllocations =
+                            layout.allocations;
 
-                    for (uint32_t surfaceIndex = 0u;
-                         surfaceIndex <
-                             layout.allocations.size();
-                         ++surfaceIndex) {
-                        const ASSETS::LIGHTING::
-                            LightmapAtlasAllocation&
-                                allocation =
-                                    layout.allocations[
-                                        surfaceIndex];
-                        const auto pendingFound =
-                            std::find_if(
-                                pendingSurfaces.begin(),
-                                pendingSurfaces.end(),
-                                [&allocation](
-                                    const PendingLightmapSurface&
-                                        pending) {
-                                    return
-                                        pending.identity.nodeIndex ==
-                                            allocation.surface.
-                                                nodeIndex &&
-                                        pending.identity.meshIndex ==
-                                            allocation.surface.
-                                                meshIndex &&
-                                        pending.identity.
-                                                primitiveIndex ==
-                                            allocation.surface.
-                                                primitiveIndex;
-                                });
-                        if (pendingFound ==
-                            pendingSurfaces.end()) {
-                            continue;
-                        }
-                        for (const uint32_t triangleIndex :
-                             pendingFound->triangleIndices) {
-                            TRANSPORT::
-                                LightingTransportTriangle&
-                                    triangle =
-                                        scene.triangles[
-                                            triangleIndex];
-                            triangle.
-                                lightmapAllocationIndex =
-                                    surfaceIndex;
-                            for (MATH::Vec2& uv :
-                                 triangle.lightmapUv) {
-                                uv = {
-                                    uv.x *
-                                        allocation.
-                                            uvScaleBias.x +
-                                        allocation.
-                                            uvScaleBias.z,
-                                    uv.y *
-                                        allocation.
-                                            uvScaleBias.y +
-                                        allocation.
-                                            uvScaleBias.w
-                                };
+                        for (uint32_t surfaceIndex = 0u;
+                             surfaceIndex <
+                                 layout.allocations.size();
+                             ++surfaceIndex) {
+                            const ASSETS::LIGHTING::
+                                LightmapAtlasAllocation&
+                                    allocation =
+                                        layout.allocations[
+                                            surfaceIndex];
+                            const auto pendingFound =
+                                std::find_if(
+                                    pendingSurfaces.begin(),
+                                    pendingSurfaces.end(),
+                                    [&allocation](
+                                        const PendingLightmapSurface&
+                                            pending) {
+                                        return
+                                            pending.identity.nodeIndex ==
+                                                allocation.surface.
+                                                    nodeIndex &&
+                                            pending.identity.meshIndex ==
+                                                allocation.surface.
+                                                    meshIndex &&
+                                            pending.identity.
+                                                    primitiveIndex ==
+                                                allocation.surface.
+                                                    primitiveIndex;
+                                    });
+                            if (pendingFound ==
+                                pendingSurfaces.end()) {
+                                continue;
                             }
-                            target.triangleIndices.
-                                push_back(
-                                    triangleIndex);
-                        }
+                            for (const uint32_t triangleIndex :
+                                 pendingFound->triangleIndices) {
+                                TRANSPORT::
+                                    LightingTransportTriangle&
+                                        triangle =
+                                            scene.triangles[
+                                                triangleIndex];
+                                triangle.
+                                    lightmapAllocationIndex =
+                                        surfaceIndex;
+                                for (MATH::Vec2& uv :
+                                     triangle.lightmapUv) {
+                                    uv = {
+                                        uv.x *
+                                            allocation.
+                                                uvScaleBias.x +
+                                            allocation.
+                                                uvScaleBias.z,
+                                        uv.y *
+                                            allocation.
+                                                uvScaleBias.y +
+                                            allocation.
+                                                uvScaleBias.w
+                                    };
+                                }
+                                page.triangleIndices.
+                                    push_back(
+                                        triangleIndex);
+                            }
 
-                        ASSETS::LIGHTING::
-                            LightmapSurfaceBinding binding{};
-                        binding.surface =
-                            allocation.surface;
-                        binding.uvScaleBias =
-                            allocation.uvScaleBias;
-                        target.surfaceBindings.push_back(
-                            binding);
+                            ASSETS::LIGHTING::
+                                LightmapSurfaceBinding binding{};
+                            binding.surface =
+                                allocation.surface;
+                            binding.uvScaleBias =
+                                allocation.uvScaleBias;
+                            page.surfaceBindings.push_back(
+                                binding);
+                        }
+                        target.eligible = target.eligible &&
+                            page.triangleIndices.size() > 0u &&
+                            page.surfaceBindings.size() ==
+                                layout.allocations.size();
+                        if (!target.eligible) target.eligibilityMessage =
+                            "Lightmap atlas surface identity resolution failed.";
                     }
-                    target.eligible =
-                        target.triangleIndices.size() > 0u &&
-                        target.surfaceBindings.size() ==
-                            layout.allocations.size();
-                    target.eligibilityMessage =
-                        target.eligible
-                        ? layout.message
-                        : "Lightmap atlas surface identity "
-                          "resolution failed.";
                 }
             }
 
@@ -557,6 +575,7 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
             light.type = static_cast<uint32_t>(source.type);
             light.position = source.position;
             light.range = source.range;
+            light.sourceRadius = RENDER3D::LIGHTING::SanitizeLocalLightSourceRadius(source.sourceRadius);
             light.distanceFalloff =
                 RENDER3D::LIGHTING::CanonicalLocalLightFalloff(source.distanceFalloff);
             light.direction =
@@ -586,6 +605,9 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
             const SkyManager* skyManager) {
 
         TRANSPORT::LightingTransportScene scene{};
+        SceneEnvironment resolved = environment;
+        resolved.directional = RENDER3D::LIGHTING::ResolveDirectionalLight(lighting);
+        const auto solar = ATMOSPHERE::BuildAtmosphereSolarState(resolved);
         scene.environment.ambientRadiance =
             environment.ambient.color *
             (std::max)(0.0f, environment.ambient.intensity);
@@ -613,9 +635,6 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
                     RENDER3D::TextureResourceColorSpace::Linear : RENDER3D::TextureResourceColorSpace::Srgb};
             }
         } else if (scene.environment.skyMode == SkyMode::Atmosphere) {
-            SceneEnvironment resolved = environment;
-            resolved.directional = RENDER3D::LIGHTING::ResolveDirectionalLight(lighting);
-            const auto solar = ATMOSPHERE::BuildAtmosphereSolarState(resolved);
             scene.environment.atmosphere = ATMOSPHERE::BuildAtmosphereLutConstants(resolved.atmosphere, solar, resolved.sky.groundColor);
             if (!solar.atmosphereEnabled) scene.environment.skyMode = SkyMode::Gradient;
         }
@@ -626,9 +645,17 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
                 environment.sky.ambientFromSky)
             : 0.0f;
 
+        // Runtime と同じ一つの主光源だけを輸送する。非選択 sun を bake へ混ぜない。
+        if (solar.valid) {
+            TRANSPORT::LightingTransportLight sun{};
+            sun.type = static_cast<uint32_t>(RENDER3D::LIGHTING::SceneLightType::Directional);
+            sun.direction = solar.sunDirection * -1.0f;
+            sun.radiance = solar.sunColor * solar.sunRadiance;
+            scene.lights.push_back(sun);
+        }
         for (const auto& light : lighting.lights) {
-            if (light.enabled && (light.type == RENDER3D::LIGHTING::SceneLightType::Directional ||
-                RENDER3D::LIGHTING::IsLocalLightUploadable(light))) {
+            if (light.enabled && light.type != RENDER3D::LIGHTING::SceneLightType::Directional &&
+                RENDER3D::LIGHTING::IsLocalLightUploadable(light)) {
                 scene.lights.push_back(ConvertLight(light));
             }
         }

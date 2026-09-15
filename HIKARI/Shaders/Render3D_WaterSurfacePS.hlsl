@@ -559,13 +559,14 @@ float4 HikariShadeWaterSurface(
             gDirectionalColor.rgb,
             gDirectionalIntensity,
             gDirectionalDir.w) *
-            max(p.directSunStrength, 0.0f) * directShadow,
+            max(p.directSunStrength, 0.0f) * directShadow * HikariForwardCloudSolarVisibility(input.worldPosWS),
         0.0f.xxx);
     const float3 localReflection = HikariFiniteOr(
         AccumulateLocalLightsPbr(
             reflectionContext,
             input.worldPosWS,
-            input.position.xy),
+            input.position.xy, geometricNormal,
+            HikariForwardVertexMetaReceiveShadow(input.forwardMeta)),
         0.0f.xxx);
     const float3 environmentReflection = HikariFiniteOr(
         HikariEvaluateAmbientIbl(

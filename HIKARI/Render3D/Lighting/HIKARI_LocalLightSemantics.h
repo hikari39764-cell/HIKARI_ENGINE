@@ -37,6 +37,10 @@ namespace HIKARI::RENDER3D::LIGHTING {
 
     struct SceneLightProvider;
 
+    // ワールド単位の発光体半径。影響範囲 range とは独立した値。
+    inline constexpr float kMaximumLocalLightSourceRadius = 1000.0f;
+    float SanitizeLocalLightSourceRadius(float radius) noexcept;
+
     struct SpotLightCone {
         float innerAngleDegrees = 25.0f;
         float outerAngleDegrees = 35.0f;

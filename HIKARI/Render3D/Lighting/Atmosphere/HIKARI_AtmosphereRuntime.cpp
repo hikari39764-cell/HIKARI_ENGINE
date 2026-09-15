@@ -8,7 +8,10 @@
 #include <d3dx12.h>
 
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
-#include "Gfx/HIKARI_ShaderCompiler.h"
+#include "Core/Hashing/HIKARI_FnvHash.h"
+#include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
+#include "Assets/Shader/HIKARI_VolumetricShaderContract.h"
+#include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 
 namespace HIKARI::ATMOSPHERE {
@@ -20,45 +23,24 @@ namespace HIKARI::ATMOSPHERE {
         constexpr DXGI_FORMAT kLutFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
         constexpr uint32_t kLutThreadGroupSize = 8u;
 
-        uint32_t SanitizeDimension(uint32_t value, uint32_t fallback) noexcept {
-            return std::clamp(value == 0u ? fallback : value, 1u, 4096u);
+        uint32_t SanitizeDimension(uint32_t value, uint32_t fallback, uint32_t maximum) noexcept {
+            return std::clamp(value == 0u ? fallback : value, 2u, maximum);
         }
 
-        bool EqualFloat(float lhs, float rhs) noexcept {
-            return lhs == rhs ||
-                (!std::isfinite(lhs) && !std::isfinite(rhs));
-        }
-
-        bool EqualVec3(const MATH::Vec3& lhs, const MATH::Vec3& rhs) noexcept {
-            return EqualFloat(lhs.x, rhs.x) &&
-                EqualFloat(lhs.y, rhs.y) &&
-                EqualFloat(lhs.z, rhs.z);
-        }
-
-        bool EqualSettings(
-            const AtmosphereSettings& lhs,
-            const AtmosphereSettings& rhs) noexcept {
-            return lhs.enabled == rhs.enabled &&
-                EqualFloat(lhs.planetRadius, rhs.planetRadius) &&
-                EqualFloat(lhs.atmosphereHeight, rhs.atmosphereHeight) &&
-                EqualFloat(lhs.rayleighScaleHeight, rhs.rayleighScaleHeight) &&
-                EqualFloat(lhs.mieScaleHeight, rhs.mieScaleHeight) &&
-                EqualVec3(lhs.rayleighScattering, rhs.rayleighScattering) &&
-                EqualVec3(lhs.mieScattering, rhs.mieScattering) &&
-                EqualVec3(lhs.ozoneAbsorption, rhs.ozoneAbsorption) &&
-                EqualFloat(lhs.ozoneCenterHeight, rhs.ozoneCenterHeight) &&
-                EqualFloat(lhs.ozoneWidth, rhs.ozoneWidth) &&
-                EqualFloat(lhs.mieAnisotropy, rhs.mieAnisotropy) &&
-                EqualFloat(lhs.sunIlluminance, rhs.sunIlluminance) &&
-                 EqualFloat(lhs.sunExposure, rhs.sunExposure) &&
-                 EqualFloat(lhs.groundAlbedo, rhs.groundAlbedo) &&
-                 EqualFloat(lhs.aerialPerspectiveStrength, rhs.aerialPerspectiveStrength) &&
-                 EqualFloat(lhs.sunAngularRadius, rhs.sunAngularRadius) &&
-                lhs.transmittanceLutWidth == rhs.transmittanceLutWidth &&
-                lhs.transmittanceLutHeight == rhs.transmittanceLutHeight &&
-                 lhs.multiScatteringLutSize == rhs.multiScatteringLutSize &&
-                 lhs.skyViewLutWidth == rhs.skyViewLutWidth &&
-                 lhs.skyViewLutHeight == rhs.skyViewLutHeight;
+        std::array<uint64_t,3> TransportSignatures(const AtmosphereLutConstants& constants) {
+            const auto hash=[](const auto& data) {
+                const uint64_t value=HASH::Fnv1aBytes(HASH::kFnv1a64OffsetBasis,&data,sizeof(data));
+                return value ? value : 1u;
+            };
+            auto medium=constants;
+            medium.rayleighScattering.w=medium.mieScattering.w=0;
+            medium.ozoneParams={constants.ozoneParams.x,0,0,0};
+            medium.sunDirection=medium.sunColorRadiance=medium.groundColor={0,0,0,0};
+            const uint64_t transmission=hash(medium);
+            medium.ozoneParams.w=constants.ozoneParams.w;
+            medium.groundColor=constants.groundColor;
+            // multi LUT の光源方向は texel の軸。色/照度/位相異方性には依存しない。
+            return {transmission,hash(medium),hash(constants)};
         }
 
         bool HasRetireFence(const GFX::Context& context) noexcept {
@@ -75,13 +57,20 @@ namespace HIKARI::ATMOSPHERE {
         Reset();
     }
 
+    uint64_t AtmosphereLutOwner::GetWorkingSetBytes() const noexcept {
+        if (!resourcesReady_) return 0;
+        return 8ull*(uint64_t(dimensions_.transmittanceWidth)*dimensions_.transmittanceHeight+
+            uint64_t(dimensions_.multiScatteringSize)*dimensions_.multiScatteringSize+
+            uint64_t(dimensions_.skyViewWidth)*dimensions_.skyViewHeight);
+    }
+
     bool AtmosphereLutOwner::Configure(const AtmosphereSettings& settings) {
         const AtmosphereLutDimensions next{
-            SanitizeDimension(settings.transmittanceLutWidth, 256u),
-            SanitizeDimension(settings.transmittanceLutHeight, 64u),
-            SanitizeDimension(settings.multiScatteringLutSize, 32u),
-            SanitizeDimension(settings.skyViewLutWidth, 192u),
-            SanitizeDimension(settings.skyViewLutHeight, 108u),
+            SanitizeDimension(settings.transmittanceLutWidth, 256u, 1024u),
+            SanitizeDimension(settings.transmittanceLutHeight, 64u, 256u),
+            SanitizeDimension(settings.multiScatteringLutSize, 32u, 64u),
+            SanitizeDimension(settings.skyViewLutWidth, 192u, 512u),
+            SanitizeDimension(settings.skyViewLutHeight, 108u, 256u),
         };
         const bool dimensionsChanged =
             dimensions_.transmittanceWidth != next.transmittanceWidth ||
@@ -89,27 +78,12 @@ namespace HIKARI::ATMOSPHERE {
             dimensions_.multiScatteringSize != next.multiScatteringSize ||
             dimensions_.skyViewWidth != next.skyViewWidth ||
             dimensions_.skyViewHeight != next.skyViewHeight;
-        const bool settingsChanged = !hasSettings_ ||
-            !EqualSettings(settings_, settings);
         if (dimensionsChanged) {
             Invalidate();
             dimensions_ = next;
-        } else if (settingsChanged) {
-            // Parameter edits only require a fresh dispatch. Recreating all
-            // three textures and six descriptors for every Inspector drag
-            // can exhaust the deferred descriptor pool while the GPU still
-            // owns the preceding frames.
-            lastDispatchSignature_ = 0u;
-            gpuLutsReady_ = false;
         }
-        if (settingsChanged || dimensionsChanged) {
-            settings_ = settings;
-            hasSettings_ = true;
-        }
+        // Parameter edits only require a fresh dispatch. 各 LUT の依存値を Dispatch が比較する。
         configured_ = settings.enabled;
-        if (!configured_) {
-            gpuLutsReady_ = false;
-        }
         return configured_;
     }
 
@@ -169,7 +143,8 @@ namespace HIKARI::ATMOSPHERE {
         skyViewGpu_ = {};
         resourcesReady_ = false;
         gpuLutsReady_ = false;
-        lastDispatchSignature_ = 0u;
+        lastDispatchSignatures_ = {};
+        lastDispatchCount_ = 0u;
     }
 
     void AtmosphereLutOwner::Reset() {
@@ -179,15 +154,11 @@ namespace HIKARI::ATMOSPHERE {
         // RuntimeServices descriptor pool during process shutdown.
         lastContext_ = {};
         configured_ = false;
-        hasSettings_ = false;
         pipelineReady_ = false;
         computeRoot_.Reset();
         transmittancePso_.Reset();
         multiScatteringPso_.Reset();
         skyViewPso_.Reset();
-        transmittanceCs_.Reset();
-        multiScatteringCs_.Reset();
-        skyViewCs_.Reset();
     }
 
     bool AtmosphereLutOwner::EnsurePipeline(const GFX::Context& context) {
@@ -195,7 +166,7 @@ namespace HIKARI::ATMOSPHERE {
             return true;
         }
         if (context.device == nullptr ||
-            !GFX::SupportsShaderModel6(context.device)) {
+            GFX::QueryShaderDeviceCapabilities(context.device).shaderModel < 60u) {
             return false;
         }
 
@@ -258,41 +229,28 @@ namespace HIKARI::ATMOSPHERE {
             return false;
         }
 
-        if (!GFX::CompileShaderFileSm6(
-                L"HIKARI/Shaders/Render3D_AtmosphereTransmittanceCS.hlsl",
-                "main",
-                GFX::ShaderStage::Compute,
-                transmittanceCs_.ReleaseAndGetAddressOf()) ||
-            !GFX::CompileShaderFileSm6(
-                L"HIKARI/Shaders/Render3D_AtmosphereMultiScatteringCS.hlsl",
-                "main",
-                GFX::ShaderStage::Compute,
-                multiScatteringCs_.ReleaseAndGetAddressOf()) ||
-            !GFX::CompileShaderFileSm6(
-                L"HIKARI/Shaders/Render3D_AtmosphereSkyViewCS.hlsl",
-                "main",
-                GFX::ShaderStage::Compute,
-                skyViewCs_.ReleaseAndGetAddressOf())) {
-            computeRoot_.Reset();
-            transmittanceCs_.Reset();
-            multiScatteringCs_.Reset();
-            skyViewCs_.Reset();
-            return false;
+        namespace SHADER = ASSETS::SHADER;
+        using Program = SHADER::VolumetricShaderProgram;
+        const auto capabilities = GFX::QueryShaderDeviceCapabilities(context.device);
+        const SHADER::ShaderRuntimeDeviceCapabilities caps{
+            capabilities.shaderModel, capabilities.rootSignatureVersion, capabilities.featureMask};
+        const std::array programs{Program::AtmosphereTransmittance, Program::AtmosphereMultiScattering, Program::AtmosphereSkyView};
+        std::array<SHADER::ShaderAssetEntryLease, 3u> shaders{};
+        for (size_t index = 0; index < programs.size(); ++index) {
+            auto resolved = SHADER::ResolveVolumetricShaderEntry(programs[index], "Main", SHADER::ShaderStage::Compute, caps);
+            if (!resolved) {
+                DEBUGLOG::PushRenderError("[Atmosphere] Cooked LUT shader unavailable: " + resolved.diagnostic);
+                computeRoot_.Reset();
+                return false;
+            }
+            shaders[index] = std::move(resolved.lease);
         }
-
-        const std::array<ID3DBlob*, 3u> blobs{
-            transmittanceCs_.Get(),
-            multiScatteringCs_.Get(),
-            skyViewCs_.Get(),
-        };
         std::array<ComPtr<ID3D12PipelineState>, 3u> pipelines{};
         for (uint32_t index = 0u; index < pipelines.size(); ++index) {
             D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc{};
             psoDesc.pRootSignature = computeRoot_.Get();
-            psoDesc.CS = {
-                blobs[index]->GetBufferPointer(),
-                blobs[index]->GetBufferSize()
-            };
+            const auto bytecode = shaders[index].GetDxil();
+            psoDesc.CS = {bytecode.data(), bytecode.size()};
             if (FAILED(context.device->CreateComputePipelineState(
                     &psoDesc,
                     IID_PPV_ARGS(pipelines[index].GetAddressOf())))) {
@@ -300,9 +258,6 @@ namespace HIKARI::ATMOSPHERE {
                 transmittancePso_.Reset();
                 multiScatteringPso_.Reset();
                 skyViewPso_.Reset();
-                transmittanceCs_.Reset();
-                multiScatteringCs_.Reset();
-                skyViewCs_.Reset();
                 return false;
             }
         }
@@ -427,7 +382,8 @@ namespace HIKARI::ATMOSPHERE {
     bool AtmosphereLutOwner::Dispatch(
         const GFX::Context& context,
         D3D12_GPU_VIRTUAL_ADDRESS constantsGpu,
-        uint64_t parameterSignature) {
+        const AtmosphereLutConstants& constants) {
+        lastDispatchCount_ = 0;
         lastContext_ = context;
         if (!EnsureGpuResources(context) || constantsGpu == 0u ||
             context.cmdList == nullptr ||
@@ -435,7 +391,8 @@ namespace HIKARI::ATMOSPHERE {
             !multiScatteringPso_ || !skyViewPso_) {
             return false;
         }
-        if (gpuLutsReady_ && lastDispatchSignature_ == parameterSignature) {
+        const auto signatures=TransportSignatures(constants);
+        if (gpuLutsReady_ && lastDispatchSignatures_ == signatures) {
             return true;
         }
 
@@ -444,54 +401,62 @@ namespace HIKARI::ATMOSPHERE {
         commandList->SetDescriptorHeaps(1u, heaps);
         commandList->SetComputeRootSignature(computeRoot_.Get());
 
-        Transition(
-            commandList,
-            transmittanceGpu_,
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        commandList->SetPipelineState(transmittancePso_.Get());
-        commandList->SetComputeRootConstantBufferView(0u, constantsGpu);
-        commandList->SetComputeRootDescriptorTable(
-            3u,
-            transmittanceGpu_.uav.gpu);
-        commandList->Dispatch(
-            (dimensions_.transmittanceWidth + kLutThreadGroupSize - 1u) /
-                kLutThreadGroupSize,
-            (dimensions_.transmittanceHeight + kLutThreadGroupSize - 1u) /
-                kLutThreadGroupSize,
-            1u);
-        const auto transUavBarrier =
-            CD3DX12_RESOURCE_BARRIER::UAV(transmittanceGpu_.resource.Get());
-        commandList->ResourceBarrier(1u, &transUavBarrier);
-        Transition(
-            commandList,
-            transmittanceGpu_,
-            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        if (!gpuLutsReady_ || lastDispatchSignatures_[0] != signatures[0]) {
+            Transition(
+                commandList,
+                transmittanceGpu_,
+                D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            commandList->SetPipelineState(transmittancePso_.Get());
+            commandList->SetComputeRootConstantBufferView(0u, constantsGpu);
+            commandList->SetComputeRootDescriptorTable(
+                3u,
+                transmittanceGpu_.uav.gpu);
+            commandList->Dispatch(
+                (dimensions_.transmittanceWidth + kLutThreadGroupSize - 1u) /
+                    kLutThreadGroupSize,
+                (dimensions_.transmittanceHeight + kLutThreadGroupSize - 1u) /
+                    kLutThreadGroupSize,
+                1u);
+            const auto transUavBarrier =
+                CD3DX12_RESOURCE_BARRIER::UAV(transmittanceGpu_.resource.Get());
+            commandList->ResourceBarrier(1u, &transUavBarrier);
+            Transition(
+                commandList,
+                transmittanceGpu_,
+                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
-        Transition(
-            commandList,
-            multiScatteringGpu_,
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        commandList->SetPipelineState(multiScatteringPso_.Get());
-        commandList->SetComputeRootConstantBufferView(0u, constantsGpu);
-        commandList->SetComputeRootDescriptorTable(
-            1u,
-            transmittanceGpu_.srv.gpu);
-        commandList->SetComputeRootDescriptorTable(
-            3u,
-            multiScatteringGpu_.uav.gpu);
-        commandList->Dispatch(
-            (dimensions_.multiScatteringSize + kLutThreadGroupSize - 1u) /
-                kLutThreadGroupSize,
-            (dimensions_.multiScatteringSize + kLutThreadGroupSize - 1u) /
-                kLutThreadGroupSize,
-            1u);
-        const auto multiUavBarrier =
-            CD3DX12_RESOURCE_BARRIER::UAV(multiScatteringGpu_.resource.Get());
-        commandList->ResourceBarrier(1u, &multiUavBarrier);
-        Transition(
-            commandList,
-            multiScatteringGpu_,
-            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            ++lastDispatchCount_;
+        }
+
+        if (!gpuLutsReady_ || lastDispatchSignatures_[1] != signatures[1]) {
+            Transition(
+                commandList,
+                multiScatteringGpu_,
+                D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            commandList->SetPipelineState(multiScatteringPso_.Get());
+            commandList->SetComputeRootConstantBufferView(0u, constantsGpu);
+            commandList->SetComputeRootDescriptorTable(
+                1u,
+                transmittanceGpu_.srv.gpu);
+            commandList->SetComputeRootDescriptorTable(
+                3u,
+                multiScatteringGpu_.uav.gpu);
+            commandList->Dispatch(
+                (dimensions_.multiScatteringSize + kLutThreadGroupSize - 1u) /
+                    kLutThreadGroupSize,
+                (dimensions_.multiScatteringSize + kLutThreadGroupSize - 1u) /
+                    kLutThreadGroupSize,
+                1u);
+            const auto multiUavBarrier =
+                CD3DX12_RESOURCE_BARRIER::UAV(multiScatteringGpu_.resource.Get());
+            commandList->ResourceBarrier(1u, &multiUavBarrier);
+            Transition(
+                commandList,
+                multiScatteringGpu_,
+                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+
+            ++lastDispatchCount_;
+        }
 
         Transition(
             commandList,
@@ -520,9 +485,10 @@ namespace HIKARI::ATMOSPHERE {
         Transition(
             commandList,
             skyViewGpu_,
-            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+            D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 
-        lastDispatchSignature_ = parameterSignature;
+        ++lastDispatchCount_;
+        lastDispatchSignatures_ = signatures;
         gpuLutsReady_ = true;
         return true;
     }

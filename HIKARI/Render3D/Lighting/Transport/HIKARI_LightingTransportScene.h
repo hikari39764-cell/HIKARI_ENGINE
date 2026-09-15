@@ -31,16 +31,12 @@ namespace HIKARI::RENDER3D::LIGHTING::TRANSPORT {
                 kInvalidLightmapSurfaceIndex;
     };
 
-    struct LightingTransportSurfaceTarget {
-        uint64_t objectId = 0u;
-        std::string name{};
+    struct LightingTransportLightmapPage {
         uint32_t outputResolution =
             ASSETS::LIGHTING::
                 kSurfaceLightmapDefaultResolution;
         uint32_t uvSet =
             ASSETS::LIGHTING::kSurfaceLightmapUvSet;
-        bool eligible = false;
-        std::string eligibilityMessage{};
         std::vector<uint32_t> triangleIndices{};
         std::vector<
             ASSETS::LIGHTING::LightmapSurfaceBinding>
@@ -51,6 +47,14 @@ namespace HIKARI::RENDER3D::LIGHTING::TRANSPORT {
         float requestedTexelsPerWorldUnit = 0.0f;
         float resolvedTexelsPerWorldUnit = 0.0f;
         bool atlasDensityReduced = false;
+    };
+
+    struct LightingTransportSurfaceTarget {
+        uint64_t objectId = 0u;
+        std::string name{};
+        bool eligible = false;
+        std::string eligibilityMessage{};
+        std::vector<LightingTransportLightmapPage> pages{};
         uint32_t analyzedSurfaceCount = 0u;
         uint32_t eligibleSurfaceCount = 0u;
         uint32_t unsupportedSurfaceCount = 0u;
@@ -69,6 +73,7 @@ namespace HIKARI::RENDER3D::LIGHTING::TRANSPORT {
         float innerConeCos = -1.0f;
         float angularFalloff = 1.0f;
         LocalLightFalloff distanceFalloff = LocalLightFalloff::LegacyRange;
+        float sourceRadius = 0.0f;
     };
 
     struct LightingTransportEnvironment {

@@ -7,19 +7,18 @@
 namespace HIKARI::SHADOW::INTERNAL {
 
     void BindShadowGpuDrivenFrameResources(
-        const GFX::Context& graphics,
+        ShadowRendererState& state, const GFX::Context& graphics,
         ID3D12GraphicsCommandList* cmd,
         ID3D12Resource* meshletVisibleRangeBuffer,
-        ID3D12Resource* meshletVisibleClusterListBuffer,
         bool skinnedRoot) {
 
         ID3D12RootSignature* rootSig =
-            skinnedRoot ? gShadowRendererState.skinnedRootSig.Get() : gShadowRendererState.rootSig.Get();
+            skinnedRoot ? state.skinnedRootSig.Get() : state.rootSig.Get();
         if (cmd == nullptr || rootSig == nullptr) {
             return;
         }
 
-        ShadowFrameResources& frame = GetActiveShadowFrameResources();
+        ShadowFrameResources& frame = GetActiveShadowFrameResources(state);
         cmd->SetGraphicsRootSignature(rootSig);
         cmd->SetGraphicsRootShaderResourceView(
             PIPELINE::kShadowStaticRootParamMaterialProgramParameters, frame.materialProgramParametersAddress);
@@ -29,19 +28,19 @@ namespace HIKARI::SHADOW::INTERNAL {
             PIPELINE::kShadowStaticRootParamMaterialCamera, frame.materialCameraAddress);
         cmd->SetGraphicsRootConstantBufferView(
             PIPELINE::kShadowStaticRootParamCamera,
-            GetActiveShadowCameraGpuAddress());
+            GetActiveShadowCameraGpuAddress(state));
         cmd->SetGraphicsRootConstantBufferView(
             PIPELINE::kShadowStaticRootParamCullingCamera,
-            GetActiveShadowCameraGpuAddress());
+            GetActiveShadowCameraGpuAddress(state));
         if (frame.materialDataSrvGpu.ptr != 0) {
             cmd->SetGraphicsRootDescriptorTable(
                 PIPELINE::kShadowStaticRootParamMaterialData,
                 frame.materialDataSrvGpu);
         }
-        if (gShadowRendererState.surfaceGpuSceneBuffer.GetSrv().ptr != 0) {
+        if (state.surfaceGpuSceneBuffer.GetSrv().ptr != 0) {
             cmd->SetGraphicsRootDescriptorTable(
                 PIPELINE::kShadowStaticRootParamSurfaceGpuScene,
-                gShadowRendererState.surfaceGpuSceneBuffer.GetSrv());
+                state.surfaceGpuSceneBuffer.GetSrv());
         }
         const D3D12_GPU_DESCRIPTOR_HANDLE texturePoolSrv =
             RENDER3D::GetMaterialTexturePoolSrvGpuHandle(graphics);
@@ -62,18 +61,13 @@ namespace HIKARI::SHADOW::INTERNAL {
                 PIPELINE::kShadowStaticRootParamMeshletVisibleRanges,
                 meshletVisibleRangeBuffer->GetGPUVirtualAddress());
         }
-        if (meshletVisibleClusterListBuffer != nullptr) {
-            cmd->SetGraphicsRootShaderResourceView(
-                PIPELINE::kShadowStaticRootParamMeshletVisibleClusterList,
-                meshletVisibleClusterListBuffer->GetGPUVirtualAddress());
-        }
-        if (frame.jointPaletteCB != nullptr) {
+        if (frame.meshJointPaletteAddress != 0u) {
             cmd->SetGraphicsRootShaderResourceView(
                 PIPELINE::kShadowStaticRootParamDeformationPalettes,
-                frame.jointPaletteCB->GetGPUVirtualAddress());
+                frame.meshJointPaletteAddress);
         }
         const D3D12_GPU_VIRTUAL_ADDRESS sandDataAddress =
-            gShadowRendererState.sandSurfaceGpuFrameBuffer.
+            state.sandSurfaceGpuFrameBuffer.
                 GetRecordGpuVirtualAddress();
         if (sandDataAddress != 0u) {
             cmd->SetGraphicsRootShaderResourceView(
@@ -81,7 +75,7 @@ namespace HIKARI::SHADOW::INTERNAL {
                 sandDataAddress);
         }
         const D3D12_GPU_VIRTUAL_ADDRESS sandHeightAddress =
-            gShadowRendererState.sandSurfaceGpuFrameBuffer.
+            state.sandSurfaceGpuFrameBuffer.
                 GetHeightGpuVirtualAddress();
         if (sandHeightAddress != 0u) {
             cmd->SetGraphicsRootShaderResourceView(

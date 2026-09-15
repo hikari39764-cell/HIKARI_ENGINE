@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <memory>
 #include <vector>
+#include "Assets/Lighting/HIKARI_LightingBakeManifest.h"
 
 #include "Tools/Baking/HIKARI_LightingBakeReport.h"
 #include "Tools/Baking/HIKARI_LightProbeBaker.h"
@@ -74,6 +75,7 @@ namespace HIKARI {
         };
 
         struct LightmapJob {
+            ~LightmapJob();
             TOOLS::BAKING::LightingBakeJobState state =
                 TOOLS::BAKING::LightingBakeJobState::Idle;
             TOOLS::BAKING::LightingBakeReport report{};
@@ -84,6 +86,12 @@ namespace HIKARI {
                 LightingTransportBakeSettings settings{};
             SceneObjectId objectId{};
             size_t targetIndex = 0u;
+            size_t pageIndex = 0u;
+            uint64_t resourceReleaseFence = 0u;
+            bool scenePrepared = false;
+            bool outputsCommitted = false;
+            std::filesystem::path outputDirectory{};
+            std::vector<ASSETS::LIGHTING::LightmapBakePage> completedPages{};
             std::filesystem::path projectRoot{};
             std::filesystem::path outputPath{};
             std::string sceneGuid{};

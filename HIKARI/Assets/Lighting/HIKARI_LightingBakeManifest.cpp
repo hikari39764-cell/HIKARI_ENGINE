@@ -100,19 +100,13 @@ namespace HIKARI::ASSETS::LIGHTING {
             return record;
         }
 
-        LightmapBakeRecord ReadLightmap(const nlohmann::json& node) {
-            LightmapBakeRecord record{};
-            if (!node.is_object()) {
-                return record;
-            }
-
-            record.id = node.value("id", std::string{});
-            record.name = node.value("name", std::string{});
-            record.objectId = node.value("objectId", uint64_t{ 0u });
-            record.texturePath = node.value("texturePath", std::string{});
-            record.width = node.value("width", 0u);
-            record.height = node.value("height", 0u);
-            record.uvSet = node.value("uvSet", 1u);
+        LightmapBakePage ReadLightmapPage(const nlohmann::json& node) {
+            LightmapBakePage page{};
+            if (!node.is_object()) return page;
+            page.texturePath = node.value("texturePath", std::string{});
+            page.width = node.value("width", 0u);
+            page.height = node.value("height", 0u);
+            page.uvSet = node.value("uvSet", 1u);
             for (const nlohmann::json& bindingNode :
                  node.value(
                     "surfaceBindings",
@@ -140,9 +134,27 @@ namespace HIKARI::ASSETS::LIGHTING {
                             nlohmann::json::array()),
                         binding.uvScaleBias);
                 if (binding.surface.IsValid()) {
-                    record.surfaceBindings.push_back(
+                    page.surfaceBindings.push_back(
                         binding);
                 }
+            }
+            return page;
+        }
+
+        LightmapBakeRecord ReadLightmap(const nlohmann::json& node) {
+            LightmapBakeRecord record{};
+            if (!node.is_object()) {
+                return record;
+            }
+
+            record.id = node.value("id", std::string{});
+            record.name = node.value("name", std::string{});
+            record.objectId = node.value("objectId", uint64_t{ 0u });
+            if (node.contains("pages")) {
+                for (const auto& page : node.at("pages")) record.pages.push_back(ReadLightmapPage(page));
+            } else {
+                // Version 6 の単一 atlas は境界で一度だけ正規化する。
+                record.pages.push_back(ReadLightmapPage(node));
             }
             record.encoding = node.value(
                 "encoding",
@@ -221,11 +233,11 @@ namespace HIKARI::ASSETS::LIGHTING {
             };
         }
 
-        nlohmann::json ToJson(const LightmapBakeRecord& record) {
+        nlohmann::json ToJson(const LightmapBakePage& page) {
             nlohmann::json surfaceBindings =
                 nlohmann::json::array();
             for (const LightmapSurfaceBinding& binding :
-                 record.surfaceBindings) {
+                 page.surfaceBindings) {
                 surfaceBindings.push_back({
                     {
                         "nodeIndex",
@@ -247,14 +259,20 @@ namespace HIKARI::ASSETS::LIGHTING {
                 });
             }
             return nlohmann::json{
+                { "texturePath", page.texturePath }, { "width", page.width },
+                { "height", page.height }, { "uvSet", page.uvSet },
+                { "surfaceBindings", surfaceBindings }
+            };
+        }
+
+        nlohmann::json ToJson(const LightmapBakeRecord& record) {
+            auto pages = nlohmann::json::array();
+            for (const auto& page : record.pages) pages.push_back(ToJson(page));
+            return nlohmann::json{
                 { "id", record.id },
                 { "name", record.name },
                 { "objectId", record.objectId },
-                { "texturePath", record.texturePath },
-                { "width", record.width },
-                { "height", record.height },
-                { "uvSet", record.uvSet },
-                { "surfaceBindings", surfaceBindings },
+                { "pages", pages },
                 { "encoding", record.encoding },
                 { "authoringHash", record.authoringHash },
                 { "captureSceneHash", record.captureSceneHash },
@@ -295,7 +313,7 @@ namespace HIKARI::ASSETS::LIGHTING {
 
         LightingBakeManifest manifest{};
         manifest.version = root.value("version", kLightingBakeManifestVersion);
-        if (manifest.version != kLightingBakeManifestVersion) {
+        if (manifest.version != 6u && manifest.version != kLightingBakeManifestVersion) {
             SetMessage(
                 outMessage,
                 "manifest version " +
@@ -305,6 +323,7 @@ namespace HIKARI::ASSETS::LIGHTING {
                         kLightingBakeManifestVersion));
             return false;
         }
+        manifest.version = kLightingBakeManifestVersion;
         manifest.sceneGuid = root.value("sceneGuid", std::string{});
         manifest.bakeGuid = root.value("bakeGuid", std::string{});
         manifest.bakeVersion = root.value("bakeVersion", 1u);

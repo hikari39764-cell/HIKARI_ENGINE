@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectWorldBridgeInternal.h"
@@ -38,12 +39,7 @@ namespace HIKARI {
                 patch.reserved0[2] != 0u) {
                 return true;
             }
-            for (uint32_t value : patch.reserved1) {
-                if (value != 0u) {
-                    return true;
-                }
-            }
-            return false;
+            return patch.reserved1 != 0u;
         }
 
         bool HasNonZeroWorldSpritePatchReserved(
@@ -142,7 +138,15 @@ namespace HIKARI {
 
     bool ObjectView::TryGetRuntimeLightState(
         GameProjectLightState& outState) const noexcept {
-        outState = {};
+        const uint32_t bytes = outState.structSize;
+        const uint32_t version = outState.version;
+        if (!((version == 1u && bytes == kGameProjectLightStateV1Size) ||
+              (version == kGameProjectLightStateVersion && bytes == kGameProjectLightStateV2Size))) return false;
+        GameProjectLightState snapshot{};
+        snapshot.structSize = bytes;
+        snapshot.version = version;
+        // v1 モジュールの64-byte領域を越えて書かない。失敗時も一貫した空の値を返す。
+        std::memcpy(&outState, &snapshot, bytes);
         try {
             GameObject* object = GameProjectSdkAccess::GetObject(*this);
             World* world = object != nullptr ? object->GetWorld() : nullptr;
@@ -157,24 +161,26 @@ namespace HIKARI {
                 return false;
             }
             const MATH::Vec3& color = light->GetColor();
-            outState.type = ToProjectLightType(light->GetLightType());
-            outState.enabled = light->IsEnabled() ? 1u : 0u;
-            outState.color = { color.x, color.y, color.z };
-            outState.intensity = light->GetIntensity();
-            outState.range = light->GetRange();
-            outState.innerConeAngleDegrees =
+            snapshot.type = ToProjectLightType(light->GetLightType());
+            snapshot.enabled = light->IsEnabled() ? 1u : 0u;
+            snapshot.color = { color.x, color.y, color.z };
+            snapshot.intensity = light->GetIntensity();
+            snapshot.range = light->GetRange();
+            snapshot.innerConeAngleDegrees =
                 light->GetInnerConeAngleDegrees();
-            outState.outerConeAngleDegrees =
+            snapshot.outerConeAngleDegrees =
                 light->GetOuterConeAngleDegrees();
-            outState.angularFalloff = light->GetAngularFalloff();
-            outState.distanceFalloff = static_cast<GameProjectLightFalloff>(
+            snapshot.angularFalloff = light->GetAngularFalloff();
+            snapshot.distanceFalloff = static_cast<GameProjectLightFalloff>(
                 light->GetDistanceFalloff());
-            outState.priority = light->GetPriority();
-            outState.stateRevision = light->GetStateRevision();
+            snapshot.priority = light->GetPriority();
+            snapshot.stateRevision = light->GetStateRevision();
+            snapshot.sourceRadius = light->GetSourceRadius();
+            snapshot.castsShadows = light->CastsShadows() ? 1u : 0u;
+            std::memcpy(&outState, &snapshot, bytes);
             return true;
         }
         catch (...) {
-            outState = {};
             return false;
         }
     }
@@ -246,6 +252,9 @@ namespace HIKARI {
               !std::isfinite(patch.outerConeAngleDegrees))) ||
             (Selected(GameProjectLightPatchField::AngularFalloff) &&
              !std::isfinite(patch.angularFalloff)) ||
+            (Selected(GameProjectLightPatchField::CastShadows) && patch.castsShadows > 1u) ||
+            (Selected(GameProjectLightPatchField::SourceRadius) &&
+             !std::isfinite(patch.sourceRadius)) ||
             (Selected(GameProjectLightPatchField::DistanceFalloff) &&
              patch.distanceFalloff != GameProjectLightFalloff::LegacyRange &&
              patch.distanceFalloff != GameProjectLightFalloff::InverseSquare)) {
@@ -254,7 +263,9 @@ namespace HIKARI {
                 handle_);
         }
         if (((Selected(GameProjectLightPatchField::Range) ||
-              Selected(GameProjectLightPatchField::DistanceFalloff)) &&
+              Selected(GameProjectLightPatchField::DistanceFalloff) ||
+              Selected(GameProjectLightPatchField::SourceRadius) ||
+              Selected(GameProjectLightPatchField::CastShadows)) &&
              light->GetLightType() == LightComponentType::Directional) ||
             ((Selected(GameProjectLightPatchField::SpotCone) ||
               Selected(GameProjectLightPatchField::AngularFalloff)) &&
@@ -308,6 +319,12 @@ namespace HIKARI {
             }
             if (Selected(GameProjectLightPatchField::AngularFalloff)) {
                 light->SetAngularFalloff(angularFalloff);
+            }
+            if (Selected(GameProjectLightPatchField::CastShadows)) {
+                light->SetCastsShadows(patch.castsShadows != 0u);
+            }
+            if (Selected(GameProjectLightPatchField::SourceRadius)) {
+                light->SetSourceRadius(patch.sourceRadius);
             }
             if (Selected(GameProjectLightPatchField::DistanceFalloff)) {
                 light->SetDistanceFalloff(

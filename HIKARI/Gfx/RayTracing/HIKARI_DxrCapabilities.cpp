@@ -1,4 +1,5 @@
 #include "Gfx/RayTracing/HIKARI_DxrCapabilities.h"
+#include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
 
 #include <d3d12.h>
 #include <wrl/client.h>
@@ -33,19 +34,8 @@ namespace HIKARI::GFX::RAYTRACING {
             }
         }
 
-        D3D12_FEATURE_DATA_SHADER_MODEL shaderModel{
-            D3D_SHADER_MODEL_6_7
-        };
-        if (FAILED(device->CheckFeatureSupport(
-                D3D12_FEATURE_SHADER_MODEL,
-                &shaderModel,
-                sizeof(shaderModel)))) {
-            shaderModel.HighestShaderModel =
-                D3D_SHADER_MODEL_6_0;
-        }
         capabilities.shaderModel =
-            static_cast<uint32_t>(
-                shaderModel.HighestShaderModel);
+            static_cast<uint32_t>(QueryHighestShaderModel(device));
         return capabilities;
     }
 

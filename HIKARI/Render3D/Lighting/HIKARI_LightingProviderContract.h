@@ -16,6 +16,15 @@ namespace HIKARI::RENDER3D::LIGHTING {
     // GPU に同時公開する Provider 数だけをこの固定予算で制限する。
     inline constexpr size_t kLightingProviderViewSlotCount = 2u;
 
+    // solar ray に直交する列と、その列内の累積透過率。未公開は descriptor=0。
+    struct CloudSolarVisibilityGpuData {
+        MATH::Vec4 originDescriptor{0,0,0,0};
+        MATH::Vec4 rightExtent{0,0,0,0};
+        MATH::Vec4 upResolution{0,0,0,0};
+        MATH::Vec4 directionSteps{0,0,0,0};
+    };
+    static_assert(sizeof(CloudSolarVisibilityGpuData)==64);
+
     enum class SceneLightType : uint8_t {
         Directional = 0,
         Point,
@@ -32,6 +41,8 @@ namespace HIKARI::RENDER3D::LIGHTING {
         MATH::Vec3 color{ 1.0f, 1.0f, 1.0f };
         float intensity = 1.0f;
         float range = 5.0f;
+        float sourceRadius = 0.0f;
+        bool castsShadows = false;
         float innerConeAngleDegrees = 25.0f;
         float outerConeAngleDegrees = 35.0f;
         float angularFalloff = 1.0f;
@@ -46,10 +57,10 @@ namespace HIKARI::RENDER3D::LIGHTING {
         MATH::Vec3 position{};
         float radius = 0.0f;
         float intensity = 1.0f;
-        REFLECTION::RuntimeReflectionProbeInfluenceShape influenceShape =
-            REFLECTION::RuntimeReflectionProbeInfluenceShape::Sphere;
-        REFLECTION::RuntimeReflectionProbeProjectionShape projectionShape =
-            REFLECTION::RuntimeReflectionProbeProjectionShape::Infinite;
+        HIKARI::REFLECTION::RuntimeReflectionProbeInfluenceShape influenceShape =
+            HIKARI::REFLECTION::RuntimeReflectionProbeInfluenceShape::Sphere;
+        HIKARI::REFLECTION::RuntimeReflectionProbeProjectionShape projectionShape =
+            HIKARI::REFLECTION::RuntimeReflectionProbeProjectionShape::Infinite;
         MATH::Vec3 influenceBoxCenter{};
         MATH::Vec3 influenceBoxSize{};
         MATH::Vec3 projectionBoxCenter{};

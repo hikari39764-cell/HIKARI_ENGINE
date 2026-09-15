@@ -45,7 +45,20 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
         std::string sourcePath{};
         uint32_t visibilityTextureDescriptorIndex = UINT32_MAX;
         float visibilityDistanceScale = 0.0f;
+        // 動的 probe は SH0.a に信頼度、SH1..3.a に cell 相対の relocation を保持する。
+        bool dynamic = false;
     };
+
+    struct IrradianceVolumeGpuData {
+        MATH::Vec4 originSampling{};
+        MATH::Vec4 spacingIntensity{};
+        MATH::Vec4 countsProbeCount{};
+        MATH::Vec4 sizeBlendDistance{};
+        MATH::Vec4 selectionParams{};
+    };
+
+    IrradianceVolumeGpuData BuildIrradianceVolumeGpuData(
+        const LightProbeVolumeRuntimeData& volume, float samplingMode);
 
     struct LightProbeVolumeViewSelection {
         std::array<size_t, kLightProbeVolumeViewSlotCount> providerIndices{};
@@ -95,6 +108,24 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
 
     private:
         LightProbeVolumeViewSelection previousSelection_{};
+    };
+
+    // GPU 生成の現在フレームだけを先頭 slot に公開する。残り slot は既存 baked set。
+    // リソース所有/生成は caller。scope を抜ければ capture 等の旧選択へ戻る。
+    class ScopedLightProbeVolumeOverride final {
+    public:
+        ScopedLightProbeVolumeOverride(const LightProbeVolumeRuntimeData& data,
+            D3D12_GPU_DESCRIPTOR_HANDLE shTable);
+        ~ScopedLightProbeVolumeOverride();
+        ScopedLightProbeVolumeOverride(const ScopedLightProbeVolumeOverride&) = delete;
+        ScopedLightProbeVolumeOverride& operator=(const ScopedLightProbeVolumeOverride&) = delete;
+        const LightProbeVolumeRuntimeData& GetData() const { return *data_; }
+        D3D12_GPU_DESCRIPTOR_HANDLE GetTable() const { return table_; }
+    private:
+        const LightProbeVolumeRuntimeData* data_ = nullptr;
+        D3D12_GPU_DESCRIPTOR_HANDLE table_{};
+        ScopedLightProbeVolumeOverride* previous_ = nullptr;
+        bool active_ = false;
     };
 
     // View slot に選ばれた SH9 Texture3D descriptor table を返す。

@@ -263,6 +263,7 @@ namespace HIKARI::TOOLS::BAKING {
             light.type = source.type;
             light.angularFalloff = source.angularFalloff;
             light.distanceFalloff = static_cast<uint32_t>(source.distanceFalloff);
+            light.sourceRadius = RENDER3D::LIGHTING::SanitizeLocalLightSourceRadius(source.sourceRadius);
             lights.push_back(light);
         }
         if (lights.empty()) {
@@ -532,6 +533,12 @@ namespace HIKARI::TOOLS::BAKING {
 
         const MATH::Vec4* accumulation =
             static_cast<const MATH::Vec4*>(mapped);
+        void* surfaceMapped = nullptr;
+        if (FAILED(texelBuffer_->Map(0u,nullptr,&surfaceMapped)) || surfaceMapped == nullptr) {
+            readbackBuffer_->Unmap(0u,nullptr);
+            SetMessage(outMessage,"Failed to map lightmap filtering guides.");
+            return false;
+        }
         const bool saved =
             INTERNAL::WriteProgressiveLightmapDds(
                 outputPath,
@@ -542,7 +549,11 @@ namespace HIKARI::TOOLS::BAKING {
                 validTexels_,
                 texelOwnerIndices_,
                 atlasAllocations_,
-                outMessage);
+                outMessage,
+                {static_cast<const INTERNAL::DxrLightmapSurfaceTexel*>(surfaceMapped),
+                    static_cast<size_t>(width_)*height_});
+        const D3D12_RANGE noWrites{0,0};
+        texelBuffer_->Unmap(0u,&noWrites);
         readbackBuffer_->Unmap(0u, nullptr);
         return saved;
     }

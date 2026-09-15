@@ -10,6 +10,9 @@
 #include "Gfx/HIKARI_GpuPipelineStatsProfiler.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
+#include "Render3D/Lighting/HIKARI_StylizedCloudStage.h"
+#include "Render3D/Lighting/HIKARI_DynamicDiffuseGi.h"
+#include "Render3D/Pipeline/HIKARI_RenderFramePipeline.h"
 #include "Render3D/Material/HIKARI_GpuMaterialRegistry.h"
 #include "Render3D/Resources/HIKARI_ClusterGeometryResourceSystem.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
@@ -17,6 +20,7 @@
 #include "Render3D/ScreenSpace/HIKARI_SsaoRenderer.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Shadow/HIKARI_ShadowMapRenderer.h"
+#include "Render3D/Shadow/HIKARI_LocalLightShadowRenderer.h"
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 #include "Render3D/Temporal/HIKARI_TemporalResourceSystem.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineFrameGeneration.h"
@@ -46,11 +50,15 @@ struct RuntimePerformanceSnapshot {
   RENDER3D::MATERIAL::GpuMaterialRegistryStats gpuMaterials{};
   MESHRENDERER::MeshRendererDebugStats mesh{};
   SHADOW::ShadowMapDebugStats shadow{};
+  SHADOW::LocalLightShadowStats localShadow{};
+  RENDER3D::DYNAMICGI::Stats dynamicGi{};
+  RENDER3D::RAYTRACING::RuntimeRayTracingStats rayScene{};
   RENDER3D::ClusterGeometryResourceSystemStats clusterResources{};
   RENDER3D::RenderResourceDescriptorPoolStats descriptorPool{};
   RENDER3D::SCREENSPACE::SsaoDebugState ssao{};
   RENDER3D::SCREENSPACE::DepthVisibilityDebugState depthVisibility{};
   RENDER3D::VOLUMETRIC::VolumetricLightingStats volumetric{};
+  RENDER3D::CLOUDS::StylizedCloudStageStats clouds{};
   RENDER3D::TEMPORAL::TemporalFrameState temporalFrame{};
   RENDER3D::TEMPORAL::TemporalResourceStats temporalResources{};
   RENDER3D::UPSCALING::StreamlineDebugStats streamline{};
@@ -62,14 +70,6 @@ struct RuntimePerformanceSnapshot {
   GFX::GPU_PROFILE::FrameSnapshot gpu{};
   GFX::GPU_PIPELINE_STATS::FrameSnapshot pipelineStats{};
 };
-
-bool IsClusterSubpass(GFX::GPU_PROFILE::Pass pass);
-
-bool IsShadowSubpass(GFX::GPU_PROFILE::Pass pass);
-
-bool IsNestedGpuSubpass(GFX::GPU_PROFILE::Pass pass);
-
-const char *TimingScopeText(GFX::GPU_PROFILE::Pass pass);
 
 const char *ReadyText(bool value);
 

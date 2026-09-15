@@ -146,8 +146,8 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             psoDesc.InputLayout = {};
             psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
             psoDesc.NumRenderTargets = 2;
-            psoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16_FLOAT;
-            psoDesc.RTVFormats[1] = DXGI_FORMAT_R16G16_FLOAT;
+            psoDesc.RTVFormats[0] = kTemporalMotionVectorFormat;
+            psoDesc.RTVFormats[1] = kTemporalMotionMetadataFormat;
             psoDesc.SampleDesc.Count = 1;
 
             hr = device->CreateGraphicsPipelineState(

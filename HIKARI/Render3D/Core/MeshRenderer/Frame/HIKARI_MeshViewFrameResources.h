@@ -32,11 +32,13 @@ namespace HIKARI::MESHRENDERER {
         void Finalize();
         bool IsInitialized() const { return uploads_.IsInitialized(); }
         void BuildLocalLights(const RENDER3D::LIGHTING::SceneLightingSet& lighting,
-            const Camera3D& viewCamera, uint32_t width, uint32_t height);
+            const Camera3D& viewCamera, uint32_t width, uint32_t height,
+            std::span<const RENDER3D::LIGHTING::LocalLightShadowAssignment> shadows = {});
         void ClearLocalLights() { localLightList = {}; }
         // 同一 frame slot の提出は上書きしない。slot の再利用は呼び出し側が GPU 完了後に行う。
         bool Publish(const GFX::Context& graphics, const CameraCB* cullingOverride = nullptr);
         bool PublishSkyEnvironment(const GFX::Context& graphics);
+        bool PublishLight(const GFX::Context& graphics);
         const MeshViewGpuBindings& Bindings() const { return bindings_; }
 
         CameraCB camera{};
@@ -47,6 +49,8 @@ namespace HIKARI::MESHRENDERER {
         RENDER3D::LIGHTING::LocalLightListView localLightList{};
 
     private:
+        bool PublishConstant(const GFX::Context& graphics, const void* data, size_t bytes,
+            D3D12_GPU_VIRTUAL_ADDRESS& binding);
         DX::DynamicUploadBuffer uploads_{};
         std::vector<RENDER3D::LIGHTING::LocalLightGpuData> lights_{};
         std::vector<RENDER3D::LIGHTING::LocalLightClusterHeader> headers_{};

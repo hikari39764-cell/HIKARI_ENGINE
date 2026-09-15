@@ -10,6 +10,7 @@
 
 #include "Assets/Lighting/HIKARI_LightingBakeDependencyHash.h"
 #include "Assets/Lighting/HIKARI_LightingBakeManifest.h"
+#include "Assets/HIKARI_AssetGuid.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Scene/Document/Baking/HIKARI_LightingTransportSceneBuilder.h"
@@ -170,12 +171,13 @@ namespace HIKARI {
             ASSETS::LIGHTING::
                 kSurfaceLightmapDefaultBounceCount;
         job->settings.outputResolution =
-            resolvedTarget.outputResolution;
-        job->outputPath =
+            resolvedTarget.pages.front().outputResolution;
+        job->outputDirectory =
             LightmapOutputDirectory(
                 projectRoot,
                 job->sceneGuid) /
-            (job->recordId + ".dds");
+            (job->recordId + "_" + GenerateAssetGuid().value);
+        job->outputPath = job->outputDirectory / "page_0.dds";
 
         job->report.bakeRoot =
             ASSETS::LIGHTING::BuildLightingBakeRoot(
@@ -189,7 +191,7 @@ namespace HIKARI {
         job->report.lightmapResolution =
             job->settings.outputResolution;
         job->report.lightmapRequestedSamples =
-            job->settings.sampleCount;
+            job->settings.sampleCount * static_cast<uint32_t>(resolvedTarget.pages.size());
         if (batchItemCount_ == 0u) {
             batchItemCount_ = 1u;
             batchCompletedItemCount_ = 0u;

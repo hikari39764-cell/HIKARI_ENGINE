@@ -16,24 +16,27 @@ namespace HIKARI::MESHRENDERER {
     struct MeshPipelineVariantKey {
         VFX::VariantKey material;
         bool reflectionCapture = false;
+        bool reflectionMaterialCapture = false;
         bool operator==(const MeshPipelineVariantKey&) const = default;
     };
 
     struct MeshPipelineVariantQuery {
         const VFX::VariantKey& material;
         bool reflectionCapture = false;
+        bool reflectionMaterialCapture = false;
     };
     struct VariantKeyHasher {
         using is_transparent = void;
         size_t operator()(const MeshPipelineVariantQuery& key) const noexcept;
         size_t operator()(const MeshPipelineVariantKey& key) const noexcept {
-            return operator()(MeshPipelineVariantQuery{key.material, key.reflectionCapture});
+            return operator()(MeshPipelineVariantQuery{key.material, key.reflectionCapture, key.reflectionMaterialCapture});
         }
     };
     struct VariantKeyEqual {
         using is_transparent = void;
         template<class L, class R> bool operator()(const L& left, const R& right) const noexcept {
-            return left.reflectionCapture == right.reflectionCapture && left.material == right.material;
+            return left.reflectionCapture == right.reflectionCapture &&
+                left.reflectionMaterialCapture == right.reflectionMaterialCapture && left.material == right.material;
         }
     };
 
@@ -42,6 +45,8 @@ namespace HIKARI::MESHRENDERER {
         Microsoft::WRL::ComPtr<ID3D12RootSignature> skinnedRootSig;
         Microsoft::WRL::ComPtr<ID3D12PipelineState> pso;
         Microsoft::WRL::ComPtr<ID3D12PipelineState> skinnedPso;
+        D3D12_GRAPHICS_PIPELINE_STATE_DESC fallbackDesc{};
+        bool fallbackAttempted[2]{};
         Microsoft::WRL::ComPtr<ID3D12PipelineState> depthPso;
         Microsoft::WRL::ComPtr<ID3D12PipelineState> depthSkinnedPso;
         Microsoft::WRL::ComPtr<ID3D12PipelineState> waterDepthPso;
@@ -75,6 +80,8 @@ namespace HIKARI::MESHRENDERER {
     };
 
     bool InitializeMeshPipelines(ID3D12Device* device, MeshPipelineStore& store);
+    bool AreTraditionalMeshPipelineInputsReady(const MeshPipelineStore& store);
+    ID3D12PipelineState* GetOrCreateFallbackPso(MeshPipelineStore& store, ID3D12Device* device, bool skinned);
     void ShutdownMeshPipelines(MeshPipelineStore& store);
     void InvalidateMeshPipelineVariants(MeshPipelineStore& store);
 
@@ -100,7 +107,8 @@ namespace HIKARI::MESHRENDERER {
         const VFX::VariantKey& key,
         bool skinned,
         bool wireframe,
-        bool reflectionCapture = false);
+        bool reflectionCapture = false,
+        bool reflectionMaterialCapture = false);
 
     void ApplyCompositeBlendState(D3D12_BLEND_DESC& blendState, VFX::CompositeMode composite,
         bool reflectionCapture = false);

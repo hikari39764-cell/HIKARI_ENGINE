@@ -31,6 +31,8 @@ namespace HIKARI::LIGHTING_AUTHORING {
         MATH::Vec3 color{ 1.0f, 1.0f, 1.0f };
         float intensity = 1.0f;
         float range = 5.0f;
+        float sourceRadius = 0.0f;
+        bool castsShadows = true;
         float innerConeAngleDegrees = 25.0f;
         float outerConeAngleDegrees = 35.0f;
         float angularFalloff = 1.0f;

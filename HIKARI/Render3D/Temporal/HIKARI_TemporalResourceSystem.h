@@ -12,6 +12,9 @@
 namespace HIKARI::RENDER3D::TEMPORAL {
 
     inline constexpr uint32_t kTemporalMaximumResidentViewCount = 2u;
+    inline constexpr DXGI_FORMAT kTemporalMotionVectorFormat = DXGI_FORMAT_R16G16_FLOAT;
+    // 前フレームの device depth は D32 と同精度を保つ。半精度では遠景が同じ値へ丸まる。
+    inline constexpr DXGI_FORMAT kTemporalMotionMetadataFormat = DXGI_FORMAT_R32G32_FLOAT;
 
     enum class TemporalResourceReleaseMode : uint8_t {
         DeferredUntilFence,

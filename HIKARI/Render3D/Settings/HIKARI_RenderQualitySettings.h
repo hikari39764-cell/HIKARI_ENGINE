@@ -66,6 +66,15 @@ namespace HIKARI::RENDER3D {
         High,
     };
 
+    enum class DynamicGiQuality : uint8_t { Off = 0, Low, Balanced, High };
+
+    enum class LocalShadowQuality : uint8_t {
+        Off = 0,
+        Low,
+        Balanced,
+        High,
+    };
+
     enum class StylizedCloudQuality : uint8_t {
         Low = 0,
         Balanced,
@@ -98,6 +107,8 @@ namespace HIKARI::RENDER3D {
             VolumetricLightingQuality::Balanced;
         StylizedCloudQuality stylizedCloudQuality =
             StylizedCloudQuality::Balanced;
+        DynamicGiQuality dynamicGiQuality = DynamicGiQuality::Off;
+        LocalShadowQuality localShadowQuality = LocalShadowQuality::Balanced;
         float taaHistoryWeight = 0.92f;
         float taaVarianceClipGamma = 1.25f;
         float taaDepthRejection = 0.0025f;
@@ -152,6 +163,8 @@ namespace HIKARI::RENDER3D {
     const char* RenderFrameGenerationModeLabel(RenderFrameGenerationMode mode);
     const char* VolumetricLightingQualityLabel(VolumetricLightingQuality quality);
     const char* StylizedCloudQualityLabel(StylizedCloudQuality quality);
+    const char* DynamicGiQualityLabel(DynamicGiQuality quality);
+    const char* LocalShadowQualityLabel(LocalShadowQuality quality);
 
     bool IsTemporalAntiAliasingMode(RenderAntiAliasingMode mode);
     bool UsesTemporalJitter(RenderAntiAliasingMode mode);

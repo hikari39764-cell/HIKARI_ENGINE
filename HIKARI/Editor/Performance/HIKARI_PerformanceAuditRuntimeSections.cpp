@@ -93,6 +93,11 @@ void DrawEffectsTable(const RuntimePerformanceSnapshot &s) {
               s.ssao.blurIterations);
     MetricRow("SSAO CPU Main / Blur / Total", "%.3f / %.3f / %.3f ms",
               s.ssao.mainCpuMs, s.ssao.blurCpuMs, s.ssao.totalCpuMs);
+    MetricRow("Cloud Trace / Solar Visibility", "%s / %s", s.clouds.rendered ? "ready" : "off",
+              s.clouds.solarVisibilityReady ? "ready" : "unavailable");
+    MetricRow("Cloud Trace / Solar MiB", "%.2f / %.2f", double(s.clouds.workingSetBytes)/(1024*1024),
+              double(s.clouds.solarBytes)/(1024*1024));
+    MetricRow("Cloud Solar Columns / Steps", "%u x %u / %u", s.clouds.solarResolution, s.clouds.solarResolution, s.clouds.solarSteps);
     MetricRow("Volumetric Requested / Active / History", "%s / %s / %s",
               s.volumetric.requested ? "yes" : "no",
               s.volumetric.active ? "yes" : "no",
@@ -113,10 +118,25 @@ void DrawEffectsTable(const RuntimePerformanceSnapshot &s) {
               s.volumetric.pointLightCount,
               s.volumetric.spotLightCount,
               s.volumetric.temporalWeight);
+    MetricRow("Volumetric Local Shadow Faces", "%u", s.volumetric.localShadowFaces);
     MetricRow("Volumetric Dispatch / Resizes / Resets", "%u / %llu / %llu",
               s.volumetric.dispatchCount,
               static_cast<unsigned long long>(s.volumetric.resizeCount),
               static_cast<unsigned long long>(s.volumetric.historyResetCount));
+    MetricRow("Local Shadows Selected / Requested / Budget Rejected", "%u / %u / %u",
+              s.localShadow.selectedLights, s.localShadow.requestedLights, s.localShadow.budgetRejectedLights);
+    MetricRow("Local Shadow Faces Drawn / Reused / Failed Lights", "%u / %u / %u",
+              s.localShadow.renderedFaces, s.localShadow.reusedFaces, s.localShadow.failedLights);
+    MetricRow("Local Shadow Depth MiB", "%.2f", double(s.localShadow.allocatedDepthBytes) / (1024.0 * 1024.0));
+    MetricRow("Dynamic GI", "%s", RENDER3D::DYNAMICGI::ToString(s.dynamicGi.status));
+    MetricRow("GI Updated / Resident Probes / Primary Rays", "%u / %u / %u",
+              s.dynamicGi.updatedProbes, s.dynamicGi.probes, s.dynamicGi.primaryRays);
+    MetricRow("GI Probe / RT Resident / RT Retiring MiB", "%.2f / %.2f / %.2f",
+              double(s.dynamicGi.probeBytes)/(1024*1024), double(s.rayScene.residentBytes)/(1024*1024),
+              double(s.rayScene.retiringBytes)/(1024*1024));
+    MetricRow("Shared RT Pending / Unsupported / Missing", "%u / %u / %u", s.rayScene.pendingChunks,
+              s.rayScene.unsupportedSurfaces,s.rayScene.missingSurfaces);
+    MetricRow("GI Local Lights / Overflow", "%u / %u",s.dynamicGi.localLights,s.dynamicGi.droppedLights);
     MetricRow("Shadow Enabled / Resolution / Ortho / Texel",
               "%s / %u / %.2f / %.5f", s.shadow.enabled ? "yes" : "no",
               s.shadow.resolution, s.shadow.orthoSize, s.shadow.worldTexelSize);
@@ -134,12 +154,11 @@ void DrawEffectsTable(const RuntimePerformanceSnapshot &s) {
               s.shadow.shadowStaticCacheCopyCount,
               s.shadow.shadowStaticCacheUpdateCount);
     MetricRow("Shadow Sources Static / Dynamic / Drawn",
-              "%zu / %zu / %s %s %s %s",
+              "%zu / %zu / %s %s %s",
               s.shadow.shadowStaticSourceInstanceCount,
               s.shadow.shadowDynamicSourceInstanceCount,
               s.shadow.shadowStaticRendered ? "static" : "-",
               s.shadow.shadowDynamicRendered ? "dynamic" : "-",
-              s.shadow.shadowUnifiedRendered ? "unified" : "-",
               s.shadow.shadowFallbackRendered ? "fallback" : "-");
     MetricRow("Shadow Meshlet Dispatch Req / Submitted / Skip",
               "%zu / %zu / %zu", s.shadow.shadowMeshletRequestedDispatchCount,

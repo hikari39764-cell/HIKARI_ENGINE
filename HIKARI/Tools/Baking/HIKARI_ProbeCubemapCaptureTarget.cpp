@@ -285,6 +285,19 @@ namespace HIKARI::TOOLS::BAKING {
 
             readback.buffer->Unmap(0, nullptr);
             if (!StoreDepthInCaptureAlpha(face, image->pixels, image->rowPitch, outMessage)) return false;
+            // 正しい RH camera の raster 結果を DirectX TextureCube の face UV へ変換する。
+            // View を鏡像化すると winding / culling まで反転するため、RGB と距離を保存時に揃える。
+            const size_t pixelBytes = DirectX::BitsPerPixel(format_) / 8u;
+            if (pixelBytes == 0u) {
+                SetMessage(outMessage, "Probe capture requires an uncompressed pixel format.");
+                return false;
+            }
+            for (uint32_t y = 0; y < resolution_; ++y) {
+                auto* row = image->pixels + static_cast<size_t>(y) * image->rowPitch;
+                for (uint32_t x = 0; x < resolution_ / 2u; ++x)
+                    std::swap_ranges(row + x * pixelBytes, row + (x + 1u) * pixelBytes,
+                        row + (resolution_ - 1u - x) * pixelBytes);
+            }
         }
 
         std::error_code ec{};

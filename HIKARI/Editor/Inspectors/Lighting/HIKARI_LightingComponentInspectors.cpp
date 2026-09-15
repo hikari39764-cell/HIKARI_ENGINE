@@ -57,6 +57,8 @@ namespace HIKARI {
         const MATH::Vec3 previousColor = color_;
         const float previousIntensity = intensity_;
         const float previousRange = range_;
+        const float previousSourceRadius = sourceRadius_;
+        const bool previousCastsShadows = castsShadows_;
         const auto previousDistanceFalloff = distanceFalloff_;
         const float previousInnerConeAngle = innerConeAngleDegrees_;
         const float previousOuterConeAngle = outerConeAngleDegrees_;
@@ -82,7 +84,13 @@ namespace HIKARI {
         builder.Int(AuthoringFieldDescriptor{ "priority", "Priority" }, priority_);
 
         if (type_ != LightComponentType::Directional) {
+            builder.Bool(AuthoringFieldDescriptor{ "castsShadows", "Cast Shadows",
+                "Request local-light shadows within the active rendering budget." }, castsShadows_);
             builder.FloatRange(AuthoringFieldDescriptor{ "range", "Range" }, range_, 0.05f, 1000.0f, 0.1f);
+            builder.FloatRange(AuthoringFieldDescriptor{
+                "sourceRadius", "Source Radius",
+                "Emitter radius in world units. Broadens direct specular independently of material roughness and light range. Zero preserves punctual lighting."
+            }, sourceRadius_, 0.0f, RENDER3D::LIGHTING::kMaximumLocalLightSourceRadius, 0.01f);
             int falloff = static_cast<int>(distanceFalloff_);
             static constexpr std::array<AuthoringChoice, 2> falloffChoices{
                 AuthoringChoice{ "LegacyRange", "Legacy Range" },
@@ -124,6 +132,7 @@ namespace HIKARI {
             previousColor.y != color_.y ||
             previousColor.z != color_.z ||
             previousIntensity != intensity_ || previousRange != range_ ||
+            previousSourceRadius != sourceRadius_ || previousCastsShadows != castsShadows_ ||
             previousInnerConeAngle != innerConeAngleDegrees_ ||
             previousOuterConeAngle != outerConeAngleDegrees_ ||
             previousAngularFalloff != angularFalloff_ ||

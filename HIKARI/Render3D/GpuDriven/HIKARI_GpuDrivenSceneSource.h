@@ -68,6 +68,9 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
 
     struct GpuDrivenSceneSource {
         std::array<GpuDrivenPassSource, kGpuDrivenPassCount> passes{};
+        // Scene registry の全 surface。View の culling/描画 route に依存しない
+        // RT/GI 入力とし、CPU scene をもう一つ複製しない。
+        const std::vector<GpuSceneSurfaceRecord>* surfaceRecords = nullptr;
         const std::vector<std::vector<MATH::Mat4>>* meshShaderJointPalettes = nullptr;
         const std::vector<WATER::WaterSurfaceGpuData>* waterSurfaceGpuData = nullptr;
         const std::vector<SAND::SandSurfaceGpuData>* sandSurfaceGpuData = nullptr;

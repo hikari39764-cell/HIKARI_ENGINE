@@ -2,8 +2,8 @@
 #define HIKARI_MESHLET_AS_COMPACTION_INCLUDED
 
 groupshared uint gMeshletAsVisibleCount;
-groupshared uint gMeshletAsWaveVisibleCounts[HIKARI_MESHLET_AS_MAX_CLUSTER_PAYLOAD];
-groupshared uint gMeshletAsWaveVisibleOffsets[HIKARI_MESHLET_AS_MAX_CLUSTER_PAYLOAD];
+groupshared uint gMeshletAsWaveVisibleCounts[(HIKARI_MESHLET_AS_MAX_CLUSTER_PAYLOAD + 3u) / 4u];
+groupshared uint gMeshletAsWaveVisibleOffsets[(HIKARI_MESHLET_AS_MAX_CLUSTER_PAYLOAD + 3u) / 4u];
 
 void HikariMeshletAsResetCompaction()
 {

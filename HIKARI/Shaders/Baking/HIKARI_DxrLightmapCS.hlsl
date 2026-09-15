@@ -31,7 +31,7 @@ struct TransportLight
     uint type;
     float angularFalloff;
     uint distanceFalloff;
-    uint padding;
+    float sourceRadius;
 };
 
 cbuffer BakeConstants : register(b0)
@@ -44,6 +44,9 @@ cbuffer BakeConstants : register(b0)
     uint gLightCount;
     uint gSkyMode;
     uint gSkyTextureIndex;
+    uint gSampleGridWidth;
+    uint gSampleGridHeight;
+    uint2 gSamplePadding;
     float4 gAmbientSkyStrength;
     float4 gSkyZenith;
     float4 gSkyHorizon;
@@ -99,15 +102,16 @@ bool TryNormalizeVector(
     float3 value,
     out float3 normalizedValue)
 {
-    const float lengthSquared = dot(value, value);
-    if (!IsFiniteFloat3(value) ||
-        !IsFiniteFloat(lengthSquared) ||
-        lengthSquared <= 1.0e-12f)
+    // 面積を持つ幾何法線も渡される。固定の長さ閾値は微小 Triangle の
+    // 有効な hit を拒否するため、最大成分で尺度を除いてから正規化する。
+    const float scale = max(abs(value.x), max(abs(value.y), abs(value.z)));
+    if (!IsFiniteFloat3(value) || scale <= 0.0f)
     {
         normalizedValue = 0.0f.xxx;
         return false;
     }
-    normalizedValue = value * rsqrt(lengthSquared);
+    const float3 scaledValue = value / scale;
+    normalizedValue = scaledValue * rsqrt(dot(scaledValue, scaledValue));
     return IsFiniteFloat3(normalizedValue);
 }
 
@@ -163,10 +167,21 @@ bool BuildBasis(
 bool SampleCosineHemisphere(
     float3 normal,
     inout uint randomState,
+    uint texelIndex,
+    uint bounce,
     out float3 direction)
 {
     float r0 = Random01(randomState);
     float r1 = Random01(randomState);
+    if (bounce == 0u)
+    {
+        // 主半球を等面積の領域に分け、全 sample で各領域を一度ずつ訪れる。
+        // 画素ごとの巡回順と領域内 jitter は固定の格子模様を避ける。
+        const uint sampleCount = gSampleGridWidth * gSampleGridHeight;
+        const uint stratum = (gSampleIndex + HashPcg(texelIndex) % sampleCount) % sampleCount;
+        r0 = (float(stratum % gSampleGridWidth) + r0) / float(gSampleGridWidth);
+        r1 = (float(stratum / gSampleGridWidth) + r1) / float(gSampleGridHeight);
+    }
     float radius = sqrt(r0);
     float angle = 2.0f * HIKARI_PI * r1;
     float3 tangent;
@@ -204,6 +219,7 @@ bool EvaluateDirect(
     float3 position,
     float3 normal,
     float3 geometricNormal,
+    inout uint randomState,
     out float3 result)
 {
     result = 0.0f.xxx;
@@ -250,7 +266,23 @@ bool EvaluateDirect(
             directionToLight = offset / distanceToLight;
             // 保存された衰減モードを realtime と共通の契約で評価する。
             attenuation = HikariLocalLightRangeAttenuation(
-                distanceToLight, light.positionRange.w, light.distanceFalloff);
+                distanceToLight, light.positionRange.w, light.distanceFalloff, light.sourceRadius);
+            if (light.sourceRadius > 0.0f && distanceToLight > light.sourceRadius)
+            {
+                // 球の見かけの円盤を立体角で一様サンプルする。I/d^2 から
+                // 放射輝度/pdf への補正も行い、半径だけで照度を増幅しない。
+                const float halfAngleSineSquared = HikariLocalLightSourceHalfAngleSineSquared(
+                    distanceToLight, light.sourceRadius);
+                const float coneCos = 1.0f - 2.0f * halfAngleSineSquared;
+                const float2 emitterSample = float2(Random01(randomState), Random01(randomState));
+                const float sampleCos = 1.0f - 2.0f * halfAngleSineSquared * emitterSample.x;
+                directionToLight = HikariSampleEmitterCone(directionToLight,halfAngleSineSquared,emitterSample);
+                attenuation *= 2.0f / (1.0f + coneCos);
+                const float projectedDistance = distanceToLight * sampleCos;
+                distanceToLight = projectedDistance - sqrt(max(0.0f,
+                    light.sourceRadius * light.sourceRadius -
+                    distanceSquared * (1.0f - sampleCos * sampleCos)));
+            }
             if (light.type == 2u)
             {
                 float3 spotDirection;
@@ -434,6 +466,8 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
         if (!SampleCosineHemisphere(
                 normal,
                 randomState,
+                texelIndex,
+                bounce,
                 direction))
         {
             sampleValid = false;
@@ -482,6 +516,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
                 hitPosition,
                 hitNormal,
                 hitGeometricNormal,
+                randomState,
                 directRadiance))
         {
             sampleValid = false;

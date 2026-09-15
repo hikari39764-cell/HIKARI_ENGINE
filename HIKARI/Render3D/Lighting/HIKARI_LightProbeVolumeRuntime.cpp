@@ -27,6 +27,45 @@
 
 namespace HIKARI::RENDER3D::LIGHTPROBE {
 
+    IrradianceVolumeGpuData BuildIrradianceVolumeGpuData(
+        const LightProbeVolumeRuntimeData& volume, float samplingMode) {
+        IrradianceVolumeGpuData gpu{};
+        gpu.originSampling = {
+            volume.origin.x,
+            volume.origin.y,
+            volume.origin.z,
+            volume.dynamic && samplingMode > 0.0f ? 3.0f : samplingMode
+        };
+        gpu.spacingIntensity = {
+            std::max(0.0001f, volume.spacing.x),
+            std::max(0.0001f, volume.spacing.y),
+            std::max(0.0001f, volume.spacing.z),
+            std::max(0.0f, volume.intensity)
+        };
+        gpu.countsProbeCount = {
+            static_cast<float>(volume.countX),
+            static_cast<float>(volume.countY),
+            static_cast<float>(volume.countZ),
+            static_cast<float>(volume.probeCount)
+        };
+        gpu.sizeBlendDistance = {
+            volume.size.x,
+            volume.size.y,
+            volume.size.z,
+            std::max(0.0f, volume.blendDistance)
+        };
+        gpu.selectionParams = {
+            static_cast<float>(volume.priority),
+            static_cast<float>(volume.visibilityTextureDescriptorIndex + 1u),
+            std::clamp(
+                volume.normalBias,
+                0.0f,
+                0.5f),
+            volume.visibilityDistanceScale
+        };
+        return gpu;
+    }
+
     namespace {
 
         constexpr uint32_t kShCoeffCount =
@@ -72,6 +111,7 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
         size_t gResidentCount = 0;
         LightProbeVolumeViewSelection gViewSelection{};
         int gSamplingSuppressDepth = 0;
+        ScopedLightProbeVolumeOverride* gVolumeOverride = nullptr;
 
         UINT DescriptorBaseIndex(size_t residentIndex) {
             return GFX::DESCRIPTOR::ToIndex(
@@ -567,7 +607,8 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
                 resident.data.countX > 0u &&
                 resident.data.countY > 0u &&
                 resident.data.countZ > 0u &&
-                resident.data.intensity > 0.0f &&
+                std::isfinite(resident.data.intensity) &&
+                resident.data.intensity >= 0.0f &&
                 HasGpuResources(resident) &&
                 resident.srvReady;
             resident.data.visibilityTextureDescriptorIndex = resident.data.valid
@@ -868,6 +909,11 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
     const LightProbeVolumeRuntimeData* GetViewVolume(
         size_t slot) {
 
+        if (slot >= kLightProbeVolumeViewSlotCount || IsLightProbeVolumeSamplingSuppressed()) return nullptr;
+        if (gVolumeOverride) {
+            if (slot == 0) return &gVolumeOverride->GetData();
+            --slot;
+        }
         if (slot >= gViewSelection.count) {
             return nullptr;
         }
@@ -880,6 +926,20 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
 
     bool IsLightProbeVolumeSamplingSuppressed() {
         return gSamplingSuppressDepth > 0;
+    }
+
+    ScopedLightProbeVolumeOverride::ScopedLightProbeVolumeOverride(
+        const LightProbeVolumeRuntimeData& data, D3D12_GPU_DESCRIPTOR_HANDLE shTable) {
+        if (!data.enabled || !data.valid || !data.dynamic || shTable.ptr == 0) return;
+        data_ = &data;
+        table_ = shTable;
+        previous_ = gVolumeOverride;
+        gVolumeOverride = this;
+        active_ = true;
+    }
+
+    ScopedLightProbeVolumeOverride::~ScopedLightProbeVolumeOverride() {
+        if (active_) gVolumeOverride = previous_;
     }
 
     ScopedLightProbeVolumeSamplingSuppress::
@@ -900,6 +960,10 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
 
         if (slot >= kLightProbeVolumeViewSlotCount) {
             return {};
+        }
+        if (!IsLightProbeVolumeSamplingSuppressed() && gVolumeOverride) {
+            if (slot == 0) return gVolumeOverride->GetTable();
+            --slot;
         }
         if (IsLightProbeVolumeSamplingSuppressed() ||
             slot >= gViewSelection.count) {

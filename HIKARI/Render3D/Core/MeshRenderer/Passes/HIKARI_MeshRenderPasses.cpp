@@ -94,7 +94,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
 
     bool RenderDepthPrepassInternal(
         const GFX::Context& graphics,
-        D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv) {
+        D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv, bool useCullingCamera) {
         if (!HasGpuDrivenPassSource(
             RENDER3D::GPUDRIVEN::GpuDrivenPassKind::DepthPrepass)) {
             return false;
@@ -105,7 +105,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             return false;
         }
 
-        const CameraCB* camera = GetCameraConstants();
+        const CameraCB* camera = useCullingCamera ? GetGpuDrivenCullingCameraConstants() : GetCameraConstants();
         const uint32_t width = static_cast<uint32_t>(
             (std::max)(1.0f, camera ? camera->screenParams.x : 1.0f));
         const uint32_t height = static_cast<uint32_t>(
@@ -124,12 +124,17 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         cmd->RSSetViewports(1, &viewport);
         cmd->RSSetScissorRects(1, &scissor);
 
+        MeshFrameBindingOverrides overrides{};
+        if (useCullingCamera) {
+            overrides.cameraAddress = GetActiveMeshFrameResources().view.Bindings().cullingCamera;
+            if (overrides.cameraAddress == 0u) return false;
+        }
         const MeshPassResources passResources{};
         const GeometryBackendExecutionResult backendResult =
             ExecuteDepthVisibilityBackendPlan(
                 graphics,
                 RENDER3D::GPUDRIVEN::GpuDrivenPassKind::DepthPrepass,
-                passResources);
+                passResources, useCullingCamera ? &overrides : nullptr);
         return backendResult.gpuBackendExecuted;
     }
 
@@ -373,8 +378,8 @@ namespace HIKARI::MESHRENDERER {
 
     bool RenderDepthPrepass(
         const GFX::Context& graphics,
-        D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv) {
-        return RenderDepthPrepassInternal(graphics, sceneDsv);
+        D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv, bool useCullingCamera) {
+        return RenderDepthPrepassInternal(graphics, sceneDsv, useCullingCamera);
     }
 
     bool RenderWaterVisibilityDepth(
@@ -436,10 +441,14 @@ namespace HIKARI::MESHRENDERER {
         return true;
     }
 
-    bool PrepareForwardReflectionCapture(const GFX::Context& graphics) {
+    bool PrepareForwardReflectionCapture(const GFX::Context& graphics, bool captureMaterial) {
         if (gMeshRendererState.worldSpritePass.HasOpaqueWork()) return false;
         return !HasGpuDrivenPassSource(RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardOpaque) ||
-            PrepareForwardReflectionCapturePipelines(graphics);
+            PrepareForwardReflectionCapturePipelines(graphics, captureMaterial);
+    }
+
+    bool HasOpaqueDepthOutsideGeometryAux() {
+        return gMeshRendererState.worldSpritePass.HasOpaqueWork();
     }
 
     bool RenderForwardOpaquePass(

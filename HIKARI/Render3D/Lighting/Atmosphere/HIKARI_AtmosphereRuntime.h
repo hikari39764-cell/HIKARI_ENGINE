@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <array>
 
 #include <d3d12.h>
 #include <d3dcompiler.h>
@@ -30,18 +31,21 @@ namespace HIKARI::ATMOSPHERE {
         void Reset();
 
         // Allocates all three UAV/SRV pairs and the shared compute pipeline.
-        // Returns false when the descriptor pool, device, or shader compiler
+        // Returns false when the descriptor pool, device, or cooked shaders
         // cannot provide a complete GPU path; callers must use analytic sky
         // in that case.
         bool EnsureGpuResources(const GFX::Context& context);
 
-        // Dispatches only when the supplied parameter signature changed. The
-        // final state is PIXEL_SHADER_RESOURCE so SkyRenderer can sample the
-        // sky-view LUT in its pixel pass.
+        // Dispatches only the LUTs whose typed transport inputs changed. The
+        // final state is ALL_SHADER_RESOURCE for the sky pixel pass and the
+        // environment convolution compute pass.
         bool Dispatch(
             const GFX::Context& context,
             D3D12_GPU_VIRTUAL_ADDRESS constantsGpu,
-            uint64_t parameterSignature);
+            const AtmosphereLutConstants& constants);
+
+        uint32_t GetLastDispatchCount() const noexcept { return lastDispatchCount_; }
+        uint64_t GetWorkingSetBytes() const noexcept;
 
         const RENDER3D::RenderResourceView& GetSkyViewSrv() const noexcept {
             return skyViewGpu_.srv;
@@ -84,8 +88,6 @@ namespace HIKARI::ATMOSPHERE {
             D3D12_RESOURCE_STATES next);
 
         AtmosphereLutDimensions dimensions_{};
-        AtmosphereSettings settings_{};
-        bool hasSettings_ = false;
         GpuLut transmittanceGpu_{};
         GpuLut multiScatteringGpu_{};
         GpuLut skyViewGpu_{};
@@ -93,11 +95,9 @@ namespace HIKARI::ATMOSPHERE {
         Microsoft::WRL::ComPtr<ID3D12PipelineState> transmittancePso_{};
         Microsoft::WRL::ComPtr<ID3D12PipelineState> multiScatteringPso_{};
         Microsoft::WRL::ComPtr<ID3D12PipelineState> skyViewPso_{};
-        Microsoft::WRL::ComPtr<ID3DBlob> transmittanceCs_{};
-        Microsoft::WRL::ComPtr<ID3DBlob> multiScatteringCs_{};
-        Microsoft::WRL::ComPtr<ID3DBlob> skyViewCs_{};
         GFX::Context lastContext_{};
-        uint64_t lastDispatchSignature_ = 0u;
+        std::array<uint64_t,3> lastDispatchSignatures_{};
+        uint32_t lastDispatchCount_ = 0u;
         bool resourcesReady_ = false;
         bool pipelineReady_ = false;
         bool configured_ = false;

@@ -27,6 +27,7 @@ namespace HIKARI::RENDER3D::DEPTH {
         Invalid,
         CurrentFrame,
         History,
+        Frozen,
     };
 
     struct DepthPyramidView {
@@ -43,6 +44,8 @@ namespace HIKARI::RENDER3D::DEPTH {
         D3D12_GPU_DESCRIPTOR_HANDLE pyramidSrv{};
         D3D12_GPU_DESCRIPTOR_HANDLE mip0Srv{};
         D3D12_GPU_DESCRIPTOR_HANDLE coarsestSrv{};
+        // producer 所有。当該 publication 内で追加の型付き view を作る場合だけ借用する。
+        ID3D12Resource* resource = nullptr;
         uint32_t sourceWidth = 0;
         uint32_t sourceHeight = 0;
         uint32_t width = 0;

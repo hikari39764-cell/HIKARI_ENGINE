@@ -117,10 +117,6 @@ namespace HIKARI::MESHRENDERER {
         const MeshBindingContext& ctx,
         D3D12_GPU_VIRTUAL_ADDRESS visibleRangeAddress);
 
-    void BindMeshletVisibleClusterList(
-        const MeshBindingContext& ctx,
-        D3D12_GPU_VIRTUAL_ADDRESS visibleClusterListAddress);
-
     void BindMeshletDeformationPalettes(
         const MeshBindingContext& ctx,
         D3D12_GPU_VIRTUAL_ADDRESS paletteAddress);

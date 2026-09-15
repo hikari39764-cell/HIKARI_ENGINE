@@ -27,12 +27,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         availability.meshShaderGeometryAuxPipelineReady =
             meshletStats.geometryAuxPipelineReady;
         availability.traditionalIndirectPipelineReady =
-            GetStaticRootSignature(gMeshRendererState.pipelines) != nullptr &&
-            GetSkinnedRootSignature(gMeshRendererState.pipelines) != nullptr &&
-            gMeshRendererState.pipelines.pso != nullptr &&
-            gMeshRendererState.pipelines.skinnedPso != nullptr &&
-            gMeshRendererState.pipelines.depthPso != nullptr &&
-            gMeshRendererState.pipelines.depthSkinnedPso != nullptr;
+            AreTraditionalMeshPipelineInputsReady(gMeshRendererState.pipelines);
         gMeshRendererState.gpuDrivenLayer.SetBackendAvailability(availability);
     }
 

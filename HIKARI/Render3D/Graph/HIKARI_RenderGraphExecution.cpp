@@ -384,6 +384,7 @@ namespace HIKARI::RENDER3D::GRAPH {
             return "ProjectDispatchOutput";
         case RenderGraphSemantic::ReflectionFallbackSpecular: return "ReflectionFallbackSpecular";
         case RenderGraphSemantic::ReflectionSpecularResponse: return "ReflectionSpecularResponse";
+        case RenderGraphSemantic::ReflectionMaterial: return "ReflectionMaterial";
         case RenderGraphSemantic::Count: break;
         }
         return "Unknown";

@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <array>
 #include <cstddef>
@@ -180,6 +180,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         GpuDrivenSceneUploadStats sceneUploadStats_{};
         GpuDrivenCommandFrameStats commandFrameStats_{};
         TraditionalCommandFrameKey traditionalCommandFrameKey_{};
+        uint64_t traditionalCommandInputVersion_ = 0u;
 
         void InitializePassExecutionStates(
             const GpuDrivenSceneSource* source);

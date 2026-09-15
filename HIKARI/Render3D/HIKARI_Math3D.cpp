@@ -343,10 +343,25 @@ namespace HIKARI::MATH {
         return Translate(t) * Rotate(r) * Scale(s);
     }
 
+    ViewBasisRH BuildViewBasisRH(const Vec3& direction, const Vec3& requestedUp) {
+        const auto unit = [](const Vec3& value, const Vec3& fallback) {
+            const float squareLength = Dot(value, value);
+            return std::isfinite(squareLength) && squareLength > 1.0e-12f
+                ? value * (1.0f / std::sqrt(squareLength)) : fallback;
+        };
+        const Vec3 forward = unit(direction, {0, 0, -1});
+        Vec3 up = unit(requestedUp, {0, 1, 0});
+        if (std::abs(Dot(forward, up)) > 0.9999f)
+            up = std::abs(forward.y) < 0.9f ? Vec3{0, 1, 0} : Vec3{0, 0, 1};
+        const Vec3 right = Normalize(Cross(forward, up));
+        return {right, Cross(right, forward), forward};
+    }
+
     Mat4 Mat4::LookAtRH(const Vec3& eye, const Vec3& target, const Vec3& up) {
-        const Vec3 f = Normalize(target - eye);
-        const Vec3 r = Normalize(Cross(up, f));
-        const Vec3 u = Cross(f, r);
+        const auto basis = BuildViewBasisRH(target - eye, up);
+        const Vec3& f = basis.forward;
+        const Vec3& r = basis.right;
+        const Vec3& u = basis.up;
 
         Mat4 m = Identity();
         m.m[0][0] = r.x; m.m[0][1] = u.x; m.m[0][2] = -f.x;

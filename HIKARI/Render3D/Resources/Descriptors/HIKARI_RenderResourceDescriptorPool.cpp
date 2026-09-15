@@ -39,9 +39,12 @@ namespace HIKARI::RENDER3D {
         }
 
         bool HasValidContext(const GFX::Context& ctx) {
-            return ctx.deviceGeneration != 0u &&
-                ctx.device != nullptr &&
-                ctx.srvHeap != nullptr;
+            if (ctx.deviceGeneration==0u || ctx.device==nullptr || ctx.srvHeap==nullptr) return false;
+            const auto heap=ctx.srvHeap->GetDesc();
+            // System/cluster の絶対 index を持つ pool に user-only heap を渡さない。
+            return heap.Type==D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV &&
+                (heap.Flags&D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE)!=0 &&
+                heap.NumDescriptors>=GFX::DESCRIPTOR::kSrvHeapCapacity;
         }
 
         bool RefreshContext(

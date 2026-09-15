@@ -274,19 +274,10 @@ namespace HIKARI::RENDER3D::LIGHTING {
             static_cast<uint32_t>(
                 manifest.lightmaps.size());
 
-        for (const ASSETS::LIGHTING::LightmapBakeRecord&
-             record : manifest.lightmaps) {
-            if (record.objectId == 0u ||
-                record.texturePath.empty() ||
-                record.surfaceBindings.empty() ||
-                record.uvSet !=
-                    ASSETS::LIGHTING::
-                        kSurfaceLightmapUvSet ||
-                (!record.scenario.empty() &&
-                    record.scenario !=
-                        runtimeData.activeScenario)) {
-                continue;
-            }
+        for (const ASSETS::LIGHTING::LightmapBakeRecord& record : manifest.lightmaps) {
+            if (record.objectId == 0u || record.pages.empty() ||
+                record.pages.size() > ASSETS::LIGHTING::kSurfaceLightmapMaximumAtlasPages ||
+                (!record.scenario.empty() && record.scenario != runtimeData.activeScenario)) continue;
             const bool captureCurrent =
                 IsBakeRecordCaptureCurrent(
                     record.id,
@@ -308,47 +299,41 @@ namespace HIKARI::RENDER3D::LIGHTING {
                 continue;
             }
 
-            const std::filesystem::path resolvedPath =
-                PROJECT_PATHS::ResolveProjectPath(
-                    request.projectRoot,
-                    record.texturePath);
-            const TextureResourceHandle texture =
-                LoadTextureResourceLinear(
-                    "lightmap/" + record.id,
-                    resolvedPath.generic_string());
-            if (!IsTextureResourceValid(texture)) {
-                AppendMessage(
-                    messages,
-                    "[LightingRuntimeLoader][Lightmap] failed to load " +
-                        record.texturePath);
+            // 一部の page だけを登録すると物体内で GI が不連続になるため、先に全 page を検証する。
+            std::vector<TextureResourceHandle> textures;
+            std::vector<std::filesystem::path> paths;
+            bool complete = true;
+            for (size_t pageIndex = 0; pageIndex < record.pages.size(); ++pageIndex) {
+                const auto& page = record.pages[pageIndex];
+                if (page.texturePath.empty() || page.surfaceBindings.empty() ||
+                    page.uvSet != ASSETS::LIGHTING::kSurfaceLightmapUvSet) { complete = false; break; }
+                paths.push_back(PROJECT_PATHS::ResolveProjectPath(request.projectRoot, page.texturePath));
+                textures.push_back(LoadTextureResourceLinear(
+                    ASSETS::LIGHTING::BuildLightmapPageResourceKey(record.id, pageIndex),
+                    paths.back().generic_string()));
+                if (!IsTextureResourceValid(textures.back())) { complete = false; break; }
+            }
+            if (!complete) {
+                AppendMessage(messages, "[LightingRuntimeLoader][Lightmap] incomplete atlas pages: " + record.id);
                 continue;
             }
-
             bool registered = false;
-            for (const ASSETS::LIGHTING::
-                     LightmapSurfaceBinding& surface :
-                 record.surfaceBindings) {
-                LIGHTMAP::LightmapRuntimeBinding binding{};
-                binding.objectId = record.objectId;
-                binding.surface = surface.surface;
-                binding.recordId = record.id;
-                binding.sourcePath =
-                    resolvedPath.generic_string();
-                binding.texture = texture;
-                binding.textureDescriptorIndex =
-                    GetTextureResourceSrvDescriptorIndex(
-                        texture);
-                binding.uvSet = record.uvSet;
-                binding.uvScaleBias =
-                    surface.uvScaleBias;
-                registered =
-                    LIGHTMAP::Register(
-                        std::move(binding)) ||
-                    registered;
+            for (size_t pageIndex = 0; pageIndex < record.pages.size(); ++pageIndex) {
+                const auto& page = record.pages[pageIndex];
+                for (const auto& surface : page.surfaceBindings) {
+                    LIGHTMAP::LightmapRuntimeBinding binding{};
+                    binding.objectId = record.objectId;
+                    binding.surface = surface.surface;
+                    binding.recordId = record.id;
+                    binding.sourcePath = paths[pageIndex].generic_string();
+                    binding.texture = textures[pageIndex];
+                    binding.textureDescriptorIndex = GetTextureResourceSrvDescriptorIndex(textures[pageIndex]);
+                    binding.uvSet = page.uvSet;
+                    binding.uvScaleBias = surface.uvScaleBias;
+                    registered = LIGHTMAP::Register(std::move(binding)) || registered;
+                }
             }
-            if (registered) {
-                ++runtimeData.loadedLightmapCount;
-            }
+            if (registered) ++runtimeData.loadedLightmapCount;
         }
         runtimeData.lightmapLoaded =
             runtimeData.loadedLightmapCount > 0u;

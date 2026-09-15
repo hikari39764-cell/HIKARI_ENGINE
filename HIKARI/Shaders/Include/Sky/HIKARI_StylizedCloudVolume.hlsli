@@ -6,7 +6,7 @@
 // The hash, value-noise, and cellular-noise routines below are deliberately
 // small HIKARI implementations.  They do not depend on, or reproduce, a
 // third-party noise library.  The pass owns the texture/sampler declarations
-// and the 336-byte constant buffer; this file owns the math and density model.
+// and its constant buffer; this file owns the math and density model.
 
 static const float HIKARI_CLOUD_PI = 3.14159265359f;
 static const float HIKARI_CLOUD_TWO_PI = 6.28318530718f;
@@ -14,7 +14,7 @@ static const float HIKARI_CLOUD_EPSILON = 1.0e-5f;
 static const float HIKARI_CLOUD_DENSITY_THRESHOLD = 0.001f;
 static const float HIKARI_CLOUD_TRANSMITTANCE_EPSILON = 0.003f;
 static const uint HIKARI_CLOUD_MAX_PRIMARY_STEPS = 64u;
-static const uint HIKARI_CLOUD_MAX_LIGHT_STEPS = 4u;
+static const uint HIKARI_CLOUD_MAX_LIGHT_STEPS = 8u;
 
 struct HikariStylizedCloudDensityTerms
 {
@@ -277,7 +277,7 @@ HikariStylizedCloudShellInterval HikariStylizedCloudEmptyShellInterval()
     return result;
 }
 
-bool HikariStylizedCloudRaySphere(
+bool HikariStylizedCloudRaySphereRoots(
     float3 rayOrigin,
     float3 rayDirection,
     float radius,
@@ -288,7 +288,9 @@ bool HikariStylizedCloudRaySphere(
     farDistance = 0.0f;
     float safeRadius = max(radius, 0.001f);
     float b = dot(rayOrigin, rayDirection);
-    float c = dot(rayOrigin, rayOrigin) - safeRadius * safeRadius;
+    // 大半径の差の二乗を直接引くと、薄い雲層の距離精度を失う。
+    float originRadius = length(rayOrigin);
+    float c = (originRadius-safeRadius)*(originRadius+safeRadius);
     float discriminant = b * b - c;
     if (discriminant < 0.0f)
     {
@@ -296,9 +298,16 @@ bool HikariStylizedCloudRaySphere(
     }
 
     float root = sqrt(max(discriminant, 0.0f));
-    nearDistance = -b - root;
-    farDistance = -b + root;
-    return farDistance > 0.0f;
+    float q = -b-(b >= 0.0f ? root : -root);
+    float other = abs(q) > HIKARI_CLOUD_EPSILON ? c/q : 0.0f;
+    nearDistance = min(q,other);
+    farDistance = max(q,other);
+    return true;
+}
+
+bool HikariStylizedCloudRaySphere(float3 origin, float3 direction, float radius, out float nearDistance, out float farDistance)
+{
+    return HikariStylizedCloudRaySphereRoots(origin,direction,radius,nearDistance,farDistance) && farDistance>0;
 }
 
 HikariStylizedCloudShellInterval HikariStylizedCloudResolveShell(

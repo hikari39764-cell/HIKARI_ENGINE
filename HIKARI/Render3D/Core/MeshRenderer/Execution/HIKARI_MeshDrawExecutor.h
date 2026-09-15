@@ -63,10 +63,8 @@ namespace HIKARI::MESHRENDERER {
         ID3D12Resource* objectCB = nullptr;
         ID3D12Resource* objectDataBuffer = nullptr;
         ID3D12Resource* materialDataBuffer = nullptr;
-        ID3D12Resource* jointPaletteCB = nullptr;
         ObjectCB* objectMapped = nullptr;
         ObjectGpuData* objectDataMapped = nullptr;
-        JointPaletteCB* jointPaletteMapped = nullptr;
         RENDER3D::MATERIAL::GpuMaterialRegistry* gpuMaterialRegistry = nullptr;
         D3D12_GPU_DESCRIPTOR_HANDLE objectDataSrv{};
         D3D12_GPU_DESCRIPTOR_HANDLE materialDataSrv{};

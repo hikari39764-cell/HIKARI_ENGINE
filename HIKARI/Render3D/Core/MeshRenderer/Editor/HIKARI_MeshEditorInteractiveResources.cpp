@@ -26,12 +26,6 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         gMeshRendererState.editorInteractive.worldTextPass.Shutdown();
         for (EditorInteractiveMeshFrameResources& frame :
             gMeshRendererState.editorInteractive.frames) {
-
-
-            if (frame.jointPaletteCB != nullptr &&
-                frame.jointPaletteMapped != nullptr) {
-                frame.jointPaletteCB->Unmap(0, nullptr);
-            }
             frame = {};
         }
 
@@ -75,15 +69,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             gMeshRendererState.editorInteractive.frames) {
 
             if (!frame.view.Initialize(device) ||
-                !GFX::D3D12_BUFFER::CreateMappedUploadBuffer(
-                    device,
-                    static_cast<UINT64>(
-                        GFX::AlignD3D12ConstantBufferByteSize(
-                            sizeof(JointPaletteCB))) *
-                        kMaxObjectCount,
-                    frame.jointPaletteCB,
-                    reinterpret_cast<void**>(
-                        &frame.jointPaletteMapped))) {
+                !frame.deformationUploads.Init(device, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT)) {
 
                 ResetEditorInteractiveResources();
                 return false;
@@ -175,14 +161,6 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             ResetEditorInteractiveResources();
             return false;
         }
-        // World Sprite is an optional Mesh Shader extension. Keep the Scene
-        // view available on unsupported devices; the main renderer already
-        // reports the capability diagnostic once during initialization.
-        (void)gMeshRendererState.editorInteractive.worldSpritePass.Initialize(
-            GFX::GetCurrentContext());
-        (void)gMeshRendererState.editorInteractive.worldTextPass.Initialize(
-            GFX::GetCurrentContext());
-
         gMeshRendererState.editorInteractive.initialized = true;
         return true;
     }

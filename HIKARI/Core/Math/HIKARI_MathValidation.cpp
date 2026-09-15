@@ -26,4 +26,11 @@ namespace HIKARI::MATH {
             IsFinite(value.z) && IsFinite(value.w);
     }
 
+    bool IsFinite(const Mat4& value) noexcept {
+        for (const auto& column : value.m)
+            for (float element : column)
+                if (!IsFinite(element)) return false;
+        return true;
+    }
+
 } // namespace HIKARI::MATH
