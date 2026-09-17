@@ -398,6 +398,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             store.hasCommittedHistory;
         next.temporalResolveAllowed =
             desc.temporalResolveAllowed &&
+            !(desc.camera && desc.camera->IsOrthographic()) &&
             !desc.forceHistoryReset &&
             next.resetReason != TemporalHistoryResetReason::InvalidInput;
         next.jitterEnabled = desc.jitterEnabled && next.temporalResolveAllowed;

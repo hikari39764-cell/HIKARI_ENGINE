@@ -1,4 +1,5 @@
 #include "Render3D/Vfx/HIKARI_ParticleGpuDrivenPass.h"
+#include "Render3D/Vfx/HIKARI_ParticleGeometryLayout.h"
 
 #include <algorithm>
 #include <array>
@@ -42,7 +43,6 @@ namespace HIKARI::RENDER3D::PARTICLES {
         using INTERNAL::ResolvedParticleMaterial;
 
         inline constexpr uint32_t kThreadGroupSize = 64u;
-        inline constexpr uint32_t kMaximumParticleShapeSegments = 64u;
 
         struct ParticleEmitterInstanceKeyHasher {
             size_t operator()(
@@ -173,8 +173,7 @@ namespace HIKARI::RENDER3D::PARTICLES {
                     input.emitters.end(),
                     [](const ParticleEmitterSubmission& submission) {
                         return submission.drawAfterSimulation &&
-                            (submission.render.materialMode ==
-                                ParticleMaterialMode::CustomMaterial ||
+                            (IsCustomParticleMaterial(submission.render.materialMode) ||
                              !submission.render.colorTextureAssetGuid.empty());
                     });
             }
@@ -228,8 +227,7 @@ namespace HIKARI::RENDER3D::PARTICLES {
             for (const ParticleEmitterSubmission& submission :
                  input.emitters) {
                 if (!submission.drawAfterSimulation ||
-                    submission.render.materialMode !=
-                        ParticleMaterialMode::StandardUnlit ||
+                    IsCustomParticleMaterial(submission.render.materialMode) ||
                     submission.render.colorTextureAssetGuid.empty()) {
                     continue;
                 }
@@ -267,8 +265,7 @@ namespace HIKARI::RENDER3D::PARTICLES {
             for (const ParticleEmitterSubmission& submission :
                  input.emitters) {
                 if (!submission.drawAfterSimulation ||
-                    submission.render.materialMode !=
-                        ParticleMaterialMode::CustomMaterial ||
+                    !IsCustomParticleMaterial(submission.render.materialMode) ||
                     submission.render.materialAssetGuid.empty() ||
                     !customMaterialGuids.insert(
                         submission.render.materialAssetGuid).second) {
@@ -521,6 +518,13 @@ namespace HIKARI::RENDER3D::PARTICLES {
             constants.deltaSeconds = (std::max)(
                 submission.deltaSeconds,
                 0.0f);
+            if (submission.directShape) {
+                constants.flags = 1u;
+                DispatchSimulation(0u, constants, allocation.activeCapacity, emitterAddress);
+                storage.InsertUavBarrier(context);
+                ++stats.simulatedEmitters;
+                return true;
+            }
             if (reset || submission.resetSimulation) {
                 DispatchSimulation(
                     0u,
@@ -597,26 +601,8 @@ namespace HIKARI::RENDER3D::PARTICLES {
                     projection = MATERIAL::BuildRuntimeMaterialGpuProjection(
                         *material);
                 }
-                MATERIAL::GpuMaterialSourceKey key{};
-                const std::string_view renderResourceGuid =
-                    item.render.materialMode ==
-                        ParticleMaterialMode::StandardUnlit
-                    ? std::string_view(
-                        item.render.colorTextureAssetGuid)
-                    : std::string_view(
-                        item.render.materialAssetGuid);
-                key.stableMaterialKey = material != nullptr
-                    ? HashCombine(
-                        static_cast<uint64_t>(
-                            std::hash<std::string_view>{}(
-                                renderResourceGuid)),
-                        reinterpret_cast<uintptr_t>(material))
-                    : (item.resolvedMaterial.rejected ? 2u : 1u);
-                key.modelIdentity = identity;
-                key.materialOverrideIdentity = 0u;
-                key.materialRevision = material != nullptr
-                    ? material->GetRevision()
-                    : 0u;
+                const auto key = INTERNAL::BuildParticleMaterialSourceKey(
+                    material, item.render, HashEmitterKey(item.key), identity, item.resolvedMaterial.rejected);
                 item.materialIndex = registry.ResolveAndBindSource(
                     index,
                     key,
@@ -629,14 +615,19 @@ namespace HIKARI::RENDER3D::PARTICLES {
                 }
                 if (material != nullptr) {
                     const std::vector<uint32_t> resources =
-                        MATERIAL::ResolveMaterialProgramResourceDescriptorIndices(
-                            *material);
-                    if (!registry.UpdateProgramBlocks(
-                            item.materialIndex,
-                            material->GetMaterialProgramId(),
-                            material->GetMaterialProgramParameterBlock(),
-                            resources,
-                            material->GetMaterialProgramInstanceFlags())) {
+                        MATERIAL::ResolveMaterialProgramResourceDescriptorIndices(*material);
+                    auto parameters = material->GetMaterialProgramParameterBlock();
+                    std::vector<MATH::Vec4> animated;
+                    if (!item.render.animatedParameters.empty()) {
+                        animated.assign(parameters.begin(), parameters.end());
+                        for (const auto &value : item.render.animatedParameters)
+                            if (value.slot < animated.size())
+                                animated[value.slot].x = value.value;
+                        parameters = animated;
+                    }
+                    if (!registry.UpdateProgramBlocks(item.materialIndex, material->GetMaterialProgramId(),
+                                                      parameters, resources,
+                                                      material->GetMaterialProgramInstanceFlags())) {
                         allResolved = false;
                         item.materialIndex =
                             MATERIAL::kInvalidGpuMaterialIndex;
@@ -657,6 +648,7 @@ namespace HIKARI::RENDER3D::PARTICLES {
             storage.TransitionAliveIndices(
                 context,
                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            storage.TransitionDrawCounters(context, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
             storage.TransitionDrawArguments(
                 context,
                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -680,6 +672,7 @@ namespace HIKARI::RENDER3D::PARTICLES {
                 constants.particleCapacity = item.particleCapacity;
                 constants.drawIndex = item.drawIndex;
                 constants.aliveIndexBase = item.aliveIndexBase;
+                constants.vertexCount = ParticleGeometryTriangleCount(item.render) * 3u;
                 context.cmdList->SetComputeRoot32BitConstants(
                     4u,
                     sizeof(constants) / sizeof(uint32_t),
@@ -708,6 +701,7 @@ namespace HIKARI::RENDER3D::PARTICLES {
             storage.TransitionAliveIndices(
                 context,
                 D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            storage.TransitionDrawCounters(context, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
             storage.TransitionDrawArguments(
                 context,
                 D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
@@ -793,7 +787,7 @@ namespace HIKARI::RENDER3D::PARTICLES {
                 }
                 const bool hasSimulationWork =
                     reset || allocation->resetPending ||
-                    submission.resetSimulation ||
+                    submission.directShape || submission.resetSimulation ||
                     submission.spawnCount > 0u ||
                     submission.deltaSeconds > 0.0f;
                 const bool needsSimulation = hasSimulationWork &&
@@ -880,8 +874,18 @@ namespace HIKARI::RENDER3D::PARTICLES {
             for (uint32_t index = 0u;
                  index < static_cast<uint32_t>(drawItems.size());
                  ++index) {
-                DrawItem& item = drawItems[index];
+                DrawItem &item = drawItems[index];
+                materialVersion =
+                    HashCombine(materialVersion, std::hash<std::string>{}(item.render.effectMaterialKey));
+                for (const auto &value : item.render.animatedParameters) {
+                    const uint32_t bits = std::bit_cast<uint32_t>(value.value);
+                    materialVersion = HashCombine(materialVersion, value.slot);
+                    materialVersion = HashCombine(materialVersion, bits);
+                }
                 item.drawIndex = index;
+                layoutVersion = HashCombine(layoutVersion, static_cast<uint32_t>(item.render.shape));
+                layoutVersion = HashCombine(layoutVersion, item.render.ribbonSegmentCount);
+                layoutVersion = HashCombine(layoutVersion, item.render.ringSegmentCount);
                 layoutVersion = HashCombine(
                     layoutVersion,
                     HashEmitterKey(item.key));
@@ -895,8 +899,7 @@ namespace HIKARI::RENDER3D::PARTICLES {
                     materialVersion,
                     static_cast<uint64_t>(item.render.materialMode));
                 const std::string_view renderResourceGuid =
-                    item.render.materialMode ==
-                        ParticleMaterialMode::StandardUnlit
+                    !IsCustomParticleMaterial(item.render.materialMode)
                     ? std::string_view(
                         item.render.colorTextureAssetGuid)
                     : std::string_view(
@@ -935,20 +938,15 @@ namespace HIKARI::RENDER3D::PARTICLES {
                         return !item.materialReady;
                     });
                 layoutVersion = 1469598103934665603ull;
-                for (uint32_t index = 0u;
-                     index < static_cast<uint32_t>(drawItems.size());
-                     ++index) {
-                    DrawItem& item = drawItems[index];
+                for (uint32_t index = 0u; index < static_cast<uint32_t>(drawItems.size()); ++index) {
+                    DrawItem &item = drawItems[index];
                     item.drawIndex = index;
-                    layoutVersion = HashCombine(
-                        layoutVersion,
-                        HashEmitterKey(item.key));
-                    layoutVersion = HashCombine(
-                        layoutVersion,
-                        item.particleOffset);
-                    layoutVersion = HashCombine(
-                        layoutVersion,
-                        item.particleCapacity);
+                    layoutVersion = HashCombine(layoutVersion, static_cast<uint32_t>(item.render.shape));
+                    layoutVersion = HashCombine(layoutVersion, item.render.ribbonSegmentCount);
+                    layoutVersion = HashCombine(layoutVersion, item.render.ringSegmentCount);
+                    layoutVersion = HashCombine(layoutVersion, HashEmitterKey(item.key));
+                    layoutVersion = HashCombine(layoutVersion, item.particleOffset);
+                    layoutVersion = HashCombine(layoutVersion, item.particleCapacity);
                 }
             }
             const bool compactDrawItems = !drawItems.empty() &&
@@ -1019,6 +1017,16 @@ namespace HIKARI::RENDER3D::PARTICLES {
                 sceneDepthAvailable
                     ? bindings.sceneDepth
                     : texturePool);
+            context.cmdList->SetGraphicsRootConstantBufferView(10u,bindings.light);
+            context.cmdList->SetGraphicsRootConstantBufferView(11u,bindings.shadow);
+            context.cmdList->SetGraphicsRootConstantBufferView(12u,bindings.skyEnvironment);
+            context.cmdList->SetGraphicsRootShaderResourceView(13u,bindings.localLights);
+            context.cmdList->SetGraphicsRootShaderResourceView(14u,bindings.localLightHeaders);
+            context.cmdList->SetGraphicsRootShaderResourceView(15u,bindings.localLightIndices);
+            context.cmdList->SetGraphicsRootShaderResourceView(16u,storage.GetDrawCounterGpuAddress());
+            context.cmdList->SetGraphicsRootDescriptorTable(17u,bindings.shadowMap.ptr ? bindings.shadowMap : texturePool);
+            context.cmdList->SetGraphicsRootDescriptorTable(18u,bindings.irradiance.ptr ? bindings.irradiance : texturePool);
+            context.cmdList->SetGraphicsRootDescriptorTable(19u,bindings.prefiltered.ptr ? bindings.prefiltered : texturePool);
             drawOrder.clear();
             drawOrder.reserve(drawItems.size());
             for (uint32_t itemIndex = 0u;
@@ -1089,26 +1097,16 @@ namespace HIKARI::RENDER3D::PARTICLES {
                         shapeIndex,
                         blendIndex,
                         depthIndex);
-                if (pipeline == nullptr) return false;
+                if (pipeline == nullptr) { ++stats.materialFailures; continue; }
                 context.cmdList->SetPipelineState(pipeline);
                 GpuParticleDrawConstants constants{};
                 constants.aliveIndexBase = item.aliveIndexBase;
+                constants.reserved = item.drawIndex;
                 constants.billboardMode = static_cast<uint32_t>(
                     item.render.billboardMode);
                 constants.renderShapeMode = static_cast<uint32_t>(
                     item.render.shape);
-                constants.segmentCount = item.render.shape ==
-                    ParticleRenderShape::Ribbon
-                    ? (std::clamp)(
-                        item.render.ribbonSegmentCount,
-                        2u,
-                        kMaximumParticleShapeSegments)
-                    : item.render.shape == ParticleRenderShape::Ring
-                        ? (std::clamp)(
-                            item.render.ringSegmentCount,
-                            3u,
-                            kMaximumParticleShapeSegments)
-                        : 1u;
+                constants.segmentCount = ParticleGeometrySegments(item.render);
                 constants.renderShapeParamsA = MakeGpuParticleFloat4(
                     item.render.ribbonWidth,
                     item.render.ringOuterRadius,
@@ -1132,49 +1130,25 @@ namespace HIKARI::RENDER3D::PARTICLES {
                     std::bit_cast<float>(flipbookPlayback));
                 constants.depthMode = static_cast<uint32_t>(
                     item.render.depthMode);
-                constants.shaderStyle = static_cast<uint32_t>(
-                    item.render.shaderStyle);
-                constants.sceneDepthAvailable =
-                    sceneDepthAvailable ? 1u : 0u;
-                constants.depthAndStyleParams = MakeGpuParticleFloat4(
-                    item.render.softIntersectionDistance,
-                    item.render.depthBias,
-                    item.render.shaderOutlineWidth,
-                    item.render.shaderEdgeHardness);
-                constants.shaderParams = MakeGpuParticleFloat4(
-                    item.render.shaderEmissiveIntensity,
-                    item.render.shaderBreakupScale,
-                    item.render.shaderBreakupStrength,
-                    0.0f);
-                constants.shaderOutlineColor = MakeGpuParticleFloat4(
-                    item.render.shaderOutlineColor.x,
-                    item.render.shaderOutlineColor.y,
-                    item.render.shaderOutlineColor.z,
-                    item.render.shaderOutlineColor.w);
-                constants.shaderCoreColor = MakeGpuParticleFloat4(
-                    item.render.shaderCoreColor.x,
-                    item.render.shaderCoreColor.y,
-                    item.render.shaderCoreColor.z,
-                    item.render.shaderCoreColor.w);
+                constants.sceneDepthAvailable = sceneDepthAvailable ? 1u : 0u;
+                constants.materialFlags = IsLitParticleMaterial(item.render.materialMode) && bindings.IsValid() ? 1u : 0u;
+                constants.depthParams = MakeGpuParticleFloat4(item.render.softIntersectionDistance, item.render.depthBias, 0, 0);
+                // プレビュー等で照明資源が無い場合、無効な CBV/SRV を参照しない。
+                if (IsLitParticleMaterial(item.render.materialMode) && !bindings.IsValid())
+                    ++stats.lightingFallbackEmitters;
                 context.cmdList->SetGraphicsRoot32BitConstants(
                     7u,
                     sizeof(constants) / sizeof(uint32_t),
                     &constants,
                     0u);
-                const std::array<uint32_t, 4u> materialConstants{
-                    item.materialIndex, 0u, 0u, 0u
-                };
-                context.cmdList->SetGraphicsRoot32BitConstants(
-                    8u,
-                    static_cast<UINT>(materialConstants.size()),
-                    materialConstants.data(),
-                    0u);
+                context.cmdList->SetGraphicsRoot32BitConstant(8u,item.materialIndex,0u);
+                if (!pipelines.UsesMeshPipeline()) context.cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
                 context.cmdList->ExecuteIndirect(
-                    pipelines.GetDispatchMeshCommandSignature(),
+                    pipelines.GetDrawCommandSignature(),
                     1u,
                     storage.GetDrawArgumentResource(),
-                    static_cast<UINT64>(item.drawIndex) *
-                        sizeof(D3D12_DISPATCH_MESH_ARGUMENTS),
+                    static_cast<UINT64>(item.drawIndex) * INTERNAL::kGpuParticleDrawArgumentStride +
+                        (pipelines.UsesMeshPipeline() ? 0u : 16u),
                     nullptr,
                     0u);
                 ++stats.drawnEmitters;

@@ -1,4 +1,5 @@
 #include "Render3D/Graph/HIKARI_RenderGraph.h"
+#include <cstdio>
 
 #include "Render3D/Surface/HIKARI_SceneSurfaceSet.h"
 
@@ -428,9 +429,12 @@ namespace HIKARI::RENDER3D::GRAPH {
                 executionState_.status =
                     RenderGraphExecutionStatus::Failed;
                 executionState_.failurePassIndex = passIndex;
+                char message[256]{};
+                std::snprintf(message, sizeof(message),
+                    "RenderGraph pass '%s' execute callback failed.", pass.id.data());
                 SetDiagnostic(
                     RenderGraphResultCode::ExecuteFailed,
-                    "RenderGraph pass execute callback failed.",
+                    message,
                     passIndex);
                 return false;
             }

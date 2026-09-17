@@ -228,25 +228,19 @@ float3 HikariSampleReflectionProbePrefiltered(
 
 // provider 選択と視差補正は受光側 BRDF から独立させる。
 // 一次面と二次面が同じ放射輝度 fallback を使う。
+float3 HikariSamplePrefilteredSkyRadiance(float3 r, float roughness)
+{
+    const float mip = roughness * (max(1.0f, gIblPrefilteredMipCount)-1.0f);
+    return gIblPrefilteredTex.SampleLevel(gLinearWrap,
+        normalize((uint)(gSkyMode+0.5f)==4u ? r : HikariRotateSkyYaw(r,gSkyYaw)),mip).rgb *
+        max(gSkyTint,0.0f.xxx) * max(gSkyExposure,0.0f);
+}
+
 float3 HikariSampleEnvironmentReflection(float3 worldPos, float3 r, float roughness)
 {
     float3 skyRadiance = 0.0f.xxx;
     if (gIblHasPrefiltered > 0.5f)
-    {
-        float mipCount =
-            max(1.0f, gIblPrefilteredMipCount);
-        float mip =
-            roughness * (mipCount - 1.0f);
-        float3 prefiltered =
-            gIblPrefilteredTex.SampleLevel(
-                gLinearWrap,
-                normalize(
-                    (uint)(gSkyMode+0.5f)==4u ? r : HikariRotateSkyYaw(r, gSkyYaw)),
-                mip).rgb *
-            max(gSkyTint, 0.0f.xxx) *
-            max(0.0f, gSkyExposure);
-        skyRadiance = prefiltered;
-    }
+        skyRadiance = HikariSamplePrefilteredSkyRadiance(r, roughness);
     else
     {
         skyRadiance = HikariSampleSkyEnvironment(r);

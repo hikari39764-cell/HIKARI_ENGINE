@@ -43,6 +43,7 @@ namespace HIKARI {
             record.guid,
             asset,
             &error);
+        if (result.success) result.dependencies = CollectSequenceDependencies(asset.sequence);
         result.message = result.success
             ? "Sequence asset validated"
             : "Sequence asset validation failed: " + error;

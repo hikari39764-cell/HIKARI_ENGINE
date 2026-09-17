@@ -44,7 +44,7 @@ namespace HIKARI::ASSETS::SEMANTICS {
                 AssetImporterKind::Sequence,
                 AssetType::Sequence,
                 "SequenceAssetImporter",
-                1u,
+                2u,
                 ".hsequence",
             },
             {
@@ -65,7 +65,7 @@ namespace HIKARI::ASSETS::SEMANTICS {
                 AssetImporterKind::Material,
                 AssetType::Material,
                 "MaterialImporter",
-                6u,
+                7u,
                 ".material.json",
             },
             {
@@ -79,7 +79,7 @@ namespace HIKARI::ASSETS::SEMANTICS {
                 AssetImporterKind::VfxEffect,
                 AssetType::VfxEffect,
                 "VfxAssetImporter",
-                6u,
+                11u,
                 ".hvfx",
             },
             {

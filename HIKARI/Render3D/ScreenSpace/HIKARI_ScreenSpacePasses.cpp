@@ -493,7 +493,8 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
                 DXGI_FORMAT_UNKNOWN);
             state.geometryValid = false;
 
-            if (state.ssaoValid &&
+            // 正交ビューは、この後の scene prepass が供給する現フレーム AO のみ使用。
+            if (!requirements.requireCurrentFrameAo && state.ssaoValid &&
                 state.ssaoRenderer.IsValid() &&
                 state.ssaoRenderer.GetAoSrv().ptr != 0) {
                 result.ssaoRendered = true;
@@ -517,8 +518,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             state.surfaceBuffer,
             context.sceneDsv,
             requirements.requireFeatureMask);
-        result.geometryAuxDepthComplete = result.geometryAuxWritten &&
-            !MESHRENDERER::HasOpaqueDepthOutsideGeometryAux();
+        result.geometryAuxDepthComplete = result.geometryAuxWritten;
         context.renderTargetAccess.Rebind();
         RecordSsaoGeometryAuxDebug(
             result.geometryAuxWritten,
@@ -573,14 +573,10 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         }
 
         if (ssaoMode == SsaoMode::Balanced) {
-            result.ssaoRendered =
-                state.ssaoValid &&
-                state.ssaoRenderer.IsValid() &&
-                state.ssaoRenderer.GetAoSrv().ptr != 0;
-            if (result.ssaoRendered) {
-                result.ambientOcclusion =
-                    state.ssaoRenderer.GetAoView();
-            }
+            // GeometryAux の深度は Sprite の cutout も含む現フレームの入力。
+            // 前フレームの AO を貼ると、移動する輪郭に背景の明暗が残る。
+            (void)ExecuteBalancedSsaoFromSceneDepth(
+                state, context, renderCameraCb, environment, result);
             return result;
         }
 
@@ -736,7 +732,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         GFX::PIX::ScopedGpuEvent pixSsao(
             context.cmd,
             GFX::PIX::kColorPost,
-            "SSAO.BalancedFromScenePrepass");
+            "SSAO.BalancedFromCurrentDepth");
         const bool ssaoOk = state.ssaoRenderer.RenderDepthOnly(
             *context.graphics,
             context.cmd,

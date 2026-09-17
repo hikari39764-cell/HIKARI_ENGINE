@@ -61,6 +61,8 @@ namespace HIKARI::EDITOR {
             return {
                 { "id", emitter.id },
                 { "name", emitter.name },
+                { "kind", emitter.kind == VFX::VfxLayerKind::Shape ? "Shape" :
+                    emitter.kind == VFX::VfxLayerKind::Group ? "Group" : "Particles" },
                 { "parentEmitterId", emitter.parentEmitterId },
                 { "order", emitter.order },
                 { "enabled", emitter.basic.enabled },

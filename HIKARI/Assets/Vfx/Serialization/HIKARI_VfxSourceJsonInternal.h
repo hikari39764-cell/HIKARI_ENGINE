@@ -8,6 +8,7 @@
 
 namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
 
+    bool ReadCurve(const nlohmann::json& node, VfxCurveData& outCurve);
     bool ReadVec3(const nlohmann::json& node, MATH::Vec3& outValue);
     bool ReadValue(
         const nlohmann::json& node,

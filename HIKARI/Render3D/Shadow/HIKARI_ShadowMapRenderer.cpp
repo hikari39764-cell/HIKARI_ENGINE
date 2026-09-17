@@ -9,6 +9,7 @@
 #include "Render3D/Shadow/HIKARI_LocalLightShadowRenderer.h"
 #include "Render3D/Core/MeshRenderer/Data/HIKARI_MeshDrawDataBuilder.h"
 #include "Render3D/Shadow/Internal/HIKARI_ShadowRendererInternal.h"
+#include "Render3D/WorldSprite/HIKARI_WorldSpritePass.h"
 
 namespace HIKARI::SHADOW {
 
@@ -24,10 +25,11 @@ namespace HIKARI::SHADOW {
     void BeginFrame(
         const GFX::Context& graphics,
         const SceneEnvironment& environment,
-        const Camera3D& camera) {
+        const Camera3D& camera, RENDER3D::WORLD_SPRITES::WorldSpritePass* sprites) {
         CPU_PROFILE::ScopedCpuTimer cpuTimer(
             CPU_PROFILE::Pass::ShadowPrepare);
         ClearShadowFrameSubmissions(gShadowRendererState);
+        gShadowRendererState.worldSprites = sprites;
         gShadowRendererState.frameEnabled = environment.directional.enabled && environment.directionalShadow.enabled;
         gShadowRendererState.debugStats.enabled = gShadowRendererState.frameEnabled;
         gShadowRendererState.debugStats.resolution = ResolveShadowResolution(environment.directionalShadow.resolution);
@@ -46,7 +48,7 @@ namespace HIKARI::SHADOW {
             return;
         }
         gShadowRendererState.frameHasShadowWork =
-            BuildShadowGpuDrivenSceneSources(gShadowRendererState);
+            BuildShadowGpuDrivenSceneSources(gShadowRendererState) || (sprites && sprites->HasShadowWork());
         if (!gShadowRendererState.frameHasShadowWork) {
             PublishShadowCacheStats(gShadowRendererState);
             return;
@@ -63,7 +65,9 @@ namespace HIKARI::SHADOW {
         MESHRENDERER::FillCameraCB(materialViewProj, MATH::Inverse(materialViewProj), camera.GetPosition(),
             static_cast<uint32_t>((std::max)(1, graphics.backBufferWidth)),
             static_cast<uint32_t>((std::max)(1, graphics.backBufferHeight)), gShadowRendererState.materialCamera);
-        if (!PrepareShadowDeformation(gShadowRendererState, graphics)) {
+        if (!UploadShadowMaterialCamera(gShadowRendererState, graphics) ||
+            ((gShadowRendererState.frameHasStaticShadowWork || gShadowRendererState.frameHasDynamicShadowWork) &&
+                !PrepareShadowDeformation(gShadowRendererState, graphics))) {
             gShadowRendererState.frameEnabled = false;
             gShadowRendererState.debugStats.enabled = false;
             gShadowRendererState.frameHasShadowWork = false;
@@ -100,6 +104,11 @@ namespace HIKARI::SHADOW {
             RENDER3D::GPUDRIVEN::GpuDrivenPassKind::Shadow);
         includeCasters(casterPass.instances);
         includeCasters(casterPass.traditionalIndirect.instances);
+        if (sprites) for (const auto& bounds : sprites->GetShadowCasterBounds()) {
+            for (uint32_t i = 0; i < shadowFrames.cascadeCount; ++i)
+                minimumDepths[i] = (std::min)(minimumDepths[i],
+                    GetShadowCasterMinimumDepth(shadowFrames.cascades[i], bounds));
+        }
         for (uint32_t i = 0; i < shadowFrames.cascadeCount; ++i)
             ExtendShadowCasterDepth(shadowFrames.cascades[i], minimumDepths[i]);
         for (uint32_t i = shadowFrames.cascadeCount; i < kMaxDirectionalShadowCascades; ++i)
@@ -278,6 +287,20 @@ namespace HIKARI::SHADOW {
             finalHasDepth = true;
         }
 
+        if (gShadowRendererState.worldSprites && gShadowRendererState.worldSprites->HasShadowWork()) {
+            // 動くカードを静的キャッシュへ保存しない。次フレームは元の深度から合成する。
+            gShadowRendererState.shadowCache.SetFinalMatchesStaticCache(false);
+            for (uint32_t i = 0; i < gShadowRendererState.cascadeCount; ++i) {
+                const LONG size = LONG(gShadowRendererState.resolution);
+                const LONG x = LONG(i % 2u) * size, y = LONG(i / 2u) * size;
+                if (!RecordWorldSpriteShadowView(gShadowRendererState, graphics,
+                    gShadowRendererState.cascadeFrames[i], {x, y, x + size, y + size}, false)) {
+                    gShadowRendererState.frameHasShadowWork = false;
+                    InvalidateShadowCache(gShadowRendererState);
+                    break;
+                }
+            }
+        }
         gShadowRendererState.debugStats.shadowStaticRendered = staticRendered;
         gShadowRendererState.debugStats.shadowDynamicRendered = dynamicRendered;
         gShadowRendererState.debugStats.shadowFallbackRendered = fallbackRendered;

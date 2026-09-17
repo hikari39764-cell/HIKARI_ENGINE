@@ -101,6 +101,7 @@ namespace HIKARI {
             World& world) noexcept;
         static VfxView MakeVfxView(World& world) noexcept;
         static UiView MakeUiView(World& world) noexcept;
+        static DebugView MakeDebugView(World& world) noexcept;
         static SceneFlowView MakeSceneFlowView(World& world) noexcept;
         static DialogueView MakeDialogueView(World& world) noexcept;
         static SaveGameView MakeSaveGameView(World& world) noexcept;

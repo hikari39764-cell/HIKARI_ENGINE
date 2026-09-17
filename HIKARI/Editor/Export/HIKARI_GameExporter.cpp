@@ -414,7 +414,8 @@ namespace HIKARI::EDITOR {
                 const bool vfxTextureSource =
                     key.rfind("vfx/textures/", 0u) == 0u &&
                     key.rfind("vfx/textures/cooked/", 0u) != 0u;
-                if (sandSource || terrainSource || vfxTextureSource ||
+                if (IsForbiddenGamePackagePath(std::filesystem::path("EngineContent") / relative) ||
+                    sandSource || terrainSource || vfxTextureSource ||
                     key == "terrain/readme.md") {
                     sourceOnlyExclusions.insert(key);
                 }

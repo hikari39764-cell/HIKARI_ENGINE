@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <memory>
+#include "Render3D/Lighting/HIKARI_SurfaceLightingBindings.h"
 
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
@@ -26,6 +27,7 @@ namespace HIKARI::RENDER3D::PARTICLES {
         uint32_t allocationFailures = 0u;
         uint32_t simulationFailures = 0u;
         uint32_t materialFailures = 0u;
+        uint32_t lightingFallbackEmitters = 0u;
         uint32_t compactedCapacityThreads = 0u;
         uint32_t indirectDispatchCommands = 0u;
         uint32_t spriteDispatchCommands = 0u;
@@ -41,7 +43,7 @@ namespace HIKARI::RENDER3D::PARTICLES {
         ParticleRenderDeliveryToken simulationAcceptedToken{};
     };
 
-    struct ParticleGpuDrivenDrawBindings {
+    struct ParticleGpuDrivenDrawBindings : SurfaceLightingBindings {
         D3D12_GPU_VIRTUAL_ADDRESS camera = 0u;
         D3D12_GPU_VIRTUAL_ADDRESS materialData = 0u;
         D3D12_GPU_VIRTUAL_ADDRESS materialParameters = 0u;

@@ -1,6 +1,8 @@
 #pragma once
 
 #include "../HIKARI_IAudioBackend.h"
+#include "HIKARI_AudioWaveFile.h"
+#include "HIKARI_AudioStreamVoice.h"
 
 #include <cstdint>
 #include <atomic>
@@ -23,7 +25,11 @@ public:
 
     int Load(const char* path) override;
     void PreloadDirectory(const std::filesystem::path& root) override;
-    int Play(int soundHandle, bool loop, float volume) override;
+    int Play(int soundHandle, bool loop, float volume, bool paused = false, float startSeconds = 0.0f, float rate = 1.0f) override;
+    bool SetSpatial(int playHandle, const GameProjectAudioListener& listener,
+        const GameProjectAudioSource& source) override;
+    bool SetPlaybackRate(int handle, float rate) override;
+    GameProjectAudioStats GetStats() const override;
     void Stop(int playHandle) override;
     void Pause(int playHandle) override;
     void Resume(int playHandle) override;
@@ -31,10 +37,14 @@ public:
     bool IsPlaying(int playHandle) override;
 
 private:
+    struct SpatialState;
+    std::unique_ptr<SpatialState> spatial_;
     struct SoundData {
         std::string path{};
         std::vector<uint8_t> formatBytes{};
         std::vector<uint8_t> audioBytes{};
+        AudioWaveInfo wave{};
+        bool streaming = false;
     };
 
     struct PlayingVoice {
@@ -42,6 +52,7 @@ private:
         int soundHandle = -1;
         bool active = false;
         bool paused = false;
+        std::unique_ptr<AudioStreamVoice> stream;
     };
 
     bool DecodeSound(const char* path, SoundData& outSound, const std::atomic<bool>* cancel = nullptr) const;
@@ -54,6 +65,7 @@ private:
     IXAudio2MasteringVoice* masteringVoice_ = nullptr;
 
     std::vector<SoundData> sounds_{};
+    size_t residentSoundBytes_ = 0;
     std::vector<PlayingVoice> voices_{};
     struct DecodeCache;
     std::unique_ptr<DecodeCache> decodeCache_;

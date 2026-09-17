@@ -404,6 +404,9 @@ return kMath;
     case MaterialNodeKind::ViewDirection:
     case MaterialNodeKind::CameraPosition:
     case MaterialNodeKind::ScreenPosition:
+    case MaterialNodeKind::ParticleState:
+    case MaterialNodeKind::ParticleColor:
+    case MaterialNodeKind::ParticleUv:
         return kConstant;
     case MaterialNodeKind::NormalUnpack: return kNormalUnpack;
     case MaterialNodeKind::PbrSurface: return kPbr;

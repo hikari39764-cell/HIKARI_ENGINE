@@ -59,7 +59,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         bool frozenCullingDepthStatsValid = false;
         bool geometryValid = false;
         bool ssaoValid = false;
-        // Balanced SSAO を scene depth prepass の深度から当該フレーム内で
+        // Balanced SSAO を GeometryAux または scene depth prepass から当該フレーム内で
         // 描画済みか。true の間は post-opaque の temporal 更新をスキップする。
         bool balancedSsaoSameFrame = false;
     };
@@ -83,6 +83,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
     struct ScreenSpaceSurfaceRequirements {
         bool requirePackedSurface = false;
         bool requireFeatureMask = false;
+        bool requireCurrentFrameAo = false;
     };
 
     ScreenSpaceRuntimeState& GetScreenSpaceRuntimeState();
@@ -106,7 +107,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         const SceneEnvironment& environment,
         ScreenSpaceFrameResult& result);
 
-    // Scene depth prepass 完了後に Balanced SSAO を当該フレームの深度から描く。
+    // GeometryAux / scene depth prepass 完了後に Balanced SSAO を当該フレームの深度から描く。
     // 旧 temporal 経路 (1 フレーム遅れ・再投影なし) の移動時の引き摺りを解消
     // する。prepass が走らないフレームでは呼ばれず、従来経路が使われる。
     bool ExecuteBalancedSsaoFromSceneDepth(

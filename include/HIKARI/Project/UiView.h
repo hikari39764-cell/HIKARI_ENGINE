@@ -36,6 +36,14 @@ namespace HIKARI {
         // World and callers must remain on the runtime owner thread.
         HIKARI_GAME_PROJECT_SDK_API bool WasActivated(
             GameProjectObjectHandle object) const noexcept;
+        // Runtime-only bindings for Scene-authored controls. SetText is a no-op
+        // when the resolved UTF-8 text is unchanged; projects own localization.
+        HIKARI_GAME_PROJECT_SDK_API bool SetText(GameProjectObjectHandle object,
+            std::string_view utf8Text) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool SetCanvasEnabled(GameProjectObjectHandle object,
+            bool enabled) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool SetButtonInteractable(GameProjectObjectHandle object,
+            bool interactable) const noexcept;
 
     private:
         friend struct GameProjectSdkAccess;

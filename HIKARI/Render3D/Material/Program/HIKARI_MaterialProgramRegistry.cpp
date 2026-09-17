@@ -120,13 +120,14 @@ namespace HIKARI::RENDER3D::MATERIAL {
                     instruction.outputPins.size() !=
                         instruction.outputRegisters.size() ||
                     // Variable is source-only and lowers to Parameter.
-                    // ParticleOutput is the only legal terminal opcode after
-                    // the bounded expression opcode catalogue.
+                    // ParticleOutput and particle inputs follow the old expression catalogue.
                     (static_cast<uint32_t>(instruction.opcode) >
                          static_cast<uint32_t>(
                              MaterialProgramOpcode::Fresnel) &&
-                     instruction.opcode !=
-                         MaterialProgramOpcode::ParticleOutput)) {
+                     instruction.opcode != MaterialProgramOpcode::ParticleOutput &&
+                     instruction.opcode != MaterialProgramOpcode::ParticleState &&
+                     instruction.opcode != MaterialProgramOpcode::ParticleColor &&
+                     instruction.opcode != MaterialProgramOpcode::ParticleUv)) {
                     diagnostics.push_back(MakeRegistryDiagnostic(
                         MaterialCompileDiagnosticSeverity::Error,
                         "Material.RuntimeInstructionShapeInvalid",

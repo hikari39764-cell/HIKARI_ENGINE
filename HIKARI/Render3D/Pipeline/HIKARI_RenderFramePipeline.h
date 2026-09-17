@@ -36,6 +36,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
 
     const RAYTRACING::RuntimeRayTracingStats& GetRuntimeRayTracingStats() noexcept;
     const DYNAMICGI::Stats& GetDynamicDiffuseGiStats() noexcept;
+    uint64_t GetPrimaryFrameFailureCount() noexcept;
     void ShutdownRenderFramePipelineResources() noexcept;
 
 } // namespace HIKARI::RENDER3D::PIPELINE

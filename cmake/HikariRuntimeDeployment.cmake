@@ -96,7 +96,12 @@ function(hikari_configure_runtime_deployment target_name)
             DIRECTORY
                 "${HIKARI_SOURCE_ROOT}/HIKARI/Shaders"
             DESTINATION
-                "EngineContent")
+                "EngineContent"
+            FILES_MATCHING
+                PATTERN "*.hlsl"
+                PATTERN "*.hlsli"
+                PATTERN "*.h"
+                PATTERN "BuiltinShaderCatalog.json")
         string(CONCAT hikari_shader_install_validation_code
             "execute_process(\n"
             "  COMMAND \"${CMAKE_COMMAND}\"\n"

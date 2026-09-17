@@ -18,6 +18,7 @@ namespace HIKARI::RUNTIME {
         void RenderHostUi() override;
         void Shutdown() override;
         bool ShouldExitHost() const override;
+        int GetExitCode() const override;
 
         IScene* GetCurrentScene();
         const IScene* GetCurrentScene() const override;

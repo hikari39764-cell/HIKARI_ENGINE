@@ -256,6 +256,8 @@ namespace HIKARI::RENDER3D::CLUSTER {
             size_t pageTaskCapacity,
             size_t visibleRangeCapacity,
             size_t candidateCommandCapacity);
+
+        bool EnsureWorkCapacity();
         bool EnsureFallbackHzb(ID3D12Device* device);
         void ResetFrameStats();
         void BuildRangeStats(const ClusterGpuCullingSourceRange* ranges, size_t rangeCount);

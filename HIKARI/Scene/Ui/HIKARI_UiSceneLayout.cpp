@@ -197,7 +197,7 @@ namespace HIKARI {
                             object.GetRuntimeHandle(),
                             kUiButtonComponentTypeId)) {
                     request.tint = MultiplyColor(
-                        request.tint, button->GetStateTint());
+                        request.tint, button->GetAnimatedTint());
                 }
                 bool submitted = false;
                 if (image.GetTextureAssetGuid().IsValid()) {

@@ -159,6 +159,10 @@ namespace HIKARI::RUNTIME {
                 SERVICES::IsRuntimeSessionEndRequested());
     }
 
+    int RuntimeEngineApp::GetExitCode() const {
+        return standaloneRuntimeEntryFailed_ ? 2 : 0;
+    }
+
     IScene* RuntimeEngineApp::GetCurrentScene() {
         return sceneManager_.GetCurrentScene();
     }

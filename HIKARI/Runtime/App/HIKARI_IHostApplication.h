@@ -24,6 +24,8 @@ namespace HIKARI::RUNTIME {
         virtual bool ShouldExitHost() const {
             return false;
         }
+        // 終了判定と分離し、正常終了と実行失敗をホストへ伝える。
+        virtual int GetExitCode() const { return 0; }
         virtual void Shutdown() = 0;
     };
 

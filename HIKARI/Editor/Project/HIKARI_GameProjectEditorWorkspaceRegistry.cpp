@@ -295,6 +295,7 @@ namespace {
     }
 
     void GameProjectEditorWorkspaceRegistry::EndFrame() noexcept {
+        operationRegistry_ = nullptr;
         frameUi_ = nullptr;
         frameDeltaSeconds_ = 0.0f;
     }

@@ -16,7 +16,7 @@ namespace HIKARI::EDITOR {
         const VFX::VfxExposedInputData& source) {
 #if defined(HIKARI_WITH_EDITOR)
         const VFX::VfxExposedInputData input = source;
-        ImGui::TextDisabled("EXPOSED INPUT");
+        ImGui::TextDisabled(VfxUiText("EXPOSED INPUT").c_str());
         ImGui::TextWrapped("Stable ID: %s", input.id.c_str());
         VfxInspectorPropertyEditor editor(
             *this, database, input.id, statusMessage_);
@@ -29,7 +29,7 @@ namespace HIKARI::EDITOR {
             types.data(), types.size());
         editor.TypedValue(
             "Default", "defaultValue", input.defaultValue);
-        if (ImGui::Button("Delete Input")) {
+        if (ImGui::Button(VfxUiText("Delete Input").c_str())) {
             requestDeleteInput_ = true;
         }
 #else

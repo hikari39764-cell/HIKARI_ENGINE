@@ -15,22 +15,8 @@ static const uint HIKARI_PARTICLE_DEPTH_WORLD_OCCLUDED = 0u;
 static const uint HIKARI_PARTICLE_DEPTH_SOFT_INTERSECTION = 1u;
 static const uint HIKARI_PARTICLE_DEPTH_CONTACT_SURFACE = 2u;
 static const uint HIKARI_PARTICLE_DEPTH_FOREGROUND_ACCENT = 3u;
-static const uint HIKARI_PARTICLE_STYLE_DEFAULT = 0u;
-static const uint HIKARI_PARTICLE_STYLE_COMBAT_CUT = 1u;
-static const uint HIKARI_PARTICLE_STYLE_COMBAT_IMPACT = 2u;
-static const uint HIKARI_PARTICLE_STYLE_COMBAT_GROUND = 3u;
-static const uint HIKARI_PARTICLE_STYLE_COMIC_SMOKE = 4u;
-static const uint HIKARI_PARTICLE_STYLE_PROJECTILE_NEEDLE = 5u;
 
-struct Particle
-{
-    float4 positionAge;
-    float4 velocityLifetime;
-    float4 physicsPositionSeed;
-    float4 scaleRotation;
-    float4 orientation;
-    float4 color;
-};
+#include "Include/Vfx/HIKARI_ParticleData.hlsli"
 
 StructuredBuffer<Particle> gDrawParticles : register(t1);
 StructuredBuffer<uint> gAliveParticleIndices : register(t2);
@@ -38,15 +24,22 @@ Texture2D<float> gParticleSceneDepth : register(t3);
 SamplerState gParticleSampler : register(s0);
 SamplerState gParticleDepthSampler : register(s1);
 
-cbuffer CameraConstants : register(b0)
-{
-    float4x4 gViewProjection;
-    float4x4 gInverseViewProjection;
-    float4 gCameraPosition;
-    float4 gTimeParams;
-    float4 gSimulationTimeParams;
-    float4 gScreenParams;
-};
+#include "Include/Render3D/HIKARI_MeshCameraData.hlsli"
+#define gViewProjection gViewProj
+#define gInverseViewProjection gInvViewProj
+#define gCameraPosition gCameraPos
+#define gLinearWrap gParticleSampler
+#define gLinearClamp gParticleSampler
+#define gSkyPanoramaSampler gParticleSampler
+#include "Include/Lighting/HIKARI_ViewLightingData.hlsli"
+#include "Include/Lighting/HIKARI_LocalLightList.hlsli"
+#include "Include/HIKARI_SkyEnvironmentCommon.hlsli"
+Texture2D<float> gShadowMap : register(t0, space9);
+SamplerComparisonState gShadowSampler : register(s2);
+static const uint HIKARI_FORWARD_COST_NO_SHADOW = 3u;
+#include "Include/Forward/HIKARI_ShadowSampling.hlsli"
+#include "Include/Lighting/HIKARI_SurfaceDirectLighting.hlsli"
+#include "Include/Material/HIKARI_MaterialExpressionSurface.hlsli"
 
 cbuffer ParticleDrawConstants : register(b1)
 {
@@ -57,13 +50,10 @@ cbuffer ParticleDrawConstants : register(b1)
     float4 gRenderShapeParamsA;
     float4 gRenderShapeParamsB;
     uint gDepthMode;
-    uint gShaderStyle;
+    uint gParticleMaterialFlags;
     uint gSceneDepthAvailable;
     uint gParticleReserved;
-    float4 gDepthAndStyleParams;
-    float4 gShaderParams;
-    float4 gShaderOutlineColor;
-    float4 gShaderCoreColor;
+    float4 gDepthParams;
 };
 
 struct ParticleVertex
@@ -78,6 +68,7 @@ struct ParticleVertex
     nointerpolation uint flipbookFrame : TEXCOORD5;
     nointerpolation float normalizedAge : TEXCOORD6;
     nointerpolation float randomValue : TEXCOORD7;
+    nointerpolation float2 ageAndSpeed : TEXCOORD8;
 };
 
 float4 SampleParticleAtlasTexture(
@@ -230,473 +221,7 @@ void ResolveBillboardBasis(
     }
 }
 
-ParticleVertex BuildParticleVertex(
-    Particle particle,
-    uint vertexIndex,
-    uint segmentCount,
-    float3 baseRight,
-    float3 baseUp,
-    float3 baseNormal)
-{
-    ParticleVertex output = (ParticleVertex)0;
-    float3 right = baseRight;
-    float3 up = baseUp;
-    float3 normal = baseNormal;
-
-    float2 uv = 0.0f;
-    float3 worldPosition = particle.positionAge.xyz;
-    if (gRenderShapeMode == 0u)
-    {
-        static const float2 corners[4] = {
-            float2(-0.5f, -0.5f),
-            float2(-0.5f,  0.5f),
-            float2( 0.5f,  0.5f),
-            float2( 0.5f, -0.5f)
-        };
-        static const float2 uvs[4] = {
-            float2(0.0f, 1.0f),
-            float2(0.0f, 0.0f),
-            float2(1.0f, 0.0f),
-            float2(1.0f, 1.0f)
-        };
-        const float2 corner = corners[vertexIndex];
-        uv = uvs[vertexIndex];
-        worldPosition += right * corner.x * particle.scaleRotation.x +
-            up * corner.y * particle.scaleRotation.y;
-    }
-    else
-    {
-        const uint pairIndex = vertexIndex >> 1u;
-        const float side = (vertexIndex & 1u) == 0u ? -1.0f : 1.0f;
-        const float s = (float)pairIndex / (float)segmentCount;
-        uv = float2(s, side * 0.5f + 0.5f);
-        if (gRenderShapeMode == 1u)
-        {
-            const float4 orientation = NormalizeQuaternion(
-                particle.orientation);
-            const float3 tangent = NormalizeOr(
-                RotateByQuaternion(
-                    float3(1.0f, 0.0f, 0.0f),
-                    orientation),
-                right);
-            const float3 widthDirection = NormalizeOr(
-                cross(normal, tangent),
-                up);
-            const float ribbonLength = max(particle.scaleRotation.x, 0.0f);
-            const float halfWidth = max(
-                gRenderShapeParamsA.x * 0.5f *
-                    particle.scaleRotation.y,
-                0.0f);
-            worldPosition += tangent * ((s - 0.5f) * ribbonLength) +
-                widthDirection * side * halfWidth;
-            right = tangent;
-        }
-        else
-        {
-            const float angle = lerp(
-                gRenderShapeParamsA.w,
-                gRenderShapeParamsB.x,
-                s);
-            const float radius = side < 0.0f
-                ? gRenderShapeParamsA.z
-                : gRenderShapeParamsA.y;
-            worldPosition += right * cos(angle) * radius *
-                    particle.scaleRotation.x +
-                up * sin(angle) * radius *
-                    particle.scaleRotation.y;
-        }
-    }
-
-    const uint flipbookGrid = asuint(gRenderShapeParamsB.z);
-    const uint flipbookPlayback = asuint(gRenderShapeParamsB.w);
-    const uint columns = max(flipbookGrid & 0xffu, 1u);
-    const uint rows = max((flipbookGrid >> 8u) & 0xffu, 1u);
-    const uint frameCount = clamp(
-        flipbookPlayback & 0xffffu,
-        1u,
-        columns * rows);
-    const uint flags = flipbookPlayback >> 16u;
-    uint frame = (uint)floor(
-        max(gRenderShapeParamsB.y, 0.0f) *
-        max(particle.positionAge.w, 0.0f));
-    if ((flags & 2u) != 0u)
-    {
-        frame += asuint(particle.physicsPositionSeed.w) % frameCount;
-    }
-    if ((flags & 1u) != 0u)
-    {
-        frame %= frameCount;
-    }
-    else
-    {
-        frame = min(frame, frameCount - 1u);
-    }
-    output.uv = (float2(frame % columns, frame / columns) + uv) /
-        float2(columns, rows);
-    output.localUv = uv;
-    output.flipbookFrame = frame;
-    output.position = mul(gViewProjection, float4(worldPosition, 1.0f));
-    if (gDepthMode == HIKARI_PARTICLE_DEPTH_CONTACT_SURFACE)
-    {
-        output.position.z = max(
-            0.0f,
-            output.position.z -
-                max(gDepthAndStyleParams.y, 0.0f) * output.position.w);
-    }
-    output.color = particle.color;
-    output.worldPosition = worldPosition;
-    output.worldNormal = normal;
-    output.worldTangent = right;
-    output.normalizedAge = saturate(
-        max(particle.positionAge.w, 0.0f) /
-        max(particle.velocityLifetime.w, 1.0e-5f));
-    output.randomValue = frac(
-        float(asuint(particle.physicsPositionSeed.w)) *
-        0.00000011920928955078125f);
-    return output;
-}
-
-groupshared Particle gMeshParticle;
-groupshared float3 gMeshRight;
-groupshared float3 gMeshUp;
-groupshared float3 gMeshNormal;
-
-[outputtopology("triangle")]
-[numthreads(4, 1, 1)]
-void ParticleSpriteMS(
-    uint3 groupId : SV_GroupID,
-    uint groupThreadId : SV_GroupThreadID,
-    out vertices ParticleVertex verticesOut[4],
-    out indices uint3 trianglesOut[2])
-{
-    if (groupThreadId == 0u)
-    {
-        const uint particleIndex =
-            gAliveParticleIndices[gAliveIndexBase + groupId.x];
-        gMeshParticle = gDrawParticles[particleIndex];
-        ResolveBillboardBasis(
-            gMeshParticle,
-            gMeshRight,
-            gMeshUp,
-            gMeshNormal);
-    }
-    GroupMemoryBarrierWithGroupSync();
-    SetMeshOutputCounts(4u, 2u);
-    verticesOut[groupThreadId] = BuildParticleVertex(
-        gMeshParticle,
-        groupThreadId,
-        1u,
-        gMeshRight,
-        gMeshUp,
-        gMeshNormal);
-    if (groupThreadId < 2u)
-    {
-        trianglesOut[groupThreadId] = groupThreadId == 0u
-            ? uint3(0u, 1u, 2u)
-            : uint3(0u, 2u, 3u);
-    }
-}
-
-[outputtopology("triangle")]
-[numthreads(64, 1, 1)]
-void ParticleStripMS(
-    uint3 groupId : SV_GroupID,
-    uint groupThreadId : SV_GroupThreadID,
-    out vertices ParticleVertex verticesOut[130],
-    out indices uint3 trianglesOut[128])
-{
-    if (groupThreadId == 0u)
-    {
-        const uint particleIndex =
-            gAliveParticleIndices[gAliveIndexBase + groupId.x];
-        gMeshParticle = gDrawParticles[particleIndex];
-        ResolveBillboardBasis(
-            gMeshParticle,
-            gMeshRight,
-            gMeshUp,
-            gMeshNormal);
-    }
-    GroupMemoryBarrierWithGroupSync();
-    const Particle particle = gMeshParticle;
-    const uint segmentCount = gRenderShapeMode == 0u
-        ? 1u
-        : clamp(gSegmentCount, gRenderShapeMode == 1u ? 2u : 3u,
-            HIKARI_PARTICLE_MAX_SEGMENTS);
-    const uint vertexCount = gRenderShapeMode == 0u
-        ? 4u
-        : (segmentCount + 1u) * 2u;
-    const uint primitiveCount = gRenderShapeMode == 0u
-        ? 2u
-        : segmentCount * 2u;
-    SetMeshOutputCounts(vertexCount, primitiveCount);
-
-    for (uint vertexIndex = groupThreadId;
-         vertexIndex < vertexCount;
-         vertexIndex += 64u)
-    {
-        verticesOut[vertexIndex] = BuildParticleVertex(
-            particle,
-            vertexIndex,
-            segmentCount,
-            gMeshRight,
-            gMeshUp,
-            gMeshNormal);
-    }
-    for (uint primitiveIndex = groupThreadId;
-         primitiveIndex < primitiveCount;
-         primitiveIndex += 64u)
-    {
-        if (gRenderShapeMode == 0u)
-        {
-            trianglesOut[primitiveIndex] = primitiveIndex == 0u
-                ? uint3(0u, 1u, 2u)
-                : uint3(0u, 2u, 3u);
-        }
-        else
-        {
-            const uint segment = primitiveIndex >> 1u;
-            const uint baseVertex = segment * 2u;
-            trianglesOut[primitiveIndex] = (primitiveIndex & 1u) == 0u
-                ? uint3(baseVertex, baseVertex + 1u, baseVertex + 3u)
-                : uint3(baseVertex, baseVertex + 3u, baseVertex + 2u);
-        }
-    }
-}
-
-float HikariParticleHash21(float2 value)
-{
-    const float3 p = frac(float3(value.xyx) * 0.1031f);
-    const float3 q = p + dot(p, p.yzx + 33.33f);
-    return frac((q.x + q.y) * q.z);
-}
-
-float HikariParticleValueNoise(float2 value)
-{
-    const float2 cell = floor(value);
-    const float2 local = frac(value);
-    const float2 blend = local * local * (3.0f - 2.0f * local);
-    const float lower = lerp(
-        HikariParticleHash21(cell),
-        HikariParticleHash21(cell + float2(1.0f, 0.0f)),
-        blend.x);
-    const float upper = lerp(
-        HikariParticleHash21(cell + float2(0.0f, 1.0f)),
-        HikariParticleHash21(cell + 1.0f.xx),
-        blend.x);
-    return lerp(lower, upper, blend.y);
-}
-
-float2 HikariParticleRotate2D(float2 value, float angle)
-{
-    const float sine = sin(angle);
-    const float cosine = cos(angle);
-    return float2(
-        value.x * cosine + value.y * sine,
-        value.y * cosine - value.x * sine);
-}
-
-float HikariParticleTaperedStrokeDistance(
-    float2 position,
-    float angle,
-    float start,
-    float lengthValue,
-    float rootHalfWidth,
-    float tipHalfWidth)
-{
-    const float2 local = HikariParticleRotate2D(position, angle);
-    const float progress = saturate(
-        (local.x - start) / max(lengthValue, 1.0e-4f));
-    const float halfWidth = lerp(rootHalfWidth, tipHalfWidth, progress);
-    return max(
-        abs(local.y) - halfWidth,
-        max(start - local.x, local.x - (start + lengthValue)));
-}
-
-float HikariParticleStyleDistance(
-    float2 position,
-    uint style,
-    float randomValue,
-    float normalizedAge)
-{
-    if (style == HIKARI_PARTICLE_STYLE_COMBAT_CUT)
-    {
-        const float curve =
-            sin((position.x + 1.0f) * 2.4f + randomValue * 3.1f) *
-            0.11f * (1.0f - saturate(abs(position.x)));
-        const float halfWidth = 0.055f +
-            0.245f * pow(saturate(1.0f - abs(position.x)), 0.72f);
-        return max(
-            abs(position.y - curve) - halfWidth,
-            abs(position.x) - 0.98f);
-    }
-    if (style == HIKARI_PARTICLE_STYLE_COMBAT_IMPACT)
-    {
-        const float radius = length(position);
-        const float angle = atan2(position.y, position.x);
-        const float ray = pow(
-            abs(cos(angle * 4.0f + randomValue * 1.7f)),
-            9.0f);
-        const float silhouette = 0.37f + 0.34f * ray;
-        return radius - silhouette;
-    }
-    if (style == HIKARI_PARTICLE_STYLE_COMBAT_GROUND)
-    {
-        const float radius = length(position);
-        const float angle = atan2(position.y, position.x);
-        const float ringRadius = 0.61f +
-            sin(angle * 6.0f + randomValue * 6.28318531f) * 0.018f;
-        const float ring = abs(radius - ringRadius) - 0.065f;
-        const float phase = randomValue * 6.28318531f;
-        const float crackA = HikariParticleTaperedStrokeDistance(
-            position,
-            phase,
-            0.14f,
-            0.72f,
-            0.048f,
-            0.006f);
-        const float crackB = HikariParticleTaperedStrokeDistance(
-            position,
-            phase + 2.19f,
-            0.19f,
-            0.58f,
-            0.038f,
-            0.005f);
-        const float crackC = HikariParticleTaperedStrokeDistance(
-            position,
-            phase + 4.34f,
-            0.22f,
-            0.48f,
-            0.032f,
-            0.004f);
-        return min(ring, min(crackA, min(crackB, crackC)));
-    }
-    if (style == HIKARI_PARTICLE_STYLE_COMIC_SMOKE)
-    {
-        const float swell = lerp(0.88f, 1.08f, normalizedAge);
-        const float d0 = length(
-            (position - float2(-0.28f, 0.04f)) /
-            float2(0.58f, 0.54f)) - swell;
-        const float d1 = length(
-            (position - float2(0.30f, 0.08f)) /
-            float2(0.55f, 0.50f)) - swell;
-        const float d2 = length(
-            (position - float2(0.02f, -0.27f)) /
-            float2(0.70f, 0.48f)) - swell;
-        const float d3 = length(
-            (position - float2(0.0f, 0.30f)) /
-            float2(0.48f, 0.43f)) - swell;
-        return min(min(d0, d1), min(d2, d3));
-    }
-    if (style == HIKARI_PARTICLE_STYLE_PROJECTILE_NEEDLE)
-    {
-        const float taper = 0.025f +
-            0.14f * pow(saturate(1.0f - abs(position.x)), 0.65f);
-        return max(
-            abs(position.y) - taper,
-            abs(position.x) - 0.99f);
-    }
-    return -1.0f;
-}
-
-float HikariResolveStylizedOutlinePixels()
-{
-    // Existing HVFX assets author this value in the legacy normalized range.
-    // Convert it once to a bounded screen-pixel width so large particles do
-    // not expose a giant outline/card silhouette while small particles still
-    // retain a readable ink edge.
-    const float authoredWidth = saturate(gDepthAndStyleParams.z);
-    return authoredWidth > 1.0e-5f
-        ? clamp(0.65f + authoredWidth * 12.0f, 0.65f, 2.60f)
-        : 0.0f;
-}
-
-float HikariResolveStylizedGlowPixels()
-{
-    const float outlinePixels = HikariResolveStylizedOutlinePixels();
-    if (outlinePixels <= 1.0e-5f)
-    {
-        return 0.0f;
-    }
-
-    // Ink and bloom serve different readability jobs. Keep the ink line
-    // bounded and derive a wider, low-opacity HDR halo from emissive energy.
-    // This prevents artists from having to inflate an opaque outline just to
-    // make a hit survive exposure and bloom.
-    const float emissiveEnergy = saturate(gShaderParams.x / 5.0f);
-    return outlinePixels + lerp(1.45f, 3.35f, emissiveEnergy);
-}
-
-void HikariEvaluateStylizedParticle(
-    ParticleVertex input,
-    out float coverage,
-    out float coreCoverage,
-    out float glowCoverage,
-    out float breakupKeep)
-{
-    const float2 position = input.localUv * 2.0f - 1.0f;
-    const float distance = HikariParticleStyleDistance(
-        position,
-        gShaderStyle,
-        input.randomValue,
-        input.normalizedAge);
-    const float edgeHardness = saturate(gDepthAndStyleParams.w);
-    const float edgePixelDistance = max(fwidth(distance), 6.0e-4f);
-    const float antiAlias = edgePixelDistance *
-        lerp(2.35f, 1.10f, edgeHardness);
-    const float outlinePixels = HikariResolveStylizedOutlinePixels();
-    const float outlineDistance = edgePixelDistance * outlinePixels;
-    const float glowDistance = edgePixelDistance *
-        HikariResolveStylizedGlowPixels();
-    float outerCoverage = 1.0f - smoothstep(
-        -antiAlias,
-        antiAlias,
-        distance - outlineDistance);
-    glowCoverage = 1.0f - smoothstep(
-        -antiAlias * 1.65f,
-        antiAlias * 2.15f,
-        distance - glowDistance);
-    coreCoverage = 1.0f - smoothstep(
-        -antiAlias,
-        antiAlias,
-        distance + edgePixelDistance * 0.22f);
-    coreCoverage = min(coreCoverage, outerCoverage);
-    if (outlinePixels <= 1.0e-5f)
-    {
-        // A zero authored outline is an explicit style choice. Collapse the
-        // outer/glow domains onto the core so the later premultiplied halo
-        // cannot manufacture a border that the asset disabled.
-        outerCoverage = coreCoverage;
-        glowCoverage = coreCoverage;
-    }
-
-    const float breakupScale = max(gShaderParams.y, 0.1f);
-    const float breakupStrength = saturate(gShaderParams.z);
-    const float2 noisePosition = float2(
-        position.x * 0.80f + position.y * 0.60f,
-        position.y * 0.80f - position.x * 0.60f) * breakupScale +
-        float2(input.randomValue * 17.0f, input.randomValue * 29.0f);
-    const float breakupNoise =
-        HikariParticleValueNoise(noisePosition) * 0.68f +
-        HikariParticleValueNoise(
-            noisePosition * 2.07f + float2(11.3f, 7.1f)) * 0.32f;
-    const float breakupFilterWidth = max(fwidth(breakupNoise) * 1.35f, 0.025f);
-    const float organicBreakup = smoothstep(
-        0.34f - breakupFilterWidth,
-        0.56f + breakupFilterWidth,
-        breakupNoise);
-    const float breakupEdgeBand = smoothstep(
-        -max(edgePixelDistance * 1.5f, outlineDistance),
-        antiAlias * 2.0f,
-        distance);
-    const float breakupAmount = saturate(
-        breakupStrength *
-        smoothstep(0.52f, 1.0f, input.normalizedAge) *
-        breakupEdgeBand);
-    breakupKeep = lerp(1.0f, organicBreakup, breakupAmount);
-    coverage = outerCoverage * breakupKeep;
-    coreCoverage *= breakupKeep;
-    glowCoverage = max(coverage, glowCoverage * breakupKeep);
-}
+#include "Include/Vfx/HIKARI_ParticleGeometry.hlsli"
 
 float HikariResolveParticleDepthFade(ParticleVertex input)
 {
@@ -729,27 +254,26 @@ float HikariResolveParticleDepthFade(ParticleVertex input)
         sceneWorldPosition,
         input.worldPosition);
     return saturate(
-        separation / max(gDepthAndStyleParams.x, 1.0e-3f));
+        separation / max(gDepthParams.x, 1.0e-3f));
 }
 
-float HikariSampleAuthoredParticleMask(
-    uint textureDescriptorIndex,
-    float2 uv,
-    float baseAlpha)
-{
-    return saturate(
-        HikariSampleMaterialTexture(
-            textureDescriptorIndex,
-            gParticleSampler,
-            uv,
-            1.0f.xxxx).a * baseAlpha);
-}
+#include "Include/Lighting/HIKARI_SimpleSurfaceLighting.hlsli"
 
-float4 ParticlePS(ParticleVertex input) : SV_TARGET
+float4 ParticlePS(ParticleVertex input, bool frontFace : SV_IsFrontFace) : SV_TARGET
 {
     HikariMeshMaterialData materialData =
         HikariGetMeshMaterialData(gMaterialDataIndex);
     float4 materialColor = materialData.baseColor;
+    const bool lit = (gParticleMaterialFlags & 1u) != 0u;
+    const float3 geometricNormal = normalize(input.worldNormal) * (frontFace ? 1.0f : -1.0f);
+    const float4 tangent = float4(normalize(input.worldTangent),1.0f);
+    HikariMaterialPbrInputs pbrInputs = (HikariMaterialPbrInputs)0;
+    float3 shadingNormal = geometricNormal;
+    if (lit)
+    {
+        pbrInputs = HikariResolveMaterialPbrInputs(materialData,input.uv,input.uv,gParticleSampler);
+        shadingNormal = HikariResolveSurfaceShadingNormal(materialData,geometricNormal,tangent,input.uv,input.uv,gParticleSampler);
+    }
     float opacity = 1.0f;
     float3 emissive = materialData.emissiveFactor.rgb *
         materialData.emissiveFactor.w;
@@ -757,37 +281,29 @@ float4 ParticlePS(ParticleVertex input) : SV_TARGET
     const uint flipbookGrid = asuint(gRenderShapeParamsB.z);
     const uint columns = max(flipbookGrid & 0xffu, 1u);
     const uint rows = max((flipbookGrid >> 8u) & 0xffu, 1u);
-    bool hasAuthoredStylizedMask = false;
-    float authoredMaskCenter = 1.0f;
-    float authoredMaskOuter = 1.0f;
-    float authoredMaskNeighborhood = 1.0f;
-    float authoredMaskGlowNeighborhood = 0.0f;
-    float authoredMaskOutlinePixels = 0.0f;
     const bool hasMaterialExpression =
         materialData.materialProgramIndex !=
         HIKARI_STANDARD_PBR_MATERIAL_PROGRAM;
     if (hasMaterialExpression)
     {
-        HikariMaterialExpressionContext context = (HikariMaterialExpressionContext)0;
-        context.uv0 = input.uv;
-        context.uv1 = input.uv;
-        context.time = gTimeParams;
-        context.worldPosition = input.worldPosition;
-        context.worldNormal = normalize(input.worldNormal);
-        context.worldTangent = float4(
-            normalize(input.worldTangent), 1.0f);
-        context.viewDirection = normalize(
-            gCameraPosition.xyz - input.worldPosition);
-        context.cameraPosition = gCameraPosition.xyz;
-        context.screenPosition = float4(
-            input.position.xy * gScreenParams.zw,
-            input.position.z,
-            input.position.w);
+        HikariMaterialExpressionContext context = HikariBuildMaterialExpressionContext(
+            input.uv,input.uv,gTimeParams,input.worldPosition,geometricNormal,tangent,
+            gCameraPosition.xyz,input.position,gScreenParams.zw);
+        context.particleState = float4(input.normalizedAge, input.ageAndSpeed.x,
+            input.randomValue, input.ageAndSpeed.y);
+        context.particleColor = input.color;
+        context.particleUv = input.localUv;
         const HikariMaterialExpressionResult expression =
             HikariEvaluateMaterialExpression(
                 materialData,
                 context,
                 gParticleSampler);
+        if (lit)
+        {
+            HikariApplyMaterialExpressionPbr(expression,pbrInputs);
+            shadingNormal = HikariResolveMaterialExpressionNormal(expression,materialData.normalScale,
+                geometricNormal,tangent,shadingNormal);
+        }
         if ((expression.outputMask &
              HIKARI_EXPRESSION_OUTPUT_BASE_COLOR) != 0u)
         {
@@ -829,83 +345,7 @@ float4 ParticlePS(ParticleVertex input) : SV_TARGET
                 columns,
                 rows,
                 1.0f.xxxx);
-            if (gShaderStyle != HIKARI_PARTICLE_STYLE_DEFAULT &&
-                columns == 1u && rows == 1u)
-            {
-                // Production combat masks own the silhouette. Dilate their
-                // alpha in screen-pixel units to create a stable dark-blue
-                // outline instead of intersecting the authored arc with the
-                // old analytic lens/card shape.
-                hasAuthoredStylizedMask = true;
-                authoredMaskCenter = saturate(materialColor.a);
-                const float outlinePixels =
-                    HikariResolveStylizedOutlinePixels();
-                authoredMaskOutlinePixels = outlinePixels;
-                if (outlinePixels > 1.0e-5f)
-                {
-                const float2 du = ddx(baseColorUv) * outlinePixels;
-                const float2 dv = ddy(baseColorUv) * outlinePixels;
-                const float2 diagonalA = (du + dv) * 0.70710678f;
-                const float2 diagonalB = (du - dv) * 0.70710678f;
-                const float glowPixels =
-                    HikariResolveStylizedGlowPixels();
-                const float2 glowDu = ddx(baseColorUv) * glowPixels;
-                const float2 glowDv = ddy(baseColorUv) * glowPixels;
-                const float baseAlpha = saturate(materialData.baseColor.a);
-                authoredMaskOuter = authoredMaskCenter;
-                const uint maskTexture =
-                    materialData.baseColorTextureDescriptorIndex;
-                const float maskDuPositive = HikariSampleAuthoredParticleMask(
-                    maskTexture, baseColorUv + du, baseAlpha);
-                const float maskDuNegative = HikariSampleAuthoredParticleMask(
-                    maskTexture, baseColorUv - du, baseAlpha);
-                const float maskDvPositive = HikariSampleAuthoredParticleMask(
-                    maskTexture, baseColorUv + dv, baseAlpha);
-                const float maskDvNegative = HikariSampleAuthoredParticleMask(
-                    maskTexture, baseColorUv - dv, baseAlpha);
-                const float maskDiagonalAPositive =
-                    HikariSampleAuthoredParticleMask(
-                        maskTexture, baseColorUv + diagonalA, baseAlpha);
-                const float maskDiagonalANegative =
-                    HikariSampleAuthoredParticleMask(
-                        maskTexture, baseColorUv - diagonalA, baseAlpha);
-                const float maskDiagonalBPositive =
-                    HikariSampleAuthoredParticleMask(
-                        maskTexture, baseColorUv + diagonalB, baseAlpha);
-                const float maskDiagonalBNegative =
-                    HikariSampleAuthoredParticleMask(
-                        maskTexture, baseColorUv - diagonalB, baseAlpha);
-                authoredMaskOuter = max(
-                    authoredMaskOuter,
-                    max(
-                        max(maskDuPositive, maskDuNegative),
-                        max(maskDvPositive, maskDvNegative)));
-                authoredMaskOuter = max(
-                    authoredMaskOuter,
-                    max(
-                        max(maskDiagonalAPositive, maskDiagonalANegative),
-                        max(maskDiagonalBPositive, maskDiagonalBNegative)));
-                const float authoredMaskSum = authoredMaskCenter +
-                    maskDuPositive + maskDuNegative +
-                    maskDvPositive + maskDvNegative +
-                    maskDiagonalAPositive + maskDiagonalANegative +
-                    maskDiagonalBPositive + maskDiagonalBNegative;
-                authoredMaskNeighborhood = authoredMaskSum / 9.0f;
-                const float authoredGlowMaskSum =
-                    HikariSampleAuthoredParticleMask(
-                        maskTexture, baseColorUv + glowDu, baseAlpha) +
-                    HikariSampleAuthoredParticleMask(
-                        maskTexture, baseColorUv - glowDu, baseAlpha) +
-                    HikariSampleAuthoredParticleMask(
-                        maskTexture, baseColorUv + glowDv, baseAlpha) +
-                    HikariSampleAuthoredParticleMask(
-                        maskTexture, baseColorUv - glowDv, baseAlpha);
-                // Four wide taps are enough for bloom-bound coverage; the
-                // inner ink already owns eight-direction morphology. Avoid a
-                // second eight-tap ring on every combat-particle pixel.
-                authoredMaskGlowNeighborhood = authoredGlowMaskSum / 4.0f;
-                }
-            }
+
         }
         if (materialData.hasEmissiveTexture != 0u)
         {
@@ -926,222 +366,17 @@ float4 ParticlePS(ParticleVertex input) : SV_TARGET
             alphaClipThreshold = max(materialData.pbrParams.w, 0.0f);
         }
     }
-    const float rawParticleAlpha = max(input.color.a, 0.0f);
-    const float shaderOverdrive = saturate(
-        (rawParticleAlpha - 1.0f) * 0.25f);
     float alpha = input.color.a * opacity;
     if (!hasMaterialExpression)
     {
         alpha *= materialColor.a;
     }
-    if (gShaderStyle != HIKARI_PARTICLE_STYLE_DEFAULT)
-    {
-        // Profiled combat effects reserve HDR alpha above one as a transient
-        // shader-overdrive carrier. The excess is transported through the
-        // existing VFX color multiplier, so neither the particle layout nor
-        // the cooked format needs another runtime field. Keep the default
-        // material path untouched and bound only stylized visible opacity.
-        alpha = min(rawParticleAlpha, 1.0f) * opacity;
-        if (!hasMaterialExpression && !hasAuthoredStylizedMask)
-        {
-            alpha *= materialColor.a;
-        }
-        float styleCoverage = 0.0f;
-        float coreCoverage = 0.0f;
-        float glowCoverage = 0.0f;
-        float breakupKeep = 1.0f;
-        if (hasAuthoredStylizedMask)
-        {
-            // Authored combat masks already contain antialiased coverage.
-            // A pure max-neighbour dilation promoted isolated texture flecks
-            // and edge texels into opaque outline blocks, while also making
-            // the authoring Edge Hardness parameter a no-op. Blend towards a
-            // coherent neighbourhood for softer skill profiles, keep the old
-            // dilation for deliberately hard impact profiles, and feather the
-            // physical sprite boundary so no clipped card edge can survive.
-            const float authoredHardness = saturate(
-                gDepthAndStyleParams.w);
-            const float coherentOuter = max(
-                authoredMaskCenter,
-                authoredMaskNeighborhood * 1.75f);
-            // A single opaque neighbour must never become the whole ink
-            // silhouette. Preserve a limited amount of max dilation for crisp
-            // corners, but keep the coherent neighbourhood as the owner of
-            // the edge so imported masks cannot turn into hard card blocks.
-            const float maximumDilationWeight = 0.62f;
-            // Max dilation is useful around supported corners, but a lone
-            // opaque neighbour is usually texture noise or an atlas/card
-            // edge. Require neighbourhood support before that neighbour can
-            // influence the ink silhouette. One of nine taps (0.111) stays
-            // below the gate while coherent stroke edges retain the authored
-            // hard-corner response.
-            const float neighborhoodSupport = smoothstep(
-                0.14f,
-                0.44f,
-                authoredMaskNeighborhood);
-            const float dilationWeight = maximumDilationWeight *
-                neighborhoodSupport * smoothstep(
-                    0.72f,
-                    0.96f,
-                    authoredHardness);
-            const float stableOuter = lerp(
-                coherentOuter,
-                authoredMaskOuter,
-                dilationWeight);
-            const float cardEdgeDistance = min(
-                min(input.localUv.x, 1.0f - input.localUv.x),
-                min(input.localUv.y, 1.0f - input.localUv.y));
-            const float cardPixelWidth = max(
-                max(fwidth(input.localUv.x), fwidth(input.localUv.y)),
-                1.0e-5f);
-            const float cardCoverage = smoothstep(
-                0.0f,
-                cardPixelWidth * lerp(
-                    2.75f,
-                    1.25f,
-                    authoredHardness),
-                cardEdgeDistance);
-            const float maskFilterWidth = max(
-                max(
-                    fwidth(stableOuter),
-                    fwidth(authoredMaskCenter)) *
-                    lerp(1.45f, 0.82f, authoredHardness),
-                0.018f);
-            const float outerThreshold = lerp(
-                0.22f,
-                0.46f,
-                authoredHardness);
-            const float coreThreshold = lerp(
-                0.34f,
-                0.58f,
-                authoredHardness);
-            const float filteredCoreCoverage = smoothstep(
-                coreThreshold - maskFilterWidth,
-                coreThreshold + maskFilterWidth,
-                authoredMaskCenter) * cardCoverage;
-            if (authoredMaskOutlinePixels <= 1.0e-5f)
-            {
-                styleCoverage = filteredCoreCoverage;
-                coreCoverage = filteredCoreCoverage;
-                glowCoverage = 0.0f;
-            }
-            else
-            {
-                styleCoverage = smoothstep(
-                    outerThreshold - maskFilterWidth,
-                    outerThreshold + maskFilterWidth,
-                    stableOuter) * cardCoverage;
-                coreCoverage = min(filteredCoreCoverage, styleCoverage);
-                const float coherentGlow = neighborhoodSupport * max(
-                    stableOuter * 0.32f,
-                    authoredMaskGlowNeighborhood * 1.30f);
-                const float glowFilterWidth = max(
-                    fwidth(coherentGlow) * 1.85f,
-                    0.024f);
-                const float glowCardCoverage = smoothstep(
-                    0.0f,
-                    cardPixelWidth * 3.25f,
-                    cardEdgeDistance);
-                glowCoverage = smoothstep(
-                    0.045f - glowFilterWidth,
-                    0.24f + glowFilterWidth,
-                    coherentGlow) * glowCardCoverage;
-                glowCoverage = max(styleCoverage, glowCoverage);
-            }
-        }
-        else
-        {
-            HikariEvaluateStylizedParticle(
-                input,
-                styleCoverage,
-                coreCoverage,
-                glowCoverage,
-                breakupKeep);
-        }
-        const float outlineCoverage = max(
-            styleCoverage - coreCoverage,
-            0.0f);
-        const float coreRatio = saturate(
-            coreCoverage /
-                max(coreCoverage + outlineCoverage, 1.0e-4f));
-        float styleAlpha = alpha;
-        if (hasAuthoredStylizedMask)
-        {
-            const float authoredHardness = saturate(
-                gDepthAndStyleParams.w);
-            const float outlineOpacity = lerp(
-                0.78f,
-                0.96f,
-                authoredHardness);
-            styleAlpha *= lerp(
-                outlineOpacity,
-                1.0f,
-                coreRatio);
-        }
-        const float4 styleColor = lerp(
-            gShaderOutlineColor,
-            gShaderCoreColor,
-            coreRatio);
-        const float depthFade = HikariResolveParticleDepthFade(input);
-        styleAlpha = saturate(
-            styleAlpha * styleCoverage * styleColor.a * depthFade);
-        const bool stylizedOutlineEnabled =
-            HikariResolveStylizedOutlinePixels() > 1.0e-5f;
-        const float outerGlowCoverage = stylizedOutlineEnabled
-            ? saturate(glowCoverage * (1.0f - styleCoverage))
-            : 0.0f;
-        const float emissiveEnergy = saturate(gShaderParams.x / 5.0f);
-        const float glowAlpha = saturate(
-            alpha * outerGlowCoverage * gShaderOutlineColor.a *
-            lerp(0.10f, 0.22f, emissiveEnergy) * depthFade);
-        const float finalAlpha = saturate(
-            styleAlpha + glowAlpha * (1.0f - styleAlpha));
-        clip(max(styleCoverage, glowCoverage) - 1.0e-4f);
-        clip(finalAlpha - max(alphaClipThreshold, 0.001f));
-        const float intensity = lerp(
-            0.82f,
-            1.0f,
-            saturate(max(input.color.r, max(input.color.g, input.color.b))));
-        const float3 stylizedColor = styleColor.rgb * intensity;
-        const float3 stylizedEmissive = gShaderCoreColor.rgb *
-            coreCoverage * max(gShaderParams.x, 0.0f);
-        const float phase = frac(
-            dot(input.localUv, float2(2.85f, -1.95f)) +
-            input.normalizedAge * 1.70f + input.randomValue * 3.10f);
-        const float movingCut = 1.0f - smoothstep(
-            0.065f,
-            0.205f,
-            abs(phase - 0.50f));
-        const float whiteCore = pow(coreRatio, 0.42f);
-        const float3 overdriveColor = lerp(
-            float3(0.04f, 0.58f, 1.22f),
-            1.0f.xxx,
-            whiteCore);
-        const float interiorEnergy = coreCoverage *
-            smoothstep(0.16f, 0.82f, coreRatio);
-        const float overdriveEnergy = shaderOverdrive *
-            (0.36f + 0.44f * movingCut) *
-            interiorEnergy;
-        const float3 straightStylized = stylizedColor +
-            stylizedEmissive * (1.0f +
-                0.85f * shaderOverdrive * interiorEnergy) +
-            overdriveColor * overdriveEnergy;
-        const float3 glowColor = lerp(
-            gShaderOutlineColor.rgb,
-            gShaderCoreColor.rgb,
-            0.30f);
-        const float glowRadiance = lerp(
-            0.85f,
-            2.15f,
-            emissiveEnergy) * (1.0f + 0.35f * shaderOverdrive);
-        const float3 premultipliedStylized =
-            straightStylized * styleAlpha +
-            glowColor * glowAlpha * glowRadiance;
-        return float4(premultipliedStylized, finalAlpha);
-    }
+
     alpha *= HikariResolveParticleDepthFade(input);
     clip(alpha - alphaClipThreshold);
-    const float3 straightColor =
-        input.color.rgb * materialColor.rgb + emissive;
+    const float3 baseColor = input.color.rgb * materialColor.rgb;
+    const float3 straightColor = (lit ? HikariShadeSimpleSurface(baseColor,pbrInputs.metallic,
+        pbrInputs.roughness,pbrInputs.specularColor,pbrInputs.specularFactor,pbrInputs.occlusion,
+        shadingNormal,geometricNormal,input.worldPosition,input.position.xy) : baseColor) + emissive;
     return float4(straightColor * alpha, alpha);
 }

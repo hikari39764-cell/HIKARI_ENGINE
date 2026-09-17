@@ -1,3 +1,4 @@
+#include "Editor/Workspaces/Vfx/HIKARI_VfxInspectorControls.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 
 #include <algorithm>
@@ -25,7 +26,7 @@ namespace HIKARI::EDITOR {
         }
         const ImGuiViewport* viewport = ImGui::GetMainViewport();
         const ImGuiID dockspaceId = ImGui::GetID(
-            "HIKARI_VfxWorkspaceDockSpace_v1");
+            "HIKARI_VfxWorkspaceDockSpace_v4");
         if (ImGui::DockBuilderGetNode(dockspaceId) == nullptr ||
             resetDefaultDockLayout) {
             ImGui::DockBuilderRemoveNode(dockspaceId);
@@ -44,22 +45,22 @@ namespace HIKARI::EDITOR {
             ImGui::DockBuilderSplitNode(
                 body, ImGuiDir_Up, 0.07f, &toolbar, &body);
             ImGui::DockBuilderSplitNode(
-                body, ImGuiDir_Left, 0.24f, &hierarchy, &body);
-            ImGui::DockBuilderSplitNode(
-                body, ImGuiDir_Right, 0.29f, &inspector, &body);
-            ImGui::DockBuilderSplitNode(
                 body, ImGuiDir_Down, 0.30f, &bottom, &body);
+            ImGui::DockBuilderSplitNode(
+                body, ImGuiDir_Left, 0.20f, &hierarchy, &body);
+            ImGui::DockBuilderSplitNode(
+                body, ImGuiDir_Right, 0.34f, &inspector, &body);
 
             ImGui::DockBuilderDockWindow(
                 "VFX###Vfx/Toolbar", toolbar);
             ImGui::DockBuilderDockWindow(
-                "Effect Hierarchy###Vfx/Hierarchy", hierarchy);
+                "Library & Layers###Vfx/Hierarchy", hierarchy);
             ImGui::DockBuilderDockWindow(
                 "Preview###Vfx/Preview", body);
             ImGui::DockBuilderDockWindow(
-                "Properties###Vfx/Inspector", inspector);
+                "Layer Settings###Vfx/Inspector", inspector);
             ImGui::DockBuilderDockWindow(
-                "Timeline & Curves###Vfx/CurvesDiagnostics", bottom);
+                "Timing & Curves###Vfx/CurvesDiagnostics", bottom);
             ImGui::DockBuilderFinish(dockspaceId);
         }
         ImGui::DockSpaceOverViewport(dockspaceId, viewport);
@@ -132,11 +133,11 @@ namespace HIKARI::EDITOR {
             document_.GetDisplayName().c_str(),
             targetName.c_str());
         ImGui::TextDisabled(
-            "The requested effect will open only after this decision succeeds.");
+            VfxUiText("The requested effect will open only after this decision succeeds.").c_str());
         ImGui::Spacing();
 
         if (ImGui::Button(
-                "Save and Continue", ImVec2(150.0f, 0.0f))) {
+                VfxUiText("Save and Continue").c_str(), ImVec2(150.0f, 0.0f))) {
             const AssetGuid targetGuid = pendingAssetOpenGuid_;
             if (Save(database, statusMessage_) &&
                 OpenAsset(
@@ -148,7 +149,7 @@ namespace HIKARI::EDITOR {
         }
         ImGui::SameLine();
         if (ImGui::Button(
-                "Discard and Continue", ImVec2(150.0f, 0.0f))) {
+                VfxUiText("Discard and Continue").c_str(), ImVec2(150.0f, 0.0f))) {
             const AssetGuid targetGuid = pendingAssetOpenGuid_;
             if (OpenAsset(
                     database,
@@ -159,7 +160,7 @@ namespace HIKARI::EDITOR {
             }
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(90.0f, 0.0f))) {
+        if (ImGui::Button(VfxUiText("Cancel").c_str(), ImVec2(90.0f, 0.0f))) {
             ClearPendingAssetOpen();
             statusMessage_ =
                 "VFX asset switch canceled; current edits are unchanged";
@@ -185,59 +186,33 @@ namespace HIKARI::EDITOR {
             return;
         }
 
-        if (ImGui::Button("New", { 64.0f, 28.0f })) {
+        if (ImGui::Button(VfxUiText("New").c_str(), { 64.0f, 28.0f })) {
             ImGui::OpenPopup("Create VFX Asset");
         }
         ImGui::SameLine();
         ImGui::BeginDisabled(!document_.IsOpen());
-        if (ImGui::Button("Save", { 64.0f, 28.0f })) {
+        if (ImGui::Button(VfxUiText("Save").c_str(), { 64.0f, 28.0f })) {
             (void)Save(database, statusMessage_);
         }
         ImGui::SameLine();
         ImGui::BeginDisabled(!document_.CanUndo());
-        if (ImGui::Button("Undo", { 58.0f, 28.0f })) {
+        if (ImGui::Button(VfxUiText("Undo").c_str(), { 58.0f, 28.0f })) {
             (void)Undo(statusMessage_);
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
         ImGui::BeginDisabled(!document_.CanRedo());
-        if (ImGui::Button("Redo", { 58.0f, 28.0f })) {
+        if (ImGui::Button(VfxUiText("Redo").c_str(), { 58.0f, 28.0f })) {
             (void)Redo(statusMessage_);
         }
         ImGui::EndDisabled();
         ImGui::EndDisabled();
 
         ImGui::SameLine();
-        ImGui::Dummy({ 12.0f, 1.0f });
-        ImGui::SameLine();
-        if (!previewPlaying_) {
-            if (ImGui::Button("Play", { 64.0f, 28.0f })) {
-                (void)PlayPreview(statusMessage_);
-            }
-        } else {
-            if (ImGui::Button(
-                    previewPaused_ ? "Resume" : "Pause",
-                    { 68.0f, 28.0f })) {
-                PausePreview(!previewPaused_);
-            }
-        }
-        ImGui::SameLine();
-        ImGui::BeginDisabled(!previewPlaying_);
-        if (ImGui::Button("Restart", { 72.0f, 28.0f })) {
-            (void)RestartPreview(statusMessage_);
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Stop", { 60.0f, 28.0f })) {
-            StopPreview();
-            statusMessage_ = "VFX preview stopped";
-        }
-        ImGui::EndDisabled();
-
-        ImGui::SameLine();
         const char* state = VFX::HasVfxErrors(diagnostics_)
             ? "Compile errors"
             : document_.IsDirty()
-                ? "Unsaved"
+                ? VfxUiText("Unsaved").c_str()
                 : "Saved";
         ImGui::TextDisabled(
             "%s  |  %.2f / %.2f s",
@@ -249,7 +224,7 @@ namespace HIKARI::EDITOR {
         ImGui::SameLine((std::max)(
             ImGui::GetCursorPosX(),
             ImGui::GetWindowWidth() - exitWidth - 12.0f));
-        if (ImGui::Button("Scene", { exitWidth, 28.0f })) {
+        if (ImGui::Button(VfxUiText("Scene").c_str(), { exitWidth, 28.0f })) {
             result.exitToSceneRequested = true;
         }
 
@@ -257,7 +232,7 @@ namespace HIKARI::EDITOR {
                 "Create VFX Asset",
                 nullptr,
                 ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::TextUnformatted("Start a stack-based native VFX asset.");
+            ImGui::TextUnformatted(VfxUiText("Start from a template or create an empty effect.").c_str());
             if (document_.IsDirty()) {
                 ImGui::TextColored(
                     { 1.0f, 0.72f, 0.22f, 1.0f },
@@ -268,7 +243,7 @@ namespace HIKARI::EDITOR {
                 "Name",
                 newAssetName_.data(),
                 newAssetName_.size());
-            if (ImGui::Button("Cancel")) {
+            if (ImGui::Button(VfxUiText("Cancel").c_str())) {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
@@ -279,19 +254,21 @@ namespace HIKARI::EDITOR {
                 NewAsset(newAssetName_.data());
                 ImGui::CloseCurrentPopup();
             }
-            ImGui::SeparatorText("Start From Preset");
+            ImGui::SeparatorText(VfxUiText("Start From Preset").c_str());
             ImGui::TextDisabled(
-                "Effekseer-style starter presets use directly editable shared EngineContent textures. Custom Material is optional.");
+                VfxUiText("Choose a starting point. Every layer remains editable.").c_str());
             if (ImGui::BeginListBox("##vfx_presets", { 320.0f, 180.0f })) {
                 std::string lastCategory{};
                 for (const auto& preset :
                     VFX::PRESETS::GetVfxPresetCatalog()) {
                     if (preset.category != lastCategory) {
                         lastCategory = preset.category;
-                        ImGui::SeparatorText(preset.category.c_str());
+                        ImGui::SeparatorText(VfxUiText(preset.category).c_str());
                     }
                     ImGui::PushID(preset.id.c_str());
-                    if (ImGui::Selectable(preset.displayName.c_str())) {
+                    const std::string label = document_.IsDirty()
+                        ? "Discard and create: " + preset.displayName : preset.displayName;
+                    if (ImGui::Selectable(label.c_str())) {
                         std::string presetMessage{};
                         if (NewAssetFromPreset(preset.id, presetMessage)) {
                             ImGui::CloseCurrentPopup();
@@ -302,7 +279,7 @@ namespace HIKARI::EDITOR {
                     if (ImGui::IsItemHovered(
                             ImGuiHoveredFlags_DelayShort)) {
                         ImGui::BeginTooltip();
-                        ImGui::TextUnformatted(preset.summary.c_str());
+                        ImGui::TextUnformatted(VfxUiText(preset.summary).c_str());
                         ImGui::EndTooltip();
                     }
                     ImGui::PopID();

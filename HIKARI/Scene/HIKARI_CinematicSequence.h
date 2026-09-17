@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "Scene/Sequencer/HIKARI_SequenceBinding.h"
+#include "Scene/Sequencer/Tracks/HIKARI_PresentationCueTrack.h"
 #include "Scene/Sequencer/Tracks/HIKARI_CameraCutTrack.h"
 #include "Scene/Sequencer/Tracks/HIKARI_CameraLensTrack.h"
 #include "Scene/Sequencer/Tracks/HIKARI_CameraTransformTrack.h"
@@ -33,6 +34,7 @@ namespace HIKARI {
         SEQUENCER::CameraCutTrack cameraCutTrack{};
         SEQUENCER::CameraTransformTrack cameraTransformTrack{};
         SEQUENCER::CameraLensTrack cameraLensTrack{};
+        SEQUENCER::PresentationCueTrack presentationCueTrack{};
     };
 
     struct SceneCinematicsSettings {

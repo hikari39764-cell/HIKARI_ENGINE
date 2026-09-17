@@ -1,3 +1,4 @@
+#include "Audio/HIKARI_Audio.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/Document/Internal/HIKARI_DocumentSceneState.h"
 
@@ -7,6 +8,7 @@
 #include <utility>
 
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
+#include "Runtime/HIKARI_RuntimeLaunchConfig.h"
 #include "Runtime/Binding/HIKARI_RuntimeBindingCatalogJson.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Math/HIKARI_MathValidation.h"
@@ -209,6 +211,7 @@ namespace HIKARI {
         }
         inputContexts.SetActive("Editor", false);
         inputContexts.SetActive("Gameplay", true);
+        AUDIO::UseCameraListener();
         state_->runtime.playActive = true;
         // Navigation is prepared at the Play boundary so the first enemy
         // query cannot synchronously scan and build the whole terrain.
@@ -227,6 +230,9 @@ namespace HIKARI {
         }
 
         state_->runtime.playActive = false;
+        SERVICES::GetInputService().SetDeveloperInputCaptured(false);
+        state_->runtime.debugService.Reset(state_->runtime.world);
+        AUDIO::StopOwner(state_->runtime.world.GetRuntimeIdentity());
         state_->runtime.fixedStepClock.Reset();
         if (state_->runtime.inputContextSnapshotValid) {
             INPUT::InputContextStack& inputContexts =
@@ -387,6 +393,10 @@ namespace HIKARI {
         // first so every failure path is fail-closed instead of retaining
         // services owned by the previous feature selection.
         WorldServiceRegistry& services = state_->runtime.world.Services();
+        SERVICES::GetInputService().SetDeveloperInputCaptured(false);
+        state_->runtime.debugService.Reset(state_->runtime.world);
+        state_->runtime.developerDiagnosticsAllowed = IsEditorHostMode(SERVICES::GetRuntimeHostMode()) ||
+            HasRuntimeCommandLineFlag(L"--developer-console");
         services.Clear();
         state_->runtime.worldServicesConfigured = false;
         state_->runtime.presentationModelService.Clear();
@@ -397,6 +407,7 @@ namespace HIKARI {
         state_->runtime.navigationWorldService.Clear();
         MESHRENDERER::ReleaseParticleNamespace(
             state_->runtime.vfxPlaybackService.GetPlaybackNamespace());
+        AUDIO::StopOwner(state_->runtime.world.GetRuntimeIdentity());
         state_->runtime.vfxPlaybackService.Reset();
         state_->runtime.vfxPlaybackService.SetProgramResolver({});
         state_->runtime.vfxPlaybackService.SetAttachmentResolver({});
@@ -521,6 +532,8 @@ namespace HIKARI {
                 : nullptr);
 
         bool success = services.Register(SERVICES::GetInputService());
+        success = services.Register(state_->runtime.debugService) && success;
+        success = services.Register(state_->runtime.systemScheduler) && success;
         success = services.Register(state_->runtime.bindingStore) && success;
         success = (!vfxEnabled || services.Register(
             state_->runtime.vfxPlaybackService)) && success;
@@ -687,12 +700,14 @@ namespace HIKARI {
         SceneDependencySet deps = state_->runtime.builder.CollectDependencies(
             state_->identity.document,
             &state_->runtime.componentRegistry);
-        const auto rejectAssetAdmission = [](const char* message) {
-            HIKARI_LOG_ERROR(message);
+        std::string dependencyReason;
+        const auto rejectAssetAdmission = [&](const char* message) {
+            state_->identity.loadError = state_->identity.document.sceneName + ": " + message + " " + dependencyReason;
+            HIKARI_LOG_ERROR(state_->identity.loadError);
             return false;
         };
-        if (state_->assets.NeedsRuntimeDependencyRegistryRefresh(deps)) {
-            if (assetSnapshotAlreadyRefreshed) {
+        if (state_->assets.NeedsRuntimeDependencyRegistryRefresh(deps, &dependencyReason)) {
+            if (assetSnapshotAlreadyRefreshed && !state_->assets.NeedsRuntimeProgramImport(deps)) {
                 return rejectAssetAdmission(
                     "[SceneRuntime] freshly published asset registry is "
                     "missing required Scene dependencies.");
@@ -705,7 +720,7 @@ namespace HIKARI {
             deps = state_->runtime.builder.CollectDependencies(
                 state_->identity.document,
                 &state_->runtime.componentRegistry);
-            if (state_->assets.NeedsRuntimeDependencyRegistryRefresh(deps)) {
+            if (state_->assets.NeedsRuntimeDependencyRegistryRefresh(deps, &dependencyReason)) {
                 return rejectAssetAdmission(
                     "[SceneRuntime] runtime rebuild rejected because "
                     "required asset descriptors remain unavailable.");
@@ -728,6 +743,7 @@ namespace HIKARI {
         state_->runtime.world.Clear();
         MESHRENDERER::ReleaseParticleNamespace(
             state_->runtime.vfxPlaybackService.GetPlaybackNamespace());
+        AUDIO::StopOwner(state_->runtime.world.GetRuntimeIdentity());
         state_->runtime.vfxPlaybackService.Reset();
         state_->runtime.combatPresentationService.Reset();
         state_->runtime.combatAfterimageService.Reset();

@@ -162,14 +162,18 @@ bool HikariMeshletAsCanConeCull(HikariMeshletVisibleRange visible)
 [numthreads(HIKARI_MESHLET_AS_MAX_CLUSTER_PAYLOAD, 1, 1)]
 void main(uint groupIndex : SV_GroupIndex, uint3 groupId : SV_GroupID)
 {
-    const uint visibleRangeIndex = gMeshletVisibleRangeIndex + groupId.x;
+    // D3D12 の標準上限に収まる二次元 grid。最後の行の余りは読まずに除外。
+    const uint rangeOffset = groupId.y * min(gMeshletVisibleRangeCount, 65535u) + groupId.x;
+    const uint visibleRangeIndex = gMeshletVisibleRangeIndex + rangeOffset;
     if (groupIndex == 0u)
     {
         HikariMeshletAsInitPayload();
     }
     GroupMemoryBarrierWithGroupSync();
 
-    HikariMeshletVisibleRange visible = gMeshletVisibleRanges[visibleRangeIndex];
+    HikariMeshletVisibleRange visible = (HikariMeshletVisibleRange)0;
+    if (rangeOffset < gMeshletVisibleRangeCount)
+        visible = gMeshletVisibleRanges[visibleRangeIndex];
     const uint sourceClusterCount = visible.clusterCount;
     const bool candidateLane = groupIndex < min(sourceClusterCount, HIKARI_MESHLET_AS_MAX_CLUSTER_PAYLOAD);
     bool frustumCulled = false, coneTested = false, coneCulled = false;

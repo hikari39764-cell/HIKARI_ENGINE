@@ -10,6 +10,7 @@
 #include "Assets/Animation/HIKARI_AnimationStateMachineAssetStore.h"
 #include "Assets/Dialogue/HIKARI_DialogueAssetStore.h"
 #include "Core/HIKARI_FixedStepClock.h"
+#include "Runtime/Diagnostics/HIKARI_RuntimeDebugService.h"
 #include "Gameplay/Motion/HIKARI_CharacterMotionStateService.h"
 #include "Gameplay/Motion/HIKARI_MotionIntentService.h"
 #include "Gameplay/Dialogue/HIKARI_DialogueSessionService.h"
@@ -45,6 +46,8 @@
 namespace HIKARI {
 
     struct DocumentSceneRuntimeState {
+        RUNTIME::RuntimeDebugService debugService{};
+        bool developerDiagnosticsAllowed = false;
         FixedStepClock fixedStepClock{};
         RuntimePlayStateService playStateService{};
         GameplayCameraService gameplayCameraService{};

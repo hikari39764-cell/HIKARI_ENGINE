@@ -265,7 +265,7 @@ namespace HIKARI {
             }
             windowTimer.Finish();
             CORE::StartupTimer audioTimer("Audio.initialize");
-            if (AUDIO::Initialize(AUDIO::BackendType::XAudio2)) {
+            if (AUDIO::Initialize(cfg.headlessRender ? AUDIO::BackendType::Null : AUDIO::BackendType::XAudio2)) {
                 HIKARI_LOG_INFO("Audio initialized.");
             }
             else {
@@ -347,9 +347,9 @@ namespace HIKARI {
                     : gGraphicsCore.InitializationError());
             }
             GFX::FrameSubmissionCallbacks submissionCallbacks{};
-            submissionCallbacks.presentStart = [] {
+            submissionCallbacks.presentStart = [headless = cfg.headlessRender] {
                 // 最初の描画コマンドを送出してから本体ウィンドウを公開する。
-                if (gWindow.IsStartupHidden()) gWindow.Show();
+                if (gWindow.IsStartupHidden() && !headless) gWindow.Show();
                 if (gStreamlineEnabled) RENDER3D::UPSCALING::MarkStreamlineReflexPresentStart();
             };
             if (gStreamlineEnabled) {

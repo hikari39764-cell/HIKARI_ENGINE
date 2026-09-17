@@ -100,6 +100,10 @@ InputActionMap CreateDefaultInputActionMap() {
         { "Gameplay.Jump", "Jump", InputActionValueType::Button },
         { "Gameplay.Sprint", "Sprint", InputActionValueType::Button },
         { "Gameplay.Interact", "Interact", InputActionValueType::Button },
+        { "UI.Navigate", "Menu Navigation", InputActionValueType::Axis2D },
+        { "UI.Submit", "Menu Submit", InputActionValueType::Button },
+        { "UI.Cancel", "Menu Cancel", InputActionValueType::Button },
+        { "Gameplay.Menu", "Pause Menu", InputActionValueType::Button },
         { "Editor.CameraMove", "Camera Move", InputActionValueType::Axis2D, true },
         { "Editor.CameraMoveVertical", "Camera Move Vertical", InputActionValueType::Axis1D, true },
         { "Editor.CameraLook", "Camera Look", InputActionValueType::Axis2D, false },
@@ -171,10 +175,30 @@ InputActionMap CreateDefaultInputActionMap() {
         Binding("Gameplay.Sprint", InputBindingSource::GamepadButton, "LeftStick"),
         Binding("Gameplay.Interact", InputBindingSource::Keyboard, "E"),
         Binding("Gameplay.Interact", InputBindingSource::GamepadButton, "X"),
+        Binding("Gameplay.Menu", InputBindingSource::Keyboard, "Tab"),
+        Binding("Gameplay.Menu", InputBindingSource::GamepadButton, "Start"),
     };
 
+    InputContextDefinition ui{};
+    ui.contextId = "UI"; ui.displayName = "User Interface";
+    ui.priority = 200; ui.consumeInput = true; ui.enabledByDefault = false;
+    for (const auto& binding : gameplay.bindings) {
+        if (binding.actionId == "Gameplay.Move") {
+            auto navigation = binding; navigation.actionId = "UI.Navigate";
+            ui.bindings.push_back(std::move(navigation));
+        }
+    }
+    for (const auto& binding : {
+        Binding("UI.Submit", InputBindingSource::Keyboard, "Enter"),
+        Binding("UI.Submit", InputBindingSource::Keyboard, "E"),
+        Binding("UI.Submit", InputBindingSource::Keyboard, "Space"),
+        Binding("UI.Submit", InputBindingSource::GamepadButton, "A"),
+        Binding("UI.Submit", InputBindingSource::GamepadButton, "X"),
+        Binding("UI.Cancel", InputBindingSource::Keyboard, "Tab"),
+        Binding("UI.Cancel", InputBindingSource::GamepadButton, "B"),
+        Binding("UI.Cancel", InputBindingSource::GamepadButton, "Start")}) ui.bindings.push_back(binding);
     map.contexts = {
-        std::move(global), std::move(editor), std::move(gameplay) };
+        std::move(global), std::move(editor), std::move(gameplay), std::move(ui) };
     return map;
 }
 

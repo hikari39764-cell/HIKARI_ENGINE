@@ -476,10 +476,9 @@ namespace HIKARI {
                         }
                     }
                 } else if (component.type == "ProceduralMeshComponent") {
-                    const std::string materialSelection =
-                        component.properties.value(
-                            "materialSelection",
-                            std::string{});
+                    ProceduralMeshComponent procedural;
+                    procedural.Deserialize(component.properties);
+                    const std::string& materialSelection = procedural.GetMaterialSelection();
                     if (!materialSelection.empty()) {
                         deps.materialAssetIds.insert(materialSelection);
                     }
@@ -511,6 +510,12 @@ namespace HIKARI {
                     }
                 }
             }
+        }
+
+        for (const auto& sequence : document.cinematics.sequences) {
+            for (const auto& cue : sequence.presentationCueTrack.clips)
+                if (cue.kind == SEQUENCER::PresentationCueKind::Vfx && cue.vfxAsset.IsValid())
+                    deps.vfxAssetIds.insert(cue.vfxAsset.value);
         }
 
         return deps;

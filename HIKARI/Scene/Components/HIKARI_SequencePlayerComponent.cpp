@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include "Scene/Serialization/Objects/HIKARI_SceneObjectJson.h"
 
 namespace HIKARI {
 
@@ -71,7 +72,7 @@ namespace HIKARI {
         for (const SequencePlayerBinding& binding : bindings_) {
             out["bindings"].push_back({
                 { "slotName", binding.slotName },
-                { "sceneObjectId", binding.sceneObjectId.value }
+                { "sceneObjectId", SCENE::SERIALIZATION::WriteSceneObjectReference(binding.sceneObjectId.value) }
             });
         }
     }
@@ -107,9 +108,8 @@ namespace HIKARI {
                 }
                 SequencePlayerBinding binding{};
                 binding.slotName = node.value("slotName", std::string{});
-                binding.sceneObjectId.value = node.value(
-                    "sceneObjectId",
-                    0ull);
+                binding.sceneObjectId.value = SCENE::SERIALIZATION::SceneObjectReferenceOr(
+                    node.value("sceneObjectId", nlohmann::json{}));
                 bindings_.push_back(std::move(binding));
             }
         }

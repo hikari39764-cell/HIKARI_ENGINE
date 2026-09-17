@@ -5,6 +5,7 @@
 
 #include "HIKARI/Project/SequenceTypes.h"
 #include "Scene/Sequencer/HIKARI_SequenceBindingNaming.h"
+#include "Scene/Serialization/Objects/HIKARI_SceneObjectJson.h"
 
 namespace HIKARI::EDITOR {
 
@@ -134,13 +135,11 @@ namespace HIKARI::EDITOR {
                         if (savedSlot == node.end() ||
                             !savedSlot->is_string() ||
                             savedSlot->get<std::string>() != slotName ||
-                            savedObject == node.end() ||
-                            (!savedObject->is_number_integer() &&
-                                !savedObject->is_number_unsigned())) {
+                            savedObject == node.end()) {
                             continue;
                         }
                         SceneObjectId objectId{
-                            savedObject->get<uint64_t>()
+                            SCENE::SERIALIZATION::SceneObjectReferenceOr(*savedObject)
                         };
                         const SceneObjectData* camera = FindSceneObject(
                             document,

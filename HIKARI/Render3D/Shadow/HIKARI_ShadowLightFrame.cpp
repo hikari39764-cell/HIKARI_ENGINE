@@ -60,7 +60,7 @@ namespace HIKARI::SHADOW {
             // Frustum の外接半径はカメラ空間で求め、ワールド座標の丸めでスケールを変えない。
             const float tanHalfFov = std::tan(camera.GetFovYRad() * 0.5f);
             const float halfDepth = (splitFar - splitNear) * 0.5f;
-            const float farHalfHeight = splitFar * tanHalfFov;
+            const float farHalfHeight = camera.IsOrthographic() ? camera.GetOrthographicHeight()*0.5f : splitFar * tanHalfFov;
             const float farHalfWidth = farHalfHeight * camera.GetAspect();
             const MATH::Vec3 center = camera.GetPosition() +
                 cameraForward * ((splitNear + splitFar) * 0.5f);

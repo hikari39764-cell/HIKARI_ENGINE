@@ -172,6 +172,7 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
             if (storedVersion != 3u &&
                 storedVersion != 4u &&
                 storedVersion != 5u &&
+                storedVersion != 6u &&
                 storedVersion != kMaterialProgramIrVersion) {
                 outError = "unsupported MaterialProgram IR version " +
                     std::to_string(storedVersion) +
@@ -307,7 +308,10 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
                         storedVersion >= 6u &&
                         opcode == static_cast<uint32_t>(
                             MaterialProgramOpcode::ParticleOutput);
-                    if ((opcode > legacyMaximumOpcode && !particleTerminal) ||
+                    const bool particleInput = storedVersion >= 7u &&
+                        opcode >= static_cast<uint32_t>(MaterialProgramOpcode::ParticleState) &&
+                        opcode <= static_cast<uint32_t>(MaterialProgramOpcode::ParticleUv);
+                    if ((opcode > legacyMaximumOpcode && !particleTerminal && !particleInput) ||
                         !TryParseMaterialValueType(
                             item.value("valueType", std::string{}),
                             instruction.valueType)) {

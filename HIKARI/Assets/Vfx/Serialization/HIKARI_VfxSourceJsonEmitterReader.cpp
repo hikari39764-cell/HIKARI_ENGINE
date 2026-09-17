@@ -220,6 +220,14 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
             emitter.startDelay =
                 node["startDelaySeconds"].get<float>();
         }
+        if (node.contains("kind")) {
+            if (!node["kind"].is_string()) return false;
+            const auto kind = node["kind"].get<std::string>();
+            if (kind == "Particles") emitter.kind = VfxLayerKind::Particles;
+            else if (kind == "Shape") emitter.kind = VfxLayerKind::Shape;
+            else if (kind == "Group") emitter.kind = VfxLayerKind::Group;
+            else return false;
+        }
         if (node.contains("activeDuration")) {
             if (!node["activeDuration"].is_number()) return false;
             emitter.activeDuration =
@@ -230,6 +238,21 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
                 node["activeDurationSeconds"].get<float>();
         }
 
+        if (node.contains("history")) {
+            const auto& h = node["history"];
+            if (!h.is_object() || !h.contains("mode") || !h["mode"].is_string() ||
+                !h.contains("duration") || !h["duration"].is_number() ||
+                !h.contains("samples") || !ReadUint32(h["samples"], emitter.history.samples) ||
+                !h.contains("breakDistance") || !h["breakDistance"].is_number()) return false;
+            const auto mode = h["mode"].get<std::string>();
+            if (mode == "None") emitter.history.mode = VfxHistoryMode::None;
+            else if (mode == "Afterimage") emitter.history.mode = VfxHistoryMode::Afterimage;
+            else if (mode == "Trail") emitter.history.mode = VfxHistoryMode::Trail;
+            else return false;
+            emitter.history.duration = h["duration"].get<float>();
+            emitter.history.breakDistance = h["breakDistance"].get<float>();
+            if (!IsValidVfxHistory(emitter.history)) return false;
+        }
         const Json& modules = node["modules"];
         constexpr const char* kModuleNames[] = {
             "basic", "emitterTransform", "spawn", "shape", "position",
@@ -264,6 +287,8 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
             return false;
         }
         emitter.basic.enabled = basic["enabled"].get<bool>();
+        if (basic.contains("localSimulation") && !basic["localSimulation"].is_boolean()) return false;
+        emitter.basic.localSimulation = basic.value("localSimulation",false);
 
         emitter.emitterTransform.id =
             transform["id"].get<std::string>();
@@ -445,6 +470,13 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
             return false;
         }
         emitter.forces.drag = forces["drag"].get<float>();
+        if (forces.contains("collisionPlaneEnabled") && !forces["collisionPlaneEnabled"].is_boolean()) return false;
+        for (const char* name : {"collisionPlaneHeight","restitution","friction"})
+            if (forces.contains(name) && !forces[name].is_number()) return false;
+        emitter.forces.collisionPlaneEnabled = forces.value("collisionPlaneEnabled",false);
+        emitter.forces.collisionPlaneHeight = forces.value("collisionPlaneHeight",0.0f);
+        emitter.forces.restitution = forces.value("restitution",0.35f);
+        emitter.forces.friction = forces.value("friction",0.2f);
 
         emitter.color.id = color["id"].get<std::string>();
         if (!color.contains("value") ||
@@ -486,47 +518,16 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
             if (!TryParseVfxParticleDepthMode(
                     renderCommon.value("depthMode", std::string{}),
                     emitter.renderCommon.depthMode) ||
-                !TryParseVfxParticleShaderStyle(
-                    renderCommon.value("shaderStyle", std::string{}),
-                    emitter.renderCommon.shaderStyle) ||
                 !renderCommon.contains("softIntersectionDistance") ||
                 !renderCommon["softIntersectionDistance"].is_number() ||
                 !renderCommon.contains("depthBias") ||
-                !renderCommon["depthBias"].is_number() ||
-                !renderCommon.contains("shaderOutlineColor") ||
-                !ReadVec4(
-                    renderCommon["shaderOutlineColor"],
-                    emitter.renderCommon.shaderOutlineColor) ||
-                !renderCommon.contains("shaderCoreColor") ||
-                !ReadVec4(
-                    renderCommon["shaderCoreColor"],
-                    emitter.renderCommon.shaderCoreColor) ||
-                !renderCommon.contains("shaderOutlineWidth") ||
-                !renderCommon["shaderOutlineWidth"].is_number() ||
-                !renderCommon.contains("shaderEdgeHardness") ||
-                !renderCommon["shaderEdgeHardness"].is_number() ||
-                !renderCommon.contains("shaderEmissiveIntensity") ||
-                !renderCommon["shaderEmissiveIntensity"].is_number() ||
-                !renderCommon.contains("shaderBreakupScale") ||
-                !renderCommon["shaderBreakupScale"].is_number() ||
-                !renderCommon.contains("shaderBreakupStrength") ||
-                !renderCommon["shaderBreakupStrength"].is_number()) {
+                !renderCommon["depthBias"].is_number()) {
                 return false;
             }
             emitter.renderCommon.softIntersectionDistance =
                 renderCommon["softIntersectionDistance"].get<float>();
             emitter.renderCommon.depthBias =
                 renderCommon["depthBias"].get<float>();
-            emitter.renderCommon.shaderOutlineWidth =
-                renderCommon["shaderOutlineWidth"].get<float>();
-            emitter.renderCommon.shaderEdgeHardness =
-                renderCommon["shaderEdgeHardness"].get<float>();
-            emitter.renderCommon.shaderEmissiveIntensity =
-                renderCommon["shaderEmissiveIntensity"].get<float>();
-            emitter.renderCommon.shaderBreakupScale =
-                renderCommon["shaderBreakupScale"].get<float>();
-            emitter.renderCommon.shaderBreakupStrength =
-                renderCommon["shaderBreakupStrength"].get<float>();
         } else {
             if (!renderCommon.contains("depthTest") ||
                 !renderCommon["depthTest"].is_boolean()) {
@@ -680,6 +681,39 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
                 item["scale"].get<float>(),
                 item["bias"].get<float>(),
             });
+        }
+        if (node.contains("effects")) {
+            if (!node["effects"].is_array() || node["effects"].size() > 8) return false;
+            for (const auto& item : node["effects"]) {
+                MaterialEffectStep step;
+                if (!item.is_object() || !item.contains("id") || !item["id"].is_string() ||
+                    !ParseMaterialEffectKind(item.value("kind", ""), step.kind) ||
+                    !item.contains("enabled") || !item["enabled"].is_boolean() ||
+                    !item.contains("parameters") || !ReadVec4(item["parameters"], step.parameters) ||
+                    !item.contains("colorA") || !ReadVec4(item["colorA"], step.colorA) ||
+                    !item.contains("colorB") || !ReadVec4(item["colorB"], step.colorB)) return false;
+                step.id = item["id"].get<std::string>(); step.enabled = item["enabled"].get<bool>();
+                emitter.effects.push_back(std::move(step));
+            }
+        }
+        if (node.contains("animationTiming")) {
+            const auto& timing=node["animationTiming"];
+            if (!timing.is_object() || !timing.contains("sourceDuration") || !timing["sourceDuration"].is_number() ||
+                !timing.contains("offset") || !timing["offset"].is_number() || !timing.contains("rate") || !timing["rate"].is_number()) return false;
+            emitter.animationTiming={timing["sourceDuration"].get<float>(),timing["offset"].get<float>(),timing["rate"].get<float>()};
+        }
+        if (node.contains("parameterTracks")) {
+            const auto& tracks=node["parameterTracks"];
+            if (!tracks.is_array() || tracks.size()>kMaxVfxParameterTracks) return false;
+            for (const auto& item:tracks) {
+                VfxParameterTrackData track;
+                if (!item.is_object() || !item.contains("id") || !item["id"].is_string() ||
+                    !item.contains("targetId") || !item["targetId"].is_string() ||
+                    !item.contains("propertyId") || !item["propertyId"].is_string() ||
+                    !item.contains("curve") || !ReadCurve(item["curve"],track.curve)) return false;
+                track.id=item["id"].get<std::string>(); track.targetId=item["targetId"].get<std::string>();
+                track.propertyId=item["propertyId"].get<std::string>(); emitter.parameterTracks.push_back(std::move(track));
+            }
         }
         outEmitter = std::move(emitter);
         return true;

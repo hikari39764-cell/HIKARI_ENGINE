@@ -360,7 +360,7 @@ namespace HIKARI {
             "Submits this text to the active Canvas." }, enabled_);
         (void)builder.String({ "text", "Text", "UTF-8 display text." }, text_);
         (void)builder.String({ "fontAssetPath", "Font Path",
-            "Project-relative TTF, OTF or TTC path below Assets." },
+            "TTF, OTF or TTC path, e.g. Fonts/RobotoMono.ttf; an Assets/ prefix is also accepted." },
             fontAssetPath_);
         if (fontAssetPath_.empty()) {
             builder.Text(
@@ -408,6 +408,7 @@ namespace HIKARI {
             { "submitActionId", submitActionId_ },
             { "onClickEventId", onClickEventId_ },
             { "normalTint", WriteColor(normalTint_) },
+            { "transitionSeconds", transitionSeconds_ },
             { "hoverTint", WriteColor(hoverTint_) },
             { "pressedTint", WriteColor(pressedTint_) },
             { "disabledTint", WriteColor(disabledTint_) }
@@ -431,6 +432,10 @@ namespace HIKARI {
         disabledTint_ = ReadColorMember(
             in, "disabledTint", { 0.38f, 0.38f, 0.42f, 0.65f });
         visualState_ = UiButtonVisualState::Normal;
+        animatedTint_ = transitionFrom_ = normalTint_;
+        transitionElapsed_ = 0;
+        transitionSeconds_ = std::clamp(FiniteOr(JSONREAD::NumberMemberOr(
+            in, "transitionSeconds", 0.1f), 0.1f), 0.0f, 2.0f);
     }
 
     void UiButtonComponent::BuildInspector(IInspectorBuilder& builder) {
@@ -456,6 +461,7 @@ namespace HIKARI {
             BINDING::ValueType::Bool,
             onClickEventId_);
         if (builder.Section("Button Colors", false)) {
+            builder.FloatRange("State transition seconds", transitionSeconds_, 0, 2);
             InspectColor(builder, "normalTint", "Normal", normalTint_);
             InspectColor(builder, "hoverTint", "Hover", hoverTint_);
             InspectColor(builder, "pressedTint", "Pressed", pressedTint_);
@@ -463,6 +469,15 @@ namespace HIKARI {
         }
     }
 
+    void UiButtonComponent::AdvanceVisual(float dt) noexcept {
+        if (!std::isfinite(dt) || dt < 0) return;
+        transitionElapsed_ = std::min(transitionElapsed_ + dt, transitionSeconds_);
+        const float t = transitionSeconds_ > 0 ? transitionElapsed_ / transitionSeconds_ : 1;
+        const float eased = t * t * (3 - 2 * t);
+        const auto& target = GetStateTint();
+        animatedTint_ = {std::lerp(transitionFrom_.r,target.r,eased), std::lerp(transitionFrom_.g,target.g,eased),
+            std::lerp(transitionFrom_.b,target.b,eased),std::lerp(transitionFrom_.a,target.a,eased)};
+    }
     const GameProjectUiColor& UiButtonComponent::GetStateTint() const noexcept {
         switch (visualState_) {
         case UiButtonVisualState::Hovered: return hoverTint_;

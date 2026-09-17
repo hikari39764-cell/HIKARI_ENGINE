@@ -1,0 +1,7 @@
+Effekseer contributed textures by tktk02
+License: CC0 1.0 Universal
+Source: https://effekseer.github.io/en/contribute.html
+Archive: https://effekseer.github.io/contributes/tktk02.zip
+License text: https://creativecommons.org/publicdomain/zero/1.0/legalcode
+The official contribution page labels this pack CC0. Selected PNG bytes are unchanged.
+HIKARI supplies mipmapped BC7 copies for runtime use.

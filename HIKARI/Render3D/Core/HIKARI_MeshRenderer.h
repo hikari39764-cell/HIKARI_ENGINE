@@ -39,6 +39,7 @@ namespace HIKARI::RENDER3D {
     namespace WORLD_SPRITES {
         struct WorldSpriteFrameSource;
         struct WorldSpritePassStats;
+        class WorldSpritePass;
     }
     namespace WORLD_TEXT {
         struct WorldTextFrameSource;
@@ -224,7 +225,8 @@ namespace HIKARI::MESHRENDERER {
     void ResetSecondarySceneCaptureResources() noexcept;
     const MeshRendererDebugStats& GetDebugStats();
     // GeometryAux に参加しない opaque depth writer の有無。frame pass owner が判定する。
-    bool HasOpaqueDepthOutsideGeometryAux();
+    RENDER3D::WORLD_SPRITES::WorldSpritePass* PrepareWorldSpritesForView(
+        const GFX::Context& graphics, const RENDER3D::RenderViewContext& view);
     const RENDER3D::MATERIAL::GpuMaterialRegistryStats&
         GetGpuMaterialRegistryStats();
     const RENDER3D::GPUDRIVEN::MassGpuSceneFrameBufferStats&

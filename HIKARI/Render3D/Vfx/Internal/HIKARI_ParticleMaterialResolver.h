@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
+#include "Render3D/Material/HIKARI_GpuMaterialRegistry.h"
 
 namespace HIKARI {
     class AssetRegistry;
@@ -13,6 +14,10 @@ namespace HIKARI {
     }
 
     namespace RENDER3D::PARTICLES::INTERNAL {
+
+        MATERIAL::GpuMaterialSourceKey BuildParticleMaterialSourceKey(
+            const Material* material, const ParticleEmitterRenderParameters& render,
+            uint64_t instanceIdentity, uintptr_t sourceIdentity, bool rejected);
 
         struct ResolvedParticleMaterial {
             const Material* material = nullptr;

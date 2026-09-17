@@ -66,11 +66,12 @@ namespace HIKARI {
         ResetInteraction();
     }
 
-    void UiSceneSystem::Update(
+    void UiSceneSystem::PreUpdate(
         World& world,
         const FrameContext& frame) {
         if (presentation_ == nullptr || input_ == nullptr ||
-            playState_ == nullptr || !playState_->IsActive()) {
+            playState_ == nullptr || !playState_->IsActive() || input_->IsDeveloperInputCaptured()) {
+            if (presentation_) presentation_->BeginInteractionFrame(frame.frameIndex);
             ReleaseMouseCapture();
             ResetButtonStates(world);
             ResetInteraction();
@@ -129,7 +130,8 @@ namespace HIKARI {
         if (focusedButton_.IsValid() &&
             std::any_of(buttons_.begin(), buttons_.end(),
                 [this](const ButtonEntry& entry) {
-                    return entry.object->GetRuntimeHandle() == focusedButton_;
+                    return entry.object->GetRuntimeHandle() == focusedButton_ && entry.button->IsEnabled() &&
+                        entry.button->IsInteractable() && entry.layout.interactable;
                 })) {
             return;
         }
@@ -215,12 +217,15 @@ namespace HIKARI {
                 static_cast<uint32_t>(width),
                 static_cast<uint32_t>(height))
             : nullptr;
-        if (hovered != nullptr) {
+        const bool pointerMoved = pointerValid && (!pointerInitialized_ ||
+            std::abs(pointer.x - previousPointerX_) > 0.5f || std::abs(pointer.y - previousPointerY_) > 0.5f);
+        if (hovered != nullptr && (pointerMoved || (pointer.primaryDown && !previousPrimaryDown_))) {
             focusedButton_ = hovered->object->GetRuntimeHandle();
         }
+        if (pointerValid) { previousPointerX_ = pointer.x; previousPointerY_ = pointer.y; }
 
         const std::array<float, 2u> navigation =
-            input_->GetSnapshot().GetAxis2D("Gameplay.Move");
+            input_->GetSnapshot().GetAxis2D(input_->GetActionMap().FindAction("UI.Navigate") ? "UI.Navigate" : "Gameplay.Move");
         if (std::abs(navigation[1]) >= 0.55f &&
             std::abs(previousNavigationY_) < 0.55f) {
             MoveFocus(navigation[1] > 0.0f ? -1 : 1);
@@ -260,7 +265,8 @@ namespace HIKARI {
             focused->layout.interactable &&
             !focused->button->GetSubmitActionId().empty() &&
             input_->GetSnapshot().IsPressed(
-                focused->button->GetSubmitActionId())) {
+                focused->button->GetSubmitActionId() == "Gameplay.Interact" &&
+                    input_->GetActionMap().FindAction("UI.Submit") ? "UI.Submit" : focused->button->GetSubmitActionId())) {
             activation = focusedButton_;
         }
 
@@ -280,6 +286,7 @@ namespace HIKARI {
                             ? UiButtonVisualState::Hovered
                             : UiButtonVisualState::Normal;
             entry.button->SetVisualState(state);
+            entry.button->AdvanceVisual(frame.unscaledDt);
         }
         if (activation.IsValid()) {
             ActivateButton(activation, frame.frameIndex);
@@ -326,6 +333,7 @@ namespace HIKARI {
         (void)world.ForEachObjectWith<UiButtonComponent>(
             [](GameObject&, UiButtonComponent& button) {
                 button.SetVisualState(UiButtonVisualState::Normal);
+                button.AdvanceVisual(2.0f);
             });
     }
 
@@ -333,7 +341,11 @@ namespace HIKARI {
         if (input_ == nullptr) return;
         if (!ownsMouseCapture_) {
             previousMouseCaptureMode_ = input_->GetMouseCaptureMode();
+            previousUiInteraction_ = input_->IsUiInteractionActive();
+            previousUiContext_ = input_->Contexts().IsActive("UI");
         }
+        input_->SetUiInteractionActive(true);
+        if (input_->GetActionMap().FindContext("UI")) input_->Contexts().SetActive("UI", true);
         input_->SetMouseCaptureMode(INPUT::MouseCaptureMode::Free);
         input_->ClearMouseCaptureRegion();
         ownsMouseCapture_ = true;
@@ -342,6 +354,8 @@ namespace HIKARI {
     void UiSceneSystem::ReleaseMouseCapture() {
         if (!ownsMouseCapture_ || input_ == nullptr) return;
         input_->SetMouseCaptureMode(previousMouseCaptureMode_);
+        input_->SetUiInteractionActive(previousUiInteraction_);
+        input_->Contexts().SetActive("UI", previousUiContext_);
         ownsMouseCapture_ = false;
         previousMouseCaptureMode_ = INPUT::MouseCaptureMode::Free;
     }

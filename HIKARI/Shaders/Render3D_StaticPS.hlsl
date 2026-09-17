@@ -126,7 +126,7 @@ float4 main(PSInput input) : SV_TARGET
 
     const float3 toCamera = gCameraPos.xyz - input.worldPosWS;
     const float distanceToCamera = length(toCamera);
-    const float3 v = toCamera / max(distanceToCamera, 0.00001f);
+    const float3 v = HikariCameraViewDirection(input.worldPosWS);
     const float3 l = normalize(-gDirectionalDir.xyz);
     const float cloudSolarVisibility=costAlbedoOnly || (materialData.materialFlags & HIKARI_MATERIAL_FLAG_UNLIT)!=0u
         ? 1.0f : HikariForwardCloudSolarVisibility(input.worldPosWS);

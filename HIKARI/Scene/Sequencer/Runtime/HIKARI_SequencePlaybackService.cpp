@@ -355,6 +355,7 @@ namespace HIKARI::SEQUENCER {
             return false;
         }
         instances_[index].cursor.Pause();
+        EvaluateInstance(instances_[index], instances_[index].cursor.Tick(0.0f, SequenceEvaluationMode::Runtime));
         events_.push_back({
             SequencePlaybackEventKind::Paused,
             handle,

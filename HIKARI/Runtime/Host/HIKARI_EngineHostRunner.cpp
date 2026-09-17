@@ -38,8 +38,9 @@ namespace HIKARI::RUNTIME {
             const RuntimeLaunchConfig& runtimeConfig) {
 
             HostBootstrapConfig config{};
+            config.headlessRender = HasRuntimeCommandLineFlag(L"--headless-render");
             const EngineHostProduct product = options.product;
-            config.enableStreamline = options.enableStreamline;
+            config.enableStreamline = options.enableStreamline && !config.headlessRender;
             if (product == EngineHostProduct::Editor) {
                 config.hostMode = RuntimeHostMode::Editor;
                 config.enableImGui = true;
@@ -108,12 +109,13 @@ namespace HIKARI::RUNTIME {
         }
 
         int ReportLaunchFailure(
-            const std::string& message) {
+            const std::string& message, bool showDialog = true) {
 
             const std::string displayMessage =
                 "HIKARI could not start.\n\n" +
                 message;
             OutputDebugStringA(displayMessage.c_str());
+            if (!showDialog) return -2;
             // 自身の window の終了処理で残った WM_QUIT によって、
             // エラーダイアログの modal loop が即時終了しないようにする。
             MSG quit{};
@@ -134,11 +136,16 @@ namespace HIKARI::RUNTIME {
 
         const auto startupStarted = CORE::StartupTimer::Clock::now();
         EnableProcessDpiAwareness();
+        const bool headless = HasRuntimeCommandLineFlag(L"--headless-render");
+        const auto boundedFrames = ReadRuntimeCommandLineUint32(L"--exit-after-frame");
+        if (headless && (!boundedFrames || *boundedFrames == 0 || *boundedFrames > 10000)) {
+            return ReportLaunchFailure("--headless-render requires --exit-after-frame in [1,10000].",false);
+        }
         PLATFORM::StartupSplash splash;
-        const bool splashShown = splash.Start();
-        const auto launchFailure = [&splash](const std::string& message) {
+        const bool splashShown = !headless && splash.Start();
+        const auto launchFailure = [&splash,headless](const std::string& message) {
             splash.Stop();
-            return ReportLaunchFailure(message);
+            return ReportLaunchFailure(message,!headless);
         };
 
         std::string engineContentMessage{};
@@ -214,14 +221,14 @@ namespace HIKARI::RUNTIME {
                 resolvedWindowTitle,
                 servicesConfig,
                 &initializationError,
-                splashShown)) {
+                splashShown || headless)) {
             const auto logPath = CORE::GetLogFilePath();
             SERVICES::FinalizeAll();
             GetProjectContext().Close();
             CONTENT::GetEngineContentContext().Close();
             return launchFailure(initializationError + "\n\nLog: " + TEXT::PathToUtf8(logPath));
         }
-        if (!splashShown) HIKARI_LOG_WARN("[Startup] native logo unavailable; using the application window.");
+        if (!splashShown && !headless) HIKARI_LOG_WARN("[Startup] native logo unavailable; using the application window.");
         const CONTENT::EngineContentContext& engineContent =
             CONTENT::GetEngineContentContext();
         HIKARI_LOG_INFO(
@@ -241,7 +248,7 @@ namespace HIKARI::RUNTIME {
             HIKARI_LOG_INFO(
                 "[Project] no active project; launcher mode");
         }
-        if (!SERVICES::IsEditorHost()) {
+        if (!SERVICES::IsEditorHost() && !headless) {
             (void)SERVICES::ApplyWindowPresentationSettings();
         }
 
@@ -408,7 +415,7 @@ namespace HIKARI::RUNTIME {
                 pointerOwned = editor &&
                     editor->TryGetGameViewportPointer(pointer, width, height);
             }
-            SERVICES::GetInputService().ApplyPointerCursorVisibility(pointerOwned);
+            SERVICES::GetInputService().ApplyPointerCursorVisibility(pointerOwned && !headless);
 
             const INPUT::InputSnapshot& input =
                 SERVICES::GetInputSnapshot();
@@ -455,12 +462,14 @@ namespace HIKARI::RUNTIME {
 
         if (benchmark) benchmark->Finish();
         const int benchmarkExitCode = benchmark ? benchmark->ExitCode() : 0;
+        // Shutdown が状態を解放する前にアプリケーションの失敗を保持する。
+        const int applicationExitCode = application.GetExitCode();
         splash.Stop();
         application.Shutdown();
         SERVICES::FinalizeAll();
         GetProjectContext().Close();
         CONTENT::GetEngineContentContext().Close();
-        return benchmarkExitCode;
+        return applicationExitCode != 0 ? applicationExitCode : benchmarkExitCode;
     }
 
 } // namespace HIKARI::RUNTIME

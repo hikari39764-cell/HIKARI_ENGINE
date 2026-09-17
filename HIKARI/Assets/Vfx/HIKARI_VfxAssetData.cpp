@@ -1,9 +1,17 @@
+#include <cmath>
 #include "Assets/Vfx/HIKARI_VfxAssetData.h"
 
 #include <initializer_list>
+#include <array>
 #include <utility>
 
 namespace HIKARI::VFX {
+    bool IsValidVfxHistory(const VfxHistoryData& h) noexcept {
+        return static_cast<uint32_t>(h.mode) <= 2u && std::isfinite(h.duration) &&
+            h.duration >= 0.01f && h.duration <= 2.0f && h.samples >= 2u && h.samples <= 16u &&
+            std::isfinite(h.breakDistance) && h.breakDistance > 0.0f && h.breakDistance <= 10000.0f;
+    }
+
     namespace {
         template<class Enum>
         bool ParseEnum(
@@ -51,9 +59,31 @@ namespace HIKARI::VFX {
         switch (value) {
         case VfxRenderShapeType::Ribbon: return "Ribbon";
         case VfxRenderShapeType::Ring: return "Ring";
+        case VfxRenderShapeType::MeshBox: return "MeshBox";
+        case VfxRenderShapeType::MeshSphere: return "MeshSphere";
+        case VfxRenderShapeType::MeshCylinder: return "MeshCylinder";
+        case VfxRenderShapeType::MeshCone: return "MeshCone";
+        case VfxRenderShapeType::MeshHemisphere: return "MeshHemisphere";
+        case VfxRenderShapeType::CrossPlane: return "CrossPlane";
         case VfxRenderShapeType::Sprite:
         default: return "Sprite";
         }
+    }
+
+    std::span<const std::string_view> GetVfxRenderShapeChoices() noexcept {
+        static const std::array values{ToString(VfxRenderShapeType::Sprite),
+            ToString(VfxRenderShapeType::Ribbon), ToString(VfxRenderShapeType::Ring),
+            ToString(VfxRenderShapeType::MeshBox), ToString(VfxRenderShapeType::MeshSphere),
+            ToString(VfxRenderShapeType::MeshCylinder), ToString(VfxRenderShapeType::MeshCone),
+            ToString(VfxRenderShapeType::MeshHemisphere), ToString(VfxRenderShapeType::CrossPlane)};
+        return values;
+    }
+
+    std::span<const std::string_view> GetVfxMaterialModeChoices() noexcept {
+        static const std::array values{ToString(VfxMaterialMode::StandardUnlit),
+            ToString(VfxMaterialMode::StandardLit), ToString(VfxMaterialMode::CustomMaterial),
+            ToString(VfxMaterialMode::CustomLit)};
+        return values;
     }
 
     std::string_view ToString(VfxBlendMode value) noexcept {
@@ -61,9 +91,12 @@ namespace HIKARI::VFX {
     }
 
     std::string_view ToString(VfxMaterialMode value) noexcept {
-        return value == VfxMaterialMode::CustomMaterial
-            ? "CustomMaterial"
-            : "StandardUnlit";
+        switch (value) {
+        case VfxMaterialMode::CustomMaterial: return "CustomMaterial";
+        case VfxMaterialMode::StandardLit: return "StandardLit";
+        case VfxMaterialMode::CustomLit: return "CustomLit";
+        default: return "StandardUnlit";
+        }
     }
 
     std::string_view ToString(VfxParticleDepthMode value) noexcept {
@@ -80,23 +113,7 @@ namespace HIKARI::VFX {
         }
     }
 
-    std::string_view ToString(VfxParticleShaderStyle value) noexcept {
-        switch (value) {
-        case VfxParticleShaderStyle::CombatCut:
-            return "CombatCut";
-        case VfxParticleShaderStyle::CombatImpact:
-            return "CombatImpact";
-        case VfxParticleShaderStyle::CombatGround:
-            return "CombatGround";
-        case VfxParticleShaderStyle::ComicSmoke:
-            return "ComicSmoke";
-        case VfxParticleShaderStyle::ProjectileNeedle:
-            return "ProjectileNeedle";
-        case VfxParticleShaderStyle::Default:
-        default:
-            return "Default";
-        }
-    }
+
 
     std::string_view ToString(VfxParticleCapacityMode value) noexcept {
         return value == VfxParticleCapacityMode::Fixed
@@ -232,6 +249,12 @@ namespace HIKARI::VFX {
             { "Sprite", VfxRenderShapeType::Sprite },
             { "Ribbon", VfxRenderShapeType::Ribbon },
             { "Ring", VfxRenderShapeType::Ring },
+            { "MeshBox", VfxRenderShapeType::MeshBox },
+            { "MeshSphere", VfxRenderShapeType::MeshSphere },
+            { "MeshCylinder", VfxRenderShapeType::MeshCylinder },
+            { "MeshCone", VfxRenderShapeType::MeshCone },
+            { "MeshHemisphere", VfxRenderShapeType::MeshHemisphere },
+            { "CrossPlane", VfxRenderShapeType::CrossPlane },
         }, outValue);
     }
 
@@ -252,6 +275,8 @@ namespace HIKARI::VFX {
         return ParseEnum(text, {
             { "StandardUnlit", VfxMaterialMode::StandardUnlit },
             { "CustomMaterial", VfxMaterialMode::CustomMaterial },
+            { "StandardLit", VfxMaterialMode::StandardLit },
+            { "CustomLit", VfxMaterialMode::CustomLit },
         }, outValue);
     }
 
@@ -354,19 +379,7 @@ namespace HIKARI::VFX {
         }, outValue);
     }
 
-    bool TryParseVfxParticleShaderStyle(
-        std::string_view text,
-        VfxParticleShaderStyle& outValue) noexcept {
 
-        return ParseEnum(text, {
-            { "Default", VfxParticleShaderStyle::Default },
-            { "CombatCut", VfxParticleShaderStyle::CombatCut },
-            { "CombatImpact", VfxParticleShaderStyle::CombatImpact },
-            { "CombatGround", VfxParticleShaderStyle::CombatGround },
-            { "ComicSmoke", VfxParticleShaderStyle::ComicSmoke },
-            { "ProjectileNeedle", VfxParticleShaderStyle::ProjectileNeedle },
-        }, outValue);
-    }
 
     bool TryParseVfxAttachmentMode(
         std::string_view text,

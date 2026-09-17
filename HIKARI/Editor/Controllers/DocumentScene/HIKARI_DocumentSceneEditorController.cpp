@@ -21,6 +21,7 @@
 #include "Editor/History/HIKARI_EnvironmentHistoryCommand.h"
 #include "Editor/History/HIKARI_SceneComponentPropertiesHistoryCommand.h"
 #include "Editor/History/HIKARI_SceneObjectsHistoryCommand.h"
+#include "Editor/Authoring/HIKARI_SceneTransformAuthoring.h"
 #include "Editor/History/HIKARI_SceneSystemsHistoryCommand.h"
 #include "Editor/Menus/HIKARI_EditorDocumentMenu.h"
 #include "Editor/Play/HIKARI_EditorPlaySession.h"
@@ -35,6 +36,7 @@
 #include "Editor/HIKARI_EditorViewportInput.h"
 #include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
+#include "Runtime/Diagnostics/HIKARI_RuntimeDebugService.h"
 #include "Project/HIKARI_ProjectSettings.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
@@ -527,149 +529,38 @@ namespace HIKARI {
     }
 
     EDITOR::EditorOperationResult
-    DocumentSceneEditorController::ExecuteAiSceneSetTransform(
-        const nlohmann::json& parameters) {
-        EDITOR::EditorOperationResult result{};
-        DocumentSceneBase* scene = aiOperationScene_;
-        if (scene == nullptr) {
-            result.code = "NO_SCENE";
-            result.message = "场景上下文不可用";
-            return result;
+    DocumentSceneEditorController::ExecuteAiSceneSetTransform(const nlohmann::json& parameters) {
+        using namespace EDITOR;
+        auto* scene = aiOperationScene_;
+        if (!scene) return {false, "NO_SCENE", "Scene context unavailable."};
+        if (scene->IsRuntimePlayActive()) return {false, "PLAY_ACTIVE", "Stop Play before editing transforms."};
+        std::optional<SceneObjectId> objectId;
+        EditorOperationResult failure;
+        if (!ReadOptionalSceneObjectId(parameters, objectId, failure)) return failure;
+        const auto target = ResolveSceneObjectTarget(*scene, objectId, parameters.value("name", std::string{}));
+        if (!target.IsResolved()) return TargetResolutionFailure(target);
+        auto command = DescribeSceneObjectTransform(*target.documentObject);
+        command["objectId"] = target.documentObject->id.value;
+        constexpr const char* channels[]{"position", "rotation", "scale"};
+        constexpr const char* axes[]{"X", "Y", "Z"};
+        for (const char* channel : channels) {
+            for (size_t i = 0; i < 3; ++i) {
+                const auto found = parameters.find(std::string(channel) + axes[i]);
+                if (found != parameters.end()) command[channel][i] = *found;
+            }
         }
-        const std::string name =
-            parameters.value("name", std::string{});
-        std::optional<SceneObjectId> objectId{};
-        if (!ReadOptionalSceneObjectId(
-                parameters, objectId, result)) {
-            return result;
-        }
-        const EDITOR::SceneObjectTargetResolution resolution =
-            EDITOR::ResolveSceneObjectTarget(
-                *scene, objectId, name);
-        if (!resolution.IsResolved()) {
-            return TargetResolutionFailure(resolution);
-        }
-        GameObject* target = resolution.runtimeObject;
-        SceneObjectData* documentObject =
-            resolution.documentObject;
-        const bool dirtyBefore =
-            context_.sceneDirty ||
-            scene->HasUnsavedSceneChanges();
-        const std::vector<SceneObjectData> beforeObjects =
-            scene->GetSceneDocument().objects;
-        const SceneCameraSettings beforeCamera =
-            scene->GetSceneDocument().camera;
-        const MATH::Vec3 beforePosition =
-            documentObject->transform.position;
-        const MATH::Vec3 beforeScale =
-            documentObject->transform.scale;
-        const MATH::Vec3 beforeRotation =
-            documentObject->transform.rotationEulerDeg;
-        const auto hasField = [&parameters](const char* key) {
-            return parameters.contains(key);
-        };
-        const auto floatField =
-            [&parameters](const char* key, float fallback) {
-                const auto found = parameters.find(key);
-                return found != parameters.end() &&
-                        found->is_number()
-                    ? found->get<float>()
-                    : fallback;
-            };
-        const auto vec3Changed =
-            [](const MATH::Vec3& lhs, const MATH::Vec3& rhs) {
-                return lhs.x != rhs.x || lhs.y != rhs.y ||
-                    lhs.z != rhs.z;
-            };
-        bool changed = false;
-        if (hasField("positionX") || hasField("positionY") ||
-            hasField("positionZ")) {
-            documentObject->transform.position = {
-                floatField(
-                    "positionX",
-                    documentObject->transform.position.x),
-                floatField(
-                    "positionY",
-                    documentObject->transform.position.y),
-                floatField(
-                    "positionZ",
-                    documentObject->transform.position.z),
-            };
-            changed = vec3Changed(
-                beforePosition,
-                documentObject->transform.position);
-        }
-        if (hasField("scaleX") || hasField("scaleY") ||
-            hasField("scaleZ")) {
-            documentObject->transform.scale = {
-                floatField(
-                    "scaleX",
-                    documentObject->transform.scale.x),
-                floatField(
-                    "scaleY",
-                    documentObject->transform.scale.y),
-                floatField(
-                    "scaleZ",
-                    documentObject->transform.scale.z),
-            };
-            changed |= vec3Changed(
-                beforeScale,
-                documentObject->transform.scale);
-        }
-        if (hasField("rotationX") || hasField("rotationY") ||
-            hasField("rotationZ")) {
-            documentObject->transform.rotationEulerDeg = {
-                floatField(
-                    "rotationX",
-                    documentObject->transform.rotationEulerDeg.x),
-                floatField(
-                    "rotationY",
-                    documentObject->transform.rotationEulerDeg.y),
-                floatField(
-                    "rotationZ",
-                    documentObject->transform.rotationEulerDeg.z),
-            };
-            changed |= vec3Changed(
-                beforeRotation,
-                documentObject->transform.rotationEulerDeg);
-        }
-        if (changed) {
-            Transform3D runtime = target->GetTransform();
-            runtime.position =
-                documentObject->transform.position;
-            runtime.scale = documentObject->transform.scale;
-            runtime.rotation = MATH::Quat::FromEulerXYZ(
-                documentObject->transform.rotationEulerDeg.x *
-                    MATH::kDegreesToRadians,
-                documentObject->transform.rotationEulerDeg.y *
-                    MATH::kDegreesToRadians,
-                documentObject->transform.rotationEulerDeg.z *
-                    MATH::kDegreesToRadians);
-            runtime.useExplicitMatrix = false;
-            (void)target->SetLocalTransform(runtime);
-        }
-        result.ok = true;
-        if (changed) {
-            CommitSceneObjectAuthoringHistory(
-                *scene,
-                SceneObjectAuthoringHistoryRequest{
-                    "Edit Transform",
-                    beforeObjects,
-                    scene->GetSceneDocument().objects,
-                    beforeCamera,
-                    scene->GetSceneDocument().camera,
-                    dirtyBefore });
-            SummarizeSceneObjects(
-                *scene, result.details, 8u);
-        }
-        result.message = changed
-            ? "已更新物体 " + target->GetName()
-            : "物体 " + target->GetName() +
-                " 未变化（需要 positionX/scaleX/rotationX 等字段）";
-        result.data = {
-            { "objectId", target->GetDocumentId().value },
-            { "name", target->GetName() }
-        };
+        std::vector<SceneObjectData> staged;
+        auto result = StageSceneTransformEdits(scene->GetSceneDocument(), nlohmann::json::array({command}), staged);
+        if (!result.ok || result.code == "NO_CHANGE") return result;
+        const auto before = scene->GetSceneDocument().objects;
+        const bool dirty = context_.sceneDirty || scene->HasUnsavedSceneChanges();
+        const auto id = target.documentObject->id.value;
+        scene->GetSceneDocument().objects = std::move(staged);
+        CommitSceneObjectAuthoringHistory(*scene, {"Edit Transform", before,
+            scene->GetSceneDocument().objects, scene->GetSceneDocument().camera,
+            scene->GetSceneDocument().camera, dirty, true, true});
+        result.message = "Object transform updated.";
+        result.data = {{"objectId", id}};
         return result;
     }
 
@@ -2250,6 +2141,9 @@ namespace HIKARI {
         }
 
         documentToolbarController_.SyncDocumentMeta(scene, context_, selectionSync_);
+        if (auto* diagnostics = scene.GetWorld().Services().Find<RUNTIME::RuntimeDebugService>())
+            runtimeDebugWindow_.Draw(scene.GetWorld(), *diagnostics);
+        else runtimeDebugWindow_.Reset();
         scene.SetUnsavedSceneChanges(context_.sceneDirty);
         if (context_.selection.selectedObject) {
             scene.SetSelectedGizmoObjectId(context_.selection.selectedObject->GetDocumentId());
@@ -2263,7 +2157,8 @@ namespace HIKARI {
 
         bool resetDockingLayoutRequested = false;
         exportJob_.Poll();
-        exportStartAllowed_ = playSession.GetMode() == EDITOR::EditorPlayMode::None && !playSession.IsTransitioning();
+        projectCodeJob_.Poll();
+        projectBuildAllowed_ = playSession.GetMode() == EDITOR::EditorPlayMode::None && !playSession.IsTransitioning();
         debugMenuBar_.Draw(
             context_.windows,
             toolHost_,
@@ -2280,6 +2175,7 @@ namespace HIKARI {
         projectSession.DrawConfirmationDialog();
 
         if (projectWorkspaceHost_) {
+            projectWorkspaceHost_->Registry().SetOperationRegistry(&operationRegistry_);
             projectWorkspaceHost_->DrawNavigation(workspaceHost_, TIME::GetFrameContext().unscaledDt);
         }
 
@@ -2365,6 +2261,7 @@ namespace HIKARI {
 
         if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Project) && projectWorkspaceHost_) {
             SERVICES::SetEditorGameViewportSize(0, 0, false);
+            projectWorkspaceHost_->Registry().SetOperationRegistry(&operationRegistry_);
             projectWorkspaceHost_->Draw(workspaceHost_, TIME::GetFrameContext().unscaledDt,
                 scene.GetAssetDatabase(), scene.GetAssetRegistry());
             return;

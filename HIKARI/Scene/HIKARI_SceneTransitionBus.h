@@ -1,8 +1,10 @@
 ﻿#pragma once
 
 #include <cstdint>
+#include <array>
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace HIKARI {
 
@@ -16,6 +18,18 @@ namespace HIKARI {
     };
 
     class SceneManager;
+
+    enum class SceneTransitionOutcome : uint32_t {
+        Pending = 1, Completed, Failed, Cancelled,
+    };
+
+    struct SceneTransitionResult {
+        uint64_t requestId = 0;
+        uint64_t userData = 0;
+        SceneTransitionOutcome outcome = SceneTransitionOutcome::Pending;
+        std::string targetSceneAssetGuid;
+        std::string message;
+    };
 
     struct SceneTransitionRequest {
         std::string targetSceneAssetGuid{};
@@ -42,6 +56,11 @@ namespace HIKARI {
         explicit SceneTransitionBus(SceneManager& sceneManager);
 
         bool RequestTransition(const SceneTransitionRequest& request);
+        uint64_t RequestTrackedTransition(const SceneTransitionRequest& request);
+        // Retains the most recent eight admitted requests across World switches.
+        bool ReadResult(uint64_t requestId, SceneTransitionResult& outResult) const;
+        // Cancellation is allowed before the destination has been opened.
+        bool CancelRequest(uint64_t requestId);
         bool ReleaseTransitionIn();
         void Update(float dt);
         bool IsTransitioning() const;
@@ -49,7 +68,12 @@ namespace HIKARI {
         TransitionVisualState GetVisualState() const;
 
     private:
+        void Finish(SceneTransitionOutcome outcome, std::string_view message = {});
         SceneManager& sceneManager_;
+        std::array<SceneTransitionResult, 8> results_{};
+        uint64_t lastRequestId_ = 0;
+        uint64_t activeRequestId_ = 0;
+        bool switchInProgress_ = false;
         std::optional<SceneTransitionRequest> pendingRequest_{};
         TransitionState state_ = TransitionState::Idle;
         float timer_ = 0.0f;

@@ -39,103 +39,6 @@ namespace HIKARI::EDITOR {
                 value.substr(0u, prefix.size()) == prefix;
         }
 
-        bool IsForbiddenPackagePath(
-            const std::filesystem::path& relativePath) {
-
-            const std::string path =
-                TEXT::ToLowerAsciiCopy(
-                    TEXT::PathToUtf8(
-                        relativePath.lexically_normal()));
-            const std::string filename =
-                TEXT::ToLowerAsciiCopy(
-                    TEXT::PathToUtf8(
-                        relativePath.filename()));
-            const std::string extension =
-                TEXT::ToLowerAsciiCopy(
-                    TEXT::PathToUtf8(
-                        relativePath.extension()));
-
-            if (StartsWith(path, "assets/") ||
-                StartsWith(path, "source/") ||
-                StartsWith(path, "gameproject/") ||
-                StartsWith(
-                    path,
-                    "content/assets/") ||
-                StartsWith(
-                    path,
-                    "content/projectsettings/assetmeta/") ||
-                StartsWith(
-                    path,
-                    "content/library/assetdatabase/") ||
-                StartsWith(
-                    path,
-                    "content/library/shadercache/")) {
-                return true;
-            }
-
-            if (filename == "cmakelists.txt" ||
-                path.ends_with(
-                    ".hikari.asset.json")) {
-                return true;
-            }
-
-            const bool installedShaderHeader =
-                extension == ".h" &&
-                StartsWith(
-                    path,
-                    "enginecontent/shaders/");
-            const bool runtimeAudioPayload = StartsWith(
-                path,
-                "content/runtimepayload/assets/audio/");
-            if (extension == ".sln" ||
-                extension == ".bak" || extension == ".tmp" || extension == ".log" ||
-                filename.ends_with("~") ||
-                extension == ".vcxproj" ||
-                extension == ".filters" ||
-                extension == ".cmake" ||
-                extension == ".cpp" ||
-                extension == ".cxx" ||
-                extension == ".c" ||
-                (extension == ".h" &&
-                 !installedShaderHeader) ||
-                extension == ".hpp" ||
-                extension == ".pdb" ||
-                extension == ".ilk" ||
-                extension == ".exp" ||
-                extension == ".lib" ||
-                extension == ".obj" ||
-                extension == ".fbx" ||
-                extension == ".gltf" ||
-                extension == ".glb" ||
-                extension == ".obj" ||
-                extension == ".bin" ||
-                ((extension == ".wav" ||
-                  extension == ".mp3" ||
-                  extension == ".ogg" ||
-                  extension == ".flac" ||
-                  extension == ".aac" ||
-                  extension == ".m4a" ||
-                  extension == ".wma" ||
-                  extension == ".aif" ||
-                  extension == ".aiff") &&
-                 !runtimeAudioPayload) ||
-                extension == ".tga" ||
-                extension == ".psd" ||
-                extension == ".blend") {
-                return true;
-            }
-
-            if ((extension == ".png" ||
-                 extension == ".jpg" ||
-                 extension == ".jpeg") &&
-                !StartsWith(
-                    path,
-                    "content/runtimepayload/spine/")) {
-                return true;
-            }
-            return false;
-        }
-
         bool RequireFile(
             const std::filesystem::path& packageRoot,
             const std::filesystem::path& relativePath,
@@ -155,6 +58,103 @@ namespace HIKARI::EDITOR {
         }
 
     } // namespace
+
+    bool IsForbiddenGamePackagePath(
+        const std::filesystem::path& relativePath) {
+
+        const std::string path =
+            TEXT::ToLowerAsciiCopy(
+                TEXT::PathToUtf8(
+                    relativePath.lexically_normal()));
+        const std::string filename =
+            TEXT::ToLowerAsciiCopy(
+                TEXT::PathToUtf8(
+                    relativePath.filename()));
+        const std::string extension =
+            TEXT::ToLowerAsciiCopy(
+                TEXT::PathToUtf8(
+                    relativePath.extension()));
+
+        if (StartsWith(path, "assets/") ||
+            StartsWith(path, "source/") ||
+            StartsWith(path, "gameproject/") ||
+            StartsWith(
+                path,
+                "content/assets/") ||
+            StartsWith(
+                path,
+                "content/projectsettings/assetmeta/") ||
+            StartsWith(
+                path,
+                "content/library/assetdatabase/") ||
+            StartsWith(
+                path,
+                "content/library/shadercache/")) {
+            return true;
+        }
+
+        if (filename == "cmakelists.txt" ||
+            path.ends_with(
+                ".hikari.asset.json")) {
+            return true;
+        }
+
+        const bool installedShaderHeader =
+            extension == ".h" &&
+            StartsWith(
+                path,
+                "enginecontent/shaders/");
+        const bool runtimeAudioPayload = StartsWith(
+            path,
+            "content/runtimepayload/assets/audio/");
+        if (extension == ".sln" ||
+            extension == ".bak" || extension == ".tmp" || extension == ".log" ||
+            filename.ends_with("~") ||
+            extension == ".vcxproj" ||
+            extension == ".filters" ||
+            extension == ".cmake" ||
+            extension == ".cpp" ||
+            extension == ".cxx" ||
+            extension == ".c" ||
+            (extension == ".h" &&
+             !installedShaderHeader) ||
+            extension == ".hpp" ||
+            extension == ".pdb" ||
+            extension == ".ilk" ||
+            extension == ".exp" ||
+            extension == ".lib" ||
+            extension == ".obj" ||
+            extension == ".fbx" ||
+            extension == ".gltf" ||
+            extension == ".glb" ||
+            extension == ".obj" ||
+            extension == ".bin" ||
+            ((extension == ".wav" ||
+              extension == ".mp3" ||
+              extension == ".ogg" ||
+              extension == ".flac" ||
+              extension == ".aac" ||
+              extension == ".m4a" ||
+              extension == ".wma" ||
+              extension == ".aif" ||
+              extension == ".aiff") &&
+             !runtimeAudioPayload) ||
+            extension == ".tga" ||
+            extension == ".psd" ||
+            extension == ".blend") {
+            return true;
+        }
+
+        if ((extension == ".png" ||
+             extension == ".jpg" ||
+             extension == ".jpeg") &&
+            !StartsWith(
+                path,
+                "content/runtimepayload/spine/")) {
+            return true;
+        }
+        return false;
+    }
 
     bool ValidateGamePackageBoundary(
         const std::filesystem::path& packageRoot,
@@ -246,7 +246,7 @@ namespace HIKARI::EDITOR {
             if (ec) {
                 break;
             }
-            if (IsForbiddenPackagePath(relative)) {
+            if (IsForbiddenGamePackagePath(relative)) {
                 outMessage =
                     "Game package contains forbidden authoring/build "
                     "content: " +

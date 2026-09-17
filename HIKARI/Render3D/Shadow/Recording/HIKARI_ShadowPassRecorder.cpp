@@ -11,6 +11,7 @@
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenWorkBuilder.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorAccess.h"
 #include "Render3D/Shadow/HIKARI_ShadowLightFrame.h"
+#include "Render3D/WorldSprite/HIKARI_WorldSpritePass.h"
 
 namespace HIKARI::SHADOW::INTERNAL {
 
@@ -108,6 +109,7 @@ namespace HIKARI::SHADOW::INTERNAL {
         }
     }
     void ClearShadowFrameSubmissions(ShadowRendererState& state) {
+        state.worldSprites = nullptr;
         state.debugStats = {};
         state.frameHasShadowWork = false;
         state.frameHasStaticShadowWork = false;
@@ -443,6 +445,14 @@ namespace HIKARI::SHADOW::INTERNAL {
         state.lightAnchorGrid = frame.anchorGrid;
         BuildShadowGpuDrivenWorkFrame(state, graphics);
         return ExecuteShadowGpuDrivenPass(state, graphics, traditionalProfilePass, meshletProfilePass);
+    }
+
+    bool RecordWorldSpriteShadowView(ShadowRendererState& state, const GFX::Context& graphics,
+        const ShadowLightFrame& frame, const D3D12_RECT& region, bool clearDepth) {
+        if (!state.worldSprites || !state.worldSprites->HasShadowWork()) return true;
+        if (!PrepareShadowMapDepthRegion(state, graphics.cmdList, region, clearDepth)) return false;
+        return state.worldSprites->ExecuteShadow(graphics,
+            GetActiveShadowFrameResources(state).materialCameraAddress, frame.viewProj);
     }
 
 } // namespace HIKARI::SHADOW::INTERNAL

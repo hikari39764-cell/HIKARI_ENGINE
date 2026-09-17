@@ -4,15 +4,7 @@
 #include "Include/Material/HIKARI_MaterialProgramData.hlsli"
 #include "Include/Material/HIKARI_MaterialExpression.hlsli"
 
-struct Particle
-{
-    float4 positionAge;
-    float4 velocityLifetime;
-    float4 physicsPositionSeed;
-    float4 scaleRotation;
-    float4 orientation;
-    float4 color;
-};
+#include "Include/Vfx/HIKARI_ParticleData.hlsli"
 
 // These value-block offsets must stay in lockstep with the C++ emitter
 // parameter packing in HIKARI_GpuParticleParameterPacking.cpp. They are
@@ -582,15 +574,17 @@ void EvaluateParticlePresentation(
         HIKARI_PARTICLE_RANDOM_SCALE,
         asuint(easingB.x),
         asuint(easingB.y));
-    float4 worldScale = LoadEmitterValue(emitterIndex, 2u);
-    float4 worldRotation = LoadEmitterValue(emitterIndex, 1u);
-    particle.positionAge.xyz = particle.physicsPositionSeed.xyz +
-        RotateByQuaternion(localPosition * worldScale.xyz, worldRotation);
+    const bool localSimulation = (asuint(LoadEmitterValue(emitterIndex,14u).w)&1u)!=0u;
+    float4 worldScale = localSimulation ? LoadEmitterValue(emitterIndex,2u) : particle.birthScale;
+    float4 worldRotation = localSimulation ? LoadEmitterValue(emitterIndex,1u) : particle.birthRotation;
+    particle.positionAge.xyz = localSimulation ? LoadEmitterValue(emitterIndex,0u).xyz +
+        RotateByQuaternion((particle.physicsPositionSeed.xyz+localPosition)*worldScale.xyz,worldRotation) :
+        particle.physicsPositionSeed.xyz + RotateByQuaternion(localPosition*worldScale.xyz,worldRotation);
     particle.scaleRotation = float4(
         abs(localScale.xy * worldScale.xy) *
             max(LoadEmitterValue(emitterIndex, 10u).y, 0.0f),
         localRotation.z,
-        0.0f);
+        abs(localScale.z * worldScale.z) * max(LoadEmitterValue(emitterIndex, 10u).y, 0.0f));
     particle.orientation = NormalizeQuaternion(MultiplyQuaternion(
         NormalizeQuaternion(worldRotation),
         QuaternionFromEulerXYZ(localRotation)));
@@ -612,6 +606,22 @@ void ResetCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         return;
     }
     Particle particle = (Particle)0;
+    if ((gSimulationFlags & 1u) != 0u && dispatchThreadId.x < asuint(LoadEmitterValue(gEmitterIndex, 0u).x))
+    {
+        const uint base = 1u + dispatchThreadId.x * 9u;
+        particle.positionAge = LoadEmitterValue(gEmitterIndex, base);
+        particle.orientation = LoadEmitterValue(gEmitterIndex, base+1u);
+        const float4 scale = LoadEmitterValue(gEmitterIndex, base+2u);
+        particle.scaleRotation = float4(abs(scale.xy), 0.0f, abs(scale.z));
+        particle.color = LoadEmitterValue(gEmitterIndex, base+3u);
+        particle.velocityLifetime = float4(LoadEmitterValue(gEmitterIndex, base+4u).xyz, max(scale.w, 0.0001f));
+        particle.physicsPositionSeed = LoadEmitterValue(gEmitterIndex, base+5u);
+        particle.birthRotation = LoadEmitterValue(gEmitterIndex, base+6u);
+        particle.birthScale = LoadEmitterValue(gEmitterIndex, base+7u);
+        const float2 uvRange = LoadEmitterValue(gEmitterIndex, base+8u).xy;
+        particle.scaleRotation.z = uvRange.x;
+        particle.birthRotation.w = uvRange.y;
+    }
     gParticles[gParticleOffset + dispatchThreadId.x] = particle;
 }
 
@@ -629,7 +639,8 @@ void UpdateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         return;
     }
 
-    particle.positionAge.w += max(gDeltaSeconds, 0.0f);
+    const float dt = isfinite(gDeltaSeconds) ? clamp(gDeltaSeconds, 0.0f, 2.0f) : 0.0f;
+    particle.positionAge.w += dt;
     if (particle.positionAge.w >= particle.velocityLifetime.w)
     {
         particle.velocityLifetime.w = 0.0f;
@@ -642,10 +653,29 @@ void UpdateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     float3 gravity = forces.xyz *
         LoadEmitterValue(gEmitterIndex, 10u).z;
     float drag = max(forces.w, 0.0f);
-    particle.velocityLifetime.xyz += gravity * gDeltaSeconds;
-    particle.velocityLifetime.xyz *= exp(-drag * gDeltaSeconds);
-    particle.physicsPositionSeed.xyz +=
-        particle.velocityLifetime.xyz * gDeltaSeconds;
+    const float4 collision = LoadEmitterValue(gEmitterIndex,14u);
+    const bool collide = (asuint(collision.w)&2u)!=0u;
+    // CPU 参照と同じ解析積分。衝突時のみ分割し、GPU 提出数には影響しない。
+    const uint steps = collide ? (uint)clamp(ceil(dt * 30.0f), 1.0f, 8.0f) : 1u;
+    const float step = dt / steps;
+    const float x = drag * step;
+    const float damping = exp(-x);
+    const float velocityIntegral = x < 1.0e-3f
+        ? step * (1.0f - x * 0.5f + x*x / 6.0f) : (1.0f - damping) / drag;
+    const float accelerationIntegral = x < 1.0e-3f
+        ? step*step * (0.5f - x / 6.0f + x*x / 24.0f) : (step - velocityIntegral) / drag;
+    for (uint index=0u; index<steps; ++index)
+    {
+        particle.physicsPositionSeed.xyz += particle.velocityLifetime.xyz * velocityIntegral + gravity * accelerationIntegral;
+        particle.velocityLifetime.xyz = particle.velocityLifetime.xyz * damping + gravity * velocityIntegral;
+        if (collide && particle.physicsPositionSeed.y < collision.x)
+        {
+            particle.physicsPositionSeed.y = collision.x;
+            if (particle.velocityLifetime.y < 0.0f)
+                particle.velocityLifetime.y *= -saturate(collision.y);
+            particle.velocityLifetime.xz *= 1.0f-saturate(collision.z);
+        }
+    }
     EvaluateParticlePresentation(gEmitterIndex, particle);
     gParticles[particleIndex] = particle;
 }
@@ -812,6 +842,7 @@ void SpawnCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     }
 
     float4 rotation = LoadEmitterValue(gEmitterIndex, 1u);
+    const float3 simulationPosition = localPosition;
     localPosition *= emitterScale.xyz;
     float3 worldPosition = emitterOrigin.xyz +
         RotateByQuaternion(localPosition, rotation);
@@ -839,11 +870,12 @@ void SpawnCS(uint3 dispatchThreadId : SV_DispatchThreadID)
             : 0.0f) * LoadEmitterValue(gEmitterIndex, 10u).x;
 
     Particle particle = (Particle)0;
-    particle.positionAge = float4(worldPosition, 0.0f);
-    particle.velocityLifetime = float4(worldDirection * speed, max(lifetime, 0.0001f));
-    particle.physicsPositionSeed = float4(
-        worldPosition,
-        asfloat(particleSeed));
+    const bool localSimulation = (asuint(LoadEmitterValue(gEmitterIndex,14u).w)&1u)!=0u;
+    particle.positionAge = float4(worldPosition,0.0f);
+    particle.velocityLifetime = float4((localSimulation ? localDirection : worldDirection)*speed,max(lifetime,0.0001f));
+    particle.physicsPositionSeed = float4(localSimulation ? simulationPosition : worldPosition,asfloat(particleSeed));
+    particle.birthRotation = rotation;
+    particle.birthScale = emitterScale;
     EvaluateParticlePresentation(gEmitterIndex, particle);
     uint particleIndex = gParticleOffset +
         particleSlot;

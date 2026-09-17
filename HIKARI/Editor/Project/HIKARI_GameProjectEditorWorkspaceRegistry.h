@@ -5,11 +5,14 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 #include "HIKARI/Project/EditorWorkspace.h"
 
 namespace HIKARI::EDITOR {
+
+    class EditorOperationRegistry;
 
     enum class GameProjectWorkspaceCloseResolution : uint8_t {
         Save,
@@ -39,6 +42,8 @@ namespace HIKARI::EDITOR {
             size_t workspaceCount,
             std::string& outMessage);
         void SetProjectRootUtf8(std::string projectRootUtf8);
+        // The controller owns the operation registry; attach only for the frame.
+        void SetOperationRegistry(EditorOperationRegistry* registry) noexcept;
 
         size_t GetWorkspaceCount() const noexcept;
         GameProjectEditorWorkspaceInfo GetWorkspaceInfo(
@@ -76,6 +81,8 @@ namespace HIKARI::EDITOR {
         void PublishStatus(
             EDITOR_PROJECT::EditorWorkspaceStatusSeverity severity,
             std::string_view message) override;
+        void ExecuteOperation(std::string_view operationId, std::string_view parametersJson,
+            EDITOR_PROJECT::IEditorOperationResultSink& result) override;
 
     private:
         struct Entry {
@@ -114,6 +121,9 @@ namespace HIKARI::EDITOR {
         NavigationRequest navigation_{};
         std::optional<NavigationRequest> awaitingClose_{};
         bool saveRequested_ = false;
+        EditorOperationRegistry* operationRegistry_ = nullptr;
+        const std::thread::id ownerThread_ = std::this_thread::get_id();
+        bool executingOperation_ = false;
         EDITOR_PROJECT::IEditorWorkspaceUi* frameUi_ = nullptr;
         uint64_t frameIndex_ = 0u;
         float frameDeltaSeconds_ = 0.0f;

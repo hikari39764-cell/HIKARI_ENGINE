@@ -219,6 +219,9 @@ HIKARI_EXPRESSION_OPCODE(UvTransform, UvTransform);
 HIKARI_EXPRESSION_OPCODE(ValueNoise, ValueNoise);
 HIKARI_EXPRESSION_OPCODE(Voronoi, Voronoi);
 HIKARI_EXPRESSION_OPCODE(Fresnel, Fresnel);
+HIKARI_EXPRESSION_OPCODE(ParticleState, ParticleState);
+HIKARI_EXPRESSION_OPCODE(ParticleColor, ParticleColor);
+HIKARI_EXPRESSION_OPCODE(ParticleUv, ParticleUv);
 default:
         return std::nullopt;
     }
@@ -412,9 +415,12 @@ bool BuildMaterialExpressionRuntimeProgram(
                     }
                 }
             } else {
-                valueIndex = AddValue(
+                valueIndex = AppendValue(
                     values, MaterialValueToVector(value), outError);
             }
+            if (valueIndex != kInvalidRegister)
+                outProgram.parameterValueSlots.emplace_back(instruction.bindingIndex,
+                    kGpuMaterialExpressionValueBase + valueIndex);
         } else if (instruction.opcode == MaterialProgramOpcode::TextureSample) {
             if (instruction.bindingIndex >= program.resources.size() ||
                 instruction.bindingIndex +

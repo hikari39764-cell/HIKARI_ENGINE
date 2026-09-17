@@ -129,7 +129,7 @@ configure_package_config_file(
     NO_SET_AND_CHECK_MACRO)
 write_basic_package_version_file(
     "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfigVersion.cmake"
-    VERSION 2.27.0
+    VERSION 2.30.0
     COMPATIBILITY SameMajorVersion)
 
 function(hikari_configure_game_project_sdk host_target)
@@ -147,6 +147,7 @@ function(hikari_configure_game_project_sdk host_target)
         "${HIKARI_SOURCE_ROOT}/cmake/SDK/HIKARIGameProject.cmake"
         "${HIKARI_SOURCE_ROOT}/cmake/SDK/HIKARI_GameProjectModuleAdapter.cpp"
         "${HIKARI_SOURCE_ROOT}/Tools/Build/Build-HikariProject.ps1"
+        "${HIKARI_SOURCE_ROOT}/Tools/Build/HikariProjectPublication.ps1"
         "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfig.cmake"
         "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARI_GameHost.json"
         "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfigVersion.cmake")
@@ -195,7 +196,8 @@ function(hikari_configure_game_project_sdk host_target)
         COMMAND
             "${CMAKE_COMMAND}" -E copy_if_different
             "${HIKARI_SOURCE_ROOT}/Tools/Build/Build-HikariProject.ps1"
-            "${_sdk_root}/Tools/Build-HikariProject.ps1"
+            "${HIKARI_SOURCE_ROOT}/Tools/Build/HikariProjectPublication.ps1"
+            "${_sdk_root}/Tools"
         VERBATIM)
 
     if(HIKARI_WITH_EDITOR_BUILD)
@@ -207,6 +209,15 @@ function(hikari_configure_game_project_sdk host_target)
                 "${_sdk_root}/Tools/CMake/bin"
                 "${_sdk_root}/Tools/CMake/share/${HIKARI_CMAKE_MODULE_DIRECTORY_NAME}"
                 "${_sdk_root}/Tools/CMake/licenses"
+                "${_sdk_root}/third_party/nlohmann"
+            COMMAND
+                "${CMAKE_COMMAND}" -E copy_if_different
+                "${HIKARI_SOURCE_ROOT}/ThirdParty/nlohmann/json.hpp"
+                "${_sdk_root}/third_party/nlohmann/json.hpp"
+            COMMAND
+                "${CMAKE_COMMAND}" -E copy_if_different
+                "${HIKARI_SOURCE_ROOT}/Tools/Build/Invoke-HikariProjectCodeWorker.ps1"
+                "${_sdk_root}/Tools/Invoke-HikariProjectCodeWorker.ps1"
             COMMAND
                 "${CMAKE_COMMAND}" -E copy_if_different
                 "${CMAKE_COMMAND}"
@@ -233,6 +244,14 @@ function(hikari_configure_game_project_sdk host_target)
     install(
         DIRECTORY "${HIKARI_SOURCE_ROOT}/include/HIKARI"
         DESTINATION "Sdk/include")
+    if(HIKARI_WITH_EDITOR_BUILD)
+        # The upstream single header carries its MIT license. Project tools can
+        # use the bundled parser without including any private engine headers.
+        install(FILES "${HIKARI_SOURCE_ROOT}/ThirdParty/nlohmann/json.hpp"
+            DESTINATION "Sdk/third_party/nlohmann")
+        install(FILES "${HIKARI_SOURCE_ROOT}/Tools/Build/Invoke-HikariProjectCodeWorker.ps1"
+            DESTINATION "Sdk/Tools")
+    endif()
     install(
         FILES
             "$<TARGET_LINKER_FILE:${host_target}>"
@@ -258,6 +277,7 @@ function(hikari_configure_game_project_sdk host_target)
     install(
         FILES
             "${HIKARI_SOURCE_ROOT}/Tools/Build/Build-HikariProject.ps1"
+            "${HIKARI_SOURCE_ROOT}/Tools/Build/HikariProjectPublication.ps1"
         DESTINATION "Sdk/Tools")
     if(HIKARI_WITH_EDITOR_BUILD)
         install(

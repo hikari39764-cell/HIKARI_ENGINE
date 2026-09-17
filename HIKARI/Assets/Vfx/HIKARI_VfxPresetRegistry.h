@@ -19,9 +19,8 @@ namespace HIKARI::VFX::PRESETS {
         VfxAssetData asset{};
     };
 
-    // Effekseer-aligned starter presets reference reusable EngineContent
-    // textures directly through Render Common. Custom Material authoring is
-    // an explicit user choice and never generated as preset-private state.
+    // 編集可能な形状・テクスチャ・マテリアル効果・補助粒子の合成。
+    // パッケージ固有の不透明なシェーダーを生成しない。
     const std::vector<VfxPresetDescriptor>& GetVfxPresetCatalog();
     const VfxPresetDescriptor* FindVfxPreset(std::string_view id) noexcept;
     VfxAssetData MakeVfxPresetAsset(std::string_view id);

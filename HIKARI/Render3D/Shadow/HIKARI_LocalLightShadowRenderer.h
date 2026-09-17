@@ -11,6 +11,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN { struct GpuDrivenSceneSource; }
 
 namespace HIKARI::RENDER3D { enum class LocalShadowQuality : uint8_t; }
 
+namespace HIKARI::RENDER3D::WORLD_SPRITES { class WorldSpritePass; }
 namespace HIKARI::SHADOW {
 
     struct LocalShadowBudget {
@@ -40,7 +41,8 @@ namespace HIKARI::SHADOW {
 
     void RenderLocalLightShadows(const GFX::Context& graphics,
         const RENDER3D::LIGHTING::SceneLightingSet& lighting, const Camera3D& camera,
-        const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& scene, LocalShadowBudget budget);
+        const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& scene, LocalShadowBudget budget,
+        RENDER3D::WORLD_SPRITES::WorldSpritePass* sprites = nullptr);
     const LocalLightShadowFrame* GetLocalLightShadowFrame(const GFX::Context& graphics,
         const RENDER3D::LIGHTING::SceneLightingSet& lighting, const Camera3D& camera);
     const LocalLightShadowStats& GetLocalLightShadowStats();

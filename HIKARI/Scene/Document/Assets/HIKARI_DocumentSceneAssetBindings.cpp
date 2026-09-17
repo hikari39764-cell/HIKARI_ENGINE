@@ -21,6 +21,7 @@
 #include "Assets/Models/HIKARI_ModelMaterialSlot.h"
 #include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingResolver.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
+#include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
 #include "Core/HIKARI_Logger.h"
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Render3D/Lighting/HIKARI_DefaultSkyEnvironment.h"
@@ -35,6 +36,18 @@
 namespace HIKARI {
     namespace {
 #if defined(HIKARI_WITH_EDITOR)
+        std::vector<AssetGuid> CollectRequiredProgramImports(const AssetDatabase& database,
+            const AssetRegistry& registry, const SceneDependencySet& required) {
+            std::vector<AssetGuid> guids;
+            if (database.IsCookedContent()) return guids;
+            for (const auto& id : required.vfxAssetIds) {
+                const auto* record = database.FindByGuid(AssetGuid{id});
+                if (record && record->type == AssetType::VfxEffect &&
+                    (record->importOutdated || !registry.FindDescriptor(id))) guids.push_back(record->guid);
+            }
+            return guids;
+        }
+
         bool ImportOutdatedShaderArtifacts(AssetDatabase& database) {
             if (database.IsCookedContent()) {
                 return true;
@@ -88,7 +101,8 @@ namespace HIKARI {
         bool HasMissingAssetDescriptors(
             const AssetRegistry& registry,
             AssetType expectedType,
-            const std::unordered_set<std::string>& assetIds) {
+            const std::unordered_set<std::string>& assetIds,
+            std::string* outReason) {
 
             for (const std::string& assetId : assetIds) {
                 if (assetId.empty()) {
@@ -97,6 +111,8 @@ namespace HIKARI {
 
                 const AssetDescriptor* descriptor = registry.FindDescriptor(assetId);
                 if (descriptor == nullptr || descriptor->type != expectedType) {
+                    if (outReason) *outReason = "Unavailable asset '" + assetId +
+                        "' (expected " + std::string(ASSETS::SEMANTICS::ToString(expectedType)) + ").";
                     return true;
                 }
             }
@@ -106,7 +122,8 @@ namespace HIKARI {
 
         bool HasMissingSkyResourceDescriptors(
             const AssetRegistry& registry,
-            const std::unordered_set<std::string>& assetIds) {
+            const std::unordered_set<std::string>& assetIds,
+            std::string* outReason) {
 
             for (const std::string& assetId : assetIds) {
                 if (assetId.empty()) {
@@ -121,6 +138,7 @@ namespace HIKARI {
                 if (descriptor == nullptr ||
                     (descriptor->type != AssetType::Sky &&
                      descriptor->type != AssetType::Texture)) {
+                    if (outReason) *outReason = "Unavailable sky asset '" + assetId + "'.";
                     return true;
                 }
             }
@@ -138,7 +156,7 @@ namespace HIKARI {
         }
     }
 
-    bool DocumentSceneAssetBindings::ReloadAssets() {
+    bool DocumentSceneAssetBindings::ReloadAssets(const SceneDependencySet* required) {
         CORE::StartupTimer assetsTimer("Scene.reload_assets");
         if (database_.GetProjectRoot().empty()) {
             if (!database_.Initialize({})) {
@@ -169,6 +187,17 @@ namespace HIKARI {
                 return false;
             }
             shaderTimer.Finish();
+            if (required) {
+                const auto programs = CollectRequiredProgramImports(database_,registry_,*required);
+                if (!programs.empty()) {
+                    const auto imported = database_.ImportAssets(programs);
+                    if (imported.failed || imported.succeeded != static_cast<int>(programs.size())) {
+                        HIKARI_LOG_ERROR("[SceneRuntime] required VFX program import failed; previous live assets preserved.");
+                        restoreDatabase();
+                        return false;
+                    }
+                }
+            }
 #endif
 
             // Database and Registry publish together. A corrupt asset must
@@ -315,8 +344,21 @@ namespace HIKARI {
         return descriptor->sourcePath;
     }
 
+    bool DocumentSceneAssetBindings::NeedsRuntimeProgramImport(const SceneDependencySet& required) const {
+#if defined(HIKARI_WITH_EDITOR)
+        return !CollectRequiredProgramImports(database_,registry_,required).empty();
+#else
+        return false;
+#endif
+    }
+
     bool DocumentSceneAssetBindings::NeedsRuntimeDependencyRegistryRefresh(
-        const SceneDependencySet& dependencies) const {
+        const SceneDependencySet& dependencies, std::string* outReason) const {
+        if (outReason) outReason->clear();
+        if (NeedsRuntimeProgramImport(dependencies)) {
+            if (outReason) *outReason = "Required VFX program is missing or out of date.";
+            return true;
+        }
         const bool hasDescriptorDependencies =
             !dependencies.modelAssetIds.empty() ||
             !dependencies.skyAssetIds.empty() ||
@@ -324,32 +366,35 @@ namespace HIKARI {
             !dependencies.materialAssetIds.empty() ||
             !dependencies.modelMaterialSetAssetIds.empty() ||
             !dependencies.vfxAssetIds.empty();
+        if (hasDescriptorDependencies &&
+            registrySourceRevision_ != database_.GetContentRevision()) {
+            if (outReason) *outReason = "Asset registry snapshot is out of date.";
+            return true;
+        }
         return
-            (hasDescriptorDependencies &&
-             registrySourceRevision_ != database_.GetContentRevision()) ||
             HasMissingAssetDescriptors(
                 registry_,
                 AssetType::Model,
-                dependencies.modelAssetIds) ||
+                dependencies.modelAssetIds, outReason) ||
             HasMissingAssetDescriptors(
                 registry_,
                 AssetType::Material,
-                dependencies.materialAssetIds) ||
+                dependencies.materialAssetIds, outReason) ||
             HasMissingAssetDescriptors(
                 registry_,
                 AssetType::ModelMaterialBinding,
-                dependencies.modelMaterialSetAssetIds) ||
+                dependencies.modelMaterialSetAssetIds, outReason) ||
             HasMissingAssetDescriptors(
                 registry_,
                 AssetType::VfxEffect,
-                dependencies.vfxAssetIds) ||
+                dependencies.vfxAssetIds, outReason) ||
             HasMissingAssetDescriptors(
                 registry_,
                 AssetType::Texture,
-                dependencies.textureAssetIds) ||
+                dependencies.textureAssetIds, outReason) ||
             HasMissingSkyResourceDescriptors(
                 registry_,
-                dependencies.skyAssetIds);
+                dependencies.skyAssetIds, outReason);
     }
 
     bool DocumentSceneAssetBindings::RefreshTextureByPath(const std::string& path) {
@@ -682,7 +727,9 @@ namespace HIKARI {
     }
 
     bool DocumentSceneBase::ReloadAssets() {
-        const bool reloaded = state_->assets.ReloadAssets();
+        const auto required = state_->runtime.builder.CollectDependencies(
+            state_->identity.document,&state_->runtime.componentRegistry);
+        const bool reloaded = state_->assets.ReloadAssets(&required);
         if (reloaded) {
             // AssetDatabase retains stable object identity across scans, so
             // pointer equality cannot invalidate cached .hasm definitions.

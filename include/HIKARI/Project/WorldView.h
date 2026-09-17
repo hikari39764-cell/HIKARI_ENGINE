@@ -25,6 +25,7 @@ namespace HIKARI {
     class AudioView;
     class CameraView;
     class DialogueView;
+    class DebugView;
     class DisplaySettingsView;
     class IGameComponent;
     class InputView;
@@ -59,6 +60,9 @@ namespace HIKARI {
         // renamed or destroyed.
         HIKARI_GAME_PROJECT_SDK_API std::string_view
             GetName() const noexcept;
+        // Scene-local authored identity, not a runtime handle. Zero means an
+        // invalid or code-created object without an authored identity.
+        HIKARI_GAME_PROJECT_SDK_API uint64_t GetSceneObjectId() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool GetLocalTransform(
             GameProjectTransform& outTransform) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool GetWorldTransform(
@@ -146,6 +150,7 @@ namespace HIKARI {
     class WorldView {
     public:
         WorldView() = default;
+        HIKARI_GAME_PROJECT_SDK_API DebugView GetDebug() const noexcept;
 
         HIKARI_GAME_PROJECT_SDK_API bool IsValid() const noexcept;
         GameProjectWorldHandle GetHandle() const noexcept {
@@ -154,6 +159,11 @@ namespace HIKARI {
 
         HIKARI_GAME_PROJECT_SDK_API ObjectView FindObject(
             GameProjectObjectHandle handle) const noexcept;
+        // Resolves an authored reference in this World only. Returns an invalid
+        // view for zero/missing IDs, expired Worlds, or non-owner threads.
+        // Resolve again after scene replacement; never serialize runtime handles.
+        HIKARI_GAME_PROJECT_SDK_API ObjectView FindSceneObject(
+            uint64_t sceneObjectId) const noexcept;
         // Total live identity count, including GameObject-backed and mass
         // objects. Mass handles are accessed through the mass query API rather
         // than ObjectView.

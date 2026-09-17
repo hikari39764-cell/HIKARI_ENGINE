@@ -1,13 +1,11 @@
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 
-#include <algorithm>
+#include "Core/Text/HIKARI_Localization.h"
+
 #include <array>
-#include <string>
 #include <string_view>
 
 #include "Assets/HIKARI_AssetDatabase.h"
-#include "Editor/Style/HIKARI_EditorGlyphs.h"
-#include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxInspectorControls.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxParticleMaterialField.h"
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
@@ -19,172 +17,135 @@
 namespace HIKARI::EDITOR {
     namespace {
 #if defined(HIKARI_WITH_EDITOR)
-        struct EmitterInspectorPageDescriptor {
-            VfxEmitterInspectorPage page;
-            EditorGlyph glyph;
-            const char* id;
-            const char* title;
-            const char* tooltip;
-        };
-
-        constexpr std::array<EmitterInspectorPageDescriptor, 8u>
-            kEmitterInspectorPages{
-                EmitterInspectorPageDescriptor{
-                    VfxEmitterInspectorPage::Common,
-                    EditorGlyph::Inspector,
-                    "Common",
-                    "Common",
-                    "Common emitter settings and transform",
-                },
-                EmitterInspectorPageDescriptor{
-                    VfxEmitterInspectorPage::Spawn,
-                    EditorGlyph::Vfx,
-                    "Spawn",
-                    "Spawn",
-                    "Spawn and particle capacity",
-                },
-                EmitterInspectorPageDescriptor{
-                    VfxEmitterInspectorPage::Position,
-                    EditorGlyph::Translate,
-                    "Position",
-                    "Position",
-                    "Position, velocity and forces",
-                },
-                EmitterInspectorPageDescriptor{
-                    VfxEmitterInspectorPage::Rotation,
-                    EditorGlyph::Rotate,
-                    "Rotation",
-                    "Rotation",
-                    "Rotation over particle lifetime",
-                },
-                EmitterInspectorPageDescriptor{
-                    VfxEmitterInspectorPage::Scale,
-                    EditorGlyph::Scale,
-                    "Scale",
-                    "Scale",
-                    "Scale over particle lifetime",
-                },
-                EmitterInspectorPageDescriptor{
-                    VfxEmitterInspectorPage::Shape,
-                    EditorGlyph::Object,
-                    "Shape",
-                    "Shape",
-                    "Emission shape",
-                },
-                EmitterInspectorPageDescriptor{
-                    VfxEmitterInspectorPage::Render,
-                    EditorGlyph::Material,
-                    "Render",
-                    "Render",
-                    "Color, material and render shape",
-                },
-                EmitterInspectorPageDescriptor{
-                    VfxEmitterInspectorPage::Bindings,
-                    EditorGlyph::Dependency,
-                    "Bindings",
-                    "Bindings",
-                    "Exposed input bindings",
-                },
+        VfxEmitterInspectorPage DrawPageNavigation(VfxEmitterInspectorPage current, bool particles) {
+            struct Page { VfxEmitterInspectorPage id; const char* label; bool particlesOnly; };
+            constexpr std::array pages{
+                Page{VfxEmitterInspectorPage::Common, "ui.vfx.layer.shape", false},
+                Page{VfxEmitterInspectorPage::Render, "ui.vfx.layer.appearance", false},
+                Page{VfxEmitterInspectorPage::Spawn, "ui.vfx.layer.emission", true},
+                Page{VfxEmitterInspectorPage::Position, "ui.vfx.layer.motion", true},
+                Page{VfxEmitterInspectorPage::Advanced, "ui.vfx.layer.advanced", false}
             };
-
-        const EmitterInspectorPageDescriptor& GetPageDescriptor(
-            VfxEmitterInspectorPage page) noexcept {
-
-            const auto found = std::find_if(
-                kEmitterInspectorPages.begin(),
-                kEmitterInspectorPages.end(),
-                [page](const EmitterInspectorPageDescriptor& descriptor) {
-                    return descriptor.page == page;
-                });
-            return found != kEmitterInspectorPages.end()
-                ? *found
-                : kEmitterInspectorPages.front();
-        }
-
-        VfxEmitterInspectorPage DrawPageNavigation(
-            VfxEmitterInspectorPage currentPage) {
-
-            VfxEmitterInspectorPage requestedPage = currentPage;
-            const ImVec2 buttonSize{ 30.0f, 30.0f };
-            const float navigationHeight = buttonSize.y +
-                ImGui::GetStyle().ScrollbarSize + 8.0f;
-            ImGui::BeginChild(
-                "##EmitterInspectorNavigation",
-                ImVec2(0.0f, navigationHeight),
-                false,
-                ImGuiWindowFlags_HorizontalScrollbar);
-            for (std::size_t index = 0u;
-                 index < kEmitterInspectorPages.size();
-                 ++index) {
-                const EmitterInspectorPageDescriptor& descriptor =
-                    kEmitterInspectorPages[index];
-                if (index != 0u) {
-                    ImGui::SameLine(0.0f, 4.0f);
+            auto requested = current;
+            if (ImGui::BeginCombo("##page", TEXT::Localize(
+                    current == VfxEmitterInspectorPage::Common ? pages[0].label :
+                    current == VfxEmitterInspectorPage::Render ? pages[1].label :
+                    current == VfxEmitterInspectorPage::Spawn ? pages[2].label :
+                    current == VfxEmitterInspectorPage::Position ? pages[3].label : pages[4].label).c_str())) {
+                for (const auto& page : pages) {
+                    if (page.particlesOnly && !particles) continue;
+                    if (ImGui::Selectable(TEXT::Localize(page.label).c_str(), current == page.id)) requested = page.id;
                 }
-                if (IconToggleButton(
-                        descriptor.glyph,
-                        descriptor.id,
-                        descriptor.page == currentPage,
-                        buttonSize,
-                        descriptor.tooltip)) {
-                    requestedPage = descriptor.page;
-                }
+                ImGui::EndCombo();
             }
-            ImGui::EndChild();
-            return requestedPage;
+            ImGui::Separator();
+            return requested;
         }
-
 #endif
-    } // namespace
+    }
 
-    void VfxWorkspaceController::DrawEmitterInspector(
-        AssetDatabase& database,
-        const VFX::VfxEmitterData& source) {
+    void VfxWorkspaceController::DrawEmitterInspector(AssetDatabase& database, const VFX::VfxEmitterData& source) {
 #if defined(HIKARI_WITH_EDITOR)
         const VFX::VfxEmitterData emitter = source;
         if (emitterInspectorEmitterId_ != emitter.id) {
             emitterInspectorEmitterId_ = emitter.id;
-            emitterInspectorPage_ = selection_.kind ==
-                    VfxWorkspaceSelectionKind::Bindings
-                ? VfxEmitterInspectorPage::Bindings
-                : VfxEmitterInspectorPage::Common;
-        } else if (selection_.kind ==
-                   VfxWorkspaceSelectionKind::Bindings) {
-            emitterInspectorPage_ = VfxEmitterInspectorPage::Bindings;
-        } else if (selection_.kind ==
-                   VfxWorkspaceSelectionKind::SpecialOutput) {
-            // Output profiles are authored on Common. Route hierarchy clicks
-            // back here even when the user was previously on Spawn/Render.
             emitterInspectorPage_ = VfxEmitterInspectorPage::Common;
         }
-
-        const VfxEmitterInspectorPage requestedPage =
-            DrawPageNavigation(emitterInspectorPage_);
-        if (requestedPage != emitterInspectorPage_) {
-            emitterInspectorPage_ = requestedPage;
-            Select({
-                requestedPage == VfxEmitterInspectorPage::Bindings
-                    ? VfxWorkspaceSelectionKind::Bindings
-                    : VfxWorkspaceSelectionKind::Emitter,
-                emitter.id,
-                emitter.id,
-            });
+        if (selection_.kind == VfxWorkspaceSelectionKind::Bindings) emitterInspectorPage_ = VfxEmitterInspectorPage::Bindings;
+        if (selection_.kind == VfxWorkspaceSelectionKind::SpecialOutput) emitterInspectorPage_ = VfxEmitterInspectorPage::Advanced;
+        ImGui::TextWrapped("%s", emitter.name.c_str());
+        ImGui::TextDisabled("%s  |  %s", VFX::ToString(emitter.renderShape.type).data(), VFX::ToString(emitter.renderCommon.materialMode).data());
+        const auto requested = DrawPageNavigation(emitterInspectorPage_, emitter.kind == VFX::VfxLayerKind::Particles);
+        if (requested != emitterInspectorPage_) {
+            emitterInspectorPage_ = requested;
+            Select({VfxWorkspaceSelectionKind::Emitter, emitter.id, emitter.id});
         }
-
-        const EmitterInspectorPageDescriptor& pageDescriptor =
-            GetPageDescriptor(emitterInspectorPage_);
-        ImGui::SeparatorText(pageDescriptor.title);
-
         switch (emitterInspectorPage_) {
         case VfxEmitterInspectorPage::Common: {
-            ImGui::TextDisabled("EMITTER");
-            ImGui::TextWrapped("Stable ID: %s", emitter.id.c_str());
+            if (emitter.kind != VFX::VfxLayerKind::Group && emitter.history.mode != VFX::VfxHistoryMode::Trail) {
+            ImGui::SeparatorText(TEXT::Localize("ui.vfx.layer.geometry").c_str());
+            VfxInspectorPropertyEditor renderShapeEditor(
+                *this,
+                database,
+                emitter.renderShape.id,
+                statusMessage_);
+            const auto renderShapes = VFX::GetVfxRenderShapeChoices();
+            renderShapeEditor.Choice(
+                VfxUiText("Geometry").c_str(),
+                "type",
+                VFX::ToString(emitter.renderShape.type),
+                renderShapes.data(),
+                renderShapes.size());
+            if (emitter.renderShape.type == VFX::VfxRenderShapeType::Sprite ||
+                emitter.renderShape.type == VFX::VfxRenderShapeType::Ring ||
+                emitter.renderShape.type == VFX::VfxRenderShapeType::Ribbon) {
+                constexpr std::array<std::string_view, 4u> orientationModes{
+                    "RotatedBillboard",
+                    "FixedYAxis",
+                    "DirectionalBillboard",
+                    "Fixed",
+                };
+                renderShapeEditor.Choice(
+                    VfxUiText("Orientation").c_str(),
+                    "billboardMode",
+                    VFX::ToString(emitter.renderShape.billboardMode),
+                    orientationModes.data(),
+                    orientationModes.size());
+            }
+            if (emitter.renderShape.type ==
+                VFX::VfxRenderShapeType::Ribbon) {
+                renderShapeEditor.Unsigned(
+                    VfxUiText("Ribbon Segments").c_str(),
+                    "ribbonSegmentCount",
+                    emitter.renderShape.ribbonSegmentCount,
+                    2u,
+                    64u);
+                (void)DrawLayerParameter(emitter, emitter.renderShape.id, "ribbonWidth");
+            }
+            if (emitter.renderShape.type ==
+                VFX::VfxRenderShapeType::Ring) {
+                (void)DrawLayerParameter(emitter, emitter.renderShape.id, "ringOuterRadius");
+                (void)DrawLayerParameter(emitter, emitter.renderShape.id, "ringInnerRadius");
+                renderShapeEditor.Unsigned(
+                    VfxUiText("Ring Segments").c_str(),
+                    "ringSegmentCount",
+                    emitter.renderShape.ringSegmentCount,
+                    3u,
+                    64u);
+                (void)DrawLayerParameter(emitter, emitter.renderShape.id, "ringStartAngleDegrees");
+                (void)DrawLayerParameter(emitter, emitter.renderShape.id, "ringEndAngleDegrees");
+            }
+            if (emitter.renderShape.type == VFX::VfxRenderShapeType::MeshCylinder ||
+                emitter.renderShape.type == VFX::VfxRenderShapeType::MeshCone) {
+                renderShapeEditor.Unsigned(VfxUiText("Radial segments").c_str(), "ringSegmentCount",
+                    emitter.renderShape.ringSegmentCount, 3u, 64u);
+                ImGui::TextWrapped(VfxUiText("Open shell along local Y. Scale controls diameter and length; Rotation sets its direction. UV wraps around the shell.").c_str());
+            }
+            if (emitter.renderShape.type == VFX::VfxRenderShapeType::CrossPlane)
+                ImGui::TextWrapped(VfxUiText("Two intersecting planes in local space. Useful for flames and beams viewed from different sides.").c_str());
+            }
+            ImGui::SeparatorText(TEXT::Localize("ui.vfx.layer.timing").c_str());
+
             VfxInspectorPropertyEditor emitterEditor(
                 *this, database, emitter.id, statusMessage_);
-            emitterEditor.Text("Name", "name", emitter.name);
-            emitterEditor.Unsigned("Sibling Order", "order", emitter.order);
+            emitterEditor.Text(VfxUiText("Name").c_str(), "name", emitter.name);
+            if (emitter.kind == VFX::VfxLayerKind::Shape) {
+                constexpr std::string_view modes[]{"None", "Afterimage", "Trail"};
+                emitterEditor.Choice(VfxUiText("Motion history").c_str(), "history.mode",
+                    modes[static_cast<size_t>(emitter.history.mode)], modes, 3);
+                if (emitter.history.mode != VFX::VfxHistoryMode::None) {
+                    emitterEditor.Float(VfxUiText("History duration").c_str(), "history.duration", emitter.history.duration, 0.01f, 0.01f, 2);
+                    emitterEditor.Unsigned(VfxUiText("History samples").c_str(), "history.samples", emitter.history.samples, 2, 16);
+                    emitterEditor.Float(VfxUiText("Teleport break distance").c_str(), "history.breakDistance", emitter.history.breakDistance, 0.1f, 0.01f, 10000);
+                    if (emitter.history.mode == VFX::VfxHistoryMode::Trail) {
+                        VfxInspectorPropertyEditor geometry(*this, database, emitter.renderShape.id, statusMessage_);
+                        (void)DrawLayerParameter(emitter, emitter.renderShape.id, "ribbonWidth");
+                        ImGui::TextWrapped("%s", VfxUiText("Trail connects the layer's local X edges through world-space motion. Animate position or attach it to a moving object.").c_str());
+                    }
+                }
+            }
             emitterEditor.Float(
-                "Start Delay (seconds)",
+                VfxUiText("Start Delay (seconds)").c_str(),
                 "startDelay",
                 emitter.startDelay,
                 0.01f,
@@ -193,7 +154,7 @@ namespace HIKARI::EDITOR {
                     ? document_.Asset().durationSeconds
                     : 3600.0f);
             emitterEditor.Float(
-                "Active Duration (0 = until asset end)",
+                VfxUiText("Active Duration (0 = until asset end)").c_str(),
                 "activeDuration",
                 emitter.activeDuration,
                 0.01f,
@@ -202,10 +163,13 @@ namespace HIKARI::EDITOR {
                     ? document_.Asset().durationSeconds
                     : 3600.0f);
 
-            ImGui::SeparatorText("Basic");
+            ImGui::SeparatorText(VfxUiText("Basic").c_str());
             VfxInspectorPropertyEditor basicEditor(
                 *this, database, emitter.basic.id, statusMessage_);
-            basicEditor.Bool("Enabled", "enabled", emitter.basic.enabled);
+            basicEditor.Bool(VfxUiText("Enabled").c_str(), "enabled", emitter.basic.enabled);
+            if (emitter.kind == VFX::VfxLayerKind::Particles) {
+            basicEditor.Bool(VfxUiText("Follow Emitter (Local Space)").c_str(),"localSimulation",emitter.basic.localSimulation);
+            ImGui::TextWrapped(VfxUiText("Off: particles retain their spawn transform. Forces use the simulation space.").c_str());
             basicEditor.FloatDistribution(
                 "Lifetime",
                 "lifetime",
@@ -214,287 +178,28 @@ namespace HIKARI::EDITOR {
                 0.001f,
                 3600.0f);
 
-            ImGui::SeparatorText("Emitter Transform");
+            }
+            ImGui::SeparatorText(TEXT::Localize("ui.vfx.layer.offset").c_str());
             VfxInspectorPropertyEditor transformEditor(
                 *this,
                 database,
                 emitter.emitterTransform.id,
                 statusMessage_);
             transformEditor.Vec3(
-                "Position",
+                VfxUiText("Position").c_str(),
                 "transform.position",
                 emitter.emitterTransform.transform.position);
             transformEditor.Vec3(
-                "Rotation (degrees)",
+                VfxUiText("Rotation (degrees)").c_str(),
                 "transform.rotationEulerDegrees",
                 emitter.emitterTransform.transform.rotationEulerDegrees,
                 0.1f);
             transformEditor.Vec3(
-                "Scale",
+                VfxUiText("Scale").c_str(),
                 "transform.scale",
                 emitter.emitterTransform.transform.scale);
 
-            ImGui::SeparatorText("Attachment / Follow");
-            VfxInspectorPropertyEditor attachmentEditor(
-                *this,
-                database,
-                emitter.attachment.id,
-                statusMessage_);
-            constexpr std::array<std::string_view, 3u> attachmentModes{
-                "World", "Owner", "OwnerSocket"
-            };
-            attachmentEditor.Choice(
-                "Attachment Mode",
-                "mode",
-                VFX::ToString(emitter.attachment.mode),
-                attachmentModes.data(),
-                attachmentModes.size());
-            constexpr std::array<std::string_view, 4u> followModes{
-                "None", "Position", "Rotation", "Transform"
-            };
-            attachmentEditor.Choice(
-                "Follow",
-                "follow",
-                VFX::ToString(emitter.attachment.follow),
-                followModes.data(),
-                followModes.size());
-            if (emitter.attachment.mode == VFX::VfxAttachmentMode::OwnerSocket) {
-                attachmentEditor.Text(
-                    "Socket Name",
-                    "socketName",
-                    emitter.attachment.socketName);
-            }
-            attachmentEditor.Vec3(
-                "Local Offset",
-                "offset.position",
-                emitter.attachment.offset.position);
-            attachmentEditor.Vec3(
-                "Local Rotation (degrees)",
-                "offset.rotationEulerDegrees",
-                emitter.attachment.offset.rotationEulerDegrees,
-                0.1f);
-            attachmentEditor.Vec3(
-                "Local Scale",
-                "offset.scale",
-                emitter.attachment.offset.scale);
-
-            ImGui::SeparatorText("Typed Special Outputs");
-            constexpr std::array<std::string_view, 3u> specialOutputTypes{
-                "WeaponPathDistortion", "ScreenImpulse", "SkinnedAfterimage"
-            };
-            if (emitter.specialOutputs.empty()) {
-                ImGui::TextDisabled(
-                    "No special output profiles. Add one to expose the typed renderer profile.");
-            } else if (selection_.kind ==
-                       VfxWorkspaceSelectionKind::SpecialOutput) {
-                ImGui::TextDisabled(
-                    "Editing selected special output profile: %s",
-                    selection_.targetId.c_str());
-            }
-            bool removeOutput = false;
-            std::string removeOutputId{};
-            for (const VFX::VfxSpecialOutputData& output :
-                 emitter.specialOutputs) {
-                if (selection_.kind ==
-                        VfxWorkspaceSelectionKind::SpecialOutput &&
-                    selection_.targetId != output.id) {
-                    continue;
-                }
-                ImGui::PushID(output.id.c_str());
-                ImGui::Separator();
-                if (ImGui::Selectable(
-                        output.id.c_str(),
-                        selection_.kind ==
-                            VfxWorkspaceSelectionKind::SpecialOutput &&
-                        selection_.targetId == output.id)) {
-                    Select({ VfxWorkspaceSelectionKind::SpecialOutput,
-                        output.id, emitter.id });
-                }
-                VfxInspectorPropertyEditor outputEditor(
-                    *this, database, output.id, statusMessage_);
-                outputEditor.Bool("Enabled", "enabled", output.enabled);
-                outputEditor.Choice(
-                    "Profile",
-                    "type",
-                    VFX::ToString(output.type),
-                    specialOutputTypes.data(),
-                    specialOutputTypes.size());
-                switch (output.type) {
-                case VFX::VfxSpecialOutputType::ScreenImpulse:
-                    outputEditor.Float(
-                        "Duration", "screenImpulse.durationSeconds",
-                        output.screenImpulse.durationSeconds, 0.01f,
-                        VFX::kVfxScreenDurationMin,
-                        VFX::kVfxScreenDurationMax);
-                    outputEditor.Float(
-                        "Max Radius", "screenImpulse.maxRadius",
-                        output.screenImpulse.maxRadius, 0.01f,
-                        VFX::kVfxScreenRadiusMin,
-                        VFX::kVfxScreenRadiusMax);
-                    outputEditor.Float(
-                        "Ring Thickness", "screenImpulse.ringThickness",
-                        output.screenImpulse.ringThickness, 0.001f,
-                        VFX::kVfxScreenRingThicknessMin,
-                        VFX::kVfxScreenRingThicknessMax);
-                    outputEditor.Float(
-                        "Distortion", "screenImpulse.distortion",
-                        output.screenImpulse.distortion, 0.01f,
-                        VFX::kVfxScreenDistortionMin,
-                        VFX::kVfxScreenDistortionMax);
-                    outputEditor.Float(
-                        "Chromatic Aberration", "screenImpulse.chromaticAberration",
-                        output.screenImpulse.chromaticAberration, 0.001f,
-                        VFX::kVfxScreenChromaticMin,
-                        VFX::kVfxScreenChromaticMax);
-                    outputEditor.Float(
-                        "Flash", "screenImpulse.flash",
-                        output.screenImpulse.flash, 0.01f,
-                        VFX::kVfxScreenFlashMin,
-                        VFX::kVfxScreenFlashMax);
-                    outputEditor.Float(
-                        "Intensity", "screenImpulse.intensity",
-                        output.screenImpulse.intensity, 0.01f,
-                        VFX::kVfxScreenIntensityMin,
-                        VFX::kVfxScreenIntensityMax);
-                    outputEditor.Color(
-                        "Color", "screenImpulse.color", output.screenImpulse.color);
-                    outputEditor.Float(
-                        "Wave Frequency", "screenImpulse.waveFrequency",
-                        output.screenImpulse.waveFrequency, 0.01f,
-                        VFX::kVfxScreenWaveFrequencyMin,
-                        VFX::kVfxScreenWaveFrequencyMax);
-                    outputEditor.Float(
-                        "Wave Amplitude", "screenImpulse.waveAmplitude",
-                        output.screenImpulse.waveAmplitude, 0.01f,
-                        VFX::kVfxScreenWaveAmplitudeMin,
-                        VFX::kVfxScreenWaveAmplitudeMax);
-                    outputEditor.Float(
-                        "Wave Damping", "screenImpulse.waveDamping",
-                        output.screenImpulse.waveDamping, 0.01f,
-                        VFX::kVfxScreenWaveDampingMin,
-                        VFX::kVfxScreenWaveDampingMax);
-                    outputEditor.Unsigned(
-                        "Wave Count", "screenImpulse.waveCount",
-                        output.screenImpulse.waveCount,
-                        VFX::kVfxScreenImpulseWaveCountMin,
-                        VFX::kVfxScreenImpulseWaveCountMax);
-                    break;
-                case VFX::VfxSpecialOutputType::SkinnedAfterimage:
-                    outputEditor.Unsigned(
-                        "Sample Count", "skinnedAfterimage.sampleCount",
-                        output.skinnedAfterimage.sampleCount,
-                        VFX::kVfxAfterimageSampleCountMin,
-                        VFX::kVfxAfterimageSampleCountMax);
-                    outputEditor.Float(
-                        "Lifetime", "skinnedAfterimage.lifetimeSeconds",
-                        output.skinnedAfterimage.lifetimeSeconds, 0.01f,
-                        VFX::kVfxAfterimageLifetimeMin,
-                        VFX::kVfxAfterimageLifetimeMax);
-                    outputEditor.Float(
-                        "Opacity", "skinnedAfterimage.opacity",
-                        output.skinnedAfterimage.opacity, 0.01f,
-                        VFX::kVfxAfterimageOpacityMin,
-                        VFX::kVfxAfterimageOpacityMax);
-                    outputEditor.Float(
-                        "Fresnel", "skinnedAfterimage.fresnel",
-                        output.skinnedAfterimage.fresnel, 0.01f,
-                        VFX::kVfxAfterimageFresnelMin,
-                        VFX::kVfxAfterimageFresnelMax);
-                    outputEditor.Float(
-                        "Dissolve", "skinnedAfterimage.dissolve",
-                        output.skinnedAfterimage.dissolve, 0.01f,
-                        VFX::kVfxAfterimageDissolveMin,
-                        VFX::kVfxAfterimageDissolveMax);
-                    outputEditor.Float(
-                        "Shell Offset", "skinnedAfterimage.shellOffset",
-                        output.skinnedAfterimage.shellOffset, 0.001f,
-                        VFX::kVfxAfterimageShellOffsetMin,
-                        VFX::kVfxAfterimageShellOffsetMax);
-                    outputEditor.Color(
-                        "Color", "skinnedAfterimage.color",
-                        output.skinnedAfterimage.color);
-                    outputEditor.Float(
-                        "Intensity", "skinnedAfterimage.intensity",
-                        output.skinnedAfterimage.intensity, 0.01f,
-                        VFX::kVfxAfterimageIntensityMin,
-                        VFX::kVfxAfterimageIntensityMax);
-                    break;
-                case VFX::VfxSpecialOutputType::WeaponPathDistortion:
-                default:
-                    outputEditor.Float(
-                        "Distortion", "weaponPathDistortion.distortion",
-                        output.weaponPathDistortion.distortion, 0.01f,
-                        VFX::kVfxWeaponDistortionMin,
-                        VFX::kVfxWeaponDistortionMax);
-                    outputEditor.Float(
-                        "Blur", "weaponPathDistortion.blur",
-                        output.weaponPathDistortion.blur, 0.01f,
-                        VFX::kVfxWeaponBlurMin,
-                        VFX::kVfxWeaponBlurMax);
-                    outputEditor.Float(
-                        "Opacity", "weaponPathDistortion.opacity",
-                        output.weaponPathDistortion.opacity, 0.01f,
-                        VFX::kVfxWeaponOpacityMin,
-                        VFX::kVfxWeaponOpacityMax);
-                    outputEditor.Float(
-                        "Emissive", "weaponPathDistortion.emissive",
-                        output.weaponPathDistortion.emissive, 0.01f,
-                        VFX::kVfxWeaponEmissiveMin,
-                        VFX::kVfxWeaponEmissiveMax);
-                    outputEditor.Float(
-                        "Flow", "weaponPathDistortion.flow",
-                        output.weaponPathDistortion.flow, 0.01f,
-                        VFX::kVfxWeaponFlowMin,
-                        VFX::kVfxWeaponFlowMax);
-                    outputEditor.Float(
-                        "Width", "weaponPathDistortion.width",
-                        output.weaponPathDistortion.width, 0.001f,
-                        VFX::kVfxWeaponWidthMin,
-                        VFX::kVfxWeaponWidthMax);
-                    outputEditor.Float(
-                        "Lifetime", "weaponPathDistortion.lifetimeSeconds",
-                        output.weaponPathDistortion.lifetimeSeconds, 0.01f,
-                        VFX::kVfxWeaponLifetimeMin,
-                        VFX::kVfxWeaponLifetimeMax);
-                    outputEditor.Color(
-                        "Body Color", "weaponPathDistortion.bodyColor",
-                        output.weaponPathDistortion.bodyColor);
-                    outputEditor.Color(
-                        "Edge Color", "weaponPathDistortion.edgeColor",
-                        output.weaponPathDistortion.edgeColor);
-                    break;
-                }
-                if (ImGui::SmallButton("Remove Output")) {
-                    removeOutput = true;
-                    removeOutputId = output.id;
-                }
-                ImGui::PopID();
-            }
-            const auto addOutput = [this, &emitter](
-                VFX::VfxSpecialOutputType type) {
-                std::string outputId{};
-                std::string message{};
-                if (!AddSpecialOutput(
-                        emitter.id, type, {}, outputId, message)) {
-                    statusMessage_ = message;
-                }
-            };
-            if (ImGui::Button("Add WeaponPathDistortion Output")) {
-                addOutput(VFX::VfxSpecialOutputType::WeaponPathDistortion);
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("Add ScreenImpulse Output")) {
-                addOutput(VFX::VfxSpecialOutputType::ScreenImpulse);
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("Add SkinnedAfterimage Output")) {
-                addOutput(VFX::VfxSpecialOutputType::SkinnedAfterimage);
-            }
-            if (removeOutput) {
-                std::string message{};
-                (void)RemoveSpecialOutput(removeOutputId, message);
-                statusMessage_ = message;
-            }
+            if (emitter.kind != VFX::VfxLayerKind::Particles) DrawLayerAnimation(database, emitter);
             break;
         }
         case VfxEmitterInspectorPage::Spawn: {
@@ -534,70 +239,23 @@ namespace HIKARI::EDITOR {
             if (emitter.spawn.capacityMode ==
                 VFX::VfxParticleCapacityMode::Automatic) {
                 ImGui::TextDisabled(
-                    "GPU capacity is derived from spawn rate and maximum lifetime.");
+                    VfxUiText("GPU capacity is derived from spawn rate and maximum lifetime.").c_str());
             }
-            break;
-        }
-        case VfxEmitterInspectorPage::Position: {
-            ImGui::SeparatorText("Position");
-            VfxInspectorPropertyEditor positionEditor(
-                *this, database, emitter.position.id, statusMessage_);
-            positionEditor.FloatDistribution(
-                "Radial Speed",
-                "radialSpeed",
-                emitter.position.radialSpeed,
-                0.01f);
-            positionEditor.AnimatedVec3(
-                "Position over Life",
-                "value",
-                emitter.position.value);
-
-            ImGui::SeparatorText("Forces");
-            VfxInspectorPropertyEditor forcesEditor(
-                *this, database, emitter.forces.id, statusMessage_);
-            forcesEditor.Vec3(
-                "Gravity", "gravity", emitter.forces.gravity);
-            forcesEditor.Float(
-                "Drag",
-                "drag",
-                emitter.forces.drag,
-                0.01f,
-                0.0f,
-                1000.0f);
-            break;
-        }
-        case VfxEmitterInspectorPage::Rotation: {
-            VfxInspectorPropertyEditor editor(
-                *this, database, emitter.rotation.id, statusMessage_);
-            editor.AnimatedVec3(
-                "Rotation over Life",
-                "eulerDegrees",
-                emitter.rotation.eulerDegrees,
-                0.1f);
-            break;
-        }
-        case VfxEmitterInspectorPage::Scale: {
-            VfxInspectorPropertyEditor editor(
-                *this, database, emitter.scale.id, statusMessage_);
-            editor.AnimatedVec3(
-                "Scale over Life", "value", emitter.scale.value);
-            break;
-        }
-        case VfxEmitterInspectorPage::Shape: {
-            VfxInspectorPropertyEditor editor(
+            ImGui::SeparatorText(VfxUiText("Emission volume").c_str());
+            VfxInspectorPropertyEditor shapeEditor(
                 *this, database, emitter.shape.id, statusMessage_);
             constexpr std::array<std::string_view, 7u> shapes{
                 "Point", "Sphere", "Cone", "Box",
                 "Cylinder", "Circle", "Edge"
             };
-            editor.Choice(
-                "Type",
+            shapeEditor.Choice(
+                VfxUiText("Type").c_str(),
                 "type",
                 VFX::ToString(emitter.shape.type),
                 shapes.data(),
                 shapes.size());
             if (emitter.shape.type != VFX::VfxShapeType::Point) {
-                editor.FloatDistribution(
+                shapeEditor.FloatDistribution(
                     "Radius",
                     "radius",
                     emitter.shape.radius,
@@ -606,8 +264,8 @@ namespace HIKARI::EDITOR {
                     100000.0f);
             }
             if (emitter.shape.type == VFX::VfxShapeType::Cone) {
-                editor.Float(
-                    "Cone Angle (degrees)",
+                shapeEditor.Float(
+                    VfxUiText("Cone Angle (degrees)").c_str(),
                     "coneAngleDegrees",
                     emitter.shape.coneAngleDegrees,
                     0.1f,
@@ -615,15 +273,15 @@ namespace HIKARI::EDITOR {
                     180.0f);
             }
             if (emitter.shape.type == VFX::VfxShapeType::Box) {
-                editor.Vec3(
-                    "Box Half Extents",
+                shapeEditor.Vec3(
+                    VfxUiText("Box Half Extents").c_str(),
                     "boxHalfExtents",
                     emitter.shape.boxHalfExtents,
                     0.01f);
             }
             if (emitter.shape.type == VFX::VfxShapeType::Cylinder) {
-                editor.Float(
-                    "Cylinder Height",
+                shapeEditor.Float(
+                    VfxUiText("Cylinder Height").c_str(),
                     "cylinderHeight",
                     emitter.shape.cylinderHeight,
                     0.01f,
@@ -631,21 +289,21 @@ namespace HIKARI::EDITOR {
                     100000.0f);
             }
             if (emitter.shape.type == VFX::VfxShapeType::Circle) {
-                editor.Float(
-                    "Circle Inner Radius",
+                shapeEditor.Float(
+                    VfxUiText("Circle Inner Radius").c_str(),
                     "circleInnerRadius",
                     emitter.shape.circleInnerRadius,
                     0.01f,
                     0.0f,
                     100000.0f);
-                editor.Bool(
-                    "Emit On Edge Only",
+                shapeEditor.Bool(
+                    VfxUiText("Emit On Edge Only").c_str(),
                     "circleEmitOnEdge",
                     emitter.shape.circleEmitOnEdge);
             }
             if (emitter.shape.type == VFX::VfxShapeType::Edge) {
-                editor.Float(
-                    "Edge Length",
+                shapeEditor.Float(
+                    VfxUiText("Edge Length").c_str(),
                     "edgeLength",
                     emitter.shape.edgeLength,
                     0.01f,
@@ -654,327 +312,67 @@ namespace HIKARI::EDITOR {
             }
             break;
         }
-        case VfxEmitterInspectorPage::Render: {
-            ImGui::SeparatorText("Color");
-            VfxInspectorPropertyEditor colorEditor(
-                *this, database, emitter.color.id, statusMessage_);
-            colorEditor.AnimatedColor(
-                "Color over Life", "value", emitter.color.value);
+        case VfxEmitterInspectorPage::Position: {
+            ImGui::SeparatorText(VfxUiText("Position").c_str());
+            VfxInspectorPropertyEditor positionEditor(
+                *this, database, emitter.position.id, statusMessage_);
+            positionEditor.FloatDistribution(
+                "Radial Speed",
+                "radialSpeed",
+                emitter.position.radialSpeed,
+                0.01f);
+            positionEditor.AnimatedVec3(
+                VfxUiText("Position over Life").c_str(),
+                "value",
+                emitter.position.value);
 
-            ImGui::SeparatorText("Render Common");
-            VfxInspectorPropertyEditor renderCommonEditor(
-                *this,
-                database,
-                emitter.renderCommon.id,
-                statusMessage_);
-            constexpr std::array<std::string_view, 2u> materialModes{
-                "StandardUnlit", "CustomMaterial"
-            };
-            renderCommonEditor.Choice(
-                "Appearance",
-                "materialMode",
-                VFX::ToString(emitter.renderCommon.materialMode),
-                materialModes.data(),
-                materialModes.size());
-            if (emitter.renderCommon.materialMode ==
-                VFX::VfxMaterialMode::StandardUnlit) {
-                AssetGuid selected =
-                    emitter.renderCommon.colorTextureAssetGuid;
-                if (DrawVfxParticleTextureField(
-                        database,
-                        particleTextureCatalog_,
-                        emitter.renderCommon.colorTextureAssetGuid,
-                        selected,
-                        statusMessage_)) {
-                    std::string assignmentMessage{};
-                    (void)SetProperty(
-                        emitter.renderCommon.id,
-                        "colorTextureAssetGuid",
-                        selected.value,
-                        assignmentMessage,
-                        0u,
-                        &database);
-                    statusMessage_ = assignmentMessage;
-                }
-            } else {
-                AssetGuid selected =
-                    emitter.renderCommon.materialAssetGuid;
-                AssetGuid created{};
-                AssetGuid editRequested{};
-                if (DrawVfxParticleMaterialField(
-                        database,
-                        particleMaterialCatalog_,
-                        emitter.renderCommon.materialAssetGuid,
-                        selected,
-                        created,
-                        editRequested,
-                        statusMessage_)) {
-                    std::string assignmentMessage{};
-                    const bool assigned = SetProperty(
-                        emitter.renderCommon.id,
-                        "materialAssetGuid",
-                        selected.value,
-                        assignmentMessage,
-                        0u,
-                        &database);
-                    statusMessage_ = assignmentMessage;
-                    if (assigned && created.IsValid()) {
-                        std::string refreshMessage{};
-                        if (!RefreshAuthoredAsset(
-                                created, refreshMessage)) {
-                            statusMessage_ +=
-                                "; live Material refresh failed: " +
-                                refreshMessage;
-                        } else if (!refreshMessage.empty()) {
-                            statusMessage_ += "; " + refreshMessage;
-                        }
-                    }
-                }
-                if (editRequested.IsValid()) {
-                    if (!materialEditCallback_) {
-                        statusMessage_ =
-                            "Material editor is not available";
-                    } else {
-                        std::string editMessage{};
-                        const bool opened = materialEditCallback_(
-                            editRequested, editMessage);
-                        statusMessage_ = editMessage.empty()
-                            ? opened
-                                ? "Opening Material editor"
-                                : "Failed to open Material editor"
-                            : std::move(editMessage);
-                    }
-                }
-            }
-            constexpr std::array<std::string_view, 2u> blendModes{
-                "Alpha", "Additive"
-            };
-            renderCommonEditor.Choice(
-                "Blend Mode",
-                "blendMode",
-                VFX::ToString(emitter.renderCommon.blendMode),
-                blendModes.data(),
-                blendModes.size());
-            constexpr std::array<std::string_view, 4u> depthModes{
-                "WorldOccluded",
-                "SoftIntersection",
-                "ContactSurface",
-                "ForegroundAccent",
-            };
-            renderCommonEditor.Choice(
-                "Depth Policy",
-                "depthMode",
-                VFX::ToString(emitter.renderCommon.depthMode),
-                depthModes.data(),
-                depthModes.size());
-            if (emitter.renderCommon.depthMode ==
-                VFX::VfxParticleDepthMode::SoftIntersection) {
-                renderCommonEditor.Float(
-                    "Soft Intersection Distance",
-                    "softIntersectionDistance",
-                    emitter.renderCommon.softIntersectionDistance,
-                    0.01f,
-                    0.001f,
-                    10.0f);
-            }
-            if (emitter.renderCommon.depthMode ==
-                VFX::VfxParticleDepthMode::ContactSurface) {
-                renderCommonEditor.Float(
-                    "Surface Depth Bias",
-                    "depthBias",
-                    emitter.renderCommon.depthBias,
-                    0.00005f,
-                    0.0f,
-                    0.02f);
-            }
-
-            ImGui::SeparatorText("Shader Style");
-            constexpr std::array<std::string_view, 6u> shaderStyles{
-                "Default",
-                "CombatCut",
-                "CombatImpact",
-                "CombatGround",
-                "ComicSmoke",
-                "ProjectileNeedle",
-            };
-            renderCommonEditor.Choice(
-                "Style",
-                "shaderStyle",
-                VFX::ToString(emitter.renderCommon.shaderStyle),
-                shaderStyles.data(),
-                shaderStyles.size());
-            if (emitter.renderCommon.shaderStyle !=
-                VFX::VfxParticleShaderStyle::Default) {
-                renderCommonEditor.Color(
-                    "Outline Color",
-                    "shaderOutlineColor",
-                    emitter.renderCommon.shaderOutlineColor);
-                renderCommonEditor.Color(
-                    "Core Color",
-                    "shaderCoreColor",
-                    emitter.renderCommon.shaderCoreColor);
-                renderCommonEditor.Float(
-                    "Outline Width",
-                    "shaderOutlineWidth",
-                    emitter.renderCommon.shaderOutlineWidth,
-                    0.005f,
-                    0.0f,
-                    0.49f);
-                renderCommonEditor.Float(
-                    "Edge Hardness",
-                    "shaderEdgeHardness",
-                    emitter.renderCommon.shaderEdgeHardness,
-                    0.01f,
-                    0.0f,
-                    1.0f);
-                renderCommonEditor.Float(
-                    "HDR Emissive",
-                    "shaderEmissiveIntensity",
-                    emitter.renderCommon.shaderEmissiveIntensity,
-                    0.05f,
-                    0.0f,
-                    64.0f);
-                renderCommonEditor.Float(
-                    "Breakup Scale",
-                    "shaderBreakupScale",
-                    emitter.renderCommon.shaderBreakupScale,
-                    0.1f,
-                    0.1f,
-                    64.0f);
-                renderCommonEditor.Float(
-                    "Breakup Strength",
-                    "shaderBreakupStrength",
-                    emitter.renderCommon.shaderBreakupStrength,
-                    0.01f,
-                    0.0f,
-                    1.0f);
-            }
-            ImGui::SeparatorText("Flipbook");
-            renderCommonEditor.Unsigned(
-                "Columns",
-                "flipbookColumns",
-                emitter.renderCommon.flipbookColumns,
-                1u,
-                64u);
-            renderCommonEditor.Unsigned(
-                "Rows",
-                "flipbookRows",
-                emitter.renderCommon.flipbookRows,
-                1u,
-                64u);
-            renderCommonEditor.Unsigned(
-                "Frame Count",
-                "flipbookFrameCount",
-                emitter.renderCommon.flipbookFrameCount,
-                1u,
-                emitter.renderCommon.flipbookColumns *
-                    emitter.renderCommon.flipbookRows);
-            renderCommonEditor.Float(
-                "Frames Per Second",
-                "flipbookFramesPerSecond",
-                emitter.renderCommon.flipbookFramesPerSecond,
-                0.1f,
+            ImGui::SeparatorText(VfxUiText("Forces").c_str());
+            VfxInspectorPropertyEditor forcesEditor(
+                *this, database, emitter.forces.id, statusMessage_);
+            forcesEditor.Vec3(
+                VfxUiText("Gravity").c_str(), "gravity", emitter.forces.gravity);
+            forcesEditor.Float(
+                VfxUiText("Drag").c_str(),
+                "drag",
+                emitter.forces.drag,
+                0.01f,
                 0.0f,
-                240.0f);
-            renderCommonEditor.Bool(
-                "Loop",
-                "flipbookLoop",
-                emitter.renderCommon.flipbookLoop);
-            renderCommonEditor.Bool(
-                "Random Start",
-                "flipbookRandomStart",
-                emitter.renderCommon.flipbookRandomStart);
-
-            ImGui::SeparatorText("Render Shape");
-            VfxInspectorPropertyEditor renderShapeEditor(
-                *this,
-                database,
-                emitter.renderShape.id,
-                statusMessage_);
-            constexpr std::array<std::string_view, 3u> renderShapes{
-                "Sprite", "Ribbon", "Ring"
-            };
-            renderShapeEditor.Choice(
-                "Render Shape",
-                "type",
-                VFX::ToString(emitter.renderShape.type),
-                renderShapes.data(),
-                renderShapes.size());
-            constexpr std::array<std::string_view, 4u> orientationModes{
-                "RotatedBillboard",
-                "FixedYAxis",
-                "DirectionalBillboard",
-                "Fixed",
-            };
-            renderShapeEditor.Choice(
-                "Sprite Orientation",
-                "billboardMode",
-                VFX::ToString(emitter.renderShape.billboardMode),
-                orientationModes.data(),
-                orientationModes.size());
-            if (emitter.renderShape.type ==
-                VFX::VfxRenderShapeType::Ribbon) {
-                renderShapeEditor.Unsigned(
-                    "Ribbon Segments",
-                    "ribbonSegmentCount",
-                    emitter.renderShape.ribbonSegmentCount,
-                    2u,
-                    256u);
-                renderShapeEditor.Float(
-                    "Ribbon Width",
-                    "ribbonWidth",
-                    emitter.renderShape.ribbonWidth,
-                    0.01f,
-                    0.0f,
-                    1000.0f);
+                1000.0f);
+            forcesEditor.Bool(VfxUiText("Plane Collision").c_str(),"collisionPlaneEnabled",emitter.forces.collisionPlaneEnabled);
+            if (emitter.forces.collisionPlaneEnabled) {
+                forcesEditor.Float(VfxUiText("Plane Y (simulation space)").c_str(),"collisionPlaneHeight",emitter.forces.collisionPlaneHeight,0.01f,-100000.0f,100000.0f);
+                forcesEditor.Float(VfxUiText("Bounce").c_str(),"restitution",emitter.forces.restitution,0.01f,0.0f,1.0f);
+                forcesEditor.Float(VfxUiText("Friction").c_str(),"friction",emitter.forces.friction,0.01f,0.0f,1.0f);
+                ImGui::TextDisabled(VfxUiText("Visual particle centers only; this is not gameplay collision.").c_str());
             }
-            if (emitter.renderShape.type ==
-                VFX::VfxRenderShapeType::Ring) {
-                renderShapeEditor.Float(
-                    "Ring Outer Radius",
-                    "ringOuterRadius",
-                    emitter.renderShape.ringOuterRadius,
-                    0.01f,
-                    0.0f,
-                    100000.0f);
-                renderShapeEditor.Float(
-                    "Ring Inner Radius",
-                    "ringInnerRadius",
-                    emitter.renderShape.ringInnerRadius,
-                    0.01f,
-                    0.0f,
-                    100000.0f);
-                renderShapeEditor.Unsigned(
-                    "Ring Segments",
-                    "ringSegmentCount",
-                    emitter.renderShape.ringSegmentCount,
-                    3u,
-                    256u);
-                renderShapeEditor.Float(
-                    "Ring Start Angle (degrees)",
-                    "ringStartAngleDegrees",
-                    emitter.renderShape.ringStartAngleDegrees,
-                    0.1f,
-                    -3600.0f,
-                    3600.0f);
-                renderShapeEditor.Float(
-                    "Ring End Angle (degrees)",
-                    "ringEndAngleDegrees",
-                    emitter.renderShape.ringEndAngleDegrees,
-                    0.1f,
-                    -3600.0f,
-                    3600.0f);
+            ImGui::SeparatorText(VfxUiText("Rotation over life").c_str());
+            {
+            VfxInspectorPropertyEditor editor(
+                *this, database, emitter.rotation.id, statusMessage_);
+            editor.AnimatedVec3(
+                "Rotation over Life",
+                "eulerDegrees",
+                emitter.rotation.eulerDegrees,
+                0.1f);
+            }
+            ImGui::SeparatorText(VfxUiText("Size over life").c_str());
+            {
+            VfxInspectorPropertyEditor editor(
+                *this, database, emitter.scale.id, statusMessage_);
+            editor.AnimatedVec3(
+                "Scale over Life", "value", emitter.scale.value);
             }
             break;
         }
-        case VfxEmitterInspectorPage::Bindings:
-            DrawEmitterBindingsInspector(emitter);
+        case VfxEmitterInspectorPage::Render: DrawEmitterAppearance(database, emitter); break;
+        case VfxEmitterInspectorPage::Advanced:
+            if (ImGui::CollapsingHeader(TEXT::Localize("ui.vfx.layer.parameters").c_str())) DrawEmitterBindingsInspector(emitter);
+            if (ImGui::CollapsingHeader(TEXT::Localize("ui.vfx.layer.attachment").c_str())) DrawEmitterAdvanced(database, emitter);
             break;
+        case VfxEmitterInspectorPage::Bindings: DrawEmitterBindingsInspector(emitter); break;
         }
 #else
-        (void)database;
-        (void)source;
+        (void)database; (void)source;
 #endif
     }
-
-} // namespace HIKARI::EDITOR
+}

@@ -1,3 +1,4 @@
+#include "Editor/Workspaces/Sequence/HIKARI_PresentationCuePanel.h"
 #include "Editor/Workspaces/Cinematics/HIKARI_CinematicsWorkspaceController.h"
 
 #include <algorithm>
@@ -100,10 +101,13 @@ void CinematicsWorkspaceController::DrawTimelineWindow(
           nullptr) {
     selectedCameraObjectId = context.selection.selectedObject->GetDocumentId();
   }
-  const CameraTimelinePanelResult panelResult = cameraTimelinePanel_.Draw(
+  CinematicSequence* cueSequence = cameraTimelinePanel_.GetActiveSequence(editableSettings);
+  const bool cuesChanged = cueSequence && DrawPresentationCuePanel(*cueSequence, assetDatabase, actionsAllowed);
+  CameraTimelinePanelResult panelResult = cameraTimelinePanel_.Draw(
       scene.GetSceneDocument(), editableSettings,
       sequenceDocument.GetAssetGuid(), selectedCameraObjectId,
       ImGui::GetIO().DeltaTime, actionsAllowed, editingEmbedded);
+  panelResult.documentChanged |= cuesChanged;
   if (editingEmbedded) {
     result.cinematicsChanged |= panelResult.documentChanged;
     result.timelineEditMergeId = panelResult.editMergeId;

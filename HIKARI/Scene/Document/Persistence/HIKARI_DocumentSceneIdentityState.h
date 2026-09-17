@@ -17,6 +17,7 @@ namespace HIKARI {
         uint64_t documentRevision = 0;
         AssetGuid currentSceneAssetGuid{};
         bool documentDirty = false;
+        std::string loadError{};
     };
 
 } // namespace HIKARI

@@ -17,6 +17,16 @@ namespace HIKARI {
         }
     }
 
+    std::vector<AssetDependencyDesc> CollectSequenceDependencies(const CinematicSequence& sequence) {
+        std::vector<AssetDependencyDesc> result;
+        for (const auto& cue : sequence.presentationCueTrack.clips) {
+            if (cue.kind == SEQUENCER::PresentationCueKind::Vfx)
+                result.push_back({cue.vfxAsset, {}, "Sequence.VfxCue"});
+            else result.push_back({{}, cue.soundPath, "Sequence.AudioCue"});
+        }
+        return result;
+    }
+
     bool LoadSequenceAsset(
         const std::filesystem::path& path,
         const AssetGuid& authoritativeGuid,
@@ -55,7 +65,8 @@ namespace HIKARI {
             loaded.guid.value = root.value("guid", std::string{});
         }
         loaded.displayName = root.value("displayName", path.stem().string());
-        DeserializeCinematicSequenceJson(*sequenceIt, loaded.sequence);
+        try { DeserializeCinematicSequenceJson(*sequenceIt, loaded.sequence); }
+        catch (const std::exception& error) { SetError(outError, error.what()); return false; }
         if (loaded.displayName.empty()) {
             loaded.displayName = loaded.sequence.name;
         }
@@ -71,6 +82,10 @@ namespace HIKARI {
         const SequenceAsset& asset,
         std::string* outError) {
 
+        std::string validationError;
+        if (!SEQUENCER::ValidatePresentationCueTrack(asset.sequence.presentationCueTrack, validationError)) {
+            SetError(outError, validationError); return false;
+        }
         CinematicSequence normalized = asset.sequence;
         NormalizeCinematicSequence(normalized);
         nlohmann::json sequenceJson{};

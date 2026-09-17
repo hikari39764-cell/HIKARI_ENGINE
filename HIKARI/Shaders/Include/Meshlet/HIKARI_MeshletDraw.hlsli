@@ -88,7 +88,7 @@ cbuffer MeshletDrawControlCB : register(b8)
     uint gMeshletVisibleRangeIndex;
     uint gMeshletDrawPassKind;
     uint gMeshletCullBucket;
-    uint gMeshletReserved0;
+    uint gMeshletVisibleRangeCount;
 };
 
 StructuredBuffer<HikariMeshletVisibleRange> gMeshletVisibleRanges : register(t18);

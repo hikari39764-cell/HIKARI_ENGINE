@@ -1,3 +1,4 @@
+#include "Audio/HIKARI_Audio.h"
 #include "Core/HIKARI_StartupTimer.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/Document/Internal/HIKARI_DocumentSceneState.h"
@@ -34,6 +35,7 @@
 #include "Render3D/Lighting/HIKARI_LocalLightList.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureIds.h"
 #include "Scene/Sequencer/Drivers/HIKARI_CameraSequenceTrackDriver.h"
+#include "Scene/Sequencer/Drivers/HIKARI_PresentationCueDriver.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 #include "Vfx/Post/HIKARI_PostProfile.h"
 #include "Scene/HIKARI_RuntimeSceneContext.h"
@@ -146,9 +148,15 @@ namespace HIKARI {
                 state_->camera.director,
                 state_->runtime.world,
                 state_->camera.editorCamera));
+        (void)state_->camera.sequencePlayback.RegisterDriver(
+            std::make_unique<SEQUENCER::PresentationCueDriver>(
+                state_->runtime.world, state_->runtime.vfxPlaybackService));
     }
 
-    DocumentSceneBase::~DocumentSceneBase() = default;
+    DocumentSceneBase::~DocumentSceneBase() {
+        SERVICES::GetInputService().SetDeveloperInputCaptured(false);
+        state_->runtime.debugService.Reset(state_->runtime.world);
+    }
 
     void DocumentSceneBase::OnEnter() {
         CORE::StartupTimer sceneTimer("Scene.enter");
@@ -193,6 +201,11 @@ namespace HIKARI {
         state_->runtime.dialogueAssets.SetAssetDatabase(
             &state_->assets.Database());
         if (!OpenStartupSceneAssetWithCurrentAssets()) {
+            if (SERVICES::IsStandaloneGameHost()) {
+                HIKARI_LOG_ERROR("[SceneAsset] startup Scene failed: " + state_->identity.loadError);
+                OnExit();
+                return;
+            }
             CreateTransientEmptySceneDocument();
             if (!RebuildRuntimeWorld(false, true)) {
                 HIKARI_LOG_ERROR(
@@ -268,6 +281,9 @@ namespace HIKARI {
             state_->runtime.fixedStepClock.SetSettings(settings);
         }
         state_->runtime.world.BeginFrame(frame.frameIndex);
+        state_->runtime.debugService.SetEnabled(state_->runtime.world,
+            state_->runtime.playActive && state_->runtime.developerDiagnosticsAllowed);
+        if (!state_->runtime.playActive) SERVICES::GetInputService().SetDeveloperInputCaptured(false);
         NAVIGATION::NavigationWorldService* navigation =
             state_->runtime.world.Services().Find<
                 NAVIGATION::NavigationWorldService>();
@@ -331,6 +347,7 @@ namespace HIKARI {
 
         state_->runtime.systemScheduler.Update(state_->runtime.world, frame);
         state_->runtime.systemScheduler.LateUpdate(state_->runtime.world, frame);
+        state_->runtime.debugService.Observe(state_->runtime.world);
         (void)state_->runtime.bindingStore.PublishSnapshot();
 
         if (state_->runtime.playActive) {
@@ -345,6 +362,13 @@ namespace HIKARI {
                 dt);
             state_->camera.editorCamera = state_->camera.resolvedFrame.camera;
             state_->camera.gameplayCamera = state_->camera.director.GetControlCamera();
+            const auto& camera = state_->camera.resolvedFrame.camera;
+            const auto position = camera.GetPosition();
+            const auto forward = MATH::Normalize(camera.GetTarget() - position);
+            const auto right = MATH::Normalize(MATH::Cross(camera.GetUp(), forward));
+            const auto up = MATH::Normalize(MATH::Cross(forward, right));
+            AUDIO::UpdateCameraListener({{position.x, position.y, position.z},
+                {forward.x, forward.y, forward.z}, {up.x, up.y, up.z}});
         } else if (IsEditorCameraPreviewActive()) {
             state_->camera.resolvedFrame = state_->camera.director.Resolve(
                 state_->runtime.world,
@@ -394,11 +418,7 @@ namespace HIKARI {
         if (captureW > 0 && captureH > 0) {
             const float aspect = static_cast<float>(captureW) / static_cast<float>(captureH);
             const bool projectionChanged = std::abs(state_->camera.editorCamera.GetAspect() - aspect) > 1.0e-5f;
-            state_->camera.editorCamera.SetPerspective(
-                state_->camera.editorCamera.GetFovYRad(),
-                aspect,
-                state_->camera.editorCamera.GetNearZ(),
-                state_->camera.editorCamera.GetFarZ());
+            state_->camera.editorCamera.SetAspect(aspect);
             state_->camera.resolvedFrame.camera = state_->camera.editorCamera;
             state_->camera.resolvedFrame.projectionChanged =
                 state_->camera.resolvedFrame.projectionChanged || projectionChanged;
@@ -649,6 +669,9 @@ namespace HIKARI {
     }
     const std::string& DocumentSceneBase::GetScenePath() const {
         return state_->identity.scenePath;
+    }
+    const std::string& DocumentSceneBase::GetSceneLoadError() const noexcept {
+        return state_->identity.loadError;
     }
     uint64_t DocumentSceneBase::GetSceneDocumentRevision() const noexcept {
         return state_->identity.documentRevision;

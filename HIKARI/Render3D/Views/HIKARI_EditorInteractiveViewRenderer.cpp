@@ -1616,8 +1616,12 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         view.purpose = selected->request.purpose;
         view.cameraFrame = &selected->request.cameraFrame;
         view.assetRegistry = assetRegistry;
-        view.worldSpriteFrameSource = worldSpriteFrameSource;
-        view.worldTextFrameSource = worldTextFrameSource;
+        // A workspace scene override owns the complete preview scene. Do not
+        // borrow sprites/text from the active gameplay scene into that view.
+        if (selected->request.sceneSourceOverride == nullptr) {
+            view.worldSpriteFrameSource = worldSpriteFrameSource;
+            view.worldTextFrameSource = worldTextFrameSource;
+        }
         const PARTICLES::ParticleRenderFrameSource particleFrameSource{
             selected->request.particleInputOverride.get(),
             assetRegistry,

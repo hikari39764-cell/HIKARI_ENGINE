@@ -32,7 +32,7 @@ namespace HIKARI::EDITOR {
         if (asset == nullptr) return;
         if (emitter.inputLinks.empty()) {
             ImGui::TextDisabled(
-                "No bindings. Bind one exposed input to a runtime-mutable property.");
+                VfxUiText("No bindings. Bind one exposed input to a runtime-mutable property.").c_str());
         }
         for (const VFX::VfxInputLinkData& link : emitter.inputLinks) {
             const VFX::VfxExposedInputData* input =
@@ -60,12 +60,12 @@ namespace HIKARI::EDITOR {
             }
         }
 
-        if (ImGui::Button("+ Bind Exposed Input")) {
+        if (ImGui::Button(VfxUiText("+ Bind Exposed Input").c_str())) {
             ImGui::OpenPopup("VfxAddInputBinding");
         }
         if (!ImGui::BeginPopup("VfxAddInputBinding")) return;
         if (asset->inputs.empty()) {
-            ImGui::TextDisabled("Create an exposed input first.");
+            ImGui::TextDisabled(VfxUiText("Create an exposed input first.").c_str());
             ImGui::EndPopup();
             return;
         }
@@ -103,7 +103,7 @@ namespace HIKARI::EDITOR {
                 }
             }
             if (!hasCompatibleTarget) {
-                ImGui::TextDisabled("No compatible unbound property");
+                ImGui::TextDisabled(VfxUiText("No compatible unbound property").c_str());
             }
             ImGui::EndMenu();
         }
@@ -124,7 +124,7 @@ namespace HIKARI::EDITOR {
             VFX::ResolveVfxPropertySchema(emitter, link.target);
         const VFX::VfxExposedInputData* selectedInput =
             FindInput(link.inputId);
-        ImGui::TextDisabled("INPUT BINDING");
+        ImGui::TextDisabled(VfxUiText("INPUT BINDING").c_str());
         ImGui::TextWrapped("Stable ID: %s", link.id.c_str());
 
         if (ImGui::BeginCombo(
@@ -192,7 +192,7 @@ namespace HIKARI::EDITOR {
             *this, database, link.id, statusMessage_);
         editor.Float("Scale", "scale", link.scale);
         editor.Float("Bias", "bias", link.bias);
-        if (ImGui::Button("Delete Binding")) {
+        if (ImGui::Button(VfxUiText("Delete Binding").c_str())) {
             (void)RemoveInputLink(link.id, statusMessage_);
         }
 #else

@@ -15,6 +15,9 @@ namespace HIKARI {
 
 namespace HIKARI::EDITOR {
 
+    // 表示文言のみを翻訳し、保存するプロパティ名/列挙値は変更しない。
+    std::string VfxUiText(std::string_view text);
+
     class VfxWorkspaceController;
 
     class VfxInspectorPropertyEditor final {
@@ -92,14 +95,15 @@ namespace HIKARI::EDITOR {
             std::string_view propertyPrefix,
             const VFX::VfxAnimatedColorData& value);
 
+        static uint64_t MergeGroup(
+            std::string_view targetId,
+            std::string_view propertyId) noexcept;
+
     private:
         void Set(
             std::string_view propertyId,
             const nlohmann::json& value,
             bool continuous);
-        static uint64_t MergeGroup(
-            std::string_view targetId,
-            std::string_view propertyId) noexcept;
 
         VfxWorkspaceController& controller_;
         AssetDatabase& assetDatabase_;

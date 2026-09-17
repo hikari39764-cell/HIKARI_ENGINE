@@ -221,6 +221,7 @@ namespace HIKARI::EDITOR {
                 ? path
                 : path.substr(separator + 1u);
             if (leaf == "mode") {
+                if (parent.contains("samples") && parent.contains("breakDistance")) return {"None", "Afterimage", "Trail"};
                 if (parent.contains("socketName") &&
                     parent.contains("offset")) {
                     return { "World", "Owner", "OwnerSocket" };
@@ -249,16 +250,16 @@ namespace HIKARI::EDITOR {
             }
             if (leaf == "blendMode") return { "Alpha", "Additive" };
             if (leaf == "materialMode") {
-                return { "StandardUnlit", "CustomMaterial" };
+                const auto values = VFX::GetVfxMaterialModeChoices();
+                return Json(values);
             }
             if (leaf == "depthMode") {
                 return { "WorldOccluded", "SoftIntersection",
                     "ContactSurface", "ForegroundAccent" };
             }
-            if (leaf == "shaderStyle") {
-                return { "Default", "CombatCut", "CombatImpact",
-                    "CombatGround", "ComicSmoke", "ProjectileNeedle" };
-            }
+            if (leaf == "kind" && parent.contains("startDelay")) return { "Shape", "Particles", "Group" };
+            if (leaf == "kind" && parent.contains("parameters")) return {
+                "UvFlow", "UvDistortion", "Gradient", "Fade", "Wipe", "Dissolve", "Emission", "Fresnel" };
             if (leaf == "capacityMode") {
                 return { "Automatic", "Fixed" };
             }
@@ -288,9 +289,8 @@ namespace HIKARI::EDITOR {
                     return { "Point", "Sphere", "Cone", "Box",
                         "Cylinder", "Circle", "Edge" };
                 }
-                if (current == "Sprite" || current == "Ribbon" ||
-                    current == "Ring") {
-                    return { "Sprite", "Ribbon", "Ring" };
+                if (parent.contains("billboardMode")) {
+                    return Json(VFX::GetVfxRenderShapeChoices());
                 }
                 return { "Bool", "Int", "Float", "Float2", "Float3",
                     "Float4", "Color" };

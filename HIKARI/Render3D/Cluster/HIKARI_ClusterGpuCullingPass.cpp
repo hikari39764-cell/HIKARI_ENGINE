@@ -924,6 +924,47 @@ namespace HIKARI::RENDER3D::CLUSTER {
         return true;
     }
 
+    bool ClusterGpuCullingPass::EnsureWorkCapacity() {
+        // bucket ごとの上限を instance 数以上にする。総容量だけを見ると、
+        // 単一 pass に集中する大量の小物が他の空 bucket を使えず欠落する。
+        size_t bucketDemand = 0;
+        for (const auto& pass : stats_.passOutputs) {
+            bucketDemand = (std::max)(bucketDemand, pass.sourceInstanceCount);
+            if (pass.gpuCounterReadbackValid) {
+                bucketDemand = (std::max)(bucketDemand,
+                    (std::max)(pass.gpuBackFaceDrawCommandCount,
+                        pass.gpuDoubleSidedDrawCommandCount));
+            }
+        }
+        const size_t commandDemand = bucketDemand *
+            kClusterGpuCullingPassKindCount * kGeometryCullModeBucketCount;
+        const size_t pageDemand = (std::max)(stats_.sourceInstanceCount,
+            static_cast<size_t>(stats_.gpuPageTaskCount));
+        if (commandDemand <= candidateCommandCapacity_ &&
+            pageDemand <= pageTaskCapacity_) {
+            return true;
+        }
+        // GPU counter は上限を越えた要求も含む。増大を無制限に繰り返さず、
+        // 小さい scene の既定 footprint は維持する。
+        constexpr size_t maxCommands = kDefaultClusterGpuCandidateCommandCapacity * 4u;
+        constexpr size_t maxPages = kDefaultClusterGpuPageTaskCapacity * 4u;
+        if (commandDemand > maxCommands || pageDemand > maxPages) {
+            HIKARI_LOG_ERROR(std::string("[ClusterGpuCulling] Work capacity budget exceeded: commands=") +
+                std::to_string(commandDemand) + " pages=" + std::to_string(pageDemand));
+            return false;
+        }
+        const auto& graphics = GFX::GetCurrentContext();
+        if (!EnsureCapacity(graphics.device,
+                (std::max)(pageDemand, pageTaskCapacity_),
+                (std::max)(commandDemand, visibleRangeCapacity_),
+                (std::max)(commandDemand, candidateCommandCapacity_))) {
+            return false;
+        }
+        BindFrameResources(graphics.frameIndex);
+        ResetFrameStats();
+        return true;
+    }
+
     bool ClusterGpuCullingPass::EnsureFallbackHzb(ID3D12Device* device) {
         if (fallbackHzb_ != nullptr && fallbackHzbSrv_.gpu.ptr != 0) {
             return true;
@@ -1270,6 +1311,15 @@ namespace HIKARI::RENDER3D::CLUSTER {
         BuildRangeStats(ranges, rangeCount);
         if (stats_.sourceInstanceCount == 0) {
             return false;
+        }
+
+        if (!EnsureWorkCapacity()) {
+            stats_.initialized = false;
+            return false;
+        }
+        // resize は旧 GPU readback を破棄する。新しい容量に対して入力を再集計する。
+        if (stats_.sourceInstanceCount == 0) {
+            BuildRangeStats(ranges, rangeCount);
         }
 
         const bool hzbOcclusionAvailable =

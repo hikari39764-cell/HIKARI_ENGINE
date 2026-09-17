@@ -9,10 +9,10 @@
 namespace HIKARI::EDITOR {
     namespace {
 
-        std::array<VfxCurveAddress, 13u> CurveAddresses(
+        std::vector<VfxCurveAddress> CurveAddresses(
             const VFX::VfxEmitterData& emitter) {
 
-            return {
+            std::vector<VfxCurveAddress> result{
                 VfxCurveAddress{ emitter.id, emitter.position.id,
                     "value", "x" },
                 VfxCurveAddress{ emitter.id, emitter.position.id,
@@ -40,6 +40,8 @@ namespace HIKARI::EDITOR {
                 VfxCurveAddress{ emitter.id, emitter.color.id,
                     "value", "a" },
             };
+            for (const auto& track:emitter.parameterTracks) result.push_back({emitter.id,track.id,"curve","x"});
+            return result;
         }
 
     } // namespace
@@ -278,9 +280,10 @@ namespace HIKARI::EDITOR {
         NotifyEmitterStructureChanged();
         previewProgramRevision_ = 0u;
         if (previewPlaying_) {
+            if (previewPaused_ && !previewSeekTarget_) previewSeekTarget_ = previewElapsedSeconds_;
+            if (!previewRestartPending_) previewRestartDelaySeconds_ = 0.04f;
             previewRestartPending_ = true;
-            // Coalesce continuous ImGui drag edits into one compile/reset.
-            previewRestartDelaySeconds_ = 0.12f;
+            // 継続ドラッグでも更新が無期限に延期されないよう、短い間隔でまとめる。
         }
     }
 
@@ -387,6 +390,8 @@ namespace HIKARI::EDITOR {
         }
         for (const VFX::VfxEmitterData& emitter :
              document_.Asset().emitters) {
+            for (const auto& track:emitter.parameterTracks) if (track.id==id) return true;
+            for (const auto& effect : emitter.effects) if (effect.id == id) return true;
             for (uint8_t value = 0u;
                  value <= static_cast<uint8_t>(
                      VFX::VfxModuleKind::RenderShape);
@@ -434,6 +439,14 @@ namespace HIKARI::EDITOR {
         emitter.renderCommon.id =
             AllocateStableId("module.render_common");
         emitter.renderShape.id = AllocateStableId("module.render_shape");
+        for (auto& effect : emitter.effects) {
+            const auto previous=effect.id; effect.id=AllocateStableId("effect");
+            for (auto& track:emitter.parameterTracks) if (track.targetId==previous) track.targetId=effect.id;
+        }
+        for (auto& track:emitter.parameterTracks) {
+            track.id=AllocateStableId("track");
+            if (track.targetId==previousModuleIds.back()) track.targetId=emitter.renderShape.id;
+        }
         const std::array<std::string_view, 12u> nextModuleIds{
             emitter.basic.id,
             emitter.emitterTransform.id,

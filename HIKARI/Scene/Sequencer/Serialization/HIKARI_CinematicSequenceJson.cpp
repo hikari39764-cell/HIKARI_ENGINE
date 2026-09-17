@@ -1,3 +1,4 @@
+#include "Scene/Sequencer/Serialization/HIKARI_PresentationCueJson.h"
 #include "Scene/Sequencer/Serialization/HIKARI_CinematicSequenceJson.h"
 
 #include <string>
@@ -209,6 +210,7 @@ namespace HIKARI {
                 DeserializeLegacyShots(sequenceNode, sequence);
             }
             DeserializeCameraAnimationTracksJson(sequenceNode, sequence);
+            SEQUENCER::ReadPresentationCueJson(sequenceNode, sequence.presentationCueTrack);
             NormalizeCinematicSequence(sequence);
             return sequence;
         }
@@ -331,6 +333,7 @@ namespace HIKARI {
             SerializeCameraAnimationTracksJson(
                 sequence,
                 sequenceNode["tracks"]);
+            SEQUENCER::WritePresentationCueJson(sequence.presentationCueTrack, sequenceNode["tracks"]);
             output["sequences"].push_back(std::move(sequenceNode));
         }
     }

@@ -198,6 +198,10 @@ namespace HIKARI {
         }
 
         bool NeedsMipGeneration(const TextureImportSettings& settings, const DirectX::TexMetadata& metadata) {
+            // 1 texel の画像は既に完全な mip chain。DirectXTex に縮小を要求しない。
+            if (metadata.width <= 1 && metadata.height <= 1 && metadata.depth <= 1) {
+                return false;
+            }
             if (settings.mipPolicy == TextureMipPolicy::None ||
                 settings.mipPolicy == TextureMipPolicy::Preserve) {
                 return false;

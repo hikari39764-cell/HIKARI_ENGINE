@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -13,11 +14,15 @@
 #include <json.hpp>
 
 #include "Assets/Vfx/HIKARI_VfxAssetData.h"
+#include "Assets/ContentLibrary/HIKARI_ContentLibrary.h"
 #include "Assets/Vfx/HIKARI_VfxPropertySchema.h"
 #include "Assets/Vfx/HIKARI_VfxValidation.h"
 #include "Editor/Documents/HIKARI_VfxEditorDocument.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxParticleMaterialField.h"
+#include "Editor/Workspaces/Vfx/HIKARI_VfxTimelineEditing.h"
+#include "Editor/Workspaces/Vfx/HIKARI_VfxViewportEditing.h"
 #include "Editor/Views/Director/HIKARI_EditorDirectorCameraController.h"
+#include "Editor/Gizmos/HIKARI_EditorTransformGizmo.h"
 #include "Render3D/Core/HIKARI_RenderView.h"
 #include "Scene/Vfx/HIKARI_VfxPlaybackService.h"
 #include "Scene/Vfx/HIKARI_VfxRenderInputMailbox.h"
@@ -63,11 +68,9 @@ namespace HIKARI::EDITOR {
         Common,
         Spawn,
         Position,
-        Rotation,
-        Scale,
-        Shape,
         Render,
         Bindings,
+        Advanced,
     };
 
     struct VfxWorkspaceSelection {
@@ -87,6 +90,11 @@ namespace HIKARI::EDITOR {
 
     class VfxWorkspaceController final {
     public:
+        bool EditLayerTiming(std::string_view layerId, VfxLayerTimeEdit mode, float deltaSeconds, std::string& message);
+        bool MoveLayerKeys(std::span<const std::string> ids, float deltaSeconds, std::string& message);
+        bool SetLayerParameterKey(std::string_view layerId, std::string_view targetId,
+            std::string_view propertyId, float seconds, float value, std::string& message, uint64_t mergeGroup=0);
+        bool RemoveLayerParameterTrack(std::string_view layerId, std::string_view trackId, std::string& message);
         using PreviewNamespaceRetireCallback =
             std::function<void(uint64_t)>;
         using AssetRefreshCallback = std::function<bool(
@@ -145,7 +153,14 @@ namespace HIKARI::EDITOR {
             std::string_view displayName,
             std::string_view requestedId,
             std::string& outId,
-            std::string& outMessage);
+            std::string& outMessage,
+            VFX::VfxLayerKind kind = VFX::VfxLayerKind::Shape);
+        bool AddPresetLayers(std::string_view presetId, std::string& outMessage);
+        bool SetContentLibraryRoot(AssetDatabase&, const std::filesystem::path&, std::string&);
+        bool ImportLibraryPackage(AssetDatabase&, const std::filesystem::path&,
+            ASSETS::LIBRARY::ContentImportResult&, std::string&);
+        bool PublishToLibrary(AssetDatabase&, const ASSETS::LIBRARY::ContentPackageInfo&, std::string&);
+        const std::vector<ASSETS::LIBRARY::ContentPackageInfo>& GetLibraryPackages() const { return libraryPackages_; }
         bool DuplicateEmitter(
             std::string_view emitterId,
             std::string& outId,
@@ -180,6 +195,15 @@ namespace HIKARI::EDITOR {
             std::string_view channel,
             std::string& outId,
             std::string& outMessage);
+        bool SetLayerColorKey(std::string_view layerId, float seconds, const MATH::Vec4& value, std::string& message, uint64_t mergeGroup=0);
+        bool SetLayerTransformKey(std::string_view layerId, std::string_view property,
+            float seconds, const MATH::Vec3& value, std::string& outMessage,
+            uint64_t mergeGroup = 0);
+        void DrawLayerAnimation(AssetDatabase&, const VFX::VfxEmitterData&);
+        bool AddLayerEffect(std::string_view layerId, MaterialEffectKind, std::string&);
+        bool RemoveLayerEffect(std::string_view layerId, std::string_view effectId, std::string&);
+        bool MoveLayerEffect(std::string_view layerId, std::string_view effectId, int direction, std::string&);
+        void DrawLayerEffects(AssetDatabase&, const VFX::VfxEmitterData&);
         bool RemoveCurveKey(
             std::string_view emitterId,
             std::string_view moduleId,
@@ -322,6 +346,18 @@ namespace HIKARI::EDITOR {
             AssetDatabase& assetDatabase,
             const AssetGuid& assetGuid,
             std::string& outMessage);
+        bool SetLayerValueKey(std::string_view layerId, std::string_view property, float seconds, const MATH::Vec4& value, std::string& message, uint64_t mergeGroup);
+        bool DrawLayerParameter(const VFX::VfxEmitterData&, std::string_view targetId, std::string_view propertyId);
+        bool DrawLayerGizmo(const EditorViewportRect& rect);
+        bool DrawLayerHandles(const EditorViewportRect& rect, bool hovered, bool gizmoInteracting,
+                              std::string& pickedLayer);
+        void DrawTimelineLayers(float originX, float width, float labelWidth, float duration);
+        void BeginTimelineEdit();
+        void EndTimelineEdit(bool cancel);
+        void CopyTimelineSelection();
+        bool PasteTimelineSelection(float seconds, bool merge = false);
+        bool MoveTimelineSelection(float seconds, bool fromBaseline = false);
+        bool DeleteTimelineSelection();
         void ClearPendingAssetOpen() noexcept;
         bool ApplyAsset(
             VFX::VfxAssetData asset,
@@ -350,8 +386,7 @@ namespace HIKARI::EDITOR {
         float GetPreviewTimelineDuration() const noexcept;
         void NormalizePreviewTimelineRange() noexcept;
         bool FocusPreviewAsset(
-            std::string_view emitterId = {},
-            bool preserveDistance = false);
+            std::string_view emitterId = {});
         void UpdatePreview(uint64_t frameIndex, float deltaSeconds);
         void SubmitPreviewRequest(
             EditorViewInstance& previewView,
@@ -381,6 +416,10 @@ namespace HIKARI::EDITOR {
         void DrawEmitterInspector(
             AssetDatabase& assetDatabase,
             const VFX::VfxEmitterData& emitter);
+        void DrawEmitterAppearance(AssetDatabase&, const VFX::VfxEmitterData&);
+        void DrawEmitterAdvanced(AssetDatabase&, const VFX::VfxEmitterData&);
+        void DrawTemplateLibrary();
+        void DrawContentLibrary(AssetDatabase&);
         void DrawEmitterBindingsInspector(
             const VFX::VfxEmitterData& emitter);
         void DrawLinkInspector(
@@ -398,6 +437,19 @@ namespace HIKARI::EDITOR {
         bool pendingAssetOpenPopupRequested_ = false;
         std::array<char, 128> newAssetName_{ "New VFX" };
         std::array<char, 160> assetSearch_{};
+        std::array<char, 160> templateSearch_{};
+        bool selectLayersTab_ = false;
+        std::string newTemplateId_{};
+        std::filesystem::path libraryProjectRoot_;
+        std::filesystem::path contentLibraryRoot_;
+        std::vector<ASSETS::LIBRARY::ContentPackageInfo> libraryPackages_;
+        std::array<char, 81> libraryPackageId_{"my-effect"};
+        std::array<char, 81> libraryPackageRevision_{"1"};
+        std::array<char, 96> libraryCategory_{"Team"};
+        std::array<char, 256> libraryLicense_{};
+        std::array<char, 160> librarySearch_{};
+        float previewLightYaw_ = -35.0f;
+        float previewLightIntensity_ = 2.0f;
         VfxParticleMaterialCatalog particleMaterialCatalog_{};
         VfxParticleTextureCatalog particleTextureCatalog_{};
 
@@ -411,7 +463,15 @@ namespace HIKARI::EDITOR {
         uint64_t previewFrameIndex_ = 0u;
         float previewAccumulatedDeltaSeconds_ = 0.0f;
         float previewElapsedSeconds_ = 0.0f;
+        std::optional<float> previewSeekTarget_{};
         float previewPlaybackSpeed_ = 1.0f;
+        EditorTransformGizmoState layerGizmoState_{};
+        bool layerGizmoEditing_ = false;
+        TransformData layerGizmoTransform_{};
+        MATH::Mat4 layerGizmoFrame_{};
+        MATH::Mat4 layerGizmoAnimation_{};
+        VfxTimelineEditState timelineEdit_{};
+        VfxViewportHandleState viewportHandle_{};
         bool previewPlaying_ = false;
         bool previewPaused_ = false;
         bool previewRestartPending_ = false;

@@ -7,8 +7,8 @@
 
 namespace HIKARI {
 
-    inline constexpr uint32_t kMaterialAssetSourceVersion = 6u;
-    inline constexpr uint32_t kMaterialProgramIrVersion = 6u;
+    inline constexpr uint32_t kMaterialAssetSourceVersion = 7u;
+    inline constexpr uint32_t kMaterialProgramIrVersion = 7u;
 
     enum class MaterialAssetKind : uint8_t {
         Material,
@@ -175,6 +175,9 @@ namespace HIKARI {
         Fresnel,
         Variable,
         ParticleOutput,
+        ParticleState,
+        ParticleColor,
+        ParticleUv,
     };
 
     // Source graphs use a stable textual identity so ordinary node growth is

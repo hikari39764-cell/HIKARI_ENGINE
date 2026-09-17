@@ -37,7 +37,14 @@ namespace HIKARI::EDITOR {
         previewEnvironment_->sky.groundColor =
             { 0.012f, 0.016f, 0.022f };
         previewEnvironment_->sky.showSunDisk = false;
-        previewEnvironment_->sky.reflectionIntensity = 0.0f;
+        previewEnvironment_->sky.reflectionIntensity = 1.0f;
+        RENDER3D::LIGHTING::SceneLightProvider key{};
+        key.id = "vfx.preview.key";
+        key.enabled = true;
+        key.type = RENDER3D::LIGHTING::SceneLightType::Directional;
+        key.direction = {-0.4f,-0.8f,0.4f};
+        key.intensity = previewLightIntensity_;
+        previewLighting_->lights.push_back(key);
     }
 
     VfxWorkspaceController::~VfxWorkspaceController() {
@@ -88,6 +95,8 @@ namespace HIKARI::EDITOR {
 #else
         (void)previewViewId;
 #endif
+        EndTimelineEdit(false);
+        viewportHandle_={};layerGizmoEditing_=false;
         activePreviewViewId_ = {};
         StopPreview();
         playbackService_.Reset();
@@ -134,12 +143,18 @@ namespace HIKARI::EDITOR {
         ClearPendingAssetOpen();
         StopPreview();
         document_.NewAsset(std::move(name));
+        timelineEdit_={};viewportHandle_={};layerGizmoEditing_=false;
         previewLoopRangeInitialized_ = false;
         ResetAssetRefreshStatus();
         selection_ = {};
+        if (!document_.Asset().emitters.empty()) {
+            const auto& first = document_.Asset().emitters.front();
+            Select({VfxWorkspaceSelectionKind::Emitter, first.id, first.id});
+        }
+        selectLayersTab_ = false;
         previewInputOverrides_.clear();
         OnDocumentChanged();
-        (void)FocusPreviewAsset({}, true);
+        (void)FocusPreviewAsset();
         std::string previewMessage{};
         if (PlayPreview(previewMessage)) {
             statusMessage_ = "New VFX document; preview playing";
@@ -162,6 +177,9 @@ namespace HIKARI::EDITOR {
         ClearPendingAssetOpen();
         StopPreview();
         document_.NewAsset(preset->displayName);
+        timelineEdit_ = {};
+        viewportHandle_ = {};
+        layerGizmoEditing_ = false;
         std::string applyMessage{};
         if (!document_.ApplyPresetPackage(
                 VFX::PRESETS::MakeVfxPresetPackage(presetId),
@@ -176,11 +194,16 @@ namespace HIKARI::EDITOR {
         previewLoopRangeInitialized_ = false;
         ResetAssetRefreshStatus();
         selection_ = {};
+        if (!document_.Asset().emitters.empty()) {
+            const auto& first = document_.Asset().emitters.front();
+            Select({VfxWorkspaceSelectionKind::Emitter, first.id, first.id});
+        }
+        selectLayersTab_ = true;
         previewInputOverrides_.clear();
         OnDocumentChanged();
-        (void)FocusPreviewAsset({}, true);
-        outMessage = "Created VFX from preset: " + preset->displayName +
-            "; shared EngineContent textures are directly editable in Render Common";
+        (void)FocusPreviewAsset();
+        outMessage = "Created VFX from template: " + preset->displayName +
+            "; edit geometry in Basics and lighting/materials in Appearance";
         std::string previewMessage{};
         if (PlayPreview(previewMessage)) {
             outMessage += "; preview playing";
@@ -213,12 +236,20 @@ namespace HIKARI::EDITOR {
         }
         ClearPendingAssetOpen();
         StopPreview();
+        timelineEdit_ = {};
+        viewportHandle_ = {};
+        layerGizmoEditing_ = false;
         previewLoopRangeInitialized_ = false;
         ResetAssetRefreshStatus();
         selection_ = {};
+        if (!document_.Asset().emitters.empty()) {
+            const auto& first = document_.Asset().emitters.front();
+            Select({VfxWorkspaceSelectionKind::Emitter, first.id, first.id});
+        }
+        selectLayersTab_ = true;
         previewInputOverrides_.clear();
         OnDocumentChanged();
-        (void)FocusPreviewAsset({}, true);
+        (void)FocusPreviewAsset();
         const std::string openMessage = outMessage;
         std::string previewMessage{};
         if (PlayPreview(previewMessage)) {
@@ -286,6 +317,7 @@ namespace HIKARI::EDITOR {
         AssetDatabase& database,
         std::string& outMessage) {
 
+        EndTimelineEdit(false);
         ResetAssetRefreshStatus();
         const bool saved = document_.Save(database, outMessage);
         if (!saved) {
@@ -348,6 +380,7 @@ namespace HIKARI::EDITOR {
         const AssetDatabase& database,
         std::string& outMessage) {
 
+        EndTimelineEdit(false);
         StopPreview();
         if (!document_.Revert(database, outMessage)) {
             statusMessage_ = outMessage;
@@ -371,8 +404,7 @@ namespace HIKARI::EDITOR {
     }
 
     bool VfxWorkspaceController::FocusPreviewAsset(
-        std::string_view emitterId,
-        bool preserveDistance) {
+        std::string_view emitterId) {
 
         if (!document_.IsOpen()) return false;
         const VfxPreviewBounds bounds = EstimateVfxPreviewBounds(
@@ -388,15 +420,7 @@ namespace HIKARI::EDITOR {
             1.5f,
             bounds.radius /
                 (std::max)(std::sin(halfFov), 0.1f) * 1.12f);
-        // プリセット切替などでは現在の視点距離を維持し、
-        // オービット中心だけをエフェクトの中心へ寄せる。
-        const float preferredDistance = preserveDistance
-            ? (std::max)(
-                MATH::Length(
-                    currentCamera.GetPosition() -
-                    cameraController_.GetOrbitPivot()),
-                0.5f)
-            : fitDistance;
+        const float preferredDistance = fitDistance;
         const float farPlane = (std::max)(
             100.0f,
             preferredDistance + bounds.radius * 2.0f + 10.0f);
@@ -412,6 +436,7 @@ namespace HIKARI::EDITOR {
     }
 
     bool VfxWorkspaceController::Undo(std::string& outMessage) {
+        EndTimelineEdit(false);
         if (!document_.Undo()) {
             outMessage = "Nothing to undo";
             statusMessage_ = outMessage;
@@ -425,6 +450,7 @@ namespace HIKARI::EDITOR {
     }
 
     bool VfxWorkspaceController::Redo(std::string& outMessage) {
+        EndTimelineEdit(false);
         if (!document_.Redo()) {
             outMessage = "Nothing to redo";
             statusMessage_ = outMessage;

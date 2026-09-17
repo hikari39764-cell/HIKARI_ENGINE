@@ -254,6 +254,7 @@ bool InputService::InitializeTransient() {
 }
 
 void InputService::ResetRuntimeState() {
+    developerInputCaptured_ = false;
     pointerCursorHiddenRequested_ = false;
     uiInteractionActive_ = false;
     snapshot_ = {};
@@ -265,6 +266,7 @@ void InputService::ResetRuntimeState() {
 }
 
 void InputService::Shutdown() {
+    developerInputCaptured_ = false;
     pointerCursorHiddenRequested_ = false;
     uiInteractionActive_ = false;
     StopGamepadVibration();
@@ -560,6 +562,7 @@ void InputService::EvaluateActions(float dt) {
 
     std::unordered_set<std::string> consumedControls;
     for (const InputContextDefinition* context : activeContexts) {
+        if (developerInputCaptured_ && context->contextId != "Global") continue;
         for (const InputBinding& binding : context->bindings) {
             const std::string controlKey = PhysicalControlKey(binding);
             if (consumedControls.contains(controlKey)) continue;

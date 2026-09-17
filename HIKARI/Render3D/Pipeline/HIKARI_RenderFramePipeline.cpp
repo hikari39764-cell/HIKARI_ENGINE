@@ -40,12 +40,14 @@ namespace HIKARI::RENDER3D::PIPELINE {
         RAYTRACING::RuntimeRayTracingScene gRuntimeRayScene;
         RAYTRACING::RuntimeRayTracingLighting gRuntimeRayLighting;
         DYNAMICGI::DynamicDiffuseGi gDynamicDiffuseGi;
+        uint64_t gPrimaryFrameFailureCount = 0;
 
         void LogPrimaryPipelineFailure(
             uint64_t frameIndex,
             const char* stage,
             const char* detail = nullptr) {
 
+            ++gPrimaryFrameFailureCount;
             static uint64_t lastReportedFrame = 0u;
             if (lastReportedFrame != 0u &&
                 frameIndex - lastReportedFrame < 120u) {
@@ -516,6 +518,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
             stylizedScreenMaskRequired || hasSsrWork;
         screenSurfaceRequirements.requireFeatureMask =
             stylizedScreenMaskRequired;
+        screenSurfaceRequirements.requireCurrentFrameAo = camera.IsOrthographic();
         const bool volumetricFogReady = RENDER3D::VOLUMETRIC::PrepareVolumetricLightingFrame(
             frame.graphics,
             temporalFrame,
@@ -557,7 +560,12 @@ namespace HIKARI::RENDER3D::PIPELINE {
         // 不透明 mainline を先に scene DSV へ深度だけ描き、ForwardOpaque
         // (LESS_EQUAL) のピクセル過描画を early-Z で殺す。visibility 用の
         // occluder prepass (別ターゲット) とは独立している。
-        const bool scenePrepassEnabled =
+        // 正交 HD2D は再投影なしの前フレーム AO を使用しない。
+        // GeometryAux がなければ既存の depth-only pass で現フレームを供給する。
+        const bool orthographicAoNeedsDepth = screenSurfaceRequirements.requireCurrentFrameAo &&
+            RENDER3D::SCREENSPACE::ResolveEffectiveSsaoMode(environment.ambientOcclusion) == SsaoMode::Balanced &&
+            !environment.ambientOcclusion.editorViewportSuppressed;
+        const bool scenePrepassEnabled = orthographicAoNeedsDepth ||
             ShouldRunSceneDepthPrepass(RENDER3D::GetRenderQualitySettings());
         const bool sceneDsvReady = screenSpaceContext.sceneDsv.ptr != 0;
         const bool depthPrepassWorkReady = MESHRENDERER::HasDepthPrepassWork();
@@ -765,5 +773,6 @@ namespace HIKARI::RENDER3D::PIPELINE {
     const RAYTRACING::RuntimeRayTracingStats& GetRuntimeRayTracingStats() noexcept { return gRuntimeRayScene.GetStats(); }
 
     const DYNAMICGI::Stats& GetDynamicDiffuseGiStats() noexcept { return gDynamicDiffuseGi.GetStats(); }
+    uint64_t GetPrimaryFrameFailureCount() noexcept { return gPrimaryFrameFailureCount; }
 
 } // namespace HIKARI::RENDER3D::PIPELINE

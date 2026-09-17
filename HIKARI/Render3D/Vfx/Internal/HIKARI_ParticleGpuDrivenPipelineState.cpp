@@ -22,6 +22,7 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
 
         struct ParticlePipelineStateStream {
             CD3DX12_PIPELINE_STATE_STREAM_ROOT_SIGNATURE rootSignature;
+            CD3DX12_PIPELINE_STATE_STREAM_AS amplificationShader;
             CD3DX12_PIPELINE_STATE_STREAM_MS meshShader;
             CD3DX12_PIPELINE_STATE_STREAM_PS pixelShader;
             CD3DX12_PIPELINE_STATE_STREAM_BLEND_DESC blend;
@@ -123,7 +124,7 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
         simulationRootSignature_.Reset();
         compactionRootSignature_.Reset();
         drawRootSignature_.Reset();
-        dispatchMeshCommandSignature_.Reset();
+        drawCommandSignature_.Reset();
     }
 
     ID3D12RootSignature*
@@ -173,9 +174,9 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
     }
 
     ID3D12CommandSignature*
-        ParticleGpuDrivenPipelineState::GetDispatchMeshCommandSignature()
+        ParticleGpuDrivenPipelineState::GetDrawCommandSignature()
             const noexcept {
-        return dispatchMeshCommandSignature_.Get();
+        return drawCommandSignature_.Get();
     }
 
     bool ParticleGpuDrivenPipelineState::CreateSimulationPipelines(
@@ -303,7 +304,7 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
         sceneDepthRange.NumDescriptors = 1u;
         sceneDepthRange.BaseShaderRegister = 3u;
 
-        std::array<D3D12_ROOT_PARAMETER, 10u> parameters{};
+        std::array<D3D12_ROOT_PARAMETER, 20u> parameters{};
         parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
         parameters[0].Descriptor.ShaderRegister = 0u;
         for (uint32_t index = 1u; index <= 5u; ++index) {
@@ -332,7 +333,7 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
         parameters[8].ParameterType =
             D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
         parameters[8].Constants.ShaderRegister = 7u;
-        parameters[8].Constants.Num32BitValues = 4u;
+        parameters[8].Constants.Num32BitValues = 1u;
         parameters[8].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
         parameters[9].ParameterType =
             D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
@@ -340,7 +341,34 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
         parameters[9].DescriptorTable.pDescriptorRanges = &sceneDepthRange;
         parameters[9].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
-        std::array<D3D12_STATIC_SAMPLER_DESC, 2u> samplers{};
+        constexpr uint32_t lightRegisters[3] = {2u,4u,5u};
+        for (uint32_t index=0u; index<3u; ++index) {
+            parameters[10u+index].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+            parameters[10u+index].Descriptor.ShaderRegister = lightRegisters[index];
+            parameters[10u+index].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+            parameters[13u+index].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
+            parameters[13u+index].Descriptor.ShaderRegister = index;
+            parameters[13u+index].Descriptor.RegisterSpace = 5u;
+            parameters[13u+index].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        }
+        parameters[16].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
+        parameters[16].Descriptor.ShaderRegister = 4u;
+        std::array<D3D12_DESCRIPTOR_RANGE,3u> lightingTextures{};
+        constexpr uint32_t textureRegisters[3] = {0u,9u,10u};
+        for (uint32_t index=0u; index<3u; ++index) {
+            auto& range = lightingTextures[index];
+            range.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+            range.NumDescriptors = 1u;
+            range.BaseShaderRegister = textureRegisters[index];
+            range.RegisterSpace = index == 0u ? 9u : 0u;
+            auto& parameter = parameters[17u+index];
+            parameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+            parameter.DescriptorTable.NumDescriptorRanges = 1u;
+            parameter.DescriptorTable.pDescriptorRanges = &range;
+            parameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        }
+        // 52 DWORDs: geometry/depth constants plus shared material and lighting resources.
+        std::array<D3D12_STATIC_SAMPLER_DESC, 3u> samplers{};
         samplers[0].Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
         samplers[0].AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
         samplers[0].AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
@@ -352,6 +380,10 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
         samplers[1] = samplers[0];
         samplers[1].Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
         samplers[1].ShaderRegister = 1u;
+        samplers[2] = samplers[0];
+        samplers[2].ShaderRegister = 2u;
+        samplers[2].Filter = D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT;
+        samplers[2].ComparisonFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
 
         D3D12_ROOT_SIGNATURE_DESC rootDescription{};
         rootDescription.NumParameters = static_cast<UINT>(parameters.size());
@@ -375,14 +407,17 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
                 { capabilities.shaderModel,
                   capabilities.rootSignatureVersion,
                   capabilities.featureMask });
-        const auto resolveShader = [&shaderContract](
+        usesMeshPipeline_ = (capabilities.featureMask & GFX::ShaderDeviceFeature::MeshShader) != 0u;
+        const char* drawProgramId = usesMeshPipeline_ ? "HIKARI.EngineShader.Render3D_ParticleGpuDrivenDraw" :
+            "HIKARI.EngineShader.Render3D_ParticleGpuDrivenRaster";
+        const auto resolveShader = [&shaderContract,drawProgramId](
             const char* entry,
             ASSETS::SHADER::ShaderStage stage,
             const char* profile,
             ASSETS::SHADER::ShaderAssetEntryLease& outShader) {
             ASSETS::SHADER::ShaderAssetResolveResult resolved =
                 ASSETS::SHADER::ResolveBuiltinShaderEntry(
-                    "HIKARI.EngineShader.Render3D_ParticleGpuDrivenDraw",
+                    drawProgramId,
                     { entry, stage, profile },
                     shaderContract);
             std::string diagnostic{};
@@ -406,24 +441,13 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
         };
         std::array<ASSETS::SHADER::ShaderAssetEntryLease, 2u>
             meshShaders{};
-        ASSETS::SHADER::ShaderAssetEntryLease pixelShader{};
-        if (!resolveShader(
-                "ParticleSpriteMS",
-                ASSETS::SHADER::ShaderStage::Mesh,
-                "ms_6_5",
-                meshShaders[0u]) ||
-            !resolveShader(
-                "ParticleStripMS",
-                ASSETS::SHADER::ShaderStage::Mesh,
-                "ms_6_5",
-                meshShaders[1u]) ||
-            !resolveShader(
-                "ParticlePS",
-                ASSETS::SHADER::ShaderStage::Pixel,
-                "ps_6_0",
-                pixelShader)) {
-            return false;
-        }
+        ASSETS::SHADER::ShaderAssetEntryLease pixelShader{}, amplificationShader{}, vertexShader{};
+        if (!resolveShader("ParticlePS",ASSETS::SHADER::ShaderStage::Pixel,"ps_6_0",pixelShader)) return false;
+        if (usesMeshPipeline_) {
+            if (!resolveShader("ParticleSpriteMS",ASSETS::SHADER::ShaderStage::Mesh,"ms_6_5",meshShaders[0]) ||
+                !resolveShader("ParticleShapeMS",ASSETS::SHADER::ShaderStage::Mesh,"ms_6_5",meshShaders[1]) ||
+                !resolveShader("ParticleAS",ASSETS::SHADER::ShaderStage::Amplification,"as_6_5",amplificationShader)) return false;
+        } else if (!resolveShader("ParticleVS",ASSETS::SHADER::ShaderStage::Vertex,"vs_6_0",vertexShader)) return false;
 
         ComPtr<ID3D12Device2> device2{};
         if (!HIKARI_DX_CHECK(
@@ -456,8 +480,11 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
                 formats.NumRenderTargets = 1u;
                 formats.RTFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
 
+                if (usesMeshPipeline_) {
                 ParticlePipelineStateStream stream{};
                 stream.rootSignature = drawRootSignature_.Get();
+                const auto amplification = amplificationShader.GetDxil();
+                stream.amplificationShader = CD3DX12_SHADER_BYTECODE(amplification.data(),amplification.size());
                 const std::span<const uint8_t> meshShader =
                     meshShaders[shapeIndex].GetDxil();
                 const std::span<const uint8_t> pixelShaderBytecode =
@@ -486,14 +513,33 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
                         "ParticleGpuDrivenPass::CreateDrawPipeline")) {
                     return false;
                 }
+                } else {
+                    D3D12_GRAPHICS_PIPELINE_STATE_DESC description{};
+                    description.pRootSignature = drawRootSignature_.Get();
+                    const auto vs = vertexShader.GetDxil(), ps = pixelShader.GetDxil();
+                    description.VS = {vs.data(),vs.size()};
+                    description.PS = {ps.data(),ps.size()};
+                    description.BlendState = blend;
+                    description.RasterizerState = rasterizer;
+                    description.DepthStencilState = depth;
+                    description.SampleMask = (std::numeric_limits<UINT>::max)();
+                    description.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+                    description.NumRenderTargets = 1u;
+                    description.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
+                    description.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+                    description.SampleDesc = {1u,0u};
+                    if (!HIKARI_DX_CHECK(device->CreateGraphicsPipelineState(&description,
+                        IID_PPV_ARGS(drawPipelines_[shapeIndex][blendIndex][depthIndex].GetAddressOf())),
+                        "ParticleGpuDrivenPass::CreateRasterFallbackPipeline")) return false;
+                }
             }
           }
         }
 
         D3D12_INDIRECT_ARGUMENT_DESC argument{};
-        argument.Type = D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH_MESH;
+        argument.Type = usesMeshPipeline_ ? D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH_MESH : D3D12_INDIRECT_ARGUMENT_TYPE_DRAW;
         D3D12_COMMAND_SIGNATURE_DESC signature{};
-        signature.ByteStride = sizeof(D3D12_DISPATCH_MESH_ARGUMENTS);
+        signature.ByteStride = kGpuParticleDrawArgumentStride;
         signature.NumArgumentDescs = 1u;
         signature.pArgumentDescs = &argument;
         return HIKARI_DX_CHECK(
@@ -501,8 +547,8 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
                 &signature,
                 nullptr,
                 IID_PPV_ARGS(
-                    dispatchMeshCommandSignature_.GetAddressOf())),
-            "ParticleGpuDrivenPass::CreateDispatchMeshSignature");
+                    drawCommandSignature_.GetAddressOf())),
+            "ParticleGpuDrivenPass::CreateDrawSignature");
     }
 
 } // namespace HIKARI::RENDER3D::PARTICLES::INTERNAL

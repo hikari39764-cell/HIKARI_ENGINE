@@ -1,3 +1,6 @@
+#include "Render3D/Material/Program/HIKARI_MaterialExpressionProgram.h"
+#include "Assets/HIKARI_AssetTypes.h"
+#include "Render3D/Material/HIKARI_GpuMaterialTypes.h"
 #include "Assets/Vfx/HIKARI_VfxProgram.h"
 
 #include "Assets/Vfx/HIKARI_VfxBuiltinTextureCatalog.h"
@@ -223,7 +226,7 @@ namespace HIKARI::VFX {
             !IsFinite(program.durationSeconds) ||
             program.durationSeconds <= 0.0f ||
             !IsFinite(program.maximumParticleLifetimeSeconds) ||
-            program.maximumParticleLifetimeSeconds <= 0.0f) {
+            program.maximumParticleLifetimeSeconds < 0.0f) {
             outError = "VFX program header fields are invalid";
             return false;
         }
@@ -255,6 +258,35 @@ namespace HIKARI::VFX {
              index < program.emitters.size();
              ++index) {
             const VfxProgramEmitter& emitter = program.emitters[index];
+            if (!emitter.animationTiming.IsValid() || emitter.layerCurves.size()>kMaxVfxParameterTracks+13) { outError="Layer curve budget exceeded"; return false; }
+            if(!emitter.render.animatedParameters.empty()) {outError="Compiled assets cannot contain per-frame parameter values";return false;}
+            RENDER3D::MATERIAL::MaterialExpressionRuntimeProgram expression;
+            if(std::any_of(emitter.layerCurves.begin(),emitter.layerCurves.end(),[](const auto& c){return c.channel>=VfxLayerChannel::MaterialParameter;})) {
+                if(!emitter.render.effectMaterial || !RENDER3D::MATERIAL::BuildMaterialExpressionRuntimeProgram(emitter.render.effectMaterial->compileResult.program,expression,outError)) return false;
+            }
+            std::unordered_set<uint64_t> layerChannels;
+            for (const auto& curve:emitter.layerCurves) {
+                const auto channel=static_cast<uint32_t>(curve.channel);
+                const uint64_t identity=(uint64_t(channel)<<32)|curve.materialSlot;
+                if(channel>=static_cast<uint32_t>(VfxLayerChannel::MaterialParameter) &&
+                    std::none_of(expression.parameterValueSlots.begin(),expression.parameterValueSlots.end(),[&](const auto& slot){return slot.second==curve.materialSlot;})) {
+                    outError="Animated parameter does not reference a material value slot";return false;
+                }
+                if (!std::isfinite(curve.minimum) || !std::isfinite(curve.maximum) || curve.minimum>curve.maximum || channel>static_cast<uint32_t>(VfxLayerChannel::MaterialUvOffset) ||
+                    (emitter.kind==VfxLayerKind::Particles && channel<13) ||
+                    curve.materialSlot>=RENDER3D::MATERIAL::kGpuMaterialProgramParameterSlotCount ||
+                    (channel>=static_cast<uint32_t>(VfxLayerChannel::MaterialParameter) && !emitter.render.effectMaterial) ||
+                    static_cast<uint32_t>(curve.interpolation)>static_cast<uint32_t>(ParticleCurveInterpolation::Step) ||
+                    !layerChannels.emplace(identity).second || curve.keys.empty() || curve.keys.size()>kMaxVfxLayerCurveKeys) {
+                    outError="Invalid layer animation channel"; return false;
+                }
+                float previous=-1;
+                for (const auto& key:curve.keys) {
+                    if (!std::isfinite(key.time) || !std::isfinite(key.value) || !std::isfinite(key.inTangent) || !std::isfinite(key.outTangent) ||
+                        key.time<0 || key.time>1 || key.time<=previous) { outError="Invalid layer animation key"; return false; }
+                    previous=key.time;
+                }
+            }
             const ParticleEmitterSimulationParameters& simulation =
                 emitter.simulation;
             const float maximumLifetime =
@@ -263,6 +295,10 @@ namespace HIKARI::VFX {
                 ? simulation.lifetime.maximum
                 : simulation.lifetime.minimum;
             if (emitter.emitterIndex != index ||
+                !IsValidVfxHistory(emitter.history) ||
+                (emitter.history.mode != VfxHistoryMode::None && (emitter.kind != VfxLayerKind::Shape ||
+                    emitter.simulation.capacity != emitter.history.samples)) ||
+                static_cast<uint8_t>(emitter.kind) > static_cast<uint8_t>(VfxLayerKind::Group) ||
                 emitter.sourceEmitterId.empty() ||
                 emitter.sourceEmitterId.size() >
                     kMaximumVfxProgramStringBytes ||
@@ -280,8 +316,8 @@ namespace HIKARI::VFX {
                 simulation.capacity > kGpuParticlePoolCapacity ||
                 !IsValidDistribution(simulation.lifetime) ||
                 simulation.lifetime.minimum <= 0.0f ||
-                maximumLifetime >
-                    program.maximumParticleLifetimeSeconds ||
+                (emitter.kind == VfxLayerKind::Particles && maximumLifetime >
+                    program.maximumParticleLifetimeSeconds) ||
                 !IsValidDistribution(simulation.shapeRadius) ||
                 (simulation.shape != ParticleShape::Point &&
                  simulation.shape != ParticleShape::Sphere &&
@@ -313,6 +349,10 @@ namespace HIKARI::VFX {
                 !IsValidAnimated(simulation.scale) ||
                 !IsFinite(simulation.gravity) ||
                 !IsFinite(simulation.drag) || simulation.drag < 0.0f ||
+                simulation.localSimulation > 1u || simulation.collisionPlaneEnabled > 1u ||
+                !IsFinite(simulation.collisionPlaneHeight) ||
+                !IsFinite(simulation.restitution) || simulation.restitution < 0.0f || simulation.restitution > 1.0f ||
+                !IsFinite(simulation.friction) || simulation.friction < 0.0f || simulation.friction > 1.0f ||
                 !IsValidAnimated(simulation.color) ||
                 !IsFinite(emitter.spawnRatePerSecond) ||
                 emitter.spawnRatePerSecond < 0.0f ||
@@ -331,13 +371,21 @@ namespace HIKARI::VFX {
                 (emitter.render.materialMode !=
                     ParticleMaterialMode::StandardUnlit &&
                  emitter.render.materialMode !=
-                    ParticleMaterialMode::CustomMaterial) ||
+                    ParticleMaterialMode::CustomMaterial &&
+                 emitter.render.materialMode != ParticleMaterialMode::StandardLit &&
+                 emitter.render.materialMode != ParticleMaterialMode::CustomLit) ||
                 (emitter.render.blendMode != ParticleBlendMode::Alpha &&
                  emitter.render.blendMode !=
                     ParticleBlendMode::Additive) ||
                 (emitter.render.shape != ParticleRenderShape::Sprite &&
                  emitter.render.shape != ParticleRenderShape::Ribbon &&
-                 emitter.render.shape != ParticleRenderShape::Ring) ||
+                 emitter.render.shape != ParticleRenderShape::Ring &&
+                 emitter.render.shape != ParticleRenderShape::MeshBox &&
+                 emitter.render.shape != ParticleRenderShape::MeshSphere &&
+                 emitter.render.shape != ParticleRenderShape::MeshCylinder &&
+                 emitter.render.shape != ParticleRenderShape::MeshCone &&
+                 emitter.render.shape != ParticleRenderShape::MeshHemisphere &&
+                 emitter.render.shape != ParticleRenderShape::CrossPlane) ||
                 (emitter.render.billboardMode !=
                     ParticleBillboardMode::RotatedBillboard &&
                  emitter.render.billboardMode !=
@@ -354,18 +402,6 @@ namespace HIKARI::VFX {
                     ParticleDepthMode::ContactSurface &&
                  emitter.render.depthMode !=
                     ParticleDepthMode::ForegroundAccent) ||
-                (emitter.render.shaderStyle !=
-                    ParticleShaderStyle::Default &&
-                 emitter.render.shaderStyle !=
-                    ParticleShaderStyle::CombatCut &&
-                 emitter.render.shaderStyle !=
-                    ParticleShaderStyle::CombatImpact &&
-                 emitter.render.shaderStyle !=
-                    ParticleShaderStyle::CombatGround &&
-                 emitter.render.shaderStyle !=
-                    ParticleShaderStyle::ComicSmoke &&
-                 emitter.render.shaderStyle !=
-                    ParticleShaderStyle::ProjectileNeedle) ||
                 !IsFinite(emitter.render.softIntersectionDistance) ||
                 (emitter.render.depthMode ==
                     ParticleDepthMode::SoftIntersection &&
@@ -378,31 +414,6 @@ namespace HIKARI::VFX {
                  (
                   emitter.render.depthBias < 0.0f ||
                   emitter.render.depthBias > 0.02f)) ||
-                !IsFinite(emitter.render.shaderOutlineColor) ||
-                !IsFinite(emitter.render.shaderCoreColor) ||
-                !IsFinite(emitter.render.shaderOutlineWidth) ||
-                !IsFinite(emitter.render.shaderEdgeHardness) ||
-                !IsFinite(emitter.render.shaderEmissiveIntensity) ||
-                !IsFinite(emitter.render.shaderBreakupScale) ||
-                !IsFinite(emitter.render.shaderBreakupStrength) ||
-                (emitter.render.shaderStyle !=
-                    ParticleShaderStyle::Default &&
-                 (!IsNonNegative(emitter.render.shaderOutlineColor) ||
-                  !IsNonNegative(emitter.render.shaderCoreColor) ||
-                  emitter.render.shaderOutlineWidth < 0.0f ||
-                  emitter.render.shaderOutlineWidth > 0.49f ||
-                  emitter.render.shaderEdgeHardness < 0.0f ||
-                  emitter.render.shaderEdgeHardness > 1.0f ||
-                  emitter.render.shaderEmissiveIntensity < 0.0f ||
-                  emitter.render.shaderEmissiveIntensity > 64.0f ||
-                  emitter.render.shaderBreakupScale < 0.1f ||
-                  emitter.render.shaderBreakupScale > 64.0f ||
-                  emitter.render.shaderBreakupStrength < 0.0f ||
-                  emitter.render.shaderBreakupStrength > 1.0f)) ||
-                emitter.render.ribbonSegmentCount < 2u ||
-                emitter.render.ribbonSegmentCount > 64u ||
-                emitter.render.ringSegmentCount < 3u ||
-                emitter.render.ringSegmentCount > 64u ||
                 emitter.render.flipbookColumns == 0u ||
                 emitter.render.flipbookColumns > 64u ||
                 emitter.render.flipbookRows == 0u ||

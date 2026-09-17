@@ -38,6 +38,10 @@ namespace HIKARI::RENDER3D::WORLD_SPRITES {
         MATH::Vec2 pivot{ 0.5f, 0.5f };
         MATH::Vec3 tint{ 1.0f, 1.0f, 1.0f };
         AssetGuid textureAssetGuid{};
+        MATH::Vec4 uvRect{0, 0, 1, 1};
+        float roughness = 0.85f, specular = 0.25f;
+        bool lit = false, pointSampling = false;
+        bool castShadow = true, receiveShadow = true;
         float opacity = 1.0f;
         float alphaCutoff = 0.5f;
         int32_t transparentSortPriority = 0;

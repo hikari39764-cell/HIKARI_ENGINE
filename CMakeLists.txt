@@ -315,6 +315,42 @@ endif()
 add_test(NAME HIKARI_AssetDatabaseImportContracts COMMAND "$<TARGET_FILE:HIKARI_AssetDatabaseImportContracts>")
 set_tests_properties(HIKARI_AssetDatabaseImportContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 120)
 
+hikari_add_runtime_contract(HIKARI_VfxPresetSmoke
+    "Tools/Tests/HIKARI_VfxPresetSmoke.cpp" ${hikari_import_contract_options})
+if(HIKARI_WITH_EDITOR_BUILD)
+    target_link_libraries(HIKARI_VfxPresetSmoke PRIVATE HIKARI::Editor)
+endif()
+add_test(NAME HIKARI_VfxPresetSmoke COMMAND "$<TARGET_FILE:HIKARI_VfxPresetSmoke>")
+set_tests_properties(HIKARI_VfxPresetSmoke PROPERTIES LABELS "RuntimeContracts" TIMEOUT 120)
+
+if(HIKARI_WITH_EDITOR_BUILD)
+    hikari_add_runtime_contract(HIKARI_VfxAnimationEditingSmoke
+        "Tools/Tests/HIKARI_VfxAnimationEditingSmoke.cpp" ${hikari_import_contract_options})
+    target_link_libraries(HIKARI_VfxAnimationEditingSmoke PRIVATE HIKARI::Editor)
+    add_test(NAME HIKARI_VfxAnimationEditingSmoke COMMAND "$<TARGET_FILE:HIKARI_VfxAnimationEditingSmoke>")
+    set_tests_properties(HIKARI_VfxAnimationEditingSmoke PROPERTIES LABELS "RuntimeContracts" TIMEOUT 120)
+endif()
+
+foreach(vfx_contract IN ITEMS NativeVfxSmoke VfxEditorTransactionSmoke
+        VfxAssetAuthoringTransactionSmoke VfxPlaybackScheduleSmoke
+        ActionScreenImpulseTypedProfileSmoke WeaponTrailTypedProfileSmoke)
+    hikari_add_runtime_contract("HIKARI_${vfx_contract}"
+        "Tools/Tests/HIKARI_${vfx_contract}.cpp" ${hikari_import_contract_options})
+    if(HIKARI_WITH_EDITOR_BUILD)
+        target_link_libraries("HIKARI_${vfx_contract}" PRIVATE HIKARI::Editor)
+    endif()
+    add_test(NAME "HIKARI_${vfx_contract}" COMMAND "$<TARGET_FILE:HIKARI_${vfx_contract}>")
+    set_tests_properties("HIKARI_${vfx_contract}" PROPERTIES LABELS "RuntimeContracts" TIMEOUT 120)
+endforeach()
+
+hikari_add_runtime_contract(HIKARI_ContentLibraryContracts
+    "Tools/Tests/HIKARI_ContentLibraryContracts.cpp" ${hikari_import_contract_options})
+if(HIKARI_WITH_EDITOR_BUILD)
+    target_link_libraries(HIKARI_ContentLibraryContracts PRIVATE HIKARI::Editor)
+endif()
+add_test(NAME HIKARI_ContentLibraryContracts COMMAND "$<TARGET_FILE:HIKARI_ContentLibraryContracts>")
+set_tests_properties(HIKARI_ContentLibraryContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 120)
+
 hikari_add_runtime_contract(
     HIKARI_TextureUploadContracts
     "Tools/Tests/HIKARI_TextureUploadContracts.cpp")
@@ -324,14 +360,29 @@ set_tests_properties(HIKARI_TextureUploadContracts PROPERTIES LABELS "RuntimeCon
 hikari_add_runtime_contract(
     HIKARI_NavigationRuntimeContracts
     "Tools/Tests/HIKARI_NavigationRuntimeContracts.cpp")
+hikari_add_runtime_contract(HIKARI_PresentationWorkflowSmoke "Tools/Tests/HIKARI_PresentationWorkflowSmoke.cpp")
+hikari_add_runtime_contract(HIKARI_Hd2dFoundationContracts "Tools/Tests/HIKARI_Hd2dFoundationContracts.cpp")
+hikari_add_runtime_contract(HIKARI_SampleSceneContracts "Tools/Tests/HIKARI_SampleSceneContracts.cpp" ${hikari_import_contract_options})
+if(HIKARI_WITH_EDITOR_BUILD)
+    target_link_libraries(HIKARI_SampleSceneContracts PRIVATE HIKARI::Editor)
+endif()
+foreach(sample IN ITEMS GameplayLab PresentationLab HD2DLab)
+    file(GLOB sample_contract_sources CONFIGURE_DEPENDS "Samples/${sample}/Source/*.cpp")
+    target_sources(HIKARI_SampleSceneContracts PRIVATE ${sample_contract_sources})
+    foreach(sample_source IN LISTS sample_contract_sources)
+        if(sample_source MATCHES "Module\\.cpp$")
+            set_property(SOURCE "${sample_source}" APPEND PROPERTY COMPILE_DEFINITIONS
+                "CreateGameProjectModule=Create${sample}Module")
+        endif()
+    endforeach()
+endforeach()
 hikari_add_runtime_contract(
     HIKARI_AudioRuntimeContracts
     "Tools/Tests/HIKARI_AudioRuntimeContracts.cpp"
     NO_TOOLING_STUBS)
 hikari_add_runtime_contract(
     HIKARI_InputDeviceArbitrationContracts
-    "Tools/Tests/HIKARI_InputDeviceArbitrationContracts.cpp"
-    NO_TOOLING_STUBS)
+    "Tools/Tests/HIKARI_InputDeviceArbitrationContracts.cpp")
 hikari_add_runtime_contract(
     HIKARI_GroundTelegraphContracts
     "Tools/Tests/HIKARI_GroundTelegraphContracts.cpp"
@@ -359,6 +410,18 @@ hikari_add_runtime_contract(
 hikari_add_runtime_contract(
     HIKARI_WorldSdkSmoke
     "Tools/Tests/HIKARI_WorldSdkSmoke.cpp")
+hikari_add_runtime_contract(
+    HIKARI_GameplayFoundationSmoke
+    "Tools/Tests/HIKARI_GameplayFoundationSmoke.cpp")
+hikari_add_runtime_contract(HIKARI_ProjectCodeWorkflowSmoke
+    "Tools/Tests/HIKARI_ProjectCodeWorkflowSmoke.cpp" NO_TOOLING_STUBS)
+target_sources(HIKARI_ProjectCodeWorkflowSmoke PRIVATE
+    "HIKARI/Editor/Projects/HIKARI_ProjectCodeWorkspace.cpp"
+    "HIKARI/Editor/Projects/HIKARI_EditorChildProcess.cpp"
+    "HIKARI/Editor/Projects/HIKARI_ProjectProcess.cpp"
+    "HIKARI/Editor/Projects/HIKARI_ProjectCodeJob.cpp"
+    "HIKARI/Editor/Projects/HIKARI_ProjectCodeOperations.cpp"
+    "HIKARI/Editor/Commands/HIKARI_EditorOperationRegistry.cpp")
 hikari_add_runtime_contract(
     HIKARI_WorldCommandSchedulerSmoke
     "Tools/Tests/HIKARI_WorldCommandSchedulerSmoke.cpp")
@@ -695,11 +758,14 @@ add_executable(HIKARI_LocalLightSelectionContracts EXCLUDE_FROM_ALL
     "HIKARI/Scene/Lighting/HIKARI_LightAuthoringModel.cpp"
     "HIKARI/Scene/HIKARI_SceneDocumentQueries.cpp"
     "HIKARI/Scene/HIKARI_SceneComponentId.cpp"
+    "HIKARI/Scene/Serialization/Objects/HIKARI_SceneObjectJson.cpp"
+    "HIKARI/Scene/Sand/HIKARI_SandSurfaceTypes.cpp"
     "HIKARI/Render3D/Lighting/HIKARI_LocalLightList.cpp"
     "HIKARI/Render3D/Lighting/HIKARI_LocalLightSemantics.cpp"
     "HIKARI/Render3D/Core/HIKARI_Camera3D.cpp"
     "HIKARI/Render3D/HIKARI_Math3D.cpp")
-target_include_directories(HIKARI_LocalLightSelectionContracts PRIVATE "${HIKARI_SOURCE_ROOT}/HIKARI")
+target_include_directories(HIKARI_LocalLightSelectionContracts PRIVATE
+    "${HIKARI_SOURCE_ROOT}/HIKARI" "${HIKARI_SOURCE_ROOT}/include")
 target_link_libraries(HIKARI_LocalLightSelectionContracts PRIVATE HIKARI::Nlohmann)
 hikari_configure_engine_target(HIKARI_LocalLightSelectionContracts)
 hikari_configure_contract_output(HIKARI_LocalLightSelectionContracts "RuntimeContracts")
@@ -774,6 +840,8 @@ set_tests_properties(HIKARI_HtexLayoutContracts PROPERTIES LABELS "RuntimeContra
 foreach(runtime_contract IN ITEMS
     HIKARI_GameComponentBindingLifecycleSmoke
     HIKARI_WorldSdkSmoke
+    HIKARI_GameplayFoundationSmoke
+    HIKARI_ProjectCodeWorkflowSmoke
     HIKARI_WorldCommandSchedulerSmoke
     HIKARI_WorldBatchSmoke
     HIKARI_WorldComponentIndexSmoke

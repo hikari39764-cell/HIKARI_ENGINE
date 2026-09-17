@@ -5,10 +5,27 @@
 #include <cstdint>
 #include <unordered_map>
 #include <vector>
+#include <span>
 
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
 
 namespace HIKARI::RENDER3D::PARTICLES {
+
+    float EvaluateParticleCurve(std::span<const ParticleCurveKey> keys,
+        ParticleCurveInterpolation interpolation, float time, float randomOffset = 0) noexcept;
+    float IntegrateParticleCurve(std::span<const ParticleCurveKey> keys,
+        ParticleCurveInterpolation interpolation, float time) noexcept;
+
+    struct LayerAnimationSample {
+        MATH::Vec3 position{};
+        MATH::Vec3 rotationRadians{};
+        MATH::Vec3 scale{ 1.0f, 1.0f, 1.0f };
+        MATH::Vec4 color{ 1.0f, 1.0f, 1.0f, 1.0f };
+    };
+
+    LayerAnimationSample EvaluateLayerAnimation(
+        const ParticleEmitterSimulationParameters& animation,
+        float seconds, float duration, uint32_t seed) noexcept;
 
     struct CpuResolvedAnimatedFloat3 {
         ParticleValueMode mode = ParticleValueMode::Fixed;

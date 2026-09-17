@@ -470,7 +470,16 @@ namespace HIKARI::EDITOR {
             const float scaleY = MaximumAnimatedMagnitude(
                 emitter.scale.value, 1u, lifetime) *
                 std::abs(FiniteOr(worldScale.y, 1.0f));
+            const float scaleZ = MaximumAnimatedMagnitude(
+                emitter.scale.value, 2u, lifetime) * std::abs(FiniteOr(worldScale.z, 1.0f));
             switch (emitter.renderShape.type) {
+            case VFX::VfxRenderShapeType::MeshBox:
+            case VFX::VfxRenderShapeType::MeshSphere:
+            case VFX::VfxRenderShapeType::MeshCylinder:
+            case VFX::VfxRenderShapeType::MeshCone:
+            case VFX::VfxRenderShapeType::MeshHemisphere:
+            case VFX::VfxRenderShapeType::CrossPlane:
+                return 0.5f * std::sqrt(scaleX*scaleX+scaleY*scaleY+scaleZ*scaleZ);
             case VFX::VfxRenderShapeType::Ribbon: {
                 const float halfLength = 0.5f * scaleX;
                 const float halfWidth = 0.5f * std::abs(
@@ -609,6 +618,7 @@ namespace HIKARI::EDITOR {
 
         for (size_t index = 0u; index < asset.emitters.size(); ++index) {
             const VFX::VfxEmitterData& emitter = asset.emitters[index];
+            if (emitter.kind == VFX::VfxLayerKind::Group) continue;
             if (!emitterId.empty() && emitter.id != emitterId) continue;
             if (!emitter.basic.enabled ||
                 !ResolveTransform(
@@ -618,18 +628,37 @@ namespace HIKARI::EDITOR {
 
             const ScalarInterval lifetimeRange =
                 DistributionInterval(emitter.basic.lifetime);
-            const float lifetime = (std::max)(
+            const bool particles = emitter.kind == VFX::VfxLayerKind::Particles;
+            const float lifetime = particles ? (std::max)(
                 0.0f,
-                (std::max)(lifetimeRange.minimum, lifetimeRange.maximum));
+                (std::max)(lifetimeRange.minimum, lifetimeRange.maximum)) :
+                (emitter.activeDuration > 0 ? emitter.activeDuration : (std::max)(0.0f, asset.durationSeconds - emitter.startDelay));
             const ResolvedEmitterTransform& transform = transforms[index];
             VectorInterval bounds = TransformInterval(
                 transform.matrix,
-                ShapeInterval(emitter),
+                particles ? ShapeInterval(emitter) : VectorInterval{},
                 false);
-            const VectorInterval movement = MovementInterval(
-                emitter, transform, lifetime);
+            const VectorInterval spawnBounds = bounds;
+            const VectorInterval movement = particles ? MovementInterval(
+                emitter, transform, lifetime) : VectorInterval{};
             bounds.minimum = bounds.minimum + movement.minimum;
             bounds.maximum = bounds.maximum + movement.maximum;
+
+            // World-space floor collision prevents the ballistic fall below
+            // the plane. Include rebound energy so framing still covers a
+            // downward emitter after it bounces (restitution is at most one).
+            if (particles && emitter.forces.collisionPlaneEnabled &&
+                !emitter.basic.localSimulation && emitter.forces.gravity.y < -1.0e-5f) {
+                const float floor = emitter.forces.collisionPlaneHeight;
+                bounds.minimum.y = (std::min)(spawnBounds.minimum.y,
+                    (std::max)(bounds.minimum.y, floor));
+                const auto speed = DistributionInterval(emitter.position.radialSpeed);
+                const float maximumSpeed = (std::max)(std::abs(speed.minimum), std::abs(speed.maximum));
+                const float gravity = -emitter.forces.gravity.y;
+                const float reboundHeight = maximumSpeed * maximumSpeed / (2.0f * gravity);
+                bounds.maximum.y = (std::max)(bounds.maximum.y,
+                    (std::max)(spawnBounds.maximum.y, floor) + reboundHeight);
+            }
 
             const VectorInterval animatedPosition = TransformInterval(
                 transform.matrix,

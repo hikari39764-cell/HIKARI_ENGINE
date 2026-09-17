@@ -2,6 +2,8 @@
 
 #include <memory>
 #include <filesystem>
+#include <string_view>
+#include "HIKARI/Project/AudioTypes.h"
 
 namespace HIKARI::AUDIO {
 
@@ -37,5 +39,15 @@ void SetVolume(int playHandle, float volume);
 bool IsPlaying(int playHandle);
 void SetBusVolume(AudioBus bus, float volume);
 float GetBusVolume(AudioBus bus);
+int PlayCue(int soundHandle, const GameProjectAudioPlayOptions& options,
+    uint64_t owner = 0u);
+bool SetListener(const GameProjectAudioListener& listener);
+void UseCameraListener();
+void UpdateCameraListener(const GameProjectAudioListener& listener);
+bool SetSource(int playHandle, const GameProjectAudioSource& source);
+bool SetPlaybackRate(int playHandle, float rate);
+void StopOwner(uint64_t owner);
+bool BelongsToOwner(int playHandle, uint64_t owner);
+GameProjectAudioStats GetStats();
 
 } // namespace HIKARI::AUDIO

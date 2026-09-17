@@ -24,10 +24,12 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
             uint32_t shapeIndex,
             uint32_t blendIndex,
             uint32_t depthIndex) const noexcept;
-        ID3D12CommandSignature* GetDispatchMeshCommandSignature()
+        bool UsesMeshPipeline() const noexcept { return usesMeshPipeline_; }
+        ID3D12CommandSignature* GetDrawCommandSignature()
             const noexcept;
 
     private:
+        bool usesMeshPipeline_ = false;
         bool CreateSimulationPipelines(ID3D12Device* device);
         bool CreateCompactionPipelines(ID3D12Device* device);
         bool CreateDrawPipelines(ID3D12Device* device);
@@ -48,7 +50,7 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
                 2u>,
             2u> drawPipelines_{};
         Microsoft::WRL::ComPtr<ID3D12CommandSignature>
-            dispatchMeshCommandSignature_{};
+            drawCommandSignature_{};
     };
 
 } // namespace HIKARI::RENDER3D::PARTICLES::INTERNAL

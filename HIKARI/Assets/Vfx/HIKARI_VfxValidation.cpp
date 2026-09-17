@@ -1,3 +1,4 @@
+#include "Assets/Vfx/HIKARI_VfxLayerAnimation.h"
 #include "Assets/Vfx/HIKARI_VfxValidation.h"
 
 #include <algorithm>
@@ -129,7 +130,8 @@ namespace HIKARI::VFX {
             const VfxCurveData& curve,
             std::string_view ownerId,
             std::unordered_set<std::string>& ids,
-            std::vector<VfxDiagnostic>& diagnostics) {
+            std::vector<VfxDiagnostic>& diagnostics,
+            size_t maxKeys = RENDER3D::PARTICLES::kMaxParticleCurveKeys) {
 
             ValidateDistribution(
                 curve.randomOffset,
@@ -144,11 +146,11 @@ namespace HIKARI::VFX {
                 return;
             }
             if (curve.keys.size() >
-                RENDER3D::PARTICLES::kMaxParticleCurveKeys) {
+                maxKeys) {
                 AddError(
                     diagnostics,
                     "Vfx.CurveKeyLimit",
-                    "curve exceeds the native GPU limit of 8 keys",
+                    "curve exceeds its animation key budget",
                     std::string(ownerId));
             }
             std::unordered_set<float> times{};
@@ -183,23 +185,25 @@ namespace HIKARI::VFX {
             const VfxVec3CurveData& curve,
             std::string_view ownerId,
             std::unordered_set<std::string>& ids,
-            std::vector<VfxDiagnostic>& diagnostics) {
+            std::vector<VfxDiagnostic>& diagnostics,
+            size_t maxKeys = RENDER3D::PARTICLES::kMaxParticleCurveKeys) {
 
-            ValidateCurve(curve.x, ownerId, ids, diagnostics);
-            ValidateCurve(curve.y, ownerId, ids, diagnostics);
-            ValidateCurve(curve.z, ownerId, ids, diagnostics);
+            ValidateCurve(curve.x, ownerId, ids, diagnostics, maxKeys);
+            ValidateCurve(curve.y, ownerId, ids, diagnostics, maxKeys);
+            ValidateCurve(curve.z, ownerId, ids, diagnostics, maxKeys);
         }
 
         void ValidateColorCurve(
             const VfxColorCurveData& curve,
             std::string_view ownerId,
             std::unordered_set<std::string>& ids,
-            std::vector<VfxDiagnostic>& diagnostics) {
+            std::vector<VfxDiagnostic>& diagnostics,
+            size_t maxKeys = RENDER3D::PARTICLES::kMaxParticleCurveKeys) {
 
-            ValidateCurve(curve.r, ownerId, ids, diagnostics);
-            ValidateCurve(curve.g, ownerId, ids, diagnostics);
-            ValidateCurve(curve.b, ownerId, ids, diagnostics);
-            ValidateCurve(curve.a, ownerId, ids, diagnostics);
+            ValidateCurve(curve.r, ownerId, ids, diagnostics, maxKeys);
+            ValidateCurve(curve.g, ownerId, ids, diagnostics, maxKeys);
+            ValidateCurve(curve.b, ownerId, ids, diagnostics, maxKeys);
+            ValidateCurve(curve.a, ownerId, ids, diagnostics, maxKeys);
         }
 
         void ValidateGradient(
@@ -254,7 +258,8 @@ namespace HIKARI::VFX {
             const VfxAnimatedVec3Data& value,
             std::string_view ownerId,
             std::unordered_set<std::string>& ids,
-            std::vector<VfxDiagnostic>& diagnostics) {
+            std::vector<VfxDiagnostic>& diagnostics,
+            size_t maxKeys = RENDER3D::PARTICLES::kMaxParticleCurveKeys) {
 
             switch (value.mode) {
             case VfxAnimatedValueMode::Fixed:
@@ -275,7 +280,7 @@ namespace HIKARI::VFX {
                 ValidateDistribution(value.easing.end, ownerId, diagnostics);
                 break;
             case VfxAnimatedValueMode::Curve:
-                ValidateVec3Curve(value.curve, ownerId, ids, diagnostics);
+                ValidateVec3Curve(value.curve, ownerId, ids, diagnostics, maxKeys);
                 break;
             }
         }
@@ -284,7 +289,8 @@ namespace HIKARI::VFX {
             const VfxAnimatedColorData& value,
             std::string_view ownerId,
             std::unordered_set<std::string>& ids,
-            std::vector<VfxDiagnostic>& diagnostics) {
+            std::vector<VfxDiagnostic>& diagnostics,
+            size_t maxKeys = RENDER3D::PARTICLES::kMaxParticleCurveKeys) {
 
             switch (value.mode) {
             case VfxAnimatedColorMode::Fixed:
@@ -316,7 +322,7 @@ namespace HIKARI::VFX {
                 ValidateDistribution(value.easing.end, ownerId, diagnostics);
                 break;
             case VfxAnimatedColorMode::Curve:
-                ValidateColorCurve(value.curve, ownerId, ids, diagnostics);
+                ValidateColorCurve(value.curve, ownerId, ids, diagnostics, maxKeys);
                 break;
             case VfxAnimatedColorMode::Gradient:
                 ValidateGradient(value.gradient, ownerId, ids, diagnostics);
@@ -432,6 +438,21 @@ namespace HIKARI::VFX {
         std::unordered_map<std::string, const VfxEmitterData*> emitters{};
         uint64_t declaredParticleCapacity = 0u;
         for (const VfxEmitterData& emitter : asset.emitters) {
+            if (emitter.effects.size() > 8) AddError(diagnostics, "Vfx.TooManyEffects", "A layer supports eight material effects", emitter.id);
+            for (const auto& effect : emitter.effects) {
+                RegisterId(effect.id, "effect", ids, diagnostics);
+                if (MaterialEffectName(effect.kind) == "Invalid" || !IsFinite(effect.parameters) ||
+                    !IsFinite(effect.colorA) || !IsFinite(effect.colorB))
+                    AddError(diagnostics, "Vfx.InvalidEffect", "Effect values must be finite", effect.id);
+            }
+            if (!emitter.effects.empty() && IsCustomVfxMaterial(emitter.renderCommon.materialMode))
+                AddError(diagnostics, "Vfx.EffectMaterialConflict", "Effect stacks use the layer texture; custom materials own their shader graph", emitter.id);
+            if (!IsValidVfxHistory(emitter.history) ||
+                (emitter.history.mode != VfxHistoryMode::None && emitter.kind != VfxLayerKind::Shape))
+                AddError(diagnostics, "Vfx.InvalidHistory", "History requires a shape layer and bounded duration/sample count", emitter.id);
+            if (static_cast<uint8_t>(emitter.kind) > static_cast<uint8_t>(VfxLayerKind::Group)) {
+                AddError(diagnostics, "Vfx.InvalidLayerKind", "unknown layer kind", emitter.id);
+            }
             (void)RegisterId(emitter.id, "emitter", ids, diagnostics);
             emitters.emplace(emitter.id, &emitter);
             if (emitter.name.empty()) {
@@ -665,21 +686,27 @@ namespace HIKARI::VFX {
                 emitter.position.value,
                 emitter.position.id,
                 ids,
-                diagnostics);
+                diagnostics, emitter.kind == VfxLayerKind::Particles ?
+                    RENDER3D::PARTICLES::kMaxParticleCurveKeys : kMaxVfxLayerCurveKeys);
             ValidateAnimatedVec3(
                 emitter.rotation.eulerDegrees,
                 emitter.rotation.id,
                 ids,
-                diagnostics);
+                diagnostics, emitter.kind == VfxLayerKind::Particles ?
+                    RENDER3D::PARTICLES::kMaxParticleCurveKeys : kMaxVfxLayerCurveKeys);
             ValidateAnimatedVec3(
                 emitter.scale.value,
                 emitter.scale.id,
                 ids,
-                diagnostics);
+                diagnostics, emitter.kind == VfxLayerKind::Particles ?
+                    RENDER3D::PARTICLES::kMaxParticleCurveKeys : kMaxVfxLayerCurveKeys);
             if (!IsFinite(emitter.forces.gravity) ||
                 !IsFinite(emitter.forces.drag) ||
                 emitter.forces.drag < 0.0f ||
-                emitter.forces.drag > 1000.0f) {
+                emitter.forces.drag > 1000.0f ||
+                !IsFinite(emitter.forces.collisionPlaneHeight) ||
+                !IsFinite(emitter.forces.restitution) || emitter.forces.restitution < 0.0f || emitter.forces.restitution > 1.0f ||
+                !IsFinite(emitter.forces.friction) || emitter.forces.friction < 0.0f || emitter.forces.friction > 1.0f) {
                 AddError(
                     diagnostics,
                     "Vfx.InvalidForcesModule",
@@ -690,12 +717,15 @@ namespace HIKARI::VFX {
                 emitter.color.value,
                 emitter.color.id,
                 ids,
-                diagnostics);
+                diagnostics, emitter.kind == VfxLayerKind::Particles ?
+                    RENDER3D::PARTICLES::kMaxParticleCurveKeys : kMaxVfxLayerCurveKeys);
 
             if (emitter.renderCommon.materialMode !=
                     VfxMaterialMode::StandardUnlit &&
                 emitter.renderCommon.materialMode !=
-                    VfxMaterialMode::CustomMaterial) {
+                    VfxMaterialMode::CustomMaterial &&
+                emitter.renderCommon.materialMode != VfxMaterialMode::StandardLit &&
+                emitter.renderCommon.materialMode != VfxMaterialMode::CustomLit) {
                 AddError(
                     diagnostics,
                     "Vfx.InvalidMaterialMode",
@@ -711,19 +741,6 @@ namespace HIKARI::VFX {
                     VfxParticleDepthMode::ContactSurface ||
                 emitter.renderCommon.depthMode ==
                     VfxParticleDepthMode::ForegroundAccent;
-            const bool validShaderStyle =
-                emitter.renderCommon.shaderStyle ==
-                    VfxParticleShaderStyle::Default ||
-                emitter.renderCommon.shaderStyle ==
-                    VfxParticleShaderStyle::CombatCut ||
-                emitter.renderCommon.shaderStyle ==
-                    VfxParticleShaderStyle::CombatImpact ||
-                emitter.renderCommon.shaderStyle ==
-                    VfxParticleShaderStyle::CombatGround ||
-                emitter.renderCommon.shaderStyle ==
-                    VfxParticleShaderStyle::ComicSmoke ||
-                emitter.renderCommon.shaderStyle ==
-                    VfxParticleShaderStyle::ProjectileNeedle;
             const bool validSoftIntersection =
                 IsFinite(
                     emitter.renderCommon.softIntersectionDistance) &&
@@ -739,38 +756,11 @@ namespace HIKARI::VFX {
                  (
                  emitter.renderCommon.depthBias >= 0.0f &&
                  emitter.renderCommon.depthBias <= 0.02f));
-            const bool validStylizedProfile =
-                IsFinite(emitter.renderCommon.shaderOutlineColor) &&
-                IsFinite(emitter.renderCommon.shaderCoreColor) &&
-                IsFinite(emitter.renderCommon.shaderOutlineWidth) &&
-                IsFinite(emitter.renderCommon.shaderEdgeHardness) &&
-                IsFinite(
-                    emitter.renderCommon.shaderEmissiveIntensity) &&
-                IsFinite(emitter.renderCommon.shaderBreakupScale) &&
-                IsFinite(emitter.renderCommon.shaderBreakupStrength) &&
-                (emitter.renderCommon.shaderStyle ==
-                    VfxParticleShaderStyle::Default ||
-                 (
-                 IsNonNegative(
-                    emitter.renderCommon.shaderOutlineColor) &&
-                 IsNonNegative(emitter.renderCommon.shaderCoreColor) &&
-                 emitter.renderCommon.shaderOutlineWidth >= 0.0f &&
-                 emitter.renderCommon.shaderOutlineWidth <= 0.49f &&
-                 emitter.renderCommon.shaderEdgeHardness >= 0.0f &&
-                 emitter.renderCommon.shaderEdgeHardness <= 1.0f &&
-                 emitter.renderCommon.shaderEmissiveIntensity >= 0.0f &&
-                 emitter.renderCommon.shaderEmissiveIntensity <= 64.0f &&
-                 emitter.renderCommon.shaderBreakupScale >= 0.1f &&
-                 emitter.renderCommon.shaderBreakupScale <= 64.0f &&
-                 emitter.renderCommon.shaderBreakupStrength >= 0.0f &&
-                 emitter.renderCommon.shaderBreakupStrength <= 1.0f));
-            if (!validDepthMode || !validShaderStyle ||
-                !validSoftIntersection || !validContactBias ||
-                !validStylizedProfile) {
+            if (!validDepthMode || !validSoftIntersection || !validContactBias) {
                 AddError(
                     diagnostics,
                     "Vfx.InvalidParticlePresentation",
-                    "particle depth or stylized shader parameters are invalid",
+                    "particle depth parameters are invalid",
                     emitter.renderCommon.id);
             }
             if (emitter.renderCommon.colorTextureAssetGuid.IsValid() &&
@@ -792,6 +782,24 @@ namespace HIKARI::VFX {
                     "Vfx.InvalidMaterialGuid",
                     "render material GUID is invalid",
                     emitter.renderCommon.id);
+            }
+            if (!emitter.animationTiming.IsValid()) AddError(diagnostics,"Vfx.InvalidAnimationTiming","Invalid animation time mapping",emitter.id);
+            const auto animatable=GetVfxAnimatableParameters(emitter);
+            std::unordered_set<std::string> targets;
+            if (emitter.parameterTracks.size()>kMaxVfxParameterTracks)
+                AddError(diagnostics,"Vfx.TrackLimit","Too many layer parameter tracks",emitter.id);
+            for (const auto& track:emitter.parameterTracks) {
+                RegisterId(track.id,"parameter track",ids,diagnostics);
+                ValidateCurve(track.curve,track.id,ids,diagnostics,kMaxVfxLayerCurveKeys);
+                const auto parameter=std::find_if(animatable.begin(),animatable.end(),[&](const auto& p){return p.targetId==track.targetId && p.propertyId==track.propertyId;});
+                if (parameter==animatable.end() || !targets.emplace(track.targetId+"/"+track.propertyId).second ||
+                    track.curve.randomOffset.minimum!=0 || track.curve.randomOffset.maximum!=0) {
+                    AddError(diagnostics,"Vfx.InvalidParameterTrack","Unknown, duplicate or randomized layer parameter",track.id);
+                    continue;
+                }
+                for (const auto& key:track.curve.keys)
+                    if (key.value<parameter->minimum || key.value>parameter->maximum)
+                        AddError(diagnostics,"Vfx.ParameterRange","Animated value is outside the parameter range",key.id);
             }
             const uint64_t flipbookCellCount =
                 static_cast<uint64_t>(
@@ -827,6 +835,18 @@ namespace HIKARI::VFX {
                     diagnostics,
                     "Vfx.InvalidBillboardMode",
                     "sprite orientation mode is invalid",
+                    emitter.renderShape.id);
+            }
+            if (static_cast<uint32_t>(emitter.renderShape.type) >
+                    static_cast<uint32_t>(VfxRenderShapeType::CrossPlane) ||
+                !IsFinite(emitter.renderShape.ribbonWidth) || emitter.renderShape.ribbonWidth < 0.0f ||
+                !IsFinite(emitter.renderShape.ringOuterRadius) || !IsFinite(emitter.renderShape.ringInnerRadius) ||
+                emitter.renderShape.ringInnerRadius < 0.0f ||
+                emitter.renderShape.ringOuterRadius < emitter.renderShape.ringInnerRadius ||
+                !IsFinite(emitter.renderShape.ringStartAngleDegrees) ||
+                !IsFinite(emitter.renderShape.ringEndAngleDegrees)) {
+                AddError(diagnostics, "Vfx.InvalidRenderGeometry",
+                    "Geometry requires a known shape, finite angles, non-negative width, and outer radius >= inner radius >= 0",
                     emitter.renderShape.id);
             }
             if (emitter.renderShape.ribbonSegmentCount < 2u ||

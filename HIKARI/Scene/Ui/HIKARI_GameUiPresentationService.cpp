@@ -43,6 +43,14 @@ namespace HIKARI::GAME_UI {
             return false;
         }
 
+        std::filesystem::path PathBelowAssets(std::string_view text) {
+            auto path = TEXT::PathFromUtf8(text);
+            if (!path.empty() && !path.has_root_path() && *path.begin() == "Assets") {
+                path = path.lexically_relative("Assets");
+            }
+            return path;
+        }
+
         bool IsWithin(
             const std::filesystem::path& root,
             const std::filesystem::path& candidate) {
@@ -105,7 +113,7 @@ namespace HIKARI::GAME_UI {
                 return true;
             }
             const std::filesystem::path relative =
-                TEXT::PathFromUtf8(cacheKey);
+                PathBelowAssets(cacheKey);
             if (relative.is_absolute() || relative.has_root_path() ||
                 HasParentTraversal(relative)) {
                 return false;
@@ -168,7 +176,7 @@ namespace HIKARI::GAME_UI {
                 return true;
             }
             const std::filesystem::path relative =
-                TEXT::PathFromUtf8(cacheKey);
+                PathBelowAssets(cacheKey);
             if (relative.is_absolute() || relative.has_root_path() ||
                 HasParentTraversal(relative)) {
                 return false;
@@ -260,7 +268,7 @@ namespace HIKARI::GAME_UI {
             }
 
             GameUiSpriteDraw draw{};
-            draw.absoluteAssetPath = resolved.string();
+            draw.absoluteAssetPath = TEXT::PathToUtf8(resolved);
             draw.request = request;
             draw.request.fillAmount = std::clamp(
                 request.fillAmount,

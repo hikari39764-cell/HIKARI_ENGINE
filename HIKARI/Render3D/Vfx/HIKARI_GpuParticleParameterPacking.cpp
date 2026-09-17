@@ -165,6 +165,27 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
         const ParticleEmitterSimulationParameters& simulation =
             submission.simulation;
         GpuParticleEmitterParameters result{};
+        if (submission.directShape) {
+            const uint32_t count = submission.overrides.enabled ? (submission.shapePoses.empty() ?
+                1u : static_cast<uint32_t>((std::min)(submission.shapePoses.size(), size_t{16}))) : 0u;
+            result.values[0].x = EncodeUint(count);
+            static_assert(1 + 16 * 9 <= kGpuParticleEmitterValueCount);
+            for (uint32_t i = 0; i < count; ++i) {
+                const auto pose = submission.shapePoses.empty() ? CurrentShapePose(submission) : submission.shapePoses[i];
+                const auto q = MATH::NormalizeQ(pose.rotation);
+                const uint32_t base = 1 + i * 9;
+                result.values[base] = {pose.position.x, pose.position.y, pose.position.z, pose.age};
+                result.values[base+1] = {q.x,q.y,q.z,q.w};
+                result.values[base+2] = {pose.scale.x,pose.scale.y,pose.scale.z,pose.duration};
+                result.values[base+3] = {pose.color.x,pose.color.y,pose.color.z,pose.color.w};
+                for (uint32_t corner = 0; corner < 4; ++corner) {
+                    const auto p = pose.corners[corner];
+                    result.values[base+4+corner] = {p.x,p.y,p.z,corner < 2 ? pose.edgeAlpha.x : pose.edgeAlpha.y};
+                }
+                result.values[base+8] = {pose.uvRange.x,pose.uvRange.y,0,0};
+            }
+            return result;
+        }
         result.values[0] = MakeGpuParticleFloat4(
             submission.worldPosition.x,
             submission.worldPosition.y,
@@ -248,7 +269,9 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
             EncodeUint(simulation.shapeCircleEmitOnEdge),
             simulation.shapeEdgeLength,
             0.0f);
-        result.values[14] = MakeGpuParticleFloat4(0.0f, 0.0f, 0.0f, 0.0f);
+        result.values[14] = MakeGpuParticleFloat4(simulation.collisionPlaneHeight,
+            simulation.restitution,simulation.friction,
+            EncodeUint((simulation.localSimulation ? 1u : 0u) | (simulation.collisionPlaneEnabled ? 2u : 0u)));
 
         StoreAnimatedFloat3(
             result, kPositionValues, simulation.position);

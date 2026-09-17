@@ -1,6 +1,6 @@
 #include "Editor/Export/HIKARI_GameExportJob.h"
 #include "Editor/Export/HIKARI_GameShippingArtifactValidator.h"
-#include "Editor/Projects/HIKARI_ProjectProcess.h"
+#include "Editor/Projects/HIKARI_EditorChildProcess.h"
 #include "Platform/Paths/HIKARI_ExecutablePath.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Project/HIKARI_ProjectContext.h"
@@ -10,64 +10,6 @@
 
 namespace HIKARI::EDITOR {
     namespace {
-        class ExportProcess final {
-        public:
-            HANDLE process = nullptr, job = nullptr;
-            ~ExportProcess() {
-                if (process) CloseHandle(process);
-                if (job) CloseHandle(job);
-            }
-            bool Start(const std::filesystem::path& executable, const std::vector<std::wstring>& arguments,
-                const std::filesystem::path& directory, const std::filesystem::path& log, std::string& message,
-                bool killOnClose = false) {
-                std::wstring command;
-                PROJECT_PROCESS::AppendWindowsArgument(command, executable.wstring());
-                for (const auto& argument : arguments) PROJECT_PROCESS::AppendWindowsArgument(command, argument);
-                SECURITY_ATTRIBUTES security{ sizeof(security), nullptr, TRUE };
-                HANDLE output = CreateFileW(log.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
-                    &security, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-                if (output == INVALID_HANDLE_VALUE) { message = "Could not open export log."; return false; }
-                job = CreateJobObjectW(nullptr, nullptr);
-                if (!job) { CloseHandle(output); message = "Could not create export process job."; return false; }
-                if (killOnClose) {
-                    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
-                    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-                    if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, sizeof(limits))) {
-                        CloseHandle(output); message = "Could not configure export build job."; return false;
-                    }
-                }
-                STARTUPINFOW startup{};
-                startup.cb = sizeof(startup);
-                startup.dwFlags = STARTF_USESTDHANDLES;
-                startup.hStdOutput = output; startup.hStdError = output;
-                startup.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
-                PROCESS_INFORMATION info{};
-                std::vector<wchar_t> environment;
-                if (auto* inherited = GetEnvironmentStringsW()) {
-                    for (const wchar_t* entry = inherited; *entry; entry += wcslen(entry) + 1u) {
-                        if (_wcsnicmp(entry, L"PSModulePath=", 13u) != 0)
-                            environment.insert(environment.end(), entry, entry + wcslen(entry) + 1u);
-                    }
-                    FreeEnvironmentStringsW(inherited);
-                }
-                environment.push_back(L'\0');
-                const bool created = CreateProcessW(executable.c_str(), command.data(), nullptr, nullptr, TRUE,
-                    CREATE_SUSPENDED | CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT,
-                    environment.size() > 1u ? environment.data() : nullptr, directory.c_str(), &startup, &info) != FALSE;
-                const auto error = GetLastError();
-                CloseHandle(output);
-                if (!created) { message = PROJECT_PROCESS::MakeWindowsError("Could not start export process", error); return false; }
-                process = info.hProcess;
-                if (!AssignProcessToJobObject(job, process)) {
-                    TerminateProcess(process, 1); CloseHandle(info.hThread);
-                    message = "Could not own export child process."; return false;
-                }
-                ResumeThread(info.hThread); CloseHandle(info.hThread);
-                return true;
-            }
-            bool Running() const { return process && WaitForSingleObject(process, 0) == WAIT_TIMEOUT; }
-            DWORD ExitCode() const { DWORD code = 1; if (process) GetExitCodeProcess(process, &code); return code; }
-        };
         nlohmann::json Read(const std::filesystem::path& path) {
             std::ifstream input(path);
             if (!input) return nlohmann::json::object();
@@ -78,11 +20,6 @@ namespace HIKARI::EDITOR {
             std::ofstream output(path, std::ios::binary | std::ios::trunc);
             output << value.dump(2);
             if (!output) throw std::runtime_error("Could not write export job state.");
-        }
-        std::filesystem::path PowerShell() {
-            wchar_t directory[MAX_PATH]{};
-            GetSystemDirectoryW(directory, MAX_PATH);
-            return std::filesystem::path(directory) / "WindowsPowerShell/v1.0/powershell.exe";
         }
         bool PrepareShipping(const std::filesystem::path& project, const std::filesystem::path& jobRoot,
             std::string& message) {
@@ -104,14 +41,14 @@ namespace HIKARI::EDITOR {
                 message = "Paired Shipping runtime kit is missing. Reinstall the complete Editor distribution (Runtime/Shipping).";
                 return false;
             }
-            ExportProcess build;
-            if (!build.Start(PowerShell(), arguments, project, jobRoot / "shipping-build.log", message, true)) return false;
+            EditorChildProcess build;
+            if (!build.Start(EditorChildProcess::PowerShell(), arguments, project, jobRoot / "shipping-build.log", message, true)) return false;
             while (build.Running()) {
                 if (std::filesystem::exists(jobRoot / "cancel")) {
                     message = "Export cancelled during Shipping build. The previous package was preserved.";
                     return false;
                 }
-                WaitForSingleObject(build.process, 100);
+                build.Wait(100);
             }
             if (build.ExitCode() != 0) {
                 message = "Shipping build failed. See " + TEXT::PathToUtf8(jobRoot / "shipping-build.log");
@@ -121,7 +58,7 @@ namespace HIKARI::EDITOR {
         }
     }
     struct GameExportJob::State {
-        std::unique_ptr<ExportProcess> process;
+        std::unique_ptr<EditorChildProcess> process;
         std::filesystem::path root;
         nlohmann::json status = {{"running", false}, {"message", ""}, {"progress", 0.0f}};
     };
@@ -147,9 +84,9 @@ namespace HIKARI::EDITOR {
                 {"sceneGuids", options.sceneGuids}, {"startupSceneGuid", options.startupSceneGuid},
                 {"windowMode", static_cast<int>(options.windowMode)}, {"prepareShipping", true},
                 {"identity", GameExportIdentityJson(identity)}});
-            auto child = std::make_unique<ExportProcess>();
+            auto child = std::make_unique<EditorChildProcess>();
             if (!child->Start(PLATFORM::GetExecutablePath(), {L"--project", project.wstring(),
-                L"--export-request", (state_->root / "request.json").wstring()}, project, state_->root / "export.log", message)) return false;
+                L"--export-request", (state_->root / "request.json").wstring()}, project, state_->root / "export.log", message, false)) return false;
             state_->process = std::move(child);
             state_->status = {{"running", true}, {"message", "Preparing Shipping export"}, {"progress", 0.0f},
                 {"outputDirectory", TEXT::PathToUtf8(output)}, {"logDirectory", TEXT::PathToUtf8(state_->root)}};

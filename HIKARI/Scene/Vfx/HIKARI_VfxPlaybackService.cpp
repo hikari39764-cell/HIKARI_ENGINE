@@ -1,5 +1,8 @@
+#include "Scene/Vfx/HIKARI_VfxPlaybackState.h"
 #include "Scene/Vfx/HIKARI_VfxPlaybackService.h"
+#include "Render3D/Vfx/HIKARI_ParticleCpuSimulation.h"
 #include "Scene/Vfx/HIKARI_VfxPlaybackSchedule.h"
+#include "Scene/Vfx/HIKARI_VfxLayerHistory.h"
 #include "Scene/Vfx/HIKARI_VfxSpecialOutputBridge.h"
 
 #include <algorithm>
@@ -167,32 +170,6 @@ namespace HIKARI::VFX {
         }
 
     }
-
-    struct VfxPlaybackService::HandleSlot {
-        size_t instanceIndex = kInvalidInstanceIndex;
-        uint32_t generation = 1u;
-    };
-
-    struct VfxPlaybackService::EmitterState
-        : PLAYBACK::EmitterScheduleState {
-        EmitterState() = default;
-    };
-
-    struct VfxPlaybackService::Instance {
-        VfxPlaybackHandle handle{};
-        AssetGuid assetGuid{};
-        std::shared_ptr<const VfxProgram> program{};
-        RuntimeObjectHandle ownerObject{};
-        VfxWorldTransform transform{};
-        bool loop = false;
-        uint32_t randomSeed = 0u;
-        float elapsedSeconds = 0.0f;
-        std::vector<VfxValue> inputValues{};
-        std::vector<EmitterState> emitterStates{};
-        std::vector<VfxWorldTransform> emitterTransforms{};
-        std::vector<uint8_t> transformResolved{};
-        std::vector<uint32_t> transformStack{};
-    };
 
     VfxPlaybackService::VfxPlaybackService(uint64_t playbackNamespace)
         : playbackNamespace_(
@@ -459,12 +436,12 @@ namespace HIKARI::VFX {
         return capacity;
     }
 
-    VfxSeekResult VfxPlaybackService::Seek(
-        VfxPlaybackHandle handle,
-        uint64_t frameIndex,
-        float targetSeconds,
-        float fixedStepSeconds,
-        uint32_t maximumSteps) {
+    VfxSeekResult VfxPlaybackService::Seek(VfxPlaybackHandle handle, uint64_t frameIndex,
+        float targetSeconds, float fixedStepSeconds, uint32_t maximumSteps) {
+        return SeekInternal(handle, frameIndex, targetSeconds, fixedStepSeconds, maximumSteps, true);
+    }
+    VfxSeekResult VfxPlaybackService::SeekInternal(VfxPlaybackHandle handle, uint64_t frameIndex,
+        float targetSeconds, float fixedStepSeconds, uint32_t maximumSteps, bool publish) {
 
         VfxSeekResult result{};
         if (reliableRenderDeliveryEnabled_ &&
@@ -552,12 +529,18 @@ namespace HIKARI::VFX {
         }
 
         const size_t batchStart = renderInput_.emitters.size();
-        if (targetSeconds <= kSeekEpsilon) {
+        const bool hasParticles = std::any_of(instance->program->emitters.begin(), instance->program->emitters.end(),
+            [](const auto& layer) { return layer.kind == VfxLayerKind::Particles || layer.history.mode != VfxHistoryMode::None; });
+        if (!hasParticles) {
+            instance->elapsedSeconds = targetSeconds;
+            (void)AppendInstanceStep(*instance, 0.0f, nextSeekSimulationOrdinal_++, true, false);
+            result.executedSteps = 1;
+        } else if (targetSeconds <= kSeekEpsilon) {
             (void)AppendInstanceStep(
                 *instance,
                 0.0f,
                 nextSeekSimulationOrdinal_++,
-                false,
+                true,
                 false);
         } else {
             while (result.executedSteps < executableSteps &&
@@ -569,7 +552,7 @@ namespace HIKARI::VFX {
                     *instance,
                     step,
                     nextSeekSimulationOrdinal_++,
-                    false,
+                    instance->elapsedSeconds + step + kSeekEpsilon >= targetSeconds,
                     false);
                 ++result.executedSteps;
             }
@@ -578,7 +561,7 @@ namespace HIKARI::VFX {
                     *instance,
                     0.0f,
                     nextSeekSimulationOrdinal_++,
-                    false,
+                    true,
                     false);
             }
         }
@@ -605,8 +588,25 @@ namespace HIKARI::VFX {
             });
         }
         result.currentSeconds = instance->elapsedSeconds;
-        PublishRenderInputDelivery();
+        if (publish) PublishRenderInputDelivery();
         return result;
+    }
+
+    bool VfxPlaybackService::QueueSeek(VfxPlaybackHandle handle, float seconds) {
+        auto* instance = Find(handle);
+        if (!instance || !std::isfinite(seconds) || seconds < 0.0f) return false;
+        if (instance->loop && instance->program->durationSeconds > 0.0f)
+            seconds = std::fmod(seconds, instance->program->durationSeconds);
+        if (seconds > instance->program->durationSeconds + instance->program->maximumParticleLifetimeSeconds) return false;
+        instance->queuedSeek = seconds;
+        return true;
+    }
+
+    bool VfxPlaybackService::SetTimeScale(VfxPlaybackHandle handle, float scale) {
+        auto* instance = Find(handle);
+        if (!instance || !std::isfinite(scale) || scale < 0.0f || scale > 8.0f) return false;
+        instance->timeScale = scale;
+        return true;
     }
 
     void VfxPlaybackService::Update(
@@ -657,7 +657,7 @@ namespace HIKARI::VFX {
                     continue;
                 }
             }
-            if (!instance.loop && instance.elapsedSeconds >=
+            if (!instance.queuedSeek && !instance.loop && instance.elapsedSeconds >=
                 instance.program->durationSeconds +
                 instance.program->maximumParticleLifetimeSeconds) {
                 RetireInstanceAt(index);
@@ -669,10 +669,28 @@ namespace HIKARI::VFX {
             pendingRetiredEmitters_.end());
         pendingRetiredEmitters_.clear();
 
+        // Reserve one draw submission for every other emitter before spending
+        // the remaining budget on preroll; one cue cannot starve the scene.
+        size_t remainingEmitters = admissionStats_.activeEmitterInstances;
+        seekBatchFrameIndex_ = frameIndex;
         for (Instance& instance : instances_) {
+            const size_t emitters = instance.program->emitters.size();
+            remainingEmitters -= emitters;
+            if (instance.queuedSeek && emitters != 0u) {
+                const size_t used = renderInput_.emitters.size() + remainingEmitters;
+                const size_t free = kMaximumParticleEmitterSubmissionsPerFrame -
+                    (std::min)(used, size_t(kMaximumParticleEmitterSubmissionsPerFrame));
+                const uint32_t steps = static_cast<uint32_t>((std::min)(size_t(32u), free / emitters));
+                if (steps != 0u) {
+                    const auto result = SeekInternal(instance.handle, frameIndex, *instance.queuedSeek,
+                        1.0f / 60.0f, steps, false);
+                    if (result.complete || !result.accepted) instance.queuedSeek.reset();
+                    continue;
+                }
+            }
             (void)AppendInstanceStep(
                 instance,
-                deltaSeconds,
+                deltaSeconds * instance.timeScale,
                 0u,
                 true,
                 true);
@@ -865,6 +883,8 @@ namespace HIKARI::VFX {
             ? deltaSeconds
             : (std::min)(deltaSeconds, remaining);
         const float duration = (std::max)(0.0f, program.durationSeconds);
+        if (instance.loop && duration > 0 && instance.elapsedSeconds + spawnDelta >= duration)
+            for (auto& state : instance.emitterStates) state.history.Clear();
         const float submittedAge = instance.loop && duration > 0.0f
             ? std::fmod(instance.elapsedSeconds + spawnDelta, duration)
             : (std::min)(
@@ -875,6 +895,21 @@ namespace HIKARI::VFX {
             instance.transformResolved.begin(),
             instance.transformResolved.end(),
             uint8_t{ 0u });
+        instance.layerSamples.resize(program.emitters.size());
+        instance.groupTints.resize(program.emitters.size());
+        instance.animationFrames.resize(program.emitters.size());
+        instance.layerOverrides.resize(program.emitters.size());
+        instance.layerVisible.resize(program.emitters.size());
+        for (size_t i = 0; i < program.emitters.size(); ++i) {
+            const auto& layer = program.emitters[i];
+            auto& overrides = instance.layerOverrides[i];
+            overrides = layer.authoredOverrides;
+            for (const auto& link : layer.inputLinks) {
+                if (link.inputIndex < instance.inputValues.size())
+                    ApplyRuntimeLink(overrides, link, instance.inputValues[link.inputIndex]);
+            }
+            ClampRuntimeOverrides(overrides);
+        }
         for (uint32_t emitterIndex = 0u;
              emitterIndex < program.emitters.size();
              ++emitterIndex) {
@@ -901,6 +936,36 @@ namespace HIKARI::VFX {
                     parent,
                     instance.emitterStates[child],
                     attachmentResolver_);
+                const auto& layer = program.emitters[child];
+                instance.animationFrames[child] = parent;
+                const bool parentVisible = layer.parentEmitterIndex == kInvalidVfxProgramIndex ||
+                    instance.layerVisible[layer.parentEmitterIndex] != 0;
+                const float start = PLAYBACK::EmitterStartDelay(program, layer);
+                const float end = PLAYBACK::EmitterActiveEnd(program, layer);
+                // パーティクルの既存個体は放出終了後も寿命まで描画する。
+                instance.layerVisible[child] = parentVisible &&
+                    instance.layerOverrides[child].enabled &&
+                    (layer.kind == VfxLayerKind::Particles || (submittedAge >= start && submittedAge < end));
+                if (layer.kind != VfxLayerKind::Particles) {
+                    const float span = end - start;
+                    auto& sample = instance.layerSamples[child];
+                    sample = EvaluateVfxLayerAnimation(layer,
+                        std::clamp(submittedAge - start, 0.0f, (std::max)(span, 0.0f)), span,
+                        instance.randomSeed + child * 0x9e3779b9u);
+                    parent = PLAYBACK::ComposeTransforms(parent, {
+                        sample.position,
+                        MATH::Quat::FromEulerXYZ(sample.rotationRadians.x,
+                            sample.rotationRadians.y, sample.rotationRadians.z), sample.scale });
+                }
+                const auto inherited = layer.parentEmitterIndex == kInvalidVfxProgramIndex ?
+                    MATH::Vec4{1,1,1,1} : instance.groupTints[layer.parentEmitterIndex];
+                auto& color = instance.layerOverrides[child].colorMultiplier;
+                color = {color.x*inherited.x,color.y*inherited.y,color.z*inherited.z,color.w*inherited.w};
+                instance.groupTints[child] = inherited;
+                if (layer.kind == VfxLayerKind::Group) {
+                    const auto tint = instance.layerSamples[child].color;
+                    instance.groupTints[child] = {color.x*tint.x,color.y*tint.y,color.z*tint.z,color.w*tint.w};
+                }
                 instance.emitterTransforms[child] = parent;
                 instance.transformResolved[child] = 1u;
             }
@@ -912,21 +977,15 @@ namespace HIKARI::VFX {
             ++emitterIndex) {
             const VfxProgramEmitter& emitter =
                 program.emitters[emitterIndex];
+            if (emitter.kind == VfxLayerKind::Group) continue;
+
             EmitterState& state = instance.emitterStates[emitterIndex];
             ParticleEmitterRuntimeOverrides overrides =
-                emitter.authoredOverrides;
-            for (const VfxProgramInputLink& link : emitter.inputLinks) {
-                if (link.inputIndex < instance.inputValues.size()) {
-                    ApplyRuntimeLink(
-                        overrides,
-                        link,
-                        instance.inputValues[link.inputIndex]);
-                }
-            }
-            ClampRuntimeOverrides(overrides);
+                instance.layerOverrides[emitterIndex];
+            overrides.enabled = instance.layerVisible[emitterIndex];
 
             uint32_t spawnCount = 0u;
-            if (overrides.enabled != 0u) {
+            if (overrides.enabled != 0u && emitter.kind == VfxLayerKind::Particles) {
                 spawnCount = PLAYBACK::ComputeEmitterSpawnCount(
                     state,
                     program,
@@ -964,6 +1023,29 @@ namespace HIKARI::VFX {
             submission.overrides = overrides;
             submission.simulation = emitter.simulation;
             submission.render = emitter.render;
+            const float layerStart=PLAYBACK::EmitterStartDelay(program,emitter);
+            const float layerSpan=PLAYBACK::EmitterActiveEnd(program,emitter)-layerStart;
+            EvaluateVfxLayerRenderParameters(emitter,layerSpan>0?(submittedAge-layerStart)/layerSpan:0,submission.render,layerSpan);
+            if (emitter.kind == VfxLayerKind::Shape) {
+                submission.directShape = true;
+                const float start = PLAYBACK::EmitterStartDelay(program, emitter);
+                const float end = PLAYBACK::EmitterActiveEnd(program, emitter);
+                submission.shapeDurationSeconds = emitter.animationTiming.Duration(end-start);
+                submission.shapeAgeSeconds = emitter.animationTiming.Seconds(submittedAge-start,end-start);
+                submission.overrides.enabled = overrides.enabled && submittedAge >= start &&
+                    submittedAge < end ? 1u : 0u;
+                const auto& tint = instance.layerSamples[emitterIndex].color;
+                submission.overrides.colorMultiplier = {
+                    tint.x * overrides.colorMultiplier.x, tint.y * overrides.colorMultiplier.y,
+                    tint.z * overrides.colorMultiplier.z, tint.w * overrides.colorMultiplier.w };
+            }
+            if (emitter.kind == VfxLayerKind::Shape) {
+                if (!instance.layerOverrides[emitterIndex].enabled ||
+                    (emitter.parentEmitterIndex != kInvalidVfxProgramIndex && !instance.layerVisible[emitter.parentEmitterIndex]))
+                    state.history.Clear();
+                state.history.Project(emitter.history, instance.elapsedSeconds + deltaSeconds, submission);
+                if (!drawAfterSimulation) continue;
+            }
             renderInput_.emitters.push_back(std::move(submission));
             state.resetSimulation = false;
         }

@@ -11,6 +11,8 @@ namespace HIKARI {
         static constexpr float kDefaultFarZ = 2000.0f;
 
         void SetPerspective(float fovYRad, float aspect, float nearZ, float farZ);
+        void SetOrthographic(float verticalSize, float aspect, float nearZ, float farZ);
+        void SetAspect(float aspect);
         void SetLookAt(const MATH::Vec3& eye, const MATH::Vec3& target, const MATH::Vec3& up = { 0.0f, 1.0f, 0.0f });
 
         const MATH::Mat4& GetView() const { return view_; }
@@ -23,6 +25,8 @@ namespace HIKARI {
         float GetAspect() const { return aspect_; }
         float GetNearZ() const { return nearZ_; }
         float GetFarZ() const { return farZ_; }
+        bool IsOrthographic() const { return orthographic_; }
+        float GetOrthographicHeight() const { return orthographicHeight_; }
 
     private:
         MATH::Vec3 eye_{ 0.0f, 0.0f, -5.0f };
@@ -32,6 +36,8 @@ namespace HIKARI {
         float aspect_ = 16.0f / 9.0f;
         float nearZ_ = kDefaultNearZ;
         float farZ_ = kDefaultFarZ;
+        bool orthographic_ = false;
+        float orthographicHeight_ = 10.0f;
 
         MATH::Mat4 view_ = MATH::Mat4::Identity();
         MATH::Mat4 proj_ = MATH::Mat4::Identity();

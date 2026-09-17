@@ -5,9 +5,33 @@
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectWorldBridgeInternal.h"
 #include "Scene/HIKARI_World.h"
+#include "Scene/HIKARI_GameObject.h"
+#include "Scene/Ui/HIKARI_UiSceneComponents.h"
 #include "Scene/Ui/HIKARI_GameUiPresentationService.h"
 
 namespace HIKARI {
+    namespace {
+        template<class Component>
+        Component* ResolveUiComponent(void* opaqueWorld, GameProjectObjectHandle handle) {
+            auto* world = static_cast<World*>(opaqueWorld);
+            if (!world || !world->IsOwnerThread() || GameProjectSdkAccess::IsWorldClosing(*world) ||
+                !PROJECT::INTERNAL::IsObjectHandleForWorld(handle, *world)) return nullptr;
+            auto* object = world->FindObject(PROJECT::INTERNAL::DecodeRuntimeHandle(handle));
+            return object ? object->GetComponent<Component>() : nullptr;
+        }
+    }
+    bool UiView::SetText(GameProjectObjectHandle object, std::string_view text) const noexcept {
+        try { auto* component = ResolveUiComponent<UiTextComponent>(world_, object);
+            return component && component->SetText(text); } catch (...) { return false; }
+    }
+    bool UiView::SetCanvasEnabled(GameProjectObjectHandle object, bool enabled) const noexcept {
+        try { auto* component = ResolveUiComponent<UiCanvasComponent>(world_, object);
+            if (!component) return false; component->SetEnabled(enabled); return true; } catch (...) { return false; }
+    }
+    bool UiView::SetButtonInteractable(GameProjectObjectHandle object, bool interactable) const noexcept {
+        try { auto* component = ResolveUiComponent<UiButtonComponent>(world_, object);
+            if (!component) return false; component->SetInteractable(interactable); return true; } catch (...) { return false; }
+    }
 
     UiView GameProjectSdkAccess::MakeUiView(World& world) noexcept {
         try {

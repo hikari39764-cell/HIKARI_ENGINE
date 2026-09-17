@@ -32,6 +32,14 @@ namespace HIKARI::EDITOR {
 
     void VfxEditorDocument::NewAsset(std::string name) {
         asset_ = VFX::MakeDefaultVfxAssetData();
+        auto& layer = asset_.emitters.front();
+        layer.kind = VFX::VfxLayerKind::Shape;
+        layer.name = "Shape";
+        layer.renderShape.billboardMode = VFX::VfxBillboardMode::Fixed;
+        layer.spawn.ratePerSecond = 0;
+        layer.spawn.burstCount = 0;
+        layer.spawn.burstTimeline.clear();
+        layer.renderCommon.colorTextureAssetGuid = {};
         if (!name.empty()) {
             asset_.name = std::move(name);
         }

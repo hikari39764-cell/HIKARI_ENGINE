@@ -53,6 +53,7 @@ namespace HIKARI {
         bool IsEnabled() const noexcept { return enabled_; }
         bool IsInteractable() const noexcept { return interactable_; }
         float GetReferenceWidth() const noexcept { return referenceWidth_; }
+        void SetEnabled(bool value) noexcept { enabled_ = value; }
         float GetReferenceHeight() const noexcept { return referenceHeight_; }
         int GetSortOrder() const noexcept { return sortOrder_; }
 
@@ -141,6 +142,11 @@ namespace HIKARI {
 
         bool IsEnabled() const noexcept { return enabled_; }
         const std::string& GetText() const noexcept { return text_; }
+        bool SetText(std::string_view value) {
+            if (value.size() > 16384 || value.find('\0') != std::string_view::npos) return false;
+            if (text_ != value) text_.assign(value);
+            return true;
+        }
         const std::string& GetFontAssetPath() const noexcept {
             return fontAssetPath_;
         }
@@ -179,6 +185,7 @@ namespace HIKARI {
         bool IsEnabled() const noexcept { return enabled_; }
         bool IsInteractable() const noexcept { return interactable_; }
         bool IsDefaultFocus() const noexcept { return defaultFocus_; }
+        void SetInteractable(bool value) noexcept { interactable_ = value; }
         int GetNavigationOrder() const noexcept { return navigationOrder_; }
         const std::string& GetSubmitActionId() const noexcept {
             return submitActionId_;
@@ -190,7 +197,12 @@ namespace HIKARI {
             return visualState_;
         }
         const GameProjectUiColor& GetStateTint() const noexcept;
+        const GameProjectUiColor& GetAnimatedTint() const noexcept { return animatedTint_; }
+        void AdvanceVisual(float unscaledDt) noexcept;
         void SetVisualState(UiButtonVisualState state) noexcept {
+            if (visualState_ == state) return;
+            transitionFrom_ = animatedTint_;
+            transitionElapsed_ = 0;
             visualState_ = state;
         }
 
@@ -206,6 +218,10 @@ namespace HIKARI {
         bool interactable_ = true;
         bool defaultFocus_ = false;
         UiButtonVisualState visualState_ = UiButtonVisualState::Normal;
+        GameProjectUiColor animatedTint_{};
+        GameProjectUiColor transitionFrom_{};
+        float transitionElapsed_ = 0;
+        float transitionSeconds_ = 0.1f;
     };
 
 } // namespace HIKARI

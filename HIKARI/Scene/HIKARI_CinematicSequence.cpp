@@ -155,7 +155,8 @@ namespace HIKARI {
             SEQUENCER::GetCameraTransformTrackContentEnd(
                 sequence.cameraTransformTrack),
             SEQUENCER::GetCameraLensTrackContentEnd(
-                sequence.cameraLensTrack)
+                sequence.cameraLensTrack),
+            SEQUENCER::GetPresentationCueContentEnd(sequence.presentationCueTrack)
         });
     }
 
@@ -258,6 +259,9 @@ namespace HIKARI {
             safeAspect,
             nearClip,
             farClip);
+
+        if (sourceCamera.IsOrthographic()) outCamera.SetOrthographic(
+            sourceCamera.GetOrthographicHeight(),safeAspect,nearClip,farClip);
 
         if (evaluation.transform.valid) {
             const MATH::Mat4 rotationMatrix = MATH::Mat4::Rotate(

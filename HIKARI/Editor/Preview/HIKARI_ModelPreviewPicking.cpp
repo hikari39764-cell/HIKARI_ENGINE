@@ -18,19 +18,6 @@
 namespace HIKARI::EDITOR {
 namespace {
 
-bool Unproject(const MATH::Mat4 &inverseViewProjection, float x, float y,
-               float z, MATH::Vec3 &outPoint) noexcept {
-  const MATH::Vec4 world =
-      inverseViewProjection.TransformPoint({x, y, z, 1.0f});
-  if (!MATH::IsFinite(world) || std::abs(world.w) <= 1.0e-6f) {
-    return false;
-  }
-  const float inverseW = 1.0f / world.w;
-  outPoint = {world.x * inverseW, world.y * inverseW,
-              world.z * inverseW};
-  return MATH::IsFinite(outPoint);
-}
-
 MATH::Vec3 TransformPoint(const MATH::Mat4 &transform,
                           const MATH::Vec3 &point) noexcept {
   const MATH::Vec4 result =
@@ -43,39 +30,7 @@ MATH::Vec3 TransformPoint(const MATH::Mat4 &transform,
           result.z * inverseW};
 }
 
-bool IntersectBounds(const ModelPreviewPointerRay &ray,
-                     const Bounds &bounds) noexcept {
-  float nearDistance = 0.0f;
-  float farDistance = (std::numeric_limits<float>::max)();
-  const float origins[]{ray.origin.x, ray.origin.y, ray.origin.z};
-  const float directions[]{ray.direction.x, ray.direction.y,
-                           ray.direction.z};
-  const float minimums[]{bounds.min.x, bounds.min.y, bounds.min.z};
-  const float maximums[]{bounds.max.x, bounds.max.y, bounds.max.z};
-  for (size_t axis = 0u; axis < 3u; ++axis) {
-    if (std::abs(directions[axis]) <= 1.0e-7f) {
-      if (origins[axis] < minimums[axis] ||
-          origins[axis] > maximums[axis]) {
-        return false;
-      }
-      continue;
-    }
-    const float inverseDirection = 1.0f / directions[axis];
-    float a = (minimums[axis] - origins[axis]) * inverseDirection;
-    float b = (maximums[axis] - origins[axis]) * inverseDirection;
-    if (a > b) {
-      std::swap(a, b);
-    }
-    nearDistance = (std::max)(nearDistance, a);
-    farDistance = (std::min)(farDistance, b);
-    if (nearDistance > farDistance) {
-      return false;
-    }
-  }
-  return true;
-}
-
-bool IntersectTriangle(const ModelPreviewPointerRay &ray,
+bool IntersectTriangle(const EditorPointerRay &ray,
                        const MATH::Vec3 &a, const MATH::Vec3 &b,
                        const MATH::Vec3 &c,
                        float &outDistance) noexcept {
@@ -107,31 +62,8 @@ bool IntersectTriangle(const ModelPreviewPointerRay &ray,
 
 } // namespace
 
-bool BuildModelPreviewPointerRay(const Camera3D &camera,
-                                 float normalizedViewportX,
-                                 float normalizedViewportY,
-                                 ModelPreviewPointerRay &outRay) noexcept {
-  const float clipX = normalizedViewportX * 2.0f - 1.0f;
-  const float clipY = 1.0f - normalizedViewportY * 2.0f;
-  const MATH::Mat4 inverseViewProjection =
-      MATH::Inverse(camera.GetViewProj());
-  MATH::Vec3 nearPoint{};
-  MATH::Vec3 farPoint{};
-  if (!Unproject(inverseViewProjection, clipX, clipY, 0.0f, nearPoint) ||
-      !Unproject(inverseViewProjection, clipX, clipY, 1.0f, farPoint)) {
-    return false;
-  }
-  const MATH::Vec3 direction = farPoint - nearPoint;
-  if (MATH::Length(direction) <= 1.0e-6f) {
-    return false;
-  }
-  outRay.origin = nearPoint;
-  outRay.direction = MATH::Normalize(direction);
-  return true;
-}
-
 ModelPreviewSurfacePick PickModelPreviewSurface(
-    const ModelPreviewPointerRay &ray,
+    const EditorPointerRay &ray,
     const ModelPreviewScene &scene) noexcept {
   ModelPreviewSurfacePick result{};
   const ModelAsset *model = scene.GetModel();
@@ -140,7 +72,8 @@ ModelPreviewSurfacePick PickModelPreviewSurface(
   }
   float bestDistance = (std::numeric_limits<float>::max)();
   for (const ModelPreviewNode &node : scene.GetSourceNodes()) {
-    if (!IntersectBounds(ray, node.bounds) || node.meshIndex < 0 ||
+    float boundsDistance=0;
+    if (!IntersectEditorBounds(ray, node.bounds.min, node.bounds.max, boundsDistance) || node.meshIndex < 0 ||
         static_cast<size_t>(node.meshIndex) >= model->meshes.size()) {
       continue;
     }

@@ -9,12 +9,18 @@
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxEditorValue.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
+#include "Core/Text/HIKARI_Localization.h"
 
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
 #endif
 
 namespace HIKARI::EDITOR {
+    std::string VfxUiText(std::string_view text) {
+        const auto key = "ui.vfx.text." + std::string(text);
+        auto translated = TEXT::Localize(key);
+        return translated == key ? std::string(text) : translated;
+    }
     namespace {
 
         nlohmann::json Vec3Json(const MATH::Vec3& value) {
@@ -77,7 +83,7 @@ namespace HIKARI::EDITOR {
 #if defined(HIKARI_WITH_EDITOR)
         std::array<char, 256u> buffer{};
         std::snprintf(buffer.data(), buffer.size(), "%s", value.c_str());
-        if (ImGui::InputText(label, buffer.data(), buffer.size())) {
+        if (ImGui::InputText(VfxUiText(label).c_str(), buffer.data(), buffer.size())) {
             Set(propertyId, std::string(buffer.data()), true);
         }
         if (ImGui::IsItemDeactivatedAfterEdit()) {
@@ -95,7 +101,7 @@ namespace HIKARI::EDITOR {
         std::string_view propertyId,
         bool value) {
 #if defined(HIKARI_WITH_EDITOR)
-        if (ImGui::Checkbox(label, &value)) Set(propertyId, value, false);
+        if (ImGui::Checkbox(VfxUiText(label).c_str(), &value)) Set(propertyId, value, false);
 #else
         (void)label;
         (void)propertyId;
@@ -163,7 +169,7 @@ namespace HIKARI::EDITOR {
         float speed) {
 #if defined(HIKARI_WITH_EDITOR)
         MATH::Vec3 edited = value;
-        if (ImGui::DragFloat3(label, &edited.x, speed)) {
+        if (ImGui::DragFloat3(VfxUiText(label).c_str(), &edited.x, speed)) {
             Set(propertyId, Vec3Json(edited), true);
         }
         if (ImGui::IsItemDeactivatedAfterEdit()) {
@@ -223,10 +229,10 @@ namespace HIKARI::EDITOR {
         const std::string_view* choices,
         size_t choiceCount) {
 #if defined(HIKARI_WITH_EDITOR)
-        if (!ImGui::BeginCombo(label, current.data())) return;
+        if (!ImGui::BeginCombo(VfxUiText(label).c_str(), VfxUiText(current).c_str())) return;
         for (size_t index = 0u; index < choiceCount; ++index) {
             if (ImGui::Selectable(
-                    choices[index].data(), choices[index] == current)) {
+                    VfxUiText(choices[index]).c_str(), choices[index] == current)) {
                 Set(propertyId, choices[index], false);
             }
         }

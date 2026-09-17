@@ -242,36 +242,11 @@ namespace HIKARI::EDITOR {
         }
         const int steps = (std::max)(1, (std::min)(frameCount, 120));
         const float stepSeconds = 1.0f / 60.0f;
-        if (!previewPlaying_ || !previewHandle_.IsValid()) {
-            if (!PlayPreview(outMessage)) {
-                return false;
-            }
-            previewPaused_ = true;
-            outMessage =
-                "Preview initial frame submitted; step after GPU consumption";
-            statusMessage_ = outMessage;
-            return false;
-        }
-        if (previewRenderMailbox_.HasPending()) {
-            outMessage = "Preview is waiting for the current GPU frame";
-            statusMessage_ = outMessage;
-            return false;
-        }
-        if (previewRestartPending_) {
-            if (!RestartPreview(outMessage)) {
-                return false;
-            }
-            previewPaused_ = true;
-            outMessage =
-                "Preview restart frame submitted; step after GPU consumption";
-            statusMessage_ = outMessage;
-            return false;
-        }
         const float playbackEnd = previewLoopEnabled_
             ? previewLoopEndSeconds_
             : GetPreviewTimelineDuration();
         const float target = (std::min)(
-            previewElapsedSeconds_ +
+            previewSeekTarget_.value_or(previewElapsedSeconds_) +
                 static_cast<float>(steps) * stepSeconds,
             playbackEnd);
         if (target <= previewElapsedSeconds_ + 1.0e-6f) {
@@ -280,13 +255,13 @@ namespace HIKARI::EDITOR {
             previewPaused_ = true;
             return false;
         }
-        if (!SeekActivePreview(target, outMessage)) {
+        if (!SeekPreview(target, outMessage)) {
             statusMessage_ = outMessage;
             previewPaused_ = true;
             return false;
         }
         previewPaused_ = true;
-        outMessage = "Preview stepped " + std::to_string(steps) +
+        outMessage = "Preview step requested: " + std::to_string(steps) +
             " frame(s)";
         statusMessage_ = outMessage;
         return true;

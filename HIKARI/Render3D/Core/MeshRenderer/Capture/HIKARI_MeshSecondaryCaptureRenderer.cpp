@@ -371,7 +371,7 @@ namespace HIKARI::MESHRENDERER {
         if (!resources.worldSpritePass.PrepareFrame(
                 graphics,
                 view.worldSpriteFrameSource,
-                camera.GetPosition())) {
+                camera)) {
             HIKARI_LOG_WARN(
                 "[SecondarySceneCapture] World Sprite preparation failed; "
                 "capture remains available without World Sprites.");

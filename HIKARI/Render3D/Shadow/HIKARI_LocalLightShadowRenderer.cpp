@@ -10,6 +10,7 @@
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Core/MeshRenderer/Data/HIKARI_MeshDrawDataBuilder.h"
 #include "Render3D/Shadow/Internal/HIKARI_ShadowRendererInternal.h"
+#include "Render3D/WorldSprite/HIKARI_WorldSpritePass.h"
 
 namespace HIKARI::SHADOW {
     namespace {
@@ -87,7 +88,8 @@ namespace HIKARI::SHADOW {
     }
 
     void RenderLocalLightShadows(const GFX::Context& graphics, const SceneLightingSet& lighting,
-        const Camera3D& camera, const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& scene, LocalShadowBudget budget) {
+        const Camera3D& camera, const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& scene, LocalShadowBudget budget,
+        RENDER3D::WORLD_SPRITES::WorldSpritePass* sprites) {
         auto& state = GetState();
         auto& renderer = state.renderer;
         state.frame = {};
@@ -143,7 +145,9 @@ namespace HIKARI::SHADOW {
 
         renderer.gpuDrivenSceneSource = &scene;
         ClearShadowFrameSubmissions(renderer);
-        if (!BuildShadowGpuDrivenSceneSources(renderer)) return;
+        renderer.worldSprites = sprites;
+        const bool hasSprites = sprites && sprites->HasShadowWork();
+        if (!BuildShadowGpuDrivenSceneSources(renderer) && !hasSprites) return;
         const auto failAll = [&] { state.stats.failedLights = uint32_t(jobs.size()); state.cache.clear(); };
         if (!EnsureShadowRendererInitialized(renderer,graphics)) { failAll(); return; }
         if (!renderer.shadowMap || renderer.resolution != budget.tileResolution) {
@@ -160,13 +164,16 @@ namespace HIKARI::SHADOW {
         ActivateShadowFrameResources(renderer,graphics.frameIndex);
         MESHRENDERER::FillCameraCB(state.cameraViewProj,MATH::Inverse(state.cameraViewProj),camera.GetPosition(),
             uint32_t((std::max)(1,graphics.backBufferWidth)),uint32_t((std::max)(1,graphics.backBufferHeight)),renderer.materialCamera);
-        if (!PrepareShadowDeformation(renderer,graphics)) { failAll(); return; }
+        if (!UploadShadowMaterialCamera(renderer, graphics) ||
+            ((renderer.frameHasStaticShadowWork || renderer.frameHasDynamicShadowWork) &&
+                !PrepareShadowDeformation(renderer,graphics))) { failAll(); return; }
 
         bool needsRender = false;
         for (auto& job : jobs) {
             uint64_t content = AppendShadowHashValue(HASH::kFnv1a64OffsetBasis,renderer.staticShadowSceneSource.sourceVersion);
             content = AppendShadowHashValue(content,renderer.staticShadowSceneSource.layoutVersion);
             content = AppendShadowHashValue(content,renderer.frameHasDynamicShadowWork ? 1u : 0u);
+            content = AppendShadowHashValue(content, hasSprites ? 1u : 0u);
             content = AppendShadowHashValue(content,job.cache.firstFace);
             for (uint32_t face=0;face<job.views.faceCount;++face)
                 content = AppendShadowHashBytes(content,&job.views.faces[face].viewProj,sizeof(MATH::Mat4));
@@ -176,7 +183,7 @@ namespace HIKARI::SHADOW {
                     entry.content == content && entry.faceCount == job.cache.faceCount;
             });
             // 選択時に全動的面を予算へ算入し、部分的な六面や古い動的 caster を公開しない。
-            job.render = renderer.frameHasDynamicShadowWork || old == state.cache.end();
+            job.render = renderer.frameHasDynamicShadowWork || hasSprites || old == state.cache.end();
             needsRender |= job.render;
         }
         const auto renderSource = [&](const auto& source, bool clearDepth) {
@@ -203,6 +210,18 @@ namespace HIKARI::SHADOW {
         if (needsRender) {
             if (renderer.frameHasStaticShadowWork) renderSource(renderer.staticShadowSceneSource,true);
             if (renderer.frameHasDynamicShadowWork) renderSource(renderer.dynamicShadowSceneSource,!renderer.frameHasStaticShadowWork);
+            if (hasSprites) for (auto& job : jobs) if (job.render && job.complete) {
+                for (uint32_t face = 0; face < job.views.faceCount; ++face) {
+                    const uint32_t tile = job.cache.firstFace + face;
+                    const LONG size = LONG(budget.tileResolution);
+                    const LONG x = LONG(tile % kAtlasGrid) * size, y = LONG(tile / kAtlasGrid) * size;
+                    if (!RecordWorldSpriteShadowView(renderer, graphics, job.views.faces[face],
+                        {x, y, x + size, y + size}, !renderer.frameHasStaticShadowWork && !renderer.frameHasDynamicShadowWork)) {
+                        job.complete = false;
+                        break;
+                    }
+                }
+            }
             FinishFinalShadowMap(renderer,graphics,graphics.cmdList);
         }
         state.cache.clear();

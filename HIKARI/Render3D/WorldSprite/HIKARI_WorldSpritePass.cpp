@@ -1,4 +1,5 @@
 #include "Render3D/WorldSprite/HIKARI_WorldSpritePass.h"
+#include "Render3D/WorldSprite/HIKARI_WorldSpritePipelines.h"
 
 #include <algorithm>
 #include <array>
@@ -16,12 +17,11 @@
 
 #include "Assets/HIKARI_AssetRegistry.h"
 #include "Assets/HIKARI_AssetTypes.h"
-#include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
-#include "Assets/Shader/HIKARI_RenderGeometryShaderContract.h"
-#include "Core/HIKARI_Logger.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/HIKARI_DXCheck.h"
-#include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
+#include "Gfx/HIKARI_DynamicUploadBuffer.h"
+#include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
+#include "Gfx/D3D12/HIKARI_D3D12BufferFactory.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorAccess.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 
@@ -44,19 +44,21 @@ namespace HIKARI::RENDER3D::WORLD_SPRITES {
 
         // CPU 側の整列は自然境界のままにする。PreparedItem を
         // std::stable_sort するため、拡張境界にすると MSVC の内部
-        // aligned_storage 契約に抵触する。GPU 側は 80-byte stride で一致する。
+        // aligned_storage 契約に抵触する。GPU 側は 112-byte stride で一致する。
         struct GpuWorldSpriteInstance {
             MATH::Vec4 position{};
             MATH::Vec4 orientation{};
             MATH::Vec4 sizePivot{};
             MATH::Vec4 tintOpacity{};
+            MATH::Vec4 uvRect{0,0,1,1};
+            MATH::Vec4 surface{};
             uint32_t textureDescriptorIndex = 0u;
             uint32_t facingMode = 0u;
             uint32_t alphaMode = kGpuAlphaBlend;
             float alphaCutoff = 0.5f;
         };
 
-        static_assert(sizeof(GpuWorldSpriteInstance) == 80u);
+        static_assert(sizeof(GpuWorldSpriteInstance) == 112u);
 
         struct DrawConstants {
             uint32_t baseIndex = 0u;
@@ -68,21 +70,8 @@ namespace HIKARI::RENDER3D::WORLD_SPRITES {
         struct PreparedItem {
             GpuWorldSpriteInstance gpu{};
             int32_t sortPriority = 0;
-            float distanceSquared = 0.0f;
+            float viewDepth = 0.0f;
             uint32_t stableOrder = 0u;
-        };
-
-        struct WorldSpritePipelineStateStream {
-            CD3DX12_PIPELINE_STATE_STREAM_ROOT_SIGNATURE rootSignature;
-            CD3DX12_PIPELINE_STATE_STREAM_MS meshShader;
-            CD3DX12_PIPELINE_STATE_STREAM_PS pixelShader;
-            CD3DX12_PIPELINE_STATE_STREAM_BLEND_DESC blend;
-            CD3DX12_PIPELINE_STATE_STREAM_DEPTH_STENCIL depthStencil;
-            CD3DX12_PIPELINE_STATE_STREAM_DEPTH_STENCIL_FORMAT dsvFormat;
-            CD3DX12_PIPELINE_STATE_STREAM_RASTERIZER rasterizer;
-            CD3DX12_PIPELINE_STATE_STREAM_RENDER_TARGET_FORMATS rtvFormats;
-            CD3DX12_PIPELINE_STATE_STREAM_SAMPLE_DESC sampleDescription;
-            CD3DX12_PIPELINE_STATE_STREAM_SAMPLE_MASK sampleMask;
         };
 
         TextureResourceColorSpace ResolveTextureColorSpace(
@@ -127,163 +116,27 @@ namespace HIKARI::RENDER3D::WORLD_SPRITES {
             }
         }
 
-        bool CreateRootSignature(
-            ID3D12Device* device,
-            ID3D12RootSignature** output) {
-            if (device == nullptr || output == nullptr) return false;
 
-            D3D12_DESCRIPTOR_RANGE textureRange{};
-            textureRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-            textureRange.NumDescriptors = GFX::DESCRIPTOR::kUserSrvCount;
-            textureRange.BaseShaderRegister = 20u;
-
-            std::array<D3D12_ROOT_PARAMETER, 4u> parameters{};
-            parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-            parameters[0].Descriptor.ShaderRegister = 0u;
-            parameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-            parameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
-            parameters[1].Descriptor.ShaderRegister = 1u;
-            parameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-            parameters[2].ParameterType =
-                D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-            parameters[2].DescriptorTable.NumDescriptorRanges = 1u;
-            parameters[2].DescriptorTable.pDescriptorRanges = &textureRange;
-            parameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-            parameters[3].ParameterType =
-                D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-            parameters[3].Constants.ShaderRegister = 1u;
-            parameters[3].Constants.Num32BitValues = 4u;
-            parameters[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_MESH;
-
-            D3D12_STATIC_SAMPLER_DESC sampler{};
-            sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-            sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-            sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-            sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-            sampler.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
-            sampler.MaxLOD = D3D12_FLOAT32_MAX;
-            sampler.ShaderRegister = 0u;
-            sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-
-            D3D12_ROOT_SIGNATURE_DESC description{};
-            description.NumParameters = static_cast<UINT>(parameters.size());
-            description.pParameters = parameters.data();
-            description.NumStaticSamplers = 1u;
-            description.pStaticSamplers = &sampler;
-            ComPtr<ID3DBlob> signature{};
-            ComPtr<ID3DBlob> errors{};
-            if (!HIKARI_DX_CHECK(
-                    D3D12SerializeRootSignature(
-                        &description,
-                        D3D_ROOT_SIGNATURE_VERSION_1,
-                        signature.GetAddressOf(),
-                        errors.GetAddressOf()),
-                    "WorldSpritePass::SerializeRootSignature")) {
-                return false;
-            }
-            return HIKARI_DX_CHECK(
-                device->CreateRootSignature(
-                    0u,
-                    signature->GetBufferPointer(),
-                    signature->GetBufferSize(),
-                    IID_PPV_ARGS(output)),
-                "WorldSpritePass::CreateRootSignature");
-        }
-
-        bool CreateUploadBuffer(
-            ID3D12Device* device,
-            uint32_t capacity,
-            ComPtr<ID3D12Resource>& outResource,
-            GpuWorldSpriteInstance*& outMapped) {
-            outMapped = nullptr;
-            const UINT64 size = static_cast<UINT64>(capacity) *
-                sizeof(GpuWorldSpriteInstance);
-            const auto heap =
-                CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-            const auto description = CD3DX12_RESOURCE_DESC::Buffer(size);
-            if (!HIKARI_DX_CHECK(
-                    device->CreateCommittedResource(
-                        &heap,
-                        D3D12_HEAP_FLAG_NONE,
-                        &description,
-                        D3D12_RESOURCE_STATE_GENERIC_READ,
-                        nullptr,
-                        IID_PPV_ARGS(outResource.GetAddressOf())),
-                    "WorldSpritePass::CreateUploadBuffer")) {
-                return false;
-            }
-            void* mapped = nullptr;
-            const D3D12_RANGE noRead{ 0u, 0u };
-            if (!HIKARI_DX_CHECK(
-                    outResource->Map(0u, &noRead, &mapped),
-                    "WorldSpritePass::MapUploadBuffer")) {
-                outResource.Reset();
-                return false;
-            }
-            outMapped = static_cast<GpuWorldSpriteInstance*>(mapped);
-            return true;
-        }
-
-        bool ResolveShaders(
-            ID3D12Device* device,
-            ASSETS::SHADER::ShaderAssetEntryLease& outMesh,
-            ASSETS::SHADER::ShaderAssetEntryLease& outPixel) {
-            const GFX::ShaderDeviceCapabilities capabilities =
-                GFX::QueryShaderDeviceCapabilities(device);
-            const auto contract =
-                ASSETS::SHADER::MakeRenderGeometryShaderContract(
-                    ASSETS::SHADER::RenderGeometryRootLayout::
-                        WorldSpriteDraw,
-                    { capabilities.shaderModel,
-                      capabilities.rootSignatureVersion,
-                      capabilities.featureMask });
-            const auto resolve = [&contract](
-                const char* entry,
-                ASSETS::SHADER::ShaderStage stage,
-                const char* profile,
-                ASSETS::SHADER::ShaderAssetEntryLease& outLease) {
-                auto resolved = ASSETS::SHADER::ResolveBuiltinShaderEntry(
-                    "HIKARI.EngineShader.Render3D_WorldSpriteDraw",
-                    { entry, stage, profile },
-                    contract);
-                std::string diagnostic{};
-                const auto* artifact = resolved
-                    ? resolved.lease.GetArtifact()
-                    : nullptr;
-                if (!resolved || artifact == nullptr ||
-                    !ASSETS::SHADER::ValidateRenderGeometryShaderArtifact(
-                        *artifact, diagnostic) ||
-                    resolved.lease.GetDxil().empty()) {
-                    if (diagnostic.empty()) diagnostic = resolved.diagnostic;
-                    HIKARI_LOG_ERROR(
-                        std::string("[WorldSpritePass][Shader] ") +
-                        entry + ": " + diagnostic);
-                    return false;
-                }
-                outLease = std::move(resolved.lease);
-                return true;
-            };
-            return resolve(
-                       "WorldSpriteMS",
-                       ASSETS::SHADER::ShaderStage::Mesh,
-                       "ms_6_5",
-                       outMesh) &&
-                resolve(
-                    "WorldSpritePS",
-                    ASSETS::SHADER::ShaderStage::Pixel,
-                    "ps_6_0",
-                    outPixel);
-        }
     } // namespace
 
     struct WorldSpritePass::Impl {
         GFX::Context context{};
         ComPtr<ID3D12RootSignature> rootSignature{};
-        std::array<ComPtr<ID3D12PipelineState>, 4u> pipelines{};
-        std::array<ComPtr<ID3D12Resource>, GFX::kFrameResourceCount>
-            uploadBuffers{};
-        std::array<GpuWorldSpriteInstance*, GFX::kFrameResourceCount>
-            mappedInstances{};
+        WorldSpritePipelineSet pipelines{};
+        struct FrameSlot {
+            ComPtr<ID3D12Resource> instances{};
+            DX::DynamicUploadBuffer staging{};
+            std::vector<GpuWorldSpriteInstance> published{};
+            D3D12_RESOURCE_STATES state = D3D12_RESOURCE_STATE_COMMON;
+        };
+        std::array<FrameSlot, GFX::kFrameResourceCount> frames{};
+        std::vector<PreparedItem> opaque, masked, hybridCore, transparent;
+        std::vector<GpuWorldSpriteInstance> packed;
+        std::vector<MATH::Vec4> shadowBounds;
+        std::vector<TextureResourceLoadRequest> requests;
+        std::vector<std::string> requestGuids;
+        std::unordered_map<std::string, TextureResourceHandle> textureByGuid;
+        uint64_t textureWorld = 0, textureRegistry = 0, textureRevision = 0;
         TextureResourceHandle missingTexture{};
         WorldSpritePassStats stats{};
         uint32_t capacity = 0u;
@@ -292,83 +145,13 @@ namespace HIKARI::RENDER3D::WORLD_SPRITES {
         uint32_t hybridOffset = 0u;
         uint32_t transparentOffset = 0u;
         uint32_t activeFrameSlot = 0u;
-        bool initialized = false;
+        bool initialized = false, meshPipeline = false, preferRaster = false;
+        SurfaceLightingBindings lighting{};
         bool initializationAttempted = false;
-
-        bool CreatePipelines(ID3D12Device* device) {
-            if (!CreateRootSignature(
-                    device, rootSignature.GetAddressOf())) {
-                return false;
-            }
-            ASSETS::SHADER::ShaderAssetEntryLease meshShader{};
-            ASSETS::SHADER::ShaderAssetEntryLease pixelShader{};
-            if (!ResolveShaders(device, meshShader, pixelShader)) {
-                return false;
-            }
-            ComPtr<ID3D12Device2> device2{};
-            if (!HIKARI_DX_CHECK(
-                    device->QueryInterface(
-                        IID_PPV_ARGS(device2.GetAddressOf())),
-                    "WorldSpritePass::QueryDevice2")) {
-                return false;
-            }
-            const std::span<const uint8_t> meshDxil =
-                meshShader.GetDxil();
-            const std::span<const uint8_t> pixelDxil =
-                pixelShader.GetDxil();
-            for (uint32_t alphaMode = 0u;
-                 alphaMode < pipelines.size();
-                 ++alphaMode) {
-                CD3DX12_BLEND_DESC blend(D3D12_DEFAULT);
-                if (alphaMode == kGpuAlphaBlend) {
-                    auto& target = blend.RenderTarget[0];
-                    target.BlendEnable = TRUE;
-                    target.SrcBlend = D3D12_BLEND_ONE;
-                    target.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
-                    target.BlendOp = D3D12_BLEND_OP_ADD;
-                    target.SrcBlendAlpha = D3D12_BLEND_ONE;
-                    target.DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
-                    target.BlendOpAlpha = D3D12_BLEND_OP_ADD;
-                }
-                CD3DX12_DEPTH_STENCIL_DESC depth(D3D12_DEFAULT);
-                depth.DepthEnable = TRUE;
-                depth.DepthWriteMask = alphaMode == kGpuAlphaBlend
-                    ? D3D12_DEPTH_WRITE_MASK_ZERO
-                    : D3D12_DEPTH_WRITE_MASK_ALL;
-                depth.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
-                CD3DX12_RASTERIZER_DESC rasterizer(D3D12_DEFAULT);
-                rasterizer.CullMode = D3D12_CULL_MODE_NONE;
-                D3D12_RT_FORMAT_ARRAY formats{};
-                formats.NumRenderTargets = 1u;
-                formats.RTFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
-
-                WorldSpritePipelineStateStream stream{};
-                stream.rootSignature = rootSignature.Get();
-                stream.meshShader = CD3DX12_SHADER_BYTECODE(
-                    meshDxil.data(), meshDxil.size());
-                stream.pixelShader = CD3DX12_SHADER_BYTECODE(
-                    pixelDxil.data(), pixelDxil.size());
-                stream.blend = blend;
-                stream.depthStencil = depth;
-                stream.dsvFormat = DXGI_FORMAT_D32_FLOAT;
-                stream.rasterizer = rasterizer;
-                stream.rtvFormats = formats;
-                stream.sampleDescription = DXGI_SAMPLE_DESC{ 1u, 0u };
-                stream.sampleMask = (std::numeric_limits<UINT>::max)();
-                D3D12_PIPELINE_STATE_STREAM_DESC description{};
-                description.SizeInBytes = sizeof(stream);
-                description.pPipelineStateSubobjectStream = &stream;
-                if (!HIKARI_DX_CHECK(
-                        device2->CreatePipelineState(
-                            &description,
-                            IID_PPV_ARGS(
-                                pipelines[alphaMode].GetAddressOf())),
-                        "WorldSpritePass::CreatePipeline")) {
-                    return false;
-                }
-            }
-            return true;
-        }
+        const WorldSpriteFrameSource* preparedSource = nullptr;
+        uint64_t preparedFrame = ~uint64_t(0), preparedSourceFrame = 0, preparedWorld = 0;
+        uint64_t preparedFence = 0;
+        MATH::Mat4 preparedView{};
 
         bool Initialize(
             const GFX::Context& newContext,
@@ -381,22 +164,19 @@ namespace HIKARI::RENDER3D::WORLD_SPRITES {
                     (std::numeric_limits<uint32_t>::max)() / 2u),
                 1u);
             if (context.device == nullptr ||
-                !CreatePipelines(context.device)) {
+                !CreateWorldSpritePipelines(context.device, preferRaster, rootSignature, pipelines, meshPipeline)) {
                 Shutdown();
                 return false;
             }
-            for (uint32_t index = 0u;
-                 index < GFX::kFrameResourceCount;
-                 ++index) {
-                if (!CreateUploadBuffer(
-                        context.device,
-                        capacity * 2u,
-                        uploadBuffers[index],
-                        mappedInstances[index])) {
+            for (auto& frame : frames) {
+                if (!GFX::D3D12_BUFFER::CreateDefaultBuffer(context.device,
+                        UINT64(capacity) * 2u * sizeof(GpuWorldSpriteInstance), frame.instances) ||
+                    !frame.staging.Init(context.device, 64u * 1024u)) {
                     Shutdown();
                     return false;
                 }
             }
+            stats.residentBytes = UINT64(capacity) * 2u * sizeof(GpuWorldSpriteInstance) * frames.size();
             missingTexture = CreateCheckerTextureResource(
                 "world_sprite/missing_checker/" + std::to_string(
                     reinterpret_cast<uintptr_t>(this)),
@@ -415,15 +195,15 @@ namespace HIKARI::RENDER3D::WORLD_SPRITES {
         }
 
         void Shutdown() noexcept {
-            for (uint32_t index = 0u;
-                 index < GFX::kFrameResourceCount;
-                 ++index) {
-                if (uploadBuffers[index] && mappedInstances[index]) {
-                    uploadBuffers[index]->Unmap(0u, nullptr);
-                }
-                mappedInstances[index] = nullptr;
-                uploadBuffers[index].Reset();
+            for (auto& frame : frames) {
+                frame.staging.Finalize(&context);
+                GFX::RetireD3D12ObjectForFrame(frame.instances, context, "WorldSpriteInstances");
+                frame.published.clear();
+                frame.state = D3D12_RESOURCE_STATE_COMMON;
             }
+            opaque.clear(); masked.clear(); hybridCore.clear(); transparent.clear(); packed.clear(); shadowBounds.clear();
+            requests.clear(); requestGuids.clear(); textureByGuid.clear();
+            textureWorld = textureRegistry = textureRevision = 0;
             for (auto& pipeline : pipelines) pipeline.Reset();
             rootSignature.Reset();
             if (missingTexture) {
@@ -439,12 +219,20 @@ namespace HIKARI::RENDER3D::WORLD_SPRITES {
             activeFrameSlot = 0u;
             initialized = false;
             initializationAttempted = false;
+            preparedFrame = ~uint64_t(0);
+            preparedSource = nullptr;
         }
 
         bool PrepareFrame(
             const GFX::Context& newContext,
             const WorldSpriteFrameSource* source,
-            const MATH::Vec3& cameraPosition) {
+            const Camera3D& camera) {
+            const auto view = camera.GetViewProj();
+            if (source && preparedSource == source && preparedFrame == newContext.frameIndex &&
+                preparedFence == newContext.currentFrameRetireFenceValue &&
+                preparedSourceFrame == source->frameIndex && preparedWorld == source->worldIdentity &&
+                std::memcmp(&preparedView, &view, sizeof(view)) == 0) return true;
+            preparedFrame = ~uint64_t(0);
             context = newContext;
             stats.submittedCount = 0u;
             stats.opaqueCount = 0u;
@@ -453,6 +241,10 @@ namespace HIKARI::RENDER3D::WORLD_SPRITES {
             stats.transparentCount = 0u;
             stats.missingTextureCount = 0u;
             stats.droppedCount = 0u;
+            stats.uploadedBytes = 0u;
+            stats.textureLoadRequests = 0u;
+            stats.shadowCasterCount = 0u;
+            shadowBounds.clear();
             if (source == nullptr || source->instances.empty()) return true;
             if (!initialized || context.device == nullptr) {
                 stats.droppedCount = static_cast<uint32_t>((std::min)(
@@ -462,17 +254,24 @@ namespace HIKARI::RENDER3D::WORLD_SPRITES {
                 return true;
             }
 
-            std::vector<TextureResourceLoadRequest> requests{};
-            std::vector<std::string> requestGuids{};
-            std::unordered_map<std::string, TextureResourceHandle>
-                textureByGuid{};
-            for (const WorldSpriteInstance& instance : source->instances) {
+            if (context.cmdList == nullptr) return false;
+            const uint64_t registryId = source->assetRegistry ? source->assetRegistry->GetInstanceId() : 0;
+            const uint64_t revision = source->assetRegistry ? source->assetRegistry->GetRevision() : 0;
+            if (source->worldIdentity != textureWorld || registryId != textureRegistry || revision != textureRevision) {
+                textureByGuid.clear();
+                textureWorld = source->worldIdentity;
+                textureRegistry = registryId;
+                textureRevision = revision;
+            }
+            requests.clear();
+            requestGuids.clear();
+            const uint32_t acceptedCount = static_cast<uint32_t>((std::min)(source->instances.size(), size_t(capacity)));
+            for (uint32_t index = 0; index < acceptedCount; ++index) {
+                const auto& instance = source->instances[index];
                 const std::string& guid = instance.textureAssetGuid.value;
-                if (guid.empty() || textureByGuid.contains(guid) ||
-                    std::find(requestGuids.begin(), requestGuids.end(), guid) !=
-                        requestGuids.end()) {
-                    continue;
-                }
+                if (const auto found = textureByGuid.find(guid); found != textureByGuid.end() &&
+                    found->second && !IsTextureResourceValid(found->second)) textureByGuid.erase(found);
+                if (guid.empty() || !textureByGuid.try_emplace(guid).second) continue;
                 const auto* descriptor = source->assetRegistry != nullptr
                     ? source->assetRegistry->FindAs<TextureAssetDescriptor>(
                         AssetId{ guid })
@@ -498,19 +297,13 @@ namespace HIKARI::RENDER3D::WORLD_SPRITES {
                     handles.size(), requestGuids.size());
                 for (size_t index = 0u; index < count; ++index) {
                     if (handles[index]) {
-                        textureByGuid.emplace(
-                            requestGuids[index], handles[index]);
+                        textureByGuid[requestGuids[index]] = handles[index];
                     }
                 }
             }
 
-            std::vector<PreparedItem> opaque{};
-            std::vector<PreparedItem> masked{};
-            std::vector<PreparedItem> hybridCore{};
-            std::vector<PreparedItem> transparent{};
-            const uint32_t acceptedCount = (std::min)(
-                static_cast<uint32_t>(source->instances.size()),
-                capacity);
+            stats.textureLoadRequests = static_cast<uint32_t>(requests.size());
+            opaque.clear(); masked.clear(); hybridCore.clear(); transparent.clear();
             stats.droppedCount = static_cast<uint32_t>(
                 source->instances.size()) - acceptedCount;
             opaque.reserve(acceptedCount);
@@ -520,6 +313,8 @@ namespace HIKARI::RENDER3D::WORLD_SPRITES {
             const uint32_t missingDescriptorIndex =
                 GetTextureResourceSrvDescriptorIndex(missingTexture);
 
+            const auto cameraPosition = camera.GetPosition();
+            const auto cameraForward = MATH::Normalize(camera.GetTarget() - cameraPosition);
             for (uint32_t index = 0u; index < acceptedCount; ++index) {
                 const WorldSpriteInstance& instance =
                     source->instances[index];
@@ -532,7 +327,7 @@ namespace HIKARI::RENDER3D::WORLD_SPRITES {
                 TextureResourceHandle texture = missingTexture;
                 if (const auto found = textureByGuid.find(
                         instance.textureAssetGuid.value);
-                    found != textureByGuid.end()) {
+                    found != textureByGuid.end() && IsTextureResourceValid(found->second)) {
                     texture = found->second;
                 } else {
                     ++stats.missingTextureCount;
@@ -566,7 +361,7 @@ namespace HIKARI::RENDER3D::WORLD_SPRITES {
                     }
                     if (textureWidth != 0u && textureHeight != 0u) {
                         width = height * static_cast<float>(textureWidth) /
-                            static_cast<float>(textureHeight);
+                            static_cast<float>(textureHeight) * instance.uvRect.z / instance.uvRect.w;
                     }
                 }
 
@@ -575,7 +370,7 @@ namespace HIKARI::RENDER3D::WORLD_SPRITES {
                     instance.worldPosition.x,
                     instance.worldPosition.y,
                     instance.worldPosition.z,
-                    1.0f
+                    float((instance.castShadow ? 1u : 0u) | (instance.receiveShadow ? 2u : 0u))
                 };
                 item.gpu.orientation = {
                     instance.worldRotation.x,
@@ -595,20 +390,29 @@ namespace HIKARI::RENDER3D::WORLD_SPRITES {
                     instance.tint.z,
                     instance.opacity
                 };
+                item.gpu.uvRect = instance.uvRect;
+                item.gpu.surface = {instance.lit ? 1.0f : 0.0f,instance.roughness,instance.specular,instance.pointSampling ? 1.0f : 0.0f};
                 item.gpu.textureDescriptorIndex = descriptorIndex;
                 item.gpu.facingMode = static_cast<uint32_t>(
                     instance.facing);
                 const ResolvedAlphaMode resolvedAlpha = ResolveAlphaMode(
                     instance.alphaMode, descriptor, instance.opacity);
+                if (instance.castShadow && resolvedAlpha != ResolvedAlphaMode::Blend) {
+                    // Billboard 回転と pivot を含む保守的な球。影視点へも同じ形状を提出する。
+                    const float dx = width * (std::max)(instance.pivot.x, 1.0f-instance.pivot.x);
+                    const float dy = height * (std::max)(instance.pivot.y, 1.0f-instance.pivot.y);
+                    shadowBounds.push_back({instance.worldPosition.x, instance.worldPosition.y,
+                        instance.worldPosition.z, std::sqrt(dx*dx+dy*dy)});
+                    ++stats.shadowCasterCount;
+                }
                 item.gpu.alphaCutoff = instance.alphaCutoff;
                 item.sortPriority = instance.transparentSortPriority;
                 item.stableOrder = instance.stableOrder;
                 const MATH::Vec3 delta =
                     instance.worldPosition - cameraPosition;
-                item.distanceSquared = delta.x * delta.x +
-                    delta.y * delta.y + delta.z * delta.z;
-                if (!std::isfinite(item.distanceSquared)) {
-                    item.distanceSquared = 0.0f;
+                item.viewDepth = MATH::Dot(delta, cameraForward);
+                if (!std::isfinite(item.viewDepth)) {
+                    item.viewDepth = 0.0f;
                 }
                 if (resolvedAlpha == ResolvedAlphaMode::Opaque) {
                     item.gpu.alphaMode = kGpuAlphaOpaque;
@@ -633,39 +437,64 @@ namespace HIKARI::RENDER3D::WORLD_SPRITES {
                     if (lhs.sortPriority != rhs.sortPriority) {
                         return lhs.sortPriority < rhs.sortPriority;
                     }
-                    if (lhs.distanceSquared != rhs.distanceSquared) {
-                        return lhs.distanceSquared > rhs.distanceSquared;
+                    if (lhs.viewDepth != rhs.viewDepth) {
+                        return lhs.viewDepth > rhs.viewDepth;
                     }
                     return lhs.stableOrder < rhs.stableOrder;
                 });
 
             activeFrameSlot = context.frameIndex % GFX::kFrameResourceCount;
-            GpuWorldSpriteInstance* destination =
-                mappedInstances[activeFrameSlot];
-            if (destination == nullptr) return false;
+            auto& frame = frames[activeFrameSlot];
+            packed.clear();
             opaqueOffset = 0u;
             maskOffset = static_cast<uint32_t>(opaque.size());
             hybridOffset = maskOffset +
                 static_cast<uint32_t>(masked.size());
             transparentOffset = hybridOffset +
                 static_cast<uint32_t>(hybridCore.size());
-            const auto copyItems = [&destination](
+            const auto copyItems = [this](
                 const std::vector<PreparedItem>& items) {
                 for (const PreparedItem& item : items) {
-                    *destination++ = item.gpu;
+                    packed.push_back(item.gpu);
                 }
             };
             copyItems(opaque);
             copyItems(masked);
             copyItems(hybridCore);
             copyItems(transparent);
+            const size_t bytes = packed.size() * sizeof(GpuWorldSpriteInstance);
+            // 同一スロットの内容が変わらなければ転送しない。UPLOAD は一時的なコピー元だけに使う。
+            if (frame.published.size() != packed.size() ||
+                (bytes && std::memcmp(frame.published.data(), packed.data(), bytes) != 0)) {
+                frame.staging.ResetForFrame(context.currentFrameRetireFenceValue);
+                const auto upload = frame.staging.Allocate(bytes);
+                if (!upload) return false;
+                std::memcpy(upload.cpuAddress, packed.data(), bytes);
+                const auto before = CD3DX12_RESOURCE_BARRIER::Transition(frame.instances.Get(),
+                    frame.state, D3D12_RESOURCE_STATE_COPY_DEST);
+                context.cmdList->ResourceBarrier(1, &before);
+                context.cmdList->CopyBufferRegion(frame.instances.Get(), 0, upload.resource, upload.offset, bytes);
+                const auto after = CD3DX12_RESOURCE_BARRIER::Transition(frame.instances.Get(),
+                    D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                context.cmdList->ResourceBarrier(1, &after);
+                frame.state = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+                frame.published = packed;
+                stats.uploadedBytes = bytes;
+            }
             stats.opaqueCount = static_cast<uint32_t>(opaque.size());
             stats.maskCount = static_cast<uint32_t>(masked.size());
             stats.hybridCount = static_cast<uint32_t>(hybridCore.size());
             stats.transparentCount = static_cast<uint32_t>(
                 transparent.size());
+            stats.meshShader = meshPipeline;
             stats.submittedCount = stats.opaqueCount + stats.maskCount +
                 stats.transparentCount;
+            preparedSource = source;
+            preparedFrame = newContext.frameIndex;
+            preparedFence = newContext.currentFrameRetireFenceValue;
+            preparedSourceFrame = source->frameIndex;
+            preparedWorld = source->worldIdentity;
+            preparedView = view;
             return true;
         }
 
@@ -675,13 +504,14 @@ namespace HIKARI::RENDER3D::WORLD_SPRITES {
             uint32_t alphaMode,
             uint32_t offset,
             uint32_t count,
-            bool preserveDrawOrder = false) {
+            bool preserveDrawOrder = false, uint32_t passKind = 0u,
+            const MATH::Mat4* lightViewProjection = nullptr) {
             context = newContext;
             if (count == 0u) return true;
             if (!initialized || context.cmdList == nullptr ||
                 cameraConstants == 0u ||
-                activeFrameSlot >= uploadBuffers.size() ||
-                !uploadBuffers[activeFrameSlot] ||
+                activeFrameSlot >= frames.size() ||
+                !frames[activeFrameSlot].instances ||
                 alphaMode >= pipelines.size() ||
                 !pipelines[alphaMode]) {
                 return false;
@@ -691,7 +521,7 @@ namespace HIKARI::RENDER3D::WORLD_SPRITES {
                 GetMaterialTexturePoolSrvGpuHandle(context);
             if (heap == nullptr || texturePool.ptr == 0u) return false;
             ComPtr<ID3D12GraphicsCommandList6> commandList6{};
-            if (!HIKARI_DX_CHECK(
+            if (meshPipeline && !HIKARI_DX_CHECK(
                     context.cmdList->QueryInterface(
                         IID_PPV_ARGS(commandList6.GetAddressOf())),
                     "WorldSpritePass::QueryCommandList6")) {
@@ -704,29 +534,49 @@ namespace HIKARI::RENDER3D::WORLD_SPRITES {
                 0u, cameraConstants);
             context.cmdList->SetGraphicsRootShaderResourceView(
                 1u,
-                uploadBuffers[activeFrameSlot]->GetGPUVirtualAddress());
+                frames[activeFrameSlot].instances->GetGPUVirtualAddress());
             context.cmdList->SetGraphicsRootDescriptorTable(
                 2u, texturePool);
+            const MATH::Mat4 identity = MATH::Mat4::Identity();
+            context.cmdList->SetGraphicsRoot32BitConstants(13u, 16u,
+                lightViewProjection ? lightViewProjection : &identity, 0u);
+            if (passKind == 0u) {
+            context.cmdList->SetGraphicsRootConstantBufferView(4,lighting.light);
+            context.cmdList->SetGraphicsRootConstantBufferView(5,lighting.shadow);
+            context.cmdList->SetGraphicsRootConstantBufferView(6,lighting.skyEnvironment);
+            context.cmdList->SetGraphicsRootShaderResourceView(7,lighting.localLights);
+            context.cmdList->SetGraphicsRootShaderResourceView(8,lighting.localLightHeaders);
+            context.cmdList->SetGraphicsRootShaderResourceView(9,lighting.localLightIndices);
+            context.cmdList->SetGraphicsRootDescriptorTable(10,lighting.shadowMap.ptr ? lighting.shadowMap : texturePool);
+            context.cmdList->SetGraphicsRootDescriptorTable(11,lighting.irradiance.ptr ? lighting.irradiance : texturePool);
+            context.cmdList->SetGraphicsRootDescriptorTable(12,lighting.prefiltered.ptr ? lighting.prefiltered : texturePool);
+            }
+            const UINT lightingAvailable=lighting.IsValid() ? 1u : 0u;
+            if (!meshPipeline) context.cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            const auto draw = [&](UINT instances) {
+                if (meshPipeline) commandList6->DispatchMesh(instances,1,1);
+                else context.cmdList->DrawInstanced(6,instances,0,0);
+            };
             if (!preserveDrawOrder) {
-                const DrawConstants constants{ offset, count, 0u, 0u };
+                const DrawConstants constants{ offset, count, lightingAvailable, passKind };
                 context.cmdList->SetGraphicsRoot32BitConstants(
                     3u,
                     4u,
                     &constants,
                     0u);
-                commandList6->DispatchMesh(count, 1u, 1u);
+                draw(count);
             } else {
                 // Separate dispatches preserve the CPU-authored stable
                 // back-to-front order across transparent primitives.
                 for (uint32_t index = 0u; index < count; ++index) {
                     const DrawConstants constants{
-                        offset + index, 1u, 0u, 0u };
+                        offset + index, 1u, lightingAvailable, passKind };
                     context.cmdList->SetGraphicsRoot32BitConstants(
                         3u,
                         4u,
                         &constants,
                         0u);
-                    commandList6->DispatchMesh(1u, 1u, 1u);
+                    draw(1u);
                 }
             }
             return true;
@@ -742,7 +592,8 @@ namespace HIKARI::RENDER3D::WORLD_SPRITES {
 
     bool WorldSpritePass::Initialize(
         const GFX::Context& context,
-        uint32_t instanceCapacity) {
+        uint32_t instanceCapacity, bool preferRaster) {
+        impl_->preferRaster = preferRaster;
         return impl_->Initialize(context, instanceCapacity);
     }
 
@@ -753,7 +604,7 @@ namespace HIKARI::RENDER3D::WORLD_SPRITES {
     bool WorldSpritePass::PrepareFrame(
         const GFX::Context& context,
         const WorldSpriteFrameSource* source,
-        const MATH::Vec3& cameraPosition) {
+        const Camera3D& camera) {
         // 入力のない view に PSO/Upload/SRV を確保しない。失敗の再試行は
         // Shutdown または明示 Initialize を所有者が行う時だけにする。
         if (!impl_->initialized && !impl_->initializationAttempted &&
@@ -761,12 +612,13 @@ namespace HIKARI::RENDER3D::WORLD_SPRITES {
             (void)Initialize(context);
             impl_->initializationAttempted = true;
         }
-        return impl_->PrepareFrame(context, source, cameraPosition);
+        return impl_->PrepareFrame(context, source, camera);
     }
 
     bool WorldSpritePass::ExecuteForwardOpaque(
         const GFX::Context& context,
-        D3D12_GPU_VIRTUAL_ADDRESS cameraConstants) {
+        D3D12_GPU_VIRTUAL_ADDRESS cameraConstants, const SurfaceLightingBindings& lighting) {
+        impl_->lighting = lighting;
             return impl_->ExecuteBatch(
                    context,
                    cameraConstants,
@@ -789,7 +641,8 @@ namespace HIKARI::RENDER3D::WORLD_SPRITES {
 
     bool WorldSpritePass::ExecuteForwardTransparent(
         const GFX::Context& context,
-        D3D12_GPU_VIRTUAL_ADDRESS cameraConstants) {
+        D3D12_GPU_VIRTUAL_ADDRESS cameraConstants, const SurfaceLightingBindings& lighting) {
+        impl_->lighting = lighting;
         return impl_->ExecuteBatch(
             context,
             cameraConstants,
@@ -798,6 +651,27 @@ namespace HIKARI::RENDER3D::WORLD_SPRITES {
             impl_->stats.transparentCount,
             true);
     }
+
+    bool WorldSpritePass::ExecuteDepth(const GFX::Context& context, D3D12_GPU_VIRTUAL_ADDRESS camera) {
+        return !HasOpaqueWork() || impl_->ExecuteBatch(context, camera,
+            static_cast<uint32_t>(WorldSpritePipeline::Depth), 0u, impl_->transparentOffset, false, 2u);
+    }
+
+    bool WorldSpritePass::ExecuteSurface(const GFX::Context& context, D3D12_GPU_VIRTUAL_ADDRESS camera, bool featureMask) {
+        return !HasOpaqueWork() || impl_->ExecuteBatch(context, camera,
+            static_cast<uint32_t>(featureMask ? WorldSpritePipeline::SurfaceFeature : WorldSpritePipeline::Surface),
+            0u, impl_->transparentOffset, false, 1u);
+    }
+
+    bool WorldSpritePass::ExecuteShadow(const GFX::Context& context, D3D12_GPU_VIRTUAL_ADDRESS camera,
+        const MATH::Mat4& lightViewProjection) {
+        return !HasShadowWork() || impl_->ExecuteBatch(context, camera,
+            static_cast<uint32_t>(WorldSpritePipeline::Shadow), 0u, impl_->transparentOffset, false, 3u, &lightViewProjection);
+    }
+
+    bool WorldSpritePass::HasShadowWork() const noexcept { return impl_->stats.shadowCasterCount != 0; }
+
+    std::span<const MATH::Vec4> WorldSpritePass::GetShadowCasterBounds() const noexcept { return impl_->shadowBounds; }
 
     bool WorldSpritePass::HasOpaqueWork() const noexcept {
         return impl_->stats.opaqueCount != 0u ||

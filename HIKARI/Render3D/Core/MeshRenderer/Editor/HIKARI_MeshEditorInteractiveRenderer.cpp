@@ -168,7 +168,7 @@ namespace HIKARI::MESHRENDERER {
         if (!gMeshRendererState.editorInteractive.worldSpritePass.PrepareFrame(
                 graphics,
                 view.worldSpriteFrameSource,
-                cameraPosition)) {
+                camera)) {
             return EditorInteractiveMeshRenderResult::
                 MaterialFrameUnavailable;
         }

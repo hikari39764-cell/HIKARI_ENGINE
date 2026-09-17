@@ -32,6 +32,7 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
         void InsertDrawResetUavBarrier(const GFX::Context& context) const;
         void InsertDrawCounterUavBarrier(
             const GFX::Context& context) const;
+        void TransitionDrawCounters(const GFX::Context& context, D3D12_RESOURCE_STATES nextState);
         void TransitionDrawArguments(
             const GFX::Context& context,
             D3D12_RESOURCE_STATES nextState);
@@ -78,6 +79,7 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
         uint32_t emitterPageCapacity_ = 0u;
         D3D12_RESOURCE_STATES particleState_ =
             D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        D3D12_RESOURCE_STATES drawCounterState_ = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         D3D12_RESOURCE_STATES drawArgumentState_ =
             D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         D3D12_RESOURCE_STATES aliveIndexState_ =

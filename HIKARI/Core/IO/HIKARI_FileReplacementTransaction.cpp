@@ -1,4 +1,5 @@
 #include "Core/IO/HIKARI_FileReplacementTransaction.h"
+#include "Core/IO/HIKARI_NativeFilePath.h"
 
 #include <chrono>
 #include <unordered_set>
@@ -32,7 +33,7 @@ namespace HIKARI::IO {
                 return;
             }
             std::error_code ignored{};
-            std::filesystem::remove(path, ignored);
+            std::filesystem::remove(NativeFilePath(path), ignored);
         }
 
         void RollBack(
@@ -44,8 +45,8 @@ namespace HIKARI::IO {
                 if (it->backupCreated) {
                     std::error_code ignored{};
                     std::filesystem::rename(
-                        it->backupPath,
-                        it->operation.finalPath,
+                        NativeFilePath(it->backupPath),
+                        NativeFilePath(it->operation.finalPath),
                         ignored);
                 }
             }
@@ -81,7 +82,7 @@ namespace HIKARI::IO {
             std::error_code ec{};
             if (!operation.deleteFinal &&
                 !std::filesystem::is_regular_file(
-                    operation.stagedPath,
+                    NativeFilePath(operation.stagedPath),
                     ec)) {
                 outMessage = "staged file is missing: " +
                     TEXT::PathToUtf8(operation.stagedPath);
@@ -91,7 +92,7 @@ namespace HIKARI::IO {
             item.operation = operation;
             item.backupPath = MakeBackupPath(operation.finalPath, index);
             item.hadOriginal = std::filesystem::exists(
-                operation.finalPath,
+                NativeFilePath(operation.finalPath),
                 ec);
             prepared.push_back(std::move(item));
         }
@@ -102,8 +103,8 @@ namespace HIKARI::IO {
             }
             std::error_code ec{};
             std::filesystem::rename(
-                item.operation.finalPath,
-                item.backupPath,
+                NativeFilePath(item.operation.finalPath),
+                NativeFilePath(item.backupPath),
                 ec);
             if (ec) {
                 RollBack(prepared);
@@ -120,8 +121,8 @@ namespace HIKARI::IO {
             }
             std::error_code ec{};
             std::filesystem::rename(
-                item.operation.stagedPath,
-                item.operation.finalPath,
+                NativeFilePath(item.operation.stagedPath),
+                NativeFilePath(item.operation.finalPath),
                 ec);
             if (ec) {
                 RollBack(prepared);

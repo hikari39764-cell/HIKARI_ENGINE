@@ -18,6 +18,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
     struct GpuDrivenSceneSource;
 }
 
+namespace HIKARI::RENDER3D::WORLD_SPRITES { class WorldSpritePass; }
 namespace HIKARI::SHADOW {
 
     struct ShadowMapDebugStats {
@@ -104,7 +105,7 @@ namespace HIKARI::SHADOW {
     void BeginFrame(
         const GFX::Context& graphics,
         const SceneEnvironment& environment,
-        const Camera3D& camera);
+        const Camera3D& camera, RENDER3D::WORLD_SPRITES::WorldSpritePass* sprites = nullptr);
     void SetGpuDrivenSceneSource(
         const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource* source);
     void InvalidateSceneCache();

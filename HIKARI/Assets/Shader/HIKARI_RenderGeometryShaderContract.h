@@ -44,11 +44,11 @@ namespace HIKARI::ASSETS::SHADER {
 
     inline constexpr std::string_view kMeshGraphicsRootLayoutId =
         "HIKARI.RenderGeometry.MeshGraphics.Root";
-    inline constexpr uint32_t kMeshGraphicsRootLayoutVersion = 5u;
+    inline constexpr uint32_t kMeshGraphicsRootLayoutVersion = 6u;
     inline constexpr std::string_view kMeshGraphicsRootLayoutHash =
-        "732b0328153e59a64910af99b760d22aadef59d83b4c83a6cc08f78c11e67981";
+        "ee505e7d03c7c9b396edab36d1a96e11d4dfdc0f5a9b34f6da724bc5f914a454";
     inline constexpr std::string_view kMeshGraphicsRootLayoutCanonical =
-        "HIKARI.RenderGeometry.MeshGraphics.Root.v5|"
+        "HIKARI.RenderGeometry.MeshGraphics.Root.v6|MeshletDispatchControl(Base,Pass,Bucket,RangeCount)|Grid(MaxX65535)|"
         "RootParameters(42)|DwordCost(63)|ASVisibility(Table(t19,u0space8,b12),QueryBytes(80,viewProj+control))|VisibleRangeBytes(80)|PayloadBytes(824)|"
         "JointPaletteVariant(StaticSRV(t0,space3),SkinnedCBV(b3,space0))|"
         "SurfaceControlAlias(b8,TraditionalSurfaceGpuScene,MeshletDrawControl)|"
@@ -70,11 +70,11 @@ namespace HIKARI::ASSETS::SHADER {
 
     inline constexpr std::string_view kClusterCullingRootLayoutId =
         "HIKARI.RenderGeometry.ClusterCulling.Root";
-    inline constexpr uint32_t kClusterCullingRootLayoutVersion = 3u;
+    inline constexpr uint32_t kClusterCullingRootLayoutVersion = 4u;
     inline constexpr std::string_view kClusterCullingRootLayoutHash =
-        "3829d1ca88a7f85730bcb0352717bbbf463083f946afc479c2f90c2d114869be";
+        "1fe0139728af1f8b1ec1264854b389d779e1d6a3eae7c1af8eef412b04b60d60";
     inline constexpr std::string_view kClusterCullingRootLayoutCanonical =
-        "HIKARI.RenderGeometry.ClusterCulling.Root.v3|"
+        "HIKARI.RenderGeometry.ClusterCulling.Root.v4|MeshletDispatchControl(Base,Pass,Bucket,RangeCount)|Grid(MaxX65535)|"
         "0:CBV(b0,space0,All)|1:SRV(t17,space0,All)|"
         "2:UAV(u0,space0,All)|3:UAV(u1,space0,All)|"
         "4:Table(SRV(t0,space1,count1024),All)|"
@@ -95,45 +95,54 @@ namespace HIKARI::ASSETS::SHADER {
 
     inline constexpr std::string_view kParticleCompactionRootLayoutId =
         "HIKARI.RenderGeometry.ParticleCompaction.Root";
-    inline constexpr uint32_t kParticleCompactionRootLayoutVersion = 1u;
+    inline constexpr uint32_t kParticleCompactionRootLayoutVersion = 2u;
     inline constexpr std::string_view kParticleCompactionRootLayoutHash =
-        "0ed335ed555028fae367718e16f0035cb4b2b0688718978fb7a09de98dd34d4d";
+        "b721e743343700916a7db6b60e59422b67d0e6374510bde1deb51e3105a1acfb";
     inline constexpr std::string_view kParticleCompactionRootLayoutCanonical =
-        "HIKARI.RenderGeometry.ParticleCompaction.Root.v1|"
+        "HIKARI.RenderGeometry.ParticleCompaction.Root.v2|"
         "0:Table(UAV(u0,space0,count1),All)|1:UAV(u1,space0,All)|"
         "2:UAV(u2,space0,All)|3:UAV(u3,space0,All)|"
-        "4:Constants(b1,space0,count4,All)|Pipeline(Compute)|Flags(None)";
+        "4:Constants(b1,space0,count5,All)|Pipeline(Compute)|Flags(None)";
 
     inline constexpr std::string_view kParticleDrawRootLayoutId =
         "HIKARI.RenderGeometry.ParticleDraw.Root";
-    inline constexpr uint32_t kParticleDrawRootLayoutVersion = 1u;
+    inline constexpr uint32_t kParticleDrawRootLayoutVersion = 3u;
     inline constexpr std::string_view kParticleDrawRootLayoutHash =
-        "0918d4159c16db6c3d8225e1582f895969658d1b6a463cd81efe4b31f18aaab2";
+        "a3e20724b723eb71fc1e9afc0de33188d7f33fe184348827c24d82f1378ac14b";
     inline constexpr std::string_view kParticleDrawRootLayoutCanonical =
-        "HIKARI.RenderGeometry.ParticleDraw.Root.v1|"
-        "0:CBV(b0,space0,All)|1:SRV(t1,space0,All)|"
-        "2:SRV(t2,space0,All)|3:SRV(t16,space0,Pixel)|"
-        "4:SRV(t0,space6,Pixel)|5:SRV(t1,space6,Pixel)|"
+        "HIKARI.RenderGeometry.ParticleDraw.Root.v3|"
+        "0:CBV(b0,space0,All)|"
+        "1:SRV(t1,space0,All)|"
+        "2:SRV(t2,space0,All)|"
+        "3:SRV(t16,space0,Pixel)|"
+        "4:SRV(t0,space6,Pixel)|"
+        "5:SRV(t1,space6,Pixel)|"
         "6:Table(SRV(t20,space0,count3968),Pixel)|"
-        "7:Constants(b1,space0,count32,All)|"
-        "8:Constants(b7,space0,count4,Pixel)|"
+        "7:Constants(b1,space0,count20,All)|"
+        "8:Constants(b7,space0,count1,Pixel)|"
         "9:Table(SRV(t3,space0,count1),Pixel)|"
+        "10:CBV(b2,space0,Pixel)|"
+        "11:CBV(b4,space0,Pixel)|"
+        "12:CBV(b5,space0,Pixel)|"
+        "13:SRV(t0,space5,Pixel)|"
+        "14:SRV(t1,space5,Pixel)|"
+        "15:SRV(t2,space5,Pixel)|"
+        "16:SRV(t4,space0,All)|"
+        "17:Table(SRV(t0,space9,count1),Pixel)|"
+        "18:Table(SRV(t9,space0,count1),Pixel)|"
+        "19:Table(SRV(t10,space0,count1),Pixel)|"
         "StaticSampler(s0,LinearClamp,Pixel)|"
         "StaticSampler(s1,PointClamp,Pixel)|"
-        "Pipeline(Mesh,Pixel)|Flags(None)";
+        "StaticSampler(s2,ComparisonLinearClampLessEqual,Pixel)|"
+        "Pipeline(Amplification,Mesh,Vertex,Pixel)|"
+        "Flags(None)";
 
     inline constexpr std::string_view kWorldSpriteDrawRootLayoutId =
         "HIKARI.RenderGeometry.WorldSpriteDraw.Root";
-    inline constexpr uint32_t kWorldSpriteDrawRootLayoutVersion = 1u;
-    inline constexpr std::string_view kWorldSpriteDrawRootLayoutHash =
-        "5ea45d8cbd4ae19bdb8386cb09ab9b59c24a8442f08c29994362fe87218a5281";
+    inline constexpr uint32_t kWorldSpriteDrawRootLayoutVersion = 3u;
+    inline constexpr std::string_view kWorldSpriteDrawRootLayoutHash = "da005f6b073095390c8d94e67fa080058bd3dbdd4a5929c25cccd876cb523286";
     inline constexpr std::string_view kWorldSpriteDrawRootLayoutCanonical =
-        "HIKARI.RenderGeometry.WorldSpriteDraw.Root.v1|"
-        "0:CBV(b0,space0,All)|1:SRV(t1,space0,All)|"
-        "2:Table(SRV(t20,space0,count3968),Pixel)|"
-        "3:Constants(b1,space0,count4,Mesh)|"
-        "StaticSampler(s0,LinearClamp,Pixel)|"
-        "Pipeline(Mesh,Pixel)|Flags(None)";
+        "HIKARI.RenderGeometry.WorldSpriteDraw.Root.v3|0:CBV(b0,space0,All)|1:SRV(t1,space0,All)|2:Table(SRV(t20,space0,count3968),Pixel)|3:Constants(b1,space0,count4,All)|4:CBV(b2,Pixel)|5:CBV(b4,Pixel)|6:CBV(b5,Pixel)|7:SRV(t0,space5,Pixel)|8:SRV(t1,space5,Pixel)|9:SRV(t2,space5,Pixel)|10:Table(SRV(t0,space9),Pixel)|11:Table(SRV(t9),Pixel)|12:Table(SRV(t10),Pixel)|13:Constants(b3,space0,count16,All)|PositionW(ShadowFlags)|StaticSampler(s0,LinearClamp,Pixel)|StaticSampler(s2,ShadowCompare,Pixel)|Pipeline(MeshOrVertex,Pixel)|Flags(None)";
 
     inline constexpr std::string_view kWorldTextDrawRootLayoutId =
         "HIKARI.RenderGeometry.WorldTextDraw.Root";
@@ -268,12 +277,14 @@ namespace HIKARI::ASSETS::SHADER {
             return true;
         }
         if (programId ==
-                "HIKARI.EngineShader.Render3D_ParticleGpuDrivenDraw") {
+                "HIKARI.EngineShader.Render3D_ParticleGpuDrivenDraw" ||
+            programId == "HIKARI.EngineShader.Render3D_ParticleGpuDrivenRaster") {
             outLayout = RenderGeometryRootLayout::ParticleDraw;
             return true;
         }
         if (programId ==
-                "HIKARI.EngineShader.Render3D_WorldSpriteDraw") {
+                "HIKARI.EngineShader.Render3D_WorldSpriteDraw" ||
+            programId == "HIKARI.EngineShader.Render3D_WorldSpriteRaster") {
             outLayout = RenderGeometryRootLayout::WorldSpriteDraw;
             return true;
         }
@@ -464,10 +475,11 @@ namespace HIKARI::ASSETS::SHADER {
                 entry.entry.entry == id;
         case RenderGeometryRootLayout::ParticleDraw:
             return (id == "ParticlePS" || id == "ParticleSpriteMS" ||
-                    id == "ParticleStripMS") &&
+                    id == "ParticleShapeMS" || id == "ParticleAS" || id == "ParticleVS") &&
                 entry.entry.entry == id;
         case RenderGeometryRootLayout::WorldSpriteDraw:
-            return (id == "WorldSpriteMS" || id == "WorldSpritePS") &&
+            return (id == "WorldSpriteMS" || id == "WorldSpritePS" || id == "WorldSpriteVS" ||
+                id == "WorldSpriteDepthPS" || id == "WorldSpriteSurfacePS" || id == "WorldSpriteSurfaceFeaturePS") &&
                 entry.entry.entry == id;
         case RenderGeometryRootLayout::WorldTextDraw:
             return (id == "WorldTextMS" || id == "WorldTextPS") &&
@@ -608,27 +620,26 @@ namespace HIKARI::ASSETS::SHADER {
                  binding.registerIndex <= 3u && binding.count == 1u);
         case RenderGeometryRootLayout::ParticleDraw:
             return
-                (binding.kind == Kind::ConstantBuffer &&
-                 binding.registerSpace == 0u &&
-                 (binding.registerIndex <= 1u ||
-                  binding.registerIndex == 7u) &&
-                 binding.count == 1u) ||
-                (binding.kind == Kind::ShaderResource &&
-                 binding.registerSpace == 0u &&
-                 ((binding.registerIndex >= 1u &&
-                   binding.registerIndex <= 3u &&
-                   binding.count == 1u) ||
-                  (binding.registerIndex == 16u &&
-                   binding.count == 1u) ||
-                  (binding.registerIndex == 20u &&
-                   binding.count == 3968u))) ||
-                (binding.kind == Kind::ShaderResource &&
-                 binding.registerSpace == 6u &&
-                 binding.registerIndex <= 1u && binding.count == 1u) ||
-                (binding.kind == Kind::Sampler &&
-                 binding.registerSpace == 0u &&
-                 binding.registerIndex <= 1u && binding.count == 1u);
+                (binding.kind == Kind::ConstantBuffer && binding.registerSpace == 0u &&
+                 (binding.registerIndex <= 2u || binding.registerIndex == 4u || binding.registerIndex == 5u || binding.registerIndex == 7u) && binding.count == 1u) ||
+                (binding.kind == Kind::ShaderResource && binding.registerSpace == 0u &&
+                 (((binding.registerIndex >= 1u && binding.registerIndex <= 4u) || binding.registerIndex == 9u ||
+                   binding.registerIndex == 10u || binding.registerIndex == 16u) && binding.count == 1u ||
+                  (binding.registerIndex == 20u && binding.count == 3968u))) ||
+                (binding.kind == Kind::ShaderResource && binding.registerSpace == 5u && binding.registerIndex <= 2u && binding.count == 1u) ||
+                (binding.kind == Kind::ShaderResource && binding.registerSpace == 6u && binding.registerIndex <= 1u && binding.count == 1u) ||
+                MatchesRenderGeometryBinding(binding,Kind::ShaderResource,9u,0u) ||
+                (binding.kind == Kind::Sampler && binding.registerSpace == 0u && binding.registerIndex <= 2u && binding.count == 1u);
         case RenderGeometryRootLayout::WorldSpriteDraw:
+            return
+                (binding.kind == Kind::ConstantBuffer && binding.registerSpace == 0u &&
+                 binding.registerIndex <= 5u && binding.count == 1u) ||
+                (binding.kind == Kind::ShaderResource && binding.registerSpace == 0u &&
+                 ((binding.registerIndex == 1u || binding.registerIndex == 9u || binding.registerIndex == 10u) && binding.count == 1u ||
+                  binding.registerIndex == 20u && binding.count == 3968u)) ||
+                (binding.kind == Kind::ShaderResource && binding.registerSpace == 5u && binding.registerIndex <= 2u && binding.count == 1u) ||
+                MatchesRenderGeometryBinding(binding,Kind::ShaderResource,9u,0u) ||
+                (binding.kind == Kind::Sampler && binding.registerSpace == 0u && (binding.registerIndex == 0u || binding.registerIndex == 2u) && binding.count == 1u);
         case RenderGeometryRootLayout::WorldTextDraw:
             return
                 MatchesRenderGeometryBinding(
@@ -661,17 +672,15 @@ namespace HIKARI::ASSETS::SHADER {
             outDiagnostic = "RenderGeometry artifact identity is invalid";
             return false;
         }
-        const size_t expectedEntryCount =
+        const size_t expectedEntryCount = rootLayout == RenderGeometryRootLayout::ParticleDraw ?
+            (artifact.programId == "HIKARI.EngineShader.Render3D_ParticleGpuDrivenRaster" ? 2u : 4u) :
             rootLayout ==
                     RenderGeometryRootLayout::ParticleSimulation ||
                 rootLayout ==
-                    RenderGeometryRootLayout::ParticleCompaction ||
-                rootLayout ==
-                    RenderGeometryRootLayout::ParticleDraw
+                    RenderGeometryRootLayout::ParticleCompaction
                 ? 3u
-                : rootLayout ==
-                        RenderGeometryRootLayout::WorldSpriteDraw ||
-                    rootLayout == RenderGeometryRootLayout::WorldTextDraw
+                : rootLayout == RenderGeometryRootLayout::WorldSpriteDraw ? 5u
+                    : rootLayout == RenderGeometryRootLayout::WorldTextDraw
                     ? 2u
                     : 1u;
         if (artifact.entries.size() != expectedEntryCount) {

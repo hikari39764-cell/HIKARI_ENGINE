@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [ValidateSet('debug', 'editor-release', 'game-shipping')]
-    [string]$Preset = 'debug',
+    [string]$Preset = 'editor-release',
 
     [switch]$ConfigureOnly,
 

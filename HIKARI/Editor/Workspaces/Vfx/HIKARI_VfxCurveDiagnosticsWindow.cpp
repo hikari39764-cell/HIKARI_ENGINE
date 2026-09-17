@@ -1,3 +1,5 @@
+#include "Core/Text/HIKARI_Localization.h"
+#include "Editor/Workspaces/Vfx/HIKARI_VfxInspectorControls.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 
 #include <algorithm>
@@ -35,39 +37,21 @@ namespace HIKARI::EDITOR {
             const VFX::VfxEmitterData& emitter) {
 
             std::vector<CurveChoice> choices{};
-            constexpr std::array<std::string_view, 4u> xyz{
-                "x", "y", "z", ""
-            };
-            constexpr std::array<std::string_view, 4u> rgba{
-                "r", "g", "b", "a"
-            };
-            if (emitter.position.value.mode ==
-                VFX::VfxAnimatedValueMode::Curve) {
-                choices.push_back({
-                    emitter.position.id, "value", "Position / Value",
-                    xyz, 3u
+            for (const auto &track : CollectVfxTimelineCurves(emitter)) {
+                auto found = std::find_if(choices.begin(), choices.end(), [&](const auto &c) {
+                    return c.moduleId == track.address.moduleId && c.propertyId == track.address.propertyId;
                 });
-            }
-            if (emitter.rotation.eulerDegrees.mode ==
-                VFX::VfxAnimatedValueMode::Curve) {
-                choices.push_back({
-                    emitter.rotation.id, "eulerDegrees",
-                    "Rotation / Euler Degrees", xyz, 3u
-                });
-            }
-            if (emitter.scale.value.mode ==
-                VFX::VfxAnimatedValueMode::Curve) {
-                choices.push_back({
-                    emitter.scale.id, "value", "Scale / Value",
-                    xyz, 3u
-                });
-            }
-            if (emitter.color.value.mode ==
-                VFX::VfxAnimatedColorMode::Curve) {
-                choices.push_back({
-                    emitter.color.id, "value", "Color / Value",
-                    rgba, 4u
-                });
+                const std::string_view channels[]{"x", "y", "z", "r", "g", "b", "a"};
+                const auto channel = *std::find_if(std::begin(channels), std::end(channels),
+                                                   [&](auto c) { return c == track.address.channel; });
+                if (found == choices.end())
+                    choices.push_back({track.address.moduleId,
+                                       track.address.propertyId,
+                                       VfxUiText(track.label),
+                                       {channel},
+                                       1});
+                else if (found->channelCount < 4)
+                    found->channels[found->channelCount++] = channel;
             }
             return choices;
         }
@@ -79,7 +63,7 @@ namespace HIKARI::EDITOR {
             std::string& selectedStopId,
             std::string& statusMessage) {
 
-            ImGui::SeparatorText("Color Gradient");
+            ImGui::SeparatorText(VfxUiText("Color Gradient").c_str());
             const ImVec2 size{
                 (std::max)(ImGui::GetContentRegionAvail().x, 220.0f),
                 58.0f
@@ -150,7 +134,7 @@ namespace HIKARI::EDITOR {
                     "value",
                 });
             }
-            if (ImGui::Button("+ Stop")) {
+            if (ImGui::Button(VfxUiText("+ Stop").c_str())) {
                 std::string id{};
                 (void)controller.AddColorStop(
                     emitter.id,
@@ -161,7 +145,7 @@ namespace HIKARI::EDITOR {
             }
             ImGui::SameLine();
             ImGui::BeginDisabled(selectedStopId.empty());
-            if (ImGui::Button("Delete Stop")) {
+            if (ImGui::Button(VfxUiText("Delete Stop").c_str())) {
                 (void)controller.RemoveColorStop(
                     emitter.id,
                     emitter.color.id,
@@ -182,16 +166,16 @@ namespace HIKARI::EDITOR {
     void VfxWorkspaceController::DrawCurveDiagnosticsWindow() {
 #if defined(HIKARI_WITH_EDITOR)
         if (!ImGui::Begin(
-                "Timeline & Curves###Vfx/CurvesDiagnostics")) {
+                (VfxUiText("Timing & Curves") + "###Vfx/CurvesDiagnostics").c_str())) {
             ImGui::End();
             return;
         }
         if (ImGui::BeginTabBar("VfxBottomTabs")) {
-            if (ImGui::BeginTabItem("Timeline")) {
+            if (ImGui::BeginTabItem(VfxUiText("Timeline").c_str())) {
                 DrawTimeline();
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem("Curves")) {
+            if (ImGui::BeginTabItem(VfxUiText("Curves").c_str())) {
                 const VFX::VfxEmitterData* emitter =
                     FindEmitter(selection_.emitterId);
                 if (emitter == nullptr && document_.IsOpen() &&
@@ -202,11 +186,11 @@ namespace HIKARI::EDITOR {
                     DrawCurveEditor(*emitter);
                 } else {
                     ImGui::TextDisabled(
-                        "Select or create an emitter to edit curves.");
+                        VfxUiText("Select or create an emitter to edit curves.").c_str());
                 }
                 ImGui::EndTabItem();
             }
-            const std::string diagnosticsLabel = "Diagnostics (" +
+            const std::string diagnosticsLabel = VfxUiText("Diagnostics").append(" (") +
                 std::to_string(diagnostics_.size()) + ")";
             if (ImGui::BeginTabItem(diagnosticsLabel.c_str())) {
                 DrawDiagnostics();
@@ -272,7 +256,7 @@ namespace HIKARI::EDITOR {
             }
         } else {
             ImGui::TextDisabled(
-                "Set Position, Rotation, Scale or Color mode to Curve in the Inspector.");
+                VfxUiText("Set Position, Rotation, Scale or Color mode to Curve in the Inspector.").c_str());
         }
 
         if (activeChoice != choices.end()) {
@@ -299,6 +283,14 @@ namespace HIKARI::EDITOR {
             };
             if (const VFX::VfxCurveData* curve =
                     ResolveVfxCurve(emitter, address)) {
+                const std::string curvePath=address.propertyId=="curve"?"curve":address.propertyId+".curve."+address.channel;
+                if (ImGui::BeginCombo(VfxUiText("Interpolation").c_str(),VFX::ToString(curve->interpolation).data())) {
+                    for (const char* mode:{"Linear","Smooth","Step"}) if (ImGui::Selectable(VfxUiText(mode).c_str()))
+                        (void)SetProperty(address.moduleId,curvePath+".interpolation",mode,statusMessage_);
+                    ImGui::EndCombo();
+                }
+                ImGui::TextDisabled("%s",TEXT::Localize(emitter.kind==VFX::VfxLayerKind::Particles && address.propertyId!="curve" ?
+                    "ui.vfx.timeline.particleTime":"ui.vfx.timeline.compositionTime").c_str());
                 const ImVec2 size{
                     (std::max)(ImGui::GetContentRegionAvail().x, 240.0f),
                     172.0f
@@ -321,100 +313,138 @@ namespace HIKARI::EDITOR {
                 }
                 float minimum = 0.0f;
                 float maximum = 1.0f;
-                for (const auto& key : curve->keys) {
+                for (const auto &key : curve->keys) {
                     minimum = (std::min)(minimum, key.value);
                     maximum = (std::max)(maximum, key.value);
                 }
-                if (maximum - minimum < 0.001f) maximum = minimum + 1.0f;
+                if (maximum - minimum < 0.001f)
+                    maximum = minimum + 1.0f;
+                if (timelineEdit_.curveDragging) {
+                    minimum = timelineEdit_.curveMinimum;
+                    maximum = timelineEdit_.curveMaximum;
+                }
                 const auto point = [&](float time, float value) {
                     return ImVec2{
                         origin.x + time * size.x,
-                        origin.y + size.y -
-                            (value - minimum) /
-                                (maximum - minimum) * size.y,
+                        origin.y + size.y - (value - minimum) / (maximum - minimum) * size.y,
                     };
                 };
-                for (size_t index = 1u;
-                     index < curve->keys.size();
-                     ++index) {
-                    const auto& previous = curve->keys[index - 1u];
-                    const auto& next = curve->keys[index];
-                    ImVec2 previousPoint = point(
-                        previous.time, previous.value);
-                    constexpr int kSegments = 24;
-                    for (int segment = 1;
-                         segment <= kSegments;
-                         ++segment) {
-                        const float linear =
-                            static_cast<float>(segment) / kSegments;
-                        const float amount =
-                            curve->interpolation ==
-                                    VFX::VfxCurveInterpolation::Step
-                                ? 0.0f
-                                : curve->interpolation ==
-                                        VFX::VfxCurveInterpolation::Smooth
-                                    ? linear * linear *
-                                        (3.0f - 2.0f * linear)
-                                    : linear;
-                        const ImVec2 current = point(
-                            previous.time +
-                                (next.time - previous.time) * linear,
-                            previous.value +
-                                (next.value - previous.value) * amount);
-                        drawList->AddLine(
-                            previousPoint,
-                            current,
-                            IM_COL32(91, 205, 255, 255),
-                            2.0f);
-                        previousPoint = current;
-                    }
+                std::vector<RENDER3D::PARTICLES::ParticleCurveKey> samples;
+                for (const auto &key : curve->keys)
+                    samples.push_back({key.time, key.value, key.inTangent, key.outTangent});
+                std::sort(samples.begin(), samples.end(),
+                          [](const auto &a, const auto &b) { return a.time < b.time; });
+                ImVec2 previous{};
+                for (int i = 0; i <= 192; ++i) {
+                    const float time = float(i) / 192;
+                    const auto current =
+                        point(time, RENDER3D::PARTICLES::EvaluateParticleCurve(
+                                        samples,
+                                        static_cast<RENDER3D::PARTICLES::ParticleCurveInterpolation>(
+                                            curve->interpolation),
+                                        time));
+                    if (i)
+                        drawList->AddLine(previous, current, IM_COL32(91, 205, 255, 255), 2);
+                    previous = current;
                 }
-                for (const auto& key : curve->keys) {
-                    drawList->AddCircleFilled(
-                        point(key.time, key.value),
-                        selectedCurveKeyId_ == key.id ? 6.0f : 4.0f,
-                        selectedCurveKeyId_ == key.id
-                            ? IM_COL32(255, 224, 110, 255)
-                            : IM_COL32(91, 205, 255, 255));
+                for (const auto &key : curve->keys) {
+                    drawList->AddCircleFilled(point(key.time, key.value),
+                                              selectedCurveKeyId_ == key.id ? 6.0f : 4.0f,
+                                              selectedCurveKeyId_ == key.id ? IM_COL32(255, 224, 110, 255)
+                                                                            : IM_COL32(91, 205, 255, 255));
                 }
                 ImGui::InvisibleButton("##VfxCurve", size);
-                if (ImGui::IsItemClicked()) {
+                if (ImGui::IsItemClicked() && !timelineEdit_.baseline &&
+                    !timelineEdit_.suppressDragUntilRelease) {
                     const ImVec2 mouse = ImGui::GetIO().MousePos;
-                    float nearestDistance = 12.0f;
-                    for (const auto& key : curve->keys) {
-                        const ImVec2 position = point(key.time, key.value);
-                        const float dx = mouse.x - position.x;
-                        const float dy = mouse.y - position.y;
-                        const float distance = std::sqrt(dx * dx + dy * dy);
+                    float nearestDistance = 12;
+                    selectedCurveKeyId_.clear();
+                    for (const auto &key : curve->keys) {
+                        const auto p = point(key.time, key.value);
+                        const float distance = std::hypot(mouse.x - p.x, mouse.y - p.y);
                         if (distance < nearestDistance) {
                             nearestDistance = distance;
                             selectedCurveKeyId_ = key.id;
                         }
                     }
                     if (!selectedCurveKeyId_.empty()) {
-                        Select({
-                            VfxWorkspaceSelectionKind::CurveKey,
-                            selectedCurveKeyId_,
-                            emitter.id,
-                            address.moduleId,
-                            address.propertyId,
-                            address.channel,
-                        });
+                        Select({VfxWorkspaceSelectionKind::CurveKey, selectedCurveKeyId_, emitter.id,
+                                address.moduleId, address.propertyId, address.channel});
+                        BeginTimelineEdit();
+                        timelineEdit_.curveDragging = true;
+                        timelineEdit_.curveMinimum = minimum;
+                        timelineEdit_.curveMaximum = maximum;
                     }
                 }
-                if (ImGui::Button("+ Key")) {
+                if (timelineEdit_.curveDragging && timelineEdit_.baseline) {
+                    if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+                        EndTimelineEdit(true);
+                        timelineEdit_.suppressDragUntilRelease = true;
+                    } else if (!ImGui::IsMouseDown(0))
+                        EndTimelineEdit(false);
+                    else if (ImGui::IsMouseDragging(0)) {
+                        auto next = *timelineEdit_.baseline;
+                        auto *target = FindEmitterMutable(next, emitter.id);
+                        auto *edited = target ? ResolveVfxCurve(*target, address) : nullptr;
+                        if (edited) {
+                            auto found =
+                                std::find_if(edited->keys.begin(), edited->keys.end(),
+                                             [&](const auto &k) { return k.id == selectedCurveKeyId_; });
+                            if (found != edited->keys.end()) {
+                                float lo = 0, hi = 1;
+                                for (const auto &neighbor : edited->keys)
+                                    if (neighbor.id != found->id) {
+                                        if (neighbor.time < found->time)
+                                            lo = (std::max)(lo, neighbor.time + 0.0001f);
+                                        else
+                                            hi = (std::min)(hi, neighbor.time - 0.0001f);
+                                    }
+                                float time =
+                                    std::clamp((ImGui::GetIO().MousePos.x - origin.x) / size.x, 0.0f, 1.0f);
+                                const bool particleTime = emitter.kind == VFX::VfxLayerKind::Particles &&
+                                                          address.propertyId != "curve";
+                                const float span = emitter.activeDuration > 0
+                                                       ? emitter.activeDuration
+                                                       : next.durationSeconds - emitter.startDelay;
+                                if (timelineEdit_.snap && !particleTime && !ImGui::GetIO().KeyShift) {
+                                    float seconds =
+                                        emitter.startDelay + emitter.animationTiming.LayerSeconds(time, span);
+                                    seconds = std::round(seconds * 60) / 60;
+                                    time = emitter.animationTiming.Normalized(seconds - emitter.startDelay,
+                                                                              span);
+                                }
+                                found->time = std::clamp(time, lo, hi);
+                                found->value =
+                                    minimum + (1 - (ImGui::GetIO().MousePos.y - origin.y) / size.y) *
+                                                  (maximum - minimum);
+                                if (address.propertyId == "curve")
+                                    for (const auto &track : emitter.parameterTracks)
+                                        if (track.id == address.moduleId)
+                                            for (const auto &p : VFX::GetVfxAnimatableParameters(emitter))
+                                                if (p.targetId == track.targetId &&
+                                                    p.propertyId == track.propertyId)
+                                                    found->value =
+                                                        std::clamp(found->value, p.minimum, p.maximum);
+                                if (address.moduleId == emitter.color.id && address.channel == "a")
+                                    found->value = std::clamp(found->value, 0.0f, 1.0f);
+                                std::sort(edited->keys.begin(), edited->keys.end(),
+                                          [](const auto &a, const auto &b) { return a.time < b.time; });
+                                (void)ApplyAsset(std::move(next), statusMessage_,
+                                                 VfxTimelineEditState::mergeGroup);
+                            }
+                        }
+                    }
+                }
+                if (!ImGui::IsMouseDown(0))
+                    timelineEdit_.suppressDragUntilRelease = false;
+                if (ImGui::Button(VfxUiText("+ Key").c_str())) {
                     std::string id{};
-                    (void)AddCurveKey(
-                        emitter.id,
-                        address.moduleId,
-                        address.propertyId,
-                        address.channel,
-                        id,
-                        statusMessage_);
+                    (void)AddCurveKey(emitter.id, address.moduleId, address.propertyId, address.channel, id,
+                                      statusMessage_);
                 }
                 ImGui::SameLine();
                 ImGui::BeginDisabled(selectedCurveKeyId_.empty());
-                if (ImGui::Button("Delete Key")) {
+                if (ImGui::Button(VfxUiText("Delete Key").c_str())) {
                     (void)RemoveCurveKey(
                         emitter.id,
                         address.moduleId,
@@ -428,7 +458,7 @@ namespace HIKARI::EDITOR {
                 ImGui::TextDisabled(
                     "%zu / %u keys | %s",
                     curve->keys.size(),
-                    RENDER3D::PARTICLES::kMaxParticleCurveKeys,
+                    emitter.kind==VFX::VfxLayerKind::Particles && address.propertyId!="curve" ? RENDER3D::PARTICLES::kMaxParticleCurveKeys : VFX::kMaxVfxLayerCurveKeys,
                     VFX::ToString(curve->interpolation).data());
             }
         }

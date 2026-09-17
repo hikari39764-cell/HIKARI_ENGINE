@@ -3,6 +3,7 @@
 #include <cmath>
 #include <limits>
 #include <utility>
+#include "Scene/Serialization/Objects/HIKARI_SceneObjectJson.h"
 
 namespace HIKARI {
     namespace {
@@ -173,7 +174,7 @@ namespace HIKARI {
                 { "playOnStart", slot.playOnStart },
                 { "triggerEventId", slot.triggerEventId },
                 { "spawnTarget", std::string(ToString(slot.spawnTarget)) },
-                { "fixedObjectId", slot.fixedObjectId.value },
+                { "fixedObjectId", SCENE::SERIALIZATION::WriteSceneObjectReference(slot.fixedObjectId.value) },
                 { "followTarget", slot.followTarget },
                 { "offset", {
                     { "position", WriteVec3(slot.offset.position) },
@@ -297,14 +298,11 @@ namespace HIKARI {
                             outDiagnostic,
                             slotPath + ".spawnTarget is invalid");
                     }
-                    if (!ReadUint64(
-                            node,
-                            "fixedObjectId",
-                            0u,
-                            slot.fixedObjectId.value,
-                            outDiagnostic,
-                            slotPath) ||
-                        !ReadBool(
+                    if (const auto target = node.find("fixedObjectId"); target != node.end() &&
+                        !SCENE::SERIALIZATION::ReadSceneObjectReference(*target, slot.fixedObjectId.value)) {
+                        return Fail(outDiagnostic, slotPath + ".fixedObjectId must be a scene object reference");
+                    }
+                    if (!ReadBool(
                             node,
                             "followTarget",
                             true,

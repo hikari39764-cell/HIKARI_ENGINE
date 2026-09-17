@@ -8,6 +8,7 @@
 #include <ShlObj.h>
 
 #include "Core/HIKARI_Logger.h"
+#include "Runtime/HIKARI_RuntimeLaunchConfig.h"
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Editor/HIKARI_EditorStyle.h"
 #include "Editor/HIKARI_EditorViewportInput.h"
@@ -110,7 +111,12 @@ namespace HIKARI::EDITOR {
                 io.IniFilename = iniPathStorage_.c_str();
             }
             io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-            io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+            if (HasRuntimeCommandLineFlag(L"--headless-render")) {
+                io.IniFilename = nullptr;
+                io.ConfigFlags &= ~ImGuiConfigFlags_ViewportsEnable;
+            } else {
+                io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+            }
             io.ConfigDockingWithShift = false;
             io.ConfigDockingTransparentPayload = true;
             io.ConfigViewportsNoAutoMerge = false;

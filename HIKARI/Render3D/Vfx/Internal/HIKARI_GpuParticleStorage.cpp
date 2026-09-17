@@ -15,6 +15,19 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
     namespace {
         using Microsoft::WRL::ComPtr;
 
+        void TransitionBuffer(const GFX::Context& context, ID3D12Resource* resource,
+            D3D12_RESOURCE_STATES& state, D3D12_RESOURCE_STATES nextState) {
+            if (context.cmdList == nullptr || resource == nullptr || state == nextState) return;
+            if (context.resourceStates != nullptr)
+                context.resourceStates->Transition(context.cmdList,resource,state,nextState);
+            else {
+                const auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(resource,state,nextState);
+                context.cmdList->ResourceBarrier(1u,&barrier);
+            }
+            state = nextState;
+        }
+
+
     }
 
     bool GpuParticleStorage::Initialize(
@@ -102,12 +115,13 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
                 drawCounters_) ||
             !createGpuBuffer(
                 static_cast<UINT64>(drawCapacity) *
-                    sizeof(D3D12_DISPATCH_MESH_ARGUMENTS),
-                L"HIKARI Particle Mesh Dispatch Argument Buffer",
+                    kGpuParticleDrawArgumentStride,
+                L"HIKARI Particle Draw Argument Buffer",
                 drawArguments_)) {
             return false;
         }
         drawArgumentState_ = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        drawCounterState_ = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         aliveIndexState_ = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
         for (uint32_t index = 0u;
@@ -168,6 +182,7 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
         emitterPageCapacity_ = 0u;
         particleState_ = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         drawArgumentState_ = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        drawCounterState_ = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         aliveIndexState_ = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
     }
 
@@ -179,25 +194,7 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
     void GpuParticleStorage::Transition(
         const GFX::Context& context,
         D3D12_RESOURCE_STATES nextState) {
-        if (particles_ == nullptr || context.cmdList == nullptr ||
-            particleState_ == nextState) {
-            return;
-        }
-        if (context.resourceStates != nullptr) {
-            context.resourceStates->Transition(
-                context.cmdList,
-                particles_.Get(),
-                particleState_,
-                nextState);
-        } else {
-            const D3D12_RESOURCE_BARRIER barrier =
-                CD3DX12_RESOURCE_BARRIER::Transition(
-                    particles_.Get(),
-                    particleState_,
-                    nextState);
-            context.cmdList->ResourceBarrier(1u, &barrier);
-        }
-        particleState_ = nextState;
+        TransitionBuffer(context,particles_.Get(),particleState_,nextState);
     }
 
     void GpuParticleStorage::InsertUavBarrier(
@@ -255,50 +252,22 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
         context.cmdList->ResourceBarrier(1u, &barrier);
     }
 
+    void GpuParticleStorage::TransitionDrawCounters(
+        const GFX::Context& context,
+        D3D12_RESOURCE_STATES nextState) {
+        TransitionBuffer(context,drawCounters_.Get(),drawCounterState_,nextState);
+    }
+
     void GpuParticleStorage::TransitionDrawArguments(
         const GFX::Context& context,
         D3D12_RESOURCE_STATES nextState) {
-        if (context.cmdList == nullptr || drawArguments_ == nullptr ||
-            drawArgumentState_ == nextState) {
-            return;
-        }
-        if (context.resourceStates != nullptr) {
-            context.resourceStates->Transition(
-                context.cmdList,
-                drawArguments_.Get(),
-                drawArgumentState_,
-                nextState);
-        } else {
-            const auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-                drawArguments_.Get(),
-                drawArgumentState_,
-                nextState);
-            context.cmdList->ResourceBarrier(1u, &barrier);
-        }
-        drawArgumentState_ = nextState;
+        TransitionBuffer(context,drawArguments_.Get(),drawArgumentState_,nextState);
     }
 
     void GpuParticleStorage::TransitionAliveIndices(
         const GFX::Context& context,
         D3D12_RESOURCE_STATES nextState) {
-        if (context.cmdList == nullptr || aliveIndices_ == nullptr ||
-            aliveIndexState_ == nextState) {
-            return;
-        }
-        if (context.resourceStates != nullptr) {
-            context.resourceStates->Transition(
-                context.cmdList,
-                aliveIndices_.Get(),
-                aliveIndexState_,
-                nextState);
-        } else {
-            const auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-                aliveIndices_.Get(),
-                aliveIndexState_,
-                nextState);
-            context.cmdList->ResourceBarrier(1u, &barrier);
-        }
-        aliveIndexState_ = nextState;
+        TransitionBuffer(context,aliveIndices_.Get(),aliveIndexState_,nextState);
     }
 
     bool GpuParticleStorage::WriteEmitterParameters(

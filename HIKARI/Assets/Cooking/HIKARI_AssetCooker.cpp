@@ -1,3 +1,4 @@
+#include "Assets/Sequence/HIKARI_SequenceAsset.h"
 #include "Assets/Cooking/HIKARI_AssetCooker.h"
 
 #include <algorithm>
@@ -474,6 +475,14 @@ namespace HIKARI::ASSETS::COOKING {
             CookPlan& plan,
             std::string& outMessage) {
 
+            if (record.type == AssetType::Sequence) {
+                std::filesystem::path path;
+                if (!ResolveContainedFilePath(projectRoot, record.sourcePath, path, outMessage)) return false;
+                SequenceAsset asset;
+                if (!LoadSequenceAsset(path, record.guid, asset, &outMessage)) return false;
+                plan.sourceDependencies.insert_or_assign(record.guid.value, CollectSequenceDependencies(asset.sequence));
+                return true;
+            }
             if (record.type != AssetType::ModelMaterialBinding) {
                 return true;
             }
@@ -521,6 +530,19 @@ namespace HIKARI::ASSETS::COOKING {
             const auto it = plan.sourceDependencies.find(record.guid.value);
             return it != plan.sourceDependencies.end()
                 ? it->second : record.artifactManifest.dependencies;
+        }
+
+        bool ValidateCueAudioPayload(const AssetCookOptions& options,
+            const AssetDependencyDesc& dependency, std::string& message) {
+            const auto path = std::filesystem::path(dependency.path);
+            const bool declared = std::any_of(options.runtimePayloadRoots.begin(), options.runtimePayloadRoots.end(),
+                [&](const auto& root) { return IsDeclaredProjectAssetRoot(root) && IsPathWithinRoot(path, root); });
+            if (!declared) {
+                message = "Sequence audio requires a runtimePayloadRoots entry covering: " + dependency.path;
+                return false;
+            }
+            std::filesystem::path resolved;
+            return ResolveContainedFilePath(options.projectRoot, path, resolved, message);
         }
 
         bool BuildCookPlan(
@@ -638,6 +660,11 @@ namespace HIKARI::ASSETS::COOKING {
                     return false;
                 }
 
+                for (const auto& sequence : document.cinematics.sequences) {
+                    for (const auto& dependency : CollectSequenceDependencies(sequence))
+                        if (dependency.role == "Sequence.AudioCue" &&
+                            !ValidateCueAudioPayload(options, dependency, outMessage)) return false;
+                }
                 AssetUsageSummary usage =
                     AnalyzeAssetUsage(
                         document,
@@ -760,6 +787,10 @@ namespace HIKARI::ASSETS::COOKING {
                         continue;
                     }
 
+                    if (dependency.role == "Sequence.AudioCue") {
+                        if (!ValidateCueAudioPayload(options, dependency, outMessage)) return false;
+                        continue;
+                    }
                     const AssetRecord* dependencyRecord = nullptr;
                     if (dependency.guid.IsValid()) {
                         dependencyRecord =
@@ -1324,6 +1355,11 @@ namespace HIKARI::ASSETS::COOKING {
                     continue;
                 }
 
+                if (dependency.role == "Sequence.AudioCue") {
+                    dependency.path = MakeRuntimePayloadPath(dependency.path).generic_string();
+                    dependencies.push_back(std::move(dependency));
+                    continue;
+                }
                 const AssetRecord* dependencyRecord = nullptr;
                 if (dependency.guid.IsValid()) {
                     dependencyRecord =

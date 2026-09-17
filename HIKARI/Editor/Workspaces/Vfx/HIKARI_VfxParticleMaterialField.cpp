@@ -1,3 +1,4 @@
+#include "Editor/Workspaces/Vfx/HIKARI_VfxInspectorControls.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxParticleMaterialField.h"
 
 #include <string>
@@ -160,9 +161,9 @@ namespace HIKARI::EDITOR {
                 "The assigned asset is missing or is not a renderable Material.");
         } else if (catalog.choices.empty()) {
             ImGui::TextDisabled(
-                "No Material exists yet. The built-in VFX fallback remains usable.");
+                VfxUiText("No Material exists yet. The built-in VFX fallback remains usable.").c_str());
         }
-        if (ImGui::Button("Create VFX Material")) {
+        if (ImGui::Button(VfxUiText("Create VFX Material").c_str())) {
             ASSETS::MATERIAL::MaterialAssetAuthoringService service(
                 assetDatabase);
             const ASSETS::MATERIAL::MaterialAuthoringResult created =
@@ -179,13 +180,13 @@ namespace HIKARI::EDITOR {
         }
         ImGui::SameLine();
         ImGui::BeginDisabled(!current.IsValid() || selected == nullptr);
-        if (ImGui::Button("Edit Material")) {
+        if (ImGui::Button(VfxUiText("Edit Material").c_str())) {
             outEditAssetGuid = current;
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
         ImGui::TextDisabled(
-            "Surface and Particle materials share the main runtime; particle geometry supplies UV and Tint.");
+            VfxUiText("Surface and Particle materials share the main runtime; particle geometry supplies UV and Tint.").c_str());
         return changed;
 #else
         (void)assetDatabase;
@@ -220,16 +221,16 @@ namespace HIKARI::EDITOR {
                 break;
             }
         }
-        const char* preview = !current.IsValid()
-            ? "None (white particle)"
+        const std::string preview = !current.IsValid()
+            ? VfxUiText("None (white particle)")
             : selected != nullptr
-                ? selected->label.c_str()
-                : "Missing texture";
+                ? selected->label
+                : VfxUiText("Missing texture");
         bool changed = false;
         ImGui::BeginGroup();
-        if (ImGui::BeginCombo("Color Texture", preview)) {
+        if (ImGui::BeginCombo(VfxUiText("Color Texture").c_str(), preview.c_str())) {
             if (ImGui::Selectable(
-                    "None (white particle)", !current.IsValid())) {
+                    VfxUiText("None (white particle)").c_str(), !current.IsValid())) {
                 outSelected = {};
                 changed = true;
             }
@@ -237,11 +238,11 @@ namespace HIKARI::EDITOR {
             bool builtInHeaderDrawn = false;
             for (const VfxParticleTextureChoice& choice : catalog.choices) {
                 if (!choice.builtIn && !separatorDrawn) {
-                    ImGui::SeparatorText("Project Textures");
+                    ImGui::SeparatorText(VfxUiText("Project Textures").c_str());
                     separatorDrawn = true;
                 }
                 if (choice.builtIn && !builtInHeaderDrawn) {
-                    ImGui::SeparatorText("Engine VFX Textures");
+                    ImGui::SeparatorText(VfxUiText("Engine VFX Textures").c_str());
                     builtInHeaderDrawn = true;
                 }
                 ImGui::PushID(choice.guid.value.c_str());
@@ -273,7 +274,7 @@ namespace HIKARI::EDITOR {
                 "The assigned particle texture is missing.");
         }
         ImGui::TextDisabled(
-            "Engine VFX textures are shared; project Texture assets can be dropped here.");
+            VfxUiText("Engine VFX textures are shared; project Texture assets can be dropped here.").c_str());
         return changed;
 #else
         (void)assetDatabase;

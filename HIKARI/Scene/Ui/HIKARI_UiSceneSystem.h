@@ -30,7 +30,8 @@ namespace HIKARI {
         }
         void OnWorldAttached(World& world) override;
         void OnWorldDetached(World& world) override;
-        void Update(World& world, const FrameContext& frame) override;
+        // 入力を component Update より前に公開し、同一フレームで消費させる。
+        void PreUpdate(World& world, const FrameContext& frame) override;
         void PreRender(World& world, const FrameContext& frame) override;
 
     public:
@@ -95,9 +96,11 @@ namespace HIKARI {
         RuntimeObjectHandle pressedButton_{};
         float elapsedSeconds_ = 0.0f;
         float previousNavigationY_ = 0.0f;
+        float previousPointerX_ = 0, previousPointerY_ = 0;
         bool pointerInitialized_ = false;
         bool previousPrimaryDown_ = false;
         bool ownsMouseCapture_ = false;
+        bool previousUiInteraction_ = false, previousUiContext_ = false;
         INPUT::MouseCaptureMode previousMouseCaptureMode_ =
             INPUT::MouseCaptureMode::Free;
     };

@@ -87,6 +87,9 @@ namespace HIKARI::RENDER3D::MATERIAL {
         ValueNoise,
         Voronoi,
         Fresnel,
+        ParticleState,
+        ParticleColor,
+        ParticleUv,
     };
 
     struct MaterialExpressionRuntimeProgram {
@@ -98,6 +101,8 @@ namespace HIKARI::RENDER3D::MATERIAL {
         std::vector<MATH::Vec4> parameters{};
         std::vector<uint32_t> resourceBindingIndices{};
         std::vector<std::pair<std::string, uint32_t>> nodeInstructionCounts{};
+        // Parameter binding -> float4 slot. Enables value-only instance updates.
+        std::vector<std::pair<uint32_t, uint32_t>> parameterValueSlots{};
     };
 
     struct MaterialExpressionBudget {

@@ -1,14 +1,115 @@
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceDomain.h"
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
+#include "Render3D/Vfx/HIKARI_ParticleCpuSimulation.h"
+#include "Assets/Vfx/Compiler/HIKARI_VfxCompiler.h"
 
 namespace HIKARI::EDITOR {
+    bool VfxWorkspaceController::SetLayerTransformKey(std::string_view layerId, std::string_view property,
+                                                      float seconds, const MATH::Vec3 &value,
+                                                      std::string &message, uint64_t mergeGroup) {
+        return SetLayerValueKey(layerId, property, seconds, {value.x, value.y, value.z, 0}, message,
+                                mergeGroup);
+    }
+    bool VfxWorkspaceController::SetLayerColorKey(std::string_view layerId, float seconds,
+                                                  const MATH::Vec4 &value, std::string &message,
+                                                  uint64_t mergeGroup) {
+        return SetLayerValueKey(layerId, "color", seconds, value, message, mergeGroup);
+    }
+    bool VfxWorkspaceController::SetLayerValueKey(std::string_view layerId, std::string_view property,
+                                                  float seconds, const MATH::Vec4 &value,
+                                                  std::string &message, uint64_t mergeGroup) {
+        auto next = document_.Asset();
+        auto *layer = FindEmitterMutable(next, layerId);
+        if (!layer || layer->kind == VFX::VfxLayerKind::Particles || !std::isfinite(seconds) ||
+            !std::isfinite(value.x) || !std::isfinite(value.y) || !std::isfinite(value.z) ||
+            !std::isfinite(value.w)) {
+            message = "Layer keys require a shape/group and finite values";
+            return false;
+        }
+        const bool color = property == "color";
+        auto *track = property == "position"   ? &layer->position.value
+                      : property == "rotation" ? &layer->rotation.eulerDegrees
+                      : property == "scale"    ? &layer->scale.value
+                                               : nullptr;
+        const float span =
+            layer->activeDuration > 0 ? layer->activeDuration : next.durationSeconds - layer->startDelay;
+        if ((!track && !color) || span <= 0 || seconds < layer->startDelay ||
+            seconds > layer->startDelay + span) {
+            message = "Key must fit the layer time range";
+            return false;
+        }
+        float time = 0;
+        if (!ResolveVfxLayerKeyTime(next, *layer, seconds, time, message))
+            return false;
+        std::vector<VFX::VfxCurveData *> curves;
+        if (color) {
+            auto &c = layer->color.value.curve;
+            curves = {&c.r, &c.g, &c.b, &c.a};
+        } else
+            curves = {&track->curve.x, &track->curve.y, &track->curve.z};
+        const bool curved = color ? layer->color.value.mode == VFX::VfxAnimatedColorMode::Curve
+                                  : track->mode == VFX::VfxAnimatedValueMode::Curve;
+        if (!curved) {
+            const auto compiled = VFX::CompileVfxAsset(next);
+            if (!compiled.success) {
+                message = "Cannot key an invalid composition";
+                return false;
+            }
+            const auto &program =
+                compiled.program.emitters[static_cast<size_t>(layer - next.emitters.data())];
+            const bool fixed = color ? layer->color.value.mode == VFX::VfxAnimatedColorMode::Fixed
+                                     : track->mode == VFX::VfxAnimatedValueMode::Fixed;
+            const unsigned intervals = fixed ? 1 : 16;
+            for (auto *c : curves) {
+                c->keys.clear();
+                c->randomOffset = VFX::MakeVfxFloatConstant(0);
+                c->interpolation = VFX::VfxCurveInterpolation::Linear;
+            }
+            for (unsigned i = 0; i <= intervals; ++i) {
+                const float t = float(i) / intervals;
+                const auto sample = VFX::EvaluateVfxLayerAnimation(
+                    program, layer->animationTiming.LayerSeconds(t, span), span, 0);
+                const auto v = property == "position"   ? sample.position
+                               : property == "rotation" ? sample.rotationRadians * (180 / 3.14159265f)
+                                                        : sample.scale;
+                const float components[] = {color ? sample.color.x : v.x, color ? sample.color.y : v.y,
+                                            color ? sample.color.z : v.z, sample.color.w};
+                for (size_t c = 0; c < curves.size(); ++c)
+                    curves[c]->keys.push_back({AllocateStableId("layer.key"), t, components[c]});
+            }
+        }
+        const float values[] = {value.x, value.y, value.z, value.w};
+        for (size_t c = 0; c < curves.size(); ++c) {
+            auto &keys = curves[c]->keys;
+            auto key = std::find_if(keys.begin(), keys.end(),
+                                    [&](const auto &k) { return std::abs(k.time - time) < 0.0001f; });
+            if (key != keys.end())
+                key->value = values[c];
+            else {
+                if (keys.size() >= VFX::kMaxVfxLayerCurveKeys) {
+                    message = "Layer key budget reached";
+                    return false;
+                }
+                keys.push_back({AllocateStableId("layer.key"), time, values[c]});
+                std::sort(keys.begin(), keys.end(),
+                          [](const auto &a, const auto &b) { return a.time < b.time; });
+            }
+        }
+        if (color)
+            layer->color.value.mode = VFX::VfxAnimatedColorMode::Curve;
+        else
+            track->mode = VFX::VfxAnimatedValueMode::Curve;
+        return ApplyAsset(std::move(next), message, mergeGroup);
+    }
+
     namespace {
 
         float FindAvailableCurveTime(std::vector<float> times) {
@@ -69,7 +170,7 @@ namespace HIKARI::EDITOR {
             return false;
         }
         if (sourceCurve->keys.size() >=
-            RENDER3D::PARTICLES::kMaxParticleCurveKeys) {
+            (source->kind == VFX::VfxLayerKind::Particles && propertyId != "curve" ? RENDER3D::PARTICLES::kMaxParticleCurveKeys : VFX::kMaxVfxLayerCurveKeys)) {
             outMessage = "GPU VFX curve key limit reached";
             return false;
         }

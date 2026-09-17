@@ -11,19 +11,19 @@ namespace HIKARI::EDITOR {
     void VfxWorkspaceController::DrawInspectorWindow(
         AssetDatabase& database) {
 #if defined(HIKARI_WITH_EDITOR)
-        if (!ImGui::Begin("Properties###Vfx/Inspector")) {
+        if (!ImGui::Begin((VfxUiText("Layer Settings") + "###Vfx/Inspector").c_str())) {
             ImGui::End();
             return;
         }
         if (!document_.IsOpen()) {
-            ImGui::TextDisabled("No VFX document is open.");
+            ImGui::TextDisabled(VfxUiText("No VFX document is open.").c_str());
             ImGui::End();
             return;
         }
 
         if (selection_.kind == VfxWorkspaceSelectionKind::Asset) {
             const VFX::VfxAssetData snapshot = document_.Asset();
-            ImGui::TextDisabled("VFX ASSET");
+            ImGui::TextDisabled(VfxUiText("VFX ASSET").c_str());
             ImGui::TextWrapped(
                 "%s",
                 document_.GetSourcePath().empty()
@@ -41,15 +41,15 @@ namespace HIKARI::EDITOR {
                 3600.0f);
             editor.Bool("Loop in Runtime", "loop", snapshot.loop);
             ImGui::TextDisabled(
-                "Preview loop and range are session-only Timeline settings.");
+                VfxUiText("Preview loop and range are session-only Timeline settings.").c_str());
             ImGui::End();
             return;
         }
 
         if (selection_.kind == VfxWorkspaceSelectionKind::Inputs) {
-            ImGui::TextDisabled("EXPOSED INPUTS");
+            ImGui::TextDisabled(VfxUiText("Exposed Inputs").c_str());
             ImGui::TextWrapped(
-                "Inputs are named parameters supplied by components, systems or the runtime variable bridge. Bind them to emitter properties below.");
+                VfxUiText("Inputs are named parameters supplied by components, systems or the runtime variable bridge. Bind them to emitter properties below.").c_str());
             ImGui::Text("%zu input(s)", document_.Asset().inputs.size());
             ImGui::End();
             return;
@@ -67,7 +67,7 @@ namespace HIKARI::EDITOR {
         const VFX::VfxEmitterData* emitter =
             FindEmitter(selection_.emitterId);
         if (emitter == nullptr) {
-            ImGui::TextDisabled("Select an emitter or exposed input.");
+            ImGui::TextDisabled(VfxUiText("Select an emitter or exposed input.").c_str());
             ImGui::End();
             return;
         }
@@ -83,7 +83,7 @@ namespace HIKARI::EDITOR {
                 const VFX::VfxBurstKeyData snapshot = *key;
                 VfxInspectorPropertyEditor editor(
                     *this, database, snapshot.id, statusMessage_);
-                ImGui::TextDisabled("BURST KEY");
+                ImGui::TextDisabled(VfxUiText("BURST KEY").c_str());
                 editor.Float(
                     "Time (local active)",
                     "time",
@@ -122,7 +122,7 @@ namespace HIKARI::EDITOR {
                 const VFX::VfxColorStopData snapshot = *stop;
                 VfxInspectorPropertyEditor editor(
                     *this, database, snapshot.id, statusMessage_);
-                ImGui::TextDisabled("GRADIENT STOP");
+                ImGui::TextDisabled(VfxUiText("GRADIENT STOP").c_str());
                 editor.Float("Time", "time", snapshot.time, 0.002f, 0.0f, 1.0f);
                 editor.Color("Color", "color", snapshot.color);
             }

@@ -262,7 +262,11 @@ namespace HIKARI {
                         }
                     }
                 } else if (component.type == "ProceduralMeshComponent") {
-                    const auto material = component.properties.value("materialSelection", std::string{});
+                    const auto& source = component.properties.contains("settings") &&
+                        component.properties["settings"].is_object()
+                        ? component.properties["settings"] : component.properties;
+                    const std::string material{ASSETS::MATERIAL::CanonicalizeProceduralMaterialSelection(
+                        source.value("materialSelection", std::string{}))};
                     if (!ASSETS::MATERIAL::IsBuiltInWhiteMaterialAssetId(material) &&
                         !ASSETS::MATERIAL::IsBuiltInCheckerMaterialAssetId(material) &&
                         !ASSETS::MATERIAL::IsBuiltInSandMaterialAssetId(material)) {
@@ -354,6 +358,11 @@ namespace HIKARI {
             }
         }
 
+        for (const auto& sequence : document.cinematics.sequences) {
+            for (const auto& cue : sequence.presentationCueTrack.clips)
+                if (cue.kind == SEQUENCER::PresentationCueKind::Vfx)
+                    AddReference(cue.vfxAsset.value, sequence.name, "Sequence.VfxCue", assetDatabase, summary);
+        }
         return summary;
     }
 

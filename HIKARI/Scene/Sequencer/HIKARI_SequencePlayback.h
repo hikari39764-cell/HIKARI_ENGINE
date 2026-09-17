@@ -38,6 +38,7 @@ namespace HIKARI::SEQUENCER {
         float durationSeconds = 0.0f;
         SequenceEvaluationReason reason = SequenceEvaluationReason::None;
         SequenceEvaluationMode mode = SequenceEvaluationMode::Runtime;
+        float playbackRate = 1.0f;
         bool playing = false;
         bool wrapped = false;
         bool completed = false;

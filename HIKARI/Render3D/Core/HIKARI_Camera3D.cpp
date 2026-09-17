@@ -26,6 +26,19 @@ namespace HIKARI {
             : (std::max)(kDefaultFarZ, nearZ_ + kMinimumClipRange);
         proj_ = MATH::Mat4::PerspectiveFovRH_ZO(
             fovYRad_, aspect_, nearZ_, farZ_);
+        orthographic_ = false;
+    }
+
+    void Camera3D::SetOrthographic(float height, float aspect, float nearZ, float farZ) {
+        // Share finite clipping/aspect policy with perspective lenses.
+        SetPerspective(fovYRad_, aspect, nearZ, farZ);
+        orthographicHeight_ = std::isfinite(height) ? std::clamp(height, 0.01f, 100000.0f) : 10.0f;
+        orthographic_ = true;
+        proj_ = MATH::Mat4::OrthoRH_ZO(orthographicHeight_ * aspect_, orthographicHeight_, nearZ_, farZ_);
+    }
+    void Camera3D::SetAspect(float aspect) {
+        if (orthographic_) SetOrthographic(orthographicHeight_, aspect, nearZ_, farZ_);
+        else SetPerspective(fovYRad_, aspect, nearZ_, farZ_);
     }
 
     void Camera3D::SetLookAt(const MATH::Vec3& eye, const MATH::Vec3& target, const MATH::Vec3& up) {

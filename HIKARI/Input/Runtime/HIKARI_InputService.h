@@ -31,7 +31,9 @@ public:
     void ClearMouseCaptureRegion();
     MouseCaptureMode GetMouseCaptureMode() const noexcept;
     void SetUiInteractionActive(bool active) noexcept { uiInteractionActive_ = active; }
-    bool IsUiInteractionActive() const noexcept { return uiInteractionActive_; }
+    bool IsUiInteractionActive() const noexcept { return uiInteractionActive_ || developerInputCaptured_; }
+    void SetDeveloperInputCaptured(bool active) noexcept { developerInputCaptured_ = active; }
+    bool IsDeveloperInputCaptured() const noexcept { return developerInputCaptured_; }
     void SetPointerCursorVisible(bool visible) noexcept { pointerCursorHiddenRequested_ = !visible; }
     void ApplyPointerCursorVisibility(bool pointerOwned);
     void SetExternalMouseWheel(float delta);
@@ -88,6 +90,7 @@ private:
     float rebindReleaseThreshold_ = 0.25f;
     bool suppressActionsUntilNeutral_ = false;
     bool uiInteractionActive_ = false;
+    bool developerInputCaptured_ = false;
     bool pointerCursorHiddenRequested_ = false;
     std::string lastError_{};
     float vibrationRemaining_ = 0.0f;

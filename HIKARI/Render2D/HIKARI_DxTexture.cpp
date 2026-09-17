@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <charconv>
 #include <cctype>
 #include <cstdio>
 #include <iomanip>
@@ -243,6 +244,12 @@ namespace HIKARI {
                 return oss.str();
             }
 
+            bool TryParseGeneratedColor(std::string_view text, uint32_t& color) {
+                if (text.size() != 8u) return false;
+                const auto parsed = std::from_chars(text.data(),text.data()+text.size(),color,16);
+                return parsed.ec == std::errc{} && parsed.ptr == text.data()+text.size();
+            }
+
             // generated://checker/<colorA>/<colorB> 形式の合成パスを解釈する。
             // ディスクを持たない synthetic texture のみ true を返し、色を出力する。
             bool TryParseGeneratedCheckerPath(
@@ -257,15 +264,8 @@ namespace HIKARI {
                     path[kPrefixLen + 8u] != '/') {
                     return false;
                 }
-                try {
-                    outColorA = static_cast<uint32_t>(
-                        std::stoul(path.substr(kPrefixLen, 8u), nullptr, 16));
-                    outColorB = static_cast<uint32_t>(
-                        std::stoul(path.substr(kPrefixLen + 9u, 8u), nullptr, 16));
-                } catch (...) {
-                    return false;
-                }
-                return true;
+                return TryParseGeneratedColor(std::string_view(path).substr(kPrefixLen,8u),outColorA) &&
+                    TryParseGeneratedColor(std::string_view(path).substr(kPrefixLen+9u,8u),outColorB);
             }
         }
 
@@ -423,6 +423,13 @@ namespace HIKARI {
             // ディスクを持たない generated:// パスは合成生成へディスパッチする。
             uint32_t genColorA = 0;
             uint32_t genColorB = 0;
+            constexpr std::string_view solidPrefix = "generated://solid/";
+            if (path.starts_with(solidPrefix) &&
+                TryParseGeneratedColor(std::string_view(path).substr(solidPrefix.size()),genColorA)) {
+                const int genHandle = CreateSolidColorTexture(name,genColorA,resolvedColorSpace);
+                if (genHandle >= 0) nameToHandle_[cacheKey] = genHandle;
+                return genHandle;
+            }
             if (TryParseGeneratedCheckerPath(path, genColorA, genColorB)) {
                 const int genHandle =
                     CreateCheckerTexture(name, genColorA, genColorB, resolvedColorSpace);

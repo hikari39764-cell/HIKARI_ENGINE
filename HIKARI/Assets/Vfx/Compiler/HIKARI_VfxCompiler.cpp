@@ -1,4 +1,5 @@
 #include "Assets/Vfx/Compiler/HIKARI_VfxCompiler.h"
+#include "Assets/HIKARI_AssetTypes.h"
 
 #include <algorithm>
 #include <array>
@@ -290,9 +291,12 @@ namespace HIKARI::VFX {
         ParticleMaterialMode ConvertMaterialMode(
             VfxMaterialMode mode) noexcept {
 
-            return mode == VfxMaterialMode::CustomMaterial
-                ? ParticleMaterialMode::CustomMaterial
-                : ParticleMaterialMode::StandardUnlit;
+            switch (mode) {
+            case VfxMaterialMode::CustomMaterial: return ParticleMaterialMode::CustomMaterial;
+            case VfxMaterialMode::StandardLit: return ParticleMaterialMode::StandardLit;
+            case VfxMaterialMode::CustomLit: return ParticleMaterialMode::CustomLit;
+            default: return ParticleMaterialMode::StandardUnlit;
+            }
         }
 
         ParticleDepthMode ConvertDepthMode(
@@ -311,25 +315,7 @@ namespace HIKARI::VFX {
             }
         }
 
-        ParticleShaderStyle ConvertShaderStyle(
-            VfxParticleShaderStyle style) noexcept {
 
-            switch (style) {
-            case VfxParticleShaderStyle::CombatCut:
-                return ParticleShaderStyle::CombatCut;
-            case VfxParticleShaderStyle::CombatImpact:
-                return ParticleShaderStyle::CombatImpact;
-            case VfxParticleShaderStyle::CombatGround:
-                return ParticleShaderStyle::CombatGround;
-            case VfxParticleShaderStyle::ComicSmoke:
-                return ParticleShaderStyle::ComicSmoke;
-            case VfxParticleShaderStyle::ProjectileNeedle:
-                return ParticleShaderStyle::ProjectileNeedle;
-            case VfxParticleShaderStyle::Default:
-            default:
-                return ParticleShaderStyle::Default;
-            }
-        }
 
         uint32_t CompileParticleCapacity(
             const VfxAssetData& asset,
@@ -455,6 +441,18 @@ namespace HIKARI::VFX {
             return ParticleRenderShape::Ribbon;
         case VfxRenderShapeType::Ring:
             return ParticleRenderShape::Ring;
+        case VfxRenderShapeType::MeshBox:
+            return ParticleRenderShape::MeshBox;
+        case VfxRenderShapeType::MeshSphere:
+            return ParticleRenderShape::MeshSphere;
+        case VfxRenderShapeType::MeshCylinder:
+            return ParticleRenderShape::MeshCylinder;
+        case VfxRenderShapeType::MeshCone:
+            return ParticleRenderShape::MeshCone;
+        case VfxRenderShapeType::MeshHemisphere:
+            return ParticleRenderShape::MeshHemisphere;
+        case VfxRenderShapeType::CrossPlane:
+            return ParticleRenderShape::CrossPlane;
         case VfxRenderShapeType::Sprite:
         default:
             return ParticleRenderShape::Sprite;
@@ -533,6 +531,9 @@ namespace HIKARI::VFX {
             const VfxEmitterData& source = emitters[emitterIndex];
             VfxProgramEmitter emitter{};
             emitter.sourceEmitterId = source.id;
+            emitter.kind = source.kind;
+            emitter.history = source.history;
+            emitter.animationTiming = source.animationTiming;
             emitter.emitterIndex = emitterIndex;
             const auto parent = emitterIndices.find(source.parentEmitterId);
             if (parent != emitterIndices.end()) {
@@ -550,7 +551,7 @@ namespace HIKARI::VFX {
                 CompileParticleCapacity(asset, source);
             emitter.simulation.lifetime = CompileDistribution(
                 source.basic.lifetime);
-            program.maximumParticleLifetimeSeconds = (std::max)(
+            if (source.kind == VfxLayerKind::Particles) program.maximumParticleLifetimeSeconds = (std::max)(
                 program.maximumParticleLifetimeSeconds,
                 source.basic.lifetime.mode == VfxDistributionMode::RandomRange
                     ? source.basic.lifetime.maximum
@@ -581,9 +582,42 @@ namespace HIKARI::VFX {
                 source.scale.value);
             emitter.simulation.gravity = source.forces.gravity;
             emitter.simulation.drag = source.forces.drag;
+            emitter.simulation.localSimulation = source.basic.localSimulation ? 1u : 0u;
+            emitter.simulation.collisionPlaneEnabled = source.forces.collisionPlaneEnabled ? 1u : 0u;
+            emitter.simulation.collisionPlaneHeight = source.forces.collisionPlaneHeight;
+            emitter.simulation.restitution = source.forces.restitution;
+            emitter.simulation.friction = source.forces.friction;
             emitter.simulation.color = CompileAnimatedColor(source.color.value);
+            if (source.kind != VfxLayerKind::Particles) {
+                emitter.spawnRatePerSecond = 0.0f;
+                emitter.burstCount = 0u;
+                emitter.burstTimeline.clear();
+                emitter.simulation.capacity = source.history.mode == VfxHistoryMode::None ? 1u : source.history.samples;
+                if (source.history.mode != VfxHistoryMode::None)
+                    program.maximumParticleLifetimeSeconds = (std::max)(program.maximumParticleLifetimeSeconds, source.history.duration);
+            }
             emitter.render.materialMode = ConvertMaterialMode(
                 source.renderCommon.materialMode);
+            if (!source.effects.empty()) {
+                auto material = std::make_shared<MaterialAssetDescriptor>();
+                material->sourceData = BuildMaterialEffectStack(source.renderCommon.colorTextureAssetGuid,
+                    source.effects, source.renderCommon.materialMode == VfxMaterialMode::StandardLit,
+                    source.renderCommon.flipbookColumns, source.renderCommon.flipbookRows, VfxAnimatedMaterialParameters(source));
+                material->compileResult = CompileMaterialAsset(material->sourceData);
+                if (!material->compileResult.success) {
+                    for (const auto& diagnostic : material->compileResult.diagnostics)
+                        result.diagnostics.push_back({VfxDiagnosticSeverity::Error,
+                            "Vfx.MaterialEffectCompile", diagnostic.message, source.id});
+                    return result;
+                }
+                emitter.render.effectMaterial = std::move(material);
+                emitter.render.effectMaterialKey = program.programId + ":" + source.id;
+            }
+            std::string animationError;
+            if (!CompileVfxLayerCurves(source, emitter, animationError)) {
+                result.diagnostics.push_back({VfxDiagnosticSeverity::Error,"Vfx.AnimationCompile",animationError,source.id});
+                return result;
+            }
             emitter.render.colorTextureAssetGuid =
                 source.renderCommon.colorTextureAssetGuid.value;
             emitter.render.materialAssetGuid =
@@ -595,22 +629,6 @@ namespace HIKARI::VFX {
             emitter.render.softIntersectionDistance =
                 source.renderCommon.softIntersectionDistance;
             emitter.render.depthBias = source.renderCommon.depthBias;
-            emitter.render.shaderStyle = ConvertShaderStyle(
-                source.renderCommon.shaderStyle);
-            emitter.render.shaderOutlineColor =
-                source.renderCommon.shaderOutlineColor;
-            emitter.render.shaderCoreColor =
-                source.renderCommon.shaderCoreColor;
-            emitter.render.shaderOutlineWidth =
-                source.renderCommon.shaderOutlineWidth;
-            emitter.render.shaderEdgeHardness =
-                source.renderCommon.shaderEdgeHardness;
-            emitter.render.shaderEmissiveIntensity =
-                source.renderCommon.shaderEmissiveIntensity;
-            emitter.render.shaderBreakupScale =
-                source.renderCommon.shaderBreakupScale;
-            emitter.render.shaderBreakupStrength =
-                source.renderCommon.shaderBreakupStrength;
             emitter.render.flipbookColumns =
                 source.renderCommon.flipbookColumns;
             emitter.render.flipbookRows =
@@ -675,14 +693,12 @@ namespace HIKARI::VFX {
                     link.bias,
                 });
             }
-            if (source.renderCommon.materialMode ==
-                    VfxMaterialMode::CustomMaterial &&
+            if (IsCustomVfxMaterial(source.renderCommon.materialMode) &&
                 source.renderCommon.materialAssetGuid.IsValid()) {
                 program.dependencyGuids.push_back(
                     source.renderCommon.materialAssetGuid);
             }
-            if (source.renderCommon.materialMode ==
-                    VfxMaterialMode::StandardUnlit &&
+            if (!IsCustomVfxMaterial(source.renderCommon.materialMode) &&
                 source.renderCommon.colorTextureAssetGuid.IsValid() &&
                 !IsVfxBuiltinTextureAssetId(
                     source.renderCommon.colorTextureAssetGuid.value)) {

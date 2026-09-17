@@ -44,7 +44,9 @@ namespace HIKARI {
         }
 
         bool ProjectionDiffers(const Camera3D& lhs, const Camera3D& rhs) {
-            return !NearlyEqual(lhs.GetFovYRad(), rhs.GetFovYRad()) ||
+            return lhs.IsOrthographic() != rhs.IsOrthographic() ||
+                (lhs.IsOrthographic() && !NearlyEqual(lhs.GetOrthographicHeight(),rhs.GetOrthographicHeight())) ||
+                !NearlyEqual(lhs.GetFovYRad(), rhs.GetFovYRad()) ||
                 !NearlyEqual(lhs.GetAspect(), rhs.GetAspect()) ||
                 !NearlyEqual(lhs.GetNearZ(), rhs.GetNearZ()) ||
                 !NearlyEqual(lhs.GetFarZ(), rhs.GetFarZ());
@@ -64,6 +66,8 @@ namespace HIKARI {
         MATH::Vec3 SafeUpForForward(const MATH::Vec3& forward, MATH::Vec3 up);
 
         Camera3D BlendCamera(const Camera3D& from, const Camera3D& to, float amount) {
+            // Projection kinds do not have a physically meaningful interpolated lens.
+            if (from.IsOrthographic() != to.IsOrthographic()) return to;
             Camera3D result{};
             const MATH::Vec3 eye = Lerp(from.GetPosition(), to.GetPosition(), amount);
             MATH::Vec3 target = Lerp(from.GetTarget(), to.GetTarget(), amount);
@@ -81,6 +85,9 @@ namespace HIKARI {
                 Lerp(from.GetAspect(), to.GetAspect(), amount),
                 Lerp(from.GetNearZ(), to.GetNearZ(), amount),
                 Lerp(from.GetFarZ(), to.GetFarZ(), amount));
+            if (to.IsOrthographic()) result.SetOrthographic(
+                Lerp(from.GetOrthographicHeight(),to.GetOrthographicHeight(),amount),
+                result.GetAspect(),result.GetNearZ(),result.GetFarZ());
             result.SetLookAt(eye, target, up);
             return result;
         }
@@ -269,19 +276,11 @@ namespace HIKARI {
         if (requestedSourceValid && winningOverride != nullptr &&
             winningOverride->hasCameraOverride) {
             targetCamera = winningOverride->cameraOverride;
-            targetCamera.SetPerspective(
-                targetCamera.GetFovYRad(),
-                resolvedAspect,
-                targetCamera.GetNearZ(),
-                targetCamera.GetFarZ());
+            targetCamera.SetAspect(resolvedAspect);
         }
         if (!requestedSourceValid) {
             targetCamera = fallbackCamera;
-            targetCamera.SetPerspective(
-                fallbackCamera.GetFovYRad(),
-                resolvedAspect,
-                fallbackCamera.GetNearZ(),
-                fallbackCamera.GetFarZ());
+            targetCamera.SetAspect(resolvedAspect);
         }
 
         float requestedModifierWeightScale = 1.0f;
@@ -365,11 +364,7 @@ namespace HIKARI {
             baseControlCamera);
         if (!baseControlValid) {
             baseControlCamera = fallbackCamera;
-            baseControlCamera.SetPerspective(
-                fallbackCamera.GetFovYRad(),
-                resolvedAspect,
-                fallbackCamera.GetNearZ(),
-                fallbackCamera.GetFarZ());
+            baseControlCamera.SetAspect(resolvedAspect);
         } else if (rigService != nullptr) {
             CAMERA::CameraRigSubmission basePose{};
             float baseModifierWeightScale = 1.0f;
@@ -485,6 +480,16 @@ namespace HIKARI {
             (std::max)(aspect, kMinAspect),
             component->GetNearClip(),
             component->GetFarClip());
+        if (component->IsOrthographic()) {
+            outCamera.SetOrthographic(component->GetOrthographicHeight(),aspect,component->GetNearClip(),component->GetFarClip());
+            const float grid=component->GetPixelGridSize();
+            if (grid > 0) {
+                const auto basis=MATH::BuildViewBasisRH(target-eye,up);
+                const auto offset=basis.right*(std::round(MATH::Dot(eye,basis.right)/grid)*grid-MATH::Dot(eye,basis.right)) +
+                    basis.up*(std::round(MATH::Dot(eye,basis.up)/grid)*grid-MATH::Dot(eye,basis.up));
+                eye=eye+offset;target=target+offset;
+            }
+        }
         outCamera.SetLookAt(eye, target, up);
         return true;
     }

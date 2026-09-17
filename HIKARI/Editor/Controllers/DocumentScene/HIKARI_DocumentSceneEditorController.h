@@ -10,10 +10,12 @@
 #include "Render3D/Debug/HIKARI_DebugCameraController3D.h"
 
 #include "Editor/AI/HIKARI_AI_AssistantPanel.h"
+#include "Editor/Diagnostics/HIKARI_RuntimeDebugWindow.h"
 #include "Editor/AI/HIKARI_AI_LocalBridge.h"
 #include "Editor/HIKARI_DebugCameraPanel.h"
 #include "Editor/HIKARI_DebugMenuBar.h"
 #include "Editor/Export/HIKARI_GameExportJob.h"
+#include "Editor/Projects/HIKARI_ProjectCodeJob.h"
 #include "Editor/HIKARI_EditorContext.h"
 #include "Editor/History/HIKARI_EditorDocumentHistory.h"
 #include "Editor/History/HIKARI_SceneObjectTransformHistorySession.h"
@@ -74,15 +76,19 @@ namespace HIKARI {
                 projectSession);
 
     private:
+        RUNTIME::RuntimeDebugWindow runtimeDebugWindow_{};
         void RegisterEditorOperations();
         void RegisterSceneFolderOperations();
+        void RegisterSceneLayoutOperations();
+        EDITOR::EditorOperationResult ExecuteSceneLayoutOperation(bool apply, const nlohmann::json& parameters);
         EDITOR::EditorOperationResult ExecuteSceneFolderOperation(std::string_view operation, const nlohmann::json& parameters);
         EditorContext context_{};
         SelectionSyncService selectionSync_{};
 
         DebugMenuBar debugMenuBar_{};
         EDITOR::GameExportJob exportJob_{};
-        bool exportStartAllowed_ = false;
+        EDITOR::ProjectCodeJob projectCodeJob_{};
+        bool projectBuildAllowed_ = false;
         DocumentToolbarController documentToolbarController_{};
         EDITOR::SceneObjectCommandService sceneObjectCommands_{};
         EDITOR::SceneCreationPanel sceneCreationPanel_{};

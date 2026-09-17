@@ -27,8 +27,8 @@ namespace HIKARI::EDITOR {
         float minimum,
         float maximum) {
 #if defined(HIKARI_WITH_EDITOR)
-        ImGui::PushID(label);
-        ImGui::SeparatorText(label);
+        ImGui::PushID(VfxUiText(label).c_str());
+        ImGui::SeparatorText(VfxUiText(label).c_str());
         constexpr std::array<std::string_view, 2u> modes{
             "Constant", "RandomRange"
         };
@@ -74,8 +74,8 @@ namespace HIKARI::EDITOR {
         const VFX::VfxVec3DistributionData& value,
         float speed) {
 #if defined(HIKARI_WITH_EDITOR)
-        ImGui::PushID(label);
-        ImGui::SeparatorText(label);
+        ImGui::PushID(VfxUiText(label).c_str());
+        ImGui::SeparatorText(VfxUiText(label).c_str());
         constexpr std::array<std::string_view, 2u> modes{
             "Constant", "RandomRange"
         };
@@ -114,8 +114,8 @@ namespace HIKARI::EDITOR {
         std::string_view propertyPrefix,
         const VFX::VfxColorDistributionData& value) {
 #if defined(HIKARI_WITH_EDITOR)
-        ImGui::PushID(label);
-        ImGui::SeparatorText(label);
+        ImGui::PushID(VfxUiText(label).c_str());
+        ImGui::SeparatorText(VfxUiText(label).c_str());
         constexpr std::array<std::string_view, 2u> modes{
             "Constant", "RandomRange"
         };
@@ -152,7 +152,7 @@ namespace HIKARI::EDITOR {
         const VFX::VfxAnimatedVec3Data& value,
         float speed) {
 #if defined(HIKARI_WITH_EDITOR)
-        ImGui::PushID(label);
+        ImGui::PushID(VfxUiText(label).c_str());
         constexpr std::array<std::string_view, 4u> modes{
             "Fixed", "Pva", "Easing", "Curve"
         };
@@ -226,7 +226,7 @@ namespace HIKARI::EDITOR {
                     curves[index]->randomOffset,
                     speed);
                 ImGui::TextDisabled(
-                    "%s channel: %zu key(s); edit in Curves below",
+                    VfxUiText("%s channel: %zu key(s); edit in Curves below").c_str(),
                     channels[index], curves[index]->keys.size());
                 ImGui::PopID();
             }
@@ -247,14 +247,14 @@ namespace HIKARI::EDITOR {
         std::string_view propertyPrefix,
         const VFX::VfxAnimatedColorData& value) {
 #if defined(HIKARI_WITH_EDITOR)
-        ImGui::PushID(label);
+        ImGui::PushID(VfxUiText(label).c_str());
         constexpr std::array<std::string_view, 5u> modes{
             "Fixed", "RandomRange", "Easing", "Curve", "Gradient"
         };
-        if (ImGui::BeginCombo("Mode", VFX::ToString(value.mode).data())) {
+        if (ImGui::BeginCombo(VfxUiText("Mode").c_str(), VfxUiText(VFX::ToString(value.mode)).c_str())) {
             for (const std::string_view mode : modes) {
                 if (!ImGui::Selectable(
-                        mode.data(), mode == VFX::ToString(value.mode))) {
+                        VfxUiText(mode).c_str(), mode == VFX::ToString(value.mode))) {
                     continue;
                 }
                 if (mode == "Fixed" || mode == "RandomRange") {
@@ -322,7 +322,7 @@ namespace HIKARI::EDITOR {
                     ChildPath(prefix, "randomOffset"),
                     curves[index]->randomOffset);
                 ImGui::TextDisabled(
-                    "%s channel: %zu key(s); edit in Curves below",
+                    VfxUiText("%s channel: %zu key(s); edit in Curves below").c_str(),
                     channels[index], curves[index]->keys.size());
                 ImGui::PopID();
             }
@@ -330,7 +330,7 @@ namespace HIKARI::EDITOR {
         }
         case VFX::VfxAnimatedColorMode::Gradient:
             ImGui::TextDisabled(
-                "%zu stop(s); edit the gradient in Curves below",
+                VfxUiText("%zu stop(s); edit the gradient in Curves below").c_str(),
                 value.gradient.stops.size());
             break;
         }

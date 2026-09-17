@@ -39,32 +39,7 @@ static const uint MATERIAL_EMISSIVE = HIKARI_MATERIAL_FLAG_EMISSIVE;
 static const uint MATERIAL_ALPHA_BLEND = HIKARI_MATERIAL_FLAG_ALPHA_BLEND;
 static const uint MATERIAL_SPECULAR_GLOSS_COMPAT = HIKARI_MATERIAL_FLAG_LEGACY_SPECULAR;
 
-cbuffer LightCB : register(b2)
-{
-    float4 gDirectionalDir; // xyz: ray direction, w: sin^2(solar angular radius / 2)
-    float4 gDirectionalColor;
-    float4 gAmbientColor;
-    float4 gLightReserved;
-    float gDirectionalIntensity;
-    float gAmbientIntensity;
-    uint gLocalLightCount;
-    uint gLocalLightClusterCountX;
-    uint gLocalLightClusterCountY;
-    uint gLocalLightClusterCountZ;
-    uint gLocalLightTileSizePixels;
-    uint gLocalLightClusterIndexCount;
-    float gLocalLightNearDistance;
-    float gLocalLightFarDistance;
-    float gLocalLightDepthScale;
-    float gLocalLightDepthBias;
-    float4 gFogColorDensity;
-    float4 gFogParams;
-    uint gDebugView;
-    float gForwardCostMode;
-    float2 gDebugPadding;
-    float4 gScreenSpaceReflectionParams0;
-    float4 gScreenSpaceReflectionParams1;
-};
+#include "Include/Lighting/HIKARI_ViewLightingData.hlsli"
 
 static const uint HIKARI_FORWARD_COST_FULL = 0u;
 static const uint HIKARI_FORWARD_COST_ALBEDO_ONLY = 1u;
@@ -76,26 +51,6 @@ static const uint HIKARI_FORWARD_COST_NO_MATERIAL_EXTRAS = 5u;
 #ifndef HIKARI_FORWARD_COST_MODE_STATIC
 #define HIKARI_FORWARD_COST_MODE_STATIC 255
 #endif
-
-cbuffer ShadowCB : register(b4)
-{
-    float4x4 gShadowLightViewProj[4];
-    float4 gShadowCascadeSplits;
-    float4 gShadowCascadeParams;
-    float4 gShadowCascadeDepthBiasScales;
-    uint gShadowEnabled;
-    float gShadowDepthBias;
-    float gShadowNormalBias;
-    float gShadowStrength;
-    uint gShadowPcfEnabled;
-    float gShadowPcfRadius;
-    float gShadowTexelSizeX;
-    float gShadowTexelSizeY;
-    float gShadowEdgeFade;
-    float3 gShadowPadding;
-    HikariLocalShadowData gLocalShadow;
-};
-
 
 #include "Include/Lighting/HIKARI_LocalLightList.hlsli"
 

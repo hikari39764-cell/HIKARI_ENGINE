@@ -1,6 +1,7 @@
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
 
 #include <algorithm>
+#include "Assets/Material/HIKARI_MaterialBuiltInAssets.h"
 
 #include "Scene/HIKARI_GameObject.h"
 
@@ -45,8 +46,8 @@ namespace HIKARI {
         settings_.generateTangents = source.value("generateTangents", settings_.generateTangents);
         settings_.uvTilesX = source.value("uvTilesX", settings_.uvTilesX);
         settings_.uvTilesY = source.value("uvTilesY", settings_.uvTilesY);
-        materialSelection_ =
-            source.value("materialSelection", std::string{});
+        materialSelection_ = ASSETS::MATERIAL::CanonicalizeProceduralMaterialSelection(
+            source.value("materialSelection", std::string{}));
         settings_ = SanitizeProceduralMeshSettings(settings_);
         NotifyRenderStateDirty();
     }
@@ -74,6 +75,7 @@ namespace HIKARI {
 
     void ProceduralMeshComponent::SetMaterialSelection(
         std::string selection) {
+        selection = ASSETS::MATERIAL::CanonicalizeProceduralMaterialSelection(selection);
         if (materialSelection_ == selection) {
             return;
         }

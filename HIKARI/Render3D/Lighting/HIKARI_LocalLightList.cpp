@@ -153,12 +153,22 @@ namespace HIKARI::RENDER3D::LIGHTING {
             float maximumNdcX = 1.0f;
             float minimumNdcY = -1.0f;
             float maximumNdcY = 1.0f;
-            if (viewDepth > range + nearDistance) {
+            const MATH::Mat4& projection = camera.GetProj();
+            if (camera.IsOrthographic()) {
+                // 正射影の XY 範囲は深度に依存しない。近面を跨ぐ球にも同じ投影を使う。
+                const float centerX = viewPosition.x * projection.m[0][0] + projection.m[3][0];
+                const float centerY = viewPosition.y * projection.m[1][1] + projection.m[3][1];
+                const float radiusX = range * std::abs(projection.m[0][0]);
+                const float radiusY = range * std::abs(projection.m[1][1]);
+                minimumNdcX = centerX - radiusX;
+                maximumNdcX = centerX + radiusX;
+                minimumNdcY = centerY - radiusY;
+                maximumNdcY = centerY + radiusY;
+            } else if (viewDepth > range + nearDistance) {
                 const float inverseNearestDepth =
                     1.0f / (std::max)(
                         viewDepth - range,
                         nearDistance);
-                const MATH::Mat4& projection = camera.GetProj();
                 const float inverseFarthestDepth = 1.0f / (viewDepth + range);
                 const auto xBounds = ProjectViewAxisBounds(viewPosition.x, range,
                     inverseNearestDepth, inverseFarthestDepth, projection.m[0][0]);
@@ -168,12 +178,12 @@ namespace HIKARI::RENDER3D::LIGHTING {
                 maximumNdcX = xBounds.y;
                 minimumNdcY = yBounds.x;
                 maximumNdcY = yBounds.y;
-                if (maximumNdcX < -1.0f ||
-                    minimumNdcX > 1.0f ||
-                    maximumNdcY < -1.0f ||
-                    minimumNdcY > 1.0f) {
-                    return bounds;
-                }
+            }
+            if (maximumNdcX < -1.0f ||
+                minimumNdcX > 1.0f ||
+                maximumNdcY < -1.0f ||
+                minimumNdcY > 1.0f) {
+                return bounds;
             }
 
             const auto pixelX = [screenWidth](float ndc) {

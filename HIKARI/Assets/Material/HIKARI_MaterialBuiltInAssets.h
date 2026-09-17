@@ -14,6 +14,12 @@ inline constexpr std::string_view kBuiltInWhiteMaterialAssetId =
 inline constexpr std::string_view kBuiltInCheckerMaterialAssetId =
     "generated://checker/bfbfbfff/8a8a8aff";
 
+// 旧プロシージャル選択名は、依存解決と実体生成で同じ ID に移行する。
+constexpr std::string_view CanonicalizeProceduralMaterialSelection(
+    std::string_view selection) noexcept {
+    return selection == "checker" ? kBuiltInCheckerMaterialAssetId : selection;
+}
+
 constexpr bool IsBuiltInWhiteMaterialAssetId(
     std::string_view id) noexcept {
     return id == kBuiltInWhiteMaterialAssetId;

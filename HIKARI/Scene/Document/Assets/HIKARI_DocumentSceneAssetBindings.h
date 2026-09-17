@@ -29,7 +29,8 @@ namespace HIKARI {
         }
         ModelManager& Models() noexcept { return models_; }
 
-        bool ReloadAssets();
+        bool ReloadAssets(const SceneDependencySet* required = nullptr);
+        bool NeedsRuntimeProgramImport(const SceneDependencySet& required) const;
         void ConfigureModelTextureResolver();
         const AssetRecord* FindUniqueTextureAssetByFilename(
             const std::string& filename,
@@ -38,7 +39,8 @@ namespace HIKARI {
             const std::string& sourceTexturePath,
             MaterialTextureUsage usage) const;
         bool NeedsRuntimeDependencyRegistryRefresh(
-            const SceneDependencySet& dependencies) const;
+            const SceneDependencySet& dependencies,
+            std::string* outReason = nullptr) const;
         bool RefreshTextureByPath(const std::string& path);
         bool ReloadModelAsset(const AssetId& modelId);
         int RebindModelComponents(DocumentSceneBase& scene);

@@ -59,6 +59,7 @@ namespace HIKARI {
 
         const std::string& GetSceneId() const override;
         const std::string& GetScenePath() const;
+        const std::string& GetSceneLoadError() const noexcept;
         uint64_t GetSceneDocumentRevision() const noexcept;
         void SetSceneId(std::string sceneId);
         void SetScenePath(std::string scenePath);

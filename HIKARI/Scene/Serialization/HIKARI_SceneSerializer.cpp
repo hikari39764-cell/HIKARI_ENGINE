@@ -9,6 +9,7 @@
 #include <json.hpp>
 
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
+#include "Core/HIKARI_Logger.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/HIKARI_SceneComponentId.h"
 #include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
@@ -219,42 +220,52 @@ namespace HIKARI {
             return false;
         }
 
-        outDocument = SceneDocument{};
-        outDocument.version = root.value("version", 1u);
-        const uint32_t sourceVersion = outDocument.version;
-        outDocument.sceneName = root.value("sceneName", std::string("Untitled"));
-        if (const auto folders = root.find("editorFolders"); folders != root.end() && folders->is_array())
-            for (const auto& folder : *folders) if (folder.is_string()) outDocument.editorFolders.push_back(folder.get<std::string>());
+        try {
+            SceneDocument decoded{};
+            decoded.version = root.value("version", 1u);
+            if (decoded.version == 0 || decoded.version > kCurrentSceneDocumentVersion) {
+                HIKARI_LOG_ERROR("[SceneAsset] unsupported scene version: " + std::to_string(decoded.version));
+                return false;
+            }
+            const uint32_t sourceVersion = decoded.version;
+            decoded.sceneName = root.value("sceneName", std::string("Untitled"));
+            if (const auto folders = root.find("editorFolders"); folders != root.end() && folders->is_array())
+                for (const auto& folder : *folders) if (folder.is_string()) decoded.editorFolders.push_back(folder.get<std::string>());
 
-        if (root.contains("environment") && root["environment"].is_object()) {
-            SceneJson::DeserializeSceneEnvironmentJson(root["environment"], outDocument.environment);
-        }
+            if (root.contains("environment") && root["environment"].is_object()) {
+                SceneJson::DeserializeSceneEnvironmentJson(root["environment"], decoded.environment);
+            }
 
-        SceneJson::DeserializeSceneLightingBakeJson(root.value("lightingBake", nlohmann::json::object()), outDocument.lightingBake);
-        DeserializeCamera(root.value("camera", nlohmann::json::object()), outDocument.camera);
-        DeserializeSceneCinematicsJson(root.value("cinematics", nlohmann::json::object()), outDocument.cinematics);
-        SceneJson::DeserializeSceneSystemsJson(root.value("systems", nlohmann::json{}), outDocument.systems);
+            SceneJson::DeserializeSceneLightingBakeJson(root.value("lightingBake", nlohmann::json::object()), decoded.lightingBake);
+            DeserializeCamera(root.value("camera", nlohmann::json::object()), decoded.camera);
+            DeserializeSceneCinematicsJson(root.value("cinematics", nlohmann::json::object()), decoded.cinematics);
+            SceneJson::DeserializeSceneSystemsJson(root.value("systems", nlohmann::json{}), decoded.systems);
 
-        if (root.contains("objects") && root["objects"].is_array()) {
-            for (const nlohmann::json& node : root["objects"]) {
-                SceneObjectData object{};
-                if (SceneJson::DeserializeSceneObjectJson(node, object, SceneJson::SceneObjectJsonScope::SceneDocument)) {
-                    outDocument.objects.push_back(std::move(object));
+            if (root.contains("objects") && root["objects"].is_array()) {
+                for (const nlohmann::json& node : root["objects"]) {
+                    SceneObjectData object{};
+                    if (SceneJson::DeserializeSceneObjectJson(node, object, SceneJson::SceneObjectJsonScope::SceneDocument)) {
+                        decoded.objects.push_back(std::move(object));
+                    }
                 }
             }
-        }
 
-        MigrateLegacyProceduralModels(outDocument);
-        MigrateEmbeddedModelMaterialFx(outDocument);
-        LIGHTING_AUTHORING::MigrateLegacyLightingAuthoring(
-            outDocument,
-            sourceVersion);
-        LIGHTING_AUTHORING::SynchronizeLegacyLightingViews(outDocument);
-        for (SceneObjectData& object : outDocument.objects) {
-            NormalizeSceneComponentIds(object);
+            MigrateLegacyProceduralModels(decoded);
+            MigrateEmbeddedModelMaterialFx(decoded);
+            LIGHTING_AUTHORING::MigrateLegacyLightingAuthoring(
+                decoded,
+                sourceVersion);
+            LIGHTING_AUTHORING::SynchronizeLegacyLightingViews(decoded);
+            for (SceneObjectData& object : decoded.objects) {
+                NormalizeSceneComponentIds(object);
+            }
+            decoded.version = (std::max)(decoded.version, kCurrentSceneDocumentVersion);
+            outDocument = std::move(decoded);
+            return true;
+        } catch (const nlohmann::json::exception& exception) {
+            HIKARI_LOG_ERROR(std::string("[SceneAsset] malformed scene: ") + exception.what());
+            return false;
         }
-        outDocument.version = (std::max)(outDocument.version, kCurrentSceneDocumentVersion);
-        return true;
     }
 
     bool SceneSerializer::SaveToFile(const std::string& path, const SceneDocument& document) const {

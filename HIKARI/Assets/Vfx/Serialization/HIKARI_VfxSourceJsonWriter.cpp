@@ -236,6 +236,12 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
         }
 
         Json WriteEmitter(const VfxEmitterData& emitter) {
+            Json effects = Json::array();
+            for (const auto& effect : emitter.effects) {
+                effects.push_back({{"id", effect.id}, {"kind", MaterialEffectName(effect.kind)},
+                    {"enabled", effect.enabled}, {"parameters", WriteVec4(effect.parameters)},
+                    {"colorA", WriteVec4(effect.colorA)}, {"colorB", WriteVec4(effect.colorB)}});
+            }
             Json links = Json::array();
             auto sortedLinks = emitter.inputLinks;
             std::sort(
@@ -299,17 +305,30 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
                 specialOutputs.push_back(WriteSpecialOutput(output));
             }
 
+            Json parameterTracks = Json::array();
+            for (const auto& track : emitter.parameterTracks)
+                parameterTracks.push_back({{"id",track.id},{"targetId",track.targetId},
+                    {"propertyId",track.propertyId},{"curve",WriteCurve(track.curve)}});
             return {
+                { "parameterTracks", std::move(parameterTracks) },
                 { "id", emitter.id },
                 { "name", emitter.name },
                 { "parentEmitterId", emitter.parentEmitterId },
                 { "order", emitter.order },
                 { "startDelay", emitter.startDelay },
+                { "kind", emitter.kind == VfxLayerKind::Shape ? "Shape" :
+                    emitter.kind == VfxLayerKind::Group ? "Group" : "Particles" },
                 { "activeDuration", emitter.activeDuration },
+                {"animationTiming",{{"sourceDuration",emitter.animationTiming.sourceDuration},{"offset",emitter.animationTiming.offset},{"rate",emitter.animationTiming.rate}}},
+                { "history", {{"mode", emitter.history.mode == VfxHistoryMode::Afterimage ? "Afterimage" :
+                    emitter.history.mode == VfxHistoryMode::Trail ? "Trail" : "None"},
+                    {"duration", emitter.history.duration}, {"samples", emitter.history.samples},
+                    {"breakDistance", emitter.history.breakDistance}} },
                 { "modules", {
                     { "basic", {
                         { "id", emitter.basic.id },
                         { "enabled", emitter.basic.enabled },
+                        { "localSimulation", emitter.basic.localSimulation },
                         { "lifetime", WriteDistribution(
                             emitter.basic.lifetime) },
                     } },
@@ -369,6 +388,10 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
                         { "id", emitter.forces.id },
                         { "gravity", WriteVec3(emitter.forces.gravity) },
                         { "drag", emitter.forces.drag },
+                        { "collisionPlaneEnabled", emitter.forces.collisionPlaneEnabled },
+                        { "collisionPlaneHeight", emitter.forces.collisionPlaneHeight },
+                        { "restitution", emitter.forces.restitution },
+                        { "friction", emitter.forces.friction },
                     } },
                     { "color", {
                         { "id", emitter.color.id },
@@ -389,22 +412,6 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
                         { "softIntersectionDistance",
                             emitter.renderCommon.softIntersectionDistance },
                         { "depthBias", emitter.renderCommon.depthBias },
-                        { "shaderStyle", ToString(
-                            emitter.renderCommon.shaderStyle) },
-                        { "shaderOutlineColor", WriteVec4(
-                            emitter.renderCommon.shaderOutlineColor) },
-                        { "shaderCoreColor", WriteVec4(
-                            emitter.renderCommon.shaderCoreColor) },
-                        { "shaderOutlineWidth",
-                            emitter.renderCommon.shaderOutlineWidth },
-                        { "shaderEdgeHardness",
-                            emitter.renderCommon.shaderEdgeHardness },
-                        { "shaderEmissiveIntensity",
-                            emitter.renderCommon.shaderEmissiveIntensity },
-                        { "shaderBreakupScale",
-                            emitter.renderCommon.shaderBreakupScale },
-                        { "shaderBreakupStrength",
-                            emitter.renderCommon.shaderBreakupStrength },
                         { "flipbookColumns",
                             emitter.renderCommon.flipbookColumns },
                         { "flipbookRows",
@@ -440,6 +447,7 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
                     } },
                 } },
                 { "specialOutputs", std::move(specialOutputs) },
+                { "effects", std::move(effects) },
                 { "inputLinks", std::move(links) },
             };
         }

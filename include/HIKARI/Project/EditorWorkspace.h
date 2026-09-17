@@ -8,7 +8,7 @@
 
 namespace HIKARI::EDITOR_PROJECT {
 
-    inline constexpr uint32_t kEditorWorkspaceApiVersion = 3u;
+    inline constexpr uint32_t kEditorWorkspaceApiVersion = 4u;
 
     enum class EditorWorkspaceDockRegion : uint32_t {
         Center, Toolbar, Left, Right, Bottom, Count,
@@ -197,6 +197,15 @@ namespace HIKARI::EDITOR_PROJECT {
         virtual bool EndCanvasPreview(EditorWorkspacePoint minimum,EditorWorkspacePoint maximum) = 0;
     };
 
+    // Results are borrowed for this callback only. Copy strings in the project
+    // if they are needed later; the host never transfers allocator ownership.
+    class IEditorOperationResultSink {
+    public:
+        virtual ~IEditorOperationResultSink() = default;
+        virtual void Receive(bool ok, std::string_view code,
+            std::string_view message, std::string_view dataJson) = 0;
+    };
+
     class IEditorWorkspaceCommands {
     public:
         virtual ~IEditorWorkspaceCommands() = default;
@@ -210,6 +219,10 @@ namespace HIKARI::EDITOR_PROJECT {
         virtual void PublishStatus(
             EditorWorkspaceStatusSeverity severity,
             std::string_view message) = 0;
+        // Synchronous UI-thread domain operation. Uses the same declarations,
+        // transactions and diagnostics as AI. Worker-only actions are rejected.
+        virtual void ExecuteOperation(std::string_view operationId,
+            std::string_view parametersJson, IEditorOperationResultSink& result) = 0;
     };
 
     struct EditorWorkspaceHostContext {

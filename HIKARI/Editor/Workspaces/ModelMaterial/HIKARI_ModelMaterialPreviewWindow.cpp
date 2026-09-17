@@ -415,12 +415,12 @@ void ModelMaterialWorkspaceController::DrawPreviewWindow(
       !input.rightMouseCaptured && !input.middleMouseCaptured &&
       !input.orbitMouseCaptured;
   if (requestSurfaceSelection) {
-    ModelPreviewPointerRay ray{};
+    EditorPointerRay ray{};
     const float normalizedX =
         (io.MousePos.x - origin.x) / canvasSize.x;
     const float normalizedY =
         (io.MousePos.y - origin.y) / canvasSize.y;
-    if (BuildModelPreviewPointerRay(
+    if (BuildEditorPointerRay(
             cameraController_.GetCamera(), normalizedX, normalizedY, ray)) {
       const ModelPreviewSurfacePick pick =
           PickModelPreviewSurface(ray, previewScene_);

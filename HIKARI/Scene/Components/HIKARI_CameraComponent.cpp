@@ -15,6 +15,10 @@ namespace HIKARI {
 
     void CameraComponent::Serialize(nlohmann::json& out) const {
         out["enabled"] = enabled_;
+        out["orthographic"] = orthographic_;
+        out["orthographicHeight"] = orthographicHeight_;
+        out["pixelSnap"] = pixelSnap_;
+        out["pixelsPerUnit"] = pixelsPerUnit_;
         out["verticalFovDegrees"] = verticalFovDegrees_;
         out["nearClip"] = nearClip_;
         out["farClip"] = farClip_;
@@ -22,6 +26,10 @@ namespace HIKARI {
 
     void CameraComponent::Deserialize(const nlohmann::json& in) {
         enabled_ = in.value("enabled", enabled_);
+        orthographic_ = in.value("orthographic", false);
+        orthographicHeight_ = in.value("orthographicHeight", 10.0f);
+        pixelSnap_ = in.value("pixelSnap", false);
+        pixelsPerUnit_ = in.value("pixelsPerUnit", 32.0f);
         verticalFovDegrees_ = in.value("verticalFovDegrees", verticalFovDegrees_);
         nearClip_ = in.value("nearClip", nearClip_);
         farClip_ = in.value("farClip", farClip_);
@@ -45,6 +53,8 @@ namespace HIKARI {
     }
 
     void CameraComponent::ClampLens() noexcept {
+        orthographicHeight_ = std::isfinite(orthographicHeight_) ? std::clamp(orthographicHeight_,0.01f,100000.0f) : 10.0f;
+        pixelsPerUnit_ = std::isfinite(pixelsPerUnit_) ? std::clamp(pixelsPerUnit_,1.0f,4096.0f) : 32.0f;
         if (!std::isfinite(verticalFovDegrees_)) {
             verticalFovDegrees_ = 60.0f;
         }

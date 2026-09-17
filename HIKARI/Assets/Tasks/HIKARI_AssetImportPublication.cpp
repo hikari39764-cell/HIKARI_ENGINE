@@ -1,4 +1,5 @@
 #include "Assets/Tasks/HIKARI_AssetImportPublication.h"
+#include "Core/IO/HIKARI_NativeFilePath.h"
 #include <atomic>
 #include <algorithm>
 #include <stdexcept>
@@ -57,7 +58,7 @@ namespace HIKARI {
             const auto actual = fs::weakly_canonical(root.staging, error);
             if (!error && actual.parent_path() == root.stagingParent &&
                     actual.filename().native().starts_with(L"job-")) {
-                fs::remove_all(actual, error);
+                fs::remove_all(IO::NativeFilePath(actual), error);
             }
         }
     }
@@ -80,7 +81,7 @@ namespace HIKARI {
         const auto destination = NormalizeDestination(finalPath);
         auto& root = StagingOwner(destination);
         const auto staged = root.staging / destination.lexically_relative(root.destination);
-        fs::create_directories(staged);
+        fs::create_directories(IO::NativeFilePath(staged));
         return staged;
     }
 
@@ -89,7 +90,7 @@ namespace HIKARI {
         for (const auto& file : files_) if (file.finalPath == destination) return file.stagedPath;
         auto& root = StagingOwner(destination);
         const auto staged = root.staging / destination.lexically_relative(root.destination);
-        fs::create_directories(staged.parent_path());
+        fs::create_directories(IO::NativeFilePath(staged.parent_path()));
         files_.push_back({ destination, staged });
         return staged;
     }

@@ -4,6 +4,59 @@
 #include <cmath>
 
 namespace HIKARI::RENDER3D::PARTICLES {
+    float IntegrateParticleCurve(std::span<const ParticleCurveKey> keys,
+        ParticleCurveInterpolation interpolation, float time) noexcept {
+        if (keys.empty()) return 0;
+        time=std::clamp(time,0.0f,1.0f);
+        float area=(std::min)(time,keys.front().time)*keys.front().value;
+        for(size_t i=1;i<keys.size() && keys[i-1].time<time;++i) {
+            const auto& a=keys[i-1];const auto& b=keys[i];
+            const float width=b.time-a.time;
+            if(width<=0) continue;
+            const float x=std::clamp((time-a.time)/width,0.0f,1.0f),x2=x*x,x3=x2*x,x4=x3*x;
+            if(interpolation==ParticleCurveInterpolation::Step) area+=width*x*a.value;
+            else if(interpolation==ParticleCurveInterpolation::Linear) area+=width*(a.value*x+(b.value-a.value)*x2*0.5f);
+            else area+=width*((0.5f*x4-x3+x)*a.value+(0.25f*x4-2.0f/3*x3+0.5f*x2)*width*a.outTangent+
+                (-0.5f*x4+x3)*b.value+(0.25f*x4-x3/3)*width*b.inTangent);
+        }
+        if(time>keys.back().time)area+=(time-keys.back().time)*keys.back().value;
+        return area;
+    }
+    float EvaluateParticleCurve(std::span<const ParticleCurveKey> keys,
+        ParticleCurveInterpolation interpolation, float time, float randomOffset) noexcept {
+            if (keys.size() == 0u) return randomOffset;
+            time = std::clamp(time, 0.0f, 1.0f);
+            if (time <= keys[0].time) {
+                return keys[0].value + randomOffset;
+            }
+            for (uint32_t index = 1u; index < keys.size(); ++index) {
+                const ParticleCurveKey& left = keys[index - 1u];
+                const ParticleCurveKey& right = keys[index];
+                if (time > right.time) continue;
+                const float width = right.time - left.time;
+                if (width <= 0.0f || interpolation ==
+                    ParticleCurveInterpolation::Step) {
+                    return left.value + randomOffset;
+                }
+                const float alpha = (time - left.time) / width;
+                if (interpolation ==
+                    ParticleCurveInterpolation::Linear) {
+                    return left.value + (right.value-left.value)*alpha +
+                        randomOffset;
+                }
+                const float alpha2 = alpha * alpha;
+                const float alpha3 = alpha2 * alpha;
+                const float h00 = 2.0f * alpha3 - 3.0f * alpha2 + 1.0f;
+                const float h10 = alpha3 - 2.0f * alpha2 + alpha;
+                const float h01 = -2.0f * alpha3 + 3.0f * alpha2;
+                const float h11 = alpha3 - alpha2;
+                return h00 * left.value + h10 * left.outTangent * width +
+                    h01 * right.value + h11 * right.inTangent * width +
+                    randomOffset;
+            }
+            return keys[keys.size() - 1u].value + randomOffset;
+        }
+
     namespace {
         constexpr uint32_t kRandomSaltLifetime = 1u;
         constexpr uint32_t kRandomSaltShapeRadius = 2u;
@@ -148,42 +201,8 @@ namespace HIKARI::RENDER3D::PARTICLES {
             return value + uv * (2.0f * rotation.w) + uuv * 2.0f;
         }
 
-        float EvaluateCurve(
-            const ParticleCurve& curve,
-            float time,
-            float randomOffset) noexcept {
-
-            if (curve.keyCount == 0u) return randomOffset;
-            time = std::clamp(time, 0.0f, 1.0f);
-            if (time <= curve.keys[0].time) {
-                return curve.keys[0].value + randomOffset;
-            }
-            for (uint32_t index = 1u; index < curve.keyCount; ++index) {
-                const ParticleCurveKey& left = curve.keys[index - 1u];
-                const ParticleCurveKey& right = curve.keys[index];
-                if (time > right.time) continue;
-                const float width = right.time - left.time;
-                if (width <= 0.0f || curve.interpolation ==
-                    ParticleCurveInterpolation::Step) {
-                    return left.value + randomOffset;
-                }
-                const float alpha = (time - left.time) / width;
-                if (curve.interpolation ==
-                    ParticleCurveInterpolation::Linear) {
-                    return Lerp(left.value, right.value, alpha) +
-                        randomOffset;
-                }
-                const float alpha2 = alpha * alpha;
-                const float alpha3 = alpha2 * alpha;
-                const float h00 = 2.0f * alpha3 - 3.0f * alpha2 + 1.0f;
-                const float h10 = alpha3 - 2.0f * alpha2 + alpha;
-                const float h01 = -2.0f * alpha3 + 3.0f * alpha2;
-                const float h11 = alpha3 - alpha2;
-                return h00 * left.value + h10 * left.outTangent * width +
-                    h01 * right.value + h11 * right.inTangent * width +
-                    randomOffset;
-            }
-            return curve.keys[curve.keyCount - 1u].value + randomOffset;
+        float EvaluateCurve(const ParticleCurve& curve, float time, float randomOffset) noexcept {
+            return EvaluateParticleCurve(std::span(curve.keys.data(), curve.keyCount), curve.interpolation, time, randomOffset);
         }
 
         MATH::Vec4 EvaluateGradient(
@@ -561,10 +580,16 @@ namespace HIKARI::RENDER3D::PARTICLES {
                 particle.positionAnimation,
                 particle.ageSeconds,
                 normalizedAge);
-            particle.position = particle.baseWorldPosition +
-                particle.motionPosition + Rotate(
-                    particle.emitterRotation,
-                    Multiply(localPosition, particle.emitterScale));
+            if (submission.simulation.localSimulation != 0u) {
+                particle.emitterRotation = submission.worldRotation;
+                particle.emitterScale = submission.worldScale;
+                particle.position = submission.worldPosition + Rotate(
+                    particle.emitterRotation, Multiply(particle.baseWorldPosition +
+                        particle.motionPosition + localPosition,particle.emitterScale));
+            } else {
+                particle.position = particle.baseWorldPosition + particle.motionPosition +
+                    Rotate(particle.emitterRotation,Multiply(localPosition,particle.emitterScale));
+            }
             particle.rotationRadians = EvaluateAnimated(
                 submission.simulation.rotationRadians,
                 particle.rotationAnimation,
@@ -597,9 +622,19 @@ namespace HIKARI::RENDER3D::PARTICLES {
             CpuParticleEmitterState& emitter,
             const ParticleEmitterSubmission& submission) {
 
-            const float dt = (std::max)(0.0f, submission.deltaSeconds);
+            const float dt = std::isfinite(submission.deltaSeconds)
+                ? std::clamp(submission.deltaSeconds, 0.0f, 2.0f) : 0.0f;
             const float drag = (std::max)(0.0f, submission.simulation.drag);
-            const float damping = std::exp(-drag * dt);
+            // 一定の重力・抗力を解析積分する。平面衝突だけ最大 8 分割し、描画提出は増やさない。
+            const uint32_t steps = submission.simulation.collisionPlaneEnabled != 0u
+                ? static_cast<uint32_t>(std::clamp(std::ceil(dt * 30.0f), 1.0f, 8.0f)) : 1u;
+            const float step = dt / static_cast<float>(steps);
+            const float x = drag * step;
+            const float damping = std::exp(-x);
+            const float velocityIntegral = x < 1.0e-3f
+                ? step * (1.0f - x * 0.5f + x * x / 6.0f) : (1.0f - damping) / drag;
+            const float accelerationIntegral = x < 1.0e-3f
+                ? step * step * (0.5f - x / 6.0f + x * x / 24.0f) : (step - velocityIntegral) / drag;
             const MATH::Vec3 gravity = submission.simulation.gravity *
                 submission.overrides.gravityMultiplier;
             for (CpuParticleState& particle : emitter.particles) {
@@ -609,10 +644,18 @@ namespace HIKARI::RENDER3D::PARTICLES {
                     particle.alive = false;
                     continue;
                 }
-                particle.velocity =
-                    (particle.velocity + gravity * dt) * damping;
-                particle.motionPosition = particle.motionPosition +
-                    particle.velocity * dt;
+                for (uint32_t index = 0; index < steps; ++index) {
+                    particle.motionPosition = particle.motionPosition +
+                        particle.velocity * velocityIntegral + gravity * accelerationIntegral;
+                    particle.velocity = particle.velocity * damping + gravity * velocityIntegral;
+                    if (submission.simulation.collisionPlaneEnabled != 0u &&
+                        particle.baseWorldPosition.y + particle.motionPosition.y < submission.simulation.collisionPlaneHeight) {
+                        particle.motionPosition.y = submission.simulation.collisionPlaneHeight - particle.baseWorldPosition.y;
+                        if (particle.velocity.y < 0.0f) particle.velocity.y *= -submission.simulation.restitution;
+                        particle.velocity.x *= 1.0f-submission.simulation.friction;
+                        particle.velocity.z *= 1.0f-submission.simulation.friction;
+                    }
+                }
                 RefreshPresentation(particle, submission);
             }
         }
@@ -650,11 +693,11 @@ namespace HIKARI::RENDER3D::PARTICLES {
                     (std::max)(radius, 0.0f));
                 particle.emitterRotation = submission.worldRotation;
                 particle.emitterScale = submission.worldScale;
-                particle.baseWorldPosition = submission.worldPosition +
+                particle.baseWorldPosition = submission.simulation.localSimulation != 0u ? shape.offset : submission.worldPosition +
                     Rotate(
                         submission.worldRotation,
                         Multiply(shape.offset, submission.worldScale));
-                const MATH::Vec3 direction = Rotate(
+                const MATH::Vec3 direction = submission.simulation.localSimulation != 0u ? shape.direction : Rotate(
                     submission.worldRotation,
                     shape.direction);
                 const float radialSpeed = SampleDistribution(
@@ -684,6 +727,22 @@ namespace HIKARI::RENDER3D::PARTICLES {
         }
     }
 
+    LayerAnimationSample EvaluateLayerAnimation(
+        const ParticleEmitterSimulationParameters& animation,
+        float seconds, float duration, uint32_t seed) noexcept {
+        const float age = std::clamp(seconds / (std::max)(duration, 0.0001f), 0.0f, 1.0f);
+        return {
+            EvaluateAnimated(animation.position,
+                ResolveAnimated(animation.position, seed, kRandomSaltPosition), seconds, age),
+            EvaluateAnimated(animation.rotationRadians,
+                ResolveAnimated(animation.rotationRadians, seed, kRandomSaltRotation), seconds, age),
+            EvaluateAnimated(animation.scale,
+                ResolveAnimated(animation.scale, seed, kRandomSaltScale), seconds, age),
+            EvaluateAnimated(animation.color,
+                ResolveAnimated(animation.color, seed, kRandomSaltColor), age)
+        };
+    }
+
     void ParticleCpuSimulation::Apply(const ParticleRenderInput& input) {
         for (const ParticleEmitterInstanceKey key : input.retiredEmitters) {
             emitters_.erase(key);
@@ -697,6 +756,23 @@ namespace HIKARI::RENDER3D::PARTICLES {
                 emitter = {};
                 emitter.key = submission.key;
                 emitter.particles.resize(submission.simulation.capacity);
+            }
+            if (submission.directShape) {
+                const size_t count = submission.shapePoses.empty() ? 1u : submission.shapePoses.size();
+                for (size_t i = 0; i < emitter.particles.size(); ++i) {
+                    auto& shape = emitter.particles[i]; shape = {};
+                    if (!submission.overrides.enabled || i >= count) continue;
+                    const auto pose = submission.shapePoses.empty() ? CurrentShapePose(submission) : submission.shapePoses[i];
+                    shape.alive = true;
+                    shape.ageSeconds = pose.age;
+                    shape.lifetimeSeconds = pose.duration;
+                    shape.position = pose.position;
+                    shape.emitterRotation = pose.rotation;
+                    shape.emitterScale = pose.scale;
+                    shape.scale = pose.scale;
+                    shape.color = pose.color;
+                }
+                continue;
             }
             SimulateExisting(emitter, submission);
             Spawn(emitter, submission);

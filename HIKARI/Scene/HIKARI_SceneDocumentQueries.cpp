@@ -7,8 +7,69 @@
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/HIKARI_SceneComponentId.h"
 #include "Assets/Material/HIKARI_MaterialBuiltInAssets.h"
+#include "Scene/Serialization/Objects/HIKARI_SceneObjectJson.h"
 
 namespace HIKARI {
+
+    std::unordered_set<uint64_t> CollectObjectSubtreeIds(
+        const SceneDocument& document, SceneObjectId rootId) {
+        std::unordered_map<uint64_t, std::vector<uint64_t>> children;
+        for (const auto& object : document.objects) {
+            if (object.parent) children[object.parent->value].push_back(object.id.value);
+        }
+        std::unordered_set<uint64_t> ids;
+        std::vector<uint64_t> pending{rootId.value};
+        while (!pending.empty()) {
+            const auto id = pending.back();
+            pending.pop_back();
+            if (!ids.insert(id).second) continue;
+            if (const auto found = children.find(id); found != children.end()) {
+                pending.insert(pending.end(), found->second.begin(), found->second.end());
+            }
+        }
+        return ids;
+    }
+
+    bool AppendClonedSceneObjects(std::span<const SceneObjectData> source,
+        SceneDocument& destination, uint64_t& nextId,
+        std::unordered_map<uint64_t, uint64_t>& outIds,
+        bool detachExternalParents) {
+        outIds.clear();
+        if (source.empty()) return false;
+        std::unordered_set<uint64_t> used;
+        for (const auto& object : destination.objects) used.insert(object.id.value);
+        std::unordered_map<uint64_t, uint64_t> ids;
+        uint64_t candidate = nextId == 0 ? 1 : nextId;
+        for (const auto& object : source) {
+            if (object.id.value == 0 || ids.contains(object.id.value)) return false;
+            while (used.contains(candidate)) {
+                if (++candidate == 0) candidate = 1;
+            }
+            ids.emplace(object.id.value, candidate);
+            used.insert(candidate);
+            if (++candidate == 0) candidate = 1;
+        }
+        std::vector<SceneObjectData> clones(source.begin(), source.end());
+        for (auto& object : clones) {
+            object.id.value = ids.at(object.id.value);
+            if (object.parent) {
+                if (const auto parent = ids.find(object.parent->value); parent != ids.end()) {
+                    object.parent->value = parent->second;
+                } else if (detachExternalParents) {
+                    object.parent.reset();
+                }
+            }
+            for (auto& component : object.components) {
+                SCENE::SERIALIZATION::NormalizeLegacySceneObjectReferences(component);
+                SCENE::SERIALIZATION::RemapSceneObjectReferences(component.properties, ids);
+            }
+        }
+        destination.objects.reserve(destination.objects.size() + clones.size());
+        for (auto& object : clones) destination.objects.push_back(std::move(object));
+        nextId = candidate;
+        outIds = std::move(ids);
+        return true;
+    }
 
     SceneObjectId AllocateSceneObjectId(
         const SceneDocument& document) {

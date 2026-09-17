@@ -152,6 +152,7 @@ namespace HIKARI::SEQUENCER {
         context.previousTimeSeconds = timeSeconds_;
         context.durationSeconds = durationSeconds_;
         context.mode = mode;
+        context.playbackRate = options_.playbackRate;
         context.playing = state_ == SequencePlaybackState::Playing;
 
         if (!bound_) {

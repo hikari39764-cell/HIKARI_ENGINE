@@ -12,6 +12,63 @@
 
 namespace HIKARI::SCENE::SERIALIZATION {
 
+    void NormalizeLegacySceneObjectReferences(SceneComponentData& component) {
+        // Legacy migration names only known component fields. New project
+        // components opt in through PropertyWriter::WriteSceneObjectId.
+        const auto normalize = [](nlohmann::json& properties, const char* name) {
+            if (!properties.is_object()) return;
+            const auto found = properties.find(name);
+            uint64_t id = 0;
+            if (found != properties.end() && ReadSceneObjectReference(*found, id)) {
+                *found = WriteSceneObjectReference(id);
+            }
+        };
+        auto& properties = component.properties;
+        if (!properties.is_object()) return;
+        if (component.type == "CameraFollowComponent") {
+            normalize(properties, "targetObjectId");
+        } else if (component.type == "CameraActivationVolumeComponent") {
+            normalize(properties, "subjectObjectId");
+            normalize(properties, "cameraObjectId");
+        } else if (component.type == "SequencePlayerComponent") {
+            if (auto bindings = properties.find("bindings"); bindings != properties.end() && bindings->is_array()) {
+                for (auto& binding : *bindings) normalize(binding, "sceneObjectId");
+            }
+        } else if (component.type == "VfxPlayerComponent") {
+            if (auto slots = properties.find("slots"); slots != properties.end() && slots->is_array()) {
+                for (auto& slot : *slots) normalize(slot, "fixedObjectId");
+            }
+        }
+    }
+
+    uint32_t RemapSceneObjectReferences(nlohmann::json& properties,
+        const std::unordered_map<uint64_t, uint64_t>& ids,
+        bool clearExternalReferences) {
+        // Iterative traversal also handles arrays without recursive stack growth.
+        uint32_t externalCount = 0;
+        std::vector<nlohmann::json*> pending{&properties};
+        while (!pending.empty()) {
+            auto* value = pending.back();
+            pending.pop_back();
+            if (value->is_object() && value->contains("$hikariRef")) {
+                uint64_t id = 0;
+                if (ReadSceneObjectReference(*value, id)) {
+                    if (const auto found = ids.find(id); found != ids.end()) {
+                        (*value)["id"] = found->second;
+                    } else if (id != 0) {
+                        ++externalCount;
+                        if (clearExternalReferences) (*value)["id"] = uint64_t{0};
+                    }
+                }
+                continue;
+            }
+            if (value->is_object() || value->is_array()) {
+                for (auto& child : *value) pending.push_back(&child);
+            }
+        }
+        return externalCount;
+    }
+
     namespace JsonMath = ::HIKARI::SERIALIZATION::JSON::MATH;
 
     namespace {
@@ -38,10 +95,12 @@ namespace HIKARI::SCENE::SERIALIZATION {
 
             out = nlohmann::json::array();
             for (const SceneComponentData& component : components) {
+                auto persisted = component;
+                NormalizeLegacySceneObjectReferences(persisted);
                 out.push_back({
                     { "id", component.id.value },
                     { "type", component.type },
-                    { "properties", component.properties }
+                    { "properties", persisted.properties }
                 });
             }
         }
@@ -60,6 +119,7 @@ namespace HIKARI::SCENE::SERIALIZATION {
                 component.id.value = componentNode.value("id", 0ull);
                 component.type = componentNode.value("type", std::string{});
                 component.properties = componentNode.value("properties", nlohmann::json::object());
+                NormalizeLegacySceneObjectReferences(component);
                 outComponents.push_back(std::move(component));
             }
         }

@@ -4,6 +4,7 @@
 
 #include "Core/HIKARI_JsonRead.h"
 #include "Core/Serialization/Json/HIKARI_JsonMath.h"
+#include "Scene/Serialization/Objects/HIKARI_SceneObjectJson.h"
 namespace HIKARI {
 
     namespace JsonMath = SERIALIZATION::JSON::MATH;
@@ -12,8 +13,8 @@ namespace HIKARI {
         nlohmann::json& out) const {
 
         out["enabled"] = enabled_;
-        out["subjectObjectId"] = subjectObjectId_.value;
-        out["cameraObjectId"] = cameraObjectId_.value;
+        out["subjectObjectId"] = SCENE::SERIALIZATION::WriteSceneObjectReference(subjectObjectId_.value);
+        out["cameraObjectId"] = SCENE::SERIALIZATION::WriteSceneObjectReference(cameraObjectId_.value);
         out["halfExtents"] = JsonMath::ToJsonArray(halfExtents_);
         out["priority"] = priority_;
         out["blendSeconds"] = blendSeconds_;
@@ -24,12 +25,10 @@ namespace HIKARI {
         const nlohmann::json& in) {
 
         enabled_ = in.value("enabled", enabled_);
-        subjectObjectId_.value = in.value(
-            "subjectObjectId",
-            subjectObjectId_.value);
-        cameraObjectId_.value = in.value(
-            "cameraObjectId",
-            cameraObjectId_.value);
+        subjectObjectId_.value = SCENE::SERIALIZATION::SceneObjectReferenceOr(
+            in.value("subjectObjectId", nlohmann::json{}), subjectObjectId_.value);
+        cameraObjectId_.value = SCENE::SERIALIZATION::SceneObjectReferenceOr(
+            in.value("cameraObjectId", nlohmann::json{}), cameraObjectId_.value);
         if (in.contains("halfExtents")) {
             halfExtents_ = JSONREAD::Vec3Or(
                 in["halfExtents"],

@@ -1,19 +1,22 @@
 #pragma once
 
 #include <cstdint>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include "Assets/HIKARI_AssetGuid.h"
+#include "Assets/Vfx/HIKARI_VfxAnimationTiming.h"
+#include "Assets/Material/Authoring/HIKARI_MaterialEffectStack.h"
 #include "Render3D/HIKARI_Math3D.h"
 
 namespace HIKARI::VFX {
 
-    // Source v5 replaces the ambiguous particle depth-test boolean with an
-    // explicit depth policy and adds the shader-led stylized particle profile.
-    // Readers still accept v2-v4 and materialize the new fields from defaults.
-    inline constexpr uint32_t kVfxSourceVersion = 5u;
+    inline constexpr uint32_t kVfxSourceVersion = 9u;
+
+    // 形状はレイヤー時間、粒子は個々の寿命で同じアニメーションを評価する。
+    enum class VfxLayerKind : uint8_t { Particles, Shape, Group };
 
     enum class VfxValueType : uint8_t {
         Bool,
@@ -46,7 +49,16 @@ namespace HIKARI::VFX {
         Sprite,
         Ribbon,
         Ring,
+        MeshBox,
+        MeshSphere,
+        MeshCylinder,
+        MeshCone,
+        MeshHemisphere,
+        CrossPlane,
     };
+
+    std::span<const std::string_view> GetVfxRenderShapeChoices() noexcept;
+    std::span<const std::string_view> GetVfxMaterialModeChoices() noexcept;
 
     enum class VfxBlendMode : uint8_t {
         Alpha,
@@ -56,7 +68,13 @@ namespace HIKARI::VFX {
     enum class VfxMaterialMode : uint8_t {
         StandardUnlit,
         CustomMaterial,
+        StandardLit,
+        CustomLit,
     };
+
+    constexpr bool IsCustomVfxMaterial(VfxMaterialMode mode) noexcept {
+        return mode == VfxMaterialMode::CustomMaterial || mode == VfxMaterialMode::CustomLit;
+    }
 
     enum class VfxParticleDepthMode : uint8_t {
         WorldOccluded,
@@ -65,14 +83,6 @@ namespace HIKARI::VFX {
         ForegroundAccent,
     };
 
-    enum class VfxParticleShaderStyle : uint8_t {
-        Default,
-        CombatCut,
-        CombatImpact,
-        CombatGround,
-        ComicSmoke,
-        ProjectileNeedle,
-    };
 
     enum class VfxParticleCapacityMode : uint8_t {
         Automatic,
@@ -388,6 +398,7 @@ namespace HIKARI::VFX {
         std::string id{};
         bool enabled = true;
         VfxFloatDistributionData lifetime{};
+        bool localSimulation = false;
     };
 
     struct VfxEmitterTransformModuleData {
@@ -442,6 +453,10 @@ namespace HIKARI::VFX {
         std::string id{};
         MATH::Vec3 gravity{ 0.0f, 0.0f, 0.0f };
         float drag = 0.0f;
+        bool collisionPlaneEnabled = false;
+        float collisionPlaneHeight = 0.0f;
+        float restitution = 0.35f;
+        float friction = 0.2f;
     };
 
     struct VfxColorModuleData {
@@ -459,16 +474,6 @@ namespace HIKARI::VFX {
             VfxParticleDepthMode::WorldOccluded;
         float softIntersectionDistance = 0.15f;
         float depthBias = 0.00035f;
-        VfxParticleShaderStyle shaderStyle =
-            VfxParticleShaderStyle::Default;
-        MATH::Vec4 shaderOutlineColor{
-            0.035f, 0.075f, 0.32f, 1.0f };
-        MATH::Vec4 shaderCoreColor{ 1.0f, 1.0f, 1.0f, 1.0f };
-        float shaderOutlineWidth = 0.12f;
-        float shaderEdgeHardness = 0.88f;
-        float shaderEmissiveIntensity = 0.0f;
-        float shaderBreakupScale = 7.0f;
-        float shaderBreakupStrength = 0.0f;
         uint32_t flipbookColumns = 1u;
         uint32_t flipbookRows = 1u;
         uint32_t flipbookFrameCount = 1u;
@@ -491,9 +496,34 @@ namespace HIKARI::VFX {
         float ringEndAngleDegrees = 360.0f;
     };
 
+    enum class VfxHistoryMode : uint32_t { None, Afterimage, Trail };
+
+    struct VfxHistoryData {
+        VfxHistoryMode mode = VfxHistoryMode::None;
+        float duration = 0.2f;
+        uint32_t samples = 12u;
+        float breakDistance = 2.5f;
+    };
+
+    // ソース・コンパイル済みデータ・編集操作が共有する範囲契約。
+    bool IsValidVfxHistory(const VfxHistoryData& history) noexcept;
+
+    inline constexpr uint32_t kMaxVfxLayerCurveKeys = 256;
+    inline constexpr uint32_t kMaxVfxParameterTracks = 64;
+    struct VfxParameterTrackData {
+        std::string id;
+        std::string targetId;
+        std::string propertyId;
+        // 常にレイヤー時間。粒子ごとの寿命カーブとは別の意味を持つ。
+        VfxCurveData curve;
+    };
+
     struct VfxEmitterData {
         std::string id{};
         std::string name{};
+        VfxLayerKind kind = VfxLayerKind::Particles;
+        VfxHistoryData history{};
+        VfxAnimationTiming animationTiming{};
         std::string parentEmitterId{};
         uint32_t order = 0u;
         // Local emitter activation window. A zero activeDuration means
@@ -512,6 +542,8 @@ namespace HIKARI::VFX {
         VfxColorModuleData color{};
         VfxRenderCommonModuleData renderCommon{};
         VfxRenderShapeModuleData renderShape{};
+        std::vector<VfxParameterTrackData> parameterTracks{};
+        std::vector<MaterialEffectStep> effects{};
         std::vector<VfxSpecialOutputData> specialOutputs{};
         std::vector<VfxInputLinkData> inputLinks{};
     };
@@ -531,7 +563,6 @@ namespace HIKARI::VFX {
     std::string_view ToString(VfxBlendMode value) noexcept;
     std::string_view ToString(VfxMaterialMode value) noexcept;
     std::string_view ToString(VfxParticleDepthMode value) noexcept;
-    std::string_view ToString(VfxParticleShaderStyle value) noexcept;
     std::string_view ToString(VfxParticleCapacityMode value) noexcept;
     std::string_view ToString(VfxBillboardMode value) noexcept;
     std::string_view ToString(VfxCurveInterpolation value) noexcept;
@@ -561,9 +592,6 @@ namespace HIKARI::VFX {
     bool TryParseVfxParticleDepthMode(
         std::string_view text,
         VfxParticleDepthMode& outValue) noexcept;
-    bool TryParseVfxParticleShaderStyle(
-        std::string_view text,
-        VfxParticleShaderStyle& outValue) noexcept;
     bool TryParseVfxParticleCapacityMode(
         std::string_view text,
         VfxParticleCapacityMode& outValue) noexcept;

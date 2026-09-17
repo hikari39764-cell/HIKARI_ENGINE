@@ -10,6 +10,8 @@
 #include "Editor/Workspaces/Vfx/HIKARI_VfxOperations.h"
 #include "Editor/Workspaces/Dialogue/HIKARI_DialogueOperations.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
+#include "Runtime/Diagnostics/HIKARI_RuntimeDebugService.h"
+#include "Scene/HIKARI_World.h"
 
 #include <utility>
 
@@ -34,10 +36,25 @@ namespace HIKARI {
 
     void DocumentSceneEditorController::RegisterEditorOperations() {
         RegisterSceneFolderOperations();
+        RegisterSceneLayoutOperations();
+        EDITOR::RegisterProjectCodeOperations(operationRegistry_, projectCodeJob_, [this] {
+            return projectBuildAllowed_ && aiOperationScene_ && !aiOperationScene_->IsRuntimePlayActive();
+        });
         EDITOR::RegisterGameExportOperations(operationRegistry_, exportJob_, [this] {
-            return exportStartAllowed_ && aiOperationScene_ && !HasKnownUnsavedProjectChanges(*aiOperationScene_);
+            return projectBuildAllowed_ && aiOperationScene_ && !HasKnownUnsavedProjectChanges(*aiOperationScene_);
         });
         using EDITOR::EditorOperationParameterType;
+        operationRegistry_.Register({"runtime.debug.execute",
+            "Execute a bounded developer command against the playing World. Same owner as the F10 console; use help to discover commands.",
+            "runtime", {{"command",EditorOperationParameterType::String,true,"Developer command, up to 512 bytes."}},
+            [this](const nlohmann::json& parameters) -> EDITOR::EditorOperationResult {
+                if (!aiOperationScene_ || !aiOperationScene_->IsRuntimePlayActive()) return {false,"PLAY_REQUIRED","Start Play first."};
+                auto& world=aiOperationScene_->GetWorld();
+                auto* debug=world.Services().Find<RUNTIME::RuntimeDebugService>();
+                if (!debug) return {false,"UNAVAILABLE","Developer diagnostics are unavailable."};
+                const auto reply=debug->Execute(world,parameters.value("command",std::string{}));
+                return {reply.success,reply.success ? "OK" : "REJECTED",reply.text};
+            }});
         const auto P = MakeOperationParameter;
         operationRegistry_.Register({
             "material.node_info",

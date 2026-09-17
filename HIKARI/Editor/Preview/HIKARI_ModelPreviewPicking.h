@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include "Editor/Views/HIKARI_EditorViewportGeometry.h"
 
 #include "Render3D/HIKARI_Math3D.h"
 
@@ -12,11 +13,6 @@ namespace HIKARI::EDITOR {
 
 class ModelPreviewScene;
 
-struct ModelPreviewPointerRay {
-  MATH::Vec3 origin{};
-  MATH::Vec3 direction{};
-};
-
 struct ModelPreviewSurfacePick {
   uint32_t materialIndex = 0u;
   int32_t nodeIndex = -1;
@@ -26,13 +22,8 @@ struct ModelPreviewSurfacePick {
   bool valid = false;
 };
 
-bool BuildModelPreviewPointerRay(const Camera3D &camera,
-                                 float normalizedViewportX,
-                                 float normalizedViewportY,
-                                 ModelPreviewPointerRay &outRay) noexcept;
-
 ModelPreviewSurfacePick PickModelPreviewSurface(
-    const ModelPreviewPointerRay &ray,
+    const EditorPointerRay &ray,
     const ModelPreviewScene &scene) noexcept;
 
 } // namespace HIKARI::EDITOR

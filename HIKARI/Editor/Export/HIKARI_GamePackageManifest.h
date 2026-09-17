@@ -13,6 +13,8 @@ namespace HIKARI::EDITOR {
         std::string executableFileName{};
     };
 
+    bool IsForbiddenGamePackagePath(const std::filesystem::path& relativePath);
+
     bool ValidateGamePackageBoundary(
         const std::filesystem::path& packageRoot,
         const GamePackageManifestOptions& options,

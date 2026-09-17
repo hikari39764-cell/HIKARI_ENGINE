@@ -9,6 +9,7 @@
 #include "Scene/Features/HIKARI_RuntimeFeature.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureIds.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
+#include "Scene/HIKARI_ComponentSystemPolicy.h"
 #include "Scene/HIKARI_SystemTypeRegistry.h"
 #include "Scene/Ui/HIKARI_UiSceneComponents.h"
 #include "Scene/Ui/HIKARI_UiSceneSystem.h"
@@ -126,6 +127,12 @@ namespace HIKARI {
                     "UI Scene",
                     "UI"
                 }) && success;
+                auto& policy = RuntimeFeatureContextAccess::Policy(context);
+                success = policy.Register({std::string(kUiCanvasComponentType),
+                    std::string(kUiSceneSystemId), 70}) && success;
+                // UI の frame source 公開も共通の描画送信系が所有する。
+                success = policy.Register({std::string(kUiCanvasComponentType),
+                    "ModelRenderSystem", 100}) && success;
                 return success;
             }
         };

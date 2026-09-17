@@ -64,6 +64,9 @@ namespace HIKARI::VFX {
 
         VfxPlayResult PlayDetailed(const VfxPlayRequest& request);
         bool Stop(VfxPlaybackHandle handle);
+        bool SetTimeScale(VfxPlaybackHandle handle, float scale);
+        // Runtime cues queue bounded preroll until the previous GPU delivery is acknowledged.
+        bool QueueSeek(VfxPlaybackHandle handle, float seconds);
         size_t StopByOwner(RuntimeObjectHandle ownerObject);
         bool SetTransform(
             VfxPlaybackHandle handle,
@@ -91,12 +94,18 @@ namespace HIKARI::VFX {
             noexcept;
         bool HasPendingRenderInput() const noexcept;
         bool IsActive(VfxPlaybackHandle handle) const noexcept;
+        bool GetLayerPoseAtTime(VfxPlaybackHandle handle, std::string_view layerId, float seconds,
+            VfxWorldTransform& world, VfxWorldTransform& animationFrame) const;
+        bool GetLayerPose(VfxPlaybackHandle handle, std::string_view layerId,
+            VfxWorldTransform& world, VfxWorldTransform& animationFrame) const;
         size_t GetActiveInstanceCount() const noexcept;
         const VfxPlaybackAdmissionStats&
             GetAdmissionStats() const noexcept;
         void Reset();
 
     private:
+        VfxSeekResult SeekInternal(VfxPlaybackHandle handle, uint64_t frameIndex,
+            float targetSeconds, float fixedStepSeconds, uint32_t maximumSteps, bool publish);
         struct HandleSlot;
         struct EmitterState;
         struct Instance;

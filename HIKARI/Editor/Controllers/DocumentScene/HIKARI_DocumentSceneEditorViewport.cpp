@@ -108,6 +108,9 @@ namespace HIKARI {
                         TEXT::Localize("ui.viewport.playOptions").c_str());
                 }
                 if (ImGui::BeginPopup("Play Mode Menu")) {
+                    if (ImGui::MenuItem("Developer Console", "F10", false, previewRunning)) {
+                        runtimeDebugWindow_.Open();
+                    }
                     if (ImGui::MenuItem(
                             TEXT::Localize(
                                 "ui.viewport.playInNewWindow").c_str(),
@@ -540,6 +543,11 @@ namespace HIKARI {
                 ImVec2(textMin.x + 8.0f, textMin.y + 5.0f),
                 IM_COL32(220, 235, 240, 245),
                 hint.c_str());
+        } else if (!scene.GetSceneLoadError().empty()) {
+            ImDrawList* drawList = ImGui::GetWindowDrawList();
+            const ImVec2 textPos(imageOrigin.x + 12.0f, imageOrigin.y + 48.0f);
+            drawList->AddText(nullptr, 0.0f, textPos, IM_COL32(255, 150, 120, 255),
+                scene.GetSceneLoadError().c_str(), nullptr, imageSize.x - 24.0f);
         } else if (!viewportDropMessage_.empty()) {
             ImDrawList* drawList = ImGui::GetWindowDrawList();
             const ImVec2 textPos{ imageOrigin.x + 14.0f, imageOrigin.y + imageSize.y - 28.0f };

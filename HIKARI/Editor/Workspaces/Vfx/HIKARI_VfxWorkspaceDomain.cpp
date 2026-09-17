@@ -12,6 +12,8 @@ namespace HIKARI::EDITOR {
                 return static_cast<decltype(&emitter.position.value.curve.x)>(
                     nullptr);
             }
+            for (auto& track:emitter.parameterTracks)
+                if (address.moduleId==track.id && address.propertyId=="curve") return &track.curve;
             if (address.moduleId == emitter.position.id &&
                 address.propertyId == "value") {
                 if (address.channel == "x") return &emitter.position.value.curve.x;

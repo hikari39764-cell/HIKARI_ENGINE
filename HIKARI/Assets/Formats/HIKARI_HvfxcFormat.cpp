@@ -1,4 +1,7 @@
 #include "Assets/Formats/HIKARI_HvfxcFormat.h"
+#include "Assets/HIKARI_AssetTypes.h"
+#include "Assets/Material/Serialization/HIKARI_MaterialSourceJson.h"
+#include "Assets/Material/Compiler/HIKARI_MaterialProgramSerialization.h"
 
 #include <atomic>
 #include <cstring>
@@ -80,6 +83,7 @@ namespace HIKARI::VFX {
             bool Failed() const noexcept {
                 return failed_;
             }
+            void Fail() noexcept { failed_ = true; }
 
             std::string Take() noexcept {
                 return std::move(bytes_);
@@ -395,6 +399,32 @@ namespace HIKARI::VFX {
             return true;
         }
 
+        void WriteLayerCurves(BinaryWriter& writer, const std::vector<VfxProgramLayerCurve>& curves) {
+            writer.Write(static_cast<uint32_t>(curves.size()));
+            for (const auto& curve:curves) {
+                writer.WriteEnum(curve.channel); writer.Write(curve.materialSlot); writer.WriteEnum(curve.interpolation);
+                writer.Write(curve.minimum);writer.Write(curve.maximum);
+                writer.Write(static_cast<uint32_t>(curve.keys.size()));
+                for (const auto& key:curve.keys) {
+                    writer.Write(key.time); writer.Write(key.value); writer.Write(key.inTangent); writer.Write(key.outTangent);
+                }
+            }
+        }
+        bool ReadLayerCurves(BinaryReader& reader, std::vector<VfxProgramLayerCurve>& curves) {
+            uint32_t count=0;
+            if (!reader.Read(count) || count>kMaxVfxParameterTracks+13) return false;
+            for (uint32_t i=0;i<count;++i) {
+                VfxProgramLayerCurve curve; uint32_t keys=0;
+                if (!reader.ReadEnum(curve.channel) || !reader.Read(curve.materialSlot) || !reader.ReadEnum(curve.interpolation) ||
+                    !reader.Read(curve.minimum) || !reader.Read(curve.maximum) ||
+                    !reader.Read(keys) || keys==0 || keys>kMaxVfxLayerCurveKeys || keys>reader.Remaining()/(4*sizeof(float))) return false;
+                curve.keys.resize(keys);
+                for (auto& key:curve.keys) if (!reader.Read(key.time) || !reader.Read(key.value) || !reader.Read(key.inTangent) || !reader.Read(key.outTangent)) return false;
+                curves.push_back(std::move(curve));
+            }
+            return true;
+        }
+
         void WriteAnimated(
             BinaryWriter& writer,
             const ParticleAnimatedFloat3& value) {
@@ -516,6 +546,13 @@ namespace HIKARI::VFX {
                 WriteVec3(writer, emitter.transform.scale);
                 writer.Write(emitter.startDelay);
                 writer.Write(emitter.activeDuration);
+                writer.WriteEnum(emitter.kind);
+                writer.WriteEnum(emitter.history.mode);
+                writer.Write(emitter.history.duration);
+                writer.Write(emitter.history.samples);
+                writer.Write(emitter.history.breakDistance);
+                WriteLayerCurves(writer,emitter.layerCurves);
+                writer.Write(emitter.animationTiming.sourceDuration);writer.Write(emitter.animationTiming.offset);writer.Write(emitter.animationTiming.rate);
                 WriteAttachment(writer, emitter.attachment);
                 writer.Write(emitter.spawnRatePerSecond);
                 writer.Write(emitter.burstCount);
@@ -551,6 +588,11 @@ namespace HIKARI::VFX {
                 WriteAnimated(writer, simulation.scale);
                 WriteVec3(writer, simulation.gravity);
                 writer.Write(simulation.drag);
+                writer.Write(simulation.localSimulation);
+                writer.Write(simulation.collisionPlaneEnabled);
+                writer.Write(simulation.collisionPlaneHeight);
+                writer.Write(simulation.restitution);
+                writer.Write(simulation.friction);
                 WriteAnimated(writer, simulation.color);
 
                 writer.WriteEnum(emitter.render.materialMode);
@@ -563,14 +605,6 @@ namespace HIKARI::VFX {
                 writer.WriteEnum(emitter.render.depthMode);
                 writer.Write(emitter.render.softIntersectionDistance);
                 writer.Write(emitter.render.depthBias);
-                writer.WriteEnum(emitter.render.shaderStyle);
-                WriteVec4(writer, emitter.render.shaderOutlineColor);
-                WriteVec4(writer, emitter.render.shaderCoreColor);
-                writer.Write(emitter.render.shaderOutlineWidth);
-                writer.Write(emitter.render.shaderEdgeHardness);
-                writer.Write(emitter.render.shaderEmissiveIntensity);
-                writer.Write(emitter.render.shaderBreakupScale);
-                writer.Write(emitter.render.shaderBreakupStrength);
                 writer.Write(emitter.render.flipbookColumns);
                 writer.Write(emitter.render.flipbookRows);
                 writer.Write(emitter.render.flipbookFrameCount);
@@ -584,6 +618,15 @@ namespace HIKARI::VFX {
                 writer.Write(emitter.render.ringSegmentCount);
                 writer.Write(emitter.render.ringStartAngleRadians);
                 writer.Write(emitter.render.ringEndAngleRadians);
+                writer.WriteBool(emitter.render.effectMaterial != nullptr);
+                if (const auto& material = emitter.render.effectMaterial) {
+                    std::string source, programIr, error;
+                    if (!MATERIAL_SERIALIZATION::SerializeMaterialSourceJson(material->sourceData, source, error) ||
+                        !MATERIAL_SERIALIZATION::SerializeMaterialCompileResult(material->compileResult, programIr, error)) {
+                        writer.Fail(); return;
+                    }
+                    writer.WriteString(source); writer.WriteString(programIr);
+                }
 
                 writer.Write(static_cast<uint32_t>(
                     emitter.specialOutputs.size()));
@@ -666,6 +709,13 @@ namespace HIKARI::VFX {
                     !ReadVec3(reader, emitter.transform.scale) ||
                     !reader.Read(emitter.startDelay) ||
                     !reader.Read(emitter.activeDuration) ||
+                    !reader.ReadEnum(emitter.kind) ||
+                    !reader.ReadEnum(emitter.history.mode) ||
+                    !reader.Read(emitter.history.duration) ||
+                    !reader.Read(emitter.history.samples) ||
+                    !reader.Read(emitter.history.breakDistance) ||
+                    !ReadLayerCurves(reader,emitter.layerCurves) ||
+                    !reader.Read(emitter.animationTiming.sourceDuration) || !reader.Read(emitter.animationTiming.offset) || !reader.Read(emitter.animationTiming.rate) ||
                     !ReadAttachment(reader, emitter.attachment) ||
                     !reader.Read(emitter.spawnRatePerSecond) ||
                     !reader.Read(emitter.burstCount) ||
@@ -723,6 +773,11 @@ namespace HIKARI::VFX {
                     !ReadAnimated(reader, simulation.scale) ||
                     !ReadVec3(reader, simulation.gravity) ||
                     !reader.Read(simulation.drag) ||
+                    !reader.Read(simulation.localSimulation) ||
+                    !reader.Read(simulation.collisionPlaneEnabled) ||
+                    !reader.Read(simulation.collisionPlaneHeight) ||
+                    !reader.Read(simulation.restitution) ||
+                    !reader.Read(simulation.friction) ||
                     !ReadAnimated(reader, simulation.color) ||
                     !reader.ReadEnum(emitter.render.materialMode) ||
                     !reader.ReadString(
@@ -735,19 +790,6 @@ namespace HIKARI::VFX {
                     !reader.Read(
                         emitter.render.softIntersectionDistance) ||
                     !reader.Read(emitter.render.depthBias) ||
-                    !reader.ReadEnum(emitter.render.shaderStyle) ||
-                    !ReadVec4(
-                        reader,
-                        emitter.render.shaderOutlineColor) ||
-                    !ReadVec4(
-                        reader,
-                        emitter.render.shaderCoreColor) ||
-                    !reader.Read(emitter.render.shaderOutlineWidth) ||
-                    !reader.Read(emitter.render.shaderEdgeHardness) ||
-                    !reader.Read(
-                        emitter.render.shaderEmissiveIntensity) ||
-                    !reader.Read(emitter.render.shaderBreakupScale) ||
-                    !reader.Read(emitter.render.shaderBreakupStrength) ||
                     !reader.Read(emitter.render.flipbookColumns) ||
                     !reader.Read(emitter.render.flipbookRows) ||
                     !reader.Read(emitter.render.flipbookFrameCount) ||
@@ -766,6 +808,19 @@ namespace HIKARI::VFX {
                     return false;
                 }
 
+                bool hasEffectMaterial = false;
+                if (!reader.ReadBool(hasEffectMaterial)) return false;
+                if (hasEffectMaterial) {
+                    std::string source, programIr, error;
+                    auto material = std::make_shared<MaterialAssetDescriptor>();
+                    if (!reader.ReadString(source) || !reader.ReadString(programIr) ||
+                        !MATERIAL_SERIALIZATION::ParseMaterialSourceJson(source, material->sourceData, error) ||
+                        !MATERIAL_SERIALIZATION::ParseMaterialCompileResult(programIr, material->compileResult, error) ||
+                        !material->compileResult.success || material->sourceData.domain != MaterialDomain::Particle)
+                        return false;
+                    emitter.render.effectMaterial = std::move(material);
+                    emitter.render.effectMaterialKey = program.programId + ":" + emitter.sourceEmitterId;
+                }
                 uint32_t specialOutputCount = 0u;
                 if (!reader.Read(specialOutputCount) ||
                     specialOutputCount >

@@ -9,11 +9,12 @@
 #include "Assets/HIKARI_AssetGuid.h"
 #include "Assets/Vfx/HIKARI_VfxAssetData.h"
 #include "Assets/Vfx/HIKARI_VfxPropertySchema.h"
+#include "Assets/Vfx/HIKARI_VfxLayerAnimation.h"
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
 
 namespace HIKARI::VFX {
 
-    inline constexpr uint32_t kVfxProgramVersion = 7u;
+    inline constexpr uint32_t kVfxProgramVersion = 11u;
     inline constexpr uint32_t kMaximumVfxProgramTableItems = 1u << 20u;
     inline constexpr uint32_t kMaximumVfxProgramEmitters = 1024u;
     inline constexpr uint32_t kMaximumVfxProgramInputs = 4096u;
@@ -99,6 +100,10 @@ namespace HIKARI::VFX {
 
     struct VfxProgramEmitter {
         std::string sourceEmitterId{};
+        VfxLayerKind kind = VfxLayerKind::Particles;
+        VfxHistoryData history{};
+        VfxAnimationTiming animationTiming{};
+        std::vector<VfxProgramLayerCurve> layerCurves;
         uint32_t emitterIndex = 0u;
         uint32_t parentEmitterIndex = kInvalidVfxProgramIndex;
         VfxTransformData transform{};

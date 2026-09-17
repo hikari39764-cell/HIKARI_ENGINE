@@ -260,6 +260,12 @@ constexpr std::array kTimeOutputs{
     Fixed("GameDeltaTime", MaterialValueType::Float1),
     Fixed("FrameIndex", MaterialValueType::Float1),
 };
+constexpr std::array kParticleStateOutputs{
+    Fixed("Age", MaterialValueType::Float1),
+    Fixed("Seconds", MaterialValueType::Float1),
+    Fixed("Random", MaterialValueType::Float1),
+    Fixed("Speed", MaterialValueType::Float1),
+};
 constexpr std::array kFloat2Output{
     Fixed("Value", MaterialValueType::Float2),
 };
@@ -506,10 +512,19 @@ constexpr std::array kDefinitions{
     MaterialNodeDefinition{MaterialNodeKind::ParticleOutput, "ParticleOutput",
         MaterialValueType::Float4, NodeClass::Surface, true,
         kParticleOutputInputs, {}, false, OutputRoute::Unrestricted, "Terminal particle output for color, opacity, emissive and alpha clipping."},
+    MaterialNodeDefinition{MaterialNodeKind::ParticleState, "ParticleState",
+        MaterialValueType::Float1, NodeClass::Input, true,
+        {}, kParticleStateOutputs, false, OutputRoute::Unrestricted, "Per-particle normalized Age (0..1), Seconds alive, stable Random (0..1), and Speed in simulation units per second."},
+    MaterialNodeDefinition{MaterialNodeKind::ParticleColor, "ParticleColor",
+        MaterialValueType::Float4, NodeClass::Input, true,
+        {}, kFloat4Output, false, OutputRoute::Unrestricted, "Particle color for masks and variation. The final color is also modulated by the layer tint."},
+    MaterialNodeDefinition{MaterialNodeKind::ParticleUv, "ParticleUV",
+        MaterialValueType::Float2, NodeClass::Input, true,
+        {}, kFloat2Output, false, OutputRoute::Unrestricted, "Local shape UV (0..1), independent of flipbook atlas cells. Use for scrolling, polar masks and shell gradients."},
 };
 
 static_assert(kDefinitions.size() ==
-    static_cast<size_t>(MaterialNodeKind::ParticleOutput) + 1u);
+    static_cast<size_t>(MaterialNodeKind::ParticleUv) + 1u);
 
 constexpr bool AllPaletteVisibleNodesHaveSummary() {
     for (const MaterialNodeDefinition& definition : kDefinitions) {
@@ -571,7 +586,8 @@ bool IsMaterialNodeAvailableForDomain(
         return false;
     }
     if (domain == MaterialDomain::Surface) {
-        return kind != MaterialNodeKind::ParticleOutput;
+        return kind != MaterialNodeKind::ParticleOutput && kind != MaterialNodeKind::ParticleState &&
+            kind != MaterialNodeKind::ParticleColor && kind != MaterialNodeKind::ParticleUv;
     }
     if (kind == MaterialNodeKind::ParticleOutput) {
         return true;

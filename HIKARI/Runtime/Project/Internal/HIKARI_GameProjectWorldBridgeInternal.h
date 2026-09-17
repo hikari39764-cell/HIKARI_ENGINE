@@ -3,8 +3,17 @@
 #include "HIKARI/Project/WorldTypes.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
 #include "Scene/HIKARI_World.h"
+#include "Scene/HIKARI_RuntimeSceneContext.h"
 
 namespace HIKARI::PROJECT::INTERNAL {
+
+    // Callback-scoped service Views may only access the active World on its
+    // owner thread. Persistent object references use generation handles instead.
+    inline World* CurrentWorld(void* value) noexcept {
+        auto* world = static_cast<World*>(value);
+        return world != nullptr && RuntimeSceneContext::GetCurrentWorld() == world &&
+            world->IsOwnerThread() ? world : nullptr;
+    }
 
     inline RuntimeObjectHandle DecodeRuntimeHandle(
         GameProjectObjectHandle handle) noexcept {

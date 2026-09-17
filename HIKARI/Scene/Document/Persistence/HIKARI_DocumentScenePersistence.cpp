@@ -25,12 +25,15 @@ namespace HIKARI {
             HIKARI_LOG_WARN("[SceneAsset] blocked scene outside runtime export set: " + sceneGuid.value);
             return false;
         }
+        // ReloadAssets は Database のレコードを置き換えるため、借用した GUID を保持しない。
+        const AssetGuid requestedGuid = sceneGuid;
         return ReloadAssets() &&
-            OpenSceneAssetWithCurrentAssets(sceneGuid);
+            OpenSceneAssetWithCurrentAssets(requestedGuid);
     }
 
     bool DocumentSceneBase::OpenSceneAssetWithCurrentAssets(
         const AssetGuid& sceneGuid) {
+        state_->identity.loadError.clear();
         if (!IsValidAssetGuid(sceneGuid.value) ||
             !SERVICES::IsRuntimeSceneGuidAllowed(sceneGuid.value)) {
             return false;
@@ -44,6 +47,8 @@ namespace HIKARI {
         if (!record || record->duplicateGuid ||
             record->type != AssetType::Scene ||
             record->sourcePath.empty()) {
+            state_->identity.loadError = "Scene asset unavailable: " + sceneGuid.value;
+            HIKARI_LOG_ERROR(state_->identity.loadError);
             return false;
         }
 
@@ -51,6 +56,8 @@ namespace HIKARI {
             (state_->assets.Database().GetProjectRoot() / record->sourcePath).lexically_normal();
         SceneDocument loaded{};
         if (!state_->identity.serializer.LoadFromFile(scenePath.generic_string(), loaded)) {
+            state_->identity.loadError = "Scene could not be read: " + scenePath.generic_string();
+            HIKARI_LOG_ERROR(state_->identity.loadError);
             return false;
         }
 
@@ -77,8 +84,13 @@ namespace HIKARI {
 
         state_->lighting.environment = state_->identity.document.environment;
         if (RebuildRuntimeWorld(false, true)) {
+            state_->identity.loadError.clear();
             return true;
         }
+
+        const std::string loadError = state_->identity.loadError.empty()
+            ? "Scene runtime could not be created: " + scenePath.generic_string()
+            : state_->identity.loadError;
 
         state_->identity.document = std::move(previousDocument);
         state_->identity.documentRevision = previousDocumentRevision;
@@ -94,6 +106,7 @@ namespace HIKARI {
                 "after Scene open failed.");
             state_->runtime.playActive = false;
         }
+        state_->identity.loadError = loadError;
         return false;
     }
     bool DocumentSceneBase::OpenStartupSceneAsset() {
@@ -106,22 +119,19 @@ namespace HIKARI {
             return false;
         }
 
-        // ProjectSettings 邵ｺ・ｮ GUID 郢ｧ雋樞煤陷亥現・邵ｲ竏ｵ謔ｴ髫ｪ・ｭ陞ｳ螢ｹ竊醍ｹｧ逕ｻ諤呵崕譏ｴ繝ｻ Scene Asset 郢ｧ蜻域ｲｻ騾包ｽｨ邵ｺ蜷ｶ・狗ｸｲ繝ｻ
+        // 実行時の明示的な開始シーンを優先する。
         const std::string& runtimeStartupSceneGuid = SERVICES::GetRuntimeStartupSceneGuid();
-        if (!runtimeStartupSceneGuid.empty() &&
-            OpenSceneAssetWithCurrentAssets(
-                AssetGuid{ runtimeStartupSceneGuid })) {
-            return true;
+        if (!runtimeStartupSceneGuid.empty()) {
+            return OpenSceneAssetWithCurrentAssets(AssetGuid{runtimeStartupSceneGuid});
         }
 
         ProjectSettingsService settings{};
         settings.Load(state_->assets.Database().GetProjectRoot());
 
         const AssetGuid startupGuid = settings.GetSettings().startupSceneGuid;
-        if (IsValidAssetGuid(startupGuid.value) &&
-            SERVICES::IsRuntimeSceneGuidAllowed(startupGuid.value) &&
-            OpenSceneAssetWithCurrentAssets(startupGuid)) {
-            return true;
+        // 指定した開始シーンの故障を、別シーンへの切替と設定保存で隠さない。
+        if (IsValidAssetGuid(startupGuid.value)) {
+            return OpenSceneAssetWithCurrentAssets(startupGuid);
         }
 
         std::vector<const AssetRecord*> sceneRecords = state_->assets.Database().CollectByType(AssetType::Scene);
@@ -132,18 +142,24 @@ namespace HIKARI {
             return lhs->sourcePath.generic_string() < rhs->sourcePath.generic_string();
         });
 
+        std::vector<AssetGuid> sceneGuids;
+        sceneGuids.reserve(sceneRecords.size());
         for (const AssetRecord* record : sceneRecords) {
             if (!record || !IsValidAssetGuid(record->guid.value)) {
                 continue;
             }
-            if (!SERVICES::IsRuntimeSceneGuidAllowed(record->guid.value)) {
+            sceneGuids.push_back(record->guid);
+        }
+        // シーン依存のインポート中に Database が更新されても候補は有効に保つ。
+        for (const AssetGuid& sceneGuid : sceneGuids) {
+            if (!SERVICES::IsRuntimeSceneGuidAllowed(sceneGuid.value)) {
                 continue;
             }
-            if (!OpenSceneAssetWithCurrentAssets(record->guid)) {
+            if (!OpenSceneAssetWithCurrentAssets(sceneGuid)) {
                 continue;
             }
             if (SERVICES::IsEditorHost()) {
-                (void)settings.SetStartupSceneGuid(record->guid);
+                (void)settings.SetStartupSceneGuid(sceneGuid);
                 (void)settings.Save();
             }
             return true;

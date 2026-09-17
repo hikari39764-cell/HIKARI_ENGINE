@@ -1,10 +1,10 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory)]
     [string]$Project,
 
     [ValidateSet('debug', 'editor-release', 'game-shipping')]
-    [string]$Preset = 'debug',
+    [string]$Preset = 'editor-release',
 
     [Parameter(Mandatory)]
     [string]$SdkRoot,
@@ -20,6 +20,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'HikariProjectPublication.ps1')
 
 function Get-HikariRelativePath {
     param(
@@ -154,6 +155,7 @@ function Get-HikariSdkInputFiles {
     $inputs = @()
     foreach ($directory in @(
             (Join-Path $SdkRoot 'include'),
+            (Join-Path $SdkRoot 'third_party'),
             (Join-Path $SdkRoot 'lib\cmake\HIKARI'),
             (Join-Path $SdkRoot 'src'))) {
         if (Test-Path -LiteralPath $directory -PathType Container) {
@@ -173,158 +175,6 @@ function Get-HikariSdkInputFiles {
     return @(
         $inputs |
             Sort-Object -Property FullName -Unique)
-}
-
-function Test-HikariLastGoodModule {
-    param(
-        [Parameter(Mandatory)]
-        [string]$BuildStatePath,
-
-        [Parameter(Mandatory)]
-        [string]$ModulePath,
-
-        [Parameter(Mandatory)]
-        [string]$EditorModulePath,
-
-        [Parameter(Mandatory)]
-        [string]$Preset,
-
-        [Parameter(Mandatory)]
-        [string]$Configuration,
-
-        [Parameter(Mandatory)]
-        [string]$ProjectFingerprint,
-
-        [Parameter(Mandatory)]
-        [string]$SdkFingerprint
-    )
-
-    if (-not (Test-Path -LiteralPath $BuildStatePath -PathType Leaf) -or
-        -not (Test-Path -LiteralPath $ModulePath -PathType Leaf)) {
-        return $false
-    }
-    try {
-        $state = Get-Content `
-            -LiteralPath $BuildStatePath `
-            -Raw |
-            ConvertFrom-Json
-        if ([int]$state.schemaVersion -ne 2 -or
-            [string]$state.preset -cne $Preset -or
-            [string]$state.configuration -cne $Configuration -or
-            [string]$state.projectFingerprint -cne
-                $ProjectFingerprint -or
-            [string]$state.sdkFingerprint -cne
-                $SdkFingerprint) {
-            return $false
-        }
-        $moduleHash =
-            (Get-FileHash `
-                -LiteralPath $ModulePath `
-                -Algorithm SHA256).Hash.ToLowerInvariant()
-        if ($moduleHash -cne
-            ([string]$state.moduleSha256).ToLowerInvariant()) {
-            return $false
-        }
-
-        $editorModulePresent = [bool]$state.editorModulePresent
-        if ($Configuration -ceq 'Shipping' -and
-            $editorModulePresent) {
-            return $false
-        }
-        if (-not $editorModulePresent) {
-            return -not (Test-Path `
-                -LiteralPath $EditorModulePath `
-                -PathType Leaf)
-        }
-        if (-not (Test-Path `
-                -LiteralPath $EditorModulePath `
-                -PathType Leaf)) {
-            return $false
-        }
-        $editorModuleHash =
-            (Get-FileHash `
-                -LiteralPath $EditorModulePath `
-                -Algorithm SHA256).Hash.ToLowerInvariant()
-        return $editorModuleHash -ceq
-            ([string]$state.editorModuleSha256).ToLowerInvariant()
-    }
-    catch {
-        return $false
-    }
-}
-
-function Write-HikariBuildState {
-    param(
-        [Parameter(Mandatory)]
-        [string]$BuildStatePath,
-
-        [Parameter(Mandatory)]
-        [string]$ModulePath,
-
-        [Parameter(Mandatory)]
-        [string]$EditorModulePath,
-
-        [Parameter(Mandatory)]
-        [string]$Preset,
-
-        [Parameter(Mandatory)]
-        [string]$Configuration,
-
-        [Parameter(Mandatory)]
-        [string]$ProjectFingerprint,
-
-        [Parameter(Mandatory)]
-        [string]$SdkFingerprint
-    )
-
-    $moduleHash =
-        (Get-FileHash `
-            -LiteralPath $ModulePath `
-            -Algorithm SHA256).Hash.ToLowerInvariant()
-    $editorModulePresent = Test-Path `
-        -LiteralPath $EditorModulePath `
-        -PathType Leaf
-    $editorModuleHash = if ($editorModulePresent) {
-        (Get-FileHash `
-            -LiteralPath $EditorModulePath `
-            -Algorithm SHA256).Hash.ToLowerInvariant()
-    } else {
-        ''
-    }
-    $state = [ordered]@{
-        schemaVersion = 2
-        preset = $Preset
-        configuration = $Configuration
-        projectFingerprint = $ProjectFingerprint
-        sdkFingerprint = $SdkFingerprint
-        moduleSha256 = $moduleHash
-        editorModulePresent = $editorModulePresent
-        editorModuleSha256 = $editorModuleHash
-        generatedAtUtc = [DateTime]::UtcNow.ToString('o')
-    }
-    $stateDirectory = Split-Path -Parent $BuildStatePath
-    $null = New-Item `
-        -ItemType Directory `
-        -Path $stateDirectory `
-        -Force
-    $temporaryPath =
-        "$BuildStatePath.tmp-$PID"
-    try {
-        $state |
-            ConvertTo-Json -Depth 4 |
-            Set-Content `
-                -LiteralPath $temporaryPath `
-                -Encoding UTF8
-        Move-Item `
-            -LiteralPath $temporaryPath `
-            -Destination $BuildStatePath `
-            -Force
-    }
-    finally {
-        if (Test-Path -LiteralPath $temporaryPath -PathType Leaf) {
-            Remove-Item -LiteralPath $temporaryPath -Force
-        }
-    }
 }
 
 function Resolve-HikariCMake {
@@ -466,6 +316,21 @@ $projectBuildDirectory = Join-Path `
     $projectRoot "Library\Build\CMake\sdk-v2\$Preset"
 $projectOutputDirectory = Join-Path `
     $projectRoot "Library\Build\$Preset"
+$null = Assert-HikariBuildOwnedPath $projectRoot $projectOutputDirectory
+$null = New-Item -ItemType Directory -Path $projectOutputDirectory -Force
+$buildLockPath = Assert-HikariBuildOwnedPath $projectOutputDirectory (Join-Path $projectOutputDirectory '.module-build.lock')
+try {
+    $buildLock = [IO.File]::Open($buildLockPath, [IO.FileMode]::OpenOrCreate,
+        [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+} catch {
+    throw "Another project build owns '$Preset'. Wait for that build to finish."
+}
+try {
+Restore-HikariModulePublication $projectOutputDirectory
+$candidateDirectory = Assert-HikariBuildOwnedPath $projectOutputDirectory (Join-Path $projectOutputDirectory '.candidate')
+$candidateModule = Join-Path $candidateDirectory 'bin\HIKARI_GameProject.dll'
+$candidateEditorModule = Join-Path $candidateDirectory 'bin\HIKARI_GameProjectEditor.dll'
+$candidateState = Join-Path $candidateDirectory 'HIKARI_GameProject.buildstate.json'
 $projectModule = Join-Path `
     $projectOutputDirectory 'bin\HIKARI_GameProject.dll'
 $projectEditorModule = Join-Path `
@@ -517,7 +382,7 @@ $cmake = Resolve-HikariCMake -SdkRoot $sdkRootPath
     -A x64 `
     "-DCMAKE_CONFIGURATION_TYPES:STRING=$configuration" `
     "-DHIKARI_DIR:PATH=$packageDirectory" `
-    "-DHIKARI_GAME_PROJECT_OUTPUT_ROOT:PATH=$projectOutputDirectory"
+    "-DHIKARI_GAME_PROJECT_OUTPUT_ROOT:PATH=$candidateDirectory"
 if ($LASTEXITCODE -ne 0) {
     throw "GameProject configure failed for preset '$Preset'."
 }
@@ -556,22 +421,22 @@ if (-not $ConfigureOnly) {
     if ($LASTEXITCODE -ne 0) {
         throw "GameProject build failed for preset '$Preset'."
     }
-    if (-not (Test-Path -LiteralPath $projectModule -PathType Leaf)) {
-        throw "GameProject module was not produced: $projectModule"
+    if (-not (Test-Path -LiteralPath $candidateModule -PathType Leaf)) {
+        throw "GameProject module was not produced: $candidateModule"
     }
     if ($editorCompanionEnabled -and
         -not (Test-Path `
-            -LiteralPath $projectEditorModule `
+            -LiteralPath $candidateEditorModule `
             -PathType Leaf)) {
         throw (
             'GameProject Editor companion was not produced: ' +
-            $projectEditorModule)
+            $candidateEditorModule)
     }
     if (-not $editorCompanionEnabled -and
         (Test-Path `
-            -LiteralPath $projectEditorModule `
+            -LiteralPath $candidateEditorModule `
             -PathType Leaf)) {
-        Remove-Item -LiteralPath $projectEditorModule -Force
+        Remove-Item -LiteralPath $candidateEditorModule -Force
     }
 
     $finalProjectFingerprint = Get-HikariFileSetFingerprint `
@@ -585,16 +450,17 @@ if (-not $ConfigureOnly) {
         -Files (Get-HikariSdkInputFiles `
             -SdkRoot $sdkRootPath)
     if ($finalProjectFingerprint -cne $projectFingerprint -or $finalSdkFingerprint -cne $sdkFingerprint) {
-        throw 'Project source or SDK changed during the build. Rebuild after saving; the previous build state was preserved.'
+        throw 'Project source or SDK changed during the build. Rebuild after saving; all previous modules and build state were preserved.'
     }
     Write-HikariBuildState `
-        -BuildStatePath $buildStatePath `
-        -ModulePath $projectModule `
-        -EditorModulePath $projectEditorModule `
+        -BuildStatePath $candidateState `
+        -ModulePath $candidateModule `
+        -EditorModulePath $candidateEditorModule `
         -Preset $Preset `
         -Configuration $configuration `
         -ProjectFingerprint $projectFingerprint `
         -SdkFingerprint $sdkFingerprint
+    Publish-HikariProjectModules $projectOutputDirectory $candidateDirectory $editorCompanionEnabled
 }
 
 if (-not [string]::IsNullOrWhiteSpace($InstallDirectory) -and
@@ -606,4 +472,7 @@ if (-not [string]::IsNullOrWhiteSpace($InstallDirectory) -and
     if ($LASTEXITCODE -ne 0) {
         throw "GameProject install failed for preset '$Preset'."
     }
+}
+} finally {
+    $buildLock.Dispose()
 }

@@ -1,6 +1,7 @@
 #include "Render3D/Vfx/Internal/HIKARI_ParticleMaterialResolver.h"
 
 #include <algorithm>
+#include <functional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -16,6 +17,26 @@
 #include "Render3D/Material/Program/HIKARI_MaterialProgramRegistry.h"
 
 namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
+    MATERIAL::GpuMaterialSourceKey BuildParticleMaterialSourceKey(
+        const Material* material, const ParticleEmitterRenderParameters& render,
+        uint64_t instanceIdentity, uintptr_t sourceIdentity, bool rejected) {
+        MATERIAL::GpuMaterialSourceKey key{};
+        const std::string_view resource = !IsCustomParticleMaterial(render.materialMode)
+            ? std::string_view(render.colorTextureAssetGuid) : std::string_view(render.materialAssetGuid);
+        const auto combine = [](uint64_t seed, uint64_t value) {
+            return seed ^ (value + 0x9e3779b97f4a7c15ull + (seed << 6u) + (seed >> 2u));
+        };
+        key.stableMaterialKey = material
+            ? combine(std::hash<std::string_view>{}(resource), reinterpret_cast<uintptr_t>(material))
+            : (rejected ? 2u : 1u);
+        // スロット同一性はstableMaterialKeyで決まる。動的な値だけインスタンス専有にする。
+        if (!render.animatedParameters.empty())
+            key.stableMaterialKey = combine(key.stableMaterialKey, instanceIdentity);
+        key.modelIdentity = sourceIdentity;
+        key.materialRevision = material ? material->GetRevision() : 0u;
+        return key;
+    }
+
     namespace {
         struct CachedParticleMaterial {
             uint64_t assetRegistryInstanceId = 0u;
@@ -26,6 +47,8 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
             uint64_t failedProjectionInstanceId = 0u;
             uint64_t failedProjectionRevision = 0u;
             bool projectionRejected = false;
+            bool embedded = false;
+            std::weak_ptr<const MaterialAssetDescriptor> effectSource{};
         };
     }
 
@@ -53,20 +76,27 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
             return result;
         }
 
-        const bool standardUnlit = render.materialMode ==
-            ParticleMaterialMode::StandardUnlit;
-        const std::string_view resourceGuid = standardUnlit
+        const bool embeddedMaterial = render.effectMaterial != nullptr;
+        const bool standardMaterial = !embeddedMaterial && !IsCustomParticleMaterial(render.materialMode);
+        const bool lit = IsLitParticleMaterial(render.materialMode);
+        const std::string_view resourceGuid = standardMaterial
             ? std::string_view(render.colorTextureAssetGuid)
             : std::string_view(render.materialAssetGuid);
-        if (!standardUnlit && resourceGuid.empty()) {
+        if (!standardMaterial && !embeddedMaterial && resourceGuid.empty()) {
             return result;
         }
 
-        const std::string cacheKey =
-            (standardUnlit ? "standard:" : "custom:") +
+        const std::string cacheKey = embeddedMaterial ? "effect:" + render.effectMaterialKey :
+            std::string(standardMaterial ? (lit ? "standard-lit:" : "standard:") : "custom:") +
             (resourceGuid.empty()
                 ? std::string("untextured")
                 : std::string(resourceGuid));
+        if (impl_->cache.size() > 64u) {
+            // DrawItem が保持する参照が生きている間は削除しない。
+            std::erase_if(impl_->cache, [](const auto& entry) {
+                return entry.second.embedded && entry.second.effectSource.expired();
+            });
+        }
         CachedParticleMaterial& cached = impl_->cache[cacheKey];
         const bool cacheInvalid =
             cached.assetRegistryInstanceId !=
@@ -75,10 +105,12 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
             (cached.material == nullptr && !cached.sourceRejected);
         if (cacheInvalid) {
             cached = {};
+            cached.embedded = embeddedMaterial;
+            cached.effectSource = render.effectMaterial;
             cached.assetRegistryInstanceId = assetRegistry->GetInstanceId();
             cached.assetRegistryRevision = assetRegistry->GetRevision();
 
-            if (standardUnlit) {
+            if (standardMaterial) {
                 const bool textured = !resourceGuid.empty();
                 const TextureAssetDescriptor* textureDescriptor = textured
                     ? assetRegistry->FindAs<TextureAssetDescriptor>(
@@ -102,10 +134,8 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
                 // materials instead of invoking the generic node-expression
                 // interpreter for every overdrawn particle pixel.
                 PbrMaterialAssetData source{};
-                source.materialName = textured
-                    ? "Built-in VFX Unlit (Textured)"
-                    : "Built-in VFX Unlit";
-                source.unlit = true;
+                source.materialName = lit ? "Built-in VFX Lit" : "Built-in VFX Unlit";
+                source.unlit = !lit;
                 source.doubleSided = true;
                 source.emissiveStrength = 0.0f;
                 if (textured) {
@@ -152,7 +182,7 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
                     RuntimeMaterialAlphaMode::Blend);
                 cached.material = std::move(material);
             } else {
-                const auto* descriptor =
+                const auto* descriptor = embeddedMaterial ? render.effectMaterial.get() :
                     assetRegistry->FindAs<MaterialAssetDescriptor>(
                         AssetId{ std::string(resourceGuid) });
                 if (descriptor == nullptr) {
@@ -182,7 +212,7 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
                         *assetRegistry,
                         MATERIAL::GetRuntimeMaterialProgramRegistry(),
                         *material,
-                        resourceGuid)) {
+                        cacheKey)) {
                     cached.resourceRejected = true;
                     result.rejected = true;
                     HIKARI_LOG_ERROR(

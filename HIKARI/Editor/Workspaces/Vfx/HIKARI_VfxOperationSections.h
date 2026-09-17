@@ -1,4 +1,6 @@
 #pragma once
+#include <functional>
+namespace HIKARI { class AssetDatabase; }
 
 namespace HIKARI::EDITOR {
 
@@ -16,5 +18,10 @@ namespace HIKARI::EDITOR {
     void RegisterVfxPreviewOperations(
         EditorOperationRegistry& registry,
         VfxWorkspaceController& controller);
+
+    void RegisterVfxLibraryOperations(
+        EditorOperationRegistry& registry,
+        VfxWorkspaceController& controller,
+        std::function<AssetDatabase*()> databaseProvider);
 
 } // namespace HIKARI::EDITOR

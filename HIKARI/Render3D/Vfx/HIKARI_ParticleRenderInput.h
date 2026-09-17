@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <memory>
 #include <cstdint>
 #include <string>
 #include <type_traits>
@@ -10,6 +11,7 @@
 
 namespace HIKARI {
     class AssetRegistry;
+    struct MaterialAssetDescriptor;
 
     namespace RENDER3D::MATERIAL {
         struct MaterialExternalValueSnapshot;
@@ -63,6 +65,13 @@ namespace HIKARI::RENDER3D::PARTICLES {
         Sprite,
         Ribbon,
         Ring,
+        MeshBox,
+        MeshSphere,
+        MeshCylinder,
+        MeshCone,
+        MeshHemisphere,
+        CrossPlane,
+        HistoryRibbon, // 履歴所有者が生成する接続四角形。アセット形状とは別。
     };
 
     enum class ParticleBlendMode : uint32_t {
@@ -73,7 +82,16 @@ namespace HIKARI::RENDER3D::PARTICLES {
     enum class ParticleMaterialMode : uint32_t {
         StandardUnlit,
         CustomMaterial,
+        StandardLit,
+        CustomLit,
     };
+
+    constexpr bool IsCustomParticleMaterial(ParticleMaterialMode mode) noexcept {
+        return mode == ParticleMaterialMode::CustomMaterial || mode == ParticleMaterialMode::CustomLit;
+    }
+    constexpr bool IsLitParticleMaterial(ParticleMaterialMode mode) noexcept {
+        return mode == ParticleMaterialMode::StandardLit || mode == ParticleMaterialMode::CustomLit;
+    }
 
     enum class ParticleDepthMode : uint32_t {
         WorldOccluded,
@@ -82,14 +100,6 @@ namespace HIKARI::RENDER3D::PARTICLES {
         ForegroundAccent,
     };
 
-    enum class ParticleShaderStyle : uint32_t {
-        Default,
-        CombatCut,
-        CombatImpact,
-        CombatGround,
-        ComicSmoke,
-        ProjectileNeedle,
-    };
 
     // Keep these values synchronized with VfxBillboardMode and the particle
     // shader constants. Values 0 and 1 preserve cooked-program compatibility.
@@ -242,6 +252,11 @@ namespace HIKARI::RENDER3D::PARTICLES {
         ParticleAnimatedFloat3 position{};
         ParticleAnimatedFloat3 rotationRadians{};
         ParticleAnimatedFloat3 scale{};
+        uint32_t localSimulation = 0u;
+        uint32_t collisionPlaneEnabled = 0u;
+        float collisionPlaneHeight = 0.0f;
+        float restitution = 0.35f;
+        float friction = 0.2f;
         MATH::Vec3 gravity{ 0.0f, 0.0f, 0.0f };
         float drag = 0.0f;
         ParticleAnimatedColor color{};
@@ -256,7 +271,11 @@ namespace HIKARI::RENDER3D::PARTICLES {
         MATH::Vec4 colorMultiplier{ 1.0f, 1.0f, 1.0f, 1.0f };
     };
 
+    struct ParticleMaterialParameterValue { uint32_t slot=0; float value=0; };
     struct ParticleEmitterRenderParameters {
+        std::vector<ParticleMaterialParameterValue> animatedParameters;
+        std::shared_ptr<const MaterialAssetDescriptor> effectMaterial{};
+        std::string effectMaterialKey{};
         ParticleMaterialMode materialMode =
             ParticleMaterialMode::StandardUnlit;
         std::string colorTextureAssetGuid{};
@@ -268,15 +287,6 @@ namespace HIKARI::RENDER3D::PARTICLES {
         ParticleDepthMode depthMode = ParticleDepthMode::WorldOccluded;
         float softIntersectionDistance = 0.15f;
         float depthBias = 0.00035f;
-        ParticleShaderStyle shaderStyle = ParticleShaderStyle::Default;
-        MATH::Vec4 shaderOutlineColor{
-            0.035f, 0.075f, 0.32f, 1.0f };
-        MATH::Vec4 shaderCoreColor{ 1.0f, 1.0f, 1.0f, 1.0f };
-        float shaderOutlineWidth = 0.12f;
-        float shaderEdgeHardness = 0.88f;
-        float shaderEmissiveIntensity = 0.0f;
-        float shaderBreakupScale = 7.0f;
-        float shaderBreakupStrength = 0.0f;
         uint32_t flipbookColumns = 1u;
         uint32_t flipbookRows = 1u;
         uint32_t flipbookFrameCount = 1u;
@@ -292,8 +302,26 @@ namespace HIKARI::RENDER3D::PARTICLES {
         float ringEndAngleRadians = 6.28318530717958647692f;
     };
 
+    struct ParticleShapePose {
+        MATH::Vec3 position{};
+        MATH::Quat rotation = MATH::Quat::Identity();
+        MATH::Vec3 scale{1,1,1};
+        MATH::Vec4 color{1,1,1,1};
+        float age = 0.0f;
+        float duration = 1.0f;
+        std::array<MATH::Vec3, 4> corners{};
+        MATH::Vec2 edgeAlpha{1,1};
+        MATH::Vec2 uvRange{0,1};
+    };
+
     struct ParticleEmitterSubmission {
         ParticleEmitterInstanceKey key{};
+        // 履歴に依存しない形状投影。生成・物理積分・寿命終了を通らない。
+        bool directShape = false;
+        // 履歴有効時だけ確保。全サンプルを単一 DEFAULT プール・単一描画で処理。
+        std::vector<ParticleShapePose> shapePoses{};
+        float shapeAgeSeconds = 0.0f;
+        float shapeDurationSeconds = 1.0f;
         uint32_t simulationOrdinal = 0u;
         bool drawAfterSimulation = true;
         bool resetSimulation = false;
@@ -308,6 +336,11 @@ namespace HIKARI::RENDER3D::PARTICLES {
         ParticleEmitterSimulationParameters simulation{};
         ParticleEmitterRenderParameters render{};
     };
+
+    inline ParticleShapePose CurrentShapePose(const ParticleEmitterSubmission& s) {
+        return {s.worldPosition, s.worldRotation, s.worldScale * s.overrides.scaleMultiplier,
+            s.overrides.colorMultiplier, s.shapeAgeSeconds, s.shapeDurationSeconds};
+    }
 
     struct ParticleRenderDeliveryToken {
         uint64_t sourceIdentity = 0u;

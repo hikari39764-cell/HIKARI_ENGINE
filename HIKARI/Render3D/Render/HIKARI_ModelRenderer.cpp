@@ -105,11 +105,12 @@ namespace HIKARI::MODELRENDERER {
 
         const Camera3D& camera = view.cameraFrame->camera;
         BeginModelRendererFrame(ModelRendererFrameKind::MainView);
-        SHADOW::BeginFrame(graphics, environment, camera);
+        auto* sprites = MESHRENDERER::PrepareWorldSpritesForView(graphics, view);
+        SHADOW::BeginFrame(graphics, environment, camera, sprites);
         SHADOW::RenderDirectionalShadowMap(graphics);
         SHADOW::RenderLocalLightShadows(graphics, lighting, camera,
             MESHRENDERER::GetActiveGpuDrivenSceneSource(),
-            SHADOW::ResolveLocalShadowBudget(RENDER3D::GetRenderQualitySettings().localShadowQuality));
+            SHADOW::ResolveLocalShadowBudget(RENDER3D::GetRenderQualitySettings().localShadowQuality), sprites);
         return MESHRENDERER::RenderAll(
             graphics,
             view,

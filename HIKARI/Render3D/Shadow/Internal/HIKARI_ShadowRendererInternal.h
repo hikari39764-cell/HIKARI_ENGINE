@@ -81,6 +81,7 @@ namespace HIKARI::SHADOW::INTERNAL {
 
     struct ShadowRendererState {
         MESHRENDERER::CameraCB materialCamera{};
+        RENDER3D::WORLD_SPRITES::WorldSpritePass* worldSprites = nullptr;
         bool initialized = false;
         bool frameEnabled = false;
         bool frameHasShadowWork = false;
@@ -231,6 +232,7 @@ namespace HIKARI::SHADOW::INTERNAL {
     uint64_t BuildShadowSourceContentHash(
         const RENDER3D::GPUDRIVEN::GpuDrivenPassSource& pass);
 
+    bool UploadShadowMaterialCamera(ShadowRendererState& state, const GFX::Context& graphics);
     bool CommitShadowMaterialDataFrame(ShadowRendererState& state, const GFX::Context& graphics);
     void ActivateShadowFrameResources(ShadowRendererState& state, uint32_t frameIndex);
     bool CreateShadowFrameResources(ShadowRendererState& state, const GFX::Context& graphics);
@@ -285,4 +287,6 @@ namespace HIKARI::SHADOW::INTERNAL {
         const ShadowLightFrame& frame, const D3D12_RECT& region, bool clearDepth,
         GFX::GPU_PROFILE::Pass traditionalProfilePass, GFX::GPU_PROFILE::Pass meshletProfilePass);
 
+    bool RecordWorldSpriteShadowView(ShadowRendererState& state, const GFX::Context& graphics,
+        const ShadowLightFrame& frame, const D3D12_RECT& region, bool clearDepth);
 } // namespace HIKARI::SHADOW::INTERNAL

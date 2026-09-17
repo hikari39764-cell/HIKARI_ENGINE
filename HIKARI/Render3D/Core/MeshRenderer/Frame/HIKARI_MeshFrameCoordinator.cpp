@@ -402,7 +402,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         if (!gMeshRendererState.worldSpritePass.PrepareFrame(
                 graphics,
                 gMeshRendererState.worldSpriteFrameSource,
-                camera.GetPosition())) {
+                camera)) {
             DEBUGLOG::PushRenderError(
                 "[MeshRenderer][WARN] World Sprite frame preparation failed; "
                 "mesh rendering continues without World Sprites.");

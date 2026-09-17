@@ -2,8 +2,13 @@
 
 #include <filesystem>
 #include <string>
+#include <string_view>
 
 namespace HIKARI::PROJECT_PATHS {
+
+    // Source project and cooked RuntimePayload use the same relative identity.
+    std::filesystem::path ResolveRuntimePayloadFile(const std::filesystem::path& projectRoot,
+        std::string_view projectRelativePath);
 
     std::filesystem::path NormalizeProjectRoot(
         const std::filesystem::path& projectRoot);

@@ -40,6 +40,23 @@ namespace HIKARI {
             float& red,
             float& green,
             float& blue);
+        // Stable property IDs connect the same field to Inspector and the
+        // engine's authoring/AI operations. IDs belong to the component schema,
+        // not to translated display labels. Existing label-only overloads remain.
+        HIKARI_GAME_PROJECT_SDK_API bool Bool(
+            std::string_view propertyId, std::string_view label, bool& value);
+        HIKARI_GAME_PROJECT_SDK_API bool Int(
+            std::string_view propertyId, std::string_view label, int& value);
+        HIKARI_GAME_PROJECT_SDK_API bool Float(
+            std::string_view propertyId, std::string_view label, float& value);
+        HIKARI_GAME_PROJECT_SDK_API bool FloatRange(
+            std::string_view propertyId, std::string_view label, float& value,
+            float minimum, float maximum, float speed = 0.1f);
+        HIKARI_GAME_PROJECT_SDK_API bool Color3(
+            std::string_view propertyId, std::string_view label,
+            float& red, float& green, float& blue);
+        HIKARI_GAME_PROJECT_SDK_API bool SceneObjectId(
+            std::string_view propertyId, std::string_view label, uint64_t& value);
         HIKARI_GAME_PROJECT_SDK_API bool StringBuffer(
             std::string_view label,
             char* value,

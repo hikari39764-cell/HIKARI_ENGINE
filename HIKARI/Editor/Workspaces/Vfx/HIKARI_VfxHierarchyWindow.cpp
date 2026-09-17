@@ -1,3 +1,4 @@
+#include "Editor/Workspaces/Vfx/HIKARI_VfxInspectorControls.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 
 #include <algorithm>
@@ -63,177 +64,186 @@ namespace HIKARI::EDITOR {
     void VfxWorkspaceController::DrawHierarchyWindow(
         AssetDatabase& database) {
 #if defined(HIKARI_WITH_EDITOR)
-        if (!ImGui::Begin("Effect Hierarchy###Vfx/Hierarchy")) {
+        if (!ImGui::Begin((VfxUiText("Library & Layers") + "###Vfx/Hierarchy").c_str())) {
             ImGui::End();
             return;
         }
 
-        ImGui::TextDisabled("VFX ASSETS");
-        ImGui::SetNextItemWidth(-1.0f);
-        ImGui::InputTextWithHint(
-            "##VfxAssetSearch",
-            "Filter assets",
-            assetSearch_.data(),
-            assetSearch_.size());
-        if (ImGui::BeginChild(
-                "VfxAssetCatalog", { 0.0f, 132.0f }, true)) {
-            for (const AssetRecord* record :
-                 database.CollectByType(AssetType::VfxEffect)) {
-                if (record == nullptr ||
-                    !ContainsInsensitive(
-                        GetAssetRecordDisplayName(*record),
-                        assetSearch_.data())) {
-                    continue;
-                }
-                ImGui::PushID(record->guid.value.c_str());
-                const bool selected =
-                    document_.GetAssetGuid() == record->guid;
-                if (ImGui::Selectable(
-                        GetAssetRecordDisplayName(*record).c_str(),
-                        selected)) {
-                    (void)RequestOpenAsset(
-                        database, record->guid, statusMessage_);
-                }
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip(
-                        "%s\nClick to open",
-                        record->guid.value.c_str());
-                }
-                ImGui::PopID();
-            }
-        }
-        ImGui::EndChild();
-
-        ImGui::SeparatorText("Effect Stack");
-        if (!document_.IsOpen()) {
-            ImGui::TextDisabled("Create or open a VFX asset.");
-            ImGui::End();
-            return;
-        }
-
-        if (ImGui::Selectable(
-                document_.Asset().name.c_str(),
+        if (ImGui::Selectable(document_.Asset().name.c_str(),
                 selection_.kind == VfxWorkspaceSelectionKind::Asset)) {
             Select({ VfxWorkspaceSelectionKind::Asset, "asset" });
         }
-
-        const bool inputsOpen = ImGui::TreeNodeEx(
-            "Exposed Inputs",
-            ImGuiTreeNodeFlags_DefaultOpen |
-                ImGuiTreeNodeFlags_SpanAvailWidth);
-        if (ImGui::IsItemClicked()) {
-            Select({ VfxWorkspaceSelectionKind::Inputs, "asset" });
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", VfxUiText("Effect settings: duration, looping and name").c_str());
+        ImGui::TextDisabled(VfxUiText("%zu layers  |  %.2f s").c_str(), document_.Asset().emitters.size(), document_.Asset().durationSeconds);
+        if (!ImGui::BeginTabBar("VfxLibraryTabs")) { ImGui::End(); return; }
+        if (ImGui::BeginTabItem(VfxUiText("Templates").c_str())) {
+            DrawTemplateLibrary();
+            ImGui::EndTabItem();
         }
-        if (inputsOpen) {
-            for (const VFX::VfxExposedInputData& input :
-                 document_.Asset().inputs) {
-                ImGui::PushID(input.id.c_str());
-                const std::string label = input.name + "  :  " +
-                    std::string(VFX::ToString(input.type));
-                if (ImGui::Selectable(
-                        label.c_str(),
-                        selection_.kind ==
-                            VfxWorkspaceSelectionKind::Input &&
-                        selection_.targetId == input.id)) {
-                    Select({ VfxWorkspaceSelectionKind::Input, input.id });
-                }
-                ImGui::PopID();
-            }
-            if (ImGui::SmallButton("+ Input")) {
-                ImGui::OpenPopup("Add VFX Input");
-            }
-            if (ImGui::BeginPopup("Add VFX Input")) {
-                for (const VFX::VfxValueType type : {
-                        VFX::VfxValueType::Bool,
-                        VFX::VfxValueType::Int,
-                        VFX::VfxValueType::Float,
-                        VFX::VfxValueType::Float2,
-                        VFX::VfxValueType::Float3,
-                        VFX::VfxValueType::Float4,
-                        VFX::VfxValueType::Color,
-                    }) {
-                    if (ImGui::MenuItem(
-                            std::string(VFX::ToString(type)).c_str())) {
-                        std::string id{};
-                        (void)AddInput(
-                            type, {}, {}, id, statusMessage_);
+        if (ImGui::BeginTabItem(VfxUiText("Shared").c_str())) {
+            DrawContentLibrary(database);
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem(VfxUiText("Assets").c_str())) {
+            ImGui::TextDisabled(VfxUiText("VFX ASSETS").c_str());
+            ImGui::SetNextItemWidth(-1.0f);
+            ImGui::InputTextWithHint(
+                "##VfxAssetSearch",
+                VfxUiText("Filter assets").c_str(),
+                assetSearch_.data(),
+                assetSearch_.size());
+            if (ImGui::BeginChild(
+                    "VfxAssetCatalog", { 0.0f, 0.0f }, true)) {
+                for (const AssetRecord* record :
+                     database.CollectByType(AssetType::VfxEffect)) {
+                    if (record == nullptr ||
+                        !ContainsInsensitive(
+                            GetAssetRecordDisplayName(*record),
+                            assetSearch_.data())) {
+                        continue;
                     }
+                    ImGui::PushID(record->guid.value.c_str());
+                    const bool selected =
+                        document_.GetAssetGuid() == record->guid;
+                    if (ImGui::Selectable(
+                            GetAssetRecordDisplayName(*record).c_str(),
+                            selected)) {
+                        (void)RequestOpenAsset(
+                            database, record->guid, statusMessage_);
+                    }
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::SetTooltip(
+                            "%s\nClick to open",
+                            record->guid.value.c_str());
+                    }
+                    ImGui::PopID();
+                }
+            }
+            ImGui::EndChild();
+
+            ImGui::EndTabItem();
+        }
+        const auto layerFlags = selectLayersTab_ ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
+        if (ImGui::BeginTabItem(VfxUiText("Layers").c_str(), nullptr, layerFlags)) {
+            selectLayersTab_ = false;
+            ImGui::SeparatorText(VfxUiText("Effect layers").c_str());
+
+            const bool inputsOpen = ImGui::TreeNodeEx(
+                VfxUiText("Exposed Inputs").c_str(),
+                ImGuiTreeNodeFlags_SpanAvailWidth);
+            if (ImGui::IsItemClicked()) {
+                Select({ VfxWorkspaceSelectionKind::Inputs, "asset" });
+            }
+            if (inputsOpen) {
+                for (const VFX::VfxExposedInputData& input :
+                     document_.Asset().inputs) {
+                    ImGui::PushID(input.id.c_str());
+                    const std::string label = input.name + "  :  " +
+                        std::string(VFX::ToString(input.type));
+                    if (ImGui::Selectable(
+                            label.c_str(),
+                            selection_.kind ==
+                                VfxWorkspaceSelectionKind::Input &&
+                            selection_.targetId == input.id)) {
+                        Select({ VfxWorkspaceSelectionKind::Input, input.id });
+                    }
+                    ImGui::PopID();
+                }
+                if (ImGui::SmallButton(VfxUiText("+ Input").c_str())) {
+                    ImGui::OpenPopup("Add VFX Input");
+                }
+                if (ImGui::BeginPopup("Add VFX Input")) {
+                    for (const VFX::VfxValueType type : {
+                            VFX::VfxValueType::Bool,
+                            VFX::VfxValueType::Int,
+                            VFX::VfxValueType::Float,
+                            VFX::VfxValueType::Float2,
+                            VFX::VfxValueType::Float3,
+                            VFX::VfxValueType::Float4,
+                            VFX::VfxValueType::Color,
+                        }) {
+                        if (ImGui::MenuItem(
+                                std::string(VFX::ToString(type)).c_str())) {
+                            std::string id{};
+                            (void)AddInput(
+                                type, {}, {}, id, statusMessage_);
+                        }
+                    }
+                    ImGui::EndPopup();
+                }
+                ImGui::SameLine();
+                ImGui::BeginDisabled(
+                    selection_.kind != VfxWorkspaceSelectionKind::Input);
+                if (ImGui::SmallButton(VfxUiText("Delete Input").c_str())) {
+                    requestDeleteInput_ = true;
+                }
+                ImGui::EndDisabled();
+                ImGui::TreePop();
+            }
+
+            ImGui::Separator();
+            // Context actions can replace the document while rows are being drawn.
+            const auto layerSnapshot = document_.Asset();
+            DrawEmitterTree(layerSnapshot, {});
+            ImGui::Spacing();
+            if (ImGui::Button(TEXT::Localize("ui.vfx.layer.add").c_str())) ImGui::OpenPopup("AddLayer");
+            if (ImGui::BeginPopup("AddLayer")) {
+                struct Kind { VFX::VfxLayerKind kind; const char* label; };
+                const Kind kinds[] = {
+                    {VFX::VfxLayerKind::Shape, "ui.vfx.layer.newShape"},
+                    {VFX::VfxLayerKind::Particles, "ui.vfx.layer.newParticles"},
+                    {VFX::VfxLayerKind::Group, "ui.vfx.layer.newGroup"}
+                };
+                for (const auto& entry : kinds) {
+                    if (!ImGui::MenuItem(TEXT::Localize(entry.label).c_str())) continue;
+                    const auto* selected = FindEmitter(selection_.emitterId);
+                    const std::string parent = selected && selected->kind == VFX::VfxLayerKind::Group ? selected->id : "";
+                    std::string id;
+                    (void)AddEmitter(parent, TEXT::Localize(entry.label), {}, id, statusMessage_, entry.kind);
                 }
                 ImGui::EndPopup();
             }
-            ImGui::SameLine();
-            ImGui::BeginDisabled(
-                selection_.kind != VfxWorkspaceSelectionKind::Input);
-            if (ImGui::SmallButton("Delete Input")) {
-                requestDeleteInput_ = true;
-            }
-            ImGui::EndDisabled();
-            ImGui::TreePop();
-        }
+            // Duplicate, delete and reparent remain in the row context menu.
 
-        ImGui::Separator();
-        DrawEmitterTree(document_.Asset(), {});
-        ImGui::Spacing();
-        if (ImGui::Button("+ Root Emitter")) {
-            std::string id{};
-            (void)AddEmitter({}, {}, {}, id, statusMessage_);
-        }
-        ImGui::SameLine();
-        const bool hasEmitterSelection =
-            IsEmitterSelection(selection_.kind) &&
-            FindEmitter(selection_.emitterId) != nullptr;
-        ImGui::BeginDisabled(!hasEmitterSelection);
-        if (ImGui::Button("+ Child")) {
-            std::string id{};
-            (void)AddEmitter(
-                selection_.emitterId, {}, {}, id, statusMessage_);
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Duplicate")) {
-            std::string id{};
-            (void)DuplicateEmitter(
-                selection_.emitterId, id, statusMessage_);
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Delete")) requestDeleteEmitter_ = true;
-        ImGui::EndDisabled();
-
-        if (requestDeleteEmitter_) {
-            ImGui::OpenPopup("Delete VFX Emitter?");
-            requestDeleteEmitter_ = false;
-        }
-        if (ImGui::BeginPopupModal(
-                "Delete VFX Emitter?", nullptr,
-                ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::TextUnformatted(
-                "Delete the selected emitter? Child emitters are promoted.");
-            if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
-            ImGui::SameLine();
-            if (ImGui::Button("Delete Emitter")) {
-                (void)RemoveEmitter(
-                    selection_.emitterId, statusMessage_);
-                ImGui::CloseCurrentPopup();
+            if (requestDeleteEmitter_) {
+                ImGui::OpenPopup("Delete VFX Emitter?");
+                requestDeleteEmitter_ = false;
             }
-            ImGui::EndPopup();
-        }
-        if (requestDeleteInput_) {
-            ImGui::OpenPopup("Delete VFX Input?");
-            requestDeleteInput_ = false;
-        }
-        if (ImGui::BeginPopupModal(
-                "Delete VFX Input?", nullptr,
-                ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::TextUnformatted(
-                "Delete the input and all property links that use it?");
-            if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
-            ImGui::SameLine();
-            if (ImGui::Button("Delete Input")) {
-                (void)RemoveInput(
-                    selection_.targetId, statusMessage_);
-                ImGui::CloseCurrentPopup();
+            if (ImGui::BeginPopupModal(
+                    "Delete VFX Emitter?", nullptr,
+                    ImGuiWindowFlags_AlwaysAutoResize)) {
+                ImGui::TextUnformatted(
+                    VfxUiText("Delete the selected emitter? Child emitters are promoted.").c_str());
+                if (ImGui::Button(VfxUiText("Cancel").c_str())) ImGui::CloseCurrentPopup();
+                ImGui::SameLine();
+                if (ImGui::Button(VfxUiText("Delete Emitter").c_str())) {
+                    (void)RemoveEmitter(
+                        selection_.emitterId, statusMessage_);
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndPopup();
             }
-            ImGui::EndPopup();
+            if (requestDeleteInput_) {
+                ImGui::OpenPopup("Delete VFX Input?");
+                requestDeleteInput_ = false;
+            }
+            if (ImGui::BeginPopupModal(
+                    "Delete VFX Input?", nullptr,
+                    ImGuiWindowFlags_AlwaysAutoResize)) {
+                ImGui::TextUnformatted(
+                    VfxUiText("Delete the input and all property links that use it?").c_str());
+                if (ImGui::Button(VfxUiText("Cancel").c_str())) ImGui::CloseCurrentPopup();
+                ImGui::SameLine();
+                if (ImGui::Button(VfxUiText("Delete Input").c_str())) {
+                    (void)RemoveInput(
+                        selection_.targetId, statusMessage_);
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndPopup();
+            }
+            ImGui::EndTabItem();
         }
+        ImGui::EndTabBar();
         ImGui::End();
 #else
         (void)database;
@@ -259,12 +269,10 @@ namespace HIKARI::EDITOR {
             });
         for (const VFX::VfxEmitterData* emitter : children) {
             ImGui::PushID(emitter->id.c_str());
-            const bool emitterSelected =
-                selection_.kind == VfxWorkspaceSelectionKind::Emitter &&
-                selection_.emitterId == emitter->id;
+            const bool emitterSelected = selection_.emitterId == emitter->id;
 
             const bool hidden = IsEmitterHidden(emitter->id);
-            if (ImGui::SmallButton(hidden ? "-" : "o")) {
+            if (ImGui::SmallButton(VfxUiText(hidden ? "Show" : "Hide").c_str())) {
                 SetEmitterHidden(emitter->id, !hidden);
             }
             if (ImGui::IsItemHovered()) {

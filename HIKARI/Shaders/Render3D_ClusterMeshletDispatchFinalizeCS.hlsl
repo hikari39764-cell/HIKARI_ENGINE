@@ -33,11 +33,11 @@ void FinalizeMeshletDispatchCS(uint3 dispatchThreadId : SV_DispatchThreadID)
                 bucketBase,
                 passKind,
                 bucket,
-                1u);
+                clampedDrawCount);
             meshletArgument.threadGroupCountX = overflowed
                 ? 0u
-                : clampedDrawCount;
-            meshletArgument.threadGroupCountY = 1u;
+                : min(clampedDrawCount, 65535u);
+            meshletArgument.threadGroupCountY = max(1u, (clampedDrawCount + 65534u) / 65535u);
             meshletArgument.threadGroupCountZ = 1u;
             meshletArgument.reserved0 = 0u;
             // range の base は root constants、command 自体は連続した 10 slots。

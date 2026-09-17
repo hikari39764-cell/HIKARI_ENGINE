@@ -15,6 +15,22 @@ namespace HIKARI {
     inline constexpr uint32_t kGameProjectDialogueValueCapacity = 256u;
     inline constexpr uint32_t kGameProjectDialogueEventQueueCapacity = 64u;
 
+    enum class GameProjectSceneRequestState : uint32_t {
+        Unknown = 0, Pending = 1, Completed = 2, Failed = 3, Cancelled = 4,
+    };
+
+    struct GameProjectSceneRequestResult {
+        uint64_t requestId = 0;
+        uint64_t userData = 0;
+        GameProjectSceneRequestState state = GameProjectSceneRequestState::Unknown;
+        char sceneAssetGuid[kGameProjectSceneGuidCapacity]{};
+        char message[192]{};
+        uint8_t reserved[3]{};
+    };
+    static_assert(std::is_standard_layout_v<GameProjectSceneRequestResult>);
+    static_assert(std::is_trivially_copyable_v<GameProjectSceneRequestResult>);
+    static_assert(sizeof(GameProjectSceneRequestResult) == 248);
+
     enum class GameProjectRuntimeHostKind : uint8_t {
         Unknown = 0u,
         StandaloneGame = 1u,

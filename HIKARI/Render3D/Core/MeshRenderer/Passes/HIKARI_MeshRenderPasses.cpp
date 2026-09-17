@@ -1,5 +1,7 @@
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Gfx/HIKARI_GfxContext.h"
+#include "Render3D/Core/MeshRenderer/Bindings/HIKARI_MeshResourceBindings.h"
+#include "Render3D/Shadow/HIKARI_ShadowMapRenderer.h"
 
 #include <algorithm>
 #include <array>
@@ -51,8 +53,10 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         RENDER3D::SURFACE::SceneSurfaceBuffer& surfaceBuffer,
         D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv,
         bool writeFeatureMask) {
-        if (!HasGpuDrivenPassSource(
-            RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardOpaque)) {
+        const bool hasMeshes = HasGpuDrivenPassSource(
+            RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardOpaque);
+        auto& sprites = gMeshRendererState.worldSpritePass;
+        if (!hasMeshes && !sprites.HasOpaqueWork()) {
             return false;
         }
 
@@ -76,8 +80,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             "SceneSurface");
         surfaceBuffer.BeginWrite(graphics.cmdList, sceneDsv);
         MeshPassResources passResources{};
-        const GeometryBackendExecutionResult backendResult =
-            ExecuteGeometryBackendPlan(
+        const bool meshesWritten = !hasMeshes || ExecuteGeometryBackendPlan(
                 graphics,
                 RENDER3D::GPUDRIVEN::GpuDrivenPassKind::GeometryAux,
                 passResources,
@@ -87,16 +90,20 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                 writeFeatureMask
                     ? RENDER3D::MESHLET::MeshletPipelineKind::
                         GeometryAuxFeatureMask
-                    : RENDER3D::MESHLET::MeshletPipelineKind::GeometryAux);
+                    : RENDER3D::MESHLET::MeshletPipelineKind::GeometryAux).gpuBackendExecuted;
+        const bool spritesWritten = !sprites.HasOpaqueWork() || sprites.ExecuteSurface(
+            graphics, GetActiveMeshFrameResources().view.Bindings().camera, writeFeatureMask);
         surfaceBuffer.EndWrite(graphics.cmdList);
-        return backendResult.gpuBackendExecuted;
+        return meshesWritten && spritesWritten;
     }
 
     bool RenderDepthPrepassInternal(
         const GFX::Context& graphics,
         D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv, bool useCullingCamera) {
-        if (!HasGpuDrivenPassSource(
-            RENDER3D::GPUDRIVEN::GpuDrivenPassKind::DepthPrepass)) {
+        const bool hasMeshes = HasGpuDrivenPassSource(
+            RENDER3D::GPUDRIVEN::GpuDrivenPassKind::DepthPrepass);
+        auto& sprites = gMeshRendererState.worldSpritePass;
+        if (!hasMeshes && !sprites.HasOpaqueWork()) {
             return false;
         }
 
@@ -130,12 +137,14 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             if (overrides.cameraAddress == 0u) return false;
         }
         const MeshPassResources passResources{};
-        const GeometryBackendExecutionResult backendResult =
-            ExecuteDepthVisibilityBackendPlan(
+        const bool meshesWritten = !hasMeshes || ExecuteDepthVisibilityBackendPlan(
                 graphics,
                 RENDER3D::GPUDRIVEN::GpuDrivenPassKind::DepthPrepass,
-                passResources, useCullingCamera ? &overrides : nullptr);
-        return backendResult.gpuBackendExecuted;
+                passResources, useCullingCamera ? &overrides : nullptr).gpuBackendExecuted;
+        const auto cameraAddress = useCullingCamera ? overrides.cameraAddress
+            : GetActiveMeshFrameResources().view.Bindings().camera;
+        const bool spritesWritten = !sprites.HasOpaqueWork() || sprites.ExecuteDepth(graphics, cameraAddress);
+        return meshesWritten && spritesWritten;
     }
 
     bool RenderWaterVisibilityDepthInternal(
@@ -195,6 +204,22 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         return backendResult.gpuBackendExecuted;
     }
 
+    RENDER3D::SurfaceLightingBindings ResolveSurfaceLightingBindings() {
+        const auto& frame = GetActiveMeshFrameResources();
+        const auto& view = frame.view.Bindings();
+        RENDER3D::SurfaceLightingBindings lighting{};
+        lighting.light = view.light;
+        lighting.shadow = view.shadow;
+        lighting.skyEnvironment = view.skyEnvironment;
+        lighting.localLights = view.localLights.lights;
+        lighting.localLightHeaders = view.localLights.clusterHeaders;
+        lighting.localLightIndices = view.localLights.clusterIndices;
+        lighting.shadowMap = SHADOW::GetDirectionalShadowSrv();
+        lighting.irradiance = ResolveIblIrradianceSrv(gMeshRendererState.fallbackTextureHandle);
+        lighting.prefiltered = ResolveIblPrefilteredSrv(gMeshRendererState.fallbackTextureHandle);
+        return lighting;
+    }
+
     bool ExecuteParticleForwardTransparent(
         RENDER3D::PARTICLES::ParticleGpuDrivenPass& particlePass,
         const GFX::Context& graphics,
@@ -208,6 +233,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         const MeshFrameResources& frame = GetActiveMeshFrameResources();
         RENDER3D::PARTICLES::ParticleGpuDrivenDrawBindings bindings{};
         bindings.camera = cameraAddress;
+        static_cast<RENDER3D::SurfaceLightingBindings&>(bindings) = ResolveSurfaceLightingBindings();
         bindings.materialData = frame.materialDataBuffer != nullptr
             ? frame.materialDataBuffer->GetGPUVirtualAddress()
             : 0u;
@@ -258,7 +284,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                 return true;
             }
             return gMeshRendererState.worldSpritePass.ExecuteForwardOpaque(
-                graphics, cameraAddress);
+                graphics, cameraAddress, ResolveSurfaceLightingBindings());
         }
 
         bool ExecutePreparedWorldSpriteForwardTransparent(
@@ -268,7 +294,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                 return true;
             }
             return gMeshRendererState.worldSpritePass.
-                ExecuteForwardTransparent(graphics, cameraAddress);
+                ExecuteForwardTransparent(graphics, cameraAddress, ResolveSurfaceLightingBindings());
         }
 
         bool ExecutePreparedWorldTextForwardTransparent(
@@ -373,7 +399,8 @@ namespace HIKARI::MESHRENDERER {
 
     bool HasDepthPrepassWork() {
         return HasGpuDrivenPassSource(
-            RENDER3D::GPUDRIVEN::GpuDrivenPassKind::DepthPrepass);
+            RENDER3D::GPUDRIVEN::GpuDrivenPassKind::DepthPrepass) ||
+            gMeshRendererState.worldSpritePass.HasOpaqueWork();
     }
 
     bool RenderDepthPrepass(
@@ -447,8 +474,12 @@ namespace HIKARI::MESHRENDERER {
             PrepareForwardReflectionCapturePipelines(graphics, captureMaterial);
     }
 
-    bool HasOpaqueDepthOutsideGeometryAux() {
-        return gMeshRendererState.worldSpritePass.HasOpaqueWork();
+    RENDER3D::WORLD_SPRITES::WorldSpritePass* PrepareWorldSpritesForView(
+        const GFX::Context& graphics, const RENDER3D::RenderViewContext& view) {
+        if (!view.cameraFrame || !view.cameraFrame->valid) return nullptr;
+        auto& sprites = gMeshRendererState.worldSpritePass;
+        return sprites.PrepareFrame(graphics, view.worldSpriteFrameSource, view.cameraFrame->camera)
+            ? &sprites : nullptr;
     }
 
     bool RenderForwardOpaquePass(

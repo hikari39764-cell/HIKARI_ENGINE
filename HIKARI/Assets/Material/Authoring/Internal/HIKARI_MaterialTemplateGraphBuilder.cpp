@@ -7,8 +7,6 @@
 
 namespace HIKARI::ASSETS::MATERIAL::TEMPLATE_FACTORY_INTERNAL {
 
-    namespace {
-
         void AddNode(
             MaterialAssetData& data,
             std::string id,
@@ -17,7 +15,7 @@ namespace HIKARI::ASSETS::MATERIAL::TEMPLATE_FACTORY_INTERNAL {
             MaterialValueType valueType,
             float x,
             float y,
-            std::string referenceId = {}) {
+            std::string referenceId) {
 
             MaterialGraphNodeData node{};
             node.id = std::move(id);
@@ -43,6 +41,7 @@ namespace HIKARI::ASSETS::MATERIAL::TEMPLATE_FACTORY_INTERNAL {
             });
         }
 
+    namespace {
         void ConnectSurfaceInput(
             MaterialAssetData& data,
             std::string id,

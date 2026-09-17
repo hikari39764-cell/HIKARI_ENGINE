@@ -18,6 +18,10 @@ namespace HIKARI::EDITOR {
         if (!runtimeApp_.Initialize()) {
             return false;
         }
+        if (HasRuntimeCommandLineFlag(L"--play-on-start")) {
+            if (HasRuntimeCommandLineFlag(L"--headless-render")) editorPlaySession_.RequestEmbeddedStart();
+            else editorPlaySession_.RequestWindowedStart();
+        }
 
         std::string moduleMessage{};
         if (!gameProjectEditorModule_.LoadForLaunch(moduleMessage)) {
@@ -61,7 +65,6 @@ namespace HIKARI::EDITOR {
             " workspaces=" +
             std::to_string(
                 gameProjectEditorModule_.GetWorkspaceCount()));
-        if(HasRuntimeCommandLineFlag(L"--play-on-start"))editorPlaySession_.RequestWindowedStart();
         if(const auto workspace=ReadRuntimeCommandLinePath(L"--open-workspace"))
             gameProjectWorkspaceHost_.RequestWorkspace(TEXT::PathToUtf8(*workspace));
         return true;

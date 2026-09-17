@@ -69,6 +69,9 @@ static const uint HIKARI_EXPRESSION_UV_TRANSFORM = 55u;
 static const uint HIKARI_EXPRESSION_VALUE_NOISE = 56u;
 static const uint HIKARI_EXPRESSION_VORONOI = 57u;
 static const uint HIKARI_EXPRESSION_FRESNEL = 58u;
+static const uint HIKARI_EXPRESSION_PARTICLE_STATE = 59u;
+static const uint HIKARI_EXPRESSION_PARTICLE_COLOR = 60u;
+static const uint HIKARI_EXPRESSION_PARTICLE_UV = 61u;
 
 static const uint HIKARI_EXPRESSION_OUTPUT_BASE_COLOR = 1u << 0u;
 static const uint HIKARI_EXPRESSION_OUTPUT_OPACITY = 1u << 1u;
@@ -92,6 +95,9 @@ struct HikariMaterialExpressionContext
     float3 viewDirection;
     float3 cameraPosition;
     float4 screenPosition;
+    float4 particleState;
+    float4 particleColor;
+    float2 particleUv;
     HikariMaterialTextureFootprint textureFootprint;
 };
 
@@ -245,10 +251,11 @@ HikariMaterialExpressionResult HikariEvaluateMaterialExpression(
         const uint valueIndex = HikariExpressionByte(packedData, 2u);
         const uint auxiliary = HikariExpressionByte(packedData, 3u);
         const uint maxOutputs = opcode == HIKARI_EXPRESSION_TEXTURE_SAMPLE ? 7u :
-            opcode == HIKARI_EXPRESSION_SPLIT || opcode == HIKARI_EXPRESSION_TIME ? 4u :
+            opcode == HIKARI_EXPRESSION_SPLIT || opcode == HIKARI_EXPRESSION_TIME ||
+                opcode == HIKARI_EXPRESSION_PARTICLE_STATE ? 4u :
             opcode == HIKARI_EXPRESSION_TEXTURE_COORDINATE ? 2u : 1u;
         // 書き込み前に範囲を検査し、不正なプログラムは部分結果を公開しない。
-        if (opcode > HIKARI_EXPRESSION_FRESNEL || components < 1u || components > 4u ||
+        if (opcode > HIKARI_EXPRESSION_PARTICLE_UV || components < 1u || components > 4u ||
             outputCount < 1u || outputCount > maxOutputs ||
             destination + outputCount > header.w ||
             !HikariExpressionSourceValid(source0, header.w) ||
@@ -386,6 +393,16 @@ HikariMaterialExpressionResult HikariEvaluateMaterialExpression(
         else if (opcode == HIKARI_EXPRESSION_VIEW_DIRECTION) value = float4(context.viewDirection, 0.0f);
         else if (opcode == HIKARI_EXPRESSION_CAMERA_POSITION) value = float4(context.cameraPosition, 0.0f);
         else if (opcode == HIKARI_EXPRESSION_SCREEN_POSITION) value = context.screenPosition;
+        else if (opcode == HIKARI_EXPRESSION_PARTICLE_STATE)
+        {
+            registers[destination] = context.particleState.xxxx;
+            if (outputCount > 1u) registers[destination + 1u] = context.particleState.yyyy;
+            if (outputCount > 2u) registers[destination + 2u] = context.particleState.zzzz;
+            if (outputCount > 3u) registers[destination + 3u] = context.particleState.wwww;
+            continue;
+        }
+        else if (opcode == HIKARI_EXPRESSION_PARTICLE_COLOR) value = context.particleColor;
+        else if (opcode == HIKARI_EXPRESSION_PARTICLE_UV) value = float4(context.particleUv, 0, 0);
 #if !defined(HIKARI_MATERIAL_EXPLICIT_LOD)
         else if (opcode == HIKARI_EXPRESSION_DERIVATIVE_X) value = ddx(a);
         else if (opcode == HIKARI_EXPRESSION_DERIVATIVE_Y) value = ddy(a);

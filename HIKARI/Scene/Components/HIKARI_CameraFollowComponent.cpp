@@ -7,6 +7,7 @@
 #include "Core/HIKARI_JsonRead.h"
 #include "Core/Math/HIKARI_MathValidation.h"
 #include "Core/Serialization/Json/HIKARI_JsonMath.h"
+#include "Scene/Serialization/Objects/HIKARI_SceneObjectJson.h"
 namespace HIKARI {
 
     namespace JsonMath = SERIALIZATION::JSON::MATH;
@@ -78,7 +79,7 @@ namespace HIKARI {
     void CameraFollowComponent::Serialize(nlohmann::json& out) const {
         out["enabled"] = enabled_;
         out["priority"] = priority_;
-        out["targetObjectId"] = targetObjectId_.value;
+        out["targetObjectId"] = SCENE::SERIALIZATION::WriteSceneObjectReference(targetObjectId_.value);
         out["useOwnerAsFallbackTarget"] = useOwnerAsFallbackTarget_;
         out["pivotOffset"] = JsonMath::ToJsonArray(pivotOffset_);
         out["initialYawDegrees"] = initialYawDegrees_;
@@ -144,9 +145,8 @@ namespace HIKARI {
     void CameraFollowComponent::Deserialize(const nlohmann::json& in) {
         enabled_ = in.value("enabled", enabled_);
         priority_ = in.value("priority", priority_);
-        targetObjectId_.value = in.value(
-            "targetObjectId",
-            targetObjectId_.value);
+        targetObjectId_.value = SCENE::SERIALIZATION::SceneObjectReferenceOr(
+            in.value("targetObjectId", nlohmann::json{}), targetObjectId_.value);
         useOwnerAsFallbackTarget_ = in.value(
             "useOwnerAsFallbackTarget",
             useOwnerAsFallbackTarget_);

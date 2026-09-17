@@ -17,6 +17,7 @@
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Project/HIKARI_ProjectContext.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettingsJson.h"
+#include "Render3D/Pipeline/HIKARI_RenderFramePipeline.h"
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineFrameGeneration.h"
 #include "Runtime/HIKARI_RuntimeLaunchConfig.h"
@@ -45,6 +46,7 @@ struct RuntimeBenchmark::State {
     bool nativeFullQuality = false;
     bool temporalValid = false;
     uint32_t drainFrames = 0;
+    uint64_t previousRenderFailures = 0, rejectedRenderSamples = 0;
     uint64_t peakObjects = 0, peakVisibleObjects = 0, peakMassInstances = 0;
     uint64_t peakWorkingSet = 0, peakPrivateBytes = 0, peakVram = 0;
     uint64_t minimumVramBudget = UINT64_MAX;
@@ -164,6 +166,9 @@ void RuntimeBenchmark::OnPresentedFrame(uint64_t frameId, bool applicationFrame,
     auto& s = *state_;
     if (s.finished) return;
     const auto now = Clock::now();
+    const uint64_t renderFailures = RENDER3D::PIPELINE::GetPrimaryFrameFailureCount();
+    const bool renderRejected = renderFailures != s.previousRenderFailures;
+    s.previousRenderFailures = renderFailures;
     const double startupMs = std::chrono::duration<double, std::milli>(now - s.startupStarted).count();
     if (s.startup.empty()) s.startup["firstPresentMs"] = startupMs;
     if (!applicationFrame) return;
@@ -188,6 +193,7 @@ void RuntimeBenchmark::OnPresentedFrame(uint64_t frameId, bool applicationFrame,
         }
     }
     if (s.run.RecordFrame(frameId, intervalMs, {cpu.data(), count})) {
+        if (renderRejected) ++s.rejectedRenderSamples;
         s.CaptureContext(scene);
         const auto& sceneStats = RenderSubmissionSystem::GetSceneRenderCacheStats();
         s.peakObjects = (std::max)(s.peakObjects, static_cast<uint64_t>(sceneStats.renderObjectCount));
@@ -217,8 +223,9 @@ void RuntimeBenchmark::Finish() {
         report["context"] = s.context;
         report["startup"] = s.startup;
         report["configurationStable"] = s.configurationStable;
+        report["rejectedRenderSamples"] = s.rejectedRenderSamples;
         report["nativeFullQualityComparable"] = s.run.CaptureComplete() && s.configurationStable &&
-            s.temporalValid && s.nativeFullQuality && report["invalidIntervals"] == 0;
+            s.temporalValid && s.nativeFullQuality && s.rejectedRenderSamples == 0 && report["invalidIntervals"] == 0;
         report["scenePeaks"] = {{"objects", s.peakObjects}, {"visibleObjects", s.peakVisibleObjects},
             {"massRenderInstances", s.peakMassInstances}};
         report["memory"] = {{"samplingIntervalFrames", 60},
@@ -243,7 +250,8 @@ void RuntimeBenchmark::Finish() {
 
 bool RuntimeBenchmark::ShouldExit() const noexcept { return state_->finished && state_->exitWhenFinished; }
 int RuntimeBenchmark::ExitCode() const noexcept {
-    return state_->writeSucceeded && state_->run.CaptureComplete() && state_->configurationStable ? 0 : 2;
+    return state_->writeSucceeded && state_->run.CaptureComplete() && state_->configurationStable &&
+        state_->rejectedRenderSamples == 0 ? 0 : 2;
 }
 
 } // namespace HIKARI::RUNTIME

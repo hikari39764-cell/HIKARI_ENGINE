@@ -1,3 +1,4 @@
+#include "Editor/Workspaces/Vfx/HIKARI_VfxInspectorControls.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 
 #include <algorithm>
@@ -54,29 +55,13 @@ namespace HIKARI::EDITOR {
             drawList.AddText({ x - size.x * 0.5f, y }, color, label);
         }
 
-        uint64_t TimelineMergeGroup(
-            std::string_view targetId,
-            std::string_view propertyId) noexcept {
-
-            uint64_t hash = 1469598103934665603ull;
-            const auto append = [&hash](std::string_view text) {
-                for (const unsigned char character : text) {
-                    hash ^= character;
-                    hash *= 1099511628211ull;
-                }
-            };
-            append(targetId);
-            append("/");
-            append(propertyId);
-            return hash != 0u ? hash : 1u;
-        }
 #endif
     } // namespace
 
     void VfxWorkspaceController::DrawTimeline() {
 #if defined(HIKARI_WITH_EDITOR)
         if (!document_.IsOpen()) {
-            ImGui::TextDisabled("Open or create a VFX asset to use the timeline.");
+            ImGui::TextDisabled(VfxUiText("Open or create a VFX asset to use the timeline.").c_str());
             return;
         }
 
@@ -84,21 +69,21 @@ namespace HIKARI::EDITOR {
         const float duration = GetPreviewTimelineDuration();
 
         if (!previewPlaying_) {
-            if (ImGui::Button("Play", { 58.0f, 26.0f })) {
+            if (ImGui::Button(VfxUiText("Play").c_str(), { 58.0f, 26.0f })) {
                 (void)PlayPreview(statusMessage_);
             }
         } else if (ImGui::Button(
-                previewPaused_ ? "Resume" : "Pause",
+                VfxUiText(previewPaused_ ? "Resume" : "Pause").c_str(),
                 { 62.0f, 26.0f })) {
             PausePreview(!previewPaused_);
         }
         ImGui::SameLine();
-        if (ImGui::Button("Restart", { 64.0f, 26.0f })) {
+        if (ImGui::Button(VfxUiText("Restart").c_str(), { 64.0f, 26.0f })) {
             (void)RestartPreview(statusMessage_);
         }
         ImGui::SameLine();
         ImGui::BeginDisabled(!previewPlaying_);
-        if (ImGui::Button("Stop", { 54.0f, 26.0f })) {
+        if (ImGui::Button(VfxUiText("Stop").c_str(), { 54.0f, 26.0f })) {
             StopPreview();
             statusMessage_ = "VFX preview stopped";
         }
@@ -108,7 +93,7 @@ namespace HIKARI::EDITOR {
         ImGui::SetNextItemWidth(72.0f);
         float playbackSpeed = previewPlaybackSpeed_;
         if (ImGui::DragFloat(
-                "Speed",
+                VfxUiText("Speed").c_str(),
                 &playbackSpeed,
                 0.05f,
                 0.1f,
@@ -119,14 +104,14 @@ namespace HIKARI::EDITOR {
 
         ImGui::SameLine();
         bool loopEnabled = previewLoopEnabled_;
-        if (ImGui::Checkbox("Loop", &loopEnabled)) {
+        if (ImGui::Checkbox(VfxUiText("Loop").c_str(), &loopEnabled)) {
             SetPreviewLoopEnabled(loopEnabled);
         }
         ImGui::SameLine();
         ImGui::SetNextItemWidth(82.0f);
         float loopStart = previewLoopStartSeconds_;
         if (ImGui::DragFloat(
-                "Start",
+                VfxUiText("Start").c_str(),
                 &loopStart,
                 kMinimumTimelineRange,
                 0.0f,
@@ -138,7 +123,7 @@ namespace HIKARI::EDITOR {
         ImGui::SetNextItemWidth(82.0f);
         float loopEnd = previewLoopEndSeconds_;
         if (ImGui::DragFloat(
-                "End",
+                VfxUiText("End").c_str(),
                 &loopEnd,
                 kMinimumTimelineRange,
                 0.0f,
@@ -155,10 +140,12 @@ namespace HIKARI::EDITOR {
             static_cast<unsigned int>(std::lround(
                 previewElapsedSeconds_ * kTimelineFramesPerSecond)));
 
-        const ImVec2 canvasOrigin = ImGui::GetCursorScreenPos();
+        constexpr float labelWidth = 124.0f;
+        const auto cursor = ImGui::GetCursorScreenPos();
+        const ImVec2 canvasOrigin{cursor.x + labelWidth, cursor.y};
         const ImVec2 canvasSize{
-            (std::max)(ImGui::GetContentRegionAvail().x, 240.0f),
-            94.0f
+            (std::max)(ImGui::GetContentRegionAvail().x - labelWidth, 120.0f),
+            42.0f
         };
         ImDrawList& drawList = *ImGui::GetWindowDrawList();
         drawList.AddRectFilled(
@@ -244,6 +231,7 @@ namespace HIKARI::EDITOR {
             IM_COL32(255, 210, 92, 255),
             2.0f);
 
+        ImGui::SetCursorScreenPos(canvasOrigin);
         ImGui::InvisibleButton(
             "##VfxTimelineRuler",
             canvasSize,
@@ -291,158 +279,8 @@ namespace HIKARI::EDITOR {
                     xToTime(mouse.x) * kTimelineFramesPerSecond)));
         }
 
-        // Authoring rows intentionally live beside the preview ruler. They
-        // edit the source asset through the same controller transactions used
-        // by the Inspector, so seeking the playhead never masquerades as a
-        // key edit.
-        ImGui::SeparatorText("Emitter activation / burst keys");
-        const VFX::VfxAssetData snapshot = document_.Asset();
-        for (const VFX::VfxEmitterData& emitter : snapshot.emitters) {
-            ImGui::PushID(emitter.id.c_str());
-            ImGui::Text("%s", emitter.name.c_str());
-            ImGui::SameLine();
-            ImGui::TextDisabled("[%s]", emitter.id.c_str());
+        DrawTimelineLayers(canvasOrigin.x, canvasSize.x, labelWidth, duration);
 
-            float startDelay = emitter.startDelay;
-            ImGui::SetNextItemWidth(128.0f);
-            if (ImGui::DragFloat(
-                    "Start Delay",
-                    &startDelay,
-                    0.01f,
-                    0.0f,
-                    duration,
-                    "%.3f s")) {
-                std::string message{};
-                (void)SetProperty(
-                    emitter.id,
-                    "startDelay",
-                    startDelay,
-                    message,
-                    TimelineMergeGroup(emitter.id, "startDelay"));
-                statusMessage_ = message;
-            }
-            if (ImGui::IsItemDeactivatedAfterEdit()) {
-                SealPropertyEdit();
-            }
-            ImGui::SameLine();
-            float activeDuration = emitter.activeDuration;
-            const float activeDurationMaximum = (std::max)(
-                0.0f, duration - startDelay);
-            ImGui::SetNextItemWidth(160.0f);
-            if (ImGui::DragFloat(
-                    "Active Duration (0 = end)",
-                    &activeDuration,
-                    0.01f,
-                    0.0f,
-                    activeDurationMaximum,
-                    "%.3f s")) {
-                std::string message{};
-                (void)SetProperty(
-                    emitter.id,
-                    "activeDuration",
-                    activeDuration,
-                    message,
-                    TimelineMergeGroup(emitter.id, "activeDuration"));
-                statusMessage_ = message;
-            }
-            if (ImGui::IsItemDeactivatedAfterEdit()) {
-                SealPropertyEdit();
-            }
-
-            const float localDuration = emitter.activeDuration > 0.0f
-                ? emitter.activeDuration
-                : (std::max)(0.0f, duration - emitter.startDelay);
-            ImGui::TextDisabled(
-                "Burst keys are emitter-local (0..%.3f s)",
-                localDuration);
-            bool removeBurst = false;
-            std::string removeBurstId{};
-            for (const VFX::VfxBurstKeyData& key :
-                 emitter.spawn.burstTimeline) {
-                ImGui::PushID(key.id.c_str());
-                if (ImGui::Selectable(
-                        key.id.c_str(),
-                        selection_.kind == VfxWorkspaceSelectionKind::BurstKey &&
-                            selection_.targetId == key.id)) {
-                    Select({ VfxWorkspaceSelectionKind::BurstKey, key.id,
-                        emitter.id });
-                }
-                ImGui::SameLine();
-                float keyTime = key.time;
-                ImGui::SetNextItemWidth(112.0f);
-                if (ImGui::DragFloat(
-                        "Time",
-                        &keyTime,
-                        0.01f,
-                        0.0f,
-                        localDuration,
-                        "%.3f s")) {
-                    std::string message{};
-                    (void)SetBurstKey(
-                        key.id,
-                        keyTime,
-                        key.count,
-                        message,
-                        TimelineMergeGroup(key.id, "time"));
-                    statusMessage_ = message;
-                }
-                if (ImGui::IsItemDeactivatedAfterEdit()) {
-                    SealPropertyEdit();
-                }
-                ImGui::SameLine();
-                uint32_t keyCount = key.count;
-                ImGui::SetNextItemWidth(112.0f);
-                if (ImGui::DragScalar(
-                        "Count",
-                        ImGuiDataType_U32,
-                        &keyCount,
-                        1.0f,
-                        nullptr,
-                        &emitter.spawn.maximumParticles)) {
-                    std::string message{};
-                    (void)SetBurstKey(
-                        key.id,
-                        key.time,
-                        keyCount,
-                        message,
-                        TimelineMergeGroup(key.id, "count"));
-                    statusMessage_ = message;
-                }
-                if (ImGui::IsItemDeactivatedAfterEdit()) {
-                    SealPropertyEdit();
-                }
-                ImGui::SameLine();
-                if (ImGui::SmallButton("Remove")) {
-                    removeBurst = true;
-                    removeBurstId = key.id;
-                }
-                ImGui::PopID();
-            }
-            if (ImGui::SmallButton("Add Burst Key at Playhead")) {
-                const float localTime = std::clamp(
-                    previewElapsedSeconds_ - emitter.startDelay,
-                    0.0f,
-                    localDuration);
-                std::string keyId{};
-                std::string message{};
-                if (!AddBurstKey(
-                        emitter.id,
-                        localTime,
-                        1u,
-                        {},
-                        keyId,
-                        message)) {
-                    statusMessage_ = message;
-                }
-            }
-            if (removeBurst) {
-                std::string message{};
-                (void)RemoveBurstKey(removeBurstId, message);
-                statusMessage_ = message;
-            }
-            ImGui::Separator();
-            ImGui::PopID();
-        }
 #endif
     }
 

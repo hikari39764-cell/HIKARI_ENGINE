@@ -24,6 +24,10 @@ namespace HIKARI {
         HIKARI_GAME_PROJECT_SDK_API int64_t ReadInt(
             std::string_view name,
             int64_t fallback = 0) const noexcept;
+        // Explicit scene references are remapped when duplicating or
+        // instantiating a hierarchy. Reads legacy nonnegative integer IDs too.
+        HIKARI_GAME_PROJECT_SDK_API uint64_t ReadSceneObjectId(
+            std::string_view name, uint64_t fallback = 0) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API float ReadFloat(
             std::string_view name,
             float fallback = 0.0f) const noexcept;
@@ -87,6 +91,8 @@ namespace HIKARI {
         HIKARI_GAME_PROJECT_SDK_API void WriteInt(
             std::string_view name,
             int64_t value);
+        HIKARI_GAME_PROJECT_SDK_API void WriteSceneObjectId(
+            std::string_view name, uint64_t value);
         HIKARI_GAME_PROJECT_SDK_API void WriteFloat(
             std::string_view name,
             float value);

@@ -406,6 +406,13 @@ namespace HIKARI {
                     instance.facing = sprite.GetFacingMode();
                     instance.alphaMode = sprite.GetAlphaMode();
                     instance.preserveAspect = sprite.GetPreserveAspect();
+                    instance.uvRect = sprite.GetUvRect();
+                    instance.lit = sprite.IsLit();
+                    instance.roughness = sprite.GetRoughness();
+                    instance.specular = sprite.GetSpecular();
+                    instance.pointSampling = sprite.UsesPointSampling();
+                    instance.castShadow = sprite.CastsShadow();
+                    instance.receiveShadow = sprite.ReceivesShadow();
 
                     const MATH::Mat4 worldMatrix =
                         object.GetTransform().GetWorldMatrix();
@@ -434,7 +441,7 @@ namespace HIKARI {
                             boundsInstance.size.x = instance.size.y *
                                 scaleY / scaleX *
                                 static_cast<float>(texture->width) /
-                                static_cast<float>(texture->height);
+                                static_cast<float>(texture->height) * instance.uvRect.z / instance.uvRect.w;
                         }
                     }
                     instance.worldBounds = ResolveWorldSpriteBounds(

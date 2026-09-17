@@ -39,6 +39,16 @@ namespace HIKARI {
             float linearVolume) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool IsPlaying(
             GameProjectAudioPlaybackHandle playback) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API GameProjectAudioPlaybackHandle Play(
+            GameProjectAudioSoundHandle sound,
+            const GameProjectAudioPlayOptions& options) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool UseCameraListener() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool SetListener(
+            const GameProjectAudioListener& listener) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool SetSource(
+            GameProjectAudioPlaybackHandle playback,
+            const GameProjectAudioSource& source) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API GameProjectAudioStats GetStats() const noexcept;
 
     private:
         friend struct GameProjectSdkAccess;

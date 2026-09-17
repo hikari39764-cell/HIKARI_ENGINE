@@ -33,19 +33,19 @@ namespace HIKARI::EDITOR {
         if (!document_.IsOpen()) {
             return kMinimumRange;
         }
-        float maximumLifetime = 0.0f;
-        for (const VFX::VfxEmitterData& emitter :
-             document_.Asset().emitters) {
-            maximumLifetime = (std::max)(
-                maximumLifetime,
-                emitter.basic.lifetime.mode ==
-                    VFX::VfxDistributionMode::RandomRange
-                    ? emitter.basic.lifetime.maximum
-                    : emitter.basic.lifetime.minimum);
+        const auto& asset = document_.Asset();
+        float end = asset.durationSeconds;
+        for (const auto& layer : asset.emitters) {
+            if (!layer.basic.enabled || layer.kind == VFX::VfxLayerKind::Group) continue;
+            const float activeEnd = layer.activeDuration > 0 ? layer.startDelay + layer.activeDuration : asset.durationSeconds;
+            float tail = 0;
+            if (layer.kind == VFX::VfxLayerKind::Particles)
+                tail = layer.basic.lifetime.mode == VFX::VfxDistributionMode::RandomRange ?
+                    layer.basic.lifetime.maximum : layer.basic.lifetime.minimum;
+            else if (layer.history.mode != VFX::VfxHistoryMode::None) tail = layer.history.duration;
+            end = (std::max)(end, activeEnd + tail);
         }
-        return (std::max)(
-            document_.Asset().durationSeconds + maximumLifetime,
-            kMinimumRange);
+        return (std::max)(end, kMinimumRange);
     }
 
     void VfxWorkspaceController::NormalizePreviewTimelineRange() noexcept {
@@ -191,6 +191,7 @@ namespace HIKARI::EDITOR {
     }
 
     void VfxWorkspaceController::StopPreview() {
+        previewSeekTarget_.reset();
         NormalizePreviewTimelineRange();
         if (previewHandle_.IsValid()) {
             (void)playbackService_.Stop(previewHandle_);
@@ -305,6 +306,17 @@ namespace HIKARI::EDITOR {
             statusMessage_ = outMessage;
             return false;
         }
+        previewPaused_ = wasActive ? wasPaused : true;
+        if (previewRenderMailbox_.HasPending() || previewRestartPending_) {
+            // Scrubbing follows UpdatePreview, which can already have sent a
+            // GPU frame. Keep the latest target until that frame is consumed.
+            previewSeekTarget_ = std::clamp(std::isfinite(seconds) ? seconds : 0.0f,
+                0.0f, GetPreviewTimelineDuration());
+            outMessage = "VFX preview seek queued";
+            statusMessage_ = outMessage;
+            return true;
+        }
+        previewSeekTarget_.reset();
         if (!SeekActivePreview(
                 seconds, outMessage, !wasActive)) {
             statusMessage_ = outMessage;
@@ -420,14 +432,27 @@ namespace HIKARI::EDITOR {
         if (previewRestartPending_ && previewPlaying_) {
             if (previewRestartDelaySeconds_ <= 0.0f) {
                 const bool wasPaused = previewPaused_;
+                const auto seekTarget = previewSeekTarget_;
                 std::string message{};
                 if (!RestartPreview(message)) {
                     statusMessage_ = message;
                 } else if (wasPaused) {
                     PausePreview(true);
                 }
+                if (previewPlaying_) previewSeekTarget_ = seekTarget;
                 simulationPublished = previewPlaying_;
             }
+        }
+        if (previewSeekTarget_ && !previewRenderMailbox_.HasPending() &&
+            previewPlaying_ && !previewRestartPending_) {
+            const float target = *previewSeekTarget_;
+            previewSeekTarget_.reset();
+            if (!SeekActivePreview(target, statusMessage_)) {
+                previewPaused_ = true;
+                return;
+            }
+            statusMessage_ = "VFX preview moved to " + std::to_string(previewElapsedSeconds_) + " s";
+            simulationPublished = true;
         }
         if (!previewPlaying_ ||
             (previewPaused_ && !simulationPublished)) {
@@ -565,7 +590,7 @@ namespace HIKARI::EDITOR {
         request.continuousRealtime = true;
         request.schedulingPriority = 110u;
         request.shadingMode =
-            RENDER3D::EDITORVIEW::EditorInteractiveShadingMode::Neutral;
+            RENDER3D::EDITORVIEW::EditorInteractiveShadingMode::Lit;
         request.displayExposure =
             previewView.visualization.displayExposure;
         request.sceneSourceOverride = emptySceneSource_.get();
@@ -578,7 +603,7 @@ namespace HIKARI::EDITOR {
         request.guideOverlay.gridSpacing = 0.5f;
         request.guideOverlay.axisLength = 1.25f;
         request.suppressSpatialLightingProviders = true;
-        request.useDefaultSkyIbl = false;
+        request.useDefaultSkyIbl = true;
         request.spatialAntiAliasing = true;
         RENDER3D::EDITORVIEW::SubmitRequest(request);
         cameraCutPending_ = false;

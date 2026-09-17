@@ -147,6 +147,17 @@ namespace HIKARI::EDITOR {
         });
 
         registry.Register({
+            "vfx.add_preset_layers", "Add a template to the current effect as one undoable edit", "vfx",
+            {Parameter("presetId", EditorOperationParameterType::String, true, "Template ID from vfx.preset.list")},
+            [&controller](const nlohmann::json& parameters) {
+                std::string message;
+                return controller.AddPresetLayers(parameters.at("presetId").get<std::string>(), message)
+                    ? Success(message, WriteVfxWorkspaceSummary(controller))
+                    : Failure("VFX_TEMPLATE_FAILED", message);
+            },
+        });
+
+        registry.Register({
             "vfx.open_asset",
             "Open a VFX source asset by GUID",
             "vfx",
@@ -612,7 +623,7 @@ namespace HIKARI::EDITOR {
 
         registry.Register({
             "vfx.emitter.add",
-            "Add a root or child emitter to the VFX stack",
+            "Add a Shape, Particles or Group layer to the composition",
             "vfx",
             {
                 Parameter(
@@ -620,6 +631,8 @@ namespace HIKARI::EDITOR {
                     EditorOperationParameterType::String,
                     false,
                     "Optional stable parent emitter ID"),
+                Parameter("kind", EditorOperationParameterType::String, false,
+                    "Shape (default), Particles, or Group. Shapes animate over the layer time window."),
                 Parameter(
                     "name",
                     EditorOperationParameterType::String,
@@ -641,12 +654,17 @@ namespace HIKARI::EDITOR {
                 }
                 std::string id{};
                 std::string message{};
+                const auto kindName = parameters.value("kind", "Shape");
+                if (kindName != "Shape" && kindName != "Particles" && kindName != "Group")
+                    return Failure("VFX_INVALID_LAYER_KIND", "Expected Shape, Particles or Group");
+                const auto kind = kindName == "Shape" ? VFX::VfxLayerKind::Shape :
+                    kindName == "Group" ? VFX::VfxLayerKind::Group : VFX::VfxLayerKind::Particles;
                 if (!controller.AddEmitter(
                         parameters.value("parentEmitterId", ""),
                         parameters.value("name", ""),
                         parameters.value("requestedId", ""),
                         id,
-                        message)) {
+                        message, kind)) {
                     return Failure("VFX_EMITTER_ADD_FAILED", message);
                 }
                 return Success(message, ContextData(controller, id));
@@ -829,6 +847,7 @@ namespace HIKARI::EDITOR {
         RegisterVfxBindingOperations(registry, controller);
         RegisterVfxCurveOperations(registry, controller);
         RegisterVfxPreviewOperations(registry, controller);
+        RegisterVfxLibraryOperations(registry, controller, databaseProvider);
     }
 
 } // namespace HIKARI::EDITOR

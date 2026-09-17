@@ -32,6 +32,9 @@ set(
     @HIKARI_WITH_EDITOR_BUILD@)
 if(HIKARI_GAME_PROJECT_EDITOR_AVAILABLE AND
    NOT TARGET HIKARI::GameProjectEditorSdk)
+    add_library(HIKARI::AuthoringJson INTERFACE IMPORTED)
+    set_target_properties(HIKARI::AuthoringJson PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES "${_HIKARI_SDK_ROOT}/third_party")
     add_library(HIKARI::GameProjectEditorSdk INTERFACE IMPORTED)
     set_target_properties(
         HIKARI::GameProjectEditorSdk

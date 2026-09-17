@@ -47,43 +47,6 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
             return true;
         }
 
-        bool ReadCurve(const Json& node, VfxCurveData& outCurve) {
-            if (!node.is_object() || !node.contains("randomOffset") ||
-                !node.contains("keys") || !node["keys"].is_array()) {
-                return false;
-            }
-            VfxCurveData curve{};
-            if (!TryParseVfxCurveInterpolation(
-                    node.value("interpolation", std::string{}),
-                    curve.interpolation) ||
-                !ReadDistribution(
-                    node["randomOffset"],
-                    curve.randomOffset)) {
-                return false;
-            }
-            for (const Json& item : node["keys"]) {
-                if (!item.is_object() ||
-                    !item.contains("id") || !item["id"].is_string() ||
-                    !item.contains("time") || !item["time"].is_number() ||
-                    !item.contains("value") || !item["value"].is_number() ||
-                    !item.contains("inTangent") ||
-                    !item["inTangent"].is_number() ||
-                    !item.contains("outTangent") ||
-                    !item["outTangent"].is_number()) {
-                    return false;
-                }
-                curve.keys.push_back({
-                    item["id"].get<std::string>(),
-                    item["time"].get<float>(),
-                    item["value"].get<float>(),
-                    item["inTangent"].get<float>(),
-                    item["outTangent"].get<float>(),
-                });
-            }
-            outCurve = std::move(curve);
-            return true;
-        }
-
         bool ReadVec3Curve(const Json& node, VfxVec3CurveData& outCurve) {
             VfxVec3CurveData curve{};
             if (!node.is_object() || !node.contains("x") ||
@@ -176,6 +139,43 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
                 : found->code + ": " + found->message;
         }
     }
+
+        bool ReadCurve(const Json& node, VfxCurveData& outCurve) {
+            if (!node.is_object() || !node.contains("randomOffset") ||
+                !node.contains("keys") || !node["keys"].is_array()) {
+                return false;
+            }
+            VfxCurveData curve{};
+            if (!TryParseVfxCurveInterpolation(
+                    node.value("interpolation", std::string{}),
+                    curve.interpolation) ||
+                !ReadDistribution(
+                    node["randomOffset"],
+                    curve.randomOffset)) {
+                return false;
+            }
+            for (const Json& item : node["keys"]) {
+                if (!item.is_object() ||
+                    !item.contains("id") || !item["id"].is_string() ||
+                    !item.contains("time") || !item["time"].is_number() ||
+                    !item.contains("value") || !item["value"].is_number() ||
+                    !item.contains("inTangent") ||
+                    !item["inTangent"].is_number() ||
+                    !item.contains("outTangent") ||
+                    !item["outTangent"].is_number()) {
+                    return false;
+                }
+                curve.keys.push_back({
+                    item["id"].get<std::string>(),
+                    item["time"].get<float>(),
+                    item["value"].get<float>(),
+                    item["inTangent"].get<float>(),
+                    item["outTangent"].get<float>(),
+                });
+            }
+            outCurve = std::move(curve);
+            return true;
+        }
 
     bool ReadVec3(const Json& node, MATH::Vec3& outValue) {
         if (!node.is_array() || node.size() != 3u ||

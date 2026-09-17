@@ -125,6 +125,11 @@ namespace HIKARI {
             : std::string_view{};
     }
 
+    uint64_t ObjectView::GetSceneObjectId() const noexcept {
+        const GameObject* object = GameProjectSdkAccess::GetObject(*this);
+        return object != nullptr ? object->GetDocumentId().value : 0u;
+    }
+
     ObjectView ObjectView::GetParent() const noexcept {
         GameObject* object =
             GameProjectSdkAccess::GetObject(*this);
@@ -708,6 +713,17 @@ namespace HIKARI {
         }
         GameObject* object = world->FindObject(
             PROJECT::INTERNAL::DecodeRuntimeHandle(handle));
+        return object != nullptr
+            ? GameProjectSdkAccess::MakeObjectView(*object)
+            : ObjectView{};
+    }
+
+    ObjectView WorldView::FindSceneObject(uint64_t sceneObjectId) const noexcept {
+        World* world = GameProjectSdkAccess::GetWorld(*this);
+        if (world == nullptr || sceneObjectId == 0u) {
+            return {};
+        }
+        GameObject* object = world->FindObject(SceneObjectId{ sceneObjectId });
         return object != nullptr
             ? GameProjectSdkAccess::MakeObjectView(*object)
             : ObjectView{};

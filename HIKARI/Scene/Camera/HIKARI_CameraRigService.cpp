@@ -296,7 +296,7 @@ namespace HIKARI::CAMERA {
             verticalFov,
             kMinVerticalFov,
             kMaxVerticalFov);
-        camera.SetPerspective(
+        if (!camera.IsOrthographic()) camera.SetPerspective(
             verticalFov,
             camera.GetAspect(),
             camera.GetNearZ(),

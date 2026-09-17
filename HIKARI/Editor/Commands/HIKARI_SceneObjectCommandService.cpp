@@ -11,6 +11,7 @@
 #include "Editor/HIKARI_SelectionSyncService.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_GameObject.h"
+#include "Scene/HIKARI_SceneDocumentQueries.h"
 #include "Scene/Prefab/HIKARI_PrefabDocument.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
@@ -53,27 +54,6 @@ namespace HIKARI::EDITOR {
             return selectionSync.FindDocumentObjectByRuntime(
                 scene,
                 context.selection.selectedObject);
-        }
-
-        std::unordered_set<uint64_t> CollectObjectSubtreeIds(
-            const SceneDocument& document,
-            SceneObjectId rootId) {
-
-            std::unordered_set<uint64_t> ids{ rootId.value };
-            bool changed = true;
-            while (changed) {
-                changed = false;
-                for (const SceneObjectData& object : document.objects) {
-                    if (!object.parent || ids.contains(object.id.value)) {
-                        continue;
-                    }
-                    if (ids.contains(object.parent->value)) {
-                        ids.insert(object.id.value);
-                        changed = true;
-                    }
-                }
-            }
-            return ids;
         }
 
         std::vector<SceneObjectId> CollectSelectedRootIds(
@@ -263,39 +243,30 @@ namespace HIKARI::EDITOR {
                         sourceRootId);
                 subtreeIds.insert(subtree.begin(), subtree.end());
             }
-            std::unordered_map<uint64_t, SceneObjectId> remappedIds{};
-            remappedIds.reserve(subtreeIds.size());
-            for (const SceneObjectData& object : beforeObjects) {
-                if (subtreeIds.contains(object.id.value)) {
-                    remappedIds.emplace(
-                        object.id.value,
-                        SceneObjectId{ context.nextSceneObjectId++ });
-                }
-            }
-            auto& objects = scene.GetSceneDocument().objects;
-            objects.reserve(objects.size() + subtreeIds.size());
+            std::vector<SceneObjectData> sourceObjects;
+            sourceObjects.reserve(subtreeIds.size());
             for (const SceneObjectData& source : beforeObjects) {
                 if (!subtreeIds.contains(source.id.value)) {
                     continue;
                 }
                 SceneObjectData duplicate = source;
-                duplicate.id = remappedIds.at(source.id.value);
                 if (sourceRootIdValues.contains(source.id.value)) {
                     duplicate.name += "_Copy";
                 }
-                if (duplicate.parent &&
-                    remappedIds.contains(duplicate.parent->value)) {
-                    duplicate.parent = remappedIds.at(
-                        duplicate.parent->value);
-                }
-                objects.push_back(std::move(duplicate));
+                sourceObjects.push_back(std::move(duplicate));
+            }
+            std::unordered_map<uint64_t, uint64_t> remappedIds;
+            if (!AppendClonedSceneObjects(sourceObjects, scene.GetSceneDocument(),
+                    context.nextSceneObjectId, remappedIds)) {
+                SetStatus("Could not clone the selected hierarchy identities.", true);
+                return false;
             }
 
             std::vector<SceneObjectId> duplicateRootIds{};
             duplicateRootIds.reserve(sourceRootIds.size());
             for (SceneObjectId sourceRootId : sourceRootIds) {
                 duplicateRootIds.push_back(
-                    remappedIds.at(sourceRootId.value));
+                    SceneObjectId{remappedIds.at(sourceRootId.value)});
             }
             context.sceneDirty = true;
             selectionSync.RebuildRuntimeWorldWithSelectionSync(
@@ -415,11 +386,12 @@ namespace HIKARI::EDITOR {
             const std::string prefabId = SanitizePrefabToken(
                 argument.empty() ? target->name : argument);
             PrefabDocument prefab{};
-            prefab.prefabName = prefabId;
-            prefab.rootObject = *target;
-            prefab.rootObject.parent.reset();
-            prefab.rootObject.sourcePrefabId.clear();
-            prefab.rootObject.editorLocked = false;
+            std::string prefabError;
+            if (!CapturePrefabDocument(scene.GetSceneDocument(), target->id,
+                    prefabId, prefab, prefabError)) {
+                SetStatus(prefabError, true);
+                return false;
+            }
             const bool saved = prefabRegistry_.Save(
                 prefabId,
                 prefab,
@@ -441,15 +413,13 @@ namespace HIKARI::EDITOR {
                 SetStatus("Failed to load prefab: " + prefabId + ".", true);
                 return false;
             }
-            SceneObjectData instance = prefab.rootObject;
-            const SceneObjectId instanceId{ context.nextSceneObjectId++ };
-            instance.id = instanceId;
-            instance.parent.reset();
-            instance.sourcePrefabId = prefabId;
-            if (instance.name.empty()) {
-                instance.name = prefab.prefabName;
+            SceneObjectId instanceId;
+            std::string prefabError;
+            if (!InstantiatePrefabDocument(prefab, prefabId, scene.GetSceneDocument(),
+                    context.nextSceneObjectId, instanceId, prefabError)) {
+                SetStatus(prefabError, true);
+                return false;
             }
-            scene.GetSceneDocument().objects.push_back(std::move(instance));
             context.sceneDirty = true;
             selectionSync.RebuildRuntimeWorldWithSelectionSync(
                 scene,

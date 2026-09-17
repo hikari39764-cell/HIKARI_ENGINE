@@ -15,6 +15,7 @@
 #include "Scene/Features/HIKARI_RuntimeFeature.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureIds.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
+#include "Scene/HIKARI_ComponentSystemPolicy.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/HIKARI_SystemTypeRegistry.h"
@@ -221,6 +222,11 @@ namespace HIKARI {
                     "Model Rendering",
                     std::string(RuntimeFeatureIds::Rendering)
                 }) && success;
+                // 明示的な gameplay system 一覧があっても、描画コンポーネントは送信系を伴う。
+                auto& policy = RuntimeFeatureContextAccess::Policy(context);
+                for (const char* type : {"ModelComponent", "WorldSpriteComponent", "WorldTextComponent"}) {
+                    success = policy.Register({type, "ModelRenderSystem", 100}) && success;
+                }
                 return success;
             }
 

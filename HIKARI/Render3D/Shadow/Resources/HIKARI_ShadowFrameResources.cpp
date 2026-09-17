@@ -16,6 +16,16 @@
 
 namespace HIKARI::SHADOW::INTERNAL {
 
+    bool UploadShadowMaterialCamera(ShadowRendererState& state, const GFX::Context& graphics) {
+        auto& frame = GetActiveShadowFrameResources(state);
+        frame.frameUploads.ResetForFrame(graphics.currentFrameRetireFenceValue);
+        const auto upload = frame.frameUploads.Allocate(sizeof(state.materialCamera));
+        frame.materialCameraAddress = upload ? upload.gpuAddress : 0;
+        if (!upload) return false;
+        std::memcpy(upload.cpuAddress, &state.materialCamera, sizeof(state.materialCamera));
+        return true;
+    }
+
     bool CommitShadowMaterialDataFrame(ShadowRendererState& state, const GFX::Context& graphics) {
         ShadowFrameResources& frame = GetActiveShadowFrameResources(state);
         ID3D12GraphicsCommandList* commandList = graphics.cmdList;
@@ -43,8 +53,7 @@ namespace HIKARI::SHADOW::INTERNAL {
                 frame.materialProgramParametersAddress) ||
             !snapshot(table.programResources.empty() ? &emptyResource : table.programResources.data(),
                 (std::max)(size_t(1), table.programResources.size()) * sizeof(uint32_t),
-                frame.materialProgramResourcesAddress) ||
-            !snapshot(&state.materialCamera, sizeof(MESHRENDERER::CameraCB), frame.materialCameraAddress)) {
+                frame.materialProgramResourcesAddress)) {
             return false;
         }
 

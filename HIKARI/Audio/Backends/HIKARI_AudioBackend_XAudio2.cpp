@@ -30,6 +30,7 @@
 #include <mfreadwrite.h>
 #include <wrl/client.h>
 #include <xaudio2.h>
+#include <x3daudio.h>
 
 namespace HIKARI::AUDIO {
 
@@ -72,25 +73,13 @@ namespace {
 
     constexpr size_t kMaximumDecodedSoundBytes = 128u * 1024u * 1024u;
     constexpr size_t kMaximumPreloadBytes = 128u * 1024u * 1024u;
+    constexpr size_t kMaximumResidentSoundBytes = 256u * 1024u * 1024u;
+    constexpr size_t kMaximumLoadedSounds = 4096u;
 
     std::wstring AudioCacheKey(const std::filesystem::path& source) {
         std::error_code error;
         auto absolute = std::filesystem::absolute(source, error);
         return error ? std::wstring{} : absolute.lexically_normal().make_preferred().wstring();
-    }
-
-    constexpr uint32_t MakeFourCc(char a, char b, char c, char d)
-    {
-        return static_cast<uint32_t>(static_cast<unsigned char>(a)) |
-            (static_cast<uint32_t>(static_cast<unsigned char>(b)) << 8) |
-            (static_cast<uint32_t>(static_cast<unsigned char>(c)) << 16) |
-            (static_cast<uint32_t>(static_cast<unsigned char>(d)) << 24);
-    }
-
-    bool ReadU32(std::ifstream& file, uint32_t& outValue)
-    {
-        file.read(reinterpret_cast<char*>(&outValue), sizeof(outValue));
-        return static_cast<bool>(file);
     }
 
     void ReleaseXAudio2(IXAudio2* engine)
@@ -100,43 +89,14 @@ namespace {
         }
     }
 
-    bool IsWaveFormatSupported(const WAVEFORMATEX& format)
-    {
-        return format.wFormatTag == WAVE_FORMAT_PCM ||
-            format.wFormatTag == WAVE_FORMAT_IEEE_FLOAT ||
-            format.wFormatTag == WAVE_FORMAT_EXTENSIBLE;
-    }
-
-    std::filesystem::path PathFromUtf8(const char* value)
-    {
-        if (value == nullptr || value[0] == '\0') {
-            return {};
-        }
-        const int required = MultiByteToWideChar(
-            CP_UTF8,
-            MB_ERR_INVALID_CHARS,
-            value,
-            -1,
-            nullptr,
-            0);
-        if (required <= 1) {
-            return {};
-        }
-        std::wstring wide(static_cast<size_t>(required), L'\0');
-        if (MultiByteToWideChar(
-                CP_UTF8,
-                MB_ERR_INVALID_CHARS,
-                value,
-                -1,
-                wide.data(),
-                required) != required) {
-            return {};
-        }
-        wide.resize(static_cast<size_t>(required - 1));
-        return std::filesystem::path(wide);
-    }
+    using TEXT::PathFromUtf8;
 
 } // namespace
+
+struct AudioBackendXAudio2::SpatialState {
+    X3DAUDIO_HANDLE handle{};
+    uint32_t channels = 0u;
+};
 
 struct AudioBackendXAudio2::DecodeCache {
     struct Job {
@@ -256,6 +216,15 @@ bool AudioBackendXAudio2::Initialize()
         return false;
     }
 
+    DWORD mask = 0u;
+    XAUDIO2_VOICE_DETAILS details{};
+    masteringVoice_->GetVoiceDetails(&details);
+    auto spatial = std::make_unique<SpatialState>();
+    if (SUCCEEDED(masteringVoice_->GetChannelMask(&mask)) && details.InputChannels <= 8u &&
+        SUCCEEDED(X3DAudioInitialize(mask, X3DAUDIO_SPEED_OF_SOUND, spatial->handle))) {
+        spatial->channels = details.InputChannels;
+        spatial_ = std::move(spatial);
+    }
     HIKARI_LOG_INFO("[Audio][XAudio2] initialized.");
     return true;
 }
@@ -272,12 +241,14 @@ void AudioBackendXAudio2::Shutdown()
     }
     voices_.clear();
     sounds_.clear();
+    residentSoundBytes_ = 0;
 
     if (masteringVoice_) {
         masteringVoice_->DestroyVoice();
         masteringVoice_ = nullptr;
     }
 
+    spatial_.reset();
     engine_.reset();
     if (mediaFoundationStarted_) {
         (void)GetMediaFoundationApi().shutdown();
@@ -302,6 +273,10 @@ bool AudioBackendXAudio2::DecodeSound(const char* path, SoundData& sound,
 
 int AudioBackendXAudio2::Load(const char* path) {
     if (!path || !path[0] || !engine_) return -1;
+    if (sounds_.size() >= kMaximumLoadedSounds) {
+        HIKARI_LOG_WARN("[Audio] loaded sound count budget reached (4096); new sound rejected.");
+        return -1;
+    }
     try {
         SoundData sound;
         bool loaded = false;
@@ -329,8 +304,14 @@ int AudioBackendXAudio2::Load(const char* path) {
             }
         }
         if (!loaded && !DecodeSound(path, sound)) return -1;
+        const size_t bytes = sound.audioBytes.size() + sound.formatBytes.size();
+        if (bytes > kMaximumResidentSoundBytes - residentSoundBytes_) {
+            HIKARI_LOG_WARN("[Audio] resident sound budget reached (256 MiB); use streamed WAV for long audio.");
+            return -1;
+        }
         const int handle = static_cast<int>(sounds_.size());
         sounds_.push_back(std::move(sound));
+        residentSoundBytes_ += bytes;
         return handle;
     } catch (...) {
         HIKARI_LOG_ERROR("[Audio][XAudio2] sound load failed; playback skipped.");
@@ -338,59 +319,112 @@ int AudioBackendXAudio2::Load(const char* path) {
     }
 }
 
-int AudioBackendXAudio2::Play(int soundHandle, bool loop, float volume)
-{
-    if (!engine_ || soundHandle < 0 || soundHandle >= static_cast<int>(sounds_.size())) {
-        return -1;
-    }
-
+int AudioBackendXAudio2::Play(int soundHandle, bool loop, float volume, bool paused, float startSeconds, float rate) {
+    if (!engine_ || soundHandle < 0 || soundHandle >= static_cast<int>(sounds_.size())) return -1;
     CleanupFinishedVoices();
-
     const SoundData& sound = sounds_[static_cast<size_t>(soundHandle)];
-    IXAudio2SourceVoice* voice = nullptr;
-    const auto* format = reinterpret_cast<const WAVEFORMATEX*>(sound.formatBytes.data());
-    const HRESULT createResult = engine_->CreateSourceVoice(&voice, format);
-    if (FAILED(createResult) || !voice) {
-        HIKARI_LOG_ERROR("[Audio][XAudio2] CreateSourceVoice failed: " + sound.path);
+    // 一時的な replacement voice 一つを含む。stream worker は最大 8 本。
+    size_t active = 0u, streams = 0u;
+    for (const auto& current : voices_) {
+        active += current.active;
+        streams += current.stream != nullptr;
+    }
+    if (active >= 129u || (sound.streaming && streams >= 8u)) return -1;
+    PlayingVoice playing;
+    if (sound.streaming) {
+        playing.stream = std::make_unique<AudioStreamVoice>();
+        if (!playing.stream->Open(*engine_, PathFromUtf8(sound.path), sound.wave, loop, startSeconds)) return -1;
+        playing.voice = playing.stream->GetVoice();
+    } else {
+        const auto* format = reinterpret_cast<const WAVEFORMATEX*>(sound.formatBytes.data());
+        if (FAILED(engine_->CreateSourceVoice(&playing.voice, format, 0u, 8.0f))) return -1;
+        const double samplePosition = double(startSeconds) * format->nSamplesPerSec;
+        if (samplePosition >= double(sound.audioBytes.size() / format->nBlockAlign)) {
+            playing.voice->DestroyVoice(); return -1;
+        }
+        const auto startSample = static_cast<uint64_t>(samplePosition);
+        if (startSample >= sound.audioBytes.size() / format->nBlockAlign) {
+            playing.voice->DestroyVoice(); return -1;
+        }
+        XAUDIO2_BUFFER buffer{};
+        buffer.PlayBegin = static_cast<UINT32>(startSample);
+        buffer.PlayLength = static_cast<UINT32>(sound.audioBytes.size() / format->nBlockAlign - startSample);
+        // Seek starts part-way through the first pass; later loops cover the
+        // complete clip. Non-looping buffers must leave both loop fields zero.
+        buffer.LoopLength = loop ? static_cast<UINT32>(sound.audioBytes.size() / format->nBlockAlign) : 0u;
+        buffer.AudioBytes = static_cast<UINT32>(sound.audioBytes.size());
+        buffer.pAudioData = sound.audioBytes.data();
+        buffer.Flags = XAUDIO2_END_OF_STREAM;
+        buffer.LoopCount = loop ? XAUDIO2_LOOP_INFINITE : 0;
+        if (FAILED(playing.voice->SubmitSourceBuffer(&buffer))) {
+            playing.voice->DestroyVoice(); return -1;
+        }
+    }
+    playing.voice->SetFrequencyRatio(rate);
+    playing.voice->SetVolume((std::max)(0.0f, volume));
+    if (!paused && FAILED(playing.voice->Start())) {
+        if (!playing.stream) playing.voice->DestroyVoice();
         return -1;
     }
-
-    XAUDIO2_BUFFER buffer{};
-    buffer.AudioBytes = static_cast<UINT32>(sound.audioBytes.size());
-    buffer.pAudioData = sound.audioBytes.data();
-    buffer.Flags = XAUDIO2_END_OF_STREAM;
-    buffer.LoopCount = loop ? XAUDIO2_LOOP_INFINITE : 0;
-
-    const HRESULT submitResult = voice->SubmitSourceBuffer(&buffer);
-    if (FAILED(submitResult)) {
-        voice->DestroyVoice();
-        HIKARI_LOG_ERROR("[Audio][XAudio2] SubmitSourceBuffer failed: " + sound.path);
-        return -1;
-    }
-
-    voice->SetVolume(std::max(0.0f, volume));
-
-    const HRESULT startResult = voice->Start();
-    if (FAILED(startResult)) {
-        voice->DestroyVoice();
-        HIKARI_LOG_ERROR("[Audio][XAudio2] SourceVoice Start failed: " + sound.path);
-        return -1;
-    }
-
-    PlayingVoice playing{};
-    playing.voice = voice;
     playing.soundHandle = soundHandle;
     playing.active = true;
-
+    playing.paused = paused;
     for (size_t i = 0; i < voices_.size(); ++i) {
         if (!voices_[i].active) {
-            voices_[i] = playing;
+            voices_[i] = std::move(playing);
             return static_cast<int>(i);
         }
     }
+    try { voices_.push_back(std::move(playing)); }
+    catch (...) { if (playing.voice && !playing.stream) playing.voice->DestroyVoice(); throw; }
+    return static_cast<int>(voices_.size() - 1u);
+}
 
-    voices_.push_back(playing);
-    return static_cast<int>(voices_.size() - 1);
+bool AudioBackendXAudio2::SetSpatial(int handle, const GameProjectAudioListener& listener,
+    const GameProjectAudioSource& source) {
+    if (!spatial_ || handle < 0 || handle >= static_cast<int>(voices_.size())) return false;
+    auto& playing = voices_[static_cast<size_t>(handle)];
+    if (!playing.active || !playing.voice) return false;
+    const auto& sound = sounds_[static_cast<size_t>(playing.soundHandle)];
+    const auto* format = reinterpret_cast<const WAVEFORMATEX*>(sound.formatBytes.data());
+    if (format->nChannels != 1u) return false;
+    X3DAUDIO_LISTENER receiver{};
+    receiver.Position = {listener.position.x, listener.position.y, listener.position.z};
+    receiver.OrientFront = {listener.forward.x, listener.forward.y, listener.forward.z};
+    receiver.OrientTop = {listener.up.x, listener.up.y, listener.up.z};
+    X3DAUDIO_DISTANCE_CURVE_POINT points[]{{0.0f, 1.0f},
+        {source.minimumDistance / source.maximumDistance, 1.0f}, {1.0f, 0.0f}};
+    X3DAUDIO_DISTANCE_CURVE curve{points, 3u};
+    X3DAUDIO_EMITTER emitter{};
+    emitter.Position = {source.position.x, source.position.y, source.position.z};
+    emitter.OrientFront = {0.0f, 0.0f, 1.0f};
+    emitter.OrientTop = {0.0f, 1.0f, 0.0f};
+    emitter.ChannelCount = 1u;
+    emitter.CurveDistanceScaler = source.maximumDistance;
+    emitter.pVolumeCurve = &curve;
+    float matrix[8]{};
+    X3DAUDIO_DSP_SETTINGS dsp{};
+    dsp.SrcChannelCount = 1u;
+    dsp.DstChannelCount = spatial_->channels;
+    dsp.pMatrixCoefficients = matrix;
+    X3DAudioCalculate(spatial_->handle, &receiver, &emitter, X3DAUDIO_CALCULATE_MATRIX, &dsp);
+    return SUCCEEDED(playing.voice->SetOutputMatrix(masteringVoice_, 1u, spatial_->channels, matrix));
+}
+bool AudioBackendXAudio2::SetPlaybackRate(int handle, float rate) {
+    if (handle < 0 || handle >= static_cast<int>(voices_.size())) return false;
+    const auto& playing = voices_[static_cast<size_t>(handle)];
+    return playing.active && playing.voice && SUCCEEDED(playing.voice->SetFrequencyRatio(rate));
+}
+GameProjectAudioStats AudioBackendXAudio2::GetStats() const {
+    GameProjectAudioStats stats;
+    stats.residentBytes = residentSoundBytes_;
+    for (const auto& playing : voices_) {
+        if (playing.stream) {
+            ++stats.streamingVoices;
+            stats.streamBufferBytes += playing.stream->BufferBytes();
+        }
+    }
+    return stats;
 }
 
 void AudioBackendXAudio2::Stop(int playHandle)
@@ -453,7 +487,7 @@ bool AudioBackendXAudio2::IsPlaying(int playHandle)
 
     XAUDIO2_VOICE_STATE state{};
     playing.voice->GetState(&state, XAUDIO2_VOICE_NOSAMPLESPLAYED);
-    if (state.BuffersQueued == 0) {
+    if (state.BuffersQueued == 0 && !(playing.stream && playing.stream->IsFeeding())) {
         DestroyVoiceSlot(playHandle);
         return false;
     }
@@ -461,91 +495,23 @@ bool AudioBackendXAudio2::IsPlaying(int playHandle)
     return true;
 }
 
-bool AudioBackendXAudio2::LoadWaveFile(const char* path, SoundData& outSound, const std::atomic<bool>* cancel) const
-{
-    const std::filesystem::path source = PathFromUtf8(path);
-    std::ifstream file(source, std::ios::binary);
-    if (!file) {
-        HIKARI_LOG_ERROR(std::string("[Audio][XAudio2] wave file open failed: ") + path);
-        return false;
-    }
-
-    uint32_t riff = 0;
-    uint32_t riffSize = 0;
-    uint32_t wave = 0;
-    if (!ReadU32(file, riff) || !ReadU32(file, riffSize) || !ReadU32(file, wave) ||
-        riff != MakeFourCc('R', 'I', 'F', 'F') ||
-        wave != MakeFourCc('W', 'A', 'V', 'E')) {
-        HIKARI_LOG_ERROR(std::string("[Audio][XAudio2] invalid wave header: ") + path);
-        return false;
-    }
-    (void)riffSize;
-
-    std::vector<uint8_t> formatBytes{};
-    std::vector<uint8_t> audioBytes{};
-
-    std::error_code sizeError;
-    const auto fileBytes = std::filesystem::file_size(source, sizeError);
-    if (sizeError) return false;
-
-    while (file.peek() != EOF) {
-        if (cancel && cancel->load()) return false;
-        uint32_t chunkId = 0;
-        uint32_t chunkSize = 0;
-        if (!ReadU32(file, chunkId) || !ReadU32(file, chunkSize)) {
-            break;
-        }
-
-        const auto position = file.tellg();
-        const auto offset = static_cast<std::streamoff>(position);
-        if (offset < 0 || static_cast<uint64_t>(offset) > fileBytes ||
-            chunkSize > fileBytes - static_cast<uint64_t>(offset)) return false;
-        if (chunkId == MakeFourCc('f', 'm', 't', ' ')) {
-            if (chunkSize < 16u || chunkSize > 65536u) return false;
-            // WAV の fmt は PCM だと 16 bytes のため、XAudio2 用にゼロ埋めして保持する。
-            const size_t storedSize = std::max<size_t>(chunkSize, sizeof(WAVEFORMATEX));
-            formatBytes.assign(storedSize, 0);
-            file.read(reinterpret_cast<char*>(formatBytes.data()), chunkSize);
-        }
-        else if (chunkId == MakeFourCc('d', 'a', 't', 'a')) {
-            if (chunkSize > kMaximumDecodedSoundBytes) return false;
-            audioBytes.resize(chunkSize);
-            file.read(reinterpret_cast<char*>(audioBytes.data()), chunkSize);
-        }
-        else {
-            file.seekg(static_cast<std::streamoff>(chunkSize), std::ios::cur);
-        }
-
-        if (!file) {
-            HIKARI_LOG_ERROR(std::string("[Audio][XAudio2] broken wave chunk: ") + path);
-            return false;
-        }
-
-        if ((chunkSize & 1U) != 0U) {
-            file.seekg(1, std::ios::cur);
-        }
-    }
-
-    if (formatBytes.empty() || audioBytes.empty()) {
-        HIKARI_LOG_ERROR(std::string("[Audio][XAudio2] missing fmt/data chunk: ") + path);
-        return false;
-    }
-
-    const WAVEFORMATEX* format = reinterpret_cast<const WAVEFORMATEX*>(formatBytes.data());
-    if (!format || !IsWaveFormatSupported(*format) ||
-        format->nChannels == 0 ||
-        format->nSamplesPerSec == 0 ||
-        format->nBlockAlign == 0 ||
-        format->cbSize > formatBytes.size() - sizeof(WAVEFORMATEX) ||
-        (format->wFormatTag == WAVE_FORMAT_EXTENSIBLE && format->cbSize < 22u)) {
-        HIKARI_LOG_ERROR(std::string("[Audio][XAudio2] unsupported wave format: ") + path);
-        return false;
-    }
-
+bool AudioBackendXAudio2::LoadWaveFile(const char* path, SoundData& outSound,
+    const std::atomic<bool>* cancel) const {
+    AudioWaveInfo info;
+    const auto source = PathFromUtf8(path);
+    if ((cancel && cancel->load()) || !ReadAudioWaveInfo(source, info)) return false;
     outSound.path = path;
-    outSound.formatBytes = std::move(formatBytes);
-    outSound.audioBytes = std::move(audioBytes);
-    return true;
+    outSound.formatBytes = info.format;
+    constexpr uint32_t kStreamingThreshold = 4u * 1024u * 1024u;
+    if (info.dataBytes >= kStreamingThreshold) {
+        outSound.wave = std::move(info);
+        outSound.streaming = true;
+        return true;
+    }
+    std::ifstream file(source, std::ios::binary);
+    file.seekg(static_cast<std::streamoff>(info.dataOffset));
+    outSound.audioBytes.resize(info.dataBytes);
+    return static_cast<bool>(file.read(reinterpret_cast<char*>(outSound.audioBytes.data()), info.dataBytes));
 }
 
 bool AudioBackendXAudio2::LoadMediaFile(
@@ -638,7 +604,7 @@ bool AudioBackendXAudio2::LoadMediaFile(
             &waveFormatBytes,
             MFWaveFormatExConvertFlag_Normal)) ||
         waveFormat == nullptr || waveFormatBytes < sizeof(WAVEFORMATEX) ||
-        waveFormatBytes > 65536u || !IsWaveFormatSupported(*waveFormat) ||
+        waveFormatBytes > 65536u || (waveFormat->wFormatTag != WAVE_FORMAT_PCM && waveFormat->wFormatTag != WAVE_FORMAT_IEEE_FLOAT && waveFormat->wFormatTag != WAVE_FORMAT_EXTENSIBLE) ||
         waveFormat->cbSize > waveFormatBytes - sizeof(WAVEFORMATEX) ||
         (waveFormat->wFormatTag == WAVE_FORMAT_EXTENSIBLE && waveFormat->cbSize < 22u)) {
         if (waveFormat != nullptr) {
@@ -738,6 +704,10 @@ void AudioBackendXAudio2::DestroyVoiceSlot(int playHandle)
     }
 
     PlayingVoice& playing = voices_[static_cast<size_t>(playHandle)];
+    if (playing.stream) {
+        playing.stream.reset();
+        playing.voice = nullptr;
+    }
     if (playing.voice) {
         playing.voice->Stop();
         playing.voice->FlushSourceBuffers();
@@ -757,7 +727,7 @@ void AudioBackendXAudio2::CleanupFinishedVoices()
 
         XAUDIO2_VOICE_STATE state{};
         playing.voice->GetState(&state, XAUDIO2_VOICE_NOSAMPLESPLAYED);
-        if (state.BuffersQueued == 0) {
+        if (state.BuffersQueued == 0 && !(playing.stream && playing.stream->IsFeeding())) {
             DestroyVoiceSlot(static_cast<int>(i));
         }
     }

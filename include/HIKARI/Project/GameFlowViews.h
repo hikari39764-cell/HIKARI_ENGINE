@@ -20,8 +20,7 @@ namespace HIKARI {
             uint32_t capacity,
             uint32_t& outLength) const noexcept;
         // Returns true only when the idle transition gate accepts the
-        // request. Scene loading completes later and may still fail; v1 does
-        // not expose a completion token or queue requests while busy.
+        // request. Scene loading completes later and may still fail.
         HIKARI_GAME_PROJECT_SDK_API bool RequestScene(
             std::string_view sceneAssetGuid,
             std::string_view spawnPointId,
@@ -37,6 +36,19 @@ namespace HIKARI {
         HIKARI_GAME_PROJECT_SDK_API bool ConsumeSceneEntry(
             GameProjectSceneEntry& outEntry) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool IsTransitioning() const noexcept;
+        // Zero means rejection (busy, invalid request or no active runtime).
+        // Reacquire this callback-scoped View after a World/scene change.
+        HIKARI_GAME_PROJECT_SDK_API uint64_t RequestSceneTracked(
+            std::string_view sceneAssetGuid, std::string_view spawnPointId = {},
+            std::string_view transitionProfileId = {}, uint64_t userData = 0,
+            uint8_t useTransition = 1, uint8_t holdReveal = 0) const noexcept;
+        // Non-consuming, owner-thread query; the transition service retains
+        // eight admitted requests across World switches. Zero reads the latest
+        // admitted request; expired tokens return false. Match userData when
+        // more than one gameplay owner can request scene changes.
+        HIKARI_GAME_PROJECT_SDK_API bool ReadRequestResult(
+            uint64_t requestId, GameProjectSceneRequestResult& outResult) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool CancelRequest(uint64_t requestId) const noexcept;
 
     private:
         friend struct GameProjectSdkAccess;

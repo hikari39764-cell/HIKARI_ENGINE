@@ -12,6 +12,12 @@ namespace HIKARI {
     void CameraComponent::BuildInspector(IInspectorBuilder& builder) {
         builder.Bool("Enabled", enabled_);
         builder.Float("Vertical FOV", verticalFovDegrees_);
+        builder.Bool("Orthographic", orthographic_);
+        if (orthographic_) {
+            builder.Float("Vertical size", orthographicHeight_);
+            builder.Bool("Snap camera to pixel grid", pixelSnap_);
+            if (pixelSnap_) builder.Float("Pixels per world unit", pixelsPerUnit_);
+        }
         builder.Float("Near Clip", nearClip_);
         builder.Float("Far Clip", farClip_);
         ClampLens();

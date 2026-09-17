@@ -1,8 +1,11 @@
 #include "HIKARI_SceneTransitionBus.h"
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 
 #include "HIKARI_RuntimeSceneContext.h"
+#include "Core/HIKARI_Logger.h"
 #include "HIKARI_IScene.h"
 #include "HIKARI_SceneManager.h"
 #include "Assets/HIKARI_AssetGuid.h"
@@ -19,6 +22,10 @@ namespace HIKARI {
     }
 
     bool SceneTransitionBus::RequestTransition(const SceneTransitionRequest& request) {
+        return RequestTrackedTransition(request) != 0;
+    }
+
+    uint64_t SceneTransitionBus::RequestTrackedTransition(const SceneTransitionRequest& request) {
         World* world = RuntimeSceneContext::GetCurrentWorld();
         if (world == nullptr || !world->IsOwnerThread() ||
             IsTransitioning() ||
@@ -26,14 +33,15 @@ namespace HIKARI {
             !SERVICES::IsRuntimeSceneGuidAllowed(
                 request.targetSceneAssetGuid) ||
             request.targetSpawnPointId.size() >= 64u ||
-            request.transitionProfileId.size() > 128u) {
-            return false;
+            request.transitionProfileId.size() > 128u ||
+            lastRequestId_ == (std::numeric_limits<uint64_t>::max)()) {
+            return 0;
         }
 #if defined(HIKARI_WITH_EDITOR)
         const RuntimePlayStateService* playState =
             world->Services().Find<RuntimePlayStateService>();
         if (playState == nullptr || !playState->IsActive()) {
-            return false;
+            return 0;
         }
 #endif
 
@@ -60,6 +68,43 @@ namespace HIKARI {
         }
         state_ = request.useTransition ? TransitionState::TransitionOut : TransitionState::SwitchingScene;
         timer_ = 0.0f;
+        activeRequestId_ = ++lastRequestId_;
+        results_[(activeRequestId_ - 1) % results_.size()] = {
+            activeRequestId_, request.userData, SceneTransitionOutcome::Pending,
+            request.targetSceneAssetGuid, {}};
+        return activeRequestId_;
+    }
+
+    bool SceneTransitionBus::ReadResult(uint64_t requestId, SceneTransitionResult& outResult) const {
+        outResult = {};
+        if (requestId == 0) requestId = lastRequestId_;
+        if (requestId == 0) return false;
+        const auto& result = results_[(requestId - 1) % results_.size()];
+        if (result.requestId != requestId) return false;
+        outResult = result;
+        return true;
+    }
+
+    void SceneTransitionBus::Finish(SceneTransitionOutcome outcome, std::string_view message) {
+        if (activeRequestId_ != 0) {
+            auto& result = results_[(activeRequestId_ - 1) % results_.size()];
+            result.outcome = outcome;
+            result.message = message;
+        }
+        activeRequestId_ = 0;
+        pendingRequest_.reset();
+        state_ = TransitionState::Idle;
+        timer_ = 0.0f;
+        cameraReadyWaitSeconds_ = 0.0f;
+        transitionInReleased_ = true;
+        switchInProgress_ = false;
+    }
+
+    bool SceneTransitionBus::CancelRequest(uint64_t requestId) {
+        if (requestId == 0 || requestId != activeRequestId_ ||
+            state_ == TransitionState::TransitionIn || switchInProgress_) return false;
+        RuntimeSceneContext::ClearPendingSceneEntry();
+        Finish(SceneTransitionOutcome::Cancelled, "Cancelled before opening the destination scene.");
         return true;
     }
 
@@ -69,6 +114,20 @@ namespace HIKARI {
             timer_ = 0.0f;
             return;
         }
+        World* world = RuntimeSceneContext::GetCurrentWorld();
+        if (world == nullptr || !world->IsOwnerThread()) {
+            Finish(SceneTransitionOutcome::Cancelled, "The runtime World is no longer available.");
+            return;
+        }
+#if defined(HIKARI_WITH_EDITOR)
+        const auto* playState = world->Services().Find<RuntimePlayStateService>();
+        if (playState == nullptr || !playState->IsActive()) {
+            RuntimeSceneContext::ClearPendingSceneEntry();
+            Finish(SceneTransitionOutcome::Cancelled, "Play stopped before the transition completed.");
+            return;
+        }
+#endif
+        if (!std::isfinite(dt)) dt = 0.0f;
 
         switch (state_) {
         case TransitionState::Idle:
@@ -93,12 +152,21 @@ namespace HIKARI {
                     pendingRequest_->userData);
                 IScene* currentScene = sceneManager_.GetCurrentScene();
                 DocumentSceneBase* documentScene = dynamic_cast<DocumentSceneBase*>(currentScene);
-                const bool opened = documentScene &&
-                    documentScene->OpenSceneAssetNow(AssetGuid{ pendingRequest_->targetSceneAssetGuid });
+                bool opened = false;
+                switchInProgress_ = true;
+                try {
+                    opened = documentScene && documentScene->OpenSceneAssetNow(
+                        AssetGuid{pendingRequest_->targetSceneAssetGuid});
+                } catch (const std::exception& exception) {
+                    HIKARI_LOG_ERROR(std::string("[SceneTransition] scene load failed: ") + exception.what());
+                } catch (...) {
+                    HIKARI_LOG_ERROR("[SceneTransition] scene load threw an unknown exception.");
+                }
+                switchInProgress_ = false;
                 if (!opened) {
                     RuntimeSceneContext::ClearPendingSceneEntry();
-                    state_ = TransitionState::Idle;
-                    pendingRequest_.reset();
+                    Finish(SceneTransitionOutcome::Failed,
+                        "Scene loading or World construction failed. See the scene load log for details.");
                     break;
                 }
 
@@ -107,8 +175,7 @@ namespace HIKARI {
                     timer_ = 0.0f;
                     cameraReadyWaitSeconds_ = 0.0f;
                 } else {
-                    state_ = TransitionState::Idle;
-                    pendingRequest_.reset();
+                    Finish(SceneTransitionOutcome::Completed);
                 }
                 break;
             }
@@ -128,9 +195,7 @@ namespace HIKARI {
             }
             timer_ += (std::max)(0.0f, dt);
             if (timer_ >= transitionInDuration_) {
-                state_ = TransitionState::Idle;
-                timer_ = 0.0f;
-                pendingRequest_.reset();
+                Finish(SceneTransitionOutcome::Completed);
             }
             break;
         }

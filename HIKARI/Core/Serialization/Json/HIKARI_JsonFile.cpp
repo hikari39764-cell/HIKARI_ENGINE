@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "Core/IO/HIKARI_FileReplacementTransaction.h"
+#include "Core/IO/HIKARI_NativeFilePath.h"
 
 namespace HIKARI::SERIALIZATION::JSON {
     namespace {
@@ -42,7 +43,7 @@ namespace HIKARI::SERIALIZATION::JSON {
             const std::filesystem::path& path) noexcept {
 
             std::error_code ignored{};
-            std::filesystem::remove(path, ignored);
+            std::filesystem::remove(IO::NativeFilePath(path), ignored);
         }
 
     } // namespace
@@ -52,7 +53,7 @@ namespace HIKARI::SERIALIZATION::JSON {
         nlohmann::json& outDocument,
         std::string* outMessage) {
 
-        std::ifstream input(path, std::ios::binary | std::ios::ate);
+        std::ifstream input(IO::NativeFilePath(path), std::ios::binary | std::ios::ate);
         if (!input.is_open()) {
             SetMessage(
                 outMessage,
@@ -115,7 +116,7 @@ namespace HIKARI::SERIALIZATION::JSON {
 
         std::error_code ec{};
         if (!path.parent_path().empty()) {
-            std::filesystem::create_directories(path.parent_path(), ec);
+            std::filesystem::create_directories(IO::NativeFilePath(path.parent_path()), ec);
         }
         if (ec) {
             SetMessage(
@@ -127,7 +128,7 @@ namespace HIKARI::SERIALIZATION::JSON {
         const std::filesystem::path stagedPath =
             MakeStagedPath(path);
         std::ofstream output(
-            stagedPath,
+            IO::NativeFilePath(stagedPath),
             std::ios::out | std::ios::trunc);
         if (!output.is_open()) {
             SetMessage(
