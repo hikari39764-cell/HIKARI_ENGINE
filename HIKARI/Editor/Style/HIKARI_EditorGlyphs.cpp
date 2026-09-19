@@ -132,6 +132,38 @@ namespace HIKARI::EDITOR {
             thickness
         };
         switch (glyph) {
+        case EditorGlyph::Visible:
+        case EditorGlyph::Hidden: {
+            const ImVec2 outline[]{{-0.85f,0},{-0.4f,-0.45f},{0.4f,-0.45f},
+                {0.85f,0},{0.4f,0.45f},{-0.4f,0.45f}};
+            canvas.Polyline(outline, 6, true);
+            canvas.Circle(0, 0, 0.2f);
+            if (glyph == EditorGlyph::Hidden) canvas.Line(-0.7f, 0.7f, 0.7f, -0.7f);
+            break;
+        }
+        case EditorGlyph::Solo:
+            canvas.Circle(0, 0, 0.7f);
+            canvas.Circle(0, 0, 0.25f, true);
+            break;
+        case EditorGlyph::StepBackward:
+        case EditorGlyph::StepForward: {
+            const float direction = glyph == EditorGlyph::StepForward ? 1.0f : -1.0f;
+            const ImVec2 triangle[]{{-0.55f * direction,-0.6f},
+                {0.35f * direction,0},{-0.55f * direction,0.6f}};
+            canvas.Polyline(triangle, 3, true);
+            canvas.Line(0.65f * direction, -0.65f, 0.65f * direction, 0.65f);
+            break;
+        }
+        case EditorGlyph::Loop:
+            DrawCircularArrow(canvas, true);
+            break;
+        case EditorGlyph::Help:
+            canvas.Circle(0, 0, 0.8f);
+            canvas.Line(-0.25f, -0.3f, 0, -0.5f);
+            canvas.Line(0, -0.5f, 0.3f, -0.25f);
+            canvas.Line(0.3f, -0.25f, 0, 0.1f);
+            canvas.Circle(0, 0.4f, 0.07f, true);
+            break;
         case EditorGlyph::Add:
             canvas.Line(-0.68f, 0.0f, 0.68f, 0.0f);
             canvas.Line(0.0f, -0.68f, 0.0f, 0.68f);

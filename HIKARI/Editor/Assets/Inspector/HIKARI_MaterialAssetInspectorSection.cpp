@@ -22,6 +22,7 @@
 #include "Editor/Assets/HIKARI_AssetImportSettingsEditor.h"
 #include "Editor/HIKARI_EditorContext.h"
 #include "Editor/Widgets/HIKARI_MaterialTextureSlotWidget.h"
+#include "Editor/Widgets/HIKARI_EditorTexturePreview.h"
 
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
@@ -296,7 +297,7 @@ bool DrawMaterialAssetEditor(AssetDatabase &assetDatabase,
     if (LoadPbrMaterialAssetData(sourcePath, editData, error)) {
       materialStatus.clear();
       materialDirty = false;
-      EDITOR::ClearMaterialTextureSlotPreviewCache();
+      EDITOR::ClearEditorTexturePreviewCache();
       outApplyRuntimeGuid = record.guid;
       outApplyRuntimeData = editData;
     } else {

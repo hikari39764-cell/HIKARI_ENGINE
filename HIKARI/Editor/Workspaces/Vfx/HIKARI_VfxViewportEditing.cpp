@@ -10,7 +10,7 @@ bool VfxWorkspaceController::DrawLayerGizmo(const EditorViewportRect &rect) {
 #if defined(HIKARI_WITH_EDITOR)
     auto &state = timelineEdit_;
     const auto *layer = FindEmitter(selection_.emitterId);
-    if (!layer || !viewportHandle_.id.empty() || ImGui::GetIO().KeyAlt || state.keyDragging ||
+    if (!layer || layer->kind == VFX::VfxLayerKind::Adjustment || !viewportHandle_.id.empty() || ImGui::GetIO().KeyAlt || state.keyDragging ||
         !state.draggedLayer.empty())
         return false;
     if (layerGizmoEditing_ && ImGui::IsKeyPressed(ImGuiKey_Escape)) {

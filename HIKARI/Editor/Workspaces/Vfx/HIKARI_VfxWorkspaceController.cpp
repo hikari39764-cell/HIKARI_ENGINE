@@ -25,9 +25,14 @@ namespace HIKARI::EDITOR {
           previewLighting_(std::make_unique<
               RENDER3D::LIGHTING::SceneLightingSet>()) {
 
-        cameraController_.ApplyViewPreset(
-            EditorDirectorCameraViewPreset::Perspective);
-        cameraController_.Focus({ 0.0f, 0.75f, 0.0f }, 5.0f);
+        Camera3D previewCamera = cameraController_.GetCamera();
+        previewCamera.SetLookAt({1.5f,2.0f,-6.0f}, {0.0f,0.75f,0.0f});
+        cameraController_.ResetFromCamera(previewCamera);
+        // 中性プレビューの発光基準。シーンの任意の露出設定に依存させない。
+        previewEnvironment_->bloom.threshold = 1.0f;
+        previewEnvironment_->bloom.intensity = 0.4f;
+        previewEnvironment_->bloom.radius = 1.0f;
+        previewEnvironment_->bloom.downsampleCount = 4u;
         previewEnvironment_->sky.enabled = true;
         previewEnvironment_->sky.mode = SkyMode::Gradient;
         previewEnvironment_->sky.zenithColor =
@@ -416,10 +421,23 @@ namespace HIKARI::EDITOR {
             currentCamera.GetFovYRad() * 0.5f,
             0.1f,
             1.4f);
-        const float fitDistance = (std::max)(
-            1.5f,
-            bounds.radius /
-                (std::max)(std::sin(halfFov), 0.1f) * 1.12f);
+        const auto forward = MATH::Normalize(currentCamera.GetTarget() - currentCamera.GetPosition());
+        const auto right = MATH::Normalize(MATH::Cross(currentCamera.GetUp(), forward));
+        const auto up = MATH::Normalize(MATH::Cross(forward, right));
+        const float tanY = std::tan(halfFov);
+        const float tanX = tanY * (std::max)(currentCamera.GetAspect(), 0.1f);
+        float fitDistance = 1.5f;
+        for (unsigned corner = 0; corner < 8; ++corner) {
+            const MATH::Vec3 point{corner & 1 ? bounds.maximum.x : bounds.minimum.x,
+                corner & 2 ? bounds.maximum.y : bounds.minimum.y,
+                corner & 4 ? bounds.maximum.z : bounds.minimum.z};
+            const auto offset = point - bounds.center;
+            const float depth = MATH::Dot(offset, forward);
+            fitDistance = (std::max)({fitDistance,
+                std::abs(MATH::Dot(offset, right)) * 1.12f / tanX - depth,
+                std::abs(MATH::Dot(offset, up)) * 1.12f / tanY - depth,
+                currentCamera.GetNearZ() - depth});
+        }
         const float preferredDistance = fitDistance;
         const float farPlane = (std::max)(
             100.0f,

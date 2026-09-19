@@ -1,15 +1,20 @@
 #include "Editor/Workspaces/Vfx/HIKARI_VfxInspectorControls.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxParticleMaterialField.h"
 
+#include <algorithm>
+#include <cctype>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "Assets/HIKARI_AssetDatabase.h"
+#include "Assets/HIKARI_AssetRegistry.h"
 #include "Assets/HIKARI_AssetRecord.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialAssetAuthoringService.h"
 #include "Assets/Vfx/HIKARI_VfxBuiltinTextureCatalog.h"
 #include "Editor/DragDrop/HIKARI_EditorAssetDragDrop.h"
+#include "Editor/Widgets/HIKARI_EditorTexturePreview.h"
+#include "Render2D/HIKARI_DxTexture.h"
 
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
@@ -202,11 +207,44 @@ namespace HIKARI::EDITOR {
 
     bool DrawVfxParticleTextureField(
         AssetDatabase& assetDatabase,
+        const AssetRegistry* assetRegistry,
         VfxParticleTextureCatalog& catalog,
         const AssetGuid& current,
         AssetGuid& outSelected,
         std::string& outMessage) {
 #if defined(HIKARI_WITH_EDITOR)
+        // 貼図の見た目を選ぶ時点で確認できるよう、一覧と選択中をサムネイル表示する。
+        const auto resolvePreviewHandle = [assetRegistry](const AssetGuid& guid) {
+            if (assetRegistry == nullptr || !guid.IsValid()) {
+                return -1;
+            }
+            const auto* descriptor =
+                assetRegistry->FindAs<TextureAssetDescriptor>(AssetId{ guid.value });
+            if (descriptor == nullptr) {
+                return -1;
+            }
+            return ResolveEditorTexturePreviewHandle(guid, *descriptor);
+        };
+        const auto resolvePreviewTextureId = [&resolvePreviewHandle](const AssetGuid& guid) {
+            const int handle = resolvePreviewHandle(guid);
+            if (handle < 0) {
+                return static_cast<ImTextureID>(0);
+            }
+            const D3D12_GPU_DESCRIPTOR_HANDLE srv =
+                DXTEX::DxTextureManager::GetSrvGpuHandle(handle);
+            if (srv.ptr == 0) {
+                return static_cast<ImTextureID>(0);
+            }
+            return reinterpret_cast<ImTextureID>(static_cast<uintptr_t>(srv.ptr));
+        };
+        const auto drawThumbnail = [&resolvePreviewTextureId](const AssetGuid& guid, float size) {
+            const ImTextureID textureId = resolvePreviewTextureId(guid);
+            if (textureId == 0) {
+                return false;
+            }
+            ImGui::Image(textureId, ImVec2(size, size));
+            return true;
+        };
         const uint64_t contentRevision =
             assetDatabase.GetContentRevision();
         if (catalog.contentRevision != contentRevision) {
@@ -228,35 +266,119 @@ namespace HIKARI::EDITOR {
                 : VfxUiText("Missing texture");
         bool changed = false;
         ImGui::BeginGroup();
-        if (ImGui::BeginCombo(VfxUiText("Color Texture").c_str(), preview.c_str())) {
-            if (ImGui::Selectable(
-                    VfxUiText("None (white particle)").c_str(), !current.IsValid())) {
-                outSelected = {};
-                changed = true;
-            }
-            bool separatorDrawn = false;
-            bool builtInHeaderDrawn = false;
-            for (const VfxParticleTextureChoice& choice : catalog.choices) {
-                if (!choice.builtIn && !separatorDrawn) {
-                    ImGui::SeparatorText(VfxUiText("Project Textures").c_str());
-                    separatorDrawn = true;
+        if (current.IsValid() && drawThumbnail(current, 48.0f)) {
+            ImGui::SameLine();
+        }
+        // 一覧はポップアップ内のサムネイル格子で選ぶ。貼図が増えても
+        // 見た目で選べるよう、リストではなく格子で表示する。
+        if (ImGui::Button(preview.c_str(), ImVec2(220.0f, 0.0f))) {
+            ImGui::OpenPopup("VfxParticleTexturePicker");
+        }
+        if (ImGui::BeginPopup("VfxParticleTexturePicker")) {
+            constexpr int kGridColumns = 6;
+            ImGui::SetNextItemWidth(280.0f);
+            ImGui::InputTextWithHint(
+                "##vfx_texture_search",
+                VfxUiText("Search").c_str(),
+                catalog.search.data(),
+                catalog.search.size());
+            std::string filter = catalog.search.data();
+            std::transform(filter.begin(), filter.end(), filter.begin(),
+                [](unsigned char character) {
+                    return static_cast<char>(std::tolower(character));
+                });
+            const auto matchesFilter = [&filter](const VfxParticleTextureChoice& choice) {
+                if (filter.empty()) {
+                    return true;
                 }
-                if (choice.builtIn && !builtInHeaderDrawn) {
-                    ImGui::SeparatorText(VfxUiText("Engine VFX Textures").c_str());
-                    builtInHeaderDrawn = true;
-                }
-                ImGui::PushID(choice.guid.value.c_str());
-                if (ImGui::Selectable(
-                        choice.label.c_str(), choice.guid == current)) {
-                    outSelected = choice.guid;
+                std::string haystack = choice.label + " " + choice.guid.value;
+                std::transform(haystack.begin(), haystack.end(), haystack.begin(),
+                    [](unsigned char character) {
+                        return static_cast<char>(std::tolower(character));
+                    });
+                return haystack.find(filter) != std::string::npos;
+            };
+            if (ImGui::BeginChild(
+                    "VfxParticleTextureGrid", ImVec2(0.0f, 420.0f), ImGuiChildFlags_Border)) {
+                int column = 0;
+                const auto beginCell = [&column]() {
+                    if (column != 0) {
+                        ImGui::SameLine();
+                    }
+                };
+                const auto endCell = [&column]() {
+                    column = (column + 1) % kGridColumns;
+                };
+                const auto drawCell = [&](const AssetGuid& guid,
+                                          const std::string& label) {
+                    ImGui::PushID(guid.IsValid() ? guid.value.c_str() : "none");
+                    ImGui::BeginGroup();
+                    bool clicked = false;
+                    const ImTextureID textureId =
+                        guid.IsValid() ? resolvePreviewTextureId(guid) : static_cast<ImTextureID>(0);
+                    if (textureId != 0) {
+                        ImGui::PushStyleColor(ImGuiCol_Button,
+                            guid == current
+                                ? ImVec4(0.20f, 0.48f, 0.90f, 1.0f)
+                                : ImVec4(0.10f, 0.12f, 0.15f, 1.0f));
+                        clicked = ImGui::ImageButton("cell", textureId, ImVec2(72.0f, 72.0f));
+                        ImGui::PopStyleColor();
+                    } else {
+                        clicked = ImGui::Button(label.c_str(), ImVec2(72.0f, 72.0f));
+                    }
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::SetTooltip(
+                            "%s\n%s",
+                            label.c_str(),
+                            guid.IsValid() ? guid.value.c_str() : "");
+                    }
+                    ImGui::PushTextWrapPos(ImGui::GetCursorPos().x + 72.0f);
+                    ImGui::TextWrapped("%s", label.c_str());
+                    ImGui::PopTextWrapPos();
+                    ImGui::EndGroup();
+                    ImGui::PopID();
+                    return clicked;
+                };
+                beginCell();
+                if (drawCell({}, VfxUiText("None (white particle)"))) {
+                    outSelected = {};
                     changed = true;
+                    ImGui::CloseCurrentPopup();
                 }
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("%s", choice.guid.value.c_str());
+                endCell();
+                bool separatorDrawn = false;
+                bool builtInHeaderDrawn = false;
+                for (const VfxParticleTextureChoice& choice : catalog.choices) {
+                    if (!matchesFilter(choice)) {
+                        continue;
+                    }
+                    if (!choice.builtIn && !separatorDrawn) {
+                        if (column != 0) {
+                            ImGui::NewLine();
+                            column = 0;
+                        }
+                        ImGui::SeparatorText(VfxUiText("Project Textures").c_str());
+                        separatorDrawn = true;
+                    }
+                    if (choice.builtIn && !builtInHeaderDrawn) {
+                        if (column != 0) {
+                            ImGui::NewLine();
+                            column = 0;
+                        }
+                        ImGui::SeparatorText(VfxUiText("Engine VFX Textures").c_str());
+                        builtInHeaderDrawn = true;
+                    }
+                    beginCell();
+                    if (drawCell(choice.guid, choice.label)) {
+                        outSelected = choice.guid;
+                        changed = true;
+                        ImGui::CloseCurrentPopup();
+                    }
+                    endCell();
                 }
-                ImGui::PopID();
             }
-            ImGui::EndCombo();
+            ImGui::EndChild();
+            ImGui::EndPopup();
         }
         ImGui::EndGroup();
 

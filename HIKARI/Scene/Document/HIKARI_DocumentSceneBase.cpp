@@ -42,6 +42,9 @@
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
 #include "Scene/Capture/HIKARI_DocumentSceneCaptureIntegration.h"
+#include "Scene/Vfx/HIKARI_VfxLightOutput.h"
+#include "Scene/Vfx/HIKARI_VfxPlaybackService.h"
+#include "Scene/Vfx/HIKARI_VfxScreenOutput.h"
 #include "Scene/Capture/HIKARI_SceneCaptureReadability.h"
 #include "Scene/Lighting/HIKARI_SceneLightingSet.h"
 
@@ -499,6 +502,18 @@ namespace HIKARI {
             LIGHTING_AUTHORING::BuildRuntimeSceneLightingSet(
                 state_->identity.document,
                 state_->runtime.world);
+        // VFX の光源出力はそのフレーム限りの一時光源。照明セットを組んだ
+        // 直後に足し、方向光の解決より前に確定させる。
+        if (const auto* vfxPlayback =
+                state_->runtime.world.Services().Find<VFX::VfxPlaybackService>()) {
+            (void)VFX::AppendVfxLightProviders(
+                *vfxPlayback, sceneLighting.lights);
+            // 画面空間の歪みはゲームプレイ由来の画面波と同じ表へ入れる。
+            if (auto* reactions = state_->runtime.world.Services().Find<
+                    VFX::ActionPostReactionService>()) {
+                (void)VFX::SubmitVfxScreenWaves(*vfxPlayback, *reactions);
+            }
+        }
         const bool editorSsaoSuppressed =
             DrawDebugHelpers() &&
             state_->editor.viewportPerformanceState.disableSsaoInEditorViewport;

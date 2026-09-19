@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <memory>
 #include "Render3D/Lighting/HIKARI_SurfaceLightingBindings.h"
+#include "Render3D/Pipeline/HIKARI_RenderFrameContext.h"
 
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
@@ -51,6 +52,9 @@ namespace HIKARI::RENDER3D::PARTICLES {
         D3D12_GPU_DESCRIPTOR_HANDLE sceneDepth{};
         MATH::Vec3 cameraPosition{ 0.0f, 0.0f, 0.0f };
         bool cameraPositionValid = false;
+        PIPELINE::RenderTargetAccess compositionTarget{};
+        D3D12_CPU_DESCRIPTOR_HANDLE compositionDepth{};
+        uint32_t width = 0, height = 0;
     };
 
     // Owned by one MeshRenderer view-resource set. This object has no

@@ -57,6 +57,11 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
         D3D12_GPU_VIRTUAL_ADDRESS GetDrawCounterGpuAddress() const noexcept;
         D3D12_GPU_VIRTUAL_ADDRESS GetDrawArgumentGpuAddress() const noexcept;
         ID3D12Resource* GetDrawArgumentResource() const noexcept;
+        // 形状パラメータは per-draw バッファで渡す。drawIndex で引く。
+        D3D12_GPU_VIRTUAL_ADDRESS GetShapeStateGpuAddress(
+            uint32_t frameSlot) const noexcept;
+        GpuParticleShapeState* MappedShapeStates(
+            uint32_t frameSlot) noexcept;
 
     private:
         bool EnsureEmitterUploadPage(
@@ -68,6 +73,12 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
         Microsoft::WRL::ComPtr<ID3D12Resource> aliveIndices_{};
         Microsoft::WRL::ComPtr<ID3D12Resource> drawCounters_{};
         Microsoft::WRL::ComPtr<ID3D12Resource> drawArguments_{};
+        std::array<
+            Microsoft::WRL::ComPtr<ID3D12Resource>,
+            GFX::kFrameResourceCount> shapeStates_{};
+        std::array<
+            GpuParticleShapeState*,
+            GFX::kFrameResourceCount> mappedShapeStates_{};
         RenderResourceView particleSrv_{};
         RenderResourceView particleUav_{};
         std::array<

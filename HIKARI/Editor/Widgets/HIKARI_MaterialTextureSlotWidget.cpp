@@ -6,6 +6,7 @@
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Editor/DragDrop/HIKARI_EditorAssetDragDrop.h"
 #include "Editor/HIKARI_EditorContext.h"
+#include "Editor/Widgets/HIKARI_EditorTexturePreview.h"
 #include "Editor/Style/HIKARI_EditorAssetIcons.h"
 #include "Render2D/HIKARI_DxTexture.h"
 
@@ -34,51 +35,17 @@ namespace HIKARI::EDITOR {
         }
 
 #if defined(HIKARI_WITH_EDITOR)
-        std::unordered_map<std::string, int> gPreviewTextureHandles{};
-
-        DXTEX::TextureColorSpace ToRuntimeColorSpace(TextureAssetColorSpace colorSpace) {
-            switch (colorSpace) {
-            case TextureAssetColorSpace::Linear:
-                return DXTEX::TextureColorSpace::Linear;
-            case TextureAssetColorSpace::Srgb:
-                return DXTEX::TextureColorSpace::Srgb;
-            case TextureAssetColorSpace::Auto:
-            default:
-                return DXTEX::TextureColorSpace::Auto;
-            }
-        }
-
-        int ResolvePreviewHandle(
-            const MaterialTextureSlotData& slot,
-            const TextureAssetDescriptor* descriptor) {
-
-            if (!slot.useTexture || !slot.textureAssetGuid.IsValid() ||
-                descriptor == nullptr || descriptor->sourcePath.empty()) {
-                return -1;
-            }
-
-            const std::string cacheKey = slot.textureAssetGuid.value + "|" + descriptor->sourcePath;
-            auto found = gPreviewTextureHandles.find(cacheKey);
-            if (found != gPreviewTextureHandles.end()) {
-                return found->second;
-            }
-
-            // Use the HTEX/DDS path resolved by the asset registry for previews.
-            const int handle = DXTEX::DxTextureManager::LoadTextureWithColorSpace(
-                "editor/material_slot_preview/" + slot.textureAssetGuid.value,
-                descriptor->sourcePath,
-                ToRuntimeColorSpace(descriptor->colorSpace));
-            gPreviewTextureHandles.emplace(cacheKey, handle);
-            return handle;
-        }
-
         bool DrawTexturePreviewButton(
             const char* id,
             const MaterialTextureSlotData& slot,
             const TextureAssetDescriptor* descriptor,
             const ImVec2& size) {
 
-            const int previewHandle = ResolvePreviewHandle(slot, descriptor);
+            const int previewHandle =
+                !slot.useTexture || descriptor == nullptr
+                    ? -1
+                    : ResolveEditorTexturePreviewHandle(
+                          slot.textureAssetGuid, *descriptor);
             if (previewHandle >= 0) {
                 const D3D12_GPU_DESCRIPTOR_HANDLE srv =
                     DXTEX::DxTextureManager::GetSrvGpuHandle(previewHandle);
@@ -191,49 +158,6 @@ namespace HIKARI::EDITOR {
         (void)assetRegistry;
         (void)selection;
         return false;
-#endif
-    }
-
-    void ClearMaterialTextureSlotPreviewCache() {
-#if defined(HIKARI_WITH_EDITOR)
-        gPreviewTextureHandles.clear();
-#endif
-    }
-
-    void InvalidateMaterialTextureSlotPreviewByGuid(const AssetGuid& guid) {
-#if defined(HIKARI_WITH_EDITOR)
-        if (!guid.IsValid()) {
-            return;
-        }
-
-        const std::string prefix = guid.value + "|";
-        for (auto it = gPreviewTextureHandles.begin(); it != gPreviewTextureHandles.end();) {
-            if (it->first.rfind(prefix, 0) == 0) {
-                it = gPreviewTextureHandles.erase(it);
-            } else {
-                ++it;
-            }
-        }
-#else
-        (void)guid;
-#endif
-    }
-
-    void InvalidateMaterialTextureSlotPreviewByPath(const std::string& path) {
-#if defined(HIKARI_WITH_EDITOR)
-        if (path.empty()) {
-            return;
-        }
-
-        for (auto it = gPreviewTextureHandles.begin(); it != gPreviewTextureHandles.end();) {
-            if (it->first.find("|" + path) != std::string::npos) {
-                it = gPreviewTextureHandles.erase(it);
-            } else {
-                ++it;
-            }
-        }
-#else
-        (void)path;
 #endif
     }
 

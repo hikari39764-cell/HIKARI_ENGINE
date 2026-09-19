@@ -102,6 +102,13 @@ namespace HIKARI::POST {
             const char* temporalBackend,
             bool lightingEnabled,
             RenderTarget2D* sceneDepthOwner);
+        // Bloom だけを適用して source へ加算合成する。エディタのツールプレビュー
+        // 用: 本編と同じ bloom を見せつつ、ゲーム状態に紐づく後処理
+        // (画面衝撃・自動露出計測・サングレア・遷移) を引き込まない。
+        // 毎フレーム同じ入力なら同じ結果になる (プレビューのちらつき防止)。
+        RenderTarget2D* ResolveHdrBloomOnly(
+            RenderTarget2D& source,
+            QuadDrawer& quad);
         RenderTarget2D* ResolveDebugLdr(
             RenderTarget2D& source,
             DXGI_FORMAT outputFormat,
@@ -145,7 +152,7 @@ namespace HIKARI::POST {
 
         GFX::Context context_{};
         PostChain globalChain_{};
-        PostChain bloomChain_{};
+        std::array<PostChain, 5> bloomLevels_{};
         PostChain transitionChain_{};
         PostChain fxaaChain_{};
         PostChain actionScreenImpulseChain_{};

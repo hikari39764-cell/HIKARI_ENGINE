@@ -106,6 +106,9 @@ namespace HIKARI {
             std::pair{ MaterialResourceSemantic::EyeControl, std::string_view{ "EyeControl" } },
             std::pair{ MaterialResourceSemantic::Thickness, std::string_view{ "Thickness" } },
             std::pair{ MaterialResourceSemantic::Fabric, std::string_view{ "Fabric" } },
+            std::pair{ MaterialResourceSemantic::Noise, std::string_view{ "Noise" } },
+            std::pair{ MaterialResourceSemantic::DetailNoise, std::string_view{ "DetailNoise" } },
+            std::pair{ MaterialResourceSemantic::FlowMap, std::string_view{ "FlowMap" } },
         };
         constexpr std::array kFeatureRequests{
             std::pair{ MaterialFeatureRequest::GeometryOutline, std::string_view{ "GeometryOutline" } },

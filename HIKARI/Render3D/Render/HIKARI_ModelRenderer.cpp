@@ -146,10 +146,23 @@ namespace HIKARI::MODELRENDERER {
         uint32_t captureSlot,
         uint32_t width,
         uint32_t height,
-        bool renderTransparent) {
+        bool renderTransparent,
+        RenderTarget2D* target) {
 
         BeginModelRendererFrame(
             ModelRendererFrameKind::SecondarySceneCapture);
+        MESHRENDERER::MeshPassResources captureResources;
+        if (target) {
+            captureResources.compositionDepth = target->GetReadOnlyDsvHandle();
+            captureResources.compositionTarget.userData = target;
+            captureResources.compositionTarget.rebind = [](void* data) { static_cast<RenderTarget2D*>(data)->Rebind(); return true; };
+            captureResources.compositionTarget.beginDepthRead = [](void* data) { return static_cast<RenderTarget2D*>(data)->BeginDepthRead(); };
+            captureResources.compositionTarget.endDepthRead = [](void* data) { static_cast<RenderTarget2D*>(data)->EndDepthRead(); };
+            captureResources.sceneDepth.resource = target->GetDepthResource();
+            captureResources.sceneDepth.srv = target->GetDepthSrvGpu();
+            captureResources.sceneDepth.width = width; captureResources.sceneDepth.height = height;
+            captureResources.sceneDepth.valid = target->GetDepthResource() != nullptr;
+        }
         return MESHRENDERER::RenderSecondarySceneCapture(
             graphics,
             view,
@@ -158,7 +171,7 @@ namespace HIKARI::MODELRENDERER {
             captureSlot,
             width,
             height,
-            renderTransparent);
+            renderTransparent, target ? &captureResources : nullptr);
     }
 
     bool RenderSecondarySceneCaptureTarget(
@@ -190,7 +203,7 @@ namespace HIKARI::MODELRENDERER {
                 worldIdentity,
                 captureSlot,
                 width,
-                height)) {
+                height, kSecondaryCaptureFormat, true, {0.015f,0.02f,0.035f,1.0f}, true)) {
             return false;
         }
 
@@ -218,7 +231,7 @@ namespace HIKARI::MODELRENDERER {
             captureSlot,
             width,
             height,
-            renderTransparent);
+            renderTransparent, &target);
         target.EndCapture();
         (void)POST::PostSystem::RebindCurrentRenderTarget();
         // Sky/clear is already a valid camera frame. Geometry residency and

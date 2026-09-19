@@ -72,6 +72,19 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
         if (!particleSrv_.IsValid() || !particleUav_.IsValid()) {
             return false;
         }
+        // 形状パラメータは per-draw バッファで渡す。ルート定数のコスト上限が
+        // 厳しく、形状側のパラメータは今後も増えるため。
+        for (uint32_t frameSlot = 0u;
+             frameSlot < GFX::kFrameResourceCount; ++frameSlot) {
+            if (!CreateGpuParticleMappedUploadBuffer(
+                    context.device,
+                    drawCapacity,
+                    "ParticleGpuDrivenPass::CreateShapeStateBuffer",
+                    shapeStates_[frameSlot],
+                    mappedShapeStates_[frameSlot])) {
+                return false;
+            }
+        }
         if (context.resourceStates != nullptr) {
             context.resourceStates->Track(
                 particles_.Get(),
@@ -158,6 +171,15 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
         }
         particleSrv_ = {};
         particleUav_ = {};
+        for (uint32_t frameSlot = 0u;
+             frameSlot < GFX::kFrameResourceCount; ++frameSlot) {
+            if (shapeStates_[frameSlot] != nullptr &&
+                mappedShapeStates_[frameSlot] != nullptr) {
+                shapeStates_[frameSlot]->Unmap(0u, nullptr);
+            }
+            mappedShapeStates_[frameSlot] = nullptr;
+            shapeStates_[frameSlot].Reset();
+        }
         for (uint32_t frameSlot = 0u;
              frameSlot < GFX::kFrameResourceCount;
              ++frameSlot) {
@@ -308,6 +330,22 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
     D3D12_GPU_DESCRIPTOR_HANDLE
         GpuParticleStorage::GetParticleUavGpuHandle() const noexcept {
         return particleUav_.gpu;
+    }
+
+    D3D12_GPU_VIRTUAL_ADDRESS
+        GpuParticleStorage::GetShapeStateGpuAddress(
+            uint32_t frameSlot) const noexcept {
+        return frameSlot < GFX::kFrameResourceCount &&
+                shapeStates_[frameSlot] != nullptr
+            ? shapeStates_[frameSlot]->GetGPUVirtualAddress()
+            : 0u;
+    }
+
+    GpuParticleShapeState*
+        GpuParticleStorage::MappedShapeStates(uint32_t frameSlot) noexcept {
+        return frameSlot < GFX::kFrameResourceCount
+            ? mappedShapeStates_[frameSlot]
+            : nullptr;
     }
 
     D3D12_GPU_VIRTUAL_ADDRESS

@@ -220,6 +220,8 @@ namespace HIKARI::RENDER3D::MATERIAL {
             if (id.find("eye") != std::string::npos ||
                 id.find("iris") != std::string::npos) return 6u;
             if (resource.semantic == MaterialResourceSemantic::Mask) return 4u;
+            // Noise / DetailNoise / FlowMap は式側の bindingIndex が所有する。
+            // 10 以降は式用の範囲なので、応答ノードから二重登録しない。
             // Standard PBR textures are already projected into
             // GpuMaterialData. They must not occupy or overwrite the bounded
             // response-node resource table.

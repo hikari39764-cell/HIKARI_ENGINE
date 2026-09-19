@@ -1,4 +1,6 @@
 #include "Core/Text/HIKARI_Localization.h"
+#include "Editor/Style/HIKARI_EditorGlyphs.h"
+#include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxInspectorControls.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 #include "Render3D/Vfx/HIKARI_ParticleCpuSimulation.h"
@@ -51,11 +53,13 @@ namespace HIKARI::EDITOR {
             ImGui::PushID(track.name);
             ImGui::TextUnformatted(TEXT::Localize(track.label).c_str());
             auto value = track.value;
-            ImGui::SetNextItemWidth((std::max)(ImGui::GetContentRegionAvail().x - 70, 80.0f));
+            ImGui::SetNextItemWidth((std::max)(ImGui::GetContentRegionAvail().x - 34, 80.0f));
             const bool changed = ImGui::DragFloat3("##value", &value.x, 0.02f);
             const bool seal = ImGui::IsItemDeactivatedAfterEdit();
             ImGui::SameLine();
-            const bool key = ImGui::Button(TEXT::Localize("ui.vfx.layer.key").c_str());
+            const bool key = IconToggleButton(EditorGlyph::Keyframe, "Keyframe",
+                track.mode != VFX::VfxAnimatedValueMode::Fixed, {26, ImGui::GetFrameHeight()},
+                TEXT::Localize("ui.vfx.layer.key").c_str());
             const auto mergeGroup =
                 changed ? VfxInspectorPropertyEditor::MergeGroup(layer.id, track.name) : 0;
             if (key ||
@@ -76,10 +80,15 @@ namespace HIKARI::EDITOR {
         }
         auto color = sample.color;
         ImGui::PushID("layerColor");
-        const bool changed = ImGui::ColorEdit4(VfxUiText("Color").c_str(), &color.x,
+        ImGui::TextUnformatted(VfxUiText("Color").c_str());
+        ImGui::SetNextItemWidth((std::max)(ImGui::GetContentRegionAvail().x - 34, 80.0f));
+        const bool changed = ImGui::ColorEdit4("##value", &color.x,
                                                ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR);
         const bool seal = ImGui::IsItemDeactivatedAfterEdit();
-        const bool key = ImGui::Button(TEXT::Localize("ui.vfx.layer.key").c_str());
+        ImGui::SameLine();
+        const bool key = IconToggleButton(EditorGlyph::Keyframe, "Keyframe",
+            layer.color.value.mode != VFX::VfxAnimatedColorMode::Fixed, {26, ImGui::GetFrameHeight()},
+            TEXT::Localize("ui.vfx.layer.key").c_str());
         if (key || (changed &&
                     (timelineEdit_.autoKey || layer.color.value.mode != VFX::VfxAnimatedColorMode::Fixed)))
             (void)SetLayerColorKey(layer.id, previewElapsedSeconds_, color, statusMessage_,
@@ -94,7 +103,8 @@ namespace HIKARI::EDITOR {
         if (seal)
             SealPropertyEdit();
         ImGui::PopID();
-        ImGui::TextWrapped("%s", TEXT::Localize("ui.vfx.layer.keyHelp").c_str());
+        (void)IconButton(EditorGlyph::Help, "KeyHelp", EditorButtonTone::Quiet, {26, ImGui::GetFrameHeight()},
+            TEXT::Localize("ui.vfx.layer.keyHelp").c_str());
 #else
         (void)database;
         (void)layer;

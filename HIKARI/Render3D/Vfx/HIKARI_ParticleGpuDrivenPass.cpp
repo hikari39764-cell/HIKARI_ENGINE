@@ -1,5 +1,7 @@
 #include "Render3D/Vfx/HIKARI_ParticleGpuDrivenPass.h"
+#include "Render3D/Vfx/HIKARI_ParticleCapacity.h"
 #include "Render3D/Vfx/HIKARI_ParticleGeometryLayout.h"
+#include "Render3D/Vfx/HIKARI_ParticleCompositionRenderer.h"
 
 #include <algorithm>
 #include <array>
@@ -18,6 +20,7 @@
 #include "Assets/HIKARI_AssetRegistry.h"
 #include "Assets/Vfx/HIKARI_VfxBuiltinTextureCatalog.h"
 #include "Core/HIKARI_Logger.h"
+#include "Core/HIKARI_TimeService.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Render3D/Core/HIKARI_Material.h"
@@ -37,12 +40,13 @@ namespace HIKARI::RENDER3D::PARTICLES {
         using INTERNAL::BuildGpuParticleEmitterParameters;
         using INTERNAL::GpuParticleCompactConstants;
         using INTERNAL::GpuParticleDrawConstants;
+        using INTERNAL::GpuParticleShapeState;
         using INTERNAL::GpuParticleEmitterParameters;
         using INTERNAL::GpuParticleSimulationConstants;
         using INTERNAL::MakeGpuParticleFloat4;
         using INTERNAL::ResolvedParticleMaterial;
 
-        inline constexpr uint32_t kThreadGroupSize = 64u;
+        inline constexpr uint32_t kThreadGroupSize = kParticleAllocationGranularity;
 
         struct ParticleEmitterInstanceKeyHasher {
             size_t operator()(
@@ -96,10 +100,8 @@ namespace HIKARI::RENDER3D::PARTICLES {
         };
 
         uint32_t AlignParticleCount(uint32_t value) noexcept {
-            return value == 0u
-                ? 0u
-                : (value + kThreadGroupSize - 1u) /
-                    kThreadGroupSize * kThreadGroupSize;
+            const auto aligned = AlignParticleCapacity(value);
+            return aligned <= UINT32_MAX ? static_cast<uint32_t>(aligned) : 0u;
         }
 
         uint32_t DispatchGroupCount(uint32_t value) noexcept {
@@ -118,6 +120,45 @@ namespace HIKARI::RENDER3D::PARTICLES {
             value = HashCombine(value, key.playbackGeneration);
             return HashCombine(value, key.emitterIndex);
         }
+
+        // 形状（ジオメトリ）段が読む per-draw パラメータを組み立てる唯一の実装。
+        GpuParticleShapeState BuildShapeState(
+            const ParticleEmitterRenderParameters& render) {
+            GpuParticleShapeState state{};
+            state.renderShapeParamsA = MakeGpuParticleFloat4(
+                render.ribbonWidth,
+                render.ringOuterRadius,
+                render.ringInnerRadius,
+                render.ringStartAngleRadians);
+            // 変形パラメータは専用フィールド（バッファに余裕があるため
+            // 形状ごとのスロット使い回しは不要）。
+            state.bendAmount = render.bendAmount;
+            state.twistRadians = render.twistRadians;
+            state.renderUvParams = MakeGpuParticleFloat4(
+                (std::max)(render.uvTileLength, 1.0e-4f),
+                render.uvTilingU,
+                render.uvTilingV,
+                render.uvRotationRadians);
+            state.renderAnchor = MakeGpuParticleFloat4(
+                render.anchor.x,
+                render.anchor.y,
+                render.anchor.z,
+                0.0f);
+            state.renderUvMode =
+                (render.uvMode == 1u ? 1u : 0u) |
+                (render.uvSwapAxes != 0u ? 2u : 0u);
+            state.shapeParam0 =
+                std::bit_cast<uint32_t>(render.cylinderTopRadius);
+            state.shapeParam1 =
+                std::bit_cast<uint32_t>(render.cylinderBottomRadius);
+            state.shapeParam2 =
+                std::bit_cast<uint32_t>(render.coneBaseRadius);
+            state.shapeParam3 = render.torusMajorRadius;
+            state.shapeParam4 = render.torusMinorRadius;
+            state.shapeParam5 = render.capsuleRadius;
+            state.billboardAxis = static_cast<float>(render.billboardAxis);
+            return state;
+        }
     }
 
     struct ParticleGpuDrivenPass::Impl {
@@ -130,6 +171,8 @@ namespace HIKARI::RENDER3D::PARTICLES {
             EmitterAllocation,
             ParticleEmitterInstanceKeyHasher> allocations{};
         std::vector<FreeRange> freeRanges{};
+        std::vector<ParticleComposition> compositions;
+        ParticleCompositionRenderer compositionRenderer;
         std::vector<DrawItem> drawItems{};
         std::vector<DrawOrderEntry> drawOrder{};
         std::unordered_set<std::string> residentStandardTextures{};
@@ -137,8 +180,10 @@ namespace HIKARI::RENDER3D::PARTICLES {
         uint32_t emitterPageCapacity = 0u;
         uint32_t emitterUploadCapacity = 0u;
         uint32_t emitterUploadCursor = 0u;
+        uint32_t shapeUploadCursor = 0u;
         uint32_t uploadFrameSlot =
             (std::numeric_limits<uint32_t>::max)();
+        uint64_t uploadFrameSerial = (std::numeric_limits<uint64_t>::max)();
         uint64_t lastCompactionLayoutVersion = 0u;
         uint64_t materialSyncRetryVersion = 0u;
         bool drawBuffersValid = false;
@@ -713,6 +758,7 @@ namespace HIKARI::RENDER3D::PARTICLES {
             MATERIAL::GpuMaterialRegistry& registry) {
             context = newContext;
             drawItems.clear();
+            compositions.clear();
             ResetFrameStats();
             if (source == nullptr || source->input == nullptr) {
                 drawBuffersValid = false;
@@ -720,6 +766,7 @@ namespace HIKARI::RENDER3D::PARTICLES {
                 return true;
             }
             const ParticleRenderInput& input = *source->input;
+            compositions = input.compositions;
             for (const ParticleEmitterInstanceKey& retired :
                  input.retiredEmitters) {
                 ReleaseAllocation(retired);
@@ -751,9 +798,12 @@ namespace HIKARI::RENDER3D::PARTICLES {
             GFX::GPU_PROFILE::ScopedGpuTimer simulationTimer(
                 context.cmdList,
                 GFX::GPU_PROFILE::Pass::ParticleSimulation);
-            if (uploadFrameSlot != context.frameIndex) {
+            const uint64_t frameSerial = TIME::GetFrameContext().frameIndex;
+            if (uploadFrameSerial != frameSerial || uploadFrameSlot != context.frameIndex) {
+                uploadFrameSerial = frameSerial;
                 uploadFrameSlot = context.frameIndex;
                 emitterUploadCursor = 0u;
+                shapeUploadCursor = 0u;
             }
             ID3D12DescriptorHeap* heaps[] = {context.srvHeap};
             context.cmdList->SetDescriptorHeaps(1u, heaps);
@@ -987,6 +1037,10 @@ namespace HIKARI::RENDER3D::PARTICLES {
             const D3D12_GPU_DESCRIPTOR_HANDLE texturePool =
                 GetMaterialTexturePoolSrvGpuHandle(context);
             if (texturePool.ptr == 0u) return false;
+            const bool sceneDepthAvailable = bindings.sceneDepth.ptr != 0u;
+            const auto bindParticleState = [&] {
+                ID3D12DescriptorHeap* heaps[]{context.srvHeap};
+                context.cmdList->SetDescriptorHeaps(1, heaps);
             context.cmdList->SetGraphicsRootSignature(
                 pipelines.GetDrawRootSignature());
             context.cmdList->SetGraphicsRootConstantBufferView(
@@ -1010,8 +1064,7 @@ namespace HIKARI::RENDER3D::PARTICLES {
             context.cmdList->SetGraphicsRootDescriptorTable(
                 6u,
                 texturePool);
-            const bool sceneDepthAvailable =
-                bindings.sceneDepth.ptr != 0u;
+
             context.cmdList->SetGraphicsRootDescriptorTable(
                 9u,
                 sceneDepthAvailable
@@ -1027,8 +1080,27 @@ namespace HIKARI::RENDER3D::PARTICLES {
             context.cmdList->SetGraphicsRootDescriptorTable(17u,bindings.shadowMap.ptr ? bindings.shadowMap : texturePool);
             context.cmdList->SetGraphicsRootDescriptorTable(18u,bindings.irradiance.ptr ? bindings.irradiance : texturePool);
             context.cmdList->SetGraphicsRootDescriptorTable(19u,bindings.prefiltered.ptr ? bindings.prefiltered : texturePool);
+            };
             drawOrder.clear();
             drawOrder.reserve(drawItems.size());
+            // 同一フレームの各 view は別の upload 範囲を使う。記録済みの
+            // draw が GPU で読む前に、次の view が形状を書き換えてはならない。
+            const uint32_t shapeCount = static_cast<uint32_t>(drawItems.size());
+            if (shapeCount > kMaximumParticleEmitterSubmissionsPerFrame - shapeUploadCursor) {
+                ++stats.materialFailures;
+                return false;
+            }
+            GpuParticleShapeState* shapeStateBuffer =
+                storage.MappedShapeStates(uploadFrameSlot);
+            if (shapeStateBuffer == nullptr) return false;
+            shapeStateBuffer += shapeUploadCursor;
+            const auto shapeAddress = storage.GetShapeStateGpuAddress(uploadFrameSlot) +
+                uint64_t{shapeUploadCursor} * sizeof(GpuParticleShapeState);
+            bindParticleState();
+            context.cmdList->SetGraphicsRootShaderResourceView(
+                20u, storage.GetShapeStateGpuAddress(uploadFrameSlot) +
+                    uint64_t{ shapeUploadCursor } * sizeof(GpuParticleShapeState));
+            shapeUploadCursor += shapeCount;
             for (uint32_t itemIndex = 0u;
                  itemIndex < static_cast<uint32_t>(drawItems.size());
                  ++itemIndex) {
@@ -1077,8 +1149,10 @@ namespace HIKARI::RENDER3D::PARTICLES {
                         return lhs.itemIndex < rhs.itemIndex;
                     });
             }
-            for (const DrawOrderEntry& order : drawOrder) {
-                const DrawItem& item = drawItems[order.itemIndex];
+            const auto drawItem = [&](uint32_t itemIndex) {
+                bindParticleState();
+                context.cmdList->SetGraphicsRootShaderResourceView(20u, shapeAddress);
+                const DrawItem& item = drawItems[itemIndex];
                 const uint32_t blendIndex =
                     item.render.blendMode == ParticleBlendMode::Additive
                         ? 1u
@@ -1097,7 +1171,7 @@ namespace HIKARI::RENDER3D::PARTICLES {
                         shapeIndex,
                         blendIndex,
                         depthIndex);
-                if (pipeline == nullptr) { ++stats.materialFailures; continue; }
+                if (pipeline == nullptr) { ++stats.materialFailures; return false; }
                 context.cmdList->SetPipelineState(pipeline);
                 GpuParticleDrawConstants constants{};
                 constants.aliveIndexBase = item.aliveIndexBase;
@@ -1107,11 +1181,11 @@ namespace HIKARI::RENDER3D::PARTICLES {
                 constants.renderShapeMode = static_cast<uint32_t>(
                     item.render.shape);
                 constants.segmentCount = ParticleGeometrySegments(item.render);
-                constants.renderShapeParamsA = MakeGpuParticleFloat4(
-                    item.render.ribbonWidth,
-                    item.render.ringOuterRadius,
-                    item.render.ringInnerRadius,
-                    item.render.ringStartAngleRadians);
+                const GpuParticleShapeState shapeState =
+                    BuildShapeState(item.render);
+                if (shapeStateBuffer != nullptr) {
+                    shapeStateBuffer[item.drawIndex] = shapeState;
+                }
                 const uint32_t flipbookGrid =
                     INTERNAL::PackGpuParticleFlipbookGrid(
                         item.render.flipbookColumns,
@@ -1132,7 +1206,12 @@ namespace HIKARI::RENDER3D::PARTICLES {
                     item.render.depthMode);
                 constants.sceneDepthAvailable = sceneDepthAvailable ? 1u : 0u;
                 constants.materialFlags = IsLitParticleMaterial(item.render.materialMode) && bindings.IsValid() ? 1u : 0u;
-                constants.depthParams = MakeGpuParticleFloat4(item.render.softIntersectionDistance, item.render.depthBias, 0, 0);
+                // z/w は形状の幅テーパー。ルートシグネチャを増やさずに運ぶ。
+                constants.depthParams = MakeGpuParticleFloat4(
+                    item.render.softIntersectionDistance,
+                    item.render.depthBias,
+                    item.render.taperStart,
+                    item.render.taperEnd);
                 // プレビュー等で照明資源が無い場合、無効な CBV/SRV を参照しない。
                 if (IsLitParticleMaterial(item.render.materialMode) && !bindings.IsValid())
                     ++stats.lightingFallbackEmitters;
@@ -1158,6 +1237,31 @@ namespace HIKARI::RENDER3D::PARTICLES {
                 } else {
                     ++stats.stripDispatchCommands;
                 }
+                return true;
+            };
+            std::vector<bool> rendered(compositions.size(), false);
+            const auto sameInstance = [](const auto& a, const auto& b) {
+                return a.playbackNamespace == b.playbackNamespace && a.playbackSlot == b.playbackSlot && a.playbackGeneration == b.playbackGeneration;
+            };
+            for (const auto& order : drawOrder) {
+                const auto& key = drawItems[order.itemIndex].key;
+                size_t compositionIndex = 0;
+                for (; compositionIndex < compositions.size(); ++compositionIndex)
+                    if (sameInstance(key, compositions[compositionIndex].instance)) break;
+                if (compositionIndex == compositions.size()) {
+                    if (!drawItem(order.itemIndex)) return false;
+                    continue;
+                }
+                if (rendered[compositionIndex]) continue;
+                rendered[compositionIndex] = true;
+                const auto& composition = compositions[compositionIndex];
+                std::unordered_map<uint32_t, uint32_t> items;
+                for (uint32_t index = 0; index < drawItems.size(); ++index)
+                    if (sameInstance(drawItems[index].key, composition.instance)) items.emplace(drawItems[index].key.emitterIndex, index);
+                if (!compositionRenderer.Render(context, bindings, composition, [&](uint32_t layer) {
+                    const auto found = items.find(layer);
+                    return found == items.end() || drawItem(found->second);
+                })) { ++stats.materialFailures; return false; }
             }
             return true;
         }
@@ -1165,6 +1269,8 @@ namespace HIKARI::RENDER3D::PARTICLES {
         void Shutdown() {
             storage.Shutdown(context);
             pipelines.Shutdown();
+            compositionRenderer.Release();
+            compositions.clear();
             materialResolver.Clear();
             allocations.clear();
             freeRanges.clear();
@@ -1175,6 +1281,8 @@ namespace HIKARI::RENDER3D::PARTICLES {
             emitterPageCapacity = 0u;
             emitterUploadCapacity = 0u;
             emitterUploadCursor = 0u;
+            shapeUploadCursor = 0u;
+            uploadFrameSerial = (std::numeric_limits<uint64_t>::max)();
             uploadFrameSlot =
                 (std::numeric_limits<uint32_t>::max)();
             lastCompactionLayoutVersion = 0u;

@@ -298,7 +298,9 @@ namespace HIKARI::EDITOR {
                 return false;
             }
             if (targetId == emitter.renderCommon.id &&
-                propertyId == "colorTextureAssetGuid" &&
+                (propertyId == "colorTextureAssetGuid" || propertyId == "maskTextureAssetGuid" ||
+                 propertyId == "noiseTextureAssetGuid" || propertyId == "detailNoiseTextureAssetGuid" ||
+                 propertyId == "flowMapTextureAssetGuid") &&
                 !ValidateParticleTexture(
                     assetDatabase, value, outMessage)) {
                 statusMessage_ = outMessage;
@@ -331,7 +333,8 @@ namespace HIKARI::EDITOR {
             statusMessage_ = outMessage;
             return false;
         }
-        if (!ApplyAsset(std::move(next), outMessage, mergeGroup)) {
+        if (!ApplyAsset(std::move(next), outMessage, mergeGroup,
+                propertyId == "name" ? VfxDocumentImpact::Metadata : VfxDocumentImpact::Runtime)) {
             return false;
         }
         outMessage = "VFX property updated";

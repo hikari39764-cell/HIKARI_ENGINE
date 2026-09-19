@@ -54,14 +54,14 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
             ParticleBillboardMode::RotatedBillboard);
         uint32_t renderShapeMode = 0u;
         uint32_t segmentCount = 1u;
-        GpuParticleFloat4 renderShapeParamsA{};
         GpuParticleFloat4 renderShapeParamsB{};
         uint32_t depthMode = static_cast<uint32_t>(
             ParticleDepthMode::WorldOccluded);
         uint32_t materialFlags = 0u;
         uint32_t sceneDepthAvailable = 0u;
         uint32_t reserved = 0u;
-        // x=soft intersection distance, y=NDC contact bias.
+        // x=soft intersection distance, y=NDC contact bias,
+        // z/w=形状パラメータ 0/1 での幅倍率。
         GpuParticleFloat4 depthParams{};
     };
 
@@ -77,7 +77,7 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
 
     static_assert(sizeof(GpuParticle) == 128u);
     static_assert(sizeof(GpuParticleSimulationConstants) == 32u);
-    static_assert(sizeof(GpuParticleDrawConstants) == 80u);
+    static_assert(sizeof(GpuParticleDrawConstants) == 64u);
     static_assert(sizeof(GpuParticleCompactConstants) == 20u);
 
 } // namespace HIKARI::RENDER3D::PARTICLES::INTERNAL

@@ -106,11 +106,11 @@ namespace HIKARI::ASSETS::SHADER {
 
     inline constexpr std::string_view kParticleDrawRootLayoutId =
         "HIKARI.RenderGeometry.ParticleDraw.Root";
-    inline constexpr uint32_t kParticleDrawRootLayoutVersion = 3u;
+    inline constexpr uint32_t kParticleDrawRootLayoutVersion = 5u;
     inline constexpr std::string_view kParticleDrawRootLayoutHash =
-        "a3e20724b723eb71fc1e9afc0de33188d7f33fe184348827c24d82f1378ac14b";
+        "4b67f7dd418e45869c1a14ee014ae01bb356d20dd9d05043a80ea4c1c0e3a134";
     inline constexpr std::string_view kParticleDrawRootLayoutCanonical =
-        "HIKARI.RenderGeometry.ParticleDraw.Root.v3|"
+        "HIKARI.RenderGeometry.ParticleDraw.Root.v5|"
         "0:CBV(b0,space0,All)|"
         "1:SRV(t1,space0,All)|"
         "2:SRV(t2,space0,All)|"
@@ -118,7 +118,7 @@ namespace HIKARI::ASSETS::SHADER {
         "4:SRV(t0,space6,Pixel)|"
         "5:SRV(t1,space6,Pixel)|"
         "6:Table(SRV(t20,space0,count3968),Pixel)|"
-        "7:Constants(b1,space0,count20,All)|"
+        "7:Constants(b1,space0,count16,All)|"
         "8:Constants(b7,space0,count1,Pixel)|"
         "9:Table(SRV(t3,space0,count1),Pixel)|"
         "10:CBV(b2,space0,Pixel)|"
@@ -131,7 +131,8 @@ namespace HIKARI::ASSETS::SHADER {
         "17:Table(SRV(t0,space9,count1),Pixel)|"
         "18:Table(SRV(t9,space0,count1),Pixel)|"
         "19:Table(SRV(t10,space0,count1),Pixel)|"
-        "StaticSampler(s0,LinearClamp,Pixel)|"
+        "20:SRV(t5,space0,All)|"
+        "StaticSampler(s0,Anisotropic8Clamp,Pixel)|"
         "StaticSampler(s1,PointClamp,Pixel)|"
         "StaticSampler(s2,ComparisonLinearClampLessEqual,Pixel)|"
         "Pipeline(Amplification,Mesh,Vertex,Pixel)|"
@@ -623,7 +624,7 @@ namespace HIKARI::ASSETS::SHADER {
                 (binding.kind == Kind::ConstantBuffer && binding.registerSpace == 0u &&
                  (binding.registerIndex <= 2u || binding.registerIndex == 4u || binding.registerIndex == 5u || binding.registerIndex == 7u) && binding.count == 1u) ||
                 (binding.kind == Kind::ShaderResource && binding.registerSpace == 0u &&
-                 (((binding.registerIndex >= 1u && binding.registerIndex <= 4u) || binding.registerIndex == 9u ||
+                 (((binding.registerIndex >= 1u && binding.registerIndex <= 5u) || binding.registerIndex == 9u ||
                    binding.registerIndex == 10u || binding.registerIndex == 16u) && binding.count == 1u ||
                   (binding.registerIndex == 20u && binding.count == 3968u))) ||
                 (binding.kind == Kind::ShaderResource && binding.registerSpace == 5u && binding.registerIndex <= 2u && binding.count == 1u) ||

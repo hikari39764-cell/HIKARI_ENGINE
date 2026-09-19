@@ -19,10 +19,6 @@ namespace HIKARI {
             AssetRegistry& assetRegistry,
             EditorSelection* selection);
 
-        void ClearMaterialTextureSlotPreviewCache();
-        void InvalidateMaterialTextureSlotPreviewByGuid(const AssetGuid& guid);
-        void InvalidateMaterialTextureSlotPreviewByPath(const std::string& path);
-
     } // namespace EDITOR
 
 } // namespace HIKARI

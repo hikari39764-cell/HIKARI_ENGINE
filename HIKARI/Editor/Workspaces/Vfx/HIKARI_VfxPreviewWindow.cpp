@@ -4,12 +4,16 @@
 #include <algorithm>
 #include <cstdint>
 #include <cmath>
+#include <cstdio>
 #include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
+#include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 
 #include "Editor/Views/HIKARI_EditorViewInstance.h"
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
 #include "Editor/Gizmos/HIKARI_EditorTransformGizmoShortcuts.h"
 #include "Core/Text/HIKARI_Localization.h"
+#include "Editor/Style/HIKARI_EditorGlyphs.h"
+#include "Editor/Style/HIKARI_EditorWidgets.h"
 
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
@@ -28,23 +32,32 @@ namespace HIKARI::EDITOR {
             return;
         }
 
-        if (ImGui::Button(VfxUiText("View").c_str())) ImGui::OpenPopup("VfxView");
+        if (IconButton(EditorGlyph::Camera, "VfxView", EditorButtonTone::Quiet,
+                {28,28}, VfxUiText("View").c_str())) ImGui::OpenPopup("VfxView");
         if (ImGui::BeginPopup("VfxView")) {
         if (ImGui::Button(VfxUiText("Perspective").c_str())) {
             cameraController_.ApplyViewPreset(
                 EditorDirectorCameraViewPreset::Perspective);
+            ++cameraRevision_; cameraCutPending_ = true;
         }
         ImGui::SameLine();
         if (ImGui::Button(VfxUiText("Front").c_str())) {
             cameraController_.ApplyViewPreset(
                 EditorDirectorCameraViewPreset::Front);
+            ++cameraRevision_; cameraCutPending_ = true;
         }
         ImGui::SameLine();
         if (ImGui::Button(VfxUiText("Top").c_str())) {
             cameraController_.ApplyViewPreset(
                 EditorDirectorCameraViewPreset::Top);
+            ++cameraRevision_; cameraCutPending_ = true;
         }
         ImGui::SameLine();
+        if (ImGui::Checkbox(TEXT::Localize("ui.vfx.view.clean").c_str(), &previewCleanView_)) previewNeedsRedraw_ = true;
+        ImGui::Checkbox(TEXT::Localize("ui.vfx.view.hud").c_str(), &showPreviewHud_);
+        if (ImGui::Checkbox(TEXT::Localize("ui.vfx.view.bypassAdjustments").c_str(), &previewBypassAdjustments_))
+            NotifyEmitterVisibilityChanged();
+        ImGui::Separator();
         ImGui::Checkbox(VfxUiText("Grid").c_str(), &showPreviewGrid_);
         ImGui::SameLine();
         ImGui::Checkbox(VfxUiText("Axes").c_str(), &showPreviewAxes_);
@@ -52,12 +65,30 @@ namespace HIKARI::EDITOR {
         ImGui::EndPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button(VfxUiText("Lighting").c_str())) ImGui::OpenPopup("VfxPreviewLighting");
+        if (IconButton(EditorGlyph::Light, "VfxLighting", EditorButtonTone::Quiet,
+                {28,28}, VfxUiText("Lighting").c_str())) ImGui::OpenPopup("VfxPreviewLighting");
         if (ImGui::BeginPopup("VfxPreviewLighting")) {
             ImGui::TextUnformatted(VfxUiText("Preview lighting (not saved in the effect)").c_str());
+            const auto backdrop = [&](const char* key, float value) {
+                if (ImGui::SmallButton(TEXT::Localize(key).c_str())) {
+                    auto& sky = previewEnvironment_->sky;
+                    sky.zenithColor = sky.horizonColor = sky.groundColor = {value, value, value};
+                    previewNeedsRedraw_ = true;
+                }
+            };
+            backdrop("ui.vfx.view.dark", 0.025f); ImGui::SameLine();
+            backdrop("ui.vfx.view.gray", 0.18f); ImGui::SameLine();
+            backdrop("ui.vfx.view.light", 0.85f);
             bool changed = ImGui::SliderFloat(VfxUiText("Direction").c_str(), &previewLightYaw_, -180.0f, 180.0f, "%.0f deg");
             changed |= ImGui::SliderFloat(VfxUiText("Brightness").c_str(), &previewLightIntensity_, 0.0f, 5.0f, "%.2f");
+            auto& bloom = previewEnvironment_->bloom;
+            ImGui::Separator();
+            changed |= ImGui::Checkbox("Bloom", &bloom.enabled);
+            changed |= ImGui::SliderFloat((VfxUiText("Threshold") + "##Bloom").c_str(), &bloom.threshold, 0.0f, 4.0f, "%.2f");
+            changed |= ImGui::SliderFloat((VfxUiText("Intensity") + "##Bloom").c_str(), &bloom.intensity, 0.0f, 2.0f, "%.2f");
+            changed |= ImGui::SliderFloat((VfxUiText("Radius") + "##Bloom").c_str(), &bloom.radius, 0.25f, 3.0f, "%.2f");
             if (changed && !previewLighting_->lights.empty()) {
+                previewNeedsRedraw_ = true;
                 const float yaw = previewLightYaw_ * 0.01745329252f;
                 auto& key = previewLighting_->lights.front();
                 key.direction = {std::sin(yaw)*0.6f, -0.8f, std::cos(yaw)*0.6f};
@@ -67,40 +98,58 @@ namespace HIKARI::EDITOR {
             ImGui::EndPopup();
         }
         ImGui::SameLine();
-        if (ImGui::SmallButton(VfxUiText("Focus").c_str())) {
+        const auto* selectedLayer = FindEmitter(selection_.emitterId);
+        const bool adjustmentSelected = selectedLayer && selectedLayer->kind == VFX::VfxLayerKind::Adjustment;
+        ImGui::BeginDisabled(adjustmentSelected);
+        if (IconButton(EditorGlyph::Focus, "Focus", EditorButtonTone::Quiet, {28,28},
+                (VfxUiText("Focus") + " (F)").c_str())) {
             (void)FocusSelectedEmitter(statusMessage_);
         }
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("Focus camera on selected emitter");
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        if (IconToggleButton(EditorGlyph::Compact, "CleanView", previewCleanView_, {28,28},
+                TEXT::Localize("ui.vfx.view.clean").c_str())) {
+            previewCleanView_ = !previewCleanView_;
+            previewNeedsRedraw_ = true;
         }
         ImGui::SameLine();
+        if (IconToggleButton(EditorGlyph::Vfx, "BypassAdjustments", previewBypassAdjustments_, {28,28},
+                TEXT::Localize("ui.vfx.view.bypassAdjustments").c_str())) {
+            previewBypassAdjustments_ = !previewBypassAdjustments_;
+            NotifyEmitterVisibilityChanged();
+        }
+        ImGui::SameLine();
+        if (IconButton(EditorGlyph::Help, "PreviewHelp", EditorButtonTone::Quiet, {28,28},
+                TEXT::Localize("ui.vfx.hud.shortcuts").c_str())) ImGui::OpenPopup("PreviewHelp");
+        if (ImGui::BeginPopup("PreviewHelp")) {
+            ImGui::TextUnformatted(TEXT::Localize("ui.vfx.hud.shortcuts").c_str());
+            ImGui::TextUnformatted(TEXT::Localize("ui.vfx.view.navigation").c_str());
+            ImGui::EndPopup();
+        }
+        if (adjustmentSelected) {
+            ImGui::TextDisabled("%s", TEXT::Localize("ui.vfx.view.adjustmentScope").c_str());
+        } else {
         const char* operations[] = {"Move", "Rotate", "Scale"};
-        int operation = static_cast<int>(layerGizmoState_.operation);
-        ImGui::SetNextItemWidth(90);
-        if (ImGui::BeginCombo("##LayerTransform", VfxUiText(operations[operation]).c_str())) {
-            for (int i = 0; i < 3; ++i)
-                if (ImGui::Selectable(VfxUiText(operations[i]).c_str(), operation == i))
-                    layerGizmoState_.operation = static_cast<EditorTransformGizmoOperation>(i);
-            ImGui::EndCombo();
+        const EditorGlyph glyphs[]{EditorGlyph::Translate, EditorGlyph::Rotate, EditorGlyph::Scale};
+        const char* shortcuts[]{" (W)", " (E)", " (R)"};
+        for (int i = 0; i < 3; ++i) {
+            if (i != 0) ImGui::SameLine(0, 2);
+            if (IconToggleButton(glyphs[i], operations[i], static_cast<int>(layerGizmoState_.operation) == i,
+                    {28,28}, (VfxUiText(operations[i]) + shortcuts[i]).c_str()))
+                layerGizmoState_.operation = static_cast<EditorTransformGizmoOperation>(i);
         }
         ImGui::SameLine();
-        if (ImGui::SmallButton(layerGizmoState_.mode == EditorTransformGizmoMode::World ? VfxUiText("World (X)").c_str() : VfxUiText("Local (X)").c_str()))
+        const bool world = layerGizmoState_.mode == EditorTransformGizmoMode::World;
+        if (IconButton(world ? EditorGlyph::WorldSpace : EditorGlyph::LocalSpace, "TransformSpace",
+                EditorButtonTone::Quiet, {28,28}, VfxUiText(world ? "World (X)" : "Local (X)").c_str()))
             layerGizmoState_.mode = layerGizmoState_.mode == EditorTransformGizmoMode::World ? EditorTransformGizmoMode::Local : EditorTransformGizmoMode::World;
         ImGui::SameLine();
-        ImGui::Checkbox(TEXT::Localize("ui.vfx.view.snap").c_str(), &layerGizmoState_.snapEnabled);
-        ImGui::SameLine();
+        if (IconToggleButton(EditorGlyph::Snap, "TransformSnap", layerGizmoState_.snapEnabled, {28,28},
+                TEXT::Localize("ui.vfx.view.snap").c_str())) layerGizmoState_.snapEnabled = !layerGizmoState_.snapEnabled;
+        }
+        if (!adjustmentSelected) ImGui::SameLine();
         ImGui::Checkbox(TEXT::Localize("ui.vfx.view.autoKey").c_str(), &timelineEdit_.autoKey);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", TEXT::Localize("ui.vfx.view.editModeHelp").c_str());
-        ImGui::TextDisabled(
-            VfxUiText("%zu visible layers").c_str(),
-            static_cast<size_t>(std::count_if(document_.Asset().emitters.begin(),
-                document_.Asset().emitters.end(), [this](const auto& emitter) {
-                    return emitter.basic.enabled && IsEmitterPreviewVisible(emitter.id);
-                })));
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip(
-                "Alt+LMB orbit\nMMB pan\nRMB look\nMouse wheel dolly");
-        }
 
         ImVec2 canvasSize = ImGui::GetContentRegionAvail();
         canvasSize.x = (std::max)(canvasSize.x, 180.0f);
@@ -181,13 +230,54 @@ namespace HIKARI::EDITOR {
         const bool hovered = ImGui::IsItemHovered();
         if (!layerGizmoEditing_ && !timelineEdit_.baseline) {
             HandleTransformGizmoShortcuts(layerGizmoState_, hovered);
-            if (hovered && !ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed(ImGuiKey_F)) (void)FocusSelectedEmitter(statusMessage_);
+            if (!adjustmentSelected && hovered && !ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed(ImGuiKey_F)) (void)FocusSelectedEmitter(statusMessage_);
         }
         std::string pickedLayer;
-        bool gizmoInteracting = DrawLayerHandles(
-            {origin.x, origin.y, canvasSize.x, canvasSize.y}, hovered, layerGizmoEditing_, pickedLayer);
-        if (!gizmoInteracting)
-            gizmoInteracting = DrawLayerGizmo({origin.x, origin.y, canvasSize.x, canvasSize.y});
+        if (hovered && !ImGui::GetIO().WantTextInput && !ImGui::IsAnyItemActive()) {
+            if (ImGui::IsKeyPressed(ImGuiKey_H)) { previewCleanView_ = !previewCleanView_; previewNeedsRedraw_ = true; }
+            if (ImGui::IsKeyPressed(ImGuiKey_Space)) {
+                if (!previewPlaying_) (void)PlayPreview(statusMessage_);
+                else PausePreview(!previewPaused_);
+            }
+            if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) (void)StepPreviewFrame(-1, statusMessage_);
+            if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) (void)StepPreviewFrame(1, statusMessage_);
+        }
+        bool gizmoInteracting = false;
+        if (!previewCleanView_) {
+            gizmoInteracting = DrawLayerHandles(
+                {origin.x, origin.y, canvasSize.x, canvasSize.y}, hovered, layerGizmoEditing_, pickedLayer);
+            if (!gizmoInteracting)
+                gizmoInteracting = DrawLayerGizmo({origin.x, origin.y, canvasSize.x, canvasSize.y});
+        }
+        if (showPreviewHud_ && !previewCleanView_ && ready && canvasSize.x > 240) {
+            char timing[96];
+            const auto stateLabel = TEXT::Localize(!previewPlaying_ ? "ui.vfx.hud.stopped" : previewPaused_ ? "ui.vfx.hud.paused" : "ui.vfx.hud.playing");
+            std::snprintf(timing, sizeof(timing), "%s  %.2fs / %.2fs  |  %u f",
+                stateLabel.c_str(),
+                previewElapsedSeconds_, GetPreviewTimelineDuration(), uint32_t(std::lround(previewElapsedSeconds_ * 60)));
+            const auto* selected = FindEmitter(selection_.emitterId);
+            const std::string selection = selected ? selected->name : document_.GetDisplayName();
+            std::string flags;
+            if (!soloEmitterId_.empty()) flags += "  | " + TEXT::Localize("ui.vfx.hud.solo");
+            if (timelineEdit_.autoKey) flags += "  | " + TEXT::Localize("ui.vfx.view.autoKey");
+            if (previewBypassAdjustments_) flags += "  | " + TEXT::Localize("ui.vfx.hud.bypass");
+            const auto& selectionLine = selection;
+            const float hudWidth = (std::min)(canvasSize.x - 20,
+                (std::max)({200.0f, ImGui::CalcTextSize(timing).x + 16,
+                    ImGui::CalcTextSize(selectionLine.c_str()).x + 16}));
+            const float flagsHeight = flags.empty() ? 0 :
+                ImGui::CalcTextSize(flags.c_str(), nullptr, false, hudWidth - 16).y + ImGui::GetStyle().ItemSpacing.y;
+            const float height = ImGui::GetTextLineHeightWithSpacing() * 2 + flagsHeight + 12;
+            const ImVec2 corner{origin.x + 10, origin.y + canvasSize.y - height - 10};
+            drawList->PushClipRect(corner, {corner.x + hudWidth, corner.y + height}, true);
+            drawList->AddRectFilled(corner, {corner.x + hudWidth, corner.y + height}, IM_COL32(13,18,26,205), 5);
+            drawList->AddText({corner.x+8,corner.y+5}, IM_COL32(218,230,242,255), timing);
+            drawList->AddText({corner.x+8,corner.y+5+ImGui::GetTextLineHeightWithSpacing()}, IM_COL32(110,200,255,255), selectionLine.c_str());
+            if (!flags.empty()) drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize(),
+                {corner.x+8,corner.y+5+2*ImGui::GetTextLineHeightWithSpacing()}, IM_COL32(255,205,112,255),
+                flags.c_str(), nullptr, hudWidth - 16);
+            drawList->PopClipRect();
+        }
         if (!gizmoInteracting && !pickedLayer.empty() && ImGui::IsMouseClicked(0))
             Select({VfxWorkspaceSelectionKind::Emitter, pickedLayer, pickedLayer});
         if (hovered && !gizmoInteracting) {

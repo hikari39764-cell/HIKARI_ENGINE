@@ -1,5 +1,6 @@
 #include "Render3D/Material/Program/HIKARI_MaterialExpressionProgram.h"
 #include "Render3D/Material/Program/HIKARI_MaterialProgram.h"
+#include "Render3D/Material/Program/Internal/HIKARI_MaterialExpressionRegisterAllocator.h"
 
 #include <algorithm>
 #include <array>
@@ -308,25 +309,16 @@ bool BuildMaterialExpressionRuntimeProgram(
         }
     }
     if (required.size() > kGpuMaterialExpressionInstructionCount) {
-        outError = "material expression exceeds the 96-instruction GPU budget";
+        outError = "Material expression needs " + std::to_string(required.size()) +
+            " instructions; the current shader supports " + std::to_string(kGpuMaterialExpressionInstructionCount);
         return false;
     }
 
     std::unordered_map<uint32_t, uint8_t> registers{};
     uint32_t nextRegister = 0u;
-    for (size_t index = 0u; index < program.instructions.size(); ++index) {
-        if (!required.contains(index)) {
-            continue;
-        }
-        for (const uint32_t output :
-             program.instructions[index].outputRegisters) {
-            if (nextRegister >= kGpuMaterialExpressionRegisterCount) {
-                outError = "material expression exceeds the 128-register GPU budget";
-                return false;
-            }
-            registers.emplace(output, static_cast<uint8_t>(nextRegister++));
-        }
-    }
+    std::vector<uint32_t> rootRegisters;
+    for (const auto& root : roots) rootRegisters.push_back(root.materialRegister);
+    if (!INTERNAL::AllocateExpressionRegisters(program, required, rootRegisters, registers, nextRegister, outError)) return false;
 
     std::vector<MATH::Vec4> values{};
     std::vector<MATH::Vec4> instructions{};

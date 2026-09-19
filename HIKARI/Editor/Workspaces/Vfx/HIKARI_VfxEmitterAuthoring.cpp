@@ -1,12 +1,38 @@
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceDomain.h"
 #include "Assets/Vfx/HIKARI_VfxPresetRegistry.h"
+#include "Assets/Vfx/HIKARI_VfxGeometryPresetCatalog.h"
 
 #include <algorithm>
 #include <unordered_map>
 #include <utility>
 
 namespace HIKARI::EDITOR {
+    bool VfxWorkspaceController::ApplyGeometryPreset(
+        std::string_view layerId,
+        std::string_view presetId,
+        std::string& outMessage) {
+
+        const VFX::VfxGeometryPresetDescriptor* preset =
+            VFX::FindVfxGeometryPreset(presetId);
+        if (preset == nullptr) {
+            outMessage = "Unknown geometry preset";
+            return false;
+        }
+        VFX::VfxAssetData next = document_.Asset();
+        VFX::VfxEmitterData* layer = FindEmitterMutable(next, layerId);
+        if (layer == nullptr || layer->kind != VFX::VfxLayerKind::Shape) {
+            outMessage = "Geometry presets apply to shape layers";
+            return false;
+        }
+        // 形状設定の一括変更は 1 トランザクションで行う（undo 一回）。
+        VFX::ApplyVfxGeometryPreset(*preset, layer->renderShape);
+        if (!ApplyAsset(std::move(next), outMessage)) return false;
+        outMessage = "Geometry preset applied: " +
+            std::string(preset->displayName);
+        return true;
+    }
+
     bool VfxWorkspaceController::AddEmitter(
         std::string_view parentEmitterId,
         std::string_view displayName,
@@ -56,6 +82,10 @@ namespace HIKARI::EDITOR {
             }));
 
         VFX::VfxAssetData next = document_.Asset();
+        if (kind == VFX::VfxLayerKind::Adjustment) {
+            emitter.order = 0;
+            for (auto& sibling : next.emitters) if (sibling.parentEmitterId == parentEmitterId) ++sibling.order;
+        }
         next.emitters.push_back(std::move(emitter));
         if (!ApplyAsset(std::move(next), outMessage)) return false;
         outId = id;
@@ -132,6 +162,8 @@ namespace HIKARI::EDITOR {
         }
         auto package = VFX::PRESETS::MakeVfxPresetPackage(presetId);
         auto next = document_.Asset();
+        // 追加レイヤーの再生区間を含める。短い素材への追加でも検証を通す。
+        next.durationSeconds = (std::max)(next.durationSeconds, package.asset.durationSeconds);
         std::unordered_map<std::string, std::string> inputIds, emitterIds;
         for (auto& input : package.asset.inputs) {
             const auto oldId = input.id;

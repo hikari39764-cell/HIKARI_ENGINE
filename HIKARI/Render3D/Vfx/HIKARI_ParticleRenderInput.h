@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "Render3D/HIKARI_Math3D.h"
+#include "Assets/Material/Authoring/HIKARI_MaterialEffectStack.h"
 
 namespace HIKARI {
     class AssetRegistry;
@@ -51,6 +52,20 @@ namespace HIKARI::RENDER3D::PARTICLES {
             const ParticleEmitterInstanceKey&) const noexcept = default;
     };
 
+    enum class ParticleCompositionLayerKind : uint8_t { Content, Group, Adjustment };
+    struct ParticleCompositionLayer {
+        uint32_t emitterIndex = 0;
+        uint32_t parentEmitterIndex = UINT32_MAX;
+        ParticleCompositionLayerKind kind = ParticleCompositionLayerKind::Content;
+        bool enabled = true;
+        std::vector<MaterialEffectStep> effects{};
+    };
+    struct ParticleComposition {
+        ParticleEmitterInstanceKey instance{};
+        // 上から下のレイヤー順。各グループが独立した合成スコープ。
+        std::vector<ParticleCompositionLayer> layers{};
+    };
+
     enum class ParticleShape : uint32_t {
         Point,
         Sphere,
@@ -72,6 +87,9 @@ namespace HIKARI::RENDER3D::PARTICLES {
         MeshHemisphere,
         CrossPlane,
         HistoryRibbon, // 履歴所有者が生成する接続四角形。アセット形状とは別。
+        // アセット形状の追加は履歴形状の後ろへ。番号を詰めると衝突する。
+        MeshTorus = 10u,
+        MeshCapsule = 11u,
     };
 
     enum class ParticleBlendMode : uint32_t {
@@ -108,6 +126,8 @@ namespace HIKARI::RENDER3D::PARTICLES {
         FixedYAxis = 1u,
         DirectionalBillboard = 2u,
         Fixed = 3u,
+        CylindricalBillboard = 4u,
+        FaceCameraPosition = 5u,
     };
 
     static_assert(
@@ -247,6 +267,8 @@ namespace HIKARI::RENDER3D::PARTICLES {
         float shapeCylinderHeight = 1.0f;
         float shapeCircleInnerRadius = 0.0f;
         uint32_t shapeCircleEmitOnEdge = 0u;
+        // 円形エミッタの放出角度範囲。360 で全周。
+        float shapeCircleArcDegrees = 360.0f;
         float shapeEdgeLength = 1.0f;
         ParticleDistributionFloat radialSpeed{};
         ParticleAnimatedFloat3 position{};
@@ -279,6 +301,9 @@ namespace HIKARI::RENDER3D::PARTICLES {
         ParticleMaterialMode materialMode =
             ParticleMaterialMode::StandardUnlit;
         std::string colorTextureAssetGuid{};
+        // 効果スタックが参照する追加スロット。空なら従来どおり底色のみ。
+        std::string maskTextureAssetGuid{};
+        std::string noiseTextureAssetGuid{};
         std::string materialAssetGuid{};
         ParticleBlendMode blendMode = ParticleBlendMode::Alpha;
         ParticleRenderShape shape = ParticleRenderShape::Sprite;
@@ -300,6 +325,45 @@ namespace HIKARI::RENDER3D::PARTICLES {
         uint32_t ringSegmentCount = 32u;
         float ringStartAngleRadians = 0.0f;
         float ringEndAngleRadians = 6.28318530717958647692f;
+        // 形状が作るパラメータUVを材質UVへ変換する契約。0 は既存の
+        // 正規化挙動を保ち、1 は弧長・周長・高さなどの実寸で U をタイルする。
+        uint32_t uvMode = 0u;
+        float uvTileLength = 1.0f;
+        float uvTilingU = 1.0f;
+        float uvTilingV = 1.0f;
+        float uvRotationRadians = 0.0f;
+        // 円柱/円錐の「周方向U・軸方向V」を入れ替える。
+        uint32_t uvSwapAxes = 0u;
+        // 回転・拡縮の基準点。形状中心（原点）からのローカルオフセット。
+        MATH::Vec3 anchor{ 0.0f, 0.0f, 0.0f };
+        // 接続ターゲット: 幾何を「原点 → 参照点」の区間へ張る。0 は無効。
+        inline static constexpr uint32_t kInvalidConnectLayerIndex = 0xffffffffu;
+        uint32_t connectTargetMode = 0u;
+        uint32_t connectTargetLayerIndex = kInvalidConnectLayerIndex;
+        MATH::Vec3 connectLocalPosition{ 0.0f, 0.0f, 0.0f };
+        float connectPivot = 0.5f;
+        float connectLengthScale = 1.0f;
+        float connectStartOffset = 0.0f;
+        float connectEndOffset = 0.0f;
+        uint32_t connectFlags = 0u;
+        // Mesh 出力: 有効ならこのレイヤーは粒子 pass ではなくモデル描画へ回す。
+        std::string meshAssetGuid{};
+        uint32_t meshOutputFlags = 0u;
+        // 形状パラメータ 0..1 に沿った幅の倍率。1,1 で形状を変えない。
+        float taperStart = 1.0f;
+        float taperEnd = 1.0f;
+        // 円柱/円錐の半径。既定 0.5 は従来の直径 1 と同じ。
+        float cylinderTopRadius = 0.5f;
+        float cylinderBottomRadius = 0.5f;
+        float coneBaseRadius = 0.5f;
+        // 長さ軸を持つ形状の変形（bend は無次元、twist はラジアン）。
+        float bendAmount = 0.0f;
+        float twistRadians = 0.0f;
+        float torusMajorRadius = 0.4f;
+        float torusMinorRadius = 0.12f;
+        float capsuleRadius = 0.35f;
+        // 軸固定ビルボードが固定するローカル軸（0=X, 1=Y, 2=Z）。
+        uint32_t billboardAxis = 0u;
     };
 
     struct ParticleShapePose {
@@ -365,6 +429,7 @@ namespace HIKARI::RENDER3D::PARTICLES {
         uint64_t frameIndex = 0u;
         std::vector<ParticleEmitterInstanceKey> retiredEmitters{};
         std::vector<ParticleEmitterSubmission> emitters{};
+        std::vector<ParticleComposition> compositions{};
 
         ParticleRenderDeliveryToken GetDeliveryToken() const noexcept {
             return { sourceIdentity, deliverySequence };

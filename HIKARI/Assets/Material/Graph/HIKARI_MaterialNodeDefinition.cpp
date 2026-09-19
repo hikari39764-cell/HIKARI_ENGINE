@@ -520,7 +520,7 @@ constexpr std::array kDefinitions{
         {}, kFloat4Output, false, OutputRoute::Unrestricted, "Particle color for masks and variation. The final color is also modulated by the layer tint."},
     MaterialNodeDefinition{MaterialNodeKind::ParticleUv, "ParticleUV",
         MaterialValueType::Float2, NodeClass::Input, true,
-        {}, kFloat2Output, false, OutputRoute::Unrestricted, "Local shape UV (0..1), independent of flipbook atlas cells. Use for scrolling, polar masks and shell gradients."},
+        {}, kFloat2Output, false, OutputRoute::Unrestricted, "Shape material UV after authored tiling, rotation and world-length mapping, independent of flipbook cells. UV1 provides the unmodified shape coordinates (0..1)."},
 };
 
 static_assert(kDefinitions.size() ==

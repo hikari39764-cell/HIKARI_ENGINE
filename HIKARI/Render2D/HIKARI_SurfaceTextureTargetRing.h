@@ -36,6 +36,8 @@ namespace HIKARI {
                 writeIndex = 0u;
             }
 
+            bool depthSrvPublished = false;
+
             bool Ensure(
                 const GFX::Context& graphics,
                 uint64_t requestedWorldIdentity,
@@ -44,13 +46,15 @@ namespace HIKARI {
                 uint32_t requestedHeight,
                 DXGI_FORMAT format = DXGI_FORMAT_R16G16B16A16_FLOAT,
                 bool withDepth = true,
-                std::array<float,4> clearColor = {0.015f,0.02f,0.035f,1.0f}) {
+                std::array<float,4> clearColor = {0.015f,0.02f,0.035f,1.0f},
+                bool publishDepthSrv = false) {
                 if (graphics.device == nullptr ||
                     graphics.cmdList == nullptr ||
                     requestedWorldIdentity == 0u) {
                     return false;
                 }
                 const bool recreate =
+                    depthSrvPublished != publishDepthSrv ||
                     deviceGeneration != graphics.deviceGeneration ||
                     worldIdentity != requestedWorldIdentity ||
                     width != requestedWidth ||
@@ -65,6 +69,7 @@ namespace HIKARI {
                     Reset();
                     deviceGeneration = graphics.deviceGeneration;
                     worldIdentity = requestedWorldIdentity;
+                    depthSrvPublished = publishDepthSrv;
                     width = requestedWidth;
                     height = requestedHeight;
                     for (size_t index = 0u; index < targets.size(); ++index) {
@@ -80,7 +85,7 @@ namespace HIKARI {
                                 format,
                                 withDepth,
                                 clearColor,
-                                false)) {
+                                publishDepthSrv)) {
                             Reset();
                             return false;
                         }

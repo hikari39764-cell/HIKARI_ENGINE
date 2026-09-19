@@ -447,55 +447,76 @@ namespace HIKARI::EDITOR {
                 destination.maximum.z, source.maximum.z);
         }
 
-        float MaximumAnimatedMagnitude(
-            const VFX::VfxAnimatedVec3Data& value,
-            size_t component,
-            float lifetime) noexcept {
-
-            const ScalarInterval interval = AnimatedComponentInterval(
-                value, component, lifetime);
-            return (std::max)(
-                std::abs(interval.minimum),
-                std::abs(interval.maximum));
-        }
-
-        float RenderRadius(
+        VectorInterval RenderInterval(
             const VFX::VfxEmitterData& emitter,
-            const MATH::Vec3& worldScale,
+            const ResolvedEmitterTransform& transform,
             float lifetime) noexcept {
-
-            const float scaleX = MaximumAnimatedMagnitude(
-                emitter.scale.value, 0u, lifetime) *
-                std::abs(FiniteOr(worldScale.x, 1.0f));
-            const float scaleY = MaximumAnimatedMagnitude(
-                emitter.scale.value, 1u, lifetime) *
-                std::abs(FiniteOr(worldScale.y, 1.0f));
-            const float scaleZ = MaximumAnimatedMagnitude(
-                emitter.scale.value, 2u, lifetime) * std::abs(FiniteOr(worldScale.z, 1.0f));
+            MATH::Vec3 extent{0.5f,0.5f,0.5f};
+            const auto& shape = emitter.renderShape;
             switch (emitter.renderShape.type) {
-            case VFX::VfxRenderShapeType::MeshBox:
-            case VFX::VfxRenderShapeType::MeshSphere:
             case VFX::VfxRenderShapeType::MeshCylinder:
+                extent.x = extent.z = (std::max)(shape.cylinderBottomRadius, shape.cylinderTopRadius);
+                break;
             case VFX::VfxRenderShapeType::MeshCone:
-            case VFX::VfxRenderShapeType::MeshHemisphere:
-            case VFX::VfxRenderShapeType::CrossPlane:
-                return 0.5f * std::sqrt(scaleX*scaleX+scaleY*scaleY+scaleZ*scaleZ);
-            case VFX::VfxRenderShapeType::Ribbon: {
-                const float halfLength = 0.5f * scaleX;
-                const float halfWidth = 0.5f * std::abs(
-                    FiniteOr(emitter.renderShape.ribbonWidth)) * scaleY;
-                return std::sqrt(
-                    halfLength * halfLength + halfWidth * halfWidth);
+                extent.x = extent.z = shape.coneBaseRadius;
+                break;
+            case VFX::VfxRenderShapeType::MeshTorus:
+                extent = {shape.torusMajorRadius + shape.torusMinorRadius, shape.torusMinorRadius,
+                    shape.torusMajorRadius + shape.torusMinorRadius};
+                break;
+            case VFX::VfxRenderShapeType::MeshCapsule:
+                extent.x = extent.z = shape.capsuleRadius;
+                break;
+            case VFX::VfxRenderShapeType::Ring: {
+                float radius = (std::max)(shape.ringInnerRadius, shape.ringOuterRadius);
+                for (const auto& track : emitter.parameterTracks)
+                    if (track.targetId == shape.id && (track.propertyId == "ringInnerRadius" || track.propertyId == "ringOuterRadius"))
+                        radius = (std::max)(radius, CurveInterval(track.curve).maximum);
+                extent = {radius, radius, 0};
+                break;
             }
-            case VFX::VfxRenderShapeType::Ring:
-                return std::abs(FiniteOr(
-                    emitter.renderShape.ringOuterRadius)) *
-                    (std::max)(scaleX, scaleY);
+            case VFX::VfxRenderShapeType::Ribbon:
+                extent = {0.5f, 0.5f * shape.ribbonWidth, 0};
+                break;
             case VFX::VfxRenderShapeType::Sprite:
-            default:
-                return 0.5f * std::sqrt(
-                    scaleX * scaleX + scaleY * scaleY);
+                extent.z = 0;
+                break;
+            default: break;
             }
+            const float taper = (std::max)({1.0f, shape.taperStart, shape.taperEnd});
+            extent.x *= taper; extent.z *= taper;
+            extent.x += std::abs(shape.bendAmount);
+            if (shape.type == VFX::VfxRenderShapeType::Ribbon || shape.type == VFX::VfxRenderShapeType::Ring)
+                extent.y *= taper;
+            if (std::abs(shape.twistDegrees) > 0.001f) {
+                const float r = std::sqrt(extent.x*extent.x + extent.z*extent.z);
+                extent.x = extent.z = r;
+            }
+            VectorInterval local{};
+            for (size_t component = 0; component < 3; ++component) {
+                const auto scale = AnimatedComponentInterval(emitter.scale.value, component, lifetime);
+                const auto interval = Multiply({-Component(extent,component)-Component(emitter.anchor,component),
+                    Component(extent,component)-Component(emitter.anchor,component)}, scale);
+                SetComponent(local.minimum,component,interval.minimum);
+                SetComponent(local.maximum,component,interval.maximum);
+            }
+            const auto& rotation = emitter.rotation.eulerDegrees;
+            const bool fixedRotation = rotation.mode == VFX::VfxAnimatedValueMode::Fixed &&
+                rotation.fixed.mode == VFX::VfxDistributionMode::Constant;
+            const bool fixedShape = shape.billboardMode == VFX::VfxBillboardMode::Fixed ||
+                shape.type >= VFX::VfxRenderShapeType::MeshBox;
+            if (fixedRotation && fixedShape) {
+                const auto euler = rotation.fixed.minimum * kDegreesToRadians;
+                const auto localRotation = MATH::Mat4::Rotate(MATH::Quat::FromEulerXYZ(euler.x,euler.y,euler.z));
+                return TransformInterval(transform.matrix * localRotation, local, true);
+            }
+            // 回転曲線/ビルボードのみ球で包む。静止した細長い光束を球へ
+            // 拡張してから再び箱へ拡張すると、取景距離が過大になる。
+            MATH::Vec3 maximum{};
+            for (size_t i=0;i<3;++i) SetComponent(maximum,i,
+                (std::max)(std::abs(Component(local.minimum,i)),std::abs(Component(local.maximum,i))));
+            const float radius=MATH::Length(maximum) * (std::max)({std::abs(transform.scale.x),std::abs(transform.scale.y),std::abs(transform.scale.z)});
+            return {{-radius,-radius,-radius},{radius,radius,radius}};
         }
 
         VectorInterval MovementInterval(
@@ -618,7 +639,7 @@ namespace HIKARI::EDITOR {
 
         for (size_t index = 0u; index < asset.emitters.size(); ++index) {
             const VFX::VfxEmitterData& emitter = asset.emitters[index];
-            if (emitter.kind == VFX::VfxLayerKind::Group) continue;
+            if (emitter.kind == VFX::VfxLayerKind::Group || emitter.kind == VFX::VfxLayerKind::Adjustment) continue;
             if (!emitterId.empty() && emitter.id != emitterId) continue;
             if (!emitter.basic.enabled ||
                 !ResolveTransform(
@@ -668,13 +689,9 @@ namespace HIKARI::EDITOR {
             bounds.minimum = bounds.minimum + animatedPosition.minimum;
             bounds.maximum = bounds.maximum + animatedPosition.maximum;
 
-            const float renderRadius = RenderRadius(
-                emitter, transform.scale, lifetime);
-            const MATH::Vec3 renderExtent{
-                renderRadius, renderRadius, renderRadius
-            };
-            bounds.minimum = bounds.minimum - renderExtent;
-            bounds.maximum = bounds.maximum + renderExtent;
+            const auto renderBounds = RenderInterval(emitter, transform, lifetime);
+            bounds.minimum = bounds.minimum + renderBounds.minimum;
+            bounds.maximum = bounds.maximum + renderBounds.maximum;
             Expand(combined, bounds, combinedInitialized);
         }
 

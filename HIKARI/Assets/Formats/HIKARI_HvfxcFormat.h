@@ -8,7 +8,7 @@
 
 namespace HIKARI::VFX {
 
-    inline constexpr uint32_t kHvfxcFormatVersion = 12u;
+    inline constexpr uint32_t kHvfxcFormatVersion = 23u;
     inline constexpr uint32_t kMaximumHvfxcPayloadBytes =
         64u * 1024u * 1024u;
 

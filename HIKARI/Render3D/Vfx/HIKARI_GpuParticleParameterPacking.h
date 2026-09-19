@@ -47,6 +47,29 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
         float w = 0.0f;
     };
 
+    // 形状（ジオメトリ）段だけが読む per-draw パラメータ。ルート定数の
+    // コスト上限が厳しいため、伸びる余地のあるバッファ側に置く。
+    struct alignas(16) GpuParticleShapeState {
+        GpuParticleFloat4 renderShapeParamsA{};
+        GpuParticleFloat4 renderUvParams{};
+        GpuParticleFloat4 renderAnchor{};
+        uint32_t renderUvMode = 0u;
+        uint32_t shapeParam0 = 0u;
+        uint32_t shapeParam1 = 0u;
+        uint32_t shapeParam2 = 0u;
+        // 長さ軸を持つ形状の変形。bend は無次元、twist はラジアン。
+        float bendAmount = 0.0f;
+        float twistRadians = 0.0f;
+        // 3=トーラ主半径, 4=トーラ副半径, 5=カプセル半径。
+        float shapeParam3 = 0.4f;
+        float shapeParam4 = 0.12f;
+        float shapeParam5 = 0.35f;
+        // 軸固定ビルボードが固定するローカル軸（0=X, 1=Y, 2=Z）。
+        float billboardAxis = 0.0f;
+        float shapeReserved1 = 0.0f;
+        float shapeReserved2 = 0.0f;
+    };
+
     struct alignas(16) GpuParticleEmitterParameters {
         std::array<
             GpuParticleFloat4,

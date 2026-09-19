@@ -65,6 +65,8 @@ namespace HIKARI::VFX {
         case VfxRenderShapeType::MeshCone: return "MeshCone";
         case VfxRenderShapeType::MeshHemisphere: return "MeshHemisphere";
         case VfxRenderShapeType::CrossPlane: return "CrossPlane";
+        case VfxRenderShapeType::MeshTorus: return "MeshTorus";
+        case VfxRenderShapeType::MeshCapsule: return "MeshCapsule";
         case VfxRenderShapeType::Sprite:
         default: return "Sprite";
         }
@@ -75,7 +77,38 @@ namespace HIKARI::VFX {
             ToString(VfxRenderShapeType::Ribbon), ToString(VfxRenderShapeType::Ring),
             ToString(VfxRenderShapeType::MeshBox), ToString(VfxRenderShapeType::MeshSphere),
             ToString(VfxRenderShapeType::MeshCylinder), ToString(VfxRenderShapeType::MeshCone),
-            ToString(VfxRenderShapeType::MeshHemisphere), ToString(VfxRenderShapeType::CrossPlane)};
+            ToString(VfxRenderShapeType::MeshHemisphere), ToString(VfxRenderShapeType::CrossPlane),
+            ToString(VfxRenderShapeType::MeshTorus), ToString(VfxRenderShapeType::MeshCapsule)};
+        return values;
+    }
+
+    std::string_view ToString(VfxShapeUvMode value) noexcept {
+        return value == VfxShapeUvMode::WorldLength ? "WorldLength" : "Parameter";
+    }
+
+    std::span<const std::string_view> GetVfxShapeUvModeChoices() noexcept {
+        static const std::array values{
+            ToString(VfxShapeUvMode::Parameter),
+            ToString(VfxShapeUvMode::WorldLength)};
+        return values;
+    }
+
+    std::span<const std::string_view> GetVfxBillboardModeChoices() noexcept {
+        static const std::array values{
+            ToString(VfxBillboardMode::RotatedBillboard),
+            ToString(VfxBillboardMode::FixedYAxis),
+            ToString(VfxBillboardMode::DirectionalBillboard),
+            ToString(VfxBillboardMode::Fixed),
+            ToString(VfxBillboardMode::CylindricalBillboard),
+            ToString(VfxBillboardMode::FaceCameraPosition)};
+        return values;
+    }
+
+    std::span<const std::string_view> GetVfxBillboardAxisChoices() noexcept {
+        static const std::array values{
+            ToString(VfxBillboardAxis::LocalX),
+            ToString(VfxBillboardAxis::LocalY),
+            ToString(VfxBillboardAxis::LocalZ)};
         return values;
     }
 
@@ -129,6 +162,10 @@ namespace HIKARI::VFX {
             return "FixedYAxis";
         case VfxBillboardMode::DirectionalBillboard:
             return "DirectionalBillboard";
+        case VfxBillboardMode::CylindricalBillboard:
+            return "CylindricalBillboard";
+        case VfxBillboardMode::FaceCameraPosition:
+            return "FaceCameraPosition";
         case VfxBillboardMode::Fixed:
         default:
             return "Fixed";
@@ -205,6 +242,8 @@ namespace HIKARI::VFX {
             return "ScreenImpulse";
         case VfxSpecialOutputType::SkinnedAfterimage:
             return "SkinnedAfterimage";
+        case VfxSpecialOutputType::Light:
+            return "Light";
         case VfxSpecialOutputType::WeaponPathDistortion:
         default:
             return "WeaponPathDistortion";
@@ -255,6 +294,18 @@ namespace HIKARI::VFX {
             { "MeshCone", VfxRenderShapeType::MeshCone },
             { "MeshHemisphere", VfxRenderShapeType::MeshHemisphere },
             { "CrossPlane", VfxRenderShapeType::CrossPlane },
+            { "MeshTorus", VfxRenderShapeType::MeshTorus },
+            { "MeshCapsule", VfxRenderShapeType::MeshCapsule },
+        }, outValue);
+    }
+
+    bool TryParseVfxShapeUvMode(
+        std::string_view text,
+        VfxShapeUvMode& outValue) noexcept {
+
+        return ParseEnum(text, {
+            { "Parameter", VfxShapeUvMode::Parameter },
+            { "WorldLength", VfxShapeUvMode::WorldLength },
         }, outValue);
     }
 
@@ -300,12 +351,39 @@ namespace HIKARI::VFX {
             { "FixedYAxis", VfxBillboardMode::FixedYAxis },
             { "DirectionalBillboard",
                 VfxBillboardMode::DirectionalBillboard },
+            { "CylindricalBillboard",
+                VfxBillboardMode::CylindricalBillboard },
+            { "FaceCameraPosition",
+                VfxBillboardMode::FaceCameraPosition },
             { "Fixed", VfxBillboardMode::Fixed },
             // VFX source v2 compatibility aliases. New saves always emit the
             // canonical Effekseer-aligned names above.
             { "CameraFacing",
                 VfxBillboardMode::RotatedBillboard },
             { "Vertical", VfxBillboardMode::FixedYAxis },
+        }, outValue);
+    }
+
+    std::string_view ToString(VfxBillboardAxis value) noexcept {
+        switch (value) {
+        case VfxBillboardAxis::LocalY:
+            return "LocalY";
+        case VfxBillboardAxis::LocalZ:
+            return "LocalZ";
+        case VfxBillboardAxis::LocalX:
+        default:
+            return "LocalX";
+        }
+    }
+
+    bool TryParseVfxBillboardAxis(
+        std::string_view text,
+        VfxBillboardAxis& outValue) noexcept {
+
+        return ParseEnum(text, {
+            { "LocalX", VfxBillboardAxis::LocalX },
+            { "LocalY", VfxBillboardAxis::LocalY },
+            { "LocalZ", VfxBillboardAxis::LocalZ },
         }, outValue);
     }
 
@@ -416,6 +494,7 @@ namespace HIKARI::VFX {
             { "ScreenImpulse", VfxSpecialOutputType::ScreenImpulse },
             { "SkinnedAfterimage",
                 VfxSpecialOutputType::SkinnedAfterimage },
+            { "Light", VfxSpecialOutputType::Light },
         }, outValue);
     }
 

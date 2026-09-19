@@ -69,15 +69,17 @@ namespace HIKARI::EDITOR {
     bool VfxEditorDocument::ApplyAsset(
         VFX::VfxAssetData asset,
         std::string& outMessage,
-        uint64_t mergeGroup) {
+        uint64_t mergeGroup,
+        VfxDocumentImpact impact) {
 
-        return ApplyState({ std::move(asset) }, outMessage, mergeGroup);
+        return ApplyState({ std::move(asset) }, outMessage, mergeGroup, impact);
     }
 
     bool VfxEditorDocument::ApplyState(
         DocumentState state,
         std::string& outMessage,
-        uint64_t mergeGroup) {
+        uint64_t mergeGroup,
+        VfxDocumentImpact impact) {
 
         if (!IsOpen()) {
             outMessage = "No VFX document is open";
@@ -97,7 +99,8 @@ namespace HIKARI::EDITOR {
         DocumentState before{ asset_ };
         asset_ = std::move(state.asset);
         displayName_ = asset_.name;
-        RecordApplied(std::move(before), mergeGroup);
+        lastImpact_ = impact;
+        RecordApplied(std::move(before), mergeGroup, impact);
         AdvanceRevision();
         outMessage = "VFX document updated";
         return true;
@@ -113,6 +116,7 @@ namespace HIKARI::EDITOR {
         }
         --historyCursor_;
         asset_ = history_[historyCursor_].before.asset;
+        lastImpact_ = history_[historyCursor_].impact;
         displayName_ = asset_.name;
         openMergeGroup_ = 0u;
         AdvanceRevision();
@@ -124,6 +128,7 @@ namespace HIKARI::EDITOR {
             return false;
         }
         asset_ = history_[historyCursor_].after.asset;
+        lastImpact_ = history_[historyCursor_].impact;
         ++historyCursor_;
         displayName_ = asset_.name;
         openMergeGroup_ = 0u;
@@ -194,7 +199,8 @@ namespace HIKARI::EDITOR {
 
     void VfxEditorDocument::RecordApplied(
         DocumentState before,
-        uint64_t mergeGroup) {
+        uint64_t mergeGroup,
+        VfxDocumentImpact impact) {
 
         if (historyCursor_ < history_.size()) {
             if (savedHistoryCursor_ &&
@@ -213,6 +219,7 @@ namespace HIKARI::EDITOR {
                 *savedHistoryCursor_ != historyCursor_);
         if (merge) {
             history_.back().after = { asset_ };
+            if (impact == VfxDocumentImpact::Runtime) history_.back().impact = impact;
             if (AreEquivalent(
                     history_.back().before.asset,
                     history_.back().after.asset)) {
@@ -225,13 +232,14 @@ namespace HIKARI::EDITOR {
         history_.push_back({
             std::move(before),
             { asset_ },
-            mergeGroup
+            mergeGroup, impact
         });
         historyCursor_ = history_.size();
         openMergeGroup_ = mergeGroup;
     }
 
     void VfxEditorDocument::ResetHistory(bool saved) noexcept {
+        lastImpact_ = VfxDocumentImpact::Runtime;
         history_.clear();
         historyCursor_ = 0u;
         savedHistoryCursor_ = saved

@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <string_view>
 
 #include "Assets/Vfx/HIKARI_VfxAssetData.h"
@@ -85,6 +86,13 @@ namespace HIKARI::VFX {
             const VfxProgram& program,
             std::string_view outputId) noexcept;
 
+        // VFX 再生側から毎フレーム差し替える画面波。ゲームプレイ由来の波と
+        // 同じウェーブ表を共有し、エフェクト側の年齢はエフェクト内時刻で
+        // 決まる（Tick で加算しない）。Tick 後に投稿し、投稿しないフレームでは消える。
+        void SubmitVfxScreenWaves(
+            std::span<const RENDER3D::COMBAT_VFX::PerfectGuardShockwaveFrame>
+                waves) noexcept;
+
         // Frame-local arbitration for full-screen action grading. Callers
         // submit every visible frame; an omitted frame clears the grade.
         bool SubmitActionCinematicGrade(
@@ -140,6 +148,11 @@ namespace HIKARI::VFX {
             const ActionBoostGradeRequest& current) noexcept;
 
         std::array<ActiveWave, kMaximumWaveCount> activeWaves_{};
+        // VFX 再生が毎フレーム差し替える画面波。ゲームプレイ側の
+        // activeWaves_ とは寿命の決め方が違うので別に保持する。
+        std::array<RENDER3D::COMBAT_VFX::PerfectGuardShockwaveFrame,
+            kMaximumWaveCount> vfxWaves_{};
+        size_t vfxWaveCount_ = 0u;
         std::array<DedupRecord, kDedupRecordCount> dedupRecords_{};
         size_t nextDedupRecord_ = 0u;
         uint64_t frameIndex_ = 0u;

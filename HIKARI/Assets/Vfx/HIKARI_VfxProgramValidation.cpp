@@ -1,3 +1,5 @@
+#include "Assets/Vfx/HIKARI_VfxBudgets.h"
+#include "Render3D/Vfx/HIKARI_ParticleCapacity.h"
 #include "Render3D/Material/Program/HIKARI_MaterialExpressionProgram.h"
 #include "Assets/HIKARI_AssetTypes.h"
 #include "Render3D/Material/HIKARI_GpuMaterialTypes.h"
@@ -261,21 +263,35 @@ namespace HIKARI::VFX {
             if (!emitter.animationTiming.IsValid() || emitter.layerCurves.size()>kMaxVfxParameterTracks+13) { outError="Layer curve budget exceeded"; return false; }
             if(!emitter.render.animatedParameters.empty()) {outError="Compiled assets cannot contain per-frame parameter values";return false;}
             RENDER3D::MATERIAL::MaterialExpressionRuntimeProgram expression;
-            if(std::any_of(emitter.layerCurves.begin(),emitter.layerCurves.end(),[](const auto& c){return c.channel>=VfxLayerChannel::MaterialParameter;})) {
+            if(emitter.kind != VfxLayerKind::Adjustment && std::any_of(emitter.layerCurves.begin(),emitter.layerCurves.end(),[](const auto& c){return c.channel>=VfxLayerChannel::MaterialParameter;})) {
                 if(!emitter.render.effectMaterial || !RENDER3D::MATERIAL::BuildMaterialExpressionRuntimeProgram(emitter.render.effectMaterial->compileResult.program,expression,outError)) return false;
+            }
+            if (emitter.compositeEffects.size() > kMaximumVfxEffectsPerLayer ||
+                (emitter.kind != VfxLayerKind::Adjustment && !emitter.compositeEffects.empty())) {
+                outError = "Invalid adjustment effect list"; return false;
+            }
+            for (const auto& effect : emitter.compositeEffects) {
+                if (!IsCompositeMaterialEffect(effect.kind) || effect.id.empty() || !IsFinite(effect.parameters) ||
+                    !IsFinite(effect.parameters2) || !IsFinite(effect.colorA) || !IsFinite(effect.colorB)) {
+                    outError = "Invalid adjustment effect"; return false;
+                }
             }
             std::unordered_set<uint64_t> layerChannels;
             for (const auto& curve:emitter.layerCurves) {
                 const auto channel=static_cast<uint32_t>(curve.channel);
+                if (emitter.kind == VfxLayerKind::Adjustment && channel >= static_cast<uint32_t>(VfxLayerChannel::MaterialParameter) &&
+                    (curve.channel != VfxLayerChannel::MaterialParameter || curve.materialSlot >= emitter.compositeEffects.size() * 8u)) {
+                    outError = "Invalid adjustment parameter slot"; return false;
+                }
                 const uint64_t identity=(uint64_t(channel)<<32)|curve.materialSlot;
-                if(channel>=static_cast<uint32_t>(VfxLayerChannel::MaterialParameter) &&
+                if(emitter.kind != VfxLayerKind::Adjustment && channel>=static_cast<uint32_t>(VfxLayerChannel::MaterialParameter) &&
                     std::none_of(expression.parameterValueSlots.begin(),expression.parameterValueSlots.end(),[&](const auto& slot){return slot.second==curve.materialSlot;})) {
                     outError="Animated parameter does not reference a material value slot";return false;
                 }
                 if (!std::isfinite(curve.minimum) || !std::isfinite(curve.maximum) || curve.minimum>curve.maximum || channel>static_cast<uint32_t>(VfxLayerChannel::MaterialUvOffset) ||
                     (emitter.kind==VfxLayerKind::Particles && channel<13) ||
                     curve.materialSlot>=RENDER3D::MATERIAL::kGpuMaterialProgramParameterSlotCount ||
-                    (channel>=static_cast<uint32_t>(VfxLayerChannel::MaterialParameter) && !emitter.render.effectMaterial) ||
+                    (emitter.kind != VfxLayerKind::Adjustment && channel>=static_cast<uint32_t>(VfxLayerChannel::MaterialParameter) && !emitter.render.effectMaterial) ||
                     static_cast<uint32_t>(curve.interpolation)>static_cast<uint32_t>(ParticleCurveInterpolation::Step) ||
                     !layerChannels.emplace(identity).second || curve.keys.empty() || curve.keys.size()>kMaxVfxLayerCurveKeys) {
                     outError="Invalid layer animation channel"; return false;
@@ -298,7 +314,7 @@ namespace HIKARI::VFX {
                 !IsValidVfxHistory(emitter.history) ||
                 (emitter.history.mode != VfxHistoryMode::None && (emitter.kind != VfxLayerKind::Shape ||
                     emitter.simulation.capacity != emitter.history.samples)) ||
-                static_cast<uint8_t>(emitter.kind) > static_cast<uint8_t>(VfxLayerKind::Group) ||
+                static_cast<uint8_t>(emitter.kind) > static_cast<uint8_t>(VfxLayerKind::Adjustment) ||
                 emitter.sourceEmitterId.empty() ||
                 emitter.sourceEmitterId.size() >
                     kMaximumVfxProgramStringBytes ||
@@ -385,15 +401,21 @@ namespace HIKARI::VFX {
                  emitter.render.shape != ParticleRenderShape::MeshCylinder &&
                  emitter.render.shape != ParticleRenderShape::MeshCone &&
                  emitter.render.shape != ParticleRenderShape::MeshHemisphere &&
-                 emitter.render.shape != ParticleRenderShape::CrossPlane) ||
+                 emitter.render.shape != ParticleRenderShape::CrossPlane &&
+                 emitter.render.shape != ParticleRenderShape::MeshTorus &&
+                 emitter.render.shape != ParticleRenderShape::MeshCapsule) ||
                 (emitter.render.billboardMode !=
                     ParticleBillboardMode::RotatedBillboard &&
                  emitter.render.billboardMode !=
                     ParticleBillboardMode::FixedYAxis &&
                  emitter.render.billboardMode !=
-                    ParticleBillboardMode::DirectionalBillboard &&
+                     ParticleBillboardMode::DirectionalBillboard &&
                  emitter.render.billboardMode !=
-                    ParticleBillboardMode::Fixed) ||
+                     ParticleBillboardMode::CylindricalBillboard &&
+                 emitter.render.billboardMode !=
+                     ParticleBillboardMode::FaceCameraPosition &&
+                 emitter.render.billboardMode !=
+                     ParticleBillboardMode::Fixed) ||
                 (emitter.render.depthMode !=
                     ParticleDepthMode::WorldOccluded &&
                  emitter.render.depthMode !=
@@ -428,6 +450,18 @@ namespace HIKARI::VFX {
                     emitter.render.flipbookFramesPerSecond) ||
                 emitter.render.flipbookFramesPerSecond < 0.0f ||
                 emitter.render.flipbookFramesPerSecond > 240.0f ||
+                emitter.render.uvMode > 1u ||
+                (emitter.render.uvSwapAxes != 0u &&
+                 emitter.render.uvSwapAxes != 1u) ||
+                !IsFinite(emitter.render.uvTileLength) ||
+                !IsFinite(emitter.render.uvTilingU) ||
+                !IsFinite(emitter.render.uvTilingV) ||
+                emitter.render.uvTilingV <= 0.0f ||
+                emitter.render.uvTilingU <= 0.0f ||
+                (emitter.render.uvMode == 1u &&
+                 emitter.render.uvTileLength <= 0.0f) ||
+                !IsFinite(emitter.render.uvRotationRadians) ||
+                !IsFinite(emitter.render.anchor) ||
                 (!emitter.render.colorTextureAssetGuid.empty() &&
                  (emitter.render.colorTextureAssetGuid.size() >
                         kMaximumVfxProgramStringBytes ||
@@ -443,7 +477,8 @@ namespace HIKARI::VFX {
                 outError = "VFX program emitter table is invalid";
                 return false;
             }
-            totalCapacity += simulation.capacity;
+            if (emitter.kind != VfxLayerKind::Group && emitter.kind != VfxLayerKind::Adjustment)
+                totalCapacity += AlignParticleCapacity(simulation.capacity);
 
             if (!IsFinite(emitter.startDelay) ||
                 !IsFinite(emitter.activeDuration) ||
@@ -532,7 +567,8 @@ namespace HIKARI::VFX {
                     (output.type !=
                         VfxSpecialOutputType::WeaponPathDistortion &&
                      output.type != VfxSpecialOutputType::ScreenImpulse &&
-                     output.type != VfxSpecialOutputType::SkinnedAfterimage)) {
+                     output.type != VfxSpecialOutputType::SkinnedAfterimage &&
+                     output.type != VfxSpecialOutputType::Light)) {
                     outError = "VFX program special output table is invalid";
                     return false;
                 }
@@ -677,15 +713,21 @@ namespace HIKARI::VFX {
             }
         }
         if (totalCapacity > kGpuParticlePoolCapacity) {
-            outError = "VFX program particle capacity exceeds the pool";
+            outError = "VFX program aligned particle reservations exceed the pool";
             return false;
         }
 
+        const bool hasComposition = std::any_of(program.emitters.begin(), program.emitters.end(),
+            [](const auto& emitter) { return emitter.kind == VfxLayerKind::Adjustment; });
         std::unordered_set<uint32_t> visited{};
         for (uint32_t emitterIndex = 0u;
              emitterIndex < program.emitters.size();
              ++emitterIndex) {
             visited.clear();
+            if (hasComposition && !program.emitters[emitterIndex].render.meshAssetGuid.empty()) {
+                outError = "VFX composition does not support model output";
+                return false;
+            }
             uint32_t current = emitterIndex;
             while (current != kInvalidVfxProgramIndex) {
                 if (current >= program.emitters.size() ||
@@ -694,8 +736,12 @@ namespace HIKARI::VFX {
                         "VFX program emitter hierarchy is invalid";
                     return false;
                 }
-                current =
-                    program.emitters[current].parentEmitterIndex;
+                current = program.emitters[current].parentEmitterIndex;
+                if ((hasComposition && visited.size() > 8u) ||
+                    (current < program.emitters.size() && program.emitters[current].kind == VfxLayerKind::Adjustment)) {
+                    outError = "VFX composition hierarchy exceeds its scope limit or parents under an adjustment";
+                    return false;
+                }
             }
         }
 

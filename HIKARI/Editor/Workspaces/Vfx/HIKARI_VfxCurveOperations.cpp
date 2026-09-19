@@ -68,13 +68,60 @@ namespace HIKARI::EDITOR {
         registry.Register({"vfx.effect.add", "Append a reusable material effect to a layer", "vfx",
             {Parameter("layerId", EditorOperationParameterType::String, true, "Stable layer ID"),
              Parameter("kind", EditorOperationParameterType::String, true,
-                "UvFlow, UvDistortion, Gradient, Fade, Wipe, Dissolve, Emission, Fresnel")},
+                MaterialEffectKindList())},
             [&controller](const nlohmann::json& p) {
                 MaterialEffectKind kind; std::string message;
                 if (!ParseMaterialEffectKind(p.at("kind").get<std::string>(), kind))
                     return Failure("VFX_UNKNOWN_EFFECT", "Unknown effect kind");
                 return controller.AddLayerEffect(p.at("layerId").get<std::string>(), kind, message)
                     ? Success(message, ContextData(controller)) : Failure("VFX_EFFECT_REJECTED", message);
+            }});
+        registry.Register({"vfx.effect.color_stop.add",
+            "Add a stop to a Gradient effect's multi-stop ramp", "vfx",
+            {Parameter("layerId", EditorOperationParameterType::String, true, "Stable layer ID"),
+             Parameter("effectId", EditorOperationParameterType::String, true, "Stable Gradient effect ID")},
+            [&controller](const nlohmann::json& p) {
+                std::string id; std::string message;
+                return controller.AddLayerEffectColorStop(
+                    p.at("layerId").get<std::string>(),
+                    p.at("effectId").get<std::string>(), id, message)
+                    ? Success(message, ContextData(controller, id))
+                    : Failure("VFX_EFFECT_COLOR_STOP_REJECTED", message);
+            }});
+        registry.Register({"vfx.effect.color_stop.set",
+            "Set a Gradient effect stop's time and color", "vfx",
+            {Parameter("layerId", EditorOperationParameterType::String, true, "Stable layer ID"),
+             Parameter("effectId", EditorOperationParameterType::String, true, "Stable Gradient effect ID"),
+             Parameter("stopId", EditorOperationParameterType::String, true, "Stable gradient stop ID"),
+             Parameter("time", EditorOperationParameterType::Float, true, "Normalized time 0..1"),
+             Parameter("color", EditorOperationParameterType::Json, true,
+                "Stop color as [r,g,b,a]")},
+            [&controller](const nlohmann::json& p) {
+                std::string message;
+                return controller.SetLayerEffectColorStop(
+                    p.at("layerId").get<std::string>(),
+                    p.at("effectId").get<std::string>(),
+                    p.at("stopId").get<std::string>(),
+                    p.at("time").get<float>(),
+                    MATH::Vec4{p.at("color")[0].get<float>(), p.at("color")[1].get<float>(),
+                               p.at("color")[2].get<float>(), p.at("color")[3].get<float>()},
+                    message)
+                    ? Success(message, ContextData(controller))
+                    : Failure("VFX_EFFECT_COLOR_STOP_REJECTED", message);
+            }});
+        registry.Register({"vfx.effect.color_stop.remove",
+            "Remove a stop from a Gradient effect's multi-stop ramp", "vfx",
+            {Parameter("layerId", EditorOperationParameterType::String, true, "Stable layer ID"),
+             Parameter("effectId", EditorOperationParameterType::String, true, "Stable Gradient effect ID"),
+             Parameter("stopId", EditorOperationParameterType::String, true, "Stable gradient stop ID")},
+            [&controller](const nlohmann::json& p) {
+                std::string message;
+                return controller.RemoveLayerEffectColorStop(
+                    p.at("layerId").get<std::string>(),
+                    p.at("effectId").get<std::string>(),
+                    p.at("stopId").get<std::string>(), message)
+                    ? Success(message, ContextData(controller))
+                    : Failure("VFX_EFFECT_COLOR_STOP_REJECTED", message);
             }});
         registry.Register({"vfx.effect.remove", "Remove a layer material effect", "vfx",
             {Parameter("layerId", EditorOperationParameterType::String, true, "Stable layer ID"),

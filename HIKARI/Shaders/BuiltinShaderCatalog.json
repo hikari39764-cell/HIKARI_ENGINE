@@ -758,6 +758,40 @@
       }
     },
     {
+      "assetGuid": "5440e04e83a756ce9391b34a41f3cdc2",
+      "programId": "HIKARI.EngineShader.Post_VfxCompositionPS",
+      "source": "Post_VfxCompositionPS.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Render3D.Vfx",
+      "group": "",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [],
+      "entries": [
+        {
+          "id": "Main",
+          "stage": "Pixel",
+          "entry": "main",
+          "profile": "ps_6_0"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.PostEffect.Common",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
+        "rootLayoutId": "HIKARI.PostQuad.Root",
+        "rootLayoutVersion": 2,
+        "rootLayoutHash": "7eeba21bdb7d081bf856331d342b65bc573df2808a5112033ed9daac643e9d94",
+        "requiredCaps": {
+          "minimumShaderModel": 60,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 0
+        }
+      }
+    },
+    {
       "assetGuid": "e318f2a94c6d7b05a1f843e9c2705d6b",
       "programId": "HIKARI.EngineShader.Post_WHITEBLACK",
       "source": "Post_WHITEBLACK.hlsl",
@@ -2313,8 +2347,8 @@
         "engineInterfaceVersion": 1,
         "engineInterfaceHash": "149db821112434114f8dacb1850eedf4716872a72114f838f9dc0c916cc68ad3",
         "rootLayoutId": "HIKARI.RenderGeometry.ParticleDraw.Root",
-        "rootLayoutVersion": 3,
-        "rootLayoutHash": "a3e20724b723eb71fc1e9afc0de33188d7f33fe184348827c24d82f1378ac14b",
+        "rootLayoutVersion": 5,
+        "rootLayoutHash": "4b67f7dd418e45869c1a14ee014ae01bb356d20dd9d05043a80ea4c1c0e3a134",
         "requiredCaps": {
           "minimumShaderModel": 65,
           "minimumRootSignatureVersion": 10,
@@ -2353,8 +2387,8 @@
         "engineInterfaceVersion": 1,
         "engineInterfaceHash": "149db821112434114f8dacb1850eedf4716872a72114f838f9dc0c916cc68ad3",
         "rootLayoutId": "HIKARI.RenderGeometry.ParticleDraw.Root",
-        "rootLayoutVersion": 3,
-        "rootLayoutHash": "a3e20724b723eb71fc1e9afc0de33188d7f33fe184348827c24d82f1378ac14b",
+        "rootLayoutVersion": 5,
+        "rootLayoutHash": "4b67f7dd418e45869c1a14ee014ae01bb356d20dd9d05043a80ea4c1c0e3a134",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,

@@ -100,6 +100,102 @@ namespace HIKARI::VFX::PLAYBACK {
                 local.scale });
     }
 
+    // 接続ターゲット: レイヤーの幾何を「原点 → 参照点」の区間へ張る。
+    // lengthAxisLocal は幾何の長さ軸（Look At Line と同じ軸）。
+    // 戻り値は張った区間長。0 のときは何もしなかったことを示す。
+    inline float ApplyConnectTargetTransform(
+        VfxWorldTransform& inOut,
+        const MATH::Vec3& targetWorldPosition,
+        const MATH::Vec3& lengthAxisLocal,
+        float pivot,
+        float lengthScale,
+        float startOffset,
+        float endOffset,
+        bool orient,
+        bool stretch) noexcept {
+
+        const MATH::Vec3 toTarget = targetWorldPosition - inOut.position;
+        const float distance = MATH::Length(toTarget);
+        if (!(distance > 1.0e-5f)) {
+            return 0.0f;
+        }
+        const MATH::Vec3 direction{
+            toTarget.x / distance, toTarget.y / distance, toTarget.z / distance };
+        const float insetStart = (std::max)(startOffset, 0.0f);
+        const float insetEnd = (std::max)(endOffset, 0.0f);
+        const float available = (std::max)(distance - insetStart - insetEnd, 0.0f);
+        const float length = available * (std::max)(lengthScale, 0.0f);
+        if (!(length > 1.0e-5f)) {
+            return 0.0f;
+        }
+        const MATH::Vec3 spanStart{
+            inOut.position.x + direction.x * insetStart,
+            inOut.position.y + direction.y * insetStart,
+            inOut.position.z + direction.z * insetStart };
+        const float pivotClamped = std::clamp(pivot, 0.0f, 1.0f);
+
+        if (orient) {
+            // ローカル長さ軸を direction へ写す基底を作り、行列から回転を
+            // 取り出す。軸の取り違えは契約テストが検出する。
+            const MATH::Vec3 axisX = MATH::Normalize(lengthAxisLocal);
+            const MATH::Vec3 helper =
+                std::abs(direction.y) < 0.9f
+                    ? MATH::Vec3{ 0.0f, 1.0f, 0.0f }
+                    : MATH::Vec3{ 1.0f, 0.0f, 0.0f };
+            const MATH::Vec3 axisZ = MATH::Normalize(MATH::Cross(helper, direction));
+            const MATH::Vec3 axisY = MATH::Cross(axisZ, direction);
+            // ローカル X→direction の回転。長さ軸が X 以外なら、その軸を
+            // X へ寄せる固定回転を先に掛ける。
+            MATH::Mat4 basis{};
+            basis.m[0][0] = direction.x; basis.m[0][1] = direction.y; basis.m[0][2] = direction.z;
+            basis.m[1][0] = axisY.x; basis.m[1][1] = axisY.y; basis.m[1][2] = axisY.z;
+            basis.m[2][0] = axisZ.x; basis.m[2][1] = axisZ.y; basis.m[2][2] = axisZ.z;
+            basis.m[3][3] = 1.0f;
+            MATH::Vec3 resolvedPosition{};
+            MATH::Quat resolvedRotation = MATH::Quat::Identity();
+            MATH::Vec3 resolvedScale{ 1.0f, 1.0f, 1.0f };
+            if (MATH::DecomposeTRS(basis, resolvedPosition, resolvedRotation, resolvedScale)) {
+                const MATH::Vec4 alignedLocal{ axisX.x, axisX.y, axisX.z, 0.0f };
+                const MATH::Vec4 alignedWorld =
+                    MATH::Mat4::Rotate(resolvedRotation).TransformPoint(alignedLocal);
+                const MATH::Vec3 aligned =
+                    MATH::Normalize(MATH::Vec3{ alignedWorld.x, alignedWorld.y, alignedWorld.z });
+                if (MATH::Dot(aligned, direction) < 0.999f) {
+                    // X 以外の長さ軸: その軸を X へ寄せてから同じ回転を掛ける。
+                    MATH::Quat axisFix = MATH::Quat::Identity();
+                    if (std::abs(axisX.y) > 0.5f) {
+                        axisFix = MATH::Quat::FromEulerXYZ(0.0f, 0.0f, -1.57079632679f);
+                    } else if (std::abs(axisX.z) > 0.5f) {
+                        axisFix = MATH::Quat::FromEulerXYZ(0.0f, 1.57079632679f, 0.0f);
+                    }
+                    resolvedRotation = MATH::NormalizeQ(
+                        MATH::Quat{
+                            resolvedRotation.x * axisFix.w + resolvedRotation.w * axisFix.x +
+                                resolvedRotation.y * axisFix.z - resolvedRotation.z * axisFix.y,
+                            resolvedRotation.y * axisFix.w + resolvedRotation.w * axisFix.y +
+                                resolvedRotation.z * axisFix.x - resolvedRotation.x * axisFix.z,
+                            resolvedRotation.z * axisFix.w + resolvedRotation.w * axisFix.z +
+                                resolvedRotation.x * axisFix.y - resolvedRotation.y * axisFix.x,
+                            resolvedRotation.w * axisFix.w - resolvedRotation.x * axisFix.x -
+                                resolvedRotation.y * axisFix.y - resolvedRotation.z * axisFix.z });
+                }
+                inOut.rotation = resolvedRotation;
+            }
+        }
+        inOut.position = {
+            spanStart.x + direction.x * (length * pivotClamped),
+            spanStart.y + direction.y * (length * pivotClamped),
+            spanStart.z + direction.z * (length * pivotClamped) };
+        if (stretch) {
+            // 長さ軸の成分だけを区間長へ合わせる。他の 2 軸は作者の指定を保つ。
+            const MATH::Vec3 axis = MATH::Normalize(lengthAxisLocal);
+            if (std::abs(axis.x) > 0.5f) inOut.scale.x = length;
+            else if (std::abs(axis.y) > 0.5f) inOut.scale.y = length;
+            else inOut.scale.z = length;
+        }
+        return length;
+    }
+
     inline VfxWorldTransform SelectFollowedTransform(
         const VfxWorldTransform& previous,
         const VfxWorldTransform& current,

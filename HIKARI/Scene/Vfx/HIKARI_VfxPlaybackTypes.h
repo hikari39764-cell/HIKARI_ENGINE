@@ -83,4 +83,36 @@ namespace HIKARI::VFX {
         std::vector<VfxPlaybackDiagnostic> diagnostics{};
     };
 
+    // Light 特殊出力のサンプル。描画側はこの値だけで SceneLightProvider を
+    // 組み立てられるようにし、再生側の内部状態へ触らせない。
+    struct VfxLayerLightSample {
+        VfxPlaybackHandle handle{};
+        uint32_t emitterIndex = 0u;
+        MATH::Vec3 position{ 0.0f, 0.0f, 0.0f };
+        MATH::Vec4 color{ 1.0f, 1.0f, 1.0f, 1.0f };
+        float intensity = 0.0f;
+        float range = 0.0f;
+        float sourceRadius = 0.0f;
+        float flickerFrequency = 0.0f;
+        float flickerAmplitude = 0.0f;
+        // 点滅の位相に使うレイヤー内時刻。wall clock では停止やシークで
+        // ちらつきが飛ぶため、再生側の時間をそのまま渡す。
+        float ageSeconds = 0.0f;
+        uint32_t priority = 0u;
+        bool castsShadows = false;
+        uint32_t outputIndex = 0u;
+    };
+
+    // Mesh 出力レイヤーのサンプル。描画側はこの値だけで scene render cache の
+    // 一時オブジェクトを組み立てられる。
+    struct VfxLayerMeshSample {
+        uint64_t playbackNamespace = 0u;
+        VfxPlaybackHandle handle{};
+        uint32_t emitterIndex = 0u;
+        std::string meshAssetGuid{};
+        std::string materialAssetGuid{};
+        VfxWorldTransform worldTransform{};
+        uint32_t flags = 0u;
+    };
+
 } // namespace HIKARI::VFX

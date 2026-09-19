@@ -808,10 +808,13 @@ void SpawnCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     else if (shape == 5u)
     {
         float4 shapeCircle = LoadEmitterValue(gEmitterIndex, 13u);
+        // 放出角度範囲。0 以下 (古い資産) は従来どおり全周。
+        float arcDegrees = shapeCircle.w > 0.0f ? min(shapeCircle.w, 360.0f)
+                                                : 360.0f;
         float angle = RandomForProperty(
             particleSeed, 0u,
             HIKARI_PARTICLE_RANDOM_SHAPE_DIRECTION_ANGLE) *
-            6.28318530718f;
+            radians(arcDegrees);
         float innerRadius = clamp(shapeCircle.x, 0.0f, shapeRadius);
         float distance = shapeRadius;
         if (asuint(shapeCircle.y) == 0u && shapeRadius > innerRadius)

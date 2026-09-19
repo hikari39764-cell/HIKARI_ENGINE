@@ -623,7 +623,7 @@ namespace HIKARI::EDITOR {
 
         registry.Register({
             "vfx.emitter.add",
-            "Add a Shape, Particles or Group layer to the composition",
+            "Add a Shape, Particles, Group or Adjustment layer to the composition",
             "vfx",
             {
                 Parameter(
@@ -632,7 +632,7 @@ namespace HIKARI::EDITOR {
                     false,
                     "Optional stable parent emitter ID"),
                 Parameter("kind", EditorOperationParameterType::String, false,
-                    "Shape (default), Particles, or Group. Shapes animate over the layer time window."),
+                    "Shape (default), Particles, Group, or Adjustment. Adjustment effects process lower siblings inside the same group."),
                 Parameter(
                     "name",
                     EditorOperationParameterType::String,
@@ -655,10 +655,11 @@ namespace HIKARI::EDITOR {
                 std::string id{};
                 std::string message{};
                 const auto kindName = parameters.value("kind", "Shape");
-                if (kindName != "Shape" && kindName != "Particles" && kindName != "Group")
-                    return Failure("VFX_INVALID_LAYER_KIND", "Expected Shape, Particles or Group");
+                if (kindName != "Shape" && kindName != "Particles" && kindName != "Group" && kindName != "Adjustment")
+                    return Failure("VFX_INVALID_LAYER_KIND", "Expected Shape, Particles, Group or Adjustment");
                 const auto kind = kindName == "Shape" ? VFX::VfxLayerKind::Shape :
-                    kindName == "Group" ? VFX::VfxLayerKind::Group : VFX::VfxLayerKind::Particles;
+                    kindName == "Group" ? VFX::VfxLayerKind::Group :
+                    kindName == "Adjustment" ? VFX::VfxLayerKind::Adjustment : VFX::VfxLayerKind::Particles;
                 if (!controller.AddEmitter(
                         parameters.value("parentEmitterId", ""),
                         parameters.value("name", ""),

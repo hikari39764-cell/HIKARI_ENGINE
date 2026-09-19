@@ -296,6 +296,7 @@ namespace HIKARI::MESHRENDERER {
             &gMeshRendererState.editorInteractive.waterSurfaceGpuFrameBuffer;
 
         MeshPassResources passResources = settings.passResources;
+        passResources.compositionTarget = settings.targetAccess;
         passResources.fallbackAoTextureHandle =
             gMeshRendererState.fallbackTextureHandle;
         const bool stylizedSurfacePassReady =

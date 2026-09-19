@@ -23,6 +23,8 @@ namespace EDITOR {
         Asset,
     };
 
+    enum class VfxDocumentImpact : uint8_t { Metadata, Runtime };
+
     class VfxEditorDocument final {
     public:
         void NewAsset(std::string name = "New VFX");
@@ -44,7 +46,8 @@ namespace EDITOR {
         bool ApplyAsset(
             VFX::VfxAssetData asset,
             std::string& outMessage,
-            uint64_t mergeGroup = 0u);
+            uint64_t mergeGroup = 0u,
+            VfxDocumentImpact impact = VfxDocumentImpact::Runtime);
         void SealMerge() noexcept;
         bool Undo();
         bool Redo();
@@ -55,6 +58,7 @@ namespace EDITOR {
         const std::filesystem::path& GetSourcePath() const noexcept;
         const std::string& GetDisplayName() const noexcept;
         uint64_t GetRevision() const noexcept;
+        VfxDocumentImpact GetLastImpact() const noexcept { return lastImpact_; }
         VfxEditorDocumentSource GetSource() const noexcept;
 
         bool IsOpen() const noexcept;
@@ -70,6 +74,7 @@ namespace EDITOR {
             DocumentState before{};
             DocumentState after{};
             uint64_t mergeGroup = 0u;
+            VfxDocumentImpact impact = VfxDocumentImpact::Runtime;
         };
 
         static bool AreEquivalent(
@@ -78,10 +83,12 @@ namespace EDITOR {
         bool ApplyState(
             DocumentState state,
             std::string& outMessage,
-            uint64_t mergeGroup);
+            uint64_t mergeGroup,
+            VfxDocumentImpact impact = VfxDocumentImpact::Runtime);
         void RecordApplied(
             DocumentState before,
-            uint64_t mergeGroup);
+            uint64_t mergeGroup,
+            VfxDocumentImpact impact = VfxDocumentImpact::Runtime);
         void ResetHistory(bool saved) noexcept;
         void AdvanceRevision() noexcept;
 
@@ -96,6 +103,7 @@ namespace EDITOR {
         std::optional<size_t> savedHistoryCursor_{};
         uint64_t openMergeGroup_ = 0u;
         uint64_t revision_ = 1u;
+        VfxDocumentImpact lastImpact_ = VfxDocumentImpact::Runtime;
     };
 
 } // namespace EDITOR

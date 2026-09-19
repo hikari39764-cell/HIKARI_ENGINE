@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
+#include "Scene/Vfx/HIKARI_VfxScreenOutput.h"
 #include "Scene/Vfx/HIKARI_VfxPlaybackTypes.h"
 
 namespace HIKARI::VFX {
@@ -88,7 +89,11 @@ namespace HIKARI::VFX {
 
         void Update(uint64_t frameIndex, float deltaSeconds);
         const RENDER3D::PARTICLES::ParticleRenderInput&
-            GetRenderInput() const noexcept;
+        GetRenderInput() const noexcept;
+        // 現在の描画入力から「時間を進めない」スナップショットを配信する。
+        // 一時停止中のプレビューが同じ入力を毎フレーム再描画しても粒子が
+        // 動き続けないようにするため (エディタのちらつき対策)。
+        bool PublishFrozenRenderInput() noexcept;
         bool AcknowledgeRenderInput(
             RENDER3D::PARTICLES::ParticleRenderDeliveryToken token)
             noexcept;
@@ -101,6 +106,16 @@ namespace HIKARI::VFX {
         size_t GetActiveInstanceCount() const noexcept;
         const VfxPlaybackAdmissionStats&
             GetAdmissionStats() const noexcept;
+        // 有効な Light 特殊出力を world 空間のサンプルとして書き出す。
+        // 呼び出し側はそのフレームの照明セットへ渡すだけで、GPU 資源も
+        // ライフタイムも持たない。
+        size_t CollectLightOutputs(
+            std::vector<VfxLayerLightSample>& outSamples) const;
+        // 有効な ScreenImpulse 特殊出力を画面波バッチとして書き出す。
+        size_t CollectScreenWaves(VfxScreenWaveBatch& outBatch) const;
+        // 有効な Mesh 出力レイヤーを world サンプルとして書き出す。
+        size_t CollectMeshLayers(
+            std::vector<VfxLayerMeshSample>& outSamples) const;
         void Reset();
 
     private:
@@ -115,6 +130,7 @@ namespace HIKARI::VFX {
         Instance* Find(VfxPlaybackHandle handle) noexcept;
         const Instance* Find(VfxPlaybackHandle handle) const noexcept;
         void RetireInstanceAt(size_t index);
+        void ProjectComposition(const Instance& instance, float submittedAge);
         void RetireEmitterKeys(const Instance& instance);
         void ResetInstanceSimulation(Instance& instance) noexcept;
         size_t AppendInstanceStep(
@@ -128,6 +144,10 @@ namespace HIKARI::VFX {
             const std::vector<VfxParameterOverride>& parameters,
             std::vector<VfxPlaybackDiagnostic>* outDiagnostics);
         void PublishRenderInputDelivery() noexcept;
+        // 接続ターゲットの変換を適用する。全レイヤーの変換が確定した後に
+        // 一度だけ呼ぶ。
+        void ApplyConnectTarget(
+            Instance& instance, uint32_t emitterIndex) const noexcept;
 
         uint64_t playbackNamespace_ = 0u;
         VfxProgramResolver resolver_{};

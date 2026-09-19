@@ -352,6 +352,9 @@ namespace HIKARI::VFX {
         hasTicked_ = true;
         lastTickFrame_ = frameIndex;
         frameIndex_ = frameIndex;
+        // Render 側は Tick 後に今フレームの波を投稿する。投稿が無ければ
+        // 前フレームの歪みを保持しない（サービス消失や非表示にも対応）。
+        vfxWaveCount_ = 0u;
         if (!gradeSubmitted_ || gradeRequest_.frameIndex != frameIndex) {
             gradeRequest_ = {};
             gradeSubmitted_ = false;
@@ -384,7 +387,20 @@ namespace HIKARI::VFX {
         for (const ActiveWave& wave : activeWaves_) {
             count += wave.active ? 1u : 0u;
         }
-        return count;
+        return count + vfxWaveCount_;
+    }
+
+    void ActionPostReactionService::SubmitVfxScreenWaves(
+        std::span<const RENDER3D::COMBAT_VFX::PerfectGuardShockwaveFrame>
+            waves) noexcept {
+
+        const size_t count = (std::min)(
+            waves.size(), vfxWaves_.size());
+        for (size_t index = 0u; index < count; ++index) {
+            vfxWaves_[index] = waves[index];
+        }
+        vfxWaveCount_ = count;
+        RebuildFrameSource();
     }
 
     void ActionPostReactionService::RebuildFrameSource() noexcept {
@@ -396,6 +412,12 @@ namespace HIKARI::VFX {
                 continue;
             }
             frameSource_.waves[frameSource_.count++] = active.frame;
+        }
+        // VFX 由来の波は残りの枠へ入れる。フレーム内で差し替えられた値を
+        // そのまま渡し、サービス側では年齢を進めない。
+        for (size_t index = 0u; index < vfxWaveCount_; ++index) {
+            if (frameSource_.count >= frameSource_.waves.size()) break;
+            frameSource_.waves[frameSource_.count++] = vfxWaves_[index];
         }
         if (gradeSubmitted_ && gradeRequest_.frameIndex == frameIndex_) {
             frameSource_.cinematicGrade = SanitizeGrade(gradeRequest_);
@@ -511,6 +533,8 @@ namespace HIKARI::VFX {
 
     void ActionPostReactionService::Reset() noexcept {
         activeWaves_ = {};
+        vfxWaves_ = {};
+        vfxWaveCount_ = 0u;
         dedupRecords_ = {};
         nextDedupRecord_ = 0u;
         frameIndex_ = 0u;

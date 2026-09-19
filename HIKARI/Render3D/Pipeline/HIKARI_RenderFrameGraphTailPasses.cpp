@@ -97,9 +97,10 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             GFX::GPU_PROFILE::ScopedGpuTimer timer(
                 context.frame.graphics.cmdList,
                 GFX::GPU_PROFILE::Pass::ForwardTransparent);
-            return MESHRENDERER::RenderForwardTransparentPass(
-                context.frame.graphics,
-                context.postOpaqueResources);
+            auto resources = context.postOpaqueResources;
+            resources.compositionTarget = context.frame.targetAccess;
+            resources.compositionDepth = context.frame.scene.readOnlyDsv;
+            return MESHRENDERER::RenderForwardTransparentPass(context.frame.graphics, resources);
         }
         catch (...) {
             return false;

@@ -63,8 +63,9 @@ namespace HIKARI::EDITOR {
             emitter.attachment.offset.scale);
 
         ImGui::SeparatorText(VfxUiText("Typed Special Outputs").c_str());
-        constexpr std::array<std::string_view, 3u> specialOutputTypes{
-            "WeaponPathDistortion", "ScreenImpulse", "SkinnedAfterimage"
+        constexpr std::array<std::string_view, 4u> specialOutputTypes{
+            "WeaponPathDistortion", "ScreenImpulse", "SkinnedAfterimage",
+            "Light"
         };
         if (emitter.specialOutputs.empty()) {
             ImGui::TextDisabled(
@@ -203,6 +204,42 @@ namespace HIKARI::EDITOR {
                     VFX::kVfxAfterimageIntensityMin,
                     VFX::kVfxAfterimageIntensityMax);
                 break;
+            case VFX::VfxSpecialOutputType::Light:
+                outputEditor.Color("Color", "light.color", output.light.color);
+                outputEditor.Float(
+                    VfxUiText("Intensity").c_str(), "light.intensity",
+                    output.light.intensity, 0.05f,
+                    VFX::kVfxLightIntensityMin,
+                    VFX::kVfxLightIntensityMax);
+                outputEditor.Float(
+                    VfxUiText("Range").c_str(), "light.range",
+                    output.light.range, 0.05f,
+                    VFX::kVfxLightRangeMin,
+                    VFX::kVfxLightRangeMax);
+                outputEditor.Float(
+                    VfxUiText("Source Radius").c_str(), "light.sourceRadius",
+                    output.light.sourceRadius, 0.01f,
+                    VFX::kVfxLightSourceRadiusMin,
+                    VFX::kVfxLightSourceRadiusMax);
+                outputEditor.Float(
+                    VfxUiText("Flicker Frequency").c_str(), "light.flickerFrequency",
+                    output.light.flickerFrequency, 0.1f,
+                    VFX::kVfxLightFlickerFrequencyMin,
+                    VFX::kVfxLightFlickerFrequencyMax);
+                outputEditor.Float(
+                    VfxUiText("Flicker Amplitude").c_str(), "light.flickerAmplitude",
+                    output.light.flickerAmplitude, 0.01f,
+                    VFX::kVfxLightFlickerAmplitudeMin,
+                    VFX::kVfxLightFlickerAmplitudeMax);
+                outputEditor.Unsigned(
+                    VfxUiText("Priority").c_str(), "light.priority",
+                    output.light.priority,
+                    VFX::kVfxLightPriorityMin,
+                    VFX::kVfxLightPriorityMax);
+                outputEditor.Bool(
+                    VfxUiText("Casts Shadows").c_str(), "light.castsShadows",
+                    output.light.castsShadows);
+                break;
             case VFX::VfxSpecialOutputType::WeaponPathDistortion:
             default:
                 outputEditor.Float(
@@ -273,6 +310,9 @@ namespace HIKARI::EDITOR {
         ImGui::SameLine();
         if (ImGui::Button(VfxUiText("Add SkinnedAfterimage Output").c_str())) {
             addOutput(VFX::VfxSpecialOutputType::SkinnedAfterimage);
+        }
+        if (ImGui::Button(VfxUiText("Add Light Output").c_str())) {
+            addOutput(VFX::VfxSpecialOutputType::Light);
         }
         if (removeOutput) {
             std::string message{};

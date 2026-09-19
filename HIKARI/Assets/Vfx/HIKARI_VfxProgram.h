@@ -14,7 +14,7 @@
 
 namespace HIKARI::VFX {
 
-    inline constexpr uint32_t kVfxProgramVersion = 11u;
+    inline constexpr uint32_t kVfxProgramVersion = 13u;
     inline constexpr uint32_t kMaximumVfxProgramTableItems = 1u << 20u;
     inline constexpr uint32_t kMaximumVfxProgramEmitters = 1024u;
     inline constexpr uint32_t kMaximumVfxProgramInputs = 4096u;
@@ -101,6 +101,7 @@ namespace HIKARI::VFX {
     struct VfxProgramEmitter {
         std::string sourceEmitterId{};
         VfxLayerKind kind = VfxLayerKind::Particles;
+        std::vector<MaterialEffectStep> compositeEffects{};
         VfxHistoryData history{};
         VfxAnimationTiming animationTiming{};
         std::vector<VfxProgramLayerCurve> layerCurves;

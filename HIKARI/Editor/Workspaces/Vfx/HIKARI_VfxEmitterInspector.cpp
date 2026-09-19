@@ -6,8 +6,10 @@
 #include <string_view>
 
 #include "Assets/HIKARI_AssetDatabase.h"
+#include "Assets/Vfx/HIKARI_VfxGeometryPresetCatalog.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxInspectorControls.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxParticleMaterialField.h"
+#include "Editor/Widgets/HIKARI_AssetFieldWidget.h"
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
 
 #if defined(HIKARI_WITH_EDITOR)
@@ -17,6 +19,69 @@
 namespace HIKARI::EDITOR {
     namespace {
 #if defined(HIKARI_WITH_EDITOR)
+        // 形状プリセット一覧の簡易シルエット。3D プレビューの代わりに、
+        // どの形か一目で分かる図を描く。
+        void DrawShapeSwatch(ImDrawList& list, const ImVec2& center, float size,
+                             VFX::VfxRenderShapeType shape, ImU32 color) {
+            const float r = size * 0.5f;
+            const float t = 1.8f;
+            switch (shape) {
+            case VFX::VfxRenderShapeType::Sprite:
+                list.AddRect(ImVec2(center.x - r * 0.9f, center.y - r * 0.65f),
+                    ImVec2(center.x + r * 0.9f, center.y + r * 0.65f), color, 0.0f, 0, t);
+                break;
+            case VFX::VfxRenderShapeType::Ribbon:
+                list.AddRect(ImVec2(center.x - r * 0.9f, center.y - r * 0.14f),
+                    ImVec2(center.x + r * 0.9f, center.y + r * 0.14f), color, 0.0f, 0, t);
+                break;
+            case VFX::VfxRenderShapeType::Ring:
+                list.PathArcTo(center, r * 0.8f, 0.6f, 4.2f, 24);
+                list.PathStroke(color, 0, t);
+                break;
+            case VFX::VfxRenderShapeType::MeshBox:
+                list.AddRect(ImVec2(center.x - r * 0.66f, center.y - r * 0.66f),
+                    ImVec2(center.x + r * 0.66f, center.y + r * 0.66f), color, 0.0f, 0, t);
+                break;
+            case VFX::VfxRenderShapeType::MeshSphere:
+                list.AddCircle(center, r * 0.8f, color, 0, t);
+                break;
+            case VFX::VfxRenderShapeType::MeshHemisphere:
+                list.PathArcTo(center, r * 0.8f, 3.14159265f, 6.28318531f, 24);
+                list.PathStroke(color, 0, t);
+                list.AddLine(ImVec2(center.x - r * 0.8f, center.y),
+                    ImVec2(center.x + r * 0.8f, center.y), color, t);
+                break;
+            case VFX::VfxRenderShapeType::MeshCylinder:
+                list.AddRect(ImVec2(center.x - r * 0.6f, center.y - r * 0.8f),
+                    ImVec2(center.x + r * 0.6f, center.y + r * 0.8f), color, 0.0f, 0, t);
+                list.AddLine(ImVec2(center.x - r * 0.6f, center.y - r * 0.45f),
+                    ImVec2(center.x + r * 0.6f, center.y - r * 0.45f), color, t * 0.6f);
+                break;
+            case VFX::VfxRenderShapeType::MeshCone:
+                list.AddTriangle(ImVec2(center.x, center.y - r * 0.85f),
+                    ImVec2(center.x - r * 0.7f, center.y + r * 0.8f),
+                    ImVec2(center.x + r * 0.7f, center.y + r * 0.8f), color, t);
+                break;
+            case VFX::VfxRenderShapeType::MeshCapsule:
+                list.AddRect(ImVec2(center.x - r * 0.5f, center.y - r * 0.8f),
+                    ImVec2(center.x + r * 0.5f, center.y + r * 0.8f), color, r * 0.5f, 0, t);
+                break;
+            case VFX::VfxRenderShapeType::MeshTorus:
+                list.AddCircle(center, r * 0.85f, color, 0, t);
+                list.AddCircle(center, r * 0.4f, color, 0, t);
+                break;
+            case VFX::VfxRenderShapeType::CrossPlane:
+                list.AddRect(ImVec2(center.x - r * 0.85f, center.y - r * 0.12f),
+                    ImVec2(center.x + r * 0.85f, center.y + r * 0.12f), color, 0.0f, 0, t);
+                list.AddRect(ImVec2(center.x - r * 0.12f, center.y - r * 0.85f),
+                    ImVec2(center.x + r * 0.12f, center.y + r * 0.85f), color, 0.0f, 0, t);
+                break;
+            default:
+                list.AddCircle(center, r * 0.6f, color, 0, t);
+                break;
+            }
+        }
+
         VfxEmitterInspectorPage DrawPageNavigation(VfxEmitterInspectorPage current, bool particles) {
             struct Page { VfxEmitterInspectorPage id; const char* label; bool particlesOnly; };
             constexpr std::array pages{
@@ -53,8 +118,22 @@ namespace HIKARI::EDITOR {
         }
         if (selection_.kind == VfxWorkspaceSelectionKind::Bindings) emitterInspectorPage_ = VfxEmitterInspectorPage::Bindings;
         if (selection_.kind == VfxWorkspaceSelectionKind::SpecialOutput) emitterInspectorPage_ = VfxEmitterInspectorPage::Advanced;
+        if (emitter.kind == VFX::VfxLayerKind::Adjustment) {
+            VfxInspectorPropertyEditor edit(*this, database, emitter.id, statusMessage_);
+            edit.Text("Name", "name", emitter.name);
+            VfxInspectorPropertyEditor basic(*this, database, emitter.basic.id, statusMessage_);
+            basic.Bool("Enabled", "enabled", emitter.basic.enabled);
+            ImGui::TextWrapped("%s", TEXT::Localize("ui.vfx.adjustment.scope").c_str());
+            edit.Float(VfxUiText("Start Delay").c_str(), "startDelay", emitter.startDelay, 0.01f, 0, GetPreviewTimelineDuration());
+            edit.Float(VfxUiText("Active Duration (0 = until asset end)").c_str(), "activeDuration", emitter.activeDuration, 0.01f, 0, GetPreviewTimelineDuration());
+            DrawLayerEffects(database, emitter);
+            return;
+        }
         ImGui::TextWrapped("%s", emitter.name.c_str());
-        ImGui::TextDisabled("%s  |  %s", VFX::ToString(emitter.renderShape.type).data(), VFX::ToString(emitter.renderCommon.materialMode).data());
+        if (emitter.kind == VFX::VfxLayerKind::Group)
+            ImGui::TextDisabled("%s", TEXT::Localize("ui.vfx.layer.newGroup").c_str());
+        else
+            ImGui::TextDisabled("%s  |  %s", VFX::ToString(emitter.renderShape.type).data(), VFX::ToString(emitter.renderCommon.materialMode).data());
         const auto requested = DrawPageNavigation(emitterInspectorPage_, emitter.kind == VFX::VfxLayerKind::Particles);
         if (requested != emitterInspectorPage_) {
             emitterInspectorPage_ = requested;
@@ -64,6 +143,53 @@ namespace HIKARI::EDITOR {
         case VfxEmitterInspectorPage::Common: {
             if (emitter.kind != VFX::VfxLayerKind::Group && emitter.history.mode != VFX::VfxHistoryMode::Trail) {
             ImGui::SeparatorText(TEXT::Localize("ui.vfx.layer.geometry").c_str());
+            // 形状プリセット: 形状＋パラメータ＋変形を一括で適用する。
+            // 新規の図元を増やさず、既存の組み合わせに名前を付けたもの。
+            if (ImGui::Button(VfxUiText("Geometry Preset").c_str(),
+                    ImVec2(220.0f, 0.0f))) {
+                ImGui::OpenPopup("VfxGeometryPresetPicker");
+            }
+            if (ImGui::BeginPopup("VfxGeometryPresetPicker")) {
+                constexpr int kColumns = 6;
+                constexpr float kCellSize = 72.0f;
+                int column = 0;
+                std::string_view category{};
+                for (const auto& preset : VFX::GetVfxGeometryPresetCatalog()) {
+                    if (preset.category != category) {
+                        if (column != 0) { ImGui::NewLine(); column = 0; }
+                        ImGui::SeparatorText(std::string(preset.category).c_str());
+                        category = preset.category;
+                    }
+                    if (column != 0) ImGui::SameLine();
+                    ImGui::PushID(preset.id.data());
+                    ImGui::BeginGroup();
+                    const ImVec2 origin = ImGui::GetCursorScreenPos();
+                    const bool clicked = ImGui::InvisibleButton("swatch",
+                        ImVec2(kCellSize, kCellSize));
+                    ImDrawList* list = ImGui::GetWindowDrawList();
+                    list->AddRectFilled(origin,
+                        ImVec2(origin.x + kCellSize, origin.y + kCellSize),
+                        ImGui::GetColorU32(clicked
+                            ? ImGuiCol_ButtonActive : ImGuiCol_Button), 4.0f);
+                    DrawShapeSwatch(*list,
+                        ImVec2(origin.x + kCellSize * 0.5f,
+                            origin.y + kCellSize * 0.5f),
+                        kCellSize * 0.7f, preset.shape.type,
+                        ImGui::GetColorU32(ImGuiCol_Text));
+                    ImGui::PushTextWrapPos(ImGui::GetCursorPos().x + kCellSize);
+                    ImGui::TextWrapped("%s", preset.displayName.data());
+                    ImGui::PopTextWrapPos();
+                    ImGui::EndGroup();
+                    ImGui::PopID();
+                    if (clicked) {
+                        (void)ApplyGeometryPreset(
+                            emitter.id, preset.id, statusMessage_);
+                        ImGui::CloseCurrentPopup();
+                    }
+                    column = (column + 1) % kColumns;
+                }
+                ImGui::EndPopup();
+            }
             VfxInspectorPropertyEditor renderShapeEditor(
                 *this,
                 database,
@@ -79,18 +205,24 @@ namespace HIKARI::EDITOR {
             if (emitter.renderShape.type == VFX::VfxRenderShapeType::Sprite ||
                 emitter.renderShape.type == VFX::VfxRenderShapeType::Ring ||
                 emitter.renderShape.type == VFX::VfxRenderShapeType::Ribbon) {
-                constexpr std::array<std::string_view, 4u> orientationModes{
-                    "RotatedBillboard",
-                    "FixedYAxis",
-                    "DirectionalBillboard",
-                    "Fixed",
-                };
+                const auto orientationModes = VFX::GetVfxBillboardModeChoices();
                 renderShapeEditor.Choice(
                     VfxUiText("Orientation").c_str(),
                     "billboardMode",
                     VFX::ToString(emitter.renderShape.billboardMode),
                     orientationModes.data(),
                     orientationModes.size());
+                // Look At Line だけ、固定するローカル軸を選べる。
+                if (emitter.renderShape.billboardMode ==
+                    VFX::VfxBillboardMode::CylindricalBillboard) {
+                    const auto axisModes = VFX::GetVfxBillboardAxisChoices();
+                    renderShapeEditor.Choice(
+                        VfxUiText("Fixed Axis").c_str(),
+                        "billboardAxis",
+                        VFX::ToString(emitter.renderShape.billboardAxis),
+                        axisModes.data(),
+                        axisModes.size());
+                }
             }
             if (emitter.renderShape.type ==
                 VFX::VfxRenderShapeType::Ribbon) {
@@ -119,10 +251,210 @@ namespace HIKARI::EDITOR {
                 emitter.renderShape.type == VFX::VfxRenderShapeType::MeshCone) {
                 renderShapeEditor.Unsigned(VfxUiText("Radial segments").c_str(), "ringSegmentCount",
                     emitter.renderShape.ringSegmentCount, 3u, 64u);
+                if (emitter.renderShape.type == VFX::VfxRenderShapeType::MeshCylinder) {
+                    renderShapeEditor.Float(
+                        VfxUiText("Top Radius").c_str(), "cylinderTopRadius",
+                        emitter.renderShape.cylinderTopRadius, 0.01f, 0.0f, 100.0f);
+                    renderShapeEditor.Float(
+                        VfxUiText("Bottom Radius").c_str(), "cylinderBottomRadius",
+                        emitter.renderShape.cylinderBottomRadius, 0.01f, 0.0f, 100.0f);
+                } else {
+                    renderShapeEditor.Float(
+                        VfxUiText("Base Radius").c_str(), "coneBaseRadius",
+                        emitter.renderShape.coneBaseRadius, 0.01f, 0.0f, 100.0f);
+                }
                 ImGui::TextWrapped(VfxUiText("Open shell along local Y. Scale controls diameter and length; Rotation sets its direction. UV wraps around the shell.").c_str());
             }
             if (emitter.renderShape.type == VFX::VfxRenderShapeType::CrossPlane)
                 ImGui::TextWrapped(VfxUiText("Two intersecting planes in local space. Useful for flames and beams viewed from different sides.").c_str());
+            if (emitter.renderShape.type == VFX::VfxRenderShapeType::MeshTorus) {
+                renderShapeEditor.Unsigned(
+                    VfxUiText("Major Segments").c_str(), "ringSegmentCount",
+                    emitter.renderShape.ringSegmentCount, 8u, 64u);
+                renderShapeEditor.Float(
+                    VfxUiText("Major Radius").c_str(), "torusMajorRadius",
+                    emitter.renderShape.torusMajorRadius, 0.01f, 0.0f, 100.0f);
+                renderShapeEditor.Float(
+                    VfxUiText("Minor Radius").c_str(), "torusMinorRadius",
+                    emitter.renderShape.torusMinorRadius, 0.01f, 0.0f, 100.0f);
+            }
+            if (emitter.renderShape.type == VFX::VfxRenderShapeType::MeshCapsule) {
+                renderShapeEditor.Unsigned(
+                    VfxUiText("Radial segments").c_str(), "ringSegmentCount",
+                    emitter.renderShape.ringSegmentCount, 8u, 64u);
+                renderShapeEditor.Float(
+                    VfxUiText("Radius").c_str(), "capsuleRadius",
+                    emitter.renderShape.capsuleRadius, 0.01f, 0.01f, 0.5f);
+            }
+            // 長さ軸を持つ形状だけ、ベンドとツイストを掛けられる。
+            switch (emitter.renderShape.type) {
+            case VFX::VfxRenderShapeType::Ribbon:
+            case VFX::VfxRenderShapeType::MeshBox:
+            case VFX::VfxRenderShapeType::MeshCylinder:
+            case VFX::VfxRenderShapeType::MeshCone:
+            case VFX::VfxRenderShapeType::CrossPlane:
+                renderShapeEditor.Float(
+                    VfxUiText("Bend").c_str(), "bendAmount",
+                    emitter.renderShape.bendAmount, 0.01f, -4.0f, 4.0f);
+                renderShapeEditor.Float(
+                    VfxUiText("Twist (degrees)").c_str(), "twistDegrees",
+                    emitter.renderShape.twistDegrees, 1.0f, -1440.0f, 1440.0f);
+                break;
+            default:
+                break;
+            }
+            // UV 契約: 形状パラメータUVを材質UVへどう写すか。Parameter は
+            // 既存挙動、WorldLength は弧長・周長・高さで U を実寸タイルする。
+            const auto uvModes = VFX::GetVfxShapeUvModeChoices();
+            renderShapeEditor.Choice(
+                VfxUiText("UV Mode").c_str(),
+                "uvMode",
+                VFX::ToString(emitter.renderShape.uvMode),
+                uvModes.data(),
+                uvModes.size());
+            renderShapeEditor.Float(
+                VfxUiText("UV Tile Length (world)").c_str(),
+                "uvTileLength",
+                emitter.renderShape.uvTileLength,
+                0.01f,
+                0.0001f,
+                100.0f);
+            renderShapeEditor.Float(
+                VfxUiText("U Tiles").c_str(),
+                "uvTilingU",
+                emitter.renderShape.uvTilingU,
+                0.01f,
+                0.0001f,
+                64.0f);
+            renderShapeEditor.Float(
+                VfxUiText("V Tiles").c_str(),
+                "uvTilingV",
+                emitter.renderShape.uvTilingV,
+                0.01f,
+                0.0001f,
+                64.0f);
+            renderShapeEditor.Float(
+                VfxUiText("UV Rotation (degrees)").c_str(),
+                "uvRotationDegrees",
+                emitter.renderShape.uvRotationDegrees,
+                0.5f,
+                -180.0f,
+                180.0f);
+            renderShapeEditor.Bool(
+                VfxUiText("Swap UV Axes").c_str(),
+                "uvSwapAxes",
+                emitter.renderShape.uvSwapAxes);
+            // 幅テーパー: 形状パラメータ 0..1 に沿って断面を収窄する。
+            // ビームや斬撃の両端を尖らせるのに使う。
+            renderShapeEditor.Float(
+                VfxUiText("Taper Start").c_str(),
+                "taperStart",
+                emitter.renderShape.taperStart,
+                0.01f,
+                0.0f,
+                4.0f);
+            renderShapeEditor.Float(
+                VfxUiText("Taper End").c_str(),
+                "taperEnd",
+                emitter.renderShape.taperEnd,
+                0.01f,
+                0.0f,
+                4.0f);
+            }
+            // アンカーは形状中心と変換原点を分ける。刀身のように端から伸ばす
+            // レイヤーはここをずらすと長さを変えても基準点が動かない。
+            {
+                VfxInspectorPropertyEditor anchorEditor(
+                    *this, database, emitter.id, statusMessage_);
+                anchorEditor.Vec3(
+                    VfxUiText("Anchor (local)").c_str(),
+                    "anchor",
+                    emitter.anchor);
+            }
+            // 接続ターゲット: 幾何を「このレイヤー → 参照点」の区間へ張る。
+            // 参照点は別レイヤーか、エフェクト内の固定点。
+            {
+                VfxInspectorPropertyEditor connectEditor(
+                    *this, database, emitter.id, statusMessage_);
+                constexpr std::array<std::string_view, 3u> connectModes{
+                    "None", "LayerOrigin", "LocalPosition"};
+                connectEditor.Choice(
+                    VfxUiText("Connect To").c_str(),
+                    "connectTarget.mode",
+                    emitter.connectTarget.mode == VFX::VfxConnectTargetMode::LayerOrigin
+                        ? "LayerOrigin"
+                        : emitter.connectTarget.mode == VFX::VfxConnectTargetMode::LocalPosition
+                              ? "LocalPosition"
+                              : "None",
+                    connectModes.data(),
+                    connectModes.size());
+                if (emitter.connectTarget.mode != VFX::VfxConnectTargetMode::None) {
+                    if (emitter.connectTarget.mode == VFX::VfxConnectTargetMode::LayerOrigin) {
+                        connectEditor.Text(
+                            VfxUiText("Target Layer").c_str(),
+                            "connectTarget.targetLayerId",
+                            emitter.connectTarget.targetLayerId);
+                    } else {
+                        connectEditor.Vec3(
+                            VfxUiText("Target Point (effect space)").c_str(),
+                            "connectTarget.localPosition",
+                            emitter.connectTarget.localPosition);
+                    }
+                    connectEditor.Float(
+                        VfxUiText("Pivot").c_str(), "connectTarget.pivot",
+                        emitter.connectTarget.pivot, 0.01f, 0.0f, 1.0f);
+                    connectEditor.Float(
+                        VfxUiText("Length Scale").c_str(), "connectTarget.lengthScale",
+                        emitter.connectTarget.lengthScale, 0.01f, 0.0f, 8.0f);
+                    connectEditor.Float(
+                        VfxUiText("Start Offset").c_str(), "connectTarget.startOffset",
+                        emitter.connectTarget.startOffset, 0.01f, 0.0f, 100.0f);
+                    connectEditor.Float(
+                        VfxUiText("End Offset").c_str(), "connectTarget.endOffset",
+                        emitter.connectTarget.endOffset, 0.01f, 0.0f, 100.0f);
+                    connectEditor.Bool(
+                        VfxUiText("Orient").c_str(), "connectTarget.orient",
+                        emitter.connectTarget.orient);
+                    connectEditor.Bool(
+                        VfxUiText("Stretch").c_str(), "connectTarget.stretch",
+                        emitter.connectTarget.stretch);
+                }
+            }
+            // Mesh 出力: 手続き形状ではなくモデル素材をレイヤーの幾何にする。
+            {
+                ImGui::SeparatorText(VfxUiText("Mesh Output").c_str());
+                VfxInspectorPropertyEditor meshEditor(
+                    *this, database, emitter.id, statusMessage_);
+                meshEditor.Bool(
+                    VfxUiText("Use Model Asset").c_str(),
+                    "meshOutput.enabled",
+                    emitter.meshOutput.enabled);
+                if (emitter.meshOutput.enabled) {
+                    const std::string meshLabel = VfxUiText("Mesh");
+                    std::string meshGuid = emitter.meshOutput.meshAssetGuid.value;
+                    AssetFieldOptions options{};
+                    options.label = meshLabel;
+                    options.requiredType = AssetType::Model;
+                    if (DrawAssetField(&database, options, meshGuid)) {
+                        std::string assignmentMessage{};
+                        (void)SetProperty(
+                            emitter.id,
+                            "meshOutput.meshAssetGuid",
+                            meshGuid,
+                            assignmentMessage,
+                            0u,
+                            &database);
+                        statusMessage_ = assignmentMessage;
+                    }
+                    meshEditor.Bool(
+                        VfxUiText("Cast Shadows").c_str(),
+                        "meshOutput.castShadows",
+                        emitter.meshOutput.castShadows);
+                    meshEditor.Bool(
+                        VfxUiText("Receive Shadows").c_str(),
+                        "meshOutput.receiveShadow",
+                        emitter.meshOutput.receiveShadow);
+                }
             }
             ImGui::SeparatorText(TEXT::Localize("ui.vfx.layer.timing").c_str());
 
@@ -300,6 +632,15 @@ namespace HIKARI::EDITOR {
                     VfxUiText("Emit On Edge Only").c_str(),
                     "circleEmitOnEdge",
                     emitter.shape.circleEmitOnEdge);
+                // 放出角度範囲。360 で全周。リングの弧に沿って火花を出したい
+                // ときはここを絞り、エミッタ自体を回して狙いを付ける。
+                shapeEditor.Float(
+                    VfxUiText("Circle Arc Degrees").c_str(),
+                    "circleArcDegrees",
+                    emitter.shape.circleArcDegrees,
+                    1.0f,
+                    1.0f,
+                    360.0f);
             }
             if (emitter.shape.type == VFX::VfxShapeType::Edge) {
                 shapeEditor.Float(

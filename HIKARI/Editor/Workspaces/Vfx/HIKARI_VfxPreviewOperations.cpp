@@ -1,12 +1,19 @@
 #include "Editor/Workspaces/Vfx/HIKARI_VfxOperationSections.h"
 
+#include <chrono>
+#include <cstdlib>
+#include <filesystem>
 #include <string>
+#include <thread>
 #include <utility>
+#include <vector>
 
 #include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
+#include "Editor/Views/HIKARI_EditorViewInstance.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxEditorValue.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxOperationSupport.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
+#include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
 
 namespace HIKARI::EDITOR {
 
@@ -175,6 +182,110 @@ namespace HIKARI::EDITOR {
                 return Success(
                     "VFX preview loop range updated", std::move(data));
             },
+        });
+
+        registry.Register({
+            "vfx.preview.capture",
+            "Capture the VFX preview render view to PNG files so the result "
+            "can be inspected instead of assumed",
+            "vfx",
+            {
+                Parameter(
+                    "path",
+                    EditorOperationParameterType::String,
+                    false,
+                    "Output PNG path; defaults to the temp directory"),
+                Parameter(
+                    "frameCount",
+                    EditorOperationParameterType::Int,
+                    false,
+                    "Sequential captures of the running preview (1..8)"),
+                Parameter(
+                    "intervalSeconds",
+                    EditorOperationParameterType::Float,
+                    false,
+                    "Seconds between captures (0..2)"),
+            },
+            [&controller](const nlohmann::json& parameters) {
+                const int rawFrames =
+                    parameters.value("frameCount", 1);
+                const int frameCount = rawFrames < 1
+                    ? 1
+                    : (rawFrames > 8 ? 8 : rawFrames);
+                const float rawInterval =
+                    parameters.value("intervalSeconds", 0.1f);
+                const float intervalSeconds =
+                    rawInterval < 0.0f
+                    ? 0.0f
+                    : (rawInterval > 2.0f ? 2.0f : rawInterval);
+                std::string basePath =
+                    parameters.value("path", std::string{});
+                if (basePath.empty()) {
+                    const char* temp = std::getenv("TEMP");
+                    basePath =
+                        std::string(temp != nullptr ? temp : ".") +
+                        "/hikari-ai-vfx-preview.png";
+                }
+                const std::filesystem::path base(basePath);
+                std::error_code directoryError{};
+                if (base.has_parent_path()) {
+                    std::filesystem::create_directories(
+                        base.parent_path(), directoryError);
+                }
+                std::vector<std::string> captured{};
+                std::string captureError{};
+                for (int frame = 0; frame < frameCount; ++frame) {
+                    const std::filesystem::path framePath = frameCount == 1
+                        ? base
+                        : base.parent_path() /
+                            (base.stem().string() + "-" +
+                                std::to_string(frame) +
+                                base.extension().string());
+                    const std::string pathText =
+                        framePath.lexically_normal().string();
+                    std::filesystem::remove(framePath, directoryError);
+                    RENDER3D::EDITORVIEW::RequestPreviewCapture(
+                        kVfxPreviewRenderViewId,
+                        pathText);
+                    bool done = false;
+                    for (int attempt = 0; attempt < 100; ++attempt) {
+                        if (RENDER3D::EDITORVIEW::PollPreviewCapture(
+                                pathText, captureError)) {
+                            done = true;
+                            break;
+                        }
+                        std::this_thread::sleep_for(
+                            std::chrono::milliseconds(100));
+                    }
+                    if (!done || !captureError.empty()) {
+                        return Failure(
+                            "VFX_PREVIEW_CAPTURE_FAILED",
+                            captureError.empty()
+                                ? "VFX preview capture timed out: " + pathText
+                                : "VFX preview capture failed: " +
+                                    captureError);
+                    }
+                    captured.push_back(pathText);
+                    if (frame + 1 < frameCount &&
+                        intervalSeconds > 0.0f) {
+                        std::this_thread::sleep_for(
+                            std::chrono::duration_cast<
+                                std::chrono::milliseconds>(
+                                std::chrono::duration<float>(
+                                    intervalSeconds)));
+                    }
+                }
+                nlohmann::json data = ContextData(controller);
+                data["paths"] = captured;
+                data["frameCount"] = frameCount;
+                return Success(
+                    frameCount == 1
+                        ? "VFX preview captured: " + captured.front()
+                        : "VFX preview sequence captured: " +
+                            std::to_string(frameCount) + " frames",
+                    std::move(data));
+            },
+            EditorOperationExecutionPolicy::WorkerThread,
         });
 
         registry.Register({

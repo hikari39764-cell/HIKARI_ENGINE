@@ -240,17 +240,18 @@ namespace HIKARI::EDITOR {
             outMessage = "No VFX document is open";
             return false;
         }
-        const int steps = (std::max)(1, (std::min)(frameCount, 120));
+        const int steps = std::clamp(frameCount == 0 ? 1 : frameCount, -120, 120);
         const float stepSeconds = 1.0f / 60.0f;
         const float playbackEnd = previewLoopEnabled_
             ? previewLoopEndSeconds_
             : GetPreviewTimelineDuration();
-        const float target = (std::min)(
-            previewSeekTarget_.value_or(previewElapsedSeconds_) +
+        const float current = previewSeekTarget_.value_or(previewElapsedSeconds_);
+        const float target = std::clamp(
+            current +
                 static_cast<float>(steps) * stepSeconds,
-            playbackEnd);
-        if (target <= previewElapsedSeconds_ + 1.0e-6f) {
-            outMessage = "Preview is at the end of its playback range";
+            previewLoopEnabled_ ? previewLoopStartSeconds_ : 0.0f, playbackEnd);
+        if (std::abs(target - current) < 1.0e-6f) {
+            outMessage = "Preview is at the boundary of its playback range";
             statusMessage_ = outMessage;
             previewPaused_ = true;
             return false;

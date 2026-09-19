@@ -521,10 +521,18 @@ namespace HIKARI::RENDER3D::PARTICLES {
             }
             case ParticleShape::Circle: {
                 constexpr float kTau = 6.28318530717958647692f;
+                // 放出角度範囲。0 以下 (古い資産) は全周として扱う。
+                const float arcDegrees =
+                    submission.simulation.shapeCircleArcDegrees > 0.0f
+                        ? (std::min)(
+                              submission.simulation.shapeCircleArcDegrees,
+                              360.0f)
+                        : 360.0f;
                 const float angle = PropertyRandom01(
                     particleSeed,
                     0u,
-                    kRandomSaltShapeDirectionAngle) * kTau;
+                    kRandomSaltShapeDirectionAngle) *
+                    (arcDegrees / 360.0f) * kTau;
                 const float innerRadius = std::clamp(
                     submission.simulation.shapeCircleInnerRadius,
                     0.0f,

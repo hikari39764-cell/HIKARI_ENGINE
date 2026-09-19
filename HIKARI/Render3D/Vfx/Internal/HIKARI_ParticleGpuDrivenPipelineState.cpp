@@ -304,7 +304,7 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
         sceneDepthRange.NumDescriptors = 1u;
         sceneDepthRange.BaseShaderRegister = 3u;
 
-        std::array<D3D12_ROOT_PARAMETER, 20u> parameters{};
+        std::array<D3D12_ROOT_PARAMETER, 21u> parameters{};
         parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
         parameters[0].Descriptor.ShaderRegister = 0u;
         for (uint32_t index = 1u; index <= 5u; ++index) {
@@ -368,8 +368,15 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
             parameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
         }
         // 52 DWORDs: geometry/depth constants plus shared material and lighting resources.
+        // 形状パラメータは per-draw バッファ (t5) から引く。
+        parameters[20].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
+        parameters[20].Descriptor.ShaderRegister = 5u;
         std::array<D3D12_STATIC_SAMPLER_DESC, 3u> samplers{};
-        samplers[0].Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+        // VFX の帯は画面上で「長く細い」足跡になるため、等方な三線形だけだと
+        // mip が過剰に選ばれて貼図がぼける。材質用スロット (s0) だけ
+        // 異方性フィルタにして、斜めの帯でもディテールを保つ。
+        samplers[0].Filter = D3D12_FILTER_ANISOTROPIC;
+        samplers[0].MaxAnisotropy = 8u;
         samplers[0].AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
         samplers[0].AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
         samplers[0].AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
@@ -466,8 +473,8 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
                     ? D3D12_BLEND_INV_SRC_ALPHA
                     : D3D12_BLEND_ONE;
                 target.BlendOp = D3D12_BLEND_OP_ADD;
-                target.SrcBlendAlpha = D3D12_BLEND_ONE;
-                target.DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
+                target.SrcBlendAlpha = blendIndex == 0u ? D3D12_BLEND_ONE : D3D12_BLEND_ZERO;
+                target.DestBlendAlpha = blendIndex == 0u ? D3D12_BLEND_INV_SRC_ALPHA : D3D12_BLEND_ONE;
                 target.BlendOpAlpha = D3D12_BLEND_OP_ADD;
 
                 CD3DX12_DEPTH_STENCIL_DESC depth(D3D12_DEFAULT);

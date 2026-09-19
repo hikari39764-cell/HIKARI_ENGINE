@@ -1,3 +1,4 @@
+#include "Assets/Vfx/HIKARI_VfxBudgets.h"
 #include "Assets/Vfx/HIKARI_VfxLayerAnimation.h"
 #include "Assets/Vfx/HIKARI_VfxValidation.h"
 
@@ -436,21 +437,51 @@ namespace HIKARI::VFX {
         }
 
         std::unordered_map<std::string, const VfxEmitterData*> emitters{};
-        uint64_t declaredParticleCapacity = 0u;
         for (const VfxEmitterData& emitter : asset.emitters) {
-            if (emitter.effects.size() > 8) AddError(diagnostics, "Vfx.TooManyEffects", "A layer supports eight material effects", emitter.id);
+            if (emitter.effects.size() > kMaximumVfxEffectsPerLayer) AddError(diagnostics, "Vfx.TooManyEffects", "Layer exceeds the effect safety limit", emitter.id);
             for (const auto& effect : emitter.effects) {
                 RegisterId(effect.id, "effect", ids, diagnostics);
-                if (MaterialEffectName(effect.kind) == "Invalid" || !IsFinite(effect.parameters) ||
+                if ((emitter.kind == VfxLayerKind::Adjustment && !IsCompositeMaterialEffect(effect.kind)) ||
+                    (emitter.kind != VfxLayerKind::Adjustment && IsCompositeOnlyMaterialEffect(effect.kind)))
+                    AddError(diagnostics, "Vfx.EffectDomain", "Effect is not supported by this layer type", effect.id);
+                if (MaterialEffectName(effect.kind) == "Invalid" || !IsFinite(effect.parameters) || !IsFinite(effect.parameters2) ||
                     !IsFinite(effect.colorA) || !IsFinite(effect.colorB))
                     AddError(diagnostics, "Vfx.InvalidEffect", "Effect values must be finite", effect.id);
+                if (MaterialEffectTextureTargetName(effect.textureTarget) == "Invalid" ||
+                    (effect.kind != MaterialEffectKind::UvFlow && effect.kind != MaterialEffectKind::FlowMap &&
+                     effect.textureTarget != MaterialEffectTextureTarget::Shared))
+                    AddError(diagnostics, "Vfx.InvalidTextureTarget", "Texture target is only supported by UV Flow and Flow Map", effect.id);
+                if (effect.kind == MaterialEffectKind::FlowMap) {
+                    if (static_cast<uint8_t>(effect.textureTarget) > static_cast<uint8_t>(MaterialEffectTextureTarget::Mask))
+                        AddError(diagnostics, "Vfx.InvalidFlowTarget", "Flow Map affects base color, mask, or both", effect.id);
+                    if (effect.enabled && !emitter.renderCommon.flowMapTextureAssetGuid.IsValid())
+                        AddError(diagnostics, "Vfx.MissingFlowMap", "Assign an RG flow map in the layer texture slots", effect.id);
+                    const auto overlaps = std::count_if(emitter.effects.begin(), emitter.effects.end(), [&](const auto& other) {
+                        return other.enabled && other.kind == MaterialEffectKind::FlowMap &&
+                            (effect.textureTarget == MaterialEffectTextureTarget::Shared ||
+                             other.textureTarget == MaterialEffectTextureTarget::Shared || other.textureTarget == effect.textureTarget);
+                    });
+                    if (effect.enabled && overlaps > 1)
+                        AddError(diagnostics, "Vfx.DuplicateFlowMap", "Use one Flow Map per texture target", effect.id);
+                }
+                // 多段グラデーションのストップ: 数・時刻・色の範囲を守る。
+                if (!effect.colorStops.empty() &&
+                    (effect.colorStops.size() > kMaximumMaterialEffectColorStops ||
+                     std::any_of(effect.colorStops.begin(), effect.colorStops.end(),
+                         [](const MaterialEffectStep::ColorStop& stop) {
+                             return !IsFinite(stop.time) || stop.time < 0.0f ||
+                                 stop.time > 1.0f || !IsFinite(stop.color);
+                         }))) {
+                    AddError(diagnostics, "Vfx.InvalidEffectGradient",
+                        "Gradient stops must be finite and within 0..1", effect.id);
+                }
             }
             if (!emitter.effects.empty() && IsCustomVfxMaterial(emitter.renderCommon.materialMode))
                 AddError(diagnostics, "Vfx.EffectMaterialConflict", "Effect stacks use the layer texture; custom materials own their shader graph", emitter.id);
             if (!IsValidVfxHistory(emitter.history) ||
                 (emitter.history.mode != VfxHistoryMode::None && emitter.kind != VfxLayerKind::Shape))
                 AddError(diagnostics, "Vfx.InvalidHistory", "History requires a shape layer and bounded duration/sample count", emitter.id);
-            if (static_cast<uint8_t>(emitter.kind) > static_cast<uint8_t>(VfxLayerKind::Group)) {
+            if (static_cast<uint8_t>(emitter.kind) > static_cast<uint8_t>(VfxLayerKind::Adjustment)) {
                 AddError(diagnostics, "Vfx.InvalidLayerKind", "unknown layer kind", emitter.id);
             }
             (void)RegisterId(emitter.id, "emitter", ids, diagnostics);
@@ -647,7 +678,6 @@ namespace HIKARI::VFX {
                         key.id);
                 }
             }
-            declaredParticleCapacity += emitter.spawn.maximumParticles;
 
             ValidateDistribution(
                 emitter.shape.radius,
@@ -666,6 +696,9 @@ namespace HIKARI::VFX {
                 emitter.shape.cylinderHeight < 0.0f ||
                 !IsFinite(emitter.shape.circleInnerRadius) ||
                 emitter.shape.circleInnerRadius < 0.0f ||
+                !IsFinite(emitter.shape.circleArcDegrees) ||
+                emitter.shape.circleArcDegrees <= 0.0f ||
+                emitter.shape.circleArcDegrees > 360.0f ||
                 !IsFinite(emitter.shape.edgeLength) ||
                 emitter.shape.edgeLength < 0.0f ||
                 (emitter.shape.type == VfxShapeType::Circle &&
@@ -830,6 +863,10 @@ namespace HIKARI::VFX {
                 emitter.renderShape.billboardMode !=
                     VfxBillboardMode::DirectionalBillboard &&
                 emitter.renderShape.billboardMode !=
+                    VfxBillboardMode::CylindricalBillboard &&
+                emitter.renderShape.billboardMode !=
+                    VfxBillboardMode::FaceCameraPosition &&
+                emitter.renderShape.billboardMode !=
                     VfxBillboardMode::Fixed) {
                 AddError(
                     diagnostics,
@@ -838,7 +875,7 @@ namespace HIKARI::VFX {
                     emitter.renderShape.id);
             }
             if (static_cast<uint32_t>(emitter.renderShape.type) >
-                    static_cast<uint32_t>(VfxRenderShapeType::CrossPlane) ||
+                    static_cast<uint32_t>(VfxRenderShapeType::MeshCapsule) ||
                 !IsFinite(emitter.renderShape.ribbonWidth) || emitter.renderShape.ribbonWidth < 0.0f ||
                 !IsFinite(emitter.renderShape.ringOuterRadius) || !IsFinite(emitter.renderShape.ringInnerRadius) ||
                 emitter.renderShape.ringInnerRadius < 0.0f ||
@@ -859,6 +896,91 @@ namespace HIKARI::VFX {
                     "ribbon/ring segment count exceeds the mesh shader "
                     "contract (ribbon 2..64, ring 3..64)",
                     emitter.renderShape.id);
+            }
+            if ((emitter.renderShape.uvMode != VfxShapeUvMode::Parameter &&
+                 emitter.renderShape.uvMode != VfxShapeUvMode::WorldLength) ||
+                !IsFinite(emitter.renderShape.uvTileLength) ||
+                (emitter.renderShape.uvMode == VfxShapeUvMode::WorldLength &&
+                 emitter.renderShape.uvTileLength <= 0.0f) ||
+                emitter.renderShape.uvTileLength < -64.0f ||
+                emitter.renderShape.uvTileLength > 64.0f ||
+                !IsFinite(emitter.renderShape.uvTilingU) ||
+                !IsFinite(emitter.renderShape.uvTilingV) ||
+                emitter.renderShape.uvTilingU <= 0.0f ||
+                emitter.renderShape.uvTilingV <= 0.0f ||
+                emitter.renderShape.uvTilingU > 64.0f ||
+                emitter.renderShape.uvTilingV > 64.0f ||
+                !IsFinite(emitter.renderShape.uvRotationDegrees)) {
+                AddError(
+                    diagnostics,
+                    "Vfx.InvalidShapeUvContract",
+                    "UV contract requires a known mode, a positive V tile "
+                    "count, tile extent within 64, and finite rotation",
+                    emitter.renderShape.id);
+            }
+            if (!IsFinite(emitter.anchor)) {
+                AddError(
+                    diagnostics,
+                    "Vfx.InvalidAnchor",
+                    "layer anchor must be finite",
+                    emitter.id);
+            }
+
+            // 接続ターゲット: 範囲と、参照先レイヤーの存在を検証する。
+            const VfxConnectTargetData& connect = emitter.connectTarget;
+            if (connect.mode != VfxConnectTargetMode::None) {
+                if (!IsFinite(connect.localPosition.x) ||
+                    !IsFinite(connect.localPosition.y) ||
+                    !IsFinite(connect.localPosition.z) ||
+                    !IsFinite(connect.pivot) || connect.pivot < 0.0f ||
+                    connect.pivot > 1.0f ||
+                    !IsFinite(connect.lengthScale) ||
+                    connect.lengthScale < 0.0f ||
+                    !IsFinite(connect.startOffset) ||
+                    connect.startOffset < 0.0f ||
+                    !IsFinite(connect.endOffset) ||
+                    connect.endOffset < 0.0f) {
+                    AddError(
+                        diagnostics,
+                        "Vfx.InvalidConnectTarget",
+                        "connect target values are invalid",
+                        emitter.id);
+                }
+                if (connect.mode == VfxConnectTargetMode::LayerOrigin) {
+                    const bool targetExists = std::any_of(
+                        asset.emitters.begin(),
+                        asset.emitters.end(),
+                        [&connect](const VfxEmitterData& candidate) {
+                            return candidate.id == connect.targetLayerId;
+                        });
+                    if (!targetExists) {
+                        AddError(
+                            diagnostics,
+                            "Vfx.MissingConnectTarget",
+                            "connect target layer does not exist",
+                            emitter.id);
+                    }
+                }
+            }
+
+            // Mesh 出力は有効ならモデル素材が必須。参照が欠けたまま
+            // 実行すると、そのレイヤーは何も描かないまま消える。
+            if (emitter.meshOutput.enabled &&
+                !emitter.meshOutput.meshAssetGuid.IsValid()) {
+                AddError(
+                    diagnostics,
+                    "Vfx.MissingMeshAsset",
+                    "mesh output requires a model asset",
+                    emitter.id);
+            }
+            if (emitter.meshOutput.enabled) {
+                if (emitter.kind != VfxLayerKind::Shape || !emitter.effects.empty() ||
+                    emitter.history.mode != VfxHistoryMode::None) {
+                    AddError(diagnostics, "Vfx.UnsupportedMeshLayer",
+                        "Model output requires a shape layer and uses model/custom materials; particle effect stacks and history are not supported", emitter.id);
+                }
+                diagnostics.push_back({VfxDiagnosticSeverity::Warning, "Vfx.MeshMaterialOwnership",
+                    "Model output supports layer transforms and model/custom materials. Layer tint, opacity and particle material curves are not applied to model surfaces.", emitter.id});
             }
 
             if (emitter.specialOutputs.size() >
@@ -884,7 +1006,8 @@ namespace HIKARI::VFX {
                 if (output.type !=
                         VfxSpecialOutputType::WeaponPathDistortion &&
                     output.type != VfxSpecialOutputType::ScreenImpulse &&
-                    output.type != VfxSpecialOutputType::SkinnedAfterimage) {
+                    output.type != VfxSpecialOutputType::SkinnedAfterimage &&
+                    output.type != VfxSpecialOutputType::Light) {
                     AddError(
                         diagnostics,
                         "Vfx.InvalidSpecialOutputType",
@@ -894,6 +1017,22 @@ namespace HIKARI::VFX {
                 const auto& weapon = output.weaponPathDistortion;
                 const auto& screen = output.screenImpulse;
                 const auto& afterimage = output.skinnedAfterimage;
+                const auto& light = output.light;
+                if (output.type == VfxSpecialOutputType::Light &&
+                    (!IsFinite(light.color.x) || !IsFinite(light.color.y) ||
+                     !IsFinite(light.color.z) || !IsFinite(light.color.w) ||
+                     !IsFinite(light.intensity) || light.intensity < 0.0f ||
+                     !IsFinite(light.range) || light.range <= 0.0f ||
+                     !IsFinite(light.sourceRadius) ||
+                     light.sourceRadius < 0.0f ||
+                     !IsFinite(light.flickerFrequency) ||
+                     !IsFinite(light.flickerAmplitude))) {
+                    AddError(
+                        diagnostics,
+                        "Vfx.InvalidLightOutput",
+                        "light output profile is invalid",
+                        output.id);
+                }
                 if ((output.type ==
                         VfxSpecialOutputType::WeaponPathDistortion &&
                     (!IsFinite(weapon.distortion) ||
@@ -1039,16 +1178,29 @@ namespace HIKARI::VFX {
             }
         }
 
-        if (declaredParticleCapacity >
-            RENDER3D::PARTICLES::kGpuParticlePoolCapacity) {
-            AddError(
-                diagnostics,
-                "Vfx.ParticleBudgetExceeded",
-                "combined emitter capacity exceeds the native GPU particle "
-                "pool budget");
-        }
+        // maximumParticles は自動割当ての上限であり予約量ではない。
+        // Shape/Group の実容量も異なるため、合計はコンパイル後の
+        // ValidateVfxProgram が実際の simulation.capacity で判定する。
 
+        const bool hasComposition = std::any_of(asset.emitters.begin(), asset.emitters.end(),
+            [](const auto& layer) { return layer.kind == VfxLayerKind::Adjustment; });
         for (const VfxEmitterData& emitter : asset.emitters) {
+            if (hasComposition && emitter.meshOutput.enabled)
+                AddError(diagnostics, "Vfx.CompositionMeshOutput", "Adjustment compositions currently require procedural shape or particle layers", emitter.id);
+            if (hasComposition) {
+                const VfxEmitterData* parent = &emitter;
+                size_t depth = 0;
+                while (!parent->parentEmitterId.empty() && depth < 8) {
+                    const auto found = emitters.find(parent->parentEmitterId);
+                    if (found == emitters.end()) break;
+                    parent = found->second;
+                    ++depth;
+                    if (parent->kind == VfxLayerKind::Adjustment)
+                        AddError(diagnostics, "Vfx.AdjustmentParent", "Adjustment layers cannot contain child layers", emitter.id);
+                }
+                if (depth >= 8)
+                    AddError(diagnostics, "Vfx.CompositionDepth", "Adjustment compositions support at most eight nested scopes", emitter.id);
+            }
             if (!emitter.parentEmitterId.empty() &&
                 !emitters.contains(emitter.parentEmitterId)) {
                 AddError(

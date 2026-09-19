@@ -1,5 +1,8 @@
 #include "Assets/Vfx/Compiler/HIKARI_VfxCompiler.h"
+#include "Render3D/Vfx/HIKARI_ParticleCapacity.h"
+#include "Assets/Vfx/HIKARI_VfxLayerOrder.h"
 #include "Assets/HIKARI_AssetTypes.h"
+#include "Render3D/Material/Program/HIKARI_MaterialExpressionProgram.h"
 
 #include <algorithm>
 #include <array>
@@ -375,10 +378,7 @@ namespace HIKARI::VFX {
                 continuousCapacity + burstCapacity);
             // Match the GPU simulation/compaction thread-group granularity so
             // the authored automatic capacity reflects the actual pool range.
-            constexpr uint64_t kAllocationGranularity = 64u;
-            const uint64_t aligned =
-                (required + kAllocationGranularity - 1u) /
-                kAllocationGranularity * kAllocationGranularity;
+            const uint64_t aligned = AlignParticleCapacity(required);
             return static_cast<uint32_t>((std::min)(
                 aligned,
                 static_cast<uint64_t>(
@@ -428,6 +428,10 @@ namespace HIKARI::VFX {
                 return ParticleBillboardMode::FixedYAxis;
             case VfxBillboardMode::DirectionalBillboard:
                 return ParticleBillboardMode::DirectionalBillboard;
+            case VfxBillboardMode::CylindricalBillboard:
+                return ParticleBillboardMode::CylindricalBillboard;
+            case VfxBillboardMode::FaceCameraPosition:
+                return ParticleBillboardMode::FaceCameraPosition;
             case VfxBillboardMode::Fixed:
             default:
                 return ParticleBillboardMode::Fixed;
@@ -453,6 +457,10 @@ namespace HIKARI::VFX {
             return ParticleRenderShape::MeshHemisphere;
         case VfxRenderShapeType::CrossPlane:
             return ParticleRenderShape::CrossPlane;
+        case VfxRenderShapeType::MeshTorus:
+            return ParticleRenderShape::MeshTorus;
+        case VfxRenderShapeType::MeshCapsule:
+            return ParticleRenderShape::MeshCapsule;
         case VfxRenderShapeType::Sprite:
         default:
             return ParticleRenderShape::Sprite;
@@ -512,12 +520,7 @@ namespace HIKARI::VFX {
         std::sort(
             emitters.begin(),
             emitters.end(),
-            [](const auto& left, const auto& right) {
-                if (left.order != right.order) {
-                    return left.order < right.order;
-                }
-                return left.id < right.id;
-            });
+            VfxLayerPrecedes);
         std::unordered_map<std::string, uint32_t> emitterIndices{};
         for (uint32_t index = 0u; index < emitters.size(); ++index) {
             emitterIndices.emplace(emitters[index].id, index);
@@ -569,6 +572,8 @@ namespace HIKARI::VFX {
                 source.shape.circleInnerRadius;
             emitter.simulation.shapeCircleEmitOnEdge =
                 source.shape.circleEmitOnEdge ? 1u : 0u;
+            emitter.simulation.shapeCircleArcDegrees =
+                source.shape.circleArcDegrees;
             emitter.simulation.shapeEdgeLength =
                 source.shape.edgeLength;
             emitter.simulation.radialSpeed = CompileDistribution(
@@ -598,9 +603,17 @@ namespace HIKARI::VFX {
             }
             emitter.render.materialMode = ConvertMaterialMode(
                 source.renderCommon.materialMode);
-            if (!source.effects.empty()) {
+            if (source.kind == VfxLayerKind::Adjustment) emitter.compositeEffects = source.effects;
+            if (!source.effects.empty() && source.kind != VfxLayerKind::Adjustment) {
                 auto material = std::make_shared<MaterialAssetDescriptor>();
-                material->sourceData = BuildMaterialEffectStack(source.renderCommon.colorTextureAssetGuid,
+                MaterialEffectTextureSet effectTextures{};
+                effectTextures.baseColor = source.renderCommon.colorTextureAssetGuid;
+                effectTextures.mask = source.renderCommon.maskTextureAssetGuid;
+                effectTextures.noise = source.renderCommon.noiseTextureAssetGuid;
+                effectTextures.detailNoise =
+                    source.renderCommon.detailNoiseTextureAssetGuid;
+                effectTextures.flowMap = source.renderCommon.flowMapTextureAssetGuid;
+                material->sourceData = BuildMaterialEffectStack(effectTextures,
                     source.effects, source.renderCommon.materialMode == VfxMaterialMode::StandardLit,
                     source.renderCommon.flipbookColumns, source.renderCommon.flipbookRows, VfxAnimatedMaterialParameters(source));
                 material->compileResult = CompileMaterialAsset(material->sourceData);
@@ -610,6 +623,20 @@ namespace HIKARI::VFX {
                             "Vfx.MaterialEffectCompile", diagnostic.message, source.id});
                     return result;
                 }
+                RENDER3D::MATERIAL::MaterialExpressionBudget budget;
+                std::string budgetError;
+                if (!RENDER3D::MATERIAL::ResolveMaterialExpressionBudget(material->compileResult.program, budget, budgetError)) {
+                    result.diagnostics.push_back({VfxDiagnosticSeverity::Error, "Vfx.MaterialBudget", budgetError, source.id});
+                    return result;
+                }
+                const bool nearLimit = budget.instructionCount * 5u >= budget.maxInstructionCount * 4u ||
+                    budget.valueCount * 5u >= budget.maxValueCount * 4u ||
+                    budget.registerCount * 5u >= budget.maxRegisterCount * 4u;
+                result.diagnostics.push_back({nearLimit ? VfxDiagnosticSeverity::Warning : VfxDiagnosticSeverity::Info,
+                    "Vfx.MaterialBudget", "Instructions " + std::to_string(budget.instructionCount) + "/" +
+                        std::to_string(budget.maxInstructionCount) + ", values " + std::to_string(budget.valueCount) + "/" +
+                        std::to_string(budget.maxValueCount) + ", registers " + std::to_string(budget.registerCount) + "/" +
+                        std::to_string(budget.maxRegisterCount) + ". Static shader usage; not GPU timing.", source.id});
                 emitter.render.effectMaterial = std::move(material);
                 emitter.render.effectMaterialKey = program.programId + ":" + source.id;
             }
@@ -661,6 +688,61 @@ namespace HIKARI::VFX {
             emitter.render.ringEndAngleRadians =
                 source.renderShape.ringEndAngleDegrees *
                 kDegreesToRadians;
+            emitter.render.uvMode =
+                static_cast<uint32_t>(source.renderShape.uvMode);
+            emitter.render.uvTileLength = source.renderShape.uvTileLength;
+            emitter.render.uvTilingU = source.renderShape.uvTilingU;
+            emitter.render.uvTilingV = source.renderShape.uvTilingV;
+            emitter.render.uvRotationRadians =
+                source.renderShape.uvRotationDegrees *
+                kDegreesToRadians;
+            emitter.render.uvSwapAxes = source.renderShape.uvSwapAxes;
+            emitter.render.anchor = source.anchor;
+            emitter.render.connectTargetMode =
+                static_cast<uint32_t>(source.connectTarget.mode);
+            emitter.render.connectLocalPosition = source.connectTarget.localPosition;
+            emitter.render.connectPivot = source.connectTarget.pivot;
+            emitter.render.connectLengthScale = source.connectTarget.lengthScale;
+            emitter.render.connectStartOffset = source.connectTarget.startOffset;
+            emitter.render.connectEndOffset = source.connectTarget.endOffset;
+            emitter.render.connectFlags =
+                (source.connectTarget.orient ? 1u : 0u) |
+                (source.connectTarget.stretch ? 2u : 0u);
+            if (source.meshOutput.enabled &&
+                source.meshOutput.meshAssetGuid.IsValid()) {
+                emitter.render.meshAssetGuid =
+                    source.meshOutput.meshAssetGuid.value;
+                emitter.render.meshOutputFlags =
+                    (source.meshOutput.castShadows ? 1u : 0u) |
+                    (source.meshOutput.receiveShadow ? 2u : 0u);
+            }
+            // 参照レイヤーは ID ではなく添字で持つ。実行時に文字列を引かない。
+            if (source.connectTarget.mode == VfxConnectTargetMode::LayerOrigin) {
+                const auto target =
+                    emitterIndices.find(source.connectTarget.targetLayerId);
+                if (target != emitterIndices.end()) {
+                    emitter.render.connectTargetLayerIndex = target->second;
+                }
+            }
+            emitter.render.taperStart = source.renderShape.taperStart;
+            emitter.render.taperEnd = source.renderShape.taperEnd;
+            emitter.render.cylinderTopRadius =
+                source.renderShape.cylinderTopRadius;
+            emitter.render.cylinderBottomRadius =
+                source.renderShape.cylinderBottomRadius;
+            emitter.render.coneBaseRadius =
+                source.renderShape.coneBaseRadius;
+            emitter.render.bendAmount = source.renderShape.bendAmount;
+            emitter.render.twistRadians =
+                source.renderShape.twistDegrees * kDegreesToRadians;
+            emitter.render.torusMajorRadius =
+                source.renderShape.torusMajorRadius;
+            emitter.render.torusMinorRadius =
+                source.renderShape.torusMinorRadius;
+            emitter.render.capsuleRadius =
+                source.renderShape.capsuleRadius;
+            emitter.render.billboardAxis =
+                static_cast<uint32_t>(source.renderShape.billboardAxis);
             emitter.specialOutputs = source.specialOutputs;
             std::sort(
                 emitter.specialOutputs.begin(),
@@ -704,6 +786,21 @@ namespace HIKARI::VFX {
                     source.renderCommon.colorTextureAssetGuid.value)) {
                 program.dependencyGuids.push_back(
                     source.renderCommon.colorTextureAssetGuid);
+            }
+            // 追加スロットも依存として登録する。共有ライブラリへ
+            // 持ち出すときに貼図が抜け落ちないようにする。
+            const AssetGuid* extraTextures[] = {
+                &source.renderCommon.maskTextureAssetGuid,
+                &source.renderCommon.noiseTextureAssetGuid,
+                &source.renderCommon.detailNoiseTextureAssetGuid,
+                &source.renderCommon.flowMapTextureAssetGuid,
+            };
+            for (const AssetGuid* extra : extraTextures) {
+                if (!extra->IsValid() ||
+                    IsVfxBuiltinTextureAssetId(extra->value)) {
+                    continue;
+                }
+                program.dependencyGuids.push_back(*extra);
             }
             program.emitters.push_back(std::move(emitter));
         }

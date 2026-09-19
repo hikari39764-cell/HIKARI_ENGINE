@@ -1,6 +1,10 @@
 #include "Editor/Workspaces/Vfx/HIKARI_VfxInspectorControls.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 
+#include "Editor/Style/HIKARI_EditorGlyphs.h"
+#include "Editor/Style/HIKARI_EditorWidgets.h"
+#include "Core/Text/HIKARI_Localization.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -69,25 +73,37 @@ namespace HIKARI::EDITOR {
         const float duration = GetPreviewTimelineDuration();
 
         if (!previewPlaying_) {
-            if (ImGui::Button(VfxUiText("Play").c_str(), { 58.0f, 26.0f })) {
+            if (IconButton(EditorGlyph::Play, "Play", EditorButtonTone::Quiet, {28,28},
+                    (VfxUiText("Play") + " (Space)").c_str())) {
                 (void)PlayPreview(statusMessage_);
             }
-        } else if (ImGui::Button(
-                VfxUiText(previewPaused_ ? "Resume" : "Pause").c_str(),
-                { 62.0f, 26.0f })) {
+        } else if (IconButton(previewPaused_ ? EditorGlyph::Play : EditorGlyph::Pause,
+                "Play", EditorButtonTone::Quiet, {28,28},
+                (VfxUiText(previewPaused_ ? "Resume" : "Pause") + " (Space)").c_str())) {
             PausePreview(!previewPaused_);
         }
         ImGui::SameLine();
-        if (ImGui::Button(VfxUiText("Restart").c_str(), { 64.0f, 26.0f })) {
+        if (IconButton(EditorGlyph::Revert, "Restart", EditorButtonTone::Quiet,
+                {28,28}, VfxUiText("Restart").c_str())) {
             (void)RestartPreview(statusMessage_);
         }
         ImGui::SameLine();
         ImGui::BeginDisabled(!previewPlaying_);
-        if (ImGui::Button(VfxUiText("Stop").c_str(), { 54.0f, 26.0f })) {
+        if (IconButton(EditorGlyph::Stop, "Stop", EditorButtonTone::Quiet,
+                {28,28}, VfxUiText("Stop").c_str())) {
             StopPreview();
             statusMessage_ = "VFX preview stopped";
         }
         ImGui::EndDisabled();
+
+        ImGui::SameLine();
+        if (IconButton(EditorGlyph::StepBackward, "StepBackward", EditorButtonTone::Quiet,
+                {28,28}, TEXT::Localize("ui.vfx.timeline.previousFrame").c_str()))
+            (void)StepPreviewFrame(-1, statusMessage_);
+        ImGui::SameLine();
+        if (IconButton(EditorGlyph::StepForward, "StepForward", EditorButtonTone::Quiet,
+                {28,28}, TEXT::Localize("ui.vfx.timeline.nextFrame").c_str()))
+            (void)StepPreviewFrame(1, statusMessage_);
 
         ImGui::SameLine();
         ImGui::SetNextItemWidth(72.0f);
@@ -103,9 +119,9 @@ namespace HIKARI::EDITOR {
         }
 
         ImGui::SameLine();
-        bool loopEnabled = previewLoopEnabled_;
-        if (ImGui::Checkbox(VfxUiText("Loop").c_str(), &loopEnabled)) {
-            SetPreviewLoopEnabled(loopEnabled);
+        if (IconToggleButton(EditorGlyph::Loop, "Loop", previewLoopEnabled_,
+                {28,28}, VfxUiText("Loop").c_str())) {
+            SetPreviewLoopEnabled(!previewLoopEnabled_);
         }
         ImGui::SameLine();
         ImGui::SetNextItemWidth(82.0f);

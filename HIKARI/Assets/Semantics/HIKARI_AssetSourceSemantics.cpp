@@ -79,7 +79,8 @@ namespace HIKARI::ASSETS::SEMANTICS {
                 AssetImporterKind::VfxEffect,
                 AssetType::VfxEffect,
                 "VfxAssetImporter",
-                11u,
+                // 22: 調整レイヤーの合成効果と色相修正。
+                23u,
                 ".hvfx",
             },
             {

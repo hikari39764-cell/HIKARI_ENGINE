@@ -29,6 +29,8 @@
 #include "Scene/HIKARI_SceneRuntimeBuilder.h"
 #include "Scene/Vfx/HIKARI_ActionPostReactionService.h"
 #include "Scene/Vfx/HIKARI_CombatAfterimageService.h"
+#include "Scene/Vfx/HIKARI_VfxMeshOutput.h"
+#include "Scene/Vfx/HIKARI_VfxPlaybackService.h"
 #include "Scene/Vfx/HIKARI_CombatPresentationService.h"
 #include "Scene/Vfx/HIKARI_VfxPlaybackService.h"
 #include <Vfx/Common/HIKARI_FxTypes.h>
@@ -48,6 +50,7 @@ namespace HIKARI {
     ModelManager* RenderSubmissionSystem::sModelManager_ = nullptr;
     std::filesystem::path RenderSubmissionSystem::sProjectRoot_{};
     RENDER3D::RUNTIME::SceneRenderCache RenderSubmissionSystem::sSceneRenderCache_{};
+    VFX::VfxMeshInstancePublisher RenderSubmissionSystem::sVfxMeshPublisher_{};
     RENDER3D::GPUDRIVEN::GpuSceneRegistry RenderSubmissionSystem::sGpuSceneRegistry_{};
     RENDER3D::GPUDRIVEN::MassGpuSceneRegistry
         RenderSubmissionSystem::sMassGpuSceneRegistry_{};
@@ -731,6 +734,7 @@ namespace HIKARI {
         MESHRENDERER::SetGpuDrivenSceneSource(nullptr);
         SHADOW::SetGpuDrivenSceneSource(nullptr);
         sSceneRenderCache_.Clear();
+        sVfxMeshPublisher_.Reset();
         sSceneRenderCacheSync_.Clear();
         sGpuSceneRegistry_.Clear();
         sMassGpuSceneRegistry_.Clear();
@@ -858,6 +862,29 @@ namespace HIKARI {
                     sProjectRoot_,
                     sRenderViewPurpose_,
                     sModelManager_);
+            }
+        }
+
+        {
+            static const auto timer = CPU_PROFILE::RegisterDynamicPass("Vfx.MeshOutput");
+            const CPU_PROFILE::ScopedDynamicCpuTimer scope(timer);
+            // VFX の Mesh 出力は world 由来の同期が終わった直後に差し込み、
+            // 同じフレームの GPU scene へ載せる。world 側の所有物は触らない。
+            if (const auto* vfxPlayback =
+                    world.Services().Find<VFX::VfxPlaybackService>()) {
+                if (sAssetRegistry_ != nullptr && sModelManager_ != nullptr) {
+                    sVfxMeshPublisher_.Publish(
+                        *vfxPlayback,
+                        sSceneRenderCache_,
+                        MODELRENDERER::GetRenderModelCache(),
+                        *sAssetRegistry_,
+                        *sModelManager_,
+                        sProjectRoot_);
+                } else {
+                    sVfxMeshPublisher_.ClearPublished(sSceneRenderCache_);
+                }
+            } else {
+                sVfxMeshPublisher_.ClearPublished(sSceneRenderCache_);
             }
         }
 

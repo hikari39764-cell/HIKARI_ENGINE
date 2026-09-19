@@ -21,6 +21,8 @@
 #endif
 
 #include "Gfx/HIKARI_GfxContext.h"
+#include "Core/HIKARI_TimeService.h"
+#include "Core/HIKARI_Logger.h"
 #include "Render2D/HIKARI_RenderTarget2D.h"
 #include "Render3D/Color/HIKARI_ExposureState.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
@@ -30,10 +32,12 @@
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
+#include "Render3D/Vfx/HIKARI_ParticleGpuDrivenPass.h"
 #include "Render3D/Views/HIKARI_EditorInteractiveViewGuides.h"
 #include "Render3D/Views/HIKARI_EditorInteractiveStylizedView.h"
 #include "Vfx/Post/HIKARI_PostCommon.h"
 #include "Vfx/Post/HIKARI_PostEffect.h"
+#include "Vfx/Post/HIKARI_PostProcessingStage.h"
 #include "Vfx/Post/HIKARI_PostQuadDrawer.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 
@@ -102,6 +106,10 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         std::unique_ptr<POST::QuadDrawer> g_displayQuad{};
         std::unique_ptr<POST::PostEffect> g_displayEffect{};
         std::unique_ptr<POST::PostEffect> g_fxaaEffect{};
+        // プレビューでも本編と同じ bloom を通すための、ビュー専用の後処理段。
+        // PostProcessingStage はインスタンス化できるので、メイン描画経路に
+        // 触れず、bloom の実装も二重化しない (同じクラス・同じ設定を使う)。
+        std::unique_ptr<POST::PostProcessingStage> g_previewPostStage{};
         constexpr uint32_t kMaximumContinuousRenderBurst = 3u;
         uint64_t g_scheduleSerial = 0u;
         uint64_t g_requestSerial = 0u;
@@ -420,6 +428,9 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                     GUID_ContainerFormatPng, nullptr, &encoder);
             }
             if (SUCCEEDED(hr)) {
+                hr = encoder->Initialize(stream, WICBitmapEncoderNoCache);
+            }
+            if (SUCCEEDED(hr)) {
                 hr = encoder->CreateNewFrame(&frame, nullptr);
             }
             if (SUCCEEDED(hr)) {
@@ -517,7 +528,8 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                 g_captureRequest.error = std::move(error);
             };
 
-            RenderTarget2D* target = state.displayTarget.get();
+            RenderTarget2D* target = state.request.spatialAntiAliasing
+                ? state.antialiasedTarget.get() : state.displayTarget.get();
             if (target == nullptr || !target->IsInitialized()) {
                 finish("预览目标不可用");
                 return;
@@ -764,6 +776,18 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                 }
                 g_fxaaEffect = std::move(effect);
             }
+            return true;
+        }
+
+        // プレビュー用の後処理段。本編の PostSystem は単一レンダー面に結び付いて
+        // いるため共有できず、ここで同じクラスをもう 1 つ持つ。設定 (bloom 閾値・
+        // 強度・半径) はシーン環境から渡すので、見た目は本編と揃う。
+        bool EnsurePreviewPostStage() {
+            if (g_previewPostStage == nullptr) {
+                g_previewPostStage =
+                    std::make_unique<POST::PostProcessingStage>();
+            }
+            g_previewPostStage->UpdateContext(GFX::GetCurrentContext());
             return true;
         }
 
@@ -1233,6 +1257,8 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                 stylized.writeFeatureMask;
             settings.stylizedSurfaceBuffer =
                 &state.stylizedView.GetSurfaceBuffer();
+            settings.passResources.compositionDepth = state.target != nullptr
+                ? state.target->GetReadOnlyDsvHandle() : D3D12_CPU_DESCRIPTOR_HANDLE{};
             settings.sceneDsv = state.target != nullptr
                 ? state.target->GetDsvHandle()
                 : D3D12_CPU_DESCRIPTOR_HANDLE{};
@@ -1449,6 +1475,12 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         g_captureRequest = {
             true, false, viewId, outputPath, {}
         };
+        // 停止中のプレビューにも capture 用の描画を一度予約する。
+        const auto found = g_views.find(viewId.value);
+        if (found != g_views.end() && found->second->hasRequest) {
+            found->second->pendingSerial = g_requestSerial = NextNonZero(g_requestSerial);
+            MarkOutputPending(*found->second);
+        }
     }
 
     bool PollPreviewCapture(
@@ -1743,6 +1775,36 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             return false;
         }
 
+        // プレビューでも本編と同じ bloom を掛ける。この display 経路は
+        // トーンマッピングしか持たないため、HDR のままここで後処理段を通し、
+        // その結果をトーンマッピングへ渡す (本編と同じ順序)。
+        if (displaySource != nullptr &&
+            effectiveEnvironment.bloom.enabled &&
+            // QuadDrawer は display パイプラインが作る。先に用意しないと
+            // 初回フレームで未初期化のまま参照してしまう。
+            EnsureDisplayPipeline() &&
+            EnsurePreviewPostStage()) {
+            g_previewPostStage->UpdateCommonParams(
+                0.0f, static_cast<int>(width), static_cast<int>(height));
+            // HDR lighting と display が参照する同じ view 環境を使う。
+            BloomSettings previewBloom{};
+            previewBloom.enabled = effectiveEnvironment.bloom.enabled;
+            previewBloom.threshold = effectiveEnvironment.bloom.threshold;
+            previewBloom.intensity = effectiveEnvironment.bloom.intensity;
+            previewBloom.radius = effectiveEnvironment.bloom.radius;
+            previewBloom.downsampleCount = effectiveEnvironment.bloom.downsampleCount;
+            g_previewPostStage->SetBloomSettings(previewBloom);
+            // ツールプレビューは bloom 専用の入口を使う。ResolveHdr は画面衝撃・
+            // 自動露出計測・サングレア・遷移などゲーム状態に紐づく段を含み、
+            // 静止中のプレビューでもフレーム毎に結果が揺れる (ちらつきの原因)。
+            RenderTarget2D* bloomed = g_previewPostStage->ResolveHdrBloomOnly(
+                    *displaySource,
+                    *g_displayQuad);
+            if (bloomed != nullptr && bloomed != displaySource) {
+                displaySource = bloomed;
+            }
+        }
+
         if (displaySource == nullptr ||
             !ResolveDisplayTarget(
                 *selected,
@@ -1852,6 +1914,7 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         g_views.clear();
         g_fxaaEffect.reset();
         g_displayEffect.reset();
+        g_previewPostStage.reset();
         g_displayQuad.reset();
         ShutdownEditorInteractiveStylizedSharedResources();
         g_scheduleSerial = 0u;

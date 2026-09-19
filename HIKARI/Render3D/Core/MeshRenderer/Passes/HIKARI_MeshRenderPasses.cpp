@@ -252,6 +252,10 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         }
         bindings.cameraPosition = cameraPosition;
         bindings.cameraPositionValid = true;
+        bindings.compositionTarget = passResources.compositionTarget;
+        bindings.compositionDepth = passResources.compositionDepth;
+        bindings.width = passResources.sceneDepth.width;
+        bindings.height = passResources.sceneDepth.height;
         return particlePass.ExecuteForwardTransparent(graphics, bindings);
     }
 

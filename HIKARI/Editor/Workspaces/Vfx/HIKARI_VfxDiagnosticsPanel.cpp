@@ -1,10 +1,70 @@
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 
+#include <string>
+
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
 #endif
 
 namespace HIKARI::EDITOR {
+    // AI 消費者のための現在状態の要約。どの資産を開いていて、どの層があり、
+    // どの効果とキーが載り、どこを選び、プレビューがどこにいるかを 1 つの
+    // テキストへまとめる。診断と同じく「今の真実」を所有するのはこの場所。
+    std::string VfxWorkspaceController::GetAiVfxStatus() const {
+        const VFX::VfxAssetData* asset = GetAsset();
+        if (asset == nullptr) {
+            return "vfx: none";
+        }
+        std::string status = "vfx: " + asset->name + " | " +
+            std::to_string(asset->durationSeconds) + "s" +
+            (asset->loop ? " loop" : "") + " | layers " +
+            std::to_string(asset->emitters.size());
+        for (const VFX::VfxEmitterData& layer : asset->emitters) {
+            status += "\n  [" + layer.id + "] " + layer.name + " ";
+            status += layer.kind == VFX::VfxLayerKind::Particles
+                ? "Particles"
+                : layer.kind == VFX::VfxLayerKind::Group ? "Group" :
+                  layer.kind == VFX::VfxLayerKind::Adjustment ? "Adjustment" : "Shape";
+            if (layer.kind != VFX::VfxLayerKind::Group && layer.kind != VFX::VfxLayerKind::Adjustment) {
+                status += " ";
+                status += std::string(VFX::ToString(layer.renderShape.type));
+                status += layer.renderShape.uvMode ==
+                        VFX::VfxShapeUvMode::WorldLength
+                    ? " uv=world-length"
+                    : " uv=parameter";
+                if (layer.renderShape.uvSwapAxes) status += " uv-swapped";
+            }
+            if (!layer.effects.empty()) {
+                status += " | effects:";
+                for (const MaterialEffectStep& effect : layer.effects) {
+                    status += " ";
+                    status += std::string(MaterialEffectName(effect.kind));
+                    if (!effect.enabled) status += "(disabled)";
+                }
+            }
+            if (!layer.parameterTracks.empty()) {
+                status += " | parameter keys: ";
+                status += std::to_string(layer.parameterTracks.size());
+            }
+        }
+        const VfxWorkspaceSelection& selection = GetSelection();
+        if (!selection.emitterId.empty()) {
+            status += "\nselection: " + selection.emitterId;
+            if (!selection.propertyId.empty()) {
+                status += " " + selection.propertyId;
+            }
+        } else {
+            status += "\nselection: " + selection.targetId;
+        }
+        status += "\npreview: " +
+            std::to_string(GetPreviewElapsedSeconds()) + "s ";
+        status += IsPreviewPlaying()
+            ? (IsPreviewPaused() ? "paused" : "playing")
+            : "stopped";
+        status += GetDocument().IsDirty() ? " | unsaved" : " | saved";
+        return status;
+    }
+
     namespace {
 #if defined(HIKARI_WITH_EDITOR)
         const char* SeverityLabel(

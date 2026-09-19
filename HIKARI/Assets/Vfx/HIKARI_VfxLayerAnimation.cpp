@@ -29,10 +29,47 @@ std::vector<VfxAnimatableParameter> GetVfxAnimatableParameters(const VfxEmitterD
         const auto addEffect = [&](const char *property, const char *label, float value, float lo, float hi) {
             add(effect.id, property, label, value, lo, hi);
         };
+        if (layer.kind == VfxLayerKind::Adjustment) {
+            for (uint32_t set = 0; set < 2; ++set) {
+                const auto names = CompositeEffectParameterNames(effect.kind, set != 0);
+                const auto& values = set ? effect.parameters2 : effect.parameters;
+                const float channels[]{values.x, values.y, values.z, values.w};
+                for (uint32_t c = 0; c < 4 && names[c]; ++c) {
+                    const auto property = std::string(set ? "parameters2." : "parameters.") + "xyzw"[c];
+                    float minimum = 0, maximum = 1;
+                    if (set) { minimum = -180; maximum = 180; }
+                    else switch (effect.kind) {
+                    case MaterialEffectKind::Pixelate: if (c == 0) { minimum = 1; maximum = 256; } break;
+                    case MaterialEffectKind::Posterize: if (c == 0) { minimum = 2; maximum = 64; } break;
+                    case MaterialEffectKind::Blur: maximum = 64; break;
+                    case MaterialEffectKind::Glow: maximum = c == 2 ? 64.0f : 16.0f; break;
+                    case MaterialEffectKind::ColorCorrect:
+                        minimum = c == 3 ? -1.0f : 0.0f;
+                        maximum = c == 0 ? 8.0f : c == 3 ? 1.0f : 4.0f; break;
+                    case MaterialEffectKind::Ink:
+                        minimum = c == 0 ? 0.25f : 0.0f;
+                        maximum = c == 0 ? 12.0f : c == 1 ? 4.0f : 1.0f; break;
+                    default: break;
+                    }
+                    addEffect(property.c_str(), names[c], channels[c], minimum, maximum);
+                }
+            }
+            continue;
+        }
         switch (effect.kind) {
+        case MaterialEffectKind::FlowMap:
+            addEffect("parameters.x", "Flow Strength", effect.parameters.x, 0, 2);
+            addEffect("parameters.y", "Flow Speed", effect.parameters.y, -8, 8);
+            addEffect("parameters.z", "Flow Repeat", effect.parameters.z, 0.001f, 20);
+            addEffect("parameters.w", "Flow Mix", effect.parameters.w, 0, 1);
+            break;
         case MaterialEffectKind::UvFlow:
             addEffect("parameters.x", "Flow U", effect.parameters.x, -20, 20);
             addEffect("parameters.y", "Flow V", effect.parameters.y, -20, 20);
+            // タイルは乗数として評価する。積分経路を使うのは x/y のフローだけ。
+            addEffect("parameters.z", "U Repeat", effect.parameters.z, 0.001f, 20);
+            addEffect("parameters.w", "V Repeat", effect.parameters.w, 0.001f, 20);
+            addEffect("parameters2.x", "UV Rotation", effect.parameters2.x, -360, 360);
             break;
         case MaterialEffectKind::UvDistortion:
             addEffect("parameters.x", "Distortion", effect.parameters.x, 0, 1);
@@ -46,6 +83,47 @@ std::vector<VfxAnimatableParameter> GetVfxAnimatableParameters(const VfxEmitterD
             break;
         case MaterialEffectKind::Fresnel:
             addEffect("parameters.y", "Rim Intensity", effect.parameters.y, 0, 32);
+            break;
+        case MaterialEffectKind::Opacity:
+            addEffect("parameters.x", "Amount", effect.parameters.x, 0, 1);
+            break;
+        case MaterialEffectKind::Glow:
+            addEffect("parameters.x", "Threshold", effect.parameters.x, 0, 4);
+            addEffect("parameters.y", "Intensity", effect.parameters.y, 0, 32);
+            break;
+        case MaterialEffectKind::Blur:
+            addEffect("parameters.x", "Radius", effect.parameters.x, 0, 0.5f);
+            break;
+        case MaterialEffectKind::LightSweep:
+            addEffect("parameters.x", "Center", effect.parameters.x, -1, 2);
+            addEffect("parameters.y", "Width", effect.parameters.y, 0, 2);
+            addEffect("parameters.w", "Intensity", effect.parameters.w, 0, 32);
+            break;
+        case MaterialEffectKind::LuminanceMask:
+            addEffect("parameters.x", "Threshold", effect.parameters.x, 0, 1);
+            addEffect("parameters.y", "Softness", effect.parameters.y, 0.001f, 1);
+            break;
+        case MaterialEffectKind::RadialBlur:
+            addEffect("parameters.x", "Radius", effect.parameters.x, 0, 0.5f);
+            addEffect("parameters.y", "Center U", effect.parameters.y, -1, 2);
+            addEffect("parameters.z", "Center V", effect.parameters.z, -1, 2);
+            break;
+        case MaterialEffectKind::TurbulentDisplace:
+            addEffect("parameters.x", "Amount", effect.parameters.x, 0, 1);
+            addEffect("parameters.y", "Frequency", effect.parameters.y, 0.01f, 32);
+            addEffect("parameters.z", "Speed", effect.parameters.z, -8, 8);
+            break;
+        case MaterialEffectKind::ColorCorrect:
+            addEffect("parameters.x", "Exposure", effect.parameters.x, 0, 8);
+            addEffect("parameters.y", "Contrast", effect.parameters.y, 0, 4);
+            addEffect("parameters.z", "Saturation", effect.parameters.z, 0, 4);
+            addEffect("parameters.w", "Black Level", effect.parameters.w, -1, 1);
+            addEffect("parameters2.x", "Hue", effect.parameters2.x, -180, 180);
+            break;
+        case MaterialEffectKind::Streak:
+            addEffect("parameters.x", "Length", effect.parameters.x, 0, 0.5f);
+            addEffect("parameters.y", "Angle", effect.parameters.y, -180, 180);
+            addEffect("parameters.w", "Decay", effect.parameters.w, 0, 1);
             break;
         default:
             break;
@@ -114,7 +192,16 @@ bool CompileVfxLayerCurves(const VfxEmitterData &source, VfxProgramEmitter &targ
                 continue;
         }
         uint32_t slot = 0;
-        if (parameter->channel == VfxLayerChannel::MaterialParameter) {
+        if (parameter->channel == VfxLayerChannel::MaterialParameter && source.kind == VfxLayerKind::Adjustment) {
+            const auto effect = std::find_if(source.effects.begin(), source.effects.end(),
+                [&](const auto& e) { return e.id == track.targetId; });
+            const size_t component = std::string_view("xyzw").find(track.propertyId.back());
+            if (effect == source.effects.end() || component == std::string_view::npos) {
+                error = "Invalid adjustment parameter"; return false;
+            }
+            slot = static_cast<uint32_t>(effect - source.effects.begin()) * 8u +
+                (track.propertyId.starts_with("parameters2.") ? 4u : 0u) + static_cast<uint32_t>(component);
+        } else if (parameter->channel == VfxLayerChannel::MaterialParameter) {
             if (!target.render.effectMaterial) {
                 error = "Animated material is missing";
                 return false;
@@ -141,7 +228,12 @@ bool CompileVfxLayerCurves(const VfxEmitterData &source, VfxProgramEmitter &targ
                            parameter->channel == VfxLayerChannel::RingEndAngle;
         const auto effect = std::find_if(source.effects.begin(), source.effects.end(),
                                          [&](const auto &e) { return e.id == track.targetId; });
-        const bool flow = effect != source.effects.end() && effect->kind == MaterialEffectKind::UvFlow;
+        // フロー偏移だけが積分済みオフセット経路を使う。タイルなどの乗数は生の値。
+        const bool flow = effect != source.effects.end() &&
+                          ((effect->kind == MaterialEffectKind::UvFlow &&
+                            (track.propertyId == "parameters.x" || track.propertyId == "parameters.y")) ||
+                           (effect->kind == MaterialEffectKind::TurbulentDisplace && track.propertyId == "parameters.z") ||
+                           (effect->kind == MaterialEffectKind::FlowMap && track.propertyId == "parameters.y"));
         const float unit = angle ? 0.01745329252f : 1;
         append(track.curve, flow ? VfxLayerChannel::MaterialUvOffset : parameter->channel, unit, slot);
         target.layerCurves.back().minimum = parameter->minimum * unit;

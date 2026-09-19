@@ -9,6 +9,8 @@ static const uint HIKARI_PARTICLE_ROTATED_BILLBOARD = 0u;
 static const uint HIKARI_PARTICLE_FIXED_Y_AXIS = 1u;
 static const uint HIKARI_PARTICLE_DIRECTIONAL_BILLBOARD = 2u;
 static const uint HIKARI_PARTICLE_FIXED = 3u;
+static const uint HIKARI_PARTICLE_CYLINDRICAL_BILLBOARD = 4u;
+static const uint HIKARI_PARTICLE_FACE_CAMERA_POSITION = 5u;
 static const uint HIKARI_PARTICLE_MAX_SEGMENTS = 64u;
 static const uint HIKARI_PARTICLE_MATERIAL_ALPHA_MASK = 1u << 1u;
 static const uint HIKARI_PARTICLE_DEPTH_WORLD_OCCLUDED = 0u;
@@ -47,7 +49,6 @@ cbuffer ParticleDrawConstants : register(b1)
     uint gBillboardMode;
     uint gRenderShapeMode;
     uint gSegmentCount;
-    float4 gRenderShapeParamsA;
     float4 gRenderShapeParamsB;
     uint gDepthMode;
     uint gParticleMaterialFlags;
@@ -55,6 +56,45 @@ cbuffer ParticleDrawConstants : register(b1)
     uint gParticleReserved;
     float4 gDepthParams;
 };
+
+// gDepthParams.z/w = 形状パラメータ 0/1 での幅倍率。
+// 形状（ジオメトリ）段だけが読む per-draw パラメータは、ルート定数のコスト
+// 上限が厳しいためバッファ側に置き、gParticleReserved (= drawIndex) で引く。
+// ピクセル段は上の cbuffer だけで足りる。
+struct GpuParticleShapeState
+{
+    float4 renderShapeParamsA;
+    float4 renderUvParams;
+    float4 renderAnchor;
+    uint renderUvMode;
+    uint shapeParam0;
+    uint shapeParam1;
+    uint shapeParam2;
+    float bendAmount;
+    float twistRadians;
+    float shapeParam3;
+    float shapeParam4;
+    float shapeParam5;
+    float billboardAxis;
+    float shapeReserved1;
+    float shapeReserved2;
+};
+StructuredBuffer<GpuParticleShapeState> gShapeStates : register(t5);
+// static: シェーダ内で書き換え可能なスレッドローカルな作業変数。
+static GpuParticleShapeState gShapeState;
+#define gRenderShapeParamsA gShapeState.renderShapeParamsA
+#define gRenderUvParams gShapeState.renderUvParams
+#define gRenderAnchor gShapeState.renderAnchor
+#define gRenderUvMode gShapeState.renderUvMode
+#define gShapeParam0 gShapeState.shapeParam0
+#define gShapeParam1 gShapeState.shapeParam1
+#define gShapeParam2 gShapeState.shapeParam2
+#define gShapeBend gShapeState.bendAmount
+#define gShapeTwist gShapeState.twistRadians
+#define gShapeParam3 gShapeState.shapeParam3
+#define gShapeParam4 gShapeState.shapeParam4
+#define gShapeParam5 gShapeState.shapeParam5
+#define gBillboardAxis gShapeState.billboardAxis
 
 struct ParticleVertex
 {
@@ -69,6 +109,8 @@ struct ParticleVertex
     nointerpolation float normalizedAge : TEXCOORD6;
     nointerpolation float randomValue : TEXCOORD7;
     nointerpolation float2 ageAndSpeed : TEXCOORD8;
+    // 形状UVへ UV 契約を適用した材質用UV。アトラスセル解決とは独立。
+    float2 materialUv : TEXCOORD9;
 };
 
 float4 SampleParticleAtlasTexture(
@@ -207,6 +249,36 @@ void ResolveBillboardBasis(
         up = NormalizeOr(projectedDirection, cameraUp);
         right = NormalizeOr(cross(normal, up), cameraRight);
     }
+    else if (gBillboardMode == HIKARI_PARTICLE_CYLINDRICAL_BILLBOARD)
+    {
+        // Look At Line: 選んだローカル軸は形状の向きのまま固定し、法線だけを
+        // 常にカメラへ向ける。帯の幅はその法線から導かれるため、ビームは
+        // どの角度から見ても幅が正面を向く。軸は形状ごとではなくパラメータ。
+        const float4 orientation = NormalizeQuaternion(particle.orientation);
+        const uint axisIndex = (uint)clamp(gBillboardAxis, 0.0f, 2.0f);
+        const float3 localAxis = axisIndex == 1u
+            ? float3(0.0f, 1.0f, 0.0f)
+            : axisIndex == 2u ? float3(0.0f, 0.0f, 1.0f)
+                              : float3(1.0f, 0.0f, 0.0f);
+        const float3 axis = NormalizeOr(
+            RotateByQuaternion(localAxis, orientation),
+            cameraRight);
+        const float3 viewPerpendicular = toCamera -
+            axis * dot(toCamera, axis);
+        normal = NormalizeOr(viewPerpendicular, cameraUp);
+        up = NormalizeOr(-cross(normal, axis), cameraUp);
+        right = axis;
+    }
+    else if (gBillboardMode == HIKARI_PARTICLE_FACE_CAMERA_POSITION)
+    {
+        // 面をカメラ平面ではなくカメラ位置へ正対させる。ワールド上方向を
+        // 基準に up を取るため、画面端でも傾きが破綻しない。
+        normal = toCamera;
+        const float3 worldUp = float3(0.0f, 1.0f, 0.0f);
+        const float3 projectedUp = worldUp - normal * dot(worldUp, normal);
+        up = NormalizeOr(projectedUp, cameraUp);
+        right = NormalizeOr(cross(normal, up), cameraRight);
+    }
     else
     {
         const float sine = sin(particle.scaleRotation.z);
@@ -287,12 +359,12 @@ float4 ParticlePS(ParticleVertex input, bool frontFace : SV_IsFrontFace) : SV_TA
     if (hasMaterialExpression)
     {
         HikariMaterialExpressionContext context = HikariBuildMaterialExpressionContext(
-            input.uv,input.uv,gTimeParams,input.worldPosition,geometricNormal,tangent,
+            input.uv,input.localUv,gTimeParams,input.worldPosition,geometricNormal,tangent,
             gCameraPosition.xyz,input.position,gScreenParams.zw);
         context.particleState = float4(input.normalizedAge, input.ageAndSpeed.x,
             input.randomValue, input.ageAndSpeed.y);
         context.particleColor = input.color;
-        context.particleUv = input.localUv;
+        context.particleUv = input.materialUv;
         const HikariMaterialExpressionResult expression =
             HikariEvaluateMaterialExpression(
                 materialData,

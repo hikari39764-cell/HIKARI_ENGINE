@@ -176,6 +176,39 @@ foreach(runtime_file IN LISTS HIKARI_RUNTIME_DEPENDENCIES)
             "$<TARGET_FILE_DIR:HIKARI_BuiltinShaderCookTool>"
         VERBATIM)
 endforeach()
+add_executable(
+    HIKARI_EngineContentTextureCookTool
+    EXCLUDE_FROM_ALL
+    "Tools/EngineContent/HIKARI_EngineContentTextureCookMain.cpp")
+target_link_libraries(
+    HIKARI_EngineContentTextureCookTool
+    PRIVATE
+        HIKARI::Runtime)
+hikari_configure_engine_target(HIKARI_EngineContentTextureCookTool)
+set_target_properties(
+    HIKARI_EngineContentTextureCookTool
+    PROPERTIES
+        FOLDER "Engine/Tools"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tools")
+foreach(configuration IN ITEMS Debug EditorRelease Shipping)
+    string(TOUPPER "${configuration}" configuration_upper)
+    set_target_properties(
+        HIKARI_EngineContentTextureCookTool
+        PROPERTIES
+            "RUNTIME_OUTPUT_DIRECTORY_${configuration_upper}"
+                "${CMAKE_BINARY_DIR}/tools")
+endforeach()
+foreach(runtime_file IN LISTS HIKARI_RUNTIME_DEPENDENCIES)
+    add_custom_command(
+        TARGET HIKARI_EngineContentTextureCookTool
+        POST_BUILD
+        COMMAND
+            "${CMAKE_COMMAND}" -E copy_if_different
+            "${runtime_file}"
+            "$<TARGET_FILE_DIR:HIKARI_EngineContentTextureCookTool>"
+        VERBATIM)
+endforeach()
+
 set(
     HIKARI_BUILTIN_SHADER_ARTIFACT_ROOT
     "${CMAKE_BINARY_DIR}/bin/EngineContent/Shaders/Cooked")
@@ -333,7 +366,8 @@ endif()
 
 foreach(vfx_contract IN ITEMS NativeVfxSmoke VfxEditorTransactionSmoke
         VfxAssetAuthoringTransactionSmoke VfxPlaybackScheduleSmoke
-        ActionScreenImpulseTypedProfileSmoke WeaponTrailTypedProfileSmoke)
+        ActionScreenImpulseTypedProfileSmoke WeaponTrailTypedProfileSmoke
+        VfxSpecialOutputSmoke)
     hikari_add_runtime_contract("HIKARI_${vfx_contract}"
         "Tools/Tests/HIKARI_${vfx_contract}.cpp" ${hikari_import_contract_options})
     if(HIKARI_WITH_EDITOR_BUILD)

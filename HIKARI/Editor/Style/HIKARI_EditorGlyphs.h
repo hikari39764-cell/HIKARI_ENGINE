@@ -73,6 +73,13 @@ namespace HIKARI::EDITOR {
         TerrainFlatten,
         TerrainMound,
         TerrainPit,
+        Visible,
+        Hidden,
+        Solo,
+        StepBackward,
+        StepForward,
+        Loop,
+        Help,
     };
 
 #if defined(HIKARI_WITH_EDITOR)

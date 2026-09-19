@@ -24,6 +24,7 @@
 #include "Editor/HIKARI_EditorContext.h"
 #include "Editor/Platform/HIKARI_EditorShellActions.h"
 #include "Editor/Widgets/HIKARI_MaterialTextureSlotWidget.h"
+#include "Editor/Widgets/HIKARI_EditorTexturePreview.h"
 
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
@@ -181,7 +182,7 @@ void AssetInspectorPanel::Draw(AssetDatabase &assetDatabase,
     const AssetImportBatchStatus status = assetDatabase.GetQueuedImportStatus();
     if (!status.active && status.completed) {
       if (!status.canceled && status.failed == 0) {
-        EDITOR::ClearMaterialTextureSlotPreviewCache();
+        EDITOR::ClearEditorTexturePreviewCache();
         refreshRuntimeMaterialGuid_ = pendingRefreshRuntimeMaterialGuid_;
       }
       pendingRefreshRuntimeMaterialGuid_.clear();

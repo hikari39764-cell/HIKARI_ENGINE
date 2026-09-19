@@ -131,6 +131,10 @@ namespace HIKARI::EDITOR {
         bool NewAssetFromPreset(
             std::string_view presetId,
             std::string& outMessage);
+        bool ApplyGeometryPreset(
+            std::string_view layerId,
+            std::string_view presetId,
+            std::string& outMessage);
         bool OpenAsset(
             AssetDatabase& assetDatabase,
             const AssetGuid& assetGuid,
@@ -201,8 +205,32 @@ namespace HIKARI::EDITOR {
             uint64_t mergeGroup = 0);
         void DrawLayerAnimation(AssetDatabase&, const VFX::VfxEmitterData&);
         bool AddLayerEffect(std::string_view layerId, MaterialEffectKind, std::string&);
+        bool CopyLayerEffects(std::string_view layerId);
+        bool PasteLayerEffects(std::string_view layerId, std::string& message);
         bool RemoveLayerEffect(std::string_view layerId, std::string_view effectId, std::string&);
         bool MoveLayerEffect(std::string_view layerId, std::string_view effectId, int direction, std::string&);
+        // 効果の多段グラデーション編集。ストップは安定 ID で指す。
+        bool AddLayerEffectColorStop(
+            std::string_view layerId,
+            std::string_view effectId,
+            std::string& outId,
+            std::string& outMessage);
+        bool RemoveLayerEffectColorStop(
+            std::string_view layerId,
+            std::string_view effectId,
+            std::string_view stopId,
+            std::string& outMessage);
+        bool SetLayerEffectColorStop(
+            std::string_view layerId,
+            std::string_view effectId,
+            std::string_view stopId,
+            float time,
+            const MATH::Vec4& color,
+            std::string& outMessage,
+            uint64_t mergeGroup = 0u);
+        // 既存のストップ／キー時刻から最も広い空き区間の中央を返す。
+        // 曲線と効果グラデーションの両方が同じ規則で時刻を選ぶ。
+        static float FindAvailableCurveTime(std::vector<float> times);
         void DrawLayerEffects(AssetDatabase&, const VFX::VfxEmitterData&);
         bool RemoveCurveKey(
             std::string_view emitterId,
@@ -307,6 +335,8 @@ namespace HIKARI::EDITOR {
         const std::vector<VFX::VfxDiagnostic>&
             GetDiagnostics() const noexcept;
         const std::string& GetStatusMessage() const noexcept;
+        // AI 消費者向けの現在状態の要約（開いている資産・層・効果・選択・再生位置）。
+        std::string GetAiVfxStatus() const;
         bool WasLastAssetRefreshAttempted() const noexcept;
         bool DidLastAssetRefreshSucceed() const noexcept;
         const std::string& GetLastAssetRefreshMessage() const noexcept;
@@ -362,7 +392,7 @@ namespace HIKARI::EDITOR {
         bool ApplyAsset(
             VFX::VfxAssetData asset,
             std::string& outMessage,
-            uint64_t mergeGroup = 0u);
+            uint64_t mergeGroup = 0u, VfxDocumentImpact impact = VfxDocumentImpact::Runtime);
         void ResetAssetRefreshStatus() noexcept;
         void OnDocumentChanged();
         void NormalizeSelection();
@@ -429,6 +459,8 @@ namespace HIKARI::EDITOR {
         void DrawCurveEditor(const VFX::VfxEmitterData& emitter);
         void DrawDiagnostics();
 
+        // 現在描画中のフレームのレジストリ。貼図プレビューの解決に使う。
+        const AssetRegistry* frameAssetRegistry_ = nullptr;
         VfxEditorDocument document_{};
         VfxWorkspaceSelection selection_{};
         std::vector<VFX::VfxDiagnostic> diagnostics_{};
@@ -474,6 +506,10 @@ namespace HIKARI::EDITOR {
         VfxViewportHandleState viewportHandle_{};
         bool previewPlaying_ = false;
         bool previewPaused_ = false;
+        // 停止中に同じ内容を毎フレーム描き直すと bloom がわずかに揺れる。
+        // 変化があったフレームだけ再描画するためのマーカー。
+        bool previewNeedsRedraw_ = true;
+        uint64_t previewContentRevision_ = 0u;
         bool previewRestartPending_ = false;
         float previewRestartDelaySeconds_ = 0.0f;
         bool previewLoopEnabled_ = true;
@@ -485,6 +521,13 @@ namespace HIKARI::EDITOR {
         EditorDirectorCameraController cameraController_{};
         uint64_t cameraRevision_ = 1u;
         bool cameraCutPending_ = true;
+        bool previewCleanView_ = false;
+        bool showPreviewHud_ = true;
+        bool previewBypassAdjustments_ = false;
+        std::vector<MaterialEffectStep> effectClipboard_;
+        std::vector<VFX::VfxParameterTrackData> effectTrackClipboard_;
+        bool effectClipboardAdjustment_ = false;
+        char effectSearch_[128]{};
         bool showPreviewGrid_ = true;
         bool showPreviewAxes_ = true;
         RENDER3D::RenderViewId activePreviewViewId_{};

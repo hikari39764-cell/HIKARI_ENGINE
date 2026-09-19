@@ -1,3 +1,4 @@
+#include "Assets/Vfx/HIKARI_VfxBudgets.h"
 #include "Assets/Formats/HIKARI_HvfxcFormat.h"
 #include "Assets/HIKARI_AssetTypes.h"
 #include "Assets/Material/Serialization/HIKARI_MaterialSourceJson.h"
@@ -253,6 +254,15 @@ namespace HIKARI::VFX {
             writer.Write(afterimage.shellOffset);
             WriteVec4(writer, afterimage.color);
             writer.Write(afterimage.intensity);
+            const auto& light = value.light;
+            WriteVec4(writer, light.color);
+            writer.Write(light.intensity);
+            writer.Write(light.range);
+            writer.Write(light.sourceRadius);
+            writer.Write(light.flickerFrequency);
+            writer.Write(light.flickerAmplitude);
+            writer.Write(light.priority);
+            writer.WriteBool(light.castsShadows);
         }
 
         bool ReadSpecialOutput(
@@ -261,6 +271,7 @@ namespace HIKARI::VFX {
             auto& weapon = value.weaponPathDistortion;
             auto& screen = value.screenImpulse;
             auto& afterimage = value.skinnedAfterimage;
+            auto& light = value.light;
             return reader.ReadString(value.id) &&
                 reader.ReadEnum(value.type) &&
                 reader.ReadBool(value.enabled) &&
@@ -292,7 +303,15 @@ namespace HIKARI::VFX {
                 reader.Read(afterimage.dissolve) &&
                 reader.Read(afterimage.shellOffset) &&
                 ReadVec4(reader, afterimage.color) &&
-                reader.Read(afterimage.intensity);
+                reader.Read(afterimage.intensity) &&
+                ReadVec4(reader, light.color) &&
+                reader.Read(light.intensity) &&
+                reader.Read(light.range) &&
+                reader.Read(light.sourceRadius) &&
+                reader.Read(light.flickerFrequency) &&
+                reader.Read(light.flickerAmplitude) &&
+                reader.Read(light.priority) &&
+                reader.ReadBool(light.castsShadows);
         }
 
         void WriteValue(BinaryWriter& writer, const VfxValue& value) {
@@ -395,6 +414,26 @@ namespace HIKARI::VFX {
                     !reader.Read(key.outTangent)) {
                     return false;
                 }
+            }
+            return true;
+        }
+
+        void WriteCompositeEffects(BinaryWriter& writer, const std::vector<MaterialEffectStep>& effects) {
+            writer.Write(static_cast<uint32_t>(effects.size()));
+            for (const auto& effect : effects) {
+                writer.WriteString(effect.id); writer.WriteEnum(effect.kind); writer.Write(effect.enabled);
+                WriteVec4(writer, effect.parameters); WriteVec4(writer, effect.parameters2);
+                WriteVec4(writer, effect.colorA); WriteVec4(writer, effect.colorB);
+            }
+        }
+        bool ReadCompositeEffects(BinaryReader& reader, std::vector<MaterialEffectStep>& effects) {
+            uint32_t count = 0;
+            if (!reader.Read(count) || count > VFX::kMaximumVfxEffectsPerLayer) return false;
+            effects.resize(count);
+            for (auto& effect : effects) {
+                if (!reader.ReadString(effect.id) || !reader.ReadEnum(effect.kind) || !reader.Read(effect.enabled) ||
+                    !ReadVec4(reader, effect.parameters) || !ReadVec4(reader, effect.parameters2) ||
+                    !ReadVec4(reader, effect.colorA) || !ReadVec4(reader, effect.colorB)) return false;
             }
             return true;
         }
@@ -547,6 +586,7 @@ namespace HIKARI::VFX {
                 writer.Write(emitter.startDelay);
                 writer.Write(emitter.activeDuration);
                 writer.WriteEnum(emitter.kind);
+                WriteCompositeEffects(writer, emitter.compositeEffects);
                 writer.WriteEnum(emitter.history.mode);
                 writer.Write(emitter.history.duration);
                 writer.Write(emitter.history.samples);
@@ -580,6 +620,7 @@ namespace HIKARI::VFX {
                 WriteVec3(writer, simulation.shapeBoxHalfExtents);
                 writer.Write(simulation.shapeCylinderHeight);
                 writer.Write(simulation.shapeCircleInnerRadius);
+                writer.Write(simulation.shapeCircleArcDegrees);
                 writer.Write(simulation.shapeCircleEmitOnEdge);
                 writer.Write(simulation.shapeEdgeLength);
                 WriteDistribution(writer, simulation.radialSpeed);
@@ -598,6 +639,10 @@ namespace HIKARI::VFX {
                 writer.WriteEnum(emitter.render.materialMode);
                 writer.WriteString(
                     emitter.render.colorTextureAssetGuid);
+                writer.WriteString(
+                    emitter.render.maskTextureAssetGuid);
+                writer.WriteString(
+                    emitter.render.noiseTextureAssetGuid);
                 writer.WriteString(emitter.render.materialAssetGuid);
                 writer.WriteEnum(emitter.render.blendMode);
                 writer.WriteEnum(emitter.render.shape);
@@ -618,6 +663,40 @@ namespace HIKARI::VFX {
                 writer.Write(emitter.render.ringSegmentCount);
                 writer.Write(emitter.render.ringStartAngleRadians);
                 writer.Write(emitter.render.ringEndAngleRadians);
+                writer.Write(emitter.render.uvMode);
+                writer.Write(emitter.render.uvTileLength);
+                writer.Write(emitter.render.uvTilingU);
+                writer.Write(emitter.render.uvTilingV);
+                writer.Write(emitter.render.uvRotationRadians);
+                writer.Write(emitter.render.uvSwapAxes);
+                writer.Write(emitter.render.anchor.x);
+                writer.Write(emitter.render.anchor.y);
+                writer.Write(emitter.render.anchor.z);
+                writer.Write(emitter.render.connectTargetMode);
+                writer.Write(emitter.render.connectTargetLayerIndex);
+                writer.Write(emitter.render.connectLocalPosition.x);
+                writer.Write(emitter.render.connectLocalPosition.y);
+                writer.Write(emitter.render.connectLocalPosition.z);
+                writer.Write(emitter.render.connectPivot);
+                writer.Write(emitter.render.connectLengthScale);
+                writer.Write(emitter.render.connectStartOffset);
+                writer.Write(emitter.render.connectEndOffset);
+                writer.Write(emitter.render.connectFlags);
+                writer.WriteString(emitter.render.meshAssetGuid);
+                writer.Write(emitter.render.meshOutputFlags);
+                // 形状パラメータは資産JSON・本フォーマット・GPU定数の
+                // 3箇所すべてへ通す必要がある。欠けると既定値のままになる。
+                writer.Write(emitter.render.taperStart);
+                writer.Write(emitter.render.taperEnd);
+                writer.Write(emitter.render.cylinderTopRadius);
+                writer.Write(emitter.render.cylinderBottomRadius);
+                writer.Write(emitter.render.coneBaseRadius);
+                writer.Write(emitter.render.bendAmount);
+                writer.Write(emitter.render.twistRadians);
+                writer.Write(emitter.render.torusMajorRadius);
+                writer.Write(emitter.render.torusMinorRadius);
+                writer.Write(emitter.render.capsuleRadius);
+                writer.Write(emitter.render.billboardAxis);
                 writer.WriteBool(emitter.render.effectMaterial != nullptr);
                 if (const auto& material = emitter.render.effectMaterial) {
                     std::string source, programIr, error;
@@ -710,6 +789,7 @@ namespace HIKARI::VFX {
                     !reader.Read(emitter.startDelay) ||
                     !reader.Read(emitter.activeDuration) ||
                     !reader.ReadEnum(emitter.kind) ||
+                    !ReadCompositeEffects(reader, emitter.compositeEffects) ||
                     !reader.ReadEnum(emitter.history.mode) ||
                     !reader.Read(emitter.history.duration) ||
                     !reader.Read(emitter.history.samples) ||
@@ -765,6 +845,7 @@ namespace HIKARI::VFX {
                     !ReadVec3(reader, simulation.shapeBoxHalfExtents) ||
                     !reader.Read(simulation.shapeCylinderHeight) ||
                     !reader.Read(simulation.shapeCircleInnerRadius) ||
+                    !reader.Read(simulation.shapeCircleArcDegrees) ||
                     !reader.Read(simulation.shapeCircleEmitOnEdge) ||
                     !reader.Read(simulation.shapeEdgeLength) ||
                     !ReadDistribution(reader, simulation.radialSpeed) ||
@@ -782,6 +863,10 @@ namespace HIKARI::VFX {
                     !reader.ReadEnum(emitter.render.materialMode) ||
                     !reader.ReadString(
                         emitter.render.colorTextureAssetGuid) ||
+                    !reader.ReadString(
+                        emitter.render.maskTextureAssetGuid) ||
+                    !reader.ReadString(
+                        emitter.render.noiseTextureAssetGuid) ||
                     !reader.ReadString(emitter.render.materialAssetGuid) ||
                     !reader.ReadEnum(emitter.render.blendMode) ||
                     !reader.ReadEnum(emitter.render.shape) ||
@@ -804,7 +889,45 @@ namespace HIKARI::VFX {
                     !reader.Read(emitter.render.ringInnerRadius) ||
                     !reader.Read(emitter.render.ringSegmentCount) ||
                     !reader.Read(emitter.render.ringStartAngleRadians) ||
-                    !reader.Read(emitter.render.ringEndAngleRadians)) {
+                    !reader.Read(emitter.render.ringEndAngleRadians) ||
+                    !reader.Read(emitter.render.uvMode) ||
+                    !reader.Read(emitter.render.uvTileLength) ||
+                    !reader.Read(emitter.render.uvTilingU) ||
+                    !reader.Read(emitter.render.uvTilingV) ||
+                    !reader.Read(emitter.render.uvRotationRadians) ||
+                    !reader.Read(emitter.render.uvSwapAxes) ||
+                    !reader.Read(emitter.render.anchor.x) ||
+                    !reader.Read(emitter.render.anchor.y) ||
+                    !reader.Read(emitter.render.anchor.z) ||
+                    !reader.Read(emitter.render.connectTargetMode) ||
+                    !reader.Read(emitter.render.connectTargetLayerIndex) ||
+                    !reader.Read(emitter.render.connectLocalPosition.x) ||
+                    !reader.Read(emitter.render.connectLocalPosition.y) ||
+                    !reader.Read(emitter.render.connectLocalPosition.z) ||
+                    !reader.Read(emitter.render.connectPivot) ||
+                    !reader.Read(emitter.render.connectLengthScale) ||
+                    !reader.Read(emitter.render.connectStartOffset) ||
+                    !reader.Read(emitter.render.connectEndOffset) ||
+                    !reader.Read(emitter.render.connectFlags) ||
+                    !reader.ReadString(emitter.render.meshAssetGuid) ||
+                    !reader.Read(emitter.render.meshOutputFlags) ||
+                    !reader.Read(emitter.render.taperStart) ||
+                    !reader.Read(emitter.render.taperEnd) ||
+                    !reader.Read(emitter.render.cylinderTopRadius) ||
+                    !reader.Read(emitter.render.cylinderBottomRadius) ||
+                    !reader.Read(emitter.render.coneBaseRadius)) {
+                    return false;
+                }
+                if (!reader.Read(emitter.render.bendAmount) ||
+                    !reader.Read(emitter.render.twistRadians)) {
+                    return false;
+                }
+                if (!reader.Read(emitter.render.torusMajorRadius) ||
+                    !reader.Read(emitter.render.torusMinorRadius) ||
+                    !reader.Read(emitter.render.capsuleRadius)) {
+                    return false;
+                }
+                if (!reader.Read(emitter.render.billboardAxis)) {
                     return false;
                 }
 

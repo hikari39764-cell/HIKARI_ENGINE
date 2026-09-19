@@ -294,7 +294,8 @@ namespace HIKARI::MESHRENDERER {
         uint32_t captureSlot,
         uint32_t screenWidth,
         uint32_t screenHeight,
-        bool renderTransparent) {
+        bool renderTransparent,
+        const MeshPassResources* captureResources) {
 
         if (view.cameraFrame == nullptr || !view.cameraFrame->valid ||
             captureSlot >= kSecondarySceneCaptureMaximumCount ||
@@ -490,7 +491,7 @@ namespace HIKARI::MESHRENDERER {
                 ? &resources.traditionalCommandStreamBuffer
                 : nullptr;
 
-        const MeshPassResources passResources{};
+        const MeshPassResources passResources = captureResources ? *captureResources : MeshPassResources{};
         const GeometryBackendExecutionResult opaque =
             ExecuteSecondaryViewGeometryBackendPlan(
                 graphics,
@@ -507,6 +508,7 @@ namespace HIKARI::MESHRENDERER {
                 overrides.cameraAddress);
         bool transparentOk = true;
         if (renderTransparent) {
+            if (captureResources && !passResources.compositionTarget.BeginDepthRead()) return false;
             const auto& transparentState = layer.GetPassExecutionState(
                 RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardTransparent);
             if (transparentState.hasSource) {
@@ -540,6 +542,7 @@ namespace HIKARI::MESHRENDERER {
                     graphics,
                     overrides.cameraAddress);
         }
+        if (renderTransparent && captureResources) passResources.compositionTarget.EndDepthRead();
         const bool emptyScene = !sceneSource.HasAnyGpuSceneRanges();
         if ((!opaque.gpuBackendExecuted && !emptyScene) ||
             !worldSpriteOpaqueOk) {

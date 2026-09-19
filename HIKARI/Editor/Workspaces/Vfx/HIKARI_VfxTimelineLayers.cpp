@@ -1,4 +1,7 @@
 #include "Core/Text/HIKARI_Localization.h"
+#include "Editor/Style/HIKARI_EditorGlyphs.h"
+#include "Editor/Style/HIKARI_EditorWidgets.h"
+#include "Assets/Vfx/HIKARI_VfxLayerOrder.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxInspectorControls.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 #include <algorithm>
@@ -13,9 +16,16 @@ void VfxWorkspaceController::DrawTimelineLayers(float originX, float width, floa
 #if defined(HIKARI_WITH_EDITOR)
     auto &state = timelineEdit_;
     const auto text = [](const char *key) { return TEXT::Localize(key); };
-    ImGui::Checkbox(text("ui.vfx.timeline.snap").c_str(), &state.snap);
+    if (IconToggleButton(EditorGlyph::Snap, "FrameSnap", state.snap, {26,26},
+            text("ui.vfx.timeline.snap").c_str())) state.snap = !state.snap;
     ImGui::SameLine();
-    ImGui::TextDisabled("%s", text("ui.vfx.timeline.keyHelp").c_str());
+    if (IconButton(EditorGlyph::Help, "TimelineHelp", EditorButtonTone::Quiet,
+            {26,26}, text("ui.vfx.timeline.keyHelp").c_str())) ImGui::OpenPopup("TimelineHelp");
+    if (ImGui::BeginPopup("TimelineHelp")) {
+        ImGui::TextUnformatted(text("ui.vfx.timeline.keyHelp").c_str());
+        ImGui::TextUnformatted(text("ui.vfx.timeline.layerHelp").c_str());
+        ImGui::EndPopup();
+    }
     const auto top = ImGui::GetCursorScreenPos();
     const auto mouse = ImGui::GetIO().MousePos;
     const auto &io = ImGui::GetIO();
@@ -33,16 +43,19 @@ void VfxWorkspaceController::DrawTimelineLayers(float originX, float width, floa
     bool hit = false;
     const bool canStart = !state.baseline && !state.suppressDragUntilRelease;
     const auto snapshot = document_.Asset();
-    for (const auto &layer : snapshot.emitters) {
+    for (const auto* orderedLayer : VFX::CollectVfxLayerTree(snapshot)) {
+        const auto& layer = *orderedLayer;
         ImGui::PushID(layer.id.c_str());
         const bool current = selection_.emitterId == layer.id;
         auto row = ImGui::GetCursorScreenPos();
-        if (ImGui::Selectable(layer.name.c_str(), current, 0, {labelWidth - 8, 22}))
+        const std::string label = (layer.kind == VFX::VfxLayerKind::Adjustment ? "[FX] " : "") + layer.name;
+        if (ImGui::Selectable(label.c_str(), current, 0, {labelWidth - 8, 22}))
             Select({VfxWorkspaceSelectionKind::Emitter, layer.id, layer.id});
         const float span =
             layer.activeDuration > 0 ? layer.activeDuration : snapshot.durationSeconds - layer.startDelay;
         const float startX = toX(layer.startDelay), endX = toX(layer.startDelay + span);
         draw.AddRectFilled({startX, row.y + 3}, {endX, row.y + 19},
+                           layer.kind == VFX::VfxLayerKind::Adjustment ? IM_COL32(126, 82, 145, 220) :
                            layer.kind == VFX::VfxLayerKind::Particles ? IM_COL32(110, 83, 44, 210)
                                                                       : IM_COL32(39, 99, 117, 210),
                            3);
@@ -86,7 +99,9 @@ void VfxWorkspaceController::DrawTimelineLayers(float originX, float width, floa
                 ImGui::PushID(curves[i].address.moduleId.c_str());
                 ImGui::PushID(curves[i].address.propertyId.c_str());
                 row = ImGui::GetCursorScreenPos();
-                ImGui::TextDisabled("%s", VfxUiText(curves[i].label).c_str());
+                const auto curveLabel = layer.kind == VFX::VfxLayerKind::Adjustment ?
+                    TEXT::Localize("ui.vfx.effect.param." + curves[i].label) : VfxUiText(curves[i].label);
+                ImGui::TextDisabled("%s", curveLabel.c_str());
                 draw.AddLine({originX, row.y + 10}, {originX + width, row.y + 10}, IM_COL32(63, 73, 82, 255));
                 std::vector<float> times;
                 for (size_t c = i; c < end; ++c)

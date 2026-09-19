@@ -268,7 +268,8 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
             simulation.shapeCircleInnerRadius,
             EncodeUint(simulation.shapeCircleEmitOnEdge),
             simulation.shapeEdgeLength,
-            0.0f);
+            // 放出角度範囲。0 のままの古い資産は HLSL 側で全周として扱う。
+            simulation.shapeCircleArcDegrees);
         result.values[14] = MakeGpuParticleFloat4(simulation.collisionPlaneHeight,
             simulation.restitution,simulation.friction,
             EncodeUint((simulation.localSimulation ? 1u : 0u) | (simulation.collisionPlaneEnabled ? 2u : 0u)));

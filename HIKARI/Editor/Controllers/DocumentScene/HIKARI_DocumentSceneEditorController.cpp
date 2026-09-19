@@ -30,6 +30,7 @@
 #include "Editor/Tools/HIKARI_BuiltInEditorTools.h"
 #include "Editor/Views/HIKARI_EditorViewInstance.h"
 #include "Editor/Widgets/HIKARI_MaterialTextureSlotWidget.h"
+#include "Editor/Widgets/HIKARI_EditorTexturePreview.h"
 #include "Editor/Workspaces/RuntimeBinding/HIKARI_RuntimeBindingReferenceIndex.h"
 #include "Editor/Workspaces/TerrainSurface/HIKARI_TerrainPlacementAuthoring.h"
 #include "Editor/Workspaces/HIKARI_AssetWorkspaceActivationRouter.h"
@@ -2720,7 +2721,7 @@ namespace HIKARI {
 
             bool assetRegistryPublished = false;
             if (refreshCurrentScene) {
-                EDITOR::ClearMaterialTextureSlotPreviewCache();
+                EDITOR::ClearEditorTexturePreviewCache();
                 // 霑ｴ・ｾ陜ｨ・ｨ邵ｺ・ｮ SceneDocument 邵ｺ・ｫ陷・ｽｺ邵ｺ・ｦ邵ｺ荳奇ｽ玖嵩譎擾ｽｭ繝ｻresource 郢ｧ蛛ｵ竏ｪ邵ｺ・ｨ郢ｧ竏壺ｻ陟托ｽｵ郢ｧ鬘泌ｳｩ邵ｺ蜷ｶﾂ繝ｻ
                 RuntimeResourceRefreshReport report =
                     refreshService.RefreshCurrentSceneResources(scene);
@@ -2730,7 +2731,7 @@ namespace HIKARI {
 
             if (!targetedRefreshAssets.empty() &&
                 (!refreshCurrentScene || assetRegistryPublished)) {
-                EDITOR::ClearMaterialTextureSlotPreviewCache();
+                EDITOR::ClearEditorTexturePreviewCache();
                 applyRefreshReport(refreshService.RefreshAssets(
                     scene,
                     targetedRefreshAssets,
@@ -2863,6 +2864,7 @@ namespace HIKARI {
                 std::to_string(
                     scene.GetAssetRegistry().CollectByType(
                         AssetType::Model).size());
+            context += "\n" + vfxWorkspaceController_.GetAiVfxStatus();
             aiAssistantPanel_.SetContextSnapshot(std::move(context));
         }
         aiAssistantPanel_.SetSceneActionCallback(

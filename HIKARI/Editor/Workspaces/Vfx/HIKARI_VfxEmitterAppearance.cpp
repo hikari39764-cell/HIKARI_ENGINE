@@ -37,18 +37,40 @@ namespace HIKARI::EDITOR {
             materialModes.data(),
             materialModes.size());
         if (!VFX::IsCustomVfxMaterial(emitter.renderCommon.materialMode)) {
-            AssetGuid selected =
-                emitter.renderCommon.colorTextureAssetGuid;
-            if (DrawVfxParticleTextureField(
-                    database,
-                    particleTextureCatalog_,
-                    emitter.renderCommon.colorTextureAssetGuid,
-                    selected,
-                    statusMessage_)) {
+            // 底色・遮罩・ノイズの 3 スロット。同じ選択 UI を共有し、
+            // 保存先プロパティだけを差し替える。
+            struct TextureSlotBinding {
+                std::string_view label;
+                std::string_view property;
+                const AssetGuid* slot;
+            };
+            const std::array<TextureSlotBinding, 5u> textureSlots{ {
+                { "Base Texture", "colorTextureAssetGuid",
+                    &emitter.renderCommon.colorTextureAssetGuid },
+                { "Mask Texture", "maskTextureAssetGuid",
+                    &emitter.renderCommon.maskTextureAssetGuid },
+                { "Noise Texture", "noiseTextureAssetGuid",
+                    &emitter.renderCommon.noiseTextureAssetGuid },
+                { "Detail Noise Texture", "detailNoiseTextureAssetGuid",
+                    &emitter.renderCommon.detailNoiseTextureAssetGuid },
+                { "Flow Map (RG)", "flowMapTextureAssetGuid", &emitter.renderCommon.flowMapTextureAssetGuid },
+            } };
+            for (const TextureSlotBinding& binding : textureSlots) {
+                ImGui::TextUnformatted(VfxUiText(binding.label).c_str());
+                AssetGuid selected = *binding.slot;
+                if (!DrawVfxParticleTextureField(
+                        database,
+                        frameAssetRegistry_,
+                        particleTextureCatalog_,
+                        *binding.slot,
+                        selected,
+                        statusMessage_)) {
+                    continue;
+                }
                 std::string assignmentMessage{};
                 (void)SetProperty(
                     emitter.renderCommon.id,
-                    "colorTextureAssetGuid",
+                    binding.property,
                     selected.value,
                     assignmentMessage,
                     0u,

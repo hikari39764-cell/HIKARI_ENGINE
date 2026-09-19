@@ -112,7 +112,10 @@ namespace HIKARI::EDITOR {
 
     namespace {
 
-        float FindAvailableCurveTime(std::vector<float> times) {
+    } // namespace
+
+    float VfxWorkspaceController::FindAvailableCurveTime(
+        std::vector<float> times) {
             if (times.empty()) {
                 return 0.5f;
             }
@@ -132,6 +135,8 @@ namespace HIKARI::EDITOR {
             }
             return (bestStart + bestEnd) * 0.5f;
         }
+
+    namespace {
 
         float DefaultCurveValue(
             const VFX::VfxEmitterData& emitter,

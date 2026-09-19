@@ -34,7 +34,7 @@ namespace HIKARI::POST {
         context_ = context;
         PostEffect::UpdateContext(context);
         globalChain_.UpdateContext(context);
-        bloomChain_.UpdateContext(context);
+        for (auto& level : bloomLevels_) level.UpdateContext(context);
         transitionChain_.UpdateContext(context);
         fxaaChain_.UpdateContext(context);
         actionScreenImpulseChain_.UpdateContext(context);
@@ -48,7 +48,8 @@ namespace HIKARI::POST {
         sunGlareTarget_.UpdateContext(context);
         automaticExposureMeter_.UpdateContext(context);
         globalChain_.SetDebugName("PostProcessing.Global");
-        bloomChain_.SetDebugName("PostProcessing.Bloom");
+        for (size_t i = 0; i < bloomLevels_.size(); ++i)
+            bloomLevels_[i].SetDebugName("PostProcessing.Bloom." + std::to_string(i));
         transitionChain_.SetDebugName("PostProcessing.TransitionHDR");
         fxaaChain_.SetDebugName("PostProcessing.FXAA");
         actionScreenImpulseChain_.SetDebugName(
@@ -59,7 +60,7 @@ namespace HIKARI::POST {
         ClearGlobalProfile();
         ClearTransitionState();
         globalChain_.Finalize();
-        bloomChain_.Finalize();
+        for (auto& level : bloomLevels_) level.Finalize();
         transitionChain_.Finalize();
         fxaaChain_.Finalize();
         actionScreenImpulseChain_.Finalize();
@@ -510,41 +511,30 @@ namespace HIKARI::POST {
         return true;
     }
 
-    bool PostProcessingStage::EnsureBloomEffects(uint32_t blurPairCount) {
-        blurPairCount = std::clamp<uint32_t>(blurPairCount, 1u, 5u);
-        if (activeBloomBlurPairCount_ == blurPairCount &&
-            !activeBloomEffects_.empty() && bloomChain_.HasAny()) {
-            return true;
-        }
-        bloomChain_.Clear();
-        activeBloomEffects_.clear();
-        activeBloomBlurPairCount_ = 0;
-        auto load = [](std::string_view programId) {
-            auto effect = std::make_unique<PostEffect>();
-            return effect->LoadBuiltinPixelShader(programId)
-                ? std::move(effect)
-                : nullptr;
-        };
-        auto extract = load("HIKARI.EngineShader.Post_BloomExtractPS");
-        if (!extract) return false;
-        bloomChain_.Add(extract.get());
-        activeBloomEffects_.push_back(std::move(extract));
-        for (uint32_t i = 0; i < blurPairCount; ++i) {
-            auto horizontal = load(
-                "HIKARI.EngineShader.Post_BloomBlurHPS");
-            auto vertical = load(
-                "HIKARI.EngineShader.Post_BloomBlurVPS");
-            if (!horizontal || !vertical) {
-                bloomChain_.Clear();
-                activeBloomEffects_.clear();
-                return false;
+    bool PostProcessingStage::EnsureBloomEffects(uint32_t levelCount) {
+        levelCount = std::clamp<uint32_t>(levelCount, 1u, 5u);
+        if (activeBloomEffects_.empty()) {
+            // 全レベルで同じ shader を共有。PostEffect は draw ごとの定数を保持する。
+            for (const char* id : {"HIKARI.EngineShader.Post_BloomExtractPS",
+                    "HIKARI.EngineShader.Post_BloomBlurHPS", "HIKARI.EngineShader.Post_BloomBlurVPS"}) {
+                auto effect = std::make_unique<PostEffect>();
+                if (!effect->LoadBuiltinPixelShader(id)) {
+                    activeBloomEffects_.clear();
+                    return false;
+                }
+                activeBloomEffects_.push_back(std::move(effect));
             }
-            bloomChain_.Add(horizontal.get());
-            activeBloomEffects_.push_back(std::move(horizontal));
-            bloomChain_.Add(vertical.get());
-            activeBloomEffects_.push_back(std::move(vertical));
         }
-        activeBloomBlurPairCount_ = blurPairCount;
+        if (activeBloomBlurPairCount_ != levelCount) {
+            for (uint32_t i = 0; i < bloomLevels_.size(); ++i) {
+                bloomLevels_[i].Clear();
+                if (i >= levelCount) continue;
+                if (i == 0) bloomLevels_[i].Add(activeBloomEffects_[0].get());
+                bloomLevels_[i].Add(activeBloomEffects_[1].get());
+                bloomLevels_[i].Add(activeBloomEffects_[2].get());
+            }
+            activeBloomBlurPairCount_ = levelCount;
+        }
         return true;
     }
 
@@ -731,43 +721,43 @@ namespace HIKARI::POST {
             bloomDebugStats_.failed = true;
             return nullptr;
         }
-        // Bloom チェーンは 1/4 解像度で回す。先頭の extract がフル解像度 SRV を
-        // 低解像度 ping へ 4-tap の領域平均で描き、細い HDR 高光を取りこぼさない。5-tap ブラーの
-        // pass あたりピクセルコストは 1/16 になり、テクセル幅が広がるぶん
-        // 拡散も自然に太くなる。合成側 (加算ブレンド) は linear サンプルで
-        // アップサンプルされる。
-        const int bloomWidth =
-            (std::max)((source.GetWidth() + 3) / 4, 1);
-        const int bloomHeight =
-            (std::max)((source.GetHeight() + 3) / 4, 1);
-        bloomDebugStats_.textureWidth = bloomWidth;
-        bloomDebugStats_.textureHeight = bloomHeight;
-        CommonParams params = commonParams_;
-        params.user[0] = {
-            (std::max)(0.0f, bloomSettings_.threshold),
-            (std::max)(0.0f, bloomSettings_.intensity),
-            (std::max)(0.0f, bloomSettings_.radius),
-            static_cast<float>(bloomDebugStats_.downsampleCount)
-        };
-        params.user[1] = {
-            1.0f / static_cast<float>(bloomWidth),
-            1.0f / static_cast<float>(bloomHeight), 0, 0
-        };
-        RenderTarget2D* bloomOutput = bloomChain_.Execute(
-            source,
-            quad,
-            params,
-            bloomWidth,
-            bloomHeight);
-        if (bloomOutput == nullptr || bloomOutput == &source ||
-            bloomOutput->GetResource() == nullptr) {
-            bloomDebugStats_.failed = true;
-            return nullptr;
+        // 細い光の核と広い光輪を別スケールで残す。同じ解像度の反復ブラー
+        // では核ごと均され、プレビューでは太いぼけの塊になっていた。
+        const uint32_t count = bloomDebugStats_.downsampleCount;
+        std::array<RenderTarget2D*, 5> outputs{};
+        RenderTarget2D* input = &source;
+        int width = (std::max)((source.GetWidth() + 3) / 4, 1);
+        int height = (std::max)((source.GetHeight() + 3) / 4, 1);
+        bloomDebugStats_.textureWidth = width;
+        bloomDebugStats_.textureHeight = height;
+        for (uint32_t i = 0; i < count; ++i) {
+            CommonParams params = commonParams_;
+            // レベル数を変えても総エネルギーを増やさない。
+            params.user[0] = {bloomSettings_.threshold,
+                bloomSettings_.intensity / float(count), bloomSettings_.radius, float(count)};
+            params.user[1] = {1.0f / float(width), 1.0f / float(height), 0, 0};
+            outputs[i] = bloomLevels_[i].Execute(*input, quad, params, width, height);
+            if (outputs[i] == nullptr || outputs[i] == input || !outputs[i]->GetResource()) {
+                bloomDebugStats_.failed = true;
+                return nullptr;
+            }
+            input = outputs[i];
+            width = (std::max)((width + 1) / 2, 1);
+            height = (std::max)((height + 1) / 2, 1);
+        }
+        for (uint32_t i = count - 1; i > 0; --i) {
+            outputs[i - 1]->Rebind();
+            if (!quad.SetOutputFormat(outputs[i - 1]->GetFormat())) {
+                outputs[i - 1]->EndCapture();
+                bloomDebugStats_.failed = true;
+                return nullptr;
+            }
+            quad.DrawBlended(outputs[i]->GetSrvHeap(), outputs[i]->GetSrvGpu(), BlendOption::Additive);
+            outputs[i - 1]->EndCapture();
         }
         bloomDebugStats_.initialized = true;
-        bloomDebugStats_.passCount =
-            1u + bloomDebugStats_.downsampleCount * 2u;
-        return bloomOutput;
+        bloomDebugStats_.passCount = 3u * count;
+        return outputs[0];
     }
 
     RenderTarget2D* PostProcessingStage::ApplyActionScreenImpulse(
@@ -1027,6 +1017,28 @@ namespace HIKARI::POST {
         return ready ? &ldrTarget_ : nullptr;
     }
 
+    RenderTarget2D* PostProcessingStage::ResolveHdrBloomOnly(
+        RenderTarget2D& source,
+        QuadDrawer& quad) {
+        commonParams_.resolutionX =
+            static_cast<float>((std::max)(1, source.GetWidth()));
+        commonParams_.resolutionY =
+            static_cast<float>((std::max)(1, source.GetHeight()));
+        RenderTarget2D* bloom = ApplyBloom(source, quad);
+        if (bloom != nullptr && bloom->GetResource() != nullptr) {
+            source.Rebind();
+            if (quad.SetOutputFormat(source.GetFormat())) {
+                float bloomCurvature = 0.0f;
+                float bloomStrength = 0.0f;
+                GetRadialScreenWarp(bloomCurvature, bloomStrength);
+                quad.DrawBlended(bloom->GetSrvHeap(), bloom->GetSrvGpu(),
+                    BlendOption::Additive, bloomCurvature * bloomStrength);
+            }
+            source.EndCapture();
+        }
+        return &source;
+    }
+
     RenderTarget2D* PostProcessingStage::ResolveLdr(
         RenderTarget2D& source,
         DXGI_FORMAT outputFormat,
@@ -1146,7 +1158,7 @@ namespace HIKARI::POST {
             << "\n  " << temporalOutput_.DumpState()
             << "\n  " << sunGlareTarget_.DumpState()
             << "\n  " << globalChain_.DumpState()
-            << "\n  " << bloomChain_.DumpState()
+            << "\n  " << bloomLevels_[0].DumpState()
             << "\n  " << transitionChain_.DumpState()
             << "\n  " << fxaaChain_.DumpState();
         return stream.str();

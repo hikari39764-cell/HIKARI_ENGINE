@@ -91,6 +91,13 @@ namespace HIKARI {
         EyeControl,
         Thickness,
         Fabric,
+        // VFX の歪み/溶解が参照する汎用ノイズ。応答ノード用の空きスロットへ
+        // 割り当て、標準 PBR の投影先とは混ぜない。
+        Noise,
+        // 2 つ目のノイズ場。大まかな流れと細かい質感を別の貼図で与えたい
+        // ときに使う。Noise と同じく応答ノードの空きスロットを 1 つ使う。
+        DetailNoise,
+        FlowMap,
     };
 
     enum class MaterialNodeKind : uint8_t {

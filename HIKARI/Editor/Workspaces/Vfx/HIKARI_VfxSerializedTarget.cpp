@@ -257,29 +257,36 @@ namespace HIKARI::EDITOR {
                 return { "WorldOccluded", "SoftIntersection",
                     "ContactSurface", "ForegroundAccent" };
             }
-            if (leaf == "kind" && parent.contains("startDelay")) return { "Shape", "Particles", "Group" };
-            if (leaf == "kind" && parent.contains("parameters")) return {
-                "UvFlow", "UvDistortion", "Gradient", "Fade", "Wipe", "Dissolve", "Emission", "Fresnel" };
+            if (leaf == "kind" && parent.contains("startDelay")) return { "Shape", "Particles", "Group", "Adjustment" };
+            if (leaf == "kind" && parent.contains("parameters")) {
+                return Json(GetMaterialEffectKindNames());
+            }
             if (leaf == "capacityMode") {
                 return { "Automatic", "Fixed" };
             }
             if (leaf == "billboardMode") {
-                return {
-                    "RotatedBillboard",
-                    "FixedYAxis",
-                    "DirectionalBillboard",
-                    "Fixed",
-                };
+                return Json(VFX::GetVfxBillboardModeChoices());
+            }
+            if (leaf == "billboardAxis") {
+                return Json(VFX::GetVfxBillboardAxisChoices());
+            }
+            if (leaf == "mode" && parent.contains("targetLayerId")) {
+                return { "None", "LayerOrigin", "LocalPosition" };
+            }
+            if (leaf == "uvMode") {
+                return Json(VFX::GetVfxShapeUvModeChoices());
             }
             if (leaf == "type" && value.is_string()) {
                 const std::string& current = value.get_ref<const std::string&>();
                 if (parent.contains("weaponPathDistortion") &&
                     parent.contains("screenImpulse") &&
-                    parent.contains("skinnedAfterimage")) {
+                    parent.contains("skinnedAfterimage") &&
+                    parent.contains("light")) {
                     return {
                         "WeaponPathDistortion",
                         "ScreenImpulse",
                         "SkinnedAfterimage",
+                        "Light",
                     };
                 }
                 if (current == "Point" || current == "Sphere" ||

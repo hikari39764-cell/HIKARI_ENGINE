@@ -220,7 +220,8 @@ namespace HIKARI::MESHRENDERER {
         uint32_t captureSlot,
         uint32_t screenWidth,
         uint32_t screenHeight,
-        bool renderTransparent);
+        bool renderTransparent,
+        const MeshPassResources* captureResources = nullptr);
     void ResetSecondarySceneCaptureResources(uint32_t captureSlot) noexcept;
     void ResetSecondarySceneCaptureResources() noexcept;
     const MeshRendererDebugStats& GetDebugStats();

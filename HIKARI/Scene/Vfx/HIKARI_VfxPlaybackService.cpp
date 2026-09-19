@@ -509,6 +509,7 @@ namespace HIKARI::VFX {
                 renderInput_.frameIndex == frameIndex;
             renderInput_.frameIndex = frameIndex;
             renderInput_.emitters.clear();
+        renderInput_.compositions.clear();
             if (!preserveStagedRetirements) {
                 renderInput_.retiredEmitters.clear();
             }
@@ -636,6 +637,7 @@ namespace HIKARI::VFX {
         nextSeekSimulationOrdinal_ = 0u;
         renderInput_.frameIndex = frameIndex;
         renderInput_.emitters.clear();
+        renderInput_.compositions.clear();
         renderInput_.retiredEmitters.clear();
         renderInput_.retiredEmitters.swap(pendingRetiredEmitters_);
 
@@ -737,6 +739,212 @@ namespace HIKARI::VFX {
         return admissionStats_;
     }
 
+    void VfxPlaybackService::ApplyConnectTarget(
+        Instance& instance, uint32_t emitterIndex) const noexcept {
+
+        if (!instance.program ||
+            emitterIndex >= instance.program->emitters.size() ||
+            emitterIndex >= instance.emitterTransforms.size()) {
+            return;
+        }
+        const auto& render =
+            instance.program->emitters[emitterIndex].render;
+        const uint32_t mode = render.connectTargetMode;
+        if (mode == static_cast<uint32_t>(VfxConnectTargetMode::None)) return;
+
+        MATH::Vec3 target{};
+        if (mode == static_cast<uint32_t>(VfxConnectTargetMode::LayerOrigin)) {
+            const uint32_t index = render.connectTargetLayerIndex;
+            if (index == RENDER3D::PARTICLES::
+                    ParticleEmitterRenderParameters::kInvalidConnectLayerIndex ||
+                index >= instance.emitterTransforms.size() ||
+                index >= instance.transformResolved.size() ||
+                instance.transformResolved[index] == 0u) {
+                return;
+            }
+            target = instance.emitterTransforms[index].position;
+        } else {
+            // ローカル指定点はエフェクト根の変換で world へ持ち上げる。
+            const MATH::Vec4 local{
+                render.connectLocalPosition.x,
+                render.connectLocalPosition.y,
+                render.connectLocalPosition.z, 1.0f };
+            const MATH::Vec4 world = MATH::Mat4::TRS(
+                instance.transform.position,
+                instance.transform.rotation,
+                instance.transform.scale).TransformPoint(local);
+            target = { world.x, world.y, world.z };
+        }
+
+        // 長さ軸は Look At Line と同じ軸を使う。形状ごとの特例は作らない。
+        const uint32_t axis = render.billboardAxis;
+        const MATH::Vec3 lengthAxis = axis == 1u
+            ? MATH::Vec3{ 0.0f, 1.0f, 0.0f }
+            : axis == 2u ? MATH::Vec3{ 0.0f, 0.0f, 1.0f }
+                         : MATH::Vec3{ 1.0f, 0.0f, 0.0f };
+        VfxWorldTransform& transform = instance.emitterTransforms[emitterIndex];
+        (void)PLAYBACK::ApplyConnectTargetTransform(
+            transform, target, lengthAxis,
+            render.connectPivot, render.connectLengthScale,
+            render.connectStartOffset, render.connectEndOffset,
+            (render.connectFlags & 1u) != 0u,
+            (render.connectFlags & 2u) != 0u);
+    }
+
+    size_t VfxPlaybackService::CollectMeshLayers(
+        std::vector<VfxLayerMeshSample>& outSamples) const {
+
+        outSamples.clear();
+        for (const Instance& instance : instances_) {
+            if (!instance.program) continue;
+            const auto& emitters = instance.program->emitters;
+            const size_t emitterCount = (std::min)(
+                emitters.size(), instance.emitterTransforms.size());
+            for (size_t emitterIndex = 0u;
+                 emitterIndex < emitterCount;
+                 ++emitterIndex) {
+                const auto& render = emitters[emitterIndex].render;
+                if (render.meshAssetGuid.empty()) continue;
+                if (emitterIndex >= instance.layerVisible.size() ||
+                    instance.layerVisible[emitterIndex] == 0u) {
+                    continue;
+                }
+                VfxLayerMeshSample sample{};
+                sample.playbackNamespace = playbackNamespace_;
+                sample.handle = instance.handle;
+                sample.emitterIndex = static_cast<uint32_t>(emitterIndex);
+                sample.meshAssetGuid = render.meshAssetGuid;
+                sample.materialAssetGuid = render.materialAssetGuid;
+                sample.worldTransform = instance.emitterTransforms[emitterIndex];
+                sample.flags = render.meshOutputFlags;
+                outSamples.push_back(std::move(sample));
+            }
+        }
+        return outSamples.size();
+    }
+
+    size_t VfxPlaybackService::CollectLightOutputs(
+        std::vector<VfxLayerLightSample>& outSamples) const {
+
+        outSamples.clear();
+        for (const Instance& instance : instances_) {
+            if (!instance.program) continue;
+            const auto& emitters = instance.program->emitters;
+            const size_t emitterCount = (std::min)(
+                emitters.size(), instance.emitterTransforms.size());
+            for (size_t emitterIndex = 0u;
+                 emitterIndex < emitterCount;
+                 ++emitterIndex) {
+                if (emitterIndex >= instance.layerVisible.size() ||
+                    instance.layerVisible[emitterIndex] == 0u) {
+                    continue;
+                }
+                const auto& emitter = emitters[emitterIndex];
+                const float start = PLAYBACK::EmitterStartDelay(*instance.program, emitter);
+                const float end = PLAYBACK::EmitterActiveEnd(*instance.program, emitter);
+                if (instance.elapsedSeconds < start || instance.elapsedSeconds >= end) continue;
+                for (uint32_t outputIndex = 0; outputIndex < emitter.specialOutputs.size(); ++outputIndex) {
+                    const auto& output = emitter.specialOutputs[outputIndex];
+                    if (!output.enabled || output.type != VfxSpecialOutputType::Light) continue;
+                    const auto& profile = output.light;
+                    if (!(profile.intensity > 0.0f) || !(profile.range > 0.0f)) continue;
+                    // レイヤー色をそのまま落とす。エフェクトの色と光源色が
+                    // 食い違うと、加法発光と照明が別物に見えてしまう。
+                    MATH::Vec4 tint{ 1.0f, 1.0f, 1.0f, 1.0f };
+                    if (emitterIndex < instance.layerOverrides.size()) {
+                        tint = instance.layerOverrides[emitterIndex].colorMultiplier;
+                    }
+                    // Shape/Group はレイヤー自身の色サンプルも掛かる。描画側の
+                    // submission と同じ合成規則にして、光と発光を一致させる。
+                    if (emitters[emitterIndex].kind != VfxLayerKind::Particles &&
+                        emitterIndex < instance.layerSamples.size()) {
+                        const MATH::Vec4& sampled = instance.layerSamples[emitterIndex].color;
+                        tint = {
+                            tint.x * sampled.x, tint.y * sampled.y,
+                            tint.z * sampled.z, tint.w * sampled.w,
+                        };
+                    }
+                    VfxLayerLightSample sample{};
+                    sample.handle = instance.handle;
+                    sample.emitterIndex = static_cast<uint32_t>(emitterIndex);
+                    sample.outputIndex = outputIndex;
+                    sample.position = instance.emitterTransforms[emitterIndex].position;
+                    sample.color = {
+                        profile.color.x * tint.x,
+                        profile.color.y * tint.y,
+                        profile.color.z * tint.z,
+                        profile.color.w * tint.w,
+                    };
+                    sample.intensity = profile.intensity;
+                    sample.range = profile.range;
+                    sample.sourceRadius = profile.sourceRadius;
+                    sample.flickerFrequency = profile.flickerFrequency;
+                    sample.flickerAmplitude = profile.flickerAmplitude;
+                    sample.ageSeconds = instance.elapsedSeconds - start;
+                    sample.priority = profile.priority;
+                    sample.castsShadows = profile.castsShadows;
+                    outSamples.push_back(sample);
+                }
+            }
+        }
+        return outSamples.size();
+    }
+
+    size_t VfxPlaybackService::CollectScreenWaves(
+        VfxScreenWaveBatch& outBatch) const {
+
+        outBatch = {};
+        for (const Instance& instance : instances_) {
+            if (!instance.program) continue;
+            const auto& emitters = instance.program->emitters;
+            const size_t emitterCount = (std::min)(
+                emitters.size(), instance.emitterTransforms.size());
+            for (size_t emitterIndex = 0u;
+                 emitterIndex < emitterCount;
+                 ++emitterIndex) {
+                if (outBatch.count >= outBatch.waves.size()) {
+                    return outBatch.count;
+                }
+                if (emitterIndex >= instance.layerVisible.size() ||
+                    instance.layerVisible[emitterIndex] == 0u) {
+                    continue;
+                }
+                const auto& emitter = emitters[emitterIndex];
+                const float start = PLAYBACK::EmitterStartDelay(*instance.program, emitter);
+                const float end = PLAYBACK::EmitterActiveEnd(*instance.program, emitter);
+                if (instance.elapsedSeconds < start || instance.elapsedSeconds >= end) continue;
+                for (const auto& output : emitter.specialOutputs) {
+                    if (!output.enabled || output.type != VfxSpecialOutputType::ScreenImpulse) continue;
+                    if (outBatch.count >= outBatch.waves.size()) return outBatch.count;
+                    const auto& profile = output.screenImpulse;
+                    const float age = instance.elapsedSeconds - start;
+                    if (!(profile.durationSeconds > age) || !(profile.intensity > 0.0f)) continue;
+                    RENDER3D::COMBAT_VFX::PerfectGuardShockwaveFrame wave{};
+                    wave.worldPosition = instance.emitterTransforms[emitterIndex].position;
+                    wave.ageSeconds = age;
+                    wave.durationSeconds = profile.durationSeconds;
+                    wave.maximumScreenRadius = profile.maxRadius;
+                    wave.ringThickness = profile.ringThickness;
+                    wave.distortionStrength = profile.distortion;
+                    wave.intensity = profile.intensity;
+                    wave.color = {
+                        (std::max)(profile.color.x, 0.0f),
+                        (std::max)(profile.color.y, 0.0f),
+                        (std::max)(profile.color.z, 0.0f),
+                    };
+                    wave.chromaticShift = profile.chromaticAberration;
+                    wave.flashIntensity = profile.flash;
+                    wave.waveFrequency = profile.waveFrequency;
+                    wave.waveAmplitude = profile.waveAmplitude;
+                    wave.waveDamping = profile.waveDamping;
+                    wave.waveCount = profile.waveCount;
+                    outBatch.waves[outBatch.count++] = wave;
+                }
+            }
+        }
+        return outBatch.count;
+    }
+
     void VfxPlaybackService::Reset() {
         for (const Instance& instance : instances_) {
             RetireEmitterKeys(instance);
@@ -747,6 +955,7 @@ namespace HIKARI::VFX {
         instances_.clear();
         admissionStats_ = {};
         renderInput_.emitters.clear();
+        renderInput_.compositions.clear();
         renderInput_.retiredEmitters.clear();
         renderInput_.deliverySequence = 0u;
         pendingRenderDeliverySequence_ = 0u;
@@ -769,6 +978,40 @@ namespace HIKARI::VFX {
         if (reliableRenderDeliveryEnabled_) {
             pendingRenderDeliverySequence_ = nextRenderDeliverySequence_;
         }
+    }
+
+    bool VfxPlaybackService::PublishFrozenRenderInput() noexcept {
+        if (reliableRenderDeliveryEnabled_ && pendingRenderDeliverySequence_ != 0u)
+            return false;
+        if (renderInput_.emitters.empty() && renderInput_.retiredEmitters.empty()) {
+            return false;
+        }
+        bool needsFreeze = false;
+        for (const auto& submission : renderInput_.emitters) {
+            if (submission.deltaSeconds > 0.0f || submission.spawnCount != 0u ||
+                submission.resetSimulation) {
+                needsFreeze = true;
+                break;
+            }
+        }
+        if (!needsFreeze) {
+            // すでに時間が止まっている入力を配信済み。毎フレーム呼ばれる経路なので
+            // 余計な配信 (delivery sequence) を増やさない。
+            return false;
+        }
+        // シークの中間ステップを描画へ昇格させず、受領済みの最終状態だけ残す。
+        std::erase_if(renderInput_.emitters, [](const auto& submission) { return !submission.drawAfterSimulation; });
+        // 同じ入力を再描画してもシミュレーションが進まないように時間を止める。
+        // frameIndex は据え置き、レンダラ側の per-frame 再シミュレーション判定にも
+        // 「同じフレーム」として扱わせる。
+        for (auto& submission : renderInput_.emitters) {
+            submission.deltaSeconds = 0.0f;
+            submission.spawnCount = 0u;
+            submission.resetSimulation = false;
+            submission.drawAfterSimulation = true;
+        }
+        PublishRenderInputDelivery();
+        return true;
     }
 
     VfxPlaybackHandle VfxPlaybackService::AllocateHandle(
@@ -970,14 +1213,26 @@ namespace HIKARI::VFX {
                 instance.transformResolved[child] = 1u;
             }
         }
+        // 接続ターゲットは全レイヤーの変換が確定してから一度だけ適用する。
+        // 参照先が未解決でも順序に依存しない。
+        for (uint32_t emitterIndex = 0u;
+             emitterIndex < program.emitters.size();
+             ++emitterIndex) {
+            if (instance.transformResolved[emitterIndex] == 0u) continue;
+            ApplyConnectTarget(instance, emitterIndex);
+        }
 
+        if (drawAfterSimulation) ProjectComposition(instance, submittedAge);
         const size_t firstSubmission = renderInput_.emitters.size();
         for (uint32_t emitterIndex = 0u;
             emitterIndex < program.emitters.size();
             ++emitterIndex) {
             const VfxProgramEmitter& emitter =
                 program.emitters[emitterIndex];
-            if (emitter.kind == VfxLayerKind::Group) continue;
+            if (emitter.kind == VfxLayerKind::Group || emitter.kind == VfxLayerKind::Adjustment) continue;
+            // Mesh 出力レイヤーはモデル描画側が担当する。粒子 pass へは
+            // 一切渡さない（形状は手続きプリミティブではないため）。
+            if (!emitter.render.meshAssetGuid.empty()) continue;
 
             EmitterState& state = instance.emitterStates[emitterIndex];
             ParticleEmitterRuntimeOverrides overrides =

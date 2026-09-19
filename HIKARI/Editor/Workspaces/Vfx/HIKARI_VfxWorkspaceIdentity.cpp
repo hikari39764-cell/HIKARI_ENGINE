@@ -260,20 +260,28 @@ namespace HIKARI::EDITOR {
     bool VfxWorkspaceController::ApplyAsset(
         VFX::VfxAssetData asset,
         std::string& outMessage,
-        uint64_t mergeGroup) {
+        uint64_t mergeGroup, VfxDocumentImpact impact) {
 
+        const uint64_t beforeRevision = document_.GetRevision();
         if (!document_.ApplyAsset(
-                std::move(asset), outMessage, mergeGroup)) {
+                std::move(asset), outMessage, mergeGroup, impact)) {
             statusMessage_ = outMessage;
             return false;
         }
-        NormalizeSelection();
-        OnDocumentChanged();
+        if (document_.GetRevision() != beforeRevision) {
+            NormalizeSelection();
+            OnDocumentChanged();
+        }
         statusMessage_ = outMessage;
         return true;
     }
 
     void VfxWorkspaceController::OnDocumentChanged() {
+        if (document_.GetLastImpact() == VfxDocumentImpact::Metadata) {
+            if (previewProgramRevision_ != 0u) previewProgramRevision_ = document_.GetRevision();
+            NotifyEmitterStructureChanged();
+            return;
+        }
         diagnostics_ = document_.IsOpen()
             ? VFX::ValidateVfxAsset(document_.Asset())
             : std::vector<VFX::VfxDiagnostic>{};

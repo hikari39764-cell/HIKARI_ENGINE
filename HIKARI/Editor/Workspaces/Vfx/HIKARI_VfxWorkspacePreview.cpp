@@ -14,6 +14,7 @@
 #include "Editor/Views/HIKARI_EditorViewInstance.h"
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
+#include "Scene/Vfx/HIKARI_VfxLightOutput.h"
 
 namespace HIKARI::EDITOR {
 
@@ -181,6 +182,8 @@ namespace HIKARI::EDITOR {
         }
         NormalizePreviewTimelineRange();
         previewPaused_ = paused;
+        // 凍結入力は UpdatePreview が GPU 受領後に配信する。未受領の
+        // reset/spawn/seek をここで消すと、停止した瞬間の粒子状態を失う。
         if (!paused && previewLoopEnabled_ &&
             previewElapsedSeconds_ >= previewLoopEndSeconds_ - 1e-5f) {
             previewRestartPending_ = true;
@@ -429,6 +432,13 @@ namespace HIKARI::EDITOR {
         if (previewRenderMailbox_.HasPending()) {
             return;
         }
+        if (previewPaused_ && previewPlaying_ && previewHandle_.IsValid() &&
+            playbackService_.PublishFrozenRenderInput()) {
+            // GPU 受領済みの最終状態だけを停止中の描画入力として残す。
+            (void)PublishPreviewRenderInput(
+                VFX::VfxRenderInputPublishMode::SupersedePending);
+            return;
+        }
         if (previewRestartPending_ && previewPlaying_) {
             if (previewRestartDelaySeconds_ <= 0.0f) {
                 const bool wasPaused = previewPaused_;
@@ -542,22 +552,38 @@ namespace HIKARI::EDITOR {
         RENDER3D::PARTICLES::ParticleRenderInput input =
             playbackService_.GetRenderInput();
         if (!hiddenEmitterIds_.empty() || !soloEmitterId_.empty()) {
-            const auto& emitters = document_.IsOpen()
-                ? document_.Asset().emitters
-                : std::vector<VFX::VfxEmitterData>{};
+            // 描画添字はコンパイル済み順序。source 配列の並びとは一致しない。
+            const auto visible = [this](size_t index) {
+                return previewProgram_ && index < previewProgram_->emitters.size() &&
+                    IsEmitterPreviewVisible(previewProgram_->emitters[index].sourceEmitterId);
+            };
             std::erase_if(
                 input.emitters,
-                [this, &emitters](
+                [&visible](
                     const RENDER3D::PARTICLES::ParticleEmitterSubmission&
                         submission) {
-                    const std::size_t index =
-                        submission.key.emitterIndex;
-                    if (index >= emitters.size()) return false;
-                    return !IsEmitterPreviewVisible(emitters[index].id);
+                    return !visible(submission.key.emitterIndex);
                 });
+            for (auto& composition : input.compositions)
+                for (auto& layer : composition.layers) {
+                    // Solo された子へ到達するための親 scope は残す。
+                    if (layer.kind == RENDER3D::PARTICLES::ParticleCompositionLayerKind::Adjustment)
+                        layer.enabled = layer.enabled && visible(layer.emitterIndex);
+                }
         }
-        return previewRenderMailbox_.Publish(
-            std::move(input), mode) != 0u;
+        if (previewBypassAdjustments_)
+            for (auto& composition : input.compositions)
+                for (auto& layer : composition.layers)
+                    if (layer.kind == RENDER3D::PARTICLES::ParticleCompositionLayerKind::Adjustment)
+                        layer.enabled = false;
+        // 全レイヤー非表示も有効な入力。直前の描画を保持すると非表示にできない。
+        const bool published =
+            previewRenderMailbox_.Publish(std::move(input), mode) != 0u;
+        if (published) {
+            // 新しい入力が届いたフレームは描き直す。
+            previewNeedsRedraw_ = true;
+        }
+        return published;
     }
 
     void VfxWorkspaceController::SubmitPreviewRequest(
@@ -576,6 +602,11 @@ namespace HIKARI::EDITOR {
             return;
         }
         RENDER3D::EDITORVIEW::EditorInteractiveViewRequest request{};
+        // 無変更の判定は view scheduler が所有する。停止中も extent/露出/guide
+        // の変更を渡し、内容が変わったときだけ再描画する。
+        if (previewNeedsRedraw_) ++previewContentRevision_;
+        previewNeedsRedraw_ = false;
+        request.contentRevision = previewContentRevision_;
         request.viewId = previewView.renderViewId;
         request.purpose = RENDER3D::RenderViewPurpose::ToolPreview;
         request.cameraFrame.camera = cameraController_.GetCamera();
@@ -587,7 +618,8 @@ namespace HIKARI::EDITOR {
         request.sceneRevision = previewRenderMailbox_.GetSequence();
         request.visible = canvasVisible;
         request.drawDebug = false;
-        request.continuousRealtime = true;
+        // 再生中は連続描画、停止中はカメラ/資産/設定の変更時に更新する。
+        request.continuousRealtime = !previewPaused_;
         request.schedulingPriority = 110u;
         request.shadingMode =
             RENDER3D::EDITORVIEW::EditorInteractiveShadingMode::Lit;
@@ -595,10 +627,17 @@ namespace HIKARI::EDITOR {
             previewView.visualization.displayExposure;
         request.sceneSourceOverride = emptySceneSource_.get();
         request.environmentOverride = previewEnvironment_.get();
+        // 作業用の主光源を保ち、素材自身の光源は同じ runtime bridge で再構成する。
+        previewLighting_->lights.resize(1);
+        std::vector<uint8_t> visibleLayers;
+        for (const auto& layer : document_.Asset().emitters)
+            visibleLayers.push_back(IsEmitterPreviewVisible(layer.id) ? 1u : 0u);
+        if (previewPlaying_)
+            VFX::AppendVfxLightProviders(playbackService_, previewLighting_->lights, visibleLayers);
         request.lightingOverride = previewLighting_.get();
         request.particleInputOverride = previewRenderMailbox_.GetCurrent();
-        request.guideOverlay.showGroundGrid = showPreviewGrid_;
-        request.guideOverlay.showWorldAxes = showPreviewAxes_;
+        request.guideOverlay.showGroundGrid = showPreviewGrid_ && !previewCleanView_;
+        request.guideOverlay.showWorldAxes = showPreviewAxes_ && !previewCleanView_;
         request.guideOverlay.gridHalfCount = 12;
         request.guideOverlay.gridSpacing = 0.5f;
         request.guideOverlay.axisLength = 1.25f;

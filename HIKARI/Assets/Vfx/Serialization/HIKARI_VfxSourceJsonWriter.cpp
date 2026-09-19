@@ -232,15 +232,33 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
                     { "color", WriteVec4(value.skinnedAfterimage.color) },
                     { "intensity", value.skinnedAfterimage.intensity },
                 } },
+                { "light", {
+                    { "color", WriteVec4(value.light.color) },
+                    { "intensity", value.light.intensity },
+                    { "range", value.light.range },
+                    { "sourceRadius", value.light.sourceRadius },
+                    { "flickerFrequency", value.light.flickerFrequency },
+                    { "flickerAmplitude", value.light.flickerAmplitude },
+                    { "priority", value.light.priority },
+                    { "castsShadows", value.light.castsShadows },
+                } },
             };
         }
 
         Json WriteEmitter(const VfxEmitterData& emitter) {
             Json effects = Json::array();
             for (const auto& effect : emitter.effects) {
+                Json stops = Json::array();
+                for (const auto& stop : effect.colorStops) {
+                    stops.push_back({{"id", stop.id}, {"time", stop.time},
+                        {"color", WriteVec4(stop.color)}});
+                }
                 effects.push_back({{"id", effect.id}, {"kind", MaterialEffectName(effect.kind)},
                     {"enabled", effect.enabled}, {"parameters", WriteVec4(effect.parameters)},
-                    {"colorA", WriteVec4(effect.colorA)}, {"colorB", WriteVec4(effect.colorB)}});
+                    {"parameters2", WriteVec4(effect.parameters2)},
+                    {"textureTarget", MaterialEffectTextureTargetName(effect.textureTarget)},
+                    {"colorA", WriteVec4(effect.colorA)}, {"colorB", WriteVec4(effect.colorB)},
+                    {"colorStops", std::move(stops)}});
             }
             Json links = Json::array();
             auto sortedLinks = emitter.inputLinks;
@@ -316,8 +334,32 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
                 { "parentEmitterId", emitter.parentEmitterId },
                 { "order", emitter.order },
                 { "startDelay", emitter.startDelay },
+                { "anchor", WriteVec3(emitter.anchor) },
+                { "connectTarget", {
+                    { "mode",
+                        emitter.connectTarget.mode == VfxConnectTargetMode::LayerOrigin
+                            ? "LayerOrigin"
+                            : emitter.connectTarget.mode == VfxConnectTargetMode::LocalPosition
+                                  ? "LocalPosition"
+                                  : "None" },
+                    { "targetLayerId", emitter.connectTarget.targetLayerId },
+                    { "localPosition", WriteVec3(emitter.connectTarget.localPosition) },
+                    { "pivot", emitter.connectTarget.pivot },
+                    { "lengthScale", emitter.connectTarget.lengthScale },
+                    { "startOffset", emitter.connectTarget.startOffset },
+                    { "endOffset", emitter.connectTarget.endOffset },
+                    { "orient", emitter.connectTarget.orient },
+                    { "stretch", emitter.connectTarget.stretch },
+                } },
+                { "meshOutput", {
+                    { "enabled", emitter.meshOutput.enabled },
+                    { "meshAssetGuid", emitter.meshOutput.meshAssetGuid.value },
+                    { "castShadows", emitter.meshOutput.castShadows },
+                    { "receiveShadow", emitter.meshOutput.receiveShadow },
+                } },
                 { "kind", emitter.kind == VfxLayerKind::Shape ? "Shape" :
-                    emitter.kind == VfxLayerKind::Group ? "Group" : "Particles" },
+                    emitter.kind == VfxLayerKind::Group ? "Group" :
+                    emitter.kind == VfxLayerKind::Adjustment ? "Adjustment" : "Particles" },
                 { "activeDuration", emitter.activeDuration },
                 {"animationTiming",{{"sourceDuration",emitter.animationTiming.sourceDuration},{"offset",emitter.animationTiming.offset},{"rate",emitter.animationTiming.rate}}},
                 { "history", {{"mode", emitter.history.mode == VfxHistoryMode::Afterimage ? "Afterimage" :
@@ -365,6 +407,8 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
                             emitter.shape.circleInnerRadius },
                         { "circleEmitOnEdge",
                             emitter.shape.circleEmitOnEdge },
+                        { "circleArcDegrees",
+                            emitter.shape.circleArcDegrees },
                         { "edgeLength",
                             emitter.shape.edgeLength },
                     } },
@@ -403,6 +447,13 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
                             emitter.renderCommon.materialMode) },
                         { "colorTextureAssetGuid",
                             emitter.renderCommon.colorTextureAssetGuid.value },
+                        { "maskTextureAssetGuid",
+                            emitter.renderCommon.maskTextureAssetGuid.value },
+                        { "noiseTextureAssetGuid",
+                            emitter.renderCommon.noiseTextureAssetGuid.value },
+                        { "detailNoiseTextureAssetGuid",
+                            emitter.renderCommon.detailNoiseTextureAssetGuid.value },
+                        { "flowMapTextureAssetGuid", emitter.renderCommon.flowMapTextureAssetGuid.value },
                         { "materialAssetGuid",
                             emitter.renderCommon.materialAssetGuid.value },
                         { "blendMode", ToString(
@@ -444,6 +495,39 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
                             emitter.renderShape.ringStartAngleDegrees },
                         { "ringEndAngleDegrees",
                             emitter.renderShape.ringEndAngleDegrees },
+                        { "uvMode", ToString(emitter.renderShape.uvMode) },
+                        { "uvTileLength",
+                            emitter.renderShape.uvTileLength },
+                        { "uvTilingU",
+                            emitter.renderShape.uvTilingU },
+                        { "uvTilingV",
+                            emitter.renderShape.uvTilingV },
+                        { "uvRotationDegrees",
+                            emitter.renderShape.uvRotationDegrees },
+                        { "uvSwapAxes",
+                            emitter.renderShape.uvSwapAxes },
+                        { "taperStart",
+                            emitter.renderShape.taperStart },
+                        { "taperEnd",
+                            emitter.renderShape.taperEnd },
+                        { "cylinderTopRadius",
+                            emitter.renderShape.cylinderTopRadius },
+                        { "cylinderBottomRadius",
+                            emitter.renderShape.cylinderBottomRadius },
+                        { "coneBaseRadius",
+                            emitter.renderShape.coneBaseRadius },
+                        { "bendAmount",
+                            emitter.renderShape.bendAmount },
+                        { "twistDegrees",
+                            emitter.renderShape.twistDegrees },
+                        { "torusMajorRadius",
+                            emitter.renderShape.torusMajorRadius },
+                        { "torusMinorRadius",
+                            emitter.renderShape.torusMinorRadius },
+                        { "capsuleRadius",
+                            emitter.renderShape.capsuleRadius },
+                        { "billboardAxis",
+                            VFX::ToString(emitter.renderShape.billboardAxis) },
                     } },
                 } },
                 { "specialOutputs", std::move(specialOutputs) },

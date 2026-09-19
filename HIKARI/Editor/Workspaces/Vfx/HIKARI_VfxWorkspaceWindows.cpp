@@ -1,6 +1,10 @@
 #include "Editor/Workspaces/Vfx/HIKARI_VfxInspectorControls.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 
+#include "Editor/Style/HIKARI_EditorGlyphs.h"
+#include "Editor/Style/HIKARI_EditorWidgets.h"
+#include "Core/Text/HIKARI_Localization.h"
+
 #include <algorithm>
 #include <string>
 
@@ -78,7 +82,8 @@ namespace HIKARI::EDITOR {
         EditorCommandRouter& commandRouter) {
 
         VfxWorkspaceResult result{};
-        (void)assetRegistry;
+        // 貼図プレビューなど、この描画パスからレジストリを参照する。
+        frameAssetRegistry_ = &assetRegistry;
 #if defined(HIKARI_WITH_EDITOR)
         if (!document_.IsOpen()) {
             NewAsset();
@@ -186,39 +191,35 @@ namespace HIKARI::EDITOR {
             return;
         }
 
-        if (ImGui::Button(VfxUiText("New").c_str(), { 64.0f, 28.0f })) {
+        if (IconButton(EditorGlyph::NewDocument, "New", EditorButtonTone::Quiet, {28,28}, VfxUiText("New").c_str())) {
             ImGui::OpenPopup("Create VFX Asset");
         }
         ImGui::SameLine();
         ImGui::BeginDisabled(!document_.IsOpen());
-        if (ImGui::Button(VfxUiText("Save").c_str(), { 64.0f, 28.0f })) {
+        if (IconButton(EditorGlyph::Save, "Save", EditorButtonTone::Quiet, {28,28}, VfxUiText("Save").c_str())) {
             (void)Save(database, statusMessage_);
         }
         ImGui::SameLine();
         ImGui::BeginDisabled(!document_.CanUndo());
-        if (ImGui::Button(VfxUiText("Undo").c_str(), { 58.0f, 28.0f })) {
+        if (IconButton(EditorGlyph::Undo, "Undo", EditorButtonTone::Quiet, {28,28}, VfxUiText("Undo").c_str())) {
             (void)Undo(statusMessage_);
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
         ImGui::BeginDisabled(!document_.CanRedo());
-        if (ImGui::Button(VfxUiText("Redo").c_str(), { 58.0f, 28.0f })) {
+        if (IconButton(EditorGlyph::Redo, "Redo", EditorButtonTone::Quiet, {28,28}, VfxUiText("Redo").c_str())) {
             (void)Redo(statusMessage_);
         }
         ImGui::EndDisabled();
         ImGui::EndDisabled();
 
         ImGui::SameLine();
-        const char* state = VFX::HasVfxErrors(diagnostics_)
+        const std::string state = VFX::HasVfxErrors(diagnostics_)
             ? "Compile errors"
             : document_.IsDirty()
-                ? VfxUiText("Unsaved").c_str()
+                ? VfxUiText("Unsaved")
                 : "Saved";
-        ImGui::TextDisabled(
-            "%s  |  %.2f / %.2f s",
-            state,
-            previewElapsedSeconds_,
-            document_.Asset().durationSeconds);
+        ImGui::TextDisabled("%s", state.c_str());
 
         const float exitWidth = 94.0f;
         ImGui::SameLine((std::max)(

@@ -31,6 +31,7 @@ namespace HIKARI {
             void SetUser(int index, const DirectX::XMFLOAT4& v);
 
             bool BindAndDraw(QuadDrawer& drawer);
+            static constexpr uint32_t DrawCapacityPerFrame() noexcept { return kConstantDrawCapacityPerFrame; }
 
         private:
             bool CreateConstantBuffer();

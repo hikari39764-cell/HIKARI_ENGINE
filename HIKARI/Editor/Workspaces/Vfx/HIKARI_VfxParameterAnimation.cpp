@@ -1,4 +1,6 @@
 #include "Core/Text/HIKARI_Localization.h"
+#include "Editor/Style/HIKARI_EditorGlyphs.h"
+#include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxInspectorControls.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 #include <algorithm>
@@ -101,12 +103,16 @@ bool VfxWorkspaceController::DrawLayerParameter(const VFX::VfxEmitterData &layer
     }
     const auto identity = std::string(targetId) + "." + std::string(propertyId);
     ImGui::PushID(identity.c_str());
-    ImGui::TextUnformatted(VfxUiText(p->label).c_str());
-    ImGui::SetNextItemWidth((std::max)(60.0f, ImGui::GetContentRegionAvail().x - 74));
+    const auto label = layer.kind == VFX::VfxLayerKind::Adjustment ?
+        TEXT::Localize("ui.vfx.effect.param." + p->label) : VfxUiText(p->label);
+    ImGui::TextUnformatted(label.c_str());
+    ImGui::SetNextItemWidth((std::max)(60.0f, ImGui::GetContentRegionAvail().x - 34));
     const bool changed = ImGui::DragFloat("##value", &value, 0.01f, p->minimum, p->maximum);
     const bool seal = ImGui::IsItemDeactivatedAfterEdit();
     ImGui::SameLine();
-    const bool add = ImGui::Button(TEXT::Localize("ui.vfx.layer.key").c_str());
+    const bool add = IconToggleButton(EditorGlyph::Keyframe, "Keyframe",
+        track != layer.parameterTracks.end(), {26, ImGui::GetFrameHeight()},
+        TEXT::Localize("ui.vfx.layer.key").c_str());
     if (ImGui::BeginPopupContextItem()) {
         if (track != layer.parameterTracks.end() &&
             ImGui::MenuItem(TEXT::Localize("ui.vfx.timeline.removeTrack").c_str()))
@@ -126,12 +132,13 @@ bool VfxWorkspaceController::DrawLayerParameter(const VFX::VfxEmitterData &layer
             const auto effect = std::find_if(layer.effects.begin(), layer.effects.end(),
                                              [&](const auto &e) { return e.id == targetId; });
             if (effect != layer.effects.end()) {
-                auto v = effect->parameters;
+                const bool secondary = propertyId.starts_with("parameters2.");
+                auto v = secondary ? effect->parameters2 : effect->parameters;
                 float *components[]{&v.x, &v.y, &v.z, &v.w};
                 const auto c = std::string_view("xyzw").find(propertyId.back());
                 if (c < 4)
                     *components[c] = value;
-                (void)SetProperty(targetId, "parameters", {v.x, v.y, v.z, v.w}, statusMessage_,
+                (void)SetProperty(targetId, secondary ? "parameters2" : "parameters", {v.x, v.y, v.z, v.w}, statusMessage_,
                                   VfxInspectorPropertyEditor::MergeGroup(targetId, propertyId));
             }
         }

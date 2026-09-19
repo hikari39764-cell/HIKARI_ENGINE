@@ -68,7 +68,7 @@ bool VfxWorkspaceController::DrawLayerHandles(const EditorViewportRect &rect, bo
         }
     };
     for (const auto &layer : asset.emitters) {
-        if (!IsEmitterPreviewVisible(layer.id))
+        if (layer.kind == VFX::VfxLayerKind::Adjustment || !IsEmitterPreviewVisible(layer.id))
             continue;
         VFX::VfxWorldTransform world, frame;
         if (!playbackService_.GetLayerPoseAtTime(previewHandle_, layer.id, previewElapsedSeconds_, world,
@@ -104,7 +104,7 @@ bool VfxWorkspaceController::DrawLayerHandles(const EditorViewportRect &rect, bo
                                                               : MATH::Vec3{radius, radius, radius};
         } else if (layer.renderShape.type == VFX::VfxRenderShapeType::Sprite)
             half.z = 0.03f;
-        if (canPick && layer.kind != VFX::VfxLayerKind::Group) {
+        if (canPick && layer.kind != VFX::VfxLayerKind::Group && layer.kind != VFX::VfxLayerKind::Adjustment) {
             EditorPointerRay local{Transform(inverse, ray.origin), Transform(inverse, ray.direction, 0)};
             float distance = 0;
             bool hit = IntersectEditorBounds(local, half * -1, half, distance);

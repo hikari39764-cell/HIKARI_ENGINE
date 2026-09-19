@@ -1,3 +1,4 @@
+#include "Assets/Vfx/HIKARI_VfxBudgets.h"
 #include "Assets/Vfx/Serialization/HIKARI_VfxSourceJsonInternal.h"
 
 #include <algorithm>
@@ -180,6 +181,31 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
                     return false;
                 }
             }
+            if (node.contains("light")) {
+                const Json& profile = node["light"];
+                if (!profile.is_object() ||
+                    (profile.contains("color") &&
+                     !ReadVec4(profile["color"], value.light.color)) ||
+                    !readFloat(profile, "intensity",
+                        value.light.intensity) ||
+                    !readFloat(profile, "range", value.light.range) ||
+                    !readFloat(profile, "sourceRadius",
+                        value.light.sourceRadius) ||
+                    !readFloat(profile, "flickerFrequency",
+                        value.light.flickerFrequency) ||
+                    !readFloat(profile, "flickerAmplitude",
+                        value.light.flickerAmplitude) ||
+                    !readUnsigned(profile, "priority",
+                        value.light.priority) ||
+                    (profile.contains("castsShadows") &&
+                     !profile["castsShadows"].is_boolean())) {
+                    return false;
+                }
+                if (profile.contains("castsShadows")) {
+                    value.light.castsShadows =
+                        profile["castsShadows"].get<bool>();
+                }
+            }
             outOutput = std::move(value);
             return true;
         }
@@ -226,6 +252,7 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
             if (kind == "Particles") emitter.kind = VfxLayerKind::Particles;
             else if (kind == "Shape") emitter.kind = VfxLayerKind::Shape;
             else if (kind == "Group") emitter.kind = VfxLayerKind::Group;
+            else if (kind == "Adjustment") emitter.kind = VfxLayerKind::Adjustment;
             else return false;
         }
         if (node.contains("activeDuration")) {
@@ -236,6 +263,77 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
             if (!node["activeDurationSeconds"].is_number()) return false;
             emitter.activeDuration =
                 node["activeDurationSeconds"].get<float>();
+        }
+        if (node.contains("anchor") &&
+            !ReadVec3(node["anchor"], emitter.anchor)) {
+            return false;
+        }
+        if (node.contains("connectTarget")) {
+            const auto& connect = node["connectTarget"];
+            if (!connect.is_object() || !connect.contains("mode") ||
+                !connect["mode"].is_string()) {
+                return false;
+            }
+            VfxConnectTargetData value = emitter.connectTarget;
+            const std::string mode = connect["mode"].get<std::string>();
+            if (mode == "None") value.mode = VfxConnectTargetMode::None;
+            else if (mode == "LayerOrigin") value.mode = VfxConnectTargetMode::LayerOrigin;
+            else if (mode == "LocalPosition") value.mode = VfxConnectTargetMode::LocalPosition;
+            else return false;
+            if (connect.contains("targetLayerId")) {
+                if (!connect["targetLayerId"].is_string()) return false;
+                value.targetLayerId = connect["targetLayerId"].get<std::string>();
+            }
+            if (connect.contains("localPosition") &&
+                !ReadVec3(connect["localPosition"], value.localPosition)) {
+                return false;
+            }
+            const auto readScalar = [&connect](const char* key, float& target) {
+                if (!connect.contains(key)) return true;
+                if (!connect[key].is_number()) return false;
+                target = connect[key].get<float>();
+                return true;
+            };
+            if (!readScalar("pivot", value.pivot) ||
+                !readScalar("lengthScale", value.lengthScale) ||
+                !readScalar("startOffset", value.startOffset) ||
+                !readScalar("endOffset", value.endOffset)) {
+                return false;
+            }
+            if (connect.contains("orient")) {
+                if (!connect["orient"].is_boolean()) return false;
+                value.orient = connect["orient"].get<bool>();
+            }
+            if (connect.contains("stretch")) {
+                if (!connect["stretch"].is_boolean()) return false;
+                value.stretch = connect["stretch"].get<bool>();
+            }
+            emitter.connectTarget = value;
+        }
+        if (node.contains("meshOutput")) {
+            const auto& mesh = node["meshOutput"];
+            if (!mesh.is_object()) {
+                return false;
+            }
+            VfxMeshOutputData value = emitter.meshOutput;
+            if (mesh.contains("enabled")) {
+                if (!mesh["enabled"].is_boolean()) return false;
+                value.enabled = mesh["enabled"].get<bool>();
+            }
+            if (mesh.contains("meshAssetGuid")) {
+                if (!mesh["meshAssetGuid"].is_string()) return false;
+                value.meshAssetGuid = AssetGuid{
+                    mesh["meshAssetGuid"].get<std::string>() };
+            }
+            if (mesh.contains("castShadows")) {
+                if (!mesh["castShadows"].is_boolean()) return false;
+                value.castShadows = mesh["castShadows"].get<bool>();
+            }
+            if (mesh.contains("receiveShadow")) {
+                if (!mesh["receiveShadow"].is_boolean()) return false;
+                value.receiveShadow = mesh["receiveShadow"].get<bool>();
+            }
+            emitter.meshOutput = value;
         }
 
         if (node.contains("history")) {
@@ -429,6 +527,14 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
             emitter.shape.circleEmitOnEdge =
                 shape["circleEmitOnEdge"].get<bool>();
         }
+        // 放出角度範囲。古い資産には無いので省略可能 (既定 360 = 全周)。
+        if (shape.contains("circleArcDegrees")) {
+            if (!shape["circleArcDegrees"].is_number()) {
+                return false;
+            }
+            emitter.shape.circleArcDegrees =
+                shape["circleArcDegrees"].get<float>();
+        }
         if (shape.contains("edgeLength")) {
             if (!shape["edgeLength"].is_number()) {
                 return false;
@@ -506,6 +612,33 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
             }
             emitter.renderCommon.colorTextureAssetGuid = AssetGuid{
                 renderCommon["colorTextureAssetGuid"].get<std::string>() };
+            if (renderCommon.contains("maskTextureAssetGuid")) {
+                if (!renderCommon["maskTextureAssetGuid"].is_string()) {
+                    return false;
+                }
+                emitter.renderCommon.maskTextureAssetGuid = AssetGuid{
+                    renderCommon["maskTextureAssetGuid"].get<std::string>() };
+            }
+            if (renderCommon.contains("noiseTextureAssetGuid")) {
+                if (!renderCommon["noiseTextureAssetGuid"].is_string()) {
+                    return false;
+                }
+                emitter.renderCommon.noiseTextureAssetGuid = AssetGuid{
+                    renderCommon["noiseTextureAssetGuid"].get<std::string>() };
+            }
+            // 2 つ目のノイズ場。古い資産には無いので省略可能。
+            if (renderCommon.contains("flowMapTextureAssetGuid")) {
+                if (!renderCommon["flowMapTextureAssetGuid"].is_string()) return false;
+                emitter.renderCommon.flowMapTextureAssetGuid = AssetGuid{
+                    renderCommon["flowMapTextureAssetGuid"].get<std::string>() };
+            }
+            if (renderCommon.contains("detailNoiseTextureAssetGuid")) {
+                if (!renderCommon["detailNoiseTextureAssetGuid"].is_string()) {
+                    return false;
+                }
+                emitter.renderCommon.detailNoiseTextureAssetGuid = AssetGuid{
+                    renderCommon["detailNoiseTextureAssetGuid"].get<std::string>() };
+            }
         } else {
             emitter.spawn.capacityMode =
                 VfxParticleCapacityMode::Automatic;
@@ -587,6 +720,14 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
                 emitter.renderShape.billboardMode)) {
             return false;
         }
+        // 軸固定ビルボードの軸。後から追加した任意項目。
+        if (renderShape.contains("billboardAxis") &&
+            (!renderShape["billboardAxis"].is_string() ||
+             !TryParseVfxBillboardAxis(
+                 renderShape["billboardAxis"].get<std::string>(),
+                 emitter.renderShape.billboardAxis))) {
+            return false;
+        }
         if (renderShape.contains("ribbonSegmentCount")) {
             if (!ReadUint32(
                     renderShape["ribbonSegmentCount"],
@@ -636,6 +777,77 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
             emitter.renderShape.ringEndAngleDegrees =
                 renderShape["ringEndAngleDegrees"].get<float>();
         }
+        if (renderShape.contains("uvMode")) {
+            if (!renderShape["uvMode"].is_string() ||
+                !TryParseVfxShapeUvMode(
+                    renderShape["uvMode"].get<std::string>(),
+                    emitter.renderShape.uvMode)) {
+                return false;
+            }
+        }
+        if (renderShape.contains("uvTileLength")) {
+            if (!renderShape["uvTileLength"].is_number()) {
+                return false;
+            }
+            emitter.renderShape.uvTileLength =
+                renderShape["uvTileLength"].get<float>();
+        }
+        if (renderShape.contains("uvTilingU")) {
+            if (!renderShape["uvTilingU"].is_number()) {
+                return false;
+            }
+            emitter.renderShape.uvTilingU =
+                renderShape["uvTilingU"].get<float>();
+        }
+        if (renderShape.contains("uvTilingV")) {
+            if (!renderShape["uvTilingV"].is_number()) {
+                return false;
+            }
+            emitter.renderShape.uvTilingV =
+                renderShape["uvTilingV"].get<float>();
+        }
+        if (renderShape.contains("uvRotationDegrees")) {
+            if (!renderShape["uvRotationDegrees"].is_number()) {
+                return false;
+            }
+            emitter.renderShape.uvRotationDegrees =
+                renderShape["uvRotationDegrees"].get<float>();
+        }
+        if (renderShape.contains("uvSwapAxes")) {
+            if (!renderShape["uvSwapAxes"].is_boolean()) {
+                return false;
+            }
+            emitter.renderShape.uvSwapAxes =
+                renderShape["uvSwapAxes"].get<bool>();
+        }
+        // taper は後から追加した任意項目。無い資産は既定値のまま読む。
+        for (const auto& [key, target] : {
+                 std::pair{ "taperStart", &emitter.renderShape.taperStart },
+                 std::pair{ "taperEnd", &emitter.renderShape.taperEnd },
+                 std::pair{ "cylinderTopRadius",
+                            &emitter.renderShape.cylinderTopRadius },
+                 std::pair{ "cylinderBottomRadius",
+                            &emitter.renderShape.cylinderBottomRadius },
+                 std::pair{ "coneBaseRadius",
+                            &emitter.renderShape.coneBaseRadius },
+                 std::pair{ "bendAmount",
+                            &emitter.renderShape.bendAmount },
+                 std::pair{ "twistDegrees",
+                            &emitter.renderShape.twistDegrees },
+                 std::pair{ "torusMajorRadius",
+                            &emitter.renderShape.torusMajorRadius },
+                 std::pair{ "torusMinorRadius",
+                            &emitter.renderShape.torusMinorRadius },
+                 std::pair{ "capsuleRadius",
+                            &emitter.renderShape.capsuleRadius } }) {
+            if (!renderShape.contains(key)) {
+                continue;
+            }
+            if (!renderShape[key].is_number()) {
+                return false;
+            }
+            *target = renderShape[key].get<float>();
+        }
 
         if (node.contains("specialOutputs")) {
             if (!node["specialOutputs"].is_array() ||
@@ -683,15 +895,42 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
             });
         }
         if (node.contains("effects")) {
-            if (!node["effects"].is_array() || node["effects"].size() > 8) return false;
+            if (!node["effects"].is_array() || node["effects"].size() > kMaximumVfxEffectsPerLayer) return false;
             for (const auto& item : node["effects"]) {
                 MaterialEffectStep step;
+                if (item.contains("textureTarget") &&
+                    (!item["textureTarget"].is_string() || !ParseMaterialEffectTextureTarget(
+                        item["textureTarget"].get<std::string>(), step.textureTarget))) return false;
                 if (!item.is_object() || !item.contains("id") || !item["id"].is_string() ||
                     !ParseMaterialEffectKind(item.value("kind", ""), step.kind) ||
                     !item.contains("enabled") || !item["enabled"].is_boolean() ||
                     !item.contains("parameters") || !ReadVec4(item["parameters"], step.parameters) ||
                     !item.contains("colorA") || !ReadVec4(item["colorA"], step.colorA) ||
                     !item.contains("colorB") || !ReadVec4(item["colorB"], step.colorB)) return false;
+                // parameters2 は後から追加した任意項目。無い資産は既定値のまま読む。
+                if (item.contains("parameters2") && !ReadVec4(item["parameters2"], step.parameters2))
+                    return false;
+                // 多段グラデーションのストップ。無い資産は colorA/colorB のまま。
+                if (item.contains("colorStops")) {
+                    const auto& stops = item["colorStops"];
+                    if (!stops.is_array() ||
+                        stops.size() > kMaximumMaterialEffectColorStops) {
+                        return false;
+                    }
+                    for (const auto& entry : stops) {
+                        MaterialEffectStep::ColorStop stop{};
+                        if (!entry.is_object() || !entry.contains("id") ||
+                            !entry["id"].is_string() ||
+                            !entry.contains("time") || !entry["time"].is_number() ||
+                            !entry.contains("color") ||
+                            !ReadVec4(entry["color"], stop.color)) {
+                            return false;
+                        }
+                        stop.id = entry["id"].get<std::string>();
+                        stop.time = entry["time"].get<float>();
+                        step.colorStops.push_back(std::move(stop));
+                    }
+                }
                 step.id = item["id"].get<std::string>(); step.enabled = item["enabled"].get<bool>();
                 emitter.effects.push_back(std::move(step));
             }

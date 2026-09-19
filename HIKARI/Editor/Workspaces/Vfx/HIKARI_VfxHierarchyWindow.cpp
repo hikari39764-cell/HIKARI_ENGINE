@@ -10,7 +10,10 @@
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetRecord.h"
 #include "Assets/Vfx/HIKARI_VfxPropertySchema.h"
+#include "Assets/Vfx/HIKARI_VfxLayerOrder.h"
 #include "Core/Text/HIKARI_Localization.h"
+#include "Editor/Style/HIKARI_EditorGlyphs.h"
+#include "Editor/Style/HIKARI_EditorWidgets.h"
 
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
@@ -192,12 +195,14 @@ namespace HIKARI::EDITOR {
                 const Kind kinds[] = {
                     {VFX::VfxLayerKind::Shape, "ui.vfx.layer.newShape"},
                     {VFX::VfxLayerKind::Particles, "ui.vfx.layer.newParticles"},
-                    {VFX::VfxLayerKind::Group, "ui.vfx.layer.newGroup"}
+                    {VFX::VfxLayerKind::Group, "ui.vfx.layer.newGroup"},
+                    {VFX::VfxLayerKind::Adjustment, "ui.vfx.layer.newAdjustment"}
                 };
                 for (const auto& entry : kinds) {
                     if (!ImGui::MenuItem(TEXT::Localize(entry.label).c_str())) continue;
                     const auto* selected = FindEmitter(selection_.emitterId);
-                    const std::string parent = selected && selected->kind == VFX::VfxLayerKind::Group ? selected->id : "";
+                    const std::string parent = selected ?
+                        (selected->kind == VFX::VfxLayerKind::Group ? selected->id : selected->parentEmitterId) : "";
                     std::string id;
                     (void)AddEmitter(parent, TEXT::Localize(entry.label), {}, id, statusMessage_, entry.kind);
                 }
@@ -254,31 +259,22 @@ namespace HIKARI::EDITOR {
         const VFX::VfxAssetData& asset,
         std::string_view parentId) {
 #if defined(HIKARI_WITH_EDITOR)
-        std::vector<const VFX::VfxEmitterData*> children{};
-        for (const VFX::VfxEmitterData& emitter : asset.emitters) {
-            if (emitter.parentEmitterId == parentId) {
-                children.push_back(&emitter);
-            }
-        }
-        std::sort(
-            children.begin(), children.end(),
-            [](const auto* left, const auto* right) {
-                return left->order != right->order
-                    ? left->order < right->order
-                    : left->name < right->name;
-            });
+        const auto children = VFX::CollectVfxLayerChildren(asset, parentId);
         for (const VFX::VfxEmitterData* emitter : children) {
             ImGui::PushID(emitter->id.c_str());
             const bool emitterSelected = selection_.emitterId == emitter->id;
 
             const bool hidden = IsEmitterHidden(emitter->id);
-            if (ImGui::SmallButton(VfxUiText(hidden ? "Show" : "Hide").c_str())) {
+            if (IconButton(hidden ? EditorGlyph::Hidden : EditorGlyph::Visible,
+                    "Visibility", EditorButtonTone::Quiet, {24,24},
+                    TEXT::Localize(hidden ? "ui.vfx.hierarchy.showPreview" : "ui.vfx.hierarchy.hidePreview").c_str())) {
                 SetEmitterHidden(emitter->id, !hidden);
             }
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("%s", TEXT::Localize(hidden
-                    ? "ui.vfx.hierarchy.showPreview"
-                    : "ui.vfx.hierarchy.hidePreview").c_str());
+            ImGui::SameLine(0, 2);
+            if (IconToggleButton(EditorGlyph::Solo, "Solo", soloEmitterId_ == emitter->id,
+                    {24,24}, TEXT::Localize("ui.vfx.hud.solo").c_str())) {
+                if (soloEmitterId_ == emitter->id) ClearSoloEmitter();
+                else SetSoloEmitter(emitter->id);
             }
             ImGui::SameLine();
 
@@ -292,7 +288,7 @@ namespace HIKARI::EDITOR {
                 "%s%s%s",
                 emitter->basic.enabled ? "" : "[Disabled] ",
                 soloEmitterId_ == emitter->id ? "[Solo] " : "",
-                emitter->name.c_str());
+                (emitter->kind == VFX::VfxLayerKind::Adjustment ? "[FX] " + emitter->name : emitter->name).c_str());
             if (ImGui::IsItemClicked()) {
                 Select({ VfxWorkspaceSelectionKind::Emitter,
                     emitter->id, emitter->id });
@@ -307,7 +303,7 @@ namespace HIKARI::EDITOR {
                 ImGui::TextUnformatted(emitter->name.c_str());
                 ImGui::EndDragDropSource();
             }
-            if (ImGui::BeginDragDropTarget()) {
+            if (emitter->kind != VFX::VfxLayerKind::Adjustment && ImGui::BeginDragDropTarget()) {
                 if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(
                         "HIKARI_VFX_EMITTER")) {
                     const std::string draggedId =
@@ -334,6 +330,9 @@ namespace HIKARI::EDITOR {
                     (void)DuplicateEmitter(
                         emitter->id, id, statusMessage_);
                 }
+                ImGui::Separator();
+                if (ImGui::MenuItem(TEXT::Localize("ui.vfx.effects.up").c_str())) (void)ReorderEmitter(emitter->id, -1, statusMessage_);
+                if (ImGui::MenuItem(TEXT::Localize("ui.vfx.effects.down").c_str())) (void)ReorderEmitter(emitter->id, 1, statusMessage_);
                 ImGui::Separator();
                 if (ImGui::MenuItem(TEXT::Localize(hidden ? "ui.vfx.hierarchy.show" : "ui.vfx.hierarchy.hide").c_str())) {
                     SetEmitterHidden(emitter->id, !hidden);
