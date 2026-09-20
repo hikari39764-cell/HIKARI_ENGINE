@@ -1,4 +1,5 @@
 #include "HIKARI_AI_ChatClient.h"
+#include "HIKARI_AI_HttpTransport.h"
 
 #include "Core/Text/HIKARI_Trim.h"
 
@@ -9,6 +10,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <filesystem>
 #include <optional>
 #include <sstream>
 
@@ -26,16 +28,6 @@ namespace {
 
 std::string Trim(std::string value) {
     return TEXT::TrimCopy(std::move(value));
-}
-
-std::wstring WideFromAscii(const std::string& value) {
-    std::wstring result;
-    result.reserve(value.size());
-    for (const char c : value) {
-        result.push_back(static_cast<wchar_t>(
-            static_cast<unsigned char>(c)));
-    }
-    return result;
 }
 
 std::string Unquote(std::string value) {
@@ -80,6 +72,10 @@ struct EnvFields {
     bool apiKeySet = false;
     bool baseUrlSet = false;
     bool modelSet = false;
+    bool imageInput = true;
+    int maxToolRounds = 40;
+    int toolHistoryKiB = 24;
+    bool requestUsage = true;
 };
 
 void ParseEnvFile(const std::string& path,
@@ -89,7 +85,7 @@ void ParseEnvFile(const std::string& path,
     if (!stream) {
         return;
     }
-    std::string line;
+    std::string line, visionFallback;
     while (std::getline(stream, line)) {
         const auto separator = line.find('=');
         if (separator == std::string::npos) {
@@ -100,6 +96,10 @@ void ParseEnvFile(const std::string& path,
         if (key.empty() || (!allowEmpty && value.empty())) {
             continue;
         }
+        if (key == "CHAT_IMAGE_INPUT") fields.imageInput = value != "0";
+        if (key == "CHAT_MAX_TOOL_ROUNDS") { try { fields.maxToolRounds = std::clamp(std::stoi(value),1,120); } catch (...) {} }
+        if (key == "CHAT_TOOL_HISTORY_KIB") { try { fields.toolHistoryKiB = std::clamp(std::stoi(value),8,256); } catch (...) {} }
+        if (key == "CHAT_REQUEST_USAGE") fields.requestUsage = value != "0";
         if (key == "DASHSCOPE_API_KEY" && !fields.apiKeySet) {
             fields.apiKey = value;
             fields.apiKeySet = true;
@@ -109,11 +109,13 @@ void ParseEnvFile(const std::string& path,
         } else if (key == "CHAT_MODEL" && !fields.modelSet) {
             fields.model = value;
             fields.modelSet = true;
-        } else if (key == "VISION_MODEL" && !fields.modelSet) {
-            fields.model = value;
-            fields.modelSet = true;
+        } else if (!allowEmpty && key == "VISION_MODEL") {
+            visionFallback = value;
         }
     }
+    // skill の旧設定だけを fallback とする。保存順で主モデルが
+    // 独立した VISION_MODEL に置き換わることはない。
+    if (!fields.modelSet && !visionFallback.empty()) { fields.model=visionFallback; fields.modelSet=true; }
 }
 
 std::string JsonEscape(const std::string& value) {
@@ -139,96 +141,31 @@ std::string JsonEscape(const std::string& value) {
     return result;
 }
 
-std::string BuildRequestBody(
-    const AiChatConfig& config,
-    const std::vector<AiChatMessage>& messages,
-    bool stream = false) {
-    std::ostringstream body;
-    body << "{\"model\":\"" << JsonEscape(config.model)
-         << "\",\"messages\":[";
-    for (size_t index = 0u; index < messages.size(); ++index) {
-        if (index > 0u) {
-            body << ',';
-        }
-        body << "{\"role\":\"" << JsonEscape(messages[index].role)
-             << "\",\"content\":\""
-             << JsonEscape(messages[index].content) << "\"}";
-    }
-    body << "],\"stream\":"
-         << (stream ? "true" : "false") << "}";
-    return body.str();
-}
-
-bool SplitEndpoint(
-    const std::string& baseUrl,
-    std::wstring& outHost,
-    std::wstring& outPath) {
-    std::string url = baseUrl;
-    if (url.rfind("https://", 0u) == 0u) {
-        url = url.substr(8u);
-    } else if (url.rfind("http://", 0u) == 0u) {
-        url = url.substr(7u);
-    }
-    const auto slash = url.find('/');
-    const std::string host = slash == std::string::npos
-        ? url
-        : url.substr(0u, slash);
-    std::string path = slash == std::string::npos
-        ? std::string{}
-        : url.substr(slash);
-    constexpr std::string_view kChatCompletions = "/chat/completions";
-    if (path.empty()) {
-        path = std::string(kChatCompletions);
-    } else if (path.back() == '/') {
-        path += std::string(kChatCompletions);
-    } else if (path.size() < kChatCompletions.size() ||
-               path.compare(
-                   path.size() - kChatCompletions.size(),
-                   kChatCompletions.size(),
-                   kChatCompletions) != 0) {
-        path += std::string(kChatCompletions);
-    }
-    if (host.empty()) {
-        return false;
-    }
-    outHost.assign(host.begin(), host.end());
-    outPath.assign(path.begin(), path.end());
-    return true;
-}
-
 std::string ExtractJsonContent(const std::string& response) {
-    const std::string marker = "\"content\":\"";
-    const auto start = response.find(marker);
-    if (start == std::string::npos) {
-        return {};
-    }
-    const auto contentStart = start + marker.size();
-    std::string content;
-    bool escaped = false;
-    for (size_t index = contentStart; index < response.size(); ++index) {
-        const char c = response[index];
-        if (escaped) {
-            switch (c) {
-            case 'n': content += '\n'; break;
-            case 'r': content += '\r'; break;
-            case 't': content += '\t'; break;
-            case '"': content += '"'; break;
-            case '\\': content += '\\'; break;
-            default: content += c;
-            }
-            escaped = false;
-            continue;
-        }
-        if (c == '\\') {
-            escaped = true;
-            continue;
-        }
-        if (c == '"') {
-            break;
-        }
-        content += c;
-    }
-    return content;
+    const auto parsed=nlohmann::json::parse(response,nullptr,false);
+    if (!parsed.is_object() || !parsed.contains("choices") || !parsed["choices"].is_array() || parsed["choices"].empty()) return {};
+    const auto& choice=parsed["choices"][0];
+    const auto found=choice.find(choice.contains("delta") ? "delta" : "message");
+    if (found==choice.end() || !found->is_object()) return {};
+    const auto content=found->find("content");
+    return content!=found->end() && content->is_string() ? content->get<std::string>() : std::string{};
+}
+
+void ReadUsage(const std::string& response, AiChatUsage* output) {
+    if (!output) return;
+    const auto root = nlohmann::json::parse(response, nullptr, false);
+    if (!root.is_object() || !root.contains("usage") || !root["usage"].is_object()) return;
+    const auto& usage = root["usage"];
+    const auto read = [](const nlohmann::json& object, const char* key, int64_t& value) {
+        const auto it = object.find(key);
+        if (it != object.end() && it->is_number_integer() && it->get<int64_t>() >= 0)
+            value = it->get<int64_t>();
+    };
+    read(usage, "prompt_tokens", output->inputTokens);
+    read(usage, "completion_tokens", output->outputTokens);
+    read(usage, "prompt_cache_hit_tokens", output->cachedTokens);
+    if (usage.contains("prompt_tokens_details") && usage["prompt_tokens_details"].is_object())
+        read(usage["prompt_tokens_details"], "cached_tokens", output->cachedTokens);
 }
 
 } // namespace
@@ -239,6 +176,10 @@ bool LoadAiChatConfig(AiChatConfig& outConfig) {
     // > process environment variables > the vision-skill .env fallback.
     EnvFields local;
     ParseEnvFile(EngineConfigPath(), local, true);
+    outConfig.imageInputEnabled = local.imageInput;
+    outConfig.maxToolRounds = local.maxToolRounds;
+    outConfig.toolHistoryKiB = local.toolHistoryKiB;
+    outConfig.requestUsage = local.requestUsage;
     EnvFields environment;
     if (const auto value = GetEnvValue("DASHSCOPE_API_KEY")) {
         environment.apiKey = *value;
@@ -277,28 +218,41 @@ bool LoadAiChatConfig(AiChatConfig& outConfig) {
     return outConfig.valid;
 }
 
-bool SaveAiChatConfig(const AiChatConfig& config) {
-    const std::string path = EngineConfigPath();
-    if (path.empty()) {
-        return false;
+namespace {
+bool RewriteChatConfig(const AiChatConfig* config) {
+    const std::string path=EngineConfigPath();
+    if (path.empty()) return false;
+    std::vector<std::string> preserved;
+    std::ifstream input(path);
+    if (!input && std::filesystem::exists(path)) return false;
+    for (std::string line;std::getline(input,line);) {
+        const auto key=Trim(line.substr(0,line.find('=')));
+        if (key!="DASHSCOPE_API_KEY" && key!="DASHSCOPE_BASE_URL" && key!="CHAT_MODEL" &&
+            key!="CHAT_IMAGE_INPUT" && key!="CHAT_MAX_TOOL_ROUNDS" &&
+            key!="CHAT_TOOL_HISTORY_KIB" && key!="CHAT_REQUEST_USAGE") preserved.push_back(line);
     }
-    std::ofstream stream(path, std::ios::trunc);
-    if (!stream) {
-        return false;
+    input.close();
+    const auto temporary=path+".tmp";
+    std::ofstream output(temporary,std::ios::trunc);
+    for (const auto& line:preserved) output<<line<<'\n';
+    if (config) {
+        output<<"DASHSCOPE_API_KEY="<<config->apiKey<<'\n'<<"DASHSCOPE_BASE_URL="<<config->baseUrl<<'\n'
+            <<"CHAT_MODEL="<<config->model<<'\n'<<"CHAT_IMAGE_INPUT="<<(config->imageInputEnabled?1:0)<<'\n'
+            <<"CHAT_MAX_TOOL_ROUNDS="<<std::clamp(config->maxToolRounds,1,120)<<'\n'
+            <<"CHAT_TOOL_HISTORY_KIB="<<std::clamp(config->toolHistoryKiB,8,256)<<'\n'
+            <<"CHAT_REQUEST_USAGE="<<(config->requestUsage?1:0)<<'\n';
     }
-    stream << "DASHSCOPE_API_KEY=" << config.apiKey << '\n';
-    stream << "DASHSCOPE_BASE_URL=" << config.baseUrl << '\n';
-    stream << "CHAT_MODEL=" << config.model << '\n';
-    return stream.good();
+    output.flush();if (!output) return false;output.close();
+#ifdef _WIN32
+    return MoveFileExW(std::filesystem::path(temporary).c_str(),std::filesystem::path(path).c_str(),
+        MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)!=0;
+#else
+    std::error_code error;std::filesystem::rename(temporary,path,error);return !error;
+#endif
 }
-
-bool ResetAiChatConfig() {
-    const std::string path = EngineConfigPath();
-    if (path.empty()) {
-        return false;
-    }
-    return std::remove(path.c_str()) == 0 || errno == ENOENT;
 }
+bool SaveAiChatConfig(const AiChatConfig& config) { return RewriteChatConfig(&config); }
+bool ResetAiChatConfig() { return RewriteChatConfig(nullptr); }
 
 std::string GetAiUserConfigPath() {
     return EngineConfigPath();
@@ -312,28 +266,11 @@ std::string AiJsonEscape(const std::string& value) {
     return JsonEscape(value);
 }
 
-std::string ExtractJsonField(
-    std::string_view json,
-    std::string_view field) {
-    const std::string marker =
-        std::string("\"") + std::string(field) + "\"";
-    const auto position = json.find(marker);
-    if (position == std::string_view::npos) {
-        return {};
-    }
-    const auto colon = json.find(':', position + marker.size());
-    if (colon == std::string_view::npos) {
-        return {};
-    }
-    const auto quote = json.find('"', colon + 1u);
-    if (quote == std::string_view::npos) {
-        return {};
-    }
-    const auto end = json.find('"', quote + 1u);
-    if (end == std::string_view::npos) {
-        return {};
-    }
-    return std::string(json.substr(quote + 1u, end - quote - 1u));
+std::string ExtractJsonField(std::string_view text,std::string_view field) {
+    const auto value=nlohmann::json::parse(text,nullptr,false);
+    if (!value.is_object()) return {};
+    const auto found=value.find(std::string(field));
+    return found!=value.end() && found->is_string() ? found->get<std::string>() : std::string{};
 }
 
 std::string ExtractJsonNumberField(
@@ -373,252 +310,18 @@ std::string ExtractJsonNumberField(
     return std::string(json.substr(start, cursor - start));
 }
 
-namespace {
-
-#ifdef _WIN32
-struct ApiRequestHandleSet {
-    HINTERNET connection = nullptr;
-    HINTERNET request = nullptr;
-
-    ~ApiRequestHandleSet() {
-        if (request != nullptr) {
-            WinHttpCloseHandle(request);
-        }
-        if (connection != nullptr) {
-            WinHttpCloseHandle(connection);
-        }
-    }
-};
-#else
-struct ApiRequestHandleSet {};
-#endif
-
-} // namespace
-
-bool BeginApiRequest(
-    const AiChatConfig& config,
-    const std::string& body,
-    DWORD receiveTimeoutMs,
-    ApiRequestHandleSet& handles,
-    std::string& outError) {
-    if (!config.valid) {
-        outError = "未配置 API Key";
-        return false;
-    }
-#ifdef _WIN32
-    std::wstring host;
-    std::wstring path;
-    if (!SplitEndpoint(config.baseUrl, host, path)) {
-        outError = "无法解析 API 端点：" + config.baseUrl;
-        return false;
-    }
-
-    static HINTERNET session = WinHttpOpen(
-        L"HIKARI AI Assistant",
-        WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-        WINHTTP_NO_PROXY_NAME,
-        WINHTTP_NO_PROXY_BYPASS,
-        0);
-    if (session == nullptr) {
-        outError = "WinHttpOpen 失败";
-        return false;
-    }
-    (void)WinHttpSetTimeouts(
-        session, 5000, 5000, 30000, 90000);
-    handles.connection = WinHttpConnect(
-        session, host.c_str(), INTERNET_DEFAULT_HTTPS_PORT, 0);
-    if (handles.connection == nullptr) {
-        outError = "WinHttpConnect 失败";
-        return false;
-    }
-    handles.request = WinHttpOpenRequest(
-        handles.connection,
-        L"POST",
-        path.c_str(),
-        nullptr,
-        WINHTTP_NO_REFERER,
-        WINHTTP_DEFAULT_ACCEPT_TYPES,
-        WINHTTP_FLAG_SECURE);
-    if (handles.request == nullptr) {
-        outError = "WinHttpOpenRequest 失败";
-        return false;
-    }
-    (void)WinHttpSetOption(
-        handles.request,
-        WINHTTP_OPTION_RECEIVE_TIMEOUT,
-        &receiveTimeoutMs,
-        sizeof(receiveTimeoutMs));
-
-    const std::wstring headers =
-        L"Content-Type: application/json\r\n"
-        L"Authorization: Bearer " +
-        WideFromAscii(config.apiKey) +
-        L"\r\n";
-    const BOOL sent = WinHttpSendRequest(
-        handles.request,
-        headers.c_str(),
-        static_cast<DWORD>(-1L),
-        const_cast<char*>(body.data()),
-        static_cast<DWORD>(body.size()),
-        static_cast<DWORD>(body.size()),
-        0);
-    if (!sent) {
-        const DWORD error = GetLastError();
-        outError = "WinHttpSendRequest 失败 (error " +
-            std::to_string(error) + ")";
-        return false;
-    }
-    if (!WinHttpReceiveResponse(handles.request, nullptr)) {
-        const DWORD error = GetLastError();
-        outError = "WinHttpReceiveResponse 失败 (error " +
-            std::to_string(error) + ")";
-        return false;
-    }
-    return true;
-#else
-    (void)body;
-    (void)receiveTimeoutMs;
-    (void)handles;
-    outError = "仅支持 Windows 编辑器宿主";
-    return false;
-#endif
-}
-
-bool RunApiRequestRaw(
-    const AiChatConfig& config,
-    const std::string& body,
-    std::string& outRaw,
-    std::string& outError) {
-    outRaw.clear();
-    outError.clear();
-#ifdef _WIN32
-    ApiRequestHandleSet handles;
-    if (!BeginApiRequest(
-            config, body, 90000u, handles, outError)) {
-        return false;
-    }
-
-    std::string response;
-    char buffer[4096];
-    DWORD bytesRead = 0u;
-    while (WinHttpReadData(
-               handles.request, buffer,
-               static_cast<DWORD>(sizeof(buffer)), &bytesRead) &&
-           bytesRead > 0u) {
-        response.append(buffer, bytesRead);
-    }
-    DWORD statusCode = 0u;
-    DWORD statusSize = sizeof(statusCode);
-    (void)WinHttpQueryHeaders(
-        handles.request,
-        WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-        WINHTTP_HEADER_NAME_BY_INDEX,
-        &statusCode,
-        &statusSize,
-        WINHTTP_NO_HEADER_INDEX);
-
-    const std::string statusText =
-        "HTTP " + std::to_string(statusCode) + " ";
-    if (response.empty()) {
-        outError = "API 返回空响应（" + statusText + "）";
-        return false;
-    }
-    if (response.find("\"error\"") != std::string::npos) {
-        const std::string apiMessage = ExtractJsonContent(response);
-        outError = apiMessage.empty()
-            ? "API 返回错误（" + statusText + "响应：" +
-                response.substr(0u, 240u) + "）"
-            : "API 返回错误：" + apiMessage;
-        return false;
-    }
-    if (statusCode >= 400u) {
-        outError = statusText + "响应：" +
-            response.substr(0u, 240u);
-        return false;
-    }
-    outRaw = std::move(response);
-    return true;
-#else
-    (void)config;
-    (void)body;
-    outError = "仅支持 Windows 编辑器宿主";
-    return false;
-#endif
-}
-
-bool RunApiRequestRawStreaming(
-    const AiChatConfig& config,
-    const std::string& body,
-    const std::function<bool(const std::string& chunk)>& onChunk,
-    std::string& outError) {
-    outError.clear();
-#ifdef _WIN32
-    ApiRequestHandleSet handles;
-    if (!BeginApiRequest(
-            config, body, 20000u, handles, outError)) {
-        return false;
-    }
-
-    char buffer[4096];
-    const auto started = std::chrono::steady_clock::now();
-    const auto deadline =
-        started + std::chrono::seconds(90);
-    while (std::chrono::steady_clock::now() < deadline) {
-        DWORD bytesRead = 0u;
-        if (!WinHttpReadData(
-                handles.request, buffer,
-                static_cast<DWORD>(sizeof(buffer)), &bytesRead)) {
-            const DWORD error = GetLastError();
-            if (error == ERROR_WINHTTP_TIMEOUT ||
-                error == ERROR_WINHTTP_OPERATION_CANCELLED) {
-                outError = "流式响应超时（20 秒无数据）";
-            } else {
-                outError = "WinHttpReadData 失败 (error " +
-                    std::to_string(error) + ")";
-            }
-            return false;
-        }
-        if (bytesRead == 0u) {
-            break;
-        }
-        if (onChunk &&
-            !onChunk(std::string(buffer, bytesRead))) {
-            break;
-        }
-    }
-    DWORD statusCode = 0u;
-    DWORD statusSize = sizeof(statusCode);
-    (void)WinHttpQueryHeaders(
-        handles.request,
-        WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-        WINHTTP_HEADER_NAME_BY_INDEX,
-        &statusCode,
-        &statusSize,
-        WINHTTP_NO_HEADER_INDEX);
-    if (statusCode >= 400u) {
-        outError = "HTTP " + std::to_string(statusCode) + " 响应错误";
-        return false;
-    }
-    return true;
-#else
-    (void)config;
-    (void)body;
-    (void)onChunk;
-    outError = "仅支持 Windows 编辑器宿主";
-    return false;
-#endif
-}
-
 bool RunApiRequest(
     const AiChatConfig& config,
     const std::string& body,
     std::string& outContent,
-    std::string& outError) {
+    std::string& outError, AiChatUsage* usage) {
+    if (usage) *usage = {};
     std::string raw;
-    if (!RunApiRequestRaw(config, body, raw, outError)) {
+    if (!RunAiHttpStream(config,body,[&raw](const std::string& chunk) { raw+=chunk;return raw.size()<8*1024*1024; },outError)) {
         return false;
     }
     outContent = ExtractJsonContent(raw);
+    ReadUsage(raw, usage);
     if (outContent.empty()) {
         outError = "API 响应中没有 content 字段";
         return false;
@@ -631,15 +334,17 @@ bool RunChatCompletionsStreaming(
     const std::vector<AiChatMessage>& messages,
     const AiChatStreamCallback& onDelta,
     std::string& outFull,
-    std::string& outError) {
+    std::string& outError, AiChatUsage* usage, AiChatRequestStats* stats) {
     outFull.clear();
     outError.clear();
+    if (usage) *usage = {};
+    if (stats) *stats = {};
     if (!config.valid) {
         outError = "未配置 API Key（DASHSCOPE_API_KEY）";
         return false;
     }
-    const std::string body =
-        BuildRequestBody(config, messages, true);
+    std::string body;
+    if (!BuildAiChatRequest(config, messages, true, body, outError, stats)) return false;
     std::string full;
     std::string pending;
     bool sawDone = false;
@@ -659,6 +364,7 @@ bool RunChatCompletionsStreaming(
                 sawDone = true;
                 return false;
             }
+            ReadUsage(data, usage);
             const std::string delta = ExtractJsonContent(data);
             if (delta.empty()) {
                 continue;
@@ -678,7 +384,7 @@ bool RunChatCompletionsStreaming(
         return parsePending();
     };
     std::string streamError;
-    const bool streamOk = RunApiRequestRawStreaming(
+    const bool streamOk = RunAiHttpStream(
         config, body, onChunk, streamError);
     // Flush any trailing partial SSE line (for example when the stream times
     // out before a final newline) so a complete action is not silently lost.
@@ -687,21 +393,12 @@ bool RunChatCompletionsStreaming(
         outError = "用户中止";
         return false;
     }
-    if (!streamOk && full.empty()) {
-        outError = streamError;
-        return false;
+    if (!streamOk || !sawDone) {
+        outError=streamError.empty() ? "响应未完整结束，未执行其中的动作。" : streamError;
+        outFull=std::move(full);return false;
     }
-    if (!sawDone && !streamOk && !full.empty()) {
-        outError = "（流式响应超时，内容可能不完整）";
-        outFull = std::move(full);
-        return true;
-    }
-    if (!sawDone && full.empty()) {
-        outError = "API 没有返回可识别的流式内容";
-        return false;
-    }
-    outFull = std::move(full);
-    return !outFull.empty();
+    outFull=std::move(full);
+    return true;
 }
 
 std::vector<std::string> ExtractAllActionJson(
@@ -813,6 +510,8 @@ std::vector<std::string> ExtractAllActionJson(
         } catch (...) {
         }
     }
+
+    if (!actions.empty()) return actions;
 
     // Brace-pairing fallback: the model may mix JSON with prose or end the
     // object with punctuation. Scan for balanced {...} candidates, parse each

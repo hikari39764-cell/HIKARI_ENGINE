@@ -103,11 +103,11 @@ bool VfxWorkspaceController::DrawLayerParameter(const VFX::VfxEmitterData &layer
     }
     const auto identity = std::string(targetId) + "." + std::string(propertyId);
     ImGui::PushID(identity.c_str());
-    const auto label = layer.kind == VFX::VfxLayerKind::Adjustment ?
+    const auto label = targetId != layer.renderShape.id && propertyId != "progress" ?
         TEXT::Localize("ui.vfx.effect.param." + p->label) : VfxUiText(p->label);
     ImGui::TextUnformatted(label.c_str());
     ImGui::SetNextItemWidth((std::max)(60.0f, ImGui::GetContentRegionAvail().x - 34));
-    const bool changed = ImGui::DragFloat("##value", &value, 0.01f, p->minimum, p->maximum);
+    const bool changed = ImGui::DragFloat("##value", &value, (p->maximum-p->minimum)*0.002f, p->minimum, p->maximum);
     const bool seal = ImGui::IsItemDeactivatedAfterEdit();
     ImGui::SameLine();
     const bool add = IconToggleButton(EditorGlyph::Keyframe, "Keyframe",
@@ -125,7 +125,7 @@ bool VfxWorkspaceController::DrawLayerParameter(const VFX::VfxEmitterData &layer
                                    changed ? VfxInspectorPropertyEditor::MergeGroup(targetId, propertyId)
                                            : 0);
     else if (changed) {
-        if (targetId == layer.renderShape.id)
+        if (targetId == layer.renderShape.id || propertyId == "mix")
             (void)SetProperty(targetId, propertyId, value, statusMessage_,
                               VfxInspectorPropertyEditor::MergeGroup(targetId, propertyId));
         else {

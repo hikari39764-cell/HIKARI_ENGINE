@@ -20,6 +20,7 @@
 #include "Core/Hashing/HIKARI_Sha256.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
 #include "Gfx/HIKARI_ShaderCookCompiler.h"
+#include "HIKARI_BuiltinShaderCookCache.h"
 
 namespace {
 
@@ -81,6 +82,8 @@ namespace {
             program,
         const Arguments& arguments,
         nlohmann::ordered_json& outIndex,
+        const nlohmann::json& previousIndex,
+        bool& reused,
         std::string& outError) {
         namespace SHADER = HIKARI::ASSETS::SHADER;
         SHADER::ShaderSourceManifest manifest{};
@@ -106,26 +109,31 @@ namespace {
                 outError)) {
             return false;
         }
-        HIKARI::GFX::ShaderCookOutput compiled{};
-        if (!HIKARI::GFX::CompileShaderProgramForCook(
-                request,
-                compiled)) {
-            outError = compiled.diagnostics.empty()
-                ? "DXC cook failed"
-                : compiled.diagnostics;
-            return false;
-        }
-
         SHADER::ShaderCookedArtifact artifact{};
-        if (!SHADER::BuildShaderCookedArtifact(
-                program.assetGuid,
-                manifest,
-                manifestHash,
-                SHADER::ShaderIncludeRoot::EngineSdk,
-                compiled,
-                artifact,
-                outError)) {
-            return false;
+        std::string includePlanHash;
+        reused = HIKARI::TOOLS::TryReuseBuiltinShader(arguments.outputRoot, previousIndex,
+            program.assetGuid, manifestHash, request, artifact, includePlanHash);
+        if (!reused) {
+            HIKARI::GFX::ShaderCookOutput compiled{};
+            if (!HIKARI::GFX::CompileShaderProgramForCook(
+                    request,
+                    compiled)) {
+                outError = compiled.diagnostics.empty()
+                    ? "DXC cook failed"
+                    : compiled.diagnostics;
+                return false;
+            }
+
+            if (!SHADER::BuildShaderCookedArtifact(
+                    program.assetGuid,
+                    manifest,
+                    manifestHash,
+                    SHADER::ShaderIncludeRoot::EngineSdk,
+                    compiled,
+                    artifact,
+                    outError)) {
+                return false;
+            }
         }
         if (program.contract.engineInterfaceId ==
                 SHADER::kPostEffectEngineInterfaceId &&
@@ -188,7 +196,7 @@ namespace {
              ".hshaderc");
         const std::filesystem::path output =
             arguments.outputRoot / relative;
-        if (!SHADER::WriteHshadercFile(output, artifact, outError)) {
+        if (!reused && !SHADER::WriteHshadercFile(output, artifact, outError)) {
             return false;
         }
         outIndex.push_back({
@@ -199,6 +207,7 @@ namespace {
             { "sourceClosureHash",
               HIKARI::HASH::ToHex(artifact.sourceClosureHash) },
             { "entryCount", artifact.entries.size() },
+            { "includePlanHash", includePlanHash },
         });
         return true;
     }
@@ -289,18 +298,23 @@ int main(int argc, char** argv) {
     }
 
     nlohmann::ordered_json programs = nlohmann::ordered_json::array();
+    nlohmann::json previousIndex;
+    HIKARI::SERIALIZATION::JSON::ReadJsonFile(arguments.outputRoot / "BuiltinShaderArtifacts.json", previousIndex);
     uint32_t cookedCount = 0u;
+    uint32_t reusedCount = 0u;
     for (const SHADER::BuiltinShaderProgramDefinition& program :
          catalog.programs) {
         if (program.state != SHADER::BuiltinShaderProgramState::Cooked) {
             continue;
         }
-        if (!CookProgram(program, arguments, programs, error)) {
+        bool reused = false;
+        if (!CookProgram(program, arguments, programs, previousIndex, reused, error)) {
             std::cerr << "cook failed for " << program.programId << ": "
                 << error << '\n';
             return 5;
         }
         ++cookedCount;
+        if (reused) ++reusedCount;
     }
     if (cookedCount == 0u) {
         std::cerr << "catalog contains no Cooked program\n";
@@ -324,6 +338,6 @@ int main(int argc, char** argv) {
         return 8;
     }
     std::cout << "Built-in HSHADERC cook passed: " << cookedCount
-        << " programs\n";
+        << " programs (" << reusedCount << " reused, " << cookedCount - reusedCount << " compiled)\n";
     return 0;
 }

@@ -246,22 +246,6 @@ namespace HIKARI::GFX {
         }
     }
 
-    const wchar_t* UpgradeToShaderModel6Profile(const char* legacyProfile) {
-        if (legacyProfile == nullptr) {
-            return L"ps_6_0";
-        }
-        if (legacyProfile[0] == 'v' && legacyProfile[1] == 's') {
-            return L"vs_6_0";
-        }
-        if (legacyProfile[0] == 'c' && legacyProfile[1] == 's') {
-            return L"cs_6_0";
-        }
-        if (legacyProfile[0] == 'g' && legacyProfile[1] == 's') {
-            return L"gs_6_0";
-        }
-        return L"ps_6_0";
-    }
-
     bool SupportsShaderModel6(ID3D12Device* device) {
         return SupportsShaderModel(device, D3D_SHADER_MODEL_6_0);
     }

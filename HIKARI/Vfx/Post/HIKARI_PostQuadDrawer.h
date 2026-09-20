@@ -33,7 +33,8 @@ namespace HIKARI {
             bool SetOutputFormat(DXGI_FORMAT format);
 
             void DrawFullscreen(ID3D12DescriptorHeap* srvHeap, D3D12_GPU_DESCRIPTOR_HANDLE srvGpu);
-            void SetInputTexture(ID3D12DescriptorHeap* srvHeap, D3D12_GPU_DESCRIPTOR_HANDLE srvGpu);
+            void SetInputTexture(ID3D12DescriptorHeap* srvHeap, D3D12_GPU_DESCRIPTOR_HANDLE srvGpu,
+                D3D12_GPU_DESCRIPTOR_HANDLE auxiliaryTextures = {});
             bool SetPixelShader(ID3DBlob* psBlob);
             bool SetPixelShader(std::span<const uint8_t> bytecode);
             void SetConstantBuffer(D3D12_GPU_VIRTUAL_ADDRESS cbv0);
@@ -78,6 +79,7 @@ namespace HIKARI {
             DXGI_FORMAT outputFormat_ = DXGI_FORMAT_R8G8B8A8_UNORM;
             ID3D12DescriptorHeap* currentSrvHeap_ = nullptr;
             D3D12_GPU_DESCRIPTOR_HANDLE currentSrvGpu_{};
+            D3D12_GPU_DESCRIPTOR_HANDLE auxiliarySrvGpu_{};
             D3D12_GPU_VIRTUAL_ADDRESS currentCBV0_ = 0;
             GFX::Context context_{};
         };

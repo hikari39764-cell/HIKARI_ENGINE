@@ -22,11 +22,13 @@ namespace HIKARI::SEQUENCER {
                 track.clips.end(),
                 [](const CameraCutClip& clip) {
                     return clip.id == 0 ||
-                        !clip.cameraBindingId.IsValid();
+                        (!clip.camera.owned && !clip.cameraBindingId.IsValid());
                 }),
             track.clips.end());
 
         for (CameraCutClip& clip : track.clips) {
+            NormalizeShotCamera(clip.camera);
+            NormalizeScreenEffects(clip.effects);
             clip.startTimeSeconds = std::clamp(
                 FiniteOr(clip.startTimeSeconds, 0.0f),
                 0.0f,
@@ -115,7 +117,7 @@ namespace HIKARI::SEQUENCER {
             1.0e-6f);
         const CameraCutClip* activeClip = nullptr;
         for (const CameraCutClip& clip : track.clips) {
-            if (clip.id == 0 || !clip.cameraBindingId.IsValid() ||
+            if (clip.id == 0 || (!clip.camera.owned && !clip.cameraBindingId.IsValid()) ||
                 !std::isfinite(clip.startTimeSeconds) ||
                 !std::isfinite(clip.durationSeconds) ||
                 clip.durationSeconds < kMinCameraCutClipDurationSeconds) {

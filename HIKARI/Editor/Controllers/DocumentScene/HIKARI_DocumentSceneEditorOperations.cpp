@@ -1,3 +1,4 @@
+#include "Editor/Preview/HIKARI_EditorPreviewCapture.h"
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.h"
 
 #include "Editor/Authoring/HIKARI_ComponentAuthoringOperations.h"
@@ -163,9 +164,12 @@ namespace HIKARI {
                 return ExecuteAiAssetListModels();
             },
         });
+        operationRegistry_.Register({"capture.status", "Poll a capture ticket and return its actual image.", "general",
+            {P("captureId", EditorOperationParameterType::Int, true, "Capture ticket")},
+            [this](const nlohmann::json& p) { return PollAiPreviewCapture(p.at("captureId").get<uint64_t>()); }});
         operationRegistry_.Register({
             "capture.preview",
-            "Capture the material preview to a file.",
+            "Capture the current visible preview as a real image. Poll capture.status until complete.",
             "general",
             {
                 P("path", EditorOperationParameterType::String,
@@ -174,29 +178,9 @@ namespace HIKARI {
             [this](const nlohmann::json& parameters) {
                 return ExecuteAiCapturePreview(parameters);
             },
-            EDITOR::EditorOperationExecutionPolicy::WorkerThread,
         });
-        operationRegistry_.Register({
-            "material.graph_query",
-            "List material graph nodes with ids, pins and connections.",
-            "model_material",
-            {
-                P("name", EditorOperationParameterType::String,
-                  false, "按节点 id/displayName 过滤"),
-            },
-            [this](const nlohmann::json& parameters) {
-                return ExecuteAiMaterialGraphQuery(parameters);
-            },
-        });
-        operationRegistry_.Register({
-            "material.graph_layout",
-            "Auto-layout material graph nodes.",
-            "model_material",
-            {},
-            [this](const nlohmann::json&) {
-                return ExecuteAiMaterialGraphLayout();
-            },
-        });
+
+
         operationRegistry_.Register({
             "asset.import",
             "Copy a supported source file into the project and queue its import.",
@@ -406,73 +390,11 @@ namespace HIKARI {
                 return ExecuteAiProceduralCreatePrimitive(parameters);
             },
         });
-        operationRegistry_.Register({
-            "material.edit_parameter",
-            "Edit a scalar material graph parameter by full parameter name.",
-            "model_material",
-            {
-                P("parameter", EditorOperationParameterType::String,
-                  true, "完整参数名，例如 parameter.baseColor"),
-                P("value", EditorOperationParameterType::Float,
-                  true, "要写入的数值"),
-            },
-            [this](const nlohmann::json& parameters) {
-                return ExecuteAiMaterialEditParameter(parameters);
-            },
-        });
-        operationRegistry_.Register({
-            "material.graph_edit",
-            "Add/remove/connect material graph nodes and edit node values.",
-            "model_material",
-            {
-                P("operation", EditorOperationParameterType::String,
-                  true, "add_node/remove_node/connect/disconnect/set_node"),
-                P("nodeType", EditorOperationParameterType::String,
-                  false, "add_node 的稳定节点类型名"),
-                P("name", EditorOperationParameterType::String,
-                  false, "add_node 的显示名或 remove_node 的节点 id/name"),
-                P("node", EditorOperationParameterType::String,
-                  false, "name 的别名"),
-                P("sourceNode", EditorOperationParameterType::String,
-                  false, "连线起点节点"),
-                P("sourcePin", EditorOperationParameterType::String,
-                  false, "连线起点插槽，缺省取第一个"),
-                P("targetNode", EditorOperationParameterType::String,
-                  false, "连线终点节点"),
-                P("targetPin", EditorOperationParameterType::String,
-                  false, "连线终点插槽，缺省取第一个"),
-                P("edgeId", EditorOperationParameterType::String,
-                  false, "disconnect 的边 id"),
-                P("valueType", EditorOperationParameterType::String,
-                  false, "set_node 的值类型"),
-                P("property", EditorOperationParameterType::String,
-                  false, "set_node 的属性名"),
-                P("resource", EditorOperationParameterType::String,
-                  false, "set_node 的资源 id（TextureSample）"),
-                P("value", EditorOperationParameterType::String,
-                  false, "set_node 的字符串属性值"),
-                P("layout", EditorOperationParameterType::String,
-                  false, "manual 保留坐标，否则自动布局"),
-                P("positionX", EditorOperationParameterType::Float,
-                  false, "节点 X"),
-                P("positionY", EditorOperationParameterType::Float,
-                  false, "节点 Y"),
-                P("valueX", EditorOperationParameterType::Float,
-                  false, "值 X"),
-                P("valueY", EditorOperationParameterType::Float,
-                  false, "值 Y"),
-                P("valueZ", EditorOperationParameterType::Float,
-                  false, "值 Z"),
-                P("valueW", EditorOperationParameterType::Float,
-                  false, "值 W"),
-            },
-            [this](const nlohmann::json& parameters) {
-                return ExecuteAiMaterialGraphEdit(parameters);
-            },
-        });
+
+
         operationRegistry_.Register({
             "material.verify",
-            "Capture the material preview and run a vision analysis on it.",
+            "Capture the material preview as an image for the main model to evaluate.",
             "model_material",
             {
                 P("prompt", EditorOperationParameterType::String,
@@ -481,7 +403,6 @@ namespace HIKARI {
             [this](const nlohmann::json& parameters) {
                 return ExecuteAiMaterialVerify(parameters);
             },
-            EDITOR::EditorOperationExecutionPolicy::WorkerThread,
         });
         operationRegistry_.Register({
             "scene.save",
@@ -604,27 +525,27 @@ namespace HIKARI {
         });
         EDITOR::RegisterModelCollisionOperations(
             operationRegistry_,
-            modelCollisionWorkspaceController_,
+            ModelCollisionWorkspace(),
             [this]() { return aiOperationScene_; });
         EDITOR::RegisterAnimationStateMachineOperations(
             operationRegistry_,
-            animationStateMachineWorkspaceController_,
+            AnimationStateMachineWorkspace(),
             [this]() { return aiOperationScene_; });
         EDITOR::RegisterCinematicsOperations(
             operationRegistry_,
-            cinematicsWorkspaceController_,
+            CinematicsWorkspace(),
             [this]() { return aiOperationScene_; });
         EDITOR::RegisterModelMaterialOperations(
             operationRegistry_,
-            modelMaterialWorkspaceController_,
+            ModelMaterialWorkspace(),
             [this]() { return aiOperationScene_; });
         EDITOR::RegisterRuntimeBindingOperations(
             operationRegistry_,
-            runtimeBindingWorkspaceController_,
+            RuntimeBindingWorkspace(),
             [this]() { return aiOperationScene_; });
         EDITOR::RegisterVfxOperations(
             operationRegistry_,
-            vfxWorkspaceController_,
+            VfxWorkspace(),
             [this]() -> AssetDatabase* {
                 return aiOperationScene_ != nullptr
                     ? &aiOperationScene_->GetAssetDatabase()
@@ -632,7 +553,7 @@ namespace HIKARI {
             });
         EDITOR::RegisterDialogueOperations(
             operationRegistry_,
-            dialogueWorkspaceController_,
+            DialogueWorkspace(),
             workspaceHost_,
             [this]() { return aiOperationScene_; });
         EDITOR::RegisterComponentAuthoringOperations(

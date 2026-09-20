@@ -47,6 +47,7 @@ namespace HIKARI {
 
     class CameraDirector {
     public:
+        static Camera3D BlendViews(const Camera3D& from, const Camera3D& to, float amount);
         void Reset();
         void SetBaseCamera(SceneObjectId cameraObjectId);
         SceneObjectId GetBaseCamera() const noexcept;
@@ -58,6 +59,7 @@ namespace HIKARI {
             const Camera3D& camera);
         bool ClearOverrideCamera(CameraOverrideToken token);
         bool HasActiveOverride() const noexcept;
+        bool IsWinningOverride(CameraOverrideToken token) const noexcept;
 
         const RENDER3D::ResolvedCameraFrame& Resolve(
             const World& world,

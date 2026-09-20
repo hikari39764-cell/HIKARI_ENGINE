@@ -1,4 +1,6 @@
 #pragma once
+#include "Render3D/Vfx/HIKARI_ParticleForceField.h"
+#include "Render3D/Vfx/HIKARI_ParticleSpatialEffect.h"
 
 #include <array>
 #include <memory>
@@ -58,7 +60,11 @@ namespace HIKARI::RENDER3D::PARTICLES {
         uint32_t parentEmitterIndex = UINT32_MAX;
         ParticleCompositionLayerKind kind = ParticleCompositionLayerKind::Content;
         bool enabled = true;
-        std::vector<MaterialEffectStep> effects{};
+        uint32_t matteSourceIndex = UINT32_MAX;
+        bool matteLuminance = false;
+        bool matteInverted = false;
+        bool matteOnly = false;
+        std::vector<MaterialEffectStep> effects;
     };
     struct ParticleComposition {
         ParticleEmitterInstanceKey instance{};
@@ -279,6 +285,7 @@ namespace HIKARI::RENDER3D::PARTICLES {
         float collisionPlaneHeight = 0.0f;
         float restitution = 0.35f;
         float friction = 0.2f;
+        HIKARI::RENDER3D::PARTICLES::ParticleForceField field{};
         MATH::Vec3 gravity{ 0.0f, 0.0f, 0.0f };
         float drag = 0.0f;
         ParticleAnimatedColor color{};
@@ -295,9 +302,11 @@ namespace HIKARI::RENDER3D::PARTICLES {
 
     struct ParticleMaterialParameterValue { uint32_t slot=0; float value=0; };
     struct ParticleEmitterRenderParameters {
+        std::vector<ParticleSpatialEffect> spatialEffects;
         std::vector<ParticleMaterialParameterValue> animatedParameters;
         std::shared_ptr<const MaterialAssetDescriptor> effectMaterial{};
         std::string effectMaterialKey{};
+        bool effectMaterialIncludesParticleColor = false;
         ParticleMaterialMode materialMode =
             ParticleMaterialMode::StandardUnlit;
         std::string colorTextureAssetGuid{};
@@ -375,6 +384,7 @@ namespace HIKARI::RENDER3D::PARTICLES {
         float duration = 1.0f;
         std::array<MATH::Vec3, 4> corners{};
         MATH::Vec2 edgeAlpha{1,1};
+        MATH::Vec4 startColor{1,1,1,1};
         MATH::Vec2 uvRange{0,1};
     };
 

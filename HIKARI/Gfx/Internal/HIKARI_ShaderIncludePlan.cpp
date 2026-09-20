@@ -301,6 +301,8 @@ namespace HIKARI::GFX::INTERNAL {
                     outError = matches.empty()
                         ? "shader include was not found in an allowed root"
                         : "shader include is ambiguous across allowed roots";
+                    outError += ": " + directive.path.generic_string() + " (included from " +
+                        parent.dependency.logicalPath + ")";
                     return false;
                 }
                 outRoot = std::move(matches.front().first);

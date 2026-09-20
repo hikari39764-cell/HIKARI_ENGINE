@@ -19,8 +19,10 @@ namespace HIKARI::VFX::PRESETS::INTERNAL {
     void Light(VfxEmitterData& layer, MATH::Vec4 color, float intensity, float range);
     VfxEmitterData SparkBurst(std::string id, float start, uint32_t count,
         MATH::Vec4 tint, float speed, float lifetime);
+    VfxAssetData StyleModule(std::string_view id);
     VfxAssetData Slash();
     VfxAssetData Beam();
+    VfxAssetData FireTornado();
     VfxAssetData SupportingComposition(std::string_view id);
     VfxAssetData ParticlePreset(std::string_view id);
 }

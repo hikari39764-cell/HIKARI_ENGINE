@@ -141,11 +141,12 @@ namespace HIKARI::EDITOR {
                         SceneObjectId objectId{
                             SCENE::SERIALIZATION::SceneObjectReferenceOr(*savedObject)
                         };
-                        const SceneObjectData* camera = FindSceneObject(
+                        const SceneObjectData* target = FindSceneObject(
                             document,
                             objectId);
-                        if (camera == nullptr ||
-                            !HasCameraComponent(*camera)) {
+                        // SequencePlayer の明示的な slot は、注視対象や VFX 主体にも使う。
+                        // CameraComponent の検証は Camera track driver が担当する。
+                        if (target == nullptr) {
                             continue;
                         }
                         if (foundCandidate && candidate != objectId) {

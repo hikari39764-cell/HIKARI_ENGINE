@@ -25,11 +25,16 @@ enum class VfxLayerChannel : uint8_t {
     RingEndAngle,
     RibbonWidth,
     MaterialParameter,
-    MaterialUvOffset
+    MaterialUvOffset,
+    MaterialEffectMix,
+    EffectParameter,
+    EffectPhase
 };
 struct VfxProgramLayerCurve {
     VfxLayerChannel channel{};
     uint32_t materialSlot = 0;
+    // 継承した調整は対象粒子の寿命でなく、所有レイヤーの時計で評価する。
+    uint32_t ownerEmitterIndex = UINT32_MAX;
     float minimum = -1.0e30f, maximum = 1.0e30f;
     RENDER3D::PARTICLES::ParticleCurveInterpolation interpolation{};
     std::vector<RENDER3D::PARTICLES::ParticleCurveKey> keys;
@@ -41,10 +46,15 @@ struct VfxAnimatableParameter {
 };
 std::vector<VfxAnimatableParameter> GetVfxAnimatableParameters(const VfxEmitterData &layer);
 std::vector<std::string> VfxAnimatedMaterialParameters(const VfxEmitterData &layer);
-bool CompileVfxLayerCurves(const VfxEmitterData &source, VfxProgramEmitter &target, std::string &error);
+bool CompileVfxLayerCurves(const VfxEmitterData &source, VfxProgramEmitter &target, std::string &error,
+                           uint32_t ownerEmitterIndex = UINT32_MAX);
+VfxEmitterData PrepareVfxAdjustment(const VfxEmitterData& source);
+std::vector<MaterialEffectStep> EvaluateVfxRuntimeEffects(const VfxProgramEmitter&, float seconds, float duration);
 RENDER3D::PARTICLES::LayerAnimationSample EvaluateVfxLayerAnimation(const VfxProgramEmitter &layer,
                                                                     float seconds, float duration,
                                                                     uint32_t seed) noexcept;
+MATH::Quat EvaluateVfxLayerRotation(const VfxProgramEmitter&, const RENDER3D::PARTICLES::LayerAnimationSample&,
+                                    float seconds, float duration, uint32_t seed) noexcept;
 void EvaluateVfxLayerRenderParameters(const VfxProgramEmitter &layer, float normalizedTime,
                                       RENDER3D::PARTICLES::ParticleEmitterRenderParameters &render,
                                       float activeDuration = 1);

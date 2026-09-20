@@ -400,11 +400,7 @@ namespace HIKARI::VFX::PLAYBACK {
                 (activeStart > rangeBegin + epsilon ||
                  includeRangeBegin)) {
                 state.burstPending = false;
-                spawnCount = SaturatingAdd(
-                    spawnCount,
-                    emitter.burstCount,
-                    capacity);
-                if (emitter.burstCount == 0u && spawnCount == 0u &&
+                if (spawnCount == 0u &&
                     emitter.spawnRatePerSecond > 0.0f &&
                     spawnRateMultiplier > 0.0f && activeSeconds > 0.0f) {
                     spawnCount = 1u;
@@ -471,10 +467,8 @@ namespace HIKARI::VFX::PLAYBACK {
             }
 
             if (activeStart <= activeEnd + epsilon) {
-                appendScaled(emitter.burstCount, loopCount);
                 state.burstPending = false;
-                if (emitter.burstCount == 0u &&
-                    emitter.spawnRatePerSecond > 0.0f &&
+                if (emitter.spawnRatePerSecond > 0.0f &&
                     spawnRateMultiplier > 0.0f &&
                     activeSeconds > 0.0f) {
                     appendScaled(1u, loopCount);
@@ -567,7 +561,7 @@ namespace HIKARI::VFX::PLAYBACK {
         }
 
         // Seek(target=0) and the first zero-delta frame still need to emit
-        // time-zero keys/legacy bursts once. Keep resetSimulation untouched;
+        // time-zero keys once. Keep resetSimulation untouched;
         // the owner consumes it after submitting this frame, which prevents
         // a second zero-delta evaluation from duplicating the burst.
         if (remaining <= epsilon && state.resetSimulation &&

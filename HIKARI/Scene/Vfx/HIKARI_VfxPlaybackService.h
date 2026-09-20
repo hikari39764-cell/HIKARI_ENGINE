@@ -131,6 +131,8 @@ namespace HIKARI::VFX {
         const Instance* Find(VfxPlaybackHandle handle) const noexcept;
         void RetireInstanceAt(size_t index);
         void ProjectComposition(const Instance& instance, float submittedAge);
+        void ProjectAdjustmentParameters(const Instance&, const VfxProgramEmitter&, float submittedAge,
+            RENDER3D::PARTICLES::ParticleEmitterRenderParameters&);
         void RetireEmitterKeys(const Instance& instance);
         void ResetInstanceSimulation(Instance& instance) noexcept;
         size_t AppendInstanceStep(

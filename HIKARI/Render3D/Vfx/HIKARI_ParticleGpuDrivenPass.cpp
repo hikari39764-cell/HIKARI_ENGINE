@@ -157,6 +157,19 @@ namespace HIKARI::RENDER3D::PARTICLES {
             state.shapeParam4 = render.torusMinorRadius;
             state.shapeParam5 = render.capsuleRadius;
             state.billboardAxis = static_cast<float>(render.billboardAxis);
+            state.spatialCount = static_cast<uint32_t>((std::min)(render.spatialEffects.size(), state.spatialEffects.size()));
+            const auto pack = [](const MATH::Vec4& v) { return MakeGpuParticleFloat4(v.x,v.y,v.z,v.w); };
+            for (uint32_t i=0;i<state.spatialCount;++i) {
+                const auto& effect=render.spatialEffects[i];
+                auto& gpu=state.spatialEffects[i];
+                gpu.metadata=MakeGpuParticleFloat4(float(effect.kind),effect.mix,float(effect.mask),effect.maskInvert?1.0f:0.0f);
+                gpu.parameters=pack(effect.parameters);
+                gpu.parameters2=pack(effect.parameters2);
+                gpu.maskParameters=pack(effect.maskParameters);
+                gpu.origin=MakeGpuParticleFloat4(effect.origin.x,effect.origin.y,effect.origin.z,0);
+                gpu.rotation=MakeGpuParticleFloat4(effect.rotation.x,effect.rotation.y,effect.rotation.z,effect.rotation.w);
+                gpu.scale=MakeGpuParticleFloat4(effect.scale.x,effect.scale.y,effect.scale.z,0);
+            }
             return state;
         }
     }
@@ -936,6 +949,7 @@ namespace HIKARI::RENDER3D::PARTICLES {
                 layoutVersion = HashCombine(layoutVersion, static_cast<uint32_t>(item.render.shape));
                 layoutVersion = HashCombine(layoutVersion, item.render.ribbonSegmentCount);
                 layoutVersion = HashCombine(layoutVersion, item.render.ringSegmentCount);
+                layoutVersion = HashCombine(layoutVersion, !item.render.spatialEffects.empty());
                 layoutVersion = HashCombine(
                     layoutVersion,
                     HashEmitterKey(item.key));
@@ -994,6 +1008,7 @@ namespace HIKARI::RENDER3D::PARTICLES {
                     layoutVersion = HashCombine(layoutVersion, static_cast<uint32_t>(item.render.shape));
                     layoutVersion = HashCombine(layoutVersion, item.render.ribbonSegmentCount);
                     layoutVersion = HashCombine(layoutVersion, item.render.ringSegmentCount);
+                layoutVersion = HashCombine(layoutVersion, !item.render.spatialEffects.empty());
                     layoutVersion = HashCombine(layoutVersion, HashEmitterKey(item.key));
                     layoutVersion = HashCombine(layoutVersion, item.particleOffset);
                     layoutVersion = HashCombine(layoutVersion, item.particleCapacity);
@@ -1163,7 +1178,7 @@ namespace HIKARI::RENDER3D::PARTICLES {
                     ? 0u
                     : 1u;
                 const uint32_t shapeIndex =
-                    item.render.shape == ParticleRenderShape::Sprite
+                    item.render.shape == ParticleRenderShape::Sprite && item.render.spatialEffects.empty()
                         ? 0u
                         : 1u;
                 ID3D12PipelineState* pipeline =
@@ -1205,7 +1220,8 @@ namespace HIKARI::RENDER3D::PARTICLES {
                 constants.depthMode = static_cast<uint32_t>(
                     item.render.depthMode);
                 constants.sceneDepthAvailable = sceneDepthAvailable ? 1u : 0u;
-                constants.materialFlags = IsLitParticleMaterial(item.render.materialMode) && bindings.IsValid() ? 1u : 0u;
+                constants.materialFlags = (IsLitParticleMaterial(item.render.materialMode) && bindings.IsValid() ? 1u : 0u) |
+                    (item.render.effectMaterialIncludesParticleColor ? 2u : 0u);
                 // z/w は形状の幅テーパー。ルートシグネチャを増やさずに運ぶ。
                 constants.depthParams = MakeGpuParticleFloat4(
                     item.render.softIntersectionDistance,

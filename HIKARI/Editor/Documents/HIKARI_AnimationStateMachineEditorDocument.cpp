@@ -29,6 +29,7 @@ namespace HIKARI::EDITOR {
         }
         definition_ = std::move(loaded);
         assetGuid_ = guid;
+        sourceVersion_.Accept(database,guid);
         open_ = true;
         ResetHistory(true);
         return true;
@@ -37,6 +38,7 @@ namespace HIKARI::EDITOR {
     bool AnimationStateMachineEditorDocument::Save(
         AssetDatabase& database,
         std::string& outMessage) {
+        if (assetGuid_.IsValid() && !sourceVersion_.CanSave(outMessage)) return false;
         ANIMATION::NormalizeAnimationStateMachine(definition_);
         const AnimationStateMachineAssetAuthoringResult result =
             assetGuid_.IsValid()
@@ -44,8 +46,11 @@ namespace HIKARI::EDITOR {
                 database, assetGuid_, definition_)
             : CreateAnimationStateMachineAsset(database, definition_);
         outMessage = result.message;
+        if (result.assetGuid.IsValid()) {
+            assetGuid_ = result.assetGuid;
+            sourceVersion_.Accept(database,assetGuid_);
+        }
         if (!result.success) return false;
-        assetGuid_ = result.assetGuid;
         savedHistoryCursor_ = historyCursor_;
         return true;
     }

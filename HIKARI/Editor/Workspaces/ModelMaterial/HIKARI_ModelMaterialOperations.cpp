@@ -1,3 +1,4 @@
+#include "HIKARI_MaterialGraphAuthoringOperations.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialOperations.h"
 
 #include <string>
@@ -107,6 +108,7 @@ void RegisterModelMaterialOperations(
     EditorOperationRegistry& registry,
     ModelMaterialWorkspaceController& controller,
     std::function<DocumentSceneBase*()> sceneProvider) {
+  RegisterMaterialGraphAuthoringOperations(registry, controller, sceneProvider);
 
   RegisterModelMaterialAssetOperations(
       registry, controller, sceneProvider);

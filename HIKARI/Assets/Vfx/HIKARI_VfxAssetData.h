@@ -1,4 +1,5 @@
 #pragma once
+#include "Render3D/Vfx/HIKARI_ParticleForceField.h"
 
 #include <cstdint>
 #include <span>
@@ -13,7 +14,7 @@
 
 namespace HIKARI::VFX {
 
-    inline constexpr uint32_t kVfxSourceVersion = 12u;
+    inline constexpr uint32_t kVfxSourceVersion = 15u;
 
     // 形状はレイヤー時間、粒子は個々の寿命で同じアニメーションを評価する。
     enum class VfxLayerKind : uint8_t { Particles, Shape, Group, Adjustment };
@@ -470,10 +471,6 @@ namespace HIKARI::VFX {
     struct VfxSpawnModuleData {
         std::string id{};
         float ratePerSecond = 10.0f;
-        // Legacy single-burst field retained as a compatibility view. New
-        // authored data is represented by burstTimeline. When the timeline
-        // is non-empty, its keys are authoritative and this field is ignored.
-        uint32_t burstCount = 0u;
         std::vector<VfxBurstKeyData> burstTimeline{};
         VfxParticleCapacityMode capacityMode =
             VfxParticleCapacityMode::Automatic;
@@ -499,6 +496,7 @@ namespace HIKARI::VFX {
 
     struct VfxPositionModuleData {
         std::string id{};
+        bool orientAlongPath = false;
         VfxFloatDistributionData radialSpeed{};
         VfxAnimatedVec3Data value{};
     };
@@ -521,6 +519,7 @@ namespace HIKARI::VFX {
         float collisionPlaneHeight = 0.0f;
         float restitution = 0.35f;
         float friction = 0.2f;
+        HIKARI::RENDER3D::PARTICLES::ParticleForceField field{};
     };
 
     struct VfxColorModuleData {
@@ -633,6 +632,9 @@ namespace HIKARI::VFX {
         float duration = 0.2f;
         uint32_t samples = 12u;
         float breakDistance = 2.5f;
+        float tailWidth = 1.0f;
+        float fadePower = 1.0f;
+        MATH::Vec4 tailColor{1,1,1,1};
     };
 
     // ソース・コンパイル済みデータ・編集操作が共有する範囲契約。
@@ -648,6 +650,12 @@ namespace HIKARI::VFX {
         VfxCurveData curve;
     };
 
+    struct VfxTrackMatteData {
+        std::string sourceLayerId;
+        bool luminance = false;
+        bool inverted = false;
+        bool sourceOnly = false;
+    };
     struct VfxEmitterData {
         std::string id{};
         std::string name{};
@@ -658,6 +666,7 @@ namespace HIKARI::VFX {
         VfxConnectTargetData connectTarget{};
         VfxMeshOutputData meshOutput{};
         VfxHistoryData history{};
+        VfxTrackMatteData matte{};
         VfxAnimationTiming animationTiming{};
         std::string parentEmitterId{};
         uint32_t order = 0u;

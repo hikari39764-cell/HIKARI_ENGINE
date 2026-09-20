@@ -95,8 +95,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
         "rootLayoutId": "HIKARI.PostQuad.Root",
-        "rootLayoutVersion": 2,
-        "rootLayoutHash": "7eeba21bdb7d081bf856331d342b65bc573df2808a5112033ed9daac643e9d94",
+        "rootLayoutVersion": 3,
+        "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -129,8 +129,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
         "rootLayoutId": "HIKARI.PostQuad.Root",
-        "rootLayoutVersion": 2,
-        "rootLayoutHash": "7eeba21bdb7d081bf856331d342b65bc573df2808a5112033ed9daac643e9d94",
+        "rootLayoutVersion": 3,
+        "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -163,8 +163,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
         "rootLayoutId": "HIKARI.PostQuad.Root",
-        "rootLayoutVersion": 2,
-        "rootLayoutHash": "7eeba21bdb7d081bf856331d342b65bc573df2808a5112033ed9daac643e9d94",
+        "rootLayoutVersion": 3,
+        "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -197,8 +197,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
         "rootLayoutId": "HIKARI.PostQuad.Root",
-        "rootLayoutVersion": 2,
-        "rootLayoutHash": "7eeba21bdb7d081bf856331d342b65bc573df2808a5112033ed9daac643e9d94",
+        "rootLayoutVersion": 3,
+        "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -231,8 +231,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
         "rootLayoutId": "HIKARI.PostQuad.Root",
-        "rootLayoutVersion": 2,
-        "rootLayoutHash": "7eeba21bdb7d081bf856331d342b65bc573df2808a5112033ed9daac643e9d94",
+        "rootLayoutVersion": 3,
+        "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -265,8 +265,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
         "rootLayoutId": "HIKARI.PostQuad.Root",
-        "rootLayoutVersion": 2,
-        "rootLayoutHash": "7eeba21bdb7d081bf856331d342b65bc573df2808a5112033ed9daac643e9d94",
+        "rootLayoutVersion": 3,
+        "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -299,8 +299,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
         "rootLayoutId": "HIKARI.PostQuad.Root",
-        "rootLayoutVersion": 2,
-        "rootLayoutHash": "7eeba21bdb7d081bf856331d342b65bc573df2808a5112033ed9daac643e9d94",
+        "rootLayoutVersion": 3,
+        "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -333,8 +333,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
         "rootLayoutId": "HIKARI.PostQuad.Root",
-        "rootLayoutVersion": 2,
-        "rootLayoutHash": "7eeba21bdb7d081bf856331d342b65bc573df2808a5112033ed9daac643e9d94",
+        "rootLayoutVersion": 3,
+        "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -388,8 +388,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
         "rootLayoutId": "HIKARI.PostQuad.Root",
-        "rootLayoutVersion": 2,
-        "rootLayoutHash": "7eeba21bdb7d081bf856331d342b65bc573df2808a5112033ed9daac643e9d94",
+        "rootLayoutVersion": 3,
+        "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -595,6 +595,40 @@
       }
     },
     {
+      "assetGuid": "59674ee380a6453680a7ee94f49ad0c8",
+      "programId": "HIKARI.EngineShader.Post_SequenceEffectPS",
+      "source": "Post_SequenceEffectPS.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Vfx.Post",
+      "group": "",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [],
+      "entries": [
+        {
+          "id": "Main",
+          "stage": "Pixel",
+          "entry": "main",
+          "profile": "ps_6_0"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.PostEffect.Common",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
+        "rootLayoutId": "HIKARI.PostQuad.Root",
+        "rootLayoutVersion": 3,
+        "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
+        "requiredCaps": {
+          "minimumShaderModel": 60,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 0
+        }
+      }
+    },
+    {
       "assetGuid": "57e99bbffd3aae6989b47adde613dcdb",
       "programId": "HIKARI.EngineShader.Post_StylizedScreenFeatures",
       "source": "Post_StylizedScreenFeatures.hlsl",
@@ -646,8 +680,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
         "rootLayoutId": "HIKARI.PostQuad.Root",
-        "rootLayoutVersion": 2,
-        "rootLayoutHash": "7eeba21bdb7d081bf856331d342b65bc573df2808a5112033ed9daac643e9d94",
+        "rootLayoutVersion": 3,
+        "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -680,8 +714,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
         "rootLayoutId": "HIKARI.PostQuad.Root",
-        "rootLayoutVersion": 2,
-        "rootLayoutHash": "7eeba21bdb7d081bf856331d342b65bc573df2808a5112033ed9daac643e9d94",
+        "rootLayoutVersion": 3,
+        "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -714,8 +748,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
         "rootLayoutId": "HIKARI.PostQuad.Root",
-        "rootLayoutVersion": 2,
-        "rootLayoutHash": "7eeba21bdb7d081bf856331d342b65bc573df2808a5112033ed9daac643e9d94",
+        "rootLayoutVersion": 3,
+        "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -748,8 +782,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
         "rootLayoutId": "HIKARI.PostQuad.Root",
-        "rootLayoutVersion": 2,
-        "rootLayoutHash": "7eeba21bdb7d081bf856331d342b65bc573df2808a5112033ed9daac643e9d94",
+        "rootLayoutVersion": 3,
+        "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -759,8 +793,8 @@
     },
     {
       "assetGuid": "5440e04e83a756ce9391b34a41f3cdc2",
-      "programId": "HIKARI.EngineShader.Post_VfxCompositionPS",
-      "source": "Post_VfxCompositionPS.hlsl",
+      "programId": "HIKARI.EngineShader.Post_VfxMattePS",
+      "source": "Post_VfxMattePS.hlsl",
       "scope": "Runtime",
       "state": "Cooked",
       "owner": "Render3D.Vfx",
@@ -782,8 +816,42 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
         "rootLayoutId": "HIKARI.PostQuad.Root",
-        "rootLayoutVersion": 2,
-        "rootLayoutHash": "7eeba21bdb7d081bf856331d342b65bc573df2808a5112033ed9daac643e9d94",
+        "rootLayoutVersion": 3,
+        "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
+        "requiredCaps": {
+          "minimumShaderModel": 60,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 0
+        }
+      }
+    },
+    {
+      "assetGuid": "b85d29bc4f6b4fd4a853deb8a3063982",
+      "programId": "HIKARI.EngineShader.Post_VfxStylePS",
+      "source": "Post_VfxStylePS.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Render3D.Vfx",
+      "group": "",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [],
+      "entries": [
+        {
+          "id": "Main",
+          "stage": "Pixel",
+          "entry": "main",
+          "profile": "ps_6_0"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.PostEffect.Common",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
+        "rootLayoutId": "HIKARI.PostQuad.Root",
+        "rootLayoutVersion": 3,
+        "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -816,8 +884,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
         "rootLayoutId": "HIKARI.PostQuad.Root",
-        "rootLayoutVersion": 2,
-        "rootLayoutHash": "7eeba21bdb7d081bf856331d342b65bc573df2808a5112033ed9daac643e9d94",
+        "rootLayoutVersion": 3,
+        "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -3436,10 +3504,6 @@
     {
       "source": "Baking/HIKARI_DxrLightmapCS.hlsl",
       "reason": "LegacyToolOnly"
-    },
-    {
-      "source": "Debug_MotionVectorView.hlsl",
-      "reason": "Unreferenced"
     },
     {
       "source": "Render3D_GpuDrivenOpaquePS.hlsl",

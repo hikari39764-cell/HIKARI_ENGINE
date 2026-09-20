@@ -17,14 +17,15 @@ namespace HIKARI::ASSETS::SHADER {
         "EngineSdk/Include/Post/HIKARI_PostEffectInterface.hlsli";
     inline constexpr std::string_view kPostEffectRootLayoutId =
         "HIKARI.PostQuad.Root";
-    inline constexpr uint32_t kPostEffectRootLayoutVersion = 2u;
+    inline constexpr uint32_t kPostEffectRootLayoutVersion = 3u;
     inline constexpr std::string_view kPostEffectRootLayoutHash =
-        "7eeba21bdb7d081bf856331d342b65bc573df2808a5112033ed9daac643e9d94";
+        "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad";
     inline constexpr std::string_view kPostEffectRootLayoutCanonical =
-        "HIKARI.PostQuad.Root.v2|"
+        "HIKARI.PostQuad.Root.v3|"
         "0:SRVTable(t0,space0,count1,Pixel)|"
         "1:CBV(b0,space0,Pixel)|"
         "2:Constants(b1,space0,count36,Pixel)|"
+        "3:SRVTable(t1,space0,count2,Pixel)|"
         "StaticSampler(s0,space0,LinearClamp,Pixel)|"
         "Flags(AllowInputAssembler)";
 
@@ -96,7 +97,15 @@ namespace HIKARI::ASSETS::SHADER {
             bool hasTexture = false;
             bool hasSampler = false;
             bool hasReadability = false;
+            uint32_t auxiliaryTextures = 0, auxiliaryMask = 0;
             for (const ShaderResourceBinding& binding : entry.bindings) {
+                if (binding.kind == ShaderResourceBindingKind::ShaderResource &&
+                    (binding.registerIndex == 1u || binding.registerIndex == 2u) && binding.registerSpace == 0u &&
+                    binding.count == 1u && binding.visibilityMask == pixelVisibility) {
+                    const uint32_t bit=1u << binding.registerIndex;
+                    if (auxiliaryMask & bit) {outDiagnostic="Duplicate auxiliary post texture";return false;}
+                    auxiliaryMask |= bit; ++auxiliaryTextures;
+                }
                 hasReadability = hasReadability || (binding.registerIndex == 1u &&
                     binding.registerSpace == 0u && binding.count == 1u &&
                     binding.visibilityMask == pixelVisibility &&
@@ -116,10 +125,10 @@ namespace HIKARI::ASSETS::SHADER {
             }
             if (entry.entry.stage != ShaderStage::Pixel ||
                 entry.entry.profile != "ps_6_0" ||
-                entry.bindings.size() != (hasReadability ? 4u : 3u) || !hasConstants ||
+                entry.bindings.size() != (hasReadability ? 4u : 3u) + auxiliaryTextures || !hasConstants ||
                 !hasTexture || !hasSampler) {
                 outDiagnostic =
-                    "PostEffect reflection must contain exact b0, t0 and s0";
+                    "PostEffect requires b0, t0, s0 with optional b1 and t1/t2";
                 return false;
             }
         }

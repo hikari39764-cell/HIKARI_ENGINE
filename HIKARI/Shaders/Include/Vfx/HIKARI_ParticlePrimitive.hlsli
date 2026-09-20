@@ -1,3 +1,7 @@
+// 空間変形時だけ平面を細分化する。256 図元の Mesh Shader 上限内。
+uint ParticleSpatialGrid(uint shape) { return gShapeState.spatialCount==0 ? 0u : (shape==3u ? 4u : (shape==0u || shape==8u || shape==9u ? 8u : 0u)); }
+uint ParticleSpatialFaces(uint shape) { return shape==3u ? 6u : (shape==8u ? 2u : 1u); }
+float2 ParticleSpatialGridUv(uint index, uint grid) { return float2(index%(grid+1u),index/(grid+1u))/float(grid); }
 // Local-space primitives. Both mesh shaders and the vertex fallback call this owner.
 bool ParticleIsSphere(uint shape) { return shape == 4u || shape == 7u; }
 // 球/半球の分割数。既定の 32 セグメントで 17×9 の格子になり、以前の固定
@@ -28,6 +32,8 @@ uint3 ParticleGridQuadTriangle(uint s, uint primitiveIndex)
 
 uint2 ParticlePrimitiveCounts(uint shape, uint segments)
 {
+    const uint grid=ParticleSpatialGrid(shape);
+    if (grid>0u) return uint2((grid+1u)*(grid+1u)*ParticleSpatialFaces(shape),grid*grid*2u*ParticleSpatialFaces(shape));
     if (shape == 0u || shape == 9u) return uint2(4u, 2u);
     if (shape == 3u) return uint2(24u, 12u);
     if (ParticleIsSphere(shape))
@@ -71,11 +77,13 @@ void ParticlePrimitiveVertex(uint shape, uint index, uint segments,
         static const float2 corners[4] = {
             float2(-1,-1), float2(-1,1), float2(1,1), float2(1,-1)
         };
-        const uint face = index / 4u;
+        const uint grid=ParticleSpatialGrid(shape);
+        const uint verticesPerFace=grid>0u?(grid+1u)*(grid+1u):4u;
+        const uint face = index / verticesPerFace;
         normal = shape == 3u ? normals[face] : (face == 0u ? float3(0,0,1) : float3(1,0,0));
         tangent = abs(normal.y) > 0.5f ? float3(1,0,0) : normalize(cross(float3(0,1,0), normal));
         const float3 up = cross(normal, tangent);
-        const float2 corner = corners[index % 4u];
+        const float2 corner = grid>0u ? ParticleSpatialGridUv(index%verticesPerFace,grid)*2-1 : corners[index % 4u];
         position = (tangent * corner.x + up * corner.y + (shape == 3u ? normal : 0.0f.xxx)) * 0.5f;
         uv = float2(corner.x, -corner.y) * 0.5f + 0.5f;
     }
@@ -208,6 +216,11 @@ float2 ParticlePrimitiveUvExtent(uint shape, float3 scale)
 
 uint3 ParticlePrimitiveTriangle(uint shape, uint primitiveIndex, uint segments)
 {
+    const uint grid=ParticleSpatialGrid(shape);
+    if (grid>0u) {
+        const uint face=primitiveIndex/(grid*grid*2u);
+        return ParticleGridQuadTriangle(grid,primitiveIndex%(grid*grid*2u))+face*(grid+1u)*(grid+1u);
+    }
     if (shape == 0u || shape == 3u || shape == 8u || shape == 9u)
     {
         const uint base = (primitiveIndex / 2u) * 4u;

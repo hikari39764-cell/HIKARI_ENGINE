@@ -103,11 +103,13 @@ bool ModelCollisionWorkspaceController::SaveDocument(DocumentSceneBase &scene,
     outMessage = "no model collision document is open";
     return false;
   }
+  if (!sourceVersion_.CanSave(outMessage)) return false;
   if (!ASSETS::COLLISION::SaveModelCollisionSetup(setupPath_, setup_,
                                                   outMessage)) {
     return false;
   }
   std::string artifactMessage{};
+  sourceVersion_.Accept(setupPath_);
   if (!scene.GetAssetDatabase().RebuildModelCollisionArtifact(
           modelGuid_, artifactMessage)) {
     outMessage =
@@ -220,6 +222,7 @@ bool ModelCollisionWorkspaceController::OpenModel(AssetDatabase &assetDatabase,
   pendingModelGuid_ = {};
   modelDisplayName_ = record->displayName;
   setupPath_ = setupPath;
+  sourceVersion_.Accept(setupPath_);
   setup_ = std::move(loaded);
   ++editRevision_;
   history_.Reset(setup_);

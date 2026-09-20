@@ -132,6 +132,26 @@ namespace HIKARI::EDITOR {
             thickness
         };
         switch (glyph) {
+        case EditorGlyph::Assistant:
+            canvas.Rect(-0.85f, -0.65f, 0.85f, 0.55f, 0.25f);
+            canvas.Line(-0.45f, 0.55f, -0.65f, 0.9f);
+            canvas.Line(-0.65f, 0.9f, 0.0f, 0.55f);
+            canvas.Circle(-0.35f, -0.05f, 0.08f, true);
+            canvas.Circle(0.0f, -0.05f, 0.08f, true);
+            canvas.Circle(0.35f, -0.05f, 0.08f, true);
+            break;
+        case EditorGlyph::CollapseRight:
+            canvas.Line(0.75f, -0.85f, 0.75f, 0.85f);
+            canvas.Line(-0.55f, -0.55f, 0.05f, 0.0f);
+            canvas.Line(0.05f, 0.0f, -0.55f, 0.55f);
+            break;
+        case EditorGlyph::Send:
+            canvas.Line(-0.8f, -0.65f, 0.85f, 0.0f);
+            canvas.Line(0.85f, 0.0f, -0.8f, 0.65f);
+            canvas.Line(-0.8f, 0.65f, -0.35f, 0.0f);
+            canvas.Line(-0.35f, 0.0f, -0.8f, -0.65f);
+            canvas.Line(-0.35f, 0.0f, 0.85f, 0.0f);
+            break;
         case EditorGlyph::Visible:
         case EditorGlyph::Hidden: {
             const ImVec2 outline[]{{-0.85f,0},{-0.4f,-0.45f},{0.4f,-0.45f},

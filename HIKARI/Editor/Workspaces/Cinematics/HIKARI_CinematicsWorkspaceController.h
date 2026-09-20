@@ -7,8 +7,8 @@
 #include "Editor/Commands/HIKARI_EditorCommandRouter.h"
 #include "Editor/Documents/HIKARI_SequenceEditorDocumentController.h"
 #include "Editor/Views/Director/HIKARI_DirectorViewPanel.h"
-#include "Editor/Workspaces/Camera/Overview/HIKARI_CameraOverviewPanel.h"
-#include "Editor/Workspaces/Camera/Timeline/HIKARI_CameraTimelinePanel.h"
+#include "Scene/Sequencer/HIKARI_SequencePlayback.h"
+#include <json.hpp>
 #include "Editor/Workspaces/HIKARI_EditorWorkspaceHost.h"
 #include "Editor/Workspaces/Sequence/HIKARI_SequenceEditorDocumentToolbar.h"
 #include "Editor/Workspaces/Sequence/HIKARI_SequenceLibraryPanel.h"
@@ -37,7 +37,7 @@ public:
   void DrawDockSpace(bool resetDefaultDockLayout) const;
   void SyncSceneIdentity(DocumentSceneBase &scene,
                          EditorWorkspaceHost &workspaceHost);
-  void PrepareForRuntimePlay();
+  void PrepareForRuntimePlay(DocumentSceneBase& scene);
   void OnCinematicsDocumentRestored(DocumentSceneBase &scene,
                                     EditorWorkspaceHost &workspaceHost);
   void ApplyWorkspaceActivation(DocumentSceneBase &scene,
@@ -70,58 +70,51 @@ public:
   void BindDocumentCommands(EditorCommandRouter &commandRouter,
                             DocumentSceneBase &scene);
 
+  bool ExecuteAuthoring(DocumentSceneBase& scene, const nlohmann::json& command, std::string& message);
+  nlohmann::json DescribeAuthoring(DocumentSceneBase& scene) const;
+
 private:
-  void DrawDirectorViewWindow(DocumentSceneBase &scene, EditorContext &context,
-                              SelectionSyncService &selectionSync,
-                              EditorWorkspaceHost &workspaceHost);
-  bool DrawGameViewWindow(DocumentSceneBase &scene,
-                          EditorPlaySession &playSession,
-                          EditorWorkspaceHost &workspaceHost);
-  void DrawMapOverviewWindow(DocumentSceneBase &scene, EditorContext &context,
-                             EditorWorkspaceHost &workspaceHost,
-                             CinematicsWorkspaceResult &result);
-  void DrawCameraListWindow(DocumentSceneBase &scene, EditorContext &context,
-                            EditorWorkspaceHost &workspaceHost,
-                            CinematicsWorkspaceResult &result);
-  void DrawTimelineWindow(DocumentSceneBase &scene, EditorContext &context,
-                          EditorWorkspaceHost &workspaceHost,
-                          CinematicsWorkspaceResult &result);
+  CinematicSequence& ActiveSequence(DocumentSceneBase& scene);
+  void ResetEditing(DocumentSceneBase& scene);
+  bool DrawResources(DocumentSceneBase& scene, CinematicSequence& sequence);
+  bool DrawInspector(DocumentSceneBase& scene, CinematicSequence& sequence);
+  bool DrawTimeline(DocumentSceneBase& scene, CinematicSequence& sequence);
+  void DrawMonitor(DocumentSceneBase& scene, EditorWorkspaceHost& workspaceHost);
+  bool DrawTransport(CinematicSequence& sequence);
+  bool DrawEffects(std::vector<SEQUENCER::SequenceScreenEffect>& effects, float seconds);
+  bool DrawCurve(SEQUENCER::PresentationParameter& parameter, float time);
+  SEQUENCER::CameraCutClip* SelectedShot(CinematicSequence& sequence);
+  void CreateShot(CinematicSequence& sequence, const Camera3D& camera);
+  void CapturePose(DocumentSceneBase& scene, CinematicSequence& sequence, const Camera3D& camera);
 
-  void ApplyCameraOverviewAction(DocumentSceneBase &scene,
-                                 const CameraOverviewAction &action,
-                                 EditorContext &context,
-                                 EditorWorkspaceHost &workspaceHost,
-                                 CinematicsWorkspaceResult &result);
-  void ApplyDirectorViewResult(DocumentSceneBase &scene,
-                               const DirectorViewPanelResult &result,
-                               EditorContext &context,
-                               SelectionSyncService &selectionSync);
-  void ApplyCameraTimelineResult(DocumentSceneBase &scene,
-                                 const CameraTimelinePanelResult &result,
-                                 EditorContext &context,
-                                 EditorWorkspaceHost &workspaceHost,
-                                 bool affectsSceneDocument);
-  bool BindCameraPreview(DocumentSceneBase &scene, SceneObjectId cameraObjectId,
-                         EditorWorkspaceHost &workspaceHost,
-                         const CameraBlendDesc &blend = {},
-                         bool forceRebind = false);
-  void RestoreTimelinePreview(DocumentSceneBase &scene,
-                              EditorWorkspaceHost &workspaceHost);
-  void ClearCameraBinding(EditorWorkspaceHost &workspaceHost);
-
-  CameraOverviewPanel cameraOverviewPanel_{};
-  CameraTimelinePanel cameraTimelinePanel_{};
   SequenceEditorDocumentController sequenceDocumentController_{};
   SequenceEditorDocumentToolbar sequenceDocumentToolbar_{};
   SequenceLibraryPanel sequenceLibraryPanel_{};
+  SEQUENCER::SequenceBindingContext previewBindings_{};
   DirectorViewPanel directorViewPanel_{};
+  SEQUENCER::SequencePlaybackCursor cursor_{};
+  CinematicSequenceId activeSequenceId_{1};
+  enum class SelectionKind { Shot, Cue, Effect };
+  SelectionKind selectionKind_ = SelectionKind::Shot;
+  uint64_t selectedId_ = 0;
+  bool loop_ = false;
+  bool previewEnabled_ = false;
+  bool ownsPreview_ = false;
+  bool previewChanged_ = true;
+  bool spaceView_ = false;
+  bool autoKey_ = false;
   bool sequenceLibraryVisible_ = true;
-  bool cameraPreviewOwned_ = false;
-  bool timelinePreviewOwned_ = false;
-  uint64_t timelinePreviewShotId_ = 0;
-  std::optional<SceneObjectId> preWorkspacePreviewObjectId_{};
-  std::optional<SceneObjectId> boundCameraObjectId_{};
-  std::optional<SceneObjectId> timelineRestoreCameraObjectId_{};
+  float zoom_ = 80.0f;
+  float timelineScroll_ = 0.0f;
+  std::filesystem::path audioProjectRoot_;
+  std::vector<std::filesystem::path> audioAssets_;
+  float dragMouseX_ = 0.0f;
+  float dragStart_ = 0.0f;
+  float dragDuration_ = 0.0f;
+  uint64_t draggingId_ = 0;
+  SelectionKind draggingKind_ = SelectionKind::Shot;
+  int dragPart_ = 0;
+  uint64_t mergeId_ = 1;
   std::string sceneIdentity_{};
   std::string pendingStatusMessage_{};
   uint64_t sceneDocumentRevision_ = 0;

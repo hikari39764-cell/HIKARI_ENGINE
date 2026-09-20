@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include "Scene/Sequencer/Runtime/HIKARI_SequencePresentationState.h"
 
 #include "Scene/HIKARI_CameraDirector.h"
 #include "Scene/Sequencer/Runtime/HIKARI_SequenceTrackDriver.h"
@@ -17,7 +18,8 @@ namespace SEQUENCER {
         CameraSequenceTrackDriver(
             CameraDirector& cameraDirector,
             const World& world,
-            const Camera3D& viewportCamera) noexcept;
+            const Camera3D& viewportCamera,
+            SequencePresentationState* presentation = nullptr) noexcept;
 
         std::string_view GetDriverId() const noexcept override;
         void OnSequenceStarted(
@@ -35,6 +37,8 @@ namespace SEQUENCER {
         void Reset() override;
 
     private:
+        bool ResolveView(const CinematicSequence& sequence, const SequenceBindingContext& bindings,
+            const CinematicCameraEvaluation& evaluation, Camera3D& out) const;
         struct InstanceState {
             SequencePlaybackHandle handle{};
             CameraOverrideToken overrideToken{};
@@ -46,6 +50,7 @@ namespace SEQUENCER {
             SequencePlaybackHandle handle) noexcept;
         void ReleaseOverride(InstanceState& state) noexcept;
 
+        SequencePresentationState* presentation_ = nullptr;
         CameraDirector& cameraDirector_;
         const World& world_;
         const Camera3D& viewportCamera_;

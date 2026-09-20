@@ -449,6 +449,9 @@ namespace HIKARI::EDITOR {
         emitter.renderShape.id = AllocateStableId("module.render_shape");
         for (auto& effect : emitter.effects) {
             const auto previous=effect.id; effect.id=AllocateStableId("effect");
+            for (auto& stop : effect.colorStops) stop.id = AllocateStableId("effect.gradient.stop");
+            for (auto& link : emitter.inputLinks)
+                if (link.target.moduleId == previous) link.target.moduleId = effect.id;
             for (auto& track:emitter.parameterTracks) if (track.targetId==previous) track.targetId=effect.id;
         }
         for (auto& track:emitter.parameterTracks) {

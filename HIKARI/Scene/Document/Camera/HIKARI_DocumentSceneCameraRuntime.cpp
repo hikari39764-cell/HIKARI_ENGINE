@@ -11,6 +11,43 @@
 #include "Scene/Features/HIKARI_RuntimeFeatureIds.h"
 
 namespace HIKARI {
+    bool DocumentSceneBase::PreviewSequence(const CinematicSequence& sequence,
+        const SEQUENCER::SequenceBindingContext& bindings,
+        const SEQUENCER::SequenceEvaluationContext& context, bool contentChanged) {
+        if (state_->runtime.playActive) return false;
+        auto& camera = state_->camera;
+        if (camera.sequencePreview.IsValid() && !camera.sequencePlayback.IsActive(camera.sequencePreview))
+            camera.sequencePreview = {};
+        if (!camera.sequencePreviewSnapshotActive) {
+            EndEditorCameraPreview();
+            camera.sequencePreviewSnapshot = camera.editorCamera;
+            camera.sequencePreviewSnapshotActive = true;
+        }
+        if (contentChanged && camera.sequencePreview.IsValid()) {
+            camera.sequencePlayback.Stop(camera.sequencePreview);
+            camera.sequencePreview = {};
+        }
+        if (!camera.sequencePreview.IsValid()) {
+            SEQUENCER::SequencePlaybackOptions options; options.holdAtEnd = true;
+            camera.sequencePreview = camera.sequencePlayback.PlayInline(sequence, bindings, options,
+                context.currentTimeSeconds, "Editor.SequencePreview", 1000);
+        }
+        if (camera.sequencePlayback.EvaluateExternal(camera.sequencePreview, context)) return true;
+        EndSequencePreview();
+        return false;
+    }
+
+    void DocumentSceneBase::EndSequencePreview() {
+        auto& camera = state_->camera;
+        if (!camera.sequencePreviewSnapshotActive) return;
+        if (camera.sequencePreview.IsValid()) camera.sequencePlayback.Stop(camera.sequencePreview);
+        camera.sequencePreview = {};
+        camera.sequencePreviewSnapshotActive = false;
+        camera.editorCamera = camera.sequencePreviewSnapshot;
+        camera.resolvedFrame.camera = camera.editorCamera;
+        camera.editorCameraCutPending = true;
+    }
+
     bool DocumentSceneBase::ApplyCameraRuntimeChanges() {
         const SceneObjectId defaultCamera = state_->identity.document.camera.defaultCameraObjectId.value_or(SceneObjectId{});
         state_->camera.director.SetBaseCamera(defaultCamera);
@@ -246,9 +283,9 @@ namespace HIKARI {
             rotation,
             true);
     }
-    CinematicPlaybackHandle DocumentSceneBase::PlayCameraSequence(
+    SEQUENCER::SequencePlaybackHandle DocumentSceneBase::PlayCameraSequence(
         CinematicSequenceId sequenceId,
-        const CinematicPlaybackOptions& options,
+        const SEQUENCER::SequencePlaybackOptions& options,
         float startTimeSeconds) {
 
         if (!state_->runtime.playActive ||
@@ -273,7 +310,7 @@ namespace HIKARI {
         return state_->camera.currentCameraSequenceHandle;
     }
     bool DocumentSceneBase::StopCameraSequence(
-        CinematicPlaybackHandle handle) {
+        SEQUENCER::SequencePlaybackHandle handle) {
 
         const bool stopped = state_->camera.sequencePlayback.Stop(handle);
         if (stopped && state_->camera.currentCameraSequenceHandle == handle) {
@@ -282,17 +319,17 @@ namespace HIKARI {
         return stopped;
     }
     bool DocumentSceneBase::PauseCameraSequence(
-        CinematicPlaybackHandle handle) {
+        SEQUENCER::SequencePlaybackHandle handle) {
 
         return state_->camera.sequencePlayback.Pause(handle);
     }
     bool DocumentSceneBase::ResumeCameraSequence(
-        CinematicPlaybackHandle handle) {
+        SEQUENCER::SequencePlaybackHandle handle) {
 
         return state_->camera.sequencePlayback.Resume(handle);
     }
     bool DocumentSceneBase::SeekCameraSequence(
-        CinematicPlaybackHandle handle,
+        SEQUENCER::SequencePlaybackHandle handle,
         float timeSeconds) {
 
         return state_->camera.sequencePlayback.Seek(handle, timeSeconds);
@@ -301,7 +338,7 @@ namespace HIKARI {
         return state_->camera.sequencePlayback.IsPlaying(
             state_->camera.currentCameraSequenceHandle);
     }
-    CinematicPlaybackHandle
+    SEQUENCER::SequencePlaybackHandle
     DocumentSceneBase::GetCameraSequencePlaybackHandle() const noexcept {
         return state_->camera.currentCameraSequenceHandle;
     }

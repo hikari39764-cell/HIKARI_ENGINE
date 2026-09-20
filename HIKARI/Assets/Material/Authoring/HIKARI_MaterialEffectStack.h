@@ -10,33 +10,44 @@
 namespace HIKARI {
     struct MaterialAssetData;
     enum class MaterialEffectKind : uint8_t {
-        UvFlow, UvDistortion, Gradient, Fade, Wipe, Dissolve, Emission, Fresnel,
-        Opacity, Glow, Blur, LightSweep, LuminanceMask,
-        // AE の放射ブラーとタービュレント変位。既存のノードだけで展開する。
-        RadialBlur, TurbulentDisplace,
-        // 色調整。露出・コントラスト・彩度・黒レベルを四則演算だけで適用する。
-        ColorCorrect,
-        // 片側へ減衰しながら伸ばす拖尾。対称な Blur とは別物で、
-        // 「尾を引く」見た目を作る。
-        Streak,
-        Pixelate, Posterize, Ink, FlowMap
+#define HIKARI_EFFECT(name, id) name = id,
+#include "Shaders/Include/Vfx/HIKARI_MaterialEffectKinds.hlsli"
+#undef HIKARI_EFFECT
     };
     enum class MaterialEffectTextureTarget : uint8_t { Shared, BaseColor, Mask, Noise, DetailNoise, FlowMap };
+    enum class MaterialEffectMask : uint8_t { None, Radial, Horizontal, Vertical, Alpha, Luminance };
     std::span<const std::string_view> GetMaterialEffectTextureTargets() noexcept;
     std::string_view MaterialEffectTextureTargetName(MaterialEffectTextureTarget target) noexcept;
     bool ParseMaterialEffectTextureTarget(std::string_view name, MaterialEffectTextureTarget& target) noexcept;
-    enum class MaterialEffectStage : uint8_t { Uv, Blur, Streak, RadialBlur, Surface, Composite };
+    enum class MaterialEffectStage : uint8_t { Uv, Blur, Streak, RadialBlur, Surface };
     MaterialEffectStage GetMaterialEffectStage(MaterialEffectKind kind) noexcept;
     std::string_view MaterialEffectStageName(MaterialEffectStage stage) noexcept;
-    bool IsCompositeMaterialEffect(MaterialEffectKind kind) noexcept;
-    bool IsCompositeOnlyMaterialEffect(MaterialEffectKind kind) noexcept;
+    bool IsAdjustmentMaterialEffect(MaterialEffectKind kind) noexcept;
+    bool SupportsSpatialMaterialEffect(MaterialEffectKind kind) noexcept;
+    enum class MaterialEffectSpace : uint8_t { LayerUv, Group3D };
     // enum 順の UI 配列を持たず、資産の効果定義から両方の編集経路を生成する。
-    std::array<const char*, 4> MaterialEffectParameterNames(MaterialEffectKind kind, bool secondary = false) noexcept;
-    std::array<const char*, 4> CompositeEffectParameterNames(MaterialEffectKind kind, bool secondary = false) noexcept;
+    enum class MaterialEffectCategory : uint8_t { Mapping, Mask, Color, Light, Filter, Style, Count };
+    MaterialEffectCategory GetMaterialEffectCategory(MaterialEffectKind kind) noexcept;
+    std::string_view MaterialEffectCategoryName(MaterialEffectCategory category) noexcept;
+    struct MaterialEffectParameterInfo {
+        const char* name = nullptr;
+        float minimum = 0;
+        float maximum = 1;
+        bool animatable = false;
+    };
+    std::array<MaterialEffectParameterInfo, 4> GetMaterialEffectParameters(
+        MaterialEffectKind kind, bool secondary = false) noexcept;
+    bool MaterialEffectUsesColor(MaterialEffectKind kind, bool secondary = false) noexcept;
     struct MaterialEffectStep {
         std::string id;
         MaterialEffectKind kind = MaterialEffectKind::UvFlow;
         bool enabled = true;
+        MaterialEffectSpace space = MaterialEffectSpace::LayerUv;
+        float mix = 1.0f;
+        MaterialEffectMask mask = MaterialEffectMask::None;
+        bool maskInvert = false;
+        // ローカル UV の中心、半径（線形では境界）、ぼかし。
+        MATH::Vec4 maskParameters{0.5f, 0.5f, 0.5f, 0.1f};
         MaterialEffectTextureTarget textureTarget = MaterialEffectTextureTarget::Shared;
         MATH::Vec4 parameters{};
         // セカンダリパラメータ。UV 回転・軸交換など、parameters の 4 枠で
@@ -53,7 +64,10 @@ namespace HIKARI {
         };
         std::vector<ColorStop> colorStops{};
     };
+    // 調整レイヤーでは変形だけを UV/幾何へ送り、風格は合成結果へ適用する。
+    bool IsCompositeAdjustmentEffect(const MaterialEffectStep& effect) noexcept;
     std::string_view MaterialEffectName(MaterialEffectKind) noexcept;
+    bool IsValidMaterialEffectBlend(const MaterialEffectStep&) noexcept;
     // 効果名の唯一の一覧。UI の選択肢と AI 操作の説明はここから作る。
     std::span<const std::string_view> GetMaterialEffectKindNames() noexcept;
     // 多段グラデーションで許すストップ数。粒子色ストップと同じ上限を使う。
@@ -75,5 +89,5 @@ namespace HIKARI {
     MaterialAssetData BuildMaterialEffectStack(const MaterialEffectTextureSet& textures,
         std::span<const MaterialEffectStep> effects, bool lit = false,
         uint32_t atlasColumns = 1, uint32_t atlasRows = 1,
-        std::span<const std::string> animatedParameters = {});
+        std::span<const std::string> animatedParameters = {}, size_t adjustmentStart = SIZE_MAX);
 }

@@ -1,4 +1,5 @@
 #pragma once
+#include "Editor/Authoring/HIKARI_EditorAuthoringSessionHost.h"
 
 #include <cstdint>
 #include <optional>
@@ -65,6 +66,7 @@ namespace HIKARI {
     public:
         DocumentSceneEditorController();
         ~DocumentSceneEditorController();
+        EDITOR::EditorAuthoringSessionHost& AuthoringSessions() noexcept { return authoringSessions_; }
         void SetProjectWorkspaceHost(EDITOR::GameProjectEditorWorkspaceHost* host) noexcept {
             projectWorkspaceHost_ = host;
         }
@@ -78,6 +80,9 @@ namespace HIKARI {
     private:
         RUNTIME::RuntimeDebugWindow runtimeDebugWindow_{};
         void RegisterEditorOperations();
+        void RegisterSceneAuthoringSessions();
+        EDITOR::EditorOperationResult ExecuteBackgroundSceneOperation(
+            const EDITOR::EditorOperationDefinition& definition,const nlohmann::json& parameters);
         void RegisterSceneFolderOperations();
         void RegisterSceneLayoutOperations();
         EDITOR::EditorOperationResult ExecuteSceneLayoutOperation(bool apply, const nlohmann::json& parameters);
@@ -102,7 +107,16 @@ namespace HIKARI {
         PerformanceAuditPanel performanceAuditPanel_{};
         EDITOR::SceneAuthoringUtilityWindows sceneAuthoringUtilityWindows_{};
         ValidationLabPanel validationLabPanel_{};
-        EDITOR::AiAssistantPanel aiAssistantPanel_{};
+        EDITOR::EditorAuthoringSessionHost authoringSessions_{};
+        std::string authoringProjectRoot_{};
+        RENDER3D::RenderViewId aiSceneCaptureView_{};
+        uint64_t aiSceneCaptureTicket_=0, aiSceneCaptureRevision_=0;
+        std::string aiSceneCaptureIdentity_{};
+        EDITOR::EditorOperationResult CaptureAiScenePreview(const nlohmann::json& parameters);
+        EDITOR::EditorOperationResult PollAiPreviewCapture(uint64_t id);
+        void CancelAiSceneCapture();
+        EDITOR::AiAssistantSession aiAssistantSession_{};
+        EDITOR::AiAssistantPanel aiAssistantPanel_{aiAssistantSession_};
         EDITOR::EditorSettingsPanel editorSettingsPanel_{};
         EDITOR::AI_ASSISTANT::AiLocalBridge aiLocalBridge_{};
         bool aiBridgeStarted_ = false;
@@ -125,6 +139,20 @@ namespace HIKARI {
         EDITOR::DialogueWorkspaceController dialogueWorkspaceController_{};
         EDITOR::TerrainSurfaceWorkspaceController
             terrainSurfaceWorkspaceController_{};
+        EDITOR::VfxWorkspaceController& VfxWorkspace() { return authoringSessions_.ResolveController("vfx",vfxWorkspaceController_); }
+        const EDITOR::VfxWorkspaceController& VfxWorkspace() const { return const_cast<DocumentSceneEditorController*>(this)->VfxWorkspace(); }
+        EDITOR::ModelMaterialWorkspaceController& ModelMaterialWorkspace() { return authoringSessions_.ResolveController("model_material",modelMaterialWorkspaceController_); }
+        const EDITOR::ModelMaterialWorkspaceController& ModelMaterialWorkspace() const { return const_cast<DocumentSceneEditorController*>(this)->ModelMaterialWorkspace(); }
+        EDITOR::AnimationStateMachineWorkspaceController& AnimationStateMachineWorkspace() { return authoringSessions_.ResolveController("animation_state_machine",animationStateMachineWorkspaceController_); }
+        const EDITOR::AnimationStateMachineWorkspaceController& AnimationStateMachineWorkspace() const { return const_cast<DocumentSceneEditorController*>(this)->AnimationStateMachineWorkspace(); }
+        EDITOR::DialogueWorkspaceController& DialogueWorkspace() { return authoringSessions_.ResolveController("dialogue",dialogueWorkspaceController_); }
+        const EDITOR::DialogueWorkspaceController& DialogueWorkspace() const { return const_cast<DocumentSceneEditorController*>(this)->DialogueWorkspace(); }
+        EDITOR::RuntimeBindingWorkspaceController& RuntimeBindingWorkspace() { return authoringSessions_.ResolveController("runtime_binding",runtimeBindingWorkspaceController_); }
+        const EDITOR::RuntimeBindingWorkspaceController& RuntimeBindingWorkspace() const { return const_cast<DocumentSceneEditorController*>(this)->RuntimeBindingWorkspace(); }
+        EDITOR::ModelCollisionWorkspaceController& ModelCollisionWorkspace() { return authoringSessions_.ResolveController("model_collision",modelCollisionWorkspaceController_); }
+        const EDITOR::ModelCollisionWorkspaceController& ModelCollisionWorkspace() const { return const_cast<DocumentSceneEditorController*>(this)->ModelCollisionWorkspace(); }
+        EDITOR::CinematicsWorkspaceController& CinematicsWorkspace() { return authoringSessions_.ResolveController("cinematics",cinematicsWorkspaceController_); }
+        const EDITOR::CinematicsWorkspaceController& CinematicsWorkspace() const { return const_cast<DocumentSceneEditorController*>(this)->CinematicsWorkspace(); }
         DebugCameraPanel debugCameraPanel_{};
         EDITOR::EditorTransformGizmo transformGizmo_{};
         void DrawGameViewportWindow(
@@ -171,9 +199,8 @@ namespace HIKARI {
         EDITOR::EditorOperationResult ExecuteAiAssetListModels();
         EDITOR::EditorOperationResult ExecuteAiCapturePreview(
             const nlohmann::json& parameters);
-        EDITOR::EditorOperationResult ExecuteAiMaterialGraphQuery(
-            const nlohmann::json& parameters);
-        EDITOR::EditorOperationResult ExecuteAiMaterialGraphLayout();
+
+
         EDITOR::EditorOperationResult ExecuteAiAssetImport(
             const nlohmann::json& parameters);
         EDITOR::EditorOperationResult ExecuteAiAssetImportStatus();
@@ -186,10 +213,8 @@ namespace HIKARI {
             const nlohmann::json& parameters);
         EDITOR::EditorOperationResult ExecuteAiProceduralCreatePrimitive(
             const nlohmann::json& parameters);
-        EDITOR::EditorOperationResult ExecuteAiMaterialEditParameter(
-            const nlohmann::json& parameters);
-        EDITOR::EditorOperationResult ExecuteAiMaterialGraphEdit(
-            const nlohmann::json& parameters);
+
+
         EDITOR::EditorOperationResult ExecuteAiMaterialVerify(
             const nlohmann::json& parameters);
         EDITOR::EditorOperationResult ExecuteSceneSave();

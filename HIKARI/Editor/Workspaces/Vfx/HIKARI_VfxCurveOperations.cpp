@@ -17,7 +17,32 @@ namespace HIKARI::EDITOR {
         using VFXOPERATIONS::Parameter;
         using VFXOPERATIONS::Success;
 
-        registry.Register({"vfx.layer.time.edit","Move, trim or retime a layer without mixing placement and animation phase","vfx",
+        registry.Register({"vfx.layer.path.set","Set a cubic Bezier motion path using existing XYZ animation curves","vfx",
+            {Parameter("layerId",EditorOperationParameterType::String,true,"Shape/group ID"),
+             Parameter("knots",EditorOperationParameterType::Json,true,"Ordered knots: seconds (composition time), position [x,y,z], optional incoming/outgoing control points [x,y,z]")},
+            [&controller](const nlohmann::json& p) {
+                const auto& input=p.at("knots");
+                if (!input.is_array() || input.size()<2 || input.size()>VFX::kMaxVfxLayerCurveKeys)
+                    return Failure("VFX_PATH_INVALID","Expected 2..256 knots");
+                const auto read=[](const nlohmann::json& value,MATH::Vec3& result) {
+                    if (!value.is_array() || value.size()!=3 || !value[0].is_number() || !value[1].is_number() || !value[2].is_number()) return false;
+                    result={value[0].get<float>(),value[1].get<float>(),value[2].get<float>()};return true;
+                };
+                std::vector<VfxPathKnot> knots;
+                for (const auto& item:input) {
+                    VfxPathKnot knot;
+                    if (!item.is_object() || !item.contains("seconds") || !item["seconds"].is_number() ||
+                        !item.contains("position") || !read(item["position"],knot.position)) return Failure("VFX_PATH_INVALID","Invalid knot position/time");
+                    knot.seconds=item["seconds"].get<float>();knot.incoming=knot.outgoing=knot.position;
+                    if ((item.contains("incoming") && !read(item["incoming"],knot.incoming)) ||
+                        (item.contains("outgoing") && !read(item["outgoing"],knot.outgoing))) return Failure("VFX_PATH_INVALID","Invalid path control point");
+                    knots.push_back(knot);
+                }
+                std::string message;
+                return controller.SetLayerBezierPath(p.at("layerId").get<std::string>(),knots,message)
+                    ? Success("Bezier path updated",ContextData(controller)) : Failure("VFX_PATH_REJECTED",message);
+            }});
+        registry.Register({"vfx.layer.time.edit","Move, trim or retime in composition seconds. Group move/retime includes descendants; trimming clips visibility","vfx",
             {Parameter("layerId",EditorOperationParameterType::String,true,"Layer ID"),
              Parameter("mode",EditorOperationParameterType::String,true,"Move, TrimStart, TrimEnd, Retime"),
              Parameter("deltaSeconds",EditorOperationParameterType::Float,true,"Time change in seconds")},

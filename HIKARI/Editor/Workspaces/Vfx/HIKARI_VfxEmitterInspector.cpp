@@ -126,6 +126,15 @@ namespace HIKARI::EDITOR {
             ImGui::TextWrapped("%s", TEXT::Localize("ui.vfx.adjustment.scope").c_str());
             edit.Float(VfxUiText("Start Delay").c_str(), "startDelay", emitter.startDelay, 0.01f, 0, GetPreviewTimelineDuration());
             edit.Float(VfxUiText("Active Duration (0 = until asset end)").c_str(), "activeDuration", emitter.activeDuration, 0.01f, 0, GetPreviewTimelineDuration());
+            if (ImGui::TreeNode(TEXT::Localize("ui.vfx.effects.space.frame").c_str())) {
+                VfxInspectorPropertyEditor frame(*this,database,emitter.emitterTransform.id,statusMessage_);
+                frame.Vec3(VfxUiText("Position").c_str(),"transform.position",emitter.emitterTransform.transform.position);
+                frame.Vec3(VfxUiText("Rotation (degrees)").c_str(),"transform.rotationEulerDegrees",emitter.emitterTransform.transform.rotationEulerDegrees,0.1f);
+                frame.Vec3(VfxUiText("Scale").c_str(),"transform.scale",emitter.emitterTransform.transform.scale);
+                DrawLayerAnimation(database,emitter);
+                ImGui::TreePop();
+            }
+            DrawLayerMatte(database,emitter);
             DrawLayerEffects(database, emitter);
             return;
         }
@@ -141,6 +150,7 @@ namespace HIKARI::EDITOR {
         }
         switch (emitterInspectorPage_) {
         case VfxEmitterInspectorPage::Common: {
+            DrawLayerMatte(database,emitter);
             if (emitter.kind != VFX::VfxLayerKind::Group && emitter.history.mode != VFX::VfxHistoryMode::Trail) {
             ImGui::SeparatorText(TEXT::Localize("ui.vfx.layer.geometry").c_str());
             // 形状プリセット: 形状＋パラメータ＋変形を一括で適用する。
@@ -467,6 +477,9 @@ namespace HIKARI::EDITOR {
                     modes[static_cast<size_t>(emitter.history.mode)], modes, 3);
                 if (emitter.history.mode != VFX::VfxHistoryMode::None) {
                     emitterEditor.Float(VfxUiText("History duration").c_str(), "history.duration", emitter.history.duration, 0.01f, 0.01f, 2);
+                    emitterEditor.Float(VfxUiText("Tail width").c_str(),"history.tailWidth",emitter.history.tailWidth,0.01f,0,4);
+                    emitterEditor.Float(VfxUiText("Fade shape").c_str(),"history.fadePower",emitter.history.fadePower,0.01f,0.05f,8);
+                    emitterEditor.Color(VfxUiText("Tail tint").c_str(),"history.tailColor",emitter.history.tailColor);
                     emitterEditor.Unsigned(VfxUiText("History samples").c_str(), "history.samples", emitter.history.samples, 2, 16);
                     emitterEditor.Float(VfxUiText("Teleport break distance").c_str(), "history.breakDistance", emitter.history.breakDistance, 0.1f, 0.01f, 10000);
                     if (emitter.history.mode == VFX::VfxHistoryMode::Trail) {
@@ -544,12 +557,20 @@ namespace HIKARI::EDITOR {
                 0.1f,
                 0.0f,
                 1000000.0f);
-            editor.Unsigned(
-                "Burst Count",
-                "burstCount",
-                emitter.spawn.burstCount,
-                0u,
-                emitter.spawn.maximumParticles);
+            const auto initial=std::find_if(emitter.spawn.burstTimeline.begin(),emitter.spawn.burstTimeline.end(),
+                [](const auto& key){return key.time==0;});
+            int initialCount=initial==emitter.spawn.burstTimeline.end() ? 0 : int(initial->count);
+            if (ImGui::DragInt(TEXT::Localize("ui.vfx.spawn.initialBurst").c_str(),&initialCount,1,0,int(emitter.spawn.maximumParticles),"%d",ImGuiSliderFlags_AlwaysClamp)) {
+                if (initial!=emitter.spawn.burstTimeline.end()) {
+                    if (initialCount==0) (void)RemoveBurstKey(initial->id,statusMessage_);
+                    else (void)SetBurstKey(initial->id,0,uint32_t(initialCount),statusMessage_,VfxInspectorPropertyEditor::MergeGroup(emitter.spawn.id,"initialBurst"));
+                }
+                else if (initialCount>0) {
+                    std::string id;
+                    (void)AddBurstKey(emitter.id,0,uint32_t(initialCount),{},id,statusMessage_);
+                }
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) SealPropertyEdit();
             constexpr std::array<std::string_view, 2u> capacityModes{
                 "Automatic", "Fixed"
             };
@@ -679,6 +700,18 @@ namespace HIKARI::EDITOR {
                 0.01f,
                 0.0f,
                 1000.0f);
+            if (ImGui::TreeNode(VfxUiText("Flow fields").c_str())) {
+                const auto& field = emitter.forces.field;
+                forcesEditor.Float(VfxUiText("Curl turbulence").c_str(),"field.turbulence",field.turbulence,0.05f,0,10000);
+                forcesEditor.Float(VfxUiText("Field frequency").c_str(),"field.frequency",field.frequency,0.01f,0.001f,1000);
+                forcesEditor.Float(VfxUiText("Field evolution").c_str(),"field.evolution",field.evolution,0.01f,-1000,1000);
+                forcesEditor.Float(VfxUiText("Vortex strength").c_str(),"field.vortex",field.vortex,0.05f,-10000,10000);
+                forcesEditor.Float(VfxUiText("Attraction / repulsion").c_str(),"field.attraction",field.attraction,0.05f,-10000,10000);
+                forcesEditor.Vec3(VfxUiText("Field center").c_str(),"field.center",field.center);
+                forcesEditor.Vec3(VfxUiText("Field axis").c_str(),"field.axis",field.axis);
+                forcesEditor.Float(VfxUiText("Field radius (0 = global)").c_str(),"field.radius",field.radius,0.05f,0,100000);
+                ImGui::TreePop();
+            }
             forcesEditor.Bool(VfxUiText("Plane Collision").c_str(),"collisionPlaneEnabled",emitter.forces.collisionPlaneEnabled);
             if (emitter.forces.collisionPlaneEnabled) {
                 forcesEditor.Float(VfxUiText("Plane Y (simulation space)").c_str(),"collisionPlaneHeight",emitter.forces.collisionPlaneHeight,0.01f,-100000.0f,100000.0f);

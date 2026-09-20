@@ -15,6 +15,23 @@
 #endif
 
 namespace HIKARI::EDITOR {
+
+bool ModelMaterialWorkspaceController::PrepareBackgroundPreview(
+    DocumentSceneBase& scene, EditorWorkspaceHost& views,
+    uint32_t width, uint32_t height, std::string& message) {
+  FlushPendingMaterialPreview(scene);
+  if (!IsPreviewReady() && !RefreshMaterialPreviews(scene, message)) return false;
+  InitializePreviewLighting();
+  auto& view = views.GetModelMaterialPreviewView();
+  view.extent = {width, height};
+  auto& camera = cameraController_.GetCamera();
+  camera.SetPerspective(camera.GetFovYRad(), view.extent.Aspect(), camera.GetNearZ(), camera.GetFarZ());
+  FitPreviewCamera();
+  previewCompareEnabled_ = false;
+  SubmitPreviewRequests(views, GetActivePreviewScene(), true);
+  return IsPreviewReady();
+}
+
 namespace {
 
 const char *EnvironmentModeLabel(

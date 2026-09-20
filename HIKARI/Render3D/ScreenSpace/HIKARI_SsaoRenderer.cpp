@@ -154,8 +154,8 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             gDebugState.totalCpuMs = 0.0f;
         }
 
-        bool CompileShader(const wchar_t* path, const char* entry, const char* target, ID3DBlob** outBlob) {
-            if (!GFX::CompileShaderFileSm6(path, entry, GFX::UpgradeToShaderModel6Profile(target), outBlob)) {
+        bool CompileShader(const wchar_t* path, const char* entry, const wchar_t* target, ID3DBlob** outBlob) {
+            if (!GFX::CompileShaderFileSm6(path, entry, target, outBlob)) {
                 DEBUGLOG::PushRenderError("[SSAO][ERROR] SM6 shader compile failed.");
                 return false;
             }
@@ -860,15 +860,15 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         Microsoft::WRL::ComPtr<ID3DBlob> upsamplePs;
         Microsoft::WRL::ComPtr<ID3DBlob> depthOnlyBlurPs;
         Microsoft::WRL::ComPtr<ID3DBlob> depthOnlyUpsamplePs;
-        if (!CompileShader(L"HIKARI/Shaders/Post_SSAOPS.hlsl", "VSMain", "vs_6_0", generateVs.GetAddressOf()) ||
-            !CompileShader(L"HIKARI/Shaders/Post_SSAOPS.hlsl", "PSMain", "ps_6_0", generatePs.GetAddressOf()) ||
-            !CompileShader(L"HIKARI/Shaders/Post_SSAOPS.hlsl", "PSMainOptimizedHigh", "ps_6_0", optimizedGeneratePs.GetAddressOf()) ||
-            !CompileShader(L"HIKARI/Shaders/Post_SSAOPS.hlsl", "PSMainDepthOnly", "ps_6_0", depthOnlyGeneratePs.GetAddressOf()) ||
-            !CompileShader(L"HIKARI/Shaders/Post_SSAOBlurPS.hlsl", "VSMain", "vs_6_0", blurVs.GetAddressOf()) ||
-            !CompileShader(L"HIKARI/Shaders/Post_SSAOBlurPS.hlsl", "PSMain", "ps_6_0", blurPs.GetAddressOf()) ||
-            !CompileShader(L"HIKARI/Shaders/Post_SSAOBlurPS.hlsl", "PSMainUpsample", "ps_6_0", upsamplePs.GetAddressOf()) ||
-            !CompileShader(L"HIKARI/Shaders/Post_SSAOBlurPS.hlsl", "PSMainDepthOnly", "ps_6_0", depthOnlyBlurPs.GetAddressOf()) ||
-            !CompileShader(L"HIKARI/Shaders/Post_SSAOBlurPS.hlsl", "PSMainUpsampleDepthOnly", "ps_6_0", depthOnlyUpsamplePs.GetAddressOf())) {
+        if (!CompileShader(L"HIKARI/Shaders/Post_SSAOPS.hlsl", "VSMain", L"vs_6_0", generateVs.GetAddressOf()) ||
+            !CompileShader(L"HIKARI/Shaders/Post_SSAOPS.hlsl", "PSMain", L"ps_6_0", generatePs.GetAddressOf()) ||
+            !CompileShader(L"HIKARI/Shaders/Post_SSAOPS.hlsl", "PSMainOptimizedHigh", L"ps_6_0", optimizedGeneratePs.GetAddressOf()) ||
+            !CompileShader(L"HIKARI/Shaders/Post_SSAOPS.hlsl", "PSMainDepthOnly", L"ps_6_0", depthOnlyGeneratePs.GetAddressOf()) ||
+            !CompileShader(L"HIKARI/Shaders/Post_SSAOBlurPS.hlsl", "VSMain", L"vs_6_0", blurVs.GetAddressOf()) ||
+            !CompileShader(L"HIKARI/Shaders/Post_SSAOBlurPS.hlsl", "PSMain", L"ps_6_0", blurPs.GetAddressOf()) ||
+            !CompileShader(L"HIKARI/Shaders/Post_SSAOBlurPS.hlsl", "PSMainUpsample", L"ps_6_0", upsamplePs.GetAddressOf()) ||
+            !CompileShader(L"HIKARI/Shaders/Post_SSAOBlurPS.hlsl", "PSMainDepthOnly", L"ps_6_0", depthOnlyBlurPs.GetAddressOf()) ||
+            !CompileShader(L"HIKARI/Shaders/Post_SSAOBlurPS.hlsl", "PSMainUpsampleDepthOnly", L"ps_6_0", depthOnlyUpsamplePs.GetAddressOf())) {
             return false;
         }
 

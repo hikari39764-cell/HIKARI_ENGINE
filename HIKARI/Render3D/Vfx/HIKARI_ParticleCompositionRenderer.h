@@ -3,6 +3,7 @@
 #include <functional>
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 #include "Render3D/Vfx/HIKARI_ParticleGpuDrivenPass.h"
 #include "Render2D/HIKARI_RenderTarget2D.h"
 #include "Vfx/Post/HIKARI_PostEffect.h"
@@ -16,26 +17,42 @@ namespace HIKARI::RENDER3D::PARTICLES {
         void Release();
     private:
         struct Scope {
-            std::array<RenderTarget2D, 3> buffers;
+            std::array<RenderTarget2D, 2> buffers;
             uint32_t current = 0;
         };
         bool EnsureScope(uint32_t depth);
         bool RenderScope(uint32_t parent, uint32_t depth);
-        bool ApplyEffect(Scope&, const MaterialEffectStep&);
-        bool RunPass(Scope&, uint32_t source, uint32_t destination, const MaterialEffectStep&, float phase = 0);
+        bool RenderLayer(const ParticleCompositionLayer&, Scope&, uint32_t depth);
+        bool RenderContent(const ParticleCompositionLayer&, Scope&, uint32_t depth);
+        RenderTarget2D* ResolveMatte(uint32_t index, uint32_t depth);
+        bool CompositeScope(Scope& source, Scope& destination);
+        bool ResetScope(Scope&);
+        bool ApplyMatte(Scope&, RenderTarget2D&, bool luminance, bool inverted);
+        bool ApplyStyle(Scope&, const MaterialEffectStep&);
+        bool BindInputs(RenderTarget2D&, RenderTarget2D&);
         bool EnsureTarget(RenderTarget2D&);
         void Bind(Scope&);
         struct TargetSet {
-            std::array<std::unique_ptr<Scope>, 8> scopes{};
+            std::vector<std::unique_ptr<Scope>> scopes;
+            std::unordered_map<uint32_t,std::unique_ptr<Scope>> mattes;
             uint64_t lastUsedFrame = 0;
         };
         // 異なる解像度の view が交互に描かれても RT を毎回作り直さない。
         std::unordered_map<uint64_t, TargetSet> targetSets_;
         TargetSet* targets_ = nullptr;
+        std::unordered_set<uint32_t> renderedMattes_, activeMattes_;
         POST::QuadDrawer quad_;
         std::vector<std::unique_ptr<POST::PostEffect>> effects_;
+        std::vector<std::unique_ptr<POST::PostEffect>> styleEffects_;
         uint64_t frameSerial_ = UINT64_MAX;
         size_t effectCursor_ = 0;
+        size_t styleCursor_ = 0;
+        struct DescriptorFrame {
+            std::vector<Microsoft::WRL::ComPtr<ID3D12DescriptorHeap>> pages;
+            uint64_t serial = UINT64_MAX;
+            size_t cursor = 0;
+        };
+        std::array<DescriptorFrame, GFX::kFrameResourceCount> descriptorFrames_;
         bool initialized_ = false;
         GFX::Context context_{};
         ParticleGpuDrivenDrawBindings bindings_{};

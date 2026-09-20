@@ -254,9 +254,11 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
                         {"color", WriteVec4(stop.color)}});
                 }
                 effects.push_back({{"id", effect.id}, {"kind", MaterialEffectName(effect.kind)},
-                    {"enabled", effect.enabled}, {"parameters", WriteVec4(effect.parameters)},
+                    {"enabled", effect.enabled}, {"space", effect.space == MaterialEffectSpace::Group3D ? "Group3D" : "LayerUv"}, {"parameters", WriteVec4(effect.parameters)},
                     {"parameters2", WriteVec4(effect.parameters2)},
                     {"textureTarget", MaterialEffectTextureTargetName(effect.textureTarget)},
+                    {"mix", effect.mix}, {"mask", static_cast<uint32_t>(effect.mask)},
+                    {"maskInvert", effect.maskInvert}, {"maskParameters", WriteVec4(effect.maskParameters)},
                     {"colorA", WriteVec4(effect.colorA)}, {"colorB", WriteVec4(effect.colorB)},
                     {"colorStops", std::move(stops)}});
             }
@@ -283,12 +285,6 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
             }
 
             auto sortedBursts = emitter.spawn.burstTimeline;
-            if (sortedBursts.empty() && emitter.spawn.burstCount > 0u) {
-                sortedBursts.push_back({
-                    emitter.spawn.id + ".burst.legacy",
-                    0.0f,
-                    emitter.spawn.burstCount });
-            }
             std::sort(
                 sortedBursts.begin(),
                 sortedBursts.end(),
@@ -299,16 +295,12 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
                     return left.id < right.id;
                 });
             Json burstTimeline = Json::array();
-            uint32_t legacyBurstCount = 0u;
             for (const VfxBurstKeyData& key : sortedBursts) {
                 burstTimeline.push_back({
                     { "id", key.id },
                     { "time", key.time },
                     { "count", key.count },
                 });
-                if (legacyBurstCount == 0u && key.time == 0.0f) {
-                    legacyBurstCount = key.count;
-                }
             }
 
             auto sortedOutputs = emitter.specialOutputs;
@@ -332,6 +324,8 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
                 { "id", emitter.id },
                 { "name", emitter.name },
                 { "parentEmitterId", emitter.parentEmitterId },
+                { "matte", {{"sourceLayerId",emitter.matte.sourceLayerId},{"luminance",emitter.matte.luminance},
+                    {"inverted",emitter.matte.inverted},{"sourceOnly",emitter.matte.sourceOnly}} },
                 { "order", emitter.order },
                 { "startDelay", emitter.startDelay },
                 { "anchor", WriteVec3(emitter.anchor) },
@@ -365,7 +359,8 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
                 { "history", {{"mode", emitter.history.mode == VfxHistoryMode::Afterimage ? "Afterimage" :
                     emitter.history.mode == VfxHistoryMode::Trail ? "Trail" : "None"},
                     {"duration", emitter.history.duration}, {"samples", emitter.history.samples},
-                    {"breakDistance", emitter.history.breakDistance}} },
+                    {"breakDistance", emitter.history.breakDistance}, {"tailWidth", emitter.history.tailWidth},
+                    {"fadePower", emitter.history.fadePower}, {"tailColor", WriteVec4(emitter.history.tailColor)}} },
                 { "modules", {
                     { "basic", {
                         { "id", emitter.basic.id },
@@ -385,7 +380,6 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
                         { "ratePerSecond", emitter.spawn.ratePerSecond },
                         // Keep the v3 field for old tools; burstTimeline is
                         // authoritative whenever it contains keys.
-                        { "burstCount", legacyBurstCount },
                         { "burstTimeline", std::move(burstTimeline) },
                         { "capacityMode", ToString(
                             emitter.spawn.capacityMode) },
@@ -414,6 +408,7 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
                     } },
                     { "position", {
                         { "id", emitter.position.id },
+                        { "orientAlongPath", emitter.position.orientAlongPath },
                         { "radialSpeed", WriteDistribution(
                             emitter.position.radialSpeed) },
                         { "value", WriteAnimatedVec3(
@@ -432,6 +427,16 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
                         { "id", emitter.forces.id },
                         { "gravity", WriteVec3(emitter.forces.gravity) },
                         { "drag", emitter.forces.drag },
+                        { "field", {
+                            { "center", WriteVec3(emitter.forces.field.center) },
+                            { "radius", emitter.forces.field.radius },
+                            { "axis", WriteVec3(emitter.forces.field.axis) },
+                            { "vortex", emitter.forces.field.vortex },
+                            { "turbulence", emitter.forces.field.turbulence },
+                            { "frequency", emitter.forces.field.frequency },
+                            { "evolution", emitter.forces.field.evolution },
+                            { "attraction", emitter.forces.field.attraction }
+                        } },
                         { "collisionPlaneEnabled", emitter.forces.collisionPlaneEnabled },
                         { "collisionPlaneHeight", emitter.forces.collisionPlaneHeight },
                         { "restitution", emitter.forces.restitution },

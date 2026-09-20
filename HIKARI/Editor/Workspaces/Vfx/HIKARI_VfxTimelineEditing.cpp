@@ -1,5 +1,6 @@
 #include "Editor/Workspaces/Vfx/HIKARI_VfxTimelineEditing.h"
 #include "Assets/Vfx/HIKARI_VfxLayerAnimation.h"
+#include "Assets/Vfx/HIKARI_VfxLayerOrder.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -146,6 +147,33 @@ bool EditVfxLayerTime(VFX::VfxAssetData &asset, std::string_view layerId, VfxLay
         error = "Layer interval is too short to trim or retime";
         return false;
     }
+    // グループの移動/伸縮は子孫を同じ時間写像で編集する。トリムは可視区間だけ。
+    std::vector<size_t> descendants;
+    if (layer.kind == VFX::VfxLayerKind::Group &&
+        (mode == VfxLayerTimeEdit::Move || mode == VfxLayerTimeEdit::Retime)) {
+        for (const auto* child : VFX::CollectVfxLayerTree(asset, layer.id))
+            descendants.push_back(static_cast<size_t>(child - asset.emitters.data()));
+        if (mode == VfxLayerTimeEdit::Move) {
+            float minimum = -oldStart, maximum = asset.durationSeconds - oldStart - oldSpan;
+            for (const auto index : descendants) {
+                const auto& child = asset.emitters[index];
+                minimum = (std::max)(minimum, -child.startDelay);
+                maximum = (std::min)(maximum, asset.durationSeconds - child.startDelay - Span(asset, child));
+            }
+            deltaSeconds = std::clamp(deltaSeconds, minimum, maximum);
+        } else {
+            const float span = std::clamp(oldSpan + deltaSeconds, minimumSpan, asset.durationSeconds - oldStart);
+            const float ratio = span / oldSpan;
+            for (const auto index : descendants) {
+                const auto& child = asset.emitters[index];
+                const float start = oldStart + (child.startDelay - oldStart) * ratio;
+                if (start < -0.00001f || start + Span(asset, child) * ratio > asset.durationSeconds + 0.00001f) {
+                    error = "Group retime would move a descendant outside the composition";
+                    return false;
+                }
+            }
+        }
+    }
     if (mode == VfxLayerTimeEdit::Move) {
         layer.startDelay =
             std::clamp(oldStart + deltaSeconds, 0.0f, (std::max)(0.0f, asset.durationSeconds - oldSpan));
@@ -171,6 +199,22 @@ bool EditVfxLayerTime(VFX::VfxAssetData &asset, std::string_view layerId, VfxLay
             std::erase_if(layer.spawn.burstTimeline, [&](const auto &burst) {
                 return burst.time < 0 || burst.time > layer.activeDuration;
             });
+        }
+    }
+    const float shift = layer.startDelay - oldStart;
+    const float ratio = layer.activeDuration / oldSpan;
+    for (const auto index : descendants) {
+        auto& child = asset.emitters[index];
+        const float span = Span(asset, child);
+        if (mode == VfxLayerTimeEdit::Move) {
+            child.startDelay += shift;
+            child.activeDuration = span;
+        } else {
+            child.startDelay = (std::max)(0.0f, oldStart + (child.startDelay - oldStart) * ratio);
+            child.activeDuration = span * ratio;
+            child.animationTiming.sourceDuration = child.animationTiming.Duration(span);
+            child.animationTiming.rate /= ratio;
+            for (auto& burst : child.spawn.burstTimeline) burst.time *= ratio;
         }
     }
     error.clear();

@@ -5,6 +5,7 @@
 
 #include "Scene/Sequencer/HIKARI_SequenceBinding.h"
 #include "Scene/Sequencer/HIKARI_SequenceTrack.h"
+#include "Scene/Sequencer/Tracks/HIKARI_ShotPresentation.h"
 
 namespace HIKARI::SEQUENCER {
 
@@ -24,6 +25,8 @@ namespace HIKARI::SEQUENCER {
         float startTimeSeconds = 0.0f;
         float durationSeconds = 2.0f;
         CameraCutTransition transition{};
+        ShotCamera camera{};
+        std::vector<SequenceScreenEffect> effects;
     };
 
     struct CameraCutTrack {
@@ -40,7 +43,7 @@ namespace HIKARI::SEQUENCER {
         float localTimeSeconds = 0.0f;
 
         bool IsValid() const noexcept {
-            return clipId != 0 && cameraBindingId.IsValid();
+            return clipId != 0;
         }
     };
 

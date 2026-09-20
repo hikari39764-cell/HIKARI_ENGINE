@@ -28,6 +28,11 @@ namespace HIKARI::RENDER3D::PARTICLES {
     }
 
     inline uint32_t ParticleGeometryTriangleCount(const ParticleEmitterRenderParameters& render) noexcept {
+        if (!render.spatialEffects.empty()) {
+            if (render.shape==ParticleRenderShape::MeshBox) return 192u;
+            if (render.shape==ParticleRenderShape::CrossPlane) return 256u;
+            if (render.shape==ParticleRenderShape::Sprite || render.shape==ParticleRenderShape::HistoryRibbon) return 128u;
+        }
         switch (render.shape) {
         case ParticleRenderShape::MeshBox: return 12u;
         case ParticleRenderShape::MeshSphere:

@@ -1,0 +1,488 @@
+#include "HIKARI_EditorViewCapture.h"
+#if defined(HIKARI_WITH_EDITOR)
+#include "Gfx/HIKARI_GfxContext.h"
+#include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
+#include <d3dx12.h>
+#include <wincodec.h>
+#include <wrl/client.h>
+#include <algorithm>
+#include <chrono>
+#include <fstream>
+#include <map>
+#include <mutex>
+#include <vector>
+#pragma comment(lib,"windowscodecs.lib")
+namespace HIKARI::RENDER3D::EDITORVIEW {
+namespace {
+        struct PreviewCaptureRequest {
+            bool pending = false;
+            bool done = false;
+            bool scheduled = false;
+            PreviewCaptureId id = 0;
+            uint64_t minimumOutputRevision = 0;
+            uint32_t width = 0, height = 0;
+            uint64_t outputRevision = 0;
+            RenderViewId viewId{};
+            std::string path;
+            std::string error;
+            std::chrono::steady_clock::time_point created = std::chrono::steady_clock::now();
+        };
+        struct CaptureReadback {
+            PreviewCaptureId id = 0;
+            Microsoft::WRL::ComPtr<ID3D12Resource> staging, source;
+            Microsoft::WRL::ComPtr<ID3D12Fence> fence;
+            uint64_t fenceValue = 0;
+            int width = 0, height = 0;
+            UINT pitch = 0;
+        };
+        std::vector<CaptureReadback> g_captureReadbacks;
+
+        std::mutex g_captureMutex;
+        std::map<PreviewCaptureId, PreviewCaptureRequest> g_captureRequests{};
+        PreviewCaptureId g_captureSerial = 0;
+
+    uint64_t NextNonZero(uint64_t value) { return ++value ? value : 1u; }
+        bool WriteBmp(
+            const std::string& path,
+            int width,
+            int height,
+            UINT sourcePitch,
+            const uint8_t* source) {
+            const int destinationRow =
+                ((width * 3 + 3) / 4) * 4;
+            const uint32_t imageSize =
+                static_cast<uint32_t>(destinationRow) *
+                static_cast<uint32_t>(height);
+            const uint32_t fileSize = 54u + imageSize;
+            std::ofstream output(path, std::ios::binary);
+            if (!output) {
+                return false;
+            }
+            uint8_t header[54] = {};
+            header[0] = 'B';
+            header[1] = 'M';
+            header[2] = static_cast<uint8_t>(fileSize & 0xffu);
+            header[3] = static_cast<uint8_t>((fileSize >> 8u) & 0xffu);
+            header[4] = static_cast<uint8_t>((fileSize >> 16u) & 0xffu);
+            header[5] = static_cast<uint8_t>((fileSize >> 24u) & 0xffu);
+            header[10] = 54u;
+            header[14] = 40u;
+            const auto writeInt = [&header](size_t offset, int32_t value) {
+                const uint32_t bits = static_cast<uint32_t>(value);
+                for (size_t index = 0u; index < 4u; ++index) {
+                    header[offset + index] =
+                        static_cast<uint8_t>((bits >> (index * 8u)) & 0xffu);
+                }
+            };
+            writeInt(18, width);
+            writeInt(22, height);
+            header[26] = 1u;
+            header[28] = 24u;
+            writeInt(34, static_cast<int32_t>(imageSize));
+            output.write(
+                reinterpret_cast<const char*>(header), sizeof(header));
+            std::vector<uint8_t> row(
+                static_cast<size_t>(destinationRow));
+            for (int y = height - 1; y >= 0; --y) {
+                const uint8_t* sourceRow =
+                    source + static_cast<size_t>(y) * sourcePitch;
+                for (int x = 0; x < width; ++x) {
+                    row[static_cast<size_t>(x) * 3u + 0u] =
+                        sourceRow[static_cast<size_t>(x) * 4u + 2u];
+                    row[static_cast<size_t>(x) * 3u + 1u] =
+                        sourceRow[static_cast<size_t>(x) * 4u + 1u];
+                    row[static_cast<size_t>(x) * 3u + 2u] =
+                        sourceRow[static_cast<size_t>(x) * 4u + 0u];
+                }
+                output.write(
+                    reinterpret_cast<const char*>(row.data()),
+                    row.size());
+            }
+            return output.good();
+        }
+
+#ifdef _WIN32
+        std::wstring WideFromUtf8(const std::string& value) {
+            if (value.empty()) {
+                return {};
+            }
+            const int required = MultiByteToWideChar(
+                CP_UTF8, 0, value.data(),
+                static_cast<int>(value.size()), nullptr, 0);
+            if (required <= 0) {
+                return {};
+            }
+            std::wstring result(
+                static_cast<size_t>(required), L'\0');
+            (void)MultiByteToWideChar(
+                CP_UTF8, 0, value.data(),
+                static_cast<int>(value.size()),
+                result.data(), required);
+            return result;
+        }
+
+        bool WritePng(
+            const std::string& path,
+            int width,
+            int height,
+            UINT sourcePitch,
+            const uint8_t* source) {
+            const HRESULT coResult =
+                CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+            const bool coInitialized = SUCCEEDED(coResult);
+            const bool comAvailable =
+                coResult == S_OK ||
+                coResult == S_FALSE ||
+                coResult == RPC_E_CHANGED_MODE;
+            if (!comAvailable) {
+                return false;
+            }
+            const UINT stride = static_cast<UINT>(width) * 4u;
+            std::vector<uint8_t> pixels(
+                static_cast<size_t>(stride) *
+                static_cast<size_t>(height));
+            for (int y = 0; y < height; ++y) {
+                const uint8_t* sourceRow =
+                    source + static_cast<size_t>(y) * sourcePitch;
+                uint8_t* targetRow =
+                    pixels.data() + static_cast<size_t>(y) * stride;
+                for (int x = 0; x < width; ++x) {
+                    const size_t sourceIndex =
+                        static_cast<size_t>(x) * 4u;
+                    const size_t targetIndex =
+                        static_cast<size_t>(x) * 4u;
+                    targetRow[targetIndex + 0u] =
+                        sourceRow[sourceIndex + 2u];
+                    targetRow[targetIndex + 1u] =
+                        sourceRow[sourceIndex + 1u];
+                    targetRow[targetIndex + 2u] =
+                        sourceRow[sourceIndex + 0u];
+                    targetRow[targetIndex + 3u] =
+                        sourceRow[sourceIndex + 3u];
+                }
+            }
+
+            bool succeeded = false;
+            IWICImagingFactory* factory = nullptr;
+            IWICStream* stream = nullptr;
+            IWICBitmapEncoder* encoder = nullptr;
+            IWICBitmapFrameEncode* frame = nullptr;
+            HRESULT hr = CoCreateInstance(
+                CLSID_WICImagingFactory,
+                nullptr,
+                CLSCTX_INPROC_SERVER,
+                IID_PPV_ARGS(&factory));
+            if (SUCCEEDED(hr)) {
+                hr = factory->CreateStream(&stream);
+            }
+            if (SUCCEEDED(hr)) {
+                hr = stream->InitializeFromFilename(
+                    WideFromUtf8(path).c_str(), GENERIC_WRITE);
+            }
+            if (SUCCEEDED(hr)) {
+                hr = factory->CreateEncoder(
+                    GUID_ContainerFormatPng, nullptr, &encoder);
+            }
+            if (SUCCEEDED(hr)) {
+                hr = encoder->Initialize(stream, WICBitmapEncoderNoCache);
+            }
+            if (SUCCEEDED(hr)) {
+                hr = encoder->CreateNewFrame(&frame, nullptr);
+            }
+            if (SUCCEEDED(hr)) {
+                hr = frame->Initialize(nullptr);
+            }
+            if (SUCCEEDED(hr)) {
+                hr = frame->SetSize(
+                    static_cast<UINT>(width),
+                    static_cast<UINT>(height));
+            }
+            WICPixelFormatGUID format = GUID_WICPixelFormat32bppBGRA;
+            if (SUCCEEDED(hr)) {
+                hr = frame->SetPixelFormat(&format);
+            }
+            if (SUCCEEDED(hr)) {
+                hr = frame->WritePixels(
+                    static_cast<UINT>(height),
+                    stride,
+                    static_cast<UINT>(pixels.size()),
+                    pixels.data());
+            }
+            if (SUCCEEDED(hr)) {
+                hr = frame->Commit();
+            }
+            if (SUCCEEDED(hr)) {
+                hr = encoder->Commit();
+            }
+            succeeded = SUCCEEDED(hr);
+            if (frame != nullptr) {
+                frame->Release();
+            }
+            if (encoder != nullptr) {
+                encoder->Release();
+            }
+            if (stream != nullptr) {
+                stream->Release();
+            }
+            if (factory != nullptr) {
+                factory->Release();
+            }
+            if (coInitialized) {
+                CoUninitialize();
+            }
+            return succeeded;
+        }
+#endif
+
+        bool WriteCaptureImage(
+            const std::string& path,
+            int width,
+            int height,
+            UINT sourcePitch,
+            const uint8_t* source) {
+#ifdef _WIN32
+            const std::string lower = path;
+            const auto endsWithPng = [&lower]() {
+                if (lower.size() < 4u) {
+                    return false;
+                }
+                const auto asciiLower = [](char c) {
+                    return c >= 'A' && c <= 'Z'
+                        ? static_cast<char>(c - 'A' + 'a')
+                        : c;
+                };
+                return asciiLower(lower[lower.size() - 4u]) == '.' &&
+                    asciiLower(lower[lower.size() - 3u]) == 'p' &&
+                    asciiLower(lower[lower.size() - 2u]) == 'n' &&
+                    asciiLower(lower[lower.size() - 1u]) == 'g';
+            };
+            if (endsWithPng()) {
+                return WritePng(
+                    path, width, height, sourcePitch, source);
+            }
+#else
+            (void)path;
+#endif
+            return WriteBmp(
+                path, width, height, sourcePitch, source);
+        }
+
+        void CollectCaptureReadbacks() {
+            for (auto it = g_captureReadbacks.begin(); it != g_captureReadbacks.end();) {
+                const uint64_t completed = it->fence->GetCompletedValue();
+                if (completed < it->fenceValue) { ++it; continue; }
+                std::lock_guard<std::mutex> lock(g_captureMutex);
+                const auto found = g_captureRequests.find(it->id);
+                if (found != g_captureRequests.end() && !found->second.done) {
+                    auto& request = found->second;
+                    void* mapped = nullptr;
+                    if (completed == UINT64_MAX) request.error = "截图失败：GPU 设备已移除";
+                    else if (FAILED(it->staging->Map(0, nullptr, &mapped)) || !mapped)
+                        request.error = "截图读回映射失败";
+                    else {
+                        if (!WriteCaptureImage(request.path, it->width, it->height, it->pitch,
+                                static_cast<const uint8_t*>(mapped))) request.error = "截图图片写入失败";
+                        const D3D12_RANGE noWrites{0,0};
+                        it->staging->Unmap(0, &noWrites);
+                    }
+                    request.done = true;
+                }
+                it = g_captureReadbacks.erase(it);
+            }
+        }
+
+}
+        void RecordViewCapture(RenderViewId viewId,bool ready,uint64_t outputRevision,
+            ID3D12Resource* resource,D3D12_RESOURCE_STATES resourceState,uint32_t width,uint32_t height) {
+            PreviewCaptureRequest request{};
+            {
+                std::lock_guard<std::mutex> lock(g_captureMutex);
+                const auto found = std::find_if(g_captureRequests.begin(), g_captureRequests.end(),
+                    [&](const auto& entry) {
+                        const auto& capture = entry.second;
+                        return capture.pending && capture.scheduled &&
+                            capture.viewId == viewId && ready &&
+                            outputRevision >= capture.minimumOutputRevision;
+                    });
+                if (found == g_captureRequests.end()) return;
+                request = found->second;
+                found->second.pending = false;
+                found->second.width = width;
+                found->second.height = height;
+                found->second.outputRevision = outputRevision;
+            }
+            const auto finish = [id = request.id](std::string error) {
+                std::lock_guard<std::mutex> lock(g_captureMutex);
+                const auto found = g_captureRequests.find(id);
+                if (found == g_captureRequests.end()) return;
+                found->second.done = true;
+                found->second.error = std::move(error);
+            };
+
+            if (!resource || !width || !height || resource->GetDesc().Format!=DXGI_FORMAT_R8G8B8A8_UNORM) {
+                finish("预览截图需要有效的 RGBA8 显示目标");return;
+            }
+            const auto& context = GFX::GetCurrentContext();
+            auto* device = context.device;
+            auto* list = context.cmdList;
+            if (!device || !list || !context.frameFence || !context.currentFrameRetireFenceValue) {
+                finish("截图需要有效的帧命令与完成栅栏"); return;
+            }
+            const UINT sourcePitch = static_cast<UINT>(
+                (static_cast<UINT64>(width) * 4u +
+                 D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1u) &
+                ~(D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1u));
+            const UINT64 totalBytes =
+                static_cast<UINT64>(sourcePitch) *
+                static_cast<UINT64>(height);
+
+            CaptureReadback readback{};
+            readback.id = request.id;
+            readback.source = resource;
+            readback.fence = context.frameFence;
+            readback.fenceValue = context.currentFrameRetireFenceValue;
+            readback.width = width; readback.height = height; readback.pitch = sourcePitch;
+            const auto stagingDesc = CD3DX12_RESOURCE_DESC::Buffer(totalBytes);
+            const CD3DX12_HEAP_PROPERTIES readbackHeap(D3D12_HEAP_TYPE_READBACK);
+            if (FAILED(device->CreateCommittedResource(&readbackHeap, D3D12_HEAP_FLAG_NONE,
+                    &stagingDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+                    IID_PPV_ARGS(&readback.staging)))) {
+                finish("创建截图读回资源失败"); return;
+            }
+            const D3D12_RESOURCE_STATES previousState =
+                resourceState;
+            D3D12_RESOURCE_BARRIER toCopy =
+                CD3DX12_RESOURCE_BARRIER::Transition(
+                    resource,
+                    previousState,
+                    D3D12_RESOURCE_STATE_COPY_SOURCE);
+            list->ResourceBarrier(1, &toCopy);
+            D3D12_TEXTURE_COPY_LOCATION sourceLocation{};
+            sourceLocation.pResource = resource;
+            sourceLocation.Type =
+                D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+            D3D12_TEXTURE_COPY_LOCATION destinationLocation{};
+            destinationLocation.pResource = readback.staging.Get();
+            destinationLocation.Type =
+                D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+            destinationLocation.PlacedFootprint.Offset = 0u;
+            destinationLocation.PlacedFootprint.Footprint.Format =
+                DXGI_FORMAT_R8G8B8A8_UNORM;
+            destinationLocation.PlacedFootprint.Footprint.Width =
+                static_cast<UINT>(width);
+            destinationLocation.PlacedFootprint.Footprint.Height =
+                static_cast<UINT>(height);
+            destinationLocation.PlacedFootprint.Footprint.Depth = 1u;
+            destinationLocation.PlacedFootprint.Footprint.RowPitch =
+                sourcePitch;
+            D3D12_BOX sourceBox{
+                0u, 0u, 0u,
+                static_cast<UINT>(width),
+                static_cast<UINT>(height),
+                1u
+            };
+            list->CopyTextureRegion(
+                &destinationLocation, 0u, 0u, 0u,
+                &sourceLocation, &sourceBox);
+            D3D12_RESOURCE_BARRIER toPrevious =
+                CD3DX12_RESOURCE_BARRIER::Transition(
+                    resource,
+                    D3D12_RESOURCE_STATE_COPY_SOURCE,
+                    previousState);
+            list->ResourceBarrier(1, &toPrevious);
+            // 現在のフレームと同じリストへ記録し、完了後のフレームで回収する。
+            // UI スレッドは GPU を待たず、取消時もリソースは fence まで保持する。
+            g_captureReadbacks.push_back(std::move(readback));
+        }
+
+    PreviewCaptureId RequestViewCapture(RenderViewId viewId, const std::string& outputPath) {
+        std::lock_guard<std::mutex> lock(g_captureMutex);
+        // 完了した未回収のレガシー要求だけを整理する。実行中の要求は上書きしない。
+        if (g_captureRequests.size() >= 64) {
+            for (auto it = g_captureRequests.begin(); it != g_captureRequests.end();) {
+                if (it->second.done) it = g_captureRequests.erase(it); else ++it;
+            }
+        }
+        if (g_captureRequests.size() >= 64 || outputPath.empty()) return 0;
+        for (const auto& [id, request] : g_captureRequests) {
+            if (!request.done && request.path == outputPath) return 0;
+        }
+        PreviewCaptureRequest request{};
+        request.pending = true;
+        request.id = g_captureSerial = NextNonZero(g_captureSerial);
+        request.viewId = viewId;
+        request.path = outputPath;
+        g_captureRequests.emplace(request.id, request);
+        return request.id;
+    }
+
+    void RequestPreviewCapture(RenderViewId viewId, const std::string& outputPath) {
+        (void)RequestViewCapture(viewId, outputPath);
+    }
+
+    bool PollViewCapture(PreviewCaptureId id, std::string& outError) {
+        std::lock_guard<std::mutex> lock(g_captureMutex);
+        const auto found = g_captureRequests.find(id);
+        if (found == g_captureRequests.end()) {
+            outError = "截图请求不存在或已过期";
+            return true;
+        }
+        outError = found->second.error;
+        return found->second.done;
+    }
+
+    void CancelViewCapture(PreviewCaptureId id) {
+        std::lock_guard<std::mutex> lock(g_captureMutex);
+        const auto found = g_captureRequests.find(id);
+        if (found == g_captureRequests.end()) return;
+        found->second.pending = false;
+        found->second.done = true;
+        found->second.error = "截图已取消";
+    }
+
+    PreviewCaptureResult GetViewCaptureResult(PreviewCaptureId id) {
+        std::lock_guard<std::mutex> lock(g_captureMutex);
+        const auto found = g_captureRequests.find(id);
+        if (found == g_captureRequests.end()) return {true, {}, "Capture expired or was not found."};
+        const auto& request = found->second;
+        return {request.done, request.path, request.error, request.viewId,
+            request.width, request.height, request.outputRevision};
+    }
+
+    bool PollPreviewCapture(const std::string& outputPath, std::string& outError) {
+        std::lock_guard<std::mutex> lock(g_captureMutex);
+        for (auto it = g_captureRequests.rbegin(); it != g_captureRequests.rend(); ++it) {
+            if (it->second.path != outputPath) continue;
+            outError = it->second.error;
+            return it->second.done;
+        }
+        outError = "截图请求不存在";
+        return true;
+    }
+
+    void ScheduleViewCaptures(const std::function<std::optional<uint64_t>(RenderViewId)>& schedule) {
+        CollectCaptureReadbacks();
+        std::lock_guard<std::mutex> lock(g_captureMutex);
+        for (auto& [id,capture]:g_captureRequests) {
+            if (!capture.done && std::chrono::steady_clock::now()-capture.created>std::chrono::seconds(30)) {
+                capture.pending=false;capture.done=true;capture.error="截图超时";
+            }
+            if (!capture.pending) continue;
+            const auto revision=schedule(capture.viewId);
+            if (!revision) {
+                capture.pending=false;capture.done=true;capture.error="目标预览不可用，请先准备对应文档的预览";
+            } else if (!capture.scheduled) {
+                capture.minimumOutputRevision=NextNonZero(*revision);capture.scheduled=true;
+            }
+        }
+    }
+    void ShutdownViewCaptures() {
+        for (auto& readback : g_captureReadbacks) {
+            GFX::RetireD3D12ObjectForCurrentFrame(readback.staging, "Editor capture readback");
+            GFX::RetireD3D12ObjectForCurrentFrame(readback.source, "Editor capture source");
+        }
+        g_captureReadbacks.clear();
+        { std::lock_guard<std::mutex> lock(g_captureMutex); g_captureRequests.clear(); }
+    }
+}
+#endif

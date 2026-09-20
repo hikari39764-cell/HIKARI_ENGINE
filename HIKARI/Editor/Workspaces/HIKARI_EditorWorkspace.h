@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string_view>
 
 #include "Assets/HIKARI_AssetGuid.h"
 #include "Scene/HIKARI_SceneDocument.h"
@@ -22,6 +23,23 @@ namespace HIKARI::EDITOR {
         Project,
         Count,
     };
+
+    // 操作レジストリの領域名。UI の翻訳名とは独立した識別子を使う。
+    constexpr std::string_view EditorWorkspaceOperationId(EditorWorkspaceId id) noexcept {
+        switch (id) {
+        case EditorWorkspaceId::Scene: return "scene";
+        case EditorWorkspaceId::Cinematics: return "cinematics";
+        case EditorWorkspaceId::ModelCollision: return "model_collision";
+        case EditorWorkspaceId::ModelMaterial: return "model_material";
+        case EditorWorkspaceId::AnimationStateMachine: return "animation_state_machine";
+        case EditorWorkspaceId::RuntimeBinding: return "runtime_binding";
+        case EditorWorkspaceId::Vfx: return "vfx";
+        case EditorWorkspaceId::Dialogue: return "dialogue";
+        case EditorWorkspaceId::TerrainSurface: return "terrain_surface";
+        case EditorWorkspaceId::Project: return "project";
+        default: return "general";
+        }
+    }
 
 	// エディタワークスペースのオープンリクエストを表す構造体
     struct EditorWorkspaceOpenRequest {

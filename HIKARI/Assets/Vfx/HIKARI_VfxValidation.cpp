@@ -438,14 +438,19 @@ namespace HIKARI::VFX {
 
         std::unordered_map<std::string, const VfxEmitterData*> emitters{};
         for (const VfxEmitterData& emitter : asset.emitters) {
+            if (emitter.position.orientAlongPath && emitter.kind != VfxLayerKind::Shape && emitter.kind != VfxLayerKind::Group)
+                AddError(diagnostics,"Vfx.PathOrientation","Path orientation is supported by Shape and Group",emitter.id);
             if (emitter.effects.size() > kMaximumVfxEffectsPerLayer) AddError(diagnostics, "Vfx.TooManyEffects", "Layer exceeds the effect safety limit", emitter.id);
             for (const auto& effect : emitter.effects) {
                 RegisterId(effect.id, "effect", ids, diagnostics);
-                if ((emitter.kind == VfxLayerKind::Adjustment && !IsCompositeMaterialEffect(effect.kind)) ||
-                    (emitter.kind != VfxLayerKind::Adjustment && IsCompositeOnlyMaterialEffect(effect.kind)))
+                if (static_cast<uint8_t>(effect.space)>1 || (effect.space==MaterialEffectSpace::Group3D &&
+                    (!SupportsSpatialMaterialEffect(effect.kind) || effect.mask==MaterialEffectMask::Alpha || effect.mask==MaterialEffectMask::Luminance)))
+                    AddError(diagnostics,"Vfx.InvalidEffectSpace","Spatial deformation requires a supported mapping effect and geometric mask",effect.id);
+                if (emitter.kind == VfxLayerKind::Adjustment && !IsAdjustmentMaterialEffect(effect.kind))
                     AddError(diagnostics, "Vfx.EffectDomain", "Effect is not supported by this layer type", effect.id);
                 if (MaterialEffectName(effect.kind) == "Invalid" || !IsFinite(effect.parameters) || !IsFinite(effect.parameters2) ||
-                    !IsFinite(effect.colorA) || !IsFinite(effect.colorB))
+                    !IsFinite(effect.colorA) || !IsFinite(effect.colorB) ||
+                    !IsValidMaterialEffectBlend(effect))
                     AddError(diagnostics, "Vfx.InvalidEffect", "Effect values must be finite", effect.id);
                 if (MaterialEffectTextureTargetName(effect.textureTarget) == "Invalid" ||
                     (effect.kind != MaterialEffectKind::UvFlow && effect.kind != MaterialEffectKind::FlowMap &&
@@ -602,9 +607,7 @@ namespace HIKARI::VFX {
                     VfxParticleCapacityMode::Fixed) ||
                 emitter.spawn.maximumParticles == 0u ||
                 emitter.spawn.maximumParticles >
-                    RENDER3D::PARTICLES::kGpuParticlePoolCapacity ||
-                emitter.spawn.burstCount >
-                    emitter.spawn.maximumParticles) {
+                    RENDER3D::PARTICLES::kGpuParticlePoolCapacity) {
                 AddError(
                     diagnostics,
                     "Vfx.InvalidSpawnModule",
@@ -621,15 +624,6 @@ namespace HIKARI::VFX {
             }
             std::unordered_set<std::string> burstIds{};
             std::unordered_set<float> burstTimes{};
-            if (emitter.spawn.burstTimeline.empty() &&
-                emitter.spawn.burstCount >
-                    emitter.spawn.maximumParticles) {
-                AddError(
-                    diagnostics,
-                    "Vfx.BurstCapacityExceeded",
-                    "burst count exceeds the emitter particle capacity",
-                    emitter.spawn.id);
-            }
             for (const VfxBurstKeyData& key : emitter.spawn.burstTimeline) {
                 (void)RegisterId(key.id, "burst key", ids, diagnostics);
                 if (!burstIds.emplace(key.id).second) {
@@ -733,7 +727,7 @@ namespace HIKARI::VFX {
                 ids,
                 diagnostics, emitter.kind == VfxLayerKind::Particles ?
                     RENDER3D::PARTICLES::kMaxParticleCurveKeys : kMaxVfxLayerCurveKeys);
-            if (!IsFinite(emitter.forces.gravity) ||
+            if (!RENDER3D::PARTICLES::IsValidParticleForceField(emitter.forces.field) || !IsFinite(emitter.forces.gravity) ||
                 !IsFinite(emitter.forces.drag) ||
                 emitter.forces.drag < 0.0f ||
                 emitter.forces.drag > 1000.0f ||
@@ -1183,8 +1177,28 @@ namespace HIKARI::VFX {
         // ValidateVfxProgram が実際の simulation.capacity で判定する。
 
         const bool hasComposition = std::any_of(asset.emitters.begin(), asset.emitters.end(),
-            [](const auto& layer) { return layer.kind == VfxLayerKind::Adjustment; });
+            [](const auto& layer) { return layer.kind == VfxLayerKind::Adjustment || !layer.matte.sourceLayerId.empty() || layer.matte.sourceOnly; });
         for (const VfxEmitterData& emitter : asset.emitters) {
+            if (!emitter.matte.sourceLayerId.empty()) {
+                const auto source = emitters.find(emitter.matte.sourceLayerId);
+                if (source == emitters.end() || source->second == &emitter ||
+                    source->second->parentEmitterId != emitter.parentEmitterId || source->second->kind == VfxLayerKind::Adjustment)
+                    AddError(diagnostics,"Vfx.InvalidMatte","Matte requires another content/group layer in the same group",emitter.id);
+                std::unordered_set<std::string> visited{emitter.id};
+                auto current = &emitter;
+                while (!current->matte.sourceLayerId.empty()) {
+                    if (!visited.insert(current->matte.sourceLayerId).second) {
+                        AddError(diagnostics,"Vfx.MatteCycle","Track matte dependency contains a cycle",emitter.id); break;
+                    }
+                    const auto next = emitters.find(current->matte.sourceLayerId);
+                    if (next == emitters.end()) break;
+                    current = next->second;
+                }
+            }
+            if (emitter.kind == VfxLayerKind::Adjustment && !emitter.matte.sourceLayerId.empty())
+                AddError(diagnostics,"Vfx.AdjustmentMatte","Use local effect masks on adjustment layers; track mattes belong on content or groups",emitter.id);
+            if (emitter.kind == VfxLayerKind::Adjustment && emitter.matte.sourceOnly)
+                AddError(diagnostics,"Vfx.InvalidMatteSource","Adjustment layers cannot be matte-only sources",emitter.id);
             if (hasComposition && emitter.meshOutput.enabled)
                 AddError(diagnostics, "Vfx.CompositionMeshOutput", "Adjustment compositions currently require procedural shape or particle layers", emitter.id);
             if (hasComposition) {

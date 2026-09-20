@@ -5,47 +5,11 @@
 #include "Include/Material/HIKARI_MaterialExpression.hlsli"
 
 #include "Include/Vfx/HIKARI_ParticleData.hlsli"
+#include "Include/Vfx/HIKARI_ParticleForceMath.hlsli"
 
-// These value-block offsets must stay in lockstep with the C++ emitter
-// parameter packing in HIKARI_GpuParticleParameterPacking.cpp. They are
-// derived from the same formulas instead of hand-maintained literals so
-// the layouts cannot drift apart again.
-static const uint HIKARI_PARTICLE_CURVE_KEYS = 8u;
-static const uint HIKARI_PARTICLE_COLOR_STOPS = 8u;
-static const uint HIKARI_PARTICLE_FLOAT3_DISTRIBUTION_VALUES = 2u;
-static const uint HIKARI_PARTICLE_FLOAT4_DISTRIBUTION_VALUES = 3u;
-static const uint HIKARI_PARTICLE_ANIMATED_FLOAT3_DISTRIBUTIONS = 6u;
-static const uint HIKARI_PARTICLE_ANIMATED_FLOAT3_CURVES = 3u;
-static const uint HIKARI_PARTICLE_CURVE_VALUES =
-    2u + HIKARI_PARTICLE_CURVE_KEYS;
-static const uint HIKARI_PARTICLE_ANIMATED_FLOAT3_VALUES =
-    HIKARI_PARTICLE_FLOAT3_DISTRIBUTION_VALUES *
-        HIKARI_PARTICLE_ANIMATED_FLOAT3_DISTRIBUTIONS +
-    HIKARI_PARTICLE_CURVE_VALUES *
-        HIKARI_PARTICLE_ANIMATED_FLOAT3_CURVES;
-static const uint HIKARI_PARTICLE_GRADIENT_VALUES =
-    1u + HIKARI_PARTICLE_COLOR_STOPS * 2u;
-static const uint HIKARI_PARTICLE_EMITTER_HEADER_COUNT = 15u;
-static const uint HIKARI_PARTICLE_POSITION_VALUES =
-    HIKARI_PARTICLE_EMITTER_HEADER_COUNT;
-static const uint HIKARI_PARTICLE_ROTATION_VALUES =
-    HIKARI_PARTICLE_POSITION_VALUES +
-    HIKARI_PARTICLE_ANIMATED_FLOAT3_VALUES;
-static const uint HIKARI_PARTICLE_SCALE_VALUES =
-    HIKARI_PARTICLE_ROTATION_VALUES +
-    HIKARI_PARTICLE_ANIMATED_FLOAT3_VALUES;
-static const uint HIKARI_PARTICLE_COLOR_DISTRIBUTIONS =
-    HIKARI_PARTICLE_SCALE_VALUES +
-    HIKARI_PARTICLE_ANIMATED_FLOAT3_VALUES;
-static const uint HIKARI_PARTICLE_COLOR_CURVES =
-    HIKARI_PARTICLE_COLOR_DISTRIBUTIONS +
-    HIKARI_PARTICLE_FLOAT4_DISTRIBUTION_VALUES * 4u;
-static const uint HIKARI_PARTICLE_COLOR_GRADIENT =
-    HIKARI_PARTICLE_COLOR_CURVES +
-    HIKARI_PARTICLE_CURVE_VALUES * 4u;
-static const uint HIKARI_PARTICLE_EMITTER_VALUE_COUNT =
-    HIKARI_PARTICLE_COLOR_GRADIENT +
-    HIKARI_PARTICLE_GRADIENT_VALUES;
+#define HIKARI_PARTICLE_LAYOUT(name, value) static const uint name = value;
+#include "Include/Vfx/HIKARI_ParticleEmitterLayout.hlsli"
+#undef HIKARI_PARTICLE_LAYOUT
 static const uint HIKARI_PARTICLE_RANDOM_LIFETIME = 1u;
 static const uint HIKARI_PARTICLE_RANDOM_SHAPE_RADIUS = 2u;
 static const uint HIKARI_PARTICLE_RANDOM_SHAPE_DIRECTION_Y = 3u;
@@ -656,7 +620,13 @@ void UpdateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     const float4 collision = LoadEmitterValue(gEmitterIndex,14u);
     const bool collide = (asuint(collision.w)&2u)!=0u;
     // CPU 参照と同じ解析積分。衝突時のみ分割し、GPU 提出数には影響しない。
-    const uint steps = collide ? (uint)clamp(ceil(dt * 30.0f), 1.0f, 8.0f) : 1u;
+    const float4 fieldCenter=LoadEmitterValue(gEmitterIndex,HIKARI_PARTICLE_FIELD_CENTER);
+    const float4 fieldAxis=LoadEmitterValue(gEmitterIndex,HIKARI_PARTICLE_FIELD_AXIS);
+    const float4 fieldFlow=LoadEmitterValue(gEmitterIndex,HIKARI_PARTICLE_FIELD_FLOW);
+    const float fieldSeconds=LoadEmitterValue(gEmitterIndex,HIKARI_PARTICLE_FIELD_TIME).x;
+    const bool fieldActive=fieldAxis.w!=0 || fieldFlow.x!=0 || fieldFlow.w!=0;
+    const uint steps = fieldActive ? (uint)clamp(ceil(dt*60.0f),1.0f,120.0f)
+        : collide ? (uint)clamp(ceil(dt * 30.0f), 1.0f, 8.0f) : 1u;
     const float step = dt / steps;
     const float x = drag * step;
     const float damping = exp(-x);
@@ -666,8 +636,12 @@ void UpdateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         ? step*step * (0.5f - x / 6.0f + x*x / 24.0f) : (step - velocityIntegral) / drag;
     for (uint index=0u; index<steps; ++index)
     {
-        particle.physicsPositionSeed.xyz += particle.velocityLifetime.xyz * velocityIntegral + gravity * accelerationIntegral;
-        particle.velocityLifetime.xyz = particle.velocityLifetime.xyz * damping + gravity * velocityIntegral;
+        float3 acceleration=gravity;
+        if (fieldActive) acceleration+=ParticleForceAcceleration(particle.physicsPositionSeed.xyz,
+            fieldSeconds-dt+(index+0.5f)*step,fieldCenter.xyz,fieldCenter.w,fieldAxis.xyz,fieldAxis.w,
+            fieldFlow.x,fieldFlow.y,fieldFlow.z,fieldFlow.w);
+        particle.physicsPositionSeed.xyz += particle.velocityLifetime.xyz * velocityIntegral + acceleration * accelerationIntegral;
+        particle.velocityLifetime.xyz = particle.velocityLifetime.xyz * damping + acceleration * velocityIntegral;
         if (collide && particle.physicsPositionSeed.y < collision.x)
         {
             particle.physicsPositionSeed.y = collision.x;

@@ -147,6 +147,21 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
     void RequestPreviewCapture(
         RenderViewId viewId,
         const std::string& outputPath);
+    // Capture submission/polling are thread-safe; view access stays on the
+    // presentation owner. A ticket always refers to one requested fresh frame.
+    using PreviewCaptureId = uint64_t;
+    PreviewCaptureId RequestViewCapture(RenderViewId viewId,
+        const std::string& outputPath);
+    bool PollViewCapture(PreviewCaptureId id, std::string& outError);
+    struct PreviewCaptureResult {
+        bool done = false;
+        std::string path, error;
+        RenderViewId viewId{};
+        uint32_t width = 0, height = 0;
+        uint64_t outputRevision = 0;
+    };
+    PreviewCaptureResult GetViewCaptureResult(PreviewCaptureId id);
+    void CancelViewCapture(PreviewCaptureId id);
     bool PollPreviewCapture(
         const std::string& outputPath,
         std::string& outError);

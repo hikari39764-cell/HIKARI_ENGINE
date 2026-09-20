@@ -61,6 +61,7 @@ cbuffer ParticleDrawConstants : register(b1)
 // 形状（ジオメトリ）段だけが読む per-draw パラメータは、ルート定数のコスト
 // 上限が厳しいためバッファ側に置き、gParticleReserved (= drawIndex) で引く。
 // ピクセル段は上の cbuffer だけで足りる。
+struct GpuParticleSpatialEffect { float4 metadata, parameters, parameters2, maskParameters, origin, rotation, scale; };
 struct GpuParticleShapeState
 {
     float4 renderShapeParamsA;
@@ -76,8 +77,9 @@ struct GpuParticleShapeState
     float shapeParam4;
     float shapeParam5;
     float billboardAxis;
-    float shapeReserved1;
-    float shapeReserved2;
+    uint spatialCount;
+    uint spatialReserved;
+    GpuParticleSpatialEffect spatialEffects[8];
 };
 StructuredBuffer<GpuParticleShapeState> gShapeStates : register(t5);
 // static: シェーダ内で書き換え可能なスレッドローカルな作業変数。
@@ -293,6 +295,7 @@ void ResolveBillboardBasis(
     }
 }
 
+#include "Include/Vfx/HIKARI_ParticleSpatialDeformation.hlsli"
 #include "Include/Vfx/HIKARI_ParticleGeometry.hlsli"
 
 float HikariResolveParticleDepthFade(ParticleVertex input)
@@ -438,7 +441,8 @@ float4 ParticlePS(ParticleVertex input, bool frontFace : SV_IsFrontFace) : SV_TA
             alphaClipThreshold = max(materialData.pbrParams.w, 0.0f);
         }
     }
-    float alpha = input.color.a * opacity;
+    const float4 layerColor = (gParticleMaterialFlags & 2u) != 0u ? 1.0f.xxxx : input.color;
+    float alpha = layerColor.a * opacity;
     if (!hasMaterialExpression)
     {
         alpha *= materialColor.a;
@@ -446,7 +450,7 @@ float4 ParticlePS(ParticleVertex input, bool frontFace : SV_IsFrontFace) : SV_TA
 
     alpha *= HikariResolveParticleDepthFade(input);
     clip(alpha - alphaClipThreshold);
-    const float3 baseColor = input.color.rgb * materialColor.rgb;
+    const float3 baseColor = layerColor.rgb * materialColor.rgb;
     const float3 straightColor = (lit ? HikariShadeSimpleSurface(baseColor,pbrInputs.metallic,
         pbrInputs.roughness,pbrInputs.specularColor,pbrInputs.specularFactor,pbrInputs.occlusion,
         shadingNormal,geometricNormal,input.worldPosition,input.position.xy) : baseColor) + emissive;

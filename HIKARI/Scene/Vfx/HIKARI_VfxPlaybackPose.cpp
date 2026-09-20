@@ -50,8 +50,7 @@ bool VfxPlaybackService::GetLayerPoseAtTime(VfxPlaybackHandle handle, std::strin
                                           span, instance->randomSeed + *i * 0x9e3779b9u);
             world = PLAYBACK::ComposeTransforms(
                 frame, {sample.position,
-                        MATH::Quat::FromEulerXYZ(sample.rotationRadians.x, sample.rotationRadians.y,
-                                                 sample.rotationRadians.z),
+                        EvaluateVfxLayerRotation(layer,sample,std::clamp(seconds-start,0.0f,(std::max)(span,0.0f)),span,instance->randomSeed+*i*0x9e3779b9u),
                         sample.scale});
         }
     }

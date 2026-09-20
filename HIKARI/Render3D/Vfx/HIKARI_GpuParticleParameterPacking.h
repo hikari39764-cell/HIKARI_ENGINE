@@ -7,7 +7,12 @@
 
 namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
 
-    inline constexpr uint32_t kGpuParticleEmitterValueCount = 210u;
+#define HIKARI_PARTICLE_LAYOUT(name, value) inline constexpr uint32_t name = value;
+#include "Shaders/Include/Vfx/HIKARI_ParticleEmitterLayout.hlsli"
+#undef HIKARI_PARTICLE_LAYOUT
+    inline constexpr uint32_t kGpuParticleEmitterValueCount = HIKARI_PARTICLE_EMITTER_VALUE_COUNT;
+    static_assert(HIKARI_PARTICLE_CURVE_KEYS == kMaxParticleCurveKeys);
+    static_assert(HIKARI_PARTICLE_COLOR_STOPS == kMaxParticleColorStops);
     inline constexpr uint32_t kGpuParticleEmitterUploadPageCount =
         kMaximumParticleEmitterSubmissionsPerFrame /
         kDefaultParticleEmitterUploadPageCapacity;
@@ -49,6 +54,9 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
 
     // 形状（ジオメトリ）段だけが読む per-draw パラメータ。ルート定数の
     // コスト上限が厳しいため、伸びる余地のあるバッファ側に置く。
+    struct alignas(16) GpuParticleSpatialEffect {
+        GpuParticleFloat4 metadata{},parameters{},parameters2{},maskParameters{},origin{},rotation{},scale{};
+    };
     struct alignas(16) GpuParticleShapeState {
         GpuParticleFloat4 renderShapeParamsA{};
         GpuParticleFloat4 renderUvParams{};
@@ -66,8 +74,9 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
         float shapeParam5 = 0.35f;
         // 軸固定ビルボードが固定するローカル軸（0=X, 1=Y, 2=Z）。
         float billboardAxis = 0.0f;
-        float shapeReserved1 = 0.0f;
-        float shapeReserved2 = 0.0f;
+        uint32_t spatialCount = 0;
+        uint32_t spatialReserved = 0;
+        std::array<GpuParticleSpatialEffect,kMaximumParticleSpatialEffects> spatialEffects{};
     };
 
     struct alignas(16) GpuParticleEmitterParameters {
@@ -88,7 +97,9 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
     GpuParticleEmitterParameters BuildGpuParticleEmitterParameters(
         const ParticleEmitterSubmission& submission);
 
+    static_assert(sizeof(GpuParticleSpatialEffect) == 112u);
+    static_assert(sizeof(GpuParticleShapeState) == 96u + 112u * kMaximumParticleSpatialEffects);
     static_assert(sizeof(GpuParticleFloat4) == 16u);
-    static_assert(sizeof(GpuParticleEmitterParameters) == 3360u);
+    static_assert(sizeof(GpuParticleEmitterParameters) == kGpuParticleEmitterValueCount * sizeof(GpuParticleFloat4));
 
 } // namespace HIKARI::RENDER3D::PARTICLES::INTERNAL

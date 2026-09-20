@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include "Shaders/Include/Vfx/HIKARI_ParticleForceMath.hlsli"
 
 namespace HIKARI::RENDER3D::PARTICLES {
     float IntegrateParticleCurve(std::span<const ParticleCurveKey> keys,
@@ -634,8 +635,12 @@ namespace HIKARI::RENDER3D::PARTICLES {
                 ? std::clamp(submission.deltaSeconds, 0.0f, 2.0f) : 0.0f;
             const float drag = (std::max)(0.0f, submission.simulation.drag);
             // 一定の重力・抗力を解析積分する。平面衝突だけ最大 8 分割し、描画提出は増やさない。
-            const uint32_t steps = submission.simulation.collisionPlaneEnabled != 0u
-                ? static_cast<uint32_t>(std::clamp(std::ceil(dt * 30.0f), 1.0f, 8.0f)) : 1u;
+            const auto& field = submission.simulation.field;
+            const bool fieldActive = IsParticleForceFieldActive(field);
+            const uint32_t steps = fieldActive
+                ? static_cast<uint32_t>(std::clamp(std::ceil(dt * 60.0f), 1.0f, 120.0f))
+                : submission.simulation.collisionPlaneEnabled != 0u
+                    ? static_cast<uint32_t>(std::clamp(std::ceil(dt * 30.0f), 1.0f, 8.0f)) : 1u;
             const float step = dt / static_cast<float>(steps);
             const float x = drag * step;
             const float damping = std::exp(-x);
@@ -653,9 +658,15 @@ namespace HIKARI::RENDER3D::PARTICLES {
                     continue;
                 }
                 for (uint32_t index = 0; index < steps; ++index) {
+                    auto acceleration = gravity;
+                    if (fieldActive) acceleration = acceleration + ParticleForceAcceleration(
+                        particle.baseWorldPosition + particle.motionPosition,
+                        submission.emitterAgeSeconds - dt + (index + 0.5f) * step,
+                        field.center, field.radius, field.axis, field.vortex,
+                        field.turbulence, field.frequency, field.evolution, field.attraction);
                     particle.motionPosition = particle.motionPosition +
-                        particle.velocity * velocityIntegral + gravity * accelerationIntegral;
-                    particle.velocity = particle.velocity * damping + gravity * velocityIntegral;
+                        particle.velocity * velocityIntegral + acceleration * accelerationIntegral;
+                    particle.velocity = particle.velocity * damping + acceleration * velocityIntegral;
                     if (submission.simulation.collisionPlaneEnabled != 0u &&
                         particle.baseWorldPosition.y + particle.motionPosition.y < submission.simulation.collisionPlaneHeight) {
                         particle.motionPosition.y = submission.simulation.collisionPlaneHeight - particle.baseWorldPosition.y;

@@ -21,7 +21,7 @@
 #include "Scene/Debug/HIKARI_ViewportDebugState.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureCatalog.h"
 #include "Scene/HIKARI_CameraDirector.h"
-#include "Scene/HIKARI_CinematicCameraPlayback.h"
+#include "Scene/Sequencer/Runtime/HIKARI_SequencePlaybackTypes.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_ComponentSystemPolicy.h"
 #include "Scene/HIKARI_IScene.h"
@@ -139,23 +139,27 @@ namespace HIKARI {
             const MATH::Quat& rotation,
             bool markDirty = true);
         bool SnapCameraObjectToEditorView(SceneObjectId cameraObjectId);
-        CinematicPlaybackHandle PlayCameraSequence(
+        SEQUENCER::SequencePlaybackHandle PlayCameraSequence(
             CinematicSequenceId sequenceId,
-            const CinematicPlaybackOptions& options = {},
+            const SEQUENCER::SequencePlaybackOptions& options = {},
             float startTimeSeconds = 0.0f);
-        bool StopCameraSequence(CinematicPlaybackHandle handle);
-        bool PauseCameraSequence(CinematicPlaybackHandle handle);
-        bool ResumeCameraSequence(CinematicPlaybackHandle handle);
+        bool StopCameraSequence(SEQUENCER::SequencePlaybackHandle handle);
+        bool PauseCameraSequence(SEQUENCER::SequencePlaybackHandle handle);
+        bool ResumeCameraSequence(SEQUENCER::SequencePlaybackHandle handle);
         bool SeekCameraSequence(
-            CinematicPlaybackHandle handle,
+            SEQUENCER::SequencePlaybackHandle handle,
             float timeSeconds);
         bool IsCameraSequencePlaying() const noexcept;
-        CinematicPlaybackHandle GetCameraSequencePlaybackHandle() const noexcept;
+        SEQUENCER::SequencePlaybackHandle GetCameraSequencePlaybackHandle() const noexcept;
         SEQUENCER::SequencePlaybackHandle PlaySequence(
             const SEQUENCER::SequencePlayRequest& request);
         SEQUENCER::SequencePlayResult PlaySequenceDetailed(
             const SEQUENCER::SequencePlayRequest& request);
         bool StopSequence(SEQUENCER::SequencePlaybackHandle handle);
+        bool PreviewSequence(const CinematicSequence& sequence,
+            const SEQUENCER::SequenceBindingContext& bindings,
+            const SEQUENCER::SequenceEvaluationContext& context, bool contentChanged);
+        void EndSequencePreview();
         bool PauseSequence(SEQUENCER::SequencePlaybackHandle handle);
         bool ResumeSequence(SEQUENCER::SequencePlaybackHandle handle);
         bool SeekSequence(

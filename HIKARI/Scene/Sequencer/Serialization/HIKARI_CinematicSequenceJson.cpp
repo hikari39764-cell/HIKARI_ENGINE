@@ -1,3 +1,4 @@
+#include "Scene/Sequencer/Serialization/HIKARI_ShotPresentationJson.h"
 #include "Scene/Sequencer/Serialization/HIKARI_PresentationCueJson.h"
 #include "Scene/Sequencer/Serialization/HIKARI_CinematicSequenceJson.h"
 
@@ -125,6 +126,8 @@ namespace HIKARI {
                         durationIt->get<float>();
                 }
             }
+            clip.camera = SEQUENCER::ReadShotCamera(clipNode.value("camera", json{}));
+            clip.effects = SEQUENCER::ReadScreenEffects(clipNode.value("effects", json{}));
             return clip;
         }
 
@@ -211,6 +214,7 @@ namespace HIKARI {
             }
             DeserializeCameraAnimationTracksJson(sequenceNode, sequence);
             SEQUENCER::ReadPresentationCueJson(sequenceNode, sequence.presentationCueTrack);
+            sequence.screenEffects = SEQUENCER::ReadScreenEffects(sequenceNode.value("screenEffects", json{}));
             NormalizeCinematicSequence(sequence);
             return sequence;
         }
@@ -242,6 +246,8 @@ namespace HIKARI {
             return {
                 { "id", clip.id },
                 { "cameraBindingId", clip.cameraBindingId.value },
+                { "camera", SEQUENCER::WriteShotCamera(clip.camera) },
+                { "effects", SEQUENCER::WriteScreenEffects(clip.effects) },
                 { "startTimeSeconds", clip.startTimeSeconds },
                 { "durationSeconds", clip.durationSeconds },
                 { "transition", {
@@ -334,6 +340,7 @@ namespace HIKARI {
                 sequence,
                 sequenceNode["tracks"]);
             SEQUENCER::WritePresentationCueJson(sequence.presentationCueTrack, sequenceNode["tracks"]);
+            sequenceNode["screenEffects"] = SEQUENCER::WriteScreenEffects(sequence.screenEffects);
             output["sequences"].push_back(std::move(sequenceNode));
         }
     }

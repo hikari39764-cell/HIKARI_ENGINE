@@ -1,5 +1,7 @@
 #include "Editor/Workspaces/Vfx/HIKARI_VfxPreviewBounds.h"
 
+#include "Assets/Vfx/HIKARI_VfxLayerOrder.h"
+#include "Render3D/Vfx/HIKARI_ParticleSpatialReference.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -488,7 +490,9 @@ namespace HIKARI::EDITOR {
             extent.x += std::abs(shape.bendAmount);
             if (shape.type == VFX::VfxRenderShapeType::Ribbon || shape.type == VFX::VfxRenderShapeType::Ring)
                 extent.y *= taper;
-            if (std::abs(shape.twistDegrees) > 0.001f) {
+            if (std::abs(shape.twistDegrees) > 0.001f &&
+                shape.type != VFX::VfxRenderShapeType::MeshCylinder &&
+                shape.type != VFX::VfxRenderShapeType::MeshCone) {
                 const float r = std::sqrt(extent.x*extent.x + extent.z*extent.z);
                 extent.x = extent.z = r;
             }
@@ -509,6 +513,21 @@ namespace HIKARI::EDITOR {
                 const auto euler = rotation.fixed.minimum * kDegreesToRadians;
                 const auto localRotation = MATH::Mat4::Rotate(MATH::Quat::FromEulerXYZ(euler.x,euler.y,euler.z));
                 return TransformInterval(transform.matrix * localRotation, local, true);
+            }
+            // Y 軸だけを回る形状は高さとアンカーを維持する。三軸回転の
+            // 球境界を使うと、接地した竜巻まで地下へ大きく拡張される。
+            const auto rotationX = AnimatedComponentInterval(rotation, 0, lifetime);
+            const auto rotationZ = AnimatedComponentInterval(rotation, 2, lifetime);
+            // 自由接線の曲線はキー値が 0 でも途中で回転し得るため除外する。
+            if (fixedShape && rotation.mode != VFX::VfxAnimatedValueMode::Curve &&
+                rotationX.minimum == 0 && rotationX.maximum == 0 &&
+                rotationZ.minimum == 0 && rotationZ.maximum == 0) {
+                const float x = (std::max)(std::abs(local.minimum.x), std::abs(local.maximum.x));
+                const float z = (std::max)(std::abs(local.minimum.z), std::abs(local.maximum.z));
+                const float radius = std::sqrt(x * x + z * z);
+                local.minimum.x = local.minimum.z = -radius;
+                local.maximum.x = local.maximum.z = radius;
+                return TransformInterval(transform.matrix, local, true);
             }
             // 回転曲線/ビルボードのみ球で包む。静止した細長い光束を球へ
             // 拡張してから再び箱へ拡張すると、取景距離が過大になる。
@@ -622,7 +641,8 @@ namespace HIKARI::EDITOR {
 
     VfxPreviewBounds EstimateVfxPreviewBounds(
         const VFX::VfxAssetData& asset,
-        std::string_view emitterId) {
+        std::string_view emitterId,
+        VfxPreviewBoundsPurpose purpose) {
 
         VfxPreviewBounds output{};
         if (asset.emitters.empty()) return output;
@@ -664,6 +684,19 @@ namespace HIKARI::EDITOR {
                 emitter, transform, lifetime) : VectorInterval{};
             bounds.minimum = bounds.minimum + movement.minimum;
             bounds.maximum = bounds.maximum + movement.maximum;
+            // フォーカスは構図を決める。方向が変わる力場を全軸へ最大加速度で
+            // 広げた安全包絡は、描画範囲の推定にだけ残す。
+            if (purpose == VfxPreviewBoundsPurpose::CompleteEnvelope && particles &&
+                RENDER3D::PARTICLES::IsParticleForceFieldActive(emitter.forces.field)) {
+                const auto& field = emitter.forces.field;
+                float reach = 0.5f * lifetime * lifetime *
+                    (2.0f * field.turbulence + std::abs(field.vortex) + std::abs(field.attraction));
+                if (emitter.basic.localSimulation)
+                    reach *= (std::max)({std::abs(transform.scale.x),std::abs(transform.scale.y),std::abs(transform.scale.z)});
+                const MATH::Vec3 extent{reach,reach,reach};
+                bounds.minimum = bounds.minimum - extent;
+                bounds.maximum = bounds.maximum + extent;
+            }
 
             // World-space floor collision prevents the ballistic fall below
             // the plane. Include rebound energy so framing still covers a
@@ -692,6 +725,51 @@ namespace HIKARI::EDITOR {
             const auto renderBounds = RenderInterval(emitter, transform, lifetime);
             bounds.minimum = bounds.minimum + renderBounds.minimum;
             bounds.maximum = bounds.maximum + renderBounds.maximum;
+            const auto expandSpatial = [&](const VFX::VfxEmitterData& owner) {
+                const auto ownerIndex=emitterIndices.at(owner.id);
+                if (!owner.basic.enabled || !ResolveTransform(ownerIndex,asset,emitterIndices,transforms)) return;
+                const auto& frame=transforms[ownerIndex];
+                const auto movement=TransformInterval(frame.matrix,AnimatedVectorInterval(owner.position.value,asset.durationSeconds),true);
+                const auto scaleRange=AnimatedVectorInterval(owner.scale.value,asset.durationSeconds);
+                const MATH::Vec3 origin=frame.position+(movement.minimum+movement.maximum)*.5f;
+                const float originRadius=MATH::Length(movement.maximum-movement.minimum)*.5f;
+                float minimumScale=std::numeric_limits<float>::max(),maximumScale=0;
+                for(size_t axis=0;axis<3;++axis) {
+                    const float lo=Component(scaleRange.minimum,axis),hi=Component(scaleRange.maximum,axis);
+                    const float base=std::abs(Component(frame.scale,axis));
+                    minimumScale=(std::min)(minimumScale,base*(lo<=0 && hi>=0 ? 0 : (std::min)(std::abs(lo),std::abs(hi))));
+                    maximumScale=(std::max)(maximumScale,base*(std::max)(std::abs(lo),std::abs(hi)));
+                }
+                minimumScale=(std::max)(minimumScale,.0001f);maximumScale=(std::max)(maximumScale,.0001f);
+                for(const auto& effect:owner.effects) {
+                    if (!effect.enabled || effect.space!=MaterialEffectSpace::Group3D) continue;
+                    auto parameters=effect.parameters;
+                    // 変形の最大変位に関係する成分だけ、曲線の契約範囲で包む。
+                    float* values[]{&parameters.x,&parameters.y,&parameters.z,&parameters.w};
+                    const auto info=GetMaterialEffectParameters(effect.kind);
+                    for(const auto& track:owner.parameterTracks) {
+                        if (track.targetId!=effect.id || !track.propertyId.starts_with("parameters.")) continue;
+                        const auto axis=std::string_view("xyzw").find(track.propertyId.back());
+                        if(axis>=4)continue;
+                        const auto range=CurveInterval(track.curve);
+                        float lo=(std::max)(info[axis].minimum,range.minimum),hi=(std::min)(info[axis].maximum,range.maximum);
+                        if (track.curve.interpolation==VFX::VfxCurveInterpolation::Smooth) {lo=info[axis].minimum;hi=info[axis].maximum;}
+                        const bool center=(effect.kind==MaterialEffectKind::Polar && (axis==1 || axis==2)) ||
+                            (effect.kind==MaterialEffectKind::Twirl && axis>=2);
+                        const float pivot=center?.5f:0;
+                        const float extreme=std::abs(lo-pivot)>std::abs(hi-pivot)?lo:hi;
+                        *values[axis]=effect.kind==MaterialEffectKind::Polar && axis==3 ? (std::min)(*values[axis],lo) :
+                            (std::abs(extreme-pivot)>std::abs(*values[axis]-pivot)?extreme:*values[axis]);
+                    }
+                    const auto center=(bounds.minimum+bounds.maximum)*.5f;
+                    const float radius=(MATH::Length(center-origin)+MATH::Length(bounds.maximum-center)+originRadius)/minimumScale;
+                    const float expanded=(radius+RENDER3D::PARTICLES::ParticleSpatialBoundExpansion(uint32_t(effect.kind),parameters,effect.parameters2))*maximumScale+originRadius;
+                    const MATH::Vec3 extent{expanded,expanded,expanded};
+                    bounds={origin-extent,origin+extent};
+                }
+            };
+            expandSpatial(emitter);
+            for (const auto* owner:VFX::CollectVfxAdjustments(asset.emitters,emitter)) expandSpatial(*owner);
             Expand(combined, bounds, combinedInitialized);
         }
 

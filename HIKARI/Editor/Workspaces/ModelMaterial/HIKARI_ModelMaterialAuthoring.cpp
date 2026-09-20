@@ -285,6 +285,7 @@ bool ModelMaterialWorkspaceController::SaveMaterial(
     }
     saved = service.SaveAs(authoringDocument_.GetMaterial(), destination);
   } else if (authoringDocument_.GetMaterialAssetGuid().IsValid()) {
+    if (!authoringDocument_.CanSaveMaterialSource(outMessage)) return false;
     saved = service.Save(authoringDocument_.GetMaterialAssetGuid(),
                          authoringDocument_.GetMaterial());
   } else {
@@ -296,6 +297,7 @@ bool ModelMaterialWorkspaceController::SaveMaterial(
   }
 
   const AssetGuid previousGuid = authoringDocument_.GetMaterialAssetGuid();
+  authoringDocument_.AcceptMaterialSourceWrite(saved.sourcePath);
   if (!scene.ReloadAssets()) {
     outMessage += "; editor registry refresh failed";
     return false;

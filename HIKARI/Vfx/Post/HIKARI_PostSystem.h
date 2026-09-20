@@ -1,4 +1,6 @@
 #pragma once
+#include <span>
+#include "Scene/Sequencer/Tracks/HIKARI_ShotPresentation.h"
 
 #include <span>
 
@@ -58,6 +60,7 @@ namespace HIKARI::POST {
 
         static void UpdateCommonParams(float deltaTime);
         static void SetIntensity(float intensity);
+        static void SetSequenceEffects(std::span<const SEQUENCER::ScreenEffectSample> effects);
         static void SetCombo(float combo);
         static void ClearEffects();
         static void AddEffect(PostEffect* effect);

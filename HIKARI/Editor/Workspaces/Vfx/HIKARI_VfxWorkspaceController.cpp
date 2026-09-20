@@ -53,6 +53,7 @@ namespace HIKARI::EDITOR {
     }
 
     VfxWorkspaceController::~VfxWorkspaceController() {
+        ReleasePreviewNamespace();
 #if defined(HIKARI_WITH_EDITOR)
         if (activePreviewViewId_.value != 0u) {
             RENDER3D::EDITORVIEW::ClearRequest(activePreviewViewId_);
@@ -186,8 +187,8 @@ namespace HIKARI::EDITOR {
         viewportHandle_ = {};
         layerGizmoEditing_ = false;
         std::string applyMessage{};
-        if (!document_.ApplyPresetPackage(
-                VFX::PRESETS::MakeVfxPresetPackage(presetId),
+        if (!document_.ApplyPresetAsset(
+                VFX::PRESETS::MakeVfxPresetAsset(presetId),
                 applyMessage)) {
             outMessage = applyMessage.empty()
                 ? "Failed to apply VFX preset"
@@ -413,7 +414,7 @@ namespace HIKARI::EDITOR {
 
         if (!document_.IsOpen()) return false;
         const VfxPreviewBounds bounds = EstimateVfxPreviewBounds(
-            document_.Asset(), emitterId);
+            document_.Asset(), emitterId, VfxPreviewBoundsPurpose::Framing);
         if (!bounds.valid) return false;
 
         const Camera3D& currentCamera = cameraController_.GetCamera();
@@ -495,6 +496,13 @@ namespace HIKARI::EDITOR {
     const VfxEditorDocument&
         VfxWorkspaceController::GetDocument() const noexcept {
         return document_;
+    }
+
+    bool VfxWorkspaceController::RestoreRecoveryDocument(const AssetDatabase& database,
+        const nlohmann::json& snapshot, std::string& message) {
+        if (!document_.RestoreRecovery(database, snapshot, message)) return false;
+        OnDocumentChanged();
+        return true;
     }
 
     const VFX::VfxAssetData*

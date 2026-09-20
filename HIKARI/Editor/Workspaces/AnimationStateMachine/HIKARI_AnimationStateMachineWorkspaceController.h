@@ -63,6 +63,7 @@ namespace HIKARI::EDITOR {
             EditorCommandRouter& commandRouter);
 
         bool IsDocumentOpen() const noexcept;
+        const AssetGuid& GetDocumentAssetGuid() const noexcept { return document_.GetAssetGuid(); }
         bool IsDocumentDirty() const noexcept;
         bool CanUndo() const noexcept;
         bool CanRedo() const noexcept;

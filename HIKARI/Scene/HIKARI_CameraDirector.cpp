@@ -65,7 +65,28 @@ namespace HIKARI {
 
         MATH::Vec3 SafeUpForForward(const MATH::Vec3& forward, MATH::Vec3 up);
 
-        Camera3D BlendCamera(const Camera3D& from, const Camera3D& to, float amount) {
+        MATH::Vec3 ExtractAxis(const MATH::Mat4& matrix, int column) {
+            return {
+                matrix.m[column][0],
+                matrix.m[column][1],
+                matrix.m[column][2]
+            };
+        }
+
+        MATH::Vec3 SafeUpForForward(const MATH::Vec3& forward, MATH::Vec3 up) {
+            up = MATH::Normalize(up);
+            if (MATH::Length(up) <= kVectorEpsilon ||
+                std::abs(MATH::Dot(forward, up)) >= 0.999f) {
+                up = { 0.0f, 1.0f, 0.0f };
+            }
+            if (std::abs(MATH::Dot(forward, up)) >= 0.999f) {
+                up = { 1.0f, 0.0f, 0.0f };
+            }
+            return up;
+        }
+    }
+
+    Camera3D CameraDirector::BlendViews(const Camera3D& from, const Camera3D& to, float amount) {
             // Projection kinds do not have a physically meaningful interpolated lens.
             if (from.IsOrthographic() != to.IsOrthographic()) return to;
             Camera3D result{};
@@ -91,27 +112,6 @@ namespace HIKARI {
             result.SetLookAt(eye, target, up);
             return result;
         }
-
-        MATH::Vec3 ExtractAxis(const MATH::Mat4& matrix, int column) {
-            return {
-                matrix.m[column][0],
-                matrix.m[column][1],
-                matrix.m[column][2]
-            };
-        }
-
-        MATH::Vec3 SafeUpForForward(const MATH::Vec3& forward, MATH::Vec3 up) {
-            up = MATH::Normalize(up);
-            if (MATH::Length(up) <= kVectorEpsilon ||
-                std::abs(MATH::Dot(forward, up)) >= 0.999f) {
-                up = { 0.0f, 1.0f, 0.0f };
-            }
-            if (std::abs(MATH::Dot(forward, up)) >= 0.999f) {
-                up = { 1.0f, 0.0f, 0.0f };
-            }
-            return up;
-        }
-    }
 
     void CameraDirector::Reset() {
         baseCameraObjectId_ = {};
@@ -145,6 +145,11 @@ namespace HIKARI {
 
     SceneObjectId CameraDirector::GetBaseCamera() const noexcept {
         return baseCameraObjectId_;
+    }
+
+    bool CameraDirector::IsWinningOverride(CameraOverrideToken token) const noexcept {
+        const auto* winner = FindWinningOverride();
+        return winner && winner->token.value == token.value && winner->token.epoch == token.epoch;
     }
 
     CameraOverrideToken CameraDirector::PushOverride(const CameraActivationRequest& request) {
@@ -268,13 +273,14 @@ namespace HIKARI {
                 : CameraOverrideToken{};
 
         Camera3D targetCamera{};
-        const bool requestedSourceValid = TryResolveCameraObject(
+        bool requestedSourceValid = TryResolveCameraObject(
             world,
             requestedSource,
             resolvedAspect,
             targetCamera);
-        if (requestedSourceValid && winningOverride != nullptr &&
+        if (winningOverride != nullptr &&
             winningOverride->hasCameraOverride) {
+            requestedSourceValid = true;
             targetCamera = winningOverride->cameraOverride;
             targetCamera.SetAspect(resolvedAspect);
         }
@@ -544,7 +550,7 @@ namespace HIKARI {
             ? blendElapsedSeconds_ / activeBlend_.durationSeconds
             : 1.0f;
         const float blendAmount = SmoothStep(normalizedTime);
-        resolvedFrame_.camera = BlendCamera(blendStartCamera_, targetCamera, blendAmount);
+        resolvedFrame_.camera = BlendViews(blendStartCamera_, targetCamera, blendAmount);
 
         if (normalizedTime >= 1.0f) {
             resolvedFrame_.camera = targetCamera;

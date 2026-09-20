@@ -150,7 +150,7 @@ namespace HIKARI {
             std::make_unique<SEQUENCER::CameraSequenceTrackDriver>(
                 state_->camera.director,
                 state_->runtime.world,
-                state_->camera.editorCamera));
+                state_->camera.editorCamera, &state_->camera.presentation));
         (void)state_->camera.sequencePlayback.RegisterDriver(
             std::make_unique<SEQUENCER::PresentationCueDriver>(
                 state_->runtime.world, state_->runtime.vfxPlaybackService));
@@ -303,7 +303,7 @@ namespace HIKARI {
                 state_->camera.gameplayCamera,
                 SERVICES::GetInputSnapshot(),
                 CameraControlInputContext::RuntimeWindow);
-        } else if (UseDebugCamera() && !IsEditorCameraPreviewActive()) {
+        } else if (UseDebugCamera() && !IsEditorCameraPreviewActive() && !state_->camera.sequencePreview.IsValid()) {
             state_->camera.debugCamera.Update(
                 dt,
                 state_->camera.editorCamera,
@@ -372,6 +372,10 @@ namespace HIKARI {
             const auto up = MATH::Normalize(MATH::Cross(forward, right));
             AUDIO::UpdateCameraListener({{position.x, position.y, position.z},
                 {forward.x, forward.y, forward.z}, {up.x, up.y, up.z}});
+        } else if (state_->camera.sequencePreview.IsValid()) {
+            state_->camera.resolvedFrame = state_->camera.director.Resolve(state_->runtime.world,
+                state_->camera.sequencePreviewSnapshot, state_->camera.editorCamera.GetAspect(), dt);
+            state_->camera.editorCamera = state_->camera.resolvedFrame.camera;
         } else if (IsEditorCameraPreviewActive()) {
             state_->camera.resolvedFrame = state_->camera.director.Resolve(
                 state_->runtime.world,
@@ -459,8 +463,13 @@ namespace HIKARI {
         } else {
             POST::PostSystem::ClearGlobalProfile();
         }
-        POST::PostSystem::SetBloomSettings(state_->lighting.environment.bloom);
-        POST::PostSystem::SetToneMappingSettings(state_->lighting.environment.toneMapping);
+        auto bloom = state_->lighting.environment.bloom;
+        auto tone = state_->lighting.environment.toneMapping;
+        std::vector<SEQUENCER::ScreenEffectSample> screenEffects;
+        state_->camera.presentation.Resolve(state_->camera.director, bloom, tone, screenEffects);
+        POST::PostSystem::SetBloomSettings(bloom);
+        POST::PostSystem::SetToneMappingSettings(tone);
+        POST::PostSystem::SetSequenceEffects(screenEffects);
 
         // UE 風の地面グリッド: 半透明の地面パネルと主線/副線を一括で描画する。
         if (DrawDebugHelpers() && state_->editor.viewportOverlayState.showGridFloor) {
@@ -908,7 +917,7 @@ namespace HIKARI {
     }
 
     bool DocumentSceneBase::DrawDebugHelpers() const {
-        return !state_->runtime.playActive && SERVICES::IsEditorUIEnabled();
+        return !state_->runtime.playActive && !state_->camera.sequencePreview.IsValid() && SERVICES::IsEditorUIEnabled();
     }
     bool DocumentSceneBase::UseEnvironmentLighting() const {
         return state_->lighting.environmentLightingEnabled;

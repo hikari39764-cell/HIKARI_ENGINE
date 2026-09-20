@@ -67,7 +67,9 @@ ParticleVertex BuildParticleVertex(
         const float3 corners[4] = {particle.velocityLifetime.xyz, particle.physicsPositionSeed.xyz,
             particle.birthRotation.xyz, particle.birthScale.xyz};
         const float2 uvs[4] = {float2(0,0),float2(0,1),float2(1,1),float2(1,0)};
-        worldPosition = corners[vertexIndex]; uv = uvs[vertexIndex];
+        const uint grid=ParticleSpatialGrid(gRenderShapeMode);
+        uv = grid>0u ? ParticleSpatialGridUv(vertexIndex,grid) : uvs[vertexIndex];
+        worldPosition=lerp(lerp(corners[0],corners[3],uv.x),lerp(corners[1],corners[2],uv.x),uv.y);
         uv.x = lerp(particle.scaleRotation.z, particle.birthRotation.w, uv.x);
         right = NormalizeOr(corners[3]-corners[0], baseRight);
         normal = NormalizeOr(cross(right, corners[1]-corners[0]), baseNormal);
@@ -86,8 +88,9 @@ ParticleVertex BuildParticleVertex(
             float2(1.0f, 0.0f),
             float2(1.0f, 1.0f)
         };
-        const float2 corner = corners[vertexIndex];
-        uv = uvs[vertexIndex];
+        const uint grid=ParticleSpatialGrid(gRenderShapeMode);
+        const float2 corner = grid>0u ? ParticleSpatialGridUv(vertexIndex,grid)-.5f : corners[vertexIndex];
+        uv = float2(corner.x+.5f,.5f-corner.y);
         uvWorldExtent = float2(abs(particle.scaleRotation.x), abs(particle.scaleRotation.y));
         worldPosition += right * corner.x * particle.scaleRotation.x +
             up * corner.y * particle.scaleRotation.y;
@@ -108,12 +111,17 @@ ParticleVertex BuildParticleVertex(
             const float axisT = saturate(localPosition.y + 0.5f);
             const float widthScale = max(ParticleShapeTaper(axisT), 1.0e-5f);
             const float widthSlope = gDepthParams.w - gDepthParams.z;
-            const float angle = ParticleShapeTwist() * axisT;
+            // 円形断面のねじりは曲面自体を変えない。頂点列を回すと低分割で
+            // 断面が潰れるため、等価な周方向 UV の移動として評価する。
+            const bool circular = gRenderShapeMode == 5u || gRenderShapeMode == 6u;
+            const float geometryTwist = circular ? 0.0f : ParticleShapeTwist();
+            if (circular) uv.x -= ParticleShapeTwist() * axisT * (1.0f / 6.28318530718f);
+            const float angle = geometryTwist * axisT;
             const float2x2 turn = float2x2(cos(angle), -sin(angle), sin(angle), cos(angle));
             const float2 turned = mul(turn, localPosition.xz);
             const float2 crossSection = turned * widthScale;
             const float2 slope = turned * widthSlope +
-                ParticleShapeTwist() * float2(-crossSection.y, crossSection.x) +
+                geometryTwist * float2(-crossSection.y, crossSection.x) +
                 float2(2.0f * ParticleShapeBend() * axisT, 0.0f);
             const float2 normalXZ = mul(turn, localNormal.xz) / widthScale;
             localNormal = float3(normalXZ.x, localNormal.y - dot(slope, normalXZ), normalXZ.y);
@@ -248,6 +256,7 @@ ParticleVertex BuildParticleVertex(
     output.localUv = uv;
     output.materialUv = materialUv;
     output.flipbookFrame = frame;
+    ParticleSpatialVertex(worldPosition,normal,right);
     output.position = mul(gViewProjection, float4(worldPosition, 1.0f));
     if (gDepthMode == HIKARI_PARTICLE_DEPTH_CONTACT_SURFACE)
     {
@@ -257,8 +266,12 @@ ParticleVertex BuildParticleVertex(
                 max(gDepthParams.y, 0.0f) * output.position.w);
     }
     output.color = particle.color;
-    if (gRenderShapeMode == 9u)
-        output.color.a *= vertexIndex < 2u ? particle.physicsPositionSeed.w : particle.birthScale.w;
+    if (gRenderShapeMode == 9u) {
+        const uint grid=ParticleSpatialGrid(gRenderShapeMode);
+        const float t=grid>0u?ParticleSpatialGridUv(vertexIndex,grid).x:(vertexIndex<2u?0:1);
+        output.color.rgb = lerp(particle.orientation.xyz,particle.color.rgb,t);
+        output.color.a *= lerp(particle.physicsPositionSeed.w,particle.birthScale.w,t);
+    }
     output.worldPosition = worldPosition;
     output.worldNormal = normal;
     output.worldTangent = right;
@@ -285,7 +298,7 @@ StructuredBuffer<uint> gParticleAliveCounts : register(t4);
 
 bool ParticleInFrustum(Particle particle)
 {
-    const float3 position = particle.positionAge.xyz;
+    float3 position = particle.positionAge.xyz;
     const float3 scale = abs(particle.scaleRotation.xyw);
     const float taper = max(abs(gDepthParams.z), abs(gDepthParams.w));
     float3 extent = 0.5f.xxx;
@@ -311,6 +324,7 @@ bool ParticleInFrustum(Particle particle)
         radius = max(length(particle.velocityLifetime.xyz - position), length(particle.physicsPositionSeed.xyz - position));
         radius = max(radius, max(length(particle.birthRotation.xyz - position), length(particle.birthScale.xyz - position)));
     }
+    ParticleSpatialBounds(position,radius);
     if (!all(isfinite(position)) || !isfinite(radius)) return true;
     const float4 planes[6] = {
         gViewProjection[3]+gViewProjection[0], gViewProjection[3]-gViewProjection[0],
@@ -342,7 +356,7 @@ void ParticleAS(uint3 groupId : SV_GroupID, uint lane : SV_GroupThreadID)
         gParticlePayload.indices[countbits(gParticleVisibilityMask & ((1u << lane)-1u))] = index;
     if (lane == 0u) gParticlePayload.count = countbits(gParticleVisibilityMask);
     GroupMemoryBarrierWithGroupSync();
-    const uint groups = gRenderShapeMode == 0u ? (gParticlePayload.count+7u)/8u : gParticlePayload.count;
+    const uint groups = gRenderShapeMode == 0u && gShapeState.spatialCount==0u ? (gParticlePayload.count+7u)/8u : gParticlePayload.count;
     DispatchMesh(groups,1u,1u,gParticlePayload);
 }
 
@@ -361,6 +375,7 @@ void ParticleSpriteMS(uint3 groupId : SV_GroupID, uint lane : SV_GroupThreadID,
         const Particle particle = gDrawParticles[payload.indices[groupId.x*8u+slot]];
         float3 right, up, normal;
         ResolveBillboardBasis(particle,right,up,normal);
+    ParticleSpatialBasis(particle,right,up,normal);
         verticesOut[lane] = BuildParticleVertex(particle,lane%4u,1u,right,up,normal);
     }
     if (lane < count*2u)
@@ -397,6 +412,7 @@ void ParticleShapeMS(
             gMeshRight,
             gMeshUp,
             gMeshNormal);
+        ParticleSpatialBasis(gMeshParticle,gMeshRight,gMeshUp,gMeshNormal);
     }
     GroupMemoryBarrierWithGroupSync();
     const Particle particle = gMeshParticle;
@@ -420,6 +436,7 @@ void ParticleShapeMS(
             gMeshRight,
             gMeshUp,
             gMeshNormal);
+        ParticleSpatialBasis(gMeshParticle,gMeshRight,gMeshUp,gMeshNormal);
     }
     for (uint primitiveIndex=groupThreadId;primitiveIndex<primitiveCount;primitiveIndex+=64u)
         trianglesOut[primitiveIndex] =
@@ -432,6 +449,7 @@ ParticleVertex ParticleVS(uint vertexIndex : SV_VertexID, uint instanceIndex : S
     const Particle particle = gDrawParticles[gAliveParticleIndices[gAliveIndexBase+instanceIndex]];
     float3 right,up,normal;
     ResolveBillboardBasis(particle,right,up,normal);
+    ParticleSpatialBasis(particle,right,up,normal);
     // 頂点シェーダ側はメッシュシェーダと同じ分割式でなければ添字が合わない。
     const uint segmentCount = gRenderShapeMode == 0u
         ? 1u

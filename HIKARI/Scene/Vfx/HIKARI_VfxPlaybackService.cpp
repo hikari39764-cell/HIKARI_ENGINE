@@ -1197,8 +1197,7 @@ namespace HIKARI::VFX {
                         instance.randomSeed + child * 0x9e3779b9u);
                     parent = PLAYBACK::ComposeTransforms(parent, {
                         sample.position,
-                        MATH::Quat::FromEulerXYZ(sample.rotationRadians.x,
-                            sample.rotationRadians.y, sample.rotationRadians.z), sample.scale });
+                        EvaluateVfxLayerRotation(layer,sample,std::clamp(submittedAge-start,0.0f,(std::max)(span,0.0f)),span,instance.randomSeed+child*0x9e3779b9u), sample.scale });
                 }
                 const auto inherited = layer.parentEmitterIndex == kInvalidVfxProgramIndex ?
                     MATH::Vec4{1,1,1,1} : instance.groupTints[layer.parentEmitterIndex];
@@ -1281,6 +1280,7 @@ namespace HIKARI::VFX {
             const float layerStart=PLAYBACK::EmitterStartDelay(program,emitter);
             const float layerSpan=PLAYBACK::EmitterActiveEnd(program,emitter)-layerStart;
             EvaluateVfxLayerRenderParameters(emitter,layerSpan>0?(submittedAge-layerStart)/layerSpan:0,submission.render,layerSpan);
+            ProjectAdjustmentParameters(instance, emitter, submittedAge, submission.render);
             if (emitter.kind == VfxLayerKind::Shape) {
                 submission.directShape = true;
                 const float start = PLAYBACK::EmitterStartDelay(program, emitter);

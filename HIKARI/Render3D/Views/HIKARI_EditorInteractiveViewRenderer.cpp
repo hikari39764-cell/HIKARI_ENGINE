@@ -1,24 +1,18 @@
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
+#include "Render3D/Views/HIKARI_EditorViewCapture.h"
 
 #if defined(HIKARI_WITH_EDITOR)
 
 #include <algorithm>
 #include <array>
 #include <cstdint>
-#include <fstream>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#include <wincodec.h>
-#pragma comment(lib, "windowscodecs.lib")
-#endif
+
 
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Core/HIKARI_TimeService.h"
@@ -117,17 +111,6 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         EditorInteractiveSchedulerStats g_schedulerStats{};
         std::unordered_map<uintptr_t, uint32_t>
             g_sceneSourceLeaseCounts{};
-
-        struct PreviewCaptureRequest {
-            bool pending = false;
-            bool done = false;
-            RenderViewId viewId{};
-            std::string path;
-            std::string error;
-        };
-
-        std::mutex g_captureMutex;
-        PreviewCaptureRequest g_captureRequest{};
 
         uint64_t NextNonZero(uint64_t value) noexcept {
             ++value;
@@ -284,386 +267,6 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             state.output.width = 0u;
             state.output.height = 0u;
             state.output.sceneRevision = 0u;
-        }
-
-        bool WriteBmp(
-            const std::string& path,
-            int width,
-            int height,
-            UINT sourcePitch,
-            const uint8_t* source) {
-            const int destinationRow =
-                ((width * 3 + 3) / 4) * 4;
-            const uint32_t imageSize =
-                static_cast<uint32_t>(destinationRow) *
-                static_cast<uint32_t>(height);
-            const uint32_t fileSize = 54u + imageSize;
-            std::ofstream output(path, std::ios::binary);
-            if (!output) {
-                return false;
-            }
-            uint8_t header[54] = {};
-            header[0] = 'B';
-            header[1] = 'M';
-            header[2] = static_cast<uint8_t>(fileSize & 0xffu);
-            header[3] = static_cast<uint8_t>((fileSize >> 8u) & 0xffu);
-            header[4] = static_cast<uint8_t>((fileSize >> 16u) & 0xffu);
-            header[5] = static_cast<uint8_t>((fileSize >> 24u) & 0xffu);
-            header[10] = 54u;
-            header[14] = 40u;
-            const auto writeInt = [&header](size_t offset, int32_t value) {
-                const uint32_t bits = static_cast<uint32_t>(value);
-                for (size_t index = 0u; index < 4u; ++index) {
-                    header[offset + index] =
-                        static_cast<uint8_t>((bits >> (index * 8u)) & 0xffu);
-                }
-            };
-            writeInt(18, width);
-            writeInt(22, height);
-            header[26] = 1u;
-            header[28] = 24u;
-            writeInt(34, static_cast<int32_t>(imageSize));
-            output.write(
-                reinterpret_cast<const char*>(header), sizeof(header));
-            std::vector<uint8_t> row(
-                static_cast<size_t>(destinationRow));
-            for (int y = height - 1; y >= 0; --y) {
-                const uint8_t* sourceRow =
-                    source + static_cast<size_t>(y) * sourcePitch;
-                for (int x = 0; x < width; ++x) {
-                    row[static_cast<size_t>(x) * 3u + 0u] =
-                        sourceRow[static_cast<size_t>(x) * 4u + 2u];
-                    row[static_cast<size_t>(x) * 3u + 1u] =
-                        sourceRow[static_cast<size_t>(x) * 4u + 1u];
-                    row[static_cast<size_t>(x) * 3u + 2u] =
-                        sourceRow[static_cast<size_t>(x) * 4u + 0u];
-                }
-                output.write(
-                    reinterpret_cast<const char*>(row.data()),
-                    row.size());
-            }
-            return output.good();
-        }
-
-#ifdef _WIN32
-        std::wstring WideFromUtf8(const std::string& value) {
-            if (value.empty()) {
-                return {};
-            }
-            const int required = MultiByteToWideChar(
-                CP_UTF8, 0, value.data(),
-                static_cast<int>(value.size()), nullptr, 0);
-            if (required <= 0) {
-                return {};
-            }
-            std::wstring result(
-                static_cast<size_t>(required), L'\0');
-            (void)MultiByteToWideChar(
-                CP_UTF8, 0, value.data(),
-                static_cast<int>(value.size()),
-                result.data(), required);
-            return result;
-        }
-
-        bool WritePng(
-            const std::string& path,
-            int width,
-            int height,
-            UINT sourcePitch,
-            const uint8_t* source) {
-            const HRESULT coResult =
-                CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-            const bool coInitialized = (coResult == S_OK);
-            const bool comAvailable =
-                coResult == S_OK ||
-                coResult == S_FALSE ||
-                coResult == RPC_E_CHANGED_MODE;
-            if (!comAvailable) {
-                return false;
-            }
-            const UINT stride = static_cast<UINT>(width) * 4u;
-            std::vector<uint8_t> pixels(
-                static_cast<size_t>(stride) *
-                static_cast<size_t>(height));
-            for (int y = 0; y < height; ++y) {
-                const uint8_t* sourceRow =
-                    source + static_cast<size_t>(y) * sourcePitch;
-                uint8_t* targetRow =
-                    pixels.data() + static_cast<size_t>(y) * stride;
-                for (int x = 0; x < width; ++x) {
-                    const size_t sourceIndex =
-                        static_cast<size_t>(x) * 4u;
-                    const size_t targetIndex =
-                        static_cast<size_t>(x) * 4u;
-                    targetRow[targetIndex + 0u] =
-                        sourceRow[sourceIndex + 2u];
-                    targetRow[targetIndex + 1u] =
-                        sourceRow[sourceIndex + 1u];
-                    targetRow[targetIndex + 2u] =
-                        sourceRow[sourceIndex + 0u];
-                    targetRow[targetIndex + 3u] =
-                        sourceRow[sourceIndex + 3u];
-                }
-            }
-
-            bool succeeded = false;
-            IWICImagingFactory* factory = nullptr;
-            IWICStream* stream = nullptr;
-            IWICBitmapEncoder* encoder = nullptr;
-            IWICBitmapFrameEncode* frame = nullptr;
-            HRESULT hr = CoCreateInstance(
-                CLSID_WICImagingFactory,
-                nullptr,
-                CLSCTX_INPROC_SERVER,
-                IID_PPV_ARGS(&factory));
-            if (SUCCEEDED(hr)) {
-                hr = factory->CreateStream(&stream);
-            }
-            if (SUCCEEDED(hr)) {
-                hr = stream->InitializeFromFilename(
-                    WideFromUtf8(path).c_str(), GENERIC_WRITE);
-            }
-            if (SUCCEEDED(hr)) {
-                hr = factory->CreateEncoder(
-                    GUID_ContainerFormatPng, nullptr, &encoder);
-            }
-            if (SUCCEEDED(hr)) {
-                hr = encoder->Initialize(stream, WICBitmapEncoderNoCache);
-            }
-            if (SUCCEEDED(hr)) {
-                hr = encoder->CreateNewFrame(&frame, nullptr);
-            }
-            if (SUCCEEDED(hr)) {
-                hr = frame->Initialize(nullptr);
-            }
-            if (SUCCEEDED(hr)) {
-                hr = frame->SetSize(
-                    static_cast<UINT>(width),
-                    static_cast<UINT>(height));
-            }
-            WICPixelFormatGUID format = GUID_WICPixelFormat32bppBGRA;
-            if (SUCCEEDED(hr)) {
-                hr = frame->SetPixelFormat(&format);
-            }
-            if (SUCCEEDED(hr)) {
-                hr = frame->WritePixels(
-                    static_cast<UINT>(height),
-                    stride,
-                    static_cast<UINT>(pixels.size()),
-                    pixels.data());
-            }
-            if (SUCCEEDED(hr)) {
-                hr = frame->Commit();
-            }
-            if (SUCCEEDED(hr)) {
-                hr = encoder->Commit();
-            }
-            succeeded = SUCCEEDED(hr);
-            if (frame != nullptr) {
-                frame->Release();
-            }
-            if (encoder != nullptr) {
-                encoder->Release();
-            }
-            if (stream != nullptr) {
-                stream->Release();
-            }
-            if (factory != nullptr) {
-                factory->Release();
-            }
-            if (coInitialized) {
-                CoUninitialize();
-            }
-            return succeeded;
-        }
-#endif
-
-        bool WriteCaptureImage(
-            const std::string& path,
-            int width,
-            int height,
-            UINT sourcePitch,
-            const uint8_t* source) {
-#ifdef _WIN32
-            const std::string lower = path;
-            const auto endsWithPng = [&lower]() {
-                if (lower.size() < 4u) {
-                    return false;
-                }
-                const auto asciiLower = [](char c) {
-                    return c >= 'A' && c <= 'Z'
-                        ? static_cast<char>(c - 'A' + 'a')
-                        : c;
-                };
-                return asciiLower(lower[lower.size() - 4u]) == '.' &&
-                    asciiLower(lower[lower.size() - 3u]) == 'p' &&
-                    asciiLower(lower[lower.size() - 2u]) == 'n' &&
-                    asciiLower(lower[lower.size() - 1u]) == 'g';
-            };
-            if (endsWithPng()) {
-                return WritePng(
-                    path, width, height, sourcePitch, source);
-            }
-#else
-            (void)path;
-#endif
-            return WriteBmp(
-                path, width, height, sourcePitch, source);
-        }
-
-        void TryRunPendingCapture(InteractiveViewState& state) {
-            PreviewCaptureRequest request{};
-            {
-                std::lock_guard<std::mutex> lock(g_captureMutex);
-                if (!g_captureRequest.pending ||
-                    g_captureRequest.viewId != state.request.viewId) {
-                    return;
-                }
-                request = g_captureRequest;
-                g_captureRequest.pending = false;
-            }
-            const auto finish = [](std::string error) {
-                std::lock_guard<std::mutex> lock(g_captureMutex);
-                g_captureRequest.done = true;
-                g_captureRequest.error = std::move(error);
-            };
-
-            RenderTarget2D* target = state.request.spatialAntiAliasing
-                ? state.antialiasedTarget.get() : state.displayTarget.get();
-            if (target == nullptr || !target->IsInitialized()) {
-                finish("预览目标不可用");
-                return;
-            }
-            const int width = target->GetWidth();
-            const int height = target->GetHeight();
-            if (width <= 0 || height <= 0 ||
-                target->GetFormat() != DXGI_FORMAT_R8G8B8A8_UNORM) {
-                finish("预览截图目前只支持 RGBA8 显示目标");
-                return;
-            }
-
-            ID3D12Device* device = GFX::GetCurrentContext().device;
-            ID3D12CommandQueue* queue = GFX::GetCurrentContext().queue;
-            if (device == nullptr || queue == nullptr) {
-                finish("GPU 上下文不可用");
-                return;
-            }
-            const UINT sourcePitch = static_cast<UINT>(
-                (static_cast<UINT64>(width) * 4u +
-                 D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1u) &
-                ~(D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1u));
-            const UINT64 totalBytes =
-                static_cast<UINT64>(sourcePitch) *
-                static_cast<UINT64>(height);
-
-            Microsoft::WRL::ComPtr<ID3D12Resource> staging;
-            Microsoft::WRL::ComPtr<ID3D12CommandAllocator> allocator;
-            Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> list;
-            Microsoft::WRL::ComPtr<ID3D12Fence> fence;
-            HANDLE eventHandle = nullptr;
-            D3D12_RESOURCE_DESC stagingDesc =
-                CD3DX12_RESOURCE_DESC::Buffer(totalBytes);
-            CD3DX12_HEAP_PROPERTIES readbackHeap(
-                D3D12_HEAP_TYPE_READBACK);
-            if (FAILED(device->CreateCommittedResource(
-                    &readbackHeap,
-                    D3D12_HEAP_FLAG_NONE,
-                    &stagingDesc,
-                    D3D12_RESOURCE_STATE_COPY_DEST,
-                    nullptr,
-                    IID_PPV_ARGS(&staging))) ||
-                FAILED(device->CreateCommandAllocator(
-                    D3D12_COMMAND_LIST_TYPE_DIRECT,
-                    IID_PPV_ARGS(&allocator))) ||
-                FAILED(device->CreateCommandList(
-                    0,
-                    D3D12_COMMAND_LIST_TYPE_DIRECT,
-                    allocator.Get(),
-                    nullptr,
-                    IID_PPV_ARGS(&list))) ||
-                FAILED(device->CreateFence(
-                    0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence)))) {
-                finish("创建截图读回资源失败");
-                return;
-            }
-            eventHandle = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-            if (eventHandle == nullptr) {
-                finish("创建截图事件失败");
-                return;
-            }
-
-            const D3D12_RESOURCE_STATES previousState =
-                target->GetColorState();
-            D3D12_RESOURCE_BARRIER toCopy =
-                CD3DX12_RESOURCE_BARRIER::Transition(
-                    target->GetResource(),
-                    previousState,
-                    D3D12_RESOURCE_STATE_COPY_SOURCE);
-            list->ResourceBarrier(1, &toCopy);
-            D3D12_TEXTURE_COPY_LOCATION sourceLocation{};
-            sourceLocation.pResource = target->GetResource();
-            sourceLocation.Type =
-                D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-            D3D12_TEXTURE_COPY_LOCATION destinationLocation{};
-            destinationLocation.pResource = staging.Get();
-            destinationLocation.Type =
-                D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-            destinationLocation.PlacedFootprint.Offset = 0u;
-            destinationLocation.PlacedFootprint.Footprint.Format =
-                DXGI_FORMAT_R8G8B8A8_UNORM;
-            destinationLocation.PlacedFootprint.Footprint.Width =
-                static_cast<UINT>(width);
-            destinationLocation.PlacedFootprint.Footprint.Height =
-                static_cast<UINT>(height);
-            destinationLocation.PlacedFootprint.Footprint.Depth = 1u;
-            destinationLocation.PlacedFootprint.Footprint.RowPitch =
-                sourcePitch;
-            D3D12_BOX sourceBox{
-                0u, 0u, 0u,
-                static_cast<UINT>(width),
-                static_cast<UINT>(height),
-                1u
-            };
-            list->CopyTextureRegion(
-                &destinationLocation, 0u, 0u, 0u,
-                &sourceLocation, &sourceBox);
-            D3D12_RESOURCE_BARRIER toPrevious =
-                CD3DX12_RESOURCE_BARRIER::Transition(
-                    target->GetResource(),
-                    D3D12_RESOURCE_STATE_COPY_SOURCE,
-                    previousState);
-            list->ResourceBarrier(1, &toPrevious);
-            (void)list->Close();
-
-            ID3D12CommandList* commandLists[] = { list.Get() };
-            queue->ExecuteCommandLists(1u, commandLists);
-            (void)queue->Signal(fence.Get(), 1ull);
-            (void)fence->SetEventOnCompletion(1ull, eventHandle);
-            if (WaitForSingleObject(eventHandle, 5000u) != WAIT_OBJECT_0) {
-                CloseHandle(eventHandle);
-                finish("截图读回超时");
-                return;
-            }
-            CloseHandle(eventHandle);
-
-            void* mapped = nullptr;
-            if (FAILED(staging->Map(0, nullptr, &mapped)) ||
-                mapped == nullptr) {
-                finish("截图读回映射失败");
-                return;
-            }
-            const bool written = WriteCaptureImage(
-                request.path,
-                width,
-                height,
-                sourcePitch,
-                static_cast<const uint8_t*>(mapped));
-            staging->Unmap(0, nullptr);
-            if (!written) {
-                finish("截图写入失败：" + request.path);
-                return;
-            }
-            finish({});
         }
 
         InteractiveViewState& FindOrCreateState(RenderViewId viewId) {
@@ -925,6 +528,9 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                 std::move(sceneColorReplacement);
             state.displayTarget = std::move(displayReplacement);
             state.antialiasedTarget = std::move(aaReplacement);
+            // 新しいターゲットにはまだ表示用の画像がない。
+            // 旧 outputRevision の ready を引き継ぐと空の画像を取得してしまう。
+            state.output.ready = false;
             ++state.targetGeneration;
             if (state.targetGeneration == 0) {
                 state.targetGeneration = 1;
@@ -1469,33 +1075,6 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         g_views.erase(found);
     }
 
-    void RequestPreviewCapture(
-        RenderViewId viewId, const std::string& outputPath) {
-        std::lock_guard<std::mutex> lock(g_captureMutex);
-        g_captureRequest = {
-            true, false, viewId, outputPath, {}
-        };
-        // 停止中のプレビューにも capture 用の描画を一度予約する。
-        const auto found = g_views.find(viewId.value);
-        if (found != g_views.end() && found->second->hasRequest) {
-            found->second->pendingSerial = g_requestSerial = NextNonZero(g_requestSerial);
-            MarkOutputPending(*found->second);
-        }
-    }
-
-    bool PollPreviewCapture(
-        const std::string& outputPath, std::string& outError) {
-        std::lock_guard<std::mutex> lock(g_captureMutex);
-        if (!g_captureRequest.pending && !g_captureRequest.done) {
-            return false;
-        }
-        if (g_captureRequest.path != outputPath) {
-            return false;
-        }
-        outError = g_captureRequest.error;
-        return g_captureRequest.done;
-    }
-
     bool RenderPending(
         const SceneEnvironment& environment,
         const LIGHTING::SceneLightingSet& lighting,
@@ -1510,6 +1089,16 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         const WORLD_TEXT::WorldTextFrameSource*
             worldTextFrameSource) {
 
+        ScheduleViewCaptures([](RenderViewId id)->std::optional<uint64_t> {
+            const auto found=g_views.find(id.value);
+            if (found==g_views.end() || !found->second->hasRequest || !found->second->request.visible) return {};
+            auto& state=*found->second;
+            if (!state.pending) {
+                state.pendingSerial=g_requestSerial=NextNonZero(g_requestSerial);
+                MarkOutputPending(state);
+            }
+            return state.output.outputRevision;
+        });
         InteractiveViewState* selectedStatic = nullptr;
         InteractiveViewState* selectedRealtime = nullptr;
         uint32_t renderableViewCount = 0u;
@@ -1633,7 +1222,10 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                 EditorInteractiveViewFailure::RenderTargetUnavailable);
             return false;
         }
-        TryRunPendingCapture(*selected);
+        auto* captureTarget=selected->request.spatialAntiAliasing ? selected->antialiasedTarget.get() : selected->displayTarget.get();
+        if (captureTarget) RecordViewCapture(selected->request.viewId,selected->output.ready,
+            selected->output.outputRevision,captureTarget->GetResource(),captureTarget->GetColorState(),
+            static_cast<uint32_t>(captureTarget->GetWidth()),static_cast<uint32_t>(captureTarget->GetHeight()));
 
         const std::array<float, 4> clearColor = ResolveClearColor(
             selected->request.shadingMode);
@@ -1903,6 +1495,7 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
     }
 
     void Shutdown() {
+        ShutdownViewCaptures();
         RENDERER3D::DEBUG::ShutdownEditorViewResources();
         for (auto& [viewValue, state] : g_views) {
             (void)viewValue;

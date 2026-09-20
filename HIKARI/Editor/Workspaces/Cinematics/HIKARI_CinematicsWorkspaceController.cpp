@@ -4,47 +4,15 @@
 #include <cmath>
 
 #include "Core/Text/HIKARI_Localization.h"
+#include "Editor/Authoring/HIKARI_SequencePreviewBindingResolver.h"
 #include "Editor/HIKARI_EditorContext.h"
 #include "Editor/HIKARI_SelectionSyncService.h"
 #include "Editor/Views/Director/HIKARI_DirectorCameraPose.h"
 #include "Scene/Components/HIKARI_CameraComponent.h"
-#include "Scene/HIKARI_GameObject.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
+#include "Scene/HIKARI_GameObject.h"
 
 namespace HIKARI::EDITOR {
-
-namespace {
-bool IsEnabledCameraObject(const DocumentSceneBase &scene,
-                           SceneObjectId cameraObjectId) {
-
-  if (cameraObjectId.value == 0) {
-    return false;
-  }
-  const GameObject *object = scene.GetWorld().FindObject(cameraObjectId);
-  const CameraComponent *camera =
-      object != nullptr ? object->GetComponent<CameraComponent>() : nullptr;
-  return camera != nullptr && camera->IsEnabled();
-}
-
-GameObject *FindRuntimeObject(DocumentSceneBase &scene,
-                              SceneObjectId objectId) {
-
-  return scene.GetWorld().FindObject(objectId);
-}
-
-CameraBlendDesc
-CameraBlendFromTimelineResult(const CameraTimelinePanelResult &result) {
-
-  CameraBlendDesc blend{};
-  if (result.forceCameraCut || result.evaluation.transition.mode ==
-                                   SEQUENCER::CameraCutTransitionMode::Cut) {
-    return blend;
-  }
-  blend.mode = CameraBlendMode::EaseInOut;
-  blend.durationSeconds = result.evaluation.transition.durationSeconds;
-  return blend;
-}
-} // namespace
 
 bool CinematicsWorkspaceController::RequestOpenSequenceAsset(
     DocumentSceneBase &scene, const AssetGuid &assetGuid,
@@ -54,7 +22,7 @@ bool CinematicsWorkspaceController::RequestOpenSequenceAsset(
       scene.GetAssetDatabase(), assetGuid, outMessage);
   sequenceLibraryPanel_.Select(assetGuid);
   if (sequenceDocumentController_.ConsumeTimelineResetRequested()) {
-    cameraTimelinePanel_.ResetForScene();
+    ResetEditing(scene);
   }
   return opened;
 }
@@ -85,7 +53,7 @@ bool CinematicsWorkspaceController::SaveSequenceDocument(
   const bool saved =
       sequenceDocumentController_.Save(scene.GetAssetDatabase(), outMessage);
   if (sequenceDocumentController_.ConsumeTimelineResetRequested()) {
-    cameraTimelinePanel_.ResetForScene();
+    ResetEditing(scene);
   }
   return saved;
 }
@@ -95,7 +63,9 @@ bool CinematicsWorkspaceController::UndoSequenceDocument(
 
   const bool changed = sequenceDocumentController_.Undo(outMessage);
   if (sequenceDocumentController_.ConsumeTimelineResetRequested()) {
-    cameraTimelinePanel_.ResetForScene();
+    cursor_.Pause();
+    previewChanged_ = true;
+    selectedId_ = 0;
   }
   return changed;
 }
@@ -105,7 +75,9 @@ bool CinematicsWorkspaceController::RedoSequenceDocument(
 
   const bool changed = sequenceDocumentController_.Redo(outMessage);
   if (sequenceDocumentController_.ConsumeTimelineResetRequested()) {
-    cameraTimelinePanel_.ResetForScene();
+    cursor_.Pause();
+    previewChanged_ = true;
+    selectedId_ = 0;
   }
   return changed;
 }
@@ -116,7 +88,7 @@ bool CinematicsWorkspaceController::RequestNewSequenceAsset(
   const bool requested = sequenceDocumentController_.RequestNewAsset(
       scene.GetAssetDatabase(), outMessage);
   if (sequenceDocumentController_.ConsumeTimelineResetRequested()) {
-    cameraTimelinePanel_.ResetForScene();
+    ResetEditing(scene);
   }
   return requested;
 }
@@ -127,7 +99,7 @@ bool CinematicsWorkspaceController::RequestRevertSequenceAsset(
   const bool requested = sequenceDocumentController_.RequestRevert(
       scene.GetAssetDatabase(), outMessage);
   if (sequenceDocumentController_.ConsumeTimelineResetRequested()) {
-    cameraTimelinePanel_.ResetForScene();
+    ResetEditing(scene);
   }
   return requested;
 }
@@ -138,7 +110,7 @@ bool CinematicsWorkspaceController::RequestCloseSequenceAsset(
   const bool requested = sequenceDocumentController_.RequestCloseToEmbedded(
       scene.GetAssetDatabase(), outMessage);
   if (sequenceDocumentController_.ConsumeTimelineResetRequested()) {
-    cameraTimelinePanel_.ResetForScene();
+    ResetEditing(scene);
   }
   return requested;
 }
@@ -159,394 +131,192 @@ void CinematicsWorkspaceController::BindDocumentCommands(
     EditorCommandRouter &commandRouter, DocumentSceneBase &scene) {
 
   (void)scene;
-  commandRouter.BindOperation(
-      EditorCommandId::SaveDocument,
-      TEXT::Localize("ui.cinematics.save"),
-      IsEditingSequenceAsset(),
-      "cinematics.save");
-  commandRouter.BindOperation(
-      EditorCommandId::Undo,
-      TEXT::Localize("ui.cinematics.undo"),
-      CanUndoSequenceDocument(),
-      "cinematics.undo");
-  commandRouter.BindOperation(
-      EditorCommandId::Redo,
-      TEXT::Localize("ui.cinematics.redo"),
-      CanRedoSequenceDocument(),
-      "cinematics.redo");
+  commandRouter.BindOperation(EditorCommandId::SaveDocument,
+                              TEXT::Localize("ui.cinematics.save"),
+                              IsEditingSequenceAsset(), "cinematics.save");
+  commandRouter.BindOperation(EditorCommandId::Undo,
+                              TEXT::Localize("ui.cinematics.undo"),
+                              CanUndoSequenceDocument(), "cinematics.undo");
+  commandRouter.BindOperation(EditorCommandId::Redo,
+                              TEXT::Localize("ui.cinematics.redo"),
+                              CanRedoSequenceDocument(), "cinematics.redo");
 }
 
-void CinematicsWorkspaceController::PrepareForRuntimePlay() {
+void CinematicsWorkspaceController::ResetEditing(DocumentSceneBase &scene) {
+  if (ownsPreview_) {
+    scene.EndSequencePreview();
+    ownsPreview_ = false;
+  }
+  cursor_.Clear();
+  selectedId_ = 0;
+  previewEnabled_ = false;
+  previewChanged_ = true;
+  previewBindings_.Clear();
+  if (IsEditingSequenceAsset())
+    RestoreSequencePreviewBindings(scene.GetSceneDocument(), GetSequenceDocument().GetAssetGuid(),
+        ActiveSequence(scene), previewBindings_);
+}
+
+void CinematicsWorkspaceController::PrepareForRuntimePlay(
+    DocumentSceneBase &scene) {
+  if (ownsPreview_) {
+    scene.EndSequencePreview();
+    ownsPreview_ = false;
+  }
+  cursor_.Pause();
+  previewEnabled_ = false;
   directorViewPanel_.ExitPilot();
 }
 
 void CinematicsWorkspaceController::OnCinematicsDocumentRestored(
-    DocumentSceneBase &scene, EditorWorkspaceHost &workspaceHost) {
-
-  cameraTimelinePanel_.ResetForScene();
-  RestoreTimelinePreview(scene, workspaceHost);
-  timelinePreviewOwned_ = false;
-  timelinePreviewShotId_ = 0;
-  timelineRestoreCameraObjectId_.reset();
+    DocumentSceneBase &scene, EditorWorkspaceHost &) {
+  if (ownsPreview_) {
+    scene.EndSequencePreview();
+    ownsPreview_ = false;
+  }
+  cursor_.Pause();
+  previewChanged_ = true;
 }
 
 void CinematicsWorkspaceController::ApplyWorkspaceActivation(
     DocumentSceneBase &scene, const EditorWorkspaceActivation &activation,
-    EditorContext &context, EditorWorkspaceHost &workspaceHost) {
-
-  (void)context;
-  if (activation.current == EditorWorkspaceId::Cinematics &&
-      activation.sequenceAssetGuid && activation.sequenceAssetGuid->IsValid()) {
-    (void)RequestOpenSequenceAsset(scene, *activation.sequenceAssetGuid,
-                                   pendingStatusMessage_);
-  }
-
+    EditorContext &, EditorWorkspaceHost &) {
   if (activation.previous == EditorWorkspaceId::Cinematics &&
       activation.current != EditorWorkspaceId::Cinematics) {
-    cameraTimelinePanel_.PausePlayback();
-    timelinePreviewOwned_ = false;
-    timelinePreviewShotId_ = 0;
-    timelineRestoreCameraObjectId_.reset();
-    if (cameraPreviewOwned_) {
-      scene.EndEditorCameraPreview();
-      if (preWorkspacePreviewObjectId_ && !scene.IsRuntimePlayActive()) {
-        (void)scene.BeginEditorCameraPreview(*preWorkspacePreviewObjectId_);
-      }
+    if (ownsPreview_) {
+      scene.EndSequencePreview();
+      ownsPreview_ = false;
     }
-    cameraPreviewOwned_ = false;
-    preWorkspacePreviewObjectId_.reset();
-    ClearCameraBinding(workspaceHost);
+    cursor_.Pause();
+    previewEnabled_ = false;
     directorViewPanel_.LeaveWorkspace();
-    return;
   }
-
-  if (activation.current != EditorWorkspaceId::Cinematics) {
-    return;
-  }
-  if (activation.previous == EditorWorkspaceId::Cinematics &&
-      !activation.targetCameraObjectId && !activation.sequenceAssetGuid) {
-    return;
-  }
-
-  if (activation.previous != EditorWorkspaceId::Cinematics) {
-    cameraPreviewOwned_ = false;
-    preWorkspacePreviewObjectId_.reset();
-    if (scene.IsEditorCameraPreviewActive()) {
-      preWorkspacePreviewObjectId_ = scene.GetEditorCameraPreviewObjectId();
-    }
-  }
-
-  std::optional<SceneObjectId> targetCamera = activation.targetCameraObjectId;
-  if (!targetCamera && activation.previous != EditorWorkspaceId::Cinematics) {
-    targetCamera = preWorkspacePreviewObjectId_
-                       ? preWorkspacePreviewObjectId_
-                       : scene.GetSceneDocument().camera.defaultCameraObjectId;
-  }
-  if (!targetCamera || !IsEnabledCameraObject(scene, *targetCamera)) {
-    std::optional<SceneObjectId> activePreviewCamera;
-    if (scene.IsEditorCameraPreviewActive()) {
-      activePreviewCamera = scene.GetEditorCameraPreviewObjectId();
-    }
-    if (activePreviewCamera &&
-        IsEnabledCameraObject(scene, *activePreviewCamera)) {
-      targetCamera = activePreviewCamera;
-    } else {
-      if (cameraPreviewOwned_ && !scene.IsRuntimePlayActive()) {
-        scene.EndEditorCameraPreview();
+  if (activation.current == EditorWorkspaceId::Cinematics) {
+    const auto& sceneDocument=scene.GetSceneDocument();
+    const bool emptyEmbedded=std::all_of(sceneDocument.cinematics.sequences.begin(),sceneDocument.cinematics.sequences.end(),
+        [](const auto& sequence){return GetCinematicSequenceContentEnd(sequence)==0;});
+    if (!IsEditingSequenceAsset() && emptyEmbedded) {
+      AssetGuid candidate;
+      bool ambiguous=false;
+      for (const auto& object:sceneDocument.objects) for (const auto& component:object.components) {
+        if (component.type!="SequencePlayerComponent" || !component.properties.is_object()) continue;
+        const auto value=component.properties.find("sequenceAssetGuid");
+        if (value==component.properties.end() || !value->is_string() || value->get_ref<const std::string&>().empty()) continue;
+        const auto guid=value->get<std::string>();
+        if (candidate.IsValid() && candidate.value!=guid) ambiguous=true;
+        candidate.value=guid;
       }
-      cameraPreviewOwned_ = false;
-      ClearCameraBinding(workspaceHost);
-      return;
+      if (candidate.IsValid() && !ambiguous)
+        RequestOpenSequenceAsset(scene,candidate,pendingStatusMessage_);
     }
-  }
-
-  boundCameraObjectId_ = *targetCamera;
-  (void)directorViewPanel_.FrameTargetCamera(
-      scene, *targetCamera, 10.0f);
-  EditorViewInstance &gameView = workspaceHost.GetCinematicsGameView();
-  gameView.cameraBinding.kind = EditorViewCameraSourceKind::SceneCameraObject;
-  gameView.cameraBinding.sceneObjectId = *targetCamera;
-
-  if (!scene.IsRuntimePlayActive() &&
-      (!scene.IsEditorCameraPreviewActive() ||
-       !(scene.GetEditorCameraPreviewObjectId() == *targetCamera))) {
-    cameraPreviewOwned_ = scene.BeginEditorCameraPreview(*targetCamera);
-    if (!cameraPreviewOwned_) {
-      ClearCameraBinding(workspaceHost);
-    }
+    const auto cameraId=scene.GetSceneDocument().camera.defaultCameraObjectId.value_or(SceneObjectId{});
+    directorViewPanel_.FrameTargetCamera(scene,cameraId);
+    directorViewPanel_.SetTargetCamera({});
   }
 }
 
-void CinematicsWorkspaceController::SyncSceneIdentity(
-    DocumentSceneBase &scene, EditorWorkspaceHost &workspaceHost) {
-
-  const uint64_t currentRevision = scene.GetSceneDocumentRevision();
-  const AssetGuid &sceneGuid = scene.GetCurrentSceneAssetGuid();
-  const std::string currentIdentity =
-      sceneGuid.IsValid() ? "Asset:" + sceneGuid.value
-                          : "Transient:" + scene.GetSceneId() + ":" +
-                                std::to_string(currentRevision);
-  if (sceneIdentity_.empty()) {
-    sceneIdentity_ = currentIdentity;
-    sceneDocumentRevision_ = currentRevision;
-    return;
-  }
-
-  const bool sceneChanged = sceneIdentity_ != currentIdentity;
-  const bool documentReloaded = sceneDocumentRevision_ != currentRevision;
-  if (!sceneChanged && !documentReloaded) {
-    return;
-  }
-
-  directorViewPanel_.ResetForScene();
-  cameraTimelinePanel_.ResetForScene();
-  cameraPreviewOwned_ = false;
-  timelinePreviewOwned_ = false;
-  timelinePreviewShotId_ = 0;
-  preWorkspacePreviewObjectId_.reset();
-  timelineRestoreCameraObjectId_.reset();
-  if (sceneChanged || (boundCameraObjectId_ &&
-                       !IsEnabledCameraObject(scene, *boundCameraObjectId_))) {
-    ClearCameraBinding(workspaceHost);
-  }
-
-  if (workspaceHost.IsActive(EditorWorkspaceId::Cinematics) &&
-      !boundCameraObjectId_) {
-    const std::optional<SceneObjectId> defaultCamera =
-        scene.GetSceneDocument().camera.defaultCameraObjectId;
-    if (defaultCamera && IsEnabledCameraObject(scene, *defaultCamera)) {
-      boundCameraObjectId_ = *defaultCamera;
-      (void)directorViewPanel_.FrameTargetCamera(
-          scene, *defaultCamera, 10.0f);
-      EditorViewInstance &gameView = workspaceHost.GetCinematicsGameView();
-      gameView.cameraBinding.kind =
-          EditorViewCameraSourceKind::SceneCameraObject;
-      gameView.cameraBinding.sceneObjectId = *defaultCamera;
-    }
-  }
-
-  sceneIdentity_ = currentIdentity;
-  sceneDocumentRevision_ = currentRevision;
-}
-
-void CinematicsWorkspaceController::ApplyCameraOverviewAction(
-    DocumentSceneBase &scene, const CameraOverviewAction &action,
-    EditorContext &context, EditorWorkspaceHost &workspaceHost,
-    CinematicsWorkspaceResult &result) {
-
-  if (!action.IsValid()) {
-    return;
-  }
-
-  switch (action.kind) {
-  case CameraOverviewActionKind::Select:
-    directorViewPanel_.SetTargetCamera(action.cameraObjectId);
-    break;
-  case CameraOverviewActionKind::SetDefault:
-    directorViewPanel_.SetTargetCamera(action.cameraObjectId);
-    if (scene.SetGameDefaultCamera(action.cameraObjectId)) {
-      context.sceneDirty = true;
-      scene.SetUnsavedSceneChanges(true);
-    }
-    break;
-  case CameraOverviewActionKind::ViewThrough:
-    cameraTimelinePanel_.SuspendPreview();
-    timelinePreviewOwned_ = false;
-    timelinePreviewShotId_ = 0;
-    timelineRestoreCameraObjectId_.reset();
-    directorViewPanel_.SetTargetCamera(action.cameraObjectId);
-    if (scene.IsRuntimePlayActive()) {
-      result.statusMessage =
-          "Camera preview is unavailable while Play is running";
-      break;
-    }
-    if (BindCameraPreview(scene, action.cameraObjectId, workspaceHost)) {
-      cameraPreviewOwned_ = true;
-    }
-    break;
-  case CameraOverviewActionKind::ExitView:
-    cameraTimelinePanel_.SuspendPreview();
-    timelinePreviewOwned_ = false;
-    timelinePreviewShotId_ = 0;
-    timelineRestoreCameraObjectId_.reset();
-    scene.EndEditorCameraPreview();
-    cameraPreviewOwned_ = false;
-    preWorkspacePreviewObjectId_.reset();
-    ClearCameraBinding(workspaceHost);
-    break;
-  case CameraOverviewActionKind::SnapToView: {
-    const DirectorCameraPose pose =
-        MakeDirectorCameraPose(
-            directorViewPanel_.GetViewCamera());
-    if (scene.ApplyCameraObjectPose(action.cameraObjectId, pose.position,
-                                    pose.rotation, true)) {
-      directorViewPanel_.SetTargetCamera(action.cameraObjectId);
-      context.sceneDirty = true;
-      scene.SetUnsavedSceneChanges(true);
-    }
-  } break;
-  default:
-    break;
+void CinematicsWorkspaceController::SyncSceneIdentity(DocumentSceneBase &scene,
+                                                      EditorWorkspaceHost &) {
+  const auto &guid = scene.GetCurrentSceneAssetGuid();
+  const std::string identity = guid.IsValid() ? guid.value : scene.GetSceneId();
+  if (sceneIdentity_ != identity ||
+      sceneDocumentRevision_ != scene.GetSceneDocumentRevision()) {
+    ResetEditing(scene);
+    directorViewPanel_.ResetForScene();
+    sceneIdentity_ = identity;
+    sceneDocumentRevision_ = scene.GetSceneDocumentRevision();
   }
 }
 
-void CinematicsWorkspaceController::ApplyDirectorViewResult(
-    DocumentSceneBase &scene, const DirectorViewPanelResult &result,
-    EditorContext &context, SelectionSyncService &selectionSync) {
-
-  if (result.selectionRequested) {
-    if (GameObject *object =
-            FindRuntimeObject(scene, result.selectedObjectId)) {
-      context.selection.SelectObject(scene.GetWorld(), object);
-    }
+CinematicSequence &
+CinematicsWorkspaceController::ActiveSequence(DocumentSceneBase &scene) {
+  auto &settings = sequenceDocumentController_.GetDocument().GetSettings(
+      scene.GetSceneDocument().cinematics);
+  auto *sequence = FindCinematicSequence(settings, activeSequenceId_);
+  if (!sequence) {
+    if (settings.sequences.empty())
+      settings.sequences.push_back({});
+    sequence = &settings.sequences.front();
+    activeSequenceId_ = sequence->id;
   }
-
-  const auto applyCameraPose = [&scene,
-                                &context](SceneObjectId cameraObjectId,
-                                          const DirectorCameraPose &pose) {
-    if (!scene.ApplyCameraObjectPose(cameraObjectId, pose.position,
-                                     pose.rotation, true)) {
-      return false;
-    }
-    context.sceneDirty = true;
-    scene.SetUnsavedSceneChanges(true);
-    return true;
-  };
-
-  if (result.alignCameraRequested) {
-    (void)applyCameraPose(result.alignCameraObjectId, result.alignPose);
-  }
-  if (result.pilotPoseChanged) {
-    (void)applyCameraPose(result.pilotCameraObjectId, result.pilotPose);
-  }
-
-  if (result.gizmo.changed) {
-    if (GameObject *object = FindRuntimeObject(scene, result.gizmo.objectId)) {
-      const bool cameraPoseApplied =
-          object->GetComponent<CameraComponent>() != nullptr &&
-          scene.ApplyCameraObjectPose(result.gizmo.objectId,
-                                      result.gizmo.transform.position,
-                                      result.gizmo.rotation, true);
-      if (!cameraPoseApplied) {
-        Transform3D runtimeTransform = object->GetTransform();
-        runtimeTransform.position = result.gizmo.transform.position;
-        runtimeTransform.rotation = MATH::NormalizeQ(result.gizmo.rotation);
-        runtimeTransform.scale = result.gizmo.transform.scale;
-        runtimeTransform.useExplicitMatrix = false;
-        (void)object->SetLocalTransform(runtimeTransform);
-      }
-
-      if (SceneObjectData *documentObject =
-              selectionSync.FindDocumentObjectByRuntime(scene, object)) {
-        const MATH::Vec3 rotationEulerDeg =
-            MATH::EulerXYZDegreesFromQuatNearest(
-                result.gizmo.rotation,
-                documentObject->transform.rotationEulerDeg);
-        documentObject->transform = result.gizmo.transform;
-        documentObject->transform.rotationEulerDeg = rotationEulerDeg;
-        if (cameraPoseApplied) {
-          documentObject->transform.scale = {1.0f, 1.0f, 1.0f};
-        }
-      }
-      context.sceneDirty = true;
-      scene.SetUnsavedSceneChanges(true);
-    }
-  }
+  return *sequence;
 }
 
-void CinematicsWorkspaceController::ApplyCameraTimelineResult(
-    DocumentSceneBase &scene, const CameraTimelinePanelResult &result,
-    EditorContext &context, EditorWorkspaceHost &workspaceHost,
-    bool affectsSceneDocument) {
-
-  if (affectsSceneDocument && result.documentChanged) {
-    context.sceneDirty = true;
-    scene.SetUnsavedSceneChanges(true);
-  }
-
-  const bool canPreview =
-      !scene.IsRuntimePlayActive() && result.previewEnabled &&
-      result.evaluation.IsValid() &&
-      IsEnabledCameraObject(scene, result.evaluation.cameraObjectId);
-  if (!canPreview) {
-    RestoreTimelinePreview(scene, workspaceHost);
-    return;
-  }
-
-  if (!timelinePreviewOwned_) {
-    timelineRestoreCameraObjectId_ = boundCameraObjectId_;
-  }
-  const bool shotChanged = timelinePreviewOwned_ &&
-                           timelinePreviewShotId_ != result.evaluation.shotId;
-  if (BindCameraPreview(scene, result.evaluation.cameraObjectId, workspaceHost,
-                        CameraBlendFromTimelineResult(result), shotChanged)) {
-    (void)scene.UpdateEditorCameraPreview(result.evaluation);
-    timelinePreviewOwned_ = true;
-    timelinePreviewShotId_ = result.evaluation.shotId;
-  } else {
-    RestoreTimelinePreview(scene, workspaceHost);
-  }
+SEQUENCER::CameraCutClip *
+CinematicsWorkspaceController::SelectedShot(CinematicSequence &sequence) {
+  if (selectionKind_ != SelectionKind::Shot)
+    return nullptr;
+  for (auto &shot : sequence.cameraCutTrack.clips)
+    if (shot.id == selectedId_)
+      return &shot;
+  return nullptr;
 }
 
-bool CinematicsWorkspaceController::BindCameraPreview(
-    DocumentSceneBase &scene, SceneObjectId cameraObjectId,
-    EditorWorkspaceHost &workspaceHost, const CameraBlendDesc &blend,
-    bool forceRebind) {
-
-  if (scene.IsRuntimePlayActive() ||
-      !IsEnabledCameraObject(scene, cameraObjectId)) {
-    return false;
-  }
-  if (forceRebind || !scene.IsEditorCameraPreviewActive() ||
-      !(scene.GetEditorCameraPreviewObjectId() == cameraObjectId)) {
-    if (!scene.BeginEditorCameraPreview(cameraObjectId, blend, forceRebind)) {
-      return false;
-    }
-  }
-
-  cameraPreviewOwned_ = true;
-  boundCameraObjectId_ = cameraObjectId;
-  directorViewPanel_.SetTargetCamera(cameraObjectId);
-  EditorViewInstance &gameView = workspaceHost.GetCinematicsGameView();
-  gameView.cameraBinding.kind = EditorViewCameraSourceKind::SceneCameraObject;
-  gameView.cameraBinding.sceneObjectId = cameraObjectId;
-  return true;
+void CinematicsWorkspaceController::CreateShot(CinematicSequence &sequence,
+                                               const Camera3D &camera) {
+  SEQUENCER::CameraCutClip shot;
+  shot.id = SEQUENCER::AllocateCameraCutClipId(sequence.cameraCutTrack);
+  shot.startTimeSeconds = cursor_.GetTimeSeconds();
+  for (const auto &existing : sequence.cameraCutTrack.clips)
+    if (shot.startTimeSeconds >= existing.startTimeSeconds &&
+        shot.startTimeSeconds <
+            existing.startTimeSeconds + existing.durationSeconds)
+      shot.startTimeSeconds =
+          existing.startTimeSeconds + existing.durationSeconds;
+  shot.durationSeconds = 3.0f;
+  shot.camera.owned = true;
+  shot.camera.name = "Shot " + std::to_string(shot.id);
+  shot.camera.poses = {SEQUENCER::CaptureShotPose(camera)};
+  shot.camera.nearClip = camera.GetNearZ();
+  shot.camera.farClip = camera.GetFarZ();
+  sequence.cameraCutTrack.clips.push_back(shot);
+  selectedId_ = shot.id;
+  selectionKind_ = SelectionKind::Shot;
+  previewEnabled_ = true;
+  previewChanged_ = true;
+  sequence.durationSeconds = (std::max)(
+      sequence.durationSeconds, shot.startTimeSeconds + shot.durationSeconds);
+  cursor_.SetDuration(sequence.durationSeconds);
+  cursor_.Seek(shot.startTimeSeconds);
 }
 
-void CinematicsWorkspaceController::RestoreTimelinePreview(
-    DocumentSceneBase &scene, EditorWorkspaceHost &workspaceHost) {
-
-  if (!timelinePreviewOwned_) {
+void CinematicsWorkspaceController::CapturePose(DocumentSceneBase &scene,
+                                                CinematicSequence &sequence,
+                                                const Camera3D &camera) {
+  auto *shot = SelectedShot(sequence);
+  if (!shot) {
+    CreateShot(sequence, camera);
     return;
   }
-  const std::optional<SceneObjectId> restoreCamera =
-      timelineRestoreCameraObjectId_;
-  timelinePreviewOwned_ = false;
-  timelinePreviewShotId_ = 0;
-  timelineRestoreCameraObjectId_.reset();
-
-  if (scene.IsRuntimePlayActive()) {
-    cameraPreviewOwned_ = false;
-    return;
-  }
-  if (restoreCamera && IsEnabledCameraObject(scene, *restoreCamera) &&
-      BindCameraPreview(scene, *restoreCamera, workspaceHost)) {
-    return;
-  }
-  if (cameraPreviewOwned_) {
-    scene.EndEditorCameraPreview();
-  }
-  cameraPreviewOwned_ = false;
-  ClearCameraBinding(workspaceHost);
-}
-
-void CinematicsWorkspaceController::ClearCameraBinding(
-    EditorWorkspaceHost &workspaceHost) {
-
-  boundCameraObjectId_.reset();
-  EditorViewInstance &gameView = workspaceHost.GetCinematicsGameView();
-  gameView.cameraBinding.kind = EditorViewCameraSourceKind::OwnedEditorCamera;
-  gameView.cameraBinding.sceneObjectId = {};
+  shot->camera.owned = true;
+  const float local =
+      std::clamp(cursor_.GetTimeSeconds() - shot->startTimeSeconds, 0.0f,
+                 shot->durationSeconds);
+  SceneObjectId anchorId;
+  const auto *anchor = previewBindings_.Resolve(
+                           sequence.bindings, shot->camera.anchor, anchorId)
+                           ? scene.GetWorld().FindObject(anchorId)
+                           : nullptr;
+  const auto anchorMatrix =
+      anchor ? anchor->GetTransform().GetWorldMatrix() : MATH::Mat4::Identity();
+  auto &poses = shot->camera.poses;
+  const float keyTime =
+      autoKey_ ? local : (poses.empty() ? 0.0f : poses.front().time);
+  auto pose = SEQUENCER::CaptureShotPose(camera, keyTime,
+                                         anchor ? &anchorMatrix : nullptr);
+  const auto found =
+      std::find_if(poses.begin(), poses.end(), [&](const auto &p) {
+        return std::abs(p.time - keyTime) < 0.0001f;
+      });
+  if (found != poses.end()) {
+    pose.incoming = found->incoming;
+    pose.outgoing = found->outgoing;
+    *found = pose;
+  } else
+    poses.push_back(pose);
+  SEQUENCER::NormalizeShotCamera(shot->camera);
+  previewChanged_ = true;
+  previewEnabled_ = true;
 }
 
 } // namespace HIKARI::EDITOR

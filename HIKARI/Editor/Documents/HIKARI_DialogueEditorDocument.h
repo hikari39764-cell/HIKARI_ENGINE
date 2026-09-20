@@ -1,4 +1,5 @@
 #pragma once
+#include "Editor/Documents/HIKARI_EditorSourceVersion.h"
 
 #include <cstddef>
 #include <optional>
@@ -38,6 +39,7 @@ namespace HIKARI::EDITOR {
         bool Redo();
 
     private:
+        EditorSourceVersion sourceVersion_;
         struct HistoryEntry {
             DIALOGUE::DialogueDefinition before{};
             DIALOGUE::DialogueDefinition after{};

@@ -78,7 +78,7 @@ namespace HIKARI::VFX::PRESETS::INTERNAL {
             layer.rotation.eulerDegrees.pva.velocity = MakeVfxVec3Constant({240,170,110});
             layers.push_back(std::move(layer));
             auto dust = Smoke("Fine dust", 0.05f, 0.20f);
-            dust.spawn.burstCount = 6;
+            dust.spawn.burstTimeline = {{dust.spawn.id+".burst",0,6}};
             dust.spawn.ratePerSecond = 0;
             layers.push_back(std::move(dust));
         } else {
@@ -133,7 +133,7 @@ namespace HIKARI::VFX::PRESETS::INTERNAL {
             Light(flash,{1,0.35f,0.1f,1},1.2f,3);
             layers.push_back(std::move(flash));
             auto dust = Smoke("Expanding dust",0.06f,0.18f);
-            dust.spawn.burstCount = 8;
+            dust.spawn.burstTimeline = {{dust.spawn.id+".burst",0,8}};
             dust.spawn.ratePerSecond = 0;
             layers.push_back(std::move(dust));
         } else if (id == "shield") {

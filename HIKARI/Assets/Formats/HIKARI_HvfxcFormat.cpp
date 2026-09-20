@@ -4,6 +4,7 @@
 #include "Assets/Material/Serialization/HIKARI_MaterialSourceJson.h"
 #include "Assets/Material/Compiler/HIKARI_MaterialProgramSerialization.h"
 
+#include "Render3D/Material/Program/HIKARI_MaterialExpressionProgram.h"
 #include <atomic>
 #include <cstring>
 #include <fstream>
@@ -418,30 +419,42 @@ namespace HIKARI::VFX {
             return true;
         }
 
-        void WriteCompositeEffects(BinaryWriter& writer, const std::vector<MaterialEffectStep>& effects) {
-            writer.Write(static_cast<uint32_t>(effects.size()));
-            for (const auto& effect : effects) {
-                writer.WriteString(effect.id); writer.WriteEnum(effect.kind); writer.Write(effect.enabled);
-                WriteVec4(writer, effect.parameters); WriteVec4(writer, effect.parameters2);
-                WriteVec4(writer, effect.colorA); WriteVec4(writer, effect.colorB);
+        void WriteRuntimeEffects(BinaryWriter& writer, const VfxProgramEmitter& emitter) {
+            writer.Write(uint32_t(emitter.runtimeEffects.size()));
+            for (const auto& e:emitter.runtimeEffects) {
+                writer.WriteString(e.id); writer.WriteEnum(e.kind); writer.WriteEnum(e.space); writer.WriteBool(e.enabled);
+                writer.Write(e.mix); writer.WriteEnum(e.mask); writer.WriteBool(e.maskInvert);
+                WriteVec4(writer,e.maskParameters); WriteVec4(writer,e.parameters); WriteVec4(writer,e.parameters2);
+                WriteVec4(writer,e.colorA); WriteVec4(writer,e.colorB);
+                writer.Write(uint32_t(e.colorStops.size()));
+                for (const auto& stop:e.colorStops) { writer.WriteString(stop.id); writer.Write(stop.time); WriteVec4(writer,stop.color); }
             }
+            writer.Write(uint32_t(emitter.spatialOwners.size()));
+            for (const auto owner:emitter.spatialOwners) writer.Write(owner);
         }
-        bool ReadCompositeEffects(BinaryReader& reader, std::vector<MaterialEffectStep>& effects) {
-            uint32_t count = 0;
-            if (!reader.Read(count) || count > VFX::kMaximumVfxEffectsPerLayer) return false;
-            effects.resize(count);
-            for (auto& effect : effects) {
-                if (!reader.ReadString(effect.id) || !reader.ReadEnum(effect.kind) || !reader.Read(effect.enabled) ||
-                    !ReadVec4(reader, effect.parameters) || !ReadVec4(reader, effect.parameters2) ||
-                    !ReadVec4(reader, effect.colorA) || !ReadVec4(reader, effect.colorB)) return false;
+        bool ReadRuntimeEffects(BinaryReader& reader, VfxProgramEmitter& emitter) {
+            uint32_t count=0;
+            if (!reader.Read(count) || count>kMaximumVfxEffectsPerLayer) return false;
+            emitter.runtimeEffects.resize(count);
+            for (auto& e:emitter.runtimeEffects) {
+                uint32_t stops=0;
+                if (!reader.ReadString(e.id) || !reader.ReadEnum(e.kind) || !reader.ReadEnum(e.space) || !reader.ReadBool(e.enabled) ||
+                    !reader.Read(e.mix) || !reader.ReadEnum(e.mask) || !reader.ReadBool(e.maskInvert) ||
+                    !ReadVec4(reader,e.maskParameters) || !ReadVec4(reader,e.parameters) || !ReadVec4(reader,e.parameters2) ||
+                    !ReadVec4(reader,e.colorA) || !ReadVec4(reader,e.colorB) || !reader.Read(stops) || stops>kMaximumMaterialEffectColorStops) return false;
+                e.colorStops.resize(stops);
+                for (auto& stop:e.colorStops) if (!reader.ReadString(stop.id) || !reader.Read(stop.time) || !ReadVec4(reader,stop.color)) return false;
             }
+            if (!reader.Read(count) || count>kMaximumVfxProgramEmitters) return false;
+            emitter.spatialOwners.resize(count);
+            for (auto& owner:emitter.spatialOwners) if (!reader.Read(owner)) return false;
             return true;
         }
 
         void WriteLayerCurves(BinaryWriter& writer, const std::vector<VfxProgramLayerCurve>& curves) {
             writer.Write(static_cast<uint32_t>(curves.size()));
             for (const auto& curve:curves) {
-                writer.WriteEnum(curve.channel); writer.Write(curve.materialSlot); writer.WriteEnum(curve.interpolation);
+                writer.WriteEnum(curve.channel); writer.Write(curve.materialSlot); writer.Write(curve.ownerEmitterIndex); writer.WriteEnum(curve.interpolation);
                 writer.Write(curve.minimum);writer.Write(curve.maximum);
                 writer.Write(static_cast<uint32_t>(curve.keys.size()));
                 for (const auto& key:curve.keys) {
@@ -451,10 +464,10 @@ namespace HIKARI::VFX {
         }
         bool ReadLayerCurves(BinaryReader& reader, std::vector<VfxProgramLayerCurve>& curves) {
             uint32_t count=0;
-            if (!reader.Read(count) || count>kMaxVfxParameterTracks+13) return false;
+            if (!reader.Read(count) || count>RENDER3D::MATERIAL::kGpuMaterialProgramParameterSlotCount+18+kMaximumVfxRuntimeEffectCurves) return false;
             for (uint32_t i=0;i<count;++i) {
                 VfxProgramLayerCurve curve; uint32_t keys=0;
-                if (!reader.ReadEnum(curve.channel) || !reader.Read(curve.materialSlot) || !reader.ReadEnum(curve.interpolation) ||
+                if (!reader.ReadEnum(curve.channel) || !reader.Read(curve.materialSlot) || !reader.Read(curve.ownerEmitterIndex) || !reader.ReadEnum(curve.interpolation) ||
                     !reader.Read(curve.minimum) || !reader.Read(curve.maximum) ||
                     !reader.Read(keys) || keys==0 || keys>kMaxVfxLayerCurveKeys || keys>reader.Remaining()/(4*sizeof(float))) return false;
                 curve.keys.resize(keys);
@@ -580,22 +593,26 @@ namespace HIKARI::VFX {
                 writer.WriteString(emitter.sourceEmitterId);
                 writer.Write(emitter.emitterIndex);
                 writer.Write(emitter.parentEmitterIndex);
+                writer.Write(emitter.matteSourceIndex); writer.Write(emitter.matteLuminance);
+                writer.Write(emitter.matteInverted); writer.Write(emitter.matteOnly); writer.Write(emitter.orientAlongPath);
                 WriteVec3(writer, emitter.transform.position);
                 WriteVec3(writer, emitter.transform.rotationEulerDegrees);
                 WriteVec3(writer, emitter.transform.scale);
                 writer.Write(emitter.startDelay);
                 writer.Write(emitter.activeDuration);
                 writer.WriteEnum(emitter.kind);
-                WriteCompositeEffects(writer, emitter.compositeEffects);
                 writer.WriteEnum(emitter.history.mode);
                 writer.Write(emitter.history.duration);
                 writer.Write(emitter.history.samples);
                 writer.Write(emitter.history.breakDistance);
+                writer.Write(emitter.history.tailWidth);
+                writer.Write(emitter.history.fadePower);
+                WriteVec4(writer,emitter.history.tailColor);
                 WriteLayerCurves(writer,emitter.layerCurves);
+                WriteRuntimeEffects(writer,emitter);
                 writer.Write(emitter.animationTiming.sourceDuration);writer.Write(emitter.animationTiming.offset);writer.Write(emitter.animationTiming.rate);
                 WriteAttachment(writer, emitter.attachment);
                 writer.Write(emitter.spawnRatePerSecond);
-                writer.Write(emitter.burstCount);
                 writer.Write(static_cast<uint32_t>(
                     emitter.burstTimeline.size()));
                 for (const VfxBurstKeyData& key : emitter.burstTimeline) {
@@ -634,6 +651,14 @@ namespace HIKARI::VFX {
                 writer.Write(simulation.collisionPlaneHeight);
                 writer.Write(simulation.restitution);
                 writer.Write(simulation.friction);
+                WriteVec3(writer, simulation.field.center);
+                writer.Write(simulation.field.radius);
+                WriteVec3(writer, simulation.field.axis);
+                writer.Write(simulation.field.vortex);
+                writer.Write(simulation.field.turbulence);
+                writer.Write(simulation.field.frequency);
+                writer.Write(simulation.field.evolution);
+                writer.Write(simulation.field.attraction);
                 WriteAnimated(writer, simulation.color);
 
                 writer.WriteEnum(emitter.render.materialMode);
@@ -697,6 +722,7 @@ namespace HIKARI::VFX {
                 writer.Write(emitter.render.torusMinorRadius);
                 writer.Write(emitter.render.capsuleRadius);
                 writer.Write(emitter.render.billboardAxis);
+                writer.WriteBool(emitter.render.effectMaterialIncludesParticleColor);
                 writer.WriteBool(emitter.render.effectMaterial != nullptr);
                 if (const auto& material = emitter.render.effectMaterial) {
                     std::string source, programIr, error;
@@ -781,6 +807,8 @@ namespace HIKARI::VFX {
                 if (!reader.ReadString(emitter.sourceEmitterId) ||
                     !reader.Read(emitter.emitterIndex) ||
                     !reader.Read(emitter.parentEmitterIndex) ||
+                    !reader.Read(emitter.matteSourceIndex) || !reader.Read(emitter.matteLuminance) ||
+                    !reader.Read(emitter.matteInverted) || !reader.Read(emitter.matteOnly) || !reader.Read(emitter.orientAlongPath) ||
                     !ReadVec3(reader, emitter.transform.position) ||
                     !ReadVec3(
                         reader,
@@ -789,16 +817,17 @@ namespace HIKARI::VFX {
                     !reader.Read(emitter.startDelay) ||
                     !reader.Read(emitter.activeDuration) ||
                     !reader.ReadEnum(emitter.kind) ||
-                    !ReadCompositeEffects(reader, emitter.compositeEffects) ||
                     !reader.ReadEnum(emitter.history.mode) ||
                     !reader.Read(emitter.history.duration) ||
                     !reader.Read(emitter.history.samples) ||
                     !reader.Read(emitter.history.breakDistance) ||
-                    !ReadLayerCurves(reader,emitter.layerCurves) ||
+                    !reader.Read(emitter.history.tailWidth) ||
+                    !reader.Read(emitter.history.fadePower) ||
+                    !ReadVec4(reader,emitter.history.tailColor) ||
+                    !ReadLayerCurves(reader,emitter.layerCurves) || !ReadRuntimeEffects(reader,emitter) ||
                     !reader.Read(emitter.animationTiming.sourceDuration) || !reader.Read(emitter.animationTiming.offset) || !reader.Read(emitter.animationTiming.rate) ||
                     !ReadAttachment(reader, emitter.attachment) ||
                     !reader.Read(emitter.spawnRatePerSecond) ||
-                    !reader.Read(emitter.burstCount) ||
                     !reader.Read(burstCount)) {
                     return false;
                 }
@@ -859,6 +888,14 @@ namespace HIKARI::VFX {
                     !reader.Read(simulation.collisionPlaneHeight) ||
                     !reader.Read(simulation.restitution) ||
                     !reader.Read(simulation.friction) ||
+                    !ReadVec3(reader, simulation.field.center) ||
+                    !reader.Read(simulation.field.radius) ||
+                    !ReadVec3(reader, simulation.field.axis) ||
+                    !reader.Read(simulation.field.vortex) ||
+                    !reader.Read(simulation.field.turbulence) ||
+                    !reader.Read(simulation.field.frequency) ||
+                    !reader.Read(simulation.field.evolution) ||
+                    !reader.Read(simulation.field.attraction) ||
                     !ReadAnimated(reader, simulation.color) ||
                     !reader.ReadEnum(emitter.render.materialMode) ||
                     !reader.ReadString(
@@ -932,7 +969,7 @@ namespace HIKARI::VFX {
                 }
 
                 bool hasEffectMaterial = false;
-                if (!reader.ReadBool(hasEffectMaterial)) return false;
+                if (!reader.ReadBool(emitter.render.effectMaterialIncludesParticleColor) || !reader.ReadBool(hasEffectMaterial)) return false;
                 if (hasEffectMaterial) {
                     std::string source, programIr, error;
                     auto material = std::make_shared<MaterialAssetDescriptor>();

@@ -94,6 +94,7 @@ namespace HIKARI::POST {
         processingStage_.UpdateCommonParams(deltaTime, width, height);
     }
 
+    void PostSystem::SetSequenceEffects(std::span<const SEQUENCER::ScreenEffectSample> effects) { processingStage_.SetSequenceEffects(effects); }
     void PostSystem::SetIntensity(float value) { processingStage_.SetIntensity(value); }
     void PostSystem::SetCombo(float value) { processingStage_.SetCombo(value); }
     void PostSystem::ClearEffects() { processingStage_.ClearEffects(); }

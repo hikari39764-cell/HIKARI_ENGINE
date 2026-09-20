@@ -128,66 +128,6 @@ bool RemoveKey(const std::string& path, const std::string& key) {
     return output.good();
 }
 
-std::string Base64Encode(const std::string& data) {
-    static constexpr char kTable[] =
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    std::string result;
-    result.reserve(((data.size() + 2u) / 3u) * 4u);
-    for (size_t index = 0u; index < data.size(); index += 3u) {
-        const uint32_t a = static_cast<unsigned char>(data[index]);
-        const uint32_t b = index + 1u < data.size()
-            ? static_cast<unsigned char>(data[index + 1u])
-            : 0u;
-        const uint32_t c = index + 2u < data.size()
-            ? static_cast<unsigned char>(data[index + 2u])
-            : 0u;
-        const uint32_t combined = (a << 16u) | (b << 8u) | c;
-        result.push_back(kTable[(combined >> 18u) & 0x3fu]);
-        result.push_back(kTable[(combined >> 12u) & 0x3fu]);
-        result.push_back(index + 1u < data.size()
-            ? kTable[(combined >> 6u) & 0x3fu]
-            : '=');
-        result.push_back(index + 2u < data.size()
-            ? kTable[combined & 0x3fu]
-            : '=');
-    }
-    return result;
-}
-
-std::string ImageMime(const std::string& imagePath) {
-    const auto dot = imagePath.find_last_of('.');
-    std::string extension = dot == std::string::npos
-        ? std::string{}
-        : imagePath.substr(dot + 1u);
-    std::transform(
-        extension.begin(), extension.end(), extension.begin(),
-        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    if (extension == "png") return "image/png";
-    if (extension == "jpg" || extension == "jpeg") return "image/jpeg";
-    if (extension == "webp") return "image/webp";
-    if (extension == "bmp") return "image/bmp";
-    if (extension == "gif") return "image/gif";
-    return "image/png";
-}
-
-bool ReadImageDataUri(const std::string& imagePath,
-                      std::string& outDataUri) {
-    std::ifstream stream(imagePath, std::ios::binary);
-    if (!stream) {
-        return false;
-    }
-    const std::string data(
-        (std::istreambuf_iterator<char>(stream)),
-        std::istreambuf_iterator<char>());
-    if (data.empty()) {
-        return false;
-    }
-    outDataUri =
-        "data:" + ImageMime(imagePath) + ";base64," +
-        Base64Encode(data);
-    return true;
-}
-
 std::string BuildVisionBody(const AiChatConfig& config,
                             const std::string& prompt,
                             const std::string& dataUri) {
@@ -279,7 +219,7 @@ bool RunVisionAnalysis(
         return false;
     }
     std::string dataUri;
-    if (!ReadImageDataUri(imagePath, dataUri)) {
+    if (!ReadAiImageDataUri(imagePath, dataUri, outError)) {
         outError = "无法读取图片：" + imagePath;
         return false;
     }

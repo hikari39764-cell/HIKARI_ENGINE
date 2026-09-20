@@ -1,3 +1,6 @@
+#include "Editor/Preview/HIKARI_EditorPreviewCapture.h"
+#include "Editor/Commands/HIKARI_EditorOperationValue.h"
+#include "Editor/Authoring/HIKARI_EditorWorkspaceSessionProviders.h"
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.h"
 #include "Editor/Project/HIKARI_GameProjectEditorWorkspaceHost.h"
 #include "Core/HIKARI_TimeService.h"
@@ -186,105 +189,7 @@ namespace HIKARI {
             return result;
         }
 
-        float ReadJsonFloat(
-            const nlohmann::json& json,
-            const char* key,
-            float fallback) {
-            const auto found = json.find(key);
-            if (found == json.end()) {
-                return fallback;
-            }
-            if (found->is_number()) {
-                return found->get<float>();
-            }
-            if (found->is_string()) {
-                try {
-                    return std::stof(found->get<std::string>());
-                } catch (...) {
-                    return fallback;
-                }
-            }
-            return fallback;
-        }
 
-        bool CapturePreviewToFile(
-            std::string& outPath,
-            std::string& outError) {
-            if (outPath.empty()) {
-                const char* temp = std::getenv("TEMP");
-                outPath = std::string(temp != nullptr ? temp : ".") +
-                    "/hikari-ai-preview.png";
-            }
-            const std::filesystem::path outputPath(outPath);
-            if (outputPath.has_parent_path()) {
-                std::error_code errorCode{};
-                std::filesystem::create_directories(
-                    outputPath.parent_path(), errorCode);
-            }
-            RENDER3D::EDITORVIEW::RequestPreviewCapture(
-                EDITOR::kModelMaterialPreviewRenderViewId,
-                outPath);
-            for (int attempt = 0; attempt < 100; ++attempt) {
-                if (RENDER3D::EDITORVIEW::PollPreviewCapture(
-                        outPath, outError)) {
-                    return outError.empty();
-                }
-                std::this_thread::sleep_for(
-                    std::chrono::milliseconds(100));
-            }
-            outError = "截图超时：" + outPath;
-            return false;
-        }
-
-        void AppendAiHints(
-            const std::string& code,
-            EDITOR::EditorOperationResult& result) {
-            if (code == "AMBIGUOUS_PARAMETER" ||
-                code == "PARAMETER_NOT_FOUND") {
-                result.hints = {
-                    "请使用完整参数名（如 parameter.baseColor），"
-                    "或用 material.graph_query 查看当前参数",
-                };
-            } else if (code == "PARAMETER_TYPE_MISMATCH") {
-                result.hints = {
-                    "该参数不是数值类型，无法用 value 修改",
-                };
-            } else if (code == "UNKNOWN_NODE_TYPE") {
-                result.hints = {
-                    "请用 help material.graph_edit 查看可用的 "
-                    "nodeType 写法（Constant/Parameter/Add 或 "
-                    "node.additive 等）",
-                };
-            } else if (code == "PIN_NOT_FOUND" ||
-                       code == "CONNECT_REJECTED") {
-                result.hints = {
-                    "先用 material.graph_query 查看节点 id 和插槽，"
-                    "再连线；插槽可省略或用 out/in 取第一个",
-                };
-            } else if (code == "FUNCTION_CALL_UNSUPPORTED") {
-                result.hints = {
-                    "FunctionCall 需要资产 GUID，请在编辑器的 "
-                    "Material Functions 菜单添加；也可以用 "
-                    "material.graph_edit remove_node 删除坏节点",
-                };
-            } else if (code == "NODE_NOT_FOUND" ||
-                       code == "EDGE_NOT_FOUND") {
-                result.hints = {
-                    "先用 material.graph_query 查看现有节点 id/"
-                    "displayName",
-                };
-            } else if (code == "SURFACE_OUTPUT_EXISTS" ||
-                       code == "SURFACE_OUTPUT_PROTECTED") {
-                result.hints = {
-                    "Surface Output 是单例根节点，不能重复添加或删除",
-                };
-            } else if (code.find("COMPILE") != std::string::npos) {
-                result.hints = {
-                    "请查看 compile 诊断修正节点，"
-                    "或用 action.undo_last 回退",
-                };
-            }
-        }
 
         EDITOR::AI_ASSISTANT::AiRequestResult ToAiRequestResult(
             const EDITOR::EditorOperationResult& operation) {
@@ -308,6 +213,16 @@ namespace HIKARI {
                 ImGui::IsMouseReleased(ImGuiMouseButton_Left) ||
                 ImGui::IsKeyPressed(ImGuiKey_Delete, false) ||
                 ImGui::IsKeyPressed(ImGuiKey_Backspace, false);
+        }
+
+        void KeepWorkspaceDockSpacesAlive() {
+            // 非表示の workspace も dock node を維持し、切替で window が浮くことを防ぐ。
+            auto& nodes = ImGui::GetCurrentContext()->DockContext.Nodes;
+            for (const auto& entry : nodes.Data) {
+                const auto* node = static_cast<const ImGuiDockNode*>(entry.val_p);
+                if (node && node->IsDockSpace() && !node->ParentNode)
+                    ImGui::DockSpace(node->ID, {}, ImGuiDockNodeFlags_KeepAliveOnly);
+            }
         }
 
         void DrawEditorDockSpace(bool resetDefaultDockLayout) {
@@ -363,7 +278,6 @@ namespace HIKARI {
                 ImGui::DockBuilderDockWindow("###Game View", mainNode);
                 ImGui::DockBuilderDockWindow("###Scene Workspace", leftNode);
                 ImGui::DockBuilderDockWindow("###Inspector", rightNode);
-                ImGui::DockBuilderDockWindow("###AI Assistant", rightNode);
                 ImGui::DockBuilderDockWindow("###Resource Workspace", bottomNode);
                 ImGui::DockBuilderDockWindow("###Environment", bottomNode);
                 ImGui::DockBuilderDockWindow("###Quality", bottomNode);
@@ -382,10 +296,7 @@ namespace HIKARI {
         EDITOR::RegisterBuiltInEditorTools(toolHost_);
         EDITOR::RegisterBuiltInSystemAuthoring(
             systemAuthoringRegistry_);
-        modelMaterialWorkspaceController_.SetAiAssistantPanel(
-            &aiAssistantPanel_,
-            &context_.windows.runtime.showAiAssistant);
-        aiAssistantPanel_.SetCapabilityProvider(
+        aiAssistantSession_.SetCapabilityProvider(
             [this]() {
                 std::vector<EDITOR::AI_ASSISTANT::AiCapability>
                     capabilities =
@@ -404,6 +315,7 @@ namespace HIKARI {
                     };
                     capability.parameters.reserve(
                         definition->parameters.size());
+                    capability.workspace = definition->workspace;
                     for (const EDITOR::EditorOperationParameter& parameter :
                         definition->parameters) {
                         capability.parameters.push_back({
@@ -413,6 +325,8 @@ namespace HIKARI {
                             parameter.description
                         });
                     }
+                    if (!id.starts_with("authoring.")) capability.parameters.push_back({"sessionId", "string", false,
+                        "Background authoring session returned by authoring.session.open"});
                     capabilities.push_back(std::move(capability));
                 }
                 std::sort(
@@ -426,28 +340,20 @@ namespace HIKARI {
             });
         aiLocalBridge_.SetCapabilityProvider(
             [this]() {
-                return aiAssistantPanel_.Capabilities();
+                return aiAssistantSession_.Capabilities();
             });
-        aiAssistantPanel_.SetWorkerExecutionClassifier(
-            [this](std::string_view action) {
-                const EDITOR::EditorOperationDefinition* definition =
-                    operationRegistry_.Find(std::string(action));
-                return definition != nullptr &&
-                    definition->executionPolicy ==
-                        EDITOR::EditorOperationExecutionPolicy::WorkerThread;
-            });
-        modelMaterialWorkspaceController_.SetOperationRegistry(
+        ModelMaterialWorkspace().SetOperationRegistry(
             &operationRegistry_);
-        animationStateMachineWorkspaceController_.SetOperationRegistry(
+        AnimationStateMachineWorkspace().SetOperationRegistry(
             &operationRegistry_);
-        runtimeBindingWorkspaceController_.SetReferenceProvider(
+        RuntimeBindingWorkspace().SetReferenceProvider(
             [this](std::string_view bindingId) {
                 return aiOperationScene_ != nullptr
                     ? EDITOR::CollectRuntimeBindingReferences(
                         *aiOperationScene_, bindingId)
                     : std::vector<EDITOR::RuntimeBindingReference>{};
             });
-        runtimeBindingWorkspaceController_.SetReferenceRevealCallback(
+        RuntimeBindingWorkspace().SetReferenceRevealCallback(
             [this](const EDITOR::RuntimeBindingReference& reference) {
                 if (reference.targetKind == "material.asset") {
                     EDITOR::EditorWorkspaceOpenRequest request{};
@@ -478,12 +384,12 @@ namespace HIKARI {
                 request.workspaceId = EDITOR::EditorWorkspaceId::Scene;
                 (void)workspaceHost_.RequestOpen(std::move(request));
             });
-        vfxWorkspaceController_.SetPreviewNamespaceRetireCallback(
+        VfxWorkspace().SetPreviewNamespaceRetireCallback(
             [](uint64_t playbackNamespace) {
                 MESHRENDERER::ReleaseParticleNamespace(
                     playbackNamespace);
             });
-        vfxWorkspaceController_.SetAssetRefreshCallback(
+        VfxWorkspace().SetAssetRefreshCallback(
             [this](const AssetGuid&, std::string& outMessage) {
                 if (aiOperationScene_ == nullptr) {
                     outMessage =
@@ -499,7 +405,7 @@ namespace HIKARI {
                 outMessage.clear();
                 return true;
             });
-        vfxWorkspaceController_.SetMaterialEditCallback(
+        VfxWorkspace().SetMaterialEditCallback(
             [this](const AssetGuid& materialGuid,
                    std::string& outMessage) {
                 if (!materialGuid.IsValid()) {
@@ -519,14 +425,71 @@ namespace HIKARI {
                 return true;
             });
         RegisterEditorOperations();
+        EDITOR::RegisterVfxAuthoringSessions(authoringSessions_, workspaceHost_, [this] { return aiOperationScene_; });
+        EDITOR::RegisterMaterialAuthoringSessions(authoringSessions_, workspaceHost_, [this] { return aiOperationScene_; });
+        EDITOR::RegisterDocumentAuthoringSessions(authoringSessions_, workspaceHost_, [this] { return aiOperationScene_; });
+        RegisterSceneAuthoringSessions();
+        authoringSessions_.RegisterOperations(operationRegistry_);
+        aiAssistantSession_.RefreshCapabilities();
+        aiAssistantSession_.SetSceneActionCallback(
+            [this](std::string_view json) {
+                const std::string action =
+                    EDITOR::AI_ASSISTANT::ExtractJsonField(json, "action");
+                if (operationRegistry_.IsRegistered(action)) {
+                    nlohmann::json parameters;
+                    try {
+                        parameters = nlohmann::json::parse(
+                            std::string(json));
+                    } catch (const nlohmann::json::parse_error& error) {
+                        EDITOR::AI_ASSISTANT::AiRequestResult result{};
+                        result.code = "JSON_PARSE_ERROR";
+                        result.message = "动作 JSON 解析失败";
+                        result.details.push_back(error.what());
+                        return result;
+                    }
+                    const bool background=parameters.value("_backgroundTask",false);
+                    parameters.erase("_backgroundTask");
+                    const auto* definition=operationRegistry_.Find(action);
+#if defined(HIKARI_WITH_EDITOR)
+                    if (background && parameters.contains("sessionId") && parameters["sessionId"].is_string() &&
+                        definition->workspace==EDITOR::EditorWorkspaceOperationId(workspaceHost_.GetActive()) &&
+                        authoringSessions_.VisibleSession(definition->workspace)==parameters["sessionId"].get<std::string>() &&
+                        ImGui::IsAnyItemActive()) {
+                        const auto* activeWindow=ImGui::GetCurrentContext()->ActiveIdWindow;
+                        if (activeWindow && std::string_view(activeWindow->Name).find("AI Assistant")==std::string_view::npos)
+                            return ToAiRequestResult({false,"DOCUMENT_BUSY","用户正在操作这个草稿。请等待当前编辑结束后重试。"});
+                    }
+#endif
+                    if (background && !parameters.contains("sessionId") &&
+                        (authoringSessions_.SupportsWorkspace(definition->workspace) || action=="action.undo_last")) {
+                        return ToAiRequestResult({false,"EXPLICIT_SESSION_REQUIRED",
+                            "后台编辑必须绑定文档。先用 authoring.session.open 打开会话，再为动作携带 sessionId。"});
+                    }
+                    return ToAiRequestResult(
+                        operationRegistry_.Execute(
+                            action, parameters));
+                }
+                EDITOR::AI_ASSISTANT::AiRequestResult result{};
+                result.ok = false;
+                result.code = "UNKNOWN_ACTION";
+                result.message = "不支持的 AI 动作：" + action;
+                for (const std::string& id :
+                     operationRegistry_.RegisteredIds()) {
+                    result.details.push_back("supported: " + id);
+                }
+                return result;
+            });
+
         commandRouter_.SetOperationRegistry(&operationRegistry_);
     }
 
     DocumentSceneEditorController::~DocumentSceneEditorController() {
-        vfxWorkspaceController_.Deactivate(
+        VfxWorkspace().Deactivate(
             workspaceHost_.GetVfxPreviewView().renderViewId);
-        aiAssistantPanel_.Stop();
+        aiAssistantSession_.Stop();
         aiLocalBridge_.Stop();
+        CancelAiSceneCapture();
+        authoringSessions_.Reset();
     }
 
     EDITOR::EditorOperationResult
@@ -991,73 +954,21 @@ namespace HIKARI {
     EDITOR::EditorOperationResult
     DocumentSceneEditorController::ExecuteAiCapturePreview(
         const nlohmann::json& parameters) {
-        EDITOR::EditorOperationResult result{};
-        std::string path =
-            parameters.value("path", std::string{});
-        std::string captureError;
-        if (CapturePreviewToFile(path, captureError)) {
-            result.ok = true;
-            result.message = "预览截图已保存：" + path;
-        } else {
-            result.code = "CAPTURE_FAILED";
-            result.message = "截图失败：" + captureError;
+        using namespace EDITOR;
+        RENDER3D::RenderViewId view{};
+        switch (workspaceHost_.GetActive()) {
+        case EditorWorkspaceId::Scene:
+        case EditorWorkspaceId::TerrainSurface: return CaptureAiScenePreview(parameters);
+        case EditorWorkspaceId::Vfx: view = workspaceHost_.GetVfxPreviewView().renderViewId; break;
+        case EditorWorkspaceId::ModelMaterial: view = workspaceHost_.GetModelMaterialPreviewView().renderViewId; break;
+        case EditorWorkspaceId::ModelCollision: view = workspaceHost_.GetModelCollisionPreviewView().renderViewId; break;
+        case EditorWorkspaceId::Cinematics: view = workspaceHost_.GetCinematicsDirectorView().renderViewId; break;
+        default: break;
         }
-        return result;
+        const auto folder = aiOperationScene_ ? aiOperationScene_->GetAssetDatabase().GetLibraryRoot() / "EditorAI" / "Captures" : std::filesystem::path{};
+        return StartEditorPreviewCapture(view, folder, parameters.value("path",std::string{}));
     }
 
-    EDITOR::EditorOperationResult
-    DocumentSceneEditorController::ExecuteAiMaterialGraphQuery(
-        const nlohmann::json& parameters) {
-        EDITOR::EditorOperationResult result{};
-        DocumentSceneBase* scene = aiOperationScene_;
-        if (scene == nullptr) {
-            result.code = "NO_SCENE";
-            result.message = "场景上下文不可用";
-            return result;
-        }
-        std::string message;
-        std::string code;
-        std::vector<std::string> details;
-        if (modelMaterialWorkspaceController_.QueryAiMaterialGraph(
-                *scene,
-                parameters.value("name", std::string{}),
-                message, details, code)) {
-            result.ok = true;
-            result.code = "OK";
-            result.message = message;
-            result.details = std::move(details);
-        } else {
-            result.code = code;
-            result.message = message;
-            result.details = std::move(details);
-        }
-        return result;
-    }
-
-    EDITOR::EditorOperationResult
-    DocumentSceneEditorController::ExecuteAiMaterialGraphLayout() {
-        EDITOR::EditorOperationResult result{};
-        DocumentSceneBase* scene = aiOperationScene_;
-        if (scene == nullptr) {
-            result.code = "NO_SCENE";
-            result.message = "场景上下文不可用";
-            return result;
-        }
-        std::string message;
-        std::string code;
-        if (modelMaterialWorkspaceController_.LayoutAiMaterialGraph(
-                *scene, message, code)) {
-            result.ok = true;
-            result.code = "OK";
-            result.message = message;
-            modelMaterialWorkspaceController_.AppendAiCompileDiagnostics(
-                result.details);
-        } else {
-            result.code = code;
-            result.message = message;
-        }
-        return result;
-    }
 
     EDITOR::EditorOperationResult
     DocumentSceneEditorController::ExecuteAiAssetImport(
@@ -1195,7 +1106,7 @@ namespace HIKARI {
         }
         if (workspaceHost_.IsActive(
                 EDITOR::EditorWorkspaceId::Cinematics) &&
-            cinematicsWorkspaceController_.IsEditingSequenceAsset()) {
+            CinematicsWorkspace().IsEditingSequenceAsset()) {
             return operationRegistry_.Execute("cinematics.undo");
         }
         if (!documentHistory_.CanUndo()) {
@@ -1263,14 +1174,14 @@ namespace HIKARI {
             request.name = "AI Model";
         }
         request.position = {
-            ReadJsonFloat(parameters, "positionX", 0.0f),
-            ReadJsonFloat(parameters, "positionY", 0.0f),
-            ReadJsonFloat(parameters, "positionZ", 0.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "positionX", 0.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "positionY", 0.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "positionZ", 0.0f),
         };
         request.scale = {
-            ReadJsonFloat(parameters, "scaleX", 1.0f),
-            ReadJsonFloat(parameters, "scaleY", 1.0f),
-            ReadJsonFloat(parameters, "scaleZ", 1.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "scaleX", 1.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "scaleY", 1.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "scaleZ", 1.0f),
         };
         GameObject* object = EDITOR::CreateModelObject(
             *scene,
@@ -1351,14 +1262,14 @@ namespace HIKARI {
         EDITOR::CreateObjectRequest request{};
         request.name = parameters.value("name", std::string{});
         request.position = {
-            ReadJsonFloat(parameters, "positionX", 0.0f),
-            ReadJsonFloat(parameters, "positionY", 0.0f),
-            ReadJsonFloat(parameters, "positionZ", 0.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "positionX", 0.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "positionY", 0.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "positionZ", 0.0f),
         };
         request.scale = {
-            ReadJsonFloat(parameters, "scaleX", 1.0f),
-            ReadJsonFloat(parameters, "scaleY", 1.0f),
-            ReadJsonFloat(parameters, "scaleZ", 1.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "scaleX", 1.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "scaleY", 1.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "scaleZ", 1.0f),
         };
         GameObject* object = EDITOR::CreateWorldSpriteObject(
             *scene,
@@ -1413,40 +1324,40 @@ namespace HIKARI {
             request.fontAssetPath = fontAssetPath;
         }
         request.object.position = {
-            ReadJsonFloat(parameters, "positionX", 0.0f),
-            ReadJsonFloat(parameters, "positionY", 0.0f),
-            ReadJsonFloat(parameters, "positionZ", 0.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "positionX", 0.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "positionY", 0.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "positionZ", 0.0f),
         };
         request.object.rotation = {
-            ReadJsonFloat(parameters, "rotationX", 0.0f),
-            ReadJsonFloat(parameters, "rotationY", 0.0f),
-            ReadJsonFloat(parameters, "rotationZ", 0.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "rotationX", 0.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "rotationY", 0.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "rotationZ", 0.0f),
         };
         request.object.scale = {
-            ReadJsonFloat(parameters, "scaleX", 1.0f),
-            ReadJsonFloat(parameters, "scaleY", 1.0f),
-            ReadJsonFloat(parameters, "scaleZ", 1.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "scaleX", 1.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "scaleY", 1.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "scaleZ", 1.0f),
         };
         request.layoutSize = {
-            ReadJsonFloat(parameters, "layoutWidth", 4.0f),
-            ReadJsonFloat(parameters, "layoutHeight", 1.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "layoutWidth", 4.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "layoutHeight", 1.0f),
         };
         request.fontHeight =
-            ReadJsonFloat(parameters, "fontHeight", 0.5f);
+            EDITOR::ReadEditorOperationFloat(parameters, "fontHeight", 0.5f);
         request.color = {
-            ReadJsonFloat(parameters, "colorR", 1.0f),
-            ReadJsonFloat(parameters, "colorG", 1.0f),
-            ReadJsonFloat(parameters, "colorB", 1.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "colorR", 1.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "colorG", 1.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "colorB", 1.0f),
         };
         request.outlineColor = {
-            ReadJsonFloat(parameters, "outlineR", 0.0f),
-            ReadJsonFloat(parameters, "outlineG", 0.0f),
-            ReadJsonFloat(parameters, "outlineB", 0.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "outlineR", 0.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "outlineG", 0.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "outlineB", 0.0f),
         };
         request.outlineWidth =
-            ReadJsonFloat(parameters, "outlineWidth", 0.04f);
+            EDITOR::ReadEditorOperationFloat(parameters, "outlineWidth", 0.04f);
         request.opacity =
-            ReadJsonFloat(parameters, "opacity", 1.0f);
+            EDITOR::ReadEditorOperationFloat(parameters, "opacity", 1.0f);
 
         const std::string horizontalAlign = TEXT::ToLowerAsciiCopy(
             parameters.value("horizontalAlign", std::string("center")));
@@ -1566,22 +1477,22 @@ namespace HIKARI {
                 kind.empty() ? "AI Primitive" : kind;
         }
         request.object.position = {
-            ReadJsonFloat(parameters, "positionX", 0.0f),
-            ReadJsonFloat(parameters, "positionY", 0.0f),
-            ReadJsonFloat(parameters, "positionZ", 0.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "positionX", 0.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "positionY", 0.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "positionZ", 0.0f),
         };
         request.object.scale = {
-            ReadJsonFloat(parameters, "scaleX", 1.0f),
-            ReadJsonFloat(parameters, "scaleY", 1.0f),
-            ReadJsonFloat(parameters, "scaleZ", 1.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "scaleX", 1.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "scaleY", 1.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "scaleZ", 1.0f),
         };
         request.mesh.kind = meshKind;
         request.mesh.width =
-            ReadJsonFloat(parameters, "width", 1.0f);
+            EDITOR::ReadEditorOperationFloat(parameters, "width", 1.0f);
         request.mesh.height =
-            ReadJsonFloat(parameters, "height", 1.0f);
+            EDITOR::ReadEditorOperationFloat(parameters, "height", 1.0f);
         request.mesh.depth =
-            ReadJsonFloat(parameters, "depth", 1.0f);
+            EDITOR::ReadEditorOperationFloat(parameters, "depth", 1.0f);
         request.mesh =
             SanitizeProceduralMeshSettings(request.mesh);
         const bool dirtyBefore =
@@ -1626,211 +1537,18 @@ namespace HIKARI {
         return result;
     }
 
-    EDITOR::EditorOperationResult
-    DocumentSceneEditorController::ExecuteAiMaterialEditParameter(
-        const nlohmann::json& parameters) {
-        EDITOR::EditorOperationResult result{};
-        DocumentSceneBase* scene = aiOperationScene_;
-        if (scene == nullptr) {
-            result.code = "NO_SCENE";
-            result.message = "场景上下文不可用";
-            return result;
-        }
-        const std::string parameter =
-            parameters.value("parameter", std::string{});
-        if (parameter.empty()) {
-            result.code = "MISSING_FIELD";
-            result.message = "缺少 parameter 字段";
-            result.hints = {
-                "请带上完整参数名，例如 "
-                "{\"action\":\"material.edit_parameter\","
-                "\"parameter\":\"parameter.baseColor\","
-                "\"value\":0.8}",
-            };
-            return result;
-        }
-        float value = 0.0f;
-        const auto valueIt = parameters.find("value");
-        if (valueIt != parameters.end()) {
-            if (valueIt->is_number()) {
-                value = valueIt->get<float>();
-            } else if (valueIt->is_string()) {
-                const std::string valueText =
-                    valueIt->get<std::string>();
-                try {
-                    value = std::stof(valueText);
-                } catch (...) {
-                    result.code = "INVALID_VALUE";
-                    result.message =
-                        "value 不是有效数字：" + valueText;
-                    return result;
-                }
-            }
-        }
-        std::string message;
-        std::string code;
-        if (modelMaterialWorkspaceController_
-                .ApplyAiMaterialParameterEdit(
-                    *scene, parameter, value, message,
-                    code)) {
-            result.ok = true;
-            result.code = "OK";
-            result.message = message;
-            modelMaterialWorkspaceController_
-                .AppendAiCompileDiagnostics(
-                    result.details);
-        } else {
-            result.code = code;
-            result.message = message;
-            AppendAiHints(code, result);
-        }
-        return result;
-    }
 
-    EDITOR::EditorOperationResult
-    DocumentSceneEditorController::ExecuteAiMaterialGraphEdit(
-        const nlohmann::json& parameters) {
-        EDITOR::EditorOperationResult result{};
-        DocumentSceneBase* scene = aiOperationScene_;
-        if (scene == nullptr) {
-            result.code = "NO_SCENE";
-            result.message = "场景上下文不可用";
-            return result;
-        }
-        EDITOR::AiMaterialGraphEditRequest request{};
-        request.operation =
-            parameters.value("operation", std::string{});
-        if (request.operation.empty()) {
-            request.operation =
-                parameters.value("op", std::string{});
-        }
-        request.nodeType =
-            parameters.value("nodeType", std::string{});
-        request.name =
-            parameters.value("name", std::string{});
-        if (request.name.empty()) {
-            request.name =
-                parameters.value("node", std::string{});
-        }
-        request.sourceNode =
-            parameters.value("sourceNode", std::string{});
-        request.sourcePin =
-            parameters.value("sourcePin", std::string{});
-        request.targetNode =
-            parameters.value("targetNode", std::string{});
-        request.targetPin =
-            parameters.value("targetPin", std::string{});
-        request.edgeId =
-            parameters.value("edgeId", std::string{});
-        request.valueType =
-            parameters.value("valueType", std::string{});
-        request.property =
-            parameters.value("property", std::string{});
-        request.resource =
-            parameters.value("resource", std::string{});
-        request.stringValue =
-            parameters.value("value", std::string{});
-        request.manualPosition =
-            parameters.value("layout", std::string{}) ==
-            "manual";
-        request.positionX =
-            ReadJsonFloat(parameters, "positionX", 0.0f);
-        request.positionY =
-            ReadJsonFloat(parameters, "positionY", 0.0f);
-        const auto hasNumberField =
-            [&parameters](const char* key) {
-                const auto found = parameters.find(key);
-                return found != parameters.end() &&
-                    (found->is_number() ||
-                     (found->is_string() &&
-                      !found->get<std::string>().empty()));
-            };
-        request.valueSet =
-            hasNumberField("valueX") ||
-            hasNumberField("valueY") ||
-            hasNumberField("valueZ") ||
-            hasNumberField("valueW");
-        request.valueX =
-            ReadJsonFloat(parameters, "valueX", 0.0f);
-        request.valueY =
-            ReadJsonFloat(parameters, "valueY", 0.0f);
-        request.valueZ =
-            ReadJsonFloat(parameters, "valueZ", 0.0f);
-        request.valueW =
-            ReadJsonFloat(parameters, "valueW", 0.0f);
-        std::string message;
-        std::string code;
-        std::vector<std::string> graphDetails;
-        if (modelMaterialWorkspaceController_
-                .ApplyAiMaterialGraphEdit(
-                    *scene, request, message,
-                    graphDetails, code)) {
-            result.ok = true;
-            result.code = "OK";
-            result.message = message;
-            result.details = std::move(graphDetails);
-            modelMaterialWorkspaceController_
-                .AppendAiCompileDiagnostics(
-                    result.details);
-        } else {
-            result.code = code;
-            result.message = message;
-            result.details = std::move(graphDetails);
-            AppendAiHints(code, result);
-        }
-        return result;
-    }
+
+
 
     EDITOR::EditorOperationResult
     DocumentSceneEditorController::ExecuteAiMaterialVerify(
         const nlohmann::json& parameters) {
-        EDITOR::EditorOperationResult result{};
-        std::string capturePath;
-        std::string captureError;
-        if (!CapturePreviewToFile(
-                capturePath, captureError)) {
-            result.code = "CAPTURE_FAILED";
-            result.message =
-                "截图失败：" + captureError;
-            return result;
-        }
-        EDITOR::AI_ASSISTANT::AiChatConfig vision{};
-        if (!EDITOR::AI_ASSISTANT::
-                LoadAiVisionConfig(vision)) {
-            result.code = "VISION_NOT_CONFIGURED";
-            result.message =
-                "截图已保存：" + capturePath +
-                "，但未配置视觉 API";
-            result.details = { capturePath };
-            return result;
-        }
-        const std::string prompt =
-            parameters.value("prompt", std::string{});
-        std::string text;
-        std::string error;
-        if (!EDITOR::AI_ASSISTANT::
-                RunVisionAnalysis(
-                    vision,
-                    capturePath,
-                    prompt.empty()
-                        ? "描述这张材质预览，"
-                          "并判断效果是否符合预期"
-                        : prompt,
-                    text,
-                    error)) {
-            result.code = "VISION_FAILED";
-            result.message =
-                "截图已保存：" + capturePath +
-                "，识图失败：" + error;
-            result.details = { capturePath };
-            return result;
-        }
-        result.ok = true;
-        result.code = "OK";
-        result.message = "预览验证：" + text;
-        result.details = { "截图：" + capturePath };
-        return result;
+        const auto folder = aiOperationScene_ ? aiOperationScene_->GetAssetDatabase().GetLibraryRoot() / "EditorAI" / "Captures" : std::filesystem::path{};
+        return EDITOR::StartEditorPreviewCapture(workspaceHost_.GetModelMaterialPreviewView().renderViewId,
+            folder, parameters.value("path",std::string{}));
     }
+
 
     EDITOR::EditorOperationResult
     DocumentSceneEditorController::ExecuteSceneSave() {
@@ -1997,14 +1715,14 @@ namespace HIKARI {
             request.name = "AI Object";
         }
         request.position = {
-            ReadJsonFloat(parameters, "positionX", 0.0f),
-            ReadJsonFloat(parameters, "positionY", 0.0f),
-            ReadJsonFloat(parameters, "positionZ", 0.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "positionX", 0.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "positionY", 0.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "positionZ", 0.0f),
         };
         request.scale = {
-            ReadJsonFloat(parameters, "scaleX", 1.0f),
-            ReadJsonFloat(parameters, "scaleY", 1.0f),
-            ReadJsonFloat(parameters, "scaleZ", 1.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "scaleX", 1.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "scaleY", 1.0f),
+            EDITOR::ReadEditorOperationFloat(parameters, "scaleZ", 1.0f),
         };
         GameObject* object =
             EDITOR::CreateEmptyObject(*scene, request);
@@ -2038,13 +1756,13 @@ namespace HIKARI {
                 aiLocalBridge_.Stop();
                 aiBridgeStarted_ = false;
             }
-            aiAssistantPanel_.SetBridgeSessionToken({});
-            aiAssistantPanel_.SetBridgeStatus(
+            aiAssistantSession_.SetBridgeSessionToken({});
+            aiAssistantSession_.SetBridgeStatus(
                 "本地桥已禁用（可在编辑器设置中启用）");
             return;
         }
         if (aiBridgeStarted_) {
-            aiAssistantPanel_.SetBridgeStatus(
+            aiAssistantSession_.SetBridgeStatus(
                 aiLocalBridge_.IsRunning()
                     ? "本地桥：" + aiLocalBridge_.GetEndpoint()
                     : "本地桥已停止");
@@ -2063,16 +1781,16 @@ namespace HIKARI {
         if (aiLocalBridge_.Start(
                 port,
                 [this](std::string_view json) {
-                    return aiAssistantPanel_.ExecuteRequest(json);
+                    return aiAssistantSession_.ExecuteRequest(json);
                 },
                 bridgeError)) {
-            aiAssistantPanel_.SetBridgeStatus(
+            aiAssistantSession_.SetBridgeStatus(
                 "本地桥：" + aiLocalBridge_.GetEndpoint());
-            aiAssistantPanel_.SetBridgeSessionToken(
+            aiAssistantSession_.SetBridgeSessionToken(
                 aiLocalBridge_.GetSessionToken());
         } else {
-            aiAssistantPanel_.SetBridgeSessionToken({});
-            aiAssistantPanel_.SetBridgeStatus(
+            aiAssistantSession_.SetBridgeSessionToken({});
+            aiAssistantSession_.SetBridgeStatus(
                 "本地桥启动失败：" + bridgeError);
         }
     }
@@ -2100,7 +1818,7 @@ namespace HIKARI {
         HasKnownUnsavedProjectChanges(
             const DocumentSceneBase& scene) const noexcept {
 
-        return context_.sceneDirty ||
+        return authoringSessions_.HasUnsavedDocuments() || context_.sceneDirty ||
             scene.HasUnsavedSceneChanges() ||
             cinematicsWorkspaceController_.
                 IsSequenceDocumentDirty() ||
@@ -2124,7 +1842,21 @@ namespace HIKARI {
             projectSession) {
 #if defined(HIKARI_WITH_EDITOR)
         aiOperationScene_ = &scene;
-        aiAssistantPanel_.PumpActions();
+        KeepWorkspaceDockSpacesAlive();
+        const auto projectRoot = scene.GetAssetDatabase().GetProjectRoot().generic_string();
+        if (authoringProjectRoot_ != projectRoot) {
+            CancelAiSceneCapture();
+            aiAssistantPanel_.ResetComposer();
+            aiAssistantSession_.SwitchProject(scene.GetAssetDatabase().GetLibraryRoot());
+            authoringSessions_.Reset();
+            authoringProjectRoot_ = projectRoot;
+            authoringSessions_.SetRecoveryRoot(scene.GetAssetDatabase().GetLibraryRoot());
+        }
+        if (aiAssistantSession_.ConsumeCancellation()) { authoringSessions_.CancelPreviews(); CancelAiSceneCapture(); }
+        if (aiSceneCaptureTicket_ && (aiSceneCaptureIdentity_!=scene.GetSceneId()+"|"+scene.GetScenePath() ||
+                aiSceneCaptureRevision_!=scene.GetSceneDocumentRevision())) CancelAiSceneCapture();
+        aiAssistantSession_.PumpActions();
+        authoringSessions_.Tick(static_cast<uint64_t>(ImGui::GetFrameCount()), ImGui::GetIO().DeltaTime);
         scene.GetAssetDatabase().PumpAssetTasks();
         SyncDocumentHistory(scene);
         context_.selection.RepairObjectSelection(scene.GetWorld());
@@ -2133,7 +1865,7 @@ namespace HIKARI {
                 scene.GetSceneDocument());
         viewportSelectionService_.SetLockedObjectIds(
             context_.gizmos.lockedObjectIds);
-        cinematicsWorkspaceController_.SyncSceneIdentity(
+        CinematicsWorkspace().SyncSceneIdentity(
             scene,
             workspaceHost_);
         ConfigureEditorCommands(scene);
@@ -2180,12 +1912,54 @@ namespace HIKARI {
             projectWorkspaceHost_->DrawNavigation(workspaceHost_, TIME::GetFrameContext().unscaledDt);
         }
 
+        {
+            std::string context =
+                "scene objects: " +
+                std::to_string(
+                    scene.GetWorld().GetObjects().size()) +
+                " (";
+            size_t shown = 0u;
+            for (const auto& object :
+                 scene.GetWorld().GetObjects()) {
+                if (shown >= 8u) {
+                    context += "...";
+                    break;
+                }
+                if (shown > 0u) {
+                    context += ", ";
+                }
+                context += "[" + std::to_string(
+                    object->GetDocumentId().value) + "] ";
+                context += object->GetName();
+                ++shown;
+            }
+            context += ")\n" +
+                ModelMaterialWorkspace()
+                    .GetAiMaterialStatus();
+            context += "\nmodel assets: " +
+                std::to_string(
+                    scene.GetAssetRegistry().CollectByType(
+                        AssetType::Model).size());
+            context += "\n" + VfxWorkspace().GetAiVfxStatus();
+            context += "\nBackground authoring: " + authoringSessions_.Snapshot().dump();
+            aiAssistantSession_.SetContextSnapshot(std::move(context));
+        }
+        EnsureAiLocalBridge();
+        static constexpr const char* workspaceLabels[] = {
+            "menu.workspace.scene", "menu.workspace.cinematics", "menu.workspace.modelCollision",
+            "menu.workspace.modelMaterial", "menu.workspace.animationStateMachine", "menu.workspace.runtimeBinding",
+            "menu.workspace.vfx", "menu.workspace.dialogue", "menu.workspace.terrainSurface"};
+        const auto workspaceIndex=static_cast<size_t>(workspaceHost_.GetActive());
+        aiAssistantPanel_.SetWorkspaceLabel(workspaceIndex<std::size(workspaceLabels) ?
+            TEXT::Localize(workspaceLabels[workspaceIndex]) : scene.GetSceneId());
+        aiAssistantPanel_.DrawSidebar(context_.windows.runtime.showAiAssistant);
+
         if (resetDockingLayoutRequested) {
             workspaceHost_.RequestResetActiveLayout();
         }
         if (workspaceHost_.IsActive(
                 EDITOR::EditorWorkspaceId::Dialogue) &&
-            dialogueWorkspaceController_.IsDocumentDirty()) {
+            DialogueWorkspace().IsDocumentDirty()) {
             const EDITOR::EditorWorkspaceOpenRequest* pendingRequest =
                 workspaceHost_.PeekPending();
             if (pendingRequest != nullptr &&
@@ -2194,13 +1968,19 @@ namespace HIKARI {
                 EDITOR::EditorWorkspaceOpenRequest guardedRequest =
                     *pendingRequest;
                 workspaceHost_.CancelPending();
-                (void)dialogueWorkspaceController_.RequestWorkspaceTransition(
+                (void)DialogueWorkspace().RequestWorkspaceTransition(
                     std::move(guardedRequest),
                     viewportDropMessage_);
             }
         }
         if (const std::optional<EDITOR::EditorWorkspaceActivation> activation =
                 workspaceHost_.ApplyPending()) {
+            if (activation->vfxAssetGuid) authoringSessions_.LeaveDocument("vfx", activation->vfxAssetGuid->value);
+            if (activation->materialAssetGuid) authoringSessions_.LeaveDocument("model_material", activation->materialAssetGuid->value);
+            if (activation->animationStateMachineAssetGuid) authoringSessions_.LeaveDocument("animation_state_machine", activation->animationStateMachineAssetGuid->value);
+            if (activation->dialogueAssetGuid) authoringSessions_.LeaveDocument("dialogue", activation->dialogueAssetGuid->value);
+            if (activation->modelAssetGuid) authoringSessions_.LeaveDocument("model_collision", activation->modelAssetGuid->value);
+            if (activation->sequenceAssetGuid) authoringSessions_.LeaveDocument("cinematics", activation->sequenceAssetGuid->value);
             const auto isSceneOwnedWorkspace =
                 [](EDITOR::EditorWorkspaceId id) {
                     return id == EDITOR::EditorWorkspaceId::Scene ||
@@ -2216,32 +1996,32 @@ namespace HIKARI {
             }
             if (activation->previous == EDITOR::EditorWorkspaceId::Vfx &&
                 activation->current != EDITOR::EditorWorkspaceId::Vfx) {
-                vfxWorkspaceController_.Deactivate(
+                VfxWorkspace().Deactivate(
                     workspaceHost_.GetVfxPreviewView().renderViewId);
             }
-            cinematicsWorkspaceController_.ApplyWorkspaceActivation(
+            CinematicsWorkspace().ApplyWorkspaceActivation(
                 scene,
                 *activation,
                 context_,
                 workspaceHost_);
-            modelCollisionWorkspaceController_.ApplyWorkspaceActivation(
+            ModelCollisionWorkspace().ApplyWorkspaceActivation(
                 scene,
                 *activation,
                 workspaceHost_);
-            modelMaterialWorkspaceController_.ApplyWorkspaceActivation(
+            ModelMaterialWorkspace().ApplyWorkspaceActivation(
                 scene,
                 *activation,
                 workspaceHost_);
-            animationStateMachineWorkspaceController_.ApplyWorkspaceActivation(
+            AnimationStateMachineWorkspace().ApplyWorkspaceActivation(
                 scene,
                 *activation);
-            dialogueWorkspaceController_.ApplyWorkspaceActivation(
+            DialogueWorkspace().ApplyWorkspaceActivation(
                 scene,
                 *activation);
             if (activation->current ==
                     EDITOR::EditorWorkspaceId::RuntimeBinding) {
                 std::string message{};
-                if (!runtimeBindingWorkspaceController_.Activate(
+                if (!RuntimeBindingWorkspace().Activate(
                         scene,
                         message) || !message.empty()) {
                     viewportDropMessage_ = std::move(message);
@@ -2251,7 +2031,7 @@ namespace HIKARI {
                 std::string message{};
                 const AssetGuid requestedGuid =
                     activation->vfxAssetGuid.value_or(AssetGuid{});
-                if (!vfxWorkspaceController_.Activate(
+                if (!VfxWorkspace().Activate(
                         scene.GetAssetDatabase(),
                         requestedGuid,
                         message) || !message.empty()) {
@@ -2271,11 +2051,11 @@ namespace HIKARI {
         if (workspaceHost_.IsActive(
                 EDITOR::EditorWorkspaceId::RuntimeBinding)) {
             SERVICES::SetEditorGameViewportSize(0, 0, false);
-            runtimeBindingWorkspaceController_.DrawDockSpace(
+            RuntimeBindingWorkspace().DrawDockSpace(
                 workspaceHost_.ConsumeReset(
                     EDITOR::EditorWorkspaceId::RuntimeBinding));
             const EDITOR::RuntimeBindingWorkspaceResult result =
-                runtimeBindingWorkspaceController_.Draw(
+                RuntimeBindingWorkspace().Draw(
                     scene,
                     commandRouter_);
             if (result.exitToSceneRequested) {
@@ -2294,11 +2074,11 @@ namespace HIKARI {
             // The VFX workspace owns the presented realtime view. Do not keep
             // a hidden primary game/scene viewport rendering behind it.
             SERVICES::SetEditorGameViewportSize(0, 0, false);
-            vfxWorkspaceController_.DrawDockSpace(
+            VfxWorkspace().DrawDockSpace(
                 workspaceHost_.ConsumeReset(
                     EDITOR::EditorWorkspaceId::Vfx));
             const EDITOR::VfxWorkspaceResult result =
-                vfxWorkspaceController_.Draw(
+                VfxWorkspace().Draw(
                     scene.GetAssetDatabase(),
                     scene.GetAssetRegistry(),
                     workspaceHost_.GetVfxPreviewView(),
@@ -2320,11 +2100,11 @@ namespace HIKARI {
         if (workspaceHost_.IsActive(
                 EDITOR::EditorWorkspaceId::Dialogue)) {
             SERVICES::SetEditorGameViewportSize(0, 0, false);
-            dialogueWorkspaceController_.DrawDockSpace(
+            DialogueWorkspace().DrawDockSpace(
                 workspaceHost_.ConsumeReset(
                     EDITOR::EditorWorkspaceId::Dialogue));
             const EDITOR::DialogueWorkspaceResult result =
-                dialogueWorkspaceController_.Draw(
+                DialogueWorkspace().Draw(
                     scene,
                     commandRouter_);
             if (result.workspaceRequest) {
@@ -2341,11 +2121,11 @@ namespace HIKARI {
         if (workspaceHost_.IsActive(
                 EDITOR::EditorWorkspaceId::AnimationStateMachine)) {
             SERVICES::SetEditorGameViewportSize(0, 0, false);
-            animationStateMachineWorkspaceController_.DrawDockSpace(
+            AnimationStateMachineWorkspace().DrawDockSpace(
                 workspaceHost_.ConsumeReset(
                     EDITOR::EditorWorkspaceId::AnimationStateMachine));
             const EDITOR::AnimationStateMachineWorkspaceResult result =
-                animationStateMachineWorkspaceController_.Draw(
+                AnimationStateMachineWorkspace().Draw(
                     scene,
                     commandRouter_);
             if (result.exitToSceneRequested) {
@@ -2366,11 +2146,11 @@ namespace HIKARI {
         if (workspaceHost_.IsActive(
                 EDITOR::EditorWorkspaceId::ModelMaterial)) {
             SERVICES::SetEditorGameViewportSize(0, 0, false);
-            modelMaterialWorkspaceController_.DrawDockSpace(
+            ModelMaterialWorkspace().DrawDockSpace(
                 workspaceHost_.ConsumeReset(
                     EDITOR::EditorWorkspaceId::ModelMaterial));
             const EDITOR::ModelMaterialWorkspaceResult result =
-                modelMaterialWorkspaceController_.Draw(
+                ModelMaterialWorkspace().Draw(
                     scene,
                     workspaceHost_,
                     commandRouter_);
@@ -2392,11 +2172,11 @@ namespace HIKARI {
         if (workspaceHost_.IsActive(
                 EDITOR::EditorWorkspaceId::ModelCollision)) {
             SERVICES::SetEditorGameViewportSize(0, 0, false);
-            modelCollisionWorkspaceController_.DrawDockSpace(
+            ModelCollisionWorkspace().DrawDockSpace(
                 workspaceHost_.ConsumeReset(
                     EDITOR::EditorWorkspaceId::ModelCollision));
             const EDITOR::ModelCollisionWorkspaceResult result =
-                modelCollisionWorkspaceController_.Draw(
+                ModelCollisionWorkspace().Draw(
                     scene,
                     workspaceHost_,
                     commandRouter_);
@@ -2425,11 +2205,11 @@ namespace HIKARI {
             if (CouldMutateEditorDocumentThisFrame()) {
                 cinematicsBefore = scene.GetSceneDocument().cinematics;
             }
-            cinematicsWorkspaceController_.DrawDockSpace(
+            CinematicsWorkspace().DrawDockSpace(
                 workspaceHost_.ConsumeReset(
                     EDITOR::EditorWorkspaceId::Cinematics));
             const EDITOR::CinematicsWorkspaceResult result =
-                cinematicsWorkspaceController_.Draw(
+                CinematicsWorkspace().Draw(
                     scene,
                     playSession,
                     context_,
@@ -2835,71 +2615,6 @@ namespace HIKARI {
         }
         if (context_.windows.runtime.showPerformanceAudit) {
             performanceAuditPanel_.Draw(context_.windows.runtime.showPerformanceAudit);
-        }
-        {
-            std::string context =
-                "scene objects: " +
-                std::to_string(
-                    scene.GetWorld().GetObjects().size()) +
-                " (";
-            size_t shown = 0u;
-            for (const auto& object :
-                 scene.GetWorld().GetObjects()) {
-                if (shown >= 8u) {
-                    context += "...";
-                    break;
-                }
-                if (shown > 0u) {
-                    context += ", ";
-                }
-                context += "[" + std::to_string(
-                    object->GetDocumentId().value) + "] ";
-                context += object->GetName();
-                ++shown;
-            }
-            context += ")\n" +
-                modelMaterialWorkspaceController_
-                    .GetAiMaterialStatus();
-            context += "\nmodel assets: " +
-                std::to_string(
-                    scene.GetAssetRegistry().CollectByType(
-                        AssetType::Model).size());
-            context += "\n" + vfxWorkspaceController_.GetAiVfxStatus();
-            aiAssistantPanel_.SetContextSnapshot(std::move(context));
-        }
-        aiAssistantPanel_.SetSceneActionCallback(
-            [this](std::string_view json) {
-                const std::string action =
-                    EDITOR::AI_ASSISTANT::ExtractJsonField(json, "action");
-                if (operationRegistry_.IsRegistered(action)) {
-                    nlohmann::json parameters;
-                    try {
-                        parameters = nlohmann::json::parse(
-                            std::string(json));
-                    } catch (const nlohmann::json::parse_error& error) {
-                        EDITOR::AI_ASSISTANT::AiRequestResult result{};
-                        result.code = "JSON_PARSE_ERROR";
-                        result.message = "动作 JSON 解析失败";
-                        result.details.push_back(error.what());
-                        return result;
-                    }
-                    return ToAiRequestResult(
-                        operationRegistry_.Execute(
-                            action, parameters));
-                }
-                EDITOR::AI_ASSISTANT::AiRequestResult result{};
-                result.ok = false;
-                result.code = "UNKNOWN_ACTION";
-                result.message = "不支持的 AI 动作：" + action;
-                for (const std::string& id :
-                     operationRegistry_.RegisteredIds()) {
-                    result.details.push_back("supported: " + id);
-                }
-                return result;
-            });
-        EnsureAiLocalBridge();
-        if (context_.windows.runtime.showAiAssistant) {
-            aiAssistantPanel_.Draw(context_.windows.runtime.showAiAssistant);
         }
         if (context_.windows.runtime.showEditorSettings) {
             editorSettingsPanel_.Draw(

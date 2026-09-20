@@ -14,6 +14,7 @@ void ModelMaterialWorkspaceDocument::OpenBindings(
   modelGuid_ = modelGuid;
   bindingAssetGuid_ = assetGuid;
   bindingSourcePath_ = std::move(sourcePath);
+  bindingSourceVersion_.Accept(bindingSourcePath_);
   bindings_ = std::move(bindings);
   savedBindings_ = bindings_;
   bindingsOpen_ = modelGuid_.IsValid();
@@ -29,6 +30,7 @@ void ModelMaterialWorkspaceDocument::OpenMaterial(
   std::lock_guard<std::recursive_mutex> lock(mutex_);
   materialAssetGuid_ = assetGuid;
   materialSourcePath_ = std::move(sourcePath);
+  materialSourceVersion_.Accept(materialSourcePath_);
   material_ = std::move(source);
   savedMaterial_ = material_;
   compile_ = compile;
@@ -325,6 +327,7 @@ void ModelMaterialWorkspaceDocument::MarkBindingsSaved(
   std::lock_guard<std::recursive_mutex> lock(mutex_);
   bindingAssetGuid_ = assetGuid;
   bindingSourcePath_ = std::move(sourcePath);
+  bindingSourceVersion_.Accept(bindingSourcePath_);
   savedBindingStateToken_ = bindingStateToken_;
   savedBindings_ = bindings_;
 }
@@ -334,6 +337,7 @@ void ModelMaterialWorkspaceDocument::MarkMaterialSaved(
   std::lock_guard<std::recursive_mutex> lock(mutex_);
   materialAssetGuid_ = assetGuid;
   materialSourcePath_ = std::move(sourcePath);
+  materialSourceVersion_.Accept(materialSourcePath_);
   savedMaterialStateToken_ = materialStateToken_;
   savedMaterial_ = material_;
 }

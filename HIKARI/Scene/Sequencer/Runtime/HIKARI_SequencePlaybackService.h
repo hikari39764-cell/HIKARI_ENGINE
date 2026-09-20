@@ -40,6 +40,7 @@ namespace HIKARI::SEQUENCER {
 
         uint64_t Submit(SequencePlaybackCommand command);
         void Update(float deltaTime);
+        bool EvaluateExternal(SequencePlaybackHandle handle, const SequenceEvaluationContext& context);
         void Reset();
 
         bool IsPlaying(SequencePlaybackHandle handle) const noexcept;
@@ -61,6 +62,7 @@ namespace HIKARI::SEQUENCER {
             std::string channel{};
             int priority = 0;
             uint64_t requestId = 0;
+            bool externallyDriven = false;
         };
 
         SequencePlayResult PlayLoaded(

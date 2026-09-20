@@ -18,11 +18,7 @@
 
 namespace HIKARI::EDITOR {
 
-void ModelMaterialWorkspaceController::SetAiAssistantPanel(
-    AiAssistantPanel *panel, bool *openFlag) {
-  aiAssistantPanel_ = panel;
-  aiAssistantOpenFlag_ = openFlag;
-}
+
 
 void ModelMaterialWorkspaceController::ApplyWorkspaceActivation(
     DocumentSceneBase &scene, const EditorWorkspaceActivation &activation,

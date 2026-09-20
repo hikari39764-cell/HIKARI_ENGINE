@@ -15,8 +15,75 @@
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
 #include "Scene/Vfx/HIKARI_VfxLightOutput.h"
+#include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 
 namespace HIKARI::EDITOR {
+
+    bool VfxWorkspaceController::CopyPreviewDocument(
+        const VfxWorkspaceController& source, std::string& outMessage) {
+        if (!source.document_.IsOpen()) { outMessage = "No VFX document is open"; return false; }
+        document_.NewAsset(source.document_.Asset().name);
+        if (!document_.ApplyAsset(source.document_.Asset(), outMessage)) return false;
+        previewProgramRevision_ = 0;
+        cameraController_.ResetFromCamera(source.cameraController_.GetCamera());
+        previewInputOverrides_ = source.previewInputOverrides_;
+        hiddenEmitterIds_ = source.hiddenEmitterIds_;
+        soloEmitterId_ = source.soloEmitterId_;
+        previewBypassAdjustments_ = source.previewBypassAdjustments_;
+        previewCleanView_ = source.previewCleanView_;
+        showPreviewGrid_ = source.showPreviewGrid_;
+        showPreviewAxes_ = source.showPreviewAxes_;
+        *previewEnvironment_ = *source.previewEnvironment_;
+        previewLightIntensity_ = source.previewLightIntensity_;
+        return true;
+    }
+
+    nlohmann::json VfxWorkspaceController::DescribeBackgroundPreview() const {
+        const auto& input = previewRenderMailbox_.GetCurrent();
+        size_t drawableSubmissions = 0;
+        if (input) for (const auto& emitter : input->emitters)
+            if (emitter.drawAfterSimulation) ++drawableSubmissions;
+        return {{"actualTime", previewElapsedSeconds_}, {"waitingForRender", previewRenderMailbox_.HasPending()},
+            {"seekPending", previewSeekTarget_.has_value()}, {"restartPending", previewRestartPending_},
+            {"drawableSubmissions", drawableSubmissions}, {"previewMessage", statusMessage_}};
+    }
+
+    bool VfxWorkspaceController::PrepareBackgroundPreview(
+        EditorViewInstance& view, float timeSeconds, std::string& outMessage) {
+        if (!document_.IsOpen()) { outMessage = "No VFX document is open"; return false; }
+        if (!std::isfinite(timeSeconds) || timeSeconds < 0 || timeSeconds > GetPreviewTimelineDuration()) {
+            outMessage = "Capture time is outside the document timeline"; return false;
+        }
+        auto& camera = cameraController_.GetCamera();
+        camera.SetPerspective(camera.GetFovYRad(), view.extent.Aspect(),
+            camera.GetNearZ(), camera.GetFarZ());
+        // 明示的な撮影はドラッグ用 debounce を待たない。背景では時間を進めないため。
+        previewRestartDelaySeconds_ = 0.0f;
+        if (!previewPlaying_ && !PlayPreview(outMessage)) return false;
+        if (!SeekPreview(timeSeconds, outMessage)) return false;
+        PausePreview(true);
+        backgroundFrozenPrepared_ = false;
+        previewNeedsRedraw_ = true;
+        return true;
+    }
+
+    void VfxWorkspaceController::TickBackgroundPreview(
+        EditorViewInstance& view, uint64_t frameIndex) {
+        AcknowledgePreviewRenderInput();
+        previewRestartDelaySeconds_ = 0.0f;
+        if (previewSeekTarget_ || previewRestartPending_ || previewRenderMailbox_.HasPending()) {
+            UpdatePreview(frameIndex, 0.0f);
+        } else if (!backgroundFrozenPrepared_) {
+            if (playbackService_.PublishFrozenRenderInput()) (void)PublishPreviewRenderInput();
+            backgroundFrozenPrepared_ = true;
+        }
+        SubmitPreviewRequest(view, true);
+    }
+
+    bool VfxWorkspaceController::IsBackgroundPreviewSettled() const noexcept {
+        return backgroundFrozenPrepared_ && !previewSeekTarget_ && !previewRestartPending_ &&
+            !previewRenderMailbox_.HasPending();
+    }
 
     void VfxWorkspaceController::SetPreviewPlaybackSpeed(
         float speed) noexcept {
@@ -391,9 +458,10 @@ namespace HIKARI::EDITOR {
         if (!result.success) {
             previewProgram_.reset();
             previewProgramRevision_ = 0u;
-            outMessage = result.diagnostics.empty()
-                ? "VFX preview compile failed"
-                : result.diagnostics.front().message;
+            const auto failure=std::find_if(result.diagnostics.begin(),result.diagnostics.end(),[](const auto& diagnostic){
+                return diagnostic.severity==VFX::VfxDiagnosticSeverity::Error;
+            });
+            outMessage = failure==result.diagnostics.end() ? "VFX preview compile failed" : failure->message;
             return false;
         }
         previewProgram_ = std::make_shared<const VFX::VfxProgram>(
@@ -432,7 +500,8 @@ namespace HIKARI::EDITOR {
         if (previewRenderMailbox_.HasPending()) {
             return;
         }
-        if (previewPaused_ && previewPlaying_ && previewHandle_.IsValid() &&
+        if (!previewSeekTarget_ && !previewRestartPending_ &&
+            previewPaused_ && previewPlaying_ && previewHandle_.IsValid() &&
             playbackService_.PublishFrozenRenderInput()) {
             // GPU 受領済みの最終状態だけを停止中の描画入力として残す。
             (void)PublishPreviewRenderInput(
@@ -564,18 +633,28 @@ namespace HIKARI::EDITOR {
                         submission) {
                     return !visible(submission.key.emitterIndex);
                 });
-            for (auto& composition : input.compositions)
-                for (auto& layer : composition.layers) {
-                    // Solo された子へ到達するための親 scope は残す。
-                    if (layer.kind == RENDER3D::PARTICLES::ParticleCompositionLayerKind::Adjustment)
-                        layer.enabled = layer.enabled && visible(layer.emitterIndex);
-                }
         }
-        if (previewBypassAdjustments_)
-            for (auto& composition : input.compositions)
-                for (auto& layer : composition.layers)
-                    if (layer.kind == RENDER3D::PARTICLES::ParticleCompositionLayerKind::Adjustment)
-                        layer.enabled = false;
+        if (previewProgram_) for (auto& composition:input.compositions) for (auto& layer:composition.layers) {
+            if (layer.emitterIndex>=previewProgram_->emitters.size()) continue;
+            if (!IsEmitterPreviewVisible(previewProgram_->emitters[layer.emitterIndex].sourceEmitterId) ||
+                (previewBypassAdjustments_ && layer.kind==RENDER3D::PARTICLES::ParticleCompositionLayerKind::Adjustment)) layer.enabled=false;
+        }
+        if (previewProgram_) for (auto& submission : input.emitters) {
+            if (submission.key.emitterIndex >= previewProgram_->emitters.size()) continue;
+            std::erase_if(submission.render.spatialEffects, [&](const auto& effect) {
+                if (effect.ownerEmitterIndex >= previewProgram_->emitters.size()) return true;
+                const auto& owner = previewProgram_->emitters[effect.ownerEmitterIndex];
+                return !IsEmitterPreviewVisible(owner.sourceEmitterId) ||
+                    (previewBypassAdjustments_ && owner.kind == VFX::VfxLayerKind::Adjustment);
+            });
+            for (const auto& curve : previewProgram_->emitters[submission.key.emitterIndex].layerCurves) {
+                if (curve.channel != VFX::VfxLayerChannel::MaterialEffectMix || curve.ownerEmitterIndex >= previewProgram_->emitters.size()) continue;
+                const auto& owner = previewProgram_->emitters[curve.ownerEmitterIndex];
+                if (!previewBypassAdjustments_ && IsEmitterPreviewVisible(owner.sourceEmitterId)) continue;
+                for (auto& parameter : submission.render.animatedParameters)
+                    if (parameter.slot == curve.materialSlot) parameter.value = 0;
+            }
+        }
         // 全レイヤー非表示も有効な入力。直前の描画を保持すると非表示にできない。
         const bool published =
             previewRenderMailbox_.Publish(std::move(input), mode) != 0u;

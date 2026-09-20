@@ -78,6 +78,7 @@ namespace HIKARI::EDITOR {
                 SealPropertyEdit();
             ImGui::PopID();
         }
+        if (layer.kind == VFX::VfxLayerKind::Adjustment) return;
         auto color = sample.color;
         ImGui::PushID("layerColor");
         ImGui::TextUnformatted(VfxUiText("Color").c_str());
@@ -105,6 +106,7 @@ namespace HIKARI::EDITOR {
         ImGui::PopID();
         (void)IconButton(EditorGlyph::Help, "KeyHelp", EditorButtonTone::Quiet, {26, ImGui::GetFrameHeight()},
             TEXT::Localize("ui.vfx.layer.keyHelp").c_str());
+        DrawLayerPath(layer);
 #else
         (void)database;
         (void)layer;

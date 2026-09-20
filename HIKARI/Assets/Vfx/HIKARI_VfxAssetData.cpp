@@ -9,7 +9,11 @@ namespace HIKARI::VFX {
     bool IsValidVfxHistory(const VfxHistoryData& h) noexcept {
         return static_cast<uint32_t>(h.mode) <= 2u && std::isfinite(h.duration) &&
             h.duration >= 0.01f && h.duration <= 2.0f && h.samples >= 2u && h.samples <= 16u &&
-            std::isfinite(h.breakDistance) && h.breakDistance > 0.0f && h.breakDistance <= 10000.0f;
+            std::isfinite(h.breakDistance) && h.breakDistance > 0.0f && h.breakDistance <= 10000.0f &&
+            std::isfinite(h.tailWidth) && h.tailWidth >= 0 && h.tailWidth <= 4 &&
+            std::isfinite(h.fadePower) && h.fadePower >= 0.05f && h.fadePower <= 8 &&
+            std::isfinite(h.tailColor.x) && std::isfinite(h.tailColor.y) && std::isfinite(h.tailColor.z) && std::isfinite(h.tailColor.w) &&
+            h.tailColor.x >= 0 && h.tailColor.y >= 0 && h.tailColor.z >= 0 && h.tailColor.w >= 0 && h.tailColor.w <= 1;
     }
 
     namespace {

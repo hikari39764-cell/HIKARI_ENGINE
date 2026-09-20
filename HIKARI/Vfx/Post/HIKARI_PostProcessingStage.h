@@ -1,4 +1,6 @@
 #pragma once
+#include <span>
+#include "Scene/Sequencer/Tracks/HIKARI_ShotPresentation.h"
 
 #include <cstdint>
 #include <array>
@@ -40,6 +42,7 @@ namespace HIKARI::POST {
         void Shutdown();
         void UpdateCommonParams(float deltaTime, int width, int height);
         void SetIntensity(float intensity);
+        void SetSequenceEffects(std::span<const SEQUENCER::ScreenEffectSample> effects);
         void SetCombo(float combo);
 
         void ClearEffects();
@@ -153,6 +156,11 @@ namespace HIKARI::POST {
         GFX::Context context_{};
         PostChain globalChain_{};
         std::array<PostChain, 5> bloomLevels_{};
+        RenderTarget2D* ApplySequenceEffects(RenderTarget2D& source, QuadDrawer& quad);
+        PostChain sequenceChain_{};
+        std::unique_ptr<PostEffect> sequenceEffect_{};
+        std::vector<SEQUENCER::ScreenEffectSample> sequenceEffects_;
+        uint64_t sequenceEffectsFrame_ = 0;
         PostChain transitionChain_{};
         PostChain fxaaChain_{};
         PostChain actionScreenImpulseChain_{};

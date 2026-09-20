@@ -260,38 +260,71 @@ namespace HIKARI::VFX {
              index < program.emitters.size();
              ++index) {
             const VfxProgramEmitter& emitter = program.emitters[index];
-            if (!emitter.animationTiming.IsValid() || emitter.layerCurves.size()>kMaxVfxParameterTracks+13) { outError="Layer curve budget exceeded"; return false; }
-            if(!emitter.render.animatedParameters.empty()) {outError="Compiled assets cannot contain per-frame parameter values";return false;}
+            if (!emitter.animationTiming.IsValid() || emitter.layerCurves.size()>RENDER3D::MATERIAL::kGpuMaterialProgramParameterSlotCount+18+kMaximumVfxRuntimeEffectCurves) { outError="Layer curve budget exceeded"; return false; }
+            if (emitter.render.effectMaterialIncludesParticleColor && !emitter.render.effectMaterial) {outError="Local adjustment material is missing";return false;}
+            if(!emitter.render.animatedParameters.empty() || !emitter.render.spatialEffects.empty()) {outError="Compiled assets cannot contain per-frame parameter values";return false;}
             RENDER3D::MATERIAL::MaterialExpressionRuntimeProgram expression;
-            if(emitter.kind != VfxLayerKind::Adjustment && std::any_of(emitter.layerCurves.begin(),emitter.layerCurves.end(),[](const auto& c){return c.channel>=VfxLayerChannel::MaterialParameter;})) {
+            if(emitter.kind != VfxLayerKind::Adjustment && std::any_of(emitter.layerCurves.begin(),emitter.layerCurves.end(),[](const auto& c){return c.channel>=VfxLayerChannel::MaterialParameter && c.channel<=VfxLayerChannel::MaterialEffectMix;})) {
                 if(!emitter.render.effectMaterial || !RENDER3D::MATERIAL::BuildMaterialExpressionRuntimeProgram(emitter.render.effectMaterial->compileResult.program,expression,outError)) return false;
             }
-            if (emitter.compositeEffects.size() > kMaximumVfxEffectsPerLayer ||
-                (emitter.kind != VfxLayerKind::Adjustment && !emitter.compositeEffects.empty())) {
-                outError = "Invalid adjustment effect list"; return false;
-            }
-            for (const auto& effect : emitter.compositeEffects) {
-                if (!IsCompositeMaterialEffect(effect.kind) || effect.id.empty() || !IsFinite(effect.parameters) ||
-                    !IsFinite(effect.parameters2) || !IsFinite(effect.colorA) || !IsFinite(effect.colorB)) {
-                    outError = "Invalid adjustment effect"; return false;
+            if (emitter.runtimeEffects.size()>kMaximumVfxEffectsPerLayer) {outError="Runtime effect budget exceeded";return false;}
+            for (const auto& effect:emitter.runtimeEffects) {
+                if (MaterialEffectName(effect.kind)=="Invalid" || !IsValidMaterialEffectBlend(effect) ||
+                    !IsFinite(effect.parameters) || !IsFinite(effect.parameters2) || !IsFinite(effect.colorA) || !IsFinite(effect.colorB) ||
+                    (effect.space==MaterialEffectSpace::Group3D ? !SupportsSpatialMaterialEffect(effect.kind) || effect.mask>MaterialEffectMask::Vertical :
+                        effect.space!=MaterialEffectSpace::LayerUv || emitter.kind!=VfxLayerKind::Adjustment || !IsCompositeAdjustmentEffect(effect) || !IsAdjustmentMaterialEffect(effect.kind)) ||
+                    effect.colorStops.size()>kMaximumMaterialEffectColorStops) {outError="Invalid runtime effect";return false;}
+                float previous=-1;
+                for (const auto& stop:effect.colorStops) {
+                    if (!IsFinite(stop.time) || stop.time<0 || stop.time>1 || stop.time<=previous || !IsFinite(stop.color)) {outError="Invalid runtime gradient";return false;}
+                    previous=stop.time;
                 }
             }
+            std::unordered_set<uint32_t> owners;
+            size_t spatialCount=0;
+            for (const auto owner:emitter.spatialOwners) {
+                if (owner>=program.emitters.size() || !owners.insert(owner).second ||
+                    (owner!=index && program.emitters[owner].kind!=VfxLayerKind::Adjustment)) {outError="Invalid spatial effect owner";return false;}
+                const size_t previousCount=spatialCount;
+                for (const auto& effect:program.emitters[owner].runtimeEffects)
+                    if(effect.enabled && effect.space==MaterialEffectSpace::Group3D) ++spatialCount;
+                if (previousCount==spatialCount) {outError="Spatial owner has no enabled deformation";return false;}
+                if (owner!=index) {
+                    bool inScope=false;
+                    uint32_t scope=uint32_t(index);
+                    for(size_t depth=0;depth<program.emitters.size() && scope<program.emitters.size();++depth) {
+                        const auto parent=program.emitters[scope].parentEmitterIndex;
+                        if (owner<scope && program.emitters[owner].parentEmitterIndex==parent) {inScope=true;break;}
+                        scope=parent;
+                    }
+                    if (!inScope) {outError="Spatial owner does not precede content in its group";return false;}
+                }
+            }
+            if (spatialCount>RENDER3D::PARTICLES::kMaximumParticleSpatialEffects) {outError="A layer supports at most eight active spatial deformations";return false;}
             std::unordered_set<uint64_t> layerChannels;
             for (const auto& curve:emitter.layerCurves) {
                 const auto channel=static_cast<uint32_t>(curve.channel);
-                if (emitter.kind == VfxLayerKind::Adjustment && channel >= static_cast<uint32_t>(VfxLayerChannel::MaterialParameter) &&
-                    (curve.channel != VfxLayerChannel::MaterialParameter || curve.materialSlot >= emitter.compositeEffects.size() * 8u)) {
-                    outError = "Invalid adjustment parameter slot"; return false;
+                if (curve.ownerEmitterIndex != UINT32_MAX &&
+                    (curve.ownerEmitterIndex >= program.emitters.size() || curve.ownerEmitterIndex == index ||
+                     program.emitters[curve.ownerEmitterIndex].kind != VfxLayerKind::Adjustment ||
+                     curve.channel < VfxLayerChannel::MaterialParameter)) {
+                    outError = "Invalid adjustment curve owner"; return false;
                 }
-                const uint64_t identity=(uint64_t(channel)<<32)|curve.materialSlot;
-                if(emitter.kind != VfxLayerKind::Adjustment && channel>=static_cast<uint32_t>(VfxLayerChannel::MaterialParameter) &&
+                const bool runtime = curve.channel==VfxLayerChannel::EffectParameter || curve.channel==VfxLayerChannel::EffectPhase;
+                const uint64_t identity=(uint64_t(runtime ? uint32_t(VfxLayerChannel::EffectParameter) : (std::min)(channel,uint32_t(VfxLayerChannel::MaterialParameter)))<<32)|curve.materialSlot;
+                if (runtime && (curve.ownerEmitterIndex!=UINT32_MAX || curve.materialSlot/9u>=emitter.runtimeEffects.size())) {
+                    outError="Invalid runtime effect animation slot";return false;
+                }
+                if(!runtime && emitter.kind != VfxLayerKind::Adjustment && channel>=static_cast<uint32_t>(VfxLayerChannel::MaterialParameter) &&
                     std::none_of(expression.parameterValueSlots.begin(),expression.parameterValueSlots.end(),[&](const auto& slot){return slot.second==curve.materialSlot;})) {
                     outError="Animated parameter does not reference a material value slot";return false;
                 }
-                if (!std::isfinite(curve.minimum) || !std::isfinite(curve.maximum) || curve.minimum>curve.maximum || channel>static_cast<uint32_t>(VfxLayerChannel::MaterialUvOffset) ||
+                if (!std::isfinite(curve.minimum) || !std::isfinite(curve.maximum) || curve.minimum>curve.maximum || channel>static_cast<uint32_t>(VfxLayerChannel::EffectPhase) ||
                     (emitter.kind==VfxLayerKind::Particles && channel<13) ||
-                    curve.materialSlot>=RENDER3D::MATERIAL::kGpuMaterialProgramParameterSlotCount ||
-                    (emitter.kind != VfxLayerKind::Adjustment && channel>=static_cast<uint32_t>(VfxLayerChannel::MaterialParameter) && !emitter.render.effectMaterial) ||
+                    (emitter.kind==VfxLayerKind::Adjustment && channel>=18 && !runtime) ||
+                    (curve.channel==VfxLayerChannel::MaterialEffectMix && curve.ownerEmitterIndex==UINT32_MAX) ||
+                    (!runtime && curve.materialSlot>=RENDER3D::MATERIAL::kGpuMaterialProgramParameterSlotCount) ||
+                    (!runtime && emitter.kind != VfxLayerKind::Adjustment && channel>=static_cast<uint32_t>(VfxLayerChannel::MaterialParameter) && !emitter.render.effectMaterial) ||
                     static_cast<uint32_t>(curve.interpolation)>static_cast<uint32_t>(ParticleCurveInterpolation::Step) ||
                     !layerChannels.emplace(identity).second || curve.keys.empty() || curve.keys.size()>kMaxVfxLayerCurveKeys) {
                     outError="Invalid layer animation channel"; return false;
@@ -363,7 +396,7 @@ namespace HIKARI::VFX {
                 !IsValidAnimated(simulation.position) ||
                 !IsValidAnimated(simulation.rotationRadians) ||
                 !IsValidAnimated(simulation.scale) ||
-                !IsFinite(simulation.gravity) ||
+                !RENDER3D::PARTICLES::IsValidParticleForceField(simulation.field) || !IsFinite(simulation.gravity) ||
                 !IsFinite(simulation.drag) || simulation.drag < 0.0f ||
                 simulation.localSimulation > 1u || simulation.collisionPlaneEnabled > 1u ||
                 !IsFinite(simulation.collisionPlaneHeight) ||
@@ -372,7 +405,6 @@ namespace HIKARI::VFX {
                 !IsValidAnimated(simulation.color) ||
                 !IsFinite(emitter.spawnRatePerSecond) ||
                 emitter.spawnRatePerSecond < 0.0f ||
-                emitter.burstCount > simulation.capacity ||
                 emitter.authoredOverrides.enabled > 1u ||
                 !IsFinite(
                     emitter.authoredOverrides.spawnRateMultiplier) ||
@@ -549,10 +581,6 @@ namespace HIKARI::VFX {
                     return false;
                 }
             }
-            if (emitter.burstCount > simulation.capacity) {
-                outError = "VFX program burst count exceeds capacity";
-                return false;
-            }
 
             if (emitter.specialOutputs.size() >
                 kMaximumVfxProgramSpecialOutputs) {
@@ -717,8 +745,22 @@ namespace HIKARI::VFX {
             return false;
         }
 
+        for (const auto& layer : program.emitters) {
+            if (layer.orientAlongPath && layer.kind != VfxLayerKind::Shape && layer.kind != VfxLayerKind::Group) {outError="Invalid path orientation layer";return false;}
+            if (layer.kind == VfxLayerKind::Adjustment && (layer.matteOnly || layer.matteSourceIndex != UINT32_MAX)) { outError="Invalid matte-only adjustment"; return false; }
+            std::unordered_set<uint32_t> visited{layer.emitterIndex};
+            auto source = layer.matteSourceIndex;
+            while (source != UINT32_MAX) {
+                if (source >= program.emitters.size() || !visited.insert(source).second ||
+                    program.emitters[source].parentEmitterIndex != layer.parentEmitterIndex ||
+                    program.emitters[source].kind == VfxLayerKind::Adjustment) {
+                    outError="Invalid or cyclic track matte reference"; return false;
+                }
+                source = program.emitters[source].matteSourceIndex;
+            }
+        }
         const bool hasComposition = std::any_of(program.emitters.begin(), program.emitters.end(),
-            [](const auto& emitter) { return emitter.kind == VfxLayerKind::Adjustment; });
+            [](const auto& emitter) { return emitter.kind == VfxLayerKind::Adjustment || emitter.matteSourceIndex != UINT32_MAX || emitter.matteOnly; });
         std::unordered_set<uint32_t> visited{};
         for (uint32_t emitterIndex = 0u;
              emitterIndex < program.emitters.size();

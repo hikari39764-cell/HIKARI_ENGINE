@@ -1,4 +1,5 @@
 #pragma once
+#include "Editor/Documents/HIKARI_EditorSourceVersion.h"
 
 #include <cstddef>
 #include <filesystem>
@@ -17,6 +18,9 @@ namespace HIKARI::EDITOR {
 
 class ModelMaterialWorkspaceDocument {
 public:
+  bool CanSaveMaterialSource(std::string& message) const { return materialSourceVersion_.CanSave(message); }
+  bool CanSaveBindingSource(std::string& message) const { return bindingSourceVersion_.CanSave(message); }
+  void AcceptMaterialSourceWrite(const std::filesystem::path& path) { materialSourceVersion_.Accept(path); }
   using BindingMap = std::unordered_map<uint64_t, AssetGuid>;
 
   enum class ChangedDomain : uint8_t {
@@ -87,6 +91,7 @@ public:
   bool DiscardAbPreview(std::string &outMessage);
 
 private:
+  EditorSourceVersion materialSourceVersion_, bindingSourceVersion_;
   struct HistoryEntry {
     ChangedDomain domain = ChangedDomain::None;
     BindingMap beforeBindings{};

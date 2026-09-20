@@ -353,9 +353,7 @@ namespace HIKARI::VFX {
                 : 0u;
 
             uint64_t overlappingBursts = 1u;
-            uint64_t burstTotal = emitter.spawn.burstTimeline.empty()
-                ? emitter.spawn.burstCount
-                : 0u;
+            uint64_t burstTotal = 0u;
             if (!emitter.spawn.burstTimeline.empty()) {
                 for (const VfxBurstKeyData& key :
                      emitter.spawn.burstTimeline) {
@@ -389,12 +387,6 @@ namespace HIKARI::VFX {
             const VfxSpawnModuleData& source) {
 
             auto keys = source.burstTimeline;
-            if (keys.empty() && source.burstCount > 0u) {
-                keys.push_back({
-                    source.id + ".burst.legacy",
-                    0.0f,
-                    source.burstCount });
-            }
             std::sort(
                 keys.begin(),
                 keys.end(),
@@ -405,17 +397,6 @@ namespace HIKARI::VFX {
                     return left.id < right.id;
                 });
             return keys;
-        }
-
-        uint32_t LegacyBurstCount(
-            const std::vector<VfxBurstKeyData>& keys) noexcept {
-
-            const auto found = std::find_if(
-                keys.begin(), keys.end(),
-                [](const VfxBurstKeyData& key) {
-                    return key.time == 0.0f;
-                });
-            return found == keys.end() ? 0u : found->count;
         }
 
         ParticleBillboardMode ConvertBillboard(
@@ -536,6 +517,12 @@ namespace HIKARI::VFX {
             emitter.sourceEmitterId = source.id;
             emitter.kind = source.kind;
             emitter.history = source.history;
+            if (const auto matte = emitterIndices.find(source.matte.sourceLayerId); matte != emitterIndices.end())
+                emitter.matteSourceIndex = matte->second;
+            emitter.matteLuminance = source.matte.luminance;
+            emitter.matteInverted = source.matte.inverted;
+            emitter.matteOnly = source.matte.sourceOnly;
+            emitter.orientAlongPath = source.position.orientAlongPath;
             emitter.animationTiming = source.animationTiming;
             emitter.emitterIndex = emitterIndex;
             const auto parent = emitterIndices.find(source.parentEmitterId);
@@ -548,7 +535,6 @@ namespace HIKARI::VFX {
             emitter.attachment = source.attachment;
             emitter.spawnRatePerSecond = source.spawn.ratePerSecond;
             emitter.burstTimeline = CompileBurstTimeline(source.spawn);
-            emitter.burstCount = LegacyBurstCount(emitter.burstTimeline);
             emitter.authoredOverrides.enabled = source.basic.enabled ? 1u : 0u;
             emitter.simulation.capacity =
                 CompileParticleCapacity(asset, source);
@@ -587,6 +573,7 @@ namespace HIKARI::VFX {
                 source.scale.value);
             emitter.simulation.gravity = source.forces.gravity;
             emitter.simulation.drag = source.forces.drag;
+            emitter.simulation.field = source.forces.field;
             emitter.simulation.localSimulation = source.basic.localSimulation ? 1u : 0u;
             emitter.simulation.collisionPlaneEnabled = source.forces.collisionPlaneEnabled ? 1u : 0u;
             emitter.simulation.collisionPlaneHeight = source.forces.collisionPlaneHeight;
@@ -595,7 +582,6 @@ namespace HIKARI::VFX {
             emitter.simulation.color = CompileAnimatedColor(source.color.value);
             if (source.kind != VfxLayerKind::Particles) {
                 emitter.spawnRatePerSecond = 0.0f;
-                emitter.burstCount = 0u;
                 emitter.burstTimeline.clear();
                 emitter.simulation.capacity = source.history.mode == VfxHistoryMode::None ? 1u : source.history.samples;
                 if (source.history.mode != VfxHistoryMode::None)
@@ -603,8 +589,42 @@ namespace HIKARI::VFX {
             }
             emitter.render.materialMode = ConvertMaterialMode(
                 source.renderCommon.materialMode);
-            if (source.kind == VfxLayerKind::Adjustment) emitter.compositeEffects = source.effects;
-            if (!source.effects.empty() && source.kind != VfxLayerKind::Adjustment) {
+            auto materialSource = source;
+            const auto runtimeEffect = [&](const MaterialEffectStep& effect) {
+                return effect.space == MaterialEffectSpace::Group3D ||
+                    (source.kind == VfxLayerKind::Adjustment && IsCompositeAdjustmentEffect(effect));
+            };
+            for (const auto& effect : source.effects)
+                if (runtimeEffect(effect)) emitter.runtimeEffects.push_back(effect);
+            std::erase_if(materialSource.effects, runtimeEffect);
+            auto effects = materialSource.effects;
+            auto animated = VfxAnimatedMaterialParameters(materialSource);
+            const auto hasSpatial = [](const auto& layer) {
+                return std::any_of(layer.effects.begin(),layer.effects.end(),[](const auto& e) {
+                    return e.enabled && e.space == MaterialEffectSpace::Group3D;
+                });
+            };
+            if (hasSpatial(source)) emitter.spatialOwners.push_back(emitter.emitterIndex);
+            std::vector<VfxEmitterData> adjustments;
+            for (const auto* adjustment : CollectVfxAdjustments(emitters, source)) {
+                if (hasSpatial(*adjustment)) emitter.spatialOwners.push_back(emitterIndices.at(adjustment->id));
+                auto uv = *adjustment;
+                std::erase_if(uv.effects,[](const auto& e) { return e.space == MaterialEffectSpace::Group3D || IsCompositeAdjustmentEffect(e); });
+                std::erase_if(uv.parameterTracks,[&](const auto& t) {
+                    return std::none_of(uv.effects.begin(),uv.effects.end(),[&](const auto& e) {return e.id==t.targetId;});
+                });
+                if (uv.effects.empty()) continue;
+                adjustments.push_back(PrepareVfxAdjustment(uv));
+                effects.insert(effects.end(), uv.effects.begin(), uv.effects.end());
+                const auto parameters = VfxAnimatedMaterialParameters(adjustments.back());
+                animated.insert(animated.end(), parameters.begin(), parameters.end());
+            }
+            if (!effects.empty() && source.kind != VfxLayerKind::Adjustment && source.kind != VfxLayerKind::Group) {
+                if (IsCustomVfxMaterial(source.renderCommon.materialMode)) {
+                    result.diagnostics.push_back({VfxDiagnosticSeverity::Error,"Vfx.AdjustmentCustomMaterial",
+                        "Inherited adjustment effects require a standard VFX material",source.id});
+                    return result;
+                }
                 auto material = std::make_shared<MaterialAssetDescriptor>();
                 MaterialEffectTextureSet effectTextures{};
                 effectTextures.baseColor = source.renderCommon.colorTextureAssetGuid;
@@ -614,8 +634,8 @@ namespace HIKARI::VFX {
                     source.renderCommon.detailNoiseTextureAssetGuid;
                 effectTextures.flowMap = source.renderCommon.flowMapTextureAssetGuid;
                 material->sourceData = BuildMaterialEffectStack(effectTextures,
-                    source.effects, source.renderCommon.materialMode == VfxMaterialMode::StandardLit,
-                    source.renderCommon.flipbookColumns, source.renderCommon.flipbookRows, VfxAnimatedMaterialParameters(source));
+                    effects, source.renderCommon.materialMode == VfxMaterialMode::StandardLit,
+                    source.renderCommon.flipbookColumns, source.renderCommon.flipbookRows, animated, materialSource.effects.size());
                 material->compileResult = CompileMaterialAsset(material->sourceData);
                 if (!material->compileResult.success) {
                     for (const auto& diagnostic : material->compileResult.diagnostics)
@@ -637,6 +657,9 @@ namespace HIKARI::VFX {
                         std::to_string(budget.maxInstructionCount) + ", values " + std::to_string(budget.valueCount) + "/" +
                         std::to_string(budget.maxValueCount) + ", registers " + std::to_string(budget.registerCount) + "/" +
                         std::to_string(budget.maxRegisterCount) + ". Static shader usage; not GPU timing.", source.id});
+                emitter.render.effectMaterialIncludesParticleColor = std::any_of(
+                    material->compileResult.program.instructions.begin(),material->compileResult.program.instructions.end(),
+                    [](const auto& instruction) { return instruction.opcode == MaterialProgramOpcode::ParticleColor; });
                 emitter.render.effectMaterial = std::move(material);
                 emitter.render.effectMaterialKey = program.programId + ":" + source.id;
             }
@@ -644,6 +667,12 @@ namespace HIKARI::VFX {
             if (!CompileVfxLayerCurves(source, emitter, animationError)) {
                 result.diagnostics.push_back({VfxDiagnosticSeverity::Error,"Vfx.AnimationCompile",animationError,source.id});
                 return result;
+            }
+            for (const auto& adjustment : adjustments) {
+                if (!CompileVfxLayerCurves(adjustment, emitter, animationError, emitterIndices.at(adjustment.id))) {
+                    result.diagnostics.push_back({VfxDiagnosticSeverity::Error,"Vfx.AdjustmentAnimation",animationError,adjustment.id});
+                    return result;
+                }
             }
             emitter.render.colorTextureAssetGuid =
                 source.renderCommon.colorTextureAssetGuid.value;

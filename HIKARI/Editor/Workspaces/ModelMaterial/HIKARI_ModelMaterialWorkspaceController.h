@@ -161,8 +161,7 @@ public:
   void ApplyWorkspaceActivation(DocumentSceneBase &scene,
                                 const EditorWorkspaceActivation &activation,
                                 EditorWorkspaceHost &workspaceHost);
-  void SetAiAssistantPanel(
-      AiAssistantPanel *panel, bool *openFlag);
+
   void SetOperationRegistry(
       const EditorOperationRegistry *registry) noexcept;
 
@@ -215,6 +214,10 @@ public:
   void SetSelectedGraphNodesCollapsed(bool collapsed) noexcept;
   void SetAllGraphNodesCollapsed(bool collapsed) noexcept;
   bool HasMaterialDocument() const noexcept;
+  const AssetGuid& GetDocumentAssetGuid() const noexcept { return authoringDocument_.GetMaterialAssetGuid(); }
+  bool PrepareBackgroundPreview(DocumentSceneBase& scene, EditorWorkspaceHost& views,
+      uint32_t width, uint32_t height, std::string& message);
+  void ClosePreviewRequest(EditorWorkspaceHost &workspaceHost) const;
   bool HasUnsavedMaterialChanges() const noexcept;
   bool IsGraphNodeSelected(const std::string &id) const;
   void SetGraphNodeSelection(const std::string &id, bool additive);
@@ -365,7 +368,6 @@ private:
                                        std::string &outMessage);
   void RefreshSelectedSlotPresentation();
   void SaveActiveCameraState();
-  void ClosePreviewRequest(EditorWorkspaceHost &workspaceHost) const;
   void FitPreviewCamera();
   void FocusSelectedSlot();
   void ResetPreviewCamera();
@@ -623,8 +625,6 @@ private:
   std::array<char, 128> resourceSearch_{};
   std::string statusMessage_{};
   std::string materialPreviewExpressionStatus_{};
-  AiAssistantPanel *aiAssistantPanel_ = nullptr;
-  bool *aiAssistantOpenFlag_ = nullptr;
   const EditorOperationRegistry *operationRegistry_ = nullptr;
   PendingTransition pendingTransition_{};
   bool pendingTransitionPopupRequested_ = false;

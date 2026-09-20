@@ -259,6 +259,23 @@ EditorOperationResult EditorOperationRegistry::Execute(
     const std::string& id,
     const nlohmann::json& parameters) const {
 
+    if (targetExecutor_ && targetSelector_ && parameters.is_object() &&
+        !parameters.contains("sessionId") && !id.starts_with("authoring.")) {
+        const auto selected = targetSelector_(id);
+        if (!selected.empty()) {
+            auto targeted = parameters;
+            targeted["sessionId"] = selected;
+            return Execute(id, targeted);
+        }
+    }
+    if (targetExecutor_ && parameters.is_object() && parameters.contains("sessionId") &&
+        id.rfind("authoring.", 0) != 0) {
+        if (!parameters["sessionId"].is_string())
+            return {false, "INVALID_PARAMETER", "sessionId must be a string."};
+        try { return targetExecutor_(id, parameters); }
+        catch (const std::exception& error) { return {false, "SESSION_OPERATION_FAILED", error.what()}; }
+    }
+
     const uint64_t sequence =
         gOperationSequence.fetch_add(1u, std::memory_order_relaxed) + 1u;
     const auto startedAt = std::chrono::steady_clock::now();

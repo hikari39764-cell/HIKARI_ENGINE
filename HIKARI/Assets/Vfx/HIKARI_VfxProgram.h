@@ -14,7 +14,7 @@
 
 namespace HIKARI::VFX {
 
-    inline constexpr uint32_t kVfxProgramVersion = 13u;
+    inline constexpr uint32_t kVfxProgramVersion = 16u;
     inline constexpr uint32_t kMaximumVfxProgramTableItems = 1u << 20u;
     inline constexpr uint32_t kMaximumVfxProgramEmitters = 1024u;
     inline constexpr uint32_t kMaximumVfxProgramInputs = 4096u;
@@ -101,10 +101,17 @@ namespace HIKARI::VFX {
     struct VfxProgramEmitter {
         std::string sourceEmitterId{};
         VfxLayerKind kind = VfxLayerKind::Particles;
-        std::vector<MaterialEffectStep> compositeEffects{};
+        uint32_t matteSourceIndex = UINT32_MAX;
+        bool matteLuminance = false;
+        bool matteInverted = false;
+        bool matteOnly = false;
+        bool orientAlongPath = false;
         VfxHistoryData history{};
         VfxAnimationTiming animationTiming{};
         std::vector<VfxProgramLayerCurve> layerCurves;
+        // 自身が所有する合成風格と空間変形。材質 VM の予算とは独立する。
+        std::vector<MaterialEffectStep> runtimeEffects;
+        std::vector<uint32_t> spatialOwners;
         uint32_t emitterIndex = 0u;
         uint32_t parentEmitterIndex = kInvalidVfxProgramIndex;
         VfxTransformData transform{};
@@ -112,7 +119,6 @@ namespace HIKARI::VFX {
         float activeDuration = 0.0f;
         VfxAttachmentData attachment{};
         float spawnRatePerSecond = 0.0f;
-        uint32_t burstCount = 0u;
         std::vector<VfxBurstKeyData> burstTimeline{};
         RENDER3D::PARTICLES::ParticleEmitterRuntimeOverrides
             authoredOverrides{};

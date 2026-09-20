@@ -41,6 +41,7 @@ namespace HIKARI::EDITOR {
         }
         definition_ = std::move(loaded);
         assetGuid_ = guid;
+        sourceVersion_.Accept(database,guid);
         open_ = true;
         ResetHistory(true);
         return true;
@@ -49,13 +50,17 @@ namespace HIKARI::EDITOR {
     bool DialogueEditorDocument::Save(
         AssetDatabase& database,
         std::string& outMessage) {
+        if (assetGuid_.IsValid() && !sourceVersion_.CanSave(outMessage)) return false;
         DIALOGUE::NormalizeDialogue(definition_);
         const DialogueAssetAuthoringResult result = assetGuid_.IsValid()
             ? UpdateDialogueAsset(database, assetGuid_, definition_)
             : CreateDialogueAsset(database, definition_);
         outMessage = result.message;
+        if (result.assetGuid.IsValid()) {
+            assetGuid_ = result.assetGuid;
+            sourceVersion_.Accept(database,assetGuid_);
+        }
         if (!result.success) return false;
-        assetGuid_ = result.assetGuid;
         savedHistoryCursor_ = historyCursor_;
         return true;
     }

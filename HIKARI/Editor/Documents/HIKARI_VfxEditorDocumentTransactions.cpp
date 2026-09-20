@@ -37,7 +37,6 @@ namespace HIKARI::EDITOR {
         layer.name = "Shape";
         layer.renderShape.billboardMode = VFX::VfxBillboardMode::Fixed;
         layer.spawn.ratePerSecond = 0;
-        layer.spawn.burstCount = 0;
         layer.spawn.burstTimeline.clear();
         layer.renderCommon.colorTextureAssetGuid = {};
         if (!name.empty()) {
@@ -51,8 +50,8 @@ namespace HIKARI::EDITOR {
         AdvanceRevision();
     }
 
-    bool VfxEditorDocument::ApplyPresetPackage(
-        VFX::PRESETS::VfxPresetPackage package,
+    bool VfxEditorDocument::ApplyPresetAsset(
+        VFX::VfxAssetData package,
         std::string& outMessage) {
 
         if (source_ != VfxEditorDocumentSource::Transient) {
@@ -61,7 +60,7 @@ namespace HIKARI::EDITOR {
             return false;
         }
         return ApplyState(
-            { std::move(package.asset) },
+            { std::move(package) },
             outMessage,
             0u);
     }

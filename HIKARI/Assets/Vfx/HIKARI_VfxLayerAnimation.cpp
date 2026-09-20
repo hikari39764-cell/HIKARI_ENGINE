@@ -29,105 +29,24 @@ std::vector<VfxAnimatableParameter> GetVfxAnimatableParameters(const VfxEmitterD
         const auto addEffect = [&](const char *property, const char *label, float value, float lo, float hi) {
             add(effect.id, property, label, value, lo, hi);
         };
-        if (layer.kind == VfxLayerKind::Adjustment) {
-            for (uint32_t set = 0; set < 2; ++set) {
-                const auto names = CompositeEffectParameterNames(effect.kind, set != 0);
-                const auto& values = set ? effect.parameters2 : effect.parameters;
-                const float channels[]{values.x, values.y, values.z, values.w};
-                for (uint32_t c = 0; c < 4 && names[c]; ++c) {
-                    const auto property = std::string(set ? "parameters2." : "parameters.") + "xyzw"[c];
-                    float minimum = 0, maximum = 1;
-                    if (set) { minimum = -180; maximum = 180; }
-                    else switch (effect.kind) {
-                    case MaterialEffectKind::Pixelate: if (c == 0) { minimum = 1; maximum = 256; } break;
-                    case MaterialEffectKind::Posterize: if (c == 0) { minimum = 2; maximum = 64; } break;
-                    case MaterialEffectKind::Blur: maximum = 64; break;
-                    case MaterialEffectKind::Glow: maximum = c == 2 ? 64.0f : 16.0f; break;
-                    case MaterialEffectKind::ColorCorrect:
-                        minimum = c == 3 ? -1.0f : 0.0f;
-                        maximum = c == 0 ? 8.0f : c == 3 ? 1.0f : 4.0f; break;
-                    case MaterialEffectKind::Ink:
-                        minimum = c == 0 ? 0.25f : 0.0f;
-                        maximum = c == 0 ? 12.0f : c == 1 ? 4.0f : 1.0f; break;
-                    default: break;
-                    }
-                    addEffect(property.c_str(), names[c], channels[c], minimum, maximum);
-                }
+        const bool composite = layer.kind == VfxLayerKind::Adjustment;
+        addEffect("mix", "mix", effect.mix, 0, 1);
+        for (uint32_t set = 0; set < 2; ++set) {
+            const auto parameters = GetMaterialEffectParameters(effect.kind, set != 0);
+            const auto& value = set ? effect.parameters2 : effect.parameters;
+            const float values[]{value.x, value.y, value.z, value.w};
+            for (uint32_t c = 0; c < 4; ++c) {
+                const auto& info = parameters[c];
+                if (!info.name || !info.animatable) continue;
+                if (set == 1 &&
+                    ((effect.kind == MaterialEffectKind::Wave && c == 3 && effect.parameters2.x > 0.5f) ||
+                     (effect.kind == MaterialEffectKind::FlowMap && c == 1 && effect.parameters2.z <= 0.5f))) continue;
+                const auto property = std::string(set ? "parameters2." : "parameters.") + "xyzw"[c];
+                addEffect(property.c_str(), info.name, values[c], info.minimum, info.maximum);
             }
-            continue;
         }
-        switch (effect.kind) {
-        case MaterialEffectKind::FlowMap:
-            addEffect("parameters.x", "Flow Strength", effect.parameters.x, 0, 2);
-            addEffect("parameters.y", "Flow Speed", effect.parameters.y, -8, 8);
-            addEffect("parameters.z", "Flow Repeat", effect.parameters.z, 0.001f, 20);
-            addEffect("parameters.w", "Flow Mix", effect.parameters.w, 0, 1);
-            break;
-        case MaterialEffectKind::UvFlow:
-            addEffect("parameters.x", "Flow U", effect.parameters.x, -20, 20);
-            addEffect("parameters.y", "Flow V", effect.parameters.y, -20, 20);
-            // タイルは乗数として評価する。積分経路を使うのは x/y のフローだけ。
-            addEffect("parameters.z", "U Repeat", effect.parameters.z, 0.001f, 20);
-            addEffect("parameters.w", "V Repeat", effect.parameters.w, 0.001f, 20);
-            addEffect("parameters2.x", "UV Rotation", effect.parameters2.x, -360, 360);
-            break;
-        case MaterialEffectKind::UvDistortion:
-            addEffect("parameters.x", "Distortion", effect.parameters.x, 0, 1);
-            break;
-        case MaterialEffectKind::Dissolve:
-        case MaterialEffectKind::Wipe:
+        if (!composite && (effect.kind == MaterialEffectKind::Dissolve || effect.kind == MaterialEffectKind::Wipe))
             addEffect("progress", "Progress", effect.parameters.x, 0, 1);
-            break;
-        case MaterialEffectKind::Emission:
-            addEffect("parameters.x", "Emission", effect.parameters.x, 0, 32);
-            break;
-        case MaterialEffectKind::Fresnel:
-            addEffect("parameters.y", "Rim Intensity", effect.parameters.y, 0, 32);
-            break;
-        case MaterialEffectKind::Opacity:
-            addEffect("parameters.x", "Amount", effect.parameters.x, 0, 1);
-            break;
-        case MaterialEffectKind::Glow:
-            addEffect("parameters.x", "Threshold", effect.parameters.x, 0, 4);
-            addEffect("parameters.y", "Intensity", effect.parameters.y, 0, 32);
-            break;
-        case MaterialEffectKind::Blur:
-            addEffect("parameters.x", "Radius", effect.parameters.x, 0, 0.5f);
-            break;
-        case MaterialEffectKind::LightSweep:
-            addEffect("parameters.x", "Center", effect.parameters.x, -1, 2);
-            addEffect("parameters.y", "Width", effect.parameters.y, 0, 2);
-            addEffect("parameters.w", "Intensity", effect.parameters.w, 0, 32);
-            break;
-        case MaterialEffectKind::LuminanceMask:
-            addEffect("parameters.x", "Threshold", effect.parameters.x, 0, 1);
-            addEffect("parameters.y", "Softness", effect.parameters.y, 0.001f, 1);
-            break;
-        case MaterialEffectKind::RadialBlur:
-            addEffect("parameters.x", "Radius", effect.parameters.x, 0, 0.5f);
-            addEffect("parameters.y", "Center U", effect.parameters.y, -1, 2);
-            addEffect("parameters.z", "Center V", effect.parameters.z, -1, 2);
-            break;
-        case MaterialEffectKind::TurbulentDisplace:
-            addEffect("parameters.x", "Amount", effect.parameters.x, 0, 1);
-            addEffect("parameters.y", "Frequency", effect.parameters.y, 0.01f, 32);
-            addEffect("parameters.z", "Speed", effect.parameters.z, -8, 8);
-            break;
-        case MaterialEffectKind::ColorCorrect:
-            addEffect("parameters.x", "Exposure", effect.parameters.x, 0, 8);
-            addEffect("parameters.y", "Contrast", effect.parameters.y, 0, 4);
-            addEffect("parameters.z", "Saturation", effect.parameters.z, 0, 4);
-            addEffect("parameters.w", "Black Level", effect.parameters.w, -1, 1);
-            addEffect("parameters2.x", "Hue", effect.parameters2.x, -180, 180);
-            break;
-        case MaterialEffectKind::Streak:
-            addEffect("parameters.x", "Length", effect.parameters.x, 0, 0.5f);
-            addEffect("parameters.y", "Angle", effect.parameters.y, -180, 180);
-            addEffect("parameters.w", "Decay", effect.parameters.w, 0, 1);
-            break;
-        default:
-            break;
-        }
     }
     return result;
 }
@@ -141,12 +60,33 @@ std::vector<std::string> VfxAnimatedMaterialParameters(const VfxEmitterData &lay
                 result.push_back(track.targetId + "." + track.propertyId);
     return result;
 }
-bool CompileVfxLayerCurves(const VfxEmitterData &source, VfxProgramEmitter &target, std::string &error) {
+VfxEmitterData PrepareVfxAdjustment(const VfxEmitterData& source) {
+    auto result = source;
+    // mix は常時バインドし、停止・非表示も同じ材質を再利用する。
+    for (const auto& effect : source.effects) {
+        if (!effect.enabled) continue;
+        const auto ensure = [&](std::string property, float value) {
+            if (std::any_of(result.parameterTracks.begin(), result.parameterTracks.end(), [&](const auto& track) {
+                return track.targetId == effect.id && track.propertyId == property;
+            })) return;
+            VfxParameterTrackData track;
+            track.targetId = effect.id; track.propertyId = property;
+            track.curve.keys.push_back({effect.id + "." + property + ".constant", 0, value, 0, 0});
+            result.parameterTracks.push_back(std::move(track));
+        };
+        ensure("mix", effect.mix);
+        if (effect.kind == MaterialEffectKind::TurbulentDisplace) ensure("parameters.z", effect.parameters.z);
+    }
+    return result;
+}
+bool CompileVfxLayerCurves(const VfxEmitterData &source, VfxProgramEmitter &target, std::string &error,
+                           uint32_t ownerEmitterIndex) {
     const auto append = [&](const VfxCurveData &sourceCurve, VfxLayerChannel channel, float scale,
                             uint32_t slot = 0) {
         VfxProgramLayerCurve curve;
         curve.channel = channel;
         curve.materialSlot = slot;
+        curve.ownerEmitterIndex = ownerEmitterIndex;
         curve.interpolation = static_cast<ParticleCurveInterpolation>(sourceCurve.interpolation);
         for (const auto &key : sourceCurve.keys)
             curve.keys.push_back(
@@ -155,7 +95,7 @@ bool CompileVfxLayerCurves(const VfxEmitterData &source, VfxProgramEmitter &targ
                   [](const auto &a, const auto &b) { return a.time < b.time; });
         target.layerCurves.push_back(std::move(curve));
     };
-    if (source.kind != VfxLayerKind::Particles) {
+    if (source.kind != VfxLayerKind::Particles && ownerEmitterIndex == UINT32_MAX) {
         const VfxAnimatedVec3Data *values[]{&source.position.value, &source.rotation.eulerDegrees,
                                             &source.scale.value};
         for (uint32_t i = 0; i < 3; ++i)
@@ -185,6 +125,24 @@ bool CompileVfxLayerCurves(const VfxEmitterData &source, VfxProgramEmitter &targ
             error = "Unknown animated parameter";
             return false;
         }
+        const auto runtime = std::find_if(target.runtimeEffects.begin(),target.runtimeEffects.end(),
+            [&](const auto& effect) { return effect.id == track.targetId; });
+        if (ownerEmitterIndex == UINT32_MAX && runtime != target.runtimeEffects.end()) {
+            const bool phase = runtime->kind == MaterialEffectKind::TurbulentDisplace && track.propertyId == "parameters.z";
+            uint32_t component = 0;
+            if (track.propertyId != "mix") {
+                const auto axis = std::string_view("xyzw").find(track.propertyId.back());
+                if (axis == std::string_view::npos) { error = "Invalid runtime effect parameter"; return false; }
+                component = (track.propertyId.starts_with("parameters2.") ? 5u : 1u) + uint32_t(axis);
+            }
+            append(track.curve,phase ? VfxLayerChannel::EffectPhase : VfxLayerChannel::EffectParameter,1,
+                uint32_t(runtime-target.runtimeEffects.begin())*9u+component);
+            target.layerCurves.back().minimum=parameter->minimum;
+            target.layerCurves.back().maximum=parameter->maximum;
+            continue;
+        }
+        // 調整の UV 曲線は受け手の材質へバインドする。
+        if (target.kind == VfxLayerKind::Adjustment && parameter->channel == VfxLayerChannel::MaterialParameter) continue;
         if (parameter->channel == VfxLayerChannel::MaterialParameter) {
             const auto effect = std::find_if(source.effects.begin(), source.effects.end(),
                                              [&](const auto &e) { return e.id == track.targetId; });
@@ -192,16 +150,7 @@ bool CompileVfxLayerCurves(const VfxEmitterData &source, VfxProgramEmitter &targ
                 continue;
         }
         uint32_t slot = 0;
-        if (parameter->channel == VfxLayerChannel::MaterialParameter && source.kind == VfxLayerKind::Adjustment) {
-            const auto effect = std::find_if(source.effects.begin(), source.effects.end(),
-                [&](const auto& e) { return e.id == track.targetId; });
-            const size_t component = std::string_view("xyzw").find(track.propertyId.back());
-            if (effect == source.effects.end() || component == std::string_view::npos) {
-                error = "Invalid adjustment parameter"; return false;
-            }
-            slot = static_cast<uint32_t>(effect - source.effects.begin()) * 8u +
-                (track.propertyId.starts_with("parameters2.") ? 4u : 0u) + static_cast<uint32_t>(component);
-        } else if (parameter->channel == VfxLayerChannel::MaterialParameter) {
+        if (parameter->channel == VfxLayerChannel::MaterialParameter) {
             if (!target.render.effectMaterial) {
                 error = "Animated material is missing";
                 return false;
@@ -211,6 +160,8 @@ bool CompileVfxLayerCurves(const VfxEmitterData &source, VfxProgramEmitter &targ
                 return b.parameterId == track.targetId + "." + track.propertyId;
             });
             if (binding == bindings.end()) {
+                // 貼図なしの UV 操作など、実出力へ到達しない調整のバインドは不要。
+                if (ownerEmitterIndex != UINT32_MAX) continue;
                 error = "Animated material binding was not compiled";
                 return false;
             }
@@ -219,6 +170,7 @@ bool CompileVfxLayerCurves(const VfxEmitterData &source, VfxProgramEmitter &targ
                 std::find_if(expression.parameterValueSlots.begin(), expression.parameterValueSlots.end(),
                              [&](const auto &p) { return p.first == index; });
             if (resolved == expression.parameterValueSlots.end()) {
+                if (ownerEmitterIndex != UINT32_MAX) continue;
                 error = "Animated material has no value slot";
                 return false;
             }
@@ -235,11 +187,32 @@ bool CompileVfxLayerCurves(const VfxEmitterData &source, VfxProgramEmitter &targ
                            (effect->kind == MaterialEffectKind::TurbulentDisplace && track.propertyId == "parameters.z") ||
                            (effect->kind == MaterialEffectKind::FlowMap && track.propertyId == "parameters.y"));
         const float unit = angle ? 0.01745329252f : 1;
-        append(track.curve, flow ? VfxLayerChannel::MaterialUvOffset : parameter->channel, unit, slot);
+        const auto channel = ownerEmitterIndex != UINT32_MAX && track.propertyId == "mix"
+            ? VfxLayerChannel::MaterialEffectMix : flow ? VfxLayerChannel::MaterialUvOffset : parameter->channel;
+        append(track.curve, channel, unit, slot);
         target.layerCurves.back().minimum = parameter->minimum * unit;
         target.layerCurves.back().maximum = parameter->maximum * unit;
     }
     return true;
+}
+std::vector<MaterialEffectStep> EvaluateVfxRuntimeEffects(const VfxProgramEmitter& layer, float seconds, float duration) {
+    auto effects=layer.runtimeEffects;
+    const float t=layer.animationTiming.Normalized(seconds,duration);
+    for (auto& effect:effects)
+        if (effect.kind==MaterialEffectKind::TurbulentDisplace)
+            effect.parameters.z *= layer.animationTiming.Seconds(seconds,duration);
+    for (const auto& curve:layer.layerCurves) {
+        if (curve.channel!=VfxLayerChannel::EffectParameter && curve.channel!=VfxLayerChannel::EffectPhase) continue;
+        const auto index=curve.materialSlot/9u, component=curve.materialSlot%9u;
+        if (index>=effects.size()) continue;
+        auto& effect=effects[index];
+        float* values[]{&effect.mix,&effect.parameters.x,&effect.parameters.y,&effect.parameters.z,&effect.parameters.w,
+            &effect.parameters2.x,&effect.parameters2.y,&effect.parameters2.z,&effect.parameters2.w};
+        *values[component]=curve.channel==VfxLayerChannel::EffectPhase
+            ? IntegrateParticleCurve(curve.keys,curve.interpolation,t)*layer.animationTiming.Duration(duration)
+            : std::clamp(EvaluateParticleCurve(curve.keys,curve.interpolation,t),curve.minimum,curve.maximum);
+    }
+    return effects;
 }
 LayerAnimationSample EvaluateVfxLayerAnimation(const VfxProgramEmitter &layer, float seconds, float duration,
                                                uint32_t seed) noexcept {
@@ -276,11 +249,30 @@ LayerAnimationSample EvaluateVfxLayerAnimation(const VfxProgramEmitter &layer, f
     sample.color.w = std::clamp(sample.color.w, 0.0f, 1.0f);
     return sample;
 }
+MATH::Quat EvaluateVfxLayerRotation(const VfxProgramEmitter& layer, const LayerAnimationSample& sample,
+                                    float seconds, float duration, uint32_t seed) noexcept {
+    const auto authored=MATH::Quat::FromEulerXYZ(sample.rotationRadians.x,sample.rotationRadians.y,sample.rotationRadians.z);
+    if (!layer.orientAlongPath || duration <= 0) return authored;
+    // 保存した XYZ 曲線を直接評価し、編集ビューと通常再生で同じ接線を使う。
+    const float step=(std::max)(duration*0.0001f,0.00001f);
+    const auto before=EvaluateVfxLayerAnimation(layer,std::clamp(seconds-step,0.0f,duration),duration,seed).position;
+    const auto after=EvaluateVfxLayerAnimation(layer,std::clamp(seconds+step,0.0f,duration),duration,seed).position;
+    const auto delta=after-before;
+    if (MATH::Dot(delta,delta)<1.0e-12f) return authored;
+    const auto direction=MATH::Normalize(delta);
+    const auto path=direction.y < -0.99999f ? MATH::Quat{0,0,1,0} : MATH::NormalizeQ({direction.z,0,-direction.x,1+direction.y});
+    return MATH::NormalizeQ({
+        path.w*authored.x+path.x*authored.w+path.y*authored.z-path.z*authored.y,
+        path.w*authored.y-path.x*authored.z+path.y*authored.w+path.z*authored.x,
+        path.w*authored.z+path.x*authored.y-path.y*authored.x+path.z*authored.w,
+        path.w*authored.w-path.x*authored.x-path.y*authored.y-path.z*authored.z});
+}
 void EvaluateVfxLayerRenderParameters(const VfxProgramEmitter &layer, float t,
                                       ParticleEmitterRenderParameters &render, float activeDuration) {
     render.animatedParameters.clear();
     t = layer.animationTiming.Normalized(t * activeDuration, activeDuration);
     for (const auto &curve : layer.layerCurves) {
+        if (curve.ownerEmitterIndex != UINT32_MAX) continue;
         const float value = std::clamp(EvaluateParticleCurve(curve.keys, curve.interpolation, t),
                                        curve.minimum, curve.maximum);
         switch (curve.channel) {

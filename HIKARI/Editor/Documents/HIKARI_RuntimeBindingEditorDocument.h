@@ -1,4 +1,5 @@
 #pragma once
+#include "Editor/Documents/HIKARI_EditorSourceVersion.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -39,6 +40,7 @@ namespace HIKARI::EDITOR {
         bool CanRedo() const noexcept;
 
     private:
+        EditorSourceVersion sourceVersion_;
         struct HistoryEntry {
             BINDING::Catalog before{};
             BINDING::Catalog after{};

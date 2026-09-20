@@ -35,6 +35,7 @@ namespace HIKARI {
         SEQUENCER::CameraTransformTrack cameraTransformTrack{};
         SEQUENCER::CameraLensTrack cameraLensTrack{};
         SEQUENCER::PresentationCueTrack presentationCueTrack{};
+        std::vector<SEQUENCER::SequenceScreenEffect> screenEffects;
     };
 
     struct SceneCinematicsSettings {
@@ -53,9 +54,10 @@ namespace HIKARI {
         SEQUENCER::CameraLensTrackEvaluation lens{};
         float sequenceTimeSeconds = 0.0f;
         float localTimeSeconds = 0.0f;
+        bool ownedCamera = false;
 
         bool IsValid() const noexcept {
-            return shotId != 0 && cameraObjectId.value != 0;
+            return shotId != 0 && (ownedCamera || cameraObjectId.value != 0);
         }
 
         bool HasCameraAnimation() const noexcept {

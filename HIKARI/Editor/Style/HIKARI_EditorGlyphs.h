@@ -80,6 +80,9 @@ namespace HIKARI::EDITOR {
         StepForward,
         Loop,
         Help,
+        Assistant,
+        CollapseRight,
+        Send,
     };
 
 #if defined(HIKARI_WITH_EDITOR)

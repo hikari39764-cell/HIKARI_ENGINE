@@ -12,23 +12,9 @@ if (-not $OutputPath) {
 # Registered editor operations are the single source of truth for executable
 # AI capabilities. The manifest generator extracts them from the registration
 # sites so adding an operation never requires a second manual edit.
-$registryFiles = @(
-    'HIKARI\Editor\Export\HIKARI_GameExportOperations.cpp',
-    'HIKARI\Editor\Authoring\HIKARI_ComponentAuthoringOperations.cpp',
-    'HIKARI\Editor\Controllers\DocumentScene\HIKARI_DocumentSceneEditorOperations.cpp',
-    'HIKARI\Editor\Authoring\HIKARI_SceneFolderOperations.cpp',
-    'HIKARI\Editor\Workspaces\ModelCollision\HIKARI_ModelCollisionOperations.cpp',
-    'HIKARI\Editor\Workspaces\AnimationStateMachine\HIKARI_AnimationStateMachineOperations.cpp',
-    'HIKARI\Editor\Workspaces\Cinematics\HIKARI_CinematicsOperations.cpp',
-    'HIKARI\Editor\Workspaces\Dialogue\HIKARI_DialogueOperations.cpp',
-    'HIKARI\Editor\Workspaces\ModelMaterial\HIKARI_ModelMaterialAssetOperations.cpp',
-    'HIKARI\Editor\Workspaces\ModelMaterial\HIKARI_ModelMaterialOperations.cpp',
-    'HIKARI\Editor\Workspaces\RuntimeBinding\HIKARI_RuntimeBindingOperations.cpp',
-    'HIKARI\Editor\Workspaces\Vfx\HIKARI_VfxBindingOperations.cpp',
-    'HIKARI\Editor\Workspaces\Vfx\HIKARI_VfxCurveOperations.cpp',
-    'HIKARI\Editor\Workspaces\Vfx\HIKARI_VfxOperations.cpp',
-    'HIKARI\Editor\Workspaces\Vfx\HIKARI_VfxPreviewOperations.cpp'
-)
+$registryFiles = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'HIKARI\Editor') -Recurse -File -Filter '*.cpp' |
+    Where-Object { [System.IO.File]::ReadAllText($_.FullName) -match '\.Register\(\{|register[A-Z][A-Za-z0-9]*Operation\(' } |
+    ForEach-Object { $_.FullName.Substring($repoRoot.Length + 1) } | Sort-Object)
 
 $operations = @{}
 $registrationPatterns = @(
@@ -53,10 +39,10 @@ foreach ($relative in $registryFiles) {
     }
 }
 
-# Panel-local capabilities live in the BuiltInCapabilities table and do not
+# Assistant-local capabilities live in the BuiltInCapabilities table and do not
 # map to registered operations (chat/vision/help/queries/documentation
 # boundaries plus explicit unsupported entries).
-$panelPath = Join-Path $repoRoot 'HIKARI\Editor\AI\HIKARI_AI_AssistantPanel.cpp'
+$panelPath = Join-Path $repoRoot 'HIKARI\Editor\AI\HIKARI_AI_Capabilities.cpp'
 $panelSource = [System.IO.File]::ReadAllText(
     $panelPath,
     [System.Text.Encoding]::UTF8)
@@ -64,13 +50,13 @@ $builtinMatch = [regex]::Match(
     $panelSource,
     'BuiltInCapabilities\(\) \{\s*static const std::vector<AiCapability> capabilities\{([\s\S]*?)\n    \};')
 if (-not $builtinMatch.Success) {
-    throw 'BuiltInCapabilities table not found in AI panel source.'
+    throw 'BuiltInCapabilities table not found in AI capabilities source.'
 }
 
 $capabilities = @{}
 foreach ($entry in [regex]::Matches(
     $builtinMatch.Groups[1].Value,
-    '\{\s*"([a-z][a-z0-9._]+)"\s*,\s*"([^"]+)"\s*,\s*"(stable|planned|unsupported)"\s*\}')) {
+    '\{\s*"([a-z][a-z0-9._]+)"\s*,\s*"([^"]+)"\s*,\s*"(stable|planned|unsupported)"')) {
     $capabilities[$entry.Groups[1].Value] = [ordered]@{
         id = $entry.Groups[1].Value
         summary = $entry.Groups[2].Value
@@ -101,7 +87,8 @@ $manifest = [ordered]@{
         'No AI action may mutate engine internals without going through an editor command entry.',
         'Unsupported actions return ok=false with an explicit boundary message.',
         'Long-running operations (import, bake) require an async status contract before they are exposed.',
-        'SceneColor/SceneDepth sampling, vertex displacement, refraction and custom HLSL are not material capabilities.'
+        'Background document editing requires an explicit sessionId. Scene and terrain sessions bind the loaded scene and reject concurrent revision changes.',
+        'Image support depends on the configured model; captures return actual image attachments and never imply that the model has already evaluated them.'
     )
     failureSemantics = 'Unknown or unsupported actions are rejected explicitly. Partial multi-step work must be reported per step with the failing reason. AI never claims success without a verified result (compile diagnostic, query result or preview output).'
 }

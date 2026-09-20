@@ -1,4 +1,5 @@
 #pragma once
+#include "Editor/Documents/HIKARI_EditorSourceVersion.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -6,6 +7,7 @@
 #include <optional>
 #include <string>
 #include <vector>
+#include <json.hpp>
 
 #include "Assets/HIKARI_AssetGuid.h"
 #include "Assets/Vfx/HIKARI_VfxAssetData.h"
@@ -28,8 +30,8 @@ namespace EDITOR {
     class VfxEditorDocument final {
     public:
         void NewAsset(std::string name = "New VFX");
-        bool ApplyPresetPackage(
-            VFX::PRESETS::VfxPresetPackage package,
+        bool ApplyPresetAsset(
+            VFX::VfxAssetData package,
             std::string& outMessage);
         bool OpenAsset(
             const AssetDatabase& assetDatabase,
@@ -65,7 +67,10 @@ namespace EDITOR {
         bool IsDirty() const noexcept;
         bool CanUndo() const noexcept;
         bool CanRedo() const noexcept;
+        nlohmann::json MakeRecovery() const;
+        bool RestoreRecovery(const AssetDatabase& database, const nlohmann::json& snapshot, std::string& message);
     private:
+        EditorSourceVersion sourceVersion_;
         struct DocumentState {
             VFX::VfxAssetData asset{};
         };

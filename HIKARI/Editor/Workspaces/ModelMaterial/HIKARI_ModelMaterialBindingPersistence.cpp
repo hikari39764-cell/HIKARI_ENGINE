@@ -173,6 +173,7 @@ bool ModelMaterialWorkspaceController::SaveBindings(
       BuildBindingAssetData(authoringDocument_, modelDisplayName_);
   ASSETS::MODELS::ModelMaterialBindingAuthoringResult saved{};
   if (!saveAs && authoringDocument_.GetBindingAssetGuid().IsValid()) {
+    if (!authoringDocument_.CanSaveBindingSource(outMessage)) return false;
     if (!authoringDocument_.GetBindingSourcePath().empty()) {
       source.displayName =
           authoringDocument_.GetBindingSourcePath().stem().string();

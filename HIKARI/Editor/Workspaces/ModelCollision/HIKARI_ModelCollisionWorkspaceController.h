@@ -1,4 +1,5 @@
 #pragma once
+#include "Editor/Documents/HIKARI_EditorSourceVersion.h"
 
 #include <array>
 #include <cstdint>
@@ -59,6 +60,7 @@ public:
                                      EditorCommandRouter &commandRouter);
 
   bool IsEditingModel() const noexcept;
+  const AssetGuid& GetDocumentAssetGuid() const noexcept { return modelGuid_; }
   bool IsDocumentDirty() const noexcept;
   bool OpenModel(AssetDatabase &assetDatabase, const AssetGuid &guid,
                  std::string &outMessage);
@@ -81,6 +83,7 @@ public:
   void ShowAllShapes() noexcept;
   void HideUnselectedShapes() noexcept;
   void GenerateShapes();
+  void TickBackgroundTasks() { PollGenerationTask(); }
   void ApplyGenerationDraft();
   void DiscardGenerationDraft() noexcept;
 
@@ -89,6 +92,7 @@ public:
   size_t GetSelectedShapeCount() const noexcept;
 
 private:
+  EditorSourceVersion sourceVersion_;
   struct CollisionGenerationTaskOutput {
     ASSETS::COLLISION::ModelCollisionGenerationResult result{};
     ASSETS::COLLISION::ModelCollisionSetup setup{};

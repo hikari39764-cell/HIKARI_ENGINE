@@ -112,6 +112,29 @@ void RegisterCinematicsOperations(
     std::function<DocumentSceneBase*()> sceneProvider) {
 
   registry.Register({
+      "cinematics.document", "Read the editable sequence document including shot cameras, curves, motion and screen effects.",
+      "cinematics", {},
+      [&controller, sceneProvider](const nlohmann::json&) {
+        EditorOperationResult result;
+        auto* scene = sceneProvider();
+        if (!scene) { result.code="NO_SCENE"; return result; }
+        result.ok=true; result.code="OK"; result.message="Sequence document";
+        result.details.push_back(controller.DescribeAuthoring(*scene).dump());
+        return result;
+      },
+  });
+  registry.Register({
+      "cinematics.edit", "Edit the open Sequence asset atomically. command.action: append_shot, edit_shot (id), remove_shot (id), set_screen_effects, rename, replace_sequence. command.value uses the document schema returned by cinematics.document. Curve keys are [seconds, value, inSlope, outSlope] arrays. Edits support undo and never switch the user's workspace.",
+      "cinematics", {MakeOperationParameter("command",EditorOperationParameterType::Json,true,"Authoring command object")},
+      [&controller, sceneProvider](const nlohmann::json& p) {
+        EditorOperationResult result; auto* scene=sceneProvider();
+        if (!scene) { result.code="NO_SCENE"; return result; }
+        result.ok=controller.ExecuteAuthoring(*scene,p.at("command"),result.message);
+        result.code=result.ok?"OK":"EDIT_REJECTED"; return result;
+      },
+  });
+
+  registry.Register({
       "cinematics.query",
       "Return the current sequence document state and sequence summary.",
       "cinematics",

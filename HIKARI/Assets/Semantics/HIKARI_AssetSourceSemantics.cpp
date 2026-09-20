@@ -44,7 +44,7 @@ namespace HIKARI::ASSETS::SEMANTICS {
                 AssetImporterKind::Sequence,
                 AssetType::Sequence,
                 "SequenceAssetImporter",
-                2u,
+                3u,
                 ".hsequence",
             },
             {
@@ -79,8 +79,8 @@ namespace HIKARI::ASSETS::SEMANTICS {
                 AssetImporterKind::VfxEffect,
                 AssetType::VfxEffect,
                 "VfxAssetImporter",
-                // 22: 調整レイヤーの合成効果と色相修正。
-                23u,
+                // 合成風格と空間変形を独立した実行段へ保存する。
+                26u,
                 ".hvfx",
             },
             {

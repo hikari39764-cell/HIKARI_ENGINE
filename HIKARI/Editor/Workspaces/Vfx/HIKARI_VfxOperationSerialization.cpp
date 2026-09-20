@@ -254,6 +254,12 @@ namespace HIKARI::EDITOR {
             { "sourcePath", document.GetSourcePath().generic_string() },
             { "name", asset->name },
             { "durationSeconds", asset->durationSeconds },
+            { "authoringSemantics", {
+                { "time", "startDelay uses absolute composition seconds, not parent-local time. Group Move/Retime transforms descendant timing together; Trim changes the visibility window. Direct timing property edits affect only the addressed layer." },
+                { "duration", "activeDuration=0 lasts to composition end. Particle emission windows and particle lifetimes differ; emitted particles may outlive emission." },
+                { "composition", "Shape surfaces, Particles, Group transforms/tint and Adjustment effects can combine. Spatial movement, surface flow and temporal envelopes are separate controls." },
+                { "inspection", "Preview visibility flags and drawable submissions do not prove visible pixels or visual quality. Check the actual frame at the relevant time." },
+            } },
             { "loop", asset->loop },
             { "dirty", document.IsDirty() },
             { "canUndo", document.CanUndo() },
@@ -333,6 +339,31 @@ namespace HIKARI::EDITOR {
             DescribeVfxSerializedProperties(*target);
         if (resolvedTarget != "asset") {
             outDescription["serializedValue"] = *target;
+        }
+        for (const auto& layer : asset->emitters) {
+            const auto effect=std::find_if(layer.effects.begin(),layer.effects.end(),[&](const auto& e) {return e.id==resolvedTarget;});
+            if (effect==layer.effects.end()) continue;
+            outDescription["effectCategory"]=MaterialEffectCategoryName(GetMaterialEffectCategory(effect->kind));
+            outDescription["executionStage"]=MaterialEffectStageName(GetMaterialEffectStage(effect->kind));
+            const bool spatial=effect->space==MaterialEffectSpace::Group3D;
+            const bool composite=layer.kind==VFX::VfxLayerKind::Adjustment && IsCompositeAdjustmentEffect(*effect);
+            outDescription["executionStage"]=spatial?"3D geometry":(composite?"Lower-layer composition":MaterialEffectStageName(GetMaterialEffectStage(effect->kind)));
+            outDescription["coordinates"]=spatial?"Owner transform defines the 3D frame; center 0.5 is its origin. Geometry and thickness remain 3D. Planar geometry uses particle orientation, not camera-facing billboards.":
+                (composite?"Post-render image of lower layers in this group; widths are normalized image units. Does not affect scene background.":"Layer-local UV; widths/radii/cell sizes are UV units, independent of camera and viewport.");
+            for (auto& property:outDescription["properties"]) {
+                const auto id=property.value("id",std::string{});
+                if (id=="space") property["choices"]=SupportsSpatialMaterialEffect(effect->kind)?nlohmann::json::array({"LayerUv","Group3D"}):nlohmann::json::array({"LayerUv"});
+                if (id=="mix") {property["range"]={0,1};property["animatable"]=true;}
+                if (id=="mask") property["choices"]=nlohmann::json{{"0","None"},{"1","Radial"},{"2","Horizontal"},{"3","Vertical"},{"4","Input alpha"},{"5","Input luminance"}};
+                if (id=="mask" && spatial) {property["choices"].erase("4");property["choices"].erase("5");}
+                if (id=="maskParameters") property["components"]={{"x","Center X"},{"y","Center Y"},{"z","Radius or boundary"},{"w","Feather"}};
+                if (id!="parameters" && id!="parameters2") continue;
+                const auto info=GetMaterialEffectParameters(effect->kind,id=="parameters2");
+                property["components"]=nlohmann::json::object();
+                for (size_t c=0;c<4;++c) if (info[c].name)
+                    property["components"][std::string(1,"xyzw"[c])]={{"name",info[c].name},{"range",{info[c].minimum,info[c].maximum}},{"animatable",info[c].animatable}};
+            }
+            break;
         }
         return true;
     }

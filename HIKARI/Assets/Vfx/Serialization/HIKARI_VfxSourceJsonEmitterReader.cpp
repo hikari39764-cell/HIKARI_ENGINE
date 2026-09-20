@@ -336,6 +336,16 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
             emitter.meshOutput = value;
         }
 
+        if (node.contains("matte")) {
+            const auto& m = node["matte"];
+            if (!m.is_object() || (m.contains("sourceLayerId") && !m["sourceLayerId"].is_string())) return false;
+            for (const char* key : {"luminance","inverted","sourceOnly"})
+                if (m.contains(key) && !m[key].is_boolean()) return false;
+            emitter.matte.sourceLayerId = m.value("sourceLayerId",std::string{});
+            emitter.matte.luminance = m.value("luminance",false);
+            emitter.matte.inverted = m.value("inverted",false);
+            emitter.matte.sourceOnly = m.value("sourceOnly",false);
+        }
         if (node.contains("history")) {
             const auto& h = node["history"];
             if (!h.is_object() || !h.contains("mode") || !h["mode"].is_string() ||
@@ -349,6 +359,11 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
             else return false;
             emitter.history.duration = h["duration"].get<float>();
             emitter.history.breakDistance = h["breakDistance"].get<float>();
+            for (const char* name : {"tailWidth","fadePower"})
+                if (h.contains(name) && !h[name].is_number()) return false;
+            emitter.history.tailWidth = h.value("tailWidth",1.0f);
+            emitter.history.fadePower = h.value("fadePower",1.0f);
+            if (h.contains("tailColor") && !ReadVec4(h["tailColor"],emitter.history.tailColor)) return false;
             if (!IsValidVfxHistory(emitter.history)) return false;
         }
         const Json& modules = node["modules"];
@@ -412,15 +427,16 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
         emitter.spawn.id = spawn["id"].get<std::string>();
         if (!spawn.contains("ratePerSecond") ||
             !spawn["ratePerSecond"].is_number() ||
-            !spawn.contains("burstCount") ||
             !spawn.contains("maximumParticles")) {
             return false;
         }
         emitter.spawn.ratePerSecond =
             spawn["ratePerSecond"].get<float>();
-        if (!ReadUint32(spawn["burstCount"], emitter.spawn.burstCount)) {
-            return false;
-        }
+        // 旧ソースだけを入口で変換。編集中・コンパイル後は timeline 一つを所有する。
+        uint32_t importedBurstCount = 0;
+        if (sourceVersion < 13u && spawn.contains("burstCount") &&
+            !ReadUint32(spawn["burstCount"], importedBurstCount)) return false;
+        if (sourceVersion >= 13u && !spawn.contains("burstTimeline")) return false;
         if (spawn.contains("burstTimeline")) {
             if (!spawn["burstTimeline"].is_array() ||
                 spawn["burstTimeline"].size() >
@@ -447,11 +463,11 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
             }
         }
         if (emitter.spawn.burstTimeline.empty() &&
-            emitter.spawn.burstCount > 0u) {
+            importedBurstCount > 0u) {
             emitter.spawn.burstTimeline.push_back({
                 emitter.spawn.id + ".burst.legacy",
                 0.0f,
-                emitter.spawn.burstCount });
+                importedBurstCount });
         }
         if (!emitter.spawn.burstTimeline.empty()) {
             std::sort(
@@ -464,16 +480,6 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
                     }
                     return left.id < right.id;
                 });
-            const auto atStart = std::find_if(
-                emitter.spawn.burstTimeline.begin(),
-                emitter.spawn.burstTimeline.end(),
-                [](const VfxBurstKeyData& key) {
-                    return key.time == 0.0f;
-                });
-            emitter.spawn.burstCount = atStart !=
-                emitter.spawn.burstTimeline.end()
-                ? atStart->count
-                : 0u;
         }
         if (sourceVersion >= 3u &&
             !TryParseVfxParticleCapacityMode(
@@ -544,6 +550,8 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
         }
 
         emitter.position.id = position["id"].get<std::string>();
+        if (position.contains("orientAlongPath") && !position["orientAlongPath"].is_boolean()) return false;
+        emitter.position.orientAlongPath = position.value("orientAlongPath",false);
         if (!position.contains("radialSpeed") ||
             !ReadDistribution(
                 position["radialSpeed"],
@@ -576,6 +584,19 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
             return false;
         }
         emitter.forces.drag = forces["drag"].get<float>();
+        if (forces.contains("field")) {
+            const auto& field = forces["field"];
+            if (!field.is_object() || !field.contains("center") || !ReadVec3(field["center"],emitter.forces.field.center) ||
+                !field.contains("axis") || !ReadVec3(field["axis"],emitter.forces.field.axis)) return false;
+            for (const char* name : {"radius","vortex","turbulence","frequency","evolution","attraction"})
+                if (!field.contains(name) || !field[name].is_number()) return false;
+            emitter.forces.field.radius = field["radius"].get<float>();
+            emitter.forces.field.vortex = field["vortex"].get<float>();
+            emitter.forces.field.turbulence = field["turbulence"].get<float>();
+            emitter.forces.field.frequency = field["frequency"].get<float>();
+            emitter.forces.field.evolution = field["evolution"].get<float>();
+            emitter.forces.field.attraction = field["attraction"].get<float>();
+        }
         if (forces.contains("collisionPlaneEnabled") && !forces["collisionPlaneEnabled"].is_boolean()) return false;
         for (const char* name : {"collisionPlaneHeight","restitution","friction"})
             if (forces.contains(name) && !forces[name].is_number()) return false;
@@ -898,6 +919,20 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
             if (!node["effects"].is_array() || node["effects"].size() > kMaximumVfxEffectsPerLayer) return false;
             for (const auto& item : node["effects"]) {
                 MaterialEffectStep step;
+                if (!item.is_object()) return false;
+                if (item.contains("mix") && !item["mix"].is_number()) return false;
+                if (item.contains("mask") && (!item["mask"].is_number_integer() || item["mask"].get<int>() < 0 || item["mask"].get<int>() > 5)) return false;
+                if (item.contains("maskInvert") && !item["maskInvert"].is_boolean()) return false;
+                step.mix = item.value("mix",1.0f);
+                step.mask = static_cast<MaterialEffectMask>(item.value("mask",0));
+                step.maskInvert = item.value("maskInvert",false);
+                if (item.contains("space")) {
+                    if (!item["space"].is_string()) return false;
+                    const auto space = item["space"].get<std::string>();
+                    if (space != "LayerUv" && space != "Group3D") return false;
+                    step.space = space == "Group3D" ? MaterialEffectSpace::Group3D : MaterialEffectSpace::LayerUv;
+                }
+                if (item.contains("maskParameters") && !ReadVec4(item["maskParameters"],step.maskParameters)) return false;
                 if (item.contains("textureTarget") &&
                     (!item["textureTarget"].is_string() || !ParseMaterialEffectTextureTarget(
                         item["textureTarget"].get<std::string>(), step.textureTarget))) return false;
@@ -952,6 +987,47 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
                     !item.contains("curve") || !ReadCurve(item["curve"],track.curve)) return false;
                 track.id=item["id"].get<std::string>(); track.targetId=item["targetId"].get<std::string>();
                 track.propertyId=item["propertyId"].get<std::string>(); emitter.parameterTracks.push_back(std::move(track));
+            }
+        }
+        if (sourceVersion < 14u && emitter.kind == VfxLayerKind::Adjustment) {
+            // 旧画面ピクセル値には実寸が保存されていない。旧プレビュー基準で UV へ一度だけ移行する。
+            constexpr float legacyPixelsToUv = 1.0f / 256.0f;
+            for (auto& effect : emitter.effects) {
+                const auto scaleLegacy = [&](const char* property, float& value) {
+                    value *= legacyPixelsToUv;
+                    for (auto& track : emitter.parameterTracks) {
+                        if (track.targetId != effect.id || track.propertyId != property) continue;
+                        for (auto& key : track.curve.keys) {
+                            key.value *= legacyPixelsToUv;
+                            key.inTangent *= legacyPixelsToUv; key.outTangent *= legacyPixelsToUv;
+                        }
+                    }
+                };
+                switch (effect.kind) {
+                case MaterialEffectKind::Blur:
+                    scaleLegacy("parameters.x",effect.parameters.x); effect.parameters.z = 2; effect.parameters.w = 1; break;
+                case MaterialEffectKind::Glow:
+                    effect.parameters.w = effect.parameters.z * legacyPixelsToUv; effect.parameters.z = 0.15f;
+                    for (auto& track : emitter.parameterTracks) if (track.targetId == effect.id && track.propertyId == "parameters.z") {
+                        track.propertyId = "parameters.w";
+                        for (auto& key : track.curve.keys) {
+                            key.value *= legacyPixelsToUv;
+                            key.inTangent *= legacyPixelsToUv; key.outTangent *= legacyPixelsToUv;
+                        }
+                    }
+                    break;
+                case MaterialEffectKind::Ink:
+                    scaleLegacy("parameters2.x",effect.parameters2.x);
+                    [[fallthrough]];
+                case MaterialEffectKind::Streak: case MaterialEffectKind::Pixelate: case MaterialEffectKind::Outline:
+                case MaterialEffectKind::Chromatic: case MaterialEffectKind::Halftone: case MaterialEffectKind::Scanlines:
+                    scaleLegacy("parameters.x",effect.parameters.x); break;
+                case MaterialEffectKind::AlphaMorph:
+                    scaleLegacy("parameters.x",effect.parameters.x); scaleLegacy("parameters.y",effect.parameters.y); break;
+                case MaterialEffectKind::Dither: case MaterialEffectKind::Grain:
+                    scaleLegacy("parameters.y",effect.parameters.y); break;
+                default: break;
+                }
             }
         }
         outEmitter = std::move(emitter);

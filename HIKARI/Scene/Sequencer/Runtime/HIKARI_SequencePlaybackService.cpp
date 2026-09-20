@@ -492,11 +492,22 @@ namespace HIKARI::SEQUENCER {
         }
     }
 
+    bool SequencePlaybackService::EvaluateExternal(SequencePlaybackHandle handle, const SequenceEvaluationContext& context) {
+        const size_t index = FindInstanceIndex(handle);
+        if (index >= instances_.size()) return false;
+        auto& instance = instances_[index];
+        instance.externallyDriven = true;
+        instance.cursor.Seek(context.currentTimeSeconds);
+        if (context.playing) instance.cursor.Resume(); else instance.cursor.Pause();
+        EvaluateInstance(instance, context);
+        return true;
+    }
+
     void SequencePlaybackService::Update(float deltaTime) {
         FlushCommands();
         for (size_t index = 0; index < instances_.size();) {
             Instance& instance = instances_[index];
-            if (!instance.cursor.IsPlaying()) {
+            if (instance.externallyDriven || !instance.cursor.IsPlaying()) {
                 ++index;
                 continue;
             }

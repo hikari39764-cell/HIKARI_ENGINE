@@ -5,6 +5,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <utility>
 
 #include <json.hpp>
 
@@ -131,6 +132,10 @@ struct EditorOperationDefinition {
 // the same registered operations instead of maintaining parallel dispatchers.
 class EditorOperationRegistry {
 public:
+    using TargetExecutor = std::function<EditorOperationResult(
+        const std::string&, const nlohmann::json&)>;
+    void SetTargetExecutor(TargetExecutor executor) { targetExecutor_ = std::move(executor); }
+    void SetTargetSelector(std::function<std::string(const std::string&)> selector) { targetSelector_ = std::move(selector); }
     EditorOperationRegistrationResult Register(
         EditorOperationDefinition definition);
     bool IsRegistered(const std::string& id) const noexcept;
@@ -149,6 +154,8 @@ public:
         const std::string& workspace) const;
 
 private:
+    TargetExecutor targetExecutor_{};
+    std::function<std::string(const std::string&)> targetSelector_{};
     std::unordered_map<std::string, EditorOperationDefinition> operations_{};
 };
 

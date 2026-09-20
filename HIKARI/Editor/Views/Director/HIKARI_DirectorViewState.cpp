@@ -40,6 +40,15 @@ void DirectorViewPanel::SetTargetCamera(SceneObjectId cameraObjectId) noexcept {
 bool DirectorViewPanel::FrameTargetCamera(const DocumentSceneBase &scene,
                                           SceneObjectId cameraObjectId,
                                           float preferredDistance) {
+  if (cameraObjectId.value==0) {
+    SetTargetCamera({});
+    SetMode(DirectorViewMode::Free);
+    freeCamera_.ResetFromCamera(scene.GetCamera());
+    currentViewCamera_=freeCamera_.GetCamera();
+    ++cameraRevision_;
+    cameraCutPending_=true;
+    return true;
+  }
   const GameObject *object = scene.GetWorld().FindObject(cameraObjectId);
   if (object == nullptr ||
       object->GetComponent<CameraComponent>() == nullptr) {

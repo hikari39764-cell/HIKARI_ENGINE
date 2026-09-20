@@ -1,6 +1,7 @@
 #include "Scene/Sequencer/Drivers/HIKARI_CameraSequenceTrackDriver.h"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <unordered_set>
 
@@ -14,20 +15,6 @@ namespace HIKARI::SEQUENCER {
 
     namespace {
         constexpr int kCameraSequenceBasePriority = 100;
-
-        CameraBlendDesc ToCameraBlendDesc(
-            const CameraCutTransition& transition,
-            const SequenceEvaluationContext& context) {
-
-            CameraBlendDesc blend{};
-            if (context.IsDiscontinuous() ||
-                transition.mode == CameraCutTransitionMode::Cut) {
-                return blend;
-            }
-            blend.mode = CameraBlendMode::EaseInOut;
-            blend.durationSeconds = transition.durationSeconds;
-            return blend;
-        }
 
         int ToCameraPriority(int instancePriority) noexcept {
             const int64_t combined =
@@ -43,8 +30,9 @@ namespace HIKARI::SEQUENCER {
     CameraSequenceTrackDriver::CameraSequenceTrackDriver(
         CameraDirector& cameraDirector,
         const World& world,
-        const Camera3D& viewportCamera) noexcept
-        : cameraDirector_(cameraDirector)
+        const Camera3D& viewportCamera, SequencePresentationState* presentation) noexcept
+        : presentation_(presentation)
+        , cameraDirector_(cameraDirector)
         , world_(world)
         , viewportCamera_(viewportCamera) {
     }
@@ -70,11 +58,22 @@ namespace HIKARI::SEQUENCER {
             !instance.asset->sequence.cameraCutTrack.enabled) {
             return;
         }
-        std::unordered_set<uint64_t> validatedBindings{};
+        std::unordered_set<uint64_t> validatedObjectBindings{};
+        std::unordered_set<uint64_t> validatedCameraBindings{};
         for (const CameraCutClip& clip :
                 instance.asset->sequence.cameraCutTrack.clips) {
+            if (clip.camera.owned) {
+                for (const auto id : {clip.camera.anchor, clip.camera.lookAt}) {
+                    if (!id.IsValid() || !validatedObjectBindings.insert(id.value).second) continue;
+                    SceneObjectId objectId;
+                    if (!instance.bindings->Resolve(instance.asset->sequence.bindings,id,objectId) || !world_.FindObject(objectId))
+                        diagnostics.push_back({SequenceDiagnosticSeverity::Error,"ShotBindingMissing","Camera",
+                            "Shot anchor or look-at object is unavailable",id});
+                }
+                continue;
+            }
             if (!clip.cameraBindingId.IsValid() ||
-                !validatedBindings.insert(
+                !validatedCameraBindings.insert(
                     clip.cameraBindingId.value).second) {
                 continue;
             }
@@ -129,53 +128,46 @@ namespace HIKARI::SEQUENCER {
                 instance.asset->sequence,
                 context.currentTimeSeconds,
                 *instance.bindings);
-        Camera3D resolvedCamera{};
-        const float aspect = viewportCamera_.GetAspect();
-        const bool cameraValid = evaluation.IsValid() &&
-            cameraDirector_.TryResolveCameraObject(
-                world_,
-                evaluation.cameraObjectId,
-                aspect,
-                resolvedCamera);
-        if (!cameraValid) {
-            // Completion is evaluated before the playback service decides
-            // whether to stop or hold. Keep the last valid override for that
-            // boundary evaluation; OnSequenceStopped still releases it for a
-            // normal completion, while hold-at-end deliberately retains it.
-            if (context.reason == SequenceEvaluationReason::Complete &&
-                state->overrideToken.IsValid()) {
-                return;
-            }
+        const auto& sequence = instance.asset->sequence;
+        Camera3D evaluatedCamera;
+        if (!ResolveView(sequence, *instance.bindings, evaluation, evaluatedCamera)) {
+            if (context.reason == SequenceEvaluationReason::Complete && state->overrideToken.IsValid()) return;
             ReleaseOverride(*state);
             return;
         }
-
-        Camera3D evaluatedCamera{};
-        const bool hasCameraAnimation =
-            evaluation.HasCameraAnimation() &&
-            BuildEvaluatedCinematicCamera(
-                evaluation,
-                resolvedCamera,
-                aspect,
-                evaluatedCamera);
-        if (state->overrideToken.IsValid() &&
+        const auto shot = std::find_if(sequence.cameraCutTrack.clips.begin(), sequence.cameraCutTrack.clips.end(),
+            [&](const auto& clip) { return clip.id == evaluation.shotId; });
+        if (shot != sequence.cameraCutTrack.clips.end() &&
+            evaluation.transition.mode == CameraCutTransitionMode::EaseInOut &&
+            evaluation.transition.durationSeconds > 0 && evaluation.localTimeSeconds < evaluation.transition.durationSeconds) {
+            const float previousTime = std::nextafter(shot->startTimeSeconds, -1.0f);
+            const auto previous = EvaluateCinematicCameraTrack(sequence, previousTime, *instance.bindings);
+            Camera3D from;
+            if (previous.shotId != evaluation.shotId && ResolveView(sequence, *instance.bindings, previous, from)) {
+                const float t = std::clamp(evaluation.localTimeSeconds / evaluation.transition.durationSeconds, 0.0f, 1.0f);
+                evaluatedCamera = CameraDirector::BlendViews(from, evaluatedCamera, t*t*(3-2*t));
+            }
+        }
+        const auto submitPresentation = [&]() {
+            if (!presentation_ || !state->overrideToken.IsValid()) return;
+            std::vector<ScreenEffectSample> samples;
+            if (shot != sequence.cameraCutTrack.clips.end())
+                SampleScreenEffects(shot->effects, evaluation.localTimeSeconds, samples);
+            SampleScreenEffects(sequence.screenEffects, context.currentTimeSeconds, samples);
+            presentation_->Set(state->overrideToken, std::move(samples));
+        };
+        if (state->overrideToken.IsValid() && !context.IsDiscontinuous() &&
             state->cameraObjectId == evaluation.cameraObjectId &&
             state->shotId == evaluation.shotId) {
-            if (hasCameraAnimation) {
-                (void)cameraDirector_.SetOverrideCamera(
-                    state->overrideToken,
-                    evaluatedCamera);
-            } else {
-                (void)cameraDirector_.ClearOverrideCamera(
-                    state->overrideToken);
-            }
+            (void)cameraDirector_.SetOverrideCamera(state->overrideToken, evaluatedCamera);
+            submitPresentation();
             return;
         }
 
         ReleaseOverride(*state);
         CameraActivationRequest request{};
         request.cameraObjectId = evaluation.cameraObjectId;
-        request.blend = ToCameraBlendDesc(evaluation.transition, context);
+        request.blend = {}; // authored transitions are evaluated from sequence time, including seeks
         request.priority = ToCameraPriority(instance.priority);
         request.affectsControlBasis = false;
         state->overrideToken = cameraDirector_.PushOverride(request);
@@ -184,11 +176,41 @@ namespace HIKARI::SEQUENCER {
         }
         state->cameraObjectId = evaluation.cameraObjectId;
         state->shotId = evaluation.shotId;
-        if (hasCameraAnimation) {
-            (void)cameraDirector_.SetOverrideCamera(
-                state->overrideToken,
-                evaluatedCamera);
+        submitPresentation();
+        (void)cameraDirector_.SetOverrideCamera(state->overrideToken, evaluatedCamera);
+    }
+
+    bool CameraSequenceTrackDriver::ResolveView(const CinematicSequence& sequence,
+        const SequenceBindingContext& bindings, const CinematicCameraEvaluation& evaluation, Camera3D& out) const {
+        if (!evaluation.IsValid()) return false;
+        const float aspect = viewportCamera_.GetAspect();
+        if (!evaluation.ownedCamera) {
+            Camera3D source;
+            if (!cameraDirector_.TryResolveCameraObject(world_,evaluation.cameraObjectId,aspect,source)) return false;
+            out=source;
+            if (evaluation.HasCameraAnimation()) BuildEvaluatedCinematicCamera(evaluation,source,aspect,out);
+            return true;
         }
+        for (const auto& clip : sequence.cameraCutTrack.clips) if (clip.id==evaluation.shotId) {
+            MATH::Mat4 anchor;
+            MATH::Vec3 target;
+            const auto resolveObject = [&](SequenceBindingId binding) -> const GameObject* {
+                SceneObjectId id;
+                return binding.IsValid() && bindings.Resolve(sequence.bindings, binding, id)
+                    ? world_.FindObject(id) : nullptr;
+            };
+            const auto* anchorObject = resolveObject(clip.camera.anchor);
+            const auto* targetObject = resolveObject(clip.camera.lookAt);
+            if (anchorObject) anchor = anchorObject->GetTransform().GetWorldMatrix();
+            if (targetObject) {
+                const auto& m = targetObject->GetTransform().GetWorldMatrix();
+                target = {m.m[3][0],m.m[3][1],m.m[3][2]};
+            }
+            out = EvaluateShotCamera(clip.camera, evaluation.localTimeSeconds, aspect,
+                anchorObject ? &anchor : nullptr, targetObject ? &target : nullptr);
+            return true;
+        }
+        return false;
     }
 
     void CameraSequenceTrackDriver::OnSequenceStopped(
@@ -231,6 +253,7 @@ namespace HIKARI::SEQUENCER {
     void CameraSequenceTrackDriver::ReleaseOverride(
         InstanceState& state) noexcept {
 
+        if (presentation_) presentation_->Erase(state.overrideToken);
         if (state.overrideToken.IsValid()) {
             (void)cameraDirector_.ReleaseOverride(state.overrideToken);
         }

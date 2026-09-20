@@ -37,7 +37,7 @@ namespace HIKARI {
 
         if (workspaceHost_.IsActive(
                 EDITOR::EditorWorkspaceId::AnimationStateMachine)) {
-            animationStateMachineWorkspaceController_.BindDocumentCommands(
+            AnimationStateMachineWorkspace().BindDocumentCommands(
                 commandRouter_,
                 scene);
             return;
@@ -45,27 +45,27 @@ namespace HIKARI {
 
         if (workspaceHost_.IsActive(
                 EDITOR::EditorWorkspaceId::RuntimeBinding)) {
-            runtimeBindingWorkspaceController_.BindDocumentCommands(
+            RuntimeBindingWorkspace().BindDocumentCommands(
                 commandRouter_);
             return;
         }
 
         if (workspaceHost_.IsActive(
                 EDITOR::EditorWorkspaceId::Vfx)) {
-            vfxWorkspaceController_.BindDocumentCommands(commandRouter_);
+            VfxWorkspace().BindDocumentCommands(commandRouter_);
             return;
         }
 
         if (workspaceHost_.IsActive(
                 EDITOR::EditorWorkspaceId::Dialogue)) {
-            dialogueWorkspaceController_.BindDocumentCommands(
+            DialogueWorkspace().BindDocumentCommands(
                 commandRouter_, scene);
             return;
         }
 
         if (workspaceHost_.IsActive(
                 EDITOR::EditorWorkspaceId::ModelCollision)) {
-            modelCollisionWorkspaceController_.BindDocumentCommands(
+            ModelCollisionWorkspace().BindDocumentCommands(
                 commandRouter_,
                 scene);
             return;
@@ -73,15 +73,15 @@ namespace HIKARI {
 
         if (workspaceHost_.IsActive(
                 EDITOR::EditorWorkspaceId::ModelMaterial)) {
-            modelMaterialWorkspaceController_.BindWorkspaceCommands(
+            ModelMaterialWorkspace().BindWorkspaceCommands(
                 commandRouter_, scene);
             return;
         }
 
         if (workspaceHost_.IsActive(
                 EDITOR::EditorWorkspaceId::Cinematics) &&
-            cinematicsWorkspaceController_.IsEditingSequenceAsset()) {
-            cinematicsWorkspaceController_.BindDocumentCommands(
+            CinematicsWorkspace().IsEditingSequenceAsset()) {
+            CinematicsWorkspace().BindDocumentCommands(
                 commandRouter_,
                 scene);
             return;
@@ -203,7 +203,7 @@ namespace HIKARI {
         if (EDITOR::HasEditorDocumentImpact(
                 impact,
                 EDITOR::EditorDocumentImpact::Cinematics)) {
-            cinematicsWorkspaceController_.OnCinematicsDocumentRestored(
+            CinematicsWorkspace().OnCinematicsDocumentRestored(
                 scene,
                 workspaceHost_);
         }

@@ -72,6 +72,7 @@ namespace HIKARI::EDITOR {
 
         projectRoot_ = normalizedRoot;
         catalogPath_ = path;
+        sourceVersion_.Accept(path);
         catalog_ = std::move(loaded);
         open_ = true;
         ResetHistory();
@@ -85,10 +86,12 @@ namespace HIKARI::EDITOR {
             outMessage = "Runtime binding catalog is not open";
             return false;
         }
+        if (!sourceVersion_.CanSave(outMessage)) return false;
         if (!BINDING::SaveCatalog(
                 catalogPath_, catalog_, outMessage)) {
             return false;
         }
+        sourceVersion_.Accept(catalogPath_);
         savedHistoryCursor_ = historyCursor_;
         outMessage = "Runtime binding catalog saved";
         return true;

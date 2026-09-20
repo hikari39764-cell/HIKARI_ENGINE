@@ -3,6 +3,7 @@
 #include "Assets/Vfx/HIKARI_VfxPresetRegistry.h"
 #include "Assets/Vfx/HIKARI_VfxGeometryPresetCatalog.h"
 
+#include "Assets/Vfx/HIKARI_VfxLayerOrder.h"
 #include <algorithm>
 #include <unordered_map>
 #include <utility>
@@ -66,7 +67,6 @@ namespace HIKARI::EDITOR {
         if (kind != VFX::VfxLayerKind::Particles) {
             emitter.renderShape.billboardMode = VFX::VfxBillboardMode::Fixed;
             emitter.spawn.ratePerSecond = 0;
-            emitter.spawn.burstCount = 0;
             emitter.spawn.burstTimeline.clear();
             emitter.renderCommon.colorTextureAssetGuid = {};
         }
@@ -105,17 +105,35 @@ namespace HIKARI::EDITOR {
             outMessage = "VFX emitter was not found";
             return false;
         }
-        VFX::VfxEmitterData duplicate = *source;
-        RegenerateEmitterIds(duplicate);
-        duplicate.name += " Copy";
-        ++duplicate.order;
-        const std::string id = duplicate.id;
-        VFX::VfxAssetData next = document_.Asset();
-        next.emitters.push_back(std::move(duplicate));
+        std::vector<VFX::VfxEmitterData> copies{*source};
+        for (const auto* child : VFX::CollectVfxLayerTree(document_.Asset(), source->id))
+            copies.push_back(*child);
+        std::unordered_map<std::string, std::string> ids;
+        for (auto& copy : copies) {
+            const auto previous = copy.id;
+            RegenerateEmitterIds(copy);
+            ids.emplace(previous, copy.id);
+        }
+        const auto id = copies.front().id;
+        copies.front().name += " Copy";
+        ++copies.front().order;
+        auto next = document_.Asset();
+        for (auto& sibling : next.emitters)
+            if (sibling.parentEmitterId == source->parentEmitterId && sibling.order > source->order)
+                ++sibling.order;
+        for (auto& copy : copies) {
+            if (const auto target = ids.find(copy.connectTarget.targetLayerId); target != ids.end())
+                copy.connectTarget.targetLayerId = target->second;
+            if (const auto matte = ids.find(copy.matte.sourceLayerId); matte != ids.end())
+                copy.matte.sourceLayerId = matte->second;
+            if (const auto parent = ids.find(copy.parentEmitterId); parent != ids.end())
+                copy.parentEmitterId = parent->second;
+            next.emitters.push_back(std::move(copy));
+        }
         if (!ApplyAsset(std::move(next), outMessage)) return false;
         outId = id;
         Select({ VfxWorkspaceSelectionKind::Emitter, id, id });
-        outMessage = "VFX emitter duplicated";
+        outMessage = "Layer subtree duplicated (" + std::to_string(copies.size()) + " layers)";
         statusMessage_ = outMessage;
         return true;
     }
@@ -138,6 +156,12 @@ namespace HIKARI::EDITOR {
             ? removed->parentEmitterId
             : std::string{};
         for (VFX::VfxEmitterData& emitter : next.emitters) {
+            if (emitter.matte.sourceLayerId == emitterId) emitter.matte.sourceLayerId.clear();
+            if (emitter.connectTarget.targetLayerId == emitterId) {
+                emitter.connectTarget.targetLayerId.clear();
+                if (emitter.connectTarget.mode == VFX::VfxConnectTargetMode::LayerOrigin)
+                    emitter.connectTarget.mode = VFX::VfxConnectTargetMode::None;
+            }
             if (emitter.parentEmitterId == emitterId) {
                 emitter.parentEmitterId = parentId;
             }
@@ -160,18 +184,18 @@ namespace HIKARI::EDITOR {
             outMessage = "Open an effect and select a valid template first";
             return false;
         }
-        auto package = VFX::PRESETS::MakeVfxPresetPackage(presetId);
+        auto package = VFX::PRESETS::MakeVfxPresetAsset(presetId);
         auto next = document_.Asset();
         // 追加レイヤーの再生区間を含める。短い素材への追加でも検証を通す。
-        next.durationSeconds = (std::max)(next.durationSeconds, package.asset.durationSeconds);
+        next.durationSeconds = (std::max)(next.durationSeconds, package.durationSeconds);
         std::unordered_map<std::string, std::string> inputIds, emitterIds;
-        for (auto& input : package.asset.inputs) {
+        for (auto& input : package.inputs) {
             const auto oldId = input.id;
             input.id = AllocateStableId("input");
             inputIds.emplace(oldId, input.id);
             next.inputs.push_back(std::move(input));
         }
-        for (auto& emitter : package.asset.emitters) {
+        for (auto& emitter : package.emitters) {
             const auto oldId = emitter.id;
             RegenerateEmitterIds(emitter);
             emitterIds.emplace(oldId, emitter.id);
@@ -179,14 +203,19 @@ namespace HIKARI::EDITOR {
                 if (const auto found = inputIds.find(link.inputId); found != inputIds.end()) link.inputId = found->second;
             }
         }
-        if (package.asset.emitters.empty()) {
+        if (package.emitters.empty()) {
             outMessage = "Template has no effect layers";
             return false;
         }
-        const auto selectedId = package.asset.emitters.front().id;
-        for (auto& emitter : package.asset.emitters) {
+        const auto selectedId = package.emitters.front().id;
+        const bool style = preset->category == "Styles";
+        if (style) for (auto& layer : next.emitters) if (layer.parentEmitterId.empty()) ++layer.order;
+        for (auto& emitter : package.emitters) {
             if (!emitter.parentEmitterId.empty()) emitter.parentEmitterId = emitterIds.at(emitter.parentEmitterId);
-            emitter.order = static_cast<uint32_t>(next.emitters.size());
+            if (!emitter.matte.sourceLayerId.empty()) emitter.matte.sourceLayerId = emitterIds.at(emitter.matte.sourceLayerId);
+            if (const auto target=emitterIds.find(emitter.connectTarget.targetLayerId);target!=emitterIds.end())
+                emitter.connectTarget.targetLayerId=target->second;
+            emitter.order = style ? 0u : static_cast<uint32_t>(next.emitters.size());
             next.emitters.push_back(std::move(emitter));
         }
         // One document transaction owns the complete composition and Undo.

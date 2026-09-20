@@ -5,35 +5,16 @@
 
 namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
     namespace {
-        inline constexpr uint32_t kEmitterHeaderCount = 15u;
-        inline constexpr uint32_t kFloat3DistributionValueCount = 2u;
-        inline constexpr uint32_t kFloat4DistributionValueCount = 3u;
-        inline constexpr uint32_t kAnimatedFloat3DistributionCount = 6u;
-        inline constexpr uint32_t kCurveValueCount =
-            2u + kMaxParticleCurveKeys;
-        inline constexpr uint32_t kAnimatedFloat3CurveCount = 3u;
-        inline constexpr uint32_t kAnimatedFloat3ValueCount =
-            kFloat3DistributionValueCount *
-                kAnimatedFloat3DistributionCount +
-            kCurveValueCount * kAnimatedFloat3CurveCount;
-        inline constexpr uint32_t kPositionValues = kEmitterHeaderCount;
-        inline constexpr uint32_t kRotationValues =
-            kPositionValues + kAnimatedFloat3ValueCount;
-        inline constexpr uint32_t kScaleValues =
-            kRotationValues + kAnimatedFloat3ValueCount;
-        inline constexpr uint32_t kColorDistributionValues =
-            kScaleValues + kAnimatedFloat3ValueCount;
-        inline constexpr uint32_t kColorCurveValues =
-            kColorDistributionValues +
-            kFloat4DistributionValueCount * 4u;
-        inline constexpr uint32_t kColorGradientValues =
-            kColorCurveValues + kCurveValueCount * 4u;
-        inline constexpr uint32_t kGradientValueCount =
-            1u + kMaxParticleColorStops * 2u;
-
-        static_assert(
-            kColorGradientValues + kGradientValueCount ==
-            kGpuParticleEmitterValueCount);
+        constexpr auto kFloat3DistributionValueCount = HIKARI_PARTICLE_FLOAT3_DISTRIBUTION_VALUES;
+        constexpr auto kFloat4DistributionValueCount = HIKARI_PARTICLE_FLOAT4_DISTRIBUTION_VALUES;
+        constexpr auto kAnimatedFloat3DistributionCount = HIKARI_PARTICLE_ANIMATED_FLOAT3_DISTRIBUTIONS;
+        constexpr auto kCurveValueCount = HIKARI_PARTICLE_CURVE_VALUES;
+        constexpr auto kPositionValues = HIKARI_PARTICLE_POSITION_VALUES;
+        constexpr auto kRotationValues = HIKARI_PARTICLE_ROTATION_VALUES;
+        constexpr auto kScaleValues = HIKARI_PARTICLE_SCALE_VALUES;
+        constexpr auto kColorDistributionValues = HIKARI_PARTICLE_COLOR_DISTRIBUTIONS;
+        constexpr auto kColorCurveValues = HIKARI_PARTICLE_COLOR_CURVES;
+        constexpr auto kColorGradientValues = HIKARI_PARTICLE_COLOR_GRADIENT;
 
         float EncodeUint(uint32_t value) noexcept {
             return std::bit_cast<float>(value);
@@ -175,7 +156,10 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
                 const auto q = MATH::NormalizeQ(pose.rotation);
                 const uint32_t base = 1 + i * 9;
                 result.values[base] = {pose.position.x, pose.position.y, pose.position.z, pose.age};
-                result.values[base+1] = {q.x,q.y,q.z,q.w};
+                // 履歴リボンは四隅を直接持つため、回転スロットを始端の色として使う。
+                result.values[base+1] = submission.render.shape == ParticleRenderShape::HistoryRibbon
+                    ? MakeGpuParticleFloat4(pose.startColor.x,pose.startColor.y,pose.startColor.z,pose.startColor.w)
+                    : MakeGpuParticleFloat4(q.x,q.y,q.z,q.w);
                 result.values[base+2] = {pose.scale.x,pose.scale.y,pose.scale.z,pose.duration};
                 result.values[base+3] = {pose.color.x,pose.color.y,pose.color.z,pose.color.w};
                 for (uint32_t corner = 0; corner < 4; ++corner) {
@@ -273,6 +257,12 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
         result.values[14] = MakeGpuParticleFloat4(simulation.collisionPlaneHeight,
             simulation.restitution,simulation.friction,
             EncodeUint((simulation.localSimulation ? 1u : 0u) | (simulation.collisionPlaneEnabled ? 2u : 0u)));
+
+        const auto& field = simulation.field;
+        result.values[HIKARI_PARTICLE_FIELD_CENTER] = MakeGpuParticleFloat4(field.center.x, field.center.y, field.center.z, field.radius);
+        result.values[HIKARI_PARTICLE_FIELD_AXIS] = MakeGpuParticleFloat4(field.axis.x, field.axis.y, field.axis.z, field.vortex);
+        result.values[HIKARI_PARTICLE_FIELD_FLOW] = MakeGpuParticleFloat4(field.turbulence, field.frequency, field.evolution, field.attraction);
+        result.values[HIKARI_PARTICLE_FIELD_TIME] = MakeGpuParticleFloat4(submission.emitterAgeSeconds, 0, 0, 0);
 
         StoreAnimatedFloat3(
             result, kPositionValues, simulation.position);

@@ -13,6 +13,7 @@ namespace HIKARI::EDITOR {
         MATH::Vec3 center{};
         float radius = 0.0f;
     };
+    enum class VfxPreviewBoundsPurpose { CompleteEnvelope, Framing };
 
     // Estimates the complete authored particle envelope, including the
     // emission shape, lifetime motion, gravity, local position animation and
@@ -20,6 +21,7 @@ namespace HIKARI::EDITOR {
     // runtime still execute the same compiled simulation and draw pipeline.
     VfxPreviewBounds EstimateVfxPreviewBounds(
         const VFX::VfxAssetData& asset,
-        std::string_view emitterId = {});
+        std::string_view emitterId = {},
+        VfxPreviewBoundsPurpose purpose = VfxPreviewBoundsPurpose::CompleteEnvelope);
 
 } // namespace HIKARI::EDITOR

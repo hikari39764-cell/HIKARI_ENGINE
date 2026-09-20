@@ -13,7 +13,6 @@ namespace HIKARI::VFX::PRESETS::INTERNAL {
         layer.renderCommon.blendMode = VfxBlendMode::Additive;
         layer.renderCommon.colorTextureAssetGuid = {};
         layer.spawn.ratePerSecond = 0;
-        layer.spawn.burstCount = 0;
         layer.spawn.burstTimeline.clear();
         layer.spawn.maximumParticles = 1;
         layer.position.radialSpeed = MakeVfxFloatConstant(0);
@@ -83,7 +82,7 @@ namespace HIKARI::VFX::PRESETS::INTERNAL {
         auto layer = Shape(std::move(id), VfxRenderShapeType::Sprite, start, 0.035f);
         layer.kind = VfxLayerKind::Particles;
         layer.spawn.maximumParticles = (std::max)(count, 16u);
-        layer.spawn.burstCount = count;
+        if (count>0) layer.spawn.burstTimeline = {{layer.spawn.id+".burst",0,count}};
         layer.basic.lifetime = MakeVfxFloatConstant(lifetime);
         layer.shape.type = VfxShapeType::Sphere;
         layer.shape.radius = MakeVfxFloatConstant(0.08f);

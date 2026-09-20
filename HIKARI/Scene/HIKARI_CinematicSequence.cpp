@@ -48,6 +48,7 @@ namespace HIKARI {
         SEQUENCER::NormalizeCameraTransformTrack(
             sequence.cameraTransformTrack);
         SEQUENCER::NormalizeCameraLensTrack(sequence.cameraLensTrack);
+        SEQUENCER::NormalizeScreenEffects(sequence.screenEffects);
         sequence.durationSeconds = std::clamp(
             (std::max)(
                 FiniteOr(
@@ -149,7 +150,10 @@ namespace HIKARI {
     float GetCinematicSequenceContentEnd(
         const CinematicSequence& sequence) noexcept {
 
+        float effectsEnd = 0.0f;
+        for (const auto& effect : sequence.screenEffects) effectsEnd = (std::max)(effectsEnd, effect.start + effect.duration);
         return (std::max)({
+            effectsEnd,
             SEQUENCER::GetCameraCutTrackContentEnd(
                 sequence.cameraCutTrack),
             SEQUENCER::GetCameraTransformTrackContentEnd(
@@ -186,7 +190,10 @@ namespace HIKARI {
                 sequence.bindings,
                 trackEvaluation.cameraBindingId,
                 cameraObjectId);
-        if (!resolved) {
+        const auto shot = std::find_if(sequence.cameraCutTrack.clips.begin(),
+            sequence.cameraCutTrack.clips.end(), [&](const auto& clip) { return clip.id == trackEvaluation.clipId; });
+        result.ownedCamera = shot != sequence.cameraCutTrack.clips.end() && shot->camera.owned;
+        if (!resolved && !result.ownedCamera) {
             return result;
         }
 

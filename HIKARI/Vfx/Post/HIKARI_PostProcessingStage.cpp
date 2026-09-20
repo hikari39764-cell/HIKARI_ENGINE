@@ -34,6 +34,7 @@ namespace HIKARI::POST {
         context_ = context;
         PostEffect::UpdateContext(context);
         globalChain_.UpdateContext(context);
+        sequenceChain_.UpdateContext(context);
         for (auto& level : bloomLevels_) level.UpdateContext(context);
         transitionChain_.UpdateContext(context);
         fxaaChain_.UpdateContext(context);
@@ -48,6 +49,7 @@ namespace HIKARI::POST {
         sunGlareTarget_.UpdateContext(context);
         automaticExposureMeter_.UpdateContext(context);
         globalChain_.SetDebugName("PostProcessing.Global");
+        sequenceChain_.SetDebugName("PostProcessing.Sequence");
         for (size_t i = 0; i < bloomLevels_.size(); ++i)
             bloomLevels_[i].SetDebugName("PostProcessing.Bloom." + std::to_string(i));
         transitionChain_.SetDebugName("PostProcessing.TransitionHDR");
@@ -60,6 +62,10 @@ namespace HIKARI::POST {
         ClearGlobalProfile();
         ClearTransitionState();
         globalChain_.Finalize();
+        sequenceChain_.Clear();
+        sequenceChain_.Finalize();
+        sequenceEffect_.reset();
+        sequenceEffects_.clear();
         for (auto& level : bloomLevels_) level.Finalize();
         transitionChain_.Finalize();
         fxaaChain_.Finalize();
@@ -950,6 +956,7 @@ namespace HIKARI::POST {
         }
         if (!debugOutput) {
             (void)automaticExposureMeter_.QueueMeasurement(*output);
+            output = ApplySequenceEffects(*output, quad);
             // This is deliberately after temporal/global HDR processing and
             // after exposure measurement, but before bloom so the bright ring
             // and flash participate in the same bloom extraction as scene HDR.

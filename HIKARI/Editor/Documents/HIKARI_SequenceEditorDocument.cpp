@@ -49,6 +49,7 @@ namespace HIKARI::EDITOR {
         SetAssetSettings(std::move(sequence));
         sourceKind_ = SequenceEditorSourceKind::Asset;
         assetGuid_ = record->guid;
+        sourceVersion_.Accept(assetDatabase, assetGuid_);
         sourcePath_ = record->sourcePath;
         displayName_ = record->displayName.empty()
             ? sourcePath_.stem().string()
@@ -70,6 +71,7 @@ namespace HIKARI::EDITOR {
         if (sourceKind_ == SequenceEditorSourceKind::TransientAsset) {
             return SaveAs(assetDatabase, *sequence, outMessage);
         }
+        if (assetGuid_.IsValid() && !sourceVersion_.CanSave(outMessage)) return false;
         const SequenceAssetAuthoringResult result = UpdateSequenceAsset(
             assetDatabase,
             assetGuid_,
@@ -78,6 +80,7 @@ namespace HIKARI::EDITOR {
         if (!result.success) {
             return false;
         }
+        sourceVersion_.Accept(assetDatabase,assetGuid_);
         savedHistoryCursor_ = historyCursor_;
         displayName_ = sequence->name;
         return true;
@@ -95,7 +98,13 @@ namespace HIKARI::EDITOR {
         if (!result.success || !result.assetGuid.IsValid()) {
             return false;
         }
-        return OpenAsset(assetDatabase, result.assetGuid, outMessage);
+        assetGuid_ = result.assetGuid;
+        sourcePath_ = result.sourcePath;
+        sourceKind_ = SequenceEditorSourceKind::Asset;
+        displayName_ = sequence.name;
+        sourceVersion_.Accept(assetDatabase,assetGuid_);
+        savedHistoryCursor_ = historyCursor_;
+        return true;
     }
 
     bool SequenceEditorDocument::Revert(

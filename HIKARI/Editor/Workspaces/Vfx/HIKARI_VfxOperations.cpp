@@ -258,7 +258,7 @@ namespace HIKARI::EDITOR {
 
         registry.Register({
             "vfx.target.describe",
-            "Describe one stable VFX asset, emitter, module, input, link, key, or stop",
+            "Inspect a VFX target; propertyPrefix narrows editable values, includeSchema controls binding metadata",
             "vfx",
             {
                 Parameter(
@@ -266,6 +266,10 @@ namespace HIKARI::EDITOR {
                     EditorOperationParameterType::String,
                     true,
                     "Stable target ID, or asset for document properties"),
+                Parameter("propertyPrefix", EditorOperationParameterType::String, false,
+                    "Optional property path prefix, e.g. localTransform or startDelay; omits unrelated values and serialized document"),
+                Parameter("includeSchema", EditorOperationParameterType::Bool, false,
+                    "Include binding schemas; defaults to false with propertyPrefix, true otherwise"),
             },
             [&controller, databaseProvider](const nlohmann::json& parameters) {
                 EditorOperationResult result{};
@@ -285,6 +289,17 @@ namespace HIKARI::EDITOR {
                         "VFX target was not found: " + targetId);
                 }
                 description["workspace"] = "vfx";
+                const auto prefix = parameters.value("propertyPrefix", std::string{});
+                if (!parameters.value("includeSchema", prefix.empty())) description.erase("propertySchemas");
+                if (!prefix.empty()) {
+                    auto& properties = description["properties"];
+                    nlohmann::json filtered = nlohmann::json::array();
+                    for (const auto& property : properties)
+                        if (property.value("id", std::string{}).starts_with(prefix)) filtered.push_back(property);
+                    properties = std::move(filtered);
+                    description.erase("serializedValue");
+                    description["propertyPrefix"] = prefix;
+                }
                 description["vfxAssetGuid"] =
                     controller.GetDocument().GetAssetGuid().value;
                 return Success(
@@ -632,7 +647,7 @@ namespace HIKARI::EDITOR {
                     false,
                     "Optional stable parent emitter ID"),
                 Parameter("kind", EditorOperationParameterType::String, false,
-                    "Shape (default), Particles, Group, or Adjustment. Adjustment effects process lower siblings inside the same group."),
+                    "Shape (default), Particles, Group, or Adjustment. Adjustments affect lower siblings and their descendants only. Mapping supports Group3D deformation (default) or LayerUv; styles process the lower-layer rendered composition and exclude the scene background."),
                 Parameter(
                     "name",
                     EditorOperationParameterType::String,
@@ -674,7 +689,7 @@ namespace HIKARI::EDITOR {
 
         registry.Register({
             "vfx.emitter.duplicate",
-            "Duplicate one emitter with new stable IDs",
+            "Duplicate a complete layer subtree with new stable IDs, preserving child hierarchy and animation",
             "vfx",
             {
                 Parameter(

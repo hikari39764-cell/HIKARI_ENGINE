@@ -251,6 +251,7 @@ bool VfxWorkspaceController::DrawLayerHandles(const EditorViewportRect &rect, bo
                     };
                     return distance(a) < distance(b);
                 });
+                const auto pathKnots = ReadVfxBezierPath(layer,span);
                 for (const auto *key : keys) {
                     VFX::VfxWorldTransform pose, parent;
                     const float local = layer.animationTiming.LayerSeconds(key->time, span);
@@ -266,6 +267,20 @@ bool VfxWorkspaceController::DrawLayerHandles(const EditorViewportRect &rect, bo
                     handle.seconds = seconds;
                     handle.frame = MATH::Mat4::TRS(parent.position, parent.rotation, parent.scale);
                     marker(handle, pose.position, {});
+                    const auto knot = std::find_if(pathKnots.begin(),pathKnots.end(),[&](const auto& k) {
+                        return std::abs(k.seconds-seconds)<0.0001f;
+                    });
+                    if (knot!=pathKnots.end()) {
+                        const auto control = [&](const MATH::Vec3& localPoint, const char* property) {
+                            const auto worldPoint=Transform(handle.frame,localPoint);
+                            ImVec2 a,b;
+                            if (project(pose.position,a) && project(worldPoint,b)) draw.AddLine(a,b,IM_COL32(190,160,90,190));
+                            auto tangent=handle; tangent.id+=".";tangent.id+=property;tangent.propertyId=property;
+                            marker(tangent,worldPoint,{});
+                        };
+                        if (knot!=pathKnots.begin()) control(knot->incoming,"path.in");
+                        if (std::next(knot)!=pathKnots.end()) control(knot->outgoing,"path.out");
+                    }
                 }
             }
         }
@@ -295,7 +310,9 @@ bool VfxWorkspaceController::DrawLayerHandles(const EditorViewportRect &rect, bo
                         if (s.z > 0)
                             local.z = std::round(local.z / s.z) * s.z;
                     }
-                    (void)SetLayerTransformKey(h.layerId, "position", h.seconds, local, statusMessage_,
+                    if (h.propertyId=="path.in" || h.propertyId=="path.out")
+                        (void)SetLayerPathControl(h.layerId,h.seconds,h.propertyId=="path.in",local,statusMessage_,VfxTimelineEditState::mergeGroup);
+                    else (void)SetLayerTransformKey(h.layerId, "position", h.seconds, local, statusMessage_,
                                                VfxTimelineEditState::mergeGroup);
                 }
             } else {

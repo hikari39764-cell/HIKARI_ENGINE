@@ -1,4 +1,5 @@
 #pragma once
+#include "Editor/Workspaces/Vfx/HIKARI_VfxPathEditing.h"
 
 #include <array>
 #include <cstdint>
@@ -124,6 +125,15 @@ namespace HIKARI::EDITOR {
             uint64_t frameIndex,
             float deltaSeconds,
             EditorCommandRouter& commandRouter);
+        // 表示ウィンドウを作らず、同じ再生・描画経路を更新する。
+        bool PrepareBackgroundPreview(EditorViewInstance& view, float timeSeconds,
+            std::string& outMessage);
+        void TickBackgroundPreview(EditorViewInstance& view, uint64_t frameIndex);
+        bool IsBackgroundPreviewSettled() const noexcept;
+        bool CopyPreviewDocument(const VfxWorkspaceController& source, std::string& outMessage);
+        nlohmann::json DescribeBackgroundPreview() const;
+        float GetRequestedPreviewSeconds() const noexcept { return previewSeekTarget_.value_or(previewElapsedSeconds_); }
+        RENDER3D::RenderViewId GetActivePreviewViewId() const noexcept { return activePreviewViewId_; }
         void BindDocumentCommands(
             EditorCommandRouter& commandRouter) const;
 
@@ -204,6 +214,11 @@ namespace HIKARI::EDITOR {
             float seconds, const MATH::Vec3& value, std::string& outMessage,
             uint64_t mergeGroup = 0);
         void DrawLayerAnimation(AssetDatabase&, const VFX::VfxEmitterData&);
+        void DrawLayerPath(const VFX::VfxEmitterData&);
+        bool SetLayerBezierPath(std::string_view layerId, std::span<const VfxPathKnot> knots,
+            std::string& message, uint64_t mergeGroup = 0);
+        bool SetLayerPathControl(std::string_view layerId, float seconds, bool incoming,
+            const MATH::Vec3& point, std::string& message, uint64_t mergeGroup = 0);
         bool AddLayerEffect(std::string_view layerId, MaterialEffectKind, std::string&);
         bool CopyLayerEffects(std::string_view layerId);
         bool PasteLayerEffects(std::string_view layerId, std::string& message);
@@ -232,6 +247,9 @@ namespace HIKARI::EDITOR {
         // 曲線と効果グラデーションの両方が同じ規則で時刻を選ぶ。
         static float FindAvailableCurveTime(std::vector<float> times);
         void DrawLayerEffects(AssetDatabase&, const VFX::VfxEmitterData&);
+        void DrawEffectBlend(AssetDatabase&, const VFX::VfxEmitterData&, const MaterialEffectStep&);
+        void DrawLayerMatte(AssetDatabase&, const VFX::VfxEmitterData&);
+        bool ResetLayerEffect(std::string_view layerId, std::string_view effectId, std::string&);
         bool RemoveCurveKey(
             std::string_view emitterId,
             std::string_view moduleId,
@@ -331,6 +349,7 @@ namespace HIKARI::EDITOR {
         void Select(VfxWorkspaceSelection selection);
         const VfxWorkspaceSelection& GetSelection() const noexcept;
         const VfxEditorDocument& GetDocument() const noexcept;
+        bool RestoreRecoveryDocument(const AssetDatabase& database, const nlohmann::json& snapshot, std::string& message);
         const VFX::VfxAssetData* GetAsset() const noexcept;
         const std::vector<VFX::VfxDiagnostic>&
             GetDiagnostics() const noexcept;
@@ -509,6 +528,7 @@ namespace HIKARI::EDITOR {
         // 停止中に同じ内容を毎フレーム描き直すと bloom がわずかに揺れる。
         // 変化があったフレームだけ再描画するためのマーカー。
         bool previewNeedsRedraw_ = true;
+        bool backgroundFrozenPrepared_ = false;
         uint64_t previewContentRevision_ = 0u;
         bool previewRestartPending_ = false;
         float previewRestartDelaySeconds_ = 0.0f;
@@ -526,7 +546,6 @@ namespace HIKARI::EDITOR {
         bool previewBypassAdjustments_ = false;
         std::vector<MaterialEffectStep> effectClipboard_;
         std::vector<VFX::VfxParameterTrackData> effectTrackClipboard_;
-        bool effectClipboardAdjustment_ = false;
         char effectSearch_[128]{};
         bool showPreviewGrid_ = true;
         bool showPreviewAxes_ = true;

@@ -1,4 +1,5 @@
 #pragma once
+#include "Editor/Documents/HIKARI_EditorSourceVersion.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -66,6 +67,7 @@ namespace EDITOR {
         const std::string& GetDisplayName() const noexcept;
 
     private:
+        EditorSourceVersion sourceVersion_;
         struct HistoryEntry {
             SceneCinematicsSettings before{};
             SceneCinematicsSettings after{};

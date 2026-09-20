@@ -71,7 +71,7 @@ namespace HIKARI::SEQUENCER {
             const float localTime = context.currentTimeSeconds - clip.startSeconds;
             // Reverse camera playback remains supported; sound/VFX are muted
             // in reverse, rather than pretending to simulate particles backwards.
-            if (context.IsPreview() || !track.enabled || context.playbackRate <= 0.0f ||
+            if (!track.enabled || context.playbackRate <= 0.0f ||
                 localTime < 0.0f || localTime >= clip.durationSeconds) {
                 StopCue(state); continue;
             }
@@ -86,7 +86,7 @@ namespace HIKARI::SEQUENCER {
                     auto options = clip.audio;
                     options.startSeconds = localTime;
                     options.playbackRate = context.playbackRate;
-                    options.paused = context.playing ? 0u : 1u;
+                    options.paused = context.playing && !context.IsDiscontinuous() ? 0u : 1u;
                     options.source.position = {transform.position.x, transform.position.y, transform.position.z};
                     state.voice = AUDIO::PlayCue(state.sound, options, world_.GetRuntimeIdentity());
                     if (state.voice < 0 && !state.warned) {
@@ -114,7 +114,7 @@ namespace HIKARI::SEQUENCER {
                     AUDIO::SetSource(state.voice, source);
                 }
                 AUDIO::SetPlaybackRate(state.voice, context.playbackRate);
-                if (context.playing) AUDIO::Resume(state.voice); else AUDIO::Pause(state.voice);
+                if (context.playing && !(context.IsPreview() && context.IsDiscontinuous())) AUDIO::Resume(state.voice); else AUDIO::Pause(state.voice);
             } else if (state.effect.IsValid()) {
                 vfx_.SetTransform(state.effect, transform);
                 vfx_.SetTimeScale(state.effect, context.playing ? context.playbackRate : 0.0f);
