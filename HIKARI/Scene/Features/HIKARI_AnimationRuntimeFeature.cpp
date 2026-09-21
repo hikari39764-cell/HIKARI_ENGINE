@@ -68,7 +68,7 @@ namespace HIKARI {
                 ComponentTypeInfo animator{};
                 animator.typeName = "AnimatorComponent";
                 animator.factory = []() -> std::unique_ptr<IComponent> {
-                    return std::make_unique<AnimatorComponent>();
+                    return IComponent::Create<AnimatorComponent>();
                 };
                 animator.requiredComponents = { "ModelComponent" };
                 animator.initializeDefaults = [](

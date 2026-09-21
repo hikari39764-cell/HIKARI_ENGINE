@@ -311,10 +311,11 @@ namespace HIKARI::ANIMATION {
         for (size_t index = 0u; index < to.nodes.size(); ++index) {
             const Transform3D& a = from.nodes[index];
             const Transform3D& b = to.nodes[index];
-            Transform3D& result = outPose.nodes[index];
+            Transform3D result{};
             result.position = Lerp(a.position, b.position, safeWeight);
             result.rotation = Nlerp(a.rotation, b.rotation, safeWeight);
             result.scale = Lerp(a.scale, b.scale, safeWeight);
+            outPose.nodes[index] = result;
         }
         return true;
     }

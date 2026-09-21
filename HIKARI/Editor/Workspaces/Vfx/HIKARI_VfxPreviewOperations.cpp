@@ -109,7 +109,7 @@ namespace HIKARI::EDITOR {
                     "VFX preview playback speed updated",
                     std::move(data));
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Session);
 
         registry.Register({
             "vfx.preview.seek",
@@ -133,7 +133,7 @@ namespace HIKARI::EDITOR {
                 data["seconds"] = controller.GetPreviewElapsedSeconds();
                 return Success("VFX preview playhead moved", std::move(data));
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Session);
 
         registry.Register({
             "vfx.preview.set_loop",
@@ -153,7 +153,7 @@ namespace HIKARI::EDITOR {
                 data["enabled"] = controller.IsPreviewLoopEnabled();
                 return Success("VFX preview loop updated", std::move(data));
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Session);
 
         registry.Register({
             "vfx.preview.set_loop_range",
@@ -183,7 +183,7 @@ namespace HIKARI::EDITOR {
                 return Success(
                     "VFX preview loop range updated", std::move(data));
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Session);
 
         registry.Register({
             "vfx.preview.capture",
@@ -212,7 +212,7 @@ namespace HIKARI::EDITOR {
                     return Failure("USE_TIMED_PREVIEWS", "Use authoring.preview at explicit time values to capture a sequence.");
                 return StartEditorPreviewCapture(controller.GetActivePreviewViewId(), {}, parameters.value("path",std::string{}));
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Session, true, HIKARI::EDITOR::EditorOperationSessionDispatch::Preview);
 
         registry.Register({
             "vfx.preview.set_input",
@@ -256,7 +256,7 @@ namespace HIKARI::EDITOR {
                 data["value"] = WriteVfxEditorValue(value);
                 return Success(message, std::move(data));
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Session);
     }
 
 } // namespace HIKARI::EDITOR

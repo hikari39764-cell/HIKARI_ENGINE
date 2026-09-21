@@ -28,18 +28,22 @@ class AiAssistantPanel;
         using AiCapabilityProvider =
             std::function<std::vector<AI_ASSISTANT::AiCapability>()>;
 
-        AiAssistantSession();
+        explicit AiAssistantSession(AI_ASSISTANT::AiChatCompletion completion = AI_ASSISTANT::RunChatCompletionsStreaming);
         ~AiAssistantSession();
 
         void Stop();
         bool SubmitMessage(std::string text, std::vector<AI_ASSISTANT::AiImageAttachment> images = {});
         void Cancel();
+        bool Resume();
+        bool CanResume() const;
         bool IsBusy() const noexcept { return busy_.load(); }
         bool ConsumeCancellation() noexcept { return cancelOwnerRequested_.exchange(false); }
         void SetSceneActionCallback(AiSceneActionCallback callback);
         void SetContextSnapshot(std::string snapshot);
-        void SetCapabilityProvider(AiCapabilityProvider callback);
-        void RefreshCapabilities();
+        // Provider is evaluated on the submitting editor thread, never by the model worker.
+        void SetContextProvider(std::function<std::string()> provider);
+        void SetCapabilityProvider(AiCapabilityProvider callback, std::function<uint64_t()> revision = {});
+        void RefreshCapabilities(bool onlyIfChanged = false);
         std::vector<AI_ASSISTANT::AiChatMessage> SnapshotMessages() const;
         struct TaskActivity {
             std::string phase = "planning", action, sessionId;
@@ -69,7 +73,9 @@ class AiAssistantPanel;
             std::optional<AI_ASSISTANT::AiRequestResult> result{};
         };
 
-        void RunConversation(const std::string& userText);
+        AI_ASSISTANT::AiChatMessage ExecuteConversationAction(const std::string& actionJson);
+        void RunConversation(bool resume);
+        bool StartConversation(std::string text, std::vector<AI_ASSISTANT::AiImageAttachment> images, bool resume);
         AI_ASSISTANT::AiRequestResult ExecuteRequestNow(
             std::string_view json);
         void AppendMessage(const AI_ASSISTANT::AiChatMessage& message);
@@ -84,6 +90,7 @@ class AiAssistantPanel;
         std::string SnapshotContext() const;
 
         std::vector<AI_ASSISTANT::AiChatMessage> messages_{};
+        AI_ASSISTANT::AiTaskCheckpoint taskCheckpoint_;
         mutable std::mutex messageMutex_{};
         TaskActivity activity_;
         std::mutex streamMutex_{};
@@ -98,8 +105,11 @@ class AiAssistantPanel;
         std::string bridgeSessionToken_{};
         AiSceneActionCallback sceneActionCallback_{};
         std::string contextSnapshot_{};
+        std::function<std::string()> contextProvider_;
         std::string taskContext_{};
         AiCapabilityProvider capabilityProvider_{};
+        std::function<uint64_t()> capabilityVersionProvider_;
+        uint64_t capabilityRevision_ = ~uint64_t{0};
         std::vector<AI_ASSISTANT::AiCapability> capabilitySnapshot_;
         AI_ASSISTANT::AiChatConfig config_{};
         bool configLoaded_ = false;
@@ -108,6 +118,7 @@ class AiAssistantPanel;
         std::atomic<bool> cancelOwnerRequested_{ false };
         std::atomic<uint64_t> generation_{1};
         std::thread worker_{};
+        AI_ASSISTANT::AiChatCompletion completion_;
         std::filesystem::path conversationFolder_, pendingConversationFolder_;
         bool projectSwitchPending_ = false;
         std::string conversationId_, storageError_;

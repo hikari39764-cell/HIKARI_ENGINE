@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 
 #include <string>
@@ -71,11 +72,11 @@ namespace HIKARI::EDITOR {
             VFX::VfxDiagnosticSeverity severity) noexcept {
 
             switch (severity) {
-            case VFX::VfxDiagnosticSeverity::Info: return "Info";
-            case VFX::VfxDiagnosticSeverity::Warning: return "Warning";
-            case VFX::VfxDiagnosticSeverity::Error: return "Error";
+            case VFX::VfxDiagnosticSeverity::Info: return TEXT::LocalizeCStr("log.info");
+            case VFX::VfxDiagnosticSeverity::Warning: return TEXT::LocalizeCStr("editor.ui.warning.e9c455");
+            case VFX::VfxDiagnosticSeverity::Error: return TEXT::LocalizeCStr("ui.assetBrowser.stateError");
             }
-            return "Unknown";
+            return TEXT::LocalizeCStr("ui.quality.transitionUnknown");
         }
 
         ImVec4 SeverityColor(
@@ -98,8 +99,7 @@ namespace HIKARI::EDITOR {
 #if defined(HIKARI_WITH_EDITOR)
         if (diagnostics_.empty()) {
             ImGui::TextColored(
-                { 0.42f, 0.88f, 0.55f, 1.0f },
-                "The current VFX source compiles without diagnostics.");
+                { 0.42f, 0.88f, 0.55f, 1.0f },TEXT::Localize("editor.ui.the.current.vfx.source.compiles.without.diagnostics.ffd1e4").c_str());
             return;
         }
         if (!ImGui::BeginTable(
@@ -151,8 +151,7 @@ namespace HIKARI::EDITOR {
             }
             if (ImGui::IsItemHovered() &&
                 !diagnostic.subjectId.empty()) {
-                ImGui::SetTooltip(
-                    "Subject: %s", diagnostic.subjectId.c_str());
+                ImGui::SetTooltip(TEXT::Localize("editor.ui.subject.s.091ab5").c_str(), diagnostic.subjectId.c_str());
             }
             ImGui::PopID();
         }

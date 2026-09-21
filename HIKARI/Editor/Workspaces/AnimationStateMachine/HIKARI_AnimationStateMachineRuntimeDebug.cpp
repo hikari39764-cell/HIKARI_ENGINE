@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/AnimationStateMachine/HIKARI_AnimationStateMachineWorkspaceController.h"
 
 #include <string>
@@ -56,10 +57,9 @@ AnimationStateMachineWorkspaceController::ResolveRuntimeDebugSnapshot(
 void AnimationStateMachineWorkspaceController::DrawRuntimeDebug(
     DocumentSceneBase &scene) {
 #if defined(HIKARI_WITH_EDITOR)
-  ImGui::SeparatorText("Live Runtime");
+  ImGui::SeparatorText(TEXT::Localize("editor.ui.live.runtime.90b49b").c_str());
   if (!document_.GetAssetGuid().IsValid()) {
-    ImGui::TextDisabled(
-        "Save the asset before attaching a live runtime instance.");
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.save.the.asset.before.attaching.a.live.runtime.instance.0d56b7").c_str());
     return;
   }
 
@@ -67,7 +67,7 @@ void AnimationStateMachineWorkspaceController::DrawRuntimeDebug(
                       .Services()
                       .Find<ANIMATION::AnimationStateMachineRuntimeService>();
   if (service == nullptr) {
-    ImGui::TextDisabled("Animation runtime service is unavailable.");
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.animation.runtime.service.is.unavailable.57d3a5").c_str());
     return;
   }
 
@@ -76,7 +76,7 @@ void AnimationStateMachineWorkspaceController::DrawRuntimeDebug(
           scene.GetWorld().FindObject(runtimeDebugObject_)) {
     currentName = selected->GetName();
   }
-  if (ImGui::BeginCombo("Runtime Object", currentName.c_str())) {
+  if (ImGui::BeginCombo(TEXT::LocalizeWindow("editor.ui.runtime.object.2b05fe", "Runtime Object").c_str(), currentName.c_str())) {
     for (const auto &object : scene.GetWorld().GetObjects()) {
       const auto *component =
           object->GetComponent<AnimationStateMachineComponent>();
@@ -100,16 +100,16 @@ void AnimationStateMachineWorkspaceController::DrawRuntimeDebug(
 
   const auto *snapshot = ResolveRuntimeDebugSnapshot(scene);
   if (snapshot == nullptr) {
-    ImGui::TextDisabled("No playing object currently uses this saved asset.");
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.no.playing.object.currently.uses.this.saved.asset.122e34").c_str());
     return;
   }
 
-  ImGui::Text("State: %s", snapshot->currentStateName.c_str());
+  ImGui::Text(TEXT::Localize("ui.quality.stateFormat").c_str(), snapshot->currentStateName.c_str());
   ImGui::SameLine();
   ImGui::TextColored(snapshot->running ? ImVec4(0.35f, 0.9f, 0.55f, 1.0f)
                                        : ImVec4(0.7f, 0.7f, 0.7f, 1.0f),
                      "%s", snapshot->running ? "Running" : "Stopped");
-  ImGui::Text("Primary: %s", snapshot->primaryClipName.empty()
+  ImGui::Text(TEXT::Localize("editor.ui.primary.s.e5c3d0").c_str(), snapshot->primaryClipName.empty()
                                  ? "<none>"
                                  : snapshot->primaryClipName.c_str());
   if (snapshot->motionType ==
@@ -120,17 +120,17 @@ void AnimationStateMachineWorkspaceController::DrawRuntimeDebug(
                     : snapshot->blendParameterName.c_str(),
                 snapshot->blendInputValue, snapshot->blendLowerThreshold,
                 snapshot->blendUpperThreshold);
-    ImGui::Text("Secondary: %s", snapshot->secondaryClipName.empty()
+    ImGui::Text(TEXT::Localize("editor.ui.secondary.s.eac035").c_str(), snapshot->secondaryClipName.empty()
                                      ? "<none>"
                                      : snapshot->secondaryClipName.c_str());
     ImGui::ProgressBar(snapshot->motionBlendWeight, {-1.0f, 0.0f},
                        "Motion Blend");
   }
-  ImGui::Text("Effective Speed: %.3f", snapshot->effectiveSpeed);
+  ImGui::Text(TEXT::Localize("editor.ui.effective.speed.3f.338a4e").c_str(), snapshot->effectiveSpeed);
   const auto *instance = service->Find(runtimeDebugObject_);
   const auto *asset = instance != nullptr ? instance->GetAsset() : nullptr;
   if (asset != nullptr &&
-      ImGui::CollapsingHeader("Parameters", ImGuiTreeNodeFlags_DefaultOpen)) {
+      ImGui::CollapsingHeader(TEXT::LocalizeWindow("editor.ui.parameters.a975ee", "Parameters").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
     constexpr ImGuiTableFlags flags = ImGuiTableFlags_RowBg |
                                       ImGuiTableFlags_BordersInnerH |
                                       ImGuiTableFlags_SizingStretchProp;
@@ -146,7 +146,7 @@ void AnimationStateMachineWorkspaceController::DrawRuntimeDebug(
         const auto *value = instance->FindValue(parameter.id);
         if (const bool *boolean =
                 value != nullptr ? std::get_if<bool>(value) : nullptr) {
-          ImGui::TextUnformatted(*boolean ? "True" : "False");
+          ImGui::TextUnformatted(*boolean ? TEXT::LocalizeCStr("editor.ui.true.88b33e") : TEXT::LocalizeCStr("editor.ui.false.97cdbd"));
         } else if (const float *number =
                        value != nullptr ? std::get_if<float>(value) : nullptr) {
           ImGui::Text("%.3f", *number);
@@ -155,7 +155,7 @@ void AnimationStateMachineWorkspaceController::DrawRuntimeDebug(
                                                 : nullptr) {
           ImGui::Text("%d", *integer);
         } else {
-          ImGui::TextDisabled("Unavailable");
+          ImGui::TextDisabled(TEXT::Localize("ui.lightingBake.unavailable").c_str());
         }
       }
       ImGui::EndTable();

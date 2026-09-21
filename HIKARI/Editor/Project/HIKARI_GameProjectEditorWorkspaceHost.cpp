@@ -1,3 +1,7 @@
+#include "Editor/Shell/HIKARI_EditorDockLayout.h"
+#include "Editor/Style/HIKARI_EditorWidgets.h"
+#include "Editor/Style/HIKARI_EditorGlyphs.h"
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Project/HIKARI_GameProjectEditorWorkspaceHost.h"
 
 #include <algorithm>
@@ -72,7 +76,7 @@ namespace {
             };
             const auto stable=MakeStableLabel(label,workspaceId_,id);
             if(ImGui::BeginCombo(stable.c_str(),shown.c_str())) {
-                if(ImGui::Selectable("画像なし",buffer[0]=='\0')) assign({});
+                if(ImGui::Selectable(TEXT::LocalizeWindow("editor.noImage", "画像なし").c_str(),buffer[0]=='\0')) assign({});
                 for(const auto* descriptor:assets_->CollectByType(AssetType::Texture)) {
                     const auto* asset=database_->FindByGuid(AssetGuid{descriptor->id.value});
                     const auto name=asset?asset->displayName:descriptor->sourcePath;
@@ -173,7 +177,7 @@ namespace {
                 // 保存済みレイアウトは ImGui が管理する。新規パネルだけ中央へ入れる。
                 dockRegions_.fill(root);
             }
-            ImGui::DockSpaceOverViewport(root, viewport);
+            HIKARI::EDITOR::DrawWorkspaceDockSpace(root, viewport);
         }
 
         void EndFrame() noexcept {
@@ -699,28 +703,13 @@ namespace {
         moduleFailureMessage_ = std::move(message);
     }
 
-    void GameProjectEditorWorkspaceHost::DrawNavigation(
+    void GameProjectEditorWorkspaceHost::UpdateNavigation(
         EditorWorkspaceHost& host, float unscaledDeltaSeconds) {
         if (!IsAvailable()) return;
         if(!requestedWorkspace_.empty() && !host.IsActive(EditorWorkspaceId::Project))
             (void)host.RequestOpen({EditorWorkspaceId::Project});
         ui_->BeginFrame(registry_.GetActiveWorkspaceId());
         registry_.BeginFrame(*ui_, unscaledDeltaSeconds);
-        if (ImGui::BeginMainMenuBar()) {
-            if (ImGui::BeginMenu("プロジェクト")) {
-                for (size_t i = 0; i < registry_.GetWorkspaceCount(); ++i) {
-                    const auto info = registry_.GetWorkspaceInfo(i);
-                    if (ImGui::MenuItem(std::string(info.displayName).c_str(), nullptr,
-                            info.active && host.IsActive(EditorWorkspaceId::Project), !info.disabled)) {
-                        requestedWorkspace_.assign(info.workspaceId);
-                        (void)host.RequestOpen({ EditorWorkspaceId::Project });
-                    }
-                }
-                if (!moduleFailureMessage_.empty()) ImGui::TextUnformatted(moduleFailureMessage_.c_str());
-                ImGui::EndMenu();
-            }
-            ImGui::EndMainMenuBar();
-        }
         if (host.IsActive(EditorWorkspaceId::Project)) {
             if (const auto* pending = host.PeekPending(); pending && pending->workspaceId != EditorWorkspaceId::Project) {
                 guardedNavigation_ = *pending;
@@ -800,30 +789,36 @@ namespace {
         return registry_;
     }
 
+    void GameProjectEditorWorkspaceHost::DrawWorkspaceEntries(EditorWorkspaceHost& host, const char* filter) {
+        if (!IsAvailable()) return;
+        ImGui::SeparatorText(TEXT::Localize("shell.projectWorkspaces").c_str());
+        for (size_t i = 0; i < registry_.GetWorkspaceCount(); ++i) {
+            const auto info = registry_.GetWorkspaceInfo(i);
+            if (filter && filter[0] && info.displayName.find(filter) == std::string_view::npos) continue;
+            ImGui::BeginDisabled(info.disabled);
+            if (IconTextButton(EditorGlyph::Grid, std::string(info.displayName).c_str(), std::string(info.workspaceId).c_str(),
+                info.active && host.IsActive(EditorWorkspaceId::Project) ? EditorButtonTone::Primary : EditorButtonTone::Quiet, {-1, 36})) {
+                requestedWorkspace_.assign(info.workspaceId);
+                (void)host.RequestOpen({EditorWorkspaceId::Project});
+            }
+            ImGui::EndDisabled();
+        }
+        if (!moduleFailureMessage_.empty()) ImGui::TextWrapped("%s", moduleFailureMessage_.c_str());
+    }
+
     void GameProjectEditorWorkspaceHost::DrawWorkspaceSelector(EditorWorkspaceHost& host) {
-        if (ui_->BeginPanel("HostToolbar", "ワークスペース", nullptr,
+        if (ui_->BeginPanel("HostToolbar", TEXT::Localize("shell.workspaces"), nullptr,
                 EDITOR_PROJECT::EditorWorkspaceDockRegion::Toolbar)) {
-            if (ImGui::Button("シーンへ戻る")) {
-                (void)host.RequestOpen({ EditorWorkspaceId::Scene });
-            }
+            if (IconButton(EditorGlyph::Scene, "backToScene", EditorButtonTone::Quiet, {}, TEXT::Localize("menu.workspace.scene").c_str()))
+                (void)host.RequestOpen({EditorWorkspaceId::Scene});
             ImGui::SameLine();
-            if (ImGui::Button("保存  Ctrl+S") || (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S, false))) {
+            if (IconButton(EditorGlyph::Save, "saveProjectWorkspace", EditorButtonTone::Quiet, {}, TEXT::Localize("menu.edit.save").c_str()))
                 (void)registry_.RequestSaveActiveWorkspace();
-            }
             ImGui::SameLine();
-            if (ImGui::Button("レイアウトを戻す")) resetLayout_ = true;
-            for (size_t index = 0; index < registry_.GetWorkspaceCount(); ++index) {
-                const auto info = registry_.GetWorkspaceInfo(index);
-                ImGui::SameLine();
-                ImGui::BeginDisabled(info.disabled || info.active);
-                if (ImGui::Button(std::string(info.displayName).c_str())) {
-                    (void)registry_.RequestActivateWorkspace(info.workspaceId);
-                }
-                ImGui::EndDisabled();
-            }
+            if (IconButton(EditorGlyph::Refresh, "resetProjectLayout", EditorButtonTone::Quiet, {}, TEXT::Localize("shell.resetLayout").c_str())) resetLayout_ = true;
             if (registry_.IsActiveWorkspaceDirty()) {
                 ImGui::SameLine();
-                ImGui::TextColored(ImVec4(1, .8f, .35f, 1), "● 未保存");
+                StatusBadge(TEXT::Localize("shell.unsaved").c_str(), EditorStatusTone::Warning);
             }
             if (!registry_.GetStatusMessage().empty()) {
                 ImGui::TextUnformatted(registry_.GetStatusMessage().data(),
@@ -836,7 +831,7 @@ namespace {
     void GameProjectEditorWorkspaceHost::DrawClosePrompt() {
         const bool pending = registry_.IsAwaitingCloseResolution();
         if (pending && !closePromptWasPending_) {
-            ImGui::OpenPopup("Unsaved Project Workspace");
+            ImGui::OpenPopup(TEXT::LocalizeWindow("shell.unsaved", "Unsaved Project Workspace").c_str());
         }
         closePromptWasPending_ = pending;
         if (!pending) {
@@ -844,16 +839,13 @@ namespace {
         }
 
         if (ImGui::BeginPopupModal(
-                "Unsaved Project Workspace",
+                TEXT::LocalizeWindow("shell.unsaved", "Unsaved Project Workspace").c_str(),
                 nullptr,
                 ImGuiWindowFlags_AlwaysAutoResize)) {
-            const std::string message =
-                "Save changes to '" +
-                std::string(registry_.GetAwaitingWorkspaceName()) +
-                "' before leaving?";
-            ImGui::TextUnformatted(message.c_str());
+            ImGui::TextWrapped(TEXT::Localize("shell.saveBeforeLeaving").c_str(),
+                std::string(registry_.GetAwaitingWorkspaceName()).c_str());
             ImGui::Separator();
-            if (ImGui::Button("Save")) {
+            if (ImGui::Button(TEXT::LocalizeWindow("ai.api.save", "Save").c_str())) {
                 registry_.ResolvePendingClose(
                     GameProjectWorkspaceCloseResolution::Save);
                 if (!registry_.IsAwaitingCloseResolution()) {
@@ -861,13 +853,13 @@ namespace {
                 }
             }
             ImGui::SameLine();
-            if (ImGui::Button("Discard")) {
+            if (ImGui::Button(TEXT::LocalizeWindow("ui.sceneOpen.discard", "Discard").c_str())) {
                 registry_.ResolvePendingClose(
                     GameProjectWorkspaceCloseResolution::Discard);
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (ImGui::Button("Cancel")) {
+            if (ImGui::Button(TEXT::LocalizeWindow("ui.common.cancel", "Cancel").c_str())) {
                 registry_.ResolvePendingClose(
                     GameProjectWorkspaceCloseResolution::Cancel);
                 ImGui::CloseCurrentPopup();

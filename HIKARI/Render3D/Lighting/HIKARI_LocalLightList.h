@@ -81,6 +81,10 @@ namespace HIKARI::RENDER3D::LIGHTING {
     // IsLocalLightUploadable を満たす入力の共通 wire projection。選択/cluster は所有しない。
     LocalLightGpuData BuildLocalLightGpuData(const SceneLightProvider& light) noexcept;
 
+    uint64_t LocalLightListInputSignature(const SceneLightingSet& lighting,
+        const Camera3D& camera, uint32_t width, uint32_t height,
+        std::span<const LocalLightShadowAssignment> shadows) noexcept;
+
     // クラスタの index buffer を作らず、同じ可視性/上限制限で光源を選択する。
     LocalLightListView SelectVisibleLocalLights(const SceneLightingSet& lighting,
         const Camera3D& camera, uint32_t screenWidth, uint32_t screenHeight,

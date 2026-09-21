@@ -184,9 +184,9 @@ void ModelMaterialWorkspaceDocument::RestoreMaterial(
   if (!materialOpen_) {
     return;
   }
+  MaterialAssetData before = std::move(material_);
   material_ = std::move(source);
-  ++materialRevision_;
-  RefreshCompile();
+  RefreshAfterMaterialChange(before);
 }
 
 bool ModelMaterialWorkspaceDocument::CanUndo() const noexcept {
@@ -226,11 +226,10 @@ bool ModelMaterialWorkspaceDocument::Undo(ChangedDomain &outDomain,
   if (entry.domain == ChangedDomain::Binding) {
     bindings_ = entry.beforeBindings;
     bindingStateToken_ = entry.beforeToken;
-  } else if (entry.domain == ChangedDomain::Material) {
+  } else {
     material_ = entry.beforeMaterial;
     materialStateToken_ = entry.beforeToken;
-    ++materialRevision_;
-    RefreshCompile();
+    RefreshAfterMaterialChange(entry.afterMaterial);
   }
   return true;
 }
@@ -254,11 +253,10 @@ bool ModelMaterialWorkspaceDocument::Redo(ChangedDomain &outDomain,
   if (entry.domain == ChangedDomain::Binding) {
     bindings_ = entry.afterBindings;
     bindingStateToken_ = entry.afterToken;
-  } else if (entry.domain == ChangedDomain::Material) {
+  } else {
     material_ = entry.afterMaterial;
     materialStateToken_ = entry.afterToken;
-    ++materialRevision_;
-    RefreshCompile();
+    RefreshAfterMaterialChange(entry.beforeMaterial);
   }
   return true;
 }
@@ -312,13 +310,13 @@ bool ModelMaterialWorkspaceDocument::DiscardMaterialChanges() {
   if (!materialOpen_ || (!IsMaterialDirty() && !abBefore_)) {
     return false;
   }
+  MaterialAssetData before = std::move(material_);
   material_ = savedMaterial_;
   materialStateToken_ = savedMaterialStateToken_;
   abBefore_.reset();
   ClearHistory(ChangedDomain::Material);
   activeHistoryDomain_ = ChangedDomain::Material;
-  ++materialRevision_;
-  RefreshCompile();
+  RefreshAfterMaterialChange(before);
   return true;
 }
 
@@ -355,8 +353,7 @@ bool ModelMaterialWorkspaceDocument::BeginAbPreview(
   }
   abBefore_ = material_;
   material_ = std::move(candidate);
-  ++materialRevision_;
-  RefreshCompile();
+  RefreshAfterMaterialChange(*abBefore_);
   outMessage = "B variant is preview-only; Keep commits one undo step";
   return true;
 }
@@ -387,10 +384,10 @@ bool ModelMaterialWorkspaceDocument::DiscardAbPreview(
     outMessage = "no A/B preview is active";
     return false;
   }
+  MaterialAssetData before = std::move(material_);
   material_ = std::move(*abBefore_);
   abBefore_.reset();
-  ++materialRevision_;
-  RefreshCompile();
+  RefreshAfterMaterialChange(before);
   outMessage = "discarded B variant without changing the asset";
   return true;
 }
@@ -456,6 +453,7 @@ void ModelMaterialWorkspaceDocument::RefreshCompile() {
   // Material v6 authoring is graph-authoritative. A failed edit must remain a
   // failed current graph; projecting any stale program here would make the
   // viewport look live while it is actually rendering an older topology.
+  materialContentChanged_ = true;
   compile_ = CompileMaterialAsset(material_, compileOptions_);
   compileRevision_ = materialRevision_;
 }

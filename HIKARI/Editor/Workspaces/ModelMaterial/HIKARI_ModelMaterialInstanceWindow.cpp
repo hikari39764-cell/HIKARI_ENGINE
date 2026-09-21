@@ -1,7 +1,9 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 
 #include <algorithm>
 #include <cstdio>
+#include <map>
 
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialAssetAuthoringService.h"
@@ -55,7 +57,7 @@ bool DrawValue(MaterialValueData &value) {
   case MaterialValueType::Float4:
     return ImGui::ColorEdit4("##InstanceValue", &value.numeric.x);
   default:
-    ImGui::TextDisabled("Unsupported inherited type");
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.unsupported.inherited.type.0e4d03").c_str());
     return false;
   }
 }
@@ -65,29 +67,27 @@ bool DrawValue(MaterialValueData &value) {
 void ModelMaterialWorkspaceController::DrawInstanceWindow(
     DocumentSceneBase &scene) {
 #if defined(HIKARI_WITH_EDITOR)
-  if (!ImGui::Begin("Instance###ModelMaterial/Instance")) {
+  if (!ImGui::Begin(TEXT::LocalizeWindow("editor.ui.instance.5f97f8", "ModelMaterial/Instance").c_str())) {
     ImGui::End();
     return;
   }
   if (!authoringDocument_.HasMaterial()) {
-    ImGui::TextWrapped("Open a material before creating an instance.");
+    ImGui::TextWrapped(TEXT::Localize("editor.ui.open.a.material.before.creating.an.instance.bb3495").c_str());
     ImGui::End();
     return;
   }
 
   MaterialAssetData &instance = authoringDocument_.EditMaterial();
   if (instance.kind != MaterialAssetKind::Instance) {
-    ImGui::TextWrapped(
-        "Create a lightweight instance that inherits this material and only "
-        "stores selected parameter or resource overrides.");
-    if (ImGui::Button("Create Material Instance", ImVec2(-1.0f, 0.0f))) {
+    ImGui::TextWrapped(TEXT::Localize("editor.ui.create.a.lightweight.instance.that.inherits.this.material.and.on.3b9f89").c_str());
+    if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.create.material.instance.85908f", "Create Material Instance").c_str(), ImVec2(-1.0f, 0.0f))) {
       (void)CreateMaterial(scene, instance.templateId, true, statusMessage_);
     }
     ImGui::End();
     return;
   }
 
-  ImGui::Text("Parent: %s", instance.instance.parentMaterialGuid.value.c_str());
+  ImGui::Text(TEXT::Localize("editor.ui.parent.s.c6d7f1").c_str(), instance.instance.parentMaterialGuid.value.c_str());
   AssetDatabase &database = scene.GetAssetDatabase();
   const uint64_t databaseRevision = database.GetContentRevision();
   if (!instanceParentCache_ ||
@@ -107,25 +107,30 @@ void ModelMaterialWorkspaceController::DrawInstanceWindow(
     }
   }
   if (!instanceParentCache_) {
-    ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.3f, 1.0f),
-                       "Parent material is unavailable.");
+    ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.3f, 1.0f),TEXT::Localize("editor.ui.parent.material.is.unavailable.53592c").c_str());
     ImGui::End();
     return;
   }
 
   const MaterialAssetData &parent = *instanceParentCache_;
-  ImGui::SeparatorText("Parameter Overrides");
-  for (const MaterialGraphParameterData &parameter : parent.graph.parameters) {
-    if (!parameter.exposed) {
-      continue;
-    }
+  ImGui::SeparatorText(TEXT::Localize("editor.ui.parameter.overrides.f96015").c_str());
+  std::map<std::string, std::vector<const MaterialGraphParameterData*>> groups;
+  for (const auto& parameter : parent.graph.parameters)
+    if (parameter.exposed) groups[parameter.group].push_back(&parameter);
+  for (const auto& [group, parameters] : groups) {
+    const std::string label = group.empty() ? TEXT::Localize("material.parameter.general") : group;
+    if (!ImGui::CollapsingHeader(label.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) continue;
+    for (const auto* entry : parameters) {
+    const auto& parameter = *entry;
     ImGui::PushID(parameter.id.c_str());
     ImGui::TextUnformatted(parameter.displayName.empty()
                                ? parameter.id.c_str()
                                : parameter.displayName.c_str());
     MaterialValueData value = EffectiveParameterValue(instance, parameter);
     MaterialAssetData before = instance;
-    const bool changed = DrawValue(value);
+    const bool changed = parameter.useUiRange && value.type == MaterialValueType::Float1
+        ? ImGui::SliderFloat("##InstanceValue", &value.numeric.x, parameter.uiMinimum, parameter.uiMaximum)
+        : DrawValue(value);
     const bool isBoolean = value.type == MaterialValueType::Bool;
     if (!isBoolean && ImGui::IsItemActivated() && !materialGesture_) {
       materialGesture_ = MaterialEditGesture{before,
@@ -143,11 +148,11 @@ void ModelMaterialWorkspaceController::DrawInstanceWindow(
         PreviewMaterialGesture(scene);
       }
     }
-    if (!isBoolean && ImGui::IsItemDeactivatedAfterEdit()) {
+    if (!isBoolean && ImGui::IsItemDeactivated()) {
       CommitMaterialGesture(scene);
     }
     ImGui::SameLine();
-    if (ImGui::SmallButton("Reset")) {
+    if (ImGui::SmallButton(TEXT::LocalizeWindow("ui.common.reset", "Reset").c_str())) {
       MaterialAssetData resetBefore = instance;
       if (ASSETS::MATERIAL::RestoreMaterialInstanceParameterDefault(
               instance, parameter.id)) {
@@ -158,7 +163,8 @@ void ModelMaterialWorkspaceController::DrawInstanceWindow(
     ImGui::PopID();
   }
 
-  ImGui::SeparatorText("Resource Overrides");
+  }
+  ImGui::SeparatorText(TEXT::Localize("editor.ui.resource.overrides.71f02a").c_str());
   for (const MaterialGraphResourceData &resource : parent.graph.resources) {
     ImGui::PushID(resource.id.c_str());
     ImGui::TextUnformatted(resource.displayName.empty()
@@ -182,7 +188,7 @@ void ModelMaterialWorkspaceController::DrawInstanceWindow(
       }
     }
     ImGui::SameLine();
-    if (ImGui::SmallButton("Reset")) {
+    if (ImGui::SmallButton(TEXT::LocalizeWindow("ui.common.reset", "Reset").c_str())) {
       MaterialAssetData before = instance;
       if (ASSETS::MATERIAL::RestoreMaterialInstanceResourceDefault(
               instance, resource.id)) {
@@ -196,7 +202,7 @@ void ModelMaterialWorkspaceController::DrawInstanceWindow(
   ImGui::Separator();
   ImGui::BeginDisabled(instance.instance.parameterOverrides.empty() &&
                        instance.instance.resourceOverrides.empty());
-  if (ImGui::Button("Reset All Instance Overrides", ImVec2(-1.0f, 0.0f))) {
+  if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.reset.all.instance.overrides.633aad", "Reset All Instance Overrides").c_str(), ImVec2(-1.0f, 0.0f))) {
     MaterialAssetData before = instance;
     instance.instance.parameterOverrides.clear();
     instance.instance.resourceOverrides.clear();

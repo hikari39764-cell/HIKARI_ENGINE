@@ -1,4 +1,5 @@
 #include "HIKARI_DebugLogBuffer.h"
+#include "Core/HIKARI_Logger.h"
 
 #include <Windows.h>
 #include <algorithm>
@@ -55,6 +56,7 @@ namespace HIKARI::DEBUGLOG {
     }
 
     void PushRenderError(std::string message) {
+        CORE::LogMessage(CORE::LogLevel::Error, "Renderer", message);
         std::lock_guard lock(gMutex);
         WriteRenderLogLine(message);
         gRecentErrors.push_back(std::move(message));

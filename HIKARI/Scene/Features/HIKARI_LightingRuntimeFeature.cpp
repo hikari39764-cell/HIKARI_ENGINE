@@ -68,7 +68,7 @@ namespace HIKARI {
                 ComponentTypeInfo light{};
                 light.typeName = "LightComponent";
                 light.factory = []() -> std::unique_ptr<IComponent> {
-                    return std::make_unique<LightComponent>();
+                    return IComponent::Create<LightComponent>();
                 };
                 light.runtimeApplyPolicy =
                     ComponentRuntimeApplyPolicy::Immediate;
@@ -86,7 +86,7 @@ namespace HIKARI {
                 reflectionProbe.typeName = "ReflectionProbeComponent";
                 reflectionProbe.factory =
                     []() -> std::unique_ptr<IComponent> {
-                    return std::make_unique<ReflectionProbeComponent>();
+                    return IComponent::Create<ReflectionProbeComponent>();
                 };
                 reflectionProbe.runtimeApplyPolicy =
                     ComponentRuntimeApplyPolicy::Immediate;
@@ -104,7 +104,7 @@ namespace HIKARI {
                 irradianceVolume.typeName = "IrradianceVolumeComponent";
                 irradianceVolume.factory =
                     []() -> std::unique_ptr<IComponent> {
-                    return std::make_unique<IrradianceVolumeComponent>();
+                    return IComponent::Create<IrradianceVolumeComponent>();
                 };
                 irradianceVolume.runtimeApplyPolicy =
                     ComponentRuntimeApplyPolicy::Immediate;

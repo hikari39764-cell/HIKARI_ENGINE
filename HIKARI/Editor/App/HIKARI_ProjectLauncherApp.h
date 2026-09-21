@@ -5,8 +5,10 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <map>
 
 #include "Editor/Projects/HIKARI_ProjectOpenWorkflow.h"
+#include "Editor/Diagnostics/HIKARI_EditorLogPanel.h"
 #include "Editor/Projects/HIKARI_RecentProjectStore.h"
 #include "Runtime/App/HIKARI_IHostApplication.h"
 
@@ -35,9 +37,11 @@ namespace HIKARI::EDITOR {
 
     private:
         void DrawHeader();
-        void DrawQuickStartPanel();
+        void DrawNavigation();
+        void DrawSettings();
+        void DrawLogs();
         void DrawRecentProjectsPanel();
-        void DrawCreateProjectDialog();
+        void DrawCreateProjectPanel();
         void DrawStatusPanel();
 
         void OpenProject(
@@ -53,7 +57,13 @@ namespace HIKARI::EDITOR {
         std::array<char, 128u> projectName_{};
         std::array<char, 1024u> projectLocation_{};
         std::string interactionMessage_{};
-        bool createDialogRequested_ = false;
+        enum class Page { Projects, Create, Settings, Logs };
+        Page page_ = Page::Projects;
+        EditorLogPanel logPanel_;
+        std::array<char, 256> search_{};
+        bool pinnedOnly_ = false;
+        struct Thumbnail { int handle = -1; std::string path; };
+        std::map<std::string, Thumbnail> thumbnails_;
     };
 
 } // namespace HIKARI::EDITOR

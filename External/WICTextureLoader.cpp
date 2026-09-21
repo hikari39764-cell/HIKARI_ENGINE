@@ -20,7 +20,6 @@ namespace {
     }
 
     ComPtr<IWICImagingFactory> g_wicFactory;
-    static std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> g_uploadKeepAlive;
     IWICImagingFactory* GetWIC()
     {
         if (g_wicFactory) {
@@ -63,12 +62,14 @@ namespace HIKARI {
             ID3D12Device* device,
             ID3D12GraphicsCommandList* cmdList,
             const wchar_t* fileName,
-            ID3D12Resource** texture)
+            ID3D12Resource** texture,
+            ID3D12Resource** uploadResource)
         {
-            if (!device || !cmdList || !fileName || !texture) {
+            if (!device || !cmdList || !fileName || !texture || !uploadResource) {
                 return E_INVALIDARG;
             }
             *texture = nullptr;
+            *uploadResource = nullptr;
 
             // ===== WIC 工厂 =====
             auto* factory = GetWIC();
@@ -179,7 +180,7 @@ namespace HIKARI {
             sub.SlicePitch = imageSize;
 
             UpdateSubresources(cmdList, tex.Get(), upload.Get(), 0, 0, 1, &sub);
-            g_uploadKeepAlive.push_back(upload);
+            *uploadResource = upload.Detach();
             CD3DX12_RESOURCE_BARRIER barrier =
                 CD3DX12_RESOURCE_BARRIER::Transition(
                     tex.Get(),
@@ -196,7 +197,6 @@ namespace HIKARI {
 
         void CleanupWICResources()
         {
-            g_uploadKeepAlive.clear(); 
             g_wicFactory.Reset(); 
             OutputDebugStringA("[WIC] CleanupWICResources.\n");
         }

@@ -22,6 +22,8 @@ namespace HIKARI::MESHRENDERER {
             shadow = other.shadow;
             skyEnvironment = other.skyEnvironment;
             localLightList = other.localLightList;
+            localLightBuildSignature_ = other.localLightBuildSignature_;
+            localLightBuildCached_ = std::exchange(other.localLightBuildCached_, false);
             uploads_ = std::move(other.uploads_);
             lights_ = std::move(other.lights_);
             headers_ = std::move(other.headers_);
@@ -53,16 +55,22 @@ namespace HIKARI::MESHRENDERER {
         indices_.clear();
         bindings_ = {};
         localLightList = {};
+        localLightBuildCached_ = false;
     }
 
     void MeshViewFrameResources::BuildLocalLights(
         const RENDER3D::LIGHTING::SceneLightingSet& lighting,
         const Camera3D& viewCamera, uint32_t width, uint32_t height,
         std::span<const RENDER3D::LIGHTING::LocalLightShadowAssignment> shadows) {
+        const auto signature = RENDER3D::LIGHTING::LocalLightListInputSignature(
+            lighting, viewCamera, width, height, shadows);
+        if (localLightBuildCached_ && signature == localLightBuildSignature_) return;
         localLightList = RENDER3D::LIGHTING::BuildLocalLightList(lighting, viewCamera, width, height,
             {lights_.data(), static_cast<uint32_t>(lights_.size()),
              headers_.data(), static_cast<uint32_t>(headers_.size()),
              indices_.data(), static_cast<uint32_t>(indices_.size())}, shadows);
+        localLightBuildSignature_ = signature;
+        localLightBuildCached_ = true;
     }
 
     bool MeshViewFrameResources::Publish(const GFX::Context& graphics, const CameraCB* cullingOverride) {

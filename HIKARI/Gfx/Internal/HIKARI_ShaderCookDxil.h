@@ -11,6 +11,8 @@
 
 namespace HIKARI::GFX::INTERNAL {
 
+    std::string BlobToUtf8(IDxcUtils* utils, IDxcBlob* blob);
+
     bool ValidateShaderCookDxil(
         const DxcRuntimeSnapshot& runtime,
         IDxcBlob* shader,

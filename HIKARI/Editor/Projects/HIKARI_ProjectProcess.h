@@ -1,5 +1,6 @@
 #pragma once
 
+#include <Windows.h>
 #include <filesystem>
 #include <string>
 #include <string_view>
@@ -20,6 +21,6 @@ namespace HIKARI::EDITOR::PROJECT_PROCESS {
         const std::vector<std::wstring>& arguments,
         const std::filesystem::path& workingDirectory,
         std::string_view action,
-        std::string& outMessage);
+        std::string& outMessage, HANDLE* outProcess = nullptr);
 
 } // namespace HIKARI::EDITOR::PROJECT_PROCESS

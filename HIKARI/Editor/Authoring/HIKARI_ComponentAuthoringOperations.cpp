@@ -101,6 +101,17 @@ namespace HIKARI::EDITOR {
                 ComponentAuthoringOperationContext context)
                 : context_(std::move(context)) {}
 
+            EditorOperationResult QueryTypes(const nlohmann::json& parameters) const {
+                auto* scene = GetScene();
+                return scene ? queryService_.QueryTypes(*scene, parameters.value("keyword",std::string{}),
+                    parameters.value("offset",0),parameters.value("limit",16)) : NoScene();
+            }
+
+            EditorOperationResult DescribeType(const nlohmann::json& parameters) const {
+                auto* scene = GetScene();
+                return scene ? queryService_.DescribeType(*scene, parameters.at("componentType").get<std::string>()) : NoScene();
+            }
+
             EditorOperationResult QueryObjects(
                 const nlohmann::json& parameters) const {
 
@@ -565,6 +576,22 @@ namespace HIKARI::EDITOR {
         using ParameterType = EditorOperationParameterType;
 
         registry.Register({
+            "component.types.query",
+            "Search registered component types by name, category or purpose, including dependencies. 组件目录 / コンポーネント一覧.",
+            "scene",
+            {Parameter("keyword",ParameterType::String,false,"Component name, category or purpose"),
+             Parameter("offset",ParameterType::Int,false,"Next page offset"),
+             Parameter("limit",ParameterType::Int,false,"Page size 1 to 64, default 16")},
+            [handler](const nlohmann::json& parameters) { return handler->QueryTypes(parameters); }
+        }, EditorOperationKind::Query, false);
+        registry.Register({
+            "component.type.describe",
+            "Describe default editable fields and commands before adding a component. Instance fields may depend on its current settings.",
+            "scene",
+            {Parameter("componentType",ParameterType::String,true,"Type from component.types.query")},
+            [handler](const nlohmann::json& parameters) { return handler->DescribeType(parameters); }
+        }, EditorOperationKind::Query, false);
+        registry.Register({
             "scene.objects.query",
             "Query precise Scene object ids, hierarchy paths, and component instance ids. Optional exact name and componentType filters never select the first duplicate implicitly.",
             "scene",
@@ -583,7 +610,7 @@ namespace HIKARI::EDITOR {
             [handler](const nlohmann::json& parameters) {
                 return handler->QueryObjects(parameters);
             }
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Query);
         registry.Register({
             "scene.object.select",
             "Select one Scene object by stable objectId for UI reveal. Authoring operations do not require selection.",
@@ -598,7 +625,7 @@ namespace HIKARI::EDITOR {
             [handler](const nlohmann::json& parameters) {
                 return handler->SelectObject(parameters);
             }
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Session);
         registry.Register({
             "component.instances.query",
             "List stable component instance ids on one Scene object.",
@@ -613,7 +640,7 @@ namespace HIKARI::EDITOR {
             [handler](const nlohmann::json& parameters) {
                 return handler->QueryComponents(parameters);
             }
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Query);
         registry.Register({
             "component.describe",
             "Return typed writable fields and semantic commands declared by one component instance.",
@@ -627,7 +654,7 @@ namespace HIKARI::EDITOR {
             [handler](const nlohmann::json& parameters) {
                 return handler->DescribeComponent(parameters);
             }
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Query);
         registry.Register({
             "component.property.set",
             "Set one typed component field through its shared Inspector/Authoring declaration and record Document History.",
@@ -645,7 +672,7 @@ namespace HIKARI::EDITOR {
             [handler](const nlohmann::json& parameters) {
                 return handler->SetProperty(parameters);
             }
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
         registry.Register({
             "authoring.transaction",
             "Atomically apply up to 256 component property mutations as one Undo step; any failure rolls back the whole transaction.",
@@ -657,7 +684,7 @@ namespace HIKARI::EDITOR {
             [handler](const nlohmann::json& parameters) {
                 return handler->ApplyTransaction(parameters);
             }
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
         registry.Register({
             "component.command.execute",
             "Execute a semantic command declared by the target component; query component.describe for command ids and parameters.",
@@ -675,7 +702,7 @@ namespace HIKARI::EDITOR {
             [handler](const nlohmann::json& parameters) {
                 return handler->ExecuteCommand(parameters);
             }
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
         registry.Register({
             "component.add",
             "Add a registered component type and required dependencies to an exact Scene object.",
@@ -689,7 +716,7 @@ namespace HIKARI::EDITOR {
             [handler](const nlohmann::json& parameters) {
                 return handler->AddComponent(parameters);
             }
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
         registry.Register({
             "component.remove",
             "Remove one exact component instance while enforcing component dependency rules.",
@@ -703,7 +730,7 @@ namespace HIKARI::EDITOR {
             [handler](const nlohmann::json& parameters) {
                 return handler->RemoveComponent(parameters);
             }
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
     }
 
 } // namespace HIKARI::EDITOR

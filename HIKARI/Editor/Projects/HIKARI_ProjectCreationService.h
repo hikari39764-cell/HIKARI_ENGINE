@@ -17,6 +17,9 @@ namespace HIKARI::EDITOR {
 
     std::filesystem::path GetDefaultProjectParentDirectory();
 
+    bool ValidateProjectCreation(const ProjectCreationRequest& request,
+        std::filesystem::path& target, std::string& message);
+
     bool CreateProject(
         const ProjectCreationRequest& request,
         ProjectCreationResult& outResult,

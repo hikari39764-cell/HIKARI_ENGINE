@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Widgets/HIKARI_InputActionFieldWidget.h"
 
 #include <algorithm>
@@ -74,8 +75,7 @@ namespace HIKARI::EDITOR {
                 }
             }
             if (actions.empty()) {
-                ImGui::TextDisabled(
-                    "No %s actions",
+                ImGui::TextDisabled(TEXT::Localize("editor.ui.no.s.actions.7da3c1").c_str(),
                     INPUT::ToString(expectedType));
             }
             ImGui::EndCombo();

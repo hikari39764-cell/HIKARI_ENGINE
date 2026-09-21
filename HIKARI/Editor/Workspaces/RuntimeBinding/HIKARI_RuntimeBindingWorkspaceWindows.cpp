@@ -1,3 +1,5 @@
+#include "Editor/Shell/HIKARI_EditorDockLayout.h"
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/RuntimeBinding/HIKARI_RuntimeBindingWorkspaceController.h"
 
 #include <algorithm>
@@ -61,7 +63,7 @@ namespace HIKARI::EDITOR {
                 inspector);
             ImGui::DockBuilderFinish(dockspaceId);
         }
-        ImGui::DockSpaceOverViewport(dockspaceId, viewport);
+        HIKARI::EDITOR::DrawWorkspaceDockSpace(dockspaceId, viewport);
 #else
         (void)resetDefaultDockLayout;
 #endif
@@ -100,8 +102,7 @@ namespace HIKARI::EDITOR {
         const ImGuiWindowFlags flags =
             ImGuiWindowFlags_NoScrollbar |
             ImGuiWindowFlags_NoScrollWithMouse;
-        if (!ImGui::Begin(
-                "Runtime Bindings###RuntimeBinding/Toolbar",
+        if (!ImGui::Begin(TEXT::LocalizeWindow("menu.workspace.runtimeBinding", "RuntimeBinding/Toolbar").c_str(),
                 nullptr,
                 flags)) {
             ImGui::End();
@@ -110,12 +111,10 @@ namespace HIKARI::EDITOR {
 
         ImGui::BeginDisabled(!IsDocumentOpen());
         if (IconTextButton(
-                EditorGlyph::Save,
-                "Save",
+                EditorGlyph::Save,TEXT::Localize("ai.api.save").c_str(),
                 "RuntimeBindingSave",
                 EditorButtonTone::Primary,
-                ImVec2(0.0f, 28.0f),
-                "Save ProjectSettings/runtime_bindings.json")) {
+                ImVec2(0.0f, 28.0f),TEXT::Localize("editor.ui.save.projectsettings.runtime.bindings.json.11464d").c_str())) {
             Save(scene, statusMessage_);
         }
         ImGui::SameLine();
@@ -124,8 +123,7 @@ namespace HIKARI::EDITOR {
                 EditorGlyph::Undo,
                 "RuntimeBindingUndo",
                 EditorButtonTone::Quiet,
-                ImVec2(28.0f, 28.0f),
-                "Undo runtime binding edit")) {
+                ImVec2(28.0f, 28.0f),TEXT::Localize("editor.ui.undo.runtime.binding.edit.f07260").c_str())) {
             Undo(scene, statusMessage_);
         }
         ImGui::EndDisabled();
@@ -135,8 +133,7 @@ namespace HIKARI::EDITOR {
                 EditorGlyph::Redo,
                 "RuntimeBindingRedo",
                 EditorButtonTone::Quiet,
-                ImVec2(28.0f, 28.0f),
-                "Redo runtime binding edit")) {
+                ImVec2(28.0f, 28.0f),TEXT::Localize("editor.ui.redo.runtime.binding.edit.ac6274").c_str())) {
             Redo(scene, statusMessage_);
         }
         ImGui::EndDisabled();
@@ -145,16 +142,14 @@ namespace HIKARI::EDITOR {
         ImGui::SameLine();
 
         if (IconTextButton(
-                EditorGlyph::Add,
-                "Add",
+                EditorGlyph::Add,TEXT::Localize("ui.terrain.proceduralBlendAdd").c_str(),
                 "RuntimeBindingAdd",
                 EditorButtonTone::Neutral,
-                ImVec2(0.0f, 28.0f),
-                "Create a variable or event")) {
+                ImVec2(0.0f, 28.0f),TEXT::Localize("editor.ui.create.a.variable.or.event.29a9e7").c_str())) {
             ImGui::OpenPopup("AddRuntimeBindingItem");
         }
         if (ImGui::BeginPopup("AddRuntimeBindingItem")) {
-            if (ImGui::BeginMenu("Variable")) {
+            if (ImGui::BeginMenu(TEXT::LocalizeWindow("editor.ui.variable.19de69", "Variable").c_str())) {
                 for (const BINDING::ValueType type : {
                         BINDING::ValueType::Bool,
                         BINDING::ValueType::Int,
@@ -173,7 +168,7 @@ namespace HIKARI::EDITOR {
                 }
                 ImGui::EndMenu();
             }
-            if (ImGui::MenuItem("Event (no payload)")) {
+            if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.event.no.payload.1d71d8", "Event (no payload)").c_str())) {
                 std::string id{};
                 AddEventDefinition(
                     scene,
@@ -181,7 +176,7 @@ namespace HIKARI::EDITOR {
                     BINDING::ValueType::Float,
                     {}, {}, id, statusMessage_);
             }
-            if (ImGui::BeginMenu("Event with payload")) {
+            if (ImGui::BeginMenu(TEXT::LocalizeWindow("editor.ui.event.with.payload.7a9778", "Event with payload").c_str())) {
                 for (const BINDING::ValueType type : {
                         BINDING::ValueType::Bool,
                         BINDING::ValueType::Int,
@@ -211,8 +206,7 @@ namespace HIKARI::EDITOR {
                 EditorGlyph::Delete,
                 "RuntimeBindingDelete",
                 EditorButtonTone::Danger,
-                ImVec2(28.0f, 28.0f),
-                "Delete selected runtime binding")) {
+                ImVec2(28.0f, 28.0f),TEXT::Localize("editor.ui.delete.selected.runtime.binding.ff5eec").c_str())) {
             RuntimeBindingRemovalResult removal =
                 RemoveItem(scene, selectedItemId_, false);
             statusMessage_ = removal.message;
@@ -226,25 +220,15 @@ namespace HIKARI::EDITOR {
         ImGui::EndDisabled();
         ImGui::EndDisabled();
 
-        ImGui::SameLine();
-        ToolbarDivider();
-        ImGui::SameLine();
-        SearchField(
-            "RuntimeBindingSearch",
-            "Search name or stable ID",
-            searchBuffer_.data(),
-            searchBuffer_.size(),
-            260.0f);
-
-        ImGui::SameLine();
+        NextToolbarItem(100);
         const std::vector<BINDING::CatalogDiagnostic> diagnostics =
             GetDiagnostics();
         if (BINDING::HasCatalogErrors(diagnostics)) {
-            StatusBadge("Catalog errors", EditorStatusTone::Error);
+            StatusBadge(TEXT::Localize("editor.ui.catalog.errors.41e99b").c_str(), EditorStatusTone::Error);
         } else if (IsDocumentDirty()) {
-            StatusBadge("Unsaved", EditorStatusTone::Warning);
+            StatusBadge(TEXT::Localize("ui.vfx.text.Unsaved").c_str(), EditorStatusTone::Warning);
         } else {
-            StatusBadge("Saved", EditorStatusTone::Ready);
+            StatusBadge(TEXT::Localize("ui.projectFeatures.saved").c_str(), EditorStatusTone::Ready);
         }
 
         const float exitWidth = 112.0f;
@@ -252,40 +236,31 @@ namespace HIKARI::EDITOR {
             ImGui::GetCursorPosX(),
             ImGui::GetWindowWidth() - exitWidth - 12.0f));
         if (IconTextButton(
-                EditorGlyph::Exit,
-                "Scene",
+                EditorGlyph::Exit,TEXT::Localize("menu.scene").c_str(),
                 "RuntimeBindingExit",
                 EditorButtonTone::Quiet,
-                ImVec2(exitWidth, 28.0f),
-                "Return to Scene workspace")) {
+                ImVec2(exitWidth, 28.0f),TEXT::Localize("editor.ui.return.to.scene.workspace.364db6").c_str())) {
             result.exitToSceneRequested = true;
         }
 
         if (requestDeleteDialog_) {
-            ImGui::OpenPopup("Delete referenced binding?");
+            ImGui::OpenPopup(TEXT::LocalizeWindow("editor.ui.delete.referenced.binding.03da68", "Delete referenced binding?").c_str());
             requestDeleteDialog_ = false;
         }
-        if (ImGui::BeginPopupModal(
-                "Delete referenced binding?",
+        if (ImGui::BeginPopupModal(TEXT::LocalizeWindow("editor.ui.delete.referenced.binding.03da68", "Delete referenced binding?").c_str(),
                 nullptr,
                 ImGuiWindowFlags_AlwaysAutoResize)) {
             if (pendingDeleteReferences_.empty()) {
                 if (!IsReferenceIndexAvailable()) {
-                    ImGui::TextUnformatted(
-                        "Reference indexing is not connected.");
-                    ImGui::TextDisabled(
-                        "Deletion may leave unresolved component or asset slots.");
+                    ImGui::TextUnformatted(TEXT::Localize("editor.ui.reference.indexing.is.not.connected.f83d19").c_str());
+                    ImGui::TextDisabled(TEXT::Localize("editor.ui.deletion.may.leave.unresolved.component.or.asset.slots.67898d").c_str());
                 } else {
-                    ImGui::TextUnformatted(
-                        "No reference was found in the loaded authoring scope.");
-                    ImGui::TextDisabled(
-                        "Unloaded project scenes may still reference this stable ID.");
+                    ImGui::TextUnformatted(TEXT::Localize("editor.ui.no.reference.was.found.in.the.loaded.authoring.scope.f82acc").c_str());
+                    ImGui::TextDisabled(TEXT::Localize("editor.ui.unloaded.project.scenes.may.still.reference.this.stable.id.62db4e").c_str());
                 }
             } else {
-                ImGui::TextUnformatted(
-                    "This binding is still used by editor-authored slots.");
-                ImGui::TextDisabled(
-                    "%zu reference(s) will become unresolved.",
+                ImGui::TextUnformatted(TEXT::Localize("editor.ui.this.binding.is.still.used.by.editor.authored.slots.29a469").c_str());
+                ImGui::TextDisabled(TEXT::Localize("editor.ui.zu.reference.s.will.become.unresolved.f42d53").c_str(),
                     pendingDeleteReferences_.size());
             }
             ImGui::Spacing();
@@ -304,13 +279,11 @@ namespace HIKARI::EDITOR {
                         : reference.slotLabel.c_str());
             }
             if (pendingDeleteReferences_.size() > previewCount) {
-                ImGui::TextDisabled(
-                    "...and %zu more",
+                ImGui::TextDisabled(TEXT::Localize("editor.ui.and.zu.more.540dc2").c_str(),
                     pendingDeleteReferences_.size() - previewCount);
             }
             ImGui::Spacing();
-            if (ActionButton(
-                    "Cancel",
+            if (ActionButton(TEXT::Localize("ui.common.cancel").c_str(),
                     "RuntimeBindingDeleteCancel",
                     EditorButtonTone::Neutral)) {
                 pendingDeleteItemId_.clear();
@@ -318,8 +291,7 @@ namespace HIKARI::EDITOR {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (ActionButton(
-                    "Delete anyway",
+            if (ActionButton(TEXT::Localize("editor.ui.delete.anyway.3095ec").c_str(),
                     "RuntimeBindingDeleteConfirm",
                     EditorButtonTone::Danger)) {
                 const RuntimeBindingRemovalResult removal =

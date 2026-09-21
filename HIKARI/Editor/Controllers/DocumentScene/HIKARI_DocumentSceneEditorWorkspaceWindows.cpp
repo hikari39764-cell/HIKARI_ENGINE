@@ -80,6 +80,8 @@ namespace HIKARI {
             ImGui::EndPopup();
         }
 
+        if (!scene.IsRuntimePlayActive()) (void)commandRouter_.ProcessViewportShortcuts(
+            ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows));
         ImGui::End();
 #else
         (void)scene;
@@ -102,33 +104,33 @@ namespace HIKARI {
 
     void DocumentSceneEditorController::DrawDebugWorkspaceWindow(DocumentSceneBase& scene) {
 #if defined(HIKARI_WITH_EDITOR)
-        if (!ImGui::Begin("Diagnostics")) {
+        if (!ImGui::Begin(TEXT::LocalizeWindow("shell.diagnostics", "Diagnostics").c_str())) {
             ImGui::End();
             return;
         }
 
         if (ImGui::BeginTabBar("DebugWorkspaceTabs", ImGuiTabBarFlags_Reorderable | ImGuiTabBarFlags_FittingPolicyScroll)) {
-            if (ImGui::BeginTabItem("Stats")) {
-                ImGui::SeparatorText("Frame Overview");
+            if (ImGui::BeginTabItem(TEXT::LocalizeWindow("editor.ui.stats.be763e", "Stats").c_str())) {
+                ImGui::SeparatorText(TEXT::Localize("editor.ui.frame.overview.845bc3").c_str());
                 statsPanel_.DrawContents(scene.GetSceneName(), scene.GetWorld(), scene.GetModelManager(), context_.selection, scene.GetCamera());
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem("Time")) {
-                ImGui::SeparatorText("Timeline");
+            if (ImGui::BeginTabItem(TEXT::LocalizeWindow("ui.vfx.text.Time", "Time").c_str())) {
+                ImGui::SeparatorText(TEXT::Localize("ui.vfx.text.Timeline").c_str());
                 timePanel_.DrawContents();
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem("Runtime Refresh")) {
+            if (ImGui::BeginTabItem(TEXT::LocalizeWindow("editor.ui.runtime.refresh.d87a71", "Runtime Refresh").c_str())) {
                 const RuntimeResourceRefreshReport& report = context_.lastRuntimeRefreshReport;
-                ImGui::SeparatorText("Runtime Resource Refresh");
-                ImGui::Text("Texture invalidated: %d", report.textureInvalidatedCount);
-                ImGui::Text("Sky refreshed: %d", report.skyInvalidatedCount);
-                ImGui::Text("Model reloaded: %d", report.modelReloadedCount);
-                ImGui::Text("Components rebound: %d", report.modelReboundComponentCount);
-                ImGui::Text("Failed: %d", report.failedCount);
-                ImGui::SeparatorText("Messages");
+                ImGui::SeparatorText(TEXT::Localize("editor.ui.runtime.resource.refresh.42a1a4").c_str());
+                ImGui::Text(TEXT::Localize("editor.ui.texture.invalidated.d.fcaed4").c_str(), report.textureInvalidatedCount);
+                ImGui::Text(TEXT::Localize("editor.ui.sky.refreshed.d.121c27").c_str(), report.skyInvalidatedCount);
+                ImGui::Text(TEXT::Localize("editor.ui.model.reloaded.d.d9f643").c_str(), report.modelReloadedCount);
+                ImGui::Text(TEXT::Localize("editor.ui.components.rebound.d.1746f0").c_str(), report.modelReboundComponentCount);
+                ImGui::Text(TEXT::Localize("editor.ui.failed.d.16c1a4").c_str(), report.failedCount);
+                ImGui::SeparatorText(TEXT::Localize("ui.lightingBake.messages").c_str());
                 if (report.messages.empty()) {
-                    ImGui::TextDisabled("No runtime refresh has run yet.");
+                    ImGui::TextDisabled(TEXT::Localize("editor.ui.no.runtime.refresh.has.run.yet.92212b").c_str());
                 } else {
                     for (const std::string& message : report.messages) {
                         ImGui::BulletText("%s", message.c_str());

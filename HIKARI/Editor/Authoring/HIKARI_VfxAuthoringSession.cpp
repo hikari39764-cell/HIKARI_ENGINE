@@ -37,6 +37,7 @@ public:
         capture_.Cancel();
         controller_.Deactivate(view_.renderViewId);
     }
+    bool HasInteractiveEdit() const override { return controller_.HasInteractiveEdit(); }
     EditorOperationRegistry& Operations() override { return operations_; }
     std::any ControllerAddress() override { return &controller_; }
     nlohmann::json Checkpoint() const override { return controller_.GetDocument().MakeRecovery(); }
@@ -74,6 +75,10 @@ public:
         return {true, "OK", "VFX workspace requested."};
     }
     EditorOperationResult Preview(const nlohmann::json& parameters) override {
+        if (parameters.value("frameCount",1) != 1) return {false,"USE_TIMED_PREVIEWS",
+            "Use authoring.preview at explicit time values to capture a sequence."};
+        if (parameters.contains("path") && !parameters.value("path",std::string{}).empty())
+            return {false,"UNSUPPORTED_PREVIEW_PATH","Background previews are saved in the project Library/EditorAI/Captures; the result returns the actual path."};
         if (capture_.IsPending()) return {false, "CAPTURE_BUSY", "A capture is already pending for this document."};
         auto* scene = scene_();
         if (!scene) return {false, "NO_PROJECT", "No project is open."};

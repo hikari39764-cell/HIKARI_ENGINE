@@ -31,7 +31,7 @@ namespace HIKARI {
             ComponentTypeInfo info{};
             info.typeName = std::move(typeName);
             info.factory = []() -> std::unique_ptr<IComponent> {
-                return std::make_unique<Component>();
+                return IComponent::Create<Component>();
             };
             info.presentation = UiPresentation(displayName, description);
             return info;

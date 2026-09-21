@@ -1,3 +1,4 @@
+#include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Editor/Workspaces/ModelCollision/HIKARI_ModelCollisionOperations.h"
 
 #include <string>
@@ -13,18 +14,7 @@
 namespace HIKARI::EDITOR {
 namespace {
 
-EditorOperationParameter MakeOperationParameter(
-    std::string name,
-    EditorOperationParameterType type,
-    bool required,
-    std::string description) {
-  EditorOperationParameter parameter{};
-  parameter.name = std::move(name);
-  parameter.type = type;
-  parameter.required = required;
-  parameter.description = std::move(description);
-  return parameter;
-}
+
 
 bool RequireCollisionDocument(
     const ModelCollisionWorkspaceController& controller,
@@ -37,18 +27,7 @@ bool RequireCollisionDocument(
   return false;
 }
 
-bool RequireScene(
-    const std::function<DocumentSceneBase*()>& sceneProvider,
-    EditorOperationResult& result,
-    DocumentSceneBase*& outScene) {
-  outScene = sceneProvider();
-  if (outScene == nullptr) {
-    result.code = "NO_SCENE";
-    result.message = "场景上下文不可用";
-    return false;
-  }
-  return true;
-}
+
 
 bool RequireSelectedShapes(
     const ModelCollisionWorkspaceController& controller,
@@ -118,9 +97,9 @@ void RegisterModelCollisionOperations(
       "Open a model in the Model Collision workspace in the background.",
       "model_collision",
       {
-          MakeOperationParameter(
+          EditorOperationParameter{
               "modelGuid", EditorOperationParameterType::String,
-              true, "模型资产 guid（asset.list_models 可查）"),
+              true, "模型资产 guid（asset.list_models 可查）"},
       },
       [&controller, sceneProvider](const nlohmann::json& parameters) {
         EditorOperationResult result{};
@@ -168,7 +147,7 @@ void RegisterModelCollisionOperations(
         }
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "collision.save",
@@ -195,7 +174,7 @@ void RegisterModelCollisionOperations(
         }
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "collision.undo",
@@ -218,7 +197,7 @@ void RegisterModelCollisionOperations(
         }
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "collision.redo",
@@ -241,17 +220,17 @@ void RegisterModelCollisionOperations(
         }
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "collision.add_shape",
       "Add a fitted collision shape to the current model.",
       "model_collision",
       {
-          MakeOperationParameter(
+          EditorOperationParameter{
               "type", EditorOperationParameterType::String,
               true,
-              "box/sphere/capsule/convex_hull/triangle_mesh"),
+              "box/sphere/capsule/convex_hull/triangle_mesh"},
       },
       [&controller](const nlohmann::json& parameters) {
         EditorOperationResult result{};
@@ -270,7 +249,7 @@ void RegisterModelCollisionOperations(
             parameters.value("type", std::string{});
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "collision.delete_selected",
@@ -298,7 +277,7 @@ void RegisterModelCollisionOperations(
         result.message = "已删除选中的碰撞形状";
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "collision.duplicate_selected",
@@ -320,16 +299,16 @@ void RegisterModelCollisionOperations(
         result.message = "已复制选中的碰撞形状";
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "collision.set_selected_enabled",
       "Enable or disable the selected collision shapes.",
       "model_collision",
       {
-          MakeOperationParameter(
+          EditorOperationParameter{
               "enabled", EditorOperationParameterType::Bool,
-              true, "true 启用，false 禁用"),
+              true, "true 启用，false 禁用"},
       },
       [&controller](const nlohmann::json& parameters) {
         EditorOperationResult result{};
@@ -349,16 +328,16 @@ void RegisterModelCollisionOperations(
             : "已禁用选中的碰撞形状";
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "collision.set_selected_hidden",
       "Hide or reveal the selected collision shapes in the preview.",
       "model_collision",
       {
-          MakeOperationParameter(
+          EditorOperationParameter{
               "hidden", EditorOperationParameterType::Bool,
-              true, "true 隐藏，false 显示"),
+              true, "true 隐藏，false 显示"},
       },
       [&controller](const nlohmann::json& parameters) {
         EditorOperationResult result{};
@@ -378,16 +357,16 @@ void RegisterModelCollisionOperations(
             : "已显示选中的碰撞形状";
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "collision.set_selected_locked",
       "Lock or unlock the selected collision shapes.",
       "model_collision",
       {
-          MakeOperationParameter(
+          EditorOperationParameter{
               "locked", EditorOperationParameterType::Bool,
-              true, "true 锁定，false 解锁"),
+              true, "true 锁定，false 解锁"},
       },
       [&controller](const nlohmann::json& parameters) {
         EditorOperationResult result{};
@@ -407,7 +386,7 @@ void RegisterModelCollisionOperations(
             : "已解锁选中的碰撞形状";
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "collision.show_all",
@@ -425,7 +404,7 @@ void RegisterModelCollisionOperations(
         result.message = "已显示全部碰撞形状";
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "collision.hide_unselected",
@@ -443,7 +422,7 @@ void RegisterModelCollisionOperations(
         result.message = "已隐藏未选中的碰撞形状";
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "collision.generate",
@@ -467,7 +446,7 @@ void RegisterModelCollisionOperations(
         result.message = "已开始后台碰撞生成";
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "collision.apply_generation_draft",
@@ -492,7 +471,7 @@ void RegisterModelCollisionOperations(
             : controller.GetStatusMessage();
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "collision.discard_generation_draft",
@@ -510,7 +489,7 @@ void RegisterModelCollisionOperations(
         result.message = "已丢弃生成草稿";
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 }
 
 } // namespace HIKARI::EDITOR

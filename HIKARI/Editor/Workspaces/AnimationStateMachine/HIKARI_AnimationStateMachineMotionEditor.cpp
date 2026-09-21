@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/AnimationStateMachine/HIKARI_AnimationStateMachineWorkspaceController.h"
 
 #include <algorithm>
@@ -72,11 +73,11 @@ void AnimationStateMachineWorkspaceController::DrawSelectedStateMotionEditor(
     DocumentSceneBase &scene, ANIMATION::AnimationState &state) {
 #if defined(HIKARI_WITH_EDITOR)
   auto &definition = document_.Definition();
-  ImGui::SeparatorText("Motion");
+  ImGui::SeparatorText(TEXT::Localize("editor.ui.motion.e040db").c_str());
 
   ANIMATION::AnimationStateMotionType motionType =
       ANIMATION::GetAnimationStateMotionType(state.motion);
-  if (ImGui::BeginCombo("Motion Type", MotionTypeName(motionType))) {
+  if (ImGui::BeginCombo(TEXT::LocalizeWindow("editor.ui.motion.type.f64f2e", "Motion Type").c_str(), MotionTypeName(motionType))) {
     constexpr ANIMATION::AnimationStateMotionType types[]{
         ANIMATION::AnimationStateMotionType::Clip,
         ANIMATION::AnimationStateMotionType::BlendTree1D};
@@ -109,8 +110,7 @@ void AnimationStateMachineWorkspaceController::DrawSelectedStateMotionEditor(
 
   ModelAsset *model = ResolvePreviewModel(scene, definition);
   if (model == nullptr || model->animations.empty()) {
-    ImGui::TextDisabled(
-        "Choose an animated model above to select motion clips.");
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.choose.an.animated.model.above.to.select.motion.clips.d1f154").c_str());
   }
 
   if (auto *clipMotion =
@@ -134,7 +134,7 @@ void AnimationStateMachineWorkspaceController::DrawSelectedStateMotionEditor(
   const char *parameterPreview = selectedParameter != nullptr
                                      ? selectedParameter->name.c_str()
                                      : "<select Float parameter>";
-  if (ImGui::BeginCombo("Blend Parameter", parameterPreview)) {
+  if (ImGui::BeginCombo(TEXT::LocalizeWindow("editor.ui.blend.parameter.d4e14e", "Blend Parameter").c_str(), parameterPreview)) {
     for (const auto &parameter : definition.parameters) {
       if (parameter.type != ANIMATION::AnimationParameterType::Float) {
         continue;
@@ -152,7 +152,7 @@ void AnimationStateMachineWorkspaceController::DrawSelectedStateMotionEditor(
     ImGui::EndCombo();
   }
   if (selectedParameter == nullptr) {
-    if (ImGui::Button("Create Float Parameter")) {
+    if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.create.float.parameter.385587", "Create Float Parameter").c_str())) {
       auto before = definition;
       ANIMATION::AnimationParameterDefinition parameter{};
       parameter.id = ANIMATION::AllocateAnimationParameterId(definition);
@@ -168,7 +168,7 @@ void AnimationStateMachineWorkspaceController::DrawSelectedStateMotionEditor(
   }
 
   ImGui::Spacing();
-  if (ImGui::Button("+ Blend Sample")) {
+  if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.blend.sample.83c942", "+ Blend Sample").c_str())) {
     auto before = definition;
     ANIMATION::AnimationBlendTree1DSample sample{};
     sample.threshold = blendTree->samples.empty()
@@ -183,7 +183,7 @@ void AnimationStateMachineWorkspaceController::DrawSelectedStateMotionEditor(
   }
   ImGui::SameLine();
   ImGui::BeginDisabled(blendTree->samples.size() < 2u);
-  if (ImGui::Button("Evenly Space")) {
+  if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.evenly.space.c180a5", "Evenly Space").c_str())) {
     auto before = definition;
     const float first = blendTree->samples.front().threshold;
     float last = blendTree->samples.back().threshold;
@@ -202,8 +202,7 @@ void AnimationStateMachineWorkspaceController::DrawSelectedStateMotionEditor(
   ImGui::EndDisabled();
 
   if (blendTree->samples.empty()) {
-    ImGui::TextDisabled(
-        "Add at least one sample. Two or more clips create a blend.");
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.add.at.least.one.sample.two.or.more.clips.create.a.blend.34bddb").c_str());
     return;
   }
 
@@ -242,7 +241,7 @@ void AnimationStateMachineWorkspaceController::DrawSelectedStateMotionEditor(
         return;
       }
     } else {
-      ImGui::TextDisabled("No model clips");
+      ImGui::TextDisabled(TEXT::Localize("editor.ui.no.model.clips.a3b702").c_str());
     }
     ImGui::TableSetColumnIndex(2);
     ImGui::SetNextItemWidth(-1.0f);

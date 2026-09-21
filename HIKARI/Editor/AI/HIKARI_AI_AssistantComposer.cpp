@@ -94,7 +94,9 @@ void AiAssistantPanel::DrawComposer() {
     ImGui::SameLine();
     ImGui::TextDisabled("Ctrl+Enter");
     ImGui::SameLine((std::max)(0.0f,ImGui::GetWindowContentRegionMax().x-64.0f));
-    if (busy) {
+    if (!busy && session_.CanResume() && inputBuffer_[0] == '\0' && attachments_.empty()) {
+        if (IconTextButton(EditorGlyph::Play,TEXT::Localize("ai.task.resume").c_str(),"ResumeTask",EditorButtonTone::Primary)) session_.Resume();
+    } else if (busy) {
         if (IconTextButton(EditorGlyph::Stop,TEXT::Localize("ai.task.stop").c_str(),"StopTask",EditorButtonTone::Quiet)) session_.Cancel();
     } else if (IconTextButton(EditorGlyph::Send,TEXT::Localize("ai.send").c_str(),"SendMessage",EditorButtonTone::Primary) || submitted) SendCurrentMessage();
 #endif

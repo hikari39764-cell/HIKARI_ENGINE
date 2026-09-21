@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 
 #include <algorithm>
@@ -32,7 +33,7 @@ bool ModelMaterialWorkspaceController::DrawEyeLightingNodeInlineControls(
     if (changed) {
       PreviewMaterialGesture(scene);
     }
-    if (ImGui::IsItemDeactivatedAfterEdit()) {
+    if (ImGui::IsItemDeactivated()) {
       CommitMaterialGesture(scene);
     }
   };
@@ -72,18 +73,14 @@ bool ModelMaterialWorkspaceController::DrawEyeLightingNodeInlineControls(
     commitContinuous(
         std::move(before), "Edit " + std::string(label), changed);
     if (parameter == nullptr && !changed && ImGui::IsItemHovered()) {
-      ImGui::SetTooltip(
-          "Runtime default. Editing creates the authored parameter.");
+      ImGui::SetTooltip(TEXT::Localize("editor.ui.runtime.default.editing.creates.the.authored.parameter.c91fef").c_str());
     }
     ImGui::PopID();
   };
 
-  ImGui::TextDisabled(
-      "Optional Eye Control Texture Sample Color -> Control.");
-  ImGui::TextDisabled(
-      "R iris | G cornea | B catchlight | A parallax mask (linear)");
-  ImGui::TextDisabled(
-      "No Control map uses the editable radial iris mask below.");
+  ImGui::TextDisabled(TEXT::Localize("editor.ui.optional.eye.control.texture.sample.color.control.5dc66f").c_str());
+  ImGui::TextDisabled(TEXT::Localize("editor.ui.r.iris.g.cornea.b.catchlight.a.parallax.mask.linear.ec9a4c").c_str());
+  ImGui::TextDisabled(TEXT::Localize("editor.ui.no.control.map.uses.the.editable.radial.iris.mask.below.7dd4cd").c_str());
 
   MaterialGraphParameterData *eyeLayerMode =
       MATERIAL_GRAPH_UI::FindParameter(graph, "parameter.eyeLayerMode");
@@ -91,9 +88,9 @@ bool ModelMaterialWorkspaceController::DrawEyeLightingNodeInlineControls(
           eyeLayerMode->defaultValue.numeric.x >= 0.5f
       ? 1
       : 0;
-  constexpr const char *kEyeLayerModes[]{
-      "Iris / Base",
-      "Transparent Highlight",
+  const char *kEyeLayerModes[]{
+      TEXT::LocalizeCStr("editor.ui.iris.base.38a41d"),
+      TEXT::LocalizeCStr("editor.ui.transparent.highlight.7964bc"),
   };
   ImGui::SetNextItemWidth(width);
   if (ImGui::Combo("##EyeLayerMode", &layerMode, kEyeLayerModes, 2)) {
@@ -136,8 +133,7 @@ bool ModelMaterialWorkspaceController::DrawEyeLightingNodeInlineControls(
       MaterialValueType::Float1, {0.08f, 0.0f, 0.0f, 0.0f});
 
   if (layerMode == 1) {
-    ImGui::TextDisabled(
-        "Use Surface Output: Blend + Straight for PNG art.");
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.use.surface.output.blend.straight.for.png.art.efb36d").c_str());
     drawParameter(
         "parameter.eyeHighlightOpacity", "Highlight Opacity",
         MaterialValueType::Float1, {1.0f, 0.0f, 0.0f, 0.0f});

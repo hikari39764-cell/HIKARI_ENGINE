@@ -67,7 +67,7 @@ namespace {
         const std::vector<std::wstring>& arguments,
         const std::filesystem::path& workingDirectory,
         std::string_view action,
-        std::string& outMessage) {
+        std::string& outMessage, HANDLE* outProcess) {
 
         std::wstring commandLine{};
         AppendWindowsArgument(
@@ -106,7 +106,8 @@ namespace {
         }
 
         CloseHandle(processInformation.hThread);
-        CloseHandle(processInformation.hProcess);
+        if (outProcess) *outProcess = processInformation.hProcess;
+        else CloseHandle(processInformation.hProcess);
         outMessage.clear();
         return true;
     }

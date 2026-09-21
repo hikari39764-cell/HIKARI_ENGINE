@@ -8,7 +8,7 @@
 #include "Assets/HIKARI_AssetTypes.h"
 #include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialAssetOperations.h"
-#include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialOperationSupport.h"
+#include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 #include "Render3D/HIKARI_Math3D.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
@@ -16,8 +16,6 @@
 namespace HIKARI::EDITOR {
 namespace {
 
-using MODEL_MATERIAL_OPERATIONS::MakeOperationParameter;
-using MODEL_MATERIAL_OPERATIONS::RequireScene;
 
 bool RequireMaterialDocument(
     const ModelMaterialWorkspaceController& controller,
@@ -118,9 +116,9 @@ void RegisterModelMaterialOperations(
       "Open a model in the Model Material workspace in the background.",
       "model_material",
       {
-          MakeOperationParameter(
+          EditorOperationParameter{
               "modelGuid", EditorOperationParameterType::String,
-              true, "模型资产 guid（asset.list_models 可查）"),
+              true, "模型资产 guid（asset.list_models 可查）"},
       },
       [&controller, sceneProvider](const nlohmann::json& parameters) {
         EditorOperationResult result{};
@@ -155,16 +153,16 @@ void RegisterModelMaterialOperations(
         result.message = message;
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "material.open_asset",
       "Open a Material asset in the Model Material workspace in the background.",
       "model_material",
       {
-          MakeOperationParameter(
+          EditorOperationParameter{
               "materialGuid", EditorOperationParameterType::String,
-              true, "材质资产 guid"),
+              true, "材质资产 guid"},
       },
       [&controller, sceneProvider](const nlohmann::json& parameters) {
         EditorOperationResult result{};
@@ -199,7 +197,7 @@ void RegisterModelMaterialOperations(
         result.message = message;
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "model.list_slots",
@@ -242,19 +240,19 @@ void RegisterModelMaterialOperations(
             " 个材质槽位。";
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Query);
 
   registry.Register({
       "model.bind_material",
       "Bind a Material asset to a model slot.",
       "model_material",
       {
-          MakeOperationParameter(
+          EditorOperationParameter{
               "materialIndex", EditorOperationParameterType::Int,
-              true, "model.list_slots 返回的 materialIndex"),
-          MakeOperationParameter(
+              true, "model.list_slots 返回的 materialIndex"},
+          EditorOperationParameter{
               "materialAssetGuid", EditorOperationParameterType::String,
-              true, "material.list_assets 返回的 guid"),
+              true, "material.list_assets 返回的 guid"},
       },
       [&controller, sceneProvider](const nlohmann::json& parameters) {
         EditorOperationResult result{};
@@ -318,16 +316,16 @@ void RegisterModelMaterialOperations(
         result.message = binding.message;
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "model.restore_imported_material",
       "Restore the imported model material on a slot.",
       "model_material",
       {
-          MakeOperationParameter(
+          EditorOperationParameter{
               "materialIndex", EditorOperationParameterType::Int,
-              true, "model.list_slots 返回的 materialIndex"),
+              true, "model.list_slots 返回的 materialIndex"},
       },
       [&controller, sceneProvider](const nlohmann::json& parameters) {
         EditorOperationResult result{};
@@ -385,7 +383,7 @@ void RegisterModelMaterialOperations(
         result.message = binding.message;
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "material.save",
@@ -412,7 +410,7 @@ void RegisterModelMaterialOperations(
         }
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "material.undo",
@@ -434,7 +432,7 @@ void RegisterModelMaterialOperations(
               return controller.Undo(*scene, message);
             });
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "material.redo",
@@ -456,46 +454,46 @@ void RegisterModelMaterialOperations(
               return controller.Redo(*scene, message);
             });
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "material.add_node",
       "Add a material graph node by stable node type.",
       "model_material",
       {
-          MakeOperationParameter(
+          EditorOperationParameter{
               "referenceId", EditorOperationParameterType::String,
-              false, "Variable node runtime binding ID"),
-          MakeOperationParameter(
+              false, "Variable node runtime binding ID"},
+          EditorOperationParameter{
               "nodeType", EditorOperationParameterType::String,
-              true, "stable name，例如 node.additive / Constant / noise.value"),
-          MakeOperationParameter(
+              true, "stable name，例如 node.additive / Constant / noise.value"},
+          EditorOperationParameter{
               "name", EditorOperationParameterType::String,
-              false, "可选显示名称"),
-          MakeOperationParameter(
+              false, "可选显示名称"},
+          EditorOperationParameter{
               "positionX", EditorOperationParameterType::Float,
-              false, "manualPosition=true 时的画布 X"),
-          MakeOperationParameter(
+              false, "manualPosition=true 时的画布 X"},
+          EditorOperationParameter{
               "positionY", EditorOperationParameterType::Float,
-              false, "manualPosition=true 时的画布 Y"),
-          MakeOperationParameter(
+              false, "manualPosition=true 时的画布 Y"},
+          EditorOperationParameter{
               "manualPosition", EditorOperationParameterType::Bool,
-              false, "true 使用给定位置，否则按分类自动排布"),
-          MakeOperationParameter(
+              false, "true 使用给定位置，否则按分类自动排布"},
+          EditorOperationParameter{
               "valueType", EditorOperationParameterType::String,
-              false, "Constant/Parameter：Float1/Float2/Float3/Float4"),
-          MakeOperationParameter(
+              false, "Constant/Parameter：Float1/Float2/Float3/Float4"},
+          EditorOperationParameter{
               "valueX", EditorOperationParameterType::Float,
-              false, "初始值分量"),
-          MakeOperationParameter(
+              false, "初始值分量"},
+          EditorOperationParameter{
               "valueY", EditorOperationParameterType::Float,
-              false, "初始值分量"),
-          MakeOperationParameter(
+              false, "初始值分量"},
+          EditorOperationParameter{
               "valueZ", EditorOperationParameterType::Float,
-              false, "初始值分量"),
-          MakeOperationParameter(
+              false, "初始值分量"},
+          EditorOperationParameter{
               "valueW", EditorOperationParameterType::Float,
-              false, "初始值分量"),
+              false, "初始值分量"},
       },
       [&controller, sceneProvider](const nlohmann::json& parameters) {
         EditorOperationResult result{};
@@ -545,7 +543,7 @@ void RegisterModelMaterialOperations(
         }
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "material.duplicate_selected",
@@ -568,7 +566,7 @@ void RegisterModelMaterialOperations(
                   *scene, message);
             });
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "material.delete_selected",
@@ -591,7 +589,7 @@ void RegisterModelMaterialOperations(
                   *scene, message);
             });
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "material.delete_connection",
@@ -614,7 +612,7 @@ void RegisterModelMaterialOperations(
                   *scene, message);
             });
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "material.group_selected",
@@ -637,7 +635,7 @@ void RegisterModelMaterialOperations(
                   *scene, message);
             });
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "material.ungroup_selected",
@@ -660,11 +658,11 @@ void RegisterModelMaterialOperations(
                   *scene, message);
             });
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "material.arrange_selected",
-      "Arrange the selected material graph nodes into a grid.",
+      "Arrange selected nodes by connections without moving other nodes.",
       "model_material",
       {},
       [&controller, sceneProvider](const nlohmann::json&) {
@@ -683,7 +681,7 @@ void RegisterModelMaterialOperations(
                   *scene, message);
             });
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "material.frame_selection",
@@ -702,7 +700,7 @@ void RegisterModelMaterialOperations(
         result.message = "已聚焦选中节点。";
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Session);
 
   registry.Register({
       "material.frame_all",
@@ -721,7 +719,7 @@ void RegisterModelMaterialOperations(
         result.message = "已聚焦全部节点。";
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Session);
 
   registry.Register({
       "material.frame_preview",
@@ -739,7 +737,7 @@ void RegisterModelMaterialOperations(
         result.message = "已聚焦预览相机。";
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Session);
 
   registry.Register({
       "material.collapse_selected",
@@ -757,7 +755,7 @@ void RegisterModelMaterialOperations(
         result.message = "已折叠选中节点。";
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Session);
 
   registry.Register({
       "material.expand_selected",
@@ -775,7 +773,7 @@ void RegisterModelMaterialOperations(
         result.message = "已展开选中节点。";
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Session);
 
   registry.Register({
       "material.collapse_all",
@@ -793,7 +791,7 @@ void RegisterModelMaterialOperations(
         result.message = "已折叠全部节点。";
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Session);
 
   registry.Register({
       "material.expand_all",
@@ -811,7 +809,7 @@ void RegisterModelMaterialOperations(
         result.message = "已展开全部节点。";
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Session);
 }
 
 } // namespace HIKARI::EDITOR

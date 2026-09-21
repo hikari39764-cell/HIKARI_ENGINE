@@ -25,19 +25,11 @@ namespace HIKARI {
 
 using namespace EDITOR::RESOURCE_WORKSPACE;
 
-void ResourceWorkspacePanel::Draw(
+void ResourceWorkspacePanel::DrawContents(
     AssetDatabase &assetDatabase, AssetRegistry &assetRegistry,
     const SceneDocument &sceneDocument, EditorSelection &selection,
     const ResourceWorkspaceContext &context) const {
 #if defined(HIKARI_WITH_EDITOR)
-  if (!ImGui::Begin(
-          TEXT::LocalizeWindow(
-              "ui.window.resourceWorkspace",
-              "Resource Workspace").c_str())) {
-    ImGui::End();
-    return;
-  }
-
   static const auto timer = CPU_PROFILE::RegisterDynamicPass("Editor.ResourceWorkspace");
   const CPU_PROFILE::ScopedDynamicCpuTimer scope(timer);
   usageCache_.Update(sceneDocument, context.documentRevision, assetDatabase, context.editRevision);
@@ -305,13 +297,11 @@ void ResourceWorkspacePanel::Draw(
   }
   ImGui::EndChild();
 
-  if (canShowBottom && ImGui::BeginChild("##ResourceWorkspaceBottom",
-                                         ImVec2(0.0f, 0.0f), true)) {
-    DrawPreviewAndImportLog(assetDatabase, selection);
+  if (canShowBottom) {
+    if (ImGui::BeginChild("##ResourceWorkspaceBottom", ImVec2(0.0f, 0.0f), true))
+      DrawPreviewAndImportLog(assetDatabase, selection);
     ImGui::EndChild();
   }
-
-  ImGui::End();
 #else
   (void)assetDatabase;
   (void)assetRegistry;

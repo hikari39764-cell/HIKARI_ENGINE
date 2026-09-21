@@ -57,6 +57,7 @@ void ModelMaterialWorkspaceController::RefreshAuthoringIdCounter() {
        graph.resources) {
     consider(resource.id);
   }
+  for (const auto& group : graph.groups) consider(group.id);
   consider(graph.outputNodeId);
   authoringIdCounter_ = maxId + 1u;
 }

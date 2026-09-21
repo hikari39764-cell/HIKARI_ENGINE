@@ -16,6 +16,12 @@ set(HIKARI_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
 list(PREPEND CMAKE_MODULE_PATH "${HIKARI_SOURCE_ROOT}/cmake")
 
 include(HikariOptions)
+set(HIKARI_RUNTIME_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+set(HIKARI_INSTALL_RUNTIME_PREFIX "")
+if(HIKARI_WITH_EDITOR_BUILD)
+    set(HIKARI_RUNTIME_DIRECTORY "${CMAKE_BINARY_DIR}/bin/Runtime")
+    set(HIKARI_INSTALL_RUNTIME_PREFIX "Runtime/")
+endif()
 include(HikariCompiler)
 include(HikariSources)
 include(HikariRuntimeModules)
@@ -47,8 +53,8 @@ configure_file(
 unset(HIKARI_GAME_PROJECT_MANIFEST CACHE)
 
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${HIKARI_RUNTIME_DIRECTORY}")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${HIKARI_RUNTIME_DIRECTORY}")
 foreach(configuration IN ITEMS Debug EditorRelease Shipping)
     string(TOUPPER "${configuration}" configuration_upper)
     set(
@@ -56,10 +62,10 @@ foreach(configuration IN ITEMS Debug EditorRelease Shipping)
         "${CMAKE_BINARY_DIR}/lib")
     set(
         "CMAKE_LIBRARY_OUTPUT_DIRECTORY_${configuration_upper}"
-        "${CMAKE_BINARY_DIR}/bin")
+        "${HIKARI_RUNTIME_DIRECTORY}")
     set(
         "CMAKE_RUNTIME_OUTPUT_DIRECTORY_${configuration_upper}"
-        "${CMAKE_BINARY_DIR}/bin")
+        "${HIKARI_RUNTIME_DIRECTORY}")
 endforeach()
 
 add_subdirectory(ThirdParty)
@@ -211,7 +217,7 @@ endforeach()
 
 set(
     HIKARI_BUILTIN_SHADER_ARTIFACT_ROOT
-    "${CMAKE_BINARY_DIR}/bin/EngineContent/Shaders/Cooked")
+    "${HIKARI_RUNTIME_DIRECTORY}/EngineContent/Shaders/Cooked")
 set(
     HIKARI_BUILTIN_SHADER_CATALOG_PATH
     "${HIKARI_SOURCE_ROOT}/HIKARI/Shaders/BuiltinShaderCatalog.json")
@@ -285,6 +291,8 @@ function(hikari_add_runtime_contract target_name source_path)
 endfunction()
 
 function(hikari_configure_contract_output target_name category)
+    target_compile_definitions("${target_name}" PRIVATE
+        HIKARI_CONTRACT_ENGINE_CONTENT_ROOT="${HIKARI_RUNTIME_DIRECTORY}/EngineContent")
     set(hikari_contract_output_directory "${CMAKE_BINARY_DIR}/tests")
     set_target_properties(
         "${target_name}"
@@ -362,6 +370,14 @@ if(HIKARI_WITH_EDITOR_BUILD)
     target_link_libraries(HIKARI_VfxAnimationEditingSmoke PRIVATE HIKARI::Editor)
     add_test(NAME HIKARI_VfxAnimationEditingSmoke COMMAND "$<TARGET_FILE:HIKARI_VfxAnimationEditingSmoke>")
     set_tests_properties(HIKARI_VfxAnimationEditingSmoke PROPERTIES LABELS "RuntimeContracts" TIMEOUT 120)
+endif()
+
+if(HIKARI_WITH_EDITOR_BUILD)
+    hikari_add_runtime_contract(HIKARI_MaterialWorkspaceEditingContracts
+        "Tools/Tests/HIKARI_MaterialWorkspaceEditingContracts.cpp")
+    target_link_libraries(HIKARI_MaterialWorkspaceEditingContracts PRIVATE HIKARI::Editor)
+    add_test(NAME HIKARI_MaterialWorkspaceEditingContracts COMMAND "$<TARGET_FILE:HIKARI_MaterialWorkspaceEditingContracts>")
+    set_tests_properties(HIKARI_MaterialWorkspaceEditingContracts PROPERTIES LABELS "EditorContracts" TIMEOUT 30)
 endif()
 
 foreach(vfx_contract IN ITEMS NativeVfxSmoke VfxEditorTransactionSmoke
@@ -585,6 +601,8 @@ set_tests_properties(HIKARI_DirectionalShadowContracts PROPERTIES LABELS "Runtim
 
 add_executable(HIKARI_DynamicUploadGpuContracts EXCLUDE_FROM_ALL
     "Tools/Tests/HIKARI_DynamicUploadGpuContracts.cpp"
+    "HIKARI/Gfx/HIKARI_UploadSubmissionQueue.cpp"
+    "HIKARI/Core/HIKARI_Logger.cpp"
     "HIKARI/Render3D/GpuDriven/HIKARI_SurfaceGpuSceneFrameBuffer.cpp"
     "HIKARI/Render3D/HIKARI_Math3D.cpp"
     "HIKARI/Gfx/HIKARI_DynamicUploadBuffer.cpp"
@@ -724,6 +742,14 @@ add_dependencies(HIKARI_DxrLightmapGpuContracts HIKARI_BuiltinShaderArtifacts)
 add_test(NAME HIKARI_DxrLightmapGpuContracts COMMAND "$<TARGET_FILE:HIKARI_DxrLightmapGpuContracts>")
 set_tests_properties(HIKARI_DxrLightmapGpuContracts PROPERTIES LABELS "RuntimeContracts;HardwareGpu" TIMEOUT 60 SKIP_RETURN_CODE 77)
 hikari_add_runtime_contract(HIKARI_RuntimeRayTracingGpuContracts "Tools/Tests/HIKARI_RuntimeRayTracingGpuContracts.cpp")
+hikari_add_runtime_contract(HIKARI_ParticleCompactionGpuContracts "Tools/Tests/HIKARI_ParticleCompactionGpuContracts.cpp")
+target_compile_definitions(HIKARI_ParticleCompactionGpuContracts PRIVATE HIKARI_CONTRACT_SOURCE_ROOT="${HIKARI_SOURCE_ROOT}")
+add_test(NAME HIKARI_ParticleCompactionGpuContracts COMMAND "$<TARGET_FILE:HIKARI_ParticleCompactionGpuContracts>")
+set_tests_properties(HIKARI_ParticleCompactionGpuContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 60)
+hikari_add_runtime_contract(HIKARI_VfxStyleGpuContracts "Tools/Tests/HIKARI_VfxStyleGpuContracts.cpp")
+target_compile_definitions(HIKARI_VfxStyleGpuContracts PRIVATE HIKARI_CONTRACT_SOURCE_ROOT="${HIKARI_SOURCE_ROOT}")
+add_test(NAME HIKARI_VfxStyleGpuContracts COMMAND "$<TARGET_FILE:HIKARI_VfxStyleGpuContracts>")
+set_tests_properties(HIKARI_VfxStyleGpuContracts PROPERTIES LABELS "RuntimeContracts" TIMEOUT 60)
 add_dependencies(HIKARI_RuntimeRayTracingGpuContracts HIKARI_BuiltinShaderArtifacts)
 target_compile_definitions(HIKARI_RuntimeRayTracingGpuContracts PRIVATE HIKARI_CONTRACT_SOURCE_ROOT="${HIKARI_SOURCE_ROOT}")
 add_test(NAME HIKARI_RuntimeRayTracingGpuContracts COMMAND "$<TARGET_FILE:HIKARI_RuntimeRayTracingGpuContracts>")
@@ -961,6 +987,11 @@ if(HIKARI_WITH_EDITOR_BUILD)
     add_test(NAME HIKARI_AssetBrowserContracts COMMAND "$<TARGET_FILE:HIKARI_AssetBrowserContracts>")
     set_tests_properties(HIKARI_AssetBrowserContracts PROPERTIES LABELS "EditorContracts" TIMEOUT 30)
 
+    hikari_add_runtime_contract(HIKARI_AiAssistantContracts "Tools/Tests/HIKARI_AiAssistantContracts.cpp" NO_TOOLING_STUBS)
+    target_link_libraries(HIKARI_AiAssistantContracts PRIVATE HIKARI::Editor)
+    add_test(NAME HIKARI_AiAssistantContracts COMMAND "$<TARGET_FILE:HIKARI_AiAssistantContracts>" "${CMAKE_BINARY_DIR}/tests/ai-contracts")
+    set_tests_properties(HIKARI_AiAssistantContracts PROPERTIES LABELS "EditorContracts" TIMEOUT 45)
+
     add_executable(
         HIKARI_GameProjectEditorWorkspaceRegistrySmoke
         EXCLUDE_FROM_ALL
@@ -1019,27 +1050,42 @@ if(HIKARI_WITH_EDITOR_BUILD)
         FILES
             ${HIKARI_EDITOR_HOST_SOURCES})
 
-    add_executable(HIKARI_ProjectLauncher WIN32)
-    target_sources(HIKARI_ProjectLauncher PRIVATE $<TARGET_OBJECTS:HIKARI_StartupResources>)
+    add_executable(HIKARI_ProjectHub WIN32)
+    target_sources(HIKARI_ProjectHub PRIVATE $<TARGET_OBJECTS:HIKARI_StartupResources>)
     target_sources(
-        HIKARI_ProjectLauncher
+        HIKARI_ProjectHub
         PRIVATE
             ${HIKARI_PROJECT_LAUNCHER_HOST_SOURCES})
     target_link_libraries(
-        HIKARI_ProjectLauncher
+        HIKARI_ProjectHub
         PRIVATE
             HIKARI::Editor)
     add_dependencies(
-        HIKARI_ProjectLauncher
+        HIKARI_ProjectHub
         HIKARI_EditorHost)
-    hikari_configure_engine_target(HIKARI_ProjectLauncher)
+    hikari_configure_engine_target(HIKARI_ProjectHub)
     hikari_configure_runtime_deployment(
-        HIKARI_ProjectLauncher
-        OUTPUT_NAME "HIKARI_ProjectLauncher")
+        HIKARI_ProjectHub
+        OUTPUT_NAME "HIKARI_ProjectHub")
     source_group(
         TREE "${HIKARI_SOURCE_ROOT}"
         FILES
             ${HIKARI_PROJECT_LAUNCHER_HOST_SOURCES})
+    add_executable(HIKARI_ProjectLauncher WIN32 ${HIKARI_LAUNCHER_BOOTSTRAP_SOURCES})
+    target_sources(HIKARI_ProjectLauncher PRIVATE $<TARGET_OBJECTS:HIKARI_StartupResources>)
+    target_link_libraries(HIKARI_ProjectLauncher PRIVATE user32)
+    hikari_configure_engine_target(HIKARI_ProjectLauncher)
+    add_dependencies(HIKARI_ProjectLauncher HIKARI_ProjectHub)
+    set_target_properties(HIKARI_ProjectLauncher PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+        PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/symbols")
+    foreach(configuration IN ITEMS Debug EditorRelease Shipping)
+        string(TOUPPER "${configuration}" configuration_upper)
+        set_target_properties(HIKARI_ProjectLauncher PROPERTIES
+            "RUNTIME_OUTPUT_DIRECTORY_${configuration_upper}" "${CMAKE_BINARY_DIR}/bin"
+            "PDB_OUTPUT_DIRECTORY_${configuration_upper}" "${CMAKE_BINARY_DIR}/symbols")
+    endforeach()
+    install(TARGETS HIKARI_ProjectLauncher RUNTIME DESTINATION ".")
     set(HIKARI_STARTUP_TARGET HIKARI_ProjectLauncher)
 else()
     add_executable(HIKARI_GameHost WIN32)

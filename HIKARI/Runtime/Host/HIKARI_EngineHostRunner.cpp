@@ -438,6 +438,7 @@ namespace HIKARI::RUNTIME {
             }
             if (renderingApplication && !applicationPresented) {
                 applicationPresented = true;
+                if (options.onFirstApplicationPresented) options.onFirstApplicationPresented();
                 CORE::StartupTimer::ReportSince("Host.first_application_present", startupStarted);
             }
             if (benchmark) {

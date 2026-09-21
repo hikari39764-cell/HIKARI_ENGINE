@@ -139,54 +139,54 @@ namespace HIKARI::EDITOR {
             void Text(std::string_view) override {}
             bool Section(std::string_view, bool) override { return true; }
             bool Button(std::string_view) override { return false; }
-            bool Bool(std::string_view, bool&) override { return false; }
-            bool Int(std::string_view, int&) override { return false; }
-            bool Float(std::string_view, float&) override { return false; }
+            bool Bool(std::string_view label, bool&) override { return UndeclaredField(label); }
+            bool Int(std::string_view label, int&) override { return UndeclaredField(label); }
+            bool Float(std::string_view label, float&) override { return UndeclaredField(label); }
             bool FloatRange(
-                std::string_view,
+                std::string_view label,
                 float&,
                 float,
                 float,
-                float) override { return false; }
+                float) override { return UndeclaredField(label); }
             bool Color3(
-                std::string_view,
+                std::string_view label,
                 float&,
                 float&,
-                float&) override { return false; }
+                float&) override { return UndeclaredField(label); }
             bool String(
-                std::string_view,
-                std::string&) override { return false; }
+                std::string_view label,
+                std::string&) override { return UndeclaredField(label); }
             bool InputActionIdPicker(
-                std::string_view,
+                std::string_view label,
                 INPUT::InputActionValueType,
-                std::string&) override { return false; }
+                std::string&) override { return UndeclaredField(label); }
             bool RuntimeVariableIdPicker(
-                std::string_view,
+                std::string_view label,
                 BINDING::ValueType,
-                std::string&) override { return false; }
+                std::string&) override { return UndeclaredField(label); }
             bool RuntimeEventIdPicker(
-                std::string_view,
+                std::string_view label,
                 bool,
                 BINDING::ValueType,
-                std::string&) override { return false; }
+                std::string&) override { return UndeclaredField(label); }
             bool Choice(
-                std::string_view,
+                std::string_view label,
                 int&,
-                std::span<const char* const>) override { return false; }
+                std::span<const char* const>) override { return UndeclaredField(label); }
             bool Vec2(
-                std::string_view,
+                std::string_view label,
                 float&,
-                float&) override { return false; }
+                float&) override { return UndeclaredField(label); }
             bool AssetIdPicker(
-                std::string_view,
+                std::string_view label,
                 AssetType,
-                std::string&) override { return false; }
+                std::string&) override { return UndeclaredField(label); }
             bool SceneIdPicker(
-                std::string_view,
-                std::string&) override { return false; }
+                std::string_view label,
+                std::string&) override { return UndeclaredField(label); }
             bool SceneObjectIdPicker(
-                std::string_view,
-                SceneObjectId&) override { return false; }
+                std::string_view label,
+                SceneObjectId&) override { return UndeclaredField(label); }
 
             bool Bool(
                 const AuthoringFieldDescriptor& field,
@@ -650,6 +650,7 @@ namespace HIKARI::EDITOR {
             const std::string& Code() const noexcept { return code_; }
             const std::string& Message() const noexcept { return message_; }
             const nlohmann::json& Fields() const noexcept { return fields_; }
+            const nlohmann::json& UnavailableFields() const noexcept { return unavailableFields_; }
 
         private:
             struct FloatMetadata {
@@ -830,6 +831,11 @@ namespace HIKARI::EDITOR {
             InspectorContext context_{};
             std::string requestedPropertyId_{};
             nlohmann::json requestedValue_{};
+            bool UndeclaredField(std::string_view label) {
+                unavailableFields_.push_back(std::string(label));
+                return false;
+            }
+            nlohmann::json unavailableFields_ = nlohmann::json::array();
             nlohmann::json fields_ = nlohmann::json::array();
             std::unordered_set<std::string> fieldIds_{};
             std::string code_{};
@@ -1153,8 +1159,15 @@ namespace HIKARI::EDITOR {
             { "componentId", target.componentId.value },
             { "componentType", component->type },
             { "fields", builder.Fields() },
+            { "schemaComplete", builder.UnavailableFields().empty() },
+            { "unavailableFields", builder.UnavailableFields() },
             { "commands", SerializeCommands(*typeInfo) }
         };
+        if (builder.Fields().empty() && !builder.UnavailableFields().empty() && typeInfo->authoringCommands.empty()) {
+            result.ok = false;
+            result.code = "AUTHORING_SCHEMA_INCOMPLETE";
+            result.message = "This component still uses UI-only fields. No writable authoring schema is registered; querying again will not expose them.";
+        }
         return result;
     }
 

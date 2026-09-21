@@ -12,6 +12,7 @@ namespace HIKARI::EDITOR {
             std::string type{};
             bool required = false;
             std::string description{};
+            nlohmann::json schema = nlohmann::json::object();
         };
 
         struct AiCapability {
@@ -20,6 +21,8 @@ namespace HIKARI::EDITOR {
             std::string status; // stable | planned | unsupported
             std::vector<AiCapabilityParameter> parameters{};
             std::string workspace = "general";
+            nlohmann::json semantics = nlohmann::json::object();
+            std::vector<std::string> searchTerms{};
         };
 
         struct AiRequestResult {
@@ -36,6 +39,7 @@ namespace HIKARI::EDITOR {
 
         // Assistant-local discovery/help and optional vision; authoring uses
         // the workspace operation registry.
+        nlohmann::json DescribeAiCapability(const AiCapability& capability, bool parameters = true);
         const std::vector<AiCapability>& BuiltInCapabilities();
         AiRequestResult SubmitAiRequest(
             std::string_view requestJson,

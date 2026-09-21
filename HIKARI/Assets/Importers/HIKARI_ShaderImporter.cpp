@@ -9,6 +9,7 @@
 #include "Assets/Shader/HIKARI_ShaderSourceManifest.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
+#include "Core/IO/HIKARI_PathNormalization.h"
 #include "Gfx/HIKARI_ShaderCookCompiler.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
 #include "Project/Paths/HIKARI_ProjectPath.h"
@@ -18,20 +19,6 @@ namespace HIKARI {
         static_assert(
             GFX::kShaderCookCompilerContractVersion ==
             SHADER::kShaderCompilerContractVersion);
-        bool IsContainedPath(
-            const std::filesystem::path& root,
-            const std::filesystem::path& file) {
-            std::string rootKey = TEXT::ToLowerAsciiCopy(
-                root.generic_string());
-            const std::string fileKey = TEXT::ToLowerAsciiCopy(
-                file.generic_string());
-            while (!rootKey.empty() && rootKey.back() == '/') {
-                rootKey.pop_back();
-            }
-            return !rootKey.empty() && fileKey.size() > rootKey.size() &&
-                fileKey.compare(0u, rootKey.size(), rootKey) == 0 &&
-                fileKey[rootKey.size()] == '/';
-        }
         bool ResolveShaderManifestPath(
             const AssetRecord& record,
             const AssetImportContext& context,
@@ -51,7 +38,7 @@ namespace HIKARI {
                 std::filesystem::weakly_canonical(
                     context.projectRoot / record.sourcePath,
                     ec);
-            if (ec || !IsContainedPath(root, manifest) ||
+            if (ec || !PATHS::IsCanonicalDescendant(root, manifest) ||
                 !std::filesystem::is_regular_file(manifest, ec) || ec ||
                 TEXT::ToLowerAsciiCopy(manifest.extension().string()) !=
                     ".hshader") {
@@ -75,7 +62,7 @@ namespace HIKARI {
                     context.importedDirectory,
                     ec);
             if (ec || library.empty() || imported.empty() ||
-                !IsContainedPath(library, imported) ||
+                !PATHS::IsCanonicalDescendant(library, imported) ||
                 !std::filesystem::is_directory(imported, ec) || ec) {
                 outError =
                     "shader imported directory is outside the Library owner";

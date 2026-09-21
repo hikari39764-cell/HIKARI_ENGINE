@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "HIKARI_AssetFieldWidget.h"
 
 #include <algorithm>
@@ -129,7 +130,7 @@ namespace HIKARI::EDITOR {
                     ToString(GetImportState(*current)),
                     current->guid.value.c_str());
             } else {
-                ImGui::SetTooltip("Missing GUID: %s", inOutGuid.c_str());
+                ImGui::SetTooltip(TEXT::Localize("editor.ui.missing.guid.s.f1726c").c_str(), inOutGuid.c_str());
             }
         }
 
@@ -139,19 +140,19 @@ namespace HIKARI::EDITOR {
         }
         bool openPickerFromActions = false;
         if (ImGui::BeginPopup("AssetFieldActions")) {
-            if (ImGui::MenuItem("Choose Asset...")) {
+            if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.choose.asset.5e5fb4", "Choose Asset...").c_str())) {
                 openPickerFromActions = true;
             }
             if (options.allowClear) {
                 const bool canClear = !inOutGuid.empty();
-                if (ImGui::MenuItem("Clear", nullptr, false, canClear)) {
+                if (ImGui::MenuItem(TEXT::LocalizeWindow("ui.input.clear", "Clear").c_str(), nullptr, false, canClear)) {
                     inOutGuid.clear();
                     changed = true;
                 }
             }
             if (options.allowLocate) {
                 const bool canLocate = current != nullptr && selection != nullptr;
-                if (ImGui::MenuItem("Locate in Resources", nullptr, false, canLocate)) {
+                if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.locate.in.resources.3e28ce", "Locate in Resources").c_str(), nullptr, false, canLocate)) {
                     selection->selectedAssetGuid = current->guid.value;
                     selection->selectedAssetPath = current->sourcePath.generic_string();
                     selection->selectedAsset = nullptr;
@@ -159,7 +160,7 @@ namespace HIKARI::EDITOR {
             }
             if (options.allowCopyGuid) {
                 const bool canCopy = !inOutGuid.empty();
-                if (ImGui::MenuItem("Copy GUID", nullptr, false, canCopy)) {
+                if (ImGui::MenuItem(TEXT::LocalizeWindow("ui.assetBrowser.copyGuid", "Copy GUID").c_str(), nullptr, false, canCopy)) {
                     ImGui::SetClipboardText(inOutGuid.c_str());
                 }
             }
@@ -175,8 +176,7 @@ namespace HIKARI::EDITOR {
 
         if (!inOutGuid.empty() && current == nullptr) {
             ImGui::TextColored(
-                ImVec4(1.0f, 0.45f, 0.35f, 1.0f),
-                "Missing %s: %s",
+                ImVec4(1.0f, 0.45f, 0.35f, 1.0f),TEXT::Localize("editor.ui.missing.s.s.0c381f").c_str(),
                 ToAssetTypeText(options.requiredType),
                 ShortGuid(inOutGuid).c_str());
         }

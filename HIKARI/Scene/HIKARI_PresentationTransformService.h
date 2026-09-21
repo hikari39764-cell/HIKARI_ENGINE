@@ -13,7 +13,7 @@ namespace HIKARI {
     // a smoothed world matrix without feeding it back into simulation.
     class PresentationTransformService {
     public:
-        void SetWorldMatrix(
+        bool SetWorldMatrix(
             RuntimeObjectHandle object,
             const MATH::Mat4& worldMatrix);
         bool Remove(RuntimeObjectHandle object) noexcept;

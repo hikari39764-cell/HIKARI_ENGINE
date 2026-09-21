@@ -1,6 +1,7 @@
 #include "HIKARI_MaterialGraphJson.h"
 
 #include <algorithm>
+#include <cmath>
 #include <utility>
 
 #include "Core/HIKARI_JsonRead.h"
@@ -343,6 +344,15 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
         parameter.id = node.value("id", std::string{});
         parameter.displayName = node.value("displayName", parameter.id);
         parameter.exposed = node.value("exposed", true);
+        parameter.group = node.value("group", std::string{});
+        parameter.useUiRange = node.value("useUiRange", false);
+        parameter.uiMinimum = node.value("uiMinimum", 0.0f);
+        parameter.uiMaximum = node.value("uiMaximum", 1.0f);
+        if (!std::isfinite(parameter.uiMinimum) || !std::isfinite(parameter.uiMaximum) ||
+            (parameter.useUiRange && parameter.uiMinimum >= parameter.uiMaximum)) {
+            outError = "material parameter UI range must be finite and increasing";
+            return false;
+        }
         if (!ReadMaterialValueJson(
                 node.value("defaultValue", nlohmann::json{}),
                 parameter.defaultValue,
@@ -361,6 +371,10 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
             { "displayName", parameter.displayName },
             { "defaultValue", WriteMaterialValueJson(parameter.defaultValue) },
             { "exposed", parameter.exposed },
+            { "group", parameter.group },
+            { "useUiRange", parameter.useUiRange },
+            { "uiMinimum", parameter.uiMinimum },
+            { "uiMaximum", parameter.uiMaximum },
         };
     }
 

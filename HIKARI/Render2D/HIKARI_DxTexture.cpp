@@ -17,7 +17,7 @@
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Core/HIKARI_Logger.h"
 #include "Gfx/HIKARI_DXCheck.h"
-#include "Gfx/HIKARI_GpuCompletion.h"
+
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 
 using Microsoft::WRL::ComPtr;
@@ -274,12 +274,7 @@ namespace HIKARI {
         UINT  DxTextureManager::descriptorSize_ = 0;
 
         ComPtr<ID3D12DescriptorHeap> DxTextureManager::srvHeap_;
-        ComPtr<ID3D12CommandAllocator> DxTextureManager::uploadAllocator_;
-        ComPtr<ID3D12GraphicsCommandList> DxTextureManager::uploadCmdList_;
-        ComPtr<ID3D12Fence> DxTextureManager::uploadFence_;
-        HANDLE DxTextureManager::uploadFenceEvent_ = nullptr;
-        uint64_t DxTextureManager::uploadFenceValue_ = 1;
-
+        GFX::UploadSubmissionQueue DxTextureManager::uploads_;
         std::vector<ComPtr<ID3D12Resource>>       DxTextureManager::textures_;
         std::vector<TextureDimension>             DxTextureManager::dimensions_;
         std::vector<UINT>                         DxTextureManager::mipCounts_;
@@ -319,26 +314,7 @@ namespace HIKARI {
             descriptorSize_ =
                 device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
-            HRESULT hr = device->CreateCommandAllocator(
-                D3D12_COMMAND_LIST_TYPE_DIRECT,
-                IID_PPV_ARGS(&uploadAllocator_));
-            if (!HIKARI_DX_CHECK(hr, "DxTextureManager::Init")) return false;
-
-            hr = device->CreateCommandList(
-                0,
-                D3D12_COMMAND_LIST_TYPE_DIRECT,
-                uploadAllocator_.Get(),
-                nullptr,
-                IID_PPV_ARGS(&uploadCmdList_));
-            if (!HIKARI_DX_CHECK(hr, "DxTextureManager::Init")) return false;
-            if (!HIKARI_DX_CHECK(uploadCmdList_->Close(), "DxTextureManager::Init Close")) return false;
-
-            hr = device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&uploadFence_));
-            if (!HIKARI_DX_CHECK(hr, "DxTextureManager::Init")) return false;
-
-            uploadFenceEvent_ = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-            if (!uploadFenceEvent_) return false;
-            uploadFenceValue_ = 1;
+            if (!uploads_.Initialize(device, context_.queue, {})) return false;
 
             srvCpu_.resize(maxTextures);
             srvGpu_.resize(maxTextures);
@@ -366,6 +342,7 @@ namespace HIKARI {
 
         void DxTextureManager::UpdateContext(const GFX::Context& ctx) {
             context_ = ctx;
+            uploads_.Collect();
         }
 
         void DxTextureManager::Finalize()
@@ -374,6 +351,7 @@ namespace HIKARI {
                 return;
             }
 
+            uploads_.Reset();
             textures_.clear();
             dimensions_.clear();
             mipCounts_.clear();
@@ -384,18 +362,15 @@ namespace HIKARI {
             if (!context_.srvHeap) {
                 srvHeap_.Reset();
             }
-            uploadCmdList_.Reset();
-            uploadAllocator_.Reset();
-            uploadFence_.Reset();
-            if (uploadFenceEvent_) {
-                CloseHandle(uploadFenceEvent_);
-                uploadFenceEvent_ = nullptr;
-            }
-            uploadFenceValue_ = 1;
             nameToHandle_.clear();
             descriptorAllocator_.Reset();
             DXTEX::CleanupWICResources();
             initialized_ = false;
+        }
+
+        ID3D12GraphicsCommandList* DxTextureManager::BeginUpload() {
+            if (!uploads_.Initialize(context_.device, context_.queue, {})) return nullptr;
+            return uploads_.Begin();
         }
 
         void DxTextureManager::EnsureInit()
@@ -631,7 +606,7 @@ namespace HIKARI {
 
             auto* device = context_.device;
             auto* queue = context_.queue;
-            if (!device || !queue || !uploadAllocator_ || !uploadCmdList_ || !uploadFence_ || !uploadFenceEvent_) {
+            if (!device || !queue) {
                 HIKARI_LOG_ERROR("[DxTextureManager][HTEXBatch][ERROR] invalid D3D12 context.");
                 for (const PendingHtexLoad& load : pendingHtexLoads) {
                     failResults(load.resultIndices);
@@ -756,31 +731,11 @@ namespace HIKARI {
                 return results;
             }
 
-            HRESULT hr = uploadAllocator_->Reset();
-            if (FAILED(hr)) {
-                HIKARI_LOG_ERROR("[DxTextureManager][HTEXBatch][ERROR] command allocator reset failed.");
-                for (const PendingHtexLoad& load : pendingHtexLoads) {
-                    if (load.readyForUpload) {
-                        failResults(load.resultIndices);
-                    }
-                }
-                if (outStats != nullptr) {
-                    *outStats = stats;
-                }
-                return results;
-            }
-
-            hr = uploadCmdList_->Reset(uploadAllocator_.Get(), nullptr);
-            if (FAILED(hr)) {
-                HIKARI_LOG_ERROR("[DxTextureManager][HTEXBatch][ERROR] command list reset failed.");
-                for (const PendingHtexLoad& load : pendingHtexLoads) {
-                    if (load.readyForUpload) {
-                        failResults(load.resultIndices);
-                    }
-                }
-                if (outStats != nullptr) {
-                    *outStats = stats;
-                }
+            auto* uploadCommands = BeginUpload();
+            if (!uploadCommands) {
+                for (const auto& load : pendingHtexLoads)
+                    if (load.readyForUpload) failResults(load.resultIndices);
+                if (outStats) *outStats = stats;
                 return results;
             }
 
@@ -790,7 +745,7 @@ namespace HIKARI {
                 }
 
                 const auto copiedBytes = UpdateSubresources(
-                    uploadCmdList_.Get(),
+                    uploadCommands,
                     load.textureResource.Get(),
                     load.uploadResource.Get(),
                     0,
@@ -807,36 +762,22 @@ namespace HIKARI {
                     load.textureResource.Get(),
                     D3D12_RESOURCE_STATE_COPY_DEST,
                     D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
-                uploadCmdList_->ResourceBarrier(1, &barrier);
+                uploadCommands->ResourceBarrier(1, &barrier);
             }
 
-            hr = uploadCmdList_->Close();
-            if (FAILED(hr)) {
-                HIKARI_LOG_ERROR("[DxTextureManager][HTEXBatch][ERROR] command list close failed.");
-                for (const PendingHtexLoad& load : pendingHtexLoads) {
-                    if (load.readyForUpload) {
-                        failResults(load.resultIndices);
-                    }
-                }
-                if (outStats != nullptr) {
-                    *outStats = stats;
-                }
-                return results;
+            std::vector<ID3D12Resource*> retained;
+            retained.reserve(pendingHtexLoads.size() * 2);
+            for (const auto& load : pendingHtexLoads) {
+                retained.push_back(load.textureResource.Get());
+                retained.push_back(load.uploadResource.Get());
             }
-
-            ID3D12CommandList* lists[] = { uploadCmdList_.Get() };
-            queue->ExecuteCommandLists(1, lists);
-            ++stats.submissions;
-
-            const uint64_t signalValue = uploadFenceValue_++;
-            if (!GFX::SignalAndWaitForGpuCompletion(device, queue, uploadFence_.Get(),
-                    signalValue, uploadFenceEvent_, "HTEX batch upload")) {
-                for (const PendingHtexLoad& load : pendingHtexLoads) {
+            if (!uploads_.Submit(retained, uploadBytes)) {
+                for (const auto& load : pendingHtexLoads)
                     if (load.readyForUpload) failResults(load.resultIndices);
-                }
                 if (outStats) *outStats = stats;
                 return results;
             }
+            ++stats.submissions;
 
             for (PendingHtexLoad& load : pendingHtexLoads) {
                 if (!load.readyForUpload) {
@@ -1117,35 +1058,24 @@ namespace HIKARI {
             auto* queue = context_.queue;
             assert(device && queue);
 
-            assert(uploadAllocator_ && uploadCmdList_ && uploadFence_ && uploadFenceEvent_);
-
-            HRESULT hr = uploadAllocator_->Reset();
-            if (!HIKARI_DX_CHECK(hr, "Texture upload command recording")) return -1;
-
-            hr = uploadCmdList_->Reset(uploadAllocator_.Get(), nullptr);
-            if (!HIKARI_DX_CHECK(hr, "Texture upload command recording")) return -1;
+            auto* uploadCommands = BeginUpload();
+            if (!uploadCommands) return -1;
+            HRESULT hr = S_OK;
 
             const auto nativePath = TEXT::PathFromUtf8(path);
 
-            Microsoft::WRL::ComPtr<ID3D12Resource> texResource;
+            Microsoft::WRL::ComPtr<ID3D12Resource> texResource, uploadResource;
 
             hr = HIKARI::DXTEX::CreateWICTextureFromFile(
-                device, uploadCmdList_.Get(), nativePath.c_str(), texResource.GetAddressOf());
+                device, uploadCommands, nativePath.c_str(), texResource.GetAddressOf(), uploadResource.GetAddressOf());
             if (FAILED(hr) || !texResource) {
-                uploadCmdList_->Close();
+                uploads_.Cancel();
                 OutputDebugStringA("DxTextureManager::CreateTextureFromFile - WIC load failed.\n");
                 return -1;
             }
 
-            hr = uploadCmdList_->Close();
-            if (!HIKARI_DX_CHECK(hr, "Texture upload command recording")) return -1;
-
-            ID3D12CommandList* lists[] = { uploadCmdList_.Get() };
-            queue->ExecuteCommandLists(1, lists);
-
-            const uint64_t signalValue = uploadFenceValue_++;
-            if (!GFX::SignalAndWaitForGpuCompletion(device, queue, uploadFence_.Get(),
-                    signalValue, uploadFenceEvent_, "Texture upload")) return -1;
+            ID3D12Resource* retained[]{texResource.Get(), uploadResource.Get()};
+            if (!uploads_.Submit(retained, uploadResource->GetDesc().Width)) return -1;
 
             if (FAILED(hr) || !texResource) {
                 OutputDebugStringA("DxTextureManager::CreateTextureFromFile - WIC load failed.\n");
@@ -1194,7 +1124,7 @@ namespace HIKARI {
         {
             auto* device = context_.device;
             auto* queue = context_.queue;
-            if (!device || !queue || !uploadAllocator_ || !uploadCmdList_ || !uploadFence_ || !uploadFenceEvent_) {
+            if (!device || !queue) {
                 HIKARI_LOG_ERROR("[DxTextureManager][DDS][ERROR] invalid D3D12 context: " + path);
                 return -1;
             }
@@ -1255,13 +1185,11 @@ namespace HIKARI {
                 return -1;
             }
 
-            hr = uploadAllocator_->Reset();
-            if (!HIKARI_DX_CHECK(hr, "Texture upload command recording")) return -1;
-            hr = uploadCmdList_->Reset(uploadAllocator_.Get(), nullptr);
-            if (!HIKARI_DX_CHECK(hr, "Texture upload command recording")) return -1;
+            auto* uploadCommands = BeginUpload();
+            if (!uploadCommands) return -1;
 
             UpdateSubresources(
-                uploadCmdList_.Get(),
+                uploadCommands,
                 texResource.Get(),
                 uploadResource.Get(),
                 0,
@@ -1272,16 +1200,10 @@ namespace HIKARI {
                 texResource.Get(),
                 D3D12_RESOURCE_STATE_COPY_DEST,
                 D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
-            uploadCmdList_->ResourceBarrier(1, &barrier);
+            uploadCommands->ResourceBarrier(1, &barrier);
 
-            hr = uploadCmdList_->Close();
-            if (!HIKARI_DX_CHECK(hr, "Texture upload command recording")) return -1;
-            ID3D12CommandList* lists[] = { uploadCmdList_.Get() };
-            queue->ExecuteCommandLists(1, lists);
-
-            const uint64_t signalValue = uploadFenceValue_++;
-            if (!GFX::SignalAndWaitForGpuCompletion(device, queue, uploadFence_.Get(),
-                    signalValue, uploadFenceEvent_, "Texture upload")) return -1;
+            ID3D12Resource* retained[]{texResource.Get(), uploadResource.Get()};
+            if (!uploads_.Submit(retained, uploadResource->GetDesc().Width)) return -1;
 
             const DXGI_FORMAT srvFormat = ResolveSrvFormat(texResource->GetDesc().Format, colorSpace);
             const int handle = RegisterFromResourceAs(texResource.Get(), srvFormat);
@@ -1295,7 +1217,7 @@ namespace HIKARI {
         {
             auto* device = context_.device;
             auto* queue = context_.queue;
-            if (!device || !queue || !uploadAllocator_ || !uploadCmdList_ || !uploadFence_ || !uploadFenceEvent_) {
+            if (!device || !queue) {
                 HIKARI_LOG_ERROR("[DxTextureManager][TGA][ERROR] invalid D3D12 context: " + path);
                 return -1;
             }
@@ -1352,13 +1274,11 @@ namespace HIKARI {
                 return -1;
             }
 
-            hr = uploadAllocator_->Reset();
-            if (!HIKARI_DX_CHECK(hr, "Texture upload command recording")) return -1;
-            hr = uploadCmdList_->Reset(uploadAllocator_.Get(), nullptr);
-            if (!HIKARI_DX_CHECK(hr, "Texture upload command recording")) return -1;
+            auto* uploadCommands = BeginUpload();
+            if (!uploadCommands) return -1;
 
             UpdateSubresources(
-                uploadCmdList_.Get(),
+                uploadCommands,
                 texResource.Get(),
                 uploadResource.Get(),
                 0,
@@ -1369,16 +1289,10 @@ namespace HIKARI {
                 texResource.Get(),
                 D3D12_RESOURCE_STATE_COPY_DEST,
                 D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
-            uploadCmdList_->ResourceBarrier(1, &barrier);
+            uploadCommands->ResourceBarrier(1, &barrier);
 
-            hr = uploadCmdList_->Close();
-            if (!HIKARI_DX_CHECK(hr, "Texture upload command recording")) return -1;
-            ID3D12CommandList* lists[] = { uploadCmdList_.Get() };
-            queue->ExecuteCommandLists(1, lists);
-
-            const uint64_t signalValue = uploadFenceValue_++;
-            if (!GFX::SignalAndWaitForGpuCompletion(device, queue, uploadFence_.Get(),
-                    signalValue, uploadFenceEvent_, "Texture upload")) return -1;
+            ID3D12Resource* retained[]{texResource.Get(), uploadResource.Get()};
+            if (!uploads_.Submit(retained, uploadResource->GetDesc().Width)) return -1;
 
             const DXGI_FORMAT srvFormat = ResolveSrvFormat(texResource->GetDesc().Format, colorSpace);
             const int handle = RegisterFromResourceAs(texResource.Get(), srvFormat);
@@ -1397,7 +1311,7 @@ namespace HIKARI {
         {
             auto* device = context_.device;
             auto* queue = context_.queue;
-            if (!device || !queue || !uploadAllocator_ || !uploadCmdList_ || !uploadFence_ || !uploadFenceEvent_) {
+            if (!device || !queue) {
                 HIKARI_LOG_ERROR("[DxTextureManager][Cubemap][ERROR] LoadCubemap received invalid D3D12 context.");
                 return -1;
             }
@@ -1459,26 +1373,18 @@ namespace HIKARI {
                 return -1;
             }
 
-            hr = uploadAllocator_->Reset();
-            if (!HIKARI_DX_CHECK(hr, "Texture upload command recording")) return -1;
-            hr = uploadCmdList_->Reset(uploadAllocator_.Get(), nullptr);
-            if (!HIKARI_DX_CHECK(hr, "Texture upload command recording")) return -1;
+            auto* uploadCommands = BeginUpload();
+            if (!uploadCommands) return -1;
 
-            UpdateSubresources(uploadCmdList_.Get(), texResource.Get(), uploadResource.Get(), 0, 0, static_cast<UINT>(subresources.size()), subresources.data());
+            UpdateSubresources(uploadCommands, texResource.Get(), uploadResource.Get(), 0, 0, static_cast<UINT>(subresources.size()), subresources.data());
             auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
                 texResource.Get(),
                 D3D12_RESOURCE_STATE_COPY_DEST,
                 D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
-            uploadCmdList_->ResourceBarrier(1, &barrier);
+            uploadCommands->ResourceBarrier(1, &barrier);
 
-            hr = uploadCmdList_->Close();
-            if (!HIKARI_DX_CHECK(hr, "Texture upload command recording")) return -1;
-            ID3D12CommandList* lists[] = { uploadCmdList_.Get() };
-            queue->ExecuteCommandLists(1, lists);
-
-            const uint64_t signalValue = uploadFenceValue_++;
-            if (!GFX::SignalAndWaitForGpuCompletion(device, queue, uploadFence_.Get(),
-                    signalValue, uploadFenceEvent_, "Texture upload")) return -1;
+            ID3D12Resource* retained[]{texResource.Get(), uploadResource.Get()};
+            if (!uploads_.Submit(retained, uploadResource->GetDesc().Width)) return -1;
 
             const DXGI_FORMAT srvFormat = ResolveSrvFormat(texResource->GetDesc().Format, colorSpace);
             const int handle = RegisterCubeFromResourceAs(texResource.Get(), srvFormat);
@@ -1498,7 +1404,7 @@ namespace HIKARI {
         {
             auto* device = context_.device;
             auto* queue = context_.queue;
-            if (!device || !queue || !uploadAllocator_ || !uploadCmdList_ || !uploadFence_ || !uploadFenceEvent_ ||
+            if (!device || !queue ||
                 width == 0 || height == 0 || rgbaPixels == nullptr) {
                 HIKARI_LOG_ERROR("[DxTextureManager][Generated][ERROR] invalid generated texture request: " + debugName);
                 return -1;
@@ -1615,13 +1521,11 @@ namespace HIKARI {
                 return -1;
             }
 
-            hr = uploadAllocator_->Reset();
-            if (!HIKARI_DX_CHECK(hr, "Texture upload command recording")) return -1;
-            hr = uploadCmdList_->Reset(uploadAllocator_.Get(), nullptr);
-            if (!HIKARI_DX_CHECK(hr, "Texture upload command recording")) return -1;
+            auto* uploadCommands = BeginUpload();
+            if (!uploadCommands) return -1;
 
             UpdateSubresources(
-                uploadCmdList_.Get(),
+                uploadCommands,
                 texResource.Get(),
                 uploadResource.Get(),
                 0,
@@ -1632,16 +1536,10 @@ namespace HIKARI {
                 texResource.Get(),
                 D3D12_RESOURCE_STATE_COPY_DEST,
                 D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
-            uploadCmdList_->ResourceBarrier(1, &barrier);
+            uploadCommands->ResourceBarrier(1, &barrier);
 
-            hr = uploadCmdList_->Close();
-            if (!HIKARI_DX_CHECK(hr, "Texture upload command recording")) return -1;
-            ID3D12CommandList* lists[] = { uploadCmdList_.Get() };
-            queue->ExecuteCommandLists(1, lists);
-
-            const uint64_t signalValue = uploadFenceValue_++;
-            if (!GFX::SignalAndWaitForGpuCompletion(device, queue, uploadFence_.Get(),
-                    signalValue, uploadFenceEvent_, "Texture upload")) return -1;
+            ID3D12Resource* retained[]{texResource.Get(), uploadResource.Get()};
+            if (!uploads_.Submit(retained, uploadResource->GetDesc().Width)) return -1;
 
             const int handle = RegisterFromResourceAs(
                 texResource.Get(), generatedFormat);
@@ -1664,8 +1562,7 @@ namespace HIKARI {
         {
             auto* device = context_.device;
             auto* queue = context_.queue;
-            if (!device || !queue || !uploadAllocator_ || !uploadCmdList_ ||
-                !uploadFence_ || !uploadFenceEvent_) {
+            if (!device || !queue) {
                 HIKARI_LOG_ERROR(
                     "[DxTextureManager][GeneratedCube][ERROR] invalid generated cubemap request: " +
                     debugName);
@@ -1729,13 +1626,11 @@ namespace HIKARI {
                 return -1;
             }
 
-            hr = uploadAllocator_->Reset();
-            if (!HIKARI_DX_CHECK(hr, "Texture upload command recording")) return -1;
-            hr = uploadCmdList_->Reset(uploadAllocator_.Get(), nullptr);
-            if (!HIKARI_DX_CHECK(hr, "Texture upload command recording")) return -1;
+            auto* uploadCommands = BeginUpload();
+            if (!uploadCommands) return -1;
 
             UpdateSubresources(
-                uploadCmdList_.Get(),
+                uploadCommands,
                 texResource.Get(),
                 uploadResource.Get(),
                 0,
@@ -1746,16 +1641,10 @@ namespace HIKARI {
                 texResource.Get(),
                 D3D12_RESOURCE_STATE_COPY_DEST,
                 D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
-            uploadCmdList_->ResourceBarrier(1, &barrier);
+            uploadCommands->ResourceBarrier(1, &barrier);
 
-            hr = uploadCmdList_->Close();
-            if (!HIKARI_DX_CHECK(hr, "Texture upload command recording")) return -1;
-            ID3D12CommandList* lists[] = { uploadCmdList_.Get() };
-            queue->ExecuteCommandLists(1, lists);
-
-            const uint64_t signalValue = uploadFenceValue_++;
-            if (!GFX::SignalAndWaitForGpuCompletion(device, queue, uploadFence_.Get(),
-                    signalValue, uploadFenceEvent_, "Texture upload")) return -1;
+            ID3D12Resource* retained[]{texResource.Get(), uploadResource.Get()};
+            if (!uploads_.Submit(retained, uploadResource->GetDesc().Width)) return -1;
 
             const int handle = RegisterCubeFromResourceAs(
                 texResource.Get(), generatedFormat);

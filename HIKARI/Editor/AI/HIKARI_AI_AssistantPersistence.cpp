@@ -5,8 +5,9 @@ namespace HIKARI::EDITOR {
 void AiAssistantSession::FlushConversation() {
     if (!conversationDirty_.exchange(false) || conversationFolder_.empty() || conversationId_.empty()) return;
     std::vector<AI_ASSISTANT::AiChatMessage> messages;
-    { std::lock_guard<std::mutex> lock(messageMutex_); messages=messages_; }
-    if (!AI_ASSISTANT::SaveAiConversation(conversationFolder_,conversationId_,messages,storageError_))
+    AI_ASSISTANT::AiTaskCheckpoint checkpoint;
+    { std::lock_guard<std::mutex> lock(messageMutex_); messages=messages_; checkpoint=taskCheckpoint_; }
+    if (!AI_ASSISTANT::SaveAiConversation(conversationFolder_,conversationId_,messages,storageError_, &checkpoint))
         conversationDirty_.store(true);
 }
 void AiAssistantSession::SwitchProject(const std::filesystem::path& libraryRoot) {
@@ -23,7 +24,7 @@ void AiAssistantSession::UpdateConversationStorage() {
         conversationFolder_=pendingConversationFolder_;
         projectSwitchPending_=false;
         conversationId_.clear();
-        { std::lock_guard<std::mutex> lock(messageMutex_); messages_.clear(); }
+        { std::lock_guard<std::mutex> lock(messageMutex_); messages_.clear(); taskCheckpoint_ = {}; }
         stopRequested_.store(false);
         const auto saved=Conversations();
         if (saved.empty() || !SelectConversation(saved.front().id)) NewConversation();
@@ -35,17 +36,18 @@ bool AiAssistantSession::NewConversation() {
     if (IsBusy() || projectSwitchPending_) return false;
     FlushConversation();
     conversationId_=GenerateAssetGuid().value;
-    { std::lock_guard<std::mutex> lock(messageMutex_); messages_.clear(); }
+    { std::lock_guard<std::mutex> lock(messageMutex_); messages_.clear(); taskCheckpoint_ = {}; }
     storageError_.clear();
     return true;
 }
 bool AiAssistantSession::SelectConversation(const std::string& id) {
     if (IsBusy() || projectSwitchPending_) return false;
     std::vector<AI_ASSISTANT::AiChatMessage> loaded;
-    if (!AI_ASSISTANT::LoadAiConversation(conversationFolder_,id,loaded,storageError_)) return false;
+    AI_ASSISTANT::AiTaskCheckpoint checkpoint;
+    if (!AI_ASSISTANT::LoadAiConversation(conversationFolder_,id,loaded,storageError_, &checkpoint)) return false;
     FlushConversation();
     conversationId_=id;
-    { std::lock_guard<std::mutex> lock(messageMutex_); messages_=std::move(loaded); }
+    { std::lock_guard<std::mutex> lock(messageMutex_); messages_=std::move(loaded); taskCheckpoint_=std::move(checkpoint); }
     return true;
 }
 std::vector<AI_ASSISTANT::AiConversationSummary> AiAssistantSession::Conversations() const {

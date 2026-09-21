@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 #include "Editor/Scene/Inspector/HIKARI_SceneInspectorPanel.h"
 
@@ -54,7 +55,7 @@ void SceneInspectorPanel::DrawObjectContextMenu(
   SceneObjectData *target =
       selectionSync.FindDocumentObjectByRuntime(scene, &object);
   if (target == nullptr) {
-    ImGui::TextDisabled("Object no longer exists");
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.object.no.longer.exists.6678ef").c_str());
     return;
   }
 
@@ -88,23 +89,23 @@ void SceneInspectorPanel::DrawObjectContextMenu(
   }
 
   ImGui::Separator();
-  if (ImGui::BeginMenu("Edit")) {
-    if (ImGui::MenuItem("Focus", "F")) {
+  if (ImGui::BeginMenu(TEXT::LocalizeWindow("menu.edit", "Edit").c_str())) {
+    if (ImGui::MenuItem(TEXT::LocalizeWindow("ui.vfx.text.Focus", "Focus").c_str(), "F")) {
       focusObjectRequest_ = target->id;
     }
-    if (ImGui::MenuItem("Add Component...", nullptr, false,
+    if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.add.component.08ba89", "Add Component...").c_str(), nullptr, false,
                         !target->editorLocked)) {
       openComponentPicker_ = true;
     }
-    if (ImGui::MenuItem("Collision...", nullptr, false,
+    if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.collision.8d538c", "Collision...").c_str(), nullptr, false,
                         !target->editorLocked)) {
       collisionAuthoringDialog_.Open(target->id);
     }
     ImGui::EndMenu();
   }
 
-  if (ImGui::BeginMenu("Prefab")) {
-    if (ImGui::MenuItem("Save as Prefab...", nullptr, false,
+  if (ImGui::BeginMenu(TEXT::LocalizeWindow("ui.sceneCreation.prefab", "Prefab").c_str())) {
+    if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.save.as.prefab.5cb805", "Save as Prefab...").c_str(), nullptr, false,
                         commands.CanExecute(SceneObjectCommandId::SaveAsPrefab,
                                             scene, context))) {
       prefabObjectId_ = target->id;
@@ -115,7 +116,7 @@ void SceneInspectorPanel::DrawObjectContextMenu(
     const std::vector<std::string> prefabIds = commands.ListPrefabIds();
     if (!prefabIds.empty()) {
       ImGui::Separator();
-      if (ImGui::BeginMenu("Instantiate")) {
+      if (ImGui::BeginMenu(TEXT::LocalizeWindow("editor.ui.instantiate.bad193", "Instantiate").c_str())) {
         for (const std::string &prefabId : prefabIds) {
           if (ImGui::MenuItem(prefabId.c_str())) {
             commands.Execute(SceneObjectCommandId::InstantiatePrefab, scene,
@@ -129,10 +130,10 @@ void SceneInspectorPanel::DrawObjectContextMenu(
   }
 
   if (HasDocumentComponent(*target, "CameraComponent") &&
-      ImGui::BeginMenu("Camera")) {
+      ImGui::BeginMenu(TEXT::LocalizeWindow("ui.inspector.category.camera", "Camera").c_str())) {
     const bool isDefault =
         scene.GetSceneDocument().camera.defaultCameraObjectId == target->id;
-    if (ImGui::MenuItem("Set as Game Default", nullptr, isDefault,
+    if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.set.as.game.default.47a702", "Set as Game Default").c_str(), nullptr, isDefault,
                         !isDefault)) {
       if (scene.SetGameDefaultCamera(target->id)) {
         context.sceneDirty = true;
@@ -141,21 +142,21 @@ void SceneInspectorPanel::DrawObjectContextMenu(
     const bool previewing =
         scene.IsEditorCameraPreviewActive() &&
         scene.GetEditorCameraPreviewObjectId() == target->id;
-    if (ImGui::MenuItem(previewing ? "Exit Camera View"
-                                   : "View Through Camera")) {
+    if (ImGui::MenuItem(previewing ? TEXT::LocalizeCStr("editor.ui.exit.camera.view.32714d")
+                                   : TEXT::LocalizeCStr("editor.ui.view.through.camera.2e4994"))) {
       if (previewing) {
         scene.EndEditorCameraPreview();
       } else {
         (void)scene.BeginEditorCameraPreview(target->id);
       }
     }
-    if (ImGui::MenuItem("Snap Camera to Current View", nullptr, false,
+    if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.snap.camera.to.current.view.aab29b", "Snap Camera to Current View").c_str(), nullptr, false,
                         !target->editorLocked && !target->parent.has_value())) {
       if (scene.SnapCameraObjectToEditorView(target->id)) {
         context.sceneDirty = true;
       }
     }
-    if (ImGui::MenuItem("Open Cinematics Workspace")) {
+    if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.open.cinematics.workspace.11dde1", "Open Cinematics Workspace").c_str())) {
       openCinematicsWorkspaceCameraRequest_ = target->id;
     }
     ImGui::EndMenu();

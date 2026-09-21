@@ -11,20 +11,7 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
     namespace {
         using Json = nlohmann::json;
 
-        bool ReadVec4(const Json& node, MATH::Vec4& outValue) {
-            if (!node.is_array() || node.size() != 4u ||
-                !node[0].is_number() || !node[1].is_number() ||
-                !node[2].is_number() || !node[3].is_number()) {
-                return false;
-            }
-            outValue = {
-                node[0].get<float>(),
-                node[1].get<float>(),
-                node[2].get<float>(),
-                node[3].get<float>(),
-            };
-            return true;
-        }
+
 
         bool ReadUint32(
             const Json& node,

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <chrono>
 #include <filesystem>
 #include <string>
 
@@ -11,7 +12,10 @@ namespace HIKARI::EDITOR {
     enum class ProjectOpenWorkflowState {
         Idle,
         WaitingForEditorExit,
+        Checking,
         Building,
+        Starting,
+        Cancelled,
         Failed,
     };
 
@@ -39,6 +43,10 @@ namespace HIKARI::EDITOR {
             uint32_t processId,
             std::string& outMessage);
         void Update();
+        void Cancel() noexcept;
+        bool Retry(std::string& message);
+        bool OpenWithoutModule(std::string& message);
+        const std::string& GetLogTail() const noexcept { return logTail_; }
         void Shutdown() noexcept;
 
         ProjectOpenWorkflowState GetState() const noexcept;
@@ -62,6 +70,8 @@ namespace HIKARI::EDITOR {
         void CloseBuildProcess() noexcept;
         void CancelBuildProcess() noexcept;
         void CloseWaitProcess() noexcept;
+        void CloseEditorWait() noexcept;
+        void PollBuildLog();
 
         std::filesystem::path runtimeRoot_{};
         std::filesystem::path projectRoot_{};
@@ -72,6 +82,11 @@ namespace HIKARI::EDITOR {
         HANDLE buildProcess_ = nullptr;
         HANDLE buildJob_ = nullptr;
         HANDLE waitProcess_ = nullptr;
+        HANDLE editorProcess_ = nullptr;
+        HANDLE readyEvent_ = nullptr;
+        std::wstring readyEventName_;
+        std::string logTail_;
+        std::chrono::steady_clock::time_point logPoll_{}, launchStarted_{};
         ProjectOpenWorkflowState state_ =
             ProjectOpenWorkflowState::Idle;
         ProjectOpenWorkflowRequest request_ =

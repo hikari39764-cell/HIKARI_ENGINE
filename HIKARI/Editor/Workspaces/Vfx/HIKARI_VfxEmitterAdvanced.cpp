@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 
 #include <array>
@@ -15,7 +16,7 @@
 namespace HIKARI::EDITOR {
     void VfxWorkspaceController::DrawEmitterAdvanced(AssetDatabase& database, const VFX::VfxEmitterData& emitter) {
 #if defined(HIKARI_WITH_EDITOR)
-        ImGui::TextWrapped("Layer ID: %s", emitter.id.c_str());
+        ImGui::TextWrapped(TEXT::Localize("editor.ui.layer.id.s.e916c5").c_str(), emitter.id.c_str());
         VfxInspectorPropertyEditor orderEditor(*this, database, emitter.id, statusMessage_);
         orderEditor.Unsigned(VfxUiText("Sibling order").c_str(), "order", emitter.order);
         ImGui::SeparatorText(VfxUiText("Attachment / Follow").c_str());
@@ -72,8 +73,7 @@ namespace HIKARI::EDITOR {
                 VfxUiText("No special output profiles. Add one to expose the typed renderer profile.").c_str());
         } else if (selection_.kind ==
                    VfxWorkspaceSelectionKind::SpecialOutput) {
-            ImGui::TextDisabled(
-                "Editing selected special output profile: %s",
+            ImGui::TextDisabled(TEXT::Localize("editor.ui.editing.selected.special.output.profile.s.008a05").c_str(),
                 selection_.targetId.c_str());
         }
         bool removeOutput = false;

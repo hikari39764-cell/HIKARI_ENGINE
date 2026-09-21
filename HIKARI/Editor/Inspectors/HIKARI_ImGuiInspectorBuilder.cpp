@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Inspectors/HIKARI_ImGuiInspectorBuilder.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 
@@ -190,7 +191,7 @@ namespace HIKARI {
             return false;
         }
         if (inputService == nullptr) {
-            ImGui::TextDisabled("Input action map unavailable");
+            ImGui::TextDisabled(TEXT::Localize("editor.ui.input.action.map.unavailable.2edb89").c_str());
             return false;
         }
         return EDITOR::DrawInputActionField(
@@ -459,11 +460,11 @@ namespace HIKARI {
         if (ImGui::BeginCombo("##Value", previewText.c_str())) {
             static char searchBuffer[128]{};
             ImGui::SetNextItemWidth(-1.0f);
-            ImGui::InputText("Search##AssetPicker", searchBuffer, sizeof(searchBuffer));
+            ImGui::InputText(TEXT::LocalizeWindow("editor.ui.search.bce064", "Search##AssetPicker").c_str(), searchBuffer, sizeof(searchBuffer));
             const std::string search = TEXT::ToLowerAsciiCopy(searchBuffer);
 
             const bool isNoneSelected = value.empty();
-            if (ImGui::Selectable("<none>", isNoneSelected)) {
+            if (ImGui::Selectable(TEXT::LocalizeWindow("ui.common.none", "<none>").c_str(), isNoneSelected)) {
                 value.clear();
                 changed = true;
             }
@@ -472,7 +473,7 @@ namespace HIKARI {
             }
 
             if (entries.empty()) {
-                ImGui::TextDisabled("No matching assets");
+                ImGui::TextDisabled(TEXT::Localize("editor.ui.no.matching.assets.be534d").c_str());
             }
 
             for (const AssetPickerEntry& entry : entries) {
@@ -513,7 +514,7 @@ namespace HIKARI {
                     current->state.c_str(),
                     ShortGuid(current->id).c_str());
             } else {
-                ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "Unresolved asset id: %s", value.c_str());
+                ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f),TEXT::Localize("editor.ui.unresolved.asset.id.s.4d385d").c_str(), value.c_str());
             }
         }
 
@@ -548,12 +549,12 @@ namespace HIKARI {
         const std::string previewText = value.empty() ? std::string("<none>") : value;
         if (ImGui::BeginCombo("##Value", previewText.c_str())) {
             // Scene 鬩包ｽｷ驕假ｽｻ陷亥現繝ｻ Scene Asset 邵ｺ・ｮ GUID 邵ｺ・ｧ鬩包ｽｸ邵ｺ・ｶ邵ｲ繝ｻ
-            if (ImGui::Selectable("<none>", value.empty())) {
+            if (ImGui::Selectable(TEXT::LocalizeWindow("ui.common.none", "<none>").c_str(), value.empty())) {
                 value.clear();
                 changed = true;
             }
             if (sceneRecords.empty()) {
-                ImGui::TextDisabled("No scene assets");
+                ImGui::TextDisabled(TEXT::Localize("editor.ui.no.scene.assets.e5eee2").c_str());
             }
             for (const AssetRecord* record : sceneRecords) {
                 if (!record || !record->guid.IsValid()) {
@@ -583,7 +584,7 @@ namespace HIKARI {
 
         if (!value.empty()) {
             ImGui::SameLine();
-            if (ImGui::SmallButton("Copy")) {
+            if (ImGui::SmallButton(TEXT::LocalizeWindow("ui.materialGraph.copy", "Copy").c_str())) {
                 ImGui::SetClipboardText(value.c_str());
             }
         }
@@ -633,7 +634,7 @@ namespace HIKARI {
                     std::to_string(value.value) + "]");
         bool changed = false;
         if (ImGui::BeginCombo("##Value", preview.c_str())) {
-            if (ImGui::Selectable("<none>", value.value == 0)) {
+            if (ImGui::Selectable(TEXT::LocalizeWindow("ui.common.none", "<none>").c_str(), value.value == 0)) {
                 value = {};
                 changed = true;
             }

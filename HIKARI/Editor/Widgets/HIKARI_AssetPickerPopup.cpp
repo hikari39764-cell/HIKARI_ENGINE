@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "HIKARI_AssetPickerPopup.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 
@@ -94,12 +95,12 @@ namespace HIKARI::EDITOR {
             return false;
         }
 
-        ImGui::Text("Select %s", ToAssetTypeText(requiredType));
+        ImGui::Text(TEXT::Localize("editor.ui.select.s.95d86c").c_str(), ToAssetTypeText(requiredType));
         ImGui::SetNextItemWidth(-1.0f);
-        ImGui::InputTextWithHint("##AssetPickerSearch", "Search name, path, GUID...", state.searchBuffer.data(), state.searchBuffer.size());
+        ImGui::InputTextWithHint("##AssetPickerSearch",TEXT::Localize("editor.ui.search.name.path.guid.dc5276").c_str(), state.searchBuffer.data(), state.searchBuffer.size());
         ImGui::Separator();
 
-        if (ImGui::Selectable("<none>", inOutGuid.empty())) {
+        if (ImGui::Selectable(TEXT::LocalizeWindow("ui.common.none", "<none>").c_str(), inOutGuid.empty())) {
             inOutGuid.clear();
             changed = true;
             ImGui::CloseCurrentPopup();
@@ -135,8 +136,8 @@ namespace HIKARI::EDITOR {
         int visibleCount = 0;
         if (ImGui::BeginChild(
                 "##AssetPickerFolders", ImVec2(190.0f, 310.0f), true)) {
-            ImGui::TextDisabled("FOLDERS");
-            if (ImGui::Selectable("All Assets", state.selectedFolder.empty())) {
+            ImGui::TextDisabled(TEXT::Localize("editor.ui.folders.d10bdc").c_str());
+            if (ImGui::Selectable(TEXT::LocalizeWindow("editor.ui.all.assets.69d4af", "All Assets").c_str(), state.selectedFolder.empty())) {
                 state.selectedFolder.clear();
             }
             for (const std::string& folder : folders) {
@@ -177,8 +178,7 @@ namespace HIKARI::EDITOR {
                     }
                 }
                 if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip(
-                        "%s\n%s\nImporter: %s\nGUID: %s",
+                    ImGui::SetTooltip(TEXT::Localize("editor.ui.s.n.s.nimporter.s.nguid.s.2e6b04").c_str(),
                         entry.record->displayName.c_str(),
                         entry.record->sourcePath.generic_string().c_str(),
                         entry.record->meta.importerId.empty() ? "<none>" : entry.record->meta.importerId.c_str(),
@@ -190,7 +190,7 @@ namespace HIKARI::EDITOR {
                 ImGui::PopID();
             }
             if (visibleCount == 0) {
-                ImGui::TextDisabled("No matching assets.");
+                ImGui::TextDisabled(TEXT::Localize("editor.ui.no.matching.assets.5560dd").c_str());
             }
         }
         ImGui::EndChild();

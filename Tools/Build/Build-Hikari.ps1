@@ -65,7 +65,8 @@ try {
             throw "HIKARI host build failed for preset '$Preset'."
         }
 
-        $sdkRoot = Join-Path $buildDirectory 'bin\Sdk'
+        $sdkRelative = if ($Preset -eq 'game-shipping') { 'bin\Sdk' } else { 'bin\Runtime\Sdk' }
+        $sdkRoot = Join-Path $buildDirectory $sdkRelative
         $projectBuildScript = Join-Path `
             $sdkRoot 'Tools\Build-HikariProject.ps1'
         if (-not (Test-Path -LiteralPath $projectBuildScript -PathType Leaf)) {

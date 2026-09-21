@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Projects/HIKARI_ProjectCreationService.h"
 
 #include <ShlObj.h>
@@ -52,30 +53,30 @@ namespace {
         std::string& outMessage) {
 
         if (name.empty()) {
-            outMessage = "Project name must not be empty.";
+            outMessage = TEXT::Localize("launcher.nameEmpty");
             return false;
         }
         if (name == "." || name == "..") {
-            outMessage = "Project name is invalid.";
+            outMessage = TEXT::Localize("launcher.nameInvalid");
             return false;
         }
         if (name.back() == ' ' || name.back() == '.') {
             outMessage =
-                "Project name must not end with a space or period.";
+                TEXT::Localize("launcher.nameEnding");
             return false;
         }
         constexpr std::string_view invalidCharacters{
             "<>:\"/\\|?*"
         };
-        if (name.find_first_of(invalidCharacters) !=
+        if (std::any_of(name.begin(), name.end(), [](unsigned char c) {return c < 32;}) || name.find_first_of(invalidCharacters) !=
             std::string::npos) {
             outMessage =
-                "Project name contains a Windows path character.";
+                TEXT::Localize("launcher.nameCharacters");
             return false;
         }
-        if (IsWindowsReservedName(name)) {
+        if (IsWindowsReservedName(name.substr(0, name.find('.')))) {
             outMessage =
-                "Project name is reserved by Windows.";
+                TEXT::Localize("launcher.nameReserved");
             return false;
         }
         return true;
@@ -319,20 +320,29 @@ namespace {
         return projectRoot;
     }
 
+    bool ValidateProjectCreation(const ProjectCreationRequest& request,
+        std::filesystem::path& target, std::string& message) {
+        target.clear();
+        if (!ValidateProjectName(request.name, message)) return false;
+        if (request.parentDirectory.empty() || !request.parentDirectory.is_absolute()) {
+            message = TEXT::Localize("launcher.absoluteParent"); return false;
+        }
+        target = (request.parentDirectory / TEXT::PathFromUtf8(request.name)).lexically_normal();
+        std::error_code ec;
+        if (std::filesystem::exists(target, ec) || ec) {
+            message = TEXT::Localize("launcher.targetExists"); return false;
+        }
+        message.clear(); return true;
+    }
+
     bool CreateProject(
         const ProjectCreationRequest& request,
         ProjectCreationResult& outResult,
         std::string& outMessage) {
 
         outResult = {};
-        if (!ValidateProjectName(request.name, outMessage)) {
-            return false;
-        }
-        if (request.parentDirectory.empty()) {
-            outMessage =
-                "Project parent directory must not be empty.";
-            return false;
-        }
+        std::filesystem::path validatedTarget;
+        if (!ValidateProjectCreation(request, validatedTarget, outMessage)) return false;
 
         std::error_code ec{};
         std::filesystem::create_directories(

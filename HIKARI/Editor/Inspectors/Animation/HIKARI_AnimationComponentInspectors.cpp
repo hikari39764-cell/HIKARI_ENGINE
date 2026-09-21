@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Scene/Components/HIKARI_AnimationStateMachineComponent.h"
 #include "Scene/Components/HIKARI_AnimatorComponent.h"
 
@@ -82,7 +83,7 @@ namespace HIKARI {
             ? "<none>"
             : clip_.fallbackName.c_str();
         if (modelAsset != nullptr && !modelAsset->animations.empty()) {
-            if (ImGui::BeginCombo("Clip From Model", preview)) {
+            if (ImGui::BeginCombo(TEXT::LocalizeWindow("editor.ui.clip.from.model.3dbc63", "Clip From Model").c_str(), preview)) {
                 for (size_t i = 0; i < modelAsset->animations.size(); ++i) {
                     const AnimationClip& clip = modelAsset->animations[i];
                     const bool selected =
@@ -106,8 +107,7 @@ namespace HIKARI {
                 ImGui::EndCombo();
             }
         } else {
-            ImGui::TextUnformatted(
-                "Animation Clip: <no clips on current model>");
+            ImGui::TextUnformatted(TEXT::Localize("editor.ui.animation.clip.no.clips.on.current.model.e981b1").c_str());
         }
 
         if (currentClip != nullptr) {
@@ -115,44 +115,42 @@ namespace HIKARI {
             const float normalized = duration > 0.0f
                 ? std::clamp(timeSec_ / duration, 0.0f, 1.0f)
                 : 0.0f;
-            ImGui::Text("Current Clip Duration: %.2f", duration);
-            ImGui::Text("Progress: %.2f / %.2f", timeSec_, duration);
-            ImGui::Text("Normalized Time: %.3f", normalized);
+            ImGui::Text(TEXT::Localize("editor.ui.current.clip.duration.2f.619417").c_str(), duration);
+            ImGui::Text(TEXT::Localize("editor.ui.progress.2f.2f.74a7e9").c_str(), timeSec_, duration);
+            ImGui::Text(TEXT::Localize("editor.ui.normalized.time.3f.0823a1").c_str(), normalized);
             ImGui::ProgressBar(normalized);
         } else if (!clip_.fallbackName.empty()) {
             ImGui::TextColored(
-                ImVec4(1.0f, 0.5f, 0.5f, 1.0f),
-                "Clip not found in current model");
+                ImVec4(1.0f, 0.5f, 0.5f, 1.0f),TEXT::Localize("editor.ui.clip.not.found.in.current.model.7abe27").c_str());
         }
 
         if (IsTransitioning()) {
-            ImGui::Text(
-                "Blend: %.0f%%",
+            ImGui::Text(TEXT::Localize("editor.ui.blend.0f.67edcb").c_str(),
                 GetTransitionWeight() * 100.0f);
             ImGui::ProgressBar(GetTransitionWeight());
         }
 
-        if (ImGui::Button("Play")) {
+        if (ImGui::Button(TEXT::LocalizeWindow("ui.vfx.text.Play", "Play").c_str())) {
             PlayCurrent(true);
         }
         ImGui::SameLine();
-        if (ImGui::Button("Pause")) {
+        if (ImGui::Button(TEXT::LocalizeWindow("ui.vfx.text.Pause", "Pause").c_str())) {
             Pause();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Resume")) {
+        if (ImGui::Button(TEXT::LocalizeWindow("ui.vfx.text.Resume", "Resume").c_str())) {
             Resume();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Stop")) {
+        if (ImGui::Button(TEXT::LocalizeWindow("ai.task.stop", "Stop").c_str())) {
             Stop();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Reset Time")) {
+        if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.reset.time.1bbc50", "Reset Time").c_str())) {
             ResetTime();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Play Once")) {
+        if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.play.once.fcbde2", "Play Once").c_str())) {
             PlayOnce(clip_.fallbackName, true);
         }
     }
@@ -211,20 +209,17 @@ namespace HIKARI {
             ? service->Find(owner->GetRuntimeHandle())
             : nullptr;
         if (instance == nullptr) {
-            ImGui::TextDisabled("Runtime state is not active");
+            ImGui::TextDisabled(TEXT::Localize("editor.ui.runtime.state.is.not.active.f94347").c_str());
             return;
         }
         const auto& snapshot = instance->GetSnapshot();
-        ImGui::Text(
-            "State: %s",
+        ImGui::Text(TEXT::Localize("ui.quality.stateFormat").c_str(),
             snapshot.currentStateName.empty()
                 ? "<none>"
                 : snapshot.currentStateName.c_str());
-        ImGui::Text(
-            "Transitions: %llu",
+        ImGui::Text(TEXT::Localize("editor.ui.transitions.llu.759fe8").c_str(),
             static_cast<unsigned long long>(snapshot.transitionCount));
-        ImGui::Text(
-            "Motion: %s",
+        ImGui::Text(TEXT::Localize("editor.ui.motion.s.d81c1c").c_str(),
             snapshot.primaryClipName.empty()
                 ? "<none>"
                 : snapshot.primaryClipName.c_str());

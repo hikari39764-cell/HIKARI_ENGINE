@@ -91,6 +91,7 @@ namespace HIKARI::EDITOR {
 
     class VfxWorkspaceController final {
     public:
+        bool HasInteractiveEdit() const { return layerGizmoEditing_ || timelineEdit_.baseline.has_value() || !viewportHandle_.id.empty(); }
         bool EditLayerTiming(std::string_view layerId, VfxLayerTimeEdit mode, float deltaSeconds, std::string& message);
         bool MoveLayerKeys(std::span<const std::string> ids, float deltaSeconds, std::string& message);
         bool SetLayerParameterKey(std::string_view layerId, std::string_view targetId,

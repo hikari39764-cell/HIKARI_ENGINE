@@ -1,6 +1,8 @@
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 
 #include "Core/Text/HIKARI_Localization.h"
+#include "Editor/Style/HIKARI_EditorGlyphs.h"
+#include "Editor/Style/HIKARI_EditorWidgets.h"
 
 #include <array>
 #include <string_view>
@@ -92,16 +94,20 @@ namespace HIKARI::EDITOR {
                 Page{VfxEmitterInspectorPage::Advanced, "ui.vfx.layer.advanced", false}
             };
             auto requested = current;
-            if (ImGui::BeginCombo("##page", TEXT::Localize(
-                    current == VfxEmitterInspectorPage::Common ? pages[0].label :
-                    current == VfxEmitterInspectorPage::Render ? pages[1].label :
-                    current == VfxEmitterInspectorPage::Spawn ? pages[2].label :
-                    current == VfxEmitterInspectorPage::Position ? pages[3].label : pages[4].label).c_str())) {
-                for (const auto& page : pages) {
-                    if (page.particlesOnly && !particles) continue;
-                    if (ImGui::Selectable(TEXT::Localize(page.label).c_str(), current == page.id)) requested = page.id;
-                }
-                ImGui::EndCombo();
+            constexpr EditorGlyph icons[]{EditorGlyph::Model, EditorGlyph::Material,
+                EditorGlyph::Vfx, EditorGlyph::Translate, EditorGlyph::Settings};
+            bool first = true;
+            for (size_t i = 0; i < pages.size(); ++i) {
+                const auto& page = pages[i];
+                if (page.particlesOnly && !particles) continue;
+                if (!first) NextToolbarItem();
+                first = false;
+                if (IconToggleButton(icons[i], page.label, current == page.id, {28,28},
+                        TEXT::LocalizeCStr(page.label))) requested = page.id;
+            }
+            for (const auto& page : pages) if (page.id == current) {
+                ImGui::TextUnformatted(TEXT::LocalizeCStr(page.label));
+                break;
             }
             ImGui::Separator();
             return requested;

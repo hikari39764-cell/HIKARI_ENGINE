@@ -43,7 +43,7 @@ namespace HIKARI {
         template<class T, class... Args>
         T* AddComponent(Args&&... args) {
             static_assert(std::is_base_of_v<IComponent, T>, "T must derive from IComponent");
-            auto component = std::make_unique<T>(std::forward<Args>(args)...);
+            auto component = IComponent::Create<T>(std::forward<Args>(args)...);
             return static_cast<T*>(
                 AddComponentInstance(std::move(component)));
         }
@@ -115,6 +115,7 @@ namespace HIKARI {
             (std::numeric_limits<size_t>::max)();
 
         void DetachComponents();
+        void RefreshExecutionCapabilities();
         void SetOwnerWorld(World* world);
         void SetRuntimeHandle(RuntimeObjectHandle handle) noexcept;
         bool SetParentInternal(GameObject* parent);
@@ -135,6 +136,9 @@ namespace HIKARI {
         bool renderStateDirty_ = false;
         bool destroying_ = false;
         bool active_ = true;
+        bool executionCapabilitiesDirty_ = true;
+        bool hasUpdateWork_ = false;
+        bool hasRenderWork_ = false;
     };
 
 } // namespace HIKARI

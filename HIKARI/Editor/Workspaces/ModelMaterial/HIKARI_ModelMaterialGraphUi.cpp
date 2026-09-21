@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphUi.h"
 
 #include "Assets/Material/Graph/HIKARI_MaterialGraphQuery.h"
@@ -219,6 +220,13 @@ bool PinHasConnection(const MaterialGraphData &graph,
       });
 }
 
+std::string NodeDisplayName(const MaterialNodeTypeId& typeId) {
+  const std::string name(ToString(typeId));
+  const std::string key = "material.node." + name;
+  const std::string translated = TEXT::Localize(key);
+  return translated == key ? name : translated;
+}
+
 float NodeLogicalHeight(const MaterialGraphData &graph,
                         const MaterialGraphNodeData &node,
                         bool collapsed) {
@@ -326,6 +334,65 @@ MaterialValueType DefaultNodeValueType(
       FindMaterialNodeDefinition(typeId);
   return definition == nullptr ? MaterialValueType::Float1
                                : definition->defaultValueType;
+}
+
+std::string_view NodeMathSubgroup(MaterialNodeKind kind) {
+    switch (kind) {
+    case MaterialNodeKind::Add:
+    case MaterialNodeKind::Subtract:
+    case MaterialNodeKind::Multiply:
+    case MaterialNodeKind::Divide:
+    case MaterialNodeKind::Minimum:
+    case MaterialNodeKind::Maximum:
+    case MaterialNodeKind::Absolute:
+    case MaterialNodeKind::Negate:
+    case MaterialNodeKind::Modulo:
+    case MaterialNodeKind::Power:
+    case MaterialNodeKind::SquareRoot:
+      return TEXT::LocalizeCStr("editor.material.math.basic");
+    case MaterialNodeKind::Sine:
+    case MaterialNodeKind::Cosine:
+    case MaterialNodeKind::Atan2:
+      return TEXT::LocalizeCStr("editor.material.math.trigonometry");
+    case MaterialNodeKind::Exp:
+    case MaterialNodeKind::Log2:
+      return TEXT::LocalizeCStr("editor.material.math.exponential");
+    case MaterialNodeKind::Floor:
+    case MaterialNodeKind::Ceil:
+    case MaterialNodeKind::Fraction:
+    case MaterialNodeKind::Round:
+    case MaterialNodeKind::Trunc:
+    case MaterialNodeKind::Sign:
+    case MaterialNodeKind::Saturate:
+    case MaterialNodeKind::OneMinus:
+    case MaterialNodeKind::Clamp:
+      return TEXT::LocalizeCStr("editor.material.math.range");
+    case MaterialNodeKind::Step:
+    case MaterialNodeKind::SmoothStep:
+    case MaterialNodeKind::Remap:
+      return TEXT::LocalizeCStr("editor.material.math.compare");
+    case MaterialNodeKind::Dot:
+    case MaterialNodeKind::Cross:
+    case MaterialNodeKind::Length:
+    case MaterialNodeKind::Normalize:
+    case MaterialNodeKind::Distance:
+    case MaterialNodeKind::Reflect:
+    case MaterialNodeKind::MakeFloat2:
+    case MaterialNodeKind::MakeFloat3:
+    case MaterialNodeKind::MakeFloat4:
+    case MaterialNodeKind::Split:
+    case MaterialNodeKind::Select:
+      return TEXT::LocalizeCStr("editor.material.math.vector");
+    case MaterialNodeKind::ValueNoise:
+    case MaterialNodeKind::Voronoi:
+      return TEXT::LocalizeCStr("editor.material.math.noise");
+    case MaterialNodeKind::UvTransform:
+      return TEXT::LocalizeCStr("editor.material.math.uv");
+    case MaterialNodeKind::Fresnel:
+      return TEXT::LocalizeCStr("editor.material.math.shading");
+    default:
+      return {};
+    }
 }
 
 std::string_view NodeCategory(const MaterialNodeTypeId& typeId) noexcept {

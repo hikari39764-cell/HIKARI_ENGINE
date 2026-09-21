@@ -11,36 +11,6 @@
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
-namespace {
-
-    void AppendRange(
-        std::vector<RUNTIME::MassRenderDirtyRange>& ranges,
-        uint32_t first,
-        uint32_t count) {
-        if (count == 0u) {
-            return;
-        }
-        if (!ranges.empty()) {
-            RUNTIME::MassRenderDirtyRange& tail = ranges.back();
-            const uint64_t tailEnd =
-                static_cast<uint64_t>(tail.firstInstance) +
-                tail.instanceCount;
-            const uint64_t nextEnd =
-                static_cast<uint64_t>(first) + count;
-            if (first <= tailEnd) {
-                tail.instanceCount = static_cast<uint32_t>(
-                    (std::min)(
-                        (std::max)(tailEnd, nextEnd) -
-                            tail.firstInstance,
-                        static_cast<uint64_t>(UINT32_MAX)));
-                return;
-            }
-        }
-        ranges.push_back({ first, count });
-    }
-
-} // namespace
-
     bool MassGpuSceneFrameBuffer::Initialize(
         ID3D12Device* device,
         ID3D12DescriptorHeap* srvHeap) {
@@ -319,10 +289,9 @@ namespace {
         }
         if (!patchable) {
             uploadRanges_.clear();
-            AppendRange(
-                uploadRanges_,
-                0u,
-                static_cast<uint32_t>(source->instances.size()));
+            if (!source->instances.empty()) {
+                uploadRanges_.push_back({0u, static_cast<uint32_t>(source->instances.size())});
+            }
             stats_.uploadedFullScene = true;
         } else {
             stats_.patchedDirtyRanges = !uploadRanges_.empty();

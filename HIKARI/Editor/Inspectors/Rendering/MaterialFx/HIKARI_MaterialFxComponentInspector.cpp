@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Scene/Components/Rendering/MaterialFx/HIKARI_MaterialFxComponent.h"
 
 #include <algorithm>
@@ -204,8 +205,7 @@ namespace HIKARI {
             profileBuffer,
             profileId_.c_str(),
             sizeof(profileBuffer) - 1u);
-        if (ImGui::InputText(
-            "Profile##RuntimeMaterialFxProfile",
+        if (ImGui::InputText(TEXT::LocalizeWindow("ui.vfx.text.Profile", "Profile##RuntimeMaterialFxProfile").c_str(),
             profileBuffer,
             sizeof(profileBuffer))) {
 
@@ -230,12 +230,10 @@ namespace HIKARI {
                         std::begin(visibleValues));
                 } else {
                     profile.CopyValuesTo(visibleValues);
-                    ImGui::TextDisabled(
-                        "Using profile defaults until a parameter is edited.");
+                    ImGui::TextDisabled(TEXT::Localize("editor.ui.using.profile.defaults.until.a.parameter.is.edited.3a9503").c_str());
                 }
 
-                if (ImGui::Button(
-                    "Reset Defaults##MaterialFx")) {
+                if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.reset.defaults.4f97ff", "Reset Defaults##MaterialFx").c_str())) {
 
                     DirectX::XMFLOAT4
                         defaults[VFX::kMaterialFxUserCount]{};
@@ -249,8 +247,7 @@ namespace HIKARI {
                     changed = true;
                 }
                 ImGui::SameLine();
-                if (ImGui::Button(
-                    "Reload Profile##MaterialFx")) {
+                if (ImGui::Button(TEXT::LocalizeWindow("ui.quality.reloadProfile", "Reload Profile##MaterialFx").c_str())) {
 
                     MaterialFxProfile::ClearCache();
                     MaterialFxProfile reloadedProfile{};
@@ -265,8 +262,7 @@ namespace HIKARI {
                     }
                 }
 
-                if (ImGui::TreeNode(
-                    "Parameters##MaterialFxParams")) {
+                if (ImGui::TreeNode(TEXT::LocalizeWindow("editor.ui.parameters.a975ee", "Parameters##MaterialFxParams").c_str())) {
 
                     const auto ensureWritableValues = [&]() {
                         if (valuesInitialized_) {
@@ -311,14 +307,12 @@ namespace HIKARI {
                 }
             } else {
                 ImGui::TextColored(
-                    ImVec4(1.0f, 0.5f, 0.5f, 1.0f),
-                    "Profile not found: %s",
+                    ImVec4(1.0f, 0.5f, 0.5f, 1.0f),TEXT::Localize("ui.quality.profileNotFoundFormat").c_str(),
                     profileId_.c_str());
             }
         }
 
-        if (ImGui::TreeNode(
-            "Advanced Raw Block (4x float4)##MaterialFxRawBlock")) {
+        if (ImGui::TreeNode(TEXT::LocalizeWindow("editor.ui.advanced.raw.block.4x.float4.09638f", "Advanced Raw Block (4x float4)##MaterialFxRawBlock").c_str())) {
 
             for (size_t i = 0;
                 i < std::size(paramValues_);

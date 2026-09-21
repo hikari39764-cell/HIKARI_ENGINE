@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Diagnostics/HIKARI_RuntimeDebugWindow.h"
 #include "Runtime/Diagnostics/HIKARI_RuntimeDebugService.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
@@ -14,9 +15,9 @@ namespace HIKARI::RUNTIME {
         if (open_ && ImGui::IsKeyPressed(ImGuiKey_Escape,false)) open_=false;
         if (open_) {
             ImGui::SetNextWindowSize(ImVec2(700,380),ImGuiCond_FirstUseEver);
-            if (ImGui::Begin("HIKARI Developer Console (F10)",&open_)) {
+            if (ImGui::Begin(TEXT::LocalizeWindow("editor.ui.hikari.developer.console.f10.0266a2", "HIKARI Developer Console (F10)").c_str(),&open_)) {
                 ImGui::TextUnformatted("help | world | object <id> | systems | perf | events | trace <id> | emit <id>");
-                ImGui::TextDisabled("Development session only. Gameplay/UI input is captured while open.");
+                ImGui::TextDisabled(TEXT::Localize("editor.ui.development.session.only.gameplay.ui.input.is.captured.while.ope.d4e492").c_str());
                 if (ImGui::BeginChild("Output",ImVec2(0,-ImGui::GetFrameHeightWithSpacing()),ImGuiChildFlags_Border)) {
                     const bool bottom=ImGui::GetScrollY()>=ImGui::GetScrollMaxY()-2;
                     for (const auto& line:service.History()) ImGui::TextUnformatted(line.c_str());

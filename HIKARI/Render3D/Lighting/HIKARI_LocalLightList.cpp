@@ -375,6 +375,30 @@ namespace HIKARI::RENDER3D::LIGHTING {
         return view;
     }
 
+    uint64_t LocalLightListInputSignature(const SceneLightingSet& lighting,
+        const Camera3D& camera, uint32_t width, uint32_t height,
+        std::span<const LocalLightShadowAssignment> shadows) noexcept {
+        uint64_t hash = HASH::kFnv1a64OffsetBasis;
+        const auto append = [&]<class T>(const T& value) {
+            hash = HASH::Fnv1aBytes(hash, &value, sizeof(value));
+        };
+        append(width); append(height);
+        append(camera.GetView()); append(camera.GetProj());
+        append(camera.GetNearZ()); append(camera.GetFarZ()); append(camera.IsOrthographic());
+        append(lighting.lights.size());
+        for (const auto& light : lighting.lights) {
+            append(light.enabled); append(light.type); append(light.castsShadows);
+            append(IsLocalLightUploadable(light));
+            // 所有者が公開する GPU 射影でキーを作り、padding/string の生バイトには依存しない。
+            append(BuildLocalLightGpuData(light));
+        }
+        append(shadows.size());
+        for (const auto& shadow : shadows) {
+            append(shadow.sourceIndex); append(shadow.firstFace);
+        }
+        return hash;
+    }
+
     LocalLightListView BuildLocalLightList(
         const SceneLightingSet& lighting,
         const Camera3D& camera,

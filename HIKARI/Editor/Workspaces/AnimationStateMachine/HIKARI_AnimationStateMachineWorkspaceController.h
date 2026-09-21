@@ -244,6 +244,9 @@ namespace HIKARI::EDITOR {
         float graphPanX_ = 0.0f;
         float graphPanY_ = 0.0f;
         float graphZoom_ = 1.0f;
+        char parameterSearch_[128]{};
+        char transitionSearch_[128]{};
+        bool connectedTransitionsOnly_ = true;
 
         ANIMATION::AnimationStateId graphContextStateId_{};
         ANIMATION::AnimationTransitionId graphContextTransitionId_{};

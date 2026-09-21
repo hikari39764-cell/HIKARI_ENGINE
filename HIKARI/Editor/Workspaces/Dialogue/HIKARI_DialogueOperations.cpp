@@ -86,7 +86,7 @@ namespace HIKARI::EDITOR {
         DialogueWorkspaceController& controller,
         EditorWorkspaceHost& workspaceHost,
         std::function<DocumentSceneBase*()> sceneProvider) {
-        registry.Register({
+        auto assetQuery = EditorOperationDefinition{
             "dialogue.list_assets",
             "List Dialogue assets in the current project.",
             "dialogue",
@@ -113,8 +113,12 @@ namespace HIKARI::EDITOR {
                     result.data["assets"].size()) + " Dialogue assets.";
                 return result;
             },
-        });
-        registry.Register({
+        };
+    assetQuery.requiresDocumentSession = false;
+    assetQuery.kind = EditorOperationKind::Query;
+    registry.Register(std::move(assetQuery));
+        {
+    EditorOperationDefinition transition{
             "dialogue.new_asset",
             "Create a new formal Dialogue document.",
             "dialogue",
@@ -141,8 +145,12 @@ namespace HIKARI::EDITOR {
                 WriteDocumentState(controller, result);
                 return result;
             },
-        });
-        registry.Register({
+        };
+    transition.requiresCleanDocument = true;
+    registry.Register(std::move(transition), EditorOperationKind::Session);
+  }
+        {
+    EditorOperationDefinition transition{
             "dialogue.open_asset",
             "Open a Dialogue asset by guid.",
             "dialogue",
@@ -187,7 +195,10 @@ namespace HIKARI::EDITOR {
                 WriteDocumentState(controller, result);
                 return result;
             },
-        });
+        };
+    transition.requiresCleanDocument = true;
+    registry.Register(std::move(transition), EditorOperationKind::Session);
+  }
         registry.Register({
             "dialogue.save",
             "Validate and save the current Dialogue document.",
@@ -205,8 +216,9 @@ namespace HIKARI::EDITOR {
                 WriteDocumentState(controller, result);
                 return result;
             },
-        });
-        registry.Register({
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
+        {
+    EditorOperationDefinition transition{
             "dialogue.revert",
             "Revert the current saved Dialogue asset.",
             "dialogue",
@@ -234,8 +246,12 @@ namespace HIKARI::EDITOR {
                 WriteDocumentState(controller, result);
                 return result;
             },
-        });
-        registry.Register({
+        };
+    transition.requiresCleanDocument = true;
+    registry.Register(std::move(transition), EditorOperationKind::Session);
+  }
+        {
+    EditorOperationDefinition transition{
             "dialogue.close_asset",
             "Close the current Dialogue asset.",
             "dialogue",
@@ -259,7 +275,10 @@ namespace HIKARI::EDITOR {
                 WriteDocumentState(controller, result);
                 return result;
             },
-        });
+        };
+    transition.requiresCleanDocument = true;
+    registry.Register(std::move(transition), EditorOperationKind::Session);
+  }
         registry.Register({
             "dialogue.undo",
             "Undo the latest Dialogue edit.",
@@ -274,7 +293,7 @@ namespace HIKARI::EDITOR {
                 result.message = std::move(message);
                 return result;
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
         registry.Register({
             "dialogue.redo",
             "Redo the latest undone Dialogue edit.",
@@ -289,7 +308,7 @@ namespace HIKARI::EDITOR {
                 result.message = std::move(message);
                 return result;
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
         registry.Register({
             "dialogue.query",
             "Return the current Dialogue node graph and validation issues.",
@@ -317,7 +336,7 @@ namespace HIKARI::EDITOR {
                 result.data["nodeCount"] = definition.nodes.size();
                 return result;
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Query);
     }
 
 } // namespace HIKARI::EDITOR

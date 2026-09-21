@@ -5,79 +5,11 @@
 #include "Runtime/Binding/HIKARI_RuntimeBindingStore.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectWorldBridgeInternal.h"
+#include "Runtime/Project/Internal/HIKARI_GameProjectBindingConversion.h"
 
 namespace HIKARI {
+    using namespace PROJECT::DETAIL;
     namespace {
-
-        BINDING::ValueType ToRuntimeType(
-            GameProjectBindingValueType type) noexcept {
-            switch (type) {
-            case GameProjectBindingValueType::Bool:
-                return BINDING::ValueType::Bool;
-            case GameProjectBindingValueType::Int:
-                return BINDING::ValueType::Int;
-            case GameProjectBindingValueType::Float2:
-                return BINDING::ValueType::Float2;
-            case GameProjectBindingValueType::Float3:
-                return BINDING::ValueType::Float3;
-            case GameProjectBindingValueType::Float4:
-                return BINDING::ValueType::Float4;
-            case GameProjectBindingValueType::Color:
-                return BINDING::ValueType::Color;
-            case GameProjectBindingValueType::Float:
-            default:
-                return BINDING::ValueType::Float;
-            }
-        }
-
-        GameProjectBindingValueType ToProjectType(
-            BINDING::ValueType type) noexcept {
-            switch (type) {
-            case BINDING::ValueType::Bool:
-                return GameProjectBindingValueType::Bool;
-            case BINDING::ValueType::Int:
-                return GameProjectBindingValueType::Int;
-            case BINDING::ValueType::Float2:
-                return GameProjectBindingValueType::Float2;
-            case BINDING::ValueType::Float3:
-                return GameProjectBindingValueType::Float3;
-            case BINDING::ValueType::Float4:
-                return GameProjectBindingValueType::Float4;
-            case BINDING::ValueType::Color:
-                return GameProjectBindingValueType::Color;
-            case BINDING::ValueType::Float:
-            default:
-                return GameProjectBindingValueType::Float;
-            }
-        }
-
-        BINDING::Value ToRuntimeValue(
-            const GameProjectBindingValue& value) noexcept {
-            BINDING::Value result{};
-            result.type = ToRuntimeType(value.type);
-            result.boolean = value.boolean;
-            result.integer = value.integer;
-            result.numeric = {
-                value.numeric[0],
-                value.numeric[1],
-                value.numeric[2],
-                value.numeric[3]
-            };
-            return result;
-        }
-
-        GameProjectBindingValue ToProjectValue(
-            const BINDING::Value& value) noexcept {
-            GameProjectBindingValue result{};
-            result.type = ToProjectType(value.type);
-            result.boolean = value.boolean;
-            result.integer = value.integer;
-            result.numeric[0] = value.numeric.x;
-            result.numeric[1] = value.numeric.y;
-            result.numeric[2] = value.numeric.z;
-            result.numeric[3] = value.numeric.w;
-            return result;
-        }
 
         BINDING::RuntimeBindingStore* FindBindingStore(
             World* world) noexcept {

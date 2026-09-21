@@ -1,15 +1,21 @@
 #include "Scene/HIKARI_PresentationTransformService.h"
+#include <cstring>
 
 namespace HIKARI {
 
-    void PresentationTransformService::SetWorldMatrix(
+    bool PresentationTransformService::SetWorldMatrix(
         RuntimeObjectHandle object,
         const MATH::Mat4& worldMatrix) {
         if (!object.IsValid()) {
-            return;
+            return false;
         }
-        entries_[object.ToValue()].worldMatrix = worldMatrix;
+        const auto [entry, inserted] = entries_.try_emplace(object.ToValue());
+        // 同一の表示姿勢では revision を進めず、休眠中の描画同期を抑える。
+        if (!inserted && std::memcmp(&entry->second.worldMatrix, &worldMatrix,
+                sizeof(worldMatrix)) == 0) return false;
+        entry->second.worldMatrix = worldMatrix;
         AdvanceRevision();
+        return true;
     }
 
     bool PresentationTransformService::Remove(

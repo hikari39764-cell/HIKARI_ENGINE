@@ -194,14 +194,25 @@ namespace HIKARI {
         return true;
     }
 
+    void GameObject::RefreshExecutionCapabilities() {
+        if (!executionCapabilitiesDirty_) return;
+        hasUpdateWork_ = hasRenderWork_ = false;
+        for (const auto& component : components_) {
+            hasUpdateWork_ |= component->NeedsUpdate();
+            hasRenderWork_ |= component->NeedsRender();
+        }
+        executionCapabilitiesDirty_ = false;
+    }
+
     void GameObject::Update(float dt) {
         if (!active_) {
             return;
         }
 
-        for (const auto& component : components_) {
-            component->Update(dt);
-        }
+        RefreshExecutionCapabilities();
+        if (!hasUpdateWork_) return;
+        for (const auto& component : components_)
+            if (component->NeedsUpdate()) component->Update(dt);
     }
 
     void GameObject::Render() {
@@ -209,9 +220,10 @@ namespace HIKARI {
             return;
         }
 
-        for (const auto& component : components_) {
-            component->Render();
-        }
+        RefreshExecutionCapabilities();
+        if (!hasRenderWork_) return;
+        for (const auto& component : components_)
+            if (component->NeedsRender()) component->Render();
     }
 
     void GameObject::RenderImGui() {
@@ -255,6 +267,7 @@ namespace HIKARI {
             ptr->SetOwner(this);
             try {
                 ptr->OnAttach();
+                executionCapabilitiesDirty_ = true;
                 components_.push_back(std::move(component));
             }
             catch (...) {
@@ -306,12 +319,14 @@ namespace HIKARI {
                 ptr->OnAttach();
             }
             attachCompleted = true;
+            executionCapabilitiesDirty_ = true;
             components_.push_back(std::move(component));
             componentStored = true;
             if (!ownerWorld_->CommitComponentAttachment(
                     *this,
                     *ptr)) {
                 component = std::move(components_.back());
+                executionCapabilitiesDirty_ = true;
                 components_.pop_back();
                 componentStored = false;
                 throw std::logic_error(
@@ -338,6 +353,7 @@ namespace HIKARI {
             }
             if (componentStored) {
                 component = std::move(components_.back());
+                executionCapabilitiesDirty_ = true;
                 components_.pop_back();
             }
             ownerWorld_->RollbackComponentCallback(

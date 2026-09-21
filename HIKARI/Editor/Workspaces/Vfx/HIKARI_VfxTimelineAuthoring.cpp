@@ -52,15 +52,16 @@ bool VfxWorkspaceController::MoveTimelineSelection(float seconds, bool fromBasel
     return ApplyAsset(std::move(next), statusMessage_, fromBaseline ? VfxTimelineEditState::mergeGroup : 0);
 }
 bool VfxWorkspaceController::DeleteTimelineSelection() {
+    if (timelineEdit_.selectedKeys.empty()) return false;
     auto next = document_.Asset();
     for (auto &layer : next.emitters)
         for (const auto &entry : CollectVfxTimelineCurves(layer, true)) {
             auto *curve = ResolveVfxCurve(layer, entry.address);
-            std::erase_if(curve->keys, [this](const auto &key) {
+            const auto removed = std::erase_if(curve->keys, [this](const auto &key) {
                 return std::find(timelineEdit_.selectedKeys.begin(), timelineEdit_.selectedKeys.end(),
                                  key.id) != timelineEdit_.selectedKeys.end();
             });
-            if (curve->keys.empty()) {
+            if (removed && curve->keys.empty()) {
                 statusMessage_ = "Keep at least one key in each animated channel";
                 return false;
             }

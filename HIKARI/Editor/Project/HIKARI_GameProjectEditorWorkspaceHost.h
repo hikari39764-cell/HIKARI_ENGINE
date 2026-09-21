@@ -29,7 +29,8 @@ namespace HIKARI::EDITOR {
             std::string& outMessage);
         void ReportModuleFailure(std::string message);
         void RequestWorkspace(std::string workspaceId) { requestedWorkspace_=std::move(workspaceId); }
-        void DrawNavigation(EditorWorkspaceHost& host, float unscaledDeltaSeconds);
+        void UpdateNavigation(EditorWorkspaceHost& host, float unscaledDeltaSeconds);
+        void DrawWorkspaceEntries(EditorWorkspaceHost& host, const char* filter);
         void Draw(EditorWorkspaceHost& host, float unscaledDeltaSeconds, AssetDatabase&, AssetRegistry&);
         void Shutdown() noexcept;
 

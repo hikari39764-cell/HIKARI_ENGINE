@@ -23,25 +23,24 @@ Json UnflattenedStructure(const Json& node) {
     return result;
 }
 
-bool IsMutation(const std::string& action) {
-    const auto last = action.substr(action.find_last_of('.') + 1);
-    return last == "set" || last == "add" || last == "remove" || last == "duplicate" ||
-        last == "edit" || last == "move" || last == "connect" || last == "disconnect" ||
-        last == "rename" || last == "reparent";
-}
-
 Json CompactData(const AiChatMessage& message) {
     auto data = message.data;
     if (!data.is_object()) return data;
-    const auto action = data.value("action", std::string{});
-    if (action == "vfx.target.describe" && data.value("ok", true) &&
+    if (data.contains("results") && data["results"].is_array()) {
+        for (auto& result : data["results"]) {
+            AiChatMessage child{"tool", "", {}, result};
+            result = CompactData(child);
+        }
+    }
+    const auto kind = data.value("operationKind", std::string{});
+    if (kind == "query" && data.value("ok", true) &&
         data.contains("serializedValue") && data.contains("properties") && data["properties"].is_array()) {
         // properties が持つ値を二重送信しない。列挙されない構造・曲線は保持。
         data["structure"] = UnflattenedStructure(data["serializedValue"]);
         data.erase("serializedValue");
     }
     for (const auto* key : {"durationMs", "usage", "_usage", "images"}) data.erase(key);
-    if (action.ends_with(".property.set") && data.value("ok", true)) {
+    if ((kind == "mutation" && data.value("request", Json::object()).contains("value")) && data.value("ok", true)) {
         const auto request = data.value("request", Json::object());
         const auto property = request.value("property", std::string{});
         if (data.contains("properties") && data["properties"].is_array()) {
@@ -53,13 +52,13 @@ Json CompactData(const AiChatMessage& message) {
         data.erase("serializedValue");
         if (property.empty()) data["stateNeedsRefresh"] = true; // Legacy receipts have no write address.
     }
-    if (IsMutation(action) && data.value("ok", true)) {
+    if (kind == "mutation" && data.value("ok", true)) {
         data.erase("propertySchemas");
         data.erase("properties");
     }
     // A property write used to echo the entire serialized layer. Keep its address
     // and actual value; descriptions remain available through target.describe.
-    if (action.ends_with(".property.set") && data.contains("request")) {
+    if ((kind == "mutation" && data.value("request", Json::object()).contains("value")) && data.contains("request")) {
         const auto& request = data["request"];
         if (request.contains("property")) data["property"] = request["property"];
     }
@@ -92,23 +91,114 @@ Json Identities(const Json& node) {
 Json Receipt(const Json& data) {
     if (!data.is_object()) return data;
     Json result = Identities(data);
+    // バッチ全体を圧縮しても各操作の成否・対象・失敗理由を失わない。
+    if (data.contains("results") && data["results"].is_array()) {
+        result["results"] = Json::array();
+        for (const auto& child : data["results"]) result["results"].push_back(Receipt(child));
+    }
     for (const auto* key : {"action", "ok", "code", "sessionId", "workspace", "targetId",
             "emitterId", "layerId", "nodeId", "id", "name", "kind", "revision", "documentRevision",
             "vfxAssetGuid", "sourcePath", "request", "property", "appliedValue", "hints", "batchStopped",
-            "diagnostics", "stateNeedsRefresh", "archivedSteps", "archivedFailures", "supersededWrites"}) {
+            "_toolCallId", "message", "diagnostics", "operationKind", "operationSchema", "changedFields", "documentChanged", "schemaComplete", "unavailableFields", "stateNeedsRefresh", "archivedSteps", "archivedFailures", "supersededWrites"}) {
         if (data.contains(key)) result[key] = data[key];
     }
     result["detailsOmitted"] = true;
     return result;
 }
 
-std::string QueryIdentity(const Json& data) {
-    const auto action = data.value("action", std::string{});
-    if (action != "help" && !action.starts_with("query.") && !action.ends_with(".query") &&
-        !action.ends_with(".describe") && !action.ends_with(".list")) return {};
-    return action + ":" + data.value("sessionId", std::string{}) + ":" +
-        data.value("targetId", std::string{}) + ":" + data.value("request", Json::object()).dump();
+// 宣言された読み取りだけをまとめる。操作名の接頭辞や分野には依存しない。
+void CompactReviewedResults(Json& data, bool unread, size_t& remaining,
+    std::set<std::string>& queries, std::set<std::string>& changedSessions,
+    std::set<std::string>& knownCapabilities, std::string& catalogVersion) {
+    if (!data.is_object()) return;
+    if (data.contains("results") && data["results"].is_array()) {
+        for (auto it = data["results"].rbegin(); it != data["results"].rend(); ++it)
+            CompactReviewedResults(*it, unread, remaining, queries, changedSessions, knownCapabilities, catalogVersion);
+        return;
+    }
+    const bool knowledge = data.value("knowledgeScope",std::string{}) == "capability";
+    const auto version = data.value("catalogVersion",std::string{});
+    if (knowledge && catalogVersion.empty()) catalogVersion = version;
+    const auto kind = data.value("operationKind",std::string{});
+    const auto session = data.value("sessionId",std::string{});
+    const bool query = kind == "query" && data.value("ok",false);
+    const auto identity = data.value("request",Json::object()).dump();
+    const bool duplicate = query && data.contains("request") && !queries.insert(identity).second;
+    const bool stale = knowledge ? (!version.empty() && version != catalogVersion)
+        : query && (changedSessions.contains(session) || changedSessions.contains("*"));
+    if (knowledge && !stale) {
+        const auto remember = [&](const Json& item) {
+            if (!item.contains("parameters")) return true;
+            return knownCapabilities.insert(version + ":" + item.value("id",std::string{})).second;
+        };
+        if (data.contains("capabilities")) {
+            auto retained = Json::array();
+            auto known = Json::array();
+            for (const auto& capability : data["capabilities"]) {
+                const bool first = remember(capability);
+                if (unread || first) retained.push_back(capability);
+                else known.push_back(capability.value("id",std::string{}));
+            }
+            data["capabilities"] = std::move(retained);
+            if (!known.empty()) data["knownCapabilityIds"] = std::move(known);
+        } else if (data.contains("parameters") && !remember(data) && !unread) {
+            data.erase("parameters");
+            data["schemaInNewerResult"] = true;
+        }
+    }
+    const auto bytes = data.dump().size();
+    if (!unread && duplicate) {
+        data = {{"action",data.value("action",std::string{})},{"ok",true},{"superseded",true}};
+    } else if (!unread && (stale || (bytes > remaining && !knowledge))) {
+        data = Receipt(data);
+        if (stale) data["stateNeedsRefresh"] = true;
+    }
+    // 能力説明は直近の検索結果を保持。現行の引数定義まで流水帳と一緒に落とさない。
+    remaining -= (std::min)(remaining, data.dump().size());
+    if (kind == "mutation" && data.value("ok",false))
+        changedSessions.insert(session.empty() ? "*" : session);
 }
+// 確認済みの古い呼び出しは結果の台帳へ畳む。最新の native call/result は
+// 丸ごと残し、ID の対応を壊したり未読の結果を削ったりしない。
+void FoldReviewedProtocol(std::vector<AiChatMessage>& messages, size_t budget) {
+    std::vector<size_t> starts;
+    size_t bytes = 0;
+    for (size_t i = 0; i < messages.size(); ++i) {
+        bytes += messages[i].content.size() + messages[i].data.dump().size();
+        if (messages[i].data.contains("_toolCalls")) starts.push_back(i);
+    }
+    for (size_t group = 0; group + 2 < starts.size() && bytes > budget; ++group) {
+        const size_t begin = starts[group], end = starts[group + 1];
+        std::set<std::string> pending;
+        for (const auto& call : messages[begin].data["_toolCalls"]) pending.insert(call.at("id"));
+        bool hasImage = false;
+        for (size_t i = begin + 1; i < end; ++i) {
+            hasImage = hasImage || !messages[i].images.empty();
+            if (messages[i].data.contains("_toolCallId")) pending.erase(messages[i].data["_toolCallId"].get<std::string>());
+        }
+        if (!pending.empty() || hasImage) continue;
+        const size_t before = messages[begin].data.dump().size();
+        messages[begin].data.erase("_toolCalls");
+        messages[begin].data.erase("_reasoningContent");
+        bytes -= (std::min)(bytes,before - messages[begin].data.dump().size());
+        for (size_t i = begin + 1; i < end; ++i) messages[i].data.erase("_toolCallId");
+    }
+}
+}
+
+bool AiProgressTracker::Observe(const nlohmann::json& result) {
+    if (!result.is_object() || !result.value("ok",false)) return false;
+    if (result.value("documentChanged",true) == false) return false;
+    auto evidence = result;
+    for (const auto* key : {"durationMs","usage","_usage","message","request","images","poll","details"})
+        evidence.erase(key);
+    // パスやメッセージだけ変わる再取得は、新しい制作結果として扱わない。
+    if (evidence.contains("results")) {
+        bool changed = false;
+        for (const auto& child : evidence["results"]) changed = Observe(child) || changed;
+        return changed;
+    }
+    return evidence_.insert(evidence.dump()).second;
 }
 
 std::vector<AiChatMessage> BuildAiRequestContext(
@@ -139,55 +229,25 @@ std::vector<AiChatMessage> BuildAiRequestContext(
         if (item.role == "tool") item.data = CompactData(item);
         result.push_back(std::move(item));
     }
-    // 同じターン内で確認済みの上書きだけを畳む。未読の結果・失敗・
-    // Undo/Redo・画像・別の時間キーをまたいで値を消さない。
-    std::map<std::string, size_t> latestWrites;
-    for (size_t i = result.size(); i-- > 0;) {
-        auto& item = result[i];
-        if (item.role == "user") { latestWrites.clear(); continue; }
-        if (item.role != "tool") continue;
-        const auto action = item.data.value("action", std::string{});
-        if (!item.data.value("ok", false) || action.ends_with(".undo") || action.ends_with(".redo") ||
-            (IsMutation(action) && !action.ends_with(".property.set"))) {
-            latestWrites.clear(); continue;
-        }
-        if (i > latestReply || latestReply == messages.size() || !item.images.empty() ||
-            !action.ends_with(".property.set") || !item.data.contains("request")) continue;
-        auto address = item.data["request"];
-        if (!address.is_object() || !address.contains("property") || !address.contains("value")) continue;
-        address.erase("value");
-        const auto key = action + ":" + item.data.value("sessionId", std::string{}) + ":" + address.dump();
-        const auto [found, inserted] = latestWrites.emplace(key, i);
-        if (!inserted) {
-            auto& retained = result[found->second].data;
-            retained["supersededWrites"] = retained.value("supersededWrites", 0) + 1;
-            item.content.clear();
-            item.data = Json::object();
-            item.role.clear();
-        }
-    }
+    FoldReviewedProtocol(result, static_cast<size_t>(std::clamp(toolHistoryKiB, 8, 256)) * 1024);
     // A soft budget for tool detail, not a tokenizer estimate or an instruction
     // truncation limit. Never cut JSON or the newest response, IDs, or user text.
     size_t remaining = static_cast<size_t>(std::clamp(toolHistoryKiB, 8, 256)) * 1024;
-    std::set<std::string> queries;
+    std::set<std::string> queries, changedSessions, knownCapabilities;
+    std::string catalogVersion;
     for (auto it = result.rbegin(); it != result.rend(); ++it) {
+        if (it->role == "user") { queries.clear(); changedSessions.clear(); continue; }
         if (it->role != "tool") continue;
-        const auto identity = QueryIdentity(it->data);
-        const bool superseded = !identity.empty() && it->data.value("ok", true) && !queries.insert(identity).second;
         const size_t index = static_cast<size_t>(std::distance(result.begin(), it.base()) - 1);
         const bool unread = latestReply == messages.size() || index > latestReply;
-        const size_t bytes = it->content.size() + it->data.dump().size();
-        if (!unread && (superseded || bytes > remaining)) {
-            auto receipt = Receipt(it->data);
-            if (!superseded && it->data.contains("authoringSemantics"))
-                receipt["authoringSemantics"] = it->data["authoringSemantics"];
-            it->data = std::move(receipt);
-        }
-        remaining -= (std::min)(remaining, it->content.size() + it->data.dump().size());
+        CompactReviewedResults(it->data, unread, remaining, queries, changedSessions, knownCapabilities, catalogVersion);
+        const auto callId = it->data.value("_toolCallId", std::string{});
+        it->data.erase("_toolCallId");
         it->content += "\n" + it->data.dump();
         it->data = Json::object();
+        if (!callId.empty()) it->data["_toolCallId"] = callId;
     }
-    std::erase_if(result, [](const auto& item) { return item.content.empty() && item.images.empty(); });
+    std::erase_if(result, [](const auto& item) { return item.content.empty() && item.images.empty() && !item.data.contains("_toolCalls"); });
     return result;
 }
 }

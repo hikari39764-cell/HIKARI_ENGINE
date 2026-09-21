@@ -58,7 +58,7 @@ namespace HIKARI::EDITOR {
                 }
                 return Success(message, ContextData(controller, id));
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
         registry.Register({
             "vfx.input.remove",
@@ -79,7 +79,7 @@ namespace HIKARI::EDITOR {
                     ? Success(message, ContextData(controller))
                     : Failure("VFX_INPUT_REMOVE_FAILED", message);
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
         registry.Register({
             "vfx.link.add",
@@ -127,7 +127,7 @@ namespace HIKARI::EDITOR {
                 }
                 return Success(message, ContextData(controller, id));
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
         registry.Register({
             "vfx.link.remove",
@@ -148,7 +148,7 @@ namespace HIKARI::EDITOR {
                     ? Success(message, ContextData(controller))
                     : Failure("VFX_LINK_REMOVE_FAILED", message);
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
     }
 

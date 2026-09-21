@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 
 #include <algorithm>
@@ -33,7 +34,7 @@ bool ModelMaterialWorkspaceController::
     if (changed) {
       PreviewMaterialGesture(scene);
     }
-    if (ImGui::IsItemDeactivatedAfterEdit()) {
+    if (ImGui::IsItemDeactivated()) {
       CommitMaterialGesture(scene);
     }
   };
@@ -42,7 +43,7 @@ bool ModelMaterialWorkspaceController::
     MaterialGraphParameterData *parameter =
         MATERIAL_GRAPH_UI::FindParameter(graph, parameterId);
     if (parameter == nullptr) {
-      ImGui::TextDisabled("%s: missing", label);
+      ImGui::TextDisabled(TEXT::Localize("editor.ui.s.missing.f1ed86").c_str(), label);
       return;
     }
     ImGui::PushID(parameter->id.c_str());
@@ -60,23 +61,21 @@ bool ModelMaterialWorkspaceController::
     ImGui::PopID();
   };
 
-  ImGui::TextDisabled(
-      "Uses this material's Base Color highlight artwork.");
-  ImGui::TextDisabled(
-      "Connect Color -> PBR Eye | Surface Output: Blend");
+  ImGui::TextDisabled(TEXT::Localize("editor.ui.uses.this.material.s.base.color.highlight.artwork.3af4d5").c_str());
+  ImGui::TextDisabled(TEXT::Localize("editor.ui.connect.color.pbr.eye.surface.output.blend.2e4750").c_str());
   MaterialGraphParameterData *mode = MATERIAL_GRAPH_UI::FindParameter(
       graph, "parameter.corneaHighlightMode");
   if (mode == nullptr) {
-    ImGui::TextDisabled("Lighting Mode: missing");
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.lighting.mode.missing.4cfe8a").c_str());
     return capturesPointer;
   }
 
   int current = mode->defaultValue.numeric.x < 0.5f
       ? 0 : mode->defaultValue.numeric.x < 1.5f ? 1 : 2;
-  constexpr const char *kModes[]{
-      "Painted / Fixed",
-      "Light Intensity",
-      "Light Projection",
+  const char *kModes[]{
+      TEXT::LocalizeCStr("editor.ui.painted.fixed.7d22ac"),
+      TEXT::LocalizeCStr("editor.ui.light.intensity.d44ceb"),
+      TEXT::LocalizeCStr("editor.ui.light.projection.85c965"),
   };
   ImGui::SetNextItemWidth(width);
   if (ImGui::Combo("##CorneaHighlightMode", &current, kModes, 3)) {

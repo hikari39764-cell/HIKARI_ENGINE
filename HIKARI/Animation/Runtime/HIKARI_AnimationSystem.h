@@ -4,6 +4,7 @@
 
 #include "Scene/HIKARI_ISystem.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
+#include "Animation/Runtime/HIKARI_AnimationPose.h"
 
 namespace HIKARI {
     class RuntimeObjectActivityService;
@@ -27,6 +28,7 @@ namespace HIKARI {
         ANIMATION::AnimationNodeOverrideService* nodeOverrideService_ = nullptr;
         const RuntimeObjectActivityService* runtimeActivityService_ = nullptr;
         std::vector<RuntimeObjectHandle> publishedObjects_{};
+        ANIMATION::AnimationLocalPose secondaryPose_, transitionPose_, blendedPose_;
     };
 
 } // namespace HIKARI

@@ -15,6 +15,28 @@
 #include "Core/Serialization/Json/HIKARI_JsonMath.h"
 
 namespace HIKARI::MATERIAL_SERIALIZATION {
+    bool SerializeMaterialCompileInputJson(const MaterialAssetData& source,
+        std::string& outJson, std::string& outError) {
+        MaterialAssetData normalized = source;
+        const auto stripParameterUi = [](auto& parameters) {
+            for (auto& parameter : parameters) {
+                parameter.group.clear(); parameter.useUiRange = false;
+                parameter.uiMinimum = 0.0f; parameter.uiMaximum = 1.0f;
+            }
+        };
+        stripParameterUi(normalized.function.inputs);
+        stripParameterUi(normalized.function.outputs);
+        for (auto* graph : {&normalized.graph, &normalized.function.graph}) {
+            stripParameterUi(graph->parameters);
+            graph->groups.clear();
+            for (auto& node : graph->nodes) {
+                node.position = {};
+                stripParameterUi(node.functionInputs); stripParameterUi(node.functionOutputs);
+            }
+        }
+        return SerializeMaterialSourceJson(normalized, outJson, outError);
+    }
+
 
     namespace {
 

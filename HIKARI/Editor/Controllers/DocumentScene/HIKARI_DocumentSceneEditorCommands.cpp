@@ -1,3 +1,4 @@
+#include "Editor/Project/HIKARI_GameProjectEditorWorkspaceHost.h"
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.h"
 
 #include "Core/Text/HIKARI_Localization.h"
@@ -34,6 +35,15 @@ namespace HIKARI {
         DocumentSceneBase& scene) {
         using EDITOR::EditorCommandId;
         commandRouter_.BeginFrame();
+        if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Project)) {
+            if (projectWorkspaceHost_) {
+                commandRouter_.Bind(EditorCommandId::SaveDocument, TEXT::Localize("menu.edit.save"),
+                    projectWorkspaceHost_->Registry().HasActiveWorkspace(), [this] {
+                        (void)projectWorkspaceHost_->Registry().RequestSaveActiveWorkspace();
+                    });
+            }
+            return;
+        }
 
         if (workspaceHost_.IsActive(
                 EDITOR::EditorWorkspaceId::AnimationStateMachine)) {

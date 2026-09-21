@@ -1,3 +1,5 @@
+#include "Editor/Commands/HIKARI_EditorCommandRouter.h"
+#include "Core/Text/HIKARI_Localization.h"
 #include "Assets/HIKARI_AssetRecord.h"
 #include "Editor/DragDrop/HIKARI_EditorAssetDragDrop.h"
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
@@ -17,7 +19,7 @@ bool CinematicsWorkspaceController::DrawTransport(CinematicSequence &sequence) {
   const bool playing = cursor_.IsPlaying();
   if (IconButton(playing ? EditorGlyph::Pause : EditorGlyph::Play,
                  "sequencePlay", EditorButtonTone::Primary, {28, 28},
-                 playing ? "暂停演出" : "播放演出")) {
+                 TEXT::LocalizeCStr(playing ? "cine.pause" : "cine.play"))) {
     if (playing)
       cursor_.Pause();
     else {
@@ -30,29 +32,28 @@ bool CinematicsWorkspaceController::DrawTransport(CinematicSequence &sequence) {
       previewEnabled_ = true;
     }
   }
-  ImGui::SameLine();
+  NextToolbarItem();
   if (IconButton(EditorGlyph::Stop, "sequenceStop", EditorButtonTone::Quiet,
-                 {28, 28}, "停止并恢复场景")) {
+                 {28, 28},TEXT::Localize("cine.stopRestore").c_str())) {
     cursor_.Stop();
     previewEnabled_ = false;
   }
-  ImGui::SameLine();
+  NextToolbarItem();
   if (IconButton(EditorGlyph::StepBackward, "sequencePrevious",
-                 EditorButtonTone::Quiet, {28, 28}, "上一帧")) {
+                 EditorButtonTone::Quiet, {28, 28},TEXT::Localize("cine.previousFrame").c_str())) {
     cursor_.Pause();
     cursor_.Seek(cursor_.GetTimeSeconds() - 1.0f / 60);
     previewEnabled_ = true;
   }
-  ImGui::SameLine();
+  NextToolbarItem();
   if (IconButton(EditorGlyph::StepForward, "sequenceNext",
-                 EditorButtonTone::Quiet, {28, 28}, "下一帧")) {
+                 EditorButtonTone::Quiet, {28, 28},TEXT::Localize("cine.nextFrame").c_str())) {
     cursor_.Pause();
     cursor_.Seek(cursor_.GetTimeSeconds() + 1.0f / 60);
     previewEnabled_ = true;
   }
-  ImGui::SameLine();
-  if (IconToggleButton(EditorGlyph::Loop, "sequenceLoop", loop_, {28, 28},
-                       "循环演出")) {
+  NextToolbarItem();
+  if (IconToggleButton(EditorGlyph::Loop, "sequenceLoop", loop_, {28, 28},TEXT::Localize("cine.loop").c_str())) {
     loop_ = !loop_;
     if (cursor_.IsPlaying()) {
       SEQUENCER::SequencePlaybackOptions options;
@@ -61,7 +62,7 @@ bool CinematicsWorkspaceController::DrawTransport(CinematicSequence &sequence) {
       cursor_.Play(options);
     }
   }
-  ImGui::SameLine();
+  NextToolbarItem(110);
   float seconds = cursor_.GetTimeSeconds();
   ImGui::SetNextItemWidth(95);
   if (ImGui::DragFloat("##time", &seconds, 1.0f / 60, 0,
@@ -70,13 +71,13 @@ bool CinematicsWorkspaceController::DrawTransport(CinematicSequence &sequence) {
     cursor_.Seek(seconds);
     previewEnabled_ = true;
   }
-  ImGui::SameLine();
-  ImGui::TextDisabled("/ %.2f s", sequence.durationSeconds);
-  ImGui::SameLine();
+  NextToolbarItem(110);
+  ImGui::TextDisabled(TEXT::Localize("editor.ui.2f.s.c5fe30").c_str(), sequence.durationSeconds);
+  NextToolbarItem(110);
   ImGui::SetNextItemWidth(90);
-  ImGui::SliderFloat("缩放", &zoom_, 20, 240, "%.0f");
-  ImGui::SameLine();
-  if (IconTextButton(EditorGlyph::Add, "画面效果", "addSequenceEffect")) {
+  ImGui::SliderFloat(TEXT::LocalizeWindow("ui.input.scale", "缩放").c_str(), &zoom_, 20, 240, "%.0f");
+  NextToolbarItem();
+  if (IconTextButton(EditorGlyph::Add,TEXT::Localize("cine.screenFx").c_str(), "addSequenceEffect")) {
     SEQUENCER::SequenceScreenEffect e;
     for (const auto &effect : sequence.screenEffects)
       e.id = (std::max)(e.id, effect.id + 1);
@@ -86,6 +87,16 @@ bool CinematicsWorkspaceController::DrawTransport(CinematicSequence &sequence) {
     selectedId_ = e.id;
     changed = true;
   }
+  NextToolbarItem();
+  if (IconToggleButton(EditorGlyph::List, "keyframeMode", !curveMode_, {28,28}, TEXT::Localize("cine.keys").c_str())) curveMode_=false;
+  NextToolbarItem();
+  if (IconToggleButton(EditorGlyph::Animation, "curveMode", curveMode_, {28,28}, TEXT::Localize("cine.editCurve").c_str())) curveMode_=true;
+  NextToolbarItem();
+  if (IconToggleButton(EditorGlyph::Filter, "animatedChannels", animatedChannelsOnly_, {28,28}, TEXT::LocalizeCStr("cine.animatedChannels")))
+    animatedChannelsOnly_ = !animatedChannelsOnly_;
+  NextToolbarItem();
+  if (IconButton(EditorGlyph::Focus, "fitTimeline", EditorButtonTone::Quiet, {28,28}, TEXT::Localize("cine.fitTimeline").c_str()))
+    zoom_ = std::clamp((ImGui::GetContentRegionAvail().x + ImGui::GetCursorPosX() - 200) / (std::max)(1.0f,sequence.durationSeconds), 10.0f, 400.0f);
   ImGui::Separator();
 #endif
   return changed;
@@ -96,7 +107,9 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase &scene,
   bool changed = false;
 #if defined(HIKARI_WITH_EDITOR)
   using namespace SEQUENCER;
-  constexpr float labelWidth = 118, rowHeight = 32, ruler = 25;
+  if (curveMode_) return DrawChannelCurve(sequence);
+  constexpr float labelWidth = 175, rowHeight = 30, ruler = 25;
+  const auto channelCount=CollectChannels(sequence, true).size();
   if (!ImGui::BeginChild("SequenceCanvas", {0, 0}, false,
                          ImGuiWindowFlags_HorizontalScrollbar)) {
     ImGui::EndChild();
@@ -106,7 +119,7 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase &scene,
   const float width =
       (std::max)(ImGui::GetContentRegionAvail().x,
                  labelWidth + (sequence.durationSeconds + 1) * zoom_);
-  const float height = (4 + sequence.presentationCueTrack.clips.size() +
+  const float height = (2 + channelCount + sequence.presentationCueTrack.clips.size() +
                         sequence.screenEffects.size()) *
                            rowHeight +
                        ruler;
@@ -156,6 +169,7 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase &scene,
     if (ImGui::IsItemActivated()) {
       selectedId_ = id;
       selectionKind_ = kind;
+      curveView_.selectedKey = -1;
       draggingId_ = id;
       draggingKind_ = kind;
       dragStart_ = start;
@@ -178,8 +192,7 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase &scene,
       changed = true;
     }
     if (ImGui::IsItemHovered())
-      ImGui::SetTooltip(
-          "%s\n%.3f – %.3f s\n拖动移动 · 拖动边缘裁剪 · Alt 关闭吸附", name,
+      ImGui::SetTooltip(TEXT::Localize("cine.clipTip").c_str(), name,
           start, start + duration);
     if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) {
       cursor_.Seek(start);
@@ -188,19 +201,27 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase &scene,
     ImGui::PopID();
     ImGui::PopID();
   };
-  const float shotY = lane("镜头");
-  for (auto &s : sequence.cameraCutTrack.clips)
+  const float shotY = lane(TEXT::LocalizeCStr("cine.shot"));
+  for (auto &s : sequence.cameraCutTrack.clips) {
     clip(s.id, SelectionKind::Shot, s.startTimeSeconds, s.durationSeconds,
          s.camera.name.c_str(), shotY, IM_COL32(44, 105, 151, 255));
+    for (const auto& channel:s.camera.channels) for (const auto& key:channel.keys) {
+      if (key.time>s.durationSeconds) continue;
+      const float px=origin.x+labelWidth+(s.startTimeSeconds+key.time)*zoom_;
+      draw->AddLine({px,shotY+rowHeight-7},{px,shotY+rowHeight-3},IM_COL32(173,231,247,200));
+    }
+  }
+  changed |= DrawChannelLanes(sequence,origin.x,origin.y+ruler+row*rowHeight,width,labelWidth,rowHeight);
+  row+=static_cast<int>(channelCount);
   for (auto &cue : sequence.presentationCueTrack.clips) {
-    const auto y = lane(cue.kind == PresentationCueKind::Vfx ? "特效" : "声音");
+    const auto y = lane(TEXT::LocalizeCStr(cue.kind == PresentationCueKind::Vfx ? "ui.assetBrowser.typeVfx" : "cine.sound"));
     clip(cue.id, SelectionKind::Cue, cue.startSeconds, cue.durationSeconds,
          cue.name.c_str(), y,
          cue.kind == PresentationCueKind::Vfx ? IM_COL32(143, 78, 48, 255)
                                               : IM_COL32(51, 116, 89, 255));
   }
   for (auto &effect : sequence.screenEffects) {
-    const auto y = lane("画面效果");
+    const auto y = lane(TEXT::LocalizeCStr("cine.screenFx"));
     const auto name = effect.name.empty() ? "画面效果" : effect.name;
     clip(effect.id, SelectionKind::Effect, effect.start, effect.duration,
          name.c_str(), y, IM_COL32(105, 71, 146, 255));
@@ -217,7 +238,7 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase &scene,
       for (const auto &c : sequence.presentationCueTrack.clips)
         cue.id = (std::max)(cue.id, c.id + 1);
       cue.kind = kind;
-      cue.name = kind == PresentationCueKind::Vfx ? "特效" : "声音";
+      cue.name = TEXT::Localize(kind == PresentationCueKind::Vfx ? "ui.assetBrowser.typeVfx" : "cine.sound");
       cue.durationSeconds = 3;
       cue.startSeconds = (std::max)(
           0.0f, (ImGui::GetIO().MousePos.x - origin.x - labelWidth) / zoom_);
@@ -229,7 +250,7 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase &scene,
         const auto *record =
             scene.GetAssetDatabase().FindByGuid(AssetGuid{data});
         if (!record || record->type != AssetType::VfxEffect) {
-          pendingStatusMessage_ = "这里需要特效素材。";
+          pendingStatusMessage_ = TEXT::Localize("cine.vfxRequired");
           return;
         }
         cue.vfxAsset.value = data;
@@ -252,6 +273,9 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase &scene,
                 IM_COL32(105, 220, 230, 255), 2);
   ImGui::SetCursorScreenPos(origin);
   ImGui::Dummy({width, height});
+  if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_Delete,
+          ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)))
+    changed |= DeleteSelectedClip(sequence);
   ImGui::EndChild();
 #endif
   return changed;

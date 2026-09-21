@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/ModelCollision/HIKARI_ModelCollisionPresentation.h"
 
 #include <string>
@@ -10,16 +11,16 @@ const char *
 ShapeTypeLabel(ASSETS::COLLISION::CollisionGeometryShapeType type) noexcept {
   switch (type) {
   case ASSETS::COLLISION::CollisionGeometryShapeType::Sphere:
-    return "Sphere";
+    return TEXT::LocalizeCStr("ui.sceneCreation.sphere");
   case ASSETS::COLLISION::CollisionGeometryShapeType::Capsule:
-    return "Capsule";
+    return TEXT::LocalizeCStr("ui.sceneCreation.capsule");
   case ASSETS::COLLISION::CollisionGeometryShapeType::ConvexHull:
-    return "Convex Hull";
+    return TEXT::LocalizeCStr("editor.ui.convex.hull.483fd1");
   case ASSETS::COLLISION::CollisionGeometryShapeType::TriangleMesh:
-    return "Static Mesh";
+    return TEXT::LocalizeCStr("editor.ui.static.mesh.cb0a46");
   case ASSETS::COLLISION::CollisionGeometryShapeType::Box:
   default:
-    return "Box";
+    return TEXT::LocalizeCStr("ui.sceneCreation.box");
   }
 }
 

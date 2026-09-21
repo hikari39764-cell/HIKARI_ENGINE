@@ -192,7 +192,7 @@ namespace HIKARI::EDITOR {
         const std::filesystem::path runtimeRoot =
             PLATFORM::GetExecutableDirectory();
         const std::filesystem::path executable =
-            runtimeRoot / "HIKARI_ProjectLauncher.exe";
+            runtimeRoot.parent_path() / "HIKARI_ProjectLauncher.exe";
         std::error_code ec{};
         if (runtimeRoot.empty() ||
             !std::filesystem::is_regular_file(

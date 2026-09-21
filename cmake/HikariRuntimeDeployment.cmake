@@ -22,12 +22,12 @@ function(hikari_configure_runtime_deployment target_name)
         "${target_name}"
         PROPERTIES
             OUTPUT_NAME "${HIKARI_DEPLOY_OUTPUT_NAME}"
-            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+            RUNTIME_OUTPUT_DIRECTORY "${HIKARI_RUNTIME_DIRECTORY}"
             "RUNTIME_OUTPUT_DIRECTORY_${hikari_product_upper}"
-                "${CMAKE_BINARY_DIR}/bin"
-            PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+                "${HIKARI_RUNTIME_DIRECTORY}"
+            PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/symbols"
             "PDB_OUTPUT_DIRECTORY_${hikari_product_upper}"
-                "${CMAKE_BINARY_DIR}/bin"
+                "${CMAKE_BINARY_DIR}/symbols"
             VS_DEBUGGER_WORKING_DIRECTORY
                 "${HIKARI_DEPLOY_WORKING_DIRECTORY}")
 
@@ -81,22 +81,22 @@ function(hikari_configure_runtime_deployment target_name)
     if(NOT HIKARI_DEPLOY_NO_INSTALL)
         install(
             TARGETS "${target_name}"
-            RUNTIME DESTINATION ".")
+            RUNTIME DESTINATION "${HIKARI_INSTALL_RUNTIME_PREFIX}.")
         if(HIKARI_RUNTIME_DEPENDENCIES)
             install(
                 FILES ${HIKARI_RUNTIME_DEPENDENCIES}
-                DESTINATION ".")
+                DESTINATION "${HIKARI_INSTALL_RUNTIME_PREFIX}.")
         endif()
         install(
             DIRECTORY
                 "${HIKARI_SOURCE_ROOT}/HIKARI/EngineContent/"
             DESTINATION
-                "EngineContent")
+                "${HIKARI_INSTALL_RUNTIME_PREFIX}EngineContent")
         install(
             DIRECTORY
                 "${HIKARI_SOURCE_ROOT}/HIKARI/Shaders"
             DESTINATION
-                "EngineContent"
+                "${HIKARI_INSTALL_RUNTIME_PREFIX}EngineContent"
             FILES_MATCHING
                 PATTERN "*.hlsl"
                 PATTERN "*.hlsli"
@@ -106,7 +106,7 @@ function(hikari_configure_runtime_deployment target_name)
             "execute_process(\n"
             "  COMMAND \"${CMAKE_COMMAND}\"\n"
             "    \"-DHIKARI_SHADER_SOURCE_ROOT=${HIKARI_SOURCE_ROOT}/HIKARI/Shaders\"\n"
-            "    \"-DHIKARI_SHADER_COOKED_ROOT=${CMAKE_BINARY_DIR}/bin/EngineContent/Shaders/Cooked\"\n"
+            "    \"-DHIKARI_SHADER_COOKED_ROOT=${HIKARI_RUNTIME_DIRECTORY}/EngineContent/Shaders/Cooked\"\n"
             "    -P \"${HIKARI_SOURCE_ROOT}/cmake/ValidateBuiltinShaderInstall.cmake\"\n"
             "  RESULT_VARIABLE _hikari_shader_validation_result)\n"
             "if(NOT _hikari_shader_validation_result EQUAL 0)\n"
@@ -115,12 +115,12 @@ function(hikari_configure_runtime_deployment target_name)
         install(CODE "${hikari_shader_install_validation_code}")
         string(CONCAT hikari_shader_install_cleanup_code
             "file(REMOVE_RECURSE\n"
-            "  \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/EngineContent/Shaders/Cooked\")")
+            "  \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${HIKARI_INSTALL_RUNTIME_PREFIX}EngineContent/Shaders/Cooked\")")
         install(CODE "${hikari_shader_install_cleanup_code}")
         install(
             DIRECTORY
-                "${CMAKE_BINARY_DIR}/bin/EngineContent/Shaders/Cooked/"
+                "${HIKARI_RUNTIME_DIRECTORY}/EngineContent/Shaders/Cooked/"
             DESTINATION
-                "EngineContent/Shaders/Cooked")
+                "${HIKARI_INSTALL_RUNTIME_PREFIX}EngineContent/Shaders/Cooked")
     endif()
 endfunction()

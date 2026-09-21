@@ -17,7 +17,7 @@
 namespace HIKARI::EDITOR {
 namespace {
 
-    constexpr size_t kMaximumRecentProjects = 12u;
+    constexpr size_t kMaximumRecentProjects = 64u;
 
     void SetMessage(
         std::string* outMessage,
@@ -115,33 +115,22 @@ namespace {
                     TEXT::PathFromUtf8(
                         item["root"].get<std::string>()));
             ProjectDescriptor descriptor{};
-            if (root.empty() ||
-                !LoadProjectDescriptor(
-                    root /
-                        kProjectDescriptorFilename,
-                    descriptor)) {
-                continue;
-            }
-
+            if (root.empty()) continue;
+            const bool available = LoadProjectDescriptor(root / kProjectDescriptorFilename, descriptor);
+            if (std::any_of(entries_.begin(), entries_.end(), [&](const auto& entry) { return SameRoot(entry.root, root); })) continue;
             RecentProjectEntry entry{};
-            entry.name = descriptor.name;
+            entry.name = available ? descriptor.name :
+                (item.contains("name") && item["name"].is_string() ? item["name"].get<std::string>() : TEXT::PathToUtf8(root.filename()));
             entry.root = root;
-            entry.lastOpenedUnixSeconds =
-                item.value<int64_t>("lastOpened", 0);
+            entry.available = available;
+            entry.pinned = item.contains("pinned") && item["pinned"].is_boolean() && item["pinned"].get<bool>();
+            entry.thumbnail = item.contains("thumbnail") && item["thumbnail"].is_string() ? item["thumbnail"].get<std::string>() : std::string{};
+            entry.lastOpenedUnixSeconds = item.contains("lastOpened") && item["lastOpened"].is_number_integer()
+                ? item["lastOpened"].get<int64_t>() : 0;
             entries_.push_back(std::move(entry));
         }
 
-        std::sort(
-            entries_.begin(),
-            entries_.end(),
-            [](const RecentProjectEntry& lhs,
-               const RecentProjectEntry& rhs) {
-                return lhs.lastOpenedUnixSeconds >
-                    rhs.lastOpenedUnixSeconds;
-            });
-        if (entries_.size() > kMaximumRecentProjects) {
-            entries_.resize(kMaximumRecentProjects);
-        }
+        SortAndTrim();
         SetMessage(outMessage, {});
         return true;
     }
@@ -177,6 +166,10 @@ namespace {
             return false;
         }
 
+        const auto previous = entries_;
+        bool pinned = false;
+        std::string thumbnail;
+        for (const auto& entry : entries_) if (SameRoot(entry.root, normalized)) {pinned = entry.pinned; thumbnail = entry.thumbnail;}
         entries_.erase(
             std::remove_if(
                 entries_.begin(),
@@ -195,17 +188,19 @@ namespace {
                 .root = normalized,
                 .lastOpenedUnixSeconds =
                     CurrentUnixSeconds(),
+                .pinned = pinned,
+                .thumbnail = std::move(thumbnail),
             });
-        if (entries_.size() > kMaximumRecentProjects) {
-            entries_.resize(kMaximumRecentProjects);
-        }
-        return Save(outMessage);
+        SortAndTrim();
+        if (Save(outMessage)) return true;
+        entries_ = previous; return false;
     }
 
     bool RecentProjectStore::Remove(
         const std::filesystem::path& projectRoot,
         std::string* outMessage) {
 
+        const auto previous = entries_;
         const size_t previousSize = entries_.size();
         entries_.erase(
             std::remove_if(
@@ -222,7 +217,8 @@ namespace {
             SetMessage(outMessage, {});
             return true;
         }
-        return Save(outMessage);
+        if (Save(outMessage)) return true;
+        entries_ = previous; return false;
     }
 
     const std::vector<RecentProjectEntry>&
@@ -244,6 +240,8 @@ namespace {
             projects.push_back({
                 { "lastOpened", entry.lastOpenedUnixSeconds },
                 { "name", entry.name },
+                { "pinned", entry.pinned },
+                { "thumbnail", entry.thumbnail },
                 {
                     "root",
                     TEXT::PathToUtf8(entry.root)
@@ -254,9 +252,50 @@ namespace {
             storagePath_,
             nlohmann::json{
                 { "projects", std::move(projects) },
-                { "version", 1 },
+                { "version", 2 },
             },
             outMessage);
+    }
+
+    void RecentProjectStore::SortAndTrim() {
+        std::stable_sort(entries_.begin(), entries_.end(), [](const auto& a, const auto& b) {
+            if (a.pinned != b.pinned) return a.pinned;
+            return a.lastOpenedUnixSeconds > b.lastOpenedUnixSeconds;
+        });
+        const auto pinned = std::count_if(entries_.begin(), entries_.end(), [](const auto& entry) { return entry.pinned; });
+        if (entries_.size() > kMaximumRecentProjects + pinned) entries_.resize(kMaximumRecentProjects + pinned);
+    }
+
+    bool RecentProjectStore::SetThumbnail(const std::filesystem::path& root, std::string path, std::string* message) {
+        const auto previous = entries_;
+        for (auto& entry : entries_) if (SameRoot(entry.root, root)) entry.thumbnail = path;
+        if (Save(message)) return true;
+        entries_ = previous; return false;
+    }
+
+    bool RecentProjectStore::SetPinned(const std::filesystem::path& root, bool pinned, std::string* message) {
+        const auto previous = entries_;
+        for (auto& entry : entries_) if (SameRoot(entry.root, root)) entry.pinned = pinned;
+        SortAndTrim();
+        if (Save(message)) return true;
+        entries_ = previous; return false;
+    }
+
+    bool RecentProjectStore::Relocate(const std::filesystem::path& root, const std::filesystem::path& replacement, std::string* message) {
+        const auto normalized = PROJECT_PATHS::NormalizeProjectRoot(replacement);
+        ProjectDescriptor descriptor;
+        if (!LoadProjectDescriptor(normalized / kProjectDescriptorFilename, descriptor, message)) return false;
+        const auto previous = entries_;
+        auto found = std::find_if(entries_.begin(), entries_.end(), [&](const auto& entry) { return SameRoot(entry.root, root); });
+        if (found == entries_.end()) return false;
+        const bool pinned = found->pinned;
+        const auto lastOpened = found->lastOpenedUnixSeconds;
+        const auto thumbnail = found->thumbnail;
+        std::erase_if(entries_, [&](const auto& entry) { return SameRoot(entry.root, root) || SameRoot(entry.root, normalized); });
+        entries_.push_back({descriptor.name, normalized, lastOpened, pinned, true, thumbnail});
+        SortAndTrim();
+        if (Save(message)) return true;
+        entries_ = previous; return false;
     }
 
 } // namespace HIKARI::EDITOR

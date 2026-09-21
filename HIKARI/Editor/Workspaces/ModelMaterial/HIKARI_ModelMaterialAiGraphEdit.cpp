@@ -1,7 +1,6 @@
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 
 #include <algorithm>
-#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -446,75 +445,6 @@ bool ModelMaterialWorkspaceController::QueryAiMaterialGraph(
     return false;
   }
   outMessage = "材质图查询：";
-  return true;
-}
-
-bool ModelMaterialWorkspaceController::LayoutAiMaterialGraph(
-    DocumentSceneBase &scene,
-    std::string &outMessage,
-    std::string &outCode) {
-  std::lock_guard<std::recursive_mutex> guard(
-      authoringDocument_.GetMutex());
-  outCode = "OK";
-  if (!authoringDocument_.HasMaterial()) {
-    outMessage = "未打开材质文档";
-    outCode = "MATERIAL_DOCUMENT_MISSING";
-    return false;
-  }
-  MaterialAssetData before = authoringDocument_.GetMaterial();
-  MaterialAssetData &material = authoringDocument_.EditMaterial();
-  MaterialGraphData *graph =
-      material.kind == MaterialAssetKind::Material
-          ? &material.graph
-          : material.kind == MaterialAssetKind::Function
-              ? &material.function.graph
-              : nullptr;
-  if (graph == nullptr || graph->nodes.empty()) {
-    outMessage = "材质图没有可整理的节点";
-    outCode = "GRAPH_EMPTY";
-    return false;
-  }
-
-  std::unordered_map<std::string, size_t> layer{};
-  for (const MaterialGraphNodeData &node : graph->nodes) {
-    layer[node.id] = 0u;
-  }
-  bool changed = true;
-  size_t pass = 0u;
-  while (changed && pass < graph->nodes.size()) {
-    changed = false;
-    for (const MaterialGraphEdgeData &edge : graph->edges) {
-      const size_t sourceLayer = layer[edge.sourceNodeId];
-      if (layer[edge.targetNodeId] <= sourceLayer) {
-        layer[edge.targetNodeId] = sourceLayer + 1u;
-        changed = true;
-      }
-    }
-    ++pass;
-  }
-
-  std::map<size_t, std::vector<std::string>> columns;
-  for (const MaterialGraphNodeData &node : graph->nodes) {
-    columns[layer[node.id]].push_back(node.id);
-  }
-  for (const auto &[column, nodeIds] : columns) {
-    size_t row = 0u;
-    for (const std::string &nodeId : nodeIds) {
-      for (MaterialGraphNodeData &node : graph->nodes) {
-        if (node.id == nodeId) {
-          node.position = {
-              static_cast<float>(column) * 300.0f + 40.0f,
-              static_cast<float>(row) * 240.0f + 40.0f,
-          };
-          ++row;
-          break;
-        }
-      }
-    }
-  }
-  CommitMaterialMutation(
-      std::move(before), "AI auto layout material graph", scene);
-  outMessage = "已按拓扑自动整理节点布局";
   return true;
 }
 

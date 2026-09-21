@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/ModelCollision/HIKARI_ModelCollisionWorkspaceController.h"
 
 #include <string_view>
@@ -13,26 +14,26 @@ namespace HIKARI::EDITOR {
 
 void ModelCollisionWorkspaceController::DrawSourceModelWindow() {
 #if defined(HIKARI_WITH_EDITOR)
-  if (!ImGui::Begin("Source Model###ModelCollision/Source")) {
+  if (!ImGui::Begin(TEXT::LocalizeWindow("editor.ui.source.model.acf996", "ModelCollision/Source").c_str())) {
     ImGui::End();
     return;
   }
   const ModelAsset *model = previewScene_.GetModel();
   if (model == nullptr) {
-    ImGui::TextDisabled("No model loaded.");
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.no.model.loaded.bdddc1").c_str());
     ImGui::End();
     return;
   }
   const std::vector<ModelPreviewNode> &sourceNodes =
       previewScene_.GetSourceNodes();
-  ImGui::Text("%d mesh nodes | %d selected",
+  ImGui::Text(TEXT::Localize("editor.ui.d.mesh.nodes.d.selected.a86e1e").c_str(),
               static_cast<int>(sourceNodes.size()),
               static_cast<int>(selectedSourceNodes_.size()));
-  ImGui::TextDisabled("%d meshes", static_cast<int>(model->meshes.size()));
-  ImGui::InputTextWithHint("##NodeSearch", "Filter nodes", sourceSearch_.data(),
+  ImGui::TextDisabled(TEXT::Localize("editor.ui.d.meshes.da2974").c_str(), static_cast<int>(model->meshes.size()));
+  ImGui::InputTextWithHint("##NodeSearch",TEXT::Localize("editor.ui.filter.nodes.0b8a25").c_str(), sourceSearch_.data(),
                            sourceSearch_.size());
   ImGui::SameLine();
-  if (ImGui::SmallButton("Select Filtered")) {
+  if (ImGui::SmallButton(TEXT::LocalizeWindow("editor.ui.select.filtered.2b2f4e", "Select Filtered").c_str())) {
     const std::string_view query(sourceSearch_.data());
     for (const ModelPreviewNode &node : sourceNodes) {
       if (MODEL_COLLISION_PRESENTATION::MatchesSearch(node.name, query)) {
@@ -43,11 +44,11 @@ void ModelCollisionWorkspaceController::DrawSourceModelWindow() {
     selectionMode_ = ModelCollisionSelectionMode::SourceNodes;
   }
   ImGui::SameLine();
-  if (ImGui::SmallButton("Clear Selection")) {
+  if (ImGui::SmallButton(TEXT::LocalizeWindow("editor.ui.clear.selection.fae58c", "Clear Selection").c_str())) {
     selectedSourceNodes_.clear();
     primarySourceNodeIndex_ = -1;
   }
-  if (!selectedSourceNodes_.empty() && ImGui::Button("Frame Selected")) {
+  if (!selectedSourceNodes_.empty() && ImGui::Button(TEXT::LocalizeWindow("editor.ui.frame.selected.3f6ad6", "Frame Selected").c_str())) {
     selectionMode_ = ModelCollisionSelectionMode::SourceNodes;
     FocusSelection();
   }

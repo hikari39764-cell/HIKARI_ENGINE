@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/SystemAuthoring/HIKARI_SceneSystemsManager.h"
 
 #include <algorithm>
@@ -162,13 +163,13 @@ namespace HIKARI::EDITOR {
             selectRow(*selectedRow);
         }
 
-        ImGui::TextUnformatted("Installed Systems");
+        ImGui::TextUnformatted(TEXT::Localize("editor.ui.installed.systems.ef0cba").c_str());
         const float closeWidth = 88.0f;
         ImGui::SameLine();
         ImGui::SetCursorPosX((std::max)(
             ImGui::GetCursorPosX(),
             ImGui::GetWindowContentRegionMax().x - closeWidth));
-        if (ImGui::Button("Close", ImVec2(closeWidth, 0.0f))) {
+        if (ImGui::Button(TEXT::LocalizeWindow("ui.input.close", "Close").c_str(), ImVec2(closeWidth, 0.0f))) {
             if (inspector_.IsDirty()) {
                 pendingClose_ = true;
                 pendingSystemId_.clear();
@@ -189,14 +190,13 @@ namespace HIKARI::EDITOR {
             true);
         ImGui::SetNextItemWidth(-1.0f);
         ImGui::InputTextWithHint(
-            "##InstalledSystemFilter",
-            "Search installed...",
+            "##InstalledSystemFilter",TEXT::Localize("editor.ui.search.installed.73e507").c_str(),
             filter_.data(),
             filter_.size());
 
         ImGui::BeginDisabled(scene.IsRuntimePlayActive() ||
             inspector_.IsDirty());
-        if (ImGui::Button("+ Add System", ImVec2(-1.0f, 0.0f))) {
+        if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.add.system.1d6537", "+ Add System").c_str(), ImVec2(-1.0f, 0.0f))) {
             addSystemPopup_.Open();
         }
         ImGui::EndDisabled();
@@ -334,8 +334,8 @@ namespace HIKARI::EDITOR {
                 nullptr,
                 ImGuiWindowFlags_NoResize |
                 ImGuiWindowFlags_NoSavedSettings)) {
-            ImGui::TextUnformatted("Discard unapplied system changes?");
-            if (ImGui::Button("Discard", ImVec2(96.0f, 0.0f))) {
+            ImGui::TextUnformatted(TEXT::Localize("editor.ui.discard.unapplied.system.changes.9966c6").c_str());
+            if (ImGui::Button(TEXT::LocalizeWindow("ui.sceneOpen.discard", "Discard").c_str(), ImVec2(96.0f, 0.0f))) {
                 inspector_.Revert();
                 if (pendingClose_) {
                     closeManager = true;
@@ -348,7 +348,7 @@ namespace HIKARI::EDITOR {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (ImGui::Button("Cancel", ImVec2(96.0f, 0.0f))) {
+            if (ImGui::Button(TEXT::LocalizeWindow("ui.common.cancel", "Cancel").c_str(), ImVec2(96.0f, 0.0f))) {
                 pendingClose_ = false;
                 pendingSystemId_.clear();
                 ImGui::CloseCurrentPopup();

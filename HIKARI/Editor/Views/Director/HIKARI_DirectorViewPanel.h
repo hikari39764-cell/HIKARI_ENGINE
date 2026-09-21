@@ -28,6 +28,7 @@ struct DirectorViewGizmoEdit {
 };
 
 struct DirectorViewPanelResult {
+  EditorViewportRect viewport;
   bool selectionRequested = false;
   SceneObjectId selectedObjectId{};
 
@@ -52,9 +53,11 @@ public:
   DrawContents(const DocumentSceneBase &scene, EditorViewInstance &view,
                SceneObjectId selectedObjectId,
                const EditorTransformGizmoState &gizmoState, float deltaTime,
-               bool runtimePlayActive);
+               bool runtimePlayActive, bool sceneCameraControls = true);
 
   void SetTargetCamera(SceneObjectId cameraObjectId) noexcept;
+  void SetFreeCamera(const Camera3D& camera);
+  void FocusPoint(const MATH::Vec3& point, float distance);
   bool FrameTargetCamera(const DocumentSceneBase &scene,
                          SceneObjectId cameraObjectId,
                          float preferredDistance = 10.0f);

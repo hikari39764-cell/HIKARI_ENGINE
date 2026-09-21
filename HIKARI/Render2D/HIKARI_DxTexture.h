@@ -2,6 +2,7 @@
 #include "Gfx/HIKARI_DescriptorAllocator.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/HIKARI_GfxContext.h"
+#include "Gfx/HIKARI_UploadSubmissionQueue.h"
 #include <d3d12.h>
 #include <cstdint>
 #include <Windows.h>
@@ -144,11 +145,8 @@ namespace HIKARI {
             static UINT descriptorSize_;
 
             static Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> srvHeap_;
-            static Microsoft::WRL::ComPtr<ID3D12CommandAllocator> uploadAllocator_;
-            static Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> uploadCmdList_;
-            static Microsoft::WRL::ComPtr<ID3D12Fence> uploadFence_;
-            static HANDLE uploadFenceEvent_;
-            static uint64_t uploadFenceValue_;
+            static GFX::UploadSubmissionQueue uploads_;
+            static ID3D12GraphicsCommandList* BeginUpload();
             static std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> textures_;
             static std::vector<TextureDimension> dimensions_;
             static std::vector<UINT> mipCounts_;

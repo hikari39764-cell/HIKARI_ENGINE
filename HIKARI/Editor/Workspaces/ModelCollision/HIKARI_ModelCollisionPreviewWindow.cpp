@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/ModelCollision/HIKARI_ModelCollisionWorkspaceController.h"
 
 #include "Core/HIKARI_TimeService.h"
@@ -24,7 +25,7 @@ void ModelCollisionWorkspaceController::DrawPreviewWindow(
   constexpr ImGuiWindowFlags previewWindowFlags =
       ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse |
       ImGuiWindowFlags_NoCollapse;
-  if (!ImGui::Begin("Model Preview###ModelCollision/Preview", nullptr,
+  if (!ImGui::Begin(TEXT::LocalizeWindow("editor.ui.model.preview.5cdec1", "ModelCollision/Preview").c_str(), nullptr,
                     previewWindowFlags)) {
     ImGui::End();
     return;
@@ -119,7 +120,7 @@ void ModelCollisionWorkspaceController::DrawPreviewWindow(
   }
   bool cameraChanged = cameraController_.Update(
       cameraInput, TIME::GetFrameContext().unscaledDt, aspect);
-  if (input.AcceptsKeyboard() && hovered && !io.WantTextInput) {
+  if (CanUseEditorShortcut(EditorShortcutScope::Viewport, ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows))) {
     (void)commandRouter.ProcessViewportShortcuts(true);
     if (ImGui::IsKeyPressed(ImGuiKey_W, false) && !input.rightMouseCaptured) {
       gizmoState_.operation = EditorTransformGizmoOperation::Translate;
@@ -150,10 +151,10 @@ void ModelCollisionWorkspaceController::DrawPreviewWindow(
   const ASSETS::COLLISION::ModelCollisionSetup &viewportSetup =
       previewingGenerationDraft ? generationDraft_->setup : setup_;
 
-  ModelCollisionPointerRay pointerRay{};
+  EditorPointerRay pointerRay{};
   const bool pointerRayValid =
       hovered && !block.pointer && canvasSize.x > 0.0f && canvasSize.y > 0.0f &&
-      BuildModelCollisionPointerRay(
+      BuildEditorPointerRay(
           camera, (io.MousePos.x - origin.x) / canvasSize.x,
           (io.MousePos.y - origin.y) / canvasSize.y, pointerRay);
   hoveredShapeId_ = 0u;
@@ -312,25 +313,24 @@ void ModelCollisionWorkspaceController::DrawPreviewWindow(
     ImGui::ResetMouseDragDelta(ImGuiMouseButton_Right);
   }
   if (ImGui::BeginPopup("CollisionViewportContext")) {
-    if (ImGui::BeginMenu("Collision Visibility")) {
-      if (ImGui::MenuItem("Show All", "Shift+H",
+    if (ImGui::BeginMenu(TEXT::LocalizeWindow("editor.ui.collision.visibility.238ade", "Collision Visibility").c_str())) {
+      if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.show.all.b3f854", "Show All").c_str(), "Shift+H",
                           collisionVisibility_ ==
                               ModelCollisionPreviewVisibility::All)) {
         ShowAllShapes();
       }
-      if (ImGui::MenuItem(
-              "Selected + Dim Context", nullptr,
+      if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.selected.dim.context.1d83e6", "Selected + Dim Context").c_str(), nullptr,
               collisionVisibility_ ==
                   ModelCollisionPreviewVisibility::SelectedWithContext)) {
         collisionVisibility_ =
             ModelCollisionPreviewVisibility::SelectedWithContext;
       }
-      if (ImGui::MenuItem("Selected Only", nullptr,
+      if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.selected.only.8bab77", "Selected Only").c_str(), nullptr,
                           collisionVisibility_ ==
                               ModelCollisionPreviewVisibility::SelectedOnly)) {
         collisionVisibility_ = ModelCollisionPreviewVisibility::SelectedOnly;
       }
-      if (ImGui::MenuItem("Hide All", nullptr,
+      if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.hide.all.556020", "Hide All").c_str(), nullptr,
                           collisionVisibility_ ==
                               ModelCollisionPreviewVisibility::Hidden)) {
         collisionVisibility_ = ModelCollisionPreviewVisibility::Hidden;
@@ -340,26 +340,26 @@ void ModelCollisionWorkspaceController::DrawPreviewWindow(
     if (selectionMode_ == ModelCollisionSelectionMode::CollisionShapes) {
       ImGui::Separator();
       const bool hasSelection = !selectedShapeIds_.empty();
-      if (ImGui::MenuItem("Duplicate Selected", "Ctrl+D", false,
+      if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.duplicate.selected.74ac9f", "Duplicate Selected").c_str(), "Ctrl+D", false,
                           hasSelection)) {
         DuplicateSelectedShapes();
       }
-      if (ImGui::MenuItem("Hide Selected", "H", false, hasSelection)) {
+      if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.hide.selected.c01d1a", "Hide Selected").c_str(), "H", false, hasSelection)) {
         SetSelectedShapesHidden(true);
       }
-      if (ImGui::MenuItem("Hide Unselected", nullptr, false, hasSelection)) {
+      if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.hide.unselected.667124", "Hide Unselected").c_str(), nullptr, false, hasSelection)) {
         HideUnselectedShapes();
       }
-      if (ImGui::MenuItem("Isolate Selected", nullptr, false, hasSelection)) {
+      if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.isolate.selected.29262b", "Isolate Selected").c_str(), nullptr, false, hasSelection)) {
         collisionVisibility_ = ModelCollisionPreviewVisibility::SelectedOnly;
       }
-      if (ImGui::MenuItem(AreAllSelectedShapesLocked() ? "Unlock Selected"
-                                                       : "Lock Selected",
+      if (ImGui::MenuItem(AreAllSelectedShapesLocked() ? TEXT::LocalizeCStr("editor.ui.unlock.selected.88c853")
+                                                       : TEXT::LocalizeCStr("editor.ui.lock.selected.00d319"),
                           "L", false, hasSelection)) {
         SetSelectedShapesLocked(!AreAllSelectedShapesLocked());
       }
       ImGui::Separator();
-      if (ImGui::MenuItem("Delete Selected", "Delete", false, hasSelection)) {
+      if (ImGui::MenuItem(TEXT::LocalizeWindow("ui.materialGraph.deleteSelected", "Delete Selected").c_str(), "Delete", false, hasSelection)) {
         DeleteSelectedShapes();
       }
     }

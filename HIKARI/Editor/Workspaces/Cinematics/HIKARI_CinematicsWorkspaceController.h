@@ -7,6 +7,7 @@
 #include "Editor/Commands/HIKARI_EditorCommandRouter.h"
 #include "Editor/Documents/HIKARI_SequenceEditorDocumentController.h"
 #include "Editor/Views/Director/HIKARI_DirectorViewPanel.h"
+#include "Editor/Widgets/HIKARI_PresentationCurveEditor.h"
 #include "Scene/Sequencer/HIKARI_SequencePlayback.h"
 #include <json.hpp>
 #include "Editor/Workspaces/HIKARI_EditorWorkspaceHost.h"
@@ -71,6 +72,7 @@ public:
                             DocumentSceneBase &scene);
 
   bool ExecuteAuthoring(DocumentSceneBase& scene, const nlohmann::json& command, std::string& message);
+  static nlohmann::json AuthoringCommandSchema();
   nlohmann::json DescribeAuthoring(DocumentSceneBase& scene) const;
 
 private:
@@ -80,10 +82,28 @@ private:
   bool DrawInspector(DocumentSceneBase& scene, CinematicSequence& sequence);
   bool DrawTimeline(DocumentSceneBase& scene, CinematicSequence& sequence);
   void DrawMonitor(DocumentSceneBase& scene, EditorWorkspaceHost& workspaceHost);
+  bool DrawStage(DocumentSceneBase& scene, CinematicSequence& sequence, EditorContext& context, EditorWorkspaceHost& host, bool enabled);
+  bool DrawShotOverlays(DocumentSceneBase& scene, CinematicSequence& sequence, const EditorViewportRect& viewport, bool enabled);
+  Camera3D ResolveShotCamera(DocumentSceneBase& scene, CinematicSequence& sequence, const SEQUENCER::CameraCutClip& shot, float localTime, bool includeMotion = true) const;
   bool DrawTransport(CinematicSequence& sequence);
   bool DrawEffects(std::vector<SEQUENCER::SequenceScreenEffect>& effects, float seconds);
-  bool DrawCurve(SEQUENCER::PresentationParameter& parameter, float time);
+  bool DrawCurve(SEQUENCER::PresentationParameter& parameter, float time, const std::string& channel);
+  struct Channel {
+    std::string id, label;
+    SEQUENCER::PresentationParameter* parameter = nullptr;
+    float start = 0, duration = 1;
+  };
+  std::vector<Channel> CollectChannels(CinematicSequence& sequence, bool visibleOnly = false);
+  bool DrawChannelLanes(CinematicSequence& sequence, float x, float y, float width, float labelWidth, float rowHeight);
+  bool DrawChannelCurve(CinematicSequence& sequence);
+  std::string selectedChannel_ = "eyeX";
+  PresentationCurveView curveView_;
+  bool curveMode_ = false;
+  bool animatedChannelsOnly_ = true;
+  uint64_t channelOwner_ = 0;
+  std::vector<SEQUENCER::PresentationKey> keyClipboard_;
   SEQUENCER::CameraCutClip* SelectedShot(CinematicSequence& sequence);
+  bool DeleteSelectedClip(CinematicSequence& sequence);
   void CreateShot(CinematicSequence& sequence, const Camera3D& camera);
   void CapturePose(DocumentSceneBase& scene, CinematicSequence& sequence, const Camera3D& camera);
 
@@ -101,7 +121,12 @@ private:
   bool previewEnabled_ = false;
   bool ownsPreview_ = false;
   bool previewChanged_ = true;
-  bool spaceView_ = false;
+  bool spaceView_ = true;
+  bool stageInitialized_ = false;
+  bool stageEditTarget_ = false;
+  bool stageRotate_ = false;
+  bool showShotPaths_ = true;
+  EditorTransformGizmo stageGizmo_;
   bool autoKey_ = false;
   bool sequenceLibraryVisible_ = true;
   float zoom_ = 80.0f;

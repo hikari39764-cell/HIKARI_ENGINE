@@ -1,5 +1,7 @@
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceDocument.h"
 
+#include "Assets/Material/Serialization/HIKARI_MaterialSourceJson.h"
+
 #include <functional>
 #include <string>
 #include <utility>
@@ -8,19 +10,43 @@
 
 namespace HIKARI::EDITOR {
 
+bool ModelMaterialWorkspaceDocument::AreMaterialContentsEquivalent(
+    const MaterialAssetData& left, const MaterialAssetData& right) {
+  std::string leftText, rightText, error;
+  return MATERIAL_SERIALIZATION::SerializeMaterialCompileInputJson(left, leftText, error) &&
+      MATERIAL_SERIALIZATION::SerializeMaterialCompileInputJson(right, rightText, error) && leftText == rightText;
+}
+
+bool ModelMaterialWorkspaceDocument::LastMaterialChangeRequiresPreview() const noexcept {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+  return materialContentChanged_;
+}
+
+void ModelMaterialWorkspaceDocument::RefreshAfterMaterialChange(
+    const MaterialAssetData& before) {
+  const bool wasCurrent = compileRevision_ == materialRevision_;
+  ++materialRevision_;
+  materialContentChanged_ = !AreMaterialContentsEquivalent(before, material_);
+  if (materialContentChanged_) {
+    RefreshCompile();
+  } else if (wasCurrent) {
+    compileRevision_ = materialRevision_;
+  }
+}
+
 bool ModelMaterialWorkspaceDocument::CommitMaterialLocked(
     MaterialAssetData before, std::string label) {
   if (!materialOpen_ || AreMaterialsEquivalent(before, material_)) {
     return false;
   }
-  SyncPbrFromGraphParameters(material_);
+  const bool contentChanged = !AreMaterialContentsEquivalent(before, material_);
+  if (contentChanged) SyncPbrFromGraphParameters(material_);
   if (abBefore_) {
-    ++materialRevision_;
-    RefreshCompile();
+    RefreshAfterMaterialChange(before);
     return true;
   }
   HistoryEntry entry{};
-  entry.domain = ChangedDomain::Material;
+  entry.domain = contentChanged ? ChangedDomain::Material : ChangedDomain::MaterialLayout;
   entry.beforeMaterial = std::move(before);
   entry.afterMaterial = material_;
   entry.beforeToken = materialStateToken_;
@@ -28,9 +54,8 @@ bool ModelMaterialWorkspaceDocument::CommitMaterialLocked(
   entry.label = std::move(label);
   materialStateToken_ = entry.afterToken;
   activeHistoryDomain_ = ChangedDomain::Material;
+  RefreshAfterMaterialChange(entry.beforeMaterial);
   PushHistory(std::move(entry));
-  ++materialRevision_;
-  RefreshCompile();
   return true;
 }
 

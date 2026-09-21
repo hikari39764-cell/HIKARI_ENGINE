@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -26,6 +27,10 @@ namespace HIKARI {
         bool requireDomainOutput = true;
         MaterialDomain domain = MaterialDomain::Surface;
     };
+
+    std::optional<MaterialValueType> ResolveMaterialGraphPinType(
+        const MaterialGraphData& graph, const MaterialGraphNodeData& node,
+        std::string_view pin, bool output);
 
     bool IsValidMaterialStableId(std::string_view id) noexcept;
 

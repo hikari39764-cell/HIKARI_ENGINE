@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/AnimationStateMachine/HIKARI_AnimationStateMachineWorkspaceController.h"
 
 #include <algorithm>
@@ -34,22 +35,22 @@ ParameterSourceName(ANIMATION::AnimationParameterSource source) noexcept {
   using Source = ANIMATION::AnimationParameterSource;
   switch (source) {
   case Source::CharacterGrounded:
-    return "Character Grounded";
+    return TEXT::LocalizeCStr("editor.ui.character.grounded.4a238d");
   case Source::CharacterMoving:
-    return "Character Moving";
+    return TEXT::LocalizeCStr("editor.ui.character.moving.ead4a7");
   case Source::CharacterHorizontalSpeed:
-    return "Horizontal Speed";
+    return TEXT::LocalizeCStr("editor.ui.horizontal.speed.1500fb");
   case Source::CharacterVerticalSpeed:
-    return "Vertical Speed";
+    return TEXT::LocalizeCStr("editor.ui.vertical.speed.0cc532");
   case Source::CharacterInputMagnitude:
-    return "Input Magnitude";
+    return TEXT::LocalizeCStr("editor.ui.input.magnitude.19185f");
   case Source::CharacterSprinting:
-    return "Character Sprinting";
+    return TEXT::LocalizeCStr("editor.ui.character.sprinting.177b29");
   case Source::CharacterFalling:
-    return "Character Falling";
+    return TEXT::LocalizeCStr("editor.ui.character.falling.39a12a");
   case Source::Manual:
   default:
-    return "Manual (C++)";
+    return TEXT::LocalizeCStr("editor.ui.manual.c.0a8a40");
   }
 }
 
@@ -69,7 +70,7 @@ ConditionOperatorName(ANIMATION::AnimationConditionOperator value) noexcept {
   using Op = ANIMATION::AnimationConditionOperator;
   switch (value) {
   case Op::IsFalse:
-    return "Is False";
+    return TEXT::LocalizeCStr("editor.ui.is.false.b63c27");
   case Op::Greater:
     return ">";
   case Op::GreaterOrEqual:
@@ -83,10 +84,10 @@ ConditionOperatorName(ANIMATION::AnimationConditionOperator value) noexcept {
   case Op::NotEqual:
     return "!=";
   case Op::Triggered:
-    return "Triggered";
+    return TEXT::LocalizeCStr("editor.ui.triggered.933f5e");
   case Op::IsTrue:
   default:
-    return "Is True";
+    return TEXT::LocalizeCStr("editor.ui.is.true.905c77");
   }
 }
 #endif
@@ -95,15 +96,15 @@ ConditionOperatorName(ANIMATION::AnimationConditionOperator value) noexcept {
 void AnimationStateMachineWorkspaceController::DrawDetailsWindow(
     DocumentSceneBase &scene) {
 #if defined(HIKARI_WITH_EDITOR)
-  if (!ImGui::Begin("Details###AnimationSM/Details")) {
+  if (!ImGui::Begin(TEXT::LocalizeWindow("editor.ui.details.dc3dec", "AnimationSM/Details").c_str())) {
     ImGui::End();
     return;
   }
   auto &definition = document_.Definition();
-  ImGui::SeparatorText("State Machine");
+  ImGui::SeparatorText(TEXT::Localize("editor.ui.state.machine.ff3372").c_str());
   {
     auto before = definition;
-    if (InputTextString("Name", definition.name)) {
+    if (InputTextString(TEXT::Localize("ui.input.name").c_str(), definition.name)) {
       RecordMutation(std::move(before), 1u);
     }
   }
@@ -119,7 +120,7 @@ void AnimationStateMachineWorkspaceController::DrawDetailsWindow(
             ? selectedRecord->displayName
             : definition.previewModelAssetId.value;
   }
-  if (ImGui::BeginCombo("Animation Model", modelPreview.c_str())) {
+  if (ImGui::BeginCombo(TEXT::LocalizeWindow("editor.ui.animation.model.a79a75", "Animation Model").c_str(), modelPreview.c_str())) {
     for (const AssetRecord *record : models) {
       if (record == nullptr)
         continue;
@@ -138,17 +139,17 @@ void AnimationStateMachineWorkspaceController::DrawDetailsWindow(
     ImGui::EndCombo();
   }
 
-  ImGui::SeparatorText("Selection");
+  ImGui::SeparatorText(TEXT::Localize("editor.ui.selection.d1f8e5").c_str());
   if (selectionKind_ == SelectionKind::State) {
     ANIMATION::AnimationState *state = SelectedState();
     if (state != nullptr) {
       auto before = definition;
-      if (InputTextString("State Name", state->name)) {
+      if (InputTextString(TEXT::Localize("editor.ui.state.name.5a9dd2").c_str(), state->name)) {
         RecordMutation(std::move(before), 1000u + state->id.value);
         state = SelectedState();
       }
       bool entry = definition.entryStateId == state->id;
-      if (ImGui::Checkbox("Entry State", &entry) && entry) {
+      if (ImGui::Checkbox(TEXT::LocalizeWindow("editor.ui.entry.state.9b7e45", "Entry State").c_str(), &entry) && entry) {
         before = definition;
         definition.entryStateId = state->id;
         RecordMutation(std::move(before));
@@ -157,12 +158,12 @@ void AnimationStateMachineWorkspaceController::DrawDetailsWindow(
       DrawSelectedStateMotionEditor(scene, *state);
       state = SelectedState();
       before = definition;
-      if (ImGui::DragFloat("Speed", &state->speed, 0.02f, -8.0f, 8.0f)) {
+      if (ImGui::DragFloat(TEXT::LocalizeWindow("ui.vfx.text.Speed", "Speed").c_str(), &state->speed, 0.02f, -8.0f, 8.0f)) {
         RecordMutation(std::move(before), 2000u + state->id.value);
         state = SelectedState();
       }
       before = definition;
-      if (ImGui::Checkbox("Loop", &state->loop)) {
+      if (ImGui::Checkbox(TEXT::LocalizeWindow("ui.vfx.text.Loop", "Loop").c_str(), &state->loop)) {
         RecordMutation(std::move(before));
       }
     }
@@ -170,14 +171,14 @@ void AnimationStateMachineWorkspaceController::DrawDetailsWindow(
     ANIMATION::AnimationParameterDefinition *parameter = SelectedParameter();
     if (parameter != nullptr) {
       auto before = definition;
-      if (InputTextString("Parameter Name", parameter->name)) {
+      if (InputTextString(TEXT::Localize("editor.ui.parameter.name.94d788").c_str(), parameter->name)) {
         RecordMutation(std::move(before), 3000u + parameter->id.value);
         parameter = SelectedParameter();
       }
       int type = static_cast<int>(parameter->type);
-      constexpr const char *types[]{"Bool", "Float", "Integer", "Trigger"};
+      const char *types[]{TEXT::LocalizeCStr("editor.ui.bool.daf760"), TEXT::LocalizeCStr("editor.ui.float.64435f"), TEXT::LocalizeCStr("editor.ui.integer.9edcff"), TEXT::LocalizeCStr("editor.ui.trigger.d3f06a")};
       before = definition;
-      if (ImGui::Combo("Type", &type, types, 4)) {
+      if (ImGui::Combo(TEXT::LocalizeWindow("ui.vfx.text.Type", "Type").c_str(), &type, types, 4)) {
         parameter->type = static_cast<ANIMATION::AnimationParameterType>(type);
         parameter->defaultValue =
             ANIMATION::MakeDefaultAnimationParameterValue(parameter->type);
@@ -188,39 +189,39 @@ void AnimationStateMachineWorkspaceController::DrawDetailsWindow(
         parameter = SelectedParameter();
       }
       int source = static_cast<int>(parameter->source);
-      constexpr const char *sources[]{
-          "Manual (C++)",        "Character Grounded", "Character Moving",
-          "Horizontal Speed",    "Vertical Speed",     "Input Magnitude",
-          "Character Sprinting", "Character Falling"};
+      const char *sources[]{
+          TEXT::LocalizeCStr("editor.ui.manual.c.0a8a40"),        TEXT::LocalizeCStr("editor.ui.character.grounded.4a238d"), TEXT::LocalizeCStr("editor.ui.character.moving.ead4a7"),
+          TEXT::LocalizeCStr("editor.ui.horizontal.speed.1500fb"),    TEXT::LocalizeCStr("editor.ui.vertical.speed.0cc532"),     TEXT::LocalizeCStr("editor.ui.input.magnitude.19185f"),
+          TEXT::LocalizeCStr("editor.ui.character.sprinting.177b29"), TEXT::LocalizeCStr("editor.ui.character.falling.39a12a")};
       ImGui::BeginDisabled(parameter->type ==
                            ANIMATION::AnimationParameterType::Trigger);
       before = definition;
-      if (ImGui::Combo("Binding Source", &source, sources, 8)) {
+      if (ImGui::Combo(TEXT::LocalizeWindow("editor.ui.binding.source.35edd6", "Binding Source").c_str(), &source, sources, 8)) {
         parameter->source =
             static_cast<ANIMATION::AnimationParameterSource>(source);
         RecordMutation(std::move(before));
         parameter = SelectedParameter();
       }
       ImGui::EndDisabled();
-      ImGui::TextDisabled("Source: %s", ParameterSourceName(parameter->source));
+      ImGui::TextDisabled(TEXT::Localize("ui.assetBrowser.tooltipSource").c_str(), ParameterSourceName(parameter->source));
 
       before = definition;
       if (parameter->type == ANIMATION::AnimationParameterType::Float) {
         float value = std::get<float>(parameter->defaultValue);
-        if (ImGui::DragFloat("Default", &value, 0.02f)) {
+        if (ImGui::DragFloat(TEXT::LocalizeWindow("ui.environment.preset.default", "Default").c_str(), &value, 0.02f)) {
           parameter->defaultValue = value;
           RecordMutation(std::move(before), 4000u + parameter->id.value);
         }
       } else if (parameter->type ==
                  ANIMATION::AnimationParameterType::Integer) {
         int value = std::get<int32_t>(parameter->defaultValue);
-        if (ImGui::DragInt("Default", &value)) {
+        if (ImGui::DragInt(TEXT::LocalizeWindow("ui.environment.preset.default", "Default").c_str(), &value)) {
           parameter->defaultValue = static_cast<int32_t>(value);
           RecordMutation(std::move(before), 4000u + parameter->id.value);
         }
       } else if (parameter->type == ANIMATION::AnimationParameterType::Bool) {
         bool value = std::get<bool>(parameter->defaultValue);
-        if (ImGui::Checkbox("Default", &value)) {
+        if (ImGui::Checkbox(TEXT::LocalizeWindow("ui.environment.preset.default", "Default").c_str(), &value)) {
           parameter->defaultValue = value;
           RecordMutation(std::move(before));
         }
@@ -232,10 +233,10 @@ void AnimationStateMachineWorkspaceController::DrawDetailsWindow(
       auto before = definition;
       const auto *source =
           ANIMATION::FindAnimationState(definition, transition->sourceStateId);
-      if (ImGui::BeginCombo("Source", source != nullptr ? source->name.c_str()
+      if (ImGui::BeginCombo(TEXT::LocalizeWindow("ui.modelDiagnostics.source", "Source").c_str(), source != nullptr ? source->name.c_str()
                                                         : "Any State")) {
         const bool anySelected = !transition->sourceStateId.IsValid();
-        if (ImGui::Selectable("Any State", anySelected)) {
+        if (ImGui::Selectable(TEXT::LocalizeWindow("editor.ui.any.state.4bcf51", "Any State").c_str(), anySelected)) {
           before = definition;
           transition->sourceStateId = {};
           RecordMutation(std::move(before));
@@ -254,7 +255,7 @@ void AnimationStateMachineWorkspaceController::DrawDetailsWindow(
       }
       const auto *target =
           ANIMATION::FindAnimationState(definition, transition->targetStateId);
-      if (ImGui::BeginCombo("Target", target != nullptr ? target->name.c_str()
+      if (ImGui::BeginCombo(TEXT::LocalizeWindow("editor.ui.target.61ad50", "Target").c_str(), target != nullptr ? target->name.c_str()
                                                         : "<missing>")) {
         for (const auto &state : definition.states) {
           const bool selected = state.id == transition->targetStateId;
@@ -268,39 +269,39 @@ void AnimationStateMachineWorkspaceController::DrawDetailsWindow(
         ImGui::EndCombo();
       }
       before = definition;
-      if (ImGui::DragInt("Priority", &transition->priority, 1.0f)) {
+      if (ImGui::DragInt(TEXT::LocalizeWindow("ui.input.priority", "Priority").c_str(), &transition->priority, 1.0f)) {
         RecordMutation(std::move(before), 5000u + transition->id.value);
         transition = SelectedTransition();
       }
       before = definition;
-      if (ImGui::DragFloat("Blend Duration", &transition->blendDurationSec,
+      if (ImGui::DragFloat(TEXT::LocalizeWindow("editor.ui.blend.duration.c087cd", "Blend Duration").c_str(), &transition->blendDurationSec,
                            0.01f, 0.0f, 10.0f, "%.2f s")) {
         RecordMutation(std::move(before), 6000u + transition->id.value);
         transition = SelectedTransition();
       }
       before = definition;
-      if (ImGui::Checkbox("Require Exit Time", &transition->requireExitTime)) {
+      if (ImGui::Checkbox(TEXT::LocalizeWindow("editor.ui.require.exit.time.048813", "Require Exit Time").c_str(), &transition->requireExitTime)) {
         RecordMutation(std::move(before));
         transition = SelectedTransition();
       }
       if (transition->requireExitTime) {
         before = definition;
-        if (ImGui::SliderFloat("Exit Time", &transition->exitTimeNormalized,
+        if (ImGui::SliderFloat(TEXT::LocalizeWindow("editor.ui.exit.time.2d3d87", "Exit Time").c_str(), &transition->exitTimeNormalized,
                                0.0f, 1.0f)) {
           RecordMutation(std::move(before), 7000u + transition->id.value);
           transition = SelectedTransition();
         }
       }
       before = definition;
-      if (ImGui::Checkbox("Allow Self Transition",
+      if (ImGui::Checkbox(TEXT::LocalizeWindow("editor.ui.allow.self.transition.031ff2", "Allow Self Transition").c_str(),
                           &transition->allowSelfTransition)) {
         RecordMutation(std::move(before));
         transition = SelectedTransition();
       }
 
-      ImGui::SeparatorText("Conditions (all must pass)");
+      ImGui::SeparatorText(TEXT::Localize("editor.ui.conditions.all.must.pass.62a20e").c_str());
       ImGui::BeginDisabled(definition.parameters.empty());
-      if (ImGui::Button("+ Condition")) {
+      if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.condition.e937dd", "+ Condition").c_str())) {
         before = definition;
         const auto &parameter = definition.parameters.front();
         transition->conditions.push_back(
@@ -317,7 +318,7 @@ void AnimationStateMachineWorkspaceController::DrawDetailsWindow(
             definition, condition.parameterId);
         const char *parameterPreview =
             parameter != nullptr ? parameter->name.c_str() : "<missing>";
-        if (ImGui::BeginCombo("Parameter", parameterPreview)) {
+        if (ImGui::BeginCombo(TEXT::LocalizeWindow("editor.ui.parameter.f699f2", "Parameter").c_str(), parameterPreview)) {
           for (const auto &candidate : definition.parameters) {
             const bool selected = candidate.id == condition.parameterId;
             if (ImGui::Selectable(candidate.name.c_str(), selected)) {
@@ -343,9 +344,8 @@ void AnimationStateMachineWorkspaceController::DrawDetailsWindow(
           const std::array<Op, 4> boolOps{Op::IsTrue, Op::IsFalse, Op::Equal,
                                           Op::NotEqual};
           if (parameter->type == Type::Trigger) {
-            ImGui::TextUnformatted("Triggered");
-          } else if (ImGui::BeginCombo(
-                         "Comparison",
+            ImGui::TextUnformatted(TEXT::Localize("editor.ui.triggered.933f5e").c_str());
+          } else if (ImGui::BeginCombo(TEXT::LocalizeWindow("editor.ui.comparison.2dfcf8", "Comparison").c_str(),
                          ConditionOperatorName(condition.comparison))) {
             if (parameter->type == Type::Bool) {
               for (const Op value : boolOps) {
@@ -372,7 +372,7 @@ void AnimationStateMachineWorkspaceController::DrawDetailsWindow(
           }
           if (parameter->type == Type::Float) {
             float value = std::get<float>(condition.threshold);
-            if (ImGui::DragFloat("Threshold", &value, 0.02f)) {
+            if (ImGui::DragFloat(TEXT::LocalizeWindow("ui.quality.threshold", "Threshold").c_str(), &value, 0.02f)) {
               before = definition;
               condition.threshold = value;
               RecordMutation(std::move(before),
@@ -382,7 +382,7 @@ void AnimationStateMachineWorkspaceController::DrawDetailsWindow(
             }
           } else if (parameter->type == Type::Integer) {
             int value = std::get<int32_t>(condition.threshold);
-            if (ImGui::DragInt("Threshold", &value)) {
+            if (ImGui::DragInt(TEXT::LocalizeWindow("ui.quality.threshold", "Threshold").c_str(), &value)) {
               before = definition;
               condition.threshold = static_cast<int32_t>(value);
               RecordMutation(std::move(before),
@@ -394,7 +394,7 @@ void AnimationStateMachineWorkspaceController::DrawDetailsWindow(
                      (condition.comparison == Op::Equal ||
                       condition.comparison == Op::NotEqual)) {
             bool value = std::get<bool>(condition.threshold);
-            if (ImGui::Checkbox("Expected", &value)) {
+            if (ImGui::Checkbox(TEXT::LocalizeWindow("editor.ui.expected.6ac87f", "Expected").c_str(), &value)) {
               before = definition;
               condition.threshold = value;
               RecordMutation(std::move(before));
@@ -418,7 +418,7 @@ void AnimationStateMachineWorkspaceController::DrawDetailsWindow(
       }
     }
   } else {
-    ImGui::TextDisabled("Select a state, parameter, or transition to edit it.");
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.select.a.state.parameter.or.transition.to.edit.it.7a9fef").c_str());
   }
   ImGui::End();
 #else

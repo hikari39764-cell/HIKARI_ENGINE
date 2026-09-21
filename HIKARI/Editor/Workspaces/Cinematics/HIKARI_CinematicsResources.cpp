@@ -1,3 +1,5 @@
+#include "Editor/Commands/HIKARI_EditorCommandRouter.h"
+#include "Core/Text/HIKARI_Localization.h"
 #include "Assets/HIKARI_AssetRecord.h"
 #include "Editor/DragDrop/HIKARI_EditorAssetDragDrop.h"
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
@@ -20,8 +22,8 @@ bool CinematicsWorkspaceController::DrawResources(DocumentSceneBase &scene,
   using namespace SEQUENCER;
   if (!ImGui::BeginTabBar("SequenceResources"))
     return false;
-  if (ImGui::BeginTabItem("镜头")) {
-    if (IconTextButton(EditorGlyph::Add, "创建镜头", "newShot",
+  if (ImGui::BeginTabItem(TEXT::LocalizeWindow("cine.shot", "镜头").c_str())) {
+    if (IconTextButton(EditorGlyph::Add,TEXT::Localize("cine.createShot").c_str(), "newShot",
                        EditorButtonTone::Primary)) {
       CreateShot(sequence, spaceView_ ? directorViewPanel_.GetViewCamera()
                                       : scene.GetCamera());
@@ -37,18 +39,22 @@ bool CinematicsWorkspaceController::DrawResources(DocumentSceneBase &scene,
                                 selectedId_ == shot.id)) {
         selectedId_ = shot.id;
         selectionKind_ = SelectionKind::Shot;
+        curveView_.selectedKey = -1;
         cursor_.Seek(shot.startTimeSeconds);
         previewEnabled_ = true;
       }
       ImGui::PopID();
     }
+    if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_Delete,
+            ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)))
+      changed |= DeleteSelectedClip(sequence);
     if (sequence.cameraCutTrack.clips.empty())
-      EmptyState("从一个画面开始", "调整视角，然后创建第一个镜头。");
+      EmptyState(TEXT::Localize("cine.startFrame").c_str(),TEXT::Localize("cine.createFirst").c_str());
     ImGui::EndTabItem();
   }
-  if (ImGui::BeginTabItem("素材")) {
+  if (ImGui::BeginTabItem(TEXT::LocalizeWindow("cine.assets", "素材").c_str())) {
     static std::array<char, 128> search{};
-    SearchField("cueSearch", "搜索特效与声音", search.data(), search.size());
+    SearchField("cueSearch",TEXT::Localize("cine.searchAssets").c_str(), search.data(), search.size());
     const auto addCue = [&](const std::string &name, PresentationCueKind kind,
                             const std::string &asset) {
       PresentationCueClip cue;
@@ -67,7 +73,7 @@ bool CinematicsWorkspaceController::DrawResources(DocumentSceneBase &scene,
       selectionKind_ = SelectionKind::Cue;
       changed = true;
     };
-    if (ImGui::CollapsingHeader("特效", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader(TEXT::LocalizeWindow("menu.workspace.vfx", "特效").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
       for (const auto *record :
            scene.GetAssetDatabase().CollectByType(AssetType::VfxEffect)) {
         const auto name = GetAssetRecordDisplayName(*record);
@@ -82,9 +88,9 @@ bool CinematicsWorkspaceController::DrawResources(DocumentSceneBase &scene,
         ImGui::PopID();
       }
     }
-    if (ImGui::CollapsingHeader("声音", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader(TEXT::LocalizeWindow("cine.sound", "声音").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
       const auto root = GetProjectContext().GetRoot();
-      const bool refresh = ImGui::SmallButton("刷新声音素材");
+      const bool refresh = ImGui::SmallButton(TEXT::LocalizeWindow("cine.refreshSound", "刷新声音素材").c_str());
       if (audioProjectRoot_ != root || refresh) {
         audioProjectRoot_ = root;
         audioAssets_.clear();
@@ -124,21 +130,21 @@ bool CinematicsWorkspaceController::DrawResources(DocumentSceneBase &scene,
         ImGui::PopID();
       }
     }
-    ImGui::TextDisabled("拖到时间轴，或双击加入当前时刻");
+    ImGui::TextDisabled(TEXT::Localize("cine.dropHint").c_str());
     ImGui::EndTabItem();
   }
-  if (ImGui::BeginTabItem("模板")) {
-    if (ImGui::CollapsingHeader("完整演出", ImGuiTreeNodeFlags_DefaultOpen)) {
-      if (ImGui::Selectable("主体展示 · 远景 / 环绕 / 推进")) {
+  if (ImGui::BeginTabItem(TEXT::LocalizeWindow("ui.vfx.text.Templates", "模板").c_str())) {
+    if (ImGui::CollapsingHeader(TEXT::LocalizeWindow("cine.presets", "完整演出").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+      if (ImGui::Selectable(TEXT::LocalizeWindow("cine.stagePreset", "主体展示 · 远景 / 环绕 / 推进").c_str())) {
         const float start = cursor_.GetTimeSeconds();
         for (int i = 0; i < 3; ++i) {
           cursor_.Seek(start + i * 3.0f);
           CreateShot(sequence, scene.GetCamera());
           auto &shot = sequence.cameraCutTrack.clips.back();
           shot.startTimeSeconds = start + i * 3.0f;
-          shot.camera.name = i == 0   ? "建立画面"
-                             : i == 1 ? "环绕主体"
-                                      : "推进收束";
+          shot.camera.name = i == 0   ? TEXT::Localize("cine.establish")
+                             : i == 1 ? TEXT::Localize("cine.preset.orbit")
+                                      : TEXT::Localize("cine.closingPush");
           if (i > 0) {
             CameraMotionEffect e;
             e.kind = i == 1 ? CameraMotionKind::Orbit : CameraMotionKind::Dolly;
@@ -150,8 +156,8 @@ bool CinematicsWorkspaceController::DrawResources(DocumentSceneBase &scene,
         changed = true;
       }
     }
-    if (ImGui::CollapsingHeader("可复用模块", ImGuiTreeNodeFlags_DefaultOpen)) {
-      const char *names[]{"平滑推进", "环绕主体", "轻微手持", "冲击震动"};
+    if (ImGui::CollapsingHeader(TEXT::LocalizeWindow("cine.modules", "可复用模块").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+      const char *names[]{TEXT::LocalizeCStr("cine.preset.dolly"), TEXT::LocalizeCStr("cine.preset.orbit"), TEXT::LocalizeCStr("cine.preset.handheld"), TEXT::LocalizeCStr("cine.preset.impact")};
       const CameraMotionKind kinds[]{
           CameraMotionKind::Dolly, CameraMotionKind::Orbit,
           CameraMotionKind::Handheld, CameraMotionKind::Shake};
@@ -179,8 +185,8 @@ bool CinematicsWorkspaceController::DrawResources(DocumentSceneBase &scene,
     }
     ImGui::EndTabItem();
   }
-  if (ImGui::BeginTabItem("对象绑定")) {
-    if (ImGui::Button("添加对象槽")) {
+  if (ImGui::BeginTabItem(TEXT::LocalizeWindow("cine.bindings", "对象绑定").c_str())) {
+    if (ImGui::Button(TEXT::LocalizeWindow("cine.addBinding", "添加对象槽").c_str())) {
       const auto name =
           "Subject." +
           std::to_string(AllocateSequenceBindingId(sequence.bindings).value);
@@ -192,18 +198,18 @@ bool CinematicsWorkspaceController::DrawResources(DocumentSceneBase &scene,
       ImGui::PushID(static_cast<int>(binding.id.value));
       std::array<char, 128> name{};
       std::snprintf(name.data(), name.size(), "%s", binding.name.c_str());
-      if (ImGui::InputText("名称", name.data(), name.size())) {
+      if (ImGui::InputText(TEXT::LocalizeWindow("ui.input.name", "名称").c_str(), name.data(), name.size())) {
         binding.name = name.data();
         changed = true;
       }
       SceneObjectId current;
       previewBindings_.Resolve(sequence.bindings, binding.id,
                                                  current);
-      std::string label = "未绑定";
+      std::string label = TEXT::Localize("cine.unbound");
       for (const auto &object : scene.GetSceneDocument().objects)
         if (object.id == current)
           label = object.name;
-      if (ImGui::BeginCombo("预览对象", label.c_str())) {
+      if (ImGui::BeginCombo(TEXT::LocalizeWindow("cine.previewObject", "预览对象").c_str(), label.c_str())) {
         for (const auto &object : scene.GetSceneDocument().objects)
           if (ImGui::Selectable(object.name.c_str(), object.id == current)) {
             previewBindings_.Bind(binding.id, object.id);
@@ -215,7 +221,7 @@ bool CinematicsWorkspaceController::DrawResources(DocumentSceneBase &scene,
           }
         ImGui::EndCombo();
       }
-      changed |= ImGui::Checkbox("运行时必须提供", &binding.required);
+      changed |= ImGui::Checkbox(TEXT::LocalizeWindow("cine.requiredRuntime", "运行时必须提供").c_str(), &binding.required);
       ImGui::Separator();
       ImGui::PopID();
     }

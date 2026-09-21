@@ -72,6 +72,10 @@ namespace HIKARI::EDITOR {
         const EditorOperationRegistry* operationRegistry_ = nullptr;
     };
 
+    // Consumes the key once per frame; another canvas must not also act on it.
+    bool ConsumeEditorShortcut(EditorShortcutScope scope, int key,
+        bool focused = true, bool repeat = false) noexcept;
+
     bool CanUseEditorShortcut(
         EditorShortcutScope scope,
         bool focused = true) noexcept;

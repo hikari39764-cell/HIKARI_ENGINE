@@ -32,7 +32,7 @@ SequenceEditorDocumentToolbarResult SequenceEditorDocumentToolbar::Draw(
                            .c_str())) {
     result.toggleLibraryRequested = true;
   }
-  ImGui::SameLine();
+  NextToolbarItem(28);
   std::string sourceLabel = TEXT::Localize(
       "ui.sequence.toolbar.sourceEmbedded");
   if (document.GetSourceKind() == SequenceEditorSourceKind::Asset) {
@@ -49,8 +49,8 @@ SequenceEditorDocumentToolbarResult SequenceEditorDocumentToolbar::Draw(
   if (document.IsDirty()) {
     documentName += " *";
   }
-  ToolbarLabel(documentName.c_str());
-  ImGui::SameLine();
+  ImGui::TextWrapped("%s", documentName.c_str());
+  NextToolbarItem(ImGui::CalcTextSize(sourceLabel.c_str()).x + 20);
   StatusBadge(sourceLabel.c_str(),
               document.IsDirty() ? EditorStatusTone::Warning
                                  : EditorStatusTone::Normal);
@@ -58,25 +58,23 @@ SequenceEditorDocumentToolbarResult SequenceEditorDocumentToolbar::Draw(
   if (!actionsAllowed) {
     ImGui::BeginDisabled();
   }
-  if (IconTextButton(
+  if (IconButton(
           EditorGlyph::NewDocument,
-          TEXT::Localize("ui.sequence.toolbar.new").c_str(),
           "SequenceDocumentNew",
-          EditorButtonTone::Neutral, ImVec2(0.0f, 28.0f),
+          EditorButtonTone::Neutral, ImVec2(28.0f, 28.0f),
           TEXT::Localize("ui.sequence.toolbar.newTooltip").c_str())) {
     (void)controller.RequestNewAsset(assetDatabase, result.statusMessage);
   }
-  ImGui::SameLine();
+  NextToolbarItem(28);
   if (activeSequence == nullptr) {
     ImGui::BeginDisabled();
   }
-  if (IconTextButton(
+  if (IconButton(
           EditorGlyph::Save,
-          TEXT::Localize("ui.sequence.toolbar.save").c_str(),
           "SequenceDocumentSave",
           document.IsDirty() ? EditorButtonTone::Primary
                              : EditorButtonTone::Neutral,
-          ImVec2(0.0f, 28.0f),
+          ImVec2(28.0f, 28.0f),
           TEXT::Localize("ui.sequence.toolbar.saveTooltip").c_str())) {
     if (document.IsEmbeddedScene()) {
       result.saveEmbeddedSceneRequested = true;
@@ -84,7 +82,7 @@ SequenceEditorDocumentToolbarResult SequenceEditorDocumentToolbar::Draw(
       (void)controller.Save(assetDatabase, result.statusMessage);
     }
   }
-  ImGui::SameLine();
+  NextToolbarItem(28);
   if (IconButton(EditorGlyph::SaveAs, "SequenceDocumentSaveAs",
                  EditorButtonTone::Quiet, ImVec2(28.0f, 28.0f),
                  TEXT::Localize("ui.sequence.toolbar.saveAsTooltip")
@@ -96,7 +94,7 @@ SequenceEditorDocumentToolbarResult SequenceEditorDocumentToolbar::Draw(
     ImGui::EndDisabled();
   }
 
-  ImGui::SameLine();
+  NextToolbarItem(28);
   const bool canRevert =
       document.GetSourceKind() == SequenceEditorSourceKind::Asset;
   if (!canRevert) {
@@ -112,7 +110,7 @@ SequenceEditorDocumentToolbarResult SequenceEditorDocumentToolbar::Draw(
     ImGui::EndDisabled();
   }
 
-  ImGui::SameLine();
+  NextToolbarItem(28);
   if (!document.GetAssetGuid().IsValid()) {
     ImGui::BeginDisabled();
   }
@@ -130,7 +128,7 @@ SequenceEditorDocumentToolbarResult SequenceEditorDocumentToolbar::Draw(
     ImGui::EndDisabled();
   }
 
-  ImGui::SameLine();
+  NextToolbarItem(28);
   if (!document.IsExternalDocument()) {
     ImGui::BeginDisabled();
   }
@@ -190,7 +188,7 @@ void SequenceEditorDocumentToolbar::DrawPendingConfirmation(
       ImGui::CloseCurrentPopup();
     }
   }
-  ImGui::SameLine();
+  NextToolbarItem(28);
   if (IconTextButton(
           EditorGlyph::Delete,
           TEXT::Localize("ui.sequence.toolbar.discard").c_str(),
@@ -200,7 +198,7 @@ void SequenceEditorDocumentToolbar::DrawPendingConfirmation(
                                                inOutStatusMessage);
     ImGui::CloseCurrentPopup();
   }
-  ImGui::SameLine();
+  NextToolbarItem(28);
   if (IconTextButton(
           EditorGlyph::Close,
           TEXT::Localize("ui.sequence.toolbar.cancel").c_str(),

@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 
 #include "Assets/HIKARI_AssetDatabase.h"
@@ -50,7 +51,7 @@ namespace HIKARI::EDITOR {
             ImGui::TextDisabled(VfxUiText("Exposed Inputs").c_str());
             ImGui::TextWrapped(
                 VfxUiText("Inputs are named parameters supplied by components, systems or the runtime variable bridge. Bind them to emitter properties below.").c_str());
-            ImGui::Text("%zu input(s)", document_.Asset().inputs.size());
+            ImGui::Text(TEXT::Localize("editor.ui.zu.input.s.1f0629").c_str(), document_.Asset().inputs.size());
             ImGui::End();
             return;
         }
@@ -105,8 +106,7 @@ namespace HIKARI::EDITOR {
                 const VFX::VfxCurveKeyData snapshot = *key;
                 VfxInspectorPropertyEditor editor(
                     *this, database, snapshot.id, statusMessage_);
-                ImGui::TextDisabled(
-                    "CURVE KEY  %s.%s.%s",
+                ImGui::TextDisabled(TEXT::Localize("editor.ui.curve.key.s.s.s.ab0d37").c_str(),
                     selection_.moduleId.c_str(),
                     selection_.propertyId.c_str(),
                     selection_.channel.c_str());

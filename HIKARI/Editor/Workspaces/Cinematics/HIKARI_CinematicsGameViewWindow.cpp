@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/HIKARI_EditorViewportInput.h"
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
@@ -16,7 +17,7 @@ void CinematicsWorkspaceController::DrawMonitor(DocumentSceneBase &scene,
 #if defined(HIKARI_WITH_EDITOR)
   auto &view = host.GetCinematicsGameView();
   view.cameraBinding.kind = EditorViewCameraSourceKind::SceneDirector;
-  if (!ImGui::Begin("画面###Cinematics/Monitor", nullptr,
+  if (!ImGui::Begin(TEXT::LocalizeWindow("cine.view", "Cinematics/Monitor").c_str(), nullptr,
                     ImGuiWindowFlags_NoScrollbar |
                         ImGuiWindowFlags_NoCollapse)) {
     view.extent = {};
@@ -26,23 +27,22 @@ void CinematicsWorkspaceController::DrawMonitor(DocumentSceneBase &scene,
     return;
   }
   if (IconToggleButton(EditorGlyph::WorldSpace, "spaceView", spaceView_,
-                       {26, 26}, "空间编辑"))
+                       {26, 26},TEXT::Localize("cine.stage").c_str()))
     {
       spaceView_ = !spaceView_;
       if (spaceView_) directorViewPanel_.FrameTargetCamera(scene,{});
     }
-  ImGui::SameLine();
-  if (IconToggleButton(EditorGlyph::Keyframe, "autoKey", autoKey_, {26, 26},
-                       "自动关键帧：记录调整到当前时间点"))
+  NextToolbarItem(130);
+  if (IconToggleButton(EditorGlyph::Keyframe, "autoKey", autoKey_, {26, 26},TEXT::Localize("cine.autoKey").c_str()))
     autoKey_ = !autoKey_;
-  ImGui::SameLine();
-  StatusBadge(scene.IsRuntimePlayActive() ? "游戏运行"
-              : previewEnabled_           ? "演出预览"
-                                          : "自由观察",
+  NextToolbarItem(130);
+  StatusBadge(scene.IsRuntimePlayActive() ? TEXT::LocalizeCStr("cine.gameRunning")
+              : previewEnabled_           ? TEXT::LocalizeCStr("cine.previewing")
+                                          : TEXT::LocalizeCStr("cine.freeView"),
               previewEnabled_ ? EditorStatusTone::Ready
                               : EditorStatusTone::Normal);
-  ImGui::SameLine();
-  ImGui::TextDisabled("%s", autoKey_ ? "记录关键帧" : "更新首帧构图");
+  NextToolbarItem(130);
+  ImGui::TextDisabled("%s", autoKey_ ? TEXT::LocalizeCStr("cine.recordKeys") : TEXT::LocalizeCStr("cine.updateBase"));
   auto size = ImGui::GetContentRegionAvail();
   size.x = (std::max)(size.x, 1.0f);
   size.y = (std::max)(size.y, 1.0f);
@@ -64,7 +64,7 @@ void CinematicsWorkspaceController::DrawMonitor(DocumentSceneBase &scene,
     ImGui::Dummy({fit.width, fit.height});
     ImGui::GetWindowDrawList()->AddText({origin.x + 20, origin.y + 20},
                                         IM_COL32(170, 180, 190, 255),
-                                        "等待场景画面");
+                                        TEXT::LocalizeCStr("cine.waitingFrame"));
   }
   if (scene.IsRuntimePlayActive())
     SetGameViewportInputRect(origin.x, origin.y, fit.width, fit.height,

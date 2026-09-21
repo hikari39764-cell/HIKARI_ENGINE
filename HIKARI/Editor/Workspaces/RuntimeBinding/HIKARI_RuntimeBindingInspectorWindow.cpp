@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/RuntimeBinding/HIKARI_RuntimeBindingWorkspaceController.h"
 
 #include <algorithm>
@@ -67,7 +68,7 @@ namespace HIKARI::EDITOR {
     void RuntimeBindingWorkspaceController::DrawInspectorWindow(
         DocumentSceneBase& scene) {
 #if defined(HIKARI_WITH_EDITOR)
-        if (!ImGui::Begin("Inspector###RuntimeBinding/Inspector")) {
+        if (!ImGui::Begin(TEXT::LocalizeWindow("ui.window.inspector", "RuntimeBinding/Inspector").c_str())) {
             ImGui::End();
             return;
         }
@@ -75,9 +76,7 @@ namespace HIKARI::EDITOR {
         const BINDING::VariableDefinition* variable = SelectedVariable();
         const BINDING::EventDefinition* event = SelectedEvent();
         if (variable == nullptr && event == nullptr) {
-            EmptyState(
-                "Nothing selected",
-                "Select a variable or event from the Catalog.");
+            EmptyState(TEXT::Localize("editor.ui.nothing.selected.3d95f4").c_str(),TEXT::Localize("editor.ui.select.a.variable.or.event.from.the.catalog.72dba2").c_str());
             ImGui::End();
             return;
         }
@@ -105,15 +104,15 @@ namespace HIKARI::EDITOR {
         }
 
         PanelTitle(
-            variable != nullptr ? "Variable" : "Event",
+            variable != nullptr ? TEXT::LocalizeCStr("editor.ui.variable.19de69") : TEXT::LocalizeCStr("editor.ui.event.ad8919"),
             variable != nullptr
-                ? "A typed value shared through stable binding slots"
-                : "A transient typed signal emitted by runtime logic");
+                ? TEXT::LocalizeCStr("editor.ui.a.typed.value.shared.through.stable.binding.slots.203ed5")
+                : TEXT::LocalizeCStr("editor.ui.a.transient.typed.signal.emitted.by.runtime.logic.da0328"));
 
         std::optional<std::pair<std::string, nlohmann::json>>
             pendingProperty{};
         if (BeginPropertyTable("RuntimeBindingInspectorProperties", 112.0f)) {
-            PropertyLabel("Name");
+            PropertyLabel(TEXT::Localize("ui.input.name").c_str());
             ImGui::InputText(
                 "##Name",
                 inspectorNameBuffer_.data(),
@@ -125,21 +124,20 @@ namespace HIKARI::EDITOR {
                 };
             }
 
-            PropertyLabel("Stable ID");
+            PropertyLabel(TEXT::Localize("ui.input.stableId").c_str());
             ImGui::TextUnformatted(selectedItemId_.c_str());
             if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("Stable after creation; used by C++ and assets");
+                ImGui::SetTooltip(TEXT::Localize("editor.ui.stable.after.creation.used.by.c.and.assets.61cbdd").c_str());
             }
             ImGui::SameLine();
-            if (ActionButton(
-                    "Copy",
+            if (ActionButton(TEXT::Localize("ui.materialGraph.copy").c_str(),
                     "RuntimeBindingCopyId",
                     EditorButtonTone::Quiet)) {
                 ImGui::SetClipboardText(selectedItemId_.c_str());
             }
 
             if (variable != nullptr) {
-                PropertyLabel("Type");
+                PropertyLabel(TEXT::Localize("ui.vfx.text.Type").c_str());
                 BINDING::ValueType selectedType =
                     variable->defaultValue.type;
                 if (DrawValueTypeCombo(
@@ -152,7 +150,7 @@ namespace HIKARI::EDITOR {
                     };
                 }
 
-                PropertyLabel("Default");
+                PropertyLabel(TEXT::Localize("ui.environment.preset.default").c_str());
                 const RuntimeBindingValueEditResult defaultEdit =
                     DrawRuntimeBindingValueEditor(
                         "##DefaultValue",
@@ -167,22 +165,22 @@ namespace HIKARI::EDITOR {
                 }
 
                 if (BINDING::IsNumeric(variable->defaultValue.type)) {
-                    PropertyLabel("Use Range");
+                    PropertyLabel(TEXT::Localize("editor.ui.use.range.76f5cb").c_str());
                     ImGui::Checkbox(
                         "##HasRange",
                         &inspectorHasRange_);
                     if (inspectorHasRange_) {
-                        PropertyLabel("Minimum");
+                        PropertyLabel(TEXT::Localize("ui.vfx.text.Minimum").c_str());
                         ImGui::DragFloat(
                             "##Minimum",
                             &inspectorMinimum_,
                             0.01f);
-                        PropertyLabel("Maximum");
+                        PropertyLabel(TEXT::Localize("ui.vfx.text.Maximum").c_str());
                         ImGui::DragFloat(
                             "##Maximum",
                             &inspectorMaximum_,
                             0.01f);
-                        PropertyLabel("Step");
+                        PropertyLabel(TEXT::Localize("ui.vfx.text.Step").c_str());
                         ImGui::DragFloat(
                             "##Step",
                             &inspectorStep_,
@@ -191,9 +189,8 @@ namespace HIKARI::EDITOR {
                             100000.0f,
                             "%.4f");
                     }
-                    PropertyLabel("Range Edit");
-                    if (ActionButton(
-                            "Apply",
+                    PropertyLabel(TEXT::Localize("editor.ui.range.edit.16eee0").c_str());
+                    if (ActionButton(TEXT::Localize("ui.common.apply").c_str(),
                             "RuntimeBindingApplyRange",
                             EditorButtonTone::Neutral)) {
                         pendingProperty = {
@@ -208,7 +205,7 @@ namespace HIKARI::EDITOR {
                     }
                 }
             } else {
-                PropertyLabel("Payload");
+                PropertyLabel(TEXT::Localize("editor.ui.payload.c30415").c_str());
                 if (ImGui::Checkbox(
                         "##HasPayload",
                         &inspectorHasPayload_)) {
@@ -218,7 +215,7 @@ namespace HIKARI::EDITOR {
                     };
                 }
                 if (inspectorHasPayload_) {
-                    PropertyLabel("Payload Type");
+                    PropertyLabel(TEXT::Localize("editor.ui.payload.type.29d5b3").c_str());
                     BINDING::ValueType selectedType =
                         inspectorPayloadType_;
                     if (DrawValueTypeCombo(
@@ -237,7 +234,7 @@ namespace HIKARI::EDITOR {
         }
 
         ImGui::Spacing();
-        ImGui::TextDisabled("Description");
+        ImGui::TextDisabled(TEXT::Localize("editor.ui.description.55f8eb").c_str());
         ImGui::InputTextMultiline(
             "##RuntimeBindingDescription",
             inspectorDescriptionBuffer_.data(),
@@ -267,17 +264,15 @@ namespace HIKARI::EDITOR {
                     : EditorStatusTone::Warning);
         }
         if (!hasItemDiagnostic) {
-            StatusText("Definition is valid", EditorStatusTone::Ready);
+            StatusText(TEXT::Localize("editor.ui.definition.is.valid.bee6b8").c_str(), EditorStatusTone::Ready);
         }
 
         ImGui::Spacing();
         const bool deleteRequested = IconTextButton(
-            EditorGlyph::Delete,
-            "Delete",
+            EditorGlyph::Delete,TEXT::Localize("ui.common.delete").c_str(),
             "RuntimeBindingInspectorDelete",
             EditorButtonTone::Danger,
-            ImVec2(0.0f, 28.0f),
-            "Delete this runtime binding definition");
+            ImVec2(0.0f, 28.0f),TEXT::Localize("editor.ui.delete.this.runtime.binding.definition.096425").c_str());
         ImGui::End();
 
         if (pendingProperty) {

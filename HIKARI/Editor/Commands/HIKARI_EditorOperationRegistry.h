@@ -31,6 +31,8 @@ enum class EditorOperationKind : uint8_t {
     Session,
 };
 
+enum class EditorOperationSessionDispatch : uint8_t { Operation, Preview };
+
 enum class EditorOperationExposureMask : uint8_t {
     None = 0,
     Human = 1u << 0u,
@@ -97,6 +99,8 @@ struct EditorOperationParameter {
         EditorOperationParameterType::String;
     bool required = false;
     std::string description{};
+    // 追加制約や構造化値の形は宣言側が所有し、検証とヘルプで共有する。
+    nlohmann::json schema = nlohmann::json::object();
 };
 
 struct EditorOperationResult {
@@ -126,7 +130,17 @@ struct EditorOperationDefinition {
     EditorOperationPermission permission =
         EditorOperationPermission::Legacy;
     EditorOperationRisk risk = EditorOperationRisk::Legacy;
+    // Project asset discovery does not read or mutate a workspace document.
+    bool requiresDocumentSession = true;
+    std::vector<std::string> searchTerms{};
+    // 文書を置換する操作はバックグラウンドから非表示の確認ダイアログを開かない。
+    bool requiresCleanDocument = false;
+    bool entryPoint = false;
+    EditorOperationSessionDispatch sessionDispatch = EditorOperationSessionDispatch::Operation;
 };
+
+// UI / AI / Bridge の能力説明とエラーは同じ実行定義から生成する。
+nlohmann::json DescribeEditorOperation(const EditorOperationDefinition& definition);
 
 // Unified operation bus: human UI, AI actions and the local bridge all call
 // the same registered operations instead of maintaining parallel dispatchers.
@@ -138,7 +152,16 @@ public:
     void SetTargetSelector(std::function<std::string(const std::string&)> selector) { targetSelector_ = std::move(selector); }
     EditorOperationRegistrationResult Register(
         EditorOperationDefinition definition);
+    EditorOperationRegistrationResult Register(EditorOperationDefinition definition,
+        EditorOperationKind kind, bool requiresDocumentSession = true,
+        EditorOperationSessionDispatch dispatch = EditorOperationSessionDispatch::Operation) {
+        definition.kind = kind;
+        definition.requiresDocumentSession = requiresDocumentSession;
+        definition.sessionDispatch = dispatch;
+        return Register(std::move(definition));
+    }
     bool IsRegistered(const std::string& id) const noexcept;
+    uint64_t Revision() const noexcept { return revision_; }
     EditorOperationResult Validate(
         const EditorOperationDefinition& definition,
         const nlohmann::json& parameters) const;
@@ -157,6 +180,7 @@ private:
     TargetExecutor targetExecutor_{};
     std::function<std::string(const std::string&)> targetSelector_{};
     std::unordered_map<std::string, EditorOperationDefinition> operations_{};
+    uint64_t revision_ = 0;
 };
 
 } // namespace HIKARI::EDITOR

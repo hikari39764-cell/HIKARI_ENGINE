@@ -45,7 +45,7 @@ namespace HIKARI::EDITOR {
                 data["diagnostics"] = WriteVfxDiagnostics(controller);
                 return Success("VFX workspace described", std::move(data));
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Query);
 
         registry.Register({
             "vfx.new_asset",
@@ -81,7 +81,7 @@ namespace HIKARI::EDITOR {
                     "New VFX document created",
                     WriteVfxWorkspaceSummary(controller));
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
         registry.Register({
             "vfx.preset.list",
@@ -103,7 +103,7 @@ namespace HIKARI::EDITOR {
                 data["presets"] = std::move(presets);
                 return Success("VFX presets listed", std::move(data));
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Query, false);
 
         registry.Register({
             "vfx.new_from_preset",
@@ -144,7 +144,7 @@ namespace HIKARI::EDITOR {
                     message,
                     WriteVfxWorkspaceSummary(controller));
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
         registry.Register({
             "vfx.add_preset_layers", "Add a template to the current effect as one undoable edit", "vfx",
@@ -155,7 +155,7 @@ namespace HIKARI::EDITOR {
                     ? Success(message, WriteVfxWorkspaceSummary(controller))
                     : Failure("VFX_TEMPLATE_FAILED", message);
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
         registry.Register({
             "vfx.open_asset",
@@ -205,7 +205,7 @@ namespace HIKARI::EDITOR {
                     message,
                     WriteVfxWorkspaceSummary(controller));
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
         registry.Register({
             "vfx.save",
@@ -228,7 +228,7 @@ namespace HIKARI::EDITOR {
                     message,
                     WriteVfxWorkspaceSummary(controller));
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
         registry.Register({
             "vfx.undo",
@@ -241,7 +241,7 @@ namespace HIKARI::EDITOR {
                     ? Success(message, ContextData(controller))
                     : Failure("NOTHING_TO_UNDO", message);
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
         registry.Register({
             "vfx.redo",
@@ -254,7 +254,7 @@ namespace HIKARI::EDITOR {
                     ? Success(message, ContextData(controller))
                     : Failure("NOTHING_TO_REDO", message);
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
         registry.Register({
             "vfx.target.describe",
@@ -306,7 +306,7 @@ namespace HIKARI::EDITOR {
                     "VFX target described",
                     std::move(description));
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Query);
 
         registry.Register({
             "vfx.property.set",
@@ -361,7 +361,7 @@ namespace HIKARI::EDITOR {
                     controller.GetDocument().GetAssetGuid().value;
                 return Success(message, std::move(description));
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
         registry.Register({
             "vfx.burst.add",
@@ -432,7 +432,7 @@ namespace HIKARI::EDITOR {
                 }
                 return Success(message, ContextData(controller, id));
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
         registry.Register({
             "vfx.burst.set",
@@ -488,7 +488,7 @@ namespace HIKARI::EDITOR {
                         parameters.at("keyId").get<std::string>()))
                     : Failure("VFX_BURST_SET_FAILED", message);
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
         registry.Register({
             "vfx.burst.remove",
@@ -509,7 +509,7 @@ namespace HIKARI::EDITOR {
                     ? Success(message, ContextData(controller))
                     : Failure("VFX_BURST_REMOVE_FAILED", message);
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
         registry.Register({
             "vfx.special_output.add",
@@ -560,7 +560,7 @@ namespace HIKARI::EDITOR {
                 }
                 return Success(message, ContextData(controller, id));
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
         registry.Register({
             "vfx.special_output.set",
@@ -612,7 +612,7 @@ namespace HIKARI::EDITOR {
                 (void)DescribeVfxTarget(controller, outputId, description);
                 return Success(message, std::move(description));
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
         registry.Register({
             "vfx.special_output.remove",
@@ -634,7 +634,7 @@ namespace HIKARI::EDITOR {
                     : Failure(
                         "VFX_SPECIAL_OUTPUT_REMOVE_FAILED", message);
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
         registry.Register({
             "vfx.emitter.add",
@@ -685,7 +685,7 @@ namespace HIKARI::EDITOR {
                 }
                 return Success(message, ContextData(controller, id));
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
         registry.Register({
             "vfx.emitter.duplicate",
@@ -710,7 +710,7 @@ namespace HIKARI::EDITOR {
                 }
                 return Success(message, ContextData(controller, id));
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
         registry.Register({
             "vfx.emitter.remove",
@@ -731,7 +731,7 @@ namespace HIKARI::EDITOR {
                     ? Success(message, ContextData(controller))
                     : Failure("VFX_EMITTER_REMOVE_FAILED", message);
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
         registry.Register({
             "vfx.emitter.reparent",
@@ -760,7 +760,7 @@ namespace HIKARI::EDITOR {
                     ? Success(message, ContextData(controller, emitterId))
                     : Failure("VFX_EMITTER_REPARENT_FAILED", message);
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
         registry.Register({
             "vfx.emitter.set_hidden",
@@ -793,7 +793,7 @@ namespace HIKARI::EDITOR {
                     "VFX emitter preview visibility updated",
                     ContextData(controller, emitterId));
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
         registry.Register({
             "vfx.emitter.set_solo",
@@ -825,7 +825,7 @@ namespace HIKARI::EDITOR {
                     "VFX preview solo set",
                     ContextData(controller, emitterId));
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
         registry.Register({
             "vfx.preview.focus_selected",
@@ -838,7 +838,7 @@ namespace HIKARI::EDITOR {
                     ? Success(message, ContextData(controller))
                     : Failure("VFX_FOCUS_FAILED", message);
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Session);
 
         registry.Register({
             "vfx.preview.step",
@@ -858,7 +858,7 @@ namespace HIKARI::EDITOR {
                     ? Success(message, ContextData(controller))
                     : Failure("VFX_STEP_FAILED", message);
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Session);
 
         RegisterVfxBindingOperations(registry, controller);
         RegisterVfxCurveOperations(registry, controller);

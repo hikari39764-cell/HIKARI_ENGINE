@@ -27,6 +27,20 @@ DirectorViewPanel::DirectorViewPanel() {
   currentViewCamera_ = freeCamera_.GetCamera();
 }
 
+void DirectorViewPanel::SetFreeCamera(const Camera3D& camera) {
+  SetMode(DirectorViewMode::Free);
+  freeCamera_.ResetFromCamera(camera);
+  currentViewCamera_=freeCamera_.GetCamera();
+  ++cameraRevision_; cameraCutPending_=true;
+}
+
+void DirectorViewPanel::FocusPoint(const MATH::Vec3& point, float distance) {
+  SetMode(DirectorViewMode::Free);
+  freeCamera_.Focus(point, distance);
+  currentViewCamera_=freeCamera_.GetCamera();
+  ++cameraRevision_; cameraCutPending_=true;
+}
+
 void DirectorViewPanel::SetTargetCamera(SceneObjectId cameraObjectId) noexcept {
   if (cameraObjectId == targetCameraObjectId_) {
     return;

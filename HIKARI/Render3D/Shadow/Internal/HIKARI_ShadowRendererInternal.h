@@ -212,6 +212,8 @@ namespace HIKARI::SHADOW::INTERNAL {
         const std::string& value);
     bool IsPrimaryShadowCaster(
         const RENDER3D::RUNTIME::SurfaceGpuSceneInstance& instance);
+    bool MayAffectLocalShadow(const RENDER3D::RUNTIME::SurfaceGpuSceneInstance& instance,
+        const MATH::Vec3& lightPosition, float lightRange) noexcept;
     bool IsStaticPrimaryShadowCaster(
         const RENDER3D::RUNTIME::SurfaceGpuSceneInstance& instance,
         const RENDER3D::RUNTIME::SurfaceGpuSceneMaterialSource* material = nullptr);

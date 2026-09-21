@@ -1,3 +1,8 @@
+#include "Editor/Commands/HIKARI_EditorCommandRouter.h"
+#include "Editor/Shell/HIKARI_EditorDockLayout.h"
+#include "Editor/Style/HIKARI_EditorWidgets.h"
+#include "Editor/Style/HIKARI_EditorGlyphs.h"
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/Dialogue/HIKARI_DialogueWorkspaceController.h"
 
 #include <algorithm>
@@ -29,8 +34,7 @@ namespace HIKARI::EDITOR {
         constexpr ImVec4 kModified{ 1.0f, 0.72f, 0.25f, 1.0f };
         constexpr ImVec4 kError{ 1.0f, 0.38f, 0.35f, 1.0f };
         constexpr ImVec4 kReady{ 0.36f, 0.86f, 0.58f, 1.0f };
-        constexpr const char* kUnsavedDialoguePopup =
-            "Unsaved Dialogue Documents###Dialogue/UnsavedDocuments";
+
 
         uint64_t MergeGroup(std::string_view field) noexcept {
             uint64_t hash = 1469598103934665603ull;
@@ -107,17 +111,17 @@ namespace HIKARI::EDITOR {
             const DIALOGUE::DialogueProjectStyle& style,
             std::string_view locale,
             std::string_view fallback) {
-            if (node.type == DIALOGUE::DialogueNodeType::End) return "End";
+            if (node.type == DIALOGUE::DialogueNodeType::End) return TEXT::Localize("ui.vfx.text.End");
             if (node.type == DIALOGUE::DialogueNodeType::Event) {
                 return node.eventId.empty()
-                    ? "Event"
-                    : "Event  |  " + node.eventId;
+                    ? TEXT::Localize("editor.ui.event.ad8919")
+                    : TEXT::Localize("editor.ui.event.ad8919") + "  |  " + node.eventId;
             }
             if (node.type == DIALOGUE::DialogueNodeType::Choice) {
-                return "Choice  |  " +
-                    std::to_string(node.choices.size()) + " branches";
+                return TEXT::Localize("editor.ui.choice.0682be") + "  |  " +
+                    std::to_string(node.choices.size()) + " " + TEXT::Localize("editor.ui.branches.52a9ce");
             }
-            std::string prefix{ "Narration" };
+            std::string prefix = TEXT::Localize("editor.ui.narration.8ca626");
             if (const auto* speaker = DIALOGUE::FindDialogueSpeaker(
                     style, node.speakerId)) {
                 prefix = std::string(ResolveName(
@@ -144,7 +148,7 @@ namespace HIKARI::EDITOR {
             const std::string preview = current != nullptr
                 ? NodeSummary(
                     *current, style, locale, definition.fallbackLocale)
-                : std::string("Choose next step");
+                : TEXT::Localize("editor.ui.choose.next.step.e15d49");
             bool changed = false;
             if (ImGui::BeginCombo(label, preview.c_str())) {
                 for (const DIALOGUE::DialogueNode& node : definition.nodes) {
@@ -217,13 +221,12 @@ namespace HIKARI::EDITOR {
                 ? "Choose a CJK font"
                 : assetPath.c_str();
             bool changed = false;
-            if (!ImGui::BeginCombo("Font", preview)) return false;
+            if (!ImGui::BeginCombo(TEXT::LocalizeWindow("editor.ui.font.b97c4d", "Font").c_str(), preview)) return false;
 
             static std::array<char, 192u> search{};
             ImGui::SetNextItemWidth(-1.0f);
             ImGui::InputTextWithHint(
-                "##DialogueFontSearch",
-                "Search TTF, OTF or TTC",
+                "##DialogueFontSearch",TEXT::Localize("editor.ui.search.ttf.otf.or.ttc.dea4d2").c_str(),
                 search.data(),
                 search.size());
             std::string filter{ search.data() };
@@ -278,7 +281,7 @@ namespace HIKARI::EDITOR {
             }
             std::sort(fonts.begin(), fonts.end());
             if (fonts.empty()) {
-                ImGui::TextDisabled("No matching font in Assets");
+                ImGui::TextDisabled(TEXT::Localize("editor.ui.no.matching.font.in.assets.7f6a64").c_str());
             }
             for (const std::string& font : fonts) {
                 const bool selected = font == assetPath;
@@ -329,29 +332,23 @@ namespace HIKARI::EDITOR {
             DIALOGUE::DialogueTextStyle& style) {
             bool changed = false;
             ImGui::PushID(id);
-            changed = DrawColor("Text", style.textColor) || changed;
-            changed = DrawColor("Outline", style.outlineColor) || changed;
-            changed = ImGui::SliderFloat(
-                "Outline thickness", &style.outlineWidth,
+            changed = DrawColor(TEXT::LocalizeWindow("ui.inspector.worldText.text", "Text").c_str(), style.textColor) || changed;
+            changed = DrawColor(TEXT::LocalizeWindow("editor.ui.outline.cdd629", "Outline").c_str(), style.outlineColor) || changed;
+            changed = ImGui::SliderFloat(TEXT::LocalizeWindow("editor.ui.outline.thickness.e7aab6", "Outline thickness").c_str(), &style.outlineWidth,
                 0.0f, 8.0f, "%.2f") || changed;
-            if (ImGui::CollapsingHeader("Shadow and glow")) {
-                changed = DrawColor("Shadow", style.shadowColor) || changed;
-                changed = ImGui::DragFloat2(
-                    "Shadow offset", &style.shadowOffsetX,
+            if (ImGui::CollapsingHeader(TEXT::LocalizeWindow("editor.ui.shadow.and.glow.84bc9d", "Shadow and glow").c_str())) {
+                changed = DrawColor(TEXT::LocalizeWindow("ui.debugView.shadow", "Shadow").c_str(), style.shadowColor) || changed;
+                changed = ImGui::DragFloat2(TEXT::LocalizeWindow("editor.ui.shadow.offset.2d8a71", "Shadow offset").c_str(), &style.shadowOffsetX,
                     0.1f, -32.0f, 32.0f, "%.1f") || changed;
-                changed = DrawColor("Glow", style.glowColor) || changed;
-                changed = ImGui::SliderFloat(
-                    "Glow size", &style.glowWidth, 0.0f, 12.0f) || changed;
-                changed = ImGui::SliderFloat(
-                    "Glow strength", &style.glowIntensity,
+                changed = DrawColor(TEXT::LocalizeWindow("ui.vfx.effect.Glow", "Glow").c_str(), style.glowColor) || changed;
+                changed = ImGui::SliderFloat(TEXT::LocalizeWindow("editor.ui.glow.size.f2e05b", "Glow size").c_str(), &style.glowWidth, 0.0f, 12.0f) || changed;
+                changed = ImGui::SliderFloat(TEXT::LocalizeWindow("editor.ui.glow.strength.24792c", "Glow strength").c_str(), &style.glowIntensity,
                     0.0f, 4.0f) || changed;
             }
-            if (ImGui::CollapsingHeader("Spacing")) {
-                changed = ImGui::DragFloat(
-                    "Letter spacing", &style.letterSpacing,
+            if (ImGui::CollapsingHeader(TEXT::LocalizeWindow("editor.ui.spacing.2acbb3", "Spacing").c_str())) {
+                changed = ImGui::DragFloat(TEXT::LocalizeWindow("editor.ui.letter.spacing.71ae71", "Letter spacing").c_str(), &style.letterSpacing,
                     0.1f, -8.0f, 32.0f) || changed;
-                changed = ImGui::SliderFloat(
-                    "Line height", &style.lineHeightMultiplier,
+                changed = ImGui::SliderFloat(TEXT::LocalizeWindow("editor.ui.line.height.65be51", "Line height").c_str(), &style.lineHeightMultiplier,
                     0.7f, 2.5f) || changed;
             }
             ImGui::PopID();
@@ -373,12 +370,12 @@ namespace HIKARI::EDITOR {
 
         const char* StyleSectionLabel(DialogueStyleSection section) {
             switch (section) {
-            case DialogueStyleSection::Canvas: return "Canvas & Artwork";
-            case DialogueStyleSection::Typography: return "Typography";
-            case DialogueStyleSection::Portraits: return "Portrait Layout";
-            case DialogueStyleSection::Characters: return "Characters";
-            case DialogueStyleSection::Motion: return "Motion & Backdrop";
-            default: return "Canvas & Artwork";
+            case DialogueStyleSection::Canvas: return TEXT::LocalizeCStr("editor.ui.canvas.artwork.74a94b");
+            case DialogueStyleSection::Typography: return TEXT::LocalizeCStr("editor.ui.typography.f4beb9");
+            case DialogueStyleSection::Portraits: return TEXT::LocalizeCStr("editor.ui.portrait.layout.216ada");
+            case DialogueStyleSection::Characters: return TEXT::LocalizeCStr("editor.ui.characters.b6f59f");
+            case DialogueStyleSection::Motion: return TEXT::LocalizeCStr("editor.ui.motion.backdrop.97e967");
+            default: return TEXT::LocalizeCStr("editor.ui.canvas.artwork.74a94b");
             }
         }
 
@@ -386,44 +383,44 @@ namespace HIKARI::EDITOR {
             DialogueStyleSection section) {
             switch (section) {
             case DialogueStyleSection::Canvas:
-                return "1  Canvas & Artwork";
+                return TEXT::LocalizeCStr("editor.ui.1.canvas.artwork.cd3827");
             case DialogueStyleSection::Typography:
-                return "2  Typography";
+                return TEXT::LocalizeCStr("editor.ui.2.typography.40c242");
             case DialogueStyleSection::Portraits:
-                return "3  Portrait Layout";
+                return TEXT::LocalizeCStr("editor.ui.3.portrait.layout.eb1372");
             case DialogueStyleSection::Characters:
-                return "4  Characters";
+                return TEXT::LocalizeCStr("editor.ui.4.characters.0b3db3");
             case DialogueStyleSection::Motion:
-                return "5  Motion & Backdrop";
+                return TEXT::LocalizeCStr("editor.ui.5.motion.backdrop.44cfe9");
             default:
-                return "1  Canvas & Artwork";
+                return TEXT::LocalizeCStr("editor.ui.1.canvas.artwork.cd3827");
             }
         }
 
         const char* StyleSectionDescription(DialogueStyleSection section) {
             switch (section) {
             case DialogueStyleSection::Canvas:
-                return "Choose the dialogue, name and choice artwork, then position it on the canvas.";
+                return TEXT::LocalizeCStr("editor.ui.choose.the.dialogue.name.and.choice.artwork.then.position.it.on..368953");
             case DialogueStyleSection::Typography:
-                return "Choose one project font and author readable name, body and choice treatments.";
+                return TEXT::LocalizeCStr("editor.ui.choose.one.project.font.and.author.readable.name.body.and.choice.1524d2");
             case DialogueStyleSection::Portraits:
-                return "Place the two portrait slots used by every dialogue event.";
+                return TEXT::LocalizeCStr("editor.ui.place.the.two.portrait.slots.used.by.every.dialogue.event.b88fe6");
             case DialogueStyleSection::Characters:
-                return "Register reusable names, portraits and per-character alignment.";
+                return TEXT::LocalizeCStr("editor.ui.register.reusable.names.portraits.and.per.character.alignment.99128c");
             case DialogueStyleSection::Motion:
-                return "Tune reveal, portrait focus and the treatment of the game view behind dialogue.";
+                return TEXT::LocalizeCStr("editor.ui.tune.reveal.portrait.focus.and.the.treatment.of.the.game.view.be.1b7ccb");
             default:
-                return "Build the project-wide dialogue presentation.";
+                return TEXT::LocalizeCStr("editor.ui.build.the.project.wide.dialogue.presentation.51ee01");
             }
         }
 
         const char* NodeTypeLabel(DIALOGUE::DialogueNodeType type) {
             switch (type) {
-            case DIALOGUE::DialogueNodeType::Line: return "LINE";
-            case DIALOGUE::DialogueNodeType::Choice: return "CHOICE";
-            case DIALOGUE::DialogueNodeType::Event: return "SIGNAL";
-            case DIALOGUE::DialogueNodeType::End: return "END";
-            default: return "STEP";
+            case DIALOGUE::DialogueNodeType::Line: return TEXT::LocalizeCStr("editor.ui.line.528a45");
+            case DIALOGUE::DialogueNodeType::Choice: return TEXT::LocalizeCStr("editor.ui.choice.20d9bc");
+            case DIALOGUE::DialogueNodeType::Event: return TEXT::LocalizeCStr("editor.ui.signal.289e7c");
+            case DIALOGUE::DialogueNodeType::End: return TEXT::LocalizeCStr("editor.ui.end.d205ab");
+            default: return TEXT::LocalizeCStr("editor.ui.step.0c9b85");
             }
         }
 
@@ -472,7 +469,7 @@ namespace HIKARI::EDITOR {
                 "Properties###Dialogue/Inspector", right);
             ImGui::DockBuilderFinish(dockspaceId);
         }
-        ImGui::DockSpaceOverViewport(dockspaceId, viewport);
+        HIKARI::EDITOR::DrawWorkspaceDockSpace(dockspaceId, viewport);
 #else
         (void)resetDefaultDockLayout;
 #endif
@@ -506,24 +503,23 @@ namespace HIKARI::EDITOR {
             controller.styleDocument_.SealMerge();
         };
 
-        if (ImGui::Begin("Dialogue Tools###Dialogue/Navigator")) {
+        if (ImGui::Begin(TEXT::LocalizeWindow("editor.ui.dialogue.tools.097275", "Dialogue/Navigator").c_str())) {
             bool stylePage =
                 controller.activePage_ == DialogueWorkspacePage::Style;
-            ImGui::TextColored(kAccent, "DIALOGUE AUTHORING");
-            ImGui::TextDisabled("Project presentation and conversation events");
+            ImGui::TextColored(kAccent,TEXT::Localize("editor.ui.dialogue.authoring.ca704f").c_str());
+            ImGui::TextDisabled(TEXT::Localize("editor.ui.project.presentation.and.conversation.events.20b37f").c_str());
             ImGui::Spacing();
             if (ImGui::BeginTable(
                     "##DialoguePageTabs", 2,
                     ImGuiTableFlags_SizingStretchSame |
                         ImGuiTableFlags_NoPadOuterX)) {
                 ImGui::TableNextColumn();
-                if (DrawFullWidthSelectable("UI STYLE", stylePage, 36.0f)) {
+                if (IconTextButton(EditorGlyph::Material, TEXT::LocalizeCStr("editor.dialogue.style"), "stylePage", stylePage ? EditorButtonTone::Primary : EditorButtonTone::Quiet, {-1,36})) {
                     controller.activePage_ = DialogueWorkspacePage::Style;
                     stylePage = true;
                 }
                 ImGui::TableNextColumn();
-                if (DrawFullWidthSelectable(
-                        "DIALOGUE EVENT", !stylePage, 36.0f)) {
+                if (IconTextButton(EditorGlyph::Sequence, TEXT::LocalizeCStr("editor.dialogue.event"), "storyPage", !stylePage ? EditorButtonTone::Primary : EditorButtonTone::Quiet, {-1,36})) {
                     controller.activePage_ = DialogueWorkspacePage::Story;
                     stylePage = false;
                 }
@@ -535,8 +531,7 @@ namespace HIKARI::EDITOR {
                     ImGuiTableFlags_SizingStretchSame |
                         ImGuiTableFlags_NoPadOuterX)) {
                 ImGui::TableNextColumn();
-                if (ImGui::Button(
-                        "Save", ImVec2(ImGui::GetContentRegionAvail().x, 0.0f))) {
+                if (IconButton(EditorGlyph::Save, "dialogueSave", EditorButtonTone::Quiet, {ImGui::GetContentRegionAvail().x, 28}, TEXT::LocalizeCStr("ai.api.save"))) {
                     (void)controller.Save(scene, controller.statusMessage_);
                 }
                 const bool canUndo = stylePage
@@ -544,8 +539,7 @@ namespace HIKARI::EDITOR {
                     : controller.document_.CanUndo();
                 ImGui::TableNextColumn();
                 ImGui::BeginDisabled(!canUndo);
-                if (ImGui::Button(
-                        "Undo", ImVec2(ImGui::GetContentRegionAvail().x, 0.0f))) {
+                if (IconButton(EditorGlyph::Undo, "dialogueUndo", EditorButtonTone::Quiet, {ImGui::GetContentRegionAvail().x, 28}, TEXT::LocalizeCStr("menu.edit.undo"))) {
                     (void)controller.Undo(controller.statusMessage_);
                 }
                 ImGui::EndDisabled();
@@ -554,8 +548,7 @@ namespace HIKARI::EDITOR {
                     : controller.document_.CanRedo();
                 ImGui::TableNextColumn();
                 ImGui::BeginDisabled(!canRedo);
-                if (ImGui::Button(
-                        "Redo", ImVec2(ImGui::GetContentRegionAvail().x, 0.0f))) {
+                if (IconButton(EditorGlyph::Redo, "dialogueRedo", EditorButtonTone::Quiet, {ImGui::GetContentRegionAvail().x, 28}, TEXT::LocalizeCStr("menu.edit.redo"))) {
                     (void)controller.Redo(controller.statusMessage_);
                 }
                 ImGui::EndDisabled();
@@ -567,12 +560,12 @@ namespace HIKARI::EDITOR {
             if (activeDirty) {
                 ImGui::TextColored(
                     kModified,
-                    stylePage ? "UI style has unsaved changes"
-                              : "Dialogue event has unsaved changes");
+                    stylePage ? TEXT::LocalizeCStr("editor.ui.ui.style.has.unsaved.changes.b18536")
+                              : TEXT::LocalizeCStr("editor.ui.dialogue.event.has.unsaved.changes.b4dc55"));
             }
             ImGui::Separator();
             const char* locales[]{ "ja-JP", "en-US", "zh-CN" };
-            ImGui::TextDisabled("EDITING LANGUAGE");
+            ImGui::TextDisabled(TEXT::Localize("editor.ui.editing.language.b32616").c_str());
             ImGui::SetNextItemWidth(-1.0f);
             if (ImGui::BeginCombo(
                     "##DialogueEditingLanguage",
@@ -595,10 +588,8 @@ namespace HIKARI::EDITOR {
                     false,
                     ImGuiWindowFlags_AlwaysVerticalScrollbar)) {
             if (stylePage) {
-                ImGui::SeparatorText("STYLE WORKFLOW");
-                ImGui::TextWrapped(
-                    "Start with artwork and typography, register the cast, "
-                    "then tune motion. The center canvas is always the visual source of truth.");
+                ImGui::SeparatorText(TEXT::Localize("editor.ui.style.workflow.8f19d1").c_str());
+                ImGui::TextWrapped(TEXT::Localize("editor.ui.start.with.artwork.and.typography.register.the.cast.then.tune.mo.b28632").c_str());
                 ImGui::Spacing();
                 for (uint8_t value = 0u;
                      value <= static_cast<uint8_t>(DialogueStyleSection::Motion);
@@ -619,11 +610,9 @@ namespace HIKARI::EDITOR {
                     }
                 }
                 if (controller.styleSection_ == DialogueStyleSection::Characters) {
-                    ImGui::SeparatorText("Project Characters");
+                    ImGui::SeparatorText(TEXT::Localize("editor.ui.project.characters.aabbd7").c_str());
                     if (style.speakers.empty()) {
-                        ImGui::TextWrapped(
-                            "No characters are registered yet. Add one here, "
-                            "then assign its localized name and portrait in Properties.");
+                        ImGui::TextWrapped(TEXT::Localize("editor.ui.no.characters.are.registered.yet.add.one.here.then.assign.its.lo.9c1301").c_str());
                     }
                     for (const auto& speaker : style.speakers) {
                         const std::string label = std::string(ResolveName(
@@ -638,22 +627,22 @@ namespace HIKARI::EDITOR {
                         }
                         ImGui::PopID();
                     }
-                    if (ImGui::Button("+ Add Character", ImVec2(-1.0f, 0.0f))) {
+                    if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_Delete,
+                            ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)))
+                        (void)controller.DeleteSelectedSpeaker(controller.statusMessage_);
+                    if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.add.character.ccbd86", "+ Add Character").c_str(), ImVec2(-1.0f, 0.0f))) {
                         controller.AddSpeaker();
                     }
                 }
             }
             else {
-                ImGui::SeparatorText("EVENT WORKFLOW");
-                ImGui::TextWrapped(
-                    "One Dialogue asset is one complete conversation. Add steps below, "
-                    "then connect Continue and Choice targets in Properties.");
+                ImGui::SeparatorText(TEXT::Localize("editor.ui.event.workflow.8209d5").c_str());
+                ImGui::TextWrapped(TEXT::Localize("editor.ui.one.dialogue.asset.is.one.complete.conversation.add.steps.below..8f74ad").c_str());
                 ImGui::Spacing();
-                ImGui::SeparatorText("DIALOGUE ASSETS");
+                ImGui::SeparatorText(TEXT::Localize("editor.ui.dialogue.assets.8ddd00").c_str());
                 ImGui::SetNextItemWidth(-1.0f);
                 ImGui::InputTextWithHint(
-                    "##DialogueAssetSearch",
-                    "Search Dialogue assets",
+                    "##DialogueAssetSearch",TEXT::Localize("editor.ui.search.dialogue.assets.82112b").c_str(),
                     controller.assetSearch_.data(),
                     controller.assetSearch_.size());
                 const std::string_view search(
@@ -685,21 +674,19 @@ namespace HIKARI::EDITOR {
                     }
                 }
                 if (!listedAsset) {
-                    ImGui::TextDisabled("No matching Dialogue assets");
+                    ImGui::TextDisabled(TEXT::Localize("editor.ui.no.matching.dialogue.assets.5b559b").c_str());
                 }
-                if (ImGui::Button(
-                        "New Dialogue Event", ImVec2(-1.0f, 0.0f))) {
+                if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.new.dialogue.event.5e0581", "New Dialogue Event").c_str(), ImVec2(-1.0f, 0.0f))) {
                     (void)controller.RequestNewAsset(
                         controller.statusMessage_);
                 }
 
                 if (!controller.document_.IsOpen()) {
                     ImGui::Spacing();
-                    ImGui::TextWrapped(
-                        "Open an existing Dialogue asset above, or create a new event.");
+                    ImGui::TextWrapped(TEXT::Localize("editor.ui.open.an.existing.dialogue.asset.above.or.create.a.new.event.44bf96").c_str());
                 }
                 else {
-                ImGui::TextDisabled("CURRENT EVENT");
+                ImGui::TextDisabled(TEXT::Localize("editor.ui.current.event.f840cb").c_str());
                 ImGui::TextWrapped(
                     "%s%s",
                     definition.name.c_str(),
@@ -710,49 +697,44 @@ namespace HIKARI::EDITOR {
                         ImGuiTableFlags_SizingStretchSame |
                             ImGuiTableFlags_NoPadOuterX)) {
                     ImGui::TableNextColumn();
-                    if (ImGui::Button(
-                            "Revert",
+                    if (ImGui::Button(TEXT::LocalizeWindow("ui.assetInspector.revert", "Revert").c_str(),
                             ImVec2(ImGui::GetContentRegionAvail().x, 0.0f))) {
                         (void)controller.RequestRevert(
                             database,
                             controller.statusMessage_);
                     }
                     ImGui::TableNextColumn();
-                    if (ImGui::Button(
-                            "Close",
+                    if (ImGui::Button(TEXT::LocalizeWindow("ui.input.close", "Close").c_str(),
                             ImVec2(ImGui::GetContentRegionAvail().x, 0.0f))) {
                         (void)controller.RequestCloseAsset(
                             controller.statusMessage_);
                     }
                     ImGui::EndTable();
                 }
-                ImGui::SeparatorText("STORY STEPS");
-                if (ImGui::Checkbox(
-                        "Auto-link inserted step",
+                ImGui::SeparatorText(TEXT::Localize("editor.ui.story.steps.3bbc62").c_str());
+                if (ImGui::Checkbox(TEXT::LocalizeWindow("editor.ui.auto.link.inserted.step.85d8b6", "Auto-link inserted step").c_str(),
                         &controller.autoBindNewNodes_)) {
                     controller.statusMessage_ = controller.autoBindNewNodes_
                         ? "New story steps will be linked automatically"
                         : "Automatic story-step linking disabled";
                 }
                 if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip(
-                        "Insert after the selected step, link the current "
-                        "continuation to it, and preserve the old target.");
+                    ImGui::SetTooltip(TEXT::Localize("editor.ui.insert.after.the.selected.step.link.the.current.continuation.to..a3c741").c_str());
                 }
-                if (ImGui::Button("+ Add Story Step", ImVec2(-1.0f, 0.0f))) {
+                if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.add.story.step.8e7a80", "+ Add Story Step").c_str(), ImVec2(-1.0f, 0.0f))) {
                     ImGui::OpenPopup("AddDialogueStep");
                 }
                 if (ImGui::BeginPopup("AddDialogueStep")) {
-                    if (ImGui::MenuItem("Line")) {
+                    if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.line.ea9676", "Line").c_str())) {
                         controller.AddNode(DIALOGUE::DialogueNodeType::Line);
                     }
-                    if (ImGui::MenuItem("Choice")) {
+                    if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.choice.0682be", "Choice").c_str())) {
                         controller.AddNode(DIALOGUE::DialogueNodeType::Choice);
                     }
-                    if (ImGui::MenuItem("Event signal")) {
+                    if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.event.signal.58ef83", "Event signal").c_str())) {
                         controller.AddNode(DIALOGUE::DialogueNodeType::Event);
                     }
-                    if (ImGui::MenuItem("End")) {
+                    if (ImGui::MenuItem(TEXT::LocalizeWindow("ui.vfx.text.End", "End").c_str())) {
                         controller.AddNode(DIALOGUE::DialogueNodeType::End);
                     }
                     ImGui::EndPopup();
@@ -778,20 +760,19 @@ namespace HIKARI::EDITOR {
                 ImGui::Spacing();
                 ImGui::BeginDisabled(
                     !controller.CanBindSelectedToNextNode());
-                if (ImGui::Button(
-                        "Bind Selected to Next Step",
+                if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.bind.selected.to.next.step.567a41", "Bind Selected to Next Step").c_str(),
                         ImVec2(-1.0f, 0.0f))) {
                     (void)controller.BindSelectedToNextNode(
                         controller.statusMessage_);
                 }
                 ImGui::EndDisabled();
                 if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-                    ImGui::SetTooltip(
-                        "Link this Line or Event to the following list item. "
-                        "For a Choice, select the option first.");
+                    ImGui::SetTooltip(TEXT::Localize("editor.ui.link.this.line.or.event.to.the.following.list.item.for.a.choice..09ae09").c_str());
                 }
                 ImGui::BeginDisabled(definition.nodes.size() <= 1u);
-                if (ImGui::Button("Remove Step", ImVec2(-1.0f, 0.0f))) {
+                if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.remove.step.9fcbf9", "Remove Step").c_str(), ImVec2(-1.0f, 0.0f)) ||
+                    (definition.nodes.size() > 1 && ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_Delete,
+                        ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)))) {
                     (void)controller.DeleteSelectedNode(controller.statusMessage_);
                 }
                 ImGui::EndDisabled();
@@ -800,7 +781,7 @@ namespace HIKARI::EDITOR {
             }
             ImGui::EndChild();
             ImGui::Separator();
-            if (ImGui::Button("Back to Scene", ImVec2(-1.0f, 0.0f))) {
+            if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.back.to.scene.0e730f", "Back to Scene").c_str(), ImVec2(-1.0f, 0.0f))) {
                 EditorWorkspaceOpenRequest request{};
                 request.workspaceId = EditorWorkspaceId::Scene;
                 (void)controller.RequestWorkspaceTransition(
@@ -810,24 +791,22 @@ namespace HIKARI::EDITOR {
         }
         ImGui::End();
 
-        if (ImGui::Begin("Canvas###Dialogue/Preview")) {
+        if (ImGui::Begin(TEXT::LocalizeWindow("ui.sceneCreation.canvas", "Dialogue/Preview").c_str())) {
             ImGui::TextColored(
                 kAccent,
                 controller.activePage_ == DialogueWorkspacePage::Style
-                    ? "UI STYLE CANVAS" : "DIALOGUE EVENT PREVIEW");
+                    ? TEXT::LocalizeCStr("editor.ui.ui.style.canvas.c3bc93") : TEXT::LocalizeCStr("editor.ui.dialogue.event.preview.ef3e4d"));
             ImGui::SameLine();
-            ImGui::Checkbox("Animate", &controller.previewPlaying_);
+            ImGui::Checkbox(TEXT::LocalizeWindow("editor.ui.animate.e733b2", "Animate").c_str(), &controller.previewPlaying_);
             ImGui::SameLine();
-            if (ImGui::Button("Replay")) controller.previewElapsed_ = 0.0f;
+            if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.replay.c0f85d", "Replay").c_str())) controller.previewElapsed_ = 0.0f;
             ImGui::SameLine();
             ImGui::SetNextItemWidth(150.0f);
-            ImGui::SliderFloat(
-                "Text", &controller.previewRevealAmount_,
+            ImGui::SliderFloat(TEXT::LocalizeWindow("ui.inspector.worldText.text", "Text").c_str(), &controller.previewRevealAmount_,
                 0.0f, 1.0f, "%.2f");
             if (controller.activePage_ == DialogueWorkspacePage::Style) {
                 ImGui::SameLine();
-                ImGui::TextDisabled(
-                    "Select an outline to move it; drag its lower-right handle to resize");
+                ImGui::TextDisabled(TEXT::Localize("editor.ui.select.an.outline.to.move.it.drag.its.lower.right.handle.to.resi.81f6b1").c_str());
             }
             if (controller.previewPlaying_) {
                 controller.previewElapsed_ += (std::max)(
@@ -1107,14 +1086,13 @@ namespace HIKARI::EDITOR {
                 { availableOrigin.x, availableOrigin.y + available.y });
             ImGui::Dummy({ 1.0f, 1.0f });
             if (controller.previewRenderer_) {
-                ImGui::TextDisabled(
-                    "LIVE PREVIEW  %s",
+                ImGui::TextDisabled(TEXT::Localize("editor.ui.live.preview.s.8878fb").c_str(),
                     controller.previewRenderer_->GetStatus().c_str());
             }
         }
         ImGui::End();
 
-        if (ImGui::Begin("Properties###Dialogue/Inspector")) {
+        if (ImGui::Begin(TEXT::LocalizeWindow("editor.ui.properties.bc6c88", "Dialogue/Inspector").c_str())) {
             if (controller.activePage_ == DialogueWorkspacePage::Style) {
                 ImGui::TextColored(
                     kAccent, "%s", StyleSectionLabel(controller.styleSection_));
@@ -1124,32 +1102,24 @@ namespace HIKARI::EDITOR {
 
                 if (controller.styleSection_ == DialogueStyleSection::Canvas) {
                     auto before = style;
-                    bool changed = DrawTextureAssetField(
-                        "Dialogue panel", database,
+                    bool changed = DrawTextureAssetField(TEXT::Localize("editor.ui.dialogue.panel.097823").c_str(), database,
                         style.theme.dialoguePanelAssetPath);
-                    changed = DrawTextureAssetField(
-                        "Name plate", database,
+                    changed = DrawTextureAssetField(TEXT::Localize("editor.ui.name.plate.55efa6").c_str(), database,
                         style.theme.speakerPlateAssetPath) || changed;
-                    changed = DrawTextureAssetField(
-                        "Choice panel", database,
+                    changed = DrawTextureAssetField(TEXT::Localize("editor.ui.choice.panel.33406a").c_str(), database,
                         style.theme.choiceAssetPath) || changed;
-                    changed = DrawTextureAssetField(
-                        "Continue - Gamepad", database,
+                    changed = DrawTextureAssetField(TEXT::Localize("editor.ui.continue.gamepad.423af3").c_str(), database,
                         style.theme.advanceGamepadAssetPath) || changed;
-                    changed = DrawTextureAssetField(
-                        "Continue - Mouse", database,
+                    changed = DrawTextureAssetField(TEXT::Localize("editor.ui.continue.mouse.433032").c_str(), database,
                         style.theme.advanceMouseAssetPath) || changed;
                     if (changed) recordStyle(std::move(before), "style.art", false);
                     ImGui::Spacing();
-                    ImGui::TextWrapped(
-                        "Place and resize artwork directly on the canvas. "
-                        "The panel is treated as one complete sprite.");
-                    if (ImGui::CollapsingHeader("Reference canvas")) {
+                    ImGui::TextWrapped(TEXT::Localize("editor.ui.place.and.resize.artwork.directly.on.the.canvas.the.panel.is.tre.43e567").c_str());
+                    if (ImGui::CollapsingHeader(TEXT::LocalizeWindow("editor.ui.reference.canvas.29bf4e", "Reference canvas").c_str())) {
                         before = style;
                         float size[2]{ style.theme.referenceWidth,
                             style.theme.referenceHeight };
-                        if (ImGui::DragFloat2(
-                                "Design resolution", size, 1.0f,
+                        if (ImGui::DragFloat2(TEXT::LocalizeWindow("editor.ui.design.resolution.435501", "Design resolution").c_str(), size, 1.0f,
                                 320.0f, 8192.0f, "%.0f")) {
                             style.theme.referenceWidth = size[0];
                             style.theme.referenceHeight = size[1];
@@ -1157,19 +1127,16 @@ namespace HIKARI::EDITOR {
                         }
                         seal();
                     }
-                    if (ImGui::CollapsingHeader(
-                            "Continue prompt",
+                    if (ImGui::CollapsingHeader(TEXT::LocalizeWindow("editor.ui.continue.prompt.fc9ef9", "Continue prompt").c_str(),
                             ImGuiTreeNodeFlags_DefaultOpen)) {
                         before = style;
-                        bool promptChanged = ImGui::DragFloat2(
-                            "Prompt position",
+                        bool promptChanged = ImGui::DragFloat2(TEXT::LocalizeWindow("editor.ui.prompt.position.c2d53e", "Prompt position").c_str(),
                             &style.theme.advancePromptX,
                             1.0f,
                             -4096.0f,
                             4096.0f,
                             "%.0f");
-                        promptChanged = ImGui::SliderFloat(
-                            "Prompt scale",
+                        promptChanged = ImGui::SliderFloat(TEXT::LocalizeWindow("editor.ui.prompt.scale.15563f", "Prompt scale").c_str(),
                             &style.theme.advancePromptScale,
                             0.20f,
                             4.0f,
@@ -1190,34 +1157,28 @@ namespace HIKARI::EDITOR {
                         recordStyle(std::move(before), "style.font");
                     }
                     seal();
-                    ImGui::TextDisabled(
-                        "Use a CJK-capable TTF, OTF or TTC for Japanese and Chinese.");
-                    if (ImGui::CollapsingHeader(
-                            "Character name", ImGuiTreeNodeFlags_DefaultOpen)) {
+                    ImGui::TextDisabled(TEXT::Localize("editor.ui.use.a.cjk.capable.ttf.otf.or.ttc.for.japanese.and.chinese.a4b049").c_str());
+                    if (ImGui::CollapsingHeader(TEXT::LocalizeWindow("editor.ui.character.name.c0a090", "Character name").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
                         before = style;
-                        bool changed = ImGui::SliderFloat(
-                            "Name size", &style.theme.speakerPixelHeight,
+                        bool changed = ImGui::SliderFloat(TEXT::LocalizeWindow("editor.ui.name.size.ef6b3b", "Name size").c_str(), &style.theme.speakerPixelHeight,
                             10.0f, 128.0f, "%.0f px");
                         changed = DrawTextStyle(
                             "NameStyle", style.theme.speakerTextStyle) || changed;
                         if (changed) recordStyle(std::move(before), "style.nameText");
                         seal();
                     }
-                    if (ImGui::CollapsingHeader(
-                            "Dialogue text", ImGuiTreeNodeFlags_DefaultOpen)) {
+                    if (ImGui::CollapsingHeader(TEXT::LocalizeWindow("editor.ui.dialogue.text.1bd98a", "Dialogue text").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
                         before = style;
-                        bool changed = ImGui::SliderFloat(
-                            "Body size", &style.theme.bodyPixelHeight,
+                        bool changed = ImGui::SliderFloat(TEXT::LocalizeWindow("editor.ui.body.size.61b95f", "Body size").c_str(), &style.theme.bodyPixelHeight,
                             10.0f, 128.0f, "%.0f px");
                         changed = DrawTextStyle(
                             "BodyStyle", style.theme.bodyTextStyle) || changed;
                         if (changed) recordStyle(std::move(before), "style.bodyText");
                         seal();
                     }
-                    if (ImGui::CollapsingHeader("Choice text")) {
+                    if (ImGui::CollapsingHeader(TEXT::LocalizeWindow("editor.ui.choice.text.a9c015", "Choice text").c_str())) {
                         before = style;
-                        bool changed = ImGui::SliderFloat(
-                            "Choice size", &style.theme.choicePixelHeight,
+                        bool changed = ImGui::SliderFloat(TEXT::LocalizeWindow("editor.ui.choice.size.ae6b83", "Choice size").c_str(), &style.theme.choicePixelHeight,
                             10.0f, 128.0f, "%.0f px");
                         changed = DrawTextStyle(
                             "ChoiceStyle", style.theme.choiceTextStyle) || changed;
@@ -1226,36 +1187,25 @@ namespace HIKARI::EDITOR {
                     }
                 }
                 else if (controller.styleSection_ == DialogueStyleSection::Portraits) {
-                    ImGui::TextWrapped(
-                        "The runtime displays at most two portraits. Move the "
-                        "left and right slots on the canvas, then apply per-character "
-                        "alignment in Characters.");
-                    if (ImGui::CollapsingHeader(
-                            "Left slot", ImGuiTreeNodeFlags_DefaultOpen)) {
+                    ImGui::TextWrapped(TEXT::Localize("editor.ui.the.runtime.displays.at.most.two.portraits.move.the.left.and.rig.bd843e").c_str());
+                    if (ImGui::CollapsingHeader(TEXT::LocalizeWindow("editor.ui.left.slot.aa2913", "Left slot").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
                         auto before = style;
-                        bool changed = ImGui::DragFloat2(
-                            "Position##Left", &style.leftPortrait.x,
+                        bool changed = ImGui::DragFloat2(TEXT::LocalizeWindow("ui.vfx.text.Position", "Position##Left").c_str(), &style.leftPortrait.x,
                             1.0f, -4096.0f, 4096.0f, "%.0f");
-                        changed = ImGui::DragFloat2(
-                            "Size##Left", &style.leftPortrait.width,
+                        changed = ImGui::DragFloat2(TEXT::LocalizeWindow("ui.inspector.worldSprite.size", "Size##Left").c_str(), &style.leftPortrait.width,
                             1.0f, 1.0f, 4096.0f, "%.0f") || changed;
-                        changed = ImGui::SliderFloat(
-                            "Rotation##Left", &style.leftPortrait.rotationDegrees,
+                        changed = ImGui::SliderFloat(TEXT::LocalizeWindow("ui.inspector.rotation", "Rotation##Left").c_str(), &style.leftPortrait.rotationDegrees,
                             -45.0f, 45.0f, "%.1f deg") || changed;
                         if (changed) recordStyle(std::move(before), "style.leftPortrait");
                         seal();
                     }
-                    if (ImGui::CollapsingHeader(
-                            "Right slot", ImGuiTreeNodeFlags_DefaultOpen)) {
+                    if (ImGui::CollapsingHeader(TEXT::LocalizeWindow("editor.ui.right.slot.ad5773", "Right slot").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
                         auto before = style;
-                        bool changed = ImGui::DragFloat2(
-                            "Position##Right", &style.rightPortrait.x,
+                        bool changed = ImGui::DragFloat2(TEXT::LocalizeWindow("ui.vfx.text.Position", "Position##Right").c_str(), &style.rightPortrait.x,
                             1.0f, -4096.0f, 4096.0f, "%.0f");
-                        changed = ImGui::DragFloat2(
-                            "Size##Right", &style.rightPortrait.width,
+                        changed = ImGui::DragFloat2(TEXT::LocalizeWindow("ui.inspector.worldSprite.size", "Size##Right").c_str(), &style.rightPortrait.width,
                             1.0f, 1.0f, 4096.0f, "%.0f") || changed;
-                        changed = ImGui::SliderFloat(
-                            "Rotation##Right", &style.rightPortrait.rotationDegrees,
+                        changed = ImGui::SliderFloat(TEXT::LocalizeWindow("ui.inspector.rotation", "Rotation##Right").c_str(), &style.rightPortrait.rotationDegrees,
                             -45.0f, 45.0f, "%.1f deg") || changed;
                         if (changed) recordStyle(std::move(before), "style.rightPortrait");
                         seal();
@@ -1265,15 +1215,13 @@ namespace HIKARI::EDITOR {
                     auto* speaker = DIALOGUE::FindDialogueSpeaker(
                         style, controller.selectedSpeakerId_);
                     if (speaker == nullptr) {
-                        ImGui::TextWrapped(
-                            "Add a character from the left panel. Names and portraits "
-                            "registered here become selectable in every dialogue event.");
+                        ImGui::TextWrapped(TEXT::Localize("editor.ui.add.a.character.from.the.left.panel.names.and.portraits.register.88e7d9").c_str());
                     }
                     else {
                         const std::string originalId = speaker->id;
                         auto before = style;
                         bool changed = DrawLocalizedText(
-                            "Display name", speaker->displayName,
+                            TEXT::LocalizeWindow("editor.ui.display.name.c7874a", "Display name").c_str(), speaker->displayName,
                             controller.editingLocale_);
                         std::string portraitGuid = speaker->portraitAssetGuid;
                         AssetFieldOptions portraitOptions{};
@@ -1286,46 +1234,38 @@ namespace HIKARI::EDITOR {
                             changed = true;
                         }
                         if (speaker->portraitAssetGuid.empty()) {
-                            ImGui::TextDisabled(
-                                "No portrait assigned. The canvas will show dialogue without a character image.");
+                            ImGui::TextDisabled(TEXT::Localize("editor.ui.no.portrait.assigned.the.canvas.will.show.dialogue.without.a.cha.41b3b8").c_str());
                         }
                         else if (speaker->resolvedPortraitAssetPath.empty()) {
                             ImGui::TextColored(
-                                kError,
-                                "Portrait unavailable: choose an imported Texture asset again.");
+                                kError,TEXT::Localize("editor.ui.portrait.unavailable.choose.an.imported.texture.asset.again.fc38e9").c_str());
                         }
                         else {
-                            ImGui::TextColored(kReady, "Live portrait preview ready");
-                            ImGui::TextDisabled(
-                                "The center canvas updates while you adjust this character.");
+                            ImGui::TextColored(kReady,TEXT::Localize("editor.ui.live.portrait.preview.ready.61a06d").c_str());
+                            ImGui::TextDisabled(TEXT::Localize("editor.ui.the.center.canvas.updates.while.you.adjust.this.character.aec428").c_str());
                         }
-                        const char* sides[]{ "Automatic", "Left", "Right" };
+                        const char* sides[]{ TEXT::LocalizeCStr("ui.quality.exposureAutomatic"), TEXT::LocalizeCStr("ui.input.directionLeft"), TEXT::LocalizeCStr("ui.input.directionRight") };
                         int side = static_cast<int>(speaker->preferredSlot);
-                        changed = ImGui::Combo(
-                            "Preferred side", &side, sides, 3) || changed;
+                        changed = ImGui::Combo(TEXT::LocalizeWindow("editor.ui.preferred.side.7bd0e7", "Preferred side").c_str(), &side, sides, 3) || changed;
                         speaker->preferredSlot =
                             static_cast<DIALOGUE::DialoguePortraitSlot>(side);
-                        ImGui::SeparatorText("Portrait alignment");
-                        changed = ImGui::DragFloat2(
-                            "Offset", &speaker->offsetX,
+                        ImGui::SeparatorText(TEXT::Localize("editor.ui.portrait.alignment.84f55e").c_str());
+                        changed = ImGui::DragFloat2(TEXT::LocalizeWindow("editor.ui.offset.ce6677", "Offset").c_str(), &speaker->offsetX,
                             1.0f, -2048.0f, 2048.0f, "%.0f") || changed;
-                        changed = ImGui::SliderFloat(
-                            "Scale", &speaker->scale,
+                        changed = ImGui::SliderFloat(TEXT::LocalizeWindow("ui.input.scale", "Scale").c_str(), &speaker->scale,
                             0.1f, 3.0f, "%.2fx") || changed;
-                        changed = ImGui::SliderFloat(
-                            "Rotation", &speaker->rotationDegrees,
+                        changed = ImGui::SliderFloat(TEXT::LocalizeWindow("ui.inspector.rotation", "Rotation").c_str(), &speaker->rotationDegrees,
                             -45.0f, 45.0f, "%.1f deg") || changed;
-                        changed = ImGui::Checkbox(
-                            "Mirror horizontally", &speaker->mirror) || changed;
+                        changed = ImGui::Checkbox(TEXT::LocalizeWindow("editor.ui.mirror.horizontally.3b5ec9", "Mirror horizontally").c_str(), &speaker->mirror) || changed;
                         if (changed) {
                             recordStyle(std::move(before), "style.character");
                             DIALOGUE::ResolveDialogueProjectStyleAssets(style, database);
                         }
                         seal();
-                        if (ImGui::CollapsingHeader("Advanced identity")) {
+                        if (ImGui::CollapsingHeader(TEXT::LocalizeWindow("editor.ui.advanced.identity.54f0f7", "Advanced identity").c_str())) {
                             before = style;
                             std::string id = speaker->id;
-                            if (InputString("Stable character id", id, false, 128u) &&
+                            if (InputString(TEXT::LocalizeWindow("editor.ui.stable.character.id.c80fb2", "Stable character id").c_str(), id, false, 128u) &&
                                 !id.empty() && (id == originalId ||
                                  DIALOGUE::FindDialogueSpeaker(style, id) == nullptr)) {
                                 speaker->id = id;
@@ -1350,8 +1290,7 @@ namespace HIKARI::EDITOR {
                         ImGui::Spacing();
                         ImGui::PushStyleColor(
                             ImGuiCol_Button, ImVec4(0.45f, 0.12f, 0.12f, 1.0f));
-                        if (ImGui::Button(
-                                "Remove Character", ImVec2(-1.0f, 0.0f))) {
+                        if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.remove.character.076063", "Remove Character").c_str(), ImVec2(-1.0f, 0.0f))) {
                             (void)controller.DeleteSelectedSpeaker(
                                 controller.statusMessage_);
                         }
@@ -1360,63 +1299,51 @@ namespace HIKARI::EDITOR {
                 }
                 else if (controller.styleSection_ == DialogueStyleSection::Motion) {
                     auto before = style;
-                    bool changed = ImGui::SliderFloat(
-                        "Panel entrance", &style.theme.panelRevealSeconds,
+                    bool changed = ImGui::SliderFloat(TEXT::LocalizeWindow("editor.ui.panel.entrance.9ed47b", "Panel entrance").c_str(), &style.theme.panelRevealSeconds,
                         0.05f, 1.5f, "%.2f s");
-                    changed = ImGui::SliderFloat(
-                        "Text speed", &style.theme.charactersPerSecond,
+                    changed = ImGui::SliderFloat(TEXT::LocalizeWindow("editor.ui.text.speed.3768e9", "Text speed").c_str(), &style.theme.charactersPerSecond,
                         5.0f, 120.0f, "%.0f chars/s") || changed;
-                    ImGui::SeparatorText("Continue prompt");
-                    changed = ImGui::SliderFloat(
-                        "Prompt cycle",
+                    ImGui::SeparatorText(TEXT::Localize("editor.ui.continue.prompt.fc9ef9").c_str());
+                    changed = ImGui::SliderFloat(TEXT::LocalizeWindow("editor.ui.prompt.cycle.9ebf34", "Prompt cycle").c_str(),
                         &style.theme.advancePromptPulseSeconds,
                         0.20f,
                         3.0f,
                         "%.2f s") || changed;
-                    changed = ImGui::SliderFloat(
-                        "Prompt bob",
+                    changed = ImGui::SliderFloat(TEXT::LocalizeWindow("editor.ui.prompt.bob.1ebb99", "Prompt bob").c_str(),
                         &style.theme.advancePromptBobDistance,
                         0.0f,
                         32.0f,
                         "%.1f px") || changed;
-                    changed = ImGui::SliderFloat(
-                        "Prompt pulse scale",
+                    changed = ImGui::SliderFloat(TEXT::LocalizeWindow("editor.ui.prompt.pulse.scale.b621a2", "Prompt pulse scale").c_str(),
                         &style.theme.advancePromptScaleAmount,
                         0.0f,
                         0.20f,
                         "%.3f") || changed;
-                    ImGui::SeparatorText("Portrait focus");
+                    ImGui::SeparatorText(TEXT::Localize("editor.ui.portrait.focus.2bb526").c_str());
                     changed = DrawColor(
-                        "Speaking portrait",
+                        TEXT::LocalizeWindow("editor.ui.speaking.portrait.a7665b", "Speaking portrait").c_str(),
                         style.portraitTransition.speakingTint) || changed;
                     changed = DrawColor(
-                        "Listening portrait",
+                        TEXT::LocalizeWindow("editor.ui.listening.portrait.a384af", "Listening portrait").c_str(),
                         style.portraitTransition.listeningTint) || changed;
-                    changed = ImGui::SliderFloat(
-                        "Focus blend", &style.portraitTransition.focusSeconds,
+                    changed = ImGui::SliderFloat(TEXT::LocalizeWindow("editor.ui.focus.blend.bfb55a", "Focus blend").c_str(), &style.portraitTransition.focusSeconds,
                         0.05f, 0.8f, "%.2f s") || changed;
-                    changed = ImGui::SliderFloat(
-                        "Portrait entrance", &style.portraitTransition.enterSeconds,
+                    changed = ImGui::SliderFloat(TEXT::LocalizeWindow("editor.ui.portrait.entrance.17093f", "Portrait entrance").c_str(), &style.portraitTransition.enterSeconds,
                         0.05f, 1.2f, "%.2f s") || changed;
-                    changed = ImGui::SliderFloat(
-                        "Entry slide", &style.portraitTransition.slideDistance,
+                    changed = ImGui::SliderFloat(TEXT::LocalizeWindow("editor.ui.entry.slide.dc2e87", "Entry slide").c_str(), &style.portraitTransition.slideDistance,
                         0.0f, 240.0f, "%.0f px") || changed;
                     changed = DrawColor(
-                        "Edge light",
+                        TEXT::LocalizeWindow("editor.ui.edge.light.fa66de", "Edge light").c_str(),
                         style.portraitTransition.edgeLightColor) || changed;
-                    changed = ImGui::SliderFloat(
-                        "Edge light strength",
+                    changed = ImGui::SliderFloat(TEXT::LocalizeWindow("editor.ui.edge.light.strength.4d86b9", "Edge light strength").c_str(),
                         &style.portraitTransition.edgeLightIntensity,
                         0.0f, 2.0f, "%.2f") || changed;
-                    ImGui::SeparatorText("Background game view");
-                    changed = ImGui::SliderFloat(
-                        "Darken", &style.theme.backdropDim,
+                    ImGui::SeparatorText(TEXT::Localize("editor.ui.background.game.view.e8990a").c_str());
+                    changed = ImGui::SliderFloat(TEXT::LocalizeWindow("editor.ui.darken.d7b6ff", "Darken").c_str(), &style.theme.backdropDim,
                         0.0f, 0.8f, "%.2f") || changed;
-                    changed = ImGui::SliderFloat(
-                        "Blur", &style.theme.backdropBlur,
+                    changed = ImGui::SliderFloat(TEXT::LocalizeWindow("ui.vfx.text.Blur", "Blur").c_str(), &style.theme.backdropBlur,
                         0.0f, 1.0f, "%.2f") || changed;
-                    changed = ImGui::SliderFloat(
-                        "Desaturate", &style.theme.backdropDesaturation,
+                    changed = ImGui::SliderFloat(TEXT::LocalizeWindow("editor.ui.desaturate.f6d138", "Desaturate").c_str(), &style.theme.backdropDesaturation,
                         0.0f, 1.0f, "%.2f") || changed;
                     if (changed) recordStyle(std::move(before), "style.motion");
                     seal();
@@ -1425,25 +1352,21 @@ namespace HIKARI::EDITOR {
                 const auto issues = DIALOGUE::ValidateDialogueProjectStyle(style);
                 if (!issues.empty()) {
                     ImGui::Separator();
-                    ImGui::TextColored(kError, "Style needs attention");
+                    ImGui::TextColored(kError,TEXT::Localize("editor.ui.style.needs.attention.4a82d8").c_str());
                     ImGui::TextWrapped("%s", issues.front().message.c_str());
                 }
             }
             else {
                 if (!controller.document_.IsOpen()) {
-                    ImGui::TextColored(kAccent, "DIALOGUE EVENT");
-                    ImGui::TextWrapped(
-                        "No Dialogue asset is open. Select an existing asset "
-                        "or create a new event in Dialogue Tools.");
+                    ImGui::TextColored(kAccent,TEXT::Localize("editor.ui.dialogue.event.8bbdfe").c_str());
+                    ImGui::TextWrapped(TEXT::Localize("editor.ui.no.dialogue.asset.is.open.select.an.existing.asset.or.create.a.n.e7db2a").c_str());
                 }
                 else {
-                ImGui::TextColored(kAccent, "DIALOGUE EVENT");
-                ImGui::TextWrapped(
-                    "Edit the selected story step here. The center preview uses "
-                    "the same project style and character registry as runtime.");
+                ImGui::TextColored(kAccent,TEXT::Localize("editor.ui.dialogue.event.8bbdfe").c_str());
+                ImGui::TextWrapped(TEXT::Localize("editor.ui.edit.the.selected.story.step.here.the.center.preview.uses.the.sa.35ee76").c_str());
                 ImGui::Separator();
                 std::string name = definition.name;
-                if (InputString("Event name", name)) {
+                if (InputString(TEXT::LocalizeWindow("editor.ui.event.name.8e10d7", "Event name").c_str(), name)) {
                     auto before = definition;
                     definition.name = std::move(name);
                     recordDialogue(std::move(before), "dialogue.name");
@@ -1451,14 +1374,12 @@ namespace HIKARI::EDITOR {
                 seal();
                 DIALOGUE::DialogueNode* node = controller.SelectedNode();
                 if (node == nullptr) {
-                    ImGui::TextColored(kModified, "NO STORY STEP SELECTED");
-                    ImGui::TextWrapped(
-                        "Choose a step in Dialogue Tools, or add a new Line, "
-                        "Choice, Signal or End step there.");
+                    ImGui::TextColored(kModified,TEXT::Localize("editor.ui.no.story.step.selected.b5c5a3").c_str());
+                    ImGui::TextWrapped(TEXT::Localize("editor.ui.choose.a.step.in.dialogue.tools.or.add.a.new.line.choice.signal..84d62a").c_str());
                 }
                 else if (node->type == DIALOGUE::DialogueNodeType::Line) {
-                    ImGui::TextDisabled("LINE STEP");
-                    ImGui::SeparatorText("Speaker");
+                    ImGui::TextDisabled(TEXT::Localize("editor.ui.line.step.a1ebff").c_str());
+                    ImGui::SeparatorText(TEXT::Localize("editor.ui.speaker.7c23b0").c_str());
                     const auto* currentSpeaker = DIALOGUE::FindDialogueSpeaker(
                         style, node->speakerId);
                     const std::string speakerPreview = currentSpeaker
@@ -1466,9 +1387,8 @@ namespace HIKARI::EDITOR {
                             *currentSpeaker, controller.editingLocale_,
                             style.fallbackLocale))
                         : std::string("Narration / no portrait");
-                    if (ImGui::BeginCombo("Character", speakerPreview.c_str())) {
-                        if (ImGui::Selectable(
-                                "Narration / no portrait", node->speakerId.empty())) {
+                    if (ImGui::BeginCombo(TEXT::LocalizeWindow("editor.ui.character.ee9946", "Character").c_str(), speakerPreview.c_str())) {
+                        if (ImGui::Selectable(TEXT::LocalizeWindow("editor.ui.narration.no.portrait.bec1a6", "Narration / no portrait").c_str(), node->speakerId.empty())) {
                             auto before = definition;
                             node->speakerId.clear();
                             recordDialogue(std::move(before), "line.speaker", false);
@@ -1492,43 +1412,39 @@ namespace HIKARI::EDITOR {
                     }
                     auto before = definition;
                     if (DrawLocalizedText(
-                            "Dialogue", node->text,
+                            TEXT::LocalizeWindow("ui.assetBrowser.typeDialogue", "Dialogue").c_str(), node->text,
                             controller.editingLocale_, true, 180.0f)) {
                         recordDialogue(std::move(before), "line.text");
                     }
                     seal();
-                    ImGui::SeparatorText("Portrait direction");
+                    ImGui::SeparatorText(TEXT::Localize("editor.ui.portrait.direction.960d48").c_str());
                     const char* actions[]{
-                        "Automatic", "Show / replace", "Keep current", "Hide" };
+                        TEXT::LocalizeCStr("ui.quality.exposureAutomatic"), TEXT::LocalizeCStr("editor.ui.show.replace.f060fd"), TEXT::LocalizeCStr("editor.ui.keep.current.786906"), TEXT::LocalizeCStr("ui.vfx.hierarchy.hide") };
                     int action = static_cast<int>(node->portraitAction);
                     before = definition;
-                    bool changed = ImGui::Combo(
-                        "Portrait behavior", &action, actions, 4);
+                    bool changed = ImGui::Combo(TEXT::LocalizeWindow("editor.ui.portrait.behavior.1d8231", "Portrait behavior").c_str(), &action, actions, 4);
                     node->portraitAction =
                         static_cast<DIALOGUE::DialoguePortraitAction>(action);
-                    const char* slots[]{ "Automatic", "Left", "Right" };
+                    const char* slots[]{ TEXT::LocalizeCStr("ui.quality.exposureAutomatic"), TEXT::LocalizeCStr("ui.input.directionLeft"), TEXT::LocalizeCStr("ui.input.directionRight") };
                     int slot = static_cast<int>(node->portraitSlot);
-                    changed = ImGui::Combo(
-                        "Portrait side", &slot, slots, 3) || changed;
+                    changed = ImGui::Combo(TEXT::LocalizeWindow("editor.ui.portrait.side.136200", "Portrait side").c_str(), &slot, slots, 3) || changed;
                     node->portraitSlot =
                         static_cast<DIALOGUE::DialoguePortraitSlot>(slot);
                     if (changed) recordDialogue(
                         std::move(before), "line.portrait", false);
                     std::string next = node->nextNodeId;
                     if (TargetCombo(
-                            "Continue to", definition, style,
+                            TEXT::LocalizeWindow("editor.ui.continue.to.02bdf3", "Continue to").c_str(), definition, style,
                             controller.editingLocale_, next)) {
                         before = definition;
                         node->nextNodeId = std::move(next);
                         recordDialogue(std::move(before), "line.next", false);
                     }
-                    if (ImGui::CollapsingHeader("Playback options")) {
+                    if (ImGui::CollapsingHeader(TEXT::LocalizeWindow("editor.ui.playback.options.75eab2", "Playback options").c_str())) {
                         before = definition;
-                        changed = ImGui::DragFloat(
-                            "Auto continue after", &node->autoAdvanceSeconds,
+                        changed = ImGui::DragFloat(TEXT::LocalizeWindow("editor.ui.auto.continue.after.89d8dd", "Auto continue after").c_str(), &node->autoAdvanceSeconds,
                             0.05f, 0.0f, 120.0f, "%.2f s");
-                        changed = ImGui::Checkbox(
-                            "Player can reveal text instantly",
+                        changed = ImGui::Checkbox(TEXT::LocalizeWindow("editor.ui.player.can.reveal.text.instantly.7358e0", "Player can reveal text instantly").c_str(),
                             &node->skippable) || changed;
                         if (changed) recordDialogue(
                             std::move(before), "line.playback");
@@ -1536,10 +1452,8 @@ namespace HIKARI::EDITOR {
                     }
                 }
                 else if (node->type == DIALOGUE::DialogueNodeType::Choice) {
-                    ImGui::TextDisabled("CHOICE STEP");
-                    ImGui::TextWrapped(
-                        "Each option links to another step. The selected option "
-                        "uses the shader treatment from UI Style.");
+                    ImGui::TextDisabled(TEXT::Localize("editor.ui.choice.step.1e8d95").c_str());
+                    ImGui::TextWrapped(TEXT::Localize("editor.ui.each.option.links.to.another.step.the.selected.option.uses.the.s.57f80a").c_str());
                     for (size_t index = 0u; index < node->choices.size(); ++index) {
                         ImGui::PushID(static_cast<int>(index));
                         const bool open = ImGui::CollapsingHeader(
@@ -1550,14 +1464,14 @@ namespace HIKARI::EDITOR {
                             controller.selectedChoiceIndex_ = index;
                             auto before = definition;
                             if (DrawLocalizedText(
-                                    "Text", node->choices[index].text,
+                                    TEXT::LocalizeWindow("ui.inspector.worldText.text", "Text").c_str(), node->choices[index].text,
                                     controller.editingLocale_)) {
                                 recordDialogue(std::move(before), "choice.text");
                             }
                             seal();
                             std::string target = node->choices[index].nextNodeId;
                             if (TargetCombo(
-                                    "Go to", definition, style,
+                                    TEXT::LocalizeWindow("editor.ui.go.to.8a68d9", "Go to").c_str(), definition, style,
                                     controller.editingLocale_, target)) {
                                 before = definition;
                                 node->choices[index].nextNodeId = std::move(target);
@@ -1565,7 +1479,7 @@ namespace HIKARI::EDITOR {
                                     "choice.target", false);
                             }
                             if (node->choices.size() > 1u &&
-                                ImGui::Button("Remove option")) {
+                                ImGui::Button(TEXT::LocalizeWindow("editor.ui.remove.option.17b06d", "Remove option").c_str())) {
                                 before = definition;
                                 node->choices.erase(node->choices.begin() + index);
                                 controller.selectedChoiceIndex_.reset();
@@ -1577,7 +1491,7 @@ namespace HIKARI::EDITOR {
                         }
                         ImGui::PopID();
                     }
-                    if (ImGui::Button("+ Add Option", ImVec2(-1.0f, 0.0f))) {
+                    if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.add.option.097dcf", "+ Add Option").c_str(), ImVec2(-1.0f, 0.0f))) {
                         auto before = definition;
                         DIALOGUE::DialogueChoice choice{};
                         choice.id = "choice" +
@@ -1589,20 +1503,18 @@ namespace HIKARI::EDITOR {
                     }
                 }
                 else if (node->type == DIALOGUE::DialogueNodeType::Event) {
-                    ImGui::TextDisabled("SIGNAL STEP");
-                    ImGui::TextWrapped(
-                        "Emit a named event, then continue. Trigger sequences can "
-                        "wait for the dialogue to finish before running their next action.");
+                    ImGui::TextDisabled(TEXT::Localize("editor.ui.signal.step.82a95a").c_str());
+                    ImGui::TextWrapped(TEXT::Localize("editor.ui.emit.a.named.event.then.continue.trigger.sequences.can.wait.for..49174a").c_str());
                     auto before = definition;
                     std::string eventId = node->eventId;
-                    if (InputString("Event", eventId)) {
+                    if (InputString(TEXT::LocalizeWindow("editor.ui.event.ad8919", "Event").c_str(), eventId)) {
                         node->eventId = std::move(eventId);
                         recordDialogue(std::move(before), "event.name");
                     }
                     seal();
                     std::string next = node->nextNodeId;
                     if (TargetCombo(
-                            "Continue to", definition, style,
+                            TEXT::LocalizeWindow("editor.ui.continue.to.02bdf3", "Continue to").c_str(), definition, style,
                             controller.editingLocale_, next)) {
                         before = definition;
                         node->nextNodeId = std::move(next);
@@ -1610,26 +1522,24 @@ namespace HIKARI::EDITOR {
                     }
                 }
                 else {
-                    ImGui::TextDisabled("END STEP");
-                    ImGui::TextWrapped(
-                        "This step completes the dialogue event and releases the "
-                        "trigger sequence to its next action.");
+                    ImGui::TextDisabled(TEXT::Localize("editor.ui.end.step.b2bffe").c_str());
+                    ImGui::TextWrapped(TEXT::Localize("editor.ui.this.step.completes.the.dialogue.event.and.releases.the.trigger..c96704").c_str());
                 }
 
-                if (node != nullptr && ImGui::CollapsingHeader("Advanced")) {
+                if (node != nullptr && ImGui::CollapsingHeader(TEXT::LocalizeWindow("ui.vfx.layer.advanced", "Advanced").c_str())) {
                     if (controller.nodeIdDraftOwner_ != node->id) {
                         controller.nodeIdDraftOwner_ = node->id;
                         controller.nodeIdDraft_ = node->id;
                     }
                     (void)InputString(
-                        "Step id", controller.nodeIdDraft_, false, 128u);
+                        TEXT::LocalizeWindow("editor.ui.step.id.8d5440", "Step id").c_str(), controller.nodeIdDraft_, false, 128u);
                     if (ImGui::IsItemDeactivatedAfterEdit()) {
                         (void)controller.RenameSelectedNode(
                             controller.nodeIdDraft_, controller.statusMessage_);
                     }
                     int type = static_cast<int>(node->type);
-                    const char* types[]{ "Line", "Choice", "Event", "End" };
-                    if (ImGui::Combo("Step type", &type, types, 4)) {
+                    const char* types[]{ TEXT::LocalizeCStr("editor.ui.line.ea9676"), TEXT::LocalizeCStr("editor.ui.choice.0682be"), TEXT::LocalizeCStr("editor.ui.event.ad8919"), TEXT::LocalizeCStr("ui.vfx.text.End") };
+                    if (ImGui::Combo(TEXT::LocalizeWindow("editor.ui.step.type.5dd37b", "Step type").c_str(), &type, types, 4)) {
                         auto before = definition;
                         node->type = static_cast<DIALOGUE::DialogueNodeType>(type);
                         recordDialogue(std::move(before), "node.type", false);
@@ -1639,7 +1549,7 @@ namespace HIKARI::EDITOR {
                 const auto issues = DIALOGUE::ValidateDialogue(definition);
                 if (!issues.empty()) {
                     ImGui::Separator();
-                    ImGui::TextColored(kError, "Dialogue needs attention");
+                    ImGui::TextColored(kError,TEXT::Localize("editor.ui.dialogue.needs.attention.02e600").c_str());
                     ImGui::TextWrapped("%s", issues.front().message.c_str());
                 }
                 }
@@ -1652,11 +1562,12 @@ namespace HIKARI::EDITOR {
         }
         ImGui::End();
 
+        const auto unsavedTitle = TEXT::LocalizeWindow("editor.ui.unsaved.dialogue.documents.8c230c", "Dialogue/UnsavedDocuments");
         if (controller.ConsumePendingConfirmationOpenRequest()) {
-            ImGui::OpenPopup(kUnsavedDialoguePopup);
+            ImGui::OpenPopup(unsavedTitle.c_str());
         }
         if (ImGui::BeginPopupModal(
-                kUnsavedDialoguePopup,
+                unsavedTitle.c_str(),
                 nullptr,
                 ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::TextWrapped(
@@ -1664,8 +1575,7 @@ namespace HIKARI::EDITOR {
                 controller.GetPendingConfirmationText());
             ImGui::Spacing();
             if (controller.PendingActionSupportsSave()) {
-                if (ImGui::Button(
-                        "Save and Continue", ImVec2(150.0f, 0.0f))) {
+                if (ImGui::Button(TEXT::LocalizeWindow("ui.vfx.text.Save and Continue", "Save and Continue").c_str(), ImVec2(150.0f, 0.0f))) {
                     if (controller.ConfirmSaveThenContinue(
                             scene,
                             controller.statusMessage_)) {
@@ -1674,8 +1584,7 @@ namespace HIKARI::EDITOR {
                 }
                 ImGui::SameLine();
             }
-            if (ImGui::Button(
-                    "Discard and Continue", ImVec2(170.0f, 0.0f))) {
+            if (ImGui::Button(TEXT::LocalizeWindow("ui.vfx.text.Discard and Continue", "Discard and Continue").c_str(), ImVec2(170.0f, 0.0f))) {
                 if (controller.ConfirmDiscardAndContinue(
                         scene,
                         controller.statusMessage_)) {
@@ -1683,7 +1592,7 @@ namespace HIKARI::EDITOR {
                 }
             }
             ImGui::SameLine();
-            if (ImGui::Button("Cancel", ImVec2(90.0f, 0.0f))) {
+            if (ImGui::Button(TEXT::LocalizeWindow("ui.common.cancel", "Cancel").c_str(), ImVec2(90.0f, 0.0f))) {
                 controller.CancelPending();
                 controller.statusMessage_ = "Dialogue action cancelled";
                 ImGui::CloseCurrentPopup();

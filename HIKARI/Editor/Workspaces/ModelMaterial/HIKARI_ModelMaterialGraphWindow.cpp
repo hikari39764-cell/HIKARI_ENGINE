@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 #include <algorithm>
 #include <cmath>
@@ -17,19 +18,19 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase &scene)
 #if defined(HIKARI_WITH_EDITOR)
   constexpr ImGuiWindowFlags flags =
       ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
-  if (!ImGui::Begin("Material Graph###ModelMaterial/Graph", nullptr, flags)) {
+  if (!ImGui::Begin(TEXT::LocalizeWindow("editor.ui.material.graph.d78482", "ModelMaterial/Graph").c_str(), nullptr, flags)) {
     ImGui::End();
     return;
   }
   if (!authoringDocument_.HasMaterial()) {
-    ImGui::TextWrapped("Open or create a material to edit its graph.");
+    ImGui::TextWrapped(TEXT::Localize("editor.ui.open.or.create.a.material.to.edit.its.graph.4a7980").c_str());
     ImGui::End();
     return;
   }
   MaterialAssetData &source = authoringDocument_.EditMaterial();
   MaterialGraphData *graph = EditableGraph(source);
   if (graph == nullptr) {
-    ImGui::TextWrapped("This asset kind has no editable node graph.");
+    ImGui::TextWrapped(TEXT::Localize("editor.ui.this.asset.kind.has.no.editable.node.graph.1593a8").c_str());
     ImGui::End();
     return;
   }
@@ -41,8 +42,10 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase &scene)
     graphCanvas_ = {};
     collapsedGraphNodeIds_.clear();
   }
-  bool requestFrameAll = graphDocumentChanged;
-  bool requestFocusSelection = false, requestDeleteNode = false, requestDeleteEdge = false;
+  bool requestFrameAll = graphDocumentChanged || graphFrameRequested_;
+  graphFrameRequested_ = false;
+  bool requestFocusSelection = graphFocusRequested_, requestDeleteNode = false, requestDeleteEdge = false;
+  graphFocusRequested_ = false;
   if (DrawMaterialGraphToolbar(
           scene, source, *graph, requestFrameAll, requestFocusSelection,
           requestDeleteNode, requestDeleteEdge)) {
@@ -147,6 +150,12 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase &scene)
                         IM_COL32(35, 40, 48, 160));
     }
   }
+  std::unordered_map<std::string, ImVec4> groupScreenBounds;
+  for (const auto& [id, layout] : layouts) {
+    groupScreenBounds[id] = {layout.position.x, layout.position.y,
+        layout.position.x + layout.size.x, layout.position.y + layout.size.y};
+  }
+  DrawMaterialGraphGroups(drawList, *graph, groupScreenBounds);
   const MATH::Vec2 pointer{io.MousePos.x, io.MousePos.y};
   std::string hoveredEdgeId{};
   for (const MaterialGraphEdgeData &edge : graph->edges) {
@@ -331,9 +340,6 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase &scene)
     draggedGraphNodeId_.clear();
     graphNodeDragStarted_ = false;
   }
-  std::unordered_map<std::string, ImVec2> groupScreenPositions;
-  for (const auto &[nodeId, layout] : layouts) groupScreenPositions[nodeId] = layout.position;
-  MATERIAL_GRAPH_UI::DrawMaterialGraphGroups(drawList, *graph, groupScreenPositions);
   bool inlineControlsCapture = false;
   for (MaterialGraphNodeData &node : graph->nodes) {
     const auto foundLayout = layouts.find(node.id);

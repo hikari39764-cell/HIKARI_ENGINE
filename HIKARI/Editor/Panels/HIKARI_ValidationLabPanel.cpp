@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "HIKARI_ValidationLabPanel.h"
 
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
@@ -197,7 +198,7 @@ namespace HIKARI {
         }
 
         void DrawIssueSummary(const RendererHealthSnapshot& s) {
-            ImGui::SeparatorText("Issue Summary");
+            ImGui::SeparatorText(TEXT::Localize("editor.ui.issue.summary.536b9a").c_str());
             if (EDITOR::BeginMetricTable("RendererHealthIssueSummary", 230.0f)) {
                 MetricRow("Route / Mainline", "%s / %s",
                     ToString(s.submission.routeMode),
@@ -231,7 +232,7 @@ namespace HIKARI {
         }
 
         void DrawResourceSummary(const RendererHealthSnapshot& s) {
-            ImGui::SeparatorText("Resource Summary");
+            ImGui::SeparatorText(TEXT::Localize("editor.ui.resource.summary.b6436e").c_str());
             if (EDITOR::BeginMetricTable("RendererHealthResourceSummary", 230.0f)) {
                 MetricRow("Cluster Surfaces / LOD Ranges / Clusters / Pages", "%u / %u / %u / %u",
                     s.clusterResources.surfaceCount,
@@ -264,7 +265,7 @@ namespace HIKARI {
         if (!open) {
             return;
         }
-        if (!ImGui::Begin("Renderer Health", &open)) {
+        if (!ImGui::Begin(TEXT::LocalizeWindow("editor.ui.renderer.health.53bd38", "Renderer Health").c_str(), &open)) {
             ImGui::End();
             return;
         }

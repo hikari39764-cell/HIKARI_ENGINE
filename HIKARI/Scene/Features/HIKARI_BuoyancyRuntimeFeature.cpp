@@ -67,7 +67,7 @@ namespace HIKARI {
                 ComponentTypeInfo buoyancy{};
                 buoyancy.typeName = "BuoyancyComponent";
                 buoyancy.factory = []() -> std::unique_ptr<IComponent> {
-                    return std::make_unique<BuoyancyComponent>();
+                    return IComponent::Create<BuoyancyComponent>();
                 };
                 buoyancy.runtimeApplyPolicy =
                     ComponentRuntimeApplyPolicy::Immediate;

@@ -1,3 +1,4 @@
+#include "Editor/Commands/HIKARI_EditorCommandRouter.h"
 #include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
@@ -128,7 +129,7 @@ void VfxWorkspaceController::DrawTimelineLayers(float originX, float width, floa
                     ImGui::SetCursorScreenPos({x - 8, y - 10});
                     ImGui::InvisibleButton("##key", {16, 20});
                     if (ImGui::IsItemHovered()) {
-                        ImGui::SetTooltip("%.3f s",
+                        ImGui::SetTooltip(TEXT::Localize("editor.ui.3f.s.88c94e").c_str(),
                                           layer.startDelay + layer.animationTiming.LayerSeconds(time, span));
                         if (canStart && ImGui::IsMouseClicked(0)) {
                             if (!active && !io.KeyCtrl && !io.KeyShift)
@@ -201,7 +202,7 @@ void VfxWorkspaceController::DrawTimelineLayers(float originX, float width, floa
             state.marquee = false;
     }
     if (state.baseline && (state.keyDragging || !state.draggedLayer.empty())) {
-        if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+        if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_Escape, ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows), false)) {
             EndTimelineEdit(true);
             state.suppressDragUntilRelease = true;
         } else if (ImGui::IsMouseDragging(0)) {
@@ -244,16 +245,19 @@ void VfxWorkspaceController::DrawTimelineLayers(float originX, float width, floa
         state.suppressDragUntilRelease = false;
     if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && !io.WantTextInput &&
         !state.baseline) {
-        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_C))
+        if (io.KeyCtrl && ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_C, ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows), false))
             CopyTimelineSelection();
-        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_V))
+        if (io.KeyCtrl && ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_V, ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows), false))
             (void)PasteTimelineSelection(previewElapsedSeconds_);
-        if (ImGui::IsKeyPressed(ImGuiKey_Delete))
-            (void)DeleteTimelineSelection();
+        if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_Delete, ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows), false))
+            {
+                if (!timelineEdit_.selectedKeys.empty()) (void)DeleteTimelineSelection();
+                else if (!selection_.emitterId.empty()) (void)RemoveEmitter(selection_.emitterId, statusMessage_);
+            }
         const float nudge = (io.KeyShift ? 10.0f : 1.0f) / 60;
-        if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))
+        if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_LeftArrow, ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows), true))
             (void)MoveTimelineSelection(-nudge);
-        if (ImGui::IsKeyPressed(ImGuiKey_RightArrow))
+        if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_RightArrow, ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows), true))
             (void)MoveTimelineSelection(nudge);
     }
 #else

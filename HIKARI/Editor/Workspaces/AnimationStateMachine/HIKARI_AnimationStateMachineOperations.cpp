@@ -1,3 +1,4 @@
+#include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Editor/Workspaces/AnimationStateMachine/HIKARI_AnimationStateMachineOperations.h"
 
 #include <charconv>
@@ -14,18 +15,7 @@
 namespace HIKARI::EDITOR {
 namespace {
 
-EditorOperationParameter MakeOperationParameter(
-    std::string name,
-    EditorOperationParameterType type,
-    bool required,
-    std::string description) {
-  EditorOperationParameter parameter{};
-  parameter.name = std::move(name);
-  parameter.type = type;
-  parameter.required = required;
-  parameter.description = std::move(description);
-  return parameter;
-}
+
 
 bool RequireAsmDocument(
     const AnimationStateMachineWorkspaceController& controller,
@@ -38,18 +28,7 @@ bool RequireAsmDocument(
   return false;
 }
 
-bool RequireScene(
-    const std::function<DocumentSceneBase*()>& sceneProvider,
-    EditorOperationResult& result,
-    DocumentSceneBase*& outScene) {
-  outScene = sceneProvider();
-  if (outScene == nullptr) {
-    result.code = "NO_SCENE";
-    result.message = "场景上下文不可用";
-    return false;
-  }
-  return true;
-}
+
 
 bool ResolveStateId(
     const ANIMATION::AnimationStateMachineDefinition& definition,
@@ -202,7 +181,8 @@ void RegisterAnimationStateMachineOperations(
     AnimationStateMachineWorkspaceController& controller,
     std::function<DocumentSceneBase*()> sceneProvider) {
 
-  registry.Register({
+  {
+    EditorOperationDefinition transition{
       "asm.new_asset",
       "Create a new Animation State Machine document in the background.",
       "animation_state_machine",
@@ -230,16 +210,20 @@ void RegisterAnimationStateMachineOperations(
         result.message = message;
         return result;
       },
-  });
+  };
+    transition.requiresCleanDocument = true;
+    registry.Register(std::move(transition), EditorOperationKind::Session);
+  }
 
-  registry.Register({
+  {
+    EditorOperationDefinition transition{
       "asm.open_asset",
       "Open an Animation State Machine asset in the background.",
       "animation_state_machine",
       {
-          MakeOperationParameter(
+          EditorOperationParameter{
               "assetGuid", EditorOperationParameterType::String,
-              true, "状态机资产 guid"),
+              true, "状态机资产 guid"},
       },
       [&controller, sceneProvider](const nlohmann::json& parameters) {
         EditorOperationResult result{};
@@ -289,7 +273,10 @@ void RegisterAnimationStateMachineOperations(
         result.message = message;
         return result;
       },
-  });
+  };
+    transition.requiresCleanDocument = true;
+    registry.Register(std::move(transition), EditorOperationKind::Session);
+  }
 
   registry.Register({
       "asm.save",
@@ -316,7 +303,7 @@ void RegisterAnimationStateMachineOperations(
         }
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "asm.undo",
@@ -339,7 +326,7 @@ void RegisterAnimationStateMachineOperations(
         }
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "asm.redo",
@@ -362,7 +349,7 @@ void RegisterAnimationStateMachineOperations(
         }
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "asm.query",
@@ -380,19 +367,19 @@ void RegisterAnimationStateMachineOperations(
         AppendQuerySummary(controller.GetDefinition(), result);
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Query);
 
   registry.Register({
       "asm.add_state",
       "Add a state to the current animation state machine.",
       "animation_state_machine",
       {
-          MakeOperationParameter(
+          EditorOperationParameter{
               "x", EditorOperationParameterType::Float,
-              false, "图中坐标 X，缺省自动排布"),
-          MakeOperationParameter(
+              false, "图中坐标 X，缺省自动排布"},
+          EditorOperationParameter{
               "y", EditorOperationParameterType::Float,
-              false, "图中坐标 Y，缺省自动排布"),
+              false, "图中坐标 Y，缺省自动排布"},
       },
       [&controller](const nlohmann::json& parameters) {
         EditorOperationResult result{};
@@ -413,16 +400,16 @@ void RegisterAnimationStateMachineOperations(
         result.message = "已添加状态";
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "asm.delete_state",
       "Delete a state and its transitions by id or name.",
       "animation_state_machine",
       {
-          MakeOperationParameter(
+          EditorOperationParameter{
               "state", EditorOperationParameterType::String,
-              true, "状态 id 或名称"),
+              true, "状态 id 或名称"},
       },
       [&controller](const nlohmann::json& parameters) {
         EditorOperationResult result{};
@@ -447,16 +434,16 @@ void RegisterAnimationStateMachineOperations(
         }
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "asm.add_parameter",
       "Add a parameter (bool/float/int/trigger) to the state machine.",
       "animation_state_machine",
       {
-          MakeOperationParameter(
+          EditorOperationParameter{
               "type", EditorOperationParameterType::String,
-              true, "bool/float/int/trigger"),
+              true, "bool/float/int/trigger"},
       },
       [&controller](const nlohmann::json& parameters) {
         EditorOperationResult result{};
@@ -475,16 +462,16 @@ void RegisterAnimationStateMachineOperations(
             parameters.value("type", std::string{});
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "asm.delete_parameter",
       "Delete a parameter and its transition conditions by id or name.",
       "animation_state_machine",
       {
-          MakeOperationParameter(
+          EditorOperationParameter{
               "parameter", EditorOperationParameterType::String,
-              true, "参数 id 或名称"),
+              true, "参数 id 或名称"},
       },
       [&controller](const nlohmann::json& parameters) {
         EditorOperationResult result{};
@@ -509,19 +496,19 @@ void RegisterAnimationStateMachineOperations(
         }
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "asm.add_transition",
       "Add a transition between two states by id or name.",
       "animation_state_machine",
       {
-          MakeOperationParameter(
+          EditorOperationParameter{
               "source", EditorOperationParameterType::String,
-              true, "源状态 id 或名称"),
-          MakeOperationParameter(
+              true, "源状态 id 或名称"},
+          EditorOperationParameter{
               "target", EditorOperationParameterType::String,
-              true, "目标状态 id 或名称"),
+              true, "目标状态 id 或名称"},
       },
       [&controller](const nlohmann::json& parameters) {
         EditorOperationResult result{};
@@ -552,16 +539,16 @@ void RegisterAnimationStateMachineOperations(
         result.message = "已添加过渡";
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "asm.delete_transition",
       "Delete a transition by its numeric id.",
       "animation_state_machine",
       {
-          MakeOperationParameter(
+          EditorOperationParameter{
               "transition", EditorOperationParameterType::String,
-              true, "过渡 id（asm.query 可查询）"),
+              true, "过渡 id（asm.query 可查询）"},
       },
       [&controller](const nlohmann::json& parameters) {
         EditorOperationResult result{};
@@ -597,25 +584,25 @@ void RegisterAnimationStateMachineOperations(
         }
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "asm.set_state_property",
       "Update name/speed/loop of a state by id or name.",
       "animation_state_machine",
       {
-          MakeOperationParameter(
+          EditorOperationParameter{
               "state", EditorOperationParameterType::String,
-              true, "状态 id 或名称"),
-          MakeOperationParameter(
+              true, "状态 id 或名称"},
+          EditorOperationParameter{
               "name", EditorOperationParameterType::String,
-              false, "新名称"),
-          MakeOperationParameter(
+              false, "新名称"},
+          EditorOperationParameter{
               "speed", EditorOperationParameterType::Float,
-              false, "播放速度"),
-          MakeOperationParameter(
+              false, "播放速度"},
+          EditorOperationParameter{
               "loop", EditorOperationParameterType::Bool,
-              false, "是否循环"),
+              false, "是否循环"},
       },
       [&controller](const nlohmann::json& parameters) {
         EditorOperationResult result{};
@@ -663,7 +650,7 @@ void RegisterAnimationStateMachineOperations(
         }
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "asm.delete_selected",
@@ -686,7 +673,7 @@ void RegisterAnimationStateMachineOperations(
         }
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 }
 
 } // namespace HIKARI::EDITOR

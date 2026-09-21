@@ -54,7 +54,7 @@ namespace HIKARI {
                 ComponentTypeInfo player{};
                 player.typeName = "SequencePlayerComponent";
                 player.factory = []() -> std::unique_ptr<IComponent> {
-                    return std::make_unique<SequencePlayerComponent>();
+                    return IComponent::Create<SequencePlayerComponent>();
                 };
                 player.initializeDefaults = [](
                     const SceneObjectData&,

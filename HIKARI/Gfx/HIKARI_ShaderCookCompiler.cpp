@@ -103,23 +103,7 @@ namespace HIKARI::GFX {
             return wide;
         }
 
-        std::string BlobToUtf8(
-            IDxcUtils* utils,
-            IDxcBlob* blob) {
-            if (utils == nullptr || blob == nullptr) {
-                return {};
-            }
-            ComPtr<IDxcBlobUtf8> utf8{};
-            if (FAILED(utils->GetBlobAsUtf8(
-                    blob,
-                    utf8.GetAddressOf())) ||
-                utf8 == nullptr || utf8->GetStringLength() == 0u) {
-                return {};
-            }
-            return std::string(
-                utf8->GetStringPointer(),
-                utf8->GetStringLength());
-        }
+
 
         bool BuildActualDxcArguments(
             const std::string& logicalSource,
@@ -359,7 +343,7 @@ namespace HIKARI::GFX {
                     !includeHandler->LastError().empty()) {
                     output.diagnostics = "DXC compile failed for " +
                         entries[index].id + ": " +
-                        BlobToUtf8(runtime.utils.Get(), errors.Get());
+                        INTERNAL::BlobToUtf8(runtime.utils.Get(), errors.Get());
                     if (!includeHandler->LastError().empty()) {
                         output.diagnostics += " include=" +
                             includeHandler->LastError();

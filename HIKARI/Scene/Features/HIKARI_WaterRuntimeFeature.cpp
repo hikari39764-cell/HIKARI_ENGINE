@@ -67,7 +67,7 @@ namespace HIKARI {
                 ComponentTypeInfo water{};
                 water.typeName = "WaterSurfaceComponent";
                 water.factory = []() -> std::unique_ptr<IComponent> {
-                    return std::make_unique<WaterSurfaceComponent>();
+                    return IComponent::Create<WaterSurfaceComponent>();
                 };
                 water.requiredComponents = {
                     "ModelComponent",

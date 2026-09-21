@@ -9,6 +9,7 @@ namespace HIKARI::EDITOR {
         const auto registerExportOperation = [&registry](const char* id, const char* summary, EditorOperationDefinition operation) {
             operation.id = id;
             operation.summary = summary;
+            operation.requiresDocumentSession = false;
             registry.Register(std::move(operation));
         };
         EditorOperationDefinition start;

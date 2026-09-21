@@ -222,7 +222,7 @@ void DrawPreviewAndImportLog(AssetDatabase &assetDatabase,
     ImGui::PushID(static_cast<int>(task.id));
     ImGui::Text("%s  %s", ToString(task.state), task.label.c_str());
     ImGui::SameLine();
-    ImGui::TextDisabled("%.2f s  |  %s", task.elapsedSeconds,
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.2f.s.s.4b4c22").c_str(), task.elapsedSeconds,
                         task.progress.stage.c_str());
     if (!task.progress.currentItem.empty() && ImGui::IsItemHovered()) {
       ImGui::SetTooltip("%s", task.progress.currentItem.c_str());

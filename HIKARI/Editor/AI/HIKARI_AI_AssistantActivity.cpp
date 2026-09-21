@@ -74,13 +74,13 @@ void AiAssistantPanel::DrawTask(const std::vector<AI_ASSISTANT::AiChatMessage>& 
     if (active) phase = activity.phase;
     ImGui::Spacing();
     ImGui::TextColored(palette.accent,"%s",TEXT::Localize("ai.chat.assistant").c_str());
-    if (active || operations) {
+    if (active || operations || phase != "completed") {
         const auto key = "ai.phase." + phase;
-        StatusBadge(TEXT::Localize(key).c_str(), phase == "failed" ? EditorStatusTone::Warning : EditorStatusTone::Normal);
+        StatusBadge(TEXT::Localize(key).c_str(), (phase == "failed" || phase == "blocked" || phase == "needs_input") ? EditorStatusTone::Warning : EditorStatusTone::Normal);
         if (active) {
             const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now()-activity.since).count();
             ImGui::SameLine();
-            ImGui::TextDisabled("%lld s",static_cast<long long>(seconds));
+            ImGui::TextDisabled(TEXT::Localize("editor.ui.lld.s.cf7921").c_str(),static_cast<long long>(seconds));
             if (ImGui::IsItemHovered() && !activity.action.empty()) ImGui::SetTooltip("%s",activity.action.c_str());
         }
     }
@@ -140,7 +140,7 @@ void AiAssistantPanel::DrawTask(const std::vector<AI_ASSISTANT::AiChatMessage>& 
                 const auto action = message.data.value("action",std::string("operation"));
                 if (ImGui::TreeNode("##Operation","%s",action.c_str())) {
                     ImGui::TextWrapped("%s",message.content.c_str());
-                    if (message.data.contains("durationMs")) ImGui::TextDisabled("%lld ms",message.data["durationMs"].get<long long>());
+                    if (message.data.contains("durationMs")) ImGui::TextDisabled(TEXT::Localize("editor.ui.lld.ms.1fe6bb").c_str(),message.data["durationMs"].get<long long>());
                     DrawAttachments(message.images);
                     ImGui::TreePop();
                 }

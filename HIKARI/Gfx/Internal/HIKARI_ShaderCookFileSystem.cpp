@@ -4,6 +4,7 @@
 #include <fstream>
 
 #include "Core/Text/HIKARI_AsciiCase.h"
+#include "Core/IO/HIKARI_PathNormalization.h"
 
 namespace HIKARI::GFX::INTERNAL {
     namespace {
@@ -22,20 +23,6 @@ namespace HIKARI::GFX::INTERNAL {
             return path.lexically_normal() == path;
         }
 
-        bool IsContainedPath(
-            const std::filesystem::path& root,
-            const std::filesystem::path& file) {
-            std::string rootKey = TEXT::ToLowerAsciiCopy(
-                root.generic_string());
-            const std::string fileKey = TEXT::ToLowerAsciiCopy(
-                file.generic_string());
-            while (!rootKey.empty() && rootKey.back() == '/') {
-                rootKey.pop_back();
-            }
-            return !rootKey.empty() && fileKey.size() > rootKey.size() &&
-                fileKey.compare(0u, rootKey.size(), rootKey) == 0 &&
-                fileKey[rootKey.size()] == '/';
-        }
 
         bool MakeRoot(
             ShaderCookIncludeRoot kind,
@@ -68,7 +55,7 @@ namespace HIKARI::GFX::INTERNAL {
                 : root.physicalRoot / candidate;
             const std::filesystem::path canonical =
                 std::filesystem::weakly_canonical(combined, ec);
-            if (ec || !IsContainedPath(root.physicalRoot, canonical) ||
+            if (ec || !PATHS::IsCanonicalDescendant(root.physicalRoot, canonical) ||
                 !std::filesystem::is_regular_file(canonical, ec) || ec) {
                 outError = "shader source is outside its owned root or missing";
                 return false;

@@ -69,7 +69,7 @@ namespace HIKARI {
                 ComponentTypeInfo player{};
                 player.typeName = "VfxPlayerComponent";
                 player.factory = []() -> std::unique_ptr<IComponent> {
-                    return std::make_unique<VfxPlayerComponent>();
+                    return IComponent::Create<VfxPlayerComponent>();
                 };
                 player.initializeDefaults = [](
                     const SceneObjectData&,
@@ -91,7 +91,7 @@ namespace HIKARI {
                 ComponentTypeInfo ghost{};
                 ghost.typeName = "GhostPossessionComponent";
                 ghost.factory = []() -> std::unique_ptr<IComponent> {
-                    return std::make_unique<GhostPossessionComponent>();
+                    return IComponent::Create<GhostPossessionComponent>();
                 };
                 ghost.requiredComponents = {
                     "ModelComponent",

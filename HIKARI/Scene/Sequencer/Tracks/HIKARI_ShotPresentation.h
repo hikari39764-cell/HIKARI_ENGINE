@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <array>
 #include <vector>
 #include "Render3D/Core/HIKARI_Camera3D.h"
 #include "Scene/Sequencer/HIKARI_SequenceBinding.h"
@@ -26,10 +27,11 @@ namespace HIKARI::SEQUENCER {
         MATH::Vec3 target{0.0f, 1.0f, 0.0f};
         float fov = 55.0f;
         float roll = 0.0f;
-        // 正規化した区間進行度の接線。0/0 はイーズ、1/1 は等速。
-        float outgoing = 0.0f;
-        float incoming = 0.0f;
     };
+
+    enum class ShotChannel : size_t { EyeX, EyeY, EyeZ, TargetX, TargetY, TargetZ, Fov, Roll, Count };
+    inline constexpr std::array<const char*, 8> kShotChannelNames{
+        "eyeX", "eyeY", "eyeZ", "targetX", "targetY", "targetZ", "fov", "roll"};
 
     enum class CameraMotionKind { Dolly, Truck, Pedestal, Orbit, Pan, Tilt, Roll, Shake, Handheld };
 
@@ -46,7 +48,7 @@ namespace HIKARI::SEQUENCER {
     struct ShotCamera {
         bool owned = false;
         std::string name = "Shot";
-        std::vector<ShotPose> poses{ShotPose{}};
+        std::array<PresentationParameter, 8> channels{{{0}, {2}, {-8}, {0}, {1}, {0}, {55}, {0}}};
         SequenceBindingId anchor{};
         SequenceBindingId lookAt{};
         MATH::Vec3 targetOffset{};
@@ -82,6 +84,10 @@ namespace HIKARI::SEQUENCER {
     };
 
     void NormalizeShotCamera(ShotCamera& shot);
+    void NormalizePresentationParameter(PresentationParameter& parameter);
+    void SetPresentationKey(PresentationParameter& parameter, float seconds, float value);
+    ShotPose EvaluateShotPose(const ShotCamera& shot, float seconds);
+    void SetShotPose(ShotCamera& shot, const ShotPose& pose, bool keyed);
     void NormalizeScreenEffects(std::vector<SequenceScreenEffect>& effects);
     void SampleScreenEffects(const std::vector<SequenceScreenEffect>& effects,
         float seconds, std::vector<ScreenEffectSample>& output);

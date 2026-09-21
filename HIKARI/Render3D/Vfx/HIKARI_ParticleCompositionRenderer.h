@@ -31,6 +31,7 @@ namespace HIKARI::RENDER3D::PARTICLES {
         bool ApplyStyle(Scope&, const MaterialEffectStep&);
         bool BindInputs(RenderTarget2D&, RenderTarget2D&);
         bool EnsureTarget(RenderTarget2D&);
+        void PrepareTopology(const ParticleComposition&);
         void Bind(Scope&);
         struct TargetSet {
             std::vector<std::unique_ptr<Scope>> scopes;
@@ -41,6 +42,10 @@ namespace HIKARI::RENDER3D::PARTICLES {
         std::unordered_map<uint64_t, TargetSet> targetSets_;
         TargetSet* targets_ = nullptr;
         std::unordered_set<uint32_t> renderedMattes_, activeMattes_;
+        std::vector<std::pair<uint32_t, uint32_t>> topology_;
+        std::unordered_map<uint32_t, size_t> layerIndices_;
+        std::unordered_map<uint32_t, std::vector<size_t>> children_;
+        std::unordered_set<uint32_t> matteSources_;
         POST::QuadDrawer quad_;
         std::vector<std::unique_ptr<POST::PostEffect>> effects_;
         std::vector<std::unique_ptr<POST::PostEffect>> styleEffects_;

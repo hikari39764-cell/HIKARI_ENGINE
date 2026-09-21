@@ -293,7 +293,7 @@ namespace HIKARI {
         if (state_->runtime.playActive && navigation != nullptr) {
             // One owner-revision gate per frame; individual SDK queries read
             // the immutable prepared Detour snapshot in O(path work).
-            (void)navigation->Synchronize(state_->runtime.world);
+            (void)navigation->Synchronize(state_->runtime.world, NAVIGATION::SynchronizationMode::Background);
         }
         state_->runtime.bindingStore.BeginFrame(frame.frameIndex);
         state_->camera.rigService.BeginFrame(frame.frameIndex);

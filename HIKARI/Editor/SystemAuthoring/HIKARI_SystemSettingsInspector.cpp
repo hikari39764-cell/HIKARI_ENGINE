@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/SystemAuthoring/HIKARI_SystemSettingsInspector.h"
 
 #include <algorithm>
@@ -117,7 +118,7 @@ namespace HIKARI::EDITOR {
         DrawSourceBadge(row);
         if (readOnly) {
             ImGui::SameLine();
-            ImGui::TextDisabled("Play Locked");
+            ImGui::TextDisabled(TEXT::Localize("editor.ui.play.locked.66c28e").c_str());
         }
         ImGui::Separator();
 
@@ -129,7 +130,7 @@ namespace HIKARI::EDITOR {
                 ImVec2(0.0f, -footerHeight),
                 false);
             ImGui::BeginDisabled(readOnly);
-            ImGui::Checkbox("Enabled", &draft_.enabled);
+            ImGui::Checkbox(TEXT::LocalizeWindow("ui.vfx.text.Enabled", "Enabled").c_str(), &draft_.enabled);
 
             const bool hasRegularFields = authoring && std::any_of(
                 authoring->fields.begin(),
@@ -147,7 +148,7 @@ namespace HIKARI::EDITOR {
                 authoring && authoring->drawCustomSettings;
 
             if (hasRegularFields || hasCustomSettings) {
-                ImGui::SeparatorText("Settings");
+                ImGui::SeparatorText(TEXT::Localize("editor.ui.settings.c7f73b").c_str());
                 if (hasRegularFields) {
                     (void)DrawSystemSettingsFields(
                         authoring->fields,
@@ -167,7 +168,7 @@ namespace HIKARI::EDITOR {
 
             if (authoring && !authoring->dedicatedToolId.empty()) {
                 ImGui::Spacing();
-                if (ImGui::Button("Open Tool...")) {
+                if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.open.tool.59e596", "Open Tool...").c_str())) {
                     EditorToolOpenRequest request{};
                     request.toolId = authoring->dedicatedToolId;
                     request.target.kind = EditorToolTargetKind::System;
@@ -176,10 +177,9 @@ namespace HIKARI::EDITOR {
                 }
             }
 
-            if (ImGui::CollapsingHeader("Advanced")) {
+            if (ImGui::CollapsingHeader(TEXT::LocalizeWindow("ui.vfx.layer.advanced", "Advanced").c_str())) {
                 ImGui::SetNextItemWidth(180.0f);
-                ImGui::DragInt(
-                    "Execution Order",
+                ImGui::DragInt(TEXT::LocalizeWindow("editor.ui.execution.order.17e703", "Execution Order").c_str(),
                     &draft_.executionOrder,
                     1.0f,
                     -10000,
@@ -190,13 +190,13 @@ namespace HIKARI::EDITOR {
                         draft_.settings,
                         true);
                 }
-                if (ImGui::Button("Reset Settings")) {
+                if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.reset.settings.e498b8", "Reset Settings").c_str())) {
                     draft_.settings =
                         runtimeRegistry.CreateDefaultSettings(
                             draft_.systemId);
                 }
                 ImGui::SameLine();
-                if (ImGui::Button("Restore Defaults")) {
+                if (ImGui::Button(TEXT::LocalizeWindow("ui.input.restoreDefaults", "Restore Defaults").c_str())) {
                     draft_.enabled = true;
                     draft_.executionOrder = row.defaultExecutionOrder;
                     draft_.settings =
@@ -206,20 +206,17 @@ namespace HIKARI::EDITOR {
             }
             ImGui::EndDisabled();
 
-            if (ImGui::CollapsingHeader("Diagnostics")) {
+            if (ImGui::CollapsingHeader(TEXT::LocalizeWindow("shell.diagnostics", "Diagnostics").c_str())) {
                 ImGui::Text("ID: %s", draft_.systemId.c_str());
-                ImGui::Text(
-                    "Feature: %s",
+                ImGui::Text(TEXT::Localize("editor.ui.feature.s.edca76").c_str(),
                     runtimeInfo && !runtimeInfo->featureId.empty()
                         ? runtimeInfo->featureId.c_str()
                         : "<none>");
-                ImGui::Text("Source: %s", InstallationLabel(row));
-                ImGui::Text(
-                    "Scheduled: %s",
+                ImGui::Text(TEXT::Localize("ui.assetBrowser.tooltipSource").c_str(), InstallationLabel(row));
+                ImGui::Text(TEXT::Localize("editor.ui.scheduled.s.60f078").c_str(),
                     row.scheduled ? "Yes" : "No");
                 if (row.requiredComponentCount > 0) {
-                    ImGui::Text(
-                        "Component references: %zu",
+                    ImGui::Text(TEXT::Localize("editor.ui.component.references.zu.230c91").c_str(),
                         row.requiredComponentCount);
                     for (const std::string& componentType :
                             row.requiredComponentTypes) {
@@ -227,8 +224,7 @@ namespace HIKARI::EDITOR {
                     }
                 }
                 if (authoring) {
-                    ImGui::Text(
-                        "Settings owner: %s",
+                    ImGui::Text(TEXT::Localize("editor.ui.settings.owner.s.66f6aa").c_str(),
                         ToDisplayName(authoring->scope));
                 }
             }
@@ -242,11 +238,10 @@ namespace HIKARI::EDITOR {
                     preparedSettings,
                     &validationIssues_);
             if (!settingsValid) {
-                ImGui::SeparatorText("Issue");
+                ImGui::SeparatorText(TEXT::Localize("editor.ui.issue.73781a").c_str());
                 if (validationIssues_.empty()) {
                     ImGui::TextColored(
-                        ImVec4(1.0f, 0.4f, 0.35f, 1.0f),
-                        "Runtime type unavailable.");
+                        ImVec4(1.0f, 0.4f, 0.35f, 1.0f),TEXT::Localize("editor.ui.runtime.type.unavailable.500aff").c_str());
                 } else {
                     for (const std::string& issue : validationIssues_) {
                         ImGui::BulletText("%s", issue.c_str());
@@ -279,14 +274,14 @@ namespace HIKARI::EDITOR {
                 ImGui::GetCursorPosX(),
                 ImGui::GetWindowContentRegionMax().x - actionsWidth));
             ImGui::BeginDisabled(!IsDirty() || readOnly);
-            if (ImGui::Button("Revert", ImVec2(actionWidth, 0.0f))) {
+            if (ImGui::Button(TEXT::LocalizeWindow("ui.assetInspector.revert", "Revert").c_str(), ImVec2(actionWidth, 0.0f))) {
                 Revert();
             }
             ImGui::EndDisabled();
             ImGui::SameLine();
             ImGui::BeginDisabled(
                 !IsDirty() || !settingsValid || readOnly);
-            if (ImGui::Button("Apply", ImVec2(actionWidth, 0.0f))) {
+            if (ImGui::Button(TEXT::LocalizeWindow("ui.common.apply", "Apply").c_str(), ImVec2(actionWidth, 0.0f))) {
                 draft_.settings = std::move(preparedSettings);
                 original_ = draft_;
                 result.action = SystemSettingsInspectorAction::Apply;
@@ -297,8 +292,7 @@ namespace HIKARI::EDITOR {
         ImGui::SetNextWindowSize(
             ImVec2(420.0f, 150.0f),
             ImGuiCond_Appearing);
-        if (ImGui::BeginPopupModal(
-                "Confirm System Removal###SystemInspectorRemove",
+        if (ImGui::BeginPopupModal(TEXT::LocalizeWindow("editor.ui.confirm.system.removal.ba019b", "SystemInspectorRemove").c_str(),
                 nullptr,
                 ImGuiWindowFlags_NoResize |
                 ImGuiWindowFlags_NoSavedSettings)) {
@@ -309,17 +303,16 @@ namespace HIKARI::EDITOR {
                     : "Remove",
                 displayName_.c_str());
             if (row.requiredComponentCount > 0) {
-                ImGui::TextDisabled(
-                    "Component requirements will keep it installed automatically.");
+                ImGui::TextDisabled(TEXT::Localize("editor.ui.component.requirements.will.keep.it.installed.automatically.123474").c_str());
             }
-            if (ImGui::Button("Confirm", ImVec2(96.0f, 0.0f))) {
+            if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.confirm.04a212", "Confirm").c_str(), ImVec2(96.0f, 0.0f))) {
                 result.action =
                     SystemSettingsInspectorAction::RemoveOverride;
                 result.system = draft_;
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (ImGui::Button("Cancel", ImVec2(96.0f, 0.0f))) {
+            if (ImGui::Button(TEXT::LocalizeWindow("ui.common.cancel", "Cancel").c_str(), ImVec2(96.0f, 0.0f))) {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();

@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 
 #include <algorithm>
@@ -18,25 +19,25 @@ void ModelMaterialWorkspaceController::DrawDiagnosticsWindow(
     const DocumentSceneBase &scene) {
 #if defined(HIKARI_WITH_EDITOR)
   (void)scene;
-  if (!ImGui::Begin("Diagnostics###ModelMaterial/Diagnostics")) {
+  if (!ImGui::Begin(TEXT::LocalizeWindow("shell.diagnostics", "ModelMaterial/Diagnostics").c_str())) {
     ImGui::End();
     return;
   }
-  StatusBadge(IsEditingModel() ? "Model ready" : "No model",
+  StatusBadge(IsEditingModel() ? TEXT::LocalizeCStr("editor.ui.model.ready.4b7cbb") : TEXT::LocalizeCStr("editor.ui.no.model.8cae61"),
               IsEditingModel() ? EditorStatusTone::Ready
                                : EditorStatusTone::Normal);
   ImGui::SameLine();
-  StatusBadge(previewOutputReady_ ? "Preview ready" : "Preview pending",
+  StatusBadge(previewOutputReady_ ? TEXT::LocalizeCStr("editor.ui.preview.ready.8a0295") : TEXT::LocalizeCStr("editor.ui.preview.pending.e4ceea"),
               previewOutputReady_ ? EditorStatusTone::Ready
                                   : EditorStatusTone::Warning);
   ImGui::SameLine();
   const bool dirty = authoringDocument_.IsBindingDirty() ||
                      authoringDocument_.IsMaterialDirty();
-  StatusBadge(dirty ? "Unsaved edits" : "Saved",
+  StatusBadge(dirty ? "Unsaved edits" : TEXT::LocalizeCStr("ui.projectFeatures.saved"),
               dirty ? EditorStatusTone::Warning : EditorStatusTone::Ready);
   if (authoringDocument_.IsAbPreviewActive()) {
     ImGui::SameLine();
-    StatusBadge("B preview", EditorStatusTone::Warning);
+    StatusBadge(TEXT::Localize("editor.ui.b.preview.d48f3a").c_str(), EditorStatusTone::Warning);
   }
 
   if (!statusMessage_.empty()) {
@@ -58,14 +59,14 @@ void ModelMaterialWorkspaceController::DrawDiagnosticsWindow(
   }
 
   if (authoringDocument_.HasMaterial()) {
-    ImGui::SeparatorText("Material Compile");
+    ImGui::SeparatorText(TEXT::Localize("editor.ui.material.compile.fc6f27").c_str());
     const MaterialCompileResult &compile =
         authoringDocument_.GetCompileResult();
-    StatusBadge(compile.success ? "Compiled" : "Fallback",
+    StatusBadge(compile.success ? TEXT::LocalizeCStr("editor.ui.compiled.14878f") : TEXT::LocalizeCStr("editor.ui.fallback.b4a100"),
                 compile.success ? EditorStatusTone::Ready
                                 : EditorStatusTone::Warning);
     ImGui::SameLine();
-    ImGui::TextDisabled("source r%llu / compile r%llu",
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.source.r.llu.compile.r.llu.877878").c_str(),
                         static_cast<unsigned long long>(
                             authoringDocument_.GetMaterialRevision()),
                         static_cast<unsigned long long>(
@@ -87,9 +88,7 @@ void ModelMaterialWorkspaceController::DrawDiagnosticsWindow(
       if (RENDER3D::MATERIAL::ResolveMaterialExpressionBudget(
               compile.program, budget, budgetError) &&
           budget.active) {
-        ImGui::Text(
-            "Expression budget: %u/%u instr | %u/%u reg | %u/%u values | "
-            "%u/%u params | %u/%u resources",
+        ImGui::Text(TEXT::Localize("editor.ui.expression.budget.u.u.instr.u.u.reg.u.u.values.u.u.params.u.u.re.c635cd").c_str(),
             budget.instructionCount, budget.maxInstructionCount,
             budget.registerCount, budget.maxRegisterCount,
             budget.valueCount, budget.maxValueCount,
@@ -99,23 +98,23 @@ void ModelMaterialWorkspaceController::DrawDiagnosticsWindow(
     }
   }
 
-  ImGui::SeparatorText("Runtime-backed Preview");
-  ImGui::Text("Request: %s | Output: %ux%u | revision %llu",
+  ImGui::SeparatorText(TEXT::Localize("editor.ui.runtime.backed.preview.0d0e73").c_str());
+  ImGui::Text(TEXT::Localize("editor.ui.request.s.output.ux.u.revision.llu.4ea33c").c_str(),
               previewRequestSubmitted_ ? "submitted" : "idle",
               previewOutputWidth_, previewOutputHeight_,
               static_cast<unsigned long long>(previewOutputRevision_));
   const ModelPreviewRenderPolicy policy = previewScene_.GetRenderPolicy();
-  ImGui::Text("Runtime policy: shadow %s/%s | cached-forward %s",
+  ImGui::Text(TEXT::Localize("editor.ui.runtime.policy.shadow.s.s.cached.forward.s.3062e3").c_str(),
               policy.castShadow ? "cast" : "off",
               policy.receiveShadow ? "receive" : "off",
               policy.allowStaticCachedForward ? "on" : "off");
-  ImGui::Text("Environment: %s",
+  ImGui::Text(TEXT::Localize("editor.ui.environment.s.e9b433").c_str(),
               previewEnvironmentMode_ == PreviewEnvironmentMode::RuntimeMatch
                   ? "Runtime Asset Lighting (active scene, no spatial bake)"
                   : "Studio Inspect (workspace overrides)");
   const RENDER3D::EDITORVIEW::EditorInteractiveSchedulerStats scheduler =
       RENDER3D::EDITORVIEW::GetSchedulerStats();
-  ImGui::Text("Scheduler: serial %llu | rendered view %llu | candidates %u",
+  ImGui::Text(TEXT::Localize("editor.ui.scheduler.serial.llu.rendered.view.llu.candidates.u.95ce17").c_str(),
               static_cast<unsigned long long>(scheduler.scheduleSerial),
               static_cast<unsigned long long>(scheduler.renderedViewId),
               scheduler.renderableViewCount);
@@ -123,7 +122,7 @@ void ModelMaterialWorkspaceController::DrawDiagnosticsWindow(
           previewScene_.GetSceneSource()) {
     const RENDER3D::FEATURES::RenderFeatureRequestSet requests =
         RENDER3D::FEATURES::AnalyzeRenderFeatureRequests(*sceneSource);
-    ImGui::SeparatorText("Render Features");
+    ImGui::SeparatorText(TEXT::Localize("editor.ui.render.features.a321bd").c_str());
     for (uint32_t index = 0u;
          index < static_cast<uint32_t>(
                      RENDER3D::FEATURES::RenderFeatureKind::Count);
@@ -137,17 +136,11 @@ void ModelMaterialWorkspaceController::DrawDiagnosticsWindow(
                         RENDER3D::FEATURES::ToString(kind),
                         requests.surfaceCounts[index]);
     }
-    ImGui::TextDisabled("post group mask 0x%08X | isolated surfaces %u",
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.post.group.mask.0x.08x.isolated.surfaces.u.83ca34").c_str(),
                         requests.postGroupMask,
                         requests.isolatedSurfaceCount);
   }
-  ImGui::TextWrapped(
-      "The preview request uses ToolPreview purpose, the shared runtime scene "
-      "source, runtime material projection, shadows, cached forward, LOD and "
-      "GPU-scene culling. Runtime Asset Lighting inherits the active scene "
-      "global environment and lights, but intentionally excludes placement-"
-      "specific Lightmaps and probes. Studio Inspect changes only per-view "
-      "lighting overrides.");
+  ImGui::TextWrapped(TEXT::Localize("editor.ui.the.preview.request.uses.toolpreview.purpose.the.shared.runtime..8967e0").c_str());
   ImGui::End();
 #else
   (void)scene;
@@ -156,7 +149,7 @@ void ModelMaterialWorkspaceController::DrawDiagnosticsWindow(
 
 void ModelMaterialWorkspaceController::DrawStatsWindow() const {
 #if defined(HIKARI_WITH_EDITOR)
-  if (!ImGui::Begin("Stats###ModelMaterial/Stats")) {
+  if (!ImGui::Begin(TEXT::LocalizeWindow("editor.ui.stats.be763e", "ModelMaterial/Stats").c_str())) {
     ImGui::End();
     return;
   }

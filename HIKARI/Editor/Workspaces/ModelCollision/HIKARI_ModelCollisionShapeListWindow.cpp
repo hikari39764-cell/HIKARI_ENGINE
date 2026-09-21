@@ -1,3 +1,5 @@
+#include "Editor/Commands/HIKARI_EditorCommandRouter.h"
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/ModelCollision/HIKARI_ModelCollisionWorkspaceController.h"
 
 #include <algorithm>
@@ -15,45 +17,45 @@ namespace HIKARI::EDITOR {
 	// 描画する衝突形状のリストウィンドウを描画します。
 void ModelCollisionWorkspaceController::DrawShapeListWindow() {
 #if defined(HIKARI_WITH_EDITOR)
-  if (!ImGui::Begin("Collision Shapes###ModelCollision/Shapes")) {
+  if (!ImGui::Begin(TEXT::LocalizeWindow("editor.ui.collision.shapes.5aa237", "ModelCollision/Shapes").c_str())) {
     ImGui::End();
     return;
   }
-  ImGui::Text("%d shapes", static_cast<int>(setup_.shapes.size()));
+  ImGui::Text(TEXT::Localize("editor.ui.d.shapes.92709f").c_str(), static_cast<int>(setup_.shapes.size()));
   if (!selectedShapeIds_.empty()) {
     ImGui::SameLine();
-    ImGui::TextDisabled("| %d selected",
+    ImGui::TextDisabled(TEXT::Localize("ui.hierarchy.selected").c_str(),
                         static_cast<int>(selectedShapeIds_.size()));
   }
   if (!hiddenShapeIds_.empty()) {
     ImGui::SameLine();
-    ImGui::TextDisabled("| %d hidden",
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.d.hidden.d56ffa").c_str(),
                         static_cast<int>(hiddenShapeIds_.size()));
   }
   ImGui::SameLine();
-  ImGui::Checkbox("Generated only", &showGeneratedOnly_);
-  if (ImGui::Button("+ Shape")) {
+  ImGui::Checkbox(TEXT::LocalizeWindow("editor.ui.generated.only.42a4d1", "Generated only").c_str(), &showGeneratedOnly_);
+  if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.shape.bdf0e8", "+ Shape").c_str())) {
     ImGui::OpenPopup("AddCollisionShape");
   }
   if (ImGui::BeginPopup("AddCollisionShape")) {
-    if (ImGui::MenuItem("Box")) {
+    if (ImGui::MenuItem(TEXT::LocalizeWindow("ui.sceneCreation.box", "Box").c_str())) {
       AddShape(ASSETS::COLLISION::CollisionGeometryShapeType::Box);
     }
-    if (ImGui::MenuItem("Sphere")) {
+    if (ImGui::MenuItem(TEXT::LocalizeWindow("ui.sceneCreation.sphere", "Sphere").c_str())) {
       AddShape(ASSETS::COLLISION::CollisionGeometryShapeType::Sphere);
     }
-    if (ImGui::MenuItem("Capsule")) {
+    if (ImGui::MenuItem(TEXT::LocalizeWindow("ui.sceneCreation.capsule", "Capsule").c_str())) {
       AddShape(ASSETS::COLLISION::CollisionGeometryShapeType::Capsule);
     }
     ImGui::EndPopup();
   }
   ImGui::SameLine();
   const bool hasSelection = !selectedShapeIds_.empty();
-  if (ImGui::Button("Selection...")) {
+  if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.selection.d92c58", "Selection...").c_str())) {
     ImGui::OpenPopup("CollisionSelectionActions");
   }
   if (ImGui::BeginPopup("CollisionSelectionActions")) {
-    if (ImGui::MenuItem("Select Visible")) {
+    if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.select.visible.9f78ea", "Select Visible").c_str())) {
       selectedShapeIds_.clear();
       selectedShapeId_ = 0u;
       for (const ASSETS::COLLISION::ModelCollisionShape &shape :
@@ -69,29 +71,29 @@ void ModelCollisionWorkspaceController::DrawShapeListWindow() {
       }
       selectionMode_ = ModelCollisionSelectionMode::CollisionShapes;
     }
-    if (ImGui::MenuItem("Clear Selection", nullptr, false, hasSelection)) {
+    if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.clear.selection.fae58c", "Clear Selection").c_str(), nullptr, false, hasSelection)) {
       selectedShapeIds_.clear();
       selectedShapeId_ = 0u;
     }
     ImGui::Separator();
-    if (ImGui::MenuItem("Duplicate", "Ctrl+D", false, hasSelection)) {
+    if (ImGui::MenuItem(TEXT::LocalizeWindow("ui.materialGraph.duplicate", "Duplicate").c_str(), "Ctrl+D", false, hasSelection)) {
       DuplicateSelectedShapes();
     }
-    if (ImGui::MenuItem("Hide Selected", "H", false, hasSelection)) {
+    if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.hide.selected.c01d1a", "Hide Selected").c_str(), "H", false, hasSelection)) {
       SetSelectedShapesHidden(true);
     }
-    if (ImGui::MenuItem("Hide Unselected", nullptr, false, hasSelection)) {
+    if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.hide.unselected.667124", "Hide Unselected").c_str(), nullptr, false, hasSelection)) {
       HideUnselectedShapes();
     }
-    if (ImGui::MenuItem("Show All", "Shift+H")) {
+    if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.show.all.b3f854", "Show All").c_str(), "Shift+H")) {
       ShowAllShapes();
     }
-    if (ImGui::MenuItem(AreAllSelectedShapesLocked() ? "Unlock" : "Lock", "L",
+    if (ImGui::MenuItem(AreAllSelectedShapesLocked() ? TEXT::LocalizeCStr("editor.ui.unlock.1526a1") : TEXT::LocalizeCStr("editor.ui.lock.891ebc"), "L",
                         false, hasSelection)) {
       SetSelectedShapesLocked(!AreAllSelectedShapesLocked());
     }
     ImGui::Separator();
-    if (ImGui::MenuItem("Delete", "Delete", false, hasSelection)) {
+    if (ImGui::MenuItem(TEXT::LocalizeWindow("ui.common.delete", "Delete").c_str(), "Delete", false, hasSelection)) {
       DeleteSelectedShapes();
     }
     ImGui::EndPopup();
@@ -115,8 +117,8 @@ void ModelCollisionWorkspaceController::DrawShapeListWindow() {
         }
       }
       if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip(hidden ? "Show collision shape"
-                                 : "Hide collision shape");
+        ImGui::SetTooltip(hidden ? TEXT::LocalizeCStr("editor.ui.show.collision.shape.21508c")
+                                 : TEXT::LocalizeCStr("editor.ui.hide.collision.shape.b8773e"));
       }
       ImGui::SameLine();
       bool enabled = shape.enabled;
@@ -150,18 +152,18 @@ void ModelCollisionWorkspaceController::DrawShapeListWindow() {
       }
       bool shapeListChanged = false;
       if (ImGui::BeginPopupContextItem("ShapeContext")) {
-        if (ImGui::MenuItem("Duplicate", "Ctrl+D")) {
+        if (ImGui::MenuItem(TEXT::LocalizeWindow("ui.materialGraph.duplicate", "Duplicate").c_str(), "Ctrl+D")) {
           DuplicateSelectedShapes();
           shapeListChanged = true;
         }
-        if (ImGui::MenuItem(hidden ? "Show" : "Hide", "H")) {
+        if (ImGui::MenuItem(hidden ? TEXT::LocalizeCStr("ai.api.show") : TEXT::LocalizeCStr("ui.vfx.text.Hide"), "H")) {
           SetSelectedShapesHidden(!hidden);
         }
-        if (ImGui::MenuItem(locked ? "Unlock" : "Lock", "L")) {
+        if (ImGui::MenuItem(locked ? TEXT::LocalizeCStr("editor.ui.unlock.1526a1") : TEXT::LocalizeCStr("editor.ui.lock.891ebc"), "L")) {
           SetSelectedShapesLocked(!locked);
         }
         ImGui::Separator();
-        if (ImGui::MenuItem("Delete", "Delete")) {
+        if (ImGui::MenuItem(TEXT::LocalizeWindow("ui.common.delete", "Delete").c_str(), "Delete")) {
           DeleteSelectedShapes();
           shapeListChanged = true;
         }
@@ -177,6 +179,10 @@ void ModelCollisionWorkspaceController::DrawShapeListWindow() {
     }
   }
   ImGui::EndChild();
+  const bool focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+  if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_Delete, focused)) DeleteSelectedShapes();
+  if (ImGui::GetIO().KeyCtrl && ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_D, focused)) DuplicateSelectedShapes();
+  if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_F, focused)) FocusSelection();
   ImGui::End();
 #endif
 }

@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 #include <algorithm>
 #include <cmath>
@@ -33,7 +34,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
   ImGui::BeginGroup();
   ImGui::PushItemWidth(width);
   if (node.kind == MaterialNodeKind::FunctionCall && !node.assetReference.IsValid()) {
-    ImGui::TextColored(ImVec4{1.0f, 0.42f, 0.35f, 1.0f}, "缺少 Material Function 资产");
+    ImGui::TextColored(ImVec4{1.0f, 0.42f, 0.35f, 1.0f},TEXT::Localize("editor.missingFunction").c_str());
   }
   const auto trackItem = [&capturesPointer]() {
     capturesPointer = capturesPointer || ImGui::IsItemHovered() ||
@@ -48,7 +49,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
     if (changed) {
       PreviewMaterialGesture(scene);
     }
-    if (ImGui::IsItemDeactivatedAfterEdit()) {
+    if (ImGui::IsItemDeactivated()) {
       CommitMaterialGesture(scene);
     }
   };
@@ -59,7 +60,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
     MaterialGraphParameterData *parameter =
         MATERIAL_GRAPH_UI::FindParameter(graph, parameterId);
     if (parameter == nullptr) {
-      ImGui::TextDisabled("%s: missing", label);
+      ImGui::TextDisabled(TEXT::Localize("editor.ui.s.missing.f1ed86").c_str(), label);
       return;
     }
     const bool controlledByDefault = inputPin.empty() ||
@@ -70,7 +71,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
     ImGui::TextUnformatted(label);
     ImGui::SameLine();
     if (!controlledByDefault) {
-      ImGui::TextDisabled("Linked");
+      ImGui::TextDisabled(TEXT::Localize("editor.ui.linked.a089f6").c_str());
       ImGui::PopID();
       return;
     }
@@ -99,7 +100,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
     MaterialGraphResourceData *resource =
         MATERIAL_GRAPH_UI::FindGraphResource(graph, resourceId);
     if (resource == nullptr) {
-      ImGui::TextDisabled("%s: missing", label);
+      ImGui::TextDisabled(TEXT::Localize("editor.ui.s.missing.f1ed86").c_str(), label);
       return;
     }
     const bool controlledByDefault = inputPin.empty() ||
@@ -109,7 +110,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
     ImGui::TextDisabled("%s", label);
     if (!controlledByDefault) {
       ImGui::SameLine();
-      ImGui::TextDisabled("Linked");
+      ImGui::TextDisabled(TEXT::Localize("editor.ui.linked.a089f6").c_str());
       ImGui::PopID();
       return;
     }
@@ -133,7 +134,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
     MaterialGraphParameterData *parameter =
         MATERIAL_GRAPH_UI::FindParameter(graph, node.referenceId);
     if (parameter == nullptr) {
-      if (ImGui::Button("+ Create Parameter", {width, 0.0f})) {
+      if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.create.parameter.95275c", "+ Create Parameter").c_str(), {width, 0.0f})) {
         MaterialAssetData before = source;
         MaterialGraphParameterData created{};
         created.id = "Parameter_" + std::to_string(authoringIdCounter_++);
@@ -150,9 +151,9 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
                           parameter->displayName.empty()
                               ? parameter->id.c_str()
                               : parameter->displayName.c_str());
+      MaterialAssetData typeBefore = source;
       if (MATERIAL_GRAPH_UI::DrawMaterialNodeTypeControl(node, parameter)) {
-        MaterialAssetData before = source;
-        CommitMaterialMutation(std::move(before), "Change parameter type", scene);
+        CommitMaterialMutation(std::move(typeBefore), "Change parameter type", scene);
       }
       MaterialAssetData before = source;
       const bool changed = MATERIAL_GRAPH_UI::DrawCompactMaterialValue(
@@ -170,9 +171,9 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
       }
     }
   } else if (node.kind == MaterialNodeKind::Constant) {
+    MaterialAssetData typeBefore = source;
     if (MATERIAL_GRAPH_UI::DrawMaterialNodeTypeControl(node, nullptr)) {
-      MaterialAssetData before = source;
-      CommitMaterialMutation(std::move(before), "Change constant type", scene);
+      CommitMaterialMutation(std::move(typeBefore), "Change constant type", scene);
     }
     MaterialAssetData before = source;
     const bool changed = MATERIAL_GRAPH_UI::DrawCompactMaterialValue(
@@ -190,7 +191,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
     MaterialGraphResourceData *resource =
         MATERIAL_GRAPH_UI::FindGraphResource(graph, node.referenceId);
     if (resource == nullptr) {
-      if (ImGui::Button("+ Texture Resource", {width, 0.0f})) {
+      if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.texture.resource.93d8ae", "+ Texture Resource").c_str(), {width, 0.0f})) {
         MaterialAssetData before = source;
         MaterialGraphResourceData created{};
         created.id = "Texture_" + std::to_string(authoringIdCounter_++);
@@ -267,8 +268,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
                                "Change texture sample semantic", scene);
       }
       trackItem();
-      ImGui::TextDisabled(
-          "Color space: %s (derived from semantic)",
+      ImGui::TextDisabled(TEXT::Localize("editor.ui.color.space.s.derived.from.semantic.11955d").c_str(),
           resource->semantic == MaterialResourceSemantic::BaseColor ||
                   resource->semantic == MaterialResourceSemantic::Emissive ||
                   resource->semantic == MaterialResourceSemantic::SpecularColor ||
@@ -290,7 +290,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
     capturesPointer = DrawMaterialGraphRampNodeInlineControls(
         scene, source, graph, node, width) || capturesPointer;
   } else if (node.kind == MaterialNodeKind::PbrSurface) {
-    ImGui::SeparatorText("Surface");
+    ImGui::SeparatorText(TEXT::Localize("editor.ui.surface.cda05c").c_str());
     drawParameter("parameter.baseColor", "Base Color", "BaseColor");
     drawParameter("parameter.metallic", "Metallic", "Metallic");
     drawParameter("parameter.roughness", "Roughness", "Roughness");
@@ -298,14 +298,14 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
     drawParameter("parameter.specularColor", "Specular Color", "SpecularColor");
     drawParameter("parameter.normalScale", "Normal Scale");
     drawParameter("parameter.occlusionStrength", "Occlusion", "Occlusion");
-    ImGui::SeparatorText("Emission");
+    ImGui::SeparatorText(TEXT::Localize("ui.vfx.text.Emission").c_str());
     drawParameter("parameter.emissive", "Emission", "Emissive");
     drawParameter("parameter.emissiveStrength", "Emission Power");
-    ImGui::TextDisabled("Use Texture Sample nodes for every image input.");
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.use.texture.sample.nodes.for.every.image.input.3c4ba8").c_str());
   } else if (node.kind == MaterialNodeKind::SurfaceOutput) {
-    ImGui::SeparatorText("Mesh Shader Surface");
+    ImGui::SeparatorText(TEXT::Localize("editor.ui.mesh.shader.surface.fa0149").c_str());
     int alphaMode = static_cast<int>(source.surface.alphaMode);
-    constexpr const char* kAlphaModes[]{"Opaque", "Mask", "Blend"};
+    const char* kAlphaModes[]{TEXT::LocalizeCStr("ui.inspector.worldSprite.alphaOpaque"), TEXT::LocalizeCStr("ui.vfx.uvTarget.Mask"), TEXT::LocalizeCStr("ui.terrain.rampBlend")};
     ImGui::SetNextItemWidth(width);
     if (ImGui::Combo("##SurfaceAlphaMode", &alphaMode, kAlphaModes, 3)) {
       MaterialAssetData before = source;
@@ -314,7 +314,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
     }
     trackItem();
     if (source.surface.alphaMode == MaterialAlphaMode::Mask) {
-      ImGui::TextUnformatted("Alpha Cutoff");
+      ImGui::TextUnformatted(TEXT::Localize("ui.inspector.worldSprite.alphaCutoff").c_str());
       ImGui::SetNextItemWidth(width);
       MaterialAssetData before = source;
       const bool changed = ImGui::SliderFloat(
@@ -324,9 +324,9 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
       commitContinuous(
           std::move(before), "Edit surface alpha cutoff", changed);
     } else if (source.surface.alphaMode == MaterialAlphaMode::Blend) {
-      ImGui::TextUnformatted("Source Color");
+      ImGui::TextUnformatted(TEXT::Localize("editor.ui.source.color.6d2042").c_str());
       int representation = static_cast<int>(source.surface.alphaRepresentation);
-      constexpr const char *kRepresentations[]{"Straight", "Premultiplied"};
+      const char *kRepresentations[]{TEXT::LocalizeCStr("editor.ui.straight.2501c6"), TEXT::LocalizeCStr("editor.ui.premultiplied.f64bae")};
       ImGui::SetNextItemWidth(width);
       if (ImGui::Combo("##SurfaceAlphaRepresentation", &representation, kRepresentations, 2)) {
         MaterialAssetData before = source;
@@ -342,7 +342,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
                 "The renderer premultiplies the lit result at output.");
     }
     MaterialAssetData before = source;
-    if (ImGui::Checkbox("Double Sided", &source.surface.doubleSided)) {
+    if (ImGui::Checkbox(TEXT::LocalizeWindow("ui.assetInspector.doubleSided", "Double Sided").c_str(), &source.surface.doubleSided)) {
       CommitMaterialMutation(std::move(before), "Toggle double-sided surface", scene);
     }
     trackItem();
@@ -361,7 +361,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
   } else if (node.kind == MaterialNodeKind::FaceSdf) {
     capturesPointer = DrawFaceRampNodeControl(
         scene, source, graph, width) || capturesPointer;
-    ImGui::TextDisabled("Required: Texture Sample R -> SDF (linear mirrored SDF).");
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.required.texture.sample.r.sdf.linear.mirrored.sdf.a08605").c_str());
     MaterialGraphParameterData *faceRight =
         MATERIAL_GRAPH_UI::FindParameter(graph, "parameter.faceRight");
     MaterialGraphParameterData *faceForward =
@@ -399,10 +399,10 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
     drawParameter("parameter.toonDirectGain", "Direct Gain", "DirectGain");
     drawParameter("parameter.faceShadowOffset", "Offset");
   } else if (node.kind == MaterialNodeKind::AnisotropicHair) {
-    ImGui::SeparatorText("Strand Direction");
-    ImGui::TextDisabled("Optional HairControl Texture Sample B -> Mask.");
-    ImGui::TextDisabled("No map uses mesh tangent; RG flow and A shift specialize it.");
-    ImGui::SeparatorText("Dual Kajiya-Kay Lobes");
+    ImGui::SeparatorText(TEXT::Localize("editor.ui.strand.direction.72e7c6").c_str());
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.optional.haircontrol.texture.sample.b.mask.c999dd").c_str());
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.no.map.uses.mesh.tangent.rg.flow.and.a.shift.specialize.it.945f54").c_str());
+    ImGui::SeparatorText(TEXT::Localize("editor.ui.dual.kajiya.kay.lobes.604a62").c_str());
     drawParameter("parameter.hairShift", "Shift", "Shift");
     drawParameter("parameter.hairWidth", "Width", "Width");
     drawParameter("parameter.hairSecondaryShift", "Second Shift");
@@ -420,7 +420,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
             ? "parameter.hairHighlightTint" : "parameter.specularTint";
     drawParameter(hairTint, "Tint");
   } else if (node.kind == MaterialNodeKind::MatCap) {
-    ImGui::TextDisabled("Required: MatCap Texture Sample Color -> Image.");
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.required.matcap.texture.sample.color.image.f694e6").c_str());
     drawParameter("parameter.matCapTint", "Tint");
     drawParameter("parameter.matCapIntensity", "Intensity");
     drawParameter("parameter.matCapViewCorrection", "View Correction");
@@ -431,18 +431,18 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
     capturesPointer = DrawCorneaHighlightNodeInlineControls(
         scene, source, graph, width) || capturesPointer;
   } else if (node.kind == MaterialNodeKind::SkinLighting) {
-    ImGui::TextDisabled("Optional Thickness Texture Sample R -> Mask.");
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.optional.thickness.texture.sample.r.mask.fad5ae").c_str());
     drawParameter("parameter.skinWrap", "Light Wrap", "Wrap");
     drawParameter("parameter.skinSubsurface", "Subsurface", "Subsurface");
     drawParameter("parameter.skinTint", "Scatter Tint", "Tint");
   } else if (node.kind == MaterialNodeKind::FabricSheen) {
-    ImGui::TextDisabled("Optional Fabric Texture Sample B -> Mask.");
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.optional.fabric.texture.sample.b.mask.441d08").c_str());
     drawParameter("parameter.fabricSheen", "Sheen", "Sheen");
     drawParameter("parameter.fiberRoughness", "Roughness", "FiberRoughness");
     drawParameter("parameter.fabricSheenPower", "Power", "Power");
     drawParameter("parameter.fabricSheenIntensity", "Intensity", "Intensity");
   } else if (node.kind == MaterialNodeKind::HybridLighting) {
-    ImGui::TextDisabled("0 = NPR endpoint | 1 = PBR endpoint");
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.0.npr.endpoint.1.pbr.endpoint.ef4a45").c_str());
     drawParameter("parameter.directDiffusePbrBlend", "Diffuse PBR", "DirectDiffuseBlend");
     drawParameter("parameter.directSpecularPbrBlend", "Specular PBR", "DirectSpecularBlend");
     drawParameter("parameter.indirectPbrBlend", "Indirect PBR", "IndirectBlend");
@@ -452,7 +452,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
     if (mode != nullptr) {
       int current = mode->defaultValue.numeric.x < 0.5f
           ? 0 : mode->defaultValue.numeric.x < 1.5f ? 1 : 2;
-      constexpr const char* kModes[]{"Geometry", "Screen", "Both"};
+      const char* kModes[]{TEXT::LocalizeCStr("ui.vfx.layer.geometry"), TEXT::LocalizeCStr("editor.ui.screen.5cc847"), TEXT::LocalizeCStr("editor.ui.both.1f4698")};
       ImGui::SetNextItemWidth(width);
       if (ImGui::Combo("##OutlineMode", &current, kModes, 3)) {
         MaterialAssetData before = source;
@@ -464,16 +464,15 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
       drawParameter("parameter.outlineThickness", "Thickness", "Thickness");
       DrawOutlineThicknessPresets(scene, source, graph);
       if (current != 1) {
-        ImGui::TextDisabled(MESHRENDERER::HasGeometryOutlineFeatureBackend() ? "Geometry backend: ready (closed meshes work best)" : "Geometry backend: unavailable; check renderer diagnostics");
+        ImGui::TextDisabled(MESHRENDERER::HasGeometryOutlineFeatureBackend() ? TEXT::LocalizeCStr("editor.ui.geometry.backend.ready.closed.meshes.work.best.7ad1e3") : TEXT::LocalizeCStr("editor.ui.geometry.backend.unavailable.check.renderer.diagnostics.189c4d"));
       }
       if (current != 0) {
-        ImGui::TextDisabled(
-            "Screen backend: per-material color and pixel thickness; supports hair cards.");
+        ImGui::TextDisabled(TEXT::Localize("editor.ui.screen.backend.per.material.color.and.pixel.thickness.supports.h.cdf407").c_str());
       }
     }
   } else if (node.kind == MaterialNodeKind::HairShadow) {
-    ImGui::TextDisabled("Required: HairShadow Texture Sample R -> ShadowMask.");
-    ImGui::TextDisabled("Linear R: 1 lit visibility | 0 hair shadow.");
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.required.hairshadow.texture.sample.r.shadowmask.1deaf5").c_str());
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.linear.r.1.lit.visibility.0.hair.shadow.31c5b4").c_str());
     drawParameter(
         "parameter.hairShadowStrength", "Strength", "Strength");
   }

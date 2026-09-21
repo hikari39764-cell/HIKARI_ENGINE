@@ -112,15 +112,17 @@ namespace HIKARI::RENDER3D::RAYTRACING {
                 retiring.back().value == graphics.currentFrameRetireFenceValue) retiring.back().bytes += bytes;
             else retiring.push_back({graphics.frameFence, graphics.currentFrameRetireFenceValue, bytes});
         }
-        void RetireTop(const GFX::Context& graphics) {
+        void RetireTop(const GFX::Context& graphics, bool keepHits = false) {
             sourceIdentity = nullptr;
-            TrackRetirement(graphics, hitBufferBytes + (topLevel ? topLevel->GetAllocationBytes() : 0));
+            TrackRetirement(graphics, (keepHits ? 0 : hitBufferBytes) + (topLevel ? topLevel->GetAllocationBytes() : 0));
             if (topLevel) topLevel->Reset(&graphics);
             topLevel.reset();
-            GFX::RetireD3D12ObjectForFrame(hitBuffer, graphics, "RT.Scene.Hits");
-            hitBufferBytes = 0;
+            if (!keepHits) {
+                GFX::RetireD3D12ObjectForFrame(hitBuffer, graphics, "RT.Scene.Hits");
+                hitBufferBytes = 0;
+                lastHits.clear();
+            }
             lastInstances.clear();
-            lastHits.clear();
         }
         uint64_t Available(const RuntimeRayTracingBudget& budget) {
             stats.residentBytes = hitBufferBytes + (topLevel ? topLevel->GetAllocationBytes() : 0);
@@ -385,8 +387,9 @@ namespace HIKARI::RENDER3D::RAYTRACING {
         if (SameBytes(instances, state.lastInstances) && SameBytes(hits, state.lastHits) && state.topLevel)
             state.stats.reusedTopLevel = true;
         else {
+            const bool keepHits = state.hitBuffer && SameBytes(hits, state.lastHits);
             const auto desc = CD3DX12_RESOURCE_DESC::Buffer(hits.size()*sizeof(RuntimeRayTracingHitRecord));
-            const uint64_t bytes = graphics.device->GetResourceAllocationInfo(0, 1, &desc).SizeInBytes;
+            const uint64_t bytes = keepHits ? 0 : graphics.device->GetResourceAllocationInfo(0, 1, &desc).SizeInBytes;
             uint64_t available = state.Available(budget);
             if (bytes == UINT64_MAX || bytes >= available)
                 return state.Fail(graphics, budget, RuntimeRayTracingStatus::BudgetExceeded);
@@ -396,17 +399,21 @@ namespace HIKARI::RENDER3D::RAYTRACING {
                 return state.Fail(graphics, budget, RuntimeRayTracingStatus::BudgetExceeded);
             Microsoft::WRL::ComPtr<ID3D12Resource> upload;
             void* mapped = nullptr;
-            if (!GFX::D3D12_BUFFER::CreateMappedUploadBuffer(graphics.device, desc.Width, upload, &mapped)) {
+            if (!keepHits && !GFX::D3D12_BUFFER::CreateMappedUploadBuffer(graphics.device, desc.Width, upload, &mapped)) {
                 state.TrackRetirement(graphics, top->GetAllocationBytes());
                 top->Reset(&graphics);
                 return state.Fail(graphics, budget, RuntimeRayTracingStatus::BuildFailed);
             }
-            std::memcpy(mapped, hits.data(), static_cast<size_t>(desc.Width));
-            upload->Unmap(0, nullptr);
-            state.RetireTop(graphics);
+            if (!keepHits) {
+                std::memcpy(mapped, hits.data(), static_cast<size_t>(desc.Width));
+                upload->Unmap(0, nullptr);
+            }
+            state.RetireTop(graphics, keepHits);
             state.topLevel = std::move(top);
-            state.hitBuffer = std::move(upload);
-            state.hitBufferBytes = bytes;
+            if (!keepHits) {
+                state.hitBuffer = std::move(upload);
+                state.hitBufferBytes = bytes;
+            }
             state.lastHits = std::move(hits);
             state.lastInstances = std::move(instances);
             ++state.version;

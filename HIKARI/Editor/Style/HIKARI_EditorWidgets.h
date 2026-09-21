@@ -68,6 +68,8 @@ namespace HIKARI::EDITOR {
         const char* tooltip = nullptr);
 
     void ToolbarLabel(const char* label);
+    // 次の操作が収まる場合だけ同じ行へ置く。
+    void NextToolbarItem(float width = 28.0f);
     void ToolbarDivider(float height = 20.0f);
     void StatusText(const char* label, EditorStatusTone tone);
     void StatusBadge(const char* label, EditorStatusTone tone);

@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
@@ -17,11 +18,8 @@ void ModelMaterialWorkspaceController::
   (void)source;
   (void)graph;
   (void)node;
-  ImGui::SeparatorText("Node-owned authoring");
-  ImGui::TextWrapped(
-      "Resources and values are edited on the selected node card. Add an "
-      "Image Texture node and connect its typed output when an effect needs "
-      "an image; Ramp stacks are edited directly on the Ramp node.");
+  ImGui::SeparatorText(TEXT::Localize("editor.ui.node.owned.authoring.b47942").c_str());
+  ImGui::TextWrapped(TEXT::Localize("editor.ui.resources.and.values.are.edited.on.the.selected.node.card.add.an.439f92").c_str());
 #else
   (void)scene;
   (void)source;

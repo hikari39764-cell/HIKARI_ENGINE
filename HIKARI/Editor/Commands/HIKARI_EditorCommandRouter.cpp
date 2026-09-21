@@ -7,6 +7,7 @@
 
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
+#include "imgui_internal.h"
 #endif
 
 namespace HIKARI::EDITOR {
@@ -122,22 +123,22 @@ namespace HIKARI::EDITOR {
             return false;
         }
         const ImGuiIO& io = ImGui::GetIO();
-        if (!io.KeyCtrl) {
+        if (!io.KeyCtrl || io.KeyAlt || io.KeySuper) {
             return false;
         }
 
         if (CanUseEditorShortcut(EditorShortcutScope::Document) &&
-            ImGui::IsKeyPressed(ImGuiKey_S, false)) {
+            ConsumeEditorShortcut(EditorShortcutScope::Document, ImGuiKey_S)) {
             return Execute(EditorCommandId::SaveDocument);
         }
         if (!CanUseEditorShortcut(EditorShortcutScope::Editing)) {
             return false;
         }
-        if (ImGui::IsKeyPressed(ImGuiKey_Y, false) ||
-            (io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Z, false))) {
+        if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_Y) ||
+            (io.KeyShift && ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_Z))) {
             return Execute(EditorCommandId::Redo);
         }
-        if (ImGui::IsKeyPressed(ImGuiKey_Z, false)) {
+        if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_Z)) {
             return Execute(EditorCommandId::Undo);
         }
 #endif
@@ -153,13 +154,14 @@ namespace HIKARI::EDITOR {
             return false;
         }
         const ImGuiIO& io = ImGui::GetIO();
-        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_D, false)) {
+        if (io.KeyAlt || io.KeySuper) return false;
+        if (io.KeyCtrl && ConsumeEditorShortcut(EditorShortcutScope::Viewport, ImGuiKey_D, focused)) {
             return Execute(EditorCommandId::DuplicateSelection);
         }
-        if (!io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Delete, false)) {
+        if (!io.KeyCtrl && ConsumeEditorShortcut(EditorShortcutScope::Viewport, ImGuiKey_Delete, focused)) {
             return Execute(EditorCommandId::DeleteSelection);
         }
-        if (!io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_F, false)) {
+        if (!io.KeyCtrl && ConsumeEditorShortcut(EditorShortcutScope::Viewport, ImGuiKey_F, focused)) {
             return Execute(EditorCommandId::FocusSelection);
         }
 #else
@@ -184,6 +186,20 @@ namespace HIKARI::EDITOR {
         }
     }
 
+    bool ConsumeEditorShortcut(EditorShortcutScope scope, int key, bool focused, bool repeat) noexcept {
+#if defined(HIKARI_WITH_EDITOR)
+        if (!CanUseEditorShortcut(scope, focused)) return false;
+        const auto& io = ImGui::GetIO();
+        if (io.KeyAlt || io.KeySuper || (io.KeyCtrl && (key == ImGuiKey_F || key == ImGuiKey_Delete))) return false;
+        if (!ImGui::IsKeyPressed(static_cast<ImGuiKey>(key),
+                repeat ? ImGuiInputFlags_Repeat : ImGuiInputFlags_None, ImGuiKeyOwner_Any)) return false;
+        ImGui::SetKeyOwner(static_cast<ImGuiKey>(key), ImHashStr("HIKARI.EditorShortcut"), ImGuiInputFlags_LockThisFrame);
+        return true;
+#else
+        (void)scope; (void)key; (void)focused; (void)repeat; return false;
+#endif
+    }
+
     bool CanUseEditorShortcut(
         EditorShortcutScope scope,
         bool focused) noexcept {
@@ -196,12 +212,16 @@ namespace HIKARI::EDITOR {
         }
 
         const ImGuiIO& io = ImGui::GetIO();
-        if (ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId) ||
+        if (GImGui->CurrentItemFlags & ImGuiItemFlags_Disabled) return false;
+        if (ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel) ||
             ImGui::GetDragDropPayload() != nullptr) {
             return false;
         }
         if (scope != EditorShortcutScope::Document &&
-            (io.WantTextInput || ImGui::IsAnyItemActive())) {
+            (io.WantTextInput ||
+                (GImGui->ActiveId != 0 && GImGui->ActiveId == GImGui->InputTextState.ID) ||
+                (ImGui::IsAnyItemActive() && (GImGui->ActiveIdSource == ImGuiInputSource_Keyboard ||
+                    ImGui::IsMouseDown(0) || ImGui::IsMouseDown(1) || ImGui::IsMouseDown(2))))) {
             return false;
         }
         if (scope == EditorShortcutScope::Viewport &&

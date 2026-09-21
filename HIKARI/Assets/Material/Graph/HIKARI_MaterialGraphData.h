@@ -21,6 +21,10 @@ namespace HIKARI {
         std::string displayName{};
         MaterialValueData defaultValue{};
         bool exposed = true;
+        std::string group{};
+        bool useUiRange = false;
+        float uiMinimum = 0.0f;
+        float uiMaximum = 1.0f;
     };
 
     struct MaterialGraphResourceData {

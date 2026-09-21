@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Widgets/HIKARI_RuntimeBindingFieldWidget.h"
 
 #include <algorithm>
@@ -45,13 +46,12 @@ namespace HIKARI::EDITOR {
                     searchBuffer[0] = '\0';
                 }
                 ImGui::SetNextItemWidth(-1.0f);
-                ImGui::InputText(
-                    "Search##RuntimeBinding",
+                ImGui::InputText(TEXT::LocalizeWindow("editor.ui.search.bce064", "Search##RuntimeBinding").c_str(),
                     searchBuffer,
                     sizeof(searchBuffer));
                 const std::string search =
                     TEXT::ToLowerAsciiCopy(searchBuffer);
-                if (ImGui::Selectable("<none>", value.empty())) {
+                if (ImGui::Selectable(TEXT::LocalizeWindow("ui.common.none", "<none>").c_str(), value.empty())) {
                     value.clear();
                     changed = true;
                 }
@@ -71,7 +71,7 @@ namespace HIKARI::EDITOR {
                     }
                 }
                 if (choices.empty()) {
-                    ImGui::TextDisabled("No compatible bindings");
+                    ImGui::TextDisabled(TEXT::Localize("editor.ui.no.compatible.bindings.151fec").c_str());
                 }
                 ImGui::EndCombo();
             }

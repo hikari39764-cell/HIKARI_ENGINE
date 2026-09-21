@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 
 #include <array>
@@ -17,7 +18,7 @@ namespace HIKARI::EDITOR {
 #if defined(HIKARI_WITH_EDITOR)
         const VFX::VfxExposedInputData input = source;
         ImGui::TextDisabled(VfxUiText("EXPOSED INPUT").c_str());
-        ImGui::TextWrapped("Stable ID: %s", input.id.c_str());
+        ImGui::TextWrapped(TEXT::Localize("editor.ui.stable.id.s.f22a81").c_str(), input.id.c_str());
         VfxInspectorPropertyEditor editor(
             *this, database, input.id, statusMessage_);
         editor.Text("Name", "name", input.name);

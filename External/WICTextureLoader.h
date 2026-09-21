@@ -9,7 +9,8 @@ namespace HIKARI {
             ID3D12Device* device,
             ID3D12GraphicsCommandList* cmdList,
             const wchar_t* fileName,
-            ID3D12Resource** texture);
+            ID3D12Resource** texture,
+            ID3D12Resource** uploadResource);
 
         void CleanupWICResources();
     } // namespace DXTEX

@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.h"
 
 #include "Editor/Authoring/HIKARI_EditorObjectFactory.h"
@@ -157,10 +158,11 @@ namespace HIKARI {
             std::sin(pitch),
             std::cos(yaw) * cp
         });
-        const float distance = (std::clamp)(
-            radius * 2.5f,
-            3.0f,
-            5000.0f);
+        const auto& viewCamera = scene.GetCamera();
+        const float halfFov = std::atan(std::tan(viewCamera.GetFovYRad() * 0.5f) *
+            (std::min)(1.0f, (std::max)(0.01f, viewCamera.GetAspect())));
+        const float distance = (std::max)(radius + viewCamera.GetNearZ(),
+            radius * 1.1f / (std::max)(0.01f, std::sin(halfFov)));
         const MATH::Vec3 position =
             center - forward * distance;
         debugCamera.SetPosition(position);
@@ -187,7 +189,7 @@ namespace HIKARI {
                 sceneObjectCommands_,
                 *target);
         } else {
-            ImGui::TextDisabled("Create in Scene");
+            ImGui::TextDisabled(TEXT::Localize("editor.ui.create.in.scene.26f233").c_str());
             sceneCreationPanel_.DrawCreationMenu(
                 scene,
                 context_,

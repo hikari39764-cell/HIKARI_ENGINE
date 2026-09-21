@@ -1,7 +1,9 @@
+#include "Editor/Shell/HIKARI_EditorDockLayout.h"
 #include "Editor/Workspaces/TerrainSurface/HIKARI_TerrainSurfaceWorkspaceController.h"
 
 #include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
+#include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Editor/HIKARI_EditorViewportInput.h"
 #include "Editor/History/HIKARI_SceneComponentPropertiesHistoryCommand.h"
 #include "Editor/Workspaces/HIKARI_EditorWorkspaceHost.h"
@@ -47,54 +49,6 @@ namespace HIKARI::EDITOR {
             case EditorTerrainToolMode::Noise: return EditorGlyph::TerrainMound;
             }
             return EditorGlyph::TerrainRaise;
-        }
-
-        // ツールボタンはアイコン描画に切り替え、ローカライズ文字列に
-        // 依存しない。フォントの言語設定やグリフ欠落で文字が化ける
-        // 問題を根本から回避する。名称はツールチップで表示する。
-        bool ToolButton(
-            EditorTerrainToolMode mode,
-            const char* asciiId,
-            const char* localizedName,
-            bool selected,
-            ImVec4 activeTint,
-            float width) {
-            if (selected) {
-                ImGui::PushStyleColor(
-                    ImGuiCol_Button,
-                    ImVec4(activeTint.x, activeTint.y, activeTint.z, 0.85f));
-                ImGui::PushStyleColor(
-                    ImGuiCol_ButtonHovered,
-                    ImVec4(activeTint.x, activeTint.y, activeTint.z, 1.0f));
-                ImGui::PushStyleColor(
-                    ImGuiCol_ButtonActive,
-                    ImVec4(activeTint.x, activeTint.y, activeTint.z, 1.0f));
-            }
-            const float height = ImGui::GetFrameHeight() * 1.5f;
-            const bool pressed = ImGui::Button(asciiId, ImVec2(width, height));
-            if (selected) {
-                ImGui::PopStyleColor(3);
-            }
-            // ボタン内にグリフを描く。
-            const ImVec2 mn = ImGui::GetItemRectMin();
-            const ImVec2 mx = ImGui::GetItemRectMax();
-            const ImVec2 center{
-                (mn.x + mx.x) * 0.5f,
-                (mn.y + mx.y) * 0.5f
-            };
-            const ImU32 glyphColor =
-                ImGui::GetColorU32(ImGuiCol_Text);
-            DrawEditorGlyph(
-                *ImGui::GetWindowDrawList(),
-                TerrainToolGlyph(mode),
-                center,
-                height * 0.34f,
-                glyphColor,
-                2.0f);
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("%s", localizedName);
-            }
-            return pressed;
         }
 
         constexpr EditorTerrainToolMode kSculptTools[] = {
@@ -178,7 +132,7 @@ namespace HIKARI::EDITOR {
                 rightBottom);
             ImGui::DockBuilderFinish(dockspaceId);
         }
-        ImGui::DockSpaceOverViewport(dockspaceId, viewport);
+        HIKARI::EDITOR::DrawWorkspaceDockSpace(dockspaceId, viewport);
 #else
         (void)resetDefaultDockLayout;
 #endif
@@ -330,9 +284,7 @@ namespace HIKARI::EDITOR {
                     EditorTerrainWorkspacePage::Sculpt) {
                 ImGui::SeparatorText(
                     TEXT::Localize("ui.terrain.tool").c_str());
-            const float toolWidth =
-                (ImGui::GetContentRegionAvail().x -
-                    ImGui::GetStyle().ItemSpacing.x) * 0.5f;
+            const float toolWidth = ImGui::GetFrameHeight() * 1.6f;
             static const char* kToolIds[] = {
                 "R##t", "L##t", "S##t", "F##t", "M##t", "P##t",
                 "G##t", "T##t", "H##t", "O##t", "C##t", "A##t",
@@ -353,24 +305,13 @@ namespace HIKARI::EDITOR {
                     context.terrainTool.mode == mode &&
                     context.terrainTool.paint ==
                         EditorTerrainPaintMode::None;
-                const ImVec4 tint =
-                    (mode == EditorTerrainToolMode::Raise ||
-                        mode == EditorTerrainToolMode::Mound ||
-                        mode == EditorTerrainToolMode::Ridge ||
-                        mode == EditorTerrainToolMode::Noise)
-                        ? ImVec4(0.25f, 0.55f, 0.95f, 1.0f)
-                        : (mode == EditorTerrainToolMode::Lower ||
-                            mode == EditorTerrainToolMode::Pit ||
-                            mode == EditorTerrainToolMode::Shaft ||
-                            mode == EditorTerrainToolMode::Hole ||
-                            mode == EditorTerrainToolMode::CliffOpening)
-                            ? ImVec4(0.95f, 0.45f, 0.25f, 1.0f)
-                            : ImVec4(0.35f, 0.75f, 0.45f, 1.0f);
                 const std::string localizedToolName = TEXT::Localize(
                     kToolNameKeys[i]);
-                if (ToolButton(
-                        mode, kToolIds[i], localizedToolName.c_str(),
-                        isActive, tint, toolWidth)) {
+                if (i == 4 && !ImGui::CollapsingHeader(
+                        TEXT::LocalizeWindow("editor.workflow.moreTools", "moreSculptTools").c_str())) break;
+                if (i && i != 4) NextToolbarItem(toolWidth);
+                if (IconToggleButton(TerrainToolGlyph(mode), kToolIds[i], isActive,
+                        {toolWidth, toolWidth}, localizedToolName.c_str())) {
                     if (context.terrainTool.mode != mode) {
                         context.terrainTool.rampAnchorSet = false;
                         context.terrainTool.sampleHeightRequested = false;
@@ -380,9 +321,12 @@ namespace HIKARI::EDITOR {
                         EditorTerrainPaintMode::None;
                     context.terrainTool.active = true;
                 }
-                if ((i % 2u) == 0u) {
-                    ImGui::SameLine();
-                }
+
+            }
+            const auto modeIndex = static_cast<size_t>(context.terrainTool.mode);
+            if (modeIndex < std::size(kToolNameKeys)) {
+                ImGui::Spacing();
+                ImGui::TextUnformatted(TEXT::Localize(kToolNameKeys[modeIndex]).c_str());
             }
             }
 
@@ -1012,12 +956,10 @@ namespace HIKARI::EDITOR {
                     "%s: %zu",
                     TEXT::Localize("ui.terrain.vertexCount").c_str(),
                     chunkCount * verticesPerChunk);
-                ImGui::Text(
-                    "%s: %.1f m2",
+                ImGui::Text(TEXT::Localize("editor.ui.s.1f.m2.86e2ad").c_str(),
                     TEXT::Localize("ui.terrain.authoredArea").c_str(),
                     authoredArea);
-                ImGui::TextDisabled(
-                    "%s: %u x %u @ %.3f m",
+                ImGui::TextDisabled(TEXT::Localize("editor.ui.s.u.x.u.3f.m.32ccae").c_str(),
                     TEXT::Localize("ui.terrain.chunkResolution").c_str(),
                     terrain->GetChunkCells(),
                     terrain->GetChunkCells(),

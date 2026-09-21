@@ -55,6 +55,19 @@ namespace HIKARI::SHADOW {
         bool SameLight(const CachedLight& cached, uint32_t sourceIndex, const SceneLightProvider& light) {
             return cached.valid && cached.sourceIndex == sourceIndex && cached.id == light.id;
         }
+        bool HasRelevantDynamicCasters(const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& source,
+            const SceneLightProvider& light) {
+            if (source.HasMassInstances()) return true;
+            const auto& pass = source.GetPass(RENDER3D::GPUDRIVEN::GpuDrivenPassKind::Shadow);
+            const auto relevant = [&](const auto* instances, uint32_t count) {
+                if (!instances || instances->size() < count) return count != 0;
+                return std::any_of(instances->begin(), instances->end(), [&](const auto& instance) {
+                    return IsPrimaryShadowCaster(instance) && MayAffectLocalShadow(instance, light.position, light.range);
+                });
+            };
+            return relevant(pass.instances, pass.gpuSceneInstanceCount) ||
+                relevant(pass.traditionalIndirect.instances, pass.traditionalIndirect.gpuSceneInstanceCount);
+        }
     }
 
     LocalShadowBudget ResolveLocalShadowBudget(RENDER3D::LocalShadowQuality quality) {
@@ -170,9 +183,11 @@ namespace HIKARI::SHADOW {
 
         bool needsRender = false;
         for (auto& job : jobs) {
+            const bool dynamicWork = renderer.frameHasDynamicShadowWork &&
+                HasRelevantDynamicCasters(renderer.dynamicShadowSceneSource, lighting.lights[job.cache.sourceIndex]);
             uint64_t content = AppendShadowHashValue(HASH::kFnv1a64OffsetBasis,renderer.staticShadowSceneSource.sourceVersion);
             content = AppendShadowHashValue(content,renderer.staticShadowSceneSource.layoutVersion);
-            content = AppendShadowHashValue(content,renderer.frameHasDynamicShadowWork ? 1u : 0u);
+            content = AppendShadowHashValue(content,dynamicWork ? 1u : 0u);
             content = AppendShadowHashValue(content, hasSprites ? 1u : 0u);
             content = AppendShadowHashValue(content,job.cache.firstFace);
             for (uint32_t face=0;face<job.views.faceCount;++face)
@@ -183,7 +198,7 @@ namespace HIKARI::SHADOW {
                     entry.content == content && entry.faceCount == job.cache.faceCount;
             });
             // 選択時に全動的面を予算へ算入し、部分的な六面や古い動的 caster を公開しない。
-            job.render = renderer.frameHasDynamicShadowWork || hasSprites || old == state.cache.end();
+            job.render = dynamicWork || hasSprites || old == state.cache.end();
             needsRender |= job.render;
         }
         const auto renderSource = [&](const auto& source, bool clearDepth) {

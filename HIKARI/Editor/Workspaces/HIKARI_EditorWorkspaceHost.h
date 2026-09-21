@@ -28,8 +28,6 @@ namespace HIKARI::EDITOR {
         const EditorViewInstance& GetCinematicsGameView() const noexcept;
         EditorViewInstance& GetCinematicsDirectorView() noexcept;
         const EditorViewInstance& GetCinematicsDirectorView() const noexcept;
-        EditorViewInstance& GetCinematicsOverviewView() noexcept;
-        const EditorViewInstance& GetCinematicsOverviewView() const noexcept;
         EditorViewInstance& GetModelCollisionPreviewView() noexcept;
         const EditorViewInstance& GetModelCollisionPreviewView() const noexcept;
         EditorViewInstance& GetModelMaterialPreviewView() noexcept;
@@ -49,7 +47,6 @@ namespace HIKARI::EDITOR {
         enum class BuiltInViewSlot : size_t {
             CinematicsGame,
             CinematicsDirector,
-            CinematicsOverview,
             ModelCollisionPreview,
             ModelMaterialPreview,
             ModelMaterialCompare,

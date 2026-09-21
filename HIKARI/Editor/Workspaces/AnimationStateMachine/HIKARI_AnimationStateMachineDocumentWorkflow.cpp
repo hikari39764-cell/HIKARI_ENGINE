@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/AnimationStateMachine/HIKARI_AnimationStateMachineWorkspaceController.h"
 
 #include <utility>
@@ -85,11 +86,11 @@ void AnimationStateMachineWorkspaceController::DrawUnsavedDocumentDialog(
     return;
   }
   // ダイアログの内容を描画する
-  ImGui::TextUnformatted("The current state machine has unsaved changes.");
-  ImGui::TextDisabled("Save them before continuing, or discard them.");
+  ImGui::TextUnformatted(TEXT::Localize("editor.ui.the.current.state.machine.has.unsaved.changes.96cd9e").c_str());
+  ImGui::TextDisabled(TEXT::Localize("editor.ui.save.them.before.continuing.or.discard.them.ed51ea").c_str());
   ImGui::Spacing();
 
-  if (ImGui::Button("Save and Continue")) {
+  if (ImGui::Button(TEXT::LocalizeWindow("ui.vfx.text.Save and Continue", "Save and Continue").c_str())) {
     if (Save(scene, statusMessage_)) {
       ExecuteDocumentAction(scene, result, requests, pendingDocumentAction_,
                             pendingDocumentAssetGuid_);
@@ -97,13 +98,13 @@ void AnimationStateMachineWorkspaceController::DrawUnsavedDocumentDialog(
     }
   }
   ImGui::SameLine();
-  if (ImGui::Button("Discard and Continue")) {
+  if (ImGui::Button(TEXT::LocalizeWindow("ui.vfx.text.Discard and Continue", "Discard and Continue").c_str())) {
     ExecuteDocumentAction(scene, result, requests, pendingDocumentAction_,
                           pendingDocumentAssetGuid_);
     ImGui::CloseCurrentPopup();
   }
   ImGui::SameLine();
-  if (ImGui::Button("Cancel")) {
+  if (ImGui::Button(TEXT::LocalizeWindow("ui.common.cancel", "Cancel").c_str())) {
     pendingDocumentAction_ = PendingDocumentAction::None;
     pendingDocumentAssetGuid_ = {};
     statusMessage_ = "Document action cancelled";

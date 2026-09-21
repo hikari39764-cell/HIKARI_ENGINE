@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 #include "Editor/Scene/Inspector/HIKARI_SceneInspectorPanel.h"
 
@@ -35,16 +36,16 @@ void SceneInspectorPanel::DrawDeferredDialogs(
   DrawAddComponentPopup(scene, context, selectionSync, commands);
 
   if (openRenamePopup_) {
-    ImGui::OpenPopup("Rename Object");
+    ImGui::OpenPopup(TEXT::LocalizeWindow("editor.ui.rename.object.0c3276", "Rename Object").c_str());
     openRenamePopup_ = false;
   }
-  if (ImGui::BeginPopupModal("Rename Object", nullptr,
+  if (ImGui::BeginPopupModal(TEXT::LocalizeWindow("editor.ui.rename.object.0c3276", "Rename Object").c_str(), nullptr,
                              ImGuiWindowFlags_AlwaysAutoResize)) {
     ImGui::SetNextItemWidth(320.0f);
     const bool submit =
         ImGui::InputText("##Name", renameBuffer_, sizeof(renameBuffer_),
                          ImGuiInputTextFlags_EnterReturnsTrue);
-    if (submit || ImGui::Button("Rename")) {
+    if (submit || ImGui::Button(TEXT::LocalizeWindow("editor.rename", "Rename").c_str())) {
       if (context.selection.selectedObject != nullptr &&
           context.selection.selectedObject->GetDocumentId() ==
               renameObjectId_) {
@@ -54,23 +55,23 @@ void SceneInspectorPanel::DrawDeferredDialogs(
       ImGui::CloseCurrentPopup();
     }
     ImGui::SameLine();
-    if (ImGui::Button("Cancel")) {
+    if (ImGui::Button(TEXT::LocalizeWindow("ui.common.cancel", "Cancel").c_str())) {
       ImGui::CloseCurrentPopup();
     }
     ImGui::EndPopup();
   }
 
   if (openPrefabPopup_) {
-    ImGui::OpenPopup("Save as Prefab");
+    ImGui::OpenPopup(TEXT::LocalizeWindow("editor.ui.save.as.prefab.13bd13", "Save as Prefab").c_str());
     openPrefabPopup_ = false;
   }
-  if (ImGui::BeginPopupModal("Save as Prefab", nullptr,
+  if (ImGui::BeginPopupModal(TEXT::LocalizeWindow("editor.ui.save.as.prefab.13bd13", "Save as Prefab").c_str(), nullptr,
                              ImGuiWindowFlags_AlwaysAutoResize)) {
     ImGui::SetNextItemWidth(320.0f);
     const bool submit =
         ImGui::InputText("##PrefabName", prefabBuffer_, sizeof(prefabBuffer_),
                          ImGuiInputTextFlags_EnterReturnsTrue);
-    if (submit || ImGui::Button("Save")) {
+    if (submit || ImGui::Button(TEXT::LocalizeWindow("ai.api.save", "Save").c_str())) {
       if (context.selection.selectedObject != nullptr &&
           context.selection.selectedObject->GetDocumentId() ==
               prefabObjectId_) {
@@ -80,7 +81,7 @@ void SceneInspectorPanel::DrawDeferredDialogs(
       ImGui::CloseCurrentPopup();
     }
     ImGui::SameLine();
-    if (ImGui::Button("Cancel")) {
+    if (ImGui::Button(TEXT::LocalizeWindow("ui.common.cancel", "Cancel").c_str())) {
       ImGui::CloseCurrentPopup();
     }
     ImGui::EndPopup();

@@ -155,8 +155,7 @@ namespace HIKARI::EDITOR {
             }
             ImGui::EndDisabled();
             ImGui::SameLine();
-            ImGui::TextDisabled(
-                "%zu / %u stops",
+            ImGui::TextDisabled(TEXT::Localize("editor.ui.zu.u.stops.76ecd3").c_str(),
                 gradient.stops.size(),
                 RENDER3D::PARTICLES::kMaxParticleColorStops);
         }
@@ -206,7 +205,7 @@ namespace HIKARI::EDITOR {
         const VFX::VfxEmitterData& source) {
 #if defined(HIKARI_WITH_EDITOR)
         const VFX::VfxEmitterData emitter = source;
-        ImGui::TextDisabled("Emitter: %s", emitter.name.c_str());
+        ImGui::TextDisabled(TEXT::Localize("editor.ui.emitter.s.6d1333").c_str(), emitter.name.c_str());
         const std::vector<CurveChoice> choices =
             CollectCurveChoices(emitter);
         if (selection_.kind == VfxWorkspaceSelectionKind::CurveKey &&
@@ -237,7 +236,7 @@ namespace HIKARI::EDITOR {
             const char* preview = activeChoice != choices.end()
                 ? activeChoice->label.c_str()
                 : "Select Curve";
-            if (ImGui::BeginCombo("Property", preview)) {
+            if (ImGui::BeginCombo(TEXT::LocalizeWindow("editor.ui.property.9ae33a", "Property").c_str(), preview)) {
                 for (const CurveChoice& choice : choices) {
                     if (ImGui::Selectable(
                             choice.label.c_str(),
@@ -260,8 +259,7 @@ namespace HIKARI::EDITOR {
         }
 
         if (activeChoice != choices.end()) {
-            if (ImGui::BeginCombo(
-                    "Channel", curveEditorChannel_.c_str())) {
+            if (ImGui::BeginCombo(TEXT::LocalizeWindow("editor.ui.channel.879f0b", "Channel").c_str(), curveEditorChannel_.c_str())) {
                 for (size_t index = 0u;
                      index < activeChoice->channelCount;
                      ++index) {
@@ -455,8 +453,7 @@ namespace HIKARI::EDITOR {
                 }
                 ImGui::EndDisabled();
                 ImGui::SameLine();
-                ImGui::TextDisabled(
-                    "%zu / %u keys | %s",
+                ImGui::TextDisabled(TEXT::Localize("editor.ui.zu.u.keys.s.ff3ddd").c_str(),
                     curve->keys.size(),
                     emitter.kind==VFX::VfxLayerKind::Particles && address.propertyId!="curve" ? RENDER3D::PARTICLES::kMaxParticleCurveKeys : VFX::kMaxVfxLayerCurveKeys,
                     VFX::ToString(curve->interpolation).data());

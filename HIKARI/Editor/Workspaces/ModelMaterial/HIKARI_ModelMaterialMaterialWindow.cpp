@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 
 #include <algorithm>
@@ -23,13 +24,13 @@ namespace {
 const char *BindingLabel(ModelMaterialBindingSource source) noexcept {
   switch (source) {
   case ModelMaterialBindingSource::ImportedFallback:
-    return "Imported draft";
+    return TEXT::LocalizeCStr("editor.ui.imported.draft.a67748");
   case ModelMaterialBindingSource::AuthoredOverride:
-    return "Authored material";
+    return TEXT::LocalizeCStr("editor.ui.authored.material.fde952");
   case ModelMaterialBindingSource::OverrideUnavailable:
-    return "Override unavailable";
+    return TEXT::LocalizeCStr("editor.ui.override.unavailable.2787dc");
   }
-  return "Unknown";
+  return TEXT::LocalizeCStr("ui.quality.transitionUnknown");
 }
 
 } // namespace
@@ -37,7 +38,7 @@ const char *BindingLabel(ModelMaterialBindingSource source) noexcept {
 void ModelMaterialWorkspaceController::DrawMaterialWindow(
     DocumentSceneBase &scene) {
 #if defined(HIKARI_WITH_EDITOR)
-  if (!ImGui::Begin("Properties###ModelMaterial/Material")) {
+  if (!ImGui::Begin(TEXT::LocalizeWindow("editor.ui.properties.bc6c88", "ModelMaterial/Material").c_str())) {
     ImGui::End();
     return;
   }
@@ -45,14 +46,12 @@ void ModelMaterialWorkspaceController::DrawMaterialWindow(
   if (authoringMode_ == AuthoringMode::ModelMaterials) {
     const ModelMaterialSlotView *slot = GetSelectedSlot();
     if (slot == nullptr) {
-      ImGui::TextWrapped(
-          "Select a model part. Its imported or authored material will open "
-          "here immediately.");
+      ImGui::TextWrapped(TEXT::Localize("editor.ui.select.a.model.part.its.imported.or.authored.material.will.open..4b6905").c_str());
       DrawPreviewLightingProperties();
       ImGui::End();
       return;
     }
-    ImGui::TextDisabled("EDITING MODEL PART");
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.editing.model.part.bc0abd").c_str());
     ImGui::TextWrapped("%s", slot->displayName.c_str());
     StatusBadge(BindingLabel(slot->source),
                 slot->source == ModelMaterialBindingSource::AuthoredOverride
@@ -62,14 +61,13 @@ void ModelMaterialWorkspaceController::DrawMaterialWindow(
     ImGui::BeginDisabled(
         slot->source == ModelMaterialBindingSource::ImportedFallback &&
         !slot->overrideMaterialGuid.IsValid());
-    if (ImGui::SmallButton("Restore Imported")) {
+    if (ImGui::SmallButton(TEXT::LocalizeWindow("ui.inspector.model.restoreImported", "Restore Imported").c_str())) {
       (void)RestoreSelectedImportedMaterial(scene, statusMessage_);
     }
     ImGui::EndDisabled();
-    ImGui::TextDisabled(
-        "The cyan row and viewport outline identify the material part being edited.");
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.the.cyan.row.and.viewport.outline.identify.the.material.part.bei.011578").c_str());
 
-    if (ImGui::TreeNodeEx("Advanced Part Binding",
+    if (ImGui::TreeNodeEx(TEXT::LocalizeWindow("editor.ui.advanced.part.binding.f0dacd", "Advanced Part Binding").c_str(),
                           ImGuiTreeNodeFlags_SpanAvailWidth)) {
       std::string replacementGuid = candidateMaterialGuid_.value;
       AssetFieldOptions options{};
@@ -101,18 +99,16 @@ void ModelMaterialWorkspaceController::DrawMaterialWindow(
     }
     ImGui::Separator();
   } else {
-    ImGui::TextDisabled("STANDALONE MATERIAL ASSET");
-    ImGui::TextWrapped(
-        "This document is previewed on the material sphere and is not tied "
-        "to a model until you assign it.");
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.standalone.material.asset.876261").c_str());
+    ImGui::TextWrapped(TEXT::Localize("editor.ui.this.document.is.previewed.on.the.material.sphere.and.is.not.tie.2400d3").c_str());
     ImGui::Separator();
   }
 
   if (!authoringDocument_.HasMaterial()) {
     ImGui::TextWrapped(
         authoringMode_ == AuthoringMode::MaterialAsset
-            ? "Create or open a Material Asset from the left panel."
-            : "Select a model part to edit its material.");
+            ? TEXT::LocalizeCStr("editor.ui.create.or.open.a.material.asset.from.the.left.panel.266612")
+            : TEXT::LocalizeCStr("editor.ui.select.a.model.part.to.edit.its.material.3a7ca7"));
     DrawPreviewLightingProperties();
     ImGui::End();
     return;
@@ -127,12 +123,12 @@ void ModelMaterialWorkspaceController::DrawMaterialWindow(
   const MaterialCompileResult &compile =
       authoringDocument_.GetCompileResult();
   if (compile.success) {
-    StatusBadge("Live preview", EditorStatusTone::Ready);
+    StatusBadge(TEXT::Localize("editor.ui.live.preview.131a90").c_str(), EditorStatusTone::Ready);
   } else {
-    StatusBadge("Invalid v5 graph - preview paused", EditorStatusTone::Error);
+    StatusBadge(TEXT::Localize("editor.ui.invalid.v5.graph.preview.paused.b42e13").c_str(), EditorStatusTone::Error);
   }
   ImGui::SameLine();
-  ImGui::TextDisabled("Every committed control refreshes runtime bindings.");
+  ImGui::TextDisabled(TEXT::Localize("editor.ui.every.committed.control.refreshes.runtime.bindings.f10e6d").c_str());
   if (!materialPreviewExpressionStatus_.empty()) {
     ImGui::TextColored(
         ImVec4{ 0.55f, 0.82f, 1.0f, 1.0f },
@@ -141,20 +137,20 @@ void ModelMaterialWorkspaceController::DrawMaterialWindow(
 
   ImGui::BeginDisabled(!authoringDocument_.IsMaterialDirty() ||
                        !compile.success);
-  if (ImGui::Button("Save")) {
+  if (ImGui::Button(TEXT::LocalizeWindow("ai.api.save", "Save").c_str())) {
     (void)SaveMaterial(scene, false, statusMessage_);
   }
   ImGui::EndDisabled();
   ImGui::SameLine();
-  if (ImGui::Button("Save As...")) {
+  if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.save.as.d89163", "Save As...").c_str())) {
     ImGui::OpenPopup("MaterialSaveAsPopup");
   }
   if (ImGui::BeginPopup("MaterialSaveAsPopup")) {
-    ImGui::TextUnformatted("Path under Assets");
+    ImGui::TextUnformatted(TEXT::Localize("editor.ui.path.under.assets.9905f5").c_str());
     ImGui::SetNextItemWidth(340.0f);
     ImGui::InputText("##MaterialSaveAsPath", saveAsPath_.data(),
                      saveAsPath_.size());
-    if (ImGui::Button("Save Copy") &&
+    if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.save.copy.ec185a", "Save Copy").c_str()) &&
         SaveMaterial(scene, true, statusMessage_)) {
       ImGui::CloseCurrentPopup();
     }
@@ -162,75 +158,42 @@ void ModelMaterialWorkspaceController::DrawMaterialWindow(
   }
 
   if (source.kind == MaterialAssetKind::Instance) {
-    ImGui::SeparatorText("Material Instance");
-    ImGui::TextWrapped(
-        "Inherited values and overrides are edited in the Instance tab. "
-        "The model part still previews the resolved runtime material live.");
+    ImGui::SeparatorText(TEXT::Localize("editor.ui.material.instance.27dfb2").c_str());
+    ImGui::TextWrapped(TEXT::Localize("editor.ui.inherited.values.and.overrides.are.edited.in.the.instance.tab.th.44eb6a").c_str());
   } else if (source.kind == MaterialAssetKind::Ramp) {
-    ImGui::SeparatorText("Ramp Asset");
-    ImGui::TextWrapped(
-        "Edit the curve and colors in the Ramp tab, then select this Ramp "
-        "from a Ramp Diffuse or Multi Ramp node.");
+    ImGui::SeparatorText(TEXT::Localize("editor.ui.ramp.asset.5fb9d4").c_str());
+    ImGui::TextWrapped(TEXT::Localize("editor.ui.edit.the.curve.and.colors.in.the.ramp.tab.then.select.this.ramp..8a7644").c_str());
   } else if (source.kind == MaterialAssetKind::Profile) {
-    ImGui::SeparatorText("Material Profile");
-    ImGui::TextWrapped(
-        "Profiles group a base template and reusable stylized resources.");
+    ImGui::SeparatorText(TEXT::Localize("editor.ui.material.profile.3353df").c_str());
+    ImGui::TextWrapped(TEXT::Localize("editor.ui.profiles.group.a.base.template.and.reusable.stylized.resources.f4a3e0").c_str());
   }
 
   if (MaterialGraphData *graph =
           MATERIAL_GRAPH_UI::EditableGraph(source)) {
-    ImGui::SeparatorText("Graph Selection");
-    if (const MaterialGraphNodeData *node =
-            MATERIAL_GRAPH_UI::FindNode(*graph, selectedGraphNodeId_)) {
-      ImGui::TextWrapped("%s",
-                         node->displayName.empty()
-                             ? ToString(node->kind).data()
-                             : node->displayName.c_str());
-      ImGui::TextDisabled(
-          "Edit values and resources directly on the node card.");
-    } else if (!selectedGraphEdgeId_.empty()) {
-      ImGui::TextWrapped("A graph connection is selected. Delete or rewire "
-                         "it in the graph toolbar/canvas.");
-    } else {
-      ImGui::TextDisabled("Select a node or connection in the graph.");
-    }
-    if (ImGui::TreeNodeEx("Advanced Node Details",
-                          ImGuiTreeNodeFlags_SpanAvailWidth)) {
-      if (DrawMaterialGraphInspector(scene, source, *graph) &&
-          !selectedGraphEdgeId_.empty()) {
-        MaterialAssetData before = source;
-        const std::string deletedId = selectedGraphEdgeId_;
-        std::erase_if(graph->edges, [&deletedId](const auto &edge) {
-          return edge.id == deletedId;
-        });
-        selectedGraphEdgeId_.clear();
-        CommitMaterialMutation(std::move(before),
-                               "Delete material graph edge", scene);
-      }
-      ImGui::TreePop();
+    if (DrawMaterialGraphInspector(scene, source, *graph) && !selectedGraphEdgeId_.empty()) {
+      (void)DeleteSelectedGraphEdge(scene, statusMessage_);
     }
   }
 
   DrawPreviewLightingProperties();
 
-  if (ImGui::CollapsingHeader("Advanced Asset Actions")) {
+  if (ImGui::CollapsingHeader(TEXT::LocalizeWindow("editor.ui.advanced.asset.actions.e5ed94", "Advanced Asset Actions").c_str())) {
     const AssetGuid materialGuid =
         authoringDocument_.GetMaterialAssetGuid();
     const AssetTrashReferenceAnalysis references =
         AnalyzeAssetTrashReferences(scene.GetAssetDatabase(), materialGuid);
     ImGui::BeginDisabled(!materialGuid.IsValid() || references.IsReferenced());
-    if (ImGui::Button("Move Material to Trash...",
+    if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.move.material.to.trash.ca24ab", "Move Material to Trash...").c_str(),
                       ImVec2(-1.0f, 0.0f))) {
-      ImGui::OpenPopup("DeleteCurrentMaterialPopup");
+      ImGui::OpenPopup(TEXT::LocalizeWindow("editor.ui.deletecurrentmaterialpopup.6d5ce9", "DeleteCurrentMaterialPopup").c_str());
     }
     ImGui::EndDisabled();
     if (references.IsReferenced()) {
-      ImGui::TextDisabled(
-          "Restore or replace every reference before deleting this asset.");
+      ImGui::TextDisabled(TEXT::Localize("editor.ui.restore.or.replace.every.reference.before.deleting.this.asset.1b8e0b").c_str());
     }
   }
 
-  if (ImGui::BeginPopupModal("DeleteCurrentMaterialPopup", nullptr,
+  if (ImGui::BeginPopupModal(TEXT::LocalizeWindow("editor.ui.deletecurrentmaterialpopup.6d5ce9", "DeleteCurrentMaterialPopup").c_str(), nullptr,
                              ImGuiWindowFlags_AlwaysAutoResize)) {
     const AssetGuid materialGuid =
         authoringDocument_.GetMaterialAssetGuid();
@@ -238,7 +201,7 @@ void ModelMaterialWorkspaceController::DrawMaterialWindow(
                                     ? scene.GetAssetDatabase().FindByGuid(
                                           materialGuid)
                                     : nullptr;
-    ImGui::TextUnformatted("Move this material to project trash?");
+    ImGui::TextUnformatted(TEXT::Localize("editor.ui.move.this.material.to.project.trash.e366e7").c_str());
     if (record != nullptr) {
       ImGui::TextWrapped("%s",
                          record->sourcePath.generic_string().c_str());
@@ -246,7 +209,7 @@ void ModelMaterialWorkspaceController::DrawMaterialWindow(
     const AssetTrashReferenceAnalysis references =
         AnalyzeAssetTrashReferences(scene.GetAssetDatabase(), materialGuid);
     ImGui::BeginDisabled(references.IsReferenced());
-    if (ImGui::Button("Move to Trash", ImVec2(120.0f, 0.0f))) {
+    if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.move.to.trash.dffd3b", "Move to Trash").c_str(), ImVec2(120.0f, 0.0f))) {
       const AssetTrashResult deleted =
           MoveAssetToProjectTrash(scene.GetAssetDatabase(), materialGuid);
       statusMessage_ = deleted.message;
@@ -264,7 +227,7 @@ void ModelMaterialWorkspaceController::DrawMaterialWindow(
     }
     ImGui::EndDisabled();
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(100.0f, 0.0f))) {
+    if (ImGui::Button(TEXT::LocalizeWindow("ui.common.cancel", "Cancel").c_str(), ImVec2(100.0f, 0.0f))) {
       ImGui::CloseCurrentPopup();
     }
     ImGui::EndPopup();

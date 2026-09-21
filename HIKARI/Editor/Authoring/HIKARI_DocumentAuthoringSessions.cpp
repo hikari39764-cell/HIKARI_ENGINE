@@ -15,7 +15,11 @@
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Editor/HIKARI_EditorContext.h"
+#include "Editor/Authoring/HIKARI_EditorAuthoringPreview.h"
+#include "Editor/Authoring/HIKARI_SequencePreviewBindingResolver.h"
+#include "Scene/Sequencer/Drivers/HIKARI_CameraSequenceTrackDriver.h"
 #include <type_traits>
+#include <cmath>
 
 namespace HIKARI::EDITOR {
 namespace {
@@ -30,12 +34,19 @@ public:
     using DescribeDocument = std::function<nlohmann::json(const Controller&)>;
     using Registrar = std::function<void(EditorOperationRegistry&, Controller&, EditorWorkspaceHost&, SceneProvider)>;
     using RevealDocument = std::function<EditorWorkspaceOpenRequest(const Controller&)>;
+    using PreviewDocument = std::function<EditorOperationResult(const Controller&, DocumentSceneBase&,
+        const nlohmann::json&, EditorAuthoringPreview&)>;
 
     DocumentSession(SceneProvider scene, EditorWorkspaceHost& visibleHost, Registrar registrar,
-        OpenDocument open, DescribeDocument describe, RevealDocument reveal)
+        OpenDocument open, DescribeDocument describe, RevealDocument reveal, PreviewDocument preview = {})
         : scene_(std::move(scene)), visibleHost_(visibleHost), open_(std::move(open)),
-          describe_(std::move(describe)), reveal_(std::move(reveal)) {
+          describe_(std::move(describe)), reveal_(std::move(reveal)), preview_(std::move(preview)) {
         registrar(operations_, controller_, privateHost_, scene_);
+        if (preview_) capture_ = std::make_unique<EditorAuthoringPreview>(RENDER3D::RenderViewId{AllocateAuthoringPreviewViewId()});
+    }
+    bool HasInteractiveEdit() const override {
+        if constexpr (requires(const Controller& c) { c.HasInteractiveEdit(); }) return controller_.HasInteractiveEdit();
+        else return false;
     }
     EditorOperationRegistry& Operations() override { return operations_; }
     std::any ControllerAddress() override { return &controller_; }
@@ -62,6 +73,27 @@ public:
         return {ok, ok ? "OK" : "OPEN_FAILED", message};
     }
     nlohmann::json Describe() const override { return describe_(controller_); }
+    EditorOperationResult Preview(const nlohmann::json& parameters) override {
+        if (!preview_) return EditorAuthoringSession::Preview(parameters);
+        auto* scene = scene_();
+        if (!scene) return {false,"NO_SCENE","No scene is available for this preview."};
+        if (capture_->IsPending()) return {false,"CAPTURE_BUSY","A preview is already pending."};
+        captureScene_ = scene;
+        captureRevision_ = scene->GetSceneDocumentRevision();
+        auto result = preview_(controller_,*scene,parameters,*capture_);
+        if (result.ok) capture_->Tick(true);
+        return result;
+    }
+    EditorOperationResult PreviewStatus(const nlohmann::json& parameters) override {
+        if (!capture_) return EditorAuthoringSession::PreviewStatus(parameters);
+        const auto* scene = scene_();
+        if (scene != captureScene_ || !scene || scene->GetSceneDocumentRevision() != captureRevision_) {
+            capture_->Cancel();
+            return {false,"DOCUMENT_CONFLICT","The scene changed while rendering the preview; capture it again."};
+        }
+        return capture_->Poll();
+    }
+    void CancelPreview() override { if (capture_) capture_->Cancel(); }
     void Tick(uint64_t, float) override {
         privateHost_.CancelPending();
         if constexpr (requires(Controller& controller) { controller.TickBackgroundTasks(); }) controller_.TickBackgroundTasks();
@@ -79,7 +111,47 @@ private:
     OpenDocument open_;
     DescribeDocument describe_;
     RevealDocument reveal_;
+    PreviewDocument preview_;
+    std::unique_ptr<EditorAuthoringPreview> capture_;
+    const DocumentSceneBase* captureScene_ = nullptr;
+    uint64_t captureRevision_ = 0;
 };
+
+EditorOperationResult PreviewCinematics(const CinematicsWorkspaceController& controller,
+    DocumentSceneBase& scene, const nlohmann::json& parameters, EditorAuthoringPreview& capture) {
+    const auto* sequence = controller.GetSequenceDocument().GetAssetSequence();
+    if (!sequence) return {false,"NO_SEQUENCE_ASSET","Open a Sequence asset before requesting a preview."};
+    const float time = parameters.value("time",0.0f);
+    if (!std::isfinite(time) || time < 0 || time > sequence->durationSeconds)
+        return {false,"INVALID_PREVIEW_TIME","Preview time must lie within the sequence duration."};
+    SEQUENCER::SequenceBindingContext bindings;
+    RestoreSequencePreviewBindings(scene.GetSceneDocument(),controller.GetSequenceDocument().GetAssetGuid(),*sequence,bindings);
+    RENDER3D::EDITORVIEW::EditorInteractiveViewRequest request;
+    request.viewId = capture.ViewId();
+    request.purpose = RENDER3D::RenderViewPurpose::ToolPreview;
+    request.width = std::clamp(parameters.value("width",960),128,1536);
+    request.height = std::clamp(parameters.value("height",540),128,1536);
+    CameraDirector resolver;
+    CinematicCameraEvaluation evaluation;
+    if (!SEQUENCER::EvaluateSequenceCameraView(*sequence,bindings,scene.GetWorld(),resolver,time,
+            static_cast<float>(request.width)/request.height,evaluation,request.cameraFrame.camera))
+        return {false,"CAMERA_EVALUATION_FAILED","No valid shot camera or required binding resolves at this time.",{{"time",time}}};
+    request.cameraFrame.valid = true;
+    request.cameraFrame.sourceCameraObjectId = evaluation.cameraObjectId.value;
+    request.sceneRevision = scene.GetSceneDocumentRevision();
+    request.contentRevision = std::hash<std::string>{}(controller.DescribeAuthoring(scene).dump() + std::to_string(time));
+    request.cameraFrame.revision = request.contentRevision;
+    request.visible = true;
+    request.drawDebug = false;
+    RENDER3D::EDITORVIEW::SubmitRequest(request);
+    const auto& camera = request.cameraFrame.camera;
+    const auto eye = camera.GetPosition();
+    return capture.Start(scene.GetAssetDatabase().GetLibraryRoot(),
+        {{"label","Sequence camera preview"},{"assetGuid",controller.GetSequenceDocument().GetAssetGuid().value},
+         {"time",time},{"shotId",evaluation.shotId},{"documentRevision",request.contentRevision},
+         {"sceneRevision",request.sceneRevision},{"eye",{eye.x,eye.y,eye.z}},
+         {"coverage",{{"cameraAnimation",true},{"transitions",true},{"sceneSimulation",false},{"sequenceScreenEffects",false}}}});
+}
 }
 
 void RegisterDocumentAuthoringSessions(EditorAuthoringSessionHost& host,
@@ -148,9 +220,11 @@ void RegisterDocumentAuthoringSessions(EditorAuthoringSessionHost& host,
                 return guid.IsValid() ? controller.RequestOpenSequenceAsset(owner,guid,message) : controller.RequestNewSequenceAsset(owner,message);
             },
             [](const C& controller) { return nlohmann::json{{"assetGuid",controller.GetSequenceDocument().GetAssetGuid().value},
-                {"dirty",controller.IsSequenceDocumentDirty()}, {"preview",false}}; },
+                {"name",controller.GetSequenceDocument().GetAssetSequence() ? controller.GetSequenceDocument().GetAssetSequence()->name : std::string{}},
+                {"dirty",controller.IsSequenceDocumentDirty()}, {"preview",true},
+                {"previewScope","Sequence camera at requested time over the current scene; scene simulation and sequence post effects are not sampled."}}; },
             [](const C& controller) { EditorWorkspaceOpenRequest request{}; request.workspaceId=EditorWorkspaceId::Cinematics;
-                return request; });
+                return request; }, PreviewCinematics);
     }});
 }
 }

@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 
 #include <algorithm>
@@ -103,14 +104,13 @@ void ModelMaterialWorkspaceController::DrawInlineRampEditorPopup(
     ImGui::OpenPopup("Ramp Editor###ModelMaterial/InlineRampEditor");
     inlineRampPopupRequested_ = false;
   }
-  if (!ImGui::BeginPopupModal(
-          "Ramp Editor###ModelMaterial/InlineRampEditor", nullptr,
+  if (!ImGui::BeginPopupModal(TEXT::LocalizeWindow("editor.ui.ramp.editor.0cb794", "ModelMaterial/InlineRampEditor").c_str(), nullptr,
           ImGuiWindowFlags_AlwaysAutoResize)) {
     return;
   }
   if (!inlineRampDocument_.HasMaterial()) {
-    ImGui::TextDisabled("No Ramp is open.");
-    if (ImGui::Button("Close")) {
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.no.ramp.is.open.f426b9").c_str());
+    if (ImGui::Button(TEXT::LocalizeWindow("ui.input.close", "Close").c_str())) {
       ImGui::CloseCurrentPopup();
     }
     ImGui::EndPopup();
@@ -121,11 +121,9 @@ void ModelMaterialWorkspaceController::DrawInlineRampEditorPopup(
   MaterialRampData &ramp = source.ramp;
   ImGui::Text("%s%s", source.materialName.c_str(),
               inlineRampDocument_.IsMaterialDirty() ? " *" : "");
-  ImGui::TextDisabled(
-      "This Ramp is a reusable project asset. Save updates every material "
-      "that references it.");
+  ImGui::TextDisabled(TEXT::Localize("editor.ui.this.ramp.is.a.reusable.project.asset.save.updates.every.materia.4e0300").c_str());
   ImGui::BeginDisabled(!inlineRampDocument_.CanUndo());
-  if (ImGui::Button("Undo")) {
+  if (ImGui::Button(TEXT::LocalizeWindow("menu.edit.undo", "Undo").c_str())) {
     ModelMaterialWorkspaceDocument::ChangedDomain domain{};
     std::string label{};
     (void)inlineRampDocument_.Undo(domain, label);
@@ -133,14 +131,14 @@ void ModelMaterialWorkspaceController::DrawInlineRampEditorPopup(
   ImGui::EndDisabled();
   ImGui::SameLine();
   ImGui::BeginDisabled(!inlineRampDocument_.CanRedo());
-  if (ImGui::Button("Redo")) {
+  if (ImGui::Button(TEXT::LocalizeWindow("menu.edit.redo", "Redo").c_str())) {
     ModelMaterialWorkspaceDocument::ChangedDomain domain{};
     std::string label{};
     (void)inlineRampDocument_.Redo(domain, label);
   }
   ImGui::EndDisabled();
 
-  if (ImGui::BeginCombo("Interpolation",
+  if (ImGui::BeginCombo(TEXT::LocalizeWindow("ui.vfx.text.Interpolation", "Interpolation").c_str(),
                         ToString(ramp.interpolation).data())) {
     for (MaterialRampInterpolation value : {
              MaterialRampInterpolation::Constant,
@@ -157,7 +155,7 @@ void ModelMaterialWorkspaceController::DrawInlineRampEditorPopup(
     ImGui::EndCombo();
   }
 
-  ImGui::SeparatorText("Gradient");
+  ImGui::SeparatorText(TEXT::Localize("ui.vfx.text.Gradient").c_str());
   MATERIAL_GRAPH_UI::DrawRampStrip(ramp, 520.0f, 72.0f);
   const ImVec2 stripMin = ImGui::GetItemRectMin();
   const ImVec2 stripMax = ImGui::GetItemRectMax();
@@ -180,7 +178,7 @@ void ModelMaterialWorkspaceController::DrawInlineRampEditorPopup(
     }
   }
 
-  if (ImGui::Button("Add Point")) {
+  if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.add.point.f353ad", "Add Point").c_str())) {
     MaterialAssetData before = source;
     MaterialRampPointData point{};
     point.id = "RampPoint_" + std::to_string(authoringIdCounter_++);
@@ -194,7 +192,7 @@ void ModelMaterialWorkspaceController::DrawInlineRampEditorPopup(
   ImGui::SameLine();
   ImGui::BeginDisabled(ramp.points.size() <= 2u ||
                        inlineRampPointId_.empty());
-  if (ImGui::Button("Delete Point")) {
+  if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.delete.point.325db5", "Delete Point").c_str())) {
     MaterialAssetData before = source;
     std::erase_if(ramp.points, [this](const auto &point) {
       return point.id == inlineRampPointId_;
@@ -211,10 +209,9 @@ void ModelMaterialWorkspaceController::DrawInlineRampEditorPopup(
         return point.id == inlineRampPointId_;
       });
   if (selected != ramp.points.end()) {
-    ImGui::SeparatorText("Selected Point");
+    ImGui::SeparatorText(TEXT::Localize("editor.ui.selected.point.f6866e").c_str());
     MaterialAssetData beforePosition = source;
-    const bool moved = ImGui::SliderFloat(
-        "Position", &selected->position.x, 0.0f, 1.0f);
+    const bool moved = ImGui::SliderFloat(TEXT::LocalizeWindow("ui.vfx.text.Position", "Position").c_str(), &selected->position.x, 0.0f, 1.0f);
     if (ImGui::IsItemActivated() && !inlineRampGestureBefore_) {
       inlineRampGestureBefore_ = std::move(beforePosition);
       inlineRampGestureLabel_ = "Move Ramp point";
@@ -228,7 +225,7 @@ void ModelMaterialWorkspaceController::DrawInlineRampEditorPopup(
       inlineRampGestureBefore_.reset();
     }
     MaterialAssetData beforeColor = source;
-    (void)ImGui::ColorEdit4("Color", &selected->color.x,
+    (void)ImGui::ColorEdit4(TEXT::LocalizeWindow("ui.vfx.text.Color", "Color").c_str(), &selected->color.x,
                             ImGuiColorEditFlags_Float);
     if (ImGui::IsItemActivated() && !inlineRampGestureBefore_) {
       inlineRampGestureBefore_ = std::move(beforeColor);
@@ -243,7 +240,7 @@ void ModelMaterialWorkspaceController::DrawInlineRampEditorPopup(
 
   ImGui::Separator();
   ImGui::BeginDisabled(!inlineRampDocument_.IsMaterialDirty());
-  if (ImGui::Button("Save Ramp", {120.0f, 0.0f})) {
+  if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.save.ramp.db040f", "Save Ramp").c_str(), {120.0f, 0.0f})) {
     ASSETS::MATERIAL::MaterialAssetAuthoringService service(
         scene.GetAssetDatabase());
     const ASSETS::MATERIAL::MaterialAuthoringResult saved = service.Update(
@@ -265,7 +262,7 @@ void ModelMaterialWorkspaceController::DrawInlineRampEditorPopup(
   }
   ImGui::EndDisabled();
   ImGui::SameLine();
-  if (ImGui::Button("Cancel", {100.0f, 0.0f})) {
+  if (ImGui::Button(TEXT::LocalizeWindow("ui.common.cancel", "Cancel").c_str(), {100.0f, 0.0f})) {
     inlineRampDocument_.CloseMaterial();
     inlineRampGestureBefore_.reset();
     ImGui::CloseCurrentPopup();

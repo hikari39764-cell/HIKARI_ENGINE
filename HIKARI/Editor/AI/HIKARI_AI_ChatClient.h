@@ -21,15 +21,21 @@ namespace HIKARI::EDITOR::AI_ASSISTANT {
         nlohmann::json data = nlohmann::json::object();
     };
 
+    inline constexpr int kDefaultAiToolRounds = 128;
+    inline constexpr int kMaxAiToolRounds = 4096;
+    struct AiToolReply;
     struct AiChatConfig {
         std::string apiKey;
         std::string baseUrl;
         std::string model;
         bool valid = false;
         bool imageInputEnabled = true;
-        int maxToolRounds = 40;
+        int maxToolRounds = kDefaultAiToolRounds;
+        int maxTaskTokens = 0; // Reported input + output per run; zero disables the soft limit.
+        int maxNoProgressRounds = 12; // Zero disables automatic pausing; diagnostics still appear.
         int toolHistoryKiB = 24;
         bool requestUsage = true;
+        bool editorTools = false;
         std::function<bool()> shouldCancel{};
     };
 
@@ -54,7 +60,6 @@ namespace HIKARI::EDITOR::AI_ASSISTANT {
     bool SaveAiChatConfig(const AiChatConfig& config);
     bool ResetAiChatConfig();
     std::string GetAiUserConfigPath();
-    std::string GetAiVisionSkillEnvPath();
     std::string AiJsonEscape(const std::string& value);
     bool RunApiRequest(
         const AiChatConfig& config,
@@ -67,14 +72,19 @@ namespace HIKARI::EDITOR::AI_ASSISTANT {
     std::string ExtractJsonNumberField(
         std::string_view json,
         std::string_view field);
-    std::vector<std::string> ExtractAllActionJson(
-        const std::string& reply);
     bool RunChatCompletionsStreaming(
         const AiChatConfig& config,
         const std::vector<AiChatMessage>& messages,
         const AiChatStreamCallback& onDelta,
         std::string& outFull,
         std::string& outError, AiChatUsage* usage = nullptr,
-        AiChatRequestStats* stats = nullptr);
+        AiChatRequestStats* stats = nullptr, AiToolReply* toolReply = nullptr);
+
+    using AiChatCompletion = std::function<decltype(RunChatCompletionsStreaming)>;
+    bool LoadAiVisionConfig(AiChatConfig& config);
+    bool SaveAiVisionConfig(const AiChatConfig& config);
+    bool ResetAiVisionConfig();
+    bool RunVisionAnalysis(const AiChatConfig& config, const std::string& imagePath,
+        const std::string& prompt, std::string& outText, std::string& outError);
 
 } // namespace HIKARI::EDITOR::AI_ASSISTANT

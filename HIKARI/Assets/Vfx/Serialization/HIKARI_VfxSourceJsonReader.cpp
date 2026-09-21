@@ -6,23 +6,25 @@
 #include "Assets/Vfx/HIKARI_VfxValidation.h"
 
 namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
+    using Json = nlohmann::json;
+    bool ReadVec4(const Json& node, MATH::Vec4& outValue) {
+        if (!node.is_array() || node.size() != 4u ||
+            !node[0].is_number() || !node[1].is_number() ||
+            !node[2].is_number() || !node[3].is_number()) {
+            return false;
+        }
+        outValue = {
+            node[0].get<float>(),
+            node[1].get<float>(),
+            node[2].get<float>(),
+            node[3].get<float>(),
+        };
+        return true;
+    }
     namespace {
         using Json = nlohmann::json;
 
-        bool ReadVec4(const Json& node, MATH::Vec4& outValue) {
-            if (!node.is_array() || node.size() != 4u ||
-                !node[0].is_number() || !node[1].is_number() ||
-                !node[2].is_number() || !node[3].is_number()) {
-                return false;
-            }
-            outValue = {
-                node[0].get<float>(),
-                node[1].get<float>(),
-                node[2].get<float>(),
-                node[3].get<float>(),
-            };
-            return true;
-        }
+
 
         template<class Distribution, class ReadNumber>
         bool ReadDistributionData(

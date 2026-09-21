@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 
 #include <algorithm>
@@ -38,13 +39,13 @@ const char *EnvironmentModeLabel(
     ModelMaterialWorkspaceController::PreviewEnvironmentMode mode) noexcept {
   switch (mode) {
   case ModelMaterialWorkspaceController::PreviewEnvironmentMode::RuntimeMatch:
-    return "Runtime Asset Lighting";
+    return TEXT::LocalizeCStr("editor.ui.runtime.asset.lighting.d00c8b");
   case ModelMaterialWorkspaceController::PreviewEnvironmentMode::SceneMatch:
-    return "Scene Match";
+    return TEXT::LocalizeCStr("editor.ui.scene.match.61e8fc");
   case ModelMaterialWorkspaceController::PreviewEnvironmentMode::StudioInspect:
-    return "Studio Inspect";
+    return TEXT::LocalizeCStr("editor.ui.studio.inspect.7ebcc0");
   }
-  return "Runtime Asset Lighting";
+  return TEXT::LocalizeCStr("editor.ui.runtime.asset.lighting.d00c8b");
 }
 
 RENDER3D::EDITORVIEW::EditorInteractiveShadingMode ResolveShadingMode(
@@ -270,7 +271,7 @@ void ModelMaterialWorkspaceController::InitializePreviewLighting() {
 
 void ModelMaterialWorkspaceController::DrawPreviewCameraControls() {
 #if defined(HIKARI_WITH_EDITOR)
-  if (ImGui::DragFloat("Move Speed", &previewCameraSpeedScale_,
+  if (ImGui::DragFloat(TEXT::LocalizeWindow("ui.debugCamera.moveSpeed", "Move Speed").c_str(), &previewCameraSpeedScale_,
                        0.05f, 0.05f, 10.0f)) {
     EditorDirectorCameraSettings &navigation =
         cameraController_.Settings();
@@ -278,7 +279,7 @@ void ModelMaterialWorkspaceController::DrawPreviewCameraControls() {
         previewCameraBaseMoveSpeed_ * previewCameraSpeedScale_,
         0.01f, 1000.0f);
   }
-  if (ImGui::DragFloat("Wheel Zoom Step", &previewCameraWheelStepScale_,
+  if (ImGui::DragFloat(TEXT::LocalizeWindow("editor.ui.wheel.zoom.step.bfd10b", "Wheel Zoom Step").c_str(), &previewCameraWheelStepScale_,
                        0.05f, 0.05f, 10.0f)) {
     EditorDirectorCameraSettings &navigation =
         cameraController_.Settings();
@@ -289,7 +290,7 @@ void ModelMaterialWorkspaceController::DrawPreviewCameraControls() {
   float fovDegrees = previewCameraFovYRad_ > 0.01f
       ? previewCameraFovYRad_ * 57.2957795131f
       : 60.0f;
-  if (ImGui::DragFloat("FOV (deg)", &fovDegrees,
+  if (ImGui::DragFloat(TEXT::LocalizeWindow("editor.ui.fov.deg.dedfeb", "FOV (deg)").c_str(), &fovDegrees,
                        0.5f, 20.0f, 110.0f)) {
     previewCameraFovYRad_ = fovDegrees * 0.0174532925f;
     cameraController_.SetFovYRad(previewCameraFovYRad_);
@@ -302,34 +303,30 @@ void ModelMaterialWorkspaceController::DrawPreviewEnvironmentControls() {
 #if defined(HIKARI_WITH_EDITOR)
   const bool studioInspect =
       previewEnvironmentMode_ == PreviewEnvironmentMode::StudioInspect;
-  ImGui::Text("Mode: %s", EnvironmentModeLabel(previewEnvironmentMode_));
+  ImGui::Text(TEXT::Localize("editor.ui.mode.s.2fc24d").c_str(), EnvironmentModeLabel(previewEnvironmentMode_));
   ImGui::TextWrapped(
       previewEnvironmentMode_ == PreviewEnvironmentMode::RuntimeMatch
           ? "Uses the active scene environment and lights passed to the "
             "same runtime renderer."
           : "Uses the material workspace sky and movable inspection light.");
   ImGui::BeginDisabled(!studioInspect);
-  ImGui::SeparatorText("Studio Inspect Environment");
-  ImGui::TextDisabled(
-      "Create lights with the + icon, then select their viewport glyph.");
+  ImGui::SeparatorText(TEXT::Localize("editor.ui.studio.inspect.environment.f9eb92").c_str());
+  ImGui::TextDisabled(TEXT::Localize("editor.ui.create.lights.with.the.icon.then.select.their.viewport.glyph.e5730c").c_str());
   bool changed = false;
-  if (ImGui::Checkbox("Sky", &previewSkyEnabled_)) {
+  if (ImGui::Checkbox(TEXT::LocalizeWindow("ui.environment.sky", "Sky").c_str(), &previewSkyEnabled_)) {
     previewEnvironment_.sky.enabled = previewSkyEnabled_;
     changed = true;
   }
-  changed = ImGui::DragFloat("Sky Rotation", &previewEnvironment_.sky.yaw,
+  changed = ImGui::DragFloat(TEXT::LocalizeWindow("editor.ui.sky.rotation.ee7e3f", "Sky Rotation").c_str(), &previewEnvironment_.sky.yaw,
                              0.01f) || changed;
-  changed = ImGui::DragFloat("Sky Intensity", &previewEnvironment_.sky.exposure,
+  changed = ImGui::DragFloat(TEXT::LocalizeWindow("ui.environment.skyIntensity", "Sky Intensity").c_str(), &previewEnvironment_.sky.exposure,
                              0.01f, 0.0f, 32.0f) || changed;
-  changed = ImGui::DragFloat(
-                "IBL Reflections", &previewEnvironment_.sky.reflectionIntensity,
+  changed = ImGui::DragFloat(TEXT::LocalizeWindow("editor.ui.ibl.reflections.48780d", "IBL Reflections").c_str(), &previewEnvironment_.sky.reflectionIntensity,
                 0.01f, 0.0f, 4.0f) || changed;
   if (ImGui::IsItemHovered()) {
-    ImGui::SetTooltip(
-        "Specular reflection strength from the visible DefaultSky. "
-        "Studio Inspect never samples scene reflection probes.");
+    ImGui::SetTooltip(TEXT::Localize("editor.ui.specular.reflection.strength.from.the.visible.defaultsky.studio..d42671").c_str());
   }
-  changed = ImGui::DragFloat("Ambient", &previewEnvironment_.ambient.intensity,
+  changed = ImGui::DragFloat(TEXT::LocalizeWindow("ui.environment.ambient", "Ambient").c_str(), &previewEnvironment_.ambient.intensity,
                              0.01f, 0.0f, 8.0f) || changed;
   if (changed) {
     MarkPreviewLightingChanged();

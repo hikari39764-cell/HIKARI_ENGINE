@@ -3,6 +3,8 @@
 #include <Windows.h>
 
 #include <chrono>
+#include <algorithm>
+#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
@@ -15,6 +17,8 @@ namespace HIKARI::CORE {
         std::ofstream gLogFile;
         bool gInitialized = false;
         std::filesystem::path gLogPath;
+        std::deque<LogRecord> gHistory;
+        LogHistoryInfo gHistoryInfo{0, 0, 0, 4000};
 
         std::tm ToLocalTime(std::time_t value) {
             std::tm tm{};
@@ -100,14 +104,41 @@ namespace HIKARI::CORE {
         gInitialized = false;
     }
 
-    void Log(LogLevel level, std::string_view message) {
+    void LogMessage(LogLevel level, std::string_view source, std::string_view message, std::string_view resource) {
         std::lock_guard lock(gLogMutex);
-
+        const auto timestamp = FormatTimestampForLine();
+        gHistory.push_back({++gHistoryInfo.latestSequence, level, timestamp, std::string(source), std::string(message), std::string(resource)});
+        if (level == LogLevel::Warn) ++gHistoryInfo.warnings;
+        if (level == LogLevel::Error) ++gHistoryInfo.errors;
+        while (gHistory.size() > gHistoryInfo.capacity) gHistory.pop_front();
         std::ostringstream oss;
-        oss << "[" << FormatTimestampForLine() << "] "
+        oss << "[" << timestamp << "] "
             << "[" << ToText(level) << "] "
             << message;
         OutputLine(oss.str());
+    }
+
+    void Log(LogLevel level, std::string_view message) {
+        std::string_view source = level == LogLevel::D3D12 ? "D3D12" : "Engine";
+        if (message.starts_with('[')) {
+            const auto close = message.find(']');
+            if (close != std::string_view::npos && close > 1 && close < 64) source = message.substr(1, close - 1);
+        }
+        LogMessage(level, source, message);
+    }
+
+    std::vector<LogRecord> ReadLogHistory(uint64_t afterSequence) {
+        std::lock_guard lock(gLogMutex);
+        std::vector<LogRecord> records;
+        if (afterSequence >= gHistoryInfo.latestSequence) return records;
+        for (const auto& record : gHistory) if (record.sequence > afterSequence) records.push_back(record);
+        return records;
+    }
+    LogHistoryInfo GetLogHistoryInfo() { std::lock_guard lock(gLogMutex); return gHistoryInfo; }
+    void SetLogHistoryCapacity(size_t capacity) {
+        std::lock_guard lock(gLogMutex);
+        gHistoryInfo.capacity = std::clamp<size_t>(capacity, 200, 20000);
+        while (gHistory.size() > gHistoryInfo.capacity) gHistory.pop_front();
     }
 
     void LogInfo(std::string_view message) {

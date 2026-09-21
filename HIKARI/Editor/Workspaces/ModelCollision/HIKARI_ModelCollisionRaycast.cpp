@@ -31,7 +31,7 @@ MATH::Vec3 TransformPoint(const MATH::Mat4 &transform,
   return {result.x * inverseW, result.y * inverseW, result.z * inverseW};
 }
 
-bool IntersectRayTriangle(const ModelCollisionPointerRay &ray,
+bool IntersectRayTriangle(const EditorPointerRay &ray,
                           const MATH::Vec3 &a, const MATH::Vec3 &b,
                           const MATH::Vec3 &c, float &outDistance) noexcept {
   constexpr float epsilon = 1.0e-7f;
@@ -61,7 +61,7 @@ bool IntersectRayTriangle(const ModelCollisionPointerRay &ray,
   return true;
 }
 
-bool IntersectGeometry(const ModelCollisionPointerRay &ray,
+bool IntersectGeometry(const EditorPointerRay &ray,
                        const std::vector<MATH::Vec3> &vertices,
                        const std::vector<uint32_t> &indices,
                        const MATH::Mat4 &transform,
@@ -99,10 +99,10 @@ bool IntersectGeometry(const ModelCollisionPointerRay &ray,
   return true;
 }
 
-ModelCollisionPointerRay
-TransformRay(const ModelCollisionPointerRay &ray,
+EditorPointerRay
+TransformRay(const EditorPointerRay &ray,
              const MATH::Mat4 &inverseTransform) noexcept {
-  ModelCollisionPointerRay local{};
+  EditorPointerRay local{};
   local.origin = TransformPoint(inverseTransform, ray.origin);
   const MATH::Vec3 end =
       TransformPoint(inverseTransform, ray.origin + ray.direction);
@@ -110,7 +110,7 @@ TransformRay(const ModelCollisionPointerRay &ray,
   return local;
 }
 
-bool IntersectRaySphere(const ModelCollisionPointerRay &ray,
+bool IntersectRaySphere(const EditorPointerRay &ray,
                         const MATH::Vec3 &center, float radius,
                         float &outDistance) noexcept {
   const MATH::Vec3 offset = ray.origin - center;
@@ -131,7 +131,7 @@ bool IntersectRaySphere(const ModelCollisionPointerRay &ray,
   return true;
 }
 
-bool IntersectRayCapsule(const ModelCollisionPointerRay &ray, float radius,
+bool IntersectRayCapsule(const EditorPointerRay &ray, float radius,
                          float height, float &outDistance) noexcept {
   const float halfSegment = (std::max)(0.0f, height * 0.5f - radius);
   const MATH::Vec3 a{0.0f, -halfSegment, 0.0f};
@@ -177,14 +177,14 @@ bool IntersectRayCapsule(const ModelCollisionPointerRay &ray, float radius,
 }
 
 bool IntersectPrimitiveShape(
-    const ModelCollisionPointerRay &worldRay,
+    const EditorPointerRay &worldRay,
     const ASSETS::COLLISION::ModelCollisionShape &shape,
     float &outDistance) noexcept {
   const MATH::Quat rotation = MATH::Quat::FromEulerXYZ(
       shape.rotationEulerDegrees.x * kDegreesToRadians,
       shape.rotationEulerDegrees.y * kDegreesToRadians,
       shape.rotationEulerDegrees.z * kDegreesToRadians);
-  const ModelCollisionPointerRay ray =
+  const EditorPointerRay ray =
       TransformRay(worldRay, MATH::Inverse(MATH::Mat4::TRS(
                                  shape.center, rotation, {1.0f, 1.0f, 1.0f})));
   switch (shape.type) {
@@ -203,7 +203,7 @@ bool IntersectPrimitiveShape(
 }
 } // namespace
 
-bool IntersectModelCollisionBounds(const ModelCollisionPointerRay &ray,
+bool IntersectModelCollisionBounds(const EditorPointerRay &ray,
                                    const Bounds &bounds,
                                    float &outDistance) noexcept {
   if (!BOUNDS::IsUsable(bounds)) {
@@ -245,7 +245,7 @@ float ComputeModelCollisionBoundsVolume(const Bounds &bounds) noexcept {
 }
 
 bool IntersectModelCollisionShapeExact(
-    const ModelCollisionPointerRay &ray,
+    const EditorPointerRay &ray,
     const ASSETS::COLLISION::ModelCollisionShape &shape,
     float &outDistance) noexcept {
   if (shape.type != ASSETS::COLLISION::CollisionGeometryShapeType::ConvexHull &&
@@ -263,7 +263,7 @@ bool IntersectModelCollisionShapeExact(
 }
 
 bool IntersectModelCollisionSourceNodeExact(
-    const ModelCollisionPointerRay &ray, const ModelPreviewNode &node,
+    const EditorPointerRay &ray, const ModelPreviewNode &node,
     const ModelAsset &model, float &outDistance) noexcept {
   if (node.meshIndex < 0 ||
       static_cast<size_t>(node.meshIndex) >= model.meshes.size()) {

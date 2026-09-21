@@ -1,232 +1,217 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "HIKARI_AI_AssistantSession.h"
 #include "HIKARI_AI_MessageText.h"
+#include "HIKARI_AI_ToolProtocol.h"
+#include "HIKARI_AI_RequestContext.h"
 #include <algorithm>
-#include <utility>
-#include <chrono>
-namespace HIKARI::EDITOR {
+#include <map>
+#include <set>
 
-void AiAssistantSession::RunConversation(const std::string& userText) {
-    AI_ASSISTANT::AiChatConfig config = SnapshotConfig();
-    config.shouldCancel=[this] { return stopRequested_.load(); };
-    std::vector<AI_ASSISTANT::AiChatMessage> conversation;
-    {
-        std::lock_guard<std::mutex> lock(messageMutex_);
-        conversation = messages_;
+namespace HIKARI::EDITOR {
+namespace {
+// 中断した呼び出しを再実行せず、欠けた応答だけを閉じる。
+void SealInterruptedCalls(std::vector<AI_ASSISTANT::AiChatMessage>& messages) {
+    std::set<std::string> pending;
+    for (const auto& message : messages) {
+        if (message.data.contains("_toolCalls"))
+            for (const auto& call : message.data["_toolCalls"]) pending.insert(call.at("id"));
+        if (message.data.contains("_toolCallId")) pending.erase(message.data["_toolCallId"].get<std::string>());
     }
-    (void)userText;
-    int consecutiveFailureRounds = 0;
-    int protocolRepairRounds = 0;
-    const int maxToolRounds = std::clamp(config.maxToolRounds, 1, 120);
-    std::string failureSummary;
-    const std::string systemPrompt = BuildSystemPrompt();
-    const auto executeTask=[this](const std::string& json) {
-        auto parameters=nlohmann::json::parse(json);
-        parameters["_backgroundTask"]=true;
-        return ExecuteRequest(parameters.dump());
+    for (const auto& id : pending) messages.push_back({"tool",
+        "Interrupted. Some actions may already have completed; inspect the document before retrying. No automatic replay.",
+        {}, {{"_toolCallId",id},{"ok",false},{"code","INTERRUPTED"}}});
+}
+}
+void AiAssistantSession::RunConversation(bool resume) {
+    using namespace AI_ASSISTANT;
+    using Json = nlohmann::json;
+    auto config = SnapshotConfig();
+    config.shouldCancel = [this] { return stopRequested_.load(); };
+    config.editorTools = true;
+    AiTaskCheckpoint task;
+    { std::lock_guard lock(messageMutex_); task = taskCheckpoint_; }
+    if (!resume) task = {true, BuildSystemPrompt(), taskContext_, SnapshotMessages()};
+    auto& conversation = task.messages;
+    SealInterruptedCalls(conversation);
+    if (resume) conversation.push_back({"user",
+        "继续原任务。已完成的操作不要重做。用户可能修改过文档；先按需核对相关文档版本和会话。当前编辑器状态：\n" + SnapshotContext()});
+    const auto checkpoint = [&] {
+        std::lock_guard lock(messageMutex_);
+        taskCheckpoint_ = task;
+        SealInterruptedCalls(taskCheckpoint_.messages);
+        conversationDirty_.store(true);
     };
-    for (int turn = 0; turn < maxToolRounds; ++turn) {
-        if (stopRequested_.load()) {
-            return;
-        }
-        SetActivity(turn == 0 ? "planning" : "review");
-        std::vector<AI_ASSISTANT::AiChatMessage> request = conversation;
-        std::string roundContext = "本次任务第 " +
-            std::to_string(turn + 1) + "/" +
-            std::to_string(maxToolRounds) + " 轮。";
-        if (consecutiveFailureRounds >= 2) {
-            roundContext +=
-                " 你已连续失败 " +
-                std::to_string(consecutiveFailureRounds) +
-                " 轮。结合错误检查原因，避免重复无效操作。";
-        }
-        request.push_back({"user", std::move(roundContext)});
-        if (!taskContext_.empty()) request.insert(request.begin(),
-            {"user", "任务开始时的编辑器快照（前台状态；目标草稿以 sessionId 的查询结果为准）：\n" + taskContext_});
-        request.insert(
-            request.begin(),
-            AI_ASSISTANT::AiChatMessage{
-                "system", systemPrompt });
-        std::string reply;
-        std::string error;
-        AI_ASSISTANT::AiChatUsage usage;
-        AI_ASSISTANT::AiChatRequestStats requestStats;
-        {
-            std::lock_guard<std::mutex> lock(streamMutex_);
-            streamingPartial_.clear();
-            streamingActive_ = true;
-        }
-        const bool streamOk =
-            AI_ASSISTANT::RunChatCompletionsStreaming(
-                config,
-                request,
-                [this](const std::string& delta) {
-                    std::lock_guard<std::mutex> lock(streamMutex_);
-                    streamingPartial_ += delta;
-                    return !stopRequested_.load();
-                },
-                reply,
-                error, &usage, &requestStats);
-        RecordUsage(usage, requestStats);
-        {
-            std::lock_guard<std::mutex> lock(streamMutex_);
-            streamingActive_ = false;
-        }
+    struct OnExit { std::function<void()> save; ~OnExit() { save(); } } saveOnExit{checkpoint};
+    const int maxRounds = std::clamp(config.maxToolRounds, 1, kMaxAiToolRounds);
+    int noToolRounds = 0, noProgressRounds = 0;
+    int64_t runTokens = 0;
+    AiProgressTracker progress;
+    struct CachedCall { std::string arguments; AiChatMessage result; };
+    std::map<std::string, CachedCall> completedCalls;
+    for (const auto& message : conversation) {
+        if (message.role == "tool") progress.Observe(message.data);
+        if (message.data.contains("_toolCalls")) for (const auto& call : message.data["_toolCalls"])
+            completedCalls[call.at("id")] = {call["function"]["name"].get<std::string>() + call["function"]["arguments"].get<std::string>(), {}};
+        if (message.data.contains("_toolCallId")) completedCalls[message.data["_toolCallId"]].result = message;
+    }
+    for (int round = 0; round < maxRounds; ++round) {
+        checkpoint();
         if (stopRequested_.load()) return;
-        if (!streamOk) {
+        if (config.maxTaskTokens > 0 && runTokens >= config.maxTaskTokens) break;
+        SetActivity(round == 0 ? "planning" : "review");
+        auto request = conversation;
+        request.insert(request.begin(), {"system", task.prompt});
+        if (!task.context.empty()) request.insert(request.begin() + 1,
+            {"user", "任务开始时的编辑器状态；实际文档以操作结果为准：\n" + task.context});
+        std::string reply, error;
+        AiChatUsage usage;
+        AiChatRequestStats stats;
+        AiToolReply decoded;
+        { std::lock_guard lock(streamMutex_); streamingPartial_.clear(); streamingActive_ = true; }
+        const bool ok = completion_(config, request,
+            [this](const std::string& delta) {
+                std::lock_guard lock(streamMutex_);
+                streamingPartial_ += delta;
+                return !stopRequested_.load();
+            }, reply, error, &usage, &stats, &decoded);
+        RecordUsage(usage, stats);
+        runTokens += (std::max)(int64_t{0},usage.inputTokens) + (std::max)(int64_t{0},usage.outputTokens);
+        { std::lock_guard lock(streamMutex_); streamingActive_ = false; streamingPartial_.clear(); }
+        if (stopRequested_.load()) return;
+        if (!ok) {
             SetActivity("failed");
-            AppendMessage({ "assistant", "（调用失败）" + error });
+            AppendMessage({"assistant", TEXT::Localize("ai.error.incomplete") + "\n" + error});
             return;
         }
-        if (!error.empty()) {
-            reply += "\n\n" + error;
-        }
-        const std::vector<std::string> actionJsons =
-            AI_ASSISTANT::ExtractAllActionJson(reply);
-        if (actionJsons.empty()) {
-            if (AI_ASSISTANT::HasToolMarkup(reply)) {
-                if (protocolRepairRounds++ == 0) {
-                    conversation.push_back({"user", "工具调用格式无效，未执行。请重新输出完整的 action JSON，禁止 DSML/XML 标记。"});
-                    continue;
-                }
-                SetActivity("failed");
-                AppendMessage({"assistant", "模型返回的操作格式无法解析，已停止。已执行的修改保留在草稿中。"});
+        if (!reply.empty()) AppendProgress(reply);
+        conversation.push_back(decoded.Message(reply));
+        if (decoded.calls.empty()) {
+            if (++noToolRounds >= 4) {
+                SetActivity("paused");
+                AppendMessage({"assistant", TEXT::Localize("ai.error.noTool")});
                 return;
             }
-            SetActivity("completed");
-            AppendMessage({ "assistant", AI_ASSISTANT::StripActionJsonForDisplay(reply) });
-            {
-                std::lock_guard<std::mutex> lock(streamMutex_);
-                streamingPartial_.clear();
-            }
-            return;
+            if (noToolRounds == 1) conversation.push_back({"user",
+                "需要执行时调用 editor_actions；回答完成时调用 task_finish。中间说明可以继续，但承诺下一步不代表任务完成。"});
+            continue;
         }
-        std::vector<std::string> executableActions = actionJsons;
-        std::string budgetMessage;
-        std::erase_if(executableActions, [&budgetMessage](const std::string& json) {
-            if (AI_ASSISTANT::ExtractJsonField(json,"action") != "budget.request") return false;
-            budgetMessage = "轮数上限由用户设置，助手不能自行增加。请在剩余预算内完成或如实交接。";
-            return true;
-        });
-        AppendProgress(reply);
-        conversation.push_back({ "assistant", AI_ASSISTANT::StripActionJsonForDisplay(reply), {}, {{"kind", "progress"}} });
-        failureSummary.clear();
-        size_t successCount = 0u;
-        size_t failureCount = 0u;
-        if (!budgetMessage.empty()) {
-            conversation.push_back({"user", budgetMessage});
-        }
-        for (const std::string& actionJson : executableActions) {
-            const auto actionName = AI_ASSISTANT::ExtractJsonField(actionJson,"action");
-            const auto sessionId = AI_ASSISTANT::ExtractJsonField(actionJson,"sessionId");
-            SetActivity("executing", actionName, sessionId);
-            const auto started = std::chrono::steady_clock::now();
-            AI_ASSISTANT::AiRequestResult result =
-                executeTask(actionJson);
-            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
-            while (result.ok && result.data.value("pending", false) && result.data.contains("poll")) {
-                if (stopRequested_.load()) return;
-                SetActivity(result.data.value("stage",std::string("render")), actionName, sessionId);
-                if (std::chrono::steady_clock::now() >= deadline) {
-                    result.ok = false;
-                    result.code = "PREVIEW_TIMEOUT";
-                    result.message = "预览超时，停在" + result.data.value("stage", std::string("render")) + "阶段。尚未取得图片。";
-                    if (result.data.contains("renderFailure")) result.message += " " + result.data["renderFailure"].get<std::string>();
-                    result.data.erase("poll"); result.data["pending"] = false;
-                    cancelOwnerRequested_.store(true);
-                    break;
+        noToolRounds = 0;
+        bool batchStopped = false, progressed = false;
+        std::string failure;
+        for (const auto& call : decoded.calls) {
+            const auto id = call["id"].get<std::string>();
+            const auto name = call["function"]["name"].get<std::string>();
+            const auto raw = call["function"]["arguments"].get<std::string>();
+            const auto args = Json::parse(raw);
+            AiChatMessage response{"tool", "", {}, {{"_toolCallId", id}}};
+            const auto fail = [&](const std::string& message) {
+                response.content = message; response.data["ok"] = false;
+                batchStopped = true;
+                if (failure.empty()) failure = name + ":" + message;
+            };
+            const auto cached = completedCalls.find(id);
+            if (cached != completedCalls.end()) {
+                if (cached->second.arguments == name + raw && !cached->second.result.role.empty()) {
+                    response = cached->second.result;
+                    if (!response.data.value("ok", false)) fail(response.content);
+                } else fail("Tool call ID reused or interrupted. Inspect state and use a new call ID.");
+            } else if (batchStopped) {
+                fail("Skipped because an earlier call in this response failed.");
+            } else if (name == "task_finish") {
+                const auto status = args.value("status",std::string{});
+                const auto summary = args.value("summary",std::string{});
+                if (decoded.calls.size() != 1 || summary.empty() ||
+                    (status != "completed" && status != "needs_input" && status != "blocked")) {
+                    fail("task_finish requires a sole call with status and summary.");
+                } else {
+                    response.data["ok"] = true;
+                    conversation.push_back(std::move(response));
+                    task.active = status != "completed";
+                    SetActivity(status);
+                    AppendMessage({"assistant", summary});
+                    return;
                 }
-                const std::string poll = result.data["poll"].dump();
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                result = executeTask(poll);
-            }
-            if (stopRequested_.load()) return;
-            AI_ASSISTANT::AiChatMessage visibleResult{"tool", result.message};
-            if (result.ok && result.data.contains("images") && result.data["images"].is_array()) {
-                for (const auto& item : result.data["images"]) {
-                    const std::string path = item.value("path", std::string{});
-                    std::string uri, imageError;
-                    if (!AI_ASSISTANT::ReadAiImageDataUri(path, uri, imageError)) {
-                        result.ok = false;
-                        result.code = "IMAGE_READ_FAILED";
-                        result.message = imageError;
+            } else if (name != "editor_actions" || !args.contains("actions") ||
+                       !args["actions"].is_array() || args["actions"].empty()) {
+                fail("Use editor_actions with a nonempty actions array, or task_finish.");
+            } else {
+                response.data["results"] = Json::array();
+                for (const auto& action : args["actions"]) {
+                    if (stopRequested_.load()) { fail("Interrupted; remaining actions were not executed."); break; }
+                    if (!action.is_object() || !action.contains("action") || !action["action"].is_string()) {
+                        fail("Invalid action object; remaining actions skipped."); break;
+                    }
+                    auto result = ExecuteConversationAction(action.dump());
+                    AppendMessage(result);
+                    auto receipt = result.data;
+                    receipt["message"] = result.content;
+                    response.data["results"].push_back(std::move(receipt));
+                    response.images.insert(response.images.end(), result.images.begin(), result.images.end());
+                    if (!result.data.value("ok", false)) {
+                        failure = action.value("action",std::string{}) + ":" + result.data.value("code",std::string{});
+                        fail("An action failed; remaining actions were not executed. Use the receipt to recover or change approach.");
                         break;
                     }
-                    visibleResult.images.push_back({path, item.value("label", std::string{})});
+                    progressed = progress.Observe(result.data) || progressed;
                 }
+                response.data["ok"] = !batchStopped;
             }
-            visibleResult.data = result.data;
-            if (!visibleResult.data.is_object()) visibleResult.data=nlohmann::json::object();
-            visibleResult.data["action"] = AI_ASSISTANT::ExtractJsonField(actionJson,"action");
-            visibleResult.data["ok"] = result.ok;
-            visibleResult.data["code"] = result.code;
-            visibleResult.data["request"] = nlohmann::json::parse(actionJson);
-            if (!result.details.empty()) visibleResult.data["details"] = result.details;
-            if (!result.hints.empty()) visibleResult.data["hints"] = result.hints;
-            if (!result.ok) visibleResult.data["batchStopped"] = true;
-            if (!sessionId.empty()) visibleResult.data["sessionId"] = sessionId;
-            visibleResult.data["durationMs"] = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-started).count();
-            visibleResult.content = (result.ok ? "" : "! ") + result.message;
-            AppendMessage(visibleResult);
-            if (!result.ok && (result.code == "PREVIEW_TIMEOUT" || result.code == "CAPTURE_FAILED" ||
-                result.code == "PREVIEW_FAILED" || result.code == "IMAGE_READ_FAILED")) {
-                SetActivity("failed", actionName, sessionId);
-                AppendMessage({"assistant", "预览验证未完成：" + result.message +
-                    "\n已停止本次任务，保留草稿。可以打开草稿检查；不会把截图链路故障当作作品错误继续修改。"});
-                return;
-            }
-            conversation.push_back(std::move(visibleResult));
-            if (result.ok) {
-                ++successCount;
-            } else {
-                ++failureCount;
-                failureSummary +=
-                    (failureSummary.empty() ? "" : "\n") +
-                    actionName + ": " + result.message;
-            }
-            if (!result.ok) break;
+            completedCalls.emplace(id, CachedCall{name + raw, response});
+            conversation.push_back(std::move(response));
+            checkpoint();
         }
-        if (failureSummary.size() > 2000u) {
-            failureSummary =
-                AI_ASSISTANT::TruncateUtf8(failureSummary,2000);
+        if (stopRequested_.load()) return;
+        noProgressRounds = progressed ? 0 : noProgressRounds + 1;
+        if (noProgressRounds == 4) {
+            const auto notice = TEXT::Localize("ai.task.noProgress");
+            AppendMessage({"assistant",notice});
+            conversation.push_back({"user",notice + "\n" + failure});
         }
-        if (successCount == 0u && failureCount > 0u) {
-            ++consecutiveFailureRounds;
-            if (consecutiveFailureRounds >= 3) {
-                SetActivity("failed");
-                AppendMessage({"assistant", "连续三轮未能执行成功，已停止并保留草稿。\n" + failureSummary});
-                return;
-            }
-        } else {
-            consecutiveFailureRounds = 0;
+        if (config.maxNoProgressRounds > 0 && noProgressRounds >= config.maxNoProgressRounds) {
+            SetActivity("paused");
+            AppendMessage({"assistant", TEXT::Localize("ai.error.stalled")});
+            return;
         }
     }
-    std::string stopMessage =
-        "已达到工具轮数预算（" +
-        std::to_string(maxToolRounds) + " 轮）。";
-    if (!failureSummary.empty()) {
-        stopMessage += "最近失败原因：\n" + failureSummary;
-    }
-    stopMessage +=
-        "\n可在设置中调整轮数上限，或继续对话。";
-    SetActivity("failed");
-    AppendMessage({ "assistant", stopMessage });
-    {
-        std::lock_guard<std::mutex> lock(streamMutex_);
-        streamingPartial_.clear();
-    }
+    SetActivity("budget");
+    AppendMessage({"assistant", TEXT::Localize("ai.error.budget")});
 }
 
+bool AiAssistantSession::CanResume() const {
+    if (IsBusy()) return false;
+    std::lock_guard lock(messageMutex_);
+    return taskCheckpoint_.active;
+}
+bool AiAssistantSession::Resume() {
+    return CanResume() && StartConversation({}, {}, true);
+}
 bool AiAssistantSession::SubmitMessage(std::string text, std::vector<AI_ASSISTANT::AiImageAttachment> images) {
+    return StartConversation(std::move(text), std::move(images), CanResume());
+}
+bool AiAssistantSession::StartConversation(std::string text, std::vector<AI_ASSISTANT::AiImageAttachment> images, bool resume) {
     if (busy_.load() || projectSwitchPending_) {
         return false;
     }
     text = AI_ASSISTANT::Trim(std::move(text));
-    if (text.empty() && images.empty()) {
+    if (!resume && text.empty() && images.empty()) {
         return false;
     }
     if (conversationId_.empty()) NewConversation();
     RefreshCapabilities();
-    AppendMessage({ "user", text, std::move(images) });
+    std::function<std::string()> contextProvider;
+    { std::lock_guard lock(stateMutex_); contextProvider = contextProvider_; }
+    try {
+        if (contextProvider) SetContextSnapshot(contextProvider());
+    } catch (...) {
+        SetActivity("failed");
+        AppendMessage({"assistant", TEXT::Localize("ai.error.incomplete") + "\nEditor context snapshot failed."});
+        return false;
+    }
+    if (!text.empty() || !images.empty()) {
+        AI_ASSISTANT::AiChatMessage message{"user", text, std::move(images)};
+        AppendMessage(message);
+        if (resume) { std::lock_guard lock(messageMutex_); taskCheckpoint_.messages.push_back(std::move(message)); }
+    }
     taskContext_ = SnapshotContext();
     if (worker_.joinable()) {
         stopRequested_.store(true);
@@ -236,9 +221,9 @@ bool AiAssistantSession::SubmitMessage(std::string text, std::vector<AI_ASSISTAN
     stopRequested_.store(false);
     { std::lock_guard<std::mutex> lock(stateMutex_); activity_ = {}; }
     busy_.store(true);
-    worker_ = std::thread([this, text = std::move(text)]() {
+    worker_ = std::thread([this, resume]() {
         try {
-            RunConversation(text);
+            RunConversation(resume);
         } catch (...) {
             SetActivity("failed");
             try {

@@ -1,3 +1,4 @@
+#include "Editor/Shell/HIKARI_EditorDockLayout.h"
 #include "Editor/Preview/HIKARI_EditorPreviewCapture.h"
 #include "Editor/Commands/HIKARI_EditorOperationValue.h"
 #include "Editor/Authoring/HIKARI_EditorWorkspaceSessionProviders.h"
@@ -16,7 +17,7 @@
 #include "Assets/HIKARI_AssetImportState.h"
 #include "Core/HIKARI_Logger.h"
 #include "Editor/AI/HIKARI_AI_ChatClient.h"
-#include "Editor/AI/HIKARI_AI_VisionClient.h"
+#include "Editor/AI/HIKARI_AI_ChatClient.h"
 #include "Editor/Authoring/HIKARI_EditorObjectState.h"
 #include "Editor/Authoring/HIKARI_EditorObjectFactory.h"
 #include "Editor/Authoring/HIKARI_SceneObjectTargetResolver.h"
@@ -68,6 +69,7 @@
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
 #include "imgui_internal.h"
+#include "ImGuizmo.h"
 #endif
 
 namespace HIKARI {
@@ -235,7 +237,7 @@ namespace HIKARI {
             // v2: default layout only docks windows that are real dockable
             // panels. The new ID intentionally ignores stale imgui.ini nodes.
             const ImGuiID dockspaceId =
-                ImGui::GetID("HIKARI_EditorDockSpace_v2");
+                ImGui::GetID("HIKARI_EditorDockSpace_v3");
             const ImGuiDockNodeFlags dockspaceFlags = ImGuiDockNodeFlags_None;
 
             static bool initializedDefaultDockLayout = false;
@@ -243,7 +245,7 @@ namespace HIKARI {
                 const bool needsDefaultLayout = ImGui::DockBuilderGetNode(dockspaceId) == nullptr;
                 initializedDefaultDockLayout = true;
                 if (!needsDefaultLayout && !resetDefaultDockLayout) {
-                    ImGui::DockSpaceOverViewport(dockspaceId, viewport, dockspaceFlags);
+                    HIKARI::EDITOR::DrawWorkspaceDockSpace(dockspaceId, viewport, dockspaceFlags);
                     return;
                 }
 
@@ -278,7 +280,6 @@ namespace HIKARI {
                 ImGui::DockBuilderDockWindow("###Game View", mainNode);
                 ImGui::DockBuilderDockWindow("###Scene Workspace", leftNode);
                 ImGui::DockBuilderDockWindow("###Inspector", rightNode);
-                ImGui::DockBuilderDockWindow("###Resource Workspace", bottomNode);
                 ImGui::DockBuilderDockWindow("###Environment", bottomNode);
                 ImGui::DockBuilderDockWindow("###Quality", bottomNode);
                 ImGui::DockBuilderDockWindow("###Debug View", bottomNode);
@@ -287,7 +288,7 @@ namespace HIKARI {
                 ImGui::DockBuilderFinish(dockspaceId);
             }
 
-            ImGui::DockSpaceOverViewport(dockspaceId, viewport, dockspaceFlags);
+            HIKARI::EDITOR::DrawWorkspaceDockSpace(dockspaceId, viewport, dockspaceFlags);
         }
 #endif
     }
@@ -305,7 +306,8 @@ namespace HIKARI {
                      operationRegistry_.RegisteredIds()) {
                     const EDITOR::EditorOperationDefinition* definition =
                         operationRegistry_.Find(id);
-                    if (definition == nullptr) {
+                    if (definition == nullptr || !EDITOR::HasEditorOperationExposure(
+                            definition->exposureMask, EDITOR::EditorOperationExposureMask::BuiltInAi)) {
                         continue;
                     }
                     EDITOR::AI_ASSISTANT::AiCapability capability{
@@ -316,17 +318,25 @@ namespace HIKARI {
                     capability.parameters.reserve(
                         definition->parameters.size());
                     capability.workspace = definition->workspace;
+                    capability.semantics = EDITOR::DescribeEditorOperation(*definition);
+                    capability.semantics.erase("parameters");
+                    capability.searchTerms = definition->searchTerms;
                     for (const EDITOR::EditorOperationParameter& parameter :
                         definition->parameters) {
                         capability.parameters.push_back({
                             parameter.name,
                             OperationParameterTypeName(parameter.type),
                             parameter.required,
-                            parameter.description
+                            parameter.description,
+                            parameter.schema
                         });
                     }
-                    if (!id.starts_with("authoring.")) capability.parameters.push_back({"sessionId", "string", false,
-                        "Background authoring session returned by authoring.session.open"});
+                    if (definition->requiresDocumentSession && authoringSessions_.SupportsWorkspace(definition->workspace) &&
+                        std::none_of(capability.parameters.begin(), capability.parameters.end(),
+                            [](const auto& p) { return p.name == "sessionId"; })) {
+                        capability.parameters.push_back({"sessionId", "string", true,
+                            "Document session for workspace '" + definition->workspace + "'; returned by authoring.session.open."});
+                    }
                     capabilities.push_back(std::move(capability));
                 }
                 std::sort(
@@ -337,7 +347,7 @@ namespace HIKARI {
                         return lhs.id < rhs.id;
                     });
                 return capabilities;
-            });
+            }, [this] { return operationRegistry_.Revision(); });
         aiLocalBridge_.SetCapabilityProvider(
             [this]() {
                 return aiAssistantSession_.Capabilities();
@@ -450,35 +460,90 @@ namespace HIKARI {
                     const bool background=parameters.value("_backgroundTask",false);
                     parameters.erase("_backgroundTask");
                     const auto* definition=operationRegistry_.Find(action);
+                    if (!EDITOR::HasEditorOperationExposure(definition->exposureMask,
+                            EDITOR::EditorOperationExposureMask::BuiltInAi))
+                        return ToAiRequestResult({false,"OPERATION_NOT_EXPOSED","This operation is not exposed to the assistant."});
 #if defined(HIKARI_WITH_EDITOR)
                     if (background && parameters.contains("sessionId") && parameters["sessionId"].is_string() &&
                         definition->workspace==EDITOR::EditorWorkspaceOperationId(workspaceHost_.GetActive()) &&
                         authoringSessions_.VisibleSession(definition->workspace)==parameters["sessionId"].get<std::string>() &&
-                        ImGui::IsAnyItemActive()) {
+                        (ImGui::IsAnyItemActive() || ImGuizmo::IsUsing() || authoringSessions_.HasInteractiveEdit(parameters["sessionId"].get<std::string>()))) {
                         const auto* activeWindow=ImGui::GetCurrentContext()->ActiveIdWindow;
-                        if (activeWindow && std::string_view(activeWindow->Name).find("AI Assistant")==std::string_view::npos)
-                            return ToAiRequestResult({false,"DOCUMENT_BUSY","用户正在操作这个草稿。请等待当前编辑结束后重试。"});
+                        // 共通シェル・カメラ操作は文書の編集ロックではない。
+                        const auto name = activeWindow ? std::string_view(activeWindow->Name) : std::string_view{};
+                        const bool shell = name.find("Editor/") != std::string_view::npos || name.find("AI Assistant") != std::string_view::npos;
+                        const bool view = name.find("View") != std::string_view::npos || name.find("Preview") != std::string_view::npos || name.find("Stage") != std::string_view::npos;
+                        const bool editing = ImGuizmo::IsUsing() || authoringSessions_.HasInteractiveEdit(parameters["sessionId"].get<std::string>());
+                        if (editing || (!shell && (!view || ImGui::GetIO().WantTextInput || ImGui::GetCurrentContext()->ActiveIdHasBeenEditedBefore)))
+                            return ToAiRequestResult({false,"DOCUMENT_BUSY","Document edit in progress; the assistant waits locally.", {{"retryable",true}}});
                     }
 #endif
-                    if (background && !parameters.contains("sessionId") &&
+                    if (background && definition->requiresDocumentSession && !parameters.contains("sessionId") &&
                         (authoringSessions_.SupportsWorkspace(definition->workspace) || action=="action.undo_last")) {
                         return ToAiRequestResult({false,"EXPLICIT_SESSION_REQUIRED",
-                            "后台编辑必须绑定文档。先用 authoring.session.open 打开会话，再为动作携带 sessionId。"});
+                            "This operation needs an explicit document session.",
+                            {{"workspace", definition->workspace}, {"operationSchema", EDITOR::DescribeEditorOperation(*definition)},
+                             {"openSession", {{"action","authoring.session.open"},{"workspace",definition->workspace}}}}});
                     }
-                    return ToAiRequestResult(
-                        operationRegistry_.Execute(
-                            action, parameters));
+                    auto result = operationRegistry_.Execute(action, parameters);
+                    return ToAiRequestResult(result);
                 }
                 EDITOR::AI_ASSISTANT::AiRequestResult result{};
                 result.ok = false;
                 result.code = "UNKNOWN_ACTION";
                 result.message = "不支持的 AI 动作：" + action;
-                for (const std::string& id :
-                     operationRegistry_.RegisteredIds()) {
-                    result.details.push_back("supported: " + id);
-                }
+                result.hints.push_back("Use query.capabilities with workspace or keyword to find the supported action.");
                 return result;
             });
+
+        aiAssistantSession_.SetContextProvider([this]() -> std::string {
+            if (!aiOperationScene_) return {};
+            auto& scene = *aiOperationScene_;
+            std::string context =
+                "scene objects: " +
+                std::to_string(
+                    scene.GetWorld().GetObjects().size()) +
+                " (";
+            size_t shown = 0u;
+            for (const auto& object :
+                 scene.GetWorld().GetObjects()) {
+                if (shown >= 8u) {
+                    context += "...";
+                    break;
+                }
+                if (shown > 0u) {
+                    context += ", ";
+                }
+                context += "[" + std::to_string(
+                    object->GetDocumentId().value) + "] ";
+                context += object->GetName();
+                ++shown;
+            }
+            context += ")\n" +
+                ModelMaterialWorkspace()
+                    .GetAiMaterialStatus();
+            context += "\nmodel assets: " +
+                std::to_string(
+                    scene.GetAssetRegistry().CollectByType(
+                        AssetType::Model).size());
+            context += "\n" + VfxWorkspace().GetAiVfxStatus();
+            using Workspace = EDITOR::EditorWorkspaceId;
+            const auto active = workspaceHost_.GetActive();
+            nlohmann::json document{{"workspace", EDITOR::EditorWorkspaceOperationId(active)}};
+            if (active == Workspace::Cinematics) {
+                const auto& sequence = CinematicsWorkspace().GetSequenceDocument();
+                document["assetGuid"] = sequence.GetAssetGuid().value;
+                document["dirty"] = CinematicsWorkspace().IsSequenceDocumentDirty();
+            } else if (active == Workspace::Vfx) document["assetGuid"] = VfxWorkspace().GetDocument().GetAssetGuid().value;
+            else if (active == Workspace::ModelMaterial) document["assetGuid"] = ModelMaterialWorkspace().GetDocumentAssetGuid().value;
+            else if (active == Workspace::ModelCollision) document["assetGuid"] = ModelCollisionWorkspace().GetDocumentAssetGuid().value;
+            else if (active == Workspace::Dialogue) document["assetGuid"] = DialogueWorkspace().GetDocumentAssetGuid().value;
+            else if (active == Workspace::AnimationStateMachine) document["assetGuid"] = AnimationStateMachineWorkspace().GetDocumentAssetGuid().value;
+            else if (active == Workspace::Scene) document["scenePath"] = scene.GetScenePath();
+            context += "\nActive document: " + document.dump();
+            context += "\nBackground authoring: " + authoringSessions_.Snapshot().dump();
+            return context;
+        });
 
         commandRouter_.SetOperationRegistry(&operationRegistry_);
     }
@@ -1856,6 +1921,7 @@ namespace HIKARI {
         if (aiSceneCaptureTicket_ && (aiSceneCaptureIdentity_!=scene.GetSceneId()+"|"+scene.GetScenePath() ||
                 aiSceneCaptureRevision_!=scene.GetSceneDocumentRevision())) CancelAiSceneCapture();
         aiAssistantSession_.PumpActions();
+        aiAssistantPanel_.TickAttachments();
         authoringSessions_.Tick(static_cast<uint64_t>(ImGui::GetFrameCount()), ImGui::GetIO().DeltaTime);
         scene.GetAssetDatabase().PumpAssetTasks();
         SyncDocumentHistory(scene);
@@ -1909,41 +1975,10 @@ namespace HIKARI {
 
         if (projectWorkspaceHost_) {
             projectWorkspaceHost_->Registry().SetOperationRegistry(&operationRegistry_);
-            projectWorkspaceHost_->DrawNavigation(workspaceHost_, TIME::GetFrameContext().unscaledDt);
+            projectWorkspaceHost_->UpdateNavigation(workspaceHost_, TIME::GetFrameContext().unscaledDt);
         }
 
-        {
-            std::string context =
-                "scene objects: " +
-                std::to_string(
-                    scene.GetWorld().GetObjects().size()) +
-                " (";
-            size_t shown = 0u;
-            for (const auto& object :
-                 scene.GetWorld().GetObjects()) {
-                if (shown >= 8u) {
-                    context += "...";
-                    break;
-                }
-                if (shown > 0u) {
-                    context += ", ";
-                }
-                context += "[" + std::to_string(
-                    object->GetDocumentId().value) + "] ";
-                context += object->GetName();
-                ++shown;
-            }
-            context += ")\n" +
-                ModelMaterialWorkspace()
-                    .GetAiMaterialStatus();
-            context += "\nmodel assets: " +
-                std::to_string(
-                    scene.GetAssetRegistry().CollectByType(
-                        AssetType::Model).size());
-            context += "\n" + VfxWorkspace().GetAiVfxStatus();
-            context += "\nBackground authoring: " + authoringSessions_.Snapshot().dump();
-            aiAssistantSession_.SetContextSnapshot(std::move(context));
-        }
+
         EnsureAiLocalBridge();
         static constexpr const char* workspaceLabels[] = {
             "menu.workspace.scene", "menu.workspace.cinematics", "menu.workspace.modelCollision",
@@ -1952,13 +1987,14 @@ namespace HIKARI {
         const auto workspaceIndex=static_cast<size_t>(workspaceHost_.GetActive());
         aiAssistantPanel_.SetWorkspaceLabel(workspaceIndex<std::size(workspaceLabels) ?
             TEXT::Localize(workspaceLabels[workspaceIndex]) : scene.GetSceneId());
-        aiAssistantPanel_.DrawSidebar(context_.windows.runtime.showAiAssistant);
+        DrawGlobalShell(scene);
 
         if (resetDockingLayoutRequested) {
             workspaceHost_.RequestResetActiveLayout();
         }
         if (workspaceHost_.IsActive(
                 EDITOR::EditorWorkspaceId::Dialogue) &&
+            authoringSessions_.VisibleSession("dialogue").empty() &&
             DialogueWorkspace().IsDocumentDirty()) {
             const EDITOR::EditorWorkspaceOpenRequest* pendingRequest =
                 workspaceHost_.PeekPending();
@@ -1973,14 +2009,20 @@ namespace HIKARI {
                     viewportDropMessage_);
             }
         }
-        if (const std::optional<EDITOR::EditorWorkspaceActivation> activation =
+        if (std::optional<EDITOR::EditorWorkspaceActivation> activation =
                 workspaceHost_.ApplyPending()) {
-            if (activation->vfxAssetGuid) authoringSessions_.LeaveDocument("vfx", activation->vfxAssetGuid->value);
-            if (activation->materialAssetGuid) authoringSessions_.LeaveDocument("model_material", activation->materialAssetGuid->value);
-            if (activation->animationStateMachineAssetGuid) authoringSessions_.LeaveDocument("animation_state_machine", activation->animationStateMachineAssetGuid->value);
-            if (activation->dialogueAssetGuid) authoringSessions_.LeaveDocument("dialogue", activation->dialogueAssetGuid->value);
-            if (activation->modelAssetGuid) authoringSessions_.LeaveDocument("model_collision", activation->modelAssetGuid->value);
-            if (activation->sequenceAssetGuid) authoringSessions_.LeaveDocument("cinematics", activation->sequenceAssetGuid->value);
+            // 表示中の文書を再ロードせず、バックグラウンドと同じ履歴に接続する。
+            std::string activationAssetGuid;
+            for (const auto* guid : {&activation->vfxAssetGuid, &activation->materialAssetGuid,
+                &activation->animationStateMachineAssetGuid, &activation->dialogueAssetGuid,
+                &activation->modelAssetGuid, &activation->sequenceAssetGuid})
+                if (*guid) activationAssetGuid = (*guid)->value;
+            if (authoringSessions_.ActivateDocument(std::string(EDITOR::EditorWorkspaceOperationId(activation->current)),
+                activationAssetGuid, HasForegroundDocument(activation->current))) {
+                activation->vfxAssetGuid.reset(); activation->materialAssetGuid.reset();
+                activation->animationStateMachineAssetGuid.reset(); activation->dialogueAssetGuid.reset();
+                activation->modelAssetGuid.reset(); activation->sequenceAssetGuid.reset();
+            }
             const auto isSceneOwnedWorkspace =
                 [](EDITOR::EditorWorkspaceId id) {
                     return id == EDITOR::EditorWorkspaceId::Scene ||
@@ -2419,19 +2461,6 @@ namespace HIKARI {
             FocusSceneObjects(scene, { *focusRequest });
         }
         if (context_.windows.resources.showAssetBrowser) {
-            const ResourceWorkspaceContext resourceContext{
-                scene.GetCurrentSceneAssetGuid(),
-                context_.sceneDirty || scene.HasUnsavedSceneChanges(),
-                scene.GetSceneDocumentRevision(),
-                documentHistory_.GetEditRevision()
-            };
-            resourceWorkspacePanel_.Draw(
-                scene.GetAssetDatabase(),
-                scene.GetAssetRegistry(),
-                scene.GetSceneDocument(),
-                context_.selection,
-                resourceContext);
-
             if (const auto activation =
                     resourceWorkspacePanel_.ConsumeActivatedAsset()) {
                 EDITOR::AssetWorkspaceActivationRoute route =
@@ -2615,11 +2644,6 @@ namespace HIKARI {
         }
         if (context_.windows.runtime.showPerformanceAudit) {
             performanceAuditPanel_.Draw(context_.windows.runtime.showPerformanceAudit);
-        }
-        if (context_.windows.runtime.showEditorSettings) {
-            editorSettingsPanel_.Draw(
-                context_.windows.runtime.showEditorSettings,
-                context_);
         }
         DrawPendingSceneOpenModal(scene);
         if (renderQualitySavePending_ && !ImGui::IsAnyItemActive()) {

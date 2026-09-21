@@ -13,6 +13,11 @@ namespace HIKARI {
 
 namespace SEQUENCER {
 
+    // 時間評価は純粋な読み取り。実行時とバックグラウンドプレビューで共有する。
+    bool EvaluateSequenceCameraView(const CinematicSequence& sequence,
+        const SequenceBindingContext& bindings, const World& world, const CameraDirector& director,
+        float seconds, float aspect, CinematicCameraEvaluation& evaluation, Camera3D& out);
+
     class CameraSequenceTrackDriver final : public ISequenceTrackDriver {
     public:
         CameraSequenceTrackDriver(
@@ -37,8 +42,6 @@ namespace SEQUENCER {
         void Reset() override;
 
     private:
-        bool ResolveView(const CinematicSequence& sequence, const SequenceBindingContext& bindings,
-            const CinematicCameraEvaluation& evaluation, Camera3D& out) const;
         struct InstanceState {
             SequencePlaybackHandle handle{};
             CameraOverrideToken overrideToken{};

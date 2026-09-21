@@ -1,9 +1,11 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 
 #include <algorithm>
 #include <cmath>
 
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
+#include "Editor/Style/HIKARI_EditorWidgets.h"
 
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
@@ -17,15 +19,13 @@ void ModelMaterialWorkspaceController::DrawPreviewLightingPanel(
   if (!previewLightingPanelOpen_) {
     return;
   }
-  if (!ImGui::Begin("Preview Lighting###ModelMaterial/PreviewLighting",
+  if (!ImGui::Begin(TEXT::LocalizeWindow("editor.ui.preview.lighting.87cd64", "ModelMaterial/PreviewLighting").c_str(),
                     &previewLightingPanelOpen_)) {
     ImGui::End();
     return;
   }
-  ImGui::TextDisabled(
-      "Studio Inspect light rig. Scene Match and Runtime Asset Lighting use "
-      "the active scene lights.");
-  if (ImGui::CollapsingHeader("Environment Presets",
+  ImGui::TextDisabled(TEXT::Localize("editor.ui.studio.inspect.light.rig.scene.match.and.runtime.asset.lighting..431367").c_str());
+  if (ImGui::CollapsingHeader(TEXT::LocalizeWindow("editor.ui.environment.presets.3b220a", "Environment Presets").c_str(),
                               ImGuiTreeNodeFlags_DefaultOpen)) {
     const auto applyPreset = [this](float ambient, float skyExposure,
                                     float reflection, float keyIntensity) {
@@ -37,18 +37,18 @@ void ModelMaterialWorkspaceController::DrawPreviewLightingPanel(
       }
       MarkPreviewLightingChanged();
     };
-    if (ImGui::Button("Dark Studio")) {
+    if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.dark.studio.9df0ca", "Dark Studio").c_str())) {
       applyPreset(0.15f, 0.40f, 0.15f, 2.2f);
     }
-    ImGui::SameLine();
-    if (ImGui::Button("Neutral Studio")) {
+    NextToolbarItem(ImGui::CalcTextSize(TEXT::LocalizeCStr("editor.ui.neutral.studio.17e540")).x + ImGui::GetStyle().FramePadding.x * 2);
+    if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.neutral.studio.17e540", "Neutral Studio").c_str())) {
       applyPreset(0.35f, 1.00f, 0.45f, 3.0f);
     }
-    ImGui::SameLine();
-    if (ImGui::Button("Bright Studio")) {
+    NextToolbarItem(ImGui::CalcTextSize(TEXT::LocalizeCStr("editor.ui.bright.studio.6d3c4a")).x + ImGui::GetStyle().FramePadding.x * 2);
+    if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.bright.studio.6d3c4a", "Bright Studio").c_str())) {
       applyPreset(0.55f, 1.60f, 0.80f, 4.2f);
     }
-    if (ImGui::Button("Reset Key Light")) {
+    if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.reset.key.light.655b13", "Reset Key Light").c_str())) {
       ResetPreviewKeyLight();
     }
   }
@@ -60,16 +60,16 @@ void ModelMaterialWorkspaceController::DrawPreviewLightingPanel(
             : 0u;
     auto &light = previewLighting_.lights[lightIndex];
     bool changed = false;
-    ImGui::SeparatorText("Selected Light");
+    ImGui::SeparatorText(TEXT::Localize("editor.ui.selected.light.67da0b").c_str());
     ImGui::TextUnformatted(light.name.c_str());
-    changed = ImGui::Checkbox("Enabled", &light.enabled) || changed;
-    changed = ImGui::ColorEdit3("Color", &light.color.x) || changed;
-    changed = ImGui::DragFloat("Intensity", &light.intensity, 0.05f,
+    changed = ImGui::Checkbox(TEXT::LocalizeWindow("ui.vfx.text.Enabled", "Enabled").c_str(), &light.enabled) || changed;
+    changed = ImGui::ColorEdit3(TEXT::LocalizeWindow("ui.vfx.text.Color", "Color").c_str(), &light.color.x) || changed;
+    changed = ImGui::DragFloat(TEXT::LocalizeWindow("ui.quality.intensity", "Intensity").c_str(), &light.intensity, 0.05f,
                                0.0f, 64.0f) || changed;
     if (light.type == RENDER3D::LIGHTING::SceneLightType::Point) {
-      changed = ImGui::DragFloat("Range", &light.range, 0.10f, 0.1f,
+      changed = ImGui::DragFloat(TEXT::LocalizeWindow("ui.vfx.text.Range", "Range").c_str(), &light.range, 0.10f, 0.1f,
                                  200.0f) || changed;
-      changed = ImGui::DragFloat3("Position", &light.position.x, 0.05f) ||
+      changed = ImGui::DragFloat3(TEXT::LocalizeWindow("ui.vfx.text.Position", "Position").c_str(), &light.position.x, 0.05f) ||
                 changed;
     } else if (light.type ==
                RENDER3D::LIGHTING::SceneLightType::Directional) {
@@ -81,11 +81,9 @@ void ModelMaterialWorkspaceController::DrawPreviewLightingPanel(
       float pitchDegrees = std::asin(
           std::clamp(direction.y, -1.0f, 1.0f)) * 57.2957795131f;
       bool directionChanged = false;
-      directionChanged = ImGui::DragFloat(
-          "Yaw (deg)", &yawDegrees, 0.5f, -180.0f, 180.0f, "%.1f") ||
+      directionChanged = ImGui::DragFloat(TEXT::LocalizeWindow("editor.ui.yaw.deg.ede749", "Yaw (deg)").c_str(), &yawDegrees, 0.5f, -180.0f, 180.0f, "%.1f") ||
           directionChanged;
-      directionChanged = ImGui::DragFloat(
-          "Pitch (deg)", &pitchDegrees, 0.5f, -89.0f, 89.0f, "%.1f") ||
+      directionChanged = ImGui::DragFloat(TEXT::LocalizeWindow("editor.ui.pitch.deg.7d380b", "Pitch (deg)").c_str(), &pitchDegrees, 0.5f, -89.0f, 89.0f, "%.1f") ||
           directionChanged;
       if (directionChanged) {
         const float yawRad = yawDegrees * 0.0174532925f;
@@ -99,11 +97,11 @@ void ModelMaterialWorkspaceController::DrawPreviewLightingPanel(
         changed = true;
       }
     }
-    ImGui::SeparatorText("Key Light Sync");
+    if (ImGui::CollapsingHeader(TEXT::LocalizeWindow("editor.ui.key.light.sync.f25d49", "keyLightSync").c_str())) {
     const SceneEnvironment &environment = scene.GetSceneEnvironment();
     if (environment.directional.enabled &&
         MATH::Length(environment.directional.direction) > 1.0e-5f) {
-      if (ImGui::Button("Sync Key with Runtime Directional")) {
+      if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.sync.key.with.runtime.directional.635975", "Sync Key with Runtime Directional").c_str())) {
         light.type = RENDER3D::LIGHTING::SceneLightType::Directional;
         light.direction = MATH::Normalize(
             environment.directional.direction);
@@ -112,8 +110,8 @@ void ModelMaterialWorkspaceController::DrawPreviewLightingPanel(
         changed = true;
       }
     } else {
-      ImGui::TextDisabled(
-          "Scene has no enabled directional light to sync.");
+      ImGui::TextDisabled(TEXT::Localize("editor.ui.scene.has.no.enabled.directional.light.to.sync.214d79").c_str());
+    }
     }
     if (changed) {
       MarkPreviewLightingChanged();

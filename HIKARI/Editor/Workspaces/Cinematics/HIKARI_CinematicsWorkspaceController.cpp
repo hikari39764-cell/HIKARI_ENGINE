@@ -149,6 +149,8 @@ void CinematicsWorkspaceController::ResetEditing(DocumentSceneBase &scene) {
   }
   cursor_.Clear();
   selectedId_ = 0;
+  curveView_ = {};
+  stageInitialized_ = false;
   previewEnabled_ = false;
   previewChanged_ = true;
   previewBindings_.Clear();
@@ -266,7 +268,7 @@ void CinematicsWorkspaceController::CreateShot(CinematicSequence &sequence,
   shot.durationSeconds = 3.0f;
   shot.camera.owned = true;
   shot.camera.name = "Shot " + std::to_string(shot.id);
-  shot.camera.poses = {SEQUENCER::CaptureShotPose(camera)};
+  SEQUENCER::SetShotPose(shot.camera, SEQUENCER::CaptureShotPose(camera), false);
   shot.camera.nearClip = camera.GetNearZ();
   shot.camera.farClip = camera.GetFarZ();
   sequence.cameraCutTrack.clips.push_back(shot);
@@ -299,21 +301,9 @@ void CinematicsWorkspaceController::CapturePose(DocumentSceneBase &scene,
                            : nullptr;
   const auto anchorMatrix =
       anchor ? anchor->GetTransform().GetWorldMatrix() : MATH::Mat4::Identity();
-  auto &poses = shot->camera.poses;
-  const float keyTime =
-      autoKey_ ? local : (poses.empty() ? 0.0f : poses.front().time);
-  auto pose = SEQUENCER::CaptureShotPose(camera, keyTime,
-                                         anchor ? &anchorMatrix : nullptr);
-  const auto found =
-      std::find_if(poses.begin(), poses.end(), [&](const auto &p) {
-        return std::abs(p.time - keyTime) < 0.0001f;
-      });
-  if (found != poses.end()) {
-    pose.incoming = found->incoming;
-    pose.outgoing = found->outgoing;
-    *found = pose;
-  } else
-    poses.push_back(pose);
+  const float keyTime = autoKey_ ? local : 0.0f;
+  const auto pose = SEQUENCER::CaptureShotPose(camera, keyTime, anchor ? &anchorMatrix : nullptr);
+  SEQUENCER::SetShotPose(shot->camera, pose, autoKey_);
   SEQUENCER::NormalizeShotCamera(shot->camera);
   previewChanged_ = true;
   previewEnabled_ = true;

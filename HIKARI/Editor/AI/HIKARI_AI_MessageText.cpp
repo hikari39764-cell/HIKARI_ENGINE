@@ -6,10 +6,6 @@
 #include <cctype>
 #include <utility>
 namespace HIKARI::EDITOR::AI_ASSISTANT {
-bool HasToolMarkup(std::string_view text) {
-    return text.find("<｜DSML") != std::string_view::npos ||
-        text.find("<|DSML") != std::string_view::npos || text.find("<tool_call") != std::string_view::npos;
-}
 std::string TruncateUtf8(std::string_view text,size_t maxBytes) {
     if (text.size()<=maxBytes) return std::string(text);
     size_t end=maxBytes;
@@ -18,22 +14,6 @@ std::string TruncateUtf8(std::string_view text,size_t maxBytes) {
 }
 std::string Trim(std::string value) {
     return TEXT::TrimCopy(std::move(value));
-}
-
-std::string ExtractAction(std::string_view json) {
-    return ExtractJsonField(json,"action");
-}
-
-std::string ExtractPlanLine(std::string_view text) {
-    const auto marker = text.find("计划:");
-    if (marker == std::string_view::npos) {
-        return {};
-    }
-    const auto lineEnd = text.find('\n', marker);
-    const std::string line = lineEnd == std::string_view::npos
-        ? std::string(text.substr(marker))
-        : std::string(text.substr(marker, lineEnd - marker));
-    return Trim(line);
 }
 
 std::string StripActionJsonForDisplay(std::string text) {
@@ -98,29 +78,4 @@ std::string StripActionJsonForDisplay(std::string text) {
     return Trim(result);
 }
 
-std::string FormatCapabilityParameters(
-    const AI_ASSISTANT::AiCapability& capability) {
-
-    if (capability.parameters.empty()) {
-        return {};
-    }
-    std::string result = " parameters: ";
-    for (size_t index = 0u;
-        index < capability.parameters.size();
-        ++index) {
-        if (index != 0u) {
-            result += ", ";
-        }
-        const AI_ASSISTANT::AiCapabilityParameter& parameter =
-            capability.parameters[index];
-        if (!parameter.required) {
-            result += "[";
-        }
-        result += parameter.name + ":" + parameter.type;
-        if (!parameter.required) {
-            result += "]";
-        }
-    }
-    return result;
-}
 }

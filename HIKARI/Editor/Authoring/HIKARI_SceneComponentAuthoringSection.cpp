@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Authoring/HIKARI_SceneComponentAuthoringSection.h"
 
 #include <algorithm>
@@ -149,7 +150,7 @@ namespace HIKARI {
             proceduralSettingsPtr
         };
 
-        ImGui::SeparatorText("Document Components");
+        ImGui::SeparatorText(TEXT::Localize("editor.ui.document.components.c124e2").c_str());
         for (size_t componentIndex = 0;
             componentIndex < target.components.size();
             ++componentIndex) {
@@ -196,12 +197,12 @@ namespace HIKARI {
             bool removeRequested = false;
             if (ImGui::BeginPopupContextItem("ComponentContext")) {
                 if (allowDuplicate) {
-                    duplicateRequested = ImGui::MenuItem("Duplicate");
+                    duplicateRequested = ImGui::MenuItem(TEXT::LocalizeWindow("ui.materialGraph.duplicate", "Duplicate").c_str());
                 }
                 if (allowDuplicate) {
                     ImGui::Separator();
                 }
-                removeRequested = ImGui::MenuItem("Remove Component");
+                removeRequested = ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.remove.component.b0b011", "Remove Component").c_str());
                 ImGui::EndPopup();
             }
 

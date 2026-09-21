@@ -1,6 +1,5 @@
 #include "HIKARI_MaterialGraphAuthoringOperations.h"
 #include "HIKARI_ModelMaterialWorkspaceController.h"
-#include "HIKARI_ModelMaterialOperationSupport.h"
 #include "Editor/Commands/HIKARI_EditorOperationValue.h"
 #include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
@@ -92,13 +91,12 @@ namespace {
         }
         std::string message;
         std::string code;
-        if (controller.LayoutAiMaterialGraph(
+        if (controller.LayoutMaterialGraph(
                 *scene, message, code)) {
             result.ok = true;
             result.code = "OK";
             result.message = message;
-            controller.AppendAiCompileDiagnostics(
-                result.details);
+
         } else {
             result.code = code;
             result.message = message;
@@ -259,19 +257,42 @@ namespace {
 }
 void RegisterMaterialGraphAuthoringOperations(EditorOperationRegistry& registry,
     ModelMaterialWorkspaceController& controller, std::function<DocumentSceneBase*()> sceneProvider) {
-    const auto P = MODEL_MATERIAL_OPERATIONS::MakeOperationParameter;
+
         registry.Register({
             "material.graph_query",
             "List material graph nodes with ids, pins and connections.",
             "model_material",
             {
-                P("name", EditorOperationParameterType::String,
-                  false, "按节点 id/displayName 过滤"),
+                EDITOR::EditorOperationParameter{"name", EditorOperationParameterType::String,
+                  false, "按节点 id/displayName 过滤"},
             },
             [&controller, sceneProvider](const nlohmann::json& parameters) {
                 return ExecuteAiMaterialGraphQuery(controller, sceneProvider(), parameters);
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Query);
+        registry.Register({
+            "material.insert_module", "Insert an editable reusable material graph module.", "model_material",
+            {{"module", EditorOperationParameterType::String, true, "dissolve / uv_flow / radial_mask / noise_breakup"},
+             {"x", EditorOperationParameterType::Float, false, "Canvas X"},
+             {"y", EditorOperationParameterType::Float, false, "Canvas Y"}},
+            [&controller, sceneProvider](const nlohmann::json& parameters) {
+                EditorOperationResult result; auto* scene = sceneProvider();
+                if (!scene) { result.code = "SCENE_MISSING"; return result; }
+                result.ok = controller.InsertMaterialModule(*scene, parameters.value("module", std::string{}),
+                    {parameters.value("x",40.0f),parameters.value("y",40.0f)},result.message);
+                result.code = result.ok ? "OK" : "MODULE_FAILED"; return result;
+            },
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
+        registry.Register({
+            "material.extract_function", "Save the connected selection as a reusable function and replace it with one call.", "model_material",
+            {{"name", EditorOperationParameterType::String, false, "Function asset name"}},
+            [&controller, sceneProvider](const nlohmann::json& parameters) {
+                EditorOperationResult result; auto* scene = sceneProvider();
+                if (!scene) { result.code = "SCENE_MISSING"; return result; }
+                result.ok = controller.ExtractSelectedMaterialFunction(*scene, parameters.value("name", std::string{}),result.message);
+                result.code = result.ok ? "OK" : "EXTRACTION_FAILED"; return result;
+            },
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
         registry.Register({
             "material.graph_layout",
             "Auto-layout material graph nodes.",
@@ -280,70 +301,70 @@ void RegisterMaterialGraphAuthoringOperations(EditorOperationRegistry& registry,
             [&controller, sceneProvider](const nlohmann::json&) {
                 return ExecuteAiMaterialGraphLayout(controller, sceneProvider());
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
         registry.Register({
             "material.edit_parameter",
             "Edit a scalar material graph parameter by full parameter name.",
             "model_material",
             {
-                P("parameter", EditorOperationParameterType::String,
-                  true, "完整参数名，例如 parameter.baseColor"),
-                P("value", EditorOperationParameterType::Float,
-                  true, "要写入的数值"),
+                EDITOR::EditorOperationParameter{"parameter", EditorOperationParameterType::String,
+                  true, "完整参数名，例如 parameter.baseColor"},
+                EDITOR::EditorOperationParameter{"value", EditorOperationParameterType::Float,
+                  true, "要写入的数值"},
             },
             [&controller, sceneProvider](const nlohmann::json& parameters) {
                 return ExecuteAiMaterialEditParameter(controller, sceneProvider(), parameters);
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
         registry.Register({
             "material.graph_edit",
             "Add/remove/connect material graph nodes and edit node values.",
             "model_material",
             {
-                P("operation", EditorOperationParameterType::String,
-                  true, "add_node/remove_node/connect/disconnect/set_node"),
-                P("nodeType", EditorOperationParameterType::String,
-                  false, "add_node 的稳定节点类型名"),
-                P("name", EditorOperationParameterType::String,
-                  false, "add_node 的显示名或 remove_node 的节点 id/name"),
-                P("node", EditorOperationParameterType::String,
-                  false, "name 的别名"),
-                P("sourceNode", EditorOperationParameterType::String,
-                  false, "连线起点节点"),
-                P("sourcePin", EditorOperationParameterType::String,
-                  false, "连线起点插槽，缺省取第一个"),
-                P("targetNode", EditorOperationParameterType::String,
-                  false, "连线终点节点"),
-                P("targetPin", EditorOperationParameterType::String,
-                  false, "连线终点插槽，缺省取第一个"),
-                P("edgeId", EditorOperationParameterType::String,
-                  false, "disconnect 的边 id"),
-                P("valueType", EditorOperationParameterType::String,
-                  false, "set_node 的值类型"),
-                P("property", EditorOperationParameterType::String,
-                  false, "set_node 的属性名"),
-                P("resource", EditorOperationParameterType::String,
-                  false, "set_node 的资源 id（TextureSample）"),
-                P("value", EditorOperationParameterType::String,
-                  false, "set_node 的字符串属性值"),
-                P("layout", EditorOperationParameterType::String,
-                  false, "manual 保留坐标，否则自动布局"),
-                P("positionX", EditorOperationParameterType::Float,
-                  false, "节点 X"),
-                P("positionY", EditorOperationParameterType::Float,
-                  false, "节点 Y"),
-                P("valueX", EditorOperationParameterType::Float,
-                  false, "值 X"),
-                P("valueY", EditorOperationParameterType::Float,
-                  false, "值 Y"),
-                P("valueZ", EditorOperationParameterType::Float,
-                  false, "值 Z"),
-                P("valueW", EditorOperationParameterType::Float,
-                  false, "值 W"),
+                EDITOR::EditorOperationParameter{"operation", EditorOperationParameterType::String,
+                  true, "add_node/remove_node/connect/disconnect/set_node"},
+                EDITOR::EditorOperationParameter{"nodeType", EditorOperationParameterType::String,
+                  false, "add_node 的稳定节点类型名"},
+                EDITOR::EditorOperationParameter{"name", EditorOperationParameterType::String,
+                  false, "add_node 的显示名或 remove_node 的节点 id/name"},
+                EDITOR::EditorOperationParameter{"node", EditorOperationParameterType::String,
+                  false, "name 的别名"},
+                EDITOR::EditorOperationParameter{"sourceNode", EditorOperationParameterType::String,
+                  false, "连线起点节点"},
+                EDITOR::EditorOperationParameter{"sourcePin", EditorOperationParameterType::String,
+                  false, "连线起点插槽，缺省取第一个"},
+                EDITOR::EditorOperationParameter{"targetNode", EditorOperationParameterType::String,
+                  false, "连线终点节点"},
+                EDITOR::EditorOperationParameter{"targetPin", EditorOperationParameterType::String,
+                  false, "连线终点插槽，缺省取第一个"},
+                EDITOR::EditorOperationParameter{"edgeId", EditorOperationParameterType::String,
+                  false, "disconnect 的边 id"},
+                EDITOR::EditorOperationParameter{"valueType", EditorOperationParameterType::String,
+                  false, "set_node 的值类型"},
+                EDITOR::EditorOperationParameter{"property", EditorOperationParameterType::String,
+                  false, "set_node 的属性名"},
+                EDITOR::EditorOperationParameter{"resource", EditorOperationParameterType::String,
+                  false, "set_node 的资源 id（TextureSample）"},
+                EDITOR::EditorOperationParameter{"value", EditorOperationParameterType::String,
+                  false, "set_node 的字符串属性值"},
+                EDITOR::EditorOperationParameter{"layout", EditorOperationParameterType::String,
+                  false, "manual 保留坐标，否则自动布局"},
+                EDITOR::EditorOperationParameter{"positionX", EditorOperationParameterType::Float,
+                  false, "节点 X"},
+                EDITOR::EditorOperationParameter{"positionY", EditorOperationParameterType::Float,
+                  false, "节点 Y"},
+                EDITOR::EditorOperationParameter{"valueX", EditorOperationParameterType::Float,
+                  false, "值 X"},
+                EDITOR::EditorOperationParameter{"valueY", EditorOperationParameterType::Float,
+                  false, "值 Y"},
+                EDITOR::EditorOperationParameter{"valueZ", EditorOperationParameterType::Float,
+                  false, "值 Z"},
+                EDITOR::EditorOperationParameter{"valueW", EditorOperationParameterType::Float,
+                  false, "值 W"},
             },
             [&controller, sceneProvider](const nlohmann::json& parameters) {
                 return ExecuteAiMaterialGraphEdit(controller, sceneProvider(), parameters);
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 }
 }

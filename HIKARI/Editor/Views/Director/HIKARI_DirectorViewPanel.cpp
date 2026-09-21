@@ -1,3 +1,6 @@
+#include "Editor/Style/HIKARI_EditorWidgets.h"
+#include "Editor/Style/HIKARI_EditorGlyphs.h"
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Views/Director/HIKARI_DirectorViewPanel.h"
 
 #include <algorithm>
@@ -31,7 +34,7 @@ using namespace DIRECTOR_VIEW;
 DirectorViewPanelResult DirectorViewPanel::DrawContents(
     const DocumentSceneBase &scene, EditorViewInstance &view,
     SceneObjectId selectedObjectId, const EditorTransformGizmoState &gizmoState,
-    float deltaTime, bool runtimePlayActive) {
+    float deltaTime, bool runtimePlayActive, bool sceneCameraControls) {
 
   DirectorViewPanelResult result{};
 #if defined(HIKARI_WITH_EDITOR)
@@ -57,226 +60,69 @@ DirectorViewPanelResult DirectorViewPanel::DrawContents(
   const bool targetHasParent =
       targetEnabled && HasDocumentParent(scene, toolbarTarget);
 
-  const float toolbarHeight = ImGui::GetFrameHeight() * 3.0f +
-                              ImGui::GetStyle().ItemSpacing.y * 2.0f + 10.0f;
-  ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.045f, 0.052f, 0.064f, 1.0f));
-  ImGui::BeginChild("##DirectorToolbar", ImVec2(0.0f, toolbarHeight), false,
-                    ImGuiWindowFlags_NoScrollbar |
-                        ImGuiWindowFlags_NoScrollWithMouse);
-
-  if (DrawModeButton("Free", mode_ == DirectorViewMode::Free)) {
-    SetMode(DirectorViewMode::Free);
-  }
-  ImGui::SameLine();
-  if (!targetEnabled) {
-    ImGui::BeginDisabled();
-  }
-  if (DrawModeButton("Look Through", mode_ == DirectorViewMode::LookThrough)) {
-    SetTargetCamera(toolbarTarget);
-    SetMode(DirectorViewMode::LookThrough);
-  }
-  if (!targetEnabled) {
-    ImGui::EndDisabled();
-  }
-
-  ImGui::SameLine();
-  const bool pilotDisabled =
-      !targetEnabled || targetHasParent || runtimePlayActive;
-  if (pilotDisabled) {
-    ImGui::BeginDisabled();
-  }
-  if (DrawModeButton("Pilot", mode_ == DirectorViewMode::Pilot)) {
-    Camera3D targetCamera{};
-    if (scene.TryResolveCameraObjectView(
-            toolbarTarget, (std::max)(view.extent.Aspect(), 0.05f),
-            targetCamera)) {
-      SetTargetCamera(toolbarTarget);
-      pilotCamera_.ResetFromCamera(targetCamera);
-      SetMode(DirectorViewMode::Pilot);
-    }
-  }
-  if (pilotDisabled) {
-    ImGui::EndDisabled();
-  }
-
-  ImGui::SameLine();
-  const bool alignDisabled =
-      !targetEnabled || targetHasParent || runtimePlayActive;
-  if (alignDisabled) {
-    ImGui::BeginDisabled();
-  }
-  if (ImGui::Button("Align Camera to View")) {
-    result.alignCameraRequested = true;
-    result.alignCameraObjectId = toolbarTarget;
-    result.alignPose =
-        MakeDirectorCameraPose(currentViewCamera_);
-  }
-  if (alignDisabled) {
-    ImGui::EndDisabled();
-  }
-  if (targetHasParent &&
-      ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-    ImGui::SetTooltip(
-        "Pilot and Align are disabled for parented cameras in this stage.");
-  }
-
-  ImGui::SameLine();
-  if (mode_ == DirectorViewMode::Pilot) {
-    ImGui::TextColored(
-        ImVec4(1.0f, 0.58f, 0.20f, 1.0f), "PILOTING %llu",
-        static_cast<unsigned long long>(targetCameraObjectId_.value));
-  } else {
-    ImGui::TextDisabled("%s", ModeLabel(mode_));
-  }
-
-  ImGui::Spacing();
-  const bool frameDisabled = selectedObject == nullptr || runtimePlayActive;
-  if (frameDisabled) {
-    ImGui::BeginDisabled();
-  }
-  if (ImGui::Button("Frame Selected")) {
-    SetMode(DirectorViewMode::Free);
-    freeCamera_.Focus(
-        ExtractPosition(selectedObject->GetTransform().GetWorldMatrix()));
-    toolbarCameraChanged = true;
-  }
-  if (frameDisabled) {
-    ImGui::EndDisabled();
-  }
-
-  if (runtimePlayActive) {
-    ImGui::BeginDisabled();
-  }
-  const auto applyPreset =
-      [this, &toolbarCameraChanged](EditorDirectorCameraViewPreset preset) {
-        SetMode(DirectorViewMode::Free);
-        freeCamera_.ApplyViewPreset(preset);
-        toolbarCameraChanged = true;
-      };
-  ImGui::SameLine();
-  if (ImGui::Button("Perspective")) {
-    applyPreset(EditorDirectorCameraViewPreset::Perspective);
-  }
-  ImGui::SameLine();
-  if (ImGui::Button("Top")) {
-    applyPreset(EditorDirectorCameraViewPreset::Top);
-  }
-  ImGui::SameLine();
-  if (ImGui::Button("Front")) {
-    applyPreset(EditorDirectorCameraViewPreset::Front);
-  }
-  ImGui::SameLine();
-  if (ImGui::Button("Right")) {
-    applyPreset(EditorDirectorCameraViewPreset::Right);
-  }
-  if (runtimePlayActive) {
-    ImGui::EndDisabled();
-  }
-
-  ImGui::SameLine();
-  ImGui::TextUnformatted("Shading");
-  ImGui::SameLine();
-  ImGui::SetNextItemWidth(92.0f);
-  if (ImGui::BeginCombo("##DirectorShadingMode",
-                        ShadingModeLabel(view.visualization.shadingMode))) {
-    const EditorViewShadingMode modes[] = {
-        EditorViewShadingMode::Lit,
-        EditorViewShadingMode::Neutral,
-        EditorViewShadingMode::Unlit,
-    };
-    for (EditorViewShadingMode candidate : modes) {
-      const bool selected = candidate == view.visualization.shadingMode;
-      if (ImGui::Selectable(ShadingModeLabel(candidate), selected)) {
-        view.visualization.shadingMode = candidate;
-      }
-      if (selected) {
-        ImGui::SetItemDefaultFocus();
+  const auto label=[](const char* key) {return TEXT::Localize(key);};
+  const auto icon=[&](EditorGlyph glyph,const char* key) {
+    return IconButton(glyph,key,EditorButtonTone::Quiet,{26,26},label(key).c_str());
+  };
+  if (sceneCameraControls) {
+    if (icon(EditorGlyph::WorldSpace,"cine.freeView")) SetMode(DirectorViewMode::Free);
+    ImGui::SameLine(); ImGui::BeginDisabled(!targetEnabled);
+    if(icon(EditorGlyph::Camera,"cine.lookThrough")) {SetTargetCamera(toolbarTarget);SetMode(DirectorViewMode::LookThrough);}
+    ImGui::EndDisabled(); ImGui::SameLine();
+    ImGui::BeginDisabled(!targetEnabled || targetHasParent || runtimePlayActive);
+    if(icon(EditorGlyph::Translate,"cine.pilot")) {
+      Camera3D camera;
+      if(scene.TryResolveCameraObjectView(toolbarTarget,(std::max)(view.extent.Aspect(),0.05f),camera)) {
+        SetTargetCamera(toolbarTarget);pilotCamera_.ResetFromCamera(camera);SetMode(DirectorViewMode::Pilot);
       }
     }
-    ImGui::EndCombo();
-  }
-
-  ImGui::SameLine();
-  ImGui::TextUnformatted("Exposure");
-  ImGui::SameLine();
-  ImGui::SetNextItemWidth(86.0f);
-  ImGui::SliderFloat("##DirectorDisplayExposure",
-                     &view.visualization.displayExposure, 0.25f, 4.0f, "%.2fx");
-
-  ImGui::SameLine();
-  ImGui::TextUnformatted("Cameras");
-  ImGui::SameLine();
-  ImGui::SetNextItemWidth(82.0f);
-  if (ImGui::BeginCombo("##DirectorCameraOverlays",
-                        CameraOverlayModeLabel(view.visualization))) {
-    if (ImGui::Selectable("All",
-                          view.visualization.showCameraOverlays &&
-                              !view.visualization.showOnlySelectedCamera)) {
-      view.visualization.showCameraOverlays = true;
-      view.visualization.showOnlySelectedCamera = false;
-    }
-    if (ImGui::Selectable("Selected",
-                          view.visualization.showCameraOverlays &&
-                              view.visualization.showOnlySelectedCamera)) {
-      view.visualization.showCameraOverlays = true;
-      view.visualization.showOnlySelectedCamera = true;
-    }
-    if (ImGui::Selectable("Off", !view.visualization.showCameraOverlays)) {
-      view.visualization.showCameraOverlays = false;
-      view.visualization.showOnlySelectedCamera = false;
-    }
-    ImGui::EndCombo();
-  }
-
-  if (view.visualization.showCameraOverlays) {
     ImGui::SameLine();
-    ImGui::TextUnformatted("Size");
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(78.0f);
-    ImGui::SliderFloat("##DirectorCameraOverlayScale",
-                       &view.visualization.cameraOverlayScale, 0.5f, 2.0f,
-                       "%.1fx");
-  }
-
-  if (mode_ == DirectorViewMode::Free) {
-    ImGui::SameLine();
-    ImGui::TextUnformatted("Far");
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(92.0f);
-    float farClip = freeCamera_.GetCamera().GetFarZ();
-    if (ImGui::DragFloat("##DirectorFreeCameraFarClip", &farClip, 10.0f,
-                         10.0f, 100000.0f, "%.0f")) {
-      freeCamera_.SetFarZ(farClip);
-      toolbarCameraChanged = true;
+    if(icon(EditorGlyph::Focus,"cine.alignCamera")) {
+      result.alignCameraRequested=true;result.alignCameraObjectId=toolbarTarget;
+      result.alignPose=MakeDirectorCameraPose(currentViewCamera_);
     }
-    if (ImGui::IsItemHovered()) {
-      ImGui::SetTooltip(
-          "Free-view far clip. Scene cameras use Camera > Far Clip.");
+    ImGui::EndDisabled(); ImGui::SameLine();
+  }
+  if(icon(EditorGlyph::Settings,"cine.viewOptions")) ImGui::OpenPopup("viewOptions");
+  ImGui::SameLine();
+  if(icon(EditorGlyph::Help,"cine.navigationHelp")) ImGui::OpenPopup("viewHelp");
+  if(ImGui::BeginPopup("viewHelp")) {
+    ImGui::PushTextWrapPos(ImGui::GetFontSize()*24);
+    ImGui::TextUnformatted(label("cine.navigationHelpText").c_str());
+    ImGui::PopTextWrapPos();ImGui::EndPopup();
+  }
+  if(ImGui::BeginPopup("viewOptions")) {
+    if(selectedObject && ImGui::MenuItem(label("cine.frameSelected").c_str())) {
+      FocusPoint(ExtractPosition(selectedObject->GetTransform().GetWorldMatrix()),5);toolbarCameraChanged=true;
     }
+    const char* presetKeys[]{"ui.vfx.text.Perspective","ui.vfx.text.Top","ui.vfx.text.Front","ui.input.directionRight"};
+    for(int i=0;i<4;++i) if(ImGui::MenuItem(label(presetKeys[i]).c_str())) {
+      SetMode(DirectorViewMode::Free);freeCamera_.ApplyViewPreset(static_cast<EditorDirectorCameraViewPreset>(i));toolbarCameraChanged=true;
+    }
+    ImGui::Separator();
+    const char* shadingKeys[]{"cine.lit","cine.neutral","cine.unlit"};
+    const auto shadingLabel=label(shadingKeys[static_cast<int>(view.visualization.shadingMode)]);
+    if(ImGui::BeginCombo(label("ui.debugView.shading").c_str(),shadingLabel.c_str())) {
+      for(int i=0;i<3;++i) if(ImGui::Selectable(label(shadingKeys[i]).c_str(),static_cast<int>(view.visualization.shadingMode)==i))
+        view.visualization.shadingMode=static_cast<EditorViewShadingMode>(i);
+      ImGui::EndCombo();
+    }
+    ImGui::SliderFloat(label("cine.exposure").c_str(),&view.visualization.displayExposure,0.25f,4,"%.2fx");
+    ImGui::Checkbox(label("cine.cameraOverlays").c_str(),&view.visualization.showCameraOverlays);
+    ImGui::Checkbox(label("cine.selectedOnly").c_str(),&view.visualization.showOnlySelectedCamera);
+    ImGui::SliderFloat(label("cine.cameraOverlayScale").c_str(),&view.visualization.cameraOverlayScale,0.5f,2,"%.1fx");
+    float farClip=freeCamera_.GetCamera().GetFarZ();
+    if(ImGui::DragFloat(label("cine.farClip").c_str(),&farClip,10,10,100000,"%.0f")) {freeCamera_.SetFarZ(farClip);toolbarCameraChanged=true;}
+    ImGui::EndPopup();
   }
-
-  ImGui::Spacing();
-  if (selectedObjectIsCamera &&
-      gizmoState.operation == EditorTransformGizmoOperation::Scale) {
-    ImGui::TextColored(
-        ImVec4(1.0f, 0.66f, 0.30f, 1.0f),
-        "Camera scale is not a lens control; edit FOV in Camera settings.");
-  } else if (mode_ == DirectorViewMode::Pilot) {
-    ImGui::TextColored(
-        ImVec4(1.0f, 0.66f, 0.30f, 1.0f),
-        "Hold RMB: look + WASDQE move | Shift: boost | Esc: exit Pilot");
-  } else {
-    ImGui::TextDisabled("Hold RMB: look + WASDQE move | Shift: boost | "
-                        "Alt+LMB: orbit | MMB: pan | F: focus");
-  }
-  ImGui::EndChild();
-  ImGui::PopStyleColor();
+  ImGui::Separator();
 
   ImVec2 canvasSize = ImGui::GetContentRegionAvail();
   canvasSize.x = (std::max)(canvasSize.x, kMinimumCanvasSize);
   canvasSize.y = (std::max)(canvasSize.y, kMinimumCanvasSize);
   const ImVec2 canvasOrigin = ImGui::GetCursorScreenPos();
   const ImVec2 imageSize = canvasSize;
+  result.viewport={canvasOrigin.x,canvasOrigin.y,canvasSize.x,canvasSize.y};
   const ImVec2 imageOrigin = canvasOrigin;
   ImGui::GetWindowDrawList()->AddRectFilled(
       canvasOrigin,

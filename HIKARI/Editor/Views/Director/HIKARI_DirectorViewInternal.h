@@ -36,6 +36,8 @@ bool HasDocumentParent(const DocumentSceneBase &scene, SceneObjectId objectId);
 bool IsEnabledCamera(const DocumentSceneBase &scene, SceneObjectId objectId);
 
 MATH::Vec3 ExtractPosition(const MATH::Mat4 &matrix);
+bool ProjectWorldToViewport(const Camera3D& camera, const MATH::Vec3& position,
+    const ImVec2& origin, const ImVec2& size, ImVec2& screen);
 
 SceneObjectId DrawCameraOverlays(
     const DocumentSceneBase &scene, SceneObjectId selectedObjectId,

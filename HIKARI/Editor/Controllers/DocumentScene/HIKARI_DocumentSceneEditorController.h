@@ -32,6 +32,7 @@
 #include "Editor/Performance/HIKARI_PerformanceAuditPanel.h"
 #include "Editor/Quality/HIKARI_QualityPanel.h"
 #include "Editor/Settings/HIKARI_EditorSettingsPanel.h"
+#include "Editor/Shell/HIKARI_EditorShell.h"
 #include "Editor/Assets/Workspace/HIKARI_ResourceWorkspacePanel.h"
 #include "Editor/Panels/HIKARI_ValidationLabPanel.h"
 #include "Editor/Tools/HIKARI_EditorToolHost.h"
@@ -118,6 +119,9 @@ namespace HIKARI {
         EDITOR::AiAssistantSession aiAssistantSession_{};
         EDITOR::AiAssistantPanel aiAssistantPanel_{aiAssistantSession_};
         EDITOR::EditorSettingsPanel editorSettingsPanel_{};
+        EDITOR::EditorShell editorShell_{};
+        bool HasForegroundDocument(EDITOR::EditorWorkspaceId workspace) const;
+        void DrawGlobalShell(DocumentSceneBase& scene);
         EDITOR::AI_ASSISTANT::AiLocalBridge aiLocalBridge_{};
         bool aiBridgeStarted_ = false;
         EnvironmentPanel environmentPanel_{};

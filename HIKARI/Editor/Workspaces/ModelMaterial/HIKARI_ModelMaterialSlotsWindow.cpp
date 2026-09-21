@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 
 #include <algorithm>
@@ -33,13 +34,13 @@ bool ContainsText(std::string_view value, std::string_view query) {
 const char *BindingLabel(ModelMaterialBindingSource source) noexcept {
   switch (source) {
   case ModelMaterialBindingSource::ImportedFallback:
-    return "Imported";
+    return TEXT::LocalizeCStr("ui.assetBrowser.stateImported");
   case ModelMaterialBindingSource::AuthoredOverride:
-    return "Authored";
+    return TEXT::LocalizeCStr("editor.ui.authored.026b05");
   case ModelMaterialBindingSource::OverrideUnavailable:
-    return "Unavailable";
+    return TEXT::LocalizeCStr("ui.lightingBake.unavailable");
   }
-  return "Unknown";
+  return TEXT::LocalizeCStr("ui.quality.transitionUnknown");
 }
 
 } // namespace
@@ -47,7 +48,7 @@ const char *BindingLabel(ModelMaterialBindingSource source) noexcept {
 void ModelMaterialWorkspaceController::DrawModelAndSlotsWindow(
     DocumentSceneBase &scene) {
 #if defined(HIKARI_WITH_EDITOR)
-  if (!ImGui::Begin("Materials & Parts###ModelMaterial/Slots")) {
+  if (!ImGui::Begin(TEXT::LocalizeWindow("editor.ui.materials.parts.efb024", "ModelMaterial/Slots").c_str())) {
     ImGui::End();
     return;
   }
@@ -77,11 +78,8 @@ void ModelMaterialWorkspaceController::DrawModelAndSlotsWindow(
   ImGui::Separator();
 
   if (authoringMode_ == AuthoringMode::MaterialAsset) {
-    ImGui::TextDisabled("STANDALONE MATERIAL");
-    ImGui::TextWrapped(
-        "Create or open one Material Asset. Surface materials use the neutral "
-        "sphere and can be assigned to a model part; Particle materials are "
-        "previewed and assigned from the VFX workspace.");
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.standalone.material.19e03a").c_str());
+    ImGui::TextWrapped(TEXT::Localize("editor.ui.create.or.open.one.material.asset.surface.materials.use.the.neut.17e19e").c_str());
 
     std::string openGuid = candidateAuthoringAssetGuid_.value;
     AssetFieldOptions openOptions{};
@@ -104,7 +102,7 @@ void ModelMaterialWorkspaceController::DrawModelAndSlotsWindow(
                                     ? selectedTemplate->displayName.data()
                                     : "Material Template";
     ImGui::SetNextItemWidth(-1.0f);
-    ImGui::InputTextWithHint("##StandaloneMaterialName", "New material name",
+    ImGui::InputTextWithHint("##StandaloneMaterialName",TEXT::Localize("editor.ui.new.material.name.be45f0").c_str(),
                              newMaterialName_.data(), newMaterialName_.size());
     ImGui::SetNextItemWidth(-1.0f);
     if (ImGui::BeginCombo("##StandaloneMaterialTemplate", templateLabel)) {
@@ -119,14 +117,13 @@ void ModelMaterialWorkspaceController::DrawModelAndSlotsWindow(
       }
       ImGui::EndCombo();
     }
-    if (ImGui::Button("Create Material", ImVec2(-1.0f, 0.0f))) {
+    if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.create.material.5342da", "Create Material").c_str(), ImVec2(-1.0f, 0.0f))) {
       (void)CreateMaterial(scene, selectedTemplate_, false, statusMessage_);
     }
 
-    ImGui::SeparatorText("Project Materials");
+    ImGui::SeparatorText(TEXT::Localize("editor.ui.project.materials.bfaa56").c_str());
     ImGui::SetNextItemWidth(-1.0f);
-    ImGui::InputTextWithHint("##StandaloneMaterialSearch",
-                             "Filter materials...", materialSearch_.data(),
+    ImGui::InputTextWithHint("##StandaloneMaterialSearch",TEXT::Localize("editor.ui.filter.materials.fc64cb").c_str(), materialSearch_.data(),
                              materialSearch_.size());
     const std::string_view query(materialSearch_.data());
     if (ImGui::BeginChild("##StandaloneMaterialList", ImVec2(0.0f, 0.0f),
@@ -159,7 +156,7 @@ void ModelMaterialWorkspaceController::DrawModelAndSlotsWindow(
   ImGui::SetNextItemWidth(-1.0f);
   if (ImGui::BeginCombo("##ModelMaterialModel", modelPreview)) {
     ImGui::SetNextItemWidth(-1.0f);
-    ImGui::InputTextWithHint("##ModelMaterialModelSearch", "Filter models...",
+    ImGui::InputTextWithHint("##ModelMaterialModelSearch",TEXT::Localize("editor.ui.filter.models.a821e5").c_str(),
                              modelSearch_.data(), modelSearch_.size());
     ImGui::Separator();
     const std::string_view query(modelSearch_.data());
@@ -177,16 +174,14 @@ void ModelMaterialWorkspaceController::DrawModelAndSlotsWindow(
       ImGui::PopID();
     }
     if (modelChoices_.empty()) {
-      ImGui::TextDisabled("No model assets are registered");
+      ImGui::TextDisabled(TEXT::Localize("editor.ui.no.model.assets.are.registered.255b81").c_str());
     }
     ImGui::EndCombo();
   }
 
   if (!IsEditingModel()) {
     ImGui::Spacing();
-    ImGui::TextWrapped(
-        "Choose an imported model. The workspace consumes its HMODEL/HCMESH "
-        "surface layout and never rewrites imported materials.");
+    ImGui::TextWrapped(TEXT::Localize("editor.ui.choose.an.imported.model.the.workspace.consumes.its.hmodel.hcmes.985ce2").c_str());
     ImGui::End();
     return;
   }
@@ -215,26 +210,26 @@ void ModelMaterialWorkspaceController::DrawModelAndSlotsWindow(
       }
     }
     ImGui::Separator();
-    if (ImGui::Selectable("+ New Material Set")) {
+    if (ImGui::Selectable(TEXT::LocalizeWindow("editor.ui.new.material.set.f8896f", "+ New Material Set").c_str())) {
       (void)CreateMaterialSet(scene, statusMessage_);
     }
     ImGui::EndCombo();
   }
   ImGui::BeginDisabled(!authoringDocument_.IsBindingDirty());
-  if (ImGui::Button("Save Set")) {
+  if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.save.set.b472eb", "Save Set").c_str())) {
     (void)SaveBindings(scene, false, statusMessage_);
   }
   ImGui::EndDisabled();
   ImGui::SameLine();
-  if (ImGui::Button("Save Set As...")) {
+  if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.save.set.as.fcd87e", "Save Set As...").c_str())) {
     ImGui::OpenPopup("SaveBindingAsPopupFromParts");
   }
   if (ImGui::BeginPopup("SaveBindingAsPopupFromParts")) {
-    ImGui::TextUnformatted("Path under Assets");
+    ImGui::TextUnformatted(TEXT::Localize("editor.ui.path.under.assets.9905f5").c_str());
     ImGui::SetNextItemWidth(300.0f);
     ImGui::InputText("##BindingSaveAsPath", bindingSaveAsPath_.data(),
                      bindingSaveAsPath_.size());
-    if (ImGui::Button("Save Copy") &&
+    if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.save.copy.ec185a", "Save Copy").c_str()) &&
         SaveBindings(scene, true, statusMessage_)) {
       ImGui::CloseCurrentPopup();
     }
@@ -245,39 +240,36 @@ void ModelMaterialWorkspaceController::DrawModelAndSlotsWindow(
     (void)CreateMaterialSet(scene, statusMessage_);
   }
   if (ImGui::IsItemHovered()) {
-    ImGui::SetTooltip("Create another Material Set for this model");
+    ImGui::SetTooltip(TEXT::Localize("editor.ui.create.another.material.set.for.this.model.d17f86").c_str());
   }
   ImGui::SameLine();
   ImGui::BeginDisabled(
       !authoringDocument_.GetBindingAssetGuid().IsValid());
-  if (ImGui::SmallButton("Trash##DeleteMaterialSet")) {
-    ImGui::OpenPopup("DeleteCurrentMaterialSetPopup");
+  if (ImGui::SmallButton(TEXT::LocalizeWindow("editor.ui.trash.e3bf62", "Trash##DeleteMaterialSet").c_str())) {
+    ImGui::OpenPopup(TEXT::LocalizeWindow("editor.ui.deletecurrentmaterialsetpopup.7094dc", "DeleteCurrentMaterialSetPopup").c_str());
   }
   ImGui::EndDisabled();
-  if (ImGui::BeginPopupModal(
-          "DeleteCurrentMaterialSetPopup", nullptr,
+  if (ImGui::BeginPopupModal(TEXT::LocalizeWindow("editor.ui.deletecurrentmaterialsetpopup.7094dc", "DeleteCurrentMaterialSetPopup").c_str(), nullptr,
           ImGuiWindowFlags_AlwaysAutoResize)) {
     const AssetGuid setGuid =
         authoringDocument_.GetBindingAssetGuid();
     const AssetRecord* setRecord = setGuid.IsValid()
         ? scene.GetAssetDatabase().FindByGuid(setGuid)
         : nullptr;
-    ImGui::TextUnformatted("Move this model Material Set to project trash?");
+    ImGui::TextUnformatted(TEXT::Localize("editor.ui.move.this.model.material.set.to.project.trash.47fff4").c_str());
     if (setRecord != nullptr) {
       ImGui::TextWrapped("%s", setRecord->sourcePath.generic_string().c_str());
     }
     if (authoringDocument_.IsBindingDirty()) {
       ImGui::TextColored(
-          ImVec4(1.0f, 0.65f, 0.25f, 1.0f),
-          "Unsaved set edits will be discarded.");
+          ImVec4(1.0f, 0.65f, 0.25f, 1.0f),TEXT::Localize("editor.ui.unsaved.set.edits.will.be.discarded.cbfee0").c_str());
     }
     const AssetTrashReferenceAnalysis references =
         AnalyzeAssetTrashReferences(scene.GetAssetDatabase(), setGuid);
     if (references.IsReferenced()) {
-      ImGui::SeparatorText("References");
+      ImGui::SeparatorText(TEXT::Localize("editor.ui.references.5d20d0").c_str());
       ImGui::TextColored(
-          ImVec4(1.0f, 0.48f, 0.34f, 1.0f),
-          "This Material Set is still selected by a Scene and cannot be deleted.");
+          ImVec4(1.0f, 0.48f, 0.34f, 1.0f),TEXT::Localize("editor.ui.this.material.set.is.still.selected.by.a.scene.and.cannot.be.del.d487d7").c_str());
       for (size_t index = 0u;
            index < (std::min)(references.references.size(), size_t{3u});
            ++index) {
@@ -288,7 +280,7 @@ void ModelMaterialWorkspaceController::DrawModelAndSlotsWindow(
       }
     }
     ImGui::BeginDisabled(references.IsReferenced());
-    if (ImGui::Button("Move to Trash", ImVec2(120.0f, 0.0f))) {
+    if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.move.to.trash.dffd3b", "Move to Trash").c_str(), ImVec2(120.0f, 0.0f))) {
       const AssetTrashResult deleted = MoveAssetToProjectTrash(
           scene.GetAssetDatabase(), setGuid);
       statusMessage_ = deleted.message;
@@ -305,19 +297,19 @@ void ModelMaterialWorkspaceController::DrawModelAndSlotsWindow(
     }
     ImGui::EndDisabled();
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(100.0f, 0.0f))) {
+    if (ImGui::Button(TEXT::LocalizeWindow("ui.common.cancel", "Cancel").c_str(), ImVec2(100.0f, 0.0f))) {
       ImGui::CloseCurrentPopup();
     }
     ImGui::EndPopup();
   }
 
-  ImGui::Text("%u material slots", stats_.materialSlotCount);
+  ImGui::Text(TEXT::Localize("editor.ui.u.material.slots.2dab54").c_str(), stats_.materialSlotCount);
   ImGui::SameLine();
   if (authoringDocument_.IsBindingDirty()) {
-    ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.3f, 1.0f), "Unsaved binding edits");
+    ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.3f, 1.0f),TEXT::Localize("editor.ui.unsaved.binding.edits.de2eb6").c_str());
   }
   ImGui::SetNextItemWidth(-1.0f);
-  ImGui::InputTextWithHint("##ModelMaterialSlotSearch", "Filter name or slotId",
+  ImGui::InputTextWithHint("##ModelMaterialSlotSearch",TEXT::Localize("editor.ui.filter.name.or.slotid.5b4479").c_str(),
                            slotSearch_.data(), slotSearch_.size());
   ImGui::Separator();
 
@@ -359,7 +351,7 @@ void ModelMaterialWorkspaceController::DrawModelAndSlotsWindow(
             IM_COL32(80, 220, 232, 255), 3.0f, 0, 2.0f);
       }
       if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
-        ImGui::SetTooltip("Stable slotId: %s",
+        ImGui::SetTooltip(TEXT::Localize("editor.ui.stable.slotid.s.b972aa").c_str(),
                           slotId.empty() ? "missing" : slotId.c_str());
       }
       ImGui::TableSetColumnIndex(1);

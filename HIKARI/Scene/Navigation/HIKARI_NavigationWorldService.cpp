@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <future>
 #include <map>
 #include <memory>
 #include <set>
@@ -818,19 +819,9 @@ namespace HIKARI::NAVIGATION {
         }
 
         bool BuildNavigation(
-            const CurrentNavigationSources& sources,
+            NavigationGeometry& geometry,
             NavigationBuildOutput& out,
             std::string& outDiagnostic) {
-            NavigationGeometry geometry{};
-            if (!GatherGeometry(
-                    sources,
-                    geometry,
-                    out.chunks,
-                    outDiagnostic)) {
-                return false;
-            }
-            out.objectSignatures = sources.objectSignatures;
-            out.collisionRevisions = sources.collisionRevisions;
             if (geometry.triangles.empty()) {
                 outDiagnostic = "scene has no solid walkable terrain geometry";
                 return true;
@@ -1076,42 +1067,37 @@ namespace HIKARI::NAVIGATION {
             return true;
         }
 
-        bool BuildIncrementalNavigation(
-            dtNavMesh& navMesh,
+        struct PendingTileUpdate {
+            int x = 0, z = 0;
+            unsigned char* newData = nullptr;
+            int newDataSize = 0;
+            dtTileRef oldReference = 0;
+            unsigned char* oldBackup = nullptr;
+            int oldDataSize = 0;
+            bool applied = false, newInstalled = false;
+        };
+        struct PendingTileUpdates {
+            std::vector<PendingTileUpdate> values;
+            ~PendingTileUpdates() { Release(); }
+            void Release() noexcept {
+                for (auto& update : values) {
+                    dtFree(update.newData); update.newData = nullptr;
+                    dtFree(update.oldBackup); update.oldBackup = nullptr;
+                }
+            }
+        };
+
+        bool PrepareIncrementalNavigation(
             const NavigationGrid& grid,
             const NavigationChunkCache& currentChunks,
             const NavigationChunkCache& updatedChunks,
             const std::set<NavigationChunkKey>& changedChunks,
             const DirtyTileSet& dirtyTiles,
-            uint32_t currentTileCount,
-            uint32_t& outTileCount,
+            PendingTileUpdates& pending,
             std::string& outDiagnostic) {
-            struct PendingTileUpdate {
-                int x = 0;
-                int z = 0;
-                unsigned char* newData = nullptr;
-                int newDataSize = 0;
-                dtTileRef oldReference = 0;
-                unsigned char* oldBackup = nullptr;
-                int oldDataSize = 0;
-                bool applied = false;
-                bool newInstalled = false;
-            };
-            std::vector<PendingTileUpdate> updates{};
+            auto& updates = pending.values;
             updates.reserve(dirtyTiles.size());
-            const auto releasePending = [&updates]() noexcept {
-                for (PendingTileUpdate& update : updates) {
-                    if (update.newData != nullptr) {
-                        dtFree(update.newData);
-                        update.newData = nullptr;
-                    }
-                    if (update.oldBackup != nullptr) {
-                        dtFree(update.oldBackup);
-                        update.oldBackup = nullptr;
-                    }
-                }
-            };
-
+            const auto releasePending = [&] { pending.Release(); };
             const int borderCells =
                 static_cast<int>(std::ceil(kAgentRadius / kCellSize)) + 3;
             const float borderWorldSize =
@@ -1156,6 +1142,13 @@ namespace HIKARI::NAVIGATION {
                 updates.push_back(update);
             }
 
+            return true;
+        }
+
+        bool CommitIncrementalNavigation(dtNavMesh& navMesh, PendingTileUpdates& pending,
+            uint32_t currentTileCount, uint32_t& outTileCount, std::string& outDiagnostic) {
+            auto& updates = pending.values;
+            const auto releasePending = [&] { pending.Release(); };
             // Back up only the dirty tiles before mutating Detour. This keeps
             // the transaction page-bounded while retaining a rollback path.
             for (PendingTileUpdate& update : updates) {
@@ -1296,6 +1289,20 @@ namespace HIKARI::NAVIGATION {
 
     } // namespace
 
+    namespace {
+        struct NavigationBuildJob {
+            uint64_t stamp = 0, revision = 0;
+            bool full = false, succeeded = false;
+            NavigationBuildOutput build;
+            NavigationGeometry geometry;
+            NavigationChunkCache updated;
+            std::set<NavigationChunkKey> changed;
+            DirtyTileSet dirty;
+            PendingTileUpdates tiles;
+            std::string diagnostic;
+        };
+    }
+
     struct NavigationWorldService::Impl {
         NavMeshPtr navMesh{};
         NavMeshQueryPtr query{};
@@ -1312,6 +1319,38 @@ namespace HIKARI::NAVIGATION {
         uint32_t tileCount = 0u;
         std::string diagnostic{};
         NavigationDiagnostics diagnostics{};
+        std::future<std::unique_ptr<NavigationBuildJob>> pending;
+
+        ~Impl() { if (pending.valid()) pending.wait(); }
+
+        bool Publish(NavigationBuildJob& job) {
+            auto& build = job.build;
+            if (job.succeeded && !job.full && !job.dirty.empty())
+                job.succeeded = CommitIncrementalNavigation(*navMesh, job.tiles, tileCount, build.tileCount, job.diagnostic);
+            if (!job.succeeded) {
+                ++diagnostics.lastKnownGoodRetentionCount;
+                diagnostic = job.diagnostic.empty() ? "navigation build failed" : job.diagnostic;
+                HIKARI_LOG_WARN("[Navigation] " + diagnostic + "; retaining last-known-good navmesh");
+                return query != nullptr;
+            }
+            if (job.full) {
+                ++diagnostics.fullBuildCount;
+                navMesh = std::move(build.navMesh);
+                query = std::move(build.query);
+                chunks = std::move(build.chunks);
+                grid = build.grid;
+                tileCount = build.tileCount;
+            } else {
+                if (!job.dirty.empty()) { ++diagnostics.incrementalBuildCount; tileCount = build.tileCount; }
+                for (const auto& key : job.changed) chunks.erase(key);
+                for (auto& [key, chunk] : job.updated) chunks.emplace(key, std::move(chunk));
+            }
+            objectSignatures = std::move(build.objectSignatures);
+            collisionRevisions = std::move(build.collisionRevisions);
+            sourceRevision = job.revision;
+            diagnostic = std::move(job.diagnostic);
+            return query != nullptr;
+        }
 
         Impl() {
             filter.setIncludeFlags(kWalkableFlag);
@@ -1325,11 +1364,22 @@ namespace HIKARI::NAVIGATION {
 
     NavigationWorldService::~NavigationWorldService() = default;
 
-    bool NavigationWorldService::Synchronize(World& world) noexcept {
+    bool NavigationWorldService::Synchronize(World& world, SynchronizationMode mode) noexcept {
         ++impl_->diagnostics.synchronizeCalls;
         try {
             const NavigationSourceStamp stamp =
                 GatherNavigationSourceStamp(world);
+            if (impl_->pending.valid()) {
+                if (mode == SynchronizationMode::Background &&
+                    impl_->pending.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
+                    return impl_->query != nullptr;
+                auto completed = impl_->pending.get();
+                impl_->diagnostics.buildPending = false;
+                if (completed->stamp == stamp.revision) return impl_->Publish(*completed);
+                ++impl_->diagnostics.discardedBuildCount;
+                impl_->lastAttemptedStampRevision = UINT64_MAX;
+                impl_->lastAttemptedRevision = UINT64_MAX;
+            }
             if (stamp.revision == impl_->lastAttemptedStampRevision) {
                 ++impl_->diagnostics.unchangedStampFastPaths;
                 return impl_->query != nullptr;
@@ -1356,16 +1406,17 @@ namespace HIKARI::NAVIGATION {
                 return false;
             }
 
-            NavigationBuildOutput build{};
-            std::string diagnostic{};
-            bool fullBuild = impl_->navMesh == nullptr ||
-                impl_->query == nullptr ||
+            auto job = std::make_unique<NavigationBuildJob>();
+            job->stamp = stamp.revision; job->revision = revision;
+            auto& build = job->build;
+            auto& diagnostic = job->diagnostic;
+            auto& fullBuild = job->full;
+            fullBuild = impl_->navMesh == nullptr || impl_->query == nullptr ||
                 impl_->objectSignatures != sources.objectSignatures ||
-                impl_->grid.tilesX <= 0 ||
-                impl_->grid.tilesZ <= 0;
-            std::set<NavigationChunkKey> changedChunks{};
-            NavigationChunkCache updatedChunks{};
-            DirtyTileSet dirtyTiles{};
+                impl_->grid.tilesX <= 0 || impl_->grid.tilesZ <= 0;
+            auto& changedChunks = job->changed;
+            auto& updatedChunks = job->updated;
+            auto& dirtyTiles = job->dirty;
 
             if (!fullBuild) {
                 for (const auto& [key, source] : sources.chunks) {
@@ -1475,78 +1526,29 @@ namespace HIKARI::NAVIGATION {
                     static_cast<std::size_t>(
                         (std::numeric_limits<uint32_t>::max)())));
 
-            bool buildSucceeded = false;
-            if (fullBuild) {
-                buildSucceeded = BuildNavigation(
-                    sources, build, diagnostic);
-            } else if (dirtyTiles.empty()) {
-                buildSucceeded = true;
-            } else {
-                buildSucceeded = BuildIncrementalNavigation(
-                    *impl_->navMesh,
-                    impl_->grid,
-                    impl_->chunks,
-                    updatedChunks,
-                    changedChunks,
-                    dirtyTiles,
-                    impl_->tileCount,
-                    build.tileCount,
-                    diagnostic);
-            }
-            if (!buildSucceeded) {
-                ++impl_->diagnostics.lastKnownGoodRetentionCount;
-                impl_->diagnostic = diagnostic.empty()
-                    ? "navigation build failed"
-                    : diagnostic;
-                HIKARI_LOG_WARN(
-                    "[Navigation] " + impl_->diagnostic +
-                    "; retaining last-known-good navmesh");
+            build.objectSignatures = std::move(sources.objectSignatures);
+            build.collisionRevisions = std::move(sources.collisionRevisions);
+            if (fullBuild && !GatherGeometry(sources, job->geometry, build.chunks, diagnostic))
+                return impl_->Publish(*job);
+
+            // World/Terrain は所有スレッドだけで読む。Recast は独立した geometry を処理し、
+            // 生きている navMesh/query には触れない。実行中は chunks を変更しない。
+            auto work = [job = std::move(job), current = &impl_->chunks, grid = impl_->grid]() mutable {
+                if (job->full)
+                    job->succeeded = BuildNavigation(job->geometry, job->build, job->diagnostic);
+                else
+                    job->succeeded = PrepareIncrementalNavigation(grid, *current, job->updated,
+                        job->changed, job->dirty, job->tiles, job->diagnostic);
+                return std::move(job);
+            };
+            if (mode == SynchronizationMode::Background) {
+                impl_->pending = std::async(std::launch::async, std::move(work));
+                ++impl_->diagnostics.backgroundBuildCount;
+                impl_->diagnostics.buildPending = true;
                 return impl_->query != nullptr;
             }
-
-            if (fullBuild) {
-                ++impl_->diagnostics.fullBuildCount;
-                impl_->navMesh = std::move(build.navMesh);
-                impl_->query = std::move(build.query);
-                impl_->chunks = std::move(build.chunks);
-                impl_->objectSignatures =
-                    std::move(build.objectSignatures);
-                impl_->collisionRevisions =
-                    std::move(build.collisionRevisions);
-                impl_->grid = build.grid;
-                impl_->tileCount = build.tileCount;
-            } else {
-                if (!dirtyTiles.empty()) {
-                    ++impl_->diagnostics.incrementalBuildCount;
-                }
-                if (!dirtyTiles.empty()) {
-                    impl_->tileCount = build.tileCount;
-                }
-                for (const NavigationChunkKey& key : changedChunks) {
-                    impl_->chunks.erase(key);
-                }
-                for (auto& [key, chunk] : updatedChunks) {
-                    impl_->chunks.emplace(key, std::move(chunk));
-                }
-                impl_->objectSignatures = sources.objectSignatures;
-                impl_->collisionRevisions = sources.collisionRevisions;
-            }
-            impl_->sourceRevision = revision;
-            impl_->diagnostic = diagnostic;
-            if (impl_->query != nullptr) {
-                HIKARI_LOG_INFO(
-                    "[Navigation] synchronized terrain navmesh mode=" +
-                    std::string(fullBuild ? "full" : "incremental") +
-                    " tiles=" +
-                    std::to_string(impl_->tileCount) +
-                    " dirtyTiles=" +
-                    std::to_string(dirtyTiles.size()) +
-                    " revision=" + std::to_string(revision));
-                return true;
-            }
-            HIKARI_LOG_WARN(
-                "[Navigation] " + impl_->diagnostic);
-            return false;
+            auto completed = work();
+            return impl_->Publish(*completed);
         } catch (const std::exception& error) {
             ++impl_->diagnostics.lastKnownGoodRetentionCount;
             impl_->diagnostic =
@@ -1557,6 +1559,7 @@ namespace HIKARI::NAVIGATION {
             impl_->diagnostic =
                 "navigation synchronization failed unexpectedly";
         }
+        impl_->diagnostics.buildPending = false;
         HIKARI_LOG_WARN(
             "[Navigation] " + impl_->diagnostic +
             "; retaining last-known-good navmesh");
@@ -1564,6 +1567,8 @@ namespace HIKARI::NAVIGATION {
     }
 
     void NavigationWorldService::Clear() noexcept {
+        // 破棄時のみ待つ。worker が借用している immutable chunk cache の寿命を守る。
+        if (impl_->pending.valid()) { impl_->pending.wait(); impl_->pending = {}; }
         impl_->query.reset();
         impl_->navMesh.reset();
         impl_->chunks.clear();

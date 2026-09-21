@@ -142,7 +142,94 @@ EditorOperationRegistrationResult RejectRegistration(
     return result;
 }
 
+bool ValidateShape(const nlohmann::json& value, const nlohmann::json& schema,
+    const std::string& path, std::string& error, int depth = 0) {
+    if (depth > 16 || !schema.is_object()) {
+        error = path + " has an invalid or excessively nested parameter schema.";
+        return false;
+    }
+    if (schema.contains("oneOf")) {
+        size_t matches = 0;
+        for (const auto& candidate : schema["oneOf"]) {
+            std::string ignored;
+            if (ValidateShape(value, candidate, path, ignored, depth + 1)) ++matches;
+        }
+        if (matches != 1) {
+            error = path + " must match exactly one accepted command shape. See operationSchema.";
+            return false;
+        }
+    }
+    const auto type = schema.value("type", std::string{});
+    if ((!type.empty() && type == "object" && !value.is_object()) ||
+        (type == "array" && !value.is_array()) ||
+        (type == "string" && !value.is_string()) ||
+        (type == "boolean" && !value.is_boolean()) ||
+        (type == "number" && !value.is_number()) ||
+        (type == "integer" && !value.is_number_integer())) {
+        error = path + " must be " + type;
+        return false;
+    }
+    if (schema.contains("enum") && std::find(schema["enum"].begin(),
+            schema["enum"].end(), value) == schema["enum"].end()) {
+        error = path + " must be one of " + schema["enum"].dump();
+        return false;
+    }
+    if (value.is_number()) {
+        for (const auto* key : {"minimum", "maximum"}) {
+            if (schema.contains(key) && (std::string_view(key) == "minimum"
+                    ? value.get<double>() < schema[key].get<double>()
+                    : value.get<double>() > schema[key].get<double>())) {
+                error = path + " violates " + key + "=" + schema[key].dump();
+                return false;
+            }
+        }
+    }
+    if (value.is_object()) {
+        for (const auto& required : schema.value("required", nlohmann::json::array())) {
+            if (!value.contains(required.get<std::string>())) {
+                error = "Missing required parameter: " + path + "." + required.get<std::string>();
+                return false;
+            }
+        }
+        const auto properties = schema.value("properties", nlohmann::json::object());
+        for (const auto& [key, child] : value.items()) {
+            if (properties.contains(key) && !ValidateShape(child, properties[key], path + "." + key, error, depth + 1)) return false;
+            if (!properties.contains(key) && schema.value("additionalProperties", true) == false) {
+                error = "Unknown parameter: " + path + "." + key;
+                return false;
+            }
+        }
+    }
+    if (value.is_array() && schema.contains("items")) {
+        for (size_t i = 0; i < value.size(); ++i)
+            if (!ValidateShape(value[i], schema["items"], path + "[" + std::to_string(i) + "]", error, depth + 1)) return false;
+    }
+    return true;
+}
+
 } // namespace
+
+nlohmann::json DescribeEditorOperation(const EditorOperationDefinition& definition) {
+    const char* kind = "unspecified";
+    switch (definition.kind) {
+    case EditorOperationKind::Query: kind = "query"; break;
+    case EditorOperationKind::Mutation: kind = "mutation"; break;
+    case EditorOperationKind::Session: kind = "session"; break;
+    default: break;
+    }
+    nlohmann::json result{{"id", definition.id}, {"summary", definition.summary},
+        {"workspace", definition.workspace}, {"kind", kind},
+        {"requiresDocumentSession", definition.requiresDocumentSession},
+        {"requiresCleanDocument", definition.requiresCleanDocument},
+        {"entryPoint", definition.entryPoint},
+        {"searchTerms", definition.searchTerms}, {"parameters", nlohmann::json::array()}};
+    for (const auto& parameter : definition.parameters) {
+        result["parameters"].push_back({{"name", parameter.name},
+            {"type", ParameterTypeName(parameter.type)}, {"required", parameter.required},
+            {"description", parameter.description}, {"schema", parameter.schema}});
+    }
+    return result;
+}
 
 EditorOperationRegistrationResult EditorOperationRegistry::Register(
     EditorOperationDefinition definition) {
@@ -180,6 +267,7 @@ EditorOperationRegistrationResult EditorOperationRegistry::Register(
 
     const std::string id = definition.id;
     operations_.emplace(id, std::move(definition));
+    ++revision_;
 
     EditorOperationRegistrationResult result{};
     result.ok = true;
@@ -229,6 +317,10 @@ EditorOperationResult EditorOperationRegistry::Validate(
                 "operation: " + definition.id);
             return result;
         }
+        if (!ValidateShape(*found, parameter.schema, parameter.name, result.message)) {
+            result.code = "PARAMETER_CONSTRAINT";
+            return result;
+        }
     }
 
     for (const auto& [name, value] : parameters.items()) {
@@ -259,23 +351,6 @@ EditorOperationResult EditorOperationRegistry::Execute(
     const std::string& id,
     const nlohmann::json& parameters) const {
 
-    if (targetExecutor_ && targetSelector_ && parameters.is_object() &&
-        !parameters.contains("sessionId") && !id.starts_with("authoring.")) {
-        const auto selected = targetSelector_(id);
-        if (!selected.empty()) {
-            auto targeted = parameters;
-            targeted["sessionId"] = selected;
-            return Execute(id, targeted);
-        }
-    }
-    if (targetExecutor_ && parameters.is_object() && parameters.contains("sessionId") &&
-        id.rfind("authoring.", 0) != 0) {
-        if (!parameters["sessionId"].is_string())
-            return {false, "INVALID_PARAMETER", "sessionId must be a string."};
-        try { return targetExecutor_(id, parameters); }
-        catch (const std::exception& error) { return {false, "SESSION_OPERATION_FAILED", error.what()}; }
-    }
-
     const uint64_t sequence =
         gOperationSequence.fetch_add(1u, std::memory_order_relaxed) + 1u;
     const auto startedAt = std::chrono::steady_clock::now();
@@ -285,6 +360,12 @@ EditorOperationResult EditorOperationRegistry::Execute(
         id,
         found != operations_.end() ? &found->second : nullptr);
     const auto finish = [&](EditorOperationResult result) {
+        if (found != operations_.end()) {
+            if (!result.data.is_object()) result.data = nlohmann::json::object();
+            const auto description = DescribeEditorOperation(found->second);
+            result.data["operationKind"] = description["kind"];
+            if (!result.ok) result.data["operationSchema"] = description;
+        }
         LogOperationEnd(sequence, id, result, startedAt);
         return result;
     };
@@ -294,13 +375,33 @@ EditorOperationResult EditorOperationRegistry::Execute(
         result.message = "Unregistered editor operation: " + id;
         return finish(std::move(result));
     }
-    EditorOperationResult validation =
-        Validate(found->second, parameters);
-    if (!validation.ok) {
-        return finish(std::move(validation));
+    auto arguments = parameters;
+    const auto& definition = found->second;
+    const bool declaredSession = std::any_of(definition.parameters.begin(), definition.parameters.end(),
+        [](const auto& p) { return p.name == "sessionId"; });
+    std::string session;
+    if (targetExecutor_ && arguments.is_object() && !declaredSession) {
+        if (arguments.contains("sessionId")) {
+            if (!arguments["sessionId"].is_string())
+                return finish({false, "INVALID_PARAMETER", "sessionId must be a string."});
+            if (definition.requiresDocumentSession) {
+                session = arguments["sessionId"];
+                if (session.empty()) return finish({false,"INVALID_PARAMETER","sessionId must not be empty."});
+            }
+            arguments.erase("sessionId");
+        } else if (definition.requiresDocumentSession && targetSelector_) {
+            session = targetSelector_(id);
+        }
     }
+    const auto validation = Validate(definition, arguments);
+    if (!validation.ok) return finish(validation);
     try {
-        return finish(found->second.execute(parameters));
+        if (!session.empty()) {
+            arguments["sessionId"] = session;
+            return finish(targetExecutor_(definition.sessionDispatch == EditorOperationSessionDispatch::Preview
+                ? "authoring.preview" : id, arguments));
+        }
+        return finish(definition.execute(arguments));
     } catch (const std::exception& error) {
         EditorOperationResult result{};
         result.code = "OPERATION_EXCEPTION";

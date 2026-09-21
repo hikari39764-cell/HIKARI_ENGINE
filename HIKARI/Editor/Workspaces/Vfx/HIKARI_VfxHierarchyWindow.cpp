@@ -1,3 +1,4 @@
+#include "Editor/Commands/HIKARI_EditorCommandRouter.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxInspectorControls.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 
@@ -115,8 +116,7 @@ namespace HIKARI::EDITOR {
                             database, record->guid, statusMessage_);
                     }
                     if (ImGui::IsItemHovered()) {
-                        ImGui::SetTooltip(
-                            "%s\nClick to open",
+                        ImGui::SetTooltip(TEXT::Localize("editor.ui.s.nclick.to.open.d627df").c_str(),
                             record->guid.value.c_str());
                     }
                     ImGui::PopID();
@@ -208,17 +208,23 @@ namespace HIKARI::EDITOR {
                 }
                 ImGui::EndPopup();
             }
-            // Duplicate, delete and reparent remain in the row context menu.
+            const bool focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+            if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_Delete, focused)) {
+                if (selection_.kind == VfxWorkspaceSelectionKind::Input) requestDeleteInput_ = true;
+                else if (IsEmitterSelection(selection_.kind)) requestDeleteEmitter_ = true;
+            }
+            if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_F, focused))
+                (void)FocusSelectedEmitter(statusMessage_);
+
 
             if (requestDeleteEmitter_) {
-                ImGui::OpenPopup("Delete VFX Emitter?");
+                ImGui::OpenPopup(TEXT::LocalizeWindow("editor.ui.delete.vfx.emitter.c34a06", "Delete VFX Emitter?").c_str());
                 requestDeleteEmitter_ = false;
             }
-            if (ImGui::BeginPopupModal(
-                    "Delete VFX Emitter?", nullptr,
+            if (ImGui::BeginPopupModal(TEXT::LocalizeWindow("editor.ui.delete.vfx.emitter.c34a06", "Delete VFX Emitter?").c_str(), nullptr,
                     ImGuiWindowFlags_AlwaysAutoResize)) {
                 ImGui::TextUnformatted(
-                    VfxUiText("Delete the selected emitter? Child emitters are promoted.").c_str());
+                    VfxUiText(TEXT::LocalizeCStr("ui.vfx.text.Delete the selected emitter? Child emitters are promoted.")).c_str());
                 if (ImGui::Button(VfxUiText("Cancel").c_str())) ImGui::CloseCurrentPopup();
                 ImGui::SameLine();
                 if (ImGui::Button(VfxUiText("Delete Emitter").c_str())) {
@@ -229,14 +235,13 @@ namespace HIKARI::EDITOR {
                 ImGui::EndPopup();
             }
             if (requestDeleteInput_) {
-                ImGui::OpenPopup("Delete VFX Input?");
+                ImGui::OpenPopup(TEXT::LocalizeWindow("editor.ui.delete.vfx.input.a649fc", "Delete VFX Input?").c_str());
                 requestDeleteInput_ = false;
             }
-            if (ImGui::BeginPopupModal(
-                    "Delete VFX Input?", nullptr,
+            if (ImGui::BeginPopupModal(TEXT::LocalizeWindow("editor.ui.delete.vfx.input.a649fc", "Delete VFX Input?").c_str(), nullptr,
                     ImGuiWindowFlags_AlwaysAutoResize)) {
                 ImGui::TextUnformatted(
-                    VfxUiText("Delete the input and all property links that use it?").c_str());
+                    VfxUiText(TEXT::LocalizeCStr("ui.vfx.text.Delete the input and all property links that use it?")).c_str());
                 if (ImGui::Button(VfxUiText("Cancel").c_str())) ImGui::CloseCurrentPopup();
                 ImGui::SameLine();
                 if (ImGui::Button(VfxUiText("Delete Input").c_str())) {

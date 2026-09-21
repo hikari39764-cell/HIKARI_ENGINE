@@ -19,6 +19,8 @@ Language GetLocalizationLanguage() noexcept;
 // Returns the translated UI string for a key; falls back to English, then to
 // the key itself when the table has no entry.
 std::string Localize(std::string_view key);
+// 呼び出し元は返り値を保存しないこと。表の更新まで有効な UI 表示用ポインター。
+const char* LocalizeCStr(const char* key);
 
 // Returns a localized window title with a stable ImGui window ID.
 // Example: LocalizeWindow("ui.window.inspector", "Inspector")

@@ -11,6 +11,7 @@
 
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Gfx/HIKARI_DynamicUploadBuffer.h"
+#include "Gfx/HIKARI_DirtyUploadRanges.h"
 #include "Render3D/Runtime/HIKARI_SurfaceGpuScene.h"
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
@@ -23,6 +24,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         size_t uploadedInstanceCount = 0;
         size_t committedInstanceCount = 0;
         size_t committedBytes = 0;
+        size_t committedRangeCount = 0;
         size_t overflowInstanceCount = 0;
         size_t uploadCallCount = 0;
         size_t materialPatchCount = 0;
@@ -105,14 +107,12 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             D3D12_RESOURCE_STATES defaultState = D3D12_RESOURCE_STATE_COMMON;
             size_t cursor = 0;
             size_t residentInstanceCount = 0;
-            size_t dirtyFirstInstance = 0;
-            size_t dirtyEndInstance = 0;
+            GFX::DirtyUploadRanges dirtyRanges;
             uint64_t layoutVersion = 0;
             uint64_t sourceVersion = 0;
             uintptr_t sourceIdentity = 0;
             uint64_t materialBindingVersion = 0;
             bool resident = false;
-            bool dirty = false;
         };
 
         FrameSlot* ActiveSlot();

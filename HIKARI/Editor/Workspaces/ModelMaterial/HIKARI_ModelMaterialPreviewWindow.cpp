@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 #include <algorithm>
 #include "Core/HIKARI_TimeService.h"
@@ -18,15 +19,15 @@ const char *DebugModeLabel(
     ModelMaterialWorkspaceController::PreviewDebugMode mode) noexcept {
   switch (mode) {
   case ModelMaterialWorkspaceController::PreviewDebugMode::Lit:
-    return "Lit";
+    return TEXT::LocalizeCStr("ui.debugView.lit");
   case ModelMaterialWorkspaceController::PreviewDebugMode::Neutral:
-    return "Neutral";
+    return TEXT::LocalizeCStr("cine.neutral");
   case ModelMaterialWorkspaceController::PreviewDebugMode::Clay:
-    return "Clay";
+    return TEXT::LocalizeCStr("editor.ui.clay.e00d56");
   case ModelMaterialWorkspaceController::PreviewDebugMode::Unlit:
-    return "Unlit";
+    return TEXT::LocalizeCStr("ui.assetInspector.unlit");
   }
-  return "Lit";
+  return TEXT::LocalizeCStr("ui.debugView.lit");
 }
 
 } // namespace
@@ -35,47 +36,51 @@ void ModelMaterialWorkspaceController::DrawPreviewToolbar(
     ModelMaterialWorkspaceResult &result,
     EditorCommandRouter &commandRouter) {
 #if defined(HIKARI_WITH_EDITOR)
+  if (!nodePreviewId_.empty()) {
+    StatusBadge(TEXT::LocalizeCStr("material.inspect.active"), EditorStatusTone::Warning);
+    ImGui::SameLine();
+    if (IconButton(EditorGlyph::Close, "##EndNodePreview", EditorButtonTone::Quiet, {}, TEXT::LocalizeCStr("material.inspect.end"))) {
+      nodePreviewId_.clear(); nodePreviewRefreshPending_ = true;
+    }
+  }
   constexpr ImVec2 kIconSize{28.0f, 28.0f};
   ToolbarLabel(authoringMode_ == AuthoringMode::MaterialAsset
-                   ? "Material Sphere"
+                   ? TEXT::LocalizeCStr("material.preview.sphere")
                : IsEditingModel() ? modelDisplayName_.c_str()
-                                  : "No model open");
+                                  : TEXT::LocalizeCStr("material.preview.noModel"));
   ImGui::SameLine();
   if (authoringMode_ == AuthoringMode::MaterialAsset) {
-    StatusBadge("Standalone Material", EditorStatusTone::Ready);
+    StatusBadge(TEXT::Localize("editor.ui.standalone.material.f1ffe4").c_str(), EditorStatusTone::Ready);
   } else {
     const size_t overrideCount = static_cast<size_t>(std::count_if(
         slots_.begin(), slots_.end(), [](const SlotState &slot) {
           return slot.view.overrideMaterialGuid.IsValid();
         }));
     const std::string bindingLabel =
-        overrideCount == 0u ? "Imported materials"
-                            : std::to_string(overrideCount) + " override(s)";
+        overrideCount == 0u ? TEXT::Localize("material.preview.imported")
+                            : std::to_string(overrideCount) + " " + TEXT::Localize("material.preview.overrides");
     StatusBadge(bindingLabel.c_str(), overrideCount == 0u
                                           ? EditorStatusTone::Normal
                                           : EditorStatusTone::Ready);
     if (const ModelMaterialSlotView *selected = GetSelectedSlot()) {
       ImGui::SameLine();
-      const std::string selectedLabel = "Part: " + selected->displayName;
+      const std::string selectedLabel = TEXT::Localize("material.preview.part") + ": " + selected->displayName;
       StatusBadge(selectedLabel.c_str(), EditorStatusTone::Ready);
     }
   }
   ImGui::SameLine(0.0f, 12.0f);
-  if (ImGui::RadioButton(
-          "Runtime Asset Lighting",
+  if (ImGui::RadioButton(TEXT::LocalizeWindow("editor.ui.runtime.asset.lighting.d00c8b", "Runtime Asset Lighting").c_str(),
           previewEnvironmentMode_ == PreviewEnvironmentMode::RuntimeMatch)) {
     previewEnvironmentMode_ = PreviewEnvironmentMode::RuntimeMatch;
     previewDebugMode_ = PreviewDebugMode::Lit;
   }
   ImGui::SameLine();
-  if (ImGui::RadioButton(
-          "Scene Match",
+  if (ImGui::RadioButton(TEXT::LocalizeWindow("editor.ui.scene.match.61e8fc", "Scene Match").c_str(),
           previewEnvironmentMode_ == PreviewEnvironmentMode::SceneMatch)) {
     previewEnvironmentMode_ = PreviewEnvironmentMode::SceneMatch;
   }
   ImGui::SameLine();
-  if (ImGui::RadioButton(
-          "Studio Inspect",
+  if (ImGui::RadioButton(TEXT::LocalizeWindow("editor.ui.studio.inspect.7ebcc0", "Studio Inspect").c_str(),
           previewEnvironmentMode_ == PreviewEnvironmentMode::StudioInspect)) {
     previewEnvironmentMode_ = PreviewEnvironmentMode::StudioInspect;
   }
@@ -86,16 +91,15 @@ void ModelMaterialWorkspaceController::DrawPreviewToolbar(
   if (IconButton(EditorGlyph::Add, "ModelMaterialAddStudioLight",
                  studioInspect ? EditorButtonTone::Primary
                                : EditorButtonTone::Quiet,
-                 kIconSize,
-                 "Create a Studio point or directional light")) {
+                 kIconSize,TEXT::Localize("editor.ui.create.a.studio.point.or.directional.light.92f898").c_str())) {
     previewEnvironmentMode_ = PreviewEnvironmentMode::StudioInspect;
     ImGui::OpenPopup("ModelMaterialAddStudioLightPopup");
   }
   if (ImGui::BeginPopup("ModelMaterialAddStudioLightPopup")) {
-    if (ImGui::MenuItem("Point Light")) {
+    if (ImGui::MenuItem(TEXT::LocalizeWindow("ui.sceneCreation.pointLight", "Point Light").c_str())) {
       AddPreviewLight(RENDER3D::LIGHTING::SceneLightType::Point);
     }
-    if (ImGui::MenuItem("Directional Light")) {
+    if (ImGui::MenuItem(TEXT::LocalizeWindow("ui.sceneCreation.directionalLight", "Directional Light").c_str())) {
       AddPreviewLight(RENDER3D::LIGHTING::SceneLightType::Directional);
     }
     ImGui::EndPopup();
@@ -111,7 +115,7 @@ void ModelMaterialWorkspaceController::DrawPreviewToolbar(
                            EditorTransformGizmoOperation::Translate
                        ? EditorButtonTone::Primary
                        : EditorButtonTone::Quiet,
-                   kIconSize, "Move the selected light in the viewport")) {
+                   kIconSize,TEXT::Localize("editor.ui.move.the.selected.light.in.the.viewport.9a846a").c_str())) {
       previewLightGizmoState_.operation =
           EditorTransformGizmoOperation::Translate;
     }
@@ -122,8 +126,7 @@ void ModelMaterialWorkspaceController::DrawPreviewToolbar(
                              EditorTransformGizmoOperation::Rotate
                          ? EditorButtonTone::Primary
                          : EditorButtonTone::Quiet,
-                     kIconSize,
-                     "Rotate the selected directional light")) {
+                     kIconSize,TEXT::Localize("editor.ui.rotate.the.selected.directional.light.6283f2").c_str())) {
         previewLightGizmoState_.operation =
             EditorTransformGizmoOperation::Rotate;
       }
@@ -133,8 +136,7 @@ void ModelMaterialWorkspaceController::DrawPreviewToolbar(
   ImGui::SameLine(0.0f, 12.0f);
   ImGui::BeginDisabled(!IsPreviewReady());
   if (IconButton(EditorGlyph::Focus, "ModelMaterialFit",
-                 EditorButtonTone::Quiet, kIconSize,
-                 "Frame the complete model (F)")) {
+                 EditorButtonTone::Quiet, kIconSize,TEXT::Localize("editor.ui.frame.the.complete.model.f.3d80e0").c_str())) {
     if (commandRouter.CanExecute(EditorCommandId::FocusSelection)) {
       (void)commandRouter.Execute(EditorCommandId::FocusSelection);
     } else {
@@ -143,13 +145,12 @@ void ModelMaterialWorkspaceController::DrawPreviewToolbar(
   }
   ImGui::SameLine();
   if (IconButton(EditorGlyph::Revert, "ModelMaterialResetCamera",
-                 EditorButtonTone::Quiet, kIconSize,
-                 "Reset the saved camera for this model")) {
+                 EditorButtonTone::Quiet, kIconSize,TEXT::Localize("editor.ui.reset.the.saved.camera.for.this.model.b1fb04").c_str())) {
     ResetPreviewCamera();
   }
   ImGui::SameLine();
   ImGui::BeginDisabled(authoringMode_ != AuthoringMode::ModelMaterials);
-  if (ImGui::SmallButton("Focus Slot")) {
+  if (ImGui::SmallButton(TEXT::LocalizeWindow("editor.ui.focus.slot.6ddaf0", "Focus Slot").c_str())) {
     FocusSelectedSlot();
   }
   ImGui::EndDisabled();
@@ -159,43 +160,39 @@ void ModelMaterialWorkspaceController::DrawPreviewToolbar(
   if (IconButton(EditorGlyph::Lens, "ModelMaterialCompare",
                  previewCompareEnabled_ ? EditorButtonTone::Primary
                                         : EditorButtonTone::Quiet,
-                 kIconSize,
-                 "Compare Studio Inspect with Scene Match side by side")) {
+                 kIconSize,TEXT::Localize("editor.ui.compare.studio.inspect.with.scene.match.side.by.side.98a215").c_str())) {
     previewCompareEnabled_ = !previewCompareEnabled_;
   }
   ImGui::SameLine(0.0f, 8.0f);
   if (IconButton(EditorGlyph::Light, "ModelMaterialLightingPanel",
                  previewLightingPanelOpen_ ? EditorButtonTone::Primary
                                            : EditorButtonTone::Quiet,
-                 kIconSize,
-                 "Open the Preview Lighting panel")) {
+                 kIconSize,TEXT::Localize("editor.ui.open.the.preview.lighting.panel.a68185").c_str())) {
     previewLightingPanelOpen_ = !previewLightingPanelOpen_;
   }
   ImGui::SameLine(0.0f, 8.0f);
   if (IconButton(EditorGlyph::More, "ModelMaterialPreviewControls",
-                 EditorButtonTone::Quiet, kIconSize, "Preview controls")) {
+                 EditorButtonTone::Quiet, kIconSize,TEXT::Localize("editor.ui.preview.controls.dbc3af").c_str())) {
     ImGui::OpenPopup("ModelMaterialPreviewControlsPopup");
   }
   if (ImGui::BeginPopup("ModelMaterialPreviewControlsPopup")) {
-    ImGui::TextUnformatted("Preview navigation");
+    ImGui::TextUnformatted(TEXT::Localize("editor.ui.preview.navigation.d261de").c_str());
     ImGui::Separator();
-    ImGui::TextDisabled("RMB + WASDQE   Fly");
-    ImGui::TextDisabled("Alt + LMB       Orbit");
-    ImGui::TextDisabled("MMB             Pan");
-    ImGui::TextDisabled("Mouse Wheel     Zoom");
-    ImGui::TextDisabled("F               Frame model");
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.rmb.wasdqe.fly.301750").c_str());
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.alt.lmb.orbit.51038c").c_str());
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.mmb.pan.3cc4b0").c_str());
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.mouse.wheel.zoom.19f42b").c_str());
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.f.frame.model.a5fdeb").c_str());
     ImGui::Separator();
-    ImGui::SeparatorText("Camera");
+    ImGui::SeparatorText(TEXT::Localize("ui.inspector.category.camera").c_str());
     DrawPreviewCameraControls();
     ImGui::Separator();
-    ImGui::TextWrapped(
-        "Camera state is kept per model and per workspace for this Editor "
-        "session.");
-    ImGui::SeparatorText("Preview Environment");
+    ImGui::TextWrapped(TEXT::Localize("editor.ui.camera.state.is.kept.per.model.and.per.workspace.for.this.editor.c218f9").c_str());
+    ImGui::SeparatorText(TEXT::Localize("editor.ui.preview.environment.b5a1c9").c_str());
     DrawPreviewEnvironmentControls();
-    ImGui::Checkbox("Preview anti-aliasing (FXAA)",
+    ImGui::Checkbox(TEXT::LocalizeWindow("editor.ui.preview.anti.aliasing.fxaa.74ba48", "Preview anti-aliasing (FXAA)").c_str(),
                     &previewSpatialAaEnabled_);
-    ImGui::SeparatorText("Debug View");
+    ImGui::SeparatorText(TEXT::Localize("ui.window.debugView").c_str());
     if (ImGui::BeginCombo("##MaterialPreviewDebugMode",
                           DebugModeLabel(previewDebugMode_))) {
       for (PreviewDebugMode mode : {PreviewDebugMode::Lit,
@@ -216,8 +213,7 @@ void ModelMaterialWorkspaceController::DrawPreviewToolbar(
   ToolbarDivider();
   ImGui::SameLine(0.0f, 12.0f);
   if (IconButton(EditorGlyph::Exit, "ModelMaterialExit",
-                 EditorButtonTone::Quiet, kIconSize,
-                 "Return to the Scene workspace")) {
+                 EditorButtonTone::Quiet, kIconSize,TEXT::Localize("editor.ui.return.to.the.scene.workspace.7307cf").c_str())) {
     result.exitToSceneRequested = true;
   }
   ImGui::Separator();
@@ -239,7 +235,7 @@ void ModelMaterialWorkspaceController::DrawPreviewWindow(
   EditorViewInstance &view = workspaceHost.GetModelMaterialPreviewView();
   EditorViewInstance &compareView =
       workspaceHost.GetModelMaterialCompareView();
-  if (!ImGui::Begin("Preview###ModelMaterial/Preview", nullptr, flags)) {
+  if (!ImGui::Begin(TEXT::LocalizeWindow("ui.vfx.text.Preview", "ModelMaterial/Preview").c_str(), nullptr, flags)) {
     view.extent = {};
     view.interaction = {};
     previewRequestSubmitted_ = false;
@@ -430,7 +426,7 @@ void ModelMaterialWorkspaceController::DrawPreviewWindow(
       }
     }
   }
-  if (input.AcceptsKeyboard() && hovered && !io.WantTextInput) {
+  if (CanUseEditorShortcut(EditorShortcutScope::Viewport, ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows))) {
     (void)commandRouter.ProcessViewportShortcuts(true);
   }
 

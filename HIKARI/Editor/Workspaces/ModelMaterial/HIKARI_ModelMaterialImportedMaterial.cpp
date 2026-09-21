@@ -145,6 +145,8 @@ bool ModelMaterialWorkspaceController::OpenImportedMaterialDraft(
   const MaterialCompileResult compile = CompileMaterialAsset(
       source, compileOptions);
   authoringDocument_.SetMaterialCompileOptions(compileOptions);
+  nodePreviewId_.clear();
+  nodePreviewPin_.clear();
   authoringDocument_.OpenMaterial({}, {}, std::move(source), compile, true);
   RefreshAuthoringIdCounter();
   candidateAuthoringAssetGuid_ = {};

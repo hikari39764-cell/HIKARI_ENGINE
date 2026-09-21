@@ -1,3 +1,5 @@
+#include "Editor/Commands/HIKARI_EditorCommandRouter.h"
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/RuntimeBinding/HIKARI_RuntimeBindingWorkspaceController.h"
 
 #include <algorithm>
@@ -47,32 +49,27 @@ namespace HIKARI::EDITOR {
     void RuntimeBindingWorkspaceController::DrawCatalogWindow(
         DocumentSceneBase& scene) {
 #if defined(HIKARI_WITH_EDITOR)
-        if (!ImGui::Begin("Catalog###RuntimeBinding/Catalog")) {
+        if (!ImGui::Begin(TEXT::LocalizeWindow("editor.ui.catalog.4a88d2", "RuntimeBinding/Catalog").c_str())) {
             ImGui::End();
             return;
         }
 
-        PanelTitle(
-            "Variables & Events",
-            "Project-owned IDs available to components and tools");
-        if (ToggleButton(
-                "All",
+        PanelTitle(TEXT::Localize("editor.ui.variables.events.8ed3ba").c_str(),TEXT::Localize("editor.ui.project.owned.ids.available.to.components.and.tools.26f74f").c_str());
+        if (ToggleButton(TEXT::Localize("ui.assetBrowser.filterAll").c_str(),
                 "RuntimeBindingFilterAll",
                 catalogFilter_ == CatalogFilter::All,
                 ImVec2(58.0f, 26.0f))) {
             catalogFilter_ = CatalogFilter::All;
         }
-        ImGui::SameLine();
-        if (ToggleButton(
-                "Variables",
+        NextToolbarItem(90);
+        if (ToggleButton(TEXT::Localize("editor.ui.variables.ac018d").c_str(),
                 "RuntimeBindingFilterVariables",
                 catalogFilter_ == CatalogFilter::Variables,
                 ImVec2(84.0f, 26.0f))) {
             catalogFilter_ = CatalogFilter::Variables;
         }
-        ImGui::SameLine();
-        if (ToggleButton(
-                "Events",
+        NextToolbarItem(90);
+        if (ToggleButton(TEXT::Localize("editor.ui.events.c5497b").c_str(),
                 "RuntimeBindingFilterEvents",
                 catalogFilter_ == CatalogFilter::Events,
                 ImVec2(72.0f, 26.0f))) {
@@ -80,10 +77,13 @@ namespace HIKARI::EDITOR {
         }
         ImGui::Separator();
 
+        SearchField("RuntimeBindingSearch", TEXT::LocalizeCStr("editor.ui.search.name.or.stable.id.874d5c"),
+            searchBuffer_.data(), searchBuffer_.size());
         const BINDING::Catalog& catalog = document_.Catalog();
         size_t visibleCount = 0u;
         std::string deleteRequestedId{};
         if (catalogFilter_ != CatalogFilter::Events) {
+            ImGui::SeparatorText(TEXT::LocalizeCStr("editor.ui.variables.ac018d"));
             for (const BINDING::VariableDefinition& variable :
                  catalog.variables) {
                 if (!MatchesCatalogSearch(
@@ -112,7 +112,7 @@ namespace HIKARI::EDITOR {
                     std::string(BINDING::ToString(
                         variable.defaultValue.type)).c_str());
                 if (ImGui::BeginPopupContextItem("CatalogItemContext")) {
-                    if (ImGui::MenuItem("Delete")) {
+                    if (ImGui::MenuItem(TEXT::LocalizeWindow("ui.common.delete", "Delete").c_str())) {
                         deleteRequestedId = variable.id;
                     }
                     ImGui::EndPopup();
@@ -122,6 +122,7 @@ namespace HIKARI::EDITOR {
         }
 
         if (catalogFilter_ != CatalogFilter::Variables) {
+            ImGui::SeparatorText(TEXT::LocalizeCStr("editor.ui.events.c5497b"));
             for (const BINDING::EventDefinition& event : catalog.events) {
                 if (!MatchesCatalogSearch(
                         event.name,
@@ -153,7 +154,7 @@ namespace HIKARI::EDITOR {
                     "%s",
                     eventType.c_str());
                 if (ImGui::BeginPopupContextItem("CatalogItemContext")) {
-                    if (ImGui::MenuItem("Delete")) {
+                    if (ImGui::MenuItem(TEXT::LocalizeWindow("ui.common.delete", "Delete").c_str())) {
                         deleteRequestedId = event.id;
                     }
                     ImGui::EndPopup();
@@ -165,12 +166,15 @@ namespace HIKARI::EDITOR {
         if (visibleCount == 0u) {
             EmptyState(
                 searchBuffer_[0] == '\0'
-                    ? "No bindings yet"
-                    : "No matching bindings",
+                    ? TEXT::LocalizeCStr("editor.ui.no.bindings.yet.3980b1")
+                    : TEXT::LocalizeCStr("editor.ui.no.matching.bindings.10a205"),
                 searchBuffer_[0] == '\0'
-                    ? "Use Add in the toolbar to create a variable or event."
-                    : "Try another name or stable ID.");
+                    ? TEXT::LocalizeCStr("editor.ui.use.add.in.the.toolbar.to.create.a.variable.or.event.1cda5c")
+                    : TEXT::LocalizeCStr("editor.ui.try.another.name.or.stable.id.a9c8a0"));
         }
+        if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_Delete,
+                ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)))
+            deleteRequestedId = selectedItemId_;
         ImGui::End();
 
         if (!deleteRequestedId.empty()) {

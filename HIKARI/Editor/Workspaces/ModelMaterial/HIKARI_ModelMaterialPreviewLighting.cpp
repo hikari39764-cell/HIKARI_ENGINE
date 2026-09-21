@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 
 #include <algorithm>
@@ -86,8 +87,7 @@ bool DrawStudioLightGlyph(
                      label.c_str());
   }
   if (hovered) {
-    ImGui::SetTooltip(
-        "%s\nClick to select and manipulate in the viewport",
+    ImGui::SetTooltip(TEXT::Localize("editor.ui.s.nclick.to.select.and.manipulate.in.the.viewport.57aeff").c_str(),
         light.name.c_str());
   }
   return hovered;
@@ -158,7 +158,7 @@ bool DrawSelectedLightSpatialOverlay(
       drawList.AddCircle(rangeHandle, hovered ? 10.0f : 8.0f,
                          IM_COL32(18, 24, 31, 255), 16, 2.0f);
       if (hovered) {
-        ImGui::SetTooltip("Drag horizontally to change point-light range");
+        ImGui::SetTooltip(TEXT::Localize("editor.ui.drag.horizontally.to.change.point.light.range.9da5fd").c_str());
       }
       if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
         rangeDragging = true;
@@ -215,18 +215,15 @@ MATH::Vec3 RotationForward(const MATH::Quat &rotation) {
 
 void ModelMaterialWorkspaceController::DrawPreviewLightingProperties() {
 #if defined(HIKARI_WITH_EDITOR)
-  if (!ImGui::CollapsingHeader(
-          "Preview Lighting", ImGuiTreeNodeFlags_DefaultOpen)) {
+  if (!ImGui::CollapsingHeader(TEXT::LocalizeWindow("editor.ui.preview.lighting.87cd64", "Preview Lighting").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
     return;
   }
-  ImGui::TextDisabled(
-      "Studio lights are workspace-only. They use the runtime light contract "
-      "but are not saved into the Scene.");
-  if (ImGui::Button("+ Point Light")) {
+  ImGui::TextDisabled(TEXT::Localize("editor.ui.studio.lights.are.workspace.only.they.use.the.runtime.light.cont.6d18be").c_str());
+  if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.point.light.a8134e", "+ Point Light").c_str())) {
     AddPreviewLight(RENDER3D::LIGHTING::SceneLightType::Point);
   }
   ImGui::SameLine();
-  if (ImGui::Button("+ Directional Light")) {
+  if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.directional.light.87509d", "+ Directional Light").c_str())) {
     AddPreviewLight(RENDER3D::LIGHTING::SceneLightType::Directional);
   }
   for (size_t index = 0u; index < previewLighting_.lights.size(); ++index) {
@@ -251,38 +248,36 @@ void ModelMaterialWorkspaceController::DrawPreviewLightingProperties() {
   }
   if (!selectedPreviewLightIndex_.has_value() ||
       *selectedPreviewLightIndex_ >= previewLighting_.lights.size()) {
-    ImGui::TextDisabled("Select a light here or click its viewport icon.");
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.select.a.light.here.or.click.its.viewport.icon.6868f7").c_str());
     return;
   }
 
   auto &light = previewLighting_.lights[*selectedPreviewLightIndex_];
-  ImGui::SeparatorText("Selected Light");
-  ImGui::Checkbox("Enabled", &light.enabled);
-  ImGui::DragFloat3("Position", &light.position.x, 0.05f);
+  ImGui::SeparatorText(TEXT::Localize("editor.ui.selected.light.67da0b").c_str());
+  ImGui::Checkbox(TEXT::LocalizeWindow("ui.vfx.text.Enabled", "Enabled").c_str(), &light.enabled);
+  ImGui::DragFloat3(TEXT::LocalizeWindow("ui.vfx.text.Position", "Position").c_str(), &light.position.x, 0.05f);
   if (light.type == RENDER3D::LIGHTING::SceneLightType::Directional) {
-    if (ImGui::DragFloat3("Direction", &light.direction.x, 0.01f, -1.0f,
+    if (ImGui::DragFloat3(TEXT::LocalizeWindow("ui.vfx.text.Direction", "Direction").c_str(), &light.direction.x, 0.01f, -1.0f,
                           1.0f)) {
       light.direction = MATH::Length(light.direction) > 1.0e-5f
                             ? MATH::Normalize(light.direction)
                             : MATH::Vec3{0.0f, -1.0f, 0.0f};
     }
-    ImGui::TextDisabled(
-        "Use the rotate gizmo in the viewport to aim this light.");
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.use.the.rotate.gizmo.in.the.viewport.to.aim.this.light.2c784d").c_str());
   } else {
-    ImGui::DragFloat("Range", &light.range, 0.05f, 0.05f, 10000.0f,
+    ImGui::DragFloat(TEXT::LocalizeWindow("ui.vfx.text.Range", "Range").c_str(), &light.range, 0.05f, 0.05f, 10000.0f,
                      "%.2f");
-    ImGui::TextDisabled(
-        "The gold sphere in the viewport is the point-light range.");
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.the.gold.sphere.in.the.viewport.is.the.point.light.range.77d37e").c_str());
   }
-  ImGui::ColorEdit3("Color", &light.color.x,
+  ImGui::ColorEdit3(TEXT::LocalizeWindow("ui.vfx.text.Color", "Color").c_str(), &light.color.x,
                     ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float);
-  ImGui::DragFloat("Intensity", &light.intensity, 0.05f, 0.0f, 10000.0f,
+  ImGui::DragFloat(TEXT::LocalizeWindow("ui.quality.intensity", "Intensity").c_str(), &light.intensity, 0.05f, 0.0f, 10000.0f,
                    "%.2f");
-  if (ImGui::Button("Reset Around Preview")) {
+  if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.reset.around.preview.3f2318", "Reset Around Preview").c_str())) {
     ResetPreviewKeyLight();
   }
   ImGui::SameLine();
-  if (ImGui::Button("Delete Light")) {
+  if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.delete.light.7d387e", "Delete Light").c_str())) {
     DeleteSelectedPreviewLight();
   }
 #endif

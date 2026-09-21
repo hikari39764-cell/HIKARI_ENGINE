@@ -1,3 +1,5 @@
+#include "Editor/Workspaces/Cinematics/HIKARI_CinematicsPresentation.h"
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Editor/Widgets/HIKARI_AssetFieldWidget.h"
@@ -16,10 +18,19 @@ bool CinematicsWorkspaceController::DrawInspector(DocumentSceneBase &scene,
   bool changed = false;
 #if defined(HIKARI_WITH_EDITOR)
   using namespace SEQUENCER;
-  const auto text = [](const char *label, std::string &value) {
+  const bool narrow = ImGui::GetContentRegionAvail().x < 300.0f * ImGui::GetFontSize() / 16.0f;
+  const auto fieldLabel = [narrow](const char* label) {
+    if (!narrow) return std::string(label);
+    const std::string_view value(label);
+    const auto suffix = value.find("##");
+    ImGui::TextUnformatted(label, label + (suffix == std::string_view::npos ? value.size() : suffix));
+    ImGui::SetNextItemWidth(-1);
+    return "##" + std::string(label);
+  };
+  const auto text = [&](const char *label, std::string &value) {
     std::array<char, 1024> buffer{};
     std::snprintf(buffer.data(), buffer.size(), "%s", value.c_str());
-    if (ImGui::InputText(label, buffer.data(), buffer.size())) {
+    if (ImGui::InputText(fieldLabel(label).c_str(), buffer.data(), buffer.size())) {
       value = buffer.data();
       return true;
     }
@@ -28,9 +39,9 @@ bool CinematicsWorkspaceController::DrawInspector(DocumentSceneBase &scene,
   const auto binding = [&](const char *label, SequenceBindingId &id) {
     const auto *current = FindSequenceBinding(sequence.bindings, id);
     bool result = false;
-    if (ImGui::BeginCombo(label,
-                          current ? current->name.c_str() : "无 / 世界空间")) {
-      if (ImGui::Selectable("无 / 世界空间", !id.IsValid())) {
+    if (ImGui::BeginCombo(fieldLabel(label).c_str(),
+                          current ? current->name.c_str() : TEXT::LocalizeCStr("cine.worldSpace"))) {
+      if (ImGui::Selectable(TEXT::LocalizeWindow("cine.worldSpace", "无 / 世界空间").c_str(), !id.IsValid())) {
         id = {};
         result = true;
       }
@@ -44,13 +55,13 @@ bool CinematicsWorkspaceController::DrawInspector(DocumentSceneBase &scene,
     return result;
   };
   if (auto *shot = SelectedShot(sequence)) {
-    PanelTitle("镜头", shot->camera.name.c_str());
-    changed |= text("名称", shot->camera.name);
+    PanelTitle(TEXT::Localize("cine.shot").c_str(), shot->camera.name.c_str());
+    changed |= text(TEXT::LocalizeCStr("ui.input.name"), shot->camera.name);
     changed |=
-        ImGui::DragFloat("开始时间", &shot->startTimeSeconds, 0.02f, 0, 10000);
-    changed |= ImGui::DragFloat("镜头时长", &shot->durationSeconds, 0.02f, 0.1f,
+        ImGui::DragFloat(fieldLabel(TEXT::LocalizeWindow("ui.vfx.text.Start", "开始时间").c_str()).c_str(), &shot->startTimeSeconds, 0.02f, 0, 10000);
+    changed |= ImGui::DragFloat(fieldLabel(TEXT::LocalizeWindow("cine.shotDuration", "镜头时长").c_str()).c_str(), &shot->durationSeconds, 0.02f, 0.1f,
                                 10000);
-    if (IconTextButton(EditorGlyph::Duplicate, "复制", "duplicateShot")) {
+    if (IconTextButton(EditorGlyph::Duplicate,TEXT::Localize("ui.materialGraph.copy").c_str(), "duplicateShot")) {
       auto copy = *shot;
       copy.id = AllocateCameraCutClipId(sequence.cameraCutTrack);
       copy.startTimeSeconds += copy.durationSeconds;
@@ -61,22 +72,18 @@ bool CinematicsWorkspaceController::DrawInspector(DocumentSceneBase &scene,
     }
     ImGui::SameLine();
     if (IconButton(EditorGlyph::Delete, "deleteShot", EditorButtonTone::Danger,
-                   {26, 26}, "删除镜头")) {
-      std::erase_if(sequence.cameraCutTrack.clips,
-                    [&](const auto &s) { return s.id == selectedId_; });
-      selectedId_ = 0;
-      return true;
+                   {26, 26},TEXT::Localize("cine.deleteShot").c_str())) {
+      return DeleteSelectedClip(sequence);
     }
     if (!shot->camera.owned) {
-      ImGui::TextWrapped(
-          "此镜头引用场景摄像机；转换后可独立编辑，不会改变场景摄像机。");
-      if (ImGui::Button("转换为演出内镜头（60 fps 采样）")) {
+      ImGui::TextWrapped(TEXT::Localize("cine.convertHint").c_str());
+      if (ImGui::Button(TEXT::LocalizeWindow("cine.convertCamera", "转换为演出内镜头（60 fps 采样）").c_str())) {
         SceneObjectId id;
         Camera3D camera;
         if (previewBindings_.Resolve(
                 sequence.bindings, shot->cameraBindingId, id) &&
             scene.TryResolveCameraObjectView(id, 16.0f / 9, camera)) {
-          std::vector<ShotPose> poses;
+          for (auto& channel : shot->camera.channels) channel.keys.clear();
           shot->camera.nearClip = camera.GetNearZ();
           shot->camera.farClip = camera.GetFarZ();
           const int count =
@@ -98,89 +105,63 @@ bool CinematicsWorkspaceController::DrawInspector(DocumentSceneBase &scene,
               BuildEvaluatedCinematicCamera(evaluation, camera, 16.0f / 9,
                                             sample);
             auto pose = CaptureShotPose(sample, local);
-            pose.incoming = pose.outgoing = 1;
-            poses.push_back(pose);
+            SetShotPose(shot->camera, pose, true);
             shot->camera.nearClip =
                 (std::min)(shot->camera.nearClip, sample.GetNearZ());
             shot->camera.farClip =
                 (std::max)(shot->camera.farClip, sample.GetFarZ());
           }
-          shot->camera.poses = std::move(poses);
+          for (auto& channel : shot->camera.channels) for (size_t i=0; i<channel.keys.size(); ++i) {
+            auto& key=channel.keys[i];
+            if(i) key.inSlope=(key.value-channel.keys[i-1].value)/(key.time-channel.keys[i-1].time);
+            if(i+1<channel.keys.size()) key.outSlope=(channel.keys[i+1].value-key.value)/(channel.keys[i+1].time-key.time);
+          }
           shot->camera.owned = true;
           changed = true;
         }
       }
     }
     if (shot->camera.owned &&
-        ImGui::CollapsingHeader("构图与关键帧",
+        ImGui::CollapsingHeader(TEXT::LocalizeWindow("cine.composition", "构图与关键帧").c_str(),
                                 ImGuiTreeNodeFlags_DefaultOpen)) {
-      changed |= binding("跟随坐标系", shot->camera.anchor);
-      changed |= binding("注视对象", shot->camera.lookAt);
+      changed |= binding(TEXT::LocalizeCStr("cine.anchor"), shot->camera.anchor);
+      changed |= binding(TEXT::LocalizeCStr("cine.lookAt"), shot->camera.lookAt);
       changed |=
-          ImGui::DragFloat3("注视偏移", &shot->camera.targetOffset.x, 0.02f);
+          ImGui::DragFloat3(fieldLabel(TEXT::LocalizeWindow("cine.lookOffset", "注视偏移").c_str()).c_str(), &shot->camera.targetOffset.x, 0.02f);
       const float local =
           std::clamp(cursor_.GetTimeSeconds() - shot->startTimeSeconds, 0.0f,
                      shot->durationSeconds);
-      if (ImGui::Button("在当前时间添加姿态关键帧")) {
-        auto base = shot->camera;
-        base.motion.clear();
-        auto pose =
-            CaptureShotPose(EvaluateShotCamera(base, local, 16.0f / 9), local);
-        auto it = std::find_if(
-            shot->camera.poses.begin(), shot->camera.poses.end(),
-            [&](const auto &p) { return std::abs(p.time - local) < 0.0001f; });
-        if (it == shot->camera.poses.end())
-          shot->camera.poses.push_back(pose);
-        else
-          *it = pose;
+      if (IconTextButton(EditorGlyph::Keyframe, TEXT::Localize("cine.addKey").c_str(), "addPose",
+          EditorButtonTone::Quiet, {}, TEXT::LocalizeCStr("cine.addPose"))) {
+        SetShotPose(shot->camera, EvaluateShotPose(shot->camera, local), true);
         changed = true;
       }
-      int remove = -1;
-      for (size_t i = 0; i < shot->camera.poses.size(); ++i) {
-        auto &pose = shot->camera.poses[i];
-        ImGui::PushID(static_cast<int>(i));
-        if (ImGui::TreeNodeEx("pose", ImGuiTreeNodeFlags_DefaultOpen,
-                              "姿态 %.2f s", pose.time)) {
-          changed |= ImGui::DragFloat("时间", &pose.time, 0.01f, 0,
-                                      shot->durationSeconds);
-          changed |= ImGui::DragFloat3("位置", &pose.eye.x, 0.025f);
-          changed |= ImGui::DragFloat3("看向", &pose.target.x, 0.025f);
-          changed |= ImGui::SliderFloat("视野", &pose.fov, 1, 150, "%.1f°");
-          changed |= ImGui::DragFloat("倾斜", &pose.roll, 0.1f);
-          changed |= ImGui::DragFloat("进入速度", &pose.incoming, 0.05f);
-          changed |= ImGui::DragFloat("离开速度", &pose.outgoing, 0.05f);
-          if (ImGui::SmallButton("等速")) {
-            pose.incoming = pose.outgoing = 1;
-            changed = true;
-          }
-          ImGui::SameLine();
-          if (ImGui::SmallButton("缓入缓出")) {
-            pose.incoming = pose.outgoing = 0;
-            changed = true;
-          }
-          if (shot->camera.poses.size() > 1) {
-            ImGui::SameLine();
-            if (ImGui::SmallButton("删除"))
-              remove = static_cast<int>(i);
-          }
-          ImGui::TreePop();
+      const bool table = !narrow && ImGui::BeginTable("cameraChannels", 2, ImGuiTableFlags_SizingStretchProp);
+      if (table) {
+        ImGui::TableSetupColumn("labels", ImGuiTableColumnFlags_WidthFixed, 86);
+        ImGui::TableSetupColumn("values", ImGuiTableColumnFlags_WidthStretch);
+      }
+      if (narrow || table) {
+        for (size_t i=0; i<shot->camera.channels.size(); ++i) {
+          ImGui::PushID(static_cast<int>(i));
+          if (table) {ImGui::TableNextRow(); ImGui::TableSetColumnIndex(0);}
+          ImGui::AlignTextToFramePadding(); ImGui::TextUnformatted(TEXT::Localize(kCinematicChannelKeys[i]).c_str());
+          if (table) ImGui::TableSetColumnIndex(1);
+          changed |= DrawCurve(shot->camera.channels[i], local, kShotChannelNames[i]);
+          ImGui::PopID();
         }
-        ImGui::PopID();
       }
-      if (remove >= 0) {
-        shot->camera.poses.erase(shot->camera.poses.begin() + remove);
-        changed = true;
-      }
+      if (table) ImGui::EndTable();
     }
     if (shot->camera.owned &&
-        ImGui::CollapsingHeader("运动效果链", ImGuiTreeNodeFlags_DefaultOpen)) {
-      constexpr const char *names[]{"推拉", "侧移", "升降", "环绕", "摇镜",
-                                    "俯仰", "倾斜", "震动", "手持"};
-      if (ImGui::Button("添加运动"))
+        ImGui::CollapsingHeader(TEXT::LocalizeWindow("cine.motionChain", "运动效果链").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+      std::array<std::string, 9> names;
+      for (size_t i=0; i<names.size(); ++i) names[i]=TEXT::Localize(kCinematicMotionKeys[i]);
+      if (ImGui::Button(TEXT::LocalizeWindow("cine.addMotion", "添加运动").c_str()))
         ImGui::OpenPopup("motionMenu");
       if (ImGui::BeginPopup("motionMenu")) {
         for (int i = 0; i < 9; ++i)
-          if (ImGui::Selectable(names[i])) {
+          if (ImGui::Selectable(names[i].c_str())) {
             CameraMotionEffect e;
             e.kind = static_cast<CameraMotionKind>(i);
             for (const auto &old : shot->camera.motion)
@@ -198,30 +179,30 @@ bool CinematicsWorkspaceController::DrawInspector(DocumentSceneBase &scene,
         changed |= ImGui::Checkbox("##enabled", &e.enabled);
         ImGui::SameLine();
         const bool open =
-            ImGui::TreeNodeEx("motion", ImGuiTreeNodeFlags_DefaultOpen, "%s",
-                              names[static_cast<int>(e.kind)]);
+            ImGui::TreeNodeEx("motion", 0, "%s",
+                              names[static_cast<int>(e.kind)].c_str());
         ImGui::SameLine();
         if (IconButton(EditorGlyph::Delete, "remove", EditorButtonTone::Quiet,
-                       {20, 20}, "删除模块"))
+                       {20, 20},TEXT::Localize("cine.removeModule").c_str()))
           remove = static_cast<int>(i);
         if (i) {
           ImGui::SameLine();
-          if (ImGui::SmallButton("上移"))
+          if (ImGui::SmallButton(TEXT::LocalizeWindow("ui.vfx.effects.up", "上移").c_str()))
             move = static_cast<int>(i);
         }
         if (open) {
           const float local = (std::max)(0.0f, cursor_.GetTimeSeconds() -
                                                    shot->startTimeSeconds);
           ImGui::PushID("amount");
-          changed |= DrawCurve(e.amount, local);
+          changed |= DrawCurve(e.amount, local, "motion/" + std::to_string(e.id) + "/amount");
           ImGui::PopID();
           ImGui::PushID("weight");
-          ImGui::TextDisabled("权重");
-          changed |= DrawCurve(e.weight, local);
+          ImGui::TextDisabled(TEXT::Localize("cine.weight").c_str());
+          changed |= DrawCurve(e.weight, local, "motion/" + std::to_string(e.id) + "/weight");
           ImGui::PopID();
           if (e.kind == CameraMotionKind::Shake ||
               e.kind == CameraMotionKind::Handheld)
-            changed |= ImGui::DragFloat("频率", &e.frequency, 0.05f, 0, 100);
+            changed |= ImGui::DragFloat(fieldLabel(TEXT::LocalizeWindow("cine.frequency", "频率").c_str()).c_str(), &e.frequency, 0.05f, 0, 100);
           ImGui::TreePop();
         }
         ImGui::PopID();
@@ -234,61 +215,57 @@ bool CinematicsWorkspaceController::DrawInspector(DocumentSceneBase &scene,
         changed = true;
       }
     }
-    if (ImGui::CollapsingHeader("镜头画面效果"))
+    if (ImGui::CollapsingHeader(TEXT::LocalizeWindow("cine.shotFx", "镜头画面效果").c_str()))
       changed |= DrawEffects(
           shot->effects,
           (std::max)(0.0f, cursor_.GetTimeSeconds() - shot->startTimeSeconds));
-    if (ImGui::CollapsingHeader("镜头衔接")) {
+    if (ImGui::CollapsingHeader(TEXT::LocalizeWindow("cine.transition", "镜头衔接").c_str())) {
       bool blend = shot->transition.mode == CameraCutTransitionMode::EaseInOut;
-      if (ImGui::Checkbox("平滑运镜过渡", &blend)) {
+      if (ImGui::Checkbox(TEXT::LocalizeWindow("cine.blendMotion", "平滑运镜过渡").c_str(), &blend)) {
         shot->transition.mode = blend ? CameraCutTransitionMode::EaseInOut
                                       : CameraCutTransitionMode::Cut;
         changed = true;
       }
       if (blend)
         changed |=
-            ImGui::DragFloat("过渡时间", &shot->transition.durationSeconds,
+            ImGui::DragFloat(fieldLabel(TEXT::LocalizeWindow("cine.blendDuration", "过渡时间").c_str()).c_str(), &shot->transition.durationSeconds,
                              0.02f, 0, shot->durationSeconds);
-      ImGui::TextDisabled("画面淡入淡出使用画面效果片段。");
+      ImGui::TextDisabled(TEXT::Localize("cine.fadeHint").c_str());
     }
   } else if (selectionKind_ == SelectionKind::Cue) {
     for (auto &cue : sequence.presentationCueTrack.clips)
       if (cue.id == selectedId_) {
-        PanelTitle(cue.kind == PresentationCueKind::Vfx ? "特效片段"
-                                                        : "声音片段");
-        changed |= text("名称", cue.name);
-        changed |= ImGui::DragFloat("开始", &cue.startSeconds, 0.02f, 0, 10000);
+        PanelTitle(cue.kind == PresentationCueKind::Vfx ? TEXT::LocalizeCStr("cine.vfxClip")
+                                                        : TEXT::LocalizeCStr("cine.soundClip"));
+        changed |= text(TEXT::LocalizeCStr("ui.input.name"), cue.name);
+        changed |= ImGui::DragFloat(fieldLabel(TEXT::LocalizeWindow("ui.vfx.text.Start", "开始").c_str()).c_str(), &cue.startSeconds, 0.02f, 0, 10000);
         changed |=
-            ImGui::DragFloat("时长", &cue.durationSeconds, 0.02f, 0.01f, 10000);
-        changed |= binding("绑定对象", cue.targetBinding);
+            ImGui::DragFloat(fieldLabel(TEXT::LocalizeWindow("cine.duration", "时长").c_str()).c_str(), &cue.durationSeconds, 0.02f, 0.01f, 10000);
+        changed |= binding(TEXT::LocalizeCStr("cine.boundObject"), cue.targetBinding);
         if (cue.kind == PresentationCueKind::Vfx) {
           AssetFieldOptions options;
-          options.label = "特效";
+          options.label = TEXT::Localize("menu.workspace.vfx");
           options.requiredType = AssetType::VfxEffect;
           changed |= DrawAssetField(&scene.GetAssetDatabase(), options,
                                     cue.vfxAsset.value);
         } else {
-          changed |= text("声音文件", cue.soundPath);
-          changed |= ImGui::SliderFloat("音量", &cue.audio.volume, 0, 1);
+          changed |= text(TEXT::LocalizeCStr("cine.audioFile"), cue.soundPath);
+          changed |= ImGui::SliderFloat(TEXT::LocalizeWindow("cine.volume", "音量").c_str(), &cue.audio.volume, 0, 1);
         }
-        if (ImGui::Button("删除片段")) {
-          std::erase_if(sequence.presentationCueTrack.clips,
-                        [&](const auto &c) { return c.id == selectedId_; });
-          selectedId_ = 0;
-          return true;
+        if (ImGui::Button(TEXT::LocalizeWindow("cine.deleteClip", "删除片段").c_str())) {
+          return DeleteSelectedClip(sequence);
         }
         break;
       }
   } else if (selectionKind_ == SelectionKind::Effect) {
-    PanelTitle("演出画面效果", "作用于演出输出，不影响编辑器界面");
+    PanelTitle(TEXT::Localize("cine.sequenceFx").c_str(),TEXT::Localize("cine.outputOnly").c_str());
     changed |= DrawEffects(sequence.screenEffects, cursor_.GetTimeSeconds());
   } else {
-    PanelTitle("演出");
-    changed |= text("名称", sequence.name);
+    PanelTitle(TEXT::Localize("cine.sequence").c_str());
+    changed |= text(TEXT::LocalizeCStr("ui.input.name"), sequence.name);
     changed |=
-        ImGui::DragFloat("时长", &sequence.durationSeconds, 0.1f, 1, 10000);
-    ImGui::TextWrapped("选择时间轴中的片段来编辑。素材可以拖到时间轴；运动和画"
-                       "面效果可以保存为演出资产复用。");
+        ImGui::DragFloat(fieldLabel(TEXT::LocalizeWindow("cine.duration", "时长").c_str()).c_str(), &sequence.durationSeconds, 0.1f, 1, 10000);
+    ImGui::TextWrapped(TEXT::Localize("cine.editHint").c_str());
   }
 #endif
   return changed;

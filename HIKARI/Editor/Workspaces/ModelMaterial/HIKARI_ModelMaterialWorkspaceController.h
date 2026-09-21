@@ -133,6 +133,7 @@ struct AiMaterialGraphEditRequest {
 struct MaterialGraphNodeCreateRequest {
   std::string nodeType{};
   std::string displayName{};
+  std::string connectSourceNodeId{}, connectSourcePin{};
   MATH::Vec2 position{};
   bool manualPosition = false;
   std::string valueType{};
@@ -206,6 +207,13 @@ public:
       DocumentSceneBase &scene, std::string &outMessage);
   bool UngroupSelectedGraphNodes(
       DocumentSceneBase &scene, std::string &outMessage);
+  bool InsertMaterialModule(DocumentSceneBase& scene, std::string_view id,
+      MATH::Vec2 position, std::string& message);
+  bool ExtractSelectedMaterialFunction(DocumentSceneBase& scene,
+      std::string_view name, std::string& message);
+  bool PasteMaterialGraphFragment(DocumentSceneBase& scene, MaterialAssetData& source,
+      MaterialGraphData& graph, const MaterialGraphData& fragment,
+      MATH::Vec2 offset, bool arrange, std::string label);
   bool ArrangeSelectedGraphNodes(
       DocumentSceneBase &scene, std::string &outMessage);
   void FrameMaterialGraph(
@@ -234,9 +242,7 @@ public:
   bool DeleteSelectedGraphNodes(
       DocumentSceneBase &scene,
       MaterialAssetData &source, MaterialGraphData &graph);
-  bool ArrangeSelectedGraphNodes(
-      DocumentSceneBase &scene,
-      MaterialAssetData &source, MaterialGraphData &graph);
+
   bool CreateGraphGroupFromSelection(
       DocumentSceneBase &scene,
       MaterialAssetData &source, MaterialGraphData &graph);
@@ -249,10 +255,10 @@ public:
       std::string &outMessage,
       std::vector<std::string> &outDetails,
       std::string &outCode);
-  bool LayoutAiMaterialGraph(
+  bool LayoutMaterialGraph(
       DocumentSceneBase &scene,
       std::string &outMessage,
-      std::string &outCode);
+      std::string &outCode, bool selectionOnly = false);
   void AppendAiCompileDiagnostics(
       std::vector<std::string> &outDetails) const;
   std::string GetAiMaterialStatus() const;
@@ -316,12 +322,7 @@ private:
     std::string label{};
   };
 
-  struct GraphClipboard {
-    std::vector<MaterialGraphNodeData> nodes{};
-    std::vector<MaterialGraphEdgeData> edges{};
-    std::vector<MaterialGraphParameterData> parameters{};
-    std::vector<MaterialGraphResourceData> resources{};
-  };
+  using GraphClipboard = MaterialGraphData;
 
   struct PreviewLightViewportInteraction {
     bool glyphHovered = false;
@@ -394,6 +395,7 @@ private:
                               const AssetDatabase &assetDatabase,
                               const AssetRegistry &assetRegistry,
                               std::string &outMessage);
+  static bool IsRenderableMaterialAsset(MaterialAssetKind kind) noexcept;
   bool RebuildAuthoredPreview(AssetDatabase &assetDatabase,
                               const AssetRegistry &assetRegistry,
                               std::string &outMessage);
@@ -595,6 +597,16 @@ private:
   std::string selectedGraphEdgeId_{};
   GraphClipboard graphClipboard_{};
   std::unordered_set<std::string> collapsedGraphNodeIds_{};
+  bool graphFrameRequested_ = false;
+  bool graphLinkCreatePending_ = false;
+  bool graphFocusRequested_ = false;
+  std::string nodePreviewId_{}, nodePreviewPin_{};
+  int nodePreviewChannel_ = -1;
+  bool nodePreviewRefreshPending_ = false;
+  MATH::Vec2 graphContextPosition_{};
+  std::array<char, 128> graphSearch_{};
+  std::array<char, 128> functionName_{"Material Function"};
+  std::vector<std::string> recentGraphNodes_{};
   std::string selectedRampPointId_{};
   std::string edgeSourceNodeId_{};
   std::string edgeSourcePin_{};

@@ -1,3 +1,4 @@
+#include "Editor/Workspaces/HIKARI_EditorWorkspacePresentation.h"
 #include "HIKARI_DebugMenuBar.h"
 #include "Core/Text/HIKARI_Localization.h"
 #include "Editor/HIKARI_EditorContext.h"
@@ -181,22 +182,22 @@ namespace HIKARI {
         void DrawSceneExportControls() {
             EnsureExportScenesLoaded();
 
-            ImGui::SeparatorText("Scenes");
-            if (ImGui::Button("Refresh Scenes")) {
+            ImGui::SeparatorText(TEXT::Localize("ui.resource.scope.scenes").c_str());
+            if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.refresh.scenes.335537", "Refresh Scenes").c_str())) {
                 RefreshExportScenes();
             }
             ImGui::SameLine();
-            if (ImGui::Button("Select All")) {
+            if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.select.all.86a599", "Select All").c_str())) {
                 SelectAllExportScenes();
             }
             ImGui::SameLine();
-            if (ImGui::Button("Clear")) {
+            if (ImGui::Button(TEXT::LocalizeWindow("ui.input.clear", "Clear").c_str())) {
                 g_selectedSceneGuids.clear();
                 g_startupSceneGuid.clear();
             }
 
             if (g_exportScenes.empty()) {
-                ImGui::TextDisabled("No scene assets found.");
+                ImGui::TextDisabled(TEXT::Localize("editor.ui.no.scene.assets.found.41a36e").c_str());
                 return;
             }
 
@@ -209,7 +210,7 @@ namespace HIKARI {
             if (!hasSelection) {
                 ImGui::BeginDisabled();
             }
-            if (ImGui::BeginCombo("Startup Scene", startupPreview.c_str())) {
+            if (ImGui::BeginCombo(TEXT::LocalizeWindow("editor.ui.startup.scene.ee40fc", "Startup Scene").c_str(), startupPreview.c_str())) {
                 for (const EDITOR::GameExportSceneInfo& scene : g_exportScenes) {
                     if (scene.guid.empty()) {
                         continue;
@@ -254,9 +255,9 @@ namespace HIKARI {
 
                     ImGui::SameLine();
                     if (scene.guid == g_startupSceneGuid) {
-                        ImGui::TextDisabled("Startup");
+                        ImGui::TextDisabled(TEXT::Localize("editor.ui.startup.79ce33").c_str());
                     } else if (scene.projectStartup) {
-                        ImGui::TextDisabled("Project Startup");
+                        ImGui::TextDisabled(TEXT::Localize("editor.ui.project.startup.4394ac").c_str());
                     } else {
                         ImGui::TextDisabled("%s", scene.sourcePath.generic_string().c_str());
                     }
@@ -264,8 +265,7 @@ namespace HIKARI {
             }
             ImGui::EndChild();
 
-            ImGui::TextDisabled(
-                "%d / %d scene(s) selected",
+            ImGui::TextDisabled(TEXT::Localize("editor.ui.d.d.scene.s.selected.f815f2").c_str(),
                 static_cast<int>(g_selectedSceneGuids.size()),
                 static_cast<int>(g_exportScenes.size()));
         }
@@ -281,18 +281,18 @@ namespace HIKARI {
             }
 
             ImGui::SetNextWindowSize(ImVec2(760.0f, 760.0f), ImGuiCond_FirstUseEver);
-            if (ImGui::Begin("Export Game", &g_showGameExportWindow)) {
-                ImGui::TextWrapped("Shipping build > asset validation > cook > package validation > publish");
-                ImGui::TextDisabled("Uses saved project files. Previous exports are preserved if preparation fails.");
-                if (!canPrepare) ImGui::TextWrapped("Stop Play and save project changes before exporting.");
+            if (ImGui::Begin(TEXT::LocalizeWindow("editor.ui.export.game.0d0f28", "Export Game").c_str(), &g_showGameExportWindow)) {
+                ImGui::TextWrapped(TEXT::Localize("editor.ui.shipping.build.asset.validation.cook.package.validation.publish.ffda1a").c_str());
+                ImGui::TextDisabled(TEXT::Localize("editor.ui.uses.saved.project.files.previous.exports.are.preserved.if.prepa.adee39").c_str());
+                if (!canPrepare) ImGui::TextWrapped(TEXT::Localize("editor.ui.stop.play.and.save.project.changes.before.exporting.dfb921").c_str());
                 g_exportIdentity.Draw(operations, job.IsRunning());
                 ImGui::BeginDisabled(job.IsRunning());
-                ImGui::TextUnformatted("Output Path");
+                ImGui::TextUnformatted(TEXT::Localize("editor.ui.output.path.b61e71").c_str());
                 ImGui::PushItemWidth(-110.0f);
                 ImGui::InputText("##GameExportOutputPath", g_exportPathBuffer.data(), g_exportPathBuffer.size());
                 ImGui::PopItemWidth();
                 ImGui::SameLine();
-                if (ImGui::Button("Browse...")) {
+                if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.browse.7d7f40", "Browse...").c_str())) {
                     if (const std::optional<std::filesystem::path> pickedPath =
                             EDITOR::FILE_DIALOG::PickFolder(
                                 ExportPathFromBuffer())) {
@@ -300,7 +300,7 @@ namespace HIKARI {
                     }
                 }
 
-                if (ImGui::Button("Default Path")) {
+                if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.default.path.0b7db9", "Default Path").c_str())) {
                     CopyPathToExportPathBuffer(EDITOR::GameExporter::GetDefaultOutputDirectory());
                 }
 
@@ -312,8 +312,7 @@ namespace HIKARI {
                                 EDITOR::GameExportWindowMode::TopmostFullscreen
                             ? "Topmost Fullscreen"
                             : "Borderless Fullscreen (Recommended)";
-                if (ImGui::BeginCombo(
-                        "Default Window Mode",
+                if (ImGui::BeginCombo(TEXT::LocalizeWindow("editor.ui.default.window.mode.a119eb", "Default Window Mode").c_str(),
                         windowModePreview)) {
                     const std::array modes{
                         EDITOR::GameExportWindowMode::BorderlessFullscreen,
@@ -338,8 +337,7 @@ namespace HIKARI {
                     }
                     ImGui::EndCombo();
                 }
-                ImGui::TextDisabled(
-                    "Borderless fullscreen is portable and does not force exclusive display ownership.");
+                ImGui::TextDisabled(TEXT::Localize("editor.ui.borderless.fullscreen.is.portable.and.does.not.force.exclusive.d.b61c47").c_str());
 
                 DrawSceneExportControls();
 
@@ -351,7 +349,7 @@ namespace HIKARI {
                 if (!canExport) {
                     ImGui::BeginDisabled();
                 }
-                if (ImGui::Button("Export")) {
+                if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.export.f3e4fa", "Export").c_str())) {
                     EDITOR::GameExportOptions options{};
                     options.outputDirectory = ExportPathFromBuffer();
                     options.startupSceneGuid = g_startupSceneGuid;
@@ -369,7 +367,7 @@ namespace HIKARI {
                 ImGui::EndDisabled();
                 if (job.IsRunning()) {
                     ImGui::SameLine();
-                    if (ImGui::Button("Cancel")) (void)operations.Execute("export.cancel");
+                    if (ImGui::Button(TEXT::LocalizeWindow("ui.common.cancel", "Cancel").c_str())) (void)operations.Execute("export.cancel");
                 }
 
                 const std::filesystem::path currentOutputPath = ExportPathFromBuffer();
@@ -380,7 +378,7 @@ namespace HIKARI {
                 if (!canOpenOutput) {
                     ImGui::BeginDisabled();
                 }
-                if (ImGui::Button("Open Folder")) {
+                if (ImGui::Button(TEXT::LocalizeWindow("ui.assetInspector.openFolder", "Open Folder").c_str())) {
                     EDITOR::SHELL::OpenFolderInExplorer(
                         currentOutputPath);
                 }
@@ -392,7 +390,7 @@ namespace HIKARI {
                 if (!status.value("message", std::string{}).empty()) {
                     ImGui::ProgressBar(status.value("progress", 0.0f));
                     ImGui::TextWrapped("%s", status.value("message", std::string{}).c_str());
-                    if (status.contains("logDirectory") && ImGui::Button("Open Build Logs"))
+                    if (status.contains("logDirectory") && ImGui::Button(TEXT::LocalizeWindow("editor.ui.open.build.logs.d55e51", "Open Build Logs").c_str()))
                         EDITOR::SHELL::OpenFolderInExplorer(TEXT::PathFromUtf8(status.at("logDirectory").get<std::string>()));
                 }
                 if (!g_exportStatus.empty()) {
@@ -428,37 +426,9 @@ namespace HIKARI {
 
         if (ImGui::BeginMenu(
                 TEXT::Localize("menu.workspace").c_str())) {
-            static constexpr std::array workspaceEntries{
-                std::pair{
-                    EDITOR::EditorWorkspaceId::Scene,
-                    "menu.workspace.scene" },
-                std::pair{
-                    EDITOR::EditorWorkspaceId::Cinematics,
-                    "menu.workspace.cinematics" },
-                std::pair{
-                    EDITOR::EditorWorkspaceId::ModelCollision,
-                    "menu.workspace.modelCollision" },
-                std::pair{
-                    EDITOR::EditorWorkspaceId::ModelMaterial,
-                    "menu.workspace.modelMaterial" },
-                std::pair{
-                    EDITOR::EditorWorkspaceId::AnimationStateMachine,
-                    "menu.workspace.animationStateMachine" },
-                std::pair{
-                    EDITOR::EditorWorkspaceId::RuntimeBinding,
-                    "menu.workspace.runtimeBinding" },
-                std::pair{
-                    EDITOR::EditorWorkspaceId::Vfx,
-                    "menu.workspace.vfx" },
-                std::pair{
-                    EDITOR::EditorWorkspaceId::Dialogue,
-                    "menu.workspace.dialogue" },
-                std::pair{
-                    EDITOR::EditorWorkspaceId::TerrainSurface,
-                    "menu.workspace.terrainSurface" },
-            };
-            for (const auto& [workspaceId, labelKey] :
-                    workspaceEntries) {
+            for (const auto& workspace : EDITOR::kEditorWorkspacePresentations) {
+                const auto workspaceId = workspace.id;
+                const auto* labelKey = workspace.nameKey;
                 if (!ImGui::MenuItem(
                         TEXT::Localize(labelKey).c_str(),
                         nullptr,
@@ -547,7 +517,7 @@ namespace HIKARI {
                 ImGui::MenuItem(
                     TEXT::Localize("menu.windows.debugView").c_str(),
                     nullptr, &windows.runtime.showDebugView);
-                ImGui::MenuItem("Performance Audit", nullptr, &windows.runtime.showPerformanceAudit);
+                ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.performance.audit.e54bcf", "Performance Audit").c_str(), nullptr, &windows.runtime.showPerformanceAudit);
                 ImGui::MenuItem(
                     TEXT::Localize("menu.aiAssistant").c_str(),
                     nullptr, &windows.runtime.showAiAssistant);
@@ -615,7 +585,7 @@ namespace HIKARI {
 
         if (ImGui::BeginMenu(
                 TEXT::Localize("menu.build").c_str())) {
-            if (ImGui::MenuItem("Export Game...")) {
+            if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.export.game.dfd4f6", "Export Game...").c_str())) {
                 OpenGameExportWindow();
             }
 

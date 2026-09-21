@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 
 #include <algorithm>
@@ -19,7 +20,7 @@ void ModelMaterialWorkspaceController::DrawMaterialFeatureControls(
     return;
   }
 
-  ImGui::SeparatorText("Quick PBR / NPR Compare");
+  ImGui::SeparatorText(TEXT::Localize("editor.ui.quick.pbr.npr.compare.c759fa").c_str());
   const auto previewTemplate = [this, &scene, &source](
                                    MaterialTemplateId templateId) {
     MaterialAssetData candidate =
@@ -33,18 +34,16 @@ void ModelMaterialWorkspaceController::DrawMaterialFeatureControls(
     }
   };
   ImGui::BeginDisabled(authoringDocument_.IsAbPreviewActive());
-  if (ImGui::Button("Preview PBR", ImVec2(-1.0f, 0.0f))) {
+  if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.preview.pbr.2029e1", "Preview PBR").c_str(), ImVec2(-1.0f, 0.0f))) {
     previewTemplate(MaterialTemplateId::StandardPbr);
   }
-  if (ImGui::Button("Preview Generic NPR", ImVec2(-1.0f, 0.0f))) {
+  if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.preview.generic.npr.177b33", "Preview Generic NPR").c_str(), ImVec2(-1.0f, 0.0f))) {
     previewTemplate(MaterialTemplateId::GenericToon);
   }
   ImGui::EndDisabled();
-  ImGui::TextDisabled(
-      "The comparison preserves this material's PBR texture bindings and "
-      "surface state. Keep B commits one Undo step; Discard restores A.");
+  ImGui::TextDisabled(TEXT::Localize("editor.ui.the.comparison.preserves.this.material.s.pbr.texture.bindings.an.6e8a98").c_str());
 
-  ImGui::SeparatorText("Render Features");
+  ImGui::SeparatorText(TEXT::Localize("editor.ui.render.features.a321bd").c_str());
   for (MaterialFeatureRequest feature : {
            MaterialFeatureRequest::VisibilityOverlay,
            MaterialFeatureRequest::FaceHairShadow}) {
@@ -62,9 +61,7 @@ void ModelMaterialWorkspaceController::DrawMaterialFeatureControls(
                              "Change material render feature", scene);
     }
   }
-  ImGui::TextDisabled(
-      "Outline is authored by connecting an Outline node to PBR Surface. "
-      "View overlays remain explicit runtime features here.");
+  ImGui::TextDisabled(TEXT::Localize("editor.ui.outline.is.authored.by.connecting.an.outline.node.to.pbr.surface.866199").c_str());
 #else
   (void)scene;
   (void)source;
@@ -81,7 +78,7 @@ void ModelMaterialWorkspaceController::DrawOutlineThicknessPresets(
   if (outlineThickness == nullptr) {
     return;
   }
-  ImGui::TextDisabled("Outline Thickness Presets");
+  ImGui::TextDisabled(TEXT::Localize("editor.ui.outline.thickness.presets.a424d6").c_str());
   const auto applyThickness = [&](float thickness, const char *label) {
     if (ImGui::Button(label)) {
       MaterialAssetData before = source;
@@ -97,9 +94,7 @@ void ModelMaterialWorkspaceController::DrawOutlineThicknessPresets(
   ImGui::SameLine();
   applyThickness(4.0f, "Thick");
   if (ImGui::IsItemHovered()) {
-    ImGui::SetTooltip(
-        "Outline thickness is measured in screen pixels and clamped to "
-        "0.25..8 for both Geometry and Screen modes.");
+    ImGui::SetTooltip(TEXT::Localize("editor.ui.outline.thickness.is.measured.in.screen.pixels.and.clamped.to.0..2901c8").c_str());
   }
 #else
   (void)scene;

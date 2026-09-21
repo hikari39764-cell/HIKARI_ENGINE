@@ -1,3 +1,4 @@
+#include "Editor/Shell/HIKARI_EditorDockLayout.h"
 #include "Editor/Workspaces/ModelCollision/HIKARI_ModelCollisionWorkspaceController.h"
 
 #include "Core/HIKARI_TimeService.h"
@@ -58,7 +59,7 @@ void ModelCollisionWorkspaceController::DrawDockSpace(
                                  rightBottom);
     ImGui::DockBuilderFinish(dockspaceId);
   }
-  ImGui::DockSpaceOverViewport(dockspaceId, viewport);
+  HIKARI::EDITOR::DrawWorkspaceDockSpace(dockspaceId, viewport);
 #else
   (void)resetDefaultDockLayout;
 #endif

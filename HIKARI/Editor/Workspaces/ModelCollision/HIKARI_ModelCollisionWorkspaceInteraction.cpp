@@ -20,40 +20,10 @@ namespace HIKARI::EDITOR {
 namespace {
 constexpr float kDegreesToRadians = MATH::kDegreesToRadians;
 
-bool Unproject(const MATH::Mat4 &inverseViewProjection, float x, float y,
-               float z, MATH::Vec3 &outPoint) noexcept {
-  const MATH::Vec4 world =
-      inverseViewProjection.TransformPoint({x, y, z, 1.0f});
-  if (!MATH::IsFinite(world) || std::abs(world.w) <= 1.0e-6f) {
-    return false;
-  }
-  const float inverseW = 1.0f / world.w;
-  outPoint = {world.x * inverseW, world.y * inverseW, world.z * inverseW};
-  return MATH::IsFinite(outPoint);
-}
+
 } // namespace
 
-bool BuildModelCollisionPointerRay(const Camera3D &camera,
-                                   float normalizedViewportX,
-                                   float normalizedViewportY,
-                                   ModelCollisionPointerRay &outRay) noexcept {
-  const float clipX = normalizedViewportX * 2.0f - 1.0f;
-  const float clipY = 1.0f - normalizedViewportY * 2.0f;
-  const MATH::Mat4 inverseViewProjection = MATH::Inverse(camera.GetViewProj());
-  MATH::Vec3 nearPoint{};
-  MATH::Vec3 farPoint{};
-  if (!Unproject(inverseViewProjection, clipX, clipY, 0.0f, nearPoint) ||
-      !Unproject(inverseViewProjection, clipX, clipY, 1.0f, farPoint)) {
-    return false;
-  }
-  const MATH::Vec3 direction = farPoint - nearPoint;
-  if (MATH::Length(direction) <= 1.0e-6f) {
-    return false;
-  }
-  outRay.origin = nearPoint;
-  outRay.direction = MATH::Normalize(direction);
-  return true;
-}
+
 
 Bounds ComputeModelCollisionShapeBounds(
     const ASSETS::COLLISION::ModelCollisionShape &shape) noexcept {
@@ -99,7 +69,7 @@ Bounds ComputeModelCollisionShapeBounds(
 }
 
 uint64_t
-PickModelCollisionShape(const ModelCollisionPointerRay &ray,
+PickModelCollisionShape(const EditorPointerRay &ray,
                         const ASSETS::COLLISION::ModelCollisionSetup &setup,
                         const std::unordered_set<uint64_t> &hiddenShapeIds,
                         bool generatedOnly) noexcept {
@@ -131,7 +101,7 @@ PickModelCollisionShape(const ModelCollisionPointerRay &ray,
 }
 
 int32_t PickModelCollisionSourceNode(
-    const ModelCollisionPointerRay &ray,
+    const EditorPointerRay &ray,
     const std::vector<ModelPreviewNode> &nodes,
     const ModelAsset &model) noexcept {
   float bestDistance = (std::numeric_limits<float>::max)();

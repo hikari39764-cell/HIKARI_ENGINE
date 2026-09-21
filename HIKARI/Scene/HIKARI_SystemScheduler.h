@@ -29,6 +29,7 @@ public:
     bool HasSystem(std::string_view systemId) const;
     size_t GetSystemCount() const;
     uint64_t GetParallelMassFailureCount() const noexcept;
+    uint64_t GetMassSnapshotReuseCount() const noexcept { return massSnapshotReuseCount_; }
     uint64_t GetRenderObserverFailureCount() const noexcept;
     uint64_t GetRenderPassFailureCount() const noexcept;
     std::vector<std::string> GetExecutionOrder() const;
@@ -99,6 +100,7 @@ private:
     uint64_t attachedWorldIdentity_ = 0u;
     uint64_t nextInsertionIndex_ = 0;
     uint64_t parallelMassFailureCount_ = 0u;
+    uint64_t massSnapshotReuseCount_ = 0u;
     uint64_t renderObserverFailureCount_ = 0u;
     uint64_t renderPassFailureCount_ = 0u;
     std::unique_ptr<ParallelRuntime> parallelRuntime_{};

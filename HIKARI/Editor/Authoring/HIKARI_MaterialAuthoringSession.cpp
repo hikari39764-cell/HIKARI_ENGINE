@@ -35,6 +35,7 @@ public:
     nlohmann::json Describe() const override {
         return {{"assetGuid", controller_.GetDocumentAssetGuid().value},
             {"dirty",controller_.HasUnsavedMaterialChanges()}, {"preview",true},
+            {"previewScope",{{"kind","material_surface"},{"timeSampling",false}}},
             {"status",controller_.GetAiMaterialStatus()}};
     }
     EditorOperationResult Reveal() override {
@@ -44,6 +45,8 @@ public:
         return {true,"OK","Material workspace requested."};
     }
     EditorOperationResult Preview(const nlohmann::json& parameters) override {
+        if (parameters.contains("time")) return {false,"UNSUPPORTED_PREVIEW_TIME",
+            "Material preview captures the current surface; timeline sampling is not supported."};
         if (capture_.IsPending()) return {false,"CAPTURE_BUSY","A capture is already pending."};
         auto* scene=scene_();
         if (!scene) return {false,"NO_PROJECT","No project is open."};
@@ -53,7 +56,8 @@ public:
                 std::clamp(parameters.value("height",768),128,1536),message))
             return {false,"PREVIEW_FAILED",message};
         auto result=capture_.Start(scene->GetAssetDatabase().GetLibraryRoot(),
-            {{"label","Material preview"},{"assetGuid",controller_.GetDocumentAssetGuid().value}});
+            {{"label","Material preview"},{"assetGuid",controller_.GetDocumentAssetGuid().value},
+             {"timeSampling",false},{"scope","material_surface"}});
         capture_.Tick(true);
         return result;
     }

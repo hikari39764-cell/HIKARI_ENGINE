@@ -11,6 +11,10 @@ namespace HIKARI::EDITOR {
 
 void ModelMaterialWorkspaceController::FlushPendingMaterialPreview(
     DocumentSceneBase &scene) {
+  if (nodePreviewRefreshPending_) {
+    nodePreviewRefreshPending_ = false;
+    (void)RebuildAuthoredPreview(scene.GetAssetDatabase(), scene.GetAssetRegistry(), statusMessage_);
+  }
   if (!materialPreviewRefreshPending_) {
     return;
   }
@@ -52,7 +56,8 @@ void ModelMaterialWorkspaceController::CommitMaterialGesture(
   materialGesture_.reset();
   materialPreviewRefreshPending_ = false;
   if (authoringDocument_.CommitMaterial(std::move(gesture.before),
-                                        std::move(gesture.label))) {
+                                        std::move(gesture.label)) &&
+      authoringDocument_.LastMaterialChangeRequiresPreview()) {
     (void)RefreshMaterialPreviews(scene, statusMessage_);
   }
 }
@@ -65,7 +70,9 @@ void ModelMaterialWorkspaceController::CancelMaterialGesture(
   authoringDocument_.RestoreMaterial(std::move(materialGesture_->before));
   materialGesture_.reset();
   materialPreviewRefreshPending_ = false;
-  (void)RefreshMaterialPreviews(scene, statusMessage_);
+  if (authoringDocument_.LastMaterialChangeRequiresPreview()) {
+    (void)RefreshMaterialPreviews(scene, statusMessage_);
+  }
   statusMessage_ = "material edit canceled";
 }
 
@@ -81,7 +88,8 @@ void ModelMaterialWorkspaceController::CommitMaterialMutation(
   if (graph != nullptr) {
     (void)ReconcileMaterialGraphDynamicNodeTypes(*graph);
   }
-  if (authoringDocument_.CommitMaterial(std::move(before), std::move(label))) {
+  if (authoringDocument_.CommitMaterial(std::move(before), std::move(label)) &&
+      authoringDocument_.LastMaterialChangeRequiresPreview()) {
     (void)RefreshMaterialPreviews(scene, statusMessage_);
   }
 }

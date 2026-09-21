@@ -1,3 +1,5 @@
+#include "Editor/Shell/HIKARI_EditorDockLayout.h"
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 
 #include "Editor/AI/HIKARI_AI_AssistantPanel.h"
@@ -35,8 +37,8 @@ void ModelMaterialWorkspaceController::DrawDockSpace(
     ImGuiID right = 0u;
     ImGuiID preview = 0u;
     ImGuiID properties = 0u;
-    ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, 0.18f, &left, &center);
-    ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, 0.34f, &right,
+    ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, 0.15f, &left, &center);
+    ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, 0.30f, &right,
                                 &center);
     ImGui::DockBuilderSplitNode(right, ImGuiDir_Down, 0.46f, &properties,
                                 &preview);
@@ -55,7 +57,7 @@ void ModelMaterialWorkspaceController::DrawDockSpace(
     ImGui::DockBuilderDockWindow("Stats###ModelMaterial/Stats", properties);
     ImGui::DockBuilderFinish(dockspaceId);
   }
-  ImGui::DockSpaceOverViewport(dockspaceId, viewport);
+  HIKARI::EDITOR::DrawWorkspaceDockSpace(dockspaceId, viewport);
 #else
   (void)resetDefaultDockLayout;
 #endif
@@ -213,8 +215,7 @@ void ModelMaterialWorkspaceController::DrawPendingTransitionModal(
     ImGui::OpenPopup("Unsaved Material Changes###ModelMaterial/PendingTransition");
     pendingTransitionPopupRequested_ = false;
   }
-  if (!ImGui::BeginPopupModal(
-          "Unsaved Material Changes###ModelMaterial/PendingTransition",
+  if (!ImGui::BeginPopupModal(TEXT::LocalizeWindow("editor.ui.unsaved.material.changes.5593e8", "ModelMaterial/PendingTransition").c_str(),
           nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
     return;
   }
@@ -244,7 +245,7 @@ void ModelMaterialWorkspaceController::DrawPendingTransitionModal(
   case PendingTransitionKind::None:
     break;
   }
-  ImGui::TextWrapped("Save changes before continuing to %s?", destination);
+  ImGui::TextWrapped(TEXT::Localize("editor.ui.save.changes.before.continuing.to.s.99678e").c_str(), destination);
   if (authoringDocument_.IsMaterialDirty() ||
       authoringDocument_.IsAbPreviewActive()) {
     ImGui::BulletText("Material graph has unsaved changes");
@@ -254,20 +255,20 @@ void ModelMaterialWorkspaceController::DrawPendingTransitionModal(
   }
   ImGui::Spacing();
 
-  if (ImGui::Button("Save and Continue", ImVec2(150.0f, 0.0f))) {
+  if (ImGui::Button(TEXT::LocalizeWindow("ui.vfx.text.Save and Continue", "Save and Continue").c_str(), ImVec2(150.0f, 0.0f))) {
     if (SaveForPendingTransition(scene)) {
       (void)ExecutePendingTransition(scene);
       ImGui::CloseCurrentPopup();
     }
   }
   ImGui::SameLine();
-  if (ImGui::Button("Discard", ImVec2(100.0f, 0.0f))) {
+  if (ImGui::Button(TEXT::LocalizeWindow("ui.sceneOpen.discard", "Discard").c_str(), ImVec2(100.0f, 0.0f))) {
     DiscardForPendingTransition(scene);
     (void)ExecutePendingTransition(scene);
     ImGui::CloseCurrentPopup();
   }
   ImGui::SameLine();
-  if (ImGui::Button("Cancel", ImVec2(100.0f, 0.0f))) {
+  if (ImGui::Button(TEXT::LocalizeWindow("ui.common.cancel", "Cancel").c_str(), ImVec2(100.0f, 0.0f))) {
     pendingTransition_ = {};
     pendingTransitionPopupRequested_ = false;
     statusMessage_ = "material navigation canceled; edits are unchanged";

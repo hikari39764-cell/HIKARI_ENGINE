@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/Sequence/HIKARI_SequenceLibraryPanel.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 
@@ -39,21 +40,19 @@ SequenceLibraryPanel::Draw(AssetDatabase &assetDatabase,
 
   SequenceLibraryPanelResult result{};
 #if defined(HIKARI_WITH_EDITOR)
-  ImGui::TextUnformatted("Sequence Library");
+  ImGui::TextUnformatted(TEXT::Localize("editor.ui.sequence.library.66a878").c_str());
   ImGui::SameLine();
-  ImGui::TextDisabled(
-      "%d assets",
+  ImGui::TextDisabled(TEXT::Localize("ui.assetBrowser.assetsFormat").c_str(),
       static_cast<int>(
           assetDatabase.CollectByType(AssetType::Sequence).size()));
   ImGui::SetNextItemWidth(-1.0f);
-  ImGui::InputTextWithHint("##SequenceLibrarySearch",
-                           "Search name, path, or GUID...",
+  ImGui::InputTextWithHint("##SequenceLibrarySearch",TEXT::Localize("editor.ui.search.name.path.or.guid.5b7caf").c_str(),
                            searchBuffer_.data(), searchBuffer_.size());
 
   if (!actionsAllowed) {
     ImGui::BeginDisabled();
   }
-  if (ImGui::Button("New Sequence", ImVec2(-1.0f, 0.0f))) {
+  if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.new.sequence.bcfc06", "New Sequence").c_str(), ImVec2(-1.0f, 0.0f))) {
     result.action = SequenceLibraryActionKind::NewAsset;
   }
   if (!actionsAllowed) {

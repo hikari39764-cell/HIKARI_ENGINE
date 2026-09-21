@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$OutputPath
 )
 
@@ -13,12 +13,12 @@ if (-not $OutputPath) {
 # AI capabilities. The manifest generator extracts them from the registration
 # sites so adding an operation never requires a second manual edit.
 $registryFiles = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'HIKARI\Editor') -Recurse -File -Filter '*.cpp' |
-    Where-Object { [System.IO.File]::ReadAllText($_.FullName) -match '\.Register\(\{|register[A-Z][A-Za-z0-9]*Operation\(' } |
+    Where-Object { [System.IO.File]::ReadAllText($_.FullName) -match '\.Register\(\{|EditorOperationDefinition(?:\s+[A-Za-z_]\w*)?\s*\{|register[A-Z][A-Za-z0-9]*Operation\(' } |
     ForEach-Object { $_.FullName.Substring($repoRoot.Length + 1) } | Sort-Object)
 
 $operations = @{}
 $registrationPatterns = @(
-    'Register\(\{\s*"([a-z][a-z0-9_.]+)"\s*,\s*"([^"]+)"',
+    '(?:Register\(\{|EditorOperationDefinition(?:\s+[A-Za-z_]\w*)?\s*\{)\s*"([a-z][a-z0-9_.]+)"\s*,\s*"([^"]+)"',
     'register[A-Z][A-Za-z0-9]*Operation\(\s*"([a-z][a-z0-9_.]+)"\s*,\s*"([^"]+)"'
 )
 foreach ($relative in $registryFiles) {
@@ -48,7 +48,7 @@ $panelSource = [System.IO.File]::ReadAllText(
     [System.Text.Encoding]::UTF8)
 $builtinMatch = [regex]::Match(
     $panelSource,
-    'BuiltInCapabilities\(\) \{\s*static const std::vector<AiCapability> capabilities\{([\s\S]*?)\n    \};')
+    'BuiltInCapabilities\(\)[\s\S]*?std::vector<AiCapability> entries\{([\s\S]*?)\n    \};')
 if (-not $builtinMatch.Success) {
     throw 'BuiltInCapabilities table not found in AI capabilities source.'
 }
@@ -81,7 +81,7 @@ $capabilityList = @(
 $manifest = [ordered]@{
     manifestVersion = 1
     updated = (Get-Date -Format 'yyyy-MM-dd')
-    callingMethod = 'Send {"action":"..."} JSON through the Editor AI Assistant window, or POST it to the loopback local bridge at http://127.0.0.1:18725/action.'
+    callingMethod = 'The Editor AI Assistant uses native editor_actions tool calls with an actions array and task_finish for completion. Advanced raw requests and the loopback bridge at http://127.0.0.1:18725/action accept {"action":"..."} JSON.'
     capabilities = $capabilityList
     boundaries = @(
         'No AI action may mutate engine internals without going through an editor command entry.',

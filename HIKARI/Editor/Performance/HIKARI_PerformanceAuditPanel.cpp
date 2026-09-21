@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "HIKARI_PerformanceAuditPanel.h"
 
 #include "Core/HIKARI_TimeService.h"
@@ -40,7 +41,7 @@ void PerformanceAuditPanel::Draw(bool &open) const {
   if (!open) {
     return;
   }
-  if (!ImGui::Begin("Performance Audit", &open)) {
+  if (!ImGui::Begin(TEXT::LocalizeWindow("editor.ui.performance.audit.e54bcf", "Performance Audit").c_str(), &open)) {
     ImGui::End();
     return;
   }
@@ -56,12 +57,12 @@ void PerformanceAuditPanel::Draw(bool &open) const {
 void PerformanceAuditPanel::DrawContents() const {
 #if defined(HIKARI_WITH_EDITOR)
   const RuntimePerformanceSnapshot snapshot = BuildSnapshot();
-  if (ImGui::Button("診断結果をコピー")) {
+  if (ImGui::Button(TEXT::LocalizeWindow("editor.copyDiagnostics", "診断結果をコピー").c_str())) {
     const auto report = BuildPerformanceReport(snapshot);
     ImGui::SetClipboardText(report.c_str());
   }
   ImGui::SameLine();
-  ImGui::TextDisabled("Playで30秒ほど動かしてからコピー。GPU計測は遅延して反映されます。");
+  ImGui::TextDisabled(TEXT::Localize("editor.captureStatsHint").c_str());
   DrawFrameSummary(snapshot);
   DrawReadiness(snapshot);
   DrawCpuTimingTable(snapshot);

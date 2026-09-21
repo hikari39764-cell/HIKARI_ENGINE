@@ -17,7 +17,7 @@ namespace HIKARI::EDITOR {
                     TEXT::PathFromUtf8(parameters.at("path").get<std::string>()), message))
                     return Failure("CONTENT_LIBRARY_FAILED", message);
                 return Success(message);
-            }});
+            }}, HIKARI::EDITOR::EditorOperationKind::Session);
         registry.Register({"vfx.library.list", "List packages from the selected shared content library", "vfx", {},
             [&controller](const nlohmann::json&) {
                 nlohmann::json packages = nlohmann::json::array();
@@ -26,7 +26,7 @@ namespace HIKARI::EDITOR {
                         {"name", package.name}, {"category", package.category},
                         {"manifest", TEXT::PathToUtf8(package.manifestPath)}, {"assetCount", package.assetCount}});
                 return Success("Shared packages", {{"packages", std::move(packages)}});
-            }});
+            }}, HIKARI::EDITOR::EditorOperationKind::Query, false);
         registry.Register({"vfx.library.import", "Copy a package and its dependencies into the project, preserving local edits", "vfx",
             {Parameter("manifest", EditorOperationParameterType::String, true, "Package manifest path from vfx.library.list")},
             [&controller, databaseProvider](const nlohmann::json& parameters) {
@@ -41,7 +41,7 @@ namespace HIKARI::EDITOR {
                 nlohmann::json roots = nlohmann::json::array();
                 for (const auto& root : imported.roots) roots.push_back(root.value);
                 return Success(message, {{"roots", std::move(roots)}, {"reused", imported.reused}});
-            }});
+            }}, HIKARI::EDITOR::EditorOperationKind::Mutation);
         registry.Register({"vfx.library.publish", "Save the open effect and publish a new immutable source package revision", "vfx",
             {Parameter("id", EditorOperationParameterType::String, true, "Portable lowercase package ID"),
              Parameter("revision", EditorOperationParameterType::String, true, "New revision; existing revisions cannot be replaced"),
@@ -60,6 +60,6 @@ namespace HIKARI::EDITOR {
                 std::string message;
                 return controller.PublishToLibrary(*database, info, message)
                     ? Success(message) : Failure("CONTENT_PUBLISH_FAILED", message);
-            }});
+            }}, HIKARI::EDITOR::EditorOperationKind::Mutation);
     }
 }

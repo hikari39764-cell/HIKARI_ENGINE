@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 
 #include <algorithm>
@@ -35,7 +36,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphRampNodeInlineControls(
     if (changed) {
       PreviewMaterialGesture(scene);
     }
-    if (ImGui::IsItemDeactivatedAfterEdit()) {
+    if (ImGui::IsItemDeactivated()) {
       CommitMaterialGesture(scene);
     }
   };
@@ -46,7 +47,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphRampNodeInlineControls(
     MaterialGraphParameterData *parameter =
         MATERIAL_GRAPH_UI::FindParameter(graph, parameterId);
     if (parameter == nullptr) {
-      ImGui::TextDisabled("%s: missing", label);
+      ImGui::TextDisabled(TEXT::Localize("editor.ui.s.missing.f1ed86").c_str(), label);
       return;
     }
     const bool controlledByDefault =
@@ -57,7 +58,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphRampNodeInlineControls(
     ImGui::TextUnformatted(label);
     ImGui::SameLine();
     if (!controlledByDefault) {
-      ImGui::TextDisabled("Linked");
+      ImGui::TextDisabled(TEXT::Localize("editor.ui.linked.a089f6").c_str());
       ImGui::PopID();
       return;
     }
@@ -76,11 +77,11 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphRampNodeInlineControls(
 
   ImGui::SeparatorText(
       node.kind == MaterialNodeKind::MultiRampDiffuse
-          ? "Ramp Stack / Layer 1" : "Ramp");
+          ? "Ramp Stack / Layer 1" : TEXT::LocalizeCStr("ui.terrain.toolRamp"));
   MaterialGraphResourceData *resource =
       MATERIAL_GRAPH_UI::FindRampResource(graph, node);
   if (resource == nullptr) {
-    if (ImGui::Button("+ Ramp Resource", {width, 0.0f})) {
+    if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.ramp.resource.3cfd9d", "+ Ramp Resource").c_str(), {width, 0.0f})) {
       MaterialAssetData before = source;
       MaterialGraphResourceData created{};
       created.id = "Ramp_" + std::to_string(authoringIdCounter_++);
@@ -124,7 +125,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphRampNodeInlineControls(
         (void)BeginInlineRampEdit(scene, bound->guid, statusMessage_);
       }
     }
-    if (ImGui::SmallButton("New from Preset...")) {
+    if (ImGui::SmallButton(TEXT::LocalizeWindow("editor.ui.new.from.preset.658e68", "New from Preset...").c_str())) {
       ImGui::OpenPopup("##NewRampPreset");
     }
     trackItem();
@@ -132,7 +133,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphRampNodeInlineControls(
       ImGui::SameLine();
     }
     ImGui::BeginDisabled(bound == nullptr);
-    if (ImGui::SmallButton("Edit Ramp")) {
+    if (ImGui::SmallButton(TEXT::LocalizeWindow("editor.ui.edit.ramp.6de413", "Edit Ramp").c_str())) {
       (void)BeginInlineRampEdit(scene, bound->guid, statusMessage_);
     }
     trackItem();
@@ -166,7 +167,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphRampNodeInlineControls(
       ImGui::TextUnformatted(kRampLabels[layer]);
       ImGui::SameLine();
       if (layerResource == nullptr) {
-        ImGui::TextDisabled("Missing resource");
+        ImGui::TextDisabled(TEXT::Localize("editor.ui.missing.resource.e0ca40").c_str());
         ImGui::PopID();
         continue;
       }
@@ -178,8 +179,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphRampNodeInlineControls(
               ? "Missing Ramp" : "None (disabled)";
       ImGui::SetNextItemWidth((std::max)(96.0f, width - 62.0f));
       if (ImGui::BeginCombo("##RampAsset", layerPreview)) {
-        if (ImGui::Selectable(
-                "None", !layerResource->assetGuid.IsValid())) {
+        if (ImGui::Selectable(TEXT::LocalizeWindow("ui.input.none", "None").c_str(), !layerResource->assetGuid.IsValid())) {
           MaterialAssetData before = source;
           layerResource->assetGuid = {};
           layerResource->enabled = false;
@@ -217,7 +217,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphRampNodeInlineControls(
     }
   }
 
-  ImGui::SeparatorText("Lighting Response");
+  ImGui::SeparatorText(TEXT::Localize("editor.ui.lighting.response.560bba").c_str());
   drawParameter("parameter.shadowThreshold", "Shadow", "ShadowThreshold");
   drawParameter("parameter.shadowSoftness", "Softness", "ShadowSoftness");
   drawParameter("parameter.midThreshold", "Midtone", "MidThreshold");
@@ -231,7 +231,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphRampNodeInlineControls(
     drawParameter("parameter.rampRow", "Ramp Row", "RampRow");
     drawParameter(
         "parameter.rampLayerWeights", "Layer Weights", "LayerWeights");
-    ImGui::TextDisabled("Weights are clamped >= 0 and normalized at runtime.");
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.weights.are.clamped.0.and.normalized.at.runtime.0c27c0").c_str());
   }
   return capturesPointer;
 #else

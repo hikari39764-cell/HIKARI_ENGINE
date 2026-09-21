@@ -19,6 +19,7 @@ namespace HIKARI::EDITOR {
                     }
                 }};
             definition.kind = kind;
+            definition.requiresDocumentSession = false;
             definition.permission = permission;
             definition.risk = kind == EditorOperationKind::Query ? EditorOperationRisk::Low : EditorOperationRisk::Medium;
             registry.Register(std::move(definition));

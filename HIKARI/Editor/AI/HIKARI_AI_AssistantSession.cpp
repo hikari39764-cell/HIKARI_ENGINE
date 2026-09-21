@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <utility>
 namespace HIKARI::EDITOR {
-AiAssistantSession::AiAssistantSession() {
+AiAssistantSession::AiAssistantSession(AI_ASSISTANT::AiChatCompletion completion) : completion_(std::move(completion)) {
     mainThreadId_ = std::this_thread::get_id();
     capabilitySnapshot_ = AI_ASSISTANT::BuiltInCapabilities();
     configLoaded_ = AI_ASSISTANT::LoadAiChatConfig(config_);
@@ -122,10 +122,17 @@ void AiAssistantSession::SetContextSnapshot(std::string snapshot) {
     contextSnapshot_ = std::move(snapshot);
 }
 
+void AiAssistantSession::SetContextProvider(std::function<std::string()> provider) {
+    std::lock_guard lock(stateMutex_);
+    contextProvider_ = std::move(provider);
+}
+
 void AiAssistantSession::SetCapabilityProvider(
-    AiCapabilityProvider callback) {
+    AiCapabilityProvider callback, std::function<uint64_t()> revision) {
     std::lock_guard<std::mutex> lock(stateMutex_);
     capabilityProvider_ = std::move(callback);
+    capabilityVersionProvider_ = std::move(revision);
+    capabilityRevision_ = ~uint64_t{0};
 }
 
 std::vector<AI_ASSISTANT::AiCapability> AiAssistantSession::Capabilities()
@@ -134,12 +141,18 @@ std::vector<AI_ASSISTANT::AiCapability> AiAssistantSession::Capabilities()
     return capabilitySnapshot_;
 }
 
-void AiAssistantSession::RefreshCapabilities() {
+void AiAssistantSession::RefreshCapabilities(bool onlyIfChanged) {
     // registry の列挙は所有スレッドだけで行い、通信側へ値の snapshot を渡す。
     AiCapabilityProvider provider;
-    { std::lock_guard<std::mutex> lock(stateMutex_); provider = capabilityProvider_; }
+    std::function<uint64_t()> version;
+    uint64_t previous;
+    { std::lock_guard<std::mutex> lock(stateMutex_);
+      provider = capabilityProvider_; version = capabilityVersionProvider_; previous = capabilityRevision_; }
+    if (onlyIfChanged && !version) return;
+    const auto revision = version ? version() : 0;
+    if (onlyIfChanged && previous == revision) return;
     auto capabilities = provider ? provider() : AI_ASSISTANT::BuiltInCapabilities();
-    { std::lock_guard<std::mutex> lock(stateMutex_); capabilitySnapshot_ = std::move(capabilities); }
+    { std::lock_guard<std::mutex> lock(stateMutex_); capabilitySnapshot_ = std::move(capabilities); capabilityRevision_ = revision; }
 }
 
 void AiAssistantSession::SetBridgeStatus(const std::string& status) {
@@ -164,8 +177,7 @@ AI_ASSISTANT::AiRequestResult AiAssistantSession::ExecuteRequest(
     // Panel-local actions are handled here; every other action is routed to
     // the unified operation registry through the scene callback.
     const bool panelLocalAction =
-        action == "list_capabilities" || action == "query.capabilities" ||
-        action == "list_material_templates" || action == "query.material_templates" ||
+        action == "query.capabilities" ||
         action == "vision.analyze_image" || action == "context.image" ||
         action == "help";
     if (panelLocalAction) {
@@ -223,13 +235,13 @@ AI_ASSISTANT::AiRequestResult AiAssistantSession::ExecuteRequestNow(
     result.message = "场景执行器未接线：" + action;
     result.details = {
         "supported: query.capabilities",
-        "supported: query.material_templates",
         "supported: vision.analyze_image",
     };
     return result;
 }
 
 void AiAssistantSession::PumpActions() {
+    RefreshCapabilities(true);
     UpdateConversationStorage();
     std::vector<std::shared_ptr<PendingAiAction>> actions;
     {

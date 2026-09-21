@@ -1,3 +1,4 @@
+#include "HIKARI_AI_ToolProtocol.h"
 #include "HIKARI_AI_ChatClient.h"
 #include "HIKARI_AI_RequestContext.h"
 
@@ -105,8 +106,11 @@ bool BuildAiChatRequest(const AiChatConfig& config,
     error.clear();
     body.clear();
     AiChatRequestStats measured;
-    for (const auto& message : messages)
+    for (const auto& message : messages) {
         measured.sourceTextBytes += message.content.size() + (message.role == "tool" ? message.data.dump().size() : 0);
+        for (const char* field : {"_toolCalls", "_reasoningContent"})
+            if (message.data.contains(field)) measured.sourceTextBytes += message.data[field].dump().size();
+    }
     const auto context = BuildAiRequestContext(messages, config.toolHistoryKiB);
     size_t imageCount = 0;
     for (const auto& message : context) if (message.role == "tool") imageCount += message.images.size();
@@ -114,12 +118,42 @@ bool BuildAiChatRequest(const AiChatConfig& config,
     nlohmann::json request{{"model", config.model}, {"stream", stream},
         {"messages", nlohmann::json::array()}};
     if (stream && config.requestUsage) request["stream_options"] = {{"include_usage", true}};
+    if (config.editorTools) {
+        request["tools"] = BuildAiTools();
+        request["tool_choice"] = "auto";
+        const auto schemaBytes = request["tools"].dump().size();
+        measured.sourceTextBytes += schemaBytes;
+        measured.sentTextBytes += schemaBytes;
+    }
     std::set<std::string> sentImages;
+    std::vector<nlohmann::json> pendingImages;
+    auto flushImages = [&] {
+        for (auto& item : pendingImages) request["messages"].push_back(std::move(item));
+        pendingImages.clear();
+    };
     for (const auto& message : context) {
         measured.sentTextBytes += message.content.size();
+        // Native calls and their result IDs stay paired within the current task.
+        const bool nativeResult = message.data.contains("_toolCallId");
+        if (!nativeResult) flushImages();
+        for (const char* field : {"_toolCalls", "_reasoningContent"})
+            if (message.data.contains(field)) measured.sentTextBytes += message.data[field].dump().size();
+        if (message.data.contains("_toolCalls")) {
+            nlohmann::json outgoing{{"role", "assistant"}, {"content", message.content},
+                {"tool_calls", message.data["_toolCalls"]}};
+            if (message.data.contains("_reasoningContent"))
+                outgoing["reasoning_content"] = message.data["_reasoningContent"];
+            request["messages"].push_back(std::move(outgoing));
+            continue;
+        }
+        if (nativeResult) request["messages"].push_back({{"role", "tool"},
+            {"tool_call_id", message.data["_toolCallId"]}, {"content", message.content}});
+        if (nativeResult && message.images.empty()) continue;
         if (message.images.empty()) {
             std::string content=message.content;
             request["messages"].push_back({{"role", message.role == "tool" ? "user" : message.role}, {"content", std::move(content)}});
+            if (message.data.contains("_reasoningContent"))
+                request["messages"].back()["reasoning_content"] = message.data["_reasoningContent"];
             continue;
         }
         if (!config.imageInputEnabled) {
@@ -141,8 +175,12 @@ bool BuildAiChatRequest(const AiChatConfig& config,
         }
         if (omitted) parts.push_back({{"type", "text"}, {"text",
             std::to_string(omitted) + " images omitted by the per-request preview limit; use context.image to review their paths."}});
-        request["messages"].push_back({{"role", "user"}, {"content", std::move(parts)}});
+        // 全 tool_call_id の返答を連続させてから画像を渡す。
+        nlohmann::json imageMessage{{"role", "user"}, {"content", std::move(parts)}};
+        if (nativeResult) pendingImages.push_back(std::move(imageMessage));
+        else request["messages"].push_back(std::move(imageMessage));
     }
+    flushImages();
     body = request.dump();
     if (stats) *stats = measured;
     return true;

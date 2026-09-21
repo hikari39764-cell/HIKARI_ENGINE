@@ -1,4 +1,5 @@
 #pragma once
+#include <functional>
 
 namespace HIKARI::RUNTIME {
 
@@ -31,6 +32,7 @@ namespace HIKARI::RUNTIME {
         bool loadRuntimeConfig = true;
         const char* windowTitle = "HIKARI_Ver1.3";
         bool enableStreamline = true;
+        std::function<void()> onFirstApplicationPresented;
     };
 
     // エンジンホストのメインエントリポイント。

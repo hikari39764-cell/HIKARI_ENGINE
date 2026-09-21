@@ -103,7 +103,7 @@ namespace HIKARI::EDITOR {
             size_t split=knots.size(), remove=knots.size();
             for (size_t i=0;i<knots.size();++i) {
                 ImGui::PushID(static_cast<int>(i)); auto& knot=knots[i];
-                if (ImGui::TreeNode("knot","%s %zu · %.3f s",VfxUiText("Point").c_str(),i+1,knot.seconds)) {
+                if (ImGui::TreeNode("knot",TEXT::Localize("editor.ui.s.zu.3f.s.5a219d").c_str(),VfxUiText("Point").c_str(),i+1,knot.seconds)) {
                     auto position=knot.position;
                     if (ImGui::DragFloat3(VfxUiText("Position").c_str(),&position.x,0.01f)) {
                         knot.incoming=knot.incoming+(position-knot.position);

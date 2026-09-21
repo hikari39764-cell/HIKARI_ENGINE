@@ -1,3 +1,4 @@
+#include "Runtime/Project/Internal/HIKARI_GameProjectFixedText.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -326,21 +327,7 @@ namespace HIKARI {
             return false;
         }
 
-        template<size_t Capacity>
-        bool ReadFixedText(
-            const char (&source)[Capacity],
-            std::string& outValue) {
-            size_t count = 0u;
-            while (count < Capacity && source[count] != '\0') {
-                ++count;
-            }
-            if (count == Capacity) {
-                outValue.clear();
-                return false;
-            }
-            outValue.assign(source, count);
-            return true;
-        }
+
 
         VFX::VfxValueType ToVfxValueType(
             GameProjectBindingValueType type) noexcept {
@@ -423,7 +410,7 @@ namespace HIKARI {
                 const GameProjectVfxParameterOverride& parameter =
                     source.values[index];
                 std::string inputId{};
-                if (!ReadFixedText(parameter.inputId, inputId) ||
+                if (!PROJECT::DETAIL::ReadFixedText(parameter.inputId, inputId) ||
                     inputId.empty()) {
                     return false;
                 }
@@ -492,17 +479,17 @@ namespace HIKARI {
             outGuid = {};
             outOutputId.clear();
             outFailureReason = "invalid_profile_reference";
-            if (!ReadFixedText(reference.asset.assetGuid, guid)) {
+            if (!PROJECT::DETAIL::ReadFixedText(reference.asset.assetGuid, guid)) {
                 outFailureReason = "asset_guid_not_terminated";
                 return false;
             }
-            if (!ReadFixedText(reference.asset.assetPath, path)) {
+            if (!PROJECT::DETAIL::ReadFixedText(reference.asset.assetPath, path)) {
                 // Never include the authoring path in diagnostics.  It can
                 // contain machine-local or otherwise sensitive information.
                 outFailureReason = "asset_path_not_terminated";
                 return false;
             }
-            if (!ReadFixedText(reference.outputId, outOutputId)) {
+            if (!PROJECT::DETAIL::ReadFixedText(reference.outputId, outOutputId)) {
                 outFailureReason = "output_id_not_terminated";
                 return false;
             }
@@ -632,13 +619,13 @@ namespace HIKARI {
 
             std::string guid{};
             std::string authoringPath{};
-            if (!ReadFixedText(request.asset.assetGuid, guid)) {
+            if (!PROJECT::DETAIL::ReadFixedText(request.asset.assetGuid, guid)) {
                 EmitVfxBridgeDiagnostic(
                     "play_rejected",
                     "asset_guid_not_terminated");
                 return {};
             }
-            if (!ReadFixedText(request.asset.assetPath, authoringPath)) {
+            if (!PROJECT::DETAIL::ReadFixedText(request.asset.assetPath, authoringPath)) {
                 // The path remains an authoring-only fallback and must never
                 // become part of a runtime diagnostic or identity.
                 EmitVfxBridgeDiagnostic(

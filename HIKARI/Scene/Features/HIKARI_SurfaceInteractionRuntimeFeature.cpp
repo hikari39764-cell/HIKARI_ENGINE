@@ -71,7 +71,7 @@ namespace HIKARI {
                 ComponentTypeInfo follower{};
                 follower.typeName = "SandSurfaceFollowerComponent";
                 follower.factory = []() -> std::unique_ptr<IComponent> {
-                    return std::make_unique<SandSurfaceFollowerComponent>();
+                    return IComponent::Create<SandSurfaceFollowerComponent>();
                 };
                 follower.runtimeApplyPolicy =
                     ComponentRuntimeApplyPolicy::Immediate;

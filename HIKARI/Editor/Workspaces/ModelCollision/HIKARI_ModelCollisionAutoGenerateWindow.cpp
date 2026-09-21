@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 #include "Editor/Workspaces/ModelCollision/HIKARI_ModelCollisionWorkspaceController.h"
 
@@ -17,7 +18,7 @@ namespace HIKARI::EDITOR {
 
 void ModelCollisionWorkspaceController::DrawAutoGenerateWindow() {
 #if defined(HIKARI_WITH_EDITOR)
-  if (!ImGui::Begin("Auto Generate###ModelCollision/Generate")) {
+  if (!ImGui::Begin(TEXT::LocalizeWindow("editor.ui.auto.generate.0f86c2", "ModelCollision/Generate").c_str())) {
     ImGui::End();
     return;
   }
@@ -32,22 +33,20 @@ void ModelCollisionWorkspaceController::DrawAutoGenerateWindow() {
                             : "Generating collision...");
     if (task && task->progress.determinate) {
       ImGui::ProgressBar(task->progress.normalized, ImVec2(-1.0f, 22.0f));
-      ImGui::TextDisabled(
-          "%llu / %llu source groups  |  %.2f s",
+      ImGui::TextDisabled(TEXT::Localize("editor.ui.llu.llu.source.groups.2f.s.463562").c_str(),
           static_cast<unsigned long long>(task->progress.completedUnits),
           static_cast<unsigned long long>(task->progress.totalUnits),
           task->elapsedSeconds);
     } else {
       ImGui::ProgressBar(0.0f, ImVec2(-1.0f, 22.0f), "Working...");
       if (task) {
-        ImGui::TextDisabled("%.2f s elapsed", task->elapsedSeconds);
+        ImGui::TextDisabled(TEXT::Localize("editor.ui.2f.s.elapsed.67ba42").c_str(), task->elapsedSeconds);
       }
     }
-    ImGui::TextDisabled("The editor remains usable. CoACD cancellation takes "
-                        "effect after its current native solve returns.");
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.the.editor.remains.usable.coacd.cancellation.takes.effect.after..23e7a8").c_str());
     const bool cancelRequested = task && task->cancellationRequested;
     ImGui::BeginDisabled(cancelRequested);
-    if (ImGui::Button(cancelRequested ? "Cancel Requested"
+    if (ImGui::Button(cancelRequested ? TEXT::LocalizeCStr("ui.resource.cancelRequested")
                                       : "Cancel Generation")) {
       if (assetTaskService_ != nullptr) {
         (void)assetTaskService_->RequestCancel(generationTaskId_);
@@ -64,54 +63,50 @@ void ModelCollisionWorkspaceController::DrawAutoGenerateWindow() {
   }
   if (generationDraft_.has_value()) {
     const auto &result = generationDraft_->result;
-    ImGui::TextColored(ImVec4(0.42f, 0.90f, 0.58f, 1.0f),
-                       "Generation Draft Ready");
-    ImGui::Text("%u generated | %u source groups | %u replaced",
+    ImGui::TextColored(ImVec4(0.42f, 0.90f, 0.58f, 1.0f),TEXT::Localize("editor.ui.generation.draft.ready.269f1c").c_str());
+    ImGui::Text(TEXT::Localize("editor.ui.u.generated.u.source.groups.u.replaced.6f95aa").c_str(),
                 result.generatedCount, result.candidateCount,
                 result.removedGeneratedCount);
     if (result.truncated) {
-      ImGui::TextColored(ImVec4(1.0f, 0.68f, 0.28f, 1.0f),
-                         "The draft reached the configured shape budget.");
+      ImGui::TextColored(ImVec4(1.0f, 0.68f, 0.28f, 1.0f),TEXT::Localize("editor.ui.the.draft.reached.the.configured.shape.budget.d595a3").c_str());
     }
-    ImGui::TextWrapped("The viewport is previewing this draft. The current "
-                       "document has not changed. Apply records one undoable "
-                       "edit; Discard leaves it untouched.");
-    if (ImGui::Button("Apply Draft", ImVec2(135.0f, 32.0f))) {
+    ImGui::TextWrapped(TEXT::Localize("editor.ui.the.viewport.is.previewing.this.draft.the.current.document.has.n.a89d04").c_str());
+    if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.apply.draft.b63f82", "Apply Draft").c_str(), ImVec2(135.0f, 32.0f))) {
       ApplyGenerationDraft();
     }
     ImGui::SameLine();
-    if (ImGui::Button("Discard Draft", ImVec2(135.0f, 32.0f))) {
+    if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.discard.draft.965902", "Discard Draft").c_str(), ImVec2(135.0f, 32.0f))) {
       DiscardGenerationDraft();
     }
     ImGui::End();
     return;
   }
-  const char *targets[]{"Whole Model", "Selected Parts Combined",
-                        "Nearby Selected Groups", "Each Selected Part"};
+  const char *targets[]{TEXT::LocalizeCStr("editor.ui.whole.model.217305"), TEXT::LocalizeCStr("editor.ui.selected.parts.combined.686da0"),
+                        TEXT::LocalizeCStr("editor.ui.nearby.selected.groups.4ed8e8"), TEXT::LocalizeCStr("editor.ui.each.selected.part.c0d7a5")};
   int target = static_cast<int>(generationTarget_);
-  if (ImGui::Combo("Target", &target, targets, 4)) {
+  if (ImGui::Combo(TEXT::LocalizeWindow("editor.ui.target.61ad50", "Target").c_str(), &target, targets, 4)) {
     generationTarget_ =
         static_cast<ASSETS::COLLISION::ModelCollisionGenerationTarget>(target);
   }
-  const char *methods[]{"Fitted Box",
-                        "Fitted Sphere",
-                        "Fitted Capsule",
-                        "Single Convex Hull",
-                        "Convex Decomposition (CoACD)",
-                        "Static Triangle Mesh"};
+  const char *methods[]{TEXT::LocalizeCStr("editor.ui.fitted.box.25b34d"),
+                        TEXT::LocalizeCStr("editor.ui.fitted.sphere.f0c049"),
+                        TEXT::LocalizeCStr("editor.ui.fitted.capsule.01153f"),
+                        TEXT::LocalizeCStr("editor.ui.single.convex.hull.bb4a3d"),
+                        TEXT::LocalizeCStr("editor.ui.convex.decomposition.coacd.7ae694"),
+                        TEXT::LocalizeCStr("editor.ui.static.triangle.mesh.0df8f6")};
   int method = static_cast<int>(generationMethod_);
-  if (ImGui::Combo("Method", &method, methods, 6)) {
+  if (ImGui::Combo(TEXT::LocalizeWindow("editor.ui.method.883069", "Method").c_str(), &method, methods, 6)) {
     generationMethod_ =
         static_cast<ASSETS::COLLISION::ModelCollisionGenerationMethod>(method);
   }
-  ImGui::Checkbox("Replace previously generated shapes",
+  ImGui::Checkbox(TEXT::LocalizeWindow("editor.ui.replace.previously.generated.shapes.8c79b1", "Replace previously generated shapes").c_str(),
                   &replaceGeneratedShapes_);
   const bool requiresSourceSelection =
       generationTarget_ !=
       ASSETS::COLLISION::ModelCollisionGenerationTarget::WholeModel;
   if (generationTarget_ == ASSETS::COLLISION::ModelCollisionGenerationTarget::
                                SelectedNodesSpatialGroups) {
-    ImGui::DragFloat("Merge Distance", &generationMergeDistance_, 0.01f, 0.0f,
+    ImGui::DragFloat(TEXT::LocalizeWindow("editor.ui.merge.distance.fd314c", "Merge Distance").c_str(), &generationMergeDistance_, 0.01f, 0.0f,
                      100000.0f, "%.3f");
     generationMergeDistance_ = (std::max)(generationMergeDistance_, 0.0f);
   }
@@ -134,24 +129,25 @@ void ModelCollisionWorkspaceController::DrawAutoGenerateWindow() {
   if (primitiveMethod && generationTarget_ ==
                              ASSETS::COLLISION::ModelCollisionGenerationTarget::
                                  SelectedNodesSpatialGroups) {
-    ImGui::DragFloat("Max Merge Inflation", &generationAccuracy_, 0.01f, 0.0f,
+    ImGui::DragFloat(TEXT::LocalizeWindow("editor.ui.max.merge.inflation.aa2a5a", "Max Merge Inflation").c_str(), &generationAccuracy_, 0.01f, 0.0f,
                      4.0f, "%.2f x");
     generationAccuracy_ = (std::clamp)(generationAccuracy_, 0.0f, 4.0f);
   }
+  if (ImGui::CollapsingHeader(TEXT::LocalizeWindow("editor.workflow.qualityLimits", "generationLimits").c_str())) {
   if (convexHull || decomposition) {
-    ImGui::InputInt("Max Hull Vertices", &generationHullVertexBudget_);
+    ImGui::InputInt(TEXT::LocalizeWindow("editor.ui.max.hull.vertices.7b50c2", "Max Hull Vertices").c_str(), &generationHullVertexBudget_);
     generationHullVertexBudget_ =
         (std::clamp)(generationHullVertexBudget_, 16, 256);
   }
   if (decomposition) {
-    ImGui::DragFloat("Concavity Threshold", &generationAccuracy_, 0.0025f,
+    ImGui::DragFloat(TEXT::LocalizeWindow("editor.ui.concavity.threshold.6420ce", "Concavity Threshold").c_str(), &generationAccuracy_, 0.0025f,
                      0.001f, 1.0f, "%.4f");
     generationAccuracy_ = (std::clamp)(generationAccuracy_, 0.001f, 1.0f);
-    ImGui::Checkbox("Preserve Separate Gaps", &generationPreserveGaps_);
+    ImGui::Checkbox(TEXT::LocalizeWindow("editor.ui.preserve.separate.gaps.979a4e", "Preserve Separate Gaps").c_str(), &generationPreserveGaps_);
   }
   if (triangleMesh) {
-    ImGui::TextDisabled("Static bodies only");
-    ImGui::InputInt("Triangle Budget", &generationTriangleBudget_);
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.static.bodies.only.4f1004").c_str());
+    ImGui::InputInt(TEXT::LocalizeWindow("editor.ui.triangle.budget.418792", "Triangle Budget").c_str(), &generationTriangleBudget_);
     generationTriangleBudget_ =
         (std::clamp)(generationTriangleBudget_, 1, 16000000);
   } else if (decomposition ||
@@ -161,21 +157,22 @@ void ModelCollisionWorkspaceController::DrawAutoGenerateWindow() {
              generationTarget_ ==
                  ASSETS::COLLISION::ModelCollisionGenerationTarget::
                      SelectedNodesSpatialGroups) {
-    ImGui::InputInt("Shape Budget", &generationBudget_);
+    ImGui::InputInt(TEXT::LocalizeWindow("editor.ui.shape.budget.531dc6", "Shape Budget").c_str(), &generationBudget_);
     generationBudget_ = (std::clamp)(generationBudget_, 1, 4096);
+  }
   }
   if (requiresSourceSelection) {
     const ImVec4 color = selectedSourceNodes_.empty()
                              ? ImVec4(1.0f, 0.62f, 0.30f, 1.0f)
                              : ImGui::GetStyleColorVec4(ImGuiCol_Text);
-    ImGui::TextColored(color, "%d source part(s) selected",
+    ImGui::TextColored(color,TEXT::Localize("editor.ui.d.source.part.s.selected.3c5910").c_str(),
                        static_cast<int>(selectedSourceNodes_.size()));
   }
   ImGui::Separator();
   ImGui::BeginDisabled(
       !previewScene_.IsReady() ||
       (requiresSourceSelection && selectedSourceNodes_.empty()));
-  if (ImGui::Button("Generate Collision", ImVec2(-1.0f, 34.0f))) {
+  if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.generate.collision.36c878", "Generate Collision").c_str(), ImVec2(-1.0f, 34.0f))) {
     GenerateShapes();
   }
   ImGui::EndDisabled();

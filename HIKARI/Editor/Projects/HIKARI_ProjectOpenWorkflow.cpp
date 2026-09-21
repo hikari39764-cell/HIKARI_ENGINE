@@ -1,3 +1,5 @@
+#include <fstream>
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Projects/HIKARI_ProjectOpenWorkflow.h"
 
 #include <system_error>
@@ -363,7 +365,8 @@ namespace {
         CloseHandle(processInformation.hThread);
         buildProcess_ = processInformation.hProcess;
         buildJob_ = buildJob;
-        state_ = ProjectOpenWorkflowState::Building;
+        state_ = ProjectOpenWorkflowState::Checking;
+        logTail_.clear(); logPoll_ = {};
         statusMessage_ = request_ ==
                 ProjectOpenWorkflowRequest::RebuildAndReload
             ? "Rebuilding " + descriptor.name +
@@ -377,6 +380,23 @@ namespace {
     }
 
     void ProjectOpenWorkflow::Update() {
+        if (state_ == ProjectOpenWorkflowState::Starting) {
+            if (WaitForSingleObject(editorProcess_, 0) == WAIT_OBJECT_0) {
+                DWORD code = 0; GetExitCodeProcess(editorProcess_, &code);
+                state_ = ProjectOpenWorkflowState::Failed;
+                statusMessage_ = TEXT::Localize("launcher.earlyExit") + " (" + std::to_string(code) + ")";
+                CloseEditorWait();
+            } else if (WaitForSingleObject(readyEvent_, 0) == WAIT_OBJECT_0) {
+                shouldExitLauncher_ = true;
+                state_ = ProjectOpenWorkflowState::Idle;
+                statusMessage_ = TEXT::Localize("launcher.ready");
+                CloseEditorWait();
+            } else if (std::chrono::steady_clock::now() - launchStarted_ > std::chrono::seconds(120)) {
+                statusMessage_ = TEXT::Localize("launcher.slowStart");
+            }
+            return;
+        }
+        if (state_ == ProjectOpenWorkflowState::Checking || state_ == ProjectOpenWorkflowState::Building) PollBuildLog();
         if (state_ ==
             ProjectOpenWorkflowState::WaitingForEditorExit) {
             if (waitProcess_ == nullptr) {
@@ -414,7 +434,7 @@ namespace {
             return;
         }
 
-        if (state_ != ProjectOpenWorkflowState::Building ||
+        if ((state_ != ProjectOpenWorkflowState::Building && state_ != ProjectOpenWorkflowState::Checking) ||
             buildProcess_ == nullptr) {
             return;
         }
@@ -436,46 +456,24 @@ namespace {
         }
 
         CloseBuildProcess();
-        if (exitCode != 0u &&
-            request_ ==
-                ProjectOpenWorkflowRequest::RebuildAndReload) {
+        logPoll_ = {}; // 終了直前の診断をポーリング間隔で取りこぼさない。
+        PollBuildLog();
+        if (exitCode != 0u) {
             state_ = ProjectOpenWorkflowState::Failed;
-            statusMessage_ =
-                "GameProject rebuild failed with exit code " +
-                std::to_string(exitCode) +
-                ". The project was not reopened. See " +
-                TEXT::PathToUtf8(buildLogPath_);
+            statusMessage_ = TEXT::Localize("launcher.buildFailed") + " (" + std::to_string(exitCode) + ")";
             return;
         }
-
-        const bool useProjectModule = exitCode == 0u;
-        std::string launchMessage{};
-        if (!LaunchEditor(
-                useProjectModule,
-                launchMessage)) {
+        std::string message;
+        if (!LaunchEditor(true, message)) {
             state_ = ProjectOpenWorkflowState::Failed;
-            statusMessage_ = std::move(launchMessage);
-            return;
+            statusMessage_ = std::move(message);
         }
-        state_ = ProjectOpenWorkflowState::Idle;
-        if (useProjectModule) {
-            statusMessage_ =
-                "Project editor started.";
-        }
-        else {
-            statusMessage_ =
-                "Project editor started in module-less authoring mode "
-                "after build exit code " +
-                std::to_string(exitCode) +
-                ". See " +
-                TEXT::PathToUtf8(buildLogPath_);
-        }
-        shouldExitLauncher_ = true;
     }
 
     void ProjectOpenWorkflow::Shutdown() noexcept {
         CancelBuildProcess();
         CloseWaitProcess();
+        CloseEditorWait();
     }
 
     ProjectOpenWorkflowState
@@ -486,7 +484,9 @@ namespace {
     bool ProjectOpenWorkflow::IsBusy() const noexcept {
         return state_ ==
                 ProjectOpenWorkflowState::WaitingForEditorExit ||
-            state_ == ProjectOpenWorkflowState::Building;
+            state_ == ProjectOpenWorkflowState::Building ||
+            state_ == ProjectOpenWorkflowState::Checking ||
+            state_ == ProjectOpenWorkflowState::Starting;
     }
 
     bool ProjectOpenWorkflow::
@@ -559,12 +559,25 @@ namespace {
             arguments.push_back(
                 L"--allow-missing-project-module");
         }
-        return PROJECT_PROCESS::LaunchProcess(
+        CloseEditorWait();
+        GUID guid{};
+        if (FAILED(CoCreateGuid(&guid))) { outMessage = "Could not allocate startup handshake."; return false; }
+        wchar_t token[40]{}; StringFromGUID2(guid, token, 40);
+        readyEventName_ = std::wstring(L"Local\\HIKARI.EditorReady.") + token;
+        readyEvent_ = CreateEventW(nullptr, TRUE, FALSE, readyEventName_.c_str());
+        if (!readyEvent_) { outMessage = "Could not create startup handshake."; return false; }
+        arguments.push_back(L"--launcher-ready-event"); arguments.push_back(readyEventName_);
+        const bool launched = PROJECT_PROCESS::LaunchProcess(
             executable,
             arguments,
             projectRoot_,
             "Could not start the project editor",
-            outMessage);
+            outMessage, &editorProcess_);
+        if (!launched) { CloseEditorWait(); return false; }
+        launchStarted_ = std::chrono::steady_clock::now();
+        state_ = ProjectOpenWorkflowState::Starting;
+        statusMessage_ = TEXT::Localize("launcher.starting");
+        return true;
     }
 
     void ProjectOpenWorkflow::
@@ -611,6 +624,45 @@ namespace {
             CloseHandle(waitProcess_);
             waitProcess_ = nullptr;
         }
+    }
+
+    void ProjectOpenWorkflow::CloseEditorWait() noexcept {
+        if (editorProcess_) { CloseHandle(editorProcess_); editorProcess_ = nullptr; }
+        if (readyEvent_) { CloseHandle(readyEvent_); readyEvent_ = nullptr; }
+        readyEventName_.clear();
+    }
+
+    void ProjectOpenWorkflow::Cancel() noexcept {
+        const bool started = state_ == ProjectOpenWorkflowState::Starting;
+        CancelBuildProcess(); CloseWaitProcess(); CloseEditorWait();
+        shouldExitLauncher_ = false;
+        state_ = ProjectOpenWorkflowState::Cancelled;
+        statusMessage_ = TEXT::Localize(started ? "launcher.detached" : "launcher.cancelled");
+    }
+
+    bool ProjectOpenWorkflow::Retry(std::string& message) {
+        if (IsBusy() || projectRoot_.empty()) return false;
+        return StartRequest(projectRoot_, request_, message);
+    }
+
+    bool ProjectOpenWorkflow::OpenWithoutModule(std::string& message) {
+        if (IsBusy() || descriptorPath_.empty()) return false;
+        return LaunchEditor(false, message);
+    }
+
+    void ProjectOpenWorkflow::PollBuildLog() {
+        const auto now = std::chrono::steady_clock::now();
+        if (now - logPoll_ < std::chrono::milliseconds(250)) return;
+        logPoll_ = now;
+        std::ifstream input(buildLogPath_, std::ios::binary | std::ios::ate);
+        if (!input) return;
+        const auto size = input.tellg();
+        if (size < 0) return;
+        const auto begin = (std::max)(std::streamoff{0}, static_cast<std::streamoff>(size) - 32768);
+        input.seekg(begin); logTail_.assign(std::istreambuf_iterator<char>(input), {});
+        if (begin > 0) { const auto line = logTail_.find('\n'); if (line != std::string::npos) logTail_.erase(0, line + 1); }
+        if (logTail_.find("HIKARI_STAGE building") != std::string::npos)
+            state_ = ProjectOpenWorkflowState::Building;
     }
 
 } // namespace HIKARI::EDITOR

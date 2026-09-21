@@ -57,6 +57,9 @@ public:
     }
     EditorOperationResult Preview(const nlohmann::json& parameters) override {
         if (!Matches()) return {false,"DOCUMENT_CONFLICT","The scene session is stale."};
+        if (parameters.contains("time")) return {false,"UNSUPPORTED_PREVIEW_TIME",
+            "Scene preview captures the current scene. Request time sampling from the document that owns the timeline.",
+            {{"timeSampling",false},{"requestedTime",parameters["time"]}}};
         if (capture_.IsPending()) return {false,"CAPTURE_BUSY","A capture is already pending."};
         RENDER3D::EDITORVIEW::EditorInteractiveViewRequest request{};
         request.viewId=previewId_; request.cameraFrame=scene_->GetResolvedCameraFrame();
@@ -65,7 +68,9 @@ public:
         request.cameraFrame.camera.SetAspect(static_cast<float>(request.width)/request.height);
         request.sceneRevision=scene_->GetSceneDocumentRevision(); request.visible=true; request.drawDebug=false;
         RENDER3D::EDITORVIEW::SubmitRequest(request);
-        auto result=capture_.Start(scene_->GetAssetDatabase().GetLibraryRoot(),{{"label","Scene preview"},{"editRevision",revision_}});
+        auto result=capture_.Start(scene_->GetAssetDatabase().GetLibraryRoot(),
+            {{"label","Current scene preview"},{"editRevision",revision_},
+             {"sceneRevision",documentRevision_},{"assetGuid",scene_->GetCurrentSceneAssetGuid().value},{"timeSampling",false}});
         capture_.Tick(true);return result;
     }
     EditorOperationResult PreviewStatus(const nlohmann::json&) override {

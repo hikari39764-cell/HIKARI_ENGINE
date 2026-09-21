@@ -13,11 +13,6 @@ namespace HIKARI {
 
     namespace {
 
-        const MaterialGraphParameterData* FindParameter(
-            const MaterialGraphData& graph,
-            std::string_view id) noexcept {
-            return FindMaterialGraphParameter(graph, id);
-        }
 
         const MaterialGraphResourceData* FindResource(
             const MaterialGraphData& graph,
@@ -36,18 +31,7 @@ namespace HIKARI {
             return FindMaterialGraphResource(graph, id);
         }
 
-        const MaterialGraphNodeData* FindNode(
-            const MaterialGraphData& graph,
-            std::string_view id) noexcept {
-            return FindMaterialGraphNode(graph, id);
-        }
 
-        const MaterialGraphEdgeData* FindInputEdge(
-            const MaterialGraphData& graph,
-            std::string_view nodeId,
-            std::string_view inputPin) noexcept {
-            return FindMaterialGraphInputEdge(graph, nodeId, inputPin);
-        }
 
         float ReadComponent(
             const MaterialValueData& value,
@@ -77,7 +61,7 @@ namespace HIKARI {
                 return std::nullopt;
             }
 
-            const MaterialGraphNodeData* node = FindNode(graph, nodeId);
+            const MaterialGraphNodeData* node = FindMaterialGraphNode(graph, nodeId);
             if (node == nullptr) {
                 evaluating.erase(key);
                 return std::nullopt;
@@ -85,7 +69,7 @@ namespace HIKARI {
             auto input = [&](std::string_view pin)
                 -> std::optional<MaterialValueData> {
                 const MaterialGraphEdgeData* edge =
-                    FindInputEdge(graph, node->id, pin);
+                    FindMaterialGraphInputEdge(graph, node->id, pin);
                 return edge == nullptr
                     ? std::nullopt
                     : EvaluateNumericOutput(graph, edge->sourceNodeId,
@@ -97,7 +81,7 @@ namespace HIKARI {
                 result = node->value;
             } else if (node->kind == MaterialNodeKind::Parameter) {
                 if (const MaterialGraphParameterData* parameter =
-                        FindParameter(graph, node->referenceId)) {
+                        FindMaterialGraphParameter(graph, node->referenceId)) {
                     result = parameter->defaultValue;
                 }
             } else if (node->kind == MaterialNodeKind::Add ||
@@ -191,13 +175,13 @@ namespace HIKARI {
 
         const MaterialGraphNodeData* FindConnectedPbrSurface(
             const MaterialGraphData& graph) noexcept {
-            const MaterialGraphEdgeData* outputEdge = FindInputEdge(
+            const MaterialGraphEdgeData* outputEdge = FindMaterialGraphInputEdge(
                 graph, graph.outputNodeId, "Surface");
             if (outputEdge == nullptr) {
                 return nullptr;
             }
             const MaterialGraphNodeData* surface =
-                FindNode(graph, outputEdge->sourceNodeId);
+                FindMaterialGraphNode(graph, outputEdge->sourceNodeId);
             return surface != nullptr &&
                     surface->kind == MaterialNodeKind::PbrSurface
                 ? surface : nullptr;
@@ -209,7 +193,7 @@ namespace HIKARI {
             std::string_view inputPin,
             MATH::Vec4& outValue) {
             const MaterialGraphEdgeData* edge =
-                FindInputEdge(graph, surface.id, inputPin);
+                FindMaterialGraphInputEdge(graph, surface.id, inputPin);
             if (edge == nullptr) {
                 return;
             }
@@ -239,13 +223,13 @@ namespace HIKARI {
             if (!visiting.emplace(nodeId).second) {
                 return std::nullopt;
             }
-            const MaterialGraphNodeData* node = FindNode(graph, nodeId);
+            const MaterialGraphNodeData* node = FindMaterialGraphNode(graph, nodeId);
             if (node == nullptr) {
                 visiting.erase(std::string(nodeId));
                 return std::nullopt;
             }
             if (node->kind == MaterialNodeKind::TextureSample) {
-                if (FindInputEdge(graph, node->id, "UV") != nullptr) {
+                if (FindMaterialGraphInputEdge(graph, node->id, "UV") != nullptr) {
                     visiting.erase(std::string(nodeId));
                     return std::nullopt;
                 }
@@ -259,7 +243,7 @@ namespace HIKARI {
             }
             if (node->kind == MaterialNodeKind::NormalUnpack) {
                 const MaterialGraphEdgeData* packed =
-                    FindInputEdge(graph, node->id, "PackedNormal");
+                    FindMaterialGraphInputEdge(graph, node->id, "PackedNormal");
                 auto result = packed == nullptr
                     ? std::optional<TextureExpressionProjection>{}
                     : EvaluateTextureExpression(
@@ -273,9 +257,9 @@ namespace HIKARI {
             }
 
             const MaterialGraphEdgeData* a =
-                FindInputEdge(graph, node->id, "A");
+                FindMaterialGraphInputEdge(graph, node->id, "A");
             const MaterialGraphEdgeData* b =
-                FindInputEdge(graph, node->id, "B");
+                FindMaterialGraphInputEdge(graph, node->id, "B");
             if (a == nullptr || b == nullptr) {
                 visiting.erase(std::string(nodeId));
                 return std::nullopt;
@@ -323,7 +307,7 @@ namespace HIKARI {
             MaterialTextureSlotData& outSlot,
             MATH::Vec4* outFactor = nullptr) {
             const MaterialGraphEdgeData* edge =
-                FindInputEdge(graph, surface.id, inputPin);
+                FindMaterialGraphInputEdge(graph, surface.id, inputPin);
             if (edge == nullptr) {
                 return false;
             }
@@ -355,7 +339,7 @@ namespace HIKARI {
             std::string_view id,
             MATH::Vec4& outValue) noexcept {
             if (const MaterialGraphParameterData* parameter =
-                    FindParameter(graph, id)) {
+                    FindMaterialGraphParameter(graph, id)) {
                 outValue = parameter->defaultValue.numeric;
             }
         }

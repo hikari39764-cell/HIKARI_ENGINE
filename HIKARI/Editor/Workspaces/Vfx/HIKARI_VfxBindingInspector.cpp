@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 
 #include <algorithm>
@@ -125,10 +126,9 @@ namespace HIKARI::EDITOR {
         const VFX::VfxExposedInputData* selectedInput =
             FindInput(link.inputId);
         ImGui::TextDisabled(VfxUiText("INPUT BINDING").c_str());
-        ImGui::TextWrapped("Stable ID: %s", link.id.c_str());
+        ImGui::TextWrapped(TEXT::Localize("editor.ui.stable.id.s.f22a81").c_str(), link.id.c_str());
 
-        if (ImGui::BeginCombo(
-                "Input",
+        if (ImGui::BeginCombo(TEXT::LocalizeWindow("editor.ui.input.b568d4", "Input").c_str(),
                 selectedInput != nullptr
                     ? selectedInput->name.c_str()
                     : link.inputId.c_str())) {
@@ -156,7 +156,7 @@ namespace HIKARI::EDITOR {
         const std::string currentTarget = currentSchema != nullptr
             ? PropertyLabel(*currentSchema)
             : link.target.moduleId + "." + link.target.propertyId;
-        if (ImGui::BeginCombo("Property", currentTarget.c_str())) {
+        if (ImGui::BeginCombo(TEXT::LocalizeWindow("editor.ui.property.9ae33a", "Property").c_str(), currentTarget.c_str())) {
             if (selectedInput != nullptr) {
                 for (const VFX::VfxPropertySchema& schema :
                      VFX::GetVfxPropertySchemas()) {

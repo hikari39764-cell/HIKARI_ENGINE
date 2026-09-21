@@ -237,7 +237,7 @@ namespace HIKARI::EDITOR {
                 result.message = "Runtime binding catalog returned";
                 return result;
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Query);
 
         registry.Register({
             "binding.item.describe",
@@ -278,7 +278,7 @@ namespace HIKARI::EDITOR {
                 result.message = "Runtime binding item described";
                 return result;
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Query);
 
         registry.Register({
             "binding.variable.create",
@@ -331,7 +331,7 @@ namespace HIKARI::EDITOR {
                 };
                 return result;
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
         registry.Register({
             "binding.event.create",
@@ -394,7 +394,7 @@ namespace HIKARI::EDITOR {
                 };
                 return result;
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
         registry.Register({
             "binding.item.property.set",
@@ -436,7 +436,7 @@ namespace HIKARI::EDITOR {
                 };
                 return result;
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
         registry.Register({
             "binding.item.remove",
@@ -490,7 +490,7 @@ namespace HIKARI::EDITOR {
                 result.code = "OK";
                 return result;
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
         registry.Register({
             "binding.references.query",
@@ -535,7 +535,7 @@ namespace HIKARI::EDITOR {
                 result.message = "Runtime binding references returned";
                 return result;
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Query);
 
         registry.Register({
             "binding.preview.set_variable",
@@ -572,7 +572,7 @@ namespace HIKARI::EDITOR {
                 };
                 return result;
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Session);
 
         registry.Register({
             "binding.preview.emit_event",
@@ -612,7 +612,7 @@ namespace HIKARI::EDITOR {
                 };
                 return result;
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Session);
 
         registry.Register({
             "binding.preview.reset",
@@ -643,7 +643,7 @@ namespace HIKARI::EDITOR {
                 result.data = { { "sessionOnly", true } };
                 return result;
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Session);
 
         registry.Register({
             "binding.save",
@@ -668,7 +668,7 @@ namespace HIKARI::EDITOR {
                 };
                 return result;
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
         registry.Register({
             "binding.undo",
@@ -690,7 +690,7 @@ namespace HIKARI::EDITOR {
                 result.code = "OK";
                 return result;
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
         registry.Register({
             "binding.redo",
@@ -712,7 +712,7 @@ namespace HIKARI::EDITOR {
                 result.code = "OK";
                 return result;
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
     }
 
 } // namespace HIKARI::EDITOR

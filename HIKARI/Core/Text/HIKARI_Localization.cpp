@@ -35,6 +35,7 @@ void EnsureBuiltInTables() {
 } // namespace
 
 bool SetLocalizationLanguage(Language language) noexcept {
+    if (static_cast<size_t>(language) >= 3u) return false;
     EnsureBuiltInTables();
     gLanguage = language;
     return true;
@@ -67,12 +68,22 @@ std::string LocalizeWindow(
     return Localize(key) + "###" + std::string(stableId);
 }
 
+const char* LocalizeCStr(const char* key) {
+    EnsureBuiltInTables();
+    if (const auto found = Table(gLanguage).find(key); found != Table(gLanguage).end())
+        return found->second.c_str();
+    if (const auto found = Table(Language::English).find(key); found != Table(Language::English).end())
+        return found->second.c_str();
+    return key;
+}
+
 void MergeLocalizationTable(
     Language language,
     const nlohmann::json& table) noexcept {
-    if (!table.is_object()) {
+    if (static_cast<size_t>(language) >= 3u || !table.is_object()) {
         return;
     }
+    EnsureBuiltInTables();
     auto& target = Table(language);
     for (auto it = table.begin(); it != table.end(); ++it) {
         if (it.value().is_string()) {

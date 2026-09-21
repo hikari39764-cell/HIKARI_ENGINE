@@ -55,12 +55,14 @@ void EditorAuthoringSessionHost::SetRecoveryRoot(const std::filesystem::path& li
             const auto workspace = data.at("workspace").get<std::string>();
             const auto provider = workspaces_.find(workspace);
             if (provider == workspaces_.end()) throw std::runtime_error("Draft workspace is unavailable.");
-            if (sessions_.size() >= 8) throw std::runtime_error("Close a session before restoring additional drafts.");
             auto backend = provider->second.create();
             if (!backend) throw std::runtime_error("Draft provider is unavailable.");
             const auto result = backend->Restore(data.at("document"));
             if (!result.ok) throw std::runtime_error(result.message);
-            sessions_.emplace(id, Session{workspace, std::move(backend), true, true, data.dump()});
+            auto [entry, inserted] = sessions_.emplace(id, Session{workspace, std::move(backend), true, true, data.dump()});
+            entry->second.name = data.value("name",std::string{});
+            entry->second.touched = data.value("touched",uint64_t{0});
+            touchSerial_ = (std::max)(touchSerial_,entry->second.touched);
         } catch (const std::exception& exception) {
             // 壊れた原本を保持し、ほかの文書の復旧は続ける。
             recoveryErrors_.push_back({{"sessionId", id}, {"message", exception.what()}});
@@ -78,7 +80,8 @@ void EditorAuthoringSessionHost::FlushRecovery() {
             auto document = session.backend->Checkpoint();
             if (document.is_null()) { session.checkpointState = state; continue; }
             const auto bytes = nlohmann::json{{"version", 1}, {"sessionId", id},
-                {"workspace", session.workspace}, {"document", std::move(document)}}.dump();
+                {"workspace", session.workspace}, {"name",session.name}, {"touched",session.touched},
+                {"document", std::move(document)}}.dump();
             if (bytes.size() > 32u * 1024u * 1024u)
                 throw std::runtime_error("Draft exceeds recovery file limit; save the document as an asset.");
             if (bytes == session.checkpoint) { session.checkpointState = state; continue; }

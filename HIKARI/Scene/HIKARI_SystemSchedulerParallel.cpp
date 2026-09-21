@@ -37,6 +37,7 @@ struct SystemScheduler::ParallelRuntime {
         uint32_t podStride = 0u;
         uint32_t podSize = 0u;
         uint32_t podAlignment = 0u;
+        bool snapshotValid = false;
         std::vector<RuntimeObjectHandle> runtimeObjects{};
         std::vector<GameProjectObjectHandle> objects{};
         std::vector<GameProjectFloat3> inputPositions{};
@@ -104,6 +105,7 @@ void SystemScheduler::Clear() {
     attachedWorldIdentity_ = 0u;
     nextInsertionIndex_ = 0u;
     parallelMassFailureCount_ = 0u;
+    massSnapshotReuseCount_ = 0u;
     renderObserverFailureCount_ = 0u;
     renderPassFailureCount_ = 0u;
 }
@@ -148,6 +150,14 @@ bool SystemScheduler::ExecuteParallelMassSystem(
         owned = std::make_unique<ParallelRuntime::Scratch>();
     }
     ParallelRuntime::Scratch& scratch = *owned;
+    const uint32_t readWriteMask = schedule.access.readMask | schedule.access.writeMask;
+    const bool reuseSnapshot = scratch.snapshotValid && scratch.worldIdentity == world.GetRuntimeIdentity() &&
+        scratch.mutationVersion == source.mutationVersion && scratch.layoutHash == source.schema.layoutHash &&
+        scratch.schemaVersion == source.schema.schemaVersion && scratch.schedule.access.typeId == schedule.access.typeId &&
+        (scratch.schedule.access.readMask | scratch.schedule.access.writeMask) == readWriteMask &&
+        scratch.runtimeObjects.size() == source.objects.size() &&
+        std::equal(source.objects.begin(), source.objects.end(), scratch.runtimeObjects.begin());
+    scratch.snapshotValid = false;
     scratch.frame = frame;
     scratch.schedule = schedule;
     scratch.worldIdentity = world.GetRuntimeIdentity();
@@ -157,17 +167,6 @@ bool SystemScheduler::ExecuteParallelMassSystem(
     scratch.podStride = static_cast<uint32_t>(source.podStride);
     scratch.podSize = source.schema.podSize;
     scratch.podAlignment = source.schema.podAlignment;
-    scratch.runtimeObjects.assign(source.objects.begin(), source.objects.end());
-    scratch.objects.resize(source.objects.size());
-    for (size_t index = 0u; index < source.objects.size(); ++index) {
-        scratch.objects[index] = GameProjectObjectHandle{
-            GameProjectWorldHandle{ scratch.worldIdentity },
-            source.objects[index].ToValue()
-        };
-    }
-
-    const uint32_t readWriteMask =
-        schedule.access.readMask | schedule.access.writeMask;
     const auto copyIf = []<class Value>(
         bool required,
         std::span<const Value> sourceValues,
@@ -178,31 +177,44 @@ bool SystemScheduler::ExecuteParallelMassSystem(
             destination.clear();
         }
     };
-    copyIf(
-        HasMassField(readWriteMask, GameProjectMassSystemField::Transform),
-        source.positions,
-        scratch.inputPositions);
-    copyIf(
-        HasMassField(readWriteMask, GameProjectMassSystemField::Transform),
-        source.rotations,
-        scratch.inputRotations);
-    copyIf(
-        HasMassField(readWriteMask, GameProjectMassSystemField::Transform),
-        source.scales,
-        scratch.inputScales);
-    copyIf(
-        HasMassField(readWriteMask, GameProjectMassSystemField::Velocity),
-        source.velocities,
-        scratch.inputVelocities);
-    if (HasMassField(
-            readWriteMask,
-            GameProjectMassSystemField::ProjectData)) {
-        scratch.inputPod.assign(
-            source.podBytes.begin(),
-            source.podBytes.end());
-    } else {
-        scratch.inputPod.clear();
+    if (!reuseSnapshot) {
+        scratch.runtimeObjects.assign(source.objects.begin(), source.objects.end());
+        scratch.objects.resize(source.objects.size());
+        for (size_t index = 0u; index < source.objects.size(); ++index) {
+            scratch.objects[index] = GameProjectObjectHandle{
+                GameProjectWorldHandle{ scratch.worldIdentity },
+                source.objects[index].ToValue()
+            };
+        }
+
+        copyIf(
+            HasMassField(readWriteMask, GameProjectMassSystemField::Transform),
+            source.positions,
+            scratch.inputPositions);
+        copyIf(
+            HasMassField(readWriteMask, GameProjectMassSystemField::Transform),
+            source.rotations,
+            scratch.inputRotations);
+        copyIf(
+            HasMassField(readWriteMask, GameProjectMassSystemField::Transform),
+            source.scales,
+            scratch.inputScales);
+        copyIf(
+            HasMassField(readWriteMask, GameProjectMassSystemField::Velocity),
+            source.velocities,
+            scratch.inputVelocities);
+        if (HasMassField(
+                readWriteMask,
+                GameProjectMassSystemField::ProjectData)) {
+            scratch.inputPod.assign(
+                source.podBytes.begin(),
+                source.podBytes.end());
+        } else {
+            scratch.inputPod.clear();
+        }
     }
+    scratch.snapshotValid = true;
+    if (reuseSnapshot) ++massSnapshotReuseCount_;
     copyIf(
         HasMassField(
             schedule.access.writeMask,

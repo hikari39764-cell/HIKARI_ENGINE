@@ -31,7 +31,7 @@ struct ResourceImportBatchMonitor {
 
 class ResourceWorkspacePanel {
 public:
-  void Draw(AssetDatabase &assetDatabase, AssetRegistry &assetRegistry,
+  void DrawContents(AssetDatabase &assetDatabase, AssetRegistry &assetRegistry,
             const SceneDocument &sceneDocument, EditorSelection &selection,
             const ResourceWorkspaceContext &context) const;
   std::optional<AssetWorkspaceActivation> ConsumeActivatedAsset() const;

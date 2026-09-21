@@ -4,6 +4,24 @@
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 
 namespace HIKARI::RENDER3D::PARTICLES {
+    void ParticleCompositionRenderer::PrepareTopology(const ParticleComposition& composition) {
+        const auto& layers = composition.layers;
+        bool changed = topology_.size() != layers.size();
+        for (size_t i = 0; !changed && i < layers.size(); ++i)
+            changed = topology_[i] != std::pair{layers[i].emitterIndex, layers[i].parentEmitterIndex};
+        if (changed) {
+            topology_.clear(); layerIndices_.clear(); children_.clear();
+            topology_.reserve(layers.size());
+            for (size_t i = 0; i < layers.size(); ++i) {
+                topology_.emplace_back(layers[i].emitterIndex, layers[i].parentEmitterIndex);
+                layerIndices_.try_emplace(layers[i].emitterIndex, i);
+                children_[layers[i].parentEmitterIndex].push_back(i);
+            }
+        }
+        matteSources_.clear();
+        for (const auto& layer : layers)
+            if (layer.matteSourceIndex != UINT32_MAX) matteSources_.insert(layer.matteSourceIndex);
+    }
     bool ParticleCompositionRenderer::EnsureTarget(RenderTarget2D& target) {
         target.UpdateContext(context_);
         if (target.GetWidth() != int(bindings_.width) || target.GetHeight() != int(bindings_.height)) {
@@ -83,7 +101,8 @@ namespace HIKARI::RENDER3D::PARTICLES {
         auto& destination = scope.buffers[destinationIndex];
         if (!EnsureTarget(destination)) return false;
         matte.EndCapture();
-        destination.BeginCapture(0, 0, 0, 0);
+        // 全画素を上書きし、blend/depth/clip を使わない pass は clear 不要。
+        destination.Rebind();
         if (!BindInputs(source, matte)) return false;
         POST::CommonParams params;
         params.resolutionX = float(bindings_.width); params.resolutionY = float(bindings_.height);
@@ -106,7 +125,7 @@ namespace HIKARI::RENDER3D::PARTICLES {
         const uint32_t next=1u-scope.current;
         auto& destination=scope.buffers[next];
         if (!EnsureTarget(destination)) return false;
-        destination.BeginCapture(0,0,0,0);
+        destination.Rebind();
         if (!BindInputs(source,source)) return false;
         POST::CommonParams params;
         params.resolutionX=float(bindings_.width);params.resolutionY=float(bindings_.height);
@@ -130,9 +149,9 @@ namespace HIKARI::RENDER3D::PARTICLES {
         return true;
     }
     RenderTarget2D* ParticleCompositionRenderer::ResolveMatte(uint32_t index, uint32_t depth) {
-        const auto layer=std::find_if(composition_->layers.begin(),composition_->layers.end(),
-            [index](const auto& e) {return e.emitterIndex==index;});
-        if (layer==composition_->layers.end()) return nullptr;
+        const auto found = layerIndices_.find(index);
+        if (found == layerIndices_.end()) return nullptr;
+        const auto* layer = &composition_->layers[found->second];
         auto& entry=targets_->mattes[index];
         if (!entry) entry=std::make_unique<Scope>();
         if (!renderedMattes_.contains(index)) {
@@ -150,8 +169,12 @@ namespace HIKARI::RENDER3D::PARTICLES {
             Bind(scope);
             if (!drawLayer_(layer.emitterIndex)) return false;
         }
-        const bool children=std::any_of(composition_->layers.begin(),composition_->layers.end(),
-            [&](const auto& e) {return e.parentEmitterIndex==layer.emitterIndex && e.enabled && !e.matteOnly;});
+        const auto found = children_.find(layer.emitterIndex);
+        const bool children = found != children_.end() &&
+            std::any_of(found->second.begin(), found->second.end(), [&](size_t index) {
+                const auto& child = composition_->layers[index];
+                return child.enabled && !child.matteOnly;
+            });
         if (children) {
             if (!RenderScope(layer.emitterIndex,depth+1u)) return false;
             if (!CompositeScope(*targets_->scopes[depth+1u],scope)) return false;
@@ -175,8 +198,10 @@ namespace HIKARI::RENDER3D::PARTICLES {
         if (!EnsureScope(depth)) return false;
         auto& scope=*targets_->scopes[depth];
         // 下から上へ。材質調整を終えたレイヤーの幾何遮罩だけを合成する。
-        for (auto it=composition_->layers.rbegin();it!=composition_->layers.rend();++it) {
-            if (it->parentEmitterIndex!=parent || !it->enabled || it->matteOnly) continue;
+        const auto found = children_.find(parent);
+        if (found != children_.end()) for (auto index=found->second.rbegin();index!=found->second.rend();++index) {
+            const auto* it = &composition_->layers[*index];
+            if (!it->enabled || it->matteOnly) continue;
             if (it->kind==ParticleCompositionLayerKind::Adjustment) {
                 for (const auto& effect:it->effects) if (!ApplyStyle(scope,effect)) return false;
                 continue;
@@ -190,6 +215,7 @@ namespace HIKARI::RENDER3D::PARTICLES {
         const ParticleGpuDrivenDrawBindings& bindings, const ParticleComposition& composition,
         const std::function<bool(uint32_t)>& drawLayer) {
         context_ = context; bindings_ = bindings; composition_ = &composition; drawLayer_ = drawLayer;
+        PrepareTopology(composition);
         if (!bindings.width || !bindings.height || !bindings.compositionTarget.rebind || !bindings.compositionDepth.ptr) return false;
         if (!initialized_) { if (!quad_.Init(context)) return false; initialized_ = true; }
         quad_.UpdateContext(context);
@@ -204,8 +230,7 @@ namespace HIKARI::RENDER3D::PARTICLES {
         targets_->lastUsedFrame = serial;
         renderedMattes_.clear(); activeMattes_.clear();
         std::erase_if(targets_->mattes,[&](const auto& entry) {
-            return std::none_of(composition.layers.begin(),composition.layers.end(),
-                [&](const auto& layer) {return layer.matteSourceIndex==entry.first;});
+            return !matteSources_.contains(entry.first);
         });
         const bool rendered = RenderScope(UINT32_MAX, 0);
         const bool restored = bindings.compositionTarget.Rebind() && bindings.compositionTarget.BeginDepthRead();
@@ -219,6 +244,7 @@ namespace HIKARI::RENDER3D::PARTICLES {
     }
     void ParticleCompositionRenderer::Release() {
         targetSets_.clear(); targets_ = nullptr;
+        topology_.clear(); layerIndices_.clear(); children_.clear(); matteSources_.clear();
         for (auto& frame : descriptorFrames_) {
             for (auto& heap : frame.pages) GFX::RetireD3D12ObjectForFrame(heap,context_,"Vfx.CompositionInputs");
             frame.pages.clear(); frame.cursor=0; frame.serial=UINT64_MAX;

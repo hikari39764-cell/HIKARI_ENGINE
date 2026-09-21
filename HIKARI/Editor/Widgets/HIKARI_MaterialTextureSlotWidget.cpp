@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "HIKARI_MaterialTextureSlotWidget.h"
 
 #include <string>
@@ -114,35 +115,35 @@ namespace HIKARI::EDITOR {
 
         ImGui::SameLine();
         ImGui::BeginGroup();
-        if (ImGui::Checkbox("Use Texture", &slot.useTexture)) {
+        if (ImGui::Checkbox(TEXT::LocalizeWindow("editor.ui.use.texture.449ce6", "Use Texture").c_str(), &slot.useTexture)) {
             changed = true;
         }
 
         const std::string name = record
             ? (record->displayName.empty() ? record->sourcePath.stem().string() : record->displayName)
             : std::string("<none>");
-        ImGui::Text("Texture: %s", name.c_str());
+        ImGui::Text(TEXT::Localize("editor.ui.texture.s.15da98").c_str(), name.c_str());
         if (slot.textureAssetGuid.IsValid()) {
-            ImGui::TextDisabled("GUID: %s", ShortGuid(slot.textureAssetGuid.value).c_str());
+            ImGui::TextDisabled(TEXT::Localize("ui.assetBrowser.tooltipGuid").c_str(), ShortGuid(slot.textureAssetGuid.value).c_str());
         }
         if (descriptor && !descriptor->sourcePath.empty()) {
-            ImGui::TextDisabled("Runtime: %s", descriptor->sourcePath.c_str());
+            ImGui::TextDisabled(TEXT::Localize("editor.ui.runtime.s.ecac44").c_str(), descriptor->sourcePath.c_str());
         }
 
-        if (ImGui::SmallButton("Select") && record && selection) {
+        if (ImGui::SmallButton(TEXT::LocalizeWindow("editor.ui.select.859822", "Select").c_str()) && record && selection) {
             selection->ClearObjects();
             selection->selectedAsset = nullptr;
             selection->selectedAssetGuid = record->guid.value;
             selection->selectedAssetPath = record->sourcePath.generic_string();
         }
         ImGui::SameLine();
-        if (ImGui::SmallButton("Clear")) {
+        if (ImGui::SmallButton(TEXT::LocalizeWindow("ui.input.clear", "Clear").c_str())) {
             slot.useTexture = false;
             slot.textureAssetGuid = {};
             changed = true;
         }
         ImGui::SameLine();
-        if (ImGui::SmallButton("Copy GUID") && slot.textureAssetGuid.IsValid()) {
+        if (ImGui::SmallButton(TEXT::LocalizeWindow("ui.assetBrowser.copyGuid", "Copy GUID").c_str()) && slot.textureAssetGuid.IsValid()) {
             ImGui::SetClipboardText(slot.textureAssetGuid.value.c_str());
         }
         ImGui::EndGroup();

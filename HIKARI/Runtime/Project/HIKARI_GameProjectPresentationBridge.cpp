@@ -1,3 +1,4 @@
+#include "Runtime/Project/Internal/HIKARI_GameProjectFixedText.h"
 #include "HIKARI/Project/PresentationViews.h"
 #include "HIKARI/Project/WorldView.h"
 
@@ -13,21 +14,7 @@
 
 namespace HIKARI {
     namespace {
-        template<size_t Capacity>
-        bool ReadFixedText(
-            const char (&source)[Capacity],
-            std::string& outValue) {
-            size_t count = 0u;
-            while (count < Capacity && source[count] != '\0') {
-                ++count;
-            }
-            if (count == Capacity) {
-                outValue.clear();
-                return false;
-            }
-            outValue.assign(source, count);
-            return true;
-        }
+
 
         RuntimeObjectHandle DecodeRuntimeHandle(
             uint64_t value) noexcept {
@@ -112,12 +99,12 @@ namespace HIKARI {
                 std::string assetPath{};
                 std::string materialSetAssetGuid{};
                 std::string socketName{};
-                if (!ReadFixedText(request.model.assetGuid, assetGuid) ||
-                    !ReadFixedText(request.model.assetPath, assetPath) ||
-                    !ReadFixedText(
+                if (!PROJECT::DETAIL::ReadFixedText(request.model.assetGuid, assetGuid) ||
+                    !PROJECT::DETAIL::ReadFixedText(request.model.assetPath, assetPath) ||
+                    !PROJECT::DETAIL::ReadFixedText(
                         request.materialSetAssetGuid,
                         materialSetAssetGuid) ||
-                    !ReadFixedText(
+                    !PROJECT::DETAIL::ReadFixedText(
                         request.attachment.socketName,
                         socketName) ||
                     (assetGuid.empty() && assetPath.empty()) ||

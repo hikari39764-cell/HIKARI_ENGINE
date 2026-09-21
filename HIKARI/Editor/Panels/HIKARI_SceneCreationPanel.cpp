@@ -87,7 +87,7 @@ namespace HIKARI::EDITOR {
         for (const PrimitiveEntry& primitive : primitives) {
             anyPrimitive |= MatchesSearch(primitive.label.c_str(), search);
         }
-        if (anyPrimitive && ImGui::BeginMenu("Procedural Mesh")) {
+        if (anyPrimitive && ImGui::BeginMenu(TEXT::LocalizeWindow("ui.sceneCreation.proceduralMesh", "Procedural Mesh").c_str())) {
             for (const PrimitiveEntry& primitive : primitives) {
                 if (!MatchesSearch(primitive.label.c_str(), search)) {
                     continue;

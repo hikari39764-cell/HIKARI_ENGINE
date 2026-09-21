@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/SystemAuthoring/HIKARI_AddSystemPopup.h"
 
 #include <algorithm>
@@ -59,11 +60,10 @@ namespace HIKARI::EDITOR {
             return std::nullopt;
         }
 
-        ImGui::SeparatorText("Add System");
+        ImGui::SeparatorText(TEXT::Localize("editor.ui.add.system.a5dedc").c_str());
         ImGui::SetNextItemWidth(-1.0f);
         ImGui::InputTextWithHint(
-            "##AddSystemFilter",
-            "Search systems...",
+            "##AddSystemFilter",TEXT::Localize("editor.ui.search.systems.dab49e").c_str(),
             filter_.data(),
             filter_.size());
 
@@ -124,18 +124,18 @@ namespace HIKARI::EDITOR {
         }
 
         if (availableCount == 0) {
-            ImGui::TextDisabled("No matching systems.");
+            ImGui::TextDisabled(TEXT::Localize("editor.ui.no.matching.systems.34df79").c_str());
         }
 
         std::optional<std::string> result{};
         ImGui::BeginDisabled(selectedSystemId_.empty());
-        if (ImGui::Button("Add", ImVec2(96.0f, 0.0f))) {
+        if (ImGui::Button(TEXT::LocalizeWindow("ui.terrain.proceduralBlendAdd", "Add").c_str(), ImVec2(96.0f, 0.0f))) {
             result = selectedSystemId_;
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(96.0f, 0.0f))) {
+        if (ImGui::Button(TEXT::LocalizeWindow("ui.common.cancel", "Cancel").c_str(), ImVec2(96.0f, 0.0f))) {
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();

@@ -18,6 +18,7 @@ public:
     EditorOperationResult Poll();
     void Cancel();
     bool IsPending() const noexcept { return pending_; }
+    RENDER3D::RenderViewId ViewId() const noexcept { return viewId_; }
 private:
     EditorOperationResult Pending() const;
     RENDER3D::RenderViewId viewId_;

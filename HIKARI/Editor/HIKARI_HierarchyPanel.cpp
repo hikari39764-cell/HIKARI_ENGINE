@@ -185,15 +185,15 @@ namespace HIKARI {
                     if (!selection.IsObjectSelected(objectPtr->GetDocumentId())) selection.SelectObject(world, objectPtr);
                     const auto& ids = selection.GetSelectedObjectIds();
                     ImGui::SetDragDropPayload("HIKARI_SCENE_OBJECT_IDS", ids.data(), ids.size() * sizeof(SceneObjectId));
-                    ImGui::Text("%zu オブジェクト", ids.size());
+                    ImGui::Text(TEXT::Localize("editor.objectCount").c_str(), ids.size());
                     ImGui::EndDragDropSource();
                 }
                 if (ImGui::BeginPopupContextItem("ObjectContextMenu")) {
                     if (drawObjectContextMenu) drawObjectContextMenu(*objectPtr);
-                    if (document && operations && ImGui::BeginMenu("フォルダーへ移動")) {
+                    if (document && operations && ImGui::BeginMenu(TEXT::LocalizeWindow("editor.moveToFolder", "フォルダーへ移動").c_str())) {
                         auto folders = EDITOR::CollectSceneFolderPaths(*document);
                         folders.insert(folders.begin(), "");
-                        for (const auto& folder : folders) if (ImGui::MenuItem(folder.empty() ? "未分類" : folder.c_str())) {
+                        for (const auto& folder : folders) if (ImGui::MenuItem(folder.empty() ? TEXT::LocalizeCStr("editor.uncategorized") : folder.c_str())) {
                             nlohmann::json ids = nlohmann::json::array();
                             for (const auto id : selection.GetSelectedObjectIds()) ids.push_back(id.value);
                             const auto result = operations->Execute("scene.folder.assign", {{"path",folder},{"objectIds",ids}});

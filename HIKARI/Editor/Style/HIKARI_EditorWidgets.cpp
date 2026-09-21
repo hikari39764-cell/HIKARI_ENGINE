@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 
 #if defined(HIKARI_WITH_EDITOR)
@@ -6,8 +7,15 @@
 #include "Editor/Style/HIKARI_EditorFontManager.h"
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorTheme.h"
+#include "Editor/Settings/HIKARI_EditorPreferences.h"
 
 namespace HIKARI::EDITOR {
+
+    void NextToolbarItem(float width) {
+        const float right = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x;
+        if (ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x + width <= right)
+            ImGui::SameLine();
+    }
 
     namespace {
         struct ButtonPalette {
@@ -108,8 +116,10 @@ namespace HIKARI::EDITOR {
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, palette.hovered);
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, palette.active);
         ImGui::PushStyleColor(ImGuiCol_Text, palette.text);
-        const bool pressed = ImGui::Button(label, size);
-        if (tooltip != nullptr && tooltip[0] != '\0' && ImGui::IsItemHovered()) {
+        // 表示言語を変えても操作中の ID を維持する。
+        const std::string stableLabel = std::string(label) + "###action";
+        const bool pressed = ImGui::Button(stableLabel.c_str(), size);
+        if (GetEditorPreferences().tooltips && tooltip != nullptr && tooltip[0] != '\0' && ImGui::IsItemHovered()) {
             ImGui::SetTooltip("%s", tooltip);
         }
         ImGui::PopStyleColor(4);
@@ -181,7 +191,7 @@ namespace HIKARI::EDITOR {
                 min.y + resolvedSize.y * 0.5f),
             glyphSize,
             ImGui::GetColorU32(palette.text));
-        if (tooltip != nullptr && tooltip[0] != '\0' && hovered) {
+        if (GetEditorPreferences().tooltips && tooltip != nullptr && tooltip[0] != '\0' && hovered) {
             ImGui::SetTooltip("%s", tooltip);
         }
         ImGui::PopID();
@@ -272,7 +282,7 @@ namespace HIKARI::EDITOR {
             nullptr,
             0.0f,
             &clipRect);
-        if (tooltip != nullptr && tooltip[0] != '\0' && hovered) {
+        if (GetEditorPreferences().tooltips && tooltip != nullptr && tooltip[0] != '\0' && hovered) {
             ImGui::SetTooltip("%s", tooltip);
         }
         ImGui::PopID();
@@ -386,8 +396,7 @@ namespace HIKARI::EDITOR {
                     EditorGlyph::Close,
                     "Clear",
                     EditorButtonTone::Quiet,
-                    ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()),
-                    "Clear search")) {
+                    ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()),TEXT::Localize("editor.ui.clear.search.67300d").c_str())) {
                 buffer[0] = '\0';
                 changed = true;
             }

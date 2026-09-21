@@ -27,6 +27,7 @@ public:
     None,
     Binding,
     Material,
+    MaterialLayout,
   };
 
   void OpenBindings(const AssetGuid &modelGuid, const AssetGuid &assetGuid,
@@ -55,6 +56,7 @@ public:
   uint64_t GetMaterialRevision() const noexcept;
   uint64_t GetCompileRevision() const noexcept;
   bool IsCompileCurrent() const noexcept;
+  bool LastMaterialChangeRequiresPreview() const noexcept;
 
   bool CommitBindings(BindingMap before, std::string label);
   bool CommitMaterial(MaterialAssetData before, std::string label);
@@ -112,6 +114,8 @@ private:
   void TruncateRedo(ChangedDomain domain);
   void PushHistory(HistoryEntry entry);
   void RefreshCompile();
+  void RefreshAfterMaterialChange(const MaterialAssetData& before);
+  static bool AreMaterialContentsEquivalent(const MaterialAssetData& left, const MaterialAssetData& right);
   void ClearHistory(ChangedDomain domain) noexcept;
 
   AssetGuid modelGuid_{};
@@ -140,6 +144,7 @@ private:
   bool materialOpen_ = false;
   uint64_t materialRevision_ = 0u;
   uint64_t compileRevision_ = 0u;
+  bool materialContentChanged_ = false;
   mutable std::recursive_mutex mutex_{};
 };
 

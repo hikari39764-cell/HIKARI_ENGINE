@@ -186,6 +186,10 @@ namespace HIKARI::RENDER3D::PARTICLES {
         std::vector<FreeRange> freeRanges{};
         std::vector<ParticleComposition> compositions;
         ParticleCompositionRenderer compositionRenderer;
+        std::unordered_map<ParticleEmitterInstanceKey, size_t, ParticleEmitterInstanceKeyHasher> compositionIndices;
+        std::unordered_map<ParticleEmitterInstanceKey, uint32_t, ParticleEmitterInstanceKeyHasher> itemIndices;
+        std::vector<ParticleEmitterInstanceKey> compositionLookupKeys, itemLookupKeys;
+        std::vector<bool> renderedCompositions;
         std::vector<DrawItem> drawItems{};
         std::vector<DrawOrderEntry> drawOrder{};
         std::unordered_set<std::string> residentStandardTextures{};
@@ -724,35 +728,27 @@ namespace HIKARI::RENDER3D::PARTICLES {
             context.cmdList->SetComputeRootUnorderedAccessView(
                 3u,
                 storage.GetDrawArgumentGpuAddress());
-            for (DrawItem& item : drawItems) {
-                GpuParticleCompactConstants constants{};
-                constants.particleOffset = item.particleOffset;
-                constants.particleCapacity = item.particleCapacity;
-                constants.drawIndex = item.drawIndex;
-                constants.aliveIndexBase = item.aliveIndexBase;
-                constants.vertexCount = ParticleGeometryTriangleCount(item.render) * 3u;
-                context.cmdList->SetComputeRoot32BitConstants(
-                    4u,
-                    sizeof(constants) / sizeof(uint32_t),
-                    &constants,
-                    0u);
-                context.cmdList->SetPipelineState(
-                    pipelines.GetCompactionPipeline(0u));
-                context.cmdList->Dispatch(1u, 1u, 1u);
-                storage.InsertDrawResetUavBarrier(context);
-                context.cmdList->SetPipelineState(
-                    pipelines.GetCompactionPipeline(1u));
-                context.cmdList->Dispatch(
-                    DispatchGroupCount(item.particleCapacity),
-                    1u,
-                    1u);
-                storage.InsertDrawCounterUavBarrier(context);
-                context.cmdList->SetPipelineState(
-                    pipelines.GetCompactionPipeline(2u));
-                context.cmdList->Dispatch(1u, 1u, 1u);
-                ++stats.compactedEmitters;
-                stats.compactedCapacityThreads += item.particleCapacity;
+            // 独立した emitter の UAV は段階ごとにまとめて同期する。
+            // reset -> compact -> args の依存は保持し、emitter 間の不要な停止を除く。
+            for (uint32_t phase = 0; phase < 3; ++phase) {
+                context.cmdList->SetPipelineState(pipelines.GetCompactionPipeline(phase));
+                for (const DrawItem& item : drawItems) {
+                    GpuParticleCompactConstants constants{};
+                    constants.particleOffset = item.particleOffset;
+                    constants.particleCapacity = item.particleCapacity;
+                    constants.drawIndex = item.drawIndex;
+                    constants.aliveIndexBase = item.aliveIndexBase;
+                    constants.vertexCount = ParticleGeometryTriangleCount(item.render) * 3u;
+                    context.cmdList->SetComputeRoot32BitConstants(4u,
+                        sizeof(constants) / sizeof(uint32_t), &constants, 0u);
+                    context.cmdList->Dispatch(
+                        phase == 1 ? DispatchGroupCount(item.particleCapacity) : 1u, 1u, 1u);
+                }
+                if (phase == 0) storage.InsertDrawResetUavBarrier(context);
+                if (phase == 1) storage.InsertDrawCounterUavBarrier(context);
             }
+            stats.compactedEmitters += static_cast<uint32_t>(drawItems.size());
+            for (const auto& item : drawItems) stats.compactedCapacityThreads += item.particleCapacity;
             storage.Transition(
                 context,
                 D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
@@ -1255,28 +1251,48 @@ namespace HIKARI::RENDER3D::PARTICLES {
                 }
                 return true;
             };
-            std::vector<bool> rendered(compositions.size(), false);
-            const auto sameInstance = [](const auto& a, const auto& b) {
-                return a.playbackNamespace == b.playbackNamespace && a.playbackSlot == b.playbackSlot && a.playbackGeneration == b.playbackGeneration;
+            // 合成所属と描画レイヤーは一度だけ索引化し、各合成から全 drawItems を走査しない。
+            renderedCompositions.assign(compositions.size(), false);
+            const auto instanceKey = [](ParticleEmitterInstanceKey key) {
+                key.emitterIndex = UINT32_MAX;
+                return key;
             };
+            bool changed = compositionLookupKeys.size() != compositions.size();
+            for (size_t i = 0; !changed && i < compositions.size(); ++i)
+                changed = compositionLookupKeys[i] != instanceKey(compositions[i].instance);
+            if (changed) {
+                compositionIndices.clear(); compositionLookupKeys.clear();
+                for (size_t i = 0; i < compositions.size(); ++i) {
+                    const auto key = instanceKey(compositions[i].instance);
+                    compositionLookupKeys.push_back(key);
+                    compositionIndices.try_emplace(key, i);
+                }
+            }
+            changed = itemLookupKeys.size() != drawItems.size();
+            for (size_t i = 0; !changed && i < drawItems.size(); ++i)
+                changed = itemLookupKeys[i] != drawItems[i].key;
+            if (!compositions.empty() && changed) {
+                itemIndices.clear(); itemLookupKeys.clear();
+                for (uint32_t i = 0; i < drawItems.size(); ++i) {
+                    itemLookupKeys.push_back(drawItems[i].key);
+                    itemIndices.try_emplace(drawItems[i].key, i);
+                }
+            }
             for (const auto& order : drawOrder) {
-                const auto& key = drawItems[order.itemIndex].key;
-                size_t compositionIndex = 0;
-                for (; compositionIndex < compositions.size(); ++compositionIndex)
-                    if (sameInstance(key, compositions[compositionIndex].instance)) break;
-                if (compositionIndex == compositions.size()) {
+                const auto found = compositionIndices.find(instanceKey(drawItems[order.itemIndex].key));
+                if (found == compositionIndices.end()) {
                     if (!drawItem(order.itemIndex)) return false;
                     continue;
                 }
-                if (rendered[compositionIndex]) continue;
-                rendered[compositionIndex] = true;
+                const size_t compositionIndex = found->second;
+                if (renderedCompositions[compositionIndex]) continue;
+                renderedCompositions[compositionIndex] = true;
                 const auto& composition = compositions[compositionIndex];
-                std::unordered_map<uint32_t, uint32_t> items;
-                for (uint32_t index = 0; index < drawItems.size(); ++index)
-                    if (sameInstance(drawItems[index].key, composition.instance)) items.emplace(drawItems[index].key.emitterIndex, index);
                 if (!compositionRenderer.Render(context, bindings, composition, [&](uint32_t layer) {
-                    const auto found = items.find(layer);
-                    return found == items.end() || drawItem(found->second);
+                    auto key = composition.instance;
+                    key.emitterIndex = layer;
+                    const auto item = itemIndices.find(key);
+                    return item == itemIndices.end() || drawItem(item->second);
                 })) { ++stats.materialFailures; return false; }
             }
             return true;
@@ -1286,6 +1302,8 @@ namespace HIKARI::RENDER3D::PARTICLES {
             storage.Shutdown(context);
             pipelines.Shutdown();
             compositionRenderer.Release();
+            compositionIndices.clear(); itemIndices.clear();
+            compositionLookupKeys.clear(); itemLookupKeys.clear(); renderedCompositions.clear();
             compositions.clear();
             materialResolver.Clear();
             allocations.clear();

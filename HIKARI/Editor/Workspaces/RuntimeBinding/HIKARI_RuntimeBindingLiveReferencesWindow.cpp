@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/RuntimeBinding/HIKARI_RuntimeBindingWorkspaceController.h"
 
 #include <algorithm>
@@ -18,8 +19,7 @@ namespace HIKARI::EDITOR {
     void RuntimeBindingWorkspaceController::DrawLiveReferencesWindow(
         DocumentSceneBase& scene) {
 #if defined(HIKARI_WITH_EDITOR)
-        if (!ImGui::Begin(
-                "Live & References###RuntimeBinding/LiveReferences")) {
+        if (!ImGui::Begin(TEXT::LocalizeWindow("editor.ui.live.references.f80382", "RuntimeBinding/LiveReferences").c_str())) {
             ImGui::End();
             return;
         }
@@ -27,9 +27,7 @@ namespace HIKARI::EDITOR {
         const BINDING::VariableDefinition* variable = SelectedVariable();
         const BINDING::EventDefinition* event = SelectedEvent();
         if (variable == nullptr && event == nullptr) {
-            EmptyState(
-                "Select a binding",
-                "Live values, test events, and references appear here.");
+            EmptyState(TEXT::Localize("editor.ui.select.a.binding.658ec5").c_str(),TEXT::Localize("editor.ui.live.values.test.events.and.references.appear.here.acf72b").c_str());
             ImGui::End();
             return;
         }
@@ -50,11 +48,10 @@ namespace HIKARI::EDITOR {
         }
 
         if (ImGui::BeginTabBar("RuntimeBindingLiveTabs")) {
-            if (ImGui::BeginTabItem("Live")) {
+            if (ImGui::BeginTabItem(TEXT::LocalizeWindow("editor.ui.live.65c821", "Live").c_str())) {
                 if (variable != nullptr) {
                     PanelTitle(
-                        variable->name.c_str(),
-                        "Runtime snapshot and session-only preview override");
+                        variable->name.c_str(),TEXT::Localize("editor.ui.runtime.snapshot.and.session.only.preview.override.4d830e").c_str());
                     const std::shared_ptr<const BINDING::Snapshot> snapshot =
                         scene.GetRuntimeBindingStore().GetPublishedSnapshot();
                     const BINDING::Value* current = snapshot != nullptr
@@ -67,7 +64,7 @@ namespace HIKARI::EDITOR {
                     if (BeginMetricTable("RuntimeBindingLiveMetrics", 150.0f)) {
                         ImGui::TableNextRow();
                         ImGui::TableSetColumnIndex(0);
-                        ImGui::TextUnformatted("Snapshot revision");
+                        ImGui::TextUnformatted(TEXT::Localize("editor.ui.snapshot.revision.145181").c_str());
                         ImGui::TableSetColumnIndex(1);
                         ImGui::Text(
                             "%llu",
@@ -78,18 +75,18 @@ namespace HIKARI::EDITOR {
 
                         ImGui::TableNextRow();
                         ImGui::TableSetColumnIndex(0);
-                        ImGui::TextUnformatted("Writer");
+                        ImGui::TextUnformatted(TEXT::Localize("editor.ui.writer.5f4358").c_str());
                         ImGui::TableSetColumnIndex(1);
                         const std::string writer(
                             scene.GetRuntimeBindingStore().GetWriter(
                                 variable->id));
                         ImGui::TextUnformatted(
-                            writer.empty() ? "Unclaimed" : writer.c_str());
+                            writer.empty() ? TEXT::LocalizeCStr("editor.ui.unclaimed.fca0eb") : writer.c_str());
                         EndPropertyTable();
                     }
 
                     ImGui::Spacing();
-                    ImGui::TextDisabled("Current value");
+                    ImGui::TextDisabled(TEXT::Localize("editor.ui.current.value.ed2757").c_str());
                     ImGui::BeginDisabled();
                     DrawRuntimeBindingValueEditor(
                         "##RuntimeBindingCurrentValue",
@@ -98,18 +95,16 @@ namespace HIKARI::EDITOR {
                     ImGui::EndDisabled();
 
                     ImGui::Spacing();
-                    ImGui::TextDisabled("Preview value");
+                    ImGui::TextDisabled(TEXT::Localize("editor.ui.preview.value.709455").c_str());
                     DrawRuntimeBindingValueEditor(
                         "##RuntimeBindingPreviewValue",
                         previewVariableValue_,
                         variable);
                     if (IconTextButton(
-                            EditorGlyph::Play,
-                            "Set Preview",
+                            EditorGlyph::Play,TEXT::Localize("editor.ui.set.preview.aa5e52").c_str(),
                             "RuntimeBindingSetPreview",
                             EditorButtonTone::Primary,
-                            ImVec2(0.0f, 28.0f),
-                            "Write through the editor preview writer")) {
+                            ImVec2(0.0f, 28.0f),TEXT::Localize("editor.ui.write.through.the.editor.preview.writer.d78567").c_str())) {
                         PreviewSetVariable(
                             scene,
                             variable->id,
@@ -120,37 +115,31 @@ namespace HIKARI::EDITOR {
                     ImGui::SameLine();
                     ImGui::BeginDisabled(
                         !previewVariableIds_.contains(variable->id));
-                    if (ActionButton(
-                            "Release",
+                    if (ActionButton(TEXT::Localize("editor.ui.release.d41f56").c_str(),
                             "RuntimeBindingReleasePreview",
                             EditorButtonTone::Neutral,
-                            ImVec2(0.0f, 28.0f),
-                            "Release the editor writer without claiming a new value")) {
+                            ImVec2(0.0f, 28.0f),TEXT::Localize("editor.ui.release.the.editor.writer.without.claiming.a.new.value.02dd52").c_str())) {
                         PreviewReset(
                             scene, variable->id, statusMessage_);
                     }
                     ImGui::EndDisabled();
                 } else {
                     PanelTitle(
-                        event->name.c_str(),
-                        "Emit one test signal into the current runtime frame");
+                        event->name.c_str(),TEXT::Localize("editor.ui.emit.one.test.signal.into.the.current.runtime.frame.2cf543").c_str());
                     if (event->hasPayload) {
-                        ImGui::TextDisabled("Test payload");
+                        ImGui::TextDisabled(TEXT::Localize("editor.ui.test.payload.fc5428").c_str());
                         DrawRuntimeBindingValueEditor(
                             "##RuntimeBindingEventPayload",
                             previewEventPayload_);
                     } else {
-                        StatusText(
-                            "This event has no payload",
+                        StatusText(TEXT::Localize("editor.ui.this.event.has.no.payload.daca11").c_str(),
                             EditorStatusTone::Normal);
                     }
                     if (IconTextButton(
-                            EditorGlyph::Play,
-                            "Emit Test Event",
+                            EditorGlyph::Play,TEXT::Localize("editor.ui.emit.test.event.36093e").c_str(),
                             "RuntimeBindingEmitEvent",
                             EditorButtonTone::Primary,
-                            ImVec2(0.0f, 28.0f),
-                            "Emit once; the event is not serialized")) {
+                            ImVec2(0.0f, 28.0f),TEXT::Localize("editor.ui.emit.once.the.event.is.not.serialized.a82087").c_str())) {
                         const nlohmann::json payload =
                             WriteRuntimeBindingEditorValue(
                                 previewEventPayload_);
@@ -162,13 +151,11 @@ namespace HIKARI::EDITOR {
                     }
 
                     ImGui::Spacing();
-                    ImGui::SeparatorText("Current frame events");
+                    ImGui::SeparatorText(TEXT::Localize("editor.ui.current.frame.events.ce1cbb").c_str());
                     const std::vector<const BINDING::EventRecord*> records =
                         scene.GetRuntimeBindingStore().FindEvents(event->id);
                     if (records.empty()) {
-                        EmptyState(
-                            "No events this frame",
-                            "Emit a test event or let runtime logic publish one.");
+                        EmptyState(TEXT::Localize("editor.ui.no.events.this.frame.7e32dc").c_str(),TEXT::Localize("editor.ui.emit.a.test.event.or.let.runtime.logic.publish.one.e47e4c").c_str());
                     } else if (ImGui::BeginTable(
                             "RuntimeBindingEventRecords",
                             4,
@@ -209,7 +196,7 @@ namespace HIKARI::EDITOR {
                                     WriteRuntimeBindingEditorValue(
                                         record.payload).dump().c_str());
                             } else {
-                                ImGui::TextDisabled("None");
+                                ImGui::TextDisabled(TEXT::Localize("ui.input.none").c_str());
                             }
                         }
                         ImGui::EndTable();
@@ -218,18 +205,15 @@ namespace HIKARI::EDITOR {
                 ImGui::EndTabItem();
             }
 
-            if (ImGui::BeginTabItem("References")) {
+            if (ImGui::BeginTabItem(TEXT::LocalizeWindow("editor.ui.references.5d20d0", "References").c_str())) {
                 const std::vector<RuntimeBindingReference> references =
                     GetReferences(selectedItemId_);
-                PanelTitle(
-                    "References",
-                    "Editor-authored slots that use this stable ID");
+                PanelTitle(TEXT::Localize("editor.ui.references.5d20d0").c_str(),TEXT::Localize("editor.ui.editor.authored.slots.that.use.this.stable.id.96ae0f").c_str());
                 if (references.empty()) {
-                    EmptyState(
-                        "No references found",
+                    EmptyState(TEXT::Localize("editor.ui.no.references.found.7b8efc").c_str(),
                         referenceProvider_
-                            ? "No use was found in the current scene and loaded materials. Other project scenes may still reference this stable ID."
-                            : "Reference indexing is not connected yet.");
+                            ? TEXT::LocalizeCStr("editor.ui.no.use.was.found.in.the.current.scene.and.loaded.materials.other.ea9fa8")
+                            : TEXT::LocalizeCStr("editor.ui.reference.indexing.is.not.connected.yet.1b4c90"));
                 } else if (ImGui::BeginTable(
                         "RuntimeBindingReferences",
                         4,

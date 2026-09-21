@@ -16,7 +16,7 @@
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
-#include "Gfx/HIKARI_GpuCompletion.h"
+#include "Gfx/HIKARI_UploadSubmissionQueue.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "Render3D/Resources/HIKARI_RenderResourceSystem.h"
 #include "Render3D/Resources/Internal/HIKARI_ClusterGeometrySourceIdentity.h"
@@ -44,12 +44,7 @@ namespace HIKARI::RENDER3D {
             std::atomic<uint32_t> ownerThreadId{ 0 };
             std::atomic<uint32_t> ownerThreadViolations{ 0 };
             uint64_t nextMemorySourceRevision = 1;
-            ID3D12Device* uploadDevice = nullptr;
-            Microsoft::WRL::ComPtr<ID3D12CommandAllocator> uploadAllocator{};
-            Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> uploadCommandList{};
-            Microsoft::WRL::ComPtr<ID3D12Fence> uploadFence{};
-            HANDLE uploadFenceEvent = nullptr;
-            uint64_t uploadFenceValue = 1;
+            GFX::UploadSubmissionQueue uploads;
             bool contextMismatchReported = false;
         };
 
@@ -112,72 +107,6 @@ namespace HIKARI::RENDER3D {
                 1u,
                 std::memory_order_relaxed);
             return false;
-        }
-
-        void ResetUploadObjects(ClusterGeometryResourceSystemState& state) {
-            state.uploadCommandList.Reset();
-            state.uploadAllocator.Reset();
-            state.uploadFence.Reset();
-            if (state.uploadFenceEvent != nullptr) {
-                CloseHandle(state.uploadFenceEvent);
-                state.uploadFenceEvent = nullptr;
-            }
-            state.uploadFenceValue = 1;
-            state.uploadDevice = nullptr;
-        }
-
-        bool EnsureUploadObjects(ClusterGeometryResourceSystemState& state) {
-            ID3D12Device* device = state.context.device;
-            if (device == nullptr || state.context.queue == nullptr) {
-                return false;
-            }
-            if (state.uploadDevice == device &&
-                state.uploadAllocator &&
-                state.uploadCommandList &&
-                state.uploadFence &&
-                state.uploadFenceEvent != nullptr) {
-                return true;
-            }
-
-            ResetUploadObjects(state);
-
-            HRESULT hr = device->CreateCommandAllocator(
-                D3D12_COMMAND_LIST_TYPE_DIRECT,
-                IID_PPV_ARGS(state.uploadAllocator.GetAddressOf()));
-            if (FAILED(hr)) {
-                HIKARI_DX_CHECK(hr, "ClusterGeometryResourceSystem::Create upload allocator");
-                return false;
-            }
-
-            hr = device->CreateCommandList(
-                0,
-                D3D12_COMMAND_LIST_TYPE_DIRECT,
-                state.uploadAllocator.Get(),
-                nullptr,
-                IID_PPV_ARGS(state.uploadCommandList.GetAddressOf()));
-            if (FAILED(hr)) {
-                HIKARI_DX_CHECK(hr, "ClusterGeometryResourceSystem::Create upload command list");
-                ResetUploadObjects(state);
-                return false;
-            }
-            state.uploadCommandList->Close();
-
-            hr = device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(state.uploadFence.GetAddressOf()));
-            if (FAILED(hr)) {
-                HIKARI_DX_CHECK(hr, "ClusterGeometryResourceSystem::Create upload fence");
-                ResetUploadObjects(state);
-                return false;
-            }
-
-            state.uploadFenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-            if (state.uploadFenceEvent == nullptr) {
-                ResetUploadObjects(state);
-                return false;
-            }
-
-            state.uploadFenceValue = 1;
-            state.uploadDevice = device;
-            return true;
         }
 
         bool CreateClusterGeometryUploadBuffer(
@@ -243,29 +172,18 @@ namespace HIKARI::RENDER3D {
             ClusterGeometryUploadBuffer& geometry,
             ClusterGeometryUploadBuffer& metadata) {
 
-            if (!EnsureUploadObjects(state)) {
-                return false;
-            }
+            if (!state.uploads.Initialize(state.context.device, state.context.queue, {})) return false;
+            const auto previousWaits = state.uploads.GetStats().waits;
+            auto* commands = state.uploads.Begin();
+            if (!commands) return false;
 
-            HRESULT hr = state.uploadAllocator->Reset();
-            if (FAILED(hr)) {
-                HIKARI_DX_CHECK(hr, "ClusterGeometryResourceSystem::Reset upload allocator");
-                return false;
-            }
-
-            hr = state.uploadCommandList->Reset(state.uploadAllocator.Get(), nullptr);
-            if (FAILED(hr)) {
-                HIKARI_DX_CHECK(hr, "ClusterGeometryResourceSystem::Reset upload command list");
-                return false;
-            }
-
-            state.uploadCommandList->CopyBufferRegion(
+            commands->CopyBufferRegion(
                 geometry.gpu.Get(),
                 0,
                 geometry.upload.Get(),
                 0,
                 geometry.byteSize);
-            state.uploadCommandList->CopyBufferRegion(
+            commands->CopyBufferRegion(
                 metadata.gpu.Get(),
                 0,
                 metadata.upload.Get(),
@@ -282,26 +200,14 @@ namespace HIKARI::RENDER3D {
                     D3D12_RESOURCE_STATE_COPY_DEST,
                     D3D12_RESOURCE_STATE_GENERIC_READ)
             };
-            state.uploadCommandList->ResourceBarrier(2, barriers);
+            commands->ResourceBarrier(2, barriers);
 
-            hr = state.uploadCommandList->Close();
-            if (FAILED(hr)) {
-                HIKARI_DX_CHECK(hr, "ClusterGeometryResourceSystem::Close upload command list");
-                return false;
-            }
-
-            ID3D12CommandList* lists[] = { state.uploadCommandList.Get() };
-            state.context.queue->ExecuteCommandLists(1, lists);
+            ID3D12Resource* retained[]{geometry.gpu.Get(), geometry.upload.Get(), metadata.gpu.Get(), metadata.upload.Get()};
+            const bool submitted = state.uploads.Submit(retained, geometry.byteSize + metadata.byteSize);
+            state.stats.fenceWaitCount = NUMERIC::SaturateToUint32(
+                uint64_t{state.stats.fenceWaitCount} + state.uploads.GetStats().waits - previousWaits);
+            if (!submitted) return false;
             ++state.stats.uploadSubmitCount;
-
-            const uint64_t signalValue = state.uploadFenceValue++;
-            ++state.stats.fenceWaitCount;
-            if (!GFX::SignalAndWaitForGpuCompletion(state.context.device,
-                    state.context.queue, state.uploadFence.Get(), signalValue,
-                    state.uploadFenceEvent, "ClusterGeometryResourceSystem::Upload")) {
-                // false はデバイス喪失時のみ。GPU が動いている間の早期解放を防ぐ。
-                return false;
-            }
 
             geometry.upload.Reset();
             metadata.upload.Reset();
@@ -571,6 +477,7 @@ namespace HIKARI::RENDER3D {
         }
         state.contextMismatchReported = false;
         state.context = ctx;
+        state.uploads.Collect();
         RebuildStats();
     }
 
@@ -582,6 +489,7 @@ namespace HIKARI::RENDER3D {
                 "the owner thread.");
             return;
         }
+        state.uploads.Reset();
         state.memorySourcesBySourceKey.clear();
         for (const auto& pair : state.recordsBySourceKey) {
             const ClusterGeometryResourceRecord& record = pair.second;
@@ -595,7 +503,6 @@ namespace HIKARI::RENDER3D {
         state.context = {};
         state.contextMismatchReported = false;
         state.stats = {};
-        ResetUploadObjects(state);
         state.nextMemorySourceRevision = 1;
         state.ownerThreadViolations.store(0u, std::memory_order_relaxed);
         state.ownerThreadId.store(0u, std::memory_order_release);

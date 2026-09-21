@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 
 #include <algorithm>
@@ -33,22 +34,20 @@ MaterialRampPointData *FindPoint(MaterialRampData &ramp,
 void ModelMaterialWorkspaceController::DrawRampWindow(
     DocumentSceneBase &scene) {
 #if defined(HIKARI_WITH_EDITOR)
-  if (!ImGui::Begin("Ramp###ModelMaterial/Ramp")) {
+  if (!ImGui::Begin(TEXT::LocalizeWindow("ui.terrain.toolRamp", "ModelMaterial/Ramp").c_str())) {
     ImGui::End();
     return;
   }
   if (!authoringDocument_.HasMaterial()) {
-    ImGui::TextWrapped("Open or create a material to edit its Ramp data.");
+    ImGui::TextWrapped(TEXT::Localize("editor.ui.open.or.create.a.material.to.edit.its.ramp.data.a0980b").c_str());
     ImGui::End();
     return;
   }
 
   MaterialAssetData &source = authoringDocument_.EditMaterial();
   if (source.kind != MaterialAssetKind::Ramp) {
-    ImGui::TextWrapped(
-        "Ramp curves are independent reusable assets. Bind them from a "
-        "material resource slot instead of storing them inside every material.");
-    if (ImGui::Button("Create Ramp Asset", ImVec2(-1.0f, 0.0f))) {
+    ImGui::TextWrapped(TEXT::Localize("editor.ui.ramp.curves.are.independent.reusable.assets.bind.them.from.a.mat.cd64c7").c_str());
+    if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.create.ramp.asset.43292d", "Create Ramp Asset").c_str(), ImVec2(-1.0f, 0.0f))) {
       (void)CreateAuxiliaryMaterialAsset(scene, MaterialAssetKind::Ramp,
                                          statusMessage_);
     }
@@ -57,7 +56,7 @@ void ModelMaterialWorkspaceController::DrawRampWindow(
   }
   MaterialRampData &ramp = source.ramp;
   ImGui::SetNextItemWidth(-1.0f);
-  if (ImGui::BeginCombo("Dimension", ToString(ramp.dimension).data())) {
+  if (ImGui::BeginCombo(TEXT::LocalizeWindow("editor.ui.dimension.45e147", "Dimension").c_str(), ToString(ramp.dimension).data())) {
     for (MaterialRampDimension value : {MaterialRampDimension::OneD,
                                         MaterialRampDimension::TwoD}) {
       if (ImGui::Selectable(ToString(value).data(), value == ramp.dimension)) {
@@ -81,7 +80,7 @@ void ModelMaterialWorkspaceController::DrawRampWindow(
     ImGui::EndCombo();
   }
   ImGui::SetNextItemWidth(-1.0f);
-  if (ImGui::BeginCombo("Interpolation",
+  if (ImGui::BeginCombo(TEXT::LocalizeWindow("ui.vfx.text.Interpolation", "Interpolation").c_str(),
                         ToString(ramp.interpolation).data())) {
     for (MaterialRampInterpolation value : {
              MaterialRampInterpolation::Constant,
@@ -103,7 +102,7 @@ void ModelMaterialWorkspaceController::DrawRampWindow(
       ramp.dimension == MaterialRampDimension::OneD
           ? ASSETS::MATERIAL::kMaximumMaterialRamp1DResolution
           : ASSETS::MATERIAL::kMaximumMaterialRamp2DResolution);
-  if (ImGui::InputInt("Width", &width, 16, 64,
+  if (ImGui::InputInt(TEXT::LocalizeWindow("ui.vfx.text.Width", "Width").c_str(), &width, 16, 64,
                       ImGuiInputTextFlags_EnterReturnsTrue)) {
     MaterialAssetData before = source;
     ramp.width = static_cast<uint32_t>(
@@ -113,7 +112,7 @@ void ModelMaterialWorkspaceController::DrawRampWindow(
   }
   if (ramp.dimension == MaterialRampDimension::TwoD) {
     int height = static_cast<int>(ramp.height);
-    if (ImGui::InputInt("Height", &height, 16, 64,
+    if (ImGui::InputInt(TEXT::LocalizeWindow("editor.ui.height.3f608b", "Height").c_str(), &height, 16, 64,
                         ImGuiInputTextFlags_EnterReturnsTrue)) {
       MaterialAssetData before = source;
       ramp.height = static_cast<uint32_t>(
@@ -123,7 +122,7 @@ void ModelMaterialWorkspaceController::DrawRampWindow(
     }
   }
 
-  ImGui::SeparatorText("Preview");
+  ImGui::SeparatorText(TEXT::Localize("ui.vfx.text.Preview").c_str());
   const ImVec2 origin = ImGui::GetCursorScreenPos();
   ImVec2 size{(std::max)(ImGui::GetContentRegionAvail().x, 160.0f),
               ramp.dimension == MaterialRampDimension::OneD ? 72.0f : 180.0f};
@@ -187,7 +186,7 @@ void ModelMaterialWorkspaceController::DrawRampWindow(
   ImGui::SetCursorScreenPos({origin.x, origin.y + size.y});
   ImGui::Dummy(ImVec2(1.0f, 1.0f));
 
-  if (ImGui::Button("Add Ramp Point")) {
+  if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.add.ramp.point.43d5d9", "Add Ramp Point").c_str())) {
     MaterialAssetData before = source;
     MaterialRampPointData point{};
     point.id = "RampPoint_" + std::to_string(authoringIdCounter_++);
@@ -198,7 +197,7 @@ void ModelMaterialWorkspaceController::DrawRampWindow(
   }
   ImGui::SameLine();
   ImGui::BeginDisabled(selectedRampPointId_.empty());
-  if (ImGui::Button("Delete Point")) {
+  if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.delete.point.325db5", "Delete Point").c_str())) {
     MaterialAssetData before = source;
     std::erase_if(ramp.points, [this](const auto &point) {
       return point.id == selectedRampPointId_;
@@ -210,11 +209,11 @@ void ModelMaterialWorkspaceController::DrawRampWindow(
 
   MaterialRampPointData *selected = FindPoint(ramp, selectedRampPointId_);
   if (selected != nullptr) {
-    ImGui::SeparatorText("Selected Point");
+    ImGui::SeparatorText(TEXT::Localize("editor.ui.selected.point.f6866e").c_str());
     MaterialAssetData beforePosition = source;
     bool positionChanged = false;
     if (ramp.dimension == MaterialRampDimension::OneD) {
-      positionChanged = ImGui::SliderFloat("Position", &selected->position.x,
+      positionChanged = ImGui::SliderFloat(TEXT::LocalizeWindow("ui.vfx.text.Position", "Position").c_str(), &selected->position.x,
                                            0.0f, 1.0f);
       selected->position.y = 0.0f;
     } else {
@@ -231,7 +230,7 @@ void ModelMaterialWorkspaceController::DrawRampWindow(
     }
 
     MaterialAssetData beforeColor = source;
-    if (ImGui::ColorEdit4("Color", &selected->color.x)) {
+    if (ImGui::ColorEdit4(TEXT::LocalizeWindow("ui.vfx.text.Color", "Color").c_str(), &selected->color.x)) {
       if (ImGui::IsItemActivated() && !materialGesture_) {
         materialGesture_ = MaterialEditGesture{std::move(beforeColor),
                                                "Edit Ramp color"};
@@ -241,8 +240,7 @@ void ModelMaterialWorkspaceController::DrawRampWindow(
       CommitMaterialGesture(scene);
     }
   }
-  ImGui::TextDisabled("Ramp edits compile on gesture commit; Esc restores the "
-                      "captured point value without an Undo entry.");
+  ImGui::TextDisabled(TEXT::Localize("editor.ui.ramp.edits.compile.on.gesture.commit.esc.restores.the.captured.p.debb02").c_str());
   ImGui::End();
 #else
   (void)scene;

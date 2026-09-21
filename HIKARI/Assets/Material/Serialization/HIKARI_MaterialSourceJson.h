@@ -8,6 +8,9 @@
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
 
 namespace HIKARI::MATERIAL_SERIALIZATION {
+    bool SerializeMaterialCompileInputJson(const MaterialAssetData& source,
+        std::string& outJson, std::string& outError);
+
 
     bool ParseMaterialSourceJson(
         std::string_view jsonText,

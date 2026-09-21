@@ -104,9 +104,10 @@ namespace HIKARI::MESHRENDERER {
         const MATH::Mat4 viewProj = camera.GetViewProj();
         FillCameraCB(viewProj, MATH::Inverse(viewProj), cameraPosition,
             screenWidth, screenHeight, cameraData);
-        editorFrame.view.ClearLocalLights();
         if (!settings.neutralLighting) {
             editorFrame.view.BuildLocalLights(lighting, camera, screenWidth, screenHeight);
+        } else {
+            editorFrame.view.ClearLocalLights();
         }
         FillLightCB(
             *renderEnvironment,

@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 
 #include <algorithm>
@@ -8,6 +9,10 @@
 
 #include "Assets/Material/Authoring/HIKARI_MaterialSemanticNodeFactory.h"
 #include "Assets/Material/Graph/HIKARI_MaterialNodeDefinition.h"
+#include "Assets/Material/Graph/HIKARI_MaterialGraphValidation.h"
+#include "Editor/Style/HIKARI_EditorWidgets.h"
+#include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
+#include "Assets/Material/Authoring/HIKARI_MaterialGraphReuse.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphUi.h"
 #include "Runtime/Binding/Adapters/HIKARI_RuntimeMaterialValueAdapter.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
@@ -38,12 +43,9 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
       MaterialNodeKind::TextureCoordinate,
   };
 
-  static char searchBuffer[128] = {};
-  ImGui::SetNextItemWidth(-1.0f);
-  ImGui::InputText(
-      "##MaterialGraphNodeSearch", searchBuffer,
-      sizeof(searchBuffer));
-  const std::string searchText = searchBuffer;
+  SearchField("##MaterialGraphNodeSearch", TEXT::LocalizeCStr("material.palette.search"),
+              graphSearch_.data(), graphSearch_.size());
+  const std::string searchText = graphSearch_.data();
   const bool searching = !searchText.empty();
   const auto matchesSearch = [&searchText](std::string_view text) {
     if (searchText.empty()) {
@@ -65,6 +67,17 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
     return folded.find(query) != std::string::npos;
   };
 
+  const auto acceptsDraggedInput = [&](const MaterialNodeDefinition& definition) {
+    if (!graphLinkCreatePending_) return true;
+    const auto* sourceNode = MATERIAL_GRAPH_UI::FindNode(graph,edgeSourceNodeId_);
+    const auto sourceType = sourceNode ? ResolveMaterialGraphPinType(graph,*sourceNode,edgeSourcePin_,true) : std::nullopt;
+    if (!sourceType) return false;
+    return std::any_of(definition.inputs.begin(),definition.inputs.end(),[&](const auto& pin) {
+      return !pin.runtimeGenerated && (pin.fixedType == *sourceType ||
+          (IsMaterialNumericType(*sourceType) && IsMaterialNumericType(pin.fixedType) &&
+           (pin.acceptsDynamicNumeric || *sourceType == MaterialValueType::Float1)));
+    });
+  };
   const auto addNodeByKind =
       [&](MaterialNodeKind kind, std::string_view label,
           MaterialValueType valueType = MaterialValueType::Float1,
@@ -77,9 +90,13 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
         }
         MaterialGraphNodeCreateRequest request{};
         request.nodeType = definition->stableName;
-        request.displayName = std::string(label);
+        request.displayName = definition->stableName;
+        if (!referenceId.empty()) request.displayName = std::string(label);
         request.position = position;
         request.manualPosition = true;
+        if (graphLinkCreatePending_) {
+          request.connectSourceNodeId = edgeSourceNodeId_; request.connectSourcePin = edgeSourcePin_;
+        }
         request.parameterIdPrefix = "parameter.ui_";
         request.parameterDisplayName = "Parameter";
         request.referenceId = referenceId;
@@ -107,8 +124,14 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
         std::string message;
         std::string code;
         std::vector<std::string> details;
-        (void)AddMaterialGraphNode(
-            scene, request, message, details, code);
+        const bool added = AddMaterialGraphNode(scene, request, message, details, code);
+        statusMessage_ = message;
+        if (added) {
+          graphLinkCreatePending_ = false;
+          std::erase(recentGraphNodes_, std::string(definition->stableName));
+          recentGraphNodes_.insert(recentGraphNodes_.begin(), std::string(definition->stableName));
+          if (recentGraphNodes_.size() > 8) recentGraphNodes_.resize(8);
+        }
       };
 
   const auto drawVariableMenu = [&](std::string_view label) {
@@ -136,52 +159,117 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
       ++compatibleCount;
     }
     if (compatibleCount == 0u) {
-      ImGui::TextDisabled("No Material-compatible variables");
+      ImGui::TextDisabled(TEXT::Localize("editor.ui.no.material.compatible.variables.6ef34e").c_str());
     }
     ImGui::EndMenu();
   };
 
+  const auto drawFunctions = [&]() {
+    if (graphLinkCreatePending_) return false;
+    bool foundFunction = false;
+    for (const AssetChoice &choice : materialChoices_) {
+      if (!choice.ready ||
+          choice.materialKind != MaterialAssetKind::Function ||
+          choice.functionOutputs.empty()) {
+        continue;
+      }
+      if (!matchesSearch(choice.label)) continue;
+      foundFunction = true;
+      if (!ImGui::MenuItem(choice.label.c_str())) {
+        continue;
+      }
+      MaterialGraphNodeCreateRequest request{};
+      request.nodeType = "FunctionCall";
+      request.displayName = choice.label;
+      request.position = position;
+      request.manualPosition = true;
+      request.allowFunctionCall = true;
+      request.functionAssetGuid = choice.guid;
+      request.functionInputs = choice.functionInputs;
+      request.functionOutputs = choice.functionOutputs;
+      std::string message;
+      std::string code;
+      std::vector<std::string> details;
+      (void)AddMaterialGraphNode(
+          scene, request, message, details, code);
+      statusMessage_ = message;
+    }
+    if (!foundFunction && !searching) {
+      ImGui::BeginDisabled();
+      (void)ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.no.imported.material.functions.c9a466", "No imported Material Functions").c_str());
+      ImGui::EndDisabled();
+    }
+    return foundFunction;
+  };
+
+  const auto drawModules = [&]() {
+    if (graphLinkCreatePending_) return false;
+    bool found = false;
+    for (const auto& module : ASSETS::MATERIAL::GetMaterialGraphModules()) {
+      const auto label = TEXT::Localize(module.labelKey);
+      if (!matchesSearch(label) && !matchesSearch(module.searchTerms)) continue;
+      found = true;
+      if (ImGui::MenuItem(label.c_str()) && operationRegistry_) {
+        statusMessage_ = operationRegistry_->Execute("material.insert_module",
+            {{"module", module.id}, {"x", position.x}, {"y", position.y}}).message;
+      }
+    }
+    return found;
+  };
   if (searching) {
-    ImGui::SeparatorText("搜索结果");
+    ImGui::SeparatorText(TEXT::Localize("editor.searchResults").c_str());
     size_t shown = 0u;
     for (const MaterialNodeDefinition &definition :
          GetMaterialNodeDefinitions()) {
-      if (!definition.paletteVisible ||
+      if (!definition.paletteVisible || !acceptsDraggedInput(definition) ||
           !IsMaterialNodeAvailableForDomain(
               definition.kind, source.domain)) {
         continue;
       }
-      const std::string_view label =
-          ASSETS::MATERIAL::IsReadyMadeMaterialNode(definition.kind)
-              ? ASSETS::MATERIAL::ReadyMadeMaterialNodeDisplayName(
-                    definition.kind)
-              : definition.stableName;
+      const std::string label = MATERIAL_GRAPH_UI::NodeDisplayName(definition.kind);
       if (!matchesSearch(label) &&
           !matchesSearch(definition.stableName)) {
         continue;
       }
+      const bool duplicateSingleton = ASSETS::MATERIAL::IsSingletonReadyMadeMaterialNode(definition.kind) &&
+          std::any_of(graph.nodes.begin(), graph.nodes.end(), [&](const auto& node) { return node.kind == definition.kind; });
+      ImGui::BeginDisabled(duplicateSingleton);
       if (definition.kind == MaterialNodeKind::Variable) {
         drawVariableMenu(label);
       } else if (ImGui::MenuItem(label.data())) {
         addNodeByKind(definition.kind, label);
       }
+      ImGui::EndDisabled();
       ++shown;
-      if (shown >= 40u) {
-        ImGui::TextDisabled("...（更多结果请输入更精确的关键词）");
-        break;
-      }
     }
-    if (shown == 0u) {
-      ImGui::TextDisabled("没有匹配的节点");
+    const bool foundFunction = drawFunctions();
+    const bool foundModule = drawModules();
+    if (shown == 0u && !foundFunction && !foundModule) {
+      ImGui::TextDisabled(TEXT::Localize("editor.noMatchingNodes").c_str());
     }
     return;
   }
 
-  if (!searching && ImGui::BeginMenu("Common")) {
+  if (ImGui::BeginMenu(TEXT::LocalizeCStr("material.module.menu"))) {
+    drawModules(); ImGui::EndMenu();
+  }
+  if (!recentGraphNodes_.empty() && ImGui::BeginMenu(TEXT::LocalizeCStr("material.palette.recent"))) {
+    // 挿入後に履歴が更新されても走査中の参照を無効にしない。
+    const auto recent = recentGraphNodes_;
+    for (const auto& name : recent) {
+      const auto* definition = FindMaterialNodeDefinition(std::string_view(name));
+      if (definition == nullptr || !acceptsDraggedInput(*definition) || !IsMaterialNodeAvailableForDomain(definition->kind, source.domain)) continue;
+      const auto label = MATERIAL_GRAPH_UI::NodeDisplayName(definition->kind);
+      if (definition->kind == MaterialNodeKind::Variable) drawVariableMenu(label);
+      else if (ImGui::MenuItem(label.c_str())) addNodeByKind(definition->kind, label);
+    }
+    ImGui::EndMenu();
+  }
+  if (!searching && ImGui::BeginMenu(TEXT::LocalizeWindow("editor.ui.common.7de90a", "Common").c_str())) {
     for (const MaterialNodeKind kind : commonKinds) {
       const MaterialNodeDefinition *definition =
           FindMaterialNodeDefinition(kind);
-      if (definition == nullptr || !definition->paletteVisible ||
+      if (definition == nullptr || !definition->paletteVisible || !acceptsDraggedInput(*definition) ||
           !IsMaterialNodeAvailableForDomain(
               definition->kind, source.domain)) {
         continue;
@@ -199,7 +287,7 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
       }
       if (kind == MaterialNodeKind::Constant ||
           kind == MaterialNodeKind::Parameter) {
-        if (ImGui::BeginMenu(definition->stableName.data())) {
+        if (ImGui::BeginMenu(MATERIAL_GRAPH_UI::NodeDisplayName(kind).c_str())) {
           constexpr std::array<MaterialValueType, 4u> types{
               MaterialValueType::Float1,
               MaterialValueType::Float2,
@@ -224,7 +312,7 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
         continue;
       }
       ImGui::BeginDisabled(duplicateSingleton);
-      if (ImGui::MenuItem(definition->stableName.data())) {
+      if (ImGui::MenuItem(MATERIAL_GRAPH_UI::NodeDisplayName(kind).c_str())) {
         addNodeByKind(kind, definition->stableName);
       }
       ImGui::EndDisabled();
@@ -232,68 +320,10 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
     ImGui::EndMenu();
   }
 
-  const auto mathSubgroup =
-      [](MaterialNodeKind kind) -> std::string_view {
-    switch (kind) {
-    case MaterialNodeKind::Add:
-    case MaterialNodeKind::Subtract:
-    case MaterialNodeKind::Multiply:
-    case MaterialNodeKind::Divide:
-    case MaterialNodeKind::Minimum:
-    case MaterialNodeKind::Maximum:
-    case MaterialNodeKind::Absolute:
-    case MaterialNodeKind::Negate:
-    case MaterialNodeKind::Modulo:
-    case MaterialNodeKind::Power:
-    case MaterialNodeKind::SquareRoot:
-      return "基础运算";
-    case MaterialNodeKind::Sine:
-    case MaterialNodeKind::Cosine:
-    case MaterialNodeKind::Atan2:
-      return "三角";
-    case MaterialNodeKind::Exp:
-    case MaterialNodeKind::Log2:
-      return "指数/对数";
-    case MaterialNodeKind::Floor:
-    case MaterialNodeKind::Ceil:
-    case MaterialNodeKind::Fraction:
-    case MaterialNodeKind::Round:
-    case MaterialNodeKind::Trunc:
-    case MaterialNodeKind::Sign:
-    case MaterialNodeKind::Saturate:
-    case MaterialNodeKind::OneMinus:
-    case MaterialNodeKind::Clamp:
-      return "取整/范围";
-    case MaterialNodeKind::Step:
-    case MaterialNodeKind::SmoothStep:
-    case MaterialNodeKind::Remap:
-      return "比较/插值";
-    case MaterialNodeKind::Dot:
-    case MaterialNodeKind::Cross:
-    case MaterialNodeKind::Length:
-    case MaterialNodeKind::Normalize:
-    case MaterialNodeKind::Distance:
-    case MaterialNodeKind::Reflect:
-    case MaterialNodeKind::MakeFloat2:
-    case MaterialNodeKind::MakeFloat3:
-    case MaterialNodeKind::MakeFloat4:
-    case MaterialNodeKind::Split:
-    case MaterialNodeKind::Select:
-      return "向量";
-    case MaterialNodeKind::ValueNoise:
-    case MaterialNodeKind::Voronoi:
-      return "噪声";
-    case MaterialNodeKind::UvTransform:
-      return "UV 变换";
-    case MaterialNodeKind::Fresnel:
-      return "着色辅助";
-    default:
-      return {};
-    }
-  };
   const auto drawNodeItem =
       [&](const MaterialNodeDefinition &definition) {
         const MaterialNodeKind kind = definition.kind;
+        if (!acceptsDraggedInput(definition)) return;
         const bool duplicateSingleton =
             ASSETS::MATERIAL::IsSingletonReadyMadeMaterialNode(kind) &&
             std::any_of(
@@ -302,10 +332,7 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
                   return node.kind == kind;
                 });
         ImGui::BeginDisabled(duplicateSingleton);
-        const std::string_view label =
-            ASSETS::MATERIAL::IsReadyMadeMaterialNode(kind)
-                ? ASSETS::MATERIAL::ReadyMadeMaterialNodeDisplayName(kind)
-                : definition.stableName;
+        const std::string label = MATERIAL_GRAPH_UI::NodeDisplayName(kind);
         if (searching && !matchesSearch(label) &&
             !matchesSearch(definition.stableName)) {
           ImGui::EndDisabled();
@@ -320,7 +347,11 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
       };
   const auto drawCategory =
       [&](const std::string_view category) {
-        if (!ImGui::BeginMenu(category.data())) {
+        const char* key = category == "Ready-made Shading" ? "editor.material.category.shading" :
+            category == "Surface" ? "editor.material.category.surface" :
+            category == "Advanced / Inputs" ? "editor.material.category.inputs" :
+            category == "Advanced / Math & Masks" ? "editor.material.category.math" : "editor.material.category.other";
+        if (!ImGui::BeginMenu(TEXT::LocalizeWindow(key, category).c_str())) {
           return;
         }
         if (category == "Advanced / Math & Masks") {
@@ -336,7 +367,7 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
                     category) {
               continue;
             }
-            groups[mathSubgroup(definition.kind)].push_back(
+            groups[MATERIAL_GRAPH_UI::NodeMathSubgroup(definition.kind)].push_back(
                 &definition);
           }
           for (const auto &[group, definitions] : groups) {
@@ -374,38 +405,8 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
   }
   drawCategory(otherCategory);
 
-  if (!searching && ImGui::BeginMenu("Material Functions")) {
-    bool foundFunction = false;
-    for (const AssetChoice &choice : materialChoices_) {
-      if (!choice.ready ||
-          choice.materialKind != MaterialAssetKind::Function ||
-          choice.functionOutputs.empty()) {
-        continue;
-      }
-      foundFunction = true;
-      if (!ImGui::MenuItem(choice.label.c_str())) {
-        continue;
-      }
-      MaterialGraphNodeCreateRequest request{};
-      request.nodeType = "FunctionCall";
-      request.displayName = choice.label;
-      request.position = position;
-      request.manualPosition = true;
-      request.allowFunctionCall = true;
-      request.functionAssetGuid = choice.guid;
-      request.functionInputs = choice.functionInputs;
-      request.functionOutputs = choice.functionOutputs;
-      std::string message;
-      std::string code;
-      std::vector<std::string> details;
-      (void)AddMaterialGraphNode(
-          scene, request, message, details, code);
-    }
-    if (!foundFunction) {
-      ImGui::BeginDisabled();
-      (void)ImGui::MenuItem("No imported Material Functions");
-      ImGui::EndDisabled();
-    }
+  if (ImGui::BeginMenu(TEXT::LocalizeCStr("editor.ui.material.functions.c794e3"))) {
+    drawFunctions();
     ImGui::EndMenu();
   }
 #else

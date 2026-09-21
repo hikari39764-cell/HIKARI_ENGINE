@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Export/HIKARI_GameExportIdentityPanel.h"
 #include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
 #include "Editor/Platform/HIKARI_EditorFileDialog.h"
@@ -32,12 +33,12 @@ namespace HIKARI::EDITOR {
             if (result.ok) SetDocument(result.data);
             else message_ = result.message;
         }
-        ImGui::SeparatorText("ゲーム情報");
+        ImGui::SeparatorText(TEXT::Localize("editor.gameInfo").c_str());
         ImGui::BeginDisabled(busy || !loaded_);
-        ImGui::InputText("EXE ファイル名", executable_.data(), executable_.size());
-        ImGui::InputText("ウィンドウタイトル", title_.data(), title_.size());
-        ImGui::InputText("アイコン (.ico)", icon_.data(), icon_.size());
-        if (ImGui::Button("アイコンを選ぶ...")) {
+        ImGui::InputText(TEXT::LocalizeWindow("editor.executableName", "EXE ファイル名").c_str(), executable_.data(), executable_.size());
+        ImGui::InputText(TEXT::LocalizeWindow("editor.windowTitle", "ウィンドウタイトル").c_str(), title_.data(), title_.size());
+        ImGui::InputText(TEXT::LocalizeWindow("editor.icon", "アイコン (.ico)").c_str(), icon_.data(), icon_.size());
+        if (ImGui::Button(TEXT::LocalizeWindow("editor.chooseIcon", "アイコンを選ぶ...").c_str())) {
             if (const auto selected = FILE_DIALOG::PickFile(project, L"Windows Icon (*.ico)", L"*.ico")) {
                 std::error_code error;
                 const auto relative = std::filesystem::relative(*selected, project, error);
@@ -46,21 +47,21 @@ namespace HIKARI::EDITOR {
             }
         }
         ImGui::SameLine();
-        if (ImGui::Button("アイコンを解除")) icon_.fill(0);
-        ImGui::TextWrapped("ICO を EXE・ウィンドウ・タスクバーに使用します。工程外のファイルは保存時に取り込みます。");
+        if (ImGui::Button(TEXT::LocalizeWindow("editor.clearIcon", "アイコンを解除").c_str())) icon_.fill(0);
+        ImGui::TextWrapped(TEXT::Localize("editor.iconHint").c_str());
         dirty_ = loaded_ && Draft() != saved_;
         ImGui::BeginDisabled(!dirty_);
-        if (ImGui::Button("ゲーム情報を保存")) {
+        if (ImGui::Button(TEXT::LocalizeWindow("editor.saveGameInfo", "ゲーム情報を保存").c_str())) {
             const auto result = operations.Execute("export.settings.set", Draft());
             message_ = result.message;
             if (result.ok) SetDocument(result.data);
         }
         ImGui::SameLine();
-        if (ImGui::Button("変更を戻す")) { SetDocument(saved_); message_.clear(); }
+        if (ImGui::Button(TEXT::LocalizeWindow("editor.revertChanges", "変更を戻す").c_str())) { SetDocument(saved_); message_.clear(); }
         ImGui::EndDisabled();
         ImGui::EndDisabled();
-        if (!loaded_ && ImGui::Button("再読み込み")) Reset();
-        if (dirty_) ImGui::TextUnformatted("未保存です。ゲーム情報を保存してから出力してください。");
+        if (!loaded_ && ImGui::Button(TEXT::LocalizeWindow("ui.input.reload", "再読み込み").c_str())) Reset();
+        if (dirty_) ImGui::TextUnformatted(TEXT::Localize("editor.saveGameInfoHint").c_str());
         if (!message_.empty()) ImGui::TextWrapped("%s", message_.c_str());
         ImGui::Separator();
     }

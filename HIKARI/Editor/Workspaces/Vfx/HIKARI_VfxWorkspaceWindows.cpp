@@ -1,3 +1,4 @@
+#include "Editor/Shell/HIKARI_EditorDockLayout.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxInspectorControls.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 
@@ -67,7 +68,7 @@ namespace HIKARI::EDITOR {
                 "Timing & Curves###Vfx/CurvesDiagnostics", bottom);
             ImGui::DockBuilderFinish(dockspaceId);
         }
-        ImGui::DockSpaceOverViewport(dockspaceId, viewport);
+        HIKARI::EDITOR::DrawWorkspaceDockSpace(dockspaceId, viewport);
 #else
         (void)resetDefaultDockLayout;
 #endif
@@ -133,8 +134,7 @@ namespace HIKARI::EDITOR {
             : target->displayName.empty()
                 ? target->sourcePath.stem().string()
                 : target->displayName;
-        ImGui::TextWrapped(
-            "Save changes to '%s' before opening '%s'?",
+        ImGui::TextWrapped(TEXT::Localize("editor.ui.save.changes.to.s.before.opening.s.dfecf2").c_str(),
             document_.GetDisplayName().c_str(),
             targetName.c_str());
         ImGui::TextDisabled(
@@ -186,13 +186,13 @@ namespace HIKARI::EDITOR {
         const ImGuiWindowFlags flags =
             ImGuiWindowFlags_NoScrollbar |
             ImGuiWindowFlags_NoScrollWithMouse;
-        if (!ImGui::Begin("VFX###Vfx/Toolbar", nullptr, flags)) {
+        if (!ImGui::Begin(TEXT::LocalizeWindow("menu.workspace.vfx", "Vfx/Toolbar").c_str(), nullptr, flags)) {
             ImGui::End();
             return;
         }
 
         if (IconButton(EditorGlyph::NewDocument, "New", EditorButtonTone::Quiet, {28,28}, VfxUiText("New").c_str())) {
-            ImGui::OpenPopup("Create VFX Asset");
+            ImGui::OpenPopup(TEXT::LocalizeWindow("editor.ui.create.vfx.asset.205bef", "Create VFX Asset").c_str());
         }
         ImGui::SameLine();
         ImGui::BeginDisabled(!document_.IsOpen());
@@ -229,19 +229,16 @@ namespace HIKARI::EDITOR {
             result.exitToSceneRequested = true;
         }
 
-        if (ImGui::BeginPopupModal(
-                "Create VFX Asset",
+        if (ImGui::BeginPopupModal(TEXT::LocalizeWindow("editor.ui.create.vfx.asset.205bef", "Create VFX Asset").c_str(),
                 nullptr,
                 ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::TextUnformatted(VfxUiText("Start from a template or create an empty effect.").c_str());
             if (document_.IsDirty()) {
                 ImGui::TextColored(
-                    { 1.0f, 0.72f, 0.22f, 1.0f },
-                    "The current document has unsaved changes.");
+                    { 1.0f, 0.72f, 0.22f, 1.0f },TEXT::Localize("editor.ui.the.current.document.has.unsaved.changes.5d061d").c_str());
             }
             ImGui::SetNextItemWidth(320.0f);
-            ImGui::InputText(
-                "Name",
+            ImGui::InputText(TEXT::LocalizeWindow("ui.input.name", "Name").c_str(),
                 newAssetName_.data(),
                 newAssetName_.size());
             if (ImGui::Button(VfxUiText("Cancel").c_str())) {
@@ -251,7 +248,7 @@ namespace HIKARI::EDITOR {
             if (ImGui::Button(
                     document_.IsDirty()
                         ? "Discard and Create"
-                        : "Create")) {
+                        : TEXT::LocalizeCStr("editor.ui.create.6e157c"))) {
                 NewAsset(newAssetName_.data());
                 ImGui::CloseCurrentPopup();
             }

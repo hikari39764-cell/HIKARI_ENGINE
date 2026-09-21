@@ -107,7 +107,7 @@ namespace HIKARI {
                 ComponentTypeInfo body{};
                 body.typeName = "PhysicsBodyComponent";
                 body.factory = []() -> std::unique_ptr<IComponent> {
-                    return std::make_unique<PhysicsBodyComponent>();
+                    return IComponent::Create<PhysicsBodyComponent>();
                 };
                 body.requiredComponents = { "ColliderComponent" };
                 body.initializeDefaults = [](
@@ -133,7 +133,7 @@ namespace HIKARI {
                 ComponentTypeInfo collider{};
                 collider.typeName = "ColliderComponent";
                 collider.factory = []() -> std::unique_ptr<IComponent> {
-                    return std::make_unique<ColliderComponent>();
+                    return IComponent::Create<ColliderComponent>();
                 };
                 collider.optionalComponents = {
                     "PhysicsBodyComponent",

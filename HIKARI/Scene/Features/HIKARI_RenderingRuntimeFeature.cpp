@@ -79,7 +79,7 @@ namespace HIKARI {
                 ComponentTypeInfo model{};
                 model.typeName = "ModelComponent";
                 model.factory = []() -> std::unique_ptr<IComponent> {
-                    return std::make_unique<ModelComponent>();
+                    return IComponent::Create<ModelComponent>();
                 };
                 model.affectsRenderState = true;
                 model.optionalComponents = {
@@ -95,7 +95,7 @@ namespace HIKARI {
                 ComponentTypeInfo materialFx{};
                 materialFx.typeName = "MaterialFxComponent";
                 materialFx.factory = []() -> std::unique_ptr<IComponent> {
-                    return std::make_unique<MaterialFxComponent>();
+                    return IComponent::Create<MaterialFxComponent>();
                 };
                 materialFx.requiredComponents = { "ModelComponent" };
                 materialFx.initializeDefaults = [](
@@ -113,7 +113,7 @@ namespace HIKARI {
                 ComponentTypeInfo procedural{};
                 procedural.typeName = "ProceduralMeshComponent";
                 procedural.factory = []() -> std::unique_ptr<IComponent> {
-                    return std::make_unique<ProceduralMeshComponent>();
+                    return IComponent::Create<ProceduralMeshComponent>();
                 };
                 procedural.requiredComponents = { "ModelComponent" };
                 procedural.runtimeApplyPolicy =
@@ -142,7 +142,7 @@ namespace HIKARI {
                 ComponentTypeInfo worldSprite{};
                 worldSprite.typeName = "WorldSpriteComponent";
                 worldSprite.factory = []() -> std::unique_ptr<IComponent> {
-                    return std::make_unique<WorldSpriteComponent>();
+                    return IComponent::Create<WorldSpriteComponent>();
                 };
                 worldSprite.affectsRenderState = true;
                 worldSprite.initializeDefaults = [](
@@ -171,7 +171,7 @@ namespace HIKARI {
                 ComponentTypeInfo worldText{};
                 worldText.typeName = "WorldTextComponent";
                 worldText.factory = []() -> std::unique_ptr<IComponent> {
-                    return std::make_unique<WorldTextComponent>();
+                    return IComponent::Create<WorldTextComponent>();
                 };
                 worldText.affectsRenderState = true;
                 worldText.initializeDefaults = [](

@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/HIKARI_HierarchyPanel.h"
 #include "Editor/Authoring/HIKARI_SceneFolderAuthoring.h"
 #include "Editor/HIKARI_EditorContext.h"
@@ -47,13 +48,13 @@ namespace HIKARI {
             }
             folderPopupRequested_ = true;
         };
-        if (ImGui::Button("新規フォルダー")) beginName({}, false);
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("オブジェクトをドラッグして整理します。位置や親子関係は変わりません。");
+        if (ImGui::Button(TEXT::LocalizeWindow("editor.newFolder", "新規フォルダー").c_str())) beginName({}, false);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip(TEXT::Localize("editor.folderHint").c_str());
         int expansion = 0;
         ImGui::SameLine();
-        if (ImGui::SmallButton("すべて開く")) expansion = 1;
+        if (ImGui::SmallButton(TEXT::LocalizeWindow("editor.expandAll", "すべて開く").c_str())) expansion = 1;
         ImGui::SameLine();
-        if (ImGui::SmallButton("すべて閉じる")) expansion = -1;
+        if (ImGui::SmallButton(TEXT::LocalizeWindow("editor.collapseAll", "すべて閉じる").c_str())) expansion = -1;
         if (!folderMessage_.empty()) ImGui::TextWrapped("%s", folderMessage_.c_str());
 
         const auto folders = EDITOR::CollectSceneFolderPaths(document);
@@ -126,11 +127,11 @@ namespace HIKARI {
                 ImGui::EndDragDropSource();
             }
             if (ImGui::BeginPopupContextItem("folder-menu")) {
-                if (ImGui::MenuItem("子フォルダーを作成")) beginName(path, false);
-                if (ImGui::MenuItem("名前を変更")) beginName(path, true);
-                if (ImGui::MenuItem("選択中のオブジェクトを入れる", nullptr, false, selection.GetSelectedObjectCount() > 0))
+                if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.newChildFolder", "子フォルダーを作成").c_str())) beginName(path, false);
+                if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.rename", "名前を変更").c_str())) beginName(path, true);
+                if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.folderSelection", "選択中のオブジェクトを入れる").c_str(), nullptr, false, selection.GetSelectedObjectCount() > 0))
                     execute("scene.folder.assign", {{"path",path},{"objectIds",selectedIds()}});
-                if (ImGui::MenuItem("中のオブジェクトをすべて選択")) {
+                if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.selectContents", "中のオブジェクトをすべて選択").c_str())) {
                     bool first = true;
                     for (const auto& object : world.GetObjects()) if (object) {
                         const auto& folder = membership[object->GetDocumentId().value];
@@ -141,7 +142,7 @@ namespace HIKARI {
                     }
                 }
                 ImGui::Separator();
-                if (ImGui::MenuItem("フォルダーを解散（中身は保持）")) execute("scene.folder.remove", {{"path",path}});
+                if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.dissolveFolder", "フォルダーを解散（中身は保持）").c_str())) execute("scene.folder.remove", {{"path",path}});
                 ImGui::EndPopup();
             }
             if (open) {
@@ -152,29 +153,28 @@ namespace HIKARI {
             ImGui::PopID();
         };
         for (const auto& root : children[""]) drawFolder(root);
-        const bool ungroupedOpen = ImGui::TreeNodeEx("ungrouped", ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth,
-            "未分類  (%zu)", members[""].size());
+        const bool ungroupedOpen = ImGui::TreeNodeEx("ungrouped", ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth,TEXT::Localize("editor.unfiled").c_str(), members[""].size());
         dropTarget({});
         if (ungroupedOpen) { drawMembers({}); ImGui::TreePop(); }
         if (folderPopupRequested_) {
-            ImGui::OpenPopup("フォルダー名");
+            ImGui::OpenPopup(TEXT::LocalizeWindow("editor.folderName", "フォルダー名").c_str());
             folderPopupRequested_ = false;
         }
-        if (ImGui::BeginPopupModal("フォルダー名", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (ImGui::BeginPopupModal(TEXT::LocalizeWindow("editor.folderName", "フォルダー名").c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
             if (changedDocument) ImGui::CloseCurrentPopup();
-            ImGui::TextUnformatted(folderRename_ ? "フォルダー名を変更" : "フォルダーを作成");
+            ImGui::TextUnformatted(folderRename_ ? TEXT::LocalizeCStr("editor.folder.rename") : TEXT::LocalizeCStr("editor.folder.create"));
             ImGui::TextDisabled("%s", folderSource_.empty() ? "シーン直下" : folderSource_.c_str());
             if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
-            ImGui::InputText("名前", folderNameBuffer_.data(), folderNameBuffer_.size());
+            ImGui::InputText(TEXT::LocalizeWindow("ui.input.name", "名前").c_str(), folderNameBuffer_.data(), folderNameBuffer_.size());
             if (!folderMessage_.empty()) ImGui::TextWrapped("%s", folderMessage_.c_str());
-            if (ImGui::Button(folderRename_ ? "変更" : "作成")) {
+            if (ImGui::Button(folderRename_ ? "変更" : TEXT::LocalizeCStr("editor.ui.create.6e157c"))) {
                 const auto target = join(folderRename_ ? parent(folderSource_) : folderSource_, folderNameBuffer_.data());
                 const bool done = folderRename_ ? execute("scene.folder.rename", {{"path",folderSource_},{"newPath",target}})
                     : execute("scene.folder.create", {{"path",target}});
                 if (done) ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (ImGui::Button("キャンセル")) {folderMessage_.clear();ImGui::CloseCurrentPopup();}
+            if (ImGui::Button(TEXT::LocalizeWindow("ui.common.cancel", "キャンセル").c_str())) {folderMessage_.clear();ImGui::CloseCurrentPopup();}
             ImGui::EndPopup();
         }
 #else

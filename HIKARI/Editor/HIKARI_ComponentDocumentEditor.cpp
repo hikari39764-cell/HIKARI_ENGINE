@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "HIKARI_ComponentDocumentEditor.h"
 
 #include "Scene/Components/HIKARI_IComponent.h"
@@ -21,8 +22,7 @@ namespace HIKARI {
         const ComponentTypeInfo* typeInfo = componentRegistry.Find(componentData.type);
         if (!typeInfo || !typeInfo->factory) {
 #if defined(HIKARI_WITH_EDITOR)
-            ImGui::TextDisabled(
-                "Inspector unavailable for component type: %s",
+            ImGui::TextDisabled(TEXT::Localize("editor.ui.inspector.unavailable.for.component.type.s.463372").c_str(),
                 componentData.type.c_str());
 #endif
             return false;
@@ -41,8 +41,7 @@ namespace HIKARI {
                     deserializeDiagnostic)) {
 #if defined(HIKARI_WITH_EDITOR)
                 ImGui::TextColored(
-                    ImVec4(1.0f, 0.35f, 0.35f, 1.0f),
-                    "Component data is invalid for %s: %s",
+                    ImVec4(1.0f, 0.35f, 0.35f, 1.0f),TEXT::Localize("editor.ui.component.data.is.invalid.for.s.s.c5f564").c_str(),
                     componentData.type.c_str(),
                     deserializeDiagnostic.empty()
                         ? "deserialization failed"
@@ -100,8 +99,7 @@ namespace HIKARI {
                 if (!validation.ok) {
 #if defined(HIKARI_WITH_EDITOR)
                     ImGui::TextColored(
-                        ImVec4(1.0f, 0.55f, 0.2f, 1.0f),
-                        "Component edit rejected: %s",
+                        ImVec4(1.0f, 0.55f, 0.2f, 1.0f),TEXT::Localize("editor.ui.component.edit.rejected.s.9c95ed").c_str(),
                         validation.message.empty()
                             ? "authoring reference is invalid"
                             : validation.message.c_str());
@@ -112,8 +110,7 @@ namespace HIKARI {
         } catch (const std::exception& e) {
 #if defined(HIKARI_WITH_EDITOR)
             ImGui::TextColored(
-                ImVec4(1.0f, 0.35f, 0.35f, 1.0f),
-                "Component inspector failed for %s: %s",
+                ImVec4(1.0f, 0.35f, 0.35f, 1.0f),TEXT::Localize("editor.ui.component.inspector.failed.for.s.s.da6386").c_str(),
                 componentData.type.c_str(),
                 e.what());
 #else
@@ -123,8 +120,7 @@ namespace HIKARI {
         } catch (...) {
 #if defined(HIKARI_WITH_EDITOR)
             ImGui::TextColored(
-                ImVec4(1.0f, 0.35f, 0.35f, 1.0f),
-                "Component inspector failed for %s.",
+                ImVec4(1.0f, 0.35f, 0.35f, 1.0f),TEXT::Localize("editor.ui.component.inspector.failed.for.s.235dc2").c_str(),
                 componentData.type.c_str());
 #endif
             return false;

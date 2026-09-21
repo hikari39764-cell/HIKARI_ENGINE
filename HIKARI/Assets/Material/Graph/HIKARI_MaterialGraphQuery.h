@@ -2,10 +2,27 @@
 
 #include <algorithm>
 #include <string_view>
+#include <unordered_map>
+#include <unordered_set>
 
 #include "Assets/Material/Graph/HIKARI_MaterialGraphData.h"
 
 namespace HIKARI {
+    inline std::unordered_set<std::string> CollectMaterialGraphUpstreamNodes(
+        const MaterialGraphData& graph, std::string_view root = {}) {
+        std::unordered_map<std::string, std::vector<std::string_view>> inputs;
+        for (const auto& edge : graph.edges) inputs[edge.targetNodeId].push_back(edge.sourceNodeId);
+        std::vector<std::string> pending{std::string(root.empty() ? graph.outputNodeId : root)};
+        std::unordered_set<std::string> reachable;
+        while (!pending.empty()) {
+            std::string id = std::move(pending.back()); pending.pop_back();
+            if (id.empty() || !reachable.insert(id).second) continue;
+            if (auto found = inputs.find(id); found != inputs.end())
+                for (auto input : found->second) pending.emplace_back(input);
+        }
+        return reachable;
+    }
+
 
     // Canonical material-graph lookup helpers. All graph consumers must use
     // these instead of local find copies.

@@ -1,3 +1,4 @@
+#include "Editor/Commands/HIKARI_EditorCommandRouter.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxInspectorControls.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 
@@ -83,7 +84,7 @@ namespace HIKARI::EDITOR {
             changed |= ImGui::SliderFloat(VfxUiText("Brightness").c_str(), &previewLightIntensity_, 0.0f, 5.0f, "%.2f");
             auto& bloom = previewEnvironment_->bloom;
             ImGui::Separator();
-            changed |= ImGui::Checkbox("Bloom", &bloom.enabled);
+            changed |= ImGui::Checkbox(TEXT::LocalizeWindow("ui.quality.bloom", "Bloom").c_str(), &bloom.enabled);
             changed |= ImGui::SliderFloat((VfxUiText("Threshold") + "##Bloom").c_str(), &bloom.threshold, 0.0f, 4.0f, "%.2f");
             changed |= ImGui::SliderFloat((VfxUiText("Intensity") + "##Bloom").c_str(), &bloom.intensity, 0.0f, 2.0f, "%.2f");
             changed |= ImGui::SliderFloat((VfxUiText("Radius") + "##Bloom").c_str(), &bloom.radius, 0.25f, 3.0f, "%.2f");
@@ -129,7 +130,7 @@ namespace HIKARI::EDITOR {
         if (adjustmentSelected) {
             ImGui::TextDisabled("%s", TEXT::Localize("ui.vfx.view.adjustmentScope").c_str());
         } else {
-        const char* operations[] = {"Move", "Rotate", "Scale"};
+        const char* operations[] = {TEXT::LocalizeCStr("ui.vfx.text.Move"), TEXT::LocalizeCStr("ui.viewport.rotate"), TEXT::LocalizeCStr("ui.assetInspector.scale")};
         const EditorGlyph glyphs[]{EditorGlyph::Translate, EditorGlyph::Rotate, EditorGlyph::Scale};
         const char* shortcuts[]{" (W)", " (E)", " (R)"};
         for (int i = 0; i < 3; ++i) {
@@ -141,7 +142,7 @@ namespace HIKARI::EDITOR {
         ImGui::SameLine();
         const bool world = layerGizmoState_.mode == EditorTransformGizmoMode::World;
         if (IconButton(world ? EditorGlyph::WorldSpace : EditorGlyph::LocalSpace, "TransformSpace",
-                EditorButtonTone::Quiet, {28,28}, VfxUiText(world ? "World (X)" : "Local (X)").c_str()))
+                EditorButtonTone::Quiet, {28,28}, VfxUiText(world ? TEXT::LocalizeCStr("ui.vfx.text.World (X)") : TEXT::LocalizeCStr("ui.vfx.text.Local (X)")).c_str()))
             layerGizmoState_.mode = layerGizmoState_.mode == EditorTransformGizmoMode::World ? EditorTransformGizmoMode::Local : EditorTransformGizmoMode::World;
         ImGui::SameLine();
         if (IconToggleButton(EditorGlyph::Snap, "TransformSnap", layerGizmoState_.snapEnabled, {28,28},
@@ -228,19 +229,20 @@ namespace HIKARI::EDITOR {
 
         const bool canvasVisible = ImGui::IsItemVisible();
         const bool hovered = ImGui::IsItemHovered();
+        const bool keyboardFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
         if (!layerGizmoEditing_ && !timelineEdit_.baseline) {
-            HandleTransformGizmoShortcuts(layerGizmoState_, hovered);
-            if (!adjustmentSelected && hovered && !ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed(ImGuiKey_F)) (void)FocusSelectedEmitter(statusMessage_);
+            HandleTransformGizmoShortcuts(layerGizmoState_, keyboardFocused);
+            if (!adjustmentSelected && ConsumeEditorShortcut(EditorShortcutScope::Viewport, ImGuiKey_F, keyboardFocused)) (void)FocusSelectedEmitter(statusMessage_);
         }
         std::string pickedLayer;
-        if (hovered && !ImGui::GetIO().WantTextInput && !ImGui::IsAnyItemActive()) {
-            if (ImGui::IsKeyPressed(ImGuiKey_H)) { previewCleanView_ = !previewCleanView_; previewNeedsRedraw_ = true; }
-            if (ImGui::IsKeyPressed(ImGuiKey_Space)) {
+        if (CanUseEditorShortcut(EditorShortcutScope::Viewport, keyboardFocused)) {
+            if (ConsumeEditorShortcut(EditorShortcutScope::Viewport, ImGuiKey_H, keyboardFocused, false)) { previewCleanView_ = !previewCleanView_; previewNeedsRedraw_ = true; }
+            if (ConsumeEditorShortcut(EditorShortcutScope::Viewport, ImGuiKey_Space, keyboardFocused, false)) {
                 if (!previewPlaying_) (void)PlayPreview(statusMessage_);
                 else PausePreview(!previewPaused_);
             }
-            if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) (void)StepPreviewFrame(-1, statusMessage_);
-            if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) (void)StepPreviewFrame(1, statusMessage_);
+            if (ConsumeEditorShortcut(EditorShortcutScope::Viewport, ImGuiKey_LeftArrow, keyboardFocused, true)) (void)StepPreviewFrame(-1, statusMessage_);
+            if (ConsumeEditorShortcut(EditorShortcutScope::Viewport, ImGuiKey_RightArrow, keyboardFocused, true)) (void)StepPreviewFrame(1, statusMessage_);
         }
         bool gizmoInteracting = false;
         if (!previewCleanView_) {

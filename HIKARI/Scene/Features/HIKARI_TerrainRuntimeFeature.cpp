@@ -52,7 +52,7 @@ namespace HIKARI {
                 ComponentTypeInfo terrain{};
                 terrain.typeName = "TerrainSurfaceComponent";
                 terrain.factory = []() -> std::unique_ptr<IComponent> {
-                    return std::make_unique<TerrainSurfaceComponent>();
+                    return IComponent::Create<TerrainSurfaceComponent>();
                 };
                 terrain.requiredComponents = {
                     "ModelComponent",

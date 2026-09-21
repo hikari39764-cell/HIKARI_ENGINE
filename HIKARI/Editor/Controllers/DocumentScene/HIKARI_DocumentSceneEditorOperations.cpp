@@ -18,23 +18,6 @@
 
 namespace HIKARI {
 
-    namespace {
-
-        EDITOR::EditorOperationParameter MakeOperationParameter(
-            std::string name,
-            EDITOR::EditorOperationParameterType type,
-            bool required,
-            std::string description) {
-            EDITOR::EditorOperationParameter parameter{};
-            parameter.name = std::move(name);
-            parameter.type = type;
-            parameter.required = required;
-            parameter.description = std::move(description);
-            return parameter;
-        }
-
-    } // namespace
-
     void DocumentSceneEditorController::RegisterEditorOperations() {
         RegisterSceneFolderOperations();
         RegisterSceneLayoutOperations();
@@ -55,17 +38,17 @@ namespace HIKARI {
                 if (!debug) return {false,"UNAVAILABLE","Developer diagnostics are unavailable."};
                 const auto reply=debug->Execute(world,parameters.value("command",std::string{}));
                 return {reply.success,reply.success ? "OK" : "REJECTED",reply.text};
-            }});
-        const auto P = MakeOperationParameter;
+            }}, HIKARI::EDITOR::EditorOperationKind::Session, false);
+
         operationRegistry_.Register({
             "material.node_info",
             "Return one node's semantic contract.",
             "model_material",
             {
-                P("nodeType", EditorOperationParameterType::String,
-                  false, "稳定节点类型名，例如 node.additive"),
-                P("name", EditorOperationParameterType::String,
-                  false, "节点类型别名，与 nodeType 二选一"),
+                EDITOR::EditorOperationParameter{"nodeType", EditorOperationParameterType::String,
+                  false, "稳定节点类型名，例如 node.additive"},
+                EDITOR::EditorOperationParameter{"name", EditorOperationParameterType::String,
+                  false, "节点类型别名，与 nodeType 二选一"},
             },
             [](const nlohmann::json& parameters)
                 -> EDITOR::EditorOperationResult {
@@ -92,39 +75,39 @@ namespace HIKARI {
                 }
                 return result;
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Query, false);
         operationRegistry_.Register({
             "scene.set_transform",
             "Set one object's transform by stable objectId. Exact name is a discovery fallback and must be unique.",
             "scene",
             {
-                P("objectId", EditorOperationParameterType::Int,
-                  false, "scene.objects.query 返回的稳定 SceneObjectId"),
-                P("name", EditorOperationParameterType::String,
-                  false, "仅兼容发现；重名时必须改用 objectId"),
-                P("positionX", EditorOperationParameterType::Float,
-                  false, "世界位置 X"),
-                P("positionY", EditorOperationParameterType::Float,
-                  false, "世界位置 Y"),
-                P("positionZ", EditorOperationParameterType::Float,
-                  false, "世界位置 Z"),
-                P("scaleX", EditorOperationParameterType::Float,
-                  false, "缩放 X"),
-                P("scaleY", EditorOperationParameterType::Float,
-                  false, "缩放 Y"),
-                P("scaleZ", EditorOperationParameterType::Float,
-                  false, "缩放 Z"),
-                P("rotationX", EditorOperationParameterType::Float,
-                  false, "欧拉旋转 X（度）"),
-                P("rotationY", EditorOperationParameterType::Float,
-                  false, "欧拉旋转 Y（度）"),
-                P("rotationZ", EditorOperationParameterType::Float,
-                  false, "欧拉旋转 Z（度）"),
+                EDITOR::EditorOperationParameter{"objectId", EditorOperationParameterType::Int,
+                  false, "scene.objects.query 返回的稳定 SceneObjectId"},
+                EDITOR::EditorOperationParameter{"name", EditorOperationParameterType::String,
+                  false, "仅兼容发现；重名时必须改用 objectId"},
+                EDITOR::EditorOperationParameter{"positionX", EditorOperationParameterType::Float,
+                  false, "世界位置 X"},
+                EDITOR::EditorOperationParameter{"positionY", EditorOperationParameterType::Float,
+                  false, "世界位置 Y"},
+                EDITOR::EditorOperationParameter{"positionZ", EditorOperationParameterType::Float,
+                  false, "世界位置 Z"},
+                EDITOR::EditorOperationParameter{"scaleX", EditorOperationParameterType::Float,
+                  false, "缩放 X"},
+                EDITOR::EditorOperationParameter{"scaleY", EditorOperationParameterType::Float,
+                  false, "缩放 Y"},
+                EDITOR::EditorOperationParameter{"scaleZ", EditorOperationParameterType::Float,
+                  false, "缩放 Z"},
+                EDITOR::EditorOperationParameter{"rotationX", EditorOperationParameterType::Float,
+                  false, "欧拉旋转 X（度）"},
+                EDITOR::EditorOperationParameter{"rotationY", EditorOperationParameterType::Float,
+                  false, "欧拉旋转 Y（度）"},
+                EDITOR::EditorOperationParameter{"rotationZ", EditorOperationParameterType::Float,
+                  false, "欧拉旋转 Z（度）"},
             },
             [this](const nlohmann::json& parameters) {
                 return ExecuteAiSceneSetTransform(parameters);
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
         operationRegistry_.Register({
             "scene.list_objects",
             "List scene objects with position and scale.",
@@ -133,7 +116,7 @@ namespace HIKARI {
             [this](const nlohmann::json&) {
                 return ExecuteAiSceneObjectQuery(false);
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Query);
         operationRegistry_.Register({
             "scene.snapshot",
             "Return a compact scene object snapshot.",
@@ -142,19 +125,19 @@ namespace HIKARI {
             [this](const nlohmann::json&) {
                 return ExecuteAiSceneObjectQuery(true);
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Query);
         operationRegistry_.Register({
             "scene.query",
             "Query scene objects by name filter.",
             "scene",
             {
-                P("name", EditorOperationParameterType::String,
-                  false, "按名称包含过滤"),
+                EDITOR::EditorOperationParameter{"name", EditorOperationParameterType::String,
+                  false, "按名称包含过滤"},
             },
             [this](const nlohmann::json& parameters) {
                 return ExecuteAiSceneQuery(parameters);
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Query);
         operationRegistry_.Register({
             "asset.list_models",
             "List registered model assets.",
@@ -163,36 +146,35 @@ namespace HIKARI {
             [this](const nlohmann::json&) {
                 return ExecuteAiAssetListModels();
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Query, false);
         operationRegistry_.Register({"capture.status", "Poll a capture ticket and return its actual image.", "general",
-            {P("captureId", EditorOperationParameterType::Int, true, "Capture ticket")},
-            [this](const nlohmann::json& p) { return PollAiPreviewCapture(p.at("captureId").get<uint64_t>()); }});
+            {EDITOR::EditorOperationParameter{"captureId", EditorOperationParameterType::Int, true, "Capture ticket"}},
+            [this](const nlohmann::json& p) { return PollAiPreviewCapture(p.at("captureId").get<uint64_t>()); }}, HIKARI::EDITOR::EditorOperationKind::Query, false);
         operationRegistry_.Register({
             "capture.preview",
             "Capture the current visible preview as a real image. Poll capture.status until complete.",
             "general",
             {
-                P("path", EditorOperationParameterType::String,
-                  false, "输出文件路径，缺省为临时目录"),
+                EDITOR::EditorOperationParameter{"path", EditorOperationParameterType::String,
+                  false, "输出文件路径，缺省为临时目录"},
             },
             [this](const nlohmann::json& parameters) {
                 return ExecuteAiCapturePreview(parameters);
             },
-        });
-
+        }, HIKARI::EDITOR::EditorOperationKind::Session, true, HIKARI::EDITOR::EditorOperationSessionDispatch::Preview);
 
         operationRegistry_.Register({
             "asset.import",
             "Copy a supported source file into the project and queue its import.",
             "assets",
             {
-                P("path", EditorOperationParameterType::String,
-                  true, "源文件绝对路径"),
+                EDITOR::EditorOperationParameter{"path", EditorOperationParameterType::String,
+                  true, "源文件绝对路径"},
             },
             [this](const nlohmann::json& parameters) {
                 return ExecuteAiAssetImport(parameters);
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation, false);
         operationRegistry_.Register({
             "asset.import_status",
             "Report the current queued asset import progress.",
@@ -201,7 +183,7 @@ namespace HIKARI {
             [this](const nlohmann::json&) {
                 return ExecuteAiAssetImportStatus();
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Query, false);
         operationRegistry_.Register({
             "action.undo_last",
             "Undo the most recent edit in the active workspace.",
@@ -210,16 +192,16 @@ namespace HIKARI {
             [this](const nlohmann::json&) {
                 return ExecuteAiUndoLast();
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
         operationRegistry_.Register({
             "material.node_list",
             "List discoverable material graph node types.",
             "model_material",
             {
-                P("keyword", EditorOperationParameterType::String,
-                  false, "按关键字过滤节点类型"),
-                P("class", EditorOperationParameterType::String,
-                  false, "按节点类别过滤"),
+                EDITOR::EditorOperationParameter{"keyword", EditorOperationParameterType::String,
+                  false, "按关键字过滤节点类型"},
+                EDITOR::EditorOperationParameter{"class", EditorOperationParameterType::String,
+                  false, "按节点类别过滤"},
             },
             [](const nlohmann::json& parameters) {
                 EDITOR::EditorOperationResult result{};
@@ -241,169 +223,168 @@ namespace HIKARI {
                 }
                 return result;
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Query, false);
         operationRegistry_.Register({
             "scene.create_object",
             "Create a model object in the scene by asset id or path fragment.",
             "scene",
             {
-                P("model", EditorOperationParameterType::String,
-                  true, "模型资产 id 或路径片段"),
-                P("name", EditorOperationParameterType::String,
-                  false, "物体名称，缺省为 AI Model"),
-                P("positionX", EditorOperationParameterType::Float,
-                  false, "世界位置 X"),
-                P("positionY", EditorOperationParameterType::Float,
-                  false, "世界位置 Y"),
-                P("positionZ", EditorOperationParameterType::Float,
-                  false, "世界位置 Z"),
-                P("scaleX", EditorOperationParameterType::Float,
-                  false, "缩放 X"),
-                P("scaleY", EditorOperationParameterType::Float,
-                  false, "缩放 Y"),
-                P("scaleZ", EditorOperationParameterType::Float,
-                  false, "缩放 Z"),
+                EDITOR::EditorOperationParameter{"model", EditorOperationParameterType::String,
+                  true, "模型资产 id 或路径片段"},
+                EDITOR::EditorOperationParameter{"name", EditorOperationParameterType::String,
+                  false, "物体名称，缺省为 AI Model"},
+                EDITOR::EditorOperationParameter{"positionX", EditorOperationParameterType::Float,
+                  false, "世界位置 X"},
+                EDITOR::EditorOperationParameter{"positionY", EditorOperationParameterType::Float,
+                  false, "世界位置 Y"},
+                EDITOR::EditorOperationParameter{"positionZ", EditorOperationParameterType::Float,
+                  false, "世界位置 Z"},
+                EDITOR::EditorOperationParameter{"scaleX", EditorOperationParameterType::Float,
+                  false, "缩放 X"},
+                EDITOR::EditorOperationParameter{"scaleY", EditorOperationParameterType::Float,
+                  false, "缩放 Y"},
+                EDITOR::EditorOperationParameter{"scaleZ", EditorOperationParameterType::Float,
+                  false, "缩放 Z"},
             },
             [this](const nlohmann::json& parameters) {
                 return ExecuteAiSceneCreateObject(parameters);
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
         operationRegistry_.Register({
             "scene.create_world_sprite",
             "Create a 3D world sprite directly from a texture asset id or path fragment.",
             "scene",
             {
-                P("texture", EditorOperationParameterType::String,
-                  true, "纹理资产 id 或路径片段"),
-                P("name", EditorOperationParameterType::String,
-                  false, "物体名称，缺省使用纹理名"),
-                P("positionX", EditorOperationParameterType::Float,
-                  false, "世界位置 X"),
-                P("positionY", EditorOperationParameterType::Float,
-                  false, "世界位置 Y"),
-                P("positionZ", EditorOperationParameterType::Float,
-                  false, "世界位置 Z"),
-                P("scaleX", EditorOperationParameterType::Float,
-                  false, "缩放 X"),
-                P("scaleY", EditorOperationParameterType::Float,
-                  false, "缩放 Y"),
-                P("scaleZ", EditorOperationParameterType::Float,
-                  false, "缩放 Z"),
+                EDITOR::EditorOperationParameter{"texture", EditorOperationParameterType::String,
+                  true, "纹理资产 id 或路径片段"},
+                EDITOR::EditorOperationParameter{"name", EditorOperationParameterType::String,
+                  false, "物体名称，缺省使用纹理名"},
+                EDITOR::EditorOperationParameter{"positionX", EditorOperationParameterType::Float,
+                  false, "世界位置 X"},
+                EDITOR::EditorOperationParameter{"positionY", EditorOperationParameterType::Float,
+                  false, "世界位置 Y"},
+                EDITOR::EditorOperationParameter{"positionZ", EditorOperationParameterType::Float,
+                  false, "世界位置 Z"},
+                EDITOR::EditorOperationParameter{"scaleX", EditorOperationParameterType::Float,
+                  false, "缩放 X"},
+                EDITOR::EditorOperationParameter{"scaleY", EditorOperationParameterType::Float,
+                  false, "缩放 Y"},
+                EDITOR::EditorOperationParameter{"scaleZ", EditorOperationParameterType::Float,
+                  false, "缩放 Z"},
             },
             [this](const nlohmann::json& parameters) {
                 return ExecuteAiSceneCreateWorldSprite(parameters);
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
         operationRegistry_.Register({
             "scene.create_world_text",
             "Create editable SDF text directly in 3D world space.",
             "scene",
             {
-                P("text", EditorOperationParameterType::String,
-                  true, "UTF-8 文本内容"),
-                P("fontAssetPath", EditorOperationParameterType::String,
-                  false, "项目 Fonts 或 Assets 下的相对字体路径"),
-                P("name", EditorOperationParameterType::String,
-                  false, "物体名称，缺省为 World Text"),
-                P("positionX", EditorOperationParameterType::Float,
-                  false, "世界位置 X"),
-                P("positionY", EditorOperationParameterType::Float,
-                  false, "世界位置 Y"),
-                P("positionZ", EditorOperationParameterType::Float,
-                  false, "世界位置 Z"),
-                P("rotationX", EditorOperationParameterType::Float,
-                  false, "欧拉旋转 X（度）"),
-                P("rotationY", EditorOperationParameterType::Float,
-                  false, "欧拉旋转 Y（度）"),
-                P("rotationZ", EditorOperationParameterType::Float,
-                  false, "欧拉旋转 Z（度）"),
-                P("scaleX", EditorOperationParameterType::Float,
-                  false, "缩放 X"),
-                P("scaleY", EditorOperationParameterType::Float,
-                  false, "缩放 Y"),
-                P("scaleZ", EditorOperationParameterType::Float,
-                  false, "缩放 Z"),
-                P("layoutWidth", EditorOperationParameterType::Float,
-                  false, "文本布局宽度（世界单位）"),
-                P("layoutHeight", EditorOperationParameterType::Float,
-                  false, "文本布局高度（世界单位）"),
-                P("fontHeight", EditorOperationParameterType::Float,
-                  false, "字高（世界单位）"),
-                P("colorR", EditorOperationParameterType::Float,
-                  false, "文字线性色彩 R"),
-                P("colorG", EditorOperationParameterType::Float,
-                  false, "文字线性色彩 G"),
-                P("colorB", EditorOperationParameterType::Float,
-                  false, "文字线性色彩 B"),
-                P("outlineR", EditorOperationParameterType::Float,
-                  false, "描边线性色彩 R"),
-                P("outlineG", EditorOperationParameterType::Float,
-                  false, "描边线性色彩 G"),
-                P("outlineB", EditorOperationParameterType::Float,
-                  false, "描边线性色彩 B"),
-                P("outlineWidth", EditorOperationParameterType::Float,
-                  false, "SDF 描边宽度，范围 0-0.25"),
-                P("opacity", EditorOperationParameterType::Float,
-                  false, "不透明度，范围 0-1"),
-                P("horizontalAlign", EditorOperationParameterType::String,
-                  false, "left/center/right"),
-                P("verticalAlign", EditorOperationParameterType::String,
-                  false, "top/center/bottom"),
-                P("wrap", EditorOperationParameterType::String,
-                  false, "none/character"),
-                P("facing", EditorOperationParameterType::String,
-                  false, "fixed/camera_facing/fixed_y_axis"),
+                EDITOR::EditorOperationParameter{"text", EditorOperationParameterType::String,
+                  true, "UTF-8 文本内容"},
+                EDITOR::EditorOperationParameter{"fontAssetPath", EditorOperationParameterType::String,
+                  false, "项目 Fonts 或 Assets 下的相对字体路径"},
+                EDITOR::EditorOperationParameter{"name", EditorOperationParameterType::String,
+                  false, "物体名称，缺省为 World Text"},
+                EDITOR::EditorOperationParameter{"positionX", EditorOperationParameterType::Float,
+                  false, "世界位置 X"},
+                EDITOR::EditorOperationParameter{"positionY", EditorOperationParameterType::Float,
+                  false, "世界位置 Y"},
+                EDITOR::EditorOperationParameter{"positionZ", EditorOperationParameterType::Float,
+                  false, "世界位置 Z"},
+                EDITOR::EditorOperationParameter{"rotationX", EditorOperationParameterType::Float,
+                  false, "欧拉旋转 X（度）"},
+                EDITOR::EditorOperationParameter{"rotationY", EditorOperationParameterType::Float,
+                  false, "欧拉旋转 Y（度）"},
+                EDITOR::EditorOperationParameter{"rotationZ", EditorOperationParameterType::Float,
+                  false, "欧拉旋转 Z（度）"},
+                EDITOR::EditorOperationParameter{"scaleX", EditorOperationParameterType::Float,
+                  false, "缩放 X"},
+                EDITOR::EditorOperationParameter{"scaleY", EditorOperationParameterType::Float,
+                  false, "缩放 Y"},
+                EDITOR::EditorOperationParameter{"scaleZ", EditorOperationParameterType::Float,
+                  false, "缩放 Z"},
+                EDITOR::EditorOperationParameter{"layoutWidth", EditorOperationParameterType::Float,
+                  false, "文本布局宽度（世界单位）"},
+                EDITOR::EditorOperationParameter{"layoutHeight", EditorOperationParameterType::Float,
+                  false, "文本布局高度（世界单位）"},
+                EDITOR::EditorOperationParameter{"fontHeight", EditorOperationParameterType::Float,
+                  false, "字高（世界单位）"},
+                EDITOR::EditorOperationParameter{"colorR", EditorOperationParameterType::Float,
+                  false, "文字线性色彩 R"},
+                EDITOR::EditorOperationParameter{"colorG", EditorOperationParameterType::Float,
+                  false, "文字线性色彩 G"},
+                EDITOR::EditorOperationParameter{"colorB", EditorOperationParameterType::Float,
+                  false, "文字线性色彩 B"},
+                EDITOR::EditorOperationParameter{"outlineR", EditorOperationParameterType::Float,
+                  false, "描边线性色彩 R"},
+                EDITOR::EditorOperationParameter{"outlineG", EditorOperationParameterType::Float,
+                  false, "描边线性色彩 G"},
+                EDITOR::EditorOperationParameter{"outlineB", EditorOperationParameterType::Float,
+                  false, "描边线性色彩 B"},
+                EDITOR::EditorOperationParameter{"outlineWidth", EditorOperationParameterType::Float,
+                  false, "SDF 描边宽度，范围 0-0.25"},
+                EDITOR::EditorOperationParameter{"opacity", EditorOperationParameterType::Float,
+                  false, "不透明度，范围 0-1"},
+                EDITOR::EditorOperationParameter{"horizontalAlign", EditorOperationParameterType::String,
+                  false, "left/center/right"},
+                EDITOR::EditorOperationParameter{"verticalAlign", EditorOperationParameterType::String,
+                  false, "top/center/bottom"},
+                EDITOR::EditorOperationParameter{"wrap", EditorOperationParameterType::String,
+                  false, "none/character"},
+                EDITOR::EditorOperationParameter{"facing", EditorOperationParameterType::String,
+                  false, "fixed/camera_facing/fixed_y_axis"},
             },
             [this](const nlohmann::json& parameters) {
                 return ExecuteAiSceneCreateWorldText(parameters);
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
         operationRegistry_.Register({
             "procedural.create_primitive",
             "Create a procedural mesh object (box/sphere/plane/grid_plane/cylinder/capsule).",
             "scene",
             {
-                P("kind", EditorOperationParameterType::String,
-                  false, "box/sphere/plane/grid_plane/cylinder/capsule"),
-                P("name", EditorOperationParameterType::String,
-                  false, "物体名称，缺省使用 kind"),
-                P("positionX", EditorOperationParameterType::Float,
-                  false, "世界位置 X"),
-                P("positionY", EditorOperationParameterType::Float,
-                  false, "世界位置 Y"),
-                P("positionZ", EditorOperationParameterType::Float,
-                  false, "世界位置 Z"),
-                P("scaleX", EditorOperationParameterType::Float,
-                  false, "缩放 X"),
-                P("scaleY", EditorOperationParameterType::Float,
-                  false, "缩放 Y"),
-                P("scaleZ", EditorOperationParameterType::Float,
-                  false, "缩放 Z"),
-                P("width", EditorOperationParameterType::Float,
-                  false, "网格宽度"),
-                P("height", EditorOperationParameterType::Float,
-                  false, "网格高度"),
-                P("depth", EditorOperationParameterType::Float,
-                  false, "网格深度"),
+                EDITOR::EditorOperationParameter{"kind", EditorOperationParameterType::String,
+                  false, "box/sphere/plane/grid_plane/cylinder/capsule"},
+                EDITOR::EditorOperationParameter{"name", EditorOperationParameterType::String,
+                  false, "物体名称，缺省使用 kind"},
+                EDITOR::EditorOperationParameter{"positionX", EditorOperationParameterType::Float,
+                  false, "世界位置 X"},
+                EDITOR::EditorOperationParameter{"positionY", EditorOperationParameterType::Float,
+                  false, "世界位置 Y"},
+                EDITOR::EditorOperationParameter{"positionZ", EditorOperationParameterType::Float,
+                  false, "世界位置 Z"},
+                EDITOR::EditorOperationParameter{"scaleX", EditorOperationParameterType::Float,
+                  false, "缩放 X"},
+                EDITOR::EditorOperationParameter{"scaleY", EditorOperationParameterType::Float,
+                  false, "缩放 Y"},
+                EDITOR::EditorOperationParameter{"scaleZ", EditorOperationParameterType::Float,
+                  false, "缩放 Z"},
+                EDITOR::EditorOperationParameter{"width", EditorOperationParameterType::Float,
+                  false, "网格宽度"},
+                EDITOR::EditorOperationParameter{"height", EditorOperationParameterType::Float,
+                  false, "网格高度"},
+                EDITOR::EditorOperationParameter{"depth", EditorOperationParameterType::Float,
+                  false, "网格深度"},
             },
             [this](const nlohmann::json& parameters) {
                 return ExecuteAiProceduralCreatePrimitive(parameters);
             },
-        });
-
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
         operationRegistry_.Register({
             "material.verify",
             "Capture the material preview as an image for the main model to evaluate.",
             "model_material",
             {
-                P("prompt", EditorOperationParameterType::String,
-                  false, "识图提示词，缺省使用默认描述"),
+                EDITOR::EditorOperationParameter{"prompt", EditorOperationParameterType::String,
+                  false, "识图提示词，缺省使用默认描述"},
             },
             [this](const nlohmann::json& parameters) {
                 return ExecuteAiMaterialVerify(parameters);
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Session, true, HIKARI::EDITOR::EditorOperationSessionDispatch::Preview);
         operationRegistry_.Register({
             "scene.save",
             "Save the current scene document.",
@@ -412,117 +393,117 @@ namespace HIKARI {
             [this](const nlohmann::json&) {
                 return ExecuteSceneSave();
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
         operationRegistry_.Register({
             "scene.delete_object",
             "Delete the selected object, or target one object by stable objectId.",
             "scene",
             {
-                P("objectId", EditorOperationParameterType::Int,
-                  false, "scene.objects.query 返回的稳定 SceneObjectId"),
-                P("name", EditorOperationParameterType::String,
-                  false, "仅兼容发现；重名时必须改用 objectId"),
+                EDITOR::EditorOperationParameter{"objectId", EditorOperationParameterType::Int,
+                  false, "scene.objects.query 返回的稳定 SceneObjectId"},
+                EDITOR::EditorOperationParameter{"name", EditorOperationParameterType::String,
+                  false, "仅兼容发现；重名时必须改用 objectId"},
             },
             [this](const nlohmann::json& parameters) {
                 return ExecuteSceneDeleteObject(parameters);
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
         operationRegistry_.Register({
             "scene.duplicate_object",
             "Duplicate the selected object, or target one object by stable objectId.",
             "scene",
             {
-                P("objectId", EditorOperationParameterType::Int,
-                  false, "scene.objects.query 返回的稳定 SceneObjectId"),
-                P("name", EditorOperationParameterType::String,
-                  false, "仅兼容发现；重名时必须改用 objectId"),
+                EDITOR::EditorOperationParameter{"objectId", EditorOperationParameterType::Int,
+                  false, "scene.objects.query 返回的稳定 SceneObjectId"},
+                EDITOR::EditorOperationParameter{"name", EditorOperationParameterType::String,
+                  false, "仅兼容发现；重名时必须改用 objectId"},
             },
             [this](const nlohmann::json& parameters) {
                 return ExecuteSceneDuplicateObject(parameters);
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
         operationRegistry_.Register({
             "scene.create_empty_object",
             "Create an empty scene object.",
             "scene",
             {
-                P("name", EditorOperationParameterType::String,
-                  false, "物体名称，缺省为 AI Object"),
-                P("positionX", EditorOperationParameterType::Float,
-                  false, "世界位置 X"),
-                P("positionY", EditorOperationParameterType::Float,
-                  false, "世界位置 Y"),
-                P("positionZ", EditorOperationParameterType::Float,
-                  false, "世界位置 Z"),
-                P("scaleX", EditorOperationParameterType::Float,
-                  false, "缩放 X"),
-                P("scaleY", EditorOperationParameterType::Float,
-                  false, "缩放 Y"),
-                P("scaleZ", EditorOperationParameterType::Float,
-                  false, "缩放 Z"),
+                EDITOR::EditorOperationParameter{"name", EditorOperationParameterType::String,
+                  false, "物体名称，缺省为 AI Object"},
+                EDITOR::EditorOperationParameter{"positionX", EditorOperationParameterType::Float,
+                  false, "世界位置 X"},
+                EDITOR::EditorOperationParameter{"positionY", EditorOperationParameterType::Float,
+                  false, "世界位置 Y"},
+                EDITOR::EditorOperationParameter{"positionZ", EditorOperationParameterType::Float,
+                  false, "世界位置 Z"},
+                EDITOR::EditorOperationParameter{"scaleX", EditorOperationParameterType::Float,
+                  false, "缩放 X"},
+                EDITOR::EditorOperationParameter{"scaleY", EditorOperationParameterType::Float,
+                  false, "缩放 Y"},
+                EDITOR::EditorOperationParameter{"scaleZ", EditorOperationParameterType::Float,
+                  false, "缩放 Z"},
             },
             [this](const nlohmann::json& parameters) {
                 return ExecuteSceneCreateEmptyObject(parameters);
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
         operationRegistry_.Register({
             "terrain.fill_layer",
             "Fill an entire terrain object with one material layer while preserving authored height and coverage.",
             "terrain_surface",
             {
-                P("objectId", EditorOperationParameterType::Int,
-                  false, "scene.objects.query 返回的稳定 SceneObjectId"),
-                P("name", EditorOperationParameterType::String,
-                  false, "仅兼容发现；重名时必须改用 objectId"),
-                P("presetId", EditorOperationParameterType::String,
-                  true, "要填充的地形材质层 preset id"),
+                EDITOR::EditorOperationParameter{"objectId", EditorOperationParameterType::Int,
+                  false, "scene.objects.query 返回的稳定 SceneObjectId"},
+                EDITOR::EditorOperationParameter{"name", EditorOperationParameterType::String,
+                  false, "仅兼容发现；重名时必须改用 objectId"},
+                EDITOR::EditorOperationParameter{"presetId", EditorOperationParameterType::String,
+                  true, "要填充的地形材质层 preset id"},
             },
             [this](const nlohmann::json& parameters) {
                 return ExecuteAiTerrainFillLayer(parameters);
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
         operationRegistry_.Register({
             "terrain.generate_procedural",
             "Generate deterministic hills, islands, ridges, basins, or dunes into a TerrainSurface range.",
             "terrain_surface",
             {
-                P("objectId", EditorOperationParameterType::Int,
-                  false, "scene.objects.query 返回的稳定 SceneObjectId"),
-                P("name", EditorOperationParameterType::String,
-                  false, "仅兼容发现；重名时必须改用 objectId"),
-                P("mode", EditorOperationParameterType::String,
-                  true, "noise_hills/island_coast/ridge/basin_crater/dunes"),
-                P("blendMode", EditorOperationParameterType::String,
-                  false, "add/replace/max，默认 add"),
-                P("seed", EditorOperationParameterType::Int,
-                  false, "确定性生成种子"),
-                P("centerX", EditorOperationParameterType::Float,
-                  false, "地形本地 X 中心"),
-                P("centerZ", EditorOperationParameterType::Float,
-                  false, "地形本地 Z 中心"),
-                P("extentX", EditorOperationParameterType::Float,
-                  false, "本地 X 半范围"),
-                P("extentZ", EditorOperationParameterType::Float,
-                  false, "本地 Z 半范围"),
-                P("amplitude", EditorOperationParameterType::Float,
-                  false, "高度振幅"),
-                P("baseHeight", EditorOperationParameterType::Float,
-                  false, "替换模式基准高度"),
-                P("scale", EditorOperationParameterType::Float,
-                  false, "特征尺度"),
-                P("edgeFalloff", EditorOperationParameterType::Float,
-                  false, "边缘衰减"),
-                P("blendAmount", EditorOperationParameterType::Float,
-                  false, "混合量"),
-                P("directionDegrees", EditorOperationParameterType::Float,
-                  false, "脊线/沙丘方向"),
-                P("octaves", EditorOperationParameterType::Int,
-                  false, "噪声层数"),
+                EDITOR::EditorOperationParameter{"objectId", EditorOperationParameterType::Int,
+                  false, "scene.objects.query 返回的稳定 SceneObjectId"},
+                EDITOR::EditorOperationParameter{"name", EditorOperationParameterType::String,
+                  false, "仅兼容发现；重名时必须改用 objectId"},
+                EDITOR::EditorOperationParameter{"mode", EditorOperationParameterType::String,
+                  true, "noise_hills/island_coast/ridge/basin_crater/dunes"},
+                EDITOR::EditorOperationParameter{"blendMode", EditorOperationParameterType::String,
+                  false, "add/replace/max，默认 add"},
+                EDITOR::EditorOperationParameter{"seed", EditorOperationParameterType::Int,
+                  false, "确定性生成种子"},
+                EDITOR::EditorOperationParameter{"centerX", EditorOperationParameterType::Float,
+                  false, "地形本地 X 中心"},
+                EDITOR::EditorOperationParameter{"centerZ", EditorOperationParameterType::Float,
+                  false, "地形本地 Z 中心"},
+                EDITOR::EditorOperationParameter{"extentX", EditorOperationParameterType::Float,
+                  false, "本地 X 半范围"},
+                EDITOR::EditorOperationParameter{"extentZ", EditorOperationParameterType::Float,
+                  false, "本地 Z 半范围"},
+                EDITOR::EditorOperationParameter{"amplitude", EditorOperationParameterType::Float,
+                  false, "高度振幅"},
+                EDITOR::EditorOperationParameter{"baseHeight", EditorOperationParameterType::Float,
+                  false, "替换模式基准高度"},
+                EDITOR::EditorOperationParameter{"scale", EditorOperationParameterType::Float,
+                  false, "特征尺度"},
+                EDITOR::EditorOperationParameter{"edgeFalloff", EditorOperationParameterType::Float,
+                  false, "边缘衰减"},
+                EDITOR::EditorOperationParameter{"blendAmount", EditorOperationParameterType::Float,
+                  false, "混合量"},
+                EDITOR::EditorOperationParameter{"directionDegrees", EditorOperationParameterType::Float,
+                  false, "脊线/沙丘方向"},
+                EDITOR::EditorOperationParameter{"octaves", EditorOperationParameterType::Int,
+                  false, "噪声层数"},
             },
             [this](const nlohmann::json& parameters) {
                 return ExecuteAiTerrainProceduralGenerate(parameters);
             },
-        });
+        }, HIKARI::EDITOR::EditorOperationKind::Mutation);
         EDITOR::RegisterModelCollisionOperations(
             operationRegistry_,
             ModelCollisionWorkspace(),

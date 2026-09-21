@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [Parameter(Mandatory)]
     [string]$Project,
@@ -191,7 +191,7 @@ function Resolve-HikariCMake {
     }
     $pathCMake =
         Get-Command cmake.exe -ErrorAction SilentlyContinue
-    $editorBundledCMake = Join-Path $SdkRoot '../../../Sdk/Tools/CMake/bin/cmake.exe'
+    $editorBundledCMake = Join-Path $SdkRoot '../../Sdk/Tools/CMake/bin/cmake.exe'
     if (Test-Path -LiteralPath $editorBundledCMake -PathType Leaf) {
         $candidates += [IO.Path]::GetFullPath($editorBundledCMake)
     }
@@ -343,6 +343,7 @@ if (-not (Test-Path -LiteralPath $packageConfig -PathType Leaf)) {
     throw "HIKARI SDK package is incomplete: $packageConfig"
 }
 
+Write-Host "HIKARI_STAGE checking"
 $projectInputs = Get-HikariProjectInputFiles `
     -ProjectRoot $projectRoot `
     -ManifestRoot $manifestRoot `
@@ -373,6 +374,7 @@ if (-not $ForceBuild -and
     exit 0
 }
 
+Write-Host "HIKARI_STAGE building"
 $cmake = Resolve-HikariCMake -SdkRoot $sdkRootPath
 
 & $cmake `

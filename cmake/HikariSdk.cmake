@@ -243,19 +243,19 @@ function(hikari_configure_game_project_sdk host_target)
 
     install(
         DIRECTORY "${HIKARI_SOURCE_ROOT}/include/HIKARI"
-        DESTINATION "Sdk/include")
+        DESTINATION "${HIKARI_INSTALL_RUNTIME_PREFIX}Sdk/include")
     if(HIKARI_WITH_EDITOR_BUILD)
         # The upstream single header carries its MIT license. Project tools can
         # use the bundled parser without including any private engine headers.
         install(FILES "${HIKARI_SOURCE_ROOT}/ThirdParty/nlohmann/json.hpp"
-            DESTINATION "Sdk/third_party/nlohmann")
+            DESTINATION "${HIKARI_INSTALL_RUNTIME_PREFIX}Sdk/third_party/nlohmann")
         install(FILES "${HIKARI_SOURCE_ROOT}/Tools/Build/Invoke-HikariProjectCodeWorker.ps1"
-            DESTINATION "Sdk/Tools")
+            DESTINATION "${HIKARI_INSTALL_RUNTIME_PREFIX}Sdk/Tools")
     endif()
     install(
         FILES
             "$<TARGET_LINKER_FILE:${host_target}>"
-        DESTINATION "Sdk/lib"
+        DESTINATION "${HIKARI_INSTALL_RUNTIME_PREFIX}Sdk/lib"
         RENAME "HIKARI_Engine.lib")
     install(
         FILES
@@ -263,37 +263,37 @@ function(hikari_configure_game_project_sdk host_target)
             "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfigVersion.cmake"
             "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARI_GameHost.json"
             "${HIKARI_SOURCE_ROOT}/cmake/SDK/HIKARIGameProject.cmake"
-        DESTINATION "Sdk/lib/cmake/HIKARI")
+        DESTINATION "${HIKARI_INSTALL_RUNTIME_PREFIX}Sdk/lib/cmake/HIKARI")
     install(
         FILES
             "${HIKARI_SOURCE_ROOT}/cmake/SDK/HIKARI_GameProjectModuleAdapter.cpp"
-        DESTINATION "Sdk/src")
+        DESTINATION "${HIKARI_INSTALL_RUNTIME_PREFIX}Sdk/src")
     if(HIKARI_WITH_EDITOR_BUILD)
         install(
             FILES
                 "${HIKARI_SOURCE_ROOT}/cmake/SDK/HIKARI_GameProjectEditorModuleAdapter.cpp"
-            DESTINATION "Sdk/src")
+            DESTINATION "${HIKARI_INSTALL_RUNTIME_PREFIX}Sdk/src")
     endif()
     install(
         FILES
             "${HIKARI_SOURCE_ROOT}/Tools/Build/Build-HikariProject.ps1"
             "${HIKARI_SOURCE_ROOT}/Tools/Build/HikariProjectPublication.ps1"
-        DESTINATION "Sdk/Tools")
+        DESTINATION "${HIKARI_INSTALL_RUNTIME_PREFIX}Sdk/Tools")
     if(HIKARI_WITH_EDITOR_BUILD)
         install(
             PROGRAMS "${CMAKE_COMMAND}"
-            DESTINATION "Sdk/Tools/CMake/bin")
+            DESTINATION "${HIKARI_INSTALL_RUNTIME_PREFIX}Sdk/Tools/CMake/bin")
         install(
             DIRECTORY "${CMAKE_ROOT}/"
             DESTINATION
-                "Sdk/Tools/CMake/share/${HIKARI_CMAKE_MODULE_DIRECTORY_NAME}")
+                "${HIKARI_INSTALL_RUNTIME_PREFIX}Sdk/Tools/CMake/share/${HIKARI_CMAKE_MODULE_DIRECTORY_NAME}")
         install(
             FILES "${HIKARI_CMAKE_LICENSE_FILE}"
-            DESTINATION "Sdk/Tools/CMake/licenses"
+            DESTINATION "${HIKARI_INSTALL_RUNTIME_PREFIX}Sdk/Tools/CMake/licenses"
             RENAME "CMake-LICENSE.rst")
         install(
             FILES "${HIKARI_CMAKE_TOOL_MANIFEST}"
-            DESTINATION "Sdk/Tools/CMake")
+            DESTINATION "${HIKARI_INSTALL_RUNTIME_PREFIX}Sdk/Tools/CMake")
         install(
             DIRECTORY "${HIKARI_SOURCE_ROOT}/out/install/game-shipping/"
             DESTINATION "Runtime/Shipping"

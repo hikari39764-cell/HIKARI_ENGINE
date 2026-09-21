@@ -72,7 +72,7 @@ namespace HIKARI {
                 ComponentTypeInfo camera{};
                 camera.typeName = "CameraComponent";
                 camera.factory = []() -> std::unique_ptr<IComponent> {
-                    return std::make_unique<CameraComponent>();
+                    return IComponent::Create<CameraComponent>();
                 };
                 camera.initializeDefaults = [](
                     const SceneObjectData&,
@@ -89,7 +89,7 @@ namespace HIKARI {
                 ComponentTypeInfo follow{};
                 follow.typeName = "CameraFollowComponent";
                 follow.factory = []() -> std::unique_ptr<IComponent> {
-                    return std::make_unique<CameraFollowComponent>();
+                    return IComponent::Create<CameraFollowComponent>();
                 };
                 follow.requiredComponents = {
                     "CameraComponent"

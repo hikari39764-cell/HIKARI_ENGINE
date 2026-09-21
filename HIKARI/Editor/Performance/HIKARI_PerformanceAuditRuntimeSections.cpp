@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Performance/HIKARI_PerformanceAuditPanel.h"
 
 #include "Core/HIKARI_TimeService.h"
@@ -37,7 +38,7 @@ namespace HIKARI::EDITOR::PERFORMANCE_AUDIT {
 
 #if defined(HIKARI_WITH_EDITOR)
 void DrawResourceSummaryTable(const RuntimePerformanceSnapshot &s) {
-  ImGui::SeparatorText("Resources");
+  ImGui::SeparatorText(TEXT::Localize("shell.resources").c_str());
   if (BeginMetricTable("ClusterResourceMetrics")) {
     MetricRow("Context / Ready / Failed", "%s / %u / %u",
               s.clusterResources.initialized ? "Ready" : "Missing",
@@ -82,7 +83,7 @@ void DrawResourceSummaryTable(const RuntimePerformanceSnapshot &s) {
 }
 
 void DrawEffectsTable(const RuntimePerformanceSnapshot &s) {
-  ImGui::SeparatorText("Effects");
+  ImGui::SeparatorText(TEXT::Localize("ui.vfx.effects").c_str());
   if (BeginMetricTable("EffectsMetrics", 250.0f)) {
     MetricRow("SSAO Mode / Valid / Half", "%s / %s / %s",
               GetSsaoModeName(s.ssao.mode),
@@ -169,7 +170,7 @@ void DrawEffectsTable(const RuntimePerformanceSnapshot &s) {
 }
 
 void DrawTemporalTable(const RuntimePerformanceSnapshot &s) {
-  ImGui::SeparatorText("Temporal");
+  ImGui::SeparatorText(TEXT::Localize("ui.debugView.temporal").c_str());
   if (BeginMetricTable("TemporalMetrics", 250.0f)) {
     const RENDER3D::RenderQualitySettings &renderQuality =
         RENDER3D::GetRenderQualitySettings();
@@ -339,7 +340,7 @@ void DrawTemporalTable(const RuntimePerformanceSnapshot &s) {
 }
 
 void DrawReadiness(const RuntimePerformanceSnapshot &s) {
-  ImGui::SeparatorText("Readiness");
+  ImGui::SeparatorText(TEXT::Localize("editor.ui.readiness.6dc122").c_str());
   if (ImGui::BeginTable("ReadinessTable", 3,
                         ImGuiTableFlags_SizingStretchSame)) {
     ImGui::TableNextColumn();

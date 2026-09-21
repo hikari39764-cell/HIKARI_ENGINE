@@ -56,10 +56,9 @@ void DrawPendingLink(const MATH::Vec2 &start, const MATH::Vec2 &end,
 void DrawMaterialGraphGroups(
     ImDrawList *drawList,
     const MaterialGraphData &graph,
-    const std::unordered_map<std::string, ImVec2> &screenPositions) {
+    const std::unordered_map<std::string, ImVec4> &screenBounds) {
   constexpr float kGroupPadding = 18.0f;
   constexpr float kGroupTitleHeight = 26.0f;
-  constexpr float kGroupNodeHeight = 120.0f;
   for (const MaterialGraphGroupData &group : graph.groups) {
     float minX = (std::numeric_limits<float>::max)();
     float minY = (std::numeric_limits<float>::max)();
@@ -67,14 +66,14 @@ void DrawMaterialGraphGroups(
     float maxY = -(std::numeric_limits<float>::max)();
     bool hasMembers = false;
     for (const std::string &nodeId : group.nodeIds) {
-      const auto found = screenPositions.find(nodeId);
-      if (found == screenPositions.end()) {
+      const auto found = screenBounds.find(nodeId);
+      if (found == screenBounds.end()) {
         continue;
       }
       minX = (std::min)(minX, found->second.x);
       minY = (std::min)(minY, found->second.y);
-      maxX = (std::max)(maxX, found->second.x + kNodeWidth);
-      maxY = (std::max)(maxY, found->second.y + kGroupNodeHeight);
+      maxX = (std::max)(maxX, found->second.z);
+      maxY = (std::max)(maxY, found->second.w);
       hasMembers = true;
     }
     if (!hasMembers) {

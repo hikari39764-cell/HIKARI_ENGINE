@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Performance/HIKARI_PerformanceAuditPanel.h"
 
 #include "Core/HIKARI_TimeService.h"
@@ -35,7 +36,7 @@ namespace HIKARI::EDITOR::PERFORMANCE_AUDIT {
 
 #if defined(HIKARI_WITH_EDITOR)
 void DrawRenderPathTable(const RuntimePerformanceSnapshot &s) {
-  ImGui::SeparatorText("Render Path");
+  ImGui::SeparatorText(TEXT::Localize("editor.ui.render.path.e693f1").c_str());
   if (BeginMetricTable("RenderPathMetrics", 250.0f)) {
     MetricRowText("Route", ToString(s.submission.routeMode));
     MetricRow("Mesh Forward Variants Ready / Failed", "%zu / %zu",
@@ -128,7 +129,7 @@ void DrawRenderPathTable(const RuntimePerformanceSnapshot &s) {
 void DrawGpuMaterialTable(const RuntimePerformanceSnapshot &s) {
   const RENDER3D::MATERIAL::GpuMaterialRegistryStats &materials =
       s.gpuMaterials;
-  ImGui::SeparatorText("GPU Materials");
+  ImGui::SeparatorText(TEXT::Localize("editor.ui.gpu.materials.d283d8").c_str());
   if (BeginMetricTable("GpuMaterialMetrics", 250.0f)) {
     MetricRow("State / Source Sync", "%s / %s",
               materials.initialized ? "resident" : "missing",
@@ -167,7 +168,7 @@ void DrawGpuMaterialTable(const RuntimePerformanceSnapshot &s) {
 }
 
 void DrawMeshShaderPipelineStatsTable(const RuntimePerformanceSnapshot &s) {
-  ImGui::SeparatorText("Mesh Shader Pipeline Stats");
+  ImGui::SeparatorText(TEXT::Localize("editor.ui.mesh.shader.pipeline.stats.b8b8b8").c_str());
   if (!s.pipelineStats.pipelineStatsAvailable) {
     const char *reason = s.pipelineStats.unavailableReason != nullptr &&
                                  s.pipelineStats.unavailableReason[0] != '\0'
@@ -229,13 +230,12 @@ void DrawMeshShaderPipelineStatsTable(const RuntimePerformanceSnapshot &s) {
     ImGui::EndTable();
   }
   if (!drewRows) {
-    ImGui::TextDisabled("No meshlet draw pipeline statistics were captured in "
-                        "the latest resolved frame.");
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.no.meshlet.draw.pipeline.statistics.were.captured.in.the.latest..e97211").c_str());
   }
 }
 
 void DrawGeometryPipelineTable(const RuntimePerformanceSnapshot &s) {
-  ImGui::SeparatorText("Geometry Pipeline");
+  ImGui::SeparatorText(TEXT::Localize("editor.ui.geometry.pipeline.9eac28").c_str());
   if (BeginMetricTable("GeometryPipelineMetrics", 250.0f)) {
     MetricRow("Cluster Cull Source / Submitted / Overflow", "%zu / %zu / %zu",
               s.mesh.clusterGpuCull.sourceInstanceCount,

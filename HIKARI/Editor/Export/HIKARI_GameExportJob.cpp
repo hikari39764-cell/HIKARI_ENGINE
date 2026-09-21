@@ -31,7 +31,7 @@ namespace HIKARI::EDITOR {
                 arguments.insert(arguments.end(), {script.wstring(), L"-Preset", L"game-shipping",
                     L"-Project", project.wstring(), L"-Install"});
             } else {
-                const auto runtime = PLATFORM::GetExecutableDirectory() / "Runtime/Shipping";
+                const auto runtime = PLATFORM::GetExecutableDirectory() / "Shipping";
                 const auto sdk = runtime / "Sdk";
                 script = sdk / "Tools/Build-HikariProject.ps1";
                 arguments.insert(arguments.end(), {script.wstring(), L"-Project", project.wstring(),

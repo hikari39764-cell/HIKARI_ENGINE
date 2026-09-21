@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxInspectorControls.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 #include "Assets/HIKARI_AssetDatabase.h"
@@ -79,13 +80,13 @@ namespace HIKARI::EDITOR {
         }
         ImGui::TextWrapped("%s", TEXT::PathToUtf8(contentLibraryRoot_).c_str());
         ImGui::SetNextItemWidth(-1);
-        ImGui::InputTextWithHint("##SharedSearch", "Search effects and categories", librarySearch_.data(), librarySearch_.size());
+        ImGui::InputTextWithHint("##SharedSearch",TEXT::Localize("editor.ui.search.effects.and.categories.6fa83b").c_str(), librarySearch_.data(), librarySearch_.size());
         const ImGuiTextFilter filter(librarySearch_.data());
         for (const auto& package : libraryPackages_) {
             if (!filter.PassFilter((package.name + " " + package.category + " " + package.description).c_str())) continue;
             ImGui::PushID(TEXT::PathToUtf8(package.manifestPath).c_str());
             ImGui::SeparatorText(package.name.c_str());
-            ImGui::TextDisabled("%s | v%s | %zu assets", package.category.c_str(), package.version.c_str(), package.assetCount);
+            ImGui::TextDisabled(TEXT::Localize("editor.ui.s.v.s.zu.assets.21539e").c_str(), package.category.c_str(), package.version.c_str(), package.assetCount);
             ImGui::TextWrapped("%s", package.description.c_str());
             if (ImGui::Button(VfxUiText("Import into project").c_str())) {
                 ASSETS::LIBRARY::ContentImportResult imported;
@@ -94,10 +95,10 @@ namespace HIKARI::EDITOR {
             ImGui::PopID();
         }
         if (ImGui::CollapsingHeader(VfxUiText("Share current effect").c_str())) {
-            ImGui::InputText("Package ID", libraryPackageId_.data(), libraryPackageId_.size());
-            ImGui::InputText("Revision", libraryPackageRevision_.data(), libraryPackageRevision_.size());
-            ImGui::InputText("Category", libraryCategory_.data(), libraryCategory_.size());
-            ImGui::InputText("Credits / license", libraryLicense_.data(), libraryLicense_.size());
+            ImGui::InputText(TEXT::LocalizeWindow("editor.ui.package.id.7db680", "Package ID").c_str(), libraryPackageId_.data(), libraryPackageId_.size());
+            ImGui::InputText(TEXT::LocalizeWindow("editor.ui.revision.3beb9a", "Revision").c_str(), libraryPackageRevision_.data(), libraryPackageRevision_.size());
+            ImGui::InputText(TEXT::LocalizeWindow("editor.ui.category.a3c686", "Category").c_str(), libraryCategory_.data(), libraryCategory_.size());
+            ImGui::InputText(TEXT::LocalizeWindow("editor.ui.credits.license.402861", "Credits / license").c_str(), libraryLicense_.data(), libraryLicense_.size());
             ImGui::TextWrapped(VfxUiText("Saves this effect and publishes its source dependencies. Existing revisions are kept; choose a new revision to update.").c_str());
             if (ImGui::Button(VfxUiText("Save and publish").c_str())) {
                 ASSETS::LIBRARY::ContentPackageInfo info;

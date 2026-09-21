@@ -109,7 +109,7 @@ namespace HIKARI {
                 ComponentTypeInfo input{};
                 input.typeName = "CharacterInputComponent";
                 input.factory = []() -> std::unique_ptr<IComponent> {
-                    return std::make_unique<CharacterInputComponent>();
+                    return IComponent::Create<CharacterInputComponent>();
                 };
                 input.requiredComponents = {
                     "CharacterLocomotionComponent"
@@ -220,7 +220,7 @@ namespace HIKARI {
                 ComponentTypeInfo spawnPoint{};
                 spawnPoint.typeName = "SpawnPointComponent";
                 spawnPoint.factory = []() -> std::unique_ptr<IComponent> {
-                    return std::make_unique<SpawnPointComponent>();
+                    return IComponent::Create<SpawnPointComponent>();
                 };
                 spawnPoint.initializeDefaults = [](
                     const SceneObjectData& object,
@@ -255,7 +255,7 @@ namespace HIKARI {
                 dialogueTrigger.typeName = "DialogueTriggerComponent";
                 dialogueTrigger.factory = []()
                     -> std::unique_ptr<IComponent> {
-                    return std::make_unique<DialogueTriggerComponent>();
+                    return IComponent::Create<DialogueTriggerComponent>();
                 };
                 dialogueTrigger.requiredComponents = {
                     "PhysicsBodyComponent",

@@ -108,7 +108,7 @@ namespace HIKARI {
                         TEXT::Localize("ui.viewport.playOptions").c_str());
                 }
                 if (ImGui::BeginPopup("Play Mode Menu")) {
-                    if (ImGui::MenuItem("Developer Console", "F10", false, previewRunning)) {
+                    if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.developer.console.20aa93", "Developer Console").c_str(), "F10", false, previewRunning)) {
                         runtimeDebugWindow_.Open();
                     }
                     if (ImGui::MenuItem(
@@ -282,12 +282,12 @@ namespace HIKARI {
         const ImVec2 imageOrigin = ImGui::GetCursorScreenPos();
         const bool gameViewFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
         auto processViewportShortcuts =
-            [&](bool viewportImageHovered) {
+            [&]() {
             if (playSession.IsRunning()) {
                 return;
             }
             const bool viewportShortcutFocused =
-                gameViewFocused || viewportImageHovered;
+                gameViewFocused;
             HandleTransformGizmoShortcuts(
                 context_.transformGizmo,
                 viewportShortcutFocused);
@@ -399,7 +399,7 @@ namespace HIKARI {
             const ImTextureID textureId = reinterpret_cast<ImTextureID>(static_cast<uintptr_t>(viewportSrv.ptr));
             ImGui::Image(textureId, imageSize);
             viewportImageHovered = ImGui::IsItemHovered();
-            processViewportShortcuts(viewportImageHovered);
+            processViewportShortcuts();
             // Drop target 驍ｵ・ｺ繝ｻ・ｯ viewport image 驍ｵ・ｺ繝ｻ・ｮ鬨ｾ・ｶ繝ｻ・ｴ髯溷供・ｾ螽ｯ繝ｻ鬨ｾ蜈ｷ・ｽ・ｻ鬯ｪ・ｭ繝ｻ・ｲ驍ｵ・ｺ陷会ｽｱ・つ遶乗劼・ｽ・ｾ隶呵ｶ｣・ｽ・ｶ陞｢・ｹ郢晢ｽｻ overlay item 驍ｵ・ｺ繝ｻ・ｫ髯槭ｑ・ｽ・ｪ驛｢・ｧ闕ｳ蟯ｩ髮ｷ驍ｵ・ｺ繝ｻ・ｪ驍ｵ・ｺ郢晢ｽｻ・つ郢晢ｽｻ
             if (!playSession.IsRunning()) {
                 HandleGameViewportAssetDrop(scene);
@@ -417,7 +417,7 @@ namespace HIKARI {
                     "ui.viewport.waitingForTexture").c_str());
             ImGui::Dummy(imageSize);
             viewportImageHovered = ImGui::IsItemHovered();
-            processViewportShortcuts(viewportImageHovered);
+            processViewportShortcuts();
             // Dummy 驍ｵ・ｺ郢晢ｽｻviewport 髯ｷ闌ｨ・ｽ・ｨ髣厄ｽｴ髦ｮ蜷ｶ繝ｻ hit rect 驍ｵ・ｺ繝ｻ・ｫ驍ｵ・ｺ繝ｻ・ｪ驛｢・ｧ闕ｵ譏ｶ陞ｺ驛｢・ｧ遶丞仰繝ｻ蟄･erlay 髫ｰ・ｰ陷諤懈・髯ｷ鮃ｹ莠らｫ翫・drop target 驍ｵ・ｺ繝ｻ・ｫ驍ｵ・ｺ陷ｷ・ｶ繝ｻ迢暦ｽｸ・ｲ郢晢ｽｻ
             if (!playSession.IsRunning()) {
                 HandleGameViewportAssetDrop(scene);

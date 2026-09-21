@@ -1,3 +1,5 @@
+#include "Editor/Commands/HIKARI_EditorCommandRouter.h"
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/AnimationStateMachine/HIKARI_AnimationStateMachineGraphSupport.h"
 #include "Editor/Workspaces/AnimationStateMachine/HIKARI_AnimationStateMachineWorkspaceController.h"
 
@@ -34,7 +36,7 @@ void AnimationStateMachineWorkspaceController::DrawGraphWindow(
   constexpr ImGuiWindowFlags flags = ImGuiWindowFlags_MenuBar |
                                      ImGuiWindowFlags_NoScrollWithMouse |
                                      ImGuiWindowFlags_NoScrollbar;
-  if (!ImGui::Begin("State Graph###AnimationSM/Graph", nullptr, flags)) {
+  if (!ImGui::Begin(TEXT::LocalizeWindow("editor.ui.state.graph.775626", "AnimationSM/Graph").c_str(), nullptr, flags)) {
     ImGui::End();
     return;
   }
@@ -45,16 +47,16 @@ void AnimationStateMachineWorkspaceController::DrawGraphWindow(
       ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
   ImGuiIO &io = ImGui::GetIO();
   if (CanUseEditorShortcut(EditorShortcutScope::Editing, graphFocused)) {
-    if (ImGui::IsKeyPressed(ImGuiKey_F, false)) {
+    if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_F, ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows), false)) {
       requests.frameSelection = true;
     }
-    if (ImGui::IsKeyPressed(ImGuiKey_Home, false)) {
+    if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_Home, ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows), false)) {
       requests.frameAll = true;
     }
-    if (ImGui::IsKeyPressed(ImGuiKey_1, false)) {
+    if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_1, ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows), false)) {
       requests.resetView = true;
     }
-    if (ImGui::IsKeyPressed(ImGuiKey_Delete, false)) {
+    if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_Delete, ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows), false)) {
       if (selectionKind_ == SelectionKind::State) {
         DeleteSelectedState();
       } else if (selectionKind_ == SelectionKind::Transition) {
@@ -406,10 +408,10 @@ void AnimationStateMachineWorkspaceController::DrawGraphWindow(
       const auto *contextState = ANIMATION::FindAnimationState(
           document_.Definition(), graphContextStateId_);
       if (contextState != nullptr) {
-        ImGui::TextDisabled("State: %s", contextState->name.c_str());
+        ImGui::TextDisabled(TEXT::Localize("ui.quality.stateFormat").c_str(), contextState->name.c_str());
         ImGui::Separator();
         ImGui::BeginDisabled(document_.Definition().states.size() < 2u);
-        if (ImGui::MenuItem("Create Transition")) {
+        if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.create.transition.609a2c", "Create Transition").c_str())) {
           selectedStateId_ = graphContextStateId_;
           selectionKind_ = SelectionKind::State;
           AddTransition();
@@ -418,19 +420,19 @@ void AnimationStateMachineWorkspaceController::DrawGraphWindow(
         const bool isEntry =
             document_.Definition().entryStateId == graphContextStateId_;
         ImGui::BeginDisabled(isEntry);
-        if (ImGui::MenuItem("Set as Entry State")) {
+        if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.set.as.entry.state.64a137", "Set as Entry State").c_str())) {
           auto before = document_.Definition();
           document_.Definition().entryStateId = graphContextStateId_;
           RecordMutation(std::move(before));
         }
         ImGui::EndDisabled();
-        if (ImGui::MenuItem("Frame State")) {
+        if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.frame.state.cc47c6", "Frame State").c_str())) {
           selectedStateId_ = graphContextStateId_;
           frameSelection();
         }
         ImGui::Separator();
         ImGui::BeginDisabled(document_.Definition().states.size() <= 1u);
-        if (ImGui::MenuItem("Delete State")) {
+        if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.delete.state.fdfe23", "Delete State").c_str())) {
           selectedStateId_ = graphContextStateId_;
           selectionKind_ = SelectionKind::State;
           DeleteSelectedState();
@@ -438,25 +440,25 @@ void AnimationStateMachineWorkspaceController::DrawGraphWindow(
         ImGui::EndDisabled();
       }
     } else if (graphContextTransitionId_.IsValid()) {
-      ImGui::TextDisabled("Transition");
+      ImGui::TextDisabled(TEXT::Localize("editor.ui.transition.4ead49").c_str());
       ImGui::Separator();
-      if (ImGui::MenuItem("Edit Transition")) {
+      if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.edit.transition.241f61", "Edit Transition").c_str())) {
         selectedTransitionId_ = graphContextTransitionId_;
         selectionKind_ = SelectionKind::Transition;
       }
-      if (ImGui::MenuItem("Delete Transition")) {
+      if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.delete.transition.527451", "Delete Transition").c_str())) {
         selectedTransitionId_ = graphContextTransitionId_;
         selectionKind_ = SelectionKind::Transition;
         DeleteSelectedTransition();
       }
     } else {
-      if (ImGui::MenuItem("Add State Here")) {
+      if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.add.state.here.679b28", "Add State Here").c_str())) {
         AddStateAt(graphContextX_, graphContextY_);
       }
       ImGui::Separator();
-      if (ImGui::MenuItem("Frame All States"))
+      if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.frame.all.states.5706fd", "Frame All States").c_str()))
         frameAll();
-      if (ImGui::MenuItem("Reset View")) {
+      if (ImGui::MenuItem(TEXT::LocalizeWindow("ui.asm.menu.resetView", "Reset View").c_str())) {
         graphZoom_ = 1.0f;
         graphPanX_ = 24.0f;
         graphPanY_ = 24.0f;

@@ -1,6 +1,7 @@
 #include "Render3D/Shadow/Internal/HIKARI_ShadowRendererInternal.h"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <vector>
 
@@ -9,6 +10,23 @@
 #include "Render3D/Material/Program/HIKARI_MaterialProgramRegistry.h"
 
 namespace HIKARI::SHADOW::INTERNAL {
+
+    bool MayAffectLocalShadow(const RENDER3D::RUNTIME::SurfaceGpuSceneInstance& instance,
+        const MATH::Vec3& lightPosition, float lightRange) noexcept {
+        using Flag = RENDER3D::RUNTIME::SurfaceGpuSceneInstanceFlags;
+        // 動的変形の conservative bounds が保証されない入力は省略しない。
+        constexpr uint32_t deforming = uint32_t(Flag::Skinned) | uint32_t(Flag::FoliageWind) |
+            uint32_t(Flag::WaterSurface) | uint32_t(Flag::SandSurface) | uint32_t(Flag::MaterialFx);
+        if ((instance.flags & deforming) || instance.deformationFlags || instance.materialProgramFlags) return true;
+        const auto bounds = instance.boundsCenterRadius;
+        const double radius = double(bounds.w) + lightRange;
+        const double dx = double(bounds.x) - lightPosition.x;
+        const double dy = double(bounds.y) - lightPosition.y;
+        const double dz = double(bounds.z) - lightPosition.z;
+        const double distanceSquared = dx * dx + dy * dy + dz * dz;
+        if (!(bounds.w > 0) || !(lightRange > 0) || !std::isfinite(radius) || !std::isfinite(distanceSquared)) return true;
+        return distanceSquared <= radius * radius;
+    }
 
     bool HasSurfaceGpuSceneFlag(
         const RENDER3D::RUNTIME::SurfaceGpuSceneInstance& instance,

@@ -20,6 +20,10 @@ namespace EDITOR {
     // authoring. Mutation orchestration and history remain separate.
     class ComponentAuthoringQueryService {
     public:
+        EditorOperationResult QueryTypes(DocumentSceneBase& scene,
+            std::string_view keyword, int offset, int limit) const;
+        EditorOperationResult DescribeType(DocumentSceneBase& scene,
+            std::string_view componentType) const;
         EditorOperationResult QueryObjects(
             const DocumentSceneBase& scene,
             std::string_view exactName,

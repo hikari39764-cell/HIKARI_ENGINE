@@ -36,6 +36,8 @@ namespace HIKARI {
             float primaryTimeSec,
             bool loop,
             ANIMATION::AnimationLocalPose& outPose,
+            ANIMATION::AnimationLocalPose& secondaryPose,
+            ANIMATION::AnimationLocalPose& blended,
             float* outNormalizedTime = nullptr) {
             float normalizedTime = 0.0f;
             if (!ANIMATION::SampleAnimationClip(
@@ -57,7 +59,6 @@ namespace HIKARI {
 
             const float secondaryDuration = ResolveClipDuration(
                 &model, motion.secondaryClip);
-            ANIMATION::AnimationLocalPose secondaryPose{};
             if (secondaryDuration <= 0.0f ||
                 !ANIMATION::SampleAnimationClip(
                     model,
@@ -67,13 +68,12 @@ namespace HIKARI {
                     secondaryPose)) {
                 return true;
             }
-            ANIMATION::AnimationLocalPose blended{};
             if (ANIMATION::BlendAnimationPoses(
                     outPose,
                     secondaryPose,
                     std::clamp(motion.secondaryWeight, 0.0f, 1.0f),
                     blended)) {
-                outPose = std::move(blended);
+                std::swap(outPose, blended);
             }
             return true;
         }
@@ -279,26 +279,29 @@ namespace HIKARI {
                     animator.GetTime(),
                     animator.GetLoop(),
                     snapshot.localPose,
+                    secondaryPose_,
+                    blendedPose_,
                     &snapshot.normalizedTime);
                 snapshot.transitioning = animator.IsTransitioning();
                 snapshot.blendWeight = animator.GetTransitionWeight();
 
                 if (snapshot.valid && snapshot.transitioning) {
-                    ANIMATION::AnimationLocalPose sourcePose{};
+                    auto& sourcePose = transitionPose_;
                     const bool sourceValid = SampleMotion(
                             *modelAsset,
                             animator.GetTransitionSourceMotion(),
                             animator.GetTransitionSourceTime(),
                             animator.GetTransitionSourceLoop(),
-                            sourcePose);
+                            sourcePose,
+                            secondaryPose_,
+                            blendedPose_);
                     if (sourceValid) {
-                        ANIMATION::AnimationLocalPose blended{};
                         if (ANIMATION::BlendAnimationPoses(
                                 sourcePose,
                                 snapshot.localPose,
                                 snapshot.blendWeight,
-                                blended)) {
-                            snapshot.localPose = std::move(blended);
+                                blendedPose_)) {
+                            std::swap(snapshot.localPose, blendedPose_);
                         }
                     }
                 }
@@ -308,12 +311,8 @@ namespace HIKARI {
                         *modelAsset,
                         snapshot.localPose);
                 }
-                // Keep the post-transition base pose separate.  Root motion
-                // must be captured and stripped from this base pose before
-                // any masked overlay is applied; otherwise a guard layer
-                // could contaminate the fixed-step motion delta.
-                const ANIMATION::AnimationLocalPose basePose =
-                    snapshot.localPose;
+                // マスク合成前に root motion を読み取り、その後に除去する。
+                // Capture は変更しないため全ボーンの base pose コピーは不要。
                 snapshot.loop = animator.GetLoop();
                 snapshot.playbackSpeed = animator.GetSpeed();
                 snapshot.rootMotionEnabled =
@@ -329,7 +328,7 @@ namespace HIKARI {
                     snapshot.rootMotionEnabled &&
                     ANIMATION::POSE_EVALUATION::CaptureRootMotionSample(
                         *modelAsset,
-                        basePose,
+                        snapshot.localPose,
                         snapshot.rootMotionSample) &&
                     ANIMATION::POSE_EVALUATION::StripRootMotionFromPose(
                         *modelAsset,

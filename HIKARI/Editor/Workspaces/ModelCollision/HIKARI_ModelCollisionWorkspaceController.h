@@ -50,6 +50,7 @@ struct ModelCollisionWorkspaceResult {
 
 class ModelCollisionWorkspaceController {
 public:
+  bool HasInteractiveEdit() const { return gizmoEditActive_; }
   void ApplyWorkspaceActivation(DocumentSceneBase &scene,
                                 const EditorWorkspaceActivation &activation,
                                 EditorWorkspaceHost &workspaceHost);

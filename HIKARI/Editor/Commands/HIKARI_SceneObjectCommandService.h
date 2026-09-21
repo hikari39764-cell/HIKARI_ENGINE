@@ -34,7 +34,7 @@ namespace HIKARI {
             const char* shortcut = "";
         };
 
-        const SceneObjectCommandPresentation& GetSceneObjectCommandPresentation(
+        SceneObjectCommandPresentation GetSceneObjectCommandPresentation(
             SceneObjectCommandId command) noexcept;
 
         // Owns document mutations shared by hierarchy, inspector, viewport

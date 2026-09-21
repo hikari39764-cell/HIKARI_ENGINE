@@ -10,7 +10,6 @@ constexpr float radians = std::numbers::pi_v<float> / 180.0f;
 float Safe(float v, float fallback = 0.0f) {
   return std::isfinite(v) ? v : fallback;
 }
-MATH::Vec3 Mix(MATH::Vec3 a, MATH::Vec3 b, float t) { return a + (b - a) * t; }
 float Hermite(float a, float b, float out, float in, float t) {
   const float t2 = t * t, t3 = t2 * t;
   return (2 * t3 - 3 * t2 + 1) * a + (t3 - 2 * t2 + t) * out +
@@ -73,29 +72,54 @@ float PresentationParameter::Evaluate(float seconds) const noexcept {
   return keys.back().value;
 }
 
-void NormalizeShotCamera(ShotCamera &shot) {
-  if (shot.poses.empty())
-    shot.poses.push_back({});
-  for (auto &p : shot.poses) {
-    p.time = (std::max)(0.0f, Safe(p.time));
-    p.fov = std::clamp(Safe(p.fov, 55), 1.0f, 179.0f);
-    p.roll = Safe(p.roll);
-    p.incoming = Safe(p.incoming);
-    p.outgoing = Safe(p.outgoing);
-    p.eye = {Safe(p.eye.x), Safe(p.eye.y, 2), Safe(p.eye.z, -8)};
-    p.target = {Safe(p.target.x), Safe(p.target.y, 1), Safe(p.target.z)};
+void NormalizePresentationParameter(PresentationParameter& parameter) {
+  Normalize(parameter);
+  // 同じ時刻は最後に書き込んだキーを優先する。
+  size_t count = 0;
+  for (const auto key : parameter.keys) {
+    if (count && std::abs(parameter.keys[count - 1].time - key.time) < 0.00001f)
+      parameter.keys[count - 1] = key;
+    else parameter.keys[count++] = key;
   }
-  std::stable_sort(
-      shot.poses.begin(), shot.poses.end(),
-      [](const auto &a, const auto &b) { return a.time < b.time; });
+  parameter.keys.resize(count);
+}
+
+void SetPresentationKey(PresentationParameter& parameter, float seconds, float value) {
+  seconds = (std::max)(0.0f, Safe(seconds));
+  const auto found = std::find_if(parameter.keys.begin(), parameter.keys.end(),
+      [&](const auto& key) { return std::abs(key.time - seconds) < 0.00001f; });
+  if (found != parameter.keys.end()) found->value = value;
+  else parameter.keys.push_back({seconds, value, 0, 0});
+  NormalizePresentationParameter(parameter);
+}
+
+ShotPose EvaluateShotPose(const ShotCamera& shot, float seconds) {
+  const auto value = [&](size_t i) { return shot.channels[i].Evaluate(seconds); };
+  return {seconds, {value(0), value(1), value(2)}, {value(3), value(4), value(5)}, value(6), value(7)};
+}
+
+void SetShotPose(ShotCamera& shot, const ShotPose& pose, bool keyed) {
+  const std::array values{pose.eye.x, pose.eye.y, pose.eye.z, pose.target.x,
+      pose.target.y, pose.target.z, pose.fov, pose.roll};
+  for (size_t i = 0; i < values.size(); ++i) {
+    if (keyed || !shot.channels[i].keys.empty()) SetPresentationKey(shot.channels[i], pose.time, values[i]);
+    else shot.channels[i].value = values[i];
+  }
+}
+
+void NormalizeShotCamera(ShotCamera &shot) {
+  for (auto& channel : shot.channels) NormalizePresentationParameter(channel);
+  auto& fov = shot.channels[static_cast<size_t>(ShotChannel::Fov)];
+  fov.value = std::clamp(fov.value, 1.0f, 179.0f);
+  for (auto& key : fov.keys) key.value = std::clamp(key.value, 1.0f, 179.0f);
   shot.targetOffset = {Safe(shot.targetOffset.x), Safe(shot.targetOffset.y),
                        Safe(shot.targetOffset.z)};
   shot.nearClip = (std::max)(0.001f, Safe(shot.nearClip, 0.1f));
   shot.farClip = (std::max)(shot.nearClip + 0.01f, Safe(shot.farClip, 2000));
   Ids(shot.motion);
   for (auto &e : shot.motion) {
-    Normalize(e.amount);
-    Normalize(e.weight);
+    NormalizePresentationParameter(e.amount);
+    NormalizePresentationParameter(e.weight);
     e.frequency = std::clamp(Safe(e.frequency, 3), 0.0f, 100.0f);
   }
 }
@@ -107,8 +131,8 @@ void NormalizeScreenEffects(std::vector<SequenceScreenEffect> &effects) {
     e.duration = (std::max)(0.01f, Safe(e.duration, 3));
     e.fadeIn = std::clamp(Safe(e.fadeIn), 0.0f, e.duration);
     e.fadeOut = std::clamp(Safe(e.fadeOut), 0.0f, e.duration);
-    Normalize(e.amount);
-    Normalize(e.weight);
+    NormalizePresentationParameter(e.amount);
+    NormalizePresentationParameter(e.weight);
     e.color = {Safe(e.color.x, 1), Safe(e.color.y, 1), Safe(e.color.z, 1)};
   }
 }
@@ -154,23 +178,7 @@ ShotPose CaptureShotPose(const Camera3D &camera, float seconds,
 Camera3D EvaluateShotCamera(const ShotCamera &shot, float seconds, float aspect,
                             const MATH::Mat4 *anchor,
                             const MATH::Vec3 *lookAt) {
-  ShotPose pose = shot.poses.empty() ? ShotPose{} : shot.poses.front();
-  for (size_t i = 1; i < shot.poses.size(); ++i) {
-    const auto &a = shot.poses[i - 1];
-    const auto &b = shot.poses[i];
-    if (seconds >= b.time) {
-      pose = b;
-      continue;
-    }
-    const float t = std::clamp(
-        (seconds - a.time) / (std::max)(0.00001f, b.time - a.time), 0.0f, 1.0f);
-    const float s = Hermite(0, 1, a.outgoing, b.incoming, t);
-    pose.eye = Mix(a.eye, b.eye, s);
-    pose.target = Mix(a.target, b.target, s);
-    pose.fov = a.fov + (b.fov - a.fov) * s;
-    pose.roll = a.roll + (b.roll - a.roll) * s;
-    break;
-  }
+  ShotPose pose = EvaluateShotPose(shot, seconds);
   auto eye = pose.eye, target = pose.target;
   MATH::Vec3 up{0, 1, 0};
   if (anchor) {

@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Authoring/HIKARI_CollisionAuthoringDialog.h"
 
 #include <algorithm>
@@ -23,7 +24,7 @@ namespace HIKARI::EDITOR {
         CollisionAuthoringRequest& outRequest) {
 #if defined(HIKARI_WITH_EDITOR)
         if (openRequested_) {
-            ImGui::OpenPopup("Collision Setup");
+            ImGui::OpenPopup(TEXT::LocalizeWindow("editor.ui.collision.setup.f1b571", "Collision Setup").c_str());
             openRequested_ = false;
         }
 
@@ -31,8 +32,7 @@ namespace HIKARI::EDITOR {
         ImGui::SetNextWindowSize(
             ImVec2(500.0f, 0.0f),
             ImGuiCond_Appearing);
-        if (ImGui::BeginPopupModal(
-                "Collision Setup",
+        if (ImGui::BeginPopupModal(TEXT::LocalizeWindow("editor.ui.collision.setup.f1b571", "Collision Setup").c_str(),
                 nullptr,
                 ImGuiWindowFlags_AlwaysAutoResize)) {
             static const char* scopes[]{
@@ -57,36 +57,30 @@ namespace HIKARI::EDITOR {
                 scope_ = 1;
                 ImGui::BeginDisabled();
             }
-            ImGui::Combo(
-                "Target",
+            ImGui::Combo(TEXT::LocalizeWindow("editor.ui.target.61ad50", "Target").c_str(),
                 &scope_,
                 scopes,
                 IM_ARRAYSIZE(scopes));
             if (selectedObject_.value == 0u) {
                 ImGui::EndDisabled();
             }
-            ImGui::Combo(
-                "Shape",
+            ImGui::Combo(TEXT::LocalizeWindow("editor.ui.shape.ea5c1a", "Shape").c_str(),
                 &shapeSource_,
                 shapeSources,
                 IM_ARRAYSIZE(shapeSources));
-            ImGui::Combo(
-                "Body",
+            ImGui::Combo(TEXT::LocalizeWindow("editor.ui.body.718a7e", "Body").c_str(),
                 &bodyMode_,
                 bodyModes,
                 IM_ARRAYSIZE(bodyModes));
-            ImGui::Combo(
-                "Existing",
+            ImGui::Combo(TEXT::LocalizeWindow("editor.ui.existing.0a6f32", "Existing").c_str(),
                 &existingColliderPolicy_,
                 existingPolicies,
                 IM_ARRAYSIZE(existingPolicies));
-            ImGui::Checkbox(
-                "New / Fitted Collider Is Trigger",
+            ImGui::Checkbox(TEXT::LocalizeWindow("editor.ui.new.fitted.collider.is.trigger.5118ad", "New / Fitted Collider Is Trigger").c_str(),
                 &makeTrigger_);
 
             ImGui::Spacing();
-            if (ImGui::Button(
-                    "Apply",
+            if (ImGui::Button(TEXT::LocalizeWindow("ui.common.apply", "Apply").c_str(),
                     ImVec2(120.0f, 0.0f))) {
                 outRequest = {};
                 outRequest.scope = scope_ == 0
@@ -108,8 +102,7 @@ namespace HIKARI::EDITOR {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (ImGui::Button(
-                    "Cancel",
+            if (ImGui::Button(TEXT::LocalizeWindow("ui.common.cancel", "Cancel").c_str(),
                     ImVec2(120.0f, 0.0f))) {
                 ImGui::CloseCurrentPopup();
             }

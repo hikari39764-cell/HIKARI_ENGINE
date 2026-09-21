@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/SystemAuthoring/HIKARI_SystemSettingsFieldRenderer.h"
 
 #include <algorithm>
@@ -197,8 +198,7 @@ namespace HIKARI::EDITOR {
             nlohmann::json* value = ResolveFieldValue(settings, field);
             if (!value) {
                 ImGui::TextColored(
-                    ImVec4(1.0f, 0.4f, 0.35f, 1.0f),
-                    "Invalid settings path: %s",
+                    ImVec4(1.0f, 0.4f, 0.35f, 1.0f),TEXT::Localize("editor.ui.invalid.settings.path.s.f650d9").c_str(),
                     field.jsonPointer.c_str());
                 return false;
             }

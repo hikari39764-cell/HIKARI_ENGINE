@@ -172,18 +172,7 @@ namespace HIKARI {
             return false;
         }
 
-        const MaterialGraphNodeData* FindNodeById(
-            const MaterialGraphData& graph,
-            std::string_view nodeId) noexcept {
-            return FindMaterialGraphNode(graph, nodeId);
-        }
 
-        const MaterialGraphEdgeData* FindInputEdge(
-            const MaterialGraphData& graph,
-            std::string_view nodeId,
-            std::string_view pin) noexcept {
-            return FindMaterialGraphInputEdge(graph, nodeId, pin);
-        }
 
         bool IsStaticNumericExpression(
             const MaterialGraphData& graph,
@@ -192,7 +181,7 @@ namespace HIKARI {
             if (!visiting.emplace(nodeId).second) {
                 return false;
             }
-            const MaterialGraphNodeData* node = FindNodeById(graph, nodeId);
+            const MaterialGraphNodeData* node = FindMaterialGraphNode(graph, nodeId);
             if (node == nullptr) {
                 visiting.erase(std::string(nodeId));
                 return false;
@@ -213,7 +202,7 @@ namespace HIKARI {
                 definition->inputs.begin(), definition->inputs.end(),
                 [&](const MaterialNodePinDefinition& pin) {
                     const MaterialGraphEdgeData* edge =
-                        FindInputEdge(graph, node->id, pin.id);
+                        FindMaterialGraphInputEdge(graph, node->id, pin.id);
                     return edge != nullptr && IsStaticNumericExpression(
                         graph, edge->sourceNodeId, visiting);
                 });
@@ -242,13 +231,13 @@ namespace HIKARI {
             if (!visiting.emplace(nodeId).second) {
                 return std::nullopt;
             }
-            const MaterialGraphNodeData* node = FindNodeById(graph, nodeId);
+            const MaterialGraphNodeData* node = FindMaterialGraphNode(graph, nodeId);
             if (node == nullptr) {
                 visiting.erase(std::string(nodeId));
                 return std::nullopt;
             }
             if (node->kind == MaterialNodeKind::TextureSample) {
-                if (FindInputEdge(graph, node->id, "UV") != nullptr) {
+                if (FindMaterialGraphInputEdge(graph, node->id, "UV") != nullptr) {
                     visiting.erase(std::string(nodeId));
                     return std::nullopt;
                 }
@@ -265,7 +254,7 @@ namespace HIKARI {
             }
             if (node->kind == MaterialNodeKind::NormalUnpack) {
                 const MaterialGraphEdgeData* edge =
-                    FindInputEdge(graph, node->id, "PackedNormal");
+                    FindMaterialGraphInputEdge(graph, node->id, "PackedNormal");
                 auto result = edge == nullptr
                     ? std::optional<TextureExpression>{}
                     : FindTextureExpression(
@@ -278,9 +267,9 @@ namespace HIKARI {
             }
             if (node->kind == MaterialNodeKind::Multiply) {
                 const MaterialGraphEdgeData* a =
-                    FindInputEdge(graph, node->id, "A");
+                    FindMaterialGraphInputEdge(graph, node->id, "A");
                 const MaterialGraphEdgeData* b =
-                    FindInputEdge(graph, node->id, "B");
+                    FindMaterialGraphInputEdge(graph, node->id, "B");
                 if (a != nullptr && b != nullptr) {
                     auto texture = FindTextureExpression(
                         graph, a->sourceNodeId, a->sourcePin, visiting);
@@ -324,7 +313,7 @@ namespace HIKARI {
             if (!visiting.emplace(nodeId).second) {
                 return false;
             }
-            const MaterialGraphNodeData* node = FindNodeById(graph, nodeId);
+            const MaterialGraphNodeData* node = FindMaterialGraphNode(graph, nodeId);
             if (node == nullptr) {
                 visiting.erase(std::string(nodeId));
                 return false;
@@ -341,7 +330,7 @@ namespace HIKARI {
             for (const std::string_view pin : {std::string_view{"A"},
                                                std::string_view{"B"}}) {
                 const MaterialGraphEdgeData* edge =
-                    FindInputEdge(graph, node->id, pin);
+                    FindMaterialGraphInputEdge(graph, node->id, pin);
                 if (edge == nullptr) {
                     continue;
                 }
@@ -482,9 +471,9 @@ namespace HIKARI {
                     continue;
                 }
                 const MaterialGraphNodeData* source =
-                    FindNodeById(graph, edge.sourceNodeId);
+                    FindMaterialGraphNode(graph, edge.sourceNodeId);
                 const MaterialGraphNodeData* target =
-                    FindNodeById(graph, edge.targetNodeId);
+                    FindMaterialGraphNode(graph, edge.targetNodeId);
                 if (source == nullptr || target == nullptr) {
                     continue;
                 }
@@ -595,9 +584,9 @@ namespace HIKARI {
                     continue;
                 }
                 const MaterialGraphEdgeData* metallic =
-                    FindInputEdge(graph, node.id, "Metallic");
+                    FindMaterialGraphInputEdge(graph, node.id, "Metallic");
                 const MaterialGraphEdgeData* roughness =
-                    FindInputEdge(graph, node.id, "Roughness");
+                    FindMaterialGraphInputEdge(graph, node.id, "Roughness");
                 const auto metallicTexture = metallic == nullptr
                     ? std::optional<TextureExpression>{}
                     : FindTextureExpression(graph, *metallic);
@@ -685,6 +674,16 @@ namespace HIKARI {
         const MaterialNodePinDefinition* definition =
             FindMaterialNodeInputDefinition(typeId, pin);
         return definition != nullptr && definition->runtimeGenerated;
+    }
+
+    std::optional<MaterialValueType> ResolveMaterialGraphPinType(
+        const MaterialGraphData& graph, const MaterialGraphNodeData& node,
+        std::string_view name, bool output) {
+        std::unordered_map<std::string, MaterialValueType> parameters;
+        for (const auto& parameter : graph.parameters) parameters.emplace(parameter.id, parameter.defaultValue.type);
+        const auto signature = MakeSignature(node, parameters);
+        const auto* pin = FindPin(output ? signature.outputs : signature.inputs, name);
+        return pin ? std::optional{pin->type} : std::nullopt;
     }
 
     bool IsValidMaterialStableId(std::string_view id) noexcept {

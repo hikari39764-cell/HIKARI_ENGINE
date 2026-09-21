@@ -53,4 +53,11 @@ namespace HIKARI::PROJECT::DETAIL {
         return true;
     }
 
+    template<size_t Capacity>
+    bool ReadFixedText(const char (&source)[Capacity], std::string& outValue) {
+        if (ReadStringBuffer(source, Capacity, outValue)) return true;
+        outValue.clear();
+        return false;
+    }
+
 }

@@ -152,12 +152,12 @@ void InputActionMapEditor::DrawCompositeCapture(
             "##CompositeCaptureStatus", ImVec2(0.0f, 66.0f), true);
         if (operation.GetStatus() ==
                 INPUT::InputRebindStatus::WaitingForRelease) {
-            ImGui::Text("Release the previous control, then press %s...",
+            ImGui::Text(TEXT::Localize("editor.ui.release.the.previous.control.then.press.s.623510").c_str(),
                 TEXT::Localize(
                     kDirectionNameKeys[
                         compositeCaptureStep_]).c_str());
         } else {
-            ImGui::Text("Press the control for %s...",
+            ImGui::Text(TEXT::Localize("editor.ui.press.the.control.for.s.d6d830").c_str(),
                 TEXT::Localize(
                     kDirectionNameKeys[
                         compositeCaptureStep_]).c_str());

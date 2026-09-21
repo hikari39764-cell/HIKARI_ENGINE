@@ -1,4 +1,5 @@
 #include "Editor/Commands/HIKARI_SceneObjectCommandService.h"
+#include "Core/Text/HIKARI_Localization.h"
 
 #include <algorithm>
 #include <cctype>
@@ -18,14 +19,14 @@
 namespace HIKARI::EDITOR {
     namespace {
         constexpr SceneObjectCommandPresentation kPresentations[] = {
-            { "Rename", "F2" },
-            { "Duplicate", "Ctrl+D" },
-            { "Delete", "Delete" },
-            { "Lock Selected", "" },
-            { "Unlock Selected", "" },
-            { "Save as Prefab...", "" },
-            { "Instantiate Prefab", "" },
-            { "Add Component...", "" },
+            { "editor.scene.rename", "F2" },
+            { "editor.scene.duplicate", "Ctrl+D" },
+            { "ui.common.delete", "Delete" },
+            { "editor.scene.lock", "" },
+            { "editor.scene.unlock", "" },
+            { "editor.ui.save.as.prefab.5cb805", "" },
+            { "editor.scene.instantiatePrefab", "" },
+            { "editor.ui.add.component.08ba89", "" },
         };
 
         std::string SanitizePrefabToken(std::string_view raw) {
@@ -127,10 +128,12 @@ namespace HIKARI::EDITOR {
         }
     }
 
-    const SceneObjectCommandPresentation& GetSceneObjectCommandPresentation(
+    SceneObjectCommandPresentation GetSceneObjectCommandPresentation(
         SceneObjectCommandId command) noexcept {
 
-        return kPresentations[static_cast<size_t>(command)];
+        auto presentation = kPresentations[static_cast<size_t>(command)];
+        presentation.label = TEXT::LocalizeCStr(presentation.label);
+        return presentation;
     }
 
     bool SceneObjectCommandService::CanExecute(

@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Performance/HIKARI_PerformanceAuditPanel.h"
 
 #include "Core/HIKARI_TimeService.h"
@@ -54,55 +55,55 @@ void DrawFrameSummary(const RuntimePerformanceSnapshot &s) {
     ImGui::TableNextColumn();
     ImGui::Text("FPS %.1f", s.fpsRaw);
     if (s.cpu.valid) {
-      ImGui::Text("CPU frame %.3f ms", cpuFrameMs);
+      ImGui::Text(TEXT::Localize("editor.ui.cpu.frame.3f.ms.f03a1f").c_str(), cpuFrameMs);
       const CPU_PROFILE::PassTiming &frameTiming =
           s.cpu.passes[static_cast<size_t>(CPU_PROFILE::Pass::Frame)];
-      ImGui::Text("avg %.3f / p95 %.3f ms", frameTiming.averageMs,
+      ImGui::Text(TEXT::Localize("editor.ui.avg.3f.p95.3f.ms.220a6d").c_str(), frameTiming.averageMs,
                   frameTiming.p95Ms);
     } else {
-      ImGui::TextDisabled("CPU timing waiting");
+      ImGui::TextDisabled(TEXT::Localize("editor.ui.cpu.timing.waiting.06aa72").c_str());
     }
-    ImGui::Text("fixed %u / dropped %.2f ms", s.fixedStepsThisFrame,
+    ImGui::Text(TEXT::Localize("editor.ui.fixed.u.dropped.2f.ms.b59587").c_str(), s.fixedStepsThisFrame,
                 static_cast<double>(s.droppedFixedTimeSeconds) * 1000.0);
 
     ImGui::TableNextColumn();
-    ImGui::TextColored(StatusColor(gpuDrivenReady), "GPU scene %s",
+    ImGui::TextColored(StatusColor(gpuDrivenReady),TEXT::Localize("editor.ui.gpu.scene.s.920adb").c_str(),
                        ReadyText(gpuDrivenReady));
-    ImGui::Text("uploaded %zu / requested %zu",
+    ImGui::Text(TEXT::Localize("editor.ui.uploaded.zu.requested.zu.aa02c9").c_str(),
                 s.mesh.gpuSceneUpload.bufferStats.uploadedInstanceCount,
                 s.mesh.gpuSceneUpload.bufferStats.requestedInstanceCount);
 
     ImGui::TableNextColumn();
-    ImGui::TextColored(StatusColor(clusterMainline), "cluster %s",
+    ImGui::TextColored(StatusColor(clusterMainline),TEXT::Localize("editor.ui.cluster.s.9be94f").c_str(),
                        clusterMainline ? "Active" : "Idle");
-    ImGui::Text("dispatches %zu / draw args %zu", mainlineSubmittedCount,
+    ImGui::Text(TEXT::Localize("editor.ui.dispatches.zu.draw.args.zu.a3f376").c_str(), mainlineSubmittedCount,
                 s.mesh.clusterGpuCull.gpuDrawCommandCount);
 
     ImGui::TableNextColumn();
-    ImGui::Text("GPU parent %.3f ms", parentGpuMs);
-    ImGui::Text("nested sub %.3f ms", nestedSubpassGpuMs);
+    ImGui::Text(TEXT::Localize("editor.ui.gpu.parent.3f.ms.ea7ff2").c_str(), parentGpuMs);
+    ImGui::Text(TEXT::Localize("editor.ui.nested.sub.3f.ms.bf7e52").c_str(), nestedSubpassGpuMs);
     ImGui::EndTable();
   }
 }
 
 void DrawCpuTimingTable(const RuntimePerformanceSnapshot &s) {
-  ImGui::SeparatorText("CPU Timing");
+  ImGui::SeparatorText(TEXT::Localize("editor.ui.cpu.timing.cff982").c_str());
   if (!s.cpu.valid) {
-    ImGui::TextDisabled("CPU timing data is waiting for a completed frame.");
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.cpu.timing.data.is.waiting.for.a.completed.frame.0848ab").c_str());
     return;
   }
 
   const double frameMs = (std::max)(0.0001, GetCpuFrameMs(s.cpu));
-  ImGui::Text("Frame %llu, scopes %u, frame %.3f ms",
+  ImGui::Text(TEXT::Localize("editor.ui.frame.llu.scopes.u.frame.3f.ms.ea6fdd").c_str(),
               static_cast<unsigned long long>(s.cpu.frameIndex),
               CountValidCpuPasses(s.cpu), frameMs);
   const CPU_PROFILE::PassTiming &frameTiming =
       s.cpu.passes[static_cast<size_t>(CPU_PROFILE::Pass::Frame)];
-  ImGui::Text("Rolling %u frames: avg %.3f / p95 %.3f / p99 %.3f / max %.3f ms",
+  ImGui::Text(TEXT::Localize("editor.ui.rolling.u.frames.avg.3f.p95.3f.p99.3f.max.3f.ms.fdf253").c_str(),
               frameTiming.rollingSampleCount, frameTiming.averageMs,
               frameTiming.p95Ms, frameTiming.p99Ms,
               frameTiming.maximumMs);
-  ImGui::TextDisabled("Inclusive timings; nested scopes are not additive.");
+  ImGui::TextDisabled(TEXT::Localize("editor.ui.inclusive.timings.nested.scopes.are.not.additive.e24523").c_str());
 
   const auto drawTimingRow = [frameMs](
                                  const CPU_PROFILE::PassTiming &timing) {
@@ -170,11 +171,10 @@ void DrawCpuTimingTable(const RuntimePerformanceSnapshot &s) {
               return lhs->averageMs > rhs->averageMs;
             });
 
-  ImGui::SeparatorText("Scene System CPU");
-  ImGui::TextDisabled(
-      "Frame scopes aggregate variable updates; Fixed scopes aggregate all fixed callbacks.");
+  ImGui::SeparatorText(TEXT::Localize("editor.ui.scene.system.cpu.e8ace7").c_str());
+  ImGui::TextDisabled(TEXT::Localize("editor.ui.frame.scopes.aggregate.variable.updates.fixed.scopes.aggregate.a.93f7e5").c_str());
   if (systemTimingCount == 0u) {
-    ImGui::TextDisabled("System timing data is waiting for an active Scene.");
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.system.timing.data.is.waiting.for.an.active.scene.768221").c_str());
   } else if (ImGui::BeginTable(
                  "CpuSystemTimingTable", 8,
                  ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_RowBg |
@@ -197,7 +197,7 @@ void DrawCpuTimingTable(const RuntimePerformanceSnapshot &s) {
 }
 
 void DrawGpuTimingTable(const RuntimePerformanceSnapshot &s) {
-  ImGui::SeparatorText("GPU Timing");
+  ImGui::SeparatorText(TEXT::Localize("editor.ui.gpu.timing.10adc4").c_str());
   if (!s.gpu.gpuTimingAvailable) {
     ImGui::TextDisabled("%s", s.gpu.profilerEnabled
                                   ? "Timestamp query data is waiting."
@@ -205,9 +205,9 @@ void DrawGpuTimingTable(const RuntimePerformanceSnapshot &s) {
     return;
   }
 
-  ImGui::Text("Frame %llu, %u measured passes",
+  ImGui::Text(TEXT::Localize("editor.ui.frame.llu.u.measured.passes.bcd895").c_str(),
               static_cast<unsigned long long>(s.gpu.frameIndex), CountValidGpuPasses(s.gpu));
-  ImGui::TextDisabled("Sample includes child passes; Self excludes them. Avg/P95/P99: last 300 executions (quantiles refresh every 15).");
+  ImGui::TextDisabled(TEXT::Localize("editor.ui.sample.includes.child.passes.self.excludes.them.avg.p95.p99.last.c827ca").c_str());
   if (ImGui::BeginTable("GpuDrivenTimingTable", 8,
                        ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_RowBg |
                            ImGuiTableFlags_SizingStretchProp)) {

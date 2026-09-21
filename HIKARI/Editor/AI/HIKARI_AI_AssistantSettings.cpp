@@ -1,7 +1,8 @@
 #include "HIKARI_AI_AssistantPanel.h"
 #include "HIKARI_AI_MessageText.h"
-#include "HIKARI_AI_VisionClient.h"
+#include "HIKARI_AI_ChatClient.h"
 #include <cstdio>
+#include <algorithm>
 #include "Core/Text/HIKARI_Localization.h"
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
@@ -11,6 +12,8 @@ void AiAssistantPanel::OpenApiSettingsBuffers() {
     const AI_ASSISTANT::AiChatConfig config = session_.SnapshotConfig();
     imageInputEnabled_ = config.imageInputEnabled;
     maxToolRounds_ = config.maxToolRounds;
+    maxTaskTokens_ = config.maxTaskTokens;
+    maxNoProgressRounds_ = config.maxNoProgressRounds;
     toolHistoryKiB_ = config.toolHistoryKiB;
     requestUsage_ = config.requestUsage;
     std::snprintf(
@@ -39,6 +42,8 @@ void AiAssistantPanel::SaveApiSettings() {
     updated.valid = !updated.apiKey.empty();
     updated.imageInputEnabled = imageInputEnabled_;
     updated.maxToolRounds = maxToolRounds_;
+    updated.maxTaskTokens = (std::max)(0,maxTaskTokens_);
+    updated.maxNoProgressRounds = std::clamp(maxNoProgressRounds_,0,AI_ASSISTANT::kMaxAiToolRounds);
     updated.toolHistoryKiB = toolHistoryKiB_;
     updated.requestUsage = requestUsage_;
     if (!AI_ASSISTANT::SaveAiChatConfig(updated)) { attachmentError_ = "无法保存 AI 设置。"; return; }
@@ -142,7 +147,13 @@ void AiAssistantPanel::DrawSettings() {
                 modelBuffer_,
                 sizeof(modelBuffer_));
             ImGui::Checkbox(TEXT::Localize("ai.api.imageInput").c_str(), &imageInputEnabled_);
-            ImGui::SliderInt(TEXT::Localize("ai.api.toolRounds").c_str(), &maxToolRounds_, 1, 120);
+            ImGui::InputInt(TEXT::Localize("ai.api.toolRounds").c_str(), &maxToolRounds_);
+            maxToolRounds_ = std::clamp(maxToolRounds_, 1, AI_ASSISTANT::kMaxAiToolRounds);
+            ImGui::InputInt(TEXT::Localize("ai.api.tokenLimit").c_str(), &maxTaskTokens_, 10000, 100000);
+            maxTaskTokens_ = (std::max)(0,maxTaskTokens_);
+            ImGui::InputInt(TEXT::Localize("ai.api.noProgressLimit").c_str(), &maxNoProgressRounds_);
+            maxNoProgressRounds_ = std::clamp(maxNoProgressRounds_,0,AI_ASSISTANT::kMaxAiToolRounds);
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", TEXT::Localize("ai.api.tokenLimitHint").c_str());
             ImGui::SliderInt(TEXT::Localize("ai.api.historyBudget").c_str(), &toolHistoryKiB_, 8, 256, "%d KiB");
             if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", TEXT::Localize("ai.api.historyBudgetHint").c_str());
             ImGui::Checkbox(TEXT::Localize("ai.api.usage").c_str(), &requestUsage_);

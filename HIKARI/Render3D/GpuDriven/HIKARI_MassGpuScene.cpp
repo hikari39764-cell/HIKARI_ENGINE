@@ -62,7 +62,8 @@ namespace {
                 tail.instanceCount;
             const uint64_t nextEnd =
                 static_cast<uint64_t>(first) + count;
-            if (first <= tailEnd) {
+            // 履歴を跨ぐ入力は未整列。前方の区間を失わず、最後に正規化する。
+            if (first >= tail.firstInstance && first <= tailEnd) {
                 tail.instanceCount = static_cast<uint32_t>(
                     (std::min)(
                         (std::max)(tailEnd, nextEnd) -

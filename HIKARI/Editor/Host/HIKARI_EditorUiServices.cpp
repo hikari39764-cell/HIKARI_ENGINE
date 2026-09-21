@@ -11,6 +11,7 @@
 #include "Runtime/HIKARI_RuntimeLaunchConfig.h"
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Editor/HIKARI_EditorStyle.h"
+#include "Editor/Settings/HIKARI_EditorPreferences.h"
 #include "Editor/HIKARI_EditorViewportInput.h"
 #include "Editor/Style/HIKARI_EditorFontManager.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
@@ -41,19 +42,8 @@ namespace HIKARI::EDITOR {
         // different file per project and surface as a scrambled first layout.
         // Pin the ini to a stable per-user absolute path instead.
         std::string ResolveEditorImGuiIniPath() {
-            PWSTR localAppData = nullptr;
-            const HRESULT result = SHGetKnownFolderPath(
-                FOLDERID_LocalAppData,
-                KF_FLAG_DEFAULT,
-                nullptr,
-                &localAppData);
-            if (FAILED(result) || localAppData == nullptr) {
-                return {};
-            }
-            std::filesystem::path path =
-                std::filesystem::path(localAppData) /
-                "HIKARI" / "Editor";
-            CoTaskMemFree(localAppData);
+            auto path = EditorUserSettingsDirectory();
+            if (path.empty()) return {};
             std::error_code ec{};
             std::filesystem::create_directories(path, ec);
             path /= "imgui.ini";
@@ -105,7 +95,9 @@ namespace HIKARI::EDITOR {
         EditorUiServices gEditorUiServices{};
 
         void EditorUiServices::ConfigureContext() {
+            const auto& preferences = GetEditorPreferences();
             ImGuiIO& io = ImGui::GetIO();
+            io.FontGlobalScale = preferences.uiScale;
             iniPathStorage_ = ResolveEditorImGuiIniPath();
             if (!iniPathStorage_.empty()) {
                 io.IniFilename = iniPathStorage_.c_str();

@@ -136,7 +136,7 @@ bool DrawMaterialNodeTypeControl(
 void DrawMaterialGraphGroups(
     ImDrawList* drawList,
     const MaterialGraphData& graph,
-    const std::unordered_map<std::string, ImVec2>& screenPositions);
+    const std::unordered_map<std::string, ImVec4>& screenBounds);
 #endif
 bool IsRuntimeDrivenInput(const MaterialNodeTypeId& typeId,
                           std::string_view pin) noexcept;
@@ -165,6 +165,8 @@ NodeInlineLayoutSpec ResolveNodeInlineLayoutSpec(
 bool PinHasConnection(const MaterialGraphData &graph,
                        std::string_view nodeId, std::string_view pin,
                        bool output) noexcept;
+MATH::Vec2 NodeLayoutSize(const MaterialGraphData& graph, const MaterialGraphNodeData& node);
+bool AutoLayoutMaterialGraph(MaterialGraphData& graph, const std::vector<std::string>& selection = {});
 float NodeLogicalHeight(const MaterialGraphData &graph,
                         const MaterialGraphNodeData &node,
                         bool collapsed);
@@ -179,6 +181,8 @@ void DrawRampStrip(const MaterialRampData &ramp, float width, float height);
 
 MaterialValueType DefaultNodeValueType(
     const MaterialNodeTypeId& typeId) noexcept;
+std::string_view NodeMathSubgroup(MaterialNodeKind kind);
+std::string NodeDisplayName(const MaterialNodeTypeId& typeId);
 std::string_view NodeCategory(const MaterialNodeTypeId& typeId) noexcept;
 
 } // namespace HIKARI::EDITOR::MATERIAL_GRAPH_UI

@@ -50,7 +50,7 @@ namespace HIKARI::EDITOR {
                 newTemplateId_.clear();
             } else ImGui::OpenPopup((VfxUiText("Replace unsaved effect?") + "###VfxReplace").c_str());
         }
-        if (ImGui::BeginPopupModal((VfxUiText("Replace unsaved effect?") + "###VfxReplace").c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (ImGui::BeginPopupModal((VfxUiText(TEXT::LocalizeCStr("ui.vfx.text.Replace unsaved effect?")) + "###VfxReplace").c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::TextWrapped(VfxUiText("The current effect has unsaved changes. Save it first to keep those edits.").c_str());
             if (ImGui::Button(VfxUiText("Cancel").c_str())) { newTemplateId_.clear(); ImGui::CloseCurrentPopup(); }
             ImGui::SameLine();

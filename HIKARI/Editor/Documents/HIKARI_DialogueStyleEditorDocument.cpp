@@ -29,9 +29,8 @@ namespace HIKARI::EDITOR {
         DIALOGUE::ResolveDialogueProjectStyleAssets(loaded, database);
         style_ = std::move(loaded);
         open_ = true;
-        const bool alreadySaved = std::filesystem::is_regular_file(
-            projectRoot / std::string(DIALOGUE::kDialogueProjectStylePath));
-        ResetHistory(alreadySaved);
+        // ファイル未作成時の既定スタイルも読み取り状態。閲覧だけで未保存にしない。
+        ResetHistory(true);
         return true;
     }
 

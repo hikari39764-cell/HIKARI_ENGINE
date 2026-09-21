@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxInspectorControls.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxParticleMaterialField.h"
 
@@ -122,9 +123,8 @@ namespace HIKARI::EDITOR {
                 ? selected->label.c_str()
                 : "Missing or non-renderable material";
         ImGui::BeginGroup();
-        if (ImGui::BeginCombo("Material", preview)) {
-            if (ImGui::Selectable(
-                    "Built-in VFX Unlit", !current.IsValid())) {
+        if (ImGui::BeginCombo(TEXT::LocalizeWindow("ui.inspector.model.material", "Material").c_str(), preview)) {
+            if (ImGui::Selectable(TEXT::LocalizeWindow("editor.ui.built.in.vfx.unlit.d589ac", "Built-in VFX Unlit").c_str(), !current.IsValid())) {
                 outSelected = {};
                 changed = true;
             }
@@ -162,8 +162,7 @@ namespace HIKARI::EDITOR {
 
         if (current.IsValid() && selected == nullptr) {
             ImGui::TextColored(
-                { 1.0f, 0.48f, 0.30f, 1.0f },
-                "The assigned asset is missing or is not a renderable Material.");
+                { 1.0f, 0.48f, 0.30f, 1.0f },TEXT::Localize("editor.ui.the.assigned.asset.is.missing.or.is.not.a.renderable.material.9f739d").c_str());
         } else if (catalog.choices.empty()) {
             ImGui::TextDisabled(
                 VfxUiText("No Material exists yet. The built-in VFX fallback remains usable.").c_str());
@@ -392,8 +391,7 @@ namespace HIKARI::EDITOR {
         }
         if (current.IsValid() && selected == nullptr) {
             ImGui::TextColored(
-                { 1.0f, 0.48f, 0.30f, 1.0f },
-                "The assigned particle texture is missing.");
+                { 1.0f, 0.48f, 0.30f, 1.0f },TEXT::Localize("editor.ui.the.assigned.particle.texture.is.missing.f68d5f").c_str());
         }
         ImGui::TextDisabled(
             VfxUiText("Engine VFX textures are shared; project Texture assets can be dropped here.").c_str());

@@ -5,8 +5,9 @@ class AiAssistantPanel {
 public:
     explicit AiAssistantPanel(AiAssistantSession& session) : session_(session) {}
     ~AiAssistantPanel();
-    void Draw(bool& open);
-    void DrawSidebar(bool& open);
+    void DrawEmbedded();
+    void DrawPreferences();
+    void TickAttachments();
     void ResetComposer();
     void SetWorkspaceLabel(std::string label) { workspaceLabel_=std::move(label); }
 private:
@@ -40,13 +41,14 @@ private:
     bool showRawRequest_ = false;
     bool showApiSettings_ = false;
     bool imageInputEnabled_ = true;
-    int maxToolRounds_ = 40;
+    int maxToolRounds_ = AI_ASSISTANT::kDefaultAiToolRounds;
+    int maxNoProgressRounds_ = 12;
+    int maxTaskTokens_ = 0;
     int toolHistoryKiB_ = 24;
     bool requestUsage_ = true;
     bool showApiKey_ = false;
     bool showVisionKey_ = false;
     bool hasRawResult_ = false;
-    float sidebarWidth_ = 380.0f;
     std::string attachmentError_{};
     std::string workspaceLabel_{};
     size_t lastMessageCount_ = 0;

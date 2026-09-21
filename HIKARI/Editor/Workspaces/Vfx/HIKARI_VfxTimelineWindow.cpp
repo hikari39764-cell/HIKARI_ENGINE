@@ -79,7 +79,7 @@ namespace HIKARI::EDITOR {
             }
         } else if (IconButton(previewPaused_ ? EditorGlyph::Play : EditorGlyph::Pause,
                 "Play", EditorButtonTone::Quiet, {28,28},
-                (VfxUiText(previewPaused_ ? "Resume" : "Pause") + " (Space)").c_str())) {
+                (VfxUiText(previewPaused_ ? TEXT::LocalizeCStr("ui.vfx.text.Resume") : TEXT::LocalizeCStr("ui.vfx.text.Pause")) + " (Space)").c_str())) {
             PausePreview(!previewPaused_);
         }
         ImGui::SameLine();
@@ -149,8 +149,7 @@ namespace HIKARI::EDITOR {
         }
 
         ImGui::SameLine();
-        ImGui::TextDisabled(
-            "%.2f / %.2f s   frame %u",
+        ImGui::TextDisabled(TEXT::Localize("editor.ui.2f.2f.s.frame.u.6447f0").c_str(),
             previewElapsedSeconds_,
             duration,
             static_cast<unsigned int>(std::lround(
@@ -288,8 +287,7 @@ namespace HIKARI::EDITOR {
         }
         if (ImGui::IsItemHovered()) {
             ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
-            ImGui::SetTooltip(
-                "%.2f s  |  frame %u",
+            ImGui::SetTooltip(TEXT::Localize("editor.ui.2f.s.frame.u.fd89c3").c_str(),
                 xToTime(mouse.x),
                 static_cast<unsigned int>(std::lround(
                     xToTime(mouse.x) * kTimelineFramesPerSecond)));

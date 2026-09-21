@@ -134,17 +134,18 @@ namespace HIKARI::PHYSICS {
                     *object,
                     authoritativePose,
                     worldScale)) {
-                presentationTransforms_->Remove(binding.object);
+                if (presentationTransforms_->Remove(binding.object))
+                    object->MarkRenderStateDirty();
                 continue;
             }
-            presentationTransforms_->SetWorldMatrix(
+            const bool changed = presentationTransforms_->SetWorldMatrix(
                 binding.object,
                 MATH::Mat4::TRS(
                     presented.position,
                     presented.rotation,
                     worldScale));
             binding.presentationDiscontinuity = false;
-            object->MarkRenderStateDirty();
+            if (changed) object->MarkRenderStateDirty();
         }
     }
 

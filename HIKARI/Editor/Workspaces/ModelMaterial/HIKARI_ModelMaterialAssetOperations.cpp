@@ -10,12 +10,11 @@
 #include "Assets/Material/Authoring/HIKARI_MaterialTemplateFactory.h"
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
 #include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
-#include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialOperationSupport.h"
+#include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
 namespace HIKARI::EDITOR {
-namespace SUPPORT = MODEL_MATERIAL_OPERATIONS;
 namespace {
 
 std::filesystem::path ResolveMaterialSourcePath(
@@ -52,22 +51,30 @@ void RegisterModelMaterialAssetOperations(
     EditorOperationRegistry& registry,
     ModelMaterialWorkspaceController& controller,
     std::function<DocumentSceneBase*()> sceneProvider) {
-  registry.Register({
+  registry.Register({"material.templates.query", "List available material templates with their purpose. 材质模板 / マテリアルテンプレート.",
+      "model_material", {}, [](const nlohmann::json&) {
+        auto templates = nlohmann::json::array();
+        for (const auto& info : ASSETS::MATERIAL::GetBuiltInMaterialTemplates())
+          templates.push_back({{"id",ToString(info.id)},{"name",std::string(info.displayName)},
+              {"description",std::string(info.description)}});
+        return EditorOperationResult{true,"OK","Material templates",{{"templates",std::move(templates)}}};
+      }}, EditorOperationKind::Query, false);
+  auto assetQuery = EditorOperationDefinition{
       "material.list_assets",
       "List Material assets with domain, template, guid, name and source path.",
       "model_material",
       {
-          SUPPORT::MakeOperationParameter(
+          EditorOperationParameter{
               "keyword", EditorOperationParameterType::String,
-              false, "可选名称/路径关键字过滤"),
-          SUPPORT::MakeOperationParameter(
+              false, "可选名称/路径关键字过滤"},
+          EditorOperationParameter{
               "domain", EditorOperationParameterType::String,
-              false, "可选领域过滤：Surface 或 Particle"),
+              false, "可选领域过滤：Surface 或 Particle"},
       },
       [sceneProvider](const nlohmann::json& parameters) {
         EditorOperationResult result{};
         DocumentSceneBase* scene = nullptr;
-        if (!SUPPORT::RequireScene(sceneProvider, result, scene)) {
+        if (!RequireScene(sceneProvider, result, scene)) {
           return result;
         }
 
@@ -126,24 +133,27 @@ void RegisterModelMaterialAssetOperations(
             " 个 Material 资产。";
         return result;
       },
-  });
+  };
+    assetQuery.requiresDocumentSession = false;
+    assetQuery.kind = EditorOperationKind::Query;
+    registry.Register(std::move(assetQuery));
 
   registry.Register({
       "material.create_from_template",
       "Create a Material asset from a built-in template and open it in the background workspace.",
       "model_material",
       {
-          SUPPORT::MakeOperationParameter(
+          EditorOperationParameter{
               "templateId", EditorOperationParameterType::String,
-              true, "内置模板 ID，例如 ParticleUnlit"),
-          SUPPORT::MakeOperationParameter(
+              true, "内置模板 ID，例如 ParticleUnlit"},
+          EditorOperationParameter{
               "name", EditorOperationParameterType::String,
-              false, "可选材质资产名称"),
+              false, "可选材质资产名称"},
       },
       [&controller, sceneProvider](const nlohmann::json& parameters) {
         EditorOperationResult result{};
         DocumentSceneBase* scene = nullptr;
-        if (!SUPPORT::RequireScene(sceneProvider, result, scene)) {
+        if (!RequireScene(sceneProvider, result, scene)) {
           return result;
         }
         if (controller.HasUnsavedMaterialChanges()) {
@@ -210,7 +220,7 @@ void RegisterModelMaterialAssetOperations(
         };
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 }
 
 } // namespace HIKARI::EDITOR

@@ -1,3 +1,4 @@
+#include "Assets/Material/Graph/HIKARI_MaterialGraphQuery.h"
 #include "HIKARI_MaterialCompiler.h"
 
 #include <algorithm>
@@ -40,28 +41,6 @@ namespace HIKARI {
             uint64_t& mask,
             MaterialProgramCapability capability) noexcept {
             mask |= MaterialCapabilityBit(capability);
-        }
-
-        std::unordered_set<std::string> CollectReachableNodeIds(
-            const MaterialGraphData& graph) {
-            std::unordered_set<std::string> reachable{};
-            std::vector<std::string> pending{};
-            if (!graph.outputNodeId.empty()) {
-                pending.push_back(graph.outputNodeId);
-            }
-            while (!pending.empty()) {
-                std::string nodeId = std::move(pending.back());
-                pending.pop_back();
-                if (!reachable.emplace(nodeId).second) {
-                    continue;
-                }
-                for (const MaterialGraphEdgeData& edge : graph.edges) {
-                    if (edge.targetNodeId == nodeId) {
-                        pending.push_back(edge.sourceNodeId);
-                    }
-                }
-            }
-            return reachable;
         }
 
         struct ReachableBindingIds {
@@ -119,7 +98,7 @@ namespace HIKARI {
             uint64_t& capabilities) {
 
             const std::unordered_set<std::string> reachable =
-                CollectReachableNodeIds(graph);
+                CollectMaterialGraphUpstreamNodes(graph);
 
             for (const MaterialGraphNodeData& node : graph.nodes) {
                 if (!reachable.contains(node.id)) {
@@ -195,7 +174,7 @@ namespace HIKARI {
             const MaterialGraphData& graph,
             std::vector<MaterialFeatureRequest>& requests) {
             const std::unordered_set<std::string> reachable =
-                CollectReachableNodeIds(graph);
+                CollectMaterialGraphUpstreamNodes(graph);
             const bool hasOutline = std::any_of(
                 graph.nodes.begin(), graph.nodes.end(),
                 [&reachable](const MaterialGraphNodeData& node) {
@@ -261,7 +240,7 @@ namespace HIKARI {
             }
             if (const MaterialGraphData* graph = SelectGraph(source)) {
                 const std::unordered_set<std::string> reachable =
-                    CollectReachableNodeIds(*graph);
+                    CollectMaterialGraphUpstreamNodes(*graph);
                 auto nodes = graph->nodes;
                 auto edges = graph->edges;
                 auto parameters = graph->parameters;
@@ -364,7 +343,7 @@ namespace HIKARI {
             const MaterialGraphData* graph = SelectGraph(source);
             if (graph) {
                 const std::unordered_set<std::string> reachable =
-                    CollectReachableNodeIds(*graph);
+                    CollectMaterialGraphUpstreamNodes(*graph);
                 AddNodeCapabilities(*graph, program.capabilities);
                 AddReachableOutlineFeatureRequests(
                     *graph, program.featureRequests);
@@ -522,7 +501,7 @@ namespace HIKARI {
 
             std::string canonicalSource{};
             std::string serializationError{};
-            if (MATERIAL_SERIALIZATION::SerializeMaterialSourceJson(
+            if (MATERIAL_SERIALIZATION::SerializeMaterialCompileInputJson(
                     source, canonicalSource, serializationError)) {
                 program.programId = TEXT::ToHexString(
                     HASH::Fnv1aString(canonicalSource));

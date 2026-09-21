@@ -11,34 +11,11 @@
 #include "Runtime/Binding/HIKARI_RuntimeBindingTypes.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectFixedText.h"
+#include "Runtime/Project/Internal/HIKARI_GameProjectBindingConversion.h"
 #include "Scene/HIKARI_SceneObjectId.h"
 
 namespace HIKARI {
     using namespace PROJECT::DETAIL;
-    namespace {
-    BINDING::ValueType ToRuntimeBindingType(
-        GameProjectBindingValueType type) noexcept {
-
-        switch (type) {
-        case GameProjectBindingValueType::Bool:
-            return BINDING::ValueType::Bool;
-        case GameProjectBindingValueType::Int:
-            return BINDING::ValueType::Int;
-        case GameProjectBindingValueType::Float2:
-            return BINDING::ValueType::Float2;
-        case GameProjectBindingValueType::Float3:
-            return BINDING::ValueType::Float3;
-        case GameProjectBindingValueType::Float4:
-            return BINDING::ValueType::Float4;
-        case GameProjectBindingValueType::Color:
-            return BINDING::ValueType::Color;
-        case GameProjectBindingValueType::Float:
-        default:
-            return BINDING::ValueType::Float;
-        }
-    }
-
-    } // namespace
 
     GameProjectInspector GameProjectSdkAccess::MakeInspector(
         IInspectorBuilder& builder) noexcept {

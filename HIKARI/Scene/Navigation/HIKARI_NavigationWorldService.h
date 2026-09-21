@@ -12,6 +12,8 @@ namespace HIKARI {
 
 namespace HIKARI::NAVIGATION {
 
+    enum class SynchronizationMode : uint8_t { Immediate, Background };
+
     enum class QueryStatus : uint8_t {
         Unavailable = 0,
         Success = 1,
@@ -38,6 +40,9 @@ namespace HIKARI::NAVIGATION {
         uint64_t lastKnownGoodRetentionCount = 0u;
         uint32_t lastChangedChunkCount = 0u;
         uint32_t lastDirtyTileCount = 0u;
+        uint64_t backgroundBuildCount = 0u;
+        uint64_t discardedBuildCount = 0u;
+        bool buildPending = false;
     };
 
     class NavigationWorldService final {
@@ -49,7 +54,7 @@ namespace HIKARI::NAVIGATION {
         NavigationWorldService& operator=(
             const NavigationWorldService&) = delete;
 
-        bool Synchronize(World& world) noexcept;
+        bool Synchronize(World& world, SynchronizationMode mode = SynchronizationMode::Immediate) noexcept;
         void Clear() noexcept;
 
         bool ProjectPoint(

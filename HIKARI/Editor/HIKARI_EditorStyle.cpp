@@ -1,6 +1,7 @@
 #include "HIKARI_EditorStyle.h"
 
 #include "Editor/Style/HIKARI_EditorTheme.h"
+#include "Editor/Settings/HIKARI_EditorPreferences.h"
 
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
@@ -13,6 +14,7 @@ namespace HIKARI::EDITOR {
         const EditorThemeMetrics& metrics = GetEditorThemeMetrics();
         const EditorThemePalette& palette = GetEditorThemePalette();
         ImGuiStyle& style = ImGui::GetStyle();
+        style = ImGuiStyle{};
         style.WindowPadding = ImVec2(metrics.spacingMd, 10.0f);
         style.FramePadding = ImVec2(metrics.spacingSm, 5.0f);
         style.CellPadding = ImVec2(metrics.spacingSm, 5.0f);
@@ -145,6 +147,18 @@ namespace HIKARI::EDITOR {
             palette.accent.z,
             0.78f);
         colors[ImGuiCol_ModalWindowDimBg] = ImVec4(0.02f, 0.03f, 0.04f, 0.62f);
+        const auto& preferences = GetEditorPreferences();
+        if (preferences.compact) {
+            style.FramePadding.y = 3.0f;
+            style.ItemSpacing.y = 4.0f;
+            style.CellPadding.y = 3.0f;
+        }
+        style.ScaleAllSizes(preferences.uiScale);
+        if (preferences.highContrast) {
+            colors[ImGuiCol_Text] = {0.96f, 0.97f, 0.99f, 1};
+            colors[ImGuiCol_TextDisabled] = {0.66f, 0.71f, 0.78f, 1};
+            colors[ImGuiCol_Border] = {0.32f, 0.38f, 0.46f, 1};
+        }
 #endif
     }
 

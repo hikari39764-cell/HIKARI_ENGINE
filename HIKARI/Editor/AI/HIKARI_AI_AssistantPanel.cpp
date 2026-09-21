@@ -13,74 +13,20 @@
 #endif
 
 namespace HIKARI::EDITOR {
-void AiAssistantPanel::DrawSidebar(bool& open) {
-#if defined(HIKARI_WITH_EDITOR)
-    PollAttachmentCapture();
-    const auto& palette = GetEditorThemePalette();
-    auto* viewport = ImGui::GetMainViewport();
-    const float scale = ImGui::GetFontSize() / 16.0f;
-    const float rail = 44.0f * scale;
-    const float width = open ? std::clamp(sidebarWidth_ * scale,
-        280.0f * scale, (std::max)(280.0f * scale, viewport->Size.x * 0.48f)) : rail;
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, palette.panel);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
-        open ? ImVec2(16, 14) : ImVec2(6, 14));
-    const bool visible = ImGui::BeginViewportSideBar("###AI Assistant", viewport,
-        ImGuiDir_Right, width, ImGuiWindowFlags_NoSavedSettings);
-    if (visible) {
-        if (!open) {
-            if (IconButton(EditorGlyph::Assistant, "ExpandAssistant", EditorButtonTone::Quiet,
-                {32 * scale, 32 * scale}, TEXT::Localize("ai.sidebar.expand").c_str())) open = true;
-            if (session_.IsBusy()) {
-                const ImVec2 pos = ImGui::GetCursorScreenPos();
-                ImGui::GetWindowDrawList()->AddCircleFilled({pos.x + 16 * scale, pos.y + 10}, 3.0f, ImGui::GetColorU32(palette.accent));
-            }
-        } else {
-            const ImVec2 origin = ImGui::GetWindowPos();
-            const ImRect resizeBounds(origin,{origin.x+5.0f,origin.y+ImGui::GetWindowHeight()});
-            const ImGuiID resizeId=ImGui::GetID("##SidebarResize");
-            bool resizeHovered=false,resizeHeld=false;
-            ImGui::ItemAdd(resizeBounds,resizeId);
-            ImGui::ButtonBehavior(resizeBounds,resizeId,&resizeHovered,&resizeHeld);
-            if (resizeHovered || resizeHeld) ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
-            if (resizeHeld) sidebarWidth_ = std::clamp(sidebarWidth_ - ImGui::GetIO().MouseDelta.x / scale, 280.0f, 640.0f);
-            ImGui::TextColored(palette.accent, "HIKARI");
-            ImGui::SameLine();
-            ImGui::TextUnformatted(TEXT::Localize("ai.title").c_str());
-            ImGui::SameLine((std::max)(0.0f, ImGui::GetWindowContentRegionMax().x - 68.0f));
-            if (IconButton(EditorGlyph::Settings, "AssistantSettings", EditorButtonTone::Quiet, {28,28}, TEXT::Localize("ai.menu.apiSettings").c_str())) {
-                OpenApiSettingsBuffers(); OpenVisionBuffers();
-                showApiSettings_ = true;
-                ImGui::OpenPopup("##AssistantSettings");
-            }
-            ImGui::SameLine(0, 4);
-            if (IconButton(EditorGlyph::CollapseRight, "CollapseAssistant", EditorButtonTone::Quiet, {28,28}, TEXT::Localize("ai.sidebar.collapse").c_str())) open = false;
-            ImGui::Spacing();
-            DrawContents();
-            ImGui::SetNextWindowSize({520, 580}, ImGuiCond_Appearing);
-            if (ImGui::BeginPopup("##AssistantSettings")) {
-                DrawSettings();
-                ImGui::Separator();
-                ImGui::Checkbox(TEXT::Localize("ai.menu.capabilities").c_str(), &showCapabilities_);
-                ImGui::Checkbox(TEXT::Localize("ai.menu.rawJson").c_str(), &showRawRequest_);
-                ImGui::EndPopup();
-            }
-        }
+void AiAssistantPanel::TickAttachments() { PollAttachmentCapture(); }
+void AiAssistantPanel::DrawEmbedded() { DrawContents(); }
+void AiAssistantPanel::DrawPreferences() {
+    if (!showApiSettings_) {
+        OpenApiSettingsBuffers(); OpenVisionBuffers(); showApiSettings_ = true;
     }
-    ImGui::End();
-    ImGui::PopStyleVar();
-    ImGui::PopStyleColor();
-#else
-    (void)open;
-#endif
+    DrawSettings();
 }
-
 AiAssistantPanel::~AiAssistantPanel() {
     ResetComposer();
     for (auto& [path,preview]:imagePreviews_) if (preview.handle>=0) DXTEX::DxTextureManager::ReleaseTextureDeferred(preview.handle);
 }
 
-void AiAssistantPanel::Draw(bool& open) { DrawSidebar(open); }
+
 
 void AiAssistantPanel::DrawAttachments(const std::vector<AI_ASSISTANT::AiImageAttachment>& images) {
 #if defined(HIKARI_WITH_EDITOR)
@@ -125,8 +71,12 @@ void AiAssistantPanel::DrawContents() {
     const auto& palette = GetEditorThemePalette();
     const bool busy = session_.IsBusy();
     const auto config = session_.SnapshotConfig();
-    StatusBadge(TEXT::Localize(busy ? "ai.status.processing" : config.valid ? "ai.status.ready" : "ai.status.noApi").c_str(),
-        !config.valid ? EditorStatusTone::Warning : busy ? EditorStatusTone::Normal : EditorStatusTone::Ready);
+    const auto activity = session_.SnapshotActivity();
+    const bool attention = activity.phase == "failed" || activity.phase == "blocked" || activity.phase == "needs_input" || activity.phase == "stopped" || activity.phase == "paused" || activity.phase == "budget";
+    const auto statusKey = busy ? "ai.phase." + activity.phase : !config.valid ? std::string("ai.status.noApi") :
+        attention ? "ai.phase." + activity.phase : std::string("ai.status.ready");
+    StatusBadge(TEXT::Localize(statusKey).c_str(), (!config.valid || attention) ? EditorStatusTone::Warning :
+        busy ? EditorStatusTone::Normal : EditorStatusTone::Ready);
     ImGui::SameLine();
     ImGui::TextDisabled("%s", config.model.c_str());
     if (!workspaceLabel_.empty()) {

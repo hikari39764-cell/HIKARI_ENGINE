@@ -1,6 +1,8 @@
+#include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Editor/Workspaces/Cinematics/HIKARI_CinematicsOperations.h"
 
 #include <string>
+#include <algorithm>
 
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetRecord.h"
@@ -10,22 +12,12 @@
 #include "Editor/Workspaces/Cinematics/HIKARI_CinematicsWorkspaceController.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/HIKARI_CinematicSequence.h"
+#include "Scene/Sequencer/Serialization/HIKARI_CinematicSequenceJson.h"
 
 namespace HIKARI::EDITOR {
 namespace {
 
-EditorOperationParameter MakeOperationParameter(
-    std::string name,
-    EditorOperationParameterType type,
-    bool required,
-    std::string description) {
-  EditorOperationParameter parameter{};
-  parameter.name = std::move(name);
-  parameter.type = type;
-  parameter.required = required;
-  parameter.description = std::move(description);
-  return parameter;
-}
+
 
 bool RequireSequenceAssetDocument(
     const CinematicsWorkspaceController& controller,
@@ -45,18 +37,7 @@ bool RequireSequenceAssetDocument(
   return false;
 }
 
-bool RequireScene(
-    const std::function<DocumentSceneBase*()>& sceneProvider,
-    EditorOperationResult& result,
-    DocumentSceneBase*& outScene) {
-  outScene = sceneProvider();
-  if (outScene == nullptr) {
-    result.code = "NO_SCENE";
-    result.message = "当前没有可用的场景上下文。";
-    return false;
-  }
-  return true;
-}
+
 
 const char* SourceKindName(SequenceEditorSourceKind kind) {
   switch (kind) {
@@ -113,26 +94,58 @@ void RegisterCinematicsOperations(
 
   registry.Register({
       "cinematics.document", "Read the editable sequence document including shot cameras, curves, motion and screen effects.",
-      "cinematics", {},
-      [&controller, sceneProvider](const nlohmann::json&) {
+      "cinematics", {EditorOperationParameter{"shotId",EditorOperationParameterType::Int,false,"Read only this shot instead of the whole sequence"}},
+      [&controller, sceneProvider](const nlohmann::json& parameters) {
         EditorOperationResult result;
         auto* scene = sceneProvider();
         if (!scene) { result.code="NO_SCENE"; return result; }
         result.ok=true; result.code="OK"; result.message="Sequence document";
-        result.details.push_back(controller.DescribeAuthoring(*scene).dump());
+        auto document = controller.DescribeAuthoring(*scene);
+        if (parameters.contains("shotId")) {
+          const auto id = parameters["shotId"].get<uint64_t>();
+          const auto& clips = document["tracks"][0]["clips"];
+          const auto found = std::find_if(clips.begin(), clips.end(),[&](const auto& clip) { return clip.value("id",uint64_t{0}) == id; });
+          if (found == clips.end()) return EditorOperationResult{false,"SHOT_NOT_FOUND","Shot does not exist."};
+          result.data["shot"] = *found;
+        } else result.data["document"] = std::move(document);
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Query);
+  EditorOperationDefinition schema{
+      "cinematics.schema", "Read default shot and sequence structures from the engine serializer. No engine source is required.",
+      "cinematics", {}, [](const nlohmann::json&) {
+        CinematicSequence sequence;
+        sequence.cameraCutTrack.clips.emplace_back();
+        sequence.cameraCutTrack.clips.back().camera.owned = true;
+        nlohmann::json data;
+        SerializeCinematicSequenceJson(sequence,data);
+        return EditorOperationResult{true,"OK","Editable values; edit_shot merges only supplied fields.",
+          {{"sequence",std::move(data)},{"curveKey","[seconds,value,inSlope,outSlope]"},
+           {"timeUnit","seconds"},{"rotationUnit","degrees"}}};
+      }};
+  schema.requiresDocumentSession = false;
+  schema.kind = EditorOperationKind::Query;
+  schema.searchTerms = {"镜头", "演出", "カメラ", "シーケンス", "camera", "cinematic"};
+  registry.Register(std::move(schema));
   registry.Register({
-      "cinematics.edit", "Edit the open Sequence asset atomically. command.action: append_shot, edit_shot (id), remove_shot (id), set_screen_effects, rename, replace_sequence. command.value uses the document schema returned by cinematics.document. Curve keys are [seconds, value, inSlope, outSlope] arrays. Edits support undo and never switch the user's workspace.",
-      "cinematics", {MakeOperationParameter("command",EditorOperationParameterType::Json,true,"Authoring command object")},
+      "cinematics.edit", "Edit the open Sequence asset atomically. command.action: append_shot, edit_shot (id), remove_shot (id), set_screen_effects, rename, replace_sequence. edit_shot recursively merges supplied fields, preserving omitted fields. Use cinematics.schema for defaults and cinematics.document with shotId for a focused read. Curve keys are [seconds, value, inSlope, outSlope] arrays. Edits support undo and never switch the user's workspace.",
+      "cinematics", {EditorOperationParameter{"command",EditorOperationParameterType::Json,true,"Authoring command object",CinematicsWorkspaceController::AuthoringCommandSchema()}},
       [&controller, sceneProvider](const nlohmann::json& p) {
         EditorOperationResult result; auto* scene=sceneProvider();
         if (!scene) { result.code="NO_SCENE"; return result; }
+        const auto before = controller.DescribeAuthoring(*scene);
         result.ok=controller.ExecuteAuthoring(*scene,p.at("command"),result.message);
+        if (result.ok) {
+          const auto after = controller.DescribeAuthoring(*scene);
+          result.data["documentChanged"] = after != before;
+          result.data["assetGuid"] = controller.GetSequenceDocument().GetAssetGuid().value;
+          result.data["documentRevision"] = std::hash<std::string>{}(after.dump());
+          result.data["shotIds"] = nlohmann::json::array();
+          for (const auto& shot : after["tracks"][0]["clips"]) result.data["shotIds"].push_back(shot["id"]);
+        }
         result.code=result.ok?"OK":"EDIT_REJECTED"; return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "cinematics.query",
@@ -163,7 +176,7 @@ void RegisterCinematicsOperations(
         }
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Query);
 
   registry.Register({
       "cinematics.save",
@@ -190,7 +203,7 @@ void RegisterCinematicsOperations(
         }
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "cinematics.undo",
@@ -213,7 +226,7 @@ void RegisterCinematicsOperations(
         }
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
   registry.Register({
       "cinematics.redo",
@@ -236,9 +249,9 @@ void RegisterCinematicsOperations(
         }
         return result;
       },
-  });
+  }, HIKARI::EDITOR::EditorOperationKind::Mutation);
 
-  registry.Register({
+  auto assetQuery = EditorOperationDefinition{
       "cinematics.list_assets",
       "List Sequence assets in the project (guid, name, source path).",
       "cinematics",
@@ -269,9 +282,13 @@ void RegisterCinematicsOperations(
             " 个 Sequence 资产。";
         return result;
       },
-  });
+  };
+    assetQuery.requiresDocumentSession = false;
+    assetQuery.kind = EditorOperationKind::Query;
+    registry.Register(std::move(assetQuery));
 
-  registry.Register({
+  {
+    EditorOperationDefinition transition{
       "cinematics.new_asset",
       "Create a new unsaved Sequence asset.",
       "cinematics",
@@ -303,16 +320,20 @@ void RegisterCinematicsOperations(
         result.message = message;
         return result;
       },
-  });
+  };
+    transition.requiresCleanDocument = true;
+    registry.Register(std::move(transition), EditorOperationKind::Session);
+  }
 
-  registry.Register({
+  {
+    EditorOperationDefinition transition{
       "cinematics.open_asset",
       "Open a Sequence asset by its guid.",
       "cinematics",
       {
-          MakeOperationParameter(
+          EditorOperationParameter{
               "assetGuid", EditorOperationParameterType::String,
-              true, "cinematics.list_assets 返回的 guid"),
+              true, "cinematics.list_assets 返回的 guid"},
       },
       [&controller, sceneProvider](const nlohmann::json& parameters) {
         EditorOperationResult result{};
@@ -362,9 +383,13 @@ void RegisterCinematicsOperations(
         result.message = message;
         return result;
       },
-  });
+  };
+    transition.requiresCleanDocument = true;
+    registry.Register(std::move(transition), EditorOperationKind::Session);
+  }
 
-  registry.Register({
+  {
+    EditorOperationDefinition transition{
       "cinematics.revert",
       "Revert the open Sequence asset to its saved version.",
       "cinematics",
@@ -399,9 +424,13 @@ void RegisterCinematicsOperations(
         result.message = message;
         return result;
       },
-  });
+  };
+    transition.requiresCleanDocument = true;
+    registry.Register(std::move(transition), EditorOperationKind::Session);
+  }
 
-  registry.Register({
+  {
+    EditorOperationDefinition transition{
       "cinematics.close_to_embedded",
       "Close the external Sequence asset and return to Scene Cinematics.",
       "cinematics",
@@ -433,7 +462,11 @@ void RegisterCinematicsOperations(
         result.message = message;
         return result;
       },
-  });
+  };
+    transition.requiresCleanDocument = true;
+    transition.exposureMask = EditorOperationExposureMask::Human;
+    registry.Register(std::move(transition), EditorOperationKind::Session);
+  }
 }
 
 } // namespace HIKARI::EDITOR

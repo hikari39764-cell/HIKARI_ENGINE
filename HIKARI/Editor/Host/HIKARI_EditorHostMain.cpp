@@ -211,6 +211,14 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
     HIKARI::EDITOR::EditorEngineApp application{};
     HIKARI::RUNTIME::EngineHostRunOptions options{};
+    const auto readyName = HIKARI::ReadRuntimeCommandLinePath(L"--launcher-ready-event");
+    if (readyName && readyName->wstring().starts_with(L"Local\\HIKARI.EditorReady.")) {
+        options.onFirstApplicationPresented = [name = readyName->wstring()] {
+            if (HANDLE event = OpenEventW(EVENT_MODIFY_STATE, FALSE, name.c_str())) {
+                SetEvent(event); CloseHandle(event);
+            }
+        };
+    }
     options.product =
         HIKARI::RUNTIME::EngineHostProduct::Editor;
     const int exitCode =

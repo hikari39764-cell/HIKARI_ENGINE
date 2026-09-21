@@ -1,3 +1,4 @@
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 
 #include <utility>
@@ -18,7 +19,7 @@ bool ModelMaterialWorkspaceController::DrawFaceRampNodeControl(
   MaterialGraphResourceData *resource =
       MATERIAL_GRAPH_UI::FindGraphResource(graph, "resource.diffuseRamp");
   if (resource == nullptr) {
-    ImGui::TextDisabled("Diffuse Ramp: missing");
+    ImGui::TextDisabled(TEXT::Localize("editor.ui.diffuse.ramp.missing.cf5301").c_str());
     return false;
   }
   bool capturesPointer = false;

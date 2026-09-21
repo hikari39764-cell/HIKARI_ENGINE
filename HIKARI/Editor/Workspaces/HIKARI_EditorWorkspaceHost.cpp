@@ -24,16 +24,6 @@ namespace HIKARI::EDITOR {
             EditorViewShadingMode::Neutral;
         director.visualization.displayExposure = 1.25f;
 
-        EditorViewInstance& overview =
-            View(BuiltInViewSlot::CinematicsOverview);
-        overview.renderViewId = kEditorOverviewRenderViewId;
-        overview.role = EditorViewRole::Overview;
-        overview.purpose = RENDER3D::RenderViewPurpose::EditorScene;
-        overview.cameraBinding.kind =
-            EditorViewCameraSourceKind::OwnedEditorCamera;
-        overview.execution =
-            EditorViewExecutionMode::LightweightEditorOverview;
-
         EditorViewInstance& collision =
             View(BuiltInViewSlot::ModelCollisionPreview);
         collision.renderViewId =
@@ -179,14 +169,6 @@ namespace HIKARI::EDITOR {
 
     const EditorViewInstance& EditorWorkspaceHost::GetCinematicsDirectorView() const noexcept {
         return View(BuiltInViewSlot::CinematicsDirector);
-    }
-
-    EditorViewInstance& EditorWorkspaceHost::GetCinematicsOverviewView() noexcept {
-        return View(BuiltInViewSlot::CinematicsOverview);
-    }
-
-    const EditorViewInstance& EditorWorkspaceHost::GetCinematicsOverviewView() const noexcept {
-        return View(BuiltInViewSlot::CinematicsOverview);
     }
 
     EditorViewInstance& EditorWorkspaceHost::GetModelCollisionPreviewView() noexcept {

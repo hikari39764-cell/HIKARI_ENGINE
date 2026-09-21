@@ -6,12 +6,12 @@ namespace HIKARI {
     void DocumentSceneEditorController::RegisterSceneLayoutOperations() {
         using namespace EDITOR;
         operationRegistry_.Register({"scene.layout.query", "Read local object transforms for a project layout draft.", "scene", {},
-            [this](const nlohmann::json& p) { return ExecuteSceneLayoutOperation(false, p); }});
+            [this](const nlohmann::json& p) { return ExecuteSceneLayoutOperation(false, p); }}, HIKARI::EDITOR::EditorOperationKind::Query);
         operationRegistry_.Register({"scene.layout.apply", "Atomically apply a layout draft as one Undo step. Reject stale scene identity or edited targets.", "scene",
             {{"sceneId", EditorOperationParameterType::String, true, "Identity from scene.layout.query."},
              {"documentRevision", EditorOperationParameterType::Int, true, "Revision from scene.layout.query."},
              {"commands", EditorOperationParameterType::Json, true, "1..256 {objectId, expected, position?, rotation?, scale?}; expected comes from the query."}},
-            [this](const nlohmann::json& p) { return ExecuteSceneLayoutOperation(true, p); }});
+            [this](const nlohmann::json& p) { return ExecuteSceneLayoutOperation(true, p); }}, HIKARI::EDITOR::EditorOperationKind::Mutation);
         operationRegistry_.Register({"scene.undo", "Undo the last Scene document edit.", "scene", {},
             [this](const nlohmann::json&) {
                 if (!aiOperationScene_) return EditorOperationResult{false, "NO_SCENE", "Open a scene first."};
@@ -19,7 +19,7 @@ namespace HIKARI {
                 if (!documentHistory_.CanUndo()) return EditorOperationResult{false, "NOTHING_TO_UNDO", "No Scene edit to undo."};
                 ExecuteSceneDocumentHistory(*aiOperationScene_, false);
                 return EditorOperationResult{true, "OK", "Scene edit undone."};
-            }});
+            }}, HIKARI::EDITOR::EditorOperationKind::Mutation);
         operationRegistry_.Register({"scene.redo", "Redo the last undone Scene document edit.", "scene", {},
             [this](const nlohmann::json&) {
                 if (!aiOperationScene_) return EditorOperationResult{false, "NO_SCENE", "Open a scene first."};
@@ -27,7 +27,7 @@ namespace HIKARI {
                 if (!documentHistory_.CanRedo()) return EditorOperationResult{false, "NOTHING_TO_REDO", "No Scene edit to redo."};
                 ExecuteSceneDocumentHistory(*aiOperationScene_, true);
                 return EditorOperationResult{true, "OK", "Scene edit redone."};
-            }});
+            }}, HIKARI::EDITOR::EditorOperationKind::Mutation);
     }
 
     EDITOR::EditorOperationResult DocumentSceneEditorController::ExecuteSceneLayoutOperation(
