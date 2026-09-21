@@ -90,6 +90,7 @@ namespace HIKARI::ASSETS::SEMANTICS {
                 1u,
                 ".hshader under Assets/Shaders",
             },
+            {AssetImporterKind::GameplayCamera, AssetType::GameplayCamera, "GameplayCameraAssetImporter", 1u, ".hcamera"},
         } };
 
         bool EndsWith(std::string_view text, std::string_view suffix) noexcept {
@@ -150,6 +151,7 @@ namespace HIKARI::ASSETS::SEMANTICS {
         case AssetType::Animation: return "Animation";
         case AssetType::Particle: return "Particle";
         case AssetType::VfxEffect: return "VfxEffect";
+        case AssetType::GameplayCamera: return "GameplayCamera";
         case AssetType::Sequence: return "Sequence";
         case AssetType::AnimationStateMachine: return "AnimationStateMachine";
         case AssetType::Dialogue: return "Dialogue";
@@ -169,6 +171,7 @@ namespace HIKARI::ASSETS::SEMANTICS {
         if (text == "Animation") return AssetType::Animation;
         if (text == "Particle") return AssetType::Particle;
         if (text == "VfxEffect" || text == "Vfx") return AssetType::VfxEffect;
+        if (text == "GameplayCamera") return AssetType::GameplayCamera;
         if (text == "Sequence") return AssetType::Sequence;
         if (text == "AnimationStateMachine") {
             return AssetType::AnimationStateMachine;
@@ -233,6 +236,8 @@ namespace HIKARI::ASSETS::SEMANTICS {
             kind = AssetImporterKind::Model;
         } else if (IsScenePath(genericPath, filename, extension)) {
             kind = AssetImporterKind::Scene;
+        } else if (extension == ".hcamera") {
+            kind = AssetImporterKind::GameplayCamera;
         } else if (extension == ".hsequence") {
             kind = AssetImporterKind::Sequence;
         } else if (extension == ".hanimsm") {

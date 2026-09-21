@@ -273,8 +273,10 @@ namespace HIKARI {
                         AddReference(material, owner, "Procedural Material", assetDatabase, summary);
                         AddMaterialReferences(material, owner, assetDatabase, summary, visitedMaterials);
                     }
+                } else if (component.type == "CameraFollowComponent") {
+                    AddReference(component.properties.value("cameraProfile",std::string{}),owner,"Gameplay Camera",assetDatabase,summary);
                 } else if (component.type ==
-                        "SequencePlayerComponent") {
+                        "SequencePlayerComponent" || component.type == "CameraFlowComponent") {
                     AddReference(
                         component.properties.value(
                             "sequenceAssetGuid",

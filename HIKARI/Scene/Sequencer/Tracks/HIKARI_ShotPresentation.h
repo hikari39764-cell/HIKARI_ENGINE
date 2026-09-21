@@ -3,6 +3,7 @@
 #include <string>
 #include <array>
 #include <vector>
+#include <span>
 #include "Render3D/Core/HIKARI_Camera3D.h"
 #include "Scene/Sequencer/HIKARI_SequenceBinding.h"
 
@@ -33,7 +34,29 @@ namespace HIKARI::SEQUENCER {
     inline constexpr std::array<const char*, 8> kShotChannelNames{
         "eyeX", "eyeY", "eyeZ", "targetX", "targetY", "targetZ", "fov", "roll"};
 
-    enum class CameraMotionKind { Dolly, Truck, Pedestal, Orbit, Pan, Tilt, Roll, Shake, Handheld };
+    enum class CameraMotionKind { Dolly, Truck, Pedestal, Orbit, Pan, Tilt, Roll, Shake, Handheld, Fov, SpeedFov, SpeedDolly };
+
+    struct CameraMotionDescriptor {
+        CameraMotionKind kind;
+        const char* key;
+        const char* group;
+        float defaultAmount;
+        bool oscillating = false;
+        bool speedDriven = false;
+    };
+    inline constexpr std::array kCameraMotionDescriptors{
+        CameraMotionDescriptor{CameraMotionKind::Dolly, "cine.dolly", "cm.position", 0.3f},
+        CameraMotionDescriptor{CameraMotionKind::Truck, "cine.truck", "cm.position", 0.3f},
+        CameraMotionDescriptor{CameraMotionKind::Pedestal, "cine.pedestal", "cm.position", 0.2f},
+        CameraMotionDescriptor{CameraMotionKind::Orbit, "cine.orbit", "cm.rotation", 10},
+        CameraMotionDescriptor{CameraMotionKind::Pan, "cine.pan", "cm.rotation", 5},
+        CameraMotionDescriptor{CameraMotionKind::Tilt, "cine.tilt", "cm.rotation", 5},
+        CameraMotionDescriptor{CameraMotionKind::Roll, "cine.roll", "cm.rotation", 3},
+        CameraMotionDescriptor{CameraMotionKind::Shake, "cine.shake", "cm.movement", 0.06f, true},
+        CameraMotionDescriptor{CameraMotionKind::Handheld, "cine.handheld", "cm.movement", 0.025f, true},
+        CameraMotionDescriptor{CameraMotionKind::Fov, "cm.fov", "cm.lens", 5},
+        CameraMotionDescriptor{CameraMotionKind::SpeedFov, "gc.speedFov", "cm.speed", 12, false, true},
+        CameraMotionDescriptor{CameraMotionKind::SpeedDolly, "cm.speedDolly", "cm.speed", -0.6f, false, true}};
 
     struct CameraMotionEffect {
         uint64_t id = 1;
@@ -43,6 +66,9 @@ namespace HIKARI::SEQUENCER {
         PresentationParameter weight{1.0f};
         float frequency = 3.0f;
         uint32_t seed = 1;
+        // duration == 0 は親の再生期間全体。キーは開始位置からの秒数。
+        float start = 0, duration = 0, fadeIn = 0, fadeOut = 0;
+        float maximumSpeed = 8;
     };
 
     struct ShotCamera {
@@ -84,6 +110,10 @@ namespace HIKARI::SEQUENCER {
     };
 
     void NormalizeShotCamera(ShotCamera& shot);
+    void NormalizeCameraMotionEffects(std::vector<CameraMotionEffect>& effects);
+    void ApplyCameraMotionEffects(std::span<const CameraMotionEffect> effects, float seconds,
+        MATH::Vec3& eye, MATH::Vec3& target, MATH::Vec3& up, float& fovDegrees,
+        float speed = 0, float strength = 1, bool keepTarget = false);
     void NormalizePresentationParameter(PresentationParameter& parameter);
     void SetPresentationKey(PresentationParameter& parameter, float seconds, float value);
     ShotPose EvaluateShotPose(const ShotCamera& shot, float seconds);

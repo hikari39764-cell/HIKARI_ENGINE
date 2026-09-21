@@ -193,7 +193,7 @@ namespace HIKARI {
 
         if (releasingWinner) {
             // Override 解除後にベースへ戻る場合は、解除対象のブレンド設定を使う。
-            activeBlend_ = found->request.blend;
+            activeBlend_ = found->request.returnBlend.value_or(found->request.blend);
             blendActive_ = false;
             blendElapsedSeconds_ = 0.0f;
         }
@@ -453,6 +453,7 @@ namespace HIKARI {
         MATH::Vec3 target{};
         MATH::Vec3 up{};
         float verticalFov = component->GetFovYRad();
+        float nearClip = component->GetNearClip(), farClip = component->GetFarClip();
 
         CAMERA::CameraRigSubmission rigSubmission{};
         const CAMERA::CameraRigService* rigService =
@@ -463,6 +464,7 @@ namespace HIKARI {
             target = rigSubmission.pose.target;
             MATH::Vec3 forward = MATH::Normalize(target - eye);
             up = SafeUpForForward(forward, rigSubmission.pose.up);
+            if (rigSubmission.pose.overrideClipPlanes) { nearClip = rigSubmission.pose.nearClip; farClip = rigSubmission.pose.farClip; }
             if (rigSubmission.pose.overrideVerticalFov) {
                 verticalFov = rigSubmission.pose.verticalFovRadians;
             }
@@ -484,8 +486,7 @@ namespace HIKARI {
         outCamera.SetPerspective(
             verticalFov,
             (std::max)(aspect, kMinAspect),
-            component->GetNearClip(),
-            component->GetFarClip());
+            nearClip, farClip);
         if (component->IsOrthographic()) {
             outCamera.SetOrthographic(component->GetOrthographicHeight(),aspect,component->GetNearClip(),component->GetFarClip());
             const float grid=component->GetPixelGridSize();

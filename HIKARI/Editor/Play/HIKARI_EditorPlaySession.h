@@ -51,6 +51,9 @@ namespace HIKARI {
                 const INPUT::MouseCaptureRegion& region);
             void UpdateEmbeddedInputRegion(
                 const INPUT::MouseCaptureRegion& region);
+            void UpdateEmbeddedViewportInput(
+                const INPUT::MouseCaptureRegion& region,
+                bool viewportClicked);
             void ReleaseEmbeddedInput();
             void Update(DocumentSceneBase& scene);
             void Shutdown(DocumentSceneBase* scene);

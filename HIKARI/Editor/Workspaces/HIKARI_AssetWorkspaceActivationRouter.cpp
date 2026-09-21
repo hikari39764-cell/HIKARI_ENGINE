@@ -23,6 +23,10 @@ namespace HIKARI::EDITOR {
             request.workspaceId = EditorWorkspaceId::ModelCollision;
             request.modelAssetGuid = activation.guid;
             break;
+        case AssetType::GameplayCamera:
+            request.workspaceId=EditorWorkspaceId::GameplayCamera;
+            request.cameraProfileAssetGuid=activation.guid;
+            break;
         case AssetType::Sequence:
             request.workspaceId = EditorWorkspaceId::Cinematics;
             request.sequenceAssetGuid = activation.guid;

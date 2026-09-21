@@ -35,6 +35,9 @@ namespace HIKARI {
         DocumentSceneBase& scene) {
         using EDITOR::EditorCommandId;
         commandRouter_.BeginFrame();
+        if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::GameplayCamera) && !GameplayCameraWorkspace().EditingFlow()) {
+            GameplayCameraWorkspace().BindDocumentCommands(commandRouter_); return;
+        }
         if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Project)) {
             if (projectWorkspaceHost_) {
                 commandRouter_.Bind(EditorCommandId::SaveDocument, TEXT::Localize("menu.edit.save"),

@@ -116,6 +116,8 @@ namespace HIKARI::EDITOR {
         float overviewUnitsPerScreen = 40.0f;
     };
 
+    inline constexpr RENDER3D::RenderViewId kGameplayCameraObserverRenderViewId{ 8 };
+    inline constexpr RENDER3D::RenderViewId kGameplayCameraPreviewRenderViewId{ 9 };
     inline constexpr RENDER3D::RenderViewId kEditorDirectorRenderViewId{ 2 };
     inline constexpr RENDER3D::RenderViewId kModelCollisionPreviewRenderViewId{ 4 };
     inline constexpr RENDER3D::RenderViewId kModelMaterialPreviewRenderViewId{ 5 };

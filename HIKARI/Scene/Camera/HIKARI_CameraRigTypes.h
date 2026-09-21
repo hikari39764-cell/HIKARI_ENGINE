@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string_view>
+#include <string>
 
 #include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Render3D/HIKARI_Math3D.h"
@@ -27,6 +28,8 @@ namespace HIKARI::CAMERA {
         MATH::Vec3 eye{};
         MATH::Vec3 target{ 0.0f, 0.0f, 1.0f };
         MATH::Vec3 up{ 0.0f, 1.0f, 0.0f };
+        bool overrideClipPlanes = false;
+        float nearClip = 0.05f, farClip = 2000;
         bool overrideVerticalFov = false;
         float verticalFovRadians = 0.0f;
         // Scales ordinary post-pose modifiers during an engine-owned camera
@@ -35,6 +38,12 @@ namespace HIKARI::CAMERA {
         float modifierWeightScale = 1.0f;
     };
 
+    struct CameraModeSubmission {
+        SceneObjectId cameraObjectId;
+        CameraRigSourceId sourceId = 0;
+        int priority = 0;
+        std::string mode;
+    };
     struct CameraRigSubmission {
         SceneObjectId cameraObjectId{};
         CameraRigSourceId sourceId = 0u;

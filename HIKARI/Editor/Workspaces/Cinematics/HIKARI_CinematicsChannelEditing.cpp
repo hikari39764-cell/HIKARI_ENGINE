@@ -26,10 +26,10 @@ namespace HIKARI::EDITOR {
             for(size_t i=0;i<shot->camera.channels.size();++i)
                 result.push_back({SEQUENCER::kShotChannelNames[i],TEXT::Localize(kCinematicChannelKeys[i]),&shot->camera.channels[i],shot->startTimeSeconds,shot->durationSeconds});
             for(auto& motion:shot->camera.motion) {
-                const auto name=TEXT::Localize(kCinematicMotionKeys[static_cast<int>(motion.kind)]);
+                const auto name=TEXT::Localize(SEQUENCER::kCameraMotionDescriptors[static_cast<size_t>(motion.kind)].key);
                 const auto prefix="motion/"+std::to_string(motion.id);
-                result.push_back({prefix+"/amount",name+" · "+TEXT::Localize("cine.amount"),&motion.amount,shot->startTimeSeconds,shot->durationSeconds});
-                result.push_back({prefix+"/weight",name+" · "+TEXT::Localize("cine.weight"),&motion.weight,shot->startTimeSeconds,shot->durationSeconds});
+                result.push_back({prefix+"/amount",name+" · "+TEXT::Localize("cine.amount"),&motion.amount,shot->startTimeSeconds+motion.start,motion.duration>0?motion.duration:std::max(0.0f,shot->durationSeconds-motion.start)});
+                result.push_back({prefix+"/weight",name+" · "+TEXT::Localize("cine.weight"),&motion.weight,shot->startTimeSeconds+motion.start,motion.duration>0?motion.duration:std::max(0.0f,shot->durationSeconds-motion.start)});
             }
             effects(shot->effects,shot->startTimeSeconds);
         } else if(selectionKind_==SelectionKind::Effect) {

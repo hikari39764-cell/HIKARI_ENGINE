@@ -29,6 +29,7 @@
 #include "Importers/HIKARI_DialogueAssetImporter.h"
 #include "Importers/HIKARI_SceneAssetImporter.h"
 #include "Importers/HIKARI_SequenceAssetImporter.h"
+#include "Importers/HIKARI_GameplayCameraAssetImporter.h"
 #include "Importers/HIKARI_ShaderImporter.h"
 #include "Importers/HIKARI_SkyCubemapImporter.h"
 #include "Importers/HIKARI_TextureImportBackend_DirectXTex.h"
@@ -1499,6 +1500,7 @@ namespace HIKARI {
         importerRegistry_.Register(std::make_unique<ModelImporter>());
         importerRegistry_.Register(std::make_unique<SceneAssetImporter>());
         importerRegistry_.Register(std::make_unique<SequenceAssetImporter>());
+        importerRegistry_.Register(std::make_unique<GameplayCameraAssetImporter>());
         importerRegistry_.Register(
             std::make_unique<AnimationStateMachineAssetImporter>());
         importerRegistry_.Register(

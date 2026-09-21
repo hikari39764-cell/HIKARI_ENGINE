@@ -512,6 +512,23 @@ namespace HIKARI {
             operationRegistry_,
             AnimationStateMachineWorkspace(),
             [this]() { return aiOperationScene_; });
+        EDITOR::RegisterGameplayCameraOperations(operationRegistry_, GameplayCameraWorkspace(), workspaceHost_, [this] { return aiOperationScene_; });
+        operationRegistry_.Register({"gameplay_camera.bind", "Bind a saved camera profile to scene targets, creating a camera when cameraId is zero. Includes scene undo and sets the default gameplay camera.", "scene",
+            {EDITOR::EditorOperationParameter{"assetGuid",EditorOperationParameterType::String,true,"Gameplay camera asset GUID"},
+             EDITOR::EditorOperationParameter{"cameraId",EditorOperationParameterType::Int,false,"Existing camera or zero to create"},
+             EDITOR::EditorOperationParameter{"targetId",EditorOperationParameterType::Int,true,"Follow target scene object ID"},
+             EDITOR::EditorOperationParameter{"lookTargetId",EditorOperationParameterType::Int,false,"Optional lock target ID"},
+             EDITOR::EditorOperationParameter{"mode",EditorOperationParameterType::String,false,"Initial mode ID"},
+             EDITOR::EditorOperationParameter{"resetOverrides",EditorOperationParameterType::Bool,false,"Restore inherited profile settings"}},
+            [this](const auto& parameters) { return BindGameplayCamera(parameters); }}, EDITOR::EditorOperationKind::Mutation, false);
+        operationRegistry_.Register({"camera_flow.edit", "Create, update, or remove a scene camera flow: region entry plays a sequence then changes the gameplay base mode. Scene undo and runtime projection are shared with human editing. Read camera_flow.describe for defaults and live state.", "scene",
+            {{"action",EditorOperationParameterType::String,true,"create, update, remove"},
+             {"objectId",EditorOperationParameterType::Int,false,"Existing flow scene object"},
+             {"name",EditorOperationParameterType::String,false,"Display name"},
+             {"settings",EditorOperationParameterType::Json,false,"Partial CameraFlowComponent settings"},
+             {"position",EditorOperationParameterType::Json,false,"Local XYZ position"},
+             {"rotation",EditorOperationParameterType::Json,false,"Local XYZ Euler degrees"}},
+            [this](const auto& p){return EditCameraFlow(p);}},EDITOR::EditorOperationKind::Mutation,false);
         EDITOR::RegisterCinematicsOperations(
             operationRegistry_,
             CinematicsWorkspace(),

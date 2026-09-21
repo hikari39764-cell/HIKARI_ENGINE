@@ -1,5 +1,6 @@
 #include "Scene/HIKARI_CameraActivationVolumeSystem.h"
 
+#include "Scene/Camera/HIKARI_CameraVolume.h"
 #include <algorithm>
 #include <cmath>
 #include <unordered_set>
@@ -15,35 +16,6 @@
 namespace HIKARI {
 
     namespace {
-        MATH::Vec3 ExtractPosition(const GameObject& object) noexcept {
-            const MATH::Mat4 world =
-                object.GetTransform().GetWorldMatrix();
-            return {
-                world.m[3][0],
-                world.m[3][1],
-                world.m[3][2]
-            };
-        }
-
-        bool ContainsPoint(
-            const GameObject& volume,
-            const MATH::Vec3& halfExtents,
-            const MATH::Vec3& worldPoint) noexcept {
-
-            const MATH::Mat4 inverse = MATH::Inverse(
-                volume.GetTransform().GetWorldMatrix());
-            const MATH::Vec4 local = inverse.TransformPoint({
-                worldPoint.x,
-                worldPoint.y,
-                worldPoint.z,
-                1.0f
-            });
-            return MATH::IsFinite(local) &&
-                std::abs(local.x) <= halfExtents.x &&
-                std::abs(local.y) <= halfExtents.y &&
-                std::abs(local.z) <= halfExtents.z;
-        }
-
         bool SameRequest(
             const CameraActivationRequest& lhs,
             const CameraActivationRequest& rhs) noexcept {
@@ -111,10 +83,10 @@ namespace HIKARI {
                 const bool valid = component.IsEnabled() &&
                     subject != nullptr && cameraComponent != nullptr &&
                     cameraComponent->IsEnabled();
-                const bool active = valid && ContainsPoint(
+                const bool active = valid && CAMERA::ContainsCameraSubject(
                     volume,
                     component.GetHalfExtents(),
-                    ExtractPosition(*subject));
+                    CAMERA::WorldPosition(*subject));
                 if (!active) {
                     ReleaseRequest(volumeRuntimeId);
                     return;

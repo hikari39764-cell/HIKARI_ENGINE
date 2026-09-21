@@ -106,15 +106,13 @@ namespace HIKARI {
             MATH::Vec3 forward{};
             if (space == CharacterMovementSpace::Camera &&
                 camera != nullptr) {
-                // Author camera-relative movement from the viewed direction
-                // directly. This avoids leaking view-matrix conventions into
-                // gameplay and guarantees W follows the screen forward axis.
+                // 描画と同じ RH 基底を使用する。旧 up×forward は左右が逆になる。
                 forward = FlattenAndNormalize(
                     camera->GetTarget() - camera->GetPosition());
+                if (MATH::Length(forward) <= 1.0e-5f)
+                    forward = FlattenAndNormalize(camera->GetUp());
                 if (MATH::Length(forward) > 1.0e-5f) {
-                    right = FlattenAndNormalize(MATH::Cross(
-                        { 0.0f, 1.0f, 0.0f },
-                        forward));
+                    right = MATH::BuildViewBasisRH(forward, {0, 1, 0}).right;
                 }
                 if (MATH::Length(right) <= 1.0e-5f ||
                     MATH::Length(forward) <= 1.0e-5f) {

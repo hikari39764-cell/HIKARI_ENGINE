@@ -260,6 +260,14 @@ namespace HIKARI {
         uint8_t reserved[7] = { 0u, 0u, 0u, 0u, 0u, 0u, 0u };
     };
 
+    enum class GameProjectCameraFlowStage : uint8_t { Armed, Playing, Returning, Completed, Interrupted, Invalid, Disabled };
+    struct GameProjectCameraFlowStatus {
+        GameProjectCameraFlowStage stage = GameProjectCameraFlowStage::Armed;
+        uint8_t inside = 0;
+        uint32_t runs = 0;
+        float timeSeconds = 0, durationSeconds = 0;
+    };
+
     struct GameProjectCameraModifier {
         uint64_t cameraObjectHandle = 0u;
         uint64_t sourceId = 0u;

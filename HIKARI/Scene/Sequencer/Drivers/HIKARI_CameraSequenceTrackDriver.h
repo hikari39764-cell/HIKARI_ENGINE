@@ -47,6 +47,9 @@ namespace SEQUENCER {
             CameraOverrideToken overrideToken{};
             SceneObjectId cameraObjectId{};
             uint64_t shotId = 0;
+            Camera3D entryCamera;
+            float entrySeconds = 0, returnSeconds = 0, firstTime = -1;
+            bool entryFinished = false;
         };
 
         InstanceState* FindState(

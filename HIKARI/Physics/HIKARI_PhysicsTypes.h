@@ -306,6 +306,7 @@ namespace HIKARI::PHYSICS {
         uint32_t layerMask = 0xFFFFFFFFu;
         bool includeTriggers = true;
         RuntimeObjectHandle ignoredObject{};
+        bool staticOnly = false;
     };
 
     struct PhysicsRaycastQuery {

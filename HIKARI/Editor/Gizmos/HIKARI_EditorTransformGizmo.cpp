@@ -33,69 +33,11 @@ namespace HIKARI::EDITOR {
             }
         }
 
-        MATH::Vec3 NormalizeAxis(float x, float y, float z) {
-            const float length = std::sqrt(x * x + y * y + z * z);
-            if (length <= 1.0e-6f) {
-                return { 0.0f, 0.0f, 0.0f };
-            }
-
-            const float invLength = 1.0f / length;
-            return { x * invLength, y * invLength, z * invLength };
-        }
-
         bool IsFinite(const DecomposedGizmoMatrix& value) {
             return MATH::IsFinite(value.transform.position) &&
                 MATH::IsFinite(value.transform.rotationEulerDeg) &&
-                MATH::IsFinite(value.transform.scale) &&
-                MATH::IsFinite(value.rotation);
+                MATH::IsFinite(value.transform.scale) && MATH::IsFinite(value.rotation);
         }
-
-        MATH::Quat ExtractRotationFromMatrix(const float matrix[16]) {
-            const MATH::Vec3 right = NormalizeAxis(matrix[0], matrix[1], matrix[2]);
-            const MATH::Vec3 up = NormalizeAxis(matrix[4], matrix[5], matrix[6]);
-            const MATH::Vec3 dir = NormalizeAxis(matrix[8], matrix[9], matrix[10]);
-
-            const float m00 = right.x;
-            const float m01 = up.x;
-            const float m02 = dir.x;
-            const float m10 = right.y;
-            const float m11 = up.y;
-            const float m12 = dir.y;
-            const float m20 = right.z;
-            const float m21 = up.z;
-            const float m22 = dir.z;
-
-            MATH::Quat q{};
-            const float trace = m00 + m11 + m22;
-            if (trace > 0.0f) {
-                const float s = std::sqrt(trace + 1.0f) * 2.0f;
-                q.w = 0.25f * s;
-                q.x = (m21 - m12) / s;
-                q.y = (m02 - m20) / s;
-                q.z = (m10 - m01) / s;
-            } else if (m00 > m11 && m00 > m22) {
-                const float s = std::sqrt(1.0f + m00 - m11 - m22) * 2.0f;
-                q.w = (m21 - m12) / s;
-                q.x = 0.25f * s;
-                q.y = (m01 + m10) / s;
-                q.z = (m02 + m20) / s;
-            } else if (m11 > m22) {
-                const float s = std::sqrt(1.0f + m11 - m00 - m22) * 2.0f;
-                q.w = (m02 - m20) / s;
-                q.x = (m01 + m10) / s;
-                q.y = 0.25f * s;
-                q.z = (m12 + m21) / s;
-            } else {
-                const float s = std::sqrt(1.0f + m22 - m00 - m11) * 2.0f;
-                q.w = (m10 - m01) / s;
-                q.x = (m02 + m20) / s;
-                q.y = (m12 + m21) / s;
-                q.z = 0.25f * s;
-            }
-
-            return MATH::NormalizeQ(q);
-        }
-
         ImGuizmo::OPERATION ToImGuizmoOperation(EditorTransformGizmoOperation operation) {
             switch (operation) {
             case EditorTransformGizmoOperation::Rotate:
@@ -139,24 +81,18 @@ namespace HIKARI::EDITOR {
         }
 
         DecomposedGizmoMatrix DecomposeEditedMatrix(const float matrix[16]) {
-            float translation[3]{};
-            float rotationDeg[3]{};
-            float scale[3]{};
-            ImGuizmo::DecomposeMatrixToComponents(matrix, translation, rotationDeg, scale);
-
-            DecomposedGizmoMatrix decomposed{};
-            decomposed.transform.position = { translation[0], translation[1], translation[2] };
-            decomposed.transform.scale = {
-                (std::max)(0.001f, scale[0]),
-                (std::max)(0.001f, scale[1]),
-                (std::max)(0.001f, scale[2])
-            };
-            // Keep the edited orientation in quaternion form to avoid Euler discontinuities.
-            decomposed.rotation = ExtractRotationFromMatrix(matrix);
-            decomposed.transform.rotationEulerDeg = MATH::EulerXYZDegreesFromQuat(decomposed.rotation);
-            return decomposed;
+            MATH::Mat4 value{};
+            for (int column = 0; column < 4; ++column)
+                for (int row = 0; row < 4; ++row)
+                    value.m[column][row] = matrix[column * 4 + row];
+            DecomposedGizmoMatrix result{};
+            if (!MATH::DecomposeTRS(value, result.transform.position,
+                    result.rotation, result.transform.scale)) {
+                result.transform.scale = { NAN, NAN, NAN };
+            }
+            result.transform.rotationEulerDeg = MATH::EulerXYZDegreesFromQuat(result.rotation);
+            return result;
         }
-
         DecomposedGizmoMatrix MakeGizmoTransform(const Transform3D& transform) {
             if (transform.useExplicitMatrix) {
                 float matrix[16]{};
@@ -180,9 +116,19 @@ namespace HIKARI::EDITOR {
                 transform.rotationEulerDeg.x * kDegreesToRadians,
                 transform.rotationEulerDeg.y * kDegreesToRadians,
                 transform.rotationEulerDeg.z * kDegreesToRadians));
-            result.transform.rotationEulerDeg =
-                MATH::EulerXYZDegreesFromQuat(result.rotation);
             return result;
+        }
+
+        bool BuildRotationFrame(const Transform3D& transform, MATH::Mat4& frame) {
+            const auto local = MakeGizmoTransform(transform);
+            if (!IsFinite(local)) return false;
+            frame = MATH::Mat4::Rotate(local.rotation);
+            if (transform.GetParent() && !transform.useExplicitMatrix) {
+                MATH::Mat4 parent;
+                if (!BuildRotationFrame(*transform.GetParent(), parent)) return false;
+                frame = parent * frame;
+            }
+            return true;
         }
 
         DecomposedGizmoMatrix SelectEditedComponent(
@@ -195,10 +141,13 @@ namespace HIKARI::EDITOR {
             case EditorTransformGizmoOperation::Rotate:
                 result.rotation = edited.rotation;
                 result.transform.rotationEulerDeg =
-                    MATH::EulerXYZDegreesFromQuat(result.rotation);
+                    MATH::EulerXYZDegreesFromQuatNearest(result.rotation, initial.transform.rotationEulerDeg);
                 break;
             case EditorTransformGizmoOperation::Scale:
-                result.transform.scale = edited.transform.scale;
+                result.transform.scale = {
+                    std::copysign(std::max(0.001f, std::abs(edited.transform.scale.x)), initial.transform.scale.x),
+                    std::copysign(std::max(0.001f, std::abs(edited.transform.scale.y)), initial.transform.scale.y),
+                    std::copysign(std::max(0.001f, std::abs(edited.transform.scale.z)), initial.transform.scale.z)};
                 break;
             case EditorTransformGizmoOperation::Translate:
             default:
@@ -217,9 +166,14 @@ namespace HIKARI::EDITOR {
             float model[16]) {
 
             EditorTransformGizmoResult result{};
-            if (!state.enabled || viewportRect.width <= 1.0f || viewportRect.height <= 1.0f) {
+            if (!state.enabled || !IsFinite(initial) || viewportRect.width <= 1.0f || viewportRect.height <= 1.0f) {
                 return result;
             }
+
+            // 回転ハンドルにはスケールを渡さず、鏡像や非一様スケールを保持する。
+            if (state.operation == EditorTransformGizmoOperation::Rotate)
+                CopyMat4ToFloat16(MATH::Mat4::TRS(initial.transform.position,
+                    initial.rotation, {1, 1, 1}), model);
 
             float view[16]{};
             float projection[16]{};
@@ -282,11 +236,26 @@ namespace HIKARI::EDITOR {
 
 #if defined(HIKARI_WITH_EDITOR)
         const Transform3D& sourceTransform = object.GetTransform();
-        const DecomposedGizmoMatrix initial =
-            MakeGizmoTransform(sourceTransform);
         float model[16]{};
-        CopyMat4ToFloat16(sourceTransform.GetLocalMatrix(), model);
+        CopyMat4ToFloat16(sourceTransform.GetWorldMatrix(), model);
+        auto initial = object.GetParent() && !sourceTransform.useExplicitMatrix &&
+            state.operation != EditorTransformGizmoOperation::Rotate
+            ? DecomposeEditedMatrix(model) : MakeGizmoTransform(sourceTransform);
+        auto parentRotation = MATH::Mat4::Identity();
+        if (state.operation == EditorTransformGizmoOperation::Rotate &&
+            object.GetParent() && !sourceTransform.useExplicitMatrix) {
+            // 非一様スケールによるせん断を毎フレーム回転へ混入させない。
+            if (!BuildRotationFrame(object.GetParent()->GetTransform(), parentRotation)) return result;
+            MATH::Vec3 unusedPosition, unusedScale;
+            if (!MATH::DecomposeTRS(parentRotation * MATH::Mat4::Rotate(initial.rotation),
+                    unusedPosition, initial.rotation, unusedScale)) return result;
+            initial.transform.position = {model[12], model[13], model[14]};
+            initial.transform.rotationEulerDeg = MATH::EulerXYZDegreesFromQuat(initial.rotation);
+        }
 
+        // 同一ビューでも選択対象が変われば、ドラッグを引き継がない。
+        const auto targetId = object.GetDocumentId().value;
+        ImGuizmo::PushID(targetId ? std::to_string(targetId).c_str() : object.GetName().c_str());
         result = DrawTransformMatrix(
             camera,
             state,
@@ -294,13 +263,49 @@ namespace HIKARI::EDITOR {
             this,
             initial,
             model);
+        ImGuizmo::PopID();
         if (result.changed) {
             Transform3D runtimeTransform = sourceTransform;
-            runtimeTransform.useExplicitMatrix = false;
-            runtimeTransform.position = result.transform.position;
-            runtimeTransform.scale = result.transform.scale;
-            runtimeTransform.rotation = result.rotation;
-            (void)object.SetLocalTransform(runtimeTransform);
+            if (sourceTransform.useExplicitMatrix && state.operation != EditorTransformGizmoOperation::Translate) {
+                runtimeTransform.position = initial.transform.position;
+                runtimeTransform.rotation = initial.rotation;
+                runtimeTransform.scale = initial.transform.scale;
+            }
+            auto local = MATH::Mat4::TRS(result.transform.position,
+                result.rotation, result.transform.scale);
+            if (state.operation != EditorTransformGizmoOperation::Rotate &&
+                object.GetParent() && !sourceTransform.useExplicitMatrix)
+                local = MATH::Inverse(object.GetParent()->GetTransform().GetWorldMatrix()) * local;
+            if (state.operation == EditorTransformGizmoOperation::Translate) {
+                runtimeTransform.position = {local.m[3][0], local.m[3][1], local.m[3][2]};
+                if (sourceTransform.useExplicitMatrix) {
+                    runtimeTransform.explicitMatrix.m[3][0] = runtimeTransform.position.x;
+                    runtimeTransform.explicitMatrix.m[3][1] = runtimeTransform.position.y;
+                    runtimeTransform.explicitMatrix.m[3][2] = runtimeTransform.position.z;
+                }
+            } else {
+                const auto rotationMatrix = state.operation == EditorTransformGizmoOperation::Rotate
+                    ? MATH::Inverse(parentRotation) * MATH::Mat4::Rotate(result.rotation)
+                    : local;
+                MATH::Vec3 position{}, scale{};
+                MATH::Quat rotation{};
+                if (!MATH::DecomposeTRS(rotationMatrix, position, rotation, scale) ||
+                    !MATH::IsFinite(rotation) || !MATH::IsFinite(scale)) {
+                    result.changed = false;
+                    return result;
+                }
+                runtimeTransform.useExplicitMatrix = false;
+                if (state.operation == EditorTransformGizmoOperation::Rotate)
+                    runtimeTransform.rotation = rotation;
+                else
+                    runtimeTransform.scale = {std::copysign(std::abs(scale.x), runtimeTransform.scale.x),
+                        std::copysign(std::abs(scale.y), runtimeTransform.scale.y),
+                        std::copysign(std::abs(scale.z), runtimeTransform.scale.z)};
+            }
+            result.changed = object.SetLocalTransform(runtimeTransform);
+            const auto applied = MakeGizmoTransform(runtimeTransform);
+            result.transform = applied.transform;
+            result.rotation = applied.rotation;
         }
 #else
         (void)object;

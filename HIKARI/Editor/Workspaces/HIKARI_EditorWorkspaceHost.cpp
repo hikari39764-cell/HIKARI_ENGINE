@@ -24,6 +24,14 @@ namespace HIKARI::EDITOR {
             EditorViewShadingMode::Neutral;
         director.visualization.displayExposure = 1.25f;
 
+        auto& gameplayObserver = View(BuiltInViewSlot::GameplayCameraObserver);
+        gameplayObserver = director;
+        gameplayObserver.renderViewId = kGameplayCameraObserverRenderViewId;
+        auto& gameplayPreview = View(BuiltInViewSlot::GameplayCameraPreview);
+        gameplayPreview = director;
+        gameplayPreview.renderViewId = kGameplayCameraPreviewRenderViewId;
+        gameplayPreview.visualization.shadingMode = EditorViewShadingMode::Lit;
+
         EditorViewInstance& collision =
             View(BuiltInViewSlot::ModelCollisionPreview);
         collision.renderViewId =
@@ -119,6 +127,7 @@ namespace HIKARI::EDITOR {
         activation.current = request.workspaceId;
         activation.targetCameraObjectId = request.targetCameraObjectId;
         activation.sequenceAssetGuid = request.sequenceAssetGuid;
+        activation.cameraProfileAssetGuid = request.cameraProfileAssetGuid;
         activation.modelAssetGuid = request.modelAssetGuid;
         activation.materialAssetGuid = request.materialAssetGuid;
         activation.animationStateMachineAssetGuid =
@@ -154,6 +163,9 @@ namespace HIKARI::EDITOR {
         resetLayoutRequests_[index] = false;
         return result;
     }
+
+    EditorViewInstance& EditorWorkspaceHost::GetGameplayCameraObserverView() noexcept { return View(BuiltInViewSlot::GameplayCameraObserver); }
+    EditorViewInstance& EditorWorkspaceHost::GetGameplayCameraPreviewView() noexcept { return View(BuiltInViewSlot::GameplayCameraPreview); }
 
     EditorViewInstance& EditorWorkspaceHost::GetCinematicsGameView() noexcept {
         return View(BuiltInViewSlot::CinematicsGame);

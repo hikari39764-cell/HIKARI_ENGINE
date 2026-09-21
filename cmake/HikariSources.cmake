@@ -57,6 +57,13 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Components/HIKARI_CameraComponent.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Components/HIKARI_CameraActivationVolumeComponent.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Components/HIKARI_CameraFollowComponent.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Camera/HIKARI_CameraFollowSettings.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Camera/HIKARI_CameraFlowSystem.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Components/HIKARI_CameraFlowComponent.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Camera/HIKARI_GameplayCameraProfile.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Camera/HIKARI_GameplayCameraEvaluation.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Camera/HIKARI_GameplayCameraAsset.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Importers/HIKARI_GameplayCameraAssetImporter.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Components/Lighting/HIKARI_LightComponent.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Components/Lighting/HIKARI_ReflectionProbeComponent.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Components/Lighting/HIKARI_IrradianceVolumeComponent.cpp"
@@ -81,6 +88,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Sequencer/HIKARI_SequencePlayback.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Sequencer/Tracks/HIKARI_PresentationCueTrack.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Sequencer/Tracks/HIKARI_ShotPresentation.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Sequencer/Tracks/HIKARI_CameraMotionEffects.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Sequencer/Serialization/HIKARI_ShotPresentationJson.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Sequencer/Serialization/HIKARI_PresentationCueJson.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Sequencer/Drivers/HIKARI_PresentationCueDriver.cpp"
@@ -531,6 +539,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Binding/Adapters/HIKARI_RuntimeMaterialProjection.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Binding/Adapters/HIKARI_RuntimeMaterialValueAdapter.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectActionBridge.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectCameraEffectsBridge.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectGameFlowBridge.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectSceneFlowBridge.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectAudioBridge.cpp"
@@ -708,7 +717,7 @@ string(
     CONCAT
     HIKARI_GAME_PROJECT_SDK_EXPORT_PATTERN
     "(HIKARI_RuntimeFeatureCatalog|HIKARI_GameProject("
-    "ActionBridge|NavigationBridge|GameFlowBridge|SceneFlowBridge|AudioBridge|DebugBridge|MaterialFxBridge|PresentationBridge|"
+    "ActionBridge|CameraEffectsBridge|NavigationBridge|GameFlowBridge|SceneFlowBridge|AudioBridge|DebugBridge|MaterialFxBridge|PresentationBridge|"
     "UiBridge|UiCanvasBridge|DisplaySettingsBridge|VfxBridge|PropertyBridge|InspectorBridge|BindingBridge|MassBridge|QueryBridge|"
     "Registration|SpawnBridge|TransformBridge|WorldBridge|WorldTextBridge))\\.cpp$")
 list(
@@ -718,10 +727,10 @@ list(
     REGEX "${HIKARI_GAME_PROJECT_SDK_EXPORT_PATTERN}")
 unset(HIKARI_GAME_PROJECT_SDK_EXPORT_PATTERN)
 list(LENGTH HIKARI_GAME_PROJECT_SDK_EXPORT_SOURCES hikari_sdk_export_count)
-if(NOT hikari_sdk_export_count EQUAL 23)
+if(NOT hikari_sdk_export_count EQUAL 24)
     message(
         FATAL_ERROR
-        "The GameProject SDK export owner must contain exactly 23 sources.")
+        "The GameProject SDK export owner must contain exactly 24 sources.")
 endif()
 
 set(HIKARI_EDITOR_HOST_SOURCES
@@ -930,6 +939,15 @@ set(HIKARI_EDITOR_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/TerrainSurface/HIKARI_TerrainSurfaceWorkspaceController.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/TerrainSurface/HIKARI_TerrainPlacementAuthoring.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/Cinematics/HIKARI_CinematicsWorkspaceController.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Documents/HIKARI_GameplayCameraEditorDocument.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/GameplayCamera/HIKARI_GameplayCameraWorkspaceController.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/GameplayCamera/HIKARI_GameplayCameraWorkspaceWindows.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Widgets/HIKARI_CameraMotionWidgets.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/GameplayCamera/HIKARI_GameplayCameraEffects.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/GameplayCamera/HIKARI_GameplayCameraFlow.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/GameplayCamera/HIKARI_GameplayCameraFlowView.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/GameplayCamera/HIKARI_GameplayCameraPreview.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/GameplayCamera/HIKARI_GameplayCameraOperations.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/Cinematics/HIKARI_CinematicsWorkspaceWindows.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/Cinematics/HIKARI_CinematicsOperations.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialBindingCommands.cpp"
@@ -1069,6 +1087,8 @@ set(HIKARI_EDITOR_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorSceneWorkflow.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorWorkspaceWindows.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorCommands.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Controllers/DocumentScene/HIKARI_DocumentSceneCameraFlow.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Controllers/DocumentScene/HIKARI_DocumentSceneGameplayCamera.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Controllers/DocumentScene/HIKARI_DocumentToolbarController.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Commands/HIKARI_EditorCommandRouter.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Commands/HIKARI_EditorOperationRegistry.cpp"

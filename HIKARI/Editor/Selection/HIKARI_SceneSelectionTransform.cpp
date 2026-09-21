@@ -408,37 +408,9 @@ namespace HIKARI::EDITOR {
                     result)) {
                 return result;
             }
-            if (IsCamera(*activeObject)) {
-                GameObject proxy{ "Camera Gizmo Proxy" };
-                proxy.SetDocumentId(activeObject->GetDocumentId());
-                Transform3D proxyTransform =
-                    activeObject->GetTransform();
-                proxyTransform.scale = { 1.0f, 1.0f, 1.0f };
-                proxyTransform.useExplicitMatrix = false;
-                (void)proxy.SetLocalTransform(proxyTransform);
-                result.gizmo = gizmo.Draw(
-                    proxy,
-                    scene.GetCamera(),
-                    state,
-                    viewportRect);
-                if (result.gizmo.changed &&
-                    ApplyLocalTransform(
-                        *activeObject,
-                        proxy.GetTransform())) {
-                    result.changedObjectIds.push_back(
-                        activeObject->GetDocumentId());
-                }
-            } else {
-                result.gizmo = gizmo.Draw(
-                    *activeObject,
-                    scene.GetCamera(),
-                    state,
-                    viewportRect);
-                if (result.gizmo.changed) {
-                    result.changedObjectIds.push_back(
-                        activeObject->GetDocumentId());
-                }
-            }
+            result.gizmo = gizmo.Draw(*activeObject, scene.GetCamera(), state, viewportRect);
+            if (result.gizmo.changed)
+                result.changedObjectIds.push_back(activeObject->GetDocumentId());
             return result;
         }
 

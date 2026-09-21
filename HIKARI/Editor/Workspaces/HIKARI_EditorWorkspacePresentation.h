@@ -11,6 +11,7 @@ namespace HIKARI::EDITOR {
     };
     inline constexpr std::array kEditorWorkspacePresentations{
         EditorWorkspacePresentation{EditorWorkspaceId::Scene, "menu.workspace.scene", EditorGlyph::Scene},
+        EditorWorkspacePresentation{EditorWorkspaceId::GameplayCamera, "gc.workspace", EditorGlyph::Camera},
         EditorWorkspacePresentation{EditorWorkspaceId::Cinematics, "menu.workspace.cinematics", EditorGlyph::Sequence},
         EditorWorkspacePresentation{EditorWorkspaceId::ModelCollision, "menu.workspace.modelCollision", EditorGlyph::Object},
         EditorWorkspacePresentation{EditorWorkspaceId::ModelMaterial, "menu.workspace.modelMaterial", EditorGlyph::Material},

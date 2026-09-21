@@ -35,16 +35,30 @@ namespace HIKARI::CAMERA {
             return;
         }
         frameIndex_ = frameIndex;
-        poses_.clear();
+        poses_.clear(); modes_.clear();
         modifiers_.clear();
         targetFramings_.clear();
     }
 
     void CameraRigService::Clear() noexcept {
         frameIndex_ = 0u;
-        poses_.clear();
+        poses_.clear(); modes_.clear();
         modifiers_.clear();
         targetFramings_.clear();
+    }
+
+    bool CameraRigService::SubmitMode(const CameraModeSubmission& submission) {
+        if(!submission.cameraObjectId.value || !submission.sourceId || submission.mode.empty() || submission.mode.size()>128) return false;
+        const auto found=std::find_if(modes_.begin(),modes_.end(),[&](const auto& entry){
+            return entry.cameraObjectId==submission.cameraObjectId && entry.sourceId==submission.sourceId;});
+        if(found!=modes_.end()) *found=submission; else modes_.push_back(submission);
+        return true;
+    }
+    const CameraModeSubmission* CameraRigService::ResolveMode(SceneObjectId camera) const noexcept {
+        const CameraModeSubmission* winner=nullptr;
+        for(const auto& entry:modes_) if(entry.cameraObjectId==camera && (!winner ||
+            IsPreferred(entry.priority,entry.sourceId,winner->priority,winner->sourceId))) winner=&entry;
+        return winner;
     }
 
     bool CameraRigService::SubmitPose(
@@ -338,6 +352,8 @@ namespace HIKARI::CAMERA {
             pose.modifierWeightScale > 1.0f) {
             return false;
         }
+        if (pose.overrideClipPlanes && (!std::isfinite(pose.nearClip) || !std::isfinite(pose.farClip) ||
+            pose.nearClip < 0.001f || pose.farClip <= pose.nearClip)) return false;
         return !pose.overrideVerticalFov ||
             (std::isfinite(pose.verticalFovRadians) &&
                 pose.verticalFovRadians >= kMinVerticalFov &&

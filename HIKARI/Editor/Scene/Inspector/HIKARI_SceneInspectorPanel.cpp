@@ -14,6 +14,7 @@
 
 #include "Editor/Commands/HIKARI_SceneObjectCommandService.h"
 #include "Editor/HIKARI_EditorContext.h"
+#include "Editor/HIKARI_DocumentComponentAuthoringService.h"
 #include "Editor/HIKARI_SelectionSyncService.h"
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
@@ -213,6 +214,20 @@ void SceneInspectorPanel::DrawContents(
                       context.componentAddStatusIsError);
   }
 
+  std::string optionalComponent;
+  const auto optionalTypes = DocumentComponentAuthoringService{}.GetMissingOptionalComponents(
+      scene.GetComponentRegistry(), *target);
+  if (!optionalTypes.empty()) {
+    ImGui::SeparatorText(TEXT::LocalizeCStr("ui.inspector.optionalComponents"));
+    ImGui::BeginDisabled(scene.IsRuntimePlayActive());
+    for (const auto& type : optionalTypes) {
+      const auto* info = scene.GetComponentRegistry().Find(type);
+      if (IconTextButton(EditorGlyph::Add, info->presentation.displayName.c_str(), type.c_str(),
+          EditorButtonTone::Quiet, {}, info->presentation.description.c_str()))
+        optionalComponent = type;
+    }
+    ImGui::EndDisabled();
+  }
   if (std::optional<SceneObjectAuthoringHistoryRequest> componentHistory =
           componentAuthoringSection_.Draw(scene, context, selectionSync,
                                           *target)) {
@@ -221,6 +236,9 @@ void SceneInspectorPanel::DrawContents(
   if (target->editorLocked) {
     ImGui::EndDisabled();
   }
+  // 構造変更はパネル描画の後に既存の履歴付きコマンドへ渡す。
+  if (!optionalComponent.empty())
+    commands.Execute(SceneObjectCommandId::AddComponent, scene, context, selectionSync, optionalComponent);
 
 #else
   (void)scene;

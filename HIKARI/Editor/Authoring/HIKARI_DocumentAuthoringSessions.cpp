@@ -1,3 +1,4 @@
+#include "Editor/Workspaces/GameplayCamera/HIKARI_GameplayCameraWorkspaceController.h"
 #include "HIKARI_EditorAuthoringSessionHost.h"
 #include "HIKARI_EditorWorkspaceSessionProviders.h"
 #include "Editor/Workspaces/HIKARI_EditorWorkspaceHost.h"
@@ -18,6 +19,7 @@
 #include "Editor/Authoring/HIKARI_EditorAuthoringPreview.h"
 #include "Editor/Authoring/HIKARI_SequencePreviewBindingResolver.h"
 #include "Scene/Sequencer/Drivers/HIKARI_CameraSequenceTrackDriver.h"
+#include "Scene/Components/HIKARI_CameraComponent.h"
 #include <type_traits>
 #include <cmath>
 
@@ -117,6 +119,44 @@ private:
     uint64_t captureRevision_ = 0;
 };
 
+EditorOperationResult PreviewGameplayCamera(const GameplayCameraWorkspaceController& controller,
+    DocumentSceneBase& scene, const nlohmann::json& parameters, EditorAuthoringPreview& capture) {
+    if(scene.IsRuntimePlayActive()) return {false,"EDIT_MODE_REQUIRED","Use the live viewport capture during Play."};
+    const auto cameraId=SceneObjectId{parameters.value("cameraId",controller.CameraId().value)};
+    auto* camera=scene.GetWorld().FindObject(cameraId);
+    if(!camera || !camera->GetComponent<CameraComponent>())
+        return {false,"CAMERA_REQUIRED","Provide cameraId of a scene CameraComponent to preview this profile."};
+    CameraFollowComponent preview;
+    nlohmann::json properties=nlohmann::json::object();
+    if(const auto* bound=camera->GetComponent<CameraFollowComponent>()) bound->Serialize(properties);
+    if(parameters.contains("targetId")) properties["targetObjectId"]=parameters.at("targetId");
+    if(parameters.contains("lookTargetId")) properties["cameraLookTarget"]=parameters.at("lookTargetId");
+    preview.Deserialize(properties);
+    preview.GameplayState().previewSource=std::make_shared<const CAMERA::GameplayCameraProfile>(controller.Document().Profile());
+    preview.GameplayState().requestedMode=parameters.value("mode",controller.Document().Profile().defaultMode);
+    if(!controller.Document().Profile().FindMode(preview.GameplayState().requestedMode))
+        return {false,"MODE_NOT_FOUND","Requested mode does not exist in this profile."};
+    CameraFollowSystem evaluator;
+    if(!evaluator.EvaluatePreview(scene.GetWorld(),*camera,preview,0))
+        return {false,"TARGET_REQUIRED","Provide targetId or bind a valid follow target on this scene camera."};
+    const auto& pose=preview.GameplayState().previousPose;
+    RENDER3D::EDITORVIEW::EditorInteractiveViewRequest request;
+    request.viewId=capture.ViewId();request.purpose=RENDER3D::RenderViewPurpose::ToolPreview;
+    request.width=std::clamp(parameters.value("width",960),128,1536);
+    request.height=std::clamp(parameters.value("height",540),128,1536);
+    request.cameraFrame.camera.SetPerspective(pose.verticalFovRadians,static_cast<float>(request.width)/request.height,pose.nearClip,pose.farClip);
+    request.cameraFrame.camera.SetLookAt(pose.eye,pose.target,pose.up);
+    CAMERA::ResolveGameplayCameraSafety(scene.GetWorld(),cameraId,request.cameraFrame.camera,nullptr,&preview);
+    request.cameraFrame.valid=true;request.sceneRevision=scene.GetSceneDocumentRevision();
+    request.contentRevision=std::hash<std::string>{}(controller.Describe().dump()+parameters.dump());
+    request.cameraFrame.revision=request.contentRevision;request.visible=true;request.drawDebug=false;
+    RENDER3D::EDITORVIEW::SubmitRequest(request);
+    return capture.Start(scene.GetAssetDatabase().GetLibraryRoot(),
+        {{"label","Gameplay camera profile preview"},{"assetGuid",controller.Document().Guid().value},
+         {"mode",preview.GameplayState().activeMode},{"cameraId",cameraId.value},
+         {"coverage",{{"cameraProfile",true},{"collision",true},{"sceneSimulation",false},{"globalPost",false}}}});
+}
+
 EditorOperationResult PreviewCinematics(const CinematicsWorkspaceController& controller,
     DocumentSceneBase& scene, const nlohmann::json& parameters, EditorAuthoringPreview& capture) {
     const auto* sequence = controller.GetSequenceDocument().GetAssetSequence();
@@ -211,6 +251,15 @@ void RegisterDocumentAuthoringSessions(EditorAuthoringSessionHost& host,
                 {"dirty",controller.IsDocumentDirty()}, {"preview",false}}; },
             [](const C& controller) { EditorWorkspaceOpenRequest request{}; request.workspaceId=EditorWorkspaceId::ModelCollision;
                 return request; });
+    }});
+    host.RegisterWorkspace({"gameplay_camera", "Gameplay Camera", [&workspaceHost, scene] {
+        using C = GameplayCameraWorkspaceController;
+        return std::make_unique<DocumentSession<C>>(scene,workspaceHost,
+            [](auto& registry,C& controller,auto& host,auto provider){RegisterGameplayCameraOperations(registry,controller,host,provider);},
+            [](C& controller,auto& owner,const AssetGuid& guid,auto& message){return guid.IsValid()
+                ?controller.Document().Open(owner.GetAssetDatabase(),guid,message):controller.Document().New("third_person",message);},
+            [](const C& controller){return controller.Describe();},
+            [](const C&){EditorWorkspaceOpenRequest request;request.workspaceId=EditorWorkspaceId::GameplayCamera;return request;}, PreviewGameplayCamera);
     }});
     host.RegisterWorkspace({"cinematics", "Cinematics", [&workspaceHost, scene] {
         using C = CinematicsWorkspaceController;

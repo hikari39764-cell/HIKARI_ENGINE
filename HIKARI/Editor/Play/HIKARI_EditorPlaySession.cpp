@@ -99,6 +99,22 @@ namespace HIKARI::EDITOR {
         }
     }
 
+    void EditorPlaySession::UpdateEmbeddedViewportInput(
+        const INPUT::MouseCaptureRegion& region,
+        bool viewportClicked) {
+        if (!IsEmbeddedRunning()) return;
+        if (!region.IsValid() || IsPaused()) {
+            ReleaseEmbeddedInput();
+        } else if (HasEmbeddedInput()) {
+            if (IsGameViewportPlayInputActive())
+                UpdateEmbeddedInputRegion(region);
+            else
+                ReleaseEmbeddedInput();
+        } else if (viewportClicked) {
+            CaptureEmbeddedInput(region);
+        }
+    }
+
     void EditorPlaySession::Update(DocumentSceneBase& scene) {
         if (IsWindowedRunning() &&
             SERVICES::ConsumeInProcessGameCloseRequest()) {

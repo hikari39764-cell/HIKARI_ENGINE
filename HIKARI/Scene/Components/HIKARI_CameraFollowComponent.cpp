@@ -13,7 +13,6 @@ namespace HIKARI {
     namespace JsonMath = SERIALIZATION::JSON::MATH;
 
     namespace {
-        constexpr float kMinimumRange = 0.01f;
 
         float FiniteOr(float value, float fallback) noexcept {
             return std::isfinite(value) ? value : fallback;
@@ -71,9 +70,7 @@ namespace HIKARI {
             return result;
         }
 
-        float RadiansToDegrees(float radians) noexcept {
-            return radians * 180.0f / std::numbers::pi_v<float>;
-        }
+
     }
 
     void CameraFollowComponent::Serialize(nlohmann::json& out) const {
@@ -81,66 +78,15 @@ namespace HIKARI {
         out["priority"] = priority_;
         out["targetObjectId"] = SCENE::SERIALIZATION::WriteSceneObjectReference(targetObjectId_.value);
         out["useOwnerAsFallbackTarget"] = useOwnerAsFallbackTarget_;
-        out["pivotOffset"] = JsonMath::ToJsonArray(pivotOffset_);
-        out["initialYawDegrees"] = initialYawDegrees_;
-        out["initialPitchDegrees"] = initialPitchDegrees_;
-        out["initialDistance"] = initialDistance_;
-        out["minimumPitchDegrees"] = minimumPitchDegrees_;
-        out["maximumPitchDegrees"] = maximumPitchDegrees_;
-        out["minimumDistance"] = minimumDistance_;
-        out["maximumDistance"] = maximumDistance_;
-        out["followSmooth"] = followSmooth_;
-        out["lookSmooth"] = lookSmooth_;
-        out["distanceSmooth"] = distanceSmooth_;
-        out["orbitInputEnabled"] = orbitInputEnabled_;
-        out["lookAction"] = lookActionId_;
-        out["zoomAction"] = zoomActionId_;
-        out["recenterAction"] = recenterActionId_;
-        out["yawSpeedDegreesPerSecond"] = yawSpeedDegreesPerSecond_;
-        out["pitchSpeedDegreesPerSecond"] = pitchSpeedDegreesPerSecond_;
-        out["mouseSensitivityDegreesPerPixel"] =
-            mouseSensitivityDegreesPerPixel_;
-        out["zoomSpeedUnitsPerSecond"] = zoomSpeedUnitsPerSecond_;
-        out["mouseWheelZoomUnitsPerStep"] =
-            mouseWheelZoomUnitsPerStep_;
-        out["invertVerticalLook"] = invertVerticalLook_;
-        out["autoRecenterEnabled"] = autoRecenterEnabled_;
-        out["autoRecenterDelaySeconds"] = autoRecenterDelaySeconds_;
-        out["autoRecenterSpeedDegreesPerSecond"] =
-            autoRecenterSpeedDegreesPerSecond_;
-        out["collisionEnabled"] = collisionEnabled_;
-        out["collisionStaticOnly"] = collisionStaticOnly_;
-        out["collisionRadius"] = collisionRadius_;
-        out["collisionPadding"] = collisionPadding_;
-        out["collisionLayerMask"] = collisionLayerMask_;
-        out["screenCompositionEnabled"] = screenCompositionEnabled_;
-        out["screenCompositionPrimaryAnchorX"] =
-            screenCompositionPrimaryAnchorX_;
-        out["screenCompositionPrimaryAnchorY"] =
-            screenCompositionPrimaryAnchorY_;
-        out["screenCompositionSecondaryAnchorX"] =
-            screenCompositionSecondaryAnchorX_;
-        out["screenCompositionSecondaryAnchorY"] =
-            screenCompositionSecondaryAnchorY_;
-        out["screenCompositionSoftZoneHalfWidth"] =
-            screenCompositionSoftZoneHalfWidth_;
-        out["screenCompositionSoftZoneHalfHeight"] =
-            screenCompositionSoftZoneHalfHeight_;
-        out["screenCompositionHardZoneHalfWidth"] =
-            screenCompositionHardZoneHalfWidth_;
-        out["screenCompositionHardZoneHalfHeight"] =
-            screenCompositionHardZoneHalfHeight_;
-        out["screenCompositionPreferredShoulderAngleDegrees"] =
-            screenCompositionPreferredShoulderAngleDegrees_;
-        out["screenCompositionMaximumShoulderAngleDegrees"] =
-            screenCompositionMaximumShoulderAngleDegrees_;
-        out["screenCompositionFocusHeightBias"] =
-            screenCompositionFocusHeightBias_;
-        out["screenCompositionHardResponseScale"] =
-            screenCompositionHardResponseScale_;
-        out["screenCompositionCollisionCenteringStrength"] =
-            screenCompositionCollisionCenteringStrength_;
-    }
+
+        settings_.Serialize(out);
+        if (gameplayBinding_.profile.IsValid()) {
+            out["cameraProfile"] = gameplayBinding_.profile.value;
+            out["cameraMode"] = gameplayBinding_.initialMode;
+            out["cameraLookTarget"] = SCENE::SERIALIZATION::WriteSceneObjectReference(gameplayBinding_.lookTarget.value);
+            out["cameraOverrides"] = gameplayBinding_.overrides;
+        }
+}
 
     void CameraFollowComponent::Deserialize(const nlohmann::json& in) {
         enabled_ = in.value("enabled", enabled_);
@@ -150,236 +96,97 @@ namespace HIKARI {
         useOwnerAsFallbackTarget_ = in.value(
             "useOwnerAsFallbackTarget",
             useOwnerAsFallbackTarget_);
-        if (in.contains("pivotOffset")) {
-            pivotOffset_ = JSONREAD::Vec3Or(
-                in["pivotOffset"],
-                pivotOffset_);
-        } else if (in.contains("lookAtOffset")) {
-            pivotOffset_ = JSONREAD::Vec3Or(
-                in["lookAtOffset"],
-                pivotOffset_);
-        }
-
-        const bool hasOrbitSettings =
-            in.contains("initialYawDegrees") ||
-            in.contains("initialPitchDegrees") ||
-            in.contains("initialDistance");
-        initialYawDegrees_ = in.value(
-            "initialYawDegrees",
-            initialYawDegrees_);
-        initialPitchDegrees_ = in.value(
-            "initialPitchDegrees",
-            initialPitchDegrees_);
-        initialDistance_ = in.value(
-            "initialDistance",
-            initialDistance_);
-        if (!hasOrbitSettings && in.contains("offset")) {
-            const MATH::Vec3 legacyEye = JSONREAD::Vec3Or(
-                in["offset"],
-                MATH::Vec3{ 0.0f, 5.5f, -7.5f });
-            const MATH::Vec3 delta = legacyEye - pivotOffset_;
-            const float distance = MATH::Length(delta);
-            if (distance > kMinimumRange) {
-                initialDistance_ = distance;
-                initialPitchDegrees_ = RadiansToDegrees(std::asin(
-                    std::clamp(delta.y / distance, -1.0f, 1.0f)));
-                initialYawDegrees_ = RadiansToDegrees(
-                    std::atan2(delta.x, -delta.z));
-            }
-        }
-
-        minimumPitchDegrees_ = in.value(
-            "minimumPitchDegrees",
-            minimumPitchDegrees_);
-        maximumPitchDegrees_ = in.value(
-            "maximumPitchDegrees",
-            maximumPitchDegrees_);
-        minimumDistance_ = in.value(
-            "minimumDistance",
-            minimumDistance_);
-        maximumDistance_ = in.value(
-            "maximumDistance",
-            maximumDistance_);
-        followSmooth_ = in.value("followSmooth", followSmooth_);
-        lookSmooth_ = in.value("lookSmooth", lookSmooth_);
-        distanceSmooth_ = in.value("distanceSmooth", distanceSmooth_);
-        orbitInputEnabled_ = in.value(
-            "orbitInputEnabled",
-            orbitInputEnabled_);
-        lookActionId_ = in.value("lookAction", lookActionId_);
-        zoomActionId_ = in.value("zoomAction", zoomActionId_);
-        recenterActionId_ = in.value(
-            "recenterAction",
-            recenterActionId_);
-        yawSpeedDegreesPerSecond_ = in.value(
-            "yawSpeedDegreesPerSecond",
-            yawSpeedDegreesPerSecond_);
-        pitchSpeedDegreesPerSecond_ = in.value(
-            "pitchSpeedDegreesPerSecond",
-            pitchSpeedDegreesPerSecond_);
-        mouseSensitivityDegreesPerPixel_ = in.value(
-            "mouseSensitivityDegreesPerPixel",
-            mouseSensitivityDegreesPerPixel_);
-        zoomSpeedUnitsPerSecond_ = in.value(
-            "zoomSpeedUnitsPerSecond",
-            zoomSpeedUnitsPerSecond_);
-        mouseWheelZoomUnitsPerStep_ = in.value(
-            "mouseWheelZoomUnitsPerStep",
-            mouseWheelZoomUnitsPerStep_);
-        invertVerticalLook_ = in.value(
-            "invertVerticalLook",
-            invertVerticalLook_);
-        autoRecenterEnabled_ = in.value(
-            "autoRecenterEnabled",
-            autoRecenterEnabled_);
-        autoRecenterDelaySeconds_ = in.value(
-            "autoRecenterDelaySeconds",
-            autoRecenterDelaySeconds_);
-        autoRecenterSpeedDegreesPerSecond_ = in.value(
-            "autoRecenterSpeedDegreesPerSecond",
-            autoRecenterSpeedDegreesPerSecond_);
-        collisionEnabled_ = in.value(
-            "collisionEnabled",
-            collisionEnabled_);
-        collisionStaticOnly_ = in.value(
-            "collisionStaticOnly",
-            collisionStaticOnly_);
-        collisionRadius_ = in.value(
-            "collisionRadius",
-            collisionRadius_);
-        collisionPadding_ = in.value(
-            "collisionPadding",
-            collisionPadding_);
-        collisionLayerMask_ = in.value(
-            "collisionLayerMask",
-            collisionLayerMask_);
-        screenCompositionEnabled_ = in.value(
-            "screenCompositionEnabled",
-            screenCompositionEnabled_);
-        screenCompositionPrimaryAnchorX_ = in.value(
-            "screenCompositionPrimaryAnchorX",
-            screenCompositionPrimaryAnchorX_);
-        screenCompositionPrimaryAnchorY_ = in.value(
-            "screenCompositionPrimaryAnchorY",
-            screenCompositionPrimaryAnchorY_);
-        screenCompositionSecondaryAnchorX_ = in.value(
-            "screenCompositionSecondaryAnchorX",
-            screenCompositionSecondaryAnchorX_);
-        screenCompositionSecondaryAnchorY_ = in.value(
-            "screenCompositionSecondaryAnchorY",
-            screenCompositionSecondaryAnchorY_);
-        screenCompositionSoftZoneHalfWidth_ = in.value(
-            "screenCompositionSoftZoneHalfWidth",
-            screenCompositionSoftZoneHalfWidth_);
-        screenCompositionSoftZoneHalfHeight_ = in.value(
-            "screenCompositionSoftZoneHalfHeight",
-            screenCompositionSoftZoneHalfHeight_);
-        screenCompositionHardZoneHalfWidth_ = in.value(
-            "screenCompositionHardZoneHalfWidth",
-            screenCompositionHardZoneHalfWidth_);
-        screenCompositionHardZoneHalfHeight_ = in.value(
-            "screenCompositionHardZoneHalfHeight",
-            screenCompositionHardZoneHalfHeight_);
-        screenCompositionPreferredShoulderAngleDegrees_ = in.value(
-            "screenCompositionPreferredShoulderAngleDegrees",
-            screenCompositionPreferredShoulderAngleDegrees_);
-        screenCompositionMaximumShoulderAngleDegrees_ = in.value(
-            "screenCompositionMaximumShoulderAngleDegrees",
-            screenCompositionMaximumShoulderAngleDegrees_);
-        screenCompositionFocusHeightBias_ = in.value(
-            "screenCompositionFocusHeightBias",
-            screenCompositionFocusHeightBias_);
-        screenCompositionHardResponseScale_ = in.value(
-            "screenCompositionHardResponseScale",
-            screenCompositionHardResponseScale_);
-        screenCompositionCollisionCenteringStrength_ = in.value(
-            "screenCompositionCollisionCenteringStrength",
-            screenCompositionCollisionCenteringStrength_);
-
+        evaluatedSettings_.reset();
+        settings_.Deserialize(in);
+        gameplayBinding_.profile.value = in.value("cameraProfile", std::string{});
+        gameplayBinding_.initialMode = in.value("cameraMode", std::string{});
+        gameplayBinding_.lookTarget.value = SCENE::SERIALIZATION::SceneObjectReferenceOr(in.value("cameraLookTarget", nlohmann::json{}), 0);
+        gameplayBinding_.overrides = in.value("cameraOverrides", nlohmann::json::object());
+        gameplayState_.Reset();
         ClampSettings();
         ResetRuntimeState();
     }
 
     float CameraFollowComponent::GetInitialYawDegrees() const noexcept {
-        return initialYawDegrees_;
+        return Settings().initialYawDegrees;
     }
 
     float CameraFollowComponent::GetInitialPitchDegrees() const noexcept {
         return std::clamp(
-            initialPitchDegrees_,
-            minimumPitchDegrees_,
-            maximumPitchDegrees_);
+            Settings().initialPitchDegrees,
+            Settings().minimumPitchDegrees,
+            Settings().maximumPitchDegrees);
     }
 
     float CameraFollowComponent::GetInitialDistance() const noexcept {
         return std::clamp(
-            initialDistance_,
-            minimumDistance_,
-            maximumDistance_);
+            Settings().initialDistance,
+            Settings().minimumDistance,
+            Settings().maximumDistance);
     }
 
     float CameraFollowComponent::GetMinimumPitchDegrees() const noexcept {
-        return minimumPitchDegrees_;
+        return Settings().minimumPitchDegrees;
     }
 
     float CameraFollowComponent::GetMaximumPitchDegrees() const noexcept {
-        return maximumPitchDegrees_;
+        return Settings().maximumPitchDegrees;
     }
 
     float CameraFollowComponent::GetMinimumDistance() const noexcept {
-        return minimumDistance_;
+        return Settings().minimumDistance;
     }
 
     float CameraFollowComponent::GetMaximumDistance() const noexcept {
-        return maximumDistance_;
+        return Settings().maximumDistance;
     }
 
     float CameraFollowComponent::GetFollowSmooth() const noexcept {
-        return followSmooth_;
+        return Settings().followSmooth;
     }
 
     float CameraFollowComponent::GetLookSmooth() const noexcept {
-        return lookSmooth_;
+        return Settings().lookSmooth;
     }
 
     float CameraFollowComponent::GetDistanceSmooth() const noexcept {
-        return distanceSmooth_;
+        return Settings().distanceSmooth;
     }
 
     float CameraFollowComponent::GetYawSpeedDegreesPerSecond() const noexcept {
-        return yawSpeedDegreesPerSecond_;
+        return Settings().yawSpeedDegreesPerSecond;
     }
 
     float CameraFollowComponent::GetPitchSpeedDegreesPerSecond() const noexcept {
-        return pitchSpeedDegreesPerSecond_;
+        return Settings().pitchSpeedDegreesPerSecond;
     }
 
     float CameraFollowComponent::GetMouseSensitivityDegreesPerPixel() const noexcept {
-        return mouseSensitivityDegreesPerPixel_;
+        return Settings().mouseSensitivityDegreesPerPixel;
     }
 
     float CameraFollowComponent::GetZoomSpeedUnitsPerSecond() const noexcept {
-        return zoomSpeedUnitsPerSecond_;
+        return Settings().zoomSpeedUnitsPerSecond;
     }
 
     float CameraFollowComponent::GetMouseWheelZoomUnitsPerStep() const noexcept {
-        return mouseWheelZoomUnitsPerStep_;
+        return Settings().mouseWheelZoomUnitsPerStep;
     }
 
     float CameraFollowComponent::GetAutoRecenterDelaySeconds() const noexcept {
-        return autoRecenterDelaySeconds_;
+        return Settings().autoRecenterDelaySeconds;
     }
 
     float CameraFollowComponent::GetAutoRecenterSpeedDegreesPerSecond() const noexcept {
-        return autoRecenterSpeedDegreesPerSecond_;
+        return Settings().autoRecenterSpeedDegreesPerSecond;
     }
 
     float CameraFollowComponent::GetCollisionRadius() const noexcept {
-        return collisionRadius_;
+        return Settings().collisionRadius;
     }
 
     float CameraFollowComponent::GetCollisionPadding() const noexcept {
-        return collisionPadding_;
+        return Settings().collisionPadding;
     }
 
     void CameraFollowComponent::InitializeRuntimeState(
@@ -657,16 +464,16 @@ namespace HIKARI {
             GetInitialYawDegrees());
         runtimePitchDegrees_ = std::clamp(
             FiniteOr(pitchDegrees, GetInitialPitchDegrees()),
-            minimumPitchDegrees_,
-            maximumPitchDegrees_);
+            Settings().minimumPitchDegrees,
+            Settings().maximumPitchDegrees);
         runtimeDesiredDistance_ = std::clamp(
             FiniteOr(desiredDistance, GetInitialDistance()),
-            minimumDistance_,
-            maximumDistance_);
+            Settings().minimumDistance,
+            Settings().maximumDistance);
         runtimeDistance_ = std::clamp(
             FiniteOr(resolvedDistance, runtimeDesiredDistance_),
-            minimumDistance_,
-            maximumDistance_);
+            0.001f,
+            Settings().maximumDistance);
         runtimeLookIdleSeconds_ = NonNegativeFinite(
             lookIdleSeconds,
             0.0f);
@@ -747,137 +554,6 @@ namespace HIKARI {
         runtimeScreenCompositionCollisionBlendVelocity_ = 0.0f;
     }
 
-    void CameraFollowComponent::ClampSettings() noexcept {
-        pivotOffset_ = FiniteOr(
-            pivotOffset_,
-            MATH::Vec3{ 0.0f, 1.2f, 0.0f });
-        initialYawDegrees_ = FiniteOr(initialYawDegrees_, 0.0f);
-        minimumPitchDegrees_ = FiniteOr(minimumPitchDegrees_, -65.0f);
-        maximumPitchDegrees_ = FiniteOr(maximumPitchDegrees_, 75.0f);
-        initialPitchDegrees_ = FiniteOr(initialPitchDegrees_, 28.0f);
-        minimumDistance_ = FiniteOr(minimumDistance_, 1.0f);
-        maximumDistance_ = FiniteOr(maximumDistance_, 20.0f);
-        initialDistance_ = FiniteOr(initialDistance_, 8.0f);
-        minimumPitchDegrees_ = std::clamp(
-            minimumPitchDegrees_,
-            -89.0f,
-            89.0f);
-        maximumPitchDegrees_ = std::clamp(
-            maximumPitchDegrees_,
-            minimumPitchDegrees_,
-            89.0f);
-        initialPitchDegrees_ = std::clamp(
-            initialPitchDegrees_,
-            minimumPitchDegrees_,
-            maximumPitchDegrees_);
-        minimumDistance_ = (std::max)(minimumDistance_, kMinimumRange);
-        maximumDistance_ = (std::max)(maximumDistance_, minimumDistance_);
-        initialDistance_ = std::clamp(
-            initialDistance_,
-            minimumDistance_,
-            maximumDistance_);
-        followSmooth_ = NonNegativeFinite(followSmooth_, 12.0f);
-        lookSmooth_ = NonNegativeFinite(lookSmooth_, 14.0f);
-        distanceSmooth_ = NonNegativeFinite(distanceSmooth_, 18.0f);
-        yawSpeedDegreesPerSecond_ = NonNegativeFinite(
-            yawSpeedDegreesPerSecond_,
-            180.0f);
-        pitchSpeedDegreesPerSecond_ = NonNegativeFinite(
-            pitchSpeedDegreesPerSecond_,
-            140.0f);
-        mouseSensitivityDegreesPerPixel_ = NonNegativeFinite(
-            mouseSensitivityDegreesPerPixel_,
-            0.12f);
-        zoomSpeedUnitsPerSecond_ = NonNegativeFinite(
-            zoomSpeedUnitsPerSecond_,
-            30.0f);
-        mouseWheelZoomUnitsPerStep_ = NonNegativeFinite(
-            mouseWheelZoomUnitsPerStep_,
-            1.0f);
-        autoRecenterDelaySeconds_ = NonNegativeFinite(
-            autoRecenterDelaySeconds_,
-            1.25f);
-        autoRecenterSpeedDegreesPerSecond_ = NonNegativeFinite(
-            autoRecenterSpeedDegreesPerSecond_,
-            90.0f);
-        collisionRadius_ = (std::max)(
-            NonNegativeFinite(collisionRadius_, 0.25f),
-            0.01f);
-        collisionPadding_ = NonNegativeFinite(collisionPadding_, 0.08f);
-        screenCompositionPrimaryAnchorX_ = std::clamp(
-            FiniteOr(screenCompositionPrimaryAnchorX_, 0.38f),
-            0.05f,
-            0.95f);
-        screenCompositionPrimaryAnchorY_ = std::clamp(
-            FiniteOr(screenCompositionPrimaryAnchorY_, 0.58f),
-            0.05f,
-            0.95f);
-        screenCompositionSecondaryAnchorX_ = std::clamp(
-            FiniteOr(screenCompositionSecondaryAnchorX_, 0.62f),
-            0.05f,
-            0.95f);
-        if (screenCompositionPrimaryAnchorX_ >
-            screenCompositionSecondaryAnchorX_) {
-            std::swap(
-                screenCompositionPrimaryAnchorX_,
-                screenCompositionSecondaryAnchorX_);
-        }
-        if (screenCompositionSecondaryAnchorX_ -
-                screenCompositionPrimaryAnchorX_ < 0.04f) {
-            const float center = std::clamp(
-                (screenCompositionPrimaryAnchorX_ +
-                    screenCompositionSecondaryAnchorX_) * 0.5f,
-                0.07f,
-                0.93f);
-            screenCompositionPrimaryAnchorX_ = center - 0.02f;
-            screenCompositionSecondaryAnchorX_ = center + 0.02f;
-        }
-        screenCompositionSecondaryAnchorY_ = std::clamp(
-            FiniteOr(screenCompositionSecondaryAnchorY_, 0.46f),
-            0.05f,
-            0.95f);
-        screenCompositionSoftZoneHalfWidth_ = std::clamp(
-            FiniteOr(screenCompositionSoftZoneHalfWidth_, 0.075f),
-            0.0f,
-            0.45f);
-        screenCompositionSoftZoneHalfHeight_ = std::clamp(
-            FiniteOr(screenCompositionSoftZoneHalfHeight_, 0.10f),
-            0.0f,
-            0.45f);
-        screenCompositionHardZoneHalfWidth_ = std::clamp(
-            FiniteOr(screenCompositionHardZoneHalfWidth_, 0.20f),
-            screenCompositionSoftZoneHalfWidth_ + 0.01f,
-            0.50f);
-        screenCompositionHardZoneHalfHeight_ = std::clamp(
-            FiniteOr(screenCompositionHardZoneHalfHeight_, 0.24f),
-            screenCompositionSoftZoneHalfHeight_ + 0.01f,
-            0.50f);
-        screenCompositionPreferredShoulderAngleDegrees_ = std::clamp(
-            FiniteOr(
-                screenCompositionPreferredShoulderAngleDegrees_,
-                32.0f),
-            0.0f,
-            89.0f);
-        screenCompositionMaximumShoulderAngleDegrees_ = std::clamp(
-            FiniteOr(
-                screenCompositionMaximumShoulderAngleDegrees_,
-                58.0f),
-            screenCompositionPreferredShoulderAngleDegrees_,
-            89.0f);
-        screenCompositionFocusHeightBias_ = std::clamp(
-            FiniteOr(screenCompositionFocusHeightBias_, 0.22f),
-            -5.0f,
-            5.0f);
-        screenCompositionHardResponseScale_ = std::clamp(
-            FiniteOr(screenCompositionHardResponseScale_, 0.45f),
-            0.10f,
-            1.0f);
-        screenCompositionCollisionCenteringStrength_ = std::clamp(
-            FiniteOr(
-                screenCompositionCollisionCenteringStrength_,
-                0.72f),
-            0.0f,
-            1.0f);
-    }
+    void CameraFollowComponent::ClampSettings() noexcept { settings_.Normalize(); }
 
 } // namespace HIKARI

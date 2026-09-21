@@ -1,3 +1,4 @@
+#include "Scene/Components/HIKARI_CameraFlowComponent.h"
 #include "Runtime/Project/HIKARI_GameProjectActionBridge.h"
 
 #include <algorithm>
@@ -2250,6 +2251,50 @@ namespace HIKARI {
             return POST::PostSystem::GetRadialScreenWarp(outCurvature, outStrength);
         }
         catch (...) { outCurvature = outStrength = 0.0f; return false; }
+    }
+
+    bool CameraView::TriggerFlow(uint64_t handle) const noexcept {
+        try {
+            auto* world=static_cast<World*>(world_);
+            if(!world || !world->IsOwnerThread() || GameProjectSdkAccess::IsWorldClosing(*world)) return false;
+            auto* object=FindObject(world,handle);
+            auto* component=object?object->GetComponent<CameraFlowComponent>():nullptr;
+            return component && component->RequestTrigger();
+        } catch(...) {return false;}
+    }
+    bool CameraView::InterruptFlow(uint64_t handle) const noexcept {
+        try {
+            auto* world=static_cast<World*>(world_);
+            if(!world || !world->IsOwnerThread() || GameProjectSdkAccess::IsWorldClosing(*world)) return false;
+            auto* object=FindObject(world,handle);
+            auto* component=object?object->GetComponent<CameraFlowComponent>():nullptr;
+            return component && component->RequestInterrupt();
+        } catch(...) {return false;}
+    }
+    bool CameraView::GetFlowStatus(uint64_t handle,GameProjectCameraFlowStatus& out) const noexcept {
+        out={};
+        try {
+            auto* world=static_cast<World*>(world_);
+            if(!world || !world->IsOwnerThread() || GameProjectSdkAccess::IsWorldClosing(*world)) return false;
+            const auto* object=FindObject(world,handle);
+            const auto* component=object?object->GetComponent<CameraFlowComponent>():nullptr;
+            if(!component) return false;
+            const auto& r=component->Runtime();
+            out.stage=static_cast<GameProjectCameraFlowStage>(r.stage);out.inside=r.inside;
+            out.runs=r.runs;out.timeSeconds=r.time;out.durationSeconds=r.duration;return true;
+        } catch(...) {return false;}
+    }
+
+    bool CameraView::SubmitGameplayMode(uint64_t cameraObjectHandle,std::string_view mode,uint64_t sourceId,int32_t priority) const noexcept {
+        try {
+            if(!world_) return false;
+            auto& world=*static_cast<World*>(world_);
+            auto* service=world.Services().Find<CAMERA::CameraRigService>();
+            CAMERA::CameraModeSubmission request;
+            if(!service || !ToCameraObjectId(world,cameraObjectHandle,request.cameraObjectId)) return false;
+            request.sourceId=sourceId;request.priority=priority;request.mode=mode;
+            return service->SubmitMode(request);
+        } catch(...) {return false;}
     }
 
     bool CameraView::IsReady() const noexcept {

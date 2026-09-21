@@ -18,6 +18,8 @@ namespace HIKARI::EDITOR {
                 viewportFocused)) {
             return;
         }
+        const auto& io = ImGui::GetIO();
+        if (io.KeyCtrl || io.KeyAlt || io.KeySuper) return;
 
         if (ImGui::IsKeyPressed(ImGuiKey_Q) ||
             ImGui::IsKeyPressed(ImGuiKey_Escape)) {

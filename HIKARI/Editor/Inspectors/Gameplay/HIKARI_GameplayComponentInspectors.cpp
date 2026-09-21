@@ -10,6 +10,7 @@
 #include <string_view>
 
 #include "Editor/Inspectors/HIKARI_IInspectorBuilder.h"
+#include "Core/Text/HIKARI_Localization.h"
 #include "Assets/HIKARI_AssetTypes.h"
 #include "Input/Runtime/HIKARI_InputService.h"
 #include "Physics/HIKARI_KinematicMotionService.h"
@@ -77,6 +78,7 @@ namespace HIKARI {
     void CharacterInputComponent::BuildInspector(
         IInspectorBuilder& builder) {
         builder.Bool("Enabled", enabled_);
+        builder.Text(TEXT::Localize("character.inputHint"));
         builder.Int("Control Priority", priority_);
         if (builder.Button("Use Gameplay Defaults")) {
             moveActionId_ = "Gameplay.Move";
@@ -135,108 +137,88 @@ namespace HIKARI {
         }
     }
 
-    void CharacterLocomotionComponent::BuildInspector(
-        IInspectorBuilder& builder) {
+    void CharacterLocomotionComponent::BuildInspector(IInspectorBuilder &builder) {
         builder.Bool("Enabled", enabled_);
-        builder.Int("Motion Priority", motionPriority_);
-        int movementSpace = static_cast<int>(movementSpace_);
-        if (builder.Choice(
-                "Movement Space",
-                movementSpace,
-                kMovementSpaces)) {
-            movementSpace_ = static_cast<CharacterMovementSpace>(
-                (std::clamp)(movementSpace, 0, 2));
+        builder.Text(TEXT::Localize("character.locomotionHint"));
+        if (builder.Section(TEXT::Localize("character.movement"), true)) {
+            builder.Int("Motion Priority", motionPriority_);
+            int movementSpace = static_cast<int>(movementSpace_);
+            if (builder.Choice("Movement Space", movementSpace, kMovementSpaces)) {
+                movementSpace_ =
+                    static_cast<CharacterMovementSpace>((std::clamp)(movementSpace, 0, 2));
+            }
+            if (builder.Button("Use Third-Person Movement")) {
+                movementSpace_ = CharacterMovementSpace::Camera;
+                rotateToMove_ = true;
+                edgeGuardEnabled_ = true;
+            }
+            builder.Float("Maximum Speed", maximumSpeed_);
+            builder.Float("Sprint Multiplier", sprintMultiplier_);
+            builder.Float("Ground Acceleration", acceleration_);
+            builder.Float("Ground Deceleration", deceleration_);
+            builder.Float("Air Acceleration", airAcceleration_);
+            builder.Float("Air Deceleration", airDeceleration_);
+            builder.Float("Turn Speed (deg/s)", turnSpeedDegrees_);
+            builder.Bool("Rotate To Move", rotateToMove_);
         }
-        if (builder.Button("Use Third-Person Movement")) {
-            movementSpace_ = CharacterMovementSpace::Camera;
-            rotateToMove_ = true;
-            edgeGuardEnabled_ = true;
+        if (builder.Section(TEXT::Localize("character.jump"))) {
+            builder.Float("Jump Height", jumpHeight_);
+            builder.Float("Jump Buffer Time (s)", jumpBufferSeconds_);
+            builder.Float("Ground Grace Time (s)", groundGraceSeconds_);
+            builder.Float("Maximum Fall Speed", maximumFallSpeed_);
         }
-        builder.Float("Maximum Speed", maximumSpeed_);
-        builder.Float("Sprint Multiplier", sprintMultiplier_);
-        builder.Float("Ground Acceleration", acceleration_);
-        builder.Float("Ground Deceleration", deceleration_);
-        builder.Float("Air Acceleration", airAcceleration_);
-        builder.Float("Air Deceleration", airDeceleration_);
-        builder.Float("Turn Speed (deg/s)", turnSpeedDegrees_);
-        builder.Float("Jump Height", jumpHeight_);
-        builder.Float("Jump Buffer Time (s)", jumpBufferSeconds_);
-        builder.Float("Ground Grace Time (s)", groundGraceSeconds_);
-        builder.Float("Maximum Fall Speed", maximumFallSpeed_);
-        builder.FloatRange(
-            "Maximum Slope (deg)",
-            maximumSlopeAngleDegrees_,
-            0.0f,
-            89.0f,
-            1.0f);
-        builder.Float("Step Height", stepHeight_);
-        builder.Float("Floor Snap Distance", stickToFloorDistance_);
-        builder.Float("Step Forward Test", stepForwardTestDistance_);
-        builder.Bool(
-            "Cancel Uphill Motion On Steep Slopes",
-            cancelVelocityTowardsSteepSlopes_);
-        builder.Bool("Prevent Grounded Edge Fall", edgeGuardEnabled_);
-        builder.Float("Edge Probe Distance", edgeProbeDistance_);
-        builder.Float("Edge Probe Radius", edgeProbeRadius_);
-        builder.Float("Maximum Grounded Drop", maximumGroundedDrop_);
-        builder.Float("Contact Padding", characterPadding_);
-        builder.Float(
-            "Predictive Contact Distance",
-            predictiveContactDistance_);
-        builder.FloatRange(
-            "Penetration Recovery",
-            penetrationRecoverySpeed_,
-            0.0f,
-            1.0f,
-            0.05f);
-        int maximumHits = static_cast<int>(maximumCollisionHits_);
-        if (builder.Int("Maximum Contact Hits", maximumHits)) {
-            maximumCollisionHits_ = static_cast<uint32_t>(
-                (std::clamp)(maximumHits, 16, 4096));
+        if (builder.Section(TEXT::Localize("character.traversal"))) {
+            builder.FloatRange("Maximum Slope (deg)", maximumSlopeAngleDegrees_, 0.0f, 89.0f, 1.0f);
+            builder.Float("Step Height", stepHeight_);
+            builder.Float("Floor Snap Distance", stickToFloorDistance_);
+            builder.Float("Step Forward Test", stepForwardTestDistance_);
+            builder.Bool("Cancel Uphill Motion On Steep Slopes", cancelVelocityTowardsSteepSlopes_);
+            builder.Bool("Prevent Grounded Edge Fall", edgeGuardEnabled_);
+            builder.Float("Edge Probe Distance", edgeProbeDistance_);
+            builder.Float("Edge Probe Radius", edgeProbeRadius_);
+            builder.Float("Maximum Grounded Drop", maximumGroundedDrop_);
         }
-        builder.Bool(
-            "Smooth Mesh Internal Edges",
-            enhancedInternalEdgeRemoval_);
-        builder.FloatRange(
-            "Input Dead Zone",
-            inputDeadZone_,
-            0.0f,
-            0.95f);
-        builder.Bool("Rotate To Move", rotateToMove_);
+        if (builder.Section(TEXT::Localize("character.advanced"))) {
+            builder.Float("Contact Padding", characterPadding_);
+            builder.Float("Predictive Contact Distance", predictiveContactDistance_);
+            builder.FloatRange("Penetration Recovery", penetrationRecoverySpeed_, 0.0f, 1.0f,
+                               0.05f);
+            int maximumHits = static_cast<int>(maximumCollisionHits_);
+            if (builder.Int("Maximum Contact Hits", maximumHits)) {
+                maximumCollisionHits_ = static_cast<uint32_t>((std::clamp)(maximumHits, 16, 4096));
+            }
+            builder.Bool("Smooth Mesh Internal Edges", enhancedInternalEdgeRemoval_);
+            builder.FloatRange("Input Dead Zone", inputDeadZone_, 0.0f, 0.95f);
+        }
         ClampSettings();
+        if (!builder.Section(TEXT::Localize("character.runtime")))
+            return;
 
-        const InspectorContext& context = builder.GetContext();
-        const auto* motionService = context.worldServices != nullptr
-            ? context.worldServices->Find<
-                PHYSICS::KinematicMotionService>()
-            : nullptr;
-        const PHYSICS::KinematicMotionState* state =
+        const InspectorContext &context = builder.GetContext();
+        const auto *motionService =
+            context.worldServices != nullptr
+                ? context.worldServices->Find<PHYSICS::KinematicMotionService>()
+                : nullptr;
+        const PHYSICS::KinematicMotionState *state =
             motionService != nullptr && context.runtimeObject != nullptr
-            ? motionService->FindState(*context.runtimeObject)
-            : nullptr;
-        const PHYSICS::KinematicMotionRuntimeStatus* status =
+                ? motionService->FindState(*context.runtimeObject)
+                : nullptr;
+        const PHYSICS::KinematicMotionRuntimeStatus *status =
             motionService != nullptr && context.runtimeObject != nullptr
-            ? motionService->FindStatus(*context.runtimeObject)
-            : nullptr;
+                ? motionService->FindStatus(*context.runtimeObject)
+                : nullptr;
         if (status != nullptr) {
-            builder.Text(
-                std::string("Runtime: ") +
-                RuntimeHealthName(status->health) +
-                (status->message.empty()
-                    ? std::string{}
-                    : " | " + status->message));
+            builder.Text(std::string("Runtime: ") + RuntimeHealthName(status->health) +
+                         (status->message.empty() ? std::string{} : " | " + status->message));
         }
         if (state != nullptr) {
-            builder.Text(
-                std::string("Ground: ") +
-                GroundStateName(state->groundState));
-            builder.Text(
-                "Velocity: " + std::to_string(state->velocity.x) +
-                ", " + std::to_string(state->velocity.y) +
-                ", " + std::to_string(state->velocity.z));
+            builder.Text(std::string("Ground: ") + GroundStateName(state->groundState));
+            builder.Text("Velocity: " + std::to_string(state->velocity.x) + ", " +
+                         std::to_string(state->velocity.y) + ", " +
+                         std::to_string(state->velocity.z));
             if (state->maximumHitsExceeded) {
-                builder.Text(
-                    "Warning: contact limit reached; simplify nearby collision or raise Maximum Contact Hits.");
+                builder.Text("Warning: contact limit reached; simplify nearby collision or raise "
+                             "Maximum Contact Hits.");
             }
         }
     }

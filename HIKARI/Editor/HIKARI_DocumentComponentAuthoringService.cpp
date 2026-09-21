@@ -8,6 +8,20 @@
 
 namespace HIKARI {
 
+    std::vector<std::string> DocumentComponentAuthoringService::GetMissingOptionalComponents(
+        const ComponentRegistry& registry, const SceneObjectData& object) const {
+        std::vector<std::string> result;
+        for (const auto& component : object.components) {
+            const auto* info = registry.Find(component.type);
+            if (!info) continue;
+            for (const auto& type : info->optionalComponents) {
+                if (registry.Find(type) && !HasComponent(object, type) &&
+                    !ContainsTypeName(result, type)) result.push_back(type);
+            }
+        }
+        return result;
+    }
+
     ComponentAddResult DocumentComponentAuthoringService::AddComponent(
         const ComponentRegistry& registry,
         SceneObjectData& object,

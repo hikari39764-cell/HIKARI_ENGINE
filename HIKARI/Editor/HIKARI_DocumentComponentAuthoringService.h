@@ -25,6 +25,9 @@ namespace HIKARI {
 
     class DocumentComponentAuthoringService {
     public:
+        std::vector<std::string> GetMissingOptionalComponents(
+            const ComponentRegistry& registry,
+            const SceneObjectData& object) const;
         ComponentAddResult AddComponent(
             const ComponentRegistry& registry,
             SceneObjectData& object,

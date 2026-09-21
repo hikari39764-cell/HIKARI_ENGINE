@@ -431,21 +431,8 @@ namespace HIKARI {
             static_cast<int32_t>(std::lround(imageOrigin.x + imageSize.x)),
             static_cast<int32_t>(std::lround(imageOrigin.y + imageSize.y)),
         };
-        if (playSession.IsEmbeddedRunning()) {
-            if (playSession.HasEmbeddedInput()) {
-                if (!EDITOR::IsGameViewportPlayInputActive()) {
-                    playSession.ReleaseEmbeddedInput();
-                } else {
-                    playSession.UpdateEmbeddedInputRegion(
-                        embeddedInputRegion);
-                }
-            } else if (!playSession.IsPaused() &&
-                viewportImageHovered &&
-                ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-                playSession.CaptureEmbeddedInput(
-                    embeddedInputRegion);
-            }
-        }
+        playSession.UpdateEmbeddedViewportInput(embeddedInputRegion,
+            viewportImageHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left));
 
         const bool authoringInteractionEnabled =
             !playSession.IsRunning();

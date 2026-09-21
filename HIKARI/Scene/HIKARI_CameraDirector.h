@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <vector>
+#include <optional>
 
 #include "Render3D/Core/HIKARI_RenderView.h"
 #include "Scene/HIKARI_SceneDocument.h"
@@ -26,6 +27,7 @@ namespace HIKARI {
         CameraBlendDesc blend{};
         int priority = 0;
         bool affectsControlBasis = false;
+        std::optional<CameraBlendDesc> returnBlend;
     };
 
     struct CameraOverrideToken {

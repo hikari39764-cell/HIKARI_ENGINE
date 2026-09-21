@@ -52,7 +52,7 @@ namespace HIKARI::PHYSICS::JOLT_BACKEND {
         const BodyRecord& body,
         uint32_t shapeIndex,
         const PhysicsQueryFilter& filter) const noexcept {
-        if (shapeIndex >= body.shapes.size()) {
+        if ((filter.staticOnly && body.motionType != PhysicsMotionType::Static) || shapeIndex >= body.shapes.size()) {
             return false;
         }
         const PhysicsShapeDesc& shape = body.shapes[shapeIndex];

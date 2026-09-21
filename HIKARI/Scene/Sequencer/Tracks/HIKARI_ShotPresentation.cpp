@@ -116,12 +116,7 @@ void NormalizeShotCamera(ShotCamera &shot) {
                        Safe(shot.targetOffset.z)};
   shot.nearClip = (std::max)(0.001f, Safe(shot.nearClip, 0.1f));
   shot.farClip = (std::max)(shot.nearClip + 0.01f, Safe(shot.farClip, 2000));
-  Ids(shot.motion);
-  for (auto &e : shot.motion) {
-    NormalizePresentationParameter(e.amount);
-    NormalizePresentationParameter(e.weight);
-    e.frequency = std::clamp(Safe(e.frequency, 3), 0.0f, 100.0f);
-  }
+  NormalizeCameraMotionEffects(shot.motion);
 }
 
 void NormalizeScreenEffects(std::vector<SequenceScreenEffect> &effects) {
@@ -188,61 +183,7 @@ Camera3D EvaluateShotCamera(const ShotCamera &shot, float seconds, float aspect,
   }
   if (lookAt)
     target = *lookAt + shot.targetOffset;
-  for (const auto &effect : shot.motion) {
-    if (!effect.enabled)
-      continue;
-    const float amount =
-        effect.amount.Evaluate(seconds) *
-        std::clamp(effect.weight.Evaluate(seconds), 0.0f, 1.0f);
-    const auto basis = MATH::BuildViewBasisRH(target - eye, up);
-    auto forward = basis.forward, right = basis.right, vertical = basis.up;
-    MATH::Vec3 offset{};
-    switch (effect.kind) {
-    case CameraMotionKind::Dolly:
-      offset = forward * amount;
-      break;
-    case CameraMotionKind::Truck:
-      offset = right * amount;
-      break;
-    case CameraMotionKind::Pedestal:
-      offset = vertical * amount;
-      break;
-    case CameraMotionKind::Orbit:
-      eye = target + Rotate(eye - target, up, amount * radians);
-      break;
-    case CameraMotionKind::Pan:
-      target = eye + Rotate(target - eye, vertical, amount * radians);
-      break;
-    case CameraMotionKind::Tilt:
-      target = eye + Rotate(target - eye, right, amount * radians);
-      break;
-    case CameraMotionKind::Roll:
-      pose.roll += amount;
-      break;
-    case CameraMotionKind::Shake:
-    case CameraMotionKind::Handheld: {
-      const float t =
-          seconds * effect.frequency * 2 * std::numbers::pi_v<float>;
-      const float phase = static_cast<float>(effect.seed % 997) * 0.17f;
-      offset = (right * std::sin(t + phase) +
-                vertical * std::sin(t * 1.37f + phase * 2)) *
-               amount;
-      if (effect.kind == CameraMotionKind::Handheld) {
-        offset = offset * 0.3f + (right * std::sin(t * 0.19f + phase) +
-                                  vertical * std::sin(t * 0.27f + phase)) *
-                                     amount * 0.7f;
-        pose.roll += std::sin(t * 0.23f + phase) * amount * 8.0f;
-      }
-      break;
-    }
-    }
-    eye = eye + offset;
-    const bool translateTarget = !lookAt ||
-                                 effect.kind == CameraMotionKind::Shake ||
-                                 effect.kind == CameraMotionKind::Handheld;
-    if (translateTarget)
-      target = target + offset;
-  }
+  ApplyCameraMotionEffects(shot.motion, seconds, eye, target, up, pose.fov, 0, 1, lookAt != nullptr);
   if (MATH::Length(target - eye) < 0.0001f)
     target = eye + MATH::Vec3{0, 0, 1};
   const auto forward = MATH::Normalize(target - eye);

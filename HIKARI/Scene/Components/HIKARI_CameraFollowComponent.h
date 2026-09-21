@@ -3,6 +3,9 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <optional>
+#include "Scene/Camera/HIKARI_GameplayCameraEvaluation.h"
+#include "Scene/Camera/HIKARI_CameraFollowSettings.h"
 
 #include "HIKARI_IComponent.h"
 #include "Render3D/HIKARI_Math3D.h"
@@ -30,7 +33,7 @@ namespace HIKARI {
             return useOwnerAsFallbackTarget_;
         }
         const MATH::Vec3& GetPivotOffset() const noexcept {
-            return pivotOffset_;
+            return Settings().pivotOffset;
         }
         float GetInitialYawDegrees() const noexcept;
         float GetInitialPitchDegrees() const noexcept;
@@ -44,16 +47,16 @@ namespace HIKARI {
         float GetDistanceSmooth() const noexcept;
 
         bool IsOrbitInputEnabled() const noexcept {
-            return orbitInputEnabled_;
+            return Settings().orbitInputEnabled;
         }
         const std::string& GetLookActionId() const noexcept {
-            return lookActionId_;
+            return Settings().lookActionId;
         }
         const std::string& GetZoomActionId() const noexcept {
-            return zoomActionId_;
+            return Settings().zoomActionId;
         }
         const std::string& GetRecenterActionId() const noexcept {
-            return recenterActionId_;
+            return Settings().recenterActionId;
         }
         float GetYawSpeedDegreesPerSecond() const noexcept;
         float GetPitchSpeedDegreesPerSecond() const noexcept;
@@ -61,70 +64,70 @@ namespace HIKARI {
         float GetZoomSpeedUnitsPerSecond() const noexcept;
         float GetMouseWheelZoomUnitsPerStep() const noexcept;
         bool GetInvertVerticalLook() const noexcept {
-            return invertVerticalLook_;
+            return Settings().invertVerticalLook;
         }
         bool IsAutoRecenterEnabled() const noexcept {
-            return autoRecenterEnabled_;
+            return Settings().autoRecenterEnabled;
         }
         float GetAutoRecenterDelaySeconds() const noexcept;
         float GetAutoRecenterSpeedDegreesPerSecond() const noexcept;
 
         bool IsCollisionEnabled() const noexcept {
-            return collisionEnabled_;
+            return Settings().collisionEnabled;
         }
         bool GetCollisionStaticOnly() const noexcept {
-            return collisionStaticOnly_;
+            return Settings().collisionStaticOnly;
         }
         float GetCollisionRadius() const noexcept;
         float GetCollisionPadding() const noexcept;
         uint32_t GetCollisionLayerMask() const noexcept {
-            return collisionLayerMask_;
+            return Settings().collisionLayerMask;
         }
 
         bool IsScreenCompositionEnabled() const noexcept {
-            return screenCompositionEnabled_;
+            return Settings().screenCompositionEnabled;
         }
         float GetScreenCompositionPrimaryAnchorX() const noexcept {
-            return screenCompositionPrimaryAnchorX_;
+            return Settings().screenCompositionPrimaryAnchorX;
         }
         float GetScreenCompositionPrimaryAnchorY() const noexcept {
-            return screenCompositionPrimaryAnchorY_;
+            return Settings().screenCompositionPrimaryAnchorY;
         }
         float GetScreenCompositionSecondaryAnchorX() const noexcept {
-            return screenCompositionSecondaryAnchorX_;
+            return Settings().screenCompositionSecondaryAnchorX;
         }
         float GetScreenCompositionSecondaryAnchorY() const noexcept {
-            return screenCompositionSecondaryAnchorY_;
+            return Settings().screenCompositionSecondaryAnchorY;
         }
         float GetScreenCompositionSoftZoneHalfWidth() const noexcept {
-            return screenCompositionSoftZoneHalfWidth_;
+            return Settings().screenCompositionSoftZoneHalfWidth;
         }
         float GetScreenCompositionSoftZoneHalfHeight() const noexcept {
-            return screenCompositionSoftZoneHalfHeight_;
+            return Settings().screenCompositionSoftZoneHalfHeight;
         }
         float GetScreenCompositionHardZoneHalfWidth() const noexcept {
-            return screenCompositionHardZoneHalfWidth_;
+            return Settings().screenCompositionHardZoneHalfWidth;
         }
         float GetScreenCompositionHardZoneHalfHeight() const noexcept {
-            return screenCompositionHardZoneHalfHeight_;
+            return Settings().screenCompositionHardZoneHalfHeight;
         }
         float GetScreenCompositionPreferredShoulderAngleDegrees()
             const noexcept {
-            return screenCompositionPreferredShoulderAngleDegrees_;
+            return Settings().screenCompositionPreferredShoulderAngleDegrees;
         }
         float GetScreenCompositionMaximumShoulderAngleDegrees()
             const noexcept {
-            return screenCompositionMaximumShoulderAngleDegrees_;
+            return Settings().screenCompositionMaximumShoulderAngleDegrees;
         }
         float GetScreenCompositionFocusHeightBias() const noexcept {
-            return screenCompositionFocusHeightBias_;
+            return Settings().screenCompositionFocusHeightBias;
         }
         float GetScreenCompositionHardResponseScale() const noexcept {
-            return screenCompositionHardResponseScale_;
+            return Settings().screenCompositionHardResponseScale;
         }
         float GetScreenCompositionCollisionCenteringStrength()
             const noexcept {
-            return screenCompositionCollisionCenteringStrength_;
+            return Settings().screenCompositionCollisionCenteringStrength;
         }
 
         bool HasRuntimeState() const noexcept { return runtimeInitialized_; }
@@ -374,7 +377,18 @@ namespace HIKARI {
             bool hardViolation,
             float collisionBlend,
             float collisionBlendVelocity) noexcept;
+        CAMERA::GameplayCameraBinding& GameplayBinding() noexcept { return gameplayBinding_; }
+        const CAMERA::GameplayCameraBinding& GameplayBinding() const noexcept { return gameplayBinding_; }
+        CAMERA::GameplayCameraEvaluation& GameplayState() noexcept { return gameplayState_; }
+        const CAMERA::GameplayCameraEvaluation& GameplayState() const noexcept { return gameplayState_; }
         void ResetRuntimeState() noexcept;
+        const CAMERA::CameraFollowSettings& Settings() const noexcept {
+            return evaluatedSettings_ ? *evaluatedSettings_ : settings_;
+        }
+        const CAMERA::CameraFollowSettings& AuthoredSettings() const noexcept { return settings_; }
+        void SetEvaluatedSettings(const CAMERA::CameraFollowSettings& settings) { evaluatedSettings_ = settings; }
+        void ClearEvaluatedSettings() noexcept { evaluatedSettings_.reset(); }
+
 
     private:
         void ClampSettings() noexcept;
@@ -383,55 +397,10 @@ namespace HIKARI {
         int priority_ = 0;
         SceneObjectId targetObjectId_{};
         bool useOwnerAsFallbackTarget_ = true;
-        MATH::Vec3 pivotOffset_{ 0.0f, 1.2f, 0.0f };
-        float initialYawDegrees_ = 0.0f;
-        float initialPitchDegrees_ = 28.0f;
-        float initialDistance_ = 8.0f;
-        float minimumPitchDegrees_ = -65.0f;
-        float maximumPitchDegrees_ = 75.0f;
-        float minimumDistance_ = 1.0f;
-        float maximumDistance_ = 20.0f;
-        float followSmooth_ = 12.0f;
-        float lookSmooth_ = 14.0f;
-        float distanceSmooth_ = 18.0f;
-
-        bool orbitInputEnabled_ = true;
-        std::string lookActionId_{ "Gameplay.Look" };
-        std::string zoomActionId_{ "Gameplay.CameraZoom" };
-        std::string recenterActionId_{ "Gameplay.CameraRecenter" };
-        float yawSpeedDegreesPerSecond_ = 180.0f;
-        float pitchSpeedDegreesPerSecond_ = 140.0f;
-        float mouseSensitivityDegreesPerPixel_ = 0.12f;
-        float zoomSpeedUnitsPerSecond_ = 30.0f;
-        float mouseWheelZoomUnitsPerStep_ = 1.0f;
-        bool invertVerticalLook_ = false;
-        bool autoRecenterEnabled_ = false;
-        float autoRecenterDelaySeconds_ = 1.25f;
-        float autoRecenterSpeedDegreesPerSecond_ = 90.0f;
-
-        bool collisionEnabled_ = true;
-        bool collisionStaticOnly_ = true;
-        float collisionRadius_ = 0.25f;
-        float collisionPadding_ = 0.08f;
-        uint32_t collisionLayerMask_ = 0xFFFFFFFFu;
-
-        // Normalized viewport anchors use a top-left origin.  These defaults
-        // frame a two-subject duel around the thirds while leaving a generous
-        // soft region for ordinary locomotion.
-        bool screenCompositionEnabled_ = true;
-        float screenCompositionPrimaryAnchorX_ = 0.38f;
-        float screenCompositionPrimaryAnchorY_ = 0.58f;
-        float screenCompositionSecondaryAnchorX_ = 0.62f;
-        float screenCompositionSecondaryAnchorY_ = 0.46f;
-        float screenCompositionSoftZoneHalfWidth_ = 0.075f;
-        float screenCompositionSoftZoneHalfHeight_ = 0.10f;
-        float screenCompositionHardZoneHalfWidth_ = 0.20f;
-        float screenCompositionHardZoneHalfHeight_ = 0.24f;
-        float screenCompositionPreferredShoulderAngleDegrees_ = 32.0f;
-        float screenCompositionMaximumShoulderAngleDegrees_ = 58.0f;
-        float screenCompositionFocusHeightBias_ = 0.22f;
-        float screenCompositionHardResponseScale_ = 0.45f;
-        float screenCompositionCollisionCenteringStrength_ = 0.72f;
+        CAMERA::GameplayCameraBinding gameplayBinding_;
+        CAMERA::GameplayCameraEvaluation gameplayState_;
+        CAMERA::CameraFollowSettings settings_{};
+        std::optional<CAMERA::CameraFollowSettings> evaluatedSettings_;
 
         bool runtimeInitialized_ = false;
         float runtimeYawDegrees_ = 0.0f;

@@ -3,6 +3,8 @@
 #include "Scene/Sequencer/Tracks/HIKARI_ShotPresentation.h"
 
 namespace HIKARI::SEQUENCER {
+    nlohmann::json WriteCameraMotionEffects(const std::vector<CameraMotionEffect>& effects);
+    std::vector<CameraMotionEffect> ReadCameraMotionEffects(const nlohmann::json& node);
     nlohmann::json WriteShotCamera(const ShotCamera& camera);
     ShotCamera ReadShotCamera(const nlohmann::json& node);
     nlohmann::json WriteScreenEffects(const std::vector<SequenceScreenEffect>& effects);

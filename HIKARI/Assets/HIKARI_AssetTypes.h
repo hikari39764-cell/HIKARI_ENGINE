@@ -31,6 +31,7 @@ namespace HIKARI {
         Dialogue,
         ModelMaterialBinding,
         Shader,
+        GameplayCamera,
         Unknown
     };
 

@@ -37,6 +37,43 @@ PresentationParameter Parameter(const json &n, float fallback) {
 }
 } // namespace
 
+nlohmann::json WriteCameraMotionEffects(const std::vector<CameraMotionEffect>& effects) {
+  json n=json::array();
+  for (const auto &e : effects)
+    n.push_back({{"id", e.id},
+                           {"kind", static_cast<int>(e.kind)},
+                           {"enabled", e.enabled},
+                           {"amount", Parameter(e.amount)},
+                           {"weight", Parameter(e.weight)},
+                           {"frequency", e.frequency},
+                           {"seed", e.seed}, {"start",e.start}, {"duration",e.duration},
+                           {"fadeIn",e.fadeIn}, {"fadeOut",e.fadeOut}, {"maximumSpeed",e.maximumSpeed}});
+  return n;
+}
+std::vector<CameraMotionEffect> ReadCameraMotionEffects(const nlohmann::json& n) {
+  if (!n.is_array()) throw std::runtime_error("Camera effects must be an array");
+  std::vector<CameraMotionEffect> effects;
+  for (const auto &item : n) {
+    CameraMotionEffect e;
+    e.id = item.value("id", uint64_t{1});
+    const int kind = item.value("kind", 0);
+    if (kind < 0 || kind > static_cast<int>(CameraMotionKind::SpeedDolly))
+      throw std::runtime_error("Unknown camera motion effect");
+    e.kind = static_cast<CameraMotionKind>(kind);
+    e.enabled = item.value("enabled", true);
+    e.amount = Parameter(item.value("amount", json{}), 1);
+    e.weight = Parameter(item.value("weight", json{}), 1);
+    e.frequency = item.value("frequency", 3.0f);
+    e.seed = item.value("seed", 1u);
+    e.start=item.value("start",0.0f); e.duration=item.value("duration",0.0f);
+    e.fadeIn=item.value("fadeIn",0.0f); e.fadeOut=item.value("fadeOut",0.0f);
+    e.maximumSpeed=item.value("maximumSpeed",8.0f);
+    effects.push_back(e);
+  }
+  NormalizeCameraMotionEffects(effects);
+  return effects;
+}
+
 nlohmann::json WriteShotCamera(const ShotCamera &c) {
   json n = {{"owned", c.owned},
             {"name", c.name},
@@ -49,14 +86,7 @@ nlohmann::json WriteShotCamera(const ShotCamera &c) {
             {"motion", json::array()}};
   for (size_t i = 0; i < c.channels.size(); ++i)
     n["channels"][kShotChannelNames[i]] = Parameter(c.channels[i]);
-  for (const auto &e : c.motion)
-    n["motion"].push_back({{"id", e.id},
-                           {"kind", static_cast<int>(e.kind)},
-                           {"enabled", e.enabled},
-                           {"amount", Parameter(e.amount)},
-                           {"weight", Parameter(e.weight)},
-                           {"frequency", e.frequency},
-                           {"seed", e.seed}});
+  n["motion"] = WriteCameraMotionEffects(c.motion);
   return n;
 }
 
@@ -102,20 +132,7 @@ ShotCamera ReadShotCamera(const nlohmann::json &n) {
       }
     }
   }
-  for (const auto &item : n.value("motion", json::array())) {
-    CameraMotionEffect e;
-    e.id = item.value("id", uint64_t{1});
-    const int kind = item.value("kind", 0);
-    if (kind < 0 || kind > static_cast<int>(CameraMotionKind::Handheld))
-      throw std::runtime_error("Unknown camera motion effect");
-    e.kind = static_cast<CameraMotionKind>(kind);
-    e.enabled = item.value("enabled", true);
-    e.amount = Parameter(item.value("amount", json{}), 1);
-    e.weight = Parameter(item.value("weight", json{}), 1);
-    e.frequency = item.value("frequency", 3.0f);
-    e.seed = item.value("seed", 1u);
-    c.motion.push_back(e);
-  }
+  c.motion = ReadCameraMotionEffects(n.value("motion",json::array()));
   NormalizeShotCamera(c);
   return c;
 }

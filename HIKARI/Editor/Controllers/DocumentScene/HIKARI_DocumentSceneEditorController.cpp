@@ -1,3 +1,6 @@
+#include "Core/Text/HIKARI_UtfPath.h"
+#include "Runtime/HIKARI_RuntimeLaunchConfig.h"
+#include "Editor/Workspaces/HIKARI_EditorWorkspacePresentation.h"
 #include "Editor/Shell/HIKARI_EditorDockLayout.h"
 #include "Editor/Preview/HIKARI_EditorPreviewCapture.h"
 #include "Editor/Commands/HIKARI_EditorOperationValue.h"
@@ -294,6 +297,14 @@ namespace HIKARI {
     }
 
     DocumentSceneEditorController::DocumentSceneEditorController() {
+        // 組み込みワークスペースも同じ起動引数で直接開ける。
+        if(const auto requested=ReadRuntimeCommandLinePath(L"--open-workspace")) {
+            const auto id=TEXT::PathToUtf8(*requested);
+            for(const auto& workspace:EDITOR::kEditorWorkspacePresentations)
+                if(EDITOR::EditorWorkspaceOperationId(workspace.id)==id) {
+                    EDITOR::EditorWorkspaceOpenRequest open;open.workspaceId=workspace.id;workspaceHost_.RequestOpen(open);break;
+                }
+        }
         EDITOR::RegisterBuiltInEditorTools(toolHost_);
         EDITOR::RegisterBuiltInSystemAuthoring(
             systemAuthoringRegistry_);
@@ -1027,6 +1038,7 @@ namespace HIKARI {
         case EditorWorkspaceId::Vfx: view = workspaceHost_.GetVfxPreviewView().renderViewId; break;
         case EditorWorkspaceId::ModelMaterial: view = workspaceHost_.GetModelMaterialPreviewView().renderViewId; break;
         case EditorWorkspaceId::ModelCollision: view = workspaceHost_.GetModelCollisionPreviewView().renderViewId; break;
+        case EditorWorkspaceId::GameplayCamera: view = workspaceHost_.GetGameplayCameraPreviewView().renderViewId; break;
         case EditorWorkspaceId::Cinematics: view = workspaceHost_.GetCinematicsDirectorView().renderViewId; break;
         default: break;
         }
@@ -1883,7 +1895,7 @@ namespace HIKARI {
         HasKnownUnsavedProjectChanges(
             const DocumentSceneBase& scene) const noexcept {
 
-        return authoringSessions_.HasUnsavedDocuments() || context_.sceneDirty ||
+        return authoringSessions_.HasUnsavedDocuments() || gameplayCameraWorkspaceController_.Document().IsDirty() || gameplayCameraWorkspaceController_.HasFlowDraft() || context_.sceneDirty ||
             scene.HasUnsavedSceneChanges() ||
             cinematicsWorkspaceController_.
                 IsSequenceDocumentDirty() ||
@@ -2015,18 +2027,19 @@ namespace HIKARI {
             std::string activationAssetGuid;
             for (const auto* guid : {&activation->vfxAssetGuid, &activation->materialAssetGuid,
                 &activation->animationStateMachineAssetGuid, &activation->dialogueAssetGuid,
-                &activation->modelAssetGuid, &activation->sequenceAssetGuid})
+                &activation->modelAssetGuid, &activation->sequenceAssetGuid, &activation->cameraProfileAssetGuid})
                 if (*guid) activationAssetGuid = (*guid)->value;
             if (authoringSessions_.ActivateDocument(std::string(EDITOR::EditorWorkspaceOperationId(activation->current)),
                 activationAssetGuid, HasForegroundDocument(activation->current))) {
                 activation->vfxAssetGuid.reset(); activation->materialAssetGuid.reset();
                 activation->animationStateMachineAssetGuid.reset(); activation->dialogueAssetGuid.reset();
-                activation->modelAssetGuid.reset(); activation->sequenceAssetGuid.reset();
+                activation->modelAssetGuid.reset(); activation->sequenceAssetGuid.reset(); activation->cameraProfileAssetGuid.reset();
             }
             const auto isSceneOwnedWorkspace =
                 [](EDITOR::EditorWorkspaceId id) {
                     return id == EDITOR::EditorWorkspaceId::Scene ||
                         id == EDITOR::EditorWorkspaceId::Cinematics ||
+                        id == EDITOR::EditorWorkspaceId::GameplayCamera ||
                         id == EDITOR::EditorWorkspaceId::Count;
                 };
             if (isSceneOwnedWorkspace(activation->previous) &&
@@ -2041,6 +2054,11 @@ namespace HIKARI {
                 VfxWorkspace().Deactivate(
                     workspaceHost_.GetVfxPreviewView().renderViewId);
             }
+            if (activation->previous != activation->current) {
+                playSession.ReleaseEmbeddedInput();
+                EDITOR::ClearGameViewportInputRect();
+            }
+            GameplayCameraWorkspace().ApplyActivation(scene, *activation, workspaceHost_);
             CinematicsWorkspace().ApplyWorkspaceActivation(
                 scene,
                 *activation,
@@ -2234,6 +2252,15 @@ namespace HIKARI {
             if (renderQualitySavePending_ && !ImGui::IsAnyItemActive()) {
                 (void)SaveRenderQualityProfile(scene);
             }
+            return;
+        }
+
+        if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::GameplayCamera)) {
+            GameplayCameraWorkspace().DrawDockSpace(workspaceHost_.ConsumeReset(EDITOR::EditorWorkspaceId::GameplayCamera));
+            const auto result=GameplayCameraWorkspace().Draw(scene,workspaceHost_,operationRegistry_);
+            playSession.UpdateEmbeddedViewportInput(result.playViewport, result.playViewportClicked);
+            if(result.togglePlay) ToggleGamePreview(scene,playSession);
+            DrawPendingSceneOpenModal(scene);
             return;
         }
 

@@ -1,3 +1,4 @@
+#include "Editor/Widgets/HIKARI_CameraMotionWidgets.h"
 #include "Editor/Workspaces/Cinematics/HIKARI_CinematicsPresentation.h"
 #include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
@@ -155,65 +156,8 @@ bool CinematicsWorkspaceController::DrawInspector(DocumentSceneBase &scene,
     }
     if (shot->camera.owned &&
         ImGui::CollapsingHeader(TEXT::LocalizeWindow("cine.motionChain", "运动效果链").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
-      std::array<std::string, 9> names;
-      for (size_t i=0; i<names.size(); ++i) names[i]=TEXT::Localize(kCinematicMotionKeys[i]);
-      if (ImGui::Button(TEXT::LocalizeWindow("cine.addMotion", "添加运动").c_str()))
-        ImGui::OpenPopup("motionMenu");
-      if (ImGui::BeginPopup("motionMenu")) {
-        for (int i = 0; i < 9; ++i)
-          if (ImGui::Selectable(names[i].c_str())) {
-            CameraMotionEffect e;
-            e.kind = static_cast<CameraMotionKind>(i);
-            for (const auto &old : shot->camera.motion)
-              e.id = (std::max)(e.id, old.id + 1);
-            e.amount.value = i >= 7 ? 0.05f : 1.0f;
-            shot->camera.motion.push_back(e);
-            changed = true;
-          }
-        ImGui::EndPopup();
-      }
-      int remove = -1, move = -1;
-      for (size_t i = 0; i < shot->camera.motion.size(); ++i) {
-        auto &e = shot->camera.motion[i];
-        ImGui::PushID(static_cast<int>(e.id));
-        changed |= ImGui::Checkbox("##enabled", &e.enabled);
-        ImGui::SameLine();
-        const bool open =
-            ImGui::TreeNodeEx("motion", 0, "%s",
-                              names[static_cast<int>(e.kind)].c_str());
-        ImGui::SameLine();
-        if (IconButton(EditorGlyph::Delete, "remove", EditorButtonTone::Quiet,
-                       {20, 20},TEXT::Localize("cine.removeModule").c_str()))
-          remove = static_cast<int>(i);
-        if (i) {
-          ImGui::SameLine();
-          if (ImGui::SmallButton(TEXT::LocalizeWindow("ui.vfx.effects.up", "上移").c_str()))
-            move = static_cast<int>(i);
-        }
-        if (open) {
-          const float local = (std::max)(0.0f, cursor_.GetTimeSeconds() -
-                                                   shot->startTimeSeconds);
-          ImGui::PushID("amount");
-          changed |= DrawCurve(e.amount, local, "motion/" + std::to_string(e.id) + "/amount");
-          ImGui::PopID();
-          ImGui::PushID("weight");
-          ImGui::TextDisabled(TEXT::Localize("cine.weight").c_str());
-          changed |= DrawCurve(e.weight, local, "motion/" + std::to_string(e.id) + "/weight");
-          ImGui::PopID();
-          if (e.kind == CameraMotionKind::Shake ||
-              e.kind == CameraMotionKind::Handheld)
-            changed |= ImGui::DragFloat(fieldLabel(TEXT::LocalizeWindow("cine.frequency", "频率").c_str()).c_str(), &e.frequency, 0.05f, 0, 100);
-          ImGui::TreePop();
-        }
-        ImGui::PopID();
-      }
-      if (remove >= 0) {
-        shot->camera.motion.erase(shot->camera.motion.begin() + remove);
-        changed = true;
-      } else if (move > 0) {
-        std::swap(shot->camera.motion[move], shot->camera.motion[move - 1]);
-        changed = true;
-      }
+      changed |= DrawCameraMotionStack(shot->camera.motion,std::max(0.0f,cursor_.GetTimeSeconds()-shot->startTimeSeconds),
+          [this](auto& parameter,float time,const auto& channel) { return DrawCurve(parameter,time,channel); }, false);
     }
     if (ImGui::CollapsingHeader(TEXT::LocalizeWindow("cine.shotFx", "镜头画面效果").c_str()))
       changed |= DrawEffects(

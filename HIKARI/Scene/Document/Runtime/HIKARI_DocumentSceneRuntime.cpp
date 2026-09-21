@@ -560,6 +560,8 @@ namespace HIKARI {
             state_->runtime.runtimeAssetContextService) && success;
         success = services.Register(state_->camera.director) && success;
         success = services.Register(state_->camera.rigService) && success;
+        state_->assets.GameplayCameras().Configure(&state_->assets.Database());
+        success = services.Register(state_->assets.GameplayCameras()) && success;
         success = (!animationEnabled || services.Register(
             state_->runtime.animationPoseService)) && success;
         success = (!animationEnabled || services.Register(

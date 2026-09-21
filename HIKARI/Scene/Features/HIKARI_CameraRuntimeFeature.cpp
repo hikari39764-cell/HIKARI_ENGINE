@@ -97,43 +97,8 @@ namespace HIKARI {
                 follow.initializeDefaults = [](
                     const SceneObjectData&,
                     nlohmann::json& properties) {
-                    properties["enabled"] = true;
-                    properties["priority"] = 0;
-                    properties["targetObjectId"] = 0;
-                    properties["useOwnerAsFallbackTarget"] = true;
-                    properties["pivotOffset"] = nlohmann::json::array({
-                        0.0f, 1.2f, 0.0f
-                    });
-                    properties["initialYawDegrees"] = 0.0f;
-                    properties["initialPitchDegrees"] = 28.0f;
-                    properties["initialDistance"] = 8.0f;
-                    properties["minimumPitchDegrees"] = -65.0f;
-                    properties["maximumPitchDegrees"] = 75.0f;
-                    properties["minimumDistance"] = 1.0f;
-                    properties["maximumDistance"] = 20.0f;
-                    properties["followSmooth"] = 12.0f;
-                    properties["lookSmooth"] = 14.0f;
-                    properties["distanceSmooth"] = 18.0f;
-                    properties["orbitInputEnabled"] = true;
-                    properties["lookAction"] = "Gameplay.Look";
-                    properties["zoomAction"] = "Gameplay.CameraZoom";
-                    properties["recenterAction"] =
-                        "Gameplay.CameraRecenter";
-                    properties["yawSpeedDegreesPerSecond"] = 180.0f;
-                    properties["pitchSpeedDegreesPerSecond"] = 140.0f;
-                    properties["mouseSensitivityDegreesPerPixel"] =
-                        0.12f;
-                    properties["zoomSpeedUnitsPerSecond"] = 30.0f;
-                    properties["mouseWheelZoomUnitsPerStep"] = 1.0f;
-                    properties["invertVerticalLook"] = false;
-                    properties["autoRecenterEnabled"] = false;
-                    properties["autoRecenterDelaySeconds"] = 1.25f;
-                    properties["autoRecenterSpeedDegreesPerSecond"] =
-                        90.0f;
-                    properties["collisionEnabled"] = true;
-                    properties["collisionRadius"] = 0.25f;
-                    properties["collisionPadding"] = 0.08f;
-                    properties["collisionLayerMask"] = 0xFFFFFFFFu;
+                    CameraFollowComponent defaults;
+                    defaults.Serialize(properties);
                 };
                 follow.presentation = CameraPresentation(
                     "Gameplay Camera Rig",

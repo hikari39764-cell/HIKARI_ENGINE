@@ -758,6 +758,8 @@ namespace IMGUIZMO_NAMESPACE
       ImVector<ImGuiID> mIDStack;
       ImGuiID mEditingID = -1;
       OPERATION mOperation = OPERATION(0);
+      OPERATION mEditingOperation = OPERATION(0);
+      MODE mEditingMode = LOCAL;
 
       bool mAllowAxisFlip = true;
       float mGizmoSizeClipSpace = 0.1f;
@@ -980,9 +982,10 @@ namespace IMGUIZMO_NAMESPACE
       // A gizmo may disappear or be replaced before its active ID observes the
       // mouse release. Recover here so one interrupted drag cannot lock every
       // subsequent gizmo interaction in the global ImGuizmo context.
-      if (gContext.mbUsing && !ImGui::IsMouseDown(ImGuiMouseButton_Left))
+      if ((gContext.mbUsing || gContext.mbUsingBounds) && !ImGui::IsMouseDown(ImGuiMouseButton_Left))
       {
          gContext.mbUsing = false;
+         gContext.mbUsingBounds = false;
          gContext.mEditingID = -1;
          gContext.mCurrentHandleType = MT_NONE;
       }
@@ -2102,7 +2105,7 @@ namespace IMGUIZMO_NAMESPACE
 
    static MOVETYPE GetRotateType(OPERATION op)
    {
-      if (gContext.mbUsing)
+      if (gContext.mbUsing || !gContext.mbMouseOver || !IsInContextRect(ImGui::GetIO().MousePos))
       {
          return MT_NONE;
       }
@@ -2741,6 +2744,14 @@ namespace IMGUIZMO_NAMESPACE
 
    bool Manipulate(const float* view, const float* projection, OPERATION operation, MODE mode, float* matrix, float* deltaMatrix, const float* snap, const float* localBounds, const float* boundsSnap)
    {
+      // ツール変更時は以前のハンドルの平面・回転原点を引き継がない。
+      if (gContext.mbUsing && gContext.GetCurrentID() == gContext.mEditingID &&
+          (operation != gContext.mEditingOperation || mode != gContext.mEditingMode))
+      {
+         gContext.mbUsing = false;
+         gContext.mEditingID = -1;
+         gContext.mCurrentHandleType = MT_NONE;
+      }
       gContext.mDrawList->PushClipRect (ImVec2 (gContext.mX, gContext.mY), ImVec2 (gContext.mX + gContext.mWidth, gContext.mY + gContext.mHeight), false);
 
       // Scale is always local or matrix will be skewed when applying world scale or oriented matrix
@@ -2758,6 +2769,9 @@ namespace IMGUIZMO_NAMESPACE
       camSpacePosition.TransformPoint(makeVect(0.f, 0.f, 0.f), gContext.mMVP);
       if (!gContext.mIsOrthographic && camSpacePosition.z < 0.001f && !gContext.mbUsing)
       {
+         gContext.mOperation = OPERATION(0);
+         gContext.mbMouseOver = false;
+         gContext.mDrawList->PopClipRect();
          return false;
       }
 
@@ -2780,6 +2794,11 @@ namespace IMGUIZMO_NAMESPACE
       }
 
       gContext.mOperation = operation;
+      if (gContext.mbUsing && gContext.GetCurrentID() == gContext.mEditingID)
+      {
+         gContext.mEditingOperation = operation;
+         gContext.mEditingMode = mode;
+      }
       gContext.mHoveredHandleType = (!gContext.mbUsing && !gContext.mbUsingBounds) ? type : MT_NONE;
       if (!gContext.mbUsingBounds)
       {

@@ -30,6 +30,8 @@ namespace HIKARI {
             // カメラ姿勢を提出する
             // 同じ cameraObjectId + sourceId の組み合わせが既に存在する場合は上書きされる
             // 戻り値: 提出が受け付けられた場合は true
+            bool SubmitMode(const CameraModeSubmission& submission);
+            const CameraModeSubmission* ResolveMode(SceneObjectId camera) const noexcept;
             bool SubmitPose(const CameraRigSubmission& submission);
 
             // カメラモディファイアを提出する
@@ -90,6 +92,7 @@ namespace HIKARI {
             uint64_t frameIndex_ = 0u;
 
             // 今フレームに提出されたカメラ姿勢一覧
+            std::vector<CameraModeSubmission> modes_;
             std::vector<CameraRigSubmission> poses_{};
 
             // 今フレームに提出されたカメラモディファイア一覧

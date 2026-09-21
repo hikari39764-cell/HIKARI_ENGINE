@@ -246,6 +246,20 @@ namespace HIKARI {
         // 実行停止・描画未初期化時は false。時間変化するグリッチは含まない。
         HIKARI_GAME_PROJECT_SDK_API bool GetRadialScreenWarp(
             float& outCurvature, float& outStrength) const noexcept;
+        // 提出したフレームだけ有効。停止すると入力条件／既定モードへ復帰する。
+        // Scene-authored camera flow. Commands queue for this frame's camera evaluation.
+        // Queries do not consume sequencer events; runtime status never writes authored scene data.
+        HIKARI_GAME_PROJECT_SDK_API bool TriggerFlow(uint64_t flowObjectHandle) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool InterruptFlow(uint64_t flowObjectHandle) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool GetFlowStatus(uint64_t flowObjectHandle, GameProjectCameraFlowStatus& out) const noexcept;
+        // Authored .hcamera effect. Call once; returns a playback token, or 0 on failure.
+        // Duration/curves come from the asset. Requests belong to this camera and World.
+        HIKARI_GAME_PROJECT_SDK_API uint64_t PlayGameplayEffect(uint64_t cameraObjectHandle,
+            std::string_view effectId, float strength = 1.0f) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool StopGameplayEffect(uint64_t cameraObjectHandle,
+            uint64_t playbackToken) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool SubmitGameplayMode(uint64_t cameraObjectHandle,
+            std::string_view mode, uint64_t sourceId, int32_t priority = 0) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool SubmitPose(
             const GameProjectCameraPoseRequest& request) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool IsReady() const noexcept;

@@ -39,6 +39,7 @@
 #include "Editor/Viewport/HIKARI_SceneViewportSelectionService.h"
 #include "Editor/Windows/HIKARI_SceneAuthoringUtilityWindows.h"
 #include "Editor/Workspaces/Cinematics/HIKARI_CinematicsWorkspaceController.h"
+#include "Editor/Workspaces/GameplayCamera/HIKARI_GameplayCameraWorkspaceController.h"
 #include "Editor/Workspaces/HIKARI_EditorWorkspaceHost.h"
 #include "Editor/Workspaces/ModelCollision/HIKARI_ModelCollisionWorkspaceController.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
@@ -132,6 +133,11 @@ namespace HIKARI {
         EDITOR::GameProjectEditorWorkspaceHost* projectWorkspaceHost_ = nullptr;
         EDITOR::EditorOperationRegistry operationRegistry_{};
         DocumentSceneBase* aiOperationScene_ = nullptr;
+        EDITOR::GameplayCameraWorkspaceController gameplayCameraWorkspaceController_;
+        EDITOR::GameplayCameraWorkspaceController& GameplayCameraWorkspace() { return authoringSessions_.ResolveController("gameplay_camera",gameplayCameraWorkspaceController_); }
+        const EDITOR::GameplayCameraWorkspaceController& GameplayCameraWorkspace() const { return const_cast<DocumentSceneEditorController*>(this)->GameplayCameraWorkspace(); }
+        EDITOR::EditorOperationResult EditCameraFlow(const nlohmann::json& parameters);
+    EDITOR::EditorOperationResult BindGameplayCamera(const nlohmann::json& parameters);
         EDITOR::CinematicsWorkspaceController cinematicsWorkspaceController_{};
         EDITOR::ModelCollisionWorkspaceController modelCollisionWorkspaceController_{};
         EDITOR::ModelMaterialWorkspaceController modelMaterialWorkspaceController_{};

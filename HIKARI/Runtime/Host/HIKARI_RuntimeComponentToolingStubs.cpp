@@ -1,3 +1,4 @@
+#include "Scene/Components/HIKARI_CameraFlowComponent.h"
 #include "Assets/Models/Loading/HIKARI_AssimpModelLoader.h"
 #include "Assets/Models/Loading/HIKARI_GltfModelLoader.h"
 #include "Assets/Models/Loading/HIKARI_ObjModelLoader.h"
@@ -36,6 +37,7 @@ namespace HIKARI {
     void CameraActivationVolumeComponent::BuildInspector(
         IInspectorBuilder&) {}
     void CameraComponent::BuildInspector(IInspectorBuilder&) {}
+    void CameraFlowComponent::BuildInspector(IInspectorBuilder&) {}
     void CameraFollowComponent::BuildInspector(IInspectorBuilder&) {}
     void CharacterInputComponent::BuildInspector(IInspectorBuilder&) {}
     void CharacterLocomotionComponent::BuildInspector(

@@ -20,6 +20,7 @@ namespace HIKARI::ASSETS::SEMANTICS {
         ModelMaterialBinding,
         VfxEffect,
         Shader,
+        GameplayCamera,
         Count,
     };
 

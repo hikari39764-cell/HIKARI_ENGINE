@@ -1,3 +1,5 @@
+#include "Scene/Components/HIKARI_CameraFollowComponent.h"
+#include "Assets/Camera/HIKARI_GameplayCameraAsset.h"
 #include "Scene/Sequencer/Drivers/HIKARI_CameraSequenceTrackDriver.h"
 
 #include <algorithm>
@@ -103,6 +105,17 @@ namespace HIKARI::SEQUENCER {
             return;
         }
         states_.push_back({ instance.handle });
+        auto& state=states_.back();
+        state.entryCamera=cameraDirector_.GetResolvedFrame().valid ? cameraDirector_.GetResolvedFrame().camera : viewportCamera_;
+        if(const auto* camera=world_.FindObject(cameraDirector_.GetBaseCamera())) {
+            if(const auto* follow=camera->GetComponent<CameraFollowComponent>()) {
+                auto profile=follow->GameplayState().source;
+                if(!profile) if(const auto* store=world_.Services().Find<GameplayCameraAssetStore>()) {
+                    std::string error;profile=store->Load(follow->GameplayBinding().profile,error);
+                }
+                if(profile) {state.entrySeconds=profile->cinematicEnterSeconds;state.returnSeconds=profile->cinematicReturnSeconds;}
+            }
+        }
     }
 
     void CameraSequenceTrackDriver::Validate(
@@ -187,6 +200,14 @@ namespace HIKARI::SEQUENCER {
             ReleaseOverride(*state);
             return;
         }
+        if(context.IsDiscontinuous()) state->entryFinished=true;
+        if(state->firstTime<0) state->firstTime=context.currentTimeSeconds;
+        if(!state->entryFinished && state->entrySeconds>0) {
+            const float elapsed=(std::max)(0.0f,context.currentTimeSeconds-state->firstTime);
+            const float weight=std::clamp(elapsed/state->entrySeconds,0.0f,1.0f);
+            evaluatedCamera=CameraDirector::BlendViews(state->entryCamera,evaluatedCamera,weight*weight*(3-2*weight));
+            state->entryFinished=weight>=1;
+        }
         const auto shot = std::find_if(sequence.cameraCutTrack.clips.begin(), sequence.cameraCutTrack.clips.end(),
             [&](const auto& clip) { return clip.id == evaluation.shotId; });
         const auto submitPresentation = [&]() {
@@ -209,6 +230,7 @@ namespace HIKARI::SEQUENCER {
         CameraActivationRequest request{};
         request.cameraObjectId = evaluation.cameraObjectId;
         request.blend = {}; // authored transitions are evaluated from sequence time, including seeks
+        if(state->returnSeconds>0) request.returnBlend=CameraBlendDesc{CameraBlendMode::EaseInOut,state->returnSeconds};
         request.priority = ToCameraPriority(instance.priority);
         request.affectsControlBasis = false;
         state->overrideToken = cameraDirector_.PushOverride(request);

@@ -5,6 +5,8 @@
 #include "HIKARI/Project/ActionTypes.h"
 
 namespace HIKARI {
+    // ScreenUp: 2D の画面上下。ViewDirection: 地面上の前進（見上げても後退しない）。
+    enum class GameProjectCameraPlanarForward { ScreenUp, ViewDirection };
     namespace CAMERA_SPACE_DETAIL {
         inline float Dot(GameProjectFloat3 a, GameProjectFloat3 b) noexcept {
             return a.x*b.x + a.y*b.y + a.z*b.z;
@@ -29,7 +31,8 @@ namespace HIKARI {
     // 対角入力は長さ 1 以下、アナログ入力の強さは維持する。解けない視点は false/zero。
     inline bool ResolveCameraPlanarMovement(const GameProjectCameraPose& camera,
         float horizontal, float vertical, GameProjectFloat3 planeNormal,
-        GameProjectFloat3& movement) noexcept {
+        GameProjectFloat3& movement,
+        GameProjectCameraPlanarForward forwardMode = GameProjectCameraPlanarForward::ScreenUp) noexcept {
         using namespace CAMERA_SPACE_DETAIL;
         movement = {};
         if (!std::isfinite(horizontal) || !std::isfinite(vertical) || !Normalize(planeNormal)) return false;
@@ -39,9 +42,10 @@ namespace HIKARI {
         // Camera3D は右手系。up x forward は画面の左になってしまう。
         auto right = Reject(Cross(forward,camera.up),planeNormal);
         if (!Normalize(right)) return false;
-        auto up = Reject(Reject(camera.up,planeNormal),right);
+        const bool alongView = forwardMode == GameProjectCameraPlanarForward::ViewDirection;
+        auto up = Reject(Reject(alongView ? forward : camera.up,planeNormal),right);
         if (!Normalize(up)) {
-            up = Reject(Reject(forward,planeNormal),right);
+            up = Reject(Reject(alongView ? camera.up : forward,planeNormal),right);
             if (!Normalize(up)) return false;
         }
         const float length = std::max(1.0f,std::hypot(horizontal,vertical));

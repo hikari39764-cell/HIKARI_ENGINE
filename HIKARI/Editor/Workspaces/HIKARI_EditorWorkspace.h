@@ -21,12 +21,14 @@ namespace HIKARI::EDITOR {
         Dialogue,
         TerrainSurface,
         Project,
+        GameplayCamera,
         Count,
     };
 
     // 操作レジストリの領域名。UI の翻訳名とは独立した識別子を使う。
     constexpr std::string_view EditorWorkspaceOperationId(EditorWorkspaceId id) noexcept {
         switch (id) {
+        case EditorWorkspaceId::GameplayCamera: return "gameplay_camera";
         case EditorWorkspaceId::Scene: return "scene";
         case EditorWorkspaceId::Cinematics: return "cinematics";
         case EditorWorkspaceId::ModelCollision: return "model_collision";
@@ -46,6 +48,7 @@ namespace HIKARI::EDITOR {
         EditorWorkspaceId workspaceId = EditorWorkspaceId::Scene;
         std::optional<SceneObjectId> targetCameraObjectId{};
         std::optional<AssetGuid> sequenceAssetGuid{};
+        std::optional<AssetGuid> cameraProfileAssetGuid{};
         std::optional<AssetGuid> modelAssetGuid{};
         std::optional<AssetGuid> materialAssetGuid{};
         std::optional<AssetGuid> animationStateMachineAssetGuid{};
@@ -59,6 +62,7 @@ namespace HIKARI::EDITOR {
         EditorWorkspaceId current = EditorWorkspaceId::Scene;
         std::optional<SceneObjectId> targetCameraObjectId{};
         std::optional<AssetGuid> sequenceAssetGuid{};
+        std::optional<AssetGuid> cameraProfileAssetGuid{};
         std::optional<AssetGuid> modelAssetGuid{};
         std::optional<AssetGuid> materialAssetGuid{};
         std::optional<AssetGuid> animationStateMachineAssetGuid{};

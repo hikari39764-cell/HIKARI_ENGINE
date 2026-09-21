@@ -1,5 +1,7 @@
 #include "Scene/Features/HIKARI_SequenceRuntimeFeature.h"
 
+#include "Scene/Components/HIKARI_CameraFlowComponent.h"
+#include "Scene/Camera/HIKARI_CameraFlowSystem.h"
 #include <array>
 #include <memory>
 
@@ -30,16 +32,16 @@ namespace HIKARI {
 
             std::span<const std::string_view>
                 GetComponentTypeNames() const noexcept override {
-                static constexpr std::array<std::string_view, 1> names{
-                    "SequencePlayerComponent"
+                static constexpr std::array<std::string_view, 2> names{
+                    "SequencePlayerComponent", "CameraFlowComponent"
                 };
                 return names;
             }
 
             std::span<const std::string_view>
                 GetSystemIds() const noexcept override {
-                static constexpr std::array<std::string_view, 1> ids{
-                    "SequencePlayerSystem"
+                static constexpr std::array<std::string_view, 2> ids{
+                    "SequencePlayerSystem", "CameraFlowSystem"
                 };
                 return ids;
             }
@@ -97,6 +99,18 @@ namespace HIKARI {
                         "SequencePlayerSystem",
                         170
                     }) && success;
+                ComponentTypeInfo flow{};
+                flow.typeName="CameraFlowComponent";
+                flow.factory=[] {return IComponent::Create<CameraFlowComponent>();};
+                flow.initializeDefaults=[](const SceneObjectData&,nlohmann::json& properties) {
+                    CameraFlowComponent defaults;defaults.Serialize(properties);
+                };
+                flow.presentation={"Camera Flow","Cinematics","Enter a region, play a sequence, hand control to a gameplay camera mode.","Cinematics"};
+                success=componentRegistry.Register(std::move(flow)) && success;
+                success=systemTypeRegistry.Register(SystemTypeInfo{"CameraFlowSystem",
+                    [](const nlohmann::json&)->std::unique_ptr<ISystem>{return std::make_unique<CameraFlowSystem>();},
+                    "Camera Flow","Cinematics"}) && success;
+                success=componentSystemPolicy.Register(ComponentSystemRule{"CameraFlowComponent","CameraFlowSystem",180}) && success;
                 return success;
             }
         };

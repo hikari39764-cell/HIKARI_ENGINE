@@ -15,6 +15,7 @@ namespace HIKARI {
 bool DocumentSceneEditorController::HasForegroundDocument(EDITOR::EditorWorkspaceId workspace) const {
     using W = EDITOR::EditorWorkspaceId;
     switch (workspace) {
+    case W::GameplayCamera: return gameplayCameraWorkspaceController_.Document().IsOpen();
     case W::Vfx: return vfxWorkspaceController_.GetDocument().IsOpen();
     case W::Cinematics: return cinematicsWorkspaceController_.IsEditingSequenceAsset() || cinematicsWorkspaceController_.IsSequenceDocumentDirty();
     case W::ModelMaterial: return modelMaterialWorkspaceController_.GetDocumentAssetGuid().IsValid() || modelMaterialWorkspaceController_.HasUnsavedMaterialChanges();

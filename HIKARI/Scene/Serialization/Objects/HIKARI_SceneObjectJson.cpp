@@ -27,7 +27,8 @@ namespace HIKARI::SCENE::SERIALIZATION {
         if (!properties.is_object()) return;
         if (component.type == "CameraFollowComponent") {
             normalize(properties, "targetObjectId");
-        } else if (component.type == "CameraActivationVolumeComponent") {
+            normalize(properties, "cameraLookTarget");
+        } else if (component.type == "CameraActivationVolumeComponent" || component.type == "CameraFlowComponent") {
             normalize(properties, "subjectObjectId");
             normalize(properties, "cameraObjectId");
         } else if (component.type == "SequencePlayerComponent") {

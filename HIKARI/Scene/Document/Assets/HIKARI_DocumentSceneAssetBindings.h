@@ -8,6 +8,7 @@
 #include "Assets/HIKARI_AssetRegistry.h"
 #include "Assets/HIKARI_AssetTypes.h"
 #include "Assets/Sequence/HIKARI_SequenceAssetStore.h"
+#include "Assets/Camera/HIKARI_GameplayCameraAsset.h"
 #include "Render3D/Models/HIKARI_ModelManager.h"
 #include "Render3D/Material/HIKARI_MaterialTextureUsage.h"
 
@@ -27,6 +28,7 @@ namespace HIKARI {
         SequenceAssetStore& SequenceAssets() noexcept {
             return sequenceAssets_;
         }
+        GameplayCameraAssetStore& GameplayCameras() noexcept { return gameplayCameras_; }
         ModelManager& Models() noexcept { return models_; }
 
         bool ReloadAssets(const SceneDependencySet* required = nullptr);
@@ -62,6 +64,7 @@ namespace HIKARI {
         AssetRegistry registry_{};
         uint64_t registrySourceRevision_ = 0u;
         SequenceAssetStore sequenceAssets_{};
+        GameplayCameraAssetStore gameplayCameras_;
         ModelManager models_{};
     };
 

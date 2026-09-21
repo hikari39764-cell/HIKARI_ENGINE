@@ -24,6 +24,8 @@ namespace HIKARI::EDITOR {
         void RequestResetActiveLayout() noexcept;
         bool ConsumeReset(EditorWorkspaceId workspaceId) noexcept;
 
+        EditorViewInstance& GetGameplayCameraObserverView() noexcept;
+        EditorViewInstance& GetGameplayCameraPreviewView() noexcept;
         EditorViewInstance& GetCinematicsGameView() noexcept;
         const EditorViewInstance& GetCinematicsGameView() const noexcept;
         EditorViewInstance& GetCinematicsDirectorView() noexcept;
@@ -52,6 +54,8 @@ namespace HIKARI::EDITOR {
             ModelMaterialCompare,
             VfxPreview,
             TerrainSurfaceGame,
+            GameplayCameraObserver,
+            GameplayCameraPreview,
             Count,
         };
 
