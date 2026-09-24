@@ -5,265 +5,213 @@
 
 namespace HIKARI::SEQUENCER {
 
-    namespace {
-        float ClampPlaybackRate(float playbackRate) noexcept {
-            if (!std::isfinite(playbackRate)) {
-                return 1.0f;
-            }
-            const float magnitude = std::clamp(
-                std::abs(playbackRate), 0.01f, 8.0f);
-            return playbackRate < 0.0f ? -magnitude : magnitude;
-        }
+namespace {
+float ClampPlaybackRate(float playbackRate) noexcept {
+    if (!std::isfinite(playbackRate)) {
+        return 1.0f;
+    }
+    const float magnitude = std::clamp(std::abs(playbackRate), 0.01f, 8.0f);
+    return playbackRate < 0.0f ? -magnitude : magnitude;
+}
 
-        bool IsValidDuration(float durationSeconds) noexcept {
-            return std::isfinite(durationSeconds) && durationSeconds > 0.0f;
-        }
+bool IsValidDuration(float durationSeconds) noexcept {
+    return std::isfinite(durationSeconds) && durationSeconds > 0.0f;
+}
+} // namespace
+
+bool SequencePlaybackCursor::Bind(float durationSeconds, float timeSeconds) {
+    if (!IsValidDuration(durationSeconds)) {
+        Clear();
+        return false;
     }
 
-    bool SequencePlaybackCursor::Bind(
-        float durationSeconds,
-        float timeSeconds) {
+    durationSeconds_ = durationSeconds;
+    timeSeconds_ = std::clamp(std::isfinite(timeSeconds) ? timeSeconds : 0.0f, 0.0f, durationSeconds_);
+    state_ = SequencePlaybackState::Stopped;
+    options_ = {};
+    lastContext_ = {};
+    lastContext_.currentTimeSeconds = timeSeconds_;
+    lastContext_.previousTimeSeconds = timeSeconds_;
+    lastContext_.durationSeconds = durationSeconds_;
+    pendingReason_ = SequenceEvaluationReason::None;
+    pendingPreviousTimeSeconds_ = timeSeconds_;
+    bound_ = true;
+    return true;
+}
 
-        if (!IsValidDuration(durationSeconds)) {
-            Clear();
-            return false;
-        }
-
-        durationSeconds_ = durationSeconds;
-        timeSeconds_ = std::clamp(
-            std::isfinite(timeSeconds) ? timeSeconds : 0.0f,
-            0.0f,
-            durationSeconds_);
-        state_ = SequencePlaybackState::Stopped;
-        options_ = {};
-        lastContext_ = {};
-        lastContext_.currentTimeSeconds = timeSeconds_;
-        lastContext_.previousTimeSeconds = timeSeconds_;
-        lastContext_.durationSeconds = durationSeconds_;
-        pendingReason_ = SequenceEvaluationReason::None;
-        pendingPreviousTimeSeconds_ = timeSeconds_;
-        bound_ = true;
-        return true;
+bool SequencePlaybackCursor::SetDuration(float durationSeconds) {
+    if (!bound_ || !IsValidDuration(durationSeconds)) {
+        return false;
     }
+    durationSeconds_ = durationSeconds;
+    timeSeconds_ = std::clamp(timeSeconds_, 0.0f, durationSeconds_);
+    return true;
+}
 
-    bool SequencePlaybackCursor::SetDuration(float durationSeconds) {
-        if (!bound_ || !IsValidDuration(durationSeconds)) {
-            return false;
-        }
-        durationSeconds_ = durationSeconds;
-        timeSeconds_ = std::clamp(timeSeconds_, 0.0f, durationSeconds_);
-        return true;
+bool SequencePlaybackCursor::Play() {
+    if (!bound_) {
+        return false;
     }
+    const SequenceEvaluationReason reason =
+        state_ == SequencePlaybackState::Paused ? SequenceEvaluationReason::Resume : SequenceEvaluationReason::Start;
+    state_ = SequencePlaybackState::Playing;
+    SetPendingReason(reason, timeSeconds_);
+    return true;
+}
 
-    bool SequencePlaybackCursor::Play() {
-        if (!bound_) {
-            return false;
-        }
-        const SequenceEvaluationReason reason =
-            state_ == SequencePlaybackState::Paused
-                ? SequenceEvaluationReason::Resume
-                : SequenceEvaluationReason::Start;
-        state_ = SequencePlaybackState::Playing;
-        SetPendingReason(reason, timeSeconds_);
-        return true;
+bool SequencePlaybackCursor::Play(const SequencePlaybackOptions& options) {
+    if (!bound_) {
+        return false;
     }
+    options_ = options;
+    options_.playbackRate = ClampPlaybackRate(options.playbackRate);
+    state_ = SequencePlaybackState::Playing;
+    SetPendingReason(SequenceEvaluationReason::Start, timeSeconds_);
+    return true;
+}
 
-    bool SequencePlaybackCursor::Play(
-        const SequencePlaybackOptions& options) {
-
-        if (!bound_) {
-            return false;
-        }
-        options_ = options;
-        options_.playbackRate = ClampPlaybackRate(options.playbackRate);
-        state_ = SequencePlaybackState::Playing;
-        SetPendingReason(SequenceEvaluationReason::Start, timeSeconds_);
-        return true;
+void SequencePlaybackCursor::Pause() {
+    if (state_ == SequencePlaybackState::Playing) {
+        state_ = SequencePlaybackState::Paused;
     }
+}
 
-    void SequencePlaybackCursor::Pause() {
-        if (state_ == SequencePlaybackState::Playing) {
-            state_ = SequencePlaybackState::Paused;
-        }
+bool SequencePlaybackCursor::Resume() {
+    if (!bound_ || state_ != SequencePlaybackState::Paused) {
+        return false;
     }
+    state_ = SequencePlaybackState::Playing;
+    SetPendingReason(SequenceEvaluationReason::Resume, timeSeconds_);
+    return true;
+}
 
-    bool SequencePlaybackCursor::Resume() {
-        if (!bound_ || state_ != SequencePlaybackState::Paused) {
-            return false;
-        }
-        state_ = SequencePlaybackState::Playing;
-        SetPendingReason(SequenceEvaluationReason::Resume, timeSeconds_);
-        return true;
+bool SequencePlaybackCursor::SetPlaybackRate(float playbackRate) {
+    if (!bound_ || !std::isfinite(playbackRate) || std::abs(playbackRate) < 0.01f) {
+        return false;
     }
+    options_.playbackRate = ClampPlaybackRate(playbackRate);
+    return true;
+}
 
-    bool SequencePlaybackCursor::SetPlaybackRate(float playbackRate) {
-        if (!bound_ || !std::isfinite(playbackRate) ||
-            std::abs(playbackRate) < 0.01f) {
-            return false;
-        }
-        options_.playbackRate = ClampPlaybackRate(playbackRate);
-        return true;
+void SequencePlaybackCursor::Stop() {
+    if (!bound_) {
+        return;
     }
+    const float previousTimeSeconds = timeSeconds_;
+    state_ = SequencePlaybackState::Stopped;
+    timeSeconds_ = 0.0f;
+    SetPendingReason(SequenceEvaluationReason::Stop, previousTimeSeconds);
+}
 
-    void SequencePlaybackCursor::Stop() {
-        if (!bound_) {
-            return;
-        }
-        const float previousTimeSeconds = timeSeconds_;
-        state_ = SequencePlaybackState::Stopped;
-        timeSeconds_ = 0.0f;
-        SetPendingReason(
-            SequenceEvaluationReason::Stop,
-            previousTimeSeconds);
+void SequencePlaybackCursor::Clear() {
+    state_ = SequencePlaybackState::Stopped;
+    options_ = {};
+    lastContext_ = {};
+    pendingReason_ = SequenceEvaluationReason::None;
+    pendingPreviousTimeSeconds_ = 0.0f;
+    timeSeconds_ = 0.0f;
+    durationSeconds_ = 0.0f;
+    bound_ = false;
+}
+
+bool SequencePlaybackCursor::Seek(float timeSeconds) {
+    if (!bound_) {
+        return false;
     }
+    const float previousTimeSeconds = timeSeconds_;
+    timeSeconds_ = std::clamp(std::isfinite(timeSeconds) ? timeSeconds : 0.0f, 0.0f, durationSeconds_);
+    SetPendingReason(SequenceEvaluationReason::Seek, previousTimeSeconds);
+    return true;
+}
 
-    void SequencePlaybackCursor::Clear() {
-        state_ = SequencePlaybackState::Stopped;
-        options_ = {};
-        lastContext_ = {};
-        pendingReason_ = SequenceEvaluationReason::None;
-        pendingPreviousTimeSeconds_ = 0.0f;
-        timeSeconds_ = 0.0f;
-        durationSeconds_ = 0.0f;
-        bound_ = false;
-    }
+SequenceEvaluationContext SequencePlaybackCursor::Tick(float deltaTime, SequenceEvaluationMode mode) {
+    SequenceEvaluationContext context{};
+    context.currentTimeSeconds = timeSeconds_;
+    context.previousTimeSeconds = timeSeconds_;
+    context.durationSeconds = durationSeconds_;
+    context.mode = mode;
+    context.playbackRate = options_.playbackRate;
+    context.playing = state_ == SequencePlaybackState::Playing;
 
-    bool SequencePlaybackCursor::Seek(float timeSeconds) {
-        if (!bound_) {
-            return false;
-        }
-        const float previousTimeSeconds = timeSeconds_;
-        timeSeconds_ = std::clamp(
-            std::isfinite(timeSeconds) ? timeSeconds : 0.0f,
-            0.0f,
-            durationSeconds_);
-        SetPendingReason(
-            SequenceEvaluationReason::Seek,
-            previousTimeSeconds);
-        return true;
-    }
-
-    SequenceEvaluationContext SequencePlaybackCursor::Tick(
-        float deltaTime,
-        SequenceEvaluationMode mode) {
-
-        SequenceEvaluationContext context{};
-        context.currentTimeSeconds = timeSeconds_;
-        context.previousTimeSeconds = timeSeconds_;
-        context.durationSeconds = durationSeconds_;
-        context.mode = mode;
-        context.playbackRate = options_.playbackRate;
-        context.playing = state_ == SequencePlaybackState::Playing;
-
-        if (!bound_) {
-            lastContext_ = context;
-            return lastContext_;
-        }
-
-        const SequenceEvaluationReason pendingReason = pendingReason_;
-        if (pendingReason != SequenceEvaluationReason::None) {
-            context.reason = pendingReason;
-            context.previousTimeSeconds = pendingPreviousTimeSeconds_;
-            pendingReason_ = SequenceEvaluationReason::None;
-            if (pendingReason == SequenceEvaluationReason::Seek ||
-                pendingReason == SequenceEvaluationReason::Stop) {
-                context.currentTimeSeconds = timeSeconds_;
-                lastContext_ = context;
-                return lastContext_;
-            }
-        } else {
-            context.reason = SequenceEvaluationReason::Tick;
-        }
-
-        if (state_ == SequencePlaybackState::Playing) {
-            const float safeDeltaTime = std::isfinite(deltaTime)
-                ? std::clamp(deltaTime, 0.0f, 0.25f)
-                : 0.0f;
-            context.previousTimeSeconds = timeSeconds_;
-            timeSeconds_ += safeDeltaTime * options_.playbackRate;
-            if (options_.playbackRate < 0.0f && timeSeconds_ <= 0.0f) {
-                if (options_.loop) {
-                    const float overshoot = std::fmod(
-                        -timeSeconds_, durationSeconds_);
-                    timeSeconds_ = overshoot <= 1.0e-6f
-                        ? durationSeconds_
-                        : durationSeconds_ - overshoot;
-                    context.reason = SequenceEvaluationReason::Loop;
-                    context.wrapped = true;
-                } else if (options_.holdAtEnd) {
-                    timeSeconds_ = 0.0f;
-                    state_ = SequencePlaybackState::Paused;
-                    context.reason = SequenceEvaluationReason::Complete;
-                } else {
-                    timeSeconds_ = 0.0f;
-                    state_ = SequencePlaybackState::Stopped;
-                    context.reason = SequenceEvaluationReason::Complete;
-                    context.completed = true;
-                }
-            } else if (timeSeconds_ >= durationSeconds_) {
-                if (options_.loop) {
-                    timeSeconds_ = std::fmod(timeSeconds_, durationSeconds_);
-                    context.reason = SequenceEvaluationReason::Loop;
-                    context.wrapped = true;
-                } else if (options_.holdAtEnd) {
-                    timeSeconds_ = durationSeconds_;
-                    state_ = SequencePlaybackState::Paused;
-                    context.reason = SequenceEvaluationReason::Complete;
-                } else {
-                    timeSeconds_ = durationSeconds_;
-                    state_ = SequencePlaybackState::Stopped;
-                    context.reason = SequenceEvaluationReason::Complete;
-                    context.completed = true;
-                }
-            }
-        }
-
-        context.currentTimeSeconds = timeSeconds_;
-        context.playing = state_ == SequencePlaybackState::Playing;
+    if (!bound_) {
         lastContext_ = context;
         return lastContext_;
     }
 
-    bool SequencePlaybackCursor::IsBound() const noexcept {
-        return bound_;
+    const SequenceEvaluationReason pendingReason = pendingReason_;
+    if (pendingReason != SequenceEvaluationReason::None) {
+        context.reason = pendingReason;
+        context.previousTimeSeconds = pendingPreviousTimeSeconds_;
+        pendingReason_ = SequenceEvaluationReason::None;
+        if (pendingReason == SequenceEvaluationReason::Seek || pendingReason == SequenceEvaluationReason::Stop) {
+            context.currentTimeSeconds = timeSeconds_;
+            lastContext_ = context;
+            return lastContext_;
+        }
+    } else {
+        context.reason = SequenceEvaluationReason::Tick;
     }
 
-    SequencePlaybackState SequencePlaybackCursor::GetState() const noexcept {
-        return state_;
+    if (state_ == SequencePlaybackState::Playing) {
+        const float safeDeltaTime = std::isfinite(deltaTime) ? std::clamp(deltaTime, 0.0f, 0.25f) : 0.0f;
+        context.previousTimeSeconds = timeSeconds_;
+        timeSeconds_ += safeDeltaTime * options_.playbackRate;
+        if (options_.playbackRate < 0.0f && timeSeconds_ <= 0.0f) {
+            if (options_.loop) {
+                const float overshoot = std::fmod(-timeSeconds_, durationSeconds_);
+                timeSeconds_ = overshoot <= 1.0e-6f ? durationSeconds_ : durationSeconds_ - overshoot;
+                context.reason = SequenceEvaluationReason::Loop;
+                context.wrapped = true;
+            } else if (options_.holdAtEnd) {
+                timeSeconds_ = 0.0f;
+                state_ = SequencePlaybackState::Paused;
+                context.reason = SequenceEvaluationReason::Complete;
+            } else {
+                timeSeconds_ = 0.0f;
+                state_ = SequencePlaybackState::Stopped;
+                context.reason = SequenceEvaluationReason::Complete;
+                context.completed = true;
+            }
+        } else if (timeSeconds_ >= durationSeconds_) {
+            if (options_.loop) {
+                timeSeconds_ = std::fmod(timeSeconds_, durationSeconds_);
+                context.reason = SequenceEvaluationReason::Loop;
+                context.wrapped = true;
+            } else if (options_.holdAtEnd) {
+                timeSeconds_ = durationSeconds_;
+                state_ = SequencePlaybackState::Paused;
+                context.reason = SequenceEvaluationReason::Complete;
+            } else {
+                timeSeconds_ = durationSeconds_;
+                state_ = SequencePlaybackState::Stopped;
+                context.reason = SequenceEvaluationReason::Complete;
+                context.completed = true;
+            }
+        }
     }
 
-    float SequencePlaybackCursor::GetTimeSeconds() const noexcept {
-        return timeSeconds_;
-    }
+    context.currentTimeSeconds = timeSeconds_;
+    context.playing = state_ == SequencePlaybackState::Playing;
+    lastContext_ = context;
+    return lastContext_;
+}
 
-    float SequencePlaybackCursor::GetDurationSeconds() const noexcept {
-        return durationSeconds_;
-    }
+bool SequencePlaybackCursor::IsBound() const noexcept { return bound_; }
 
-    bool SequencePlaybackCursor::IsPlaying() const noexcept {
-        return state_ == SequencePlaybackState::Playing;
-    }
+SequencePlaybackState SequencePlaybackCursor::GetState() const noexcept { return state_; }
 
-    bool SequencePlaybackCursor::IsPaused() const noexcept {
-        return state_ == SequencePlaybackState::Paused;
-    }
+float SequencePlaybackCursor::GetTimeSeconds() const noexcept { return timeSeconds_; }
 
-    bool SequencePlaybackCursor::CompletedThisTick() const noexcept {
-        return lastContext_.completed;
-    }
+float SequencePlaybackCursor::GetDurationSeconds() const noexcept { return durationSeconds_; }
 
-    const SequenceEvaluationContext&
-        SequencePlaybackCursor::GetLastEvaluationContext() const noexcept {
-        return lastContext_;
-    }
+bool SequencePlaybackCursor::IsPlaying() const noexcept { return state_ == SequencePlaybackState::Playing; }
 
-    void SequencePlaybackCursor::SetPendingReason(
-        SequenceEvaluationReason reason,
-        float previousTimeSeconds) noexcept {
+bool SequencePlaybackCursor::IsPaused() const noexcept { return state_ == SequencePlaybackState::Paused; }
 
-        pendingReason_ = reason;
-        pendingPreviousTimeSeconds_ = previousTimeSeconds;
-        lastContext_.completed = false;
-    }
+void SequencePlaybackCursor::SetPendingReason(SequenceEvaluationReason reason, float previousTimeSeconds) noexcept {
+    pendingReason_ = reason;
+    pendingPreviousTimeSeconds_ = previousTimeSeconds;
+    lastContext_.completed = false;
+}
 
 } // namespace HIKARI::SEQUENCER

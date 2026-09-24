@@ -7,14 +7,13 @@
 
 namespace HIKARI::ASSETS::COLLISION {
 
-    struct ModelCollisionCompileResult {
-        bool success = false;
-        uint32_t shapeCount = 0u;
-        std::string message{};
-    };
+struct ModelCollisionCompileResult {
+    bool success = false;
+    uint32_t shapeCount = 0u;
+    std::string message{};
+};
 
-    ModelCollisionCompileResult CompileModelCollisionSetup(
-        const ModelCollisionSetup& setup,
-        CollisionGeometryAsset& outAsset);
+ModelCollisionCompileResult CompileModelCollisionSetup(const ModelCollisionSetup& setup,
+                                                       CollisionGeometryAsset& outAsset);
 
 } // namespace HIKARI::ASSETS::COLLISION

@@ -2,6 +2,6 @@
 
 namespace HIKARI::EDITOR {
 
-    void ApplyEditorStyle();
+void ApplyEditorStyle();
 
 } // namespace HIKARI::EDITOR

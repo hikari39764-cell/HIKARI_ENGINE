@@ -10,14 +10,14 @@
 
 namespace HIKARI {
 
-    struct DocumentSceneState {
-        DocumentSceneIdentityState identity{};
-        DocumentSceneCameraRuntimeState camera{};
-        DocumentSceneRuntimeState runtime{};
-        DocumentSceneAssetBindings assets{};
-        DocumentSceneLightingRuntimeState lighting{};
-        DocumentSceneEditorState editor{};
-        DocumentSceneBakeCoordinator baking{};
-    };
+struct DocumentSceneState {
+    DocumentSceneIdentityState identity{};
+    DocumentSceneCameraRuntimeState camera{};
+    DocumentSceneRuntimeState runtime{};
+    DocumentSceneAssetBindings assets{};
+    DocumentSceneLightingRuntimeState lighting{};
+    DocumentSceneEditorState editor{};
+    DocumentSceneBakeCoordinator baking{};
+};
 
 } // namespace HIKARI

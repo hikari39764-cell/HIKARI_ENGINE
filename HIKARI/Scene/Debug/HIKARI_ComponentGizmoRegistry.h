@@ -12,51 +12,43 @@
 
 namespace HIKARI {
 
-    class GameObject;
-    class World;
+class GameObject;
+class World;
 
-    struct ComponentGizmoState {
-        bool showComponentGizmos = true;
-        bool showOnlySelectedObject = false;
-        std::unordered_map<std::string, bool> providerVisibility{};
-        std::unordered_set<uint64_t> lockedObjectIds{};
+struct ComponentGizmoState {
+    bool showComponentGizmos = true;
+    bool showOnlySelectedObject = false;
+    std::unordered_map<std::string, bool> providerVisibility{};
+    std::unordered_set<uint64_t> lockedObjectIds{};
 
-        bool IsProviderVisible(
-            std::string_view providerId,
-            bool defaultVisible) const;
-        void SetProviderVisible(
-            std::string providerId,
-            bool visible);
-    };
+    bool IsProviderVisible(std::string_view providerId, bool defaultVisible) const;
+    void SetProviderVisible(std::string providerId, bool visible);
+};
 
-    struct ComponentGizmoDrawContext {
-        SceneObjectId selectedObjectId{};
-        float cameraAspect = 1.0f;
-        MATH::Vec3 viewportCameraPosition{};
-        const World* world = nullptr;
-    };
+struct ComponentGizmoDrawContext {
+    SceneObjectId selectedObjectId{};
+    float cameraAspect = 1.0f;
+    MATH::Vec3 viewportCameraPosition{};
+    const World* world = nullptr;
+};
 
-    using DrawComponentGizmoFn = std::function<void(
-        const GameObject& object,
-        const ComponentGizmoDrawContext& context)>;
+using DrawComponentGizmoFn = std::function<void(const GameObject& object, const ComponentGizmoDrawContext& context)>;
 
-    struct ComponentGizmoProvider {
-        std::string providerId{};
-        std::string displayName{};
-        bool defaultVisible = true;
-        DrawComponentGizmoFn draw{};
-    };
+struct ComponentGizmoProvider {
+    std::string providerId{};
+    std::string displayName{};
+    bool defaultVisible = true;
+    DrawComponentGizmoFn draw{};
+};
 
-    class ComponentGizmoRegistry {
-    public:
-        bool Register(ComponentGizmoProvider provider);
-        const ComponentGizmoProvider* Find(
-            std::string_view providerId) const noexcept;
-        const std::vector<ComponentGizmoProvider>&
-            GetProviders() const noexcept;
+class ComponentGizmoRegistry {
+public:
+    bool Register(ComponentGizmoProvider provider);
+    const ComponentGizmoProvider* Find(std::string_view providerId) const noexcept;
+    const std::vector<ComponentGizmoProvider>& GetProviders() const noexcept;
 
-    private:
-        std::vector<ComponentGizmoProvider> providers_{};
-    };
+private:
+    std::vector<ComponentGizmoProvider> providers_{};
+};
 
 } // namespace HIKARI

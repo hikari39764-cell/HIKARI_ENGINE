@@ -3,62 +3,55 @@
 
 namespace HIKARI {
 
-    bool PresentationTransformService::SetWorldMatrix(
-        RuntimeObjectHandle object,
-        const MATH::Mat4& worldMatrix) {
-        if (!object.IsValid()) {
-            return false;
-        }
-        const auto [entry, inserted] = entries_.try_emplace(object.ToValue());
-        // 同一の表示姿勢では revision を進めず、休眠中の描画同期を抑える。
-        if (!inserted && std::memcmp(&entry->second.worldMatrix, &worldMatrix,
-                sizeof(worldMatrix)) == 0) return false;
-        entry->second.worldMatrix = worldMatrix;
-        AdvanceRevision();
-        return true;
-    }
-
-    bool PresentationTransformService::Remove(
-        RuntimeObjectHandle object) noexcept {
-        if (object.IsValid() &&
-            entries_.erase(object.ToValue()) > 0u) {
-            AdvanceRevision();
-            return true;
-        }
+bool PresentationTransformService::SetWorldMatrix(RuntimeObjectHandle object, const MATH::Mat4& worldMatrix) {
+    if (!object.IsValid()) {
         return false;
     }
+    const auto [entry, inserted] = entries_.try_emplace(object.ToValue());
+    // 同一の表示姿勢では revision を進めず、休眠中の描画同期を抑える。
+    if (!inserted && std::memcmp(&entry->second.worldMatrix, &worldMatrix, sizeof(worldMatrix)) == 0)
+        return false;
+    entry->second.worldMatrix = worldMatrix;
+    AdvanceRevision();
+    return true;
+}
 
-    void PresentationTransformService::Clear() noexcept {
-        if (entries_.empty()) {
-            return;
-        }
-        entries_.clear();
+bool PresentationTransformService::Remove(RuntimeObjectHandle object) noexcept {
+    if (object.IsValid() && entries_.erase(object.ToValue()) > 0u) {
         AdvanceRevision();
-    }
-
-    bool PresentationTransformService::TryGetWorldMatrix(
-        RuntimeObjectHandle object,
-        MATH::Mat4& outWorldMatrix) const noexcept {
-        if (!object.IsValid()) {
-            return false;
-        }
-        const auto found = entries_.find(object.ToValue());
-        if (found == entries_.end()) {
-            return false;
-        }
-        outWorldMatrix = found->second.worldMatrix;
         return true;
     }
+    return false;
+}
 
-    uint64_t PresentationTransformService::GetRevision() const noexcept {
-        return revision_;
+void PresentationTransformService::Clear() noexcept {
+    if (entries_.empty()) {
+        return;
     }
+    entries_.clear();
+    AdvanceRevision();
+}
 
-    void PresentationTransformService::AdvanceRevision() noexcept {
-        ++revision_;
-        if (revision_ == 0u) {
-            revision_ = 1u;
-        }
+bool PresentationTransformService::TryGetWorldMatrix(RuntimeObjectHandle object,
+                                                     MATH::Mat4& outWorldMatrix) const noexcept {
+    if (!object.IsValid()) {
+        return false;
     }
+    const auto found = entries_.find(object.ToValue());
+    if (found == entries_.end()) {
+        return false;
+    }
+    outWorldMatrix = found->second.worldMatrix;
+    return true;
+}
+
+uint64_t PresentationTransformService::GetRevision() const noexcept { return revision_; }
+
+void PresentationTransformService::AdvanceRevision() noexcept {
+    ++revision_;
+    if (revision_ == 0u) {
+        revision_ = 1u;
+    }
+}
 
 } // namespace HIKARI

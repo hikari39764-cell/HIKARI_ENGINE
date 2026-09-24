@@ -4,10 +4,9 @@
 
 namespace HIKARI::GFX {
 
-    void ConfigureD3D12InfoQueue(ID3D12Device* device);
-    void DumpD3D12InfoQueue(ID3D12Device* device, const char* reason);
-    void ClearD3D12InfoQueue(ID3D12Device* device);
-    void DumpDxgiInfoQueue(const char* reason);
-    void ClearDxgiInfoQueue();
+void ConfigureD3D12InfoQueue(ID3D12Device* device);
+void DumpD3D12InfoQueue(ID3D12Device* device, const char* reason);
+void ClearD3D12InfoQueue(ID3D12Device* device);
+void DumpDxgiInfoQueue(const char* reason);
 
-}
+} // namespace HIKARI::GFX

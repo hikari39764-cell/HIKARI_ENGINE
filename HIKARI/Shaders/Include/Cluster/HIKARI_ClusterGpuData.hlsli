@@ -199,14 +199,6 @@ struct HikariClusterSkinVertex
     float4 weights;
 };
 
-struct HikariMeshletPrimitive
-{
-    uint i0;
-    uint i1;
-    uint i2;
-    uint reserved0;
-};
-
 bool HikariIsValidClusterGeometryHeader(HikariClusterGeometryHeader header)
 {
     return
@@ -550,20 +542,6 @@ float4 HikariLoadClusterVertexPosition(
     return float4(asfloat(buffer.Load3(offset)), 1.0f);
 }
 
-float4 HikariLoadClusterVertexNormal(
-    ByteAddressBuffer buffer,
-    HikariClusterGeometryHeader header,
-    uint vertexIndex)
-{
-    uint offset = HikariClusterVertexAttributeOffset(header, vertexIndex);
-    uint4 a0 = buffer.Load4(offset + 0u);
-    float2 normalXY = HikariUnpackSnorm16x2(a0.x);
-    float normalZ = HikariUnpackSnorm16(a0.y);
-    return float4(
-        HikariNormalizeOrDefault(float3(normalXY, normalZ), float3(0.0f, 1.0f, 0.0f)),
-        0.0f);
-}
-
 float4 HikariLoadClusterVertexUv01(
     ByteAddressBuffer buffer,
     HikariClusterGeometryHeader header,
@@ -576,34 +554,6 @@ float4 HikariLoadClusterVertexUv01(
     float2 uv0YUv1X = HikariUnpackHalf16x2(a1.x);
     float uv1y = HikariUnpackHalf16(a1.y);
     return float4(uv0x, uv0YUv1X.x, uv0YUv1X.y, uv1y);
-}
-
-uint HikariLoadClusterIndex(
-    ByteAddressBuffer buffer,
-    HikariClusterGeometryHeader header,
-    uint indexIndex)
-{
-    uint byteOffset = header.indexOffsetBytes + indexIndex * 2u;
-    uint packed = buffer.Load(byteOffset & ~3u);
-    return (byteOffset & 2u) == 0u
-        ? (packed & 0xffffu)
-        : ((packed >> 16u) & 0xffffu);
-}
-
-HikariMeshletPrimitive HikariLoadMeshletPrimitive(
-    ByteAddressBuffer buffer,
-    HikariClusterGeometryHeader header,
-    uint primitiveIndex)
-{
-    HikariMeshletPrimitive primitive = (HikariMeshletPrimitive)0;
-    uint offset = header.meshletPrimitiveOffsetBytes +
-        primitiveIndex * HIKARI_CLUSTER_GEOMETRY_MESHLET_PRIMITIVE_BYTES;
-    uint packed = buffer.Load(offset);
-    primitive.i0 = packed & 0xffu;
-    primitive.i1 = (packed >> 8u) & 0xffu;
-    primitive.i2 = (packed >> 16u) & 0xffu;
-    primitive.reserved0 = (packed >> 24u) & 0xffu;
-    return primitive;
 }
 
 uint3 HikariLoadMeshletPrimitiveIndices(

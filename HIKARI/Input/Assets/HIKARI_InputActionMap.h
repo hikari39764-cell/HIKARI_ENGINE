@@ -7,7 +7,7 @@
 #include "Input/Runtime/HIKARI_InputTypes.h"
 
 namespace HIKARI::INPUT {
-	// 入力アクションの定義を表す構造体
+// 入力アクションの定義を表す構造体
 struct InputActionDefinition {
     std::string actionId{};
     std::string displayName{};
@@ -44,10 +44,10 @@ struct InputBindingConflict {
 class InputActionMap {
 public:
     uint32_t version = 1;
-	// 入力アクションの定義のリスト
+    // 入力アクションの定義のリスト
     std::vector<InputActionDefinition> actions{};
     std::vector<InputContextDefinition> contexts{};
-	// 入力アクションの定義を検索する
+    // 入力アクションの定義を検索する
     const InputActionDefinition* FindAction(std::string_view actionId) const;
     InputActionDefinition* FindAction(std::string_view actionId);
     const InputContextDefinition* FindContext(std::string_view contextId) const;
@@ -59,12 +59,8 @@ public:
 };
 // 入力アクションの値の型を文字列に変換する
 const char* ToString(InputActionValueType type) noexcept;
-bool TryParseInputActionValueType(
-    std::string_view value,
-    InputActionValueType& out) noexcept;
+bool TryParseInputActionValueType(std::string_view value, InputActionValueType& out) noexcept;
 const char* ToString(InputBindingSource source) noexcept;
-bool TryParseInputBindingSource(
-    std::string_view value,
-    InputBindingSource& out) noexcept;
+bool TryParseInputBindingSource(std::string_view value, InputBindingSource& out) noexcept;
 
 } // namespace HIKARI::INPUT

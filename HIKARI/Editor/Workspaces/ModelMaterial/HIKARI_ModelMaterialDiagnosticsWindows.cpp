@@ -15,167 +15,112 @@
 
 namespace HIKARI::EDITOR {
 
-void ModelMaterialWorkspaceController::DrawDiagnosticsWindow(
-    const DocumentSceneBase &scene) {
+void ModelMaterialWorkspaceController::DrawDiagnosticsWindow(const DocumentSceneBase& scene) {
 #if defined(HIKARI_WITH_EDITOR)
-  (void)scene;
-  if (!ImGui::Begin(TEXT::LocalizeWindow("shell.diagnostics", "ModelMaterial/Diagnostics").c_str())) {
+    (void)scene;
+    if (!ImGui::Begin(TEXT::LocalizeWindow("shell.diagnostics", "ModelMaterial/Diagnostics").c_str())) {
+        ImGui::End();
+        return;
+    }
+    StatusBadge(IsEditingModel() ? TEXT::LocalizeCStr("editor.ui.model.ready.4b7cbb")
+                                 : TEXT::LocalizeCStr("editor.ui.no.model.8cae61"),
+                IsEditingModel() ? EditorStatusTone::Ready : EditorStatusTone::Normal);
+    ImGui::SameLine();
+    StatusBadge(previewOutputReady_ ? TEXT::LocalizeCStr("editor.ui.preview.ready.8a0295")
+                                    : TEXT::LocalizeCStr("editor.ui.preview.pending.e4ceea"),
+                previewOutputReady_ ? EditorStatusTone::Ready : EditorStatusTone::Warning);
+    ImGui::SameLine();
+    const bool dirty = authoringDocument_.IsBindingDirty() || authoringDocument_.IsMaterialDirty();
+    StatusBadge(dirty ? "Unsaved edits" : TEXT::LocalizeCStr("ui.projectFeatures.saved"),
+                dirty ? EditorStatusTone::Warning : EditorStatusTone::Ready);
+    if (authoringDocument_.IsAbPreviewActive()) {
+        ImGui::SameLine();
+        StatusBadge(TEXT::Localize("editor.ui.b.preview.d48f3a").c_str(), EditorStatusTone::Warning);
+    }
+
+    if (!statusMessage_.empty()) {
+        ImGui::TextWrapped("%s", statusMessage_.c_str());
+    }
+    if (stats_.invalidSlotIdCount != 0u) {
+        ImGui::BulletText("%u material slot(s) have no stable slotId", stats_.invalidSlotIdCount);
+    }
+    if (stats_.invalidSurfaceMaterialCount != 0u) {
+        ImGui::BulletText("%u surface(s) reference an invalid material index", stats_.invalidSurfaceMaterialCount);
+    }
+    for (const SlotState& slot : slots_) {
+        if (!slot.view.diagnostic.empty()) {
+            ImGui::BulletText("Slot %u: %s", slot.view.materialIndex, slot.view.diagnostic.c_str());
+        }
+    }
+
+    if (authoringDocument_.HasMaterial()) {
+        ImGui::SeparatorText(TEXT::Localize("editor.ui.material.compile.fc6f27").c_str());
+        const MaterialCompileResult& compile = authoringDocument_.GetCompileResult();
+        StatusBadge(compile.success ? TEXT::LocalizeCStr("editor.ui.compiled.14878f")
+                                    : TEXT::LocalizeCStr("editor.ui.fallback.b4a100"),
+                    compile.success ? EditorStatusTone::Ready : EditorStatusTone::Warning);
+        ImGui::SameLine();
+        ImGui::TextDisabled(TEXT::Localize("editor.ui.source.r.llu.compile.r.llu.877878").c_str(),
+                            static_cast<unsigned long long>(authoringDocument_.GetMaterialRevision()),
+                            static_cast<unsigned long long>(authoringDocument_.GetCompileRevision()));
+        for (const MaterialCompileDiagnostic& diagnostic : compile.diagnostics) {
+            const ImVec4 color =
+                diagnostic.severity == MaterialCompileDiagnosticSeverity::Error     ? ImVec4(1.0f, 0.42f, 0.35f, 1.0f)
+                : diagnostic.severity == MaterialCompileDiagnosticSeverity::Warning ? ImVec4(1.0f, 0.72f, 0.28f, 1.0f)
+                                                                                    : ImVec4(0.62f, 0.76f, 0.9f, 1.0f);
+            ImGui::TextColored(color, "%s: %s", diagnostic.code.c_str(), diagnostic.message.c_str());
+        }
+        if (compile.success) {
+            RENDER3D::MATERIAL::MaterialExpressionBudget budget{};
+            std::string budgetError{};
+            if (RENDER3D::MATERIAL::ResolveMaterialExpressionBudget(compile.program, budget, budgetError) &&
+                budget.active) {
+                ImGui::Text(
+                    TEXT::Localize("editor.ui.expression.budget.u.u.instr.u.u.reg.u.u.values.u.u.params.u.u.re.c635cd")
+                        .c_str(),
+                    budget.instructionCount, budget.maxInstructionCount, budget.registerCount, budget.maxRegisterCount,
+                    budget.valueCount, budget.maxValueCount, budget.parameterSlotCount, budget.maxParameterSlotCount,
+                    budget.resourceCount, budget.maxResourceSlotCount);
+            }
+        }
+    }
+
+    ImGui::SeparatorText(TEXT::Localize("editor.ui.runtime.backed.preview.0d0e73").c_str());
+    ImGui::Text(TEXT::Localize("editor.ui.request.s.output.ux.u.revision.llu.4ea33c").c_str(),
+                previewRequestSubmitted_ ? "submitted" : "idle", previewOutputWidth_, previewOutputHeight_,
+                static_cast<unsigned long long>(previewOutputRevision_));
+    const ModelPreviewRenderPolicy policy = previewScene_.GetRenderPolicy();
+    ImGui::Text(TEXT::Localize("editor.ui.runtime.policy.shadow.s.s.cached.forward.s.3062e3").c_str(),
+                policy.castShadow ? "cast" : "off", policy.receiveShadow ? "receive" : "off",
+                policy.allowStaticCachedForward ? "on" : "off");
+    ImGui::Text(TEXT::Localize("editor.ui.environment.s.e9b433").c_str(),
+                previewEnvironmentMode_ == PreviewEnvironmentMode::RuntimeMatch
+                    ? "Runtime Asset Lighting (active scene, no spatial bake)"
+                    : "Studio Inspect (workspace overrides)");
+    const RENDER3D::EDITORVIEW::EditorInteractiveSchedulerStats scheduler = RENDER3D::EDITORVIEW::GetSchedulerStats();
+    ImGui::Text(TEXT::Localize("editor.ui.scheduler.serial.llu.rendered.view.llu.candidates.u.95ce17").c_str(),
+                static_cast<unsigned long long>(scheduler.scheduleSerial),
+                static_cast<unsigned long long>(scheduler.renderedViewId), scheduler.renderableViewCount);
+    if (const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource* sceneSource = previewScene_.GetSceneSource()) {
+        const RENDER3D::FEATURES::RenderFeatureRequestSet requests =
+            RENDER3D::FEATURES::AnalyzeRenderFeatureRequests(*sceneSource);
+        ImGui::SeparatorText(TEXT::Localize("editor.ui.render.features.a321bd").c_str());
+        for (uint32_t index = 0u; index < static_cast<uint32_t>(RENDER3D::FEATURES::RenderFeatureKind::Count);
+             ++index) {
+            const auto kind = static_cast<RENDER3D::FEATURES::RenderFeatureKind>(index);
+            if (!requests.Requests(kind)) {
+                continue;
+            }
+            ImGui::BulletText("%s: %u surface(s)", RENDER3D::FEATURES::ToString(kind), requests.surfaceCounts[index]);
+        }
+        ImGui::TextDisabled(TEXT::Localize("editor.ui.post.group.mask.0x.08x.isolated.surfaces.u.83ca34").c_str(),
+                            requests.postGroupMask, requests.isolatedSurfaceCount);
+    }
+    ImGui::TextWrapped(
+        TEXT::Localize("editor.ui.the.preview.request.uses.toolpreview.purpose.the.shared.runtime..8967e0").c_str());
     ImGui::End();
-    return;
-  }
-  StatusBadge(IsEditingModel() ? TEXT::LocalizeCStr("editor.ui.model.ready.4b7cbb") : TEXT::LocalizeCStr("editor.ui.no.model.8cae61"),
-              IsEditingModel() ? EditorStatusTone::Ready
-                               : EditorStatusTone::Normal);
-  ImGui::SameLine();
-  StatusBadge(previewOutputReady_ ? TEXT::LocalizeCStr("editor.ui.preview.ready.8a0295") : TEXT::LocalizeCStr("editor.ui.preview.pending.e4ceea"),
-              previewOutputReady_ ? EditorStatusTone::Ready
-                                  : EditorStatusTone::Warning);
-  ImGui::SameLine();
-  const bool dirty = authoringDocument_.IsBindingDirty() ||
-                     authoringDocument_.IsMaterialDirty();
-  StatusBadge(dirty ? "Unsaved edits" : TEXT::LocalizeCStr("ui.projectFeatures.saved"),
-              dirty ? EditorStatusTone::Warning : EditorStatusTone::Ready);
-  if (authoringDocument_.IsAbPreviewActive()) {
-    ImGui::SameLine();
-    StatusBadge(TEXT::Localize("editor.ui.b.preview.d48f3a").c_str(), EditorStatusTone::Warning);
-  }
-
-  if (!statusMessage_.empty()) {
-    ImGui::TextWrapped("%s", statusMessage_.c_str());
-  }
-  if (stats_.invalidSlotIdCount != 0u) {
-    ImGui::BulletText("%u material slot(s) have no stable slotId",
-                      stats_.invalidSlotIdCount);
-  }
-  if (stats_.invalidSurfaceMaterialCount != 0u) {
-    ImGui::BulletText("%u surface(s) reference an invalid material index",
-                      stats_.invalidSurfaceMaterialCount);
-  }
-  for (const SlotState &slot : slots_) {
-    if (!slot.view.diagnostic.empty()) {
-      ImGui::BulletText("Slot %u: %s", slot.view.materialIndex,
-                        slot.view.diagnostic.c_str());
-    }
-  }
-
-  if (authoringDocument_.HasMaterial()) {
-    ImGui::SeparatorText(TEXT::Localize("editor.ui.material.compile.fc6f27").c_str());
-    const MaterialCompileResult &compile =
-        authoringDocument_.GetCompileResult();
-    StatusBadge(compile.success ? TEXT::LocalizeCStr("editor.ui.compiled.14878f") : TEXT::LocalizeCStr("editor.ui.fallback.b4a100"),
-                compile.success ? EditorStatusTone::Ready
-                                : EditorStatusTone::Warning);
-    ImGui::SameLine();
-    ImGui::TextDisabled(TEXT::Localize("editor.ui.source.r.llu.compile.r.llu.877878").c_str(),
-                        static_cast<unsigned long long>(
-                            authoringDocument_.GetMaterialRevision()),
-                        static_cast<unsigned long long>(
-                            authoringDocument_.GetCompileRevision()));
-    for (const MaterialCompileDiagnostic &diagnostic : compile.diagnostics) {
-      const ImVec4 color =
-          diagnostic.severity == MaterialCompileDiagnosticSeverity::Error
-              ? ImVec4(1.0f, 0.42f, 0.35f, 1.0f)
-          : diagnostic.severity ==
-                    MaterialCompileDiagnosticSeverity::Warning
-              ? ImVec4(1.0f, 0.72f, 0.28f, 1.0f)
-              : ImVec4(0.62f, 0.76f, 0.9f, 1.0f);
-      ImGui::TextColored(color, "%s: %s", diagnostic.code.c_str(),
-                         diagnostic.message.c_str());
-    }
-    if (compile.success) {
-      RENDER3D::MATERIAL::MaterialExpressionBudget budget{};
-      std::string budgetError{};
-      if (RENDER3D::MATERIAL::ResolveMaterialExpressionBudget(
-              compile.program, budget, budgetError) &&
-          budget.active) {
-        ImGui::Text(TEXT::Localize("editor.ui.expression.budget.u.u.instr.u.u.reg.u.u.values.u.u.params.u.u.re.c635cd").c_str(),
-            budget.instructionCount, budget.maxInstructionCount,
-            budget.registerCount, budget.maxRegisterCount,
-            budget.valueCount, budget.maxValueCount,
-            budget.parameterSlotCount, budget.maxParameterSlotCount,
-            budget.resourceCount, budget.maxResourceSlotCount);
-      }
-    }
-  }
-
-  ImGui::SeparatorText(TEXT::Localize("editor.ui.runtime.backed.preview.0d0e73").c_str());
-  ImGui::Text(TEXT::Localize("editor.ui.request.s.output.ux.u.revision.llu.4ea33c").c_str(),
-              previewRequestSubmitted_ ? "submitted" : "idle",
-              previewOutputWidth_, previewOutputHeight_,
-              static_cast<unsigned long long>(previewOutputRevision_));
-  const ModelPreviewRenderPolicy policy = previewScene_.GetRenderPolicy();
-  ImGui::Text(TEXT::Localize("editor.ui.runtime.policy.shadow.s.s.cached.forward.s.3062e3").c_str(),
-              policy.castShadow ? "cast" : "off",
-              policy.receiveShadow ? "receive" : "off",
-              policy.allowStaticCachedForward ? "on" : "off");
-  ImGui::Text(TEXT::Localize("editor.ui.environment.s.e9b433").c_str(),
-              previewEnvironmentMode_ == PreviewEnvironmentMode::RuntimeMatch
-                  ? "Runtime Asset Lighting (active scene, no spatial bake)"
-                  : "Studio Inspect (workspace overrides)");
-  const RENDER3D::EDITORVIEW::EditorInteractiveSchedulerStats scheduler =
-      RENDER3D::EDITORVIEW::GetSchedulerStats();
-  ImGui::Text(TEXT::Localize("editor.ui.scheduler.serial.llu.rendered.view.llu.candidates.u.95ce17").c_str(),
-              static_cast<unsigned long long>(scheduler.scheduleSerial),
-              static_cast<unsigned long long>(scheduler.renderedViewId),
-              scheduler.renderableViewCount);
-  if (const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource *sceneSource =
-          previewScene_.GetSceneSource()) {
-    const RENDER3D::FEATURES::RenderFeatureRequestSet requests =
-        RENDER3D::FEATURES::AnalyzeRenderFeatureRequests(*sceneSource);
-    ImGui::SeparatorText(TEXT::Localize("editor.ui.render.features.a321bd").c_str());
-    for (uint32_t index = 0u;
-         index < static_cast<uint32_t>(
-                     RENDER3D::FEATURES::RenderFeatureKind::Count);
-         ++index) {
-      const auto kind =
-          static_cast<RENDER3D::FEATURES::RenderFeatureKind>(index);
-      if (!requests.Requests(kind)) {
-        continue;
-      }
-      ImGui::BulletText("%s: %u surface(s)",
-                        RENDER3D::FEATURES::ToString(kind),
-                        requests.surfaceCounts[index]);
-    }
-    ImGui::TextDisabled(TEXT::Localize("editor.ui.post.group.mask.0x.08x.isolated.surfaces.u.83ca34").c_str(),
-                        requests.postGroupMask,
-                        requests.isolatedSurfaceCount);
-  }
-  ImGui::TextWrapped(TEXT::Localize("editor.ui.the.preview.request.uses.toolpreview.purpose.the.shared.runtime..8967e0").c_str());
-  ImGui::End();
 #else
-  (void)scene;
-#endif
-}
-
-void ModelMaterialWorkspaceController::DrawStatsWindow() const {
-#if defined(HIKARI_WITH_EDITOR)
-  if (!ImGui::Begin(TEXT::LocalizeWindow("editor.ui.stats.be763e", "ModelMaterial/Stats").c_str())) {
-    ImGui::End();
-    return;
-  }
-  if (ImGui::BeginTable("##ModelMaterialStats", 2,
-                        ImGuiTableFlags_RowBg |
-                            ImGuiTableFlags_BordersInnerH |
-                            ImGuiTableFlags_SizingStretchProp)) {
-    const auto row = [](const char *label, uint64_t value) {
-      ImGui::TableNextRow();
-      ImGui::TableSetColumnIndex(0);
-      ImGui::TextUnformatted(label);
-      ImGui::TableSetColumnIndex(1);
-      ImGui::Text("%llu", static_cast<unsigned long long>(value));
-    };
-    row("Nodes", stats_.nodeCount);
-    row("Meshes", stats_.meshCount);
-    row("Runtime surfaces", stats_.surfaceCount);
-    row("Material slots", stats_.materialSlotCount);
-    row("Vertices", stats_.vertexCount);
-    row("Triangles", stats_.triangleCount);
-    row("Preview scene revision", previewScene_.GetRevision());
-    row("Cached model cameras", cameraStateStore_.Size());
-    row("Material programs", materialProgramRegistry_.GetStats().programCount);
-    ImGui::EndTable();
-  }
-  ImGui::End();
+    (void)scene;
 #endif
 }
 

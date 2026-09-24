@@ -4,270 +4,155 @@
 #include <utility>
 
 #include "Assets/HIKARI_AssetDatabase.h"
-#include "Editor/Authoring/HIKARI_SequenceAssetAuthoringService.h"
+#include "Editor/Authoring/HIKARI_StructuredAssetAuthoringService.h"
 
 namespace HIKARI::EDITOR {
 
-    void SequenceEditorDocument::OpenEmbeddedScene() noexcept {
-        sourceKind_ = SequenceEditorSourceKind::EmbeddedScene;
-        assetGuid_ = {};
-        sourcePath_.clear();
-        displayName_ = "Scene Cinematics";
-        assetSettings_ = {};
-        ResetHistory(true);
+void SequenceEditorDocument::OpenEmbeddedScene() noexcept {
+    sourceKind_ = SequenceEditorSourceKind::EmbeddedScene;
+    assetGuid_ = {};
+    sourcePath_.clear();
+    displayName_ = "Scene Cinematics";
+    assetSettings_ = {};
+    ResetHistory(true);
+}
+
+void SequenceEditorDocument::NewAsset(std::string name) {
+    CinematicSequence sequence{};
+    sequence.name = name.empty() ? "New Sequence" : std::move(name);
+    SetAssetSettings(std::move(sequence));
+    sourceKind_ = SequenceEditorSourceKind::TransientAsset;
+    assetGuid_ = {};
+    sourcePath_.clear();
+    displayName_ = assetSettings_.sequences.front().name;
+    ResetHistory(false);
+}
+
+bool SequenceEditorDocument::OpenAsset(const AssetDatabase& assetDatabase, const AssetGuid& assetGuid,
+                                       std::string& outMessage) {
+    CinematicSequence sequence{};
+    if (!LoadSequenceForAuthoring(assetDatabase, assetGuid, sequence, outMessage)) {
+        return false;
     }
-
-    void SequenceEditorDocument::NewAsset(std::string name) {
-        CinematicSequence sequence{};
-        sequence.name = name.empty() ? "New Sequence" : std::move(name);
-        SetAssetSettings(std::move(sequence));
-        sourceKind_ = SequenceEditorSourceKind::TransientAsset;
-        assetGuid_ = {};
-        sourcePath_.clear();
-        displayName_ = assetSettings_.sequences.front().name;
-        ResetHistory(false);
+    const AssetRecord* record = assetDatabase.FindByGuid(assetGuid);
+    if (record == nullptr || record->type != AssetType::Sequence) {
+        outMessage = "Sequence asset record disappeared while opening";
+        return false;
     }
+    SetAssetSettings(std::move(sequence));
+    sourceKind_ = SequenceEditorSourceKind::Asset;
+    assetGuid_ = record->guid;
+    sourceVersion_.Accept(assetDatabase, assetGuid_);
+    sourcePath_ = record->sourcePath;
+    displayName_ = record->displayName.empty() ? sourcePath_.stem().string() : record->displayName;
+    ResetHistory(true);
+    outMessage = "Opened Sequence asset: " + displayName_;
+    return true;
+}
 
-    bool SequenceEditorDocument::OpenAsset(
-        const AssetDatabase& assetDatabase,
-        const AssetGuid& assetGuid,
-        std::string& outMessage) {
-
-        CinematicSequence sequence{};
-        if (!LoadSequenceForAuthoring(
-                assetDatabase,
-                assetGuid,
-                sequence,
-                outMessage)) {
-            return false;
-        }
-        const AssetRecord* record = assetDatabase.FindByGuid(assetGuid);
-        if (record == nullptr || record->type != AssetType::Sequence) {
-            outMessage = "Sequence asset record disappeared while opening";
-            return false;
-        }
-        SetAssetSettings(std::move(sequence));
-        sourceKind_ = SequenceEditorSourceKind::Asset;
-        assetGuid_ = record->guid;
-        sourceVersion_.Accept(assetDatabase, assetGuid_);
-        sourcePath_ = record->sourcePath;
-        displayName_ = record->displayName.empty()
-            ? sourcePath_.stem().string()
-            : record->displayName;
-        ResetHistory(true);
-        outMessage = "Opened Sequence asset: " + displayName_;
-        return true;
+bool SequenceEditorDocument::Save(AssetDatabase& assetDatabase, std::string& outMessage) {
+    const CinematicSequence* sequence = GetAssetSequence();
+    if (sequence == nullptr) {
+        outMessage = "The embedded scene is saved with the scene document";
+        return false;
     }
-
-    bool SequenceEditorDocument::Save(
-        AssetDatabase& assetDatabase,
-        std::string& outMessage) {
-
-        const CinematicSequence* sequence = GetAssetSequence();
-        if (sequence == nullptr) {
-            outMessage = "The embedded scene is saved with the scene document";
-            return false;
-        }
-        if (sourceKind_ == SequenceEditorSourceKind::TransientAsset) {
-            return SaveAs(assetDatabase, *sequence, outMessage);
-        }
-        if (assetGuid_.IsValid() && !sourceVersion_.CanSave(outMessage)) return false;
-        const SequenceAssetAuthoringResult result = UpdateSequenceAsset(
-            assetDatabase,
-            assetGuid_,
-            *sequence);
-        outMessage = result.message;
-        if (!result.success) {
-            return false;
-        }
-        sourceVersion_.Accept(assetDatabase,assetGuid_);
-        savedHistoryCursor_ = historyCursor_;
-        displayName_ = sequence->name;
-        return true;
+    if (sourceKind_ == SequenceEditorSourceKind::TransientAsset) {
+        return SaveAs(assetDatabase, *sequence, outMessage);
     }
-
-    bool SequenceEditorDocument::SaveAs(
-        AssetDatabase& assetDatabase,
-        const CinematicSequence& sequence,
-        std::string& outMessage) {
-
-        const SequenceAssetAuthoringResult result = CreateSequenceAsset(
-            assetDatabase,
-            sequence);
-        outMessage = result.message;
-        if (!result.success || !result.assetGuid.IsValid()) {
-            return false;
-        }
-        assetGuid_ = result.assetGuid;
-        sourcePath_ = result.sourcePath;
-        sourceKind_ = SequenceEditorSourceKind::Asset;
-        displayName_ = sequence.name;
-        sourceVersion_.Accept(assetDatabase,assetGuid_);
-        savedHistoryCursor_ = historyCursor_;
-        return true;
+    if (assetGuid_.IsValid() && !sourceVersion_.CanSave(outMessage))
+        return false;
+    const StructuredAssetAuthoringResult result = UpdateSequenceAsset(assetDatabase, assetGuid_, *sequence);
+    outMessage = result.message;
+    if (!result.success) {
+        return false;
     }
+    sourceVersion_.Accept(assetDatabase, assetGuid_);
+    history_.MarkSaved();
+    displayName_ = sequence->name;
+    return true;
+}
 
-    bool SequenceEditorDocument::Revert(
-        const AssetDatabase& assetDatabase,
-        std::string& outMessage) {
-
-        if (sourceKind_ != SequenceEditorSourceKind::Asset ||
-            !assetGuid_.IsValid()) {
-            outMessage = "Only a saved Sequence asset can be reverted";
-            return false;
-        }
-        return OpenAsset(assetDatabase, assetGuid_, outMessage);
+bool SequenceEditorDocument::SaveAs(AssetDatabase& assetDatabase, const CinematicSequence& sequence,
+                                    std::string& outMessage) {
+    const StructuredAssetAuthoringResult result = CreateSequenceAsset(assetDatabase, sequence);
+    outMessage = result.message;
+    if (!result.success || !result.assetGuid.IsValid()) {
+        return false;
     }
+    assetGuid_ = result.assetGuid;
+    sourcePath_ = result.sourcePath;
+    sourceKind_ = SequenceEditorSourceKind::Asset;
+    displayName_ = sequence.name;
+    sourceVersion_.Accept(assetDatabase, assetGuid_);
+    history_.MarkSaved();
+    return true;
+}
 
-    SceneCinematicsSettings& SequenceEditorDocument::GetSettings(
-        SceneCinematicsSettings& embeddedSettings) noexcept {
-
-        return IsEmbeddedScene() ? embeddedSettings : assetSettings_;
+bool SequenceEditorDocument::Revert(const AssetDatabase& assetDatabase, std::string& outMessage) {
+    if (sourceKind_ != SequenceEditorSourceKind::Asset || !assetGuid_.IsValid()) {
+        outMessage = "Only a saved Sequence asset can be reverted";
+        return false;
     }
+    return OpenAsset(assetDatabase, assetGuid_, outMessage);
+}
 
-    const SceneCinematicsSettings& SequenceEditorDocument::GetSettings(
-        const SceneCinematicsSettings& embeddedSettings) const noexcept {
+SceneCinematicsSettings& SequenceEditorDocument::GetSettings(SceneCinematicsSettings& embeddedSettings) noexcept {
+    return IsEmbeddedScene() ? embeddedSettings : assetSettings_;
+}
 
-        return IsEmbeddedScene() ? embeddedSettings : assetSettings_;
-    }
+const SceneCinematicsSettings& SequenceEditorDocument::GetSettings(
+    const SceneCinematicsSettings& embeddedSettings) const noexcept {
+    return IsEmbeddedScene() ? embeddedSettings : assetSettings_;
+}
 
-    CinematicSequence* SequenceEditorDocument::GetAssetSequence() noexcept {
-        return IsEmbeddedScene() || assetSettings_.sequences.empty()
-            ? nullptr
-            : &assetSettings_.sequences.front();
-    }
+CinematicSequence* SequenceEditorDocument::GetAssetSequence() noexcept {
+    return IsEmbeddedScene() || assetSettings_.sequences.empty() ? nullptr : &assetSettings_.sequences.front();
+}
 
-    const CinematicSequence*
-        SequenceEditorDocument::GetAssetSequence() const noexcept {
+const CinematicSequence* SequenceEditorDocument::GetAssetSequence() const noexcept {
+    return IsEmbeddedScene() || assetSettings_.sequences.empty() ? nullptr : &assetSettings_.sequences.front();
+}
 
-        return IsEmbeddedScene() || assetSettings_.sequences.empty()
-            ? nullptr
-            : &assetSettings_.sequences.front();
-    }
+void SequenceEditorDocument::RecordApplied(SceneCinematicsSettings before, uint64_t mergeGroup) {
+    if (!IsEmbeddedScene())
+        history_.Record(std::move(before), assetSettings_, mergeGroup);
+}
 
-    void SequenceEditorDocument::RecordApplied(
-        SceneCinematicsSettings before,
-        uint64_t mergeGroup) {
+void SequenceEditorDocument::SealMerge() noexcept { history_.SealMerge(); }
 
-        if (IsEmbeddedScene()) {
-            return;
-        }
-        if (historyCursor_ < history_.size()) {
-            if (savedHistoryCursor_ &&
-                *savedHistoryCursor_ > historyCursor_) {
-                savedHistoryCursor_.reset();
-            }
-            history_.erase(
-                history_.begin() + historyCursor_,
-                history_.end());
-        }
-        const bool canMerge = mergeGroup != 0 &&
-            historyCursor_ > 0 &&
-            historyCursor_ == history_.size() &&
-            openMergeGroup_ == mergeGroup &&
-            (!savedHistoryCursor_ ||
-                *savedHistoryCursor_ != historyCursor_);
-        if (canMerge) {
-            history_.back().after = assetSettings_;
-            return;
-        }
-        history_.push_back({
-            std::move(before),
-            assetSettings_,
-            mergeGroup
-        });
-        historyCursor_ = history_.size();
-        openMergeGroup_ = mergeGroup;
-    }
+bool SequenceEditorDocument::Undo() { return !IsEmbeddedScene() && history_.Undo(assetSettings_); }
 
-    void SequenceEditorDocument::SealMerge() noexcept {
-        openMergeGroup_ = 0;
-    }
+bool SequenceEditorDocument::Redo() { return !IsEmbeddedScene() && history_.Redo(assetSettings_); }
 
-    bool SequenceEditorDocument::Undo() {
-        if (!CanUndo()) {
-            return false;
-        }
-        --historyCursor_;
-        assetSettings_ = history_[historyCursor_].before;
-        openMergeGroup_ = 0;
-        return true;
-    }
+bool SequenceEditorDocument::CanUndo() const noexcept { return !IsEmbeddedScene() && history_.CanUndo(); }
 
-    bool SequenceEditorDocument::Redo() {
-        if (!CanRedo()) {
-            return false;
-        }
-        assetSettings_ = history_[historyCursor_].after;
-        ++historyCursor_;
-        openMergeGroup_ = 0;
-        return true;
-    }
+bool SequenceEditorDocument::CanRedo() const noexcept { return !IsEmbeddedScene() && history_.CanRedo(); }
 
-    bool SequenceEditorDocument::CanUndo() const noexcept {
-        return !IsEmbeddedScene() && historyCursor_ > 0;
-    }
+bool SequenceEditorDocument::IsDirty() const noexcept { return !IsEmbeddedScene() && history_.IsDirty(); }
 
-    bool SequenceEditorDocument::CanRedo() const noexcept {
-        return !IsEmbeddedScene() && historyCursor_ < history_.size();
-    }
+SequenceEditorSourceKind SequenceEditorDocument::GetSourceKind() const noexcept { return sourceKind_; }
 
-    bool SequenceEditorDocument::IsDirty() const noexcept {
-        if (IsEmbeddedScene()) {
-            return false;
-        }
-        return !savedHistoryCursor_ ||
-            *savedHistoryCursor_ != historyCursor_;
-    }
+bool SequenceEditorDocument::IsEmbeddedScene() const noexcept {
+    return sourceKind_ == SequenceEditorSourceKind::EmbeddedScene;
+}
 
-    SequenceEditorSourceKind
-        SequenceEditorDocument::GetSourceKind() const noexcept {
+bool SequenceEditorDocument::IsExternalDocument() const noexcept { return !IsEmbeddedScene(); }
 
-        return sourceKind_;
-    }
+const AssetGuid& SequenceEditorDocument::GetAssetGuid() const noexcept { return assetGuid_; }
 
-    bool SequenceEditorDocument::IsEmbeddedScene() const noexcept {
-        return sourceKind_ == SequenceEditorSourceKind::EmbeddedScene;
-    }
+const std::filesystem::path& SequenceEditorDocument::GetSourcePath() const noexcept { return sourcePath_; }
 
-    bool SequenceEditorDocument::IsExternalDocument() const noexcept {
-        return !IsEmbeddedScene();
-    }
+const std::string& SequenceEditorDocument::GetDisplayName() const noexcept { return displayName_; }
 
-    const AssetGuid& SequenceEditorDocument::GetAssetGuid() const noexcept {
-        return assetGuid_;
-    }
+void SequenceEditorDocument::ResetHistory(bool saved) noexcept { history_.Reset(saved); }
 
-    const std::filesystem::path&
-        SequenceEditorDocument::GetSourcePath() const noexcept {
-
-        return sourcePath_;
-    }
-
-    const std::string&
-        SequenceEditorDocument::GetDisplayName() const noexcept {
-
-        return displayName_;
-    }
-
-    void SequenceEditorDocument::ResetHistory(bool saved) noexcept {
-        history_.clear();
-        historyCursor_ = 0;
-        savedHistoryCursor_ = saved
-            ? std::optional<size_t>{ 0 }
-            : std::nullopt;
-        openMergeGroup_ = 0;
-    }
-
-    void SequenceEditorDocument::SetAssetSettings(
-        CinematicSequence sequence) {
-
-        NormalizeCinematicSequence(sequence);
-        assetSettings_ = {};
-        assetSettings_.defaultSequenceId = sequence.id;
-        assetSettings_.sequences.clear();
-        assetSettings_.sequences.push_back(std::move(sequence));
-        NormalizeSceneCinematicsSettings(assetSettings_);
-    }
+void SequenceEditorDocument::SetAssetSettings(CinematicSequence sequence) {
+    NormalizeCinematicSequence(sequence);
+    assetSettings_ = {};
+    assetSettings_.defaultSequenceId = sequence.id;
+    assetSettings_.sequences.clear();
+    assetSettings_.sequences.push_back(std::move(sequence));
+    NormalizeSceneCinematicsSettings(assetSettings_);
+}
 
 } // namespace HIKARI::EDITOR

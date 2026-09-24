@@ -19,8 +19,7 @@ struct BenchmarkTiming {
 class BenchmarkRun final {
 public:
     BenchmarkRun(uint32_t warmupFrames, uint32_t sampleFrames);
-    bool RecordFrame(uint64_t frameId, double intervalMs,
-        std::span<const BenchmarkTiming> cpuPasses);
+    bool RecordFrame(uint64_t frameId, double intervalMs, std::span<const BenchmarkTiming> cpuPasses);
     bool RecordGpu(uint64_t frameId, std::span<const BenchmarkTiming> passes);
     bool CaptureComplete() const noexcept;
     bool GpuCoverageComplete() const noexcept;

@@ -9,28 +9,26 @@
 #include "Render3D/Material/Program/HIKARI_MaterialProgramRegistry.h"
 
 namespace HIKARI {
-    class AssetRegistry;
+class AssetRegistry;
 }
 
 namespace HIKARI::RENDER3D::MATERIAL {
 
-    struct MaterialProgramRuntimeData {
-        std::vector<MATH::Vec4> parameters{};
-        std::vector<RuntimeTextureSlot> resources{};
-        std::shared_ptr<const MaterialParameterProjectionRecipe>
-            parameterProjection{};
-        uint32_t instanceFlags = 0u;
-    };
+struct MaterialProgramRuntimeData {
+    std::vector<MATH::Vec4> parameters{};
+    std::vector<RuntimeTextureSlot> resources{};
+    std::shared_ptr<const MaterialParameterProjectionRecipe> parameterProjection{};
+    uint32_t instanceFlags = 0u;
+};
 
-    MaterialProgramRuntimeData BuildMaterialProgramRuntimeData(
-        const MaterialProgramIR& program,
-        MaterialProgramResolutionKind resolutionKind,
-        const AssetRegistry& assetRegistry,
-        std::string_view debugName);
+MaterialProgramRuntimeData BuildMaterialProgramRuntimeData(const MaterialProgramIR& program,
+                                                           MaterialProgramResolutionKind resolutionKind,
+                                                           const AssetRegistry& assetRegistry,
+                                                           std::string_view debugName);
 
-    // Releases content-addressed generated Ramp textures through the renderer's
-    // deferred resource retirement path. The runtime program registry owns the
-    // matching reset boundary.
-    void ResetGeneratedMaterialRuntimeResources();
+// Releases content-addressed generated Ramp textures through the renderer's
+// deferred resource retirement path. The runtime program registry owns the
+// matching reset boundary.
+void ResetGeneratedMaterialRuntimeResources();
 
 } // namespace HIKARI::RENDER3D::MATERIAL

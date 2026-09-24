@@ -15,14 +15,13 @@ float FiniteOr(float value, float fallback) noexcept { return std::isfinite(valu
 
 float NonNegativeFinite(float value, float fallback) noexcept { return (std::max)(FiniteOr(value, fallback), 0.0f); }
 
-MATH::Vec3 FiniteOr(const MATH::Vec3 &value, const MATH::Vec3 &fallback) noexcept {
-
+MATH::Vec3 FiniteOr(const MATH::Vec3& value, const MATH::Vec3& fallback) noexcept {
     return MATH::IsFinite(value) ? value : fallback;
 }
 
 float RadiansToDegrees(float radians) noexcept { return radians * 180.0f / std::numbers::pi_v<float>; }
 } // namespace
-void CameraFollowSettings::Serialize(nlohmann::json &out) const {
+void CameraFollowSettings::Serialize(nlohmann::json& out) const {
     out["pivotOffset"] = JsonMath::ToJsonArray(pivotOffset);
     out["initialYawDegrees"] = initialYawDegrees;
     out["initialPitchDegrees"] = initialPitchDegrees;
@@ -67,7 +66,7 @@ void CameraFollowSettings::Serialize(nlohmann::json &out) const {
     out["screenCompositionHardResponseScale"] = screenCompositionHardResponseScale;
     out["screenCompositionCollisionCenteringStrength"] = screenCompositionCollisionCenteringStrength;
 }
-void CameraFollowSettings::Deserialize(const nlohmann::json &in) {
+void CameraFollowSettings::Deserialize(const nlohmann::json& in) {
     if (in.contains("pivotOffset")) {
         pivotOffset = JSONREAD::Vec3Or(in["pivotOffset"], pivotOffset);
     } else if (in.contains("lookAtOffset")) {

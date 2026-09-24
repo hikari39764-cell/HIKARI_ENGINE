@@ -29,176 +29,132 @@
 #include "Vfx/Post/HIKARI_SceneColorSnapshot.h"
 
 namespace HIKARI {
-    class RenderTarget2D;
+class RenderTarget2D;
 }
 
 namespace HIKARI::POST {
 
-    class PostEffect;
-    class GameUiCompositionStage;
-    class PostPresentationStage;
-    class PostProcessingStage;
-    class SceneCaptureStage;
+class PostEffect;
+class GameUiCompositionStage;
+class PostPresentationStage;
+class PostProcessingStage;
+class SceneCaptureStage;
 
-    // Compatibility facade. Resource ownership lives in the three stages below.
-    class PostSystem {
-    public:
-        using BloomDebugStats = POST::BloomDebugStats;
-        using FxaaSettings = POST::FxaaSettings;
-        using SunGlareFrame = POST::SunGlareFrame;
-        using SunGlareDebugStats = POST::SunGlareDebugStats;
-        using ActionScreenImpulseDebugState =
-            POST::ActionScreenImpulseProvider::DebugState;
-        using ActionScreenDistortionMask =
-            POST::ActionScreenImpulseProvider::Mask;
-        using ActionScreenDistortionAccent =
-            POST::ActionScreenImpulseProvider::Mask;
+// Compatibility facade. Resource ownership lives in the three stages below.
+class PostSystem {
+public:
+    using BloomDebugStats = POST::BloomDebugStats;
+    using FxaaSettings = POST::FxaaSettings;
+    using SunGlareFrame = POST::SunGlareFrame;
+    using SunGlareDebugStats = POST::SunGlareDebugStats;
+    using ActionScreenImpulseDebugState = POST::ActionScreenImpulseProvider::DebugState;
+    using ActionScreenDistortionMask = POST::ActionScreenImpulseProvider::Mask;
+    using ActionScreenDistortionAccent = POST::ActionScreenImpulseProvider::Mask;
 
-        static void Initialize(const GFX::Context& context);
-        static void UpdateContext(const GFX::Context& context);
-        static void Shutdown();
+    static void Initialize(const GFX::Context& context);
+    static void UpdateContext(const GFX::Context& context);
+    static void Shutdown();
 
-        static void UpdateCommonParams(float deltaTime);
-        static void SetIntensity(float intensity);
-        static void SetSequenceEffects(std::span<const SEQUENCER::ScreenEffectSample> effects);
-        static void SetCombo(float combo);
-        static void ClearEffects();
-        static void AddEffect(PostEffect* effect);
-        static bool SetGlobalProfile(
-            const std::string& profileId,
-            const DirectX::XMFLOAT4(&values)[16]);
-        static void ClearGlobalProfile();
-        static bool SubmitProfileParameter(std::string_view profileId, uint32_t index,
-            uint32_t channelMask, const DirectX::XMFLOAT4& value,
-            int32_t priority, uint64_t sourceId);
-        static bool GetRadialScreenWarp(float& curvature, float& strength) noexcept;
-        static void SetBloomSettings(const BloomSettings& settings);
-        static void SetScreenReadability(const RENDER3D::ScreenReadabilityFrame& frame);
-        static void SetToneMappingSettings(const ToneMappingSettings& settings);
-        static void SetFxaaSettings(const FxaaSettings& settings);
-        static void SetSunGlareFrame(const SunGlareFrame& frame);
-        static void ClearSunGlareFrame();
-        // Copies the current perfect-guard source and render camera for the
-        // post-temporal HDR impulse. No scene/service pointer is retained.
-        static void SetActionScreenImpulseFrame(
-            const RENDER3D::COMBAT_VFX::PerfectGuardShockwaveFrameSource& source,
-            const MATH::Mat4& viewProj,
-            uint64_t frameIndex);
-        static void SetActionScreenDistortionMask(
-            const ActionScreenDistortionMask& mask);
-        static void SetActionScreenDistortionAccent(
-            const ActionScreenDistortionAccent& accent);
-        static const FxaaSettings& GetFxaaSettings();
-        static const BloomDebugStats& GetBloomDebugStats();
-        static const SunGlareDebugStats& GetSunGlareDebugStats();
-        static const ActionScreenImpulseDebugState&
-            GetActionScreenImpulseDebugState();
-        static const RENDER3D::COLOR::ExposureFrameState&
-            GetExposureState();
-        static const RENDER3D::COLOR::AutomaticExposureDebugState&
-            GetAutomaticExposureDebugState();
-        static void SetTransitionState(const TransitionVisualState& state);
-        static void ClearTransitionState();
+    static void UpdateCommonParams(float deltaTime);
+    static void SetIntensity(float intensity);
+    static void SetSequenceEffects(std::span<const SEQUENCER::ScreenEffectSample> effects);
+    static void SetCombo(float combo);
+    static void ClearEffects();
+    static void AddEffect(PostEffect* effect);
+    static bool SetGlobalProfile(const std::string& profileId, const DirectX::XMFLOAT4 (&values)[16]);
+    static void ClearGlobalProfile();
+    static bool SubmitProfileParameter(std::string_view profileId, uint32_t index, uint32_t channelMask,
+                                       const DirectX::XMFLOAT4& value, int32_t priority, uint64_t sourceId);
+    static bool GetRadialScreenWarp(float& curvature, float& strength) noexcept;
+    static void SetBloomSettings(const BloomSettings& settings);
+    static void SetScreenReadability(const RENDER3D::ScreenReadabilityFrame& frame);
+    static void SetToneMappingSettings(const ToneMappingSettings& settings);
+    static void SetFxaaSettings(const FxaaSettings& settings);
+    static void SetSunGlareFrame(const SunGlareFrame& frame);
+    static void ClearSunGlareFrame();
+    // Copies the current perfect-guard source and render camera for the
+    // post-temporal HDR impulse. No scene/service pointer is retained.
+    static void SetActionScreenImpulseFrame(const RENDER3D::COMBAT_VFX::PerfectGuardShockwaveFrameSource& source,
+                                            const MATH::Mat4& viewProj, uint64_t frameIndex);
+    static void SetActionScreenDistortionMask(const ActionScreenDistortionMask& mask);
+    static void SetActionScreenDistortionAccent(const ActionScreenDistortionAccent& accent);
+    static const FxaaSettings& GetFxaaSettings();
+    static const BloomDebugStats& GetBloomDebugStats();
+    static const SunGlareDebugStats& GetSunGlareDebugStats();
+    static const ActionScreenImpulseDebugState& GetActionScreenImpulseDebugState();
+    static const RENDER3D::COLOR::ExposureFrameState& GetExposureState();
+    static const RENDER3D::COLOR::AutomaticExposureDebugState& GetAutomaticExposureDebugState();
+    static void SetTransitionState(const TransitionVisualState& state);
+    static void ClearTransitionState();
 
-        static std::string DumpFrameState();
-        static void LogFrameState(const char* reason);
-        static void RequestFrameDump();
+    static std::string DumpFrameState();
+    static void LogFrameState(const char* reason);
+    static void RequestFrameDump();
 
-        static bool BeginSceneCapture(
-            RENDER3D::RenderFrameToken frame,
-            uint64_t deviceGeneration);
-        static RENDER3D::SURFACE::RenderFrameSurfaceReceipt
-            GetSceneCaptureSurfaceReceipt() noexcept;
-        static bool SetSceneCaptureGraphSession(
-            RENDER3D::PIPELINE::RenderFrameGraphSessionReceipt session);
-        static bool ContinueSceneCaptureGraphSession();
-        static bool SetSceneCaptureTemporalFrame(
-            RENDER3D::TEMPORAL::TemporalViewLease view,
-            RENDER3D::RenderFrameToken frame,
-            RENDER3D::TEMPORAL::TemporalResourceFrame resources);
-        static bool AbortSceneCaptureTemporalFrame(
-            RENDER3D::TEMPORAL::TemporalHistoryResetReason reason);
-        static bool TryGetPresentationTemporalInputs(
-            RENDER3D::TEMPORAL::TemporalInputs& outInputs);
-        static bool FinishPresentationTemporalFrame(bool succeeded);
-        static bool IsSceneCaptureActive();
-        static bool HasCurrentRenderTarget();
-        static bool RebindCurrentRenderTarget();
-        static bool BindAdditionalColors(std::span<const D3D12_CPU_DESCRIPTOR_HANDLE> colors);
-        static bool ClearCurrentRenderTargetColor(
-            float red,
-            float green,
-            float blue,
-            float alpha);
-        static bool CopyToCurrentRenderTargetColor(
-            ID3D12Resource* source,
-            DXGI_FORMAT format,
-            uint32_t width,
-            uint32_t height);
-        // Restores the full presentation back buffer for Editor host UI after
-        // a tool-owned offscreen render. Unlike RebindCurrentRenderTarget,
-        // this does not require an active Scene capture layer.
-        static bool RebindPresentationBackBuffer();
-        static RENDER3D::RenderTextureView GetCurrentRenderTargetDepthView();
-        static RENDER3D::RenderTextureView GetCurrentRenderTargetColorView();
-        static D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentRenderTargetDsv();
-        static D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentRenderTargetReadOnlyDsv();
-        static bool BeginCurrentRenderTargetDepthRead();
-        static void EndCurrentRenderTargetDepthRead();
-        static bool PrepareGameUiComposition(
-            bool editorViewport,
-            int uiLogicalWidth = 0,
-            int uiLogicalHeight = 0);
-        static bool FinalizeGameUiComposition(bool editorViewport);
-        static const PresentationFrameResources& GetPresentationFrameResources();
-        static void SetSceneCaptureSize(
-            int renderWidth,
-            int renderHeight,
-            int outputWidth,
-            int outputHeight);
-        static void GetSceneCaptureSize(int& width, int& height);
-        static void GetSceneOutputSize(int& width, int& height);
+    static bool BeginSceneCapture(RENDER3D::RenderFrameToken frame, uint64_t deviceGeneration);
+    static RENDER3D::SURFACE::RenderFrameSurfaceReceipt GetSceneCaptureSurfaceReceipt() noexcept;
+    static bool SetSceneCaptureGraphSession(RENDER3D::PIPELINE::RenderFrameGraphSessionReceipt session);
+    static bool ContinueSceneCaptureGraphSession();
+    static bool SetSceneCaptureTemporalFrame(RENDER3D::TEMPORAL::TemporalViewLease view,
+                                             RENDER3D::RenderFrameToken frame,
+                                             RENDER3D::TEMPORAL::TemporalResourceFrame resources);
+    static bool AbortSceneCaptureTemporalFrame(RENDER3D::TEMPORAL::TemporalHistoryResetReason reason);
+    static bool TryGetPresentationTemporalInputs(RENDER3D::TEMPORAL::TemporalInputs& outInputs);
+    static bool FinishPresentationTemporalFrame(bool succeeded);
+    static bool HasCurrentRenderTarget();
+    static bool RebindCurrentRenderTarget();
+    static bool BindAdditionalColors(std::span<const D3D12_CPU_DESCRIPTOR_HANDLE> colors);
+    static bool ClearCurrentRenderTargetColor(float red, float green, float blue, float alpha);
+    static bool CopyToCurrentRenderTargetColor(ID3D12Resource* source, DXGI_FORMAT format, uint32_t width,
+                                               uint32_t height);
+    // Restores the full presentation back buffer for Editor host UI after
+    // a tool-owned offscreen render. Unlike RebindCurrentRenderTarget,
+    // this does not require an active Scene capture layer.
+    static bool RebindPresentationBackBuffer();
+    static RENDER3D::RenderTextureView GetCurrentRenderTargetDepthView();
+    static RENDER3D::RenderTextureView GetCurrentRenderTargetColorView();
+    static D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentRenderTargetDsv();
+    static D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentRenderTargetReadOnlyDsv();
+    static bool BeginCurrentRenderTargetDepthRead();
+    static void EndCurrentRenderTargetDepthRead();
+    static bool PrepareGameUiComposition(bool editorViewport, int uiLogicalWidth = 0, int uiLogicalHeight = 0);
+    static bool FinalizeGameUiComposition(bool editorViewport);
+    static const PresentationFrameResources& GetPresentationFrameResources();
+    static void SetSceneCaptureSize(int renderWidth, int renderHeight, int outputWidth, int outputHeight);
+    static void GetSceneCaptureSize(int& width, int& height);
+    static void GetSceneOutputSize(int& width, int& height);
 
-        static bool IsEditorViewportReady();
-        static D3D12_GPU_DESCRIPTOR_HANDLE GetEditorViewportSrv();
-        static int GetEditorViewportWidth();
-        static int GetEditorViewportHeight();
+    static bool IsEditorViewportReady();
+    static D3D12_GPU_DESCRIPTOR_HANDLE GetEditorViewportSrv();
 
-        static RENDER3D::RenderTextureView CaptureSceneColorSnapshot(
-            SceneColorSnapshotKind kind);
-        static RENDER3D::RenderTextureView GetSceneColorSnapshotView(
-            SceneColorSnapshotKind kind);
+    static RENDER3D::RenderTextureView CaptureSceneColorSnapshot(SceneColorSnapshotKind kind);
+    static RENDER3D::RenderTextureView GetSceneColorSnapshotView(SceneColorSnapshotKind kind);
 
-        static void SetAmbientColor(float r, float g, float b);
-        static void BeginLightCapture();
-        static void EndLightCapture();
+    static void SetAmbientColor(float r, float g, float b);
+    static void BeginLightCapture();
+    static void EndLightCapture();
 
-    private:
-        static RenderTarget2D* EndSceneCaptureAndResolveFinal();
-        static RenderTarget2D* ResolveFinalSceneToLdr(
-            RenderTarget2D& source,
-            DXGI_FORMAT outputFormat);
+private:
+    static RenderTarget2D* EndSceneCaptureAndResolveFinal();
+    static RenderTarget2D* ResolveFinalSceneToLdr(RenderTarget2D& source, DXGI_FORMAT outputFormat);
 
-        static bool initialized_;
-        static GFX::Context context_;
-        static QuadDrawer quad_;
-        static SceneCaptureStage captureStage_;
-        static PostProcessingStage processingStage_;
-        static GameUiCompositionStage gameUiCompositionStage_;
-        static PostPresentationStage presentationStage_;
-        static int requestedRenderWidth_;
-        static int requestedRenderHeight_;
-        static int requestedOutputWidth_;
-        static int requestedOutputHeight_;
-        static RENDER3D::TEMPORAL::TemporalViewLease temporalView_;
-        static RENDER3D::RenderFrameToken temporalFrame_;
-        static RENDER3D::TEMPORAL::TemporalResourceFrame temporalResources_;
-        static RENDER3D::TEMPORAL::TemporalResourceFrame
-            presentationTemporalResources_;
-        static RENDER3D::SURFACE::RenderFrameSurfaceReceipt
-            renderSurfaceReceipt_;
-        static RENDER3D::PIPELINE::RenderFrameGraphSessionReceipt
-            renderGraphSessionReceipt_;
-    };
+    static bool initialized_;
+    static GFX::Context context_;
+    static QuadDrawer quad_;
+    static SceneCaptureStage captureStage_;
+    static PostProcessingStage processingStage_;
+    static GameUiCompositionStage gameUiCompositionStage_;
+    static PostPresentationStage presentationStage_;
+    static int requestedRenderWidth_;
+    static int requestedRenderHeight_;
+    static int requestedOutputWidth_;
+    static int requestedOutputHeight_;
+    static RENDER3D::TEMPORAL::TemporalViewLease temporalView_;
+    static RENDER3D::RenderFrameToken temporalFrame_;
+    static RENDER3D::TEMPORAL::TemporalResourceFrame temporalResources_;
+    static RENDER3D::TEMPORAL::TemporalResourceFrame presentationTemporalResources_;
+    static RENDER3D::SURFACE::RenderFrameSurfaceReceipt renderSurfaceReceipt_;
+    static RENDER3D::PIPELINE::RenderFrameGraphSessionReceipt renderGraphSessionReceipt_;
+};
 
 } // namespace HIKARI::POST

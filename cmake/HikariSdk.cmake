@@ -9,6 +9,8 @@ set(
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/ActionViews.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/AudioTypes.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/AudioView.h"
+    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/CameraSpace.h"
+    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/DebugView.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/DisplaySettingsTypes.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/DisplaySettingsView.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/EditorWorkspace.h"
@@ -127,13 +129,44 @@ configure_package_config_file(
     "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfig.cmake"
     INSTALL_DESTINATION "Sdk/lib/cmake/HIKARI"
     NO_SET_AND_CHECK_MACRO)
+# 公開ヘッダーを唯一のバージョン定義とする。
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/GameProjectSdk.h")
+file(READ "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/GameProjectSdk.h" _hikari_sdk_header)
+foreach(_part Major Minor Patch)
+    string(REGEX MATCH "kVersion${_part} = ([0-9]+)u" _matched "${_hikari_sdk_header}")
+    if(NOT _matched)
+        message(FATAL_ERROR "Missing public SDK version: ${_part}")
+    endif()
+    set(_hikari_sdk_${_part} "${CMAKE_MATCH_1}")
+endforeach()
 write_basic_package_version_file(
     "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfigVersion.cmake"
-    VERSION 2.33.0
+    VERSION "${_hikari_sdk_Major}.${_hikari_sdk_Minor}.${_hikari_sdk_Patch}"
     COMPATIBILITY SameMajorVersion)
 
 function(hikari_configure_game_project_sdk host_target)
     set(_sdk_root "$<TARGET_FILE_DIR:${host_target}>/Sdk")
+    set(_sdk_docs
+        "${HIKARI_SOURCE_ROOT}/docs/game-project/GameDevelopmentResponsibilities.md"
+        "${HIKARI_SOURCE_ROOT}/docs/game-project/MakingAGame.md"
+        "${HIKARI_SOURCE_ROOT}/docs/game-project/GameProjectSdkApiGuide.md"
+        "${HIKARI_SOURCE_ROOT}/docs/game-project/ComponentsAndSystemsTutorial.md")
+    set(_obsolete_flat_docs)
+    foreach(_document IN LISTS _sdk_docs)
+        get_filename_component(_name "${_document}" NAME)
+        list(APPEND _obsolete_flat_docs "${_sdk_root}/docs/${_name}")
+    endforeach()
+    # 文書だけの修正ではホストを再リンクしない。
+    add_custom_target("${host_target}_SdkDocs"
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${_sdk_root}/docs/game-project"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different ${_sdk_docs} "${_sdk_root}/docs/game-project"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${HIKARI_SOURCE_ROOT}/docs/ui-text-workspaces.md" "${_sdk_root}/docs"
+        COMMAND "${CMAKE_COMMAND}" -E rm -f ${_obsolete_flat_docs}
+        VERBATIM)
+    add_dependencies("${host_target}" "${host_target}_SdkDocs")
+    install(FILES ${_sdk_docs} DESTINATION "${HIKARI_INSTALL_RUNTIME_PREFIX}Sdk/docs/game-project")
+    install(FILES "${HIKARI_SOURCE_ROOT}/docs/ui-text-workspaces.md" DESTINATION "${HIKARI_INSTALL_RUNTIME_PREFIX}Sdk/docs")
     if(MSVC)
         target_link_options(
             "${host_target}"

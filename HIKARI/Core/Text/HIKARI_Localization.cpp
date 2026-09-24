@@ -9,8 +9,7 @@ namespace {
 
 Language gLanguage = Language::English;
 
-using LocalizationTable =
-    std::unordered_map<std::string, std::string>;
+using LocalizationTable = std::unordered_map<std::string, std::string>;
 
 LocalizationTable& Table(Language language) {
     static std::array<LocalizationTable, 3u> tables{};
@@ -35,14 +34,11 @@ void EnsureBuiltInTables() {
 } // namespace
 
 bool SetLocalizationLanguage(Language language) noexcept {
-    if (static_cast<size_t>(language) >= 3u) return false;
+    if (static_cast<size_t>(language) >= 3u)
+        return false;
     EnsureBuiltInTables();
     gLanguage = language;
     return true;
-}
-
-Language GetLocalizationLanguage() noexcept {
-    return gLanguage;
 }
 
 std::string Localize(std::string_view key) {
@@ -62,9 +58,7 @@ std::string Localize(std::string_view key) {
     return std::string(key);
 }
 
-std::string LocalizeWindow(
-    std::string_view key,
-    std::string_view stableId) {
+std::string LocalizeWindow(std::string_view key, std::string_view stableId) {
     return Localize(key) + "###" + std::string(stableId);
 }
 
@@ -77,9 +71,7 @@ const char* LocalizeCStr(const char* key) {
     return key;
 }
 
-void MergeLocalizationTable(
-    Language language,
-    const nlohmann::json& table) noexcept {
+void MergeLocalizationTable(Language language, const nlohmann::json& table) noexcept {
     if (static_cast<size_t>(language) >= 3u || !table.is_object()) {
         return;
     }

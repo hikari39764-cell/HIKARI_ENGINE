@@ -14,107 +14,74 @@
 namespace HIKARI::PLATFORM {
 
 namespace {
-    struct ExternalFileDrop {
-        HWND window = nullptr;
-        POINT screenPosition{};
-        ULONGLONG queuedAtMilliseconds = 0u;
-        std::vector<std::filesystem::path> files{};
-    };
+struct ExternalFileDrop {
+    HWND window = nullptr;
+    POINT screenPosition{};
+    ULONGLONG queuedAtMilliseconds = 0u;
+    std::vector<std::filesystem::path> files{};
+};
 
-    std::vector<ExternalFileDrop> gExternalFileDrops{};
+std::vector<ExternalFileDrop> gExternalFileDrops{};
 
-    void QueueExternalFileDrop(HWND hwnd, HDROP drop) {
-        if (drop == nullptr) {
-            return;
-        }
-
-        ExternalFileDrop queued{};
-        queued.window = hwnd;
-        POINT clientPosition{};
-        if (DragQueryPoint(drop, &clientPosition) != FALSE) {
-            queued.screenPosition = clientPosition;
-            ClientToScreen(hwnd, &queued.screenPosition);
-        } else {
-            GetCursorPos(&queued.screenPosition);
-        }
-        queued.queuedAtMilliseconds = GetTickCount64();
-
-        const UINT fileCount =
-            DragQueryFileW(
-                drop,
-                0xFFFFFFFF,
-                nullptr,
-                0);
-        queued.files.reserve(fileCount);
-        for (UINT i = 0; i < fileCount; ++i) {
-            const UINT length =
-                DragQueryFileW(drop, i, nullptr, 0);
-            if (length == 0) {
-                continue;
-            }
-            std::wstring path(
-                static_cast<size_t>(length) + 1u,
-                L'\0');
-            DragQueryFileW(
-                drop,
-                i,
-                path.data(),
-                length + 1u);
-            path.resize(static_cast<size_t>(length));
-            queued.files.emplace_back(std::move(path));
-        }
-        DragFinish(drop);
-
-        if (!queued.files.empty()) {
-            gExternalFileDrops.push_back(
-                std::move(queued));
-        }
+void QueueExternalFileDrop(HWND hwnd, HDROP drop) {
+    if (drop == nullptr) {
+        return;
     }
+
+    ExternalFileDrop queued{};
+    queued.window = hwnd;
+    POINT clientPosition{};
+    if (DragQueryPoint(drop, &clientPosition) != FALSE) {
+        queued.screenPosition = clientPosition;
+        ClientToScreen(hwnd, &queued.screenPosition);
+    } else {
+        GetCursorPos(&queued.screenPosition);
+    }
+    queued.queuedAtMilliseconds = GetTickCount64();
+
+    const UINT fileCount = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
+    queued.files.reserve(fileCount);
+    for (UINT i = 0; i < fileCount; ++i) {
+        const UINT length = DragQueryFileW(drop, i, nullptr, 0);
+        if (length == 0) {
+            continue;
+        }
+        std::wstring path(static_cast<size_t>(length) + 1u, L'\0');
+        DragQueryFileW(drop, i, path.data(), length + 1u);
+        path.resize(static_cast<size_t>(length));
+        queued.files.emplace_back(std::move(path));
+    }
+    DragFinish(drop);
+
+    if (!queued.files.empty()) {
+        gExternalFileDrops.push_back(std::move(queued));
+    }
+}
 
 #if defined(HIKARI_WITH_EDITOR)
-    constexpr UINT_PTR kExternalFileDropSubclassId =
-        0x48494B41u;
+constexpr UINT_PTR kExternalFileDropSubclassId = 0x48494B41u;
 
-    LRESULT CALLBACK ExternalFileDropSubclassProc(
-        HWND hwnd,
-        UINT message,
-        WPARAM wparam,
-        LPARAM lparam,
-        UINT_PTR subclassId,
-        DWORD_PTR) {
-
-        if (message == WM_DROPFILES) {
-            QueueExternalFileDrop(
-                hwnd,
-                reinterpret_cast<HDROP>(wparam));
-            return 0;
-        }
-        if (message == WM_NCDESTROY) {
-            DragAcceptFiles(hwnd, FALSE);
-            RemoveWindowSubclass(
-                hwnd,
-                ExternalFileDropSubclassProc,
-                subclassId);
-        }
-        return DefSubclassProc(
-            hwnd,
-            message,
-            wparam,
-            lparam);
+LRESULT CALLBACK ExternalFileDropSubclassProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam,
+                                              UINT_PTR subclassId, DWORD_PTR) {
+    if (message == WM_DROPFILES) {
+        QueueExternalFileDrop(hwnd, reinterpret_cast<HDROP>(wparam));
+        return 0;
     }
-#endif
+    if (message == WM_NCDESTROY) {
+        DragAcceptFiles(hwnd, FALSE);
+        RemoveWindowSubclass(hwnd, ExternalFileDropSubclassProc, subclassId);
+    }
+    return DefSubclassProc(hwnd, message, wparam, lparam);
 }
+#endif
+} // namespace
 
 void RegisterExternalFileDropWindow(HWND hwnd) {
 #if defined(HIKARI_WITH_EDITOR)
     if (hwnd == nullptr) {
         return;
     }
-    if (SetWindowSubclass(
-            hwnd,
-            ExternalFileDropSubclassProc,
-            kExternalFileDropSubclassId,
-            0u) != FALSE) {
+    if (SetWindowSubclass(hwnd, ExternalFileDropSubclassProc, kExternalFileDropSubclassId, 0u) != FALSE) {
         DragAcceptFiles(hwnd, TRUE);
     }
 #else
@@ -128,36 +95,22 @@ void UnregisterExternalFileDropWindow(HWND hwnd) {
         return;
     }
     DragAcceptFiles(hwnd, FALSE);
-    RemoveWindowSubclass(
-        hwnd,
-        ExternalFileDropSubclassProc,
-        kExternalFileDropSubclassId);
+    RemoveWindowSubclass(hwnd, ExternalFileDropSubclassProc, kExternalFileDropSubclassId);
 #else
     (void)hwnd;
 #endif
 }
 
-std::vector<std::filesystem::path>
-ConsumeDroppedFilesInScreenRect(
-    const RECT& screenRect) {
-
+std::vector<std::filesystem::path> ConsumeDroppedFilesInScreenRect(const RECT& screenRect) {
     std::vector<std::filesystem::path> files{};
     const ULONGLONG now = GetTickCount64();
-    for (auto it = gExternalFileDrops.begin();
-        it != gExternalFileDrops.end();) {
-
-        const bool expired =
-            now - it->queuedAtMilliseconds > 10000u;
-        const bool inside =
-            it->screenPosition.x >= screenRect.left &&
-            it->screenPosition.x < screenRect.right &&
-            it->screenPosition.y >= screenRect.top &&
-            it->screenPosition.y < screenRect.bottom;
+    for (auto it = gExternalFileDrops.begin(); it != gExternalFileDrops.end();) {
+        const bool expired = now - it->queuedAtMilliseconds > 10000u;
+        const bool inside = it->screenPosition.x >= screenRect.left && it->screenPosition.x < screenRect.right &&
+                            it->screenPosition.y >= screenRect.top && it->screenPosition.y < screenRect.bottom;
         if (inside) {
-            files.insert(
-                files.end(),
-                std::make_move_iterator(it->files.begin()),
-                std::make_move_iterator(it->files.end()));
+            files.insert(files.end(), std::make_move_iterator(it->files.begin()),
+                         std::make_move_iterator(it->files.end()));
         }
         if (inside || expired) {
             it = gExternalFileDrops.erase(it);
@@ -168,14 +121,8 @@ ConsumeDroppedFilesInScreenRect(
     return files;
 }
 
-bool Win32Window::Initialize(
-    const wchar_t* title,
-    int width,
-    int height,
-    bool resizable,
-    WindowCloseBehavior closeBehavior,
-    bool dispatchHostMessages,
-    bool startHidden) {
+bool Win32Window::Initialize(const wchar_t* title, int width, int height, bool resizable,
+                             WindowCloseBehavior closeBehavior, bool dispatchHostMessages, bool startHidden) {
     HIKARI_LOG_INFO("Win32Window initialization started.");
 
     hInstance_ = GetModuleHandleW(nullptr);
@@ -199,7 +146,8 @@ bool Win32Window::Initialize(
         const DWORD err = GetLastError();
         if (err != ERROR_CLASS_ALREADY_EXISTS) {
             char msg[256]{};
-            std::snprintf(msg, sizeof(msg), "[Win32Window] RegisterClassW failed. err=%lu\n", static_cast<unsigned long>(err));
+            std::snprintf(msg, sizeof(msg), "[Win32Window] RegisterClassW failed. err=%lu\n",
+                          static_cast<unsigned long>(err));
             OutputDebugStringA(msg);
             std::ostringstream oss;
             oss << "RegisterClassW failed. err=" << static_cast<unsigned long>(err);
@@ -219,34 +167,22 @@ bool Win32Window::Initialize(
     // クライアントサイズは DIP 指定。Per-Monitor DPI 環境では実ピクセルへ
     // 換算してからウィンドウ矩形を求める（150% スケーリング時の縮小表示対策）。
     const UINT windowDpi = GetDpiForSystem();
-    const float dpiScale = windowDpi > 0u
-        ? static_cast<float>(windowDpi) / 96.0f
-        : 1.0f;
+    const float dpiScale = windowDpi > 0u ? static_cast<float>(windowDpi) / 96.0f : 1.0f;
     width_ = static_cast<int>(static_cast<float>(width) * dpiScale + 0.5f);
     height_ = static_cast<int>(static_cast<float>(height) * dpiScale + 0.5f);
-    RECT rect{ 0, 0, width_, height_ };
+    RECT rect{0, 0, width_, height_};
     if (AdjustWindowRectExForDpi(&rect, style, FALSE, 0, windowDpi) == FALSE) {
         AdjustWindowRect(&rect, style, FALSE);
     }
 
-    hwnd_ = CreateWindowExW(
-        0,
-        wc.lpszClassName,
-        title,
-        style,
-        CW_USEDEFAULT,
-        CW_USEDEFAULT,
-        rect.right - rect.left,
-        rect.bottom - rect.top,
-        nullptr,
-        nullptr,
-        hInstance_,
-        this);
+    hwnd_ = CreateWindowExW(0, wc.lpszClassName, title, style, CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left,
+                            rect.bottom - rect.top, nullptr, nullptr, hInstance_, this);
 
     if (!hwnd_) {
         const DWORD err = GetLastError();
         char msg[256]{};
-        std::snprintf(msg, sizeof(msg), "[Win32Window] CreateWindowExW failed. err=%lu\n", static_cast<unsigned long>(err));
+        std::snprintf(msg, sizeof(msg), "[Win32Window] CreateWindowExW failed. err=%lu\n",
+                      static_cast<unsigned long>(err));
         OutputDebugStringA(msg);
         std::ostringstream oss;
         oss << "CreateWindowExW failed. err=" << static_cast<unsigned long>(err);
@@ -256,14 +192,16 @@ bool Win32Window::Initialize(
     HIKARI_LOG_INFO("Window created.");
 
     for (const bool useSmallIcon : {false, true}) {
-        const HICON icon = static_cast<HICON>(LoadImageW(hInstance_,
-            MAKEINTRESOURCEW(PLATFORM::kApplicationIconResourceId), IMAGE_ICON,
-            GetSystemMetrics(useSmallIcon ? SM_CXSMICON : SM_CXICON),
-            GetSystemMetrics(useSmallIcon ? SM_CYSMICON : SM_CYICON), LR_SHARED));
-        if (icon) SendMessageW(hwnd_, WM_SETICON, useSmallIcon ? ICON_SMALL : ICON_BIG, reinterpret_cast<LPARAM>(icon));
+        const HICON icon =
+            static_cast<HICON>(LoadImageW(hInstance_, MAKEINTRESOURCEW(PLATFORM::kApplicationIconResourceId),
+                                          IMAGE_ICON, GetSystemMetrics(useSmallIcon ? SM_CXSMICON : SM_CXICON),
+                                          GetSystemMetrics(useSmallIcon ? SM_CYSMICON : SM_CYICON), LR_SHARED));
+        if (icon)
+            SendMessageW(hwnd_, WM_SETICON, useSmallIcon ? ICON_SMALL : ICON_BIG, reinterpret_cast<LPARAM>(icon));
     }
 
-    if (!startupHidden_) Show();
+    if (!startupHidden_)
+        Show();
     DragAcceptFiles(hwnd_, TRUE);
     // 创建后以实际客户端区为准，消除 AdjustWindowRect 边框估算与真实值的偏差。
     RefreshClientSize();
@@ -273,8 +211,7 @@ bool Win32Window::Initialize(
 }
 
 bool Win32Window::SetTitle(const wchar_t* title) {
-    return hwnd_ != nullptr && title != nullptr &&
-        SetWindowTextW(hwnd_, title) != FALSE;
+    return hwnd_ != nullptr && title != nullptr && SetWindowTextW(hwnd_, title) != FALSE;
 }
 
 bool Win32Window::RefreshClientSize() {
@@ -309,7 +246,7 @@ bool Win32Window::ApplyWindowMode(WindowMode mode, int clientWidth, int clientHe
         MONITORINFO monitorInfo{};
         monitorInfo.cbSize = sizeof(MONITORINFO);
         if (!GetMonitorInfoW(monitor, &monitorInfo)) {
-            monitorInfo.rcMonitor = { 0, 0, clientWidth, clientHeight };
+            monitorInfo.rcMonitor = {0, 0, clientWidth, clientHeight};
             monitorInfo.rcWork = monitorInfo.rcMonitor;
         }
         return monitorInfo;
@@ -337,7 +274,7 @@ bool Win32Window::ApplyWindowMode(WindowMode mode, int clientWidth, int clientHe
             y = static_cast<int>(work.top);
         }
 
-        return POINT{ x, y };
+        return POINT{x, y};
     };
 
     if (mode == WindowMode::Windowed) {
@@ -348,7 +285,7 @@ bool Win32Window::ApplyWindowMode(WindowMode mode, int clientWidth, int clientHe
         }
         windowedStyle_ = style;
 
-        RECT rect{ 0, 0, clientWidth, clientHeight };
+        RECT rect{0, 0, clientWidth, clientHeight};
         // 切回窗口模式同样按当前显示器 DPI 换算边框，避免 150% 缩放下窗口偏小。
         const UINT currentDpi = hwnd_ ? GetDpiForWindow(hwnd_) : GetDpiForSystem();
         if (AdjustWindowRectExForDpi(&rect, style, FALSE, 0, currentDpi) == FALSE) {
@@ -370,26 +307,21 @@ bool Win32Window::ApplyWindowMode(WindowMode mode, int clientWidth, int clientHe
                 desiredCenter.y = (currentRect.top + currentRect.bottom) / 2;
             }
         } else if (windowedPlacement_.rcNormalPosition.right > windowedPlacement_.rcNormalPosition.left &&
-            windowedPlacement_.rcNormalPosition.bottom > windowedPlacement_.rcNormalPosition.top) {
+                   windowedPlacement_.rcNormalPosition.bottom > windowedPlacement_.rcNormalPosition.top) {
             desiredCenter.x =
                 (windowedPlacement_.rcNormalPosition.left + windowedPlacement_.rcNormalPosition.right) / 2;
             desiredCenter.y =
                 (windowedPlacement_.rcNormalPosition.top + windowedPlacement_.rcNormalPosition.bottom) / 2;
         }
 
-        const POINT target =
-            clampWindowRectToWorkArea(monitorInfo.rcWork, windowWidth, windowHeight, desiredCenter);
+        const POINT target = clampWindowRectToWorkArea(monitorInfo.rcWork, windowWidth, windowHeight, desiredCenter);
 
         SetWindowLongPtrW(hwnd_, GWL_STYLE, static_cast<LONG_PTR>(style));
-        if (!startupHidden_) ShowWindow(hwnd_, SW_RESTORE);
-        const BOOL moved = SetWindowPos(
-            hwnd_,
-            HWND_NOTOPMOST,
-            target.x,
-            target.y,
-            windowWidth,
-            windowHeight,
-            SWP_NOOWNERZORDER | SWP_FRAMECHANGED | (startupHidden_ ? SWP_NOACTIVATE : SWP_SHOWWINDOW));
+        if (!startupHidden_)
+            ShowWindow(hwnd_, SW_RESTORE);
+        const BOOL moved =
+            SetWindowPos(hwnd_, HWND_NOTOPMOST, target.x, target.y, windowWidth, windowHeight,
+                         SWP_NOOWNERZORDER | SWP_FRAMECHANGED | (startupHidden_ ? SWP_NOACTIVATE : SWP_SHOWWINDOW));
         if (!moved) {
             return false;
         }
@@ -406,14 +338,10 @@ bool Win32Window::ApplyWindowMode(WindowMode mode, int clientWidth, int clientHe
 
     SetWindowLongPtrW(hwnd_, GWL_STYLE, static_cast<LONG_PTR>(WS_POPUP | (startupHidden_ ? 0 : WS_VISIBLE)));
     const RECT& target = monitorInfo.rcMonitor;
-    const BOOL moved = SetWindowPos(
-        hwnd_,
-        mode == WindowMode::Fullscreen ? HWND_TOPMOST : HWND_TOP,
-        target.left,
-        target.top,
-        target.right - target.left,
-        target.bottom - target.top,
-        SWP_NOOWNERZORDER | SWP_FRAMECHANGED | (startupHidden_ ? SWP_NOACTIVATE : SWP_SHOWWINDOW));
+    const BOOL moved =
+        SetWindowPos(hwnd_, mode == WindowMode::Fullscreen ? HWND_TOPMOST : HWND_TOP, target.left, target.top,
+                     target.right - target.left, target.bottom - target.top,
+                     SWP_NOOWNERZORDER | SWP_FRAMECHANGED | (startupHidden_ ? SWP_NOACTIVATE : SWP_SHOWWINDOW));
     if (!moved) {
         return false;
     }
@@ -477,9 +405,7 @@ void Win32Window::Show() {
 }
 
 LRESULT Win32Window::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
-    if (dispatchHostMessages_ &&
-        messageHandler_ &&
-        messageHandler_(hwnd, msg, wparam, lparam)) {
+    if (dispatchHostMessages_ && messageHandler_ && messageHandler_(hwnd, msg, wparam, lparam)) {
         return TRUE;
     }
 
@@ -496,14 +422,8 @@ LRESULT Win32Window::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
         // リサイズコールバックはそちらで更新される。
         const RECT* suggested = reinterpret_cast<const RECT*>(lparam);
         if (suggested != nullptr) {
-            SetWindowPos(
-                hwnd,
-                nullptr,
-                suggested->left,
-                suggested->top,
-                suggested->right - suggested->left,
-                suggested->bottom - suggested->top,
-                SWP_NOZORDER | SWP_NOACTIVATE);
+            SetWindowPos(hwnd, nullptr, suggested->left, suggested->top, suggested->right - suggested->left,
+                         suggested->bottom - suggested->top, SWP_NOZORDER | SWP_NOACTIVATE);
         }
         return 0;
     }
@@ -525,13 +445,10 @@ LRESULT Win32Window::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
         mouseWheelDelta_ += static_cast<float>(GET_WHEEL_DELTA_WPARAM(wparam)) / static_cast<float>(WHEEL_DELTA);
         return 0;
     case WM_DROPFILES: {
-        QueueExternalFileDrop(
-            hwnd,
-            reinterpret_cast<HDROP>(wparam));
+        QueueExternalFileDrop(hwnd, reinterpret_cast<HDROP>(wparam));
         return 0;
     }
-    default:
-        break;
+    default: break;
     }
     // NOTE: 蠢・★縲御ｻ雁・逅・ｸｭ縺ｮ hwnd縲阪ｒ貂｡縺吶・reateWindow 逶ｴ蠕後↑縺ｩ縺ｧ hwnd_ 縺梧悴遒ｺ螳壹〒繧ょｮ牙・縲・
     return DefWindowProcW(hwnd, msg, wparam, lparam);

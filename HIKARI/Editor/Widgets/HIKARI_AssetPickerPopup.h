@@ -7,22 +7,18 @@
 
 namespace HIKARI {
 
-    class AssetDatabase;
+class AssetDatabase;
 
-    namespace EDITOR {
+namespace EDITOR {
 
-        struct AssetPickerPopupState {
-            std::array<char, 160> searchBuffer{};
-            std::string selectedFolder{};
-        };
+struct AssetPickerPopupState {
+    std::array<char, 160> searchBuffer{};
+    std::string selectedFolder{};
+};
 
-        bool DrawAssetPickerPopup(
-            const char* popupId,
-            const AssetDatabase& assetDatabase,
-            AssetType requiredType,
-            std::string& inOutGuid,
-            AssetPickerPopupState& state);
+bool DrawAssetPickerPopup(const char* popupId, const AssetDatabase& assetDatabase, AssetType requiredType,
+                          std::string& inOutGuid, AssetPickerPopupState& state);
 
-    } // namespace EDITOR
+} // namespace EDITOR
 
 } // namespace HIKARI

@@ -27,56 +27,50 @@
 
 namespace HIKARI {
 
-    void AnimationStateMachineComponent::BuildInspector(
-        IInspectorBuilder&) {}
-    void AnimationStateMachineComponent::RenderImGui() {}
+void AnimationStateMachineComponent::BuildInspector(IInspectorBuilder&) {}
+void AnimationStateMachineComponent::RenderImGui() {}
 
-    void AnimatorComponent::BuildInspector(IInspectorBuilder&) {}
-    void AnimatorComponent::RenderImGui() {}
+void AnimatorComponent::BuildInspector(IInspectorBuilder&) {}
+void AnimatorComponent::RenderImGui() {}
 
-    void CameraActivationVolumeComponent::BuildInspector(
-        IInspectorBuilder&) {}
-    void CameraComponent::BuildInspector(IInspectorBuilder&) {}
-    void CameraFlowComponent::BuildInspector(IInspectorBuilder&) {}
-    void CameraFollowComponent::BuildInspector(IInspectorBuilder&) {}
-    void CharacterInputComponent::BuildInspector(IInspectorBuilder&) {}
-    void CharacterLocomotionComponent::BuildInspector(
-        IInspectorBuilder&) {}
-    void DialogueInteractorComponent::BuildInspector(
-        IInspectorBuilder&) {}
-    void DialogueTriggerComponent::BuildInspector(
-        IInspectorBuilder&) {}
-    void ColliderComponent::BuildInspector(IInspectorBuilder&) {}
-    void PhysicsBodyComponent::BuildInspector(IInspectorBuilder&) {}
-    void ProceduralMeshComponent::BuildInspector(IInspectorBuilder&) {}
-    void IrradianceVolumeComponent::BuildInspector(IInspectorBuilder&) {}
-    void LightComponent::BuildInspector(IInspectorBuilder&) {}
-    void ReflectionProbeComponent::BuildInspector(IInspectorBuilder&) {}
+void CameraActivationVolumeComponent::BuildInspector(IInspectorBuilder&) {}
+void CameraComponent::BuildInspector(IInspectorBuilder&) {}
+void CameraFlowComponent::BuildInspector(IInspectorBuilder&) {}
+void CameraFollowComponent::BuildInspector(IInspectorBuilder&) {}
+void CharacterInputComponent::BuildInspector(IInspectorBuilder&) {}
+void CharacterLocomotionComponent::BuildInspector(IInspectorBuilder&) {}
+void DialogueInteractorComponent::BuildInspector(IInspectorBuilder&) {}
+void DialogueTriggerComponent::BuildInspector(IInspectorBuilder&) {}
+void ColliderComponent::BuildInspector(IInspectorBuilder&) {}
+void PhysicsBodyComponent::BuildInspector(IInspectorBuilder&) {}
+void ProceduralMeshComponent::BuildInspector(IInspectorBuilder&) {}
+void IrradianceVolumeComponent::BuildInspector(IInspectorBuilder&) {}
+void LightComponent::BuildInspector(IInspectorBuilder&) {}
+void ReflectionProbeComponent::BuildInspector(IInspectorBuilder&) {}
 
-    void SequencePlayerComponent::BuildInspector(IInspectorBuilder&) {}
-    void SequencePlayerComponent::RenderImGui() {}
+void SequencePlayerComponent::BuildInspector(IInspectorBuilder&) {}
+void SequencePlayerComponent::RenderImGui() {}
 
-    void SpawnPointComponent::BuildInspector(IInspectorBuilder&) {}
+void SpawnPointComponent::BuildInspector(IInspectorBuilder&) {}
 
-    void MaterialFxComponent::BuildInspector(IInspectorBuilder&) {}
-    void MaterialFxComponent::RenderImGui() {}
+void MaterialFxComponent::BuildInspector(IInspectorBuilder&) {}
+void MaterialFxComponent::RenderImGui() {}
 
-    void ModelComponent::BuildInspector(IInspectorBuilder&) {}
-    void ModelComponent::RenderImGui() {}
+void ModelComponent::BuildInspector(IInspectorBuilder&) {}
+void ModelComponent::RenderImGui() {}
 
-    void TerrainSurfaceComponent::BuildInspector(IInspectorBuilder&) {}
-    void WaterSurfaceComponent::BuildInspector(IInspectorBuilder&) {}
-    void SandSurfaceFollowerComponent::BuildInspector(
-        IInspectorBuilder&) {}
+void TerrainSurfaceComponent::BuildInspector(IInspectorBuilder&) {}
+void WaterSurfaceComponent::BuildInspector(IInspectorBuilder&) {}
+void SandSurfaceFollowerComponent::BuildInspector(IInspectorBuilder&) {}
 
 } // namespace HIKARI
 
 namespace HIKARI::ASSETS::MODELS {
 
-    // Source-model import belongs to the Editor authoring product. Runtime
-    // and isolated Runtime contract hosts consume cooked model artifacts.
-    bool LoadAssimpModelSource(ModelAsset&) { return false; }
-    bool LoadGltfModelSource(ModelAsset&) { return false; }
-    bool LoadObjModelSource(ModelAsset&) { return false; }
+// Source-model import belongs to the Editor authoring product. Runtime
+// and isolated Runtime contract hosts consume cooked model artifacts.
+bool LoadAssimpModelSource(ModelAsset&) { return false; }
+bool LoadGltfModelSource(ModelAsset&) { return false; }
+bool LoadObjModelSource(ModelAsset&) { return false; }
 
 } // namespace HIKARI::ASSETS::MODELS

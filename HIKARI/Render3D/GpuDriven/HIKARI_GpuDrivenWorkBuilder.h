@@ -10,28 +10,27 @@
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
 
-    struct GpuDrivenWorkContext {
-        IGpuDrivenProducer* producer = nullptr;
-        ID3D12GraphicsCommandList* commandList = nullptr;
-        MATH::Mat4 viewProj{};
-        MATH::Vec3 cameraPosition{};
-        D3D12_GPU_DESCRIPTOR_HANDLE geometryPoolSrv{};
-        D3D12_GPU_VIRTUAL_ADDRESS surfaceGpuSceneGpuAddress = 0;
-        D3D12_GPU_VIRTUAL_ADDRESS massGpuSceneGpuAddress = 0;
-        uint32_t massGpuSceneInstanceCount = 0u;
-        const GpuDrivenFrame* frame = nullptr;
-        uint32_t passMask = 0xffffffffu;
-        bool collectCounterReadback = true;
-        GpuDrivenDepthOcclusionContext depthOcclusion{};
-    };
+struct GpuDrivenWorkContext {
+    IGpuDrivenProducer* producer = nullptr;
+    ID3D12GraphicsCommandList* commandList = nullptr;
+    MATH::Mat4 viewProj{};
+    MATH::Vec3 cameraPosition{};
+    D3D12_GPU_DESCRIPTOR_HANDLE geometryPoolSrv{};
+    D3D12_GPU_VIRTUAL_ADDRESS surfaceGpuSceneGpuAddress = 0;
+    D3D12_GPU_VIRTUAL_ADDRESS massGpuSceneGpuAddress = 0;
+    uint32_t massGpuSceneInstanceCount = 0u;
+    const GpuDrivenFrame* frame = nullptr;
+    uint32_t passMask = 0xffffffffu;
+    bool collectCounterReadback = true;
+    GpuDrivenDepthOcclusionContext depthOcclusion{};
+};
 
-    struct GpuDrivenWorkResult {
-        bool submitted = false;
-        size_t sourcePassCount = 0;
-        size_t sourceInstanceCount = 0;
-    };
+struct GpuDrivenWorkResult {
+    bool submitted = false;
+    size_t sourcePassCount = 0;
+    size_t sourceInstanceCount = 0;
+};
 
-    GpuDrivenWorkResult BuildGpuDrivenWork(
-        const GpuDrivenWorkContext& context);
+GpuDrivenWorkResult BuildGpuDrivenWork(const GpuDrivenWorkContext& context);
 
 } // namespace HIKARI::RENDER3D::GPUDRIVEN

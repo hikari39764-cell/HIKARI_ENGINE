@@ -25,9 +25,10 @@ public:
 
     int Load(const char* path) override;
     void PreloadDirectory(const std::filesystem::path& root) override;
-    int Play(int soundHandle, bool loop, float volume, bool paused = false, float startSeconds = 0.0f, float rate = 1.0f) override;
+    int Play(int soundHandle, bool loop, float volume, bool paused = false, float startSeconds = 0.0f,
+             float rate = 1.0f) override;
     bool SetSpatial(int playHandle, const GameProjectAudioListener& listener,
-        const GameProjectAudioSource& source) override;
+                    const GameProjectAudioSource& source) override;
     bool SetPlaybackRate(int handle, float rate) override;
     GameProjectAudioStats GetStats() const override;
     void Stop(int playHandle) override;
@@ -61,7 +62,7 @@ private:
     void DestroyVoiceSlot(int playHandle);
     void CleanupFinishedVoices();
 
-    std::unique_ptr<IXAudio2, void(*)(IXAudio2*)> engine_{ nullptr, nullptr };
+    std::unique_ptr<IXAudio2, void (*)(IXAudio2*)> engine_{nullptr, nullptr};
     IXAudio2MasteringVoice* masteringVoice_ = nullptr;
 
     std::vector<SoundData> sounds_{};

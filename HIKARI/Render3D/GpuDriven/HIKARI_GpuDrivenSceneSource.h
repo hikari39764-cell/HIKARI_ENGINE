@@ -14,86 +14,83 @@
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
 
-    struct GpuSceneDirtyRange {
-        uint32_t firstInstance = 0;
-        uint32_t instanceCount = 0;
+struct GpuSceneDirtyRange {
+    uint32_t firstInstance = 0;
+    uint32_t instanceCount = 0;
 
-        bool IsValid() const {
-            return instanceCount != 0u;
-        }
-    };
+    bool IsValid() const { return instanceCount != 0u; }
+};
 
-    struct GpuSceneSurfaceRecord;
-    struct MassGpuSceneSource;
+struct GpuSceneSurfaceRecord;
+struct MassGpuSceneSource;
 
-    struct GpuDrivenTraditionalIndirectView {
-        const std::vector<GpuSceneSurfaceRecord>* records = nullptr;
-        const std::vector<uint32_t>* executableRecordIndices = nullptr;
-        const std::vector<RUNTIME::SurfaceDrawCommand>* commands = nullptr;
-        const std::vector<RUNTIME::SurfaceGpuSceneInstance>* instances = nullptr;
-        const std::vector<RUNTIME::SurfaceGpuSceneMaterialSource>* materialSources = nullptr;
-        const std::vector<std::vector<MATH::Mat4>>* jointPalettes = nullptr;
-        const std::vector<VFX::VariantKey>* bucketVariants = nullptr;
-        uint32_t gpuSceneBaseIndex = 0;
-        uint32_t gpuSceneInstanceCount = 0;
-        uint32_t staticCommandCount = 0;
-        uint32_t skinnedCommandCount = 0;
+struct GpuDrivenTraditionalIndirectView {
+    const std::vector<GpuSceneSurfaceRecord>* records = nullptr;
+    const std::vector<uint32_t>* executableRecordIndices = nullptr;
+    const std::vector<RUNTIME::SurfaceDrawCommand>* commands = nullptr;
+    const std::vector<RUNTIME::SurfaceGpuSceneInstance>* instances = nullptr;
+    const std::vector<RUNTIME::SurfaceGpuSceneMaterialSource>* materialSources = nullptr;
+    const std::vector<std::vector<MATH::Mat4>>* jointPalettes = nullptr;
+    const std::vector<VFX::VariantKey>* bucketVariants = nullptr;
+    uint32_t gpuSceneBaseIndex = 0;
+    uint32_t gpuSceneInstanceCount = 0;
+    uint32_t staticCommandCount = 0;
+    uint32_t skinnedCommandCount = 0;
 
-        void Reset();
-        bool HasCommands() const;
-        bool HasGpuSceneRange() const;
-        bool HasGpuSceneInstances() const;
-        size_t CommandCount() const;
-    };
+    void Reset();
+    bool HasCommands() const;
+    bool HasGpuSceneRange() const;
+    bool HasGpuSceneInstances() const;
+    size_t CommandCount() const;
+};
 
-    struct GpuDrivenPassSource {
-        const std::vector<RUNTIME::SurfaceGpuSceneInstance>* instances = nullptr;
-        const std::vector<RUNTIME::SurfaceGpuSceneMaterialSource>* materialSources = nullptr;
-        // GPU scene の常駐範囲。CPU 側 view は upload/material patch 用の補助に留める。
-        uint32_t gpuSceneBaseIndex = 0;
-        uint32_t gpuSceneInstanceCount = 0;
-        GpuDrivenBackendKind preferredBackend = GpuDrivenBackendKind::TraditionalIndirect;
-        bool clusterEligible = false;
-        GpuDrivenTraditionalIndirectView traditionalIndirect{};
-        std::vector<GpuSceneDirtyRange> dirtyRanges{};
+struct GpuDrivenPassSource {
+    const std::vector<RUNTIME::SurfaceGpuSceneInstance>* instances = nullptr;
+    const std::vector<RUNTIME::SurfaceGpuSceneMaterialSource>* materialSources = nullptr;
+    // GPU scene の常駐範囲。CPU 側 view は upload/material patch 用の補助に留める。
+    uint32_t gpuSceneBaseIndex = 0;
+    uint32_t gpuSceneInstanceCount = 0;
+    GpuDrivenBackendKind preferredBackend = GpuDrivenBackendKind::TraditionalIndirect;
+    bool clusterEligible = false;
+    GpuDrivenTraditionalIndirectView traditionalIndirect{};
+    std::vector<GpuSceneDirtyRange> dirtyRanges{};
 
-        void Reset();
-        bool HasPrimaryGpuSceneRange() const;
-        bool HasPrimaryGpuSceneInstances() const;
-        bool HasGpuSceneRange() const;
-        bool HasGpuSceneInstances() const;
-        bool HasDirtyGpuSceneRanges() const;
-        GpuDrivenPassBuildInput ToFrameBuildInput() const;
-    };
+    void Reset();
+    bool HasPrimaryGpuSceneRange() const;
+    bool HasPrimaryGpuSceneInstances() const;
+    bool HasGpuSceneRange() const;
+    bool HasGpuSceneInstances() const;
+    bool HasDirtyGpuSceneRanges() const;
+    GpuDrivenPassBuildInput ToFrameBuildInput() const;
+};
 
-    struct GpuDrivenSceneSource {
-        std::array<GpuDrivenPassSource, kGpuDrivenPassCount> passes{};
-        // Scene registry の全 surface。View の culling/描画 route に依存しない
-        // RT/GI 入力とし、CPU scene をもう一つ複製しない。
-        const std::vector<GpuSceneSurfaceRecord>* surfaceRecords = nullptr;
-        const std::vector<std::vector<MATH::Mat4>>* meshShaderJointPalettes = nullptr;
-        const std::vector<WATER::WaterSurfaceGpuData>* waterSurfaceGpuData = nullptr;
-        const std::vector<SAND::SandSurfaceGpuData>* sandSurfaceGpuData = nullptr;
-        const std::vector<float>* sandSurfaceHeights = nullptr;
-        const MassGpuSceneSource* mass = nullptr;
-        uint64_t sandSurfaceHeightVersion = 0;
-        uint64_t layoutVersion = 0;
-        uint64_t sourceVersion = 0;
-        uint64_t dirtyBaseSourceVersion = 0;
-        size_t sourceInstanceCount = 0;
-        uint32_t sourceRecordCount = 0;
+struct GpuDrivenSceneSource {
+    std::array<GpuDrivenPassSource, kGpuDrivenPassCount> passes{};
+    // Scene registry の全 surface。View の culling/描画 route に依存しない
+    // RT/GI 入力とし、CPU scene をもう一つ複製しない。
+    const std::vector<GpuSceneSurfaceRecord>* surfaceRecords = nullptr;
+    const std::vector<std::vector<MATH::Mat4>>* meshShaderJointPalettes = nullptr;
+    const std::vector<WATER::WaterSurfaceGpuData>* waterSurfaceGpuData = nullptr;
+    const std::vector<SAND::SandSurfaceGpuData>* sandSurfaceGpuData = nullptr;
+    const std::vector<float>* sandSurfaceHeights = nullptr;
+    const MassGpuSceneSource* mass = nullptr;
+    uint64_t sandSurfaceHeightVersion = 0;
+    uint64_t layoutVersion = 0;
+    uint64_t sourceVersion = 0;
+    uint64_t dirtyBaseSourceVersion = 0;
+    size_t sourceInstanceCount = 0;
+    uint32_t sourceRecordCount = 0;
 
-        void Reset();
-        GpuDrivenPassSource& GetPass(GpuDrivenPassKind passKind);
-        const GpuDrivenPassSource& GetPass(GpuDrivenPassKind passKind) const;
-        bool HasAnyGpuSceneRanges() const;
-        bool HasAnyGpuSceneInstances() const;
-        bool HasAnyDirtyGpuSceneRanges() const;
-        bool HasMassInstances() const;
-        size_t CountGpuSceneInstances() const;
-    };
+    void Reset();
+    GpuDrivenPassSource& GetPass(GpuDrivenPassKind passKind);
+    const GpuDrivenPassSource& GetPass(GpuDrivenPassKind passKind) const;
+    bool HasAnyGpuSceneRanges() const;
+    bool HasAnyGpuSceneInstances() const;
+    bool HasAnyDirtyGpuSceneRanges() const;
+    bool HasMassInstances() const;
+    size_t CountGpuSceneInstances() const;
+};
 
-    GpuDrivenFrameBuildInput BuildGpuDrivenFrameInput(
-        const GpuDrivenSceneSource& source);
+GpuDrivenFrameBuildInput BuildGpuDrivenFrameInput(const GpuDrivenSceneSource& source);
 
 } // namespace HIKARI::RENDER3D::GPUDRIVEN

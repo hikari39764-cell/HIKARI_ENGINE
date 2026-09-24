@@ -9,39 +9,36 @@
 
 namespace HIKARI::RENDER3D::RUNTIME {
 
-    constexpr uint32_t kInvalidRenderModelIndex = kInvalidRenderSurfaceIndex;
+constexpr uint32_t kInvalidRenderModelIndex = kInvalidRenderSurfaceIndex;
 
-    struct RenderModelNodeRecord {
-        uint32_t nodeIndex = kInvalidRenderModelIndex;
-        int parentIndex = -1;
-        MATH::Mat4 localMatrix{};
-        Bounds localBounds{};
-        bool hasMesh = false;
-        int meshIndex = -1;
-        int skinIndex = -1;
-    };
+struct RenderModelNodeRecord {
+    uint32_t nodeIndex = kInvalidRenderModelIndex;
+    int parentIndex = -1;
+    MATH::Mat4 localMatrix{};
+    Bounds localBounds{};
+    bool hasMesh = false;
+    int meshIndex = -1;
+    int skinIndex = -1;
+};
 
-    struct RenderModelAsset {
-        const ModelAsset* source = nullptr;
-        std::string sourceName{};
-        std::string sourcePath{};
+struct RenderModelAsset {
+    const ModelAsset* source = nullptr;
+    std::string sourceName{};
+    std::string sourcePath{};
 
-        Bounds localBounds{};
+    Bounds localBounds{};
 
-        bool valid = false;
-        bool hasSkinnedSurfaces = false;
-        bool hasStaticSurfaces = false;
+    bool valid = false;
+    bool hasSkinnedSurfaces = false;
+    bool hasStaticSurfaces = false;
 
-        std::vector<RenderModelNodeRecord> nodes{};
-        // HCMESH の node-global bake を剛体アニメーション差分へ戻す基準。
-        std::vector<MATH::Mat4> bindNodeGlobals{};
-        // Surface は material 単位で切った描画契約。
-        std::vector<RenderSurfaceRecord> surfaces{};
-    };
+    std::vector<RenderModelNodeRecord> nodes{};
+    // HCMESH の node-global bake を剛体アニメーション差分へ戻す基準。
+    std::vector<MATH::Mat4> bindNodeGlobals{};
+    // Surface は material 単位で切った描画契約。
+    std::vector<RenderSurfaceRecord> surfaces{};
+};
 
-    bool BuildRenderModelAsset(
-        const ModelAsset& source,
-        RenderModelAsset& out,
-        std::string* outMessage = nullptr);
+bool BuildRenderModelAsset(const ModelAsset& source, RenderModelAsset& out, std::string* outMessage = nullptr);
 
 } // namespace HIKARI::RENDER3D::RUNTIME

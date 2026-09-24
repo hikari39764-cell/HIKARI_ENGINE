@@ -8,31 +8,27 @@
 
 namespace HIKARI {
 
-    class DocumentSceneBase;
-    struct EditorSelection;
+class DocumentSceneBase;
+struct EditorSelection;
 
-    namespace EDITOR {
+namespace EDITOR {
 
-        struct SceneSelectionTransformResult {
-            EditorTransformGizmoResult gizmo{};
-            std::vector<SceneObjectId> changedObjectIds{};
-            bool lightingRuntimeRefreshRequired = false;
-            std::string_view historyLabelOverride{};
-        };
+struct SceneSelectionTransformResult {
+    EditorTransformGizmoResult gizmo{};
+    std::vector<SceneObjectId> changedObjectIds{};
+    bool lightingRuntimeRefreshRequired = false;
+    std::string_view historyLabelOverride{};
+};
 
-        // Draws one active-object gizmo and applies its world-space delta to
-        // each selected hierarchy root. Selected descendants are not applied
-        // twice when their parent is also selected.
-        SceneSelectionTransformResult DrawSceneSelectionTransformGizmo(
-            DocumentSceneBase& scene,
-            EditorSelection& selection,
-            const EditorTransformGizmo& gizmo,
-            const EditorTransformGizmoState& state,
-            const EditorViewportRect& viewportRect);
+// Draws one active-object gizmo and applies its world-space delta to
+// each selected hierarchy root. Selected descendants are not applied
+// twice when their parent is also selected.
+SceneSelectionTransformResult DrawSceneSelectionTransformGizmo(DocumentSceneBase& scene, EditorSelection& selection,
+                                                               const EditorTransformGizmo& gizmo,
+                                                               const EditorTransformGizmoState& state,
+                                                               const EditorViewportRect& viewportRect);
 
-        void CommitSceneSelectionTransforms(
-            DocumentSceneBase& scene,
-            const SceneSelectionTransformResult& result);
+void CommitSceneSelectionTransforms(DocumentSceneBase& scene, const SceneSelectionTransformResult& result);
 
-    } // namespace EDITOR
+} // namespace EDITOR
 } // namespace HIKARI

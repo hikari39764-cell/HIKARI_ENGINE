@@ -5,18 +5,18 @@
 #include <unordered_set>
 
 namespace HIKARI::CAMERA {
-const GameplayCameraMode *GameplayCameraProfile::FindMode(std::string_view id) const noexcept {
-    const auto it = std::find_if(modes.begin(), modes.end(), [id](const auto &mode) { return mode.id == id; });
+const GameplayCameraMode* GameplayCameraProfile::FindMode(std::string_view id) const noexcept {
+    const auto it = std::find_if(modes.begin(), modes.end(), [id](const auto& mode) { return mode.id == id; });
     return it == modes.end() ? nullptr : &*it;
 }
 
 const GameplayCameraEffect* GameplayCameraProfile::FindEffect(std::string_view id) const noexcept {
-    const auto it=std::find_if(effects.begin(),effects.end(),[&](const auto& e){return e.id==id;});
-    return it==effects.end()?nullptr:&*it;
+    const auto it = std::find_if(effects.begin(), effects.end(), [&](const auto& e) { return e.id == id; });
+    return it == effects.end() ? nullptr : &*it;
 }
 
-bool ValidateGameplayCameraProfile(const GameplayCameraProfile &profile, std::string &error) {
-    auto fail = [&](const char *message) {
+bool ValidateGameplayCameraProfile(const GameplayCameraProfile& profile, std::string& error) {
+    auto fail = [&](const char* message) {
         error = message;
         return false;
     };
@@ -27,30 +27,37 @@ bool ValidateGameplayCameraProfile(const GameplayCameraProfile &profile, std::st
     if (!std::isfinite(profile.cinematicEnterSeconds) || !std::isfinite(profile.cinematicReturnSeconds) ||
         profile.cinematicEnterSeconds < 0 || profile.cinematicReturnSeconds < 0)
         return fail("Invalid cinematic handoff duration.");
-    const auto validStack=[](const std::vector<SEQUENCER::CameraMotionEffect>& stack) {
+    const auto validStack = [](const std::vector<SEQUENCER::CameraMotionEffect>& stack) {
         std::unordered_set<uint64_t> seen;
-        for(const auto& e:stack) {
-            if(!e.id || !seen.insert(e.id).second || static_cast<size_t>(e.kind)>=SEQUENCER::kCameraMotionDescriptors.size()) return false;
-            for(float value:{e.start,e.duration,e.fadeIn,e.fadeOut,e.frequency,e.maximumSpeed})
-                if(!std::isfinite(value) || value<0) return false;
-            if(e.maximumSpeed<=0) return false;
-            for(const auto* parameter:{&e.amount,&e.weight}) {
-                if(!std::isfinite(parameter->value)) return false;
-                float previous=-1;
-                for(const auto& key:parameter->keys) {
-                    if(!std::isfinite(key.time) || key.time<0 || key.time<=previous || !std::isfinite(key.value) ||
-                        !std::isfinite(key.inSlope) || !std::isfinite(key.outSlope)) return false;
-                    previous=key.time;
+        for (const auto& e : stack) {
+            if (!e.id || !seen.insert(e.id).second ||
+                static_cast<size_t>(e.kind) >= SEQUENCER::kCameraMotionDescriptors.size())
+                return false;
+            for (float value : {e.start, e.duration, e.fadeIn, e.fadeOut, e.frequency, e.maximumSpeed})
+                if (!std::isfinite(value) || value < 0)
+                    return false;
+            if (e.maximumSpeed <= 0)
+                return false;
+            for (const auto* parameter : {&e.amount, &e.weight}) {
+                if (!std::isfinite(parameter->value))
+                    return false;
+                float previous = -1;
+                for (const auto& key : parameter->keys) {
+                    if (!std::isfinite(key.time) || key.time < 0 || key.time <= previous || !std::isfinite(key.value) ||
+                        !std::isfinite(key.inSlope) || !std::isfinite(key.outSlope))
+                        return false;
+                    previous = key.time;
                 }
             }
         }
         return true;
     };
     std::unordered_set<std::string> ids;
-    for (const auto &mode : profile.modes) {
-        if (mode.id.empty() || mode.id.size()>128 || !ids.insert(mode.id).second)
+    for (const auto& mode : profile.modes) {
+        if (mode.id.empty() || mode.id.size() > 128 || !ids.insert(mode.id).second)
             return fail("Mode IDs must be nonempty and unique.");
-        if (!validStack(mode.effects)) return fail("Invalid camera effect stack.");
+        if (!validStack(mode.effects))
+            return fail("Invalid camera effect stack.");
         if (mode.mount != CameraMount::Orbit && mode.mount != CameraMount::FirstPerson &&
             mode.mount != CameraMount::Fixed)
             return fail("Unknown camera mount.");
@@ -68,21 +75,24 @@ bool ValidateGameplayCameraProfile(const GameplayCameraProfile &profile, std::st
     }
     ids.clear();
     for (const auto& effect : profile.effects) {
-        if (effect.id.empty() || effect.id.size()>128 || !ids.insert(effect.id).second)
+        if (effect.id.empty() || effect.id.size() > 128 || !ids.insert(effect.id).second)
             return fail("Effect IDs must be nonempty and unique.");
-        if (!validStack(effect.effects)) return fail("Invalid camera effect clip.");
+        if (!validStack(effect.effects))
+            return fail("Invalid camera effect clip.");
         if (!std::isfinite(effect.duration) || effect.duration <= 0)
             return fail("Effect duration must be positive and finite.");
     }
-    for(const auto& mode:profile.modes) for(const auto& base:mode.activationFromModes)
-        if(!profile.FindMode(base)) return fail("Activation base mode does not exist.");
+    for (const auto& mode : profile.modes)
+        for (const auto& base : mode.activationFromModes)
+            if (!profile.FindMode(base))
+                return fail("Activation base mode does not exist.");
     if (!profile.FindMode(profile.defaultMode))
         return fail("Default mode does not exist.");
     error.clear();
     return true;
 }
 
-nlohmann::json WriteGameplayCameraProfile(const GameplayCameraProfile &profile) {
+nlohmann::json WriteGameplayCameraProfile(const GameplayCameraProfile& profile) {
     nlohmann::json root{{"assetType", "GameplayCamera"},
                         {"formatVersion", GameplayCameraProfile::kFormatVersion},
                         {"cinematicEnterSeconds", profile.cinematicEnterSeconds},
@@ -92,7 +102,7 @@ nlohmann::json WriteGameplayCameraProfile(const GameplayCameraProfile &profile) 
                         {"shoulderSwapAction", profile.shoulderSwapAction},
                         {"effects", nlohmann::json::array()},
                         {"modes", nlohmann::json::array()}};
-    for (const auto &mode : profile.modes) {
+    for (const auto& mode : profile.modes) {
         nlohmann::json follow;
         mode.follow.Serialize(follow);
         root["modes"].push_back({{"id", mode.id},
@@ -114,15 +124,18 @@ nlohmann::json WriteGameplayCameraProfile(const GameplayCameraProfile &profile) 
                                  {"priority", mode.priority}});
     }
     for (const auto& effect : profile.effects)
-        root["effects"].push_back({{"id",effect.id},{"name",effect.name},{"duration",effect.duration},
-            {"effects",SEQUENCER::WriteCameraMotionEffects(effect.effects)}});
+        root["effects"].push_back({{"id", effect.id},
+                                   {"name", effect.name},
+                                   {"duration", effect.duration},
+                                   {"effects", SEQUENCER::WriteCameraMotionEffects(effect.effects)}});
     return root;
 }
 
-bool ReadGameplayCameraProfile(const nlohmann::json &root, GameplayCameraProfile &result, std::string &error) {
+bool ReadGameplayCameraProfile(const nlohmann::json& root, GameplayCameraProfile& result, std::string& error) {
     try {
         if (!root.is_object() || root.value("assetType", "") != "GameplayCamera" ||
-            (root.value("formatVersion", 0u) < 1 || root.value("formatVersion", 0u) > GameplayCameraProfile::kFormatVersion)) {
+            (root.value("formatVersion", 0u) < 1 ||
+             root.value("formatVersion", 0u) > GameplayCameraProfile::kFormatVersion)) {
             error = "Unsupported gameplay camera asset format.";
             return false;
         }
@@ -137,7 +150,7 @@ bool ReadGameplayCameraProfile(const nlohmann::json &root, GameplayCameraProfile
             return false;
         }
         profile.modes.clear();
-        for (const auto &item : root.at("modes")) {
+        for (const auto& item : root.at("modes")) {
             GameplayCameraMode mode;
             mode.id = item.at("id").get<std::string>();
             mode.name = item.value("name", mode.id);
@@ -163,46 +176,59 @@ bool ReadGameplayCameraProfile(const nlohmann::json &root, GameplayCameraProfile
             HIKARI_READ_MODE(activationFromModes);
             HIKARI_READ_MODE(priority);
 #undef HIKARI_READ_MODE
-            mode.effects = SEQUENCER::ReadCameraMotionEffects(item.value("effects",nlohmann::json::array()));
+            mode.effects = SEQUENCER::ReadCameraMotionEffects(item.value("effects", nlohmann::json::array()));
             if (!item.contains("effects") || item.contains("rollDegrees") || item.contains("shakeAmplitude") ||
-                item.contains("shakeFrequency") || item.contains("speedFovDegrees") || item.contains("speedForMaximumFov")) {
+                item.contains("shakeFrequency") || item.contains("speedFovDegrees") ||
+                item.contains("speedForMaximumFov")) {
                 // v1 の固定欄は読込時だけ積み木へ変換する。
-                const auto add=[&](SEQUENCER::CameraMotionKind kind,float amount) {
-                    const char* key=kind==SEQUENCER::CameraMotionKind::Roll?"rollDegrees":
-                        kind==SEQUENCER::CameraMotionKind::Shake?"shakeAmplitude":"speedFovDegrees";
-                    auto existing=std::find_if(mode.effects.begin(),mode.effects.end(),[&](const auto& e){return e.kind==kind;});
-                    if(existing!=mode.effects.end()) {
-                        if(item.contains(key)) {existing->amount.value=amount;existing->amount.keys.clear();}
-                        if(kind==SEQUENCER::CameraMotionKind::Shake && item.contains("shakeFrequency")) existing->frequency=item.at("shakeFrequency").get<float>();
-                        if(kind==SEQUENCER::CameraMotionKind::SpeedFov && item.contains("speedForMaximumFov")) existing->maximumSpeed=item.at("speedForMaximumFov").get<float>();
+                const auto add = [&](SEQUENCER::CameraMotionKind kind, float amount) {
+                    const char* key = kind == SEQUENCER::CameraMotionKind::Roll    ? "rollDegrees"
+                                      : kind == SEQUENCER::CameraMotionKind::Shake ? "shakeAmplitude"
+                                                                                   : "speedFovDegrees";
+                    auto existing = std::find_if(mode.effects.begin(), mode.effects.end(),
+                                                 [&](const auto& e) { return e.kind == kind; });
+                    if (existing != mode.effects.end()) {
+                        if (item.contains(key)) {
+                            existing->amount.value = amount;
+                            existing->amount.keys.clear();
+                        }
+                        if (kind == SEQUENCER::CameraMotionKind::Shake && item.contains("shakeFrequency"))
+                            existing->frequency = item.at("shakeFrequency").get<float>();
+                        if (kind == SEQUENCER::CameraMotionKind::SpeedFov && item.contains("speedForMaximumFov"))
+                            existing->maximumSpeed = item.at("speedForMaximumFov").get<float>();
                         return;
                     }
-                    if (amount == 0) return;
+                    if (amount == 0)
+                        return;
                     SEQUENCER::CameraMotionEffect e;
-                    for(const auto& old:mode.effects) e.id=std::max(e.id,old.id+1);
-                    e.kind=kind; e.amount.value=amount;
-                    e.seed=0; e.frequency=item.value("shakeFrequency",9.0f);
-                    e.maximumSpeed=item.value("speedForMaximumFov",8.0f);
+                    for (const auto& old : mode.effects)
+                        e.id = std::max(e.id, old.id + 1);
+                    e.kind = kind;
+                    e.amount.value = amount;
+                    e.seed = 0;
+                    e.frequency = item.value("shakeFrequency", 9.0f);
+                    e.maximumSpeed = item.value("speedForMaximumFov", 8.0f);
                     mode.effects.push_back(e);
                 };
-                add(SEQUENCER::CameraMotionKind::Shake,item.value("shakeAmplitude",0.0f));
-                add(SEQUENCER::CameraMotionKind::Roll,item.value("rollDegrees",0.0f));
-                add(SEQUENCER::CameraMotionKind::SpeedFov,item.value("speedFovDegrees",0.0f));
+                add(SEQUENCER::CameraMotionKind::Shake, item.value("shakeAmplitude", 0.0f));
+                add(SEQUENCER::CameraMotionKind::Roll, item.value("rollDegrees", 0.0f));
+                add(SEQUENCER::CameraMotionKind::SpeedFov, item.value("speedFovDegrees", 0.0f));
             }
             profile.modes.push_back(std::move(mode));
         }
-        for (const auto& item : root.value("effects",nlohmann::json::array())) {
+        for (const auto& item : root.value("effects", nlohmann::json::array())) {
             GameplayCameraEffect effect;
-            effect.id=item.at("id").get<std::string>(); effect.name=item.value("name",effect.id);
-            effect.duration=item.value("duration",0.6f);
-            effect.effects=SEQUENCER::ReadCameraMotionEffects(item.value("effects",nlohmann::json::array()));
+            effect.id = item.at("id").get<std::string>();
+            effect.name = item.value("name", effect.id);
+            effect.duration = item.value("duration", 0.6f);
+            effect.effects = SEQUENCER::ReadCameraMotionEffects(item.value("effects", nlohmann::json::array()));
             profile.effects.push_back(std::move(effect));
         }
         if (!ValidateGameplayCameraProfile(profile, error))
             return false;
         result = std::move(profile);
         return true;
-    } catch (const std::exception &exception) {
+    } catch (const std::exception& exception) {
         error = exception.what();
         return false;
     }
@@ -210,7 +236,7 @@ bool ReadGameplayCameraProfile(const nlohmann::json &root, GameplayCameraProfile
 
 GameplayCameraProfile MakeGameplayCameraPreset(std::string_view preset) {
     GameplayCameraProfile profile;
-    auto &base = profile.modes.front();
+    auto& base = profile.modes.front();
     base.follow.initialDistance = 4.5f;
     base.follow.minimumDistance = 0.1f;
     base.follow.maximumDistance = 10;
@@ -240,7 +266,7 @@ GameplayCameraProfile MakeGameplayCameraPreset(std::string_view preset) {
         aim.id = "aim";
         aim.name = "Aim";
         aim.priority = 20;
-        aim.activationFromModes={base.id};
+        aim.activationFromModes = {base.id};
         aim.activationAction = "Gameplay.Aim";
         aim.follow.initialDistance = 2.2f;
         aim.shoulderOffset = 0.55f;
@@ -250,16 +276,17 @@ GameplayCameraProfile MakeGameplayCameraPreset(std::string_view preset) {
         lock.name = "Lock On";
         lock.priority = 30;
         lock.trackLookTarget = true;
-        lock.activationFromModes={base.id};
+        lock.activationFromModes = {base.id};
         lock.activationAction = "Gameplay.LockOn";
         auto sprint = base;
         sprint.id = "sprint";
         sprint.name = "Sprint";
         sprint.priority = 10;
-        sprint.activationFromModes={base.id};
+        sprint.activationFromModes = {base.id};
         sprint.activationAction = "Gameplay.Sprint";
         SEQUENCER::CameraMotionEffect speed;
-        speed.kind=SEQUENCER::CameraMotionKind::SpeedFov; speed.amount.value=12;
+        speed.kind = SEQUENCER::CameraMotionKind::SpeedFov;
+        speed.amount.value = 12;
         sprint.effects.push_back(speed);
         auto fps = base;
         fps.id = "first_person";
@@ -269,18 +296,33 @@ GameplayCameraProfile MakeGameplayCameraPreset(std::string_view preset) {
         profile.modes.insert(profile.modes.end(), {aim, lock, sprint, fps});
     }
     GameplayCameraEffect impact;
-    SEQUENCER::CameraMotionEffect shake; shake.kind=SEQUENCER::CameraMotionKind::Shake;
-    shake.amount.value=.08f; shake.frequency=12; shake.duration=.6f; shake.fadeIn=.025f; shake.fadeOut=.5f;
+    SEQUENCER::CameraMotionEffect shake;
+    shake.kind = SEQUENCER::CameraMotionKind::Shake;
+    shake.amount.value = .08f;
+    shake.frequency = 12;
+    shake.duration = .6f;
+    shake.fadeIn = .025f;
+    shake.fadeOut = .5f;
     impact.effects.push_back(shake);
     profile.effects.push_back(impact);
-    GameplayCameraEffect recoil;recoil.id="recoil";recoil.name="Recoil";recoil.duration=.3f;
-    SEQUENCER::CameraMotionEffect tilt;tilt.kind=SEQUENCER::CameraMotionKind::Tilt;
-    tilt.amount.keys={{0,0,0,0},{.035f,-3,0,0},{.3f,0,0,0}};
-    recoil.effects.push_back(tilt);profile.effects.push_back(recoil);
-    GameplayCameraEffect pulse;pulse.id="focus_pulse";pulse.name="Focus Pulse";pulse.duration=.8f;
-    SEQUENCER::CameraMotionEffect lens;lens.kind=SEQUENCER::CameraMotionKind::Fov;
-    lens.amount.keys={{0,0,0,0},{.15f,-8,0,0},{.8f,0,0,0}};
-    pulse.effects.push_back(lens);profile.effects.push_back(pulse);
+    GameplayCameraEffect recoil;
+    recoil.id = "recoil";
+    recoil.name = "Recoil";
+    recoil.duration = .3f;
+    SEQUENCER::CameraMotionEffect tilt;
+    tilt.kind = SEQUENCER::CameraMotionKind::Tilt;
+    tilt.amount.keys = {{0, 0, 0, 0}, {.035f, -3, 0, 0}, {.3f, 0, 0, 0}};
+    recoil.effects.push_back(tilt);
+    profile.effects.push_back(recoil);
+    GameplayCameraEffect pulse;
+    pulse.id = "focus_pulse";
+    pulse.name = "Focus Pulse";
+    pulse.duration = .8f;
+    SEQUENCER::CameraMotionEffect lens;
+    lens.kind = SEQUENCER::CameraMotionKind::Fov;
+    lens.amount.keys = {{0, 0, 0, 0}, {.15f, -8, 0, 0}, {.8f, 0, 0, 0}};
+    pulse.effects.push_back(lens);
+    profile.effects.push_back(pulse);
     return profile;
 }
 } // namespace HIKARI::CAMERA

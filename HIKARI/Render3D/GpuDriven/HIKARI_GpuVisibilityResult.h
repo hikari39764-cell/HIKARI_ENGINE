@@ -10,119 +10,101 @@
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
 
-    struct GpuVisibilityBucketResult {
-        size_t sourceInstanceCount = 0;
-        size_t visibleCommandCount = 0;
-        size_t visibleCommandOverflowCount = 0;
-        size_t commandCapacity = 0;
-        UINT64 commandCounterOffset = 0;
-        bool gpuCounterBacked = false;
-        bool visibleCommandCountKnown = false;
+struct GpuVisibilityBucketResult {
+    size_t sourceInstanceCount = 0;
+    size_t visibleCommandCount = 0;
+    size_t visibleCommandOverflowCount = 0;
+    size_t commandCapacity = 0;
+    UINT64 commandCounterOffset = 0;
+    bool gpuCounterBacked = false;
+    bool visibleCommandCountKnown = false;
 
-        bool HasGpuCounter() const {
-            return gpuCounterBacked && commandCapacity != 0;
+    bool HasGpuCounter() const { return gpuCounterBacked && commandCapacity != 0; }
+
+    bool HasKnownVisibleCommands() const { return visibleCommandCountKnown && visibleCommandCount != 0; }
+};
+
+struct GpuVisibilityPassResult {
+    std::array<GpuVisibilityBucketResult, kGpuDrivenCommandBucketCount> buckets{};
+    size_t submittedDrawSeedCount = 0;
+
+    size_t GetSourceInstanceCount(GpuDrivenCommandBucket bucket) const {
+        return buckets[ToCommandBucketIndex(bucket)].sourceInstanceCount;
+    }
+
+    bool HasKnownBucketSourceCounts() const {
+        size_t total = 0;
+        for (const GpuVisibilityBucketResult& bucket : buckets) {
+            total += bucket.sourceInstanceCount;
         }
+        return total != 0;
+    }
 
-        bool HasKnownVisibleCommands() const {
-            return visibleCommandCountKnown && visibleCommandCount != 0;
+    bool HasSourceForBucket(GpuDrivenCommandBucket bucket) const {
+        if (!HasKnownBucketSourceCounts()) {
+            return submittedDrawSeedCount != 0;
         }
-    };
+        return GetSourceInstanceCount(bucket) != 0;
+    }
 
-    struct GpuVisibilityPassResult {
-        std::array<GpuVisibilityBucketResult, kGpuDrivenCommandBucketCount> buckets{};
-        size_t submittedDrawSeedCount = 0;
-
-        size_t GetSourceInstanceCount(GpuDrivenCommandBucket bucket) const {
-            return buckets[ToCommandBucketIndex(bucket)].sourceInstanceCount;
-        }
-
-        bool HasKnownBucketSourceCounts() const {
-            size_t total = 0;
-            for (const GpuVisibilityBucketResult& bucket : buckets) {
-                total += bucket.sourceInstanceCount;
+    bool HasGpuCommandCounters() const {
+        for (const GpuVisibilityBucketResult& bucket : buckets) {
+            if (bucket.HasGpuCounter()) {
+                return true;
             }
-            return total != 0;
         }
+        return false;
+    }
 
-        bool HasSourceForBucket(GpuDrivenCommandBucket bucket) const {
-            if (!HasKnownBucketSourceCounts()) {
-                return submittedDrawSeedCount != 0;
+    bool HasKnownVisibleCommandCounts() const {
+        for (const GpuVisibilityBucketResult& bucket : buckets) {
+            if (bucket.visibleCommandCountKnown) {
+                return true;
             }
-            return GetSourceInstanceCount(bucket) != 0;
         }
+        return false;
+    }
 
-        bool HasGpuCommandCounters() const {
-            for (const GpuVisibilityBucketResult& bucket : buckets) {
-                if (bucket.HasGpuCounter()) {
-                    return true;
-                }
+    size_t CountKnownVisibleCommands() const {
+        size_t count = 0;
+        for (const GpuVisibilityBucketResult& bucket : buckets) {
+            if (bucket.visibleCommandCountKnown) {
+                count += bucket.visibleCommandCount;
             }
-            return false;
         }
+        return count;
+    }
 
-        bool HasKnownVisibleCommandCounts() const {
-            for (const GpuVisibilityBucketResult& bucket : buckets) {
-                if (bucket.visibleCommandCountKnown) {
-                    return true;
-                }
+    size_t CountKnownVisibleCommandOverflows() const {
+        size_t count = 0;
+        for (const GpuVisibilityBucketResult& bucket : buckets) {
+            if (bucket.visibleCommandCountKnown) {
+                count += bucket.visibleCommandOverflowCount;
             }
-            return false;
         }
+        return count;
+    }
+};
 
-        size_t CountKnownVisibleCommands() const {
-            size_t count = 0;
-            for (const GpuVisibilityBucketResult& bucket : buckets) {
-                if (bucket.visibleCommandCountKnown) {
-                    count += bucket.visibleCommandCount;
-                }
-            }
-            return count;
-        }
+struct GpuVisibilityResult {
+    ID3D12Resource* visibleInstanceBuffer = nullptr;
+    ID3D12Resource* visibleClusterRangeBuffer = nullptr;
+    ID3D12Resource* visibleMeshletRangeBuffer = nullptr;
+    ID3D12Resource* counterBuffer = nullptr;
 
-        size_t CountKnownVisibleCommandOverflows() const {
-            size_t count = 0;
-            for (const GpuVisibilityBucketResult& bucket : buckets) {
-                if (bucket.visibleCommandCountKnown) {
-                    count += bucket.visibleCommandOverflowCount;
-                }
-            }
-            return count;
-        }
-    };
+    std::array<GpuVisibilityPassResult, kGpuDrivenPassCount> passes{};
 
-    struct GpuVisibilityResult {
-        ID3D12Resource* visibleInstanceBuffer = nullptr;
-        ID3D12Resource* visibleClusterRangeBuffer = nullptr;
-        ID3D12Resource* visibleMeshletRangeBuffer = nullptr;
-        ID3D12Resource* counterBuffer = nullptr;
+    const GpuVisibilityPassResult& GetPass(GpuDrivenPassKind pass) const { return passes[ToPassIndex(pass)]; }
 
-        std::array<GpuVisibilityPassResult, kGpuDrivenPassCount> passes{};
+    GpuVisibilityPassResult& GetPass(GpuDrivenPassKind pass) { return passes[ToPassIndex(pass)]; }
 
-        const GpuVisibilityPassResult& GetPass(
-            GpuDrivenPassKind pass) const {
+    size_t GetSourceInstanceCount(GpuDrivenPassKind pass, GpuDrivenCommandBucket bucket) const {
+        return GetPass(pass).GetSourceInstanceCount(bucket);
+    }
 
-            return passes[ToPassIndex(pass)];
-        }
-
-        GpuVisibilityPassResult& GetPass(
-            GpuDrivenPassKind pass) {
-
-            return passes[ToPassIndex(pass)];
-        }
-
-        size_t GetSourceInstanceCount(
-            GpuDrivenPassKind pass,
-            GpuDrivenCommandBucket bucket) const {
-
-            return GetPass(pass).GetSourceInstanceCount(bucket);
-        }
-
-        bool HasSourceForBucket(
-            GpuDrivenPassKind pass,
-            GpuDrivenCommandBucket bucket) const {
-
-            return GetPass(pass).HasSourceForBucket(bucket);
-        }
-    };
+    bool HasSourceForBucket(GpuDrivenPassKind pass, GpuDrivenCommandBucket bucket) const {
+        return GetPass(pass).HasSourceForBucket(bucket);
+    }
+};
 
 } // namespace HIKARI::RENDER3D::GPUDRIVEN

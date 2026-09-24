@@ -11,14 +11,14 @@ class EditorAuthoringPreview {
 public:
     explicit EditorAuthoringPreview(RENDER3D::RenderViewId viewId) : viewId_(viewId) {}
     ~EditorAuthoringPreview();
-    EditorOperationResult Start(const std::filesystem::path& libraryRoot,
-        nlohmann::json metadata);
+    EditorOperationResult Start(const std::filesystem::path& libraryRoot, nlohmann::json metadata);
     void Tick(bool documentReady, nlohmann::json diagnostics = nlohmann::json::object());
     void Fail(std::string error) { error_ = std::move(error); }
     EditorOperationResult Poll();
     void Cancel();
     bool IsPending() const noexcept { return pending_; }
     RENDER3D::RenderViewId ViewId() const noexcept { return viewId_; }
+
 private:
     EditorOperationResult Pending() const;
     RENDER3D::RenderViewId viewId_;
@@ -28,4 +28,4 @@ private:
     std::string path_;
     nlohmann::json metadata_;
 };
-}
+} // namespace HIKARI::EDITOR

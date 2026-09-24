@@ -15,9 +15,7 @@ public:
     bool Pop(std::string_view contextId);
     void SetActive(std::string contextId, bool active);
     bool IsActive(std::string_view contextId) const;
-    const std::vector<std::string>& GetActiveContexts() const noexcept {
-        return activeContexts_;
-    }
+    const std::vector<std::string>& GetActiveContexts() const noexcept { return activeContexts_; }
 
 private:
     std::vector<std::string> activeContexts_{};

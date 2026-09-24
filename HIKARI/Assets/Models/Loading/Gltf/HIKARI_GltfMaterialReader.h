@@ -5,14 +5,11 @@
 #include <json.hpp>
 
 namespace HIKARI {
-    class ModelAsset;
+class ModelAsset;
 }
 
 namespace HIKARI::ASSETS::MODELS::GLTF {
 
-    void ReadMaterials(
-        const std::filesystem::path& sourcePath,
-        const nlohmann::json& root,
-        ModelAsset& asset);
+void ReadMaterials(const std::filesystem::path& sourcePath, const nlohmann::json& root, ModelAsset& asset);
 
 } // namespace HIKARI::ASSETS::MODELS::GLTF

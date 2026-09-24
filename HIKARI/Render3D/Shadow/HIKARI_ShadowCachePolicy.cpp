@@ -5,161 +5,141 @@
 
 namespace HIKARI::SHADOW {
 
-    namespace {
-        bool SameShadowMatrix(const MATH::Mat4& lhs, const MATH::Mat4& rhs) {
-            for (int col = 0; col < 4; ++col) {
-                for (int row = 0; row < 4; ++row) {
-                    if (lhs.m[col][row] != rhs.m[col][row]) {
-                        return false;
-                    }
-                }
+namespace {
+bool SameShadowMatrix(const MATH::Mat4& lhs, const MATH::Mat4& rhs) {
+    for (int col = 0; col < 4; ++col) {
+        for (int row = 0; row < 4; ++row) {
+            if (lhs.m[col][row] != rhs.m[col][row]) {
+                return false;
             }
-            return true;
         }
     }
+    return true;
+}
+} // namespace
 
-    void ShadowSourceCacheState::Invalidate() {
-        identity_ = nullptr;
-        layoutVersion_ = 0;
-        sourceVersion_ = 0;
-        instanceCount_ = 0;
-        valid_ = false;
+void ShadowSourceCacheState::Invalidate() {
+    identity_ = nullptr;
+    layoutVersion_ = 0;
+    sourceVersion_ = 0;
+    instanceCount_ = 0;
+    valid_ = false;
+}
+
+bool ShadowSourceCacheState::Matches(const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource* source) const {
+    return valid_ && source != nullptr && identity_ == source && layoutVersion_ == source->layoutVersion &&
+           sourceVersion_ == source->sourceVersion && instanceCount_ == source->sourceInstanceCount;
+}
+
+bool ShadowSourceCacheState::CanPatch(const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource* source) const {
+    return valid_ && source != nullptr && identity_ == source && layoutVersion_ == source->layoutVersion &&
+           instanceCount_ == source->sourceInstanceCount && sourceVersion_ != source->sourceVersion &&
+           sourceVersion_ != 0u && sourceVersion_ == source->dirtyBaseSourceVersion;
+}
+
+void ShadowSourceCacheState::Capture(const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& source) {
+    identity_ = &source;
+    layoutVersion_ = source.layoutVersion;
+    sourceVersion_ = source.sourceVersion;
+    instanceCount_ = source.sourceInstanceCount;
+    valid_ = true;
+}
+
+void ShadowCachePolicy::BeginFrame() { hitThisFrame_ = false; }
+
+void ShadowCachePolicy::Invalidate() {
+    valid_ = false;
+    hitThisFrame_ = false;
+    finalMatchesStaticCache_ = false;
+    missReasonFlags_ = ShadowCacheMissReasonInvalid;
+}
+
+bool ShadowCachePolicy::EvaluateReuse(const ShadowCacheReuseInput& input) {
+    uint32_t reason = ShadowCacheMissReasonNone;
+    if (!input.hasStaticWork) {
+        reason |= ShadowCacheMissReasonNoStaticWork;
+    }
+    if (!valid_) {
+        reason |= ShadowCacheMissReasonInvalid;
+    }
+    if (!input.resourcesReady) {
+        reason |= ShadowCacheMissReasonResource;
+    }
+    if (!input.stateReusable) {
+        reason |= ShadowCacheMissReasonState;
+    }
+    if (key_.resolution != input.key.resolution) {
+        reason |= ShadowCacheMissReasonResolution;
+    }
+    if (key_.layoutVersion != input.key.layoutVersion) {
+        reason |= ShadowCacheMissReasonLayout;
+    }
+    if (key_.sourceVersion != input.key.sourceVersion) {
+        reason |= ShadowCacheMissReasonSource;
+    }
+    if (key_.sourceInstanceCount != input.key.sourceInstanceCount) {
+        reason |= ShadowCacheMissReasonInstanceCount;
+    }
+    if (key_.cascadeCount != input.key.cascadeCount) {
+        reason |= ShadowCacheMissReasonMatrix;
+    } else {
+        for (uint32_t cascadeIndex = 0; cascadeIndex < input.key.cascadeCount; ++cascadeIndex) {
+            if (!SameShadowMatrix(key_.lightViewProj[cascadeIndex], input.key.lightViewProj[cascadeIndex])) {
+                reason |= ShadowCacheMissReasonMatrix;
+                break;
+            }
+        }
+    }
+    if (input.hasStaticDirtyRanges) {
+        reason |= ShadowCacheMissReasonStaticDirty;
     }
 
-    bool ShadowSourceCacheState::Matches(
-        const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource* source) const {
+    missReasonFlags_ = reason;
+    return reason == ShadowCacheMissReasonNone;
+}
 
-        return
-            valid_ &&
-            source != nullptr &&
-            identity_ == source &&
-            layoutVersion_ == source->layoutVersion &&
-            sourceVersion_ == source->sourceVersion &&
-            instanceCount_ == source->sourceInstanceCount;
-    }
+void ShadowCachePolicy::MarkHit() {
+    hitThisFrame_ = true;
+    missReasonFlags_ = ShadowCacheMissReasonNone;
+    lastMissReasonFlags_ = ShadowCacheMissReasonNone;
+    ++hitCount_;
+}
 
-    bool ShadowSourceCacheState::CanPatch(
-        const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource* source) const {
-        return valid_ && source != nullptr && identity_ == source &&
-            layoutVersion_ == source->layoutVersion &&
-            instanceCount_ == source->sourceInstanceCount &&
-            sourceVersion_ != source->sourceVersion && sourceVersion_ != 0u &&
-            sourceVersion_ == source->dirtyBaseSourceVersion;
-    }
-
-    void ShadowSourceCacheState::Capture(
-        const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& source) {
-
-        identity_ = &source;
-        layoutVersion_ = source.layoutVersion;
-        sourceVersion_ = source.sourceVersion;
-        instanceCount_ = source.sourceInstanceCount;
-        valid_ = true;
-    }
-
-    void ShadowCachePolicy::BeginFrame() {
-        hitThisFrame_ = false;
-    }
-
-    void ShadowCachePolicy::Invalidate() {
-        valid_ = false;
-        hitThisFrame_ = false;
-        finalMatchesStaticCache_ = false;
+void ShadowCachePolicy::MarkMiss() {
+    hitThisFrame_ = false;
+    valid_ = false;
+    finalMatchesStaticCache_ = false;
+    if (missReasonFlags_ == ShadowCacheMissReasonNone) {
         missReasonFlags_ = ShadowCacheMissReasonInvalid;
     }
+    lastMissReasonFlags_ = missReasonFlags_;
+    ++missCount_;
+}
 
-    bool ShadowCachePolicy::EvaluateReuse(const ShadowCacheReuseInput& input) {
-        uint32_t reason = ShadowCacheMissReasonNone;
-        if (!input.hasStaticWork) {
-            reason |= ShadowCacheMissReasonNoStaticWork;
-        }
-        if (!valid_) {
-            reason |= ShadowCacheMissReasonInvalid;
-        }
-        if (!input.resourcesReady) {
-            reason |= ShadowCacheMissReasonResource;
-        }
-        if (!input.stateReusable) {
-            reason |= ShadowCacheMissReasonState;
-        }
-        if (key_.resolution != input.key.resolution) {
-            reason |= ShadowCacheMissReasonResolution;
-        }
-        if (key_.layoutVersion != input.key.layoutVersion) {
-            reason |= ShadowCacheMissReasonLayout;
-        }
-        if (key_.sourceVersion != input.key.sourceVersion) {
-            reason |= ShadowCacheMissReasonSource;
-        }
-        if (key_.sourceInstanceCount != input.key.sourceInstanceCount) {
-            reason |= ShadowCacheMissReasonInstanceCount;
-        }
-        if (key_.cascadeCount != input.key.cascadeCount) {
-            reason |= ShadowCacheMissReasonMatrix;
-        } else {
-            for (uint32_t cascadeIndex = 0;
-                 cascadeIndex < input.key.cascadeCount;
-                 ++cascadeIndex) {
-                if (!SameShadowMatrix(
-                        key_.lightViewProj[cascadeIndex],
-                        input.key.lightViewProj[cascadeIndex])) {
-                    reason |= ShadowCacheMissReasonMatrix;
-                    break;
-                }
-            }
-        }
-        if (input.hasStaticDirtyRanges) {
-            reason |= ShadowCacheMissReasonStaticDirty;
-        }
+void ShadowCachePolicy::MarkValid(const ShadowCacheKey& key) {
+    valid_ = true;
+    hitThisFrame_ = false;
+    missReasonFlags_ = ShadowCacheMissReasonNone;
+    key_ = key;
+    ++updateCount_;
+}
 
-        missReasonFlags_ = reason;
-        return reason == ShadowCacheMissReasonNone;
-    }
+void ShadowCachePolicy::RecordCopy(bool finalMatchesStaticCache) {
+    finalMatchesStaticCache_ = finalMatchesStaticCache;
+    ++copyCount_;
+}
 
-    void ShadowCachePolicy::MarkHit() {
-        hitThisFrame_ = true;
-        missReasonFlags_ = ShadowCacheMissReasonNone;
-        lastMissReasonFlags_ = ShadowCacheMissReasonNone;
-        ++hitCount_;
-    }
+void ShadowCachePolicy::SetFinalMatchesStaticCache(bool matches) { finalMatchesStaticCache_ = matches; }
 
-    void ShadowCachePolicy::MarkMiss() {
-        hitThisFrame_ = false;
-        valid_ = false;
-        finalMatchesStaticCache_ = false;
-        if (missReasonFlags_ == ShadowCacheMissReasonNone) {
-            missReasonFlags_ = ShadowCacheMissReasonInvalid;
-        }
-        lastMissReasonFlags_ = missReasonFlags_;
-        ++missCount_;
-    }
-
-    void ShadowCachePolicy::MarkValid(const ShadowCacheKey& key) {
-        valid_ = true;
-        hitThisFrame_ = false;
-        missReasonFlags_ = ShadowCacheMissReasonNone;
-        key_ = key;
-        ++updateCount_;
-    }
-
-    void ShadowCachePolicy::RecordCopy(bool finalMatchesStaticCache) {
-        finalMatchesStaticCache_ = finalMatchesStaticCache;
-        ++copyCount_;
-    }
-
-    void ShadowCachePolicy::SetFinalMatchesStaticCache(bool matches) {
-        finalMatchesStaticCache_ = matches;
-    }
-
-    void ShadowCachePolicy::PublishStats(ShadowMapDebugStats& stats) const {
-        stats.shadowCacheValid = valid_;
-        stats.shadowCacheHit = hitThisFrame_;
-        stats.shadowCacheMissReasonFlags = missReasonFlags_;
-        stats.shadowCacheLastMissReasonFlags = lastMissReasonFlags_;
-        stats.shadowCacheHitCount = hitCount_;
-        stats.shadowCacheMissCount = missCount_;
-        stats.shadowStaticCacheCopyCount = copyCount_;
-        stats.shadowStaticCacheUpdateCount = updateCount_;
-    }
+void ShadowCachePolicy::PublishStats(ShadowMapDebugStats& stats) const {
+    stats.shadowCacheValid = valid_;
+    stats.shadowCacheHit = hitThisFrame_;
+    stats.shadowCacheMissReasonFlags = missReasonFlags_;
+    stats.shadowCacheLastMissReasonFlags = lastMissReasonFlags_;
+    stats.shadowCacheHitCount = hitCount_;
+    stats.shadowCacheMissCount = missCount_;
+    stats.shadowStaticCacheCopyCount = copyCount_;
+    stats.shadowStaticCacheUpdateCount = updateCount_;
+}
 
 } // namespace HIKARI::SHADOW

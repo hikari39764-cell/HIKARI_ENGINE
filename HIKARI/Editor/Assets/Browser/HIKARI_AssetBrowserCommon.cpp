@@ -45,67 +45,59 @@
 namespace HIKARI::EDITOR::ASSET_BROWSER {
 
 std::string ToAssetTypeText(AssetType type) {
-  if (type == AssetType::ModelMaterialBinding) {
-    return TEXT::Localize("ui.assetBrowser.typeMaterialSet");
-  }
-  switch (type) {
-  case AssetType::Texture:
-    return TEXT::Localize("ui.assetBrowser.typeTexture");
-  case AssetType::Model:
-    return TEXT::Localize("ui.assetBrowser.typeModel");
-  case AssetType::Scene:
-    return TEXT::Localize("ui.assetBrowser.typeScene");
-  case AssetType::Material:
-    return TEXT::Localize("ui.assetBrowser.typeMaterial");
-  case AssetType::Sky:
-    return TEXT::Localize("ui.assetBrowser.typeSky");
-  case AssetType::VfxEffect:
-    return TEXT::Localize("ui.assetBrowser.typeVfx");
-  case AssetType::Sequence:
-    return TEXT::Localize("ui.assetBrowser.typeSequence");
-  case AssetType::AnimationStateMachine:
-    return TEXT::Localize("ui.assetBrowser.typeAnimationStateMachine");
-  case AssetType::Dialogue:
-    return TEXT::Localize("ui.assetBrowser.typeDialogue");
-  case AssetType::Unknown:
-  default:
-    return ASSETS::SEMANTICS::ToString(type).data();
-  }
+    if (type == AssetType::ModelMaterialBinding) {
+        return TEXT::Localize("ui.assetBrowser.typeMaterialSet");
+    }
+    switch (type) {
+    case AssetType::Texture: return TEXT::Localize("ui.assetBrowser.typeTexture");
+    case AssetType::Model: return TEXT::Localize("ui.assetBrowser.typeModel");
+    case AssetType::Scene: return TEXT::Localize("ui.assetBrowser.typeScene");
+    case AssetType::Material: return TEXT::Localize("ui.assetBrowser.typeMaterial");
+    case AssetType::Sky: return TEXT::Localize("ui.assetBrowser.typeSky");
+    case AssetType::VfxEffect: return TEXT::Localize("ui.assetBrowser.typeVfx");
+    case AssetType::Sequence: return TEXT::Localize("ui.assetBrowser.typeSequence");
+    case AssetType::AnimationStateMachine: return TEXT::Localize("ui.assetBrowser.typeAnimationStateMachine");
+    case AssetType::Dialogue: return TEXT::Localize("ui.assetBrowser.typeDialogue");
+    case AssetType::UiAnimation: return TEXT::Localize("uianim.asset");
+    case AssetType::Font: return TEXT::Localize("textstyle.font");
+    case AssetType::TextStyle: return TEXT::Localize("textstyle.asset");
+    case AssetType::Unknown:
+    default: return ASSETS::SEMANTICS::ToString(type).data();
+    }
 }
 
-std::filesystem::path
-MakeUniqueFolderPath(const std::filesystem::path &parentDirectory) {
-  std::filesystem::path candidate = parentDirectory / "New Folder";
-  std::error_code ec{};
-  if (!std::filesystem::exists(candidate, ec)) {
-    return candidate;
-  }
-
-  for (int i = 2; i < 1000; ++i) {
-    candidate = parentDirectory / ("New Folder " + std::to_string(i));
-    ec.clear();
+std::filesystem::path MakeUniqueFolderPath(const std::filesystem::path& parentDirectory) {
+    std::filesystem::path candidate = parentDirectory / "New Folder";
+    std::error_code ec{};
     if (!std::filesystem::exists(candidate, ec)) {
-      return candidate;
+        return candidate;
     }
-  }
 
-  return parentDirectory / "New Folder 999";
+    for (int i = 2; i < 1000; ++i) {
+        candidate = parentDirectory / ("New Folder " + std::to_string(i));
+        ec.clear();
+        if (!std::filesystem::exists(candidate, ec)) {
+            return candidate;
+        }
+    }
+
+    return parentDirectory / "New Folder 999";
 }
 
-void SelectRecord(const AssetRecord &record, EditorSelection &selection) {
-  selection.ClearObjects();
-  selection.selectedAssetGuid = record.guid.value;
-  selection.selectedAssetPath = record.sourcePath.generic_string();
-  selection.selectedAsset = nullptr;
+void SelectRecord(const AssetRecord& record, EditorSelection& selection) {
+    selection.ClearObjects();
+    selection.selectedAssetGuid = record.guid.value;
+    selection.selectedAssetPath = record.sourcePath.generic_string();
+    selection.selectedAsset = nullptr;
 }
 
-std::string FirstArtifactPath(const AssetRecord &record) {
-  for (const AssetArtifactDesc &artifact : record.artifactManifest.artifacts) {
-    if (!artifact.path.empty()) {
-      return artifact.path;
+std::string FirstArtifactPath(const AssetRecord& record) {
+    for (const AssetArtifactDesc& artifact : record.artifactManifest.artifacts) {
+        if (!artifact.path.empty()) {
+            return artifact.path;
+        }
     }
-  }
-  return {};
+    return {};
 }
 
 } // namespace HIKARI::EDITOR::ASSET_BROWSER

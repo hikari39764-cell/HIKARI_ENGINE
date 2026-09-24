@@ -17,149 +17,132 @@
 
 namespace HIKARI::EDITOR {
 
-    namespace {
-        std::string ShortGuid(const std::string& guid) {
-            if (guid.size() <= 8) {
-                return guid;
-            }
-            return guid.substr(0, 8);
-        }
+namespace {
+std::string ShortGuid(const std::string& guid) {
+    if (guid.size() <= 8) {
+        return guid;
+    }
+    return guid.substr(0, 8);
+}
 
-        const AssetRecord* ResolveTextureRecord(
-            const MaterialTextureSlotData& slot,
-            const AssetDatabase& assetDatabase) {
-
-            if (!slot.textureAssetGuid.IsValid()) {
-                return nullptr;
-            }
-            return assetDatabase.FindByGuid(slot.textureAssetGuid);
-        }
+const AssetRecord* ResolveTextureRecord(const MaterialTextureSlotData& slot, const AssetDatabase& assetDatabase) {
+    if (!slot.textureAssetGuid.IsValid()) {
+        return nullptr;
+    }
+    return assetDatabase.FindByGuid(slot.textureAssetGuid);
+}
 
 #if defined(HIKARI_WITH_EDITOR)
-        bool DrawTexturePreviewButton(
-            const char* id,
-            const MaterialTextureSlotData& slot,
-            const TextureAssetDescriptor* descriptor,
-            const ImVec2& size) {
-
-            const int previewHandle =
-                !slot.useTexture || descriptor == nullptr
-                    ? -1
-                    : ResolveEditorTexturePreviewHandle(
-                          slot.textureAssetGuid, *descriptor);
-            if (previewHandle >= 0) {
-                const D3D12_GPU_DESCRIPTOR_HANDLE srv =
-                    DXTEX::DxTextureManager::GetSrvGpuHandle(previewHandle);
-                if (srv.ptr != 0) {
-                    const ImTextureID textureId =
-                        reinterpret_cast<ImTextureID>(static_cast<uintptr_t>(srv.ptr));
-                    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.0f, 0.0f));
-                    const bool clicked = ImGui::ImageButton(
-                        id,
-                        textureId,
-                        size,
-                        ImVec2(0.0f, 0.0f),
-                        ImVec2(1.0f, 1.0f),
-                        ImVec4(0.06f, 0.08f, 0.10f, 1.0f),
-                        ImVec4(1.0f, 1.0f, 1.0f, slot.useTexture ? 1.0f : 0.42f));
-                    ImGui::PopStyleVar();
-                    return clicked;
-                }
-            }
-
-            return ImGui::Button(id, size);
+bool DrawTexturePreviewButton(const char* id, const MaterialTextureSlotData& slot,
+                              const TextureAssetDescriptor* descriptor, const ImVec2& size) {
+    const int previewHandle = !slot.useTexture || descriptor == nullptr
+                                  ? -1
+                                  : ResolveEditorTexturePreviewHandle(slot.textureAssetGuid, *descriptor);
+    if (previewHandle >= 0) {
+        const D3D12_GPU_DESCRIPTOR_HANDLE srv = DXTEX::DxTextureManager::GetSrvGpuHandle(previewHandle);
+        if (srv.ptr != 0) {
+            const ImTextureID textureId = reinterpret_cast<ImTextureID>(static_cast<uintptr_t>(srv.ptr));
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.0f, 0.0f));
+            const bool clicked = ImGui::ImageButton(id, textureId, size, ImVec2(0.0f, 0.0f), ImVec2(1.0f, 1.0f),
+                                                    ImVec4(0.06f, 0.08f, 0.10f, 1.0f),
+                                                    ImVec4(1.0f, 1.0f, 1.0f, slot.useTexture ? 1.0f : 0.42f));
+            ImGui::PopStyleVar();
+            return clicked;
         }
-#endif
     }
 
-    bool DrawMaterialTextureSlot(
-        const char* label,
-        MaterialTextureSlotData& slot,
-        AssetDatabase& assetDatabase,
-        AssetRegistry& assetRegistry,
-        EditorSelection* selection) {
+    return ImGui::Button(id, size);
+}
+#endif
+} // namespace
+
+bool DrawMaterialTextureSlot(const char* label, MaterialTextureSlotData& slot, AssetDatabase& assetDatabase,
+                             AssetRegistry& assetRegistry, EditorSelection* selection) {
 #if defined(HIKARI_WITH_EDITOR)
-        bool changed = false;
-        const AssetRecord* record = ResolveTextureRecord(slot, assetDatabase);
-        const auto* descriptor = slot.textureAssetGuid.IsValid()
-            ? assetRegistry.FindAs<TextureAssetDescriptor>(AssetId{ slot.textureAssetGuid.value })
-            : nullptr;
+    bool changed = false;
+    const AssetRecord* record = ResolveTextureRecord(slot, assetDatabase);
+    const auto* descriptor = slot.textureAssetGuid.IsValid()
+                                 ? assetRegistry.FindAs<TextureAssetDescriptor>(AssetId{slot.textureAssetGuid.value})
+                                 : nullptr;
 
-        ImGui::PushID(label);
-        ImGui::BeginGroup();
-        ImGui::TextUnformatted(label);
+    ImGui::PushID(label);
+    ImGui::BeginGroup();
+    ImGui::TextUnformatted(label);
 
-        const ImVec2 slotSize{ 64.0f, 64.0f };
-        ImGui::BeginGroup();
-        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6.0f);
-        DrawTexturePreviewButton("##TextureSlotBox", slot, descriptor, slotSize);
-        ImGui::PopStyleVar();
-        DroppedAssetPayload slotPayload{};
-        if (AcceptAssetDropOfType(assetDatabase, AssetType::Texture, slotPayload) && slotPayload.record) {
-            slot.useTexture = true;
-            slot.textureAssetGuid = slotPayload.guid;
-            changed = true;
-        }
+    const ImVec2 slotSize{64.0f, 64.0f};
+    ImGui::BeginGroup();
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6.0f);
+    DrawTexturePreviewButton("##TextureSlotBox", slot, descriptor, slotSize);
+    ImGui::PopStyleVar();
+    DroppedAssetPayload slotPayload{};
+    if (AcceptAssetDropOfType(assetDatabase, AssetType::Texture, slotPayload) && slotPayload.record) {
+        slot.useTexture = true;
+        slot.textureAssetGuid = slotPayload.guid;
+        changed = true;
+    }
 
-        const ImVec2 min = ImGui::GetItemRectMin();
-        const ImVec2 max = ImGui::GetItemRectMax();
-        ImDrawList* drawList = ImGui::GetWindowDrawList();
-        drawList->AddRect(min, max, IM_COL32(78, 94, 112, 180), 6.0f);
-        if (!descriptor || descriptor->sourcePath.empty()) {
-            drawList->AddRectFilled(min, max, IM_COL32(18, 24, 31, 255), 6.0f);
-            ImGui::SetCursorScreenPos(ImVec2(min.x + 16.0f, min.y + 16.0f));
-            DrawAssetTypeGlyph(AssetType::Texture, ImVec2(32.0f, 32.0f));
-        }
-        ImGui::SetCursorScreenPos(ImVec2(max.x + 8.0f, min.y));
-        ImGui::EndGroup();
+    const ImVec2 min = ImGui::GetItemRectMin();
+    const ImVec2 max = ImGui::GetItemRectMax();
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    drawList->AddRect(min, max, IM_COL32(78, 94, 112, 180), 6.0f);
+    if (!descriptor || descriptor->sourcePath.empty()) {
+        drawList->AddRectFilled(min, max, IM_COL32(18, 24, 31, 255), 6.0f);
+        ImGui::SetCursorScreenPos(ImVec2(min.x + 16.0f, min.y + 16.0f));
+        DrawAssetTypeGlyph(AssetType::Texture, ImVec2(32.0f, 32.0f));
+    }
+    ImGui::SetCursorScreenPos(ImVec2(max.x + 8.0f, min.y));
+    ImGui::EndGroup();
 
-        ImGui::SameLine();
-        ImGui::BeginGroup();
-        if (ImGui::Checkbox(TEXT::LocalizeWindow("editor.ui.use.texture.449ce6", "Use Texture").c_str(), &slot.useTexture)) {
-            changed = true;
-        }
+    ImGui::SameLine();
+    ImGui::BeginGroup();
+    if (ImGui::Checkbox(TEXT::LocalizeWindow("editor.ui.use.texture.449ce6", "Use Texture").c_str(),
+                        &slot.useTexture)) {
+        changed = true;
+    }
 
-        const std::string name = record
-            ? (record->displayName.empty() ? record->sourcePath.stem().string() : record->displayName)
-            : std::string("<none>");
-        ImGui::Text(TEXT::Localize("editor.ui.texture.s.15da98").c_str(), name.c_str());
-        if (slot.textureAssetGuid.IsValid()) {
-            ImGui::TextDisabled(TEXT::Localize("ui.assetBrowser.tooltipGuid").c_str(), ShortGuid(slot.textureAssetGuid.value).c_str());
-        }
-        if (descriptor && !descriptor->sourcePath.empty()) {
-            ImGui::TextDisabled(TEXT::Localize("editor.ui.runtime.s.ecac44").c_str(), descriptor->sourcePath.c_str());
-        }
+    const std::string name =
+        record ? (record->displayName.empty() ? record->sourcePath.stem().string() : record->displayName)
+               : std::string("<none>");
+    ImGui::Text(TEXT::Localize("editor.ui.texture.s.15da98").c_str(), name.c_str());
+    if (slot.textureAssetGuid.IsValid()) {
+        ImGui::TextDisabled(TEXT::Localize("ui.assetBrowser.tooltipGuid").c_str(),
+                            ShortGuid(slot.textureAssetGuid.value).c_str());
+    }
+    if (descriptor && !descriptor->sourcePath.empty()) {
+        ImGui::TextDisabled(TEXT::Localize("editor.ui.runtime.s.ecac44").c_str(), descriptor->sourcePath.c_str());
+    }
 
-        if (ImGui::SmallButton(TEXT::LocalizeWindow("editor.ui.select.859822", "Select").c_str()) && record && selection) {
-            selection->ClearObjects();
-            selection->selectedAsset = nullptr;
-            selection->selectedAssetGuid = record->guid.value;
-            selection->selectedAssetPath = record->sourcePath.generic_string();
-        }
-        ImGui::SameLine();
-        if (ImGui::SmallButton(TEXT::LocalizeWindow("ui.input.clear", "Clear").c_str())) {
-            slot.useTexture = false;
-            slot.textureAssetGuid = {};
-            changed = true;
-        }
-        ImGui::SameLine();
-        if (ImGui::SmallButton(TEXT::LocalizeWindow("ui.assetBrowser.copyGuid", "Copy GUID").c_str()) && slot.textureAssetGuid.IsValid()) {
-            ImGui::SetClipboardText(slot.textureAssetGuid.value.c_str());
-        }
-        ImGui::EndGroup();
+    if (ImGui::SmallButton(TEXT::LocalizeWindow("editor.ui.select.859822", "Select").c_str()) && record && selection) {
+        selection->ClearObjects();
+        selection->selectedAsset = nullptr;
+        selection->selectedAssetGuid = record->guid.value;
+        selection->selectedAssetPath = record->sourcePath.generic_string();
+    }
+    ImGui::SameLine();
+    if (ImGui::SmallButton(TEXT::LocalizeWindow("ui.input.clear", "Clear").c_str())) {
+        slot.useTexture = false;
+        slot.textureAssetGuid = {};
+        changed = true;
+    }
+    ImGui::SameLine();
+    if (ImGui::SmallButton(TEXT::LocalizeWindow("ui.assetBrowser.copyGuid", "Copy GUID").c_str()) &&
+        slot.textureAssetGuid.IsValid()) {
+        ImGui::SetClipboardText(slot.textureAssetGuid.value.c_str());
+    }
+    ImGui::EndGroup();
 
-        // Non-texture assets are not accepted by this slot.
-        ImGui::EndGroup();
-        ImGui::PopID();
-        return changed;
+    // Non-texture assets are not accepted by this slot.
+    ImGui::EndGroup();
+    ImGui::PopID();
+    return changed;
 #else
-        (void)label;
-        (void)slot;
-        (void)assetDatabase;
-        (void)assetRegistry;
-        (void)selection;
-        return false;
+    (void)label;
+    (void)slot;
+    (void)assetDatabase;
+    (void)assetRegistry;
+    (void)selection;
+    return false;
 #endif
-    }
+}
 
 } // namespace HIKARI::EDITOR

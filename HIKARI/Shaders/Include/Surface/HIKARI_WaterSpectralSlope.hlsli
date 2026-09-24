@@ -21,17 +21,6 @@ struct HikariWaterSpectrumDataSample
     float variance;
 };
 
-float2 HikariWaterSpectralSafeNormalize2(
-    float2 value,
-    float2 fallback)
-{
-    const float lengthSquared = dot(value, value);
-    return HikariIsFiniteFloat(lengthSquared) &&
-            lengthSquared > 1.0e-12f
-        ? value * rsqrt(lengthSquared)
-        : fallback;
-}
-
 float HikariWaterExactDielectricFresnel(
     float cosineIncident,
     float incidentIor,

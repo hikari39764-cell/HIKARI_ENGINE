@@ -1,13 +1,11 @@
 #include "Render3D/GpuDriven/HIKARI_GpuSceneRegistry.h"
 #include "Render3D/GpuDriven/HIKARI_GpuScenePoseBuilder.h"
-#include "Render3D/GpuDriven/CommandStream/HIKARI_GpuTraditionalCommandStreamBuffer.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Water/HIKARI_WaterSurfaceGpuData.h"
-#include "Vfx/MaterialFx/HIKARI_MaterialFxProfile.h"
 
 #include <algorithm>
 #include <limits>
-#include <unordered_set>
+#include <tuple>
 
 #include "Core/Hashing/HIKARI_FnvHash.h"
 
@@ -16,2020 +14,1037 @@
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
 
-    namespace {
-        void ResetPassSource(
-            GpuDrivenPassSource& pass,
-            const std::vector<RUNTIME::SurfaceGpuSceneInstance>* instances,
-            const std::vector<RUNTIME::SurfaceGpuSceneMaterialSource>* materialSources,
-            uint32_t gpuSceneBaseIndex,
-            GpuDrivenBackendKind backend,
-            bool clusterEligible) {
+namespace {
+void ResetPassSource(GpuDrivenPassSource& pass, const std::vector<RUNTIME::SurfaceGpuSceneInstance>* instances,
+                     const std::vector<RUNTIME::SurfaceGpuSceneMaterialSource>* materialSources,
+                     uint32_t gpuSceneBaseIndex, GpuDrivenBackendKind backend, bool clusterEligible) {
+    pass.traditionalIndirect.Reset();
+    pass.instances = instances;
+    pass.materialSources = materialSources;
+    pass.gpuSceneBaseIndex = gpuSceneBaseIndex;
+    pass.gpuSceneInstanceCount = instances != nullptr ? NUMERIC::SaturateToUint32(instances->size()) : 0u;
+    pass.preferredBackend = backend;
+    pass.clusterEligible = clusterEligible;
+    pass.dirtyRanges.clear();
+}
 
-            pass.traditionalIndirect.Reset();
-            pass.instances = instances;
-            pass.materialSources = materialSources;
-            pass.gpuSceneBaseIndex = gpuSceneBaseIndex;
-            pass.gpuSceneInstanceCount =
-                instances != nullptr
-                    ? NUMERIC::SaturateToUint32(instances->size())
-                    : 0u;
-            pass.preferredBackend = backend;
-            pass.clusterEligible = clusterEligible;
-            pass.dirtyRanges.clear();
+uint64_t BuildSourceLayoutVersion(uint64_t residencyEpoch, uint64_t layoutVersion, uint64_t routingVersion) {
+    uint64_t value = HASH::kFnv1a64OffsetBasis;
+    value = HASH::Fnv1aCombine(value, residencyEpoch);
+    value = HASH::Fnv1aCombine(value, layoutVersion);
+    value = HASH::Fnv1aCombine(value, routingVersion);
+    return value;
+}
+
+uint64_t BuildSurfaceHeightContentVersion(uint64_t residencyEpoch, uint64_t floatPoolVersion) {
+    uint64_t value = HASH::kFnv1a64OffsetBasis;
+    value = HASH::Fnv1aCombine(value, residencyEpoch);
+    value = HASH::Fnv1aCombine(value, floatPoolVersion);
+    // 0 は upload cache を無効化する sentinel。
+    return value != 0u ? value : 1u;
+}
+
+uint32_t PassInstanceFlag(GpuDrivenPassKind passKind) {
+    using RUNTIME::SurfaceGpuSceneInstanceFlags;
+    switch (passKind) {
+    case GpuDrivenPassKind::ForwardOpaque:
+        return static_cast<uint32_t>(SurfaceGpuSceneInstanceFlags::PassForwardOpaque);
+    case GpuDrivenPassKind::DepthPrepass: return static_cast<uint32_t>(SurfaceGpuSceneInstanceFlags::PassDepthPrepass);
+    case GpuDrivenPassKind::ForwardDepthAware:
+        return static_cast<uint32_t>(SurfaceGpuSceneInstanceFlags::PassForwardDepthAware);
+    case GpuDrivenPassKind::ForwardTransparent:
+        return static_cast<uint32_t>(SurfaceGpuSceneInstanceFlags::PassForwardTransparent);
+    case GpuDrivenPassKind::Shadow: return static_cast<uint32_t>(SurfaceGpuSceneInstanceFlags::PassShadow);
+    default: return 0u;
+    }
+}
+
+RUNTIME::SurfaceGpuSceneBuildStats BuildPassStatsFromGlobalScene(
+    const std::vector<uint32_t>& recordIndices, const std::vector<uint32_t>& globalIndexByRecord,
+    const std::vector<RUNTIME::SurfaceGpuSceneInstance>& instances) {
+    using ResourceFlag = RUNTIME::SurfaceGpuSceneResourceFlags;
+    RUNTIME::SurfaceGpuSceneBuildStats stats{};
+    const uint32_t meshMaterialFlags =
+        static_cast<uint32_t>(ResourceFlag::Mesh) | static_cast<uint32_t>(ResourceFlag::Material);
+    const uint32_t clusterFlag = static_cast<uint32_t>(ResourceFlag::ClusterGeometry);
+    const uint32_t shaderVisibleFlag = static_cast<uint32_t>(ResourceFlag::ClusterGeometryShaderVisible);
+    const uint32_t surfaceRangeFlag = static_cast<uint32_t>(ResourceFlag::ClusterGeometrySurfaceRange);
+    for (const uint32_t recordIndex : recordIndices) {
+        if (recordIndex >= globalIndexByRecord.size()) {
+            ++stats.skippedInvalidRecordCount;
+            continue;
         }
-
-        uint64_t HashAppend(uint64_t seed, uint64_t value) {
-            return HASH::Fnv1aCombine(seed, value);
+        const uint32_t globalIndex = globalIndexByRecord[recordIndex];
+        if (globalIndex == RUNTIME::kInvalidRenderSurfaceIndex || globalIndex >= instances.size()) {
+            ++stats.skippedInvalidRecordCount;
+            continue;
         }
-
-        uint64_t BuildSourceLayoutVersion(
-            uint64_t residencyEpoch,
-            uint64_t layoutVersion,
-            uint64_t routingVersion) {
-
-            uint64_t value = HASH::kFnv1a64OffsetBasis;
-            value = HashAppend(value, residencyEpoch);
-            value = HashAppend(value, layoutVersion);
-            value = HashAppend(value, routingVersion);
-            return value;
+        const RUNTIME::SurfaceGpuSceneInstance& instance = instances[globalIndex];
+        ++stats.instanceCount;
+        if ((instance.resourceFlags & meshMaterialFlags) == meshMaterialFlags) {
+            ++stats.resourceBackedInstanceCount;
+        } else {
+            ++stats.missingResourceHandleInstanceCount;
         }
-
-        uint64_t BuildSurfaceHeightContentVersion(
-            uint64_t residencyEpoch,
-            uint64_t floatPoolVersion) {
-            uint64_t value = HASH::kFnv1a64OffsetBasis;
-            value = HashAppend(value, residencyEpoch);
-            value = HashAppend(value, floatPoolVersion);
-            // 0 は upload cache を無効化する sentinel。
-            return value != 0u ? value : 1u;
-        }
-
-        uint32_t PassInstanceFlag(GpuDrivenPassKind passKind) {
-            using RUNTIME::SurfaceGpuSceneInstanceFlags;
-            switch (passKind) {
-            case GpuDrivenPassKind::ForwardOpaque:
-                return static_cast<uint32_t>(
-                    SurfaceGpuSceneInstanceFlags::PassForwardOpaque);
-            case GpuDrivenPassKind::DepthPrepass:
-                return static_cast<uint32_t>(
-                    SurfaceGpuSceneInstanceFlags::PassDepthPrepass);
-            case GpuDrivenPassKind::ForwardDepthAware:
-                return static_cast<uint32_t>(
-                    SurfaceGpuSceneInstanceFlags::PassForwardDepthAware);
-            case GpuDrivenPassKind::ForwardTransparent:
-                return static_cast<uint32_t>(
-                    SurfaceGpuSceneInstanceFlags::PassForwardTransparent);
-            case GpuDrivenPassKind::Shadow:
-                return static_cast<uint32_t>(
-                    SurfaceGpuSceneInstanceFlags::PassShadow);
-            default:
-                return 0u;
+        if ((instance.resourceFlags & clusterFlag) != 0u) {
+            ++stats.clusterResourceInstanceCount;
+            if ((instance.resourceFlags & shaderVisibleFlag) != 0u) {
+                ++stats.clusterShaderVisibleInstanceCount;
             }
-        }
-
-        RUNTIME::SurfaceGpuSceneBuildStats BuildPassStatsFromGlobalScene(
-            const std::vector<uint32_t>& recordIndices,
-            const std::vector<uint32_t>& globalIndexByRecord,
-            const std::vector<RUNTIME::SurfaceGpuSceneInstance>& instances) {
-            using ResourceFlag = RUNTIME::SurfaceGpuSceneResourceFlags;
-            RUNTIME::SurfaceGpuSceneBuildStats stats{};
-            const uint32_t meshMaterialFlags =
-                static_cast<uint32_t>(ResourceFlag::Mesh) |
-                static_cast<uint32_t>(ResourceFlag::Material);
-            const uint32_t clusterFlag = static_cast<uint32_t>(
-                ResourceFlag::ClusterGeometry);
-            const uint32_t shaderVisibleFlag = static_cast<uint32_t>(
-                ResourceFlag::ClusterGeometryShaderVisible);
-            const uint32_t surfaceRangeFlag = static_cast<uint32_t>(
-                ResourceFlag::ClusterGeometrySurfaceRange);
-            for (const uint32_t recordIndex : recordIndices) {
-                if (recordIndex >= globalIndexByRecord.size()) {
-                    ++stats.skippedInvalidRecordCount;
-                    continue;
-                }
-                const uint32_t globalIndex =
-                    globalIndexByRecord[recordIndex];
-                if (globalIndex == RUNTIME::kInvalidRenderSurfaceIndex ||
-                    globalIndex >= instances.size()) {
-                    ++stats.skippedInvalidRecordCount;
-                    continue;
-                }
-                const RUNTIME::SurfaceGpuSceneInstance& instance =
-                    instances[globalIndex];
-                ++stats.instanceCount;
-                if ((instance.resourceFlags & meshMaterialFlags) ==
-                    meshMaterialFlags) {
-                    ++stats.resourceBackedInstanceCount;
-                } else {
-                    ++stats.missingResourceHandleInstanceCount;
-                }
-                if ((instance.resourceFlags & clusterFlag) != 0u) {
-                    ++stats.clusterResourceInstanceCount;
-                    if ((instance.resourceFlags & shaderVisibleFlag) != 0u) {
-                        ++stats.clusterShaderVisibleInstanceCount;
-                    }
-                    if ((instance.resourceFlags & surfaceRangeFlag) != 0u) {
-                        ++stats.clusterSurfaceRangeInstanceCount;
-                    } else {
-                        ++stats.clusterMissingSurfaceRangeInstanceCount;
-                    }
-                }
-            }
-            stats.commandCount = stats.instanceCount;
-            stats.maxCommandInstanceCount =
-                stats.instanceCount != 0u ? 1u : 0u;
-            return stats;
-        }
-
-        float ComputeWorldBoundsRadius(const Bounds& bounds) {
-            const float ex = (bounds.max.x - bounds.min.x) * 0.5f;
-            const float ey = (bounds.max.y - bounds.min.y) * 0.5f;
-            const float ez = (bounds.max.z - bounds.min.z) * 0.5f;
-            return std::sqrt(ex * ex + ey * ey + ez * ez);
-        }
-
-        float ComputeWorldBoundsMainAreaProxy(const Bounds& bounds) {
-            float sx = (std::max)(bounds.max.x - bounds.min.x, 0.0f);
-            float sy = (std::max)(bounds.max.y - bounds.min.y, 0.0f);
-            float sz = (std::max)(bounds.max.z - bounds.min.z, 0.0f);
-            if (sx < sy) {
-                std::swap(sx, sy);
-            }
-            if (sy < sz) {
-                std::swap(sy, sz);
-            }
-            if (sx < sy) {
-                std::swap(sx, sy);
-            }
-            return sx * sy;
-        }
-
-        float ComputeDepthOccluderScore(const Bounds& bounds, float radius) {
-            const float mainArea = ComputeWorldBoundsMainAreaProxy(bounds);
-            return std::sqrt((std::max)(mainArea, 0.0f)) + radius * 0.15f;
-        }
-
-        constexpr float kDepthVisibilityMinOccluderRadius = 0.35f;
-        constexpr size_t kDepthVisibilityMaxOccluderRecords = 8192;
-
-        struct DepthPrepassOccluderCandidate {
-            uint32_t recordIndex = RUNTIME::kInvalidRenderSurfaceIndex;
-            float radius = 0.0f;
-            float score = 0.0f;
-        };
-
-        // Depth prepass は solid な不透明 mainline をカバーして forward の
-        // 過描画を消す。alpha mask は prepass 側でテクスチャ sample + clip の
-        // PS が必要になり prepass 自体が高くつくため除外する (forward の
-        // alpha mask も prepass が書いた solid 深度に対して early-Z が効く)。
-        // 両面は DoubleSided bucket + null PS で安価なので含める。
-        bool IsDepthPrepassSafeMaterial(const GpuSceneSurfaceRecord& record) {
-            return
-                !record.key.alphaMasked &&
-                !record.key.transparent &&
-                !record.key.depthAware &&
-                !record.key.materialFx &&
-                !record.key.waterMaterialFx;
-        }
-
-        // BuildDepthPrepassOccluderRecords の収集規則と dirty patch の
-        // membership 判定は必ずこの述語を共有する。
-        bool IsDepthPrepassCoverageRecord(const GpuSceneSurfaceRecord& record) {
-            if (!IsGpuSceneForwardOpaqueResidentRecord(record) ||
-                !IsDepthPrepassSafeMaterial(record)) {
-                return false;
-            }
-            return ComputeWorldBoundsRadius(record.worldBounds) >=
-                kDepthVisibilityMinOccluderRadius;
-        }
-
-        bool HasShadowCasterSafeMaterial(const GpuSceneSurfaceRecord& record) {
-            const bool staticMaterialFx =
-                record.key.materialFx &&
-                !record.key.waterMaterialFx &&
-                !record.key.materialFxUsesCustomVertexShader;
-            return
-                !record.key.transparent &&
-                !record.key.depthAware &&
-                !record.key.waterMaterialFx &&
-                (!record.key.materialFx || staticMaterialFx);
-        }
-
-        bool IsGpuSceneStaticShadowCasterRecord(
-            const GpuSceneSurfaceRecord& record) {
-
-            if (!IsGpuSceneShadowResidentRecord(record) ||
-                !HasShadowCasterSafeMaterial(record)) {
-                return false;
-            }
-
-            // Shadow の可視性は light-space の GPU 剔除に任せる。ワールド寸法だけで欠落させない。
-            return true;
-        }
-
-        void BuildDepthPrepassOccluderRecords(
-            const std::vector<GpuSceneSurfaceRecord>& records,
-            const std::vector<uint32_t>& opaqueRecords,
-            std::vector<uint32_t>& outOccluders,
-            GpuSceneRegistryStats& stats) {
-
-            outOccluders.clear();
-            stats.depthPrepassOccluderRecordCount = 0;
-            stats.depthPrepassRejectedSmallRecordCount = 0;
-            stats.depthPrepassRejectedUnsafeMaterialRecordCount = 0;
-            stats.depthPrepassBudgetClippedRecordCount = 0;
-
-            std::vector<DepthPrepassOccluderCandidate> candidates;
-            candidates.reserve((std::min)(
-                opaqueRecords.size(),
-                kDepthVisibilityMaxOccluderRecords * 2u));
-            float largestFallbackRadius = -1.0f;
-            uint32_t largestFallbackRecord =
-                RUNTIME::kInvalidRenderSurfaceIndex;
-
-            for (const uint32_t recordIndex : opaqueRecords) {
-                if (recordIndex >= records.size()) {
-                    continue;
-                }
-
-                const GpuSceneSurfaceRecord& record = records[recordIndex];
-                if (!IsGpuSceneForwardOpaqueResidentRecord(record)) {
-                    continue;
-                }
-                if (!IsDepthPrepassSafeMaterial(record)) {
-                    ++stats.depthPrepassRejectedUnsafeMaterialRecordCount;
-                    continue;
-                }
-
-                const float radius = ComputeWorldBoundsRadius(record.worldBounds);
-                if (radius < kDepthVisibilityMinOccluderRadius) {
-                    ++stats.depthPrepassRejectedSmallRecordCount;
-                    if (radius > largestFallbackRadius) {
-                        largestFallbackRadius = radius;
-                        largestFallbackRecord = recordIndex;
-                    }
-                    continue;
-                }
-
-                candidates.push_back({
-                    recordIndex,
-                    radius,
-                    ComputeDepthOccluderScore(record.worldBounds, radius)
-                });
-            }
-
-            if (candidates.size() > kDepthVisibilityMaxOccluderRecords) {
-                std::sort(
-                    candidates.begin(),
-                    candidates.end(),
-                    [](const DepthPrepassOccluderCandidate& a,
-                       const DepthPrepassOccluderCandidate& b) {
-                        if (a.score != b.score) {
-                            return a.score > b.score;
-                        }
-                        if (a.radius != b.radius) {
-                            return a.radius > b.radius;
-                        }
-                        return a.recordIndex < b.recordIndex;
-                    });
-                stats.depthPrepassBudgetClippedRecordCount =
-                    NUMERIC::SaturateToUint32(
-                        candidates.size() - kDepthVisibilityMaxOccluderRecords);
-                candidates.resize(kDepthVisibilityMaxOccluderRecords);
-                std::sort(
-                    candidates.begin(),
-                    candidates.end(),
-                    [](const DepthPrepassOccluderCandidate& a,
-                       const DepthPrepassOccluderCandidate& b) {
-                        return a.recordIndex < b.recordIndex;
-                    });
-            }
-
-            outOccluders.reserve(candidates.size());
-            for (const DepthPrepassOccluderCandidate& candidate : candidates) {
-                outOccluders.push_back(candidate.recordIndex);
-            }
-
-            if (outOccluders.empty() &&
-                largestFallbackRecord != RUNTIME::kInvalidRenderSurfaceIndex) {
-                outOccluders.push_back(largestFallbackRecord);
-            }
-            stats.depthPrepassOccluderRecordCount =
-                NUMERIC::SaturateToUint32(outOccluders.size());
-        }
-
-        void AppendDirtyRange(
-            std::vector<GpuSceneDirtyRange>& ranges,
-            uint32_t firstInstance,
-            uint32_t instanceCount) {
-
-            if (instanceCount == 0u) {
-                return;
-            }
-            if (!ranges.empty()) {
-                GpuSceneDirtyRange& last = ranges.back();
-                if (last.firstInstance + last.instanceCount == firstInstance) {
-                    last.instanceCount += instanceCount;
-                    return;
-                }
-            }
-
-            ranges.push_back({ firstInstance, instanceCount });
-        }
-
-        enum class StaticBatchRunKeyKind {
-            Pso,
-            Material,
-            TextureSet,
-            Geometry,
-            MeshResource,
-            MaterialResource,
-            ClusterResource,
-        };
-
-        uint64_t PackResourceHandle(uint32_t index, uint32_t generation) {
-            return
-                (static_cast<uint64_t>(generation) << 32) |
-                static_cast<uint64_t>(index);
-        }
-
-        uint64_t SelectStaticBatchRunKey(
-            const GpuSceneSurfaceRecord& record,
-            StaticBatchRunKeyKind kind) {
-
-            const RUNTIME::SurfaceResourceIds& resources = record.key.resources;
-            switch (kind) {
-            case StaticBatchRunKeyKind::Pso:
-                return record.key.psoKey;
-            case StaticBatchRunKeyKind::Material:
-                return record.key.materialKey;
-            case StaticBatchRunKeyKind::TextureSet:
-                return record.key.textureSetKey;
-            case StaticBatchRunKeyKind::Geometry:
-                return record.key.geometryKey;
-            case StaticBatchRunKeyKind::MeshResource:
-                return PackResourceHandle(
-                    resources.mesh.index,
-                    resources.mesh.generation);
-            case StaticBatchRunKeyKind::MaterialResource:
-                return PackResourceHandle(
-                    resources.material.index,
-                    resources.material.generation);
-            case StaticBatchRunKeyKind::ClusterResource:
-                return PackResourceHandle(
-                    resources.clusterGeometry.index,
-                    resources.clusterGeometry.generation);
-            default:
-                return 0;
+            if ((instance.resourceFlags & surfaceRangeFlag) != 0u) {
+                ++stats.clusterSurfaceRangeInstanceCount;
+            } else {
+                ++stats.clusterMissingSurfaceRangeInstanceCount;
             }
         }
+    }
+    stats.commandCount = stats.instanceCount;
+    stats.maxCommandInstanceCount = stats.instanceCount != 0u ? 1u : 0u;
+    return stats;
+}
 
-        uint32_t CountStaticBatchRuns(
-            const std::vector<GpuSceneSurfaceRecord>& records,
-            const std::vector<uint32_t>& recordIndices,
-            StaticBatchRunKeyKind kind) {
+float ComputeWorldBoundsRadius(const Bounds& bounds) {
+    const float ex = (bounds.max.x - bounds.min.x) * 0.5f;
+    const float ey = (bounds.max.y - bounds.min.y) * 0.5f;
+    const float ez = (bounds.max.z - bounds.min.z) * 0.5f;
+    return std::sqrt(ex * ex + ey * ey + ez * ez);
+}
 
-            bool hasPrevious = false;
-            uint64_t previous = 0;
-            uint32_t runs = 0;
-            for (uint32_t recordIndex : recordIndices) {
-                if (recordIndex >= records.size()) {
-                    continue;
-                }
-                const GpuSceneSurfaceRecord& record = records[recordIndex];
-                if (!record.valid || !record.key.resourceKeyValid) {
-                    continue;
-                }
+float ComputeWorldBoundsMainAreaProxy(const Bounds& bounds) {
+    float sx = (std::max)(bounds.max.x - bounds.min.x, 0.0f);
+    float sy = (std::max)(bounds.max.y - bounds.min.y, 0.0f);
+    float sz = (std::max)(bounds.max.z - bounds.min.z, 0.0f);
+    if (sx < sy) {
+        std::swap(sx, sy);
+    }
+    if (sy < sz) {
+        std::swap(sy, sz);
+    }
+    if (sx < sy) {
+        std::swap(sx, sy);
+    }
+    return sx * sy;
+}
 
-                const uint64_t current = SelectStaticBatchRunKey(record, kind);
-                if (!hasPrevious || current != previous) {
-                    ++runs;
-                    previous = current;
-                    hasPrevious = true;
-                }
-            }
-            return runs;
+float ComputeDepthOccluderScore(const Bounds& bounds, float radius) {
+    const float mainArea = ComputeWorldBoundsMainAreaProxy(bounds);
+    return std::sqrt((std::max)(mainArea, 0.0f)) + radius * 0.15f;
+}
+
+constexpr float kDepthVisibilityMinOccluderRadius = 0.35f;
+constexpr size_t kDepthVisibilityMaxOccluderRecords = 8192;
+
+struct DepthPrepassOccluderCandidate {
+    uint32_t recordIndex = RUNTIME::kInvalidRenderSurfaceIndex;
+    float radius = 0.0f;
+    float score = 0.0f;
+};
+
+// Depth prepass は solid な不透明 mainline をカバーして forward の
+// 過描画を消す。alpha mask は prepass 側でテクスチャ sample + clip の
+// PS が必要になり prepass 自体が高くつくため除外する (forward の
+// alpha mask も prepass が書いた solid 深度に対して early-Z が効く)。
+// 両面は DoubleSided bucket + null PS で安価なので含める。
+bool IsDepthPrepassSafeMaterial(const GpuSceneSurfaceRecord& record) {
+    return !record.key.alphaMasked && !record.key.transparent && !record.key.depthAware && !record.key.materialFx &&
+           !record.key.waterMaterialFx;
+}
+
+// BuildDepthPrepassOccluderRecords の収集規則と dirty patch の
+// membership 判定は必ずこの述語を共有する。
+bool IsDepthPrepassCoverageRecord(const GpuSceneSurfaceRecord& record) {
+    if (!IsGpuSceneForwardOpaqueResidentRecord(record) || !IsDepthPrepassSafeMaterial(record)) {
+        return false;
+    }
+    return ComputeWorldBoundsRadius(record.worldBounds) >= kDepthVisibilityMinOccluderRadius;
+}
+
+bool HasShadowCasterSafeMaterial(const GpuSceneSurfaceRecord& record) {
+    const bool staticMaterialFx =
+        record.key.materialFx && !record.key.waterMaterialFx && !record.key.materialFxUsesCustomVertexShader;
+    return !record.key.transparent && !record.key.depthAware && !record.key.waterMaterialFx &&
+           (!record.key.materialFx || staticMaterialFx);
+}
+
+GpuDrivenPassKind ResolveForwardResidentPass(const GpuSceneSurfaceRecord& record) {
+    if (IsGpuSceneForwardOpaqueResidentRecord(record))
+        return GpuDrivenPassKind::ForwardOpaque;
+    if (IsGpuSceneForwardDepthAwareResidentRecord(record))
+        return GpuDrivenPassKind::ForwardDepthAware;
+    if (IsGpuSceneForwardTransparentResidentRecord(record))
+        return GpuDrivenPassKind::ForwardTransparent;
+    return GpuDrivenPassKind::Count;
+}
+
+bool IsGpuSceneStaticShadowCasterRecord(const GpuSceneSurfaceRecord& record) {
+    if (!IsGpuSceneShadowResidentRecord(record) || !HasShadowCasterSafeMaterial(record)) {
+        return false;
+    }
+
+    // Shadow の可視性は light-space の GPU 剔除に任せる。ワールド寸法だけで欠落させない。
+    return true;
+}
+
+void BuildDepthPrepassOccluderRecords(const std::vector<GpuSceneSurfaceRecord>& records,
+                                      const std::vector<uint32_t>& opaqueRecords, std::vector<uint32_t>& outOccluders,
+                                      GpuSceneRegistryStats& stats) {
+    outOccluders.clear();
+    stats.depthPrepassOccluderRecordCount = 0;
+    stats.depthPrepassRejectedSmallRecordCount = 0;
+    stats.depthPrepassRejectedUnsafeMaterialRecordCount = 0;
+    stats.depthPrepassBudgetClippedRecordCount = 0;
+
+    std::vector<DepthPrepassOccluderCandidate> candidates;
+    candidates.reserve((std::min)(opaqueRecords.size(), kDepthVisibilityMaxOccluderRecords * 2u));
+    float largestFallbackRadius = -1.0f;
+    uint32_t largestFallbackRecord = RUNTIME::kInvalidRenderSurfaceIndex;
+
+    for (const uint32_t recordIndex : opaqueRecords) {
+        if (recordIndex >= records.size()) {
+            continue;
         }
 
-        bool ComesBeforeForStaticGpuSceneBatching(
-            const GpuSceneSurfaceRecord& lhs,
-            const GpuSceneSurfaceRecord& rhs) {
-
-            if (lhs.key.psoKey != rhs.key.psoKey) {
-                return lhs.key.psoKey < rhs.key.psoKey;
-            }
-            if (lhs.key.materialKey != rhs.key.materialKey) {
-                return lhs.key.materialKey < rhs.key.materialKey;
-            }
-            if (lhs.key.textureSetKey != rhs.key.textureSetKey) {
-                return lhs.key.textureSetKey < rhs.key.textureSetKey;
-            }
-            if (lhs.key.geometryBackend != rhs.key.geometryBackend) {
-                return lhs.key.geometryBackend < rhs.key.geometryBackend;
-            }
-            if (lhs.key.geometryKey != rhs.key.geometryKey) {
-                return lhs.key.geometryKey < rhs.key.geometryKey;
-            }
-            const RUNTIME::SurfaceResourceIds& lhsResources = lhs.key.resources;
-            const RUNTIME::SurfaceResourceIds& rhsResources = rhs.key.resources;
-            const uint64_t lhsMesh =
-                PackResourceHandle(lhsResources.mesh.index, lhsResources.mesh.generation);
-            const uint64_t rhsMesh =
-                PackResourceHandle(rhsResources.mesh.index, rhsResources.mesh.generation);
-            if (lhsMesh != rhsMesh) {
-                return lhsMesh < rhsMesh;
-            }
-            const uint64_t lhsMaterial =
-                PackResourceHandle(
-                    lhsResources.material.index,
-                    lhsResources.material.generation);
-            const uint64_t rhsMaterial =
-                PackResourceHandle(
-                    rhsResources.material.index,
-                    rhsResources.material.generation);
-            if (lhsMaterial != rhsMaterial) {
-                return lhsMaterial < rhsMaterial;
-            }
-            const uint64_t lhsCluster =
-                PackResourceHandle(
-                    lhsResources.clusterGeometry.index,
-                    lhsResources.clusterGeometry.generation);
-            const uint64_t rhsCluster =
-                PackResourceHandle(
-                    rhsResources.clusterGeometry.index,
-                    rhsResources.clusterGeometry.generation);
-            if (lhsCluster != rhsCluster) {
-                return lhsCluster < rhsCluster;
-            }
-            if (lhs.key.sortKey != rhs.key.sortKey) {
-                return lhs.key.sortKey < rhs.key.sortKey;
-            }
-            return lhs.sourceSurfaceInstanceIndex < rhs.sourceSurfaceInstanceIndex;
+        const GpuSceneSurfaceRecord& record = records[recordIndex];
+        if (!IsGpuSceneForwardOpaqueResidentRecord(record)) {
+            continue;
+        }
+        if (!IsDepthPrepassSafeMaterial(record)) {
+            ++stats.depthPrepassRejectedUnsafeMaterialRecordCount;
+            continue;
         }
 
-        bool HasCompatibleGpuScenePatchLayout(
-            const GpuSceneSurfaceRecord& lhs,
-            const GpuSceneSurfaceRecord& rhs) {
-
-            const RUNTIME::SurfaceResourceIds& lhsResources = lhs.key.resources;
-            const RUNTIME::SurfaceResourceIds& rhsResources = rhs.key.resources;
-            if (lhs.key.backendRoute == RUNTIME::SurfaceBackendRoute::MeshShader &&
-                rhs.key.backendRoute == RUNTIME::SurfaceBackendRoute::MeshShader) {
-                // MeshShader の材質はインスタンス単位で参照する。
-                // テクスチャや色の更新は既存スロットへ差分反映できる。
-                return
-                    lhs.valid == rhs.valid &&
-                    lhs.skinned == rhs.skinned &&
-                    lhs.key.psoKey == rhs.key.psoKey &&
-                    lhs.key.shaderKey == rhs.key.shaderKey &&
-                    lhs.key.passMask == rhs.key.passMask &&
-                    lhs.key.geometryBackend == rhs.key.geometryBackend &&
-                    lhs.key.geometryKey == rhs.key.geometryKey &&
-                    lhs.key.clusterGeometryKey == rhs.key.clusterGeometryKey &&
-                    lhs.key.objectDataCompatible == rhs.key.objectDataCompatible &&
-                    lhs.key.clusterMainlineEligible == rhs.key.clusterMainlineEligible &&
-                    lhs.key.customVertexShader == rhs.key.customVertexShader &&
-                    lhs.key.materialFx == rhs.key.materialFx &&
-                    lhs.key.waterMaterialFx == rhs.key.waterMaterialFx &&
-                    lhs.key.materialFxUsesCustomVertexShader == rhs.key.materialFxUsesCustomVertexShader &&
-                    lhs.key.materialFxUsesCustomPixelShader == rhs.key.materialFxUsesCustomPixelShader &&
-                    lhs.key.depthAware == rhs.key.depthAware &&
-                    lhs.key.alphaMasked == rhs.key.alphaMasked &&
-                    lhs.key.transparent == rhs.key.transparent &&
-                    lhs.key.doubleSided == rhs.key.doubleSided &&
-                    lhsResources.mesh == rhsResources.mesh &&
-                    lhsResources.clusterGeometry == rhsResources.clusterGeometry;
+        const float radius = ComputeWorldBoundsRadius(record.worldBounds);
+        if (radius < kDepthVisibilityMinOccluderRadius) {
+            ++stats.depthPrepassRejectedSmallRecordCount;
+            if (radius > largestFallbackRadius) {
+                largestFallbackRadius = radius;
+                largestFallbackRecord = recordIndex;
             }
-            return
-                lhs.key.sortKey == rhs.key.sortKey &&
-                lhs.key.psoKey == rhs.key.psoKey &&
-                lhs.key.materialKey == rhs.key.materialKey &&
-                lhs.key.materialRevision == rhs.key.materialRevision &&
-                lhs.key.textureSetKey == rhs.key.textureSetKey &&
-                lhs.key.geometryBackend == rhs.key.geometryBackend &&
-                lhs.key.geometryKey == rhs.key.geometryKey &&
-                lhsResources.mesh == rhsResources.mesh &&
-                lhsResources.material == rhsResources.material &&
-                lhsResources.clusterGeometry == rhsResources.clusterGeometry;
+            continue;
         }
 
-        GpuSceneStaticBatchStats SortStaticResidentRecordsForBatching(
-            const std::vector<GpuSceneSurfaceRecord>& records,
-            std::vector<uint32_t>& recordIndices,
-            bool allowReorder) {
+        candidates.push_back({recordIndex, radius, ComputeDepthOccluderScore(record.worldBounds, radius)});
+    }
 
-            GpuSceneStaticBatchStats stats{};
-            stats.recordCount = NUMERIC::SaturateToUint32(recordIndices.size());
-            for (uint32_t recordIndex : recordIndices) {
-                if (recordIndex >= records.size()) {
-                    continue;
-                }
-                if (records[recordIndex].key.resources.HasPoolHandles()) {
-                    ++stats.resourceBackedRecordCount;
-                } else {
-                    ++stats.missingResourceHandleRecordCount;
-                }
-            }
+    if (candidates.size() > kDepthVisibilityMaxOccluderRecords) {
+        std::sort(candidates.begin(), candidates.end(),
+                  [](const DepthPrepassOccluderCandidate& a, const DepthPrepassOccluderCandidate& b) {
+                      if (a.score != b.score) {
+                          return a.score > b.score;
+                      }
+                      if (a.radius != b.radius) {
+                          return a.radius > b.radius;
+                      }
+                      return a.recordIndex < b.recordIndex;
+                  });
+        stats.depthPrepassBudgetClippedRecordCount =
+            NUMERIC::SaturateToUint32(candidates.size() - kDepthVisibilityMaxOccluderRecords);
+        candidates.resize(kDepthVisibilityMaxOccluderRecords);
+        std::sort(candidates.begin(), candidates.end(),
+                  [](const DepthPrepassOccluderCandidate& a, const DepthPrepassOccluderCandidate& b) {
+                      return a.recordIndex < b.recordIndex;
+                  });
+    }
 
-            stats.rawPsoRunCount =
-                CountStaticBatchRuns(records, recordIndices, StaticBatchRunKeyKind::Pso);
-            stats.rawMaterialRunCount =
-                CountStaticBatchRuns(records, recordIndices, StaticBatchRunKeyKind::Material);
-            stats.rawTextureSetRunCount =
-                CountStaticBatchRuns(records, recordIndices, StaticBatchRunKeyKind::TextureSet);
-            stats.rawGeometryRunCount =
-                CountStaticBatchRuns(records, recordIndices, StaticBatchRunKeyKind::Geometry);
-            stats.rawMeshResourceRunCount =
-                CountStaticBatchRuns(records, recordIndices, StaticBatchRunKeyKind::MeshResource);
-            stats.rawMaterialResourceRunCount =
-                CountStaticBatchRuns(
-                    records,
-                    recordIndices,
-                    StaticBatchRunKeyKind::MaterialResource);
-            stats.rawClusterResourceRunCount =
-                CountStaticBatchRuns(
-                    records,
-                    recordIndices,
-                    StaticBatchRunKeyKind::ClusterResource);
+    outOccluders.reserve(candidates.size());
+    for (const DepthPrepassOccluderCandidate& candidate : candidates) {
+        outOccluders.push_back(candidate.recordIndex);
+    }
 
-            const std::vector<uint32_t> originalOrder = recordIndices;
-            if (allowReorder) {
-                std::stable_sort(
-                    recordIndices.begin(),
-                    recordIndices.end(),
-                    [&](uint32_t lhsIndex, uint32_t rhsIndex) {
-                        if (lhsIndex >= records.size() || rhsIndex >= records.size()) {
-                            return lhsIndex < rhsIndex;
-                        }
-                        const GpuSceneSurfaceRecord& lhs = records[lhsIndex];
-                        const GpuSceneSurfaceRecord& rhs = records[rhsIndex];
-                        if (ComesBeforeForStaticGpuSceneBatching(lhs, rhs)) {
-                            return true;
-                        }
-                        if (ComesBeforeForStaticGpuSceneBatching(rhs, lhs)) {
-                            return false;
-                        }
-                        return lhsIndex < rhsIndex;
-                    });
-                stats.sortApplied = true;
-            }
+    if (outOccluders.empty() && largestFallbackRecord != RUNTIME::kInvalidRenderSurfaceIndex) {
+        outOccluders.push_back(largestFallbackRecord);
+    }
+    stats.depthPrepassOccluderRecordCount = NUMERIC::SaturateToUint32(outOccluders.size());
+}
 
-            const size_t compareCount =
-                (std::min)(originalOrder.size(), recordIndices.size());
-            for (size_t i = 0; i < compareCount; ++i) {
-                if (originalOrder[i] != recordIndices[i]) {
-                    ++stats.reorderedRecordCount;
-                }
-            }
-
-            stats.sortedPsoRunCount =
-                CountStaticBatchRuns(records, recordIndices, StaticBatchRunKeyKind::Pso);
-            stats.sortedMaterialRunCount =
-                CountStaticBatchRuns(records, recordIndices, StaticBatchRunKeyKind::Material);
-            stats.sortedTextureSetRunCount =
-                CountStaticBatchRuns(records, recordIndices, StaticBatchRunKeyKind::TextureSet);
-            stats.sortedGeometryRunCount =
-                CountStaticBatchRuns(records, recordIndices, StaticBatchRunKeyKind::Geometry);
-            stats.sortedMeshResourceRunCount =
-                CountStaticBatchRuns(records, recordIndices, StaticBatchRunKeyKind::MeshResource);
-            stats.sortedMaterialResourceRunCount =
-                CountStaticBatchRuns(
-                    records,
-                    recordIndices,
-                    StaticBatchRunKeyKind::MaterialResource);
-            stats.sortedClusterResourceRunCount =
-                CountStaticBatchRuns(
-                    records,
-                    recordIndices,
-                    StaticBatchRunKeyKind::ClusterResource);
-            return stats;
-        }
-
-        RUNTIME::SurfaceDrawIndexedArgs BuildDrawIndexedArgs(
-            const GpuSceneSurfaceRecord& record) {
-
-            RUNTIME::SurfaceDrawIndexedArgs args{};
-            if (record.model == nullptr ||
-                record.meshIndex >= record.model->meshes.size()) {
-                return args;
-            }
-            const MeshAsset& mesh = record.model->meshes[record.meshIndex];
-            if (record.primitiveIndex >= mesh.primitives.size()) {
-                return args;
-            }
-            args.indexCountPerInstance =
-                NUMERIC::SaturateToUint32(mesh.primitives[record.primitiveIndex].indices.size());
-            args.instanceCount = 1u;
-            return args;
-        }
-
-        std::string ResolveTraditionalMaterialFxPixelShaderId(
-            std::string pixelShaderId) {
-
-            if (pixelShaderId == "Render3D_StaticFxPS" ||
-                pixelShaderId == "StaticFx" ||
-                pixelShaderId == "MaterialFx") {
-                return "Render3D_StaticFxPS";
-            }
-            return pixelShaderId;
-        }
-
-        VFX::VariantKey BuildTraditionalVariantKey(
-            const GpuSceneSurfaceRecord& record,
-            RUNTIME::SurfaceDrawCommandPass pass) {
-
-            VFX::VariantKey key{};
-            key.shaderId = "StaticLit";
-            key.pixelShaderId = "StaticLit";
-            key.composite = VFX::CompositeMode::Replace;
-            key.depthTest = true;
-            key.depthWrite =
-                pass != RUNTIME::SurfaceDrawCommandPass::DepthAware &&
-                !record.key.transparent;
-            key.doubleSided = record.key.doubleSided;
-
-            if (record.key.materialFx) {
-                MaterialFxProfile profile{};
-                if (MaterialFxProfile::LoadById(record.materialFxProfileId, profile)) {
-                    key.shaderId =
-                        profile.shaderProfileId.empty()
-                            ? "StaticFx"
-                            : profile.shaderProfileId;
-                    key.vertexShaderId = profile.vertexShaderId;
-                    const std::string pixelShaderId =
-                        !profile.pixelShaderId.empty()
-                            ? profile.pixelShaderId
-                            : key.shaderId;
-                    key.pixelShaderId =
-                        ResolveTraditionalMaterialFxPixelShaderId(pixelShaderId);
-                    key.featureBits = profile.featureBits;
-                    key.composite = profile.composite;
-                    key.depthTest = profile.depthTest;
-                    key.depthWrite = profile.depthWrite;
-                    key.doubleSided =
-                        record.key.doubleSided || profile.doubleSided;
-                } else {
-                    key.shaderId = "StaticFx";
-                    key.pixelShaderId = "Render3D_StaticFxPS";
-                }
-            }
-
-            if (record.key.transparent ||
-                pass == RUNTIME::SurfaceDrawCommandPass::DepthAware) {
-                key.depthWrite = false;
-            }
-            return key;
-        }
-
-        bool AssignTraditionalBucket(
-            GpuSceneRegistry::TraditionalIndirectStream& stream,
-            const VFX::VariantKey& variant,
-            RUNTIME::SurfaceDrawCommand& command) {
-
-            for (size_t i = 0; i < stream.bucketVariants.size(); ++i) {
-                if (stream.bucketVariants[i] == variant) {
-                    command.traditionalVariant = variant;
-                    command.traditionalBucketIndex = NUMERIC::SaturateToUint32(i);
-                    return true;
-                }
-            }
-
-            if (stream.bucketVariants.size() >=
-                kGpuTraditionalCommandBucketCount) {
-                return false;
-            }
-
-            command.traditionalVariant = variant;
-            command.traditionalBucketIndex =
-                NUMERIC::SaturateToUint32(stream.bucketVariants.size());
-            stream.bucketVariants.push_back(variant);
-            return true;
-        }
-
-        bool IsValidDrawArgs(const RUNTIME::SurfaceDrawIndexedArgs& args) {
-            return args.indexCountPerInstance > 0u && args.instanceCount > 0u;
-        }
-
-        bool ShouldPublishStaticTraditionalStreams() {
-            return HIKARI::RENDER3D::GetRenderQualitySettings().geometryPipeline ==
-                HIKARI::RENDER3D::GeometryPipelineMode::TraditionalVsPs;
-        }
-
-        void FillTraditionalDrawCommand(
-            const GpuSceneSurfaceRecord& record,
-            uint32_t recordIndexInStream,
-            uint32_t executableIndex,
-            uint32_t gpuSceneInstanceIndex,
-            RUNTIME::SurfaceDrawCommandPass pass,
-            bool clusterMainlineEligible,
-            RUNTIME::SurfaceDrawCommand& command) {
-
-            command = {};
-            command.pass = pass;
-            command.firstExecutableIndex = executableIndex;
-            command.recordCount = 1u;
-            command.firstRecordIndex = recordIndexInStream;
-            command.firstGpuSceneInstanceIndex = gpuSceneInstanceIndex;
-            command.gpuSceneInstanceCount = 1u;
-            command.batchKey = RUNTIME::BuildSurfaceDrawBatchKey(
-                pass,
-                record.key);
-            command.resources = record.key.resources;
-            command.psoKey = record.key.psoKey;
-            command.geometryKey = record.key.geometryKey;
-            command.geometryBackend = record.key.geometryBackend;
-            command.backendRoute = record.key.backendRoute;
-            command.materialKey = record.key.materialKey;
-            command.textureSetKey = record.key.textureSetKey;
-            command.modelKey = record.key.modelKey;
-            command.singleRecord = true;
-            command.transparent = record.key.transparent;
-            command.alphaMasked = record.key.alphaMasked;
-            command.doubleSided = record.key.doubleSided;
-            command.materialFx = record.key.materialFx;
-            command.waterMaterialFx = record.key.waterMaterialFx;
-            command.materialFxUsesCustomVertexShader =
-                record.key.materialFxUsesCustomVertexShader;
-            command.traditionalVariant =
-                BuildTraditionalVariantKey(record, pass);
-            command.clusterMainlineEligible = clusterMainlineEligible;
-            command.drawArgs = BuildDrawIndexedArgs(record);
-            command.drawArgsValid = IsValidDrawArgs(command.drawArgs);
-        }
-
-        bool AppendTraditionalRecordInstance(
-            const std::vector<GpuSceneSurfaceRecord>& records,
-            uint32_t sourceRecordIndex,
-            GpuSceneRegistry::TraditionalIndirectStream& stream) {
-
-            std::vector<uint32_t> singleRecordIndex{ sourceRecordIndex };
-            std::vector<RUNTIME::SurfaceGpuSceneInstance> singleInstance{};
-            std::vector<RUNTIME::SurfaceGpuSceneMaterialSource> singleMaterial{};
-            (void)BuildGpuSceneInstanceList(
-                records,
-                singleRecordIndex,
-                singleInstance,
-                singleMaterial);
-            if (singleInstance.empty() || singleMaterial.empty()) {
-                return false;
-            }
-
-            const uint32_t streamInstanceIndex =
-                NUMERIC::SaturateToUint32(stream.instances.size());
-            singleMaterial.front().localGpuSceneInstanceIndex = streamInstanceIndex;
-            // Material residency is indexed by the global scene record table.
-            // The command stream has its own local record index; mixing the two
-            // makes pass-local records overwrite unrelated material bindings.
-            singleInstance.front().sourceRecordIndex = sourceRecordIndex;
-            singleMaterial.front().sourceRecordIndex = sourceRecordIndex;
-            singleMaterial.front().sourceSurfaceInstanceIndex =
-                singleInstance.front().sourceSurfaceInstanceIndex;
-            stream.instances.push_back(singleInstance.front());
-            stream.materialSources.push_back(singleMaterial.front());
-            return true;
-        }
-
-        void AppendStaticTraditionalRecord(
-            const std::vector<GpuSceneSurfaceRecord>& records,
-            uint32_t recordIndex,
-            RUNTIME::SurfaceDrawCommandPass pass,
-            GpuSceneRegistry::TraditionalIndirectStream& stream) {
-
-            if (recordIndex >= records.size()) {
-                return;
-            }
-            const GpuSceneSurfaceRecord& record = records[recordIndex];
-            if (!HasValidGpuSceneSubmitPrimitiveTarget(record)) {
-                return;
-            }
-
-            const uint32_t recordIndexInStream = NUMERIC::SaturateToUint32(stream.records.size());
-            const uint32_t executableIndex =
-                NUMERIC::SaturateToUint32(stream.executableRecordIndices.size());
-            const uint32_t gpuSceneInstanceIndex =
-                NUMERIC::SaturateToUint32(stream.instances.size());
-
-            stream.records.push_back(record);
-            stream.executableRecordIndices.push_back(recordIndexInStream);
-            stream.jointPalettes.emplace_back();
-            if (!AppendTraditionalRecordInstance(
-                records,
-                recordIndex,
-                stream)) {
-                stream.records.pop_back();
-                stream.executableRecordIndices.pop_back();
-                stream.jointPalettes.pop_back();
-                return;
-            }
-
-            RUNTIME::SurfaceDrawCommand command{};
-            FillTraditionalDrawCommand(
-                record,
-                recordIndexInStream,
-                executableIndex,
-                gpuSceneInstanceIndex,
-                pass,
-                record.key.clusterMainlineEligible,
-                command);
-            if (!AssignTraditionalBucket(
-                stream,
-                command.traditionalVariant,
-                command)) {
-                stream.records.pop_back();
-                stream.executableRecordIndices.pop_back();
-                stream.jointPalettes.pop_back();
-                stream.instances.pop_back();
-                stream.materialSources.pop_back();
-                return;
-            }
-            stream.commands.push_back(command);
-            ++stream.staticCommandCount;
-        }
-
-        void AppendSkinnedTraditionalRecord(
-            const std::vector<GpuSceneSurfaceRecord>& records,
-            uint32_t recordIndex,
-            RUNTIME::SurfaceDrawCommandPass pass,
-            GpuSceneRegistry::TraditionalIndirectStream& stream,
-            GpuScenePoseBuilder& poseBuilder) {
-
-            if (recordIndex >= records.size()) {
-                return;
-            }
-            const GpuSceneSurfaceRecord& record = records[recordIndex];
-            if (record.key.materialFxUsesCustomVertexShader) {
-                return;
-            }
-            const std::vector<MATH::Mat4>* palette =
-                poseBuilder.ResolveJointPalette(record);
-            if (palette == nullptr || palette->empty()) {
-                return;
-            }
-
-            const uint32_t recordIndexInStream = NUMERIC::SaturateToUint32(stream.records.size());
-            const uint32_t executableIndex =
-                NUMERIC::SaturateToUint32(stream.executableRecordIndices.size());
-            const uint32_t gpuSceneInstanceIndex =
-                NUMERIC::SaturateToUint32(stream.instances.size());
-
-            stream.records.push_back(record);
-            stream.executableRecordIndices.push_back(recordIndexInStream);
-            stream.jointPalettes.push_back(*palette);
-            if (!AppendTraditionalRecordInstance(
-                records,
-                recordIndex,
-                stream)) {
-                stream.records.pop_back();
-                stream.executableRecordIndices.pop_back();
-                stream.jointPalettes.pop_back();
-                return;
-            }
-
-            RUNTIME::SurfaceDrawCommand command{};
-            FillTraditionalDrawCommand(
-                record,
-                recordIndexInStream,
-                executableIndex,
-                gpuSceneInstanceIndex,
-                pass,
-                false,
-                command);
-            if (!AssignTraditionalBucket(
-                stream,
-                command.traditionalVariant,
-                command)) {
-                stream.records.pop_back();
-                stream.executableRecordIndices.pop_back();
-                stream.jointPalettes.pop_back();
-                stream.instances.pop_back();
-                stream.materialSources.pop_back();
-                return;
-            }
-            stream.commands.push_back(command);
-            ++stream.skinnedCommandCount;
-        }
-
-        void AttachTraditionalIndirectView(
-            GpuDrivenPassSource& pass,
-            const GpuSceneRegistry::TraditionalIndirectStream& stream,
-            uint32_t gpuSceneBaseIndex) {
-
-            pass.traditionalIndirect.Reset();
-            if (!stream.HasCommands()) {
-                return;
-            }
-            pass.traditionalIndirect.records = &stream.records;
-            pass.traditionalIndirect.executableRecordIndices =
-                &stream.executableRecordIndices;
-            pass.traditionalIndirect.commands = &stream.commands;
-            pass.traditionalIndirect.instances = &stream.instances;
-            pass.traditionalIndirect.materialSources = &stream.materialSources;
-            pass.traditionalIndirect.jointPalettes = &stream.jointPalettes;
-            pass.traditionalIndirect.bucketVariants = &stream.bucketVariants;
-            pass.traditionalIndirect.gpuSceneBaseIndex = gpuSceneBaseIndex;
-            pass.traditionalIndirect.gpuSceneInstanceCount =
-                NUMERIC::SaturateToUint32(stream.instances.size());
-            pass.traditionalIndirect.staticCommandCount =
-                stream.staticCommandCount;
-            pass.traditionalIndirect.skinnedCommandCount =
-                stream.skinnedCommandCount;
-        }
-
-        bool IsGpuSceneSkinnedTraditionalRecordCommon(
-            const GpuSceneSurfaceRecord& record) {
-
-            // Skinned surfaces are owned by the mesh-shader deformation path.
-            // Missing cooked geometry/palette is a blocked contract, not a hidden VS/PS fallback.
-            (void)record;
-            return false;
-        }
-
-        bool IsGpuSceneForwardSkinnedTraditionalRecord(
-            const GpuSceneSurfaceRecord& record) {
-
-            return
-                record.forwardCandidate &&
-                IsGpuSceneSkinnedTraditionalRecordCommon(record);
-        }
-
-        bool IsGpuSceneShadowSkinnedTraditionalRecord(
-            const GpuSceneSurfaceRecord& record) {
-
-            return
-                record.shadowCandidate &&
-                IsGpuSceneSkinnedTraditionalRecordCommon(record) &&
-                !record.key.transparent;
-        }
-
-        bool IsGpuSceneStaticTraditionalRecordCommon(
-            const GpuSceneSurfaceRecord& record) {
-
-            return
-                record.valid &&
-                record.key.resourceKeyValid &&
-                !record.skinned &&
-                record.key.backendRoute == RUNTIME::SurfaceBackendRoute::StaticVsPs &&
-                (!record.key.materialFx || record.key.waterMaterialFx) &&
-                !record.hasSpecialRenderDebug &&
-                HasValidGpuSceneSubmitPrimitiveTarget(record);
-        }
-
-        bool IsGpuSceneForwardStaticTraditionalRecord(
-            const GpuSceneSurfaceRecord& record) {
-
-            if (!record.forwardCandidate ||
-                !IsGpuSceneStaticTraditionalRecordCommon(record)) {
-                return false;
-            }
-
-            return record.key.backendRoute == RUNTIME::SurfaceBackendRoute::StaticVsPs;
-        }
-
-        bool IsGpuSceneShadowStaticTraditionalRecord(
-            const GpuSceneSurfaceRecord& record) {
-
-            if (!record.shadowCandidate ||
-                !IsGpuSceneStaticTraditionalRecordCommon(record) ||
-                !HasShadowCasterSafeMaterial(record)) {
-                return false;
-            }
-            if (record.key.backendRoute != RUNTIME::SurfaceBackendRoute::StaticVsPs) {
-                return false;
-            }
-
-            // Shadow の可視性は light-space の GPU 剔除に任せる。ワールド寸法だけで欠落させない。
-            return true;
+void AppendDirtyRange(std::vector<GpuSceneDirtyRange>& ranges, uint32_t firstInstance, uint32_t instanceCount) {
+    if (instanceCount == 0u) {
+        return;
+    }
+    if (!ranges.empty()) {
+        GpuSceneDirtyRange& last = ranges.back();
+        if (last.firstInstance + last.instanceCount == firstInstance) {
+            last.instanceCount += instanceCount;
+            return;
         }
     }
 
-    void GpuSceneRegistry::TraditionalIndirectStream::Clear() {
-        records.clear();
-        executableRecordIndices.clear();
-        commands.clear();
-        instances.clear();
-        materialSources.clear();
-        jointPalettes.clear();
-        bucketVariants.clear();
-        staticCommandCount = 0;
-        skinnedCommandCount = 0;
+    ranges.push_back({firstInstance, instanceCount});
+}
+
+uint64_t PackResourceHandle(uint32_t index, uint32_t generation) {
+    return (static_cast<uint64_t>(generation) << 32) | index;
+}
+
+std::array<uint32_t, 7> CountStaticBatchRuns(const std::vector<GpuSceneSurfaceRecord>& records,
+                                             const std::vector<uint32_t>& indices) {
+    std::array<uint32_t, 7> runs{};
+    std::array<uint64_t, 7> previous{};
+    bool hasPrevious = false;
+    for (const uint32_t index : indices) {
+        if (index >= records.size())
+            continue;
+        const auto& record = records[index];
+        if (!record.valid || !record.key.resourceKeyValid)
+            continue;
+        const auto& key = record.key;
+        const auto& r = key.resources;
+        const std::array<uint64_t, 7> current{
+            key.psoKey,
+            key.materialKey,
+            key.textureSetKey,
+            key.geometryKey,
+            PackResourceHandle(r.mesh.index, r.mesh.generation),
+            PackResourceHandle(r.material.index, r.material.generation),
+            PackResourceHandle(r.clusterGeometry.index, r.clusterGeometry.generation)};
+        for (size_t i = 0; i < runs.size(); ++i) {
+            if (!hasPrevious || current[i] != previous[i])
+                ++runs[i];
+        }
+        previous = current;
+        hasPrevious = true;
+    }
+    return runs;
+}
+
+bool ComesBeforeForStaticGpuSceneBatching(const GpuSceneSurfaceRecord& lhs, const GpuSceneSurfaceRecord& rhs) {
+    const auto key = [](const GpuSceneSurfaceRecord& record) {
+        const auto& r = record.key.resources;
+        return std::tuple(record.key.psoKey, record.key.materialKey, record.key.textureSetKey,
+                          record.key.geometryBackend, record.key.geometryKey,
+                          PackResourceHandle(r.mesh.index, r.mesh.generation),
+                          PackResourceHandle(r.material.index, r.material.generation),
+                          PackResourceHandle(r.clusterGeometry.index, r.clusterGeometry.generation), record.key.sortKey,
+                          record.sourceSurfaceInstanceIndex);
+    };
+    return key(lhs) < key(rhs);
+}
+
+bool HasCompatibleGpuScenePatchLayout(const GpuSceneSurfaceRecord& lhs, const GpuSceneSurfaceRecord& rhs) {
+    const RUNTIME::SurfaceResourceIds& lhsResources = lhs.key.resources;
+    const RUNTIME::SurfaceResourceIds& rhsResources = rhs.key.resources;
+    if (lhs.key.backendRoute == RUNTIME::SurfaceBackendRoute::MeshShader &&
+        rhs.key.backendRoute == RUNTIME::SurfaceBackendRoute::MeshShader) {
+        // MeshShader の材質はインスタンス単位で参照する。
+        // テクスチャや色の更新は既存スロットへ差分反映できる。
+        return lhs.valid == rhs.valid && lhs.skinned == rhs.skinned && lhs.key.psoKey == rhs.key.psoKey &&
+               lhs.key.shaderKey == rhs.key.shaderKey && lhs.key.passMask == rhs.key.passMask &&
+               lhs.key.geometryBackend == rhs.key.geometryBackend && lhs.key.geometryKey == rhs.key.geometryKey &&
+               lhs.key.clusterGeometryKey == rhs.key.clusterGeometryKey &&
+               lhs.key.objectDataCompatible == rhs.key.objectDataCompatible &&
+               lhs.key.clusterMainlineEligible == rhs.key.clusterMainlineEligible &&
+               lhs.key.customVertexShader == rhs.key.customVertexShader && lhs.key.materialFx == rhs.key.materialFx &&
+               lhs.key.waterMaterialFx == rhs.key.waterMaterialFx &&
+               lhs.key.materialFxUsesCustomVertexShader == rhs.key.materialFxUsesCustomVertexShader &&
+               lhs.key.materialFxUsesCustomPixelShader == rhs.key.materialFxUsesCustomPixelShader &&
+               lhs.key.depthAware == rhs.key.depthAware && lhs.key.alphaMasked == rhs.key.alphaMasked &&
+               lhs.key.transparent == rhs.key.transparent && lhs.key.doubleSided == rhs.key.doubleSided &&
+               lhsResources.mesh == rhsResources.mesh && lhsResources.clusterGeometry == rhsResources.clusterGeometry;
+    }
+    return lhs.key.sortKey == rhs.key.sortKey && lhs.key.psoKey == rhs.key.psoKey &&
+           lhs.key.materialKey == rhs.key.materialKey && lhs.key.materialRevision == rhs.key.materialRevision &&
+           lhs.key.textureSetKey == rhs.key.textureSetKey && lhs.key.geometryBackend == rhs.key.geometryBackend &&
+           lhs.key.geometryKey == rhs.key.geometryKey && lhsResources.mesh == rhsResources.mesh &&
+           lhsResources.material == rhsResources.material &&
+           lhsResources.clusterGeometry == rhsResources.clusterGeometry;
+}
+
+GpuSceneStaticBatchStats SortStaticResidentRecordsForBatching(const std::vector<GpuSceneSurfaceRecord>& records,
+                                                              std::vector<uint32_t>& recordIndices, bool allowReorder) {
+    GpuSceneStaticBatchStats stats{};
+    stats.recordCount = NUMERIC::SaturateToUint32(recordIndices.size());
+    for (uint32_t recordIndex : recordIndices) {
+        if (recordIndex >= records.size()) {
+            continue;
+        }
+        if (records[recordIndex].key.resources.HasPoolHandles()) {
+            ++stats.resourceBackedRecordCount;
+        } else {
+            ++stats.missingResourceHandleRecordCount;
+        }
     }
 
-    bool GpuSceneRegistry::TraditionalIndirectStream::HasCommands() const {
-        return
-            !records.empty() &&
-            !commands.empty() &&
-            !executableRecordIndices.empty() &&
-            !bucketVariants.empty() &&
-            records.size() == instances.size() &&
-            records.size() == materialSources.size() &&
-            records.size() == jointPalettes.size();
+    const auto rawRuns = CountStaticBatchRuns(records, recordIndices);
+    const std::vector<uint32_t> originalOrder = recordIndices;
+    if (allowReorder) {
+        std::stable_sort(recordIndices.begin(), recordIndices.end(), [&](uint32_t lhsIndex, uint32_t rhsIndex) {
+            if (lhsIndex >= records.size() || rhsIndex >= records.size()) {
+                return lhsIndex < rhsIndex;
+            }
+            const GpuSceneSurfaceRecord& lhs = records[lhsIndex];
+            const GpuSceneSurfaceRecord& rhs = records[rhsIndex];
+            if (ComesBeforeForStaticGpuSceneBatching(lhs, rhs)) {
+                return true;
+            }
+            if (ComesBeforeForStaticGpuSceneBatching(rhs, lhs)) {
+                return false;
+            }
+            return lhsIndex < rhsIndex;
+        });
+        stats.sortApplied = true;
     }
 
-    void GpuSceneRegistry::Clear() {
+    const size_t compareCount = (std::min)(originalOrder.size(), recordIndices.size());
+    for (size_t i = 0; i < compareCount; ++i) {
+        if (originalOrder[i] != recordIndices[i]) {
+            ++stats.reorderedRecordCount;
+        }
+    }
+
+    const auto sortedRuns = allowReorder ? CountStaticBatchRuns(records, recordIndices) : rawRuns;
+    using Stats = GpuSceneStaticBatchStats;
+    static constexpr std::array<uint32_t Stats::*, 7> rawFields{&Stats::rawPsoRunCount,
+                                                                &Stats::rawMaterialRunCount,
+                                                                &Stats::rawTextureSetRunCount,
+                                                                &Stats::rawGeometryRunCount,
+                                                                &Stats::rawMeshResourceRunCount,
+                                                                &Stats::rawMaterialResourceRunCount,
+                                                                &Stats::rawClusterResourceRunCount};
+    static constexpr std::array<uint32_t Stats::*, 7> sortedFields{&Stats::sortedPsoRunCount,
+                                                                   &Stats::sortedMaterialRunCount,
+                                                                   &Stats::sortedTextureSetRunCount,
+                                                                   &Stats::sortedGeometryRunCount,
+                                                                   &Stats::sortedMeshResourceRunCount,
+                                                                   &Stats::sortedMaterialResourceRunCount,
+                                                                   &Stats::sortedClusterResourceRunCount};
+    for (size_t i = 0; i < rawRuns.size(); ++i) {
+        stats.*rawFields[i] = rawRuns[i];
+        stats.*sortedFields[i] = sortedRuns[i];
+    }
+    return stats;
+}
+
+bool ShouldPublishStaticTraditionalStreams() {
+    return HIKARI::RENDER3D::GetRenderQualitySettings().geometryPipeline ==
+           HIKARI::RENDER3D::GeometryPipelineMode::TraditionalVsPs;
+}
+
+bool IsGpuSceneStaticTraditionalRecordCommon(const GpuSceneSurfaceRecord& record) {
+    return record.valid && record.key.resourceKeyValid && !record.skinned &&
+           record.key.backendRoute == RUNTIME::SurfaceBackendRoute::StaticVsPs &&
+           (!record.key.materialFx || record.key.waterMaterialFx) && !record.hasSpecialRenderDebug &&
+           HasValidGpuSceneSubmitPrimitiveTarget(record);
+}
+
+bool IsGpuSceneForwardStaticTraditionalRecord(const GpuSceneSurfaceRecord& record) {
+    if (!record.forwardCandidate || !IsGpuSceneStaticTraditionalRecordCommon(record)) {
+        return false;
+    }
+
+    return record.key.backendRoute == RUNTIME::SurfaceBackendRoute::StaticVsPs;
+}
+
+bool IsGpuSceneShadowStaticTraditionalRecord(const GpuSceneSurfaceRecord& record) {
+    if (!record.shadowCandidate || !IsGpuSceneStaticTraditionalRecordCommon(record) ||
+        !HasShadowCasterSafeMaterial(record)) {
+        return false;
+    }
+    if (record.key.backendRoute != RUNTIME::SurfaceBackendRoute::StaticVsPs) {
+        return false;
+    }
+
+    // Shadow の可視性は light-space の GPU 剔除に任せる。ワールド寸法だけで欠落させない。
+    return true;
+}
+} // namespace
+
+void GpuSceneRegistry::Clear() {
+    ++residencyEpoch_;
+    if (residencyEpoch_ == 0u) {
         ++residencyEpoch_;
-        if (residencyEpoch_ == 0u) {
-            ++residencyEpoch_;
-        }
-        surfaceRecords_.clear();
-        waterSurfaceGpuData_.clear();
-        waterSurfaceGpuData_.push_back(
-            WATER::BuildWaterSurfaceGpuDataSentinel());
-        meshShaderJointPalettes_.clear();
-        sandSurfaceGpuData_.clear();
-        sandSurfaceGpuData_.push_back(
-            SAND::BuildSandSurfaceGpuDataSentinel());
-        sandSurfaceHeights_ = nullptr;
-        sandSurfaceHeightVersion_ = 0;
-        forwardOpaqueResidentRecordIndices_.clear();
-        depthPrepassOccluderRecordIndices_.clear();
-        forwardDepthAwareResidentRecordIndices_.clear();
-        forwardTransparentResidentRecordIndices_.clear();
-        shadowResidentRecordIndices_.clear();
-        forwardOpaqueSkinnedRecordIndices_.clear();
-        forwardDepthAwareSkinnedRecordIndices_.clear();
-        forwardTransparentSkinnedRecordIndices_.clear();
-        shadowSkinnedRecordIndices_.clear();
-        forwardOpaqueStaticTraditionalRecordIndices_.clear();
-        forwardDepthAwareStaticTraditionalRecordIndices_.clear();
-        forwardTransparentStaticTraditionalRecordIndices_.clear();
-        shadowStaticTraditionalRecordIndices_.clear();
-        globalGpuSceneIndexByRecord_.clear();
-        globalGpuSceneInstances_.clear();
-        globalMaterialSources_.clear();
-        forwardOpaqueTraditionalStream_.Clear();
-        forwardDepthAwareTraditionalStream_.Clear();
-        forwardTransparentTraditionalStream_.Clear();
-        shadowTraditionalStream_.Clear();
-        sceneSource_.Reset();
-        stats_ = {};
-        layoutVersion_ = 0;
-        routingVersion_ = 0;
-        dataVersion_ = 0;
-        sourceSurfaceCount_ = 0;
-        publishStaticTraditionalStreams_ = false;
+    }
+    surfaceRecords_.clear();
+    waterSurfaceGpuData_.clear();
+    waterSurfaceGpuData_.push_back(WATER::BuildWaterSurfaceGpuDataSentinel());
+    meshShaderJointPalettes_.clear();
+    sandSurfaceGpuData_.clear();
+    sandSurfaceGpuData_.push_back(SAND::BuildSandSurfaceGpuDataSentinel());
+    sandSurfaceHeights_ = nullptr;
+    sandSurfaceHeightVersion_ = 0;
+    forwardOpaqueResidentRecordIndices_.clear();
+    depthPrepassOccluderRecordIndices_.clear();
+    forwardDepthAwareResidentRecordIndices_.clear();
+    forwardTransparentResidentRecordIndices_.clear();
+    shadowResidentRecordIndices_.clear();
+    forwardOpaqueStaticTraditionalRecordIndices_.clear();
+    forwardDepthAwareStaticTraditionalRecordIndices_.clear();
+    forwardTransparentStaticTraditionalRecordIndices_.clear();
+    shadowStaticTraditionalRecordIndices_.clear();
+    globalGpuSceneIndexByRecord_.clear();
+    globalGpuSceneInstances_.clear();
+    globalMaterialSources_.clear();
+    forwardOpaqueTraditionalStream_.Clear();
+    forwardDepthAwareTraditionalStream_.Clear();
+    forwardTransparentTraditionalStream_.Clear();
+    shadowTraditionalStream_.Clear();
+    sceneSource_.Reset();
+    stats_ = {};
+    layoutVersion_ = 0;
+    routingVersion_ = 0;
+    dataVersion_ = 0;
+    sourceSurfaceCount_ = 0;
+    publishStaticTraditionalStreams_ = false;
+}
+
+void GpuSceneRegistry::SyncForwardFromSceneCache(const GpuSceneRegistrySyncInput& input) {
+    stats_.syncMode = GpuSceneSyncMode::None;
+    stats_.frameRecordBuildCount = 0;
+    stats_.frameRecordReuseCount = 0;
+    stats_.patchRejection = {};
+    if (input.sceneCache == nullptr) {
+        Clear();
+        return;
     }
 
-    void GpuSceneRegistry::SyncForwardFromSceneCache(
-        const GpuSceneRegistrySyncInput& input) {
+    const uint64_t layoutVersion = input.sceneCache->GetSurfaceVersion();
+    const uint64_t routingVersion = input.sceneCache->GetSurfaceRoutingVersion();
+    const uint64_t dataVersion = input.sceneCache->GetSurfaceDataVersion();
+    const uint64_t heightVersion =
+        BuildSurfaceHeightContentVersion(residencyEpoch_, input.sceneCache->GetSurfaceFloatPoolVersion());
+    const uint32_t surfaceCount = NUMERIC::SaturateToUint32(input.sceneCache->GetSurfaceInstances().size());
 
-        stats_.syncMode = GpuSceneSyncMode::None;
-        stats_.frameRecordBuildCount = 0;
-        stats_.frameRecordReuseCount = 0;
-        stats_.patchRejection = {};
-        if (input.sceneCache == nullptr) {
-            Clear();
-            return;
-        }
+    const bool layoutChanged =
+        layoutVersion_ != layoutVersion || routingVersion_ != routingVersion || sourceSurfaceCount_ != surfaceCount;
+    const bool publishStaticTraditionalStreams = ShouldPublishStaticTraditionalStreams();
+    const bool traditionalStreamPolicyChanged = publishStaticTraditionalStreams_ != publishStaticTraditionalStreams;
+    if (layoutChanged || traditionalStreamPolicyChanged || !sceneSource_.HasAnyGpuSceneRanges()) {
+        const GpuSceneSyncMode reason = layoutVersion_ != layoutVersion || sourceSurfaceCount_ != surfaceCount
+                                            ? GpuSceneSyncMode::RebuildTopology
+                                        : routingVersion_ != routingVersion ? GpuSceneSyncMode::RebuildRouting
+                                        : traditionalStreamPolicyChanged    ? GpuSceneSyncMode::RebuildPolicy
+                                                                            : GpuSceneSyncMode::RebuildEmpty;
+        RebuildForwardFromSceneCache(input);
+        stats_.syncMode = reason;
+        return;
+    }
 
-        const uint64_t layoutVersion = input.sceneCache->GetSurfaceVersion();
-        const uint64_t routingVersion = input.sceneCache->GetSurfaceRoutingVersion();
-        const uint64_t dataVersion = input.sceneCache->GetSurfaceDataVersion();
-        const uint64_t heightVersion =
-            BuildSurfaceHeightContentVersion(
-                residencyEpoch_,
-                input.sceneCache->GetSurfaceFloatPoolVersion());
-        const uint32_t surfaceCount =
-            NUMERIC::SaturateToUint32(input.sceneCache->GetSurfaceInstances().size());
-
-        const bool layoutChanged =
-            layoutVersion_ != layoutVersion ||
-            routingVersion_ != routingVersion ||
-            sourceSurfaceCount_ != surfaceCount;
-        const bool publishStaticTraditionalStreams =
-            ShouldPublishStaticTraditionalStreams();
-        const bool traditionalStreamPolicyChanged =
-            publishStaticTraditionalStreams_ != publishStaticTraditionalStreams;
-        if (layoutChanged ||
-            traditionalStreamPolicyChanged ||
-            !sceneSource_.HasAnyGpuSceneRanges()) {
-            const GpuSceneSyncMode reason =
-                layoutVersion_ != layoutVersion || sourceSurfaceCount_ != surfaceCount
-                    ? GpuSceneSyncMode::RebuildTopology
-                : routingVersion_ != routingVersion
-                    ? GpuSceneSyncMode::RebuildRouting
-                : traditionalStreamPolicyChanged
-                    ? GpuSceneSyncMode::RebuildPolicy
-                    : GpuSceneSyncMode::RebuildEmpty;
-            RebuildForwardFromSceneCache(input);
-            stats_.syncMode = reason;
-            return;
-        }
-
-        ClearFrameDirtyRanges();
-        if (dataVersion_ == dataVersion) {
-            stats_.syncMode = GpuSceneSyncMode::Reuse;
-            sandSurfaceHeightVersion_ = heightVersion;
-            sceneSource_.sandSurfaceHeightVersion = heightVersion;
-            sceneSource_.dirtyBaseSourceVersion = sceneSource_.sourceVersion;
-            return;
-        }
-
-        const uint64_t patchBaseSourceVersion = dataVersion_;
-        if (!TryPatchForwardDataFromSceneCache(input)) {
-            const uint32_t patchRecordBuildCount = stats_.frameRecordBuildCount;
-            GpuScenePatchRejection rejection = std::move(stats_.patchRejection);
-            RebuildForwardFromSceneCache(input, true);
-            stats_.frameRecordBuildCount += patchRecordBuildCount;
-            stats_.patchRejection = std::move(rejection);
-            stats_.syncMode = GpuSceneSyncMode::RebuildPatchRejected;
-            return;
-        }
-
-        stats_.syncMode = GpuSceneSyncMode::Patch;
-        dataVersion_ = dataVersion;
+    ClearFrameDirtyRanges();
+    if (dataVersion_ == dataVersion) {
+        stats_.syncMode = GpuSceneSyncMode::Reuse;
         sandSurfaceHeightVersion_ = heightVersion;
         sceneSource_.sandSurfaceHeightVersion = heightVersion;
-        sceneSource_.layoutVersion =
-            BuildSourceLayoutVersion(
-                residencyEpoch_,
-                layoutVersion_,
-                routingVersion_);
-        sceneSource_.sourceVersion = dataVersion_;
-        sceneSource_.dirtyBaseSourceVersion = patchBaseSourceVersion;
+        sceneSource_.dirtyBaseSourceVersion = sceneSource_.sourceVersion;
+        return;
     }
 
-    void GpuSceneRegistry::RebuildForwardFromSceneCache(
-        const GpuSceneRegistrySyncInput& input,
-        bool reuseUnchangedRecords) {
-
-        static const auto timer = CPU_PROFILE::RegisterDynamicPass("Render.GpuSceneRebuild");
-        const CPU_PROFILE::ScopedDynamicCpuTimer scope(timer);
-        std::vector<GpuSceneSurfaceRecord> previousRecords;
-        std::vector<uint8_t> dirtyRecordMask;
-        if (reuseUnchangedRecords && input.sceneCache != nullptr &&
-            layoutVersion_ == input.sceneCache->GetSurfaceVersion() &&
-            surfaceRecords_.size() == input.sceneCache->GetSurfaceInstances().size()) {
-            // 経路の再構築でも、変更のない表面の資源解決は再利用する。
-            previousRecords = std::move(surfaceRecords_);
-            dirtyRecordMask.assign(previousRecords.size(), 0u);
-            for (const uint32_t index : input.sceneCache->GetDirtySurfaceIndices()) {
-                if (index < dirtyRecordMask.size()) {
-                    dirtyRecordMask[index] = 1u;
-                }
-            }
-        }
-        Clear();
-        if (input.sceneCache == nullptr) {
-            return;
-        }
-        publishStaticTraditionalStreams_ =
-            ShouldPublishStaticTraditionalStreams();
-
-        const std::vector<RUNTIME::SceneSurfaceInstance>& surfaces =
-            input.sceneCache->GetSurfaceInstances();
-        surfaceRecords_.reserve(surfaces.size());
-        for (uint32_t surfaceIndex = 0;
-            surfaceIndex < surfaces.size();
-            ++surfaceIndex) {
-
-            const RUNTIME::SceneSurfaceInstance& surface = surfaces[surfaceIndex];
-            GpuSceneSurfaceRecord record{};
-            if (surfaceIndex < previousRecords.size() &&
-                dirtyRecordMask[surfaceIndex] == 0u &&
-                previousRecords[surfaceIndex].valid &&
-                previousRecords[surfaceIndex].objectId == surface.objectId &&
-                previousRecords[surfaceIndex].objectLifetimeGeneration == surface.objectLifetimeGeneration &&
-                previousRecords[surfaceIndex].objectVersion == surface.objectVersion &&
-                previousRecords[surfaceIndex].materialOverrideRevision == surface.materialOverrideRevision &&
-                previousRecords[surfaceIndex].sourceSurface == &surface) {
-                record = std::move(previousRecords[surfaceIndex]);
-                ++stats_.frameRecordReuseCount;
-            } else {
-                record = BuildGpuSceneSurfaceRecord(surface, surfaceIndex);
-                ++stats_.frameRecordBuildCount;
-            }
-            if (!record.visible) {
-                ++stats_.hiddenSourceRecordCount;
-            }
-            surfaceRecords_.push_back(std::move(record));
-        }
-
-        for (GpuSceneSurfaceRecord& record : surfaceRecords_) {
-            if (!record.valid || !record.waterSurface) {
-                record.waterSurfaceGpuDataIndex = 0u;
-                continue;
-            }
-            record.waterSurfaceGpuDataIndex =
-                NUMERIC::SaturateToUint32(waterSurfaceGpuData_.size());
-            waterSurfaceGpuData_.push_back(
-                WATER::BuildWaterSurfaceGpuData(
-                    record.waterSurfaceData,
-                    record.waterSurfaceLiquidCoverageOffset));
-        }
-
-        meshShaderJointPalettes_.resize(surfaceRecords_.size());
-        GpuScenePoseBuilder meshShaderPoseBuilder{};
-        for (uint32_t recordIndex = 0;
-            recordIndex < surfaceRecords_.size();
-            ++recordIndex) {
-
-            GpuSceneSurfaceRecord& record = surfaceRecords_[recordIndex];
-            if (!record.skinned ||
-                record.key.backendRoute != RUNTIME::SurfaceBackendRoute::MeshShader ||
-                recordIndex >= RUNTIME::kSurfaceGpuSceneMaxDeformationPalettes) {
-                continue;
-            }
-            const std::vector<MATH::Mat4>* palette =
-                meshShaderPoseBuilder.ResolveJointPalette(record);
-            if (palette == nullptr || palette->empty() ||
-                palette->size() > RUNTIME::kSurfaceGpuSceneMaxJointMatrices) {
-                record.jointPaletteSlot = RUNTIME::kInvalidRenderSurfaceIndex;
-                record.jointPaletteMatrixCount = 0u;
-                continue;
-            }
-            meshShaderJointPalettes_[recordIndex] = *palette;
-            record.jointPaletteSlot = recordIndex;
-            record.jointPaletteMatrixCount = NUMERIC::SaturateToUint32(palette->size());
-        }
-
-        sandSurfaceGpuData_.clear();
-        sandSurfaceGpuData_.push_back(
-            SAND::BuildSandSurfaceGpuDataSentinel());
-        sandSurfaceHeights_ =
-            input.sceneCache->GetSandSurfaceHeights();
-        sandSurfaceHeightVersion_ =
-            BuildSurfaceHeightContentVersion(
-                residencyEpoch_,
-                input.sceneCache->GetSurfaceFloatPoolVersion());
-        for (GpuSceneSurfaceRecord& record : surfaceRecords_) {
-            if (!record.valid || !record.sandSurface) {
-                record.sandSurfaceGpuDataIndex = 0u;
-                continue;
-            }
-            record.sandSurfaceGpuDataIndex =
-                NUMERIC::SaturateToUint32(sandSurfaceGpuData_.size());
-            sandSurfaceGpuData_.push_back(
-                SAND::BuildSandSurfaceGpuData(
-                    record.sandSurfaceData,
-                    record.sandSurfaceHeightOffset,
-                    record.sandSurfaceDeformationOffset,
-                    record.sandSurfaceLayerWeightsOffset,
-                    record.sandSurfaceCoverageOffset,
-                    record.sandSurfaceLayerTintsOffset));
-        }
-
-        stats_.sourceRecordCount = NUMERIC::SaturateToUint32(surfaceRecords_.size());
-
-        std::vector<uint32_t> routedRecordIndices{};
-        routedRecordIndices.reserve(surfaceRecords_.size());
-        for (uint32_t recordIndex = 0;
-            recordIndex < surfaceRecords_.size();
-            ++recordIndex) {
-
-            const GpuSceneSurfaceRecord& record = surfaceRecords_[recordIndex];
-            const bool meshShaderMaterialFxRecord =
-                record.key.materialFx &&
-                !record.key.materialFxUsesCustomVertexShader;
-            if (record.valid && record.shadowCandidate && record.key.resourceKeyValid) {
-                if (IsGpuSceneStaticShadowCasterRecord(record)) {
-                    shadowResidentRecordIndices_.push_back(recordIndex);
-                    if (meshShaderMaterialFxRecord) {
-                        ++stats_.shadowMaterialFxMeshShaderRecordCount;
-                    }
-                    if (record.key.skinned) {
-                        ++stats_.shadowSkinnedMeshShaderRecordCount;
-                    }
-                } else if (IsGpuSceneShadowStaticTraditionalRecord(record)) {
-                    shadowStaticTraditionalRecordIndices_.push_back(recordIndex);
-                    if (meshShaderMaterialFxRecord) {
-                        ++stats_.shadowMaterialFxTraditionalRecordCount;
-                    }
-                } else if (IsGpuSceneShadowSkinnedTraditionalRecord(record)) {
-                    shadowSkinnedRecordIndices_.push_back(recordIndex);
-                } else {
-                    ++stats_.blockedShadowRecordCount;
-                }
-            }
-            if (record.valid && record.forwardCandidate && record.key.resourceKeyValid) {
-                routedRecordIndices.push_back(recordIndex);
-            }
-        }
-        stats_.forwardRoutedRecordCount = NUMERIC::SaturateToUint32(routedRecordIndices.size());
-
-        forwardOpaqueResidentRecordIndices_.reserve(routedRecordIndices.size());
-        forwardDepthAwareResidentRecordIndices_.reserve(routedRecordIndices.size());
-        forwardTransparentResidentRecordIndices_.reserve(routedRecordIndices.size());
-        forwardOpaqueStaticTraditionalRecordIndices_.reserve(routedRecordIndices.size());
-        forwardDepthAwareStaticTraditionalRecordIndices_.reserve(routedRecordIndices.size());
-        forwardTransparentStaticTraditionalRecordIndices_.reserve(routedRecordIndices.size());
-        for (const uint32_t recordIndex : routedRecordIndices) {
-            if (recordIndex >= surfaceRecords_.size()) {
-                continue;
-            }
-
-            const GpuSceneSurfaceRecord& record = surfaceRecords_[recordIndex];
-            const bool meshShaderMaterialFxRecord =
-                record.key.materialFx &&
-                !record.key.materialFxUsesCustomVertexShader;
-            if (IsGpuSceneForwardOpaqueResidentRecord(record)) {
-                forwardOpaqueResidentRecordIndices_.push_back(recordIndex);
-                ++stats_.forwardOpaqueClusterCandidateRecordCount;
-                if (meshShaderMaterialFxRecord) {
-                    ++stats_.forwardMaterialFxMeshShaderRecordCount;
-                }
-                if (record.key.skinned) {
-                    ++stats_.forwardSkinnedMeshShaderRecordCount;
-                }
-            } else if (IsGpuSceneForwardDepthAwareResidentRecord(record)) {
-                forwardDepthAwareResidentRecordIndices_.push_back(recordIndex);
-                if (meshShaderMaterialFxRecord) {
-                    ++stats_.forwardMaterialFxMeshShaderRecordCount;
-                }
-                if (record.key.skinned) {
-                    ++stats_.forwardSkinnedMeshShaderRecordCount;
-                }
-            } else if (IsGpuSceneForwardTransparentResidentRecord(record)) {
-                forwardTransparentResidentRecordIndices_.push_back(recordIndex);
-                if (meshShaderMaterialFxRecord) {
-                    ++stats_.forwardMaterialFxMeshShaderRecordCount;
-                }
-                if (record.key.skinned) {
-                    ++stats_.forwardSkinnedMeshShaderRecordCount;
-                }
-            } else if (IsGpuSceneForwardSkinnedTraditionalRecord(record)) {
-                if (record.key.depthAware) {
-                    forwardDepthAwareSkinnedRecordIndices_.push_back(recordIndex);
-                } else if (record.key.transparent) {
-                    forwardTransparentSkinnedRecordIndices_.push_back(recordIndex);
-                } else {
-                    forwardOpaqueSkinnedRecordIndices_.push_back(recordIndex);
-                }
-            } else if (IsGpuSceneForwardStaticTraditionalRecord(record)) {
-                if (meshShaderMaterialFxRecord) {
-                    ++stats_.forwardMaterialFxTraditionalRecordCount;
-                }
-                if (record.key.depthAware) {
-                    forwardDepthAwareStaticTraditionalRecordIndices_.push_back(recordIndex);
-                } else if (record.key.transparent) {
-                    forwardTransparentStaticTraditionalRecordIndices_.push_back(recordIndex);
-                } else {
-                    forwardOpaqueStaticTraditionalRecordIndices_.push_back(recordIndex);
-                }
-            } else if (record.forwardCandidate) {
-                ++stats_.unsupportedForwardRecordCount;
-                if (meshShaderMaterialFxRecord) {
-                    ++stats_.forwardMaterialFxBlockedRecordCount;
-                }
-                if (record.key.depthAware) {
-                    ++stats_.blockedForwardDepthAwareRecordCount;
-                } else if (record.key.transparent) {
-                    ++stats_.blockedForwardTransparentRecordCount;
-                }
-            }
-        }
-        stats_.forwardOpaqueResidentRecordCount =
-            NUMERIC::SaturateToUint32(forwardOpaqueResidentRecordIndices_.size());
-        stats_.forwardStaticTraditionalRecordCount =
-            NUMERIC::SaturateToUint32(
-                forwardOpaqueStaticTraditionalRecordIndices_.size() +
-                forwardDepthAwareStaticTraditionalRecordIndices_.size() +
-                forwardTransparentStaticTraditionalRecordIndices_.size());
-        stats_.shadowStaticTraditionalRecordCount =
-            NUMERIC::SaturateToUint32(shadowStaticTraditionalRecordIndices_.size());
-        stats_.forwardSkinnedTraditionalRecordCount =
-            NUMERIC::SaturateToUint32(
-                forwardOpaqueSkinnedRecordIndices_.size() +
-                forwardDepthAwareSkinnedRecordIndices_.size() +
-                forwardTransparentSkinnedRecordIndices_.size());
-        stats_.shadowSkinnedTraditionalRecordCount =
-            NUMERIC::SaturateToUint32(shadowSkinnedRecordIndices_.size());
-        stats_.strictMainlineBlockedRecordCount =
-            stats_.blockedForwardDepthAwareRecordCount +
-            stats_.blockedForwardTransparentRecordCount +
-            stats_.blockedShadowRecordCount;
-
-        stats_.forwardOpaqueBatchStats =
-            SortStaticResidentRecordsForBatching(
-                surfaceRecords_,
-                forwardOpaqueResidentRecordIndices_,
-                true);
-        BuildDepthPrepassOccluderRecords(
-            surfaceRecords_,
-            forwardOpaqueResidentRecordIndices_,
-            depthPrepassOccluderRecordIndices_,
-            stats_);
-        stats_.forwardDepthAwareBatchStats =
-            SortStaticResidentRecordsForBatching(
-                surfaceRecords_,
-                forwardDepthAwareResidentRecordIndices_,
-                true);
-        stats_.forwardTransparentBatchStats =
-            SortStaticResidentRecordsForBatching(
-                surfaceRecords_,
-                forwardTransparentResidentRecordIndices_,
-                false);
-        stats_.shadowBatchStats =
-            SortStaticResidentRecordsForBatching(
-                surfaceRecords_,
-                shadowResidentRecordIndices_,
-                true);
-
-        globalGpuSceneIndexByRecord_.assign(
-            surfaceRecords_.size(),
-            RUNTIME::kInvalidRenderSurfaceIndex);
-        std::vector<uint32_t> globalRecordIndices{};
-        globalRecordIndices.reserve(
-            forwardOpaqueResidentRecordIndices_.size() +
-            depthPrepassOccluderRecordIndices_.size() +
-            forwardDepthAwareResidentRecordIndices_.size() +
-            forwardTransparentResidentRecordIndices_.size() +
-            shadowResidentRecordIndices_.size());
-
-        const auto appendGlobalRecords =
-            [&](const std::vector<uint32_t>& recordIndices) {
-            for (const uint32_t recordIndex : recordIndices) {
-                if (recordIndex >= globalGpuSceneIndexByRecord_.size()) {
-                    continue;
-                }
-                if (globalGpuSceneIndexByRecord_[recordIndex] !=
-                    RUNTIME::kInvalidRenderSurfaceIndex) {
-                    continue;
-                }
-                globalGpuSceneIndexByRecord_[recordIndex] =
-                    NUMERIC::SaturateToUint32(globalRecordIndices.size());
-                globalRecordIndices.push_back(recordIndex);
-            }
-        };
-
-        appendGlobalRecords(forwardOpaqueResidentRecordIndices_);
-        appendGlobalRecords(depthPrepassOccluderRecordIndices_);
-        appendGlobalRecords(forwardDepthAwareResidentRecordIndices_);
-        appendGlobalRecords(forwardTransparentResidentRecordIndices_);
-        appendGlobalRecords(shadowResidentRecordIndices_);
-
-        (void)BuildGpuSceneInstanceList(
-            surfaceRecords_,
-            globalRecordIndices,
-            globalGpuSceneInstances_,
-            globalMaterialSources_);
-
-        const auto markGlobalPass =
-            [&](GpuDrivenPassKind passKind,
-                const std::vector<uint32_t>& recordIndices) {
-            const uint32_t passFlag = PassInstanceFlag(passKind);
-            for (const uint32_t recordIndex : recordIndices) {
-                if (recordIndex >= globalGpuSceneIndexByRecord_.size()) {
-                    continue;
-                }
-                const uint32_t globalIndex =
-                    globalGpuSceneIndexByRecord_[recordIndex];
-                if (globalIndex == RUNTIME::kInvalidRenderSurfaceIndex ||
-                    globalIndex >= globalGpuSceneInstances_.size() ||
-                    globalIndex >= globalMaterialSources_.size()) {
-                    continue;
-                }
-                globalGpuSceneInstances_[globalIndex].flags |= passFlag;
-                globalMaterialSources_[globalIndex].localGpuSceneInstanceIndex =
-                    globalIndex;
-            }
-        };
-
-        markGlobalPass(
-            GpuDrivenPassKind::ForwardOpaque,
-            forwardOpaqueResidentRecordIndices_);
-        markGlobalPass(
-            GpuDrivenPassKind::DepthPrepass,
-            depthPrepassOccluderRecordIndices_);
-        markGlobalPass(
-            GpuDrivenPassKind::ForwardDepthAware,
-            forwardDepthAwareResidentRecordIndices_);
-        markGlobalPass(
-            GpuDrivenPassKind::ForwardTransparent,
-            forwardTransparentResidentRecordIndices_);
-        markGlobalPass(
-            GpuDrivenPassKind::Shadow,
-            shadowResidentRecordIndices_);
-
-        stats_.forwardOpaqueGpuSceneStats =
-            BuildPassStatsFromGlobalScene(
-                forwardOpaqueResidentRecordIndices_,
-                globalGpuSceneIndexByRecord_,
-                globalGpuSceneInstances_);
-        stats_.depthPrepassGpuSceneStats =
-            BuildPassStatsFromGlobalScene(
-                depthPrepassOccluderRecordIndices_,
-                globalGpuSceneIndexByRecord_,
-                globalGpuSceneInstances_);
-        stats_.forwardDepthAwareGpuSceneStats =
-            BuildPassStatsFromGlobalScene(
-                forwardDepthAwareResidentRecordIndices_,
-                globalGpuSceneIndexByRecord_,
-                globalGpuSceneInstances_);
-        stats_.forwardTransparentGpuSceneStats =
-            BuildPassStatsFromGlobalScene(
-                forwardTransparentResidentRecordIndices_,
-                globalGpuSceneIndexByRecord_,
-                globalGpuSceneInstances_);
-
-        const auto buildTraditionalStreamStats =
-            [](const TraditionalIndirectStream& stream) {
-            RUNTIME::SurfaceGpuSceneBuildStats streamStats{};
-            streamStats.commandCount = NUMERIC::SaturateToUint32(stream.commands.size());
-            streamStats.instanceCount = NUMERIC::SaturateToUint32(stream.instances.size());
-            streamStats.maxCommandInstanceCount = stream.instances.empty() ? 0u : 1u;
-            for (const RUNTIME::SurfaceGpuSceneInstance& instance : stream.instances) {
-                if ((instance.resourceFlags &
-                    static_cast<uint32_t>(RUNTIME::SurfaceGpuSceneResourceFlags::Mesh)) != 0u &&
-                    (instance.resourceFlags &
-                    static_cast<uint32_t>(RUNTIME::SurfaceGpuSceneResourceFlags::Material)) != 0u) {
-                    ++streamStats.resourceBackedInstanceCount;
-                } else {
-                    ++streamStats.missingResourceHandleInstanceCount;
-                }
-            }
-            return streamStats;
-        };
-
-        const auto buildTraditionalStream =
-            [&](const std::vector<uint32_t>& mainlineStaticRecordIndices,
-                const std::vector<uint32_t>& sidecarStaticRecordIndices,
-                const std::vector<uint32_t>& skinnedRecordIndices,
-                RUNTIME::SurfaceDrawCommandPass pass,
-                TraditionalIndirectStream& stream) {
-            stream.Clear();
-            for (const uint32_t recordIndex : sidecarStaticRecordIndices) {
-                AppendStaticTraditionalRecord(
-                    surfaceRecords_,
-                    recordIndex,
-                    pass,
-                    stream);
-            }
-
-            if (publishStaticTraditionalStreams_) {
-                std::unordered_set<uint32_t> sidecarRecordSet{};
-                sidecarRecordSet.reserve(sidecarStaticRecordIndices.size());
-                for (const uint32_t recordIndex : sidecarStaticRecordIndices) {
-                    sidecarRecordSet.insert(recordIndex);
-                }
-                for (const uint32_t recordIndex : mainlineStaticRecordIndices) {
-                    if (sidecarRecordSet.find(recordIndex) !=
-                        sidecarRecordSet.end()) {
-                        continue;
-                    }
-                    AppendStaticTraditionalRecord(
-                        surfaceRecords_,
-                        recordIndex,
-                        pass,
-                        stream);
-                }
-            }
-
-            GpuScenePoseBuilder poseBuilder{};
-            for (const uint32_t recordIndex : skinnedRecordIndices) {
-                AppendSkinnedTraditionalRecord(
-                    surfaceRecords_,
-                    recordIndex,
-                    pass,
-                    stream,
-                    poseBuilder);
-            }
-
-            return buildTraditionalStreamStats(stream);
-        };
-
-        stats_.forwardOpaqueTraditionalGpuSceneStats =
-            buildTraditionalStream(
-                forwardOpaqueResidentRecordIndices_,
-                forwardOpaqueStaticTraditionalRecordIndices_,
-                forwardOpaqueSkinnedRecordIndices_,
-                RUNTIME::SurfaceDrawCommandPass::Forward,
-                forwardOpaqueTraditionalStream_);
-        stats_.forwardOpaqueSkinnedTraditionalGpuSceneStats =
-            stats_.forwardOpaqueTraditionalGpuSceneStats;
-        stats_.forwardDepthAwareTraditionalGpuSceneStats =
-            buildTraditionalStream(
-                forwardDepthAwareResidentRecordIndices_,
-                forwardDepthAwareStaticTraditionalRecordIndices_,
-                forwardDepthAwareSkinnedRecordIndices_,
-                RUNTIME::SurfaceDrawCommandPass::DepthAware,
-                forwardDepthAwareTraditionalStream_);
-        stats_.forwardDepthAwareSkinnedTraditionalGpuSceneStats =
-            stats_.forwardDepthAwareTraditionalGpuSceneStats;
-        stats_.forwardTransparentTraditionalGpuSceneStats =
-            buildTraditionalStream(
-                forwardTransparentResidentRecordIndices_,
-                forwardTransparentStaticTraditionalRecordIndices_,
-                forwardTransparentSkinnedRecordIndices_,
-                RUNTIME::SurfaceDrawCommandPass::Forward,
-                forwardTransparentTraditionalStream_);
-        stats_.forwardTransparentSkinnedTraditionalGpuSceneStats =
-            stats_.forwardTransparentTraditionalGpuSceneStats;
-        stats_.shadowSkinnedTraditionalGpuSceneStats =
-            buildTraditionalStream(
-                shadowResidentRecordIndices_,
-                shadowStaticTraditionalRecordIndices_,
-                shadowSkinnedRecordIndices_,
-                RUNTIME::SurfaceDrawCommandPass::Shadow,
-                shadowTraditionalStream_);
-
-        layoutVersion_ = input.sceneCache->GetSurfaceVersion();
-        routingVersion_ = input.sceneCache->GetSurfaceRoutingVersion();
-        dataVersion_ = input.sceneCache->GetSurfaceDataVersion();
-        sourceSurfaceCount_ = NUMERIC::SaturateToUint32(surfaces.size());
-        SuppressCpuForwardViews(input);
-        RebuildForwardSceneSource();
+    const uint64_t patchBaseSourceVersion = dataVersion_;
+    if (!TryPatchForwardDataFromSceneCache(input)) {
+        const uint32_t patchRecordBuildCount = stats_.frameRecordBuildCount;
+        GpuScenePatchRejection rejection = std::move(stats_.patchRejection);
+        RebuildForwardFromSceneCache(input, true);
+        stats_.frameRecordBuildCount += patchRecordBuildCount;
+        stats_.patchRejection = std::move(rejection);
+        stats_.syncMode = GpuSceneSyncMode::RebuildPatchRejected;
+        return;
     }
 
-    void GpuSceneRegistry::SuppressCpuForwardViews(
-        const GpuSceneRegistrySyncInput& input) {
+    stats_.syncMode = GpuSceneSyncMode::Patch;
+    dataVersion_ = dataVersion;
+    sandSurfaceHeightVersion_ = heightVersion;
+    sceneSource_.sandSurfaceHeightVersion = heightVersion;
+    sceneSource_.layoutVersion = BuildSourceLayoutVersion(residencyEpoch_, layoutVersion_, routingVersion_);
+    sceneSource_.sourceVersion = dataVersion_;
+    sceneSource_.dirtyBaseSourceVersion = patchBaseSourceVersion;
+}
 
-        stats_.strictGpuDrivenMainline = true;
-        stats_.cpuForwardViewSuppressedCount =
-            input.sceneCache != nullptr ? 1u : 0u;
+void GpuSceneRegistry::RebuildForwardFromSceneCache(const GpuSceneRegistrySyncInput& input,
+                                                    bool reuseUnchangedRecords) {
+    static const auto timer = CPU_PROFILE::RegisterDynamicPass("Render.GpuSceneRebuild");
+    const CPU_PROFILE::ScopedDynamicCpuTimer scope(timer);
+    std::vector<GpuSceneSurfaceRecord> previousRecords;
+    std::vector<uint8_t> dirtyRecordMask;
+    if (reuseUnchangedRecords && input.sceneCache != nullptr &&
+        layoutVersion_ == input.sceneCache->GetSurfaceVersion() &&
+        surfaceRecords_.size() == input.sceneCache->GetSurfaceInstances().size()) {
+        // 経路の再構築でも、変更のない表面の資源解決は再利用する。
+        previousRecords = std::move(surfaceRecords_);
+        dirtyRecordMask.assign(previousRecords.size(), 0u);
+        for (const uint32_t index : input.sceneCache->GetDirtySurfaceIndices()) {
+            if (index < dirtyRecordMask.size()) {
+                dirtyRecordMask[index] = 1u;
+            }
+        }
     }
+    Clear();
+    if (input.sceneCache == nullptr) {
+        return;
+    }
+    publishStaticTraditionalStreams_ = ShouldPublishStaticTraditionalStreams();
 
-    bool GpuSceneRegistry::TryPatchForwardDataFromSceneCache(
-        const GpuSceneRegistrySyncInput& input) {
-
-        static const auto timer = CPU_PROFILE::RegisterDynamicPass("Render.GpuScenePatch");
-        const CPU_PROFILE::ScopedDynamicCpuTimer scope(timer);
-        uint32_t currentSurfaceIndex = RUNTIME::kInvalidRenderSurfaceIndex;
-        const auto reject = [&](const char* reason) {
-            auto& rejection = stats_.patchRejection;
-            rejection.reason = reason;
-            rejection.surfaceIndex = currentSurfaceIndex;
-            if (input.sceneCache != nullptr &&
-                currentSurfaceIndex < input.sceneCache->GetSurfaceInstances().size()) {
-                const auto& surface = input.sceneCache->GetSurfaceInstances()[currentSurfaceIndex];
-                rejection.objectId = surface.objectId.value;
-                rejection.nodeIndex = surface.nodeIndex;
-                if (surface.model != nullptr) {
-                    rejection.modelPath = surface.model->sourcePath;
-                }
-            }
-            return false;
-        };
-        if (ShouldPublishStaticTraditionalStreams()) {
-            return reject("traditional pipeline policy");
-        }
-
-        if (input.sceneCache == nullptr) {
-            return reject("missing scene cache");
-        }
-        const std::vector<RUNTIME::SceneSurfaceInstance>& surfaces =
-            input.sceneCache->GetSurfaceInstances();
-        if (surfaces.size() != surfaceRecords_.size()) {
-            return reject("surface count changed");
-        }
-
-        std::vector<uint32_t> dirtySurfaceIndices =
-            input.sceneCache->GetDirtySurfaceIndices();
-        std::sort(dirtySurfaceIndices.begin(), dirtySurfaceIndices.end());
-        dirtySurfaceIndices.erase(
-            std::unique(dirtySurfaceIndices.begin(), dirtySurfaceIndices.end()),
-            dirtySurfaceIndices.end());
-
-        std::vector<uint32_t> singleRecordIndex{};
-        singleRecordIndex.reserve(1);
-        std::vector<RUNTIME::SurfaceGpuSceneInstance> singleInstance{};
-        std::vector<RUNTIME::SurfaceGpuSceneMaterialSource> singleMaterial{};
-        GpuScenePoseBuilder meshShaderPoseBuilder{};
-
-        for (const uint32_t surfaceIndex : dirtySurfaceIndices) {
-            currentSurfaceIndex = surfaceIndex;
-            if (surfaceIndex >= surfaces.size() ||
-                surfaceIndex >= surfaceRecords_.size()) {
-                return reject("invalid dirty index");
-            }
-
-            GpuSceneSurfaceRecord newRecord =
-                BuildGpuSceneSurfaceRecord(surfaces[surfaceIndex], surfaceIndex);
+    const std::vector<RUNTIME::SceneSurfaceInstance>& surfaces = input.sceneCache->GetSurfaceInstances();
+    surfaceRecords_.reserve(surfaces.size());
+    for (uint32_t surfaceIndex = 0; surfaceIndex < surfaces.size(); ++surfaceIndex) {
+        const RUNTIME::SceneSurfaceInstance& surface = surfaces[surfaceIndex];
+        GpuSceneSurfaceRecord record{};
+        if (surfaceIndex < previousRecords.size() && dirtyRecordMask[surfaceIndex] == 0u &&
+            previousRecords[surfaceIndex].valid && previousRecords[surfaceIndex].objectId == surface.objectId &&
+            previousRecords[surfaceIndex].objectLifetimeGeneration == surface.objectLifetimeGeneration &&
+            previousRecords[surfaceIndex].objectVersion == surface.objectVersion &&
+            previousRecords[surfaceIndex].materialOverrideRevision == surface.materialOverrideRevision &&
+            previousRecords[surfaceIndex].sourceSurface == &surface) {
+            record = std::move(previousRecords[surfaceIndex]);
+            ++stats_.frameRecordReuseCount;
+        } else {
+            record = BuildGpuSceneSurfaceRecord(surface, surfaceIndex);
             ++stats_.frameRecordBuildCount;
-            if (newRecord.skinned &&
-                newRecord.key.backendRoute == RUNTIME::SurfaceBackendRoute::MeshShader &&
-                surfaceIndex < RUNTIME::kSurfaceGpuSceneMaxDeformationPalettes) {
-                const std::vector<MATH::Mat4>* palette =
-                    meshShaderPoseBuilder.ResolveJointPalette(newRecord);
-                if (palette != nullptr && !palette->empty() &&
-                    palette->size() <= RUNTIME::kSurfaceGpuSceneMaxJointMatrices) {
-                    if (meshShaderJointPalettes_.size() != surfaceRecords_.size()) {
-                        return reject("pose storage changed");
-                    }
-                    meshShaderJointPalettes_[surfaceIndex] = *palette;
-                    newRecord.jointPaletteSlot = surfaceIndex;
-                    newRecord.jointPaletteMatrixCount = NUMERIC::SaturateToUint32(palette->size());
-                }
-            }
-            const GpuSceneSurfaceRecord& oldRecord = surfaceRecords_[surfaceIndex];
-            if (oldRecord.waterSurface != newRecord.waterSurface) {
-                return reject("water membership changed");
-            }
-            if (IsGpuSceneForwardSkinnedTraditionalRecord(oldRecord) ||
-                IsGpuSceneForwardSkinnedTraditionalRecord(newRecord) ||
-                IsGpuSceneForwardStaticTraditionalRecord(oldRecord) ||
-                IsGpuSceneForwardStaticTraditionalRecord(newRecord) ||
-                IsGpuSceneShadowSkinnedTraditionalRecord(oldRecord) ||
-                IsGpuSceneShadowSkinnedTraditionalRecord(newRecord) ||
-                IsGpuSceneShadowStaticTraditionalRecord(oldRecord) ||
-                IsGpuSceneShadowStaticTraditionalRecord(newRecord)) {
-                return reject("traditional surface");
-            }
-            if (oldRecord.sandSurface != newRecord.sandSurface) {
-                return reject("sand membership changed");
-            }
-            const bool oldOpaque = IsGpuSceneForwardOpaqueResidentRecord(oldRecord);
-            const bool newOpaque = IsGpuSceneForwardOpaqueResidentRecord(newRecord);
-            const bool oldDepthOccluder =
-                IsDepthPrepassCoverageRecord(oldRecord);
-            const bool newDepthOccluder =
-                IsDepthPrepassCoverageRecord(newRecord);
-            const bool oldDepthAware =
-                IsGpuSceneForwardDepthAwareResidentRecord(oldRecord);
-            const bool newDepthAware =
-                IsGpuSceneForwardDepthAwareResidentRecord(newRecord);
-            const bool oldTransparent =
-                IsGpuSceneForwardTransparentResidentRecord(oldRecord);
-            const bool newTransparent =
-                IsGpuSceneForwardTransparentResidentRecord(newRecord);
-            const bool oldShadow =
-                IsGpuSceneStaticShadowCasterRecord(oldRecord);
-            const bool newShadow =
-                IsGpuSceneStaticShadowCasterRecord(newRecord);
-            if (oldOpaque != newOpaque || oldDepthAware != newDepthAware ||
-                oldTransparent != newTransparent) {
-                return reject("forward pass changed");
-            }
-            if (oldDepthOccluder != newDepthOccluder) {
-                return reject("depth coverage changed");
-            }
-            if (oldShadow != newShadow) {
-                return reject("shadow coverage changed");
-            }
-            if (!HasCompatibleGpuScenePatchLayout(oldRecord, newRecord)) {
-                return reject("geometry or material layout changed");
-            }
-            if ((oldDepthOccluder || newDepthOccluder) &&
-                stats_.depthPrepassBudgetClippedRecordCount != 0u) {
-                return reject("depth occluder budget");
-            }
+        }
+        if (!record.visible) {
+            ++stats_.hiddenSourceRecordCount;
+        }
+        surfaceRecords_.push_back(std::move(record));
+    }
 
-            const uint32_t waterSurfaceGpuDataIndex =
-                oldRecord.waterSurfaceGpuDataIndex;
-            if (newRecord.waterSurface) {
-                if (waterSurfaceGpuDataIndex == 0u ||
-                    waterSurfaceGpuDataIndex >= waterSurfaceGpuData_.size()) {
-                    return reject("water slot missing");
-                }
-                newRecord.waterSurfaceGpuDataIndex =
-                    waterSurfaceGpuDataIndex;
-            }
+    for (GpuSceneSurfaceRecord& record : surfaceRecords_) {
+        if (!record.valid || !record.waterSurface) {
+            record.waterSurfaceGpuDataIndex = 0u;
+            continue;
+        }
+        record.waterSurfaceGpuDataIndex = NUMERIC::SaturateToUint32(waterSurfaceGpuData_.size());
+        waterSurfaceGpuData_.push_back(
+            WATER::BuildWaterSurfaceGpuData(record.waterSurfaceData, record.waterSurfaceLiquidCoverageOffset));
+    }
 
-            const uint32_t sandSurfaceGpuDataIndex =
-                oldRecord.sandSurfaceGpuDataIndex;
-            if (newRecord.sandSurface) {
-                if (sandSurfaceGpuDataIndex == 0u ||
-                    sandSurfaceGpuDataIndex >=
-                        sandSurfaceGpuData_.size()) {
-                    return reject("sand slot missing");
-                }
-                newRecord.sandSurfaceGpuDataIndex =
-                    sandSurfaceGpuDataIndex;
-            }
+    meshShaderJointPalettes_.resize(surfaceRecords_.size());
+    GpuScenePoseBuilder meshShaderPoseBuilder{};
+    for (uint32_t recordIndex = 0; recordIndex < surfaceRecords_.size(); ++recordIndex) {
+        GpuSceneSurfaceRecord& record = surfaceRecords_[recordIndex];
+        if (!record.skinned || record.key.backendRoute != RUNTIME::SurfaceBackendRoute::MeshShader ||
+            recordIndex >= RUNTIME::kSurfaceGpuSceneMaxDeformationPalettes) {
+            continue;
+        }
+        const std::vector<MATH::Mat4>* palette = meshShaderPoseBuilder.ResolveJointPalette(record);
+        if (palette == nullptr || palette->empty() || palette->size() > RUNTIME::kSurfaceGpuSceneMaxJointMatrices) {
+            record.jointPaletteSlot = RUNTIME::kInvalidRenderSurfaceIndex;
+            record.jointPaletteMatrixCount = 0u;
+            continue;
+        }
+        meshShaderJointPalettes_[recordIndex] = *palette;
+        record.jointPaletteSlot = recordIndex;
+        record.jointPaletteMatrixCount = NUMERIC::SaturateToUint32(palette->size());
+    }
 
-            surfaceRecords_[surfaceIndex] = std::move(newRecord);
-            if (waterSurfaceGpuDataIndex != 0u) {
-                waterSurfaceGpuData_[waterSurfaceGpuDataIndex] =
-                    WATER::BuildWaterSurfaceGpuData(
-                        surfaceRecords_[surfaceIndex].waterSurfaceData,
-                        surfaceRecords_[surfaceIndex].
-                            waterSurfaceLiquidCoverageOffset);
+    sandSurfaceGpuData_.clear();
+    sandSurfaceGpuData_.push_back(SAND::BuildSandSurfaceGpuDataSentinel());
+    sandSurfaceHeights_ = input.sceneCache->GetSandSurfaceHeights();
+    sandSurfaceHeightVersion_ =
+        BuildSurfaceHeightContentVersion(residencyEpoch_, input.sceneCache->GetSurfaceFloatPoolVersion());
+    for (GpuSceneSurfaceRecord& record : surfaceRecords_) {
+        if (!record.valid || !record.sandSurface) {
+            record.sandSurfaceGpuDataIndex = 0u;
+            continue;
+        }
+        record.sandSurfaceGpuDataIndex = NUMERIC::SaturateToUint32(sandSurfaceGpuData_.size());
+        sandSurfaceGpuData_.push_back(
+            SAND::BuildSandSurfaceGpuData(record.sandSurfaceData, record.sandSurfaceHeightOffset,
+                                          record.sandSurfaceDeformationOffset, record.sandSurfaceLayerWeightsOffset,
+                                          record.sandSurfaceCoverageOffset, record.sandSurfaceLayerTintsOffset));
+    }
+
+    stats_.sourceRecordCount = NUMERIC::SaturateToUint32(surfaceRecords_.size());
+
+    for (uint32_t recordIndex = 0; recordIndex < surfaceRecords_.size(); ++recordIndex) {
+        const GpuSceneSurfaceRecord& record = surfaceRecords_[recordIndex];
+        const bool meshShaderMaterialFxRecord = record.key.materialFx && !record.key.materialFxUsesCustomVertexShader;
+        if (record.valid && record.shadowCandidate && record.key.resourceKeyValid) {
+            if (IsGpuSceneStaticShadowCasterRecord(record)) {
+                shadowResidentRecordIndices_.push_back(recordIndex);
+                if (meshShaderMaterialFxRecord) {
+                    ++stats_.shadowMaterialFxMeshShaderRecordCount;
+                }
+                if (record.key.skinned) {
+                    ++stats_.shadowSkinnedMeshShaderRecordCount;
+                }
+            } else if (IsGpuSceneShadowStaticTraditionalRecord(record)) {
+                shadowStaticTraditionalRecordIndices_.push_back(recordIndex);
+                if (meshShaderMaterialFxRecord) {
+                    ++stats_.shadowMaterialFxTraditionalRecordCount;
+                }
+            } else {
+                ++stats_.blockedShadowRecordCount;
             }
-            if (sandSurfaceGpuDataIndex != 0u) {
-                sandSurfaceGpuData_[sandSurfaceGpuDataIndex] =
-                    SAND::BuildSandSurfaceGpuData(
-                        surfaceRecords_[surfaceIndex].sandSurfaceData,
-                        surfaceRecords_[surfaceIndex].
-                            sandSurfaceHeightOffset,
-                        surfaceRecords_[surfaceIndex].
-                            sandSurfaceDeformationOffset,
-                        surfaceRecords_[surfaceIndex].
-                            sandSurfaceLayerWeightsOffset,
-                        surfaceRecords_[surfaceIndex].
-                            sandSurfaceCoverageOffset,
-                        surfaceRecords_[surfaceIndex].
-                            sandSurfaceLayerTintsOffset);
+        }
+        if (!record.valid || !record.forwardCandidate || !record.key.resourceKeyValid)
+            continue;
+        ++stats_.forwardRoutedRecordCount;
+        std::vector<uint32_t>* resident = nullptr;
+        switch (ResolveForwardResidentPass(record)) {
+        case GpuDrivenPassKind::ForwardOpaque:
+            resident = &forwardOpaqueResidentRecordIndices_;
+            ++stats_.forwardOpaqueClusterCandidateRecordCount;
+            break;
+        case GpuDrivenPassKind::ForwardDepthAware: resident = &forwardDepthAwareResidentRecordIndices_; break;
+        case GpuDrivenPassKind::ForwardTransparent: resident = &forwardTransparentResidentRecordIndices_; break;
+        default: break;
+        }
+        if (resident) {
+            resident->push_back(recordIndex);
+            if (meshShaderMaterialFxRecord)
+                ++stats_.forwardMaterialFxMeshShaderRecordCount;
+            if (record.key.skinned)
+                ++stats_.forwardSkinnedMeshShaderRecordCount;
+        } else if (IsGpuSceneForwardStaticTraditionalRecord(record)) {
+            if (meshShaderMaterialFxRecord) {
+                ++stats_.forwardMaterialFxTraditionalRecordCount;
             }
-            if (!newOpaque &&
-                !newDepthOccluder &&
-                !newDepthAware &&
-                !newTransparent &&
-                !newShadow) {
+            if (record.key.depthAware) {
+                forwardDepthAwareStaticTraditionalRecordIndices_.push_back(recordIndex);
+            } else if (record.key.transparent) {
+                forwardTransparentStaticTraditionalRecordIndices_.push_back(recordIndex);
+            } else {
+                forwardOpaqueStaticTraditionalRecordIndices_.push_back(recordIndex);
+            }
+        } else if (record.forwardCandidate) {
+            ++stats_.unsupportedForwardRecordCount;
+            if (meshShaderMaterialFxRecord) {
+                ++stats_.forwardMaterialFxBlockedRecordCount;
+            }
+            if (record.key.depthAware) {
+                ++stats_.blockedForwardDepthAwareRecordCount;
+            } else if (record.key.transparent) {
+                ++stats_.blockedForwardTransparentRecordCount;
+            }
+        }
+    }
+    stats_.forwardOpaqueResidentRecordCount = NUMERIC::SaturateToUint32(forwardOpaqueResidentRecordIndices_.size());
+    stats_.forwardStaticTraditionalRecordCount = NUMERIC::SaturateToUint32(
+        forwardOpaqueStaticTraditionalRecordIndices_.size() + forwardDepthAwareStaticTraditionalRecordIndices_.size() +
+        forwardTransparentStaticTraditionalRecordIndices_.size());
+    stats_.shadowStaticTraditionalRecordCount = NUMERIC::SaturateToUint32(shadowStaticTraditionalRecordIndices_.size());
+    stats_.strictMainlineBlockedRecordCount = stats_.blockedForwardDepthAwareRecordCount +
+                                              stats_.blockedForwardTransparentRecordCount +
+                                              stats_.blockedShadowRecordCount;
+
+    stats_.forwardOpaqueBatchStats =
+        SortStaticResidentRecordsForBatching(surfaceRecords_, forwardOpaqueResidentRecordIndices_, true);
+    BuildDepthPrepassOccluderRecords(surfaceRecords_, forwardOpaqueResidentRecordIndices_,
+                                     depthPrepassOccluderRecordIndices_, stats_);
+    stats_.forwardDepthAwareBatchStats =
+        SortStaticResidentRecordsForBatching(surfaceRecords_, forwardDepthAwareResidentRecordIndices_, true);
+    stats_.forwardTransparentBatchStats =
+        SortStaticResidentRecordsForBatching(surfaceRecords_, forwardTransparentResidentRecordIndices_, false);
+    stats_.shadowBatchStats = SortStaticResidentRecordsForBatching(surfaceRecords_, shadowResidentRecordIndices_, true);
+
+    globalGpuSceneIndexByRecord_.assign(surfaceRecords_.size(), RUNTIME::kInvalidRenderSurfaceIndex);
+    std::vector<uint32_t> globalRecordIndices{};
+    globalRecordIndices.reserve(forwardOpaqueResidentRecordIndices_.size() + depthPrepassOccluderRecordIndices_.size() +
+                                forwardDepthAwareResidentRecordIndices_.size() +
+                                forwardTransparentResidentRecordIndices_.size() + shadowResidentRecordIndices_.size());
+
+    const auto appendGlobalRecords = [&](const std::vector<uint32_t>& recordIndices) {
+        for (const uint32_t recordIndex : recordIndices) {
+            if (recordIndex >= globalGpuSceneIndexByRecord_.size()) {
                 continue;
             }
+            if (globalGpuSceneIndexByRecord_[recordIndex] != RUNTIME::kInvalidRenderSurfaceIndex) {
+                continue;
+            }
+            globalGpuSceneIndexByRecord_[recordIndex] = NUMERIC::SaturateToUint32(globalRecordIndices.size());
+            globalRecordIndices.push_back(recordIndex);
+        }
+    };
 
-            singleRecordIndex.clear();
-            singleRecordIndex.push_back(surfaceIndex);
-            const RUNTIME::SurfaceGpuSceneBuildStats buildStats =
-                BuildGpuSceneInstanceList(
-                    surfaceRecords_,
-                    singleRecordIndex,
-                    singleInstance,
-                    singleMaterial);
-            if (buildStats.instanceCount != 1u ||
-                singleInstance.size() != 1u ||
-                singleMaterial.size() != 1u) {
-                return reject("instance build failed");
-            }
+    for (const auto& binding : PrimaryPasses())
+        appendGlobalRecords(*binding.records);
 
-            if (surfaceIndex >= globalGpuSceneIndexByRecord_.size()) {
-                return reject("record slot missing");
-            }
-            const uint32_t globalInstanceIndex =
-                globalGpuSceneIndexByRecord_[surfaceIndex];
-            if (globalInstanceIndex == RUNTIME::kInvalidRenderSurfaceIndex ||
-                globalInstanceIndex >= globalGpuSceneInstances_.size() ||
-                globalInstanceIndex >= globalMaterialSources_.size()) {
-                return reject("resident instance missing");
-            }
+    (void)BuildGpuSceneInstanceList(surfaceRecords_, globalRecordIndices, globalGpuSceneInstances_,
+                                    globalMaterialSources_);
 
-            RUNTIME::SurfaceGpuSceneInstance patchedInstance =
-                singleInstance[0];
-            if (newOpaque) {
-                patchedInstance.flags |=
-                    PassInstanceFlag(GpuDrivenPassKind::ForwardOpaque);
+    const auto markGlobalPass = [&](GpuDrivenPassKind passKind, const std::vector<uint32_t>& recordIndices) {
+        const uint32_t passFlag = PassInstanceFlag(passKind);
+        for (const uint32_t recordIndex : recordIndices) {
+            if (recordIndex >= globalGpuSceneIndexByRecord_.size()) {
+                continue;
             }
-            if (newDepthOccluder) {
-                patchedInstance.flags |=
-                    PassInstanceFlag(GpuDrivenPassKind::DepthPrepass);
+            const uint32_t globalIndex = globalGpuSceneIndexByRecord_[recordIndex];
+            if (globalIndex == RUNTIME::kInvalidRenderSurfaceIndex || globalIndex >= globalGpuSceneInstances_.size() ||
+                globalIndex >= globalMaterialSources_.size()) {
+                continue;
             }
-            if (newDepthAware) {
-                patchedInstance.flags |=
-                    PassInstanceFlag(GpuDrivenPassKind::ForwardDepthAware);
-            }
-            if (newTransparent) {
-                patchedInstance.flags |=
-                    PassInstanceFlag(GpuDrivenPassKind::ForwardTransparent);
-            }
-            if (newShadow) {
-                patchedInstance.flags |=
-                    PassInstanceFlag(GpuDrivenPassKind::Shadow);
-            }
-            globalGpuSceneInstances_[globalInstanceIndex] = patchedInstance;
+            globalGpuSceneInstances_[globalIndex].flags |= passFlag;
+            globalMaterialSources_[globalIndex].localGpuSceneInstanceIndex = globalIndex;
+        }
+    };
 
-            RUNTIME::SurfaceGpuSceneMaterialSource materialSource =
-                singleMaterial[0];
-            materialSource.localGpuSceneInstanceIndex = globalInstanceIndex;
-            globalMaterialSources_[globalInstanceIndex] = materialSource;
+    for (const auto& binding : PrimaryPasses()) {
+        markGlobalPass(binding.kind, *binding.records);
+        if (binding.stats) {
+            *binding.stats =
+                BuildPassStatsFromGlobalScene(*binding.records, globalGpuSceneIndexByRecord_, globalGpuSceneInstances_);
+        }
+    }
 
-            // The primary instance table is shared by every enabled pass.
-            // Publish the dirty record to each pass that references it so a
-            // rigid-node pose patch updates forward, depth, and shadow
-            // consumers in the same frame.
-            const auto appendDirtyRange =
-                [&](GpuDrivenPassKind passKind, bool enabled) {
-                if (!enabled) {
-                    return;
+    const auto buildTraditionalStream = [&](const std::vector<uint32_t>& mainlineStaticRecordIndices,
+                                            const std::vector<uint32_t>& sidecarStaticRecordIndices,
+                                            RUNTIME::SurfaceDrawCommandPass pass, TraditionalIndirectStream& stream) {
+        stream.Clear();
+        for (const uint32_t recordIndex : sidecarStaticRecordIndices) {
+            stream.Append(surfaceRecords_, recordIndex, pass);
+        }
+
+        if (publishStaticTraditionalStreams_) {
+            // Resident と traditional sidecar は排他的な分類で構築済み。
+            for (const uint32_t recordIndex : mainlineStaticRecordIndices) {
+                stream.Append(surfaceRecords_, recordIndex, pass);
+            }
+        }
+    };
+
+    buildTraditionalStream(forwardOpaqueResidentRecordIndices_, forwardOpaqueStaticTraditionalRecordIndices_,
+                           RUNTIME::SurfaceDrawCommandPass::Forward, forwardOpaqueTraditionalStream_);
+    buildTraditionalStream(forwardDepthAwareResidentRecordIndices_, forwardDepthAwareStaticTraditionalRecordIndices_,
+                           RUNTIME::SurfaceDrawCommandPass::DepthAware, forwardDepthAwareTraditionalStream_);
+    buildTraditionalStream(forwardTransparentResidentRecordIndices_, forwardTransparentStaticTraditionalRecordIndices_,
+                           RUNTIME::SurfaceDrawCommandPass::Forward, forwardTransparentTraditionalStream_);
+    buildTraditionalStream(shadowResidentRecordIndices_, shadowStaticTraditionalRecordIndices_,
+                           RUNTIME::SurfaceDrawCommandPass::Shadow, shadowTraditionalStream_);
+
+    layoutVersion_ = input.sceneCache->GetSurfaceVersion();
+    routingVersion_ = input.sceneCache->GetSurfaceRoutingVersion();
+    dataVersion_ = input.sceneCache->GetSurfaceDataVersion();
+    sourceSurfaceCount_ = NUMERIC::SaturateToUint32(surfaces.size());
+    SuppressCpuForwardViews(input);
+    RebuildForwardSceneSource();
+}
+
+void GpuSceneRegistry::SuppressCpuForwardViews(const GpuSceneRegistrySyncInput& input) {
+    stats_.strictGpuDrivenMainline = true;
+    stats_.cpuForwardViewSuppressedCount = input.sceneCache != nullptr ? 1u : 0u;
+}
+
+bool GpuSceneRegistry::TryPatchForwardDataFromSceneCache(const GpuSceneRegistrySyncInput& input) {
+    static const auto timer = CPU_PROFILE::RegisterDynamicPass("Render.GpuScenePatch");
+    const CPU_PROFILE::ScopedDynamicCpuTimer scope(timer);
+    uint32_t currentSurfaceIndex = RUNTIME::kInvalidRenderSurfaceIndex;
+    const auto reject = [&](const char* reason) {
+        auto& rejection = stats_.patchRejection;
+        rejection.reason = reason;
+        rejection.surfaceIndex = currentSurfaceIndex;
+        if (input.sceneCache != nullptr && currentSurfaceIndex < input.sceneCache->GetSurfaceInstances().size()) {
+            const auto& surface = input.sceneCache->GetSurfaceInstances()[currentSurfaceIndex];
+            rejection.objectId = surface.objectId.value;
+            rejection.nodeIndex = surface.nodeIndex;
+            if (surface.model != nullptr) {
+                rejection.modelPath = surface.model->sourcePath;
+            }
+        }
+        return false;
+    };
+    if (ShouldPublishStaticTraditionalStreams()) {
+        return reject("traditional pipeline policy");
+    }
+
+    if (input.sceneCache == nullptr) {
+        return reject("missing scene cache");
+    }
+    const std::vector<RUNTIME::SceneSurfaceInstance>& surfaces = input.sceneCache->GetSurfaceInstances();
+    if (surfaces.size() != surfaceRecords_.size()) {
+        return reject("surface count changed");
+    }
+
+    std::vector<uint32_t> dirtySurfaceIndices = input.sceneCache->GetDirtySurfaceIndices();
+    std::sort(dirtySurfaceIndices.begin(), dirtySurfaceIndices.end());
+    dirtySurfaceIndices.erase(std::unique(dirtySurfaceIndices.begin(), dirtySurfaceIndices.end()),
+                              dirtySurfaceIndices.end());
+
+    std::vector<uint32_t> singleRecordIndex{};
+    singleRecordIndex.reserve(1);
+    std::vector<RUNTIME::SurfaceGpuSceneInstance> singleInstance{};
+    std::vector<RUNTIME::SurfaceGpuSceneMaterialSource> singleMaterial{};
+    GpuScenePoseBuilder meshShaderPoseBuilder{};
+
+    for (const uint32_t surfaceIndex : dirtySurfaceIndices) {
+        currentSurfaceIndex = surfaceIndex;
+        if (surfaceIndex >= surfaces.size() || surfaceIndex >= surfaceRecords_.size()) {
+            return reject("invalid dirty index");
+        }
+
+        GpuSceneSurfaceRecord newRecord = BuildGpuSceneSurfaceRecord(surfaces[surfaceIndex], surfaceIndex);
+        ++stats_.frameRecordBuildCount;
+        if (newRecord.skinned && newRecord.key.backendRoute == RUNTIME::SurfaceBackendRoute::MeshShader &&
+            surfaceIndex < RUNTIME::kSurfaceGpuSceneMaxDeformationPalettes) {
+            const std::vector<MATH::Mat4>* palette = meshShaderPoseBuilder.ResolveJointPalette(newRecord);
+            if (palette != nullptr && !palette->empty() &&
+                palette->size() <= RUNTIME::kSurfaceGpuSceneMaxJointMatrices) {
+                if (meshShaderJointPalettes_.size() != surfaceRecords_.size()) {
+                    return reject("pose storage changed");
                 }
-                AppendDirtyRange(
-                    sceneSource_.GetPass(passKind).dirtyRanges,
-                    globalInstanceIndex,
-                    1u);
-            };
-            appendDirtyRange(GpuDrivenPassKind::ForwardOpaque, newOpaque);
-            appendDirtyRange(GpuDrivenPassKind::DepthPrepass, newDepthOccluder);
-            appendDirtyRange(GpuDrivenPassKind::ForwardDepthAware, newDepthAware);
-            appendDirtyRange(GpuDrivenPassKind::ForwardTransparent, newTransparent);
-            appendDirtyRange(GpuDrivenPassKind::Shadow, newShadow);
-        }
-
-        return true;
-    }
-
-    void GpuSceneRegistry::RebuildForwardSceneSource() {
-        sceneSource_.surfaceRecords = &surfaceRecords_;
-        sceneSource_.meshShaderJointPalettes = &meshShaderJointPalettes_;
-        sceneSource_.waterSurfaceGpuData = &waterSurfaceGpuData_;
-        sceneSource_.sandSurfaceGpuData = &sandSurfaceGpuData_;
-        sceneSource_.sandSurfaceHeights = sandSurfaceHeights_;
-        sceneSource_.sandSurfaceHeightVersion =
-            sandSurfaceHeightVersion_;
-        const uint32_t sharedPrimaryCount =
-            NUMERIC::SaturateToUint32(globalGpuSceneInstances_.size());
-        uint32_t cursor = sharedPrimaryCount;
-
-        const auto resetSharedPrimaryPass =
-            [&](GpuDrivenPassKind passKind,
-                const std::vector<uint32_t>& recordIndices,
-                GpuDrivenBackendKind backend,
-                bool clusterEligible) {
-            GpuDrivenPassSource& pass = sceneSource_.GetPass(passKind);
-            if (recordIndices.empty() || globalGpuSceneInstances_.empty()) {
-                ResetPassSource(
-                    pass,
-                    nullptr,
-                    nullptr,
-                    0u,
-                    backend,
-                    clusterEligible);
-                return;
+                meshShaderJointPalettes_[surfaceIndex] = *palette;
+                newRecord.jointPaletteSlot = surfaceIndex;
+                newRecord.jointPaletteMatrixCount = NUMERIC::SaturateToUint32(palette->size());
             }
+        }
+        const GpuSceneSurfaceRecord& oldRecord = surfaceRecords_[surfaceIndex];
+        if (oldRecord.waterSurface != newRecord.waterSurface) {
+            return reject("water membership changed");
+        }
+        if (IsGpuSceneForwardStaticTraditionalRecord(oldRecord) ||
+            IsGpuSceneForwardStaticTraditionalRecord(newRecord) || IsGpuSceneShadowStaticTraditionalRecord(oldRecord) ||
+            IsGpuSceneShadowStaticTraditionalRecord(newRecord)) {
+            return reject("traditional surface");
+        }
+        if (oldRecord.sandSurface != newRecord.sandSurface) {
+            return reject("sand membership changed");
+        }
+        const auto oldForwardPass = ResolveForwardResidentPass(oldRecord);
+        const auto newForwardPass = ResolveForwardResidentPass(newRecord);
+        const bool oldDepthOccluder = IsDepthPrepassCoverageRecord(oldRecord);
+        const bool newDepthOccluder = IsDepthPrepassCoverageRecord(newRecord);
+        const bool oldShadow = IsGpuSceneStaticShadowCasterRecord(oldRecord);
+        const bool newShadow = IsGpuSceneStaticShadowCasterRecord(newRecord);
+        if (oldForwardPass != newForwardPass) {
+            return reject("forward pass changed");
+        }
+        if (oldDepthOccluder != newDepthOccluder) {
+            return reject("depth coverage changed");
+        }
+        if (oldShadow != newShadow) {
+            return reject("shadow coverage changed");
+        }
+        if (!HasCompatibleGpuScenePatchLayout(oldRecord, newRecord)) {
+            return reject("geometry or material layout changed");
+        }
+        if ((oldDepthOccluder || newDepthOccluder) && stats_.depthPrepassBudgetClippedRecordCount != 0u) {
+            return reject("depth occluder budget");
+        }
 
-            ResetPassSource(
-                pass,
-                &globalGpuSceneInstances_,
-                &globalMaterialSources_,
-                0u,
-                backend,
-                clusterEligible);
-        };
+        const uint32_t waterSurfaceGpuDataIndex = oldRecord.waterSurfaceGpuDataIndex;
+        if (newRecord.waterSurface) {
+            if (waterSurfaceGpuDataIndex == 0u || waterSurfaceGpuDataIndex >= waterSurfaceGpuData_.size()) {
+                return reject("water slot missing");
+            }
+            newRecord.waterSurfaceGpuDataIndex = waterSurfaceGpuDataIndex;
+        }
 
-        resetSharedPrimaryPass(
-            GpuDrivenPassKind::ForwardOpaque,
-            forwardOpaqueResidentRecordIndices_,
-            GpuDrivenBackendKind::MeshShader,
-            true);
-        AttachTraditionalIndirectView(
-            sceneSource_.GetPass(GpuDrivenPassKind::ForwardOpaque),
-            forwardOpaqueTraditionalStream_,
-            cursor);
-        cursor += NUMERIC::SaturateToUint32(forwardOpaqueTraditionalStream_.instances.size());
+        const uint32_t sandSurfaceGpuDataIndex = oldRecord.sandSurfaceGpuDataIndex;
+        if (newRecord.sandSurface) {
+            if (sandSurfaceGpuDataIndex == 0u || sandSurfaceGpuDataIndex >= sandSurfaceGpuData_.size()) {
+                return reject("sand slot missing");
+            }
+            newRecord.sandSurfaceGpuDataIndex = sandSurfaceGpuDataIndex;
+        }
 
-        resetSharedPrimaryPass(
-            GpuDrivenPassKind::DepthPrepass,
-            depthPrepassOccluderRecordIndices_,
-            GpuDrivenBackendKind::MeshShader,
-            true);
+        surfaceRecords_[surfaceIndex] = std::move(newRecord);
+        if (waterSurfaceGpuDataIndex != 0u) {
+            waterSurfaceGpuData_[waterSurfaceGpuDataIndex] =
+                WATER::BuildWaterSurfaceGpuData(surfaceRecords_[surfaceIndex].waterSurfaceData,
+                                                surfaceRecords_[surfaceIndex].waterSurfaceLiquidCoverageOffset);
+        }
+        if (sandSurfaceGpuDataIndex != 0u) {
+            sandSurfaceGpuData_[sandSurfaceGpuDataIndex] = SAND::BuildSandSurfaceGpuData(
+                surfaceRecords_[surfaceIndex].sandSurfaceData, surfaceRecords_[surfaceIndex].sandSurfaceHeightOffset,
+                surfaceRecords_[surfaceIndex].sandSurfaceDeformationOffset,
+                surfaceRecords_[surfaceIndex].sandSurfaceLayerWeightsOffset,
+                surfaceRecords_[surfaceIndex].sandSurfaceCoverageOffset,
+                surfaceRecords_[surfaceIndex].sandSurfaceLayerTintsOffset);
+        }
+        if (newForwardPass == GpuDrivenPassKind::Count && !newDepthOccluder && !newShadow) {
+            continue;
+        }
 
-        resetSharedPrimaryPass(
-            GpuDrivenPassKind::ForwardDepthAware,
-            forwardDepthAwareResidentRecordIndices_,
-            GpuDrivenBackendKind::MeshShader,
-            true);
-        AttachTraditionalIndirectView(
-            sceneSource_.GetPass(GpuDrivenPassKind::ForwardDepthAware),
-            forwardDepthAwareTraditionalStream_,
-            cursor);
-        cursor += NUMERIC::SaturateToUint32(forwardDepthAwareTraditionalStream_.instances.size());
+        singleRecordIndex.clear();
+        singleRecordIndex.push_back(surfaceIndex);
+        const RUNTIME::SurfaceGpuSceneBuildStats buildStats =
+            BuildGpuSceneInstanceList(surfaceRecords_, singleRecordIndex, singleInstance, singleMaterial);
+        if (buildStats.instanceCount != 1u || singleInstance.size() != 1u || singleMaterial.size() != 1u) {
+            return reject("instance build failed");
+        }
 
-        resetSharedPrimaryPass(
-            GpuDrivenPassKind::ForwardTransparent,
-            forwardTransparentResidentRecordIndices_,
-            GpuDrivenBackendKind::MeshShader,
-            true);
-        AttachTraditionalIndirectView(
-            sceneSource_.GetPass(GpuDrivenPassKind::ForwardTransparent),
-            forwardTransparentTraditionalStream_,
-            cursor);
-        cursor += NUMERIC::SaturateToUint32(forwardTransparentTraditionalStream_.instances.size());
+        if (surfaceIndex >= globalGpuSceneIndexByRecord_.size()) {
+            return reject("record slot missing");
+        }
+        const uint32_t globalInstanceIndex = globalGpuSceneIndexByRecord_[surfaceIndex];
+        if (globalInstanceIndex == RUNTIME::kInvalidRenderSurfaceIndex ||
+            globalInstanceIndex >= globalGpuSceneInstances_.size() ||
+            globalInstanceIndex >= globalMaterialSources_.size()) {
+            return reject("resident instance missing");
+        }
 
-        resetSharedPrimaryPass(
-            GpuDrivenPassKind::Shadow,
-            shadowResidentRecordIndices_,
-            GpuDrivenBackendKind::MeshShader,
-            true);
-        AttachTraditionalIndirectView(
-            sceneSource_.GetPass(GpuDrivenPassKind::Shadow),
-            shadowTraditionalStream_,
-            cursor);
-        cursor += NUMERIC::SaturateToUint32(shadowTraditionalStream_.instances.size());
+        RUNTIME::SurfaceGpuSceneInstance patchedInstance = singleInstance[0];
+        // membership の検証後は既存の選択を使う。深度の小物体 fallback も維持する。
+        for (const auto& binding : PrimaryPasses()) {
+            const uint32_t flag = PassInstanceFlag(binding.kind);
+            if ((globalGpuSceneInstances_[globalInstanceIndex].flags & flag) != 0) {
+                patchedInstance.flags |= flag;
+                AppendDirtyRange(sceneSource_.GetPass(binding.kind).dirtyRanges, globalInstanceIndex, 1);
+            }
+        }
+        globalGpuSceneInstances_[globalInstanceIndex] = patchedInstance;
 
-        sceneSource_.layoutVersion =
-            BuildSourceLayoutVersion(
-                residencyEpoch_,
-                layoutVersion_,
-                routingVersion_);
-        sceneSource_.sourceVersion = dataVersion_;
-        sceneSource_.dirtyBaseSourceVersion = dataVersion_;
-        sceneSource_.sourceInstanceCount = cursor;
-        sceneSource_.sourceRecordCount = NUMERIC::SaturateToUint32(surfaceRecords_.size());
+        RUNTIME::SurfaceGpuSceneMaterialSource materialSource = singleMaterial[0];
+        materialSource.localGpuSceneInstanceIndex = globalInstanceIndex;
+        globalMaterialSources_[globalInstanceIndex] = materialSource;
     }
 
-    void GpuSceneRegistry::ClearFrameDirtyRanges() {
-        for (GpuDrivenPassSource& pass : sceneSource_.passes) {
-            pass.dirtyRanges.clear();
+    return true;
+}
+
+std::array<GpuSceneRegistry::PrimaryPassBinding, 5> GpuSceneRegistry::PrimaryPasses() {
+    return {{{GpuDrivenPassKind::ForwardOpaque, &forwardOpaqueResidentRecordIndices_, &forwardOpaqueTraditionalStream_,
+              &stats_.forwardOpaqueGpuSceneStats},
+             {GpuDrivenPassKind::DepthPrepass, &depthPrepassOccluderRecordIndices_, nullptr,
+              &stats_.depthPrepassGpuSceneStats},
+             {GpuDrivenPassKind::ForwardDepthAware, &forwardDepthAwareResidentRecordIndices_,
+              &forwardDepthAwareTraditionalStream_, &stats_.forwardDepthAwareGpuSceneStats},
+             {GpuDrivenPassKind::ForwardTransparent, &forwardTransparentResidentRecordIndices_,
+              &forwardTransparentTraditionalStream_, &stats_.forwardTransparentGpuSceneStats},
+             {GpuDrivenPassKind::Shadow, &shadowResidentRecordIndices_, &shadowTraditionalStream_, nullptr}}};
+}
+
+void GpuSceneRegistry::RebuildForwardSceneSource() {
+    sceneSource_.surfaceRecords = &surfaceRecords_;
+    sceneSource_.meshShaderJointPalettes = &meshShaderJointPalettes_;
+    sceneSource_.waterSurfaceGpuData = &waterSurfaceGpuData_;
+    sceneSource_.sandSurfaceGpuData = &sandSurfaceGpuData_;
+    sceneSource_.sandSurfaceHeights = sandSurfaceHeights_;
+    sceneSource_.sandSurfaceHeightVersion = sandSurfaceHeightVersion_;
+    const uint32_t sharedPrimaryCount = NUMERIC::SaturateToUint32(globalGpuSceneInstances_.size());
+    uint32_t cursor = sharedPrimaryCount;
+
+    for (const auto& binding : PrimaryPasses()) {
+        auto& pass = sceneSource_.GetPass(binding.kind);
+        const bool enabled = !binding.records->empty() && !globalGpuSceneInstances_.empty();
+        ResetPassSource(pass, enabled ? &globalGpuSceneInstances_ : nullptr,
+                        enabled ? &globalMaterialSources_ : nullptr, 0, GpuDrivenBackendKind::MeshShader, true);
+        if (binding.traditional) {
+            binding.traditional->Attach(pass, cursor);
+            cursor += NUMERIC::SaturateToUint32(binding.traditional->instances.size());
         }
     }
 
-    const GpuDrivenSceneSource& GpuSceneRegistry::GetSceneSource() const {
-        return sceneSource_;
-    }
+    sceneSource_.layoutVersion = BuildSourceLayoutVersion(residencyEpoch_, layoutVersion_, routingVersion_);
+    sceneSource_.sourceVersion = dataVersion_;
+    sceneSource_.dirtyBaseSourceVersion = dataVersion_;
+    sceneSource_.sourceInstanceCount = cursor;
+    sceneSource_.sourceRecordCount = NUMERIC::SaturateToUint32(surfaceRecords_.size());
+}
 
-    bool GpuSceneRegistry::HasShadowPassSource() const {
-        const GpuDrivenPassSource& shadow =
-            sceneSource_.GetPass(GpuDrivenPassKind::Shadow);
-        return shadow.HasPrimaryGpuSceneInstances();
+void GpuSceneRegistry::ClearFrameDirtyRanges() {
+    for (GpuDrivenPassSource& pass : sceneSource_.passes) {
+        pass.dirtyRanges.clear();
     }
+}
 
-    const std::vector<GpuSceneSurfaceRecord>& GpuSceneRegistry::GetSurfaceRecords() const {
-        return surfaceRecords_;
-    }
+const GpuDrivenSceneSource& GpuSceneRegistry::GetSceneSource() const { return sceneSource_; }
 
-    const GpuSceneRegistryStats& GpuSceneRegistry::GetStats() const {
-        return stats_;
-    }
+bool GpuSceneRegistry::HasShadowPassSource() const {
+    const GpuDrivenPassSource& shadow = sceneSource_.GetPass(GpuDrivenPassKind::Shadow);
+    return shadow.HasPrimaryGpuSceneInstances();
+}
 
-    const char* ToString(GpuSceneSyncMode mode) {
-        switch (mode) {
-        case GpuSceneSyncMode::None: return "none";
-        case GpuSceneSyncMode::Reuse: return "reuse";
-        case GpuSceneSyncMode::Patch: return "patch";
-        case GpuSceneSyncMode::RebuildTopology: return "rebuild: topology";
-        case GpuSceneSyncMode::RebuildRouting: return "rebuild: routing";
-        case GpuSceneSyncMode::RebuildPolicy: return "rebuild: policy";
-        case GpuSceneSyncMode::RebuildEmpty: return "rebuild: empty";
-        case GpuSceneSyncMode::RebuildPatchRejected: return "rebuild: patch rejected";
-        }
-        return "unknown";
+const GpuSceneRegistryStats& GpuSceneRegistry::GetStats() const { return stats_; }
+
+const char* ToString(GpuSceneSyncMode mode) {
+    switch (mode) {
+    case GpuSceneSyncMode::None: return "none";
+    case GpuSceneSyncMode::Reuse: return "reuse";
+    case GpuSceneSyncMode::Patch: return "patch";
+    case GpuSceneSyncMode::RebuildTopology: return "rebuild: topology";
+    case GpuSceneSyncMode::RebuildRouting: return "rebuild: routing";
+    case GpuSceneSyncMode::RebuildPolicy: return "rebuild: policy";
+    case GpuSceneSyncMode::RebuildEmpty: return "rebuild: empty";
+    case GpuSceneSyncMode::RebuildPatchRejected: return "rebuild: patch rejected";
     }
+    return "unknown";
+}
 
 } // namespace HIKARI::RENDER3D::GPUDRIVEN

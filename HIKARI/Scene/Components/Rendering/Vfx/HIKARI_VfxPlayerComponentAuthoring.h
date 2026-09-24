@@ -6,13 +6,11 @@
 
 namespace HIKARI {
 
-    struct InspectorContext;
+struct InspectorContext;
 
-    AuthoringCommandResult ValidateVfxPlayerComponentAuthoring(
-        const IComponent& component,
-        const InspectorContext& context);
+AuthoringCommandResult ValidateVfxPlayerComponentAuthoring(const IComponent& component,
+                                                           const InspectorContext& context);
 
-    std::vector<ComponentAuthoringCommandDefinition>
-        BuildVfxPlayerComponentAuthoringCommands();
+std::vector<ComponentAuthoringCommandDefinition> BuildVfxPlayerComponentAuthoringCommands();
 
 } // namespace HIKARI

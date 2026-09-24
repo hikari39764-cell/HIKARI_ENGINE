@@ -12,719 +12,491 @@
 
 namespace HIKARI::TOOLS::BAKING::INTERNAL {
 
-    namespace {
+namespace {
 
-        constexpr float kMaximumHalfFloat = 65504.0f;
+constexpr float kMaximumHalfFloat = 65504.0f;
 
-        float Edge(
-            const MATH::Vec2& a,
-            const MATH::Vec2& b,
-            const MATH::Vec2& p) {
-            return (p.x - a.x) * (b.y - a.y) -
-                (p.y - a.y) * (b.x - a.x);
+float Edge(const MATH::Vec2& a, const MATH::Vec2& b, const MATH::Vec2& p) {
+    return (p.x - a.x) * (b.y - a.y) - (p.y - a.y) * (b.x - a.x);
+}
+
+bool IsUvTriangleInterior(const MATH::Vec2 (&uv)[3], const MATH::Vec2& point) {
+    const auto edge = [](const MATH::Vec2& a, const MATH::Vec2& b, const MATH::Vec2& p) {
+        return (static_cast<double>(p.x) - a.x) * (static_cast<double>(b.y) - a.y) -
+               (static_cast<double>(p.y) - a.y) * (static_cast<double>(b.x) - a.x);
+    };
+    const double area = edge(uv[0], uv[1], uv[2]);
+    if (std::abs(area) <= 1.0e-12) {
+        return false;
+    }
+    // 共有辺は面積を持たないため、両 Triangle の厳密な内部だけを重複とする。
+    return edge(uv[1], uv[2], point) / area > 1.0e-8 && edge(uv[2], uv[0], point) / area > 1.0e-8 &&
+           edge(uv[0], uv[1], point) / area > 1.0e-8;
+}
+
+void SetMessage(std::string* outMessage, std::string message) {
+    if (outMessage != nullptr) {
+        *outMessage = std::move(message);
+    }
+}
+
+bool TryNormalize(const MATH::Vec3& value, MATH::Vec3& outNormal) {
+    // DXR と同様に尺度を除く。微小面を退化面として取り除かない。
+    const float scale = (std::max)(std::abs(value.x), (std::max)(std::abs(value.y), std::abs(value.z)));
+    if (!MATH::IsFinite(value) || scale <= 0.0f) {
+        outNormal = {};
+        return false;
+    }
+
+    const MATH::Vec3 scaled{value.x / scale, value.y / scale, value.z / scale};
+    outNormal = scaled * (1.0f / std::sqrt(MATH::Dot(scaled, scaled)));
+    return MATH::IsFinite(outNormal);
+}
+
+float WorldTexelFootprint(const RENDER3D::LIGHTING::TRANSPORT::LightingTransportTriangle& triangle, uint32_t width,
+                          uint32_t height) {
+    const auto a = triangle.lightmapUv[1] - triangle.lightmapUv[0];
+    const auto b = triangle.lightmapUv[2] - triangle.lightmapUv[0];
+    const float determinant = a.x * b.y - a.y * b.x;
+    if (determinant == 0 || !MATH::IsFinite(determinant))
+        return 0;
+    const auto p = triangle.position[1] - triangle.position[0];
+    const auto q = triangle.position[2] - triangle.position[0];
+    const auto dx = (p * b.y - q * a.y) * (1.0f / (determinant * width));
+    const auto dy = (q * a.x - p * b.x) * (1.0f / (determinant * height));
+    const float footprint = std::sqrt((std::max)(MATH::Dot(dx, dx), MATH::Dot(dy, dy)));
+    return MATH::IsFinite(footprint) ? footprint : 0;
+}
+
+bool DilateLightmapAllocations(std::vector<MATH::Vec4>& pixels, std::vector<uint8_t>& valid,
+                               std::vector<uint32_t>& ownerIndices,
+                               const std::vector<ASSETS::LIGHTING::LightmapAtlasAllocation>& allocations,
+                               uint32_t width, uint32_t height) {
+    constexpr uint32_t kInvalidOwner = ASSETS::LIGHTING::kInvalidLightmapSurfaceIndex;
+    for (uint32_t allocationIndex = 0u; allocationIndex < allocations.size(); ++allocationIndex) {
+        const ASSETS::LIGHTING::LightmapAtlasRect& rect = allocations[allocationIndex].outerRect;
+        if (rect.width == 0u || rect.height == 0u || rect.x + rect.width > width || rect.y + rect.height > height) {
+            return false;
         }
 
-        bool IsUvTriangleInterior(
-            const MATH::Vec2 (&uv)[3],
-            const MATH::Vec2& point) {
-            const auto edge = [](const MATH::Vec2& a, const MATH::Vec2& b, const MATH::Vec2& p) {
-                return (static_cast<double>(p.x) - a.x) * (static_cast<double>(b.y) - a.y) -
-                    (static_cast<double>(p.y) - a.y) * (static_cast<double>(b.x) - a.x);
-            };
-            const double area = edge(uv[0], uv[1], uv[2]);
-            if (std::abs(area) <= 1.0e-12) {
-                return false;
+        std::vector<size_t> frontier{};
+        frontier.reserve(static_cast<size_t>(rect.width) * rect.height);
+        for (uint32_t y = rect.y; y < rect.y + rect.height; ++y) {
+            for (uint32_t x = rect.x; x < rect.x + rect.width; ++x) {
+                const size_t index = static_cast<size_t>(y) * width + x;
+                if (valid[index] != 0u && ownerIndices[index] == allocationIndex) {
+                    frontier.push_back(index);
+                }
             }
-            // 共有辺は面積を持たないため、両 Triangle の厳密な内部だけを重複とする。
-            return edge(uv[1], uv[2], point) / area > 1.0e-8 &&
-                edge(uv[2], uv[0], point) / area > 1.0e-8 &&
-                edge(uv[0], uv[1], point) / area > 1.0e-8;
+        }
+        if (frontier.empty()) {
+            return false;
         }
 
-        void SetMessage(
-            std::string* outMessage,
-            std::string message) {
-            if (outMessage != nullptr) {
-                *outMessage = std::move(message);
+        for (size_t read = 0u; read < frontier.size(); ++read) {
+            const size_t sourceIndex = frontier[read];
+            const uint32_t sourceX = static_cast<uint32_t>(sourceIndex % width);
+            const uint32_t sourceY = static_cast<uint32_t>(sourceIndex / width);
+            constexpr int neighbors[4][2]{{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
+            for (const auto& neighbor : neighbors) {
+                const int x = static_cast<int>(sourceX) + neighbor[0];
+                const int y = static_cast<int>(sourceY) + neighbor[1];
+                if (x < static_cast<int>(rect.x) || y < static_cast<int>(rect.y) ||
+                    x >= static_cast<int>(rect.x + rect.width) || y >= static_cast<int>(rect.y + rect.height)) {
+                    continue;
+                }
+                const size_t destinationIndex = static_cast<size_t>(y) * width + static_cast<size_t>(x);
+                if (ownerIndices[destinationIndex] != kInvalidOwner) {
+                    continue;
+                }
+                pixels[destinationIndex] = pixels[sourceIndex];
+                pixels[destinationIndex].w = 1.0f;
+                valid[destinationIndex] = 1u;
+                ownerIndices[destinationIndex] = allocationIndex;
+                frontier.push_back(destinationIndex);
             }
         }
+    }
+    return true;
+}
 
-        bool TryNormalize(
-            const MATH::Vec3& value,
-            MATH::Vec3& outNormal) {
+} // namespace
 
-            // DXR と同様に尺度を除く。微小面を退化面として取り除かない。
-            const float scale = (std::max)(std::abs(value.x),
-                (std::max)(std::abs(value.y), std::abs(value.z)));
-            if (!MATH::IsFinite(value) || scale <= 0.0f) {
-                outNormal = {};
-                return false;
-            }
+DxrLightmapUvRasterization RasterizeLightmapTarget(
+    const RENDER3D::LIGHTING::TRANSPORT::LightingTransportScene& scene,
+    const RENDER3D::LIGHTING::TRANSPORT::LightingTransportLightmapPage& target, uint32_t width, uint32_t height) {
+    DxrLightmapUvRasterization result{};
+    result.texels.resize(static_cast<size_t>(width) * height);
+    result.validTexels.assign(result.texels.size(), 0u);
+    // 診断中は最初の Triangle を保持し、戻す前に永続的な Allocation 所有者へ変換する。
+    std::vector<uint32_t> triangleOwners(result.texels.size(), ASSETS::LIGHTING::kInvalidLightmapSurfaceIndex);
+    std::vector<uint32_t> allocationCoverage(target.atlasAllocations.size(), 0u);
 
-            const MATH::Vec3 scaled{value.x / scale, value.y / scale, value.z / scale};
-            outNormal = scaled * (1.0f / std::sqrt(MATH::Dot(scaled, scaled)));
-            return MATH::IsFinite(outNormal);
+    std::vector<uint8_t> triangleHasCenter(scene.triangles.size(), 0u);
+    const auto storeTexel = [&](uint32_t triangleIndex, size_t texelIndex, const float(&weights)[3],
+                                const MATH::Vec3& geometricNormal, float footprint) {
+        const auto& triangle = scene.triangles[triangleIndex];
+        MATH::Vec3 position{};
+        MATH::Vec3 normal{};
+        for (uint32_t corner = 0u; corner < 3u; ++corner) {
+            position = position + triangle.position[corner] * weights[corner];
+            normal = normal + triangle.normal[corner] * weights[corner];
+        }
+        if (!MATH::IsFinite(position) || footprint <= 0) {
+            return;
+        }
+        MATH::Vec3 normalizedNormal{};
+        if (!TryNormalize(normal, normalizedNormal)) {
+            normalizedNormal = geometricNormal;
+        }
+        if (!MATH::IsFinite(normalizedNormal)) {
+            return;
         }
 
-        float WorldTexelFootprint(const RENDER3D::LIGHTING::TRANSPORT::LightingTransportTriangle& triangle,
-                                  uint32_t width, uint32_t height) {
-            const auto a = triangle.lightmapUv[1] - triangle.lightmapUv[0];
-            const auto b = triangle.lightmapUv[2] - triangle.lightmapUv[0];
-            const float determinant = a.x * b.y - a.y * b.x;
-            if (determinant == 0 || !MATH::IsFinite(determinant)) return 0;
-            const auto p = triangle.position[1] - triangle.position[0];
-            const auto q = triangle.position[2] - triangle.position[0];
-            const auto dx = (p * b.y - q * a.y) * (1.0f / (determinant * width));
-            const auto dy = (q * a.x - p * b.x) * (1.0f / (determinant * height));
-            const float footprint = std::sqrt((std::max)(MATH::Dot(dx,dx), MATH::Dot(dy,dy)));
-            return MATH::IsFinite(footprint) ? footprint : 0;
+        result.validTexels[texelIndex] = 1u;
+        triangleOwners[texelIndex] = triangleIndex;
+        ++result.coveredTexelCount;
+        ++allocationCoverage[triangle.lightmapAllocationIndex];
+        result.texels[texelIndex].position = {position.x, position.y, position.z, footprint};
+        result.texels[texelIndex].normal = {normalizedNormal.x, normalizedNormal.y, normalizedNormal.z, 1.0f};
+    };
+
+    for (const uint32_t triangleIndex : target.triangleIndices) {
+        if (triangleIndex >= scene.triangles.size()) {
+            continue;
+        }
+        const RENDER3D::LIGHTING::TRANSPORT::LightingTransportTriangle& triangle = scene.triangles[triangleIndex];
+        if (triangle.lightmapAllocationIndex >= target.atlasAllocations.size()) {
+            continue;
+        }
+        if (!MATH::IsFinite(triangle.position[0]) || !MATH::IsFinite(triangle.position[1]) ||
+            !MATH::IsFinite(triangle.position[2])) {
+            continue;
         }
 
-        bool DilateLightmapAllocations(
-            std::vector<MATH::Vec4>& pixels,
-            std::vector<uint8_t>& valid,
-            std::vector<uint32_t>& ownerIndices,
-            const std::vector<ASSETS::LIGHTING::
-                LightmapAtlasAllocation>& allocations,
-            uint32_t width,
-            uint32_t height) {
+        MATH::Vec3 geometricNormal{};
+        if (!TryNormalize(
+                MATH::Cross(triangle.position[1] - triangle.position[0], triangle.position[2] - triangle.position[0]),
+                geometricNormal)) {
+            continue;
+        }
+        const MATH::Vec3 summedVertexNormal = triangle.normal[0] + triangle.normal[1] + triangle.normal[2];
+        if (MATH::IsFinite(summedVertexNormal) && MATH::Dot(geometricNormal, summedVertexNormal) < 0.0f) {
+            geometricNormal = geometricNormal * -1.0f;
+        }
 
-            constexpr uint32_t kInvalidOwner =
-                ASSETS::LIGHTING::
-                    kInvalidLightmapSurfaceIndex;
-            for (uint32_t allocationIndex = 0u;
-                 allocationIndex < allocations.size();
-                 ++allocationIndex) {
-                const ASSETS::LIGHTING::LightmapAtlasRect&
-                    rect =
-                        allocations[allocationIndex].outerRect;
-                if (rect.width == 0u ||
-                    rect.height == 0u ||
-                    rect.x + rect.width > width ||
-                    rect.y + rect.height > height) {
-                    return false;
+        MATH::Vec2 pixelUv[3]{};
+        for (uint32_t corner = 0u; corner < 3u; ++corner) {
+            pixelUv[corner] = {triangle.lightmapUv[corner].x * static_cast<float>(width),
+                               triangle.lightmapUv[corner].y * static_cast<float>(height)};
+        }
+
+        const float area = Edge(pixelUv[0], pixelUv[1], pixelUv[2]);
+        if (std::abs(area) <= 1.0e-8f) {
+            continue;
+        }
+        const float inverseArea = 1.0f / area;
+        const float footprint = WorldTexelFootprint(triangle, width, height);
+        const int minX =
+            std::clamp(static_cast<int>(std::floor((std::min)({pixelUv[0].x, pixelUv[1].x, pixelUv[2].x}))), 0,
+                       static_cast<int>(width) - 1);
+        const int maxX = std::clamp(static_cast<int>(std::ceil((std::max)({pixelUv[0].x, pixelUv[1].x, pixelUv[2].x}))),
+                                    0, static_cast<int>(width) - 1);
+        const int minY =
+            std::clamp(static_cast<int>(std::floor((std::min)({pixelUv[0].y, pixelUv[1].y, pixelUv[2].y}))), 0,
+                       static_cast<int>(height) - 1);
+        const int maxY = std::clamp(static_cast<int>(std::ceil((std::max)({pixelUv[0].y, pixelUv[1].y, pixelUv[2].y}))),
+                                    0, static_cast<int>(height) - 1);
+
+        for (int y = minY; y <= maxY; ++y) {
+            for (int x = minX; x <= maxX; ++x) {
+                const MATH::Vec2 sample{static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f};
+                const float weights[3]{Edge(pixelUv[1], pixelUv[2], sample) * inverseArea,
+                                       Edge(pixelUv[2], pixelUv[0], sample) * inverseArea,
+                                       Edge(pixelUv[0], pixelUv[1], sample) * inverseArea};
+                if (weights[0] < -1.0e-5f || weights[1] < -1.0e-5f || weights[2] < -1.0e-5f) {
+                    continue;
                 }
 
-                std::vector<size_t> frontier{};
-                frontier.reserve(
-                    static_cast<size_t>(rect.width) *
-                    rect.height);
-                for (uint32_t y = rect.y;
-                     y < rect.y + rect.height;
-                     ++y) {
-                    for (uint32_t x = rect.x;
-                         x < rect.x + rect.width;
-                         ++x) {
-                        const size_t index =
-                            static_cast<size_t>(y) * width + x;
-                        if (valid[index] != 0u &&
-                            ownerIndices[index] ==
-                                allocationIndex) {
-                            frontier.push_back(index);
-                        }
+                triangleHasCenter[triangleIndex] = 1u;
+                const size_t texelIndex = static_cast<size_t>(y) * width + static_cast<size_t>(x);
+                if (result.validTexels[texelIndex] != 0u) {
+                    const auto& previous = scene.triangles[triangleOwners[texelIndex]];
+                    const MATH::Vec2 uvSample{sample.x / static_cast<float>(width),
+                                              sample.y / static_cast<float>(height)};
+                    const bool interiorsOverlap = IsUvTriangleInterior(triangle.lightmapUv, uvSample) &&
+                                                  IsUvTriangleInterior(previous.lightmapUv, uvSample);
+                    if (previous.lightmapAllocationIndex != triangle.lightmapAllocationIndex || interiorsOverlap) {
+                        ++result.overlapTexelCount;
                     }
-                }
-                if (frontier.empty()) {
-                    return false;
+                    continue;
                 }
 
-                for (size_t read = 0u;
-                     read < frontier.size();
-                     ++read) {
-                    const size_t sourceIndex =
-                        frontier[read];
-                    const uint32_t sourceX =
-                        static_cast<uint32_t>(
-                            sourceIndex % width);
-                    const uint32_t sourceY =
-                        static_cast<uint32_t>(
-                            sourceIndex / width);
-                    constexpr int neighbors[4][2]{
-                        { -1, 0 },
-                        { 1, 0 },
-                        { 0, -1 },
-                        { 0, 1 }
-                    };
-                    for (const auto& neighbor : neighbors) {
-                        const int x =
-                            static_cast<int>(sourceX) +
-                            neighbor[0];
-                        const int y =
-                            static_cast<int>(sourceY) +
-                            neighbor[1];
-                        if (x < static_cast<int>(rect.x) ||
-                            y < static_cast<int>(rect.y) ||
-                            x >= static_cast<int>(
-                                rect.x + rect.width) ||
-                            y >= static_cast<int>(
-                                rect.y + rect.height)) {
-                            continue;
-                        }
-                        const size_t destinationIndex =
-                            static_cast<size_t>(y) * width +
-                            static_cast<size_t>(x);
-                        if (ownerIndices[destinationIndex] !=
-                            kInvalidOwner) {
-                            continue;
-                        }
-                        pixels[destinationIndex] =
-                            pixels[sourceIndex];
-                        pixels[destinationIndex].w = 1.0f;
-                        valid[destinationIndex] = 1u;
-                        ownerIndices[destinationIndex] =
-                            allocationIndex;
-                        frontier.push_back(
-                            destinationIndex);
-                    }
-                }
+                storeTexel(triangleIndex, texelIndex, weights, geometricNormal, footprint);
             }
-            return true;
         }
+    }
+    // 中心を横切らない細い UV island も有効な表面。中心 sample を優先した後、
+    // 空き texel に三角形内部の重心 sample を置く（面外への barycentric 外挿はしない）。
+    for (const uint32_t triangleIndex : target.triangleIndices) {
+        if (triangleIndex >= scene.triangles.size() || triangleHasCenter[triangleIndex])
+            continue;
+        const auto& triangle = scene.triangles[triangleIndex];
+        if (triangle.lightmapAllocationIndex >= target.atlasAllocations.size())
+            continue;
+        const auto uv = (triangle.lightmapUv[0] + triangle.lightmapUv[1] + triangle.lightmapUv[2]) * (1.0f / 3.0f);
+        if (!MATH::IsFinite(uv) || uv.x < 0 || uv.y < 0 || uv.x >= 1 || uv.y >= 1)
+            continue;
+        MATH::Vec3 normal;
+        if (!TryNormalize(
+                MATH::Cross(triangle.position[1] - triangle.position[0], triangle.position[2] - triangle.position[0]),
+                normal))
+            continue;
+        if (MATH::Dot(normal, triangle.normal[0] + triangle.normal[1] + triangle.normal[2]) < 0)
+            normal = normal * -1.0f;
+        const size_t texelIndex = size_t(uv.y * height) * width + size_t(uv.x * width);
+        if (result.validTexels[texelIndex]) {
+            const auto& previous = scene.triangles[triangleOwners[texelIndex]];
+            if (previous.lightmapAllocationIndex != triangle.lightmapAllocationIndex ||
+                (IsUvTriangleInterior(triangle.lightmapUv, uv) && IsUvTriangleInterior(previous.lightmapUv, uv)))
+                ++result.overlapTexelCount;
+            continue;
+        }
+        constexpr float barycentric[3]{1.0f / 3.0f, 1.0f / 3.0f, 1.0f / 3.0f};
+        storeTexel(triangleIndex, texelIndex, barycentric, normal, WorldTexelFootprint(triangle, width, height));
+    }
+    result.ownerIndices = std::move(triangleOwners);
+    for (auto& owner : result.ownerIndices) {
+        if (owner != ASSETS::LIGHTING::kInvalidLightmapSurfaceIndex) {
+            owner = scene.triangles[owner].lightmapAllocationIndex;
+        }
+    }
+    result.uncoveredAllocationCount =
+        static_cast<uint32_t>(std::count(allocationCoverage.begin(), allocationCoverage.end(), 0u));
+    return result;
+}
 
-    } // namespace
-
-    DxrLightmapUvRasterization RasterizeLightmapTarget(
-        const RENDER3D::LIGHTING::TRANSPORT::
-            LightingTransportScene& scene,
-        const RENDER3D::LIGHTING::TRANSPORT::
-            LightingTransportLightmapPage& target,
-        uint32_t width,
-        uint32_t height) {
-
-        DxrLightmapUvRasterization result{};
-        result.texels.resize(
-            static_cast<size_t>(width) * height);
-        result.validTexels.assign(
-            result.texels.size(),
-            0u);
-        // 診断中は最初の Triangle を保持し、戻す前に永続的な Allocation 所有者へ変換する。
-        std::vector<uint32_t> triangleOwners(
-            result.texels.size(),
-            ASSETS::LIGHTING::
-                kInvalidLightmapSurfaceIndex);
-        std::vector<uint32_t> allocationCoverage(
-            target.atlasAllocations.size(),
-            0u);
-
-        std::vector<uint8_t> triangleHasCenter(scene.triangles.size(), 0u);
-        const auto storeTexel = [&](uint32_t triangleIndex, size_t texelIndex,
-                                    const float (&weights)[3], const MATH::Vec3& geometricNormal,
-                                    float footprint) {
-            const auto& triangle = scene.triangles[triangleIndex];
-            MATH::Vec3 position{};
-            MATH::Vec3 normal{};
-            for (uint32_t corner = 0u;
-                corner < 3u;
-                ++corner) {
-                position = position +
-                    triangle.position[corner] *
-                        weights[corner];
-                normal = normal +
-                    triangle.normal[corner] *
-                        weights[corner];
-            }
-            if (!MATH::IsFinite(position) || footprint <= 0) {
-                return;
-            }
-            MATH::Vec3 normalizedNormal{};
-            if (!TryNormalize(
-                    normal,
-                    normalizedNormal)) {
-                normalizedNormal =
-                    geometricNormal;
-            }
-            if (!MATH::IsFinite(normalizedNormal)) {
-                return;
-            }
-
-            result.validTexels[texelIndex] = 1u;
-            triangleOwners[texelIndex] = triangleIndex;
-            ++result.coveredTexelCount;
-            ++allocationCoverage[
-                triangle.lightmapAllocationIndex];
-            result.texels[texelIndex].position = {
-                position.x,
-                position.y,
-                position.z,
-                footprint
-            };
-            result.texels[texelIndex].normal = {
-                normalizedNormal.x,
-                normalizedNormal.y,
-                normalizedNormal.z,
-                1.0f
-            };
+bool FilterLightmapIrradiance(std::span<MATH::Vec4> pixels, std::span<const DxrLightmapSurfaceTexel> surfaces,
+                              std::span<const uint8_t> validTexels, std::span<const uint32_t> ownerIndices,
+                              std::span<const ASSETS::LIGHTING::LightmapAtlasAllocation> allocations, uint32_t width,
+                              uint32_t height) {
+    const size_t count = static_cast<size_t>(width) * height;
+    if (width == 0 || height == 0 || pixels.size() != count || surfaces.size() != count ||
+        validTexels.size() != count || ownerIndices.size() != count)
+        return false;
+    // 作業領域は一 allocation 分。UPLOAD heap を tap ごとに CPU read しない。
+    std::vector<MATH::Vec4> filtered;
+    std::vector<DxrLightmapSurfaceTexel> guides;
+    for (uint32_t owner = 0; owner < allocations.size(); ++owner) {
+        const auto& rect = allocations[owner].outerRect;
+        if (!rect.width || !rect.height || uint64_t(rect.x) + rect.width > width ||
+            uint64_t(rect.y) + rect.height > height)
+            return false;
+        const size_t tileCount = static_cast<size_t>(rect.width) * rect.height;
+        filtered.resize(tileCount);
+        guides.resize(tileCount);
+        for (uint32_t y = 0; y < rect.height; ++y)
+            std::memcpy(guides.data() + size_t(y) * rect.width, surfaces.data() + size_t(y + rect.y) * width + rect.x,
+                        size_t(rect.width) * sizeof(guides[0]));
+        const auto globalIndex = [&](uint32_t x, uint32_t y) { return size_t(y + rect.y) * width + x + rect.x; };
+        const auto admitted = [&](uint32_t x, uint32_t y) {
+            const auto i = globalIndex(x, y);
+            return validTexels[i] != 0 && ownerIndices[i] == owner;
         };
-
-        for (const uint32_t triangleIndex :
-             target.triangleIndices) {
-            if (triangleIndex >= scene.triangles.size()) {
-                continue;
-            }
-            const RENDER3D::LIGHTING::TRANSPORT::
-                LightingTransportTriangle& triangle =
-                    scene.triangles[triangleIndex];
-            if (triangle.lightmapAllocationIndex >=
-                target.atlasAllocations.size()) {
-                continue;
-            }
-            if (!MATH::IsFinite(triangle.position[0]) ||
-                !MATH::IsFinite(triangle.position[1]) ||
-                !MATH::IsFinite(triangle.position[2])) {
-                continue;
-            }
-
-            MATH::Vec3 geometricNormal{};
-            if (!TryNormalize(
-                    MATH::Cross(
-                        triangle.position[1] -
-                            triangle.position[0],
-                        triangle.position[2] -
-                            triangle.position[0]),
-                    geometricNormal)) {
-                continue;
-            }
-            const MATH::Vec3 summedVertexNormal =
-                triangle.normal[0] +
-                triangle.normal[1] +
-                triangle.normal[2];
-            if (MATH::IsFinite(summedVertexNormal) &&
-                MATH::Dot(
-                    geometricNormal,
-                    summedVertexNormal) < 0.0f) {
-                geometricNormal =
-                    geometricNormal * -1.0f;
-            }
-
-            MATH::Vec2 pixelUv[3]{};
-            for (uint32_t corner = 0u; corner < 3u; ++corner) {
-                pixelUv[corner] = {
-                    triangle.lightmapUv[corner].x *
-                        static_cast<float>(width),
-                    triangle.lightmapUv[corner].y *
-                        static_cast<float>(height)
-                };
-            }
-
-            const float area =
-                Edge(pixelUv[0], pixelUv[1], pixelUv[2]);
-            if (std::abs(area) <= 1.0e-8f) {
-                continue;
-            }
-            const float inverseArea = 1.0f / area;
-            const float footprint = WorldTexelFootprint(triangle, width, height);
-            const int minX = std::clamp(
-                static_cast<int>(std::floor((std::min)({
-                    pixelUv[0].x,
-                    pixelUv[1].x,
-                    pixelUv[2].x }))),
-                0,
-                static_cast<int>(width) - 1);
-            const int maxX = std::clamp(
-                static_cast<int>(std::ceil((std::max)({
-                    pixelUv[0].x,
-                    pixelUv[1].x,
-                    pixelUv[2].x }))),
-                0,
-                static_cast<int>(width) - 1);
-            const int minY = std::clamp(
-                static_cast<int>(std::floor((std::min)({
-                    pixelUv[0].y,
-                    pixelUv[1].y,
-                    pixelUv[2].y }))),
-                0,
-                static_cast<int>(height) - 1);
-            const int maxY = std::clamp(
-                static_cast<int>(std::ceil((std::max)({
-                    pixelUv[0].y,
-                    pixelUv[1].y,
-                    pixelUv[2].y }))),
-                0,
-                static_cast<int>(height) - 1);
-
-            for (int y = minY; y <= maxY; ++y) {
-                for (int x = minX; x <= maxX; ++x) {
-                    const MATH::Vec2 sample{
-                        static_cast<float>(x) + 0.5f,
-                        static_cast<float>(y) + 0.5f
-                    };
-                    const float weights[3]{
-                        Edge(
-                            pixelUv[1],
-                            pixelUv[2],
-                            sample) * inverseArea,
-                        Edge(
-                            pixelUv[2],
-                            pixelUv[0],
-                            sample) * inverseArea,
-                        Edge(
-                            pixelUv[0],
-                            pixelUv[1],
-                            sample) * inverseArea
-                    };
-                    if (weights[0] < -1.0e-5f ||
-                        weights[1] < -1.0e-5f ||
-                        weights[2] < -1.0e-5f) {
-                        continue;
-                    }
-
-                    triangleHasCenter[triangleIndex] = 1u;
-                    const size_t texelIndex =
-                        static_cast<size_t>(y) * width +
-                        static_cast<size_t>(x);
-                    if (result.validTexels[texelIndex] != 0u) {
-                        const auto& previous = scene.triangles[triangleOwners[texelIndex]];
-                        const MATH::Vec2 uvSample{
-                            sample.x / static_cast<float>(width), sample.y / static_cast<float>(height)};
-                        const bool interiorsOverlap =
-                            IsUvTriangleInterior(triangle.lightmapUv, uvSample) &&
-                            IsUvTriangleInterior(previous.lightmapUv, uvSample);
-                        if (previous.lightmapAllocationIndex != triangle.lightmapAllocationIndex || interiorsOverlap) {
-                            ++result.overlapTexelCount;
-                        }
-                        continue;
-                    }
-
-                    storeTexel(triangleIndex, texelIndex, weights, geometricNormal, footprint);
-                }
-            }
-        }
-        // 中心を横切らない細い UV island も有効な表面。中心 sample を優先した後、
-        // 空き texel に三角形内部の重心 sample を置く（面外への barycentric 外挿はしない）。
-        for (const uint32_t triangleIndex : target.triangleIndices) {
-            if (triangleIndex >= scene.triangles.size() || triangleHasCenter[triangleIndex]) continue;
-            const auto& triangle = scene.triangles[triangleIndex];
-            if (triangle.lightmapAllocationIndex >= target.atlasAllocations.size()) continue;
-            const auto uv = (triangle.lightmapUv[0] + triangle.lightmapUv[1] + triangle.lightmapUv[2]) * (1.0f / 3.0f);
-            if (!MATH::IsFinite(uv) || uv.x < 0 || uv.y < 0 || uv.x >= 1 || uv.y >= 1) continue;
-            MATH::Vec3 normal;
-            if (!TryNormalize(MATH::Cross(triangle.position[1]-triangle.position[0],
-                    triangle.position[2]-triangle.position[0]), normal)) continue;
-            if (MATH::Dot(normal, triangle.normal[0]+triangle.normal[1]+triangle.normal[2]) < 0) normal = normal * -1.0f;
-            const size_t texelIndex = size_t(uv.y * height) * width + size_t(uv.x * width);
-            if (result.validTexels[texelIndex]) {
-                const auto& previous = scene.triangles[triangleOwners[texelIndex]];
-                if (previous.lightmapAllocationIndex != triangle.lightmapAllocationIndex ||
-                    (IsUvTriangleInterior(triangle.lightmapUv, uv) &&
-                     IsUvTriangleInterior(previous.lightmapUv, uv))) ++result.overlapTexelCount;
-                continue;
-            }
-            constexpr float barycentric[3]{1.0f/3.0f, 1.0f/3.0f, 1.0f/3.0f};
-            storeTexel(triangleIndex, texelIndex, barycentric, normal, WorldTexelFootprint(triangle,width,height));
-        }
-        result.ownerIndices = std::move(triangleOwners);
-        for (auto& owner : result.ownerIndices) {
-            if (owner != ASSETS::LIGHTING::kInvalidLightmapSurfaceIndex) {
-                owner = scene.triangles[owner].lightmapAllocationIndex;
-            }
-        }
-        result.uncoveredAllocationCount =
-            static_cast<uint32_t>(std::count(
-                allocationCoverage.begin(),
-                allocationCoverage.end(),
-                0u));
-        return result;
-    }
-
-    bool FilterLightmapIrradiance(
-        std::span<MATH::Vec4> pixels,
-        std::span<const DxrLightmapSurfaceTexel> surfaces,
-        std::span<const uint8_t> validTexels,
-        std::span<const uint32_t> ownerIndices,
-        std::span<const ASSETS::LIGHTING::LightmapAtlasAllocation> allocations,
-        uint32_t width, uint32_t height) {
-        const size_t count = static_cast<size_t>(width) * height;
-        if (width == 0 || height == 0 || pixels.size() != count || surfaces.size() != count ||
-            validTexels.size() != count || ownerIndices.size() != count) return false;
-        // 作業領域は一 allocation 分。UPLOAD heap を tap ごとに CPU read しない。
-        std::vector<MATH::Vec4> filtered;
-        std::vector<DxrLightmapSurfaceTexel> guides;
-        for (uint32_t owner = 0; owner < allocations.size(); ++owner) {
-            const auto& rect = allocations[owner].outerRect;
-            if (!rect.width || !rect.height || uint64_t(rect.x)+rect.width > width ||
-                uint64_t(rect.y)+rect.height > height) return false;
-            const size_t tileCount = static_cast<size_t>(rect.width) * rect.height;
-            filtered.resize(tileCount); guides.resize(tileCount);
+        for (const int step : {1, 2}) {
             for (uint32_t y = 0; y < rect.height; ++y)
-                std::memcpy(guides.data()+size_t(y)*rect.width,
-                    surfaces.data()+size_t(y+rect.y)*width+rect.x, size_t(rect.width)*sizeof(guides[0]));
-            const auto globalIndex = [&](uint32_t x, uint32_t y) { return size_t(y+rect.y)*width+x+rect.x; };
-            const auto admitted = [&](uint32_t x, uint32_t y) {
-                const auto i = globalIndex(x,y);
-                return validTexels[i] != 0 && ownerIndices[i] == owner;
-            };
-            for (const int step : {1,2}) {
-                for (uint32_t y = 0; y < rect.height; ++y) for (uint32_t x = 0; x < rect.width; ++x) {
-                    if (!admitted(x,y)) continue;
-                    const size_t local = size_t(y)*rect.width+x, global = globalIndex(x,y);
+                for (uint32_t x = 0; x < rect.width; ++x) {
+                    if (!admitted(x, y))
+                        continue;
+                    const size_t local = size_t(y) * rect.width + x, global = globalIndex(x, y);
                     const auto& center = guides[local];
-                    const MATH::Vec3 n{center.normal.x,center.normal.y,center.normal.z};
+                    const MATH::Vec3 n{center.normal.x, center.normal.y, center.normal.z};
                     const auto color = pixels[global];
-                    if (!MATH::IsFinite(center.position) || !MATH::IsFinite(n) || center.position.w <= 0) return false;
-                    MATH::Vec3 sum{}; float total = 0;
-                    for (int dy = -1; dy <= 1; ++dy) for (int dx = -1; dx <= 1; ++dx) {
-                        const int tx = int(x)+dx*step, ty = int(y)+dy*step;
-                        if (tx < 0 || ty < 0 || tx >= int(rect.width) || ty >= int(rect.height) || !admitted(tx,ty)) continue;
-                        // 穴や chart の余白を飛び越えて近傍の面を混ぜない。
-                        if (step == 2 && !admitted(uint32_t(int(x)+dx),uint32_t(int(y)+dy))) continue;
-                        const auto& tap = guides[size_t(ty)*rect.width+tx];
-                        const MATH::Vec3 tn{tap.normal.x,tap.normal.y,tap.normal.z};
-                        const MATH::Vec3 delta{tap.position.x-center.position.x,
-                            tap.position.y-center.position.y,tap.position.z-center.position.z};
-                        const float size = (std::min)(center.position.w,tap.position.w);
-                        if (MATH::Dot(n,tn) < 0.95f || size <= 0 ||
-                            MATH::Dot(delta,delta) > 4.0f*step*step*size*size ||
-                            (std::max)(std::abs(MATH::Dot(delta,n)),std::abs(MATH::Dot(delta,tn))) > 0.25f*step*size) continue;
-                        const auto value = pixels[globalIndex(tx,ty)];
-                        const float difference = (std::max)({std::abs(value.x-color.x),std::abs(value.y-color.y),std::abs(value.z-color.z)});
-                        const float scale = (std::max)(1.0e-6f,(std::max)({value.x,value.y,value.z})+(std::max)({color.x,color.y,color.z}));
-                        const float ratio = difference / scale;
-                        // 強い照度境界には重みの裾を残さず、暗い面への光漏れを防ぐ。
-                        const float rangeWeight = (std::max)(0.0f,1.0f-4.0f*ratio*ratio);
-                        const float weight = float((dx == 0 ? 2 : 1)*(dy == 0 ? 2 : 1))*rangeWeight*rangeWeight;
-                        sum = sum + MATH::Vec3{value.x,value.y,value.z}*weight; total += weight;
-                    }
-                    filtered[local] = total > 0 ? MATH::Vec4{sum.x/total,sum.y/total,sum.z/total,color.w} : color;
+                    if (!MATH::IsFinite(center.position) || !MATH::IsFinite(n) || center.position.w <= 0)
+                        return false;
+                    MATH::Vec3 sum{};
+                    float total = 0;
+                    for (int dy = -1; dy <= 1; ++dy)
+                        for (int dx = -1; dx <= 1; ++dx) {
+                            const int tx = int(x) + dx * step, ty = int(y) + dy * step;
+                            if (tx < 0 || ty < 0 || tx >= int(rect.width) || ty >= int(rect.height) ||
+                                !admitted(tx, ty))
+                                continue;
+                            // 穴や chart の余白を飛び越えて近傍の面を混ぜない。
+                            if (step == 2 && !admitted(uint32_t(int(x) + dx), uint32_t(int(y) + dy)))
+                                continue;
+                            const auto& tap = guides[size_t(ty) * rect.width + tx];
+                            const MATH::Vec3 tn{tap.normal.x, tap.normal.y, tap.normal.z};
+                            const MATH::Vec3 delta{tap.position.x - center.position.x,
+                                                   tap.position.y - center.position.y,
+                                                   tap.position.z - center.position.z};
+                            const float size = (std::min)(center.position.w, tap.position.w);
+                            if (MATH::Dot(n, tn) < 0.95f || size <= 0 ||
+                                MATH::Dot(delta, delta) > 4.0f * step * step * size * size ||
+                                (std::max)(std::abs(MATH::Dot(delta, n)), std::abs(MATH::Dot(delta, tn))) >
+                                    0.25f * step * size)
+                                continue;
+                            const auto value = pixels[globalIndex(tx, ty)];
+                            const float difference =
+                                (std::max)({std::abs(value.x - color.x), std::abs(value.y - color.y),
+                                            std::abs(value.z - color.z)});
+                            const float scale = (std::max)(1.0e-6f, (std::max)({value.x, value.y, value.z}) +
+                                                                        (std::max)({color.x, color.y, color.z}));
+                            const float ratio = difference / scale;
+                            // 強い照度境界には重みの裾を残さず、暗い面への光漏れを防ぐ。
+                            const float rangeWeight = (std::max)(0.0f, 1.0f - 4.0f * ratio * ratio);
+                            const float weight =
+                                float((dx == 0 ? 2 : 1) * (dy == 0 ? 2 : 1)) * rangeWeight * rangeWeight;
+                            sum = sum + MATH::Vec3{value.x, value.y, value.z} * weight;
+                            total += weight;
+                        }
+                    filtered[local] =
+                        total > 0 ? MATH::Vec4{sum.x / total, sum.y / total, sum.z / total, color.w} : color;
                 }
-                for (uint32_t y = 0; y < rect.height; ++y) for (uint32_t x = 0; x < rect.width; ++x)
-                    if (admitted(x,y)) pixels[globalIndex(x,y)] = filtered[size_t(y)*rect.width+x];
-            }
+            for (uint32_t y = 0; y < rect.height; ++y)
+                for (uint32_t x = 0; x < rect.width; ++x)
+                    if (admitted(x, y))
+                        pixels[globalIndex(x, y)] = filtered[size_t(y) * rect.width + x];
         }
-        return true;
+    }
+    return true;
+}
+
+bool WriteProgressiveLightmapDds(const std::filesystem::path& outputPath, uint32_t width, uint32_t height,
+                                 uint32_t expectedSampleCount, const MATH::Vec4* accumulation,
+                                 std::vector<uint8_t> validTexels, std::vector<uint32_t> ownerIndices,
+                                 const std::vector<ASSETS::LIGHTING::LightmapAtlasAllocation>& allocations,
+                                 std::string* outMessage, std::span<const DxrLightmapSurfaceTexel> surfaces) {
+    if (accumulation == nullptr || expectedSampleCount == 0u ||
+        validTexels.size() != static_cast<size_t>(width) * height || ownerIndices.size() != validTexels.size() ||
+        allocations.empty()) {
+        SetMessage(outMessage, "Lightmap readback data does not match its extent.");
+        return false;
     }
 
-    bool WriteProgressiveLightmapDds(
-        const std::filesystem::path& outputPath,
-        uint32_t width,
-        uint32_t height,
-        uint32_t expectedSampleCount,
-        const MATH::Vec4* accumulation,
-        std::vector<uint8_t> validTexels,
-        std::vector<uint32_t> ownerIndices,
-        const std::vector<ASSETS::LIGHTING::
-            LightmapAtlasAllocation>& allocations,
-        std::string* outMessage,
-        std::span<const DxrLightmapSurfaceTexel> surfaces) {
-
-        if (accumulation == nullptr ||
-            expectedSampleCount == 0u ||
-            validTexels.size() !=
-                static_cast<size_t>(width) * height ||
-            ownerIndices.size() != validTexels.size() ||
-            allocations.empty()) {
-            SetMessage(
-                outMessage,
-                "Lightmap readback data does not match its extent.");
-            return false;
+    const size_t pixelCount = static_cast<size_t>(width) * height;
+    std::vector<MATH::Vec4> pixels(pixelCount);
+    uint32_t incompleteSampleTexelCount = 0u;
+    size_t firstIncompleteTexel = pixelCount;
+    uint32_t nonFiniteTexelCount = 0u;
+    uint32_t negativeTexelCount = 0u;
+    uint32_t halfFloatOverflowTexelCount = 0u;
+    float maximumRadiance = 0.0f;
+    for (size_t i = 0u; i < pixelCount; ++i) {
+        if (validTexels[i] == 0u) {
+            continue;
         }
 
-        const size_t pixelCount =
-            static_cast<size_t>(width) * height;
-        std::vector<MATH::Vec4> pixels(pixelCount);
-        uint32_t incompleteSampleTexelCount = 0u;
-        size_t firstIncompleteTexel = pixelCount;
-        uint32_t nonFiniteTexelCount = 0u;
-        uint32_t negativeTexelCount = 0u;
-        uint32_t halfFloatOverflowTexelCount = 0u;
-        float maximumRadiance = 0.0f;
-        for (size_t i = 0u; i < pixelCount; ++i) {
-            if (validTexels[i] == 0u) {
-                continue;
-            }
-
-            const MATH::Vec4& accumulated =
-                accumulation[i];
-            if (!MATH::IsFinite(accumulated)) {
-                ++nonFiniteTexelCount;
-                continue;
-            }
-            const float expectedSamples =
-                static_cast<float>(expectedSampleCount);
-            if (std::abs(
-                    accumulated.w -
-                    expectedSamples) > 0.25f) {
-                ++incompleteSampleTexelCount;
-                if (firstIncompleteTexel == pixelCount) firstIncompleteTexel = i;
-                continue;
-            }
-
-            pixels[i] = {
-                accumulated.x / expectedSamples,
-                accumulated.y / expectedSamples,
-                accumulated.z / expectedSamples,
-                1.0f
-            };
-            const MATH::Vec4& pixel = pixels[i];
-            if (!MATH::IsFinite(pixel)) {
-                ++nonFiniteTexelCount;
-                continue;
-            }
-            if (pixel.x < -1.0e-5f ||
-                pixel.y < -1.0e-5f ||
-                pixel.z < -1.0e-5f) {
-                ++negativeTexelCount;
-                continue;
-            }
-            if (pixel.x >= kMaximumHalfFloat ||
-                pixel.y >= kMaximumHalfFloat ||
-                pixel.z >= kMaximumHalfFloat) {
-                ++halfFloatOverflowTexelCount;
-                continue;
-            }
-            pixels[i] = {
-                (std::max)(0.0f, pixel.x),
-                (std::max)(0.0f, pixel.y),
-                (std::max)(0.0f, pixel.z),
-                1.0f
-            };
-            maximumRadiance = (std::max)(
-                maximumRadiance,
-                (std::max)(
-                    pixels[i].x,
-                    (std::max)(
-                        pixels[i].y,
-                        pixels[i].z)));
+        const MATH::Vec4& accumulated = accumulation[i];
+        if (!MATH::IsFinite(accumulated)) {
+            ++nonFiniteTexelCount;
+            continue;
+        }
+        const float expectedSamples = static_cast<float>(expectedSampleCount);
+        if (std::abs(accumulated.w - expectedSamples) > 0.25f) {
+            ++incompleteSampleTexelCount;
+            if (firstIncompleteTexel == pixelCount)
+                firstIncompleteTexel = i;
+            continue;
         }
 
-        if (incompleteSampleTexelCount > 0u ||
-            nonFiniteTexelCount > 0u ||
-            negativeTexelCount > 0u ||
-            halfFloatOverflowTexelCount > 0u) {
-            std::ostringstream stream{};
-            stream
-                << "DXR lightmap rejected invalid transport output:"
-                << " incomplete-sample texels="
-                << incompleteSampleTexelCount;
-            if (firstIncompleteTexel != pixelCount) {
-                stream << " (first pixel=" << firstIncompleteTexel % width << ','
-                    << firstIncompleteTexel / width << ", samples="
-                    << accumulation[firstIncompleteTexel].w << '/' << expectedSampleCount;
-                const auto owner = ownerIndices[firstIncompleteTexel];
-                if (owner < allocations.size()) {
-                    const auto& surface = allocations[owner].surface;
-                    stream << ", surface=" << surface.nodeIndex << '/'
-                        << surface.meshIndex << '/' << surface.primitiveIndex;
-                }
-                stream << ')';
-            }
-            stream << ", non-finite texels="
-                << nonFiniteTexelCount
-                << ", negative texels="
-                << negativeTexelCount
-                << ", RGB16F overflow texels="
-                << halfFloatOverflowTexelCount
-                << ". No artifact was written.";
-            SetMessage(outMessage, stream.str());
-            return false;
+        pixels[i] = {accumulated.x / expectedSamples, accumulated.y / expectedSamples, accumulated.z / expectedSamples,
+                     1.0f};
+        const MATH::Vec4& pixel = pixels[i];
+        if (!MATH::IsFinite(pixel)) {
+            ++nonFiniteTexelCount;
+            continue;
         }
-        if (!surfaces.empty() && !FilterLightmapIrradiance(
-                pixels, surfaces, validTexels, ownerIndices, allocations, width, height)) {
-            SetMessage(outMessage, "Lightmap surface-guided filtering failed; no artifact was written.");
-            return false;
+        if (pixel.x < -1.0e-5f || pixel.y < -1.0e-5f || pixel.z < -1.0e-5f) {
+            ++negativeTexelCount;
+            continue;
         }
-        if (!DilateLightmapAllocations(
-                pixels,
-                validTexels,
-                ownerIndices,
-                allocations,
-                width,
-                height)) {
-            SetMessage(
-                outMessage,
-                "Lightmap owner-aware dilation failed.");
-            return false;
+        if (pixel.x >= kMaximumHalfFloat || pixel.y >= kMaximumHalfFloat || pixel.z >= kMaximumHalfFloat) {
+            ++halfFloatOverflowTexelCount;
+            continue;
         }
-
-        DirectX::ScratchImage source{};
-        HRESULT result = source.Initialize2D(
-            DXGI_FORMAT_R32G32B32A32_FLOAT,
-            width,
-            height,
-            1u,
-            1u);
-        if (FAILED(result)) {
-            SetMessage(
-                outMessage,
-                "Failed to allocate lightmap image.");
-            return false;
-        }
-        const DirectX::Image* image =
-            source.GetImage(0u, 0u, 0u);
-        if (image == nullptr || image->pixels == nullptr) {
-            SetMessage(
-                outMessage,
-                "Lightmap image storage is missing.");
-            return false;
-        }
-        for (uint32_t y = 0u; y < height; ++y) {
-            std::memcpy(
-                image->pixels + image->rowPitch * y,
-                pixels.data() +
-                    static_cast<size_t>(y) * width,
-                sizeof(MATH::Vec4) * width);
-        }
-
-        DirectX::ScratchImage mipChain{};
-        result = DirectX::GenerateMipMaps(
-            source.GetImages(),
-            source.GetImageCount(),
-            source.GetMetadata(),
-            DirectX::TEX_FILTER_DEFAULT,
-            ASSETS::LIGHTING::
-                kSurfaceLightmapSafeMipCount,
-            mipChain);
-        const DirectX::ScratchImage* mipSource =
-            SUCCEEDED(result) ? &mipChain : &source;
-
-        DirectX::ScratchImage converted{};
-        result = DirectX::Convert(
-            mipSource->GetImages(),
-            mipSource->GetImageCount(),
-            mipSource->GetMetadata(),
-            DXGI_FORMAT_R16G16B16A16_FLOAT,
-            DirectX::TEX_FILTER_DEFAULT,
-            0.0f,
-            converted);
-        if (FAILED(result)) {
-            SetMessage(
-                outMessage,
-                "Failed to convert lightmap to RGB16F.");
-            return false;
-        }
-
-        std::error_code error{};
-        std::filesystem::create_directories(
-            outputPath.parent_path(),
-            error);
-        if (error) {
-            SetMessage(
-                outMessage,
-                "Failed to create lightmap output directory: " +
-                    error.message());
-            return false;
-        }
-        result = DirectX::SaveToDDSFile(
-            converted.GetImages(),
-            converted.GetImageCount(),
-            converted.GetMetadata(),
-            DirectX::DDS_FLAGS_NONE,
-            outputPath.wstring().c_str());
-        if (FAILED(result)) {
-            std::ostringstream stream{};
-            stream << "Failed to save lightmap DDS, hr=0x"
-                << std::hex
-                << static_cast<unsigned long>(result);
-            SetMessage(outMessage, stream.str());
-            return false;
-        }
-        SetMessage(
-            outMessage,
-            "DXR indirect lightmap saved: " +
-                outputPath.generic_string() +
-                " (maximum radiance=" +
-                std::to_string(maximumRadiance) +
-                ").");
-        return true;
+        pixels[i] = {(std::max)(0.0f, pixel.x), (std::max)(0.0f, pixel.y), (std::max)(0.0f, pixel.z), 1.0f};
+        maximumRadiance = (std::max)(maximumRadiance, (std::max)(pixels[i].x, (std::max)(pixels[i].y, pixels[i].z)));
     }
+
+    if (incompleteSampleTexelCount > 0u || nonFiniteTexelCount > 0u || negativeTexelCount > 0u ||
+        halfFloatOverflowTexelCount > 0u) {
+        std::ostringstream stream{};
+        stream << "DXR lightmap rejected invalid transport output:"
+               << " incomplete-sample texels=" << incompleteSampleTexelCount;
+        if (firstIncompleteTexel != pixelCount) {
+            stream << " (first pixel=" << firstIncompleteTexel % width << ',' << firstIncompleteTexel / width
+                   << ", samples=" << accumulation[firstIncompleteTexel].w << '/' << expectedSampleCount;
+            const auto owner = ownerIndices[firstIncompleteTexel];
+            if (owner < allocations.size()) {
+                const auto& surface = allocations[owner].surface;
+                stream << ", surface=" << surface.nodeIndex << '/' << surface.meshIndex << '/'
+                       << surface.primitiveIndex;
+            }
+            stream << ')';
+        }
+        stream << ", non-finite texels=" << nonFiniteTexelCount << ", negative texels=" << negativeTexelCount
+               << ", RGB16F overflow texels=" << halfFloatOverflowTexelCount << ". No artifact was written.";
+        SetMessage(outMessage, stream.str());
+        return false;
+    }
+    if (!surfaces.empty() &&
+        !FilterLightmapIrradiance(pixels, surfaces, validTexels, ownerIndices, allocations, width, height)) {
+        SetMessage(outMessage, "Lightmap surface-guided filtering failed; no artifact was written.");
+        return false;
+    }
+    if (!DilateLightmapAllocations(pixels, validTexels, ownerIndices, allocations, width, height)) {
+        SetMessage(outMessage, "Lightmap owner-aware dilation failed.");
+        return false;
+    }
+
+    DirectX::ScratchImage source{};
+    HRESULT result = source.Initialize2D(DXGI_FORMAT_R32G32B32A32_FLOAT, width, height, 1u, 1u);
+    if (FAILED(result)) {
+        SetMessage(outMessage, "Failed to allocate lightmap image.");
+        return false;
+    }
+    const DirectX::Image* image = source.GetImage(0u, 0u, 0u);
+    if (image == nullptr || image->pixels == nullptr) {
+        SetMessage(outMessage, "Lightmap image storage is missing.");
+        return false;
+    }
+    for (uint32_t y = 0u; y < height; ++y) {
+        std::memcpy(image->pixels + image->rowPitch * y, pixels.data() + static_cast<size_t>(y) * width,
+                    sizeof(MATH::Vec4) * width);
+    }
+
+    DirectX::ScratchImage mipChain{};
+    result =
+        DirectX::GenerateMipMaps(source.GetImages(), source.GetImageCount(), source.GetMetadata(),
+                                 DirectX::TEX_FILTER_DEFAULT, ASSETS::LIGHTING::kSurfaceLightmapSafeMipCount, mipChain);
+    const DirectX::ScratchImage* mipSource = SUCCEEDED(result) ? &mipChain : &source;
+
+    DirectX::ScratchImage converted{};
+    result = DirectX::Convert(mipSource->GetImages(), mipSource->GetImageCount(), mipSource->GetMetadata(),
+                              DXGI_FORMAT_R16G16B16A16_FLOAT, DirectX::TEX_FILTER_DEFAULT, 0.0f, converted);
+    if (FAILED(result)) {
+        SetMessage(outMessage, "Failed to convert lightmap to RGB16F.");
+        return false;
+    }
+
+    std::error_code error{};
+    std::filesystem::create_directories(outputPath.parent_path(), error);
+    if (error) {
+        SetMessage(outMessage, "Failed to create lightmap output directory: " + error.message());
+        return false;
+    }
+    result = DirectX::SaveToDDSFile(converted.GetImages(), converted.GetImageCount(), converted.GetMetadata(),
+                                    DirectX::DDS_FLAGS_NONE, outputPath.wstring().c_str());
+    if (FAILED(result)) {
+        std::ostringstream stream{};
+        stream << "Failed to save lightmap DDS, hr=0x" << std::hex << static_cast<unsigned long>(result);
+        SetMessage(outMessage, stream.str());
+        return false;
+    }
+    SetMessage(outMessage, "DXR indirect lightmap saved: " + outputPath.generic_string() +
+                               " (maximum radiance=" + std::to_string(maximumRadiance) + ").");
+    return true;
+}
 
 } // namespace HIKARI::TOOLS::BAKING::INTERNAL

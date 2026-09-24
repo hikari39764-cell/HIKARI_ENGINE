@@ -4,6 +4,6 @@
 
 namespace HIKARI::EDITOR {
 
-    void DrawEditorDocumentMenu(EditorCommandRouter& commandRouter);
+void DrawEditorDocumentMenu(EditorCommandRouter& commandRouter);
 
 } // namespace HIKARI::EDITOR

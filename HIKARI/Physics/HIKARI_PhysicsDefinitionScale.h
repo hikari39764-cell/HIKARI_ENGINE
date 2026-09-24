@@ -4,12 +4,9 @@
 
 namespace HIKARI::PHYSICS {
 
-    bool ArePhysicsDefinitionScalesEquivalent(
-        const MATH::Vec3& left,
-        const MATH::Vec3& right) noexcept;
+bool ArePhysicsDefinitionScalesEquivalent(const MATH::Vec3& left, const MATH::Vec3& right) noexcept;
 
-    MATH::Vec3 ResolvePhysicsDefinitionScale(
-        const MATH::Vec3& measuredScale,
-        const MATH::Vec3* retainedScale = nullptr) noexcept;
+MATH::Vec3 ResolvePhysicsDefinitionScale(const MATH::Vec3& measuredScale,
+                                         const MATH::Vec3* retainedScale = nullptr) noexcept;
 
 } // namespace HIKARI::PHYSICS

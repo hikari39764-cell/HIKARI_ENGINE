@@ -12,28 +12,28 @@
 
 namespace HIKARI {
 
-    struct DocumentSceneCameraRuntimeState {
-        Camera3D editorCamera{};
-        Camera3D gameplayCamera{};
-        CameraDirector director{};
-        CAMERA::CameraRigService rigService{};
-        SEQUENCER::SequencePlaybackHandle currentCameraSequenceHandle{};
-        RENDER3D::ResolvedCameraFrame resolvedFrame{};
-        DebugCameraController3D debugCamera{};
-        DebugCameraController3D runtimePreviewCamera{};
-        Camera3D editorCameraSnapshot{};
-        Camera3D editorCameraPreviewSnapshot{};
-        DebugCameraController3D editorDebugCameraSnapshot{};
-        SceneObjectId editorCameraPreviewObjectId{};
-        CameraOverrideToken editorCameraPreviewToken{};
-        SEQUENCER::SequencePresentationState presentation{};
-        SEQUENCER::SequencePlaybackService sequencePlayback{};
-        SEQUENCER::SequencePlaybackHandle sequencePreview{};
-        Camera3D sequencePreviewSnapshot{};
-        bool sequencePreviewSnapshotActive = false;
-        bool editorCameraCutPending = false;
-        bool runtimePreviewCameraActive = false;
-        bool runtimeSceneCameraActive = false;
-    };
+struct DocumentSceneCameraRuntimeState {
+    Camera3D editorCamera{};
+    Camera3D gameplayCamera{};
+    CameraDirector director{};
+    CAMERA::CameraRigService rigService{};
+    SEQUENCER::SequencePlaybackHandle currentCameraSequenceHandle{};
+    RENDER3D::ResolvedCameraFrame resolvedFrame{};
+    DebugCameraController3D debugCamera{};
+    DebugCameraController3D runtimePreviewCamera{};
+    Camera3D editorCameraSnapshot{};
+    Camera3D editorCameraPreviewSnapshot{};
+    DebugCameraController3D editorDebugCameraSnapshot{};
+    SceneObjectId editorCameraPreviewObjectId{};
+    CameraOverrideToken editorCameraPreviewToken{};
+    SEQUENCER::SequencePresentationState presentation{};
+    SEQUENCER::SequencePlaybackService sequencePlayback{};
+    SEQUENCER::SequencePlaybackHandle sequencePreview{};
+    Camera3D sequencePreviewSnapshot{};
+    bool sequencePreviewSnapshotActive = false;
+    bool editorCameraCutPending = false;
+    bool runtimePreviewCameraActive = false;
+    bool runtimeSceneCameraActive = false;
+};
 
 } // namespace HIKARI

@@ -15,12 +15,7 @@ struct VfxTimelineClipboardKey {
     VFX::VfxCurveKeyData key;
     float relativeSeconds = 0;
 };
-enum class VfxLayerTimeEdit {
-    Move,
-    TrimStart,
-    TrimEnd,
-    Retime
-};
+enum class VfxLayerTimeEdit { Move, TrimStart, TrimEnd, Retime };
 struct VfxTimelineEditState {
     std::vector<std::string> selectedKeys;
     std::vector<VfxTimelineClipboardKey> clipboard;
@@ -40,14 +35,13 @@ struct VfxTimelineEditState {
 };
 
 // 時間軸、AI、テストが同じキー操作を利用する。UI座標は保持しない。
-std::vector<VfxTimelineCurve> CollectVfxTimelineCurves(const VFX::VfxEmitterData &layer,
-                                                       bool compositionOnly = false);
-bool ResolveVfxLayerKeyTime(const VFX::VfxAssetData &asset, const VFX::VfxEmitterData &layer, float seconds,
-                            float &normalized, std::string &error);
-bool MoveVfxTimelineKeys(VFX::VfxAssetData &asset, std::span<const std::string> ids, float deltaSeconds,
-                         std::string &error);
-bool EditVfxLayerTime(VFX::VfxAssetData &asset, std::string_view layerId, VfxLayerTimeEdit mode,
-                      float deltaSeconds, std::string &error);
-std::vector<VfxTimelineClipboardKey> CopyVfxTimelineKeys(const VFX::VfxAssetData &asset,
+std::vector<VfxTimelineCurve> CollectVfxTimelineCurves(const VFX::VfxEmitterData& layer, bool compositionOnly = false);
+bool ResolveVfxLayerKeyTime(const VFX::VfxAssetData& asset, const VFX::VfxEmitterData& layer, float seconds,
+                            float& normalized, std::string& error);
+bool MoveVfxTimelineKeys(VFX::VfxAssetData& asset, std::span<const std::string> ids, float deltaSeconds,
+                         std::string& error);
+bool EditVfxLayerTime(VFX::VfxAssetData& asset, std::string_view layerId, VfxLayerTimeEdit mode, float deltaSeconds,
+                      std::string& error);
+std::vector<VfxTimelineClipboardKey> CopyVfxTimelineKeys(const VFX::VfxAssetData& asset,
                                                          std::span<const std::string> ids);
 } // namespace HIKARI::EDITOR

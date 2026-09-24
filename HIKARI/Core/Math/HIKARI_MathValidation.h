@@ -4,11 +4,11 @@
 
 namespace HIKARI::MATH {
 
-    bool IsFinite(float value) noexcept;
-    bool IsFinite(const Vec2& value) noexcept;
-    bool IsFinite(const Vec3& value) noexcept;
-    bool IsFinite(const Vec4& value) noexcept;
-    bool IsFinite(const Quat& value) noexcept;
-    bool IsFinite(const Mat4& value) noexcept;
+bool IsFinite(float value) noexcept;
+bool IsFinite(const Vec2& value) noexcept;
+bool IsFinite(const Vec3& value) noexcept;
+bool IsFinite(const Vec4& value) noexcept;
+bool IsFinite(const Quat& value) noexcept;
+bool IsFinite(const Mat4& value) noexcept;
 
 } // namespace HIKARI::MATH

@@ -13,241 +13,239 @@
 
 namespace HIKARI {
 
-    namespace ASSETS::SHADER {
-        struct ShaderCookedArtifact;
-    }
+namespace ASSETS::SHADER {
+struct ShaderCookedArtifact;
+}
 
-    enum class AssetType {
-        Model,
-        Scene,
-        Sky,
-        Texture,
-        Material,
-        Animation,
-        Particle,
-        VfxEffect,
-        Sequence,
-        AnimationStateMachine,
-        Dialogue,
-        ModelMaterialBinding,
-        Shader,
-        GameplayCamera,
-        Unknown
-    };
+enum class AssetType {
+    Model,
+    Scene,
+    Sky,
+    Texture,
+    Material,
+    Animation,
+    Particle,
+    VfxEffect,
+    Sequence,
+    AnimationStateMachine,
+    Dialogue,
+    ModelMaterialBinding,
+    Shader,
+    GameplayCamera,
+    Font,
+    TextStyle,
+    UiAnimation,
+    Unknown
+};
 
-    enum class CoordinateSystem {
-        RightHanded_YUp,
-        LeftHanded_YUp,
-    };
+enum class CoordinateSystem {
+    RightHanded_YUp,
+    LeftHanded_YUp,
+};
 
-    enum class ModelImporterKind {
-        Builtin,
-        Gltf,
-        Assimp,
-    };
+enum class ModelImporterKind {
+    Builtin,
+    Gltf,
+    Assimp,
+};
 
-    enum class NormalImportPolicy {
-        Require,
-        IfMissing,
-        Always,
-    };
+enum class NormalImportPolicy {
+    Require,
+    IfMissing,
+    Always,
+};
 
-    enum class TangentImportPolicy {
-        None,
-        IfMissing,
-        Always,
-    };
+enum class TangentImportPolicy {
+    None,
+    IfMissing,
+    Always,
+};
 
-    enum class ModelGeometryCookProfile {
-        Scene,
-        Character,
-    };
+enum class ModelGeometryCookProfile {
+    Scene,
+    Character,
+};
 
-    struct ModelClusterCookOptions {
-        bool buildClusterGeometry = true;
-        ModelGeometryCookProfile profile = ModelGeometryCookProfile::Scene;
-        uint32_t maxLodCount = 5;
-        float lodQualityBias = 1.0f;
-        bool partitionLargeSurfaces = true;
-        float largeSurfaceTargetExtent = 3.0f;
-        bool lockPartitionBorders = true;
-    };
+struct ModelClusterCookOptions {
+    bool buildClusterGeometry = true;
+    ModelGeometryCookProfile profile = ModelGeometryCookProfile::Scene;
+    uint32_t maxLodCount = 5;
+    float lodQualityBias = 1.0f;
+    bool partitionLargeSurfaces = true;
+    float largeSurfaceTargetExtent = 3.0f;
+    bool lockPartitionBorders = true;
+};
 
-    struct AnimationClipAlias {
-        std::string name;
-        std::string sourceName;
-    };
+struct AnimationClipAlias {
+    std::string name;
+    std::string sourceName;
+};
 
-    struct ModelImportOptions {
-        float unitScale = 1.0f;
-        CoordinateSystem coordinateSystem = CoordinateSystem::RightHanded_YUp;
+struct ModelImportOptions {
+    float unitScale = 1.0f;
+    CoordinateSystem coordinateSystem = CoordinateSystem::RightHanded_YUp;
 
-        NormalImportPolicy generateNormals = NormalImportPolicy::IfMissing;
-        TangentImportPolicy generateTangents = TangentImportPolicy::IfMissing;
+    NormalImportPolicy generateNormals = NormalImportPolicy::IfMissing;
+    TangentImportPolicy generateTangents = TangentImportPolicy::IfMissing;
 
-        bool triangulate = true;
-        bool flipUV = false;
-        bool mergeMeshes = false;
-        bool keepNodeHierarchy = true;
+    bool triangulate = true;
+    bool flipUV = false;
+    bool mergeMeshes = false;
+    bool keepNodeHierarchy = true;
 
-        bool loadMaterials = true;
-        bool loadTextures = true;
-        bool loadAnimations = true;
-        bool loadSkins = true;
+    bool loadMaterials = true;
+    bool loadTextures = true;
+    bool loadAnimations = true;
+    bool loadSkins = true;
 
-        ModelClusterCookOptions clusterGeometry{};
-    };
+    ModelClusterCookOptions clusterGeometry{};
+};
 
-    struct ModelMaterialOverrideDesc {
-        std::string targetMaterialName;
-        std::string shaderProfileId;
-        std::string materialFxProfileId;
-        bool doubleSided = false;
-    };
+struct ModelMaterialOverrideDesc {
+    std::string targetMaterialName;
+    std::string shaderProfileId;
+    std::string materialFxProfileId;
+    bool doubleSided = false;
+};
 
-    struct ModelAnimationImportDesc {
-        std::string defaultClip;
-        std::vector<AnimationClipAlias> clips;
-    };
+struct ModelAnimationImportDesc {
+    std::string defaultClip;
+    std::vector<AnimationClipAlias> clips;
+};
 
-    struct AssetId {
-        std::string value;
+struct AssetId {
+    std::string value;
 
-        bool operator==(const AssetId& rhs) const {
-            return value == rhs.value;
-        }
+    bool operator==(const AssetId& rhs) const { return value == rhs.value; }
 
-        bool operator!=(const AssetId& rhs) const {
-            return !(*this == rhs);
-        }
-    };
+    bool operator!=(const AssetId& rhs) const { return !(*this == rhs); }
+};
 
-    struct AssetDescriptor {
-        virtual ~AssetDescriptor() = default;
+struct AssetDescriptor {
+    virtual ~AssetDescriptor() = default;
 
-        AssetId id{};
-        AssetType type = AssetType::Unknown;
-        std::string sourcePath{};
-        uint32_t version = 2;
-    };
+    AssetId id{};
+    AssetType type = AssetType::Unknown;
+    std::string sourcePath{};
+    uint32_t version = 2;
+};
 
-    struct ModelAssetDescriptor final : AssetDescriptor {
-        ModelImporterKind importer = ModelImporterKind::Gltf;
-        bool preload = true;
-        std::string clusteredGeometryPath{};
-        std::string collisionGeometryPath{};
-        ModelImportOptions importOptions{};
-        std::vector<ModelMaterialOverrideDesc> materialOverrides{};
-        ModelAnimationImportDesc animation{};
-    };
+struct ModelAssetDescriptor final : AssetDescriptor {
+    ModelImporterKind importer = ModelImporterKind::Gltf;
+    bool preload = true;
+    std::string clusteredGeometryPath{};
+    std::string collisionGeometryPath{};
+    ModelImportOptions importOptions{};
+    std::vector<ModelMaterialOverrideDesc> materialOverrides{};
+    ModelAnimationImportDesc animation{};
+};
 
-    struct SkyAssetDescriptor final : AssetDescriptor {
-        std::string meshAssetId{};
-        std::string textureAssetId{};
-        SkyMode preferredMode = SkyMode::Gradient;
-        std::string irradiancePath{};
-        std::string prefilteredPath{};
-        std::string brdfLutPath{};
-        uint32_t prefilteredMipCount = 1;
-        bool hasIbl = false;
-    };
+struct SkyAssetDescriptor final : AssetDescriptor {
+    std::string meshAssetId{};
+    std::string textureAssetId{};
+    SkyMode preferredMode = SkyMode::Gradient;
+    std::string irradiancePath{};
+    std::string prefilteredPath{};
+    std::string brdfLutPath{};
+    uint32_t prefilteredMipCount = 1;
+    bool hasIbl = false;
+};
 
-    enum class TextureAssetDimension {
-        Texture2D,
-        TextureCube,
-    };
+enum class TextureAssetDimension {
+    Texture2D,
+    TextureCube,
+};
 
-    enum class TextureAssetColorSpace {
-        Auto,
-        Linear,
-        Srgb,
-    };
+enum class TextureAssetColorSpace {
+    Auto,
+    Linear,
+    Srgb,
+};
 
-    enum class TextureUsage {
-        Auto,
-        BaseColor,
-        Normal,
-        MetallicRoughness,
-        Occlusion,
-        Emissive,
-        Mask,
-        UI,
-        SkyCubemap,
-        IblIrradiance,
-        IblPrefiltered,
-        BrdfLut,
-    };
+enum class TextureUsage {
+    Auto,
+    BaseColor,
+    Normal,
+    MetallicRoughness,
+    Occlusion,
+    Emissive,
+    Mask,
+    UI,
+    SkyCubemap,
+    IblIrradiance,
+    IblPrefiltered,
+    BrdfLut,
+};
 
-    enum class TextureCompression {
-        Auto,
-        None,
-        BC1,
-        BC3,
-        BC4,
-        BC5,
-        BC6H,
-        BC7,
-    };
+enum class TextureCompression {
+    Auto,
+    None,
+    BC1,
+    BC3,
+    BC4,
+    BC5,
+    BC6H,
+    BC7,
+};
 
-    enum class TextureMipPolicy {
-        Auto,
-        Generate,
-        Preserve,
-        None,
-    };
+enum class TextureMipPolicy {
+    Auto,
+    Generate,
+    Preserve,
+    None,
+};
 
-    enum class TextureAssetAlphaClass : uint8_t {
-        Unknown,
-        Opaque,
-        Cutout,
-        Translucent,
-    };
+enum class TextureAssetAlphaClass : uint8_t {
+    Unknown,
+    Opaque,
+    Cutout,
+    Translucent,
+};
 
-    enum class CookedAssetFormat {
-        Unknown,
-        DDS,
-        HTEX,
-        HMODEL,
-        HMESH,
-        HCMESH,
-        HCOLLISION,
-        HMAT,
-        HSKY,
-        HIBL,
-        HVFX,
-        HSHADERC,
-        HPAK,
-    };
+enum class CookedAssetFormat {
+    Unknown,
+    DDS,
+    HTEX,
+    HMODEL,
+    HMESH,
+    HCMESH,
+    HCOLLISION,
+    HMAT,
+    HSKY,
+    HIBL,
+    HVFX,
+    HSHADERC,
+    HPAK,
+};
 
-    struct TextureAssetDescriptor final : AssetDescriptor {
-        TextureAssetDimension dimension = TextureAssetDimension::Texture2D;
-        TextureAssetColorSpace colorSpace = TextureAssetColorSpace::Auto;
-        TextureUsage usage = TextureUsage::Auto;
-        TextureCompression compression = TextureCompression::Auto;
-        TextureMipPolicy mipPolicy = TextureMipPolicy::Auto;
-        uint32_t width = 0u;
-        uint32_t height = 0u;
-        TextureAssetAlphaClass alphaClass = TextureAssetAlphaClass::Unknown;
-    };
+struct TextureAssetDescriptor final : AssetDescriptor {
+    TextureAssetDimension dimension = TextureAssetDimension::Texture2D;
+    TextureAssetColorSpace colorSpace = TextureAssetColorSpace::Auto;
+    TextureUsage usage = TextureUsage::Auto;
+    TextureCompression compression = TextureCompression::Auto;
+    TextureMipPolicy mipPolicy = TextureMipPolicy::Auto;
+    uint32_t width = 0u;
+    uint32_t height = 0u;
+    TextureAssetAlphaClass alphaClass = TextureAssetAlphaClass::Unknown;
+};
 
-    struct MaterialAssetDescriptor final : AssetDescriptor {
-        MaterialAssetData sourceData{};
-        MaterialCompileResult compileResult{};
-        // 既存 runtime builder が v4 へ移行するまで保持する投影 adapter。
-        PbrMaterialAssetData data{};
-    };
+struct MaterialAssetDescriptor final : AssetDescriptor {
+    MaterialAssetData sourceData{};
+    MaterialCompileResult compileResult{};
+    // 既存 runtime builder が v4 へ移行するまで保持する投影 adapter。
+    PbrMaterialAssetData data{};
+};
 
-    struct ModelMaterialBindingAssetDescriptor final : AssetDescriptor {
-        ASSETS::MODELS::ModelMaterialBindingAssetData data{};
-    };
+struct ModelMaterialBindingAssetDescriptor final : AssetDescriptor {
+    ASSETS::MODELS::ModelMaterialBindingAssetData data{};
+};
 
-    struct VfxAssetDescriptor final : AssetDescriptor {
-        std::shared_ptr<const VFX::VfxProgram> program{};
-    };
+struct VfxAssetDescriptor final : AssetDescriptor {
+    std::shared_ptr<const VFX::VfxProgram> program{};
+};
 
-    struct ShaderAssetDescriptor final : AssetDescriptor {
-        std::shared_ptr<const ASSETS::SHADER::ShaderCookedArtifact>
-            program{};
-    };
+struct ShaderAssetDescriptor final : AssetDescriptor {
+    std::shared_ptr<const ASSETS::SHADER::ShaderCookedArtifact> program{};
+};
 
 } // namespace HIKARI

@@ -3,7 +3,7 @@
 #include <memory>
 
 namespace HIKARI {
-    class IRuntimeFeature;
+class IRuntimeFeature;
 
-    std::unique_ptr<IRuntimeFeature> CreatePhysicsRuntimeFeature();
-}
+std::unique_ptr<IRuntimeFeature> CreatePhysicsRuntimeFeature();
+} // namespace HIKARI

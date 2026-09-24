@@ -8,14 +8,9 @@
 
 namespace HIKARI::EDITOR {
 
-    std::unique_ptr<IEditorDocumentCommand>
-        MakeSceneObjectsHistoryCommand(
-            std::string label,
-            std::vector<SceneObjectData> beforeObjects,
-            std::vector<SceneObjectData> afterObjects,
-            SceneCameraSettings beforeCamera,
-            SceneCameraSettings afterCamera,
-            EditorDocumentImpact impact =
-                EditorDocumentImpact::RuntimeWorld);
+std::unique_ptr<IEditorDocumentCommand> MakeSceneObjectsHistoryCommand(
+    std::string label, std::vector<SceneObjectData> beforeObjects, std::vector<SceneObjectData> afterObjects,
+    SceneCameraSettings beforeCamera, SceneCameraSettings afterCamera,
+    EditorDocumentImpact impact = EditorDocumentImpact::RuntimeWorld);
 
 } // namespace HIKARI::EDITOR

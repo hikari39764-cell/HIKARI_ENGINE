@@ -15,106 +15,101 @@
 #include "Render3D/ScreenSpace/HIKARI_SsaoRenderer.h"
 
 namespace HIKARI {
-    struct SceneEnvironment;
+struct SceneEnvironment;
 }
 
 namespace HIKARI::RENDER3D::SCREENSPACE {
 
-    enum class DepthVisibilitySource : uint32_t {
-        None,
-        History,
-        Frozen,
-        CurrentPrepass,
-        CurrentSceneDepth,
-        NoHzb,
-    };
+enum class DepthVisibilitySource : uint32_t {
+    None,
+    History,
+    Frozen,
+    CurrentPrepass,
+    CurrentSceneDepth,
+    NoHzb,
+};
 
-    struct DepthVisibilityDebugState {
-        uint32_t width = 0;
-        uint32_t height = 0;
-        bool historyReady = false;
-        bool historyMatched = false;
-        bool depthPrepassWritten = false;
-        bool depthPyramidBuilt = false;
-        bool visibilityUsedHzb = false;
-        bool visibilityWithoutHzb = false;
-        uint32_t sceneDepthPyramidBuildCount = 0;
-        bool auxiliaryDepthReused = false;
-        DepthVisibilitySource visibilitySource = DepthVisibilitySource::None;
-        DepthVisibilitySource latestPyramidSource = DepthVisibilitySource::None;
-    };
+struct DepthVisibilityDebugState {
+    uint32_t width = 0;
+    uint32_t height = 0;
+    bool historyReady = false;
+    bool historyMatched = false;
+    bool depthPrepassWritten = false;
+    bool depthPyramidBuilt = false;
+    bool visibilityUsedHzb = false;
+    bool visibilityWithoutHzb = false;
+    uint32_t sceneDepthPyramidBuildCount = 0;
+    bool auxiliaryDepthReused = false;
+    DepthVisibilitySource visibilitySource = DepthVisibilitySource::None;
+    DepthVisibilitySource latestPyramidSource = DepthVisibilitySource::None;
+};
 
-    struct ScreenSpaceRuntimeState {
-        SURFACE::SceneSurfaceBuffer surfaceBuffer{};
-        SURFACE::SceneReflectionBuffer reflectionBuffer{};
-        SsaoRenderer ssaoRenderer{};
-        RENDER3D::GPUDRIVEN::GpuDepthVisibilityLayer depthVisibility{};
-        RENDER3D::GPUDRIVEN::GpuDepthVisibilityStats frozenCullingDepthStats{};
-        MATH::Mat4 depthVisibilityViewProj{};
-        RENDER3D::TextureResourceHandle fallbackAoTextureResource{};
-        int fallbackAoTextureHandle = -1;
-        bool depthVisibilityValid = false;
-        bool depthVisibilityViewProjValid = false;
-        bool depthVisibilityBuildAllowedThisFrame = true;
-        bool frozenCullingDepthStatsValid = false;
-        bool geometryValid = false;
-        bool ssaoValid = false;
-        // Balanced SSAO を GeometryAux または scene depth prepass から当該フレーム内で
-        // 描画済みか。true の間は post-opaque の temporal 更新をスキップする。
-        bool balancedSsaoSameFrame = false;
-    };
+struct ScreenSpaceRuntimeState {
+    SURFACE::SceneSurfaceBuffer surfaceBuffer{};
+    SURFACE::SceneReflectionBuffer reflectionBuffer{};
+    SsaoRenderer ssaoRenderer{};
+    RENDER3D::GPUDRIVEN::GpuDepthVisibilityLayer depthVisibility{};
+    RENDER3D::GPUDRIVEN::GpuDepthVisibilityStats frozenCullingDepthStats{};
+    MATH::Mat4 depthVisibilityViewProj{};
+    RENDER3D::TextureResourceHandle fallbackAoTextureResource{};
+    int fallbackAoTextureHandle = -1;
+    bool depthVisibilityValid = false;
+    bool depthVisibilityViewProjValid = false;
+    bool depthVisibilityBuildAllowedThisFrame = true;
+    bool frozenCullingDepthStatsValid = false;
+    bool geometryValid = false;
+    bool ssaoValid = false;
+    // Balanced SSAO を GeometryAux または scene depth prepass から当該フレーム内で
+    // 描画済みか。true の間は post-opaque の temporal 更新をスキップする。
+    bool balancedSsaoSameFrame = false;
+};
 
-    struct ScreenSpaceFrameResult {
-        bool depthPrepassWritten = false;
-        bool hzbBuilt = false;
-        bool geometryAuxWritten = false;
-        bool geometryAuxDepthComplete = false;
-        bool ssaoRendered = false;
-        RENDER3D::DEPTH::DepthPyramidView visibilityDepthPyramid{};
-        RENDER3D::DEPTH::DepthPyramidView currentSceneDepthPyramid{};
-        RENDER3D::RenderTextureView packedSurface{};
-        RENDER3D::RenderTextureView surfaceFeatureMask{};
-        RENDER3D::RenderTextureView stylizedOutlineStyle{};
-        RENDER3D::RenderTextureView ambientOcclusion{};
-        RENDER3D::TextureResourceHandle fallbackAoTextureResource{};
-        int fallbackAoTextureHandle = -1;
-    };
+struct ScreenSpaceFrameResult {
+    bool depthPrepassWritten = false;
+    bool hzbBuilt = false;
+    bool geometryAuxWritten = false;
+    bool geometryAuxDepthComplete = false;
+    bool ssaoRendered = false;
+    RENDER3D::DEPTH::DepthPyramidView visibilityDepthPyramid{};
+    RENDER3D::DEPTH::DepthPyramidView currentSceneDepthPyramid{};
+    RENDER3D::RenderTextureView packedSurface{};
+    RENDER3D::RenderTextureView surfaceFeatureMask{};
+    RENDER3D::RenderTextureView stylizedOutlineStyle{};
+    RENDER3D::RenderTextureView ambientOcclusion{};
+    RENDER3D::TextureResourceHandle fallbackAoTextureResource{};
+    int fallbackAoTextureHandle = -1;
+};
 
-    struct ScreenSpaceSurfaceRequirements {
-        bool requirePackedSurface = false;
-        bool requireFeatureMask = false;
-        bool requireCurrentFrameAo = false;
-    };
+struct ScreenSpaceSurfaceRequirements {
+    bool requirePackedSurface = false;
+    bool requireFeatureMask = false;
+    bool requireCurrentFrameAo = false;
+};
 
-    ScreenSpaceRuntimeState& GetScreenSpaceRuntimeState();
-    const DepthVisibilityDebugState& GetDepthVisibilityDebugState();
-    const char* ToString(DepthVisibilitySource source);
-    void ReleaseScreenSpaceRuntimeState();
+ScreenSpaceRuntimeState& GetScreenSpaceRuntimeState();
+const DepthVisibilityDebugState& GetDepthVisibilityDebugState();
+const char* ToString(DepthVisibilitySource source);
+void ReleaseScreenSpaceRuntimeState();
 
-    bool EnsureScreenSpaceFallbacks(ScreenSpaceRuntimeState& state);
+bool EnsureScreenSpaceFallbacks(ScreenSpaceRuntimeState& state);
 
-    ScreenSpaceFrameResult ExecuteScreenSpacePreLightingPasses(
-        ScreenSpaceRuntimeState& state,
-        const RENDER3D::PIPELINE::ScreenSpacePassContext& context,
-        const MESHRENDERER::CameraCB& renderCameraCb,
-        const MESHRENDERER::CameraCB& cullingCameraCb,
-        const SceneEnvironment& environment,
-        const ScreenSpaceSurfaceRequirements& requirements = {});
-    bool ExecuteScreenSpacePostOpaquePasses(
-        ScreenSpaceRuntimeState& state,
-        const RENDER3D::PIPELINE::ScreenSpacePassContext& context,
-        const MESHRENDERER::CameraCB& cameraCb,
-        const SceneEnvironment& environment,
-        ScreenSpaceFrameResult& result);
+ScreenSpaceFrameResult ExecuteScreenSpacePreLightingPasses(ScreenSpaceRuntimeState& state,
+                                                           const RENDER3D::PIPELINE::ScreenSpacePassContext& context,
+                                                           const MESHRENDERER::CameraCB& renderCameraCb,
+                                                           const MESHRENDERER::CameraCB& cullingCameraCb,
+                                                           const SceneEnvironment& environment,
+                                                           const ScreenSpaceSurfaceRequirements& requirements = {});
+bool ExecuteScreenSpacePostOpaquePasses(ScreenSpaceRuntimeState& state,
+                                        const RENDER3D::PIPELINE::ScreenSpacePassContext& context,
+                                        const MESHRENDERER::CameraCB& cameraCb, const SceneEnvironment& environment,
+                                        ScreenSpaceFrameResult& result);
 
-    // GeometryAux / scene depth prepass 完了後に Balanced SSAO を当該フレームの深度から描く。
-    // 旧 temporal 経路 (1 フレーム遅れ・再投影なし) の移動時の引き摺りを解消
-    // する。prepass が走らないフレームでは呼ばれず、従来経路が使われる。
-    bool ExecuteBalancedSsaoFromSceneDepth(
-        ScreenSpaceRuntimeState& state,
-        const RENDER3D::PIPELINE::ScreenSpacePassContext& context,
-        const MESHRENDERER::CameraCB& renderCameraCb,
-        const SceneEnvironment& environment,
-        ScreenSpaceFrameResult& result);
+// GeometryAux / scene depth prepass 完了後に Balanced SSAO を当該フレームの深度から描く。
+// 旧 temporal 経路 (1 フレーム遅れ・再投影なし) の移動時の引き摺りを解消
+// する。prepass が走らないフレームでは呼ばれず、従来経路が使われる。
+bool ExecuteBalancedSsaoFromSceneDepth(ScreenSpaceRuntimeState& state,
+                                       const RENDER3D::PIPELINE::ScreenSpacePassContext& context,
+                                       const MESHRENDERER::CameraCB& renderCameraCb,
+                                       const SceneEnvironment& environment, ScreenSpaceFrameResult& result);
 
 } // namespace HIKARI::RENDER3D::SCREENSPACE

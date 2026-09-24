@@ -3,7 +3,7 @@
 #include <functional>
 
 namespace HIKARI::EDITOR {
-using CameraMotionCurveEditor = std::function<bool(SEQUENCER::PresentationParameter&, float, const std::string&)>;
+using CameraMotionCurveEditor = std::function<bool(HIKARI::ScalarCurve&, float, const std::string&)>;
 bool DrawCameraMotionStack(std::vector<SEQUENCER::CameraMotionEffect>& effects, float seconds,
-    const CameraMotionCurveEditor& curveEditor = {}, bool allowSpeedDriven = true);
-}
+                           const CameraMotionCurveEditor& curveEditor = {}, bool allowSpeedDriven = true);
+} // namespace HIKARI::EDITOR

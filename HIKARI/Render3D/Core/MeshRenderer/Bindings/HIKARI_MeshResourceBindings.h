@@ -12,146 +12,101 @@
 
 namespace HIKARI::MESHRENDERER {
 
-    constexpr UINT kTrackedRootParamCount = ROOT_PARAM::Count;
+constexpr UINT kTrackedRootParamCount = ROOT_PARAM::Count;
 
-    struct MeshBindingStateCache {
-        ID3D12RootSignature* rootSignature = nullptr;
-        ID3D12PipelineState* pipelineState = nullptr;
-        std::array<D3D12_GPU_VIRTUAL_ADDRESS, kTrackedRootParamCount> cbvAddresses{};
-        std::array<D3D12_GPU_DESCRIPTOR_HANDLE, kTrackedRootParamCount> descriptorTables{};
-        std::array<uint32_t, kTrackedRootParamCount> rootConstants{};
-        std::array<bool, kTrackedRootParamCount> rootConstantValid{};
-    };
+struct MeshBindingStateCache {
+    ID3D12RootSignature* rootSignature = nullptr;
+    ID3D12PipelineState* pipelineState = nullptr;
+    std::array<D3D12_GPU_VIRTUAL_ADDRESS, kTrackedRootParamCount> cbvAddresses{};
+    std::array<D3D12_GPU_DESCRIPTOR_HANDLE, kTrackedRootParamCount> descriptorTables{};
+    std::array<uint32_t, kTrackedRootParamCount> rootConstants{};
+    std::array<bool, kTrackedRootParamCount> rootConstantValid{};
+};
 
-    struct MaterialTextureHandles {
-        int baseColor = -1;
-        int normal = -1;
-        int emissive = -1;
-        int metallicRoughness = -1;
-        int occlusion = -1;
-        int specular = -1;
-        int specularColor = -1;
-    };
+struct MaterialTextureHandles {
+    int baseColor = -1;
+    int normal = -1;
+    int emissive = -1;
+    int metallicRoughness = -1;
+    int occlusion = -1;
+    int specular = -1;
+    int specularColor = -1;
+};
 
-    struct MeshBindingContext {
-        const GFX::Context* graphics = nullptr;
-        ID3D12GraphicsCommandList* cmd = nullptr;
-        bool depthAwarePhase = false;
-        int fallbackTextureHandle = -1;
-        int fallbackNormalTextureHandle = -1;
-        int fallbackBlackTextureHandle = -1;
-        int fallbackCubeTextureHandle = -1;
-        MeshPassResources passResources{};
-        MeshBindingStateCache* cache = nullptr;
-    };
+struct MeshBindingContext {
+    const GFX::Context* graphics = nullptr;
+    ID3D12GraphicsCommandList* cmd = nullptr;
+    bool depthAwarePhase = false;
+    int fallbackTextureHandle = -1;
+    int fallbackNormalTextureHandle = -1;
+    int fallbackBlackTextureHandle = -1;
+    int fallbackCubeTextureHandle = -1;
+    MeshPassResources passResources{};
+    MeshBindingStateCache* cache = nullptr;
+};
 
-    void BindFrameCommonResources(
-        const MeshBindingContext& ctx,
-        ID3D12RootSignature* rootSig,
-        D3D12_GPU_VIRTUAL_ADDRESS cameraAddress,
-        D3D12_GPU_VIRTUAL_ADDRESS cullingCameraAddress,
-        D3D12_GPU_VIRTUAL_ADDRESS lightAddress,
-        D3D12_GPU_VIRTUAL_ADDRESS localLightsAddress,
-        D3D12_GPU_VIRTUAL_ADDRESS localLightClusterHeadersAddress,
-        D3D12_GPU_VIRTUAL_ADDRESS localLightClusterIndicesAddress,
-        D3D12_GPU_VIRTUAL_ADDRESS materialProgramParametersAddress,
-        D3D12_GPU_VIRTUAL_ADDRESS materialProgramResourcesAddress,
-        D3D12_GPU_VIRTUAL_ADDRESS shadowAddress,
-        D3D12_GPU_VIRTUAL_ADDRESS skyEnvironmentAddress);
+void BindFrameCommonResources(const MeshBindingContext& ctx, ID3D12RootSignature* rootSig,
+                              D3D12_GPU_VIRTUAL_ADDRESS cameraAddress, D3D12_GPU_VIRTUAL_ADDRESS cullingCameraAddress,
+                              D3D12_GPU_VIRTUAL_ADDRESS lightAddress, D3D12_GPU_VIRTUAL_ADDRESS localLightsAddress,
+                              D3D12_GPU_VIRTUAL_ADDRESS localLightClusterHeadersAddress,
+                              D3D12_GPU_VIRTUAL_ADDRESS localLightClusterIndicesAddress,
+                              D3D12_GPU_VIRTUAL_ADDRESS materialProgramParametersAddress,
+                              D3D12_GPU_VIRTUAL_ADDRESS materialProgramResourcesAddress,
+                              D3D12_GPU_VIRTUAL_ADDRESS shadowAddress, D3D12_GPU_VIRTUAL_ADDRESS skyEnvironmentAddress);
 
-    void BindObjectConstantBuffer(
-        const MeshBindingContext& ctx,
-        D3D12_GPU_VIRTUAL_ADDRESS objectAddress);
+void BindObjectDataBuffer(const MeshBindingContext& ctx, D3D12_GPU_DESCRIPTOR_HANDLE objectDataSrv);
 
-    void BindObjectDataBuffer(
-        const MeshBindingContext& ctx,
-        D3D12_GPU_DESCRIPTOR_HANDLE objectDataSrv);
+void BindObjectDataIndex(const MeshBindingContext& ctx, uint32_t objectIndex);
 
-    void BindObjectDataIndex(
-        const MeshBindingContext& ctx,
-        uint32_t objectIndex);
+void BindMaterialDataBuffer(const MeshBindingContext& ctx, D3D12_GPU_DESCRIPTOR_HANDLE materialDataSrv);
 
-    void BindMaterialDataBuffer(
-        const MeshBindingContext& ctx,
-        D3D12_GPU_DESCRIPTOR_HANDLE materialDataSrv);
+void BindMaterialDataIndex(const MeshBindingContext& ctx, uint32_t materialIndex);
 
-    void BindMaterialDataIndex(
-        const MeshBindingContext& ctx,
-        uint32_t materialIndex);
+void BindSurfaceGpuSceneBuffer(const MeshBindingContext& ctx, D3D12_GPU_DESCRIPTOR_HANDLE surfaceGpuSceneSrv);
 
-    void BindSurfaceGpuSceneBuffer(
-        const MeshBindingContext& ctx,
-        D3D12_GPU_DESCRIPTOR_HANDLE surfaceGpuSceneSrv);
+void BindSurfaceGpuSceneControl(const MeshBindingContext& ctx, uint32_t baseInstanceIndex, bool enabled);
 
-    void BindSurfaceGpuSceneControl(
-        const MeshBindingContext& ctx,
-        uint32_t baseInstanceIndex,
-        bool enabled);
+void BindSurfaceFeatureData(const MeshBindingContext& ctx, D3D12_GPU_VIRTUAL_ADDRESS featureDataAddress);
 
-    void BindSurfaceFeatureData(
-        const MeshBindingContext& ctx,
-        D3D12_GPU_VIRTUAL_ADDRESS featureDataAddress);
+void BindSandSurfaceData(const MeshBindingContext& ctx, D3D12_GPU_VIRTUAL_ADDRESS sandDataAddress);
 
-    void BindSandSurfaceData(
-        const MeshBindingContext& ctx,
-        D3D12_GPU_VIRTUAL_ADDRESS sandDataAddress);
+void BindOceanSpectrumData(const MeshBindingContext& ctx, D3D12_GPU_DESCRIPTOR_HANDLE spectrumTable, bool valid,
+                           uint32_t resolution);
 
-    void BindOceanSpectrumData(
-        const MeshBindingContext& ctx,
-        D3D12_GPU_DESCRIPTOR_HANDLE spectrumTable,
-        bool valid,
-        uint32_t resolution);
+void BindScreenSpaceTraceResources(const MeshBindingContext& ctx);
 
-    void BindScreenSpaceTraceResources(
-        const MeshBindingContext& ctx);
+void BindSurfaceFeatureHeights(const MeshBindingContext& ctx, D3D12_GPU_VIRTUAL_ADDRESS featureHeightsAddress);
 
-    void BindSurfaceFeatureHeights(
-        const MeshBindingContext& ctx,
-        D3D12_GPU_VIRTUAL_ADDRESS featureHeightsAddress);
+void BindMaterialTexturePool(const MeshBindingContext& ctx);
 
-    void BindMaterialTexturePool(const MeshBindingContext& ctx);
+void BindClusterGeometryPool(const MeshBindingContext& ctx);
 
-    void BindClusterGeometryPool(const MeshBindingContext& ctx);
+void BindMeshletVisibleRanges(const MeshBindingContext& ctx, D3D12_GPU_VIRTUAL_ADDRESS visibleRangeAddress);
 
-    void BindMeshletVisibleRanges(
-        const MeshBindingContext& ctx,
-        D3D12_GPU_VIRTUAL_ADDRESS visibleRangeAddress);
+void BindMeshletDeformationPalettes(const MeshBindingContext& ctx, D3D12_GPU_VIRTUAL_ADDRESS paletteAddress);
 
-    void BindMeshletDeformationPalettes(
-        const MeshBindingContext& ctx,
-        D3D12_GPU_VIRTUAL_ADDRESS paletteAddress);
+void BindPipelineState(const MeshBindingContext& ctx, ID3D12PipelineState* pso);
 
-    void BindPipelineState(
-        const MeshBindingContext& ctx,
-        ID3D12PipelineState* pso);
+void BindShadowMap(const MeshBindingContext& ctx);
+void BindSkyCube(const MeshBindingContext& ctx);
+void BindSceneDepth(const MeshBindingContext& ctx);
+void BindSceneColor(const MeshBindingContext& ctx);
+void BindIblResources(const MeshBindingContext& ctx);
+void BindReflectionProbeResources(const MeshBindingContext& ctx);
+void BindSsao(const MeshBindingContext& ctx);
+void BindLightProbeResources(const MeshBindingContext& ctx);
 
-    void BindShadowMap(const MeshBindingContext& ctx);
-    void BindSkyCube(const MeshBindingContext& ctx);
-    void BindSceneDepth(const MeshBindingContext& ctx);
-    void BindSceneColor(const MeshBindingContext& ctx);
-    void BindIblResources(const MeshBindingContext& ctx);
-    void BindReflectionProbeResources(const MeshBindingContext& ctx);
-    void BindSsao(const MeshBindingContext& ctx);
-    void BindLightProbeResources(const MeshBindingContext& ctx);
-
-    D3D12_GPU_DESCRIPTOR_HANDLE ResolveSkyCubeSrv(int fallbackTextureHandle);
-    D3D12_GPU_DESCRIPTOR_HANDLE ResolveSceneDepthSrv(
-        bool depthAwarePhase,
-        const RENDER3D::RenderTextureView& sceneDepth,
-        int fallbackTextureHandle);
-    D3D12_GPU_DESCRIPTOR_HANDLE ResolveSceneColorSrv(
-        const RENDER3D::RenderTextureView& sceneColor,
-        int fallbackTextureHandle);
-    D3D12_GPU_DESCRIPTOR_HANDLE ResolveIblIrradianceSrv(int fallbackTextureHandle);
-    D3D12_GPU_DESCRIPTOR_HANDLE ResolveIblPrefilteredSrv(int fallbackTextureHandle);
-    D3D12_GPU_DESCRIPTOR_HANDLE ResolveIblBrdfLutSrv(int fallbackTextureHandle);
-    D3D12_GPU_DESCRIPTOR_HANDLE ResolveReflectionProbePrefilteredSrv(
-        size_t slot,
-        int fallbackCubeTextureHandle);
-    D3D12_GPU_DESCRIPTOR_HANDLE ResolveSsaoSrv(
-        const RENDER3D::RenderTextureView& ambientOcclusion,
-        int fallbackAoTextureHandle);
-    D3D12_GPU_DESCRIPTOR_HANDLE ResolveLightProbeShSrv(
-        size_t slot);
+D3D12_GPU_DESCRIPTOR_HANDLE ResolveSkyCubeSrv(int fallbackTextureHandle);
+D3D12_GPU_DESCRIPTOR_HANDLE ResolveSceneDepthSrv(bool depthAwarePhase, const RENDER3D::RenderTextureView& sceneDepth,
+                                                 int fallbackTextureHandle);
+D3D12_GPU_DESCRIPTOR_HANDLE ResolveSceneColorSrv(const RENDER3D::RenderTextureView& sceneColor,
+                                                 int fallbackTextureHandle);
+D3D12_GPU_DESCRIPTOR_HANDLE ResolveIblIrradianceSrv(int fallbackTextureHandle);
+D3D12_GPU_DESCRIPTOR_HANDLE ResolveIblPrefilteredSrv(int fallbackTextureHandle);
+D3D12_GPU_DESCRIPTOR_HANDLE ResolveIblBrdfLutSrv(int fallbackTextureHandle);
+D3D12_GPU_DESCRIPTOR_HANDLE ResolveReflectionProbePrefilteredSrv(size_t slot, int fallbackCubeTextureHandle);
+D3D12_GPU_DESCRIPTOR_HANDLE ResolveSsaoSrv(const RENDER3D::RenderTextureView& ambientOcclusion,
+                                           int fallbackAoTextureHandle);
+D3D12_GPU_DESCRIPTOR_HANDLE ResolveLightProbeShSrv(size_t slot);
 
 } // namespace HIKARI::MESHRENDERER

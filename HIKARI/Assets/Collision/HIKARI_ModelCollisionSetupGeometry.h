@@ -7,17 +7,12 @@
 
 namespace HIKARI::ASSETS::COLLISION {
 
-    std::filesystem::path GetModelCollisionSetupGeometryPath(
-        const std::filesystem::path& setupPath);
+std::filesystem::path GetModelCollisionSetupGeometryPath(const std::filesystem::path& setupPath);
 
-    bool LoadModelCollisionSetupGeometry(
-        const std::filesystem::path& setupPath,
-        ModelCollisionSetup& setup,
-        std::string& outMessage);
+bool LoadModelCollisionSetupGeometry(const std::filesystem::path& setupPath, ModelCollisionSetup& setup,
+                                     std::string& outMessage);
 
-    bool SaveModelCollisionSetupGeometry(
-        const std::filesystem::path& setupPath,
-        const ModelCollisionSetup& setup,
-        std::string& outMessage);
+bool SaveModelCollisionSetupGeometry(const std::filesystem::path& setupPath, const ModelCollisionSetup& setup,
+                                     std::string& outMessage);
 
 } // namespace HIKARI::ASSETS::COLLISION

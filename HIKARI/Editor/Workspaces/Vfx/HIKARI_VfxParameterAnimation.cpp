@@ -12,30 +12,27 @@
 namespace HIKARI::EDITOR {
 bool VfxWorkspaceController::SetLayerParameterKey(std::string_view layerId, std::string_view targetId,
                                                   std::string_view propertyId, float seconds, float value,
-                                                  std::string &message, uint64_t mergeGroup) {
+                                                  std::string& message, uint64_t mergeGroup) {
     auto next = document_.Asset();
-    auto *layer = FindEmitterMutable(next, layerId);
+    auto* layer = FindEmitterMutable(next, layerId);
     if (!layer || !std::isfinite(seconds) || !std::isfinite(value)) {
         message = "Invalid animated parameter";
         return false;
     }
     const auto parameters = VFX::GetVfxAnimatableParameters(*layer);
-    const auto p = std::find_if(parameters.begin(), parameters.end(), [&](const auto &p) {
-        return p.targetId == targetId && p.propertyId == propertyId;
-    });
-    const float span =
-        layer->activeDuration > 0 ? layer->activeDuration : next.durationSeconds - layer->startDelay;
+    const auto p = std::find_if(parameters.begin(), parameters.end(),
+                                [&](const auto& p) { return p.targetId == targetId && p.propertyId == propertyId; });
+    const float span = layer->activeDuration > 0 ? layer->activeDuration : next.durationSeconds - layer->startDelay;
     float time = 0;
     if (!ResolveVfxLayerKeyTime(next, *layer, seconds, time, message))
         return false;
-    if (p == parameters.end() || value < p->minimum || value > p->maximum || span <= 0 ||
-        seconds < layer->startDelay || seconds > layer->startDelay + span) {
+    if (p == parameters.end() || value < p->minimum || value > p->maximum || span <= 0 || seconds < layer->startDelay ||
+        seconds > layer->startDelay + span) {
         message = "Parameter key is outside its time/value range";
         return false;
     }
-    auto track =
-        std::find_if(layer->parameterTracks.begin(), layer->parameterTracks.end(),
-                     [&](const auto &t) { return t.targetId == targetId && t.propertyId == propertyId; });
+    auto track = std::find_if(layer->parameterTracks.begin(), layer->parameterTracks.end(),
+                              [&](const auto& t) { return t.targetId == targetId && t.propertyId == propertyId; });
     if (track == layer->parameterTracks.end()) {
         VFX::VfxParameterTrackData created;
         created.id = AllocateStableId("parameter.track");
@@ -46,7 +43,7 @@ bool VfxWorkspaceController::SetLayerParameterKey(std::string_view layerId, std:
         track = std::prev(layer->parameterTracks.end());
     }
     auto key = std::find_if(track->curve.keys.begin(), track->curve.keys.end(),
-                            [&](const auto &k) { return std::abs(k.time - time) < 0.0001f; });
+                            [&](const auto& k) { return std::abs(k.time - time) < 0.0001f; });
     if (key != track->curve.keys.end())
         key->value = value;
     else {
@@ -56,7 +53,7 @@ bool VfxWorkspaceController::SetLayerParameterKey(std::string_view layerId, std:
         }
         track->curve.keys.push_back({AllocateStableId("parameter.key"), time, value});
         std::sort(track->curve.keys.begin(), track->curve.keys.end(),
-                  [](const auto &a, const auto &b) { return a.time < b.time; });
+                  [](const auto& a, const auto& b) { return a.time < b.time; });
     }
     const auto trackId = track->id;
     if (!ApplyAsset(std::move(next), message, mergeGroup))
@@ -67,79 +64,77 @@ bool VfxWorkspaceController::SetLayerParameterKey(std::string_view layerId, std:
     return true;
 }
 bool VfxWorkspaceController::RemoveLayerParameterTrack(std::string_view layerId, std::string_view trackId,
-                                                       std::string &message) {
+                                                       std::string& message) {
     auto next = document_.Asset();
-    auto *layer = FindEmitterMutable(next, layerId);
-    if (!layer || !std::erase_if(layer->parameterTracks, [&](const auto &t) { return t.id == trackId; })) {
+    auto* layer = FindEmitterMutable(next, layerId);
+    if (!layer || !std::erase_if(layer->parameterTracks, [&](const auto& t) { return t.id == trackId; })) {
         message = "Parameter track not found";
         return false;
     }
     return ApplyAsset(std::move(next), message);
 }
-bool VfxWorkspaceController::DrawLayerParameter(const VFX::VfxEmitterData &layer, std::string_view targetId,
+bool VfxWorkspaceController::DrawLayerParameter(const VFX::VfxEmitterData& layer, std::string_view targetId,
                                                 std::string_view propertyId) {
 #if defined(HIKARI_WITH_EDITOR)
     const auto parameters = VFX::GetVfxAnimatableParameters(layer);
-    const auto p = std::find_if(parameters.begin(), parameters.end(), [&](const auto &p) {
-        return p.targetId == targetId && p.propertyId == propertyId;
-    });
+    const auto p = std::find_if(parameters.begin(), parameters.end(),
+                                [&](const auto& p) { return p.targetId == targetId && p.propertyId == propertyId; });
     if (p == parameters.end())
         return false;
-    const auto track =
-        std::find_if(layer.parameterTracks.begin(), layer.parameterTracks.end(),
-                     [&](const auto &t) { return t.targetId == targetId && t.propertyId == propertyId; });
+    const auto track = std::find_if(layer.parameterTracks.begin(), layer.parameterTracks.end(), [&](const auto& t) {
+        return t.targetId == targetId && t.propertyId == propertyId;
+    });
     float value = p->value;
-    const float span = layer.activeDuration > 0 ? layer.activeDuration
-                                                : document_.Asset().durationSeconds - layer.startDelay;
-    const float seconds = std::clamp(previewElapsedSeconds_, layer.startDelay, layer.startDelay + span);
+    const float span =
+        layer.activeDuration > 0 ? layer.activeDuration : document_.Asset().durationSeconds - layer.startDelay;
+    const float seconds = std::clamp(preview_.previewElapsedSeconds_, layer.startDelay, layer.startDelay + span);
     if (track != layer.parameterTracks.end()) {
         std::vector<RENDER3D::PARTICLES::ParticleCurveKey> keys;
-        for (const auto &k : track->curve.keys)
+        for (const auto& k : track->curve.keys)
             keys.push_back({k.time, k.value, k.inTangent, k.outTangent});
-        std::sort(keys.begin(), keys.end(), [](const auto &a, const auto &b) { return a.time < b.time; });
+        std::sort(keys.begin(), keys.end(), [](const auto& a, const auto& b) { return a.time < b.time; });
         value = RENDER3D::PARTICLES::EvaluateParticleCurve(
             keys, static_cast<RENDER3D::PARTICLES::ParticleCurveInterpolation>(track->curve.interpolation),
             layer.animationTiming.Normalized(seconds - layer.startDelay, span));
     }
     const auto identity = std::string(targetId) + "." + std::string(propertyId);
     ImGui::PushID(identity.c_str());
-    const auto label = targetId != layer.renderShape.id && propertyId != "progress" ?
-        TEXT::Localize("ui.vfx.effect.param." + p->label) : VfxUiText(p->label);
+    const auto label = targetId != layer.renderShape.id && propertyId != "progress"
+                           ? TEXT::Localize("ui.vfx.effect.param." + p->label)
+                           : VfxUiText(p->label);
     ImGui::TextUnformatted(label.c_str());
     ImGui::SetNextItemWidth((std::max)(60.0f, ImGui::GetContentRegionAvail().x - 34));
-    const bool changed = ImGui::DragFloat("##value", &value, (p->maximum-p->minimum)*0.002f, p->minimum, p->maximum);
+    const bool changed =
+        ImGui::DragFloat("##value", &value, (p->maximum - p->minimum) * 0.002f, p->minimum, p->maximum);
     const bool seal = ImGui::IsItemDeactivatedAfterEdit();
     ImGui::SameLine();
-    const bool add = IconToggleButton(EditorGlyph::Keyframe, "Keyframe",
-        track != layer.parameterTracks.end(), {26, ImGui::GetFrameHeight()},
-        TEXT::Localize("ui.vfx.layer.key").c_str());
+    const bool add = IconToggleButton(EditorGlyph::Keyframe, "Keyframe", track != layer.parameterTracks.end(),
+                                      {26, ImGui::GetFrameHeight()}, TEXT::Localize("ui.vfx.layer.key").c_str());
     if (ImGui::BeginPopupContextItem()) {
         if (track != layer.parameterTracks.end() &&
             ImGui::MenuItem(TEXT::Localize("ui.vfx.timeline.removeTrack").c_str()))
             (void)RemoveLayerParameterTrack(layer.id, track->id, statusMessage_);
         ImGui::EndPopup();
     }
-    if (add || (changed &&
-                (timelineEdit_.autoKey || track != layer.parameterTracks.end() || propertyId == "progress")))
+    if (add || (changed && (timelineEdit_.autoKey || track != layer.parameterTracks.end() || propertyId == "progress")))
         (void)SetLayerParameterKey(layer.id, targetId, propertyId, seconds, value, statusMessage_,
-                                   changed ? VfxInspectorPropertyEditor::MergeGroup(targetId, propertyId)
-                                           : 0);
+                                   changed ? VfxInspectorPropertyEditor::MergeGroup(targetId, propertyId) : 0);
     else if (changed) {
         if (targetId == layer.renderShape.id || propertyId == "mix")
             (void)SetProperty(targetId, propertyId, value, statusMessage_,
                               VfxInspectorPropertyEditor::MergeGroup(targetId, propertyId));
         else {
             const auto effect = std::find_if(layer.effects.begin(), layer.effects.end(),
-                                             [&](const auto &e) { return e.id == targetId; });
+                                             [&](const auto& e) { return e.id == targetId; });
             if (effect != layer.effects.end()) {
                 const bool secondary = propertyId.starts_with("parameters2.");
                 auto v = secondary ? effect->parameters2 : effect->parameters;
-                float *components[]{&v.x, &v.y, &v.z, &v.w};
+                float* components[]{&v.x, &v.y, &v.z, &v.w};
                 const auto c = std::string_view("xyzw").find(propertyId.back());
                 if (c < 4)
                     *components[c] = value;
-                (void)SetProperty(targetId, secondary ? "parameters2" : "parameters", {v.x, v.y, v.z, v.w}, statusMessage_,
-                                  VfxInspectorPropertyEditor::MergeGroup(targetId, propertyId));
+                (void)SetProperty(targetId, secondary ? "parameters2" : "parameters", {v.x, v.y, v.z, v.w},
+                                  statusMessage_, VfxInspectorPropertyEditor::MergeGroup(targetId, propertyId));
             }
         }
     }

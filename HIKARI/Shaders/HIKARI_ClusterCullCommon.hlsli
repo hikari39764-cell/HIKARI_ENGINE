@@ -215,16 +215,6 @@ bool HikariClusterCullTemporalOcclusionConfirmed(uint key)
     return false;
 }
 
-bool HikariClusterCullHzbOcclusionAllowed(uint passKind)
-{
-    return
-        gClusterCullEnableHzbOcclusion != 0u &&
-        passKind != HIKARI_CLUSTER_CULL_PASS_SHADOW &&
-        passKind != HIKARI_CLUSTER_CULL_PASS_DEPTH_PREPASS &&
-        gClusterCullHzbWidth > 0u &&
-        gClusterCullHzbHeight > 0u;
-}
-
 #include "Include/Depth/HIKARI_DepthOcclusion.hlsli"
 typedef HikariDepthOcclusionQuery HikariClusterCullHzbQuery;
 
@@ -376,11 +366,6 @@ uint HikariClusterCullResolveBucket(uint flags)
     return (flags & HIKARI_SURFACE_GPU_SCENE_FLAG_DOUBLE_SIDED) != 0u
         ? HIKARI_CLUSTER_DRAW_BUCKET_DOUBLE_SIDED
         : HIKARI_CLUSTER_DRAW_BUCKET_BACK_FACE;
-}
-
-bool HikariClusterCullIsDoubleSided(uint flags)
-{
-    return (flags & HIKARI_SURFACE_GPU_SCENE_FLAG_DOUBLE_SIDED) != 0u;
 }
 
 uint HikariClusterCullPassIndex(uint passKind)
@@ -917,7 +902,5 @@ void HikariClusterCullEmitPageTasks(
         gClusterCullPageTasks[taskBase + groupOffset] = task;
     }
 }
-
-
 
 #endif

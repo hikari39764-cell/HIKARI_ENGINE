@@ -17,156 +17,149 @@
 namespace HIKARI::EDITOR {
 void CinematicsWorkspaceController::DrawDockSpace(bool reset) const {
 #if defined(HIKARI_WITH_EDITOR)
-  if (!(ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_DockingEnable))
-    return;
-  const auto *viewport = ImGui::GetMainViewport();
-  // 二画面を既定配置に追加。安定 ID は言語を変更しても共通。
-  const auto id = ImGui::GetID("HIKARI_CinematicsDockSpace_v8");
-  if (reset || !ImGui::DockBuilderGetNode(id)) {
-    ImGui::DockBuilderRemoveNode(id);
-    ImGui::DockBuilderAddNode(id, ImGuiDockNodeFlags_DockSpace);
-    ImGui::DockBuilderSetNodePos(id, viewport->WorkPos);
-    ImGui::DockBuilderSetNodeSize(id, viewport->WorkSize);
-    ImGuiID center = id, timeline = 0, left = 0, right = 0, monitor = 0;
-    ImGui::DockBuilderSplitNode(center, ImGuiDir_Down, 0.31f, &timeline,
-                                &center);
-    const float scale = ImGui::GetFontSize() / 16.0f;
-    const float width = (std::max)(1.0f, viewport->WorkSize.x);
-    const float leftWidth = std::clamp(240.0f * scale, width * 0.12f, width * 0.21f);
-    const float rightWidth = std::clamp(340.0f * scale, width * 0.17f, width * 0.28f);
-    ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, leftWidth / width, &left, &center);
-    ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, rightWidth / (width - leftWidth), &right, &center);
-    const bool stackViews = width - leftWidth - rightWidth < 1000.0f * scale;
-    ImGui::DockBuilderSplitNode(center, stackViews ? ImGuiDir_Down : ImGuiDir_Right, 0.48f, &monitor, &center);
-    ImGui::DockBuilderDockWindow("###Cinematics/Space", center);
-    ImGui::DockBuilderDockWindow("素材与镜头###Cinematics/Resources", left);
-    ImGui::DockBuilderDockWindow("画面###Cinematics/Monitor", monitor);
-    ImGui::DockBuilderDockWindow("属性与效果###Cinematics/Inspector", right);
-    ImGui::DockBuilderDockWindow("演出时间轴###Cinematics/Timeline", timeline);
-    ImGui::DockBuilderFinish(id);
-  }
-  HIKARI::EDITOR::DrawWorkspaceDockSpace(id, viewport);
+    if (!(ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_DockingEnable))
+        return;
+    const auto* viewport = ImGui::GetMainViewport();
+    // 二画面を既定配置に追加。安定 ID は言語を変更しても共通。
+    const auto id = ImGui::GetID("HIKARI_CinematicsDockSpace_v8");
+    if (reset || !ImGui::DockBuilderGetNode(id)) {
+        ImGui::DockBuilderRemoveNode(id);
+        ImGui::DockBuilderAddNode(id, ImGuiDockNodeFlags_DockSpace);
+        ImGui::DockBuilderSetNodePos(id, viewport->WorkPos);
+        ImGui::DockBuilderSetNodeSize(id, viewport->WorkSize);
+        ImGuiID center = id, timeline = 0, left = 0, right = 0, monitor = 0;
+        ImGui::DockBuilderSplitNode(center, ImGuiDir_Down, 0.31f, &timeline, &center);
+        const float scale = ImGui::GetFontSize() / 16.0f;
+        const float width = (std::max)(1.0f, viewport->WorkSize.x);
+        const float leftWidth = std::clamp(240.0f * scale, width * 0.12f, width * 0.21f);
+        const float rightWidth = std::clamp(340.0f * scale, width * 0.17f, width * 0.28f);
+        ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, leftWidth / width, &left, &center);
+        ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, rightWidth / (width - leftWidth), &right, &center);
+        const bool stackViews = width - leftWidth - rightWidth < 1000.0f * scale;
+        ImGui::DockBuilderSplitNode(center, stackViews ? ImGuiDir_Down : ImGuiDir_Right, 0.48f, &monitor, &center);
+        ImGui::DockBuilderDockWindow("###Cinematics/Space", center);
+        ImGui::DockBuilderDockWindow("素材与镜头###Cinematics/Resources", left);
+        ImGui::DockBuilderDockWindow("画面###Cinematics/Monitor", monitor);
+        ImGui::DockBuilderDockWindow("属性与效果###Cinematics/Inspector", right);
+        ImGui::DockBuilderDockWindow("演出时间轴###Cinematics/Timeline", timeline);
+        ImGui::DockBuilderFinish(id);
+    }
+    HIKARI::EDITOR::DrawWorkspaceDockSpace(id, viewport);
 #endif
 }
 
-CinematicsWorkspaceResult CinematicsWorkspaceController::Draw(
-    DocumentSceneBase &scene, EditorPlaySession &, EditorContext &context,
-    SelectionSyncService &, EditorWorkspaceHost &workspaceHost) {
-  CinematicsWorkspaceResult result;
-  result.statusMessage.swap(pendingStatusMessage_);
+CinematicsWorkspaceResult CinematicsWorkspaceController::Draw(DocumentSceneBase& scene, EditorPlaySession&,
+                                                              EditorContext& context, SelectionSyncService&,
+                                                              EditorWorkspaceHost& workspaceHost) {
+    CinematicsWorkspaceResult result;
+    result.statusMessage.swap(pendingStatusMessage_);
 #if defined(HIKARI_WITH_EDITOR)
-  if (sequenceDocumentController_.ConsumeTimelineResetRequested())
-    ResetEditing(scene);
-  auto &document = sequenceDocumentController_.GetDocument();
-  bool enabled = !scene.IsRuntimePlayActive();
-  if (ImGui::Begin(TEXT::LocalizeWindow("cine.assetsShots", "Cinematics/Resources").c_str(), nullptr,
-                   ImGuiWindowFlags_NoCollapse)) {
-    auto toolbar = sequenceDocumentToolbar_.Draw(
-        sequenceDocumentController_, scene.GetAssetDatabase(),
-        &ActiveSequence(scene), scene.GetCurrentSceneDisplayName(),
-        sequenceLibraryVisible_, enabled);
-    result.saveSceneRequested = toolbar.saveEmbeddedSceneRequested;
-    if (toolbar.toggleLibraryRequested)
-      sequenceLibraryVisible_ = !sequenceLibraryVisible_;
-    if (!toolbar.statusMessage.empty())
-      result.statusMessage = toolbar.statusMessage;
     if (sequenceDocumentController_.ConsumeTimelineResetRequested())
-      ResetEditing(scene);
-    auto &settings = document.GetSettings(scene.GetSceneDocument().cinematics);
-    if (settings.sequences.size() > 1 &&
-        ImGui::BeginCombo(TEXT::LocalizeWindow("cine.current", "当前演出").c_str(), ActiveSequence(scene).name.c_str())) {
-      for (const auto &item : settings.sequences) {
-        ImGui::PushID(static_cast<int>(item.id.value));
-        if (ImGui::Selectable(item.name.c_str(),
-                              item.id == activeSequenceId_)) {
-          ResetEditing(scene);
-          activeSequenceId_ = item.id;
+        ResetEditing(scene);
+    auto& document = sequenceDocumentController_.GetDocument();
+    bool enabled = !scene.IsRuntimePlayActive();
+    if (ImGui::Begin(TEXT::LocalizeWindow("cine.assetsShots", "Cinematics/Resources").c_str(), nullptr,
+                     ImGuiWindowFlags_NoCollapse)) {
+        auto toolbar =
+            sequenceDocumentToolbar_.Draw(sequenceDocumentController_, scene.GetAssetDatabase(), &ActiveSequence(scene),
+                                          scene.GetCurrentSceneDisplayName(), sequenceLibraryVisible_, enabled);
+        result.saveSceneRequested = toolbar.saveEmbeddedSceneRequested;
+        if (toolbar.toggleLibraryRequested)
+            sequenceLibraryVisible_ = !sequenceLibraryVisible_;
+        if (!toolbar.statusMessage.empty())
+            result.statusMessage = toolbar.statusMessage;
+        if (sequenceDocumentController_.ConsumeTimelineResetRequested())
+            ResetEditing(scene);
+        auto& settings = document.GetSettings(scene.GetSceneDocument().cinematics);
+        if (settings.sequences.size() > 1 && ImGui::BeginCombo(TEXT::LocalizeWindow("cine.current", "当前演出").c_str(),
+                                                               ActiveSequence(scene).name.c_str())) {
+            for (const auto& item : settings.sequences) {
+                ImGui::PushID(static_cast<int>(item.id.value));
+                if (ImGui::Selectable(item.name.c_str(), item.id == activeSequenceId_)) {
+                    ResetEditing(scene);
+                    activeSequenceId_ = item.id;
+                }
+                ImGui::PopID();
+            }
+            ImGui::EndCombo();
         }
-        ImGui::PopID();
-      }
-      ImGui::EndCombo();
+        if (sequenceLibraryVisible_ &&
+            ImGui::CollapsingHeader(TEXT::LocalizeWindow("cine.asset", "演出资产").c_str())) {
+            auto library = sequenceLibraryPanel_.Draw(scene.GetAssetDatabase(), document.GetAssetGuid(), enabled);
+            if (library.action == SequenceLibraryActionKind::OpenAsset)
+                RequestOpenSequenceAsset(scene, library.assetGuid, result.statusMessage);
+            if (library.action == SequenceLibraryActionKind::NewAsset)
+                RequestNewSequenceAsset(scene, result.statusMessage);
+        }
     }
-    if (sequenceLibraryVisible_ && ImGui::CollapsingHeader(TEXT::LocalizeWindow("cine.asset", "演出资产").c_str())) {
-      auto library = sequenceLibraryPanel_.Draw(
-          scene.GetAssetDatabase(), document.GetAssetGuid(), enabled);
-      if (library.action == SequenceLibraryActionKind::OpenAsset)
-        RequestOpenSequenceAsset(scene, library.assetGuid,
-                                 result.statusMessage);
-      if (library.action == SequenceLibraryActionKind::NewAsset)
-        RequestNewSequenceAsset(scene, result.statusMessage);
+    ImGui::End();
+    auto before = document.GetSettings(scene.GetSceneDocument().cinematics);
+    auto& sequence = ActiveSequence(scene);
+    if (!cursor_.IsBound())
+        cursor_.Bind(sequence.durationSeconds);
+    cursor_.SetDuration(sequence.durationSeconds);
+    bool changed = false;
+    if (ImGui::Begin(TEXT::LocalizeWindow("cine.assetsShots", "Cinematics/Resources").c_str())) {
+        ImGui::BeginDisabled(!enabled);
+        changed |= DrawResources(scene, sequence);
+        ImGui::EndDisabled();
     }
-  }
-  ImGui::End();
-  auto before = document.GetSettings(scene.GetSceneDocument().cinematics);
-  auto &sequence = ActiveSequence(scene);
-  if (!cursor_.IsBound())
-    cursor_.Bind(sequence.durationSeconds);
-  cursor_.SetDuration(sequence.durationSeconds);
-  bool changed = false;
-  if (ImGui::Begin(TEXT::LocalizeWindow("cine.assetsShots", "Cinematics/Resources").c_str())) {
-    ImGui::BeginDisabled(!enabled);
-    changed |= DrawResources(scene, sequence);
-    ImGui::EndDisabled();
-  }
-  ImGui::End();
-  if (ImGui::Begin(TEXT::LocalizeWindow("cine.timeline", "Cinematics/Timeline").c_str(), nullptr,
-                   ImGuiWindowFlags_NoCollapse)) {
-    ImGui::BeginDisabled(!enabled);
-    changed |= DrawTransport(sequence);
-    changed |= DrawTimeline(scene, sequence);
-    ImGui::EndDisabled();
-  }
-  ImGui::End();
-  if (ImGui::Begin(TEXT::LocalizeWindow("cine.inspector", "Cinematics/Inspector").c_str(), nullptr,
-                   ImGuiWindowFlags_NoCollapse)) {
-    ImGui::BeginDisabled(!enabled);
-    changed |= DrawInspector(scene, sequence);
-    ImGui::EndDisabled();
-  }
-  ImGui::End();
-  DrawMonitor(scene, workspaceHost);
-  changed |= DrawStage(scene, sequence, context, workspaceHost, enabled);
-  if (changed) {
-    NormalizeCinematicSequence(sequence);
-    previewChanged_ = true;
-    if (document.IsEmbeddedScene())
-      result.cinematicsChanged = true;
-    else
-      document.RecordApplied(std::move(before), mergeId_);
-  }
-  if (ImGui::IsAnyItemActive())
-    result.timelineEditMergeId = mergeId_;
-  else {
-    document.SealMerge();
-    ++mergeId_;
-  }
-  if (enabled && previewEnabled_) {
-    auto evaluation = cursor_.Tick(ImGui::GetIO().DeltaTime,
-                                   SEQUENCER::SequenceEvaluationMode::Preview);
-    if (!scene.PreviewSequence(sequence, previewBindings_,
-                               evaluation, previewChanged_)) {
-      pendingStatusMessage_ = TEXT::Localize("cine.previewNotReady");
-      previewEnabled_ = false;
-      if (ownsPreview_) {
+    ImGui::End();
+    if (ImGui::Begin(TEXT::LocalizeWindow("cine.timeline", "Cinematics/Timeline").c_str(), nullptr,
+                     ImGuiWindowFlags_NoCollapse)) {
+        ImGui::BeginDisabled(!enabled);
+        changed |= DrawTransport(sequence);
+        changed |= DrawTimeline(scene, sequence);
+        ImGui::EndDisabled();
+    }
+    ImGui::End();
+    if (ImGui::Begin(TEXT::LocalizeWindow("cine.inspector", "Cinematics/Inspector").c_str(), nullptr,
+                     ImGuiWindowFlags_NoCollapse)) {
+        ImGui::BeginDisabled(!enabled);
+        changed |= DrawInspector(scene, sequence);
+        ImGui::EndDisabled();
+    }
+    ImGui::End();
+    DrawMonitor(scene, workspaceHost);
+    changed |= DrawStage(scene, sequence, context, workspaceHost, enabled);
+    if (changed) {
+        NormalizeCinematicSequence(sequence);
+        previewChanged_ = true;
+        if (document.IsEmbeddedScene())
+            result.cinematicsChanged = true;
+        else
+            document.RecordApplied(std::move(before), mergeId_);
+    }
+    if (ImGui::IsAnyItemActive())
+        result.timelineEditMergeId = mergeId_;
+    else {
+        document.SealMerge();
+        ++mergeId_;
+    }
+    if (enabled && previewEnabled_) {
+        auto evaluation = cursor_.Tick(ImGui::GetIO().DeltaTime, SEQUENCER::SequenceEvaluationMode::Preview);
+        if (!scene.PreviewSequence(sequence, previewBindings_, evaluation, previewChanged_)) {
+            pendingStatusMessage_ = TEXT::Localize("cine.previewNotReady");
+            previewEnabled_ = false;
+            if (ownsPreview_) {
+                scene.EndSequencePreview();
+                ownsPreview_ = false;
+            }
+        }
+        ownsPreview_ = previewEnabled_;
+        previewChanged_ = false;
+    } else if (ownsPreview_) {
         scene.EndSequencePreview();
         ownsPreview_ = false;
-      }
     }
-    ownsPreview_ = previewEnabled_;
-    previewChanged_ = false;
-  } else if (ownsPreview_) {
-    scene.EndSequencePreview();
-    ownsPreview_ = false;
-  }
-  if (!result.statusMessage.empty()) {
-    if (ImGui::Begin(TEXT::LocalizeWindow("cine.timeline", "Cinematics/Timeline").c_str()))
-      ImGui::TextWrapped("%s", result.statusMessage.c_str());
-    ImGui::End();
-  }
-  sequenceDocumentToolbar_.DrawPendingConfirmation(sequenceDocumentController_,
-                                                   scene.GetAssetDatabase(),
-                                                   result.statusMessage);
+    if (!result.statusMessage.empty()) {
+        if (ImGui::Begin(TEXT::LocalizeWindow("cine.timeline", "Cinematics/Timeline").c_str()))
+            ImGui::TextWrapped("%s", result.statusMessage.c_str());
+        ImGui::End();
+    }
+    sequenceDocumentToolbar_.DrawPendingConfirmation(sequenceDocumentController_, scene.GetAssetDatabase(),
+                                                     result.statusMessage);
 #endif
-  return result;
+    return result;
 }
 } // namespace HIKARI::EDITOR

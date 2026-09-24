@@ -1,7 +1,7 @@
 #pragma once
 
 #include <chrono>
-#include "Core/HIKARI_FrameContext.h"
+#include "HIKARI/Project/FrameContext.h"
 
 namespace HIKARI::TIME::INTERNAL {
 

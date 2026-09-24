@@ -11,24 +11,24 @@
 
 namespace HIKARI {
 
-    struct DocumentSceneEditorState {
-        ComponentGizmoState componentGizmoSnapshot{};
-        ViewportOverlayState overlaySnapshot{};
-        ViewportPerformanceState performanceSnapshot{};
-        ViewportDebugViewState debugViewSnapshot{};
-        SceneObjectId selectedGizmoObjectSnapshot{};
-        std::string sceneIdSnapshot{};
-        std::string scenePathSnapshot{};
-        AssetGuid sceneAssetGuidSnapshot{};
-        uint64_t documentRevisionSnapshot = 0;
-        SceneDocument documentSnapshot{};
-        SceneEnvironment environmentSnapshot{};
-        ComponentGizmoRenderer componentGizmoRenderer{};
-        ComponentGizmoState componentGizmoState{};
-        ViewportOverlayState viewportOverlayState{};
-        ViewportPerformanceState viewportPerformanceState{};
-        ViewportDebugViewState viewportDebugViewState{};
-        SceneObjectId selectedGizmoObjectId{};
-    };
+struct DocumentSceneEditorState {
+    ComponentGizmoState componentGizmoSnapshot{};
+    ViewportOverlayState overlaySnapshot{};
+    ViewportPerformanceState performanceSnapshot{};
+    ViewportDebugViewState debugViewSnapshot{};
+    SceneObjectId selectedGizmoObjectSnapshot{};
+    std::string sceneIdSnapshot{};
+    std::string scenePathSnapshot{};
+    AssetGuid sceneAssetGuidSnapshot{};
+    uint64_t documentRevisionSnapshot = 0;
+    SceneDocument documentSnapshot{};
+    SceneEnvironment environmentSnapshot{};
+    ComponentGizmoRenderer componentGizmoRenderer{};
+    ComponentGizmoState componentGizmoState{};
+    ViewportOverlayState viewportOverlayState{};
+    ViewportPerformanceState viewportPerformanceState{};
+    ViewportDebugViewState viewportDebugViewState{};
+    SceneObjectId selectedGizmoObjectId{};
+};
 
 } // namespace HIKARI

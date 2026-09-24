@@ -17,100 +17,68 @@
 
 namespace HIKARI {
 
-    SceneSystemsPanelResult SceneSystemsPanel::Draw(
-        DocumentSceneBase& scene,
-        const EDITOR::SystemAuthoringRegistry& authoringRegistry,
-        EDITOR::EditorToolHost& toolHost) {
-
-        SceneSystemsPanelResult result{};
+SceneSystemsPanelResult SceneSystemsPanel::Draw(DocumentSceneBase& scene,
+                                                const EDITOR::SystemAuthoringRegistry& authoringRegistry,
+                                                EDITOR::EditorToolHost& toolHost) {
+    SceneSystemsPanelResult result{};
 #if defined(HIKARI_WITH_EDITOR)
-        SceneDocument& document = scene.GetSceneDocument();
-        const std::vector<SceneSystemData> defaults =
-            scene.CreateProjectDefaultSceneSystems();
-        if (document.systems.empty()) {
-            document.systems = defaults;
-        }
+    SceneDocument& document = scene.GetSceneDocument();
+    const std::vector<SceneSystemData> defaults = scene.CreateProjectDefaultSceneSystems();
+    if (document.systems.empty()) {
+        document.systems = defaults;
+    }
 
-        const std::vector<EDITOR::SceneSystemAuthoringRow> rows =
-            EDITOR::BuildSceneSystemAuthoringRows(
-                document,
-                scene.GetSystemTypeRegistry(),
-                scene.GetComponentSystemPolicy(),
-                scene.GetSystemScheduler(),
-                defaults);
+    const std::vector<EDITOR::SceneSystemAuthoringRow> rows =
+        EDITOR::BuildSceneSystemAuthoringRows(document, scene.GetSystemTypeRegistry(), scene.GetComponentSystemPolicy(),
+                                              scene.GetSystemScheduler(), defaults);
 
-        size_t installedCount = 0;
-        size_t activeCount = 0;
-        size_t automaticCount = 0;
-        size_t issueCount = 0;
-        for (const EDITOR::SceneSystemAuthoringRow& row : rows) {
-            if (!EDITOR::IsSceneSystemInstalled(row)) {
-                continue;
-            }
-            ++installedCount;
-            automaticCount += static_cast<size_t>(
-                EDITOR::IsSceneSystemAutomatic(row));
-            activeCount += static_cast<size_t>(
-                EDITOR::IsSceneSystemEffectivelyEnabled(row, document) &&
-                row.scheduled);
-            issueCount += static_cast<size_t>(
-                EDITOR::HasSceneSystemIssue(row, document));
+    size_t installedCount = 0;
+    size_t activeCount = 0;
+    size_t automaticCount = 0;
+    size_t issueCount = 0;
+    for (const EDITOR::SceneSystemAuthoringRow& row : rows) {
+        if (!EDITOR::IsSceneSystemInstalled(row)) {
+            continue;
         }
+        ++installedCount;
+        automaticCount += static_cast<size_t>(EDITOR::IsSceneSystemAutomatic(row));
+        activeCount += static_cast<size_t>(EDITOR::IsSceneSystemEffectivelyEnabled(row, document) && row.scheduled);
+        issueCount += static_cast<size_t>(EDITOR::HasSceneSystemIssue(row, document));
+    }
 
-        ImGui::Text(
-            TEXT::Localize("ui.sceneSystems.installedFormat").c_str(),
-            installedCount);
-        ImGui::SameLine();
-        ImGui::TextDisabled(
-            TEXT::Localize("ui.sceneSystems.activeFormat").c_str(),
-            activeCount);
-        ImGui::SameLine();
-        ImGui::TextDisabled(
-            TEXT::Localize("ui.sceneSystems.autoFormat").c_str(),
-            automaticCount);
-        ImGui::SameLine();
-        if (issueCount > 0) {
-            ImGui::TextColored(
-                ImVec4(1.0f, 0.55f, 0.25f, 1.0f),
-                TEXT::Localize(
-                    "ui.sceneSystems.issuesFormat").c_str(),
-                issueCount);
-        } else {
-            ImGui::TextDisabled(
-                "%s",
-                TEXT::Localize(
-                    "ui.sceneSystems.issuesZero").c_str());
-        }
+    ImGui::Text(TEXT::Localize("ui.sceneSystems.installedFormat").c_str(), installedCount);
+    ImGui::SameLine();
+    ImGui::TextDisabled(TEXT::Localize("ui.sceneSystems.activeFormat").c_str(), activeCount);
+    ImGui::SameLine();
+    ImGui::TextDisabled(TEXT::Localize("ui.sceneSystems.autoFormat").c_str(), automaticCount);
+    ImGui::SameLine();
+    if (issueCount > 0) {
+        ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.25f, 1.0f), TEXT::Localize("ui.sceneSystems.issuesFormat").c_str(),
+                           issueCount);
+    } else {
+        ImGui::TextDisabled("%s", TEXT::Localize("ui.sceneSystems.issuesZero").c_str());
+    }
 
-        if (ImGui::Button(
-                TEXT::Localize(
-                    "ui.sceneSystems.openManager").c_str(),
-                ImVec2(-1.0f, 0.0f))) {
-            manager_.Open();
-        }
-        if (runtimeApplyFailed_) {
-            ImGui::TextColored(
-                ImVec4(1.0f, 0.4f, 0.35f, 1.0f),
-                "%s",
-                TEXT::Localize(
-                    "ui.sceneSystems.runtimeUpdateFailed").c_str());
-        }
+    if (ImGui::Button(TEXT::Localize("ui.sceneSystems.openManager").c_str(), ImVec2(-1.0f, 0.0f))) {
+        manager_.Open();
+    }
+    if (runtimeApplyFailed_) {
+        ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.35f, 1.0f), "%s",
+                           TEXT::Localize("ui.sceneSystems.runtimeUpdateFailed").c_str());
+    }
 
-        EDITOR::SceneSystemsManagerResult managerResult =
-            manager_.Draw(scene, authoringRegistry, toolHost);
-        result.changed = managerResult.changed;
-        result.label = std::move(managerResult.label);
-        result.before = std::move(managerResult.before);
+    EDITOR::SceneSystemsManagerResult managerResult = manager_.Draw(scene, authoringRegistry, toolHost);
+    result.changed = managerResult.changed;
+    result.label = std::move(managerResult.label);
+    result.before = std::move(managerResult.before);
 #else
-        (void)scene;
-        (void)authoringRegistry;
-        (void)toolHost;
+    (void)scene;
+    (void)authoringRegistry;
+    (void)toolHost;
 #endif
-        return result;
-    }
+    return result;
+}
 
-    void SceneSystemsPanel::SetRuntimeApplyStatus(bool success) {
-        runtimeApplyFailed_ = !success;
-    }
+void SceneSystemsPanel::SetRuntimeApplyStatus(bool success) { runtimeApplyFailed_ = !success; }
 
 } // namespace HIKARI

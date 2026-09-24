@@ -12,16 +12,16 @@
 #endif
 
 namespace HIKARI::EDITOR {
-void VfxWorkspaceController::DrawTimelineLayers(float originX, float width, float labelWidth,
-                                                float duration) {
+void VfxWorkspaceController::DrawTimelineLayers(float originX, float width, float labelWidth, float duration) {
 #if defined(HIKARI_WITH_EDITOR)
-    auto &state = timelineEdit_;
-    const auto text = [](const char *key) { return TEXT::Localize(key); };
-    if (IconToggleButton(EditorGlyph::Snap, "FrameSnap", state.snap, {26,26},
-            text("ui.vfx.timeline.snap").c_str())) state.snap = !state.snap;
+    auto& state = timelineEdit_;
+    const auto text = [](const char* key) { return TEXT::Localize(key); };
+    if (IconToggleButton(EditorGlyph::Snap, "FrameSnap", state.snap, {26, 26}, text("ui.vfx.timeline.snap").c_str()))
+        state.snap = !state.snap;
     ImGui::SameLine();
-    if (IconButton(EditorGlyph::Help, "TimelineHelp", EditorButtonTone::Quiet,
-            {26,26}, text("ui.vfx.timeline.keyHelp").c_str())) ImGui::OpenPopup("TimelineHelp");
+    if (IconButton(EditorGlyph::Help, "TimelineHelp", EditorButtonTone::Quiet, {26, 26},
+                   text("ui.vfx.timeline.keyHelp").c_str()))
+        ImGui::OpenPopup("TimelineHelp");
     if (ImGui::BeginPopup("TimelineHelp")) {
         ImGui::TextUnformatted(text("ui.vfx.timeline.keyHelp").c_str());
         ImGui::TextUnformatted(text("ui.vfx.timeline.layerHelp").c_str());
@@ -29,12 +29,11 @@ void VfxWorkspaceController::DrawTimelineLayers(float originX, float width, floa
     }
     const auto top = ImGui::GetCursorScreenPos();
     const auto mouse = ImGui::GetIO().MousePos;
-    const auto &io = ImGui::GetIO();
-    auto &draw = *ImGui::GetWindowDrawList();
+    const auto& io = ImGui::GetIO();
+    auto& draw = *ImGui::GetWindowDrawList();
     const auto toX = [&](float seconds) { return originX + seconds / duration * width; };
-    const auto selected = [&](const std::string &id) {
-        return std::find(state.selectedKeys.begin(), state.selectedKeys.end(), id) !=
-               state.selectedKeys.end();
+    const auto selected = [&](const std::string& id) {
+        return std::find(state.selectedKeys.begin(), state.selectedKeys.end(), id) != state.selectedKeys.end();
     };
     struct Mark {
         ImVec2 point;
@@ -56,9 +55,9 @@ void VfxWorkspaceController::DrawTimelineLayers(float originX, float width, floa
             layer.activeDuration > 0 ? layer.activeDuration : snapshot.durationSeconds - layer.startDelay;
         const float startX = toX(layer.startDelay), endX = toX(layer.startDelay + span);
         draw.AddRectFilled({startX, row.y + 3}, {endX, row.y + 19},
-                           layer.kind == VFX::VfxLayerKind::Adjustment ? IM_COL32(126, 82, 145, 220) :
-                           layer.kind == VFX::VfxLayerKind::Particles ? IM_COL32(110, 83, 44, 210)
-                                                                      : IM_COL32(39, 99, 117, 210),
+                           layer.kind == VFX::VfxLayerKind::Adjustment  ? IM_COL32(126, 82, 145, 220)
+                           : layer.kind == VFX::VfxLayerKind::Particles ? IM_COL32(110, 83, 44, 210)
+                                                                        : IM_COL32(39, 99, 117, 210),
                            3);
         draw.AddLine({startX, row.y + 3}, {startX, row.y + 19}, IM_COL32(143, 196, 209, 240), 3);
         draw.AddLine({endX, row.y + 3}, {endX, row.y + 19}, IM_COL32(143, 196, 209, 240), 3);
@@ -78,13 +77,12 @@ void VfxWorkspaceController::DrawTimelineLayers(float originX, float width, floa
                 hit = true;
             }
         }
-        for (const auto &key : layer.spawn.burstTimeline)
-            draw.AddCircleFilled({toX(layer.startDelay + key.time), row.y + 11}, 4,
-                                 IM_COL32(255, 190, 87, 255));
+        for (const auto& key : layer.spawn.burstTimeline)
+            draw.AddCircleFilled({toX(layer.startDelay + key.time), row.y + 11}, 4, IM_COL32(255, 190, 87, 255));
         if (layer.kind == VFX::VfxLayerKind::Particles && ImGui::BeginPopupContextItem()) {
             if (ImGui::MenuItem(VfxUiText("Add Burst Key at Playhead").c_str())) {
                 std::string id;
-                (void)AddBurstKey(layer.id, std::clamp(previewElapsedSeconds_ - layer.startDelay, 0.0f, span),
+                (void)AddBurstKey(layer.id, std::clamp(preview_.previewElapsedSeconds_ - layer.startDelay, 0.0f, span),
                                   1, {}, id, statusMessage_);
             }
             ImGui::EndPopup();
@@ -100,13 +98,14 @@ void VfxWorkspaceController::DrawTimelineLayers(float originX, float width, floa
                 ImGui::PushID(curves[i].address.moduleId.c_str());
                 ImGui::PushID(curves[i].address.propertyId.c_str());
                 row = ImGui::GetCursorScreenPos();
-                const auto curveLabel = layer.kind == VFX::VfxLayerKind::Adjustment ?
-                    TEXT::Localize("ui.vfx.effect.param." + curves[i].label) : VfxUiText(curves[i].label);
+                const auto curveLabel = layer.kind == VFX::VfxLayerKind::Adjustment
+                                            ? TEXT::Localize("ui.vfx.effect.param." + curves[i].label)
+                                            : VfxUiText(curves[i].label);
                 ImGui::TextDisabled("%s", curveLabel.c_str());
                 draw.AddLine({originX, row.y + 10}, {originX + width, row.y + 10}, IM_COL32(63, 73, 82, 255));
                 std::vector<float> times;
                 for (size_t c = i; c < end; ++c)
-                    for (const auto &key : ResolveVfxCurve(layer, curves[c].address)->keys)
+                    for (const auto& key : ResolveVfxCurve(layer, curves[c].address)->keys)
                         times.push_back(key.time);
                 std::sort(times.begin(), times.end());
                 times.erase(std::unique(times.begin(), times.end()), times.end());
@@ -114,11 +113,9 @@ void VfxWorkspaceController::DrawTimelineLayers(float originX, float width, floa
                     const float local = layer.animationTiming.LayerSeconds(time, span);
                     if (local < -0.00001f || local > span + 0.00001f)
                         continue;
-                    Mark mark{
-                        {toX(layer.startDelay + layer.animationTiming.LayerSeconds(time, span)), row.y + 10},
-                        {}};
+                    Mark mark{{toX(layer.startDelay + layer.animationTiming.LayerSeconds(time, span)), row.y + 10}, {}};
                     for (size_t c = i; c < end; ++c)
-                        for (const auto &key : ResolveVfxCurve(layer, curves[c].address)->keys)
+                        for (const auto& key : ResolveVfxCurve(layer, curves[c].address)->keys)
                             if (std::abs(key.time - time) < 0.00001f)
                                 mark.ids.push_back(key.id);
                     const bool active = std::any_of(mark.ids.begin(), mark.ids.end(), selected);
@@ -134,7 +131,7 @@ void VfxWorkspaceController::DrawTimelineLayers(float originX, float width, floa
                         if (canStart && ImGui::IsMouseClicked(0)) {
                             if (!active && !io.KeyCtrl && !io.KeyShift)
                                 state.selectedKeys.clear();
-                            for (const auto &id : mark.ids) {
+                            for (const auto& id : mark.ids) {
                                 if (active && io.KeyCtrl)
                                     std::erase(state.selectedKeys, id);
                                 else if (!selected(id))
@@ -149,7 +146,7 @@ void VfxWorkspaceController::DrawTimelineLayers(float originX, float width, floa
                                 state.duplicate = io.KeyAlt;
                                 if (state.duplicate)
                                     CopyTimelineSelection();
-                                (void)SeekPreview(state.dragAnchorSeconds, statusMessage_);
+                                (void)preview_.SeekPreview(state.dragAnchorSeconds, statusMessage_);
                             }
                             hit = true;
                         }
@@ -175,7 +172,7 @@ void VfxWorkspaceController::DrawTimelineLayers(float originX, float width, floa
         ImGui::PopID();
     }
     const float bottom = ImGui::GetCursorScreenPos().y;
-    draw.AddLine({toX(previewElapsedSeconds_), top.y}, {toX(previewElapsedSeconds_), bottom},
+    draw.AddLine({toX(preview_.previewElapsedSeconds_), top.y}, {toX(preview_.previewElapsedSeconds_), bottom},
                  IM_COL32(255, 210, 92, 200));
     const bool panelHovered = ImGui::IsWindowHovered() && mouse.x >= originX && mouse.x <= originX + width &&
                               mouse.y >= top.y && mouse.y <= bottom;
@@ -193,16 +190,17 @@ void VfxWorkspaceController::DrawTimelineLayers(float originX, float width, floa
         draw.AddRectFilled(a, b, IM_COL32(70, 160, 210, 35));
         draw.AddRect(a, b, IM_COL32(90, 190, 230, 200));
         state.selectedKeys = state.baselineSelection;
-        for (const auto &mark : marks)
+        for (const auto& mark : marks)
             if (mark.point.x >= a.x && mark.point.x <= b.x && mark.point.y >= a.y && mark.point.y <= b.y)
-                for (const auto &id : mark.ids)
+                for (const auto& id : mark.ids)
                     if (!selected(id))
                         state.selectedKeys.push_back(id);
         if (!ImGui::IsMouseDown(0))
             state.marquee = false;
     }
     if (state.baseline && (state.keyDragging || !state.draggedLayer.empty())) {
-        if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_Escape, ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows), false)) {
+        if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_Escape,
+                                  ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows), false)) {
             EndTimelineEdit(true);
             state.suppressDragUntilRelease = true;
         } else if (ImGui::IsMouseDragging(0)) {
@@ -214,18 +212,16 @@ void VfxWorkspaceController::DrawTimelineLayers(float originX, float width, floa
                     const auto original = CopyVfxTimelineKeys(*state.baseline, state.baselineSelection);
                     if (!original.empty()) {
                         float first = state.dragAnchorSeconds;
-                        for (const auto &layer : state.baseline->emitters)
-                            for (const auto &track : CollectVfxTimelineCurves(layer, true))
-                                for (const auto &key : ResolveVfxCurve(layer, track.address)->keys)
-                                    if (std::find(state.baselineSelection.begin(),
-                                                  state.baselineSelection.end(),
+                        for (const auto& layer : state.baseline->emitters)
+                            for (const auto& track : CollectVfxTimelineCurves(layer, true))
+                                for (const auto& key : ResolveVfxCurve(layer, track.address)->keys)
+                                    if (std::find(state.baselineSelection.begin(), state.baselineSelection.end(),
                                                   key.id) != state.baselineSelection.end())
-                                        first = (std::min)(
-                                            first, layer.startDelay +
-                                                       layer.animationTiming.LayerSeconds(
-                                                           key.time, layer.activeDuration > 0
-                                                                         ? layer.activeDuration
-                                                                         : duration - layer.startDelay));
+                                        first = (std::min)(first, layer.startDelay +
+                                                                      layer.animationTiming.LayerSeconds(
+                                                                          key.time, layer.activeDuration > 0
+                                                                                        ? layer.activeDuration
+                                                                                        : duration - layer.startDelay));
                         (void)ApplyAsset(*state.baseline, statusMessage_, VfxTimelineEditState::mergeGroup);
                         if (std::abs(delta) > 0.0001f)
                             (void)PasteTimelineSelection(first + delta, true);
@@ -243,21 +239,26 @@ void VfxWorkspaceController::DrawTimelineLayers(float originX, float width, floa
     }
     if (!ImGui::IsMouseDown(0))
         state.suppressDragUntilRelease = false;
-    if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && !io.WantTextInput &&
-        !state.baseline) {
-        if (io.KeyCtrl && ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_C, ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows), false))
+    if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && !io.WantTextInput && !state.baseline) {
+        if (io.KeyCtrl && ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_C,
+                                                ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows), false))
             CopyTimelineSelection();
-        if (io.KeyCtrl && ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_V, ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows), false))
-            (void)PasteTimelineSelection(previewElapsedSeconds_);
-        if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_Delete, ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows), false))
-            {
-                if (!timelineEdit_.selectedKeys.empty()) (void)DeleteTimelineSelection();
-                else if (!selection_.emitterId.empty()) (void)RemoveEmitter(selection_.emitterId, statusMessage_);
-            }
+        if (io.KeyCtrl && ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_V,
+                                                ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows), false))
+            (void)PasteTimelineSelection(preview_.previewElapsedSeconds_);
+        if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_Delete,
+                                  ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows), false)) {
+            if (!timelineEdit_.selectedKeys.empty())
+                (void)DeleteTimelineSelection();
+            else if (!selection_.emitterId.empty())
+                (void)RemoveEmitter(selection_.emitterId, statusMessage_);
+        }
         const float nudge = (io.KeyShift ? 10.0f : 1.0f) / 60;
-        if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_LeftArrow, ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows), true))
+        if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_LeftArrow,
+                                  ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows), true))
             (void)MoveTimelineSelection(-nudge);
-        if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_RightArrow, ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows), true))
+        if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_RightArrow,
+                                  ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows), true))
             (void)MoveTimelineSelection(nudge);
     }
 #else

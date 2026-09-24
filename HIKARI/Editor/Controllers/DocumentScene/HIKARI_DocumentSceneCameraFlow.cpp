@@ -9,17 +9,17 @@
 #include "Scene/HIKARI_SceneDocumentQueries.h"
 #include <algorithm>
 namespace HIKARI {
-EDITOR::EditorOperationResult DocumentSceneEditorController::EditCameraFlow(const nlohmann::json &p) {
-    auto *scene = aiOperationScene_;
+EDITOR::EditorOperationResult DocumentSceneEditorController::EditCameraFlow(const nlohmann::json& p) {
+    auto* scene = aiOperationScene_;
     if (!scene || scene->IsRuntimePlayActive())
         return {false, "EDIT_MODE_REQUIRED", "Edit camera flows outside Play."};
     const auto action = p.value("action", std::string{"update"});
     if (action != "create" && action != "update" && action != "remove")
         return {false, "INVALID_ACTION", "Use create, update, or remove."};
-    auto &document = scene->GetSceneDocument();
+    auto& document = scene->GetSceneDocument();
     auto objects = document.objects;
     const SceneObjectId id{p.value("objectId", uint64_t{0})};
-    auto found = std::find_if(objects.begin(), objects.end(), [&](const auto &o) { return o.id == id; });
+    auto found = std::find_if(objects.begin(), objects.end(), [&](const auto& o) { return o.id == id; });
     if (action != "create" && found == objects.end())
         return {false, "NOT_FOUND", "Flow object not found."};
     if (action == "create") {
@@ -34,7 +34,7 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::EditCameraFlow(cons
         found = std::prev(objects.end());
     }
     auto component = std::find_if(found->components.begin(), found->components.end(),
-                                  [](const auto &c) { return c.type == "CameraFlowComponent"; });
+                                  [](const auto& c) { return c.type == "CameraFlowComponent"; });
     if (component == found->components.end())
         return {false, "NOT_A_FLOW", "Object has no CameraFlowComponent."};
     const auto resultId = found->id;
@@ -49,12 +49,12 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::EditCameraFlow(cons
         std::string error;
         if (!typed.TryDeserialize(props, error))
             return {false, "INVALID_SETTINGS", error};
-        const auto &settings = typed.Settings();
-        const auto *camera = scene->GetWorld().FindObject(settings.cameraObjectId);
-        const auto *follow = camera ? camera->GetComponent<CameraFollowComponent>() : nullptr;
+        const auto& settings = typed.Settings();
+        const auto* camera = scene->GetWorld().FindObject(settings.cameraObjectId);
+        const auto* follow = camera ? camera->GetComponent<CameraFollowComponent>() : nullptr;
         if (!scene->GetWorld().FindObject(settings.subjectObjectId) || !follow)
             return {false, "INVALID_TARGET", "Choose an existing subject and a bound gameplay camera."};
-        const auto *sequence = scene->GetAssetDatabase().FindByGuid(settings.sequence);
+        const auto* sequence = scene->GetAssetDatabase().FindByGuid(settings.sequence);
         if (settings.sequence.IsValid() && (!sequence || sequence->type != AssetType::Sequence))
             return {false, "SEQUENCE_REQUIRED", "Choose a sequence asset."};
         GameplayCameraAssetStore store;

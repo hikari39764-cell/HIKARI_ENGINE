@@ -5,12 +5,12 @@
 #include <string_view>
 
 namespace HIKARI::EDITOR {
-    struct SceneFolderEdit {
-        EditorOperationResult result{};
-        std::unique_ptr<IEditorDocumentCommand> command{};
-    };
-    bool IsValidSceneFolderPath(std::string_view path) noexcept;
-    std::vector<std::string> CollectSceneFolderPaths(const SceneDocument& document);
-    SceneFolderEdit ApplySceneFolderOperation(SceneDocument& document,
-        std::string_view operation, const nlohmann::json& parameters);
-}
+struct SceneFolderEdit {
+    EditorOperationResult result{};
+    std::unique_ptr<IEditorDocumentCommand> command{};
+};
+bool IsValidSceneFolderPath(std::string_view path) noexcept;
+std::vector<std::string> CollectSceneFolderPaths(const SceneDocument& document);
+SceneFolderEdit ApplySceneFolderOperation(SceneDocument& document, std::string_view operation,
+                                          const nlohmann::json& parameters);
+} // namespace HIKARI::EDITOR

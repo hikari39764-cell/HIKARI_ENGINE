@@ -6,157 +6,117 @@
 
 namespace HIKARI::SEQUENCER {
 
-    namespace {
-        float FiniteOr(float value, float fallback) noexcept {
-            return std::isfinite(value) ? value : fallback;
+namespace {
+float FiniteOr(float value, float fallback) noexcept { return std::isfinite(value) ? value : fallback; }
+} // namespace
+
+void NormalizeCameraCutTrack(CameraCutTrack& track) {
+    if (!track.id.IsValid()) {
+        track.id = {1};
+    }
+    track.clips.erase(std::remove_if(track.clips.begin(), track.clips.end(),
+                                     [](const CameraCutClip& clip) {
+                                         return clip.id == 0 || (!clip.camera.owned && !clip.cameraBindingId.IsValid());
+                                     }),
+                      track.clips.end());
+
+    for (CameraCutClip& clip : track.clips) {
+        NormalizeShotCamera(clip.camera);
+        NormalizeScreenEffects(clip.effects);
+        clip.startTimeSeconds = std::clamp(FiniteOr(clip.startTimeSeconds, 0.0f), 0.0f,
+                                           kMaxSequenceDurationSeconds - kMinCameraCutClipDurationSeconds);
+        clip.durationSeconds =
+            std::clamp(FiniteOr(clip.durationSeconds, kMinCameraCutClipDurationSeconds),
+                       kMinCameraCutClipDurationSeconds, kMaxSequenceDurationSeconds - clip.startTimeSeconds);
+        if (clip.transition.mode == CameraCutTransitionMode::Cut) {
+            clip.transition.durationSeconds = 0.0f;
+        } else {
+            clip.transition.durationSeconds =
+                std::clamp(FiniteOr(clip.transition.durationSeconds, 0.0f), 0.0f,
+                           (std::min)(clip.durationSeconds, kMaxCameraBlendDurationSeconds));
         }
     }
 
-    void NormalizeCameraCutTrack(CameraCutTrack& track) {
-        if (!track.id.IsValid()) {
-            track.id = { 1 };
+    std::sort(track.clips.begin(), track.clips.end(), [](const CameraCutClip& lhs, const CameraCutClip& rhs) {
+        if (lhs.startTimeSeconds != rhs.startTimeSeconds) {
+            return lhs.startTimeSeconds < rhs.startTimeSeconds;
         }
-        track.clips.erase(
-            std::remove_if(
-                track.clips.begin(),
-                track.clips.end(),
-                [](const CameraCutClip& clip) {
-                    return clip.id == 0 ||
-                        (!clip.camera.owned && !clip.cameraBindingId.IsValid());
-                }),
-            track.clips.end());
+        return lhs.id < rhs.id;
+    });
+}
 
-        for (CameraCutClip& clip : track.clips) {
-            NormalizeShotCamera(clip.camera);
-            NormalizeScreenEffects(clip.effects);
-            clip.startTimeSeconds = std::clamp(
-                FiniteOr(clip.startTimeSeconds, 0.0f),
-                0.0f,
-                kMaxSequenceDurationSeconds -
-                    kMinCameraCutClipDurationSeconds);
-            clip.durationSeconds = std::clamp(
-                FiniteOr(
-                    clip.durationSeconds,
-                    kMinCameraCutClipDurationSeconds),
-                kMinCameraCutClipDurationSeconds,
-                kMaxSequenceDurationSeconds - clip.startTimeSeconds);
-            if (clip.transition.mode == CameraCutTransitionMode::Cut) {
-                clip.transition.durationSeconds = 0.0f;
-            } else {
-                clip.transition.durationSeconds = std::clamp(
-                    FiniteOr(clip.transition.durationSeconds, 0.0f),
-                    0.0f,
-                    (std::min)(
-                        clip.durationSeconds,
-                        kMaxCameraBlendDurationSeconds));
-            }
+uint64_t AllocateCameraCutClipId(const CameraCutTrack& track) {
+    uint64_t nextId = 1;
+    for (const CameraCutClip& clip : track.clips) {
+        if (clip.id < nextId) {
+            continue;
         }
-
-        std::sort(
-            track.clips.begin(),
-            track.clips.end(),
-            [](const CameraCutClip& lhs, const CameraCutClip& rhs) {
-                if (lhs.startTimeSeconds != rhs.startTimeSeconds) {
-                    return lhs.startTimeSeconds < rhs.startTimeSeconds;
-                }
-                return lhs.id < rhs.id;
-            });
+        if (clip.id == (std::numeric_limits<uint64_t>::max)()) {
+            nextId = 1;
+            break;
+        }
+        nextId = clip.id + 1;
     }
-
-    uint64_t AllocateCameraCutClipId(const CameraCutTrack& track) {
-        uint64_t nextId = 1;
-        for (const CameraCutClip& clip : track.clips) {
-            if (clip.id < nextId) {
-                continue;
-            }
-            if (clip.id == (std::numeric_limits<uint64_t>::max)()) {
-                nextId = 1;
-                break;
-            }
-            nextId = clip.id + 1;
+    while (std::any_of(track.clips.begin(), track.clips.end(),
+                       [nextId](const CameraCutClip& clip) { return clip.id == nextId; })) {
+        ++nextId;
+        if (nextId == 0) {
+            nextId = 1;
         }
-        while (std::any_of(
-                track.clips.begin(),
-                track.clips.end(),
-                [nextId](const CameraCutClip& clip) {
-                    return clip.id == nextId;
-                })) {
-            ++nextId;
-            if (nextId == 0) {
-                nextId = 1;
-            }
-        }
-        return nextId;
     }
+    return nextId;
+}
 
-    float GetCameraCutTrackContentEnd(
-        const CameraCutTrack& track) noexcept {
-
-        float contentEnd = 0.0f;
-        for (const CameraCutClip& clip : track.clips) {
-            const float start = FiniteOr(clip.startTimeSeconds, 0.0f);
-            const float duration = FiniteOr(clip.durationSeconds, 0.0f);
-            contentEnd = (std::max)(contentEnd, start + duration);
-        }
-        return contentEnd;
+float GetCameraCutTrackContentEnd(const CameraCutTrack& track) noexcept {
+    float contentEnd = 0.0f;
+    for (const CameraCutClip& clip : track.clips) {
+        const float start = FiniteOr(clip.startTimeSeconds, 0.0f);
+        const float duration = FiniteOr(clip.durationSeconds, 0.0f);
+        contentEnd = (std::max)(contentEnd, start + duration);
     }
+    return contentEnd;
+}
 
-    CameraCutTrackEvaluation EvaluateCameraCutTrack(
-        const CameraCutTrack& track,
-        float timeSeconds) noexcept {
-
-        CameraCutTrackEvaluation result{};
-        if (!track.enabled || !std::isfinite(timeSeconds) ||
-            timeSeconds < 0.0f) {
-            return result;
-        }
-
-        const float contentEnd = GetCameraCutTrackContentEnd(track);
-        const float endTolerance = (std::max)(
-            std::abs(contentEnd) * 1.0e-6f,
-            1.0e-6f);
-        const CameraCutClip* activeClip = nullptr;
-        for (const CameraCutClip& clip : track.clips) {
-            if (clip.id == 0 || (!clip.camera.owned && !clip.cameraBindingId.IsValid()) ||
-                !std::isfinite(clip.startTimeSeconds) ||
-                !std::isfinite(clip.durationSeconds) ||
-                clip.durationSeconds < kMinCameraCutClipDurationSeconds) {
-                continue;
-            }
-            const float clipEnd =
-                clip.startTimeSeconds + clip.durationSeconds;
-            // Camera cuts are half-open between clips, but the final authored
-            // frame belongs to the last clip. Otherwise evaluating a Sequence
-            // exactly at its duration releases the camera one frame before a
-            // hold-at-end pause can retain it.
-            const bool terminalFrame =
-                std::abs(timeSeconds - contentEnd) <= endTolerance &&
-                std::abs(clipEnd - contentEnd) <= endTolerance;
-            if (timeSeconds < clip.startTimeSeconds ||
-                (timeSeconds >= clipEnd && !terminalFrame)) {
-                continue;
-            }
-            if (activeClip == nullptr ||
-                clip.startTimeSeconds > activeClip->startTimeSeconds ||
-                (clip.startTimeSeconds == activeClip->startTimeSeconds &&
-                    clip.id > activeClip->id)) {
-                activeClip = &clip;
-            }
-        }
-
-        if (activeClip != nullptr) {
-            result.clipId = activeClip->id;
-            result.cameraBindingId = activeClip->cameraBindingId;
-            result.transition = activeClip->transition;
-            result.sequenceTimeSeconds = timeSeconds;
-            result.localTimeSeconds =
-                (std::min)(
-                    timeSeconds,
-                    activeClip->startTimeSeconds +
-                        activeClip->durationSeconds) -
-                activeClip->startTimeSeconds;
-        }
+CameraCutTrackEvaluation EvaluateCameraCutTrack(const CameraCutTrack& track, float timeSeconds) noexcept {
+    CameraCutTrackEvaluation result{};
+    if (!track.enabled || !std::isfinite(timeSeconds) || timeSeconds < 0.0f) {
         return result;
     }
+
+    const float contentEnd = GetCameraCutTrackContentEnd(track);
+    const float endTolerance = (std::max)(std::abs(contentEnd) * 1.0e-6f, 1.0e-6f);
+    const CameraCutClip* activeClip = nullptr;
+    for (const CameraCutClip& clip : track.clips) {
+        if (clip.id == 0 || (!clip.camera.owned && !clip.cameraBindingId.IsValid()) ||
+            !std::isfinite(clip.startTimeSeconds) || !std::isfinite(clip.durationSeconds) ||
+            clip.durationSeconds < kMinCameraCutClipDurationSeconds) {
+            continue;
+        }
+        const float clipEnd = clip.startTimeSeconds + clip.durationSeconds;
+        // Camera cuts are half-open between clips, but the final authored
+        // frame belongs to the last clip. Otherwise evaluating a Sequence
+        // exactly at its duration releases the camera one frame before a
+        // hold-at-end pause can retain it.
+        const bool terminalFrame =
+            std::abs(timeSeconds - contentEnd) <= endTolerance && std::abs(clipEnd - contentEnd) <= endTolerance;
+        if (timeSeconds < clip.startTimeSeconds || (timeSeconds >= clipEnd && !terminalFrame)) {
+            continue;
+        }
+        if (activeClip == nullptr || clip.startTimeSeconds > activeClip->startTimeSeconds ||
+            (clip.startTimeSeconds == activeClip->startTimeSeconds && clip.id > activeClip->id)) {
+            activeClip = &clip;
+        }
+    }
+
+    if (activeClip != nullptr) {
+        result.clipId = activeClip->id;
+        result.cameraBindingId = activeClip->cameraBindingId;
+        result.transition = activeClip->transition;
+        result.sequenceTimeSeconds = timeSeconds;
+        result.localTimeSeconds = (std::min)(timeSeconds, activeClip->startTimeSeconds + activeClip->durationSeconds) -
+                                  activeClip->startTimeSeconds;
+    }
+    return result;
+}
 
 } // namespace HIKARI::SEQUENCER

@@ -1,11 +1,11 @@
 #pragma once
 
 namespace HIKARI {
-    class ModelAsset;
+class ModelAsset;
 }
 
 namespace HIKARI::RENDER3D::MODELS {
 
-    bool BuildBuiltinCubeModel(ModelAsset& asset);
+bool BuildBuiltinCubeModel(ModelAsset& asset);
 
 } // namespace HIKARI::RENDER3D::MODELS

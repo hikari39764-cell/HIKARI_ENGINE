@@ -23,499 +23,291 @@
 
 namespace HIKARI {
 
-    namespace {
+namespace {
 
-        TOOLS::BAKING::LightingBakeRequest BuildRequest(
-            DocumentSceneBase& scene) {
+TOOLS::BAKING::LightingBakeRequest BuildRequest(DocumentSceneBase& scene) {
+    TOOLS::BAKING::LightingBakeRequest request{};
+    request.projectRoot = scene.GetAssetDatabase().GetProjectRoot();
+    request.sceneGuid = scene.GetCurrentSceneAssetGuid().value;
+    request.sceneName = scene.GetCurrentSceneDisplayName();
+    request.scenePath = scene.GetScenePath();
+    request.sceneDocument = &scene.GetSceneDocument();
+    request.assetDatabase = &scene.GetAssetDatabase();
+    request.target = TOOLS::BAKING::LightingBakeTarget::All;
+    return request;
+}
 
-            TOOLS::BAKING::LightingBakeRequest request{};
-            request.projectRoot =
-                scene.GetAssetDatabase().GetProjectRoot();
-            request.sceneGuid =
-                scene.GetCurrentSceneAssetGuid().value;
-            request.sceneName =
-                scene.GetCurrentSceneDisplayName();
-            request.scenePath = scene.GetScenePath();
-            request.sceneDocument = &scene.GetSceneDocument();
-            request.assetDatabase = &scene.GetAssetDatabase();
-            request.target =
-                TOOLS::BAKING::LightingBakeTarget::All;
-            return request;
-        }
-
-        bool OpenFolder(
-            const std::filesystem::path& folder,
-            std::string& outMessage) {
-
-            std::error_code ec{};
-            if (!std::filesystem::exists(folder, ec)) {
-                outMessage = TEXT::Localize(
-                    "ui.lightingBake.folderNotExist");
-                return false;
-            }
-            if (!EDITOR::SHELL::OpenFolderInExplorer(folder)) {
-                outMessage = TEXT::Localize(
-                    "ui.lightingBake.folderOpenFailed");
-                return false;
-            }
-            outMessage = TEXT::Localize(
-                "ui.lightingBake.folderOpened");
-            return true;
-        }
-
-#if defined(HIKARI_WITH_EDITOR)
-        EDITOR::EditorGlyph ItemGlyph(
-            TOOLS::BAKING::LightingBakeItemKind kind) {
-
-            switch (kind) {
-            case TOOLS::BAKING::LightingBakeItemKind::
-                    ReflectionProbe:
-                return EDITOR::EditorGlyph::ReflectionProbe;
-            case TOOLS::BAKING::LightingBakeItemKind::
-                    IrradianceVolume:
-                return EDITOR::EditorGlyph::IrradianceVolume;
-            case TOOLS::BAKING::LightingBakeItemKind::
-                    LightmapObject:
-            default:
-                return EDITOR::EditorGlyph::Model;
-            }
-        }
-
-        void DrawInlineGlyph(
-            EDITOR::EditorGlyph glyph,
-            const ImVec4& color) {
-
-            const ImVec2 cursor = ImGui::GetCursorScreenPos();
-            const float height = ImGui::GetTextLineHeight();
-            EDITOR::DrawEditorGlyph(
-                *ImGui::GetWindowDrawList(),
-                glyph,
-                ImVec2(
-                    cursor.x + height * 0.5f,
-                    cursor.y + height * 0.5f),
-                height,
-                ImGui::GetColorU32(color));
-            ImGui::Dummy(ImVec2(height, height));
-        }
-
-        float ResolveProgress(
-            const TOOLS::BAKING::LightingBakeReport& report) {
-
-            if (report.bakeItemCount == 0u) {
-                return 0.0f;
-            }
-            float current = 0.0f;
-            if (report.reflectionProbeCapturedFaceCount > 0u) {
-                current = std::clamp(
-                    static_cast<float>(
-                        report.reflectionProbeCapturedFaceCount) /
-                        6.0f,
-                    0.0f,
-                    1.0f);
-            } else if (report.lightProbeProbeCount > 0u) {
-                const uint32_t totalFaces =
-                    report.lightProbeProbeCount * 6u;
-                current = totalFaces > 0u
-                    ? std::clamp(
-                        static_cast<float>(
-                            report.lightProbeCapturedFaceCount) /
-                            static_cast<float>(totalFaces),
-                        0.0f,
-                        1.0f)
-                    : 0.0f;
-            } else if (report.lightmapRequestedSamples > 0u) {
-                current = std::clamp(
-                    static_cast<float>(
-                        report.lightmapCompletedSamples) /
-                    static_cast<float>(
-                        report.lightmapRequestedSamples),
-                    0.0f,
-                    1.0f);
-            }
-            return std::clamp(
-                (static_cast<float>(report.completedItemCount) +
-                    current) /
-                    static_cast<float>(report.bakeItemCount),
-                0.0f,
-                1.0f);
-        }
-
-        void DrawLines(
-            const char* label,
-            const std::vector<std::string>& lines,
-            const ImVec4& color) {
-
-            if (lines.empty() ||
-                !ImGui::TreeNode(label)) {
-                return;
-            }
-            for (const std::string& line : lines) {
-                ImGui::TextColored(
-                    color,
-                    "%s",
-                    line.c_str());
-            }
-            ImGui::TreePop();
-        }
-
-#endif
-
-    } // namespace
-
-    void LightingBakePanel::Draw(
-        DocumentSceneBase& scene,
-        bool& open) {
-#if defined(HIKARI_WITH_EDITOR)
-        if (!ImGui::Begin(
-                TEXT::LocalizeWindow(
-                    "ui.window.lightingBake",
-                    "Lighting Bake").c_str(),
-                &open)) {
-            ImGui::End();
-            return;
-        }
-
-        TOOLS::BAKING::LightingBakeService service{};
-        const TOOLS::BAKING::LightingBakeRequest request =
-            BuildRequest(scene);
-        const bool bakeBusy =
-            TOOLS::BAKING::IsLightingBakeJobRunning(
-                scene.GetLightingBakeJobState());
-        const uint64_t sceneRevision =
-            scene.GetSceneDocumentRevision();
-        const uint64_t assetRevision =
-            scene.GetAssetDatabase().GetContentRevision();
-        const bool cacheIdentityChanged =
-            cachedSceneGuid_ != request.sceneGuid;
-        const bool cacheRevisionChanged =
-            cachedSceneRevision_ != sceneRevision ||
-            cachedAssetRevision_ != assetRevision;
-        const bool bakeCompleted =
-            wasBakeBusy_ && !bakeBusy;
-        const bool needsStatusRefresh =
-            !hasCachedStatus_ ||
-            cacheIdentityChanged ||
-            statusRefreshRequested_ ||
-            bakeCompleted ||
-            (!bakeBusy && cacheRevisionChanged);
-        if (needsStatusRefresh &&
-            (!bakeBusy || !hasCachedStatus_)) {
-            cachedStatus_ =
-                service.AnalyzeLightingBakeStatus(request);
-            cachedSceneGuid_ = request.sceneGuid;
-            cachedSceneRevision_ = sceneRevision;
-            cachedAssetRevision_ = assetRevision;
-            hasCachedStatus_ = true;
-            statusRefreshRequested_ = false;
-        }
-        const TOOLS::BAKING::LightingBakeStatus& status =
-            cachedStatus_;
-        const std::filesystem::path bakeRoot =
-            ASSETS::LIGHTING::BuildLightingBakeRoot(
-                request.projectRoot,
-                request.sceneGuid);
-        const EDITOR::EditorThemePalette& palette =
-            EDITOR::GetEditorThemePalette();
-
-        EDITOR::PanelTitle(
-            TEXT::Localize("ui.lightingBake.title").c_str(),
-            TEXT::Localize("ui.lightingBake.subtitle").c_str());
-        ImGui::TextDisabled(
-            TEXT::Localize("ui.lightingBake.sceneFormat").c_str(),
-            request.sceneName.empty()
-                ? TEXT::Localize("ui.common.untitled").c_str()
-                : request.sceneName.c_str(),
-            request.sceneGuid.empty()
-                ? TEXT::Localize(
-                    "ui.lightingBake.saveSceneToEnable").c_str()
-                : request.sceneGuid.c_str());
-        ImGui::SameLine();
-        if (EDITOR::IconTextButton(
-                EDITOR::EditorGlyph::Refresh,
-                TEXT::Localize("ui.lightingBake.refresh").c_str(),
-                "LightingBakeRefreshStatus",
-                EDITOR::EditorButtonTone::Quiet,
-                {},
-                TEXT::Localize(
-                    "ui.lightingBake.refreshTooltip").c_str())) {
-            statusRefreshRequested_ = true;
-        }
-
-        ImGui::Spacing();
-        if (ImGui::BeginTable(
-                "LightingBakeSummary",
-                3,
-                ImGuiTableFlags_SizingStretchSame)) {
-            ImGui::TableNextColumn();
-            ImGui::TextDisabled(
-                "%s",
-                TEXT::Localize(
-                    "ui.lightingBake.lightingObjects").c_str());
-            ImGui::Text("%u", status.totalCount);
-            ImGui::TableNextColumn();
-            ImGui::TextDisabled(
-                "%s",
-                TEXT::Localize("ui.lightingBake.ready").c_str());
-            EDITOR::StatusBadge(
-                std::to_string(status.readyCount).c_str(),
-                EDITOR::EditorStatusTone::Ready);
-            ImGui::TableNextColumn();
-            ImGui::TextDisabled(
-                "%s",
-                TEXT::Localize("ui.lightingBake.dirty").c_str());
-            EDITOR::StatusBadge(
-                std::to_string(status.dirtyCount).c_str(),
-                status.dirtyCount == 0u
-                    ? EDITOR::EditorStatusTone::Ready
-                    : EDITOR::EditorStatusTone::Warning);
-            ImGui::EndTable();
-        }
-
-        ImGui::Spacing();
-        EDITOR::LIGHTING_BAKE_PANEL::DrawWorkflowSummary(
-            status,
-            palette);
-
-        ImGui::Spacing();
-        if (bakeBusy || !status.valid) {
-            ImGui::BeginDisabled();
-        }
-        if (EDITOR::IconTextButton(
-                EDITOR::EditorGlyph::Bake,
-                status.dirtyCount == 0u
-                    ? TEXT::Localize(
-                        "ui.lightingBake.upToDate").c_str()
-                    : TEXT::Localize(
-                        "ui.lightingBake.bakeDirty").c_str(),
-                "LightingBakeDirty",
-                EDITOR::EditorButtonTone::Primary,
-                ImVec2(150.0f, 32.0f),
-                TEXT::Localize(
-                    "ui.lightingBake.bakeDirtyTooltip").c_str())) {
-            lastReport_ = service.BakeDirtyLighting(scene);
-            hasReport_ = true;
-            statusRefreshRequested_ = true;
-        }
-        ImGui::SameLine();
-        if (EDITOR::IconTextButton(
-                EDITOR::EditorGlyph::Focus,
-                TEXT::Localize(
-                    "ui.lightingBake.bakeSelected").c_str(),
-                "LightingBakeSelected",
-                EDITOR::EditorButtonTone::Neutral,
-                ImVec2(150.0f, 32.0f),
-                TEXT::Localize(
-                    "ui.lightingBake.bakeSelectedTooltip").c_str())) {
-            lastReport_ = service.BakeSelectedLighting(scene);
-            hasReport_ = true;
-            statusRefreshRequested_ = true;
-        }
-        ImGui::SameLine();
-        if (EDITOR::IconTextButton(
-                EDITOR::EditorGlyph::Refresh,
-                TEXT::Localize(
-                    "ui.lightingBake.bakeAll").c_str(),
-                "LightingBakeAll",
-                EDITOR::EditorButtonTone::Quiet,
-                ImVec2(120.0f, 32.0f),
-                TEXT::Localize(
-                    "ui.lightingBake.bakeAllTooltip").c_str())) {
-            lastReport_ = service.BakeAllLighting(scene);
-            hasReport_ = true;
-            statusRefreshRequested_ = true;
-        }
-        if (bakeBusy || !status.valid) {
-            ImGui::EndDisabled();
-        }
-
-        if (scene.HasLastLightingBakeReport()) {
-            lastReport_ = scene.GetLastLightingBakeReport();
-            hasReport_ = true;
-        }
-        if (hasReport_ && !lastReport_.errors.empty()) {
-            ImGui::PushStyleColor(ImGuiCol_Text, palette.error);
-            ImGui::TextWrapped("%s", lastReport_.errors.front().c_str());
-            ImGui::PopStyleColor();
-        }
-        if (bakeBusy && hasReport_) {
-            const float progress = ResolveProgress(lastReport_);
-            const std::string label =
-                lastReport_.currentItemName.empty()
-                    ? std::string(TOOLS::BAKING::ToString(
-                        lastReport_.jobState))
-                    : lastReport_.currentItemName + " - " +
-                        TOOLS::BAKING::ToString(
-                            lastReport_.jobState);
-            ImGui::ProgressBar(
-                progress,
-                ImVec2(-1.0f, 0.0f),
-                label.c_str());
-        }
-
-        ImGui::Spacing();
-        ImGui::SeparatorText(
-            TEXT::Localize(
-                "ui.lightingBake.lightingObjectsSection").c_str());
-        if (status.items.empty()) {
-            EDITOR::EmptyState(
-                TEXT::Localize(
-                    "ui.lightingBake.emptyTitle").c_str(),
-                TEXT::Localize(
-                    "ui.lightingBake.emptyHint").c_str());
-        } else if (ImGui::BeginTable(
-                "LightingBakeItems",
-                4,
-                ImGuiTableFlags_RowBg |
-                    ImGuiTableFlags_BordersInnerH |
-                    ImGuiTableFlags_SizingStretchProp)) {
-            ImGui::TableSetupColumn(
-                TEXT::Localize(
-                    "ui.lightingBake.tableType").c_str(),
-                ImGuiTableColumnFlags_WidthFixed,
-                42.0f);
-            ImGui::TableSetupColumn(
-                TEXT::Localize(
-                    "ui.lightingBake.tableName").c_str());
-            ImGui::TableSetupColumn(
-                TEXT::Localize(
-                    "ui.lightingBake.tableState").c_str(),
-                ImGuiTableColumnFlags_WidthFixed,
-                76.0f);
-            ImGui::TableSetupColumn(
-                TEXT::Localize(
-                    "ui.lightingBake.tableReason").c_str());
-            ImGui::TableHeadersRow();
-            for (const TOOLS::BAKING::LightingBakeItemStatus& item :
-                status.items) {
-                ImGui::PushID(
-                    static_cast<int>(item.objectId));
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                DrawInlineGlyph(
-                    ItemGlyph(item.kind),
-                    item.enabled
-                        ? palette.accent
-                        : palette.textMuted);
-                ImGui::TableNextColumn();
-                ImGui::TextUnformatted(item.name.c_str());
-                ImGui::TableNextColumn();
-                if (!item.enabled) {
-                    EDITOR::StatusBadge(
-                        TEXT::Localize(
-                            "ui.lightingBake.disabled").c_str(),
-                        EDITOR::EditorStatusTone::Normal);
-                } else if (item.dirty) {
-                    EDITOR::StatusBadge(
-                        TEXT::Localize(
-                            "ui.lightingBake.dirtyBadge").c_str(),
-                        EDITOR::EditorStatusTone::Warning);
-                } else {
-                    EDITOR::StatusBadge(
-                        TEXT::Localize(
-                            "ui.lightingBake.readyBadge").c_str(),
-                        EDITOR::EditorStatusTone::Ready);
-                }
-                ImGui::TableNextColumn();
-                ImGui::TextDisabled(
-                    "%s",
-                    item.dirtyReason.c_str());
-                ImGui::PopID();
-            }
-            ImGui::EndTable();
-        }
-
-        ImGui::Spacing();
-        if (ImGui::CollapsingHeader(
-                TEXT::Localize(
-                    "ui.lightingBake.diagnosticsOutput").c_str(),
-                ImGuiTreeNodeFlags_DefaultOpen)) {
-            if (hasReport_) {
-                ImGui::Text(
-                    TEXT::Localize(
-                        "ui.lightingBake.jobFormat").c_str(),
-                    TOOLS::BAKING::ToString(lastReport_.jobState));
-                ImGui::SameLine();
-                ImGui::TextDisabled(
-                    TEXT::Localize(
-                        "ui.lightingBake.completeFormat").c_str(),
-                    lastReport_.completedItemCount,
-                    lastReport_.bakeItemCount,
-                    lastReport_.reusedItemCount);
-                DrawLines(
-                    TEXT::Localize(
-                        "ui.lightingBake.dirtyReasons").c_str(),
-                    lastReport_.dirtyReasons,
-                    palette.warning);
-                DrawLines(
-                    TEXT::Localize(
-                        "ui.lightingBake.warnings").c_str(),
-                    lastReport_.warnings,
-                    palette.warning);
-                DrawLines(
-                    TEXT::Localize(
-                        "ui.lightingBake.errors").c_str(),
-                    lastReport_.errors,
-                    palette.error);
-                DrawLines(
-                    TEXT::Localize(
-                        "ui.lightingBake.messages").c_str(),
-                    lastReport_.messages,
-                    palette.textMuted);
-            } else {
-                ImGui::TextDisabled(
-                    "%s",
-                    TEXT::Localize(
-                        "ui.lightingBake.noBakeAction").c_str());
-            }
-            for (const std::string& warning : status.warnings) {
-                ImGui::TextColored(
-                    palette.warning,
-                    "%s",
-                    warning.c_str());
-            }
-            ImGui::TextWrapped(
-                TEXT::Localize(
-                    "ui.lightingBake.outputFormat").c_str(),
-                bakeRoot.generic_string().c_str());
-            if (EDITOR::IconTextButton(
-                    EDITOR::EditorGlyph::Folder,
-                    TEXT::Localize(
-                        "ui.lightingBake.openOutput").c_str(),
-                    "LightingBakeOpenOutput",
-                    EDITOR::EditorButtonTone::Quiet)) {
-                if (!OpenFolder(
-                        bakeRoot,
-                        lastOpenFolderMessage_)) {
-                    HIKARI_LOG_WARN(
-                        "[LightingBake] " +
-                        lastOpenFolderMessage_);
-                }
-            }
-            ImGui::SameLine();
-            if (EDITOR::IconTextButton(
-                    EDITOR::EditorGlyph::Delete,
-                    TEXT::Localize(
-                        "ui.lightingBake.clearOutputs").c_str(),
-                    "LightingBakeClear",
-                    EDITOR::EditorButtonTone::Danger)) {
-                lastReport_ = service.ClearLightingBake(request);
-                hasReport_ = true;
-                scene.RefreshLightingRuntime();
-                statusRefreshRequested_ = true;
-            }
-            if (!lastOpenFolderMessage_.empty()) {
-                ImGui::TextDisabled(
-                    "%s",
-                    lastOpenFolderMessage_.c_str());
-            }
-        }
-
-        wasBakeBusy_ = bakeBusy;
-        ImGui::End();
-#else
-        (void)scene;
-        (void)open;
-#endif
+bool OpenFolder(const std::filesystem::path& folder, std::string& outMessage) {
+    std::error_code ec{};
+    if (!std::filesystem::exists(folder, ec)) {
+        outMessage = TEXT::Localize("ui.lightingBake.folderNotExist");
+        return false;
     }
+    if (!EDITOR::SHELL::OpenFolderInExplorer(folder)) {
+        outMessage = TEXT::Localize("ui.lightingBake.folderOpenFailed");
+        return false;
+    }
+    outMessage = TEXT::Localize("ui.lightingBake.folderOpened");
+    return true;
+}
+
+#if defined(HIKARI_WITH_EDITOR)
+EDITOR::EditorGlyph ItemGlyph(TOOLS::BAKING::LightingBakeItemKind kind) {
+    switch (kind) {
+    case TOOLS::BAKING::LightingBakeItemKind::ReflectionProbe: return EDITOR::EditorGlyph::ReflectionProbe;
+    case TOOLS::BAKING::LightingBakeItemKind::IrradianceVolume: return EDITOR::EditorGlyph::IrradianceVolume;
+    case TOOLS::BAKING::LightingBakeItemKind::LightmapObject:
+    default: return EDITOR::EditorGlyph::Model;
+    }
+}
+
+void DrawInlineGlyph(EDITOR::EditorGlyph glyph, const ImVec4& color) {
+    const ImVec2 cursor = ImGui::GetCursorScreenPos();
+    const float height = ImGui::GetTextLineHeight();
+    EDITOR::DrawEditorGlyph(*ImGui::GetWindowDrawList(), glyph,
+                            ImVec2(cursor.x + height * 0.5f, cursor.y + height * 0.5f), height,
+                            ImGui::GetColorU32(color));
+    ImGui::Dummy(ImVec2(height, height));
+}
+
+float ResolveProgress(const TOOLS::BAKING::LightingBakeReport& report) {
+    if (report.bakeItemCount == 0u) {
+        return 0.0f;
+    }
+    float current = 0.0f;
+    if (report.reflectionProbeCapturedFaceCount > 0u) {
+        current = std::clamp(static_cast<float>(report.reflectionProbeCapturedFaceCount) / 6.0f, 0.0f, 1.0f);
+    } else if (report.lightProbeProbeCount > 0u) {
+        const uint32_t totalFaces = report.lightProbeProbeCount * 6u;
+        current =
+            totalFaces > 0u
+                ? std::clamp(static_cast<float>(report.lightProbeCapturedFaceCount) / static_cast<float>(totalFaces),
+                             0.0f, 1.0f)
+                : 0.0f;
+    } else if (report.lightmapRequestedSamples > 0u) {
+        current = std::clamp(static_cast<float>(report.lightmapCompletedSamples) /
+                                 static_cast<float>(report.lightmapRequestedSamples),
+                             0.0f, 1.0f);
+    }
+    return std::clamp((static_cast<float>(report.completedItemCount) + current) /
+                          static_cast<float>(report.bakeItemCount),
+                      0.0f, 1.0f);
+}
+
+void DrawLines(const char* label, const std::vector<std::string>& lines, const ImVec4& color) {
+    if (lines.empty() || !ImGui::TreeNode(label)) {
+        return;
+    }
+    for (const std::string& line : lines) {
+        ImGui::TextColored(color, "%s", line.c_str());
+    }
+    ImGui::TreePop();
+}
+
+#endif
+
+} // namespace
+
+void LightingBakePanel::Draw(DocumentSceneBase& scene, bool& open) {
+#if defined(HIKARI_WITH_EDITOR)
+    if (!ImGui::Begin(TEXT::LocalizeWindow("ui.window.lightingBake", "Lighting Bake").c_str(), &open)) {
+        ImGui::End();
+        return;
+    }
+
+    TOOLS::BAKING::LightingBakeService service{};
+    const TOOLS::BAKING::LightingBakeRequest request = BuildRequest(scene);
+    const bool bakeBusy = TOOLS::BAKING::IsLightingBakeJobRunning(scene.GetLightingBakeJobState());
+    const uint64_t sceneRevision = scene.GetSceneDocumentRevision();
+    const uint64_t assetRevision = scene.GetAssetDatabase().GetContentRevision();
+    const bool cacheIdentityChanged = cachedSceneGuid_ != request.sceneGuid;
+    const bool cacheRevisionChanged = cachedSceneRevision_ != sceneRevision || cachedAssetRevision_ != assetRevision;
+    const bool bakeCompleted = wasBakeBusy_ && !bakeBusy;
+    const bool needsStatusRefresh = !hasCachedStatus_ || cacheIdentityChanged || statusRefreshRequested_ ||
+                                    bakeCompleted || (!bakeBusy && cacheRevisionChanged);
+    if (needsStatusRefresh && (!bakeBusy || !hasCachedStatus_)) {
+        cachedStatus_ = service.AnalyzeLightingBakeStatus(request);
+        cachedSceneGuid_ = request.sceneGuid;
+        cachedSceneRevision_ = sceneRevision;
+        cachedAssetRevision_ = assetRevision;
+        hasCachedStatus_ = true;
+        statusRefreshRequested_ = false;
+    }
+    const TOOLS::BAKING::LightingBakeStatus& status = cachedStatus_;
+    const std::filesystem::path bakeRoot =
+        ASSETS::LIGHTING::BuildLightingBakeRoot(request.projectRoot, request.sceneGuid);
+    const EDITOR::EditorThemePalette& palette = EDITOR::GetEditorThemePalette();
+
+    EDITOR::PanelTitle(TEXT::Localize("ui.lightingBake.title").c_str(),
+                       TEXT::Localize("ui.lightingBake.subtitle").c_str());
+    ImGui::TextDisabled(TEXT::Localize("ui.lightingBake.sceneFormat").c_str(),
+                        request.sceneName.empty() ? TEXT::Localize("ui.common.untitled").c_str()
+                                                  : request.sceneName.c_str(),
+                        request.sceneGuid.empty() ? TEXT::Localize("ui.lightingBake.saveSceneToEnable").c_str()
+                                                  : request.sceneGuid.c_str());
+    ImGui::SameLine();
+    if (EDITOR::IconTextButton(EDITOR::EditorGlyph::Refresh, TEXT::Localize("ui.lightingBake.refresh").c_str(),
+                               "LightingBakeRefreshStatus", EDITOR::EditorButtonTone::Quiet, {},
+                               TEXT::Localize("ui.lightingBake.refreshTooltip").c_str())) {
+        statusRefreshRequested_ = true;
+    }
+
+    ImGui::Spacing();
+    if (ImGui::BeginTable("LightingBakeSummary", 3, ImGuiTableFlags_SizingStretchSame)) {
+        ImGui::TableNextColumn();
+        ImGui::TextDisabled("%s", TEXT::Localize("ui.lightingBake.lightingObjects").c_str());
+        ImGui::Text("%u", status.totalCount);
+        ImGui::TableNextColumn();
+        ImGui::TextDisabled("%s", TEXT::Localize("ui.lightingBake.ready").c_str());
+        EDITOR::StatusBadge(std::to_string(status.readyCount).c_str(), EDITOR::EditorStatusTone::Ready);
+        ImGui::TableNextColumn();
+        ImGui::TextDisabled("%s", TEXT::Localize("ui.lightingBake.dirty").c_str());
+        EDITOR::StatusBadge(std::to_string(status.dirtyCount).c_str(), status.dirtyCount == 0u
+                                                                           ? EDITOR::EditorStatusTone::Ready
+                                                                           : EDITOR::EditorStatusTone::Warning);
+        ImGui::EndTable();
+    }
+
+    ImGui::Spacing();
+    EDITOR::LIGHTING_BAKE_PANEL::DrawWorkflowSummary(status, palette);
+
+    ImGui::Spacing();
+    if (bakeBusy || !status.valid) {
+        ImGui::BeginDisabled();
+    }
+    if (EDITOR::IconTextButton(EDITOR::EditorGlyph::Bake,
+                               status.dirtyCount == 0u ? TEXT::Localize("ui.lightingBake.upToDate").c_str()
+                                                       : TEXT::Localize("ui.lightingBake.bakeDirty").c_str(),
+                               "LightingBakeDirty", EDITOR::EditorButtonTone::Primary, ImVec2(150.0f, 32.0f),
+                               TEXT::Localize("ui.lightingBake.bakeDirtyTooltip").c_str())) {
+        lastReport_ = service.BakeDirtyLighting(scene);
+        hasReport_ = true;
+        statusRefreshRequested_ = true;
+    }
+    ImGui::SameLine();
+    if (EDITOR::IconTextButton(EDITOR::EditorGlyph::Focus, TEXT::Localize("ui.lightingBake.bakeSelected").c_str(),
+                               "LightingBakeSelected", EDITOR::EditorButtonTone::Neutral, ImVec2(150.0f, 32.0f),
+                               TEXT::Localize("ui.lightingBake.bakeSelectedTooltip").c_str())) {
+        lastReport_ = service.BakeSelectedLighting(scene);
+        hasReport_ = true;
+        statusRefreshRequested_ = true;
+    }
+    ImGui::SameLine();
+    if (EDITOR::IconTextButton(EDITOR::EditorGlyph::Refresh, TEXT::Localize("ui.lightingBake.bakeAll").c_str(),
+                               "LightingBakeAll", EDITOR::EditorButtonTone::Quiet, ImVec2(120.0f, 32.0f),
+                               TEXT::Localize("ui.lightingBake.bakeAllTooltip").c_str())) {
+        lastReport_ = service.BakeAllLighting(scene);
+        hasReport_ = true;
+        statusRefreshRequested_ = true;
+    }
+    if (bakeBusy || !status.valid) {
+        ImGui::EndDisabled();
+    }
+
+    if (scene.HasLastLightingBakeReport()) {
+        lastReport_ = scene.GetLastLightingBakeReport();
+        hasReport_ = true;
+    }
+    if (hasReport_ && !lastReport_.errors.empty()) {
+        ImGui::PushStyleColor(ImGuiCol_Text, palette.error);
+        ImGui::TextWrapped("%s", lastReport_.errors.front().c_str());
+        ImGui::PopStyleColor();
+    }
+    if (bakeBusy && hasReport_) {
+        const float progress = ResolveProgress(lastReport_);
+        const std::string label =
+            lastReport_.currentItemName.empty()
+                ? std::string(TOOLS::BAKING::ToString(lastReport_.jobState))
+                : lastReport_.currentItemName + " - " + TOOLS::BAKING::ToString(lastReport_.jobState);
+        ImGui::ProgressBar(progress, ImVec2(-1.0f, 0.0f), label.c_str());
+    }
+
+    ImGui::Spacing();
+    ImGui::SeparatorText(TEXT::Localize("ui.lightingBake.lightingObjectsSection").c_str());
+    if (status.items.empty()) {
+        EDITOR::EmptyState(TEXT::Localize("ui.lightingBake.emptyTitle").c_str(),
+                           TEXT::Localize("ui.lightingBake.emptyHint").c_str());
+    } else if (ImGui::BeginTable("LightingBakeItems", 4,
+                                 ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH |
+                                     ImGuiTableFlags_SizingStretchProp)) {
+        ImGui::TableSetupColumn(TEXT::Localize("ui.lightingBake.tableType").c_str(), ImGuiTableColumnFlags_WidthFixed,
+                                42.0f);
+        ImGui::TableSetupColumn(TEXT::Localize("ui.lightingBake.tableName").c_str());
+        ImGui::TableSetupColumn(TEXT::Localize("ui.lightingBake.tableState").c_str(), ImGuiTableColumnFlags_WidthFixed,
+                                76.0f);
+        ImGui::TableSetupColumn(TEXT::Localize("ui.lightingBake.tableReason").c_str());
+        ImGui::TableHeadersRow();
+        for (const TOOLS::BAKING::LightingBakeItemStatus& item : status.items) {
+            ImGui::PushID(static_cast<int>(item.objectId));
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            DrawInlineGlyph(ItemGlyph(item.kind), item.enabled ? palette.accent : palette.textMuted);
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(item.name.c_str());
+            ImGui::TableNextColumn();
+            if (!item.enabled) {
+                EDITOR::StatusBadge(TEXT::Localize("ui.lightingBake.disabled").c_str(),
+                                    EDITOR::EditorStatusTone::Normal);
+            } else if (item.dirty) {
+                EDITOR::StatusBadge(TEXT::Localize("ui.lightingBake.dirtyBadge").c_str(),
+                                    EDITOR::EditorStatusTone::Warning);
+            } else {
+                EDITOR::StatusBadge(TEXT::Localize("ui.lightingBake.readyBadge").c_str(),
+                                    EDITOR::EditorStatusTone::Ready);
+            }
+            ImGui::TableNextColumn();
+            ImGui::TextDisabled("%s", item.dirtyReason.c_str());
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+
+    ImGui::Spacing();
+    if (ImGui::CollapsingHeader(TEXT::Localize("ui.lightingBake.diagnosticsOutput").c_str(),
+                                ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (hasReport_) {
+            ImGui::Text(TEXT::Localize("ui.lightingBake.jobFormat").c_str(),
+                        TOOLS::BAKING::ToString(lastReport_.jobState));
+            ImGui::SameLine();
+            ImGui::TextDisabled(TEXT::Localize("ui.lightingBake.completeFormat").c_str(),
+                                lastReport_.completedItemCount, lastReport_.bakeItemCount, lastReport_.reusedItemCount);
+            DrawLines(TEXT::Localize("ui.lightingBake.dirtyReasons").c_str(), lastReport_.dirtyReasons,
+                      palette.warning);
+            DrawLines(TEXT::Localize("ui.lightingBake.warnings").c_str(), lastReport_.warnings, palette.warning);
+            DrawLines(TEXT::Localize("ui.lightingBake.errors").c_str(), lastReport_.errors, palette.error);
+            DrawLines(TEXT::Localize("ui.lightingBake.messages").c_str(), lastReport_.messages, palette.textMuted);
+        } else {
+            ImGui::TextDisabled("%s", TEXT::Localize("ui.lightingBake.noBakeAction").c_str());
+        }
+        for (const std::string& warning : status.warnings) {
+            ImGui::TextColored(palette.warning, "%s", warning.c_str());
+        }
+        ImGui::TextWrapped(TEXT::Localize("ui.lightingBake.outputFormat").c_str(), bakeRoot.generic_string().c_str());
+        if (EDITOR::IconTextButton(EDITOR::EditorGlyph::Folder, TEXT::Localize("ui.lightingBake.openOutput").c_str(),
+                                   "LightingBakeOpenOutput", EDITOR::EditorButtonTone::Quiet)) {
+            if (!OpenFolder(bakeRoot, lastOpenFolderMessage_)) {
+                HIKARI_LOG_WARN("[LightingBake] " + lastOpenFolderMessage_);
+            }
+        }
+        ImGui::SameLine();
+        if (EDITOR::IconTextButton(EDITOR::EditorGlyph::Delete, TEXT::Localize("ui.lightingBake.clearOutputs").c_str(),
+                                   "LightingBakeClear", EDITOR::EditorButtonTone::Danger)) {
+            lastReport_ = service.ClearLightingBake(request);
+            hasReport_ = true;
+            scene.RefreshLightingRuntime();
+            statusRefreshRequested_ = true;
+        }
+        if (!lastOpenFolderMessage_.empty()) {
+            ImGui::TextDisabled("%s", lastOpenFolderMessage_.c_str());
+        }
+    }
+
+    wasBakeBusy_ = bakeBusy;
+    ImGui::End();
+#else
+    (void)scene;
+    (void)open;
+#endif
+}
 
 } // namespace HIKARI

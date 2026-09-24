@@ -8,26 +8,22 @@
 
 namespace HIKARI {
 
-    class AssetDatabase;
-    struct SceneDocument;
+class AssetDatabase;
+struct SceneDocument;
 
-    struct AssetMissingReference {
-        std::string assetId{};
-        std::string owner{};
-        std::string role{};
-    };
+struct AssetMissingReference {
+    std::string assetId{};
+    std::string owner{};
+    std::string role{};
+};
 
-    struct AssetUsageSummary {
-        std::unordered_set<std::string> usedGuids{};
-        std::vector<AssetMissingReference> missingReferences{};
+struct AssetUsageSummary {
+    std::unordered_set<std::string> usedGuids{};
+    std::vector<AssetMissingReference> missingReferences{};
 
-        bool IsUsed(const AssetGuid& guid) const {
-            return guid.IsValid() && usedGuids.find(guid.value) != usedGuids.end();
-        }
-    };
+    bool IsUsed(const AssetGuid& guid) const { return guid.IsValid() && usedGuids.find(guid.value) != usedGuids.end(); }
+};
 
-    AssetUsageSummary AnalyzeAssetUsage(
-        const SceneDocument& document,
-        const AssetDatabase& assetDatabase);
+AssetUsageSummary AnalyzeAssetUsage(const SceneDocument& document, const AssetDatabase& assetDatabase);
 
 } // namespace HIKARI

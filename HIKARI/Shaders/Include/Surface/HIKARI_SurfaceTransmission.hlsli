@@ -3,18 +3,6 @@
 
 #include "Include/Surface/HIKARI_ScreenSpaceGeometry.hlsli"
 
-float3 HikariReferenceTransmittance(
-    float3 transmittanceAtReferenceDistance,
-    float referenceDistance,
-    float distance)
-{
-    const float exponent =
-        max(distance, 0.0f) / max(referenceDistance, 1.0e-4f);
-    return pow(
-        clamp(transmittanceAtReferenceDistance, 1.0e-4f, 1.0f),
-        exponent.xxx);
-}
-
 float HikariScreenEdgeConfidence(
     float2 uv,
     float2 inverseScreenSize,

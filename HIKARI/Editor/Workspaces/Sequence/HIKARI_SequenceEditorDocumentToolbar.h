@@ -15,24 +15,22 @@ namespace EDITOR {
 class SequenceEditorDocumentController;
 
 struct SequenceEditorDocumentToolbarResult {
-  bool toggleLibraryRequested = false;
-  bool saveEmbeddedSceneRequested = false;
-  bool revealAssetRequested = false;
-  AssetGuid revealAssetGuid{};
-  std::filesystem::path revealAssetPath{};
-  std::string statusMessage{};
+    bool toggleLibraryRequested = false;
+    bool saveEmbeddedSceneRequested = false;
+    bool revealAssetRequested = false;
+    AssetGuid revealAssetGuid{};
+    std::filesystem::path revealAssetPath{};
+    std::string statusMessage{};
 };
 
 class SequenceEditorDocumentToolbar {
 public:
-  SequenceEditorDocumentToolbarResult
-  Draw(SequenceEditorDocumentController &controller,
-       AssetDatabase &assetDatabase, const CinematicSequence *activeSequence,
-       const std::string &sceneDisplayName, bool libraryVisible,
-       bool actionsAllowed) const;
-  void DrawPendingConfirmation(SequenceEditorDocumentController &controller,
-                               AssetDatabase &assetDatabase,
-                               std::string &inOutStatusMessage) const;
+    SequenceEditorDocumentToolbarResult Draw(SequenceEditorDocumentController& controller, AssetDatabase& assetDatabase,
+                                             const CinematicSequence* activeSequence,
+                                             const std::string& sceneDisplayName, bool libraryVisible,
+                                             bool actionsAllowed) const;
+    void DrawPendingConfirmation(SequenceEditorDocumentController& controller, AssetDatabase& assetDatabase,
+                                 std::string& inOutStatusMessage) const;
 };
 
 } // namespace EDITOR

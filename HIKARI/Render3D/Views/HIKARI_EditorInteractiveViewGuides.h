@@ -6,16 +6,13 @@
 
 namespace HIKARI::RENDER3D::EDITORVIEW {
 
-    struct EditorInteractiveViewRequest;
+struct EditorInteractiveViewRequest;
 
-    namespace INTERNAL {
+namespace INTERNAL {
 
-        void RenderGuideOverlay(
-            const EditorInteractiveViewRequest& request,
-            uint32_t width,
-            uint32_t height);
+void RenderGuideOverlay(const EditorInteractiveViewRequest& request, uint32_t width, uint32_t height);
 
-    } // namespace INTERNAL
+} // namespace INTERNAL
 
 } // namespace HIKARI::RENDER3D::EDITORVIEW
 

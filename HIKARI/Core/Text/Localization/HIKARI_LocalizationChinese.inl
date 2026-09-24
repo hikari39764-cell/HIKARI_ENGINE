@@ -47,7 +47,6 @@
         { "material.preview.live", "预览已更新" },
         { "material.preview.invalid", "修复节点图错误后更新预览" },
         { "material.preview.pending", "等待更新预览" },
-        { "material.inspector.parameters", "节点参数" },
         { "material.inspector.advanced", "技术详情" },
         { "material.inspector.select", "选择节点以编辑参数。" },
         { "material.inspector.connections", "输入与连接" },
@@ -177,15 +176,11 @@
         { "ai.task.takeover", "查看草稿" },
         { "vfx.templates.complete", "完整模板" },
         { "vfx.templates.modules", "组合模块" },
-        { "ai.sidebar.expand", "展开 AI 助手" },
-        { "ai.sidebar.collapse", "收起 AI 助手" },
         { "ai.status.ready", "就绪" },
         { "ai.welcome.title", "从一个想法开始" },
         { "ai.welcome.detail", "描述想制作的内容，也可以添加参考图。你可以继续编辑，制作任务会在后台进行。" },
-        { "ai.task.result", "操作结果" },
         { "ai.task.stop", "停止" },
         { "ai.image.attach", "添加图片" },
-        { "ai.image.path", "图片文件" },
         { "ai.image.clear", "移除附件" },
         { "ai.image.count", "已添加 %d 张图片" },
         { "ai.image.unavailable", "图片预览暂不可用" },
@@ -210,23 +205,12 @@
         { "ai.chat.assistant", "助手" },
         { "ai.chat.you", "你" },
         { "ai.menu.apiSettings", "API 设置" },
-        { "ai.menu.capabilities", "能力" },
-        { "ai.menu.clearChat", "清空对话" },
-        { "ai.menu.rawJson", "原始 JSON 动作" },
-        { "ai.plan", "执行计划" },
-        { "ai.bridge.token", "本地桥会话令牌" },
-        { "ai.bridge.copyToken", "复制会话令牌" },
         { "ai.raw.fail", "失败" },
         { "ai.raw.ok", "成功" },
         { "ai.raw.run", "运行" },
         { "ai.raw.title", "原始 JSON 动作" },
-        { "ai.reasoning", "思考过程（AI 推理）" },
         { "ai.send", "发送" },
         { "ai.status.noApi", "● 未配置 API Key（只读模式）" },
-        { "ai.status.processing", "● 处理中..." },
-        { "ai.status.thinking", "（思考中）" },
-        { "ai.title", "AI 助手" },
-        { "ai.working", "工作中..." },
         { "menu.aiAssistant", "AI 助手" },
         { "menu.build", "构建" },
         { "menu.project", "项目" },
@@ -273,13 +257,9 @@
         { "menu.workspace.resetActiveLayout", "重置当前布局" },
         { "menu.workspace.scene", "场景" },
         { "settings.language", "语言" },
-        { "settings.language.chinese", "中文" },
-        { "settings.language.english", "英语" },
-        { "settings.language.japanese", "日语" },
         { "settings.aiBridge", "AI 本地桥" },
         { "settings.aiBridge.enable", "仅为本次编辑器会话启用" },
         { "settings.aiBridge.warning", "默认关闭。启用后，所有动作都必须使用 AI 助手窗口中显示的随机会话令牌。" },
-        { "settings.product.note", "设置由所有编辑器工作区共享。" },
         { "settings.title", "编辑器设置" },
         { "ui.projectSession.cancel", "取消" },
         { "ui.projectSession.confirmRebuild", "重新编译并重启" },
@@ -455,9 +435,6 @@
         { "ui.vfx.hierarchy.solo", "独奏" },
         { "ui.vfx.hierarchy.clearSolo", "取消独奏" },
         { "ui.vfx.hierarchy.delete", "删除发射器" },
-        { "ui.vfx.preview.stepFrame", "步进 1 帧" },
-        { "ui.vfx.preview.step10", "步进 10 帧" },
-        { "ui.vfx.preview.focusSelected", "聚焦所选" },        { "ui.assetBrowser.usageUnused", "未使用" },
         { "ui.assetBrowser.usageUsed", "已使用" },
         { "ui.assetInspector.albedo", "反照率" },
         { "ui.assetInspector.ambientOcclusion", "环境光遮蔽" },
@@ -795,10 +772,6 @@
         { "ui.environment.useSkyHorizonForFog", "雾使用天空地平线" },
         { "ui.environment.volumetricFog", "体积雾" },
         { "ui.environment.zenithColor", "天顶颜色" },
-        { "ui.hierarchy.emptyHint", "使用 + 或右键创建一个。" },
-        { "ui.hierarchy.emptyTitle", "没有场景对象" },
-        { "ui.hierarchy.noMatchHint", "换个名字或清空搜索。" },
-        { "ui.hierarchy.noMatchTitle", "没有匹配的对象" },
         { "ui.hierarchy.objects", "%d 个对象" },
         { "ui.hierarchy.objectsFiltered", "%d / %d 个对象" },
         { "ui.hierarchy.search", "层级" },
@@ -1431,7 +1404,6 @@
         { "ui.window.lightingBake", "光照烘焙" },
         { "ui.window.projectFeatures", "项目功能" },
         { "ui.window.quality", "质量" },
-        { "ui.window.resourceWorkspace", "资源工作区" },
         { "ui.window.sceneDocument", "场景文档" },
         { "ui.window.sceneSystems", "场景系统" },
         { "ui.window.sceneWorkspace", "场景工作区" },
@@ -1473,7 +1445,6 @@
         { "ui.inspector.worldText.text", "文字" },
         { "ui.inspector.worldText.textHelp", "显示在 3D 世界空间中的 UTF-8 文字。" },
         { "ui.inspector.worldText.font", "字体资源路径" },
-        { "ui.inspector.worldText.fontHelp", "Fonts 或 Assets 下相对于项目的 .ttf、.otf 或 .ttc 路径。" },
         { "ui.inspector.worldText.layout", "布局" },
         { "ui.inspector.worldText.layoutSize", "布局尺寸" },
         { "ui.inspector.worldText.layoutSizeHelp", "以世界单位设置文字布局的宽度和高度。" },
@@ -1538,13 +1509,6 @@
         { "ui.inspector.model.overrideMaterial", "覆盖材质" },
         { "ui.inspector.model.restoreImported", "恢复导入" },
         { "ui.inspector.model.proceduralMaterial", "程序化材质" },
-        { "ui.inspector.model.proceduralMaterialHint", "默认使用程序化棋盘格；替换后点击“恢复导入”可回到棋盘格" },
-        { "ui.inspector.model.proceduralMaterialMode", "材质模式" },
-        { "ui.inspector.model.proceduralMaterialChecker", "棋盘格（调试）" },
-        { "ui.inspector.model.proceduralMaterialWhite", "默认白色" },
-        { "ui.inspector.model.proceduralMaterialCustom", "自定义材质" },
-        { "ui.inspector.model.proceduralMaterialWhiteHint", "纯白材质；之后可以再替换成你自己的材质。" },
-        { "ui.inspector.procedural.materialEntryHint", "材质：在程序化网格组件中选择" },
         { "ui.inspector.procedural.material", "材质" },
         { "ui.inspector.procedural.materialNone", "无（默认白色）" },
         { "ui.inspector.procedural.materialChecker", "棋盘格（调试）" },
@@ -1609,7 +1573,6 @@
         { "ui.materialGraph.collapseNode", "折叠节点" },
         { "ui.materialGraph.expandNode", "展开节点" },
         { "ui.materialGraph.surfaceOutputRoot", "Surface Output 是材质必需的根节点" },
-        { "ui.materialGraph.dragHint", "拖拽端口连线/改线 | 点击连线选中 | Del 删除" },
         { "ui.asm.menu.file", "文件" },
         { "ui.asm.menu.new", "新建状态机" },
         { "ui.asm.menu.openAsset", "打开资产" },
@@ -1633,10 +1596,6 @@
         { "ui.asm.menu.undoTooltip", "撤销 (Ctrl+Z)" },
         { "ui.asm.menu.redoTooltip", "重做 (Ctrl+Y)" },
         { "ui.asm.menu.frameAllTooltip", "显示全部状态 (Home)" },
-        { "ui.viewport.terrain.raise", "地形抬升" },
-        { "ui.viewport.terrain.lower", "地形下压" },
-        { "ui.viewport.terrain.smooth", "地形平滑" },
-        { "ui.viewport.terrain.flatten", "地形整平" },
         { "menu.workspace.terrainSurface", "地形地表" },
         { "ui.terrain.tools", "地形工具" },
         { "ui.terrain.presets", "预设" },
@@ -1650,21 +1609,14 @@
         { "ui.terrain.edgeDepth", "边缘深度" },
         { "ui.terrain.wetness", "湿润度" },
         { "ui.terrain.surfacePresets", "地表预设" },
-        { "ui.terrain.waterPresets", "水面预设" },
         { "ui.terrain.sand", "沙" },
         { "ui.terrain.snow", "雪" },
         { "ui.terrain.dirt", "泥" },
         { "ui.terrain.grass", "草" },
         { "ui.terrain.rock", "岩石" },
-        { "ui.terrain.animeWater", "动画水面" },
-        { "ui.terrain.realisticWater", "写实水面" },
-        { "ui.terrain.noWater", "无水" },
         { "ui.terrain.paintPreset", "预设画笔" },
         { "ui.terrain.none", "无" },
-        { "ui.terrain.water", "水" },
         { "ui.terrain.erase", "擦除" },
-        { "ui.terrain.mound", "堆起" },
-        { "ui.terrain.pit", "挖坑" },
         { "ui.terrain.brush", "笔刷" },
         { "ui.terrain.objects", "地形对象" },
         { "ui.terrain.selectTerrain", "请选择一个地形对象" },
@@ -1894,7 +1846,6 @@
         { "ui.vfx.effects.stage.2", "贴图拖尾" },
         { "ui.vfx.effects.stage.3", "贴图径向模糊" },
         { "ui.vfx.effects.stage.4", "颜色、透明度与发光" },
-        { "ui.vfx.view.layerCount", "%zu 个预览图层" },
         { "ui.vfx.hud.stopped", "停止" },
         { "ui.vfx.hud.paused", "暂停" },
         { "ui.vfx.hud.playing", "播放" },
@@ -2331,7 +2282,6 @@
         { "ui.vfx.view.autoKey", "自动关键帧" },
         { "ui.vfx.view.editModeHelp", "关闭：基础摆放，整体移动动画。开启：编辑当前时刻并记录关键帧。W/E/R 变换，X 切换空间，F 聚焦。" },
         { "ui.vfx.view.path", "运动路径" },
-        { "ui.vfx.view.handles", "形状手柄" },
         { "ui.vfx.text.Inner Radius", "内半径" },
         { "ui.vfx.text.Outer Radius", "外半径" },
         { "ui.vfx.text.Start Angle", "起始角度" },
@@ -2599,8 +2549,6 @@
     { "cine.shotFromView", "从此视角创建镜头" },
     { "cine.value", "值" },
     { "cine.roll", "倾斜" },
-    { "cine.tangentIn", "入切线" },
-    { "cine.tangentOut", "出切线" },
     { "cine.createShot", "创建镜头" },
     { "cine.deleteClip", "删除片段" },
     { "cine.refreshSound", "刷新声音素材" },
@@ -2608,7 +2556,6 @@
     { "cine.addPose", "在当前时间添加姿态关键帧" },
     { "cine.baseLook", "基础画面 · 覆盖场景参数" },
     { "cine.sound", "声音" },
-    { "cine.poseTime", "姿态 %.2f s" },
     { "cine.presets", "完整演出" },
     { "cine.bindings", "对象绑定" },
     { "cine.inspector", "属性与效果" },
@@ -2628,7 +2575,6 @@
     { "cine.blendWeight", "混合权重" },
     { "cine.addBinding", "添加对象槽" },
     { "cine.addEffect", "添加效果" },
-    { "cine.addMotion", "添加运动" },
     { "cine.sequence", "演出" },
     { "cine.timeline", "演出时间轴" },
     { "cine.sequenceFx", "演出画面效果" },
@@ -2637,8 +2583,6 @@
     { "cine.screenFx", "画面效果" },
     { "cine.fadeHint", "画面淡入淡出使用画面效果片段。" },
     { "cine.lookAt", "看向" },
-    { "cine.easeOut", "离开速度" },
-    { "cine.seconds", "秒" },
     { "cine.stage", "空间编辑" },
     { "cine.linear", "等速" },
     { "cine.assets", "素材" },
@@ -2648,7 +2592,6 @@
     { "cine.blendDuration", "过渡时间" },
     { "cine.motionChain", "运动效果链" },
     { "cine.requiredRuntime", "运行时必须提供" },
-    { "cine.easeIn", "进入速度" },
     { "cine.shot", "镜头" },
     { "cine.shotDuration", "镜头时长" },
     { "cine.shotFx", "镜头画面效果" },
@@ -2733,15 +2676,12 @@
     { "editor.ui.ramp.resource.3cfd9d", "+ 渐变资源" },
     { "editor.ui.shape.bdf0e8", "+ 形状" },
     { "editor.ui.texture.resource.93d8ae", "+ 纹理资源" },
-    { "editor.moreSearch", "...（更多结果请输入更精确的关键词）" },
     { "editor.ui.0.npr.endpoint.1.pbr.endpoint.ef4a45", "0 = NPR 端点 | 1 = PBR 端点" },
     { "editor.ui.affected.by.9caebf", "受以下节点影响" },
     { "editor.ui.active.shape.is.locked.26c7ed", "活动形状已锁定" },
     { "editor.ui.add.point.f353ad", "添加点" },
     { "editor.ui.add.ramp.point.43d5d9", "添加渐变点" },
-    { "editor.ui.add.node.at.cursor.24da70", "在光标处添加节点" },
     { "editor.ui.advanced.asset.actions.e5ed94", "高级资源操作" },
-    { "editor.ui.advanced.node.details.df5635", "高级节点详情" },
     { "editor.ui.advanced.part.binding.f0dacd", "高级部件绑定" },
     { "editor.ui.alt.lmb.orbit.51038c", "Alt + 左键       环绕" },
     { "editor.ui.apply.draft.b63f82", "应用草稿" },
@@ -2781,7 +2721,6 @@
     { "editor.ui.duplicate.selected.74ac9f", "复制选中内容" },
     { "editor.ui.editing.model.part.bc0abd", "正在编辑模型部件" },
     { "editor.ui.edit.ramp.6de413", "编辑渐变" },
-    { "editor.ui.edit.values.and.resources.directly.on.the.node.card.5420fc", "直接在节点卡片上编辑数值和资源。" },
     { "editor.ui.environment.presets.3b220a", "环境预设" },
     { "editor.ui.environment.s.e9b433", "环境：%s" },
     { "editor.ui.every.committed.control.refreshes.runtime.bindings.f10e6d", "提交参数修改后，运行时绑定会同步刷新。" },
@@ -2796,7 +2735,6 @@
     { "editor.ui.generated.from.d.source.part.s.s.a0ef14", "由 %d 个源部件生成 | %s" },
     { "editor.ui.generated.only.42a4d1", "仅自动生成的形状" },
     { "editor.ui.generation.draft.ready.269f1c", "生成草稿已就绪" },
-    { "editor.ui.graph.selection.3ec836", "图中选项" },
     { "editor.ui.height.3f608b", "高度" },
     { "editor.ui.hide.all.556020", "全部隐藏" },
     { "editor.ui.hide.selected.c01d1a", "隐藏选中内容" },
@@ -2841,7 +2779,6 @@
     { "editor.ui.no.map.uses.mesh.tangent.rg.flow.and.a.shift.specialize.it.945f54", "无纹理时使用网格切线；RG 控制流向，A 控制偏移。" },
     { "editor.ui.no.model.assets.are.registered.255b81", "没有已注册的模型资源" },
     { "editor.ui.no.model.loaded.bdddc1", "没有加载模型。" },
-    { "editor.ui.node.contract.e5f8d9", "节点约定" },
     { "editor.ui.node.owned.authoring.b47942", "在节点内编辑" },
     { "editor.ui.not.evaluated.current.graph.does.not.compile.238dc7", "未计算：当前图无法编译。" },
     { "editor.ui.open.a.material.before.creating.an.instance.bb3495", "请先打开材质，再创建实例。" },
@@ -2909,8 +2846,6 @@
     { "editor.ui.select.filtered.2b2f4e", "选择筛选结果" },
     { "editor.ui.select.visible.9f78ea", "选择可见内容" },
     { "editor.ui.select.a.light.here.or.click.its.viewport.icon.6868f7", "在此选择灯光，或点击视图中的灯光图标。" },
-    { "editor.ui.select.a.node.or.connection.in.the.graph.2e4f2d", "选择图中的节点或连线。" },
-    { "editor.ui.select.a.node.its.authoring.controls.stay.on.the.graph.card.5e582f", "选择节点后，可在节点卡片上编辑。" },
     { "editor.ui.select.or.add.a.collision.shape.f49c19", "选择或添加碰撞形状。" },
     { "editor.ui.selected.dim.context.1d83e6", "选中内容 + 淡化背景" },
     { "editor.ui.selected.connection.b1be4d", "选中的连线" },
@@ -2926,7 +2861,6 @@
     { "editor.ui.sky.rotation.ee7e3f", "天空旋转" },
     { "editor.ui.source.color.6d2042", "源颜色" },
     { "editor.ui.source.model.acf996", "源模型" },
-    { "editor.ui.source.revision.llu.compiled.revision.llu.a20b7e", "源版本 %llu | 编译版本 %llu" },
     { "editor.ui.stable.slotid.s.b972aa", "稳定槽位 ID：%s" },
     { "editor.ui.standalone.material.f1ffe4", "独立材质" },
     { "editor.ui.static.bodies.only.4f1004", "仅静态物体" },
@@ -2949,7 +2883,6 @@
     { "editor.ui.unsaved.model.collision.changes.72d305", "未保存的模型碰撞修改" },
     { "editor.ui.unsaved.binding.edits.de2eb6", "未保存的绑定修改" },
     { "editor.ui.unsaved.set.edits.will.be.discarded.cbfee0", "未保存的集合修改将被丢弃。" },
-    { "editor.ui.unsupported.inherited.type.0e4d03", "不支持的继承类型" },
     { "editor.ui.use.surface.output.blend.straight.for.png.art.efb36d", "PNG 图片请使用表面输出：Blend + Straight。" },
     { "editor.ui.use.texture.sample.nodes.for.every.image.input.3c4ba8", "各图像输入请使用纹理采样节点。" },
     { "editor.ui.use.the.rotate.gizmo.in.the.viewport.to.aim.this.light.2c784d", "使用视图中的旋转手柄调整灯光方向。" },
@@ -2985,7 +2918,6 @@
     { "editor.ui.back.to.scene.0e730f", "返回场景" },
     { "editor.ui.background.game.view.e8990a", "背景游戏画面" },
     { "editor.ui.bind.selected.to.next.step.567a41", "将选中内容绑定到下一步" },
-    { "editor.ui.body.size.61b95f", "正文大小" },
     { "editor.ui.browse.2f3b5c", "浏览" },
     { "editor.ui.built.in.vfx.unlit.d589ac", "内置 VFX 无光照材质" },
     { "editor.ui.choice.step.1e8d95", "选项步骤" },
@@ -2996,11 +2928,8 @@
     { "editor.ui.character.ee9946", "角色" },
     { "editor.ui.character.name.c0a090", "角色名" },
     { "editor.ui.choice.0682be", "选项" },
-    { "editor.ui.choice.size.ae6b83", "选项大小" },
     { "editor.ui.choice.text.a9c015", "选项文本" },
     { "editor.ui.continue.prompt.fc9ef9", "继续提示" },
-    { "editor.ui.create.hikari.project.1b0757", "创建 HIKARI 项目" },
-    { "editor.ui.create.project.1cab44", "创建项目" },
     { "editor.ui.create.vfx.asset.205bef", "创建特效资源" },
     { "editor.ui.create.and.open.f53899", "创建并打开" },
     { "editor.ui.credits.license.402861", "署名 / 许可证" },
@@ -3024,37 +2953,24 @@
     { "editor.ui.entry.slide.dc2e87", "入场滑动" },
     { "editor.ui.event.signal.58ef83", "事件信号" },
     { "editor.ui.focus.blend.bfb55a", "焦点混合" },
-    { "editor.ui.font.b97c4d", "字体" },
-    { "editor.ui.glow.size.f2e05b", "辉光大小" },
-    { "editor.ui.glow.strength.24792c", "辉光强度" },
-    { "editor.ui.hikari.project.hub.c9bc1b", "HIKARI 项目中心" },
     { "editor.ui.input.b568d4", "输入" },
     { "editor.ui.line.step.a1ebff", "台词步骤" },
     { "editor.ui.live.preview.s.8878fb", "实时预览  %s" },
     { "editor.ui.layer.id.s.e916c5", "图层 ID：%s" },
     { "editor.ui.left.slot.aa2913", "左侧槽位" },
-    { "editor.ui.letter.spacing.71ae71", "字间距" },
     { "editor.ui.line.ea9676", "台词" },
-    { "editor.ui.line.height.65be51", "行高" },
     { "editor.ui.live.portrait.preview.ready.61a06d", "立绘实时预览已就绪" },
     { "editor.ui.location.d219c6", "位置" },
-    { "editor.ui.log.s.40c841", "日志：%s" },
     { "editor.ui.mirror.horizontally.3b5ec9", "水平镜像" },
     { "editor.ui.no.story.step.selected.b5c5a3", "未选择剧情步骤" },
-    { "editor.ui.name.size.ef6b3b", "姓名大小" },
     { "editor.ui.narration.no.portrait.bec1a6", "旁白 / 无立绘" },
     { "editor.ui.new.dialogue.event.5e0581", "新建对话事件" },
-    { "editor.ui.new.gameproject.3af1fe", "新建游戏项目" },
     { "editor.ui.no.matching.dialogue.assets.5b559b", "没有匹配的对话资源" },
-    { "editor.ui.no.matching.font.in.assets.7f6a64", "Assets 中没有匹配的字体" },
     { "editor.ui.no.portrait.assigned.the.canvas.will.show.dialogue.without.a.cha.41b3b8", "未指定立绘，画布将显示没有角色图像的对话。" },
-    { "editor.ui.no.recent.projects.e93ab1", "暂无最近使用的项目" },
     { "editor.ui.offset.ce6677", "偏移" },
     { "editor.ui.open.cf9b77", "打开" },
     { "editor.ui.open.project.68e7c2", "打开项目" },
     { "editor.ui.open.an.existing.dialogue.asset.above.or.create.a.new.event.44bf96", "打开上方已有的对话资源，或创建新事件。" },
-    { "editor.ui.outline.thickness.e7aab6", "描边粗细" },
-    { "editor.ui.project.hub.f42605", "项目中心" },
     { "editor.ui.package.id.7db680", "包 ID" },
     { "editor.ui.panel.entrance.9ed47b", "面板入场" },
     { "editor.ui.playback.options.75eab2", "播放选项" },
@@ -3076,8 +2992,6 @@
     { "editor.ui.prompt.pulse.scale.b621a2", "提示脉冲缩放" },
     { "editor.ui.prompt.scale.15563f", "提示缩放" },
     { "editor.ui.property.9ae33a", "属性" },
-    { "editor.ui.quick.start.455083", "快速开始" },
-    { "editor.ui.recent.projects.901c6d", "最近的项目" },
     { "editor.ui.reference.canvas.29bf4e", "参考画布" },
     { "editor.ui.remove.character.076063", "移除角色" },
     { "editor.ui.remove.step.9fcbf9", "移除步骤" },
@@ -3090,10 +3004,6 @@
     { "editor.ui.style.workflow.8f19d1", "样式编辑" },
     { "editor.ui.save.changes.to.s.before.opening.s.dfecf2", "保存“%s”的修改后打开“%s”？" },
     { "editor.ui.select.an.outline.to.move.it.drag.its.lower.right.handle.to.resi.81f6b1", "选择轮廓进行移动；拖动右下角手柄调整大小" },
-    { "editor.ui.shadow.and.glow.84bc9d", "阴影与辉光" },
-    { "editor.ui.shadow.offset.2d8a71", "阴影偏移" },
-    { "editor.ui.shared.engine.build.72e529", "共享引擎构建" },
-    { "editor.ui.spacing.2acbb3", "间距" },
     { "editor.ui.speaker.7c23b0", "说话者" },
     { "editor.ui.stable.id.s.f22a81", "稳定 ID：%s" },
     { "editor.ui.step.type.5dd37b", "步骤类型" },
@@ -3105,7 +3015,6 @@
     { "editor.ui.the.center.canvas.updates.while.you.adjust.this.character.aec428", "调整角色时，中间画布会同步更新。" },
     { "editor.ui.the.current.vfx.source.compiles.without.diagnostics.ffd1e4", "当前特效源码编译成功，没有诊断问题。" },
     { "editor.ui.the.current.document.has.unsaved.changes.5d061d", "当前文档有未保存的修改。" },
-    { "editor.ui.use.a.cjk.capable.ttf.otf.or.ttc.for.japanese.and.chinese.a4b049", "中日文请使用支持 CJK 的 TTF、OTF 或 TTC 字体。" },
 
     { "editor.ui.binding.s.79a318", "  绑定：%s" },
     { "editor.ui.runtime.s.420339", "  运行时：%s" },
@@ -3308,7 +3217,6 @@
     { "editor.ui.refresh.scenes.335537", "刷新场景" },
     { "editor.ui.release.the.previous.control.then.press.s.623510", "松开上一个按键，然后按下 %s…" },
     { "editor.ui.remove.component.b0b011", "移除组件" },
-    { "editor.ui.rename.d3f4cb", "重命名" },
     { "editor.ui.rename.object.0c3276", "重命名对象" },
     { "editor.ui.render.path.e693f1", "渲染路径" },
     { "editor.ui.render.submission.system.5fa68c", "渲染提交系统" },
@@ -3428,7 +3336,6 @@
     { "editor.dissolveFolder", "解散文件夹（保留内容）" },
     { "editor.folderName", "文件夹名称" },
     { "editor.selectContents", "选择其中的全部对象" },
-    { "editor.reload", "重新加载" },
     { "editor.rename", "重命名" },
     { "editor.revertChanges", "还原修改" },
     { "editor.newChildFolder", "新建子文件夹" },
@@ -3439,7 +3346,6 @@
     { "editor.copyDiagnostics", "复制诊断结果" },
     { "editor.folderSelection", "将选中对象放入此处" },
 
-    { "editor.ui.a.graph.connection.is.selected.delete.or.rewire.it.in.the.graph..f74375", "已选中连线，可在图工具栏或画布中删除或重新连接。" },
     { "editor.ui.add.a.character.from.the.left.panel.names.and.portraits.register.88e7d9", "从左侧添加角色；在此注册的名称和立绘可用于所有对话事件。" },
     { "editor.ui.camera.state.is.kept.per.model.and.per.workspace.for.this.editor.c218f9", "本次编辑会话会按模型和工作区分别保留摄像机状态。" },
     { "editor.ui.choice.panel.33406a", "选项面板" },
@@ -3453,7 +3359,6 @@
     { "editor.ui.create.a.studio.point.or.directional.light.92f898", "创建摄影棚点光源或平行光" },
     { "editor.ui.create.a.lightweight.instance.that.inherits.this.material.and.on.3b9f89", "创建继承此材质的轻量实例，只保存指定参数或资源的覆盖。" },
     { "editor.ui.create.or.open.one.material.asset.surface.materials.use.the.neut.17e19e", "创建或打开材质资源。表面材质以中性球体预览，可分配给模型部件；粒子材质在特效工作区预览和分配。" },
-    { "editor.ui.create.build.and.open.game.projects.against.one.shared.engine.in.6af7e2", "使用同一份引擎安装创建、构建和打开游戏项目。" },
     { "editor.ui.delete.selected.parameter.55f05d", "删除选中参数" },
     { "editor.ui.delete.selected.runtime.binding.ff5eec", "删除选中的运行时绑定" },
     { "editor.ui.delete.selected.transition.03ba0c", "删除选中过渡" },
@@ -3462,7 +3367,6 @@
     { "editor.ui.edit.collision.shapes.e5a971", "编辑碰撞形状" },
     { "editor.ui.edit.the.curve.and.colors.in.the.ramp.tab.then.select.this.ramp..8a7644", "在渐变页编辑曲线与颜色，再从 Ramp Diffuse 或 Multi Ramp 节点选择此渐变。" },
     { "editor.ui.edit.the.selected.story.step.here.the.center.preview.uses.the.sa.35ee76", "在此编辑选中的剧情步骤；中央预览与运行时使用相同的项目样式和角色信息。" },
-    { "editor.ui.edit.values.images.ramp.assets.and.node.modes.directly.on.the.ca.b17de2", "在节点卡片上编辑数值、图片、渐变和模式；本面板显示节点说明与诊断。" },
     { "editor.ui.emit.a.named.event.then.continue.trigger.sequences.can.wait.for..49174a", "发送指定事件后继续。触发序列可等待对话结束再执行后续动作。" },
     { "editor.ui.exit.collision.setup.and.return.to.the.scene.6221c2", "退出碰撞设置并返回场景" },
     { "editor.ui.expression.budget.u.u.instr.u.u.reg.u.u.values.u.u.params.u.u.re.c635cd", "表达式预算：%u/%u 指令 | %u/%u 寄存器 | %u/%u 数值 | %u/%u 参数 | %u/%u 资源" },
@@ -3485,9 +3389,8 @@
     { "editor.ui.parameter.name.94d788", "参数名" },
     { "editor.ui.pick.source.model.parts.d2d8e0", "选择源模型部件" },
     { "editor.ui.place.and.resize.artwork.directly.on.the.canvas.the.panel.is.tre.43e567", "直接在画布上调整图像位置和大小；面板按完整精灵处理。" },
-    { "editor.ui.projects.keep.their.own.source.assets.and.projectsettings.engine.1ab319", "项目各自保存 Source、Assets 和 ProjectSettings；引擎程序与第三方包保存在 HIKARI 安装目录中。" },
     { "editor.ui.ramp.curves.are.independent.reusable.assets.bind.them.from.a.mat.cd64c7", "渐变曲线是可复用的独立资源，通过材质资源槽绑定使用。" },
-    { "editor.ui.ramp.edits.compile.on.gesture.commit.esc.restores.the.captured.p.debb02", "结束拖动时编译渐变修改；Esc 恢复本次调整前的值，不写入撤销记录。" },
+    { "material.ramp.edit.gestureHint", "拖动时实时预览，松开后记为一步撤销；Esc 恢复本次编辑前的值。" },
     { "editor.ui.redo.runtime.binding.edit.ac6274", "重做运行时绑定修改" },
     { "editor.ui.remove.from.recent.projects.f1a467", "从最近项目中移除" },
     { "editor.ui.reset.the.saved.camera.for.this.model.b1fb04", "重置此模型保存的摄像机状态" },
@@ -3574,7 +3477,7 @@
     { "editor.ui.choice.20d9bc", "选项" },
     { "editor.ui.canvas.artwork.74a94b", "画布与美术" },
     { "editor.ui.characters.b6f59f", "角色" },
-    { "editor.ui.choose.one.project.font.and.author.readable.name.body.and.choice.1524d2", "选择项目字体，设置清晰的姓名、正文与选项样式。" },
+    { "editor.ui.choose.one.project.font.and.author.readable.name.body.and.choice.1524d2", "为角色姓名、对话正文和选项选择可复用的文字样式资产。" },
     { "editor.ui.choose.the.dialogue.name.and.choice.artwork.then.position.it.on..368953", "选择对话框、姓名和选项美术，然后在画布中定位。" },
     { "editor.ui.end.d205ab", "结束" },
     { "editor.ui.line.528a45", "台词" },
@@ -3596,13 +3499,9 @@
     { "editor.workflow.qualityLimits", "质量与限制" },
     { "cine.boundRotation", "朝向由注视目标控制。移动目标以调整构图。" },
     { "editor.workflow.moreTools", "更多工具" },
-    { "editor.workflow.selectedTool", "当前工具" },
 
     { "editor.ui.add.a.state.machine.parameter.106f36", "添加状态机参数" },
     { "editor.ui.add.a.state.transition.ff9e34", "添加状态转换" },
-    { "editor.ui.choose.a.project.workflow.632c48", "选择项目操作" },
-    { "editor.ui.create.a.project.or.open.an.existing.project.hikari.folder.1af1c5", "创建项目或打开已有的 Project.hikari 文件夹。" },
-    { "editor.ui.create.a.small.external.gameproject.dde1f8", "创建独立的游戏项目" },
     { "editor.ui.create.a.variable.or.event.29a9e7", "创建变量或事件" },
     { "editor.ui.delete.this.runtime.binding.definition.096425", "删除此运行时绑定定义" },
     { "editor.ui.editor.authored.slots.that.use.this.stable.id.96ae0f", "使用此固定 ID 的编辑器绑定位置" },
@@ -3616,21 +3515,17 @@
     { "editor.ui.live.values.test.events.and.references.appear.here.acf72b", "此处显示实时值、测试事件和引用。" },
     { "editor.ui.new.material.name.be45f0", "新材质名称" },
     { "editor.ui.project.owned.ids.available.to.components.and.tools.26f74f", "可供组件和工具使用的项目 ID" },
-    { "editor.ui.projects.opened.on.this.machine.886fa2", "本机打开过的项目" },
     { "editor.ui.release.the.editor.writer.without.claiming.a.new.value.02dd52", "解除编辑器覆盖，恢复运行时控制" },
     { "editor.ui.return.to.scene.workspace.364db6", "返回场景工作区" },
     { "editor.ui.runtime.snapshot.and.session.only.preview.override.4d830e", "运行时快照与本次会话的预览覆盖" },
     { "editor.ui.save.projectsettings.runtime.bindings.json.11464d", "保存 ProjectSettings/runtime_bindings.json" },
     { "editor.ui.search.dialogue.assets.82112b", "搜索对话资产" },
-    { "editor.ui.search.ttf.otf.or.ttc.dea4d2", "搜索 TTF、OTF 或 TTC 字体" },
     { "editor.ui.search.effects.and.categories.6fa83b", "搜索效果和分类" },
     { "editor.ui.search.installed.73e507", "搜索已安装项…" },
     { "editor.ui.search.name.path.guid.dc5276", "搜索名称、路径、GUID…" },
     { "editor.ui.search.name.path.or.guid.5b7caf", "搜索名称、路径或 GUID…" },
     { "editor.ui.search.systems.dab49e", "搜索系统…" },
-    { "editor.ui.select.a.folder.containing.project.hikari.e2b375", "选择包含 Project.hikari 的文件夹" },
     { "editor.ui.select.a.variable.or.event.from.the.catalog.72dba2", "从列表选择变量或事件。" },
-    { "editor.ui.the.template.contains.source.assets.and.project.settings.only.95c331", "模板仅包含源码、资产和项目设置。" },
     { "editor.ui.write.through.the.editor.preview.writer.d78567", "通过编辑器预览覆盖写入" },
     { "cine.outputOnly", "作用于演出输出，不影响编辑器界面" },
     { "cine.createFirst", "调整视角，然后创建第一个镜头。" },
@@ -3682,7 +3577,6 @@
 
     { "editor.ui.a.transient.typed.signal.emitted.by.runtime.logic.da0328", "由运行逻辑发出的临时类型化信号" },
     { "editor.ui.a.typed.value.shared.through.stable.binding.slots.203ed5", "通过固定绑定位置共享的类型化数值" },
-    { "editor.ui.cancel.generation.11178f", "取消生成" },
     { "editor.ui.compile.failed.97203d", "编译失败" },
     { "editor.ui.compiled.14878f", "编译完成" },
     { "editor.ui.create.or.open.a.material.asset.from.the.left.panel.266612", "从左侧面板创建或打开材质资产。" },
@@ -3690,7 +3584,6 @@
     { "editor.ui.dialogue.event.has.unsaved.changes.b4dc55", "对话事件有未保存的修改" },
     { "editor.ui.disable.9a7d4e", "禁用" },
     { "editor.ui.disable.snapping.576053", "关闭吸附" },
-    { "editor.ui.discard.and.create.0f59ba", "放弃修改并创建" },
     { "editor.ui.enable.20063a", "启用" },
     { "editor.ui.enable.snapping.8002ed", "启用吸附" },
     { "editor.ui.exit.camera.view.32714d", "退出摄像机视角" },
@@ -3709,7 +3602,6 @@
     { "editor.ui.no.use.was.found.in.the.current.scene.and.loaded.materials.other.ea9fa8", "当前场景和已加载材质中没有引用。项目内的其他场景仍可能使用此固定 ID。" },
     { "editor.ui.preview.pending.e4ceea", "预览等待中" },
     { "editor.ui.preview.ready.8a0295", "预览就绪" },
-    { "editor.ui.ramp.stack.layer.1.77500a", "渐变层叠 / 第 1 层" },
     { "editor.ui.reference.indexing.is.not.connected.yet.1b4c90", "引用索引尚未连接。" },
     { "editor.ui.select.a.model.part.to.edit.its.material.3a7ca7", "选择模型部件以编辑材质。" },
     { "editor.ui.show.collision.shape.21508c", "显示碰撞形状" },
@@ -3721,20 +3613,17 @@
     { "editor.ui.unclaimed.fca0eb", "未接管" },
     { "editor.ui.unlock.1526a1", "解锁" },
     { "editor.ui.unlock.selected.88c853", "解锁选中项" },
-    { "editor.ui.unsaved.edits.0881bf", "未保存的修改" },
     { "editor.ui.use.add.in.the.toolbar.to.create.a.variable.or.event.1cda5c", "使用添加按钮创建变量或事件。" },
     { "editor.ui.use.local.space.22d273", "使用局部坐标" },
     { "editor.ui.use.world.space.8f2d9a", "使用世界坐标" },
     { "editor.ui.view.through.camera.2e4994", "通过摄像机观察" },
     { "editor.folder.create", "创建文件夹" },
     { "editor.folder.rename", "重命名文件夹" },
-    { "editor.change", "更改" },
     { "editor.uncategorized", "未分类" },
 
     { "cine.animatedChannels", "显示已有动画和选中的通道；关闭后显示全部。" },
     { "shell.cancelled", "已取消" },
 
-    { "editor.ui.outline.cdd629", "描边" },
     { "editor.ui.display.name.c7874a", "显示名称" },
     { "editor.ui.stable.character.id.c80fb2", "角色标识" },
     { "editor.ui.speaking.portrait.a7665b", "发言立绘" },
@@ -3788,7 +3677,6 @@
     { "ai.phase.needs_input", "等待你的答复" },
     { "ai.error.incomplete", "调用未完成，已保留执行结果。" },
         { "ai.error.noTool", "模型连续返回说明而没有执行或结束任务。已保留任务，可以继续。" },
-    { "ai.error.previewKept", "已保留草稿；截图链路恢复后可以继续，不需要重新制作。" },
         { "ai.error.budget", "本段执行预算已用完。任务状态与修改已保留，点击“继续任务”可从这里继续。" },
     { "launcher.nameEmpty", "请输入项目名称。" },
     { "launcher.nameInvalid", "项目名称无效。" },
@@ -3857,9 +3745,6 @@
     { "gc.zoomRange", "缩放范围" },
     { "gc.near", "近裁剪面" },
     { "gc.effects", "镜头效果" },
-    { "gc.roll", "倾斜角" },
-    { "gc.shake", "震动强度" },
-    { "gc.frequency", "震动频率" },
     { "gc.speedFov", "速度视野增量" },
     { "gc.speed", "满效果速度" },
     { "gc.advanced", "高级设置" },
@@ -4004,3 +3889,412 @@
     { "cm.copyStack", "复制效果组合" },
     { "cm.pasteStack", "粘贴效果组合" },
     { "cm.invalidStack", "剪贴板中没有兼容的镜头效果组合。" },
+
+    { "uix.workspace", "界面设计" },
+
+    { "uix.textWorkspace", "文字样式" },
+
+    { "uix.library", "元素" },
+
+    { "uix.add", "添加" },
+
+    { "uix.reuse", "保存组合为预制体" },
+
+    { "uix.search", "搜索元素" },
+
+    { "uix.duplicate", "复制" },
+
+    { "uix.delete", "删除" },
+
+
+    { "uix.uiStart", "添加画布或元素，需要时会自动创建画布。" },
+
+    { "uix.canvas", "画布" },
+
+    { "uix.panel", "面板" },
+
+    { "uix.image", "图片" },
+
+    { "uix.button", "按钮" },
+
+    { "uix.sceneButton", "场景切换按钮" },
+
+    { "uix.progress", "进度条" },
+
+    { "uix.row", "横向容器" },
+
+    { "uix.column", "纵向容器" },
+
+    { "uix.grid", "网格容器" },
+
+    { "uix.label", "文本" },
+
+    { "uix.title", "标题" },
+
+    { "uix.caption", "字幕" },
+
+    { "uix.worldText", "三维文字" },
+
+
+    { "uix.save", "保存场景（Ctrl+S）" },
+
+    { "uix.undo", "撤销（Ctrl+Z）" },
+
+    { "uix.redo", "重做（Ctrl+Y）" },
+
+    { "uix.fit", "适应预览（F）" },
+
+    { "uix.snap", "吸附到 8 像素网格" },
+
+    { "uix.play", "运行测试" },
+
+    { "uix.stop", "停止运行" },
+
+    { "uix.inspector", "属性" },
+
+    { "uix.select", "选择一个元素开始编辑。" },
+
+    { "uix.sceneSaved", "随场景保存 · Ctrl+S" },
+
+    { "uix.fontMissing", "请将 TTF／OTF／TTC 字体放入项目 Assets 文件夹，再在下方选择。" },
+
+
+    { "uix.appearance", "外观" },
+
+    { "uix.layout", "布局" },
+
+    { "uix.interaction", "交互" },
+
+    { "uix.advanced", "高级" },
+
+    { "uix.anchor", "锚点（保持位置）" },
+
+    { "uix.visible", "显示" },
+
+    { "uix.interactable", "可交互" },
+
+    { "uix.opacity", "透明度" },
+
+    { "uix.enabled", "启用" },
+
+    { "uix.horizontal", "横向" },
+
+    { "uix.vertical", "纵向" },
+
+    { "uix.arrangement", "排列方式" },
+
+    { "uix.cellSize", "单元尺寸" },
+
+    { "uix.spacing", "间距" },
+
+    { "uix.padding", "内边距" },
+
+    { "uix.columns", "列数" },
+
+    { "uix.value", "当前值" },
+
+    { "uix.minimum", "最小值" },
+
+    { "uix.maximum", "最大值" },
+
+    { "uix.right", "向右" },
+
+    { "uix.left", "向左" },
+
+    { "uix.up", "向上" },
+
+    { "uix.down", "向下" },
+
+    { "uix.fill", "填充方向" },
+
+    { "uix.variable", "运行时变量（可选）" },
+
+    { "uix.typography", "排版" },
+
+    { "uix.lineHeight", "行距" },
+
+    { "uix.letterSpacing", "字距" },
+
+    { "uix.reveal", "文字显示进度" },
+
+    { "uix.noWrap", "不换行" },
+
+    { "uix.characterWrap", "逐字换行" },
+
+    { "uix.wrap", "换行" },
+
+    { "uix.outline", "描边" },
+
+    { "uix.width", "宽度" },
+
+    { "uix.color", "颜色" },
+
+    { "uix.shadow", "阴影" },
+
+    { "uix.offset", "偏移" },
+
+    { "uix.glow", "辉光" },
+
+    { "uix.intensity", "强度" },
+
+    { "UI Canvas", "界面画布" },
+
+    { "UI Rect", "布局矩形" },
+
+    { "UI Image", "界面图片" },
+
+    { "UI Text", "界面文字" },
+
+    { "UI Button", "界面按钮" },
+
+    { "UI Group", "界面组" },
+
+    { "UI Layout Group", "自动布局" },
+
+    { "UI Progress", "进度条" },
+
+    { "Enabled", "启用" },
+
+    { "Interactable", "可交互" },
+
+    { "Reference Width", "参考宽度" },
+
+    { "Reference Height", "参考高度" },
+
+    { "Sort Order", "画布层级" },
+
+    { "Custom", "自定义" },
+
+    { "Top Left", "左上" },
+
+    { "Top", "顶部" },
+
+    { "Top Right", "右上" },
+
+    { "Left", "左侧" },
+
+    { "Center", "居中" },
+
+    { "Right", "右侧" },
+
+    { "Bottom Left", "左下" },
+
+    { "Bottom", "底部" },
+
+    { "Bottom Right", "右下" },
+
+    { "Stretch", "拉伸" },
+
+    { "Anchor Preset", "锚点预设" },
+
+    { "Anchor Minimum", "起始锚点" },
+
+    { "Anchor Maximum", "结束锚点" },
+
+    { "Offset Minimum", "起始偏移" },
+
+    { "Offset Maximum", "结束偏移" },
+
+    { "Pivot", "轴心" },
+
+    { "Rotation", "旋转" },
+
+    { "Order", "层级" },
+
+    { "Texture", "贴图" },
+
+    { "Fallback Texture", "备用贴图" },
+
+    { "Tint", "染色" },
+
+    { "Order Offset", "层级偏移" },
+
+    { "Text", "文字" },
+
+
+    { "Pixel Height", "字号（像素）" },
+
+    { "Color", "颜色" },
+
+    { "Horizontal Align", "水平对齐" },
+
+    { "Vertical Align", "垂直对齐" },
+
+    { "Default Focus", "默认选中" },
+
+    { "Navigation Order", "导航顺序" },
+
+    { "Submit Action", "确认操作" },
+
+    { "On Click Event", "点击事件" },
+
+    { "Button Colors", "按钮状态" },
+
+    { "State transition seconds", "状态过渡（秒）" },
+
+    { "Normal", "常态" },
+
+    { "Hover", "悬停" },
+
+    { "Pressed", "按下" },
+
+    { "Disabled", "禁用" },
+
+    { "uix.actionNone", "不改变显示状态" },
+
+    { "uix.actionShow", "显示" },
+
+    { "uix.actionHide", "隐藏" },
+
+    { "uix.actionToggle", "切换显示" },
+
+    { "uix.groupAction", "点击时：组显示状态" },
+
+    { "uix.groupTarget", "目标对象（需含界面组）" },
+
+    { "uix.menu", "主菜单" },
+
+    { "uix.hud", "生命值界面" },
+
+    { "uix.health", "生命值" },
+
+
+    { "uix.close", "关闭" },
+
+    { "uix.parent", "所属容器" },
+
+    { "uix.continue", "继续" },
+
+    { "uix.help", "帮助" },
+
+    { "uix.helpText", "在 UI 工作区编辑文字内容，在文字样式中制作可复用的外观。" },
+
+    { "uix.modal", "模态：阻止其他界面交互" },
+
+    { "uix.addComponent", "添加组件" },
+
+    { "uix.savedPrefabs", "已保存的预制体" },
+
+    { "textstyle.asset", "文字样式" },
+    { "textstyle.font", "字体资产" },
+    { "textstyle.name", "样式名称" },
+    { "textstyle.restore", "恢复样式值" },
+    { "textstyle.overrides", "本地覆盖" },
+    { "textstyle.library", "文字样式库" },
+    { "textstyle.new", "新建文字样式" },
+    { "textstyle.preview", "样式预览" },
+    { "textstyle.saveCopy", "另存为副本" },
+    { "textstyle.light", "浅色背景" },
+    { "textstyle.workflow", "创建样式并保存，然后在 UI 或 3D 文字组件中选择此样式。" },
+    { "textstyle.start", "从左侧新建或打开一个文字样式。" },
+    { "textstyle.worldSupport", "UI 支持全部外观。3D 文字共享字体、颜色、描边与字距行距，世界尺寸由组件控制；阴影和辉光暂不用于 3D 文字。" },
+    { "textstyle.fontImported", "字体已作为资产导入，可在文字组件或文字样式的字体选择框使用。" },
+    { "textstyle.unsaved", "未保存的文字样式" },
+    { "textstyle.unsavedHelp", "切换前是否保存当前文字样式？" },
+    { "textstyle.saveContinue", "保存并继续" },
+    { "textstyle.discardContinue", "放弃修改并继续" },
+
+    { "display.panel", "显示设置" },
+    { "display.control", "显示设置控件" },
+    { "display.panelHelp", "子控件共同编辑设置草稿。在游戏窗口中应用，窗口切换后需确认。" },
+    { "display.controlHelp", "将文字或按钮绑定到显示选项或面板操作。" },
+    { "display.confirmSeconds", "窗口确认时限" },
+    { "display.aa", "抗锯齿" },
+    { "display.renderResolution", "渲染分辨率" },
+    { "display.windowResolution", "窗口尺寸" },
+    { "display.windowMode", "窗口模式" },
+    { "display.dlssQuality", "DLSS 质量" },
+    { "display.frameGeneration", "帧生成" },
+    { "display.vsync", "垂直同步" },
+    { "display.viewport", "跟随视口" },
+    { "display.windowed", "窗口化" },
+    { "display.borderless", "无边框窗口" },
+    { "display.fullscreen", "全屏" },
+    { "display.quality", "质量" },
+    { "display.balanced", "平衡" },
+    { "display.performance", "性能" },
+    { "display.ultraPerformance", "极致性能" },
+    { "display.cycle", "切换选项" },
+    { "display.apply", "应用" },
+    { "display.revert", "还原" },
+    { "display.keep", "保留更改" },
+    { "display.status", "状态信息" },
+    { "display.action", "操作" },
+    { "display.setting", "设置项" },
+    { "display.previous", "上一个选项" },
+    { "display.next", "下一个选项" },
+    { "display.direction", "切换方向" },
+    { "display.ready", "选择选项后点击应用。" },
+    { "display.changed", "有尚未应用的更改" },
+    { "display.applying", "正在应用更改…" },
+    { "display.applied", "更改已应用" },
+    { "display.confirm", "是否保留窗口设置？倒计时结束后自动还原。" },
+    { "display.reverting", "正在恢复之前的设置…" },
+    { "display.reverted", "已恢复之前的设置" },
+    { "display.failed", "未能完成设置切换，请检查运行日志。" },
+    { "display.unsupported", "不支持" },
+    { "display.invalid", "未知设置项" },
+    { "display.gameWindowRequired", "请在游戏窗口中运行，以修改显示设置。" },
+    { "textstyle.emptyPreview", "请输入用于预览的文字。" },
+    { "textstyle.previewRejected", "文字预览提交失败，请检查字体资产和样式参数。" },
+    { "uix.previewFailed", "预览渲染失败，请查看渲染日志。" },
+    { "uix.previewFontFailed", "部分文字渲染失败，请检查对应字体文件并重新导入；其他内容仍会显示。" },
+    { "uix.textSubmissionFailed", "部分文字缺少可用字体或提交失败，请检查它的字体和文字样式绑定。" },
+    { "uianim.asset", "UI 动画" },
+    { "uianim.animator", "UI 动画播放器" },
+    { "uianim.animatorHelp", "在这个 UI 层级中播放可复用的动画片段。" },
+    { "uianim.target", "UI 动画目标" },
+    { "uianim.targetHelp", "所属动画播放器内唯一的目标名称。" },
+    { "uianim.speed", "速度" },
+    { "uianim.unscaled", "游戏暂停时继续" },
+    { "uianim.slot", "目标槽位" },
+    { "uianim.offsetX", "水平偏移" },
+    { "uianim.offsetY", "垂直偏移" },
+    { "uianim.scaleX", "水平缩放" },
+    { "uianim.scaleY", "垂直缩放" },
+    { "uianim.rotation", "旋转" },
+    { "uianim.red", "红色倍率" },
+    { "uianim.green", "绿色倍率" },
+    { "uianim.blue", "蓝色倍率" },
+    { "uianim.timeline", "UI 动画" },
+    { "uianim.new", "新建动画" },
+    { "uianim.open", "打开动画资产" },
+    { "uianim.panel", "面板 · 打开 / 关闭" },
+    { "uianim.button", "按钮 · 交互反馈" },
+    { "uianim.empty", "空动画" },
+    { "uianim.saveAs", "另存动画副本" },
+    { "uianim.bind", "绑定到选中元素" },
+    { "uianim.start", "选中 UI 元素，新建动画，然后保存并绑定。预览不会改写原始布局。" },
+    { "uianim.addClip", "添加片段" },
+    { "uianim.deleteClip", "删除片段" },
+    { "uianim.duration", "时长" },
+    { "uianim.repeat", "运行时循环" },
+    { "uianim.preview", "预览动画" },
+    { "uianim.previewTargetMissing", "请先选中 UI 根元素并检查目标槽位，再预览动画；需先停止游戏运行。" },
+    { "uianim.previewLoop", "循环预览" },
+    { "uianim.autoKey", "自动关键帧" },
+    { "uianim.curve", "曲线" },
+    { "uianim.addTrack", "添加属性" },
+    { "uianim.deleteTrack", "删除轨道" },
+    { "uianim.trigger.Manual", "代码 / 手动" },
+    { "uianim.trigger.Open", "打开" },
+    { "uianim.trigger.Close", "关闭" },
+    { "uianim.trigger.Normal", "常态" },
+    { "uianim.trigger.Hover", "悬停 / 聚焦" },
+    { "uianim.trigger.Press", "按下" },
+    { "uianim.trigger.Disabled", "禁用" },
+    { "uianim.previewRoot", "预览根元素" },
+    { "uianim.selectRoot", "选择要预览的 UI 根元素" },
+    { "uianim.useSelection", "以选中元素为预览根节点" },
+    { "uibind.component", "UI 数据绑定" },
+    { "uibind.help", "显示运行时变量；游戏规则由项目代码负责。" },
+    { "uibind.integer", "整数数值" },
+    { "uibind.text", "文字数值" },
+    { "uibind.prefix", "前缀" },
+    { "uibind.suffix", "后缀" },
+    { "uibind.decimals", "小数位数" },
+    { "uibind.visible", "为真时显示" },
+    { "uibind.interactable", "为真时可交互" },
+    { "uianim.outsideRoot", "请选择预览根元素下的子元素；嵌套播放器的子元素由它自己负责。" },
+    { "uianim.useSelectedTarget", "轨道目标 ← 选中元素" },
+    { "uianim.discard", "丢弃草稿改动并重新载入已保存资产" },

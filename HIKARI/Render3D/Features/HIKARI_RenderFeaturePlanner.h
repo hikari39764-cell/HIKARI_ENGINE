@@ -4,8 +4,7 @@
 
 namespace HIKARI::RENDER3D::FEATURES {
 
-    RenderFeaturePlan BuildRenderFeaturePlan(
-        const RenderFeatureRequestSet& requests,
-        const RenderFeatureAvailability& availability);
+RenderFeaturePlan BuildRenderFeaturePlan(const RenderFeatureRequestSet& requests,
+                                         const RenderFeatureAvailability& availability);
 
 } // namespace HIKARI::RENDER3D::FEATURES

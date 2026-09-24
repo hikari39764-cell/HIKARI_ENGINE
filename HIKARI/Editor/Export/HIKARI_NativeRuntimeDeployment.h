@@ -6,18 +6,15 @@
 
 namespace HIKARI::EDITOR {
 
-    struct NativeRuntimeDeploymentResult {
-        bool success = false;
-        uint32_t filesCopied = 0;
-        std::string message{};
-    };
+struct NativeRuntimeDeploymentResult {
+    bool success = false;
+    uint32_t filesCopied = 0;
+    std::string message{};
+};
 
-    NativeRuntimeDeploymentResult DeployNativeRuntimeDependencies(
-        const std::filesystem::path& sourceDirectory,
-        const std::filesystem::path& outputDirectory);
+NativeRuntimeDeploymentResult DeployNativeRuntimeDependencies(const std::filesystem::path& sourceDirectory,
+                                                              const std::filesystem::path& outputDirectory);
 
-    bool ValidateNativeRuntimeDependencies(
-        const std::filesystem::path& packageDirectory,
-        std::string& message);
+bool ValidateNativeRuntimeDependencies(const std::filesystem::path& packageDirectory, std::string& message);
 
 } // namespace HIKARI::EDITOR

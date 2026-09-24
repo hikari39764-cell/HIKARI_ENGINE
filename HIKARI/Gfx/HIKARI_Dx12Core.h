@@ -43,17 +43,11 @@ enum class GraphicsShutdownResult : uint8_t {
 class Dx12Core {
 public:
     static constexpr uint32_t kFrameCount = 3;
-    static constexpr UINT kRequiredSwapChainFlags =
-        DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
+    static constexpr UINT kRequiredSwapChainFlags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
 
     // ── ライフサイクル ──────────────────────────────────────────
 
-    bool Initialize(
-        HWND hwnd,
-        int w,
-        int h,
-        bool enableDebugLayer,
-        const GraphicsBootstrapCallbacks& callbacks = {});
+    bool Initialize(HWND hwnd, int w, int h, bool enableDebugLayer, const GraphicsBootstrapCallbacks& callbacks = {});
     [[nodiscard]] GraphicsShutdownResult Shutdown();
 
     // ── フレームループ ──────────────────────────────────────────
@@ -61,8 +55,10 @@ public:
     bool BeginFrame(float clearR, float clearG, float clearB, float clearA, uint64_t logicalFrameId);
     bool EndFrame();
     bool RequestFrameCapture(std::filesystem::path output) {
-        if(!capturePath_.empty() || output.empty())return false;
-        capturePath_=std::move(output);return true;
+        if (!capturePath_.empty() || output.empty())
+            return false;
+        capturePath_ = std::move(output);
+        return true;
     }
 
     // ── リサイズ ─────────────────────────────────────────────────
@@ -102,10 +98,7 @@ public:
     const std::string& InitializationError() const { return initializationError_; }
     void SetVSyncEnabled(bool enabled) { vSyncEnabled_ = enabled; }
     bool IsVSyncEnabled() const { return vSyncEnabled_; }
-    HWND PresentationWindow() const;
-    bool IsGamePresentationSurfaceActive() const {
-        return activeSurface_ == &gameSurface_;
-    }
+    bool IsGamePresentationSurfaceActive() const { return activeSurface_ == &gameSurface_; }
     bool HasGamePresentationSurface() const { return gameSurface_.IsValid(); }
     void SetFrameSubmissionCallbacks(FrameSubmissionCallbacks callbacks) {
         frameSubmissionCallbacks_ = std::move(callbacks);

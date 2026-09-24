@@ -4,9 +4,6 @@
 
 namespace HIKARI::PHYSICS {
 
-    PhysicsPose InterpolatePhysicsPose(
-        const PhysicsPose& previous,
-        const PhysicsPose& current,
-        float alpha) noexcept;
+PhysicsPose InterpolatePhysicsPose(const PhysicsPose& previous, const PhysicsPose& current, float alpha) noexcept;
 
 } // namespace HIKARI::PHYSICS

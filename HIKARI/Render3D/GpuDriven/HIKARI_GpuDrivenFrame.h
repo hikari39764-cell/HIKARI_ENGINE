@@ -10,51 +10,51 @@
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
 
-    enum class GpuDrivenBackendKind : uint32_t {
-        MeshShader,
-        TraditionalIndirect,
-    };
+enum class GpuDrivenBackendKind : uint32_t {
+    MeshShader,
+    TraditionalIndirect,
+};
 
-    struct GpuSceneRange {
-        uint32_t baseIndex = 0;
-        uint32_t instanceCount = 0;
-        GpuDrivenPassKind passKind = GpuDrivenPassKind::ForwardOpaque;
+struct GpuSceneRange {
+    uint32_t baseIndex = 0;
+    uint32_t instanceCount = 0;
+    GpuDrivenPassKind passKind = GpuDrivenPassKind::ForwardOpaque;
 
-        bool IsValid() const;
-    };
+    bool IsValid() const;
+};
 
-    struct GpuDrivenPassFrame {
-        const std::vector<RUNTIME::SurfaceGpuSceneInstance>* instances = nullptr;
-        GpuSceneRange gpuSceneRange{};
-        GpuDrivenBackendKind preferredBackend = GpuDrivenBackendKind::MeshShader;
-        bool clusterEligible = false;
+struct GpuDrivenPassFrame {
+    const std::vector<RUNTIME::SurfaceGpuSceneInstance>* instances = nullptr;
+    GpuSceneRange gpuSceneRange{};
+    GpuDrivenBackendKind preferredBackend = GpuDrivenBackendKind::MeshShader;
+    bool clusterEligible = false;
 
-        void Reset();
-        bool HasSource() const;
-    };
+    void Reset();
+    bool HasSource() const;
+};
 
-    struct GpuDrivenFrame {
-        std::array<GpuDrivenPassFrame, kGpuDrivenPassCount> passes{};
+struct GpuDrivenFrame {
+    std::array<GpuDrivenPassFrame, kGpuDrivenPassCount> passes{};
 
-        void Reset();
-        GpuDrivenPassFrame& GetPass(GpuDrivenPassKind passKind);
-        const GpuDrivenPassFrame& GetPass(GpuDrivenPassKind passKind) const;
-        size_t CountActivePasses() const;
-        size_t CountSourceInstances() const;
-    };
+    void Reset();
+    GpuDrivenPassFrame& GetPass(GpuDrivenPassKind passKind);
+    const GpuDrivenPassFrame& GetPass(GpuDrivenPassKind passKind) const;
+    size_t CountActivePasses() const;
+    size_t CountSourceInstances() const;
+};
 
-    struct GpuDrivenPassBuildInput {
-        const std::vector<RUNTIME::SurfaceGpuSceneInstance>* instances = nullptr;
-        uint32_t gpuSceneBaseIndex = 0;
-        uint32_t gpuSceneInstanceCount = 0;
-        GpuDrivenBackendKind preferredBackend = GpuDrivenBackendKind::MeshShader;
-        bool clusterEligible = false;
-    };
+struct GpuDrivenPassBuildInput {
+    const std::vector<RUNTIME::SurfaceGpuSceneInstance>* instances = nullptr;
+    uint32_t gpuSceneBaseIndex = 0;
+    uint32_t gpuSceneInstanceCount = 0;
+    GpuDrivenBackendKind preferredBackend = GpuDrivenBackendKind::MeshShader;
+    bool clusterEligible = false;
+};
 
-    struct GpuDrivenFrameBuildInput {
-        std::array<GpuDrivenPassBuildInput, kGpuDrivenPassCount> passes{};
-    };
+struct GpuDrivenFrameBuildInput {
+    std::array<GpuDrivenPassBuildInput, kGpuDrivenPassCount> passes{};
+};
 
-    GpuDrivenFrame BuildGpuDrivenFrame(const GpuDrivenFrameBuildInput& input);
+GpuDrivenFrame BuildGpuDrivenFrame(const GpuDrivenFrameBuildInput& input);
 
 } // namespace HIKARI::RENDER3D::GPUDRIVEN

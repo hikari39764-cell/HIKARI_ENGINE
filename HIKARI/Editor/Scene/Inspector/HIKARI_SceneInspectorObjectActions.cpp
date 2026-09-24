@@ -29,144 +29,134 @@
 namespace HIKARI::EDITOR {
 
 namespace {
-bool HasDocumentComponent(const SceneObjectData &object,
-                          std::string_view typeName) {
-  return std::any_of(object.components.begin(), object.components.end(),
-                     [typeName](const SceneComponentData &component) {
-                       return component.type == typeName;
-                     });
+bool HasDocumentComponent(const SceneObjectData& object, std::string_view typeName) {
+    return std::any_of(object.components.begin(), object.components.end(),
+                       [typeName](const SceneComponentData& component) { return component.type == typeName; });
 }
 } // namespace
 
-void SceneInspectorPanel::DrawObjectContextMenu(
-    DocumentSceneBase &scene, EditorContext &context,
-    const SelectionSyncService &selectionSync,
-    SceneObjectCommandService &commands, GameObject &object) {
+void SceneInspectorPanel::DrawObjectContextMenu(DocumentSceneBase& scene, EditorContext& context,
+                                                const SelectionSyncService& selectionSync,
+                                                SceneObjectCommandService& commands, GameObject& object) {
 #if defined(HIKARI_WITH_EDITOR)
-  if (context.selection.selectedObject != &object) {
-    if (World *world = object.GetWorld()) {
-      context.selection.SelectObject(
-          *world, &object,
-          context.selection.IsObjectSelected(object.GetDocumentId())
-              ? EditorObjectSelectionMode::Add
-              : EditorObjectSelectionMode::Replace);
+    if (context.selection.selectedObject != &object) {
+        if (World* world = object.GetWorld()) {
+            context.selection.SelectObject(*world, &object,
+                                           context.selection.IsObjectSelected(object.GetDocumentId())
+                                               ? EditorObjectSelectionMode::Add
+                                               : EditorObjectSelectionMode::Replace);
+        }
     }
-  }
-  SceneObjectData *target =
-      selectionSync.FindDocumentObjectByRuntime(scene, &object);
-  if (target == nullptr) {
-    ImGui::TextDisabled(TEXT::Localize("editor.ui.object.no.longer.exists.6678ef").c_str());
-    return;
-  }
+    SceneObjectData* target = selectionSync.FindDocumentObjectByRuntime(scene, &object);
+    if (target == nullptr) {
+        ImGui::TextDisabled(TEXT::Localize("editor.ui.object.no.longer.exists.6678ef").c_str());
+        return;
+    }
 
-  const auto commandItem = [&](SceneObjectCommandId command) {
-    const SceneObjectCommandPresentation &presentation =
-        GetSceneObjectCommandPresentation(command);
-    return ImGui::MenuItem(presentation.label, presentation.shortcut, false,
-                           commands.CanExecute(command, scene, context));
-  };
+    const auto commandItem = [&](SceneObjectCommandId command) {
+        const SceneObjectCommandPresentation& presentation = GetSceneObjectCommandPresentation(command);
+        return ImGui::MenuItem(presentation.label, presentation.shortcut, false,
+                               commands.CanExecute(command, scene, context));
+    };
 
-  if (commandItem(SceneObjectCommandId::Rename)) {
-    RequestRename(object);
-  }
-  const SceneObjectCommandId lockCommand = target->editorLocked
-                                               ? SceneObjectCommandId::Unlock
-                                               : SceneObjectCommandId::Lock;
-  if (commandItem(lockCommand)) {
-    commands.Execute(lockCommand, scene, context, selectionSync);
-    return;
-  }
-  ImGui::Separator();
-  if (commandItem(SceneObjectCommandId::Duplicate)) {
-    commands.Execute(SceneObjectCommandId::Duplicate, scene, context,
-                     selectionSync);
-    return;
-  }
-  if (commandItem(SceneObjectCommandId::Delete)) {
-    commands.Execute(SceneObjectCommandId::Delete, scene, context,
-                     selectionSync);
-    return;
-  }
+    if (commandItem(SceneObjectCommandId::Rename)) {
+        RequestRename(object);
+    }
+    const SceneObjectCommandId lockCommand =
+        target->editorLocked ? SceneObjectCommandId::Unlock : SceneObjectCommandId::Lock;
+    if (commandItem(lockCommand)) {
+        commands.Execute(lockCommand, scene, context, selectionSync);
+        return;
+    }
+    ImGui::Separator();
+    if (commandItem(SceneObjectCommandId::Duplicate)) {
+        commands.Execute(SceneObjectCommandId::Duplicate, scene, context, selectionSync);
+        return;
+    }
+    if (commandItem(SceneObjectCommandId::Delete)) {
+        commands.Execute(SceneObjectCommandId::Delete, scene, context, selectionSync);
+        return;
+    }
 
-  ImGui::Separator();
-  if (ImGui::BeginMenu(TEXT::LocalizeWindow("menu.edit", "Edit").c_str())) {
-    if (ImGui::MenuItem(TEXT::LocalizeWindow("ui.vfx.text.Focus", "Focus").c_str(), "F")) {
-      focusObjectRequest_ = target->id;
-    }
-    if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.add.component.08ba89", "Add Component...").c_str(), nullptr, false,
-                        !target->editorLocked)) {
-      openComponentPicker_ = true;
-    }
-    if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.collision.8d538c", "Collision...").c_str(), nullptr, false,
-                        !target->editorLocked)) {
-      collisionAuthoringDialog_.Open(target->id);
-    }
-    ImGui::EndMenu();
-  }
-
-  if (ImGui::BeginMenu(TEXT::LocalizeWindow("ui.sceneCreation.prefab", "Prefab").c_str())) {
-    if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.save.as.prefab.5cb805", "Save as Prefab...").c_str(), nullptr, false,
-                        commands.CanExecute(SceneObjectCommandId::SaveAsPrefab,
-                                            scene, context))) {
-      prefabObjectId_ = target->id;
-      std::snprintf(prefabBuffer_, sizeof(prefabBuffer_), "%s",
-                    target->name.c_str());
-      openPrefabPopup_ = true;
-    }
-    const std::vector<std::string> prefabIds = commands.ListPrefabIds();
-    if (!prefabIds.empty()) {
-      ImGui::Separator();
-      if (ImGui::BeginMenu(TEXT::LocalizeWindow("editor.ui.instantiate.bad193", "Instantiate").c_str())) {
-        for (const std::string &prefabId : prefabIds) {
-          if (ImGui::MenuItem(prefabId.c_str())) {
-            commands.Execute(SceneObjectCommandId::InstantiatePrefab, scene,
-                             context, selectionSync, prefabId);
-          }
+    ImGui::Separator();
+    if (ImGui::BeginMenu(TEXT::LocalizeWindow("menu.edit", "Edit").c_str())) {
+        if (ImGui::MenuItem(TEXT::LocalizeWindow("ui.vfx.text.Focus", "Focus").c_str(), "F")) {
+            focusObjectRequest_ = target->id;
+        }
+        if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.add.component.08ba89", "Add Component...").c_str(), nullptr,
+                            false, !target->editorLocked)) {
+            openComponentPicker_ = true;
+        }
+        if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.collision.8d538c", "Collision...").c_str(), nullptr, false,
+                            !target->editorLocked)) {
+            collisionAuthoringDialog_.Open(target->id);
         }
         ImGui::EndMenu();
-      }
     }
-    ImGui::EndMenu();
-  }
 
-  if (HasDocumentComponent(*target, "CameraComponent") &&
-      ImGui::BeginMenu(TEXT::LocalizeWindow("ui.inspector.category.camera", "Camera").c_str())) {
-    const bool isDefault =
-        scene.GetSceneDocument().camera.defaultCameraObjectId == target->id;
-    if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.set.as.game.default.47a702", "Set as Game Default").c_str(), nullptr, isDefault,
-                        !isDefault)) {
-      if (scene.SetGameDefaultCamera(target->id)) {
-        context.sceneDirty = true;
-      }
+    if (ImGui::BeginMenu(TEXT::LocalizeWindow("ui.sceneCreation.prefab", "Prefab").c_str())) {
+        if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.save.as.prefab.5cb805", "Save as Prefab...").c_str(),
+                            nullptr, false, commands.CanExecute(SceneObjectCommandId::SaveAsPrefab, scene, context))) {
+            prefabObjectId_ = target->id;
+            std::snprintf(prefabBuffer_, sizeof(prefabBuffer_), "%s", target->name.c_str());
+            openPrefabPopup_ = true;
+        }
+        const std::vector<std::string> prefabIds = commands.ListPrefabIds();
+        if (!prefabIds.empty()) {
+            ImGui::Separator();
+            if (ImGui::BeginMenu(TEXT::LocalizeWindow("editor.ui.instantiate.bad193", "Instantiate").c_str())) {
+                for (const std::string& prefabId : prefabIds) {
+                    if (ImGui::MenuItem(prefabId.c_str())) {
+                        commands.Execute(SceneObjectCommandId::InstantiatePrefab, scene, context, selectionSync,
+                                         prefabId);
+                    }
+                }
+                ImGui::EndMenu();
+            }
+        }
+        ImGui::EndMenu();
     }
-    const bool previewing =
-        scene.IsEditorCameraPreviewActive() &&
-        scene.GetEditorCameraPreviewObjectId() == target->id;
-    if (ImGui::MenuItem(previewing ? TEXT::LocalizeCStr("editor.ui.exit.camera.view.32714d")
-                                   : TEXT::LocalizeCStr("editor.ui.view.through.camera.2e4994"))) {
-      if (previewing) {
-        scene.EndEditorCameraPreview();
-      } else {
-        (void)scene.BeginEditorCameraPreview(target->id);
-      }
+
+    if (HasDocumentComponent(*target, "CameraComponent") &&
+        ImGui::BeginMenu(TEXT::LocalizeWindow("ui.inspector.category.camera", "Camera").c_str())) {
+        const bool isDefault = scene.GetSceneDocument().camera.defaultCameraObjectId == target->id;
+        if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.set.as.game.default.47a702", "Set as Game Default").c_str(),
+                            nullptr, isDefault, !isDefault)) {
+            if (scene.SetGameDefaultCamera(target->id)) {
+                context.sceneDirty = true;
+            }
+        }
+        const bool previewing =
+            scene.IsEditorCameraPreviewActive() && scene.GetEditorCameraPreviewObjectId() == target->id;
+        if (ImGui::MenuItem(previewing ? TEXT::LocalizeCStr("editor.ui.exit.camera.view.32714d")
+                                       : TEXT::LocalizeCStr("editor.ui.view.through.camera.2e4994"))) {
+            if (previewing) {
+                scene.EndEditorCameraPreview();
+            } else {
+                (void)scene.BeginEditorCameraPreview(target->id);
+            }
+        }
+        if (ImGui::MenuItem(
+                TEXT::LocalizeWindow("editor.ui.snap.camera.to.current.view.aab29b", "Snap Camera to Current View")
+                    .c_str(),
+                nullptr, false, !target->editorLocked && !target->parent.has_value())) {
+            if (scene.SnapCameraObjectToEditorView(target->id)) {
+                context.sceneDirty = true;
+            }
+        }
+        if (ImGui::MenuItem(
+                TEXT::LocalizeWindow("editor.ui.open.cinematics.workspace.11dde1", "Open Cinematics Workspace")
+                    .c_str())) {
+            openCinematicsWorkspaceCameraRequest_ = target->id;
+        }
+        ImGui::EndMenu();
     }
-    if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.snap.camera.to.current.view.aab29b", "Snap Camera to Current View").c_str(), nullptr, false,
-                        !target->editorLocked && !target->parent.has_value())) {
-      if (scene.SnapCameraObjectToEditorView(target->id)) {
-        context.sceneDirty = true;
-      }
-    }
-    if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.open.cinematics.workspace.11dde1", "Open Cinematics Workspace").c_str())) {
-      openCinematicsWorkspaceCameraRequest_ = target->id;
-    }
-    ImGui::EndMenu();
-  }
 #else
-  (void)scene;
-  (void)context;
-  (void)selectionSync;
-  (void)commands;
-  (void)object;
+    (void)scene;
+    (void)context;
+    (void)selectionSync;
+    (void)commands;
+    (void)object;
 #endif
 }
 

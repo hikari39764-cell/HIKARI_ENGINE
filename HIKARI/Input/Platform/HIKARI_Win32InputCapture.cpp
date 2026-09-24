@@ -64,23 +64,17 @@ std::string VirtualKeyName(int vk) {
 
 } // namespace
 
-bool Win32InputBackend::IsAnyControlActive(
-    const InputDeviceState& state,
-    float axisThreshold) const {
-    if (std::any_of(state.keyboard.begin(), state.keyboard.end(),
-            [](uint8_t value) { return value != 0; }) ||
-        std::any_of(state.mouseButtons.begin(), state.mouseButtons.end(),
-            [](uint8_t value) { return value != 0; })) {
+bool Win32InputBackend::IsAnyControlActive(const InputDeviceState& state, float axisThreshold) const {
+    if (std::any_of(state.keyboard.begin(), state.keyboard.end(), [](uint8_t value) { return value != 0; }) ||
+        std::any_of(state.mouseButtons.begin(), state.mouseButtons.end(), [](uint8_t value) { return value != 0; })) {
         return true;
     }
     for (const GamepadState& gamepad : state.gamepads) {
-        if (!gamepad.connected) continue;
-        if (gamepad.buttons != 0 ||
-            std::abs(gamepad.leftX) >= axisThreshold ||
-            std::abs(gamepad.leftY) >= axisThreshold ||
-            std::abs(gamepad.rightX) >= axisThreshold ||
-            std::abs(gamepad.rightY) >= axisThreshold ||
-            gamepad.leftTrigger >= axisThreshold ||
+        if (!gamepad.connected)
+            continue;
+        if (gamepad.buttons != 0 || std::abs(gamepad.leftX) >= axisThreshold ||
+            std::abs(gamepad.leftY) >= axisThreshold || std::abs(gamepad.rightX) >= axisThreshold ||
+            std::abs(gamepad.rightY) >= axisThreshold || gamepad.leftTrigger >= axisThreshold ||
             gamepad.rightTrigger >= axisThreshold) {
             return true;
         }
@@ -88,94 +82,83 @@ bool Win32InputBackend::IsAnyControlActive(
     return false;
 }
 
-void Win32InputBackend::EnumerateNewControls(
-    const InputDeviceState& previous,
-    const InputDeviceState& current,
-    float axisThreshold,
-    bool includeMouseMotion,
-    std::vector<InputControlActuation>& outCandidates) const {
+void Win32InputBackend::EnumerateNewControls(const InputDeviceState& previous, const InputDeviceState& current,
+                                             float axisThreshold, bool includeMouseMotion,
+                                             std::vector<InputControlActuation>& outCandidates) const {
     outCandidates.clear();
     for (int vk = 1; vk < 256; ++vk) {
-        if (current.keyboard[vk] == 0 || previous.keyboard[vk] != 0) continue;
+        if (current.keyboard[vk] == 0 || previous.keyboard[vk] != 0)
+            continue;
         std::string name = VirtualKeyName(vk);
         if (!name.empty()) {
-            outCandidates.push_back(InputControlActuation{
-                InputBindingSource::Keyboard, std::move(name), 1.0f });
+            outCandidates.push_back(InputControlActuation{InputBindingSource::Keyboard, std::move(name), 1.0f});
         }
     }
 
-    static constexpr std::array<const char*, 5> mouseButtonNames{
-        "Left", "Right", "Middle", "X1", "X2" };
+    static constexpr std::array<const char*, 5> mouseButtonNames{"Left", "Right", "Middle", "X1", "X2"};
     for (size_t index = 0; index < current.mouseButtons.size(); ++index) {
-        if (current.mouseButtons[index] != 0 &&
-            previous.mouseButtons[index] == 0) {
-            outCandidates.push_back(InputControlActuation{
-                InputBindingSource::MouseButton,
-                mouseButtonNames[index], 1.0f });
+        if (current.mouseButtons[index] != 0 && previous.mouseButtons[index] == 0) {
+            outCandidates.push_back(
+                InputControlActuation{InputBindingSource::MouseButton, mouseButtonNames[index], 1.0f});
         }
     }
     if (std::abs(current.mouseWheel) > 0.0f) {
-        outCandidates.push_back(InputControlActuation{
-            InputBindingSource::MouseWheel, "Wheel", current.mouseWheel });
+        outCandidates.push_back(InputControlActuation{InputBindingSource::MouseWheel, "Wheel", current.mouseWheel});
     }
     if (includeMouseMotion) {
         constexpr float threshold = 2.0f;
         if (std::abs(current.mouseDeltaX) >= threshold) {
-            outCandidates.push_back(InputControlActuation{
-                InputBindingSource::MouseDeltaX,
-                "DeltaX", current.mouseDeltaX });
+            outCandidates.push_back(
+                InputControlActuation{InputBindingSource::MouseDeltaX, "DeltaX", current.mouseDeltaX});
         }
         if (std::abs(current.mouseDeltaY) >= threshold) {
-            outCandidates.push_back(InputControlActuation{
-                InputBindingSource::MouseDeltaY,
-                "DeltaY", current.mouseDeltaY });
+            outCandidates.push_back(
+                InputControlActuation{InputBindingSource::MouseDeltaY, "DeltaY", current.mouseDeltaY});
         }
     }
 
-    static constexpr std::array<std::pair<int, const char*>, 14>
-        gamepadButtons{{
-            { XINPUT_GAMEPAD_A, "A" },
-            { XINPUT_GAMEPAD_B, "B" },
-            { XINPUT_GAMEPAD_X, "X" },
-            { XINPUT_GAMEPAD_Y, "Y" },
-            { XINPUT_GAMEPAD_LEFT_SHOULDER, "LeftShoulder" },
-            { XINPUT_GAMEPAD_RIGHT_SHOULDER, "RightShoulder" },
-            { XINPUT_GAMEPAD_BACK, "Back" },
-            { XINPUT_GAMEPAD_START, "Start" },
-            { XINPUT_GAMEPAD_LEFT_THUMB, "LeftStick" },
-            { XINPUT_GAMEPAD_RIGHT_THUMB, "RightStick" },
-            { XINPUT_GAMEPAD_DPAD_UP, "DPadUp" },
-            { XINPUT_GAMEPAD_DPAD_DOWN, "DPadDown" },
-            { XINPUT_GAMEPAD_DPAD_LEFT, "DPadLeft" },
-            { XINPUT_GAMEPAD_DPAD_RIGHT, "DPadRight" },
-        }};
+    static constexpr std::array<std::pair<int, const char*>, 14> gamepadButtons{{
+        {XINPUT_GAMEPAD_A, "A"},
+        {XINPUT_GAMEPAD_B, "B"},
+        {XINPUT_GAMEPAD_X, "X"},
+        {XINPUT_GAMEPAD_Y, "Y"},
+        {XINPUT_GAMEPAD_LEFT_SHOULDER, "LeftShoulder"},
+        {XINPUT_GAMEPAD_RIGHT_SHOULDER, "RightShoulder"},
+        {XINPUT_GAMEPAD_BACK, "Back"},
+        {XINPUT_GAMEPAD_START, "Start"},
+        {XINPUT_GAMEPAD_LEFT_THUMB, "LeftStick"},
+        {XINPUT_GAMEPAD_RIGHT_THUMB, "RightStick"},
+        {XINPUT_GAMEPAD_DPAD_UP, "DPadUp"},
+        {XINPUT_GAMEPAD_DPAD_DOWN, "DPadDown"},
+        {XINPUT_GAMEPAD_DPAD_LEFT, "DPadLeft"},
+        {XINPUT_GAMEPAD_DPAD_RIGHT, "DPadRight"},
+    }};
     for (size_t padIndex = 0; padIndex < current.gamepads.size(); ++padIndex) {
         const GamepadState& oldPad = previous.gamepads[padIndex];
         const GamepadState& pad = current.gamepads[padIndex];
-        if (!pad.connected) continue;
+        if (!pad.connected)
+            continue;
         for (const auto& [mask, name] : gamepadButtons) {
             if ((pad.buttons & mask) != 0 && (oldPad.buttons & mask) == 0) {
-                outCandidates.push_back(InputControlActuation{
-                    InputBindingSource::GamepadButton, name, 1.0f });
+                outCandidates.push_back(InputControlActuation{InputBindingSource::GamepadButton, name, 1.0f});
             }
         }
 
         const std::array<std::pair<const char*, float>, 6> axes{{
-            { "LeftX", pad.leftX }, { "LeftY", pad.leftY },
-            { "RightX", pad.rightX }, { "RightY", pad.rightY },
-            { "LeftTrigger", pad.leftTrigger },
-            { "RightTrigger", pad.rightTrigger },
+            {"LeftX", pad.leftX},
+            {"LeftY", pad.leftY},
+            {"RightX", pad.rightX},
+            {"RightY", pad.rightY},
+            {"LeftTrigger", pad.leftTrigger},
+            {"RightTrigger", pad.rightTrigger},
         }};
-        const std::array<float, 6> oldAxes{
-            oldPad.leftX, oldPad.leftY, oldPad.rightX, oldPad.rightY,
-            oldPad.leftTrigger, oldPad.rightTrigger };
+        const std::array<float, 6> oldAxes{oldPad.leftX,  oldPad.leftY,       oldPad.rightX,
+                                           oldPad.rightY, oldPad.leftTrigger, oldPad.rightTrigger};
         for (size_t axisIndex = 0; axisIndex < axes.size(); ++axisIndex) {
             const float value = axes[axisIndex].second;
-            if (std::abs(value) >= axisThreshold &&
-                std::abs(oldAxes[axisIndex]) < axisThreshold) {
-                outCandidates.push_back(InputControlActuation{
-                    InputBindingSource::GamepadAxis,
-                    axes[axisIndex].first, value });
+            if (std::abs(value) >= axisThreshold && std::abs(oldAxes[axisIndex]) < axisThreshold) {
+                outCandidates.push_back(
+                    InputControlActuation{InputBindingSource::GamepadAxis, axes[axisIndex].first, value});
             }
         }
     }

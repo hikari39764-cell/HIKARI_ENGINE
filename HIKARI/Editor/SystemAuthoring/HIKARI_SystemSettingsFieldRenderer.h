@@ -8,9 +8,6 @@
 
 namespace HIKARI::EDITOR {
 
-    bool DrawSystemSettingsFields(
-        const std::vector<SystemSettingField>& fields,
-        nlohmann::json& settings,
-        bool advanced);
+bool DrawSystemSettingsFields(const std::vector<SystemSettingField>& fields, nlohmann::json& settings, bool advanced);
 
 } // namespace HIKARI::EDITOR

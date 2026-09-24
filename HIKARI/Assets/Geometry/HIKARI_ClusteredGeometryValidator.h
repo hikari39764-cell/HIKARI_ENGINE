@@ -7,17 +7,17 @@
 
 namespace HIKARI::ASSETS::GEOMETRY {
 
-    struct ClusteredGeometryValidationResult {
-        bool valid = false;
-        uint32_t invalidSurfaceCount = 0;
-        uint32_t invalidClusterCount = 0;
-        uint32_t invalidPageCount = 0;
-        uint32_t invalidBoundsCount = 0;
-        uint32_t invalidMaterialCount = 0;
-        std::vector<std::string> messages{};
-    };
+struct ClusteredGeometryValidationResult {
+    bool valid = false;
+    uint32_t invalidSurfaceCount = 0;
+    uint32_t invalidClusterCount = 0;
+    uint32_t invalidPageCount = 0;
+    uint32_t invalidBoundsCount = 0;
+    uint32_t invalidMaterialCount = 0;
+    std::vector<std::string> messages{};
+};
 
-    ClusteredGeometryValidationResult ValidateClusteredGeometryAsset(
-        const RENDER3D::CLUSTER::ClusteredGeometryAsset& asset);
+ClusteredGeometryValidationResult ValidateClusteredGeometryAsset(
+    const RENDER3D::CLUSTER::ClusteredGeometryAsset& asset);
 
 } // namespace HIKARI::ASSETS::GEOMETRY

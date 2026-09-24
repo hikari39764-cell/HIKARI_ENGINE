@@ -16,49 +16,43 @@
 
 namespace HIKARI::RENDER3D::REFLECTION {
 
-    struct ScreenSpaceReflectionDebugState {
-        bool requested = false;
-        bool sceneSurfaceReady = false;
-        bool currentHzbReady = false;
-        bool pipelineReady = false;
-        bool rendered = false;
-        bool historyUsed = false;
-        bool resolutionLimited = false;
-        bool resizeDeferred = false;
-        uint32_t residentViews = 0;
-        uint64_t workingSetBytes = 0;
-        uint32_t maxSteps = 0;
-        uint32_t hzbMipCount = 0;
-        uint32_t traceWidth = 0;
-        uint32_t traceHeight = 0;
-        float maxDistance = 0.0f;
-        float maxRoughness = 0.0f;
-    };
+struct ScreenSpaceReflectionDebugState {
+    bool requested = false;
+    bool sceneSurfaceReady = false;
+    bool currentHzbReady = false;
+    bool pipelineReady = false;
+    bool rendered = false;
+    bool historyUsed = false;
+    bool resolutionLimited = false;
+    bool resizeDeferred = false;
+    uint32_t residentViews = 0;
+    uint64_t workingSetBytes = 0;
+    uint32_t maxSteps = 0;
+    uint32_t hzbMipCount = 0;
+    uint32_t traceWidth = 0;
+    uint32_t traceHeight = 0;
+    float maxDistance = 0.0f;
+    float maxRoughness = 0.0f;
+};
 
-    class ScreenSpaceReflectionRenderer final {
-    public:
-        ScreenSpaceReflectionRenderer();
-        ~ScreenSpaceReflectionRenderer();
-        ScreenSpaceReflectionRenderer(const ScreenSpaceReflectionRenderer&) = delete;
-        ScreenSpaceReflectionRenderer& operator=(const ScreenSpaceReflectionRenderer&) = delete;
-        bool Render(
-            const GFX::Context& graphics,
-            const PIPELINE::RenderTargetAccess& targetAccess,
-            const SURFACE::SceneSurfaceSet& surfaces,
-            const MESHRENDERER::CameraCB& camera,
-            const ScreenSpaceReflectionSettings& settings,
-            RenderDebugView debugView,
-            const TEMPORAL::TemporalFrameState& temporal);
-        void Release();
+class ScreenSpaceReflectionRenderer final {
+public:
+    ScreenSpaceReflectionRenderer();
+    ~ScreenSpaceReflectionRenderer();
+    ScreenSpaceReflectionRenderer(const ScreenSpaceReflectionRenderer&) = delete;
+    ScreenSpaceReflectionRenderer& operator=(const ScreenSpaceReflectionRenderer&) = delete;
+    bool Render(const GFX::Context& graphics, const PIPELINE::RenderTargetAccess& targetAccess,
+                const SURFACE::SceneSurfaceSet& surfaces, const MESHRENDERER::CameraCB& camera,
+                const ScreenSpaceReflectionSettings& settings, RenderDebugView debugView,
+                const TEMPORAL::TemporalFrameState& temporal);
+    void Release();
 
-        const ScreenSpaceReflectionDebugState& GetDebugState() const {
-            return debugState_;
-        }
+    const ScreenSpaceReflectionDebugState& GetDebugState() const { return debugState_; }
 
-    private:
-        struct State;
-        std::unique_ptr<State> state_;
-        ScreenSpaceReflectionDebugState debugState_{};
-    };
+private:
+    struct State;
+    std::unique_ptr<State> state_;
+    ScreenSpaceReflectionDebugState debugState_{};
+};
 
 } // namespace HIKARI::RENDER3D::REFLECTION

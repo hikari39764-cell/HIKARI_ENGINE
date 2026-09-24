@@ -41,14 +41,14 @@ struct GameplayCameraEvaluation {
 };
 
 // 一回の呼出しで有限長の効果を開始する。カメラ所有状態とともに破棄される。
-uint64_t PlayGameplayCameraEffect(GameObject& camera, CameraFollowComponent& component,
-    std::string_view id, float strength, std::string& error);
+uint64_t PlayGameplayCameraEffect(GameObject& camera, CameraFollowComponent& component, std::string_view id,
+                                  float strength, std::string& error);
 bool StopGameplayCameraEffect(CameraFollowComponent& component, uint64_t token);
 
 // 既存の追従・構図ソルバを設定し、最後にマウントと演出補助を合成する。
-bool PrepareGameplayCamera(GameObject &camera, CameraFollowComponent &component, const INPUT::InputSnapshot *input,
+bool PrepareGameplayCamera(GameObject& camera, CameraFollowComponent& component, const INPUT::InputSnapshot* input,
                            float seconds);
-void ApplyGameplayCameraPose(const GameObject &camera, CameraFollowComponent &component, const MATH::Vec3 &pivot,
-                             float targetSpeed, float seconds, CameraRigPose &pose);
+void ApplyGameplayCameraPose(const GameObject& camera, CameraFollowComponent& component, const MATH::Vec3& pivot,
+                             float targetSpeed, float seconds, CameraRigPose& pose);
 } // namespace CAMERA
 } // namespace HIKARI

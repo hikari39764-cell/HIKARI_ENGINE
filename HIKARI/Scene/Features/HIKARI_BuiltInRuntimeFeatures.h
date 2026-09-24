@@ -4,6 +4,6 @@
 
 namespace HIKARI {
 
-    RuntimeFeatureCatalog CreateBuiltInRuntimeFeatureCatalog();
+RuntimeFeatureCatalog CreateBuiltInRuntimeFeatureCatalog();
 
 } // namespace HIKARI

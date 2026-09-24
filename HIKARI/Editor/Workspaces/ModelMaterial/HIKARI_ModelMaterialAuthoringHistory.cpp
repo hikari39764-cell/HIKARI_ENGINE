@@ -1,111 +1,62 @@
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 
-#include "Assets/Material/Graph/HIKARI_MaterialGraphValidation.h"
-
-#include <string>
 #include <utility>
-
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
+#if defined(HIKARI_WITH_EDITOR)
+#include "imgui.h"
+#endif
 
 namespace HIKARI::EDITOR {
 
-void ModelMaterialWorkspaceController::FlushPendingMaterialPreview(
-    DocumentSceneBase &scene) {
-  if (nodePreviewRefreshPending_) {
-    nodePreviewRefreshPending_ = false;
-    (void)RebuildAuthoredPreview(scene.GetAssetDatabase(), scene.GetAssetRegistry(), statusMessage_);
-  }
-  if (!materialPreviewRefreshPending_) {
-    return;
-  }
-  materialPreviewRefreshPending_ = false;
-  (void)RefreshMaterialPreviews(scene, statusMessage_);
+bool ModelMaterialWorkspaceController::FlushMaterialPreview(DocumentSceneBase& scene, std::string& outMessage) {
+    const bool materialChanged = authoringDocument_.ConsumeMaterialPreviewChange();
+    const bool nodeChanged = std::exchange(nodePreviewRefreshPending_, false);
+    if (materialChanged)
+        return RefreshMaterialPreviews(scene, outMessage);
+    return !nodeChanged || RebuildAuthoredPreview(scene.GetAssetDatabase(), scene.GetAssetRegistry(), outMessage);
 }
 
-void ModelMaterialWorkspaceController::BeginMaterialGesture(
-    std::string label) {
-  if (!authoringDocument_.HasMaterial() || materialGesture_) {
-    return;
-  }
-  materialGesture_ = MaterialEditGesture{authoringDocument_.GetMaterial(),
-                                         std::move(label)};
+void ModelMaterialWorkspaceController::TrackMaterialItem(MaterialAssetData before, std::string label, bool changed) {
+#if defined(HIKARI_WITH_EDITOR)
+    const uint32_t item = ImGui::GetItemID();
+    const bool active = ImGui::IsItemActive();
+    if (active)
+        materialActiveItem_ = item;
+    authoringDocument_.UpdateMaterialItem(std::move(before), std::move(label), item, active, changed);
+#endif
 }
 
-void ModelMaterialWorkspaceController::PreviewMaterialGesture(
-    DocumentSceneBase &scene) {
-  (void)scene;
-  if (!materialGesture_ || !authoringDocument_.HasMaterial()) {
-    return;
-  }
-  const MaterialAssetKind kind = authoringDocument_.GetMaterial().kind;
-  if (kind != MaterialAssetKind::Material &&
-      kind != MaterialAssetKind::Instance) {
-    return;
-  }
-  // Drag/color gestures may emit multiple changes in one ImGui frame. Publish
-  // only the final authored state once after all workspace panels have drawn.
-  materialPreviewRefreshPending_ = true;
+bool ModelMaterialWorkspaceController::ApplyHistoryProjection(ModelMaterialWorkspaceDocument::ChangedDomain domain,
+                                                              DocumentSceneBase& scene, std::string& outMessage) {
+    if (domain == ModelMaterialWorkspaceDocument::ChangedDomain::Binding)
+        RebuildSlotState(scene.GetAssetDatabase(), scene.GetAssetRegistry());
+    return FlushMaterialPreview(scene, outMessage);
 }
 
-void ModelMaterialWorkspaceController::CommitMaterialGesture(
-    DocumentSceneBase &scene) {
-  if (!materialGesture_) {
-    return;
-  }
-  MaterialEditGesture gesture = std::move(*materialGesture_);
-  materialGesture_.reset();
-  materialPreviewRefreshPending_ = false;
-  if (authoringDocument_.CommitMaterial(std::move(gesture.before),
-                                        std::move(gesture.label)) &&
-      authoringDocument_.LastMaterialChangeRequiresPreview()) {
-    (void)RefreshMaterialPreviews(scene, statusMessage_);
-  }
-}
-
-void ModelMaterialWorkspaceController::CancelMaterialGesture(
-    DocumentSceneBase &scene) {
-  if (!materialGesture_) {
-    return;
-  }
-  authoringDocument_.RestoreMaterial(std::move(materialGesture_->before));
-  materialGesture_.reset();
-  materialPreviewRefreshPending_ = false;
-  if (authoringDocument_.LastMaterialChangeRequiresPreview()) {
-    (void)RefreshMaterialPreviews(scene, statusMessage_);
-  }
-  statusMessage_ = "material edit canceled";
-}
-
-void ModelMaterialWorkspaceController::CommitMaterialMutation(
-    MaterialAssetData before, std::string label,
-    DocumentSceneBase &scene) {
-  MaterialAssetData &material = authoringDocument_.EditMaterial();
-  MaterialGraphData *graph = material.kind == MaterialAssetKind::Material
-      ? &material.graph
-      : material.kind == MaterialAssetKind::Function
-          ? &material.function.graph
-          : nullptr;
-  if (graph != nullptr) {
-    (void)ReconcileMaterialGraphDynamicNodeTypes(*graph);
-  }
-  if (authoringDocument_.CommitMaterial(std::move(before), std::move(label)) &&
-      authoringDocument_.LastMaterialChangeRequiresPreview()) {
-    (void)RefreshMaterialPreviews(scene, statusMessage_);
-  }
-}
-
-bool ModelMaterialWorkspaceController::ApplyHistoryProjection(
-    ModelMaterialWorkspaceDocument::ChangedDomain domain,
-    DocumentSceneBase &scene,
-    std::string &outMessage) {
-  if (domain == ModelMaterialWorkspaceDocument::ChangedDomain::Binding) {
-    RebuildSlotState(scene.GetAssetDatabase(), scene.GetAssetRegistry());
-    return true;
-  }
-  if (domain == ModelMaterialWorkspaceDocument::ChangedDomain::Material) {
-    return RefreshMaterialPreviews(scene, outMessage);
-  }
-  return true;
+void ModelMaterialWorkspaceController::AppendAiCompileDiagnostics(std::vector<std::string>& outDetails) const {
+    if (!authoringDocument_.HasMaterial()) {
+        return;
+    }
+    const MaterialCompileResult& compile = authoringDocument_.GetCompileResult();
+    if (compile.success && !compile.usedFallback) {
+        outDetails.push_back("compile: ok");
+        return;
+    }
+    size_t count = 0u;
+    for (const MaterialCompileDiagnostic& diagnostic : compile.diagnostics) {
+        if (count >= 8u) {
+            break;
+        }
+        std::string line = diagnostic.code + ": " + diagnostic.message;
+        if (!diagnostic.subjectId.empty()) {
+            line += " (" + diagnostic.subjectId + ")";
+        }
+        outDetails.push_back(line);
+        ++count;
+    }
+    if (count == 0u) {
+        outDetails.push_back("compile: " + std::string(compile.success ? "ok" : "failed"));
+    }
 }
 
 } // namespace HIKARI::EDITOR

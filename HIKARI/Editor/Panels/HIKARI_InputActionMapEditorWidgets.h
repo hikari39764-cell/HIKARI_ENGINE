@@ -10,17 +10,10 @@ namespace HIKARI::EDITOR::INPUT_WIDGETS {
 
 bool EditString(const char* label, std::string& value, size_t capacity = 192);
 bool MatchesFilter(std::string_view value, const char* filter);
-bool DrawValueTypeCombo(
-    const char* label,
-    INPUT::InputActionValueType& valueType);
-bool DrawBindingSourceCombo(
-    const char* label,
-    INPUT::InputBindingSource& source);
+bool DrawValueTypeCombo(const char* label, INPUT::InputActionValueType& valueType);
+bool DrawBindingSourceCombo(const char* label, INPUT::InputBindingSource& source);
 std::string DefaultControl(INPUT::InputBindingSource source);
-bool DrawControlPicker(
-    const char* label,
-    INPUT::InputBindingSource source,
-    std::string& control);
+bool DrawControlPicker(const char* label, INPUT::InputBindingSource source, std::string& control);
 bool DrawModifierPicker(std::string& modifier);
 std::string DeviceLabel(INPUT::InputDeviceKind device);
 

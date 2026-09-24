@@ -13,164 +13,126 @@
 
 namespace HIKARI {
 
-    namespace ModelComponentPropertyIds {
-        inline constexpr char AssetId[] = "assetId";
-        inline constexpr char Visible[] = "visible";
-        inline constexpr char CastShadow[] = "castShadow";
-        inline constexpr char ReceiveShadow[] = "receiveShadow";
-        inline constexpr char RenderStatic[] = "renderStatic";
-        inline constexpr char IncludeInLightingBake[] =
-            "includeInLightingBake";
-        inline constexpr char MaterialSetAssetGuid[] =
-            "materialSetAssetGuid";
-        inline constexpr char PostGroupMask[] = "postGroupMask";
-    }
+namespace ModelComponentPropertyIds {
+inline constexpr char AssetId[] = "assetId";
+inline constexpr char Visible[] = "visible";
+inline constexpr char CastShadow[] = "castShadow";
+inline constexpr char ReceiveShadow[] = "receiveShadow";
+inline constexpr char RenderStatic[] = "renderStatic";
+inline constexpr char IncludeInLightingBake[] = "includeInLightingBake";
+inline constexpr char MaterialSetAssetGuid[] = "materialSetAssetGuid";
+inline constexpr char PostGroupMask[] = "postGroupMask";
+} // namespace ModelComponentPropertyIds
 
-    class Material;
-    class ModelAsset;
+class Material;
+class ModelAsset;
 
-    enum class ModelRenderDebugMode {
-        Normal,
-        WireOverlay,
-        WireOnly,
-        BoundsOnly,
-    };
+enum class ModelRenderDebugMode {
+    Normal,
+    WireOverlay,
+    WireOnly,
+    BoundsOnly,
+};
 
-    struct ModelMaterialOverrideSlot {
-        uint32_t slotIndex = 0;
-        AssetGuid materialAssetGuid{};
-        MaterialSlotId slotId{};
-    };
+struct ModelMaterialOverrideSlot {
+    uint32_t slotIndex = 0;
+    AssetGuid materialAssetGuid{};
+    MaterialSlotId slotId{};
+};
 
-    struct RuntimeMaterialOverrideSlot {
-        uint32_t materialIndex = 0;
-        std::unique_ptr<Material> material{};
-    };
+struct RuntimeMaterialOverrideSlot {
+    uint32_t materialIndex = 0;
+    std::unique_ptr<Material> material{};
+};
 
-    struct RuntimeModelNodeVisibilityOverride {
-        std::string nodeName{};
-        bool visible = true;
-        bool includeDescendants = true;
-    };
+struct RuntimeModelNodeVisibilityOverride {
+    std::string nodeName{};
+    bool visible = true;
+    bool includeDescendants = true;
+};
 
-    class ModelComponent final :
-        public IComponent,
-        public IGeometryFitProvider {
-    public:
-        ~ModelComponent() override;
+class ModelComponent final : public IComponent, public IGeometryFitProvider {
+public:
+    ~ModelComponent() override;
 
-        std::string_view GetTypeName() const override {
-            return "ModelComponent";
-        }
+    std::string_view GetTypeName() const override { return "ModelComponent"; }
 
-        void SetModelAsset(ModelAsset* asset);
-        ModelAsset* GetModelAsset();
-        const ModelAsset* GetModelAsset() const;
+    void SetModelAsset(ModelAsset* asset);
+    ModelAsset* GetModelAsset();
+    const ModelAsset* GetModelAsset() const;
 
-        void SetVisible(bool visible);
-        bool IsVisible() const;
-        void SetSkeletonDebugVisible(bool visible);
-        bool IsSkeletonDebugVisible() const;
-        void SetSkeletonDebugXRay(bool enabled);
-        bool IsSkeletonDebugXRay() const;
-        void SetCastShadow(bool enabled);
-        bool GetCastShadow() const;
-        void SetReceiveShadow(bool enabled);
-        bool GetReceiveShadow() const;
-        void SetRenderStatic(bool enabled);
-        bool IsRenderStatic() const;
-        void SetIncludeInLightingBake(bool enabled);
-        bool GetIncludeInLightingBake() const;
-        void SetRenderDebugMode(ModelRenderDebugMode mode);
-        ModelRenderDebugMode GetRenderDebugMode() const;
-        void SetWireColor(uint32_t color);
-        uint32_t GetWireColor() const;
-        void SetMaxWireLines(uint32_t count);
-        uint32_t GetMaxWireLines() const;
-        bool GetWirePerPrimitiveColor() const;
+    void SetVisible(bool visible);
+    bool IsVisible() const;
+    bool GetCastShadow() const;
+    bool GetReceiveShadow() const;
+    void SetRenderStatic(bool enabled);
+    bool IsRenderStatic() const;
+    void SetIncludeInLightingBake(bool enabled);
+    bool GetIncludeInLightingBake() const;
+    ModelRenderDebugMode GetRenderDebugMode() const;
+    uint32_t GetWireColor() const;
+    uint32_t GetMaxWireLines() const;
+    bool GetWirePerPrimitiveColor() const;
 
-        void RenderImGui() override;
-        void BuildInspector(IInspectorBuilder& builder) override;
-        void Serialize(nlohmann::json& out) const override;
-        void Deserialize(const nlohmann::json& in) override;
-        bool QueryGeometryFit(
-            GeometryFitDesc& outFit) const noexcept override;
+    void RenderImGui() override;
+    void BuildInspector(IInspectorBuilder& builder) override;
+    void Serialize(nlohmann::json& out) const override;
+    void Deserialize(const nlohmann::json& in) override;
+    bool QueryGeometryFit(GeometryFitDesc& outFit) const noexcept override;
 
-        const std::string& GetAssetId() const;
-        void SetAssetId(std::string assetId);
+    const std::string& GetAssetId() const;
+    void SetAssetId(std::string assetId);
 
-        const AssetGuid& GetMaterialSetAssetGuid() const noexcept;
-        bool HasAuthoredMaterialSetSelection() const noexcept;
-        void SetMaterialSetAssetGuid(AssetGuid materialSetGuid);
-        void UseImportedModelMaterials();
-        void ClearMaterialSetAssetGuid();
+    const AssetGuid& GetMaterialSetAssetGuid() const noexcept;
+    bool HasAuthoredMaterialSetSelection() const noexcept;
+    void SetMaterialSetAssetGuid(AssetGuid materialSetGuid);
+    void UseImportedModelMaterials();
+    void ClearMaterialSetAssetGuid();
 
-        void SetPostGroupMask(uint32_t mask);
-        uint32_t GetPostGroupMask() const;
+    uint32_t GetPostGroupMask() const;
 
-        const std::vector<ModelMaterialOverrideSlot>&
-            GetMaterialOverrides() const;
-        void SetMaterialOverride(
-            uint32_t slotIndex,
-            AssetGuid materialGuid);
-        void SetMaterialOverride(
-            MaterialSlotId slotId,
-            uint32_t legacySlotIndex,
-            AssetGuid materialGuid);
-        void ClearMaterialOverride(uint32_t slotIndex);
-        void ClearMaterialOverride(MaterialSlotId slotId);
-        Material* GetRuntimeMaterialOverride(
-            uint32_t slotIndex);
-        const Material* GetRuntimeMaterialOverride(
-            uint32_t slotIndex) const;
-        void SetRuntimeMaterialOverride(
-            uint32_t slotIndex,
-            std::unique_ptr<Material> material);
-        void ClearRuntimeMaterialOverride(uint32_t slotIndex);
-        void ClearRuntimeMaterialOverrides();
-        const std::vector<RuntimeMaterialOverrideSlot>&
-            GetRuntimeMaterialOverrides() const noexcept;
-        bool SetRuntimeNodeVisibilityOverride(
-            std::string_view nodeName,
-            bool visible,
-            bool includeDescendants);
-        bool ClearRuntimeNodeVisibilityOverride(
-            std::string_view nodeName);
-        void ClearRuntimeNodeVisibilityOverrides();
-        const std::vector<RuntimeModelNodeVisibilityOverride>&
-            GetRuntimeNodeVisibilityOverrides() const noexcept;
-        // Resolves the stored exact-name overrides against one concrete model
-        // snapshot. Empty means all nodes are visible.
-        std::vector<uint8_t> ResolveRuntimeNodeVisibilityMask(
-            const ModelAsset& model) const;
+    const std::vector<ModelMaterialOverrideSlot>& GetMaterialOverrides() const;
+    void SetMaterialOverride(uint32_t slotIndex, AssetGuid materialGuid);
+    void SetMaterialOverride(MaterialSlotId slotId, uint32_t legacySlotIndex, AssetGuid materialGuid);
+    void ClearMaterialOverride(uint32_t slotIndex);
+    void ClearMaterialOverride(MaterialSlotId slotId);
+    Material* GetRuntimeMaterialOverride(uint32_t slotIndex);
+    const Material* GetRuntimeMaterialOverride(uint32_t slotIndex) const;
+    void SetRuntimeMaterialOverride(uint32_t slotIndex, std::unique_ptr<Material> material);
+    void ClearRuntimeMaterialOverride(uint32_t slotIndex);
+    void ClearRuntimeMaterialOverrides();
+    const std::vector<RuntimeMaterialOverrideSlot>& GetRuntimeMaterialOverrides() const noexcept;
+    bool SetRuntimeNodeVisibilityOverride(std::string_view nodeName, bool visible, bool includeDescendants);
+    bool ClearRuntimeNodeVisibilityOverride(std::string_view nodeName);
+    void ClearRuntimeNodeVisibilityOverrides();
+    const std::vector<RuntimeModelNodeVisibilityOverride>& GetRuntimeNodeVisibilityOverrides() const noexcept;
+    // Resolves the stored exact-name overrides against one concrete model
+    // snapshot. Empty means all nodes are visible.
+    std::vector<uint8_t> ResolveRuntimeNodeVisibilityMask(const ModelAsset& model) const;
 
-    private:
-        void NotifyRenderStateDirty();
-        MaterialSlotId ResolveCurrentSlotId(
-            uint32_t slotIndex) const noexcept;
+private:
+    void NotifyRenderStateDirty();
+    MaterialSlotId ResolveCurrentSlotId(uint32_t slotIndex) const noexcept;
 
-        ModelAsset* asset_ = nullptr;
-        std::string assetId_{};
-        bool visible_ = true;
-        bool showSkeletonDebug_ = false;
-        bool skeletonDebugXRay_ = false;
-        bool castShadow_ = true;
-        bool receiveShadow_ = true;
-        bool renderStatic_ = false;
-        bool includeInLightingBake_ = true;
-        ModelRenderDebugMode debugRenderMode_ =
-            ModelRenderDebugMode::Normal;
-        uint32_t wireColor_ = 0x00FFAAFF;
-        uint32_t maxWireLines_ = 20000;
-        bool wirePerPrimitiveColor_ = true;
-        uint32_t postGroupMask_ = 0;
-        AssetGuid materialSetAssetGuid_{};
-        bool materialSetSelectionAuthored_ = false;
-        std::vector<ModelMaterialOverrideSlot> materialOverrides_{};
-        std::vector<RuntimeMaterialOverrideSlot>
-            runtimeMaterialOverrides_{};
-        std::vector<RuntimeModelNodeVisibilityOverride>
-            runtimeNodeVisibilityOverrides_{};
-    };
+    ModelAsset* asset_ = nullptr;
+    std::string assetId_{};
+    bool visible_ = true;
+    bool showSkeletonDebug_ = false;
+    bool skeletonDebugXRay_ = false;
+    bool castShadow_ = true;
+    bool receiveShadow_ = true;
+    bool renderStatic_ = false;
+    bool includeInLightingBake_ = true;
+    ModelRenderDebugMode debugRenderMode_ = ModelRenderDebugMode::Normal;
+    uint32_t wireColor_ = 0x00FFAAFF;
+    uint32_t maxWireLines_ = 20000;
+    bool wirePerPrimitiveColor_ = true;
+    uint32_t postGroupMask_ = 0;
+    AssetGuid materialSetAssetGuid_{};
+    bool materialSetSelectionAuthored_ = false;
+    std::vector<ModelMaterialOverrideSlot> materialOverrides_{};
+    std::vector<RuntimeMaterialOverrideSlot> runtimeMaterialOverrides_{};
+    std::vector<RuntimeModelNodeVisibilityOverride> runtimeNodeVisibilityOverrides_{};
+};
 
 } // namespace HIKARI

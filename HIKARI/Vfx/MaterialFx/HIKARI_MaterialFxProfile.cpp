@@ -12,56 +12,51 @@
 namespace HIKARI {
 
 namespace {
-    std::unordered_map<std::string, MaterialFxProfile> gProfileCache;
-    MaterialFxProfileCacheStats gProfileCacheStats{};
+std::unordered_map<std::string, MaterialFxProfile> gProfileCache;
+MaterialFxProfileCacheStats gProfileCacheStats{};
 
-    MaterialFxRenderPhase ParseRenderPhase(const std::string& value) {
-        if (value == "DepthAware" || value == "SceneDepth") {
-            return MaterialFxRenderPhase::DepthAware;
-        }
-        return MaterialFxRenderPhase::Opaque;
+MaterialFxRenderPhase ParseRenderPhase(const std::string& value) {
+    if (value == "DepthAware" || value == "SceneDepth") {
+        return MaterialFxRenderPhase::DepthAware;
     }
-
-    bool ParseProfileNode(const nlohmann::json& node, const std::string& targetId, MaterialFxProfile& outProfile) {
-        if (!node.is_object()) {
-            return false;
-        }
-        if (node.value("id", std::string{}) != targetId) {
-            return false;
-        }
-
-        outProfile = MaterialFxProfile{};
-        outProfile.id = node.value("id", targetId);
-        outProfile.displayName = node.value("displayName", outProfile.displayName);
-        outProfile.shaderProfileId = node.value("shaderProfileId", outProfile.shaderProfileId);
-        outProfile.vertexShaderId = node.value("vertexShaderId", outProfile.vertexShaderId);
-        outProfile.pixelShaderId = node.value("pixelShaderId", outProfile.pixelShaderId);
-        outProfile.featureBits = node.value("featureBits", outProfile.featureBits);
-        outProfile.depthTest = node.value("depthTest", outProfile.depthTest);
-        outProfile.depthWrite = node.value("depthWrite", outProfile.depthWrite);
-        outProfile.doubleSided = node.value("doubleSided", outProfile.doubleSided);
-        outProfile.composite = VFX::SERIALIZATION::ParseCompositeMode(
-            node.value("composite", nlohmann::json{}),
-            outProfile.composite);
-        outProfile.renderPhase = ParseRenderPhase(node.value("renderPhase", std::string{ "Opaque" }));
-
-        const nlohmann::json* paramsNode = nullptr;
-        if (node.contains("params") && node["params"].is_array()) {
-            paramsNode = &node["params"];
-        } else if (node.contains("parameters") && node["parameters"].is_array()) {
-            paramsNode = &node["parameters"];
-        }
-        VFX::SERIALIZATION::ReadParameterDescriptorsFromJson(
-            paramsNode != nullptr ? *paramsNode : nlohmann::json{},
-            outProfile.params);
-        VFX::ResetParameterValuesFromDefaults(
-            outProfile.params,
-            outProfile.values.data(),
-            outProfile.values.size());
-
-        return true;
-    }
+    return MaterialFxRenderPhase::Opaque;
 }
+
+bool ParseProfileNode(const nlohmann::json& node, const std::string& targetId, MaterialFxProfile& outProfile) {
+    if (!node.is_object()) {
+        return false;
+    }
+    if (node.value("id", std::string{}) != targetId) {
+        return false;
+    }
+
+    outProfile = MaterialFxProfile{};
+    outProfile.id = node.value("id", targetId);
+    outProfile.displayName = node.value("displayName", outProfile.displayName);
+    outProfile.shaderProfileId = node.value("shaderProfileId", outProfile.shaderProfileId);
+    outProfile.vertexShaderId = node.value("vertexShaderId", outProfile.vertexShaderId);
+    outProfile.pixelShaderId = node.value("pixelShaderId", outProfile.pixelShaderId);
+    outProfile.featureBits = node.value("featureBits", outProfile.featureBits);
+    outProfile.depthTest = node.value("depthTest", outProfile.depthTest);
+    outProfile.depthWrite = node.value("depthWrite", outProfile.depthWrite);
+    outProfile.doubleSided = node.value("doubleSided", outProfile.doubleSided);
+    outProfile.composite =
+        VFX::SERIALIZATION::ParseCompositeMode(node.value("composite", nlohmann::json{}), outProfile.composite);
+    outProfile.renderPhase = ParseRenderPhase(node.value("renderPhase", std::string{"Opaque"}));
+
+    const nlohmann::json* paramsNode = nullptr;
+    if (node.contains("params") && node["params"].is_array()) {
+        paramsNode = &node["params"];
+    } else if (node.contains("parameters") && node["parameters"].is_array()) {
+        paramsNode = &node["parameters"];
+    }
+    VFX::SERIALIZATION::ReadParameterDescriptorsFromJson(paramsNode != nullptr ? *paramsNode : nlohmann::json{},
+                                                         outProfile.params);
+    VFX::ResetParameterValuesFromDefaults(outProfile.params, outProfile.values.data(), outProfile.values.size());
+
+    return true;
+}
+} // namespace
 
 bool MaterialFxProfile::LoadFromJson(const std::string& path) {
     if (id.empty()) {
@@ -69,10 +64,7 @@ bool MaterialFxProfile::LoadFromJson(const std::string& path) {
     }
 
     nlohmann::json root{};
-    if (!SERIALIZATION::JSON::ReadJsonFile(
-            std::filesystem::path(path),
-            root) ||
-        !root.is_object()) {
+    if (!SERIALIZATION::JSON::ReadJsonFile(std::filesystem::path(path), root) || !root.is_object()) {
         return false;
     }
 
@@ -108,11 +100,14 @@ bool MaterialFxProfile::LoadById(const std::string& profileId, MaterialFxProfile
         loaded.displayName = "ディゾルブ";
         loaded.shaderProfileId = "StaticFx";
         loaded.composite = VFX::CompositeMode::Replace;
-        const auto parameter = [&](const char* key, const char* label,
-            uint8_t slot, uint8_t channel, float value, float maximum) {
+        const auto parameter = [&](const char* key, const char* label, uint8_t slot, uint8_t channel, float value,
+                                   float maximum) {
             VFX::ParamDesc p{};
-            p.key = key; p.label = label; p.ref = {slot, channel};
-            p.defaultValues[0] = value; p.maxValues[0] = maximum;
+            p.key = key;
+            p.label = label;
+            p.ref = {slot, channel};
+            p.defaultValues[0] = value;
+            p.maxValues[0] = maximum;
             loaded.params.push_back(std::move(p));
         };
         parameter("amount", "消失量", 0, 2, 0.0f, 1.0f);
@@ -138,11 +133,9 @@ void MaterialFxProfile::ClearCache() {
     gProfileCacheStats = {};
 }
 
-MaterialFxProfileCacheStats MaterialFxProfile::GetCacheStats() {
-    return gProfileCacheStats;
-}
+MaterialFxProfileCacheStats MaterialFxProfile::GetCacheStats() { return gProfileCacheStats; }
 
-void MaterialFxProfile::CopyValuesTo(DirectX::XMFLOAT4(&dst)[VFX::kMaterialFxUserCount]) const {
+void MaterialFxProfile::CopyValuesTo(DirectX::XMFLOAT4 (&dst)[VFX::kMaterialFxUserCount]) const {
     const size_t count = std::min(values.size(), std::size(dst));
     for (size_t i = 0; i < count; ++i) {
         dst[i] = values[i];

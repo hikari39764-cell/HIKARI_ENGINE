@@ -9,110 +9,74 @@
 #include "Scene/Lighting/HIKARI_SceneLightingSet.h"
 
 namespace HIKARI {
-    namespace {
-        bool EqualVec3(const MATH::Vec3& lhs, const MATH::Vec3& rhs) {
-            return lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z;
-        }
+namespace {
+bool EqualVec3(const MATH::Vec3& lhs, const MATH::Vec3& rhs) {
+    return lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z;
+}
 
-        bool IsSkyRuntimeResourceBindingChanged(
-             const SkySettings& before,
-             const SkySettings& after)
-        {
-            return before.skyAsset != after.skyAsset ||
-                   before.panoramaCloudAsset != after.panoramaCloudAsset ||
-                   before.mode != after.mode;
-        }
+bool IsSkyRuntimeResourceBindingChanged(const SkySettings& before, const SkySettings& after) {
+    return before.skyAsset != after.skyAsset || before.panoramaCloudAsset != after.panoramaCloudAsset ||
+           before.mode != after.mode;
+}
 
-        bool IsReflectionProbeRuntimeBindingChanged(
-            const ReflectionProbeSettings& before,
-            const ReflectionProbeSettings& after)
-        {
-            return before.enabled != after.enabled ||
-                before.sourceCubemapAsset != after.sourceCubemapAsset ||
-                !EqualVec3(before.position, after.position) ||
-                before.radius != after.radius ||
-                before.intensity != after.intensity ||
-                before.influenceShape != after.influenceShape ||
-                before.projectionShape != after.projectionShape ||
-                !EqualVec3(before.influenceBoxCenter, after.influenceBoxCenter) ||
-                !EqualVec3(before.influenceBoxSize, after.influenceBoxSize) ||
-                !EqualVec3(before.projectionBoxCenter, after.projectionBoxCenter) ||
-                !EqualVec3(before.projectionBoxSize, after.projectionBoxSize) ||
-                before.blendDistance != after.blendDistance ||
-                before.priority != after.priority;
-        }
+bool IsReflectionProbeRuntimeBindingChanged(const ReflectionProbeSettings& before,
+                                            const ReflectionProbeSettings& after) {
+    return before.enabled != after.enabled || before.sourceCubemapAsset != after.sourceCubemapAsset ||
+           !EqualVec3(before.position, after.position) || before.radius != after.radius ||
+           before.intensity != after.intensity || before.influenceShape != after.influenceShape ||
+           before.projectionShape != after.projectionShape ||
+           !EqualVec3(before.influenceBoxCenter, after.influenceBoxCenter) ||
+           !EqualVec3(before.influenceBoxSize, after.influenceBoxSize) ||
+           !EqualVec3(before.projectionBoxCenter, after.projectionBoxCenter) ||
+           !EqualVec3(before.projectionBoxSize, after.projectionBoxSize) ||
+           before.blendDistance != after.blendDistance || before.priority != after.priority;
+}
 
+} // namespace
+
+bool DocumentSceneBase::ApplyDocumentEnvironmentRuntimeChanges() {
+    const bool skyResourceBindingChanged =
+        IsSkyRuntimeResourceBindingChanged(state_->lighting.environment.sky, state_->identity.document.environment.sky);
+    const bool reflectionProbeBindingChanged = IsReflectionProbeRuntimeBindingChanged(
+        state_->lighting.environment.reflectionProbe, state_->identity.document.environment.reflectionProbe);
+
+    state_->lighting.environment = state_->identity.document.environment;
+    state_->identity.documentDirty = true;
+
+    if (!skyResourceBindingChanged && !reflectionProbeBindingChanged) {
+        return true;
     }
 
-    bool DocumentSceneBase::ApplyDocumentEnvironmentRuntimeChanges()
-    {
-        const bool skyResourceBindingChanged =
-            IsSkyRuntimeResourceBindingChanged(
-                state_->lighting.environment.sky,
-                state_->identity.document.environment.sky);
-        const bool reflectionProbeBindingChanged =
-            IsReflectionProbeRuntimeBindingChanged(
-                state_->lighting.environment.reflectionProbe,
-                state_->identity.document.environment.reflectionProbe);
+    return RefreshLightingRuntime();
+}
 
-        state_->lighting.environment =
-            state_->identity.document.environment;
-        state_->identity.documentDirty = true;
+bool DocumentSceneBase::RefreshLightingRuntime() {
+    SceneDependencySet deps{};
+    deps.sky = state_->lighting.environment.sky;
+    if (!state_->lighting.environment.sky.skyAsset.empty()) {
+        deps.skyAssetIds.insert(state_->lighting.environment.sky.skyAsset);
+    }
+    if (state_->lighting.environment.sky.mode == SkyMode::Texture2D &&
+        !state_->lighting.environment.sky.panoramaCloudAsset.empty()) {
+        deps.skyAssetIds.insert(state_->lighting.environment.sky.panoramaCloudAsset);
+    }
+    deps.lightingSceneHash = ASSETS::LIGHTING::BuildLightingSceneHash(state_->identity.document);
+    deps.lightingBakeAuthoringHashes =
+        ASSETS::LIGHTING::BuildLightingBakeRecordAuthoringHashes(state_->identity.document);
+    deps.lighting = LIGHTING_AUTHORING::BuildSceneLightingSet(state_->identity.document);
 
-        if (!skyResourceBindingChanged && !reflectionProbeBindingChanged) {
-            return true;
-        }
+    const bool ok = state_->runtime.builder.PreloadDependencies(
+        deps, state_->assets.Registry(), state_->assets.Models(), state_->lighting.sky,
+        state_->assets.Database().GetProjectRoot(), state_->identity.currentSceneAssetGuid.value);
 
-        return RefreshLightingRuntime();
+    SKYRENDERER::InvalidateSkyTextureCache();
+    RENDER3D::PANORAMA_SKY::InvalidatePanoramaSkyLayerTextureCache();
+
+    if (!ok) {
+        HIKARI_LOG_WARN("[LightingRuntime] failed to preload lighting dependency.");
     }
 
-    bool DocumentSceneBase::RefreshLightingRuntime() {
-        SceneDependencySet deps{};
-        deps.sky = state_->lighting.environment.sky;
-        if (!state_->lighting.environment.sky.skyAsset.empty()) {
-            deps.skyAssetIds.insert(state_->lighting.environment.sky.skyAsset);
-        }
-        if (state_->lighting.environment.sky.mode == SkyMode::Texture2D &&
-            !state_->lighting.environment.sky.panoramaCloudAsset.empty()) {
-            deps.skyAssetIds.insert(
-                state_->lighting.environment.sky.panoramaCloudAsset);
-        }
-        deps.lightingSceneHash =
-            ASSETS::LIGHTING::BuildLightingSceneHash(
-                state_->identity.document);
-        deps.lightingBakeAuthoringHashes =
-            ASSETS::LIGHTING::
-                BuildLightingBakeRecordAuthoringHashes(
-                    state_->identity.document);
-        deps.lighting = LIGHTING_AUTHORING::BuildSceneLightingSet(
-            state_->identity.document);
-
-        const bool ok = state_->runtime.builder.PreloadDependencies(
-            deps,
-            state_->assets.Registry(),
-            state_->assets.Models(),
-            state_->lighting.sky,
-            state_->assets.Database().GetProjectRoot(),
-            state_->identity.currentSceneAssetGuid.value);
-
-        SKYRENDERER::InvalidateSkyTextureCache();
-        RENDER3D::PANORAMA_SKY::
-            InvalidatePanoramaSkyLayerTextureCache();
-
-        if (!ok) {
-            HIKARI_LOG_WARN("[LightingRuntime] failed to preload lighting dependency.");
-        }
-
-        return ok;
-    }
-
-    bool DocumentSceneBase::RefreshSkyRuntime() {
-        return RefreshLightingRuntime();
-    }
-
-    bool DocumentSceneBase::RefreshCurrentSkyRuntime() {
-        return RefreshLightingRuntime();
-    }
-
+    return ok;
+}
 
 } // namespace HIKARI

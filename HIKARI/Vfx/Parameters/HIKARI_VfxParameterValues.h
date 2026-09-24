@@ -9,9 +9,7 @@
 
 namespace HIKARI::VFX {
 
-    void ResetParameterValuesFromDefaults(
-        const std::vector<ParamDesc>& parameters,
-        DirectX::XMFLOAT4* values,
-        size_t valueCount);
+void ResetParameterValuesFromDefaults(const std::vector<ParamDesc>& parameters, DirectX::XMFLOAT4* values,
+                                      size_t valueCount);
 
 } // namespace HIKARI::VFX

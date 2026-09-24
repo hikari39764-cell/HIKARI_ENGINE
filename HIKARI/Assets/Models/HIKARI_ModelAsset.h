@@ -16,65 +16,56 @@
 
 namespace HIKARI {
 
-    class ModelAsset {
-    public:
-        enum class State {
-            Unloaded,
-            Loaded,
-            Failed
-        };
+class ModelAsset {
+public:
+    enum class State { Unloaded, Loaded, Failed };
 
-        const std::string& GetName() const;
-        const std::string& GetSourcePath() const;
-        State GetState() const;
+    const std::string& GetName() const;
+    const std::string& GetSourcePath() const;
+    State GetState() const;
 
-        void SetName(std::string name);
-        void SetSourcePath(std::string path);
-        void SetState(State state);
+    void SetName(std::string name);
+    void SetSourcePath(std::string path);
+    void SetState(State state);
 
-        bool HasSkeleton() const;
-        bool HasSkinnedMesh() const;
-        bool HasAnimations() const;
-        size_t GetSkinCount() const;
-        size_t GetAnimationCount() const;
-        const SkeletonAsset* FindSkin(int skinIndex) const;
-        const AnimationClip* FindAnimationClip(std::string_view name) const;
-        const AnimationClip* FindAnimationClip(AnimationClipId id) const;
-        const AnimationClip* GetAnimationClip(size_t index) const;
-        AnimationClipId GetAnimationClipId(size_t index) const noexcept;
-        float GetAnimationDuration(std::string_view name) const;
+    bool HasSkinnedMesh() const;
+    size_t GetSkinCount() const;
+    const SkeletonAsset* FindSkin(int skinIndex) const;
+    const AnimationClip* FindAnimationClip(std::string_view name) const;
+    const AnimationClip* FindAnimationClip(AnimationClipId id) const;
+    const AnimationClip* GetAnimationClip(size_t index) const;
+    AnimationClipId GetAnimationClipId(size_t index) const noexcept;
 
-        // 旧 CPU draw-item 路径仍依赖这组运行时资源；显式标出 legacy，避免与源模型数据混淆。
-        Mesh* GetLegacyRuntimeMesh();
-        const Mesh* GetLegacyRuntimeMesh() const;
-        Material* GetLegacyRuntimeMaterial();
-        const Material* GetLegacyRuntimeMaterial() const;
-        void SetLegacyRuntimeMesh(std::unique_ptr<Mesh> mesh);
-        void SetLegacyRuntimeMaterial(std::unique_ptr<Material> material);
+    // 旧 CPU draw-item 路径仍依赖这组运行时资源；显式标出 legacy，避免与源模型数据混淆。
+    Mesh* GetLegacyRuntimeMesh();
+    const Mesh* GetLegacyRuntimeMesh() const;
+    Material* GetLegacyRuntimeMaterial();
+    const Material* GetLegacyRuntimeMaterial() const;
+    void SetLegacyRuntimeMesh(std::unique_ptr<Mesh> mesh);
+    void SetLegacyRuntimeMaterial(std::unique_ptr<Material> material);
 
-    public:
-        AssetId id{};
-        std::string sourcePath;
-        State state = State::Unloaded;
-        // Monotonic in-memory source generation. Runtime caches may retain
-        // resolved node/clip pointers only while this value still matches;
-        // it is intentionally not serialized into HMODEL payloads.
-        uint64_t sourceRevision = 1u;
-        std::vector<ModelNode> nodes;
-        std::vector<MeshAsset> meshes;
-        std::vector<MaterialAsset> materials;
-        std::vector<MaterialImportSourceSlots>
-            materialImportSources;
-        std::vector<TextureAsset3D> textures;
-        std::vector<SkeletonAsset> skins;
-        std::vector<AnimationClip> animations;
-        ModelImportDiagnostics importDiagnostics{};
-        int defaultSceneRootNode = -1;
-        Bounds bounds{};
+public:
+    AssetId id{};
+    std::string sourcePath;
+    State state = State::Unloaded;
+    // Monotonic in-memory source generation. Runtime caches may retain
+    // resolved node/clip pointers only while this value still matches;
+    // it is intentionally not serialized into HMODEL payloads.
+    uint64_t sourceRevision = 1u;
+    std::vector<ModelNode> nodes;
+    std::vector<MeshAsset> meshes;
+    std::vector<MaterialAsset> materials;
+    std::vector<MaterialImportSourceSlots> materialImportSources;
+    std::vector<TextureAsset3D> textures;
+    std::vector<SkeletonAsset> skins;
+    std::vector<AnimationClip> animations;
+    ModelImportDiagnostics importDiagnostics{};
+    int defaultSceneRootNode = -1;
+    Bounds bounds{};
 
-    private:
-        std::unique_ptr<Mesh> legacyRuntimeMesh_;
-        std::unique_ptr<Material> legacyRuntimeMaterial_;
-    };
+private:
+    std::unique_ptr<Mesh> legacyRuntimeMesh_;
+    std::unique_ptr<Material> legacyRuntimeMaterial_;
+};
 
 } // namespace HIKARI

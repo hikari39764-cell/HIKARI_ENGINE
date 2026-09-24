@@ -1,6 +1,6 @@
 #include "Scene/Camera/HIKARI_CameraFlowSystem.h"
 #include "Assets/Camera/HIKARI_GameplayCameraAsset.h"
-#include "Core/HIKARI_FrameContext.h"
+#include "HIKARI/Project/FrameContext.h"
 #include "Core/HIKARI_Logger.h"
 #include "Scene/Camera/HIKARI_CameraVolume.h"
 #include "Scene/Components/HIKARI_CameraComponent.h"
@@ -14,21 +14,21 @@
 #include <unordered_set>
 namespace HIKARI {
 using namespace SEQUENCER;
-void CameraFlowSystem::OnWorldDetached(World &world) {
-    if (auto *playback = world.Services().Find<SequencePlaybackService>())
+void CameraFlowSystem::OnWorldDetached(World& world) {
+    if (auto* playback = world.Services().Find<SequencePlaybackService>())
         for (auto handle : tracked_)
             (void)playback->Stop(handle, SequenceStopReason::OwnerDestroyed);
     tracked_.clear();
 }
-void CameraFlowSystem::LateUpdate(World &world, const FrameContext &frame) {
-    const auto *play = world.Services().Find<RuntimePlayStateService>();
+void CameraFlowSystem::LateUpdate(World& world, const FrameContext& frame) {
+    const auto* play = world.Services().Find<RuntimePlayStateService>();
     if (!play || !play->IsActive())
         return;
-    std::vector<std::pair<GameObject *, CameraFlowComponent *>> flows;
+    std::vector<std::pair<GameObject*, CameraFlowComponent*>> flows;
     world.ForEachObjectWith<CameraFlowComponent>(
-        [&](GameObject &o, CameraFlowComponent &c) { flows.emplace_back(&o, &c); });
+        [&](GameObject& o, CameraFlowComponent& c) { flows.emplace_back(&o, &c); });
     // 同時侵入は優先度、同順位はシーン ID で決定し、オブジェクト配列順には依存しない。
-    std::sort(flows.begin(), flows.end(), [](const auto &a, const auto &b) {
+    std::sort(flows.begin(), flows.end(), [](const auto& a, const auto& b) {
         if (a.second->Settings().priority != b.second->Settings().priority)
             return a.second->Settings().priority > b.second->Settings().priority;
         return a.first->GetDocumentId().value < b.first->GetDocumentId().value;
@@ -37,34 +37,38 @@ void CameraFlowSystem::LateUpdate(World &world, const FrameContext &frame) {
     std::unordered_set<uint64_t> claimed;
     std::unordered_set<CameraFlowComponent*> advanced;
     // 実行中フローを先に完了させ、そのフレームの交還先を他の領域が上書きしない。
-    for(auto [owner,component]:flows) {
-        const auto stage=component->runtime_.stage;
-        if(stage==CameraFlowStage::Playing || stage==CameraFlowStage::Returning) {
+    for (auto [owner, component] : flows) {
+        const auto stage = component->runtime_.stage;
+        if (stage == CameraFlowStage::Playing || stage == CameraFlowStage::Returning) {
             claimed.insert(component->settings_.cameraObjectId.value);
-            Process(world,*owner,*component,frame.gameDt,true);advanced.insert(component);
+            Process(world, *owner, *component, frame.gameDt, true);
+            advanced.insert(component);
         }
     }
-    for(auto [owner,component]:flows) {
-        if(!advanced.contains(component)) {
-            const auto before=component->runtime_.runs;
-            Process(world,*owner,*component,frame.gameDt,!claimed.contains(component->settings_.cameraObjectId.value));
-            if(before!=component->runtime_.runs) claimed.insert(component->settings_.cameraObjectId.value);
+    for (auto [owner, component] : flows) {
+        if (!advanced.contains(component)) {
+            const auto before = component->runtime_.runs;
+            Process(world, *owner, *component, frame.gameDt,
+                    !claimed.contains(component->settings_.cameraObjectId.value));
+            if (before != component->runtime_.runs)
+                claimed.insert(component->settings_.cameraObjectId.value);
         }
-        if(component->runtime_.playback.IsValid()) handles.push_back(component->runtime_.playback);
+        if (component->runtime_.playback.IsValid())
+            handles.push_back(component->runtime_.playback);
     }
-    if (auto *playback = world.Services().Find<SequencePlaybackService>())
+    if (auto* playback = world.Services().Find<SequencePlaybackService>())
         for (auto handle : tracked_)
             if (std::find(handles.begin(), handles.end(), handle) == handles.end())
                 (void)playback->Stop(handle, SequenceStopReason::OwnerDestroyed);
     tracked_ = std::move(handles);
 }
-void CameraFlowSystem::Finish(World &world, CameraFlowComponent &flow, CameraFollowComponent &camera, bool completed) {
-    auto &r = flow.runtime_;
-    const auto &s = flow.settings_;
+void CameraFlowSystem::Finish(World& world, CameraFlowComponent& flow, CameraFollowComponent& camera, bool completed) {
+    auto& r = flow.runtime_;
+    const auto& s = flow.settings_;
     if (completed || s.finishOnInterrupt) {
         if (!s.afterMode.empty())
             camera.GameplayState().baseMode = s.afterMode;
-        if (auto *director = world.Services().Find<CameraDirector>())
+        if (auto* director = world.Services().Find<CameraDirector>())
             director->SetBaseCamera(s.cameraObjectId);
         r.returnRemaining =
             camera.GameplayState().source ? camera.GameplayState().source->cinematicReturnSeconds : 0.45f;
@@ -75,19 +79,20 @@ void CameraFlowSystem::Finish(World &world, CameraFlowComponent &flow, CameraFol
         r.stage = CameraFlowStage::Interrupted;
         r.diagnostic = "Cinematic interrupted; previous gameplay mode retained.";
     }
-    if (auto *playback = world.Services().Find<SequencePlaybackService>())
+    if (auto* playback = world.Services().Find<SequencePlaybackService>())
         (void)playback->Stop(r.playback, completed ? SequenceStopReason::Completed : SequenceStopReason::Stopped);
     r.playback = {};
 }
-void CameraFlowSystem::Process(World &world, GameObject &owner, CameraFlowComponent &flow, float dt, bool startAllowed) {
-    auto &r = flow.runtime_;
-    const auto &s = flow.settings_;
-    auto *playback = world.Services().Find<SequencePlaybackService>();
-    auto *subject = world.FindObject(s.subjectObjectId);
-    auto *object = world.FindObject(s.cameraObjectId);
-    auto *camera = object ? object->GetComponent<CameraFollowComponent>() : nullptr;
-    const auto *lens = object ? object->GetComponent<CameraComponent>() : nullptr;
-    auto fail = [&](CameraFlowStage stage, const char *diagnostic) {
+void CameraFlowSystem::Process(World& world, GameObject& owner, CameraFlowComponent& flow, float dt,
+                               bool startAllowed) {
+    auto& r = flow.runtime_;
+    const auto& s = flow.settings_;
+    auto* playback = world.Services().Find<SequencePlaybackService>();
+    auto* subject = world.FindObject(s.subjectObjectId);
+    auto* object = world.FindObject(s.cameraObjectId);
+    auto* camera = object ? object->GetComponent<CameraFollowComponent>() : nullptr;
+    const auto* lens = object ? object->GetComponent<CameraComponent>() : nullptr;
+    auto fail = [&](CameraFlowStage stage, const char* diagnostic) {
         if (playback)
             (void)playback->Stop(r.playback, SequenceStopReason::Disabled);
         r.playback = {};
@@ -103,7 +108,7 @@ void CameraFlowSystem::Process(World &world, GameObject &owner, CameraFlowCompon
         return;
     }
     std::string error;
-    const auto *store = world.Services().Find<GameplayCameraAssetStore>();
+    const auto* store = world.Services().Find<GameplayCameraAssetStore>();
     auto profile = camera->GameplayState().previewSource;
     if (!profile && store)
         profile = store->Load(camera->GameplayBinding().profile, error);
@@ -141,13 +146,15 @@ void CameraFlowSystem::Process(World &world, GameObject &owner, CameraFlowCompon
     const bool manual = std::exchange(flow.triggerPending_, false);
     if (r.entered && !s.repeatOnReentry && !manual)
         return;
-    const auto &base = camera->GameplayState().baseMode.empty() ? camera->GameplayBinding().initialMode
+    const auto& base = camera->GameplayState().baseMode.empty() ? camera->GameplayBinding().initialMode
                                                                 : camera->GameplayState().baseMode;
     if (!s.requiredMode.empty() && s.requiredMode != (base.empty() ? profile->defaultMode : base))
         return;
     if (manual || (s.triggerOnExit ? (!r.inside && wasInside) : (r.inside && !wasInside))) {
-        if(!startAllowed) {
-            r.stage=CameraFlowStage::Invalid;r.diagnostic="Another flow owns this camera handoff.";return;
+        if (!startAllowed) {
+            r.stage = CameraFlowStage::Invalid;
+            r.diagnostic = "Another flow owns this camera handoff.";
+            return;
         }
         if (!s.sequence.IsValid()) {
             r.entered = true;

@@ -4,6 +4,6 @@
 
 namespace HIKARI::GFX {
 
-    const char* DxgiFormatName(DXGI_FORMAT format);
+const char* DxgiFormatName(DXGI_FORMAT format);
 
 } // namespace HIKARI::GFX

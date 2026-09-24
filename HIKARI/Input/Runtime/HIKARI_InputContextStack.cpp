@@ -16,7 +16,8 @@ void InputContextStack::ResetToDefaults(const InputActionMap& map) {
 }
 
 bool InputContextStack::Push(std::string contextId) {
-    if (contextId.empty() || IsActive(contextId)) return false;
+    if (contextId.empty() || IsActive(contextId))
+        return false;
     activeContexts_.push_back(std::move(contextId));
     return true;
 }
@@ -28,13 +29,14 @@ bool InputContextStack::Pop(std::string_view contextId) {
 }
 
 void InputContextStack::SetActive(std::string contextId, bool active) {
-    if (active) (void)Push(std::move(contextId));
-    else (void)Pop(contextId);
+    if (active)
+        (void)Push(std::move(contextId));
+    else
+        (void)Pop(contextId);
 }
 
 bool InputContextStack::IsActive(std::string_view contextId) const {
-    return std::find(activeContexts_.begin(), activeContexts_.end(), contextId)
-        != activeContexts_.end();
+    return std::find(activeContexts_.begin(), activeContexts_.end(), contextId) != activeContexts_.end();
 }
 
 } // namespace HIKARI::INPUT

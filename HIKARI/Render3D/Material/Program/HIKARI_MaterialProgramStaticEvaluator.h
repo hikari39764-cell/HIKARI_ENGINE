@@ -7,9 +7,7 @@
 
 namespace HIKARI::RENDER3D::MATERIAL {
 
-void ApplyConnectedMaterialResponseParameters(
-    const MaterialProgramIR& program,
-    std::span<MATH::Vec4> parameters,
-    std::span<const MaterialProgramParameterValueOverride> overrides = {});
+void ApplyConnectedMaterialResponseParameters(const MaterialProgramIR& program, std::span<MATH::Vec4> parameters,
+                                              std::span<const MaterialProgramParameterValueOverride> overrides = {});
 
 } // namespace HIKARI::RENDER3D::MATERIAL

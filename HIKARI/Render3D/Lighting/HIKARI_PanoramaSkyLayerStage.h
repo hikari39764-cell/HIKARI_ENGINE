@@ -7,16 +7,13 @@
 
 namespace HIKARI::RENDER3D::PANORAMA_SKY {
 
-    // Composes the optional alpha-bearing equirectangular foreground after the
-    // base sky.  This is deliberately separate from both SkyRenderer and the
-    // volumetric stylized-cloud owner.
-    bool RenderPanoramaSkyLayer(
-        const GFX::Context& graphics,
-        const Camera3D& camera,
-        const SkySettings& settings,
-        SkyManager& skyManager);
+// Composes the optional alpha-bearing equirectangular foreground after the
+// base sky.  This is deliberately separate from both SkyRenderer and the
+// volumetric stylized-cloud owner.
+bool RenderPanoramaSkyLayer(const GFX::Context& graphics, const Camera3D& camera, const SkySettings& settings,
+                            SkyManager& skyManager);
 
-    void InvalidatePanoramaSkyLayerTextureCache();
-    void ShutdownPanoramaSkyLayerStage();
+void InvalidatePanoramaSkyLayerTextureCache();
+void ShutdownPanoramaSkyLayerStage();
 
 } // namespace HIKARI::RENDER3D::PANORAMA_SKY

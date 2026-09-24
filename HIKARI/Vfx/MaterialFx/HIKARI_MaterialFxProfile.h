@@ -42,8 +42,7 @@ public:
     static void ClearCache();
     static MaterialFxProfileCacheStats GetCacheStats();
     bool LoadFromJson(const std::string& path);
-    void CopyValuesTo(
-        DirectX::XMFLOAT4 (&dst)[VFX::kMaterialFxUserCount]) const;
+    void CopyValuesTo(DirectX::XMFLOAT4 (&dst)[VFX::kMaterialFxUserCount]) const;
 };
 
 } // namespace HIKARI

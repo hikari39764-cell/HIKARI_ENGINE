@@ -8,37 +8,39 @@
 
 namespace HIKARI {
 
-    struct AssetRecord {
-        AssetGuid guid{};
-        AssetType type = AssetType::Unknown;
+struct AssetRecord {
+    AssetGuid guid{};
+    AssetType type = AssetType::Unknown;
 
-        std::filesystem::path sourcePath{};
-        std::filesystem::path metaPath{};
-        std::filesystem::path artifactManifestPath{};
-        std::filesystem::path importedDirectory{};
+    std::filesystem::path sourcePath{};
+    std::filesystem::path metaPath{};
+    std::filesystem::path artifactManifestPath{};
+    std::filesystem::path importedDirectory{};
 
-        std::string displayName{};
+    std::string displayName{};
 
-        bool sourceExists = false;
-        bool metaExists = false;
-        bool importOutdated = false;
-        bool lastImportSucceeded = false;
+    bool sourceExists = false;
+    bool metaExists = false;
+    bool importOutdated = false;
+    bool lastImportSucceeded = false;
 
-        bool duplicateGuid = false;
-        bool importerMissing = false;
-        bool artifactMissing = false;
-        std::string lastImportMessage{};
+    bool duplicateGuid = false;
+    bool importerMissing = false;
+    bool artifactMissing = false;
+    std::string lastImportMessage{};
 
-        AssetMeta meta{};
-        AssetArtifactManifest artifactManifest{};
-    };
+    bool CanImport() const noexcept { return guid.IsValid() && sourceExists && !duplicateGuid && !importerMissing; }
 
-    inline std::string GetAssetRecordDisplayName(const AssetRecord& record) {
-        if (!record.displayName.empty()) {
-            return record.displayName;
-        }
-        std::string name = record.sourcePath.stem().string();
-        return name.empty() ? record.guid.value : name;
+    AssetMeta meta{};
+    AssetArtifactManifest artifactManifest{};
+};
+
+inline std::string GetAssetRecordDisplayName(const AssetRecord& record) {
+    if (!record.displayName.empty()) {
+        return record.displayName;
     }
+    std::string name = record.sourcePath.stem().string();
+    return name.empty() ? record.guid.value : name;
+}
 
 } // namespace HIKARI

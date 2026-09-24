@@ -2,9 +2,8 @@
 
 namespace HIKARI::EDITOR {
 
-    class SystemAuthoringRegistry;
+class SystemAuthoringRegistry;
 
-    void RegisterBuiltInSystemAuthoring(
-        SystemAuthoringRegistry& registry);
+void RegisterBuiltInSystemAuthoring(SystemAuthoringRegistry& registry);
 
 } // namespace HIKARI::EDITOR

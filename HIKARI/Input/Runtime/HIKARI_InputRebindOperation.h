@@ -44,10 +44,8 @@ struct InputRebindResult {
 class InputRebindOperation {
 public:
     void Begin(const InputRebindOptions& options = {});
-    void Update(
-        float unscaledDeltaSeconds,
-        bool allControlsReleased,
-        const std::vector<InputControlActuation>& candidates);
+    void Update(float unscaledDeltaSeconds, bool allControlsReleased,
+                const std::vector<InputControlActuation>& candidates);
     void Cancel();
     void Reset();
     bool ConsumeResult(InputRebindResult& outResult);

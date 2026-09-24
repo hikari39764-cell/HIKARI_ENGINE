@@ -6,381 +6,176 @@
 #include <string_view>
 
 namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
-    namespace {
-        using ResourceUse = GRAPH::RenderGraphResourceUse;
-        using MeshReadStorage = std::array<ResourceUse, 7u>;
+namespace {
+using ResourceUse = GRAPH::RenderGraphResourceUse;
+using MeshReadStorage = std::array<ResourceUse, 7u>;
 
-        std::span<const ResourceUse> BuildMeshReads(
-            const RenderFrameGraphTailResources& resources,
-            GRAPH::RenderGraphResourceId dependency,
-            bool includeOpaqueSceneColor,
-            MeshReadStorage& storage) noexcept {
-            std::size_t count = 0u;
-            storage[count++] = ResourceUse{
-                dependency, GRAPH::RenderGraphAccess::ReadDependency };
-            storage[count++] = ResourceUse{
-                resources.sceneDepth, GRAPH::RenderGraphAccess::ReadDepth };
-            storage[count++] = ResourceUse{
-                resources.packedSurface,
-                GRAPH::RenderGraphAccess::ReadSampled };
-            storage[count++] = ResourceUse{
-                resources.ambientOcclusion,
-                GRAPH::RenderGraphAccess::ReadSampled };
-            storage[count++] = ResourceUse{
-                resources.currentDepthPyramid,
-                GRAPH::RenderGraphAccess::ReadSampled };
-            storage[count++] = ResourceUse{
-                resources.visibilityDepthPyramid,
-                GRAPH::RenderGraphAccess::ReadSampled };
-            if (includeOpaqueSceneColor) {
-                storage[count++] = ResourceUse{
-                    resources.sceneColorOpaque,
-                    GRAPH::RenderGraphAccess::ReadSampled };
-            }
-            return std::span(storage.data(), count);
-        }
+std::span<const ResourceUse> BuildMeshReads(const RenderFrameGraphTailResources& resources,
+                                            GRAPH::RenderGraphResourceId dependency, bool includeOpaqueSceneColor,
+                                            MeshReadStorage& storage) noexcept {
+    std::size_t count = 0u;
+    storage[count++] = ResourceUse{dependency, GRAPH::RenderGraphAccess::ReadDependency};
+    storage[count++] = ResourceUse{resources.sceneDepth, GRAPH::RenderGraphAccess::ReadDepth};
+    storage[count++] = ResourceUse{resources.packedSurface, GRAPH::RenderGraphAccess::ReadSampled};
+    storage[count++] = ResourceUse{resources.ambientOcclusion, GRAPH::RenderGraphAccess::ReadSampled};
+    storage[count++] = ResourceUse{resources.currentDepthPyramid, GRAPH::RenderGraphAccess::ReadSampled};
+    storage[count++] = ResourceUse{resources.visibilityDepthPyramid, GRAPH::RenderGraphAccess::ReadSampled};
+    if (includeOpaqueSceneColor) {
+        storage[count++] = ResourceUse{resources.sceneColorOpaque, GRAPH::RenderGraphAccess::ReadSampled};
+    }
+    return std::span(storage.data(), count);
+}
 
-        bool AddCompletionPass(
-            GRAPH::RenderGraph& graph,
-            std::string_view passId,
-            std::string_view markerId,
-            std::span<const ResourceUse> reads,
-            GRAPH::RenderGraphExecuteFn execute,
-            void* userData,
-            GRAPH::RenderGraphResourceId& outMarker) noexcept {
-            outMarker = AddRenderFrameGraphCompletionMarker(
-                graph, markerId);
-            if (!outMarker.IsValid()) {
-                return false;
-            }
-            const std::array writes{
-                ResourceUse{
-                    outMarker,
-                    GRAPH::RenderGraphAccess::WriteDependency
-                }
-            };
-            return graph.AddPass(GRAPH::RenderGraphPassDesc{
-                passId, reads, writes, execute, userData });
-        }
+bool AddCompletionPass(GRAPH::RenderGraph& graph, std::string_view passId, std::string_view markerId,
+                       std::span<const ResourceUse> reads, GRAPH::RenderGraphExecuteFn execute, void* userData,
+                       GRAPH::RenderGraphResourceId& outMarker) noexcept {
+    outMarker = AddRenderFrameGraphCompletionMarker(graph, markerId);
+    if (!outMarker.IsValid()) {
+        return false;
+    }
+    const std::array writes{ResourceUse{outMarker, GRAPH::RenderGraphAccess::WriteDependency}};
+    return graph.AddPass(GRAPH::RenderGraphPassDesc{passId, reads, writes, execute, userData});
+}
+} // namespace
+
+bool BuildRenderFrameGraphTailPlan(const RenderFrameGraphPlanOptions& options, void* userData,
+                                   const RenderFrameGraphPassCallbacks& callbacks,
+                                   const RenderFrameGraphTailResources& resources, GRAPH::RenderGraph& graph) noexcept {
+    if (!resources.completionDependency.IsValid() || !resources.sceneDepth.IsValid() ||
+        !resources.packedSurface.IsValid() || !resources.ambientOcclusion.IsValid() ||
+        !resources.currentDepthPyramid.IsValid() || !resources.visibilityDepthPyramid.IsValid() ||
+        !resources.surfaceFeatureMask.IsValid() || !resources.stylizedOutlineStyle.IsValid() ||
+        ((options.includeDepthAware || options.includeTransparent) && !resources.sceneColorOpaque.IsValid())) {
+        return false;
     }
 
-    bool BuildRenderFrameGraphTailPlan(
-        const RenderFrameGraphPlanOptions& options,
-        void* userData,
-        const RenderFrameGraphPassCallbacks& callbacks,
-        const RenderFrameGraphTailResources& resources,
-        GRAPH::RenderGraph& graph) noexcept {
-        if (!resources.completionDependency.IsValid() ||
-            !resources.sceneDepth.IsValid() ||
-            !resources.packedSurface.IsValid() ||
-            !resources.ambientOcclusion.IsValid() ||
-            !resources.currentDepthPyramid.IsValid() ||
-            !resources.visibilityDepthPyramid.IsValid() ||
-            !resources.surfaceFeatureMask.IsValid() ||
-            !resources.stylizedOutlineStyle.IsValid() ||
-            ((options.includeDepthAware || options.includeTransparent) &&
-             !resources.sceneColorOpaque.IsValid())) {
+    GRAPH::RenderGraphResourceId tailDependency = resources.completionDependency;
+    MeshReadStorage meshReads{};
+    if (options.includeDepthAware) {
+        GRAPH::RenderGraphResourceId complete{};
+        if (!AddCompletionPass(graph, "DepthAware", "DepthAware.Complete",
+                               BuildMeshReads(resources, tailDependency, true, meshReads), callbacks.depthAware,
+                               userData, complete)) {
             return false;
         }
-
-        GRAPH::RenderGraphResourceId tailDependency =
-            resources.completionDependency;
-        MeshReadStorage meshReads{};
-        if (options.includeDepthAware) {
-            GRAPH::RenderGraphResourceId complete{};
-            if (!AddCompletionPass(
-                    graph,
-                    "DepthAware",
-                    "DepthAware.Complete",
-                    BuildMeshReads(
-                        resources, tailDependency, true, meshReads),
-                    callbacks.depthAware,
-                    userData,
-                    complete)) {
-                return false;
-            }
-            tailDependency = complete;
-        }
-        if (options.includeTransparent) {
-            GRAPH::RenderGraphResourceId complete{};
-            if (!AddCompletionPass(
-                    graph,
-                    "ForwardTransparent",
-                    "ForwardTransparent.Complete",
-                    BuildMeshReads(
-                        resources, tailDependency, true, meshReads),
-                    callbacks.transparent,
-                    userData,
-                    complete)) {
-                return false;
-            }
-            tailDependency = complete;
-        }
-
-        const std::array featurePlanReads{
-            ResourceUse{
-                tailDependency,
-                GRAPH::RenderGraphAccess::ReadDependency
-            },
-            ResourceUse{
-                resources.sceneDepth,
-                GRAPH::RenderGraphAccess::ReadSampled
-            },
-            ResourceUse{
-                resources.packedSurface,
-                GRAPH::RenderGraphAccess::ReadSampled
-            },
-            ResourceUse{
-                resources.surfaceFeatureMask,
-                GRAPH::RenderGraphAccess::ReadSampled
-            }
-        };
-        GRAPH::RenderGraphResourceId featurePlanComplete{};
-        if (!AddCompletionPass(
-                graph,
-                "RenderFeatures.Plan",
-                "RenderFeatures.Plan.Complete",
-                featurePlanReads,
-                callbacks.featurePlan,
-                userData,
-                featurePlanComplete)) {
-            return false;
-        }
-
-        GRAPH::RenderGraphResourceId geometryComplete{};
-        if (!AddCompletionPass(
-                graph,
-                "RenderFeatures.Geometry",
-                "RenderFeatures.Geometry.Complete",
-                BuildMeshReads(
-                    resources,
-                    featurePlanComplete,
-                    resources.sceneColorOpaque.IsValid(),
-                    meshReads),
-                callbacks.geometryFeatures,
-                userData,
-                geometryComplete)) {
-            return false;
-        }
-        GRAPH::RenderGraphResourceId visibilityComplete{};
-        if (!AddCompletionPass(
-                graph,
-                "RenderFeatures.Visibility",
-                "RenderFeatures.Visibility.Complete",
-                BuildMeshReads(
-                    resources,
-                    geometryComplete,
-                    resources.sceneColorOpaque.IsValid(),
-                    meshReads),
-                callbacks.visibilityFeatures,
-                userData,
-                visibilityComplete)) {
-            return false;
-        }
-
-        const auto sceneColorPostOpaque =
-            AddRenderFrameGraphSurfaceResource(
-                graph,
-                "SceneColorPostOpaque",
-                GRAPH::RenderGraphSemantic::SceneColorPostOpaque,
-                false,
-                GRAPH::RenderGraphSemanticPhase::PostOpaque,
-                SURFACE::SceneSurfaceProducer::SceneColorCapture,
-                GRAPH::RenderGraphResourceRequirement::Optional);
-        const auto postOpaqueCaptureComplete =
-            AddRenderFrameGraphCompletionMarker(
-                graph, "SceneColorPostOpaque.Capture.Complete");
-        if (!sceneColorPostOpaque.IsValid() ||
-            !postOpaqueCaptureComplete.IsValid()) {
-            return false;
-        }
-        const std::array captureReads{
-            ResourceUse{
-                visibilityComplete,
-                GRAPH::RenderGraphAccess::ReadDependency
-            }
-        };
-        const std::array captureWrites{
-            ResourceUse{
-                sceneColorPostOpaque,
-                GRAPH::RenderGraphAccess::CopyDestination,
-                SURFACE::SceneSurfaceProducer::SceneColorCapture
-            },
-            ResourceUse{
-                postOpaqueCaptureComplete,
-                GRAPH::RenderGraphAccess::WriteDependency
-            }
-        };
-        if (!graph.AddPass(GRAPH::RenderGraphPassDesc{
-                "SceneColorPostOpaque.Capture",
-                captureReads,
-                captureWrites,
-                callbacks.sceneColorPostOpaqueCapture,
-                userData
-            })) {
-            return false;
-        }
-
-        const std::array compositeReads{
-            ResourceUse{
-                postOpaqueCaptureComplete,
-                GRAPH::RenderGraphAccess::ReadDependency
-            },
-            ResourceUse{
-                sceneColorPostOpaque,
-                GRAPH::RenderGraphAccess::ReadSampled
-            },
-            ResourceUse{
-                resources.sceneDepth,
-                GRAPH::RenderGraphAccess::ReadSampled
-            },
-            ResourceUse{
-                resources.packedSurface,
-                GRAPH::RenderGraphAccess::ReadSampled
-            },
-            ResourceUse{
-                resources.surfaceFeatureMask,
-                GRAPH::RenderGraphAccess::ReadSampled
-            },
-            ResourceUse{
-                resources.stylizedOutlineStyle,
-                GRAPH::RenderGraphAccess::ReadSampled
-            }
-        };
-        GRAPH::RenderGraphResourceId compositeComplete{};
-        if (!AddCompletionPass(
-                graph,
-                "RenderFeatures.Composite",
-                "RenderFeatures.Composite.Complete",
-                compositeReads,
-                callbacks.stylizedFeatureComposite,
-                userData,
-                compositeComplete)) {
-            return false;
-        }
-
-        GRAPH::RenderGraphResourceId projectPassDependency =
-            compositeComplete;
-        const bool captureSceneColorFinal =
-            options.projectExtensions != nullptr &&
-            ProjectRenderPassesRequireSceneColorFinal(
-                *options.projectExtensions,
-                options.projectPurpose);
-        if (captureSceneColorFinal) {
-            const GRAPH::RenderGraphResourceId sceneColorFinal =
-                AddRenderFrameGraphSurfaceResource(
-                    graph,
-                    "SceneColorFinal",
-                    GRAPH::RenderGraphSemantic::SceneColorFinal,
-                    false,
-                    GRAPH::RenderGraphSemanticPhase::Final,
-                    SURFACE::SceneSurfaceProducer::PostFinal);
-            const GRAPH::RenderGraphResourceId finalCaptureComplete =
-                AddRenderFrameGraphCompletionMarker(
-                    graph,
-                    "SceneColorFinal.Capture.Complete");
-            if (!sceneColorFinal.IsValid() ||
-                !finalCaptureComplete.IsValid()) {
-                return false;
-            }
-            const std::array finalCaptureReads{
-                ResourceUse{
-                    compositeComplete,
-                    GRAPH::RenderGraphAccess::ReadDependency
-                }
-            };
-            const std::array finalCaptureWrites{
-                ResourceUse{
-                    sceneColorFinal,
-                    GRAPH::RenderGraphAccess::CopyDestination,
-                    SURFACE::SceneSurfaceProducer::PostFinal
-                },
-                ResourceUse{
-                    finalCaptureComplete,
-                    GRAPH::RenderGraphAccess::WriteDependency
-                }
-            };
-            if (!graph.AddPass(GRAPH::RenderGraphPassDesc{
-                    "SceneColorFinal.Capture",
-                    finalCaptureReads,
-                    finalCaptureWrites,
-                    callbacks.sceneColorFinalCapture,
-                    userData
-                })) {
-                return false;
-            }
-            projectPassDependency = finalCaptureComplete;
-        }
-
-        GRAPH::RenderGraphResourceId projectPassesComplete =
-            projectPassDependency;
-        if (options.projectExtensions != nullptr &&
-            !BuildProjectRenderPassChain(
-                *options.projectExtensions,
-                options.projectPurpose,
-                projectPassDependency,
-                callbacks.projectRenderPass,
-                userData,
-                graph,
-                projectPassesComplete)) {
-            return false;
-        }
-        if (resources.projectDispatchOutput.IsValid()) {
-            const std::array resolveReads{
-                ResourceUse{
-                    projectPassesComplete,
-                    GRAPH::RenderGraphAccess::ReadDependency
-                },
-                ResourceUse{
-                    resources.projectDispatchOutput,
-                    GRAPH::RenderGraphAccess::CopySource
-                }
-            };
-            GRAPH::RenderGraphResourceId resolveComplete{};
-            if (!AddCompletionPass(
-                    graph,
-                    "ProjectDispatchOutput.Resolve",
-                    "ProjectDispatchOutput.Resolve.Complete",
-                    resolveReads,
-                    callbacks.projectDispatchResolve,
-                    userData,
-                    resolveComplete)) {
-                return false;
-            }
-            projectPassesComplete = resolveComplete;
-        }
-        const std::array observerReads{
-            ResourceUse{
-                projectPassesComplete,
-                GRAPH::RenderGraphAccess::ReadDependency
-            }
-        };
-        GRAPH::RenderGraphResourceId observerComplete{};
-        if (!AddCompletionPass(
-                graph,
-                "ProjectRender.Observe.PostOpaque",
-                "ProjectRender.Observe.PostOpaque.Complete",
-                observerReads,
-                callbacks.projectRenderObserver,
-                userData,
-                observerComplete)) {
-            return false;
-        }
-        const std::array resumeReads{
-            ResourceUse{
-                observerComplete,
-                GRAPH::RenderGraphAccess::ReadDependency
-            }
-        };
-        GRAPH::RenderGraphResourceId presentationResumeComplete{};
-        return AddCompletionPass(
-            graph,
-            "FramePresentation.Resume",
-            "FramePresentation.Resume.Complete",
-            resumeReads,
-            callbacks.presentationResume,
-            userData,
-            presentationResumeComplete);
+        tailDependency = complete;
     }
+    if (options.includeTransparent) {
+        GRAPH::RenderGraphResourceId complete{};
+        if (!AddCompletionPass(graph, "ForwardTransparent", "ForwardTransparent.Complete",
+                               BuildMeshReads(resources, tailDependency, true, meshReads), callbacks.transparent,
+                               userData, complete)) {
+            return false;
+        }
+        tailDependency = complete;
+    }
+
+    const std::array featurePlanReads{ResourceUse{tailDependency, GRAPH::RenderGraphAccess::ReadDependency},
+                                      ResourceUse{resources.sceneDepth, GRAPH::RenderGraphAccess::ReadSampled},
+                                      ResourceUse{resources.packedSurface, GRAPH::RenderGraphAccess::ReadSampled},
+                                      ResourceUse{resources.surfaceFeatureMask, GRAPH::RenderGraphAccess::ReadSampled}};
+    GRAPH::RenderGraphResourceId featurePlanComplete{};
+    if (!AddCompletionPass(graph, "RenderFeatures.Plan", "RenderFeatures.Plan.Complete", featurePlanReads,
+                           callbacks.featurePlan, userData, featurePlanComplete)) {
+        return false;
+    }
+
+    GRAPH::RenderGraphResourceId geometryComplete{};
+    if (!AddCompletionPass(
+            graph, "RenderFeatures.Geometry", "RenderFeatures.Geometry.Complete",
+            BuildMeshReads(resources, featurePlanComplete, resources.sceneColorOpaque.IsValid(), meshReads),
+            callbacks.geometryFeatures, userData, geometryComplete)) {
+        return false;
+    }
+    GRAPH::RenderGraphResourceId visibilityComplete{};
+    if (!AddCompletionPass(graph, "RenderFeatures.Visibility", "RenderFeatures.Visibility.Complete",
+                           BuildMeshReads(resources, geometryComplete, resources.sceneColorOpaque.IsValid(), meshReads),
+                           callbacks.visibilityFeatures, userData, visibilityComplete)) {
+        return false;
+    }
+
+    const auto sceneColorPostOpaque = AddRenderFrameGraphSurfaceResource(
+        graph, "SceneColorPostOpaque", GRAPH::RenderGraphSemantic::SceneColorPostOpaque, false,
+        GRAPH::RenderGraphSemanticPhase::PostOpaque, SURFACE::SceneSurfaceProducer::SceneColorCapture,
+        GRAPH::RenderGraphResourceRequirement::Optional);
+    const auto postOpaqueCaptureComplete =
+        AddRenderFrameGraphCompletionMarker(graph, "SceneColorPostOpaque.Capture.Complete");
+    if (!sceneColorPostOpaque.IsValid() || !postOpaqueCaptureComplete.IsValid()) {
+        return false;
+    }
+    const std::array captureReads{ResourceUse{visibilityComplete, GRAPH::RenderGraphAccess::ReadDependency}};
+    const std::array captureWrites{ResourceUse{sceneColorPostOpaque, GRAPH::RenderGraphAccess::CopyDestination,
+                                               SURFACE::SceneSurfaceProducer::SceneColorCapture},
+                                   ResourceUse{postOpaqueCaptureComplete, GRAPH::RenderGraphAccess::WriteDependency}};
+    if (!graph.AddPass(GRAPH::RenderGraphPassDesc{"SceneColorPostOpaque.Capture", captureReads, captureWrites,
+                                                  callbacks.sceneColorPostOpaqueCapture, userData})) {
+        return false;
+    }
+
+    const std::array compositeReads{ResourceUse{postOpaqueCaptureComplete, GRAPH::RenderGraphAccess::ReadDependency},
+                                    ResourceUse{sceneColorPostOpaque, GRAPH::RenderGraphAccess::ReadSampled},
+                                    ResourceUse{resources.sceneDepth, GRAPH::RenderGraphAccess::ReadSampled},
+                                    ResourceUse{resources.packedSurface, GRAPH::RenderGraphAccess::ReadSampled},
+                                    ResourceUse{resources.surfaceFeatureMask, GRAPH::RenderGraphAccess::ReadSampled},
+                                    ResourceUse{resources.stylizedOutlineStyle, GRAPH::RenderGraphAccess::ReadSampled}};
+    GRAPH::RenderGraphResourceId compositeComplete{};
+    if (!AddCompletionPass(graph, "RenderFeatures.Composite", "RenderFeatures.Composite.Complete", compositeReads,
+                           callbacks.stylizedFeatureComposite, userData, compositeComplete)) {
+        return false;
+    }
+
+    GRAPH::RenderGraphResourceId projectPassDependency = compositeComplete;
+    const bool captureSceneColorFinal =
+        options.projectExtensions != nullptr &&
+        ProjectRenderPassesRequireSceneColorFinal(*options.projectExtensions, options.projectPurpose);
+    if (captureSceneColorFinal) {
+        const GRAPH::RenderGraphResourceId sceneColorFinal = AddRenderFrameGraphSurfaceResource(
+            graph, "SceneColorFinal", GRAPH::RenderGraphSemantic::SceneColorFinal, false,
+            GRAPH::RenderGraphSemanticPhase::Final, SURFACE::SceneSurfaceProducer::PostFinal);
+        const GRAPH::RenderGraphResourceId finalCaptureComplete =
+            AddRenderFrameGraphCompletionMarker(graph, "SceneColorFinal.Capture.Complete");
+        if (!sceneColorFinal.IsValid() || !finalCaptureComplete.IsValid()) {
+            return false;
+        }
+        const std::array finalCaptureReads{ResourceUse{compositeComplete, GRAPH::RenderGraphAccess::ReadDependency}};
+        const std::array finalCaptureWrites{
+            ResourceUse{sceneColorFinal, GRAPH::RenderGraphAccess::CopyDestination,
+                        SURFACE::SceneSurfaceProducer::PostFinal},
+            ResourceUse{finalCaptureComplete, GRAPH::RenderGraphAccess::WriteDependency}};
+        if (!graph.AddPass(GRAPH::RenderGraphPassDesc{"SceneColorFinal.Capture", finalCaptureReads, finalCaptureWrites,
+                                                      callbacks.sceneColorFinalCapture, userData})) {
+            return false;
+        }
+        projectPassDependency = finalCaptureComplete;
+    }
+
+    GRAPH::RenderGraphResourceId projectPassesComplete = projectPassDependency;
+    if (options.projectExtensions != nullptr &&
+        !BuildProjectRenderPassChain(*options.projectExtensions, options.projectPurpose, projectPassDependency,
+                                     callbacks.projectRenderPass, userData, graph, projectPassesComplete)) {
+        return false;
+    }
+    if (resources.projectDispatchOutput.IsValid()) {
+        const std::array resolveReads{
+            ResourceUse{projectPassesComplete, GRAPH::RenderGraphAccess::ReadDependency},
+            ResourceUse{resources.projectDispatchOutput, GRAPH::RenderGraphAccess::CopySource}};
+        GRAPH::RenderGraphResourceId resolveComplete{};
+        if (!AddCompletionPass(graph, "ProjectDispatchOutput.Resolve", "ProjectDispatchOutput.Resolve.Complete",
+                               resolveReads, callbacks.projectDispatchResolve, userData, resolveComplete)) {
+            return false;
+        }
+        projectPassesComplete = resolveComplete;
+    }
+    const std::array observerReads{ResourceUse{projectPassesComplete, GRAPH::RenderGraphAccess::ReadDependency}};
+    GRAPH::RenderGraphResourceId observerComplete{};
+    if (!AddCompletionPass(graph, "ProjectRender.Observe.PostOpaque", "ProjectRender.Observe.PostOpaque.Complete",
+                           observerReads, callbacks.projectRenderObserver, userData, observerComplete)) {
+        return false;
+    }
+    const std::array resumeReads{ResourceUse{observerComplete, GRAPH::RenderGraphAccess::ReadDependency}};
+    GRAPH::RenderGraphResourceId presentationResumeComplete{};
+    return AddCompletionPass(graph, "FramePresentation.Resume", "FramePresentation.Resume.Complete", resumeReads,
+                             callbacks.presentationResume, userData, presentationResumeComplete);
+}
 
 } // namespace HIKARI::RENDER3D::PIPELINE::INTERNAL

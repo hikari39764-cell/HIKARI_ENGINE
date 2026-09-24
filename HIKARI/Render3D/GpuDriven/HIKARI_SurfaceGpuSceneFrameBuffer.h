@@ -16,114 +16,84 @@
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
 
-    constexpr size_t kDefaultSurfaceGpuSceneInstanceCapacity = 8192u;
+constexpr size_t kDefaultSurfaceGpuSceneInstanceCapacity = 8192u;
 
-    struct SurfaceGpuSceneFrameBufferStats {
-        size_t capacity = 0;
-        size_t requestedInstanceCount = 0;
-        size_t uploadedInstanceCount = 0;
-        size_t committedInstanceCount = 0;
-        size_t committedBytes = 0;
-        size_t committedRangeCount = 0;
-        size_t overflowInstanceCount = 0;
-        size_t uploadCallCount = 0;
-        size_t materialPatchCount = 0;
-        size_t materialPatchChangedCount = 0;
-        size_t materialPatchUnchangedCount = 0;
-        size_t materialBindingVisitCount = 0;
-        size_t materialBindingMissingCount = 0;
+struct SurfaceGpuSceneFrameBufferStats {
+    size_t capacity = 0;
+    size_t requestedInstanceCount = 0;
+    size_t uploadedInstanceCount = 0;
+    size_t committedInstanceCount = 0;
+    size_t committedBytes = 0;
+    size_t committedRangeCount = 0;
+    size_t overflowInstanceCount = 0;
+    size_t uploadCallCount = 0;
+    size_t materialPatchCount = 0;
+    size_t materialPatchChangedCount = 0;
+    size_t materialPatchUnchangedCount = 0;
+    size_t materialBindingVisitCount = 0;
+    size_t materialBindingMissingCount = 0;
+    uint64_t materialBindingVersion = 0;
+    bool initialized = false;
+    D3D12_GPU_DESCRIPTOR_HANDLE srv{};
+};
+
+class SurfaceGpuSceneFrameBuffer final {
+public:
+    void Finalize(const GFX::Context& graphics);
+    bool Initialize(ID3D12Device* device, D3D12_CPU_DESCRIPTOR_HANDLE srvCpu, D3D12_GPU_DESCRIPTOR_HANDLE srvGpu,
+                    UINT descriptorSize, size_t capacity = kDefaultSurfaceGpuSceneInstanceCapacity);
+    bool Initialize(ID3D12Device* device,
+                    const std::array<D3D12_CPU_DESCRIPTOR_HANDLE, GFX::kFrameResourceCount>& srvCpu,
+                    const std::array<D3D12_GPU_DESCRIPTOR_HANDLE, GFX::kFrameResourceCount>& srvGpu,
+                    size_t capacity = kDefaultSurfaceGpuSceneInstanceCapacity);
+
+    void BeginFrame(uint32_t frameIndex);
+    void ResetFrame();
+    void InvalidateResidency();
+    bool CanReuseFrame(uintptr_t sourceIdentity, size_t residentInstanceCount, uint64_t layoutVersion,
+                       uint64_t sourceVersion) const;
+    bool CanPatchFrame(uintptr_t sourceIdentity, size_t residentInstanceCount, uint64_t layoutVersion,
+                       uint64_t baseSourceVersion) const;
+    void ReuseFrame(size_t residentInstanceCount);
+    void Upload(const RUNTIME::SurfaceGpuSceneInstance* instances, size_t count);
+    void Upload(const std::vector<RUNTIME::SurfaceGpuSceneInstance>& instances);
+    bool UpdateRange(size_t firstInstance, const RUNTIME::SurfaceGpuSceneInstance* instances, size_t count);
+    bool PatchMaterialDataIndex(size_t instanceIndex, uint32_t materialDataIndex);
+    void ApplyMaterialBindings(std::span<const uint32_t> materialSlotBySourceRecord, uint64_t bindingVersion);
+    void MarkResident(uintptr_t sourceIdentity, uint64_t layoutVersion, uint64_t sourceVersion, size_t instanceCount);
+    bool CommitFrame(ID3D12GraphicsCommandList* commandList);
+
+    D3D12_GPU_DESCRIPTOR_HANDLE GetSrv() const;
+    D3D12_GPU_VIRTUAL_ADDRESS GetGpuVirtualAddress() const;
+    const SurfaceGpuSceneFrameBufferStats& GetStats() const;
+
+private:
+    struct FrameSlot {
+        DX::DynamicUploadBuffer uploads;
+        std::vector<RUNTIME::SurfaceGpuSceneInstance> staged;
+        Microsoft::WRL::ComPtr<ID3D12Resource> defaultBuffer;
+        D3D12_CPU_DESCRIPTOR_HANDLE srvCpu{};
+        D3D12_GPU_DESCRIPTOR_HANDLE srvGpu{};
+        D3D12_RESOURCE_STATES defaultState = D3D12_RESOURCE_STATE_COMMON;
+        size_t cursor = 0;
+        size_t residentInstanceCount = 0;
+        GFX::DirtyUploadRanges dirtyRanges;
+        uint64_t layoutVersion = 0;
+        uint64_t sourceVersion = 0;
+        uintptr_t sourceIdentity = 0;
         uint64_t materialBindingVersion = 0;
-        bool initialized = false;
-        D3D12_GPU_DESCRIPTOR_HANDLE srv{};
+        bool resident = false;
     };
 
-    class SurfaceGpuSceneFrameBuffer final {
-    public:
-        void Finalize(const GFX::Context& graphics);
-        bool Initialize(
-            ID3D12Device* device,
-            D3D12_CPU_DESCRIPTOR_HANDLE srvCpu,
-            D3D12_GPU_DESCRIPTOR_HANDLE srvGpu,
-            UINT descriptorSize,
-            size_t capacity = kDefaultSurfaceGpuSceneInstanceCapacity);
-        bool Initialize(
-            ID3D12Device* device,
-            const std::array<
-                D3D12_CPU_DESCRIPTOR_HANDLE,
-                GFX::kFrameResourceCount>& srvCpu,
-            const std::array<
-                D3D12_GPU_DESCRIPTOR_HANDLE,
-                GFX::kFrameResourceCount>& srvGpu,
-            size_t capacity = kDefaultSurfaceGpuSceneInstanceCapacity);
+    FrameSlot* ActiveSlot();
+    const FrameSlot* ActiveSlot() const;
+    void ResetSlotResidency(FrameSlot& slot);
+    void MarkDirtyRange(FrameSlot& slot, size_t firstInstance, size_t endInstance);
 
-        void BeginFrame(uint32_t frameIndex);
-        void ResetFrame();
-        void InvalidateResidency();
-        bool CanReuseFrame(
-            uintptr_t sourceIdentity,
-            size_t residentInstanceCount,
-            uint64_t layoutVersion,
-            uint64_t sourceVersion) const;
-        bool CanPatchFrame(
-            uintptr_t sourceIdentity,
-            size_t residentInstanceCount,
-            uint64_t layoutVersion,
-            uint64_t baseSourceVersion) const;
-        void ReuseFrame(size_t residentInstanceCount);
-        void Upload(const RUNTIME::SurfaceGpuSceneInstance* instances, size_t count);
-        void Upload(const std::vector<RUNTIME::SurfaceGpuSceneInstance>& instances);
-        bool UpdateRange(
-            size_t firstInstance,
-            const RUNTIME::SurfaceGpuSceneInstance* instances,
-            size_t count);
-        bool PatchMaterialDataIndex(size_t instanceIndex, uint32_t materialDataIndex);
-        bool PatchMaterialDataIndexChecked(
-            size_t instanceIndex,
-            uint32_t materialDataIndex,
-            uint32_t expectedSourceRecordIndex,
-            uint32_t expectedSourceSurfaceInstanceIndex);
-        void ApplyMaterialBindings(
-            std::span<const uint32_t> materialSlotBySourceRecord,
-            uint64_t bindingVersion);
-        bool HasMaterialDataIndex(size_t instanceIndex) const;
-        void MarkResident(
-            uintptr_t sourceIdentity,
-            uint64_t layoutVersion,
-            uint64_t sourceVersion,
-            size_t instanceCount);
-        bool CommitFrame(ID3D12GraphicsCommandList* commandList);
-
-        D3D12_GPU_DESCRIPTOR_HANDLE GetSrv() const;
-        D3D12_GPU_VIRTUAL_ADDRESS GetGpuVirtualAddress() const;
-        const SurfaceGpuSceneFrameBufferStats& GetStats() const;
-
-    private:
-        struct FrameSlot {
-            DX::DynamicUploadBuffer uploads;
-            std::vector<RUNTIME::SurfaceGpuSceneInstance> staged;
-            Microsoft::WRL::ComPtr<ID3D12Resource> defaultBuffer;
-            D3D12_CPU_DESCRIPTOR_HANDLE srvCpu{};
-            D3D12_GPU_DESCRIPTOR_HANDLE srvGpu{};
-            D3D12_RESOURCE_STATES defaultState = D3D12_RESOURCE_STATE_COMMON;
-            size_t cursor = 0;
-            size_t residentInstanceCount = 0;
-            GFX::DirtyUploadRanges dirtyRanges;
-            uint64_t layoutVersion = 0;
-            uint64_t sourceVersion = 0;
-            uintptr_t sourceIdentity = 0;
-            uint64_t materialBindingVersion = 0;
-            bool resident = false;
-        };
-
-        FrameSlot* ActiveSlot();
-        const FrameSlot* ActiveSlot() const;
-        void ResetSlotResidency(FrameSlot& slot);
-        void MarkDirtyRange(FrameSlot& slot, size_t firstInstance, size_t endInstance);
-
-        std::array<FrameSlot, GFX::kFrameResourceCount> slots_{};
-        uint32_t activeSlotIndex_ = 0;
-        size_t capacity_ = 0;
-        SurfaceGpuSceneFrameBufferStats stats_{};
-    };
+    std::array<FrameSlot, GFX::kFrameResourceCount> slots_{};
+    uint32_t activeSlotIndex_ = 0;
+    size_t capacity_ = 0;
+    SurfaceGpuSceneFrameBufferStats stats_{};
+};
 
 } // namespace HIKARI::RENDER3D::GPUDRIVEN

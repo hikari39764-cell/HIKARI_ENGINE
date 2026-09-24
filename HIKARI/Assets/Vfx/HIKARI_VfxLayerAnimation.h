@@ -44,18 +44,17 @@ struct VfxAnimatableParameter {
     float value = 0, minimum = 0, maximum = 1;
     VfxLayerChannel channel = VfxLayerChannel::MaterialParameter;
 };
-std::vector<VfxAnimatableParameter> GetVfxAnimatableParameters(const VfxEmitterData &layer);
-std::vector<std::string> VfxAnimatedMaterialParameters(const VfxEmitterData &layer);
-bool CompileVfxLayerCurves(const VfxEmitterData &source, VfxProgramEmitter &target, std::string &error,
+std::vector<VfxAnimatableParameter> GetVfxAnimatableParameters(const VfxEmitterData& layer);
+std::vector<std::string> VfxAnimatedMaterialParameters(const VfxEmitterData& layer);
+bool CompileVfxLayerCurves(const VfxEmitterData& source, VfxProgramEmitter& target, std::string& error,
                            uint32_t ownerEmitterIndex = UINT32_MAX);
 VfxEmitterData PrepareVfxAdjustment(const VfxEmitterData& source);
 std::vector<MaterialEffectStep> EvaluateVfxRuntimeEffects(const VfxProgramEmitter&, float seconds, float duration);
-RENDER3D::PARTICLES::LayerAnimationSample EvaluateVfxLayerAnimation(const VfxProgramEmitter &layer,
-                                                                    float seconds, float duration,
-                                                                    uint32_t seed) noexcept;
+RENDER3D::PARTICLES::LayerAnimationSample EvaluateVfxLayerAnimation(const VfxProgramEmitter& layer, float seconds,
+                                                                    float duration, uint32_t seed) noexcept;
 MATH::Quat EvaluateVfxLayerRotation(const VfxProgramEmitter&, const RENDER3D::PARTICLES::LayerAnimationSample&,
                                     float seconds, float duration, uint32_t seed) noexcept;
-void EvaluateVfxLayerRenderParameters(const VfxProgramEmitter &layer, float normalizedTime,
-                                      RENDER3D::PARTICLES::ParticleEmitterRenderParameters &render,
+void EvaluateVfxLayerRenderParameters(const VfxProgramEmitter& layer, float normalizedTime,
+                                      RENDER3D::PARTICLES::ParticleEmitterRenderParameters& render,
                                       float activeDuration = 1);
 } // namespace HIKARI::VFX

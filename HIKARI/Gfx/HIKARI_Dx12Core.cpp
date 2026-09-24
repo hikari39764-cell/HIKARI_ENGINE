@@ -28,62 +28,52 @@ using Microsoft::WRL::ComPtr;
 namespace HIKARI::GFX {
 
 namespace {
-	std::atomic<uint64_t> gNextDeviceGeneration{ 1u };
+std::atomic<uint64_t> gNextDeviceGeneration{1u};
 
-	uint64_t AllocateDeviceGeneration() noexcept {
-		uint64_t generation = gNextDeviceGeneration.fetch_add(
-			1u,
-			std::memory_order_relaxed);
-		if (generation == 0u) {
-			generation = gNextDeviceGeneration.fetch_add(
-				1u,
-				std::memory_order_relaxed);
-		}
-		return generation;
-	}
-
-	// バックバッファに対するレターボックスの位置とサイズを計算する。座標とサイズはバックバッファに対するピクセル単位。
-    struct LetterboxRect {
-        float x;
-        float y;
-        float width;
-        float height;
-    };
-	// 画面サイズとバックバッファサイズから、レターボックスの位置とサイズを計算する。
-    static LetterboxRect ComputeLetterboxRect(int backBufferW, int backBufferH) {
-        if (backBufferW <= 0 || backBufferH <= 0) {
-            return { 0.0f, 0.0f, 1.0f, 1.0f };
-        }
-
-        const float targetAspect =
-            static_cast<float>(PRESENTATION::kDefaultLogicalWidth) /
-            static_cast<float>(PRESENTATION::kDefaultLogicalHeight);
-        const float backBufferAspect = static_cast<float>(backBufferW) / static_cast<float>(backBufferH);
-
-        int vpW = backBufferW;
-        int vpH = backBufferH;
-        int vpX = 0;
-        int vpY = 0;
-
-        if (backBufferAspect > targetAspect) {
-            vpW = static_cast<int>(static_cast<float>(backBufferH) * targetAspect + 0.5f);
-            vpX = (backBufferW - vpW) / 2;
-        } else {
-            vpH = static_cast<int>(static_cast<float>(backBufferW) / targetAspect + 0.5f);
-            vpY = (backBufferH - vpH) / 2;
-        }
-
-        return {
-            static_cast<float>(vpX),
-            static_cast<float>(vpY),
-            static_cast<float>(vpW),
-            static_cast<float>(vpH)
-        };
+uint64_t AllocateDeviceGeneration() noexcept {
+    uint64_t generation = gNextDeviceGeneration.fetch_add(1u, std::memory_order_relaxed);
+    if (generation == 0u) {
+        generation = gNextDeviceGeneration.fetch_add(1u, std::memory_order_relaxed);
     }
+    return generation;
 }
 
+// バックバッファに対するレターボックスの位置とサイズを計算する。座標とサイズはバックバッファに対するピクセル単位。
+struct LetterboxRect {
+    float x;
+    float y;
+    float width;
+    float height;
+};
+// 画面サイズとバックバッファサイズから、レターボックスの位置とサイズを計算する。
+static LetterboxRect ComputeLetterboxRect(int backBufferW, int backBufferH) {
+    if (backBufferW <= 0 || backBufferH <= 0) {
+        return {0.0f, 0.0f, 1.0f, 1.0f};
+    }
+
+    const float targetAspect = static_cast<float>(PRESENTATION::kDefaultLogicalWidth) /
+                               static_cast<float>(PRESENTATION::kDefaultLogicalHeight);
+    const float backBufferAspect = static_cast<float>(backBufferW) / static_cast<float>(backBufferH);
+
+    int vpW = backBufferW;
+    int vpH = backBufferH;
+    int vpX = 0;
+    int vpY = 0;
+
+    if (backBufferAspect > targetAspect) {
+        vpW = static_cast<int>(static_cast<float>(backBufferH) * targetAspect + 0.5f);
+        vpX = (backBufferW - vpW) / 2;
+    } else {
+        vpH = static_cast<int>(static_cast<float>(backBufferW) / targetAspect + 0.5f);
+        vpY = (backBufferH - vpH) / 2;
+    }
+
+    return {static_cast<float>(vpX), static_cast<float>(vpY), static_cast<float>(vpW), static_cast<float>(vpH)};
+}
+} // namespace
+
 namespace {
-	// エラーコードをログに出力する
+// エラーコードをログに出力する
 void LogHr(const char* stage, HRESULT hr) {
     char buf[256]{};
     std::snprintf(buf, sizeof(buf), "[Dx12Core] %s failed. hr=0x%08lX\n", stage, static_cast<unsigned long>(hr));
@@ -92,7 +82,7 @@ void LogHr(const char* stage, HRESULT hr) {
     HIKARI_LOG_ERROR(buf);
 }
 
-}
+} // namespace
 // Dx12Core の初期化。失敗した場合は false を返す。
 bool Dx12Core::CheckDeviceRemoved(const char* reason, HRESULT hr) {
     if (deviceLost_) {
@@ -104,10 +94,7 @@ bool Dx12Core::CheckDeviceRemoved(const char* reason, HRESULT hr) {
         removedReason = device_->GetDeviceRemovedReason();
     }
 
-    const bool removed =
-        hr == DXGI_ERROR_DEVICE_REMOVED ||
-        hr == DXGI_ERROR_DEVICE_RESET ||
-        FAILED(removedReason);
+    const bool removed = hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET || FAILED(removedReason);
     if (!removed) {
         return false;
     }
@@ -116,23 +103,16 @@ bool Dx12Core::CheckDeviceRemoved(const char* reason, HRESULT hr) {
     frameOpen_ = false;
 
     std::ostringstream oss;
-    oss << "[Dx12Core][FATAL] Device removed. reason="
-        << (reason != nullptr ? reason : "")
-        << " hr=" << FormatHRESULT(hr)
-        << " removedReason=" << FormatHRESULT(removedReason)
-        << " text=\"" << HResultToString(removedReason) << "\"";
+    oss << "[Dx12Core][FATAL] Device removed. reason=" << (reason != nullptr ? reason : "")
+        << " hr=" << FormatHRESULT(hr) << " removedReason=" << FormatHRESULT(removedReason) << " text=\""
+        << HResultToString(removedReason) << "\"";
     DEBUGLOG::PushRenderError(oss.str());
     HIKARI_LOG_ERROR(oss.str());
     DumpD3D12InfoQueue(device_.Get(), reason != nullptr ? reason : "DeviceRemoved");
     return true;
 }
 
-bool Dx12Core::Initialize(
-    HWND hwnd,
-    int w,
-    int h,
-    bool enableDebugLayer,
-    const GraphicsBootstrapCallbacks& callbacks) {
+bool Dx12Core::Initialize(HWND hwnd, int w, int h, bool enableDebugLayer, const GraphicsBootstrapCallbacks& callbacks) {
     HIKARI_LOG_D3D12("Dx12Core initialization started.");
     initializationError_.clear();
     shutdownUnsafe_ = false;
@@ -142,7 +122,7 @@ bool Dx12Core::Initialize(
     GfxDebugConfig debugConfig = GetGfxDebugConfig();
     debugConfig.enableDebugLayer = enableDebugLayer && debugConfig.enableDebugLayer;
     SetGfxDebugConfig(debugConfig);
-	// デバッグレイヤーと GPU ベースのバリデーションを有効にする
+    // デバッグレイヤーと GPU ベースのバリデーションを有効にする
     if (debugConfig.enableDebugLayer) {
         ComPtr<ID3D12Debug> debug;
         if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug)))) {
@@ -174,30 +154,32 @@ bool Dx12Core::Initialize(
     HIKARI_LOG_D3D12("DXGI factory created.");
 
     BOOL allowTearing = FALSE;
-    tearingSupported_ = SUCCEEDED(factory_->CheckFeatureSupport(
-        DXGI_FEATURE_PRESENT_ALLOW_TEARING,
-        &allowTearing,
-        sizeof(allowTearing))) && allowTearing == TRUE;
+    tearingSupported_ = SUCCEEDED(factory_->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING, &allowTearing,
+                                                                sizeof(allowTearing))) &&
+                        allowTearing == TRUE;
     swapChainFlags_ = kRequiredSwapChainFlags;
     if (tearingSupported_) {
         swapChainFlags_ |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
     }
 
     // 候補ごとに作成と必要能力を検証し、互換 GPU が見つかるまで進める。
-    for (UINT i = 0; ; ++i) {
+    for (UINT i = 0;; ++i) {
         ComPtr<IDXGIAdapter4> candidate;
         hr = factory_->EnumAdapterByGpuPreference(i, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IID_PPV_ARGS(&candidate));
-        if (hr == DXGI_ERROR_NOT_FOUND) break;
+        if (hr == DXGI_ERROR_NOT_FOUND)
+            break;
         if (FAILED(hr) || !candidate) {
             LogHr("EnumAdapterByGpuPreference", hr);
             initializationError_ = "Could not enumerate graphics adapters. Update the graphics driver.";
             return false;
         }
         DXGI_ADAPTER_DESC3 desc{};
-        if (FAILED(candidate->GetDesc3(&desc)) || (desc.Flags & DXGI_ADAPTER_FLAG3_SOFTWARE)) continue;
+        if (FAILED(candidate->GetDesc3(&desc)) || (desc.Flags & DXGI_ADAPTER_FLAG3_SOFTWARE))
+            continue;
         ComPtr<ID3D12Device> candidateDevice;
         hr = D3D12CreateDevice(candidate.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&candidateDevice));
-        if (FAILED(hr)) continue;
+        if (FAILED(hr))
+            continue;
         std::string diagnostic;
         if (callbacks.acceptDevice && !callbacks.acceptDevice(candidateDevice.Get(), diagnostic)) {
             initializationError_ = diagnostic;
@@ -210,7 +192,8 @@ bool Dx12Core::Initialize(
         break;
     }
     if (!device_) {
-        if (initializationError_.empty()) initializationError_ = "No compatible Direct3D 12 graphics adapter was found.";
+        if (initializationError_.empty())
+            initializationError_ = "No compatible Direct3D 12 graphics adapter was found.";
         HIKARI_LOG_ERROR(initializationError_);
         return false;
     }
@@ -233,17 +216,9 @@ bool Dx12Core::Initialize(
     SetD3D12Name(queue_.Get(), L"HIKARI Direct Command Queue");
     HIKARI_LOG_D3D12("Command queue created.");
 
-    if (!editorSurface_.Initialize(
-            factory_.Get(),
-            queue_.Get(),
-            device_.Get(),
-            hwnd,
-            w,
-            h,
-            swapChainFlags_,
-            L"HIKARI Editor Presentation",
-            graphicsBootstrapCallbacks_.swapChainCreated,
-            resourceStates_)) {
+    if (!editorSurface_.Initialize(factory_.Get(), queue_.Get(), device_.Get(), hwnd, w, h, swapChainFlags_,
+                                   L"HIKARI Editor Presentation", graphicsBootstrapCallbacks_.swapChainCreated,
+                                   resourceStates_)) {
         return false;
     }
     activeSurface_ = &editorSurface_;
@@ -272,8 +247,7 @@ bool Dx12Core::Initialize(
     }
     SetD3D12Name(srvHeap_.Get(), L"HIKARI Global SRV Heap");
     srvDescriptorSize_ = device_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    HIKARI_LOG_D3D12(("SRV heap created. descriptors=" +
-        std::to_string(DESCRIPTOR::kSrvHeapCapacity) + ".").c_str());
+    HIKARI_LOG_D3D12(("SRV heap created. descriptors=" + std::to_string(DESCRIPTOR::kSrvHeapCapacity) + ".").c_str());
 
     if (!CreateDepthBuffer()) {
         HIKARI_LOG_ERROR("Depth buffer creation failed.");
@@ -289,7 +263,8 @@ bool Dx12Core::Initialize(
         }
     }
     HIKARI_LOG_D3D12("Command allocators created.");
-    hr = device_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, allocators_[frameIndex_].Get(), nullptr, IID_PPV_ARGS(&cmdList_));
+    hr = device_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, allocators_[frameIndex_].Get(), nullptr,
+                                    IID_PPV_ARGS(&cmdList_));
     if (FAILED(hr)) {
         LogHr("CreateCommandList", hr);
         return false;
@@ -320,17 +295,16 @@ bool Dx12Core::Initialize(
 // 深度バッファを作成し、DSV と SRV を作成する
 // Game presentation owns a temporary swap chain while the editor surface stays resident.
 bool Dx12Core::CreateGamePresentationSurface(HWND hwnd, int w, int h) {
-    if (hwnd == nullptr || w <= 0 || h <= 0 || deviceLost_ || frameOpen_ ||
-        activeSurface_ != &editorSurface_ || gameSurface_.IsValid()) {
+    if (hwnd == nullptr || w <= 0 || h <= 0 || deviceLost_ || frameOpen_ || activeSurface_ != &editorSurface_ ||
+        gameSurface_.IsValid()) {
         return false;
     }
     if (!WaitGPU()) {
         return false;
     }
-    if (!gameSurface_.Initialize(
-            factory_.Get(), queue_.Get(), device_.Get(), hwnd, w, h,
-            swapChainFlags_, L"HIKARI Game Presentation",
-            graphicsBootstrapCallbacks_.swapChainCreated, resourceStates_)) {
+    if (!gameSurface_.Initialize(factory_.Get(), queue_.Get(), device_.Get(), hwnd, w, h, swapChainFlags_,
+                                 L"HIKARI Game Presentation", graphicsBootstrapCallbacks_.swapChainCreated,
+                                 resourceStates_)) {
         return false;
     }
     if (ActivateSurface(gameSurface_)) {
@@ -361,8 +335,7 @@ bool Dx12Core::ReleaseGamePresentationSurface() {
 }
 
 bool Dx12Core::ActivateEditorPresentationSurface() {
-    if (deviceLost_ || frameOpen_ || !editorSurface_.IsValid() ||
-        gameSurface_.IsValid()) {
+    if (deviceLost_ || frameOpen_ || !editorSurface_.IsValid() || gameSurface_.IsValid()) {
         return false;
     }
     if (!WaitGPU()) {
@@ -411,17 +384,15 @@ bool Dx12Core::CreateDepthBuffer() {
         return false;
     }
     D3D12_RESOURCE_DESC depthDesc = CD3DX12_RESOURCE_DESC::Tex2D(
-        DXGI_FORMAT_R32_TYPELESS,
-        static_cast<UINT64>(activeSurface_->Width()),
-        static_cast<UINT>(activeSurface_->Height()),
-        1, 0, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
+        DXGI_FORMAT_R32_TYPELESS, static_cast<UINT64>(activeSurface_->Width()),
+        static_cast<UINT>(activeSurface_->Height()), 1, 0, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
     D3D12_CLEAR_VALUE clear{};
     clear.Format = DXGI_FORMAT_D32_FLOAT;
     clear.DepthStencil.Depth = 1.0f;
 
     auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-    const HRESULT hr = device_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &depthDesc,
-        D3D12_RESOURCE_STATE_DEPTH_WRITE, &clear, IID_PPV_ARGS(&depthBuffer_));
+    const HRESULT hr = device_->CreateCommittedResource(
+        &heap, D3D12_HEAP_FLAG_NONE, &depthDesc, D3D12_RESOURCE_STATE_DEPTH_WRITE, &clear, IID_PPV_ARGS(&depthBuffer_));
     if (!HIKARI_DX_CHECK(hr, "Dx12Core::CreateDepthBuffer")) {
         CheckDeviceRemoved("Dx12Core::CreateDepthBuffer", hr);
         depthBuffer_.Reset();
@@ -444,13 +415,10 @@ bool Dx12Core::CreateDepthBuffer() {
     readOnlyDsv.Flags = D3D12_DSV_FLAG_READ_ONLY_DEPTH;
     device_->CreateDepthStencilView(depthBuffer_.Get(), &readOnlyDsv, readOnlyDsvHandle);
 
-    const UINT sceneDepthSrvIndex =
-        DESCRIPTOR::ToIndex(DESCRIPTOR::SystemSrv::SceneDepth);
+    const UINT sceneDepthSrvIndex = DESCRIPTOR::ToIndex(DESCRIPTOR::SystemSrv::SceneDepth);
 
-    sceneDepthSrvCpu_ =
-        DESCRIPTOR::CpuAt(srvHeap_.Get(), srvDescriptorSize_, sceneDepthSrvIndex);
-    sceneDepthSrvGpu_ =
-        DESCRIPTOR::GpuAt(srvHeap_.Get(), srvDescriptorSize_, sceneDepthSrvIndex);
+    sceneDepthSrvCpu_ = DESCRIPTOR::CpuAt(srvHeap_.Get(), srvDescriptorSize_, sceneDepthSrvIndex);
+    sceneDepthSrvGpu_ = DESCRIPTOR::GpuAt(srvHeap_.Get(), srvDescriptorSize_, sceneDepthSrvIndex);
 
     D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
     srv.Format = DXGI_FORMAT_R32_FLOAT;
@@ -470,15 +438,13 @@ GraphicsShutdownResult Dx12Core::Shutdown() {
     if (!gpuIdle && !deviceLost_) {
         frameOpen_ = false;
         shutdownUnsafe_ = true;
-        HIKARI_LOG_ERROR(
-            "Dx12Core shutdown could not prove GPU idle and the device was "
-            "not reported lost. Deferred resources remain retained for "
-            "process teardown.");
+        HIKARI_LOG_ERROR("Dx12Core shutdown could not prove GPU idle and the device was "
+                         "not reported lost. Deferred resources remain retained for "
+                         "process teardown.");
         return GraphicsShutdownResult::UnsafeWaitFailure;
     }
-    const GraphicsShutdownResult result = gpuIdle
-        ? GraphicsShutdownResult::DrainedAfterGpuIdle
-        : GraphicsShutdownResult::DrainedAfterDeviceLost;
+    const GraphicsShutdownResult result =
+        gpuIdle ? GraphicsShutdownResult::DrainedAfterGpuIdle : GraphicsShutdownResult::DrainedAfterDeviceLost;
     GPU_PIPELINE_STATS::Shutdown();
     GPU_PROFILE::Shutdown();
     deferredReleaseQueue_.FlushAll();
@@ -486,7 +452,8 @@ GraphicsShutdownResult Dx12Core::Shutdown() {
     gameSurface_.Shutdown(resourceStates_);
     editorSurface_.Shutdown(resourceStates_);
     activeSurface_ = nullptr;
-    if (fenceEvent_) CloseHandle(fenceEvent_);
+    if (fenceEvent_)
+        CloseHandle(fenceEvent_);
     fenceEvent_ = nullptr;
     deviceGeneration_ = 0u;
     return result;
@@ -494,10 +461,7 @@ GraphicsShutdownResult Dx12Core::Shutdown() {
 // フレームの開始処理
 bool Dx12Core::BeginFrame(float clearR, float clearG, float clearB, float clearA, uint64_t logicalFrameId) {
     frameOpen_ = false;
-    if (deviceLost_ ||
-        cmdList_ == nullptr ||
-        frameIndex_ >= kFrameCount ||
-        allocators_[frameIndex_] == nullptr ||
+    if (deviceLost_ || cmdList_ == nullptr || frameIndex_ >= kFrameCount || allocators_[frameIndex_] == nullptr ||
         CurrentBackBuffer() == nullptr) {
         return false;
     }
@@ -515,32 +479,23 @@ bool Dx12Core::BeginFrame(float clearR, float clearG, float clearB, float clearA
         return false;
     }
     const GfxDebugConfig& debugConfig = GetGfxDebugConfig();
-    const bool allowGpuProfiler =
-        debugConfig.enableGpuFrameProfiler &&
-        (!debugConfig.enableDebugLayer || debugConfig.enableGpuFrameProfilerWithDebugLayer);
+    const bool allowGpuProfiler = debugConfig.enableGpuFrameProfiler &&
+                                  (!debugConfig.enableDebugLayer || debugConfig.enableGpuFrameProfilerWithDebugLayer);
     // Debug Layer 中は timestamp query を切り離し、検証ログを純化する。
-    GPU_PROFILE::SetEnabled(
-        allowGpuProfiler,
-        debugConfig.enableDebugLayer ?
-            "GPU profiler is disabled while D3D12 Debug Layer is enabled." :
-            "GPU profiler is disabled by GfxDebugConfig.");
-    GPU_PIPELINE_STATS::SetEnabled(
-        allowGpuProfiler,
-        debugConfig.enableDebugLayer ?
-            "Pipeline stats profiler is disabled while D3D12 Debug Layer is enabled." :
-            "Pipeline stats profiler is disabled by GfxDebugConfig.");
+    GPU_PROFILE::SetEnabled(allowGpuProfiler, debugConfig.enableDebugLayer
+                                                  ? "GPU profiler is disabled while D3D12 Debug Layer is enabled."
+                                                  : "GPU profiler is disabled by GfxDebugConfig.");
+    GPU_PIPELINE_STATS::SetEnabled(allowGpuProfiler,
+                                   debugConfig.enableDebugLayer
+                                       ? "Pipeline stats profiler is disabled while D3D12 Debug Layer is enabled."
+                                       : "Pipeline stats profiler is disabled by GfxDebugConfig.");
     // バックバッファ番号と論理フレーム番号を混同しない。回読は fence 完了後のみ。
     const uint64_t completedFence = fence_->GetCompletedValue();
-    GPU_PROFILE::BeginFrame(device_.Get(), queue_.Get(), cmdList_.Get(),
-        logicalFrameId, completedFence, fenceValue_);
-    GPU_PIPELINE_STATS::BeginFrame(device_.Get(), cmdList_.Get(),
-        logicalFrameId, completedFence, fenceValue_);
+    GPU_PROFILE::BeginFrame(device_.Get(), queue_.Get(), cmdList_.Get(), logicalFrameId, completedFence, fenceValue_);
+    GPU_PIPELINE_STATS::BeginFrame(device_.Get(), cmdList_.Get(), logicalFrameId, completedFence, fenceValue_);
     PIX::BeginGpuEvent(cmdList_.Get(), PIX::kColorFrame, "Frame");
 
-    resourceStates_.Transition(
-        cmdList_.Get(),
-        CurrentBackBuffer(),
-        D3D12_RESOURCE_STATE_RENDER_TARGET);
+    resourceStates_.Transition(cmdList_.Get(), CurrentBackBuffer(), D3D12_RESOURCE_STATE_RENDER_TARGET);
 
     auto rtv = CurrentRTV();
     if (rtv.ptr == 0) {
@@ -554,18 +509,15 @@ bool Dx12Core::BeginFrame(float clearR, float clearG, float clearB, float clearA
 
     const int presentationWidth = activeSurface_->Width();
     const int presentationHeight = activeSurface_->Height();
-    const auto letterbox = ComputeLetterboxRect(
-        presentationWidth,
-        presentationHeight);
+    const auto letterbox = ComputeLetterboxRect(presentationWidth, presentationHeight);
 
-    const float black[] = { 0.0f, 0.0f, 0.0f, clearA };
+    const float black[] = {0.0f, 0.0f, 0.0f, clearA};
     cmdList_->ClearRenderTargetView(rtv, black, 0, nullptr);
 
-    const float color[] = { clearR, clearG, clearB, clearA };
-    const bool hasBlackBars =
-        (letterbox.x > 0.0f) || (letterbox.y > 0.0f) ||
-        (letterbox.width < static_cast<float>(presentationWidth)) ||
-        (letterbox.height < static_cast<float>(presentationHeight));
+    const float color[] = {clearR, clearG, clearB, clearA};
+    const bool hasBlackBars = (letterbox.x > 0.0f) || (letterbox.y > 0.0f) ||
+                              (letterbox.width < static_cast<float>(presentationWidth)) ||
+                              (letterbox.height < static_cast<float>(presentationHeight));
 
     if (!hasBlackBars) {
         cmdList_->ClearRenderTargetView(rtv, color, 0, nullptr);
@@ -575,13 +527,9 @@ bool Dx12Core::BeginFrame(float clearR, float clearG, float clearB, float clearA
         cmdList_->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
     }
 
-    D3D12_VIEWPORT vp{ letterbox.x, letterbox.y, letterbox.width, letterbox.height, 0, 1 };
-    D3D12_RECT sc{
-        static_cast<LONG>(letterbox.x),
-        static_cast<LONG>(letterbox.y),
-        static_cast<LONG>(letterbox.x + letterbox.width),
-        static_cast<LONG>(letterbox.y + letterbox.height)
-    };
+    D3D12_VIEWPORT vp{letterbox.x, letterbox.y, letterbox.width, letterbox.height, 0, 1};
+    D3D12_RECT sc{static_cast<LONG>(letterbox.x), static_cast<LONG>(letterbox.y),
+                  static_cast<LONG>(letterbox.x + letterbox.width), static_cast<LONG>(letterbox.y + letterbox.height)};
     cmdList_->RSSetViewports(1, &vp);
     cmdList_->RSSetScissorRects(1, &sc);
     frameOpen_ = true;
@@ -596,16 +544,12 @@ bool Dx12Core::EndFrame() {
 
     GPU_PIPELINE_STATS::EndFrame(cmdList_.Get());
     GPU_PROFILE::EndFrame(cmdList_.Get());
-    resourceStates_.Transition(
-        cmdList_.Get(),
-        CurrentBackBuffer(),
-        D3D12_RESOURCE_STATE_PRESENT);
+    resourceStates_.Transition(cmdList_.Get(), CurrentBackBuffer(), D3D12_RESOURCE_STATE_PRESENT);
     PIX::EndGpuEvent(cmdList_.Get());
 
     HRESULT hr = S_OK;
     {
-        CPU_PROFILE::ScopedCpuTimer cpuSubmit(
-            CPU_PROFILE::Pass::CommandSubmit);
+        CPU_PROFILE::ScopedCpuTimer cpuSubmit(CPU_PROFILE::Pass::CommandSubmit);
         hr = cmdList_->Close();
         if (FAILED(hr)) {
             frameOpen_ = false;
@@ -613,7 +557,7 @@ bool Dx12Core::EndFrame() {
             CheckDeviceRemoved("Dx12Core::EndFrame CloseCommandList", hr);
             return false;
         }
-        ID3D12CommandList* lists[] = { cmdList_.Get() };
+        ID3D12CommandList* lists[] = {cmdList_.Get()};
         if (frameSubmissionCallbacks_.renderSubmitStart) {
             frameSubmissionCallbacks_.renderSubmitStart();
         }
@@ -622,31 +566,30 @@ bool Dx12Core::EndFrame() {
             frameSubmissionCallbacks_.renderSubmitEnd();
         }
     }
-    if(!capturePath_.empty()) {
-        const auto path=std::exchange(capturePath_,{});
+    if (!capturePath_.empty()) {
+        const auto path = std::exchange(capturePath_, {});
         DirectX::ScratchImage captured;
-        HRESULT result=DirectX::CaptureTexture(queue_.Get(),CurrentBackBuffer(),false,captured,
-            D3D12_RESOURCE_STATE_PRESENT,D3D12_RESOURCE_STATE_PRESENT);
-        if(SUCCEEDED(result) && captured.GetImageCount()) {
+        HRESULT result = DirectX::CaptureTexture(queue_.Get(), CurrentBackBuffer(), false, captured,
+                                                 D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_PRESENT);
+        if (SUCCEEDED(result) && captured.GetImageCount()) {
             std::error_code error;
-            std::filesystem::create_directories(path.parent_path(),error);
-            result=error?E_FAIL:DirectX::SaveToWICFile(*captured.GetImage(0,0,0),DirectX::WIC_FLAGS_NONE,
-                DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG),path.c_str());
+            std::filesystem::create_directories(path.parent_path(), error);
+            result = error ? E_FAIL
+                           : DirectX::SaveToWICFile(*captured.GetImage(0, 0, 0), DirectX::WIC_FLAGS_NONE,
+                                                    DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG), path.c_str());
         }
-        if(FAILED(result))HIKARI_LOG_ERROR("[FrameCapture] capture failed: "+path.generic_string());
-        else HIKARI_LOG_INFO("[FrameCapture] saved: "+path.generic_string());
+        if (FAILED(result))
+            HIKARI_LOG_ERROR("[FrameCapture] capture failed: " + path.generic_string());
+        else
+            HIKARI_LOG_INFO("[FrameCapture] saved: " + path.generic_string());
     }
     {
-        CPU_PROFILE::ScopedCpuTimer cpuPresent(
-            CPU_PROFILE::Pass::Present);
+        CPU_PROFILE::ScopedCpuTimer cpuPresent(CPU_PROFILE::Pass::Present);
         if (frameSubmissionCallbacks_.presentStart) {
             frameSubmissionCallbacks_.presentStart();
         }
         const UINT syncInterval = vSyncEnabled_ ? 1u : 0u;
-        const UINT presentFlags =
-            !vSyncEnabled_ && tearingSupported_
-            ? DXGI_PRESENT_ALLOW_TEARING
-            : 0u;
+        const UINT presentFlags = !vSyncEnabled_ && tearingSupported_ ? DXGI_PRESENT_ALLOW_TEARING : 0u;
         hr = activeSurface_->SwapChain()->Present(syncInterval, presentFlags);
         if (frameSubmissionCallbacks_.presentEnd) {
             frameSubmissionCallbacks_.presentEnd();
@@ -684,8 +627,7 @@ bool Dx12Core::WaitGPU() {
     }
     fenceValue_++;
     {
-        CPU_PROFILE::ScopedCpuTimer cpuWait(
-            CPU_PROFILE::Pass::FenceWait);
+        CPU_PROFILE::ScopedCpuTimer cpuWait(CPU_PROFILE::Pass::FenceWait);
         if (!WaitForGpuCompletion(device_.Get(), fence_.Get(), signal, fenceEvent_, "Dx12Core::WaitGPU")) {
             CheckDeviceRemoved("Dx12Core::WaitGPU", device_->GetDeviceRemovedReason());
             return false;
@@ -696,8 +638,8 @@ bool Dx12Core::WaitGPU() {
 }
 // フレームを進める。現在のフレームの完了を待ち、次のフレームのバックバッファを取得する。
 bool Dx12Core::MoveToNextFrame() {
-    if (deviceLost_ || queue_ == nullptr || fence_ == nullptr ||
-        activeSurface_ == nullptr || !activeSurface_->IsValid()) {
+    if (deviceLost_ || queue_ == nullptr || fence_ == nullptr || activeSurface_ == nullptr ||
+        !activeSurface_->IsValid()) {
         return false;
     }
 
@@ -720,10 +662,9 @@ bool Dx12Core::MoveToNextFrame() {
     // back buffer would reuse resources whose submitted work is still pending.
     const uint64_t frameFenceToWait = frameFenceValues_[frameIndex_];
     if (frameFenceToWait != 0) {
-
-        CPU_PROFILE::ScopedCpuTimer cpuWait(
-            CPU_PROFILE::Pass::FenceWait);
-        if (!WaitForGpuCompletion(device_.Get(), fence_.Get(), frameFenceToWait, fenceEvent_, "Dx12Core::MoveToNextFrame")) {
+        CPU_PROFILE::ScopedCpuTimer cpuWait(CPU_PROFILE::Pass::FenceWait);
+        if (!WaitForGpuCompletion(device_.Get(), fence_.Get(), frameFenceToWait, fenceEvent_,
+                                  "Dx12Core::MoveToNextFrame")) {
             CheckDeviceRemoved("Dx12Core::MoveToNextFrame", device_->GetDeviceRemovedReason());
             return false;
         }
@@ -731,14 +672,16 @@ bool Dx12Core::MoveToNextFrame() {
 
     deferredReleaseQueue_.Collect(fence_->GetCompletedValue());
     return true;
-}// ウィンドウサイズの変更に伴うリソースの再作成。GPU の完了を待ち、古いリソースを解放してから、新しいスワップチェインのバッファと深度バッファを作成する。
+} // ウィンドウサイズの変更に伴うリソースの再作成。GPU の完了を待ち、古いリソースを解放してから、新しいスワップチェインのバッファと深度バッファを作成する。
 bool Dx12Core::Resize(int w, int h) {
-    if (w <= 0 || h <= 0) return true;
+    if (w <= 0 || h <= 0)
+        return true;
     if (deviceLost_ || activeSurface_ == nullptr || !activeSurface_->IsValid()) {
         return false;
     }
     if (frameOpen_) {
-        HIKARI_LOG_ERROR("Dx12Core::Resize was requested while a GPU frame is open. Resize must be deferred to a frame boundary.");
+        HIKARI_LOG_ERROR(
+            "Dx12Core::Resize was requested while a GPU frame is open. Resize must be deferred to a frame boundary.");
         return false;
     }
     if (!WaitGPU()) {
@@ -746,12 +689,7 @@ bool Dx12Core::Resize(int w, int h) {
     }
 
     ReleaseDepthBuffer();
-    if (!activeSurface_->Resize(
-            device_.Get(),
-            w,
-            h,
-            swapChainFlags_,
-            resourceStates_)) {
+    if (!activeSurface_->Resize(device_.Get(), w, h, swapChainFlags_, resourceStates_)) {
         return false;
     }
     frameIndex_ = activeSurface_->CurrentFrameIndex();
@@ -759,13 +697,8 @@ bool Dx12Core::Resize(int w, int h) {
     return CreateDepthBuffer();
 }
 
-bool Dx12Core::WaitForIdle() {
-    return WaitGPU();
-}
+bool Dx12Core::WaitForIdle() { return WaitGPU(); }
 
-HWND Dx12Core::PresentationWindow() const {
-    return activeSurface_ != nullptr ? activeSurface_->Window() : nullptr;
-}
 // 現在のフレームの RTV ハンドルを取得する
 D3D12_CPU_DESCRIPTOR_HANDLE Dx12Core::CurrentRTV() const {
     if (activeSurface_ == nullptr || frameIndex_ >= kFrameCount) {
@@ -790,13 +723,9 @@ D3D12_CPU_DESCRIPTOR_HANDLE Dx12Core::ReadOnlyDSV() const {
     return handle;
 }
 // 深度バッファの SRV ハンドルを取得する
-D3D12_GPU_DESCRIPTOR_HANDLE Dx12Core::SceneDepthSrv() const {
-    return sceneDepthSrvGpu_;
-}
+D3D12_GPU_DESCRIPTOR_HANDLE Dx12Core::SceneDepthSrv() const { return sceneDepthSrvGpu_; }
 // 深度バッファのリソースを取得する
-ID3D12Resource* Dx12Core::SceneDepthResource() const {
-    return depthBuffer_.Get();
-}
+ID3D12Resource* Dx12Core::SceneDepthResource() const { return depthBuffer_.Get(); }
 // 現在のフレームのバックバッファリソースを取得する
 ID3D12Resource* Dx12Core::CurrentBackBuffer() {
     if (activeSurface_ == nullptr || frameIndex_ >= kFrameCount) {
@@ -826,12 +755,8 @@ Context Dx12Core::BuildContext() const {
     ctx.frameFence = fence_.Get();
     ctx.currentFrameRetireFenceValue = fenceValue_;
     ctx.frameIndex = frameIndex_;
-    ctx.backBufferWidth = activeSurface_ != nullptr
-        ? static_cast<uint32_t>(activeSurface_->Width())
-        : 0u;
-    ctx.backBufferHeight = activeSurface_ != nullptr
-        ? static_cast<uint32_t>(activeSurface_->Height())
-        : 0u;
+    ctx.backBufferWidth = activeSurface_ != nullptr ? static_cast<uint32_t>(activeSurface_->Width()) : 0u;
+    ctx.backBufferHeight = activeSurface_ != nullptr ? static_cast<uint32_t>(activeSurface_->Height()) : 0u;
     return ctx;
 }
 

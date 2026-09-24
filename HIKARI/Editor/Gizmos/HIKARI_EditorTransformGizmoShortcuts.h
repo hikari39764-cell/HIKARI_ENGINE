@@ -4,8 +4,6 @@
 
 namespace HIKARI::EDITOR {
 
-    void HandleTransformGizmoShortcuts(
-        EditorTransformGizmoState& state,
-        bool viewportFocused);
+void HandleTransformGizmoShortcuts(EditorTransformGizmoState& state, bool viewportFocused);
 
 } // namespace HIKARI::EDITOR

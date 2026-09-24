@@ -324,16 +324,6 @@ float3 HikariAtmosphereTransmittanceToSpaceWithSteps(
         min(requestedSteps, HIKARI_ATMOSPHERE_MAX_SUN_STEPS)));
 }
 
-float3 HikariAtmosphereTransmittanceToSpace(
-    float3 position,
-    float3 direction)
-{
-    return HikariAtmosphereTransmittanceToSpaceWithSteps(
-        position,
-        direction,
-        HIKARI_ATMOSPHERE_MAX_SUN_STEPS);
-}
-
 // LUT は低高度へ解像度を寄せる。producer と sampler は texel 中心を共有する。
 float HikariAtmosphereLutRadius(float heightUnit)
 {
@@ -431,19 +421,6 @@ HikariAtmosphereViewIntegration HikariAtmosphereIntegrateViewWithSteps(
 {
     return HikariAtmosphereIntegrateSegment(origin, direction, sunDirection,
         requestedViewSteps, requestedSunSteps, 1e30f, false);
-}
-
-HikariAtmosphereViewIntegration HikariAtmosphereIntegrateView(
-    float3 origin,
-    float3 direction,
-    float3 sunDirection)
-{
-    return HikariAtmosphereIntegrateViewWithSteps(
-        origin,
-        direction,
-        sunDirection,
-        HIKARI_ATMOSPHERE_MAX_SKY_STEPS,
-        HIKARI_ATMOSPHERE_MAX_SUN_STEPS);
 }
 
 float3 HikariAtmosphereEvaluateSkyRadianceWithSteps(

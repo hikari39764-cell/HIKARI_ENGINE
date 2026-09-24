@@ -8,34 +8,34 @@
 
 namespace HIKARI::RENDER3D::RUNTIME {
 
-    class RenderModelCache {
-    public:
-        struct Stats {
-            uint32_t requestCount = 0;
-            uint32_t hitCount = 0;
-            uint32_t missCount = 0;
-            uint32_t invalidModelCount = 0;
-            uint32_t cachedModelCount = 0;
-            uint32_t cachedSurfaceCount = 0;
-        };
-
-        const RenderModelAsset* GetOrCreate(const ModelAsset& source);
-
-        void Invalidate(const ModelAsset& source);
-        void Clear();
-
-        const Stats& GetStats() const;
-
-    private:
-        struct Entry {
-            uint64_t sourceRevision = 0u;
-            std::unique_ptr<RenderModelAsset> asset{};
-        };
-
-        void RefreshCacheStats();
-
-        std::unordered_map<const ModelAsset*, Entry> cache_;
-        Stats stats_{};
+class RenderModelCache {
+public:
+    struct Stats {
+        uint32_t requestCount = 0;
+        uint32_t hitCount = 0;
+        uint32_t missCount = 0;
+        uint32_t invalidModelCount = 0;
+        uint32_t cachedModelCount = 0;
+        uint32_t cachedSurfaceCount = 0;
     };
+
+    const RenderModelAsset* GetOrCreate(const ModelAsset& source);
+
+    void Invalidate(const ModelAsset& source);
+    void Clear();
+
+    const Stats& GetStats() const;
+
+private:
+    struct Entry {
+        uint64_t sourceRevision = 0u;
+        std::unique_ptr<RenderModelAsset> asset{};
+    };
+
+    void RefreshCacheStats();
+
+    std::unordered_map<const ModelAsset*, Entry> cache_;
+    Stats stats_{};
+};
 
 } // namespace HIKARI::RENDER3D::RUNTIME

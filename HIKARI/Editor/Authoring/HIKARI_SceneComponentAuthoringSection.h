@@ -1,6 +1,8 @@
 #pragma once
 
 #include <optional>
+#include <span>
+#include <string_view>
 
 #include "Editor/Authoring/HIKARI_SceneObjectAuthoringTypes.h"
 #include "Editor/Assets/Models/HIKARI_ModelMaterialSlotCatalog.h"
@@ -10,45 +12,39 @@
 
 namespace HIKARI {
 
-    struct EditorContext;
-    class DocumentSceneBase;
-    class SelectionSyncService;
+struct EditorContext;
+class DocumentSceneBase;
+class SelectionSyncService;
 
-    class SceneComponentAuthoringSection {
-    public:
-        std::optional<SceneObjectAuthoringHistoryRequest> Draw(
-            DocumentSceneBase& scene,
-            EditorContext& context,
-            const SelectionSyncService& selectionSync,
-            SceneObjectData& target);
+class SceneComponentAuthoringSection {
+public:
+    std::optional<SceneObjectAuthoringHistoryRequest> Draw(DocumentSceneBase& scene, EditorContext& context,
+                                                           const SelectionSyncService& selectionSync,
+                                                           SceneObjectData& target,
+                                                           std::span<const std::string_view> filter = {});
 
-        IModelMaterialSlotProvider& GetModelMaterialSlotProvider()
-            noexcept {
-            return modelMaterialSlotCatalog_;
-        }
+    IModelMaterialSlotProvider& GetModelMaterialSlotProvider() noexcept { return modelMaterialSlotCatalog_; }
 
-    private:
-        struct DeferredRuntimeComponentApply {
-            SceneObjectId objectId{};
-            SceneComponentId componentId{};
-        };
-
-        struct PendingComponentHistory {
-            std::string label{};
-            std::vector<SceneObjectData> beforeObjects{};
-            SceneCameraSettings beforeCamera{};
-            bool dirtyBefore = false;
-        };
-
-        ComponentDocumentEditor componentDocumentEditor_{};
-        DocumentComponentAuthoringService componentAuthoringService_{};
-        ImGuiInspectorBuilder componentInspectorBuilder_{};
-        EDITOR::ModelMaterialSlotCatalog modelMaterialSlotCatalog_{};
-        std::optional<DeferredRuntimeComponentApply>
-            deferredRuntimeComponentApply_{};
-        std::optional<PendingComponentHistory>
-            pendingComponentHistory_{};
-        bool deferredComponentRebuild_ = false;
+private:
+    struct DeferredRuntimeComponentApply {
+        SceneObjectId objectId{};
+        SceneComponentId componentId{};
     };
+
+    struct PendingComponentHistory {
+        std::string label{};
+        std::vector<SceneObjectData> beforeObjects{};
+        SceneCameraSettings beforeCamera{};
+        bool dirtyBefore = false;
+    };
+
+    ComponentDocumentEditor componentDocumentEditor_{};
+    DocumentComponentAuthoringService componentAuthoringService_{};
+    ImGuiInspectorBuilder componentInspectorBuilder_{};
+    EDITOR::ModelMaterialSlotCatalog modelMaterialSlotCatalog_{};
+    std::optional<DeferredRuntimeComponentApply> deferredRuntimeComponentApply_{};
+    std::optional<PendingComponentHistory> pendingComponentHistory_{};
+    bool deferredComponentRebuild_ = false;
+};
 
 } // namespace HIKARI

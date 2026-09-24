@@ -13,13 +13,13 @@ if (-not $OutputPath) {
 # AI capabilities. The manifest generator extracts them from the registration
 # sites so adding an operation never requires a second manual edit.
 $registryFiles = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'HIKARI\Editor') -Recurse -File -Filter '*.cpp' |
-    Where-Object { [System.IO.File]::ReadAllText($_.FullName) -match '\.Register\(\{|EditorOperationDefinition(?:\s+[A-Za-z_]\w*)?\s*\{|register[A-Z][A-Za-z0-9]*Operation\(' } |
+    Where-Object { [System.IO.File]::ReadAllText($_.FullName) -match '\.Register\(\s*\{|EditorOperationDefinition(?:\s+[A-Za-z_]\w*)?\s*\{|register[A-Z][A-Za-z0-9]*\(' } |
     ForEach-Object { $_.FullName.Substring($repoRoot.Length + 1) } | Sort-Object)
 
 $operations = @{}
 $registrationPatterns = @(
-    '(?:Register\(\{|EditorOperationDefinition(?:\s+[A-Za-z_]\w*)?\s*\{)\s*"([a-z][a-z0-9_.]+)"\s*,\s*"([^"]+)"',
-    'register[A-Z][A-Za-z0-9]*Operation\(\s*"([a-z][a-z0-9_.]+)"\s*,\s*"([^"]+)"'
+    '(?:Register\(\s*\{|EditorOperationDefinition(?:\s+[A-Za-z_]\w*)?\s*\{)\s*"([a-z][a-z0-9_.]+)"\s*,\s*"([^"]+)"',
+    'register[A-Z][A-Za-z0-9]*\(\s*"([a-z][a-z0-9_.]+)"\s*,\s*"([^"]+)"'
 )
 foreach ($relative in $registryFiles) {
     $path = Join-Path $repoRoot $relative
@@ -48,7 +48,7 @@ $panelSource = [System.IO.File]::ReadAllText(
     [System.Text.Encoding]::UTF8)
 $builtinMatch = [regex]::Match(
     $panelSource,
-    'BuiltInCapabilities\(\)[\s\S]*?std::vector<AiCapability> entries\{([\s\S]*?)\n    \};')
+    'BuiltInCapabilities\(\)[\s\S]*?std::vector<AiCapability> entries\{([\s\S]*?)\n\s*\};')
 if (-not $builtinMatch.Success) {
     throw 'BuiltInCapabilities table not found in AI capabilities source.'
 }

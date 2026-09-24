@@ -4,12 +4,10 @@
 
 namespace HIKARI {
 
-    class ComponentGizmoRegistry;
+class ComponentGizmoRegistry;
 
-    inline constexpr std::string_view kColliderGizmoProviderId =
-        "Colliders";
+inline constexpr std::string_view kColliderGizmoProviderId = "Colliders";
 
-    void RegisterColliderGizmoProvider(
-        ComponentGizmoRegistry& registry);
+void RegisterColliderGizmoProvider(ComponentGizmoRegistry& registry);
 
 } // namespace HIKARI

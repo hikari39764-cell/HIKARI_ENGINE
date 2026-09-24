@@ -3,11 +3,6 @@
 Texture2D<float4> gSceneTex : register(t0);
 SamplerState gLinearClamp : register(s0);
 
-float HikariLuma(float3 value)
-{
-    return dot(value, float3(0.2126f, 0.7152f, 0.0722f));
-}
-
 float3 HikariFiniteColor(float3 value)
 {
     if (!all(isfinite(value)))

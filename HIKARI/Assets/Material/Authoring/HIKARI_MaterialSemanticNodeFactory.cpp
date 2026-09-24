@@ -12,142 +12,111 @@ using namespace std::literals;
 
 constexpr std::array kNoBindings{std::string_view{}};
 constexpr std::array kPbrParameters{
-    "parameter.baseColor"sv, "parameter.metallic"sv,
-    "parameter.roughness"sv, "parameter.specular"sv,
-    "parameter.specularColor"sv, "parameter.normalScale"sv,
-    "parameter.occlusionStrength"sv, "parameter.emissive"sv,
-    "parameter.emissiveStrength"sv};
+    "parameter.baseColor"sv,         "parameter.metallic"sv,      "parameter.roughness"sv,
+    "parameter.specular"sv,          "parameter.specularColor"sv, "parameter.normalScale"sv,
+    "parameter.occlusionStrength"sv, "parameter.emissive"sv,      "parameter.emissiveStrength"sv};
 constexpr std::array kRampParameters{
-    "parameter.shadowThreshold"sv, "parameter.shadowSoftness"sv,
-    "parameter.midThreshold"sv, "parameter.shadowTint"sv,
-    "parameter.midTint"sv, "parameter.litTint"sv,
-    "parameter.rampRow"sv, "parameter.rampMaskInfluence"sv,
-    "parameter.rampBlend"sv, "parameter.rampLayerWeights"sv,
-    "parameter.rampIntensity"sv,
-    "parameter.toonDirectGain"sv};
+    "parameter.shadowThreshold"sv,  "parameter.shadowSoftness"sv,    "parameter.midThreshold"sv,
+    "parameter.shadowTint"sv,       "parameter.midTint"sv,           "parameter.litTint"sv,
+    "parameter.rampRow"sv,          "parameter.rampMaskInfluence"sv, "parameter.rampBlend"sv,
+    "parameter.rampLayerWeights"sv, "parameter.rampIntensity"sv,     "parameter.toonDirectGain"sv};
 constexpr std::array kRampResources{"resource.diffuseRamp"sv};
-constexpr std::array kMultiRampResources{
-    "resource.diffuseRamp"sv, "resource.secondaryRamp"sv,
-    "resource.tertiaryRamp"sv, "resource.quaternaryRamp"sv};
-constexpr std::array kSpecularBandParameters{
-    "parameter.specularBandWidth"sv,
-    "parameter.specularBandSoftness"sv,
-    "parameter.specularIntensity"sv, "parameter.specularPower"sv,
-    "parameter.specularTint"sv};
-constexpr std::array kFresnelParameters{
-    "parameter.rimColor"sv, "parameter.rimPower"sv,
-    "parameter.rimWidth"sv, "parameter.rimIntensity"sv,
-    "parameter.rimLightAlignment"sv};
-constexpr std::array kMatCapParameters{
-    "parameter.matCapTint"sv, "parameter.matCapIntensity"sv,
-    "parameter.matCapViewCorrection"sv,
-    "parameter.matCapSphericalNormalBlend"sv};
-constexpr std::array kHairParameters{
-    "parameter.hairShift"sv, "parameter.hairWidth"sv,
-    "parameter.hairSecondaryShift"sv, "parameter.hairIntensity"sv,
-    "parameter.hairPrimaryPower"sv, "parameter.hairSecondaryPower"sv,
-    "parameter.hairSecondaryIntensity"sv, "parameter.hairFlowStrength"sv,
-    "parameter.hairHighlightTint"sv};
+constexpr std::array kMultiRampResources{"resource.diffuseRamp"sv, "resource.secondaryRamp"sv,
+                                         "resource.tertiaryRamp"sv, "resource.quaternaryRamp"sv};
+constexpr std::array kSpecularBandParameters{"parameter.specularBandWidth"sv, "parameter.specularBandSoftness"sv,
+                                             "parameter.specularIntensity"sv, "parameter.specularPower"sv,
+                                             "parameter.specularTint"sv};
+constexpr std::array kFresnelParameters{"parameter.rimColor"sv, "parameter.rimPower"sv, "parameter.rimWidth"sv,
+                                        "parameter.rimIntensity"sv, "parameter.rimLightAlignment"sv};
+constexpr std::array kMatCapParameters{"parameter.matCapTint"sv, "parameter.matCapIntensity"sv,
+                                       "parameter.matCapViewCorrection"sv, "parameter.matCapSphericalNormalBlend"sv};
+constexpr std::array kHairParameters{"parameter.hairShift"sv,
+                                     "parameter.hairWidth"sv,
+                                     "parameter.hairSecondaryShift"sv,
+                                     "parameter.hairIntensity"sv,
+                                     "parameter.hairPrimaryPower"sv,
+                                     "parameter.hairSecondaryPower"sv,
+                                     "parameter.hairSecondaryIntensity"sv,
+                                     "parameter.hairFlowStrength"sv,
+                                     "parameter.hairHighlightTint"sv};
 constexpr std::array kFaceParameters{
-    "parameter.shadowThreshold"sv, "parameter.shadowSoftness"sv,
-    "parameter.midThreshold"sv, "parameter.shadowTint"sv,
-    "parameter.midTint"sv, "parameter.litTint"sv,
-    "parameter.rampRow"sv, "parameter.rampMaskInfluence"sv,
-    "parameter.rampBlend"sv, "parameter.rampIntensity"sv,
-    "parameter.toonDirectGain"sv, "parameter.faceShadowSoftness"sv,
-    "parameter.faceShadowOffset"sv, "parameter.faceRight"sv,
-    "parameter.faceForward"sv};
+    "parameter.shadowThreshold"sv,  "parameter.shadowSoftness"sv,    "parameter.midThreshold"sv,
+    "parameter.shadowTint"sv,       "parameter.midTint"sv,           "parameter.litTint"sv,
+    "parameter.rampRow"sv,          "parameter.rampMaskInfluence"sv, "parameter.rampBlend"sv,
+    "parameter.rampIntensity"sv,    "parameter.toonDirectGain"sv,    "parameter.faceShadowSoftness"sv,
+    "parameter.faceShadowOffset"sv, "parameter.faceRight"sv,         "parameter.faceForward"sv};
 constexpr std::array kFaceResources{"resource.diffuseRamp"sv};
-constexpr std::array kEyeParameters{
-    "parameter.irisDepth"sv, "parameter.eyeSparkle"sv,
-    "parameter.eyeSparklePower"sv, "parameter.irisCenter"sv,
-    "parameter.irisRadius"sv, "parameter.irisMaskSoftness"sv,
-    "parameter.eyeLayerMode"sv, "parameter.eyeHighlightOpacity"sv,
-    "parameter.eyeHighlightThreshold"sv,
-    "parameter.eyeHighlightSoftness"sv,
-    "parameter.eyeParallaxScale"sv,
-    "parameter.eyeHighlightIntensity"sv,
-    "parameter.eyeBaseLift"sv,
-    "parameter.eyeCausticIntensity"sv,
-    "parameter.eyeCausticTint"sv,
-    "parameter.eyeCausticWidth"sv};
-constexpr std::array kCorneaHighlightParameters{
-    "parameter.irisDepth"sv,
-    "parameter.irisCenter"sv,
-    "parameter.irisRadius"sv,
-    "parameter.irisMaskSoftness"sv,
-    "parameter.eyeLayerMode"sv,
-    "parameter.eyeHighlightOpacity"sv,
-    "parameter.eyeHighlightThreshold"sv,
-    "parameter.eyeHighlightSoftness"sv,
-    "parameter.eyeParallaxScale"sv,
-    "parameter.eyeHighlightIntensity"sv,
-    "parameter.corneaHighlightMode"sv,
-    "parameter.corneaHighlightTravel"sv,
-    "parameter.corneaHighlightViewInfluence"sv,
-    "parameter.corneaHighlightLightInfluence"sv,
-    "parameter.corneaHighlightCurvature"sv,
-    "parameter.corneaHighlightMinBrightness"sv,
-    "parameter.corneaHighlightLightResponse"sv,
-    "parameter.corneaHighlightEdgeFade"sv,
-    "parameter.corneaHighlightSharpness"sv,
-    "parameter.corneaHighlightLightColor"sv};
-constexpr std::array kSkinParameters{
-    "parameter.skinWrap"sv, "parameter.skinSubsurface"sv,
-    "parameter.skinTint"sv};
-constexpr std::array kFabricParameters{
-    "parameter.fabricSheen"sv, "parameter.fiberRoughness"sv,
-    "parameter.fabricSheenPower"sv,
-    "parameter.fabricSheenIntensity"sv};
-constexpr std::array kHybridParameters{
-    "parameter.directDiffusePbrBlend"sv,
-    "parameter.directSpecularPbrBlend"sv,
-    "parameter.indirectPbrBlend"sv};
-constexpr std::array kOutlineParameters{
-    "parameter.outlineMode"sv, "parameter.outlineColor"sv,
-    "parameter.outlineThickness"sv};
-constexpr std::array kHairShadowParameters{
-    "parameter.hairShadowStrength"sv};
+constexpr std::array kEyeParameters{"parameter.irisDepth"sv,
+                                    "parameter.eyeSparkle"sv,
+                                    "parameter.eyeSparklePower"sv,
+                                    "parameter.irisCenter"sv,
+                                    "parameter.irisRadius"sv,
+                                    "parameter.irisMaskSoftness"sv,
+                                    "parameter.eyeLayerMode"sv,
+                                    "parameter.eyeHighlightOpacity"sv,
+                                    "parameter.eyeHighlightThreshold"sv,
+                                    "parameter.eyeHighlightSoftness"sv,
+                                    "parameter.eyeParallaxScale"sv,
+                                    "parameter.eyeHighlightIntensity"sv,
+                                    "parameter.eyeBaseLift"sv,
+                                    "parameter.eyeCausticIntensity"sv,
+                                    "parameter.eyeCausticTint"sv,
+                                    "parameter.eyeCausticWidth"sv};
+constexpr std::array kCorneaHighlightParameters{"parameter.irisDepth"sv,
+                                                "parameter.irisCenter"sv,
+                                                "parameter.irisRadius"sv,
+                                                "parameter.irisMaskSoftness"sv,
+                                                "parameter.eyeLayerMode"sv,
+                                                "parameter.eyeHighlightOpacity"sv,
+                                                "parameter.eyeHighlightThreshold"sv,
+                                                "parameter.eyeHighlightSoftness"sv,
+                                                "parameter.eyeParallaxScale"sv,
+                                                "parameter.eyeHighlightIntensity"sv,
+                                                "parameter.corneaHighlightMode"sv,
+                                                "parameter.corneaHighlightTravel"sv,
+                                                "parameter.corneaHighlightViewInfluence"sv,
+                                                "parameter.corneaHighlightLightInfluence"sv,
+                                                "parameter.corneaHighlightCurvature"sv,
+                                                "parameter.corneaHighlightMinBrightness"sv,
+                                                "parameter.corneaHighlightLightResponse"sv,
+                                                "parameter.corneaHighlightEdgeFade"sv,
+                                                "parameter.corneaHighlightSharpness"sv,
+                                                "parameter.corneaHighlightLightColor"sv};
+constexpr std::array kSkinParameters{"parameter.skinWrap"sv, "parameter.skinSubsurface"sv, "parameter.skinTint"sv};
+constexpr std::array kFabricParameters{"parameter.fabricSheen"sv, "parameter.fiberRoughness"sv,
+                                       "parameter.fabricSheenPower"sv, "parameter.fabricSheenIntensity"sv};
+constexpr std::array kHybridParameters{"parameter.directDiffusePbrBlend"sv, "parameter.directSpecularPbrBlend"sv,
+                                       "parameter.indirectPbrBlend"sv};
+constexpr std::array kOutlineParameters{"parameter.outlineMode"sv, "parameter.outlineColor"sv,
+                                        "parameter.outlineThickness"sv};
+constexpr std::array kHairShadowParameters{"parameter.hairShadowStrength"sv};
 
 template <size_t Size>
-std::span<const std::string_view> AsSpan(
-    const std::array<std::string_view, Size>& values) noexcept {
+std::span<const std::string_view> AsSpan(const std::array<std::string_view, Size>& values) noexcept {
     return values;
 }
 
-std::span<const std::string_view> EmptyBindings() noexcept {
-    return {kNoBindings.data(), 0u};
-}
+std::span<const std::string_view> EmptyBindings() noexcept { return {kNoBindings.data(), 0u}; }
 
-MaterialValueData Value(MaterialValueType type, float x,
-                        float y = 0.0f, float z = 0.0f,
-                        float w = 0.0f) {
+MaterialValueData Value(MaterialValueType type, float x, float y = 0.0f, float z = 0.0f, float w = 0.0f) {
     MaterialValueData value{};
     value.type = type;
     value.numeric = {x, y, z, w};
     return value;
 }
 
-void EnsureParameter(MaterialGraphData& graph, std::string_view id,
-                     std::string_view name, MaterialValueData value) {
+void EnsureParameter(MaterialGraphData& graph, std::string_view id, std::string_view name, MaterialValueData value) {
     if (std::any_of(graph.parameters.begin(), graph.parameters.end(),
-                    [id](const auto& parameter) {
-                        return parameter.id == id;
-                    })) {
+                    [id](const auto& parameter) { return parameter.id == id; })) {
         return;
     }
-    graph.parameters.push_back(MaterialGraphParameterData{
-        std::string{id}, std::string{name}, value, true
-    });
+    graph.parameters.push_back(MaterialGraphParameterData{std::string{id}, std::string{name}, value, true});
 }
 
-void EnsureResource(MaterialGraphData& graph, std::string_view id,
-                    std::string_view name, MaterialResourceType type,
+void EnsureResource(MaterialGraphData& graph, std::string_view id, std::string_view name, MaterialResourceType type,
                     MaterialResourceSemantic semantic) {
     if (std::any_of(graph.resources.begin(), graph.resources.end(),
-                    [id](const auto& resource) {
-                        return resource.id == id;
-                    })) {
+                    [id](const auto& resource) { return resource.id == id; })) {
         return;
     }
     MaterialGraphResourceData resource{};
@@ -159,77 +128,62 @@ void EnsureResource(MaterialGraphData& graph, std::string_view id,
 }
 
 void EnsureRamp(MaterialGraphData& graph, bool multiRamp) {
-    EnsureParameter(graph, "parameter.shadowThreshold", "Shadow Threshold",
-                    Value(MaterialValueType::Float1, 0.46f));
-    EnsureParameter(graph, "parameter.shadowSoftness", "Shadow Softness",
-                    Value(MaterialValueType::Float1, 0.025f));
-    EnsureParameter(graph, "parameter.midThreshold", "Midtone Threshold",
-                    Value(MaterialValueType::Float1, 0.70f));
+    EnsureParameter(graph, "parameter.shadowThreshold", "Shadow Threshold", Value(MaterialValueType::Float1, 0.46f));
+    EnsureParameter(graph, "parameter.shadowSoftness", "Shadow Softness", Value(MaterialValueType::Float1, 0.025f));
+    EnsureParameter(graph, "parameter.midThreshold", "Midtone Threshold", Value(MaterialValueType::Float1, 0.70f));
     EnsureParameter(graph, "parameter.shadowTint", "Shadow Tint",
                     Value(MaterialValueType::Float3, 0.38f, 0.45f, 0.62f));
-    EnsureParameter(graph, "parameter.midTint", "Midtone Tint",
-                    Value(MaterialValueType::Float3, 0.72f, 0.78f, 0.88f));
-    EnsureParameter(graph, "parameter.litTint", "Lit Tint",
-                    Value(MaterialValueType::Float3, 1.0f, 1.0f, 1.0f));
-    EnsureParameter(graph, "parameter.rampRow", "Ramp Row",
-                    Value(MaterialValueType::Float1, 0.5f));
+    EnsureParameter(graph, "parameter.midTint", "Midtone Tint", Value(MaterialValueType::Float3, 0.72f, 0.78f, 0.88f));
+    EnsureParameter(graph, "parameter.litTint", "Lit Tint", Value(MaterialValueType::Float3, 1.0f, 1.0f, 1.0f));
+    EnsureParameter(graph, "parameter.rampRow", "Ramp Row", Value(MaterialValueType::Float1, 0.5f));
     EnsureParameter(graph, "parameter.rampMaskInfluence", "Ramp Mask Influence",
                     Value(MaterialValueType::Float1, 0.0f));
     EnsureParameter(graph, "parameter.rampBlend", "Secondary Ramp Blend",
                     Value(MaterialValueType::Float1, multiRamp ? 0.5f : 0.0f));
     EnsureParameter(graph, "parameter.rampLayerWeights", "Ramp Layer Weights",
                     Value(MaterialValueType::Float4, 1.0f, 0.0f, 0.0f, 0.0f));
-    EnsureParameter(graph, "parameter.rampIntensity", "Ramp Influence",
-                    Value(MaterialValueType::Float1, 1.0f));
-    EnsureParameter(graph, "parameter.toonDirectGain", "Direct Light Gain",
-                    Value(MaterialValueType::Float1, 1.0f));
+    EnsureParameter(graph, "parameter.rampIntensity", "Ramp Influence", Value(MaterialValueType::Float1, 1.0f));
+    EnsureParameter(graph, "parameter.toonDirectGain", "Direct Light Gain", Value(MaterialValueType::Float1, 1.0f));
     EnsureResource(graph, "resource.diffuseRamp", "Diffuse Ramp",
-                   multiRamp ? MaterialResourceType::Ramp2D
-                             : MaterialResourceType::Ramp1D,
+                   multiRamp ? MaterialResourceType::Ramp2D : MaterialResourceType::Ramp1D,
                    MaterialResourceSemantic::Ramp);
     if (multiRamp) {
-        EnsureResource(graph, "resource.secondaryRamp", "Secondary Ramp",
-                       MaterialResourceType::Ramp2D,
+        EnsureResource(graph, "resource.secondaryRamp", "Secondary Ramp", MaterialResourceType::Ramp2D,
                        MaterialResourceSemantic::Ramp);
-        EnsureResource(graph, "resource.tertiaryRamp", "Tertiary Ramp",
-                       MaterialResourceType::Ramp2D,
+        EnsureResource(graph, "resource.tertiaryRamp", "Tertiary Ramp", MaterialResourceType::Ramp2D,
                        MaterialResourceSemantic::Ramp);
-        EnsureResource(graph, "resource.quaternaryRamp", "Quaternary Ramp",
-                       MaterialResourceType::Ramp2D,
+        EnsureResource(graph, "resource.quaternaryRamp", "Quaternary Ramp", MaterialResourceType::Ramp2D,
                        MaterialResourceSemantic::Ramp);
     }
 }
 
 } // namespace
 
-const MaterialNodeSemanticContract& GetMaterialNodeSemanticContract(
-    MaterialNodeKind kind) noexcept {
+const MaterialNodeSemanticContract& GetMaterialNodeSemanticContract(MaterialNodeKind kind) noexcept {
     static constexpr MaterialNodeSemanticContract kConstant{
-        "Any compatible numeric input", "The literal value on this node",
-        "A constant numeric value", "Uses the displayed literal",
-        "Type-incompatible links are rejected"};
+        "Any compatible numeric input", "The literal value on this node", "A constant numeric value",
+        "Uses the displayed literal", "Type-incompatible links are rejected"};
     static constexpr MaterialNodeSemanticContract kParameter{
-        "Any compatible numeric input", "The referenced material parameter",
-        "An exposed editable value", "Uses the parameter default",
-        "A missing parameter reference is a compile error"};
+        "Any compatible numeric input", "The referenced material parameter", "An exposed editable value",
+        "Uses the parameter default", "A missing parameter reference is a compile error"};
     static constexpr MaterialNodeSemanticContract kTexture{
         "PBR texture inputs or documented feature mask inputs",
         "The selected texture, UV set and UV transform",
-        "Color and individual sampled channels", "No generated image",
+        "Color and individual sampled channels",
+        "No generated image",
         "A reachable Texture Sample without a valid asset fails compilation",
         MaterialNodeResourcePolicy::AuthoredRequired};
     static constexpr MaterialNodeSemanticContract kMath{
-        "Any compatible numeric input", "Its connected numeric operands",
-        "A statically evaluable numeric result", "All required inputs must link",
-        "Unsupported dynamic expressions fail compilation"};
+        "Any compatible numeric input", "Its connected numeric operands", "A statically evaluable numeric result",
+        "All required inputs must link", "Unsupported dynamic expressions fail compilation"};
     static constexpr MaterialNodeSemanticContract kNormalUnpack{
-        "PBR Surface / Normal", "A connected packed tangent-space normal",
-        "An unpacked tangent-space normal", "No normal texture is generated",
-        "A missing or non-texture input fails compilation"};
+        "PBR Surface / Normal", "A connected packed tangent-space normal", "An unpacked tangent-space normal",
+        "No normal texture is generated", "A missing or non-texture input fails compilation"};
     static constexpr MaterialNodeSemanticContract kPbr{
         "Surface Output / Surface",
         "Base color, normal, metal, roughness, occlusion, emissive and connected lighting responses",
-        "The final bounded game surface", "Uses displayed factors; textures only apply through reachable Texture Sample links",
+        "The final bounded game surface",
+        "Uses displayed factors; textures only apply through reachable Texture Sample links",
         "Unsupported response routes fail compilation",
         MaterialNodeResourcePolicy::OptionalAuthoredOverride};
     static constexpr MaterialNodeSemanticContract kRamp{
@@ -243,19 +197,22 @@ const MaterialNodeSemanticContract& GetMaterialNodeSemanticContract(
     static constexpr MaterialNodeSemanticContract kSpecularBand{
         "PBR Surface / Specular Response",
         "Normal, view/light half-vector, width, softness, power, intensity and tint",
-        "A quantized specular highlight", "Uses the displayed analytic band",
+        "A quantized specular highlight",
+        "Uses the displayed analytic band",
         "Unsupported dynamic inputs fail compilation",
         MaterialNodeResourcePolicy::GeneratedDefault};
     static constexpr MaterialNodeSemanticContract kFresnel{
         "PBR Surface / Additive, directly or through Add",
         "Normal, view direction, light alignment, color, width and power",
-        "An additive Fresnel rim", "Uses the displayed analytic rim",
+        "An additive Fresnel rim",
+        "Uses the displayed analytic rim",
         "Non-additive destinations fail compilation",
         MaterialNodeResourcePolicy::GeneratedDefault};
     static constexpr MaterialNodeSemanticContract kMatCap{
         "PBR Surface / Additive, directly or through Add",
         "Camera-corrected view normal, optional eye-sphere normal, mask, image, tint and intensity",
-        "An additive perspective-aware MatCap lobe", "No style image is invented",
+        "An additive perspective-aware MatCap lobe",
+        "No style image is invented",
         "A reachable MatCap without a valid MatCap texture fails compilation",
         MaterialNodeResourcePolicy::AuthoredRequired,
         "resource.matCap"};
@@ -270,7 +227,8 @@ const MaterialNodeSemanticContract& GetMaterialNodeSemanticContract(
     static constexpr MaterialNodeSemanticContract kFace{
         "PBR Surface / Diffuse Response",
         "Face SDF, character right/forward axes, main light and Ramp controls",
-        "A face-oriented toon diffuse response", "No face-specific field is generated",
+        "A face-oriented toon diffuse response",
+        "No face-specific field is generated",
         "A reachable Face SDF without a valid linear Face SDF texture fails compilation",
         MaterialNodeResourcePolicy::AuthoredRequired,
         "resource.faceSdf"};
@@ -292,27 +250,31 @@ const MaterialNodeSemanticContract& GetMaterialNodeSemanticContract(
     static constexpr MaterialNodeSemanticContract kSkin{
         "PBR Surface or Hybrid / Diffuse Response",
         "Upstream diffuse response, wrap, subsurface tint and optional thickness mask",
-        "A wrapped skin diffuse response", "Uses a neutral thickness mask",
+        "A wrapped skin diffuse response",
+        "Uses a neutral thickness mask",
         "Unsupported response or mask routes fail compilation",
         MaterialNodeResourcePolicy::OptionalAuthoredOverride,
         "resource.thicknessMask"};
     static constexpr MaterialNodeSemanticContract kFabric{
         "PBR Surface / Additive, directly or through Add",
         "View angle, sheen, fiber roughness, tint and optional fabric mask",
-        "An additive fabric sheen", "Uses a neutral fabric mask",
+        "An additive fabric sheen",
+        "Uses a neutral fabric mask",
         "Non-additive destinations fail compilation",
         MaterialNodeResourcePolicy::OptionalAuthoredOverride,
         "resource.fabricMask"};
     static constexpr MaterialNodeSemanticContract kHybrid{
         "PBR Surface / Diffuse Response",
         "Upstream NPR diffuse plus direct diffuse/specular and indirect PBR blend weights",
-        "A controlled PBR + NPR lighting response", "Uses the displayed blend weights",
+        "A controlled PBR + NPR lighting response",
+        "Uses the displayed blend weights",
         "Missing or unsupported upstream response links fail compilation",
         MaterialNodeResourcePolicy::GeneratedDefault};
     static constexpr MaterialNodeSemanticContract kOutline{
         "PBR Surface / Outline",
         "Mode, color, thickness and the selected outline backend",
-        "A material outline feature request", "Uses the displayed outline profile",
+        "A material outline feature request",
+        "Uses the displayed outline profile",
         "An unavailable backend is reported instead of changing base shading",
         MaterialNodeResourcePolicy::GeneratedDefault};
     static constexpr MaterialNodeSemanticContract kHairShadow{
@@ -325,22 +287,17 @@ const MaterialNodeSemanticContract& GetMaterialNodeSemanticContract(
         "resource.hairShadow"};
     static constexpr MaterialNodeSemanticContract kOutput{
         "Graph root", "The connected Surface", "The material's only runtime output",
-        "Requires exactly one Surface connection",
-        "Missing or multiple output ownership fails compilation"};
+        "Requires exactly one Surface connection", "Missing or multiple output ownership fails compilation"};
     static constexpr MaterialNodeSemanticContract kParticleOutput{
-        "Particle graph root",
-        "Color, opacity, emissive and alpha-clip expressions",
-        "The particle pixel material response",
-        "Color is required; other inputs use deterministic defaults",
+        "Particle graph root", "Color, opacity, emissive and alpha-clip expressions",
+        "The particle pixel material response", "Color is required; other inputs use deterministic defaults",
         "A ParticleOutput in a Surface graph or SurfaceOutput in a Particle graph fails compilation"};
     static constexpr MaterialNodeSemanticContract kFunction{
-        "A compatible function destination", "The referenced Material Function",
-        "The function result", "No fallback function is inserted",
+        "A compatible function destination", "The referenced Material Function", "The function result",
+        "No fallback function is inserted",
         "Missing, cyclic, or signature-incompatible Functions fail compilation before Runtime publication"};
     static constexpr MaterialNodeSemanticContract kVariable{
-        "Any bool or compatible numeric input",
-        "One stable project runtime variable ID",
-        "The latest published value",
+        "Any bool or compatible numeric input", "One stable project runtime variable ID", "The latest published value",
         "Uses the authored fallback when the binding is missing or incompatible",
         "Unsupported Int bindings and type mismatches remain on fallback"};
 
@@ -382,20 +339,19 @@ const MaterialNodeSemanticContract& GetMaterialNodeSemanticContract(
     case MaterialNodeKind::MakeFloat4:
     case MaterialNodeKind::Split:
     case MaterialNodeKind::Select:
-case MaterialNodeKind::DerivativeX:
-case MaterialNodeKind::DerivativeY:
-case MaterialNodeKind::FilterWidth:
-case MaterialNodeKind::Atan2:
-case MaterialNodeKind::Exp:
-case MaterialNodeKind::Log2:
-case MaterialNodeKind::Sign:
-case MaterialNodeKind::Round:
-case MaterialNodeKind::Trunc:
-case MaterialNodeKind::UvTransform:
-case MaterialNodeKind::ValueNoise:
-case MaterialNodeKind::Voronoi:
-case MaterialNodeKind::Fresnel:
-return kMath;
+    case MaterialNodeKind::DerivativeX:
+    case MaterialNodeKind::DerivativeY:
+    case MaterialNodeKind::FilterWidth:
+    case MaterialNodeKind::Atan2:
+    case MaterialNodeKind::Exp:
+    case MaterialNodeKind::Log2:
+    case MaterialNodeKind::Sign:
+    case MaterialNodeKind::Round:
+    case MaterialNodeKind::Trunc:
+    case MaterialNodeKind::UvTransform:
+    case MaterialNodeKind::ValueNoise:
+    case MaterialNodeKind::Voronoi:
+    case MaterialNodeKind::Fresnel: return kMath;
     case MaterialNodeKind::TextureCoordinate:
     case MaterialNodeKind::Time:
     case MaterialNodeKind::WorldPosition:
@@ -406,13 +362,11 @@ return kMath;
     case MaterialNodeKind::ScreenPosition:
     case MaterialNodeKind::ParticleState:
     case MaterialNodeKind::ParticleColor:
-    case MaterialNodeKind::ParticleUv:
-        return kConstant;
+    case MaterialNodeKind::ParticleUv: return kConstant;
     case MaterialNodeKind::NormalUnpack: return kNormalUnpack;
     case MaterialNodeKind::PbrSurface: return kPbr;
     case MaterialNodeKind::RampDiffuse:
-    case MaterialNodeKind::MultiRampDiffuse:
-        return kRamp;
+    case MaterialNodeKind::MultiRampDiffuse: return kRamp;
     case MaterialNodeKind::SpecularBand: return kSpecularBand;
     case MaterialNodeKind::FresnelRim: return kFresnel;
     case MaterialNodeKind::MatCap: return kMatCap;
@@ -433,16 +387,13 @@ return kMath;
     return kConstant;
 }
 
-const MaterialNodeSemanticContract& GetMaterialNodeSemanticContract(
-    const MaterialNodeTypeId& typeId) noexcept {
+const MaterialNodeSemanticContract& GetMaterialNodeSemanticContract(const MaterialNodeTypeId& typeId) noexcept {
     MaterialNodeKind kind{};
-    return TryGetLegacyMaterialNodeKind(typeId, kind)
-        ? GetMaterialNodeSemanticContract(kind)
-        : GetMaterialNodeSemanticContract(MaterialNodeKind::Constant);
+    return TryGetLegacyMaterialNodeKind(typeId, kind) ? GetMaterialNodeSemanticContract(kind)
+                                                      : GetMaterialNodeSemanticContract(MaterialNodeKind::Constant);
 }
 
-std::span<const std::string_view> GetMaterialNodeOwnedParameterIds(
-    MaterialNodeKind kind) noexcept {
+std::span<const std::string_view> GetMaterialNodeOwnedParameterIds(MaterialNodeKind kind) noexcept {
     switch (kind) {
     case MaterialNodeKind::PbrSurface: return AsSpan(kPbrParameters);
     case MaterialNodeKind::RampDiffuse:
@@ -453,8 +404,7 @@ std::span<const std::string_view> GetMaterialNodeOwnedParameterIds(
     case MaterialNodeKind::AnisotropicHair: return AsSpan(kHairParameters);
     case MaterialNodeKind::FaceSdf: return AsSpan(kFaceParameters);
     case MaterialNodeKind::EyeLighting: return AsSpan(kEyeParameters);
-    case MaterialNodeKind::CorneaHighlight:
-        return AsSpan(kCorneaHighlightParameters);
+    case MaterialNodeKind::CorneaHighlight: return AsSpan(kCorneaHighlightParameters);
     case MaterialNodeKind::SkinLighting: return AsSpan(kSkinParameters);
     case MaterialNodeKind::FabricSheen: return AsSpan(kFabricParameters);
     case MaterialNodeKind::HybridLighting: return AsSpan(kHybridParameters);
@@ -464,16 +414,13 @@ std::span<const std::string_view> GetMaterialNodeOwnedParameterIds(
     }
 }
 
-std::span<const std::string_view> GetMaterialNodeOwnedParameterIds(
-    const MaterialNodeTypeId& typeId) noexcept {
+std::span<const std::string_view> GetMaterialNodeOwnedParameterIds(const MaterialNodeTypeId& typeId) noexcept {
     MaterialNodeKind kind{};
-    return TryGetLegacyMaterialNodeKind(typeId, kind)
-        ? GetMaterialNodeOwnedParameterIds(kind)
-        : std::span<const std::string_view>{};
+    return TryGetLegacyMaterialNodeKind(typeId, kind) ? GetMaterialNodeOwnedParameterIds(kind)
+                                                      : std::span<const std::string_view>{};
 }
 
-std::span<const std::string_view> GetMaterialNodeOwnedResourceIds(
-    MaterialNodeKind kind) noexcept {
+std::span<const std::string_view> GetMaterialNodeOwnedResourceIds(MaterialNodeKind kind) noexcept {
     switch (kind) {
     case MaterialNodeKind::PbrSurface: return EmptyBindings();
     case MaterialNodeKind::RampDiffuse: return AsSpan(kRampResources);
@@ -490,12 +437,10 @@ std::span<const std::string_view> GetMaterialNodeOwnedResourceIds(
     }
 }
 
-std::span<const std::string_view> GetMaterialNodeOwnedResourceIds(
-    const MaterialNodeTypeId& typeId) noexcept {
+std::span<const std::string_view> GetMaterialNodeOwnedResourceIds(const MaterialNodeTypeId& typeId) noexcept {
     MaterialNodeKind kind{};
-    return TryGetLegacyMaterialNodeKind(typeId, kind)
-        ? GetMaterialNodeOwnedResourceIds(kind)
-        : std::span<const std::string_view>{};
+    return TryGetLegacyMaterialNodeKind(typeId, kind) ? GetMaterialNodeOwnedResourceIds(kind)
+                                                      : std::span<const std::string_view>{};
 }
 
 bool IsReadyMadeMaterialNode(MaterialNodeKind kind) noexcept {
@@ -514,34 +459,27 @@ bool IsReadyMadeMaterialNode(MaterialNodeKind kind) noexcept {
     case MaterialNodeKind::FabricSheen:
     case MaterialNodeKind::HybridLighting:
     case MaterialNodeKind::Outline:
-    case MaterialNodeKind::HairShadow:
-        return true;
-    default:
-        return false;
+    case MaterialNodeKind::HairShadow: return true;
+    default: return false;
     }
 }
 
 bool IsReadyMadeMaterialNode(const MaterialNodeTypeId& typeId) noexcept {
     MaterialNodeKind kind{};
-    return TryGetLegacyMaterialNodeKind(typeId, kind) &&
-        IsReadyMadeMaterialNode(kind);
+    return TryGetLegacyMaterialNodeKind(typeId, kind) && IsReadyMadeMaterialNode(kind);
 }
 
 bool IsSingletonReadyMadeMaterialNode(MaterialNodeKind kind) noexcept {
-    return IsReadyMadeMaterialNode(kind) ||
-        kind == MaterialNodeKind::SurfaceOutput ||
-        kind == MaterialNodeKind::ParticleOutput;
+    return IsReadyMadeMaterialNode(kind) || kind == MaterialNodeKind::SurfaceOutput ||
+           kind == MaterialNodeKind::ParticleOutput;
 }
 
-bool IsSingletonReadyMadeMaterialNode(
-    const MaterialNodeTypeId& typeId) noexcept {
+bool IsSingletonReadyMadeMaterialNode(const MaterialNodeTypeId& typeId) noexcept {
     MaterialNodeKind kind{};
-    return TryGetLegacyMaterialNodeKind(typeId, kind) &&
-        IsSingletonReadyMadeMaterialNode(kind);
+    return TryGetLegacyMaterialNodeKind(typeId, kind) && IsSingletonReadyMadeMaterialNode(kind);
 }
 
-std::string_view ReadyMadeMaterialNodeDisplayName(
-    MaterialNodeKind kind) noexcept {
+std::string_view ReadyMadeMaterialNodeDisplayName(MaterialNodeKind kind) noexcept {
     switch (kind) {
     case MaterialNodeKind::PbrSurface: return "PBR Surface";
     case MaterialNodeKind::RampDiffuse: return "Ramp Diffuse";
@@ -562,16 +500,12 @@ std::string_view ReadyMadeMaterialNodeDisplayName(
     }
 }
 
-std::string_view ReadyMadeMaterialNodeDisplayName(
-    const MaterialNodeTypeId& typeId) noexcept {
+std::string_view ReadyMadeMaterialNodeDisplayName(const MaterialNodeTypeId& typeId) noexcept {
     MaterialNodeKind kind{};
-    return TryGetLegacyMaterialNodeKind(typeId, kind)
-        ? ReadyMadeMaterialNodeDisplayName(kind)
-        : ToString(typeId);
+    return TryGetLegacyMaterialNodeKind(typeId, kind) ? ReadyMadeMaterialNodeDisplayName(kind) : ToString(typeId);
 }
 
-void InitializeReadyMadeMaterialNode(MaterialAssetData& material,
-                                     MaterialGraphNodeData& node) {
+void InitializeReadyMadeMaterialNode(MaterialAssetData& material, MaterialGraphNodeData& node) {
     if (!IsReadyMadeMaterialNode(node.kind)) {
         return;
     }
@@ -585,39 +519,26 @@ void InitializeReadyMadeMaterialNode(MaterialAssetData& material,
         node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
         node.valueType = MaterialValueType::Surface;
         EnsureParameter(graph, "parameter.baseColor", "Base Color",
-                        Value(MaterialValueType::Float4,
-                              material.pbr.baseColorFactor.x,
-                              material.pbr.baseColorFactor.y,
-                              material.pbr.baseColorFactor.z,
-                              material.pbr.baseColorFactor.w));
+                        Value(MaterialValueType::Float4, material.pbr.baseColorFactor.x, material.pbr.baseColorFactor.y,
+                              material.pbr.baseColorFactor.z, material.pbr.baseColorFactor.w));
         EnsureParameter(graph, "parameter.metallic", "Metallic",
-                        Value(MaterialValueType::Float1,
-                              material.pbr.metallicFactor));
+                        Value(MaterialValueType::Float1, material.pbr.metallicFactor));
         EnsureParameter(graph, "parameter.roughness", "Roughness",
-                        Value(MaterialValueType::Float1,
-                              material.pbr.roughnessFactor));
+                        Value(MaterialValueType::Float1, material.pbr.roughnessFactor));
         EnsureParameter(graph, "parameter.specular", "Specular",
-                        Value(MaterialValueType::Float1,
-                              material.pbr.specularFactor));
+                        Value(MaterialValueType::Float1, material.pbr.specularFactor));
         EnsureParameter(graph, "parameter.specularColor", "Specular Color",
-                        Value(MaterialValueType::Float3,
-                              material.pbr.specularColorFactor.x,
-                              material.pbr.specularColorFactor.y,
-                              material.pbr.specularColorFactor.z));
+                        Value(MaterialValueType::Float3, material.pbr.specularColorFactor.x,
+                              material.pbr.specularColorFactor.y, material.pbr.specularColorFactor.z));
         EnsureParameter(graph, "parameter.normalScale", "Normal Scale",
-                        Value(MaterialValueType::Float1,
-                              material.pbr.normalScale));
+                        Value(MaterialValueType::Float1, material.pbr.normalScale));
         EnsureParameter(graph, "parameter.occlusionStrength", "Occlusion Strength",
-                        Value(MaterialValueType::Float1,
-                              material.pbr.occlusionStrength));
+                        Value(MaterialValueType::Float1, material.pbr.occlusionStrength));
         EnsureParameter(graph, "parameter.emissive", "Emissive",
-                        Value(MaterialValueType::Float3,
-                              material.pbr.emissiveFactor.x,
-                              material.pbr.emissiveFactor.y,
+                        Value(MaterialValueType::Float3, material.pbr.emissiveFactor.x, material.pbr.emissiveFactor.y,
                               material.pbr.emissiveFactor.z));
         EnsureParameter(graph, "parameter.emissiveStrength", "Emissive Strength",
-                        Value(MaterialValueType::Float1,
-                              material.pbr.emissiveStrength));
+                        Value(MaterialValueType::Float1, material.pbr.emissiveStrength));
         break;
     case MaterialNodeKind::RampDiffuse:
     case MaterialNodeKind::MultiRampDiffuse: {
@@ -631,28 +552,22 @@ void InitializeReadyMadeMaterialNode(MaterialAssetData& material,
     case MaterialNodeKind::SpecularBand:
         node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
         node.valueType = MaterialValueType::SpecularResponse;
-        EnsureParameter(graph, "parameter.specularBandWidth", "Band Width",
-                        Value(MaterialValueType::Float1, 0.075f));
+        EnsureParameter(graph, "parameter.specularBandWidth", "Band Width", Value(MaterialValueType::Float1, 0.075f));
         EnsureParameter(graph, "parameter.specularBandSoftness", "Band Softness",
                         Value(MaterialValueType::Float1, 0.012f));
         EnsureParameter(graph, "parameter.specularIntensity", "Band Intensity",
                         Value(MaterialValueType::Float1, 0.35f));
-        EnsureParameter(graph, "parameter.specularPower", "Band Power",
-                        Value(MaterialValueType::Float1, 96.0f));
+        EnsureParameter(graph, "parameter.specularPower", "Band Power", Value(MaterialValueType::Float1, 96.0f));
         EnsureParameter(graph, "parameter.specularTint", "Band Tint",
                         Value(MaterialValueType::Float3, 1.0f, 1.0f, 1.0f));
         break;
     case MaterialNodeKind::FresnelRim:
         node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
         node.valueType = MaterialValueType::Float3;
-        EnsureParameter(graph, "parameter.rimColor", "Rim Color",
-                        Value(MaterialValueType::Float3, 0.68f, 0.78f, 1.0f));
-        EnsureParameter(graph, "parameter.rimPower", "Rim Power",
-                        Value(MaterialValueType::Float1, 4.0f));
-        EnsureParameter(graph, "parameter.rimWidth", "Rim Width",
-                        Value(MaterialValueType::Float1, 0.22f));
-        EnsureParameter(graph, "parameter.rimIntensity", "Rim Intensity",
-                        Value(MaterialValueType::Float1, 0.28f));
+        EnsureParameter(graph, "parameter.rimColor", "Rim Color", Value(MaterialValueType::Float3, 0.68f, 0.78f, 1.0f));
+        EnsureParameter(graph, "parameter.rimPower", "Rim Power", Value(MaterialValueType::Float1, 4.0f));
+        EnsureParameter(graph, "parameter.rimWidth", "Rim Width", Value(MaterialValueType::Float1, 0.22f));
+        EnsureParameter(graph, "parameter.rimIntensity", "Rim Intensity", Value(MaterialValueType::Float1, 0.28f));
         EnsureParameter(graph, "parameter.rimLightAlignment", "Light Alignment",
                         Value(MaterialValueType::Float1, 0.35f));
         break;
@@ -665,17 +580,14 @@ void InitializeReadyMadeMaterialNode(MaterialAssetData& material,
                         Value(MaterialValueType::Float1, 0.25f));
         EnsureParameter(graph, "parameter.matCapViewCorrection", "View Correction",
                         Value(MaterialValueType::Float1, 1.0f));
-        EnsureParameter(graph, "parameter.matCapSphericalNormalBlend",
-                        "Spherical Normal Blend",
+        EnsureParameter(graph, "parameter.matCapSphericalNormalBlend", "Spherical Normal Blend",
                         Value(MaterialValueType::Float1, 0.0f));
         break;
     case MaterialNodeKind::AnisotropicHair:
         node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
         node.valueType = MaterialValueType::SpecularResponse;
-        EnsureParameter(graph, "parameter.hairShift", "Primary Shift",
-                        Value(MaterialValueType::Float1, 0.08f));
-        EnsureParameter(graph, "parameter.hairWidth", "Highlight Width",
-                        Value(MaterialValueType::Float1, 0.18f));
+        EnsureParameter(graph, "parameter.hairShift", "Primary Shift", Value(MaterialValueType::Float1, 0.08f));
+        EnsureParameter(graph, "parameter.hairWidth", "Highlight Width", Value(MaterialValueType::Float1, 0.18f));
         EnsureParameter(graph, "parameter.hairSecondaryShift", "Secondary Shift",
                         Value(MaterialValueType::Float1, -0.10f));
         EnsureParameter(graph, "parameter.hairIntensity", "Highlight Intensity",
@@ -697,8 +609,7 @@ void InitializeReadyMadeMaterialNode(MaterialAssetData& material,
         EnsureRamp(graph, false);
         EnsureParameter(graph, "parameter.faceShadowSoftness", "Shadow Softness",
                         Value(MaterialValueType::Float1, 0.04f));
-        EnsureParameter(graph, "parameter.faceShadowOffset", "Shadow Offset",
-                        Value(MaterialValueType::Float1, 0.0f));
+        EnsureParameter(graph, "parameter.faceShadowOffset", "Shadow Offset", Value(MaterialValueType::Float1, 0.0f));
         EnsureParameter(graph, "parameter.faceRight", "Face Local Right",
                         Value(MaterialValueType::Float3, 1.0f, 0.0f, 0.0f));
         EnsureParameter(graph, "parameter.faceForward", "Face Local Forward",
@@ -707,61 +618,50 @@ void InitializeReadyMadeMaterialNode(MaterialAssetData& material,
     case MaterialNodeKind::EyeLighting:
         node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
         node.valueType = MaterialValueType::Float3;
-        EnsureParameter(graph, "parameter.irisDepth", "Iris Depth",
-                        Value(MaterialValueType::Float1, 0.12f));
-        EnsureParameter(graph, "parameter.eyeSparkle", "Catchlight Intensity",
-                        Value(MaterialValueType::Float1, 0.35f));
+        EnsureParameter(graph, "parameter.irisDepth", "Iris Depth", Value(MaterialValueType::Float1, 0.12f));
+        EnsureParameter(graph, "parameter.eyeSparkle", "Catchlight Intensity", Value(MaterialValueType::Float1, 0.35f));
         EnsureParameter(graph, "parameter.eyeSparklePower", "Catchlight Sharpness",
                         Value(MaterialValueType::Float1, 64.0f));
         EnsureParameter(graph, "parameter.irisCenter", "Iris UV Center",
                         Value(MaterialValueType::Float2, 0.50f, 0.50f));
-        EnsureParameter(graph, "parameter.irisRadius", "Iris UV Radius",
-                        Value(MaterialValueType::Float1, 0.48f));
+        EnsureParameter(graph, "parameter.irisRadius", "Iris UV Radius", Value(MaterialValueType::Float1, 0.48f));
         EnsureParameter(graph, "parameter.irisMaskSoftness", "Iris Mask Softness",
                         Value(MaterialValueType::Float1, 0.08f));
-        EnsureParameter(graph, "parameter.eyeLayerMode", "Eye Layer Mode",
-                        Value(MaterialValueType::Float1, 0.0f));
+        EnsureParameter(graph, "parameter.eyeLayerMode", "Eye Layer Mode", Value(MaterialValueType::Float1, 0.0f));
         EnsureParameter(graph, "parameter.eyeHighlightOpacity", "Highlight Opacity",
                         Value(MaterialValueType::Float1, 1.0f));
         EnsureParameter(graph, "parameter.eyeHighlightThreshold", "Highlight Threshold",
                         Value(MaterialValueType::Float1, 0.02f));
         EnsureParameter(graph, "parameter.eyeHighlightSoftness", "Highlight Softness",
                         Value(MaterialValueType::Float1, 0.04f));
-        EnsureParameter(graph, "parameter.eyeParallaxScale", "Parallax Scale",
-                        Value(MaterialValueType::Float1, 0.10f));
+        EnsureParameter(graph, "parameter.eyeParallaxScale", "Parallax Scale", Value(MaterialValueType::Float1, 0.10f));
         EnsureParameter(graph, "parameter.eyeHighlightIntensity", "Highlight Intensity",
                         Value(MaterialValueType::Float1, 2.0f));
-        EnsureParameter(graph, "parameter.eyeBaseLift", "Iris Light Lift",
-                        Value(MaterialValueType::Float1, 0.18f));
+        EnsureParameter(graph, "parameter.eyeBaseLift", "Iris Light Lift", Value(MaterialValueType::Float1, 0.18f));
         EnsureParameter(graph, "parameter.eyeCausticIntensity", "Caustic Intensity",
                         Value(MaterialValueType::Float1, 0.25f));
         EnsureParameter(graph, "parameter.eyeCausticTint", "Caustic Tint",
                         Value(MaterialValueType::Float3, 1.0f, 0.72f, 0.38f));
-        EnsureParameter(graph, "parameter.eyeCausticWidth", "Caustic Width",
-                        Value(MaterialValueType::Float1, 0.28f));
+        EnsureParameter(graph, "parameter.eyeCausticWidth", "Caustic Width", Value(MaterialValueType::Float1, 0.28f));
         break;
     case MaterialNodeKind::CorneaHighlight:
         node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
         node.valueType = MaterialValueType::Float3;
         material.surface.alphaMode = MaterialAlphaMode::Blend;
-        EnsureParameter(graph, "parameter.irisDepth", "Iris Depth",
-                        Value(MaterialValueType::Float1, 0.12f));
+        EnsureParameter(graph, "parameter.irisDepth", "Iris Depth", Value(MaterialValueType::Float1, 0.12f));
         EnsureParameter(graph, "parameter.irisCenter", "Iris UV Center",
                         Value(MaterialValueType::Float2, 0.50f, 0.50f));
-        EnsureParameter(graph, "parameter.irisRadius", "Iris UV Radius",
-                        Value(MaterialValueType::Float1, 0.48f));
+        EnsureParameter(graph, "parameter.irisRadius", "Iris UV Radius", Value(MaterialValueType::Float1, 0.48f));
         EnsureParameter(graph, "parameter.irisMaskSoftness", "Iris Mask Softness",
                         Value(MaterialValueType::Float1, 0.08f));
-        EnsureParameter(graph, "parameter.eyeLayerMode", "Eye Layer Mode",
-                        Value(MaterialValueType::Float1, 1.0f));
+        EnsureParameter(graph, "parameter.eyeLayerMode", "Eye Layer Mode", Value(MaterialValueType::Float1, 1.0f));
         EnsureParameter(graph, "parameter.eyeHighlightOpacity", "Highlight Opacity",
                         Value(MaterialValueType::Float1, 1.0f));
         EnsureParameter(graph, "parameter.eyeHighlightThreshold", "Highlight Threshold",
                         Value(MaterialValueType::Float1, 0.02f));
         EnsureParameter(graph, "parameter.eyeHighlightSoftness", "Highlight Softness",
                         Value(MaterialValueType::Float1, 0.04f));
-        EnsureParameter(graph, "parameter.eyeParallaxScale", "Parallax Scale",
-                        Value(MaterialValueType::Float1, 0.10f));
+        EnsureParameter(graph, "parameter.eyeParallaxScale", "Parallax Scale", Value(MaterialValueType::Float1, 0.10f));
         EnsureParameter(graph, "parameter.eyeHighlightIntensity", "Highlight Intensity",
                         Value(MaterialValueType::Float1, 2.0f));
         EnsureParameter(graph, "parameter.corneaHighlightMode", "Lighting Mode",
@@ -788,22 +688,17 @@ void InitializeReadyMadeMaterialNode(MaterialAssetData& material,
     case MaterialNodeKind::SkinLighting:
         node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
         node.valueType = MaterialValueType::DiffuseResponse;
-        EnsureParameter(graph, "parameter.skinWrap", "Light Wrap",
-                        Value(MaterialValueType::Float1, 0.18f));
-        EnsureParameter(graph, "parameter.skinSubsurface", "Subsurface",
-                        Value(MaterialValueType::Float1, 0.12f));
+        EnsureParameter(graph, "parameter.skinWrap", "Light Wrap", Value(MaterialValueType::Float1, 0.18f));
+        EnsureParameter(graph, "parameter.skinSubsurface", "Subsurface", Value(MaterialValueType::Float1, 0.12f));
         EnsureParameter(graph, "parameter.skinTint", "Scatter Tint",
                         Value(MaterialValueType::Float3, 1.0f, 0.42f, 0.32f));
         break;
     case MaterialNodeKind::FabricSheen:
         node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
         node.valueType = MaterialValueType::Float3;
-        EnsureParameter(graph, "parameter.fabricSheen", "Sheen",
-                        Value(MaterialValueType::Float1, 0.28f));
-        EnsureParameter(graph, "parameter.fiberRoughness", "Fiber Roughness",
-                        Value(MaterialValueType::Float1, 0.72f));
-        EnsureParameter(graph, "parameter.fabricSheenPower", "Sheen Power",
-                        Value(MaterialValueType::Float1, 4.0f));
+        EnsureParameter(graph, "parameter.fabricSheen", "Sheen", Value(MaterialValueType::Float1, 0.28f));
+        EnsureParameter(graph, "parameter.fiberRoughness", "Fiber Roughness", Value(MaterialValueType::Float1, 0.72f));
+        EnsureParameter(graph, "parameter.fabricSheenPower", "Sheen Power", Value(MaterialValueType::Float1, 4.0f));
         EnsureParameter(graph, "parameter.fabricSheenIntensity", "Sheen Intensity",
                         Value(MaterialValueType::Float1, 1.0f));
         break;
@@ -820,8 +715,7 @@ void InitializeReadyMadeMaterialNode(MaterialAssetData& material,
     case MaterialNodeKind::Outline:
         node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
         node.valueType = MaterialValueType::OutlineResponse;
-        EnsureParameter(graph, "parameter.outlineMode", "Outline Mode",
-                        Value(MaterialValueType::Float1, 2.0f));
+        EnsureParameter(graph, "parameter.outlineMode", "Outline Mode", Value(MaterialValueType::Float1, 2.0f));
         EnsureParameter(graph, "parameter.outlineColor", "Outline Color",
                         Value(MaterialValueType::Float3, 0.025f, 0.030f, 0.045f));
         EnsureParameter(graph, "parameter.outlineThickness", "Outline Thickness",
@@ -830,12 +724,10 @@ void InitializeReadyMadeMaterialNode(MaterialAssetData& material,
     case MaterialNodeKind::HairShadow:
         node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
         node.valueType = MaterialValueType::DiffuseResponse;
-        EnsureParameter(graph, "parameter.hairShadowStrength",
-                        "Hair Shadow Strength",
+        EnsureParameter(graph, "parameter.hairShadowStrength", "Hair Shadow Strength",
                         Value(MaterialValueType::Float1, 0.65f));
         break;
-    default:
-        break;
+    default: break;
     }
     node.value.type = node.valueType;
 }

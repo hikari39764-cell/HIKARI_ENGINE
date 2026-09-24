@@ -41,95 +41,92 @@ namespace HIKARI::EDITOR::PERFORMANCE_AUDIT {
 
 #if defined(HIKARI_WITH_EDITOR)
 struct RuntimePerformanceSnapshot {
-  float fpsRaw = 0.0f;
-  uint32_t fixedStepsThisFrame = 0u;
-  float droppedFixedTimeSeconds = 0.0f;
-  RenderSubmissionDebugStats submission{};
-  RENDER3D::RUNTIME::SceneRenderCache::Stats scene{};
-  RENDER3D::GPUDRIVEN::GpuSceneRegistryStats gpuRegistry{};
-  RENDER3D::MATERIAL::GpuMaterialRegistryStats gpuMaterials{};
-  MESHRENDERER::MeshRendererDebugStats mesh{};
-  SHADOW::ShadowMapDebugStats shadow{};
-  SHADOW::LocalLightShadowStats localShadow{};
-  RENDER3D::DYNAMICGI::Stats dynamicGi{};
-  RENDER3D::RAYTRACING::RuntimeRayTracingStats rayScene{};
-  RENDER3D::ClusterGeometryResourceSystemStats clusterResources{};
-  RENDER3D::RenderResourceDescriptorPoolStats descriptorPool{};
-  RENDER3D::SCREENSPACE::SsaoDebugState ssao{};
-  RENDER3D::SCREENSPACE::DepthVisibilityDebugState depthVisibility{};
-  RENDER3D::VOLUMETRIC::VolumetricLightingStats volumetric{};
-  RENDER3D::CLOUDS::StylizedCloudStageStats clouds{};
-  RENDER3D::TEMPORAL::TemporalFrameState temporalFrame{};
-  RENDER3D::TEMPORAL::TemporalResourceStats temporalResources{};
-  RENDER3D::UPSCALING::StreamlineDebugStats streamline{};
-  RENDER3D::UPSCALING::StreamlineReflexStats streamlineReflex{};
-  RENDER3D::UPSCALING::StreamlineFrameGenerationStats
-      streamlineFrameGeneration{};
-  POST::PresentationFrameResources presentation{};
-  CPU_PROFILE::FrameSnapshot cpu{};
-  GFX::GPU_PROFILE::FrameSnapshot gpu{};
-  GFX::GPU_PIPELINE_STATS::FrameSnapshot pipelineStats{};
+    float fpsRaw = 0.0f;
+    uint32_t fixedStepsThisFrame = 0u;
+    float droppedFixedTimeSeconds = 0.0f;
+    RenderSubmissionDebugStats submission{};
+    RENDER3D::RUNTIME::SceneRenderCache::Stats scene{};
+    RENDER3D::GPUDRIVEN::GpuSceneRegistryStats gpuRegistry{};
+    RENDER3D::MATERIAL::GpuMaterialRegistryStats gpuMaterials{};
+    MESHRENDERER::MeshRendererDebugStats mesh{};
+    SHADOW::ShadowMapDebugStats shadow{};
+    SHADOW::LocalLightShadowStats localShadow{};
+    RENDER3D::DYNAMICGI::Stats dynamicGi{};
+    RENDER3D::RAYTRACING::RuntimeRayTracingStats rayScene{};
+    RENDER3D::ClusterGeometryResourceSystemStats clusterResources{};
+    RENDER3D::RenderResourceDescriptorPoolStats descriptorPool{};
+    RENDER3D::SCREENSPACE::SsaoDebugState ssao{};
+    RENDER3D::SCREENSPACE::DepthVisibilityDebugState depthVisibility{};
+    RENDER3D::VOLUMETRIC::VolumetricLightingStats volumetric{};
+    RENDER3D::CLOUDS::StylizedCloudStageStats clouds{};
+    RENDER3D::TEMPORAL::TemporalFrameState temporalFrame{};
+    RENDER3D::TEMPORAL::TemporalResourceStats temporalResources{};
+    RENDER3D::UPSCALING::StreamlineDebugStats streamline{};
+    RENDER3D::UPSCALING::StreamlineReflexStats streamlineReflex{};
+    RENDER3D::UPSCALING::StreamlineFrameGenerationStats streamlineFrameGeneration{};
+    POST::PresentationFrameResources presentation{};
+    CPU_PROFILE::FrameSnapshot cpu{};
+    GFX::GPU_PROFILE::FrameSnapshot gpu{};
+    GFX::GPU_PIPELINE_STATS::FrameSnapshot pipelineStats{};
 };
 
-const char *ReadyText(bool value);
+const char* ReadyText(bool value);
 
 double SafeDivide(uint64_t numerator, uint64_t denominator);
 
 bool IsMeshletPipelineStatsPass(GFX::GPU_PROFILE::Pass pass);
 
-void AppendShadowCacheReason(std::string &text, uint32_t flags, uint32_t bit,
-                             const char *label);
+void AppendShadowCacheReason(std::string& text, uint32_t flags, uint32_t bit, const char* label);
 
 std::string ShadowCacheMissReasonText(uint32_t flags);
 
 ImVec4 StatusColor(bool ok);
 
-void TextStatus(const char *label, bool ok);
+void TextStatus(const char* label, bool ok);
 
-void MetricRowText(const char *label, const char *value);
+void MetricRowText(const char* label, const char* value);
 
 RuntimePerformanceSnapshot BuildSnapshot();
 std::string BuildPerformanceReport(const RuntimePerformanceSnapshot& snapshot);
 
-double SumGpuMsByScope(const GFX::GPU_PROFILE::FrameSnapshot &profile,
-                       bool nestedSubpass);
+double SumGpuMsByScope(const GFX::GPU_PROFILE::FrameSnapshot& profile, bool nestedSubpass);
 
-uint32_t CountValidGpuPasses(const GFX::GPU_PROFILE::FrameSnapshot &profile);
+uint32_t CountValidGpuPasses(const GFX::GPU_PROFILE::FrameSnapshot& profile);
 
-double GetCpuFrameMs(const CPU_PROFILE::FrameSnapshot &profile);
+double GetCpuFrameMs(const CPU_PROFILE::FrameSnapshot& profile);
 
-uint32_t CountValidCpuPasses(const CPU_PROFILE::FrameSnapshot &profile);
+uint32_t CountValidCpuPasses(const CPU_PROFILE::FrameSnapshot& profile);
 
 template <typename... Args>
-void MetricRow(const char *label, const char *format, Args... args) {
-  ImGui::TableNextRow();
-  ImGui::TableSetColumnIndex(0);
-  ImGui::TextUnformatted(label);
-  ImGui::TableSetColumnIndex(1);
-  ImGui::Text(format, args...);
+void MetricRow(const char* label, const char* format, Args... args) {
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::TextUnformatted(label);
+    ImGui::TableSetColumnIndex(1);
+    ImGui::Text(format, args...);
 }
 
-void DrawFrameSummary(const RuntimePerformanceSnapshot &s);
+void DrawFrameSummary(const RuntimePerformanceSnapshot& s);
 
-void DrawCpuTimingTable(const RuntimePerformanceSnapshot &s);
+void DrawCpuTimingTable(const RuntimePerformanceSnapshot& s);
 
-void DrawGpuTimingTable(const RuntimePerformanceSnapshot &s);
+void DrawGpuTimingTable(const RuntimePerformanceSnapshot& s);
 
-void DrawRenderPathTable(const RuntimePerformanceSnapshot &s);
+void DrawRenderPathTable(const RuntimePerformanceSnapshot& s);
 
-void DrawGpuMaterialTable(const RuntimePerformanceSnapshot &s);
+void DrawGpuMaterialTable(const RuntimePerformanceSnapshot& s);
 
-void DrawMeshShaderPipelineStatsTable(const RuntimePerformanceSnapshot &s);
+void DrawMeshShaderPipelineStatsTable(const RuntimePerformanceSnapshot& s);
 
-void DrawGeometryPipelineTable(const RuntimePerformanceSnapshot &s);
+void DrawGeometryPipelineTable(const RuntimePerformanceSnapshot& s);
 
-void DrawResourceSummaryTable(const RuntimePerformanceSnapshot &s);
+void DrawResourceSummaryTable(const RuntimePerformanceSnapshot& s);
 
-void DrawEffectsTable(const RuntimePerformanceSnapshot &s);
+void DrawEffectsTable(const RuntimePerformanceSnapshot& s);
 
-void DrawTemporalTable(const RuntimePerformanceSnapshot &s);
+void DrawTemporalTable(const RuntimePerformanceSnapshot& s);
 
-void DrawReadiness(const RuntimePerformanceSnapshot &s);
+void DrawReadiness(const RuntimePerformanceSnapshot& s);
 #endif
 
 } // namespace HIKARI::EDITOR::PERFORMANCE_AUDIT

@@ -6,25 +6,37 @@ include_guard(GLOBAL)
 # - Provides: private STATIC targets composed by HIKARI_Runtime.
 # - Consumes: the existing Runtime include and third-party compile contracts.
 # - Allowed callers: HIKARI_Runtime only.
-# - Replacement seam: each OBJECT target can become a linked internal library
-#   after its source dependencies are made one-way.
+# - Internal archives are aggregated by the public Runtime target; these are
+#   compile/size ownership boundaries, not independently consumable SDKs.
 # - Fallback: HIKARI_Runtime remains the only public link target.
 
-set(HIKARI_RUNTIME_FOUNDATION_SOURCES)
-set(HIKARI_RUNTIME_ASSET_SOURCES)
-set(HIKARI_RUNTIME_PROJECT_SOURCES)
-set(HIKARI_RUNTIME_GAME_PROJECT_SDK_SOURCES)
-set(HIKARI_RUNTIME_NAVIGATION_SOURCES)
-set(HIKARI_RUNTIME_ANIMATION_SOURCES)
-set(HIKARI_RUNTIME_GAMEPLAY_SOURCES)
-set(HIKARI_RUNTIME_SCENE_SOURCES)
-set(HIKARI_RUNTIME_SCENE_RENDERING_SOURCES)
-set(HIKARI_RUNTIME_PHYSICS_SOURCES)
-set(HIKARI_RUNTIME_GFX_SOURCES)
-set(HIKARI_RUNTIME_RENDER3D_SOURCES)
-set(HIKARI_RUNTIME_RENDER3D_FEATURE_SOURCES)
-set(HIKARI_RUNTIME_AUTHORING_SOURCES)
-set(HIKARI_RUNTIME_COMPOSITION_SOURCES)
+set(
+    HIKARI_RUNTIME_MODULE_SPECS
+    "hikari_runtime_foundation|HIKARI_RUNTIME_FOUNDATION_SOURCES"
+    "hikari_runtime_assets|HIKARI_RUNTIME_ASSET_SOURCES"
+    "hikari_runtime_asset_pipeline|HIKARI_RUNTIME_ASSET_PIPELINE_SOURCES"
+    "hikari_runtime_project|HIKARI_RUNTIME_PROJECT_SOURCES"
+    "hikari_runtime_game_project_sdk|HIKARI_RUNTIME_GAME_PROJECT_SDK_SOURCES"
+    "hikari_runtime_navigation|HIKARI_RUNTIME_NAVIGATION_SOURCES"
+    "hikari_runtime_animation|HIKARI_RUNTIME_ANIMATION_SOURCES"
+    "hikari_runtime_gameplay|HIKARI_RUNTIME_GAMEPLAY_SOURCES"
+    "hikari_runtime_scene|HIKARI_RUNTIME_SCENE_SOURCES"
+    "hikari_runtime_presentation|HIKARI_RUNTIME_PRESENTATION_SOURCES"
+    "hikari_runtime_scene_rendering|HIKARI_RUNTIME_SCENE_RENDERING_SOURCES"
+    "hikari_runtime_physics|HIKARI_RUNTIME_PHYSICS_SOURCES"
+    "hikari_runtime_gfx|HIKARI_RUNTIME_GFX_SOURCES"
+    "hikari_runtime_render3d|HIKARI_RUNTIME_RENDER3D_SOURCES"
+    "hikari_runtime_render3d_features|HIKARI_RUNTIME_RENDER3D_FEATURE_SOURCES"
+    "hikari_runtime_authoring|HIKARI_RUNTIME_AUTHORING_SOURCES"
+    "hikari_runtime_composition|HIKARI_RUNTIME_COMPOSITION_SOURCES")
+
+set(HIKARI_RUNTIME_MODULE_SOURCE_VARIABLES)
+foreach(module_spec IN LISTS HIKARI_RUNTIME_MODULE_SPECS)
+    string(REPLACE "|" ";" module_parts "${module_spec}")
+    list(GET module_parts 1 source_variable)
+    set(${source_variable})
+    list(APPEND HIKARI_RUNTIME_MODULE_SOURCE_VARIABLES "${source_variable}")
+endforeach()
 
 foreach(runtime_source IN LISTS HIKARI_RUNTIME_SOURCES)
     file(
@@ -41,11 +53,11 @@ foreach(runtime_source IN LISTS HIKARI_RUNTIME_SOURCES)
             "${runtime_source}")
     elseif(
         runtime_relative_path MATCHES
-        "^HIKARI/(Core|Diagnostics|Platform|Input|Audio)/" OR
-        runtime_relative_path STREQUAL "External/WICTextureLoader.cpp" OR
-        runtime_relative_path STREQUAL "Matrix3x3.cpp" OR
-        runtime_relative_path STREQUAL "SpineDefaultExtensionShim.cpp")
+        "^HIKARI/(Core|Diagnostics|Platform|Input|Audio)/")
         list(APPEND HIKARI_RUNTIME_FOUNDATION_SOURCES "${runtime_source}")
+    elseif(runtime_relative_path MATCHES "^HIKARI/Assets/(Importers|Cooking|Geometry|Lighting)/")
+        # Source conversion, validation and packaging; records/readers remain asset-owned.
+        list(APPEND HIKARI_RUNTIME_ASSET_PIPELINE_SOURCES "${runtime_source}")
     elseif(runtime_relative_path MATCHES "^HIKARI/Assets/")
         list(APPEND HIKARI_RUNTIME_ASSET_SOURCES "${runtime_source}")
     elseif(runtime_relative_path MATCHES "^HIKARI/Project/")
@@ -58,6 +70,9 @@ foreach(runtime_source IN LISTS HIKARI_RUNTIME_SOURCES)
         list(APPEND HIKARI_RUNTIME_GAMEPLAY_SOURCES "${runtime_source}")
     elseif(runtime_relative_path MATCHES "^HIKARI/Scene/Components/Rendering/")
         list(APPEND HIKARI_RUNTIME_SCENE_RENDERING_SOURCES "${runtime_source}")
+    elseif(runtime_relative_path MATCHES "^HIKARI/Scene/(Ui|Sequencer)/")
+        # UI projection and camera/sequence presentation; Scene owns world/ECS lifetime.
+        list(APPEND HIKARI_RUNTIME_PRESENTATION_SOURCES "${runtime_source}")
     elseif(runtime_relative_path MATCHES "^HIKARI/Scene/")
         list(APPEND HIKARI_RUNTIME_SCENE_SOURCES "${runtime_source}")
     elseif(runtime_relative_path MATCHES "^HIKARI/Physics/")
@@ -86,24 +101,6 @@ foreach(runtime_source IN LISTS HIKARI_RUNTIME_SOURCES)
             "${runtime_relative_path}")
     endif()
 endforeach()
-
-set(
-    HIKARI_RUNTIME_MODULE_SOURCE_VARIABLES
-    HIKARI_RUNTIME_FOUNDATION_SOURCES
-    HIKARI_RUNTIME_ASSET_SOURCES
-    HIKARI_RUNTIME_PROJECT_SOURCES
-    HIKARI_RUNTIME_GAME_PROJECT_SDK_SOURCES
-    HIKARI_RUNTIME_NAVIGATION_SOURCES
-    HIKARI_RUNTIME_ANIMATION_SOURCES
-    HIKARI_RUNTIME_GAMEPLAY_SOURCES
-    HIKARI_RUNTIME_SCENE_SOURCES
-    HIKARI_RUNTIME_SCENE_RENDERING_SOURCES
-    HIKARI_RUNTIME_PHYSICS_SOURCES
-    HIKARI_RUNTIME_GFX_SOURCES
-    HIKARI_RUNTIME_RENDER3D_SOURCES
-    HIKARI_RUNTIME_RENDER3D_FEATURE_SOURCES
-    HIKARI_RUNTIME_AUTHORING_SOURCES
-    HIKARI_RUNTIME_COMPOSITION_SOURCES)
 
 set(hikari_owned_runtime_sources)
 foreach(source_variable IN LISTS HIKARI_RUNTIME_MODULE_SOURCE_VARIABLES)
@@ -159,26 +156,9 @@ function(
 endfunction()
 
 function(hikari_define_runtime_modules output_variable)
-    set(
-        runtime_module_specs
-        "hikari_runtime_foundation|HIKARI_RUNTIME_FOUNDATION_SOURCES"
-        "hikari_runtime_assets|HIKARI_RUNTIME_ASSET_SOURCES"
-        "hikari_runtime_project|HIKARI_RUNTIME_PROJECT_SOURCES"
-        "hikari_runtime_game_project_sdk|HIKARI_RUNTIME_GAME_PROJECT_SDK_SOURCES"
-        "hikari_runtime_navigation|HIKARI_RUNTIME_NAVIGATION_SOURCES"
-        "hikari_runtime_animation|HIKARI_RUNTIME_ANIMATION_SOURCES"
-        "hikari_runtime_gameplay|HIKARI_RUNTIME_GAMEPLAY_SOURCES"
-        "hikari_runtime_scene|HIKARI_RUNTIME_SCENE_SOURCES"
-        "hikari_runtime_scene_rendering|HIKARI_RUNTIME_SCENE_RENDERING_SOURCES"
-        "hikari_runtime_physics|HIKARI_RUNTIME_PHYSICS_SOURCES"
-        "hikari_runtime_gfx|HIKARI_RUNTIME_GFX_SOURCES"
-        "hikari_runtime_render3d|HIKARI_RUNTIME_RENDER3D_SOURCES"
-        "hikari_runtime_render3d_features|HIKARI_RUNTIME_RENDER3D_FEATURE_SOURCES"
-        "hikari_runtime_authoring|HIKARI_RUNTIME_AUTHORING_SOURCES"
-        "hikari_runtime_composition|HIKARI_RUNTIME_COMPOSITION_SOURCES")
 
     set(runtime_targets)
-    foreach(module_spec IN LISTS runtime_module_specs)
+    foreach(module_spec IN LISTS HIKARI_RUNTIME_MODULE_SPECS)
         string(REPLACE "|" ";" module_parts "${module_spec}")
         list(GET module_parts 0 module_target)
         list(GET module_parts 1 module_sources)

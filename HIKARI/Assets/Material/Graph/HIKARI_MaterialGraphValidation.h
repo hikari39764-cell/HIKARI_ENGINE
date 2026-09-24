@@ -9,75 +9,57 @@
 
 namespace HIKARI {
 
-    enum class MaterialGraphDiagnosticSeverity : uint8_t {
-        Info,
-        Warning,
-        Error,
-    };
+enum class MaterialGraphDiagnosticSeverity : uint8_t {
+    Info,
+    Warning,
+    Error,
+};
 
-    struct MaterialGraphDiagnostic {
-        MaterialGraphDiagnosticSeverity severity =
-            MaterialGraphDiagnosticSeverity::Error;
-        std::string code{};
-        std::string message{};
-        std::string subjectId{};
-    };
+struct MaterialGraphDiagnostic {
+    MaterialGraphDiagnosticSeverity severity = MaterialGraphDiagnosticSeverity::Error;
+    std::string code{};
+    std::string message{};
+    std::string subjectId{};
+};
 
-    struct MaterialGraphValidationOptions {
-        bool requireDomainOutput = true;
-        MaterialDomain domain = MaterialDomain::Surface;
-    };
+struct MaterialGraphValidationOptions {
+    bool requireDomainOutput = true;
+    MaterialDomain domain = MaterialDomain::Surface;
+};
 
-    std::optional<MaterialValueType> ResolveMaterialGraphPinType(
-        const MaterialGraphData& graph, const MaterialGraphNodeData& node,
-        std::string_view pin, bool output);
+std::optional<MaterialValueType> ResolveMaterialGraphPinType(const MaterialGraphData& graph,
+                                                             const MaterialGraphNodeData& node, std::string_view pin,
+                                                             bool output);
 
-    bool IsValidMaterialStableId(std::string_view id) noexcept;
+bool IsValidMaterialStableId(std::string_view id) noexcept;
 
-    // Promotes generic numeric nodes to the widest connected input type.
-    // This keeps scalar splatting and vector math deterministic in both the
-    // Editor and compiler without storing duplicated socket-type state.
-    bool ReconcileMaterialGraphDynamicNodeTypes(
-        MaterialGraphData& graph);
+// Promotes generic numeric nodes to the widest connected input type.
+// This keeps scalar splatting and vector math deterministic in both the
+// Editor and compiler without storing duplicated socket-type state.
+bool ReconcileMaterialGraphDynamicNodeTypes(MaterialGraphData& graph);
 
-    // Compatibility views over the canonical material node definitions.
-    // Validation, lowering and Editor presentation consume one socket schema.
-    std::vector<std::string_view> GetMaterialGraphNodeInputPins(
-        MaterialNodeKind kind);
-    std::vector<std::string_view> GetMaterialGraphNodeInputPins(
-        const MaterialNodeTypeId& typeId);
-    std::vector<std::string_view> GetMaterialGraphNodeInputPins(
-        const MaterialGraphNodeData& node);
-    std::vector<std::string_view> GetMaterialGraphNodeOutputPins(
-        MaterialNodeKind kind);
-    std::vector<std::string_view> GetMaterialGraphNodeOutputPins(
-        const MaterialNodeTypeId& typeId);
-    std::vector<std::string_view> GetMaterialGraphNodeOutputPins(
-        const MaterialGraphNodeData& node);
+// Compatibility views over the canonical material node definitions.
+// Validation, lowering and Editor presentation consume one socket schema.
+std::vector<std::string_view> GetMaterialGraphNodeInputPins(MaterialNodeKind kind);
+std::vector<std::string_view> GetMaterialGraphNodeInputPins(const MaterialNodeTypeId& typeId);
+std::vector<std::string_view> GetMaterialGraphNodeInputPins(const MaterialGraphNodeData& node);
+std::vector<std::string_view> GetMaterialGraphNodeOutputPins(MaterialNodeKind kind);
+std::vector<std::string_view> GetMaterialGraphNodeOutputPins(const MaterialNodeTypeId& typeId);
+std::vector<std::string_view> GetMaterialGraphNodeOutputPins(const MaterialGraphNodeData& node);
 
-    // Runtime-generated shading context sockets are valid compiler inputs but
-    // are not authorable graph sockets. Resource inputs such as FaceSdf.SDF
-    // deliberately return false and remain visible in the Editor.
-    bool IsMaterialGraphRuntimeGeneratedInput(
-        MaterialNodeKind kind,
-        std::string_view pin) noexcept;
-    bool IsMaterialGraphRuntimeGeneratedInput(
-        const MaterialNodeTypeId& typeId,
-        std::string_view pin) noexcept;
+// Runtime-generated shading context sockets are valid compiler inputs but
+// are not authorable graph sockets. Resource inputs such as FaceSdf.SDF
+// deliberately return false and remain visible in the Editor.
+bool IsMaterialGraphRuntimeGeneratedInput(MaterialNodeKind kind, std::string_view pin) noexcept;
+bool IsMaterialGraphRuntimeGeneratedInput(const MaterialNodeTypeId& typeId, std::string_view pin) noexcept;
 
-    bool ValidateMaterialGraph(
-        const MaterialGraphData& graph,
-        const MaterialGraphValidationOptions& options,
-        std::vector<MaterialGraphDiagnostic>& outDiagnostics);
+bool ValidateMaterialGraph(const MaterialGraphData& graph, const MaterialGraphValidationOptions& options,
+                           std::vector<MaterialGraphDiagnostic>& outDiagnostics);
 
-    // Validates one editor connection independently from unrelated compile
-    // errors in the graph. Existing input ownership is treated as replaceable.
-    bool CanConnectMaterialGraphPins(
-        const MaterialGraphData& graph,
-        std::string_view sourceNodeId,
-        std::string_view sourcePin,
-        std::string_view targetNodeId,
-        std::string_view targetPin,
-        std::string& outReason);
+// Validates one editor connection independently from unrelated compile
+// errors in the graph. Existing input ownership is treated as replaceable.
+bool CanConnectMaterialGraphPins(const MaterialGraphData& graph, std::string_view sourceNodeId,
+                                 std::string_view sourcePin, std::string_view targetNodeId, std::string_view targetPin,
+                                 std::string& outReason);
 
 } // namespace HIKARI

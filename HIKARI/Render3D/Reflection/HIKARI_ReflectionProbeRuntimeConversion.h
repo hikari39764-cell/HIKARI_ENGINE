@@ -5,20 +5,14 @@
 
 namespace HIKARI::REFLECTION {
 
-    inline RuntimeReflectionProbeInfluenceShape ToRuntimeInfluenceShape(
-        ReflectionProbeInfluenceShape shape) noexcept {
+inline RuntimeReflectionProbeInfluenceShape ToRuntimeInfluenceShape(ReflectionProbeInfluenceShape shape) noexcept {
+    return shape == ReflectionProbeInfluenceShape::Box ? RuntimeReflectionProbeInfluenceShape::Box
+                                                       : RuntimeReflectionProbeInfluenceShape::Sphere;
+}
 
-        return shape == ReflectionProbeInfluenceShape::Box
-            ? RuntimeReflectionProbeInfluenceShape::Box
-            : RuntimeReflectionProbeInfluenceShape::Sphere;
-    }
-
-    inline RuntimeReflectionProbeProjectionShape ToRuntimeProjectionShape(
-        ReflectionProbeProjectionShape shape) noexcept {
-
-        return shape == ReflectionProbeProjectionShape::Box
-            ? RuntimeReflectionProbeProjectionShape::Box
-            : RuntimeReflectionProbeProjectionShape::Infinite;
-    }
+inline RuntimeReflectionProbeProjectionShape ToRuntimeProjectionShape(ReflectionProbeProjectionShape shape) noexcept {
+    return shape == ReflectionProbeProjectionShape::Box ? RuntimeReflectionProbeProjectionShape::Box
+                                                        : RuntimeReflectionProbeProjectionShape::Infinite;
+}
 
 } // namespace HIKARI::REFLECTION

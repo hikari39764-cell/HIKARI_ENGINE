@@ -4,24 +4,20 @@
 
 namespace HIKARI {
 
-    class World;
+class World;
 
-    class ComponentGizmoRenderer {
-    public:
-        ComponentGizmoRenderer();
+class ComponentGizmoRenderer {
+public:
+    ComponentGizmoRenderer();
 
-        ComponentGizmoRegistry& Registry() noexcept;
-        const ComponentGizmoRegistry& Registry() const noexcept;
+    ComponentGizmoRegistry& Registry() noexcept;
+    const ComponentGizmoRegistry& Registry() const noexcept;
 
-        void SubmitWorldGizmos(
-            const World& world,
-            const ComponentGizmoState& state,
-            SceneObjectId selectedObjectId,
-            float cameraAspect,
-            const MATH::Vec3& viewportCameraPosition) const;
+    void SubmitWorldGizmos(const World& world, const ComponentGizmoState& state, SceneObjectId selectedObjectId,
+                           float cameraAspect, const MATH::Vec3& viewportCameraPosition) const;
 
-    private:
-        ComponentGizmoRegistry registry_{};
-    };
+private:
+    ComponentGizmoRegistry registry_{};
+};
 
 } // namespace HIKARI

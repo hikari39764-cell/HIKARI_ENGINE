@@ -3,18 +3,14 @@
 #include "Assets/Material/Compiler/HIKARI_MaterialCompiler.h"
 
 namespace HIKARI {
-    class AssetDatabase;
+class AssetDatabase;
 }
 
 namespace HIKARI::ASSETS::MATERIAL {
 
-    bool LoadMaterialAssetSource(
-        const AssetDatabase& assetDatabase,
-        const AssetGuid& assetGuid,
-        MaterialAssetData& outSource,
-        std::string& outError);
+bool LoadMaterialAssetSource(const AssetDatabase& assetDatabase, const AssetGuid& assetGuid,
+                             MaterialAssetData& outSource, std::string& outError);
 
-    MaterialCompileOptions MakeMaterialCompileOptions(
-        const AssetDatabase& assetDatabase);
+MaterialCompileOptions MakeMaterialCompileOptions(const AssetDatabase& assetDatabase);
 
 } // namespace HIKARI::ASSETS::MATERIAL

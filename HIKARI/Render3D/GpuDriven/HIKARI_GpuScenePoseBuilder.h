@@ -8,23 +8,22 @@
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
 
-    class GpuScenePoseBuilder final {
-    public:
-        const std::vector<MATH::Mat4>* ResolveJointPalette(
-            const GpuSceneSurfaceRecord& record);
+class GpuScenePoseBuilder final {
+public:
+    const std::vector<MATH::Mat4>* ResolveJointPalette(const GpuSceneSurfaceRecord& record);
 
-    private:
-        struct PoseEntry {
-            RUNTIME::SceneRenderObjectId objectId{};
-            uint64_t objectVersion = 0;
-            const ModelAsset* model = nullptr;
-            std::vector<MATH::Mat4> localNodeGlobals{};
-            std::unordered_map<int, std::vector<MATH::Mat4>> palettesBySkin{};
-        };
-
-        PoseEntry* ResolvePoseEntry(const GpuSceneSurfaceRecord& record);
-
-        std::vector<PoseEntry> entries_{};
+private:
+    struct PoseEntry {
+        RUNTIME::SceneRenderObjectId objectId{};
+        uint64_t objectVersion = 0;
+        const ModelAsset* model = nullptr;
+        std::vector<MATH::Mat4> localNodeGlobals{};
+        std::unordered_map<int, std::vector<MATH::Mat4>> palettesBySkin{};
     };
+
+    PoseEntry* ResolvePoseEntry(const GpuSceneSurfaceRecord& record);
+
+    std::vector<PoseEntry> entries_{};
+};
 
 } // namespace HIKARI::RENDER3D::GPUDRIVEN

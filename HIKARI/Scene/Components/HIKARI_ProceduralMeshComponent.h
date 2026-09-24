@@ -8,33 +8,28 @@
 
 namespace HIKARI {
 
-    class ProceduralMeshComponent final :
-        public IComponent,
-        public IGeometryFitProvider {
-    public:
-        std::string_view GetTypeName() const override {
-            return "ProceduralMeshComponent";
-        }
+class ProceduralMeshComponent final : public IComponent, public IGeometryFitProvider {
+public:
+    std::string_view GetTypeName() const override { return "ProceduralMeshComponent"; }
 
-        void Serialize(nlohmann::json& out) const override;
-        void Deserialize(const nlohmann::json& in) override;
-        void BuildInspector(IInspectorBuilder& builder) override;
+    void Serialize(nlohmann::json& out) const override;
+    void Deserialize(const nlohmann::json& in) override;
+    void BuildInspector(IInspectorBuilder& builder) override;
 
-        const ProceduralMeshSettings& GetSettings() const noexcept;
-        void SetSettings(const ProceduralMeshSettings& settings);
-        // マテリアル選択: "" = None(デフォルト白) / "checker" または
-        // マテリアルアセット GUID。
-        const std::string& GetMaterialSelection() const noexcept;
-        void SetMaterialSelection(std::string selection);
-        int GetGeometryFitPriority() const noexcept override;
-        bool QueryGeometryFit(
-            GeometryFitDesc& outFit) const noexcept override;
+    const ProceduralMeshSettings& GetSettings() const noexcept;
+    void SetSettings(const ProceduralMeshSettings& settings);
+    // マテリアル選択: "" = None(デフォルト白) / "checker" または
+    // マテリアルアセット GUID。
+    const std::string& GetMaterialSelection() const noexcept;
+    void SetMaterialSelection(std::string selection);
+    int GetGeometryFitPriority() const noexcept override;
+    bool QueryGeometryFit(GeometryFitDesc& outFit) const noexcept override;
 
-    private:
-        void NotifyRenderStateDirty();
+private:
+    void NotifyRenderStateDirty();
 
-        ProceduralMeshSettings settings_{};
-        std::string materialSelection_{};
-    };
+    ProceduralMeshSettings settings_{};
+    std::string materialSelection_{};
+};
 
 } // namespace HIKARI

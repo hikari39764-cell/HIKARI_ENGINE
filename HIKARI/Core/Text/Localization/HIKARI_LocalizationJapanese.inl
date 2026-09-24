@@ -47,7 +47,6 @@
         { "material.preview.live", "プレビューは最新です" },
         { "material.preview.invalid", "グラフのエラーを修正してください" },
         { "material.preview.pending", "プレビュー更新待ち" },
-        { "material.inspector.parameters", "ノードのパラメーター" },
         { "material.inspector.advanced", "技術情報" },
         { "material.inspector.select", "ノードを選択してパラメーターを編集します。" },
         { "material.inspector.connections", "入力と接続" },
@@ -177,15 +176,11 @@
         { "ai.task.takeover", "草稿を開いて編集" },
         { "vfx.templates.complete", "完成テンプレート" },
         { "vfx.templates.modules", "組み合わせモジュール" },
-        { "ai.sidebar.expand", "AI アシスタントを開く" },
-        { "ai.sidebar.collapse", "AI アシスタントを折りたたむ" },
         { "ai.status.ready", "準備完了" },
         { "ai.welcome.title", "アイデアから始める" },
         { "ai.welcome.detail", "作りたいものを説明するか参考画像を添付してください。制作中も編集を続けられます。" },
-        { "ai.task.result", "操作結果" },
         { "ai.task.stop", "停止" },
         { "ai.image.attach", "画像を添付" },
-        { "ai.image.path", "画像ファイル" },
         { "ai.image.clear", "添付を削除" },
         { "ai.image.count", "画像 %d 枚を添付" },
         { "ai.image.unavailable", "画像プレビューを表示できません" },
@@ -210,23 +205,12 @@
         { "ai.chat.assistant", "アシスタント" },
         { "ai.chat.you", "あなた" },
         { "ai.menu.apiSettings", "API 設定" },
-        { "ai.menu.capabilities", "機能" },
-        { "ai.menu.clearChat", "会話をクリア" },
-        { "ai.menu.rawJson", "RAW JSON アクション" },
-        { "ai.plan", "実行計画" },
-        { "ai.bridge.token", "ローカルブリッジのセッショントークン" },
-        { "ai.bridge.copyToken", "セッショントークンをコピー" },
         { "ai.raw.fail", "失敗" },
         { "ai.raw.ok", "成功" },
         { "ai.raw.run", "実行" },
         { "ai.raw.title", "RAW JSON アクション" },
-        { "ai.reasoning", "思考過程（AI 推論）" },
         { "ai.send", "送信" },
         { "ai.status.noApi", "● API Key 未設定（読み取り専用）" },
-        { "ai.status.processing", "● 処理中..." },
-        { "ai.status.thinking", "（思考中）" },
-        { "ai.title", "AI アシスタント" },
-        { "ai.working", "処理中..." },
         { "menu.aiAssistant", "AI アシスタント" },
         { "menu.build", "ビルド" },
         { "menu.project", "プロジェクト" },
@@ -273,13 +257,9 @@
         { "menu.workspace.resetActiveLayout", "アクティブレイアウトをリセット" },
         { "menu.workspace.scene", "シーン" },
         { "settings.language", "言語" },
-        { "settings.language.chinese", "中国語" },
-        { "settings.language.english", "英語" },
-        { "settings.language.japanese", "日本語" },
         { "settings.aiBridge", "AI ローカルブリッジ" },
         { "settings.aiBridge.enable", "このエディターセッションで有効化" },
         { "settings.aiBridge.warning", "既定では無効です。有効化後、すべての操作には AI アシスタント画面に表示されるランダムなセッショントークンが必要です。" },
-        { "settings.product.note", "設定はすべてのエディターワークスペースで共有されます。" },
         { "settings.title", "エディタ設定" },
         { "ui.projectSession.cancel", "キャンセル" },
         { "ui.projectSession.confirmRebuild", "再ビルドして再起動" },
@@ -455,9 +435,6 @@
         { "ui.vfx.hierarchy.solo", "ソロ" },
         { "ui.vfx.hierarchy.clearSolo", "ソロ解除" },
         { "ui.vfx.hierarchy.delete", "エミッタを削除" },
-        { "ui.vfx.preview.stepFrame", "1 フレーム進める" },
-        { "ui.vfx.preview.step10", "10 フレーム進める" },
-        { "ui.vfx.preview.focusSelected", "選択にフォーカス" },        { "ui.assetBrowser.usageUnused", "未使用" },
         { "ui.assetBrowser.usageUsed", "使用中" },
         { "ui.assetInspector.albedo", "アルベド" },
         { "ui.assetInspector.ambientOcclusion", "アンビエントオクルージョン" },
@@ -795,10 +772,6 @@
         { "ui.environment.useSkyHorizonForFog", "フォグにスカイ地平線を使用" },
         { "ui.environment.volumetricFog", "ボリュームフォグ" },
         { "ui.environment.zenithColor", "天頂色" },
-        { "ui.hierarchy.emptyHint", "+ または右クリックで作成します。" },
-        { "ui.hierarchy.emptyTitle", "シーンオブジェクトがありません" },
-        { "ui.hierarchy.noMatchHint", "別の名前を試すか、検索をクリアします。" },
-        { "ui.hierarchy.noMatchTitle", "一致するオブジェクトがありません" },
         { "ui.hierarchy.objects", "%d オブジェクト" },
         { "ui.hierarchy.objectsFiltered", "%d / %d オブジェクト" },
         { "ui.hierarchy.search", "ヒエラルキー" },
@@ -1431,7 +1404,6 @@
         { "ui.window.lightingBake", "ライティングベイク" },
         { "ui.window.projectFeatures", "プロジェクト機能" },
         { "ui.window.quality", "品質" },
-        { "ui.window.resourceWorkspace", "リソースワークスペース" },
         { "ui.window.sceneDocument", "シーンドキュメント" },
         { "ui.window.sceneSystems", "シーンシステム" },
         { "ui.window.sceneWorkspace", "シーンワークスペース" },
@@ -1473,7 +1445,6 @@
         { "ui.inspector.worldText.text", "テキスト" },
         { "ui.inspector.worldText.textHelp", "3D ワールド空間に表示する UTF-8 テキストです。" },
         { "ui.inspector.worldText.font", "フォントアセットパス" },
-        { "ui.inspector.worldText.fontHelp", "Fonts または Assets 以下のプロジェクト相対 .ttf、.otf、.ttc パスです。" },
         { "ui.inspector.worldText.layout", "レイアウト" },
         { "ui.inspector.worldText.layoutSize", "レイアウトサイズ" },
         { "ui.inspector.worldText.layoutSizeHelp", "ワールド単位でテキスト領域の幅と高さを設定します。" },
@@ -1538,13 +1509,6 @@
         { "ui.inspector.model.overrideMaterial", "マテリアルを上書き" },
         { "ui.inspector.model.restoreImported", "インポートを復元" },
         { "ui.inspector.model.proceduralMaterial", "プロシージャルマテリアル" },
-        { "ui.inspector.model.proceduralMaterialHint", "デフォルトはプロシージャルチェッカーです。差し替え後「インポートを復元」で戻せます" },
-        { "ui.inspector.model.proceduralMaterialMode", "マテリアルモード" },
-        { "ui.inspector.model.proceduralMaterialChecker", "チェッカー（デバッグ）" },
-        { "ui.inspector.model.proceduralMaterialWhite", "デフォルト白" },
-        { "ui.inspector.model.proceduralMaterialCustom", "カスタムマテリアル" },
-        { "ui.inspector.model.proceduralMaterialWhiteHint", "無地の白マテリアル。後から好きなマテリアルに差し替えられます。" },
-        { "ui.inspector.procedural.materialEntryHint", "マテリアル：プロシージャルメッシュコンポーネントで選択" },
         { "ui.inspector.procedural.material", "マテリアル" },
         { "ui.inspector.procedural.materialNone", "なし（デフォルト白）" },
         { "ui.inspector.procedural.materialChecker", "チェッカー（デバッグ）" },
@@ -1609,7 +1573,6 @@
         { "ui.materialGraph.collapseNode", "ノードを折りたたむ" },
         { "ui.materialGraph.expandNode", "ノードを展開" },
         { "ui.materialGraph.surfaceOutputRoot", "Surface Output はマテリアルの必須ルートノードです" },
-        { "ui.materialGraph.dragHint", "ソケットをドラッグして接続/再接続 | ワイヤーをクリックで選択 | Del で削除" },
         { "ui.asm.menu.file", "ファイル" },
         { "ui.asm.menu.new", "新しいステートマシン" },
         { "ui.asm.menu.openAsset", "アセットを開く" },
@@ -1633,10 +1596,6 @@
         { "ui.asm.menu.undoTooltip", "元に戻す (Ctrl+Z)" },
         { "ui.asm.menu.redoTooltip", "やり直す (Ctrl+Y)" },
         { "ui.asm.menu.frameAllTooltip", "すべてのステートを表示 (Home)" },
-        { "ui.viewport.terrain.raise", "地形を上げる" },
-        { "ui.viewport.terrain.lower", "地形を下げる" },
-        { "ui.viewport.terrain.smooth", "地形をなめらかに" },
-        { "ui.viewport.terrain.flatten", "地形を平坦化" },
         { "menu.workspace.terrainSurface", "地形サーフェス" },
         { "ui.terrain.tools", "地形ツール" },
         { "ui.terrain.presets", "プリセット" },
@@ -1650,21 +1609,14 @@
         { "ui.terrain.edgeDepth", "端の深さ" },
         { "ui.terrain.wetness", "湿潤" },
         { "ui.terrain.surfacePresets", "地表プリセット" },
-        { "ui.terrain.waterPresets", "水面プリセット" },
         { "ui.terrain.sand", "砂" },
         { "ui.terrain.snow", "雪" },
         { "ui.terrain.dirt", "土" },
         { "ui.terrain.grass", "草" },
         { "ui.terrain.rock", "岩" },
-        { "ui.terrain.animeWater", "アニメ水面" },
-        { "ui.terrain.realisticWater", "リアル水面" },
-        { "ui.terrain.noWater", "水なし" },
         { "ui.terrain.paintPreset", "ペイントプリセット" },
         { "ui.terrain.none", "なし" },
-        { "ui.terrain.water", "水" },
         { "ui.terrain.erase", "消去" },
-        { "ui.terrain.mound", "盛り上げ" },
-        { "ui.terrain.pit", "掘る" },
         { "ui.terrain.brush", "ブラシ" },
         { "ui.terrain.objects", "地形オブジェクト" },
         { "ui.terrain.selectTerrain", "地形オブジェクトを選択してください" },
@@ -1894,7 +1846,6 @@
         { "ui.vfx.effects.stage.2", "テクスチャ残光" },
         { "ui.vfx.effects.stage.3", "放射ぼかし" },
         { "ui.vfx.effects.stage.4", "色・透明度・発光" },
-        { "ui.vfx.view.layerCount", "%zu プレビューレイヤー" },
         { "ui.vfx.hud.stopped", "停止" },
         { "ui.vfx.hud.paused", "一時停止" },
         { "ui.vfx.hud.playing", "再生" },
@@ -2331,7 +2282,6 @@
         { "ui.vfx.view.autoKey", "自動キー" },
         { "ui.vfx.view.editModeHelp", "オフ：基準配置で動き全体を移動。オン：現在時刻にキーを記録。W/E/R 変形、X 空間、F フォーカス。" },
         { "ui.vfx.view.path", "モーションパス" },
-        { "ui.vfx.view.handles", "形状ハンドル" },
         { "ui.vfx.text.Inner Radius", "内半径" },
         { "ui.vfx.text.Outer Radius", "外半径" },
         { "ui.vfx.text.Start Angle", "開始角度" },
@@ -2599,8 +2549,6 @@
     { "cine.shotFromView", "このビューからショットを作成" },
     { "cine.value", "値" },
     { "cine.roll", "ロール" },
-    { "cine.tangentIn", "入側の接線" },
-    { "cine.tangentOut", "出側の接線" },
     { "cine.createShot", "ショットを作成" },
     { "cine.deleteClip", "クリップを削除" },
     { "cine.refreshSound", "音声素材を更新" },
@@ -2608,7 +2556,6 @@
     { "cine.addPose", "再生ヘッドにポーズキーを追加" },
     { "cine.baseLook", "基本ルック · シーンを上書き" },
     { "cine.sound", "音声" },
-    { "cine.poseTime", "ポーズ %.2f 秒" },
     { "cine.presets", "完成シーケンス" },
     { "cine.bindings", "オブジェクトのバインディング" },
     { "cine.inspector", "プロパティとエフェクト" },
@@ -2628,7 +2575,6 @@
     { "cine.blendWeight", "ブレンドウェイト" },
     { "cine.addBinding", "オブジェクトスロットを追加" },
     { "cine.addEffect", "エフェクトを追加" },
-    { "cine.addMotion", "動きを追加" },
     { "cine.sequence", "シーケンス" },
     { "cine.timeline", "シーケンスタイムライン" },
     { "cine.sequenceFx", "シーケンスの画面エフェクト" },
@@ -2637,8 +2583,6 @@
     { "cine.screenFx", "画面エフェクト" },
     { "cine.fadeHint", "画面のフェードには画面エフェクトクリップを使います。" },
     { "cine.lookAt", "注視点" },
-    { "cine.easeOut", "出側の速度" },
-    { "cine.seconds", "秒" },
     { "cine.stage", "ステージビュー" },
     { "cine.linear", "等速" },
     { "cine.assets", "素材" },
@@ -2648,7 +2592,6 @@
     { "cine.blendDuration", "ブレンド時間" },
     { "cine.motionChain", "カメラ移動エフェクト" },
     { "cine.requiredRuntime", "実行時に必須" },
-    { "cine.easeIn", "入側の速度" },
     { "cine.shot", "ショット" },
     { "cine.shotDuration", "ショットの長さ" },
     { "cine.shotFx", "ショットの画面エフェクト" },
@@ -2733,15 +2676,12 @@
     { "editor.ui.ramp.resource.3cfd9d", "+ ランプ素材" },
     { "editor.ui.shape.bdf0e8", "+ 形状" },
     { "editor.ui.texture.resource.93d8ae", "+ テクスチャ素材" },
-    { "editor.moreSearch", "…（検索語を絞ると他の結果が表示されます）" },
     { "editor.ui.0.npr.endpoint.1.pbr.endpoint.ef4a45", "0 = NPR 側 | 1 = PBR 側" },
     { "editor.ui.affected.by.9caebf", "影響元" },
     { "editor.ui.active.shape.is.locked.26c7ed", "アクティブな形状はロックされています" },
     { "editor.ui.add.point.f353ad", "ポイントを追加" },
     { "editor.ui.add.ramp.point.43d5d9", "ランプポイントを追加" },
-    { "editor.ui.add.node.at.cursor.24da70", "カーソル位置にノードを追加" },
     { "editor.ui.advanced.asset.actions.e5ed94", "高度なアセット操作" },
-    { "editor.ui.advanced.node.details.df5635", "ノードの詳細設定" },
     { "editor.ui.advanced.part.binding.f0dacd", "パーツの詳細バインディング" },
     { "editor.ui.alt.lmb.orbit.51038c", "Alt + 左ボタン       周回" },
     { "editor.ui.apply.draft.b63f82", "下書きを適用" },
@@ -2781,7 +2721,6 @@
     { "editor.ui.duplicate.selected.74ac9f", "選択を複製" },
     { "editor.ui.editing.model.part.bc0abd", "モデルパーツを編集中" },
     { "editor.ui.edit.ramp.6de413", "ランプを編集" },
-    { "editor.ui.edit.values.and.resources.directly.on.the.node.card.5420fc", "ノードカードで値と素材を直接編集できます。" },
     { "editor.ui.environment.presets.3b220a", "環境プリセット" },
     { "editor.ui.environment.s.e9b433", "環境：%s" },
     { "editor.ui.every.committed.control.refreshes.runtime.bindings.f10e6d", "パラメーターの確定時に実行時バインディングを更新します。" },
@@ -2796,7 +2735,6 @@
     { "editor.ui.generated.from.d.source.part.s.s.a0ef14", "元パーツ %d 個から生成 | %s" },
     { "editor.ui.generated.only.42a4d1", "生成した形状のみ" },
     { "editor.ui.generation.draft.ready.269f1c", "生成下書きの準備完了" },
-    { "editor.ui.graph.selection.3ec836", "グラフの選択" },
     { "editor.ui.height.3f608b", "高さ" },
     { "editor.ui.hide.all.556020", "すべて非表示" },
     { "editor.ui.hide.selected.c01d1a", "選択を非表示" },
@@ -2841,7 +2779,6 @@
     { "editor.ui.no.map.uses.mesh.tangent.rg.flow.and.a.shift.specialize.it.945f54", "マップ未指定時はメッシュ接線を使用。RG で流れ、A でシフトを制御します。" },
     { "editor.ui.no.model.assets.are.registered.255b81", "登録済みモデルアセットがありません" },
     { "editor.ui.no.model.loaded.bdddc1", "モデルが読み込まれていません。" },
-    { "editor.ui.node.contract.e5f8d9", "ノードの仕様" },
     { "editor.ui.node.owned.authoring.b47942", "ノード内で編集" },
     { "editor.ui.not.evaluated.current.graph.does.not.compile.238dc7", "未評価：現在のグラフをコンパイルできません。" },
     { "editor.ui.open.a.material.before.creating.an.instance.bb3495", "インスタンスを作成する前にマテリアルを開いてください。" },
@@ -2909,8 +2846,6 @@
     { "editor.ui.select.filtered.2b2f4e", "絞り込み結果を選択" },
     { "editor.ui.select.visible.9f78ea", "表示中を選択" },
     { "editor.ui.select.a.light.here.or.click.its.viewport.icon.6868f7", "ここでライトを選ぶか、ビューのアイコンをクリックします。" },
-    { "editor.ui.select.a.node.or.connection.in.the.graph.2e4f2d", "グラフのノードまたは接続を選択します。" },
-    { "editor.ui.select.a.node.its.authoring.controls.stay.on.the.graph.card.5e582f", "ノードを選択し、グラフのカード上で編集できます。" },
     { "editor.ui.select.or.add.a.collision.shape.f49c19", "コリジョン形状を選択または追加します。" },
     { "editor.ui.selected.dim.context.1d83e6", "選択を強調、他を暗く表示" },
     { "editor.ui.selected.connection.b1be4d", "選択した接続" },
@@ -2926,7 +2861,6 @@
     { "editor.ui.sky.rotation.ee7e3f", "空の回転" },
     { "editor.ui.source.color.6d2042", "元の色" },
     { "editor.ui.source.model.acf996", "元のモデル" },
-    { "editor.ui.source.revision.llu.compiled.revision.llu.a20b7e", "ソース %llu | コンパイル %llu" },
     { "editor.ui.stable.slotid.s.b972aa", "固定スロット ID：%s" },
     { "editor.ui.standalone.material.f1ffe4", "独立マテリアル" },
     { "editor.ui.static.bodies.only.4f1004", "静的ボディのみ" },
@@ -2949,7 +2883,6 @@
     { "editor.ui.unsaved.model.collision.changes.72d305", "モデルコリジョンの未保存の変更" },
     { "editor.ui.unsaved.binding.edits.de2eb6", "バインディングに未保存の変更" },
     { "editor.ui.unsaved.set.edits.will.be.discarded.cbfee0", "セットの未保存の変更は破棄されます。" },
-    { "editor.ui.unsupported.inherited.type.0e4d03", "未対応の継承型" },
     { "editor.ui.use.surface.output.blend.straight.for.png.art.efb36d", "PNG 素材は Surface Output：Blend + Straight を使用します。" },
     { "editor.ui.use.texture.sample.nodes.for.every.image.input.3c4ba8", "画像の入力には Texture Sample ノードを使います。" },
     { "editor.ui.use.the.rotate.gizmo.in.the.viewport.to.aim.this.light.2c784d", "ビューの回転ギズモでライトの向きを調整します。" },
@@ -2985,7 +2918,6 @@
     { "editor.ui.back.to.scene.0e730f", "シーンに戻る" },
     { "editor.ui.background.game.view.e8990a", "背景のゲーム画面" },
     { "editor.ui.bind.selected.to.next.step.567a41", "選択を次のステップに接続" },
-    { "editor.ui.body.size.61b95f", "本文サイズ" },
     { "editor.ui.browse.2f3b5c", "参照" },
     { "editor.ui.built.in.vfx.unlit.d589ac", "内蔵 VFX アンリット" },
     { "editor.ui.choice.step.1e8d95", "選択肢ステップ" },
@@ -2996,11 +2928,8 @@
     { "editor.ui.character.ee9946", "キャラクター" },
     { "editor.ui.character.name.c0a090", "キャラクター名" },
     { "editor.ui.choice.0682be", "選択肢" },
-    { "editor.ui.choice.size.ae6b83", "選択肢のサイズ" },
     { "editor.ui.choice.text.a9c015", "選択肢テキスト" },
     { "editor.ui.continue.prompt.fc9ef9", "次へ進む表示" },
-    { "editor.ui.create.hikari.project.1b0757", "HIKARI プロジェクトを作成" },
-    { "editor.ui.create.project.1cab44", "プロジェクトを作成" },
     { "editor.ui.create.vfx.asset.205bef", "VFX アセットを作成" },
     { "editor.ui.create.and.open.f53899", "作成して開く" },
     { "editor.ui.credits.license.402861", "クレジット / ライセンス" },
@@ -3024,37 +2953,24 @@
     { "editor.ui.entry.slide.dc2e87", "登場時のスライド" },
     { "editor.ui.event.signal.58ef83", "イベント信号" },
     { "editor.ui.focus.blend.bfb55a", "フォーカスのブレンド" },
-    { "editor.ui.font.b97c4d", "フォント" },
-    { "editor.ui.glow.size.f2e05b", "グローの大きさ" },
-    { "editor.ui.glow.strength.24792c", "グローの強度" },
-    { "editor.ui.hikari.project.hub.c9bc1b", "HIKARI プロジェクトハブ" },
     { "editor.ui.input.b568d4", "入力" },
     { "editor.ui.line.step.a1ebff", "セリフステップ" },
     { "editor.ui.live.preview.s.8878fb", "ライブプレビュー  %s" },
     { "editor.ui.layer.id.s.e916c5", "レイヤー ID：%s" },
     { "editor.ui.left.slot.aa2913", "左スロット" },
-    { "editor.ui.letter.spacing.71ae71", "字間" },
     { "editor.ui.line.ea9676", "セリフ" },
-    { "editor.ui.line.height.65be51", "行の高さ" },
     { "editor.ui.live.portrait.preview.ready.61a06d", "立ち絵のライブプレビュー準備完了" },
     { "editor.ui.location.d219c6", "場所" },
-    { "editor.ui.log.s.40c841", "ログ：%s" },
     { "editor.ui.mirror.horizontally.3b5ec9", "左右反転" },
     { "editor.ui.no.story.step.selected.b5c5a3", "ステップが選択されていません" },
-    { "editor.ui.name.size.ef6b3b", "名前のサイズ" },
     { "editor.ui.narration.no.portrait.bec1a6", "ナレーション / 立ち絵なし" },
     { "editor.ui.new.dialogue.event.5e0581", "会話イベントを作成" },
-    { "editor.ui.new.gameproject.3af1fe", "ゲームプロジェクトを作成" },
     { "editor.ui.no.matching.dialogue.assets.5b559b", "一致する会話アセットがありません" },
-    { "editor.ui.no.matching.font.in.assets.7f6a64", "Assets 内に一致するフォントがありません" },
     { "editor.ui.no.portrait.assigned.the.canvas.will.show.dialogue.without.a.cha.41b3b8", "立ち絵未指定のため、キャラクター画像なしで会話を表示します。" },
-    { "editor.ui.no.recent.projects.e93ab1", "最近のプロジェクトがありません" },
     { "editor.ui.offset.ce6677", "オフセット" },
     { "editor.ui.open.cf9b77", "開く" },
     { "editor.ui.open.project.68e7c2", "プロジェクトを開く" },
     { "editor.ui.open.an.existing.dialogue.asset.above.or.create.a.new.event.44bf96", "上の会話アセットを開くか、新しいイベントを作成します。" },
-    { "editor.ui.outline.thickness.e7aab6", "輪郭線の太さ" },
-    { "editor.ui.project.hub.f42605", "プロジェクトハブ" },
     { "editor.ui.package.id.7db680", "パッケージ ID" },
     { "editor.ui.panel.entrance.9ed47b", "パネルの登場" },
     { "editor.ui.playback.options.75eab2", "再生設定" },
@@ -3076,8 +2992,6 @@
     { "editor.ui.prompt.pulse.scale.b621a2", "送り表示の脈動倍率" },
     { "editor.ui.prompt.scale.15563f", "送り表示の倍率" },
     { "editor.ui.property.9ae33a", "プロパティ" },
-    { "editor.ui.quick.start.455083", "クイックスタート" },
-    { "editor.ui.recent.projects.901c6d", "最近のプロジェクト" },
     { "editor.ui.reference.canvas.29bf4e", "基準キャンバス" },
     { "editor.ui.remove.character.076063", "キャラクターを削除" },
     { "editor.ui.remove.step.9fcbf9", "ステップを削除" },
@@ -3090,10 +3004,6 @@
     { "editor.ui.style.workflow.8f19d1", "スタイル編集" },
     { "editor.ui.save.changes.to.s.before.opening.s.dfecf2", "「%s」の変更を保存してから「%s」を開きますか？" },
     { "editor.ui.select.an.outline.to.move.it.drag.its.lower.right.handle.to.resi.81f6b1", "枠を選択して移動。右下のハンドルでサイズ変更" },
-    { "editor.ui.shadow.and.glow.84bc9d", "影とグロー" },
-    { "editor.ui.shadow.offset.2d8a71", "影のオフセット" },
-    { "editor.ui.shared.engine.build.72e529", "共通エンジンビルド" },
-    { "editor.ui.spacing.2acbb3", "間隔" },
     { "editor.ui.speaker.7c23b0", "話者" },
     { "editor.ui.stable.id.s.f22a81", "固定 ID：%s" },
     { "editor.ui.step.type.5dd37b", "ステップの種類" },
@@ -3105,7 +3015,6 @@
     { "editor.ui.the.center.canvas.updates.while.you.adjust.this.character.aec428", "キャラクターの調整中に中央のキャンバスが更新されます。" },
     { "editor.ui.the.current.vfx.source.compiles.without.diagnostics.ffd1e4", "現在の VFX は診断エラーなしでコンパイルできます。" },
     { "editor.ui.the.current.document.has.unsaved.changes.5d061d", "現在のドキュメントに未保存の変更があります。" },
-    { "editor.ui.use.a.cjk.capable.ttf.otf.or.ttc.for.japanese.and.chinese.a4b049", "日本語と中国語には CJK 対応の TTF、OTF、TTC フォントを使用してください。" },
 
     { "editor.ui.binding.s.79a318", "  バインディング：%s" },
     { "editor.ui.runtime.s.420339", "  実行時：%s" },
@@ -3308,7 +3217,6 @@
     { "editor.ui.refresh.scenes.335537", "シーンを更新" },
     { "editor.ui.release.the.previous.control.then.press.s.623510", "前のキーを離してから %s を押してください…" },
     { "editor.ui.remove.component.b0b011", "コンポーネントを削除" },
-    { "editor.ui.rename.d3f4cb", "名前を変更" },
     { "editor.ui.rename.object.0c3276", "オブジェクト名を変更" },
     { "editor.ui.render.path.e693f1", "描画パス" },
     { "editor.ui.render.submission.system.5fa68c", "描画送信システム" },
@@ -3428,7 +3336,6 @@
     { "editor.dissolveFolder", "フォルダーを解散（中身は保持）" },
     { "editor.folderName", "フォルダー名" },
     { "editor.selectContents", "中のオブジェクトをすべて選択" },
-    { "editor.reload", "再読み込み" },
     { "editor.rename", "名前を変更" },
     { "editor.revertChanges", "変更を戻す" },
     { "editor.newChildFolder", "子フォルダーを作成" },
@@ -3439,7 +3346,6 @@
     { "editor.copyDiagnostics", "診断結果をコピー" },
     { "editor.folderSelection", "選択中のオブジェクトを入れる" },
 
-    { "editor.ui.a.graph.connection.is.selected.delete.or.rewire.it.in.the.graph..f74375", "接続を選択中です。グラフのツールバーやキャンバスで削除・接続変更できます。" },
     { "editor.ui.add.a.character.from.the.left.panel.names.and.portraits.register.88e7d9", "左パネルでキャラクターを追加します。登録した名前と立ち絵は各会話イベントで選択できます。" },
     { "editor.ui.camera.state.is.kept.per.model.and.per.workspace.for.this.editor.c218f9", "この編集セッションではモデル・ワークスペースごとにカメラ状態を保持します。" },
     { "editor.ui.choice.panel.33406a", "選択肢パネル" },
@@ -3453,7 +3359,6 @@
     { "editor.ui.create.a.studio.point.or.directional.light.92f898", "スタジオのポイントライトや平行光源を作成" },
     { "editor.ui.create.a.lightweight.instance.that.inherits.this.material.and.on.3b9f89", "この材質を継承し、選択したパラメーターや素材の上書きだけを保存する軽量なインスタンスを作成します。" },
     { "editor.ui.create.or.open.one.material.asset.surface.materials.use.the.neut.17e19e", "材質アセットを作成・選択します。サーフェス材質は球で確認しモデルに割り当てられます。パーティクル材質は VFX ワークスペースで確認・割り当てます。" },
-    { "editor.ui.create.build.and.open.game.projects.against.one.shared.engine.in.6af7e2", "共通のエンジン環境でゲームプロジェクトを作成・ビルド・起動します。" },
     { "editor.ui.delete.selected.parameter.55f05d", "選択パラメーターを削除" },
     { "editor.ui.delete.selected.runtime.binding.ff5eec", "選択した実行時バインディングを削除" },
     { "editor.ui.delete.selected.transition.03ba0c", "選択した遷移を削除" },
@@ -3462,7 +3367,6 @@
     { "editor.ui.edit.collision.shapes.e5a971", "コリジョン形状を編集" },
     { "editor.ui.edit.the.curve.and.colors.in.the.ramp.tab.then.select.this.ramp..8a7644", "ランプタブでカーブと色を編集し、Ramp Diffuse または Multi Ramp ノードから選択します。" },
     { "editor.ui.edit.the.selected.story.step.here.the.center.preview.uses.the.sa.35ee76", "選択したステップをここで編集します。中央プレビューは実行時と同じスタイルとキャラクター情報を使います。" },
-    { "editor.ui.edit.values.images.ramp.assets.and.node.modes.directly.on.the.ca.b17de2", "値・画像・ランプ・モードはノードカードで編集します。このパネルにはノード仕様と診断を表示します。" },
     { "editor.ui.emit.a.named.event.then.continue.trigger.sequences.can.wait.for..49174a", "指定イベントを発火して続行します。トリガーシーケンスは会話終了を待って次のアクションに進めます。" },
     { "editor.ui.exit.collision.setup.and.return.to.the.scene.6221c2", "コリジョン設定を終了してシーンに戻る" },
     { "editor.ui.expression.budget.u.u.instr.u.u.reg.u.u.values.u.u.params.u.u.re.c635cd", "式の予算：%u/%u 命令 | %u/%u レジスター | %u/%u 値 | %u/%u パラメーター | %u/%u 素材" },
@@ -3485,9 +3389,8 @@
     { "editor.ui.parameter.name.94d788", "パラメーター名" },
     { "editor.ui.pick.source.model.parts.d2d8e0", "元モデルのパーツを選択" },
     { "editor.ui.place.and.resize.artwork.directly.on.the.canvas.the.panel.is.tre.43e567", "キャンバス上で画像の配置とサイズを調整します。パネルは 1 枚のスプライトとして扱います。" },
-    { "editor.ui.projects.keep.their.own.source.assets.and.projectsettings.engine.1ab319", "各プロジェクトに Source・Assets・ProjectSettings を保存し、エンジンと外部パッケージは HIKARI 環境で共有します。" },
     { "editor.ui.ramp.curves.are.independent.reusable.assets.bind.them.from.a.mat.cd64c7", "ランプカーブは再利用可能な独立アセットです。材質のリソーススロットから割り当てます。" },
-    { "editor.ui.ramp.edits.compile.on.gesture.commit.esc.restores.the.captured.p.debb02", "ドラッグ確定時にランプをコンパイルします。Esc で編集前の値に戻し、履歴を追加しません。" },
+    { "material.ramp.edit.gestureHint", "ドラッグ中はプレビューを更新し、確定時に履歴を1件記録します。Esc で編集前の値に戻します。" },
     { "editor.ui.redo.runtime.binding.edit.ac6274", "実行時バインディング編集をやり直す" },
     { "editor.ui.remove.from.recent.projects.f1a467", "最近のプロジェクトから除外" },
     { "editor.ui.reset.the.saved.camera.for.this.model.b1fb04", "このモデルの保存済みカメラをリセット" },
@@ -3574,7 +3477,7 @@
     { "editor.ui.choice.20d9bc", "選択肢" },
     { "editor.ui.canvas.artwork.74a94b", "キャンバスとアート" },
     { "editor.ui.characters.b6f59f", "キャラクター" },
-    { "editor.ui.choose.one.project.font.and.author.readable.name.body.and.choice.1524d2", "プロジェクトのフォントを選び、名前、本文、選択肢の読みやすさを調整します。" },
+    { "editor.ui.choose.one.project.font.and.author.readable.name.body.and.choice.1524d2", "名前・本文・選択肢に再利用可能なテキストスタイルを選びます。" },
     { "editor.ui.choose.the.dialogue.name.and.choice.artwork.then.position.it.on..368953", "会話枠、名前、選択肢のアートを選び、キャンバスに配置します。" },
     { "editor.ui.end.d205ab", "終了" },
     { "editor.ui.line.528a45", "セリフ" },
@@ -3596,13 +3499,9 @@
     { "editor.workflow.qualityLimits", "品質と上限" },
     { "cine.boundRotation", "注視対象に追従中です。対象を移動して構図を調整します。" },
     { "editor.workflow.moreTools", "その他のツール" },
-    { "editor.workflow.selectedTool", "選択ツール" },
 
     { "editor.ui.add.a.state.machine.parameter.106f36", "ステートマシンのパラメーターを追加" },
     { "editor.ui.add.a.state.transition.ff9e34", "ステート遷移を追加" },
-    { "editor.ui.choose.a.project.workflow.632c48", "プロジェクトの操作を選択" },
-    { "editor.ui.create.a.project.or.open.an.existing.project.hikari.folder.1af1c5", "新規プロジェクトを作成するか、既存の Project.hikari フォルダーを開きます。" },
-    { "editor.ui.create.a.small.external.gameproject.dde1f8", "独立したゲームプロジェクトを作成" },
     { "editor.ui.create.a.variable.or.event.29a9e7", "変数またはイベントを作成" },
     { "editor.ui.delete.this.runtime.binding.definition.096425", "このランタイムバインディング定義を削除" },
     { "editor.ui.editor.authored.slots.that.use.this.stable.id.96ae0f", "この固定 ID を使うエディター上のバインディング" },
@@ -3616,21 +3515,17 @@
     { "editor.ui.live.values.test.events.and.references.appear.here.acf72b", "現在値、テストイベント、参照をここに表示します。" },
     { "editor.ui.new.material.name.be45f0", "新規マテリアル名" },
     { "editor.ui.project.owned.ids.available.to.components.and.tools.26f74f", "コンポーネントとツールが利用できるプロジェクトの ID" },
-    { "editor.ui.projects.opened.on.this.machine.886fa2", "この端末で開いたプロジェクト" },
     { "editor.ui.release.the.editor.writer.without.claiming.a.new.value.02dd52", "エディターの上書きを解除し、実行時の制御へ戻します" },
     { "editor.ui.return.to.scene.workspace.364db6", "シーンワークスペースへ戻る" },
     { "editor.ui.runtime.snapshot.and.session.only.preview.override.4d830e", "ランタイムのスナップショットと、このセッションだけのプレビュー上書き" },
     { "editor.ui.save.projectsettings.runtime.bindings.json.11464d", "ProjectSettings/runtime_bindings.json を保存" },
     { "editor.ui.search.dialogue.assets.82112b", "会話アセットを検索" },
-    { "editor.ui.search.ttf.otf.or.ttc.dea4d2", "TTF、OTF、TTC フォントを検索" },
     { "editor.ui.search.effects.and.categories.6fa83b", "エフェクトとカテゴリを検索" },
     { "editor.ui.search.installed.73e507", "インストール済み項目を検索…" },
     { "editor.ui.search.name.path.guid.dc5276", "名前、パス、GUID を検索…" },
     { "editor.ui.search.name.path.or.guid.5b7caf", "名前、パス、GUID を検索…" },
     { "editor.ui.search.systems.dab49e", "システムを検索…" },
-    { "editor.ui.select.a.folder.containing.project.hikari.e2b375", "Project.hikari を含むフォルダーを選択" },
     { "editor.ui.select.a.variable.or.event.from.the.catalog.72dba2", "一覧から変数またはイベントを選択します。" },
-    { "editor.ui.the.template.contains.source.assets.and.project.settings.only.95c331", "テンプレートにはソース、アセット、プロジェクト設定のみを含みます。" },
     { "editor.ui.write.through.the.editor.preview.writer.d78567", "エディターのプレビュー上書きで値を設定" },
     { "cine.outputOnly", "演出の出力に適用します。エディター UI は影響を受けません。" },
     { "cine.createFirst", "ビューを調整し、最初のショットを作成します。" },
@@ -3682,7 +3577,6 @@
 
     { "editor.ui.a.transient.typed.signal.emitted.by.runtime.logic.da0328", "実行ロジックが発行する一時的な型付きシグナル" },
     { "editor.ui.a.typed.value.shared.through.stable.binding.slots.203ed5", "固定バインディングを介して共有する型付き値" },
-    { "editor.ui.cancel.generation.11178f", "生成をキャンセル" },
     { "editor.ui.compile.failed.97203d", "コンパイル失敗" },
     { "editor.ui.compiled.14878f", "コンパイル完了" },
     { "editor.ui.create.or.open.a.material.asset.from.the.left.panel.266612", "左のパネルでマテリアルアセットを作成または開いてください。" },
@@ -3690,7 +3584,6 @@
     { "editor.ui.dialogue.event.has.unsaved.changes.b4dc55", "会話イベントに未保存の変更があります" },
     { "editor.ui.disable.9a7d4e", "無効化" },
     { "editor.ui.disable.snapping.576053", "スナップを無効化" },
-    { "editor.ui.discard.and.create.0f59ba", "変更を破棄して作成" },
     { "editor.ui.enable.20063a", "有効化" },
     { "editor.ui.enable.snapping.8002ed", "スナップを有効化" },
     { "editor.ui.exit.camera.view.32714d", "カメラビューを終了" },
@@ -3709,7 +3602,6 @@
     { "editor.ui.no.use.was.found.in.the.current.scene.and.loaded.materials.other.ea9fa8", "現在のシーンと読み込み済みマテリアルに参照はありません。他のシーンがこの固定 ID を使っている可能性があります。" },
     { "editor.ui.preview.pending.e4ceea", "プレビュー待機中" },
     { "editor.ui.preview.ready.8a0295", "プレビュー準備完了" },
-    { "editor.ui.ramp.stack.layer.1.77500a", "ランプスタック / レイヤー 1" },
     { "editor.ui.reference.indexing.is.not.connected.yet.1b4c90", "参照インデックスが接続されていません。" },
     { "editor.ui.select.a.model.part.to.edit.its.material.3a7ca7", "モデルのパーツを選択してマテリアルを編集します。" },
     { "editor.ui.show.collision.shape.21508c", "コリジョン形状を表示" },
@@ -3721,20 +3613,17 @@
     { "editor.ui.unclaimed.fca0eb", "制御元なし" },
     { "editor.ui.unlock.1526a1", "ロック解除" },
     { "editor.ui.unlock.selected.88c853", "選択のロックを解除" },
-    { "editor.ui.unsaved.edits.0881bf", "未保存の変更" },
     { "editor.ui.use.add.in.the.toolbar.to.create.a.variable.or.event.1cda5c", "追加ボタンで変数またはイベントを作成します。" },
     { "editor.ui.use.local.space.22d273", "ローカル座標を使用" },
     { "editor.ui.use.world.space.8f2d9a", "ワールド座標を使用" },
     { "editor.ui.view.through.camera.2e4994", "カメラから見る" },
     { "editor.folder.create", "フォルダーを作成" },
     { "editor.folder.rename", "フォルダー名を変更" },
-    { "editor.change", "変更" },
     { "editor.uncategorized", "未分類" },
 
     { "cine.animatedChannels", "アニメーション済み・選択中のチャンネルを表示。オフで全て表示。" },
     { "shell.cancelled", "キャンセル済み" },
 
-    { "editor.ui.outline.cdd629", "アウトライン" },
     { "editor.ui.display.name.c7874a", "表示名" },
     { "editor.ui.stable.character.id.c80fb2", "キャラクター ID" },
     { "editor.ui.speaking.portrait.a7665b", "発話中の立ち絵" },
@@ -3788,7 +3677,6 @@
     { "ai.phase.needs_input", "回答を待っています" },
     { "ai.error.incomplete", "リクエストが完了しませんでした。実行済みの結果は保持されています。" },
         { "ai.error.noTool", "モデルが実行や完了を行わず説明を繰り返しました。タスクを保持し、再開できます。" },
-    { "ai.error.previewKept", "下書きを保持しています。プレビューの復旧後に続行でき、作り直す必要はありません。" },
         { "ai.error.budget", "今回の実行予算に到達しました。タスクと編集を保持しました。「再開」で続行できます。" },
     { "launcher.nameEmpty", "プロジェクト名を入力してください。" },
     { "launcher.nameInvalid", "プロジェクト名が無効です。" },
@@ -3857,9 +3745,6 @@
     { "gc.zoomRange", "ズーム範囲" },
     { "gc.near", "近クリップ面" },
     { "gc.effects", "カメラ効果" },
-    { "gc.roll", "ロール" },
-    { "gc.shake", "揺れの強さ" },
-    { "gc.frequency", "揺れの周波数" },
     { "gc.speedFov", "速度による視野拡大" },
     { "gc.speed", "最大効果の速度" },
     { "gc.advanced", "詳細" },
@@ -4004,3 +3889,412 @@
     { "cm.copyStack", "効果スタックをコピー" },
     { "cm.pasteStack", "効果スタックを貼り付け" },
     { "cm.invalidStack", "クリップボードに対応するカメラ効果スタックがありません。" },
+
+    { "uix.workspace", "UI デザイン" },
+
+    { "uix.textWorkspace", "文字スタイル" },
+
+    { "uix.library", "要素" },
+
+    { "uix.add", "追加" },
+
+    { "uix.reuse", "階層を Prefab に保存" },
+
+    { "uix.search", "要素を検索" },
+
+    { "uix.duplicate", "複製" },
+
+    { "uix.delete", "削除" },
+
+
+    { "uix.uiStart", "Canvas または要素を追加します。必要な Canvas は自動作成されます。" },
+
+    { "uix.canvas", "キャンバス" },
+
+    { "uix.panel", "パネル" },
+
+    { "uix.image", "画像" },
+
+    { "uix.button", "ボタン" },
+
+    { "uix.sceneButton", "シーン切替ボタン" },
+
+    { "uix.progress", "プログレスバー" },
+
+    { "uix.row", "横並び" },
+
+    { "uix.column", "縦並び" },
+
+    { "uix.grid", "グリッド" },
+
+    { "uix.label", "ラベル" },
+
+    { "uix.title", "タイトル" },
+
+    { "uix.caption", "字幕" },
+
+    { "uix.worldText", "3D テキスト" },
+
+
+    { "uix.save", "シーン保存（Ctrl+S）" },
+
+    { "uix.undo", "元に戻す（Ctrl+Z）" },
+
+    { "uix.redo", "やり直す（Ctrl+Y）" },
+
+    { "uix.fit", "全体表示（F）" },
+
+    { "uix.snap", "8 ピクセルにスナップ" },
+
+    { "uix.play", "再生して確認" },
+
+    { "uix.stop", "再生を停止" },
+
+    { "uix.inspector", "プロパティ" },
+
+    { "uix.select", "編集する要素を選択してください。" },
+
+    { "uix.sceneSaved", "シーンと一緒に保存 · Ctrl+S" },
+
+    { "uix.fontMissing", "TTF / OTF / TTC フォントをプロジェクトの Assets に追加し、下で選択してください。" },
+
+
+    { "uix.appearance", "外観" },
+
+    { "uix.layout", "レイアウト" },
+
+    { "uix.interaction", "操作" },
+
+    { "uix.advanced", "詳細" },
+
+    { "uix.anchor", "アンカー（位置を維持）" },
+
+    { "uix.visible", "表示" },
+
+    { "uix.interactable", "操作可能" },
+
+    { "uix.opacity", "不透明度" },
+
+    { "uix.enabled", "有効" },
+
+    { "uix.horizontal", "横" },
+
+    { "uix.vertical", "縦" },
+
+    { "uix.arrangement", "配置方式" },
+
+    { "uix.cellSize", "セルサイズ" },
+
+    { "uix.spacing", "間隔" },
+
+    { "uix.padding", "余白" },
+
+    { "uix.columns", "列数" },
+
+    { "uix.value", "現在値" },
+
+    { "uix.minimum", "最小値" },
+
+    { "uix.maximum", "最大値" },
+
+    { "uix.right", "右" },
+
+    { "uix.left", "左" },
+
+    { "uix.up", "上" },
+
+    { "uix.down", "下" },
+
+    { "uix.fill", "塗り方向" },
+
+    { "uix.variable", "実行時変数（任意）" },
+
+    { "uix.typography", "組版" },
+
+    { "uix.lineHeight", "行間" },
+
+    { "uix.letterSpacing", "文字間隔" },
+
+    { "uix.reveal", "文字表示率" },
+
+    { "uix.noWrap", "折り返しなし" },
+
+    { "uix.characterWrap", "文字で折り返し" },
+
+    { "uix.wrap", "折り返し" },
+
+    { "uix.outline", "アウトライン" },
+
+    { "uix.width", "幅" },
+
+    { "uix.color", "色" },
+
+    { "uix.shadow", "影" },
+
+    { "uix.offset", "オフセット" },
+
+    { "uix.glow", "発光" },
+
+    { "uix.intensity", "強度" },
+
+    { "UI Canvas", "UI キャンバス" },
+
+    { "UI Rect", "UI 矩形" },
+
+    { "UI Image", "UI 画像" },
+
+    { "UI Text", "UI テキスト" },
+
+    { "UI Button", "UI ボタン" },
+
+    { "UI Group", "UI グループ" },
+
+    { "UI Layout Group", "自動レイアウト" },
+
+    { "UI Progress", "プログレスバー" },
+
+    { "Enabled", "有効" },
+
+    { "Interactable", "操作可能" },
+
+    { "Reference Width", "基準幅" },
+
+    { "Reference Height", "基準高さ" },
+
+    { "Sort Order", "描画順" },
+
+    { "Custom", "カスタム" },
+
+    { "Top Left", "左上" },
+
+    { "Top", "上" },
+
+    { "Top Right", "右上" },
+
+    { "Left", "左" },
+
+    { "Center", "中央" },
+
+    { "Right", "右" },
+
+    { "Bottom Left", "左下" },
+
+    { "Bottom", "下" },
+
+    { "Bottom Right", "右下" },
+
+    { "Stretch", "ストレッチ" },
+
+    { "Anchor Preset", "アンカープリセット" },
+
+    { "Anchor Minimum", "最小アンカー" },
+
+    { "Anchor Maximum", "最大アンカー" },
+
+    { "Offset Minimum", "最小オフセット" },
+
+    { "Offset Maximum", "最大オフセット" },
+
+    { "Pivot", "ピボット" },
+
+    { "Rotation", "回転" },
+
+    { "Order", "描画順" },
+
+    { "Texture", "テクスチャ" },
+
+    { "Fallback Texture", "代替テクスチャ" },
+
+    { "Tint", "色調" },
+
+    { "Order Offset", "描画順オフセット" },
+
+    { "Text", "テキスト" },
+
+
+    { "Pixel Height", "文字サイズ（px）" },
+
+    { "Color", "色" },
+
+    { "Horizontal Align", "横位置" },
+
+    { "Vertical Align", "縦位置" },
+
+    { "Default Focus", "初期フォーカス" },
+
+    { "Navigation Order", "移動順" },
+
+    { "Submit Action", "決定アクション" },
+
+    { "On Click Event", "クリックイベント" },
+
+    { "Button Colors", "ボタン状態" },
+
+    { "State transition seconds", "状態遷移（秒）" },
+
+    { "Normal", "通常" },
+
+    { "Hover", "ホバー" },
+
+    { "Pressed", "押下" },
+
+    { "Disabled", "無効" },
+
+    { "uix.actionNone", "表示操作なし" },
+
+    { "uix.actionShow", "表示" },
+
+    { "uix.actionHide", "非表示" },
+
+    { "uix.actionToggle", "表示を切り替え" },
+
+    { "uix.groupAction", "クリック時：グループ表示" },
+
+    { "uix.groupTarget", "対象オブジェクト（UI グループ必須）" },
+
+    { "uix.menu", "メインメニュー" },
+
+    { "uix.hud", "体力 HUD" },
+
+    { "uix.health", "体力" },
+
+
+    { "uix.close", "閉じる" },
+
+    { "uix.parent", "親コンテナ" },
+
+    { "uix.continue", "続ける" },
+
+    { "uix.help", "ヘルプ" },
+
+    { "uix.helpText", "UI ワークスペースで内容を編集し、文字スタイルから再利用できる外観を選択します。" },
+
+    { "uix.modal", "モーダル：他の UI 操作を遮断" },
+
+    { "uix.addComponent", "コンポーネントを追加" },
+
+    { "uix.savedPrefabs", "保存した Prefab" },
+
+    { "textstyle.asset", "文字スタイル" },
+    { "textstyle.font", "フォントアセット" },
+    { "textstyle.name", "スタイル名" },
+    { "textstyle.restore", "スタイル値に戻す" },
+    { "textstyle.overrides", "個別の上書き" },
+    { "textstyle.library", "文字スタイル一覧" },
+    { "textstyle.new", "文字スタイルを作成" },
+    { "textstyle.preview", "スタイルプレビュー" },
+    { "textstyle.saveCopy", "コピーを保存" },
+    { "textstyle.light", "明るい背景" },
+    { "textstyle.workflow", "スタイルを作成・保存して、UI または 3D 文字から選択します。" },
+    { "textstyle.start", "左側で文字スタイルを作成または開きます。" },
+    { "textstyle.worldSupport", "UI は全外観に対応します。3D 文字はフォント・色・輪郭・字間・行間を共有し、ワールドサイズはコンポーネントで設定します。影とグローは現在 UI 専用です。" },
+    { "textstyle.fontImported", "フォントをインポートしました。文字コンポーネントやスタイルから選択できます。" },
+    { "textstyle.unsaved", "未保存の文字スタイル" },
+    { "textstyle.unsavedHelp", "切り替える前に現在の文字スタイルを保存しますか？" },
+    { "textstyle.saveContinue", "保存して続行" },
+    { "textstyle.discardContinue", "変更を破棄して続行" },
+
+    { "display.panel", "画面設定" },
+    { "display.control", "画面設定コントロール" },
+    { "display.panelHelp", "子コントロールで設定を編集します。ゲームウィンドウで適用し、画面変更を確認します。" },
+    { "display.controlHelp", "テキストやボタンを画面設定とパネル操作に連携します。" },
+    { "display.confirmSeconds", "画面変更の確認時間" },
+    { "display.aa", "アンチエイリアス" },
+    { "display.renderResolution", "描画解像度" },
+    { "display.windowResolution", "ウィンドウサイズ" },
+    { "display.windowMode", "表示モード" },
+    { "display.dlssQuality", "DLSS 品質" },
+    { "display.frameGeneration", "フレーム生成" },
+    { "display.vsync", "垂直同期" },
+    { "display.viewport", "ビューポートに合わせる" },
+    { "display.windowed", "ウィンドウ" },
+    { "display.borderless", "ボーダーレス" },
+    { "display.fullscreen", "フルスクリーン" },
+    { "display.quality", "品質優先" },
+    { "display.balanced", "バランス" },
+    { "display.performance", "パフォーマンス" },
+    { "display.ultraPerformance", "ウルトラパフォーマンス" },
+    { "display.cycle", "選択肢を変更" },
+    { "display.apply", "適用" },
+    { "display.revert", "元に戻す" },
+    { "display.keep", "変更を確定" },
+    { "display.status", "状態メッセージ" },
+    { "display.action", "操作" },
+    { "display.setting", "設定項目" },
+    { "display.previous", "前の選択肢" },
+    { "display.next", "次の選択肢" },
+    { "display.direction", "切り替え方向" },
+    { "display.ready", "項目を選んで適用してください。" },
+    { "display.changed", "未適用の変更があります" },
+    { "display.applying", "変更を適用中…" },
+    { "display.applied", "変更を適用しました" },
+    { "display.confirm", "この画面設定を使いますか？時間切れで元に戻ります。" },
+    { "display.reverting", "以前の設定に戻しています…" },
+    { "display.reverted", "以前の設定に戻しました" },
+    { "display.failed", "設定を変更できませんでした。実行ログを確認してください。" },
+    { "display.unsupported", "非対応" },
+    { "display.invalid", "不明な設定項目" },
+    { "display.gameWindowRequired", "ゲームウィンドウで実行すると画面設定を変更できます。" },
+    { "textstyle.emptyPreview", "プレビュー用の文字を入力してください。" },
+    { "textstyle.previewRejected", "文字プレビューの送信に失敗しました。フォントとスタイルの値を確認してください。" },
+    { "uix.previewFailed", "プレビューの描画に失敗しました。描画ログを確認してください。" },
+    { "uix.previewFontFailed", "一部の文字を描画できません。フォントファイルを確認して再インポートしてください。他の内容は表示されます。" },
+    { "uix.textSubmissionFailed", "一部の文字に有効なフォントがないか、送信に失敗しました。フォントと文字スタイルの参照を確認してください。" },
+    { "uianim.asset", "UI アニメーション" },
+    { "uianim.animator", "UI アニメーター" },
+    { "uianim.animatorHelp", "この UI 階層で再利用可能なクリップを再生します。" },
+    { "uianim.target", "UI アニメーション対象" },
+    { "uianim.targetHelp", "親アニメーター内の一意なスロット名。" },
+    { "uianim.speed", "速度" },
+    { "uianim.unscaled", "ゲーム停止中も再生" },
+    { "uianim.slot", "対象スロット" },
+    { "uianim.offsetX", "水平オフセット" },
+    { "uianim.offsetY", "垂直オフセット" },
+    { "uianim.scaleX", "水平スケール" },
+    { "uianim.scaleY", "垂直スケール" },
+    { "uianim.rotation", "回転" },
+    { "uianim.red", "赤の倍率" },
+    { "uianim.green", "緑の倍率" },
+    { "uianim.blue", "青の倍率" },
+    { "uianim.timeline", "UI アニメーション" },
+    { "uianim.new", "新規アニメーション" },
+    { "uianim.open", "アニメーションを開く" },
+    { "uianim.panel", "パネル · 開く / 閉じる" },
+    { "uianim.button", "ボタン · 反応" },
+    { "uianim.empty", "空のアニメーション" },
+    { "uianim.saveAs", "アニメーションを別名保存" },
+    { "uianim.bind", "選択要素に割り当て" },
+    { "uianim.start", "UI 要素を選び、アニメーションを作成して保存・割り当てします。プレビューは元の配置を変更しません。" },
+    { "uianim.addClip", "クリップを追加" },
+    { "uianim.deleteClip", "クリップを削除" },
+    { "uianim.duration", "長さ" },
+    { "uianim.repeat", "ゲーム内ループ" },
+    { "uianim.preview", "アニメーションをプレビュー" },
+    { "uianim.previewTargetMissing", "UI ルートと対象スロットを確認してください。ゲームの Play を停止してプレビューします。" },
+    { "uianim.previewLoop", "プレビューループ" },
+    { "uianim.autoKey", "自動キー" },
+    { "uianim.curve", "カーブ" },
+    { "uianim.addTrack", "プロパティを追加" },
+    { "uianim.deleteTrack", "トラックを削除" },
+    { "uianim.trigger.Manual", "コード / 手動" },
+    { "uianim.trigger.Open", "開く" },
+    { "uianim.trigger.Close", "閉じる" },
+    { "uianim.trigger.Normal", "通常" },
+    { "uianim.trigger.Hover", "ホバー / フォーカス" },
+    { "uianim.trigger.Press", "押下" },
+    { "uianim.trigger.Disabled", "無効" },
+    { "uianim.previewRoot", "プレビューのルート" },
+    { "uianim.selectRoot", "プレビューする UI ルートを選択" },
+    { "uianim.useSelection", "選択要素をプレビュールートにする" },
+    { "uibind.component", "UI データバインド" },
+    { "uibind.help", "UI にゲームルールを書かず実行時変数を表示します。" },
+    { "uibind.integer", "整数値" },
+    { "uibind.text", "テキストの値" },
+    { "uibind.prefix", "接頭辞" },
+    { "uibind.suffix", "接尾辞" },
+    { "uibind.decimals", "小数点以下の桁数" },
+    { "uibind.visible", "真のとき表示" },
+    { "uibind.interactable", "真のとき操作可能" },
+    { "uianim.outsideRoot", "プレビュールート内の要素を選択してください。入れ子のアニメーターは自身の子を管理します。" },
+    { "uianim.useSelectedTarget", "トラック対象 ← 選択要素" },
+    { "uianim.discard", "下書きの変更を破棄して保存済みアセットを再読込" },

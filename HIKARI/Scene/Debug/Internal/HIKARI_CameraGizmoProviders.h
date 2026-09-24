@@ -4,16 +4,12 @@
 
 namespace HIKARI {
 
-    class ComponentGizmoRegistry;
+class ComponentGizmoRegistry;
 
-    inline constexpr std::string_view kCameraFrustumGizmoProviderId =
-        "CameraFrustums";
-    inline constexpr std::string_view kSpawnPointGizmoProviderId =
-        "SpawnPoints";
-    inline constexpr std::string_view kCameraActivationVolumeGizmoProviderId =
-        "CameraActivationVolumes";
+inline constexpr std::string_view kCameraFrustumGizmoProviderId = "CameraFrustums";
+inline constexpr std::string_view kSpawnPointGizmoProviderId = "SpawnPoints";
+inline constexpr std::string_view kCameraActivationVolumeGizmoProviderId = "CameraActivationVolumes";
 
-    void RegisterCameraGizmoProviders(
-        ComponentGizmoRegistry& registry);
+void RegisterCameraGizmoProviders(ComponentGizmoRegistry& registry);
 
 } // namespace HIKARI

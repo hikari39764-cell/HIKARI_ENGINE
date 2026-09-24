@@ -9,26 +9,18 @@
 
 namespace HIKARI {
 
-    struct SceneDocument;
+struct SceneDocument;
 
-    namespace EDITOR {
+namespace EDITOR {
 
-        bool IsObjectEditorLocked(
-            const SceneDocument& document,
-            SceneObjectId objectId) noexcept;
+bool IsObjectEditorLocked(const SceneDocument& document, SceneObjectId objectId) noexcept;
 
-        bool HasSelectedObjectWithEditorLock(
-            const SceneDocument& document,
-            const std::vector<SceneObjectId>& objectIds,
-            bool locked) noexcept;
+bool HasSelectedObjectWithEditorLock(const SceneDocument& document, const std::vector<SceneObjectId>& objectIds,
+                                     bool locked) noexcept;
 
-        std::size_t SetObjectsEditorLocked(
-            SceneDocument& document,
-            const std::vector<SceneObjectId>& objectIds,
-            bool locked);
+std::size_t SetObjectsEditorLocked(SceneDocument& document, const std::vector<SceneObjectId>& objectIds, bool locked);
 
-        std::unordered_set<uint64_t> CollectEditorLockedObjectIds(
-            const SceneDocument& document);
+std::unordered_set<uint64_t> CollectEditorLockedObjectIds(const SceneDocument& document);
 
-    } // namespace EDITOR
+} // namespace EDITOR
 } // namespace HIKARI

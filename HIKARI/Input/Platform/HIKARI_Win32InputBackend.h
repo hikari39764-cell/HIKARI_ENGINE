@@ -14,31 +14,18 @@ public:
     void SetMouseCaptureMode(MouseCaptureMode mode) override;
     void SetMouseCaptureRegion(const MouseCaptureRegion& region) override;
     void ClearMouseCaptureRegion() override;
-    MouseCaptureMode GetMouseCaptureMode() const noexcept override {
-        return mouseCaptureMode_;
-    }
+    MouseCaptureMode GetMouseCaptureMode() const noexcept override { return mouseCaptureMode_; }
     void SetExternalMouseWheel(float delta) override;
     void SetPointerCursorVisible(bool visible) override;
     void Reset() override;
     void Poll(InputDeviceState& out) override;
-    float ReadControl(
-        const InputDeviceState& state,
-        InputBindingSource source,
-        std::string_view control,
-        uint32_t gamepadIndex) const override;
-    bool IsAnyControlActive(
-        const InputDeviceState& state,
-        float axisThreshold) const override;
-    void EnumerateNewControls(
-        const InputDeviceState& previous,
-        const InputDeviceState& current,
-        float axisThreshold,
-        bool includeMouseMotion,
-        std::vector<InputControlActuation>& outCandidates) const override;
-    bool SetGamepadVibration(
-        uint32_t gamepadIndex,
-        float lowFrequency,
-        float highFrequency) override;
+    float ReadControl(const InputDeviceState& state, InputBindingSource source, std::string_view control,
+                      uint32_t gamepadIndex) const override;
+    bool IsAnyControlActive(const InputDeviceState& state, float axisThreshold) const override;
+    void EnumerateNewControls(const InputDeviceState& previous, const InputDeviceState& current, float axisThreshold,
+                              bool includeMouseMotion,
+                              std::vector<InputControlActuation>& outCandidates) const override;
+    bool SetGamepadVibration(uint32_t gamepadIndex, float lowFrequency, float highFrequency) override;
 
 private:
     void ReleaseRelativeMouseCapture() noexcept;

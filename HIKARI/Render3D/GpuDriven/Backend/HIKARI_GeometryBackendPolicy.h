@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <array>
 #include <cstddef>
@@ -7,48 +7,38 @@
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
 
-    constexpr size_t kMaxGeometryBackendPlanBackends = 2;
+// 品質設定の geometryPipeline から決まる主／副バックエンド。全 pass 共通。
+struct GeometryBackendPolicy {
+    GeometryBackendKind preferred = GeometryBackendKind::GpuDrivenMeshShader;
+    GeometryBackendKind secondary = GeometryBackendKind::GpuDrivenTraditionalVsPs;
+    bool forcePreferredOnly = false;
+};
 
-    struct GeometryBackendPolicy {
-        GeometryBackendKind preferred = GeometryBackendKind::GpuDrivenMeshShader;
-        GeometryBackendKind secondary = GeometryBackendKind::GpuDrivenTraditionalVsPs;
-        bool forcePreferredOnly = false;
-    };
+// 1 pass で実行するバックエンド（重複なし、最大 2 つ）
+struct GeometryBackendExecutionPlan {
+    std::array<GeometryBackendKind, 2> gpuBackends{};
+    size_t gpuBackendCount = 0;
 
-    struct GeometryBackendExecutionPlan {
-        std::array<GeometryBackendKind, kMaxGeometryBackendPlanBackends> gpuBackends{};
-        size_t gpuBackendCount = 0;
-
-        bool AddGpuBackend(GeometryBackendKind backend);
-    };
-
-    constexpr bool IsGeometryFeatureBackendReady(
-        const GeometryBackendPolicy& policy,
-        bool meshShaderReady,
-        bool traditionalVsPsReady) noexcept {
-
-        const auto isReady = [meshShaderReady, traditionalVsPsReady](
-            GeometryBackendKind backend) constexpr noexcept {
-            switch (backend) {
-            case GeometryBackendKind::GpuDrivenMeshShader:
-                return meshShaderReady;
-            case GeometryBackendKind::GpuDrivenTraditionalVsPs:
-                return traditionalVsPsReady;
-            default:
-                return false;
+    void AddGpuBackend(GeometryBackendKind backend) {
+        for (size_t i = 0; i < gpuBackendCount; ++i) {
+            if (gpuBackends[i] == backend) {
+                return;
             }
-        };
-
-        if (isReady(policy.preferred)) {
-            return true;
         }
-        return !policy.forcePreferredOnly && isReady(policy.secondary);
+        if (gpuBackendCount < gpuBackends.size()) {
+            gpuBackends[gpuBackendCount++] = backend;
+        }
     }
+};
 
-    GeometryBackendPolicy ResolveGeometryBackendPolicy(GpuDrivenPassKind pass);
-    GeometryBackendExecutionPlan BuildGeometryBackendExecutionPlan(
-        const GeometryBackendPolicy& policy);
-    GeometryBackendExecutionPlan ResolveGeometryBackendExecutionPlan(
-        GpuDrivenPassKind pass);
+constexpr bool IsGeometryFeatureBackendReady(const GeometryBackendPolicy& policy, bool meshShaderReady,
+                                             bool traditionalVsPsReady) noexcept {
+    const auto isReady = [&](GeometryBackendKind backend) {
+        return backend == GeometryBackendKind::GpuDrivenMeshShader ? meshShaderReady : traditionalVsPsReady;
+    };
+    return isReady(policy.preferred) || (!policy.forcePreferredOnly && isReady(policy.secondary));
+}
+
+GeometryBackendPolicy ResolveGeometryBackendPolicy();
 
 } // namespace HIKARI::RENDER3D::GPUDRIVEN

@@ -28,33 +28,21 @@ namespace HIKARI::EDITOR::DIRECTOR_VIEW {
 #if defined(HIKARI_WITH_EDITOR)
 constexpr float kMinimumCanvasSize = 64.0f;
 
-const GameObject *FindRuntimeObject(const DocumentSceneBase &scene,
-                                    SceneObjectId objectId);
+const GameObject* FindRuntimeObject(const DocumentSceneBase& scene, SceneObjectId objectId);
 
-bool HasDocumentParent(const DocumentSceneBase &scene, SceneObjectId objectId);
+bool HasDocumentParent(const DocumentSceneBase& scene, SceneObjectId objectId);
 
-bool IsEnabledCamera(const DocumentSceneBase &scene, SceneObjectId objectId);
+bool IsEnabledCamera(const DocumentSceneBase& scene, SceneObjectId objectId);
 
-MATH::Vec3 ExtractPosition(const MATH::Mat4 &matrix);
-bool ProjectWorldToViewport(const Camera3D& camera, const MATH::Vec3& position,
-    const ImVec2& origin, const ImVec2& size, ImVec2& screen);
+MATH::Vec3 ExtractPosition(const MATH::Mat4& matrix);
+bool ProjectWorldToViewport(const Camera3D& camera, const MATH::Vec3& position, const ImVec2& origin,
+                            const ImVec2& size, ImVec2& screen);
 
-SceneObjectId DrawCameraOverlays(
-    const DocumentSceneBase &scene, SceneObjectId selectedObjectId,
-    const Camera3D &viewCamera, const ImVec2 &origin, const ImVec2 &size,
-    bool acceptSelection, const EditorViewVisualizationState &visualization);
+SceneObjectId DrawCameraOverlays(const DocumentSceneBase& scene, SceneObjectId selectedObjectId,
+                                 const Camera3D& viewCamera, const ImVec2& origin, const ImVec2& size,
+                                 bool acceptSelection, const EditorViewVisualizationState& visualization);
 
-const char *ModeLabel(DirectorViewMode mode);
-
-const char *ShadingModeLabel(EditorViewShadingMode mode);
-
-RENDER3D::EDITORVIEW::EditorInteractiveShadingMode
-ResolveShadingMode(EditorViewShadingMode mode);
-
-const char *
-CameraOverlayModeLabel(const EditorViewVisualizationState &visualization);
-
-bool DrawModeButton(const char *label, bool selected);
+RENDER3D::EDITORVIEW::EditorInteractiveShadingMode ResolveShadingMode(EditorViewShadingMode mode);
 
 uint32_t ExtentDimension(float value);
 #endif

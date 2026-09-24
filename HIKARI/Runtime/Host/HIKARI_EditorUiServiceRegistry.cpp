@@ -2,31 +2,24 @@
 
 namespace HIKARI::RUNTIME {
 
-    namespace {
-        IEditorUiServices* gEditorUiServices = nullptr;
+namespace {
+IEditorUiServices* gEditorUiServices = nullptr;
+}
+
+bool RegisterEditorUiServices(IEditorUiServices& services) noexcept {
+    if (gEditorUiServices != nullptr && gEditorUiServices != &services) {
+        return false;
     }
+    gEditorUiServices = &services;
+    return true;
+}
 
-    bool RegisterEditorUiServices(
-        IEditorUiServices& services) noexcept {
-
-        if (gEditorUiServices != nullptr &&
-            gEditorUiServices != &services) {
-            return false;
-        }
-        gEditorUiServices = &services;
-        return true;
+void UnregisterEditorUiServices(IEditorUiServices& services) noexcept {
+    if (gEditorUiServices == &services) {
+        gEditorUiServices = nullptr;
     }
+}
 
-    void UnregisterEditorUiServices(
-        IEditorUiServices& services) noexcept {
-
-        if (gEditorUiServices == &services) {
-            gEditorUiServices = nullptr;
-        }
-    }
-
-    IEditorUiServices* GetEditorUiServices() noexcept {
-        return gEditorUiServices;
-    }
+IEditorUiServices* GetEditorUiServices() noexcept { return gEditorUiServices; }
 
 } // namespace HIKARI::RUNTIME

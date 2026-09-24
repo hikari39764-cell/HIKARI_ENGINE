@@ -7,8 +7,7 @@
 #include "Animation/Runtime/HIKARI_AnimationRootMotionService.h"
 #include "Animation/Runtime/HIKARI_AnimationSocketService.h"
 #include "Animation/StateMachine/HIKARI_AnimationStateMachineRuntimeService.h"
-#include "Assets/Animation/HIKARI_AnimationStateMachineAssetStore.h"
-#include "Assets/Dialogue/HIKARI_DialogueAssetStore.h"
+#include "Assets/HIKARI_DocumentAssetStores.h"
 #include "Core/HIKARI_FixedStepClock.h"
 #include "Runtime/Diagnostics/HIKARI_RuntimeDebugService.h"
 #include "Gameplay/Motion/HIKARI_CharacterMotionStateService.h"
@@ -45,69 +44,64 @@
 
 namespace HIKARI {
 
-    struct DocumentSceneRuntimeState {
-        RUNTIME::RuntimeDebugService debugService{};
-        bool developerDiagnosticsAllowed = false;
-        FixedStepClock fixedStepClock{};
-        RuntimePlayStateService playStateService{};
-        GameplayCameraService gameplayCameraService{};
-        RuntimeAssetContextService runtimeAssetContextService{};
-        SCENE_CAPTURE::SceneCaptureService sceneCaptureService{};
-        ANIMATION::AnimationPoseService animationPoseService{};
-        ANIMATION::AnimationNodeOverrideService animationNodeOverrideService{};
-        ANIMATION::AnimationSocketService animationSocketService{};
-        ANIMATION::AnimationRootMotionService animationRootMotionService{};
-        ANIMATION::AnimationStateMachineRuntimeService
-            animationStateMachineRuntimeService{};
-        GAMEPLAY::MotionIntentService motionIntentService{};
-        GAMEPLAY::CharacterMotionStateService characterMotionStateService{};
-        PHYSICS::KinematicMotionService kinematicMotionService{};
-        PHYSICS::PhysicsWorldService physicsWorldService{};
-        PHYSICS::PhysicsCollisionGeometryStore collisionGeometryStore{};
-        PHYSICS::PhysicsRuntimeStatusService physicsStatusService{};
-        PHYSICS::PhysicsProjectSettings physicsSettings{};
-        NAVIGATION::NavigationWorldService navigationWorldService{};
-        BINDING::RuntimeBindingStore bindingStore{};
-        std::shared_ptr<const BINDING::Snapshot>
-            materialProjectionSourceSnapshot{};
-        std::shared_ptr<const RENDER3D::MATERIAL::
-            MaterialExternalValueSnapshot>
-            materialExternalValueSnapshot{};
-        VFX::VfxPlaybackService vfxPlaybackService{};
-        VFX::CombatPresentationService combatPresentationService{};
-        VFX::CombatAfterimageService combatAfterimageService{};
-        VFX::ActionPostReactionService actionPostReactionService{};
-        GAME_UI::GameUiPresentationService gameUiPresentationService{};
-        DIALOGUE::DialogueSessionService dialogueSessionService{};
-        // composition root が所有し、WaterSurfaceQueryService は借用する。
-        std::unique_ptr<WATER::IWaterBathymetryProvider>
-            waterBathymetryProvider{};
-        WATER::WaterSurfaceQueryService waterSurfaceQueryService{};
-        SAND::SandSurfaceQueryService sandSurfaceQueryService{};
-        PresentationModelService presentationModelService{};
-        PresentationTransformService presentationTransformService{};
-        RuntimeObjectActivityService runtimeObjectActivityService{};
-        RuntimeExtensionHost extensionHost{};
-        RuntimeFeatureCatalog featureCatalog{};
-        RuntimeFeatureInstallReport featureInstallReport{};
-        ComponentSystemPolicy componentSystemPolicy{};
-        SystemTypeRegistry systemTypeRegistry{};
-        SystemScheduler systemScheduler{};
-        ComponentRegistry componentRegistry{};
-        WorldMassSchemaRegistry massSchemaRegistry{};
-        SceneRuntimeBuilder builder{};
-        AnimationStateMachineAssetStore animationStateMachineAssets{};
-        DialogueAssetStore dialogueAssets{};
-        // World borrows registries/services above and must be destroyed first.
-        World world{};
-        bool playActive = false;
-        bool inputContextSnapshotValid = false;
-        bool editorInputContextWasActive = false;
-        bool gameplayInputContextWasActive = false;
-        bool editorDocumentSnapshotValid = false;
-        bool editorDocumentDirtySnapshot = false;
-        bool worldServicesConfigured = false;
-        bool initialized = false;
-    };
+struct DocumentSceneRuntimeState {
+    RUNTIME::RuntimeDebugService debugService{};
+    bool developerDiagnosticsAllowed = false;
+    FixedStepClock fixedStepClock{};
+    RuntimePlayStateService playStateService{};
+    GameplayCameraService gameplayCameraService{};
+    RuntimeAssetContextService runtimeAssetContextService{};
+    SCENE_CAPTURE::SceneCaptureService sceneCaptureService{};
+    ANIMATION::AnimationPoseService animationPoseService{};
+    ANIMATION::AnimationNodeOverrideService animationNodeOverrideService{};
+    ANIMATION::AnimationSocketService animationSocketService{};
+    ANIMATION::AnimationRootMotionService animationRootMotionService{};
+    ANIMATION::AnimationStateMachineRuntimeService animationStateMachineRuntimeService{};
+    GAMEPLAY::MotionIntentService motionIntentService{};
+    GAMEPLAY::CharacterMotionStateService characterMotionStateService{};
+    PHYSICS::KinematicMotionService kinematicMotionService{};
+    PHYSICS::PhysicsWorldService physicsWorldService{};
+    PHYSICS::PhysicsCollisionGeometryStore collisionGeometryStore{};
+    PHYSICS::PhysicsRuntimeStatusService physicsStatusService{};
+    PHYSICS::PhysicsProjectSettings physicsSettings{};
+    NAVIGATION::NavigationWorldService navigationWorldService{};
+    BINDING::RuntimeBindingStore bindingStore{};
+    std::shared_ptr<const BINDING::Snapshot> materialProjectionSourceSnapshot{};
+    std::shared_ptr<const RENDER3D::MATERIAL::MaterialExternalValueSnapshot> materialExternalValueSnapshot{};
+    VFX::VfxPlaybackService vfxPlaybackService{};
+    VFX::CombatPresentationService combatPresentationService{};
+    VFX::CombatAfterimageService combatAfterimageService{};
+    VFX::ActionPostReactionService actionPostReactionService{};
+    GAME_UI::GameUiPresentationService gameUiPresentationService{};
+    DIALOGUE::DialogueSessionService dialogueSessionService{};
+    // composition root が所有し、WaterSurfaceQueryService は借用する。
+    std::unique_ptr<WATER::IWaterBathymetryProvider> waterBathymetryProvider{};
+    WATER::WaterSurfaceQueryService waterSurfaceQueryService{};
+    SAND::SandSurfaceQueryService sandSurfaceQueryService{};
+    PresentationModelService presentationModelService{};
+    PresentationTransformService presentationTransformService{};
+    RuntimeObjectActivityService runtimeObjectActivityService{};
+    RuntimeExtensionHost extensionHost{};
+    RuntimeFeatureCatalog featureCatalog{};
+    RuntimeFeatureInstallReport featureInstallReport{};
+    ComponentSystemPolicy componentSystemPolicy{};
+    SystemTypeRegistry systemTypeRegistry{};
+    SystemScheduler systemScheduler{};
+    ComponentRegistry componentRegistry{};
+    WorldMassSchemaRegistry massSchemaRegistry{};
+    SceneRuntimeBuilder builder{};
+    AnimationStateMachineAssetStore animationStateMachineAssets{};
+    DialogueAssetStore dialogueAssets{};
+    // World borrows registries/services above and must be destroyed first.
+    World world{};
+    bool playActive = false;
+    bool inputContextSnapshotValid = false;
+    bool editorInputContextWasActive = false;
+    bool gameplayInputContextWasActive = false;
+    bool editorDocumentSnapshotValid = false;
+    bool editorDocumentDirtySnapshot = false;
+    bool worldServicesConfigured = false;
+    bool initialized = false;
+};
 
 } // namespace HIKARI

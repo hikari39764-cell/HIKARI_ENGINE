@@ -9,96 +9,87 @@
 
 namespace HIKARI::RENDER3D::MATERIAL {
 
-    enum class MaterialProgramBackendCapability : uint32_t {
-        None = 0u,
-        StaticVsPs = 1u << 0u,
-        SkinnedVsPs = 1u << 1u,
-        GpuDrivenTraditional = 1u << 2u,
-        MeshShader = 1u << 3u,
-    };
+enum class MaterialProgramBackendCapability : uint32_t {
+    None = 0u,
+    StaticVsPs = 1u << 0u,
+    SkinnedVsPs = 1u << 1u,
+    GpuDrivenTraditional = 1u << 2u,
+    MeshShader = 1u << 3u,
+};
 
-    enum class MaterialProgramPassCapability : uint32_t {
-        None = 0u,
-        Forward = 1u << 0u,
-        DepthPrepass = 1u << 1u,
-        Shadow = 1u << 2u,
-        GeometryAux = 1u << 3u,
-    };
+enum class MaterialProgramPassCapability : uint32_t {
+    None = 0u,
+    Forward = 1u << 0u,
+    DepthPrepass = 1u << 1u,
+    Shadow = 1u << 2u,
+    GeometryAux = 1u << 3u,
+};
 
-    enum class MaterialProgramVertexSemantic : uint32_t {
-        None = 0u,
-        Position = 1u << 0u,
-        Normal = 1u << 1u,
-        Tangent = 1u << 2u,
-        Uv0 = 1u << 3u,
-        Uv1 = 1u << 4u,
-    };
+enum class MaterialProgramVertexSemantic : uint32_t {
+    None = 0u,
+    Position = 1u << 0u,
+    Normal = 1u << 1u,
+    Tangent = 1u << 2u,
+    Uv0 = 1u << 3u,
+    Uv1 = 1u << 4u,
+};
 
-    constexpr uint32_t MaterialProgramCapabilityBit(
-        MaterialProgramBackendCapability capability) noexcept {
-        return static_cast<uint32_t>(capability);
+constexpr uint32_t MaterialProgramCapabilityBit(MaterialProgramBackendCapability capability) noexcept {
+    return static_cast<uint32_t>(capability);
+}
+
+constexpr uint32_t MaterialProgramCapabilityBit(MaterialProgramPassCapability capability) noexcept {
+    return static_cast<uint32_t>(capability);
+}
+
+constexpr uint32_t MaterialProgramCapabilityBit(MaterialProgramVertexSemantic semantic) noexcept {
+    return static_cast<uint32_t>(semantic);
+}
+
+struct MaterialProgramRuntimeCapabilities {
+    uint64_t materialCapabilityMask = 0u;
+    uint32_t backendMask = 0u;
+    uint32_t passMask = 0u;
+    uint32_t requiredVertexSemanticMask = 0u;
+    // ラスタライズやフレームに依存する式は静的な光輸送へ持ち込まない。
+    bool usesTime = false;
+    bool usesView = false;
+    bool usesScreen = false;
+    bool usesDerivatives = false;
+
+    bool SupportsStaticSurfaceEvaluation() const noexcept {
+        return !usesTime && !usesView && !usesScreen && !usesDerivatives;
     }
 
-    constexpr uint32_t MaterialProgramCapabilityBit(
-        MaterialProgramPassCapability capability) noexcept {
-        return static_cast<uint32_t>(capability);
-    }
+    bool Supports(MaterialProgramBackendCapability capability) const noexcept;
+    bool Supports(MaterialProgramPassCapability capability) const noexcept;
+    bool Requires(MaterialProgramVertexSemantic semantic) const noexcept;
+};
 
-    constexpr uint32_t MaterialProgramCapabilityBit(
-        MaterialProgramVertexSemantic semantic) noexcept {
-        return static_cast<uint32_t>(semantic);
-    }
+struct RuntimeMaterialProgram {
+    MaterialProgramId id{};
+    MaterialProgramIR ir{};
+    MaterialProgramRuntimeCapabilities capabilities{};
+    bool standardPbrFallback = false;
+};
 
-    struct MaterialProgramRuntimeCapabilities {
-        uint64_t materialCapabilityMask = 0u;
-        uint32_t backendMask = 0u;
-        uint32_t passMask = 0u;
-        uint32_t requiredVertexSemanticMask = 0u;
-        // ラスタライズやフレームに依存する式は静的な光輸送へ持ち込まない。
-        bool usesTime = false;
-        bool usesView = false;
-        bool usesScreen = false;
-        bool usesDerivatives = false;
+struct MaterialProgramKeyHasher {
+    size_t operator()(const MaterialProgramKey& key) const noexcept;
+};
 
-        bool SupportsStaticSurfaceEvaluation() const noexcept {
-            return !usesTime && !usesView && !usesScreen && !usesDerivatives;
-        }
+MaterialProgramRuntimeCapabilities BuildMaterialProgramRuntimeCapabilities(const MaterialProgramIR& program) noexcept;
 
-        bool Supports(MaterialProgramBackendCapability capability) const noexcept;
-        bool Supports(MaterialProgramPassCapability capability) const noexcept;
-        bool Requires(MaterialProgramVertexSemantic semantic) const noexcept;
-    };
+uint32_t FindMaterialProgramInputRegister(const MaterialProgramInstruction& instruction, std::string_view pin) noexcept;
 
-    struct RuntimeMaterialProgram {
-        MaterialProgramId id{};
-        MaterialProgramIR ir{};
-        MaterialProgramRuntimeCapabilities capabilities{};
-        bool standardPbrFallback = false;
-    };
+RuntimeMaterialProgram BuildRuntimeMaterialProgram(MaterialProgramId id, const MaterialProgramIR& program,
+                                                   bool standardPbrFallback = false);
 
-    struct MaterialProgramKeyHasher {
-        size_t operator()(const MaterialProgramKey& key) const noexcept;
-    };
+// Compares only shader/runtime layout. Default parameter values, resource
+// asset GUIDs, feature requests and source labels are instance/source data
+// and must not create another program or PSO.
+bool IsMaterialProgramLayoutCompatible(const MaterialProgramIR& lhs, const MaterialProgramIR& rhs) noexcept;
 
-    MaterialProgramRuntimeCapabilities BuildMaterialProgramRuntimeCapabilities(
-        const MaterialProgramIR& program) noexcept;
-
-    uint32_t FindMaterialProgramInputRegister(
-        const MaterialProgramInstruction& instruction, std::string_view pin) noexcept;
-
-    RuntimeMaterialProgram BuildRuntimeMaterialProgram(
-        MaterialProgramId id,
-        const MaterialProgramIR& program,
-        bool standardPbrFallback = false);
-
-    // Compares only shader/runtime layout. Default parameter values, resource
-    // asset GUIDs, feature requests and source labels are instance/source data
-    // and must not create another program or PSO.
-    bool IsMaterialProgramLayoutCompatible(
-        const MaterialProgramIR& lhs,
-        const MaterialProgramIR& rhs) noexcept;
-
-    std::string_view ToString(MaterialProgramBackendCapability capability) noexcept;
-    std::string_view ToString(MaterialProgramPassCapability capability) noexcept;
+std::string_view ToString(MaterialProgramBackendCapability capability) noexcept;
+std::string_view ToString(MaterialProgramPassCapability capability) noexcept;
 
 } // namespace HIKARI::RENDER3D::MATERIAL

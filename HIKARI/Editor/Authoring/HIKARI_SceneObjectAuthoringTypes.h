@@ -7,15 +7,15 @@
 
 namespace HIKARI {
 
-    struct SceneObjectAuthoringHistoryRequest {
-        std::string label{};
-        std::vector<SceneObjectData> beforeObjects{};
-        std::vector<SceneObjectData> afterObjects{};
-        SceneCameraSettings beforeCamera{};
-        SceneCameraSettings afterCamera{};
-        bool dirtyBefore = false;
-        bool runtimeWorldAffected = true;
-        bool runtimeWorldRefreshRequired = false;
-    };
+struct SceneObjectAuthoringHistoryRequest {
+    std::string label{};
+    std::vector<SceneObjectData> beforeObjects{};
+    std::vector<SceneObjectData> afterObjects{};
+    SceneCameraSettings beforeCamera{};
+    SceneCameraSettings afterCamera{};
+    bool dirtyBefore = false;
+    bool runtimeWorldAffected = true;
+    bool runtimeWorldRefreshRequired = false;
+};
 
 } // namespace HIKARI

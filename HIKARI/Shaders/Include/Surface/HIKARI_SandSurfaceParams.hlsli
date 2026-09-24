@@ -262,20 +262,6 @@ HikariSandLayerStyle HikariSandLoadLayerStyle(
     return style;
 }
 
-float3 HikariSandSampleLayerLightTint(
-    HikariSandSurfaceParams p,
-    uint layerIndex)
-{
-    return HikariSandLoadLayerStyle(p, layerIndex).lightTint;
-}
-
-float3 HikariSandSampleLayerDarkTint(
-    HikariSandSurfaceParams p,
-    uint layerIndex)
-{
-    return HikariSandLoadLayerStyle(p, layerIndex).darkTint;
-}
-
 float HikariSandSampleCoverage(
     HikariSandSurfaceParams p,
     float2 uv)
@@ -374,7 +360,6 @@ float HikariSandSampleHeight(
         lerp(h01, h11, tx),
         ty);
 }
-
 
 // coverage 自体が筆の hardness/falloff を保持する。ここで別の侵食を掛けると
 // 表示輪郭だけが筆位置からずれるため、全 pass が同じ双線形値を使う。

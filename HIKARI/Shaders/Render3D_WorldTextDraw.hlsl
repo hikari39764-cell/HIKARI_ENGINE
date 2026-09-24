@@ -1,3 +1,4 @@
+#include "Include/Math/HIKARI_BillboardMath.hlsli"
 #include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
 
 static const uint HIKARI_WORLD_TEXT_FIXED = 0u;
@@ -49,54 +50,6 @@ struct WorldTextVertex
     float4 outlineColorWidth : COLOR1;
 };
 
-float3 NormalizeOr(float3 value, float3 fallbackValue)
-{
-    const float lengthSquared = dot(value, value);
-    return lengthSquared > 1.0e-8f
-        ? value * rsqrt(lengthSquared)
-        : fallbackValue;
-}
-
-float4 NormalizeQuaternion(float4 value)
-{
-    const float lengthSquared = dot(value, value);
-    return lengthSquared > 1.0e-8f
-        ? value * rsqrt(lengthSquared)
-        : float4(0.0f, 0.0f, 0.0f, 1.0f);
-}
-
-float3 RotateByQuaternion(float3 value, float4 quaternion)
-{
-    return value + 2.0f * cross(
-        quaternion.xyz,
-        cross(quaternion.xyz, value) + quaternion.w * value);
-}
-
-void ResolveCameraBasis(out float3 right, out float3 up, out float3 forward)
-{
-    float4 centerH = mul(
-        gInverseViewProjection,
-        float4(0.0f, 0.0f, 0.0f, 1.0f));
-    float4 rightH = mul(
-        gInverseViewProjection,
-        float4(1.0f, 0.0f, 0.0f, 1.0f));
-    float4 upH = mul(
-        gInverseViewProjection,
-        float4(0.0f, 1.0f, 0.0f, 1.0f));
-    centerH.xyz /= max(abs(centerH.w), 1.0e-6f);
-    rightH.xyz /= max(abs(rightH.w), 1.0e-6f);
-    upH.xyz /= max(abs(upH.w), 1.0e-6f);
-    right = NormalizeOr(
-        rightH.xyz - centerH.xyz,
-        float3(1.0f, 0.0f, 0.0f));
-    up = NormalizeOr(
-        upH.xyz - centerH.xyz,
-        float3(0.0f, 1.0f, 0.0f));
-    forward = NormalizeOr(
-        cross(right, up),
-        float3(0.0f, 0.0f, 1.0f));
-}
-
 [outputtopology("triangle")]
 [numthreads(4, 1, 1)]
 void WorldTextMS(
@@ -118,7 +71,7 @@ void WorldTextMS(
     float3 cameraRight;
     float3 cameraUp;
     float3 cameraForward;
-    ResolveCameraBasis(cameraRight, cameraUp, cameraForward);
+    HikariResolveBillboardCameraBasis(gInverseViewProjection, cameraRight, cameraUp, cameraForward);
     float3 right = cameraRight;
     float3 up = cameraUp;
     if (instance.facingMode == HIKARI_WORLD_TEXT_FIXED)

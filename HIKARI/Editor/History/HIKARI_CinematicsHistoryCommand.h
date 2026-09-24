@@ -7,9 +7,7 @@
 
 namespace HIKARI::EDITOR {
 
-    std::unique_ptr<IEditorDocumentCommand> MakeCinematicsHistoryCommand(
-        std::string label,
-        SceneCinematicsSettings before,
-        SceneCinematicsSettings after);
+std::unique_ptr<IEditorDocumentCommand> MakeCinematicsHistoryCommand(std::string label, SceneCinematicsSettings before,
+                                                                     SceneCinematicsSettings after);
 
 } // namespace HIKARI::EDITOR

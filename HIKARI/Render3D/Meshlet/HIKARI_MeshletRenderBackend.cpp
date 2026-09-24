@@ -27,1473 +27,1086 @@
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 namespace HIKARI::RENDER3D::MESHLET {
 
-    namespace {
-        using ForwardPipelineVariantArray =
-            MeshletRenderBackend::ForwardPipelineVariantArray;
+namespace {
+using ForwardPipelineVariantArray = MeshletRenderBackend::ForwardPipelineVariantArray;
 
-        constexpr std::array<const char*, kForwardOpaquePipelineVariantCount>
-            kForwardOpaqueProgramIds = {
-            "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueFullPS",
-            "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueAlbedoOnlyPS",
-            "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueNoNormalMapPS",
-            "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueNoShadowPS",
-            "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueNoSsaoPS",
-            "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueNoMaterialExtrasPS",
-        };
+constexpr std::array<const char*, kForwardOpaquePipelineVariantCount> kForwardOpaqueProgramIds = {
+    "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueFullPS",
+    "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueAlbedoOnlyPS",
+    "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueNoNormalMapPS",
+    "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueNoShadowPS",
+    "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueNoSsaoPS",
+    "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueNoMaterialExtrasPS",
+};
 
-        constexpr std::array<const wchar_t*, kForwardOpaquePipelineVariantCount> kForwardOpaqueVariantNames = {
-            L"Full",
-            L"AlbedoOnly",
-            L"NoNormalMap",
-            L"NoShadow",
-            L"NoSSAO",
-            L"NoMaterialExtras",
-        };
+constexpr std::array<const wchar_t*, kForwardOpaquePipelineVariantCount> kForwardOpaqueVariantNames = {
+    L"Full", L"AlbedoOnly", L"NoNormalMap", L"NoShadow", L"NoSSAO", L"NoMaterialExtras",
+};
 
-        D3D12_SHADER_BYTECODE ShaderBytecode(
-            const ASSETS::SHADER::ShaderAssetEntryLease& shader) noexcept {
-            const std::span<const uint8_t> bytes = shader.GetDxil();
-            return { bytes.data(), bytes.size() };
+D3D12_SHADER_BYTECODE ShaderBytecode(const ASSETS::SHADER::ShaderAssetEntryLease& shader) noexcept {
+    const std::span<const uint8_t> bytes = shader.GetDxil();
+    return {bytes.data(), bytes.size()};
+}
+
+bool ResolveMeshletShader(const GFX::ShaderDeviceCapabilities& capabilities, const char* programId,
+                          ASSETS::SHADER::ShaderStage stage, const char* profile,
+                          ASSETS::SHADER::ShaderAssetEntryLease& outShader) {
+    ASSETS::SHADER::RenderGeometryRootLayout layout{};
+    if (!ASSETS::SHADER::TryResolveRenderGeometryProgramRootLayout(programId, layout))
+        return false;
+    const auto shaderContract = ASSETS::SHADER::MakeRenderGeometryShaderContract(
+        layout, {capabilities.shaderModel, capabilities.rootSignatureVersion, capabilities.featureMask});
+    ASSETS::SHADER::ShaderAssetResolveResult resolved =
+        ASSETS::SHADER::ResolveBuiltinRenderGeometryShaderEntry(programId, {"Main", stage, profile}, shaderContract);
+    if (!resolved) {
+        HIKARI_LOG_ERROR(std::string("[MeshletBackend][Shader] ") + programId + ": " + resolved.diagnostic);
+        return false;
+    }
+    outShader = std::move(resolved.lease);
+    return true;
+}
+
+size_t ForwardPipelineVariantIndex(ForwardShadingCostMode mode) {
+    const uint8_t raw = static_cast<uint8_t>(mode);
+    const uint8_t maxRaw = static_cast<uint8_t>(ForwardShadingCostMode::NoMaterialExtras);
+    return raw <= maxRaw ? static_cast<size_t>(raw) : 0u;
+}
+
+uint32_t PipelineMaskForKind(MeshletPipelineKind kind) {
+    switch (kind) {
+    case MeshletPipelineKind::ForwardDepthAware: return MeshletPipelineMask::ForwardDepthAware;
+    case MeshletPipelineKind::ForwardTransparent: return MeshletPipelineMask::ForwardTransparent;
+    case MeshletPipelineKind::Shadow: return MeshletPipelineMask::Shadow;
+    case MeshletPipelineKind::GeometryAux: return MeshletPipelineMask::GeometryAux;
+    case MeshletPipelineKind::GeometryAuxFeatureMask: return MeshletPipelineMask::GeometryAuxFeatureMask;
+    case MeshletPipelineKind::GeometryOutline: return MeshletPipelineMask::GeometryOutline;
+    case MeshletPipelineKind::VisibilityOverlay: return MeshletPipelineMask::VisibilityOverlay;
+    case MeshletPipelineKind::DepthPrepass: return MeshletPipelineMask::DepthPrepass;
+    case MeshletPipelineKind::WaterVisibility: return MeshletPipelineMask::WaterVisibility;
+    case MeshletPipelineKind::ForwardOpaque:
+    default: return MeshletPipelineMask::ForwardOpaque;
+    }
+}
+
+bool IsPipelineRequested(uint32_t pipelineMask, MeshletPipelineKind kind) {
+    return (pipelineMask & PipelineMaskForKind(kind)) != 0u;
+}
+
+std::string NarrowDebugName(const wchar_t* name) {
+    if (name == nullptr) {
+        return {};
+    }
+    std::string result;
+    while (*name != L'\0') {
+        result.push_back(*name >= 0 && *name < 128 ? static_cast<char>(*name) : '?');
+        ++name;
+    }
+    return result;
+}
+
+const char* CullModeToString(D3D12_CULL_MODE cullMode) {
+    switch (cullMode) {
+    case D3D12_CULL_MODE_NONE: return "NONE";
+    case D3D12_CULL_MODE_FRONT: return "FRONT";
+    case D3D12_CULL_MODE_BACK: return "BACK";
+    default: return "UNKNOWN";
+    }
+}
+
+struct MeshletPipelineStateStream {
+    CD3DX12_PIPELINE_STATE_STREAM_ROOT_SIGNATURE RootSignature;
+    CD3DX12_PIPELINE_STATE_STREAM_AS AS;
+    CD3DX12_PIPELINE_STATE_STREAM_MS MS;
+    CD3DX12_PIPELINE_STATE_STREAM_PS PS;
+    CD3DX12_PIPELINE_STATE_STREAM_BLEND_DESC BlendState;
+    CD3DX12_PIPELINE_STATE_STREAM_DEPTH_STENCIL DepthStencilState;
+    CD3DX12_PIPELINE_STATE_STREAM_DEPTH_STENCIL_FORMAT DSVFormat;
+    CD3DX12_PIPELINE_STATE_STREAM_RASTERIZER RasterizerState;
+    CD3DX12_PIPELINE_STATE_STREAM_RENDER_TARGET_FORMATS RTVFormats;
+    CD3DX12_PIPELINE_STATE_STREAM_SAMPLE_DESC SampleDesc;
+    CD3DX12_PIPELINE_STATE_STREAM_SAMPLE_MASK SampleMask;
+};
+
+bool ArePipelinesReady(const MeshletRenderBackend::PipelineBucketArray& pipelines) {
+    for (const auto& pipeline : pipelines) {
+        if (pipeline == nullptr) {
+            return false;
         }
+    }
+    return true;
+}
 
-        bool ResolveMeshletShader(const GFX::ShaderDeviceCapabilities& capabilities,
-            const char* programId, ASSETS::SHADER::ShaderStage stage, const char* profile,
-            ASSETS::SHADER::ShaderAssetEntryLease& outShader) {
-            ASSETS::SHADER::RenderGeometryRootLayout layout{};
-            if (!ASSETS::SHADER::TryResolveRenderGeometryProgramRootLayout(programId, layout)) return false;
-            const auto shaderContract = ASSETS::SHADER::MakeRenderGeometryShaderContract(layout,
-                {capabilities.shaderModel, capabilities.rootSignatureVersion, capabilities.featureMask});
-            ASSETS::SHADER::ShaderAssetResolveResult resolved =
-                ASSETS::SHADER::ResolveBuiltinRenderGeometryShaderEntry(
-                    programId,
-                    { "Main", stage, profile },
-                    shaderContract);
-            if (!resolved) {
-                HIKARI_LOG_ERROR(
-                    std::string("[MeshletBackend][Shader] ") +
-                    programId + ": " + resolved.diagnostic);
-                return false;
-            }
-            outShader = std::move(resolved.lease);
-            return true;
-        }
+bool AreBaseForwardPipelinesReady(const ForwardPipelineVariantArray& pipelines) {
+    // 診断 variant の未作成/失敗を通常描画の readiness に含めない。
+    return ArePipelinesReady(pipelines[0]);
+}
 
-        size_t ForwardPipelineVariantIndex(ForwardShadingCostMode mode) {
-            const uint8_t raw = static_cast<uint8_t>(mode);
-            const uint8_t maxRaw =
-                static_cast<uint8_t>(ForwardShadingCostMode::NoMaterialExtras);
-            return raw <= maxRaw ? static_cast<size_t>(raw) : 0u;
-        }
+bool AreRequestedPipelinesReady(uint32_t pipelineMask, const ForwardPipelineVariantArray& forward,
+                                const MeshletRenderBackend::PipelineBucketArray& depthAware,
+                                const MeshletRenderBackend::PipelineBucketArray& transparent,
+                                const MeshletRenderBackend::PipelineBucketArray& shadow,
+                                const MeshletRenderBackend::PipelineBucketArray& geometryAux,
+                                const MeshletRenderBackend::PipelineBucketArray& geometryFeatureMask,
+                                const MeshletRenderBackend::PipelineBucketArray& geometryOutline,
+                                const MeshletRenderBackend::PipelineBucketArray& visibilityOverlay,
+                                const MeshletRenderBackend::PipelineBucketArray& depthPrepass,
+                                const MeshletRenderBackend::PipelineBucketArray& waterVisibility) {
+    bool ready = true;
+    if (IsPipelineRequested(pipelineMask, MeshletPipelineKind::ForwardOpaque)) {
+        ready = ready && AreBaseForwardPipelinesReady(forward);
+    }
+    if (IsPipelineRequested(pipelineMask, MeshletPipelineKind::ForwardDepthAware)) {
+        ready = ready && ArePipelinesReady(depthAware);
+    }
+    if (IsPipelineRequested(pipelineMask, MeshletPipelineKind::ForwardTransparent)) {
+        ready = ready && ArePipelinesReady(transparent);
+    }
+    if (IsPipelineRequested(pipelineMask, MeshletPipelineKind::Shadow)) {
+        ready = ready && ArePipelinesReady(shadow);
+    }
+    if (IsPipelineRequested(pipelineMask, MeshletPipelineKind::GeometryAux)) {
+        ready = ready && ArePipelinesReady(geometryAux);
+    }
+    if (IsPipelineRequested(pipelineMask, MeshletPipelineKind::GeometryAuxFeatureMask)) {
+        ready = ready && ArePipelinesReady(geometryFeatureMask);
+    }
+    if (IsPipelineRequested(pipelineMask, MeshletPipelineKind::GeometryOutline)) {
+        ready = ready && ArePipelinesReady(geometryOutline);
+    }
+    if (IsPipelineRequested(pipelineMask, MeshletPipelineKind::VisibilityOverlay)) {
+        ready = ready && ArePipelinesReady(visibilityOverlay);
+    }
+    if (IsPipelineRequested(pipelineMask, MeshletPipelineKind::DepthPrepass)) {
+        ready = ready && ArePipelinesReady(depthPrepass);
+    }
+    // Water visibility is an optional auxiliary producer.  Its absence
+    // must never make the main mesh-shader renderer unavailable; the
+    // caller falls back to the authoritative opaque SceneDepth when
+    // this bucket is not ready.
+    (void)waterVisibility;
+    return ready;
+}
 
-        uint32_t PipelineMaskForKind(MeshletPipelineKind kind) {
-            switch (kind) {
-            case MeshletPipelineKind::ForwardDepthAware:
-                return MeshletPipelineMask::ForwardDepthAware;
-            case MeshletPipelineKind::ForwardTransparent:
-                return MeshletPipelineMask::ForwardTransparent;
-            case MeshletPipelineKind::Shadow:
-                return MeshletPipelineMask::Shadow;
-            case MeshletPipelineKind::GeometryAux:
-                return MeshletPipelineMask::GeometryAux;
-            case MeshletPipelineKind::GeometryAuxFeatureMask:
-                return MeshletPipelineMask::GeometryAuxFeatureMask;
-            case MeshletPipelineKind::GeometryOutline:
-                return MeshletPipelineMask::GeometryOutline;
-            case MeshletPipelineKind::VisibilityOverlay:
-                return MeshletPipelineMask::VisibilityOverlay;
-            case MeshletPipelineKind::DepthPrepass:
-                return MeshletPipelineMask::DepthPrepass;
-            case MeshletPipelineKind::WaterVisibility:
-                return MeshletPipelineMask::WaterVisibility;
-            case MeshletPipelineKind::ForwardOpaque:
-            default:
-                return MeshletPipelineMask::ForwardOpaque;
-            }
-        }
+D3D12_CULL_MODE CullModeForBucket(GPUDRIVEN::GpuDrivenCommandBucket bucket) {
+    return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided ? D3D12_CULL_MODE_NONE : D3D12_CULL_MODE_BACK;
+}
 
-        bool IsPipelineRequested(uint32_t pipelineMask, MeshletPipelineKind kind) {
-            return (pipelineMask & PipelineMaskForKind(kind)) != 0u;
-        }
+bool HasSourceForBucket(const GPUDRIVEN::GpuVisibilityResult& visibility, GPUDRIVEN::GpuDrivenPassKind pass,
+                        GPUDRIVEN::GpuDrivenCommandBucket bucket) {
+    return visibility.HasSourceForBucket(pass, bucket);
+}
 
-        std::string NarrowDebugName(const wchar_t* name) {
-            if (name == nullptr) {
-                return {};
-            }
-            std::string result;
-            while (*name != L'\0') {
-                result.push_back(
-                    *name >= 0 && *name < 128
-                        ? static_cast<char>(*name)
-                        : '?');
-                ++name;
-            }
-            return result;
-        }
+UINT64 DispatchArgumentOffsetForBucket(const GPUDRIVEN::GpuDrivenCommandPassLayout& layout,
+                                       GPUDRIVEN::GpuDrivenCommandBucket bucket) {
+    return layout.GetBucket(bucket).meshDispatchArgumentOffset;
+}
 
-        const char* CullModeToString(D3D12_CULL_MODE cullMode) {
-            switch (cullMode) {
-            case D3D12_CULL_MODE_NONE: return "NONE";
-            case D3D12_CULL_MODE_FRONT: return "FRONT";
-            case D3D12_CULL_MODE_BACK: return "BACK";
-            default: return "UNKNOWN";
-            }
-        }
+UINT64 CounterOffsetForBucket(const GPUDRIVEN::GpuDrivenCommandPassLayout& layout,
+                              GPUDRIVEN::GpuDrivenCommandBucket bucket) {
+    return layout.GetBucket(bucket).counterOffset;
+}
 
-        struct MeshletPipelineStateStream {
-            CD3DX12_PIPELINE_STATE_STREAM_ROOT_SIGNATURE RootSignature;
-            CD3DX12_PIPELINE_STATE_STREAM_AS AS;
-            CD3DX12_PIPELINE_STATE_STREAM_MS MS;
-            CD3DX12_PIPELINE_STATE_STREAM_PS PS;
-            CD3DX12_PIPELINE_STATE_STREAM_BLEND_DESC BlendState;
-            CD3DX12_PIPELINE_STATE_STREAM_DEPTH_STENCIL DepthStencilState;
-            CD3DX12_PIPELINE_STATE_STREAM_DEPTH_STENCIL_FORMAT DSVFormat;
-            CD3DX12_PIPELINE_STATE_STREAM_RASTERIZER RasterizerState;
-            CD3DX12_PIPELINE_STATE_STREAM_RENDER_TARGET_FORMATS RTVFormats;
-            CD3DX12_PIPELINE_STATE_STREAM_SAMPLE_DESC SampleDesc;
-            CD3DX12_PIPELINE_STATE_STREAM_SAMPLE_MASK SampleMask;
-        };
+const wchar_t* ForwardDebugName(GPUDRIVEN::GpuDrivenCommandBucket bucket) {
+    return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided ? L"Meshlet Forward DoubleSided PSO"
+                                                                    : L"Meshlet Forward BackFace PSO";
+}
 
-        bool ArePipelinesReady(const MeshletRenderBackend::PipelineBucketArray& pipelines) {
-            for (const auto& pipeline : pipelines) {
-                if (pipeline == nullptr) {
-                    return false;
-                }
-            }
-            return true;
-        }
+std::wstring ForwardDebugName(GPUDRIVEN::GpuDrivenCommandBucket bucket, size_t variantIndex) {
+    std::wstring result = ForwardDebugName(bucket);
+    result += L" ";
+    result += variantIndex < kForwardOpaqueVariantNames.size() ? kForwardOpaqueVariantNames[variantIndex] : L"Unknown";
+    return result;
+}
 
-        bool AreBaseForwardPipelinesReady(const ForwardPipelineVariantArray& pipelines) {
-            // 診断 variant の未作成/失敗を通常描画の readiness に含めない。
-            return ArePipelinesReady(pipelines[0]);
-        }
+const wchar_t* DepthAwareDebugName(GPUDRIVEN::GpuDrivenCommandBucket bucket) {
+    return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided ? L"Meshlet DepthAware DoubleSided PSO"
+                                                                    : L"Meshlet DepthAware BackFace PSO";
+}
 
+const wchar_t* TransparentDebugName(GPUDRIVEN::GpuDrivenCommandBucket bucket) {
+    return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided ? L"Meshlet Transparent DoubleSided PSO"
+                                                                    : L"Meshlet Transparent BackFace PSO";
+}
 
-        bool AreRequestedPipelinesReady(
-            uint32_t pipelineMask,
-            const ForwardPipelineVariantArray& forward,
-            const MeshletRenderBackend::PipelineBucketArray& depthAware,
-            const MeshletRenderBackend::PipelineBucketArray& transparent,
-            const MeshletRenderBackend::PipelineBucketArray& shadow,
-            const MeshletRenderBackend::PipelineBucketArray& geometryAux,
-            const MeshletRenderBackend::PipelineBucketArray& geometryFeatureMask,
-            const MeshletRenderBackend::PipelineBucketArray& geometryOutline,
-            const MeshletRenderBackend::PipelineBucketArray& visibilityOverlay,
-            const MeshletRenderBackend::PipelineBucketArray& depthPrepass,
-            const MeshletRenderBackend::PipelineBucketArray& waterVisibility) {
+const wchar_t* ShadowDebugName(GPUDRIVEN::GpuDrivenCommandBucket bucket) {
+    return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided ? L"Meshlet Shadow DoubleSided PSO"
+                                                                    : L"Meshlet Shadow BackFace PSO";
+}
 
-            bool ready = true;
-            if (IsPipelineRequested(pipelineMask, MeshletPipelineKind::ForwardOpaque)) {
-                ready = ready && AreBaseForwardPipelinesReady(forward);
-            }
-            if (IsPipelineRequested(pipelineMask, MeshletPipelineKind::ForwardDepthAware)) {
-                ready = ready && ArePipelinesReady(depthAware);
-            }
-            if (IsPipelineRequested(pipelineMask, MeshletPipelineKind::ForwardTransparent)) {
-                ready = ready && ArePipelinesReady(transparent);
-            }
-            if (IsPipelineRequested(pipelineMask, MeshletPipelineKind::Shadow)) {
-                ready = ready && ArePipelinesReady(shadow);
-            }
-            if (IsPipelineRequested(pipelineMask, MeshletPipelineKind::GeometryAux)) {
-                ready = ready && ArePipelinesReady(geometryAux);
-            }
-            if (IsPipelineRequested(
-                    pipelineMask,
-                    MeshletPipelineKind::GeometryAuxFeatureMask)) {
-                ready = ready && ArePipelinesReady(geometryFeatureMask);
-            }
-            if (IsPipelineRequested(pipelineMask, MeshletPipelineKind::GeometryOutline)) {
-                ready = ready && ArePipelinesReady(geometryOutline);
-            }
-            if (IsPipelineRequested(pipelineMask, MeshletPipelineKind::VisibilityOverlay)) {
-                ready = ready && ArePipelinesReady(visibilityOverlay);
-            }
-            if (IsPipelineRequested(pipelineMask, MeshletPipelineKind::DepthPrepass)) {
-                ready = ready && ArePipelinesReady(depthPrepass);
-            }
-            // Water visibility is an optional auxiliary producer.  Its absence
-            // must never make the main mesh-shader renderer unavailable; the
-            // caller falls back to the authoritative opaque SceneDepth when
-            // this bucket is not ready.
-            (void)waterVisibility;
-            return ready;
-        }
+const wchar_t* GeometryDebugName(GPUDRIVEN::GpuDrivenCommandBucket bucket) {
+    return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided ? L"Meshlet GeometryAux DoubleSided PSO"
+                                                                    : L"Meshlet GeometryAux BackFace PSO";
+}
 
-        D3D12_CULL_MODE CullModeForBucket(GPUDRIVEN::GpuDrivenCommandBucket bucket) {
-            return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided
-                ? D3D12_CULL_MODE_NONE
-                : D3D12_CULL_MODE_BACK;
-        }
+const wchar_t* GeometryFeatureMaskDebugName(GPUDRIVEN::GpuDrivenCommandBucket bucket) {
+    return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided ? L"Meshlet GeometryFeatureMask DoubleSided PSO"
+                                                                    : L"Meshlet GeometryFeatureMask BackFace PSO";
+}
 
-        bool HasSourceForBucket(
-            const GPUDRIVEN::GpuVisibilityResult& visibility,
-            GPUDRIVEN::GpuDrivenPassKind pass,
-            GPUDRIVEN::GpuDrivenCommandBucket bucket) {
+const wchar_t* GeometryOutlineDebugName(GPUDRIVEN::GpuDrivenCommandBucket bucket) {
+    return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided ? L"Meshlet GeometryOutline DoubleSided PSO"
+                                                                    : L"Meshlet GeometryOutline BackFace PSO";
+}
 
-            return visibility.HasSourceForBucket(pass, bucket);
-        }
+const wchar_t* VisibilityOverlayDebugName(GPUDRIVEN::GpuDrivenCommandBucket bucket) {
+    return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided ? L"Meshlet VisibilityOverlay DoubleSided PSO"
+                                                                    : L"Meshlet VisibilityOverlay BackFace PSO";
+}
 
-        UINT64 DispatchArgumentOffsetForBucket(
-            const GPUDRIVEN::GpuDrivenCommandPassLayout& layout,
-            GPUDRIVEN::GpuDrivenCommandBucket bucket) {
+const wchar_t* DepthPrepassDebugName(GPUDRIVEN::GpuDrivenCommandBucket bucket) {
+    return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided ? L"Meshlet DepthPrepass DoubleSided PSO"
+                                                                    : L"Meshlet DepthPrepass BackFace PSO";
+}
 
-            return layout.GetBucket(bucket).meshDispatchArgumentOffset;
-        }
+const char* PipelineEventName(MeshletPipelineKind kind, GPUDRIVEN::GpuDrivenCommandBucket bucket) {
+    switch (kind) {
+    case MeshletPipelineKind::DepthPrepass:
+        return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided ? "MeshletDraw.DepthPrepass.DoubleSided"
+                                                                        : "MeshletDraw.DepthPrepass.BackFace";
+    case MeshletPipelineKind::WaterVisibility:
+        return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided ? "MeshletDraw.WaterVisibility.DoubleSided"
+                                                                        : "MeshletDraw.WaterVisibility.BackFace";
+    case MeshletPipelineKind::GeometryAux:
+        return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided ? "MeshletDraw.GeometryAux.DoubleSided"
+                                                                        : "MeshletDraw.GeometryAux.BackFace";
+    case MeshletPipelineKind::GeometryAuxFeatureMask:
+        return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided ? "MeshletDraw.GeometryFeatureMask.DoubleSided"
+                                                                        : "MeshletDraw.GeometryFeatureMask.BackFace";
+    case MeshletPipelineKind::GeometryOutline:
+        return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided ? "MeshletDraw.GeometryOutline.DoubleSided"
+                                                                        : "MeshletDraw.GeometryOutline.BackFace";
+    case MeshletPipelineKind::VisibilityOverlay:
+        return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided ? "MeshletDraw.VisibilityOverlay.DoubleSided"
+                                                                        : "MeshletDraw.VisibilityOverlay.BackFace";
+    case MeshletPipelineKind::ForwardDepthAware:
+        return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided ? "MeshletDraw.DepthAware.DoubleSided"
+                                                                        : "MeshletDraw.DepthAware.BackFace";
+    case MeshletPipelineKind::ForwardTransparent:
+        return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided ? "MeshletDraw.Transparent.DoubleSided"
+                                                                        : "MeshletDraw.Transparent.BackFace";
+    case MeshletPipelineKind::Shadow:
+        return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided ? "MeshletDraw.Shadow.DoubleSided"
+                                                                        : "MeshletDraw.Shadow.BackFace";
+    case MeshletPipelineKind::ForwardOpaque:
+    default:
+        return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided ? "MeshletDraw.ForwardOpaque.DoubleSided"
+                                                                        : "MeshletDraw.ForwardOpaque.BackFace";
+    }
+}
 
-        UINT64 CounterOffsetForBucket(
-            const GPUDRIVEN::GpuDrivenCommandPassLayout& layout,
-            GPUDRIVEN::GpuDrivenCommandBucket bucket) {
+GFX::GPU_PROFILE::Pass ProfilePassForPipelineKind(MeshletPipelineKind kind) {
+    switch (kind) {
+    case MeshletPipelineKind::GeometryAux:
+    case MeshletPipelineKind::GeometryAuxFeatureMask: return GFX::GPU_PROFILE::Pass::MeshletDrawGeometryAux;
+    case MeshletPipelineKind::GeometryOutline: return GFX::GPU_PROFILE::Pass::MeshletDrawGeometryOutline;
+    case MeshletPipelineKind::VisibilityOverlay: return GFX::GPU_PROFILE::Pass::MeshletDrawVisibilityOverlay;
+    case MeshletPipelineKind::DepthPrepass: return GFX::GPU_PROFILE::Pass::MeshletDrawDepthPrepass;
+    case MeshletPipelineKind::WaterVisibility: return GFX::GPU_PROFILE::Pass::MeshletDrawDepthPrepass;
+    case MeshletPipelineKind::ForwardDepthAware: return GFX::GPU_PROFILE::Pass::MeshletDrawDepthAware;
+    case MeshletPipelineKind::ForwardTransparent: return GFX::GPU_PROFILE::Pass::MeshletDrawTransparent;
+    case MeshletPipelineKind::Shadow: return GFX::GPU_PROFILE::Pass::MeshletDrawShadow;
+    case MeshletPipelineKind::ForwardOpaque:
+    default: return GFX::GPU_PROFILE::Pass::MeshletDrawForward;
+    }
+}
 
-            return layout.GetBucket(bucket).counterOffset;
-        }
+bool QueryMeshShaderCapabilities(ID3D12Device* device, MeshletRenderBackendStats& stats) {
+    if (device == nullptr) {
+        return false;
+    }
 
-        const wchar_t* ForwardDebugName(GPUDRIVEN::GpuDrivenCommandBucket bucket) {
-            return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided
-                ? L"Meshlet Forward DoubleSided PSO"
-                : L"Meshlet Forward BackFace PSO";
-        }
+    stats.shaderModel65Supported = GFX::QueryShaderDeviceCapabilities(device).shaderModel >= 65u;
 
-        std::wstring ForwardDebugName(
-            GPUDRIVEN::GpuDrivenCommandBucket bucket,
-            size_t variantIndex) {
+    D3D12_FEATURE_DATA_D3D12_OPTIONS7 options7{};
+    HRESULT hr = device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS7, &options7, sizeof(options7));
+    if (SUCCEEDED(hr)) {
+        stats.meshShaderTier = static_cast<uint32_t>(options7.MeshShaderTier);
+        stats.meshShaderSupported = options7.MeshShaderTier != D3D12_MESH_SHADER_TIER_NOT_SUPPORTED;
+    }
 
-            std::wstring result = ForwardDebugName(bucket);
-            result += L" ";
-            result += variantIndex < kForwardOpaqueVariantNames.size()
-                ? kForwardOpaqueVariantNames[variantIndex]
-                : L"Unknown";
-            return result;
-        }
+    D3D12_FEATURE_DATA_D3D12_OPTIONS9 options9{};
+    hr = device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS9, &options9, sizeof(options9));
+    if (SUCCEEDED(hr)) {
+        stats.meshShaderPipelineStatsSupported = options9.MeshShaderPipelineStatsSupported != FALSE;
+    }
 
-        const wchar_t* DepthAwareDebugName(GPUDRIVEN::GpuDrivenCommandBucket bucket) {
-            return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided
-                ? L"Meshlet DepthAware DoubleSided PSO"
-                : L"Meshlet DepthAware BackFace PSO";
-        }
+    return stats.shaderModel65Supported && stats.meshShaderSupported;
+}
 
-        const wchar_t* TransparentDebugName(GPUDRIVEN::GpuDrivenCommandBucket bucket) {
-            return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided
-                ? L"Meshlet Transparent DoubleSided PSO"
-                : L"Meshlet Transparent BackFace PSO";
-        }
+void LogMeshletPsoFailure(HRESULT hr, const wchar_t* debugName, D3D12_SHADER_BYTECODE amplificationShader,
+                          D3D12_SHADER_BYTECODE meshShader, D3D12_SHADER_BYTECODE pixelShader,
+                          DXGI_FORMAT renderTargetFormat, D3D12_CULL_MODE cullMode, bool alphaBlend, bool depthWrite,
+                          bool hasRenderTarget) {
+    std::ostringstream oss;
+    oss << "[MeshletBackend][ERROR] PSO create failed."
+        << " name=\"" << NarrowDebugName(debugName) << "\""
+        << " hr=" << GFX::FormatHRESULT(hr) << " hasRT=" << (hasRenderTarget ? "true" : "false")
+        << " rtv=" << (hasRenderTarget ? GFX::FormatToString(renderTargetFormat) : "NONE")
+        << " dsv=" << GFX::FormatToString(DXGI_FORMAT_D32_FLOAT) << " cull=" << CullModeToString(cullMode)
+        << " alphaBlend=" << (alphaBlend ? "true" : "false") << " depthWrite=" << (depthWrite ? "true" : "false")
+        << " asBytes=" << amplificationShader.BytecodeLength << " msBytes=" << meshShader.BytecodeLength
+        << " psBytes=" << pixelShader.BytecodeLength;
+    DEBUGLOG::PushRenderError(oss.str());
+}
 
-        const wchar_t* ShadowDebugName(GPUDRIVEN::GpuDrivenCommandBucket bucket) {
-            return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided
-                ? L"Meshlet Shadow DoubleSided PSO"
-                : L"Meshlet Shadow BackFace PSO";
-        }
+bool CreateMeshletPipelineState(ID3D12Device* device, ID3D12RootSignature* rootSignature,
+                                D3D12_SHADER_BYTECODE amplificationShader, D3D12_SHADER_BYTECODE meshShader,
+                                D3D12_SHADER_BYTECODE pixelShader, DXGI_FORMAT renderTargetFormat,
+                                D3D12_CULL_MODE cullMode, bool alphaBlend, bool depthWrite, bool hasRenderTarget,
+                                const wchar_t* debugName, ID3D12PipelineState** outPipelineState,
+                                DXGI_FORMAT secondaryRenderTargetFormat = DXGI_FORMAT_UNKNOWN,
+                                D3D12_COMPARISON_FUNC depthFunction = D3D12_COMPARISON_FUNC_LESS_EQUAL,
+                                DXGI_FORMAT tertiaryRenderTargetFormat = DXGI_FORMAT_UNKNOWN,
+                                std::optional<DXGI_FORMAT> fourthRenderTargetFormat = std::nullopt) {
+    if (device == nullptr || rootSignature == nullptr || amplificationShader.pShaderBytecode == nullptr ||
+        meshShader.pShaderBytecode == nullptr || (pixelShader.pShaderBytecode == nullptr && hasRenderTarget) ||
+        (tertiaryRenderTargetFormat != DXGI_FORMAT_UNKNOWN && secondaryRenderTargetFormat == DXGI_FORMAT_UNKNOWN) ||
+        (fourthRenderTargetFormat.has_value() && tertiaryRenderTargetFormat == DXGI_FORMAT_UNKNOWN) ||
+        outPipelineState == nullptr) {
+        return false;
+    }
 
-        const wchar_t* GeometryDebugName(GPUDRIVEN::GpuDrivenCommandBucket bucket) {
-            return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided
-                ? L"Meshlet GeometryAux DoubleSided PSO"
-                : L"Meshlet GeometryAux BackFace PSO";
-        }
+    D3D12_RT_FORMAT_ARRAY renderTargets{};
+    renderTargets.NumRenderTargets = hasRenderTarget ? (fourthRenderTargetFormat.has_value()                 ? 4u
+                                                        : tertiaryRenderTargetFormat != DXGI_FORMAT_UNKNOWN  ? 3u
+                                                        : secondaryRenderTargetFormat != DXGI_FORMAT_UNKNOWN ? 2u
+                                                                                                             : 1u)
+                                                     : 0u;
+    if (hasRenderTarget) {
+        renderTargets.RTFormats[0] = renderTargetFormat;
+        renderTargets.RTFormats[1] = secondaryRenderTargetFormat;
+        renderTargets.RTFormats[2] = tertiaryRenderTargetFormat;
+        renderTargets.RTFormats[3] = fourthRenderTargetFormat.value_or(DXGI_FORMAT_UNKNOWN);
+    }
 
-        const wchar_t* GeometryFeatureMaskDebugName(
-            GPUDRIVEN::GpuDrivenCommandBucket bucket) {
-            return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided
-                ? L"Meshlet GeometryFeatureMask DoubleSided PSO"
-                : L"Meshlet GeometryFeatureMask BackFace PSO";
-        }
+    CD3DX12_RASTERIZER_DESC rasterizer(D3D12_DEFAULT);
+    rasterizer.FrontCounterClockwise = MATH::kFrontFaceCounterClockwise ? TRUE : FALSE;
+    rasterizer.CullMode = cullMode;
 
-        const wchar_t* GeometryOutlineDebugName(
-            GPUDRIVEN::GpuDrivenCommandBucket bucket) {
-            return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided
-                ? L"Meshlet GeometryOutline DoubleSided PSO"
-                : L"Meshlet GeometryOutline BackFace PSO";
-        }
-
-        const wchar_t* VisibilityOverlayDebugName(
-            GPUDRIVEN::GpuDrivenCommandBucket bucket) {
-            return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided
-                ? L"Meshlet VisibilityOverlay DoubleSided PSO"
-                : L"Meshlet VisibilityOverlay BackFace PSO";
-        }
-
-        const wchar_t* DepthPrepassDebugName(GPUDRIVEN::GpuDrivenCommandBucket bucket) {
-            return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided
-                ? L"Meshlet DepthPrepass DoubleSided PSO"
-                : L"Meshlet DepthPrepass BackFace PSO";
-        }
-
-        const char* PipelineEventName(
-            MeshletPipelineKind kind,
-            GPUDRIVEN::GpuDrivenCommandBucket bucket) {
-
-            switch (kind) {
-            case MeshletPipelineKind::DepthPrepass:
-                return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided
-                    ? "MeshletDraw.DepthPrepass.DoubleSided"
-                    : "MeshletDraw.DepthPrepass.BackFace";
-            case MeshletPipelineKind::WaterVisibility:
-                return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided
-                    ? "MeshletDraw.WaterVisibility.DoubleSided"
-                    : "MeshletDraw.WaterVisibility.BackFace";
-            case MeshletPipelineKind::GeometryAux:
-                return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided
-                    ? "MeshletDraw.GeometryAux.DoubleSided"
-                    : "MeshletDraw.GeometryAux.BackFace";
-            case MeshletPipelineKind::GeometryAuxFeatureMask:
-                return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided
-                    ? "MeshletDraw.GeometryFeatureMask.DoubleSided"
-                    : "MeshletDraw.GeometryFeatureMask.BackFace";
-            case MeshletPipelineKind::GeometryOutline:
-                return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided
-                    ? "MeshletDraw.GeometryOutline.DoubleSided"
-                    : "MeshletDraw.GeometryOutline.BackFace";
-            case MeshletPipelineKind::VisibilityOverlay:
-                return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided
-                    ? "MeshletDraw.VisibilityOverlay.DoubleSided"
-                    : "MeshletDraw.VisibilityOverlay.BackFace";
-            case MeshletPipelineKind::ForwardDepthAware:
-                return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided
-                    ? "MeshletDraw.DepthAware.DoubleSided"
-                    : "MeshletDraw.DepthAware.BackFace";
-            case MeshletPipelineKind::ForwardTransparent:
-                return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided
-                    ? "MeshletDraw.Transparent.DoubleSided"
-                    : "MeshletDraw.Transparent.BackFace";
-            case MeshletPipelineKind::Shadow:
-                return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided
-                    ? "MeshletDraw.Shadow.DoubleSided"
-                    : "MeshletDraw.Shadow.BackFace";
-            case MeshletPipelineKind::ForwardOpaque:
-            default:
-                return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided
-                    ? "MeshletDraw.ForwardOpaque.DoubleSided"
-                    : "MeshletDraw.ForwardOpaque.BackFace";
-            }
-        }
-
-        GFX::GPU_PROFILE::Pass ProfilePassForPipelineKind(MeshletPipelineKind kind) {
-            switch (kind) {
-            case MeshletPipelineKind::GeometryAux:
-            case MeshletPipelineKind::GeometryAuxFeatureMask:
-                return GFX::GPU_PROFILE::Pass::MeshletDrawGeometryAux;
-            case MeshletPipelineKind::GeometryOutline:
-                return GFX::GPU_PROFILE::Pass::MeshletDrawGeometryOutline;
-            case MeshletPipelineKind::VisibilityOverlay:
-                return GFX::GPU_PROFILE::Pass::MeshletDrawVisibilityOverlay;
-            case MeshletPipelineKind::DepthPrepass:
-                return GFX::GPU_PROFILE::Pass::MeshletDrawDepthPrepass;
-            case MeshletPipelineKind::WaterVisibility:
-                return GFX::GPU_PROFILE::Pass::MeshletDrawDepthPrepass;
-            case MeshletPipelineKind::ForwardDepthAware:
-                return GFX::GPU_PROFILE::Pass::MeshletDrawDepthAware;
-            case MeshletPipelineKind::ForwardTransparent:
-                return GFX::GPU_PROFILE::Pass::MeshletDrawTransparent;
-            case MeshletPipelineKind::Shadow:
-                return GFX::GPU_PROFILE::Pass::MeshletDrawShadow;
-            case MeshletPipelineKind::ForwardOpaque:
-            default:
-                return GFX::GPU_PROFILE::Pass::MeshletDrawForward;
-            }
-        }
-
-        bool QueryMeshShaderCapabilities(
-            ID3D12Device* device,
-            MeshletRenderBackendStats& stats) {
-
-            if (device == nullptr) {
-                return false;
-            }
-
-            stats.shaderModel65Supported =
-                GFX::QueryShaderDeviceCapabilities(device).shaderModel >= 65u;
-
-            D3D12_FEATURE_DATA_D3D12_OPTIONS7 options7{};
-            HRESULT hr = device->CheckFeatureSupport(
-                D3D12_FEATURE_D3D12_OPTIONS7,
-                &options7,
-                sizeof(options7));
-            if (SUCCEEDED(hr)) {
-                stats.meshShaderTier = static_cast<uint32_t>(options7.MeshShaderTier);
-                stats.meshShaderSupported =
-                    options7.MeshShaderTier != D3D12_MESH_SHADER_TIER_NOT_SUPPORTED;
-            }
-
-            D3D12_FEATURE_DATA_D3D12_OPTIONS9 options9{};
-            hr = device->CheckFeatureSupport(
-                D3D12_FEATURE_D3D12_OPTIONS9,
-                &options9,
-                sizeof(options9));
-            if (SUCCEEDED(hr)) {
-                stats.meshShaderPipelineStatsSupported =
-                    options9.MeshShaderPipelineStatsSupported != FALSE;
-            }
-
-            return stats.shaderModel65Supported && stats.meshShaderSupported;
-        }
-
-        void LogMeshletPsoFailure(
-            HRESULT hr,
-            const wchar_t* debugName,
-            D3D12_SHADER_BYTECODE amplificationShader,
-            D3D12_SHADER_BYTECODE meshShader,
-            D3D12_SHADER_BYTECODE pixelShader,
-            DXGI_FORMAT renderTargetFormat,
-            D3D12_CULL_MODE cullMode,
-            bool alphaBlend,
-            bool depthWrite,
-            bool hasRenderTarget) {
-
-            std::ostringstream oss;
-            oss << "[MeshletBackend][ERROR] PSO create failed."
-                << " name=\"" << NarrowDebugName(debugName) << "\""
-                << " hr=" << GFX::FormatHRESULT(hr)
-                << " hasRT=" << (hasRenderTarget ? "true" : "false")
-                << " rtv=" << (hasRenderTarget ? GFX::FormatToString(renderTargetFormat) : "NONE")
-                << " dsv=" << GFX::FormatToString(DXGI_FORMAT_D32_FLOAT)
-                << " cull=" << CullModeToString(cullMode)
-                << " alphaBlend=" << (alphaBlend ? "true" : "false")
-                << " depthWrite=" << (depthWrite ? "true" : "false")
-                << " asBytes=" << amplificationShader.BytecodeLength
-                << " msBytes=" << meshShader.BytecodeLength
-                << " psBytes=" << pixelShader.BytecodeLength;
-            DEBUGLOG::PushRenderError(oss.str());
-        }
-
-        bool CreateMeshletPipelineState(
-            ID3D12Device* device,
-            ID3D12RootSignature* rootSignature,
-            D3D12_SHADER_BYTECODE amplificationShader,
-            D3D12_SHADER_BYTECODE meshShader,
-            D3D12_SHADER_BYTECODE pixelShader,
-            DXGI_FORMAT renderTargetFormat,
-            D3D12_CULL_MODE cullMode,
-            bool alphaBlend,
-            bool depthWrite,
-            bool hasRenderTarget,
-            const wchar_t* debugName,
-            ID3D12PipelineState** outPipelineState,
-            DXGI_FORMAT secondaryRenderTargetFormat = DXGI_FORMAT_UNKNOWN,
-            D3D12_COMPARISON_FUNC depthFunction =
-                D3D12_COMPARISON_FUNC_LESS_EQUAL,
-            DXGI_FORMAT tertiaryRenderTargetFormat = DXGI_FORMAT_UNKNOWN,
-            std::optional<DXGI_FORMAT> fourthRenderTargetFormat = std::nullopt) {
-
-            if (device == nullptr ||
-                rootSignature == nullptr ||
-                amplificationShader.pShaderBytecode == nullptr ||
-                meshShader.pShaderBytecode == nullptr ||
-                (pixelShader.pShaderBytecode == nullptr && hasRenderTarget) ||
-                (tertiaryRenderTargetFormat != DXGI_FORMAT_UNKNOWN &&
-                 secondaryRenderTargetFormat == DXGI_FORMAT_UNKNOWN) ||
-                (fourthRenderTargetFormat.has_value() &&
-                 tertiaryRenderTargetFormat == DXGI_FORMAT_UNKNOWN) ||
-                outPipelineState == nullptr) {
-                return false;
-            }
-
-            D3D12_RT_FORMAT_ARRAY renderTargets{};
-            renderTargets.NumRenderTargets = hasRenderTarget
-                ? (fourthRenderTargetFormat.has_value() ? 4u : tertiaryRenderTargetFormat != DXGI_FORMAT_UNKNOWN
-                    ? 3u
-                    : secondaryRenderTargetFormat != DXGI_FORMAT_UNKNOWN
-                        ? 2u
-                        : 1u)
-                : 0u;
-            if (hasRenderTarget) {
-                renderTargets.RTFormats[0] = renderTargetFormat;
-                renderTargets.RTFormats[1] = secondaryRenderTargetFormat;
-                renderTargets.RTFormats[2] = tertiaryRenderTargetFormat;
-                renderTargets.RTFormats[3] = fourthRenderTargetFormat.value_or(DXGI_FORMAT_UNKNOWN);
-            }
-
-            CD3DX12_RASTERIZER_DESC rasterizer(D3D12_DEFAULT);
-            rasterizer.FrontCounterClockwise = MATH::kFrontFaceCounterClockwise ? TRUE : FALSE;
-            rasterizer.CullMode = cullMode;
-
-            CD3DX12_DEPTH_STENCIL_DESC depthStencil(D3D12_DEFAULT);
-            depthStencil.DepthEnable = TRUE;
-            depthStencil.DepthWriteMask =
-                depthWrite
-                    ? D3D12_DEPTH_WRITE_MASK_ALL
-                    : D3D12_DEPTH_WRITE_MASK_ZERO;
-            depthStencil.DepthFunc = depthFunction;
-            CD3DX12_BLEND_DESC blend(D3D12_DEFAULT);
-            if (alphaBlend && hasRenderTarget) {
-                D3D12_RENDER_TARGET_BLEND_DESC& rt0 = blend.RenderTarget[0];
-                rt0.BlendEnable = TRUE;
-                // Every forward transparent shader returns premultiplied RGB.
-                rt0.SrcBlend = D3D12_BLEND_ONE;
-                rt0.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
-                rt0.BlendOp = D3D12_BLEND_OP_ADD;
-                rt0.SrcBlendAlpha = D3D12_BLEND_ONE;
-                rt0.DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
-                rt0.BlendOpAlpha = D3D12_BLEND_OP_ADD;
-                rt0.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
-            }
-            if (!hasRenderTarget) {
-                blend.AlphaToCoverageEnable = FALSE;
-                blend.IndependentBlendEnable = FALSE;
-                for (D3D12_RENDER_TARGET_BLEND_DESC& rt : blend.RenderTarget) {
-                    rt.BlendEnable = FALSE;
-                    rt.LogicOpEnable = FALSE;
-                    rt.RenderTargetWriteMask = 0;
-                }
-            }
-
-            MeshletPipelineStateStream stream{};
-            stream.RootSignature = rootSignature;
-            stream.AS = amplificationShader;
-            stream.MS = meshShader;
-            stream.PS = pixelShader;
-            stream.BlendState = blend;
-            stream.DepthStencilState = depthStencil;
-            stream.DSVFormat = DXGI_FORMAT_D32_FLOAT;
-            stream.RasterizerState = rasterizer;
-            stream.RTVFormats = renderTargets;
-            stream.SampleDesc = DXGI_SAMPLE_DESC{ 1, 0 };
-            stream.SampleMask = (std::numeric_limits<UINT>::max)();
-
-            D3D12_PIPELINE_STATE_STREAM_DESC desc{};
-            desc.SizeInBytes = sizeof(stream);
-            desc.pPipelineStateSubobjectStream = &stream;
-
-            Microsoft::WRL::ComPtr<ID3D12Device2> device2;
-            HRESULT hr = device->QueryInterface(IID_PPV_ARGS(device2.GetAddressOf()));
-            if (!HIKARI_DX_CHECK(hr, "MeshletRenderBackend::QueryDevice2")) {
-                return false;
-            }
-
-            GFX::ClearD3D12InfoQueue(device);
-            const std::string pipelineStage = "PSO." + NarrowDebugName(debugName);
-            CORE::StartupTimer pipelineTimer(pipelineStage);
-            hr = device2->CreatePipelineState(
-                &desc,
-                IID_PPV_ARGS(outPipelineState));
-            if (!HIKARI_DX_CHECK(hr, "MeshletRenderBackend::CreatePipelineState")) {
-                LogMeshletPsoFailure(
-                    hr,
-                    debugName,
-                    amplificationShader,
-                    meshShader,
-                    pixelShader,
-                    renderTargetFormat,
-                    cullMode,
-                    alphaBlend,
-                    depthWrite,
-                    hasRenderTarget);
-                const std::string reason =
-                    "MeshletRenderBackend::CreatePipelineState name=" +
-                    NarrowDebugName(debugName);
-                GFX::DumpD3D12InfoQueue(device, reason.c_str());
-                return false;
-            }
-            GFX::SetD3D12Name(*outPipelineState, debugName);
-            return true;
-        }
-        bool CreateForwardVariantPipelines(ID3D12Device* device, ID3D12RootSignature* root,
-            const ASSETS::SHADER::ShaderAssetEntryLease& amplification, const ASSETS::SHADER::ShaderAssetEntryLease& mesh,
-            const ASSETS::SHADER::ShaderAssetEntryLease& pixel, size_t variantIndex,
-            MeshletRenderBackend::PipelineBucketArray& pipelines, MeshletRenderBackendStats& stats) {
-            MeshletRenderBackend::PipelineBucketArray replacements;
-            for (size_t i = 0; i < replacements.size(); ++i) {
-                const auto bucket = static_cast<GPUDRIVEN::GpuDrivenCommandBucket>(i);
-                const auto name = ForwardDebugName(bucket, variantIndex);
-                ++stats.pipelineCreateRequestCount;
-                if (!CreateMeshletPipelineState(device, root, ShaderBytecode(amplification), ShaderBytecode(mesh),
-                    ShaderBytecode(pixel), DXGI_FORMAT_R16G16B16A16_FLOAT, CullModeForBucket(bucket),
-                    false, true, true, name.c_str(), replacements[i].GetAddressOf())) return false;
-                ++stats.pipelineCreateReadyCount;
-            }
-            pipelines.swap(replacements);
-            ++stats.preparedForwardVariantCount;
-            return true;
+    CD3DX12_DEPTH_STENCIL_DESC depthStencil(D3D12_DEFAULT);
+    depthStencil.DepthEnable = TRUE;
+    depthStencil.DepthWriteMask = depthWrite ? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
+    depthStencil.DepthFunc = depthFunction;
+    CD3DX12_BLEND_DESC blend(D3D12_DEFAULT);
+    if (alphaBlend && hasRenderTarget) {
+        D3D12_RENDER_TARGET_BLEND_DESC& rt0 = blend.RenderTarget[0];
+        rt0.BlendEnable = TRUE;
+        // Every forward transparent shader returns premultiplied RGB.
+        rt0.SrcBlend = D3D12_BLEND_ONE;
+        rt0.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+        rt0.BlendOp = D3D12_BLEND_OP_ADD;
+        rt0.SrcBlendAlpha = D3D12_BLEND_ONE;
+        rt0.DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
+        rt0.BlendOpAlpha = D3D12_BLEND_OP_ADD;
+        rt0.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+    }
+    if (!hasRenderTarget) {
+        blend.AlphaToCoverageEnable = FALSE;
+        blend.IndependentBlendEnable = FALSE;
+        for (D3D12_RENDER_TARGET_BLEND_DESC& rt : blend.RenderTarget) {
+            rt.BlendEnable = FALSE;
+            rt.LogicOpEnable = FALSE;
+            rt.RenderTargetWriteMask = 0;
         }
     }
 
-    bool MeshletRenderBackend::Initialize(
-        ID3D12Device* device,
-        ID3D12RootSignature* rootSignature) {
+    MeshletPipelineStateStream stream{};
+    stream.RootSignature = rootSignature;
+    stream.AS = amplificationShader;
+    stream.MS = meshShader;
+    stream.PS = pixelShader;
+    stream.BlendState = blend;
+    stream.DepthStencilState = depthStencil;
+    stream.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+    stream.RasterizerState = rasterizer;
+    stream.RTVFormats = renderTargets;
+    stream.SampleDesc = DXGI_SAMPLE_DESC{1, 0};
+    stream.SampleMask = (std::numeric_limits<UINT>::max)();
 
-        return Initialize(device, rootSignature, MeshletPipelineMask::All);
+    D3D12_PIPELINE_STATE_STREAM_DESC desc{};
+    desc.SizeInBytes = sizeof(stream);
+    desc.pPipelineStateSubobjectStream = &stream;
+
+    Microsoft::WRL::ComPtr<ID3D12Device2> device2;
+    HRESULT hr = device->QueryInterface(IID_PPV_ARGS(device2.GetAddressOf()));
+    if (!HIKARI_DX_CHECK(hr, "MeshletRenderBackend::QueryDevice2")) {
+        return false;
     }
 
-    bool MeshletRenderBackend::Initialize(
-        ID3D12Device* device,
-        ID3D12RootSignature* rootSignature,
-        uint32_t pipelineMask) {
+    GFX::ClearD3D12InfoQueue(device);
+    const std::string pipelineStage = "PSO." + NarrowDebugName(debugName);
+    CORE::StartupTimer pipelineTimer(pipelineStage);
+    hr = device2->CreatePipelineState(&desc, IID_PPV_ARGS(outPipelineState));
+    if (!HIKARI_DX_CHECK(hr, "MeshletRenderBackend::CreatePipelineState")) {
+        LogMeshletPsoFailure(hr, debugName, amplificationShader, meshShader, pixelShader, renderTargetFormat, cullMode,
+                             alphaBlend, depthWrite, hasRenderTarget);
+        const std::string reason = "MeshletRenderBackend::CreatePipelineState name=" + NarrowDebugName(debugName);
+        GFX::DumpD3D12InfoQueue(device, reason.c_str());
+        return false;
+    }
+    GFX::SetD3D12Name(*outPipelineState, debugName);
+    return true;
+}
+bool CreateForwardVariantPipelines(ID3D12Device* device, ID3D12RootSignature* root,
+                                   const ASSETS::SHADER::ShaderAssetEntryLease& amplification,
+                                   const ASSETS::SHADER::ShaderAssetEntryLease& mesh,
+                                   const ASSETS::SHADER::ShaderAssetEntryLease& pixel, size_t variantIndex,
+                                   MeshletRenderBackend::PipelineBucketArray& pipelines,
+                                   MeshletRenderBackendStats& stats) {
+    MeshletRenderBackend::PipelineBucketArray replacements;
+    for (size_t i = 0; i < replacements.size(); ++i) {
+        const auto bucket = static_cast<GPUDRIVEN::GpuDrivenCommandBucket>(i);
+        const auto name = ForwardDebugName(bucket, variantIndex);
+        ++stats.pipelineCreateRequestCount;
+        if (!CreateMeshletPipelineState(device, root, ShaderBytecode(amplification), ShaderBytecode(mesh),
+                                        ShaderBytecode(pixel), DXGI_FORMAT_R16G16B16A16_FLOAT,
+                                        CullModeForBucket(bucket), false, true, true, name.c_str(),
+                                        replacements[i].GetAddressOf()))
+            return false;
+        ++stats.pipelineCreateReadyCount;
+    }
+    pipelines.swap(replacements);
+    ++stats.preparedForwardVariantCount;
+    return true;
+}
+} // namespace
 
-        Reset();
-        device_ = device;
-        rootSignature_ = rootSignature;
-        pipelineMask_ = pipelineMask & MeshletPipelineMask::All;
-        stats_.initialized = device != nullptr && rootSignature != nullptr;
-        if (!stats_.initialized) {
-            return false;
-        }
-        if (pipelineMask_ == 0u) {
-            return true;
-        }
+bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature* rootSignature) {
+    return Initialize(device, rootSignature, MeshletPipelineMask::All);
+}
 
-        if (!QueryMeshShaderCapabilities(device, stats_)) {
-            DEBUGLOG::PushRenderError(
-                "[MeshletBackend][WARN] Mesh Shader backend is not supported by this device/runtime.");
-            return false;
-        }
+bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature* rootSignature, uint32_t pipelineMask) {
+    Reset();
+    device_ = device;
+    rootSignature_ = rootSignature;
+    pipelineMask_ = pipelineMask & MeshletPipelineMask::All;
+    stats_.initialized = device != nullptr && rootSignature != nullptr;
+    if (!stats_.initialized) {
+        return false;
+    }
+    if (pipelineMask_ == 0u) {
+        return true;
+    }
 
-        const GFX::ShaderDeviceCapabilities capabilities =
-            GFX::QueryShaderDeviceCapabilities(device);
-        const auto resolveShader = [&capabilities](const char* programId,
-            ASSETS::SHADER::ShaderStage stage, const char* profile, ASSETS::SHADER::ShaderAssetEntryLease& shader) {
-            return ResolveMeshletShader(capabilities, programId, stage, profile, shader);
-        };
+    if (!QueryMeshShaderCapabilities(device, stats_)) {
+        DEBUGLOG::PushRenderError(
+            "[MeshletBackend][WARN] Mesh Shader backend is not supported by this device/runtime.");
+        return false;
+    }
 
-        ASSETS::SHADER::ShaderAssetEntryLease amplificationShader{};
-        ASSETS::SHADER::ShaderAssetEntryLease shadowAmplificationShader{};
-        ASSETS::SHADER::ShaderAssetEntryLease forwardMeshShader{};
-        ASSETS::SHADER::ShaderAssetEntryLease shadowMeshShader{};
-        ASSETS::SHADER::ShaderAssetEntryLease depthMeshShader{};
-        ASSETS::SHADER::ShaderAssetEntryLease waterVisibilityMeshShader{};
-        ASSETS::SHADER::ShaderAssetEntryLease geometryMeshShader{};
-        ASSETS::SHADER::ShaderAssetEntryLease geometryOutlineMeshShader{};
-        ASSETS::SHADER::ShaderAssetEntryLease forwardPixelShader{};
-        ASSETS::SHADER::ShaderAssetEntryLease shadowPixelShader{};
-        ASSETS::SHADER::ShaderAssetEntryLease waterVisibilityPixelShader{};
-        ASSETS::SHADER::ShaderAssetEntryLease geometryPixelShader{};
-        ASSETS::SHADER::ShaderAssetEntryLease
-            geometryFeatureMaskPixelShader{};
-        ASSETS::SHADER::ShaderAssetEntryLease geometryOutlinePixelShader{};
-        ASSETS::SHADER::ShaderAssetEntryLease visibilityOverlayPixelShader{};
-        const bool needsForwardMeshShader =
-            IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardOpaque) ||
-            IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardDepthAware) ||
-            IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardTransparent) ||
-            IsPipelineRequested(pipelineMask_, MeshletPipelineKind::VisibilityOverlay);
-        const bool needsShadowMeshShader =
-            IsPipelineRequested(pipelineMask_, MeshletPipelineKind::Shadow);
-        const bool needsDepthMeshShader =
-            IsPipelineRequested(pipelineMask_, MeshletPipelineKind::DepthPrepass);
-        const bool needsWaterVisibilityMeshShader =
-            IsPipelineRequested(
-                pipelineMask_, MeshletPipelineKind::WaterVisibility);
-        const bool needsGeometryMeshShader =
-            IsPipelineRequested(
-                pipelineMask_, MeshletPipelineKind::GeometryAux) ||
-            IsPipelineRequested(
-                pipelineMask_,
-                MeshletPipelineKind::GeometryAuxFeatureMask);
-        const bool needsGeometryOutlineMeshShader =
-            IsPipelineRequested(
-                pipelineMask_, MeshletPipelineKind::GeometryOutline);
-        bool waterVisibilityShadersReady = true;
-        bool geometryFeatureMaskShadersReady = true;
-        bool geometryOutlineShadersReady = true;
-        bool visibilityOverlayShaderReady = true;
-        if ((pipelineMask_ & MeshletPipelineMask::MainRenderer) != 0u &&
-            !resolveShader(
-                "HIKARI.EngineShader.Render3D_MeshletAS",
-                ASSETS::SHADER::ShaderStage::Amplification,
-                "as_6_5",
-                amplificationShader)) {
+    const GFX::ShaderDeviceCapabilities capabilities = GFX::QueryShaderDeviceCapabilities(device);
+    const auto resolveShader = [&capabilities](const char* programId, ASSETS::SHADER::ShaderStage stage,
+                                               const char* profile, ASSETS::SHADER::ShaderAssetEntryLease& shader) {
+        return ResolveMeshletShader(capabilities, programId, stage, profile, shader);
+    };
+
+    ASSETS::SHADER::ShaderAssetEntryLease amplificationShader{};
+    ASSETS::SHADER::ShaderAssetEntryLease shadowAmplificationShader{};
+    ASSETS::SHADER::ShaderAssetEntryLease forwardMeshShader{};
+    ASSETS::SHADER::ShaderAssetEntryLease shadowMeshShader{};
+    ASSETS::SHADER::ShaderAssetEntryLease depthMeshShader{};
+    ASSETS::SHADER::ShaderAssetEntryLease waterVisibilityMeshShader{};
+    ASSETS::SHADER::ShaderAssetEntryLease geometryMeshShader{};
+    ASSETS::SHADER::ShaderAssetEntryLease geometryOutlineMeshShader{};
+    ASSETS::SHADER::ShaderAssetEntryLease forwardPixelShader{};
+    ASSETS::SHADER::ShaderAssetEntryLease shadowPixelShader{};
+    ASSETS::SHADER::ShaderAssetEntryLease waterVisibilityPixelShader{};
+    ASSETS::SHADER::ShaderAssetEntryLease geometryPixelShader{};
+    ASSETS::SHADER::ShaderAssetEntryLease geometryFeatureMaskPixelShader{};
+    ASSETS::SHADER::ShaderAssetEntryLease geometryOutlinePixelShader{};
+    ASSETS::SHADER::ShaderAssetEntryLease visibilityOverlayPixelShader{};
+    const bool needsForwardMeshShader = IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardOpaque) ||
+                                        IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardDepthAware) ||
+                                        IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardTransparent) ||
+                                        IsPipelineRequested(pipelineMask_, MeshletPipelineKind::VisibilityOverlay);
+    const bool needsShadowMeshShader = IsPipelineRequested(pipelineMask_, MeshletPipelineKind::Shadow);
+    const bool needsDepthMeshShader = IsPipelineRequested(pipelineMask_, MeshletPipelineKind::DepthPrepass);
+    const bool needsWaterVisibilityMeshShader =
+        IsPipelineRequested(pipelineMask_, MeshletPipelineKind::WaterVisibility);
+    const bool needsGeometryMeshShader =
+        IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAux) ||
+        IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAuxFeatureMask);
+    const bool needsGeometryOutlineMeshShader =
+        IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryOutline);
+    bool waterVisibilityShadersReady = true;
+    bool geometryFeatureMaskShadersReady = true;
+    bool geometryOutlineShadersReady = true;
+    bool visibilityOverlayShaderReady = true;
+    if ((pipelineMask_ & MeshletPipelineMask::MainRenderer) != 0u &&
+        !resolveShader("HIKARI.EngineShader.Render3D_MeshletAS", ASSETS::SHADER::ShaderStage::Amplification, "as_6_5",
+                       amplificationShader)) {
+        return false;
+    }
+    if (needsShadowMeshShader &&
+        !resolveShader("HIKARI.EngineShader.Render3D_MeshletShadowAS", ASSETS::SHADER::ShaderStage::Amplification,
+                       "as_6_5", shadowAmplificationShader)) {
+        return false;
+    }
+    if (needsForwardMeshShader && !resolveShader("HIKARI.EngineShader.Render3D_MeshletMS",
+                                                 ASSETS::SHADER::ShaderStage::Mesh, "ms_6_5", forwardMeshShader)) {
+        return false;
+    }
+    if (needsShadowMeshShader && !resolveShader("HIKARI.EngineShader.Render3D_MeshletShadowMS",
+                                                ASSETS::SHADER::ShaderStage::Mesh, "ms_6_5", shadowMeshShader)) {
+        return false;
+    }
+    if (needsDepthMeshShader && !resolveShader("HIKARI.EngineShader.Render3D_MeshletDepthMS",
+                                               ASSETS::SHADER::ShaderStage::Mesh, "ms_6_5", depthMeshShader)) {
+        return false;
+    }
+    if (needsWaterVisibilityMeshShader &&
+        !resolveShader("HIKARI.EngineShader.Render3D_MeshletWaterVisibilityMS", ASSETS::SHADER::ShaderStage::Mesh,
+                       "ms_6_5", waterVisibilityMeshShader)) {
+        waterVisibilityShadersReady = false;
+        DEBUGLOG::PushRenderError("[MeshletBackend][WARN] Optional cooked water visibility "
+                                  "mesh shader is unavailable; opaque SceneDepth fallback "
+                                  "remains active.");
+    }
+    if (needsGeometryMeshShader && !resolveShader("HIKARI.EngineShader.Render3D_MeshletGeometryAuxMS",
+                                                  ASSETS::SHADER::ShaderStage::Mesh, "ms_6_5", geometryMeshShader)) {
+        return false;
+    }
+    if (needsGeometryOutlineMeshShader &&
+        !resolveShader("HIKARI.EngineShader.Render3D_MeshletGeometryOutlineMS", ASSETS::SHADER::ShaderStage::Mesh,
+                       "ms_6_5", geometryOutlineMeshShader)) {
+        geometryOutlineShadersReady = false;
+        pipelineMask_ &= ~MeshletPipelineMask::GeometryOutline;
+        DEBUGLOG::PushRenderError("[MeshletBackend][WARN] Optional geometry-outline mesh "
+                                  "shader is unavailable; core Mesh rendering remains active.");
+    }
+    bool fullForwardPixelShaderReady = false;
+    if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardOpaque)) {
+        if (!resolveShader(kForwardOpaqueProgramIds[0], ASSETS::SHADER::ShaderStage::Pixel, "ps_6_0",
+                           forwardPixelShader))
+            return false;
+        fullForwardPixelShaderReady = true;
+    }
+    if ((IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardDepthAware) ||
+         IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardTransparent)) &&
+        !fullForwardPixelShaderReady) {
+        if (!resolveShader(kForwardOpaqueProgramIds[0u], ASSETS::SHADER::ShaderStage::Pixel, "ps_6_0",
+                           forwardPixelShader)) {
             return false;
         }
-        if (needsShadowMeshShader &&
-            !resolveShader(
-                "HIKARI.EngineShader.Render3D_MeshletShadowAS",
-                ASSETS::SHADER::ShaderStage::Amplification,
-                "as_6_5",
-                shadowAmplificationShader)) {
+        fullForwardPixelShaderReady = true;
+    }
+    if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::Shadow) &&
+        !resolveShader("HIKARI.EngineShader.Render3D_MeshletShadowPS", ASSETS::SHADER::ShaderStage::Pixel, "ps_6_0",
+                       shadowPixelShader)) {
+        return false;
+    }
+    if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::WaterVisibility) &&
+        !resolveShader("HIKARI.EngineShader.Render3D_MeshletWaterVisibilityPS", ASSETS::SHADER::ShaderStage::Pixel,
+                       "ps_6_0", waterVisibilityPixelShader)) {
+        waterVisibilityShadersReady = false;
+        DEBUGLOG::PushRenderError("[MeshletBackend][WARN] Optional cooked water visibility "
+                                  "pixel shader is unavailable; opaque SceneDepth fallback "
+                                  "remains active.");
+    }
+    if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAux) &&
+        !resolveShader("HIKARI.EngineShader.Render3D_MeshletGeometryAuxPS", ASSETS::SHADER::ShaderStage::Pixel,
+                       "ps_6_0", geometryPixelShader)) {
+        return false;
+    }
+    if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAuxFeatureMask) &&
+        !resolveShader("HIKARI.EngineShader.Render3D_MeshletGeometryAuxFeaturePS", ASSETS::SHADER::ShaderStage::Pixel,
+                       "ps_6_0", geometryFeatureMaskPixelShader)) {
+        geometryFeatureMaskShadersReady = false;
+        pipelineMask_ &= ~MeshletPipelineMask::GeometryAuxFeatureMask;
+        DEBUGLOG::PushRenderError("[MeshletBackend][WARN] Optional feature-mask pixel shader "
+                                  "is unavailable; core Mesh rendering remains active.");
+    }
+    if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryOutline) && geometryOutlineShadersReady &&
+        !resolveShader("HIKARI.EngineShader.Render3D_GeometryOutlinePS", ASSETS::SHADER::ShaderStage::Pixel, "ps_6_0",
+                       geometryOutlinePixelShader)) {
+        geometryOutlineShadersReady = false;
+        pipelineMask_ &= ~MeshletPipelineMask::GeometryOutline;
+        DEBUGLOG::PushRenderError("[MeshletBackend][WARN] Optional geometry-outline pixel "
+                                  "shader is unavailable; core Mesh rendering remains active.");
+    }
+    if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::VisibilityOverlay) &&
+        !resolveShader("HIKARI.EngineShader.Render3D_VisibilityOverlayPS", ASSETS::SHADER::ShaderStage::Pixel, "ps_6_0",
+                       visibilityOverlayPixelShader)) {
+        visibilityOverlayShaderReady = false;
+        pipelineMask_ &= ~MeshletPipelineMask::VisibilityOverlay;
+        DEBUGLOG::PushRenderError("[MeshletBackend][WARN] Optional visibility-overlay shader "
+                                  "is unavailable; core Mesh rendering remains active.");
+    }
+    stats_.shaderCompileReady = true;
+    if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardOpaque)) {
+        forwardVariantAttempted_[0] = true;
+        if (!CreateForwardVariantPipelines(device, rootSignature, amplificationShader, forwardMeshShader,
+                                           forwardPixelShader, 0, forwardPipelineStates_[0], stats_))
             return false;
-        }
-        if (needsForwardMeshShader &&
-            !resolveShader(
-                "HIKARI.EngineShader.Render3D_MeshletMS",
-                ASSETS::SHADER::ShaderStage::Mesh,
-                "ms_6_5",
-                forwardMeshShader)) {
-            return false;
-        }
-        if (needsShadowMeshShader &&
-            !resolveShader(
-                "HIKARI.EngineShader.Render3D_MeshletShadowMS",
-                ASSETS::SHADER::ShaderStage::Mesh,
-                "ms_6_5",
-                shadowMeshShader)) {
-            return false;
-        }
-        if (needsDepthMeshShader &&
-            !resolveShader(
-                "HIKARI.EngineShader.Render3D_MeshletDepthMS",
-                ASSETS::SHADER::ShaderStage::Mesh,
-                "ms_6_5",
-                depthMeshShader)) {
-            return false;
-        }
-        if (needsWaterVisibilityMeshShader &&
-            !resolveShader(
-                "HIKARI.EngineShader.Render3D_MeshletWaterVisibilityMS",
-                ASSETS::SHADER::ShaderStage::Mesh,
-                "ms_6_5",
-                waterVisibilityMeshShader)) {
-            waterVisibilityShadersReady = false;
-            DEBUGLOG::PushRenderError(
-                "[MeshletBackend][WARN] Optional cooked water visibility "
-                "mesh shader is unavailable; opaque SceneDepth fallback "
-                "remains active.");
-        }
-        if (needsGeometryMeshShader &&
-            !resolveShader(
-                "HIKARI.EngineShader.Render3D_MeshletGeometryAuxMS",
-                ASSETS::SHADER::ShaderStage::Mesh,
-                "ms_6_5",
-                geometryMeshShader)) {
-            return false;
-        }
-        if (needsGeometryOutlineMeshShader &&
-            !resolveShader(
-                "HIKARI.EngineShader.Render3D_MeshletGeometryOutlineMS",
-                ASSETS::SHADER::ShaderStage::Mesh,
-                "ms_6_5",
-                geometryOutlineMeshShader)) {
-            geometryOutlineShadersReady = false;
-            pipelineMask_ &= ~MeshletPipelineMask::GeometryOutline;
-            DEBUGLOG::PushRenderError(
-                "[MeshletBackend][WARN] Optional geometry-outline mesh "
-                "shader is unavailable; core Mesh rendering remains active.");
-        }
-        bool fullForwardPixelShaderReady = false;
-        if (IsPipelineRequested(
-                pipelineMask_,
-                MeshletPipelineKind::ForwardOpaque)) {
-            if (!resolveShader(kForwardOpaqueProgramIds[0], ASSETS::SHADER::ShaderStage::Pixel,
-                "ps_6_0", forwardPixelShader)) return false;
-            fullForwardPixelShaderReady = true;
-        }
-        if ((IsPipelineRequested(
-                 pipelineMask_,
-                 MeshletPipelineKind::ForwardDepthAware) ||
-             IsPipelineRequested(
-                 pipelineMask_,
-                 MeshletPipelineKind::ForwardTransparent)) &&
-            !fullForwardPixelShaderReady) {
-            if (!resolveShader(
-                    kForwardOpaqueProgramIds[0u],
-                    ASSETS::SHADER::ShaderStage::Pixel,
-                    "ps_6_0",
-                    forwardPixelShader)) {
-                return false;
+    }
+
+    for (size_t bucketIndex = 0; bucketIndex < GPUDRIVEN::kGpuDrivenCommandBucketCount; ++bucketIndex) {
+        const GPUDRIVEN::GpuDrivenCommandBucket bucket = static_cast<GPUDRIVEN::GpuDrivenCommandBucket>(bucketIndex);
+
+        if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardDepthAware)) {
+            ++stats_.pipelineCreateRequestCount;
+            if (CreateMeshletPipelineState(
+                    device, rootSignature, ShaderBytecode(amplificationShader), ShaderBytecode(forwardMeshShader),
+                    ShaderBytecode(forwardPixelShader), DXGI_FORMAT_R16G16B16A16_FLOAT, CullModeForBucket(bucket), true,
+                    false, true, DepthAwareDebugName(bucket), depthAwarePipelineStates_[bucketIndex].GetAddressOf())) {
+                ++stats_.pipelineCreateReadyCount;
             }
-            fullForwardPixelShaderReady = true;
-        }
-        if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::Shadow) &&
-            !resolveShader(
-                "HIKARI.EngineShader.Render3D_MeshletShadowPS",
-                ASSETS::SHADER::ShaderStage::Pixel,
-                "ps_6_0",
-                shadowPixelShader)) {
-            return false;
-        }
-        if (IsPipelineRequested(
-                pipelineMask_, MeshletPipelineKind::WaterVisibility) &&
-            !resolveShader(
-                "HIKARI.EngineShader.Render3D_MeshletWaterVisibilityPS",
-                ASSETS::SHADER::ShaderStage::Pixel,
-                "ps_6_0",
-                waterVisibilityPixelShader)) {
-            waterVisibilityShadersReady = false;
-            DEBUGLOG::PushRenderError(
-                "[MeshletBackend][WARN] Optional cooked water visibility "
-                "pixel shader is unavailable; opaque SceneDepth fallback "
-                "remains active.");
-        }
-        if (IsPipelineRequested(
-                pipelineMask_, MeshletPipelineKind::GeometryAux) &&
-            !resolveShader(
-                "HIKARI.EngineShader.Render3D_MeshletGeometryAuxPS",
-                ASSETS::SHADER::ShaderStage::Pixel,
-                "ps_6_0",
-                geometryPixelShader)) {
-            return false;
-        }
-        if (IsPipelineRequested(
-                pipelineMask_,
-                MeshletPipelineKind::GeometryAuxFeatureMask) &&
-            !resolveShader(
-                "HIKARI.EngineShader.Render3D_MeshletGeometryAuxFeaturePS",
-                ASSETS::SHADER::ShaderStage::Pixel,
-                "ps_6_0",
-                geometryFeatureMaskPixelShader)) {
-            geometryFeatureMaskShadersReady = false;
-            pipelineMask_ &=
-                ~MeshletPipelineMask::GeometryAuxFeatureMask;
-            DEBUGLOG::PushRenderError(
-                "[MeshletBackend][WARN] Optional feature-mask pixel shader "
-                "is unavailable; core Mesh rendering remains active.");
-        }
-        if (IsPipelineRequested(
-                pipelineMask_, MeshletPipelineKind::GeometryOutline) &&
-            geometryOutlineShadersReady &&
-            !resolveShader(
-                "HIKARI.EngineShader.Render3D_GeometryOutlinePS",
-                ASSETS::SHADER::ShaderStage::Pixel,
-                "ps_6_0",
-                geometryOutlinePixelShader)) {
-            geometryOutlineShadersReady = false;
-            pipelineMask_ &= ~MeshletPipelineMask::GeometryOutline;
-            DEBUGLOG::PushRenderError(
-                "[MeshletBackend][WARN] Optional geometry-outline pixel "
-                "shader is unavailable; core Mesh rendering remains active.");
-        }
-        if (IsPipelineRequested(
-                pipelineMask_, MeshletPipelineKind::VisibilityOverlay) &&
-            !resolveShader(
-                "HIKARI.EngineShader.Render3D_VisibilityOverlayPS",
-                ASSETS::SHADER::ShaderStage::Pixel,
-                "ps_6_0",
-                visibilityOverlayPixelShader)) {
-            visibilityOverlayShaderReady = false;
-            pipelineMask_ &= ~MeshletPipelineMask::VisibilityOverlay;
-            DEBUGLOG::PushRenderError(
-                "[MeshletBackend][WARN] Optional visibility-overlay shader "
-                "is unavailable; core Mesh rendering remains active.");
-        }
-        stats_.shaderCompileReady = true;
-        if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardOpaque)) {
-            forwardVariantAttempted_[0] = true;
-            if (!CreateForwardVariantPipelines(device, rootSignature, amplificationShader, forwardMeshShader,
-                forwardPixelShader, 0, forwardPipelineStates_[0], stats_)) return false;
         }
 
-
-        for (size_t bucketIndex = 0; bucketIndex < GPUDRIVEN::kGpuDrivenCommandBucketCount; ++bucketIndex) {
-            const GPUDRIVEN::GpuDrivenCommandBucket bucket =
-                static_cast<GPUDRIVEN::GpuDrivenCommandBucket>(bucketIndex);
-
-            if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardDepthAware)) {
-                ++stats_.pipelineCreateRequestCount;
-                if (CreateMeshletPipelineState(
-                    device,
-                    rootSignature,
-                    ShaderBytecode(amplificationShader),
-                    ShaderBytecode(forwardMeshShader),
-                    ShaderBytecode(forwardPixelShader),
-                    DXGI_FORMAT_R16G16B16A16_FLOAT,
-                    CullModeForBucket(bucket),
-                    true,
-                    false,
-                    true,
-                    DepthAwareDebugName(bucket),
-                    depthAwarePipelineStates_[bucketIndex].GetAddressOf())) {
-                    ++stats_.pipelineCreateReadyCount;
-                }
+        if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardTransparent)) {
+            ++stats_.pipelineCreateRequestCount;
+            if (CreateMeshletPipelineState(device, rootSignature, ShaderBytecode(amplificationShader),
+                                           ShaderBytecode(forwardMeshShader), ShaderBytecode(forwardPixelShader),
+                                           DXGI_FORMAT_R16G16B16A16_FLOAT, CullModeForBucket(bucket), true, false, true,
+                                           TransparentDebugName(bucket),
+                                           transparentPipelineStates_[bucketIndex].GetAddressOf())) {
+                ++stats_.pipelineCreateReadyCount;
             }
+        }
 
-            if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardTransparent)) {
-                ++stats_.pipelineCreateRequestCount;
-                if (CreateMeshletPipelineState(
-                    device,
-                    rootSignature,
-                    ShaderBytecode(amplificationShader),
-                    ShaderBytecode(forwardMeshShader),
-                    ShaderBytecode(forwardPixelShader),
-                    DXGI_FORMAT_R16G16B16A16_FLOAT,
-                    CullModeForBucket(bucket),
-                    true,
-                    false,
-                    true,
-                    TransparentDebugName(bucket),
-                    transparentPipelineStates_[bucketIndex].GetAddressOf())) {
-                    ++stats_.pipelineCreateReadyCount;
-                }
+        if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::Shadow)) {
+            ++stats_.pipelineCreateRequestCount;
+            if (CreateMeshletPipelineState(
+                    device, rootSignature, ShaderBytecode(shadowAmplificationShader), ShaderBytecode(shadowMeshShader),
+                    ShaderBytecode(shadowPixelShader), DXGI_FORMAT_UNKNOWN, CullModeForBucket(bucket), false, true,
+                    false, ShadowDebugName(bucket), shadowPipelineStates_[bucketIndex].GetAddressOf())) {
+                ++stats_.pipelineCreateReadyCount;
             }
+        }
 
-            if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::Shadow)) {
-                ++stats_.pipelineCreateRequestCount;
-                if (CreateMeshletPipelineState(
-                    device,
-                    rootSignature,
-                    ShaderBytecode(shadowAmplificationShader),
-                    ShaderBytecode(shadowMeshShader),
-                    ShaderBytecode(shadowPixelShader),
-                    DXGI_FORMAT_UNKNOWN,
-                    CullModeForBucket(bucket),
-                    false,
-                    true,
-                    false,
-                    ShadowDebugName(bucket),
-                    shadowPipelineStates_[bucketIndex].GetAddressOf())) {
-                    ++stats_.pipelineCreateReadyCount;
-                }
+        if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAux)) {
+            ++stats_.pipelineCreateRequestCount;
+            if (CreateMeshletPipelineState(device, rootSignature, ShaderBytecode(amplificationShader),
+                                           ShaderBytecode(geometryMeshShader), ShaderBytecode(geometryPixelShader),
+                                           DXGI_FORMAT_R16G16B16A16_FLOAT, CullModeForBucket(bucket), false, true, true,
+                                           GeometryDebugName(bucket),
+                                           geometryAuxPipelineStates_[bucketIndex].GetAddressOf())) {
+                ++stats_.pipelineCreateReadyCount;
             }
+        }
 
-            if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAux)) {
-                ++stats_.pipelineCreateRequestCount;
-                if (CreateMeshletPipelineState(
-                    device,
-                    rootSignature,
-                    ShaderBytecode(amplificationShader),
-                    ShaderBytecode(geometryMeshShader),
-                    ShaderBytecode(geometryPixelShader),
-                    DXGI_FORMAT_R16G16B16A16_FLOAT,
-                    CullModeForBucket(bucket),
-                    false,
-                    true,
-                    true,
-                    GeometryDebugName(bucket),
-                    geometryAuxPipelineStates_[bucketIndex].GetAddressOf())) {
-                    ++stats_.pipelineCreateReadyCount;
-                }
+        if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAuxFeatureMask) &&
+            geometryFeatureMaskShadersReady) {
+            ++stats_.pipelineCreateRequestCount;
+            if (CreateMeshletPipelineState(
+                    device, rootSignature, ShaderBytecode(amplificationShader), ShaderBytecode(geometryMeshShader),
+                    ShaderBytecode(geometryFeatureMaskPixelShader), DXGI_FORMAT_R16G16B16A16_FLOAT,
+                    CullModeForBucket(bucket), false, true, true, GeometryFeatureMaskDebugName(bucket),
+                    geometryFeatureMaskPipelineStates_[bucketIndex].GetAddressOf(), DXGI_FORMAT_R32G32_UINT,
+                    D3D12_COMPARISON_FUNC_LESS_EQUAL, DXGI_FORMAT_R8G8B8A8_UNORM)) {
+                ++stats_.pipelineCreateReadyCount;
             }
+        }
 
-            if (IsPipelineRequested(
-                    pipelineMask_,
-                    MeshletPipelineKind::GeometryAuxFeatureMask) &&
-                geometryFeatureMaskShadersReady) {
-                ++stats_.pipelineCreateRequestCount;
-                if (CreateMeshletPipelineState(
-                    device,
-                    rootSignature,
-                    ShaderBytecode(amplificationShader),
-                    ShaderBytecode(geometryMeshShader),
-                    ShaderBytecode(geometryFeatureMaskPixelShader),
-                    DXGI_FORMAT_R16G16B16A16_FLOAT,
-                    CullModeForBucket(bucket),
-                    false,
-                    true,
-                    true,
-                    GeometryFeatureMaskDebugName(bucket),
-                    geometryFeatureMaskPipelineStates_[bucketIndex].GetAddressOf(),
-                    DXGI_FORMAT_R32G32_UINT,
-                    D3D12_COMPARISON_FUNC_LESS_EQUAL,
-                    DXGI_FORMAT_R8G8B8A8_UNORM)) {
-                    ++stats_.pipelineCreateReadyCount;
-                }
+        if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryOutline) && geometryOutlineShadersReady) {
+            ++stats_.pipelineCreateRequestCount;
+            if (CreateMeshletPipelineState(device, rootSignature, ShaderBytecode(amplificationShader),
+                                           ShaderBytecode(geometryOutlineMeshShader),
+                                           ShaderBytecode(geometryOutlinePixelShader), DXGI_FORMAT_R16G16B16A16_FLOAT,
+                                           D3D12_CULL_MODE_FRONT, false, false, true, GeometryOutlineDebugName(bucket),
+                                           geometryOutlinePipelineStates_[bucketIndex].GetAddressOf())) {
+                ++stats_.pipelineCreateReadyCount;
             }
+        }
 
-            if (IsPipelineRequested(
-                    pipelineMask_, MeshletPipelineKind::GeometryOutline) &&
-                geometryOutlineShadersReady) {
-                ++stats_.pipelineCreateRequestCount;
-                if (CreateMeshletPipelineState(
-                    device,
-                    rootSignature,
-                    ShaderBytecode(amplificationShader),
-                    ShaderBytecode(geometryOutlineMeshShader),
-                    ShaderBytecode(geometryOutlinePixelShader),
-                    DXGI_FORMAT_R16G16B16A16_FLOAT,
-                    D3D12_CULL_MODE_FRONT,
-                    false,
-                    false,
-                    true,
-                    GeometryOutlineDebugName(bucket),
-                    geometryOutlinePipelineStates_[bucketIndex].GetAddressOf())) {
-                    ++stats_.pipelineCreateReadyCount;
-                }
-            }
-
-            if (IsPipelineRequested(
-                    pipelineMask_, MeshletPipelineKind::VisibilityOverlay) &&
-                visibilityOverlayShaderReady) {
-                ++stats_.pipelineCreateRequestCount;
-                if (CreateMeshletPipelineState(
-                    device,
-                    rootSignature,
-                    ShaderBytecode(amplificationShader),
-                    ShaderBytecode(forwardMeshShader),
-                    ShaderBytecode(visibilityOverlayPixelShader),
-                    DXGI_FORMAT_R16G16B16A16_FLOAT,
-                    CullModeForBucket(bucket),
-                    true,
-                    false,
-                    true,
-                    VisibilityOverlayDebugName(bucket),
-                    visibilityOverlayPipelineStates_[bucketIndex].GetAddressOf(),
-                    DXGI_FORMAT_UNKNOWN,
+        if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::VisibilityOverlay) &&
+            visibilityOverlayShaderReady) {
+            ++stats_.pipelineCreateRequestCount;
+            if (CreateMeshletPipelineState(
+                    device, rootSignature, ShaderBytecode(amplificationShader), ShaderBytecode(forwardMeshShader),
+                    ShaderBytecode(visibilityOverlayPixelShader), DXGI_FORMAT_R16G16B16A16_FLOAT,
+                    CullModeForBucket(bucket), true, false, true, VisibilityOverlayDebugName(bucket),
+                    visibilityOverlayPipelineStates_[bucketIndex].GetAddressOf(), DXGI_FORMAT_UNKNOWN,
                     D3D12_COMPARISON_FUNC_GREATER)) {
-                    ++stats_.pipelineCreateReadyCount;
-                }
-            }
-
-            if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::DepthPrepass)) {
-                ++stats_.pipelineCreateRequestCount;
-                if (CreateMeshletPipelineState(
-                    device,
-                    rootSignature,
-                    ShaderBytecode(amplificationShader),
-                    ShaderBytecode(depthMeshShader),
-                    {},
-                    DXGI_FORMAT_UNKNOWN,
-                    CullModeForBucket(bucket),
-                    false,
-                    true,
-                    false,
-                    DepthPrepassDebugName(bucket),
-                    depthPrepassPipelineStates_[bucketIndex].GetAddressOf())) {
-                    ++stats_.pipelineCreateReadyCount;
-                }
-            }
-
-            if (IsPipelineRequested(
-                    pipelineMask_, MeshletPipelineKind::WaterVisibility) &&
-                waterVisibilityShadersReady) {
-                ++stats_.pipelineCreateRequestCount;
-                if (CreateMeshletPipelineState(
-                        device,
-                        rootSignature,
-                        ShaderBytecode(amplificationShader),
-                        ShaderBytecode(waterVisibilityMeshShader),
-                        ShaderBytecode(waterVisibilityPixelShader),
-                        DXGI_FORMAT_UNKNOWN,
-                        CullModeForBucket(bucket),
-                        false,
-                        true,
-                        false,
-                        L"Meshlet WaterVisibility PSO",
-                        waterVisibilityPipelineStates_[bucketIndex].GetAddressOf())) {
-                    ++stats_.pipelineCreateReadyCount;
-                }
+                ++stats_.pipelineCreateReadyCount;
             }
         }
 
-        const auto disableOptionalPipeline = [this](
-            uint32_t mask,
-            PipelineBucketArray& pipelines,
-            const char* diagnostic) {
-            if ((pipelineMask_ & mask) == 0u ||
-                ArePipelinesReady(pipelines)) {
-                return;
+        if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::DepthPrepass)) {
+            ++stats_.pipelineCreateRequestCount;
+            if (CreateMeshletPipelineState(device, rootSignature, ShaderBytecode(amplificationShader),
+                                           ShaderBytecode(depthMeshShader), {}, DXGI_FORMAT_UNKNOWN,
+                                           CullModeForBucket(bucket), false, true, false, DepthPrepassDebugName(bucket),
+                                           depthPrepassPipelineStates_[bucketIndex].GetAddressOf())) {
+                ++stats_.pipelineCreateReadyCount;
             }
-            for (auto& pipeline : pipelines) {
-                pipeline.Reset();
-            }
-            pipelineMask_ &= ~mask;
-            DEBUGLOG::PushRenderError(diagnostic);
-        };
-        disableOptionalPipeline(
-            MeshletPipelineMask::GeometryAuxFeatureMask,
-            geometryFeatureMaskPipelineStates_,
-            "[MeshletBackend][WARN] Optional feature-mask PSO creation "
-            "failed; core Mesh rendering remains active.");
-        disableOptionalPipeline(
-            MeshletPipelineMask::GeometryOutline,
-            geometryOutlinePipelineStates_,
-            "[MeshletBackend][WARN] Optional geometry-outline PSO creation "
-            "failed; core Mesh rendering remains active.");
-        disableOptionalPipeline(
-            MeshletPipelineMask::VisibilityOverlay,
-            visibilityOverlayPipelineStates_,
-            "[MeshletBackend][WARN] Optional visibility-overlay PSO creation "
-            "failed; core Mesh rendering remains active.");
+        }
 
-        ResetFrame();
-        return stats_.pipelineReady;
+        if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::WaterVisibility) && waterVisibilityShadersReady) {
+            ++stats_.pipelineCreateRequestCount;
+            if (CreateMeshletPipelineState(
+                    device, rootSignature, ShaderBytecode(amplificationShader),
+                    ShaderBytecode(waterVisibilityMeshShader), ShaderBytecode(waterVisibilityPixelShader),
+                    DXGI_FORMAT_UNKNOWN, CullModeForBucket(bucket), false, true, false, L"Meshlet WaterVisibility PSO",
+                    waterVisibilityPipelineStates_[bucketIndex].GetAddressOf())) {
+                ++stats_.pipelineCreateReadyCount;
+            }
+        }
     }
 
-    bool MeshletRenderBackend::PrepareReflectionCapture(bool captureMaterial) {
-        auto& pipelines = reflectionPipelineStates_[captureMaterial];
-        if (reflectionCaptureAttempted_[captureMaterial]) return ArePipelinesReady(pipelines);
-        reflectionCaptureAttempted_[captureMaterial] = true;
-        if (!device_ || !rootSignature_ || !stats_.forwardPipelineReady) return false;
-        const auto caps = GFX::QueryShaderDeviceCapabilities(device_.Get());
-        const auto contract = ASSETS::SHADER::MakeRenderGeometryShaderContract(
-            ASSETS::SHADER::RenderGeometryRootLayout::MeshGraphics,
-            {caps.shaderModel, caps.rootSignatureVersion, caps.featureMask});
-        const auto as = ASSETS::SHADER::ResolveBuiltinRenderGeometryShaderEntry(
-            "HIKARI.EngineShader.Render3D_MeshletAS",
-            {"Main", ASSETS::SHADER::ShaderStage::Amplification, "as_6_5"}, contract);
-        const auto ms = ASSETS::SHADER::ResolveBuiltinRenderGeometryShaderEntry(
-            "HIKARI.EngineShader.Render3D_MeshletMS",
-            {"Main", ASSETS::SHADER::ShaderStage::Mesh, "ms_6_5"}, contract);
-        const auto ps = ASSETS::SHADER::ResolveBuiltinRenderGeometryShaderEntry(
-            "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueReflectionPS",
-            {"Main", ASSETS::SHADER::ShaderStage::Pixel, "ps_6_0"}, contract);
-        if (!as || !ms || !ps) {
-            DEBUGLOG::PushRenderError("[MeshletBackend][SSR] Capture shaders unavailable; environment fallback retained.");
-            return false;
+    const auto disableOptionalPipeline = [this](uint32_t mask, PipelineBucketArray& pipelines, const char* diagnostic) {
+        if ((pipelineMask_ & mask) == 0u || ArePipelinesReady(pipelines)) {
+            return;
         }
-        const auto bytecode = [](const ASSETS::SHADER::ShaderAssetResolveResult& shader) {
-            const auto bytes = shader.lease.GetDxil();
-            return D3D12_SHADER_BYTECODE{bytes.data(), bytes.size()};
-        };
-        PipelineBucketArray replacements{};
-        for (size_t i = 0; i < replacements.size(); ++i) {
-            if (!CreateMeshletPipelineState(device_.Get(), rootSignature_.Get(),
-                bytecode(as), bytecode(ms), bytecode(ps), DXGI_FORMAT_R16G16B16A16_FLOAT,
-                CullModeForBucket(static_cast<GPUDRIVEN::GpuDrivenCommandBucket>(i)),
+        for (auto& pipeline : pipelines) {
+            pipeline.Reset();
+        }
+        pipelineMask_ &= ~mask;
+        DEBUGLOG::PushRenderError(diagnostic);
+    };
+    disableOptionalPipeline(MeshletPipelineMask::GeometryAuxFeatureMask, geometryFeatureMaskPipelineStates_,
+                            "[MeshletBackend][WARN] Optional feature-mask PSO creation "
+                            "failed; core Mesh rendering remains active.");
+    disableOptionalPipeline(MeshletPipelineMask::GeometryOutline, geometryOutlinePipelineStates_,
+                            "[MeshletBackend][WARN] Optional geometry-outline PSO creation "
+                            "failed; core Mesh rendering remains active.");
+    disableOptionalPipeline(MeshletPipelineMask::VisibilityOverlay, visibilityOverlayPipelineStates_,
+                            "[MeshletBackend][WARN] Optional visibility-overlay PSO creation "
+                            "failed; core Mesh rendering remains active.");
+
+    ResetFrame();
+    return stats_.pipelineReady;
+}
+
+bool MeshletRenderBackend::PrepareReflectionCapture(bool captureMaterial) {
+    auto& pipelines = reflectionPipelineStates_[captureMaterial];
+    if (reflectionCaptureAttempted_[captureMaterial])
+        return ArePipelinesReady(pipelines);
+    reflectionCaptureAttempted_[captureMaterial] = true;
+    if (!device_ || !rootSignature_ || !stats_.forwardPipelineReady)
+        return false;
+    const auto caps = GFX::QueryShaderDeviceCapabilities(device_.Get());
+    const auto contract = ASSETS::SHADER::MakeRenderGeometryShaderContract(
+        ASSETS::SHADER::RenderGeometryRootLayout::MeshGraphics,
+        {caps.shaderModel, caps.rootSignatureVersion, caps.featureMask});
+    const auto as = ASSETS::SHADER::ResolveBuiltinRenderGeometryShaderEntry(
+        "HIKARI.EngineShader.Render3D_MeshletAS", {"Main", ASSETS::SHADER::ShaderStage::Amplification, "as_6_5"},
+        contract);
+    const auto ms = ASSETS::SHADER::ResolveBuiltinRenderGeometryShaderEntry(
+        "HIKARI.EngineShader.Render3D_MeshletMS", {"Main", ASSETS::SHADER::ShaderStage::Mesh, "ms_6_5"}, contract);
+    const auto ps = ASSETS::SHADER::ResolveBuiltinRenderGeometryShaderEntry(
+        "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueReflectionPS",
+        {"Main", ASSETS::SHADER::ShaderStage::Pixel, "ps_6_0"}, contract);
+    if (!as || !ms || !ps) {
+        DEBUGLOG::PushRenderError("[MeshletBackend][SSR] Capture shaders unavailable; environment fallback retained.");
+        return false;
+    }
+    const auto bytecode = [](const ASSETS::SHADER::ShaderAssetResolveResult& shader) {
+        const auto bytes = shader.lease.GetDxil();
+        return D3D12_SHADER_BYTECODE{bytes.data(), bytes.size()};
+    };
+    PipelineBucketArray replacements{};
+    for (size_t i = 0; i < replacements.size(); ++i) {
+        if (!CreateMeshletPipelineState(
+                device_.Get(), rootSignature_.Get(), bytecode(as), bytecode(ms), bytecode(ps),
+                DXGI_FORMAT_R16G16B16A16_FLOAT, CullModeForBucket(static_cast<GPUDRIVEN::GpuDrivenCommandBucket>(i)),
                 false, true, true, L"Meshlet.ForwardReflectionCapture", replacements[i].GetAddressOf(),
-                DXGI_FORMAT_R16G16B16A16_FLOAT, D3D12_COMPARISON_FUNC_LESS_EQUAL,
-                DXGI_FORMAT_R16G16B16A16_FLOAT, captureMaterial ? DXGI_FORMAT_R16G16B16A16_FLOAT : DXGI_FORMAT_UNKNOWN)) return false;
-        }
-        pipelines.swap(replacements);
-        return true;
-    }
-
-    bool MeshletRenderBackend::PrepareForwardVariant(ForwardShadingCostMode mode) {
-        if (!device_ || !rootSignature_ || !IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardOpaque)) return false;
-        const size_t index = ForwardPipelineVariantIndex(mode);
-        if (ArePipelinesReady(forwardPipelineStates_[index])) return true;
-        if (forwardVariantAttempted_[index]) return false;
-        forwardVariantAttempted_[index] = true;
-        const auto caps = GFX::QueryShaderDeviceCapabilities(device_.Get());
-        ASSETS::SHADER::ShaderAssetEntryLease amplification, mesh, pixel;
-        using Stage = ASSETS::SHADER::ShaderStage;
-        if (!ResolveMeshletShader(caps, "HIKARI.EngineShader.Render3D_MeshletAS", Stage::Amplification, "as_6_5", amplification) ||
-            !ResolveMeshletShader(caps, "HIKARI.EngineShader.Render3D_MeshletMS", Stage::Mesh, "ms_6_5", mesh) ||
-            !ResolveMeshletShader(caps, kForwardOpaqueProgramIds[index], Stage::Pixel, "ps_6_0", pixel) ||
-            !CreateForwardVariantPipelines(device_.Get(), rootSignature_.Get(), amplification, mesh, pixel,
-                index, forwardPipelineStates_[index], stats_)) {
-            ++stats_.failedForwardVariantCount;
-            DEBUGLOG::PushRenderError("[MeshletBackend] Diagnostic Forward variant unavailable; using full Forward shading.");
+                DXGI_FORMAT_R16G16B16A16_FLOAT, D3D12_COMPARISON_FUNC_LESS_EQUAL, DXGI_FORMAT_R16G16B16A16_FLOAT,
+                captureMaterial ? DXGI_FORMAT_R16G16B16A16_FLOAT : DXGI_FORMAT_UNKNOWN))
             return false;
-        }
-        return true;
     }
+    pipelines.swap(replacements);
+    return true;
+}
 
-    void MeshletRenderBackend::Reset() {
-        ResetVisibility();
-        for (auto& capture : reflectionPipelineStates_) for (auto& pipeline : capture)
+bool MeshletRenderBackend::PrepareForwardVariant(ForwardShadingCostMode mode) {
+    if (!device_ || !rootSignature_ || !IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardOpaque))
+        return false;
+    const size_t index = ForwardPipelineVariantIndex(mode);
+    if (ArePipelinesReady(forwardPipelineStates_[index]))
+        return true;
+    if (forwardVariantAttempted_[index])
+        return false;
+    forwardVariantAttempted_[index] = true;
+    const auto caps = GFX::QueryShaderDeviceCapabilities(device_.Get());
+    ASSETS::SHADER::ShaderAssetEntryLease amplification, mesh, pixel;
+    using Stage = ASSETS::SHADER::ShaderStage;
+    if (!ResolveMeshletShader(caps, "HIKARI.EngineShader.Render3D_MeshletAS", Stage::Amplification, "as_6_5",
+                              amplification) ||
+        !ResolveMeshletShader(caps, "HIKARI.EngineShader.Render3D_MeshletMS", Stage::Mesh, "ms_6_5", mesh) ||
+        !ResolveMeshletShader(caps, kForwardOpaqueProgramIds[index], Stage::Pixel, "ps_6_0", pixel) ||
+        !CreateForwardVariantPipelines(device_.Get(), rootSignature_.Get(), amplification, mesh, pixel, index,
+                                       forwardPipelineStates_[index], stats_)) {
+        ++stats_.failedForwardVariantCount;
+        DEBUGLOG::PushRenderError(
+            "[MeshletBackend] Diagnostic Forward variant unavailable; using full Forward shading.");
+        return false;
+    }
+    return true;
+}
+
+void MeshletRenderBackend::Reset() {
+    ResetVisibility();
+    for (auto& capture : reflectionPipelineStates_)
+        for (auto& pipeline : capture)
             GFX::RetireD3D12ObjectForCurrentFrame(pipeline, "Meshlet.ReflectionCapturePSO");
-        device_.Reset(); rootSignature_.Reset();
-        reflectionCaptureAttempted_.fill(false);
-        forwardVariantAttempted_.fill(false);
-        for (auto& variant : forwardPipelineStates_) {
-            for (auto& pipeline : variant) {
-                pipeline.Reset();
-            }
-        }
-        for (auto& pipeline : depthAwarePipelineStates_) {
+    device_.Reset();
+    rootSignature_.Reset();
+    reflectionCaptureAttempted_.fill(false);
+    forwardVariantAttempted_.fill(false);
+    for (auto& variant : forwardPipelineStates_) {
+        for (auto& pipeline : variant) {
             pipeline.Reset();
         }
-        for (auto& pipeline : transparentPipelineStates_) {
-            pipeline.Reset();
-        }
-        for (auto& pipeline : shadowPipelineStates_) {
-            pipeline.Reset();
-        }
-        for (auto& pipeline : geometryAuxPipelineStates_) {
-            pipeline.Reset();
-        }
-        for (auto& pipeline : geometryFeatureMaskPipelineStates_) {
-            pipeline.Reset();
-        }
-        for (auto& pipeline : geometryOutlinePipelineStates_) {
-            pipeline.Reset();
-        }
-        for (auto& pipeline : visibilityOverlayPipelineStates_) {
-            pipeline.Reset();
-        }
-        for (auto& pipeline : depthPrepassPipelineStates_) {
-            pipeline.Reset();
-        }
-        for (auto& pipeline : waterVisibilityPipelineStates_) {
-            pipeline.Reset();
-        }
-        pipelineMask_ = MeshletPipelineMask::All;
-        stats_ = {};
+    }
+    for (auto& pipeline : depthAwarePipelineStates_) {
+        pipeline.Reset();
+    }
+    for (auto& pipeline : transparentPipelineStates_) {
+        pipeline.Reset();
+    }
+    for (auto& pipeline : shadowPipelineStates_) {
+        pipeline.Reset();
+    }
+    for (auto& pipeline : geometryAuxPipelineStates_) {
+        pipeline.Reset();
+    }
+    for (auto& pipeline : geometryFeatureMaskPipelineStates_) {
+        pipeline.Reset();
+    }
+    for (auto& pipeline : geometryOutlinePipelineStates_) {
+        pipeline.Reset();
+    }
+    for (auto& pipeline : visibilityOverlayPipelineStates_) {
+        pipeline.Reset();
+    }
+    for (auto& pipeline : depthPrepassPipelineStates_) {
+        pipeline.Reset();
+    }
+    for (auto& pipeline : waterVisibilityPipelineStates_) {
+        pipeline.Reset();
+    }
+    pipelineMask_ = MeshletPipelineMask::All;
+    stats_ = {};
+}
+
+void MeshletRenderBackend::ResetFrame() {
+    visibility_.ResetFrame();
+    const MeshletRenderBackendStats persistent = stats_;
+    stats_ = {};
+    stats_.visibility = visibility_.GetStats();
+    stats_.initialized = persistent.initialized;
+    stats_.shaderModel65Supported = persistent.shaderModel65Supported;
+    stats_.meshShaderSupported = persistent.meshShaderSupported;
+    stats_.meshShaderPipelineStatsSupported = persistent.meshShaderPipelineStatsSupported;
+    stats_.shaderCompileReady = persistent.shaderCompileReady;
+    stats_.meshShaderTier = persistent.meshShaderTier;
+    stats_.pipelineCreateRequestCount = persistent.pipelineCreateRequestCount;
+    stats_.pipelineCreateReadyCount = persistent.pipelineCreateReadyCount;
+    stats_.preparedForwardVariantCount = persistent.preparedForwardVariantCount;
+    stats_.failedForwardVariantCount = persistent.failedForwardVariantCount;
+
+    const bool forwardReady = IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardOpaque) &&
+                              AreBaseForwardPipelinesReady(forwardPipelineStates_);
+    const bool depthAwareReady = IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardDepthAware) &&
+                                 ArePipelinesReady(depthAwarePipelineStates_);
+    const bool transparentReady = IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardTransparent) &&
+                                  ArePipelinesReady(transparentPipelineStates_);
+    const bool shadowReady =
+        IsPipelineRequested(pipelineMask_, MeshletPipelineKind::Shadow) && ArePipelinesReady(shadowPipelineStates_);
+    const bool geometryReady = IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAux) &&
+                               ArePipelinesReady(geometryAuxPipelineStates_);
+    const bool geometryFeatureMaskReady =
+        IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAuxFeatureMask) &&
+        ArePipelinesReady(geometryFeatureMaskPipelineStates_);
+    const bool geometryOutlineReady = IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryOutline) &&
+                                      ArePipelinesReady(geometryOutlinePipelineStates_);
+    const bool visibilityOverlayReady = IsPipelineRequested(pipelineMask_, MeshletPipelineKind::VisibilityOverlay) &&
+                                        ArePipelinesReady(visibilityOverlayPipelineStates_);
+    const bool depthPrepassReady = IsPipelineRequested(pipelineMask_, MeshletPipelineKind::DepthPrepass) &&
+                                   ArePipelinesReady(depthPrepassPipelineStates_);
+    const bool waterVisibilityReady = IsPipelineRequested(pipelineMask_, MeshletPipelineKind::WaterVisibility) &&
+                                      ArePipelinesReady(waterVisibilityPipelineStates_);
+    stats_.forwardPipelineReady = forwardReady;
+    stats_.depthAwarePipelineReady = depthAwareReady;
+    stats_.transparentPipelineReady = transparentReady;
+    stats_.shadowPipelineReady = shadowReady;
+    stats_.geometryAuxPipelineReady = geometryReady;
+    stats_.geometryFeatureMaskPipelineReady = geometryFeatureMaskReady;
+    stats_.geometryOutlinePipelineReady = geometryOutlineReady;
+    stats_.visibilityOverlayPipelineReady = visibilityOverlayReady;
+    stats_.depthPrepassPipelineReady = depthPrepassReady;
+    stats_.waterVisibilityPipelineReady = waterVisibilityReady;
+    stats_.pipelineReady = AreRequestedPipelinesReady(pipelineMask_, forwardPipelineStates_, depthAwarePipelineStates_,
+                                                      transparentPipelineStates_, shadowPipelineStates_,
+                                                      geometryAuxPipelineStates_, geometryFeatureMaskPipelineStates_,
+                                                      geometryOutlinePipelineStates_, visibilityOverlayPipelineStates_,
+                                                      depthPrepassPipelineStates_, waterVisibilityPipelineStates_);
+}
+
+bool MeshletRenderBackend::Execute(const MeshletRenderExecutionContext& ctx) {
+    if (ctx.reflectionMaterialCapture && !ctx.reflectionCapture)
+        return false;
+    if (ctx.reflectionCapture && (ctx.pipelineKind != MeshletPipelineKind::ForwardOpaque ||
+                                  !ArePipelinesReady(reflectionPipelineStates_[ctx.reflectionMaterialCapture])))
+        return false;
+    if (ctx.visibility == nullptr || ctx.drawCommandRange == nullptr) {
+        return false;
     }
 
-    void MeshletRenderBackend::ResetFrame() {
-        visibility_.ResetFrame();
-        const MeshletRenderBackendStats persistent = stats_;
-        stats_ = {};
-        stats_.visibility = visibility_.GetStats();
-        stats_.initialized = persistent.initialized;
-        stats_.shaderModel65Supported = persistent.shaderModel65Supported;
-        stats_.meshShaderSupported = persistent.meshShaderSupported;
-        stats_.meshShaderPipelineStatsSupported =
-            persistent.meshShaderPipelineStatsSupported;
-        stats_.shaderCompileReady = persistent.shaderCompileReady;
-        stats_.meshShaderTier = persistent.meshShaderTier;
-        stats_.pipelineCreateRequestCount =
-            persistent.pipelineCreateRequestCount;
-        stats_.pipelineCreateReadyCount =
-            persistent.pipelineCreateReadyCount;
-        stats_.preparedForwardVariantCount = persistent.preparedForwardVariantCount;
-        stats_.failedForwardVariantCount = persistent.failedForwardVariantCount;
+    const GPUDRIVEN::GpuVisibilityResult& visibility = *ctx.visibility;
+    const GPUDRIVEN::GpuDrivenDrawCommandRange& range = *ctx.drawCommandRange;
+    if (!range.consumable || range.backend != GPUDRIVEN::GeometryBackendKind::GpuDrivenMeshShader) {
+        return false;
+    }
+    const size_t requestedDispatchCount = range.commandCount;
+    stats_.requestedDispatchCount += requestedDispatchCount;
+    stats_.dispatchArgumentBufferReady = range.argumentBuffer != nullptr;
+    stats_.dispatchCommandSignatureReady = range.commandSignature != nullptr;
+    stats_.forwardPipelineReady = IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardOpaque) &&
+                                  AreBaseForwardPipelinesReady(forwardPipelineStates_);
+    stats_.depthAwarePipelineReady = IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardDepthAware) &&
+                                     ArePipelinesReady(depthAwarePipelineStates_);
+    stats_.transparentPipelineReady = IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardTransparent) &&
+                                      ArePipelinesReady(transparentPipelineStates_);
+    stats_.shadowPipelineReady =
+        IsPipelineRequested(pipelineMask_, MeshletPipelineKind::Shadow) && ArePipelinesReady(shadowPipelineStates_);
+    stats_.geometryAuxPipelineReady = IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAux) &&
+                                      ArePipelinesReady(geometryAuxPipelineStates_);
+    stats_.geometryFeatureMaskPipelineReady =
+        IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAuxFeatureMask) &&
+        ArePipelinesReady(geometryFeatureMaskPipelineStates_);
+    stats_.geometryOutlinePipelineReady = IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryOutline) &&
+                                          ArePipelinesReady(geometryOutlinePipelineStates_);
+    stats_.visibilityOverlayPipelineReady =
+        IsPipelineRequested(pipelineMask_, MeshletPipelineKind::VisibilityOverlay) &&
+        ArePipelinesReady(visibilityOverlayPipelineStates_);
+    stats_.depthPrepassPipelineReady = IsPipelineRequested(pipelineMask_, MeshletPipelineKind::DepthPrepass) &&
+                                       ArePipelinesReady(depthPrepassPipelineStates_);
+    stats_.waterVisibilityPipelineReady = IsPipelineRequested(pipelineMask_, MeshletPipelineKind::WaterVisibility) &&
+                                          ArePipelinesReady(waterVisibilityPipelineStates_);
+    stats_.pipelineReady = AreRequestedPipelinesReady(pipelineMask_, forwardPipelineStates_, depthAwarePipelineStates_,
+                                                      transparentPipelineStates_, shadowPipelineStates_,
+                                                      geometryAuxPipelineStates_, geometryFeatureMaskPipelineStates_,
+                                                      geometryOutlinePipelineStates_, visibilityOverlayPipelineStates_,
+                                                      depthPrepassPipelineStates_, waterVisibilityPipelineStates_);
+    const bool requestedPipelineReady =
+        ctx.pipelineKind == MeshletPipelineKind::GeometryAuxFeatureMask ? stats_.geometryFeatureMaskPipelineReady
+        : ctx.pipelineKind == MeshletPipelineKind::GeometryAux          ? stats_.geometryAuxPipelineReady
+        : ctx.pipelineKind == MeshletPipelineKind::GeometryOutline      ? stats_.geometryOutlinePipelineReady
+        : ctx.pipelineKind == MeshletPipelineKind::VisibilityOverlay    ? stats_.visibilityOverlayPipelineReady
+        : ctx.pipelineKind == MeshletPipelineKind::DepthPrepass         ? stats_.depthPrepassPipelineReady
+        : ctx.pipelineKind == MeshletPipelineKind::WaterVisibility      ? stats_.waterVisibilityPipelineReady
+        : ctx.pipelineKind == MeshletPipelineKind::ForwardDepthAware    ? stats_.depthAwarePipelineReady
+        : ctx.pipelineKind == MeshletPipelineKind::ForwardTransparent   ? stats_.transparentPipelineReady
+        : ctx.pipelineKind == MeshletPipelineKind::Shadow               ? stats_.shadowPipelineReady
+                                                                        : stats_.forwardPipelineReady;
 
-        const bool forwardReady =
-            IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardOpaque) &&
-            AreBaseForwardPipelinesReady(forwardPipelineStates_);
-        const bool depthAwareReady =
-            IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardDepthAware) &&
-            ArePipelinesReady(depthAwarePipelineStates_);
-        const bool transparentReady =
-            IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardTransparent) &&
-            ArePipelinesReady(transparentPipelineStates_);
-        const bool shadowReady =
-            IsPipelineRequested(pipelineMask_, MeshletPipelineKind::Shadow) &&
-            ArePipelinesReady(shadowPipelineStates_);
-        const bool geometryReady =
-            IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAux) &&
-            ArePipelinesReady(geometryAuxPipelineStates_);
-        const bool geometryFeatureMaskReady =
-            IsPipelineRequested(
-                pipelineMask_,
-                MeshletPipelineKind::GeometryAuxFeatureMask) &&
-            ArePipelinesReady(geometryFeatureMaskPipelineStates_);
-        const bool geometryOutlineReady =
-            IsPipelineRequested(
-                pipelineMask_, MeshletPipelineKind::GeometryOutline) &&
-            ArePipelinesReady(geometryOutlinePipelineStates_);
-        const bool visibilityOverlayReady =
-            IsPipelineRequested(
-                pipelineMask_, MeshletPipelineKind::VisibilityOverlay) &&
-            ArePipelinesReady(visibilityOverlayPipelineStates_);
-        const bool depthPrepassReady =
-            IsPipelineRequested(pipelineMask_, MeshletPipelineKind::DepthPrepass) &&
-            ArePipelinesReady(depthPrepassPipelineStates_);
-        const bool waterVisibilityReady =
-            IsPipelineRequested(
-                pipelineMask_, MeshletPipelineKind::WaterVisibility) &&
-            ArePipelinesReady(waterVisibilityPipelineStates_);
-        stats_.forwardPipelineReady = forwardReady;
-        stats_.depthAwarePipelineReady = depthAwareReady;
-        stats_.transparentPipelineReady = transparentReady;
-        stats_.shadowPipelineReady = shadowReady;
-        stats_.geometryAuxPipelineReady = geometryReady;
-        stats_.geometryFeatureMaskPipelineReady = geometryFeatureMaskReady;
-        stats_.geometryOutlinePipelineReady = geometryOutlineReady;
-        stats_.visibilityOverlayPipelineReady = visibilityOverlayReady;
-        stats_.depthPrepassPipelineReady = depthPrepassReady;
-        stats_.waterVisibilityPipelineReady = waterVisibilityReady;
-        stats_.pipelineReady = AreRequestedPipelinesReady(
-            pipelineMask_,
-            forwardPipelineStates_,
-            depthAwarePipelineStates_,
-            transparentPipelineStates_,
-            shadowPipelineStates_,
-            geometryAuxPipelineStates_,
-            geometryFeatureMaskPipelineStates_,
-            geometryOutlinePipelineStates_,
-            visibilityOverlayPipelineStates_,
-            depthPrepassPipelineStates_,
-            waterVisibilityPipelineStates_);
+    if (requestedDispatchCount == 0) {
+        return false;
+    }
+    if (ctx.commandList == nullptr || !range.HasGpuCommandLayout() || !stats_.dispatchArgumentBufferReady ||
+        !stats_.dispatchCommandSignatureReady || !requestedPipelineReady ||
+        visibility.visibleMeshletRangeBuffer == nullptr) {
+        stats_.skippedDispatchCount += requestedDispatchCount;
+        return false;
     }
 
-    bool MeshletRenderBackend::Execute(const MeshletRenderExecutionContext& ctx) {
-        if (ctx.reflectionMaterialCapture && !ctx.reflectionCapture) return false;
-        if (ctx.reflectionCapture && (ctx.pipelineKind != MeshletPipelineKind::ForwardOpaque ||
-            !ArePipelinesReady(reflectionPipelineStates_[ctx.reflectionMaterialCapture]))) return false;
-        if (ctx.visibility == nullptr || ctx.drawCommandRange == nullptr) {
-            return false;
+    auto effectiveForwardCostMode = ctx.forwardCostMode;
+    if (ctx.pipelineKind == MeshletPipelineKind::ForwardOpaque && !ctx.reflectionCapture &&
+        !PrepareForwardVariant(ctx.forwardCostMode))
+        effectiveForwardCostMode = ForwardShadingCostMode::Full;
+
+    ID3D12Resource* argumentBuffer = range.argumentBuffer;
+    ID3D12Resource* countBuffer = visibility.counterBuffer;
+    ID3D12CommandSignature* commandSignature = range.commandSignature;
+    if (argumentBuffer == nullptr || countBuffer == nullptr || commandSignature == nullptr) {
+        stats_.skippedDispatchCount += requestedDispatchCount;
+        return false;
+    }
+
+    const GPUDRIVEN::GpuDrivenCommandPassLayout& layout = *range.gpuCommandLayout;
+    const size_t bucketCapacity = layout.commandBucketCapacity;
+    if (bucketCapacity == 0) {
+        stats_.skippedDispatchCount += requestedDispatchCount;
+        return false;
+    }
+    constexpr UINT maxCommandCount = 1u;
+
+    bool submittedAnyBucket = false;
+    const GFX::GPU_PROFILE::Pass profilePass = ctx.profilePass != GFX::GPU_PROFILE::Pass::Count
+                                                   ? ctx.profilePass
+                                                   : ProfilePassForPipelineKind(ctx.pipelineKind);
+    GFX::GPU_PROFILE::ScopedGpuTimer gpuDraw(ctx.commandList, profilePass);
+    GFX::GPU_PIPELINE_STATS::ScopedPipelineStats pipelineStats(ctx.commandList, profilePass);
+    for (size_t bucketIndex = 0; bucketIndex < GPUDRIVEN::kGpuDrivenCommandBucketCount; ++bucketIndex) {
+        const GPUDRIVEN::GpuDrivenCommandBucket bucket = static_cast<GPUDRIVEN::GpuDrivenCommandBucket>(bucketIndex);
+        if (!HasSourceForBucket(visibility, ctx.pass, bucket)) {
+            ++stats_.skippedBucketCount;
+            continue;
         }
 
-        const GPUDRIVEN::GpuVisibilityResult& visibility = *ctx.visibility;
-        const GPUDRIVEN::GpuDrivenDrawCommandRange& range =
-            *ctx.drawCommandRange;
-        if (!range.consumable ||
-            range.backend != GPUDRIVEN::GeometryBackendKind::GpuDrivenMeshShader) {
-            return false;
-        }
-        const size_t requestedDispatchCount = range.commandCount;
-        stats_.requestedDispatchCount += requestedDispatchCount;
-        stats_.dispatchArgumentBufferReady =
-            range.argumentBuffer != nullptr;
-        stats_.dispatchCommandSignatureReady =
-            range.commandSignature != nullptr;
-        stats_.forwardPipelineReady =
-            IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardOpaque) &&
-            AreBaseForwardPipelinesReady(forwardPipelineStates_);
-        stats_.depthAwarePipelineReady =
-            IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardDepthAware) &&
-            ArePipelinesReady(depthAwarePipelineStates_);
-        stats_.transparentPipelineReady =
-            IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardTransparent) &&
-            ArePipelinesReady(transparentPipelineStates_);
-        stats_.shadowPipelineReady =
-            IsPipelineRequested(pipelineMask_, MeshletPipelineKind::Shadow) &&
-            ArePipelinesReady(shadowPipelineStates_);
-        stats_.geometryAuxPipelineReady =
-            IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAux) &&
-            ArePipelinesReady(geometryAuxPipelineStates_);
-        stats_.geometryFeatureMaskPipelineReady =
-            IsPipelineRequested(
-                pipelineMask_,
-                MeshletPipelineKind::GeometryAuxFeatureMask) &&
-            ArePipelinesReady(geometryFeatureMaskPipelineStates_);
-        stats_.geometryOutlinePipelineReady =
-            IsPipelineRequested(
-                pipelineMask_, MeshletPipelineKind::GeometryOutline) &&
-            ArePipelinesReady(geometryOutlinePipelineStates_);
-        stats_.visibilityOverlayPipelineReady =
-            IsPipelineRequested(
-                pipelineMask_, MeshletPipelineKind::VisibilityOverlay) &&
-            ArePipelinesReady(visibilityOverlayPipelineStates_);
-        stats_.depthPrepassPipelineReady =
-            IsPipelineRequested(pipelineMask_, MeshletPipelineKind::DepthPrepass) &&
-            ArePipelinesReady(depthPrepassPipelineStates_);
-        stats_.waterVisibilityPipelineReady =
-            IsPipelineRequested(
-                pipelineMask_, MeshletPipelineKind::WaterVisibility) &&
-            ArePipelinesReady(waterVisibilityPipelineStates_);
-        stats_.pipelineReady = AreRequestedPipelinesReady(
-            pipelineMask_,
-            forwardPipelineStates_,
-            depthAwarePipelineStates_,
-            transparentPipelineStates_,
-            shadowPipelineStates_,
-            geometryAuxPipelineStates_,
-            geometryFeatureMaskPipelineStates_,
-            geometryOutlinePipelineStates_,
-            visibilityOverlayPipelineStates_,
-            depthPrepassPipelineStates_,
-            waterVisibilityPipelineStates_);
-        const bool requestedPipelineReady =
-            ctx.pipelineKind == MeshletPipelineKind::GeometryAuxFeatureMask
-                ? stats_.geometryFeatureMaskPipelineReady
-                : ctx.pipelineKind == MeshletPipelineKind::GeometryAux
-                ? stats_.geometryAuxPipelineReady
-                : ctx.pipelineKind == MeshletPipelineKind::GeometryOutline
-                    ? stats_.geometryOutlinePipelineReady
-                    : ctx.pipelineKind == MeshletPipelineKind::VisibilityOverlay
-                        ? stats_.visibilityOverlayPipelineReady
-                : ctx.pipelineKind == MeshletPipelineKind::DepthPrepass
-                    ? stats_.depthPrepassPipelineReady
-                    : ctx.pipelineKind == MeshletPipelineKind::WaterVisibility
-                        ? stats_.waterVisibilityPipelineReady
-                    : ctx.pipelineKind == MeshletPipelineKind::ForwardDepthAware
-                        ? stats_.depthAwarePipelineReady
-                        : ctx.pipelineKind == MeshletPipelineKind::ForwardTransparent
-                            ? stats_.transparentPipelineReady
-                            : ctx.pipelineKind == MeshletPipelineKind::Shadow
-                                ? stats_.shadowPipelineReady
-                                : stats_.forwardPipelineReady;
-
-        if (requestedDispatchCount == 0) {
-            return false;
-        }
-        if (ctx.commandList == nullptr ||
-            !range.HasGpuCommandLayout() ||
-            !stats_.dispatchArgumentBufferReady ||
-            !stats_.dispatchCommandSignatureReady ||
-            !requestedPipelineReady ||
-            visibility.visibleMeshletRangeBuffer == nullptr) {
-            stats_.skippedDispatchCount += requestedDispatchCount;
-            return false;
+        ID3D12PipelineState* selectedPipeline =
+            ctx.reflectionCapture ? reflectionPipelineStates_[ctx.reflectionMaterialCapture][bucketIndex].Get()
+                                  : GetPipelineState(ctx.pipelineKind, bucket, effectiveForwardCostMode);
+        if (selectedPipeline == nullptr) {
+            continue;
         }
 
-        auto effectiveForwardCostMode = ctx.forwardCostMode;
-        if (ctx.pipelineKind == MeshletPipelineKind::ForwardOpaque && !ctx.reflectionCapture &&
-            !PrepareForwardVariant(ctx.forwardCostMode)) effectiveForwardCostMode = ForwardShadingCostMode::Full;
-
-        ID3D12Resource* argumentBuffer = range.argumentBuffer;
-        ID3D12Resource* countBuffer = visibility.counterBuffer;
-        ID3D12CommandSignature* commandSignature =
-            range.commandSignature;
-        if (argumentBuffer == nullptr ||
-            countBuffer == nullptr ||
-            commandSignature == nullptr) {
-            stats_.skippedDispatchCount += requestedDispatchCount;
-            return false;
-        }
-
-        const GPUDRIVEN::GpuDrivenCommandPassLayout& layout =
-            *range.gpuCommandLayout;
-        const size_t bucketCapacity = layout.commandBucketCapacity;
-        if (bucketCapacity == 0) {
-            stats_.skippedDispatchCount += requestedDispatchCount;
-            return false;
-        }
-        constexpr UINT maxCommandCount = 1u;
-
-        bool submittedAnyBucket = false;
-        const GFX::GPU_PROFILE::Pass profilePass =
-            ctx.profilePass != GFX::GPU_PROFILE::Pass::Count
-                ? ctx.profilePass
-                : ProfilePassForPipelineKind(ctx.pipelineKind);
-        GFX::GPU_PROFILE::ScopedGpuTimer gpuDraw(ctx.commandList, profilePass);
-        GFX::GPU_PIPELINE_STATS::ScopedPipelineStats pipelineStats(ctx.commandList, profilePass);
-        for (size_t bucketIndex = 0; bucketIndex < GPUDRIVEN::kGpuDrivenCommandBucketCount; ++bucketIndex) {
-            const GPUDRIVEN::GpuDrivenCommandBucket bucket =
-                static_cast<GPUDRIVEN::GpuDrivenCommandBucket>(bucketIndex);
-            if (!HasSourceForBucket(visibility, ctx.pass, bucket)) {
-                ++stats_.skippedBucketCount;
-                continue;
-            }
-
-            ID3D12PipelineState* selectedPipeline =
-                ctx.reflectionCapture ? reflectionPipelineStates_[ctx.reflectionMaterialCapture][bucketIndex].Get() :
-                    GetPipelineState(ctx.pipelineKind, bucket, effectiveForwardCostMode);
-            if (selectedPipeline == nullptr) {
-                continue;
-            }
-
-            ++stats_.submitCallCount;
-            if (bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided) {
-                ++stats_.doubleSidedSubmitCallCount;
-            } else {
-                ++stats_.backFaceSubmitCallCount;
-            }
-
-            GFX::PIX::ScopedGpuEvent pix(
-                ctx.commandList,
-                GFX::PIX::kColorRender,
-                PipelineEventName(ctx.pipelineKind, bucket));
-
-            ctx.commandList->SetPipelineState(selectedPipeline);
-            ctx.commandList->ExecuteIndirect(
-                commandSignature,
-                maxCommandCount,
-                argumentBuffer,
-                DispatchArgumentOffsetForBucket(layout, bucket),
-                countBuffer,
-                CounterOffsetForBucket(layout, bucket));
-            submittedAnyBucket = true;
-        }
-
-        if (!submittedAnyBucket) {
-            stats_.skippedDispatchCount += requestedDispatchCount;
-            return false;
-        }
-
-        stats_.submittedDispatchCount += requestedDispatchCount;
-        if (ctx.pipelineKind == MeshletPipelineKind::GeometryAux ||
-            ctx.pipelineKind == MeshletPipelineKind::GeometryAuxFeatureMask) {
-            stats_.geometryAuxSubmittedDispatchCount += requestedDispatchCount;
-        } else if (ctx.pipelineKind == MeshletPipelineKind::GeometryOutline) {
-            stats_.geometryOutlineSubmittedDispatchCount += requestedDispatchCount;
-        } else if (ctx.pipelineKind == MeshletPipelineKind::VisibilityOverlay) {
-            stats_.visibilityOverlaySubmittedDispatchCount += requestedDispatchCount;
-        } else if (ctx.pipelineKind == MeshletPipelineKind::DepthPrepass) {
-            stats_.depthPrepassSubmittedDispatchCount += requestedDispatchCount;
-        } else if (ctx.pipelineKind == MeshletPipelineKind::WaterVisibility) {
-            stats_.depthPrepassSubmittedDispatchCount += requestedDispatchCount;
-        } else if (ctx.pipelineKind == MeshletPipelineKind::Shadow) {
-            stats_.shadowSubmittedDispatchCount += requestedDispatchCount;
+        ++stats_.submitCallCount;
+        if (bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided) {
+            ++stats_.doubleSidedSubmitCallCount;
         } else {
-            stats_.forwardSubmittedDispatchCount += requestedDispatchCount;
+            ++stats_.backFaceSubmitCallCount;
         }
-        return true;
+
+        GFX::PIX::ScopedGpuEvent pix(ctx.commandList, GFX::PIX::kColorRender,
+                                     PipelineEventName(ctx.pipelineKind, bucket));
+
+        ctx.commandList->SetPipelineState(selectedPipeline);
+        ctx.commandList->ExecuteIndirect(commandSignature, maxCommandCount, argumentBuffer,
+                                         DispatchArgumentOffsetForBucket(layout, bucket), countBuffer,
+                                         CounterOffsetForBucket(layout, bucket));
+        submittedAnyBucket = true;
     }
 
-    const MeshletRenderBackendStats& MeshletRenderBackend::GetStats() const {
-        return stats_;
+    if (!submittedAnyBucket) {
+        stats_.skippedDispatchCount += requestedDispatchCount;
+        return false;
     }
 
-    ID3D12PipelineState* MeshletRenderBackend::GetPipelineState(
-        MeshletPipelineKind kind,
-        GPUDRIVEN::GpuDrivenCommandBucket bucket, ForwardShadingCostMode costMode) const {
-
-        const size_t index = GPUDRIVEN::ToCommandBucketIndex(bucket);
-        if (index >= GPUDRIVEN::kGpuDrivenCommandBucketCount) {
-            return nullptr;
-        }
-        switch (kind) {
-        case MeshletPipelineKind::DepthPrepass:
-            return depthPrepassPipelineStates_[index].Get();
-        case MeshletPipelineKind::WaterVisibility:
-            return waterVisibilityPipelineStates_[index].Get();
-        case MeshletPipelineKind::GeometryAux:
-            return geometryAuxPipelineStates_[index].Get();
-        case MeshletPipelineKind::GeometryAuxFeatureMask:
-            return geometryFeatureMaskPipelineStates_[index].Get();
-        case MeshletPipelineKind::GeometryOutline:
-            return geometryOutlinePipelineStates_[index].Get();
-        case MeshletPipelineKind::VisibilityOverlay:
-            return visibilityOverlayPipelineStates_[index].Get();
-        case MeshletPipelineKind::ForwardDepthAware:
-            return depthAwarePipelineStates_[index].Get();
-        case MeshletPipelineKind::ForwardTransparent:
-            return transparentPipelineStates_[index].Get();
-        case MeshletPipelineKind::Shadow:
-            return shadowPipelineStates_[index].Get();
-        case MeshletPipelineKind::ForwardOpaque:
-        default:
-            return forwardPipelineStates_[ForwardPipelineVariantIndex(costMode)][index].Get();
-        }
+    stats_.submittedDispatchCount += requestedDispatchCount;
+    if (ctx.pipelineKind == MeshletPipelineKind::GeometryAux ||
+        ctx.pipelineKind == MeshletPipelineKind::GeometryAuxFeatureMask) {
+        stats_.geometryAuxSubmittedDispatchCount += requestedDispatchCount;
+    } else if (ctx.pipelineKind == MeshletPipelineKind::GeometryOutline) {
+        stats_.geometryOutlineSubmittedDispatchCount += requestedDispatchCount;
+    } else if (ctx.pipelineKind == MeshletPipelineKind::VisibilityOverlay) {
+        stats_.visibilityOverlaySubmittedDispatchCount += requestedDispatchCount;
+    } else if (ctx.pipelineKind == MeshletPipelineKind::DepthPrepass) {
+        stats_.depthPrepassSubmittedDispatchCount += requestedDispatchCount;
+    } else if (ctx.pipelineKind == MeshletPipelineKind::WaterVisibility) {
+        stats_.depthPrepassSubmittedDispatchCount += requestedDispatchCount;
+    } else if (ctx.pipelineKind == MeshletPipelineKind::Shadow) {
+        stats_.shadowSubmittedDispatchCount += requestedDispatchCount;
+    } else {
+        stats_.forwardSubmittedDispatchCount += requestedDispatchCount;
     }
+    return true;
+}
+
+const MeshletRenderBackendStats& MeshletRenderBackend::GetStats() const { return stats_; }
+
+ID3D12PipelineState* MeshletRenderBackend::GetPipelineState(MeshletPipelineKind kind,
+                                                            GPUDRIVEN::GpuDrivenCommandBucket bucket,
+                                                            ForwardShadingCostMode costMode) const {
+    const size_t index = GPUDRIVEN::ToCommandBucketIndex(bucket);
+    if (index >= GPUDRIVEN::kGpuDrivenCommandBucketCount) {
+        return nullptr;
+    }
+    switch (kind) {
+    case MeshletPipelineKind::DepthPrepass: return depthPrepassPipelineStates_[index].Get();
+    case MeshletPipelineKind::WaterVisibility: return waterVisibilityPipelineStates_[index].Get();
+    case MeshletPipelineKind::GeometryAux: return geometryAuxPipelineStates_[index].Get();
+    case MeshletPipelineKind::GeometryAuxFeatureMask: return geometryFeatureMaskPipelineStates_[index].Get();
+    case MeshletPipelineKind::GeometryOutline: return geometryOutlinePipelineStates_[index].Get();
+    case MeshletPipelineKind::VisibilityOverlay: return visibilityOverlayPipelineStates_[index].Get();
+    case MeshletPipelineKind::ForwardDepthAware: return depthAwarePipelineStates_[index].Get();
+    case MeshletPipelineKind::ForwardTransparent: return transparentPipelineStates_[index].Get();
+    case MeshletPipelineKind::Shadow: return shadowPipelineStates_[index].Get();
+    case MeshletPipelineKind::ForwardOpaque:
+    default: return forwardPipelineStates_[ForwardPipelineVariantIndex(costMode)][index].Get();
+    }
+}
 
 } // namespace HIKARI::RENDER3D::MESHLET

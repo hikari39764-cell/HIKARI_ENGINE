@@ -2,14 +2,15 @@
 
 #include "Editor/Panels/HIKARI_InputActionMapEditor.h"
 
-namespace HIKARI::INPUT { class InputService; }
+namespace HIKARI::INPUT {
+class InputService;
+}
 
 namespace HIKARI {
 
 class InputActionMapPanel {
 public:
     void RequestOpen() noexcept;
-    void DrawLauncher(INPUT::InputService& inputService);
     void DrawModal(INPUT::InputService& inputService);
     bool IsDirty() const noexcept { return editor_.IsDirty(); }
 

@@ -10,19 +10,24 @@ namespace HIKARI::EDITOR::AI_ASSISTANT {
 namespace {
 
 std::string ExtractJsonContent(const std::string& response) {
-    const auto parsed=nlohmann::json::parse(response,nullptr,false);
-    if (!parsed.is_object() || !parsed.contains("choices") || !parsed["choices"].is_array() || parsed["choices"].empty()) return {};
-    const auto& choice=parsed["choices"][0];
-    const auto found=choice.find(choice.contains("delta") ? "delta" : "message");
-    if (found==choice.end() || !found->is_object()) return {};
-    const auto content=found->find("content");
-    return content!=found->end() && content->is_string() ? content->get<std::string>() : std::string{};
+    const auto parsed = nlohmann::json::parse(response, nullptr, false);
+    if (!parsed.is_object() || !parsed.contains("choices") || !parsed["choices"].is_array() ||
+        parsed["choices"].empty())
+        return {};
+    const auto& choice = parsed["choices"][0];
+    const auto found = choice.find(choice.contains("delta") ? "delta" : "message");
+    if (found == choice.end() || !found->is_object())
+        return {};
+    const auto content = found->find("content");
+    return content != found->end() && content->is_string() ? content->get<std::string>() : std::string{};
 }
 
 void ReadUsage(const std::string& response, AiChatUsage* output) {
-    if (!output) return;
+    if (!output)
+        return;
     const auto root = nlohmann::json::parse(response, nullptr, false);
-    if (!root.is_object() || !root.contains("usage") || !root["usage"].is_object()) return;
+    if (!root.is_object() || !root.contains("usage") || !root["usage"].is_object())
+        return;
     const auto& usage = root["usage"];
     const auto read = [](const nlohmann::json& object, const char* key, int64_t& value) {
         const auto it = object.find(key);
@@ -38,33 +43,34 @@ void ReadUsage(const std::string& response, AiChatUsage* output) {
 
 } // namespace
 
-std::string AiJsonEscape(const std::string& value) {
-    const auto quoted = nlohmann::json(value).dump();
-    return quoted.substr(1,quoted.size()-2);
-}
-
-std::string ExtractJsonField(std::string_view text,std::string_view field) {
-    const auto value=nlohmann::json::parse(text,nullptr,false);
-    if (!value.is_object()) return {};
-    const auto found=value.find(std::string(field));
-    return found!=value.end() && found->is_string() ? found->get<std::string>() : std::string{};
+std::string ExtractJsonField(std::string_view text, std::string_view field) {
+    const auto value = nlohmann::json::parse(text, nullptr, false);
+    if (!value.is_object())
+        return {};
+    const auto found = value.find(std::string(field));
+    return found != value.end() && found->is_string() ? found->get<std::string>() : std::string{};
 }
 
 std::string ExtractJsonNumberField(std::string_view text, std::string_view field) {
-    const auto value = nlohmann::json::parse(text,nullptr,false);
-    if (!value.is_object()) return {};
+    const auto value = nlohmann::json::parse(text, nullptr, false);
+    if (!value.is_object())
+        return {};
     const auto found = value.find(std::string(field));
     return found != value.end() && found->is_number() ? found->dump() : std::string{};
 }
 
-bool RunApiRequest(
-    const AiChatConfig& config,
-    const std::string& body,
-    std::string& outContent,
-    std::string& outError, AiChatUsage* usage) {
-    if (usage) *usage = {};
+bool RunApiRequest(const AiChatConfig& config, const std::string& body, std::string& outContent, std::string& outError,
+                   AiChatUsage* usage) {
+    if (usage)
+        *usage = {};
     std::string raw;
-    if (!RunAiHttpStream(config,body,[&raw](const std::string& chunk) { raw+=chunk;return raw.size()<8*1024*1024; },outError)) {
+    if (!RunAiHttpStream(
+            config, body,
+            [&raw](const std::string& chunk) {
+                raw += chunk;
+                return raw.size() < 8 * 1024 * 1024;
+            },
+            outError)) {
         return false;
     }
     outContent = ExtractJsonContent(raw);
@@ -76,22 +82,22 @@ bool RunApiRequest(
     return true;
 }
 
-bool RunChatCompletionsStreaming(
-    const AiChatConfig& config,
-    const std::vector<AiChatMessage>& messages,
-    const AiChatStreamCallback& onDelta,
-    std::string& outFull,
-    std::string& outError, AiChatUsage* usage, AiChatRequestStats* stats, AiToolReply* toolReply) {
+bool RunChatCompletionsStreaming(const AiChatConfig& config, const std::vector<AiChatMessage>& messages,
+                                 const AiChatStreamCallback& onDelta, std::string& outFull, std::string& outError,
+                                 AiChatUsage* usage, AiChatRequestStats* stats, AiToolReply* toolReply) {
     outFull.clear();
     outError.clear();
-    if (usage) *usage = {};
-    if (stats) *stats = {};
+    if (usage)
+        *usage = {};
+    if (stats)
+        *stats = {};
     if (!config.valid) {
         outError = "未配置 API Key（DASHSCOPE_API_KEY）";
         return false;
     }
     std::string body;
-    if (!BuildAiChatRequest(config, messages, true, body, outError, stats)) return false;
+    if (!BuildAiChatRequest(config, messages, true, body, outError, stats))
+        return false;
     AiToolReply decoded;
     std::string full;
     std::string pending;
@@ -99,8 +105,7 @@ bool RunChatCompletionsStreaming(
     bool userAbort = false;
     const auto parsePending = [&]() {
         size_t newline = 0u;
-        while ((newline = pending.find('\n')) !=
-               std::string::npos) {
+        while ((newline = pending.find('\n')) != std::string::npos) {
             const std::string line = pending.substr(0u, newline);
             pending.erase(0u, newline + 1u);
             const std::string trimmed = Trim(line);
@@ -133,8 +138,7 @@ bool RunChatCompletionsStreaming(
         return parsePending();
     };
     std::string streamError;
-    const bool streamOk = RunAiHttpStream(
-        config, body, onChunk, streamError);
+    const bool streamOk = RunAiHttpStream(config, body, onChunk, streamError);
     // Flush any trailing partial SSE line (for example when the stream times
     // out before a final newline) so a complete action is not silently lost.
     (void)onChunk(std::string{});
@@ -143,22 +147,27 @@ bool RunChatCompletionsStreaming(
         return false;
     }
     if (!streamOk || !sawDone) {
-        outError=streamError.empty() ? "响应未完整结束，未执行其中的动作。" : streamError;
-        outFull=std::move(full);return false;
+        outError = streamError.empty() ? "响应未完整结束，未执行其中的动作。" : streamError;
+        outFull = std::move(full);
+        return false;
     }
-    outFull=std::move(full);
-    if (config.editorTools && !decoded.Validate(outError)) return false;
-    if (toolReply) *toolReply = std::move(decoded);
+    outFull = std::move(full);
+    if (config.editorTools && !decoded.Validate(outError))
+        return false;
+    if (toolReply)
+        *toolReply = std::move(decoded);
     return true;
 }
 
-bool RunVisionAnalysis(const AiChatConfig& config, const std::string& imagePath,
-    const std::string& prompt, std::string& outText, std::string& outError) {
+bool RunVisionAnalysis(const AiChatConfig& config, const std::string& imagePath, const std::string& prompt,
+                       std::string& outText, std::string& outError) {
     auto vision = config;
     vision.editorTools = false;
     std::string body;
-    const std::vector<AiChatMessage> messages{{"user",prompt.empty() ? "Describe the image." : prompt,{{imagePath,"Preview"}}}};
-    return BuildAiChatRequest(vision,messages,false,body,outError) && RunApiRequest(vision,body,outText,outError);
+    const std::vector<AiChatMessage> messages{
+        {"user", prompt.empty() ? "Describe the image." : prompt, {{imagePath, "Preview"}}}};
+    return BuildAiChatRequest(vision, messages, false, body, outError) &&
+           RunApiRequest(vision, body, outText, outError);
 }
 
 } // namespace HIKARI::EDITOR::AI_ASSISTANT

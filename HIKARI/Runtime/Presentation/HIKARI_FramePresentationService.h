@@ -6,34 +6,27 @@
 #include "Runtime/Host/HIKARI_HostBootstrapConfig.h"
 
 namespace HIKARI::SERVICES {
-    struct FrameSceneResolutionPlan {
-        RENDER3D::RenderResolution render{};
-        RENDER3D::RenderResolution output{};
-        RENDER3D::UPSCALING::StreamlineDlssMode streamlineMode =
-            RENDER3D::UPSCALING::StreamlineDlssMode::Off;
-    };
+struct FrameSceneResolutionPlan {
+    RENDER3D::RenderResolution render{};
+    RENDER3D::RenderResolution output{};
+    RENDER3D::UPSCALING::StreamlineDlssMode streamlineMode = RENDER3D::UPSCALING::StreamlineDlssMode::Off;
+};
 
-    enum class FramePresentationDestination {
-        BackBuffer,
-        EditorViewport
-    };
+enum class FramePresentationDestination { BackBuffer, EditorViewport };
 
-    void SetEditorGameViewportSize(int width, int height, bool visible);
-    bool IsEditorGameViewportVisible() noexcept;
-    void UpdateGpuContexts();
-    void QueueWindowResize(int width, int height);
-    void ClearPendingWindowResize();
-    bool ApplyPendingWindowResize();
-    bool ApplyWindowPresentationSettings();
-    bool QueueRenderQualitySettings(const RENDER3D::RenderQualitySettings& settings);
-    FrameSceneResolutionPlan ResolveFrameSceneResolutionPlan();
-    void ApplyFrameSceneCaptureSize();
+void SetEditorGameViewportSize(int width, int height, bool visible);
+bool IsEditorGameViewportVisible() noexcept;
+void UpdateGpuContexts();
+void QueueWindowResize(int width, int height);
+void ClearPendingWindowResize();
+bool ApplyPendingWindowResize();
+bool ApplyWindowPresentationSettings();
+bool QueueRenderQualitySettings(const RENDER3D::RenderQualitySettings& settings);
+FrameSceneResolutionPlan ResolveFrameSceneResolutionPlan();
+void ApplyFrameSceneCaptureSize();
 
-    bool BeginFrame(
-        const RUNTIME::HostBootstrapConfig& cfg = {});
-    bool PrepareFramePresentation(
-        FramePresentationDestination destination =
-            FramePresentationDestination::EditorViewport);
-    bool EndFrame();
-    bool RequestFrameCapture(const std::filesystem::path& output);
+bool BeginFrame(const RUNTIME::HostBootstrapConfig& cfg = {});
+bool PrepareFramePresentation(FramePresentationDestination destination = FramePresentationDestination::EditorViewport);
+bool EndFrame();
+bool RequestFrameCapture(const std::filesystem::path& output);
 } // namespace HIKARI::SERVICES

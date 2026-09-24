@@ -11,158 +11,115 @@
 #include "Core/IO/HIKARI_NativeFilePath.h"
 
 namespace HIKARI::SERIALIZATION::JSON {
-    namespace {
+namespace {
 
-        void SetMessage(
-            std::string* outMessage,
-            std::string message) {
+void SetMessage(std::string* outMessage, std::string message) {
+    if (outMessage != nullptr) {
+        *outMessage = std::move(message);
+    }
+}
 
-            if (outMessage != nullptr) {
-                *outMessage = std::move(message);
-            }
-        }
+std::filesystem::path MakeStagedPath(const std::filesystem::path& finalPath) {
+    static std::atomic_uint64_t sequence{0u};
+    const auto timestamp = std::chrono::steady_clock::now().time_since_epoch().count();
+    std::filesystem::path stagedPath = finalPath;
+    stagedPath += std::filesystem::path(".hikari-json-" + std::to_string(timestamp) + "-" +
+                                        std::to_string(sequence.fetch_add(1u, std::memory_order_relaxed)))
+                      .native();
+    return stagedPath;
+}
 
-        std::filesystem::path MakeStagedPath(
-            const std::filesystem::path& finalPath) {
+void RemoveStagedFile(const std::filesystem::path& path) noexcept {
+    std::error_code ignored{};
+    std::filesystem::remove(IO::NativeFilePath(path), ignored);
+}
 
-            static std::atomic_uint64_t sequence{ 0u };
-            const auto timestamp = std::chrono::steady_clock::now()
-                .time_since_epoch()
-                .count();
-            std::filesystem::path stagedPath = finalPath;
-            stagedPath += std::filesystem::path(
-                ".hikari-json-" +
-                std::to_string(timestamp) + "-" +
-                std::to_string(sequence.fetch_add(
-                    1u,
-                    std::memory_order_relaxed))).native();
-            return stagedPath;
-        }
+} // namespace
 
-        void RemoveStagedFile(
-            const std::filesystem::path& path) noexcept {
-
-            std::error_code ignored{};
-            std::filesystem::remove(IO::NativeFilePath(path), ignored);
-        }
-
-    } // namespace
-
-    bool ReadJsonFile(
-        const std::filesystem::path& path,
-        nlohmann::json& outDocument,
-        std::string* outMessage) {
-
-        std::ifstream input(IO::NativeFilePath(path), std::ios::binary | std::ios::ate);
-        if (!input.is_open()) {
-            SetMessage(
-                outMessage,
-                "failed to open JSON file: " + path.generic_string());
-            return false;
-        }
-
-        // MSVC の file stream を JSON の文字ごとに呼ばない。追加メモリは
-        // 64 MiB に制限し、大きな文書は従来のストリーム経路で読む。
-        const auto byteCount = input.tellg();
-        input.seekg(0, std::ios::beg);
-        nlohmann::json document;
-        if (byteCount >= 0 && byteCount <= 64 * 1024 * 1024) {
-            std::string bytes(static_cast<size_t>(byteCount), '\0');
-            if (!input.read(bytes.data(), static_cast<std::streamsize>(bytes.size())) ||
-                input.peek() != std::char_traits<char>::eof() || input.bad()) {
-                SetMessage(outMessage, "JSON file changed or could not be read: " + path.generic_string());
-                return false;
-            }
-            if (bytes.find('\0') != std::string::npos) {
-                SetMessage(outMessage, "JSON file contains a raw NUL: " + path.generic_string());
-                return false;
-            }
-            document = nlohmann::json::parse(bytes, nullptr, false);
-        } else {
-            document = nlohmann::json::parse(input, nullptr, false);
-        }
-        if (document.is_discarded()) {
-            SetMessage(
-                outMessage,
-                "failed to parse JSON file: " + path.generic_string());
-            return false;
-        }
-
-        outDocument = std::move(document);
-        SetMessage(outMessage, {});
-        return true;
+bool ReadJsonFile(const std::filesystem::path& path, nlohmann::json& outDocument, std::string* outMessage) {
+    std::ifstream input(IO::NativeFilePath(path), std::ios::binary | std::ios::ate);
+    if (!input.is_open()) {
+        SetMessage(outMessage, "failed to open JSON file: " + path.generic_string());
+        return false;
     }
 
-    bool WriteJsonFile(
-        const std::filesystem::path& path,
-        const nlohmann::json& document,
-        std::string* outMessage) {
-
-        if (path.empty()) {
-            SetMessage(outMessage, "JSON output path is empty");
+    // MSVC の file stream を JSON の文字ごとに呼ばない。追加メモリは
+    // 64 MiB に制限し、大きな文書は従来のストリーム経路で読む。
+    const auto byteCount = input.tellg();
+    input.seekg(0, std::ios::beg);
+    nlohmann::json document;
+    if (byteCount >= 0 && byteCount <= 64 * 1024 * 1024) {
+        std::string bytes(static_cast<size_t>(byteCount), '\0');
+        if (!input.read(bytes.data(), static_cast<std::streamsize>(bytes.size())) ||
+            input.peek() != std::char_traits<char>::eof() || input.bad()) {
+            SetMessage(outMessage, "JSON file changed or could not be read: " + path.generic_string());
             return false;
         }
-
-        std::string serializedDocument{};
-        try {
-            serializedDocument = document.dump(2);
-        } catch (const std::exception& exception) {
-            SetMessage(
-                outMessage,
-                "failed to serialize JSON document: " +
-                    std::string(exception.what()));
+        if (bytes.find('\0') != std::string::npos) {
+            SetMessage(outMessage, "JSON file contains a raw NUL: " + path.generic_string());
             return false;
         }
-
-        std::error_code ec{};
-        if (!path.parent_path().empty()) {
-            std::filesystem::create_directories(IO::NativeFilePath(path.parent_path()), ec);
-        }
-        if (ec) {
-            SetMessage(
-                outMessage,
-                "failed to create JSON directory: " + ec.message());
-            return false;
-        }
-
-        const std::filesystem::path stagedPath =
-            MakeStagedPath(path);
-        std::ofstream output(
-            IO::NativeFilePath(stagedPath),
-            std::ios::out | std::ios::trunc);
-        if (!output.is_open()) {
-            SetMessage(
-                outMessage,
-                "failed to open staged JSON file: " +
-                    stagedPath.generic_string());
-            return false;
-        }
-
-        output << serializedDocument << '\n';
-        output.close();
-        if (output.fail()) {
-            RemoveStagedFile(stagedPath);
-            SetMessage(
-                outMessage,
-                "failed while writing JSON file: " +
-                    path.generic_string());
-            return false;
-        }
-
-        std::string commitMessage{};
-        if (!IO::CommitStagedFile(
-            stagedPath,
-            path,
-            commitMessage)) {
-            RemoveStagedFile(stagedPath);
-            SetMessage(
-                outMessage,
-                "failed to commit JSON file: " + commitMessage);
-            return false;
-        }
-
-        SetMessage(outMessage, {});
-        return true;
+        document = nlohmann::json::parse(bytes, nullptr, false);
+    } else {
+        document = nlohmann::json::parse(input, nullptr, false);
     }
+    if (document.is_discarded()) {
+        SetMessage(outMessage, "failed to parse JSON file: " + path.generic_string());
+        return false;
+    }
+
+    outDocument = std::move(document);
+    SetMessage(outMessage, {});
+    return true;
+}
+
+bool WriteJsonFile(const std::filesystem::path& path, const nlohmann::json& document, std::string* outMessage) {
+    if (path.empty()) {
+        SetMessage(outMessage, "JSON output path is empty");
+        return false;
+    }
+
+    std::string serializedDocument{};
+    try {
+        serializedDocument = document.dump(2);
+    } catch (const std::exception& exception) {
+        SetMessage(outMessage, "failed to serialize JSON document: " + std::string(exception.what()));
+        return false;
+    }
+
+    std::error_code ec{};
+    if (!path.parent_path().empty()) {
+        std::filesystem::create_directories(IO::NativeFilePath(path.parent_path()), ec);
+    }
+    if (ec) {
+        SetMessage(outMessage, "failed to create JSON directory: " + ec.message());
+        return false;
+    }
+
+    const std::filesystem::path stagedPath = MakeStagedPath(path);
+    std::ofstream output(IO::NativeFilePath(stagedPath), std::ios::out | std::ios::trunc);
+    if (!output.is_open()) {
+        SetMessage(outMessage, "failed to open staged JSON file: " + stagedPath.generic_string());
+        return false;
+    }
+
+    output << serializedDocument << '\n';
+    output.close();
+    if (output.fail()) {
+        RemoveStagedFile(stagedPath);
+        SetMessage(outMessage, "failed while writing JSON file: " + path.generic_string());
+        return false;
+    }
+
+    std::string commitMessage{};
+    if (!IO::CommitStagedFile(stagedPath, path, commitMessage)) {
+        RemoveStagedFile(stagedPath);
+        SetMessage(outMessage, "failed to commit JSON file: " + commitMessage);
+        return false;
+    }
+
+    SetMessage(outMessage, {});
+    return true;
+}
 
 } // namespace HIKARI::SERIALIZATION::JSON

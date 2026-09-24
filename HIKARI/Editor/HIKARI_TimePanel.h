@@ -2,9 +2,9 @@
 
 namespace HIKARI {
 
-    class TimePanel {
-    public:
-        void DrawContents() const;
-    };
+class TimePanel {
+public:
+    void DrawContents() const;
+};
 
 } // namespace HIKARI

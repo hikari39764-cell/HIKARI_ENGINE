@@ -2,15 +2,13 @@
 
 namespace HIKARI::EDITOR {
 
-    struct EditorViewInputBlockState {
-        bool pointer = false;
-        bool keyboard = false;
+struct EditorViewInputBlockState {
+    bool pointer = false;
+    bool keyboard = false;
 
-        bool Any() const noexcept {
-            return pointer || keyboard;
-        }
-    };
+    bool Any() const noexcept { return pointer || keyboard; }
+};
 
-    EditorViewInputBlockState QueryEditorViewInputBlockState() noexcept;
+EditorViewInputBlockState QueryEditorViewInputBlockState() noexcept;
 
 } // namespace HIKARI::EDITOR

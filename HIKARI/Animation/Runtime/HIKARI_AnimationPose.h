@@ -11,81 +11,71 @@
 
 namespace HIKARI::ANIMATION {
 
-    enum class AnimationSubtreeRootAlignment : uint8_t {
-        ParentLocal = 0,
-        PreserveModelRotation = 1,
-    };
+enum class AnimationSubtreeRootAlignment : uint8_t {
+    ParentLocal = 0,
+    PreserveModelRotation = 1,
+};
 
-    struct AnimationClipReference {
-        AssetId modelAssetId{};
-        AnimationClipId clipId{};
-        std::string fallbackName{};
+struct AnimationClipReference {
+    AssetId modelAssetId{};
+    AnimationClipId clipId{};
+    std::string fallbackName{};
 
-        bool IsEmpty() const noexcept {
-            return !clipId.IsValid() && fallbackName.empty();
-        }
+    bool IsEmpty() const noexcept { return !clipId.IsValid() && fallbackName.empty(); }
 
-        friend bool operator==(
-            const AnimationClipReference&,
-            const AnimationClipReference&) = default;
-    };
+    friend bool operator==(const AnimationClipReference&, const AnimationClipReference&) = default;
+};
 
-    struct AnimationLocalPose {
-        std::vector<Transform3D> nodes{};
+struct AnimationLocalPose {
+    std::vector<Transform3D> nodes{};
 
-        bool IsValidFor(size_t nodeCount) const noexcept {
-            return !nodes.empty() && nodes.size() == nodeCount;
-        }
-    };
+    bool IsValidFor(size_t nodeCount) const noexcept { return !nodes.empty() && nodes.size() == nodeCount; }
+};
 
-    // A resolved runtime motion uses at most two synchronized clips. Higher
-    // level authoring data (for example a 1D blend tree) is reduced to this
-    // small playback contract before it reaches AnimatorComponent.
-    struct AnimationMotionSample {
-        AnimationClipReference primaryClip{};
-        AnimationClipReference secondaryClip{};
-        float secondaryWeight = 0.0f;
+// A resolved runtime motion uses at most two synchronized clips. Higher
+// level authoring data (for example a 1D blend tree) is reduced to this
+// small playback contract before it reaches AnimatorComponent.
+struct AnimationMotionSample {
+    AnimationClipReference primaryClip{};
+    AnimationClipReference secondaryClip{};
+    float secondaryWeight = 0.0f;
 
-        bool IsEmpty() const noexcept {
-            return primaryClip.IsEmpty();
-        }
+    bool IsEmpty() const noexcept { return primaryClip.IsEmpty(); }
 
-        bool IsBlended() const noexcept {
-            return !secondaryClip.IsEmpty() && secondaryWeight > 0.0f;
-        }
-    };
+    bool IsBlended() const noexcept { return !secondaryClip.IsEmpty() && secondaryWeight > 0.0f; }
+};
 
-    struct AnimationRootMotionDelta {
-        MATH::Vec3 translation{};
-        MATH::Quat rotation = MATH::Quat::Identity();
-        // The animation evaluator fills the motion value.  The root-motion
-        // service assigns these delivery fields when the value is queued for
-        // a fixed tick; they are intentionally not part of pose equality.
-        uint64_t fixedTickIndex = 0u;
-        uint64_t revision = 0u;
-        bool valid = false;
-    };
+struct AnimationRootMotionDelta {
+    MATH::Vec3 translation{};
+    MATH::Quat rotation = MATH::Quat::Identity();
+    // The animation evaluator fills the motion value.  The root-motion
+    // service assigns these delivery fields when the value is queued for
+    // a fixed tick; they are intentionally not part of pose equality.
+    uint64_t fixedTickIndex = 0u;
+    uint64_t revision = 0u;
+    bool valid = false;
+};
 
-    struct AnimationRootMotionSample {
-        MATH::Mat4 modelMatrix = MATH::Mat4::Identity();
-        bool valid = false;
-    };
+struct AnimationRootMotionSample {
+    MATH::Mat4 modelMatrix = MATH::Mat4::Identity();
+    bool valid = false;
+};
 
-    struct AnimationPoseSnapshot {
-        AnimationLocalPose localPose{};
-        AnimationClipReference primaryClip{};
-        AnimationClipReference secondaryClip{};
-        float normalizedTime = 0.0f;
-        float motionBlendWeight = 0.0f;
-        float blendWeight = 1.0f;
-        AnimationRootMotionDelta rootMotion{};
-        AnimationRootMotionSample rootMotionSample{};
-        uint64_t revision = 0u;
-        bool transitioning = false;
-        bool loop = true;
-        float playbackSpeed = 1.0f;
-        bool rootMotionEnabled = false;
-        bool valid = false;
-    };
+struct AnimationPoseSnapshot {
+    AnimationLocalPose localPose{};
+    AnimationClipReference primaryClip{};
+    AnimationClipReference secondaryClip{};
+    float normalizedTime = 0.0f;
+    float motionBlendWeight = 0.0f;
+    float blendWeight = 1.0f;
+    AnimationRootMotionDelta rootMotion{};
+    AnimationRootMotionSample rootMotionSample{};
+    uint64_t revision = 0u;
+    bool transitioning = false;
+    bool loop = true;
+    float playbackSpeed = 1.0f;
+    bool rootMotionEnabled = false;
+    bool valid = false;
+};
 
 } // namespace HIKARI::ANIMATION

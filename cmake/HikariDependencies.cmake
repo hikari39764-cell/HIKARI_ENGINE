@@ -52,7 +52,7 @@ set(
 set(BUILD_TOOLS OFF CACHE BOOL "Disable DirectXTex tools" FORCE)
 set(BUILD_SAMPLE OFF CACHE BOOL "Disable DirectXTex sample" FORCE)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build DirectXTex statically" FORCE)
-set(BUILD_DX11 ON CACHE BOOL "Keep existing DirectXTex DX11 support" FORCE)
+set(BUILD_DX11 OFF CACHE BOOL "HIKARI uses the DirectXTex D3D12/CPU paths only" FORCE)
 set(BUILD_DX12 ON CACHE BOOL "Keep existing DirectXTex DX12 support" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "Disable third-party tests" FORCE)
 add_subdirectory(

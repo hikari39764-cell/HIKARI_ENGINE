@@ -8,17 +8,16 @@
 
 namespace HIKARI {
 
-    struct SpineTexture {
-        int handle{ -1 };
-        int width{ 0 };
-        int height{ 0 };
-    };
+struct SpineTexture {
+    int handle{-1};
+    int width{0};
+    int height{0};
+};
 
-
-    class SpineDxTextureLoader : public spine::TextureLoader {
-    public:
-        void load(spine::AtlasPage& page, const spine::String& path) override;
-        void unload(void* rendererObject) override;
-    };
+class SpineDxTextureLoader : public spine::TextureLoader {
+public:
+    void load(spine::AtlasPage& page, const spine::String& path) override;
+    void unload(void* rendererObject) override;
+};
 
 } // namespace HIKARI

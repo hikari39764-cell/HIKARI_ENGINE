@@ -1,3 +1,4 @@
+#include "Gfx/D3D12/HIKARI_D3D12RootSignature.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
 
 #include <algorithm>
@@ -34,836 +35,689 @@
 
 namespace HIKARI::RENDER3D::VOLUMETRIC {
 
-    namespace {
-        using Microsoft::WRL::ComPtr;
-        constexpr DXGI_FORMAT kVolumeFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
+namespace {
+using Microsoft::WRL::ComPtr;
+constexpr DXGI_FORMAT kVolumeFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
 
-        struct alignas(16) VolumetricConstants {
-            MATH::Mat4 invViewProj{};
-            MATH::Mat4 prevViewProj{};
-            MATH::Mat4 lightViewProj[
-                SHADOW::kMaxDirectionalShadowCascades]{};
-            MATH::Vec4 shadowCascadeSplits{};
-            MATH::Vec4 shadowCascadeParams{};
-            MATH::Vec4 shadowSampling{};
-            MATH::Vec4 shadowCascadeDepthBiasScales{};
-            MATH::Vec4 cameraPos{};
-            MATH::Vec4 prevCameraPos{};
-            MATH::Vec4 fogColorDensity{};
-            MATH::Vec4 fogDistances{};
-            MATH::Vec4 directionalDirIntensity{};
-            MATH::Vec4 directionalColorShadow{};
-            MATH::Vec4 ambientColorIntensity{};
-            MATH::Vec4 volumetricOptics{};
-            MATH::Vec4 volumeSize{};
-            MATH::Vec4 frameParams{};
-            MATH::Vec4 debugAndLocalLightDepth{};
-            uint32_t localLightCount = 0u;
-            uint32_t localLightClusterCountX = 0u;
-            uint32_t localLightClusterCountY = 0u;
-            uint32_t localLightClusterCountZ = 0u;
-            uint32_t localLightTileSizePixels = 64u;
-            uint32_t localLightClusterIndexCount = 0u;
-            float localLightNearDistance = 0.1f;
-            float localLightFarDistance = 100.0f;
-            LIGHTING::LocalShadowGpuData localShadow{};
-            LIGHTING::CloudSolarVisibilityGpuData cloudSolarVisibility{};
-        };
+struct alignas(16) VolumetricConstants {
+    MATH::Mat4 invViewProj{};
+    MATH::Mat4 prevViewProj{};
+    MATH::Mat4 lightViewProj[SHADOW::kMaxDirectionalShadowCascades]{};
+    MATH::Vec4 shadowCascadeSplits{};
+    MATH::Vec4 shadowCascadeParams{};
+    MATH::Vec4 shadowSampling{};
+    MATH::Vec4 shadowCascadeDepthBiasScales{};
+    MATH::Vec4 cameraPos{};
+    MATH::Vec4 prevCameraPos{};
+    MATH::Vec4 fogColorDensity{};
+    MATH::Vec4 fogDistances{};
+    MATH::Vec4 directionalDirIntensity{};
+    MATH::Vec4 directionalColorShadow{};
+    MATH::Vec4 ambientColorIntensity{};
+    MATH::Vec4 volumetricOptics{};
+    MATH::Vec4 volumeSize{};
+    MATH::Vec4 frameParams{};
+    MATH::Vec4 debugAndLocalLightDepth{};
+    uint32_t localLightCount = 0u;
+    uint32_t localLightClusterCountX = 0u;
+    uint32_t localLightClusterCountY = 0u;
+    uint32_t localLightClusterCountZ = 0u;
+    uint32_t localLightTileSizePixels = 64u;
+    uint32_t localLightClusterIndexCount = 0u;
+    float localLightNearDistance = 0.1f;
+    float localLightFarDistance = 100.0f;
+    LIGHTING::LocalShadowGpuData localShadow{};
+    LIGHTING::CloudSolarVisibilityGpuData cloudSolarVisibility{};
+};
 
-        static_assert(
-            sizeof(VolumetricConstants) == 1760u);
+static_assert(sizeof(VolumetricConstants) == 1760u);
 
-        struct VolumeResource {
-            ComPtr<ID3D12Resource> texture{};
-            RenderResourceView srv{};
-            RenderResourceView uav{};
-            D3D12_RESOURCE_STATES state = D3D12_RESOURCE_STATE_GENERIC_READ;
-        };
+struct VolumeResource {
+    ComPtr<ID3D12Resource> texture{};
+    RenderResourceView srv{};
+    RenderResourceView uav{};
+    D3D12_RESOURCE_STATES state = D3D12_RESOURCE_STATE_GENERIC_READ;
+};
 
-        struct StageState {
-            GFX::Context context{};
-            ComPtr<ID3D12RootSignature> computeRoot{};
-            ComPtr<ID3D12RootSignature> compositeRoot{};
-            ComPtr<ID3D12PipelineState> computePso{};
-            ComPtr<ID3D12PipelineState> compositePso{};
-            std::array<DX::DynamicUploadBuffer, GFX::kFrameResourceCount> uploads;
-            D3D12_GPU_VIRTUAL_ADDRESS constantAddress = 0;
-            VolumeResource volumes[2]{};
-            RenderResourceView sceneColorUav{};
-            RenderResourceView sceneDepthSrv{};
-            D3D12_GPU_DESCRIPTOR_HANDLE waterDepthSrv{};
-            D3D12_GPU_DESCRIPTOR_HANDLE localShadowSrv{};
-            D3D12_GPU_DESCRIPTOR_HANDLE cloudSolarSrv{};
-            WATER::WaterVisibleDepthView waterDepthView{};
-            ID3D12Resource* sceneColorResource = nullptr;
-            ID3D12Resource* sceneDepthResource = nullptr;
-            VolumetricLightingStats stats{};
-            uint32_t writeIndex = 0;
-            uint64_t preparedFrameIndex = 0;
-            uint64_t historyFrameIndex = 0;
-            TEMPORAL::TemporalViewLease preparedView{}, historyView{};
-            RenderDebugView debugView = RenderDebugView::None;
-            LIGHTING::LocalLightListGpuBindings localLights{};
-            bool pipelineReady = false;
-            bool resourcesReady = false;
-            bool prepared = false;
-            bool volumeHistoryValid = false;
-            uint64_t lastSettingsSignature = 0u;
-        };
+struct StageState {
+    GFX::Context context{};
+    ComPtr<ID3D12RootSignature> computeRoot{};
+    ComPtr<ID3D12RootSignature> compositeRoot{};
+    ComPtr<ID3D12PipelineState> computePso{};
+    ComPtr<ID3D12PipelineState> compositePso{};
+    std::array<DX::DynamicUploadBuffer, GFX::kFrameResourceCount> uploads;
+    D3D12_GPU_VIRTUAL_ADDRESS constantAddress = 0;
+    VolumeResource volumes[2]{};
+    RenderResourceView sceneColorUav{};
+    RenderResourceView sceneDepthSrv{};
+    D3D12_GPU_DESCRIPTOR_HANDLE waterDepthSrv{};
+    D3D12_GPU_DESCRIPTOR_HANDLE localShadowSrv{};
+    D3D12_GPU_DESCRIPTOR_HANDLE cloudSolarSrv{};
+    WATER::WaterVisibleDepthView waterDepthView{};
+    ID3D12Resource* sceneColorResource = nullptr;
+    ID3D12Resource* sceneDepthResource = nullptr;
+    VolumetricLightingStats stats{};
+    uint32_t writeIndex = 0;
+    uint64_t preparedFrameIndex = 0;
+    uint64_t historyFrameIndex = 0;
+    TEMPORAL::TemporalViewLease preparedView{}, historyView{};
+    RenderDebugView debugView = RenderDebugView::None;
+    LIGHTING::LocalLightListGpuBindings localLights{};
+    bool pipelineReady = false;
+    bool resourcesReady = false;
+    bool prepared = false;
+    bool volumeHistoryValid = false;
+    uint64_t lastSettingsSignature = 0u;
+};
 
-        StageState& State() {
-            static StageState state{};
-            return state;
+StageState& State() {
+    static StageState state{};
+    return state;
+}
+
+struct QualityPolicy {
+    uint32_t froxelPixelSize = 16;
+    uint32_t sliceCount = 64;
+};
+
+QualityPolicy ResolveQualityPolicy(VolumetricLightingQuality quality) {
+    switch (quality) {
+    case VolumetricLightingQuality::Low: return {24u, 48u};
+    case VolumetricLightingQuality::High: return {12u, 80u};
+    case VolumetricLightingQuality::Balanced:
+    default: return {16u, 64u};
+    }
+}
+
+uint32_t ResolveDebugMode(RenderDebugView view) {
+    switch (view) {
+    case RenderDebugView::VolumetricScattering: return 1u;
+    case RenderDebugView::VolumetricTransmittance: return 2u;
+    case RenderDebugView::VolumetricDepthSlice: return 3u;
+    default: return 0u;
+    }
+}
+
+uint64_t HashVolumetricSettings(const SceneEnvironment& environment, VolumetricLightingQuality quality,
+                                uint64_t localLightingContentHash,
+                                const ATMOSPHERE::AtmosphereSolarState& solar) noexcept {
+    uint64_t hash = HASH::kFnv1a64OffsetBasis;
+    const auto Add = [&hash](const auto& value) { hash = HASH::Fnv1aBytes(hash, &value, sizeof(value)); };
+    Add(localLightingContentHash);
+    Add(solar.sunDirection);
+    Add(solar.sunColor);
+    Add(solar.sunRadiance);
+    Add(environment.fog.enabled);
+    Add(environment.fog.volumetric);
+    Add(environment.fog.color);
+    Add(environment.fog.density);
+    Add(environment.fog.startDistance);
+    Add(environment.fog.endDistance);
+    Add(environment.fog.heightFalloff);
+    Add(environment.fog.baseHeight);
+    Add(environment.fog.anisotropy);
+    Add(environment.fog.temporalWeight);
+    Add(environment.fog.scatteringIntensity);
+    Add(environment.fog.ambientScatteringStrength);
+    Add(environment.fog.sunShaftStrength);
+    Add(environment.fog.useSkyHorizonColor);
+    Add(environment.sky.horizonColor);
+    Add(environment.sky.tint);
+    Add(environment.sky.exposure);
+    Add(environment.directional.enabled);
+    Add(environment.directional.direction);
+    Add(environment.directional.color);
+    Add(environment.directional.intensity);
+    Add(environment.directionalShadow.enabled);
+    Add(environment.directionalShadow.strength);
+    Add(environment.directionalShadow.depthBias);
+    Add(environment.directionalShadow.cascadeBlend);
+    Add(environment.directionalShadow.cascadeCount);
+    Add(environment.directionalShadow.cascadeSplitLambda);
+    Add(environment.directionalShadow.shadowDistance);
+    Add(environment.directionalShadow.resolution);
+    Add(SKYRENDERER::ResolveAmbientLightColor(environment));
+    Add(environment.clouds.enabled);
+    Add(environment.clouds.physicallyBasedLighting);
+    Add(environment.clouds.coverage);
+    Add(environment.clouds.density);
+    Add(environment.clouds.altitude);
+    Add(environment.clouds.thickness);
+    Add(environment.clouds.scale);
+    Add(environment.clouds.shapeDetail);
+    Add(environment.clouds.softness);
+    Add(environment.ambient.intensity);
+    Add(quality);
+    return hash == 0u ? 1u : hash;
+}
+
+void ReleaseView(RenderResourceView& view) {
+    if (view.IsValid()) {
+        (void)ReleaseRenderResourceDescriptor(view);
+        view = {};
+    }
+}
+
+void RetireView(StageState& state, RenderResourceView& view, const char* debugName) {
+    if (!view.IsValid())
+        return;
+    const RenderResourceView retired = view;
+    view = {};
+    if (state.context.deferredReleaseQueue != nullptr && state.context.currentFrameRetireFenceValue != 0) {
+        state.context.deferredReleaseQueue->Enqueue(
+            state.context.currentFrameRetireFenceValue, [retired]() { (void)ReleaseRenderResourceDescriptor(retired); },
+            debugName != nullptr ? debugName : "VolumetricLighting.Descriptor");
+        return;
+    }
+    (void)ReleaseRenderResourceDescriptor(retired);
+}
+
+void ReleaseVolume(VolumeResource& volume) {
+    ReleaseView(volume.srv);
+    ReleaseView(volume.uav);
+    volume.texture.Reset();
+    volume.state = D3D12_RESOURCE_STATE_GENERIC_READ;
+}
+
+void RetireVolume(StageState& state, VolumeResource& volume) {
+    RetireView(state, volume.srv, "VolumetricLighting.VolumeSRV");
+    RetireView(state, volume.uav, "VolumetricLighting.VolumeUAV");
+    GFX::RetireD3D12ObjectForFrame(volume.texture, state.context, "VolumetricLighting.Volume");
+    volume.state = D3D12_RESOURCE_STATE_GENERIC_READ;
+}
+
+bool CreateRootSignature(ID3D12Device* device, bool injection, ID3D12RootSignature** output) {
+    std::array<D3D12_DESCRIPTOR_RANGE, 6> ranges{};
+    constexpr uint32_t tableCount = 4u;
+    for (uint32_t index = 0; index < tableCount; ++index) {
+        ranges[index].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+        ranges[index].NumDescriptors = 1;
+        if (injection) {
+            ranges[index].RangeType = index == 3 ? D3D12_DESCRIPTOR_RANGE_TYPE_UAV : D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+            ranges[index].BaseShaderRegister = index == 3 ? 0u : index;
+        } else {
+            ranges[index].RangeType = index == 3 ? D3D12_DESCRIPTOR_RANGE_TYPE_UAV : D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+            ranges[index].BaseShaderRegister = index == 3 ? 1u : (4u + index);
         }
+        ranges[index].OffsetInDescriptorsFromTableStart = 0;
+    }
 
-        struct QualityPolicy {
-            uint32_t froxelPixelSize = 16;
-            uint32_t sliceCount = 64;
-        };
-
-        QualityPolicy ResolveQualityPolicy(VolumetricLightingQuality quality) {
-            switch (quality) {
-            case VolumetricLightingQuality::Low: return { 24u, 48u };
-            case VolumetricLightingQuality::High: return { 12u, 80u };
-            case VolumetricLightingQuality::Balanced:
-            default: return { 16u, 64u };
-            }
-        }
-
-        uint32_t ResolveDebugMode(RenderDebugView view) {
-            switch (view) {
-            case RenderDebugView::VolumetricScattering: return 1u;
-            case RenderDebugView::VolumetricTransmittance: return 2u;
-            case RenderDebugView::VolumetricDepthSlice: return 3u;
-            default: return 0u;
-            }
-        }
-
-        uint64_t HashVolumetricSettings(
-            const SceneEnvironment& environment,
-            VolumetricLightingQuality quality,
-            uint64_t localLightingContentHash,
-            const ATMOSPHERE::AtmosphereSolarState& solar) noexcept {
-            uint64_t hash = HASH::kFnv1a64OffsetBasis;
-            const auto Add = [&hash](const auto& value) {
-                hash = HASH::Fnv1aBytes(hash, &value, sizeof(value));
-            };
-            Add(localLightingContentHash);
-            Add(solar.sunDirection);
-            Add(solar.sunColor);
-            Add(solar.sunRadiance);
-            Add(environment.fog.enabled);
-            Add(environment.fog.volumetric);
-            Add(environment.fog.color);
-            Add(environment.fog.density);
-            Add(environment.fog.startDistance);
-            Add(environment.fog.endDistance);
-            Add(environment.fog.heightFalloff);
-            Add(environment.fog.baseHeight);
-            Add(environment.fog.anisotropy);
-            Add(environment.fog.temporalWeight);
-            Add(environment.fog.scatteringIntensity);
-            Add(environment.fog.ambientScatteringStrength);
-            Add(environment.fog.sunShaftStrength);
-            Add(environment.fog.useSkyHorizonColor);
-            Add(environment.sky.horizonColor);
-            Add(environment.sky.tint);
-            Add(environment.sky.exposure);
-            Add(environment.directional.enabled);
-            Add(environment.directional.direction);
-            Add(environment.directional.color);
-            Add(environment.directional.intensity);
-            Add(environment.directionalShadow.enabled);
-            Add(environment.directionalShadow.strength);
-            Add(environment.directionalShadow.depthBias);
-            Add(environment.directionalShadow.cascadeBlend);
-            Add(environment.directionalShadow.cascadeCount);
-            Add(environment.directionalShadow.cascadeSplitLambda);
-            Add(environment.directionalShadow.shadowDistance);
-            Add(environment.directionalShadow.resolution);
-            Add(SKYRENDERER::ResolveAmbientLightColor(environment));
-            Add(environment.clouds.enabled);
-            Add(environment.clouds.physicallyBasedLighting);
-            Add(environment.clouds.coverage);
-            Add(environment.clouds.density);
-            Add(environment.clouds.altitude);
-            Add(environment.clouds.thickness);
-            Add(environment.clouds.scale);
-            Add(environment.clouds.shapeDetail);
-            Add(environment.clouds.softness);
-            Add(environment.ambient.intensity);
-            Add(quality);
-            return hash == 0u ? 1u : hash;
-        }
-
-        void ReleaseView(RenderResourceView& view) {
-            if (view.IsValid()) {
-                (void)ReleaseRenderResourceDescriptor(view);
-                view = {};
-            }
-        }
-
-        void RetireView(StageState& state, RenderResourceView& view, const char* debugName) {
-            if (!view.IsValid()) return;
-            const RenderResourceView retired = view;
-            view = {};
-            if (state.context.deferredReleaseQueue != nullptr &&
-                state.context.currentFrameRetireFenceValue != 0) {
-                state.context.deferredReleaseQueue->Enqueue(
-                    state.context.currentFrameRetireFenceValue,
-                    [retired]() {
-                        (void)ReleaseRenderResourceDescriptor(retired);
-                    },
-                    debugName != nullptr ? debugName : "VolumetricLighting.Descriptor");
-                return;
-            }
-            (void)ReleaseRenderResourceDescriptor(retired);
-        }
-
-        void ReleaseVolume(VolumeResource& volume) {
-            ReleaseView(volume.srv);
-            ReleaseView(volume.uav);
-            volume.texture.Reset();
-            volume.state = D3D12_RESOURCE_STATE_GENERIC_READ;
-        }
-
-        void RetireVolume(StageState& state, VolumeResource& volume) {
-            RetireView(state, volume.srv, "VolumetricLighting.VolumeSRV");
-            RetireView(state, volume.uav, "VolumetricLighting.VolumeUAV");
-            GFX::RetireD3D12ObjectForFrame(
-                volume.texture,
-                state.context,
-                "VolumetricLighting.Volume");
-            volume.state = D3D12_RESOURCE_STATE_GENERIC_READ;
-        }
-
-        bool CreateRootSignature(
-            ID3D12Device* device,
-            bool injection,
-            ID3D12RootSignature** output) {
-            std::array<D3D12_DESCRIPTOR_RANGE, 6> ranges{};
-            constexpr uint32_t tableCount = 4u;
-            for (uint32_t index = 0; index < tableCount; ++index) {
-                ranges[index].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-                ranges[index].NumDescriptors = 1;
-                if (injection) {
-                    ranges[index].RangeType = index == 3
-                        ? D3D12_DESCRIPTOR_RANGE_TYPE_UAV
-                        : D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-                    ranges[index].BaseShaderRegister = index == 3 ? 0u : index;
-                } else {
-                    ranges[index].RangeType = index == 3
-                        ? D3D12_DESCRIPTOR_RANGE_TYPE_UAV
-                        : D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-                    ranges[index].BaseShaderRegister = index == 3
-                        ? 1u
-                        : (4u + index);
-                }
-                ranges[index].OffsetInDescriptorsFromTableStart = 0;
-            }
-
-            std::array<D3D12_ROOT_PARAMETER, 10> params{};
-            params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-            params[0].Descriptor.ShaderRegister = 0;
-            params[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-            for (uint32_t index = 0; index < tableCount; ++index) {
-                params[index + 1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-                params[index + 1].DescriptorTable.NumDescriptorRanges = 1;
-                params[index + 1].DescriptorTable.pDescriptorRanges = &ranges[index];
-                params[index + 1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-            }
-            if (injection) {
-                for (uint32_t index = 0u; index < 3u; ++index) {
-                    D3D12_ROOT_PARAMETER& parameter =
-                        params[1u + tableCount + index];
-                    parameter.ParameterType =
-                        D3D12_ROOT_PARAMETER_TYPE_SRV;
-                    parameter.Descriptor.ShaderRegister = index;
-                    parameter.Descriptor.RegisterSpace = 5u;
-                    parameter.ShaderVisibility =
-                        D3D12_SHADER_VISIBILITY_ALL;
-                }
-            }
-
-            if (injection) {
-                ranges[4].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-                ranges[4].NumDescriptors = 1;
-                ranges[4].BaseShaderRegister = 7;
-                params[8].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-                params[8].DescriptorTable = {1, &ranges[4]};
-                params[8].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-                ranges[5]=ranges[4]; ranges[5].BaseShaderRegister=8;
-                params[9].ParameterType=D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-                params[9].DescriptorTable={1,&ranges[5]};
-                params[9].ShaderVisibility=D3D12_SHADER_VISIBILITY_ALL;
-            }
-            std::array<D3D12_STATIC_SAMPLER_DESC, 2> samplers{};
-            samplers[0].Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-            samplers[0].AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-            samplers[0].AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-            samplers[0].AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-            samplers[0].ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
-            samplers[0].MaxLOD = D3D12_FLOAT32_MAX;
-            samplers[0].ShaderRegister = 0;
-            samplers[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-            samplers[1] = samplers[0];
-            samplers[1].Filter = D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT;
-            samplers[1].AddressU = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
-            samplers[1].AddressV = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
-            samplers[1].AddressW = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
-            samplers[1].ComparisonFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
-            samplers[1].BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE;
-            samplers[1].ShaderRegister = 1;
-
-            D3D12_ROOT_SIGNATURE_DESC desc{};
-            desc.NumParameters =
-                1u + tableCount + (injection ? 5u : 0u);
-            desc.pParameters = params.data();
-            desc.NumStaticSamplers = injection ? 2u : 1u;
-            desc.pStaticSamplers = samplers.data();
-            desc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
-            ComPtr<ID3DBlob> blob;
-            ComPtr<ID3DBlob> errors;
-            HRESULT hr = D3D12SerializeRootSignature(
-                &desc, D3D_ROOT_SIGNATURE_VERSION_1,
-                blob.GetAddressOf(), errors.GetAddressOf());
-            if (FAILED(hr)) {
-                if (errors) DEBUGLOG::PushRenderError(
-                    static_cast<const char*>(errors->GetBufferPointer()));
-                return false;
-            }
-            return HIKARI_DX_CHECK(
-                device->CreateRootSignature(
-                    0, blob->GetBufferPointer(), blob->GetBufferSize(),
-                    IID_PPV_ARGS(output)),
-                "VolumetricLighting::CreateRootSignature");
-        }
-
-        bool EnsurePipeline(StageState& state) {
-            if (state.pipelineReady) return true;
-            ID3D12Device* device = state.context.device;
-            if (!device) return false;
-            if (!CreateRootSignature(device, true, state.computeRoot.GetAddressOf()) ||
-                !CreateRootSignature(device, false, state.compositeRoot.GetAddressOf())) {
-                return false;
-            }
-            namespace SHADER=ASSETS::SHADER;
-            const auto deviceCaps=GFX::QueryShaderDeviceCapabilities(device);
-            const SHADER::ShaderRuntimeDeviceCapabilities caps{deviceCaps.shaderModel,deviceCaps.rootSignatureVersion,deviceCaps.featureMask};
-            const auto cs=SHADER::ResolveVolumetricShaderEntry(SHADER::VolumetricShaderProgram::Fog,"InjectAndIntegrateCS",SHADER::ShaderStage::Compute,caps);
-            const auto compositeCs=SHADER::ResolveVolumetricShaderEntry(SHADER::VolumetricShaderProgram::Fog,"CompositeCS",SHADER::ShaderStage::Compute,caps);
-            if (!cs || !compositeCs) {
-                DEBUGLOG::PushRenderError("Volumetric fog: cooked shader unavailable or incompatible: "+(!cs ? cs.diagnostic : compositeCs.diagnostic));
-                return false;
-            }
-            D3D12_COMPUTE_PIPELINE_STATE_DESC computeDesc{};
-            computeDesc.pRootSignature = state.computeRoot.Get();
-            computeDesc.CS = { cs.lease.GetDxil().data(), cs.lease.GetDxil().size() };
-            if (!HIKARI_DX_CHECK(
-                    device->CreateComputePipelineState(&computeDesc, IID_PPV_ARGS(state.computePso.GetAddressOf())),
-                    "VolumetricLighting::CreateComputePSO")) return false;
-
-            D3D12_COMPUTE_PIPELINE_STATE_DESC compositeDesc{};
-            compositeDesc.pRootSignature = state.compositeRoot.Get();
-            compositeDesc.CS = {
-                compositeCs.lease.GetDxil().data(),
-                compositeCs.lease.GetDxil().size()
-            };
-            if (!HIKARI_DX_CHECK(
-                    device->CreateComputePipelineState(
-                        &compositeDesc,
-                        IID_PPV_ARGS(state.compositePso.GetAddressOf())),
-                    "VolumetricLighting::CreateCompositePSO")) return false;
-
-            state.pipelineReady = true;
-            return true;
-        }
-
-        bool CreateVolume(
-            StageState& state,
-            VolumeResource& volume,
-            uint32_t width,
-            uint32_t height,
-            uint32_t depth) {
-            D3D12_RESOURCE_DESC desc{};
-            desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE3D;
-            desc.Width = width;
-            desc.Height = height;
-            desc.DepthOrArraySize = static_cast<UINT16>(depth);
-            desc.MipLevels = 1;
-            desc.Format = kVolumeFormat;
-            desc.SampleDesc.Count = 1;
-            desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-            desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
-            const auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-            if (!HIKARI_DX_CHECK(
-                    state.context.device->CreateCommittedResource(
-                        &heap, D3D12_HEAP_FLAG_NONE, &desc,
-                        D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                        IID_PPV_ARGS(volume.texture.GetAddressOf())),
-                    "VolumetricLighting::CreateVolume")) return false;
-            volume.srv = AllocateTexture3DSrvDescriptor(volume.texture.Get(), kVolumeFormat);
-            volume.uav = AllocateTexture3DUavDescriptor(
-                volume.texture.Get(), kVolumeFormat, 0, 0, depth);
-            volume.state = D3D12_RESOURCE_STATE_GENERIC_READ;
-            return volume.srv.IsValid() && volume.uav.IsValid();
-        }
-
-        bool EnsureResources(
-            StageState& state,
-            uint32_t renderWidth,
-            uint32_t renderHeight,
-            uint32_t pixelSize,
-            uint32_t sliceCount) {
-            const uint32_t width = (renderWidth + pixelSize - 1u) / pixelSize;
-            const uint32_t height = (renderHeight + pixelSize - 1u) / pixelSize;
-            if (state.resourcesReady &&
-                state.stats.renderWidth == renderWidth &&
-                state.stats.renderHeight == renderHeight &&
-                state.stats.froxelWidth == width &&
-                state.stats.froxelHeight == height &&
-                state.stats.froxelDepth == sliceCount) return true;
-
-            for (VolumeResource& volume : state.volumes) RetireVolume(state, volume);
-            if (!CreateVolume(state, state.volumes[0], width, height, sliceCount) ||
-                !CreateVolume(state, state.volumes[1], width, height, sliceCount)) {
-                state.resourcesReady = false;
-                return false;
-            }
-            state.stats.renderWidth = renderWidth;
-            state.stats.renderHeight = renderHeight;
-            state.stats.froxelWidth = width;
-            state.stats.froxelHeight = height;
-            state.stats.froxelDepth = sliceCount;
-            state.stats.froxelPixelSize = pixelSize;
-            state.stats.workingSetBytes =
-                static_cast<uint64_t>(width) * height * sliceCount * 8u * 2u;
-            ++state.stats.resizeCount;
-            ++state.stats.historyResetCount;
-            state.volumeHistoryValid = false;
-            state.resourcesReady = true;
-            return true;
-        }
-
-        bool EnsureSceneViews(StageState& state, const RenderTextureView& color, const RenderTextureView& depth) {
-            if (!color.valid || !color.resource || !depth.IsSampleable() || !depth.resource ||
-                color.width != depth.width || color.height != depth.height) return false;
-            const auto colorDesc = color.resource->GetDesc(), depthDesc = depth.resource->GetDesc();
-            if (colorDesc.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D ||
-                depthDesc.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D ||
-                colorDesc.Width != color.width || colorDesc.Height != color.height ||
-                depthDesc.Width != depth.width || depthDesc.Height != depth.height ||
-                colorDesc.SampleDesc.Count != 1 || depthDesc.SampleDesc.Count != 1 ||
-                (colorDesc.Flags & D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS) == 0) return false;
-            if (state.sceneColorResource == color.resource &&
-                state.sceneDepthResource == depth.resource &&
-                state.sceneColorUav.IsValid() && state.sceneDepthSrv.IsValid()) return true;
-            RetireView(state, state.sceneColorUav, "VolumetricLighting.SceneColorUAV");
-            RetireView(state, state.sceneDepthSrv, "VolumetricLighting.SceneDepthSRV");
-            state.sceneColorResource = color.resource;
-            state.sceneDepthResource = depth.resource;
-            D3D12_FEATURE_DATA_FORMAT_SUPPORT support{color.format};
-            if (FAILED(state.context.device->CheckFeatureSupport(D3D12_FEATURE_FORMAT_SUPPORT, &support, sizeof(support))) ||
-                (support.Support2 & D3D12_FORMAT_SUPPORT2_UAV_TYPED_LOAD) == 0 ||
-                (support.Support2 & D3D12_FORMAT_SUPPORT2_UAV_TYPED_STORE) == 0) return false;
-            state.sceneColorUav = AllocateTexture2DUavDescriptor(
-                state.sceneColorResource, color.format);
-            state.sceneDepthSrv = AllocateTexture2DSrvDescriptor(
-                state.sceneDepthResource, DXGI_FORMAT_R32_FLOAT);
-            return state.sceneColorUav.IsValid() && state.sceneDepthSrv.IsValid();
-        }
-
-        void TransitionVolume(
-            ID3D12GraphicsCommandList* cmd,
-            VolumeResource& volume,
-            D3D12_RESOURCE_STATES next) {
-            if (volume.state == next) return;
-            const auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-                volume.texture.Get(), volume.state, next);
-            cmd->ResourceBarrier(1, &barrier);
-            volume.state = next;
+    std::array<D3D12_ROOT_PARAMETER, 10> params{};
+    params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+    params[0].Descriptor.ShaderRegister = 0;
+    params[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    for (uint32_t index = 0; index < tableCount; ++index) {
+        params[index + 1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        params[index + 1].DescriptorTable.NumDescriptorRanges = 1;
+        params[index + 1].DescriptorTable.pDescriptorRanges = &ranges[index];
+        params[index + 1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    }
+    if (injection) {
+        for (uint32_t index = 0u; index < 3u; ++index) {
+            D3D12_ROOT_PARAMETER& parameter = params[1u + tableCount + index];
+            parameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
+            parameter.Descriptor.ShaderRegister = index;
+            parameter.Descriptor.RegisterSpace = 5u;
+            parameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
         }
     }
 
-    bool PrepareVolumetricLightingFrame(
-        const GFX::Context& context,
-        const TEMPORAL::TemporalFrameState& frame,
-        const RenderTextureView& sceneColor,
-        const RenderTextureView& sceneDepth,
-        const SceneEnvironment& environment,
-        const LIGHTING::LocalLightListGpuBindings& localLights,
-        VolumetricLightingQuality quality,
-        RenderDebugView debugView,
-        const SHADOW::LocalLightShadowFrame* localShadows,
-        const CLOUDS::CloudSolarVisibilityFrame* clouds) {
-        StageState& state = State();
-        state.stats.requested = environment.fog.enabled && environment.fog.volumetric;
-        state.stats.active = false;
-        state.stats.sceneTargetsReady = false;
-        state.stats.localShadowFaces = 0;
-        state.prepared = false;
-        state.localShadowSrv = {};
-        state.cloudSolarSrv = {};
-        state.constantAddress = 0;
-        state.waterDepthView = {};
-        state.waterDepthSrv = {};
-        state.stats.waterDepthValid = false;
-        state.stats.waterDepthFallback = true;
-        if (!state.stats.requested || !std::isfinite(environment.fog.density) || environment.fog.density <= 0.0f ||
-            !frame.camera.valid || !frame.view.IsValid() || !context.deviceGeneration ||
-            !context.device || !context.cmdList || !context.srvHeap ||
-            sceneColor.width != frame.renderWidth || sceneColor.height != frame.renderHeight) {
-            return false;
-        }
-        if (state.context.device && (state.context.device != context.device ||
-            state.context.deviceGeneration != context.deviceGeneration || state.context.srvHeap != context.srvHeap)) return false;
-        state.context = context;
-        UpdateRenderResourceDescriptorPoolContext(context);
-        const auto descriptorPool = GetRenderResourceDescriptorPoolStats();
-        if (!descriptorPool.contextAvailable || !descriptorPool.contextCompatible ||
-            !EnsureSceneViews(state, sceneColor, sceneDepth)) return false;
-        state.stats.sceneTargetsReady = true;
-        const QualityPolicy policy = ResolveQualityPolicy(quality);
-        const uint32_t pixelSize = policy.froxelPixelSize;
-        const uint32_t slices = policy.sliceCount;
-        if (!EnsurePipeline(state) ||
-            !EnsureResources(state, frame.renderWidth, frame.renderHeight, pixelSize, slices)) {
-            return false;
-        }
-        if ((frame.resetHistory || !state.historyView.Matches(frame.view) ||
-            state.historyFrameIndex + 1 != frame.frameIndex) && state.volumeHistoryValid) {
-            state.volumeHistoryValid = false;
-            ++state.stats.historyResetCount;
-        }
+    if (injection) {
+        ranges[4].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+        ranges[4].NumDescriptors = 1;
+        ranges[4].BaseShaderRegister = 7;
+        params[8].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        params[8].DescriptorTable = {1, &ranges[4]};
+        params[8].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        ranges[5] = ranges[4];
+        ranges[5].BaseShaderRegister = 8;
+        params[9].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        params[9].DescriptorTable = {1, &ranges[5]};
+        params[9].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    }
+    std::array<D3D12_STATIC_SAMPLER_DESC, 2> samplers{};
+    samplers[0].Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+    samplers[0].AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    samplers[0].AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    samplers[0].AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    samplers[0].ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+    samplers[0].MaxLOD = D3D12_FLOAT32_MAX;
+    samplers[0].ShaderRegister = 0;
+    samplers[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    samplers[1] = samplers[0];
+    samplers[1].Filter = D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT;
+    samplers[1].AddressU = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+    samplers[1].AddressV = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+    samplers[1].AddressW = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+    samplers[1].ComparisonFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+    samplers[1].BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE;
+    samplers[1].ShaderRegister = 1;
 
-        VolumetricConstants constants{};
-        if(clouds && *clouds && clouds->fenceValue==context.currentFrameRetireFenceValue) {
-            constants.cloudSolarVisibility=clouds->data; state.cloudSolarSrv=clouds->srv;
-        }
-        if (localShadows && localShadows->data.faceCount && IsTextureResourceValid(localShadows->atlas)) {
-            state.localShadowSrv = GetTextureResourceSrvGpuHandle(localShadows->atlas);
-            if (state.localShadowSrv.ptr) constants.localShadow = localShadows->data;
-        }
-        state.stats.localShadowFaces = constants.localShadow.faceCount;
-        // The volume is indexed in the jittered render grid, so both depth
-        // reconstruction and history reprojection must use that same grid.
-        constants.invViewProj = frame.camera.invViewProj;
-        constants.prevViewProj = frame.camera.prevViewProj;
-        const auto& cascadeMatrices =
-            SHADOW::GetDirectionalCascadeLightViewProj();
-        for (uint32_t cascadeIndex = 0;
-             cascadeIndex < SHADOW::kMaxDirectionalShadowCascades;
-             ++cascadeIndex) {
-            constants.lightViewProj[cascadeIndex] =
-                cascadeMatrices[cascadeIndex];
-        }
-        constants.shadowCascadeSplits =
-            SHADOW::GetDirectionalCascadeSplitDistances();
-        constants.shadowCascadeDepthBiasScales = SHADOW::GetDirectionalCascadeDepthBiasScales();
-        constants.shadowCascadeParams = {
-            static_cast<float>(SHADOW::GetDirectionalCascadeCount()),
-            std::clamp(
-                environment.directionalShadow.cascadeBlend,
-                0.0f,
-                0.3f),
-            0.5f,
-            0.5f
-        };
-        constants.cameraPos = frame.camera.cameraPos;
-        const float shadowAtlasTexel = SHADOW::GetShadowAtlasTexelSize();
-        constants.shadowSampling = {
-            (std::max)(environment.directionalShadow.depthBias, 0.0f),
-            shadowAtlasTexel, shadowAtlasTexel, 0.0f
-        };
-        constants.prevCameraPos = frame.camera.prevCameraPos;
-        // Prepare runs before the current frame's SkyRenderer pass.  Resolve
-        // the authored horizon directly instead of reading last frame's sky
-        // cache, so inspector edits and scene switches cannot seed stale fog.
-        MATH::Vec3 fogColor = environment.fog.color;
-        if (environment.fog.useSkyHorizonColor && environment.sky.enabled) {
-            const float skyExposure =
-                (std::max)(0.0f, environment.sky.exposure);
-            fogColor = {
-                environment.sky.horizonColor.x * environment.sky.tint.x *
-                    skyExposure,
-                environment.sky.horizonColor.y * environment.sky.tint.y *
-                    skyExposure,
-                environment.sky.horizonColor.z * environment.sky.tint.z *
-                    skyExposure
-            };
-        }
-        constants.fogColorDensity = {
-            fogColor.x, fogColor.y, fogColor.z,
-            (std::max)(0.0f, environment.fog.density)
-        };
-        constants.fogDistances = {
-            (std::max)(0.01f, environment.fog.startDistance),
-            (std::max)(environment.fog.startDistance + 0.01f, environment.fog.endDistance),
-            (std::max)(0.0f, environment.fog.heightFalloff),
-            std::clamp(environment.fog.anisotropy, -0.8f, 0.8f)
-        };
-        const auto solar = ATMOSPHERE::BuildAtmosphereSolarState(environment);
-        constants.directionalDirIntensity = {
-            -solar.sunDirection.x, -solar.sunDirection.y, -solar.sunDirection.z,
-            solar.sunRadiance
-        };
-        constants.directionalColorShadow = {
-            solar.sunColor.x, solar.sunColor.y, solar.sunColor.z, 0.0f
-        };
-        const auto ambientColor = SKYRENDERER::ResolveAmbientLightColor(environment);
-        constants.ambientColorIntensity = {
-            ambientColor.x, ambientColor.y, ambientColor.z,
-            (std::max)(0.0f, environment.ambient.intensity)
-        };
-        constants.volumetricOptics = {
-            std::isfinite(environment.fog.baseHeight)
-                ? environment.fog.baseHeight
-                : 0.0f,
-            std::clamp(environment.fog.scatteringIntensity, 0.0f, 8.0f),
-            std::clamp(
-                environment.fog.ambientScatteringStrength,
-                0.0f,
-                8.0f),
-            std::clamp(environment.fog.sunShaftStrength, 0.0f, 8.0f),
-        };
+    D3D12_ROOT_SIGNATURE_DESC desc{};
+    desc.NumParameters = 1u + tableCount + (injection ? 5u : 0u);
+    desc.pParameters = params.data();
+    desc.NumStaticSamplers = injection ? 2u : 1u;
+    desc.pStaticSamplers = samplers.data();
+    desc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
+    return HIKARI_DX_CHECK(GFX::CreateRootSignature(device, desc, output), "VolumetricLighting::CreateRootSignature");
+}
 
-        const uint64_t settingsSignature =
-            HASH::Fnv1aBytes(HashVolumetricSettings(environment, quality, localLights.view.lightingContentHash, solar),
-                &constants.cloudSolarVisibility.originDescriptor.w, sizeof(float));
-        if (state.lastSettingsSignature != 0u &&
-            state.lastSettingsSignature != settingsSignature &&
-            state.volumeHistoryValid) {
-            state.volumeHistoryValid = false;
-            ++state.stats.historyResetCount;
-        }
-        state.lastSettingsSignature = settingsSignature;
-        const bool historyValid = state.volumeHistoryValid && frame.historyValid && !frame.resetHistory;
-        constants.volumeSize = {
-            static_cast<float>(state.stats.froxelWidth),
-            static_cast<float>(state.stats.froxelHeight),
-            static_cast<float>(state.stats.froxelDepth),
-            historyValid ? 1.0f : 0.0f
-        };
-        const bool shadowed = SHADOW::IsDirectionalShadowEnabled() &&
-            environment.directionalShadow.enabled &&
-            SHADOW::GetDirectionalShadowSrv().ptr != 0;
-        constants.frameParams = {
-            historyValid ? std::clamp(environment.fog.temporalWeight, 0.0f, 0.98f) : 0.0f,
-            static_cast<float>(frame.frameIndex & 0xffffu),
-            shadowed ? 1.0f : 0.0f,
-            static_cast<float>(localLights.view.lightCount)
-        };
-        constants.localLightCount = localLights.view.lightCount;
-        constants.localLightClusterCountX =
-            localLights.view.clusterCountX;
-        constants.localLightClusterCountY =
-            localLights.view.clusterCountY;
-        constants.localLightClusterCountZ =
-            localLights.view.clusterCountZ;
-        constants.localLightTileSizePixels =
-            localLights.view.tileSizePixels;
-        constants.localLightClusterIndexCount =
-            localLights.view.clusterIndexCount;
-        constants.localLightNearDistance =
-            localLights.view.nearDistance;
-        constants.localLightFarDistance =
-            localLights.view.farDistance;
-        constants.debugAndLocalLightDepth = {
-            static_cast<float>(ResolveDebugMode(debugView)),
-            localLights.view.depthScale,
-            localLights.view.depthBias,
-            0.0f
-        };
-        state.preparedFrameIndex = frame.frameIndex;
-        state.preparedView = frame.view;
-        auto& uploads = state.uploads[context.frameIndex % GFX::kFrameResourceCount];
-        if (!uploads.IsInitialized() && !uploads.Init(context.device, 4096)) return false;
-        uploads.ResetForFrame(context.currentFrameRetireFenceValue);
-        const auto constantUpload = uploads.Allocate(sizeof(constants));
-        if (!constantUpload) return false;
-        std::memcpy(constantUpload.cpuAddress, &constants, sizeof(constants));
-        state.constantAddress = constantUpload.gpuAddress;
-        state.writeIndex = static_cast<uint32_t>(frame.frameIndex & 1u);
-        state.debugView = debugView;
-        state.localLights = localLights;
-        state.stats.active = true;
-        state.stats.historyValid = historyValid;
-        state.stats.shadowed = shadowed;
-        state.stats.localLightCount =
-            localLights.view.lightCount;
-        state.stats.pointLightCount =
-            localLights.view.pointLightCount;
-        state.stats.spotLightCount =
-            localLights.view.spotLightCount;
-        state.stats.qualityLevel = static_cast<uint32_t>(quality);
-        state.stats.temporalWeight = constants.frameParams.x;
-        state.prepared = true;
+bool EnsurePipeline(StageState& state) {
+    if (state.pipelineReady)
         return true;
+    ID3D12Device* device = state.context.device;
+    if (!device)
+        return false;
+    if (!CreateRootSignature(device, true, state.computeRoot.GetAddressOf()) ||
+        !CreateRootSignature(device, false, state.compositeRoot.GetAddressOf())) {
+        return false;
+    }
+    namespace SHADER = ASSETS::SHADER;
+    const auto deviceCaps = GFX::QueryShaderDeviceCapabilities(device);
+    const SHADER::ShaderRuntimeDeviceCapabilities caps{deviceCaps.shaderModel, deviceCaps.rootSignatureVersion,
+                                                       deviceCaps.featureMask};
+    const auto cs = SHADER::ResolveVolumetricShaderEntry(SHADER::VolumetricShaderProgram::Fog, "InjectAndIntegrateCS",
+                                                         SHADER::ShaderStage::Compute, caps);
+    const auto compositeCs = SHADER::ResolveVolumetricShaderEntry(SHADER::VolumetricShaderProgram::Fog, "CompositeCS",
+                                                                  SHADER::ShaderStage::Compute, caps);
+    if (!cs || !compositeCs) {
+        DEBUGLOG::PushRenderError("Volumetric fog: cooked shader unavailable or incompatible: " +
+                                  (!cs ? cs.diagnostic : compositeCs.diagnostic));
+        return false;
+    }
+    D3D12_COMPUTE_PIPELINE_STATE_DESC computeDesc{};
+    computeDesc.pRootSignature = state.computeRoot.Get();
+    computeDesc.CS = {cs.lease.GetDxil().data(), cs.lease.GetDxil().size()};
+    if (!HIKARI_DX_CHECK(
+            device->CreateComputePipelineState(&computeDesc, IID_PPV_ARGS(state.computePso.GetAddressOf())),
+            "VolumetricLighting::CreateComputePSO"))
+        return false;
+
+    D3D12_COMPUTE_PIPELINE_STATE_DESC compositeDesc{};
+    compositeDesc.pRootSignature = state.compositeRoot.Get();
+    compositeDesc.CS = {compositeCs.lease.GetDxil().data(), compositeCs.lease.GetDxil().size()};
+    if (!HIKARI_DX_CHECK(
+            device->CreateComputePipelineState(&compositeDesc, IID_PPV_ARGS(state.compositePso.GetAddressOf())),
+            "VolumetricLighting::CreateCompositePSO"))
+        return false;
+
+    state.pipelineReady = true;
+    return true;
+}
+
+bool CreateVolume(StageState& state, VolumeResource& volume, uint32_t width, uint32_t height, uint32_t depth) {
+    D3D12_RESOURCE_DESC desc{};
+    desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE3D;
+    desc.Width = width;
+    desc.Height = height;
+    desc.DepthOrArraySize = static_cast<UINT16>(depth);
+    desc.MipLevels = 1;
+    desc.Format = kVolumeFormat;
+    desc.SampleDesc.Count = 1;
+    desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+    desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+    const auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+    if (!HIKARI_DX_CHECK(state.context.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc,
+                                                                       D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+                                                                       IID_PPV_ARGS(volume.texture.GetAddressOf())),
+                         "VolumetricLighting::CreateVolume"))
+        return false;
+    volume.srv = AllocateTexture3DSrvDescriptor(volume.texture.Get(), kVolumeFormat);
+    volume.uav = AllocateTexture3DUavDescriptor(volume.texture.Get(), kVolumeFormat, 0, 0, depth);
+    volume.state = D3D12_RESOURCE_STATE_GENERIC_READ;
+    return volume.srv.IsValid() && volume.uav.IsValid();
+}
+
+bool EnsureResources(StageState& state, uint32_t renderWidth, uint32_t renderHeight, uint32_t pixelSize,
+                     uint32_t sliceCount) {
+    const uint32_t width = (renderWidth + pixelSize - 1u) / pixelSize;
+    const uint32_t height = (renderHeight + pixelSize - 1u) / pixelSize;
+    if (state.resourcesReady && state.stats.renderWidth == renderWidth && state.stats.renderHeight == renderHeight &&
+        state.stats.froxelWidth == width && state.stats.froxelHeight == height && state.stats.froxelDepth == sliceCount)
+        return true;
+
+    for (VolumeResource& volume : state.volumes)
+        RetireVolume(state, volume);
+    if (!CreateVolume(state, state.volumes[0], width, height, sliceCount) ||
+        !CreateVolume(state, state.volumes[1], width, height, sliceCount)) {
+        state.resourcesReady = false;
+        return false;
+    }
+    state.stats.renderWidth = renderWidth;
+    state.stats.renderHeight = renderHeight;
+    state.stats.froxelWidth = width;
+    state.stats.froxelHeight = height;
+    state.stats.froxelDepth = sliceCount;
+    state.stats.froxelPixelSize = pixelSize;
+    state.stats.workingSetBytes = static_cast<uint64_t>(width) * height * sliceCount * 8u * 2u;
+    ++state.stats.resizeCount;
+    ++state.stats.historyResetCount;
+    state.volumeHistoryValid = false;
+    state.resourcesReady = true;
+    return true;
+}
+
+bool EnsureSceneViews(StageState& state, const RenderTextureView& color, const RenderTextureView& depth) {
+    if (!color.valid || !color.resource || !depth.IsSampleable() || !depth.resource || color.width != depth.width ||
+        color.height != depth.height)
+        return false;
+    const auto colorDesc = color.resource->GetDesc(), depthDesc = depth.resource->GetDesc();
+    if (colorDesc.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D ||
+        depthDesc.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D || colorDesc.Width != color.width ||
+        colorDesc.Height != color.height || depthDesc.Width != depth.width || depthDesc.Height != depth.height ||
+        colorDesc.SampleDesc.Count != 1 || depthDesc.SampleDesc.Count != 1 ||
+        (colorDesc.Flags & D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS) == 0)
+        return false;
+    if (state.sceneColorResource == color.resource && state.sceneDepthResource == depth.resource &&
+        state.sceneColorUav.IsValid() && state.sceneDepthSrv.IsValid())
+        return true;
+    RetireView(state, state.sceneColorUav, "VolumetricLighting.SceneColorUAV");
+    RetireView(state, state.sceneDepthSrv, "VolumetricLighting.SceneDepthSRV");
+    state.sceneColorResource = color.resource;
+    state.sceneDepthResource = depth.resource;
+    D3D12_FEATURE_DATA_FORMAT_SUPPORT support{color.format};
+    if (FAILED(state.context.device->CheckFeatureSupport(D3D12_FEATURE_FORMAT_SUPPORT, &support, sizeof(support))) ||
+        (support.Support2 & D3D12_FORMAT_SUPPORT2_UAV_TYPED_LOAD) == 0 ||
+        (support.Support2 & D3D12_FORMAT_SUPPORT2_UAV_TYPED_STORE) == 0)
+        return false;
+    state.sceneColorUav = AllocateTexture2DUavDescriptor(state.sceneColorResource, color.format);
+    state.sceneDepthSrv = AllocateTexture2DSrvDescriptor(state.sceneDepthResource, DXGI_FORMAT_R32_FLOAT);
+    return state.sceneColorUav.IsValid() && state.sceneDepthSrv.IsValid();
+}
+
+void TransitionVolume(ID3D12GraphicsCommandList* cmd, VolumeResource& volume, D3D12_RESOURCE_STATES next) {
+    if (volume.state == next)
+        return;
+    const auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(volume.texture.Get(), volume.state, next);
+    cmd->ResourceBarrier(1, &barrier);
+    volume.state = next;
+}
+} // namespace
+
+bool PrepareVolumetricLightingFrame(const GFX::Context& context, const TEMPORAL::TemporalFrameState& frame,
+                                    const RenderTextureView& sceneColor, const RenderTextureView& sceneDepth,
+                                    const SceneEnvironment& environment,
+                                    const LIGHTING::LocalLightListGpuBindings& localLights,
+                                    VolumetricLightingQuality quality, RenderDebugView debugView,
+                                    const SHADOW::LocalLightShadowFrame* localShadows,
+                                    const CLOUDS::CloudSolarVisibilityFrame* clouds) {
+    StageState& state = State();
+    state.stats.requested = environment.fog.enabled && environment.fog.volumetric;
+    state.stats.active = false;
+    state.stats.sceneTargetsReady = false;
+    state.stats.localShadowFaces = 0;
+    state.prepared = false;
+    state.localShadowSrv = {};
+    state.cloudSolarSrv = {};
+    state.constantAddress = 0;
+    state.waterDepthView = {};
+    state.waterDepthSrv = {};
+    state.stats.waterDepthValid = false;
+    state.stats.waterDepthFallback = true;
+    if (!state.stats.requested || !std::isfinite(environment.fog.density) || environment.fog.density <= 0.0f ||
+        !frame.camera.valid || !frame.view.IsValid() || !context.deviceGeneration || !context.device ||
+        !context.cmdList || !context.srvHeap || sceneColor.width != frame.renderWidth ||
+        sceneColor.height != frame.renderHeight) {
+        return false;
+    }
+    if (state.context.device &&
+        (state.context.device != context.device || state.context.deviceGeneration != context.deviceGeneration ||
+         state.context.srvHeap != context.srvHeap))
+        return false;
+    state.context = context;
+    UpdateRenderResourceDescriptorPoolContext(context);
+    const auto descriptorPool = GetRenderResourceDescriptorPoolStats();
+    if (!descriptorPool.contextAvailable || !descriptorPool.contextCompatible ||
+        !EnsureSceneViews(state, sceneColor, sceneDepth))
+        return false;
+    state.stats.sceneTargetsReady = true;
+    const QualityPolicy policy = ResolveQualityPolicy(quality);
+    const uint32_t pixelSize = policy.froxelPixelSize;
+    const uint32_t slices = policy.sliceCount;
+    if (!EnsurePipeline(state) || !EnsureResources(state, frame.renderWidth, frame.renderHeight, pixelSize, slices)) {
+        return false;
+    }
+    if ((frame.resetHistory || !state.historyView.Matches(frame.view) ||
+         state.historyFrameIndex + 1 != frame.frameIndex) &&
+        state.volumeHistoryValid) {
+        state.volumeHistoryValid = false;
+        ++state.stats.historyResetCount;
     }
 
-    void SetVolumetricVisibleWaterDepth(
-        const WATER::WaterVisibleDepthView& view) {
-        StageState& state = State();
-        state.waterDepthView = view;
+    VolumetricConstants constants{};
+    if (clouds && *clouds && clouds->fenceValue == context.currentFrameRetireFenceValue) {
+        constants.cloudSolarVisibility = clouds->data;
+        state.cloudSolarSrv = clouds->srv;
     }
-
-    void ClearVolumetricVisibleWaterDepth() {
-        StageState& state = State();
-        state.waterDepthView = {};
-        state.waterDepthSrv = {};
-        state.stats.waterDepthValid = false;
-        state.stats.waterDepthFallback = true;
+    if (localShadows && localShadows->data.faceCount && IsTextureResourceValid(localShadows->atlas)) {
+        state.localShadowSrv = GetTextureResourceSrvGpuHandle(localShadows->atlas);
+        if (state.localShadowSrv.ptr)
+            constants.localShadow = localShadows->data;
     }
+    state.stats.localShadowFaces = constants.localShadow.faceCount;
+    // The volume is indexed in the jittered render grid, so both depth
+    // reconstruction and history reprojection must use that same grid.
+    constants.invViewProj = frame.camera.invViewProj;
+    constants.prevViewProj = frame.camera.prevViewProj;
+    const auto& cascadeMatrices = SHADOW::GetDirectionalCascadeLightViewProj();
+    for (uint32_t cascadeIndex = 0; cascadeIndex < SHADOW::kMaxDirectionalShadowCascades; ++cascadeIndex) {
+        constants.lightViewProj[cascadeIndex] = cascadeMatrices[cascadeIndex];
+    }
+    constants.shadowCascadeSplits = SHADOW::GetDirectionalCascadeSplitDistances();
+    constants.shadowCascadeDepthBiasScales = SHADOW::GetDirectionalCascadeDepthBiasScales();
+    constants.shadowCascadeParams = {static_cast<float>(SHADOW::GetDirectionalCascadeCount()),
+                                     std::clamp(environment.directionalShadow.cascadeBlend, 0.0f, 0.3f), 0.5f, 0.5f};
+    constants.cameraPos = frame.camera.cameraPos;
+    const float shadowAtlasTexel = SHADOW::GetShadowAtlasTexelSize();
+    constants.shadowSampling = {(std::max)(environment.directionalShadow.depthBias, 0.0f), shadowAtlasTexel,
+                                shadowAtlasTexel, 0.0f};
+    constants.prevCameraPos = frame.camera.prevCameraPos;
+    // Prepare runs before the current frame's SkyRenderer pass.  Resolve
+    // the authored horizon directly instead of reading last frame's sky
+    // cache, so inspector edits and scene switches cannot seed stale fog.
+    MATH::Vec3 fogColor = environment.fog.color;
+    if (environment.fog.useSkyHorizonColor && environment.sky.enabled) {
+        const float skyExposure = (std::max)(0.0f, environment.sky.exposure);
+        fogColor = {environment.sky.horizonColor.x * environment.sky.tint.x * skyExposure,
+                    environment.sky.horizonColor.y * environment.sky.tint.y * skyExposure,
+                    environment.sky.horizonColor.z * environment.sky.tint.z * skyExposure};
+    }
+    constants.fogColorDensity = {fogColor.x, fogColor.y, fogColor.z, (std::max)(0.0f, environment.fog.density)};
+    constants.fogDistances = {(std::max)(0.01f, environment.fog.startDistance),
+                              (std::max)(environment.fog.startDistance + 0.01f, environment.fog.endDistance),
+                              (std::max)(0.0f, environment.fog.heightFalloff),
+                              std::clamp(environment.fog.anisotropy, -0.8f, 0.8f)};
+    const auto solar = ATMOSPHERE::BuildAtmosphereSolarState(environment);
+    constants.directionalDirIntensity = {-solar.sunDirection.x, -solar.sunDirection.y, -solar.sunDirection.z,
+                                         solar.sunRadiance};
+    constants.directionalColorShadow = {solar.sunColor.x, solar.sunColor.y, solar.sunColor.z, 0.0f};
+    const auto ambientColor = SKYRENDERER::ResolveAmbientLightColor(environment);
+    constants.ambientColorIntensity = {ambientColor.x, ambientColor.y, ambientColor.z,
+                                       (std::max)(0.0f, environment.ambient.intensity)};
+    constants.volumetricOptics = {
+        std::isfinite(environment.fog.baseHeight) ? environment.fog.baseHeight : 0.0f,
+        std::clamp(environment.fog.scatteringIntensity, 0.0f, 8.0f),
+        std::clamp(environment.fog.ambientScatteringStrength, 0.0f, 8.0f),
+        std::clamp(environment.fog.sunShaftStrength, 0.0f, 8.0f),
+    };
 
-    RenderTarget2D* ExecuteVolumetricLightingStage(RenderTarget2D& scene) {
-        StageState& state = State();
-        if (!state.prepared || !state.stats.active) return &scene;
-        // allocation は Forward より前に完了済み。ここで別の target を受け入れない。
-        if (state.sceneColorResource != scene.GetResource() || state.sceneDepthResource != scene.GetDepthResource() ||
-            !state.constantAddress || !scene.BeginDepthShaderRead()) {
-            state.prepared = state.stats.active = state.volumeHistoryValid = false;
-            return &scene;
-        }
+    const uint64_t settingsSignature =
+        HASH::Fnv1aBytes(HashVolumetricSettings(environment, quality, localLights.view.lightingContentHash, solar),
+                         &constants.cloudSolarVisibility.originDescriptor.w, sizeof(float));
+    if (state.lastSettingsSignature != 0u && state.lastSettingsSignature != settingsSignature &&
+        state.volumeHistoryValid) {
+        state.volumeHistoryValid = false;
+        ++state.stats.historyResetCount;
+    }
+    state.lastSettingsSignature = settingsSignature;
+    const bool historyValid = state.volumeHistoryValid && frame.historyValid && !frame.resetHistory;
+    constants.volumeSize = {static_cast<float>(state.stats.froxelWidth), static_cast<float>(state.stats.froxelHeight),
+                            static_cast<float>(state.stats.froxelDepth), historyValid ? 1.0f : 0.0f};
+    const bool shadowed = SHADOW::IsDirectionalShadowEnabled() && environment.directionalShadow.enabled &&
+                          SHADOW::GetDirectionalShadowSrv().ptr != 0;
+    constants.frameParams = {historyValid ? std::clamp(environment.fog.temporalWeight, 0.0f, 0.98f) : 0.0f,
+                             static_cast<float>(frame.frameIndex & 0xffffu), shadowed ? 1.0f : 0.0f,
+                             static_cast<float>(localLights.view.lightCount)};
+    constants.localLightCount = localLights.view.lightCount;
+    constants.localLightClusterCountX = localLights.view.clusterCountX;
+    constants.localLightClusterCountY = localLights.view.clusterCountY;
+    constants.localLightClusterCountZ = localLights.view.clusterCountZ;
+    constants.localLightTileSizePixels = localLights.view.tileSizePixels;
+    constants.localLightClusterIndexCount = localLights.view.clusterIndexCount;
+    constants.localLightNearDistance = localLights.view.nearDistance;
+    constants.localLightFarDistance = localLights.view.farDistance;
+    constants.debugAndLocalLightDepth = {static_cast<float>(ResolveDebugMode(debugView)), localLights.view.depthScale,
+                                         localLights.view.depthBias, 0.0f};
+    state.preparedFrameIndex = frame.frameIndex;
+    state.preparedView = frame.view;
+    auto& uploads = state.uploads[context.frameIndex % GFX::kFrameResourceCount];
+    if (!uploads.IsInitialized() && !uploads.Init(context.device, 4096))
+        return false;
+    uploads.ResetForFrame(context.currentFrameRetireFenceValue);
+    const auto constantUpload = uploads.Allocate(sizeof(constants));
+    if (!constantUpload)
+        return false;
+    std::memcpy(constantUpload.cpuAddress, &constants, sizeof(constants));
+    state.constantAddress = constantUpload.gpuAddress;
+    state.writeIndex = static_cast<uint32_t>(frame.frameIndex & 1u);
+    state.debugView = debugView;
+    state.localLights = localLights;
+    state.stats.active = true;
+    state.stats.historyValid = historyValid;
+    state.stats.shadowed = shadowed;
+    state.stats.localLightCount = localLights.view.lightCount;
+    state.stats.pointLightCount = localLights.view.pointLightCount;
+    state.stats.spotLightCount = localLights.view.spotLightCount;
+    state.stats.qualityLevel = static_cast<uint32_t>(quality);
+    state.stats.temporalWeight = constants.frameParams.x;
+    state.prepared = true;
+    return true;
+}
 
-        // SceneDepth remains authoritative and read-only. The water producer
-        // must have run before MeshRenderer::EndFrame and publishes only a
-        // borrowed SRV for this frame/view; every failure path keeps opaque
-        // depth. Execute never re-enters MeshRenderer.
-        state.waterDepthSrv = state.sceneDepthSrv.gpu;
-        state.stats.waterDepthValid = false;
-        state.stats.waterDepthFallback = true;
-        const WATER::WaterVisibleDepthView& waterView = state.waterDepthView;
-        if (waterView.IsValid() &&
-            waterView.frameIndex == state.preparedFrameIndex &&
-            waterView.viewToken == scene.GetDepthResource() &&
-            waterView.width == state.stats.renderWidth &&
-            waterView.height == state.stats.renderHeight) {
-            state.waterDepthSrv = waterView.srv;
-            state.stats.waterDepthValid = true;
-            state.stats.waterDepthFallback = false;
-        }
+void SetVolumetricVisibleWaterDepth(const WATER::WaterVisibleDepthView& view) {
+    StageState& state = State();
+    state.waterDepthView = view;
+}
 
-        ID3D12GraphicsCommandList* cmd = state.context.cmdList;
-        ID3D12DescriptorHeap* heap = state.context.srvHeap;
-        if (!cmd || !heap) {
-            scene.EndDepthShaderRead();
-            state.prepared = state.stats.active = state.volumeHistoryValid = false;
-            return &scene;
-        }
-        const D3D12_GPU_VIRTUAL_ADDRESS constantAddress = state.constantAddress;
-        VolumeResource& output = state.volumes[state.writeIndex];
-        VolumeResource& history = state.volumes[state.writeIndex ^ 1u];
-
-        GFX::PIX::ScopedGpuEvent event(
-            cmd, GFX::PIX::kColorPost, "VolumetricLighting");
-        GFX::GPU_PROFILE::ScopedGpuTimer timer(
-            cmd, GFX::GPU_PROFILE::Pass::VolumetricLighting);
-        cmd->SetDescriptorHeaps(1, &heap);
-        TransitionVolume(cmd, output, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        cmd->SetComputeRootSignature(state.computeRoot.Get());
-        cmd->SetPipelineState(state.computePso.Get());
-        cmd->SetComputeRootConstantBufferView(0, constantAddress);
-        cmd->SetComputeRootDescriptorTable(1, state.sceneDepthSrv.gpu);
-        const D3D12_GPU_DESCRIPTOR_HANDLE shadow = state.stats.shadowed
-            ? SHADOW::GetDirectionalShadowSrv()
-            : state.sceneDepthSrv.gpu;
-        cmd->SetComputeRootDescriptorTable(2, shadow);
-        cmd->SetComputeRootDescriptorTable(3, history.srv.gpu);
-        cmd->SetComputeRootDescriptorTable(4, output.uav.gpu);
-        cmd->SetComputeRootDescriptorTable(8, state.localShadowSrv.ptr
-            ? state.localShadowSrv : state.sceneDepthSrv.gpu);
-        cmd->SetComputeRootDescriptorTable(9,state.cloudSolarSrv.ptr ? state.cloudSolarSrv : state.sceneDepthSrv.gpu);
-        if (state.localLights.IsValid()) {
-            cmd->SetComputeRootShaderResourceView(
-                5,
-                state.localLights.lights);
-            cmd->SetComputeRootShaderResourceView(
-                6,
-                state.localLights.clusterHeaders);
-            cmd->SetComputeRootShaderResourceView(
-                7,
-                state.localLights.clusterIndices);
-        }
-        cmd->Dispatch(
-            (state.stats.froxelWidth + 7u) / 8u,
-            (state.stats.froxelHeight + 7u) / 8u,
-            1u);
-        const auto uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(output.texture.Get());
-        cmd->ResourceBarrier(1, &uavBarrier);
-        TransitionVolume(cmd, output, D3D12_RESOURCE_STATE_GENERIC_READ);
-
-        scene.TransitionColor(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        cmd->SetDescriptorHeaps(1, &heap);
-        cmd->SetComputeRootSignature(state.compositeRoot.Get());
-        cmd->SetPipelineState(state.compositePso.Get());
-        cmd->SetComputeRootConstantBufferView(0, constantAddress);
-        cmd->SetComputeRootDescriptorTable(1, state.sceneDepthSrv.gpu);
-        cmd->SetComputeRootDescriptorTable(2, output.srv.gpu);
-        cmd->SetComputeRootDescriptorTable(
-            3,
-            state.waterDepthSrv.ptr != 0
-                ? state.waterDepthSrv
-                : state.sceneDepthSrv.gpu);
-        cmd->SetComputeRootDescriptorTable(4, state.sceneColorUav.gpu);
-        cmd->Dispatch(
-            (state.stats.renderWidth + 7u) / 8u,
-            (state.stats.renderHeight + 7u) / 8u,
-            1u);
-        const auto sceneUavBarrier =
-            CD3DX12_RESOURCE_BARRIER::UAV(scene.GetResource());
-        cmd->ResourceBarrier(1, &sceneUavBarrier);
-        scene.TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-        scene.EndDepthShaderRead();
-
-        state.volumeHistoryValid = true;
-        state.historyView = state.preparedView;
-        state.historyFrameIndex = state.preparedFrameIndex;
-        ++state.stats.dispatchCount;
+RenderTarget2D* ExecuteVolumetricLightingStage(RenderTarget2D& scene) {
+    StageState& state = State();
+    if (!state.prepared || !state.stats.active)
+        return &scene;
+    // allocation は Forward より前に完了済み。ここで別の target を受け入れない。
+    if (state.sceneColorResource != scene.GetResource() || state.sceneDepthResource != scene.GetDepthResource() ||
+        !state.constantAddress || !scene.BeginDepthShaderRead()) {
+        state.prepared = state.stats.active = state.volumeHistoryValid = false;
         return &scene;
     }
 
-    bool IsVolumetricLightingActive() {
-        return State().prepared && State().stats.active;
+    // SceneDepth remains authoritative and read-only. The water producer
+    // must have run before MeshRenderer::EndFrame and publishes only a
+    // borrowed SRV for this frame/view; every failure path keeps opaque
+    // depth. Execute never re-enters MeshRenderer.
+    state.waterDepthSrv = state.sceneDepthSrv.gpu;
+    state.stats.waterDepthValid = false;
+    state.stats.waterDepthFallback = true;
+    const WATER::WaterVisibleDepthView& waterView = state.waterDepthView;
+    if (waterView.IsValid() && waterView.frameIndex == state.preparedFrameIndex &&
+        waterView.viewToken == scene.GetDepthResource() && waterView.width == state.stats.renderWidth &&
+        waterView.height == state.stats.renderHeight) {
+        state.waterDepthSrv = waterView.srv;
+        state.stats.waterDepthValid = true;
+        state.stats.waterDepthFallback = false;
     }
 
-    bool IsVolumetricLightingDebugViewActive() {
-        const StageState& state = State();
-        return state.prepared && state.stats.active &&
-            IsVolumetricRenderDebugView(state.debugView);
+    ID3D12GraphicsCommandList* cmd = state.context.cmdList;
+    ID3D12DescriptorHeap* heap = state.context.srvHeap;
+    if (!cmd || !heap) {
+        scene.EndDepthShaderRead();
+        state.prepared = state.stats.active = state.volumeHistoryValid = false;
+        return &scene;
     }
+    const D3D12_GPU_VIRTUAL_ADDRESS constantAddress = state.constantAddress;
+    VolumeResource& output = state.volumes[state.writeIndex];
+    VolumeResource& history = state.volumes[state.writeIndex ^ 1u];
 
-    const VolumetricLightingStats& GetVolumetricLightingStats() {
-        return State().stats;
+    GFX::PIX::ScopedGpuEvent event(cmd, GFX::PIX::kColorPost, "VolumetricLighting");
+    GFX::GPU_PROFILE::ScopedGpuTimer timer(cmd, GFX::GPU_PROFILE::Pass::VolumetricLighting);
+    cmd->SetDescriptorHeaps(1, &heap);
+    TransitionVolume(cmd, output, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    cmd->SetComputeRootSignature(state.computeRoot.Get());
+    cmd->SetPipelineState(state.computePso.Get());
+    cmd->SetComputeRootConstantBufferView(0, constantAddress);
+    cmd->SetComputeRootDescriptorTable(1, state.sceneDepthSrv.gpu);
+    const D3D12_GPU_DESCRIPTOR_HANDLE shadow =
+        state.stats.shadowed ? SHADOW::GetDirectionalShadowSrv() : state.sceneDepthSrv.gpu;
+    cmd->SetComputeRootDescriptorTable(2, shadow);
+    cmd->SetComputeRootDescriptorTable(3, history.srv.gpu);
+    cmd->SetComputeRootDescriptorTable(4, output.uav.gpu);
+    cmd->SetComputeRootDescriptorTable(8, state.localShadowSrv.ptr ? state.localShadowSrv : state.sceneDepthSrv.gpu);
+    cmd->SetComputeRootDescriptorTable(9, state.cloudSolarSrv.ptr ? state.cloudSolarSrv : state.sceneDepthSrv.gpu);
+    if (state.localLights.IsValid()) {
+        cmd->SetComputeRootShaderResourceView(5, state.localLights.lights);
+        cmd->SetComputeRootShaderResourceView(6, state.localLights.clusterHeaders);
+        cmd->SetComputeRootShaderResourceView(7, state.localLights.clusterIndices);
     }
+    cmd->Dispatch((state.stats.froxelWidth + 7u) / 8u, (state.stats.froxelHeight + 7u) / 8u, 1u);
+    const auto uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(output.texture.Get());
+    cmd->ResourceBarrier(1, &uavBarrier);
+    TransitionVolume(cmd, output, D3D12_RESOURCE_STATE_GENERIC_READ);
 
-    void ShutdownVolumetricLightingStage() {
-        StageState& state = State();
-        for (VolumeResource& volume : state.volumes) ReleaseVolume(volume);
-        ReleaseView(state.sceneColorUav);
-        ReleaseView(state.sceneDepthSrv);
-        for (auto& uploads : state.uploads) uploads.Finalize(&state.context);
-        state.constantAddress = 0;
-        state.computePso.Reset();
-        state.compositePso.Reset();
-        state.computeRoot.Reset();
-        state.compositeRoot.Reset();
-        state.sceneColorResource = nullptr;
-        state.sceneDepthResource = nullptr;
-        state.waterDepthSrv = {};
-        state.waterDepthView = {};
-        state.stats = {};
-        state.writeIndex = 0;
-        state.preparedFrameIndex = 0;
-        state.historyFrameIndex = 0;
-        state.preparedView = state.historyView = {};
-        state.lastSettingsSignature = 0u;
-        state.debugView = RenderDebugView::None;
-        state.pipelineReady = false;
-        state.resourcesReady = false;
-        state.prepared = false;
-        state.localShadowSrv = {};
-        state.volumeHistoryValid = false;
-        state.context = {};
-    }
+    scene.TransitionColor(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    cmd->SetDescriptorHeaps(1, &heap);
+    cmd->SetComputeRootSignature(state.compositeRoot.Get());
+    cmd->SetPipelineState(state.compositePso.Get());
+    cmd->SetComputeRootConstantBufferView(0, constantAddress);
+    cmd->SetComputeRootDescriptorTable(1, state.sceneDepthSrv.gpu);
+    cmd->SetComputeRootDescriptorTable(2, output.srv.gpu);
+    cmd->SetComputeRootDescriptorTable(3, state.waterDepthSrv.ptr != 0 ? state.waterDepthSrv : state.sceneDepthSrv.gpu);
+    cmd->SetComputeRootDescriptorTable(4, state.sceneColorUav.gpu);
+    cmd->Dispatch((state.stats.renderWidth + 7u) / 8u, (state.stats.renderHeight + 7u) / 8u, 1u);
+    const auto sceneUavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(scene.GetResource());
+    cmd->ResourceBarrier(1, &sceneUavBarrier);
+    scene.TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    scene.EndDepthShaderRead();
+
+    state.volumeHistoryValid = true;
+    state.historyView = state.preparedView;
+    state.historyFrameIndex = state.preparedFrameIndex;
+    ++state.stats.dispatchCount;
+    return &scene;
+}
+
+bool IsVolumetricLightingActive() { return State().prepared && State().stats.active; }
+
+const VolumetricLightingStats& GetVolumetricLightingStats() { return State().stats; }
+
+void ShutdownVolumetricLightingStage() {
+    StageState& state = State();
+    for (VolumeResource& volume : state.volumes)
+        ReleaseVolume(volume);
+    ReleaseView(state.sceneColorUav);
+    ReleaseView(state.sceneDepthSrv);
+    for (auto& uploads : state.uploads)
+        uploads.Finalize(&state.context);
+    state.constantAddress = 0;
+    state.computePso.Reset();
+    state.compositePso.Reset();
+    state.computeRoot.Reset();
+    state.compositeRoot.Reset();
+    state.sceneColorResource = nullptr;
+    state.sceneDepthResource = nullptr;
+    state.waterDepthSrv = {};
+    state.waterDepthView = {};
+    state.stats = {};
+    state.writeIndex = 0;
+    state.preparedFrameIndex = 0;
+    state.historyFrameIndex = 0;
+    state.preparedView = state.historyView = {};
+    state.lastSettingsSignature = 0u;
+    state.debugView = RenderDebugView::None;
+    state.pipelineReady = false;
+    state.resourcesReady = false;
+    state.prepared = false;
+    state.localShadowSrv = {};
+    state.volumeHistoryValid = false;
+    state.context = {};
+}
 
 } // namespace HIKARI::RENDER3D::VOLUMETRIC

@@ -20,286 +20,237 @@
 
 namespace HIKARI::SCENE::SERIALIZATION {
 
-    void SerializeSceneSystemsJson(
-        const std::vector<SceneSystemData>& systems,
-        nlohmann::json& out) {
-        out = nlohmann::json::array();
-        for (const SceneSystemData& system : systems) {
-            out.push_back({
-                { "systemId", system.systemId },
-                { "enabled", system.enabled },
-                { "executionOrder", system.executionOrder },
-                { "settings", system.settings.is_object()
-                    ? system.settings
-                    : nlohmann::json::object() }
-            });
-        }
+void SerializeSceneSystemsJson(const std::vector<SceneSystemData>& systems, nlohmann::json& out) {
+    out = nlohmann::json::array();
+    for (const SceneSystemData& system : systems) {
+        out.push_back({{"systemId", system.systemId},
+                       {"enabled", system.enabled},
+                       {"executionOrder", system.executionOrder},
+                       {"settings", system.settings.is_object() ? system.settings : nlohmann::json::object()}});
     }
+}
 
-    void DeserializeSceneSystemsJson(
-        const nlohmann::json& node,
-        std::vector<SceneSystemData>& outSystems) {
-        outSystems.clear();
-        if (!node.is_array()) return;
-        for (const nlohmann::json& systemNode : node) {
-            if (!systemNode.is_object()) continue;
-            SceneSystemData system{};
-            system.systemId = systemNode.value(
-                "systemId", std::string{});
-            if (system.systemId.empty()) continue;
-            system.enabled = systemNode.value("enabled", true);
-            system.executionOrder = systemNode.value("executionOrder", 0);
-            system.settings = systemNode.value(
-                "settings", nlohmann::json::object());
-            if (!system.settings.is_object()) {
-                system.settings = nlohmann::json::object();
-            }
-            outSystems.push_back(std::move(system));
+void DeserializeSceneSystemsJson(const nlohmann::json& node, std::vector<SceneSystemData>& outSystems) {
+    outSystems.clear();
+    if (!node.is_array())
+        return;
+    for (const nlohmann::json& systemNode : node) {
+        if (!systemNode.is_object())
+            continue;
+        SceneSystemData system{};
+        system.systemId = systemNode.value("systemId", std::string{});
+        if (system.systemId.empty())
+            continue;
+        system.enabled = systemNode.value("enabled", true);
+        system.executionOrder = systemNode.value("executionOrder", 0);
+        system.settings = systemNode.value("settings", nlohmann::json::object());
+        if (!system.settings.is_object()) {
+            system.settings = nlohmann::json::object();
         }
+        outSystems.push_back(std::move(system));
     }
+}
 
 } // namespace HIKARI::SCENE::SERIALIZATION
 
 namespace HIKARI {
 
-    namespace SceneJson = SCENE::SERIALIZATION;
+namespace SceneJson = SCENE::SERIALIZATION;
 
-    namespace {
+namespace {
 
-        void MigrateLegacyProceduralModels(SceneDocument& document) {
-
-            if (document.version >= 3) {
-                return;
-            }
-            for (SceneObjectData& object : document.objects) {
-                SceneComponentData* model = nullptr;
-                bool hasProceduralMesh = false;
-                for (SceneComponentData& component : object.components) {
-                    if (component.type == "ModelComponent") {
-                        model = &component;
-                    } else if (component.type == "ProceduralMeshComponent") {
-                        hasProceduralMesh = true;
-                    }
-                }
-                if (model == nullptr || !model->properties.is_object()) {
-                    continue;
-                }
-
-                const nlohmann::json sourceKind = model->properties.value("sourceKind", nlohmann::json{});
-                const bool wasProcedural = (sourceKind.is_string() && sourceKind.get<std::string>() == "Procedural") ||
-                                           (sourceKind.is_number_integer() && sourceKind.get<int>() == 1);
-                if (wasProcedural && !hasProceduralMesh) {
-                    nlohmann::json properties = model->properties.value("procedural", nlohmann::json::object());
-                    if (!properties.is_object()) {
-                        properties = nlohmann::json::object();
-                    }
-                    const std::string kind = properties.value("kind", std::string("GridPlane"));
-                    if ((kind == "Plane" || kind == "GridPlane") && properties.contains("height")) {
-                        // Legacy planes used height as their Z dimension.
-                        properties["depth"] = properties["height"];
-                    }
-                    object.components.push_back(SceneComponentData{ "ProceduralMeshComponent", std::move(properties) });
-                }
-                model->properties.erase("sourceKind");
-                model->properties.erase("procedural");
-            }
-            document.version = (std::max)(document.version, 3u);
-        }
-
-        void MigrateEmbeddedModelMaterialFx(
-            SceneDocument& document) {
-
-            if (document.version >= 4u) {
-                return;
-            }
-
-            for (SceneObjectData& object : document.objects) {
-                const bool hasMaterialFx =
-                    std::any_of(
-                        object.components.begin(),
-                        object.components.end(),
-                        [](const SceneComponentData& component) {
-                            return component.type ==
-                                "MaterialFxComponent";
-                        });
-                bool shouldAddMaterialFx = false;
-                nlohmann::json materialFxProperties{};
-
-                for (SceneComponentData& component :
-                    object.components) {
-
-                    if (component.type != "ModelComponent" ||
-                        !component.properties.is_object()) {
-
-                        continue;
-                    }
-
-                    nlohmann::json& properties =
-                        component.properties;
-                    const std::string profileId =
-                        properties.value(
-                            "materialFxProfileId",
-                            std::string{});
-                    const bool valuesInitialized =
-                        properties.value(
-                            "materialFxValuesInitialized",
-                            false);
-                    const bool hasParamValues =
-                        properties.contains(
-                            "materialFxParamValues") &&
-                        properties["materialFxParamValues"]
-                            .is_array() &&
-                        !properties["materialFxParamValues"]
-                            .empty();
-
-                    if (!hasMaterialFx &&
-                        !shouldAddMaterialFx &&
-                        (!profileId.empty() ||
-                            valuesInitialized ||
-                            hasParamValues)) {
-
-                        materialFxProperties = {
-                            { "profileId", profileId },
-                            {
-                                "valuesInitialized",
-                                valuesInitialized ||
-                                    hasParamValues
-                            }
-                        };
-                        if (hasParamValues) {
-                            materialFxProperties["paramValues"] =
-                                properties[
-                                    "materialFxParamValues"];
-                        }
-                        shouldAddMaterialFx = true;
-                    }
-
-                    properties.erase("materialFxProfileId");
-                    properties.erase(
-                        "materialFxValuesInitialized");
-                    properties.erase(
-                        "materialFxParamValues");
-                }
-
-                if (shouldAddMaterialFx) {
-                    object.components.push_back(
-                        SceneComponentData{
-                            "MaterialFxComponent",
-                            std::move(materialFxProperties)
-                        });
-                }
-            }
-            document.version =
-                (std::max)(document.version, 4u);
-        }
-
-        void DeserializeCamera(const nlohmann::json& node, SceneCameraSettings& outCamera) {
-
-            if (!node.is_object() || !node.contains("defaultCameraObjectId") || !node["defaultCameraObjectId"].is_number_unsigned()) {
-                return;
-            }
-
-            const uint64_t objectId = node["defaultCameraObjectId"].get<uint64_t>();
-            if (objectId != 0u) {
-                outCamera.defaultCameraObjectId = SceneObjectId{ objectId };
+void MigrateLegacyProceduralModels(SceneDocument& document) {
+    if (document.version >= 3) {
+        return;
+    }
+    for (SceneObjectData& object : document.objects) {
+        SceneComponentData* model = nullptr;
+        bool hasProceduralMesh = false;
+        for (SceneComponentData& component : object.components) {
+            if (component.type == "ModelComponent") {
+                model = &component;
+            } else if (component.type == "ProceduralMeshComponent") {
+                hasProceduralMesh = true;
             }
         }
-
-        void SerializeCamera(const SceneCameraSettings& camera, nlohmann::json& out) {
-
-            out["defaultCameraObjectId"] =
-                camera.defaultCameraObjectId.has_value() ? nlohmann::json(camera.defaultCameraObjectId->value) : nlohmann::json(nullptr);
+        if (model == nullptr || !model->properties.is_object()) {
+            continue;
         }
 
-    } // namespace
-
-    bool SceneSerializer::LoadFromFile(const std::string& path, SceneDocument& outDocument) const {
-
-        nlohmann::json root{};
-        if (!SERIALIZATION::JSON::ReadJsonFile(std::filesystem::path(path), root) || !root.is_object()) {
-            return false;
+        const nlohmann::json sourceKind = model->properties.value("sourceKind", nlohmann::json{});
+        const bool wasProcedural = (sourceKind.is_string() && sourceKind.get<std::string>() == "Procedural") ||
+                                   (sourceKind.is_number_integer() && sourceKind.get<int>() == 1);
+        if (wasProcedural && !hasProceduralMesh) {
+            nlohmann::json properties = model->properties.value("procedural", nlohmann::json::object());
+            if (!properties.is_object()) {
+                properties = nlohmann::json::object();
+            }
+            const std::string kind = properties.value("kind", std::string("GridPlane"));
+            if ((kind == "Plane" || kind == "GridPlane") && properties.contains("height")) {
+                // Legacy planes used height as their Z dimension.
+                properties["depth"] = properties["height"];
+            }
+            object.components.push_back(SceneComponentData{"ProceduralMeshComponent", std::move(properties)});
         }
+        model->properties.erase("sourceKind");
+        model->properties.erase("procedural");
+    }
+    document.version = (std::max)(document.version, 3u);
+}
 
-        try {
-            SceneDocument decoded{};
-            decoded.version = root.value("version", 1u);
-            if (decoded.version == 0 || decoded.version > kCurrentSceneDocumentVersion) {
-                HIKARI_LOG_ERROR("[SceneAsset] unsupported scene version: " + std::to_string(decoded.version));
-                return false;
-            }
-            const uint32_t sourceVersion = decoded.version;
-            decoded.sceneName = root.value("sceneName", std::string("Untitled"));
-            if (const auto folders = root.find("editorFolders"); folders != root.end() && folders->is_array())
-                for (const auto& folder : *folders) if (folder.is_string()) decoded.editorFolders.push_back(folder.get<std::string>());
-
-            if (root.contains("environment") && root["environment"].is_object()) {
-                SceneJson::DeserializeSceneEnvironmentJson(root["environment"], decoded.environment);
-            }
-
-            SceneJson::DeserializeSceneLightingBakeJson(root.value("lightingBake", nlohmann::json::object()), decoded.lightingBake);
-            DeserializeCamera(root.value("camera", nlohmann::json::object()), decoded.camera);
-            DeserializeSceneCinematicsJson(root.value("cinematics", nlohmann::json::object()), decoded.cinematics);
-            SceneJson::DeserializeSceneSystemsJson(root.value("systems", nlohmann::json{}), decoded.systems);
-
-            if (root.contains("objects") && root["objects"].is_array()) {
-                for (const nlohmann::json& node : root["objects"]) {
-                    SceneObjectData object{};
-                    if (SceneJson::DeserializeSceneObjectJson(node, object, SceneJson::SceneObjectJsonScope::SceneDocument)) {
-                        decoded.objects.push_back(std::move(object));
-                    }
-                }
-            }
-
-            MigrateLegacyProceduralModels(decoded);
-            MigrateEmbeddedModelMaterialFx(decoded);
-            LIGHTING_AUTHORING::MigrateLegacyLightingAuthoring(
-                decoded,
-                sourceVersion);
-            LIGHTING_AUTHORING::SynchronizeLegacyLightingViews(decoded);
-            for (SceneObjectData& object : decoded.objects) {
-                NormalizeSceneComponentIds(object);
-            }
-            decoded.version = (std::max)(decoded.version, kCurrentSceneDocumentVersion);
-            outDocument = std::move(decoded);
-            return true;
-        } catch (const nlohmann::json::exception& exception) {
-            HIKARI_LOG_ERROR(std::string("[SceneAsset] malformed scene: ") + exception.what());
-            return false;
-        }
+void MigrateEmbeddedModelMaterialFx(SceneDocument& document) {
+    if (document.version >= 4u) {
+        return;
     }
 
-    bool SceneSerializer::SaveToFile(const std::string& path, const SceneDocument& document) const {
+    for (SceneObjectData& object : document.objects) {
+        const bool hasMaterialFx =
+            std::any_of(object.components.begin(), object.components.end(),
+                        [](const SceneComponentData& component) { return component.type == "MaterialFxComponent"; });
+        bool shouldAddMaterialFx = false;
+        nlohmann::json materialFxProperties{};
 
-        SceneDocument persisted = document;
-        persisted.version = kCurrentSceneDocumentVersion;
-        for (SceneObjectData& object : persisted.objects) {
+        for (SceneComponentData& component : object.components) {
+            if (component.type != "ModelComponent" || !component.properties.is_object()) {
+                continue;
+            }
+
+            nlohmann::json& properties = component.properties;
+            const std::string profileId = properties.value("materialFxProfileId", std::string{});
+            const bool valuesInitialized = properties.value("materialFxValuesInitialized", false);
+            const bool hasParamValues = properties.contains("materialFxParamValues") &&
+                                        properties["materialFxParamValues"].is_array() &&
+                                        !properties["materialFxParamValues"].empty();
+
+            if (!hasMaterialFx && !shouldAddMaterialFx && (!profileId.empty() || valuesInitialized || hasParamValues)) {
+                materialFxProperties = {{"profileId", profileId},
+                                        {"valuesInitialized", valuesInitialized || hasParamValues}};
+                if (hasParamValues) {
+                    materialFxProperties["paramValues"] = properties["materialFxParamValues"];
+                }
+                shouldAddMaterialFx = true;
+            }
+
+            properties.erase("materialFxProfileId");
+            properties.erase("materialFxValuesInitialized");
+            properties.erase("materialFxParamValues");
+        }
+
+        if (shouldAddMaterialFx) {
+            object.components.push_back(SceneComponentData{"MaterialFxComponent", std::move(materialFxProperties)});
+        }
+    }
+    document.version = (std::max)(document.version, 4u);
+}
+
+void DeserializeCamera(const nlohmann::json& node, SceneCameraSettings& outCamera) {
+    if (!node.is_object() || !node.contains("defaultCameraObjectId") ||
+        !node["defaultCameraObjectId"].is_number_unsigned()) {
+        return;
+    }
+
+    const uint64_t objectId = node["defaultCameraObjectId"].get<uint64_t>();
+    if (objectId != 0u) {
+        outCamera.defaultCameraObjectId = SceneObjectId{objectId};
+    }
+}
+
+void SerializeCamera(const SceneCameraSettings& camera, nlohmann::json& out) {
+    out["defaultCameraObjectId"] = camera.defaultCameraObjectId.has_value()
+                                       ? nlohmann::json(camera.defaultCameraObjectId->value)
+                                       : nlohmann::json(nullptr);
+}
+
+} // namespace
+
+bool SceneSerializer::LoadFromFile(const std::string& path, SceneDocument& outDocument) const {
+    nlohmann::json root{};
+    if (!SERIALIZATION::JSON::ReadJsonFile(std::filesystem::path(path), root) || !root.is_object()) {
+        return false;
+    }
+
+    try {
+        SceneDocument decoded{};
+        decoded.version = root.value("version", 1u);
+        if (decoded.version == 0 || decoded.version > kCurrentSceneDocumentVersion) {
+            HIKARI_LOG_ERROR("[SceneAsset] unsupported scene version: " + std::to_string(decoded.version));
+            return false;
+        }
+        const uint32_t sourceVersion = decoded.version;
+        decoded.sceneName = root.value("sceneName", std::string("Untitled"));
+        if (const auto folders = root.find("editorFolders"); folders != root.end() && folders->is_array())
+            for (const auto& folder : *folders)
+                if (folder.is_string())
+                    decoded.editorFolders.push_back(folder.get<std::string>());
+
+        if (root.contains("environment") && root["environment"].is_object()) {
+            SceneJson::DeserializeSceneEnvironmentJson(root["environment"], decoded.environment);
+        }
+
+        SceneJson::DeserializeSceneLightingBakeJson(root.value("lightingBake", nlohmann::json::object()),
+                                                    decoded.lightingBake);
+        DeserializeCamera(root.value("camera", nlohmann::json::object()), decoded.camera);
+        DeserializeSceneCinematicsJson(root.value("cinematics", nlohmann::json::object()), decoded.cinematics);
+        SceneJson::DeserializeSceneSystemsJson(root.value("systems", nlohmann::json{}), decoded.systems);
+
+        if (root.contains("objects") && root["objects"].is_array()) {
+            for (const nlohmann::json& node : root["objects"]) {
+                SceneObjectData object{};
+                if (SceneJson::DeserializeSceneObjectJson(node, object,
+                                                          SceneJson::SceneObjectJsonScope::SceneDocument)) {
+                    decoded.objects.push_back(std::move(object));
+                }
+            }
+        }
+
+        MigrateLegacyProceduralModels(decoded);
+        MigrateEmbeddedModelMaterialFx(decoded);
+        LIGHTING_AUTHORING::MigrateLegacyLightingAuthoring(decoded, sourceVersion);
+        LIGHTING_AUTHORING::SynchronizeLegacyLightingViews(decoded);
+        for (SceneObjectData& object : decoded.objects) {
             NormalizeSceneComponentIds(object);
         }
-        LIGHTING_AUTHORING::SynchronizeLegacyLightingViews(persisted);
-
-        nlohmann::json root = nlohmann::json::object();
-        root["version"] = persisted.version;
-        root["sceneName"] = persisted.sceneName;
-        if (!persisted.editorFolders.empty()) root["editorFolders"] = persisted.editorFolders;
-
-        SceneJson::SerializeSceneEnvironmentJson(persisted.environment, root["environment"]);
-        // Version 6 以场景组件为唯一 Probe / Light Authoring 来源。
-        root["environment"].erase("reflectionProbe");
-        root["environment"].erase("directional");
-        root["environment"].erase("pointLights");
-        root["environment"].erase("spotLights");
-        SerializeCamera(persisted.camera, root["camera"]);
-        SerializeSceneCinematicsJson(persisted.cinematics, root["cinematics"]);
-        SceneJson::SerializeSceneSystemsJson(persisted.systems, root["systems"]);
-
-        root["objects"] = nlohmann::json::array();
-        for (const SceneObjectData& object : persisted.objects) {
-            nlohmann::json objectNode{};
-            SceneJson::SerializeSceneObjectJson(object, objectNode, SceneJson::SceneObjectJsonScope::SceneDocument);
-            root["objects"].push_back(std::move(objectNode));
-        }
-
-        return SERIALIZATION::JSON::WriteJsonFile(std::filesystem::path(path), root);
+        decoded.version = (std::max)(decoded.version, kCurrentSceneDocumentVersion);
+        outDocument = std::move(decoded);
+        return true;
+    } catch (const nlohmann::json::exception& exception) {
+        HIKARI_LOG_ERROR(std::string("[SceneAsset] malformed scene: ") + exception.what());
+        return false;
     }
+}
+
+bool SceneSerializer::SaveToFile(const std::string& path, const SceneDocument& document) const {
+    SceneDocument persisted = document;
+    persisted.version = kCurrentSceneDocumentVersion;
+    for (SceneObjectData& object : persisted.objects) {
+        NormalizeSceneComponentIds(object);
+    }
+    LIGHTING_AUTHORING::SynchronizeLegacyLightingViews(persisted);
+
+    nlohmann::json root = nlohmann::json::object();
+    root["version"] = persisted.version;
+    root["sceneName"] = persisted.sceneName;
+    if (!persisted.editorFolders.empty())
+        root["editorFolders"] = persisted.editorFolders;
+
+    SceneJson::SerializeSceneEnvironmentJson(persisted.environment, root["environment"]);
+    // Version 6 以场景组件为唯一 Probe / Light Authoring 来源。
+    root["environment"].erase("reflectionProbe");
+    root["environment"].erase("directional");
+    root["environment"].erase("pointLights");
+    root["environment"].erase("spotLights");
+    SerializeCamera(persisted.camera, root["camera"]);
+    SerializeSceneCinematicsJson(persisted.cinematics, root["cinematics"]);
+    SceneJson::SerializeSceneSystemsJson(persisted.systems, root["systems"]);
+
+    root["objects"] = nlohmann::json::array();
+    for (const SceneObjectData& object : persisted.objects) {
+        nlohmann::json objectNode{};
+        SceneJson::SerializeSceneObjectJson(object, objectNode, SceneJson::SceneObjectJsonScope::SceneDocument);
+        root["objects"].push_back(std::move(objectNode));
+    }
+
+    return SERIALIZATION::JSON::WriteJsonFile(std::filesystem::path(path), root);
+}
 
 } // namespace HIKARI

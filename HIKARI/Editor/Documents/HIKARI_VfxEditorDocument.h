@@ -1,5 +1,6 @@
 #pragma once
 #include "Editor/Documents/HIKARI_EditorSourceVersion.h"
+#include "Editor/History/HIKARI_DocumentSnapshotHistory.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -15,101 +16,65 @@
 
 namespace HIKARI {
 
-    class AssetDatabase;
+class AssetDatabase;
 
 namespace EDITOR {
 
-    enum class VfxEditorDocumentSource : uint8_t {
-        None,
-        Transient,
-        Asset,
-    };
+enum class VfxEditorDocumentSource : uint8_t {
+    None,
+    Transient,
+    Asset,
+};
 
-    enum class VfxDocumentImpact : uint8_t { Metadata, Runtime };
+enum class VfxDocumentImpact : uint8_t { Metadata, Runtime };
 
-    class VfxEditorDocument final {
-    public:
-        void NewAsset(std::string name = "New VFX");
-        bool ApplyPresetAsset(
-            VFX::VfxAssetData package,
-            std::string& outMessage);
-        bool OpenAsset(
-            const AssetDatabase& assetDatabase,
-            const AssetGuid& assetGuid,
-            std::string& outMessage,
-            bool discardUnsaved = false);
-        bool Save(
-            AssetDatabase& assetDatabase,
-            std::string& outMessage);
-        bool Revert(
-            const AssetDatabase& assetDatabase,
-            std::string& outMessage);
+class VfxEditorDocument final {
+public:
+    void NewAsset(std::string name = "New VFX");
+    bool ApplyPresetAsset(VFX::VfxAssetData package, std::string& outMessage);
+    bool OpenAsset(const AssetDatabase& assetDatabase, const AssetGuid& assetGuid, std::string& outMessage,
+                   bool discardUnsaved = false);
+    bool Save(AssetDatabase& assetDatabase, std::string& outMessage);
+    bool Revert(const AssetDatabase& assetDatabase, std::string& outMessage);
 
-        bool ApplyAsset(
-            VFX::VfxAssetData asset,
-            std::string& outMessage,
-            uint64_t mergeGroup = 0u,
-            VfxDocumentImpact impact = VfxDocumentImpact::Runtime);
-        void SealMerge() noexcept;
-        bool Undo();
-        bool Redo();
+    bool ApplyAsset(VFX::VfxAssetData asset, std::string& outMessage, uint64_t mergeGroup = 0u,
+                    VfxDocumentImpact impact = VfxDocumentImpact::Runtime);
+    void SealMerge() noexcept;
+    bool Undo();
+    bool Redo();
 
-        VFX::VfxAssetData& Asset() noexcept;
-        const VFX::VfxAssetData& Asset() const noexcept;
-        const AssetGuid& GetAssetGuid() const noexcept;
-        const std::filesystem::path& GetSourcePath() const noexcept;
-        const std::string& GetDisplayName() const noexcept;
-        uint64_t GetRevision() const noexcept;
-        VfxDocumentImpact GetLastImpact() const noexcept { return lastImpact_; }
-        VfxEditorDocumentSource GetSource() const noexcept;
+    const VFX::VfxAssetData& Asset() const noexcept { return asset_; }
+    const AssetGuid& GetAssetGuid() const noexcept;
+    const std::filesystem::path& GetSourcePath() const noexcept;
+    const std::string& GetDisplayName() const noexcept;
+    uint64_t GetRevision() const noexcept;
+    VfxDocumentImpact GetLastImpact() const noexcept { return lastImpact_; }
+    VfxEditorDocumentSource GetSource() const noexcept;
 
-        bool IsOpen() const noexcept;
-        bool IsDirty() const noexcept;
-        bool CanUndo() const noexcept;
-        bool CanRedo() const noexcept;
-        nlohmann::json MakeRecovery() const;
-        bool RestoreRecovery(const AssetDatabase& database, const nlohmann::json& snapshot, std::string& message);
-    private:
-        EditorSourceVersion sourceVersion_;
-        struct DocumentState {
-            VFX::VfxAssetData asset{};
-        };
+    bool IsOpen() const noexcept;
+    bool IsDirty() const noexcept;
+    bool CanUndo() const noexcept;
+    bool CanRedo() const noexcept;
+    nlohmann::json MakeRecovery() const;
+    bool RestoreRecovery(const AssetDatabase& database, const nlohmann::json& snapshot, std::string& message);
 
-        struct HistoryEntry {
-            DocumentState before{};
-            DocumentState after{};
-            uint64_t mergeGroup = 0u;
-            VfxDocumentImpact impact = VfxDocumentImpact::Runtime;
-        };
+private:
+    EditorSourceVersion sourceVersion_;
+    static bool AreEquivalent(const VFX::VfxAssetData& left, const VFX::VfxAssetData& right);
+    void RecordApplied(VFX::VfxAssetData before, uint64_t mergeGroup,
+                       VfxDocumentImpact impact = VfxDocumentImpact::Runtime);
+    void ResetHistory(bool saved) noexcept;
+    void AdvanceRevision() noexcept;
 
-        static bool AreEquivalent(
-            const VFX::VfxAssetData& left,
-            const VFX::VfxAssetData& right);
-        bool ApplyState(
-            DocumentState state,
-            std::string& outMessage,
-            uint64_t mergeGroup,
-            VfxDocumentImpact impact = VfxDocumentImpact::Runtime);
-        void RecordApplied(
-            DocumentState before,
-            uint64_t mergeGroup,
-            VfxDocumentImpact impact = VfxDocumentImpact::Runtime);
-        void ResetHistory(bool saved) noexcept;
-        void AdvanceRevision() noexcept;
-
-        VfxEditorDocumentSource source_ =
-            VfxEditorDocumentSource::None;
-        AssetGuid assetGuid_{};
-        std::filesystem::path sourcePath_{};
-        std::string displayName_{};
-        VFX::VfxAssetData asset_{};
-        std::vector<HistoryEntry> history_{};
-        size_t historyCursor_ = 0u;
-        std::optional<size_t> savedHistoryCursor_{};
-        uint64_t openMergeGroup_ = 0u;
-        uint64_t revision_ = 1u;
-        VfxDocumentImpact lastImpact_ = VfxDocumentImpact::Runtime;
-    };
+    VfxEditorDocumentSource source_ = VfxEditorDocumentSource::None;
+    AssetGuid assetGuid_{};
+    std::filesystem::path sourcePath_{};
+    std::string displayName_{};
+    VFX::VfxAssetData asset_{};
+    DocumentSnapshotHistory<VFX::VfxAssetData, VfxDocumentImpact> history_;
+    uint64_t revision_ = 1u;
+    VfxDocumentImpact lastImpact_ = VfxDocumentImpact::Runtime;
+};
 
 } // namespace EDITOR
 } // namespace HIKARI

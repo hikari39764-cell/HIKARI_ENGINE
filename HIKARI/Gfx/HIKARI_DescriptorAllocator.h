@@ -7,37 +7,35 @@
 
 namespace HIKARI::GFX {
 
-    struct DescriptorSlot {
-        UINT index = UINT_MAX;
+struct DescriptorSlot {
+    UINT index = UINT_MAX;
 
-        bool IsValid() const {
-            return index != UINT_MAX;
-        }
-    };
+    bool IsValid() const { return index != UINT_MAX; }
+};
 
-    class DescriptorAllocator {
-    public:
-        void Initialize(UINT begin, UINT count);
-        void Reset();
+class DescriptorAllocator {
+public:
+    void Initialize(UINT begin, UINT count);
+    void Reset();
 
-        DescriptorSlot Allocate();
-        DescriptorSlot AllocateRange(UINT count);
-        void Free(DescriptorSlot slot);
+    DescriptorSlot Allocate();
+    DescriptorSlot AllocateRange(UINT count);
+    void Free(DescriptorSlot slot);
 
-        bool Owns(DescriptorSlot slot) const;
-        bool IsAllocated(DescriptorSlot slot) const;
-        UINT GetBegin() const;
-        UINT GetCount() const;
-        UINT GetUsedCount() const;
-        UINT GetFreeCount() const;
+    bool Owns(DescriptorSlot slot) const;
+    bool IsAllocated(DescriptorSlot slot) const;
+    UINT GetBegin() const;
+    UINT GetCount() const;
+    UINT GetUsedCount() const;
+    UINT GetFreeCount() const;
 
-    private:
-        UINT begin_ = 0;
-        UINT count_ = 0;
-        UINT next_ = 0;
-        UINT usedCount_ = 0;
-        std::vector<UINT> freeList_;
-        std::vector<bool> allocated_;
-    };
+private:
+    UINT begin_ = 0;
+    UINT count_ = 0;
+    UINT next_ = 0;
+    UINT usedCount_ = 0;
+    std::vector<UINT> freeList_;
+    std::vector<bool> allocated_;
+};
 
 } // namespace HIKARI::GFX

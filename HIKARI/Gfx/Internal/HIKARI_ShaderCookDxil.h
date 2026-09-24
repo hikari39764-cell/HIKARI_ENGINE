@@ -11,18 +11,11 @@
 
 namespace HIKARI::GFX::INTERNAL {
 
-    std::string BlobToUtf8(IDxcUtils* utils, IDxcBlob* blob);
+std::string BlobToUtf8(IDxcUtils* utils, IDxcBlob* blob);
 
-    bool ValidateShaderCookDxil(
-        const DxcRuntimeSnapshot& runtime,
-        IDxcBlob* shader,
-        std::string& outError);
+bool ValidateShaderCookDxil(const DxcRuntimeSnapshot& runtime, IDxcBlob* shader, std::string& outError);
 
-    bool ExtractShaderCookBindings(
-        const DxcRuntimeSnapshot& runtime,
-        IDxcResult* result,
-        ShaderStage stage,
-        std::vector<ShaderCookBinding>& outBindings,
-        std::string& outError);
+bool ExtractShaderCookBindings(const DxcRuntimeSnapshot& runtime, IDxcResult* result, ShaderStage stage,
+                               std::vector<ShaderCookBinding>& outBindings, std::string& outError);
 
 } // namespace HIKARI::GFX::INTERNAL

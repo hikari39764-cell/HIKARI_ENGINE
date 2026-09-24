@@ -6,7 +6,9 @@
 
 #include "Input/Assets/HIKARI_InputActionMap.h"
 
-namespace HIKARI::INPUT { class InputService; }
+namespace HIKARI::INPUT {
+class InputService;
+}
 
 namespace HIKARI {
 
@@ -25,16 +27,11 @@ private:
     void DrawBindingPopup(INPUT::InputService& inputService);
     void DrawCompositePopup(INPUT::InputService& inputService);
     void DrawProjectPopups(INPUT::InputService& inputService);
-    void BeginBindingEdit(
-        const INPUT::InputActionMap& map,
-        int bindingIndex);
+    void BeginBindingEdit(const INPUT::InputActionMap& map, int bindingIndex);
     void BeginBindingCapture(INPUT::InputService& inputService);
     void DrawBindingCapture(INPUT::InputService& inputService);
-    std::vector<int> FindBindingConflictIndices(
-        const INPUT::InputActionMap& map) const;
-    void ApplyBindingDraft(
-        INPUT::InputActionMap& map,
-        bool replaceConflicts);
+    std::vector<int> FindBindingConflictIndices(const INPUT::InputActionMap& map) const;
+    void ApplyBindingDraft(INPUT::InputActionMap& map, bool replaceConflicts);
     bool DrawBindingConflictResolution(INPUT::InputActionMap& map);
     void BeginCompositeEdit(const INPUT::InputActionMap& map);
     void BeginCompositeCapture(INPUT::InputService& inputService);

@@ -12,725 +12,556 @@
 
 namespace HIKARI {
 
-    GameObject* World::CreateObject(const std::string& name) {
-        if (!CanMutateStructure()) {
-            return nullptr;
+GameObject* World::CreateObject(const std::string& name) {
+    if (!CanMutateStructure()) {
+        return nullptr;
+    }
+    if (objects_.size() >= objects_.max_size()) {
+        return nullptr;
+    }
+    const size_t nextObjectCount = objects_.size() + 1u;
+    const size_t objectCapacity =
+        INTERNAL::GrowWorldCapacity(objects_.capacity(), nextObjectCount, objects_.max_size());
+    objects_.reserve(objectCapacity);
+    auto object = std::make_unique<GameObject>(name);
+    GameObject* ptr = object.get();
+    const size_t storageIndex = objects_.size();
+    const RuntimeObjectHandle handle = ReserveObjectHandle();
+    if (!handle.IsValid()) {
+        return nullptr;
+    }
+    ptr->SetRuntimeHandle(handle);
+    bool objectStored = false;
+    try {
+        objects_.push_back(std::move(object));
+        objectStored = true;
+        if (!CommitReservedObjectHandle(handle, ptr, storageIndex)) {
+            throw std::logic_error("World object handle commit rejected.");
         }
-        if (objects_.size() >= objects_.max_size()) {
-            return nullptr;
+        ptr->SetOwnerWorld(this);
+    } catch (...) {
+        RemoveRenderObjectDirty(ptr);
+        ptr->SetOwnerWorld(nullptr);
+        ptr->SetRuntimeHandle({});
+        if (handle.slot < objectSlots_.size() && objectSlots_[handle.slot].state == ObjectSlotState::Live) {
+            ReleaseObjectHandle(handle);
+        } else {
+            ReleaseReservedObjectHandle(handle);
         }
-        const size_t nextObjectCount = objects_.size() + 1u;
-        const size_t objectCapacity = INTERNAL::GrowWorldCapacity(
-            objects_.capacity(),
-            nextObjectCount,
-            objects_.max_size());
-        objects_.reserve(objectCapacity);
-        auto object = std::make_unique<GameObject>(name);
-        GameObject* ptr = object.get();
-        const size_t storageIndex = objects_.size();
-        const RuntimeObjectHandle handle = ReserveObjectHandle();
-        if (!handle.IsValid()) {
-            return nullptr;
+        if (objectStored && !objects_.empty() && objects_.back().get() == ptr) {
+            objects_.pop_back();
         }
-        ptr->SetRuntimeHandle(handle);
-        bool objectStored = false;
-        try {
-            objects_.push_back(std::move(object));
-            objectStored = true;
-            if (!CommitReservedObjectHandle(
-                    handle,
-                    ptr,
-                    storageIndex)) {
-                throw std::logic_error(
-                    "World object handle commit rejected.");
-            }
-            ptr->SetOwnerWorld(this);
-        }
-        catch (...) {
-            RemoveRenderObjectDirty(ptr);
-            ptr->SetOwnerWorld(nullptr);
-            ptr->SetRuntimeHandle({});
-            if (handle.slot < objectSlots_.size() &&
-                objectSlots_[handle.slot].state ==
-                    ObjectSlotState::Live) {
-                ReleaseObjectHandle(handle);
-            }
-            else {
-                ReleaseReservedObjectHandle(handle);
-            }
-            if (objectStored &&
-                !objects_.empty() &&
-                objects_.back().get() == ptr) {
-                objects_.pop_back();
-            }
-            throw;
-        }
-        return ptr;
+        throw;
+    }
+    return ptr;
+}
+
+World::~World() {
+    if (!IsOwnerThread()) {
+        HIKARI_LOG_ERROR("[World] destruction rejected outside the owner thread.");
+        std::terminate();
+    }
+    Clear();
+    UnregisterRuntimeIdentity();
+}
+
+bool World::BindComponentRegistry(const ComponentRegistry* registry) noexcept {
+    if (registry == nullptr || !IsOwnerThread() || worldClosing_ || structureReadDepth_ != 0u || commandFlushActive_ ||
+        commandApplyActive_ || !objects_.empty() || massStore_.GetTotalCount() != 0u || !pendingCommands_.empty() ||
+        !executionCommands_.empty()) {
+        return false;
+    }
+    componentRegistry_ = registry;
+    return true;
+}
+
+bool World::BindMassSchemaRegistry(const WorldMassSchemaRegistry* registry) noexcept {
+    if (registry == nullptr || !IsOwnerThread() || worldClosing_ || structureReadDepth_ != 0u || commandFlushActive_ ||
+        commandApplyActive_ || !objects_.empty() || massStore_.GetTotalCount() != 0u || !pendingCommands_.empty() ||
+        !executionCommands_.empty()) {
+        return false;
+    }
+    massSchemaRegistry_ = registry;
+    return true;
+}
+
+WorldMutationResult World::DestroyObject(GameObject* object) {
+    if (!IsOwnerThread()) {
+        return WorldMutationResult::WrongThread;
+    }
+    if (!CanMutateStructure()) {
+        return WorldMutationResult::MutationDisallowed;
+    }
+    if (object == nullptr || object->ownerWorld_ != this) {
+        return WorldMutationResult::InvalidObjectHandle;
     }
 
-    World::~World() {
-        if (!IsOwnerThread()) {
-            HIKARI_LOG_ERROR(
-                "[World] destruction rejected outside the owner thread.");
-            std::terminate();
-        }
-        Clear();
-        UnregisterRuntimeIdentity();
+    const RuntimeObjectHandle handle = object->GetRuntimeHandle();
+    if (!handle.IsValid() || handle.slot >= objectSlots_.size()) {
+        return WorldMutationResult::InvalidObjectHandle;
     }
-
-    bool World::BindComponentRegistry(
-        const ComponentRegistry* registry) noexcept {
-        if (registry == nullptr || !IsOwnerThread() || worldClosing_ ||
-            structureReadDepth_ != 0u ||
-            commandFlushActive_ || commandApplyActive_ ||
-            !objects_.empty() || massStore_.GetTotalCount() != 0u ||
-            !pendingCommands_.empty() ||
-            !executionCommands_.empty()) {
-            return false;
-        }
-        componentRegistry_ = registry;
-        return true;
+    const ObjectSlot& removedSlot = objectSlots_[handle.slot];
+    if (removedSlot.generation != handle.generation || removedSlot.state != ObjectSlotState::Live ||
+        removedSlot.object != object || removedSlot.storageIndex >= objects_.size() ||
+        objects_[removedSlot.storageIndex].get() != object) {
+        return WorldMutationResult::InternalError;
     }
-
-    bool World::BindMassSchemaRegistry(
-        const WorldMassSchemaRegistry* registry) noexcept {
-        if (registry == nullptr || !IsOwnerThread() || worldClosing_ ||
-            structureReadDepth_ != 0u ||
-            commandFlushActive_ || commandApplyActive_ ||
-            !objects_.empty() || massStore_.GetTotalCount() != 0u ||
-            !pendingCommands_.empty() || !executionCommands_.empty()) {
-            return false;
-        }
-        massSchemaRegistry_ = registry;
-        return true;
-    }
-
-    WorldMutationResult World::DestroyObject(GameObject* object) {
-        if (!IsOwnerThread()) {
-            return WorldMutationResult::WrongThread;
-        }
-        if (!CanMutateStructure()) {
-            return WorldMutationResult::MutationDisallowed;
-        }
-        if (object == nullptr || object->ownerWorld_ != this) {
-            return WorldMutationResult::InvalidObjectHandle;
-        }
-
-        const RuntimeObjectHandle handle =
-            object->GetRuntimeHandle();
-        if (!handle.IsValid() ||
-            handle.slot >= objectSlots_.size()) {
-            return WorldMutationResult::InvalidObjectHandle;
-        }
-        const ObjectSlot& removedSlot =
-            objectSlots_[handle.slot];
-        if (removedSlot.generation != handle.generation ||
-            removedSlot.state != ObjectSlotState::Live ||
-            removedSlot.object != object ||
-            removedSlot.storageIndex >= objects_.size() ||
-            objects_[removedSlot.storageIndex].get() != object) {
+    const size_t removedStorageIndex = removedSlot.storageIndex;
+    const size_t lastStorageIndex = objects_.size() - 1u;
+    RuntimeObjectHandle movedHandle{};
+    if (removedStorageIndex != lastStorageIndex) {
+        GameObject* movedObject = objects_[lastStorageIndex].get();
+        if (movedObject == nullptr) {
             return WorldMutationResult::InternalError;
         }
-        const size_t removedStorageIndex =
-            removedSlot.storageIndex;
-        const size_t lastStorageIndex = objects_.size() - 1u;
-        RuntimeObjectHandle movedHandle{};
-        if (removedStorageIndex != lastStorageIndex) {
-            GameObject* movedObject =
-                objects_[lastStorageIndex].get();
-            if (movedObject == nullptr) {
-                return WorldMutationResult::InternalError;
-            }
-            movedHandle = movedObject->GetRuntimeHandle();
-            if (!movedHandle.IsValid() ||
-                movedHandle.slot >= objectSlots_.size()) {
-                return WorldMutationResult::InternalError;
-            }
-            const ObjectSlot& movedSlot =
-                objectSlots_[movedHandle.slot];
-            if (movedSlot.generation != movedHandle.generation ||
-                movedSlot.state != ObjectSlotState::Live ||
-                movedSlot.object != movedObject ||
-                movedSlot.storageIndex != lastStorageIndex) {
-                return WorldMutationResult::InternalError;
-            }
-        }
-
-        const size_t removedAdmissionCheckpoint =
-            removedRenderObjectIds_.size();
-        if (object->renderStateContributorCount_ != 0u) {
-            if (removedRenderObjectIds_.size() ==
-                removedRenderObjectIds_.max_size()) {
-                throw std::length_error(
-                    "World removed render object capacity overflow.");
-            }
-            const size_t removedCapacity = INTERNAL::GrowWorldCapacity(
-                removedRenderObjectIds_.capacity(),
-                removedRenderObjectIds_.size() + 1u,
-                removedRenderObjectIds_.max_size());
-            removedRenderObjectIds_.reserve(removedCapacity);
-            removedRenderObjectIdSet_.reserve(
-                removedRenderObjectIdSet_.size() + 1u);
-            MarkRenderObjectRemoved(object->GetRenderStableId());
-        }
-        const StructureReadScope structureRead =
-            AcquireStructureReadScope();
-        try {
-            frameEvents_.Publish(WorldObjectDestroyedEvent{
-                object->GetDocumentId(),
-                handle,
-                object->GetName()
-            });
-        }
-        catch (...) {
-            RollbackRemovedRenderObjectAdmission(
-                removedAdmissionCheckpoint);
-            throw;
-        }
-        while (!object->children_.empty()) {
-            GameObject* child = object->children_.back();
-            if (child == nullptr ||
-                !child->SetParentInternal(nullptr)) {
-                object->children_.pop_back();
-            }
-        }
-        (void)object->SetParentInternal(nullptr);
-        (void)OnDocumentIdChanged(
-            object,
-            object->GetDocumentId(),
-            SceneObjectId{});
-        object->destroying_ = true;
-        object->DetachComponents();
-        // The destroying flag rejects owner mutation from OnDetach while
-        // World/handle context remains queryable. Remove membership after all
-        // callbacks as the final guarantee against a dying queued pointer.
-        RemoveRenderObjectDirty(object);
-        object->SetRuntimeHandle({});
-        object->SetOwnerWorld(nullptr);
-        ReleaseObjectHandle(handle);
-
-        if (removedStorageIndex != lastStorageIndex) {
-            objects_[removedStorageIndex] =
-                std::move(objects_[lastStorageIndex]);
-            objectSlots_[movedHandle.slot].storageIndex =
-                removedStorageIndex;
-        }
-        objects_.pop_back();
-        return WorldMutationResult::Success;
-    }
-
-    WorldMutationResult World::DestroyObject(
-        RuntimeObjectHandle handle) {
-        if (!IsOwnerThread()) {
-            return WorldMutationResult::WrongThread;
-        }
-        if (!handle.IsValid() || handle.slot >= objectSlots_.size()) {
-            return WorldMutationResult::InvalidObjectHandle;
-        }
-        const ObjectSlot& slot = objectSlots_[handle.slot];
-        if (slot.generation != handle.generation ||
-            slot.state != ObjectSlotState::Live) {
-            return WorldMutationResult::InvalidObjectHandle;
-        }
-        if (slot.storageKind == ObjectStorageKind::GameObject) {
-            return DestroyObject(slot.object);
-        }
-        if (slot.storageKind != ObjectStorageKind::Mass ||
-            slot.object != nullptr ||
-            !slot.massTypeId.IsValid() ||
-            slot.storageIndex == kInvalidObjectStorageIndex) {
+        movedHandle = movedObject->GetRuntimeHandle();
+        if (!movedHandle.IsValid() || movedHandle.slot >= objectSlots_.size()) {
             return WorldMutationResult::InternalError;
         }
-        if (!CanMutateStructure()) {
-            return WorldMutationResult::MutationDisallowed;
-        }
-
-        const ComponentTypeId typeId = slot.massTypeId;
-        const size_t removedIndex = slot.storageIndex;
-        const size_t count = massStore_.GetCount(typeId);
-        if (removedIndex >= count || count == 0u) {
+        const ObjectSlot& movedSlot = objectSlots_[movedHandle.slot];
+        if (movedSlot.generation != movedHandle.generation || movedSlot.state != ObjectSlotState::Live ||
+            movedSlot.object != movedObject || movedSlot.storageIndex != lastStorageIndex) {
             return WorldMutationResult::InternalError;
         }
-        RuntimeObjectHandle expectedMoved{};
-        if (removedIndex + 1u != count) {
-            if (!massStore_.TryGetObject(
-                    typeId,
-                    count - 1u,
-                    expectedMoved)) {
-                return WorldMutationResult::InternalError;
-            }
-            if (!expectedMoved.IsValid() ||
-                expectedMoved.slot >= objectSlots_.size()) {
-                return WorldMutationResult::InternalError;
-            }
-            const ObjectSlot& movedSlot =
-                objectSlots_[expectedMoved.slot];
-            if (movedSlot.generation != expectedMoved.generation ||
-                movedSlot.state != ObjectSlotState::Live ||
-                movedSlot.storageKind != ObjectStorageKind::Mass ||
-                movedSlot.massTypeId != typeId ||
-                movedSlot.storageIndex != count - 1u) {
-                return WorldMutationResult::InternalError;
-            }
-        }
+    }
 
-        RuntimeObjectHandle movedObject{};
-        if (!massStore_.Remove(
-                typeId,
-                removedIndex,
-                handle,
-                movedObject)) {
+    const size_t removedAdmissionCheckpoint = removedRenderObjectIds_.size();
+    if (object->renderStateContributorCount_ != 0u) {
+        if (removedRenderObjectIds_.size() == removedRenderObjectIds_.max_size()) {
+            throw std::length_error("World removed render object capacity overflow.");
+        }
+        const size_t removedCapacity =
+            INTERNAL::GrowWorldCapacity(removedRenderObjectIds_.capacity(), removedRenderObjectIds_.size() + 1u,
+                                        removedRenderObjectIds_.max_size());
+        removedRenderObjectIds_.reserve(removedCapacity);
+        removedRenderObjectIdSet_.reserve(removedRenderObjectIdSet_.size() + 1u);
+        MarkRenderObjectRemoved(object->GetRenderStableId());
+    }
+    const StructureReadScope structureRead = AcquireStructureReadScope();
+    try {
+        frameEvents_.Publish(WorldObjectDestroyedEvent{object->GetDocumentId(), handle, object->GetName()});
+    } catch (...) {
+        RollbackRemovedRenderObjectAdmission(removedAdmissionCheckpoint);
+        throw;
+    }
+    while (!object->children_.empty()) {
+        GameObject* child = object->children_.back();
+        if (child == nullptr || !child->SetParentInternal(nullptr)) {
+            object->children_.pop_back();
+        }
+    }
+    (void)object->SetParentInternal(nullptr);
+    (void)OnDocumentIdChanged(object, object->GetDocumentId(), SceneObjectId{});
+    object->destroying_ = true;
+    object->DetachComponents();
+    // The destroying flag rejects owner mutation from OnDetach while
+    // World/handle context remains queryable. Remove membership after all
+    // callbacks as the final guarantee against a dying queued pointer.
+    RemoveRenderObjectDirty(object);
+    object->SetRuntimeHandle({});
+    object->SetOwnerWorld(nullptr);
+    ReleaseObjectHandle(handle);
+
+    if (removedStorageIndex != lastStorageIndex) {
+        objects_[removedStorageIndex] = std::move(objects_[lastStorageIndex]);
+        objectSlots_[movedHandle.slot].storageIndex = removedStorageIndex;
+    }
+    objects_.pop_back();
+    return WorldMutationResult::Success;
+}
+
+WorldMutationResult World::DestroyObject(RuntimeObjectHandle handle) {
+    if (!IsOwnerThread()) {
+        return WorldMutationResult::WrongThread;
+    }
+    if (!handle.IsValid() || handle.slot >= objectSlots_.size()) {
+        return WorldMutationResult::InvalidObjectHandle;
+    }
+    const ObjectSlot& slot = objectSlots_[handle.slot];
+    if (slot.generation != handle.generation || slot.state != ObjectSlotState::Live) {
+        return WorldMutationResult::InvalidObjectHandle;
+    }
+    if (slot.storageKind == ObjectStorageKind::GameObject) {
+        return DestroyObject(slot.object);
+    }
+    if (slot.storageKind != ObjectStorageKind::Mass || slot.object != nullptr || !slot.massTypeId.IsValid() ||
+        slot.storageIndex == kInvalidObjectStorageIndex) {
+        return WorldMutationResult::InternalError;
+    }
+    if (!CanMutateStructure()) {
+        return WorldMutationResult::MutationDisallowed;
+    }
+
+    const ComponentTypeId typeId = slot.massTypeId;
+    const size_t removedIndex = slot.storageIndex;
+    const size_t count = massStore_.GetCount(typeId);
+    if (removedIndex >= count || count == 0u) {
+        return WorldMutationResult::InternalError;
+    }
+    RuntimeObjectHandle expectedMoved{};
+    if (removedIndex + 1u != count) {
+        if (!massStore_.TryGetObject(typeId, count - 1u, expectedMoved)) {
             return WorldMutationResult::InternalError;
         }
-        if (movedObject.IsValid()) {
-            objectSlots_[movedObject.slot].storageIndex = removedIndex;
+        if (!expectedMoved.IsValid() || expectedMoved.slot >= objectSlots_.size()) {
+            return WorldMutationResult::InternalError;
         }
-        RecycleObjectSlot(handle.slot);
-        return movedObject == expectedMoved
-            ? WorldMutationResult::Success
-            : WorldMutationResult::InternalError;
+        const ObjectSlot& movedSlot = objectSlots_[expectedMoved.slot];
+        if (movedSlot.generation != expectedMoved.generation || movedSlot.state != ObjectSlotState::Live ||
+            movedSlot.storageKind != ObjectStorageKind::Mass || movedSlot.massTypeId != typeId ||
+            movedSlot.storageIndex != count - 1u) {
+            return WorldMutationResult::InternalError;
+        }
     }
 
-    GameObject* World::FindObject(SceneObjectId id) noexcept {
-        if (!IsOwnerThread()) {
-            return nullptr;
-        }
-        if (id.value == 0u) {
-            return nullptr;
-        }
-        const auto found = objectsByDocumentId_.find(id.value);
-        return found != objectsByDocumentId_.end()
-            ? found->second
-            : nullptr;
+    RuntimeObjectHandle movedObject{};
+    if (!massStore_.Remove(typeId, removedIndex, handle, movedObject)) {
+        return WorldMutationResult::InternalError;
     }
-
-    const GameObject* World::FindObject(
-        SceneObjectId id) const noexcept {
-        return const_cast<World*>(this)->FindObject(id);
+    if (movedObject.IsValid()) {
+        objectSlots_[movedObject.slot].storageIndex = removedIndex;
     }
+    RecycleObjectSlot(handle.slot);
+    return movedObject == expectedMoved ? WorldMutationResult::Success : WorldMutationResult::InternalError;
+}
 
-    void World::Update(float dt) {
-        if (!IsOwnerThread()) {
-            HIKARI_LOG_ERROR(
-                "[World] Update rejected outside the owner thread.");
-            return;
-        }
-        (void)FlushQueuedCommands(
-            WorldCommandPhase::ComponentUpdateBegin);
-        try {
-            const StructureReadScope structureRead =
-                AcquireStructureReadScope();
-            for (const auto& object : GetObjects()) {
-                object->Update(dt);
-            }
-        }
-        catch (...) {
-            (void)FlushQueuedCommands(
-                WorldCommandPhase::ComponentUpdateEnd);
-            throw;
-        }
-        (void)FlushQueuedCommands(
-            WorldCommandPhase::ComponentUpdateEnd);
+GameObject* World::FindObject(SceneObjectId id) noexcept {
+    if (!IsOwnerThread()) {
+        return nullptr;
     }
+    if (id.value == 0u) {
+        return nullptr;
+    }
+    const auto found = objectsByDocumentId_.find(id.value);
+    return found != objectsByDocumentId_.end() ? found->second : nullptr;
+}
 
-    void World::Render() {
-        if (!IsOwnerThread()) {
-            HIKARI_LOG_ERROR(
-                "[World] Render rejected outside the owner thread.");
-            return;
-        }
-        const StructureReadScope structureRead =
-            AcquireStructureReadScope();
+const GameObject* World::FindObject(SceneObjectId id) const noexcept {
+    return const_cast<World*>(this)->FindObject(id);
+}
+
+void World::Update(float dt) {
+    if (!IsOwnerThread()) {
+        HIKARI_LOG_ERROR("[World] Update rejected outside the owner thread.");
+        return;
+    }
+    (void)FlushQueuedCommands(WorldCommandPhase::ComponentUpdateBegin);
+    try {
+        const StructureReadScope structureRead = AcquireStructureReadScope();
         for (const auto& object : GetObjects()) {
-            object->Render();
+            object->Update(dt);
+        }
+    } catch (...) {
+        (void)FlushQueuedCommands(WorldCommandPhase::ComponentUpdateEnd);
+        throw;
+    }
+    (void)FlushQueuedCommands(WorldCommandPhase::ComponentUpdateEnd);
+}
+
+void World::Render() {
+    if (!IsOwnerThread()) {
+        HIKARI_LOG_ERROR("[World] Render rejected outside the owner thread.");
+        return;
+    }
+    const StructureReadScope structureRead = AcquireStructureReadScope();
+    for (const auto& object : GetObjects()) {
+        object->Render();
+    }
+}
+
+void World::RenderImGui() {
+    if (!IsOwnerThread()) {
+        HIKARI_LOG_ERROR("[World] RenderImGui rejected outside the owner thread.");
+        return;
+    }
+    const StructureReadScope structureRead = AcquireStructureReadScope();
+    for (const auto& object : GetObjects()) {
+        object->RenderImGui();
+    }
+}
+
+void World::Clear() {
+    if (!IsOwnerThread()) {
+        HIKARI_LOG_ERROR("[World] Clear rejected outside the owner thread.");
+        return;
+    }
+    if (structureReadDepth_ != 0u || commandFlushActive_ || commandApplyActive_ ||
+        spawnMaterializationObject_ != nullptr) {
+        HIKARI_LOG_ERROR("[World] Clear rejected during structure traversal.");
+        return;
+    }
+    size_t renderRemovalCount = 0u;
+    for (const auto& object : GetObjects()) {
+        if (object != nullptr && object->renderStateContributorCount_ != 0u) {
+            ++renderRemovalCount;
         }
     }
-
-    void World::RenderImGui() {
-        if (!IsOwnerThread()) {
-            HIKARI_LOG_ERROR(
-                "[World] RenderImGui rejected outside the owner thread.");
-            return;
-        }
-        const StructureReadScope structureRead =
-            AcquireStructureReadScope();
+    if (renderRemovalCount > removedRenderObjectIds_.max_size() - removedRenderObjectIds_.size()) {
+        throw std::length_error("World removed render object capacity overflow.");
+    }
+    const size_t removedAdmissionCheckpoint = removedRenderObjectIds_.size();
+    try {
+        const size_t removedCapacity = INTERNAL::GrowWorldCapacity(removedRenderObjectIds_.capacity(),
+                                                                   removedRenderObjectIds_.size() + renderRemovalCount,
+                                                                   removedRenderObjectIds_.max_size());
+        removedRenderObjectIds_.reserve(removedCapacity);
+        removedRenderObjectIdSet_.reserve(removedRenderObjectIdSet_.size() + renderRemovalCount);
         for (const auto& object : GetObjects()) {
-            object->RenderImGui();
+            if (object != nullptr && object->renderStateContributorCount_ != 0u) {
+                MarkRenderObjectRemoved(object->GetRenderStableId());
+            }
         }
+    } catch (...) {
+        RollbackRemovedRenderObjectAdmission(removedAdmissionCheckpoint);
+        throw;
     }
+    worldClosing_ = true;
+    try {
+        for (const PendingWorldCommand& command : pendingCommands_) {
+            RecordCommandFailure(
+                command,
+                (command.kind == WorldCommandKind::Spawn || command.kind == WorldCommandKind::SpawnMass)
+                    ? WorldMutationResult::CommandCanceled
+                    : WorldMutationResult::WorldClosing,
+                WorldCommandPhase::WorldClear);
+        }
+        pendingCommands_.clear();
+        executionCommands_.clear();
+        reservationStateJournal_.clear();
+        spawnMaterializationObject_ = nullptr;
+        componentCallbackActive_ = false;
+        for (uint32_t slotIndex = 0u; slotIndex < objectSlots_.size(); ++slotIndex) {
+            const ObjectSlotState state = objectSlots_[slotIndex].state;
+            if (state == ObjectSlotState::Reserved || state == ObjectSlotState::ReservedCanceled) {
+                RecycleObjectSlot(slotIndex);
+            }
+        }
 
-    void World::Clear() {
-        if (!IsOwnerThread()) {
-            HIKARI_LOG_ERROR(
-                "[World] Clear rejected outside the owner thread.");
-            return;
-        }
-        if (structureReadDepth_ != 0u ||
-            commandFlushActive_ ||
-            commandApplyActive_ ||
-            spawnMaterializationObject_ != nullptr) {
-            HIKARI_LOG_ERROR(
-                "[World] Clear rejected during structure traversal.");
-            return;
-        }
-        size_t renderRemovalCount = 0u;
+        const StructureReadScope structureRead = AcquireStructureReadScope();
         for (const auto& object : GetObjects()) {
-            if (object != nullptr &&
-                object->renderStateContributorCount_ != 0u) {
-                ++renderRemovalCount;
+            if (object) {
+                (void)object->SetParentInternal(nullptr);
             }
         }
-        if (renderRemovalCount >
-            removedRenderObjectIds_.max_size() -
-                removedRenderObjectIds_.size()) {
-            throw std::length_error(
-                "World removed render object capacity overflow.");
-        }
-        const size_t removedAdmissionCheckpoint =
-            removedRenderObjectIds_.size();
-        try {
-            const size_t removedCapacity =
-                INTERNAL::GrowWorldCapacity(
-                    removedRenderObjectIds_.capacity(),
-                    removedRenderObjectIds_.size() + renderRemovalCount,
-                    removedRenderObjectIds_.max_size());
-            removedRenderObjectIds_.reserve(removedCapacity);
-            removedRenderObjectIdSet_.reserve(
-                removedRenderObjectIdSet_.size() + renderRemovalCount);
-            for (const auto& object : GetObjects()) {
-                if (object != nullptr &&
-                    object->renderStateContributorCount_ != 0u) {
-                    MarkRenderObjectRemoved(
-                        object->GetRenderStableId());
-                }
+        for (const auto& object : GetObjects()) {
+            if (object) {
+                object->destroying_ = true;
+                object->DetachComponents();
+                object->SetRuntimeHandle({});
+                object->SetOwnerWorld(nullptr);
             }
         }
-        catch (...) {
-            RollbackRemovedRenderObjectAdmission(
-                removedAdmissionCheckpoint);
-            throw;
+        while (firstLiveObjectSlot_ != kInvalidLiveObjectSlot) {
+            const uint32_t slotIndex = firstLiveObjectSlot_;
+            ReleaseObjectHandle(RuntimeObjectHandle{slotIndex, objectSlots_[slotIndex].generation});
         }
-        worldClosing_ = true;
-        try {
-            for (const PendingWorldCommand& command : pendingCommands_) {
-                RecordCommandFailure(
-                    command,
-                    (command.kind == WorldCommandKind::Spawn ||
-                     command.kind == WorldCommandKind::SpawnMass)
-                        ? WorldMutationResult::CommandCanceled
-                        : WorldMutationResult::WorldClosing,
-                    WorldCommandPhase::WorldClear);
-            }
-            pendingCommands_.clear();
-            executionCommands_.clear();
-            reservationStateJournal_.clear();
-            spawnMaterializationObject_ = nullptr;
-            componentCallbackActive_ = false;
-            for (uint32_t slotIndex = 0u;
-                slotIndex < objectSlots_.size();
-                ++slotIndex) {
-                const ObjectSlotState state =
-                    objectSlots_[slotIndex].state;
-                if (state == ObjectSlotState::Reserved ||
-                    state == ObjectSlotState::ReservedCanceled) {
-                    RecycleObjectSlot(slotIndex);
-                }
-            }
-
-            const StructureReadScope structureRead =
-                AcquireStructureReadScope();
-            for (const auto& object : GetObjects()) {
-                if (object) {
-                    (void)object->SetParentInternal(nullptr);
-                }
-            }
-            for (const auto& object : GetObjects()) {
-                if (object) {
-                    object->destroying_ = true;
-                    object->DetachComponents();
-                    object->SetRuntimeHandle({});
-                    object->SetOwnerWorld(nullptr);
-                }
-            }
-            while (firstLiveObjectSlot_ !=
-                kInvalidLiveObjectSlot) {
-                const uint32_t slotIndex =
-                    firstLiveObjectSlot_;
-                ReleaseObjectHandle(RuntimeObjectHandle{
-                    slotIndex,
-                    objectSlots_[slotIndex].generation
-                });
-            }
-            for (uint32_t slotIndex = 0u;
-                slotIndex < objectSlots_.size();
-                ++slotIndex) {
-                const ObjectSlot& slot = objectSlots_[slotIndex];
-                if (slot.state == ObjectSlotState::Live &&
-                    slot.storageKind == ObjectStorageKind::Mass) {
-                    RecycleObjectSlot(slotIndex);
-                }
-            }
-            massStore_.Clear();
-            objects_.clear();
-            objectsByDocumentId_.clear();
-            componentBuckets_.clear();
-            nativeComponentTypeIds_.clear();
-            componentRegistry_ = nullptr;
-            massSchemaRegistry_ = nullptr;
-            renderDirtyObjects_.clear();
-            renderTrackedObjectCount_ = 0u;
-            frameEvents_.Clear();
-            fixedEvents_.Clear();
-        }
-        catch (...) {
-            worldClosing_ = false;
-            throw;
-        }
-        worldClosing_ = false;
-    }
-
-    World::LiveObjectRange World::GetObjects() const noexcept {
-        return LiveObjectRange(IsOwnerThread() ? this : nullptr);
-    }
-
-    size_t World::GetMassObjectCount(
-        ComponentTypeId typeId) const noexcept {
-        return IsOwnerThread() ? massStore_.GetCount(typeId) : 0u;
-    }
-
-    const WorldMassSchema* World::FindMassSchema(
-        ComponentTypeId typeId) const noexcept {
-        return IsOwnerThread() && massSchemaRegistry_ != nullptr
-            ? massSchemaRegistry_->Find(typeId)
-            : nullptr;
-    }
-
-    size_t World::GetTotalObjectCount() const noexcept {
-        return IsOwnerThread()
-            ? liveObjectCount_ + massStore_.GetTotalCount()
-            : 0u;
-    }
-
-    const std::vector<GameObject*>&
-        World::GetRenderDirtyObjects() const {
-        static const std::vector<GameObject*> empty{};
-        if (!IsOwnerThread()) {
-            return empty;
-        }
-        return renderDirtyObjects_;
-    }
-
-    const std::vector<uint64_t>&
-        World::GetRemovedRenderObjectIds() const {
-        static const std::vector<uint64_t> empty{};
-        if (!IsOwnerThread()) {
-            return empty;
-        }
-        return removedRenderObjectIds_;
-    }
-
-    void World::MarkRenderObjectDirty(GameObject* object) {
-        if (!IsOwnerThread()) {
-            HIKARI_LOG_ERROR(
-                "[World] render dirty mutation rejected outside "
-                "the owner thread.");
-            return;
-        }
-        if (object == nullptr || object->ownerWorld_ != this) {
-            return;
-        }
-        if (object->renderDirtyIndex_ !=
-            GameObject::kInvalidRenderDirtyIndex) {
-            if (object->renderDirtyIndex_ >=
-                    renderDirtyObjects_.size() ||
-                renderDirtyObjects_[object->renderDirtyIndex_] !=
-                    object) {
-                throw std::logic_error(
-                    "World render dirty membership is inconsistent.");
-            }
-            return;
-        }
-        const size_t dirtyIndex = renderDirtyObjects_.size();
-        renderDirtyObjects_.push_back(object);
-        object->renderDirtyIndex_ = dirtyIndex;
-    }
-
-    void World::RemoveRenderObjectDirty(
-        GameObject* object) noexcept {
-
-        if (object == nullptr ||
-            object->renderDirtyIndex_ ==
-                GameObject::kInvalidRenderDirtyIndex) {
-            return;
-        }
-
-        size_t dirtyIndex = object->renderDirtyIndex_;
-        if (dirtyIndex >= renderDirtyObjects_.size() ||
-            renderDirtyObjects_[dirtyIndex] != object) {
-            HIKARI_LOG_ERROR(
-                "[World] render dirty membership is inconsistent.");
-            dirtyIndex = GameObject::kInvalidRenderDirtyIndex;
-            for (size_t index = 0u;
-                index < renderDirtyObjects_.size();
-                ++index) {
-                if (renderDirtyObjects_[index] == object) {
-                    dirtyIndex = index;
-                    break;
-                }
-            }
-            if (dirtyIndex ==
-                GameObject::kInvalidRenderDirtyIndex) {
-                object->renderDirtyIndex_ =
-                    GameObject::kInvalidRenderDirtyIndex;
-                return;
+        for (uint32_t slotIndex = 0u; slotIndex < objectSlots_.size(); ++slotIndex) {
+            const ObjectSlot& slot = objectSlots_[slotIndex];
+            if (slot.state == ObjectSlotState::Live && slot.storageKind == ObjectStorageKind::Mass) {
+                RecycleObjectSlot(slotIndex);
             }
         }
-
-        GameObject* moved = renderDirtyObjects_.back();
-        renderDirtyObjects_[dirtyIndex] = moved;
-        renderDirtyObjects_.pop_back();
-        object->renderDirtyIndex_ =
-            GameObject::kInvalidRenderDirtyIndex;
-        if (moved != nullptr && moved != object) {
-            moved->renderDirtyIndex_ = dirtyIndex;
-        }
-    }
-
-    void World::MarkRenderObjectRemoved(uint64_t renderObjectId) {
-        if (!IsOwnerThread()) {
-            HIKARI_LOG_ERROR(
-                "[World] render removal rejected outside "
-                "the owner thread.");
-            return;
-        }
-        if (renderObjectId == 0u) {
-            return;
-        }
-        const auto [entry, inserted] =
-            removedRenderObjectIdSet_.insert(renderObjectId);
-        if (!inserted) {
-            return;
-        }
-        try {
-            removedRenderObjectIds_.push_back(renderObjectId);
-        }
-        catch (...) {
-            removedRenderObjectIdSet_.erase(entry);
-            throw;
-        }
-    }
-
-    void World::RollbackRemovedRenderObjectAdmission(
-        size_t checkpoint) noexcept {
-
-        if (checkpoint >= removedRenderObjectIds_.size()) {
-            return;
-        }
-        for (size_t index = checkpoint;
-            index < removedRenderObjectIds_.size();
-            ++index) {
-            removedRenderObjectIdSet_.erase(
-                removedRenderObjectIds_[index]);
-        }
-        removedRenderObjectIds_.resize(checkpoint);
-    }
-
-    void World::AcknowledgeRenderDirtyObjects() {
-        if (!IsOwnerThread()) {
-            HIKARI_LOG_ERROR(
-                "[World] render acknowledgement rejected outside "
-                "the owner thread.");
-            return;
-        }
-        for (GameObject* object : renderDirtyObjects_) {
-            if (object != nullptr) {
-                object->renderDirtyIndex_ =
-                    GameObject::kInvalidRenderDirtyIndex;
-                object->ClearRenderStateDirty();
-            }
-        }
+        massStore_.Clear();
+        objects_.clear();
+        objectsByDocumentId_.clear();
+        componentBuckets_.clear();
+        nativeComponentTypeIds_.clear();
+        componentRegistry_ = nullptr;
+        massSchemaRegistry_ = nullptr;
         renderDirtyObjects_.clear();
-        removedRenderObjectIds_.clear();
-        removedRenderObjectIdSet_.clear();
+        renderTrackedObjectCount_ = 0u;
+        frameEvents_.Clear();
+        fixedEvents_.Clear();
+    } catch (...) {
+        worldClosing_ = false;
+        throw;
     }
+    worldClosing_ = false;
+}
 
-    void World::AcknowledgeAllRenderObjects() {
-        // Every World-owned dirty object is admitted exactly once through
-        // MarkRenderObjectDirty. Full render-cache rebuilds therefore only
-        // need to acknowledge the indexed dirty set, not scan all live objects.
-        AcknowledgeRenderDirtyObjects();
+World::LiveObjectRange World::GetObjects() const noexcept { return LiveObjectRange(IsOwnerThread() ? this : nullptr); }
+
+size_t World::GetMassObjectCount(ComponentTypeId typeId) const noexcept {
+    return IsOwnerThread() ? massStore_.GetCount(typeId) : 0u;
+}
+
+const WorldMassSchema* World::FindMassSchema(ComponentTypeId typeId) const noexcept {
+    return IsOwnerThread() && massSchemaRegistry_ != nullptr ? massSchemaRegistry_->Find(typeId) : nullptr;
+}
+
+size_t World::GetTotalObjectCount() const noexcept {
+    return IsOwnerThread() ? liveObjectCount_ + massStore_.GetTotalCount() : 0u;
+}
+
+const std::vector<GameObject*>& World::GetRenderDirtyObjects() const {
+    static const std::vector<GameObject*> empty{};
+    if (!IsOwnerThread()) {
+        return empty;
     }
+    return renderDirtyObjects_;
+}
 
-    WorldServiceRegistry& World::Services() noexcept {
-        return services_;
+const std::vector<uint64_t>& World::GetRemovedRenderObjectIds() const {
+    static const std::vector<uint64_t> empty{};
+    if (!IsOwnerThread()) {
+        return empty;
     }
+    return removedRenderObjectIds_;
+}
 
-    const WorldServiceRegistry& World::Services() const noexcept {
-        return services_;
+void World::MarkRenderObjectDirty(GameObject* object) {
+    if (!IsOwnerThread()) {
+        HIKARI_LOG_ERROR("[World] render dirty mutation rejected outside "
+                         "the owner thread.");
+        return;
     }
-
-    WorldEventStream& World::FrameEvents() noexcept {
-        return frameEvents_;
+    if (object == nullptr || object->ownerWorld_ != this) {
+        return;
     }
-
-    const WorldEventStream& World::FrameEvents() const noexcept {
-        return frameEvents_;
-    }
-
-    WorldEventStream& World::FixedEvents() noexcept {
-        return fixedEvents_;
-    }
-
-    const WorldEventStream& World::FixedEvents() const noexcept {
-        return fixedEvents_;
-    }
-
-    void World::BeginFrame(uint64_t frameIndex) noexcept {
-        frameEvents_.BeginScope(frameIndex);
-        commandFailures_.clear();
-        commandFailureOverflowCount_ = 0u;
-        try {
-            (void)FlushQueuedCommands(WorldCommandPhase::BeginFrame);
+    if (object->renderDirtyIndex_ != GameObject::kInvalidRenderDirtyIndex) {
+        if (object->renderDirtyIndex_ >= renderDirtyObjects_.size() ||
+            renderDirtyObjects_[object->renderDirtyIndex_] != object) {
+            throw std::logic_error("World render dirty membership is inconsistent.");
         }
-        catch (...) {
+        return;
+    }
+    const size_t dirtyIndex = renderDirtyObjects_.size();
+    renderDirtyObjects_.push_back(object);
+    object->renderDirtyIndex_ = dirtyIndex;
+}
+
+void World::RemoveRenderObjectDirty(GameObject* object) noexcept {
+    if (object == nullptr || object->renderDirtyIndex_ == GameObject::kInvalidRenderDirtyIndex) {
+        return;
+    }
+
+    size_t dirtyIndex = object->renderDirtyIndex_;
+    if (dirtyIndex >= renderDirtyObjects_.size() || renderDirtyObjects_[dirtyIndex] != object) {
+        HIKARI_LOG_ERROR("[World] render dirty membership is inconsistent.");
+        dirtyIndex = GameObject::kInvalidRenderDirtyIndex;
+        for (size_t index = 0u; index < renderDirtyObjects_.size(); ++index) {
+            if (renderDirtyObjects_[index] == object) {
+                dirtyIndex = index;
+                break;
+            }
+        }
+        if (dirtyIndex == GameObject::kInvalidRenderDirtyIndex) {
+            object->renderDirtyIndex_ = GameObject::kInvalidRenderDirtyIndex;
+            return;
         }
     }
 
-    void World::BeginFixedStep(uint64_t fixedTickIndex) noexcept {
-        fixedEvents_.BeginScope(fixedTickIndex);
+    GameObject* moved = renderDirtyObjects_.back();
+    renderDirtyObjects_[dirtyIndex] = moved;
+    renderDirtyObjects_.pop_back();
+    object->renderDirtyIndex_ = GameObject::kInvalidRenderDirtyIndex;
+    if (moved != nullptr && moved != object) {
+        moved->renderDirtyIndex_ = dirtyIndex;
+    }
+}
+
+void World::MarkRenderObjectRemoved(uint64_t renderObjectId) {
+    if (!IsOwnerThread()) {
+        HIKARI_LOG_ERROR("[World] render removal rejected outside "
+                         "the owner thread.");
+        return;
+    }
+    if (renderObjectId == 0u) {
+        return;
+    }
+    const auto [entry, inserted] = removedRenderObjectIdSet_.insert(renderObjectId);
+    if (!inserted) {
+        return;
+    }
+    try {
+        removedRenderObjectIds_.push_back(renderObjectId);
+    } catch (...) {
+        removedRenderObjectIdSet_.erase(entry);
+        throw;
+    }
+}
+
+void World::RollbackRemovedRenderObjectAdmission(size_t checkpoint) noexcept {
+    if (checkpoint >= removedRenderObjectIds_.size()) {
+        return;
+    }
+    for (size_t index = checkpoint; index < removedRenderObjectIds_.size(); ++index) {
+        removedRenderObjectIdSet_.erase(removedRenderObjectIds_[index]);
+    }
+    removedRenderObjectIds_.resize(checkpoint);
+}
+
+void World::AcknowledgeRenderDirtyObjects() {
+    if (!IsOwnerThread()) {
+        HIKARI_LOG_ERROR("[World] render acknowledgement rejected outside "
+                         "the owner thread.");
+        return;
+    }
+    for (GameObject* object : renderDirtyObjects_) {
+        if (object != nullptr) {
+            object->renderDirtyIndex_ = GameObject::kInvalidRenderDirtyIndex;
+            object->ClearRenderStateDirty();
+        }
+    }
+    renderDirtyObjects_.clear();
+    removedRenderObjectIds_.clear();
+    removedRenderObjectIdSet_.clear();
+}
+
+void World::AcknowledgeAllRenderObjects() {
+    // Every World-owned dirty object is admitted exactly once through
+    // MarkRenderObjectDirty. Full render-cache rebuilds therefore only
+    // need to acknowledge the indexed dirty set, not scan all live objects.
+    AcknowledgeRenderDirtyObjects();
+}
+
+WorldServiceRegistry& World::Services() noexcept { return services_; }
+
+const WorldServiceRegistry& World::Services() const noexcept { return services_; }
+
+WorldEventStream& World::FrameEvents() noexcept { return frameEvents_; }
+
+const WorldEventStream& World::FrameEvents() const noexcept { return frameEvents_; }
+
+WorldEventStream& World::FixedEvents() noexcept { return fixedEvents_; }
+
+const WorldEventStream& World::FixedEvents() const noexcept { return fixedEvents_; }
+
+void World::BeginFrame(uint64_t frameIndex) noexcept {
+    frameEvents_.BeginScope(frameIndex);
+    commandFailures_.clear();
+    commandFailureOverflowCount_ = 0u;
+    try {
+        (void)FlushQueuedCommands(WorldCommandPhase::BeginFrame);
+    } catch (...) {
+    }
+}
+
+void World::BeginFixedStep(uint64_t fixedTickIndex) noexcept { fixedEvents_.BeginScope(fixedTickIndex); }
+
+bool World::OnDocumentIdChanged(GameObject* object, SceneObjectId previousId, SceneObjectId nextId) {
+    if (object == nullptr) {
+        return false;
     }
 
-    bool World::OnDocumentIdChanged(
-        GameObject* object,
-        SceneObjectId previousId,
-        SceneObjectId nextId) {
-        if (object == nullptr) {
+    if (nextId.value != 0u) {
+        const auto found = objectsByDocumentId_.find(nextId.value);
+        if (found != objectsByDocumentId_.end() && found->second != object) {
+            HIKARI_LOG_ERROR("[World] duplicate SceneObjectId rejected: " + std::to_string(nextId.value));
             return false;
         }
-
-        if (nextId.value != 0u) {
-            const auto found = objectsByDocumentId_.find(nextId.value);
-            if (found != objectsByDocumentId_.end() &&
-                found->second != object) {
-                HIKARI_LOG_ERROR(
-                    "[World] duplicate SceneObjectId rejected: " +
-                    std::to_string(nextId.value));
-                return false;
-            }
-            if (found == objectsByDocumentId_.end()) {
-                objectsByDocumentId_.emplace(nextId.value, object);
-            }
+        if (found == objectsByDocumentId_.end()) {
+            objectsByDocumentId_.emplace(nextId.value, object);
         }
-
-        if (previousId.value != 0u && previousId != nextId) {
-            const auto previous = objectsByDocumentId_.find(
-                previousId.value);
-            if (previous != objectsByDocumentId_.end() &&
-                previous->second == object) {
-                objectsByDocumentId_.erase(previous);
-            }
-        }
-        return true;
     }
+
+    if (previousId.value != 0u && previousId != nextId) {
+        const auto previous = objectsByDocumentId_.find(previousId.value);
+        if (previous != objectsByDocumentId_.end() && previous->second == object) {
+            objectsByDocumentId_.erase(previous);
+        }
+    }
+    return true;
+}
 
 } // namespace HIKARI

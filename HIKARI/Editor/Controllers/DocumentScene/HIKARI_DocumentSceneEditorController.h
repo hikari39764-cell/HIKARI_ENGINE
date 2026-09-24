@@ -1,4 +1,6 @@
 #pragma once
+#include "Editor/Authoring/HIKARI_TerrainAuthoringOperations.h"
+#include "Editor/Authoring/HIKARI_SceneObjectOperations.h"
 #include "Editor/Authoring/HIKARI_EditorAuthoringSessionHost.h"
 
 #include <cstdint>
@@ -40,6 +42,8 @@
 #include "Editor/Windows/HIKARI_SceneAuthoringUtilityWindows.h"
 #include "Editor/Workspaces/Cinematics/HIKARI_CinematicsWorkspaceController.h"
 #include "Editor/Workspaces/GameplayCamera/HIKARI_GameplayCameraWorkspaceController.h"
+#include "Editor/Workspaces/Ui/HIKARI_UiWorkspaceController.h"
+#include "Editor/Workspaces/TextStyle/HIKARI_TextStyleWorkspaceController.h"
 #include "Editor/Workspaces/HIKARI_EditorWorkspaceHost.h"
 #include "Editor/Workspaces/ModelCollision/HIKARI_ModelCollisionWorkspaceController.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
@@ -57,239 +61,215 @@
 
 namespace HIKARI {
 
-    class DocumentSceneBase;
-    namespace EDITOR {
-        class EditorProjectSessionController;
-        class EditorPlaySession;
-        class GameProjectEditorWorkspaceHost;
+class DocumentSceneBase;
+namespace EDITOR {
+class EditorProjectSessionController;
+class EditorPlaySession;
+class GameProjectEditorWorkspaceHost;
+} // namespace EDITOR
+
+class DocumentSceneEditorController {
+public:
+    DocumentSceneEditorController();
+    ~DocumentSceneEditorController();
+    EDITOR::EditorAuthoringSessionHost& AuthoringSessions() noexcept { return authoringSessions_; }
+    void SetProjectWorkspaceHost(EDITOR::GameProjectEditorWorkspaceHost* host) noexcept {
+        projectWorkspaceHost_ = host;
     }
 
-    class DocumentSceneEditorController {
-    public:
-        DocumentSceneEditorController();
-        ~DocumentSceneEditorController();
-        EDITOR::EditorAuthoringSessionHost& AuthoringSessions() noexcept { return authoringSessions_; }
-        void SetProjectWorkspaceHost(EDITOR::GameProjectEditorWorkspaceHost* host) noexcept {
-            projectWorkspaceHost_ = host;
-        }
+    void Draw(DocumentSceneBase& scene, EDITOR::EditorPlaySession& playSession,
+              EDITOR::EditorProjectSessionController& projectSession);
 
-        void Draw(
-            DocumentSceneBase& scene,
-            EDITOR::EditorPlaySession& playSession,
-            EDITOR::EditorProjectSessionController&
-                projectSession);
+private:
+    RUNTIME::RuntimeDebugWindow runtimeDebugWindow_{};
+    void RegisterEditorOperations();
+    void RegisterSceneAuthoringSessions();
+    EDITOR::EditorOperationResult ExecuteBackgroundSceneOperation(const EDITOR::EditorOperationDefinition& definition,
+                                                                  const nlohmann::json& parameters);
+    void RegisterSceneFolderOperations();
+    void RegisterSceneLayoutOperations();
+    EDITOR::EditorOperationResult ExecuteSceneLayoutOperation(bool apply, const nlohmann::json& parameters);
+    EDITOR::EditorOperationResult ExecuteSceneFolderOperation(std::string_view operation,
+                                                              const nlohmann::json& parameters);
+    EditorContext context_{};
+    SelectionSyncService selectionSync_{};
 
-    private:
-        RUNTIME::RuntimeDebugWindow runtimeDebugWindow_{};
-        void RegisterEditorOperations();
-        void RegisterSceneAuthoringSessions();
-        EDITOR::EditorOperationResult ExecuteBackgroundSceneOperation(
-            const EDITOR::EditorOperationDefinition& definition,const nlohmann::json& parameters);
-        void RegisterSceneFolderOperations();
-        void RegisterSceneLayoutOperations();
-        EDITOR::EditorOperationResult ExecuteSceneLayoutOperation(bool apply, const nlohmann::json& parameters);
-        EDITOR::EditorOperationResult ExecuteSceneFolderOperation(std::string_view operation, const nlohmann::json& parameters);
-        EditorContext context_{};
-        SelectionSyncService selectionSync_{};
+    DebugMenuBar debugMenuBar_{};
+    EDITOR::GameExportJob exportJob_{};
+    EDITOR::ProjectCodeJob projectCodeJob_{};
+    bool projectBuildAllowed_ = false;
+    DocumentToolbarController documentToolbarController_{};
+    EDITOR::SceneObjectCommandService sceneObjectCommands_{};
+    EDITOR::SceneCreationPanel sceneCreationPanel_{};
+    EDITOR::SceneInspectorPanel sceneInspectorPanel_{};
+    EDITOR::SceneViewportSelectionService viewportSelectionService_{};
 
-        DebugMenuBar debugMenuBar_{};
-        EDITOR::GameExportJob exportJob_{};
-        EDITOR::ProjectCodeJob projectCodeJob_{};
-        bool projectBuildAllowed_ = false;
-        DocumentToolbarController documentToolbarController_{};
-        EDITOR::SceneObjectCommandService sceneObjectCommands_{};
-        EDITOR::SceneCreationPanel sceneCreationPanel_{};
-        EDITOR::SceneInspectorPanel sceneInspectorPanel_{};
-        EDITOR::SceneViewportSelectionService viewportSelectionService_{};
-
-        HierarchyPanel hierarchyPanel_{};
-        TimePanel timePanel_{};
-        ResourceWorkspacePanel resourceWorkspacePanel_{};
-        StatsPanel statsPanel_{};
-        PerformanceAuditPanel performanceAuditPanel_{};
-        EDITOR::SceneAuthoringUtilityWindows sceneAuthoringUtilityWindows_{};
-        ValidationLabPanel validationLabPanel_{};
-        EDITOR::EditorAuthoringSessionHost authoringSessions_{};
-        std::string authoringProjectRoot_{};
-        RENDER3D::RenderViewId aiSceneCaptureView_{};
-        uint64_t aiSceneCaptureTicket_=0, aiSceneCaptureRevision_=0;
-        std::string aiSceneCaptureIdentity_{};
-        EDITOR::EditorOperationResult CaptureAiScenePreview(const nlohmann::json& parameters);
-        EDITOR::EditorOperationResult PollAiPreviewCapture(uint64_t id);
-        void CancelAiSceneCapture();
-        EDITOR::AiAssistantSession aiAssistantSession_{};
-        EDITOR::AiAssistantPanel aiAssistantPanel_{aiAssistantSession_};
-        EDITOR::EditorSettingsPanel editorSettingsPanel_{};
-        EDITOR::EditorShell editorShell_{};
-        bool HasForegroundDocument(EDITOR::EditorWorkspaceId workspace) const;
-        void DrawGlobalShell(DocumentSceneBase& scene);
-        EDITOR::AI_ASSISTANT::AiLocalBridge aiLocalBridge_{};
-        bool aiBridgeStarted_ = false;
-        EnvironmentPanel environmentPanel_{};
-        QualityPanel qualityPanel_{};
-        EDITOR::EditorToolHost toolHost_{};
-        EDITOR::SystemAuthoringRegistry systemAuthoringRegistry_{};
-        EDITOR::EditorWorkspaceHost workspaceHost_{};
-        EDITOR::GameProjectEditorWorkspaceHost* projectWorkspaceHost_ = nullptr;
-        EDITOR::EditorOperationRegistry operationRegistry_{};
-        DocumentSceneBase* aiOperationScene_ = nullptr;
-        EDITOR::GameplayCameraWorkspaceController gameplayCameraWorkspaceController_;
-        EDITOR::GameplayCameraWorkspaceController& GameplayCameraWorkspace() { return authoringSessions_.ResolveController("gameplay_camera",gameplayCameraWorkspaceController_); }
-        const EDITOR::GameplayCameraWorkspaceController& GameplayCameraWorkspace() const { return const_cast<DocumentSceneEditorController*>(this)->GameplayCameraWorkspace(); }
-        EDITOR::EditorOperationResult EditCameraFlow(const nlohmann::json& parameters);
+    HierarchyPanel hierarchyPanel_{};
+    TimePanel timePanel_{};
+    ResourceWorkspacePanel resourceWorkspacePanel_{};
+    StatsPanel statsPanel_{};
+    PerformanceAuditPanel performanceAuditPanel_{};
+    EDITOR::SceneAuthoringUtilityWindows sceneAuthoringUtilityWindows_{};
+    ValidationLabPanel validationLabPanel_{};
+    EDITOR::EditorAuthoringSessionHost authoringSessions_{};
+    std::string authoringProjectRoot_{};
+    RENDER3D::RenderViewId aiSceneCaptureView_{};
+    uint64_t aiSceneCaptureTicket_ = 0, aiSceneCaptureRevision_ = 0;
+    std::string aiSceneCaptureIdentity_{};
+    EDITOR::EditorOperationResult CaptureAiScenePreview(const nlohmann::json& parameters);
+    EDITOR::EditorOperationResult PollAiPreviewCapture(uint64_t id);
+    void CancelAiSceneCapture();
+    EDITOR::AiAssistantSession aiAssistantSession_{};
+    EDITOR::AiAssistantPanel aiAssistantPanel_{aiAssistantSession_};
+    EDITOR::EditorSettingsPanel editorSettingsPanel_{};
+    EDITOR::EditorShell editorShell_{};
+    bool HasForegroundDocument(EDITOR::EditorWorkspaceId workspace) const;
+    void DrawGlobalShell(DocumentSceneBase& scene);
+    EDITOR::AI_ASSISTANT::AiLocalBridge aiLocalBridge_{};
+    bool aiBridgeStarted_ = false;
+    EnvironmentPanel environmentPanel_{};
+    QualityPanel qualityPanel_{};
+    EDITOR::EditorToolHost toolHost_{};
+    EDITOR::SystemAuthoringRegistry systemAuthoringRegistry_{};
+    EDITOR::EditorWorkspaceHost workspaceHost_{};
+    EDITOR::GameProjectEditorWorkspaceHost* projectWorkspaceHost_ = nullptr;
+    EDITOR::EditorOperationRegistry operationRegistry_{};
+    DocumentSceneBase* aiOperationScene_ = nullptr;
+    EDITOR::GameplayCameraWorkspaceController gameplayCameraWorkspaceController_;
+    EDITOR::UiWorkspaceController uiWorkspaceController_;
+    EDITOR::TextStyleWorkspaceController textWorkspaceController_;
+    void RegisterUiOperations();
+    EDITOR::GameplayCameraWorkspaceController& GameplayCameraWorkspace() {
+        return authoringSessions_.ResolveController("gameplay_camera", gameplayCameraWorkspaceController_);
+    }
+    const EDITOR::GameplayCameraWorkspaceController& GameplayCameraWorkspace() const {
+        return const_cast<DocumentSceneEditorController*>(this)->GameplayCameraWorkspace();
+    }
+    EDITOR::EditorOperationResult EditCameraFlow(const nlohmann::json& parameters);
     EDITOR::EditorOperationResult BindGameplayCamera(const nlohmann::json& parameters);
-        EDITOR::CinematicsWorkspaceController cinematicsWorkspaceController_{};
-        EDITOR::ModelCollisionWorkspaceController modelCollisionWorkspaceController_{};
-        EDITOR::ModelMaterialWorkspaceController modelMaterialWorkspaceController_{};
-        EDITOR::AnimationStateMachineWorkspaceController
-            animationStateMachineWorkspaceController_{};
-        EDITOR::RuntimeBindingWorkspaceController
-            runtimeBindingWorkspaceController_{};
-        EDITOR::VfxWorkspaceController vfxWorkspaceController_{};
-        EDITOR::DialogueWorkspaceController dialogueWorkspaceController_{};
-        EDITOR::TerrainSurfaceWorkspaceController
-            terrainSurfaceWorkspaceController_{};
-        EDITOR::VfxWorkspaceController& VfxWorkspace() { return authoringSessions_.ResolveController("vfx",vfxWorkspaceController_); }
-        const EDITOR::VfxWorkspaceController& VfxWorkspace() const { return const_cast<DocumentSceneEditorController*>(this)->VfxWorkspace(); }
-        EDITOR::ModelMaterialWorkspaceController& ModelMaterialWorkspace() { return authoringSessions_.ResolveController("model_material",modelMaterialWorkspaceController_); }
-        const EDITOR::ModelMaterialWorkspaceController& ModelMaterialWorkspace() const { return const_cast<DocumentSceneEditorController*>(this)->ModelMaterialWorkspace(); }
-        EDITOR::AnimationStateMachineWorkspaceController& AnimationStateMachineWorkspace() { return authoringSessions_.ResolveController("animation_state_machine",animationStateMachineWorkspaceController_); }
-        const EDITOR::AnimationStateMachineWorkspaceController& AnimationStateMachineWorkspace() const { return const_cast<DocumentSceneEditorController*>(this)->AnimationStateMachineWorkspace(); }
-        EDITOR::DialogueWorkspaceController& DialogueWorkspace() { return authoringSessions_.ResolveController("dialogue",dialogueWorkspaceController_); }
-        const EDITOR::DialogueWorkspaceController& DialogueWorkspace() const { return const_cast<DocumentSceneEditorController*>(this)->DialogueWorkspace(); }
-        EDITOR::RuntimeBindingWorkspaceController& RuntimeBindingWorkspace() { return authoringSessions_.ResolveController("runtime_binding",runtimeBindingWorkspaceController_); }
-        const EDITOR::RuntimeBindingWorkspaceController& RuntimeBindingWorkspace() const { return const_cast<DocumentSceneEditorController*>(this)->RuntimeBindingWorkspace(); }
-        EDITOR::ModelCollisionWorkspaceController& ModelCollisionWorkspace() { return authoringSessions_.ResolveController("model_collision",modelCollisionWorkspaceController_); }
-        const EDITOR::ModelCollisionWorkspaceController& ModelCollisionWorkspace() const { return const_cast<DocumentSceneEditorController*>(this)->ModelCollisionWorkspace(); }
-        EDITOR::CinematicsWorkspaceController& CinematicsWorkspace() { return authoringSessions_.ResolveController("cinematics",cinematicsWorkspaceController_); }
-        const EDITOR::CinematicsWorkspaceController& CinematicsWorkspace() const { return const_cast<DocumentSceneEditorController*>(this)->CinematicsWorkspace(); }
-        DebugCameraPanel debugCameraPanel_{};
-        EDITOR::EditorTransformGizmo transformGizmo_{};
-        void DrawGameViewportWindow(
-            DocumentSceneBase& scene,
-            EDITOR::EditorPlaySession& playSession,
-            std::string_view stableWindowId = "Game View");
-        void HandleSandTerrainBrush(
-            DocumentSceneBase& scene,
-            const EDITOR::SceneViewportRect& viewport,
-            bool viewportHovered);
-        void ToggleGamePreview(
-            DocumentSceneBase& scene,
-            EDITOR::EditorPlaySession& playSession);
-        void LaunchWindowedGamePreview(
-            DocumentSceneBase& scene,
-            EDITOR::EditorPlaySession& playSession);
-        bool PrepareGamePreview(DocumentSceneBase& scene);
-        bool SaveRenderQualityProfile(DocumentSceneBase& scene);
-        void DrawSceneWorkspaceWindow(DocumentSceneBase& scene);
-        void DrawInspectorWindow(DocumentSceneBase& scene);
-        void SelectViewportObjects(
-            DocumentSceneBase& scene,
-            const std::vector<SceneObjectId>& objectIds,
-            EditorObjectSelectionMode mode);
-        void FocusSceneObjects(
-            DocumentSceneBase& scene,
-            const std::vector<SceneObjectId>& objectIds);
-        void DrawViewportContextMenu(DocumentSceneBase& scene);
-        void DrawDebugWorkspaceWindow(DocumentSceneBase& scene);
-        void DrawDebugViewWindow(DocumentSceneBase& scene, bool& open);
-        void HandleGameViewportAssetDrop(DocumentSceneBase& scene);
-        void DrawPendingSceneOpenModal(DocumentSceneBase& scene);
-        void EnsureAiLocalBridge();
-        EDITOR::EditorOperationResult ExecuteAiSceneSetTransform(
-            const nlohmann::json& parameters);
-        EDITOR::EditorOperationResult ExecuteAiTerrainFillLayer(
-            const nlohmann::json& parameters);
-        EDITOR::EditorOperationResult ExecuteAiTerrainProceduralGenerate(
-            const nlohmann::json& parameters);
-        EDITOR::EditorOperationResult ExecuteAiSceneObjectQuery(
-            bool snapshot);
-        EDITOR::EditorOperationResult ExecuteAiSceneQuery(
-            const nlohmann::json& parameters);
-        EDITOR::EditorOperationResult ExecuteAiAssetListModels();
-        EDITOR::EditorOperationResult ExecuteAiCapturePreview(
-            const nlohmann::json& parameters);
+    EDITOR::CinematicsWorkspaceController cinematicsWorkspaceController_{};
+    EDITOR::ModelCollisionWorkspaceController modelCollisionWorkspaceController_{};
+    EDITOR::ModelMaterialWorkspaceController modelMaterialWorkspaceController_{};
+    EDITOR::AnimationStateMachineWorkspaceController animationStateMachineWorkspaceController_{};
+    EDITOR::RuntimeBindingWorkspaceController runtimeBindingWorkspaceController_{};
+    EDITOR::VfxWorkspaceController vfxWorkspaceController_{};
+    EDITOR::DialogueWorkspaceController dialogueWorkspaceController_{};
+    EDITOR::TerrainSurfaceWorkspaceController terrainSurfaceWorkspaceController_{};
+    EDITOR::VfxWorkspaceController& VfxWorkspace() {
+        return authoringSessions_.ResolveController("vfx", vfxWorkspaceController_);
+    }
+    const EDITOR::VfxWorkspaceController& VfxWorkspace() const {
+        return const_cast<DocumentSceneEditorController*>(this)->VfxWorkspace();
+    }
+    EDITOR::ModelMaterialWorkspaceController& ModelMaterialWorkspace() {
+        return authoringSessions_.ResolveController("model_material", modelMaterialWorkspaceController_);
+    }
+    const EDITOR::ModelMaterialWorkspaceController& ModelMaterialWorkspace() const {
+        return const_cast<DocumentSceneEditorController*>(this)->ModelMaterialWorkspace();
+    }
+    EDITOR::AnimationStateMachineWorkspaceController& AnimationStateMachineWorkspace() {
+        return authoringSessions_.ResolveController("animation_state_machine",
+                                                    animationStateMachineWorkspaceController_);
+    }
+    const EDITOR::AnimationStateMachineWorkspaceController& AnimationStateMachineWorkspace() const {
+        return const_cast<DocumentSceneEditorController*>(this)->AnimationStateMachineWorkspace();
+    }
+    EDITOR::DialogueWorkspaceController& DialogueWorkspace() {
+        return authoringSessions_.ResolveController("dialogue", dialogueWorkspaceController_);
+    }
+    const EDITOR::DialogueWorkspaceController& DialogueWorkspace() const {
+        return const_cast<DocumentSceneEditorController*>(this)->DialogueWorkspace();
+    }
+    EDITOR::RuntimeBindingWorkspaceController& RuntimeBindingWorkspace() {
+        return authoringSessions_.ResolveController("runtime_binding", runtimeBindingWorkspaceController_);
+    }
+    const EDITOR::RuntimeBindingWorkspaceController& RuntimeBindingWorkspace() const {
+        return const_cast<DocumentSceneEditorController*>(this)->RuntimeBindingWorkspace();
+    }
+    EDITOR::ModelCollisionWorkspaceController& ModelCollisionWorkspace() {
+        return authoringSessions_.ResolveController("model_collision", modelCollisionWorkspaceController_);
+    }
+    const EDITOR::ModelCollisionWorkspaceController& ModelCollisionWorkspace() const {
+        return const_cast<DocumentSceneEditorController*>(this)->ModelCollisionWorkspace();
+    }
+    EDITOR::CinematicsWorkspaceController& CinematicsWorkspace() {
+        return authoringSessions_.ResolveController("cinematics", cinematicsWorkspaceController_);
+    }
+    const EDITOR::CinematicsWorkspaceController& CinematicsWorkspace() const {
+        return const_cast<DocumentSceneEditorController*>(this)->CinematicsWorkspace();
+    }
+    DebugCameraPanel debugCameraPanel_{};
+    EDITOR::EditorTransformGizmo transformGizmo_{};
+    void DrawGameViewportWindow(DocumentSceneBase& scene, EDITOR::EditorPlaySession& playSession,
+                                std::string_view stableWindowId = "Game View");
+    void HandleSandTerrainBrush(DocumentSceneBase& scene, const EDITOR::SceneViewportRect& viewport,
+                                bool viewportHovered);
+    void ToggleGamePreview(DocumentSceneBase& scene, EDITOR::EditorPlaySession& playSession);
+    void LaunchWindowedGamePreview(DocumentSceneBase& scene, EDITOR::EditorPlaySession& playSession);
+    bool PrepareGamePreview(DocumentSceneBase& scene);
+    bool SaveRenderQualityProfile(DocumentSceneBase& scene);
+    void DrawWorkspaceContent(DocumentSceneBase& scene, EDITOR::EditorPlaySession& playSession);
+    void DrawSceneWorkspaceWindow(DocumentSceneBase& scene);
+    void DrawInspectorWindow(DocumentSceneBase& scene);
+    void SelectViewportObjects(DocumentSceneBase& scene, const std::vector<SceneObjectId>& objectIds,
+                               EditorObjectSelectionMode mode);
+    void FocusSceneObjects(DocumentSceneBase& scene, const std::vector<SceneObjectId>& objectIds);
+    void DrawViewportContextMenu(DocumentSceneBase& scene);
+    void DrawDebugViewWindow(DocumentSceneBase& scene, bool& open);
+    void HandleGameViewportAssetDrop(DocumentSceneBase& scene);
+    void DrawPendingSceneOpenModal(DocumentSceneBase& scene);
+    void EnsureAiLocalBridge();
+    EDITOR::EditorOperationResult ExecuteTerrainOperation(EDITOR::TerrainAuthoringOperation operation,
+                                                          const nlohmann::json& parameters);
+    EDITOR::EditorOperationResult ExecuteSceneObjectOperation(EDITOR::SceneObjectOperation operation,
+                                                              const nlohmann::json& parameters);
+    EDITOR::EditorOperationResult ExecuteAiAssetListModels();
+    EDITOR::EditorOperationResult ExecuteAiCapturePreview(const nlohmann::json& parameters);
 
+    EDITOR::EditorOperationResult ExecuteAiAssetImport(const nlohmann::json& parameters);
+    EDITOR::EditorOperationResult ExecuteAiAssetImportStatus();
+    EDITOR::EditorOperationResult ExecuteAiUndoLast();
 
-        EDITOR::EditorOperationResult ExecuteAiAssetImport(
-            const nlohmann::json& parameters);
-        EDITOR::EditorOperationResult ExecuteAiAssetImportStatus();
-        EDITOR::EditorOperationResult ExecuteAiUndoLast();
-        EDITOR::EditorOperationResult ExecuteAiSceneCreateObject(
-            const nlohmann::json& parameters);
-        EDITOR::EditorOperationResult ExecuteAiSceneCreateWorldSprite(
-            const nlohmann::json& parameters);
-        EDITOR::EditorOperationResult ExecuteAiSceneCreateWorldText(
-            const nlohmann::json& parameters);
-        EDITOR::EditorOperationResult ExecuteAiProceduralCreatePrimitive(
-            const nlohmann::json& parameters);
+    EDITOR::EditorOperationResult ExecuteAiMaterialVerify(const nlohmann::json& parameters);
+    EDITOR::EditorOperationResult ExecuteSceneSave();
+    bool OpenSceneAssetFromEditor(DocumentSceneBase& scene, const AssetGuid& sceneGuid);
+    void SyncDocumentHistory(DocumentSceneBase& scene);
+    void ConfigureEditorCommands(DocumentSceneBase& scene);
+    bool SaveSceneDocument(DocumentSceneBase& scene);
+    void ExecuteSceneDocumentHistory(DocumentSceneBase& scene, bool redo);
+    void CommitSceneObjectAuthoringHistory(DocumentSceneBase& scene, SceneObjectAuthoringHistoryRequest history);
+    void ApplyHistoryResult(DocumentSceneBase& scene, const EDITOR::EditorHistoryResult& result, bool redo);
+    void ApplyDocumentImpact(DocumentSceneBase& scene, EDITOR::EditorDocumentImpact impact);
+    void CommitAppliedDocumentCommand(
+        DocumentSceneBase& scene, std::unique_ptr<EDITOR::IEditorDocumentCommand> command, uint64_t mergeGroup,
+        bool externalDirtyBefore, EDITOR::EditorDocumentImpact immediateImpact = EDITOR::EditorDocumentImpact::None);
+    // サブワークスペース滞在中に Scene 共有カメラ（Editor/Debug）が
+    // 変化しても、戻ったときの Game View を入場時の視点へ復元する。
+    void SnapshotSceneViewCameras(DocumentSceneBase& scene);
+    void RestoreSceneViewCameras(DocumentSceneBase& scene);
+    bool HasKnownUnsavedProjectChanges(const DocumentSceneBase& scene) const noexcept;
 
+    void RecordCinematicsHistory(DocumentSceneBase& scene, SceneCinematicsSettings before, uint64_t mergeGroup,
+                                 bool externalDirtyBefore);
 
-        EDITOR::EditorOperationResult ExecuteAiMaterialVerify(
-            const nlohmann::json& parameters);
-        EDITOR::EditorOperationResult ExecuteSceneSave();
-        EDITOR::EditorOperationResult ExecuteSceneDeleteObject(
-            const nlohmann::json& parameters);
-        EDITOR::EditorOperationResult ExecuteSceneDuplicateObject(
-            const nlohmann::json& parameters);
-        EDITOR::EditorOperationResult ExecuteSceneCreateEmptyObject(
-            const nlohmann::json& parameters);
-        bool OpenSceneAssetFromEditor(DocumentSceneBase& scene, const AssetGuid& sceneGuid);
-        void SyncDocumentHistory(DocumentSceneBase& scene);
-        void ConfigureEditorCommands(DocumentSceneBase& scene);
-        bool SaveSceneDocument(DocumentSceneBase& scene);
-        void ExecuteSceneDocumentHistory(
-            DocumentSceneBase& scene,
-            bool redo);
-        void CommitSceneObjectAuthoringHistory(
-            DocumentSceneBase& scene,
-            SceneObjectAuthoringHistoryRequest history);
-        void ApplyHistoryResult(
-            DocumentSceneBase& scene,
-            const EDITOR::EditorHistoryResult& result,
-            bool redo);
-        void ApplyDocumentImpact(
-            DocumentSceneBase& scene,
-            EDITOR::EditorDocumentImpact impact);
-        void CommitAppliedDocumentCommand(
-            DocumentSceneBase& scene,
-            std::unique_ptr<EDITOR::IEditorDocumentCommand> command,
-            uint64_t mergeGroup,
-            bool externalDirtyBefore,
-            EDITOR::EditorDocumentImpact immediateImpact =
-                EDITOR::EditorDocumentImpact::None);
-        // サブワークスペース滞在中に Scene 共有カメラ（Editor/Debug）が
-        // 変化しても、戻ったときの Game View を入場時の視点へ復元する。
-        void SnapshotSceneViewCameras(DocumentSceneBase& scene);
-        void RestoreSceneViewCameras(DocumentSceneBase& scene);
-        bool HasKnownUnsavedProjectChanges(
-            const DocumentSceneBase& scene) const noexcept;
-
-        void RecordCinematicsHistory(
-            DocumentSceneBase& scene,
-            SceneCinematicsSettings before,
-            uint64_t mergeGroup,
-            bool externalDirtyBefore);
-
-        AssetGuid pendingSceneOpenGuid_{};
-        std::string viewportDropMessage_{};
-        bool renderQualitySavePending_ = false;
-        EDITOR::EditorDocumentHistory documentHistory_{};
-        EDITOR::EditorCommandRouter commandRouter_{};
-        EDITOR::SceneObjectTransformHistorySession
-            viewportTransformHistory_{};
-        bool sceneViewCameraSnapshotValid_ = false;
-        Camera3D sceneViewEditorCameraSnapshot_{};
-        DebugCameraController3D sceneViewDebugCameraSnapshot_{};
-        bool historyExternalDirty_ = false;
-        bool sandTerrainStrokeActive_ = false;
-        bool sandBrushStrokeChanged_ = false;
-        SceneObjectId sandBrushTargetObjectId_{};
-        RuntimeObjectHandle sandBrushTargetRuntimeHandle_{};
-        SceneComponentId sandBrushTargetComponentId_{};
-        MATH::Vec3 sandBrushPreviousLocalHit_{};
-        bool sandBrushHasPreviousLocalHit_ = false;
-        bool sandBrushDirtyBefore_ = false;
-    };
+    AssetGuid pendingSceneOpenGuid_{};
+    std::string viewportDropMessage_{};
+    bool renderQualitySavePending_ = false;
+    EDITOR::EditorDocumentHistory documentHistory_{};
+    EDITOR::EditorCommandRouter commandRouter_{};
+    EDITOR::SceneObjectTransformHistorySession viewportTransformHistory_{};
+    bool sceneViewCameraSnapshotValid_ = false;
+    Camera3D sceneViewEditorCameraSnapshot_{};
+    DebugCameraController3D sceneViewDebugCameraSnapshot_{};
+    bool historyExternalDirty_ = false;
+    bool sandTerrainStrokeActive_ = false;
+    bool sandBrushStrokeChanged_ = false;
+    SceneObjectId sandBrushTargetObjectId_{};
+    RuntimeObjectHandle sandBrushTargetRuntimeHandle_{};
+    SceneComponentId sandBrushTargetComponentId_{};
+    MATH::Vec3 sandBrushPreviousLocalHit_{};
+    bool sandBrushHasPreviousLocalHit_ = false;
+    bool sandBrushDirtyBefore_ = false;
+};
 
 } // namespace HIKARI

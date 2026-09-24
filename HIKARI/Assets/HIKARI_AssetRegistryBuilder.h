@@ -5,11 +5,9 @@
 
 namespace HIKARI {
 
-    class AssetRegistryBuilder {
-    public:
-        bool RebuildRegistry(
-            const AssetDatabase& assetDatabase,
-            AssetRegistry& liveRegistry) const;
-    };
+class AssetRegistryBuilder {
+public:
+    bool RebuildRegistry(const AssetDatabase& assetDatabase, AssetRegistry& liveRegistry) const;
+};
 
 } // namespace HIKARI

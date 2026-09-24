@@ -4,14 +4,11 @@
 
 namespace HIKARI {
 
-    class ComponentGizmoRegistry;
+class ComponentGizmoRegistry;
 
-    inline constexpr std::string_view kReflectionProbeGizmoProviderId =
-        "ReflectionProbes";
-    inline constexpr std::string_view kIrradianceVolumeGizmoProviderId =
-        "IrradianceVolumes";
+inline constexpr std::string_view kReflectionProbeGizmoProviderId = "ReflectionProbes";
+inline constexpr std::string_view kIrradianceVolumeGizmoProviderId = "IrradianceVolumes";
 
-    void RegisterLightingGizmoProviders(
-        ComponentGizmoRegistry& registry);
+void RegisterLightingGizmoProviders(ComponentGizmoRegistry& registry);
 
 } // namespace HIKARI

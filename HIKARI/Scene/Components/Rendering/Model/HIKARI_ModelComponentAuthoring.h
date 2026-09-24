@@ -6,7 +6,6 @@
 
 namespace HIKARI {
 
-    std::vector<ComponentAuthoringCommandDefinition>
-        BuildModelComponentAuthoringCommands();
+std::vector<ComponentAuthoringCommandDefinition> BuildModelComponentAuthoringCommands();
 
 } // namespace HIKARI

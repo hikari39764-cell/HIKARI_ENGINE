@@ -9,41 +9,37 @@
 #include "Scene/HIKARI_SceneDocument.h"
 
 namespace HIKARI {
-    class DocumentSceneBase;
+class DocumentSceneBase;
 }
 
 namespace HIKARI::EDITOR {
 
-    class EditorToolHost;
-    class SystemAuthoringRegistry;
+class EditorToolHost;
+class SystemAuthoringRegistry;
 
-    struct SceneSystemsManagerResult {
-        bool changed = false;
-        std::string label{};
-        std::vector<SceneSystemData> before{};
-    };
+struct SceneSystemsManagerResult {
+    bool changed = false;
+    std::string label{};
+    std::vector<SceneSystemData> before{};
+};
 
-    class SceneSystemsManager {
-    public:
-        void Open();
-        bool IsDirty() const noexcept {
-            return inspector_.IsDirty();
-        }
+class SceneSystemsManager {
+public:
+    void Open();
+    bool IsDirty() const noexcept { return inspector_.IsDirty(); }
 
-        SceneSystemsManagerResult Draw(
-            DocumentSceneBase& scene,
-            const SystemAuthoringRegistry& authoringRegistry,
-            EditorToolHost& toolHost);
+    SceneSystemsManagerResult Draw(DocumentSceneBase& scene, const SystemAuthoringRegistry& authoringRegistry,
+                                   EditorToolHost& toolHost);
 
-    private:
-        bool openRequested_ = false;
-        bool discardPromptRequested_ = false;
-        bool pendingClose_ = false;
-        std::array<char, 128> filter_{};
-        std::string selectedSystemId_{};
-        std::string pendingSystemId_{};
-        AddSystemPopup addSystemPopup_{};
-        SystemSettingsInspector inspector_{};
-    };
+private:
+    bool openRequested_ = false;
+    bool discardPromptRequested_ = false;
+    bool pendingClose_ = false;
+    std::array<char, 128> filter_{};
+    std::string selectedSystemId_{};
+    std::string pendingSystemId_{};
+    AddSystemPopup addSystemPopup_{};
+    SystemSettingsInspector inspector_{};
+};
 
 } // namespace HIKARI::EDITOR

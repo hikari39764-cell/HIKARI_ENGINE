@@ -10,25 +10,21 @@
 
 namespace HIKARI::ASSETS::IMPORT_POLICY {
 
-    struct ModelImportPolicy {
-        bool cookModel = true;
-        bool loadMaterials = true;
-        bool loadTextures = true;
-        ModelImporterKind importer = ModelImporterKind::Gltf;
-        ModelClusterCookOptions clusterOptions{};
-        GEOMETRY::ClusteredGeometryCookSettings clusteredGeometryCookSettings{};
-        LIGHTING::LightmapUvGenerationSettings lightmapUv{};
-    };
+struct ModelImportPolicy {
+    bool cookModel = true;
+    bool loadMaterials = true;
+    bool loadTextures = true;
+    ModelImporterKind importer = ModelImporterKind::Gltf;
+    ModelClusterCookOptions clusterOptions{};
+    GEOMETRY::ClusteredGeometryCookSettings clusteredGeometryCookSettings{};
+    LIGHTING::LightmapUvGenerationSettings lightmapUv{};
+};
 
-    ModelImportPolicy ResolveModelImportPolicy(
-        const std::filesystem::path& sourcePath,
-        std::string_view importSettingsJson);
-    std::string MakeDefaultModelImportSettingsJson(
-        const std::filesystem::path& sourcePath);
+ModelImportPolicy ResolveModelImportPolicy(const std::filesystem::path& sourcePath,
+                                           std::string_view importSettingsJson);
+std::string MakeDefaultModelImportSettingsJson(const std::filesystem::path& sourcePath);
 
-    std::string_view ToString(
-        ModelGeometryCookProfile profile) noexcept;
-    std::string_view ToString(
-        GEOMETRY::SurfacePartitionPolicy policy) noexcept;
+std::string_view ToString(ModelGeometryCookProfile profile) noexcept;
+std::string_view ToString(GEOMETRY::SurfacePartitionPolicy policy) noexcept;
 
 } // namespace HIKARI::ASSETS::IMPORT_POLICY

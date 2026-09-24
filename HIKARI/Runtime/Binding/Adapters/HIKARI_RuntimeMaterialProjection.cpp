@@ -12,68 +12,49 @@
 
 namespace HIKARI::BINDING::MATERIAL_ADAPTER {
 
-    std::shared_ptr<const RENDER3D::MATERIAL::
-        MaterialExternalValueSnapshot>
-        BuildMaterialExternalValueSnapshot(
-            const Snapshot& snapshot) {
+std::shared_ptr<const RENDER3D::MATERIAL::MaterialExternalValueSnapshot> BuildMaterialExternalValueSnapshot(
+    const Snapshot& snapshot) {
+    auto projected = std::make_shared<RENDER3D::MATERIAL::MaterialExternalValueSnapshot>();
+    projected->sourceInstanceId = snapshot.storeInstanceId;
+    projected->revision = snapshot.revision;
+    projected->values.reserve(snapshot.values.size());
+    for (const auto& [id, source] : snapshot.values) {
+        const std::optional<MaterialValueType> targetType = ToMaterialValueType(source.type);
+        if (!targetType.has_value()) {
+            continue;
+        }
+        MaterialValueData converted{};
+        if (TryConvertValue(source, *targetType, converted)) {
+            projected->values.emplace(id, converted);
+        }
+    }
+    return projected;
+}
 
-        auto projected = std::make_shared<RENDER3D::MATERIAL::
-            MaterialExternalValueSnapshot>();
-        projected->sourceInstanceId = snapshot.storeInstanceId;
-        projected->revision = snapshot.revision;
-        projected->values.reserve(snapshot.values.size());
-        for (const auto& [id, source] : snapshot.values) {
-            const std::optional<MaterialValueType> targetType =
-                ToMaterialValueType(source.type);
-            if (!targetType.has_value()) {
+bool ApplyExternalValuesToRuntimeMaterial(Material& material,
+                                          const RENDER3D::MATERIAL::MaterialExternalValueSnapshot& snapshot) {
+    std::string error{};
+    const bool changed = RENDER3D::MATERIAL::ApplyMaterialExternalValues(material, snapshot, error);
+    if (!error.empty()) {
+        HIKARI_LOG_ERROR("[RuntimeBinding][Material] parameter projection failed: " + error);
+    }
+    return changed;
+}
+
+uint32_t ApplyExternalValuesToRuntimeMaterials(World& world,
+                                               const RENDER3D::MATERIAL::MaterialExternalValueSnapshot& snapshot) {
+    std::unordered_set<Material*> visited{};
+    uint32_t projectedCount = 0u;
+    world.ForEachObjectWith<ModelComponent>([&](GameObject&, ModelComponent& model) {
+        for (const RuntimeMaterialOverrideSlot& slot : model.GetRuntimeMaterialOverrides()) {
+            Material* material = slot.material.get();
+            if (material == nullptr || !visited.emplace(material).second) {
                 continue;
             }
-            MaterialValueData converted{};
-            if (TryConvertValue(source, *targetType, converted)) {
-                projected->values.emplace(id, converted);
-            }
+            projectedCount += ApplyExternalValuesToRuntimeMaterial(*material, snapshot) ? 1u : 0u;
         }
-        return projected;
-    }
-
-    bool ApplyExternalValuesToRuntimeMaterial(
-        Material& material,
-        const RENDER3D::MATERIAL::
-            MaterialExternalValueSnapshot& snapshot) {
-
-        std::string error{};
-        const bool changed = RENDER3D::MATERIAL::
-            ApplyMaterialExternalValues(material, snapshot, error);
-        if (!error.empty()) {
-            HIKARI_LOG_ERROR(
-                "[RuntimeBinding][Material] parameter projection failed: " +
-                error);
-        }
-        return changed;
-    }
-
-    uint32_t ApplyExternalValuesToRuntimeMaterials(
-        World& world,
-        const RENDER3D::MATERIAL::
-            MaterialExternalValueSnapshot& snapshot) {
-
-        std::unordered_set<Material*> visited{};
-        uint32_t projectedCount = 0u;
-        world.ForEachObjectWith<ModelComponent>(
-            [&](GameObject&, ModelComponent& model) {
-                for (const RuntimeMaterialOverrideSlot& slot :
-                     model.GetRuntimeMaterialOverrides()) {
-                    Material* material = slot.material.get();
-                    if (material == nullptr ||
-                        !visited.emplace(material).second) {
-                        continue;
-                    }
-                    projectedCount += ApplyExternalValuesToRuntimeMaterial(
-                        *material,
-                        snapshot) ? 1u : 0u;
-                }
-            });
-        return projectedCount;
-    }
+    });
+    return projectedCount;
+}
 
 } // namespace HIKARI::BINDING::MATERIAL_ADAPTER

@@ -4,7 +4,6 @@
 
 namespace HIKARI::SEQUENCER {
 
-    std::string NormalizeSequenceBindingSlotName(
-        std::string value);
+std::string NormalizeSequenceBindingSlotName(std::string value);
 
 } // namespace HIKARI::SEQUENCER

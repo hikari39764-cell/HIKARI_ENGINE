@@ -5,10 +5,10 @@
 
 namespace HIKARI {
 
-    struct DocumentSceneLightingRuntimeState {
-        SkyManager sky{};
-        SceneEnvironment environment{};
-        bool environmentLightingEnabled = true;
-    };
+struct DocumentSceneLightingRuntimeState {
+    SkyManager sky{};
+    SceneEnvironment environment{};
+    bool environmentLightingEnabled = true;
+};
 
 } // namespace HIKARI

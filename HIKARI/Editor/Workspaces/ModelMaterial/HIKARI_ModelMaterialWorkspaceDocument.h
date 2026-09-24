@@ -1,11 +1,12 @@
 #pragma once
 #include "Editor/Documents/HIKARI_EditorSourceVersion.h"
+#include "Editor/History/HIKARI_DocumentSnapshotHistory.h"
 
 #include <cstddef>
 #include <filesystem>
-#include <functional>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -18,134 +19,122 @@ namespace HIKARI::EDITOR {
 
 class ModelMaterialWorkspaceDocument {
 public:
-  bool CanSaveMaterialSource(std::string& message) const { return materialSourceVersion_.CanSave(message); }
-  bool CanSaveBindingSource(std::string& message) const { return bindingSourceVersion_.CanSave(message); }
-  void AcceptMaterialSourceWrite(const std::filesystem::path& path) { materialSourceVersion_.Accept(path); }
-  using BindingMap = std::unordered_map<uint64_t, AssetGuid>;
+    bool CanSaveMaterialSource(std::string& message) const { return materialSourceVersion_.CanSave(message); }
+    bool CanSaveBindingSource(std::string& message) const { return bindingSourceVersion_.CanSave(message); }
+    void AcceptMaterialSourceWrite(const std::filesystem::path& path) { materialSourceVersion_.Accept(path); }
+    using BindingMap = std::unordered_map<uint64_t, AssetGuid>;
 
-  enum class ChangedDomain : uint8_t {
-    None,
-    Binding,
-    Material,
-    MaterialLayout,
-  };
+    enum class ChangedDomain : uint8_t {
+        None,
+        Binding,
+        Material,
+        MaterialLayout,
+    };
 
-  void OpenBindings(const AssetGuid &modelGuid, const AssetGuid &assetGuid,
-                    std::filesystem::path sourcePath, BindingMap bindings,
-                    bool saved);
-  void OpenMaterial(const AssetGuid &assetGuid,
-                    std::filesystem::path sourcePath,
-                    MaterialAssetData source,
-                    const MaterialCompileResult &compile, bool saved);
-  void SetMaterialCompileOptions(MaterialCompileOptions options);
-  void CloseMaterial();
+    void OpenBindings(const AssetGuid& modelGuid, const AssetGuid& assetGuid, std::filesystem::path sourcePath,
+                      BindingMap bindings, bool saved);
+    void OpenMaterial(const AssetGuid& assetGuid, std::filesystem::path sourcePath, MaterialAssetData source,
+                      const MaterialCompileResult& compile, bool saved);
+    void SetMaterialCompileOptions(MaterialCompileOptions options);
+    void CloseMaterial();
 
-  bool HasBindings() const noexcept;
-  bool HasMaterial() const noexcept;
-  const AssetGuid &GetModelGuid() const noexcept;
-  const AssetGuid &GetBindingAssetGuid() const noexcept;
-  const AssetGuid &GetMaterialAssetGuid() const noexcept;
-  const std::filesystem::path &GetBindingSourcePath() const noexcept;
-  const std::filesystem::path &GetMaterialSourcePath() const noexcept;
+    bool HasBindings() const noexcept;
+    bool HasMaterial() const noexcept;
+    const AssetGuid& GetModelGuid() const noexcept;
+    const AssetGuid& GetBindingAssetGuid() const noexcept;
+    const AssetGuid& GetMaterialAssetGuid() const noexcept;
+    const std::filesystem::path& GetBindingSourcePath() const noexcept;
+    const std::filesystem::path& GetMaterialSourcePath() const noexcept;
 
-  BindingMap &EditBindings() noexcept;
-  BindingMap GetBindings() const;
-  MaterialAssetData &EditMaterial() noexcept;
-  MaterialAssetData GetMaterial() const;
-  MaterialCompileResult GetCompileResult() const;
-  uint64_t GetMaterialRevision() const noexcept;
-  uint64_t GetCompileRevision() const noexcept;
-  bool IsCompileCurrent() const noexcept;
-  bool LastMaterialChangeRequiresPreview() const noexcept;
+    BindingMap GetBindings() const;
+    MaterialAssetData GetMaterial() const;
+    MaterialCompileResult GetCompileResult() const;
+    uint64_t GetMaterialRevision() const noexcept;
+    uint64_t GetCompileRevision() const noexcept;
+    bool IsCompileCurrent() const noexcept;
+    bool ConsumeMaterialPreviewChange() noexcept;
 
-  bool CommitBindings(BindingMap before, std::string label);
-  bool CommitMaterial(MaterialAssetData before, std::string label);
-  // Applies an edit and commits it inside the document lock. This is the only
-  // safe material-mutation entry for worker threads (for example the AI
-  // assistant); EditMaterial()/CommitMaterial() are reserved for the UI
-  // thread's short-lived paired gestures.
-  bool ApplyMaterialEdit(
-      const std::function<void(MaterialAssetData &)> &edit,
-      std::string label,
-      std::string &outMessage);
-  std::recursive_mutex &GetMutex() noexcept { return mutex_; }
-  void RestoreMaterial(MaterialAssetData source);
+    bool ApplyMaterial(MaterialAssetData source, std::string label);
+    bool ConnectMaterialNodes(MaterialGraphEdgeData edge, std::string& outMessage);
+    bool RemoveMaterialNodes(std::span<const std::string> ids);
+    bool DisconnectMaterialEdge(std::string_view id);
+    void BeginMaterialGesture(MaterialAssetData before, std::string label);
+    bool HasMaterialGesture() const noexcept;
+    bool EndMaterialGesture(bool cancel);
+    void UpdateMaterialItem(MaterialAssetData before, std::string label, uint32_t itemId, bool active, bool changed);
+    void FinishMaterialItems(uint32_t activeItem);
+    std::recursive_mutex& GetMutex() noexcept { return mutex_; }
 
-  bool CanUndo() const noexcept;
-  bool CanRedo() const noexcept;
-  bool Undo(ChangedDomain &outDomain, std::string &outLabel);
-  bool Redo(ChangedDomain &outDomain, std::string &outLabel);
-  const std::string *GetUndoLabel() const noexcept;
-  const std::string *GetRedoLabel() const noexcept;
+    bool CanUndo() const noexcept;
+    bool CanRedo() const noexcept;
+    bool Undo(ChangedDomain& outDomain, std::string& outLabel);
+    bool Redo(ChangedDomain& outDomain, std::string& outLabel);
+    const std::string* GetUndoLabel() const noexcept;
+    const std::string* GetRedoLabel() const noexcept;
 
-  bool IsBindingDirty() const noexcept;
-  bool IsMaterialDirty() const noexcept;
-  bool DiscardBindingChanges() noexcept;
-  bool DiscardMaterialChanges();
-  void MarkBindingsSaved(const AssetGuid &assetGuid,
-                         std::filesystem::path sourcePath) noexcept;
-  void MarkMaterialSaved(const AssetGuid &assetGuid,
-                         std::filesystem::path sourcePath) noexcept;
+    bool IsBindingDirty() const noexcept;
+    bool IsMaterialDirty() const noexcept;
+    bool DiscardBindingChanges() noexcept;
+    bool DiscardMaterialChanges();
+    void MarkBindingsSaved(const AssetGuid& assetGuid, std::filesystem::path sourcePath) noexcept;
+    void MarkMaterialSaved(const AssetGuid& assetGuid, std::filesystem::path sourcePath) noexcept;
 
-  bool BeginAbPreview(MaterialAssetData candidate, std::string &outMessage);
-  bool IsAbPreviewActive() const noexcept;
-  bool KeepAbPreview(std::string &outMessage);
-  bool DiscardAbPreview(std::string &outMessage);
+    bool BeginAbPreview(MaterialAssetData candidate, std::string& outMessage);
+    bool IsAbPreviewActive() const noexcept;
+    bool KeepAbPreview(std::string& outMessage);
+    bool DiscardAbPreview(std::string& outMessage);
 
 private:
-  EditorSourceVersion materialSourceVersion_, bindingSourceVersion_;
-  struct HistoryEntry {
-    ChangedDomain domain = ChangedDomain::None;
-    BindingMap beforeBindings{};
-    BindingMap afterBindings{};
-    MaterialAssetData beforeMaterial{};
-    MaterialAssetData afterMaterial{};
-    uint64_t beforeToken = 0u;
-    uint64_t afterToken = 0u;
-    std::string label{};
-  };
+    friend class ModelMaterialWorkspaceController;
+    // 即時 UI の参照は Draw のロック内だけで使用する。外部編集は値を Apply する。
+    BindingMap& EditBindings() noexcept;
+    MaterialAssetData& EditMaterial() noexcept;
+    bool CommitBindings(BindingMap before, std::string label);
+    bool CommitMaterial(MaterialAssetData before, std::string label);
+    void RestoreMaterial(MaterialAssetData source);
+    EditorSourceVersion materialSourceVersion_, bindingSourceVersion_;
+    struct HistoryMetadata {
+        ChangedDomain domain = ChangedDomain::None;
+        std::string label;
+    };
 
-  static constexpr size_t kMaximumHistoryEntries = 128u;
-  static bool AreBindingsEquivalent(const BindingMap &left,
-                                    const BindingMap &right) noexcept;
-  static bool AreMaterialsEquivalent(const MaterialAssetData &left,
-                                     const MaterialAssetData &right);
-  bool CommitMaterialLocked(MaterialAssetData before, std::string label);
-  void TruncateRedo(ChangedDomain domain);
-  void PushHistory(HistoryEntry entry);
-  void RefreshCompile();
-  void RefreshAfterMaterialChange(const MaterialAssetData& before);
-  static bool AreMaterialContentsEquivalent(const MaterialAssetData& left, const MaterialAssetData& right);
-  void ClearHistory(ChangedDomain domain) noexcept;
+    static bool AreBindingsEquivalent(const BindingMap& left, const BindingMap& right) noexcept;
+    static bool AreMaterialsEquivalent(const MaterialAssetData& left, const MaterialAssetData& right);
+    bool CommitMaterialLocked(MaterialAssetData before, std::string label);
+    MaterialGraphData* EditableGraph() noexcept;
+    void RecordMaterialChange(const MaterialAssetData& before, const MaterialAssetData& after, std::string label);
+    bool TravelHistory(bool redo, ChangedDomain& domain, std::string& label);
+    void RefreshCompile();
+    void RefreshAfterMaterialChange(bool contentChanged);
+    static bool AreMaterialContentsEquivalent(const MaterialAssetData& left, const MaterialAssetData& right);
 
-  AssetGuid modelGuid_{};
-  AssetGuid bindingAssetGuid_{};
-  AssetGuid materialAssetGuid_{};
-  std::filesystem::path bindingSourcePath_{};
-  std::filesystem::path materialSourcePath_{};
-  BindingMap bindings_{};
-  BindingMap savedBindings_{};
-  MaterialAssetData material_{};
-  MaterialAssetData savedMaterial_{};
-  MaterialCompileResult compile_{};
-  MaterialCompileOptions compileOptions_{};
-  std::optional<MaterialAssetData> abBefore_{};
-  std::vector<HistoryEntry> bindingHistory_{};
-  std::vector<HistoryEntry> materialHistory_{};
-  size_t bindingHistoryCursor_ = 0u;
-  size_t materialHistoryCursor_ = 0u;
-  ChangedDomain activeHistoryDomain_ = ChangedDomain::None;
-  uint64_t nextStateToken_ = 1u;
-  uint64_t bindingStateToken_ = 0u;
-  uint64_t materialStateToken_ = 0u;
-  uint64_t savedBindingStateToken_ = 0u;
-  uint64_t savedMaterialStateToken_ = 0u;
-  bool bindingsOpen_ = false;
-  bool materialOpen_ = false;
-  uint64_t materialRevision_ = 0u;
-  uint64_t compileRevision_ = 0u;
-  bool materialContentChanged_ = false;
-  mutable std::recursive_mutex mutex_{};
+    AssetGuid modelGuid_{};
+    AssetGuid bindingAssetGuid_{};
+    AssetGuid materialAssetGuid_{};
+    std::filesystem::path bindingSourcePath_{};
+    std::filesystem::path materialSourcePath_{};
+    BindingMap bindings_{};
+    BindingMap savedBindings_{};
+    MaterialAssetData material_{};
+    MaterialAssetData savedMaterial_{};
+    MaterialCompileResult compile_{};
+    MaterialCompileOptions compileOptions_{};
+    struct PreviewEdit {
+        MaterialAssetData before;
+        std::string label;
+        bool audition = false;
+        uint32_t itemId = 0;
+    };
+    std::optional<PreviewEdit> previewEdit_;
+    DocumentSnapshotHistory<BindingMap, HistoryMetadata> bindingHistory_{128};
+    DocumentSnapshotHistory<MaterialAssetData, HistoryMetadata> materialHistory_{128};
+    ChangedDomain activeHistoryDomain_ = ChangedDomain::None;
+    bool bindingsOpen_ = false;
+    bool materialOpen_ = false;
+    uint64_t materialRevision_ = 0u;
+    uint64_t compileRevision_ = 0u;
+    bool materialPreviewPending_ = false;
+    mutable std::recursive_mutex mutex_{};
 };
 
 } // namespace HIKARI::EDITOR

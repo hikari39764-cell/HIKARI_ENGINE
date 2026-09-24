@@ -5,34 +5,14 @@
 #include <string_view>
 
 namespace HIKARI::VFX {
-        
+
 static constexpr size_t kMaterialFxUserCount = 8;
 
-enum class FxDomain {
-    GlobalPost,
-    ScopedPost,
-    ObjectMaterial,
-    Particle
-};
+enum class FxDomain { GlobalPost, ScopedPost, ObjectMaterial, Particle };
 
-enum class CompositeMode {
-    Alpha,
-    Additive,
-    Multiply,
-    Screen,
-    Replace
-};
+enum class CompositeMode { Alpha, Additive, Multiply, Screen, Replace };
 
-enum class ParamType {
-    Float,
-    Float2,
-    Float3,
-    Float4,
-    Color,
-    Color3,
-    Color4,
-    Toggle
-};
+enum class ParamType { Float, Float2, Float3, Float4, Color, Color3, Color4, Toggle };
 
 struct ParamChannelRef {
     uint8_t slot = 0;
@@ -60,10 +40,8 @@ struct PassDescriptor {
     bool doubleSided = false;
 };
 
-inline bool TryNormalizeBuiltinShaderProgramId(
-    std::string_view programId,
-    std::string_view legacyShaderId,
-    std::string& outProgramId) {
+inline bool TryNormalizeBuiltinShaderProgramId(std::string_view programId, std::string_view legacyShaderId,
+                                               std::string& outProgramId) {
     if (!programId.empty()) {
         outProgramId = programId;
         return true;
@@ -73,9 +51,7 @@ inline bool TryNormalizeBuiltinShaderProgramId(
     }
     for (const char value : legacyShaderId) {
         const bool alphaNumeric =
-            (value >= 'a' && value <= 'z') ||
-            (value >= 'A' && value <= 'Z') ||
-            (value >= '0' && value <= '9');
+            (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z') || (value >= '0' && value <= '9');
         if (!alphaNumeric && value != '_') {
             return false;
         }
@@ -90,10 +66,8 @@ inline bool IsStableFxProfileId(std::string_view value) {
         return false;
     }
     for (const char character : value) {
-        const bool alphaNumeric =
-            (character >= 'a' && character <= 'z') ||
-            (character >= 'A' && character <= 'Z') ||
-            (character >= '0' && character <= '9');
+        const bool alphaNumeric = (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') ||
+                                  (character >= '0' && character <= '9');
         if (!alphaNumeric && character != '_' && character != '-') {
             return false;
         }

@@ -4,14 +4,12 @@
 
 namespace HIKARI {
 
-    struct SceneLightingBakeSettings;
+struct SceneLightingBakeSettings;
 
-    namespace SCENE::SERIALIZATION {
+namespace SCENE::SERIALIZATION {
 
-        void SerializeSceneLightingBakeJson(const SceneLightingBakeSettings& settings, nlohmann::json& out);
+void DeserializeSceneLightingBakeJson(const nlohmann::json& node, SceneLightingBakeSettings& outSettings);
 
-        void DeserializeSceneLightingBakeJson(const nlohmann::json& node, SceneLightingBakeSettings& outSettings);
-
-    } // namespace SCENE::SERIALIZATION
+} // namespace SCENE::SERIALIZATION
 
 } // namespace HIKARI

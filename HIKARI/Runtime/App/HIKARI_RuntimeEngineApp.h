@@ -8,26 +8,26 @@
 
 namespace HIKARI::RUNTIME {
 
-    class RuntimeEngineApp final : public IHostApplication {
-    public:
-        RuntimeEngineApp();
+class RuntimeEngineApp final : public IHostApplication {
+public:
+    RuntimeEngineApp();
 
-        bool Initialize() override;
-        void Update(float deltaTime) override;
-        void Render() override;
-        void RenderHostUi() override;
-        void Shutdown() override;
-        bool ShouldExitHost() const override;
-        int GetExitCode() const override;
+    bool Initialize() override;
+    void Update(float deltaTime) override;
+    void Render() override;
+    void RenderHostUi() override;
+    void Shutdown() override;
+    bool ShouldExitHost() const override;
+    int GetExitCode() const override;
 
-        IScene* GetCurrentScene();
-        const IScene* GetCurrentScene() const override;
+    IScene* GetCurrentScene();
+    const IScene* GetCurrentScene() const override;
 
-    private:
-        GameProjectModuleLibrary gameProjectModule_{};
-        SceneManager sceneManager_{};
-        SceneTransitionBus sceneTransitionBus_;
-        bool standaloneRuntimeEntryFailed_ = false;
-    };
+private:
+    GameProjectModuleLibrary gameProjectModule_{};
+    SceneManager sceneManager_{};
+    SceneTransitionBus sceneTransitionBus_;
+    bool standaloneRuntimeEntryFailed_ = false;
+};
 
 } // namespace HIKARI::RUNTIME

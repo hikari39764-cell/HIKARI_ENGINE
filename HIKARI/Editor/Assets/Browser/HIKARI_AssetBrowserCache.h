@@ -15,7 +15,7 @@ class AssetDatabase;
 struct AssetRecord;
 struct SceneDocument;
 enum class AssetBrowserScope;
-}
+} // namespace HIKARI
 
 namespace HIKARI::EDITOR::ASSET_BROWSER {
 
@@ -50,8 +50,8 @@ private:
 
 class AssetBrowserUsageCache {
 public:
-    bool Update(const SceneDocument& document, uint64_t documentRevision,
-        const AssetDatabase& database, uint64_t editRevision = 0);
+    bool Update(const SceneDocument& document, uint64_t documentRevision, const AssetDatabase& database,
+                uint64_t editRevision = 0);
     const AssetUsageSummary& Summary() const noexcept { return summary_; }
     uint64_t Generation() const noexcept { return generation_; }
 
@@ -81,8 +81,8 @@ struct AssetBrowserQuery {
 
 class AssetBrowserCatalogCache {
 public:
-    bool Update(const AssetDatabase& database, const AssetBrowserQuery& query,
-        const AssetUsageSummary* usage, uint64_t usageRevision);
+    bool Update(const AssetDatabase& database, const AssetBrowserQuery& query, const AssetUsageSummary* usage,
+                uint64_t usageRevision);
     const std::vector<const AssetRecord*>& Records() const noexcept { return records_; }
     const std::vector<std::filesystem::path>& Directories() const noexcept { return directories_; }
 
@@ -98,4 +98,4 @@ private:
     std::vector<std::filesystem::path> directories_{};
 };
 
-}
+} // namespace HIKARI::EDITOR::ASSET_BROWSER

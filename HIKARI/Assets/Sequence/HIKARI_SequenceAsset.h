@@ -9,24 +9,18 @@
 
 namespace HIKARI {
 
-    struct SequenceAsset {
-        static constexpr uint32_t kFormatVersion = 3;
+struct SequenceAsset {
+    static constexpr uint32_t kFormatVersion = 3;
 
-        AssetGuid guid{};
-        std::string displayName{};
-        CinematicSequence sequence{};
-    };
+    AssetGuid guid{};
+    std::string displayName{};
+    CinematicSequence sequence{};
+};
 
-    std::vector<AssetDependencyDesc> CollectSequenceDependencies(const CinematicSequence& sequence);
+std::vector<AssetDependencyDesc> CollectSequenceDependencies(const CinematicSequence& sequence);
 
-    bool LoadSequenceAsset(
-        const std::filesystem::path& path,
-        const AssetGuid& authoritativeGuid,
-        SequenceAsset& outAsset,
-        std::string* outError = nullptr);
-    bool SaveSequenceAsset(
-        const std::filesystem::path& path,
-        const SequenceAsset& asset,
-        std::string* outError = nullptr);
+bool LoadSequenceAsset(const std::filesystem::path& path, const AssetGuid& authoritativeGuid, SequenceAsset& outAsset,
+                       std::string* outError = nullptr);
+bool SaveSequenceAsset(const std::filesystem::path& path, const SequenceAsset& asset, std::string* outError = nullptr);
 
 } // namespace HIKARI

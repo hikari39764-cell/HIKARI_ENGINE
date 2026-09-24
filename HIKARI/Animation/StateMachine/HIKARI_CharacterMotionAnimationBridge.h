@@ -1,13 +1,14 @@
 #pragma once
 
-namespace HIKARI::GAMEPLAY { struct CharacterMotionState; }
+namespace HIKARI::GAMEPLAY {
+struct CharacterMotionState;
+}
 
 namespace HIKARI::ANIMATION {
 
-    class AnimationStateMachineInstance;
+class AnimationStateMachineInstance;
 
-    void ApplyCharacterMotionAnimationParameters(
-        AnimationStateMachineInstance& instance,
-        const GAMEPLAY::CharacterMotionState& motionState);
+void ApplyCharacterMotionAnimationParameters(AnimationStateMachineInstance& instance,
+                                             const GAMEPLAY::CharacterMotionState& motionState);
 
 } // namespace HIKARI::ANIMATION

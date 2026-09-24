@@ -11,12 +11,10 @@ constexpr uint32_t kMaximumFrames = 36000;
 constexpr size_t kMaximumPasses = 192;
 
 nlohmann::json Summarize(const std::vector<double>& samples) {
-    nlohmann::json result = {
-        {"samples", samples.size()}, {"meanMs", nullptr},
-        {"p50Ms", nullptr}, {"p95Ms", nullptr}, {"p99Ms", nullptr},
-        {"maximumMs", nullptr}
-    };
-    if (samples.empty()) return result;
+    nlohmann::json result = {{"samples", samples.size()}, {"meanMs", nullptr}, {"p50Ms", nullptr},
+                             {"p95Ms", nullptr},          {"p99Ms", nullptr},  {"maximumMs", nullptr}};
+    if (samples.empty())
+        return result;
     auto sorted = samples;
     std::sort(sorted.begin(), sorted.end());
     const auto percentile = [&](double rank) {
@@ -39,20 +37,22 @@ BenchmarkRun::BenchmarkRun(uint32_t warmupFrames, uint32_t sampleFrames)
     intervals_.reserve(sampleFrames_);
 }
 
-void BenchmarkRun::RecordPasses(Series& destination,
-    std::span<const BenchmarkTiming> passes) {
+void BenchmarkRun::RecordPasses(Series& destination, std::span<const BenchmarkTiming> passes) {
     // 同じフレームで同名のパスを二重計上しない。入力名も容量も制限する。
     for (size_t i = 0; i < (std::min)(passes.size(), kMaximumPasses); ++i) {
         const auto& pass = passes[i];
-        if (pass.name.empty() || pass.name.size() > 128 ||
-            !std::isfinite(pass.milliseconds) || pass.milliseconds < 0.0) {
+        if (pass.name.empty() || pass.name.size() > 128 || !std::isfinite(pass.milliseconds) ||
+            pass.milliseconds < 0.0) {
             ++rejectedPasses_;
             continue;
         }
         bool duplicate = false;
         for (size_t earlier = 0; earlier < i; ++earlier)
             duplicate |= passes[earlier].name == pass.name;
-        if (duplicate) { ++rejectedPasses_; continue; }
+        if (duplicate) {
+            ++rejectedPasses_;
+            continue;
+        }
         auto found = destination.find(pass.name);
         if (found == destination.end()) {
             if (destination.size() >= kMaximumPasses) {
@@ -67,24 +67,29 @@ void BenchmarkRun::RecordPasses(Series& destination,
     rejectedPasses_ += static_cast<uint32_t>(passes.size() - (std::min)(passes.size(), kMaximumPasses));
 }
 
-bool BenchmarkRun::RecordFrame(uint64_t frameId, double intervalMs,
-    std::span<const BenchmarkTiming> cpuPasses) {
-    if (CaptureComplete() || (hasFrame_ && frameId <= lastFrameId_)) return false;
+bool BenchmarkRun::RecordFrame(uint64_t frameId, double intervalMs, std::span<const BenchmarkTiming> cpuPasses) {
+    if (CaptureComplete() || (hasFrame_ && frameId <= lastFrameId_))
+        return false;
     hasFrame_ = true;
     lastFrameId_ = frameId;
-    if (warmedFrames_ < warmupFrames_) { ++warmedFrames_; return false; }
+    if (warmedFrames_ < warmupFrames_) {
+        ++warmedFrames_;
+        return false;
+    }
     frames_.push_back({frameId, false});
     if (std::isfinite(intervalMs) && intervalMs > 0.0)
         intervals_.push_back(intervalMs);
-    else ++invalidIntervals_;
+    else
+        ++invalidIntervals_;
     RecordPasses(cpuPasses_, cpuPasses);
     return true;
 }
 
 bool BenchmarkRun::RecordGpu(uint64_t frameId, std::span<const BenchmarkTiming> passes) {
     auto found = std::lower_bound(frames_.begin(), frames_.end(), frameId,
-        [](const CapturedFrame& frame, uint64_t id) { return frame.id < id; });
-    if (found == frames_.end() || found->id != frameId || found->gpuObserved) return false;
+                                  [](const CapturedFrame& frame, uint64_t id) { return frame.id < id; });
+    if (found == frames_.end() || found->id != frameId || found->gpuObserved)
+        return false;
     found->gpuObserved = true;
     ++gpuFrames_;
     RecordPasses(gpuPasses_, passes);
@@ -97,24 +102,35 @@ uint32_t BenchmarkRun::SampleCount() const noexcept { return static_cast<uint32_
 
 nlohmann::json BenchmarkRun::BuildReport() const {
     nlohmann::json report = {
-        {"schemaVersion", 1}, {"captureComplete", CaptureComplete()},
-        {"warmupFramesRequested", warmupFrames_}, {"warmupFramesObserved", warmedFrames_},
-        {"sampleFramesRequested", sampleFrames_}, {"sampleFramesObserved", frames_.size()},
-        {"gpuFramesObserved", gpuFrames_}, {"gpuCoverageComplete", GpuCoverageComplete()},
-        {"invalidIntervals", invalidIntervals_}, {"rejectedPassSamples", rejectedPasses_},
-        {"frameInterval", Summarize(intervals_)}, {"renderedFps", nullptr},
-        {"cpuPasses", nlohmann::json::object()}, {"gpuPasses", nlohmann::json::object()},
-        {"timingSemantics", "Frame intervals are host presents, excluding generated frames. CPU/GPU passes may overlap and must not be added as frame time. Percentiles use nearest rank over this capture only."}
-    };
+        {"schemaVersion", 1},
+        {"captureComplete", CaptureComplete()},
+        {"warmupFramesRequested", warmupFrames_},
+        {"warmupFramesObserved", warmedFrames_},
+        {"sampleFramesRequested", sampleFrames_},
+        {"sampleFramesObserved", frames_.size()},
+        {"gpuFramesObserved", gpuFrames_},
+        {"gpuCoverageComplete", GpuCoverageComplete()},
+        {"invalidIntervals", invalidIntervals_},
+        {"rejectedPassSamples", rejectedPasses_},
+        {"frameInterval", Summarize(intervals_)},
+        {"renderedFps", nullptr},
+        {"cpuPasses", nlohmann::json::object()},
+        {"gpuPasses", nlohmann::json::object()},
+        {"timingSemantics",
+         "Frame intervals are host presents, excluding generated frames. CPU/GPU passes may overlap and must not be added as frame time. Percentiles use nearest rank over this capture only."}};
     const double elapsedMs = std::accumulate(intervals_.begin(), intervals_.end(), 0.0);
-    if (elapsedMs > 0.0) report["renderedFps"] = 1000.0 * intervals_.size() / elapsedMs;
+    if (elapsedMs > 0.0)
+        report["renderedFps"] = 1000.0 * intervals_.size() / elapsedMs;
     for (const double threshold : {33.333333, 50.0, 100.0, 250.0}) {
-        report["longFrames"].push_back({{"thresholdMs", threshold},
-            {"count", std::count_if(intervals_.begin(), intervals_.end(),
-                [threshold](double value) { return value > threshold; })}});
+        report["longFrames"].push_back(
+            {{"thresholdMs", threshold},
+             {"count", std::count_if(intervals_.begin(), intervals_.end(),
+                                     [threshold](double value) { return value > threshold; })}});
     }
-    for (const auto& [name, series] : cpuPasses_) report["cpuPasses"][name] = Summarize(series);
-    for (const auto& [name, series] : gpuPasses_) report["gpuPasses"][name] = Summarize(series);
+    for (const auto& [name, series] : cpuPasses_)
+        report["cpuPasses"][name] = Summarize(series);
+    for (const auto& [name, series] : gpuPasses_)
+        report["gpuPasses"][name] = Summarize(series);
     if (!frames_.empty()) {
         report["firstFrameId"] = frames_.front().id;
         report["lastFrameId"] = frames_.back().id;

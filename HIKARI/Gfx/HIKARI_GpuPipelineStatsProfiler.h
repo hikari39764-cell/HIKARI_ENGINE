@@ -9,49 +9,47 @@
 
 namespace HIKARI::GFX::GPU_PIPELINE_STATS {
 
-    struct PassPipelineStats {
-        const char* name = "";
-        bool valid = false;
-        D3D12_QUERY_DATA_PIPELINE_STATISTICS1 counters{};
-    };
+struct PassPipelineStats {
+    const char* name = "";
+    bool valid = false;
+    D3D12_QUERY_DATA_PIPELINE_STATISTICS1 counters{};
+};
 
-    struct FrameSnapshot {
-        bool initialized = false;
-        bool profilerEnabled = true;
-        bool pipelineStatsAvailable = false;
-        bool meshShaderPipelineStatsSupported = false;
-        uint64_t frameIndex = 0;
-        const char* unavailableReason = "";
-        std::array<PassPipelineStats, static_cast<size_t>(GPU_PROFILE::Pass::Count)> passes{};
-    };
+struct FrameSnapshot {
+    bool initialized = false;
+    bool profilerEnabled = true;
+    bool pipelineStatsAvailable = false;
+    bool meshShaderPipelineStatsSupported = false;
+    uint64_t frameIndex = 0;
+    const char* unavailableReason = "";
+    std::array<PassPipelineStats, static_cast<size_t>(GPU_PROFILE::Pass::Count)> passes{};
+};
 
-    void SetEnabled(bool enabled, const char* unavailableReason = "");
-    bool IsEnabled();
+void SetEnabled(bool enabled, const char* unavailableReason = "");
+bool IsEnabled();
 
-    void BeginFrame(
-        ID3D12Device* device,
-        ID3D12GraphicsCommandList* cmd,
-        uint64_t frameIndex, uint64_t completedFence, uint64_t retireFence);
-    void EndFrame(ID3D12GraphicsCommandList* cmd);
-    void Shutdown();
+void BeginFrame(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, uint64_t frameIndex, uint64_t completedFence,
+                uint64_t retireFence);
+void EndFrame(ID3D12GraphicsCommandList* cmd);
+void Shutdown();
 
-    bool BeginPass(ID3D12GraphicsCommandList* cmd, GPU_PROFILE::Pass pass);
-    void EndPass(ID3D12GraphicsCommandList* cmd, GPU_PROFILE::Pass pass);
+bool BeginPass(ID3D12GraphicsCommandList* cmd, GPU_PROFILE::Pass pass);
+void EndPass(ID3D12GraphicsCommandList* cmd, GPU_PROFILE::Pass pass);
 
-    const FrameSnapshot& GetLatestSnapshot();
+const FrameSnapshot& GetLatestSnapshot();
 
-    class ScopedPipelineStats {
-    public:
-        ScopedPipelineStats(ID3D12GraphicsCommandList* cmd, GPU_PROFILE::Pass pass);
-        ~ScopedPipelineStats();
+class ScopedPipelineStats {
+public:
+    ScopedPipelineStats(ID3D12GraphicsCommandList* cmd, GPU_PROFILE::Pass pass);
+    ~ScopedPipelineStats();
 
-        ScopedPipelineStats(const ScopedPipelineStats&) = delete;
-        ScopedPipelineStats& operator=(const ScopedPipelineStats&) = delete;
+    ScopedPipelineStats(const ScopedPipelineStats&) = delete;
+    ScopedPipelineStats& operator=(const ScopedPipelineStats&) = delete;
 
-    private:
-        ID3D12GraphicsCommandList* cmd_ = nullptr;
-        GPU_PROFILE::Pass pass_ = GPU_PROFILE::Pass::Count;
-        bool active_ = false;
-    };
+private:
+    ID3D12GraphicsCommandList* cmd_ = nullptr;
+    GPU_PROFILE::Pass pass_ = GPU_PROFILE::Pass::Count;
+    bool active_ = false;
+};
 
 } // namespace HIKARI::GFX::GPU_PIPELINE_STATS

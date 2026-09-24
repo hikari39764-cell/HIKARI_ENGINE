@@ -8,35 +8,22 @@
 
 namespace HIKARI::RENDER3D::RUNTIME {
 
-    std::vector<MATH::Mat4> BuildRenderModelNodeGlobals(const RenderModelAsset& renderModel);
+std::vector<MATH::Mat4> BuildRenderModelNodeGlobals(const RenderModelAsset& renderModel);
 
-    std::vector<MATH::Mat4> BuildRenderModelNodeGlobals(
-        const RenderModelAsset& renderModel,
-        const ModelAsset* model,
-        const ANIMATION::AnimationLocalPose& pose);
+std::vector<MATH::Mat4> BuildRenderModelNodeGlobals(const RenderModelAsset& renderModel, const ModelAsset* model,
+                                                    const ANIMATION::AnimationLocalPose& pose);
 
-    bool ResolveRenderSurfaceDrawWorldMatrix(
-        const Transform3D& objectWorldTransform,
-        const RenderSurfaceRecord& surface,
-        const std::vector<MATH::Mat4>& nodeGlobals,
-        MATH::Mat4& outDrawWorldMatrix);
+bool ResolveRenderSurfaceDrawWorldMatrix(const Transform3D& objectWorldTransform, const RenderSurfaceRecord& surface,
+                                         const std::vector<MATH::Mat4>& nodeGlobals, MATH::Mat4& outDrawWorldMatrix);
 
-    bool ResolveClusterSurfaceWorldMatrix(
-        const Transform3D& objectWorldTransform,
-        const RenderSurfaceRecord& surface,
-        const std::vector<MATH::Mat4>& posedNodeGlobals,
-        const std::vector<MATH::Mat4>& bindNodeGlobals,
-        bool hasRuntimeAnimation,
-        MATH::Mat4& outClusterWorldMatrix);
+bool ResolveClusterSurfaceWorldMatrix(const Transform3D& objectWorldTransform, const RenderSurfaceRecord& surface,
+                                      const std::vector<MATH::Mat4>& posedNodeGlobals,
+                                      const std::vector<MATH::Mat4>& bindNodeGlobals, bool hasRuntimeAnimation,
+                                      MATH::Mat4& outClusterWorldMatrix);
 
-    Bounds ResolveRenderSurfaceWorldBounds(
-        const Bounds& fallbackWorldBounds,
-        const RenderSurfaceRecord& surface,
-        const MATH::Mat4& drawWorldMatrix,
-        bool hasDrawWorldMatrix);
+Bounds ResolveRenderSurfaceWorldBounds(const Bounds& fallbackWorldBounds, const RenderSurfaceRecord& surface,
+                                       const MATH::Mat4& drawWorldMatrix, bool hasDrawWorldMatrix);
 
-    bool HasValidRenderSurfacePrimitive(
-        const ModelAsset* model,
-        const RenderSurfaceRecord& surface);
+bool HasValidRenderSurfacePrimitive(const ModelAsset* model, const RenderSurfaceRecord& surface);
 
 } // namespace HIKARI::RENDER3D::RUNTIME

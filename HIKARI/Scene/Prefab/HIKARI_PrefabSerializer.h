@@ -4,12 +4,12 @@
 
 namespace HIKARI {
 
-    struct PrefabDocument;
+struct PrefabDocument;
 
-    class PrefabSerializer {
-    public:
-        bool LoadFromFile(const std::string& path, PrefabDocument& outDocument) const;
-        bool SaveToFile(const std::string& path, const PrefabDocument& document) const;
-    };
+class PrefabSerializer {
+public:
+    bool LoadFromFile(const std::string& path, PrefabDocument& outDocument) const;
+    bool SaveToFile(const std::string& path, const PrefabDocument& document) const;
+};
 
 } // namespace HIKARI

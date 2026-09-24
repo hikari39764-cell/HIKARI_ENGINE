@@ -5,9 +5,7 @@
 
 namespace HIKARI::RENDER3D::TEMPORAL {
 
-    bool ExecuteMotionVectorPass(
-        const GFX::Context& graphics,
-        const TemporalInputs& inputs);
-    void ShutdownMotionVectorPass();
+bool ExecuteMotionVectorPass(const GFX::Context& graphics, const TemporalInputs& inputs);
+void ShutdownMotionVectorPass();
 
 } // namespace HIKARI::RENDER3D::TEMPORAL

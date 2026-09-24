@@ -6,46 +6,43 @@
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 
 namespace HIKARI {
-    class RenderTarget2D;
+class RenderTarget2D;
 }
 
 namespace HIKARI::RENDER3D {
-    struct RenderQualitySettings;
+struct RenderQualitySettings;
 }
 
 namespace HIKARI::RENDER3D::COLOR {
-    struct ExposureFrameState;
+struct ExposureFrameState;
 }
 
 namespace HIKARI::RENDER3D::TEMPORAL {
 
-    enum class TemporalResolveBackend : uint8_t {
-        Off,
-        Taa,
-        Streamline,
-        TaaFallback,
-    };
+enum class TemporalResolveBackend : uint8_t {
+    Off,
+    Taa,
+    Streamline,
+    TaaFallback,
+};
 
-    struct TemporalResolveStageResult {
-        RenderTarget2D* output = nullptr;
-        TemporalResolveBackend backend = TemporalResolveBackend::Off;
-        uint32_t expectedOutputWidth = 0;
-        uint32_t expectedOutputHeight = 0;
-        bool requested = false;
-        bool resolved = false;
-        bool requiresOutputNormalization = false;
-    };
+struct TemporalResolveStageResult {
+    RenderTarget2D* output = nullptr;
+    TemporalResolveBackend backend = TemporalResolveBackend::Off;
+    uint32_t expectedOutputWidth = 0;
+    uint32_t expectedOutputHeight = 0;
+    bool requested = false;
+    bool resolved = false;
+    bool requiresOutputNormalization = false;
+};
 
-    TemporalResolveStageResult ExecuteTemporalResolveStage(
-        TemporalViewLease view,
-        RenderFrameToken frame,
-        TemporalResourceFrame resources,
-        const GFX::Context& graphics,
-        RenderTarget2D& sceneColorTarget,
-        RenderTarget2D& sceneDepthTarget,
-        const RenderQualitySettings& quality,
-        const COLOR::ExposureFrameState& exposureState);
+TemporalResolveStageResult ExecuteTemporalResolveStage(TemporalViewLease view, RenderFrameToken frame,
+                                                       TemporalResourceFrame resources, const GFX::Context& graphics,
+                                                       RenderTarget2D& sceneColorTarget,
+                                                       RenderTarget2D& sceneDepthTarget,
+                                                       const RenderQualitySettings& quality,
+                                                       const COLOR::ExposureFrameState& exposureState);
 
-    const char* ToString(TemporalResolveBackend backend);
+const char* ToString(TemporalResolveBackend backend);
 
 } // namespace HIKARI::RENDER3D::TEMPORAL

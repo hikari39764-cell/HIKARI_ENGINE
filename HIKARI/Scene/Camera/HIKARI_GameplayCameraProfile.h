@@ -42,11 +42,11 @@ struct GameplayCameraProfile {
     std::vector<GameplayCameraMode> modes{GameplayCameraMode{}};
     std::vector<GameplayCameraEffect> effects;
     const GameplayCameraEffect* FindEffect(std::string_view id) const noexcept;
-    const GameplayCameraMode *FindMode(std::string_view id) const noexcept;
+    const GameplayCameraMode* FindMode(std::string_view id) const noexcept;
 };
 
-bool ReadGameplayCameraProfile(const nlohmann::json &json, GameplayCameraProfile &result, std::string &error);
-nlohmann::json WriteGameplayCameraProfile(const GameplayCameraProfile &profile);
-bool ValidateGameplayCameraProfile(const GameplayCameraProfile &profile, std::string &error);
+bool ReadGameplayCameraProfile(const nlohmann::json& json, GameplayCameraProfile& result, std::string& error);
+nlohmann::json WriteGameplayCameraProfile(const GameplayCameraProfile& profile);
+bool ValidateGameplayCameraProfile(const GameplayCameraProfile& profile, std::string& error);
 GameplayCameraProfile MakeGameplayCameraPreset(std::string_view preset);
 } // namespace HIKARI::CAMERA

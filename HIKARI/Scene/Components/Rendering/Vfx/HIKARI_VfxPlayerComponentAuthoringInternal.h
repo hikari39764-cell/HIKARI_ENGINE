@@ -10,35 +10,25 @@
 
 namespace HIKARI {
 
-    class AssetRegistry;
+class AssetRegistry;
 
-    namespace VfxPlayerAuthoringInternal {
+namespace VfxPlayerAuthoringInternal {
 
-        BINDING::ValueType ToBindingType(
-            VFX::VfxValueType type) noexcept;
+BINDING::ValueType ToBindingType(VFX::VfxValueType type) noexcept;
 
-        const VFX::VfxProgram* ResolveProgram(
-            const AssetRegistry* registry,
-            const VfxPlayerSlot& slot) noexcept;
+const VFX::VfxProgram* ResolveProgram(const AssetRegistry* registry, const VfxPlayerSlot& slot) noexcept;
 
-        const VFX::VfxProgramInput* FindProgramInput(
-            const VFX::VfxProgram* program,
-            std::string_view inputId) noexcept;
+const VFX::VfxProgramInput* FindProgramInput(const VFX::VfxProgram* program, std::string_view inputId) noexcept;
 
-        bool IsFiniteVec3(const MATH::Vec3& value) noexcept;
+bool IsFiniteVec3(const MATH::Vec3& value) noexcept;
 
-        AuthoringCommandResult Error(
-            std::string code,
-            std::string message);
+AuthoringCommandResult Error(std::string code, std::string message);
 
-        AuthoringCommandResult Ok(
-            std::string message,
-            nlohmann::json data = nlohmann::json::object());
+AuthoringCommandResult Ok(std::string message, nlohmann::json data = nlohmann::json::object());
 
-        VfxPlayerComponent* Cast(IComponent& component) noexcept;
-        const VfxPlayerComponent* Cast(
-            const IComponent& component) noexcept;
+VfxPlayerComponent* Cast(IComponent& component) noexcept;
+const VfxPlayerComponent* Cast(const IComponent& component) noexcept;
 
-    } // namespace VfxPlayerAuthoringInternal
+} // namespace VfxPlayerAuthoringInternal
 
 } // namespace HIKARI

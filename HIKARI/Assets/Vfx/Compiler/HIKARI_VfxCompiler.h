@@ -7,13 +7,12 @@
 
 namespace HIKARI::VFX {
 
-    struct VfxCompileResult {
-        bool success = false;
-        VfxProgram program{};
-        std::vector<VfxDiagnostic> diagnostics{};
-    };
+struct VfxCompileResult {
+    bool success = false;
+    VfxProgram program{};
+    std::vector<VfxDiagnostic> diagnostics{};
+};
 
-    VfxCompileResult CompileVfxAsset(
-        const VfxAssetData& asset);
+VfxCompileResult CompileVfxAsset(const VfxAssetData& asset);
 
 } // namespace HIKARI::VFX

@@ -11,4 +11,4 @@ struct AiToolReply {
     AiChatMessage Message(const std::string& content) const;
 };
 nlohmann::json BuildAiTools();
-}
+} // namespace HIKARI::EDITOR::AI_ASSISTANT

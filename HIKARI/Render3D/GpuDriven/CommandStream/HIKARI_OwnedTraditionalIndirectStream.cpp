@@ -4,168 +4,131 @@
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
 
-    void OwnedTraditionalIndirectStream::Clear() {
-        records.clear();
-        executableRecordIndices.clear();
-        commands.clear();
-        instances.clear();
-        materialSources.clear();
-        jointPalettes.clear();
-        bucketVariants.clear();
-        gpuSceneBaseIndex = 0;
-        gpuSceneInstanceCount = 0;
-        staticCommandCount = 0;
-        skinnedCommandCount = 0;
+void OwnedTraditionalIndirectStream::Clear() {
+    records.clear();
+    executableRecordIndices.clear();
+    commands.clear();
+    instances.clear();
+    materialSources.clear();
+    jointPalettes.clear();
+    bucketVariants.clear();
+    gpuSceneBaseIndex = 0;
+    gpuSceneInstanceCount = 0;
+    staticCommandCount = 0;
+    skinnedCommandCount = 0;
+}
+
+bool OwnedTraditionalIndirectStream::CopyFrom(const GpuDrivenTraditionalIndirectView& view) {
+    Clear();
+    if (!view.HasCommands()) {
+        return false;
     }
 
-    bool OwnedTraditionalIndirectStream::CopyFrom(
-        const GpuDrivenTraditionalIndirectView& view) {
+    records = *view.records;
+    executableRecordIndices = *view.executableRecordIndices;
+    commands = *view.commands;
+    if (view.instances != nullptr) {
+        instances = *view.instances;
+    }
+    if (view.materialSources != nullptr) {
+        materialSources = *view.materialSources;
+    }
+    if (view.jointPalettes != nullptr) {
+        jointPalettes = *view.jointPalettes;
+    }
+    if (view.bucketVariants != nullptr) {
+        bucketVariants = *view.bucketVariants;
+    }
+    gpuSceneBaseIndex = view.gpuSceneBaseIndex;
+    gpuSceneInstanceCount = view.gpuSceneInstanceCount;
+    staticCommandCount = view.staticCommandCount;
+    skinnedCommandCount = view.skinnedCommandCount;
+    return true;
+}
 
-        Clear();
-        if (!view.HasCommands()) {
-            return false;
-        }
-
-        records = *view.records;
-        executableRecordIndices = *view.executableRecordIndices;
-        commands = *view.commands;
-        if (view.instances != nullptr) {
-            instances = *view.instances;
-        }
-        if (view.materialSources != nullptr) {
-            materialSources = *view.materialSources;
-        }
-        if (view.jointPalettes != nullptr) {
-            jointPalettes = *view.jointPalettes;
-        }
-        if (view.bucketVariants != nullptr) {
-            bucketVariants = *view.bucketVariants;
-        }
-        gpuSceneBaseIndex = view.gpuSceneBaseIndex;
-        gpuSceneInstanceCount = view.gpuSceneInstanceCount;
-        staticCommandCount = view.staticCommandCount;
-        skinnedCommandCount = view.skinnedCommandCount;
-        return true;
+bool OwnedTraditionalIndirectStream::CopyRangeFrom(
+    const GpuDrivenTraditionalIndirectView& view, size_t firstCommand, size_t commandCount,
+    bool (*includeInstance)(const RUNTIME::SurfaceGpuSceneInstance&, const RUNTIME::SurfaceGpuSceneMaterialSource*)) {
+    Clear();
+    if (!view.HasCommands() || view.records == nullptr || view.executableRecordIndices == nullptr ||
+        view.commands == nullptr || view.instances == nullptr || view.materialSources == nullptr ||
+        view.jointPalettes == nullptr || firstCommand >= view.commands->size()) {
+        return false;
     }
 
-    bool OwnedTraditionalIndirectStream::CopyRangeFrom(
-        const GpuDrivenTraditionalIndirectView& view,
-        size_t firstCommand,
-        size_t commandCount,
-        bool (*includeInstance)(const RUNTIME::SurfaceGpuSceneInstance&,
-            const RUNTIME::SurfaceGpuSceneMaterialSource*)) {
-
-        Clear();
-        if (!view.HasCommands() ||
-            view.records == nullptr ||
-            view.executableRecordIndices == nullptr ||
-            view.commands == nullptr ||
-            view.instances == nullptr ||
-            view.materialSources == nullptr ||
-            view.jointPalettes == nullptr ||
-            firstCommand >= view.commands->size()) {
-            return false;
-        }
-
-        const size_t endCommand = firstCommand + (std::min)(
-            view.commands->size() - firstCommand, commandCount);
-        if (endCommand <= firstCommand) {
-            return false;
-        }
-
-        records.reserve(endCommand - firstCommand);
-        executableRecordIndices.reserve(
-            endCommand - firstCommand);
-        commands.reserve(endCommand - firstCommand);
-        instances.reserve(endCommand - firstCommand);
-        materialSources.reserve(endCommand - firstCommand);
-        jointPalettes.reserve(endCommand - firstCommand);
-        if (view.bucketVariants != nullptr) {
-            bucketVariants = *view.bucketVariants;
-        }
-
-        for (size_t sourceIndex = firstCommand;
-            sourceIndex < endCommand;
-            ++sourceIndex) {
-
-            if (includeInstance != nullptr && !includeInstance(
-                (*view.instances)[sourceIndex], &(*view.materialSources)[sourceIndex])) {
-                continue;
-            }
-            const uint32_t localIndex =
-                static_cast<uint32_t>(records.size());
-            records.push_back((*view.records)[sourceIndex]);
-            executableRecordIndices.push_back(localIndex);
-
-            RUNTIME::SurfaceGpuSceneInstance instance =
-                (*view.instances)[sourceIndex];
-            instance.sourceRecordIndex = localIndex;
-            instances.push_back(instance);
-
-            RUNTIME::SurfaceGpuSceneMaterialSource material =
-                (*view.materialSources)[sourceIndex];
-            material.localGpuSceneInstanceIndex = localIndex;
-            material.sourceRecordIndex = localIndex;
-            materialSources.push_back(material);
-
-            jointPalettes.push_back(
-                (*view.jointPalettes)[sourceIndex]);
-
-            RUNTIME::SurfaceDrawCommand command =
-                (*view.commands)[sourceIndex];
-            command.firstExecutableIndex = localIndex;
-            command.firstRecordIndex = localIndex;
-            command.firstGpuSceneInstanceIndex = localIndex;
-            commands.push_back(command);
-            // 形状形式と陰影の時間変化は別の分類。動的ストリームにも静的 VB が入る。
-            if (records.back().skinned) {
-                ++skinnedCommandCount;
-            } else {
-                ++staticCommandCount;
-            }
-        }
-
-        gpuSceneBaseIndex = 0;
-        gpuSceneInstanceCount =
-            static_cast<uint32_t>(instances.size());
-        return !commands.empty();
+    const size_t endCommand = firstCommand + (std::min)(view.commands->size() - firstCommand, commandCount);
+    if (endCommand <= firstCommand) {
+        return false;
     }
 
-    GpuDrivenTraditionalIndirectView
-        OwnedTraditionalIndirectStream::GetView() const {
+    records.reserve(endCommand - firstCommand);
+    executableRecordIndices.reserve(endCommand - firstCommand);
+    commands.reserve(endCommand - firstCommand);
+    instances.reserve(endCommand - firstCommand);
+    materialSources.reserve(endCommand - firstCommand);
+    jointPalettes.reserve(endCommand - firstCommand);
+    if (view.bucketVariants != nullptr) {
+        bucketVariants = *view.bucketVariants;
+    }
 
-        GpuDrivenTraditionalIndirectView view{};
-        if (commands.empty() ||
-            records.empty() ||
-            executableRecordIndices.empty()) {
-            return view;
+    for (size_t sourceIndex = firstCommand; sourceIndex < endCommand; ++sourceIndex) {
+        if (includeInstance != nullptr &&
+            !includeInstance((*view.instances)[sourceIndex], &(*view.materialSources)[sourceIndex])) {
+            continue;
         }
+        const uint32_t localIndex = static_cast<uint32_t>(records.size());
+        records.push_back((*view.records)[sourceIndex]);
+        executableRecordIndices.push_back(localIndex);
 
-        view.records = &records;
-        view.executableRecordIndices =
-            &executableRecordIndices;
-        view.commands = &commands;
-        view.instances =
-            instances.empty() ? nullptr : &instances;
-        view.materialSources =
-            materialSources.empty()
-                ? nullptr
-                : &materialSources;
-        view.jointPalettes =
-            jointPalettes.empty() ? nullptr : &jointPalettes;
-        view.bucketVariants =
-            bucketVariants.empty() ? nullptr : &bucketVariants;
-        view.gpuSceneBaseIndex = gpuSceneBaseIndex;
-        view.gpuSceneInstanceCount = gpuSceneInstanceCount;
-        view.staticCommandCount = staticCommandCount;
-        view.skinnedCommandCount = skinnedCommandCount;
+        RUNTIME::SurfaceGpuSceneInstance instance = (*view.instances)[sourceIndex];
+        instance.sourceRecordIndex = localIndex;
+        instances.push_back(instance);
+
+        RUNTIME::SurfaceGpuSceneMaterialSource material = (*view.materialSources)[sourceIndex];
+        material.localGpuSceneInstanceIndex = localIndex;
+        material.sourceRecordIndex = localIndex;
+        materialSources.push_back(material);
+
+        jointPalettes.push_back((*view.jointPalettes)[sourceIndex]);
+
+        RUNTIME::SurfaceDrawCommand command = (*view.commands)[sourceIndex];
+        command.firstExecutableIndex = localIndex;
+        command.firstRecordIndex = localIndex;
+        command.firstGpuSceneInstanceIndex = localIndex;
+        commands.push_back(command);
+        // 形状形式と陰影の時間変化は別の分類。動的ストリームにも静的 VB が入る。
+        if (records.back().skinned) {
+            ++skinnedCommandCount;
+        } else {
+            ++staticCommandCount;
+        }
+    }
+
+    gpuSceneBaseIndex = 0;
+    gpuSceneInstanceCount = static_cast<uint32_t>(instances.size());
+    return !commands.empty();
+}
+
+GpuDrivenTraditionalIndirectView OwnedTraditionalIndirectStream::GetView() const {
+    GpuDrivenTraditionalIndirectView view{};
+    if (commands.empty() || records.empty() || executableRecordIndices.empty()) {
         return view;
     }
 
-    void OwnedTraditionalIndirectStream::AttachTo(
-        GpuDrivenPassSource& pass) const {
+    view.records = &records;
+    view.executableRecordIndices = &executableRecordIndices;
+    view.commands = &commands;
+    view.instances = instances.empty() ? nullptr : &instances;
+    view.materialSources = materialSources.empty() ? nullptr : &materialSources;
+    view.jointPalettes = jointPalettes.empty() ? nullptr : &jointPalettes;
+    view.bucketVariants = bucketVariants.empty() ? nullptr : &bucketVariants;
+    view.gpuSceneBaseIndex = gpuSceneBaseIndex;
+    view.gpuSceneInstanceCount = gpuSceneInstanceCount;
+    view.staticCommandCount = staticCommandCount;
+    view.skinnedCommandCount = skinnedCommandCount;
+    return view;
+}
 
-        pass.traditionalIndirect = GetView();
-    }
+void OwnedTraditionalIndirectStream::AttachTo(GpuDrivenPassSource& pass) const { pass.traditionalIndirect = GetView(); }
 
 } // namespace HIKARI::RENDER3D::GPUDRIVEN

@@ -6,11 +6,7 @@
 
 namespace HIKARI::ANIMATION {
 
-    void SerializeAnimationStateMachineJson(
-        const AnimationStateMachineDefinition& definition,
-        nlohmann::json& out);
-    bool DeserializeAnimationStateMachineJson(
-        const nlohmann::json& input,
-        AnimationStateMachineDefinition& out);
+void SerializeAnimationStateMachineJson(const AnimationStateMachineDefinition& definition, nlohmann::json& out);
+bool DeserializeAnimationStateMachineJson(const nlohmann::json& input, AnimationStateMachineDefinition& out);
 
 } // namespace HIKARI::ANIMATION

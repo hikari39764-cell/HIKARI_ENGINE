@@ -7,12 +7,12 @@
 #include <algorithm>
 
 namespace HIKARI {
-EDITOR::EditorOperationResult DocumentSceneEditorController::BindGameplayCamera(const nlohmann::json &p) {
-    auto *scene = aiOperationScene_;
+EDITOR::EditorOperationResult DocumentSceneEditorController::BindGameplayCamera(const nlohmann::json& p) {
+    auto* scene = aiOperationScene_;
     if (!scene || scene->IsRuntimePlayActive())
         return {false, "EDIT_MODE_REQUIRED", "Bind a camera outside Play mode."};
     const AssetGuid guid{p.at("assetGuid").get<std::string>()};
-    const auto *record = scene->GetAssetDatabase().FindByGuid(guid);
+    const auto* record = scene->GetAssetDatabase().FindByGuid(guid);
     if (!record || record->type != AssetType::GameplayCamera)
         return {false, "ASSET_NOT_FOUND", "Save a gameplay camera profile first."};
     CAMERA::GameplayCameraProfile profile;
@@ -26,10 +26,10 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::BindGameplayCamera(
     const SceneObjectId look{p.value("lookTargetId", uint64_t{0})};
     if (!scene->GetWorld().FindObject(target) || (look.value && !scene->GetWorld().FindObject(look)))
         return {false, "TARGET_NOT_FOUND", "Select existing follow and look targets."};
-    auto &document = scene->GetSceneDocument();
+    auto& document = scene->GetSceneDocument();
     const SceneObjectId requested{p.value("cameraId", uint64_t{0})};
     auto found = std::find_if(document.objects.begin(), document.objects.end(),
-                              [&](const auto &object) { return object.id == requested; });
+                              [&](const auto& object) { return object.id == requested; });
     if (requested.value && found == document.objects.end())
         return {false, "CAMERA_NOT_FOUND", "Selected camera no longer exists."};
     const bool create = found == document.objects.end();
@@ -43,13 +43,13 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::BindGameplayCamera(
     DocumentComponentAuthoringService service;
     const auto added = service.AddComponent(scene->GetComponentRegistry(), object, "CameraFollowComponent");
     auto follow = std::find_if(object.components.begin(), object.components.end(),
-                               [](const auto &c) { return c.type == "CameraFollowComponent"; });
+                               [](const auto& c) { return c.type == "CameraFollowComponent"; });
     if (follow == object.components.end())
         return {false, "COMPONENT_FAILED", added.message};
     const auto mode = p.value("mode", profile.defaultMode);
     if (!profile.FindMode(mode))
         return {false, "MODE_NOT_FOUND", "Selected mode does not exist."};
-    auto &props = follow->properties;
+    auto& props = follow->properties;
     props["enabled"] = true;
     props["targetObjectId"] = SCENE::SERIALIZATION::WriteSceneObjectReference(target.value);
     props["cameraProfile"] = guid.value;

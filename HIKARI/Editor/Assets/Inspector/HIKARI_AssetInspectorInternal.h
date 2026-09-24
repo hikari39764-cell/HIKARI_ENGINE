@@ -15,22 +15,17 @@ struct EditorSelection;
 namespace HIKARI::EDITOR::ASSET_INSPECTOR {
 
 #if defined(HIKARI_WITH_EDITOR)
-std::string
-ToClusteredGeometryArtifactStateText(ClusteredGeometryArtifactState state);
+std::string ToClusteredGeometryArtifactStateText(ClusteredGeometryArtifactState state);
 
-void DrawClusteredGeometryArtifactInfo(const ClusteredGeometryArtifactInfo &info);
+void DrawClusteredGeometryArtifactInfo(const ClusteredGeometryArtifactInfo& info);
 
-void DrawModelDiagnostics(const ClusteredGeometryArtifactInfo &info,
-                          const nlohmann::json &report);
+void DrawModelDiagnostics(const ClusteredGeometryArtifactInfo& info, const nlohmann::json& report);
 
-void CopyToBuffer(const std::string &text, char *buffer, size_t bufferSize);
+void CopyToBuffer(const std::string& text, char* buffer, size_t bufferSize);
 
-bool DrawMaterialAssetEditor(AssetDatabase &assetDatabase,
-                             AssetRegistry &assetRegistry,
-                             EditorSelection &selection, AssetRecord &record,
-                             AssetGuid &outApplyRuntimeGuid,
-                             PbrMaterialAssetData &outApplyRuntimeData,
-                             std::string &outRefreshRuntimeGuid);
+bool DrawMaterialAssetEditor(AssetDatabase& assetDatabase, AssetRegistry& assetRegistry, EditorSelection& selection,
+                             AssetRecord& record, AssetGuid& outApplyRuntimeGuid,
+                             PbrMaterialAssetData& outApplyRuntimeData, std::string& outRefreshRuntimeGuid);
 #endif
 
 } // namespace HIKARI::EDITOR::ASSET_INSPECTOR

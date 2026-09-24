@@ -8,17 +8,8 @@
 
 namespace HIKARI::VFX::PRESETS::INTERNAL {
 
-    VfxEmitterData MakePresetEmitterBase(
-        std::string idSuffix,
-        std::string name);
+VfxEmitterData MakePresetEmitterBase(std::string idSuffix, std::string name);
 
-    VfxAssetData MakePresetAssetFromEmitters(
-        VfxAssetData asset,
-        std::vector<VfxEmitterData> emitters);
-
-    void SetPresetColorStops(
-        VfxEmitterData& emitter,
-        const MATH::Vec4& start,
-        const MATH::Vec4& end);
+VfxAssetData MakePresetAssetFromEmitters(VfxAssetData asset, std::vector<VfxEmitterData> emitters);
 
 } // namespace HIKARI::VFX::PRESETS::INTERNAL

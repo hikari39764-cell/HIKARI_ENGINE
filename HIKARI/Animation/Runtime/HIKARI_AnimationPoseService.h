@@ -8,20 +8,15 @@
 
 namespace HIKARI::ANIMATION {
 
-    class AnimationPoseService {
-    public:
-        bool Publish(
-            RuntimeObjectHandle object,
-            AnimationPoseSnapshot snapshot);
-        std::shared_ptr<const AnimationPoseSnapshot> Find(
-            RuntimeObjectHandle object) const noexcept;
-        void Remove(RuntimeObjectHandle object) noexcept;
-        void Clear() noexcept;
+class AnimationPoseService {
+public:
+    bool Publish(RuntimeObjectHandle object, AnimationPoseSnapshot snapshot);
+    std::shared_ptr<const AnimationPoseSnapshot> Find(RuntimeObjectHandle object) const noexcept;
+    void Remove(RuntimeObjectHandle object) noexcept;
+    void Clear() noexcept;
 
-    private:
-        std::unordered_map<
-            uint64_t,
-            std::shared_ptr<AnimationPoseSnapshot>> poses_{};
-    };
+private:
+    std::unordered_map<uint64_t, std::shared_ptr<AnimationPoseSnapshot>> poses_{};
+};
 
 } // namespace HIKARI::ANIMATION

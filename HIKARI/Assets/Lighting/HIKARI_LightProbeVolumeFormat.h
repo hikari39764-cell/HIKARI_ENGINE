@@ -9,49 +9,41 @@
 
 namespace HIKARI::ASSETS::LIGHTING {
 
-    constexpr uint32_t kLightProbeVolumeVersion = 2;
-    constexpr uint32_t kLightProbeShOrder = 3;
-    constexpr uint32_t kLightProbeShCoeffCount = 9;
-    constexpr uint32_t kLightProbeVisibilityResolution = 16;
-    constexpr uint32_t kLightProbeVisibilityTexelCount =
-        kLightProbeVisibilityResolution * kLightProbeVisibilityResolution;
+constexpr uint32_t kLightProbeVolumeVersion = 2;
+constexpr uint32_t kLightProbeShOrder = 3;
+constexpr uint32_t kLightProbeShCoeffCount = 9;
+constexpr uint32_t kLightProbeVisibilityResolution = 16;
+constexpr uint32_t kLightProbeVisibilityTexelCount = kLightProbeVisibilityResolution * kLightProbeVisibilityResolution;
 
-    struct LightProbeSh9 {
-        MATH::Vec3 coeffs[kLightProbeShCoeffCount]{};
-    };
+struct LightProbeSh9 {
+    MATH::Vec3 coeffs[kLightProbeShCoeffCount]{};
+};
 
-    struct LightProbeVolumeFileData {
-        MATH::Vec3 origin{};
-        MATH::Vec3 size{};
-        MATH::Vec3 spacing{};
-        uint32_t countX = 0;
-        uint32_t countY = 0;
-        uint32_t countZ = 0;
-        uint32_t shOrder = kLightProbeShOrder;
-        uint32_t coeffCount = kLightProbeShCoeffCount;
-        std::vector<LightProbeSh9> probes{};
-        float visibilityDistanceScale = 0.0f;
-        // probe-major octahedral distance moments E[d], E[d*d], normalized to [0,1].
-        std::vector<MATH::Vec2> visibilityMoments{};
-    };
+struct LightProbeVolumeFileData {
+    MATH::Vec3 origin{};
+    MATH::Vec3 size{};
+    MATH::Vec3 spacing{};
+    uint32_t countX = 0;
+    uint32_t countY = 0;
+    uint32_t countZ = 0;
+    uint32_t shOrder = kLightProbeShOrder;
+    uint32_t coeffCount = kLightProbeShCoeffCount;
+    std::vector<LightProbeSh9> probes{};
+    float visibilityDistanceScale = 0.0f;
+    // probe-major octahedral distance moments E[d], E[d*d], normalized to [0,1].
+    std::vector<MATH::Vec2> visibilityMoments{};
+};
 
-    // 保存と GPU 読み込みで同じ格子・SH データ契約を検証する。
-    bool ValidateLightProbeVolumeData(
-        const LightProbeVolumeFileData& data,
-        std::string* outMessage = nullptr);
+// 保存と GPU 読み込みで同じ格子・SH データ契約を検証する。
+bool ValidateLightProbeVolumeData(const LightProbeVolumeFileData& data, std::string* outMessage = nullptr);
 
-    bool LoadLightProbeVolumeFile(
-        const std::filesystem::path& path,
-        LightProbeVolumeFileData& outData,
-        std::string* outMessage = nullptr);
+bool LoadLightProbeVolumeFile(const std::filesystem::path& path, LightProbeVolumeFileData& outData,
+                              std::string* outMessage = nullptr);
 
-    bool SaveLightProbeVolumeFile(
-        const std::filesystem::path& path,
-        const LightProbeVolumeFileData& data,
-        std::string* outMessage = nullptr);
+bool SaveLightProbeVolumeFile(const std::filesystem::path& path, const LightProbeVolumeFileData& data,
+                              std::string* outMessage = nullptr);
 
-    std::filesystem::path BuildLightProbeVolumeOutputPath(
-        const std::filesystem::path& projectRoot,
-        const std::string& sceneGuid);
+std::filesystem::path BuildLightProbeVolumeOutputPath(const std::filesystem::path& projectRoot,
+                                                      const std::string& sceneGuid);
 
 } // namespace HIKARI::ASSETS::LIGHTING

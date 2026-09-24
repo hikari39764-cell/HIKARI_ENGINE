@@ -5,9 +5,7 @@
 
 namespace HIKARI::RENDER3D::TEMPORAL {
 
-    bool ExecuteTemporalMaskPass(
-        const GFX::Context& graphics,
-        const TemporalInputs& inputs);
-    void ShutdownTemporalMaskPass();
+bool ExecuteTemporalMaskPass(const GFX::Context& graphics, const TemporalInputs& inputs);
+void ShutdownTemporalMaskPass();
 
 } // namespace HIKARI::RENDER3D::TEMPORAL

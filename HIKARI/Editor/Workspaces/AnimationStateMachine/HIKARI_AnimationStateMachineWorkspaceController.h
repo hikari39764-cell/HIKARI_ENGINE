@@ -27,246 +27,202 @@
 namespace HIKARI {
 class DocumentSceneBase;
 class AssetDatabase;
-}
+} // namespace HIKARI
 namespace HIKARI::ANIMATION {
 struct AnimationStateMachineRuntimeSnapshot;
 }
 
 namespace HIKARI::EDITOR {
 
-    class EditorWorkspaceHost;
-    class EditorOperationRegistry;
+class EditorWorkspaceHost;
+class EditorOperationRegistry;
 
-    /// アニメーションステートマシン編集ワークスペースの描画結果。
-    struct AnimationStateMachineWorkspaceResult {
-        bool exitToSceneRequested = false;
-        std::string statusMessage{};
+/// アニメーションステートマシン編集ワークスペースの描画結果。
+struct AnimationStateMachineWorkspaceResult {
+    bool exitToSceneRequested = false;
+    std::string statusMessage{};
+};
+
+/// アニメーションステートマシン編集用ワークスペースを管理する。
+///
+/// ドキュメントのライフサイクル、グラフ編集UI、選択状態、Undo/Redo、
+/// 保存確認、およびランタイムデバッグ表示を統括する。
+class AnimationStateMachineWorkspaceController {
+public:
+    /// ワークスペースのアクティブ化要求を適用する。
+    /// アセットが指定されている場合は、対象ドキュメントを開く。
+    void ApplyWorkspaceActivation(DocumentSceneBase& scene, const EditorWorkspaceActivation& activation);
+
+    void DrawDockSpace(bool resetDefaultDockLayout) const;
+
+    /// ワークスペース全体を描画し、そのフレームで発生した要求を返す。
+    AnimationStateMachineWorkspaceResult Draw(DocumentSceneBase& scene, EditorCommandRouter& commandRouter);
+
+    bool IsDocumentOpen() const noexcept;
+    const AssetGuid& GetDocumentAssetGuid() const noexcept { return document_.GetAssetGuid(); }
+    bool IsDocumentDirty() const noexcept;
+    bool CanUndo() const noexcept;
+    bool CanRedo() const noexcept;
+
+    /// 現在のドキュメントを保存する。
+    /// 失敗した場合はoutMessageに理由を設定する。
+    bool Save(DocumentSceneBase& scene, std::string& outMessage);
+
+    bool Undo(std::string& outMessage);
+    bool Redo(std::string& outMessage);
+    bool NewAsset(std::string& outMessage);
+    bool OpenAsset(AssetDatabase& assetDatabase, const AssetGuid& assetGuid, std::string& outMessage);
+
+    /// このワークスペースで使用するドキュメントコマンドを登録する。
+    void BindDocumentCommands(EditorCommandRouter& commandRouter, DocumentSceneBase& scene);
+
+    // Authoring actions exposed to the unified editor operation bus so
+    // human UI, AI actions and the local bridge share the same path.
+    void AddState();
+    void AddStateAt(float graphX, float graphY);
+    void AddParameter(ANIMATION::AnimationParameterType type);
+    void AddTransitionBetween(ANIMATION::AnimationStateId source, ANIMATION::AnimationStateId target);
+
+    bool DeleteState(ANIMATION::AnimationStateId stateId, std::string& outMessage);
+    bool DeleteParameter(ANIMATION::AnimationParameterId parameterId, std::string& outMessage);
+    bool DeleteTransition(ANIMATION::AnimationTransitionId transitionId, std::string& outMessage);
+    bool EditStateProperties(ANIMATION::AnimationStateId stateId, const std::optional<std::string>& name,
+                             const std::optional<float>& speed, const std::optional<bool>& loop,
+                             std::string& outMessage);
+
+    const ANIMATION::AnimationStateMachineDefinition& GetDefinition() const noexcept;
+    const std::string& GetStatusMessage() const noexcept;
+    void SetOperationRegistry(const EditorOperationRegistry* registry) noexcept;
+    bool DeleteSelected(std::string& outMessage);
+
+private:
+    enum class SelectionKind : uint8_t {
+        None,
+        State,
+        Parameter,
+        Transition,
     };
 
-    /// アニメーションステートマシン編集用ワークスペースを管理する。
-    ///
-    /// ドキュメントのライフサイクル、グラフ編集UI、選択状態、Undo/Redo、
-    /// 保存確認、およびランタイムデバッグ表示を統括する。
-    class AnimationStateMachineWorkspaceController {
-    public:
-        /// ワークスペースのアクティブ化要求を適用する。
-        /// アセットが指定されている場合は、対象ドキュメントを開く。
-        void ApplyWorkspaceActivation(
-            DocumentSceneBase& scene,
-            const EditorWorkspaceActivation& activation);
-
-        void DrawDockSpace(bool resetDefaultDockLayout) const;
-
-        /// ワークスペース全体を描画し、そのフレームで発生した要求を返す。
-        AnimationStateMachineWorkspaceResult Draw(
-            DocumentSceneBase& scene,
-            EditorCommandRouter& commandRouter);
-
-        bool IsDocumentOpen() const noexcept;
-        const AssetGuid& GetDocumentAssetGuid() const noexcept { return document_.GetAssetGuid(); }
-        bool IsDocumentDirty() const noexcept;
-        bool CanUndo() const noexcept;
-        bool CanRedo() const noexcept;
-
-        /// 現在のドキュメントを保存する。
-        /// 失敗した場合はoutMessageに理由を設定する。
-        bool Save(DocumentSceneBase& scene, std::string& outMessage);
-
-        bool Undo(std::string& outMessage);
-        bool Redo(std::string& outMessage);
-        bool NewAsset(std::string& outMessage);
-        bool OpenAsset(
-            AssetDatabase& assetDatabase,
-            const AssetGuid& assetGuid,
-            std::string& outMessage);
-
-        /// このワークスペースで使用するドキュメントコマンドを登録する。
-        void BindDocumentCommands(
-            EditorCommandRouter& commandRouter,
-            DocumentSceneBase& scene);
-
-        // Authoring actions exposed to the unified editor operation bus so
-        // human UI, AI actions and the local bridge share the same path.
-        void AddState();
-        void AddStateAt(float graphX, float graphY);
-        void AddParameter(ANIMATION::AnimationParameterType type);
-        void AddTransitionBetween(
-            ANIMATION::AnimationStateId source,
-            ANIMATION::AnimationStateId target);
-
-        bool DeleteState(
-            ANIMATION::AnimationStateId stateId,
-            std::string& outMessage);
-        bool DeleteParameter(
-            ANIMATION::AnimationParameterId parameterId,
-            std::string& outMessage);
-        bool DeleteTransition(
-            ANIMATION::AnimationTransitionId transitionId,
-            std::string& outMessage);
-        bool EditStateProperties(
-            ANIMATION::AnimationStateId stateId,
-            const std::optional<std::string>& name,
-            const std::optional<float>& speed,
-            const std::optional<bool>& loop,
-            std::string& outMessage);
-
-        const ANIMATION::AnimationStateMachineDefinition& GetDefinition()
-            const noexcept;
-        const std::string& GetStatusMessage() const noexcept;
-        void SetOperationRegistry(
-            const EditorOperationRegistry* registry) noexcept;
-        bool DeleteSelected(std::string& outMessage);
-
-    private:
-        enum class SelectionKind : uint8_t {
-            None,
-            State,
-            Parameter,
-            Transition,
-        };
-
-        /// グラフメニューから、そのフレーム中に発行された操作要求。
-        struct GraphMenuRequests {
-            bool addStateAtCenter = false;
-            bool frameAll = false;
-            bool frameSelection = false;
-            bool resetView = false;
-        };
-
-        /// 未保存確認後に実行するドキュメント操作。
-        enum class PendingDocumentAction : uint8_t {
-            None,
-            NewDocument,
-            OpenAsset,
-            ExitToScene,
-        };
-
-        // -------------------------------------------------------------------------
-        // Workspace windows
-        // -------------------------------------------------------------------------
-
-        void DrawGraphWindow(
-            DocumentSceneBase& scene,
-            AnimationStateMachineWorkspaceResult& result,
-            EditorCommandRouter& commandRouter);
-
-        void DrawGraphMenuBar(
-            DocumentSceneBase& scene,
-            AnimationStateMachineWorkspaceResult& result,
-            GraphMenuRequests& requests,
-            EditorCommandRouter& commandRouter);
-
-        void DrawParametersWindow();
-        void DrawTransitionsWindow();
-        void DrawDetailsWindow(DocumentSceneBase& scene);
-        void DrawDiagnosticsWindow(DocumentSceneBase& scene);
-        void DrawRuntimeDebug(DocumentSceneBase& scene);
-
-        /// 選択中ステートのモーション設定UIを描画する。
-        void DrawSelectedStateMotionEditor(
-            DocumentSceneBase& scene,
-            ANIMATION::AnimationState& state);
-
-        // -------------------------------------------------------------------------
-        // Document lifecycle
-        // -------------------------------------------------------------------------
-
-        /// ドキュメントが未保存の場合は確認ダイアログを要求し、
-        /// 操作をpending状態として保持する。
-        void RequestDocumentAction(
-            DocumentSceneBase& scene,
-            AnimationStateMachineWorkspaceResult& result,
-            GraphMenuRequests& requests,
-            PendingDocumentAction action,
-            AssetGuid assetGuid = {});
-
-        /// 未保存確認済みのドキュメント操作を実行する。
-        void ExecuteDocumentAction(
-            DocumentSceneBase& scene,
-            AnimationStateMachineWorkspaceResult& result,
-            GraphMenuRequests& requests,
-            PendingDocumentAction action,
-            const AssetGuid& assetGuid);
-
-        void DrawUnsavedDocumentDialog(
-            DocumentSceneBase& scene,
-            AnimationStateMachineWorkspaceResult& result,
-            GraphMenuRequests& requests);
-
-        // -------------------------------------------------------------------------
-        // Graph editing
-        // -------------------------------------------------------------------------
-
-        void DeleteSelectedState();
-
-        void DeleteSelectedParameter();
-
-        void AddTransition();
-
-        void DeleteSelectedTransition();
-
-        // -------------------------------------------------------------------------
-        // Selection
-        // -------------------------------------------------------------------------
-
-        void SelectEntryState() noexcept;
-
-        /// 削除などで無効になった選択IDを解除し、
-        /// selectionKindと選択IDの整合性を維持する。
-        void NormalizeSelection() noexcept;
-
-        ANIMATION::AnimationState* SelectedState() noexcept;
-        ANIMATION::AnimationParameterDefinition* SelectedParameter() noexcept;
-        ANIMATION::AnimationStateTransition* SelectedTransition() noexcept;
-
-        // -------------------------------------------------------------------------
-        // History and runtime debug
-        // -------------------------------------------------------------------------
-
-        /// 編集前の定義をUndo履歴へ記録する。
-        /// 同一のmergeGroupを持つ連続操作は統合できる。
-        void RecordMutation(
-            ANIMATION::AnimationStateMachineDefinition before,
-            uint64_t mergeGroup = 0u);
-
-        /// 現在選択されているランタイムオブジェクトのスナップショットを取得する。
-        /// 利用できない場合はnullptrを返す。
-        const ANIMATION::AnimationStateMachineRuntimeSnapshot*
-            ResolveRuntimeDebugSnapshot(DocumentSceneBase& scene);
-
-        AnimationStateMachineEditorDocument document_{};
-
-        SelectionKind selectionKind_ = SelectionKind::None;
-        ANIMATION::AnimationStateId selectedStateId_{};
-        ANIMATION::AnimationParameterId selectedParameterId_{};
-        ANIMATION::AnimationTransitionId selectedTransitionId_{};
-
-        float graphPanX_ = 0.0f;
-        float graphPanY_ = 0.0f;
-        float graphZoom_ = 1.0f;
-        char parameterSearch_[128]{};
-        char transitionSearch_[128]{};
-        bool connectedTransitionsOnly_ = true;
-
-        ANIMATION::AnimationStateId graphContextStateId_{};
-        ANIMATION::AnimationTransitionId graphContextTransitionId_{};
-        ANIMATION::AnimationStateId transitionDragSourceStateId_{};
-        float graphContextX_ = 0.0f;
-        float graphContextY_ = 0.0f;
-
-        /// ドラッグ操作開始前の定義。ドラッグ終了時の履歴登録に使用する。
-        std::optional<ANIMATION::AnimationStateMachineDefinition>
-            graphDragBefore_{};
-
-        RuntimeObjectHandle runtimeDebugObject_{};
-
-        PendingDocumentAction pendingDocumentAction_ =
-            PendingDocumentAction::None;
-        AssetGuid pendingDocumentAssetGuid_{};
-        bool requestUnsavedDocumentDialog_ = false;
-
-        std::string statusMessage_{};
-        const EditorOperationRegistry* operationRegistry_ = nullptr;
+    /// グラフメニューから、そのフレーム中に発行された操作要求。
+    struct GraphMenuRequests {
+        bool addStateAtCenter = false;
+        bool frameAll = false;
+        bool frameSelection = false;
+        bool resetView = false;
     };
+
+    /// 未保存確認後に実行するドキュメント操作。
+    enum class PendingDocumentAction : uint8_t {
+        None,
+        NewDocument,
+        OpenAsset,
+        ExitToScene,
+    };
+
+    // -------------------------------------------------------------------------
+    // Workspace windows
+    // -------------------------------------------------------------------------
+
+    void DrawGraphWindow(DocumentSceneBase& scene, AnimationStateMachineWorkspaceResult& result,
+                         EditorCommandRouter& commandRouter);
+
+    void DrawGraphMenuBar(DocumentSceneBase& scene, AnimationStateMachineWorkspaceResult& result,
+                          GraphMenuRequests& requests, EditorCommandRouter& commandRouter);
+
+    void DrawParametersWindow();
+    void DrawTransitionsWindow();
+    void DrawDetailsWindow(DocumentSceneBase& scene);
+    void DrawDiagnosticsWindow(DocumentSceneBase& scene);
+    void DrawRuntimeDebug(DocumentSceneBase& scene);
+
+    /// 選択中ステートのモーション設定UIを描画する。
+    void DrawSelectedStateMotionEditor(DocumentSceneBase& scene, ANIMATION::AnimationState& state);
+
+    // -------------------------------------------------------------------------
+    // Document lifecycle
+    // -------------------------------------------------------------------------
+
+    /// ドキュメントが未保存の場合は確認ダイアログを要求し、
+    /// 操作をpending状態として保持する。
+    void RequestDocumentAction(DocumentSceneBase& scene, AnimationStateMachineWorkspaceResult& result,
+                               GraphMenuRequests& requests, PendingDocumentAction action, AssetGuid assetGuid = {});
+
+    /// 未保存確認済みのドキュメント操作を実行する。
+    void ExecuteDocumentAction(DocumentSceneBase& scene, AnimationStateMachineWorkspaceResult& result,
+                               GraphMenuRequests& requests, PendingDocumentAction action, const AssetGuid& assetGuid);
+
+    void DrawUnsavedDocumentDialog(DocumentSceneBase& scene, AnimationStateMachineWorkspaceResult& result,
+                                   GraphMenuRequests& requests);
+
+    // -------------------------------------------------------------------------
+    // Graph editing
+    // -------------------------------------------------------------------------
+
+    void DeleteSelectedState();
+
+    void DeleteSelectedParameter();
+
+    void AddTransition();
+
+    void DeleteSelectedTransition();
+
+    // -------------------------------------------------------------------------
+    // Selection
+    // -------------------------------------------------------------------------
+
+    void SelectEntryState() noexcept;
+
+    /// 削除などで無効になった選択IDを解除し、
+    /// selectionKindと選択IDの整合性を維持する。
+    void NormalizeSelection() noexcept;
+
+    ANIMATION::AnimationState* SelectedState() noexcept;
+    ANIMATION::AnimationParameterDefinition* SelectedParameter() noexcept;
+    ANIMATION::AnimationStateTransition* SelectedTransition() noexcept;
+
+    // -------------------------------------------------------------------------
+    // History and runtime debug
+    // -------------------------------------------------------------------------
+
+    /// 編集前の定義をUndo履歴へ記録する。
+    /// 同一のmergeGroupを持つ連続操作は統合できる。
+    void RecordMutation(ANIMATION::AnimationStateMachineDefinition before, uint64_t mergeGroup = 0u);
+
+    /// 現在選択されているランタイムオブジェクトのスナップショットを取得する。
+    /// 利用できない場合はnullptrを返す。
+    const ANIMATION::AnimationStateMachineRuntimeSnapshot* ResolveRuntimeDebugSnapshot(DocumentSceneBase& scene);
+
+    AnimationStateMachineEditorDocument document_{};
+
+    SelectionKind selectionKind_ = SelectionKind::None;
+    ANIMATION::AnimationStateId selectedStateId_{};
+    ANIMATION::AnimationParameterId selectedParameterId_{};
+    ANIMATION::AnimationTransitionId selectedTransitionId_{};
+
+    float graphPanX_ = 0.0f;
+    float graphPanY_ = 0.0f;
+    float graphZoom_ = 1.0f;
+    char parameterSearch_[128]{};
+    char transitionSearch_[128]{};
+    bool connectedTransitionsOnly_ = true;
+
+    ANIMATION::AnimationStateId graphContextStateId_{};
+    ANIMATION::AnimationTransitionId graphContextTransitionId_{};
+    ANIMATION::AnimationStateId transitionDragSourceStateId_{};
+    float graphContextX_ = 0.0f;
+    float graphContextY_ = 0.0f;
+
+    /// ドラッグ操作開始前の定義。ドラッグ終了時の履歴登録に使用する。
+    std::optional<ANIMATION::AnimationStateMachineDefinition> graphDragBefore_{};
+
+    RuntimeObjectHandle runtimeDebugObject_{};
+
+    PendingDocumentAction pendingDocumentAction_ = PendingDocumentAction::None;
+    AssetGuid pendingDocumentAssetGuid_{};
+    bool requestUnsavedDocumentDialog_ = false;
+
+    std::string statusMessage_{};
+    const EditorOperationRegistry* operationRegistry_ = nullptr;
+};
 
 } // namespace HIKARI::EDITOR

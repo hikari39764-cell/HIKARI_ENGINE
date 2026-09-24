@@ -10,12 +10,8 @@
 
 namespace HIKARI::PHYSICS::JOLT_BACKEND {
 
-    JPH::ShapeRefC BuildCompoundShape(
-        std::span<const PhysicsShapeDesc> shapes,
-        std::string* outError = nullptr);
+JPH::ShapeRefC BuildCompoundShape(std::span<const PhysicsShapeDesc> shapes, std::string* outError = nullptr);
 
-    JPH::ShapeRefC BuildQueryShape(
-        const PhysicsShapeDesc& shape,
-        std::string* outError = nullptr);
+JPH::ShapeRefC BuildQueryShape(const PhysicsShapeDesc& shape, std::string* outError = nullptr);
 
 } // namespace HIKARI::PHYSICS::JOLT_BACKEND

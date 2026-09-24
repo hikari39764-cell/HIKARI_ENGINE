@@ -8,8 +8,6 @@
 
 namespace HIKARI::VFX::SERIALIZATION {
 
-    void ReadParameterDescriptorsFromJson(
-        const nlohmann::json& parameterArray,
-        std::vector<ParamDesc>& outParameters);
+void ReadParameterDescriptorsFromJson(const nlohmann::json& parameterArray, std::vector<ParamDesc>& outParameters);
 
 } // namespace HIKARI::VFX::SERIALIZATION

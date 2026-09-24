@@ -6,12 +6,8 @@
 
 namespace HIKARI::VFX::SERIALIZATION {
 
-    FxDomain ParseFxDomain(
-        const nlohmann::json& valueNode,
-        FxDomain fallback);
+FxDomain ParseFxDomain(const nlohmann::json& valueNode, FxDomain fallback);
 
-    CompositeMode ParseCompositeMode(
-        const nlohmann::json& valueNode,
-        CompositeMode fallback);
+CompositeMode ParseCompositeMode(const nlohmann::json& valueNode, CompositeMode fallback);
 
 } // namespace HIKARI::VFX::SERIALIZATION

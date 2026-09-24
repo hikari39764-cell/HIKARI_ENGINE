@@ -2,6 +2,6 @@
 
 namespace HIKARI::SHADOW::INTERNAL {
 
-    ShadowRendererState gShadowRendererState{};
+ShadowRendererState gShadowRendererState{};
 
 } // namespace HIKARI::SHADOW::INTERNAL

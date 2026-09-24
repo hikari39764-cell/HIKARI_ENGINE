@@ -8,34 +8,34 @@
 
 namespace HIKARI {
 
-    inline constexpr uint32_t kAssetArtifactManifestVersion = 1u;
+inline constexpr uint32_t kAssetArtifactManifestVersion = 1u;
 
-    struct AssetDependencyDesc {
-        AssetGuid guid{};
-        std::string path{};
-        std::string role{};
-    };
+struct AssetDependencyDesc {
+    AssetGuid guid{};
+    std::string path{};
+    std::string role{};
+};
 
-    struct AssetArtifactDesc {
-        std::string role{};
-        std::string path{};
-        std::string format{};
-    };
+struct AssetArtifactDesc {
+    std::string role{};
+    std::string path{};
+    std::string format{};
+};
 
-    struct AssetArtifactManifest {
-        uint32_t manifestVersion = kAssetArtifactManifestVersion;
+struct AssetArtifactManifest {
+    uint32_t manifestVersion = kAssetArtifactManifestVersion;
 
-        AssetGuid guid{};
-        std::string sourcePath{};
-        std::string importerId{};
-        uint32_t importerVersion = 1;
+    AssetGuid guid{};
+    std::string sourcePath{};
+    std::string importerId{};
+    uint32_t importerVersion = 1;
 
-        bool lastImportSucceeded = false;
-        std::string lastImportMessage{};
-        std::string diagnosticsJson{};
+    bool lastImportSucceeded = false;
+    std::string lastImportMessage{};
+    std::string diagnosticsJson{};
 
-        std::vector<AssetDependencyDesc> dependencies{};
-        std::vector<AssetArtifactDesc> artifacts{};
-    };
+    std::vector<AssetDependencyDesc> dependencies{};
+    std::vector<AssetArtifactDesc> artifacts{};
+};
 
 } // namespace HIKARI

@@ -10,55 +10,43 @@
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
 
-    struct GpuDrivenCommandBucketLayout {
-        UINT64 meshDispatchArgumentOffset = 0;
-        UINT64 counterOffset = 0;
-    };
+struct GpuDrivenCommandBucketLayout {
+    UINT64 meshDispatchArgumentOffset = 0;
+    UINT64 counterOffset = 0;
+};
 
-    struct GpuDrivenCommandPassLayout {
-        size_t commandBucketCapacity = 0;
-        std::array<GpuDrivenCommandBucketLayout, kGpuDrivenCommandBucketCount> buckets{};
+struct GpuDrivenCommandPassLayout {
+    size_t commandBucketCapacity = 0;
+    std::array<GpuDrivenCommandBucketLayout, kGpuDrivenCommandBucketCount> buckets{};
 
-        const GpuDrivenCommandBucketLayout& GetBucket(
-            GpuDrivenCommandBucket bucket) const {
+    const GpuDrivenCommandBucketLayout& GetBucket(GpuDrivenCommandBucket bucket) const {
+        return buckets[ToCommandBucketIndex(bucket)];
+    }
 
-            return buckets[ToCommandBucketIndex(bucket)];
-        }
+    GpuDrivenCommandBucketLayout& GetBucket(GpuDrivenCommandBucket bucket) {
+        return buckets[ToCommandBucketIndex(bucket)];
+    }
+};
 
-        GpuDrivenCommandBucketLayout& GetBucket(
-            GpuDrivenCommandBucket bucket) {
+struct GpuDrivenCommandLayout {
+    std::array<GpuDrivenCommandPassLayout, kGpuDrivenPassCount> passes{};
 
-            return buckets[ToCommandBucketIndex(bucket)];
-        }
-    };
+    const GpuDrivenCommandPassLayout& GetPass(GpuDrivenPassKind pass) const { return passes[ToPassIndex(pass)]; }
 
-    struct GpuDrivenCommandLayout {
-        std::array<GpuDrivenCommandPassLayout, kGpuDrivenPassCount> passes{};
+    GpuDrivenCommandPassLayout& GetPass(GpuDrivenPassKind pass) { return passes[ToPassIndex(pass)]; }
+};
 
-        const GpuDrivenCommandPassLayout& GetPass(
-            GpuDrivenPassKind pass) const {
+struct GpuCommandBuildResult {
+    ID3D12Resource* surfaceDrawIndexedArgs = nullptr;
+    ID3D12Resource* surfaceSkinnedDrawIndexedArgs = nullptr;
+    ID3D12Resource* surfaceDrawIndexedCounter = nullptr;
+    ID3D12Resource* meshDispatchArgs = nullptr;
 
-            return passes[ToPassIndex(pass)];
-        }
+    ID3D12CommandSignature* surfaceDrawIndexedSignature = nullptr;
+    ID3D12CommandSignature* surfaceSkinnedDrawIndexedSignature = nullptr;
+    ID3D12CommandSignature* meshDispatchSignature = nullptr;
 
-        GpuDrivenCommandPassLayout& GetPass(
-            GpuDrivenPassKind pass) {
-
-            return passes[ToPassIndex(pass)];
-        }
-    };
-
-    struct GpuCommandBuildResult {
-        ID3D12Resource* surfaceDrawIndexedArgs = nullptr;
-        ID3D12Resource* surfaceSkinnedDrawIndexedArgs = nullptr;
-        ID3D12Resource* surfaceDrawIndexedCounter = nullptr;
-        ID3D12Resource* meshDispatchArgs = nullptr;
-
-        ID3D12CommandSignature* surfaceDrawIndexedSignature = nullptr;
-        ID3D12CommandSignature* surfaceSkinnedDrawIndexedSignature = nullptr;
-        ID3D12CommandSignature* meshDispatchSignature = nullptr;
-
-        GpuDrivenCommandLayout layout{};
-    };
+    GpuDrivenCommandLayout layout{};
+};
 
 } // namespace HIKARI::RENDER3D::GPUDRIVEN

@@ -18,7 +18,7 @@ nlohmann::json GameplayCameraWorkspaceController::Describe() const {
             {"canRedo", document_.CanRedo()},
             {"profile", CAMERA::WriteGameplayCameraProfile(document_.Profile())}};
 }
-bool GameplayCameraWorkspaceController::Edit(const nlohmann::json &command, std::string &message) {
+bool GameplayCameraWorkspaceController::Edit(const nlohmann::json& command, std::string& message) {
     try {
         auto root = CAMERA::WriteGameplayCameraProfile(document_.Profile());
         const std::string action = command.at("action").get<std::string>();
@@ -30,19 +30,25 @@ bool GameplayCameraWorkspaceController::Edit(const nlohmann::json &command, std:
             root["defaultMode"] = command.at("id");
         else if (action == "add_mode")
             root["modes"].push_back(command.at("mode"));
-        else if (action == "add_effect") root["effects"].push_back(command.at("effect"));
+        else if (action == "add_effect")
+            root["effects"].push_back(command.at("effect"));
         else if (action == "edit_effect" || action == "remove_effect") {
-            auto& effects=root["effects"];
-            const auto it=std::find_if(effects.begin(),effects.end(),[&](const auto& e){return e.at("id")==command.at("id");});
-            if(it==effects.end()) {message="Effect not found.";return false;}
-            if(action=="remove_effect") effects.erase(it);
-            else it->merge_patch(command.at("patch"));
-        }
-        else if (action == "edit_mode" || action == "remove_mode" || action == "duplicate_mode") {
-            auto &modes = root["modes"];
+            auto& effects = root["effects"];
+            const auto it = std::find_if(effects.begin(), effects.end(),
+                                         [&](const auto& e) { return e.at("id") == command.at("id"); });
+            if (it == effects.end()) {
+                message = "Effect not found.";
+                return false;
+            }
+            if (action == "remove_effect")
+                effects.erase(it);
+            else
+                it->merge_patch(command.at("patch"));
+        } else if (action == "edit_mode" || action == "remove_mode" || action == "duplicate_mode") {
+            auto& modes = root["modes"];
             const auto id = command.at("id").get<std::string>();
             const auto it =
-                std::find_if(modes.begin(), modes.end(), [&](const auto &mode) { return mode.at("id") == id; });
+                std::find_if(modes.begin(), modes.end(), [&](const auto& mode) { return mode.at("id") == id; });
             if (it == modes.end()) {
                 message = "Mode not found: " + id;
                 return false;
@@ -67,12 +73,12 @@ bool GameplayCameraWorkspaceController::Edit(const nlohmann::json &command, std:
         if (!CAMERA::ReadGameplayCameraProfile(root, profile, message))
             return false;
         return document_.Apply(std::move(profile), message);
-    } catch (const std::exception &error) {
+    } catch (const std::exception& error) {
         message = error.what();
         return false;
     }
 }
-void GameplayCameraWorkspaceController::BindDocumentCommands(EditorCommandRouter &router) {
+void GameplayCameraWorkspaceController::BindDocumentCommands(EditorCommandRouter& router) {
     router.BindOperation(EditorCommandId::SaveDocument, TEXT::Localize("menu.edit.save"), document_.IsOpen(),
                          "gameplay_camera.save");
     router.BindOperation(EditorCommandId::Undo, TEXT::Localize("menu.edit.undo"), document_.CanUndo(),
@@ -80,21 +86,22 @@ void GameplayCameraWorkspaceController::BindDocumentCommands(EditorCommandRouter
     router.BindOperation(EditorCommandId::Redo, TEXT::Localize("menu.edit.redo"), document_.CanRedo(),
                          "gameplay_camera.redo");
 }
-void GameplayCameraWorkspaceController::ClosePreviewRequest(EditorWorkspaceHost &host) {
+void GameplayCameraWorkspaceController::ClosePreviewRequest(EditorWorkspaceHost& host) {
     RENDER3D::EDITORVIEW::ClearRequest(host.GetGameplayCameraObserverView().renderViewId);
     RENDER3D::EDITORVIEW::ClearRequest(host.GetGameplayCameraPreviewView().renderViewId);
     observer_.LeaveWorkspace();
 }
-void GameplayCameraWorkspaceController::ApplyActivation(DocumentSceneBase &scene,
-                                                        const EditorWorkspaceActivation &activation,
-                                                        EditorWorkspaceHost &host) {
+void GameplayCameraWorkspaceController::ApplyActivation(DocumentSceneBase& scene,
+                                                        const EditorWorkspaceActivation& activation,
+                                                        EditorWorkspaceHost& host) {
     if (activation.previous == EditorWorkspaceId::GameplayCamera && activation.current != activation.previous)
         ClosePreviewRequest(host);
     if (activation.current != EditorWorkspaceId::GameplayCamera)
         return;
     if (activation.cameraProfileAssetGuid)
         document_.Open(scene.GetAssetDatabase(), *activation.cameraProfileAssetGuid, message_);
-    if (activation.targetCameraObjectId) SelectCamera(scene,*activation.targetCameraObjectId);
+    if (activation.targetCameraObjectId)
+        SelectCamera(scene, *activation.targetCameraObjectId);
     focused_ = false;
 }
 } // namespace HIKARI::EDITOR

@@ -15,16 +15,16 @@ namespace HIKARI::INPUT {
 namespace {
 
 std::string PhysicalControlKey(const InputBinding& binding) {
-    return std::to_string(static_cast<int>(binding.source)) + ":" +
-        binding.control;
+    return std::to_string(static_cast<int>(binding.source)) + ":" + binding.control;
 }
 
 float ApplyDeadZone(float value, float deadZone) {
     const float magnitude = std::abs(value);
-    if (magnitude <= deadZone) return 0.0f;
-    if (deadZone <= 0.0f) return value;
-    const float normalized =
-        (magnitude - deadZone) / (1.0f - deadZone);
+    if (magnitude <= deadZone)
+        return 0.0f;
+    if (deadZone <= 0.0f)
+        return value;
+    const float normalized = (magnitude - deadZone) / (1.0f - deadZone);
     return std::copysign((std::min)(normalized, 1.0f), value);
 }
 
@@ -41,26 +41,19 @@ struct InputDeviceActivitySignal {
     float strength = 0.0f;
 };
 
-InputDeviceActivitySignal DetectKeyboardMouseActivity(
-    const InputDeviceState& previous,
-    const InputDeviceState& current) noexcept {
+InputDeviceActivitySignal DetectKeyboardMouseActivity(const InputDeviceState& previous,
+                                                      const InputDeviceState& current) noexcept {
     InputDeviceActivitySignal signal{};
-    for (std::size_t index = 0u;
-        index < current.keyboard.size();
-        ++index) {
-        if (current.keyboard[index] != 0u &&
-            previous.keyboard[index] == 0u) {
+    for (std::size_t index = 0u; index < current.keyboard.size(); ++index) {
+        if (current.keyboard[index] != 0u && previous.keyboard[index] == 0u) {
             signal.active = true;
             signal.digital = true;
             signal.strength = 1.0f;
             break;
         }
     }
-    for (std::size_t index = 0u;
-        index < current.mouseButtons.size();
-        ++index) {
-        if (current.mouseButtons[index] != 0u &&
-            previous.mouseButtons[index] == 0u) {
+    for (std::size_t index = 0u; index < current.mouseButtons.size(); ++index) {
+        if (current.mouseButtons[index] != 0u && previous.mouseButtons[index] == 0u) {
             signal.active = true;
             signal.digital = true;
             signal.strength = 1.0f;
@@ -69,18 +62,13 @@ InputDeviceActivitySignal DetectKeyboardMouseActivity(
     }
 
     constexpr float kMouseMotionThreshold = 2.0f;
-    const float mouseMotion = std::sqrt(
-        current.mouseDeltaX * current.mouseDeltaX +
-        current.mouseDeltaY * current.mouseDeltaY);
-    if (std::isfinite(mouseMotion) &&
-        mouseMotion >= kMouseMotionThreshold) {
+    const float mouseMotion =
+        std::sqrt(current.mouseDeltaX * current.mouseDeltaX + current.mouseDeltaY * current.mouseDeltaY);
+    if (std::isfinite(mouseMotion) && mouseMotion >= kMouseMotionThreshold) {
         signal.active = true;
-        signal.strength = (std::max)(
-            signal.strength,
-            std::clamp(mouseMotion / 8.0f, 0.0f, 1.0f));
+        signal.strength = (std::max)(signal.strength, std::clamp(mouseMotion / 8.0f, 0.0f, 1.0f));
     }
-    if (std::isfinite(current.mouseWheel) &&
-        std::abs(current.mouseWheel) > 1.0e-4f) {
+    if (std::isfinite(current.mouseWheel) && std::abs(current.mouseWheel) > 1.0e-4f) {
         signal.active = true;
         signal.digital = true;
         signal.strength = 1.0f;
@@ -88,36 +76,24 @@ InputDeviceActivitySignal DetectKeyboardMouseActivity(
     return signal;
 }
 
-void AccumulateAnalogActivity(
-    float previous,
-    float current,
-    float enterThreshold,
-    float exitThreshold,
-    float deltaThreshold,
-    InputDeviceActivitySignal& signal) noexcept {
+void AccumulateAnalogActivity(float previous, float current, float enterThreshold, float exitThreshold,
+                              float deltaThreshold, InputDeviceActivitySignal& signal) noexcept {
     if (!std::isfinite(previous) || !std::isfinite(current)) {
         return;
     }
     const float currentMagnitude = std::abs(current);
-    const bool crossedDeadZone =
-        currentMagnitude >= enterThreshold &&
-        std::abs(previous) < exitThreshold;
+    const bool crossedDeadZone = currentMagnitude >= enterThreshold && std::abs(previous) < exitThreshold;
     const bool changedIntentionally =
-        currentMagnitude >= enterThreshold &&
-        std::abs(current - previous) >= deltaThreshold;
+        currentMagnitude >= enterThreshold && std::abs(current - previous) >= deltaThreshold;
     if (!crossedDeadZone && !changedIntentionally) {
         return;
     }
     signal.active = true;
-    signal.strength = (std::max)(
-        signal.strength,
-        std::clamp(currentMagnitude, 0.0f, 1.0f));
+    signal.strength = (std::max)(signal.strength, std::clamp(currentMagnitude, 0.0f, 1.0f));
 }
 
-InputDeviceActivitySignal DetectGamepadActivity(
-    const InputDeviceState& previous,
-    const InputDeviceState& current,
-    uint32_t gamepadIndex) noexcept {
+InputDeviceActivitySignal DetectGamepadActivity(const InputDeviceState& previous, const InputDeviceState& current,
+                                                uint32_t gamepadIndex) noexcept {
     InputDeviceActivitySignal signal{};
     if (gamepadIndex >= current.gamepads.size()) {
         return signal;
@@ -126,8 +102,7 @@ InputDeviceActivitySignal DetectGamepadActivity(
     if (!gamepad.connected) {
         return signal;
     }
-    const GamepadState& previousGamepad =
-        previous.gamepads[gamepadIndex];
+    const GamepadState& previousGamepad = previous.gamepads[gamepadIndex];
     if ((gamepad.buttons & ~previousGamepad.buttons) != 0u) {
         signal.active = true;
         signal.digital = true;
@@ -143,55 +118,23 @@ InputDeviceActivitySignal DetectGamepadActivity(
     constexpr float kTriggerEnterThreshold = 0.18f;
     constexpr float kTriggerExitThreshold = 0.10f;
     constexpr float kTriggerDeltaThreshold = 0.06f;
-    AccumulateAnalogActivity(
-        previousGamepad.leftX,
-        gamepad.leftX,
-        kStickEnterThreshold,
-        kStickExitThreshold,
-        kStickDeltaThreshold,
-        signal);
-    AccumulateAnalogActivity(
-        previousGamepad.leftY,
-        gamepad.leftY,
-        kStickEnterThreshold,
-        kStickExitThreshold,
-        kStickDeltaThreshold,
-        signal);
-    AccumulateAnalogActivity(
-        previousGamepad.rightX,
-        gamepad.rightX,
-        kStickEnterThreshold,
-        kStickExitThreshold,
-        kStickDeltaThreshold,
-        signal);
-    AccumulateAnalogActivity(
-        previousGamepad.rightY,
-        gamepad.rightY,
-        kStickEnterThreshold,
-        kStickExitThreshold,
-        kStickDeltaThreshold,
-        signal);
-    AccumulateAnalogActivity(
-        previousGamepad.leftTrigger,
-        gamepad.leftTrigger,
-        kTriggerEnterThreshold,
-        kTriggerExitThreshold,
-        kTriggerDeltaThreshold,
-        signal);
-    AccumulateAnalogActivity(
-        previousGamepad.rightTrigger,
-        gamepad.rightTrigger,
-        kTriggerEnterThreshold,
-        kTriggerExitThreshold,
-        kTriggerDeltaThreshold,
-        signal);
+    AccumulateAnalogActivity(previousGamepad.leftX, gamepad.leftX, kStickEnterThreshold, kStickExitThreshold,
+                             kStickDeltaThreshold, signal);
+    AccumulateAnalogActivity(previousGamepad.leftY, gamepad.leftY, kStickEnterThreshold, kStickExitThreshold,
+                             kStickDeltaThreshold, signal);
+    AccumulateAnalogActivity(previousGamepad.rightX, gamepad.rightX, kStickEnterThreshold, kStickExitThreshold,
+                             kStickDeltaThreshold, signal);
+    AccumulateAnalogActivity(previousGamepad.rightY, gamepad.rightY, kStickEnterThreshold, kStickExitThreshold,
+                             kStickDeltaThreshold, signal);
+    AccumulateAnalogActivity(previousGamepad.leftTrigger, gamepad.leftTrigger, kTriggerEnterThreshold,
+                             kTriggerExitThreshold, kTriggerDeltaThreshold, signal);
+    AccumulateAnalogActivity(previousGamepad.rightTrigger, gamepad.rightTrigger, kTriggerEnterThreshold,
+                             kTriggerExitThreshold, kTriggerDeltaThreshold, signal);
     return signal;
 }
 
-InputDeviceKind ResolveActivityCandidate(
-    InputDeviceKind previousDevice,
-    const InputDeviceActivitySignal& keyboardMouse,
-    const InputDeviceActivitySignal& gamepad) noexcept {
+InputDeviceKind ResolveActivityCandidate(InputDeviceKind previousDevice, const InputDeviceActivitySignal& keyboardMouse,
+                                         const InputDeviceActivitySignal& gamepad) noexcept {
     if (keyboardMouse.active && !gamepad.active) {
         return InputDeviceKind::KeyboardMouse;
     }
@@ -202,28 +145,19 @@ InputDeviceKind ResolveActivityCandidate(
         return InputDeviceKind::None;
     }
     if (keyboardMouse.digital != gamepad.digital) {
-        return keyboardMouse.digital
-            ? InputDeviceKind::KeyboardMouse
-            : InputDeviceKind::Gamepad;
+        return keyboardMouse.digital ? InputDeviceKind::KeyboardMouse : InputDeviceKind::Gamepad;
     }
-    if (previousDevice == InputDeviceKind::KeyboardMouse ||
-        previousDevice == InputDeviceKind::Gamepad) {
+    if (previousDevice == InputDeviceKind::KeyboardMouse || previousDevice == InputDeviceKind::Gamepad) {
         return previousDevice;
     }
-    return gamepad.strength > keyboardMouse.strength
-        ? InputDeviceKind::Gamepad
-        : InputDeviceKind::KeyboardMouse;
+    return gamepad.strength > keyboardMouse.strength ? InputDeviceKind::Gamepad : InputDeviceKind::KeyboardMouse;
 }
 
 } // namespace
 
-InputService::InputService()
-    : backend_(std::make_unique<Win32InputBackend>()) {
-}
+InputService::InputService() : backend_(std::make_unique<Win32InputBackend>()) {}
 
-InputService::~InputService() {
-    Shutdown();
-}
+InputService::~InputService() { Shutdown(); }
 
 bool InputService::Initialize(const std::filesystem::path& projectRoot) {
     inputDirectory_ = projectRoot / "ProjectSettings" / "Input";
@@ -234,12 +168,10 @@ bool InputService::Initialize(const std::filesystem::path& projectRoot) {
             HIKARI_LOG_ERROR("[Input] " + lastError_);
             return false;
         }
-        HIKARI_LOG_WARN(
-            "[Input] project maps were missing or invalid; defaults were created.");
+        HIKARI_LOG_WARN("[Input] project maps were missing or invalid; defaults were created.");
     }
     ResetRuntimeState();
-    HIKARI_LOG_INFO(
-        "[Input] initialized from " + inputDirectory_.generic_string());
+    HIKARI_LOG_INFO("[Input] initialized from " + inputDirectory_.generic_string());
     return true;
 }
 
@@ -262,7 +194,8 @@ void InputService::ResetRuntimeState() {
     rebindPreviousDevices_ = {};
     suppressActionsUntilNeutral_ = false;
     deviceSwitchLockRemainingSeconds_ = 0.0f;
-    if (backend_) backend_->Reset();
+    if (backend_)
+        backend_->Reset();
 }
 
 void InputService::Shutdown() {
@@ -270,7 +203,8 @@ void InputService::Shutdown() {
     pointerCursorHiddenRequested_ = false;
     uiInteractionActive_ = false;
     StopGamepadVibration();
-    if (backend_) backend_->Reset();
+    if (backend_)
+        backend_->Reset();
     snapshot_ = {};
     rebindOperation_.Reset();
     rebindPreviousDevices_ = {};
@@ -279,66 +213,69 @@ void InputService::Shutdown() {
 }
 
 void InputService::SetBackend(std::unique_ptr<IInputBackend> backend) {
-    if (backend) backend_ = std::move(backend);
+    if (backend)
+        backend_ = std::move(backend);
 }
 
 void InputService::SetHostWindow(void* nativeWindow) {
-    if (backend_) backend_->SetHostWindow(nativeWindow);
+    if (backend_)
+        backend_->SetHostWindow(nativeWindow);
 }
 
 void InputService::SetMouseCaptureMode(MouseCaptureMode mode) {
-    if (backend_) backend_->SetMouseCaptureMode(mode);
+    if (backend_)
+        backend_->SetMouseCaptureMode(mode);
 }
 
 void InputService::SetMouseCaptureRegion(const MouseCaptureRegion& region) {
-    if (backend_) backend_->SetMouseCaptureRegion(region);
+    if (backend_)
+        backend_->SetMouseCaptureRegion(region);
 }
 
 void InputService::ClearMouseCaptureRegion() {
-    if (backend_) backend_->ClearMouseCaptureRegion();
+    if (backend_)
+        backend_->ClearMouseCaptureRegion();
 }
 
 MouseCaptureMode InputService::GetMouseCaptureMode() const noexcept {
-    return backend_
-        ? backend_->GetMouseCaptureMode()
-        : MouseCaptureMode::Free;
+    return backend_ ? backend_->GetMouseCaptureMode() : MouseCaptureMode::Free;
 }
 
 void InputService::SetExternalMouseWheel(float delta) {
-    if (backend_) backend_->SetExternalMouseWheel(delta);
+    if (backend_)
+        backend_->SetExternalMouseWheel(delta);
 }
 
 void InputService::ApplyPointerCursorVisibility(bool pointerOwned) {
-    if (backend_) backend_->SetPointerCursorVisible(
-        !pointerOwned || !pointerCursorHiddenRequested_ ||
-        GetMouseCaptureMode() != MouseCaptureMode::Free);
+    // 入力所有権を失ったら、独自カーソルだけでなく相対入力の非表示・拘束も解除する。
+    if (!pointerOwned) {
+        SetMouseCaptureMode(MouseCaptureMode::Free);
+        ClearMouseCaptureRegion();
+    }
+    if (backend_)
+        backend_->SetPointerCursorVisible(!pointerOwned || !pointerCursorHiddenRequested_ ||
+                                          GetMouseCaptureMode() != MouseCaptureMode::Free);
 }
 
 void InputService::Update(float unscaledDeltaSeconds) {
     pointerCursorHiddenRequested_ = false;
-    if (!backend_) return;
+    if (!backend_)
+        return;
     const InputDeviceState previousDevices = snapshot_.devices_;
     backend_->Poll(snapshot_.devices_);
-    UpdateLastActiveDevice(
-        previousDevices,
-        (std::max)(unscaledDeltaSeconds, 0.0f));
+    UpdateLastActiveDevice(previousDevices, (std::max)(unscaledDeltaSeconds, 0.0f));
     ++snapshot_.frameIndex_;
     if (rebindOperation_.IsActive()) {
         std::vector<InputControlActuation> candidates;
         const InputRebindOptions& options = rebindOperation_.GetOptions();
-        backend_->EnumerateNewControls(
-            rebindPreviousDevices_, snapshot_.devices_,
-            options.axisThreshold, options.allowMouseMotion, candidates);
-        const bool allControlsReleased = !backend_->IsAnyControlActive(
-            snapshot_.devices_, options.releaseThreshold);
-        rebindOperation_.Update(
-            (std::max)(unscaledDeltaSeconds, 0.0f),
-            allControlsReleased, candidates);
+        backend_->EnumerateNewControls(rebindPreviousDevices_, snapshot_.devices_, options.axisThreshold,
+                                       options.allowMouseMotion, candidates);
+        const bool allControlsReleased = !backend_->IsAnyControlActive(snapshot_.devices_, options.releaseThreshold);
+        rebindOperation_.Update((std::max)(unscaledDeltaSeconds, 0.0f), allControlsReleased, candidates);
         rebindPreviousDevices_ = snapshot_.devices_;
     }
     if (suppressActionsUntilNeutral_ && !rebindOperation_.IsActive() &&
-        !backend_->IsAnyControlActive(
-            snapshot_.devices_, rebindReleaseThreshold_)) {
+        !backend_->IsAnyControlActive(snapshot_.devices_, rebindReleaseThreshold_)) {
         suppressActionsUntilNeutral_ = false;
     }
     if (suppressActionsUntilNeutral_) {
@@ -349,46 +286,51 @@ void InputService::Update(float unscaledDeltaSeconds) {
 
     if (vibrationActive_ && vibrationRemaining_ > 0.0f) {
         vibrationRemaining_ -= (std::max)(unscaledDeltaSeconds, 0.0f);
-        if (vibrationRemaining_ <= 0.0f) StopGamepadVibration();
+        if (vibrationRemaining_ <= 0.0f)
+            StopGamepadVibration();
     }
 }
 
 bool InputService::SaveProject(std::string* errorMessage) {
     if (inputDirectory_.empty()) {
-        lastError_ =
-            "Transient input maps do not have a project storage location.";
-        if (errorMessage) *errorMessage = lastError_;
+        lastError_ = "Transient input maps do not have a project storage location.";
+        if (errorMessage)
+            *errorMessage = lastError_;
         return false;
     }
     std::string error;
     if (!SaveInputActionMapProject(inputDirectory_, actionMap_, &error)) {
         lastError_ = error;
-        if (errorMessage) *errorMessage = error;
+        if (errorMessage)
+            *errorMessage = error;
         return false;
     }
     lastError_.clear();
-    if (errorMessage) errorMessage->clear();
+    if (errorMessage)
+        errorMessage->clear();
     return true;
 }
 
 bool InputService::ReloadProject(std::string* errorMessage) {
     if (inputDirectory_.empty()) {
-        lastError_ =
-            "Transient input maps do not have a project storage location.";
-        if (errorMessage) *errorMessage = lastError_;
+        lastError_ = "Transient input maps do not have a project storage location.";
+        if (errorMessage)
+            *errorMessage = lastError_;
         return false;
     }
     InputActionMap loaded{};
     std::string error;
     if (!LoadInputActionMapProject(inputDirectory_, loaded, &error)) {
         lastError_ = error;
-        if (errorMessage) *errorMessage = error;
+        if (errorMessage)
+            *errorMessage = error;
         return false;
     }
     actionMap_ = std::move(loaded);
     contexts_.ResetToDefaults(actionMap_);
     lastError_.clear();
-    if (errorMessage) errorMessage->clear();
+    if (errorMessage)
+        errorMessage->clear();
     return true;
 }
 
@@ -397,25 +339,26 @@ bool InputService::RestoreDefaults(std::string* errorMessage) {
     contexts_.ResetToDefaults(actionMap_);
     if (inputDirectory_.empty()) {
         lastError_.clear();
-        if (errorMessage) errorMessage->clear();
+        if (errorMessage)
+            errorMessage->clear();
         return true;
     }
     return SaveProject(errorMessage);
 }
 
 bool InputService::BeginRebind(const InputRebindOptions& options) {
-    if (!backend_ || rebindOperation_.IsActive()) return false;
+    if (!backend_ || rebindOperation_.IsActive())
+        return false;
     rebindPreviousDevices_ = snapshot_.devices_;
     rebindOperation_.Begin(options);
     rebindReleaseThreshold_ = rebindOperation_.GetOptions().releaseThreshold;
     suppressActionsUntilNeutral_ = options.suppressMappedActions;
-    if (suppressActionsUntilNeutral_) SuppressActions();
+    if (suppressActionsUntilNeutral_)
+        SuppressActions();
     return true;
 }
 
-void InputService::CancelRebind() {
-    rebindOperation_.Cancel();
-}
+void InputService::CancelRebind() { rebindOperation_.Cancel(); }
 
 void InputService::ResetRebind() {
     rebindOperation_.Reset();
@@ -426,12 +369,8 @@ bool InputService::ConsumeRebindResult(InputRebindResult& outResult) {
     return rebindOperation_.ConsumeResult(outResult);
 }
 
-bool InputService::SetGamepadVibration(
-    float lowFrequency,
-    float highFrequency,
-    float durationSeconds) {
-    if (!backend_ || !backend_->SetGamepadVibration(
-            ResolveGamepadIndex(), lowFrequency, highFrequency)) {
+bool InputService::SetGamepadVibration(float lowFrequency, float highFrequency, float durationSeconds) {
+    if (!backend_ || !backend_->SetGamepadVibration(ResolveGamepadIndex(), lowFrequency, highFrequency)) {
         return false;
     }
     vibrationRemaining_ = (std::max)(durationSeconds, 0.0f);
@@ -441,23 +380,22 @@ bool InputService::SetGamepadVibration(
 
 void InputService::StopGamepadVibration() {
     if (backend_) {
-        (void)backend_->SetGamepadVibration(
-            ResolveGamepadIndex(), 0.0f, 0.0f);
+        (void)backend_->SetGamepadVibration(ResolveGamepadIndex(), 0.0f, 0.0f);
     }
     vibrationRemaining_ = 0.0f;
     vibrationActive_ = false;
 }
 
 float InputService::ReadBindingValue(const InputBinding& binding) const {
-    if (!backend_ || !IsModifierDown(binding.modifierControl)) return 0.0f;
-    const float raw = backend_->ReadControl(
-        snapshot_.devices_, binding.source, binding.control,
-        ResolveGamepadIndex());
+    if (!backend_ || !IsModifierDown(binding.modifierControl))
+        return 0.0f;
+    const float raw = backend_->ReadControl(snapshot_.devices_, binding.source, binding.control, ResolveGamepadIndex());
     return ApplyDeadZone(raw, binding.deadZone) * binding.scale;
 }
 
 bool InputService::IsModifierDown(const std::string& modifier) const {
-    if (modifier.empty()) return true;
+    if (modifier.empty())
+        return true;
     InputBindingSource source = InputBindingSource::Keyboard;
     std::string_view control = modifier;
     constexpr std::string_view mousePrefix = "Mouse:";
@@ -469,66 +407,38 @@ bool InputService::IsModifierDown(const std::string& modifier) const {
         source = InputBindingSource::GamepadButton;
         control.remove_prefix(gamepadPrefix.size());
     }
-    return backend_ && backend_->ReadControl(
-        snapshot_.devices_, source, control, ResolveGamepadIndex()) > 0.5f;
+    return backend_ && backend_->ReadControl(snapshot_.devices_, source, control, ResolveGamepadIndex()) > 0.5f;
 }
 
-uint32_t InputService::ResolveGamepadIndex() const {
-    return primaryUser_.GetGamepadIndex().value_or(0u);
-}
+uint32_t InputService::ResolveGamepadIndex() const { return primaryUser_.GetGamepadIndex().value_or(0u); }
 
-void InputService::UpdateLastActiveDevice(
-    const InputDeviceState& previousDevices,
-    float unscaledDeltaSeconds) {
-    const InputDeviceKind previousDevice =
-        previousDevices.lastActiveDevice;
-    deviceSwitchLockRemainingSeconds_ = (std::max)(
-        0.0f,
-        deviceSwitchLockRemainingSeconds_ -
-            (std::max)(unscaledDeltaSeconds, 0.0f));
+void InputService::UpdateLastActiveDevice(const InputDeviceState& previousDevices, float unscaledDeltaSeconds) {
+    const InputDeviceKind previousDevice = previousDevices.lastActiveDevice;
+    deviceSwitchLockRemainingSeconds_ =
+        (std::max)(0.0f, deviceSwitchLockRemainingSeconds_ - (std::max)(unscaledDeltaSeconds, 0.0f));
 
     const uint32_t gamepadIndex = ResolveGamepadIndex();
     const bool primaryGamepadConnected =
-        gamepadIndex < snapshot_.devices_.gamepads.size() &&
-        snapshot_.devices_.gamepads[gamepadIndex].connected;
-    if (previousDevice == InputDeviceKind::Gamepad &&
-        !primaryGamepadConnected) {
-        snapshot_.devices_.lastActiveDevice =
-            InputDeviceKind::KeyboardMouse;
+        gamepadIndex < snapshot_.devices_.gamepads.size() && snapshot_.devices_.gamepads[gamepadIndex].connected;
+    if (previousDevice == InputDeviceKind::Gamepad && !primaryGamepadConnected) {
+        snapshot_.devices_.lastActiveDevice = InputDeviceKind::KeyboardMouse;
         deviceSwitchLockRemainingSeconds_ = 0.0f;
         return;
     }
 
-    const InputDeviceActivitySignal keyboardMouse =
-        DetectKeyboardMouseActivity(
-            previousDevices,
-            snapshot_.devices_);
-    const InputDeviceActivitySignal gamepad =
-        DetectGamepadActivity(
-            previousDevices,
-            snapshot_.devices_,
-            gamepadIndex);
-    const InputDeviceKind candidate = ResolveActivityCandidate(
-        previousDevice,
-        keyboardMouse,
-        gamepad);
-    if (candidate == InputDeviceKind::None ||
-        candidate == previousDevice) {
+    const InputDeviceActivitySignal keyboardMouse = DetectKeyboardMouseActivity(previousDevices, snapshot_.devices_);
+    const InputDeviceActivitySignal gamepad = DetectGamepadActivity(previousDevices, snapshot_.devices_, gamepadIndex);
+    const InputDeviceKind candidate = ResolveActivityCandidate(previousDevice, keyboardMouse, gamepad);
+    if (candidate == InputDeviceKind::None || candidate == previousDevice) {
         snapshot_.devices_.lastActiveDevice = previousDevice;
         return;
     }
 
-    const InputDeviceActivitySignal& candidateSignal =
-        candidate == InputDeviceKind::Gamepad
-        ? gamepad
-        : keyboardMouse;
+    const InputDeviceActivitySignal& candidateSignal = candidate == InputDeviceKind::Gamepad ? gamepad : keyboardMouse;
     constexpr float kStrongSwitchThreshold = 0.60f;
-    const bool immediateSwitch =
-        previousDevice == InputDeviceKind::None ||
-        candidateSignal.digital ||
-        candidateSignal.strength >= kStrongSwitchThreshold;
-    if (deviceSwitchLockRemainingSeconds_ > 0.0f &&
-        !immediateSwitch) {
+    const bool immediateSwitch = previousDevice == InputDeviceKind::None || candidateSignal.digital ||
+                                 candidateSignal.strength >= kStrongSwitchThreshold;
+    if (deviceSwitchLockRemainingSeconds_ > 0.0f && !immediateSwitch) {
         snapshot_.devices_.lastActiveDevice = previousDevice;
         return;
     }
@@ -549,38 +459,40 @@ void InputService::EvaluateActions(float dt) {
 
     std::vector<const InputContextDefinition*> activeContexts;
     for (const std::string& contextId : contexts_.GetActiveContexts()) {
-        if (const InputContextDefinition* context =
-                actionMap_.FindContext(contextId)) {
+        if (const InputContextDefinition* context = actionMap_.FindContext(contextId)) {
             activeContexts.push_back(context);
         }
     }
     std::stable_sort(activeContexts.begin(), activeContexts.end(),
-        [](const InputContextDefinition* lhs,
-           const InputContextDefinition* rhs) {
-            return lhs->priority > rhs->priority;
-        });
+                     [](const InputContextDefinition* lhs, const InputContextDefinition* rhs) {
+                         return lhs->priority > rhs->priority;
+                     });
 
     std::unordered_set<std::string> consumedControls;
     for (const InputContextDefinition* context : activeContexts) {
-        if (developerInputCaptured_ && context->contextId != "Global") continue;
+        if (developerInputCaptured_ && context->contextId != "Global")
+            continue;
         for (const InputBinding& binding : context->bindings) {
             const std::string controlKey = PhysicalControlKey(binding);
-            if (consumedControls.contains(controlKey)) continue;
+            if (consumedControls.contains(controlKey))
+                continue;
             auto stateIt = snapshot_.actions_.find(binding.actionId);
-            if (stateIt == snapshot_.actions_.end()) continue;
+            if (stateIt == snapshot_.actions_.end())
+                continue;
             const float value = ReadBindingValue(binding);
-            if (std::abs(value) <= 1e-6f) continue;
+            if (std::abs(value) <= 1e-6f)
+                continue;
 
             InputActionState& state = stateIt->second;
             if (state.valueType == InputActionValueType::Button) {
                 state.x = (std::max)(state.x, std::abs(value));
-            } else if (state.valueType == InputActionValueType::Axis2D &&
-                       binding.component == 1) {
+            } else if (state.valueType == InputActionValueType::Axis2D && binding.component == 1) {
                 state.y += value;
             } else {
                 state.x += value;
             }
-            if (context->consumeInput) consumedControls.insert(controlKey);
+            if (context->consumeInput)
+                consumedControls.insert(controlKey);
         }
     }
 
@@ -601,14 +513,12 @@ void InputService::EvaluateActions(float dt) {
             const auto it = previousActions.find(action.actionId);
             return it != previousActions.end() && it->second.down;
         }();
-        state.down = ActionMagnitude(state) >
-            (state.valueType == InputActionValueType::Button ? 0.5f : 1e-4f);
+        state.down = ActionMagnitude(state) > (state.valueType == InputActionValueType::Button ? 0.5f : 1e-4f);
         state.pressed = state.down && !wasDown;
         state.released = !state.down && wasDown;
         if (state.down) {
             const auto previous = previousActions.find(action.actionId);
-            state.heldSeconds = previous != previousActions.end()
-                ? previous->second.heldSeconds + dt : dt;
+            state.heldSeconds = previous != previousActions.end() ? previous->second.heldSeconds + dt : dt;
         }
     }
 }
@@ -620,8 +530,7 @@ void InputService::SuppressActions() {
         InputActionState state{};
         state.valueType = action.valueType;
         const auto previous = previousActions.find(action.actionId);
-        state.released = previous != previousActions.end() &&
-            previous->second.down;
+        state.released = previous != previousActions.end() && previous->second.down;
         snapshot_.actions_.emplace(action.actionId, state);
     }
 }

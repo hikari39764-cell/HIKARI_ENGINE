@@ -6,37 +6,33 @@
 #include "Editor/SystemAuthoring/HIKARI_SceneSystemsManager.h"
 
 namespace HIKARI {
-    class DocumentSceneBase;
+class DocumentSceneBase;
 }
 
 namespace HIKARI::EDITOR {
-    class EditorToolHost;
-    class SystemAuthoringRegistry;
-}
+class EditorToolHost;
+class SystemAuthoringRegistry;
+} // namespace HIKARI::EDITOR
 
 namespace HIKARI {
 
-    struct SceneSystemsPanelResult {
-        bool changed = false;
-        std::string label{};
-        std::vector<SceneSystemData> before{};
-    };
+struct SceneSystemsPanelResult {
+    bool changed = false;
+    std::string label{};
+    std::vector<SceneSystemData> before{};
+};
 
-    class SceneSystemsPanel {
-    public:
-        SceneSystemsPanelResult Draw(
-            DocumentSceneBase& scene,
-            const EDITOR::SystemAuthoringRegistry& authoringRegistry,
-            EDITOR::EditorToolHost& toolHost);
+class SceneSystemsPanel {
+public:
+    SceneSystemsPanelResult Draw(DocumentSceneBase& scene, const EDITOR::SystemAuthoringRegistry& authoringRegistry,
+                                 EDITOR::EditorToolHost& toolHost);
 
-        void SetRuntimeApplyStatus(bool success);
-        bool IsDirty() const noexcept {
-            return manager_.IsDirty();
-        }
+    void SetRuntimeApplyStatus(bool success);
+    bool IsDirty() const noexcept { return manager_.IsDirty(); }
 
-    private:
-        EDITOR::SceneSystemsManager manager_{};
-        bool runtimeApplyFailed_ = false;
-    };
+private:
+    EDITOR::SceneSystemsManager manager_{};
+    bool runtimeApplyFailed_ = false;
+};
 
 } // namespace HIKARI

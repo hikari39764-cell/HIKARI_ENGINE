@@ -104,14 +104,6 @@ float3 NormalizeOr(float3 value, float3 fallback)
         : fallback;
 }
 
-float3 PerpendicularTo(float3 axis)
-{
-    float3 reference = abs(axis.y) < 0.999f
-        ? float3(0.0f, 1.0f, 0.0f)
-        : float3(1.0f, 0.0f, 0.0f);
-    return NormalizeOr(cross(axis, reference), float3(1.0f, 0.0f, 0.0f));
-}
-
 float RandomForProperty(
     uint seed,
     uint randomGroup,
@@ -120,21 +112,6 @@ float RandomForProperty(
     uint stream = randomGroup != 0u ? randomGroup : propertySalt;
     uint state = Hash(seed ^ ((stream + 1u) * 2246822519u));
     return (float)(state & 0x00ffffffu) / 16777216.0f;
-}
-
-float EvaluateFloatDistribution(
-    uint emitterIndex,
-    uint valueIndex,
-    uint seed,
-    uint propertySalt)
-{
-    float4 distribution = LoadEmitterValue(emitterIndex, valueIndex);
-    uint mode = asuint(distribution.z);
-    float amount = mode == 1u
-        ? RandomForProperty(
-            seed, asuint(distribution.w), propertySalt)
-        : 0.0f;
-    return lerp(distribution.x, distribution.y, amount);
 }
 
 float3 EvaluateFloat3Distribution(

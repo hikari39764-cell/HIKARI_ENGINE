@@ -9,14 +9,10 @@ namespace HIKARI::INPUT {
 
 InputActionMap CreateDefaultInputActionMap();
 
-bool LoadInputActionMapProject(
-    const std::filesystem::path& inputDirectory,
-    InputActionMap& out,
-    std::string* errorMessage = nullptr);
+bool LoadInputActionMapProject(const std::filesystem::path& inputDirectory, InputActionMap& out,
+                               std::string* errorMessage = nullptr);
 
-bool SaveInputActionMapProject(
-    const std::filesystem::path& inputDirectory,
-    const InputActionMap& map,
-    std::string* errorMessage = nullptr);
+bool SaveInputActionMapProject(const std::filesystem::path& inputDirectory, const InputActionMap& map,
+                               std::string* errorMessage = nullptr);
 
 } // namespace HIKARI::INPUT

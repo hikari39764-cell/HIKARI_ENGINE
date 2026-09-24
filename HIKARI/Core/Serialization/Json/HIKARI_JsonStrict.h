@@ -1,0 +1,122 @@
+#pragma once
+
+#include <cmath>
+#include <cstdint>
+#include <limits>
+#include <string>
+#include <string_view>
+#include <utility>
+
+#include <json.hpp>
+
+#include "Render3D/HIKARI_Math3D.h"
+
+// 型不一致を診断付きで拒否する JSON 読み取り。キーが無い場合は fallback を使う。
+// 診断文は "<path>.<key> must be ..." で統一する。
+namespace HIKARI::JSONSTRICT {
+
+inline bool Fail(std::string& outDiagnostic, std::string message) {
+    outDiagnostic = std::move(message);
+    return false;
+}
+
+inline std::string FieldPath(std::string_view path, const char* key) { return std::string(path) + "." + key; }
+
+inline bool ReadBool(const nlohmann::json& object, const char* key, bool fallback, bool& outValue,
+                     std::string& outDiagnostic, std::string_view path) {
+    const auto member = object.find(key);
+    if (member == object.end()) {
+        outValue = fallback;
+        return true;
+    }
+    if (!member->is_boolean()) {
+        return Fail(outDiagnostic, FieldPath(path, key) + " must be a boolean");
+    }
+    outValue = member->get<bool>();
+    return true;
+}
+
+inline bool ReadString(const nlohmann::json& object, const char* key, std::string fallback, std::string& outValue,
+                       std::string& outDiagnostic, std::string_view path) {
+    const auto member = object.find(key);
+    if (member == object.end()) {
+        outValue = std::move(fallback);
+        return true;
+    }
+    if (!member->is_string()) {
+        return Fail(outDiagnostic, FieldPath(path, key) + " must be a string");
+    }
+    outValue = member->get<std::string>();
+    return true;
+}
+
+inline bool IsFloatRange(double value) noexcept {
+    return std::isfinite(value) && std::abs(value) <= static_cast<double>((std::numeric_limits<float>::max)());
+}
+
+inline bool ReadFloat(const nlohmann::json& object, const char* key, float fallback, float& outValue,
+                      std::string& outDiagnostic, std::string_view path) {
+    const auto member = object.find(key);
+    if (member == object.end()) {
+        outValue = fallback;
+        return true;
+    }
+    if (!member->is_number()) {
+        return Fail(outDiagnostic, FieldPath(path, key) + " must be a finite number");
+    }
+    const double value = member->get<double>();
+    if (!IsFloatRange(value)) {
+        return Fail(outDiagnostic, FieldPath(path, key) + " must be a finite float");
+    }
+    outValue = static_cast<float>(value);
+    return true;
+}
+
+inline bool ReadUint64(const nlohmann::json& object, const char* key, uint64_t fallback, uint64_t& outValue,
+                       std::string& outDiagnostic, std::string_view path) {
+    const auto member = object.find(key);
+    if (member == object.end()) {
+        outValue = fallback;
+        return true;
+    }
+    if (member->is_number_unsigned()) {
+        outValue = member->get<uint64_t>();
+        return true;
+    }
+    if (member->is_number_integer() && member->get<int64_t>() >= 0) {
+        outValue = static_cast<uint64_t>(member->get<int64_t>());
+        return true;
+    }
+    return Fail(outDiagnostic, FieldPath(path, key) + " must be a non-negative integer");
+}
+
+inline bool ReadUint32(const nlohmann::json& object, const char* key, uint32_t fallback, uint32_t& outValue,
+                       std::string& outDiagnostic, std::string_view path) {
+    uint64_t value = fallback;
+    if (!ReadUint64(object, key, fallback, value, outDiagnostic, path)) {
+        return false;
+    }
+    if (value > (std::numeric_limits<uint32_t>::max)()) {
+        return Fail(outDiagnostic, FieldPath(path, key) + " exceeds uint32 range");
+    }
+    outValue = static_cast<uint32_t>(value);
+    return true;
+}
+
+// node 自体が [x, y, z] であること（path は node の位置）
+inline bool ReadVec3(const nlohmann::json& node, MATH::Vec3& outValue, std::string& outDiagnostic,
+                     std::string_view path) {
+    if (!node.is_array() || node.size() != 3u || !node[0].is_number() || !node[1].is_number() || !node[2].is_number()) {
+        return Fail(outDiagnostic, std::string(path) + " must be an array of three finite numbers");
+    }
+    const double x = node[0].get<double>();
+    const double y = node[1].get<double>();
+    const double z = node[2].get<double>();
+    if (!IsFloatRange(x) || !IsFloatRange(y) || !IsFloatRange(z)) {
+        return Fail(outDiagnostic, std::string(path) + " must contain finite float values");
+    }
+    outValue = {static_cast<float>(x), static_cast<float>(y), static_cast<float>(z)};
+    return true;
+}
+
+} // namespace HIKARI::JSONSTRICT

@@ -8,56 +8,36 @@
 
 namespace HIKARI {
 
-    ComponentGizmoRenderer::ComponentGizmoRenderer() {
-        RegisterCameraGizmoProviders(registry_);
-        RegisterLightingGizmoProviders(registry_);
-        RegisterColliderGizmoProvider(registry_);
+ComponentGizmoRenderer::ComponentGizmoRenderer() {
+    RegisterCameraGizmoProviders(registry_);
+    RegisterLightingGizmoProviders(registry_);
+    RegisterColliderGizmoProvider(registry_);
+}
+
+ComponentGizmoRegistry& ComponentGizmoRenderer::Registry() noexcept { return registry_; }
+
+const ComponentGizmoRegistry& ComponentGizmoRenderer::Registry() const noexcept { return registry_; }
+
+void ComponentGizmoRenderer::SubmitWorldGizmos(const World& world, const ComponentGizmoState& state,
+                                               SceneObjectId selectedObjectId, float cameraAspect,
+                                               const MATH::Vec3& viewportCameraPosition) const {
+    if (!state.showComponentGizmos) {
+        return;
     }
 
-    ComponentGizmoRegistry& ComponentGizmoRenderer::Registry() noexcept {
-        return registry_;
-    }
-
-    const ComponentGizmoRegistry&
-        ComponentGizmoRenderer::Registry() const noexcept {
-        return registry_;
-    }
-
-    void ComponentGizmoRenderer::SubmitWorldGizmos(
-        const World& world,
-        const ComponentGizmoState& state,
-        SceneObjectId selectedObjectId,
-        float cameraAspect,
-        const MATH::Vec3& viewportCameraPosition) const {
-
-        if (!state.showComponentGizmos) {
-            return;
+    const ComponentGizmoDrawContext context{selectedObjectId, cameraAspect, viewportCameraPosition, &world};
+    for (const auto& object : world.GetObjects()) {
+        if (!object || state.lockedObjectIds.contains(object->GetDocumentId().value) ||
+            (state.showOnlySelectedObject &&
+             (selectedObjectId.value == 0 || object->GetDocumentId() != selectedObjectId))) {
+            continue;
         }
-
-        const ComponentGizmoDrawContext context{
-            selectedObjectId,
-            cameraAspect,
-            viewportCameraPosition,
-            &world
-        };
-        for (const auto& object : world.GetObjects()) {
-            if (!object ||
-                state.lockedObjectIds.contains(
-                    object->GetDocumentId().value) ||
-                (state.showOnlySelectedObject &&
-                    (selectedObjectId.value == 0 ||
-                        object->GetDocumentId() != selectedObjectId))) {
-                continue;
-            }
-            for (const ComponentGizmoProvider& provider :
-                registry_.GetProviders()) {
-                if (state.IsProviderVisible(
-                        provider.providerId,
-                        provider.defaultVisible)) {
-                    provider.draw(*object, context);
-                }
+        for (const ComponentGizmoProvider& provider : registry_.GetProviders()) {
+            if (state.IsProviderVisible(provider.providerId, provider.defaultVisible)) {
+                provider.draw(*object, context);
             }
         }
     }
+}
 
 } // namespace HIKARI

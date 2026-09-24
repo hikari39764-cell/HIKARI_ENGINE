@@ -6,22 +6,17 @@
 
 namespace HIKARI::RENDERER3D::DEBUG::INTERNAL {
 
-    struct SolidVertex3D {
-        MATH::Vec3 position{};
-        MATH::Vec4 color{};
-    };
+struct SolidVertex3D {
+    MATH::Vec3 position{};
+    MATH::Vec4 color{};
+};
 
-    void RenderPrimitiveBatches(
-        const Camera3D& camera,
-        float screenWidth,
-        float screenHeight,
-        bool editorView,
-        std::span<const Stroke3D> xrayStrokes,
-        std::span<const Stroke3D> depthStrokes,
-        std::span<const SolidVertex3D> solidVertices);
+void RenderPrimitiveBatches(const Camera3D& camera, float screenWidth, float screenHeight, bool editorView,
+                            std::span<const Stroke3D> xrayStrokes, std::span<const Stroke3D> depthStrokes,
+                            std::span<const SolidVertex3D> solidVertices);
 
 #if defined(HIKARI_WITH_EDITOR)
-    void ShutdownEditorViewResources();
+void ShutdownEditorViewResources();
 #endif
 
 } // namespace HIKARI::RENDERER3D::DEBUG::INTERNAL

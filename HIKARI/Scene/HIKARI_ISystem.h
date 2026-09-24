@@ -42,13 +42,11 @@ class IMassWorkerSystem {
 public:
     virtual ~IMassWorkerSystem() = default;
 
-    virtual const GameProjectMassSystemScheduleDesc&
-        GetMassSystemSchedule() const noexcept = 0;
-    virtual bool ExecuteMassPartition(
-        const GameProjectMassPartitionInput& input,
-        GameProjectMassPartitionOutput& output,
-        const GameProjectMassCommandWriter& commands,
-        const FrameContext& frame) const noexcept = 0;
+    virtual const GameProjectMassSystemScheduleDesc& GetMassSystemSchedule() const noexcept = 0;
+    virtual bool ExecuteMassPartition(const GameProjectMassPartitionInput& input,
+                                      GameProjectMassPartitionOutput& output,
+                                      const GameProjectMassCommandWriter& commands,
+                                      const FrameContext& frame) const noexcept = 0;
 };
 
 // RenderGraph calls this sibling only at its stable owner-thread observation
@@ -57,10 +55,8 @@ class IRenderFrameObserverSystem {
 public:
     virtual ~IRenderFrameObserverSystem() = default;
 
-    virtual const GameProjectRenderObserverDesc&
-        GetRenderObserverDesc() const noexcept = 0;
-    virtual bool ObserveRenderFrame(
-        const GameProjectRenderFrameView& frame) const noexcept = 0;
+    virtual const GameProjectRenderObserverDesc& GetRenderObserverDesc() const noexcept = 0;
+    virtual bool ObserveRenderFrame(const GameProjectRenderFrameView& frame) const noexcept = 0;
 };
 
 // Project render passes are separate from the ordinary System render phase.
@@ -70,10 +66,8 @@ class IRenderFramePassSystem {
 public:
     virtual ~IRenderFramePassSystem() = default;
 
-    virtual const GameProjectRenderPassDesc&
-        GetRenderPassDesc() const noexcept = 0;
-    virtual bool ExecuteRenderPass(
-        const GameProjectRenderPassContext& context) const noexcept = 0;
+    virtual const GameProjectRenderPassDesc& GetRenderPassDesc() const noexcept = 0;
+    virtual bool ExecuteRenderPass(const GameProjectRenderPassContext& context) const noexcept = 0;
 };
 
 } // namespace HIKARI

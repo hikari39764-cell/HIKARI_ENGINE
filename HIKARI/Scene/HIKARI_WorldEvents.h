@@ -8,10 +8,10 @@
 
 namespace HIKARI {
 
-    struct WorldObjectDestroyedEvent {
-        SceneObjectId objectId{};
-        RuntimeObjectHandle runtimeObject{};
-        std::string objectName{};
-    };
+struct WorldObjectDestroyedEvent {
+    SceneObjectId objectId{};
+    RuntimeObjectHandle runtimeObject{};
+    std::string objectName{};
+};
 
 } // namespace HIKARI

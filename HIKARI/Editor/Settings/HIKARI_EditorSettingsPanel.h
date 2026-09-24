@@ -8,6 +8,7 @@ namespace HIKARI::EDITOR {
 class EditorSettingsPanel {
 public:
     void DrawContents(EditorContext& context, const std::function<void()>& aiSettings = {});
+
 private:
     int category_ = 0;
     int logCapacity_ = 0;

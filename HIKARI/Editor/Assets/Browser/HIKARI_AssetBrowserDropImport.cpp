@@ -44,401 +44,332 @@
 
 namespace HIKARI::EDITOR::ASSET_BROWSER {
 
-bool EndsWithCaseInsensitive(const std::string &value,
-                             std::string_view suffix) {
-  if (suffix.size() > value.size()) {
-    return false;
-  }
-  const std::string tail =
-      TEXT::ToLowerAsciiCopy(value.substr(value.size() - suffix.size()));
-  return tail == TEXT::ToLowerAsciiCopy(std::string(suffix));
+bool IsAssetsRootPath(const std::filesystem::path& path) {
+    return TEXT::ToLowerAsciiCopy(path.lexically_normal().generic_string()) == "assets";
 }
 
-bool IsAssetsRootPath(const std::filesystem::path &path) {
-  return TEXT::ToLowerAsciiCopy(path.lexically_normal().generic_string()) ==
-         "assets";
+bool IsSupportedImportSource(const std::filesystem::path& path) {
+    return ASSETS::SEMANTICS::ClassifyAssetTypeFromPath(path) != AssetType::Unknown;
 }
 
-bool IsSupportedImportSource(const std::filesystem::path &path) {
-  return ASSETS::SEMANTICS::ClassifyAssetTypeFromPath(path) !=
-         AssetType::Unknown;
-}
-
-std::filesystem::path
-SuggestedTargetDirectory(const std::filesystem::path &currentDirectory,
-                         const std::filesystem::path &sourcePath) {
-
-  if (!currentDirectory.empty() && !IsAssetsRootPath(currentDirectory)) {
-    return currentDirectory;
-  }
-
-  const std::string filename =
-      TEXT::ToLowerAsciiCopy(sourcePath.filename().string());
-  const std::string extension =
-      TEXT::ToLowerAsciiCopy(sourcePath.extension().string());
-  AssetType type = ASSETS::SEMANTICS::ClassifyAssetTypeFromPath(sourcePath);
-  if (type == AssetType::Texture && extension == ".dds" &&
-      (filename.find("sky") != std::string::npos ||
-       filename.find("cube") != std::string::npos ||
-       filename.find("cubemap") != std::string::npos)) {
-    type = AssetType::Sky;
-  }
-
-  if (type == AssetType::Model) {
-    return "Assets/Models";
-  }
-  if (type == AssetType::Scene) {
-    return "Assets/Scenes";
-  }
-  if (type == AssetType::Material) {
-    return "Assets/Materials";
-  }
-  if (type == AssetType::VfxEffect) {
-    return "Assets/Vfx";
-  }
-  if (type == AssetType::Sky) {
-    return "Assets/Skies";
-  }
-  if (type == AssetType::Sequence) {
-    return "Assets/Sequences";
-  }
-  if (type == AssetType::AnimationStateMachine) {
-    return "Assets/Animations";
-  }
-  if (type == AssetType::Dialogue) {
-    return "Assets/Dialogues";
-  }
-  return "Assets/Textures";
-}
-
-bool IsPathInside(const std::filesystem::path &path,
-                  const std::filesystem::path &directory) {
-  std::error_code ec{};
-  const std::filesystem::path relative =
-      std::filesystem::relative(path, directory, ec);
-  if (ec || relative.empty()) {
-    return false;
-  }
-  const std::string native = relative.generic_string();
-  return native != "." && native.find("..") != 0;
-}
-
-std::filesystem::path
-MakeUniqueFilePath(const std::filesystem::path &absolutePath) {
-  std::error_code ec{};
-  if (!std::filesystem::exists(absolutePath, ec)) {
-    return absolutePath;
-  }
-
-  const std::filesystem::path parent = absolutePath.parent_path();
-  const std::string stem = absolutePath.stem().string();
-  const std::string extension = absolutePath.extension().string();
-  for (int i = 1; i < 10000; ++i) {
-    std::filesystem::path candidate =
-        parent / (stem + "_" + std::to_string(i) + extension);
-    ec.clear();
-    if (!std::filesystem::exists(candidate, ec)) {
-      return candidate;
+std::filesystem::path SuggestedTargetDirectory(const std::filesystem::path& currentDirectory,
+                                               const std::filesystem::path& sourcePath) {
+    if (!currentDirectory.empty() && !IsAssetsRootPath(currentDirectory)) {
+        return currentDirectory;
     }
-  }
-  return parent / (stem + "_9999" + extension);
+
+    const std::string filename = TEXT::ToLowerAsciiCopy(sourcePath.filename().string());
+    const std::string extension = TEXT::ToLowerAsciiCopy(sourcePath.extension().string());
+    AssetType type = ASSETS::SEMANTICS::ClassifyAssetTypeFromPath(sourcePath);
+    if (type == AssetType::Texture && extension == ".dds" &&
+        (filename.find("sky") != std::string::npos || filename.find("cube") != std::string::npos ||
+         filename.find("cubemap") != std::string::npos)) {
+        type = AssetType::Sky;
+    }
+
+    if (type == AssetType::Font)
+        return "Assets/Fonts";
+    if (type == AssetType::TextStyle)
+        return "Assets/TextStyles";
+    if (type == AssetType::Model) {
+        return "Assets/Models";
+    }
+    if (type == AssetType::Scene) {
+        return "Assets/Scenes";
+    }
+    if (type == AssetType::Material) {
+        return "Assets/Materials";
+    }
+    if (type == AssetType::VfxEffect) {
+        return "Assets/Vfx";
+    }
+    if (type == AssetType::Sky) {
+        return "Assets/Skies";
+    }
+    if (type == AssetType::Sequence) {
+        return "Assets/Sequences";
+    }
+    if (type == AssetType::AnimationStateMachine) {
+        return "Assets/Animations";
+    }
+    if (type == AssetType::Dialogue) {
+        return "Assets/Dialogues";
+    }
+    return "Assets/Textures";
 }
 
-bool CopySourceFileIntoProject(const AssetDatabase &assetDatabase,
-                               const std::filesystem::path &sourceFile,
-                               const std::filesystem::path &targetRelativePath,
-                               bool preserveCompanionName,
-                               std::filesystem::path &outRelativePath,
-                               std::string &outError) {
+bool IsPathInside(const std::filesystem::path& path, const std::filesystem::path& directory) {
+    std::error_code ec{};
+    const std::filesystem::path relative = std::filesystem::relative(path, directory, ec);
+    if (ec || relative.empty()) {
+        return false;
+    }
+    const std::string native = relative.generic_string();
+    return native != "." && native.find("..") != 0;
+}
 
-  std::error_code ec{};
-  const std::filesystem::path sourceAbsolute =
-      std::filesystem::absolute(sourceFile, ec).lexically_normal();
-  if (ec) {
-    outError = "Failed to resolve source path: " + ec.message();
-    return false;
-  }
+std::filesystem::path MakeUniqueFilePath(const std::filesystem::path& absolutePath) {
+    std::error_code ec{};
+    if (!std::filesystem::exists(absolutePath, ec)) {
+        return absolutePath;
+    }
 
-  if (IsPathInside(sourceAbsolute, assetDatabase.GetAssetsRoot())) {
-    outRelativePath = std::filesystem::relative(
-                          sourceAbsolute, assetDatabase.GetProjectRoot(), ec)
-                          .lexically_normal();
+    const std::filesystem::path parent = absolutePath.parent_path();
+    const std::string stem = absolutePath.stem().string();
+    const std::string extension = absolutePath.extension().string();
+    for (int i = 1; i < 10000; ++i) {
+        std::filesystem::path candidate = parent / (stem + "_" + std::to_string(i) + extension);
+        ec.clear();
+        if (!std::filesystem::exists(candidate, ec)) {
+            return candidate;
+        }
+    }
+    return parent / (stem + "_9999" + extension);
+}
+
+bool CopySourceFileIntoProject(const AssetDatabase& assetDatabase, const std::filesystem::path& sourceFile,
+                               const std::filesystem::path& targetRelativePath, bool preserveCompanionName,
+                               std::filesystem::path& outRelativePath, std::string& outError) {
+    std::error_code ec{};
+    const std::filesystem::path sourceAbsolute = std::filesystem::absolute(sourceFile, ec).lexically_normal();
     if (ec) {
-      outError = "Failed to make source path project-relative: " + ec.message();
-      return false;
+        outError = "Failed to resolve source path: " + ec.message();
+        return false;
+    }
+
+    if (IsPathInside(sourceAbsolute, assetDatabase.GetAssetsRoot())) {
+        outRelativePath =
+            std::filesystem::relative(sourceAbsolute, assetDatabase.GetProjectRoot(), ec).lexically_normal();
+        if (ec) {
+            outError = "Failed to make source path project-relative: " + ec.message();
+            return false;
+        }
+        return true;
+    }
+
+    std::filesystem::path destinationAbsolute = assetDatabase.GetProjectRoot() / targetRelativePath;
+    destinationAbsolute = destinationAbsolute.lexically_normal();
+    if (!preserveCompanionName) {
+        destinationAbsolute = MakeUniqueFilePath(destinationAbsolute);
+    }
+    std::filesystem::create_directories(destinationAbsolute.parent_path(), ec);
+    if (ec) {
+        outError = "Failed to create target directory: " + ec.message();
+        return false;
+    }
+
+    const std::filesystem::copy_options copyOptions =
+        preserveCompanionName ? std::filesystem::copy_options::overwrite_existing : std::filesystem::copy_options::none;
+    std::filesystem::copy_file(sourceAbsolute, destinationAbsolute, copyOptions, ec);
+    if (ec) {
+        outError = "Failed to copy " + sourceAbsolute.generic_string() + ": " + ec.message();
+        return false;
+    }
+
+    outRelativePath =
+        std::filesystem::relative(destinationAbsolute, assetDatabase.GetProjectRoot(), ec).lexically_normal();
+    if (ec) {
+        outError = "Failed to make imported path project-relative: " + ec.message();
+        return false;
     }
     return true;
-  }
-
-  std::filesystem::path destinationAbsolute =
-      assetDatabase.GetProjectRoot() / targetRelativePath;
-  destinationAbsolute = destinationAbsolute.lexically_normal();
-  if (!preserveCompanionName) {
-    destinationAbsolute = MakeUniqueFilePath(destinationAbsolute);
-  }
-  std::filesystem::create_directories(destinationAbsolute.parent_path(), ec);
-  if (ec) {
-    outError = "Failed to create target directory: " + ec.message();
-    return false;
-  }
-
-  const std::filesystem::copy_options copyOptions =
-      preserveCompanionName ? std::filesystem::copy_options::overwrite_existing
-                            : std::filesystem::copy_options::none;
-  std::filesystem::copy_file(sourceAbsolute, destinationAbsolute, copyOptions,
-                             ec);
-  if (ec) {
-    outError = "Failed to copy " + sourceAbsolute.generic_string() + ": " +
-               ec.message();
-    return false;
-  }
-
-  outRelativePath = std::filesystem::relative(
-                        destinationAbsolute, assetDatabase.GetProjectRoot(), ec)
-                        .lexically_normal();
-  if (ec) {
-    outError = "Failed to make imported path project-relative: " + ec.message();
-    return false;
-  }
-  return true;
 }
 
-void CollectDroppedFiles(
-    const std::filesystem::path &droppedPath,
-    const std::filesystem::path &currentDirectory,
-    const AssetDatabase &assetDatabase,
-    std::vector<std::filesystem::path> &outProjectRelativeFiles,
-    int &copiedCompanionCount, int &skippedCount, std::string &lastError) {
+void CollectDroppedFiles(const std::filesystem::path& droppedPath, const std::filesystem::path& currentDirectory,
+                         const AssetDatabase& assetDatabase,
+                         std::vector<std::filesystem::path>& outProjectRelativeFiles, int& copiedCompanionCount,
+                         int& skippedCount, std::string& lastError) {
+    std::error_code ec{};
+    if (std::filesystem::is_directory(droppedPath, ec)) {
+        const std::filesystem::path targetRoot = (currentDirectory.empty() || IsAssetsRootPath(currentDirectory))
+                                                     ? std::filesystem::path("Assets") / droppedPath.filename()
+                                                     : currentDirectory / droppedPath.filename();
 
-  std::error_code ec{};
-  if (std::filesystem::is_directory(droppedPath, ec)) {
-    const std::filesystem::path targetRoot =
-        (currentDirectory.empty() || IsAssetsRootPath(currentDirectory))
-            ? std::filesystem::path("Assets") / droppedPath.filename()
-            : currentDirectory / droppedPath.filename();
-
-    std::filesystem::recursive_directory_iterator it(
-        droppedPath, std::filesystem::directory_options::skip_permission_denied,
-        ec);
-    const std::filesystem::recursive_directory_iterator end{};
-    if (ec) {
-      lastError = "Failed to read dropped folder: " + ec.message();
-      ++skippedCount;
-      return;
-    }
-
-    for (; it != end; it.increment(ec)) {
-      if (ec) {
-        lastError =
-            "Failed to continue reading dropped folder: " + ec.message();
-        ec.clear();
-        ++skippedCount;
-        continue;
-      }
-
-      const std::filesystem::directory_entry entry = *it;
-      std::error_code entryEc{};
-      if (!entry.is_regular_file(entryEc)) {
-        ++skippedCount;
-        continue;
-      }
-
-      const std::filesystem::path entryPath = entry.path();
-      const bool supportedAsset = IsSupportedImportSource(entryPath);
-      const bool copyOnlySidecar =
-          ASSETS::SEMANTICS::IsAssetCompanionSource(entryPath);
-      if (!supportedAsset && !copyOnlySidecar) {
-        ++skippedCount;
-        continue;
-      }
-
-      std::filesystem::path relativeInside =
-          std::filesystem::relative(entryPath, droppedPath, entryEc);
-      if (entryEc) {
-        ++skippedCount;
-        continue;
-      }
-      std::filesystem::path copiedRelative{};
-      const std::filesystem::path targetRelative =
-          (targetRoot / relativeInside).lexically_normal();
-      if (CopySourceFileIntoProject(assetDatabase, entryPath, targetRelative,
-                                    copyOnlySidecar, copiedRelative,
-                                    lastError)) {
-        if (supportedAsset) {
-          outProjectRelativeFiles.push_back(copiedRelative);
-        } else {
-          ++copiedCompanionCount;
+        std::filesystem::recursive_directory_iterator it(
+            droppedPath, std::filesystem::directory_options::skip_permission_denied, ec);
+        const std::filesystem::recursive_directory_iterator end{};
+        if (ec) {
+            lastError = "Failed to read dropped folder: " + ec.message();
+            ++skippedCount;
+            return;
         }
-      } else {
+
+        for (; it != end; it.increment(ec)) {
+            if (ec) {
+                lastError = "Failed to continue reading dropped folder: " + ec.message();
+                ec.clear();
+                ++skippedCount;
+                continue;
+            }
+
+            const std::filesystem::directory_entry entry = *it;
+            std::error_code entryEc{};
+            if (!entry.is_regular_file(entryEc)) {
+                ++skippedCount;
+                continue;
+            }
+
+            const std::filesystem::path entryPath = entry.path();
+            const bool supportedAsset = IsSupportedImportSource(entryPath);
+            const bool copyOnlySidecar = ASSETS::SEMANTICS::IsAssetCompanionSource(entryPath);
+            if (!supportedAsset && !copyOnlySidecar) {
+                ++skippedCount;
+                continue;
+            }
+
+            std::filesystem::path relativeInside = std::filesystem::relative(entryPath, droppedPath, entryEc);
+            if (entryEc) {
+                ++skippedCount;
+                continue;
+            }
+            std::filesystem::path copiedRelative{};
+            const std::filesystem::path targetRelative = (targetRoot / relativeInside).lexically_normal();
+            if (CopySourceFileIntoProject(assetDatabase, entryPath, targetRelative, copyOnlySidecar, copiedRelative,
+                                          lastError)) {
+                if (supportedAsset) {
+                    outProjectRelativeFiles.push_back(copiedRelative);
+                } else {
+                    ++copiedCompanionCount;
+                }
+            } else {
+                ++skippedCount;
+            }
+        }
+        return;
+    }
+
+    if (ec) {
+        lastError = "Failed to inspect dropped path: " + ec.message();
         ++skippedCount;
-      }
+        return;
     }
-    return;
-  }
 
-  if (ec) {
-    lastError = "Failed to inspect dropped path: " + ec.message();
-    ++skippedCount;
-    return;
-  }
+    const bool regularFile = std::filesystem::is_regular_file(droppedPath, ec);
+    if (ec) {
+        lastError = "Failed to inspect dropped file: " + ec.message();
+        ++skippedCount;
+        return;
+    }
 
-  const bool regularFile = std::filesystem::is_regular_file(droppedPath, ec);
-  if (ec) {
-    lastError = "Failed to inspect dropped file: " + ec.message();
-    ++skippedCount;
-    return;
-  }
+    const bool supportedAsset = IsSupportedImportSource(droppedPath);
+    const bool companionSource = ASSETS::SEMANTICS::IsAssetCompanionSource(droppedPath);
+    if (!regularFile || (!supportedAsset && !companionSource)) {
+        ++skippedCount;
+        return;
+    }
 
-  const bool supportedAsset = IsSupportedImportSource(droppedPath);
-  const bool companionSource =
-      ASSETS::SEMANTICS::IsAssetCompanionSource(droppedPath);
-  if (!regularFile || (!supportedAsset && !companionSource)) {
-    ++skippedCount;
-    return;
-  }
-
-  const std::filesystem::path targetDirectory =
-      companionSource &&
-              (currentDirectory.empty() || IsAssetsRootPath(currentDirectory))
-          ? std::filesystem::path("Assets/Models")
-          : SuggestedTargetDirectory(currentDirectory, droppedPath);
-  const std::filesystem::path targetRelative =
-      (targetDirectory / droppedPath.filename()).lexically_normal();
-  std::filesystem::path copiedRelative{};
-  if (CopySourceFileIntoProject(assetDatabase, droppedPath, targetRelative,
-                                companionSource, copiedRelative, lastError)) {
-    if (supportedAsset) {
-      outProjectRelativeFiles.push_back(copiedRelative);
+    const std::filesystem::path targetDirectory =
+        companionSource && (currentDirectory.empty() || IsAssetsRootPath(currentDirectory))
+            ? std::filesystem::path("Assets/Models")
+            : SuggestedTargetDirectory(currentDirectory, droppedPath);
+    const std::filesystem::path targetRelative = (targetDirectory / droppedPath.filename()).lexically_normal();
+    std::filesystem::path copiedRelative{};
+    if (CopySourceFileIntoProject(assetDatabase, droppedPath, targetRelative, companionSource, copiedRelative,
+                                  lastError)) {
+        if (supportedAsset) {
+            outProjectRelativeFiles.push_back(copiedRelative);
+        } else {
+            ++copiedCompanionCount;
+        }
     } else {
-      ++copiedCompanionCount;
+        ++skippedCount;
     }
-  } else {
-    ++skippedCount;
-  }
 }
 
-void ProcessDroppedFiles(AssetDatabase &assetDatabase,
-                          const std::filesystem::path &currentDirectory,
-                          EditorSelection &selection,
-                          std::string &lastOperationMessage,
-                          float targetScreenLeft,
-                          float targetScreenTop,
-                          float targetScreenRight,
-                          float targetScreenBottom) {
-
-  const RECT targetScreenRect{
-      static_cast<LONG>(targetScreenLeft),
-      static_cast<LONG>(targetScreenTop),
-      static_cast<LONG>(targetScreenRight),
-      static_cast<LONG>(targetScreenBottom),
-  };
-  std::vector<std::filesystem::path> droppedFiles =
-      PLATFORM::ConsumeDroppedFilesInScreenRect(targetScreenRect);
-  if (droppedFiles.empty()) {
-    return;
-  }
-
-  std::vector<std::filesystem::path> copiedFiles;
-  int copiedCompanionCount = 0;
-  int skippedCount = 0;
-  std::string lastError{};
-  for (const std::filesystem::path &dropped : droppedFiles) {
-    try {
-      CollectDroppedFiles(dropped, currentDirectory, assetDatabase, copiedFiles,
-                          copiedCompanionCount, skippedCount, lastError);
-    } catch (const std::exception &ex) {
-      ++skippedCount;
-      lastError = std::string("Drop failed: ") + ex.what();
-      HIKARI_LOG_ERROR("[AssetBrowser][Drop] " + lastError);
-    } catch (...) {
-      ++skippedCount;
-      lastError = "Drop failed: unknown exception";
-      HIKARI_LOG_ERROR("[AssetBrowser][Drop] " + lastError);
-    }
-  }
-
-  if (copiedFiles.empty()) {
-    if (copiedCompanionCount > 0) {
-      if (!assetDatabase.ScanAssets(false)) {
-        lastOperationMessage =
-            TEXT::Localize("ui.assetBrowser.assetDatabaseRefreshFailed");
+void ProcessDroppedFiles(AssetDatabase& assetDatabase, const std::filesystem::path& currentDirectory,
+                         EditorSelection& selection, std::string& lastOperationMessage, float targetScreenLeft,
+                         float targetScreenTop, float targetScreenRight, float targetScreenBottom) {
+    const RECT targetScreenRect{
+        static_cast<LONG>(targetScreenLeft),
+        static_cast<LONG>(targetScreenTop),
+        static_cast<LONG>(targetScreenRight),
+        static_cast<LONG>(targetScreenBottom),
+    };
+    std::vector<std::filesystem::path> droppedFiles = PLATFORM::ConsumeDroppedFilesInScreenRect(targetScreenRect);
+    if (droppedFiles.empty()) {
         return;
-      }
-      char buffer[96]{};
-      std::snprintf(
-          buffer,
-          sizeof(buffer),
-          TEXT::Localize(
-              "ui.assetBrowser.copiedCompanionsFormat").c_str(),
-          copiedCompanionCount);
-      lastOperationMessage = buffer;
-    } else {
-      lastOperationMessage =
-          lastError.empty()
-              ? TEXT::Localize("ui.assetBrowser.dropIgnored")
-              : lastError;
     }
-    return;
-  }
 
-  if (!assetDatabase.ScanAssets(true)) {
-    lastOperationMessage =
-        TEXT::Localize("ui.assetBrowser.assetDatabaseRefreshFailed");
-    return;
-  }
-
-  std::vector<AssetGuid> importGuids;
-  importGuids.reserve(copiedFiles.size());
-  std::filesystem::path firstRelativePath{};
-  for (const std::filesystem::path &relativePath : copiedFiles) {
-    const AssetRecord *record = assetDatabase.FindByPath(relativePath);
-    if (!record) {
-      continue;
+    std::vector<std::filesystem::path> copiedFiles;
+    int copiedCompanionCount = 0;
+    int skippedCount = 0;
+    std::string lastError{};
+    for (const std::filesystem::path& dropped : droppedFiles) {
+        try {
+            CollectDroppedFiles(dropped, currentDirectory, assetDatabase, copiedFiles, copiedCompanionCount,
+                                skippedCount, lastError);
+        } catch (const std::exception& ex) {
+            ++skippedCount;
+            lastError = std::string("Drop failed: ") + ex.what();
+            HIKARI_LOG_ERROR("[AssetBrowser][Drop] " + lastError);
+        } catch (...) {
+            ++skippedCount;
+            lastError = "Drop failed: unknown exception";
+            HIKARI_LOG_ERROR("[AssetBrowser][Drop] " + lastError);
+        }
     }
-    if (firstRelativePath.empty()) {
-      firstRelativePath = relativePath;
-    }
-    importGuids.push_back(record->guid);
-  }
 
-  const bool importQueued =
-      assetDatabase.QueueImportAssets(importGuids, "Dropped assets");
-  if (!firstRelativePath.empty()) {
-    if (const AssetRecord *refreshed =
-            assetDatabase.FindByPath(firstRelativePath)) {
-      SelectRecord(*refreshed, selection);
+    if (copiedFiles.empty()) {
+        if (copiedCompanionCount > 0) {
+            if (!assetDatabase.ScanAssets(false)) {
+                lastOperationMessage = TEXT::Localize("ui.assetBrowser.assetDatabaseRefreshFailed");
+                return;
+            }
+            char buffer[96]{};
+            std::snprintf(buffer, sizeof(buffer), TEXT::Localize("ui.assetBrowser.copiedCompanionsFormat").c_str(),
+                          copiedCompanionCount);
+            lastOperationMessage = buffer;
+        } else {
+            lastOperationMessage = lastError.empty() ? TEXT::Localize("ui.assetBrowser.dropIgnored") : lastError;
+        }
+        return;
     }
-  }
 
-  char droppedBuffer[128]{};
-  std::snprintf(
-      droppedBuffer,
-      sizeof(droppedBuffer),
-      TEXT::Localize(
-          importQueued
-              ? "ui.assetBrowser.dropQueuedFormat"
-              : "ui.assetBrowser.dropBatchRunningFormat").c_str(),
-      static_cast<int>(copiedFiles.size()));
-  lastOperationMessage = droppedBuffer;
-  if (copiedCompanionCount > 0) {
-    char companionBuffer[96]{};
+    if (!assetDatabase.ScanAssets(true)) {
+        lastOperationMessage = TEXT::Localize("ui.assetBrowser.assetDatabaseRefreshFailed");
+        return;
+    }
+
+    std::vector<AssetGuid> importGuids;
+    importGuids.reserve(copiedFiles.size());
+    std::filesystem::path firstRelativePath{};
+    for (const std::filesystem::path& relativePath : copiedFiles) {
+        const AssetRecord* record = assetDatabase.FindByPath(relativePath);
+        if (!record) {
+            continue;
+        }
+        if (firstRelativePath.empty()) {
+            firstRelativePath = relativePath;
+        }
+        importGuids.push_back(record->guid);
+    }
+
+    const bool importQueued = assetDatabase.QueueImportAssets(importGuids, "Dropped assets");
+    if (!firstRelativePath.empty()) {
+        if (const AssetRecord* refreshed = assetDatabase.FindByPath(firstRelativePath)) {
+            SelectRecord(*refreshed, selection);
+        }
+    }
+
+    char droppedBuffer[128]{};
     std::snprintf(
-        companionBuffer,
-        sizeof(companionBuffer),
-        TEXT::Localize(
-            "ui.assetBrowser.copiedHiddenCompanionsFormat").c_str(),
-        copiedCompanionCount);
-    lastOperationMessage += companionBuffer;
-  }
-  if (skippedCount > 0) {
-    char skippedBuffer[64]{};
-    std::snprintf(
-        skippedBuffer,
-        sizeof(skippedBuffer),
-        TEXT::Localize("ui.assetBrowser.skippedFormat").c_str(),
-        skippedCount);
-    lastOperationMessage += skippedBuffer;
-  }
+        droppedBuffer, sizeof(droppedBuffer),
+        TEXT::Localize(importQueued ? "ui.assetBrowser.dropQueuedFormat" : "ui.assetBrowser.dropBatchRunningFormat")
+            .c_str(),
+        static_cast<int>(copiedFiles.size()));
+    lastOperationMessage = droppedBuffer;
+    if (copiedCompanionCount > 0) {
+        char companionBuffer[96]{};
+        std::snprintf(companionBuffer, sizeof(companionBuffer),
+                      TEXT::Localize("ui.assetBrowser.copiedHiddenCompanionsFormat").c_str(), copiedCompanionCount);
+        lastOperationMessage += companionBuffer;
+    }
+    if (skippedCount > 0) {
+        char skippedBuffer[64]{};
+        std::snprintf(skippedBuffer, sizeof(skippedBuffer), TEXT::Localize("ui.assetBrowser.skippedFormat").c_str(),
+                      skippedCount);
+        lastOperationMessage += skippedBuffer;
+    }
 }
 
 } // namespace HIKARI::EDITOR::ASSET_BROWSER

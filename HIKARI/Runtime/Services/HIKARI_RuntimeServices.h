@@ -10,36 +10,30 @@
 #include <vector>
 
 namespace HIKARI::SERVICES {
-    RuntimeHostMode GetRuntimeHostMode();
-    INPUT::InputService& GetInputService();
-    const INPUT::InputSnapshot& GetInputSnapshot();
-    ActionTimeDilationService& GetActionTimeDilationService();
-    GameProjectSaveStorageService& GetGameProjectSaveStorageService();
+RuntimeHostMode GetRuntimeHostMode();
+INPUT::InputService& GetInputService();
+const INPUT::InputSnapshot& GetInputSnapshot();
+ActionTimeDilationService& GetActionTimeDilationService();
+GameProjectSaveStorageService& GetGameProjectSaveStorageService();
 
-    bool IsEditorHost();
-    bool IsStandaloneGameHost();
-    bool IsImGuiEnabled();
-    bool IsEditorUIEnabled();
-    bool ShouldProduceEditorUiFrame();
-    int GetLogicalScreenWidth();
-    int GetLogicalScreenHeight();
+bool IsEditorHost();
+bool IsStandaloneGameHost();
+bool IsEditorUIEnabled();
+bool ShouldProduceEditorUiFrame();
+int GetLogicalScreenWidth();
+int GetLogicalScreenHeight();
 
-    void RequestRuntimeSessionEnd();
-    bool IsRuntimeSessionEndRequested();
-    bool ConsumeRuntimeSessionEndRequest();
-    void ClearRuntimeSessionEndRequest();
+void RequestRuntimeSessionEnd();
+bool IsRuntimeSessionEndRequested();
+bool ConsumeRuntimeSessionEndRequest();
 
-    const std::string& GetRuntimeStartupSceneGuid();
-    const std::vector<std::string>& GetRuntimeExportedSceneGuids();
-    bool IsRuntimeSceneGuidAllowed(const std::string& sceneGuid);
+const std::string& GetRuntimeStartupSceneGuid();
+bool IsRuntimeSceneGuidAllowed(const std::string& sceneGuid);
 
-    void SetEditorUIEnabled(bool enabled);
+void SetEditorUIEnabled(bool enabled);
 
-    bool Initialize(
-        const char* title,
-        const RUNTIME::HostBootstrapConfig& cfg = {},
-        std::string* error = nullptr,
-        bool startHidden = false);
-    void FinalizeAll();
-    bool PumpMessages();
+bool Initialize(const char* title, const RUNTIME::HostBootstrapConfig& cfg = {}, std::string* error = nullptr,
+                bool startHidden = false);
+void FinalizeAll();
+bool PumpMessages();
 } // namespace HIKARI::SERVICES

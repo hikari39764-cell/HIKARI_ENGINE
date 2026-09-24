@@ -9,7 +9,8 @@ public:
     void DrawPreferences();
     void TickAttachments();
     void ResetComposer();
-    void SetWorkspaceLabel(std::string label) { workspaceLabel_=std::move(label); }
+    void SetWorkspaceLabel(std::string label) { workspaceLabel_ = std::move(label); }
+
 private:
     void DrawContents();
     void DrawTask(const std::vector<AI_ASSISTANT::AiChatMessage>& messages, size_t begin, size_t end, bool active);
@@ -55,8 +56,12 @@ private:
     AI_ASSISTANT::AiRequestResult rawResult_{};
     nlohmann::json attachmentCapturePoll_;
     nlohmann::json draftSessions_ = nlohmann::json::array();
-    struct ImagePreview { int handle = -1; unsigned width = 0, height = 0; int lastFrame = 0; };
+    struct ImagePreview {
+        int handle = -1;
+        unsigned width = 0, height = 0;
+        int lastFrame = 0;
+    };
     std::unordered_map<std::string, ImagePreview> imagePreviews_;
     std::vector<AI_ASSISTANT::AiConversationSummary> savedConversations_;
 };
-}
+} // namespace HIKARI::EDITOR

@@ -39,25 +39,17 @@ enum class EditorOperationExposureMask : uint8_t {
     BuiltInAi = 1u << 1u,
     LocalBridge = 1u << 2u,
     Automation = 1u << 3u,
-    LegacyDefault =
-        (1u << 0u) | (1u << 1u) | (1u << 2u),
+    LegacyDefault = (1u << 0u) | (1u << 1u) | (1u << 2u),
 };
 
-constexpr EditorOperationExposureMask operator|(
-    EditorOperationExposureMask lhs,
-    EditorOperationExposureMask rhs) noexcept {
-
-    return static_cast<EditorOperationExposureMask>(
-        static_cast<uint8_t>(lhs) |
-        static_cast<uint8_t>(rhs));
+constexpr EditorOperationExposureMask operator|(EditorOperationExposureMask lhs,
+                                                EditorOperationExposureMask rhs) noexcept {
+    return static_cast<EditorOperationExposureMask>(static_cast<uint8_t>(lhs) | static_cast<uint8_t>(rhs));
 }
 
-constexpr bool HasEditorOperationExposure(
-    EditorOperationExposureMask value,
-    EditorOperationExposureMask exposure) noexcept {
-
-    return (static_cast<uint8_t>(value) &
-        static_cast<uint8_t>(exposure)) != 0u;
+constexpr bool HasEditorOperationExposure(EditorOperationExposureMask value,
+                                          EditorOperationExposureMask exposure) noexcept {
+    return (static_cast<uint8_t>(value) & static_cast<uint8_t>(exposure)) != 0u;
 }
 
 enum class EditorOperationPermission : uint8_t {
@@ -88,15 +80,13 @@ enum class EditorOperationRegistrationCode : uint8_t {
 
 struct EditorOperationRegistrationResult {
     bool ok = false;
-    EditorOperationRegistrationCode code =
-        EditorOperationRegistrationCode::Unspecified;
+    EditorOperationRegistrationCode code = EditorOperationRegistrationCode::Unspecified;
     std::string message{};
 };
 
 struct EditorOperationParameter {
     std::string name{};
-    EditorOperationParameterType type =
-        EditorOperationParameterType::String;
+    EditorOperationParameterType type = EditorOperationParameterType::String;
     bool required = false;
     std::string description{};
     // 追加制約や構造化値の形は宣言側が所有し、検証とヘルプで共有する。
@@ -120,15 +110,12 @@ struct EditorOperationDefinition {
     std::string workspace{};
     std::vector<EditorOperationParameter> parameters{};
     std::function<EditorOperationResult(const nlohmann::json&)> execute{};
-    EditorOperationExecutionPolicy executionPolicy =
-        EditorOperationExecutionPolicy::MainThread;
+    EditorOperationExecutionPolicy executionPolicy = EditorOperationExecutionPolicy::MainThread;
     // Existing operations retain their current discovery behavior until each
     // registrar is migrated to an explicit Schema v2 classification.
     EditorOperationKind kind = EditorOperationKind::Legacy;
-    EditorOperationExposureMask exposureMask =
-        EditorOperationExposureMask::LegacyDefault;
-    EditorOperationPermission permission =
-        EditorOperationPermission::Legacy;
+    EditorOperationExposureMask exposureMask = EditorOperationExposureMask::LegacyDefault;
+    EditorOperationPermission permission = EditorOperationPermission::Legacy;
     EditorOperationRisk risk = EditorOperationRisk::Legacy;
     // Project asset discovery does not read or mutate a workspace document.
     bool requiresDocumentSession = true;
@@ -146,14 +133,14 @@ nlohmann::json DescribeEditorOperation(const EditorOperationDefinition& definiti
 // the same registered operations instead of maintaining parallel dispatchers.
 class EditorOperationRegistry {
 public:
-    using TargetExecutor = std::function<EditorOperationResult(
-        const std::string&, const nlohmann::json&)>;
+    using TargetExecutor = std::function<EditorOperationResult(const std::string&, const nlohmann::json&)>;
     void SetTargetExecutor(TargetExecutor executor) { targetExecutor_ = std::move(executor); }
-    void SetTargetSelector(std::function<std::string(const std::string&)> selector) { targetSelector_ = std::move(selector); }
+    void SetTargetSelector(std::function<std::string(const std::string&)> selector) {
+        targetSelector_ = std::move(selector);
+    }
+    EditorOperationRegistrationResult Register(EditorOperationDefinition definition);
     EditorOperationRegistrationResult Register(
-        EditorOperationDefinition definition);
-    EditorOperationRegistrationResult Register(EditorOperationDefinition definition,
-        EditorOperationKind kind, bool requiresDocumentSession = true,
+        EditorOperationDefinition definition, EditorOperationKind kind, bool requiresDocumentSession = true,
         EditorOperationSessionDispatch dispatch = EditorOperationSessionDispatch::Operation) {
         definition.kind = kind;
         definition.requiresDocumentSession = requiresDocumentSession;
@@ -162,19 +149,12 @@ public:
     }
     bool IsRegistered(const std::string& id) const noexcept;
     uint64_t Revision() const noexcept { return revision_; }
-    EditorOperationResult Validate(
-        const EditorOperationDefinition& definition,
-        const nlohmann::json& parameters) const;
-    EditorOperationResult Execute(
-        const std::string& id,
-        const nlohmann::json& parameters) const;
+    EditorOperationResult Validate(const EditorOperationDefinition& definition, const nlohmann::json& parameters) const;
+    EditorOperationResult Execute(const std::string& id, const nlohmann::json& parameters) const;
     // Convenience for human UI command bindings that need no parameters.
     EditorOperationResult Execute(const std::string& id) const;
     std::vector<std::string> RegisteredIds() const;
-    const EditorOperationDefinition* Find(
-        const std::string& id) const noexcept;
-    std::vector<const EditorOperationDefinition*> QueryWorkspace(
-        const std::string& workspace) const;
+    const EditorOperationDefinition* Find(const std::string& id) const noexcept;
 
 private:
     TargetExecutor targetExecutor_{};

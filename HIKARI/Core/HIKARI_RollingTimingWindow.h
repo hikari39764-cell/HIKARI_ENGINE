@@ -28,20 +28,15 @@ struct RollingTimingWindow {
         std::array<double, kTimingWindowSampleCount> ordered{};
         std::copy_n(samples.begin(), count, ordered.begin());
         const std::size_t percentileIndex = (std::min)(
-            count - 1u,
-            (std::max)(std::size_t{1}, static_cast<std::size_t>(std::ceil(
-                std::clamp(fraction, 0.0, 1.0) * static_cast<double>(count)))) - 1u);
-        std::nth_element(
-            ordered.begin(),
-            ordered.begin() + percentileIndex,
-            ordered.begin() + count);
+            count - 1u, (std::max)(std::size_t{1}, static_cast<std::size_t>(std::ceil(std::clamp(fraction, 0.0, 1.0) *
+                                                                                      static_cast<double>(count)))) -
+                            1u);
+        std::nth_element(ordered.begin(), ordered.begin() + percentileIndex, ordered.begin() + count);
         return ordered[percentileIndex];
     }
 
     void Push(double sample) {
-        const double safeSample = std::isfinite(sample)
-            ? (std::max)(sample, 0.0)
-            : 0.0;
+        const double safeSample = std::isfinite(sample) ? (std::max)(sample, 0.0) : 0.0;
         const bool full = count == samples.size();
         const double removed = full ? samples[next] : 0.0;
         const bool removedMaximum = full && removed >= maximum;
@@ -70,11 +65,7 @@ struct RollingTimingWindow {
         }
     }
 
-    double Average() const noexcept {
-        return count == 0u
-            ? 0.0
-            : (std::max)(0.0, sum / static_cast<double>(count));
-    }
+    double Average() const noexcept { return count == 0u ? 0.0 : (std::max)(0.0, sum / static_cast<double>(count)); }
 };
 
 } // namespace HIKARI::PERFORMANCE

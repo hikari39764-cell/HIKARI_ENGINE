@@ -9,70 +9,44 @@
 
 namespace HIKARI::ASSETS::MATERIAL {
 
-    struct MaterialTemplateInfo {
-        MaterialTemplateId id = MaterialTemplateId::StandardPbr;
-        std::string_view displayName{};
-        std::string_view description{};
-    };
+struct MaterialTemplateInfo {
+    MaterialTemplateId id = MaterialTemplateId::StandardPbr;
+    std::string_view displayName{};
+    std::string_view description{};
+};
 
-    enum class MaterialRampPresetId : uint8_t {
-        ToonHard,
-        ToonSoft,
-        SkinWarm,
-        CoolShadow,
-    };
+enum class MaterialRampPresetId : uint8_t {
+    ToonHard,
+    ToonSoft,
+    SkinWarm,
+    CoolShadow,
+};
 
-    struct MaterialRampPresetInfo {
-        MaterialRampPresetId id = MaterialRampPresetId::ToonSoft;
-        std::string_view displayName{};
-        std::string_view fileStem{};
-        std::string_view description{};
-    };
+struct MaterialRampPresetInfo {
+    MaterialRampPresetId id = MaterialRampPresetId::ToonSoft;
+    std::string_view displayName{};
+    std::string_view fileStem{};
+    std::string_view description{};
+};
 
-    struct CharacterMaterialSetEntry {
-        std::string roleId{};
-        std::string displayName{};
-        std::string recommendedUse{};
-        MaterialTemplateId templateId = MaterialTemplateId::StandardPbr;
-        MaterialAssetData source{};
-    };
+const std::array<MaterialTemplateInfo, 10u>& GetBuiltInMaterialTemplates() noexcept;
 
-    struct DefaultCharacterMaterialSet {
-        std::vector<CharacterMaterialSetEntry> entries{};
-        std::vector<std::string> diagnostics{};
-    };
+const std::array<MaterialRampPresetInfo, 4u>& GetBuiltInMaterialRampPresets() noexcept;
 
-    const std::array<MaterialTemplateInfo, 10u>&
-        GetBuiltInMaterialTemplates() noexcept;
+MaterialAssetData CreateMaterialRampFromPreset(MaterialRampPresetId presetId, std::string_view displayName = {});
 
-    const std::array<MaterialRampPresetInfo, 4u>&
-        GetBuiltInMaterialRampPresets() noexcept;
+// Creates a valid one-input/one-output Function that can immediately be
+// discovered by the node palette and then expanded into a richer graph.
+MaterialAssetData CreatePassThroughMaterialFunction(std::string_view displayName = "New Material Function");
 
-    MaterialAssetData CreateMaterialRampFromPreset(
-        MaterialRampPresetId presetId,
-        std::string_view displayName = {});
+bool IsBuiltInMaterialTemplate(MaterialTemplateId templateId) noexcept;
 
-    // Creates a valid one-input/one-output Function that can immediately be
-    // discovered by the node palette and then expanded into a richer graph.
-    MaterialAssetData CreatePassThroughMaterialFunction(
-        std::string_view displayName = "New Material Function");
+MaterialAssetData CreateMaterialFromTemplate(MaterialTemplateId templateId, std::string_view displayName = {});
 
-    bool IsBuiltInMaterialTemplate(
-        MaterialTemplateId templateId) noexcept;
-
-    MaterialAssetData CreateMaterialFromTemplate(
-        MaterialTemplateId templateId,
-        std::string_view displayName = {});
-
-    // Seeds the standard PBR inputs before the selected template augments the
-    // graph. This keeps authored texture sample/normal edges reachable for
-    // stylized templates instead of trying to retrofit resources afterwards.
-    MaterialAssetData CreateMaterialFromTemplateWithPbr(
-        MaterialTemplateId templateId,
-        const PbrMaterialAssetData& pbr,
-        std::string_view displayName = {});
-
-    DefaultCharacterMaterialSet CreateDefaultCharacterMaterialSet(
-        std::string_view displayNamePrefix = "Character");
+// Seeds the standard PBR inputs before the selected template augments the
+// graph. This keeps authored texture sample/normal edges reachable for
+// stylized templates instead of trying to retrofit resources afterwards.
+MaterialAssetData CreateMaterialFromTemplateWithPbr(MaterialTemplateId templateId, const PbrMaterialAssetData& pbr,
+                                                    std::string_view displayName = {});
 
 } // namespace HIKARI::ASSETS::MATERIAL

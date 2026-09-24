@@ -7,17 +7,12 @@
 
 namespace HIKARI::RENDER3D {
 
-    std::filesystem::path RenderQualityProfilePath(
-        const std::filesystem::path& projectRoot);
+std::filesystem::path RenderQualityProfilePath(const std::filesystem::path& projectRoot);
 
-    bool LoadRenderQualityProfile(
-        const std::filesystem::path& projectRoot,
-        RenderQualitySettings& outSettings,
-        std::string* errorMessage = nullptr);
+bool LoadRenderQualityProfile(const std::filesystem::path& projectRoot, RenderQualitySettings& outSettings,
+                              std::string* errorMessage = nullptr);
 
-    bool SaveRenderQualityProfile(
-        const std::filesystem::path& projectRoot,
-        const RenderQualitySettings& settings,
-        std::string* errorMessage = nullptr);
+bool SaveRenderQualityProfile(const std::filesystem::path& projectRoot, const RenderQualitySettings& settings,
+                              std::string* errorMessage = nullptr);
 
 } // namespace HIKARI::RENDER3D

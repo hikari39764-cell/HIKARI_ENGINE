@@ -13,9 +13,10 @@ std::string AiAssistantSession::BuildSystemPrompt() const {
         "预览故障与作品质量分开处理：恢复预览或继续不依赖画面判断的工作，不能因截图失败删除内容；未完成的视觉验证明确说明。\n"
         "用户可以同时编辑。遇到版本冲突重新核对相关状态，保留用户修改。引擎负责等待短暂的交互占用、预算暂停与任务恢复。\n";
     for (const auto& capability : Capabilities()) {
-        if (capability.status != "stable" || !capability.semantics.value("entryPoint",false)) continue;
+        if (capability.status != "stable" || !capability.semantics.value("entryPoint", false))
+            continue;
         prompt += capability.id + " — " + capability.summary + "\n";
     }
     return prompt;
 }
-}
+} // namespace HIKARI::EDITOR

@@ -7,25 +7,17 @@ struct ImVec2;
 
 namespace HIKARI {
 
-    class DocumentSceneBase;
+class DocumentSceneBase;
 
-    namespace EDITOR {
-        namespace DOCUMENT_SCENE {
+namespace EDITOR {
+namespace DOCUMENT_SCENE {
 
-            void DrawViewportDebugOptions(
-                ViewportOverlayState& overlays,
-                ViewportPerformanceState& performance);
-            bool DrawRenderDebugViewCombo(
-                const char* label,
-                ViewportDebugViewState& debugView,
-                float width);
-            void DrawLightOverlayIcons(
-                DocumentSceneBase& scene,
-                const ViewportOverlayState& overlays,
-                const ImVec2& viewportOrigin,
-                const ImVec2& viewportSize);
+void DrawViewportDebugOptions(ViewportOverlayState& overlays, ViewportPerformanceState& performance);
+bool DrawRenderDebugViewCombo(const char* label, ViewportDebugViewState& debugView, float width);
+void DrawLightOverlayIcons(DocumentSceneBase& scene, const ViewportOverlayState& overlays, const ImVec2& viewportOrigin,
+                           const ImVec2& viewportSize);
 
-        } // namespace DOCUMENT_SCENE
-    } // namespace EDITOR
+} // namespace DOCUMENT_SCENE
+} // namespace EDITOR
 
 } // namespace HIKARI

@@ -4,9 +4,8 @@
 
 namespace HIKARI {
 
-    class IRuntimeFeature;
+class IRuntimeFeature;
 
-    std::unique_ptr<IRuntimeFeature>
-        CreateSurfaceInteractionRuntimeFeature();
+std::unique_ptr<IRuntimeFeature> CreateSurfaceInteractionRuntimeFeature();
 
 } // namespace HIKARI

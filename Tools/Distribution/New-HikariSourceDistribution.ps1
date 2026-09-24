@@ -132,8 +132,7 @@ function Test-IsSourceDistributionPath {
         'AGENTS.md',
         'CLAUDE.md',
         'CODEX.md',
-        'Tools/Distribution/New-HikariSourceDistribution.ps1',
-        'Tools/Tests/Test-HikariSourceDistributionContracts.ps1')
+        'Tools/Distribution/New-HikariSourceDistribution.ps1')
     foreach ($excludedFile in $excludedFiles) {
         if ($normalizedPath.Equals(
                 $excludedFile,

@@ -19,14 +19,14 @@
 namespace HIKARI::EDITOR::ANIMATION_STATE_MACHINE_GRAPH {
 #if defined(HIKARI_WITH_EDITOR)
 
-	// アニメーションモーションのラベルを取得する関数
-std::string MotionLabel(const ANIMATION::AnimationStateMotion &motion);
+// アニメーションモーションのラベルを取得する関数
+std::string MotionLabel(const ANIMATION::AnimationStateMotion& motion);
 
-    // 指定された矩形領域内に点が含まれているかを判定する関数
-bool Contains(const ImVec2 &minimum, const ImVec2 &maximum,const ImVec2 &point) noexcept;
+// 指定された矩形領域内に点が含まれているかを判定する関数
+bool Contains(const ImVec2& minimum, const ImVec2& maximum, const ImVec2& point) noexcept;
 
-    // 点から線分までの距離を計算する関数
-float DistanceToSegment(const ImVec2 &point, const ImVec2 &start,const ImVec2 &end) noexcept;
+// 点から線分までの距離を計算する関数
+float DistanceToSegment(const ImVec2& point, const ImVec2& start, const ImVec2& end) noexcept;
 
 #endif
 

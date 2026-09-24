@@ -6,30 +6,30 @@
 
 namespace HIKARI {
 
-    constexpr bool IsDataTextureUsage(TextureUsage usage) noexcept {
-        return usage == TextureUsage::Normal || usage == TextureUsage::MetallicRoughness ||
-            usage == TextureUsage::Occlusion || usage == TextureUsage::Mask;
-    }
+constexpr bool IsDataTextureUsage(TextureUsage usage) noexcept {
+    return usage == TextureUsage::Normal || usage == TextureUsage::MetallicRoughness ||
+           usage == TextureUsage::Occlusion || usage == TextureUsage::Mask;
+}
 
-    struct TextureImportSettings {
-        TextureUsage usage = TextureUsage::Auto;
-        TextureAssetDimension dimension = TextureAssetDimension::Texture2D;
-        TextureAssetColorSpace colorSpace = TextureAssetColorSpace::Auto;
-        TextureCompression compression = TextureCompression::Auto;
-        TextureMipPolicy mipPolicy = TextureMipPolicy::Auto;
-        CookedAssetFormat outputFormat = CookedAssetFormat::DDS;
+struct TextureImportSettings {
+    TextureUsage usage = TextureUsage::Auto;
+    TextureAssetDimension dimension = TextureAssetDimension::Texture2D;
+    TextureAssetColorSpace colorSpace = TextureAssetColorSpace::Auto;
+    TextureCompression compression = TextureCompression::Auto;
+    TextureMipPolicy mipPolicy = TextureMipPolicy::Auto;
+    CookedAssetFormat outputFormat = CookedAssetFormat::DDS;
 
-        bool forcePowerOfTwo = false;
-        bool allowResize = false;
-        uint32_t maxSize = 4096;
+    bool forcePowerOfTwo = false;
+    bool allowResize = false;
+    uint32_t maxSize = 4096;
 
-        bool sourceHasAlphaChannel = false;
-        bool sourceHasMeaningfulAlpha = false;
-        bool sourceHasTranslucentAlpha = false;
-        bool sourceHasCutoutAlpha = false;
-        float sourceAlphaNonOpaqueRatio = 0.0f;
-        float sourceAlphaTranslucentRatio = 0.0f;
-        float sourceAlphaCutoutRatio = 0.0f;
-    };
+    bool sourceHasAlphaChannel = false;
+    bool sourceHasMeaningfulAlpha = false;
+    bool sourceHasTranslucentAlpha = false;
+    bool sourceHasCutoutAlpha = false;
+    float sourceAlphaNonOpaqueRatio = 0.0f;
+    float sourceAlphaTranslucentRatio = 0.0f;
+    float sourceAlphaCutoutRatio = 0.0f;
+};
 
 } // namespace HIKARI

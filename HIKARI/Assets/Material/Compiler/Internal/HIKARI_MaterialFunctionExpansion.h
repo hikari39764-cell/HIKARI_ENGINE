@@ -6,11 +6,8 @@
 
 namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
 
-    bool ExpandMaterialFunctions(
-        const MaterialAssetData& source,
-        const MaterialCompileOptions& options,
-        MaterialAssetData& outExpanded,
-        std::vector<AssetGuid>& outFunctionDependencies,
-        MaterialCompileResult& result);
+bool ExpandMaterialFunctions(const MaterialAssetData& source, const MaterialCompileOptions& options,
+                             MaterialAssetData& outExpanded, std::vector<AssetGuid>& outFunctionDependencies,
+                             MaterialCompileResult& result);
 
 } // namespace HIKARI::MATERIAL_COMPILER_INTERNAL

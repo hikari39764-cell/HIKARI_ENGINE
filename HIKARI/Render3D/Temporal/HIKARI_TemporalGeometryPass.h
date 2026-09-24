@@ -7,10 +7,8 @@
 
 namespace HIKARI::RENDER3D::TEMPORAL {
 
-    bool ExecuteTemporalGeometryPass(
-        const GFX::Context& graphics,
-        const TemporalInputs& inputs,
-        D3D12_CPU_DESCRIPTOR_HANDLE readOnlyDepthDsv);
-    void ShutdownTemporalGeometryPass();
+bool ExecuteTemporalGeometryPass(const GFX::Context& graphics, const TemporalInputs& inputs,
+                                 D3D12_CPU_DESCRIPTOR_HANDLE readOnlyDepthDsv);
+void ShutdownTemporalGeometryPass();
 
 } // namespace HIKARI::RENDER3D::TEMPORAL

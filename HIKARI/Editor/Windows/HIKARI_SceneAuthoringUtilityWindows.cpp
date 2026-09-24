@@ -13,78 +13,53 @@
 
 namespace HIKARI::EDITOR {
 
-    SceneSystemsPanelResult SceneAuthoringUtilityWindows::Draw(
-        DocumentSceneBase& scene,
-        AuthoringWindowState& windowState,
-        INPUT::InputService& inputService,
-        const SystemAuthoringRegistry& systemRegistry,
-        EditorToolHost& toolHost) {
-
-        SceneSystemsPanelResult systemsResult{};
+SceneSystemsPanelResult SceneAuthoringUtilityWindows::Draw(DocumentSceneBase& scene, AuthoringWindowState& windowState,
+                                                           INPUT::InputService& inputService,
+                                                           const SystemAuthoringRegistry& systemRegistry,
+                                                           EditorToolHost& toolHost) {
+    SceneSystemsPanelResult systemsResult{};
 #if defined(HIKARI_WITH_EDITOR)
-        constexpr ImGuiWindowFlags utilityFlags =
-            ImGuiWindowFlags_NoDocking |
-            ImGuiWindowFlags_NoCollapse;
+    constexpr ImGuiWindowFlags utilityFlags = ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoCollapse;
 
-        if (windowState.showProjectFeatures) {
-            ImGui::SetNextWindowSize(
-                ImVec2(620.0f, 520.0f),
-                ImGuiCond_FirstUseEver);
-            if (ImGui::Begin(
-                    TEXT::LocalizeWindow(
-                        "ui.window.projectFeatures",
-                        "Project Features").c_str(),
-                    &windowState.showProjectFeatures,
-                    utilityFlags)) {
-                projectFeaturesPanel_.Draw(scene);
-            }
-            ImGui::End();
+    if (windowState.showProjectFeatures) {
+        ImGui::SetNextWindowSize(ImVec2(620.0f, 520.0f), ImGuiCond_FirstUseEver);
+        if (ImGui::Begin(TEXT::LocalizeWindow("ui.window.projectFeatures", "Project Features").c_str(),
+                         &windowState.showProjectFeatures, utilityFlags)) {
+            projectFeaturesPanel_.Draw(scene);
         }
+        ImGui::End();
+    }
 
-        if (windowState.showSceneSystems) {
-            ImGui::SetNextWindowSize(
-                ImVec2(680.0f, 620.0f),
-                ImGuiCond_FirstUseEver);
-            if (ImGui::Begin(
-                    TEXT::LocalizeWindow(
-                        "ui.window.sceneSystems",
-                        "Scene Systems").c_str(),
-                    &windowState.showSceneSystems,
-                    utilityFlags)) {
-                systemsResult = sceneSystemsPanel_.Draw(
-                    scene,
-                    systemRegistry,
-                    toolHost);
-            }
-            ImGui::End();
+    if (windowState.showSceneSystems) {
+        ImGui::SetNextWindowSize(ImVec2(680.0f, 620.0f), ImGuiCond_FirstUseEver);
+        if (ImGui::Begin(TEXT::LocalizeWindow("ui.window.sceneSystems", "Scene Systems").c_str(),
+                         &windowState.showSceneSystems, utilityFlags)) {
+            systemsResult = sceneSystemsPanel_.Draw(scene, systemRegistry, toolHost);
         }
+        ImGui::End();
+    }
 
-        if (windowState.openInputEditorRequested) {
-            inputActionMapPanel_.RequestOpen();
-            windowState.openInputEditorRequested = false;
-        }
-        inputActionMapPanel_.DrawModal(inputService);
+    if (windowState.openInputEditorRequested) {
+        inputActionMapPanel_.RequestOpen();
+        windowState.openInputEditorRequested = false;
+    }
+    inputActionMapPanel_.DrawModal(inputService);
 #else
-        (void)scene;
-        (void)windowState;
-        (void)inputService;
-        (void)systemRegistry;
-        (void)toolHost;
+    (void)scene;
+    (void)windowState;
+    (void)inputService;
+    (void)systemRegistry;
+    (void)toolHost;
 #endif
-        return systemsResult;
-    }
+    return systemsResult;
+}
 
-    void SceneAuthoringUtilityWindows::SetSystemsRuntimeApplyStatus(
-        bool success) {
-        sceneSystemsPanel_.SetRuntimeApplyStatus(success);
-    }
+void SceneAuthoringUtilityWindows::SetSystemsRuntimeApplyStatus(bool success) {
+    sceneSystemsPanel_.SetRuntimeApplyStatus(success);
+}
 
-    bool SceneAuthoringUtilityWindows::
-        HasUnsavedChanges() const noexcept {
-
-        return projectFeaturesPanel_.IsDirty() ||
-            sceneSystemsPanel_.IsDirty() ||
-            inputActionMapPanel_.IsDirty();
-    }
+bool SceneAuthoringUtilityWindows::HasUnsavedChanges() const noexcept {
+    return projectFeaturesPanel_.IsDirty() || sceneSystemsPanel_.IsDirty() || inputActionMapPanel_.IsDirty();
+}
 
 } // namespace HIKARI::EDITOR

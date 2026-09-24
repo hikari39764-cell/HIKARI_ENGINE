@@ -6,8 +6,7 @@
 #include <limits>
 namespace HIKARI::EDITOR {
 namespace {
-bool Unproject(const MATH::Mat4 &inverseViewProjection, float x, float y, float z,
-               MATH::Vec3 &outPoint) noexcept {
+bool Unproject(const MATH::Mat4& inverseViewProjection, float x, float y, float z, MATH::Vec3& outPoint) noexcept {
     const MATH::Vec4 world = inverseViewProjection.TransformPoint({x, y, z, 1.0f});
     if (!MATH::IsFinite(world) || std::abs(world.w) <= 1.0e-6f) {
         return false;
@@ -18,8 +17,8 @@ bool Unproject(const MATH::Mat4 &inverseViewProjection, float x, float y, float 
 }
 
 } // namespace
-bool IntersectEditorBounds(const EditorPointerRay &ray, const MATH::Vec3 &minimum, const MATH::Vec3 &maximum,
-                           float &outDistance) noexcept {
+bool IntersectEditorBounds(const EditorPointerRay& ray, const MATH::Vec3& minimum, const MATH::Vec3& maximum,
+                           float& outDistance) noexcept {
     float nearDistance = 0.0f;
     float farDistance = (std::numeric_limits<float>::max)();
     const float origins[]{ray.origin.x, ray.origin.y, ray.origin.z};
@@ -49,8 +48,8 @@ bool IntersectEditorBounds(const EditorPointerRay &ray, const MATH::Vec3 &minimu
     return true;
 }
 
-bool BuildEditorPointerRay(const Camera3D &camera, float normalizedViewportX, float normalizedViewportY,
-                           EditorPointerRay &outRay) noexcept {
+bool BuildEditorPointerRay(const Camera3D& camera, float normalizedViewportX, float normalizedViewportY,
+                           EditorPointerRay& outRay) noexcept {
     const float clipX = normalizedViewportX * 2.0f - 1.0f;
     const float clipY = 1.0f - normalizedViewportY * 2.0f;
     const MATH::Mat4 inverseViewProjection = MATH::Inverse(camera.GetViewProj());

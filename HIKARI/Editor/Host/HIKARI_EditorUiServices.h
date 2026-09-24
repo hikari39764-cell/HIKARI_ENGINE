@@ -2,7 +2,7 @@
 
 namespace HIKARI::EDITOR {
 
-    bool InstallEditorUiServices() noexcept;
-    void UninstallEditorUiServices() noexcept;
+bool InstallEditorUiServices() noexcept;
+void UninstallEditorUiServices() noexcept;
 
 } // namespace HIKARI::EDITOR

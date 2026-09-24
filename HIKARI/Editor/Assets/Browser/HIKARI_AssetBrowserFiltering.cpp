@@ -45,300 +45,228 @@
 namespace HIKARI::EDITOR::ASSET_BROWSER {
 
 AssetType TypeFromFilterIndex(int index) {
-  switch (index) {
-  case 1:
-    return AssetType::Texture;
-  case 2:
-    return AssetType::Model;
-  case 3:
-    return AssetType::Scene;
-  case 4:
-    return AssetType::Sky;
-  case 5:
-    return AssetType::Material;
-  case 6:
-    return AssetType::VfxEffect;
-  case 7:
-    return AssetType::Sequence;
-  case 8:
-    return AssetType::AnimationStateMachine;
-  case 9:
-    return AssetType::Dialogue;
-  case 10:
-    return AssetType::ModelMaterialBinding;
-  default:
-    return AssetType::Unknown;
-  }
+    switch (index) {
+    case 1: return AssetType::Texture;
+    case 2: return AssetType::Model;
+    case 3: return AssetType::Scene;
+    case 4: return AssetType::Sky;
+    case 5: return AssetType::Material;
+    case 6: return AssetType::VfxEffect;
+    case 7: return AssetType::Sequence;
+    case 8: return AssetType::AnimationStateMachine;
+    case 9: return AssetType::Dialogue;
+    case 10: return AssetType::ModelMaterialBinding;
+    case 11: return AssetType::Font;
+    case 12: return AssetType::TextStyle;
+    case 13: return AssetType::UiAnimation;
+    default: return AssetType::Unknown;
+    }
 }
 
-bool MatchesTypeFilter(const AssetRecord &record, int typeFilter) {
-  if (typeFilter == 0) {
-    return true;
-  }
-  return record.type == TypeFromFilterIndex(typeFilter);
+bool MatchesTypeFilter(const AssetRecord& record, int typeFilter) {
+    if (typeFilter == 0) {
+        return true;
+    }
+    return record.type == TypeFromFilterIndex(typeFilter);
 }
 
-bool MatchesStateFilter(const AssetRecord &record, int stateFilter) {
-  if (stateFilter == 0) {
-    return true;
-  }
+bool MatchesStateFilter(const AssetRecord& record, int stateFilter) {
+    if (stateFilter == 0) {
+        return true;
+    }
 
-  const AssetImportState state = GetImportState(record);
-  switch (stateFilter) {
-  case 1:
-    return state == AssetImportState::Imported;
-  case 2:
-    return state == AssetImportState::Outdated;
-  case 3:
-    return state == AssetImportState::MissingSource ||
-           state == AssetImportState::MissingMeta ||
-           state == AssetImportState::MissingArtifact;
-  case 4:
-    return state == AssetImportState::UnknownImporter ||
-           state == AssetImportState::DuplicateGuid ||
-           state == AssetImportState::ImportFailed;
-  case 5:
-    return state == AssetImportState::MetaOnly;
-  default:
-    return true;
-  }
+    const AssetImportState state = GetImportState(record);
+    switch (stateFilter) {
+    case 1: return state == AssetImportState::Imported;
+    case 2: return state == AssetImportState::Outdated;
+    case 3:
+        return state == AssetImportState::MissingSource || state == AssetImportState::MissingMeta ||
+               state == AssetImportState::MissingArtifact;
+    case 4:
+        return state == AssetImportState::UnknownImporter || state == AssetImportState::DuplicateGuid ||
+               state == AssetImportState::ImportFailed;
+    case 5: return state == AssetImportState::MetaOnly;
+    default: return true;
+    }
 }
 
-bool MatchesSearch(const AssetRecord &record, const char *searchText) {
-  if (!searchText || searchText[0] == '\0') {
-    return true;
-  }
+bool MatchesSearch(const AssetRecord& record, const char* searchText) {
+    if (!searchText || searchText[0] == '\0') {
+        return true;
+    }
 
-  const std::string needle = TEXT::ToLowerAsciiCopy(searchText);
-  const std::string haystack = TEXT::ToLowerAsciiCopy(
-      record.displayName + " " + record.guid.value + " " +
-      record.sourcePath.generic_string() + " " + record.meta.importerId);
-  return haystack.find(needle) != std::string::npos;
+    const std::string needle = TEXT::ToLowerAsciiCopy(searchText);
+    const std::string haystack =
+        TEXT::ToLowerAsciiCopy(record.displayName + " " + record.guid.value + " " + record.sourcePath.generic_string() +
+                               " " + record.meta.importerId);
+    return haystack.find(needle) != std::string::npos;
 }
 
-nlohmann::json ReadImportSettings(const AssetRecord &record) {
-  nlohmann::json settings =
-      nlohmann::json::parse(record.meta.importSettingsJson, nullptr, false);
-  return settings.is_object() ? settings : nlohmann::json::object();
-}
-
-bool MatchesScope(const AssetRecord &record,
-                  const AssetUsageSummary *usageSummary,
-                  AssetBrowserScope scope) {
-
-  switch (scope) {
-  case AssetBrowserScope::CurrentScene:
-    return usageSummary && usageSummary->IsUsed(record.guid);
-  case AssetBrowserScope::UnusedInScene:
-    return usageSummary && !usageSummary->IsUsed(record.guid);
-  case AssetBrowserScope::Broken:
-    return IsBrokenAssetRecord(record);
-  case AssetBrowserScope::Textures:
-    return record.type == AssetType::Texture;
-  case AssetBrowserScope::Models:
-    return record.type == AssetType::Model;
-  case AssetBrowserScope::Scenes:
-    return record.type == AssetType::Scene;
-  case AssetBrowserScope::Materials:
-    return record.type == AssetType::Material ||
-           record.type == AssetType::ModelMaterialBinding;
-  case AssetBrowserScope::Skies:
-    return record.type == AssetType::Sky;
-  case AssetBrowserScope::Vfx:
-    return record.type == AssetType::VfxEffect;
-  case AssetBrowserScope::Sequences:
-    return record.type == AssetType::Sequence;
-  case AssetBrowserScope::Project:
-  default:
-    return true;
-  }
+bool MatchesScope(const AssetRecord& record, const AssetUsageSummary* usageSummary, AssetBrowserScope scope) {
+    switch (scope) {
+    case AssetBrowserScope::CurrentScene: return usageSummary && usageSummary->IsUsed(record.guid);
+    case AssetBrowserScope::UnusedInScene: return usageSummary && !usageSummary->IsUsed(record.guid);
+    case AssetBrowserScope::Broken: return IsBrokenAssetRecord(record);
+    case AssetBrowserScope::Textures: return record.type == AssetType::Texture;
+    case AssetBrowserScope::Models: return record.type == AssetType::Model;
+    case AssetBrowserScope::Scenes: return record.type == AssetType::Scene;
+    case AssetBrowserScope::Materials:
+        return record.type == AssetType::Material || record.type == AssetType::ModelMaterialBinding;
+    case AssetBrowserScope::Skies: return record.type == AssetType::Sky;
+    case AssetBrowserScope::Vfx: return record.type == AssetType::VfxEffect;
+    case AssetBrowserScope::Sequences: return record.type == AssetType::Sequence;
+    case AssetBrowserScope::Project:
+    default: return true;
+    }
 }
 
 std::string ToScopeTitle(AssetBrowserScope scope) {
-  switch (scope) {
-  case AssetBrowserScope::CurrentScene:
-    return TEXT::Localize("ui.assetBrowser.scopeTitle.currentScene");
-  case AssetBrowserScope::UnusedInScene:
-    return TEXT::Localize("ui.assetBrowser.scopeTitle.unused");
-  case AssetBrowserScope::Broken:
-    return TEXT::Localize("ui.assetBrowser.scopeTitle.broken");
-  case AssetBrowserScope::Textures:
-    return TEXT::Localize("ui.assetBrowser.scopeTitle.textures");
-  case AssetBrowserScope::Models:
-    return TEXT::Localize("ui.assetBrowser.scopeTitle.models");
-  case AssetBrowserScope::Scenes:
-    return TEXT::Localize("ui.assetBrowser.scopeTitle.scenes");
-  case AssetBrowserScope::Materials:
-    return TEXT::Localize("ui.assetBrowser.scopeTitle.materials");
-  case AssetBrowserScope::Skies:
-    return TEXT::Localize("ui.assetBrowser.scopeTitle.skies");
-  case AssetBrowserScope::Vfx:
-    return TEXT::Localize("ui.assetBrowser.scopeTitle.vfx");
-  case AssetBrowserScope::Sequences:
-    return TEXT::Localize("ui.assetBrowser.scopeTitle.sequences");
-  case AssetBrowserScope::Project:
-  default:
-    return TEXT::Localize("ui.assetBrowser.scopeTitle.project");
-  }
+    switch (scope) {
+    case AssetBrowserScope::CurrentScene: return TEXT::Localize("ui.assetBrowser.scopeTitle.currentScene");
+    case AssetBrowserScope::UnusedInScene: return TEXT::Localize("ui.assetBrowser.scopeTitle.unused");
+    case AssetBrowserScope::Broken: return TEXT::Localize("ui.assetBrowser.scopeTitle.broken");
+    case AssetBrowserScope::Textures: return TEXT::Localize("ui.assetBrowser.scopeTitle.textures");
+    case AssetBrowserScope::Models: return TEXT::Localize("ui.assetBrowser.scopeTitle.models");
+    case AssetBrowserScope::Scenes: return TEXT::Localize("ui.assetBrowser.scopeTitle.scenes");
+    case AssetBrowserScope::Materials: return TEXT::Localize("ui.assetBrowser.scopeTitle.materials");
+    case AssetBrowserScope::Skies: return TEXT::Localize("ui.assetBrowser.scopeTitle.skies");
+    case AssetBrowserScope::Vfx: return TEXT::Localize("ui.assetBrowser.scopeTitle.vfx");
+    case AssetBrowserScope::Sequences: return TEXT::Localize("ui.assetBrowser.scopeTitle.sequences");
+    case AssetBrowserScope::Project:
+    default: return TEXT::Localize("ui.assetBrowser.scopeTitle.project");
+    }
 }
 
-std::string ToUsageBadge(const AssetRecord &record,
-                         const AssetUsageSummary *usageSummary) {
-  if (!usageSummary) {
+std::string ToUsageBadge(const AssetRecord& record, const AssetUsageSummary* usageSummary) {
+    if (!usageSummary) {
+        return {};
+    }
+    return usageSummary->IsUsed(record.guid) ? TEXT::Localize("ui.assetBrowser.usageUsed")
+                                             : TEXT::Localize("ui.assetBrowser.usageUnused");
+}
+
+std::string ToCookedBadge(const AssetRecord& record) {
+    if (record.type == AssetType::Texture) {
+        if (ASSETS::SEMANTICS::HasAssetArtifact(record, ASSETS::SEMANTICS::AssetArtifactKind::MainTexture)) {
+            return TEXT::Localize("ui.assetBrowser.cookedHtexReady");
+        }
+        if (ASSETS::SEMANTICS::HasAssetArtifact(record, ASSETS::SEMANTICS::AssetArtifactKind::DebugTextureDds)) {
+            return TEXT::Localize("ui.assetBrowser.cookedDdsOnly");
+        }
+    }
+    if (record.type == AssetType::Model) {
+        const bool hasHmodel =
+            ASSETS::SEMANTICS::HasAssetArtifact(record, ASSETS::SEMANTICS::AssetArtifactKind::MainModel);
+        const bool hasHcmesh =
+            ASSETS::SEMANTICS::HasAssetArtifact(record, ASSETS::SEMANTICS::AssetArtifactKind::ClusteredGeometry);
+        const bool hasCollision =
+            ASSETS::SEMANTICS::HasAssetArtifact(record, ASSETS::SEMANTICS::AssetArtifactKind::CollisionGeometry);
+        if (hasHmodel && hasHcmesh && hasCollision) {
+            return "HMODEL + HCMESH + HCOLLISION";
+        }
+        if (hasHmodel && hasCollision) {
+            return "HMODEL + HCOLLISION";
+        }
+        if (hasHmodel && hasHcmesh) {
+            return "HMODEL + HCMESH";
+        }
+        if (hasHmodel) {
+            return "HMODEL";
+        }
+        if (hasHcmesh) {
+            return "HCMESH";
+        }
+        return TEXT::Localize("ui.assetBrowser.cookedRawModel");
+    }
+    if (record.type == AssetType::Scene) {
+        return TEXT::Localize("ui.assetBrowser.cookedSceneJson");
+    }
     return {};
-  }
-  return usageSummary->IsUsed(record.guid)
-      ? TEXT::Localize("ui.assetBrowser.usageUsed")
-      : TEXT::Localize("ui.assetBrowser.usageUnused");
 }
 
-std::string ToCookedBadge(const AssetRecord &record) {
-  if (record.type == AssetType::Texture) {
-    if (ASSETS::SEMANTICS::HasAssetArtifact(
-            record, ASSETS::SEMANTICS::AssetArtifactKind::MainTexture)) {
-      return TEXT::Localize("ui.assetBrowser.cookedHtexReady");
+const char* ToCompactTypeBadge(AssetType type) {
+    switch (type) {
+    case AssetType::Texture: return "TEX";
+    case AssetType::Model: return "MDL";
+    case AssetType::Scene: return "SCN";
+    case AssetType::Material: return "MAT";
+    case AssetType::ModelMaterialBinding: return "MSET";
+    case AssetType::Sky: return "SKY";
+    case AssetType::VfxEffect: return "VFX";
+    case AssetType::Animation: return "ANI";
+    case AssetType::Particle: return "PTC";
+    case AssetType::Sequence: return "SEQ";
+    case AssetType::AnimationStateMachine: return "ASM";
+    case AssetType::Dialogue: return "DLG";
+    case AssetType::UiAnimation: return "UIA";
+    case AssetType::Font: return "FONT";
+    case AssetType::TextStyle: return "TXT";
+    case AssetType::Unknown:
+    default: return "UNK";
     }
-    if (ASSETS::SEMANTICS::HasAssetArtifact(
-            record, ASSETS::SEMANTICS::AssetArtifactKind::DebugTextureDds)) {
-      return TEXT::Localize("ui.assetBrowser.cookedDdsOnly");
-    }
-  }
-  if (record.type == AssetType::Model) {
-    const bool hasHmodel = ASSETS::SEMANTICS::HasAssetArtifact(
-        record, ASSETS::SEMANTICS::AssetArtifactKind::MainModel);
-    const bool hasHcmesh = ASSETS::SEMANTICS::HasAssetArtifact(
-        record, ASSETS::SEMANTICS::AssetArtifactKind::ClusteredGeometry);
-    const bool hasCollision = ASSETS::SEMANTICS::HasAssetArtifact(
-        record, ASSETS::SEMANTICS::AssetArtifactKind::CollisionGeometry);
-    if (hasHmodel && hasHcmesh && hasCollision) {
-      return "HMODEL + HCMESH + HCOLLISION";
-    }
-    if (hasHmodel && hasCollision) {
-      return "HMODEL + HCOLLISION";
-    }
-    if (hasHmodel && hasHcmesh) {
-      return "HMODEL + HCMESH";
-    }
-    if (hasHmodel) {
-      return "HMODEL";
-    }
-    if (hasHcmesh) {
-      return "HCMESH";
-    }
-    return TEXT::Localize("ui.assetBrowser.cookedRawModel");
-  }
-  if (record.type == AssetType::Scene) {
-    return TEXT::Localize("ui.assetBrowser.cookedSceneJson");
-  }
-  return {};
 }
 
-const char *ToCompactTypeBadge(AssetType type) {
-  switch (type) {
-  case AssetType::Texture:
-    return "TEX";
-  case AssetType::Model:
-    return "MDL";
-  case AssetType::Scene:
-    return "SCN";
-  case AssetType::Material:
-    return "MAT";
-  case AssetType::ModelMaterialBinding:
-    return "MSET";
-  case AssetType::Sky:
-    return "SKY";
-  case AssetType::VfxEffect:
-    return "VFX";
-  case AssetType::Animation:
-    return "ANI";
-  case AssetType::Particle:
-    return "PTC";
-  case AssetType::Sequence:
-    return "SEQ";
-  case AssetType::AnimationStateMachine:
-    return "ASM";
-  case AssetType::Dialogue:
-    return "DLG";
-  case AssetType::Unknown:
-  default:
-    return "UNK";
-  }
+const char* ToCompactStateBadge(AssetImportState state) {
+    switch (state) {
+    case AssetImportState::Imported: return "OK";
+    case AssetImportState::Outdated: return "OUT";
+    case AssetImportState::MetaOnly: return "META";
+    case AssetImportState::MissingSource: return "MISS";
+    case AssetImportState::MissingMeta: return "META?";
+    case AssetImportState::MissingArtifact: return "ART?";
+    case AssetImportState::UnknownImporter: return "IMP?";
+    case AssetImportState::DuplicateGuid: return "DUP";
+    case AssetImportState::ImportFailed: return "ERR";
+    case AssetImportState::Unknown:
+    default: return "UNK";
+    }
 }
 
-const char *ToCompactStateBadge(AssetImportState state) {
-  switch (state) {
-  case AssetImportState::Imported:
-    return "OK";
-  case AssetImportState::Outdated:
-    return "OUT";
-  case AssetImportState::MetaOnly:
-    return "META";
-  case AssetImportState::MissingSource:
-    return "MISS";
-  case AssetImportState::MissingMeta:
-    return "META?";
-  case AssetImportState::MissingArtifact:
-    return "ART?";
-  case AssetImportState::UnknownImporter:
-    return "IMP?";
-  case AssetImportState::DuplicateGuid:
-    return "DUP";
-  case AssetImportState::ImportFailed:
-    return "ERR";
-  case AssetImportState::Unknown:
-  default:
-    return "UNK";
-  }
+const char* ToCompactUsageBadge(const AssetRecord& record, const AssetUsageSummary* usageSummary) {
+    if (!usageSummary) {
+        return "";
+    }
+    return usageSummary->IsUsed(record.guid) ? "USE" : "IDLE";
 }
 
-const char *ToCompactUsageBadge(const AssetRecord &record,
-                                const AssetUsageSummary *usageSummary) {
-  if (!usageSummary) {
+const char* ToCompactCookedBadge(const AssetRecord& record) {
+    if (record.type == AssetType::Texture) {
+        if (ASSETS::SEMANTICS::HasAssetArtifact(record, ASSETS::SEMANTICS::AssetArtifactKind::MainTexture)) {
+            return "HTEX";
+        }
+        if (ASSETS::SEMANTICS::HasAssetArtifact(record, ASSETS::SEMANTICS::AssetArtifactKind::DebugTextureDds)) {
+            return "DDS";
+        }
+        return "RAW";
+    }
+    if (record.type == AssetType::Model) {
+        const bool hasHmodel =
+            ASSETS::SEMANTICS::HasAssetArtifact(record, ASSETS::SEMANTICS::AssetArtifactKind::MainModel);
+        const bool hasHcmesh =
+            ASSETS::SEMANTICS::HasAssetArtifact(record, ASSETS::SEMANTICS::AssetArtifactKind::ClusteredGeometry);
+        const bool hasCollision =
+            ASSETS::SEMANTICS::HasAssetArtifact(record, ASSETS::SEMANTICS::AssetArtifactKind::CollisionGeometry);
+        if (hasHmodel && hasHcmesh && hasCollision) {
+            return "H+HC+C";
+        }
+        if (hasHmodel && hasCollision) {
+            return "H+C";
+        }
+        if (hasHmodel && hasHcmesh) {
+            return "H+HC";
+        }
+        if (hasHmodel) {
+            return "HMDL";
+        }
+        if (hasHcmesh) {
+            return "HC";
+        }
+        return "RAW";
+    }
+    if (record.type == AssetType::Scene) {
+        return "JSON";
+    }
     return "";
-  }
-  return usageSummary->IsUsed(record.guid) ? "USE" : "IDLE";
-}
-
-const char *ToCompactCookedBadge(const AssetRecord &record) {
-  if (record.type == AssetType::Texture) {
-    if (ASSETS::SEMANTICS::HasAssetArtifact(
-            record, ASSETS::SEMANTICS::AssetArtifactKind::MainTexture)) {
-      return "HTEX";
-    }
-    if (ASSETS::SEMANTICS::HasAssetArtifact(
-            record, ASSETS::SEMANTICS::AssetArtifactKind::DebugTextureDds)) {
-      return "DDS";
-    }
-    return "RAW";
-  }
-  if (record.type == AssetType::Model) {
-    const bool hasHmodel = ASSETS::SEMANTICS::HasAssetArtifact(
-        record, ASSETS::SEMANTICS::AssetArtifactKind::MainModel);
-    const bool hasHcmesh = ASSETS::SEMANTICS::HasAssetArtifact(
-        record, ASSETS::SEMANTICS::AssetArtifactKind::ClusteredGeometry);
-    const bool hasCollision = ASSETS::SEMANTICS::HasAssetArtifact(
-        record, ASSETS::SEMANTICS::AssetArtifactKind::CollisionGeometry);
-    if (hasHmodel && hasHcmesh && hasCollision) {
-      return "H+HC+C";
-    }
-    if (hasHmodel && hasCollision) {
-      return "H+C";
-    }
-    if (hasHmodel && hasHcmesh) {
-      return "H+HC";
-    }
-    if (hasHmodel) {
-      return "HMDL";
-    }
-    if (hasHcmesh) {
-      return "HC";
-    }
-    return "RAW";
-  }
-  if (record.type == AssetType::Scene) {
-    return "JSON";
-  }
-  return "";
 }
 
 } // namespace HIKARI::EDITOR::ASSET_BROWSER

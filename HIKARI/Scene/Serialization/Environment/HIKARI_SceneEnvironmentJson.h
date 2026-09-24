@@ -4,14 +4,14 @@
 
 namespace HIKARI {
 
-    struct SceneEnvironment;
+struct SceneEnvironment;
 
-    namespace SCENE::SERIALIZATION {
+namespace SCENE::SERIALIZATION {
 
-        void SerializeSceneEnvironmentJson(const SceneEnvironment& environment, nlohmann::json& out);
+void SerializeSceneEnvironmentJson(const SceneEnvironment& environment, nlohmann::json& out);
 
-        void DeserializeSceneEnvironmentJson(const nlohmann::json& node, SceneEnvironment& outEnvironment);
+void DeserializeSceneEnvironmentJson(const nlohmann::json& node, SceneEnvironment& outEnvironment);
 
-    } // namespace SCENE::SERIALIZATION
+} // namespace SCENE::SERIALIZATION
 
 } // namespace HIKARI

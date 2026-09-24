@@ -1,0 +1,55 @@
+# HIKARI C++ 統一フォーマット（clang-format 19 以上）。HLSL と ThirdParty は対象外。
+---
+Language: Cpp
+BasedOnStyle: LLVM
+Standard: c++20
+ColumnLimit: 120
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ContinuationIndentWidth: 4
+AccessModifierOffset: -4
+NamespaceIndentation: None
+IndentCaseLabels: false
+IndentPPDirectives: None
+BreakBeforeBraces: Attach
+AlignAfterOpenBracket: Align
+AlignOperands: Align
+AlignTrailingComments:
+  Kind: Always
+  OverEmptyLines: 0
+BinPackArguments: true
+BinPackParameters: true
+AllowAllArgumentsOnNextLine: true
+AllowAllParametersOfDeclarationOnNextLine: true
+AllowShortFunctionsOnASingleLine: All
+AllowShortLambdasOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortEnumsOnASingleLine: true
+AlwaysBreakTemplateDeclarations: Yes
+BreakConstructorInitializers: BeforeColon
+PackConstructorInitializers: BinPack
+BreakStringLiterals: false
+Cpp11BracedListStyle: true
+DerivePointerAlignment: false
+PointerAlignment: Left
+ReferenceAlignment: Pointer
+FixNamespaceComments: true
+SortIncludes: Never
+IncludeBlocks: Preserve
+InsertNewlineAtEOF: true
+KeepEmptyLinesAtTheStartOfBlocks: false
+MaxEmptyLinesToKeep: 1
+LambdaBodyIndentation: Signature
+LineEnding: CRLF
+PenaltyReturnTypeOnItsOwnLine: 200
+ReflowComments: false
+SpaceBeforeParens: ControlStatements
+SpacesInAngles: Never
+EmptyLineBeforeAccessModifier: LogicalBlock
+AttributeMacros:
+  - HIKARI_GAME_PROJECT_SDK_API
+  - SP_API

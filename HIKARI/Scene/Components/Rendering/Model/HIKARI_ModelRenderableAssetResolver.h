@@ -7,15 +7,11 @@
 
 namespace HIKARI {
 
-    inline const ModelAsset* ResolveRenderableModelAsset(
-        const GameObject& object,
-        ModelComponent& model) {
-
-        if (const auto* procedural =
-                object.GetComponent<ProceduralMeshComponent>()) {
-            return PROCEDURAL::GetOrCreateModel(procedural->GetSettings());
-        }
-        return model.GetModelAsset();
+inline const ModelAsset* ResolveRenderableModelAsset(const GameObject& object, ModelComponent& model) {
+    if (const auto* procedural = object.GetComponent<ProceduralMeshComponent>()) {
+        return PROCEDURAL::GetOrCreateModel(procedural->GetSettings());
     }
+    return model.GetModelAsset();
+}
 
 } // namespace HIKARI

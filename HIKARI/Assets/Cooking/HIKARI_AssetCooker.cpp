@@ -1,19 +1,7 @@
-#include "Assets/Sequence/HIKARI_SequenceAsset.h"
-#include "Assets/Cooking/HIKARI_AssetCooker.h"
-
-#include <algorithm>
-#include <deque>
-#include <fstream>
-#include <system_error>
-#include <unordered_map>
-#include <unordered_set>
-#include <utility>
-
+#include "Assets/Cooking/HIKARI_AssetCookInternal.h"
 #include "Assets/Cooking/HIKARI_CookedContentManifest.h"
 #include "Assets/Formats/HIKARI_HshadercFormat.h"
 #include "Assets/HIKARI_AssetDatabase.h"
-#include "Assets/HIKARI_AssetUsageAnalyzer.h"
-#include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingAsset.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
 #include "Assets/Shader/Internal/HIKARI_ShaderArtifactValidation.h"
@@ -21,1519 +9,340 @@
 #include "Core/HIKARI_Logger.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 #include "Core/Text/HIKARI_UtfPath.h"
-#include "Gameplay/Dialogue/HIKARI_DialogueProjectStyle.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
 #include "Project/HIKARI_ProjectDescriptor.h"
-#include "Render3D/Procedural/HIKARI_ProceduralModelFactory.h"
-#include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
-#include "Scene/HIKARI_SceneDocument.h"
-#include "Scene/Serialization/HIKARI_SceneSerializer.h"
+#include <algorithm>
+#include <utility>
 
 namespace HIKARI::ASSETS::COOKING {
-    namespace {
+using namespace INTERNAL;
+namespace {
 
-        struct CookPlan {
-            std::unordered_set<std::string> assetGuids{};
-            std::unordered_set<std::string> sceneGuids{};
-            std::unordered_map<std::string,
-                std::vector<AssetDependencyDesc>> sourceDependencies{};
-            size_t missingReferenceCount = 0u;
-        };
+bool IsRuntimeArtifact(const AssetArtifactDesc& artifact) {
+    if (artifact.path.empty()) {
+        return false;
+    }
+    if (ASSETS::SEMANTICS::MatchesAssetArtifact(artifact, ASSETS::SEMANTICS::AssetArtifactKind::DebugTextureDds,
+                                                true)) {
+        return false;
+    }
 
-        std::string MakePathKey(
-            const std::filesystem::path& path) {
+    const std::string path = TEXT::ToLowerAsciiCopy(artifact.path);
+    return path.find("/captures/") == std::string::npos && !path.ends_with("_capture.dds");
+}
 
-            return TEXT::ToLowerAsciiCopy(
-                path.lexically_normal().generic_string());
+bool HasArtifactKind(const std::vector<AssetArtifactDesc>& artifacts, ASSETS::SEMANTICS::AssetArtifactKind kind,
+                     bool acceptCompatible = true) {
+    return std::any_of(artifacts.begin(), artifacts.end(), [kind, acceptCompatible](const AssetArtifactDesc& artifact) {
+        return ASSETS::SEMANTICS::MatchesAssetArtifact(artifact, kind, acceptCompatible);
+    });
+}
+
+bool ValidateShaderArtifactFile(const AssetRecord& record, const std::filesystem::path& root,
+                                const std::filesystem::path& relativePath, std::string& outMessage,
+                                SHADER::ShaderCookedArtifact* outCooked = nullptr) {
+    std::filesystem::path artifactPath{};
+    if (!ResolveContainedFilePath(root, relativePath, artifactPath, outMessage)) {
+        return false;
+    }
+    if (!SHADER::INTERNAL::ValidateContentAddressedShaderArtifact(artifactPath, outMessage)) {
+        return false;
+    }
+    SHADER::ShaderCookedArtifact cooked{};
+    std::string artifactError{};
+    if (!SHADER::ReadHshadercFile(artifactPath, cooked, artifactError) ||
+        cooked.sourceGuid.value != record.guid.value) {
+        outMessage = "Shader artifact failed strict validation for asset " + record.guid.value + ": " +
+                     (artifactError.empty() ? "source GUID mismatch" : artifactError);
+        return false;
+    }
+    if (outCooked != nullptr) {
+        *outCooked = std::move(cooked);
+    }
+    return true;
+}
+
+bool ValidateShaderArtifactsForCook(const AssetRecord& record, const std::vector<AssetArtifactDesc>& artifacts,
+                                    const std::filesystem::path& projectRoot, std::string& outMessage) {
+    if (record.type != AssetType::Shader) {
+        return true;
+    }
+    if (record.importOutdated) {
+        outMessage = "Shader asset is outdated and must be reimported: " + record.guid.value;
+        return false;
+    }
+    if (!SHADER::INTERNAL::ValidateShaderAssetRecordAuthority(record, outMessage)) {
+        return false;
+    }
+
+    const AssetArtifactDesc* primary = nullptr;
+    for (const AssetArtifactDesc& artifact : artifacts) {
+        const bool namesShaderRole = artifact.role == "ShaderProgram";
+        const bool namesShaderFormat =
+            artifact.format == "HSHADERC" ||
+            ASSETS::SEMANTICS::ClassifyCookedAssetFormat(artifact.path) == CookedAssetFormat::HSHADERC;
+        if (!namesShaderRole && !namesShaderFormat) {
+            continue;
         }
-
-        bool IsPathWithinRoot(
-            const std::filesystem::path& path,
-            const std::filesystem::path& root) {
-            const std::string pathKey = MakePathKey(path);
-            std::string rootKey = MakePathKey(root);
-            while (!rootKey.empty() && rootKey.back() == '/') {
-                rootKey.pop_back();
-            }
-            return !rootKey.empty() &&
-                (pathKey == rootKey ||
-                 (pathKey.size() > rootKey.size() &&
-                  pathKey.compare(0u, rootKey.size(), rootKey) == 0 &&
-                  pathKey[rootKey.size()] == '/'));
+        if (!ASSETS::SEMANTICS::MatchesAssetArtifact(artifact, ASSETS::SEMANTICS::AssetArtifactKind::ShaderProgram) ||
+            ASSETS::SEMANTICS::ClassifyCookedAssetFormat(artifact.path) != CookedAssetFormat::HSHADERC ||
+            primary != nullptr) {
+            outMessage = "Shader asset must provide exactly one exact "
+                         "ShaderProgram/HSHADERC artifact: " +
+                         record.guid.value;
+            return false;
         }
-
-        bool IsDeclaredProjectAssetRoot(
-            const std::filesystem::path& root) {
-            if (!IsSafeCookedRelativePath(root)) {
-                return false;
-            }
-            const std::string key = MakePathKey(root);
-            return key == "assets" || key.rfind("assets/", 0u) == 0u;
-        }
-
-        bool CopyFile(
-            const std::filesystem::path& source,
-            const std::filesystem::path& destination,
-            size_t& fileCount,
-            std::string& outMessage) {
-
-            std::error_code ec{};
-            if (!std::filesystem::is_regular_file(source, ec) ||
-                ec) {
-                outMessage =
-                    "Cook source file is missing: " +
-                    source.generic_string();
-                return false;
-            }
-
-            std::filesystem::create_directories(
-                destination.parent_path(),
-                ec);
-            if (ec) {
-                outMessage =
-                    "Could not create cooked directory: " +
-                    destination.parent_path().generic_string();
-                return false;
-            }
-
-            std::filesystem::copy_file(
-                source,
-                destination,
-                std::filesystem::copy_options::overwrite_existing,
-                ec);
-            if (ec) {
-                outMessage =
-                    "Could not publish cooked file: " +
-                    source.generic_string() + " -> " +
-                    destination.generic_string() + ": " +
-                    ec.message();
-                return false;
-            }
-            ++fileCount;
-            return true;
-        }
-
-        bool CopyDirectory(
-            const std::filesystem::path& source,
-            const std::filesystem::path& destination,
-            size_t& fileCount,
-            std::string& outMessage,
-            bool generatedRuntimeOnly = false) {
-
-            std::error_code ec{};
-            if (!std::filesystem::exists(source, ec) || ec) {
-                return true;
-            }
-            if (!std::filesystem::is_directory(source, ec) || ec) {
-                outMessage =
-                    "Cook directory source is invalid: " +
-                    source.generic_string();
-                return false;
-            }
-
-            std::filesystem::recursive_directory_iterator iterator(
-                source,
-                std::filesystem::directory_options::
-                    skip_permission_denied,
-                ec);
-            const std::filesystem::recursive_directory_iterator end{};
-            for (; !ec && iterator != end; iterator.increment(ec)) {
-                if (!iterator->is_regular_file(ec)) {
-                    ec.clear();
-                    continue;
-                }
-
-                const std::filesystem::path relative =
-                    std::filesystem::relative(
-                        iterator->path(),
-                        source,
-                        ec);
-                if (ec ||
-                    !IsSafeCookedRelativePath(relative)) {
-                    outMessage =
-                        "Could not resolve cooked directory file: " +
-                        iterator->path().generic_string();
-                    return false;
-                }
-
-                const std::string relativeKey =
-                    TEXT::ToLowerAsciiCopy(
-                        relative.generic_string());
-                if (relative.filename() == ".gitkeep" ||
-                    relativeKey.ends_with(".bak") || relativeKey.ends_with(".tmp") ||
-                    relativeKey.ends_with(".log") || relativeKey.ends_with("~") ||
-                    relativeKey.ends_with(
-                        ".hikari.asset.json")) {
-                    continue;
-                }
-                if (generatedRuntimeOnly &&
-                    (relativeKey.find("/captures/") !=
-                         std::string::npos ||
-                     relativeKey.ends_with("_capture.dds"))) {
-                    continue;
-                }
-
-                if (!CopyFile(
-                        iterator->path(),
-                        destination / relative,
-                        fileCount,
-                        outMessage)) {
-                    return false;
-                }
-            }
-
-            if (ec) {
-                outMessage =
-                    "Could not enumerate cook directory: " +
-                    source.generic_string() + ": " +
-                    ec.message();
-                return false;
-            }
-            return true;
-        }
-
-        bool IsRuntimeArtifact(
-            const AssetArtifactDesc& artifact) {
-
-            if (artifact.path.empty()) {
-                return false;
-            }
-            if (ASSETS::SEMANTICS::MatchesAssetArtifact(
-                    artifact,
-                    ASSETS::SEMANTICS::
-                        AssetArtifactKind::DebugTextureDds,
-                    true)) {
-                return false;
-            }
-
-            const std::string path =
-                TEXT::ToLowerAsciiCopy(artifact.path);
-            return path.find("/captures/") ==
-                    std::string::npos &&
-                !path.ends_with("_capture.dds");
-        }
-
-        bool HasArtifactKind(
-            const std::vector<AssetArtifactDesc>& artifacts,
-            ASSETS::SEMANTICS::AssetArtifactKind kind,
-            bool acceptCompatible = true) {
-
-            return std::any_of(
-                artifacts.begin(),
-                artifacts.end(),
-                [kind, acceptCompatible](
-                    const AssetArtifactDesc& artifact) {
-                    return ASSETS::SEMANTICS::
-                        MatchesAssetArtifact(
-                            artifact,
-                            kind,
-                            acceptCompatible);
-                });
-        }
-
-        bool ResolveContainedFilePath(
-            const std::filesystem::path& root,
-            const std::filesystem::path& relativePath,
-            std::filesystem::path& outResolved,
-            std::string& outMessage) {
-
-            if (!IsSafeCookedRelativePath(relativePath)) {
-                outMessage = "Cooked artifact path is unsafe: " +
-                    relativePath.generic_string();
-                return false;
-            }
-            std::error_code ec{};
-            const std::filesystem::path canonicalRoot =
-                std::filesystem::weakly_canonical(root, ec);
-            if (ec) {
-                outMessage = "Could not resolve cooked artifact root: " +
-                    ec.message();
-                return false;
-            }
-            const std::filesystem::path canonicalFile =
-                std::filesystem::weakly_canonical(
-                    root / relativePath,
-                    ec);
-            if (ec) {
-                outMessage = "Could not resolve cooked artifact path: " +
-                    ec.message();
-                return false;
-            }
-
-            std::string rootKey = TEXT::ToLowerAsciiCopy(
-                canonicalRoot.generic_string());
-            const std::string fileKey = TEXT::ToLowerAsciiCopy(
-                canonicalFile.generic_string());
-            while (!rootKey.empty() && rootKey.back() == '/') {
-                rootKey.pop_back();
-            }
-            if (rootKey.empty() || fileKey.size() <= rootKey.size() ||
-                fileKey.compare(0u, rootKey.size(), rootKey) != 0 ||
-                fileKey[rootKey.size()] != '/') {
-                outMessage =
-                    "Cooked artifact resolves outside its owned root: " +
-                    relativePath.generic_string();
-                return false;
-            }
-            outResolved = canonicalFile;
-            return true;
-        }
-
-        bool ValidateShaderArtifactFile(
-            const AssetRecord& record,
-            const std::filesystem::path& root,
-            const std::filesystem::path& relativePath,
-            std::string& outMessage,
-            SHADER::ShaderCookedArtifact* outCooked = nullptr) {
-
-            std::filesystem::path artifactPath{};
-            if (!ResolveContainedFilePath(
-                    root,
-                    relativePath,
-                    artifactPath,
-                    outMessage)) {
-                return false;
-            }
-            if (!SHADER::INTERNAL::
-                    ValidateContentAddressedShaderArtifact(
-                        artifactPath,
-                        outMessage)) {
-                return false;
-            }
-            SHADER::ShaderCookedArtifact cooked{};
-            std::string artifactError{};
-            if (!SHADER::ReadHshadercFile(
-                    artifactPath,
-                    cooked,
-                    artifactError) ||
-                cooked.sourceGuid.value != record.guid.value) {
-                outMessage =
-                    "Shader artifact failed strict validation for asset " +
-                    record.guid.value + ": " +
-                    (artifactError.empty()
-                        ? "source GUID mismatch"
-                        : artifactError);
-                return false;
-            }
-            if (outCooked != nullptr) {
-                *outCooked = std::move(cooked);
-            }
-            return true;
-        }
-
-        bool ValidateShaderArtifactsForCook(
-            const AssetRecord& record,
-            const std::vector<AssetArtifactDesc>& artifacts,
-            const std::filesystem::path& projectRoot,
-            std::string& outMessage) {
-
-            if (record.type != AssetType::Shader) {
-                return true;
-            }
-            if (record.importOutdated) {
-                outMessage =
-                    "Shader asset is outdated and must be reimported: " +
-                    record.guid.value;
-                return false;
-            }
-            if (!SHADER::INTERNAL::
-                    ValidateShaderAssetRecordAuthority(
-                        record,
-                        outMessage)) {
-                return false;
-            }
-
-            const AssetArtifactDesc* primary = nullptr;
-            for (const AssetArtifactDesc& artifact : artifacts) {
-                const bool namesShaderRole =
-                    artifact.role == "ShaderProgram";
-                const bool namesShaderFormat =
-                    artifact.format == "HSHADERC" ||
-                    ASSETS::SEMANTICS::ClassifyCookedAssetFormat(
-                        artifact.path) == CookedAssetFormat::HSHADERC;
-                if (!namesShaderRole && !namesShaderFormat) {
-                    continue;
-                }
-                if (!ASSETS::SEMANTICS::MatchesAssetArtifact(
-                        artifact,
-                        ASSETS::SEMANTICS::
-                            AssetArtifactKind::ShaderProgram) ||
-                    ASSETS::SEMANTICS::ClassifyCookedAssetFormat(
-                        artifact.path) != CookedAssetFormat::HSHADERC ||
-                    primary != nullptr) {
-                    outMessage =
-                        "Shader asset must provide exactly one exact "
-                        "ShaderProgram/HSHADERC artifact: " +
-                        record.guid.value;
-                    return false;
-                }
-                primary = &artifact;
-            }
-            if (primary == nullptr ||
-                !IsSafeCookedRelativePath(primary->path)) {
-                outMessage =
-                    "Shader asset is missing a safe HSHADERC artifact: " +
-                    record.guid.value;
-                return false;
-            }
-            if (!SHADER::INTERNAL::
-                    ValidateShaderAuthoringArtifactOwnership(
-                        record,
-                        projectRoot,
-                        primary->path,
-                        outMessage)) {
-                return false;
-            }
-
-            SHADER::ShaderCookedArtifact cooked{};
-            if (!ValidateShaderArtifactFile(
-                    record,
-                    projectRoot,
-                    primary->path,
-                    outMessage,
-                    &cooked)) {
-                return false;
-            }
-            const CONTENT::EngineContentContext& content =
-                CONTENT::GetEngineContentContext();
-            const std::filesystem::path engineShaderRoot =
-                content.IsOpen()
-                    ? content.Resolve("Shaders")
-                    : std::filesystem::path{};
-            return SHADER::INTERNAL::
-                ValidateShaderArtifactAgainstAuthoringSources(
-                    record,
-                    cooked,
-                    projectRoot,
-                    engineShaderRoot,
-                    outMessage);
-        }
-
-        bool RequiresSourcePayload(
-            const AssetRecord& record,
-            const std::vector<AssetArtifactDesc>& artifacts) {
-
-            switch (record.type) {
-            case AssetType::Texture:
-                return !HasArtifactKind(
-                    artifacts,
-                    ASSETS::SEMANTICS::
-                        AssetArtifactKind::MainTexture);
-            case AssetType::Model:
-                return !HasArtifactKind(
-                    artifacts,
-                    ASSETS::SEMANTICS::
-                        AssetArtifactKind::MainModel);
-            case AssetType::Sky:
-                return !HasArtifactKind(
-                    artifacts,
-                    ASSETS::SEMANTICS::
-                        AssetArtifactKind::SkyCubemap);
-            case AssetType::Material:
-                return !HasArtifactKind(
-                    artifacts,
-                    ASSETS::SEMANTICS::
-                        AssetArtifactKind::Material);
-            case AssetType::VfxEffect:
-                return !HasArtifactKind(
-                    artifacts,
-                    ASSETS::SEMANTICS::
-                        AssetArtifactKind::VfxProgram);
-            case AssetType::Shader:
-                return !HasArtifactKind(
-                    artifacts,
-                    ASSETS::SEMANTICS::
-                        AssetArtifactKind::ShaderProgram,
-                    false);
-            default:
-                return true;
-            }
-        }
-
-        bool RequiresPrimaryArtifact(
-            AssetType type) {
-
-            return type == AssetType::Texture ||
-                type == AssetType::Model ||
-                type == AssetType::Sky ||
-                type == AssetType::VfxEffect ||
-                type == AssetType::Shader;
-        }
-
-        std::filesystem::path MakeRuntimePayloadPath(
-            const std::filesystem::path& sourcePath) {
-
-            return (
-                std::filesystem::path("RuntimePayload") /
-                sourcePath).lexically_normal();
-        }
-
-        bool CollectSourceCookDependencies(
-            const AssetRecord& record,
-            const std::filesystem::path& projectRoot,
-            AssetDatabase& assetDatabase,
-            CookPlan& plan,
-            std::string& outMessage) {
-
-            if (record.type == AssetType::Sequence) {
-                std::filesystem::path path;
-                if (!ResolveContainedFilePath(projectRoot, record.sourcePath, path, outMessage)) return false;
-                SequenceAsset asset;
-                if (!LoadSequenceAsset(path, record.guid, asset, &outMessage)) return false;
-                plan.sourceDependencies.insert_or_assign(record.guid.value, CollectSequenceDependencies(asset.sequence));
-                return true;
-            }
-            if (record.type != AssetType::ModelMaterialBinding) {
-                return true;
-            }
-            std::filesystem::path sourcePath{};
-            if (!ResolveContainedFilePath(
-                    projectRoot, record.sourcePath, sourcePath,
-                    outMessage)) {
-                return false;
-            }
-            ASSETS::MODELS::ModelMaterialBindingAssetData data{};
-            std::string error{};
-            if (!ASSETS::MODELS::LoadModelMaterialBindingAsset(
-                    sourcePath, data, error)) {
-                outMessage = "Could not read model material bindings: " +
-                    TEXT::PathToUtf8(record.sourcePath) + ": " + error;
-                return false;
-            }
-            std::vector<AssetDependencyDesc> dependencies{};
-            for (const auto& dependency :
-                 ASSETS::MODELS::CollectModelMaterialBindingDependencies(data)) {
-                const AssetRecord* dependencyRecord =
-                    assetDatabase.FindByGuid(dependency.assetGuid);
-                const AssetType expectedType = dependency.kind ==
-                    ASSETS::MODELS::ModelMaterialBindingDependencyKind::Model
-                    ? AssetType::Model : AssetType::Material;
-                if (dependencyRecord == nullptr ||
-                    dependencyRecord->type != expectedType) {
-                    outMessage = "Missing or invalid " + dependency.role +
-                        " dependency of " + TEXT::PathToUtf8(record.sourcePath) +
-                        ": " + dependency.assetGuid.value;
-                    return false;
-                }
-                dependencies.push_back(AssetDependencyDesc{
-                    dependency.assetGuid, {}, dependency.role });
-            }
-            plan.sourceDependencies.insert_or_assign(
-                record.guid.value, std::move(dependencies));
-            return true;
-        }
-
-        const std::vector<AssetDependencyDesc>& CookDependencies(
-            const AssetRecord& record,
-            const CookPlan& plan) {
-
-            const auto it = plan.sourceDependencies.find(record.guid.value);
-            return it != plan.sourceDependencies.end()
-                ? it->second : record.artifactManifest.dependencies;
-        }
-
-        bool ValidateCueAudioPayload(const AssetCookOptions& options,
-            const AssetDependencyDesc& dependency, std::string& message) {
-            const auto path = std::filesystem::path(dependency.path);
-            const bool declared = std::any_of(options.runtimePayloadRoots.begin(), options.runtimePayloadRoots.end(),
-                [&](const auto& root) { return IsDeclaredProjectAssetRoot(root) && IsPathWithinRoot(path, root); });
-            if (!declared) {
-                message = "Sequence audio requires a runtimePayloadRoots entry covering: " + dependency.path;
-                return false;
-            }
-            std::filesystem::path resolved;
-            return ResolveContainedFilePath(options.projectRoot, path, resolved, message);
-        }
-
-        bool BuildCookPlan(
-            const AssetCookOptions& options,
-            AssetDatabase& assetDatabase,
-            CookPlan& outPlan,
-            std::string& outMessage) {
-
-            CookPlan plan{};
-            if (!options.startupSceneGuid.empty() &&
-                !IsValidAssetGuid(options.startupSceneGuid)) {
-                outMessage =
-                    "Startup Scene GUID must be 32 hexadecimal characters.";
-                return false;
-            }
-            for (const std::string& sceneGuid :
-                 options.sceneGuids) {
-                if (!IsValidAssetGuid(sceneGuid)) {
-                    outMessage =
-                        "Cooked Scene GUID must be 32 hexadecimal "
-                        "characters: " + sceneGuid;
-                    return false;
-                }
-                plan.sceneGuids.insert(sceneGuid);
-            }
-
-            if (plan.sceneGuids.empty()) {
-                if (!options.startupSceneGuid.empty()) {
-                    outMessage =
-                        "Startup scene was set but no scenes were "
-                        "selected for cooking.";
-                    return false;
-                }
-                for (const AssetRecord* record :
-                     assetDatabase.CollectAll()) {
-                    if (record != nullptr &&
-                        IsValidAssetGuid(record->guid.value)) {
-                        plan.assetGuids.insert(
-                            record->guid.value);
-                        if (!CollectSourceCookDependencies(
-                                *record, options.projectRoot, assetDatabase,
-                                plan, outMessage)) {
-                            return false;
-                        }
-                    }
-                }
-                outPlan = std::move(plan);
-                return true;
-            }
-
-            if (options.startupSceneGuid.empty()) {
-                outMessage =
-                    "Startup scene is required when cooking selected "
-                    "scenes.";
-                return false;
-            }
-            if (!plan.sceneGuids.contains(
-                    options.startupSceneGuid)) {
-                outMessage =
-                    "Startup scene must be included in cooked scenes: " +
-                    options.startupSceneGuid;
-                return false;
-            }
-
-            std::deque<std::string> pendingGuids{};
-            auto queueRecord =
-                [&](const AssetRecord* record) {
-                    if (record == nullptr ||
-                        !IsValidAssetGuid(record->guid.value)) {
-                        if (outMessage.empty()) {
-                            outMessage = record
-                                ? "Asset has no valid metadata. Import it before exporting: " + TEXT::PathToUtf8(record->sourcePath)
-                                : "A referenced asset record is missing.";
-                        }
-                        ++plan.missingReferenceCount;
-                        return;
-                    }
-                    if (record->type == AssetType::Scene &&
-                        !plan.sceneGuids.contains(
-                            record->guid.value)) {
-                        return;
-                    }
-                    if (plan.assetGuids.insert(
-                            record->guid.value).second) {
-                        pendingGuids.push_back(
-                            record->guid.value);
-                    }
-                };
-
-            SceneSerializer sceneSerializer{};
-            for (const std::string& sceneGuid :
-                 plan.sceneGuids) {
-                const AssetRecord* sceneRecord =
-                    assetDatabase.FindByGuid(
-                        AssetGuid{ sceneGuid });
-                if (sceneRecord == nullptr ||
-                    sceneRecord->type != AssetType::Scene) {
-                    outMessage =
-                        "Cooked scene was not found in the asset "
-                        "database: " + sceneGuid;
-                    return false;
-                }
-
-                queueRecord(sceneRecord);
-                SceneDocument document{};
-                const std::filesystem::path scenePath =
-                    options.projectRoot /
-                    sceneRecord->sourcePath;
-                if (!sceneSerializer.LoadFromFile(
-                        scenePath.lexically_normal().string(),
-                        document)) {
-                    outMessage =
-                        "Could not read scene while building cook plan: " +
-                        scenePath.generic_string();
-                    return false;
-                }
-
-                for (const auto& sequence : document.cinematics.sequences) {
-                    for (const auto& dependency : CollectSequenceDependencies(sequence))
-                        if (dependency.role == "Sequence.AudioCue" &&
-                            !ValidateCueAudioPayload(options, dependency, outMessage)) return false;
-                }
-                AssetUsageSummary usage =
-                    AnalyzeAssetUsage(
-                        document,
-                        assetDatabase);
-                for (const std::string& usedGuid :
-                     usage.usedGuids) {
-                    const AssetRecord* usedRecord =
-                        assetDatabase.FindByGuid(
-                            AssetGuid{ usedGuid });
-                    if (usedRecord == nullptr) {
-                        outMessage = "Missing scene asset record: " + usedGuid;
-                        return false;
-                    }
-                    queueRecord(usedRecord);
-                }
-                plan.missingReferenceCount +=
-                    usage.missingReferences.size();
-                if (!usage.missingReferences.empty()) {
-                    const auto& missing = usage.missingReferences.front();
-                    outMessage = "Missing scene asset: " + missing.assetId + " (" + missing.owner + ", " + missing.role + ").";
-                    return false;
-                }
-            }
-
-            const std::vector<const AssetRecord*> allRecords =
-                assetDatabase.CollectAll();
-            for (const std::filesystem::path& root :
-                 options.assetRoots) {
-                if (!IsDeclaredProjectAssetRoot(root)) {
-                    outMessage =
-                        "Cook asset root must be a safe path below Assets: " +
-                        root.generic_string();
-                    return false;
-                }
-                size_t matched = 0u;
-                for (const AssetRecord* record : allRecords) {
-                    if (record != nullptr &&
-                        IsPathWithinRoot(record->sourcePath, root)) {
-                        queueRecord(record);
-                        ++matched;
-                    }
-                }
-                if (matched == 0u) {
-                    outMessage =
-                        "Cook asset root did not resolve any registered assets: " +
-                        root.generic_string();
-                    return false;
-                }
-            }
-
-            const std::filesystem::path dialogueStylePath =
-                options.projectRoot /
-                std::string(DIALOGUE::kDialogueProjectStylePath);
-            std::error_code dialogueStyleError{};
-            if (std::filesystem::is_regular_file(
-                    dialogueStylePath,
-                    dialogueStyleError) &&
-                !dialogueStyleError) {
-                DIALOGUE::DialogueProjectStyle dialogueStyle{};
-                std::string dialogueStyleMessage{};
-                if (!DIALOGUE::LoadDialogueProjectStyle(
-                        options.projectRoot,
-                        dialogueStyle,
-                        &dialogueStyleMessage)) {
-                    outMessage =
-                        "Could not read dialogue UI style while building "
-                        "the cook plan: " + dialogueStyleMessage;
-                    return false;
-                }
-                for (const DIALOGUE::DialogueSpeakerProfile& speaker :
-                     dialogueStyle.speakers) {
-                    if (speaker.portraitAssetGuid.empty()) {
-                        continue;
-                    }
-                    const AssetRecord* portraitRecord =
-                        assetDatabase.FindByGuid(
-                            AssetGuid{ speaker.portraitAssetGuid });
-                    if (portraitRecord == nullptr ||
-                        portraitRecord->type != AssetType::Texture) {
-                        outMessage =
-                            "Dialogue speaker '" + speaker.id +
-                            "' references a missing or non-texture portrait "
-                            "asset: " + speaker.portraitAssetGuid;
-                        return false;
-                    }
-                    queueRecord(portraitRecord);
-                }
-            }
-            else if (dialogueStyleError &&
-                     dialogueStyleError != std::errc::no_such_file_or_directory) {
-                outMessage =
-                    "Could not inspect dialogue UI style while building "
-                    "the cook plan: " + dialogueStyleError.message();
-                return false;
-            }
-
-            while (!pendingGuids.empty()) {
-                const std::string guid =
-                    std::move(pendingGuids.front());
-                pendingGuids.pop_front();
-
-                const AssetRecord* record =
-                    assetDatabase.FindByGuid(
-                        AssetGuid{ guid });
-                if (record == nullptr) {
-                    outMessage = "Missing dependency record: " + guid;
-                    return false;
-                }
-
-                if (!CollectSourceCookDependencies(
-                        *record, options.projectRoot, assetDatabase,
-                        plan, outMessage)) {
-                    return false;
-                }
-                for (const AssetDependencyDesc& dependency :
-                     CookDependencies(*record, plan)) {
-                    if (ASSETS::SEMANTICS::
-                            IsSourceOnlyAssetDependencyRole(
-                                dependency.role)) {
-                        continue;
-                    }
-
-                    if (dependency.role == "Sequence.AudioCue") {
-                        if (!ValidateCueAudioPayload(options, dependency, outMessage)) return false;
-                        continue;
-                    }
-                    const AssetRecord* dependencyRecord = nullptr;
-                    if (dependency.guid.IsValid()) {
-                        dependencyRecord =
-                            assetDatabase.FindByGuid(
-                                dependency.guid);
-                    }
-                    else if (!dependency.path.empty()) {
-                        dependencyRecord =
-                            assetDatabase.FindByPath(
-                                dependency.path);
-                    }
-                    if (dependencyRecord == nullptr) {
-                        outMessage = "Missing dependency of " + TEXT::PathToUtf8(record->sourcePath) +
-                            ": " + dependency.guid.value + " " + dependency.path + " (" + dependency.role + ").";
-                        return false;
-                    }
-                    queueRecord(dependencyRecord);
-                }
-            }
-
-            if (plan.missingReferenceCount != 0u) return false;
-            outPlan = std::move(plan);
-            return true;
-        }
-
-        bool CopyOpeningAnimation(
-            const std::filesystem::path& projectRoot,
-            const std::filesystem::path& contentRoot,
-            size_t& fileCount,
-            std::string& outMessage) {
-
-            const std::filesystem::path sourceRoot =
-                projectRoot / "Assets" / "Spine";
-            const std::filesystem::path atlasPath =
-                sourceRoot / "op.atlas";
-            const std::filesystem::path skeletonPath =
-                sourceRoot / "op.json";
-
-            std::error_code ec{};
-            const bool hasAtlas =
-                std::filesystem::is_regular_file(
-                    atlasPath,
-                    ec) && !ec;
-            ec.clear();
-            const bool hasSkeleton =
-                std::filesystem::is_regular_file(
-                    skeletonPath,
-                    ec) && !ec;
-            if (!hasAtlas && !hasSkeleton) {
-                return true;
-            }
-            if (!hasAtlas || !hasSkeleton) {
-                outMessage =
-                    "Optional opening animation is incomplete under " +
-                    sourceRoot.generic_string();
-                return false;
-            }
-
-            const std::filesystem::path destinationRoot =
-                contentRoot / "RuntimePayload" / "Spine";
-            if (!CopyFile(
-                    atlasPath,
-                    destinationRoot / "op.atlas",
-                    fileCount,
-                    outMessage) ||
-                !CopyFile(
-                    skeletonPath,
-                    destinationRoot / "op.json",
-                    fileCount,
-                    outMessage)) {
-                return false;
-            }
-
-            std::ifstream atlas(atlasPath);
-            if (!atlas) {
-                outMessage =
-                    "Could not read opening Spine atlas: " +
-                    atlasPath.generic_string();
-                return false;
-            }
-
-            std::unordered_set<std::string> copiedPages{};
-            std::string line{};
-            while (std::getline(atlas, line)) {
-                if (!line.empty() && line.back() == '\r') {
-                    line.pop_back();
-                }
-                const std::filesystem::path pagePath = TEXT::PathFromUtf8(line);
-                const std::string extension =
-                    TEXT::ToLowerAsciiCopy(
-                        pagePath.extension().string());
-                if (line.find(':') != std::string::npos ||
-                    (extension != ".png" &&
-                     extension != ".jpg" &&
-                     extension != ".jpeg" &&
-                     extension != ".dds") ||
-                    !IsSafeCookedRelativePath(pagePath) ||
-                    !copiedPages.insert(
-                        MakePathKey(pagePath)).second) {
-                    continue;
-                }
-
-                if (!CopyFile(
-                        sourceRoot / pagePath,
-                        destinationRoot / pagePath,
-                        fileCount,
-                        outMessage)) {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        bool CopyRuntimeSettingsAndData(
-            const AssetCookOptions& options,
-            size_t& fileCount,
-            std::string& outMessage) {
-
-            const std::filesystem::path settingsSource =
-                options.projectRoot / "ProjectSettings";
-            const std::filesystem::path settingsDestination =
-                options.contentRoot / "ProjectSettings";
-            for (const std::filesystem::path& filename :
-                 {
-                     std::filesystem::path(
-                         "project_settings.json"),
-                      std::filesystem::path(
-                          "render_quality.json"),
-                      std::filesystem::path(
-                          "runtime_bindings.json"),
-                      std::filesystem::path(
-                          "DialogueUiStyle.json"),
-                  }) {
-                std::error_code ec{};
-                const std::filesystem::path source =
-                    settingsSource / filename;
-                if (!std::filesystem::exists(source, ec) || ec) {
-                    continue;
-                }
-                if (!CopyFile(
-                        source,
-                        settingsDestination / filename,
-                        fileCount,
-                        outMessage)) {
-                    return false;
-                }
-            }
-
-            if (!CopyDirectory(
-                    settingsSource / "Content",
-                    settingsDestination / "Content",
-                    fileCount,
-                    outMessage) ||
-                !CopyDirectory(
-                    settingsSource / "Input",
-                    settingsDestination / "Input",
-                    fileCount,
-                    outMessage) ||
-                !CopyDirectory(
-                    settingsSource / "Physics",
-                    settingsDestination / "Physics",
-                    fileCount,
-                    outMessage) ||
-                !CopyDirectory(
-                    options.projectRoot / "Data",
-                    options.contentRoot / "Data",
-                    fileCount,
-                    outMessage)) {
-                return false;
-            }
-            return true;
-        }
-
-        bool CopyDeclaredRuntimePayloads(
-            const AssetCookOptions& options,
-            size_t& fileCount,
-            std::string& outMessage) {
-            std::unordered_set<std::string> copiedRoots{};
-            for (const std::filesystem::path& root :
-                 options.runtimePayloadRoots) {
-                if (!IsDeclaredProjectAssetRoot(root)) {
-                    outMessage =
-                        "Runtime payload root must be a safe path below Assets: " +
-                        root.generic_string();
-                    return false;
-                }
-                if (!copiedRoots.insert(MakePathKey(root)).second) {
-                    continue;
-                }
-                const std::filesystem::path source =
-                    options.projectRoot / root;
-                std::error_code ec{};
-                if (!std::filesystem::is_directory(source, ec) || ec) {
-                    outMessage =
-                        "Declared runtime payload root is missing: " +
-                        source.generic_string();
-                    return false;
-                }
-                if (!CopyDirectory(
-                        source,
-                        options.contentRoot / "RuntimePayload" / root,
-                        fileCount,
-                        outMessage)) {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        bool CopyLightingContent(
-            const AssetCookOptions& options,
-            const CookPlan& plan,
-            size_t& fileCount,
-            std::string& outMessage) {
-
-            const std::filesystem::path generatedSource =
-                options.projectRoot /
-                "Library" / "Generated";
-            const std::filesystem::path generatedDestination =
-                options.contentRoot /
-                "Library" / "Generated";
-            if (!CopyDirectory(
-                    generatedSource / "IBL",
-                    generatedDestination / "IBL",
-                    fileCount,
-                    outMessage,
-                    true)) {
-                return false;
-            }
-
-            if (plan.sceneGuids.empty()) {
-                return CopyDirectory(
-                    generatedSource / "Lighting",
-                    generatedDestination / "Lighting",
-                    fileCount,
-                    outMessage,
-                    true);
-            }
-
-            std::vector<std::string> sceneGuids(
-                plan.sceneGuids.begin(),
-                plan.sceneGuids.end());
-            std::sort(sceneGuids.begin(), sceneGuids.end());
-            for (const std::string& sceneGuid : sceneGuids) {
-                if (!CopyDirectory(
-                        generatedSource /
-                            "Lighting" / sceneGuid,
-                        generatedDestination /
-                            "Lighting" / sceneGuid,
-                        fileCount,
-                        outMessage,
-                        true)) {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        bool CookProceduralGeometry(
-            const AssetCookOptions& options,
-            const CookPlan& plan,
-            const AssetDatabase& assetDatabase,
-            size_t& fileCount,
-            std::string& outMessage) {
-
-            std::vector<const AssetRecord*> sceneRecords{};
-            if (plan.sceneGuids.empty()) {
-                for (const AssetRecord* record :
-                     assetDatabase.CollectByType(
-                         AssetType::Scene)) {
-                    if (record != nullptr &&
-                        plan.assetGuids.contains(
-                            record->guid.value)) {
-                        sceneRecords.push_back(record);
-                    }
-                }
-            }
-            else {
-                for (const std::string& sceneGuid :
-                     plan.sceneGuids) {
-                    const AssetRecord* record =
-                        assetDatabase.FindByGuid(
-                            AssetGuid{ sceneGuid });
-                    if (record != nullptr) {
-                        sceneRecords.push_back(record);
-                    }
-                }
-            }
-            std::sort(
-                sceneRecords.begin(),
-                sceneRecords.end(),
-                [](const AssetRecord* lhs,
-                   const AssetRecord* rhs) {
-                    return lhs->guid.value < rhs->guid.value;
-                });
-
-            SceneSerializer serializer{};
-            std::unordered_set<std::string> publishedPaths{};
-            for (const AssetRecord* sceneRecord :
-                 sceneRecords) {
-                SceneDocument document{};
-                const std::filesystem::path scenePath =
-                    options.projectRoot /
-                    sceneRecord->sourcePath;
-                if (!serializer.LoadFromFile(
-                        scenePath.lexically_normal().string(),
-                        document)) {
-                    outMessage =
-                        "Could not read scene while cooking procedural "
-                        "geometry: " +
-                        scenePath.generic_string();
-                    return false;
-                }
-
-                for (const SceneObjectData& object :
-                     document.objects) {
-                    for (const SceneComponentData& componentData :
-                         object.components) {
-                        if (componentData.type !=
-                            "ProceduralMeshComponent") {
-                            continue;
-                        }
-
-                        ProceduralMeshComponent component{};
-                        component.Deserialize(
-                            componentData.properties);
-                        const std::filesystem::path generatedPath =
-                            PROCEDURAL::
-                                GetOrCreateClusteredGeometryPath(
-                                    component.GetSettings(),
-                                    options.projectRoot);
-                        if (generatedPath.empty()) {
-                            outMessage =
-                                "Could not cook procedural clustered "
-                                "geometry for scene " +
-                                sceneRecord->guid.value;
-                            return false;
-                        }
-
-                        std::error_code relativeError{};
-                        const std::filesystem::path relativePath =
-                            std::filesystem::relative(
-                                generatedPath,
-                                options.projectRoot,
-                                relativeError);
-                        if (relativeError ||
-                            !IsSafeCookedRelativePath(
-                                relativePath)) {
-                            outMessage =
-                                "Procedural clustered geometry escaped "
-                                "the project root: " +
-                                generatedPath.generic_string();
-                            return false;
-                        }
-                        if (!publishedPaths.insert(
-                                MakePathKey(
-                                    relativePath)).second) {
-                            continue;
-                        }
-
-                        if (!CopyFile(
-                                generatedPath,
-                                options.contentRoot /
-                                    relativePath,
-                                fileCount,
-                                outMessage)) {
-                            return false;
-                        }
-                    }
-                }
-            }
-            return true;
-        }
-
-    } // namespace
-
-    AssetCookResult AssetCooker::Cook(
-        const AssetCookOptions& options) const {
-
-        AssetCookResult result{};
-        if (options.projectRoot.empty() ||
-            options.contentRoot.empty()) {
-            result.message =
-                "Cook project root and content root are required.";
-            return result;
-        }
-
-        std::error_code ec{};
-        if (!std::filesystem::is_regular_file(
-                options.projectRoot /
-                    kProjectDescriptorFilename,
-                ec) ||
-            ec) {
-            result.message =
-                "Cook project descriptor is missing: " +
-                (options.projectRoot /
-                    kProjectDescriptorFilename).generic_string();
-            return result;
-        }
-
-        std::filesystem::create_directories(
-            options.contentRoot,
-            ec);
-        if (ec) {
-            result.message =
-                "Could not create cooked content root: " +
-                options.contentRoot.generic_string();
-            return result;
-        }
-
-        AssetDatabase assetDatabase{};
-        if (!assetDatabase.Initialize(
-                options.projectRoot) ||
-            !assetDatabase.ScanAssets(false)) {
-            result.message =
-                "Could not scan authored assets for cooking.";
-            return result;
-        }
-
-        CookPlan plan{};
-        if (!BuildCookPlan(
-                options,
-                assetDatabase,
-                plan,
-                result.message)) {
-            return result;
-        }
-        result.missingReferenceCount =
-            plan.missingReferenceCount;
-        if (result.missingReferenceCount != 0u) {
-            result.message = "Export contains " + std::to_string(result.missingReferenceCount) +
-                " unresolved asset reference(s). Repair references before exporting.";
-            return result;
-        }
-
-        std::vector<std::string> assetGuids(
-            plan.assetGuids.begin(),
-            plan.assetGuids.end());
-        std::sort(assetGuids.begin(), assetGuids.end());
-
-        std::unordered_map<
-            std::string,
-            std::filesystem::path> cookedSourceByOriginalPath{};
-        std::unordered_map<
-            std::string,
-            std::vector<AssetArtifactDesc>>
-                runtimeArtifactsByGuid{};
-
-        for (const std::string& guid : assetGuids) {
-            if (options.progress && !options.progress("Validating asset " + guid, 0.0f)) {
-                result.message = "Export cancelled. The previous package was preserved.";
-                return result;
-            }
-            const AssetRecord* record =
-                assetDatabase.FindByGuid(
-                    AssetGuid{ guid });
-            if (record == nullptr ||
-                record->duplicateGuid) {
-                result.message =
-                    "Cook asset record is invalid or duplicated: " +
-                    guid;
-                return result;
-            }
-            if (!IsSafeCookedRelativePath(
-                    record->sourcePath)) {
-                result.message =
-                    "Authored asset source path is unsafe: " +
-                    record->sourcePath.generic_string();
-                return result;
-            }
-
-            if (!record->sourceExists || (RequiresPrimaryArtifact(record->type) &&
-                (record->importOutdated || record->artifactMissing || !record->lastImportSucceeded))) {
-                result.message = "Asset needs a successful, current import: " +
-                    TEXT::PathToUtf8(record->sourcePath) + " (" + guid + "). " + record->lastImportMessage;
-                return result;
-            }
-
-            std::vector<AssetArtifactDesc> runtimeArtifacts{};
-            for (const AssetArtifactDesc& artifact :
-                 record->artifactManifest.artifacts) {
-                if (IsRuntimeArtifact(artifact)) {
-                    runtimeArtifacts.push_back(artifact);
-                }
-            }
-            if (!ValidateShaderArtifactsForCook(
-                    *record,
-                    runtimeArtifacts,
-                    options.projectRoot,
-                    result.message)) {
-                return result;
-            }
-            if (RequiresPrimaryArtifact(record->type) &&
-                RequiresSourcePayload(
-                    *record,
-                    runtimeArtifacts)) {
-                result.message =
-                    "Required cooked artifact is missing for asset " +
-                    guid + " (" +
-                    record->sourcePath.generic_string() +
-                    "). Reimport the asset before exporting.";
-                return result;
-            }
-
-            const bool sourcePayload =
-                RequiresSourcePayload(
-                    *record,
-                    runtimeArtifacts);
-            cookedSourceByOriginalPath[
-                MakePathKey(record->sourcePath)] =
-                sourcePayload
-                    ? MakeRuntimePayloadPath(
-                        record->sourcePath)
-                    : record->sourcePath;
-            runtimeArtifactsByGuid.emplace(
-                guid,
-                std::move(runtimeArtifacts));
-        }
-
-        CookedContentManifest manifest{};
-        manifest.startupSceneGuid =
-            options.startupSceneGuid;
-        manifest.exportedSceneGuids =
-            options.sceneGuids;
-        manifest.assets.reserve(assetGuids.size());
-
-        for (const std::string& guid : assetGuids) {
-            if (options.progress && !options.progress("Copying asset " + guid,
-                0.1f + 0.8f * static_cast<float>(manifest.assets.size()) /
-                (std::max)(size_t{1}, assetGuids.size()))) {
-                result.message = "Export cancelled. The previous package was preserved.";
-                return result;
-            }
-            const AssetRecord* sourceRecord =
-                assetDatabase.FindByGuid(
-                    AssetGuid{ guid });
-            if (sourceRecord == nullptr) {
-                result.message =
-                    "Cook asset disappeared: " + guid;
-                return result;
-            }
-
-            AssetRecord cookedRecord = *sourceRecord;
-            cookedRecord.metaPath.clear();
-            cookedRecord.artifactManifestPath.clear();
-            cookedRecord.sourcePath =
-                cookedSourceByOriginalPath.at(
-                    MakePathKey(sourceRecord->sourcePath));
-            cookedRecord.meta.sourcePath =
-                cookedRecord.sourcePath.generic_string();
-            cookedRecord.artifactManifest.sourcePath =
-                cookedRecord.sourcePath.generic_string();
-            cookedRecord.artifactManifest.artifacts =
-                runtimeArtifactsByGuid.at(guid);
-
-            std::vector<AssetDependencyDesc> dependencies{};
-            for (AssetDependencyDesc dependency :
-                 CookDependencies(*sourceRecord, plan)) {
-                if (ASSETS::SEMANTICS::
-                        IsSourceOnlyAssetDependencyRole(
-                            dependency.role)) {
-                    continue;
-                }
-
-                if (dependency.role == "Sequence.AudioCue") {
-                    dependency.path = MakeRuntimePayloadPath(dependency.path).generic_string();
-                    dependencies.push_back(std::move(dependency));
-                    continue;
-                }
-                const AssetRecord* dependencyRecord = nullptr;
-                if (dependency.guid.IsValid()) {
-                    dependencyRecord =
-                        assetDatabase.FindByGuid(
-                            dependency.guid);
-                }
-                else if (!dependency.path.empty()) {
-                    dependencyRecord =
-                        assetDatabase.FindByPath(
-                            dependency.path);
-                }
-                if (dependencyRecord == nullptr ||
-                    !plan.assetGuids.contains(
-                        dependencyRecord->guid.value)) {
-                    continue;
-                }
-
-                dependency.guid =
-                    dependencyRecord->guid;
-                const auto cookedPath =
-                    cookedSourceByOriginalPath.find(
-                        MakePathKey(
-                            dependencyRecord->sourcePath));
-                dependency.path =
-                    cookedPath ==
-                        cookedSourceByOriginalPath.end()
-                        ? std::string{}
-                        : cookedPath->second.generic_string();
-                dependencies.push_back(
-                    std::move(dependency));
-            }
-            cookedRecord.artifactManifest.dependencies =
-                std::move(dependencies);
-
-            if (cookedRecord.sourcePath !=
-                sourceRecord->sourcePath) {
-                if (!CopyFile(
-                        options.projectRoot /
-                            sourceRecord->sourcePath,
-                        options.contentRoot /
-                            cookedRecord.sourcePath,
-                        result.fileCount,
-                        result.message)) {
-                    return result;
-                }
-            }
-
-            for (const AssetArtifactDesc& artifact :
-                 cookedRecord.artifactManifest.artifacts) {
-                const bool isShaderProgram =
-                    sourceRecord->type == AssetType::Shader &&
-                    ASSETS::SEMANTICS::MatchesAssetArtifact(
-                        artifact,
-                        ASSETS::SEMANTICS::
-                            AssetArtifactKind::ShaderProgram);
-                if (!IsSafeCookedRelativePath(artifact.path)) {
-                    result.message =
-                        "Cooked artifact path is unsafe: " +
-                        artifact.path;
-                    return result;
-                }
-                std::filesystem::path source =
-                    options.projectRoot / artifact.path;
-                std::filesystem::path destination =
-                    options.contentRoot / artifact.path;
-                if (isShaderProgram &&
-                    (!ResolveContainedFilePath(
-                         options.projectRoot,
-                         artifact.path,
-                         source,
-                         result.message) ||
-                     !ResolveContainedFilePath(
-                         options.contentRoot,
-                         artifact.path,
-                         destination,
-                         result.message))) {
-                    return result;
-                }
-                if (!CopyFile(
-                        source,
-                        destination,
-                        result.fileCount,
-                        result.message)) {
-                    return result;
-                }
-                if (isShaderProgram &&
-                    !ValidateShaderArtifactFile(
-                        *sourceRecord,
-                        options.contentRoot,
-                        artifact.path,
-                        result.message)) {
-                    return result;
-                }
-            }
-
-            cookedRecord.sourceExists = true;
-            cookedRecord.metaExists = true;
-            cookedRecord.importOutdated = false;
-            cookedRecord.lastImportSucceeded = true;
-            cookedRecord.duplicateGuid = false;
-            cookedRecord.importerMissing = false;
-            cookedRecord.artifactMissing = false;
-            cookedRecord.lastImportMessage =
-                "Published by HIKARI AssetCooker";
-            manifest.assets.push_back(
-                std::move(cookedRecord));
-        }
-
-        if (options.progress && !options.progress("Copying runtime settings and payloads", 0.92f)) {
+        primary = &artifact;
+    }
+    if (primary == nullptr || !IsSafeCookedRelativePath(primary->path)) {
+        outMessage = "Shader asset is missing a safe HSHADERC artifact: " + record.guid.value;
+        return false;
+    }
+    if (!SHADER::INTERNAL::ValidateShaderAuthoringArtifactOwnership(record, projectRoot, primary->path, outMessage)) {
+        return false;
+    }
+
+    SHADER::ShaderCookedArtifact cooked{};
+    if (!ValidateShaderArtifactFile(record, projectRoot, primary->path, outMessage, &cooked)) {
+        return false;
+    }
+    const CONTENT::EngineContentContext& content = CONTENT::GetEngineContentContext();
+    const std::filesystem::path engineShaderRoot =
+        content.IsOpen() ? content.Resolve("Shaders") : std::filesystem::path{};
+    return SHADER::INTERNAL::ValidateShaderArtifactAgainstAuthoringSources(record, cooked, projectRoot,
+                                                                           engineShaderRoot, outMessage);
+}
+
+bool RequiresSourcePayload(const AssetRecord& record, const std::vector<AssetArtifactDesc>& artifacts) {
+    const auto* primary = SEMANTICS::FindPrimaryAssetArtifactSemantics(record.type);
+    return !primary || !HasArtifactKind(artifacts, primary->kind, record.type != AssetType::Shader);
+}
+
+bool RequiresPrimaryArtifact(AssetType type) {
+    // Material は設定によってソースのまま配布できる。
+    return type != AssetType::Material && SEMANTICS::FindPrimaryAssetArtifactSemantics(type) != nullptr;
+}
+
+std::filesystem::path MakeRuntimePayloadPath(const std::filesystem::path& sourcePath) {
+    return (std::filesystem::path("RuntimePayload") / sourcePath).lexically_normal();
+}
+
+} // namespace
+
+AssetCookResult AssetCooker::Cook(const AssetCookOptions& options) const {
+    AssetCookResult result{};
+    if (options.projectRoot.empty() || options.contentRoot.empty()) {
+        result.message = "Cook project root and content root are required.";
+        return result;
+    }
+
+    std::error_code ec{};
+    if (!std::filesystem::is_regular_file(options.projectRoot / kProjectDescriptorFilename, ec) || ec) {
+        result.message = "Cook project descriptor is missing: " +
+                         (options.projectRoot / kProjectDescriptorFilename).generic_string();
+        return result;
+    }
+
+    std::filesystem::create_directories(options.contentRoot, ec);
+    if (ec) {
+        result.message = "Could not create cooked content root: " + options.contentRoot.generic_string();
+        return result;
+    }
+
+    AssetDatabase assetDatabase{};
+    if (!assetDatabase.Initialize(options.projectRoot) || !assetDatabase.ScanAssets(false)) {
+        result.message = "Could not scan authored assets for cooking.";
+        return result;
+    }
+
+    CookPlan plan{};
+    if (!BuildCookPlan(options, assetDatabase, plan, result.message)) {
+        return result;
+    }
+    result.missingReferenceCount = plan.missingReferenceCount;
+    if (result.missingReferenceCount != 0u) {
+        result.message = "Export contains " + std::to_string(result.missingReferenceCount) +
+                         " unresolved asset reference(s). Repair references before exporting.";
+        return result;
+    }
+
+    std::vector<std::string> assetGuids(plan.assetGuids.begin(), plan.assetGuids.end());
+    std::sort(assetGuids.begin(), assetGuids.end());
+
+    std::unordered_map<std::string, std::filesystem::path> cookedSourceByOriginalPath{};
+    std::unordered_map<std::string, std::vector<AssetArtifactDesc>> runtimeArtifactsByGuid{};
+
+    for (const std::string& guid : assetGuids) {
+        if (options.progress && !options.progress("Validating asset " + guid, 0.0f)) {
             result.message = "Export cancelled. The previous package was preserved.";
             return result;
         }
-
-        if (!CopyFile(
-                options.projectRoot /
-                    kProjectDescriptorFilename,
-                options.contentRoot /
-                    kProjectDescriptorFilename,
-                result.fileCount,
-                result.message) ||
-            !CopyRuntimeSettingsAndData(
-                options,
-                result.fileCount,
-                result.message) ||
-            !CopyDeclaredRuntimePayloads(
-                options,
-                result.fileCount,
-                result.message) ||
-            !CopyLightingContent(
-                options,
-                plan,
-                result.fileCount,
-                result.message) ||
-            !CookProceduralGeometry(
-                options,
-                plan,
-                assetDatabase,
-                result.fileCount,
-                result.message) ||
-            !CopyOpeningAnimation(
-                options.projectRoot,
-                options.contentRoot,
-                result.fileCount,
-                result.message)) {
+        const AssetRecord* record = assetDatabase.FindByGuid(AssetGuid{guid});
+        if (record == nullptr || record->duplicateGuid) {
+            result.message = "Cook asset record is invalid or duplicated: " + guid;
+            return result;
+        }
+        if (!IsSafeCookedRelativePath(record->sourcePath)) {
+            result.message = "Authored asset source path is unsafe: " + record->sourcePath.generic_string();
             return result;
         }
 
-        if (!WriteCookedContentManifest(
-                options.contentRoot /
-                    kCookedContentManifestFilename,
-                manifest,
-                &result.message)) {
+        if (!record->sourceExists ||
+            ((RequiresPrimaryArtifact(record->type) || record->type == AssetType::Font ||
+              record->type == AssetType::TextStyle || record->type == AssetType::UiAnimation) &&
+             (record->importOutdated || record->artifactMissing || !record->lastImportSucceeded))) {
+            result.message = "Asset needs a successful, current import: " + TEXT::PathToUtf8(record->sourcePath) +
+                             " (" + guid + "). " + record->lastImportMessage;
             return result;
         }
-        ++result.fileCount;
 
-        result.assetCount = manifest.assets.size();
-        result.success = true;
-        result.message =
-            "Cooked " +
-            std::to_string(result.assetCount) +
-            " asset(s) and published " +
-            std::to_string(result.fileCount) +
-            " file(s).";
-        if (result.missingReferenceCount > 0u) {
-            result.message +=
-                " Missing optional/reference entries: " +
-                std::to_string(
-                    result.missingReferenceCount) +
-                ".";
+        std::vector<AssetArtifactDesc> runtimeArtifacts{};
+        for (const AssetArtifactDesc& artifact : record->artifactManifest.artifacts) {
+            if (IsRuntimeArtifact(artifact)) {
+                runtimeArtifacts.push_back(artifact);
+            }
         }
-        HIKARI_LOG_INFO(
-            "[AssetCooker] " + result.message);
+        if (!ValidateShaderArtifactsForCook(*record, runtimeArtifacts, options.projectRoot, result.message)) {
+            return result;
+        }
+        if (RequiresPrimaryArtifact(record->type) && RequiresSourcePayload(*record, runtimeArtifacts)) {
+            result.message = "Required cooked artifact is missing for asset " + guid + " (" +
+                             record->sourcePath.generic_string() + "). Reimport the asset before exporting.";
+            return result;
+        }
+
+        const bool sourcePayload = RequiresSourcePayload(*record, runtimeArtifacts);
+        cookedSourceByOriginalPath[MakePathKey(record->sourcePath)] =
+            sourcePayload ? MakeRuntimePayloadPath(record->sourcePath) : record->sourcePath;
+        runtimeArtifactsByGuid.emplace(guid, std::move(runtimeArtifacts));
+    }
+
+    CookedContentManifest manifest{};
+    manifest.startupSceneGuid = options.startupSceneGuid;
+    manifest.exportedSceneGuids = options.sceneGuids;
+    manifest.assets.reserve(assetGuids.size());
+
+    for (const std::string& guid : assetGuids) {
+        if (options.progress &&
+            !options.progress("Copying asset " + guid, 0.1f + 0.8f * static_cast<float>(manifest.assets.size()) /
+                                                                  (std::max)(size_t{1}, assetGuids.size()))) {
+            result.message = "Export cancelled. The previous package was preserved.";
+            return result;
+        }
+        const AssetRecord* sourceRecord = assetDatabase.FindByGuid(AssetGuid{guid});
+        if (sourceRecord == nullptr) {
+            result.message = "Cook asset disappeared: " + guid;
+            return result;
+        }
+
+        AssetRecord cookedRecord = *sourceRecord;
+        cookedRecord.metaPath.clear();
+        cookedRecord.artifactManifestPath.clear();
+        cookedRecord.sourcePath = cookedSourceByOriginalPath.at(MakePathKey(sourceRecord->sourcePath));
+        cookedRecord.meta.sourcePath = cookedRecord.sourcePath.generic_string();
+        cookedRecord.artifactManifest.sourcePath = cookedRecord.sourcePath.generic_string();
+        cookedRecord.artifactManifest.artifacts = runtimeArtifactsByGuid.at(guid);
+
+        std::vector<AssetDependencyDesc> dependencies{};
+        for (AssetDependencyDesc dependency : CookDependencies(*sourceRecord, plan)) {
+            if (ASSETS::SEMANTICS::IsSourceOnlyAssetDependencyRole(dependency.role)) {
+                continue;
+            }
+
+            if (dependency.role == "Sequence.AudioCue") {
+                dependency.path = MakeRuntimePayloadPath(dependency.path).generic_string();
+                dependencies.push_back(std::move(dependency));
+                continue;
+            }
+            const AssetRecord* dependencyRecord = nullptr;
+            if (dependency.guid.IsValid()) {
+                dependencyRecord = assetDatabase.FindByGuid(dependency.guid);
+            } else if (!dependency.path.empty()) {
+                dependencyRecord = assetDatabase.FindByPath(dependency.path);
+            }
+            if (dependencyRecord == nullptr || !plan.assetGuids.contains(dependencyRecord->guid.value)) {
+                continue;
+            }
+
+            dependency.guid = dependencyRecord->guid;
+            const auto cookedPath = cookedSourceByOriginalPath.find(MakePathKey(dependencyRecord->sourcePath));
+            dependency.path =
+                cookedPath == cookedSourceByOriginalPath.end() ? std::string{} : cookedPath->second.generic_string();
+            dependencies.push_back(std::move(dependency));
+        }
+        cookedRecord.artifactManifest.dependencies = std::move(dependencies);
+
+        if (cookedRecord.sourcePath != sourceRecord->sourcePath) {
+            if (!CopyCookPayloadFile(options.projectRoot / sourceRecord->sourcePath,
+                                     options.contentRoot / cookedRecord.sourcePath, result.fileCount, result.message)) {
+                return result;
+            }
+        }
+
+        for (const AssetArtifactDesc& artifact : cookedRecord.artifactManifest.artifacts) {
+            const bool isShaderProgram =
+                sourceRecord->type == AssetType::Shader &&
+                ASSETS::SEMANTICS::MatchesAssetArtifact(artifact, ASSETS::SEMANTICS::AssetArtifactKind::ShaderProgram);
+            if (!IsSafeCookedRelativePath(artifact.path)) {
+                result.message = "Cooked artifact path is unsafe: " + artifact.path;
+                return result;
+            }
+            std::filesystem::path source = options.projectRoot / artifact.path;
+            std::filesystem::path destination = options.contentRoot / artifact.path;
+            if (isShaderProgram &&
+                (!ResolveContainedFilePath(options.projectRoot, artifact.path, source, result.message) ||
+                 !ResolveContainedFilePath(options.contentRoot, artifact.path, destination, result.message))) {
+                return result;
+            }
+            if (!CopyCookPayloadFile(source, destination, result.fileCount, result.message)) {
+                return result;
+            }
+            if (isShaderProgram &&
+                !ValidateShaderArtifactFile(*sourceRecord, options.contentRoot, artifact.path, result.message)) {
+                return result;
+            }
+        }
+
+        cookedRecord.sourceExists = true;
+        cookedRecord.metaExists = true;
+        cookedRecord.importOutdated = false;
+        cookedRecord.lastImportSucceeded = true;
+        cookedRecord.duplicateGuid = false;
+        cookedRecord.importerMissing = false;
+        cookedRecord.artifactMissing = false;
+        cookedRecord.lastImportMessage = "Published by HIKARI AssetCooker";
+        manifest.assets.push_back(std::move(cookedRecord));
+    }
+
+    if (options.progress && !options.progress("Copying runtime settings and payloads", 0.92f)) {
+        result.message = "Export cancelled. The previous package was preserved.";
         return result;
     }
+
+    if (!CopyCookPayloadFile(options.projectRoot / kProjectDescriptorFilename,
+                             options.contentRoot / kProjectDescriptorFilename, result.fileCount, result.message) ||
+        !CopyRuntimeSettingsAndData(options, result.fileCount, result.message) ||
+        !CopyDeclaredRuntimePayloads(options, result.fileCount, result.message) ||
+        !CopyLightingContent(options, plan, result.fileCount, result.message) ||
+        !CookProceduralGeometry(options, plan, assetDatabase, result.fileCount, result.message) ||
+        !CopyOpeningAnimation(options.projectRoot, options.contentRoot, result.fileCount, result.message)) {
+        return result;
+    }
+
+    if (!WriteCookedContentManifest(options.contentRoot / kCookedContentManifestFilename, manifest, &result.message)) {
+        return result;
+    }
+    ++result.fileCount;
+
+    result.assetCount = manifest.assets.size();
+    result.success = true;
+    result.message = "Cooked " + std::to_string(result.assetCount) + " asset(s) and published " +
+                     std::to_string(result.fileCount) + " file(s).";
+    if (result.missingReferenceCount > 0u) {
+        result.message += " Missing optional/reference entries: " + std::to_string(result.missingReferenceCount) + ".";
+    }
+    HIKARI_LOG_INFO("[AssetCooker] " + result.message);
+    return result;
+}
 
 } // namespace HIKARI::ASSETS::COOKING

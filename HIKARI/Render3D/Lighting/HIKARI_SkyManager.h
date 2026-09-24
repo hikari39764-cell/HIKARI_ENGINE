@@ -7,16 +7,15 @@
 
 namespace HIKARI {
 
-    class SkyManager {
-    public:
-        void RegisterAsset(const SkyAsset& asset);
-        void RegisterOrUpdateAsset(const SkyAsset& asset);
-        void Clear();
-        bool ContainsAsset(const std::string& name) const;
-        const SkyAsset* FindAsset(const std::string& name) const;
+class SkyManager {
+public:
+    void RegisterAsset(const SkyAsset& asset);
+    void RegisterOrUpdateAsset(const SkyAsset& asset);
+    void Clear();
+    const SkyAsset* FindAsset(const std::string& name) const;
 
-    private:
-        std::unordered_map<std::string, SkyAsset> assets_{};
-    };
+private:
+    std::unordered_map<std::string, SkyAsset> assets_{};
+};
 
 } // namespace HIKARI

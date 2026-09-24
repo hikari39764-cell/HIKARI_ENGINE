@@ -7,16 +7,14 @@ namespace HIKARI::EDITOR::QUALITY_PANEL {
 
 #if defined(HIKARI_WITH_EDITOR)
 bool DrawRenderSettings();
-void DrawDirectionalShadow(SceneEnvironment &environment);
-void DrawSurfaceLightmaps(SceneEnvironment &environment);
-void DrawScreenSpaceReflections(SceneEnvironment &environment);
-void DrawAmbientOcclusion(
-    SceneEnvironment &environment,
-    const RENDER3D::DIAGNOSTICS::EnvironmentDiagnosticsSnapshot
-        &runtimeSnapshot);
-void DrawBloom(SceneEnvironment &environment);
-void DrawToneMapping(SceneEnvironment &environment);
-void DrawGlobalPost(SceneEnvironment &environment);
+void DrawDirectionalShadow(SceneEnvironment& environment);
+void DrawSurfaceLightmaps(SceneEnvironment& environment);
+void DrawScreenSpaceReflections(SceneEnvironment& environment);
+void DrawAmbientOcclusion(SceneEnvironment& environment,
+                          const RENDER3D::DIAGNOSTICS::EnvironmentDiagnosticsSnapshot& runtimeSnapshot);
+void DrawBloom(SceneEnvironment& environment);
+void DrawToneMapping(SceneEnvironment& environment);
+void DrawGlobalPost(SceneEnvironment& environment);
 void DrawTransitionDebug();
 #endif
 

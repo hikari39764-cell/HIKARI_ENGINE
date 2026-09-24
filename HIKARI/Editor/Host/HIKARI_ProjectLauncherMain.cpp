@@ -14,33 +14,19 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
     }
 
     HIKARI::EDITOR::ProjectLauncherStartupRequest startup{};
-    startup.rebuildProject =
-        HIKARI::ReadRuntimeCommandLinePath(
-            L"--rebuild-project");
-    startup.waitForProcessId =
-        HIKARI::ReadRuntimeCommandLineUint32(
-            L"--wait-for-process-id");
-    startup.waitForProcessIdMalformed =
-        startup.rebuildProject.has_value() &&
-        (!startup.waitForProcessId.has_value() ||
-            *startup.waitForProcessId == 0u);
+    startup.rebuildProject = HIKARI::ReadRuntimeCommandLinePath(L"--rebuild-project");
+    startup.waitForProcessId = HIKARI::ReadRuntimeCommandLineUint32(L"--wait-for-process-id");
+    startup.waitForProcessIdMalformed = startup.rebuildProject.has_value() &&
+                                        (!startup.waitForProcessId.has_value() || *startup.waitForProcessId == 0u);
 
-    HIKARI::EDITOR::ProjectLauncherApp application{
-        HIKARI::PLATFORM::GetExecutableDirectory(),
-        std::move(startup)
-    };
+    HIKARI::EDITOR::ProjectLauncherApp application{HIKARI::PLATFORM::GetExecutableDirectory(), std::move(startup)};
     HIKARI::RUNTIME::EngineHostRunOptions options{};
-    options.product =
-        HIKARI::RUNTIME::EngineHostProduct::Editor;
-    options.projectPolicy =
-        HIKARI::RUNTIME::EngineHostProjectPolicy::None;
+    options.product = HIKARI::RUNTIME::EngineHostProduct::Editor;
+    options.projectPolicy = HIKARI::RUNTIME::EngineHostProjectPolicy::None;
     options.loadRuntimeConfig = false;
     options.windowTitle = "HIKARI Project Hub";
     options.enableStreamline = false;
-    const int exitCode =
-        HIKARI::RUNTIME::RunEngineHost(
-            application,
-            options);
+    const int exitCode = HIKARI::RUNTIME::RunEngineHost(application, options);
 
     HIKARI::EDITOR::UninstallEditorUiServices();
     return exitCode;

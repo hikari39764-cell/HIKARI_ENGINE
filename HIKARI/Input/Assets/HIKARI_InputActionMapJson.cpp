@@ -34,11 +34,8 @@ std::string ContextFileStem(std::string_view contextId) {
 
 json SerializeBinding(const InputBinding& binding) {
     json node{
-        { "action", binding.actionId },
-        { "source", ToString(binding.source) },
-        { "control", binding.control },
-        { "scale", binding.scale },
-        { "component", binding.component },
+        {"action", binding.actionId}, {"source", ToString(binding.source)}, {"control", binding.control},
+        {"scale", binding.scale},     {"component", binding.component},
     };
     if (!binding.modifierControl.empty()) {
         node["modifier"] = binding.modifierControl;
@@ -49,10 +46,7 @@ json SerializeBinding(const InputBinding& binding) {
     return node;
 }
 
-bool DeserializeBinding(
-    const json& node,
-    InputBinding& out,
-    std::string* errorMessage) {
+bool DeserializeBinding(const json& node, InputBinding& out, std::string* errorMessage) {
     if (!node.is_object()) {
         SetError(errorMessage, "Input binding must be an object.");
         return false;
@@ -64,25 +58,16 @@ bool DeserializeBinding(
     out.modifierControl = node.value("modifier", std::string{});
     out.deadZone = (std::clamp)(node.value("deadZone", 0.0f), 0.0f, 0.99f);
     const std::string sourceName = node.value("source", std::string{});
-    if (out.actionId.empty() || out.control.empty() ||
-        !TryParseInputBindingSource(sourceName, out.source)) {
+    if (out.actionId.empty() || out.control.empty() || !TryParseInputBindingSource(sourceName, out.source)) {
         SetError(errorMessage, "Input binding has an invalid action, source, or control.");
         return false;
     }
     return true;
 }
 
-InputBinding Binding(
-    std::string action,
-    InputBindingSource source,
-    std::string control,
-    float scale = 1.0f,
-    uint8_t component = 0,
-    std::string modifier = {},
-    float deadZone = 0.0f) {
-    return InputBinding{
-        std::move(action), source, std::move(control), scale,
-        component, std::move(modifier), deadZone };
+InputBinding Binding(std::string action, InputBindingSource source, std::string control, float scale = 1.0f,
+                     uint8_t component = 0, std::string modifier = {}, float deadZone = 0.0f) {
+    return InputBinding{std::move(action), source, std::move(control), scale, component, std::move(modifier), deadZone};
 }
 
 } // namespace
@@ -90,29 +75,29 @@ InputBinding Binding(
 InputActionMap CreateDefaultInputActionMap() {
     InputActionMap map{};
     map.actions = {
-        { "Global.ToggleEditorUI", "Toggle Editor UI", InputActionValueType::Button },
-        { "Global.StopPlay", "Stop Play", InputActionValueType::Button },
-        { "Global.CloseProgram", "Close Program", InputActionValueType::Button },
-        { "Gameplay.Move", "Move", InputActionValueType::Axis2D },
-        { "Gameplay.Look", "Look", InputActionValueType::Axis2D, false },
-        { "Gameplay.CameraZoom", "Camera Zoom", InputActionValueType::Axis1D, false },
-        { "Gameplay.CameraRecenter", "Camera Recenter", InputActionValueType::Button },
-        { "Gameplay.Jump", "Jump", InputActionValueType::Button },
-        { "Gameplay.Sprint", "Sprint", InputActionValueType::Button },
-        { "Gameplay.Interact", "Interact", InputActionValueType::Button },
-        { "UI.Navigate", "Menu Navigation", InputActionValueType::Axis2D },
-        { "UI.Submit", "Menu Submit", InputActionValueType::Button },
-        { "UI.Cancel", "Menu Cancel", InputActionValueType::Button },
-        { "Gameplay.Menu", "Pause Menu", InputActionValueType::Button },
-        { "Editor.CameraMove", "Camera Move", InputActionValueType::Axis2D, true },
-        { "Editor.CameraMoveVertical", "Camera Move Vertical", InputActionValueType::Axis1D, true },
-        { "Editor.CameraLook", "Camera Look", InputActionValueType::Axis2D, false },
-        { "Editor.CameraLookHeld", "Camera Look Held", InputActionValueType::Button },
-        { "Editor.CameraPan", "Camera Pan", InputActionValueType::Axis2D, false },
-        { "Editor.CameraPanHeld", "Camera Pan Held", InputActionValueType::Button },
-        { "Editor.CameraZoom", "Camera Zoom", InputActionValueType::Axis1D },
-        { "Editor.CameraBoost", "Camera Boost", InputActionValueType::Button },
-        { "Editor.CameraReset", "Camera Reset", InputActionValueType::Button },
+        {"Global.ToggleEditorUI", "Toggle Editor UI", InputActionValueType::Button},
+        {"Global.StopPlay", "Stop Play", InputActionValueType::Button},
+        {"Global.CloseProgram", "Close Program", InputActionValueType::Button},
+        {"Gameplay.Move", "Move", InputActionValueType::Axis2D},
+        {"Gameplay.Look", "Look", InputActionValueType::Axis2D, false},
+        {"Gameplay.CameraZoom", "Camera Zoom", InputActionValueType::Axis1D, false},
+        {"Gameplay.CameraRecenter", "Camera Recenter", InputActionValueType::Button},
+        {"Gameplay.Jump", "Jump", InputActionValueType::Button},
+        {"Gameplay.Sprint", "Sprint", InputActionValueType::Button},
+        {"Gameplay.Interact", "Interact", InputActionValueType::Button},
+        {"UI.Navigate", "Menu Navigation", InputActionValueType::Axis2D},
+        {"UI.Submit", "Menu Submit", InputActionValueType::Button},
+        {"UI.Cancel", "Menu Cancel", InputActionValueType::Button},
+        {"Gameplay.Menu", "Pause Menu", InputActionValueType::Button},
+        {"Editor.CameraMove", "Camera Move", InputActionValueType::Axis2D, true},
+        {"Editor.CameraMoveVertical", "Camera Move Vertical", InputActionValueType::Axis1D, true},
+        {"Editor.CameraLook", "Camera Look", InputActionValueType::Axis2D, false},
+        {"Editor.CameraLookHeld", "Camera Look Held", InputActionValueType::Button},
+        {"Editor.CameraPan", "Camera Pan", InputActionValueType::Axis2D, false},
+        {"Editor.CameraPanHeld", "Camera Pan Held", InputActionValueType::Button},
+        {"Editor.CameraZoom", "Camera Zoom", InputActionValueType::Axis1D},
+        {"Editor.CameraBoost", "Camera Boost", InputActionValueType::Button},
+        {"Editor.CameraReset", "Camera Reset", InputActionValueType::Button},
     };
 
     InputContextDefinition global{};
@@ -180,32 +165,33 @@ InputActionMap CreateDefaultInputActionMap() {
     };
 
     InputContextDefinition ui{};
-    ui.contextId = "UI"; ui.displayName = "User Interface";
-    ui.priority = 200; ui.consumeInput = true; ui.enabledByDefault = false;
+    ui.contextId = "UI";
+    ui.displayName = "User Interface";
+    ui.priority = 200;
+    ui.consumeInput = true;
+    ui.enabledByDefault = false;
     for (const auto& binding : gameplay.bindings) {
         if (binding.actionId == "Gameplay.Move") {
-            auto navigation = binding; navigation.actionId = "UI.Navigate";
+            auto navigation = binding;
+            navigation.actionId = "UI.Navigate";
             ui.bindings.push_back(std::move(navigation));
         }
     }
-    for (const auto& binding : {
-        Binding("UI.Submit", InputBindingSource::Keyboard, "Enter"),
-        Binding("UI.Submit", InputBindingSource::Keyboard, "E"),
-        Binding("UI.Submit", InputBindingSource::Keyboard, "Space"),
-        Binding("UI.Submit", InputBindingSource::GamepadButton, "A"),
-        Binding("UI.Submit", InputBindingSource::GamepadButton, "X"),
-        Binding("UI.Cancel", InputBindingSource::Keyboard, "Tab"),
-        Binding("UI.Cancel", InputBindingSource::GamepadButton, "B"),
-        Binding("UI.Cancel", InputBindingSource::GamepadButton, "Start")}) ui.bindings.push_back(binding);
-    map.contexts = {
-        std::move(global), std::move(editor), std::move(gameplay), std::move(ui) };
+    for (const auto& binding : {Binding("UI.Submit", InputBindingSource::Keyboard, "Enter"),
+                                Binding("UI.Submit", InputBindingSource::Keyboard, "E"),
+                                Binding("UI.Submit", InputBindingSource::Keyboard, "Space"),
+                                Binding("UI.Submit", InputBindingSource::GamepadButton, "A"),
+                                Binding("UI.Submit", InputBindingSource::GamepadButton, "X"),
+                                Binding("UI.Cancel", InputBindingSource::Keyboard, "Tab"),
+                                Binding("UI.Cancel", InputBindingSource::GamepadButton, "B"),
+                                Binding("UI.Cancel", InputBindingSource::GamepadButton, "Start")})
+        ui.bindings.push_back(binding);
+    map.contexts = {std::move(global), std::move(editor), std::move(gameplay), std::move(ui)};
     return map;
 }
 
-bool LoadInputActionMapProject(
-    const std::filesystem::path& inputDirectory,
-    InputActionMap& out,
-    std::string* errorMessage) {
+bool LoadInputActionMapProject(const std::filesystem::path& inputDirectory, InputActionMap& out,
+                               std::string* errorMessage) {
     out = {};
     const std::filesystem::path actionsPath = inputDirectory / "actions.json";
     std::ifstream actionsFile(actionsPath);
@@ -214,8 +200,7 @@ bool LoadInputActionMapProject(
         return false;
     }
     const json actionsRoot = json::parse(actionsFile, nullptr, false);
-    if (!actionsRoot.is_object() || !actionsRoot.contains("actions") ||
-        !actionsRoot["actions"].is_array()) {
+    if (!actionsRoot.is_object() || !actionsRoot.contains("actions") || !actionsRoot["actions"].is_array()) {
         SetError(errorMessage, "Input actions file is invalid: " + actionsPath.string());
         return false;
     }
@@ -226,8 +211,7 @@ bool LoadInputActionMapProject(
         action.displayName = node.value("displayName", action.actionId);
         action.clampValue = node.value("clamp", true);
         const std::string typeName = node.value("valueType", std::string{});
-        if (action.actionId.empty() ||
-            !TryParseInputActionValueType(typeName, action.valueType)) {
+        if (action.actionId.empty() || !TryParseInputActionValueType(typeName, action.valueType)) {
             SetError(errorMessage, "Input action definition is invalid.");
             return false;
         }
@@ -235,12 +219,9 @@ bool LoadInputActionMapProject(
     }
 
     std::error_code ec{};
-    for (const std::filesystem::directory_entry& entry :
-            std::filesystem::directory_iterator(inputDirectory, ec)) {
-        if (ec || !entry.is_regular_file() ||
-            entry.path().extension() != ".json" ||
-            entry.path().filename() == "actions.json" ||
-            entry.path().stem().extension() != ".inputmap") {
+    for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(inputDirectory, ec)) {
+        if (ec || !entry.is_regular_file() || entry.path().extension() != ".json" ||
+            entry.path().filename() == "actions.json" || entry.path().stem().extension() != ".inputmap") {
             continue;
         }
         std::ifstream contextFile(entry.path());
@@ -255,8 +236,7 @@ bool LoadInputActionMapProject(
         context.priority = root.value("priority", 0);
         context.consumeInput = root.value("consumeInput", false);
         context.enabledByDefault = root.value("enabledByDefault", true);
-        if (context.contextId.empty() || !root.contains("bindings") ||
-            !root["bindings"].is_array()) {
+        if (context.contextId.empty() || !root.contains("bindings") || !root["bindings"].is_array()) {
             SetError(errorMessage, "Input context is missing its ID or bindings.");
             return false;
         }
@@ -281,10 +261,8 @@ bool LoadInputActionMapProject(
     return true;
 }
 
-bool SaveInputActionMapProject(
-    const std::filesystem::path& inputDirectory,
-    const InputActionMap& map,
-    std::string* errorMessage) {
+bool SaveInputActionMapProject(const std::filesystem::path& inputDirectory, const InputActionMap& map,
+                               std::string* errorMessage) {
     const std::vector<std::string> issues = map.Validate();
     if (!issues.empty()) {
         SetError(errorMessage, issues.front());
@@ -298,15 +276,15 @@ bool SaveInputActionMapProject(
     }
 
     json actionsRoot{
-        { "version", map.version },
-        { "actions", json::array() },
+        {"version", map.version},
+        {"actions", json::array()},
     };
     for (const InputActionDefinition& action : map.actions) {
         actionsRoot["actions"].push_back({
-            { "id", action.actionId },
-            { "displayName", action.displayName },
-            { "valueType", ToString(action.valueType) },
-            { "clamp", action.clampValue },
+            {"id", action.actionId},
+            {"displayName", action.displayName},
+            {"valueType", ToString(action.valueType)},
+            {"clamp", action.clampValue},
         });
     }
     std::ofstream actionsFile(inputDirectory / "actions.json");
@@ -318,17 +296,16 @@ bool SaveInputActionMapProject(
 
     std::unordered_set<std::string> expectedFiles;
     for (const InputContextDefinition& context : map.contexts) {
-        const std::string fileName =
-            ContextFileStem(context.contextId) + ".inputmap.json";
+        const std::string fileName = ContextFileStem(context.contextId) + ".inputmap.json";
         expectedFiles.insert(fileName);
         json root{
-            { "version", map.version },
-            { "id", context.contextId },
-            { "displayName", context.displayName },
-            { "priority", context.priority },
-            { "consumeInput", context.consumeInput },
-            { "enabledByDefault", context.enabledByDefault },
-            { "bindings", json::array() },
+            {"version", map.version},
+            {"id", context.contextId},
+            {"displayName", context.displayName},
+            {"priority", context.priority},
+            {"consumeInput", context.consumeInput},
+            {"enabledByDefault", context.enabledByDefault},
+            {"bindings", json::array()},
         };
         for (const InputBinding& binding : context.bindings) {
             root["bindings"].push_back(SerializeBinding(binding));
@@ -341,11 +318,9 @@ bool SaveInputActionMapProject(
         contextFile << root.dump(2) << '\n';
     }
 
-    for (const std::filesystem::directory_entry& entry :
-            std::filesystem::directory_iterator(inputDirectory, ec)) {
+    for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(inputDirectory, ec)) {
         const std::string fileName = entry.path().filename().string();
-        if (!entry.is_regular_file() ||
-            entry.path().stem().extension() != ".inputmap" ||
+        if (!entry.is_regular_file() || entry.path().stem().extension() != ".inputmap" ||
             expectedFiles.contains(fileName)) {
             continue;
         }

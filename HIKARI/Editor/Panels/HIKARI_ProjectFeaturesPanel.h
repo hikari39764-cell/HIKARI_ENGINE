@@ -8,26 +8,26 @@
 
 namespace HIKARI {
 
-    class DocumentSceneBase;
-    class RuntimeFeatureCatalog;
+class DocumentSceneBase;
+class RuntimeFeatureCatalog;
 
-    class ProjectFeaturesPanel {
-    public:
-        void Draw(DocumentSceneBase& scene);
-        bool IsDirty() const noexcept { return dirty_; }
+class ProjectFeaturesPanel {
+public:
+    void Draw(DocumentSceneBase& scene);
+    bool IsDirty() const noexcept { return dirty_; }
 
-    private:
-        void EnsureLoaded(const std::filesystem::path& projectRoot);
-        void ReloadDraft(const std::filesystem::path& projectRoot);
-        void NormalizeDraft(const RuntimeFeatureCatalog& catalog);
+private:
+    void EnsureLoaded(const std::filesystem::path& projectRoot);
+    void ReloadDraft(const std::filesystem::path& projectRoot);
+    void NormalizeDraft(const RuntimeFeatureCatalog& catalog);
 
-        std::filesystem::path loadedProjectRoot_{};
-        ProjectSettingsService settingsService_{};
-        std::vector<std::string> draftFeatureIds_{};
-        std::string statusMessage_{};
-        bool statusIsError_ = false;
-        bool dirty_ = false;
-        bool draftNeedsNormalization_ = false;
-    };
+    std::filesystem::path loadedProjectRoot_{};
+    ProjectSettingsService settingsService_{};
+    std::vector<std::string> draftFeatureIds_{};
+    std::string statusMessage_{};
+    bool statusIsError_ = false;
+    bool dirty_ = false;
+    bool draftNeedsNormalization_ = false;
+};
 
 } // namespace HIKARI

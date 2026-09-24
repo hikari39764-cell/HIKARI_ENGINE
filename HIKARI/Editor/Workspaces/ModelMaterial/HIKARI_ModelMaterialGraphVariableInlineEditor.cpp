@@ -15,60 +15,44 @@
 
 namespace HIKARI::EDITOR {
 
-bool ModelMaterialWorkspaceController::
-    DrawMaterialGraphVariableInlineControl(
-        DocumentSceneBase &scene,
-        MaterialAssetData &source,
-        MaterialGraphNodeData &node) {
+bool ModelMaterialWorkspaceController::DrawMaterialGraphVariableInlineControl(DocumentSceneBase& scene,
+                                                                              MaterialAssetData& source,
+                                                                              MaterialGraphNodeData& node) {
 #if defined(HIKARI_WITH_EDITOR)
-  if (node.kind != MaterialNodeKind::Variable) {
-    return false;
-  }
-  constexpr std::array allowedTypes{
-      BINDING::ValueType::Bool,
-      BINDING::ValueType::Float,
-      BINDING::ValueType::Float2,
-      BINDING::ValueType::Float3,
-      BINDING::ValueType::Float4,
-      BINDING::ValueType::Color,
-  };
-  std::string selected = node.referenceId;
-  if (DrawRuntimeVariableField(
-          scene.GetRuntimeBindingStore().GetCatalog(),
-          "MaterialVariable",
-          allowedTypes,
-          selected) &&
-      !selected.empty()) {
-    const BINDING::VariableDefinition* variable =
-        scene.GetRuntimeBindingStore().GetCatalog().FindVariable(selected);
-    if (variable != nullptr) {
-      const std::optional<MaterialValueType> materialType =
-          BINDING::MATERIAL_ADAPTER::ToMaterialValueType(
-              variable->defaultValue.type);
-      MaterialValueData fallback{};
-      if (materialType.has_value() &&
-          BINDING::MATERIAL_ADAPTER::TryConvertValue(
-              variable->defaultValue,
-              *materialType,
-              fallback)) {
-        MaterialAssetData before = source;
-        node.referenceId = variable->id;
-        node.valueType = *materialType;
-        node.value = fallback;
-        node.displayName = variable->name;
-        CommitMaterialMutation(
-            std::move(before),
-            "Bind material runtime variable",
-            scene);
-      }
+    if (node.kind != MaterialNodeKind::Variable) {
+        return false;
     }
-  }
-  return ImGui::IsItemHovered() || ImGui::IsItemActive();
+    constexpr std::array allowedTypes{
+        BINDING::ValueType::Bool,   BINDING::ValueType::Float,  BINDING::ValueType::Float2,
+        BINDING::ValueType::Float3, BINDING::ValueType::Float4, BINDING::ValueType::Color,
+    };
+    std::string selected = node.referenceId;
+    if (DrawRuntimeVariableField(scene.GetRuntimeBindingStore().GetCatalog(), "MaterialVariable", allowedTypes,
+                                 selected) &&
+        !selected.empty()) {
+        const BINDING::VariableDefinition* variable =
+            scene.GetRuntimeBindingStore().GetCatalog().FindVariable(selected);
+        if (variable != nullptr) {
+            const std::optional<MaterialValueType> materialType =
+                BINDING::MATERIAL_ADAPTER::ToMaterialValueType(variable->defaultValue.type);
+            MaterialValueData fallback{};
+            if (materialType.has_value() &&
+                BINDING::MATERIAL_ADAPTER::TryConvertValue(variable->defaultValue, *materialType, fallback)) {
+                MaterialAssetData before = source;
+                node.referenceId = variable->id;
+                node.valueType = *materialType;
+                node.value = fallback;
+                node.displayName = variable->name;
+                authoringDocument_.CommitMaterial(std::move(before), "Bind material runtime variable");
+            }
+        }
+    }
+    return ImGui::IsItemHovered() || ImGui::IsItemActive();
 #else
-  (void)scene;
-  (void)source;
-  (void)node;
-  return false;
+    (void)scene;
+    (void)source;
+    (void)node;
+    return false;
 #endif
 }
 

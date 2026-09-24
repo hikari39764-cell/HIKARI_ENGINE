@@ -28,9 +28,7 @@ struct MouseCaptureRegion {
     int32_t right = 0;
     int32_t bottom = 0;
 
-    bool IsValid() const noexcept {
-        return right > left && bottom > top;
-    }
+    bool IsValid() const noexcept { return right > left && bottom > top; }
 };
 
 enum class InputActionValueType {
@@ -96,18 +94,12 @@ public:
     const InputActionState* FindAction(const std::string& actionId) const;
     bool IsDown(const std::string& actionId) const;
     bool IsPressed(const std::string& actionId) const;
-    bool IsReleased(const std::string& actionId) const;
     float GetAxis1D(const std::string& actionId) const;
     std::array<float, 2> GetAxis2D(const std::string& actionId) const;
-    bool TryGetPointerState(
-        uint32_t logicalWidth,
-        uint32_t logicalHeight,
-        InputPointerState& outState) const noexcept;
+    bool TryGetPointerState(uint32_t logicalWidth, uint32_t logicalHeight, InputPointerState& outState) const noexcept;
 
     const InputDeviceState& GetDevices() const noexcept { return devices_; }
-    InputDeviceKind GetLastActiveDevice() const noexcept {
-        return devices_.lastActiveDevice;
-    }
+    InputDeviceKind GetLastActiveDevice() const noexcept { return devices_.lastActiveDevice; }
     uint64_t GetFrameIndex() const noexcept { return frameIndex_; }
 
 private:

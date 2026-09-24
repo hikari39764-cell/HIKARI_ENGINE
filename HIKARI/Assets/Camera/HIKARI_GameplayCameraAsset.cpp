@@ -3,24 +3,24 @@
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
 
 namespace HIKARI {
-bool LoadGameplayCameraAsset(const std::filesystem::path &path, CAMERA::GameplayCameraProfile &profile,
-                             std::string &error) {
+bool LoadGameplayCameraAsset(const std::filesystem::path& path, CAMERA::GameplayCameraProfile& profile,
+                             std::string& error) {
     nlohmann::json root;
     return SERIALIZATION::JSON::ReadJsonFile(path, root, &error) &&
            CAMERA::ReadGameplayCameraProfile(root, profile, error);
 }
-bool SaveGameplayCameraAsset(const std::filesystem::path &path, const CAMERA::GameplayCameraProfile &profile,
-                             std::string &error) {
+bool SaveGameplayCameraAsset(const std::filesystem::path& path, const CAMERA::GameplayCameraProfile& profile,
+                             std::string& error) {
     return CAMERA::ValidateGameplayCameraProfile(profile, error) &&
            SERIALIZATION::JSON::WriteJsonFile(path, CAMERA::WriteGameplayCameraProfile(profile), &error);
 }
-void GameplayCameraAssetStore::Configure(const AssetDatabase *database) {
+void GameplayCameraAssetStore::Configure(const AssetDatabase* database) {
     database_ = database;
     revision_ = 0;
     entries_.clear();
 }
-std::shared_ptr<const CAMERA::GameplayCameraProfile> GameplayCameraAssetStore::Load(const AssetGuid &guid,
-                                                                                    std::string &error) const {
+std::shared_ptr<const CAMERA::GameplayCameraProfile> GameplayCameraAssetStore::Load(const AssetGuid& guid,
+                                                                                    std::string& error) const {
     if (!database_ || !guid.IsValid()) {
         error = "No gameplay camera asset is bound.";
         return {};
@@ -35,7 +35,7 @@ std::shared_ptr<const CAMERA::GameplayCameraProfile> GameplayCameraAssetStore::L
         return it->second.profile;
     }
     Entry entry;
-    const auto *record = database_->FindByGuid(guid);
+    const auto* record = database_->FindByGuid(guid);
     if (!record || record->type != AssetType::GameplayCamera)
         entry.error = "Gameplay camera asset not found: " + guid.value;
     else {

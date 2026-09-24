@@ -22,7 +22,8 @@ public:
     virtual void Tick(uint64_t, float) {}
     virtual bool HasInteractiveEdit() const { return false; }
     virtual EditorOperationResult Preview(const nlohmann::json&) {
-        return {false, "NO_VISUAL_PREVIEW", "This workspace provides structured validation instead of a rendered preview."};
+        return {false, "NO_VISUAL_PREVIEW",
+                "This workspace provides structured validation instead of a rendered preview."};
     }
     virtual EditorOperationResult Reveal() = 0;
     virtual EditorOperationResult PreviewStatus(const nlohmann::json&) {
@@ -64,15 +65,22 @@ public:
     bool ActivateDocument(const std::string& workspace, const std::string& requestedGuid, bool foregroundHasDocument);
     void ShowForeground(const std::string& workspace);
     bool FollowDocuments() const { return followDocuments_; }
-    void SetFollowDocuments(bool enabled) { followDocuments_ = enabled; if (enabled) foregroundChosen_.clear(); }
+    void SetFollowDocuments(bool enabled) {
+        followDocuments_ = enabled;
+        if (enabled)
+            foregroundChosen_.clear();
+    }
     nlohmann::json WorkspaceDocuments(const std::string& workspace) const;
-    template<class T> T& ResolveController(const std::string& workspace, T& fallback) const {
+    template <class T>
+    T& ResolveController(const std::string& workspace, T& fallback) const {
         const auto found = sessions_.find(VisibleSession(workspace));
-        if (found == sessions_.end()) return fallback;
+        if (found == sessions_.end())
+            return fallback;
         const auto address = found->second.backend->ControllerAddress();
         const auto typed = std::any_cast<T*>(&address);
         return typed ? **typed : fallback;
     }
+
 private:
     struct Session {
         std::string workspace;
@@ -97,4 +105,4 @@ private:
     bool followDocuments_ = false;
     std::unordered_map<std::string, bool> foregroundChosen_;
 };
-}
+} // namespace HIKARI::EDITOR

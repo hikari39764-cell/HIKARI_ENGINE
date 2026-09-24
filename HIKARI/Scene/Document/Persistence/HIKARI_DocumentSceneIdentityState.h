@@ -9,15 +9,15 @@
 
 namespace HIKARI {
 
-    struct DocumentSceneIdentityState {
-        std::string sceneId{};
-        std::string scenePath{};
-        SceneSerializer serializer{};
-        SceneDocument document{};
-        uint64_t documentRevision = 0;
-        AssetGuid currentSceneAssetGuid{};
-        bool documentDirty = false;
-        std::string loadError{};
-    };
+struct DocumentSceneIdentityState {
+    std::string sceneId{};
+    std::string scenePath{};
+    SceneSerializer serializer{};
+    SceneDocument document{};
+    uint64_t documentRevision = 0;
+    AssetGuid currentSceneAssetGuid{};
+    bool documentDirty = false;
+    std::string loadError{};
+};
 
 } // namespace HIKARI

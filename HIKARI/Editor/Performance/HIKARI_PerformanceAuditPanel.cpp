@@ -36,44 +36,44 @@ namespace HIKARI {
 
 using namespace EDITOR::PERFORMANCE_AUDIT;
 
-void PerformanceAuditPanel::Draw(bool &open) const {
+void PerformanceAuditPanel::Draw(bool& open) const {
 #if defined(HIKARI_WITH_EDITOR)
-  if (!open) {
-    return;
-  }
-  if (!ImGui::Begin(TEXT::LocalizeWindow("editor.ui.performance.audit.e54bcf", "Performance Audit").c_str(), &open)) {
+    if (!open) {
+        return;
+    }
+    if (!ImGui::Begin(TEXT::LocalizeWindow("editor.ui.performance.audit.e54bcf", "Performance Audit").c_str(), &open)) {
+        ImGui::End();
+        return;
+    }
+
+    DrawContents();
+
     ImGui::End();
-    return;
-  }
-
-  DrawContents();
-
-  ImGui::End();
 #else
-  (void)open;
+    (void)open;
 #endif
 }
 
 void PerformanceAuditPanel::DrawContents() const {
 #if defined(HIKARI_WITH_EDITOR)
-  const RuntimePerformanceSnapshot snapshot = BuildSnapshot();
-  if (ImGui::Button(TEXT::LocalizeWindow("editor.copyDiagnostics", "診断結果をコピー").c_str())) {
-    const auto report = BuildPerformanceReport(snapshot);
-    ImGui::SetClipboardText(report.c_str());
-  }
-  ImGui::SameLine();
-  ImGui::TextDisabled(TEXT::Localize("editor.captureStatsHint").c_str());
-  DrawFrameSummary(snapshot);
-  DrawReadiness(snapshot);
-  DrawCpuTimingTable(snapshot);
-  DrawGpuTimingTable(snapshot);
-  DrawMeshShaderPipelineStatsTable(snapshot);
-  DrawRenderPathTable(snapshot);
-  DrawGpuMaterialTable(snapshot);
-  DrawGeometryPipelineTable(snapshot);
-  DrawTemporalTable(snapshot);
-  DrawEffectsTable(snapshot);
-  DrawResourceSummaryTable(snapshot);
+    const RuntimePerformanceSnapshot snapshot = BuildSnapshot();
+    if (ImGui::Button(TEXT::LocalizeWindow("editor.copyDiagnostics", "診断結果をコピー").c_str())) {
+        const auto report = BuildPerformanceReport(snapshot);
+        ImGui::SetClipboardText(report.c_str());
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled(TEXT::Localize("editor.captureStatsHint").c_str());
+    DrawFrameSummary(snapshot);
+    DrawReadiness(snapshot);
+    DrawCpuTimingTable(snapshot);
+    DrawGpuTimingTable(snapshot);
+    DrawMeshShaderPipelineStatsTable(snapshot);
+    DrawRenderPathTable(snapshot);
+    DrawGpuMaterialTable(snapshot);
+    DrawGeometryPipelineTable(snapshot);
+    DrawTemporalTable(snapshot);
+    DrawEffectsTable(snapshot);
+    DrawResourceSummaryTable(snapshot);
 #endif
 }
 

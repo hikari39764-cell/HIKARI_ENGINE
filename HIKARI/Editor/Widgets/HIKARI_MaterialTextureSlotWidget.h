@@ -7,18 +7,14 @@
 
 namespace HIKARI {
 
-    class AssetDatabase;
-    struct EditorSelection;
+class AssetDatabase;
+struct EditorSelection;
 
-    namespace EDITOR {
+namespace EDITOR {
 
-        bool DrawMaterialTextureSlot(
-            const char* label,
-            MaterialTextureSlotData& slot,
-            AssetDatabase& assetDatabase,
-            AssetRegistry& assetRegistry,
-            EditorSelection* selection);
+bool DrawMaterialTextureSlot(const char* label, MaterialTextureSlotData& slot, AssetDatabase& assetDatabase,
+                             AssetRegistry& assetRegistry, EditorSelection* selection);
 
-    } // namespace EDITOR
+} // namespace EDITOR
 
 } // namespace HIKARI

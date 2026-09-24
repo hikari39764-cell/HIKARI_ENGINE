@@ -9,90 +9,55 @@
 
 namespace HIKARI {
 
-    namespace RENDER3D::LIGHTING {
-        enum class SceneLightType : uint8_t;
-    }
+namespace RENDER3D::LIGHTING {
+enum class SceneLightType : uint8_t;
+}
 
-    struct EditorContext;
-    class DocumentSceneBase;
-    class SelectionSyncService;
+struct EditorContext;
+class DocumentSceneBase;
+class SelectionSyncService;
 
-    namespace EDITOR {
-        class SceneObjectCommandService;
+namespace EDITOR {
+class SceneObjectCommandService;
 
-        class SceneCreationPanel {
-        public:
-            void DrawCreationMenu(
-                DocumentSceneBase& scene,
-                EditorContext& context,
-                const SelectionSyncService& selectionSync,
-                SceneObjectCommandService& commands);
+class SceneCreationPanel {
+public:
+    void DrawCreationMenu(DocumentSceneBase& scene, EditorContext& context, const SelectionSyncService& selectionSync,
+                          SceneObjectCommandService& commands);
 
-            void DrawDeferredDialogs(
-                DocumentSceneBase& scene,
-                EditorContext& context,
-                const SelectionSyncService& selectionSync);
+    void DrawDeferredDialogs(DocumentSceneBase& scene, EditorContext& context,
+                             const SelectionSyncService& selectionSync);
 
-            std::optional<SceneObjectAuthoringHistoryRequest>
-                ConsumeHistoryRequest();
+    std::optional<SceneObjectAuthoringHistoryRequest> ConsumeHistoryRequest();
 
-        private:
-            static bool MatchesSearch(
-                std::string_view label,
-                std::string_view search);
-            void CreateEmptyObject(
-                DocumentSceneBase& scene,
-                EditorContext& context,
-                const SelectionSyncService& selectionSync);
-            void CreateWorldSpriteObject(
-                DocumentSceneBase& scene,
-                EditorContext& context,
-                const SelectionSyncService& selectionSync);
-            void CreateWorldTextObject(
-                DocumentSceneBase& scene,
-                EditorContext& context,
-                const SelectionSyncService& selectionSync);
-            void DrawUiCreationMenu(
-                DocumentSceneBase& scene,
-                EditorContext& context,
-                const SelectionSyncService& selectionSync,
-                std::string_view search);
-            void CreateUiObject(
-                DocumentSceneBase& scene,
-                EditorContext& context,
-                const SelectionSyncService& selectionSync,
-                bool button,
-                bool addSceneFlow = false);
-            void CreateLightingObject(
-                DocumentSceneBase& scene,
-                EditorContext& context,
-                const SelectionSyncService& selectionSync,
-                bool reflectionProbe);
-            void CreateLightObject(
-                DocumentSceneBase& scene,
-                EditorContext& context,
-                const SelectionSyncService& selectionSync,
-                RENDER3D::LIGHTING::SceneLightType lightType);
-            void CreateWaterSurfaceObject(
-                DocumentSceneBase& scene,
-                EditorContext& context,
-                const SelectionSyncService& selectionSync);
+private:
+    static bool MatchesSearch(std::string_view label, std::string_view search);
+    void CreateEmptyObject(DocumentSceneBase& scene, EditorContext& context, const SelectionSyncService& selectionSync);
+    void CreateWorldSpriteObject(DocumentSceneBase& scene, EditorContext& context,
+                                 const SelectionSyncService& selectionSync);
+    void CreateWorldTextObject(DocumentSceneBase& scene, EditorContext& context,
+                               const SelectionSyncService& selectionSync);
+    void DrawUiCreationMenu(DocumentSceneBase& scene, EditorContext& context, const SelectionSyncService& selectionSync,
+                            std::string_view search);
+    void CreateUiObject(DocumentSceneBase& scene, EditorContext& context, const SelectionSyncService& selectionSync,
+                        bool button, bool addSceneFlow = false);
+    void CreateLightingObject(DocumentSceneBase& scene, EditorContext& context,
+                              const SelectionSyncService& selectionSync, bool reflectionProbe);
+    void CreateLightObject(DocumentSceneBase& scene, EditorContext& context, const SelectionSyncService& selectionSync,
+                           RENDER3D::LIGHTING::SceneLightType lightType);
+    void CreateWaterSurfaceObject(DocumentSceneBase& scene, EditorContext& context,
+                                  const SelectionSyncService& selectionSync);
 
-            void CreateSandSurfaceObject(
-                DocumentSceneBase& scene,
-                EditorContext& context,
-                const SelectionSyncService& selectionSync);
+    void CreateSandSurfaceObject(DocumentSceneBase& scene, EditorContext& context,
+                                 const SelectionSyncService& selectionSync);
 
-            void CreateDialogueTriggerObject(
-                DocumentSceneBase& scene,
-                EditorContext& context,
-                const SelectionSyncService& selectionSync);
+    void CreateDialogueTriggerObject(DocumentSceneBase& scene, EditorContext& context,
+                                     const SelectionSyncService& selectionSync);
 
-            PrimitiveCreationDialog primitiveCreationDialog_{};
-            std::optional<SceneObjectAuthoringHistoryRequest>
-                historyRequest_{};
-            char searchBuffer_[96]{};
-        };
+    PrimitiveCreationDialog primitiveCreationDialog_{};
+    std::optional<SceneObjectAuthoringHistoryRequest> historyRequest_{};
+    char searchBuffer_[96]{};
+};
 
-    } // namespace EDITOR
+} // namespace EDITOR
 } // namespace HIKARI

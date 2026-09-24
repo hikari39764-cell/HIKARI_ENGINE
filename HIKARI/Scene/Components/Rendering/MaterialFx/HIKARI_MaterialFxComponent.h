@@ -11,57 +11,39 @@
 
 namespace HIKARI {
 
-    class MaterialFxComponent final : public IComponent {
-    public:
-        std::string_view GetTypeName() const override {
-            return "MaterialFxComponent";
-        }
+class MaterialFxComponent final : public IComponent {
+public:
+    std::string_view GetTypeName() const override { return "MaterialFxComponent"; }
 
-        bool SetProfileId(std::string profileId);
-        const std::string& GetProfileId() const;
+    bool SetProfileId(std::string profileId);
+    const std::string& GetProfileId() const;
 
-        const std::array<DirectX::XMFLOAT4,
-            VFX::kMaterialFxUserCount>& GetParamValues() const;
-        bool AreValuesInitialized() const;
-        void SetParamValues(
-            const DirectX::XMFLOAT4
-                (&values)[VFX::kMaterialFxUserCount],
-            bool initialized);
+    const std::array<DirectX::XMFLOAT4, VFX::kMaterialFxUserCount>& GetParamValues() const;
+    bool AreValuesInitialized() const;
+    void SetParamValues(const DirectX::XMFLOAT4 (&values)[VFX::kMaterialFxUserCount], bool initialized);
 
-        bool SetFloat(const std::string& key, float value);
-        bool SetFloat2(
-            const std::string& key,
-            const DirectX::XMFLOAT2& value);
-        bool SetFloat3(
-            const std::string& key,
-            const DirectX::XMFLOAT3& value);
-        bool SetFloat4(
-            const std::string& key,
-            const DirectX::XMFLOAT4& value);
-        bool SetToggle(const std::string& key, bool value);
-        bool GetFloat(const std::string& key, float& out) const;
-        bool GetFloat2(
-            const std::string& key,
-            DirectX::XMFLOAT2& out) const;
-        bool GetFloat3(
-            const std::string& key,
-            DirectX::XMFLOAT3& out) const;
-        bool GetFloat4(
-            const std::string& key,
-            DirectX::XMFLOAT4& out) const;
-        bool GetToggle(const std::string& key, bool& out) const;
-        bool ResetToProfileDefaults();
+    bool SetFloat(const std::string& key, float value);
+    bool SetFloat2(const std::string& key, const DirectX::XMFLOAT2& value);
+    bool SetFloat3(const std::string& key, const DirectX::XMFLOAT3& value);
+    bool SetFloat4(const std::string& key, const DirectX::XMFLOAT4& value);
+    bool SetToggle(const std::string& key, bool value);
+    bool GetFloat(const std::string& key, float& out) const;
+    bool GetFloat2(const std::string& key, DirectX::XMFLOAT2& out) const;
+    bool GetFloat3(const std::string& key, DirectX::XMFLOAT3& out) const;
+    bool GetFloat4(const std::string& key, DirectX::XMFLOAT4& out) const;
+    bool GetToggle(const std::string& key, bool& out) const;
+    bool ResetToProfileDefaults();
 
-        void RenderImGui() override;
-        void BuildInspector(IInspectorBuilder& builder) override;
-        void Serialize(nlohmann::json& out) const override;
-        void Deserialize(const nlohmann::json& in) override;
+    void RenderImGui() override;
+    void BuildInspector(IInspectorBuilder& builder) override;
+    void Serialize(nlohmann::json& out) const override;
+    void Deserialize(const nlohmann::json& in) override;
 
-    private:
-        bool CommitParameterState(MaterialFxParameterSet next);
-        void NotifyRenderStateDirty();
+private:
+    bool CommitParameterState(MaterialFxParameterSet next);
+    void NotifyRenderStateDirty();
 
-        MaterialFxParameterSet parameters_{};
-    };
+    MaterialFxParameterSet parameters_{};
+};
 
 } // namespace HIKARI

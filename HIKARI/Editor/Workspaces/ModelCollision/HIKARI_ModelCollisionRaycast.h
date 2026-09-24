@@ -6,23 +6,17 @@
 
 namespace HIKARI::EDITOR {
 
-
 namespace DETAIL {
 
-bool IntersectModelCollisionBounds(const EditorPointerRay &ray,
-                                   const Bounds &bounds,
-                                   float &outDistance) noexcept;
+bool IntersectModelCollisionBounds(const EditorPointerRay& ray, const Bounds& bounds, float& outDistance) noexcept;
 
-float ComputeModelCollisionBoundsVolume(const Bounds &bounds) noexcept;
+float ComputeModelCollisionBoundsVolume(const Bounds& bounds) noexcept;
 
-bool IntersectModelCollisionShapeExact(
-    const EditorPointerRay &ray,
-    const ASSETS::COLLISION::ModelCollisionShape &shape,
-    float &outDistance) noexcept;
+bool IntersectModelCollisionShapeExact(const EditorPointerRay& ray, const ASSETS::COLLISION::ModelCollisionShape& shape,
+                                       float& outDistance) noexcept;
 
-bool IntersectModelCollisionSourceNodeExact(
-    const EditorPointerRay &ray, const ModelPreviewNode &node,
-    const ModelAsset &model, float &outDistance) noexcept;
+bool IntersectModelCollisionSourceNodeExact(const EditorPointerRay& ray, const ModelPreviewNode& node,
+                                            const ModelAsset& model, float& outDistance) noexcept;
 
 } // namespace DETAIL
 

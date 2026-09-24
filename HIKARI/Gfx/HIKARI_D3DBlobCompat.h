@@ -5,8 +5,7 @@
 
 #ifndef __ID3D10Blob_INTERFACE_DEFINED__
 #define __ID3D10Blob_INTERFACE_DEFINED__
-struct ID3D10Blob : public IUnknown
-{
+struct ID3D10Blob : public IUnknown {
     virtual LPVOID STDMETHODCALLTYPE GetBufferPointer() = 0;
     virtual SIZE_T STDMETHODCALLTYPE GetBufferSize() = 0;
 };

@@ -6,102 +6,94 @@
 
 #include "Render3D/Resources/HIKARI_RenderResourceHandle.h"
 
-namespace HIKARI { struct SkySettings; }
-namespace HIKARI::GFX { struct Context; }
-namespace HIKARI::ATMOSPHERE { struct AtmosphereLutConstants; }
+namespace HIKARI {
+struct SkySettings;
+}
+namespace HIKARI::GFX {
+struct Context;
+}
+namespace HIKARI::ATMOSPHERE {
+struct AtmosphereLutConstants;
+}
 
 namespace HIKARI::IBL {
-    struct EnvironmentLightingCacheStatus;
+struct EnvironmentLightingCacheStatus;
 
-    struct IblEnvironmentSource {
-        RENDER3D::TextureResourceHandle irradianceResource{};
-        RENDER3D::TextureResourceHandle prefilteredResource{};
-        RENDER3D::TextureResourceHandle brdfLutResource{};
-        uint32_t prefilteredMipCount = 1;
+struct IblEnvironmentSource {
+    RENDER3D::TextureResourceHandle irradianceResource{};
+    RENDER3D::TextureResourceHandle prefilteredResource{};
+    RENDER3D::TextureResourceHandle brdfLutResource{};
+    uint32_t prefilteredMipCount = 1;
 
-        constexpr bool IsConfigured() const noexcept {
-            return irradianceResource.IsValid() ||
-                prefilteredResource.IsValid() ||
-                brdfLutResource.IsValid();
-        }
+    constexpr bool IsConfigured() const noexcept {
+        return irradianceResource.IsValid() || prefilteredResource.IsValid() || brdfLutResource.IsValid();
+    }
 
-        bool IsComplete() const noexcept;
-    };
+    bool IsComplete() const noexcept;
+};
 
-    struct IblEnvironmentData {
-        bool valid = false;
-        bool hasIrradiance = false;
-        bool hasPrefiltered = false;
-        bool hasBrdfLut = false;
+struct IblEnvironmentData {
+    bool valid = false;
+    bool hasIrradiance = false;
+    bool hasPrefiltered = false;
+    bool hasBrdfLut = false;
 
-        RENDER3D::TextureResourceHandle irradianceResource{};
-        RENDER3D::TextureResourceHandle prefilteredResource{};
-        RENDER3D::TextureResourceHandle brdfLutResource{};
+    RENDER3D::TextureResourceHandle irradianceResource{};
+    RENDER3D::TextureResourceHandle prefilteredResource{};
+    RENDER3D::TextureResourceHandle brdfLutResource{};
 
-        int irradianceHandle = -1;
-        int prefilteredHandle = -1;
-        int brdfLutHandle = -1;
+    int irradianceHandle = -1;
+    int prefilteredHandle = -1;
+    int brdfLutHandle = -1;
 
-        D3D12_GPU_DESCRIPTOR_HANDLE irradianceSrv{};
-        D3D12_GPU_DESCRIPTOR_HANDLE prefilteredSrv{};
-        D3D12_GPU_DESCRIPTOR_HANDLE brdfLutSrv{};
+    D3D12_GPU_DESCRIPTOR_HANDLE irradianceSrv{};
+    D3D12_GPU_DESCRIPTOR_HANDLE prefilteredSrv{};
+    D3D12_GPU_DESCRIPTOR_HANDLE brdfLutSrv{};
 
-        uint32_t prefilteredMipCount = 1;
-        uint32_t irradianceMipCount = 0;
-        uint32_t prefilteredActualMipCount = 0;
-        uint32_t brdfLutMipCount = 0;
-        DXGI_FORMAT irradianceFormat = DXGI_FORMAT_UNKNOWN;
-        DXGI_FORMAT prefilteredFormat = DXGI_FORMAT_UNKNOWN;
-        DXGI_FORMAT brdfLutFormat = DXGI_FORMAT_UNKNOWN;
-        bool prefilteredMipMismatch = false;
-    };
+    uint32_t prefilteredMipCount = 1;
+    uint32_t irradianceMipCount = 0;
+    uint32_t prefilteredActualMipCount = 0;
+    uint32_t brdfLutMipCount = 0;
+    DXGI_FORMAT irradianceFormat = DXGI_FORMAT_UNKNOWN;
+    DXGI_FORMAT prefilteredFormat = DXGI_FORMAT_UNKNOWN;
+    DXGI_FORMAT brdfLutFormat = DXGI_FORMAT_UNKNOWN;
+    bool prefilteredMipMismatch = false;
+};
 
-    void Reset();
-    void BeginEnvironmentFrame();
-    void PrepareEnvironmentLighting(const GFX::Context& graphics, const SkySettings& sky,
-        const ATMOSPHERE::AtmosphereLutConstants& atmosphere,
-        RENDER3D::TextureResourceHandle source, D3D12_GPU_DESCRIPTOR_HANDLE atmosphereSkyView,
-        uint64_t frameIndex);
-    void ShutdownEnvironmentLighting(const GFX::Context& graphics);
-    const EnvironmentLightingCacheStatus& GetEnvironmentLightingCacheStatus();
+void Reset();
+void BeginEnvironmentFrame();
+void PrepareEnvironmentLighting(const GFX::Context& graphics, const SkySettings& sky,
+                                const ATMOSPHERE::AtmosphereLutConstants& atmosphere,
+                                RENDER3D::TextureResourceHandle source, D3D12_GPU_DESCRIPTOR_HANDLE atmosphereSkyView,
+                                uint64_t frameIndex);
+void ShutdownEnvironmentLighting(const GFX::Context& graphics);
 
-    // グローバル設定を反映し、dimension/mip 検証後に三つの要素が揃っているかを返す。
-    // ScopedEnvironmentOverride の有無はこの判定に影響しない。
-    bool SetFromTextureResources(
-        RENDER3D::TextureResourceHandle irradianceResource,
-        RENDER3D::TextureResourceHandle prefilteredResource,
-        RENDER3D::TextureResourceHandle brdfLutResource,
-        uint32_t prefilteredMipCount);
+// グローバル設定を反映し、dimension/mip 検証後に三つの要素が揃っているかを返す。
+// ScopedEnvironmentOverride の有無はこの判定に影響しない。
+bool SetFromTextureResources(RENDER3D::TextureResourceHandle irradianceResource,
+                             RENDER3D::TextureResourceHandle prefilteredResource,
+                             RENDER3D::TextureResourceHandle brdfLutResource, uint32_t prefilteredMipCount);
 
-    void SetFromTextureHandles(
-        int irradianceHandle,
-        int prefilteredHandle,
-        int brdfLutHandle,
-        uint32_t prefilteredMipCount);
+class ScopedEnvironmentOverride final {
+public:
+    explicit ScopedEnvironmentOverride(IblEnvironmentSource source) noexcept;
+    ~ScopedEnvironmentOverride();
 
-    class ScopedEnvironmentOverride final {
-    public:
-        explicit ScopedEnvironmentOverride(
-            IblEnvironmentSource source) noexcept;
-        ~ScopedEnvironmentOverride();
+    ScopedEnvironmentOverride(const ScopedEnvironmentOverride&) = delete;
+    ScopedEnvironmentOverride& operator=(const ScopedEnvironmentOverride&) = delete;
 
-        ScopedEnvironmentOverride(
-            const ScopedEnvironmentOverride&) = delete;
-        ScopedEnvironmentOverride& operator=(
-            const ScopedEnvironmentOverride&) = delete;
+private:
+    friend const IblEnvironmentData& GetEnvironmentData();
 
-    private:
-        friend const IblEnvironmentData& GetEnvironmentData();
+    IblEnvironmentSource source_{};
+    IblEnvironmentData resolved_{};
+    ScopedEnvironmentOverride* previous_ = nullptr;
+};
 
-        IblEnvironmentSource source_{};
-        IblEnvironmentData resolved_{};
-        ScopedEnvironmentOverride* previous_ = nullptr;
-    };
+const IblEnvironmentData& GetEnvironmentData();
 
-    const IblEnvironmentData& GetEnvironmentData();
-
-    D3D12_GPU_DESCRIPTOR_HANDLE GetIrradianceSrv();
-    D3D12_GPU_DESCRIPTOR_HANDLE GetPrefilteredSrv();
-    D3D12_GPU_DESCRIPTOR_HANDLE GetBrdfLutSrv();
+D3D12_GPU_DESCRIPTOR_HANDLE GetIrradianceSrv();
+D3D12_GPU_DESCRIPTOR_HANDLE GetPrefilteredSrv();
+D3D12_GPU_DESCRIPTOR_HANDLE GetBrdfLutSrv();
 
 } // namespace HIKARI::IBL

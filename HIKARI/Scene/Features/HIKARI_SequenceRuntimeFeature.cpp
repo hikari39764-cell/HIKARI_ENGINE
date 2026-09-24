@@ -6,7 +6,7 @@
 #include <memory>
 
 #include "Scene/Components/HIKARI_SequencePlayerComponent.h"
-#include "Scene/Features/HIKARI_RuntimeFeature.h"
+#include "HIKARI/Project/RuntimeFeature.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureIds.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
@@ -15,109 +15,85 @@
 #include "Scene/Sequencer/Runtime/HIKARI_SequencePlayerSystem.h"
 
 namespace HIKARI {
-    namespace {
-        class SequenceRuntimeFeature final : public IRuntimeFeature {
-        public:
-            std::string_view GetFeatureId() const noexcept override {
-                return RuntimeFeatureIds::Cinematics;
-            }
+namespace {
+class SequenceRuntimeFeature final : public IRuntimeFeature {
+public:
+    std::string_view GetFeatureId() const noexcept override { return RuntimeFeatureIds::Cinematics; }
 
-            std::string_view GetDisplayName() const noexcept override {
-                return "Cinematics";
-            }
+    std::string_view GetDisplayName() const noexcept override { return "Cinematics"; }
 
-            std::string_view GetDescription() const noexcept override {
-                return "Reusable sequence playback for camera and future presentation tracks.";
-            }
+    std::string_view GetDescription() const noexcept override {
+        return "Reusable sequence playback for camera and future presentation tracks.";
+    }
 
-            std::span<const std::string_view>
-                GetComponentTypeNames() const noexcept override {
-                static constexpr std::array<std::string_view, 2> names{
-                    "SequencePlayerComponent", "CameraFlowComponent"
-                };
-                return names;
-            }
+    std::span<const std::string_view> GetComponentTypeNames() const noexcept override {
+        static constexpr std::array<std::string_view, 2> names{"SequencePlayerComponent", "CameraFlowComponent"};
+        return names;
+    }
 
-            std::span<const std::string_view>
-                GetSystemIds() const noexcept override {
-                static constexpr std::array<std::string_view, 2> ids{
-                    "SequencePlayerSystem", "CameraFlowSystem"
-                };
-                return ids;
-            }
+    std::span<const std::string_view> GetSystemIds() const noexcept override {
+        static constexpr std::array<std::string_view, 2> ids{"SequencePlayerSystem", "CameraFlowSystem"};
+        return ids;
+    }
 
-            bool Register(RuntimeFeatureContext& context) override {
-                ComponentRegistry& componentRegistry =
-                    RuntimeFeatureContextAccess::Components(context);
-                SystemTypeRegistry& systemTypeRegistry =
-                    RuntimeFeatureContextAccess::Systems(context);
-                ComponentSystemPolicy& componentSystemPolicy =
-                    RuntimeFeatureContextAccess::Policy(context);
-                ComponentTypeInfo player{};
-                player.typeName = "SequencePlayerComponent";
-                player.factory = []() -> std::unique_ptr<IComponent> {
-                    return IComponent::Create<SequencePlayerComponent>();
-                };
-                player.initializeDefaults = [](
-                    const SceneObjectData&,
-                    nlohmann::json& properties) {
-                    properties["enabled"] = true;
-                    properties["sequenceAssetGuid"] = "";
-                    properties["playOnStart"] = false;
-                    properties["loop"] = false;
-                    properties["playbackRate"] = 1.0f;
-                    properties["startTimeSeconds"] = 0.0f;
-                    properties["channel"] = "Cinematics";
-                    properties["priority"] = 0;
-                    properties["channelPolicy"] =
-                        "ReplaceIfHigherOrEqual";
-                    properties["stopOnDisable"] = true;
-                    properties["restartIfPlaying"] = true;
-                    properties["ownerSlotName"] = "Owner";
-                    properties["bindings"] = nlohmann::json::array();
-                };
-                player.presentation = ComponentTypePresentation{
-                    "Sequence Player",
-                    "Cinematics",
-                    "Plays a reusable sequence asset during runtime.",
-                    "Cinematics"
-                };
-
-                bool success = componentRegistry.Register(
-                    std::move(player));
-                success = systemTypeRegistry.Register(SystemTypeInfo{
-                    "SequencePlayerSystem",
-                    [](const nlohmann::json&) -> std::unique_ptr<ISystem> {
-                        return std::make_unique<SequencePlayerSystem>();
-                    },
-                    "Sequence Player",
-                    "Cinematics"
-                }) && success;
-                success = componentSystemPolicy.Register(
-                    ComponentSystemRule{
-                        "SequencePlayerComponent",
-                        "SequencePlayerSystem",
-                        170
-                    }) && success;
-                ComponentTypeInfo flow{};
-                flow.typeName="CameraFlowComponent";
-                flow.factory=[] {return IComponent::Create<CameraFlowComponent>();};
-                flow.initializeDefaults=[](const SceneObjectData&,nlohmann::json& properties) {
-                    CameraFlowComponent defaults;defaults.Serialize(properties);
-                };
-                flow.presentation={"Camera Flow","Cinematics","Enter a region, play a sequence, hand control to a gameplay camera mode.","Cinematics"};
-                success=componentRegistry.Register(std::move(flow)) && success;
-                success=systemTypeRegistry.Register(SystemTypeInfo{"CameraFlowSystem",
-                    [](const nlohmann::json&)->std::unique_ptr<ISystem>{return std::make_unique<CameraFlowSystem>();},
-                    "Camera Flow","Cinematics"}) && success;
-                success=componentSystemPolicy.Register(ComponentSystemRule{"CameraFlowComponent","CameraFlowSystem",180}) && success;
-                return success;
-            }
+    bool Register(RuntimeFeatureContext& context) override {
+        ComponentRegistry& componentRegistry = RuntimeFeatureContextAccess::Components(context);
+        SystemTypeRegistry& systemTypeRegistry = RuntimeFeatureContextAccess::Systems(context);
+        ComponentSystemPolicy& componentSystemPolicy = RuntimeFeatureContextAccess::Policy(context);
+        ComponentTypeInfo player{};
+        player.typeName = "SequencePlayerComponent";
+        player.factory = []() -> std::unique_ptr<IComponent> { return IComponent::Create<SequencePlayerComponent>(); };
+        player.initializeDefaults = [](const SceneObjectData&, nlohmann::json& properties) {
+            properties["enabled"] = true;
+            properties["sequenceAssetGuid"] = "";
+            properties["playOnStart"] = false;
+            properties["loop"] = false;
+            properties["playbackRate"] = 1.0f;
+            properties["startTimeSeconds"] = 0.0f;
+            properties["channel"] = "Cinematics";
+            properties["priority"] = 0;
+            properties["channelPolicy"] = "ReplaceIfHigherOrEqual";
+            properties["stopOnDisable"] = true;
+            properties["restartIfPlaying"] = true;
+            properties["ownerSlotName"] = "Owner";
+            properties["bindings"] = nlohmann::json::array();
         };
-    }
+        player.presentation = ComponentTypePresentation{
+            "Sequence Player", "Cinematics", "Plays a reusable sequence asset during runtime.", "Cinematics"};
 
-    std::unique_ptr<IRuntimeFeature> CreateSequenceRuntimeFeature() {
-        return std::make_unique<SequenceRuntimeFeature>();
+        bool success = componentRegistry.Register(std::move(player));
+        success = systemTypeRegistry.Register(SystemTypeInfo{"SequencePlayerSystem",
+                                                             [](const nlohmann::json&) -> std::unique_ptr<ISystem> {
+                                                                 return std::make_unique<SequencePlayerSystem>();
+                                                             },
+                                                             "Sequence Player", "Cinematics"}) &&
+                  success;
+        success = componentSystemPolicy.Register(
+                      ComponentSystemRule{"SequencePlayerComponent", "SequencePlayerSystem", 170}) &&
+                  success;
+        ComponentTypeInfo flow{};
+        flow.typeName = "CameraFlowComponent";
+        flow.factory = [] { return IComponent::Create<CameraFlowComponent>(); };
+        flow.initializeDefaults = [](const SceneObjectData&, nlohmann::json& properties) {
+            CameraFlowComponent defaults;
+            defaults.Serialize(properties);
+        };
+        flow.presentation = {"Camera Flow", "Cinematics",
+                             "Enter a region, play a sequence, hand control to a gameplay camera mode.", "Cinematics"};
+        success = componentRegistry.Register(std::move(flow)) && success;
+        success = systemTypeRegistry.Register(SystemTypeInfo{"CameraFlowSystem",
+                                                             [](const nlohmann::json&) -> std::unique_ptr<ISystem> {
+                                                                 return std::make_unique<CameraFlowSystem>();
+                                                             },
+                                                             "Camera Flow", "Cinematics"}) &&
+                  success;
+        success = componentSystemPolicy.Register(ComponentSystemRule{"CameraFlowComponent", "CameraFlowSystem", 180}) &&
+                  success;
+        return success;
     }
+};
+} // namespace
+
+std::unique_ptr<IRuntimeFeature> CreateSequenceRuntimeFeature() { return std::make_unique<SequenceRuntimeFeature>(); }
 
 } // namespace HIKARI

@@ -17,7 +17,7 @@ public:
     SceneReflectionBuffer& operator=(const SceneReflectionBuffer&) = delete;
     static constexpr DXGI_FORMAT kFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
     bool Ensure(const GFX::Context& graphics, uint32_t width, uint32_t height, bool enabled,
-        bool captureMaterial = false);
+                bool captureMaterial = false);
     bool BeginWrite(ID3D12GraphicsCommandList* commands);
     void EndWrite(ID3D12GraphicsCommandList* commands, bool succeeded);
     void Release();

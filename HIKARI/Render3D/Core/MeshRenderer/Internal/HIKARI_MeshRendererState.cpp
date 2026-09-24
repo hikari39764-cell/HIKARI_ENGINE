@@ -2,6 +2,6 @@
 
 namespace HIKARI::MESHRENDERER::INTERNAL {
 
-    MeshRendererState gMeshRendererState{};
+MeshRendererState gMeshRendererState{};
 
 } // namespace HIKARI::MESHRENDERER::INTERNAL

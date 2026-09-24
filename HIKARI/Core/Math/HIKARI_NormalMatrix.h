@@ -4,6 +4,6 @@
 
 namespace HIKARI::MATH {
 
-    Mat4 BuildNormalMatrixFromWorld(const Mat4& world);
+Mat4 BuildNormalMatrixFromWorld(const Mat4& world);
 
 } // namespace HIKARI::MATH

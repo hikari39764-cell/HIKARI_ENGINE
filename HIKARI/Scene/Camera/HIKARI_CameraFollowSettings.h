@@ -57,8 +57,8 @@ struct CameraFollowSettings {
     float screenCompositionHardResponseScale = 0.45f;
     float screenCompositionCollisionCenteringStrength = 0.72f;
 
-    void Serialize(nlohmann::json &out) const;
-    void Deserialize(const nlohmann::json &in);
+    void Serialize(nlohmann::json& out) const;
+    void Deserialize(const nlohmann::json& in);
     void Normalize() noexcept;
 };
 } // namespace HIKARI::CAMERA

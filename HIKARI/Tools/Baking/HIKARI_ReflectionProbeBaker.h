@@ -10,80 +10,74 @@
 
 namespace HIKARI {
 
-    class DocumentSceneBase;
+class DocumentSceneBase;
 
-    namespace TOOLS::BAKING {
+namespace TOOLS::BAKING {
 
-        struct ReflectionProbeBakeQuality {
-            uint32_t resolution = 128;
-            uint32_t prefilteredMipCount = 8;
-            uint32_t prefilteredSampleCount = 192;
-        };
+struct ReflectionProbeBakeQuality {
+    uint32_t resolution = 128;
+    uint32_t prefilteredMipCount = 8;
+    uint32_t prefilteredSampleCount = 192;
+};
 
-        ReflectionProbeBakeQuality ResolveReflectionProbeBakeQuality(
-            uint32_t requestedResolution) noexcept;
+ReflectionProbeBakeQuality ResolveReflectionProbeBakeQuality(uint32_t requestedResolution) noexcept;
 
-        struct ReflectionProbeBakeRequest {
-            std::filesystem::path projectRoot{};
-            std::string sceneGuid{};
-            std::string sceneName{};
-            std::string probeId{ "probe_000" };
-            std::string probeName{ "ReflectionProbe_000" };
-            MATH::Vec3 position{ 0.0f, 2.0f, 0.0f };
-            float radius = 8.0f;
-            float intensity = 1.0f;
-            std::string influenceShape{ "Sphere" };
-            MATH::Vec3 influenceBoxCenter{ 0.0f, 2.0f, 0.0f };
-            MATH::Vec3 influenceBoxSize{ 8.0f, 4.0f, 8.0f };
-            std::string projectionShape{ "Infinite" };
-            MATH::Vec3 projectionBoxCenter{ 0.0f, 2.0f, 0.0f };
-            MATH::Vec3 projectionBoxSize{ 8.0f, 4.0f, 8.0f };
-            float blendDistance = 1.0f;
-            int priority = 0;
-            uint32_t resolution = 128;
-            bool forceRebake = false;
-            std::filesystem::path sourceCubemapPath{};
-            std::string authoringHash{};
-            std::string sceneHash{};
-            std::string dependencyHash{};
-            std::string bakeSet{ "Default" };
-            std::string scenario{ "Default" };
-        };
+struct ReflectionProbeBakeRequest {
+    std::filesystem::path projectRoot{};
+    std::string sceneGuid{};
+    std::string sceneName{};
+    std::string probeId{"probe_000"};
+    std::string probeName{"ReflectionProbe_000"};
+    MATH::Vec3 position{0.0f, 2.0f, 0.0f};
+    float radius = 8.0f;
+    float intensity = 1.0f;
+    std::string influenceShape{"Sphere"};
+    MATH::Vec3 influenceBoxCenter{0.0f, 2.0f, 0.0f};
+    MATH::Vec3 influenceBoxSize{8.0f, 4.0f, 8.0f};
+    std::string projectionShape{"Infinite"};
+    MATH::Vec3 projectionBoxCenter{0.0f, 2.0f, 0.0f};
+    MATH::Vec3 projectionBoxSize{8.0f, 4.0f, 8.0f};
+    float blendDistance = 1.0f;
+    int priority = 0;
+    uint32_t resolution = 128;
+    bool forceRebake = false;
+    std::filesystem::path sourceCubemapPath{};
+    std::string authoringHash{};
+    std::string sceneHash{};
+    std::string dependencyHash{};
+    std::string bakeSet{"Default"};
+    std::string scenario{"Default"};
+};
 
-        struct ReflectionProbeBakeResult {
-            bool success = false;
-            bool captured = false;
-            bool prefiltered = false;
-            bool brdfReady = false;
-            bool captureValidated = false;
-            bool prefilterValidated = false;
-            uint32_t capturedFaceCount = 0;
-            uint32_t captureResolution = 0;
-            uint32_t captureMipCount = 0;
-            std::string captureFormat{};
-            uint32_t prefilteredMipCount = 0;
-            std::string prefilteredFormat{};
-            ASSETS::LIGHTING::ReflectionProbeBakeRecord record{};
-            std::filesystem::path capturePath{};
-            std::filesystem::path prefilteredPath{};
-            std::filesystem::path brdfLutPath{};
-            std::vector<std::string> faceSummaries{};
-            std::vector<std::string> messages{};
-            std::vector<std::string> warnings{};
-            std::vector<std::string> errors{};
-        };
+struct ReflectionProbeBakeResult {
+    bool success = false;
+    bool captured = false;
+    bool prefiltered = false;
+    bool brdfReady = false;
+    bool captureValidated = false;
+    bool prefilterValidated = false;
+    uint32_t capturedFaceCount = 0;
+    uint32_t captureResolution = 0;
+    uint32_t captureMipCount = 0;
+    std::string captureFormat{};
+    uint32_t prefilteredMipCount = 0;
+    std::string prefilteredFormat{};
+    ASSETS::LIGHTING::ReflectionProbeBakeRecord record{};
+    std::filesystem::path capturePath{};
+    std::filesystem::path prefilteredPath{};
+    std::filesystem::path brdfLutPath{};
+    std::vector<std::string> faceSummaries{};
+    std::vector<std::string> messages{};
+    std::vector<std::string> warnings{};
+    std::vector<std::string> errors{};
+};
 
-        class ReflectionProbeBaker {
-        public:
-            ReflectionProbeBakeResult BakeSingleProbe(
-                DocumentSceneBase& scene,
-                const ReflectionProbeBakeRequest& request) const;
+class ReflectionProbeBaker {
+public:
+    ReflectionProbeBakeResult FinalizeCapturedProbe(const ReflectionProbeBakeRequest& request,
+                                                    const std::filesystem::path& capturePath) const;
+};
 
-            ReflectionProbeBakeResult FinalizeCapturedProbe(
-                const ReflectionProbeBakeRequest& request,
-                const std::filesystem::path& capturePath) const;
-        };
-
-    } // namespace TOOLS::BAKING
+} // namespace TOOLS::BAKING
 
 } // namespace HIKARI

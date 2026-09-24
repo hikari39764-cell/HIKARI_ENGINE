@@ -9,12 +9,8 @@
 
 namespace HIKARI::MATERIAL_SERIALIZATION {
 
-    PbrMaterialAssetData ReadPbrMaterialJson(
-        const nlohmann::json& node,
-        uint32_t version,
-        std::string materialName);
+PbrMaterialAssetData ReadPbrMaterialJson(const nlohmann::json& node, uint32_t version, std::string materialName);
 
-    nlohmann::json WritePbrMaterialJson(
-        const PbrMaterialAssetData& data);
+nlohmann::json WritePbrMaterialJson(const PbrMaterialAssetData& data);
 
 } // namespace HIKARI::MATERIAL_SERIALIZATION

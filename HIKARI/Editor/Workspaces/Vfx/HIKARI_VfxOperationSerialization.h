@@ -6,15 +6,11 @@
 
 namespace HIKARI::EDITOR {
 
-    class VfxWorkspaceController;
+class VfxWorkspaceController;
 
-    nlohmann::json WriteVfxWorkspaceSummary(
-        const VfxWorkspaceController& controller);
-    nlohmann::json WriteVfxDiagnostics(
-        const VfxWorkspaceController& controller);
-    bool DescribeVfxTarget(
-        const VfxWorkspaceController& controller,
-        std::string_view targetId,
-        nlohmann::json& outDescription);
+nlohmann::json WriteVfxWorkspaceSummary(const VfxWorkspaceController& controller);
+nlohmann::json WriteVfxDiagnostics(const VfxWorkspaceController& controller);
+bool DescribeVfxTarget(const VfxWorkspaceController& controller, std::string_view targetId,
+                       nlohmann::json& outDescription);
 
 } // namespace HIKARI::EDITOR

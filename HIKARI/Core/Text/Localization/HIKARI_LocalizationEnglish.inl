@@ -47,7 +47,6 @@
         { "material.preview.live", "Preview up to date" },
         { "material.preview.invalid", "Fix graph errors to update preview" },
         { "material.preview.pending", "Preview update pending" },
-        { "material.inspector.parameters", "Node parameters" },
         { "material.inspector.advanced", "Technical details" },
         { "material.inspector.select", "Select a node to edit its parameters." },
         { "material.inspector.connections", "Connections" },
@@ -177,15 +176,11 @@
         { "ai.task.takeover", "Open draft to edit" },
         { "vfx.templates.complete", "Complete templates" },
         { "vfx.templates.modules", "Reusable modules" },
-        { "ai.sidebar.expand", "Expand assistant" },
-        { "ai.sidebar.collapse", "Collapse assistant" },
         { "ai.status.ready", "Ready" },
         { "ai.welcome.title", "Start with an idea" },
         { "ai.welcome.detail", "Describe what you want to create, or attach a reference. Keep editing while your task runs." },
-        { "ai.task.result", "Operation result" },
         { "ai.task.stop", "Stop" },
         { "ai.image.attach", "Attach image" },
-        { "ai.image.path", "Image file" },
         { "ai.image.clear", "Remove attachments" },
         { "ai.image.count", "%d images attached" },
         { "ai.image.unavailable", "Image preview unavailable" },
@@ -210,23 +205,12 @@
         { "ai.chat.assistant", "Assistant" },
         { "ai.chat.you", "You" },
         { "ai.menu.apiSettings", "API Settings" },
-        { "ai.menu.capabilities", "Capabilities" },
-        { "ai.menu.clearChat", "Clear Chat" },
-        { "ai.menu.rawJson", "Raw JSON Action" },
-        { "ai.plan", "Execution Plan" },
-        { "ai.bridge.token", "Local bridge session token" },
-        { "ai.bridge.copyToken", "Copy session token" },
         { "ai.raw.fail", "Failed" },
         { "ai.raw.ok", "Success" },
         { "ai.raw.run", "Run" },
         { "ai.raw.title", "Raw JSON Action" },
-        { "ai.reasoning", "Thinking Process (AI Reasoning)" },
         { "ai.send", "Send" },
         { "ai.status.noApi", "No API Key (read-only)" },
-        { "ai.status.processing", "Processing..." },
-        { "ai.status.thinking", "(thinking)" },
-        { "ai.title", "AI Assistant" },
-        { "ai.working", "working..." },
         { "menu.aiAssistant", "AI Assistant" },
         { "menu.build", "Build" },
         { "menu.project", "Project" },
@@ -273,13 +257,9 @@
         { "menu.workspace.resetActiveLayout", "Reset Active Layout" },
         { "menu.workspace.scene", "Scene" },
         { "settings.language", "Language" },
-        { "settings.language.chinese", "Chinese" },
-        { "settings.language.english", "English" },
-        { "settings.language.japanese", "Japanese" },
         { "settings.aiBridge", "AI Local Bridge" },
         { "settings.aiBridge.enable", "Enable for this editor session" },
         { "settings.aiBridge.warning", "Disabled by default. When enabled, actions require the random session token shown in the AI Assistant window." },
-        { "settings.product.note", "Settings are shared by all editor workspaces." },
         { "settings.title", "Editor Settings" },
         { "ui.projectSession.cancel", "Cancel" },
         { "ui.projectSession.confirmRebuild", "Rebuild and Restart" },
@@ -455,9 +435,6 @@
         { "ui.vfx.hierarchy.solo", "Solo" },
         { "ui.vfx.hierarchy.clearSolo", "Clear Solo" },
         { "ui.vfx.hierarchy.delete", "Delete Emitter" },
-        { "ui.vfx.preview.stepFrame", "Step 1 Frame" },
-        { "ui.vfx.preview.step10", "Step 10 Frames" },
-        { "ui.vfx.preview.focusSelected", "Focus Selected" },        { "ui.assetBrowser.usageUnused", "Unused" },
         { "ui.assetBrowser.usageUsed", "Used" },
         { "ui.assetInspector.albedo", "Albedo" },
         { "ui.assetInspector.ambientOcclusion", "Ambient Occlusion" },
@@ -795,10 +772,6 @@
         { "ui.environment.useSkyHorizonForFog", "Use Sky Horizon For Fog" },
         { "ui.environment.volumetricFog", "Volumetric Fog" },
         { "ui.environment.zenithColor", "Zenith Color" },
-        { "ui.hierarchy.emptyHint", "Use + or right-click to create one." },
-        { "ui.hierarchy.emptyTitle", "No scene objects" },
-        { "ui.hierarchy.noMatchHint", "Try another name or clear the search." },
-        { "ui.hierarchy.noMatchTitle", "No matching objects" },
         { "ui.hierarchy.objects", "%d objects" },
         { "ui.hierarchy.objectsFiltered", "%d of %d objects" },
         { "ui.hierarchy.search", "Hierarchy" },
@@ -1431,7 +1404,6 @@
         { "ui.window.lightingBake", "Lighting Bake" },
         { "ui.window.projectFeatures", "Project Features" },
         { "ui.window.quality", "Quality" },
-        { "ui.window.resourceWorkspace", "Resource Workspace" },
         { "ui.window.sceneDocument", "Scene Document" },
         { "ui.window.sceneSystems", "Scene Systems" },
         { "ui.window.sceneWorkspace", "Scene Workspace" },
@@ -1473,7 +1445,6 @@
         { "ui.inspector.worldText.text", "Text" },
         { "ui.inspector.worldText.textHelp", "UTF-8 text displayed in world space." },
         { "ui.inspector.worldText.font", "Font Asset Path" },
-        { "ui.inspector.worldText.fontHelp", "Project-relative .ttf, .otf, or .ttc path under Fonts or Assets." },
         { "ui.inspector.worldText.layout", "Layout" },
         { "ui.inspector.worldText.layoutSize", "Layout Size" },
         { "ui.inspector.worldText.layoutSizeHelp", "Text layout width and height in world units." },
@@ -1538,13 +1509,6 @@
         { "ui.inspector.model.overrideMaterial", "Override Material" },
         { "ui.inspector.model.restoreImported", "Restore Imported" },
         { "ui.inspector.model.proceduralMaterial", "Procedural Material" },
-        { "ui.inspector.model.proceduralMaterialHint", "Defaults to the procedural checker; use Restore Imported to return after replacing." },
-        { "ui.inspector.model.proceduralMaterialMode", "Material Mode" },
-        { "ui.inspector.model.proceduralMaterialChecker", "Checker (Debug)" },
-        { "ui.inspector.model.proceduralMaterialWhite", "Default White" },
-        { "ui.inspector.model.proceduralMaterialCustom", "Custom Material" },
-        { "ui.inspector.model.proceduralMaterialWhiteHint", "Solid white material; assign your own material later for real content." },
-        { "ui.inspector.procedural.materialEntryHint", "Material: choose on the Procedural Mesh component" },
         { "ui.inspector.procedural.material", "Material" },
         { "ui.inspector.procedural.materialNone", "None (Default White)" },
         { "ui.inspector.procedural.materialChecker", "Checker (Debug)" },
@@ -1609,7 +1573,6 @@
         { "ui.materialGraph.collapseNode", "Collapse Node" },
         { "ui.materialGraph.expandNode", "Expand Node" },
         { "ui.materialGraph.surfaceOutputRoot", "Surface Output is the required graph root" },
-        { "ui.materialGraph.dragHint", "Drag sockets to connect/rewire | click a wire to select | Del remove" },
         { "ui.asm.menu.file", "File" },
         { "ui.asm.menu.new", "New State Machine" },
         { "ui.asm.menu.openAsset", "Open Asset" },
@@ -1633,10 +1596,6 @@
         { "ui.asm.menu.undoTooltip", "Undo (Ctrl+Z)" },
         { "ui.asm.menu.redoTooltip", "Redo (Ctrl+Y)" },
         { "ui.asm.menu.frameAllTooltip", "Frame all states (Home)" },
-        { "ui.viewport.terrain.raise", "Terrain Raise" },
-        { "ui.viewport.terrain.lower", "Terrain Lower" },
-        { "ui.viewport.terrain.smooth", "Terrain Smooth" },
-        { "ui.viewport.terrain.flatten", "Terrain Flatten" },
         { "menu.workspace.terrainSurface", "Terrain Surface" },
         { "ui.terrain.tools", "Terrain Tools" },
         { "ui.terrain.presets", "Presets" },
@@ -1650,21 +1609,14 @@
         { "ui.terrain.edgeDepth", "Edge Depth" },
         { "ui.terrain.wetness", "Wetness" },
         { "ui.terrain.surfacePresets", "Surface Presets" },
-        { "ui.terrain.waterPresets", "Water Presets" },
         { "ui.terrain.sand", "Sand" },
         { "ui.terrain.snow", "Snow" },
         { "ui.terrain.dirt", "Dirt" },
         { "ui.terrain.grass", "Grass" },
         { "ui.terrain.rock", "Rock" },
-        { "ui.terrain.animeWater", "Anime Water" },
-        { "ui.terrain.realisticWater", "Realistic Water" },
-        { "ui.terrain.noWater", "No Water" },
         { "ui.terrain.paintPreset", "Paint Preset" },
         { "ui.terrain.none", "None" },
-        { "ui.terrain.water", "Water" },
         { "ui.terrain.erase", "Erase" },
-        { "ui.terrain.mound", "Mound" },
-        { "ui.terrain.pit", "Pit" },
         { "ui.terrain.brush", "Brush" },
         { "ui.terrain.objects", "Terrain Objects" },
         { "ui.terrain.selectTerrain", "Select a terrain object" },
@@ -1894,7 +1846,6 @@
         { "ui.vfx.effects.stage.2", "Texture streak" },
         { "ui.vfx.effects.stage.3", "Texture radial blur" },
         { "ui.vfx.effects.stage.4", "Color, coverage and emission" },
-        { "ui.vfx.view.layerCount", "%zu preview layers" },
         { "ui.vfx.hud.stopped", "STOP" },
         { "ui.vfx.hud.paused", "PAUSE" },
         { "ui.vfx.hud.playing", "PLAY" },
@@ -2331,7 +2282,6 @@
         { "ui.vfx.view.autoKey", "Auto key" },
         { "ui.vfx.view.editModeHelp", "Off: base placement moves the entire animation. On: records the current pose. W/E/R transform, X space, F focus." },
         { "ui.vfx.view.path", "Motion path" },
-        { "ui.vfx.view.handles", "Shape handles" },
         { "ui.vfx.text.Inner Radius", "Inner Radius" },
         { "ui.vfx.text.Outer Radius", "Outer Radius" },
         { "ui.vfx.text.Start Angle", "Start Angle" },
@@ -2599,8 +2549,6 @@
     { "cine.shotFromView", "Create shot from this view" },
     { "cine.value", "Value" },
     { "cine.roll", "Roll" },
-    { "cine.tangentIn", "Incoming tangent" },
-    { "cine.tangentOut", "Outgoing tangent" },
     { "cine.createShot", "Create shot" },
     { "cine.deleteClip", "Delete clip" },
     { "cine.refreshSound", "Refresh audio assets" },
@@ -2608,7 +2556,6 @@
     { "cine.addPose", "Add pose keyframe at playhead" },
     { "cine.baseLook", "Base look · Scene overrides" },
     { "cine.sound", "Audio" },
-    { "cine.poseTime", "Pose %.2f s" },
     { "cine.presets", "Full sequences" },
     { "cine.bindings", "Object bindings" },
     { "cine.inspector", "Properties & effects" },
@@ -2628,7 +2575,6 @@
     { "cine.blendWeight", "Blend weight" },
     { "cine.addBinding", "Add object slot" },
     { "cine.addEffect", "Add effect" },
-    { "cine.addMotion", "Add movement" },
     { "cine.sequence", "Sequence" },
     { "cine.timeline", "Sequence timeline" },
     { "cine.sequenceFx", "Sequence screen effects" },
@@ -2637,8 +2583,6 @@
     { "cine.screenFx", "Screen effects" },
     { "cine.fadeHint", "Use screen effect clips for fades." },
     { "cine.lookAt", "Look at" },
-    { "cine.easeOut", "Outgoing speed" },
-    { "cine.seconds", "Seconds" },
     { "cine.stage", "Stage view" },
     { "cine.linear", "Linear" },
     { "cine.assets", "Assets" },
@@ -2648,7 +2592,6 @@
     { "cine.blendDuration", "Blend duration" },
     { "cine.motionChain", "Movement effects" },
     { "cine.requiredRuntime", "Required at runtime" },
-    { "cine.easeIn", "Incoming speed" },
     { "cine.shot", "Shot" },
     { "cine.shotDuration", "Shot duration" },
     { "cine.shotFx", "Shot screen effects" },
@@ -2733,15 +2676,12 @@
     { "editor.ui.ramp.resource.3cfd9d", "+ Ramp Resource" },
     { "editor.ui.shape.bdf0e8", "+ Shape" },
     { "editor.ui.texture.resource.93d8ae", "+ Texture Resource" },
-    { "editor.moreSearch", "... (refine the search for more results)" },
     { "editor.ui.0.npr.endpoint.1.pbr.endpoint.ef4a45", "0 = NPR endpoint | 1 = PBR endpoint" },
     { "editor.ui.affected.by.9caebf", "AFFECTED BY" },
     { "editor.ui.active.shape.is.locked.26c7ed", "Active shape is locked" },
     { "editor.ui.add.point.f353ad", "Add Point" },
     { "editor.ui.add.ramp.point.43d5d9", "Add Ramp Point" },
-    { "editor.ui.add.node.at.cursor.24da70", "Add node at cursor" },
     { "editor.ui.advanced.asset.actions.e5ed94", "Advanced Asset Actions" },
-    { "editor.ui.advanced.node.details.df5635", "Advanced Node Details" },
     { "editor.ui.advanced.part.binding.f0dacd", "Advanced Part Binding" },
     { "editor.ui.alt.lmb.orbit.51038c", "Alt + LMB       Orbit" },
     { "editor.ui.apply.draft.b63f82", "Apply Draft" },
@@ -2781,7 +2721,6 @@
     { "editor.ui.duplicate.selected.74ac9f", "Duplicate Selected" },
     { "editor.ui.editing.model.part.bc0abd", "EDITING MODEL PART" },
     { "editor.ui.edit.ramp.6de413", "Edit Ramp" },
-    { "editor.ui.edit.values.and.resources.directly.on.the.node.card.5420fc", "Edit values and resources directly on the node card." },
     { "editor.ui.environment.presets.3b220a", "Environment Presets" },
     { "editor.ui.environment.s.e9b433", "Environment: %s" },
     { "editor.ui.every.committed.control.refreshes.runtime.bindings.f10e6d", "Every committed control refreshes runtime bindings." },
@@ -2796,7 +2735,6 @@
     { "editor.ui.generated.from.d.source.part.s.s.a0ef14", "Generated from %d source part(s) | %s" },
     { "editor.ui.generated.only.42a4d1", "Generated only" },
     { "editor.ui.generation.draft.ready.269f1c", "Generation Draft Ready" },
-    { "editor.ui.graph.selection.3ec836", "Graph Selection" },
     { "editor.ui.height.3f608b", "Height" },
     { "editor.ui.hide.all.556020", "Hide All" },
     { "editor.ui.hide.selected.c01d1a", "Hide Selected" },
@@ -2841,7 +2779,6 @@
     { "editor.ui.no.map.uses.mesh.tangent.rg.flow.and.a.shift.specialize.it.945f54", "No map uses mesh tangent; RG flow and A shift specialize it." },
     { "editor.ui.no.model.assets.are.registered.255b81", "No model assets are registered" },
     { "editor.ui.no.model.loaded.bdddc1", "No model loaded." },
-    { "editor.ui.node.contract.e5f8d9", "Node Contract" },
     { "editor.ui.node.owned.authoring.b47942", "Node-owned authoring" },
     { "editor.ui.not.evaluated.current.graph.does.not.compile.238dc7", "Not evaluated: current graph does not compile." },
     { "editor.ui.open.a.material.before.creating.an.instance.bb3495", "Open a material before creating an instance." },
@@ -2909,8 +2846,6 @@
     { "editor.ui.select.filtered.2b2f4e", "Select Filtered" },
     { "editor.ui.select.visible.9f78ea", "Select Visible" },
     { "editor.ui.select.a.light.here.or.click.its.viewport.icon.6868f7", "Select a light here or click its viewport icon." },
-    { "editor.ui.select.a.node.or.connection.in.the.graph.2e4f2d", "Select a node or connection in the graph." },
-    { "editor.ui.select.a.node.its.authoring.controls.stay.on.the.graph.card.5e582f", "Select a node. Its authoring controls stay on the graph card." },
     { "editor.ui.select.or.add.a.collision.shape.f49c19", "Select or add a collision shape." },
     { "editor.ui.selected.dim.context.1d83e6", "Selected + Dim Context" },
     { "editor.ui.selected.connection.b1be4d", "Selected Connection" },
@@ -2926,7 +2861,6 @@
     { "editor.ui.sky.rotation.ee7e3f", "Sky Rotation" },
     { "editor.ui.source.color.6d2042", "Source Color" },
     { "editor.ui.source.model.acf996", "Source Model" },
-    { "editor.ui.source.revision.llu.compiled.revision.llu.a20b7e", "Source revision %llu | compiled revision %llu" },
     { "editor.ui.stable.slotid.s.b972aa", "Stable slotId: %s" },
     { "editor.ui.standalone.material.f1ffe4", "Standalone Material" },
     { "editor.ui.static.bodies.only.4f1004", "Static bodies only" },
@@ -2949,7 +2883,6 @@
     { "editor.ui.unsaved.model.collision.changes.72d305", "Unsaved Model Collision Changes" },
     { "editor.ui.unsaved.binding.edits.de2eb6", "Unsaved binding edits" },
     { "editor.ui.unsaved.set.edits.will.be.discarded.cbfee0", "Unsaved set edits will be discarded." },
-    { "editor.ui.unsupported.inherited.type.0e4d03", "Unsupported inherited type" },
     { "editor.ui.use.surface.output.blend.straight.for.png.art.efb36d", "Use Surface Output: Blend + Straight for PNG art." },
     { "editor.ui.use.texture.sample.nodes.for.every.image.input.3c4ba8", "Use Texture Sample nodes for every image input." },
     { "editor.ui.use.the.rotate.gizmo.in.the.viewport.to.aim.this.light.2c784d", "Use the rotate gizmo in the viewport to aim this light." },
@@ -2985,7 +2918,6 @@
     { "editor.ui.back.to.scene.0e730f", "Back to Scene" },
     { "editor.ui.background.game.view.e8990a", "Background game view" },
     { "editor.ui.bind.selected.to.next.step.567a41", "Bind Selected to Next Step" },
-    { "editor.ui.body.size.61b95f", "Body size" },
     { "editor.ui.browse.2f3b5c", "Browse" },
     { "editor.ui.built.in.vfx.unlit.d589ac", "Built-in VFX Unlit" },
     { "editor.ui.choice.step.1e8d95", "CHOICE STEP" },
@@ -2996,11 +2928,8 @@
     { "editor.ui.character.ee9946", "Character" },
     { "editor.ui.character.name.c0a090", "Character name" },
     { "editor.ui.choice.0682be", "Choice" },
-    { "editor.ui.choice.size.ae6b83", "Choice size" },
     { "editor.ui.choice.text.a9c015", "Choice text" },
     { "editor.ui.continue.prompt.fc9ef9", "Continue prompt" },
-    { "editor.ui.create.hikari.project.1b0757", "Create HIKARI Project" },
-    { "editor.ui.create.project.1cab44", "Create Project" },
     { "editor.ui.create.vfx.asset.205bef", "Create VFX Asset" },
     { "editor.ui.create.and.open.f53899", "Create and Open" },
     { "editor.ui.credits.license.402861", "Credits / license" },
@@ -3024,37 +2953,24 @@
     { "editor.ui.entry.slide.dc2e87", "Entry slide" },
     { "editor.ui.event.signal.58ef83", "Event signal" },
     { "editor.ui.focus.blend.bfb55a", "Focus blend" },
-    { "editor.ui.font.b97c4d", "Font" },
-    { "editor.ui.glow.size.f2e05b", "Glow size" },
-    { "editor.ui.glow.strength.24792c", "Glow strength" },
-    { "editor.ui.hikari.project.hub.c9bc1b", "HIKARI Project Hub" },
     { "editor.ui.input.b568d4", "Input" },
     { "editor.ui.line.step.a1ebff", "LINE STEP" },
     { "editor.ui.live.preview.s.8878fb", "LIVE PREVIEW  %s" },
     { "editor.ui.layer.id.s.e916c5", "Layer ID: %s" },
     { "editor.ui.left.slot.aa2913", "Left slot" },
-    { "editor.ui.letter.spacing.71ae71", "Letter spacing" },
     { "editor.ui.line.ea9676", "Line" },
-    { "editor.ui.line.height.65be51", "Line height" },
     { "editor.ui.live.portrait.preview.ready.61a06d", "Live portrait preview ready" },
     { "editor.ui.location.d219c6", "Location" },
-    { "editor.ui.log.s.40c841", "Log: %s" },
     { "editor.ui.mirror.horizontally.3b5ec9", "Mirror horizontally" },
     { "editor.ui.no.story.step.selected.b5c5a3", "NO STORY STEP SELECTED" },
-    { "editor.ui.name.size.ef6b3b", "Name size" },
     { "editor.ui.narration.no.portrait.bec1a6", "Narration / no portrait" },
     { "editor.ui.new.dialogue.event.5e0581", "New Dialogue Event" },
-    { "editor.ui.new.gameproject.3af1fe", "New GameProject" },
     { "editor.ui.no.matching.dialogue.assets.5b559b", "No matching Dialogue assets" },
-    { "editor.ui.no.matching.font.in.assets.7f6a64", "No matching font in Assets" },
     { "editor.ui.no.portrait.assigned.the.canvas.will.show.dialogue.without.a.cha.41b3b8", "No portrait assigned. The canvas will show dialogue without a character image." },
-    { "editor.ui.no.recent.projects.e93ab1", "No recent projects" },
     { "editor.ui.offset.ce6677", "Offset" },
     { "editor.ui.open.cf9b77", "Open" },
     { "editor.ui.open.project.68e7c2", "Open Project" },
     { "editor.ui.open.an.existing.dialogue.asset.above.or.create.a.new.event.44bf96", "Open an existing Dialogue asset above, or create a new event." },
-    { "editor.ui.outline.thickness.e7aab6", "Outline thickness" },
-    { "editor.ui.project.hub.f42605", "PROJECT HUB" },
     { "editor.ui.package.id.7db680", "Package ID" },
     { "editor.ui.panel.entrance.9ed47b", "Panel entrance" },
     { "editor.ui.playback.options.75eab2", "Playback options" },
@@ -3076,8 +2992,6 @@
     { "editor.ui.prompt.pulse.scale.b621a2", "Prompt pulse scale" },
     { "editor.ui.prompt.scale.15563f", "Prompt scale" },
     { "editor.ui.property.9ae33a", "Property" },
-    { "editor.ui.quick.start.455083", "Quick Start" },
-    { "editor.ui.recent.projects.901c6d", "Recent Projects" },
     { "editor.ui.reference.canvas.29bf4e", "Reference canvas" },
     { "editor.ui.remove.character.076063", "Remove Character" },
     { "editor.ui.remove.step.9fcbf9", "Remove Step" },
@@ -3090,10 +3004,6 @@
     { "editor.ui.style.workflow.8f19d1", "STYLE WORKFLOW" },
     { "editor.ui.save.changes.to.s.before.opening.s.dfecf2", "Save changes to '%s' before opening '%s'?" },
     { "editor.ui.select.an.outline.to.move.it.drag.its.lower.right.handle.to.resi.81f6b1", "Select an outline to move it; drag its lower-right handle to resize" },
-    { "editor.ui.shadow.and.glow.84bc9d", "Shadow and glow" },
-    { "editor.ui.shadow.offset.2d8a71", "Shadow offset" },
-    { "editor.ui.shared.engine.build.72e529", "Shared engine build" },
-    { "editor.ui.spacing.2acbb3", "Spacing" },
     { "editor.ui.speaker.7c23b0", "Speaker" },
     { "editor.ui.stable.id.s.f22a81", "Stable ID: %s" },
     { "editor.ui.step.type.5dd37b", "Step type" },
@@ -3105,7 +3015,6 @@
     { "editor.ui.the.center.canvas.updates.while.you.adjust.this.character.aec428", "The center canvas updates while you adjust this character." },
     { "editor.ui.the.current.vfx.source.compiles.without.diagnostics.ffd1e4", "The current VFX source compiles without diagnostics." },
     { "editor.ui.the.current.document.has.unsaved.changes.5d061d", "The current document has unsaved changes." },
-    { "editor.ui.use.a.cjk.capable.ttf.otf.or.ttc.for.japanese.and.chinese.a4b049", "Use a CJK-capable TTF, OTF or TTC for Japanese and Chinese." },
 
     { "editor.ui.binding.s.79a318", "  Binding: %s" },
     { "editor.ui.runtime.s.420339", "  Runtime: %s" },
@@ -3308,7 +3217,6 @@
     { "editor.ui.refresh.scenes.335537", "Refresh Scenes" },
     { "editor.ui.release.the.previous.control.then.press.s.623510", "Release the previous control, then press %s..." },
     { "editor.ui.remove.component.b0b011", "Remove Component" },
-    { "editor.ui.rename.d3f4cb", "Rename" },
     { "editor.ui.rename.object.0c3276", "Rename Object" },
     { "editor.ui.render.path.e693f1", "Render Path" },
     { "editor.ui.render.submission.system.5fa68c", "Render Submission System" },
@@ -3428,7 +3336,6 @@
     { "editor.dissolveFolder", "Dissolve folder (keep contents)" },
     { "editor.folderName", "Folder name" },
     { "editor.selectContents", "Select all contents" },
-    { "editor.reload", "Reload" },
     { "editor.rename", "Rename" },
     { "editor.revertChanges", "Revert changes" },
     { "editor.newChildFolder", "New child folder" },
@@ -3439,7 +3346,6 @@
     { "editor.copyDiagnostics", "Copy diagnostics" },
     { "editor.folderSelection", "Move selected objects here" },
 
-    { "editor.ui.a.graph.connection.is.selected.delete.or.rewire.it.in.the.graph..f74375", "A graph connection is selected. Delete or rewire it in the graph toolbar/canvas." },
     { "editor.ui.add.a.character.from.the.left.panel.names.and.portraits.register.88e7d9", "Add a character from the left panel. Names and portraits registered here become selectable in every dialogue event." },
     { "editor.ui.camera.state.is.kept.per.model.and.per.workspace.for.this.editor.c218f9", "Camera state is kept per model and per workspace for this Editor session." },
     { "editor.ui.choice.panel.33406a", "Choice panel" },
@@ -3453,7 +3359,6 @@
     { "editor.ui.create.a.studio.point.or.directional.light.92f898", "Create a Studio point or directional light" },
     { "editor.ui.create.a.lightweight.instance.that.inherits.this.material.and.on.3b9f89", "Create a lightweight instance that inherits this material and only stores selected parameter or resource overrides." },
     { "editor.ui.create.or.open.one.material.asset.surface.materials.use.the.neut.17e19e", "Create or open one Material Asset. Surface materials use the neutral sphere and can be assigned to a model part; Particle materials are previewed and assigned from the VFX workspace." },
-    { "editor.ui.create.build.and.open.game.projects.against.one.shared.engine.in.6af7e2", "Create, build, and open game projects against one shared engine installation." },
     { "editor.ui.delete.selected.parameter.55f05d", "Delete selected parameter" },
     { "editor.ui.delete.selected.runtime.binding.ff5eec", "Delete selected runtime binding" },
     { "editor.ui.delete.selected.transition.03ba0c", "Delete selected transition" },
@@ -3462,7 +3367,6 @@
     { "editor.ui.edit.collision.shapes.e5a971", "Edit collision shapes" },
     { "editor.ui.edit.the.curve.and.colors.in.the.ramp.tab.then.select.this.ramp..8a7644", "Edit the curve and colors in the Ramp tab, then select this Ramp from a Ramp Diffuse or Multi Ramp node." },
     { "editor.ui.edit.the.selected.story.step.here.the.center.preview.uses.the.sa.35ee76", "Edit the selected story step here. The center preview uses the same project style and character registry as runtime." },
-    { "editor.ui.edit.values.images.ramp.assets.and.node.modes.directly.on.the.ca.b17de2", "Edit values, images, Ramp assets and node modes directly on the card. This panel explains the contract and reports diagnostics; it does not keep a second copy of node controls." },
     { "editor.ui.emit.a.named.event.then.continue.trigger.sequences.can.wait.for..49174a", "Emit a named event, then continue. Trigger sequences can wait for the dialogue to finish before running their next action." },
     { "editor.ui.exit.collision.setup.and.return.to.the.scene.6221c2", "Exit collision setup and return to the scene" },
     { "editor.ui.expression.budget.u.u.instr.u.u.reg.u.u.values.u.u.params.u.u.re.c635cd", "Expression budget: %u/%u instr | %u/%u reg | %u/%u values | %u/%u params | %u/%u resources" },
@@ -3485,9 +3389,8 @@
     { "editor.ui.parameter.name.94d788", "Parameter Name" },
     { "editor.ui.pick.source.model.parts.d2d8e0", "Pick source model parts" },
     { "editor.ui.place.and.resize.artwork.directly.on.the.canvas.the.panel.is.tre.43e567", "Place and resize artwork directly on the canvas. The panel is treated as one complete sprite." },
-    { "editor.ui.projects.keep.their.own.source.assets.and.projectsettings.engine.1ab319", "Projects keep their own Source, Assets, and ProjectSettings. Engine binaries and third-party packages remain in this HIKARI checkout." },
     { "editor.ui.ramp.curves.are.independent.reusable.assets.bind.them.from.a.mat.cd64c7", "Ramp curves are independent reusable assets. Bind them from a material resource slot instead of storing them inside every material." },
-    { "editor.ui.ramp.edits.compile.on.gesture.commit.esc.restores.the.captured.p.debb02", "Ramp edits compile on gesture commit; Esc restores the captured point value without an Undo entry." },
+    { "material.ramp.edit.gestureHint", "Preview updates while dragging; release records one undo step. Esc restores the value before this edit." },
     { "editor.ui.redo.runtime.binding.edit.ac6274", "Redo runtime binding edit" },
     { "editor.ui.remove.from.recent.projects.f1a467", "Remove from recent projects" },
     { "editor.ui.reset.the.saved.camera.for.this.model.b1fb04", "Reset the saved camera for this model" },
@@ -3574,7 +3477,7 @@
     { "editor.ui.choice.20d9bc", "CHOICE" },
     { "editor.ui.canvas.artwork.74a94b", "Canvas & Artwork" },
     { "editor.ui.characters.b6f59f", "Characters" },
-    { "editor.ui.choose.one.project.font.and.author.readable.name.body.and.choice.1524d2", "Choose one project font and author readable name, body and choice treatments." },
+    { "editor.ui.choose.one.project.font.and.author.readable.name.body.and.choice.1524d2", "Select reusable TextStyle assets for character names, dialogue and choices." },
     { "editor.ui.choose.the.dialogue.name.and.choice.artwork.then.position.it.on..368953", "Choose the dialogue, name and choice artwork, then position it on the canvas." },
     { "editor.ui.end.d205ab", "END" },
     { "editor.ui.line.528a45", "LINE" },
@@ -3596,13 +3499,9 @@
     { "editor.workflow.qualityLimits", "Quality & limits" },
     { "cine.boundRotation", "Orientation follows the look-at target. Move the target to aim." },
     { "editor.workflow.moreTools", "More tools" },
-    { "editor.workflow.selectedTool", "Selected tool" },
 
     { "editor.ui.add.a.state.machine.parameter.106f36", "Add a state machine parameter" },
     { "editor.ui.add.a.state.transition.ff9e34", "Add a state transition" },
-    { "editor.ui.choose.a.project.workflow.632c48", "Choose a project workflow" },
-    { "editor.ui.create.a.project.or.open.an.existing.project.hikari.folder.1af1c5", "Create a project or open an existing Project.hikari folder." },
-    { "editor.ui.create.a.small.external.gameproject.dde1f8", "Create a small external GameProject" },
     { "editor.ui.create.a.variable.or.event.29a9e7", "Create a variable or event" },
     { "editor.ui.delete.this.runtime.binding.definition.096425", "Delete this runtime binding definition" },
     { "editor.ui.editor.authored.slots.that.use.this.stable.id.96ae0f", "Editor-authored slots that use this stable ID" },
@@ -3616,21 +3515,17 @@
     { "editor.ui.live.values.test.events.and.references.appear.here.acf72b", "Live values, test events, and references appear here." },
     { "editor.ui.new.material.name.be45f0", "New material name" },
     { "editor.ui.project.owned.ids.available.to.components.and.tools.26f74f", "Project-owned IDs available to components and tools" },
-    { "editor.ui.projects.opened.on.this.machine.886fa2", "Projects opened on this machine" },
     { "editor.ui.release.the.editor.writer.without.claiming.a.new.value.02dd52", "Release the editor writer without claiming a new value" },
     { "editor.ui.return.to.scene.workspace.364db6", "Return to Scene workspace" },
     { "editor.ui.runtime.snapshot.and.session.only.preview.override.4d830e", "Runtime snapshot and session-only preview override" },
     { "editor.ui.save.projectsettings.runtime.bindings.json.11464d", "Save ProjectSettings/runtime_bindings.json" },
     { "editor.ui.search.dialogue.assets.82112b", "Search Dialogue assets" },
-    { "editor.ui.search.ttf.otf.or.ttc.dea4d2", "Search TTF, OTF or TTC" },
     { "editor.ui.search.effects.and.categories.6fa83b", "Search effects and categories" },
     { "editor.ui.search.installed.73e507", "Search installed..." },
     { "editor.ui.search.name.path.guid.dc5276", "Search name, path, GUID..." },
     { "editor.ui.search.name.path.or.guid.5b7caf", "Search name, path, or GUID..." },
     { "editor.ui.search.systems.dab49e", "Search systems..." },
-    { "editor.ui.select.a.folder.containing.project.hikari.e2b375", "Select a folder containing Project.hikari" },
     { "editor.ui.select.a.variable.or.event.from.the.catalog.72dba2", "Select a variable or event from the Catalog." },
-    { "editor.ui.the.template.contains.source.assets.and.project.settings.only.95c331", "The template contains source, assets, and project settings only." },
     { "editor.ui.write.through.the.editor.preview.writer.d78567", "Write through the editor preview writer" },
     { "cine.outputOnly", "Applies to cinematic output; editor UI is unaffected." },
     { "cine.createFirst", "Adjust the view, then create the first shot." },
@@ -3682,7 +3577,6 @@
 
     { "editor.ui.a.transient.typed.signal.emitted.by.runtime.logic.da0328", "A transient typed signal emitted by runtime logic" },
     { "editor.ui.a.typed.value.shared.through.stable.binding.slots.203ed5", "A typed value shared through stable binding slots" },
-    { "editor.ui.cancel.generation.11178f", "Cancel Generation" },
     { "editor.ui.compile.failed.97203d", "Compile failed" },
     { "editor.ui.compiled.14878f", "Compiled" },
     { "editor.ui.create.or.open.a.material.asset.from.the.left.panel.266612", "Create or open a Material Asset from the left panel." },
@@ -3690,7 +3584,6 @@
     { "editor.ui.dialogue.event.has.unsaved.changes.b4dc55", "Dialogue event has unsaved changes" },
     { "editor.ui.disable.9a7d4e", "Disable" },
     { "editor.ui.disable.snapping.576053", "Disable snapping" },
-    { "editor.ui.discard.and.create.0f59ba", "Discard and Create" },
     { "editor.ui.enable.20063a", "Enable" },
     { "editor.ui.enable.snapping.8002ed", "Enable snapping" },
     { "editor.ui.exit.camera.view.32714d", "Exit Camera View" },
@@ -3709,7 +3602,6 @@
     { "editor.ui.no.use.was.found.in.the.current.scene.and.loaded.materials.other.ea9fa8", "No use was found in the current scene and loaded materials. Other project scenes may still reference this stable ID." },
     { "editor.ui.preview.pending.e4ceea", "Preview pending" },
     { "editor.ui.preview.ready.8a0295", "Preview ready" },
-    { "editor.ui.ramp.stack.layer.1.77500a", "Ramp Stack / Layer 1" },
     { "editor.ui.reference.indexing.is.not.connected.yet.1b4c90", "Reference indexing is not connected yet." },
     { "editor.ui.select.a.model.part.to.edit.its.material.3a7ca7", "Select a model part to edit its material." },
     { "editor.ui.show.collision.shape.21508c", "Show collision shape" },
@@ -3721,20 +3613,17 @@
     { "editor.ui.unclaimed.fca0eb", "Unclaimed" },
     { "editor.ui.unlock.1526a1", "Unlock" },
     { "editor.ui.unlock.selected.88c853", "Unlock Selected" },
-    { "editor.ui.unsaved.edits.0881bf", "Unsaved edits" },
     { "editor.ui.use.add.in.the.toolbar.to.create.a.variable.or.event.1cda5c", "Use Add in the toolbar to create a variable or event." },
     { "editor.ui.use.local.space.22d273", "Use local space" },
     { "editor.ui.use.world.space.8f2d9a", "Use world space" },
     { "editor.ui.view.through.camera.2e4994", "View Through Camera" },
     { "editor.folder.create", "Create folder" },
     { "editor.folder.rename", "Rename folder" },
-    { "editor.change", "Change" },
     { "editor.uncategorized", "Uncategorized" },
 
     { "cine.animatedChannels", "Show animated and selected channels; turn off to show all." },
     { "shell.cancelled", "Cancelled" },
 
-    { "editor.ui.outline.cdd629", "Outline" },
     { "editor.ui.display.name.c7874a", "Display name" },
     { "editor.ui.stable.character.id.c80fb2", "Stable character id" },
     { "editor.ui.speaking.portrait.a7665b", "Speaking portrait" },
@@ -3788,7 +3677,6 @@
     { "ai.phase.needs_input", "Waiting for your answer" },
     { "ai.error.incomplete", "The request did not finish. Previous results have been kept." },
         { "ai.error.noTool", "The model repeatedly described work without executing or finishing. The task can be resumed." },
-    { "ai.error.previewKept", "The draft has been kept. You can continue after the preview connection recovers; recreating the work is unnecessary." },
         { "ai.error.budget", "This run reached its budget. Task state and edits are retained; Resume continues from here." },
     { "launcher.nameEmpty", "Project name must not be empty." },
     { "launcher.nameInvalid", "Project name is invalid." },
@@ -3857,9 +3745,6 @@
     { "gc.zoomRange", "Zoom range" },
     { "gc.near", "Near clip" },
     { "gc.effects", "Camera effects" },
-    { "gc.roll", "Roll" },
-    { "gc.shake", "Shake strength" },
-    { "gc.frequency", "Shake frequency" },
     { "gc.speedFov", "Speed FOV boost" },
     { "gc.speed", "Speed at full effect" },
     { "gc.advanced", "Advanced" },
@@ -4004,3 +3889,412 @@
     { "cm.copyStack", "Copy effect stack" },
     { "cm.pasteStack", "Paste effect stack" },
     { "cm.invalidStack", "Clipboard does not contain a compatible camera effect stack." },
+
+    { "uix.workspace", "UI Design" },
+
+    { "uix.textWorkspace", "Text Styles" },
+
+    { "uix.library", "Elements" },
+
+    { "uix.add", "Add" },
+
+    { "uix.reuse", "Save subtree as Prefab" },
+
+    { "uix.search", "Search elements" },
+
+    { "uix.duplicate", "Duplicate" },
+
+    { "uix.delete", "Delete" },
+
+
+    { "uix.uiStart", "Add a Canvas or an element. A Canvas is created automatically when needed." },
+
+    { "uix.canvas", "Canvas" },
+
+    { "uix.panel", "Panel" },
+
+    { "uix.image", "Image" },
+
+    { "uix.button", "Button" },
+
+    { "uix.sceneButton", "Scene button" },
+
+    { "uix.progress", "Progress bar" },
+
+    { "uix.row", "Row" },
+
+    { "uix.column", "Column" },
+
+    { "uix.grid", "Grid" },
+
+    { "uix.label", "Label" },
+
+    { "uix.title", "Title" },
+
+    { "uix.caption", "Caption" },
+
+    { "uix.worldText", "3D text" },
+
+
+    { "uix.save", "Save scene (Ctrl+S)" },
+
+    { "uix.undo", "Undo (Ctrl+Z)" },
+
+    { "uix.redo", "Redo (Ctrl+Y)" },
+
+    { "uix.fit", "Fit preview (F)" },
+
+    { "uix.snap", "Snap to 8 px grid" },
+
+    { "uix.play", "Test in Play" },
+
+    { "uix.stop", "Stop Play" },
+
+    { "uix.inspector", "Properties" },
+
+    { "uix.select", "Select an element to edit." },
+
+    { "uix.sceneSaved", "Saved with the scene · Ctrl+S" },
+
+    { "uix.fontMissing", "Import a TTF / OTF / TTC font into the project's Assets folder, then choose it below." },
+
+
+    { "uix.appearance", "Appearance" },
+
+    { "uix.layout", "Layout" },
+
+    { "uix.interaction", "Interaction" },
+
+    { "uix.advanced", "Advanced" },
+
+    { "uix.anchor", "Anchor (keeps position)" },
+
+    { "uix.visible", "Visible" },
+
+    { "uix.interactable", "Interactable" },
+
+    { "uix.opacity", "Opacity" },
+
+    { "uix.enabled", "Enabled" },
+
+    { "uix.horizontal", "Horizontal" },
+
+    { "uix.vertical", "Vertical" },
+
+    { "uix.arrangement", "Arrangement" },
+
+    { "uix.cellSize", "Cell size" },
+
+    { "uix.spacing", "Spacing" },
+
+    { "uix.padding", "Padding" },
+
+    { "uix.columns", "Columns" },
+
+    { "uix.value", "Value" },
+
+    { "uix.minimum", "Minimum" },
+
+    { "uix.maximum", "Maximum" },
+
+    { "uix.right", "Right" },
+
+    { "uix.left", "Left" },
+
+    { "uix.up", "Up" },
+
+    { "uix.down", "Down" },
+
+    { "uix.fill", "Fill direction" },
+
+    { "uix.variable", "Runtime variable (optional)" },
+
+    { "uix.typography", "Typography" },
+
+    { "uix.lineHeight", "Line height" },
+
+    { "uix.letterSpacing", "Letter spacing" },
+
+    { "uix.reveal", "Text reveal" },
+
+    { "uix.noWrap", "No wrap" },
+
+    { "uix.characterWrap", "Character wrap" },
+
+    { "uix.wrap", "Wrapping" },
+
+    { "uix.outline", "Outline" },
+
+    { "uix.width", "Width" },
+
+    { "uix.color", "Color" },
+
+    { "uix.shadow", "Shadow" },
+
+    { "uix.offset", "Offset" },
+
+    { "uix.glow", "Glow" },
+
+    { "uix.intensity", "Intensity" },
+
+    { "UI Canvas", "UI Canvas" },
+
+    { "UI Rect", "UI Rect" },
+
+    { "UI Image", "UI Image" },
+
+    { "UI Text", "UI Text" },
+
+    { "UI Button", "UI Button" },
+
+    { "UI Group", "UI Group" },
+
+    { "UI Layout Group", "UI Layout Group" },
+
+    { "UI Progress", "UI Progress" },
+
+    { "Enabled", "Enabled" },
+
+    { "Interactable", "Interactable" },
+
+    { "Reference Width", "Reference Width" },
+
+    { "Reference Height", "Reference Height" },
+
+    { "Sort Order", "Sort Order" },
+
+    { "Custom", "Custom" },
+
+    { "Top Left", "Top Left" },
+
+    { "Top", "Top" },
+
+    { "Top Right", "Top Right" },
+
+    { "Left", "Left" },
+
+    { "Center", "Center" },
+
+    { "Right", "Right" },
+
+    { "Bottom Left", "Bottom Left" },
+
+    { "Bottom", "Bottom" },
+
+    { "Bottom Right", "Bottom Right" },
+
+    { "Stretch", "Stretch" },
+
+    { "Anchor Preset", "Anchor Preset" },
+
+    { "Anchor Minimum", "Anchor Minimum" },
+
+    { "Anchor Maximum", "Anchor Maximum" },
+
+    { "Offset Minimum", "Offset Minimum" },
+
+    { "Offset Maximum", "Offset Maximum" },
+
+    { "Pivot", "Pivot" },
+
+    { "Rotation", "Rotation" },
+
+    { "Order", "Order" },
+
+    { "Texture", "Texture" },
+
+    { "Fallback Texture", "Fallback Texture" },
+
+    { "Tint", "Tint" },
+
+    { "Order Offset", "Order Offset" },
+
+    { "Text", "Text" },
+
+
+    { "Pixel Height", "Pixel Height" },
+
+    { "Color", "Color" },
+
+    { "Horizontal Align", "Horizontal Align" },
+
+    { "Vertical Align", "Vertical Align" },
+
+    { "Default Focus", "Default Focus" },
+
+    { "Navigation Order", "Navigation Order" },
+
+    { "Submit Action", "Submit Action" },
+
+    { "On Click Event", "On Click Event" },
+
+    { "Button Colors", "Button Colors" },
+
+    { "State transition seconds", "State transition seconds" },
+
+    { "Normal", "Normal" },
+
+    { "Hover", "Hover" },
+
+    { "Pressed", "Pressed" },
+
+    { "Disabled", "Disabled" },
+
+    { "uix.actionNone", "No visibility action" },
+
+    { "uix.actionShow", "Show" },
+
+    { "uix.actionHide", "Hide" },
+
+    { "uix.actionToggle", "Toggle" },
+
+    { "uix.groupAction", "On click: group visibility" },
+
+    { "uix.groupTarget", "Target object with UI Group" },
+
+    { "uix.menu", "Main menu" },
+
+    { "uix.hud", "Health HUD" },
+
+    { "uix.health", "Health" },
+
+
+    { "uix.close", "Close" },
+
+    { "uix.parent", "Container" },
+
+    { "uix.continue", "Continue" },
+
+    { "uix.help", "Help" },
+
+    { "uix.helpText", "Edit text content in the UI workspace. Select a reusable appearance from Text Styles." },
+
+    { "uix.modal", "Modal: block other UI input" },
+
+    { "uix.addComponent", "Add component" },
+
+    { "uix.savedPrefabs", "Saved Prefabs" },
+
+    { "textstyle.asset", "Text style" },
+    { "textstyle.font", "Font asset" },
+    { "textstyle.name", "Style name" },
+    { "textstyle.restore", "Restore style values" },
+    { "textstyle.overrides", "Local overrides" },
+    { "textstyle.library", "Text styles" },
+    { "textstyle.new", "New text style" },
+    { "textstyle.preview", "Style preview" },
+    { "textstyle.saveCopy", "Save a copy" },
+    { "textstyle.light", "Light background" },
+    { "textstyle.workflow", "Create and save a style, then select it on UI or 3D text components." },
+    { "textstyle.start", "Create or open a text style on the left." },
+    { "textstyle.worldSupport", "UI supports all appearance fields. 3D text shares font, color, outline and spacing; world size stays on the component. Shadow and glow are currently UI-only." },
+    { "textstyle.fontImported", "Font imported. Select it from a text component or text style font field." },
+    { "textstyle.unsaved", "Unsaved text style" },
+    { "textstyle.unsavedHelp", "Save this style before opening another?" },
+    { "textstyle.saveContinue", "Save and continue" },
+    { "textstyle.discardContinue", "Discard and continue" },
+
+    { "display.panel", "Display settings" },
+    { "display.control", "Display setting control" },
+    { "display.panelHelp", "Child controls edit a shared draft. Apply changes in a game window; window changes require confirmation." },
+    { "display.controlHelp", "Bind a text or button to a display option or panel action." },
+    { "display.confirmSeconds", "Window confirmation time" },
+    { "display.aa", "Anti-aliasing" },
+    { "display.renderResolution", "Render resolution" },
+    { "display.windowResolution", "Window size" },
+    { "display.windowMode", "Window mode" },
+    { "display.dlssQuality", "DLSS quality" },
+    { "display.frameGeneration", "Frame generation" },
+    { "display.vsync", "Vertical sync" },
+    { "display.viewport", "Match viewport" },
+    { "display.windowed", "Windowed" },
+    { "display.borderless", "Borderless" },
+    { "display.fullscreen", "Fullscreen" },
+    { "display.quality", "Quality" },
+    { "display.balanced", "Balanced" },
+    { "display.performance", "Performance" },
+    { "display.ultraPerformance", "Ultra performance" },
+    { "display.cycle", "Change option" },
+    { "display.apply", "Apply" },
+    { "display.revert", "Revert" },
+    { "display.keep", "Keep changes" },
+    { "display.status", "Status message" },
+    { "display.action", "Action" },
+    { "display.setting", "Setting" },
+    { "display.previous", "Previous option" },
+    { "display.next", "Next option" },
+    { "display.direction", "Direction" },
+    { "display.ready", "Choose options, then apply." },
+    { "display.changed", "Unapplied changes" },
+    { "display.applying", "Applying changes..." },
+    { "display.applied", "Changes applied" },
+    { "display.confirm", "Keep these window settings? Reverts automatically when time runs out." },
+    { "display.reverting", "Restoring previous settings..." },
+    { "display.reverted", "Previous settings restored" },
+    { "display.failed", "The change could not be completed. Check the runtime log." },
+    { "display.unsupported", "Not supported" },
+    { "display.invalid", "Unknown setting" },
+    { "display.gameWindowRequired", "Run in a game window to change display settings." },
+    { "textstyle.emptyPreview", "Enter some sample text to preview this style." },
+    { "textstyle.previewRejected", "Text preview submission failed. Check the font asset and style values." },
+    { "uix.previewFailed", "Preview rendering failed. Check the render log for details." },
+    { "uix.previewFontFailed", "Some text could not be rendered. Check its font file and reimport it; other content remains visible." },
+    { "uix.textSubmissionFailed", "Some text has no usable font or could not be submitted. Check its font and text style bindings." },
+    { "uianim.asset", "UI Animation" },
+    { "uianim.animator", "UI Animator" },
+    { "uianim.animatorHelp", "Play reusable clips on this UI hierarchy." },
+    { "uianim.target", "UI Animation Target" },
+    { "uianim.targetHelp", "A unique named slot inside the parent animator." },
+    { "uianim.speed", "Speed" },
+    { "uianim.unscaled", "Continue while paused" },
+    { "uianim.slot", "Target slot" },
+    { "uianim.offsetX", "Offset X" },
+    { "uianim.offsetY", "Offset Y" },
+    { "uianim.scaleX", "Scale X" },
+    { "uianim.scaleY", "Scale Y" },
+    { "uianim.rotation", "Rotation" },
+    { "uianim.red", "Red multiplier" },
+    { "uianim.green", "Green multiplier" },
+    { "uianim.blue", "Blue multiplier" },
+    { "uianim.timeline", "UI Animation" },
+    { "uianim.new", "New animation" },
+    { "uianim.open", "Open animation asset" },
+    { "uianim.panel", "Panel · Open / Close" },
+    { "uianim.button", "Button · Interaction" },
+    { "uianim.empty", "Empty animation" },
+    { "uianim.saveAs", "Save animation copy" },
+    { "uianim.bind", "Bind to selected element" },
+    { "uianim.start", "Select a UI element, create an animation, then save and bind it. Preview does not change the base layout." },
+    { "uianim.addClip", "Add clip" },
+    { "uianim.deleteClip", "Delete clip" },
+    { "uianim.duration", "Duration" },
+    { "uianim.repeat", "Repeat in game" },
+    { "uianim.preview", "Preview animation" },
+    { "uianim.previewTargetMissing", "Select a UI root and check target slots before previewing. Stop game Play first." },
+    { "uianim.previewLoop", "Loop preview" },
+    { "uianim.autoKey", "Auto key" },
+    { "uianim.curve", "Curve" },
+    { "uianim.addTrack", "Add property" },
+    { "uianim.deleteTrack", "Delete track" },
+    { "uianim.trigger.Manual", "Code / manual" },
+    { "uianim.trigger.Open", "Open" },
+    { "uianim.trigger.Close", "Close" },
+    { "uianim.trigger.Normal", "Normal" },
+    { "uianim.trigger.Hover", "Hover / focus" },
+    { "uianim.trigger.Press", "Press" },
+    { "uianim.trigger.Disabled", "Disabled" },
+    { "uianim.previewRoot", "Preview root" },
+    { "uianim.selectRoot", "Choose a UI root to preview" },
+    { "uianim.useSelection", "Use selected element as preview root" },
+    { "uibind.component", "UI Data Binding" },
+    { "uibind.help", "Display runtime variables without writing game rules in the UI." },
+    { "uibind.integer", "Integer value" },
+    { "uibind.text", "Text value" },
+    { "uibind.prefix", "Prefix" },
+    { "uibind.suffix", "Suffix" },
+    { "uibind.decimals", "Decimal places" },
+    { "uibind.visible", "Visible when true" },
+    { "uibind.interactable", "Interactable when true" },
+    { "uianim.outsideRoot", "Select an element inside the preview root. Nested animators own their descendants." },
+    { "uianim.useSelectedTarget", "Track target ← selected element" },
+    { "uianim.discard", "Discard draft changes and reload saved asset" },

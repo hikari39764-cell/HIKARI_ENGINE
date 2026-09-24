@@ -17,169 +17,76 @@
 namespace HIKARI::EDITOR::LIGHTING_BAKE_PANEL {
 
 #if defined(HIKARI_WITH_EDITOR)
-    namespace {
+namespace {
 
-        uint32_t CountEnabledItems(
-            const TOOLS::BAKING::LightingBakeStatus& status,
-            TOOLS::BAKING::LightingBakeItemKind kind) {
+uint32_t CountEnabledItems(const TOOLS::BAKING::LightingBakeStatus& status, TOOLS::BAKING::LightingBakeItemKind kind) {
+    return static_cast<uint32_t>(std::count_if(
+        status.items.begin(), status.items.end(),
+        [kind](const TOOLS::BAKING::LightingBakeItemStatus& item) { return item.enabled && item.kind == kind; }));
+}
 
-            return static_cast<uint32_t>(std::count_if(
-                status.items.begin(),
-                status.items.end(),
-                [kind](
-                    const TOOLS::BAKING::
-                        LightingBakeItemStatus& item) {
-                    return item.enabled &&
-                        item.kind == kind;
-                }));
-        }
-
-    } // namespace
+} // namespace
 #endif
 
-    void DrawWorkflowSummary(
-        const TOOLS::BAKING::LightingBakeStatus& status,
-        const EditorThemePalette& palette) {
+void DrawWorkflowSummary(const TOOLS::BAKING::LightingBakeStatus& status, const EditorThemePalette& palette) {
 #if defined(HIKARI_WITH_EDITOR)
-        const uint32_t reflectionCount =
-            CountEnabledItems(
-                status,
-                TOOLS::BAKING::LightingBakeItemKind::
-                    ReflectionProbe);
-        const uint32_t irradianceCount =
-            CountEnabledItems(
-                status,
-                TOOLS::BAKING::LightingBakeItemKind::
-                    IrradianceVolume);
-        const uint32_t lightmapCount =
-            CountEnabledItems(
-                status,
-                TOOLS::BAKING::LightingBakeItemKind::
-                    LightmapObject);
-        const GFX::RAYTRACING::DxrCapabilities dxr =
-            GFX::RAYTRACING::QueryDxrCapabilities(
-                GFX::GetCurrentContext().device);
+    const uint32_t reflectionCount = CountEnabledItems(status, TOOLS::BAKING::LightingBakeItemKind::ReflectionProbe);
+    const uint32_t irradianceCount = CountEnabledItems(status, TOOLS::BAKING::LightingBakeItemKind::IrradianceVolume);
+    const uint32_t lightmapCount = CountEnabledItems(status, TOOLS::BAKING::LightingBakeItemKind::LightmapObject);
+    const GFX::RAYTRACING::DxrCapabilities dxr = GFX::RAYTRACING::QueryDxrCapabilities(GFX::GetCurrentContext().device);
 
-        ImGui::SeparatorText(
-            TEXT::Localize(
-                "ui.lightingBake.lightingFoundation").c_str());
-        if (ImGui::BeginTable(
-                "LightingFoundationSummary",
-                4,
-                ImGuiTableFlags_SizingStretchSame |
-                    ImGuiTableFlags_BordersInnerV)) {
-            ImGui::TableNextColumn();
-            ImGui::TextDisabled(
-                "%s",
-                TEXT::Localize(
-                    "ui.lightingBake.diffuseGi").c_str());
-            ImGui::Text(
-                TEXT::Localize(
-                    "ui.lightingBake.irradianceVolumeFormat").c_str(),
-                irradianceCount,
-                irradianceCount == 1u ? "" : "s");
-            ImGui::TextDisabled(
-                "%s",
-                TEXT::Localize(
-                    "ui.lightingBake.fallbackSkyAmbient").c_str());
+    ImGui::SeparatorText(TEXT::Localize("ui.lightingBake.lightingFoundation").c_str());
+    if (ImGui::BeginTable("LightingFoundationSummary", 4,
+                          ImGuiTableFlags_SizingStretchSame | ImGuiTableFlags_BordersInnerV)) {
+        ImGui::TableNextColumn();
+        ImGui::TextDisabled("%s", TEXT::Localize("ui.lightingBake.diffuseGi").c_str());
+        ImGui::Text(TEXT::Localize("ui.lightingBake.irradianceVolumeFormat").c_str(), irradianceCount,
+                    irradianceCount == 1u ? "" : "s");
+        ImGui::TextDisabled("%s", TEXT::Localize("ui.lightingBake.fallbackSkyAmbient").c_str());
 
-            ImGui::TableNextColumn();
-            ImGui::TextDisabled(
-                "%s",
-                TEXT::Localize(
-                    "ui.lightingBake.surfaceGi").c_str());
-            ImGui::Text(
-                TEXT::Localize(
-                    "ui.lightingBake.lightmapTargetFormat").c_str(),
-                lightmapCount,
-                lightmapCount == 1u ? "" : "s");
-            ImGui::TextDisabled(
-                dxr.SupportsInlineRayQuery()
-                    ? TEXT::Localize(
-                        "ui.lightingBake.dxrReady").c_str()
-                    : TEXT::Localize(
-                        "ui.lightingBake.dxrUnavailable").c_str());
-            ImGui::TextDisabled(
-                TEXT::Localize(
-                    "ui.lightingBake.lightmapBudgetFormat").c_str(),
-                ASSETS::LIGHTING::
-                    kSurfaceLightmapDefaultResolution,
-                ASSETS::LIGHTING::
-                    kSurfaceLightmapDefaultSampleCount,
-                ASSETS::LIGHTING::
-                    kSurfaceLightmapDefaultBounceCount);
+        ImGui::TableNextColumn();
+        ImGui::TextDisabled("%s", TEXT::Localize("ui.lightingBake.surfaceGi").c_str());
+        ImGui::Text(TEXT::Localize("ui.lightingBake.lightmapTargetFormat").c_str(), lightmapCount,
+                    lightmapCount == 1u ? "" : "s");
+        ImGui::TextDisabled(dxr.SupportsInlineRayQuery() ? TEXT::Localize("ui.lightingBake.dxrReady").c_str()
+                                                         : TEXT::Localize("ui.lightingBake.dxrUnavailable").c_str());
+        ImGui::TextDisabled(TEXT::Localize("ui.lightingBake.lightmapBudgetFormat").c_str(),
+                            ASSETS::LIGHTING::kSurfaceLightmapDefaultResolution,
+                            ASSETS::LIGHTING::kSurfaceLightmapDefaultSampleCount,
+                            ASSETS::LIGHTING::kSurfaceLightmapDefaultBounceCount);
 
-            ImGui::TableNextColumn();
-            ImGui::TextDisabled(
-                "%s",
-                TEXT::Localize(
-                    "ui.lightingBake.specular").c_str());
-            ImGui::Text(
-                TEXT::Localize(
-                    "ui.lightingBake.reflectionProbeFormat").c_str(),
-                reflectionCount,
-                reflectionCount == 1u ? "" : "s");
-            ImGui::TextDisabled(
-                "%s",
-                TEXT::Localize(
-                    "ui.lightingBake.fallbackSkyIbl").c_str());
+        ImGui::TableNextColumn();
+        ImGui::TextDisabled("%s", TEXT::Localize("ui.lightingBake.specular").c_str());
+        ImGui::Text(TEXT::Localize("ui.lightingBake.reflectionProbeFormat").c_str(), reflectionCount,
+                    reflectionCount == 1u ? "" : "s");
+        ImGui::TextDisabled("%s", TEXT::Localize("ui.lightingBake.fallbackSkyIbl").c_str());
 
-            ImGui::TableNextColumn();
-            ImGui::TextDisabled(
-                "%s",
-                TEXT::Localize(
-                    "ui.lightingBake.bakeState").c_str());
-            if (!status.valid) {
-                StatusBadge(
-                    TEXT::Localize(
-                        "ui.lightingBake.unavailable").c_str(),
-                    EditorStatusTone::Error);
-            } else if (status.dirtyCount > 0u) {
-                StatusBadge(
-                    TEXT::Localize(
-                        "ui.lightingBake.needsBake").c_str(),
-                    EditorStatusTone::Warning);
-            } else {
-                StatusBadge(
-                    TEXT::Localize(
-                        "ui.lightingBake.readyBadge").c_str(),
-                    EditorStatusTone::Ready);
-            }
-            ImGui::TextDisabled(
-                "%s",
-                TEXT::Localize(
-                    "ui.lightingBake.bakeOnlyCaptures").c_str());
-            ImGui::EndTable();
-        }
-
+        ImGui::TableNextColumn();
+        ImGui::TextDisabled("%s", TEXT::Localize("ui.lightingBake.bakeState").c_str());
         if (!status.valid) {
-            ImGui::TextColored(
-                palette.warning,
-                "%s",
-                TEXT::Localize(
-                    "ui.lightingBake.saveSceneWarning").c_str());
+            StatusBadge(TEXT::Localize("ui.lightingBake.unavailable").c_str(), EditorStatusTone::Error);
         } else if (status.dirtyCount > 0u) {
-            ImGui::TextColored(
-                palette.warning,
-                TEXT::Localize(
-                    "ui.lightingBake.dirtyWarningFormat").c_str(),
-                status.dirtyCount,
-                status.dirtyCount == 1u ? "" : "s");
-        } else if (status.totalCount > 0u) {
-            ImGui::TextColored(
-                palette.success,
-                "%s",
-                TEXT::Localize(
-                    "ui.lightingBake.readyNote").c_str());
+            StatusBadge(TEXT::Localize("ui.lightingBake.needsBake").c_str(), EditorStatusTone::Warning);
+        } else {
+            StatusBadge(TEXT::Localize("ui.lightingBake.readyBadge").c_str(), EditorStatusTone::Ready);
         }
-        ImGui::TextDisabled(
-            "%s",
-            TEXT::Localize(
-                "ui.lightingBake.surfaceLightmapHint").c_str());
-#else
-        (void)status;
-        (void)palette;
-#endif
+        ImGui::TextDisabled("%s", TEXT::Localize("ui.lightingBake.bakeOnlyCaptures").c_str());
+        ImGui::EndTable();
     }
+
+    if (!status.valid) {
+        ImGui::TextColored(palette.warning, "%s", TEXT::Localize("ui.lightingBake.saveSceneWarning").c_str());
+    } else if (status.dirtyCount > 0u) {
+        ImGui::TextColored(palette.warning, TEXT::Localize("ui.lightingBake.dirtyWarningFormat").c_str(),
+                           status.dirtyCount, status.dirtyCount == 1u ? "" : "s");
+    } else if (status.totalCount > 0u) {
+        ImGui::TextColored(palette.success, "%s", TEXT::Localize("ui.lightingBake.readyNote").c_str());
+    }
+    ImGui::TextDisabled("%s", TEXT::Localize("ui.lightingBake.surfaceLightmapHint").c_str());
+#else
+    (void)status;
+    (void)palette;
+#endif
+}
 
 } // namespace HIKARI::EDITOR::LIGHTING_BAKE_PANEL

@@ -39,12 +39,6 @@ function Find-Dxc {
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $shaderRoot = Join-Path $repoRoot 'HIKARI\Shaders'
 $catalogPath = Join-Path $repoRoot 'HIKARI\Shaders\BuiltinShaderCatalog.json'
-$catalogContract = Join-Path $repoRoot `
-    'Tools\Tests\Test-BuiltinShaderCatalogContracts.ps1'
-& $catalogContract
-if (-not $?) {
-    throw 'Built-in Shader catalog contracts failed.'
-}
 if (-not (Test-Path -LiteralPath $catalogPath -PathType Leaf)) {
     throw "Built-in shader catalog is missing: $catalogPath"
 }

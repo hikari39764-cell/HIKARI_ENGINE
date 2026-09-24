@@ -31,11 +31,6 @@ float2 HikariComplexMultiply(float2 a, float2 b)
         a.x * b.y + a.y * b.x);
 }
 
-float HikariComplexReal(float2 value)
-{
-    return value.x;
-}
-
 uint2 HikariWrapCoord(int2 coord, uint size)
 {
     const int signedSize = (int)size;

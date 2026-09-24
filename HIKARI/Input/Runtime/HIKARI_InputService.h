@@ -42,9 +42,7 @@ public:
     const InputSnapshot& GetSnapshot() const noexcept { return snapshot_; }
     const InputActionMap& GetActionMap() const noexcept { return actionMap_; }
     InputActionMap& EditActionMap() noexcept { return actionMap_; }
-    const std::filesystem::path& GetInputDirectory() const noexcept {
-        return inputDirectory_;
-    }
+    const std::filesystem::path& GetInputDirectory() const noexcept { return inputDirectory_; }
     InputContextStack& Contexts() noexcept { return contexts_; }
     const InputContextStack& Contexts() const noexcept { return contexts_; }
     InputUser& GetPrimaryUser() noexcept { return primaryUser_; }
@@ -57,13 +55,8 @@ public:
     void CancelRebind();
     void ResetRebind();
     bool ConsumeRebindResult(InputRebindResult& outResult);
-    const InputRebindOperation& GetRebindOperation() const noexcept {
-        return rebindOperation_;
-    }
-    bool SetGamepadVibration(
-        float lowFrequency,
-        float highFrequency,
-        float durationSeconds = 0.0f);
+    const InputRebindOperation& GetRebindOperation() const noexcept { return rebindOperation_; }
+    bool SetGamepadVibration(float lowFrequency, float highFrequency, float durationSeconds = 0.0f);
     void StopGamepadVibration();
     bool IsGamepadVibrating() const noexcept { return vibrationActive_; }
     const std::string& GetLastError() const noexcept { return lastError_; }
@@ -72,9 +65,7 @@ private:
     float ReadBindingValue(const InputBinding& binding) const;
     bool IsModifierDown(const std::string& modifier) const;
     uint32_t ResolveGamepadIndex() const;
-    void UpdateLastActiveDevice(
-        const InputDeviceState& previousDevices,
-        float unscaledDeltaSeconds);
+    void UpdateLastActiveDevice(const InputDeviceState& previousDevices, float unscaledDeltaSeconds);
     void ResetRuntimeState();
     void EvaluateActions(float dt);
     void SuppressActions();

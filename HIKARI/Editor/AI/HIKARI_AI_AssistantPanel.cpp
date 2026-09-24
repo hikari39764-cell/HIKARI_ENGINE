@@ -17,48 +17,60 @@ void AiAssistantPanel::TickAttachments() { PollAttachmentCapture(); }
 void AiAssistantPanel::DrawEmbedded() { DrawContents(); }
 void AiAssistantPanel::DrawPreferences() {
     if (!showApiSettings_) {
-        OpenApiSettingsBuffers(); OpenVisionBuffers(); showApiSettings_ = true;
+        OpenApiSettingsBuffers();
+        OpenVisionBuffers();
+        showApiSettings_ = true;
     }
     DrawSettings();
 }
 AiAssistantPanel::~AiAssistantPanel() {
     ResetComposer();
-    for (auto& [path,preview]:imagePreviews_) if (preview.handle>=0) DXTEX::DxTextureManager::ReleaseTextureDeferred(preview.handle);
+    for (auto& [path, preview] : imagePreviews_)
+        if (preview.handle >= 0)
+            DXTEX::DxTextureManager::ReleaseTextureDeferred(preview.handle);
 }
-
-
 
 void AiAssistantPanel::DrawAttachments(const std::vector<AI_ASSISTANT::AiImageAttachment>& images) {
 #if defined(HIKARI_WITH_EDITOR)
     for (size_t index = 0; index < images.size(); ++index) {
         const auto& image = images[index];
         ImGui::PushID(static_cast<int>(index));
-        auto& preview=imagePreviews_[image.path];
-        const float available=(std::min)(ImGui::GetContentRegionAvail().x,320.0f);
-        float ratio=preview.width && preview.height ? (std::min)(available/preview.width,190.0f/preview.height) : 1.0f;
-        const ImVec2 footprint=preview.width && preview.height ? ImVec2(preview.width*ratio,preview.height*ratio) : ImVec2(available,160);
-        if (!ImGui::IsRectVisible(footprint)) { ImGui::Dummy(footprint); ImGui::PopID(); continue; }
-        preview.lastFrame=ImGui::GetFrameCount();
-        if (preview.handle<0) preview.handle=DXTEX::DxTextureManager::LoadTextureLinear("ai/"+image.path,image.path);
-        D3D12_GPU_DESCRIPTOR_HANDLE srv{};
-        if (preview.handle>=0) {
-            srv=DXTEX::DxTextureManager::GetSrvGpuHandle(preview.handle);
-            DXTEX::DxTextureManager::GetTextureSize(preview.handle,preview.width,preview.height);
+        auto& preview = imagePreviews_[image.path];
+        const float available = (std::min)(ImGui::GetContentRegionAvail().x, 320.0f);
+        float ratio =
+            preview.width && preview.height ? (std::min)(available / preview.width, 190.0f / preview.height) : 1.0f;
+        const ImVec2 footprint = preview.width && preview.height ? ImVec2(preview.width * ratio, preview.height * ratio)
+                                                                 : ImVec2(available, 160);
+        if (!ImGui::IsRectVisible(footprint)) {
+            ImGui::Dummy(footprint);
+            ImGui::PopID();
+            continue;
         }
-        const auto w=preview.width,h=preview.height;
+        preview.lastFrame = ImGui::GetFrameCount();
+        if (preview.handle < 0)
+            preview.handle = DXTEX::DxTextureManager::LoadTextureLinear("ai/" + image.path, image.path);
+        D3D12_GPU_DESCRIPTOR_HANDLE srv{};
+        if (preview.handle >= 0) {
+            srv = DXTEX::DxTextureManager::GetSrvGpuHandle(preview.handle);
+            DXTEX::DxTextureManager::GetTextureSize(preview.handle, preview.width, preview.height);
+        }
+        const auto w = preview.width, h = preview.height;
         if (srv.ptr && w && h) {
             const ImTextureID texture = reinterpret_cast<ImTextureID>(static_cast<uintptr_t>(srv.ptr));
-            ratio=(std::min)(available/w,190.0f/h);
-            const float width=w*ratio,height=h*ratio;
-            if (ImGui::ImageButton("Image", texture, {width, height})) ImGui::OpenPopup("##FullImage");
+            ratio = (std::min)(available / w, 190.0f / h);
+            const float width = w * ratio, height = h * ratio;
+            if (ImGui::ImageButton("Image", texture, {width, height}))
+                ImGui::OpenPopup("##FullImage");
             if (ImGui::BeginPopup("##FullImage")) {
                 const auto area = ImGui::GetMainViewport()->WorkSize;
                 const float fullRatio = (std::min)(area.x * 0.75f / w, area.y * 0.75f / h);
                 ImGui::Image(texture, {w * fullRatio, h * fullRatio});
                 ImGui::EndPopup();
             }
-        } else ImGui::TextDisabled("%s", TEXT::Localize("ai.image.unavailable").c_str());
-        if (!image.label.empty()) ImGui::TextDisabled("%s", image.label.c_str());
+        } else
+            ImGui::TextDisabled("%s", TEXT::Localize("ai.image.unavailable").c_str());
+        if (!image.label.empty())
+            ImGui::TextDisabled("%s", image.label.c_str());
         ImGui::PopID();
     }
 #else
@@ -72,11 +84,16 @@ void AiAssistantPanel::DrawContents() {
     const bool busy = session_.IsBusy();
     const auto config = session_.SnapshotConfig();
     const auto activity = session_.SnapshotActivity();
-    const bool attention = activity.phase == "failed" || activity.phase == "blocked" || activity.phase == "needs_input" || activity.phase == "stopped" || activity.phase == "paused" || activity.phase == "budget";
-    const auto statusKey = busy ? "ai.phase." + activity.phase : !config.valid ? std::string("ai.status.noApi") :
-        attention ? "ai.phase." + activity.phase : std::string("ai.status.ready");
-    StatusBadge(TEXT::Localize(statusKey).c_str(), (!config.valid || attention) ? EditorStatusTone::Warning :
-        busy ? EditorStatusTone::Normal : EditorStatusTone::Ready);
+    const bool attention = activity.phase == "failed" || activity.phase == "blocked" ||
+                           activity.phase == "needs_input" || activity.phase == "stopped" ||
+                           activity.phase == "paused" || activity.phase == "budget";
+    const auto statusKey = busy            ? "ai.phase." + activity.phase
+                           : !config.valid ? std::string("ai.status.noApi")
+                           : attention     ? "ai.phase." + activity.phase
+                                           : std::string("ai.status.ready");
+    StatusBadge(TEXT::Localize(statusKey).c_str(), (!config.valid || attention) ? EditorStatusTone::Warning
+                                                   : busy                       ? EditorStatusTone::Normal
+                                                                                : EditorStatusTone::Ready);
     ImGui::SameLine();
     ImGui::TextDisabled("%s", config.model.c_str());
     if (!workspaceLabel_.empty()) {
@@ -88,7 +105,8 @@ void AiAssistantPanel::DrawContents() {
     DrawDraftMenu();
     ImGui::Spacing();
     ImGui::Separator();
-    const float inputHeight = 126.0f + (!attachments_.empty() ? 28.0f : 0.0f) + (!attachmentError_.empty() ? 42.0f : 0.0f);
+    const float inputHeight =
+        126.0f + (!attachments_.empty() ? 28.0f : 0.0f) + (!attachmentError_.empty() ? 42.0f : 0.0f);
     ImGui::BeginChild("##Conversation", {0, -inputHeight}, false);
     std::vector<AI_ASSISTANT::AiChatMessage> messages;
     {
@@ -111,8 +129,10 @@ void AiAssistantPanel::DrawContents() {
             ++i;
         }
         size_t end = i;
-        while (end < messages.size() && messages[end].role != "user") ++end;
-        if (end > i || (busy && end == messages.size())) DrawTask(messages, i, end, busy && end == messages.size());
+        while (end < messages.size() && messages[end].role != "user")
+            ++end;
+        if (end > i || (busy && end == messages.size()))
+            DrawTask(messages, i, end, busy && end == messages.size());
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::PopID();
@@ -129,19 +149,24 @@ void AiAssistantPanel::DrawContents() {
         ImGui::TextColored(palette.accent, "%s", TEXT::Localize("ai.chat.assistant").c_str());
         ImGui::TextWrapped("%s", partial.c_str());
     }
-    if (follow && (messages.size() != lastMessageCount_ || busy)) ImGui::SetScrollHereY(1.0f);
+    if (follow && (messages.size() != lastMessageCount_ || busy))
+        ImGui::SetScrollHereY(1.0f);
     lastMessageCount_ = messages.size();
     ImGui::EndChild();
     DrawComposer();
-    size_t liveImages=0;
-    for (auto& [path,preview]:imagePreviews_) {
-        if (preview.handle<0) continue;
+    size_t liveImages = 0;
+    for (auto& [path, preview] : imagePreviews_) {
+        if (preview.handle < 0)
+            continue;
         ++liveImages;
-        if (preview.lastFrame < ImGui::GetFrameCount()-120 || (liveImages>24 && preview.lastFrame<ImGui::GetFrameCount())) {
-            DXTEX::DxTextureManager::ReleaseTextureDeferred(preview.handle); preview.handle=-1;
+        if (preview.lastFrame < ImGui::GetFrameCount() - 120 ||
+            (liveImages > 24 && preview.lastFrame < ImGui::GetFrameCount())) {
+            DXTEX::DxTextureManager::ReleaseTextureDeferred(preview.handle);
+            preview.handle = -1;
         }
     }
-    if (!session_.storageError_.empty()) ImGui::TextWrapped("%s",session_.storageError_.c_str());
+    if (!session_.storageError_.empty())
+        ImGui::TextWrapped("%s", session_.storageError_.c_str());
 
 #endif
 }
@@ -153,4 +178,4 @@ void AiAssistantPanel::SendCurrentMessage() {
         attachmentError_.clear();
     }
 }
-}
+} // namespace HIKARI::EDITOR

@@ -4,8 +4,8 @@
 
 namespace HIKARI {
 
-    class IRuntimeFeature;
+class IRuntimeFeature;
 
-    std::unique_ptr<IRuntimeFeature> CreateRenderingRuntimeFeature();
+std::unique_ptr<IRuntimeFeature> CreateRenderingRuntimeFeature();
 
 } // namespace HIKARI

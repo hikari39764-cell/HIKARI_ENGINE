@@ -7,10 +7,7 @@
 
 namespace HIKARI::EDITOR {
 
-    std::unique_ptr<IEditorDocumentCommand>
-        MakeEnvironmentHistoryCommand(
-            std::string label,
-            SceneEnvironment before,
-            SceneEnvironment after);
+std::unique_ptr<IEditorDocumentCommand> MakeEnvironmentHistoryCommand(std::string label, SceneEnvironment before,
+                                                                      SceneEnvironment after);
 
 } // namespace HIKARI::EDITOR

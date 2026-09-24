@@ -6,16 +6,16 @@
 
 namespace HIKARI::EDITOR {
 
-    class PrimitiveCreationDialog {
-    public:
-        void Open(ProceduralMeshKind kind);
-        bool Draw(CreatePrimitiveRequest& outRequest);
+class PrimitiveCreationDialog {
+public:
+    void Open(ProceduralMeshKind kind);
+    bool Draw(CreatePrimitiveRequest& outRequest);
 
-    private:
-        std::array<char, 128> nameBuffer_{};
-        ProceduralMeshSettings settings_{};
-        bool addCollider_ = true;
-        bool openRequested_ = false;
-    };
+private:
+    std::array<char, 128> nameBuffer_{};
+    ProceduralMeshSettings settings_{};
+    bool addCollider_ = true;
+    bool openRequested_ = false;
+};
 
 } // namespace HIKARI::EDITOR

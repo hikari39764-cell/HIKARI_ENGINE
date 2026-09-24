@@ -11,75 +11,60 @@
 #include "Assets/Material/Compiler/HIKARI_MaterialCompiler.h"
 
 namespace HIKARI {
-    class AssetDatabase;
+class AssetDatabase;
 }
 
 namespace HIKARI::ASSETS::MATERIAL {
 
-    struct MaterialAuthoringDocument {
-        AssetGuid assetGuid{};
-        std::filesystem::path sourcePath{};
-        MaterialAssetData source{};
-        MaterialCompileResult compile{};
-        std::vector<std::string> migrationDiagnostics{};
-    };
+// 型と親の宣言を保ち、UI と外部操作で同じパラメータ編集を使う。
+bool SetMaterialParameterValue(MaterialAssetData& source, std::string_view parameterId, const MaterialValueData& value,
+                               std::string& outError, const MaterialAssetData* instanceParent = nullptr);
 
-    struct MaterialAuthoringResult {
-        bool success = false;
-        bool sourceSaved = false;
-        bool assetScanned = false;
-        bool imported = false;
-        AssetGuid assetGuid{};
-        std::filesystem::path sourcePath{};
-        MaterialCompileResult compile{};
-        std::string message{};
-    };
+struct MaterialAuthoringDocument {
+    AssetGuid assetGuid{};
+    std::filesystem::path sourcePath{};
+    MaterialAssetData source{};
+    MaterialCompileResult compile{};
+    std::vector<std::string> migrationDiagnostics{};
+};
 
-    class MaterialAssetAuthoringService {
-    public:
-        explicit MaterialAssetAuthoringService(
-            AssetDatabase& assetDatabase) noexcept;
+struct MaterialAuthoringResult {
+    bool success = false;
+    bool sourceSaved = false;
+    bool assetScanned = false;
+    bool imported = false;
+    AssetGuid assetGuid{};
+    std::filesystem::path sourcePath{};
+    MaterialCompileResult compile{};
+    std::string message{};
+};
 
-        bool Load(
-            const AssetGuid& assetGuid,
-            MaterialAuthoringDocument& outDocument,
-            std::string& outMessage) const;
+class MaterialAssetAuthoringService {
+public:
+    explicit MaterialAssetAuthoringService(AssetDatabase& assetDatabase) noexcept;
 
-        MaterialInstanceResolveResult ResolveInstance(
-            const MaterialAssetData& instanceSource) const;
+    bool Load(const AssetGuid& assetGuid, MaterialAuthoringDocument& outDocument, std::string& outMessage) const;
 
-        MaterialAuthoringResult Create(
-            MaterialTemplateId templateId,
-            std::string_view displayName,
-            const std::filesystem::path& directory = {});
+    MaterialInstanceResolveResult ResolveInstance(const MaterialAssetData& instanceSource) const;
 
-        MaterialAuthoringResult Create(
-            const MaterialAssetData& source,
-            const std::filesystem::path& directory = {});
+    MaterialAuthoringResult Create(MaterialTemplateId templateId, std::string_view displayName,
+                                   const std::filesystem::path& directory = {});
 
-        MaterialAuthoringResult Update(
-            const AssetGuid& assetGuid,
-            const MaterialAssetData& source);
+    MaterialAuthoringResult Create(const MaterialAssetData& source, const std::filesystem::path& directory = {});
 
-        MaterialAuthoringResult Save(
-            const AssetGuid& assetGuid,
-            const MaterialAssetData& source);
+    MaterialAuthoringResult Update(const AssetGuid& assetGuid, const MaterialAssetData& source);
 
-        MaterialAuthoringResult SaveAs(
-            const MaterialAssetData& source,
-            const std::filesystem::path& destination);
+    MaterialAuthoringResult Save(const AssetGuid& assetGuid, const MaterialAssetData& source);
 
-        MaterialAuthoringResult ImportAndScan(
-            const std::filesystem::path& sourcePath,
-            bool createMissingMeta = true);
+    MaterialAuthoringResult SaveAs(const MaterialAssetData& source, const std::filesystem::path& destination);
 
-    private:
-        MaterialAuthoringResult SaveToPath(
-            const MaterialAssetData& source,
-            const std::filesystem::path& destination,
-            bool createMissingMeta);
+    MaterialAuthoringResult ImportAndScan(const std::filesystem::path& sourcePath, bool createMissingMeta = true);
 
-        AssetDatabase& assetDatabase_;
-    };
+private:
+    MaterialAuthoringResult SaveToPath(const MaterialAssetData& source, const std::filesystem::path& destination,
+                                       bool createMissingMeta);
+
+    AssetDatabase& assetDatabase_;
+};
 
 } // namespace HIKARI::ASSETS::MATERIAL

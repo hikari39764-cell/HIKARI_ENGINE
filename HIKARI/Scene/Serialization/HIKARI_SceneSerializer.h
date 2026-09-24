@@ -4,12 +4,12 @@
 
 namespace HIKARI {
 
-    struct SceneDocument;
+struct SceneDocument;
 
-    class SceneSerializer {
-    public:
-        bool LoadFromFile(const std::string& path, SceneDocument& outDocument) const;
-        bool SaveToFile(const std::string& path, const SceneDocument& document) const;
-    };
+class SceneSerializer {
+public:
+    bool LoadFromFile(const std::string& path, SceneDocument& outDocument) const;
+    bool SaveToFile(const std::string& path, const SceneDocument& document) const;
+};
 
 } // namespace HIKARI

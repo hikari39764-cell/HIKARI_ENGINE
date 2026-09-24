@@ -20,7 +20,7 @@ std::vector<AI_ASSISTANT::AiChatMessage> AiAssistantSession::SnapshotMessages() 
 }
 void AiAssistantSession::SetConfig(AI_ASSISTANT::AiChatConfig config) {
     std::lock_guard<std::mutex> lock(stateMutex_);
-    config_=std::move(config);
+    config_ = std::move(config);
 }
 
 AiAssistantSession::TaskActivity AiAssistantSession::SnapshotActivity() const {
@@ -29,10 +29,12 @@ AiAssistantSession::TaskActivity AiAssistantSession::SnapshotActivity() const {
 }
 void AiAssistantSession::SetActivity(std::string phase, std::string action, std::string sessionId) {
     std::lock_guard<std::mutex> lock(stateMutex_);
-    if (activity_.phase != phase || activity_.action != action) activity_.since = std::chrono::steady_clock::now();
+    if (activity_.phase != phase || activity_.action != action)
+        activity_.since = std::chrono::steady_clock::now();
     activity_.phase = std::move(phase);
     activity_.action = std::move(action);
-    if (!sessionId.empty()) activity_.sessionId = std::move(sessionId);
+    if (!sessionId.empty())
+        activity_.sessionId = std::move(sessionId);
 }
 
 void AiAssistantSession::Stop() {
@@ -43,66 +45,89 @@ void AiAssistantSession::Stop() {
 }
 
 void AiAssistantSession::Cancel() {
-    const bool wasStopped=stopRequested_.exchange(true);
+    const bool wasStopped = stopRequested_.exchange(true);
     generation_.fetch_add(1);
     cancelOwnerRequested_.store(true);
-    if (IsBusy()) SetActivity("stopped");
+    if (IsBusy())
+        SetActivity("stopped");
     actionCv_.notify_all();
-    if (!wasStopped && IsBusy()) AppendMessage({"assistant","已停止。已执行的修改保留在对应文档中，可以继续编辑或撤销。"});
+    if (!wasStopped && IsBusy())
+        AppendMessage({"assistant", "已停止。已执行的修改保留在对应文档中，可以继续编辑或撤销。"});
 }
 
-void AiAssistantSession::AppendMessage(
-    const AI_ASSISTANT::AiChatMessage& message) {
+void AiAssistantSession::AppendMessage(const AI_ASSISTANT::AiChatMessage& message) {
     auto stored = message;
-    if (stored.role == "assistant") stored.data["phase"] = SnapshotActivity().phase;
+    if (stored.role == "assistant")
+        stored.data["phase"] = SnapshotActivity().phase;
     std::lock_guard<std::mutex> lock(messageMutex_);
     messages_.push_back(std::move(stored));
     conversationDirty_.store(true);
     if (messages_.size() > 120u) {
         // 完了済みのターン単位で整理し、別の依頼の結果を混ぜない。
-        const auto nextUser = std::find_if(messages_.begin()+1,messages_.end(),
-            [](const auto& item) { return item.role == "user"; });
-        if (nextUser != messages_.end()) messages_.erase(messages_.begin(),nextUser);
+        const auto nextUser =
+            std::find_if(messages_.begin() + 1, messages_.end(), [](const auto& item) { return item.role == "user"; });
+        if (nextUser != messages_.end())
+            messages_.erase(messages_.begin(), nextUser);
         else {
             size_t removed = 0, failures = 0, entries = 0;
-            for (size_t i=20; i+60<messages_.size() && entries<24;) {
-                if (messages_[i].role != "tool") { ++i; continue; }
+            for (size_t i = 20; i + 60 < messages_.size() && entries < 24;) {
+                if (messages_[i].role != "tool") {
+                    ++i;
+                    continue;
+                }
                 ++entries;
-                removed += messages_[i].data.value("archivedSteps",size_t{1});
-                failures += messages_[i].data.value("archivedFailures",size_t{messages_[i].data.value("ok",true)?0u:1u});
-                messages_.erase(messages_.begin()+i);
+                removed += messages_[i].data.value("archivedSteps", size_t{1});
+                failures +=
+                    messages_[i].data.value("archivedFailures", size_t{messages_[i].data.value("ok", true) ? 0u : 1u});
+                messages_.erase(messages_.begin() + i);
             }
-            if (removed) messages_.insert(messages_.begin()+20,AI_ASSISTANT::AiChatMessage{
-                "tool","较早的操作明细已压缩，保留步骤计数。",{},
-                {{"action","history.compacted"},{"ok",failures==0},{"archivedSteps",removed},{"archivedFailures",failures}}});
+            if (removed)
+                messages_.insert(messages_.begin() + 20,
+                                 AI_ASSISTANT::AiChatMessage{"tool",
+                                                             "较早的操作明细已压缩，保留步骤计数。",
+                                                             {},
+                                                             {{"action", "history.compacted"},
+                                                              {"ok", failures == 0},
+                                                              {"archivedSteps", removed},
+                                                              {"archivedFailures", failures}}});
         }
     }
 }
 
 void AiAssistantSession::AppendProgress(const std::string& text) {
-    const std::string display =
-        AI_ASSISTANT::StripActionJsonForDisplay(text);
+    const std::string display = AI_ASSISTANT::StripActionJsonForDisplay(text);
     AI_ASSISTANT::AiChatMessage progress{"assistant", display};
     progress.data["kind"] = "progress";
     AppendMessage(progress);
-
 }
 
 void AiAssistantSession::RecordUsage(const AI_ASSISTANT::AiChatUsage& usage,
-    const AI_ASSISTANT::AiChatRequestStats& stats) {
-    if (!stats.sentTextBytes) return;
+                                     const AI_ASSISTANT::AiChatRequestStats& stats) {
+    if (!stats.sentTextBytes)
+        return;
     std::lock_guard<std::mutex> lock(messageMutex_);
     for (auto it = messages_.rbegin(); it != messages_.rend(); ++it) {
-        if (it->role != "user") continue;
+        if (it->role != "user")
+            continue;
         auto& total = it->data["usage"];
-        if (!total.is_object()) total = nlohmann::json::object();
+        if (!total.is_object())
+            total = nlohmann::json::object();
         const auto add = [&total](const char* key, int64_t value) {
             total[key] = total.value(key, int64_t{0}) + value;
         };
         add("requests", 1);
-        if (usage.inputTokens >= 0) { add("inputTokens", usage.inputTokens); add("inputReports", 1); }
-        if (usage.outputTokens >= 0) { add("outputTokens", usage.outputTokens); add("outputReports", 1); }
-        if (usage.cachedTokens >= 0) { add("cachedTokens", usage.cachedTokens); add("cacheReports", 1); }
+        if (usage.inputTokens >= 0) {
+            add("inputTokens", usage.inputTokens);
+            add("inputReports", 1);
+        }
+        if (usage.outputTokens >= 0) {
+            add("outputTokens", usage.outputTokens);
+            add("outputReports", 1);
+        }
+        if (usage.cachedTokens >= 0) {
+            add("cachedTokens", usage.cachedTokens);
+            add("cacheReports", 1);
+        }
         total["lastSourceTextBytes"] = stats.sourceTextBytes;
         total["lastSentTextBytes"] = stats.sentTextBytes;
         total["lastSentImages"] = stats.sentImages;
@@ -111,8 +136,7 @@ void AiAssistantSession::RecordUsage(const AI_ASSISTANT::AiChatUsage& usage,
     }
 }
 
-void AiAssistantSession::SetSceneActionCallback(
-    AiSceneActionCallback callback) {
+void AiAssistantSession::SetSceneActionCallback(AiSceneActionCallback callback) {
     std::lock_guard<std::mutex> lock(stateMutex_);
     sceneActionCallback_ = std::move(callback);
 }
@@ -127,16 +151,14 @@ void AiAssistantSession::SetContextProvider(std::function<std::string()> provide
     contextProvider_ = std::move(provider);
 }
 
-void AiAssistantSession::SetCapabilityProvider(
-    AiCapabilityProvider callback, std::function<uint64_t()> revision) {
+void AiAssistantSession::SetCapabilityProvider(AiCapabilityProvider callback, std::function<uint64_t()> revision) {
     std::lock_guard<std::mutex> lock(stateMutex_);
     capabilityProvider_ = std::move(callback);
     capabilityVersionProvider_ = std::move(revision);
     capabilityRevision_ = ~uint64_t{0};
 }
 
-std::vector<AI_ASSISTANT::AiCapability> AiAssistantSession::Capabilities()
-    const {
+std::vector<AI_ASSISTANT::AiCapability> AiAssistantSession::Capabilities() const {
     std::lock_guard<std::mutex> lock(stateMutex_);
     return capabilitySnapshot_;
 }
@@ -146,25 +168,30 @@ void AiAssistantSession::RefreshCapabilities(bool onlyIfChanged) {
     AiCapabilityProvider provider;
     std::function<uint64_t()> version;
     uint64_t previous;
-    { std::lock_guard<std::mutex> lock(stateMutex_);
-      provider = capabilityProvider_; version = capabilityVersionProvider_; previous = capabilityRevision_; }
-    if (onlyIfChanged && !version) return;
+    {
+        std::lock_guard<std::mutex> lock(stateMutex_);
+        provider = capabilityProvider_;
+        version = capabilityVersionProvider_;
+        previous = capabilityRevision_;
+    }
+    if (onlyIfChanged && !version)
+        return;
     const auto revision = version ? version() : 0;
-    if (onlyIfChanged && previous == revision) return;
+    if (onlyIfChanged && previous == revision)
+        return;
     auto capabilities = provider ? provider() : AI_ASSISTANT::BuiltInCapabilities();
-    { std::lock_guard<std::mutex> lock(stateMutex_); capabilitySnapshot_ = std::move(capabilities); capabilityRevision_ = revision; }
+    {
+        std::lock_guard<std::mutex> lock(stateMutex_);
+        capabilitySnapshot_ = std::move(capabilities);
+        capabilityRevision_ = revision;
+    }
 }
 
-void AiAssistantSession::SetBridgeStatus(const std::string& status) {
-    bridgeStatus_ = status;
-}
+void AiAssistantSession::SetBridgeStatus(const std::string& status) { bridgeStatus_ = status; }
 
-void AiAssistantSession::SetBridgeSessionToken(std::string token) {
-    bridgeSessionToken_ = std::move(token);
-}
+void AiAssistantSession::SetBridgeSessionToken(std::string token) { bridgeSessionToken_ = std::move(token); }
 
-AI_ASSISTANT::AiRequestResult AiAssistantSession::ExecuteRequest(
-    std::string_view json) {
+AI_ASSISTANT::AiRequestResult AiAssistantSession::ExecuteRequest(std::string_view json) {
     if (stopRequested_.load()) {
         AI_ASSISTANT::AiRequestResult result{};
         result.code = "ACTION_CANCELED";
@@ -172,16 +199,13 @@ AI_ASSISTANT::AiRequestResult AiAssistantSession::ExecuteRequest(
         return result;
     }
 
-    const std::string action =
-        AI_ASSISTANT::ExtractJsonField(json, "action");
+    const std::string action = AI_ASSISTANT::ExtractJsonField(json, "action");
     // Panel-local actions are handled here; every other action is routed to
     // the unified operation registry through the scene callback.
-    const bool panelLocalAction =
-        action == "query.capabilities" ||
-        action == "vision.analyze_image" || action == "context.image" ||
-        action == "help";
+    const bool panelLocalAction = action == "query.capabilities" || action == "vision.analyze_image" ||
+                                  action == "context.image" || action == "help";
     if (panelLocalAction) {
-        return AI_ASSISTANT::SubmitAiRequest(json, Capabilities(),[this] {return stopRequested_.load();});
+        return AI_ASSISTANT::SubmitAiRequest(json, Capabilities(), [this] { return stopRequested_.load(); });
     }
 
     std::thread::id mainThreadId{};
@@ -202,12 +226,9 @@ AI_ASSISTANT::AiRequestResult AiAssistantSession::ExecuteRequest(
     }
     actionCv_.notify_one();
     std::unique_lock<std::mutex> waitLock(actionMutex_);
-    actionCv_.wait(
-        waitLock,
-        [this, &request]() {
-            return request->result.has_value() ||
-                stopRequested_.load() || request->generation != generation_.load();
-        });
+    actionCv_.wait(waitLock, [this, &request]() {
+        return request->result.has_value() || stopRequested_.load() || request->generation != generation_.load();
+    });
     if (!request->result.has_value()) {
         AI_ASSISTANT::AiRequestResult result{};
         result.ok = false;
@@ -218,10 +239,8 @@ AI_ASSISTANT::AiRequestResult AiAssistantSession::ExecuteRequest(
     return *request->result;
 }
 
-AI_ASSISTANT::AiRequestResult AiAssistantSession::ExecuteRequestNow(
-    std::string_view json) {
-    const std::string action =
-        AI_ASSISTANT::ExtractJsonField(json, "action");
+AI_ASSISTANT::AiRequestResult AiAssistantSession::ExecuteRequestNow(std::string_view json) {
+    const std::string action = AI_ASSISTANT::ExtractJsonField(json, "action");
     AiSceneActionCallback sceneCallback;
     {
         std::lock_guard<std::mutex> lock(stateMutex_);
@@ -258,9 +277,13 @@ void AiAssistantSession::PumpActions() {
             result.code = "ACTION_CANCELED";
             result.message = "任务已停止，排队中的动作未执行。";
         } else {
-            try { result = ExecuteRequestNow(request->json); }
-            catch (const std::exception& error) { result = {false,"ACTION_FAILED",error.what()}; }
-            catch (...) { result = {false,"ACTION_FAILED","动作执行失败。"}; }
+            try {
+                result = ExecuteRequestNow(request->json);
+            } catch (const std::exception& error) {
+                result = {false, "ACTION_FAILED", error.what()};
+            } catch (...) {
+                result = {false, "ACTION_FAILED", "动作执行失败。"};
+            }
         }
         {
             std::lock_guard<std::mutex> lock(actionMutex_);
@@ -280,4 +303,4 @@ std::string AiAssistantSession::SnapshotContext() const {
     return contextSnapshot_;
 }
 
-}
+} // namespace HIKARI::EDITOR

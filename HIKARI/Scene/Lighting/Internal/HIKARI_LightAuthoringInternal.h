@@ -3,13 +3,11 @@
 #include <cstdint>
 
 namespace HIKARI {
-    struct SceneDocument;
+struct SceneDocument;
 }
 
 namespace HIKARI::LIGHTING_AUTHORING::INTERNAL {
 
-    void MigrateLegacyLights(
-        SceneDocument& document,
-        uint32_t sourceVersion);
+void MigrateLegacyLights(SceneDocument& document, uint32_t sourceVersion);
 
 } // namespace HIKARI::LIGHTING_AUTHORING::INTERNAL

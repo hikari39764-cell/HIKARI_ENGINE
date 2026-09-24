@@ -5,14 +5,11 @@
 struct aiScene;
 
 namespace HIKARI {
-    class ModelAsset;
+class ModelAsset;
 }
 
 namespace HIKARI::ASSETS::MODELS::ASSIMP {
 
-    void ReadMaterials(
-        const aiScene& scene,
-        const std::filesystem::path& sourceDirectory,
-        ModelAsset& asset);
+void ReadMaterials(const aiScene& scene, const std::filesystem::path& sourceDirectory, ModelAsset& asset);
 
 } // namespace HIKARI::ASSETS::MODELS::ASSIMP

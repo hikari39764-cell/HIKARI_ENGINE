@@ -8,34 +8,19 @@
 
 namespace HIKARI {
 
-    bool WriteHmatFile(
-        const std::filesystem::path& path,
-        const MaterialAssetData& material,
-        const MaterialCompileResult& compileResult,
-        std::string& outMessage);
+bool WriteHmatFile(const std::filesystem::path& path, const MaterialAssetData& material,
+                   const MaterialCompileResult& compileResult, std::string& outMessage);
 
-    bool ReadHmatFile(
-        const std::filesystem::path& path,
-        MaterialAssetData& outMaterial,
-        MaterialCompileResult& outCompileResult,
-        std::string& outMessage);
+bool ReadHmatFile(const std::filesystem::path& path, MaterialAssetData& outMaterial,
+                  MaterialCompileResult& outCompileResult, std::string& outMessage);
 
-    bool ReadHmatFile(
-        const std::filesystem::path& path,
-        MaterialAssetData& outMaterial,
-        MaterialCompileResult& outCompileResult,
-        const MaterialCompileOptions& migrationCompileOptions,
-        std::string& outMessage);
+bool ReadHmatFile(const std::filesystem::path& path, MaterialAssetData& outMaterial,
+                  MaterialCompileResult& outCompileResult, const MaterialCompileOptions& migrationCompileOptions,
+                  std::string& outMessage);
 
-    // Legacy PBR consumers are projected through the canonical v6 HMAT.
-    bool WriteHmatFile(
-        const std::filesystem::path& path,
-        const PbrMaterialAssetData& material,
-        std::string& outMessage);
+// Legacy PBR consumers are projected through the canonical v6 HMAT.
+bool WriteHmatFile(const std::filesystem::path& path, const PbrMaterialAssetData& material, std::string& outMessage);
 
-    bool ReadHmatFile(
-        const std::filesystem::path& path,
-        PbrMaterialAssetData& outMaterial,
-        std::string& outMessage);
+bool ReadHmatFile(const std::filesystem::path& path, PbrMaterialAssetData& outMaterial, std::string& outMessage);
 
 } // namespace HIKARI

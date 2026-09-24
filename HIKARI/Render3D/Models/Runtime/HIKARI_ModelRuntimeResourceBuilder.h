@@ -1,17 +1,15 @@
 #pragma once
 
 namespace HIKARI {
-    class ModelAsset;
+class ModelAsset;
 }
 
 namespace HIKARI::RENDER3D::MODELS {
 
-    class ModelTextureResolver;
+class ModelTextureResolver;
 
-    bool BuildModelRuntimeResources(
-        ModelAsset& asset,
-        const ModelTextureResolver& textureResolver);
+bool BuildModelRuntimeResources(ModelAsset& asset, const ModelTextureResolver& textureResolver);
 
-    void ReleaseModelRuntimeResources(ModelAsset& asset);
+void ReleaseModelRuntimeResources(ModelAsset& asset);
 
 } // namespace HIKARI::RENDER3D::MODELS

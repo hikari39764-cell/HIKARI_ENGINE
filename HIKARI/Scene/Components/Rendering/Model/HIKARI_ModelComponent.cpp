@@ -10,526 +10,331 @@
 
 namespace HIKARI {
 
-    ModelComponent::~ModelComponent() = default;
+ModelComponent::~ModelComponent() = default;
 
-    void ModelComponent::NotifyRenderStateDirty() {
-        if (GameObject* owner = GetOwner()) {
-            owner->MarkRenderStateDirty();
-        }
+void ModelComponent::NotifyRenderStateDirty() {
+    if (GameObject* owner = GetOwner()) {
+        owner->MarkRenderStateDirty();
+    }
+}
+
+void ModelComponent::SetModelAsset(ModelAsset* asset) {
+    asset_ = asset;
+    if (asset_ != nullptr) {
+        assetId_ = asset_->GetName();
+    }
+    NotifyRenderStateDirty();
+}
+
+ModelAsset* ModelComponent::GetModelAsset() { return asset_; }
+
+const ModelAsset* ModelComponent::GetModelAsset() const { return asset_; }
+
+bool ModelComponent::QueryGeometryFit(GeometryFitDesc& outFit) const noexcept {
+    if (asset_ == nullptr || !BOUNDS::IsUsable(asset_->bounds)) {
+        return false;
     }
 
-    void ModelComponent::SetModelAsset(ModelAsset* asset) {
-        asset_ = asset;
-        if (asset_ != nullptr) {
-            assetId_ = asset_->GetName();
-        }
-        NotifyRenderStateDirty();
+    const MATH::Vec3 rawSize = asset_->bounds.max - asset_->bounds.min;
+    const MATH::Vec3 size{(std::max)(rawSize.x, 0.02f), (std::max)(rawSize.y, 0.02f), (std::max)(rawSize.z, 0.02f)};
+
+    outFit = {};
+    outFit.shape = GeometryFitShape::Box;
+    outFit.center = (asset_->bounds.min + asset_->bounds.max) * 0.5f;
+    outFit.size = size;
+    outFit.radius = (std::min)({size.x, size.y, size.z}) * 0.5f;
+    outFit.height = size.y;
+    return true;
+}
+
+void ModelComponent::SetVisible(bool visible) {
+    visible_ = visible;
+    NotifyRenderStateDirty();
+}
+
+bool ModelComponent::IsVisible() const { return visible_; }
+
+bool ModelComponent::GetCastShadow() const { return castShadow_; }
+
+bool ModelComponent::GetReceiveShadow() const { return receiveShadow_; }
+
+void ModelComponent::SetRenderStatic(bool enabled) {
+    renderStatic_ = enabled;
+    NotifyRenderStateDirty();
+}
+
+bool ModelComponent::IsRenderStatic() const { return renderStatic_; }
+
+void ModelComponent::SetIncludeInLightingBake(bool enabled) {
+    if (includeInLightingBake_ == enabled) {
+        return;
     }
+    includeInLightingBake_ = enabled;
+    NotifyRenderStateDirty();
+}
 
-    ModelAsset* ModelComponent::GetModelAsset() {
-        return asset_;
-    }
+bool ModelComponent::GetIncludeInLightingBake() const { return includeInLightingBake_; }
 
-    const ModelAsset* ModelComponent::GetModelAsset() const {
-        return asset_;
-    }
+ModelRenderDebugMode ModelComponent::GetRenderDebugMode() const { return debugRenderMode_; }
 
-    bool ModelComponent::QueryGeometryFit(
-        GeometryFitDesc& outFit) const noexcept {
+uint32_t ModelComponent::GetWireColor() const { return wireColor_; }
 
-        if (asset_ == nullptr || !BOUNDS::IsUsable(asset_->bounds)) {
-            return false;
-        }
+uint32_t ModelComponent::GetMaxWireLines() const { return maxWireLines_; }
 
-        const MATH::Vec3 rawSize =
-            asset_->bounds.max - asset_->bounds.min;
-        const MATH::Vec3 size{
-            (std::max)(rawSize.x, 0.02f),
-            (std::max)(rawSize.y, 0.02f),
-            (std::max)(rawSize.z, 0.02f)
-        };
+bool ModelComponent::GetWirePerPrimitiveColor() const { return wirePerPrimitiveColor_; }
 
-        outFit = {};
-        outFit.shape = GeometryFitShape::Box;
-        outFit.center =
-            (asset_->bounds.min + asset_->bounds.max) * 0.5f;
-        outFit.size = size;
-        outFit.radius = (std::min)({
-            size.x,
-            size.y,
-            size.z
-        }) * 0.5f;
-        outFit.height = size.y;
-        return true;
-    }
+const std::string& ModelComponent::GetAssetId() const { return assetId_; }
 
-    void ModelComponent::SetVisible(bool visible) {
-        visible_ = visible;
-        NotifyRenderStateDirty();
-    }
-
-    bool ModelComponent::IsVisible() const {
-        return visible_;
-    }
-
-    void ModelComponent::SetSkeletonDebugVisible(bool visible) {
-        showSkeletonDebug_ = visible;
-        NotifyRenderStateDirty();
-    }
-
-    bool ModelComponent::IsSkeletonDebugVisible() const {
-        return showSkeletonDebug_;
-    }
-
-    void ModelComponent::SetSkeletonDebugXRay(bool enabled) {
-        skeletonDebugXRay_ = enabled;
-        NotifyRenderStateDirty();
-    }
-
-    bool ModelComponent::IsSkeletonDebugXRay() const {
-        return skeletonDebugXRay_;
-    }
-
-    void ModelComponent::SetCastShadow(bool enabled) {
-        castShadow_ = enabled;
-        NotifyRenderStateDirty();
-    }
-
-    bool ModelComponent::GetCastShadow() const {
-        return castShadow_;
-    }
-
-    void ModelComponent::SetReceiveShadow(bool enabled) {
-        receiveShadow_ = enabled;
-        NotifyRenderStateDirty();
-    }
-
-    bool ModelComponent::GetReceiveShadow() const {
-        return receiveShadow_;
-    }
-
-    void ModelComponent::SetRenderStatic(bool enabled) {
-        renderStatic_ = enabled;
-        NotifyRenderStateDirty();
-    }
-
-    bool ModelComponent::IsRenderStatic() const {
-        return renderStatic_;
-    }
-
-    void ModelComponent::SetIncludeInLightingBake(bool enabled) {
-        if (includeInLightingBake_ == enabled) {
-            return;
-        }
-        includeInLightingBake_ = enabled;
-        NotifyRenderStateDirty();
-    }
-
-    bool ModelComponent::GetIncludeInLightingBake() const {
-        return includeInLightingBake_;
-    }
-
-    void ModelComponent::SetRenderDebugMode(
-        ModelRenderDebugMode mode) {
-
-        debugRenderMode_ = mode;
-        NotifyRenderStateDirty();
-    }
-
-    ModelRenderDebugMode ModelComponent::GetRenderDebugMode() const {
-        return debugRenderMode_;
-    }
-
-    void ModelComponent::SetWireColor(uint32_t color) {
-        wireColor_ = color;
-        NotifyRenderStateDirty();
-    }
-
-    uint32_t ModelComponent::GetWireColor() const {
-        return wireColor_;
-    }
-
-    void ModelComponent::SetMaxWireLines(uint32_t count) {
-        maxWireLines_ = count;
-        NotifyRenderStateDirty();
-    }
-
-    uint32_t ModelComponent::GetMaxWireLines() const {
-        return maxWireLines_;
-    }
-
-    bool ModelComponent::GetWirePerPrimitiveColor() const {
-        return wirePerPrimitiveColor_;
-    }
-
-    const std::string& ModelComponent::GetAssetId() const {
-        return assetId_;
-    }
-
-    void ModelComponent::SetAssetId(std::string assetId) {
-        if (assetId_ != assetId) {
-            materialSetAssetGuid_ = {};
-            materialSetSelectionAuthored_ = true;
-            materialOverrides_.clear();
-            ClearRuntimeMaterialOverrides();
-            runtimeNodeVisibilityOverrides_.clear();
-        }
-        assetId_ = std::move(assetId);
-        NotifyRenderStateDirty();
-    }
-
-    const AssetGuid& ModelComponent::GetMaterialSetAssetGuid() const noexcept {
-        return materialSetAssetGuid_;
-    }
-
-    bool ModelComponent::HasAuthoredMaterialSetSelection() const noexcept {
-        return materialSetSelectionAuthored_;
-    }
-
-    void ModelComponent::SetMaterialSetAssetGuid(
-        AssetGuid materialSetGuid) {
-
-        if (materialSetAssetGuid_ == materialSetGuid &&
-            materialSetSelectionAuthored_) {
-            return;
-        }
-        materialSetAssetGuid_ = std::move(materialSetGuid);
+void ModelComponent::SetAssetId(std::string assetId) {
+    if (assetId_ != assetId) {
+        materialSetAssetGuid_ = {};
         materialSetSelectionAuthored_ = true;
+        materialOverrides_.clear();
         ClearRuntimeMaterialOverrides();
-        NotifyRenderStateDirty();
+        runtimeNodeVisibilityOverrides_.clear();
+    }
+    assetId_ = std::move(assetId);
+    NotifyRenderStateDirty();
+}
+
+const AssetGuid& ModelComponent::GetMaterialSetAssetGuid() const noexcept { return materialSetAssetGuid_; }
+
+bool ModelComponent::HasAuthoredMaterialSetSelection() const noexcept { return materialSetSelectionAuthored_; }
+
+void ModelComponent::SetMaterialSetAssetGuid(AssetGuid materialSetGuid) {
+    if (materialSetAssetGuid_ == materialSetGuid && materialSetSelectionAuthored_) {
+        return;
+    }
+    materialSetAssetGuid_ = std::move(materialSetGuid);
+    materialSetSelectionAuthored_ = true;
+    ClearRuntimeMaterialOverrides();
+    NotifyRenderStateDirty();
+}
+
+void ModelComponent::ClearMaterialSetAssetGuid() { SetMaterialSetAssetGuid({}); }
+
+void ModelComponent::UseImportedModelMaterials() { ClearMaterialSetAssetGuid(); }
+
+uint32_t ModelComponent::GetPostGroupMask() const { return postGroupMask_; }
+
+const std::vector<ModelMaterialOverrideSlot>& ModelComponent::GetMaterialOverrides() const {
+    return materialOverrides_;
+}
+
+void ModelComponent::SetMaterialOverride(uint32_t slotIndex, AssetGuid materialGuid) {
+    SetMaterialOverride(ResolveCurrentSlotId(slotIndex), slotIndex, std::move(materialGuid));
+}
+
+void ModelComponent::SetMaterialOverride(MaterialSlotId slotId, uint32_t legacySlotIndex, AssetGuid materialGuid) {
+    auto existing = materialOverrides_.end();
+    if (slotId.IsValid()) {
+        existing = std::find_if(materialOverrides_.begin(), materialOverrides_.end(),
+                                [slotId](const ModelMaterialOverrideSlot& slot) { return slot.slotId == slotId; });
+    }
+    if (existing == materialOverrides_.end()) {
+        existing = std::find_if(materialOverrides_.begin(), materialOverrides_.end(),
+                                [legacySlotIndex](const ModelMaterialOverrideSlot& slot) {
+                                    return !slot.slotId.IsValid() && slot.slotIndex == legacySlotIndex;
+                                });
+    }
+    if (existing != materialOverrides_.end()) {
+        existing->slotId = slotId;
+        existing->slotIndex = legacySlotIndex;
+        existing->materialAssetGuid = std::move(materialGuid);
+        ClearRuntimeMaterialOverride(legacySlotIndex);
+        return;
     }
 
-    void ModelComponent::ClearMaterialSetAssetGuid() {
-        SetMaterialSetAssetGuid({});
-    }
+    materialOverrides_.push_back(ModelMaterialOverrideSlot{legacySlotIndex, std::move(materialGuid), slotId});
+    ClearRuntimeMaterialOverride(legacySlotIndex);
+}
 
-    void ModelComponent::UseImportedModelMaterials() {
-        ClearMaterialSetAssetGuid();
-    }
-
-    void ModelComponent::SetPostGroupMask(uint32_t mask) {
-        postGroupMask_ = mask;
-        NotifyRenderStateDirty();
-    }
-
-    uint32_t ModelComponent::GetPostGroupMask() const {
-        return postGroupMask_;
-    }
-
-    const std::vector<ModelMaterialOverrideSlot>&
-        ModelComponent::GetMaterialOverrides() const {
-
-        return materialOverrides_;
-    }
-
-    void ModelComponent::SetMaterialOverride(
-        uint32_t slotIndex,
-        AssetGuid materialGuid) {
-
-        SetMaterialOverride(
-            ResolveCurrentSlotId(slotIndex),
-            slotIndex,
-            std::move(materialGuid));
-    }
-
-    void ModelComponent::SetMaterialOverride(
-        MaterialSlotId slotId,
-        uint32_t legacySlotIndex,
-        AssetGuid materialGuid) {
-
-        auto existing = materialOverrides_.end();
+void ModelComponent::ClearMaterialOverride(uint32_t slotIndex) {
+    const MaterialSlotId slotId = ResolveCurrentSlotId(slotIndex);
+    std::erase_if(materialOverrides_, [slotIndex, slotId](const ModelMaterialOverrideSlot& slot) {
         if (slotId.IsValid()) {
-            existing = std::find_if(
-                materialOverrides_.begin(),
-                materialOverrides_.end(),
-                [slotId](const ModelMaterialOverrideSlot& slot) {
-                    return slot.slotId == slotId;
-                });
+            return slot.slotId == slotId || (!slot.slotId.IsValid() && slot.slotIndex == slotIndex);
         }
-        if (existing == materialOverrides_.end()) {
-            existing = std::find_if(
-                materialOverrides_.begin(),
-                materialOverrides_.end(),
-                [legacySlotIndex](
-                    const ModelMaterialOverrideSlot& slot) {
+        return slot.slotIndex == slotIndex;
+    });
+    ClearRuntimeMaterialOverride(slotIndex);
+}
 
-                    return !slot.slotId.IsValid() &&
-                        slot.slotIndex == legacySlotIndex;
-                });
-        }
-        if (existing != materialOverrides_.end()) {
-            existing->slotId = slotId;
-            existing->slotIndex = legacySlotIndex;
-            existing->materialAssetGuid = std::move(materialGuid);
-            ClearRuntimeMaterialOverride(legacySlotIndex);
-            return;
-        }
-
-        materialOverrides_.push_back(ModelMaterialOverrideSlot{
-            legacySlotIndex,
-            std::move(materialGuid),
-            slotId
-        });
-        ClearRuntimeMaterialOverride(legacySlotIndex);
+void ModelComponent::ClearMaterialOverride(MaterialSlotId slotId) {
+    if (!slotId.IsValid()) {
+        return;
     }
+    const auto found = std::find_if(materialOverrides_.begin(), materialOverrides_.end(),
+                                    [slotId](const ModelMaterialOverrideSlot& slot) { return slot.slotId == slotId; });
+    if (found == materialOverrides_.end()) {
+        return;
+    }
+    const uint32_t legacySlotIndex = found->slotIndex;
+    materialOverrides_.erase(found);
+    ClearRuntimeMaterialOverride(legacySlotIndex);
+}
 
-    void ModelComponent::ClearMaterialOverride(uint32_t slotIndex) {
-        const MaterialSlotId slotId = ResolveCurrentSlotId(slotIndex);
-        std::erase_if(
-            materialOverrides_,
-            [slotIndex, slotId](const ModelMaterialOverrideSlot& slot) {
-                if (slotId.IsValid()) {
-                    return slot.slotId == slotId ||
-                        (!slot.slotId.IsValid() &&
-                            slot.slotIndex == slotIndex);
-                }
-                return slot.slotIndex == slotIndex;
-            });
+Material* ModelComponent::GetRuntimeMaterialOverride(uint32_t slotIndex) {
+    for (RuntimeMaterialOverrideSlot& slot : runtimeMaterialOverrides_) {
+        if (slot.materialIndex == slotIndex) {
+            return slot.material.get();
+        }
+    }
+    return nullptr;
+}
+
+const Material* ModelComponent::GetRuntimeMaterialOverride(uint32_t slotIndex) const {
+    for (const RuntimeMaterialOverrideSlot& slot : runtimeMaterialOverrides_) {
+        if (slot.materialIndex == slotIndex) {
+            return slot.material.get();
+        }
+    }
+    return nullptr;
+}
+
+void ModelComponent::SetRuntimeMaterialOverride(uint32_t slotIndex, std::unique_ptr<Material> material) {
+    if (material == nullptr) {
         ClearRuntimeMaterialOverride(slotIndex);
+        return;
     }
 
-    void ModelComponent::ClearMaterialOverride(MaterialSlotId slotId) {
-        if (!slotId.IsValid()) {
-            return;
-        }
-        const auto found = std::find_if(
-            materialOverrides_.begin(),
-            materialOverrides_.end(),
-            [slotId](const ModelMaterialOverrideSlot& slot) {
-                return slot.slotId == slotId;
-            });
-        if (found == materialOverrides_.end()) {
-            return;
-        }
-        const uint32_t legacySlotIndex = found->slotIndex;
-        materialOverrides_.erase(found);
-        ClearRuntimeMaterialOverride(legacySlotIndex);
-    }
-
-    Material* ModelComponent::GetRuntimeMaterialOverride(
-        uint32_t slotIndex) {
-
-        for (RuntimeMaterialOverrideSlot& slot :
-            runtimeMaterialOverrides_) {
-
-            if (slot.materialIndex == slotIndex) {
-                return slot.material.get();
-            }
-        }
-        return nullptr;
-    }
-
-    const Material* ModelComponent::GetRuntimeMaterialOverride(
-        uint32_t slotIndex) const {
-
-        for (const RuntimeMaterialOverrideSlot& slot :
-            runtimeMaterialOverrides_) {
-
-            if (slot.materialIndex == slotIndex) {
-                return slot.material.get();
-            }
-        }
-        return nullptr;
-    }
-
-    void ModelComponent::SetRuntimeMaterialOverride(
-        uint32_t slotIndex,
-        std::unique_ptr<Material> material) {
-
-        if (material == nullptr) {
-            ClearRuntimeMaterialOverride(slotIndex);
-            return;
-        }
-
-        for (RuntimeMaterialOverrideSlot& slot :
-            runtimeMaterialOverrides_) {
-
-            if (slot.materialIndex == slotIndex) {
-                slot.material = std::move(material);
-                NotifyRenderStateDirty();
-                return;
-            }
-        }
-
-        runtimeMaterialOverrides_.push_back(
-            RuntimeMaterialOverrideSlot{
-                slotIndex,
-                std::move(material)
-            });
-        NotifyRenderStateDirty();
-    }
-
-    void ModelComponent::ClearRuntimeMaterialOverride(
-        uint32_t slotIndex) {
-
-        std::erase_if(
-            runtimeMaterialOverrides_,
-            [slotIndex](const RuntimeMaterialOverrideSlot& slot) {
-                return slot.materialIndex == slotIndex;
-            });
-        NotifyRenderStateDirty();
-    }
-
-    void ModelComponent::ClearRuntimeMaterialOverrides() {
-        runtimeMaterialOverrides_.clear();
-        NotifyRenderStateDirty();
-    }
-
-    const std::vector<RuntimeMaterialOverrideSlot>&
-        ModelComponent::GetRuntimeMaterialOverrides() const noexcept {
-
-        return runtimeMaterialOverrides_;
-    }
-
-    bool ModelComponent::SetRuntimeNodeVisibilityOverride(
-        std::string_view nodeName,
-        bool visible,
-        bool includeDescendants) {
-
-        if (nodeName.empty()) {
-            return false;
-        }
-
-        const auto found = std::find_if(
-            runtimeNodeVisibilityOverrides_.begin(),
-            runtimeNodeVisibilityOverrides_.end(),
-            [nodeName](const RuntimeModelNodeVisibilityOverride& entry) {
-                return entry.nodeName == nodeName;
-            });
-        if (found != runtimeNodeVisibilityOverrides_.end()) {
-            if (found->visible == visible &&
-                found->includeDescendants == includeDescendants) {
-                return true;
-            }
-            found->visible = visible;
-            found->includeDescendants = includeDescendants;
+    for (RuntimeMaterialOverrideSlot& slot : runtimeMaterialOverrides_) {
+        if (slot.materialIndex == slotIndex) {
+            slot.material = std::move(material);
             NotifyRenderStateDirty();
+            return;
+        }
+    }
+
+    runtimeMaterialOverrides_.push_back(RuntimeMaterialOverrideSlot{slotIndex, std::move(material)});
+    NotifyRenderStateDirty();
+}
+
+void ModelComponent::ClearRuntimeMaterialOverride(uint32_t slotIndex) {
+    std::erase_if(runtimeMaterialOverrides_,
+                  [slotIndex](const RuntimeMaterialOverrideSlot& slot) { return slot.materialIndex == slotIndex; });
+    NotifyRenderStateDirty();
+}
+
+void ModelComponent::ClearRuntimeMaterialOverrides() {
+    runtimeMaterialOverrides_.clear();
+    NotifyRenderStateDirty();
+}
+
+const std::vector<RuntimeMaterialOverrideSlot>& ModelComponent::GetRuntimeMaterialOverrides() const noexcept {
+    return runtimeMaterialOverrides_;
+}
+
+bool ModelComponent::SetRuntimeNodeVisibilityOverride(std::string_view nodeName, bool visible,
+                                                      bool includeDescendants) {
+    if (nodeName.empty()) {
+        return false;
+    }
+
+    const auto found = std::find_if(
+        runtimeNodeVisibilityOverrides_.begin(), runtimeNodeVisibilityOverrides_.end(),
+        [nodeName](const RuntimeModelNodeVisibilityOverride& entry) { return entry.nodeName == nodeName; });
+    if (found != runtimeNodeVisibilityOverrides_.end()) {
+        if (found->visible == visible && found->includeDescendants == includeDescendants) {
             return true;
         }
-
-        runtimeNodeVisibilityOverrides_.push_back(
-            RuntimeModelNodeVisibilityOverride{
-                std::string(nodeName),
-                visible,
-                includeDescendants,
-            });
+        found->visible = visible;
+        found->includeDescendants = includeDescendants;
         NotifyRenderStateDirty();
         return true;
     }
 
-    bool ModelComponent::ClearRuntimeNodeVisibilityOverride(
-        std::string_view nodeName) {
+    runtimeNodeVisibilityOverrides_.push_back(RuntimeModelNodeVisibilityOverride{
+        std::string(nodeName),
+        visible,
+        includeDescendants,
+    });
+    NotifyRenderStateDirty();
+    return true;
+}
 
-        if (nodeName.empty()) {
-            return false;
-        }
-        const size_t previousSize =
-            runtimeNodeVisibilityOverrides_.size();
-        std::erase_if(
-            runtimeNodeVisibilityOverrides_,
-            [nodeName](const RuntimeModelNodeVisibilityOverride& entry) {
-                return entry.nodeName == nodeName;
-            });
-        if (runtimeNodeVisibilityOverrides_.size() == previousSize) {
-            return false;
-        }
-        NotifyRenderStateDirty();
-        return true;
+bool ModelComponent::ClearRuntimeNodeVisibilityOverride(std::string_view nodeName) {
+    if (nodeName.empty()) {
+        return false;
+    }
+    const size_t previousSize = runtimeNodeVisibilityOverrides_.size();
+    std::erase_if(runtimeNodeVisibilityOverrides_,
+                  [nodeName](const RuntimeModelNodeVisibilityOverride& entry) { return entry.nodeName == nodeName; });
+    if (runtimeNodeVisibilityOverrides_.size() == previousSize) {
+        return false;
+    }
+    NotifyRenderStateDirty();
+    return true;
+}
+
+void ModelComponent::ClearRuntimeNodeVisibilityOverrides() {
+    if (runtimeNodeVisibilityOverrides_.empty()) {
+        return;
+    }
+    runtimeNodeVisibilityOverrides_.clear();
+    NotifyRenderStateDirty();
+}
+
+const std::vector<RuntimeModelNodeVisibilityOverride>& ModelComponent::GetRuntimeNodeVisibilityOverrides()
+    const noexcept {
+    return runtimeNodeVisibilityOverrides_;
+}
+
+std::vector<uint8_t> ModelComponent::ResolveRuntimeNodeVisibilityMask(const ModelAsset& model) const {
+    if (model.nodes.empty() || runtimeNodeVisibilityOverrides_.empty()) {
+        return {};
     }
 
-    void ModelComponent::ClearRuntimeNodeVisibilityOverrides() {
-        if (runtimeNodeVisibilityOverrides_.empty()) {
-            return;
+    std::vector<const RuntimeModelNodeVisibilityOverride*> directOverrides(model.nodes.size(), nullptr);
+    for (const RuntimeModelNodeVisibilityOverride& entry : runtimeNodeVisibilityOverrides_) {
+        const auto node = std::find_if(model.nodes.begin(), model.nodes.end(), [&entry](const ModelNode& candidate) {
+            return candidate.name == entry.nodeName;
+        });
+        if (node == model.nodes.end()) {
+            continue;
         }
-        runtimeNodeVisibilityOverrides_.clear();
-        NotifyRenderStateDirty();
+        const size_t nodeIndex = static_cast<size_t>(node - model.nodes.begin());
+        directOverrides[nodeIndex] = &entry;
     }
 
-    const std::vector<RuntimeModelNodeVisibilityOverride>&
-        ModelComponent::GetRuntimeNodeVisibilityOverrides() const noexcept {
-
-        return runtimeNodeVisibilityOverrides_;
-    }
-
-    std::vector<uint8_t> ModelComponent::ResolveRuntimeNodeVisibilityMask(
-        const ModelAsset& model) const {
-
-        if (model.nodes.empty() ||
-            runtimeNodeVisibilityOverrides_.empty()) {
-            return {};
-        }
-
-        std::vector<const RuntimeModelNodeVisibilityOverride*>
-            directOverrides(model.nodes.size(), nullptr);
-        for (const RuntimeModelNodeVisibilityOverride& entry :
-            runtimeNodeVisibilityOverrides_) {
-
-            const auto node = std::find_if(
-                model.nodes.begin(),
-                model.nodes.end(),
-                [&entry](const ModelNode& candidate) {
-                    return candidate.name == entry.nodeName;
-                });
-            if (node == model.nodes.end()) {
-                continue;
-            }
-            const size_t nodeIndex = static_cast<size_t>(
-                node - model.nodes.begin());
-            directOverrides[nodeIndex] = &entry;
-        }
-
-        std::vector<uint8_t> mask(model.nodes.size(), 1u);
-        bool hasHiddenNode = false;
-        for (size_t nodeIndex = 0u;
-            nodeIndex < model.nodes.size();
-            ++nodeIndex) {
-
-            const RuntimeModelNodeVisibilityOverride* direct =
-                directOverrides[nodeIndex];
-            if (direct != nullptr) {
-                mask[nodeIndex] = direct->visible ? 1u : 0u;
-            }
-            else {
-                int parent = model.nodes[nodeIndex].parent;
-                for (size_t depth = 0u;
-                    depth < model.nodes.size() && parent >= 0 &&
-                        static_cast<size_t>(parent) < model.nodes.size();
-                    ++depth) {
-
-                    const size_t parentIndex =
-                        static_cast<size_t>(parent);
-                    const RuntimeModelNodeVisibilityOverride* inherited =
-                        directOverrides[parentIndex];
-                    if (inherited != nullptr &&
-                        inherited->includeDescendants) {
-                        mask[nodeIndex] =
-                            inherited->visible ? 1u : 0u;
-                        break;
-                    }
-                    const int nextParent =
-                        model.nodes[parentIndex].parent;
-                    if (nextParent == parent) {
-                        break;
-                    }
-                    parent = nextParent;
+    std::vector<uint8_t> mask(model.nodes.size(), 1u);
+    bool hasHiddenNode = false;
+    for (size_t nodeIndex = 0u; nodeIndex < model.nodes.size(); ++nodeIndex) {
+        const RuntimeModelNodeVisibilityOverride* direct = directOverrides[nodeIndex];
+        if (direct != nullptr) {
+            mask[nodeIndex] = direct->visible ? 1u : 0u;
+        } else {
+            int parent = model.nodes[nodeIndex].parent;
+            for (size_t depth = 0u;
+                 depth < model.nodes.size() && parent >= 0 && static_cast<size_t>(parent) < model.nodes.size();
+                 ++depth) {
+                const size_t parentIndex = static_cast<size_t>(parent);
+                const RuntimeModelNodeVisibilityOverride* inherited = directOverrides[parentIndex];
+                if (inherited != nullptr && inherited->includeDescendants) {
+                    mask[nodeIndex] = inherited->visible ? 1u : 0u;
+                    break;
                 }
+                const int nextParent = model.nodes[parentIndex].parent;
+                if (nextParent == parent) {
+                    break;
+                }
+                parent = nextParent;
             }
-            hasHiddenNode = hasHiddenNode || mask[nodeIndex] == 0u;
         }
-
-        if (!hasHiddenNode) {
-            return {};
-        }
-        return mask;
+        hasHiddenNode = hasHiddenNode || mask[nodeIndex] == 0u;
     }
 
-    MaterialSlotId ModelComponent::ResolveCurrentSlotId(
-        uint32_t slotIndex) const noexcept {
-
-        if (asset_ == nullptr || slotIndex >= asset_->materials.size()) {
-            return {};
-        }
-        return asset_->materials[slotIndex].slotId;
+    if (!hasHiddenNode) {
+        return {};
     }
+    return mask;
+}
+
+MaterialSlotId ModelComponent::ResolveCurrentSlotId(uint32_t slotIndex) const noexcept {
+    if (asset_ == nullptr || slotIndex >= asset_->materials.size()) {
+        return {};
+    }
+    return asset_->materials[slotIndex].slotId;
+}
 
 } // namespace HIKARI

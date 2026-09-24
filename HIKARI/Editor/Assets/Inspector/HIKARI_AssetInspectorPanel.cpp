@@ -75,702 +75,497 @@ const std::array TextureMipPolicyItems = {
     ASSETS::IMPORT_POLICY::ToString(TextureMipPolicy::None).data(),
 };
 
-const char *CoordinateSystemItems[] = {"RightHanded_YUp", "LeftHanded_YUp",
-                                       "RightHanded_ZUp"};
+const char* CoordinateSystemItems[] = {"RightHanded_YUp", "LeftHanded_YUp", "RightHanded_ZUp"};
 
-const char *GeneratePolicyItems[] = {"IfMissing", "Always", "Never"};
+const char* GeneratePolicyItems[] = {"IfMissing", "Always", "Never"};
 
-int FindItemIndex(const char *const *items, int count,
-                  const std::string &value) {
-  for (int i = 0; i < count; ++i) {
-    if (value == items[i]) {
-      return i;
+int FindItemIndex(const char* const* items, int count, const std::string& value) {
+    for (int i = 0; i < count; ++i) {
+        if (value == items[i]) {
+            return i;
+        }
     }
-  }
-  return 0;
+    return 0;
 }
 
-nlohmann::json ReadSettings(const AssetRecord &record) {
-  nlohmann::json settings =
-      nlohmann::json::parse(record.meta.importSettingsJson, nullptr, false);
-  if (!settings.is_object()) {
-    settings = nlohmann::json::object();
-  }
-  return settings;
+nlohmann::json ReadSettings(const AssetRecord& record) {
+    nlohmann::json settings = nlohmann::json::parse(record.meta.importSettingsJson, nullptr, false);
+    if (!settings.is_object()) {
+        settings = nlohmann::json::object();
+    }
+    return settings;
 }
 
-std::string ReadTextFile(const std::filesystem::path &path) {
-  std::ifstream ifs(path);
-  if (!ifs.is_open()) {
-    return {};
-  }
-  std::ostringstream oss;
-  oss << ifs.rdbuf();
-  return oss.str();
+std::string ReadTextFile(const std::filesystem::path& path) {
+    std::ifstream ifs(path);
+    if (!ifs.is_open()) {
+        return {};
+    }
+    std::ostringstream oss;
+    oss << ifs.rdbuf();
+    return oss.str();
 }
 
 #if defined(HIKARI_WITH_EDITOR)
-bool DrawComboSetting(const char *label, nlohmann::json &settings,
-                      const char *key, const char *const *items,
+bool DrawComboSetting(const char* label, nlohmann::json& settings, const char* key, const char* const* items,
                       int itemCount) {
-
-  int current = FindItemIndex(items, itemCount, settings.value(key, ""));
-  if (ImGui::Combo(label, &current, items, itemCount)) {
-    settings[key] = items[current];
-    return true;
-  }
-  return false;
+    int current = FindItemIndex(items, itemCount, settings.value(key, ""));
+    if (ImGui::Combo(label, &current, items, itemCount)) {
+        settings[key] = items[current];
+        return true;
+    }
+    return false;
 }
 
-bool DrawBoolSetting(const char *label, nlohmann::json &settings,
-                     const char *key, bool fallback) {
-  bool value = settings.value(key, fallback);
-  if (ImGui::Checkbox(label, &value)) {
-    settings[key] = value;
-    return true;
-  }
-  return false;
+bool DrawBoolSetting(const char* label, nlohmann::json& settings, const char* key, bool fallback) {
+    bool value = settings.value(key, fallback);
+    if (ImGui::Checkbox(label, &value)) {
+        settings[key] = value;
+        return true;
+    }
+    return false;
 }
 
-bool DrawIntSetting(const char *label, nlohmann::json &settings,
-                    const char *key, int fallback, int minimum = 0) {
-  int value = settings.value(key, fallback);
-  if (ImGui::InputInt(label, &value)) {
-    settings[key] = (std::max)(minimum, value);
-    return true;
-  }
-  return false;
+bool DrawIntSetting(const char* label, nlohmann::json& settings, const char* key, int fallback, int minimum = 0) {
+    int value = settings.value(key, fallback);
+    if (ImGui::InputInt(label, &value)) {
+        settings[key] = (std::max)(minimum, value);
+        return true;
+    }
+    return false;
 }
 
-bool DrawFloatSetting(const char *label, nlohmann::json &settings,
-                      const char *key, float fallback, float minimum = 0.0f) {
-  float value = settings.value(key, fallback);
-  if (ImGui::InputFloat(label, &value)) {
-    settings[key] = (std::max)(minimum, value);
-    return true;
-  }
-  return false;
+bool DrawFloatSetting(const char* label, nlohmann::json& settings, const char* key, float fallback,
+                      float minimum = 0.0f) {
+    float value = settings.value(key, fallback);
+    if (ImGui::InputFloat(label, &value)) {
+        settings[key] = (std::max)(minimum, value);
+        return true;
+    }
+    return false;
 }
 
-void DrawPathRow(const char *label, const std::filesystem::path &path) {
-  ImGui::Text("%s: %s", label, path.generic_string().c_str());
+void DrawPathRow(const char* label, const std::filesystem::path& path) {
+    ImGui::Text("%s: %s", label, path.generic_string().c_str());
 }
 
 #endif
 } // namespace
 
 void AssetInspectorPanel::RefreshFilePreview(const AssetDatabase& database, const AssetRecord& record) const {
-  const auto now = std::chrono::steady_clock::now();
-  const std::string key = database.GetProjectRoot().generic_string() + "|" + record.guid.value;
-  if (key == filePreviewKey_ && filePreviewRevision_ == database.GetContentRevision() &&
-      now < nextFilePreview_) return;
-  filePreviewKey_ = key;
-  filePreviewRevision_ = database.GetContentRevision();
-  nextFilePreview_ = now + std::chrono::seconds(1);
-  rawMeta_ = ReadTextFile(record.metaPath);
-  rawReport_ = ReadTextFile(record.importedDirectory / "import_report.json");
-  modelReport_ = nlohmann::json::parse(rawReport_, nullptr, false);
-  if (record.type == AssetType::Model) modelInfo_ = database.GetClusteredGeometryArtifactInfo(record);
-  else modelInfo_ = {};
+    const auto now = std::chrono::steady_clock::now();
+    const std::string key = database.GetProjectRoot().generic_string() + "|" + record.guid.value;
+    if (key == filePreviewKey_ && filePreviewRevision_ == database.GetContentRevision() && now < nextFilePreview_)
+        return;
+    filePreviewKey_ = key;
+    filePreviewRevision_ = database.GetContentRevision();
+    nextFilePreview_ = now + std::chrono::seconds(1);
+    rawMeta_ = ReadTextFile(record.metaPath);
+    rawReport_ = ReadTextFile(record.importedDirectory / "import_report.json");
+    modelReport_ = nlohmann::json::parse(rawReport_, nullptr, false);
+    if (record.type == AssetType::Model)
+        modelInfo_ = database.GetClusteredGeometryArtifactInfo(record);
+    else
+        modelInfo_ = {};
 }
 
-void AssetInspectorPanel::Draw(AssetDatabase &assetDatabase,
-                               AssetRegistry &assetRegistry,
-                               EditorSelection &selection) const {
+void AssetInspectorPanel::Draw(AssetDatabase& assetDatabase, AssetRegistry& assetRegistry,
+                               EditorSelection& selection) const {
 #if defined(HIKARI_WITH_EDITOR)
-  if (!pendingRefreshRuntimeMaterialGuid_.empty()) {
-    const AssetImportBatchStatus status = assetDatabase.GetQueuedImportStatus();
-    if (!status.active && status.completed) {
-      if (!status.canceled && status.failed == 0) {
-        EDITOR::ClearEditorTexturePreviewCache();
-        refreshRuntimeMaterialGuid_ = pendingRefreshRuntimeMaterialGuid_;
-      }
-      pendingRefreshRuntimeMaterialGuid_.clear();
-    }
-  }
-  if (selection.selectedAssetGuid.empty()) {
-    ImGui::TextDisabled(
-        "%s",
-        TEXT::Localize("ui.assetInspector.noAssetSelected").c_str());
-    return;
-  }
-
-  AssetRecord *record =
-      assetDatabase.FindByGuid(AssetGuid{selection.selectedAssetGuid});
-  if (!record) {
-    ImGui::TextDisabled(
-        "%s",
-        TEXT::Localize(
-            "ui.assetInspector.assetUnavailable").c_str());
-    return;
-  }
-
-  auto& displayNameBuffer = displayNameBuffer_;
-  auto& importSettingsBuffer = importSettingsBuffer_;
-  if (loadedGuid_ != record->guid.value || loadedProject_ != assetDatabase.GetProjectRoot()) {
-    loadedGuid_ = record->guid.value;
-    loadedProject_ = assetDatabase.GetProjectRoot();
-    CopyToBuffer(record->displayName, displayNameBuffer.data(), displayNameBuffer.size());
-    CopyToBuffer(record->meta.importSettingsJson, importSettingsBuffer.data(), importSettingsBuffer.size());
-    parsedSettingsSource_.clear();
-    filePreviewKey_.clear();
-  }
-
-  bool dirty = false;
-  if (parsedSettings_.is_null() || parsedSettingsSource_ != record->meta.importSettingsJson) {
-    parsedSettings_ = ReadSettings(*record);
-    parsedSettingsSource_ = record->meta.importSettingsJson;
-  }
-  nlohmann::json settings = parsedSettings_;
-  const AssetImportState importState = GetImportState(*record);
-
-  auto saveMeta = [&]() {
-    record->meta.displayName = displayNameBuffer.data();
-    record->displayName = record->meta.displayName;
-    record->meta.importSettingsJson = importSettingsBuffer.data();
-    if (assetDatabase.WriteMeta(*record)) {
-      record->importOutdated = true;
-      record->lastImportMessage =
-          "[AssetDatabase] Meta saved; reimport required";
-    }
-  };
-
-  if (ImGui::BeginTabBar("AssetInspectorTabs",
-                         ImGuiTabBarFlags_FittingPolicyScroll)) {
-    if (ImGui::BeginTabItem(
-            TEXT::Localize("ui.assetInspector.tabSummary").c_str())) {
-      if (ImGui::InputText(
-              TEXT::Localize(
-                  "ui.assetInspector.displayName").c_str(),
-              displayNameBuffer.data(),
-              displayNameBuffer.size())) {
-        dirty = true;
-      }
-
-      ImGui::Text(
-          TEXT::Localize("ui.assetInspector.guidFormat").c_str(),
-          record->guid.value.c_str());
-      ImGui::Text(
-          TEXT::Localize("ui.assetInspector.typeFormat").c_str(),
-          ASSETS::SEMANTICS::ToString(record->type).data());
-      DrawPathRow(
-          TEXT::Localize("ui.assetInspector.sourcePath").c_str(),
-          record->sourcePath);
-      DrawPathRow(
-          TEXT::Localize("ui.assetInspector.metaPath").c_str(),
-          record->metaPath);
-      ImGui::Text(
-          TEXT::Localize("ui.assetInspector.importerFormat").c_str(),
-          record->meta.importerId.empty()
-              ? TEXT::Localize("ui.common.none").c_str()
-              : record->meta.importerId.c_str());
-      ImGui::Text(
-          TEXT::Localize("ui.assetInspector.importerVersionFormat").c_str(),
-          record->meta.importerVersion);
-      DrawPathRow(
-          TEXT::Localize("ui.assetInspector.importedDirectory").c_str(),
-          record->importedDirectory);
-      ImGui::Text(
-          TEXT::Localize("ui.assetInspector.stateFormat").c_str(),
-          ToString(importState));
-      if (!record->lastImportMessage.empty()) {
-        ImGui::TextWrapped(
-            TEXT::Localize(
-                "ui.assetInspector.lastImportMessageFormat").c_str(),
-            record->lastImportMessage.c_str());
-      }
-
-      if (ImGui::Button(
-              TEXT::Localize("ui.assetInspector.copyGuid").c_str())) {
-        ImGui::SetClipboardText(record->guid.value.c_str());
-      }
-      ImGui::SameLine();
-      if (ImGui::Button(
-              TEXT::Localize("ui.assetInspector.showSource").c_str())) {
-        EDITOR::SHELL::ShowFileInExplorer(assetDatabase.GetProjectRoot() /
-                                          record->sourcePath);
-      }
-      ImGui::SameLine();
-      if (ImGui::Button(
-              TEXT::Localize(
-                  "ui.assetInspector.showImportedDirectory").c_str()) &&
-          !record->importedDirectory.empty()) {
-        EDITOR::SHELL::OpenFolderInExplorer(record->importedDirectory);
-      }
-
-      if (ImGui::Button(
-              TEXT::Localize("ui.assetInspector.reimport").c_str())) {
-        (void)assetDatabase.QueueImportAssets(
-            {record->guid}, "Reimport " + record->displayName);
-      }
-      ImGui::SameLine();
-      if (ImGui::Button(
-              TEXT::Localize(
-                  "ui.assetInspector.importDependencies").c_str())) {
-        (void)assetDatabase.QueueImportDependencies(record->guid, false);
-      }
-      ImGui::SameLine();
-      if (ImGui::Button(
-              TEXT::Localize("ui.assetInspector.saveMeta").c_str())) {
-        if (dirty) {
-          record->meta.importSettingsJson = settings.dump(2);
-          CopyToBuffer(record->meta.importSettingsJson,
-                       importSettingsBuffer.data(),
-                       importSettingsBuffer.size());
+    if (!pendingRefreshRuntimeMaterialGuid_.empty()) {
+        const AssetImportBatchStatus status = assetDatabase.GetQueuedImportStatus();
+        if (!status.active && status.completed) {
+            if (!status.canceled && status.failed == 0) {
+                EDITOR::ClearEditorTexturePreviewCache();
+                refreshRuntimeMaterialGuid_ = pendingRefreshRuntimeMaterialGuid_;
+            }
+            pendingRefreshRuntimeMaterialGuid_.clear();
         }
-        saveMeta();
-      }
-
-      ImGui::EndTabItem();
+    }
+    if (selection.selectedAssetGuid.empty()) {
+        ImGui::TextDisabled("%s", TEXT::Localize("ui.assetInspector.noAssetSelected").c_str());
+        return;
     }
 
-    if (ImGui::BeginTabItem(
-            TEXT::Localize(
-                "ui.assetInspector.tabImportSettings").c_str())) {
-      if (record->type == AssetType::Texture) {
-        dirty = DrawComboSetting(
-                    TEXT::Localize(
-                        "ui.assetInspector.settingUsage").c_str(),
-                    settings, "usage",
-                                 TextureUsageItems.data(),
-                                 static_cast<int>(TextureUsageItems.size())) ||
-                dirty;
-        dirty =
-            DrawComboSetting(
-                    TEXT::Localize(
-                        "ui.assetInspector.settingColorSpace").c_str(),
-                    settings, "colorSpace",
-                             TextureColorSpaceItems.data(),
-                             static_cast<int>(TextureColorSpaceItems.size())) ||
-            dirty;
-        dirty = DrawComboSetting(
-                    TEXT::Localize(
-                        "ui.assetInspector.settingCompression").c_str(),
-                    settings, "compression",
-                    TextureCompressionItems.data(),
-                    static_cast<int>(TextureCompressionItems.size())) ||
-                dirty;
-        dirty =
-            DrawComboSetting(
-                    TEXT::Localize(
-                        "ui.assetInspector.settingMipPolicy").c_str(),
-                    settings, "mipPolicy",
-                             TextureMipPolicyItems.data(),
-                             static_cast<int>(TextureMipPolicyItems.size())) ||
-            dirty;
-        dirty =
-            DrawIntSetting(
-                TEXT::Localize(
-                    "ui.assetInspector.settingMaxSize").c_str(),
-                settings, "maxSize", 4096, 1) || dirty;
-        dirty = DrawBoolSetting(
-                    TEXT::Localize(
-                        "ui.assetInspector.settingForcePowerOfTwo").c_str(),
-                    settings,
-                                "forcePowerOfTwo", false) ||
-                dirty;
-        dirty =
-            DrawBoolSetting(
-                TEXT::Localize(
-                    "ui.assetInspector.settingAllowResize").c_str(),
-                settings, "allowResize", false) ||
-            dirty;
-      } else if (record->type == AssetType::Sky) {
-        dirty = DrawBoolSetting(
-                    TEXT::Localize(
-                        "ui.assetInspector.settingCopySkyCubemap").c_str(),
-                    settings, "copySkyCubemap", true) ||
-                dirty;
-        dirty =
-            DrawBoolSetting(
-                TEXT::Localize(
-                    "ui.assetInspector.settingAutoBakeIbl").c_str(),
-                settings, "autoBakeIBL", true) ||
-            dirty;
-        dirty = DrawIntSetting(
-                    TEXT::Localize(
-                        "ui.assetInspector.settingIrradianceSize").c_str(),
-                    settings, "irradianceSize", 64, 1) ||
-                dirty;
-        dirty = DrawIntSetting(
-                    TEXT::Localize(
-                        "ui.assetInspector.settingIrradianceSamples").c_str(),
-                    settings, "irradianceSampleCount", 256, 1) ||
-                dirty;
-        dirty = DrawIntSetting(
-                    TEXT::Localize(
-                        "ui.assetInspector.settingPrefilteredSize").c_str(),
-                    settings, "prefilteredSize", 256, 1) ||
-                dirty;
-        dirty = DrawIntSetting(
-                    TEXT::Localize(
-                        "ui.assetInspector.settingPrefilteredMipCount").c_str(),
-                    settings, "prefilteredMipCount", 7, 0) ||
-                dirty;
-        dirty = DrawIntSetting(
-                    TEXT::Localize(
-                        "ui.assetInspector.settingPrefilteredSamples").c_str(),
-                    settings, "prefilteredSampleCount", 1024, 1) ||
-                dirty;
-        dirty =
-            DrawIntSetting(
-                TEXT::Localize(
-                    "ui.assetInspector.settingBrdfLutSize").c_str(),
-                settings, "brdfLutSize", 256, 1) ||
-            dirty;
-        dirty = DrawIntSetting(
-                    TEXT::Localize(
-                        "ui.assetInspector.settingBrdfSamples").c_str(),
-                    settings, "brdfSampleCount", 1024, 1) ||
-                dirty;
-      } else if (record->type == AssetType::Model) {
-        dirty =
-            DrawFloatSetting(
-                TEXT::Localize(
-                    "ui.assetInspector.settingUnitScale").c_str(),
-                settings, "unitScale", 1.0f, 0.0f) ||
-            dirty;
-        dirty = DrawComboSetting(
-                    TEXT::Localize(
-                        "ui.assetInspector.settingCoordinateSystem").c_str(),
-                    settings,
-                                 "coordinateSystem", CoordinateSystemItems,
-                                 IM_ARRAYSIZE(CoordinateSystemItems)) ||
-                dirty;
-        dirty = DrawComboSetting(
-                    TEXT::Localize(
-                        "ui.assetInspector.settingGenerateNormals").c_str(),
-                    settings,
-                                 "generateNormals", GeneratePolicyItems,
-                                 IM_ARRAYSIZE(GeneratePolicyItems)) ||
-                dirty;
-        dirty = DrawComboSetting(
-                    TEXT::Localize(
-                        "ui.assetInspector.settingGenerateTangents").c_str(),
-                    settings,
-                                 "generateTangents", GeneratePolicyItems,
-                                 IM_ARRAYSIZE(GeneratePolicyItems)) ||
-                dirty;
-        dirty = DrawBoolSetting(
-                    TEXT::Localize(
-                        "ui.assetInspector.settingLoadMaterials").c_str(),
-                    settings, "loadMaterials", true) ||
-                dirty;
-        dirty =
-            DrawBoolSetting(
-                TEXT::Localize(
-                    "ui.assetInspector.settingLoadTextures").c_str(),
-                settings, "loadTextures", true) ||
-            dirty;
-        dirty =
-            EDITOR::ASSET_IMPORT_SETTINGS::
-                DrawModelImportSettings(settings) ||
-                dirty;
-      } else if (record->type == AssetType::Scene) {
-        dirty = DrawBoolSetting(
-                    TEXT::Localize(
-                        "ui.assetInspector.settingCookScene").c_str(),
-                    settings, "cookScene", false) ||
-                dirty;
-        ImGui::TextDisabled(
-            "%s",
-            TEXT::Localize(
-                "ui.assetInspector.sceneCookHint").c_str());
-      } else {
-        ImGui::TextDisabled(
-            "%s",
-            TEXT::Localize(
-                "ui.assetInspector.noEditableSettings").c_str());
-      }
+    AssetRecord* record = assetDatabase.FindByGuid(AssetGuid{selection.selectedAssetGuid});
+    if (!record) {
+        ImGui::TextDisabled("%s", TEXT::Localize("ui.assetInspector.assetUnavailable").c_str());
+        return;
+    }
 
-      if (dirty) {
+    auto& displayNameBuffer = displayNameBuffer_;
+    auto& importSettingsBuffer = importSettingsBuffer_;
+    if (loadedGuid_ != record->guid.value || loadedProject_ != assetDatabase.GetProjectRoot()) {
+        loadedGuid_ = record->guid.value;
+        loadedProject_ = assetDatabase.GetProjectRoot();
+        CopyToBuffer(record->displayName, displayNameBuffer.data(), displayNameBuffer.size());
+        CopyToBuffer(record->meta.importSettingsJson, importSettingsBuffer.data(), importSettingsBuffer.size());
+        parsedSettingsSource_.clear();
+        filePreviewKey_.clear();
+    }
+
+    bool dirty = false;
+    if (parsedSettings_.is_null() || parsedSettingsSource_ != record->meta.importSettingsJson) {
+        parsedSettings_ = ReadSettings(*record);
+        parsedSettingsSource_ = record->meta.importSettingsJson;
+    }
+    nlohmann::json settings = parsedSettings_;
+    const AssetImportState importState = GetImportState(*record);
+
+    auto saveMeta = [&]() {
         record->meta.displayName = displayNameBuffer.data();
         record->displayName = record->meta.displayName;
-        record->meta.importSettingsJson = settings.dump(2);
-        CopyToBuffer(record->meta.importSettingsJson,
-                     importSettingsBuffer.data(), importSettingsBuffer.size());
-      }
-      if (ImGui::Button(
-              TEXT::Localize("ui.assetInspector.saveMeta").c_str())) {
-        saveMeta();
-      }
-      ImGui::SameLine();
-      if (ImGui::Button(
-              TEXT::Localize("ui.assetInspector.reimport").c_str())) {
-        (void)assetDatabase.QueueImportAssets(
-            {record->guid}, "Reimport " + record->displayName);
-      }
-
-      ImGui::EndTabItem();
-    }
-
-    if (ImGui::BeginTabItem(
-            TEXT::Localize("ui.assetInspector.tabArtifacts").c_str())) {
-      if (record->artifactManifest.artifacts.empty()) {
-        ImGui::TextDisabled(
-            "%s",
-            TEXT::Localize("ui.assetInspector.noArtifacts").c_str());
-      } else if (ImGui::BeginTable("AssetArtifactsTable", 4,
-                                   ImGuiTableFlags_RowBg |
-                                       ImGuiTableFlags_BordersInnerV)) {
-        ImGui::TableSetupColumn(
-            TEXT::Localize("ui.assetInspector.role").c_str());
-        ImGui::TableSetupColumn(
-            TEXT::Localize("ui.assetInspector.format").c_str(),
-            ImGuiTableColumnFlags_WidthFixed, 80.0f);
-        ImGui::TableSetupColumn(
-            TEXT::Localize("ui.assetInspector.exists").c_str(),
-            ImGuiTableColumnFlags_WidthFixed, 70.0f);
-        ImGui::TableSetupColumn(
-            TEXT::Localize("ui.assetInspector.path").c_str());
-        ImGui::TableHeadersRow();
-
-        for (size_t artifactIndex = 0;
-             artifactIndex < record->artifactManifest.artifacts.size();
-             ++artifactIndex) {
-          const AssetArtifactDesc &artifact =
-              record->artifactManifest.artifacts[artifactIndex];
-          const std::filesystem::path artifactPath =
-              assetDatabase.GetProjectRoot() / artifact.path;
-          const bool exists = std::filesystem::exists(artifactPath);
-
-          ImGui::PushID(static_cast<int>(artifactIndex));
-          ImGui::TableNextRow();
-          ImGui::TableSetColumnIndex(0);
-          ImGui::TextUnformatted(artifact.role.c_str());
-          ImGui::TableSetColumnIndex(1);
-          ImGui::TextUnformatted(artifact.format.c_str());
-          ImGui::TableSetColumnIndex(2);
-          ImGui::TextUnformatted(
-              exists
-                  ? TEXT::Localize("ui.common.yes").c_str()
-                  : TEXT::Localize("ui.common.no").c_str());
-          ImGui::TableSetColumnIndex(3);
-          ImGui::TextUnformatted(artifact.path.c_str());
-          if (ImGui::BeginPopupContextItem("ArtifactContext")) {
-            if (ImGui::MenuItem(
-                    TEXT::Localize(
-                        "ui.assetInspector.openFolder").c_str())) {
-              EDITOR::SHELL::OpenFolderInExplorer(artifactPath.parent_path());
-            }
-            if (ImGui::MenuItem(
-                    TEXT::Localize(
-                        "ui.assetInspector.copyPath").c_str())) {
-              ImGui::SetClipboardText(artifact.path.c_str());
-            }
-            ImGui::EndPopup();
-          }
-          ImGui::PopID();
-        }
-
-        ImGui::EndTable();
-      }
-      ImGui::EndTabItem();
-    }
-
-    if (ImGui::BeginTabItem(
-            TEXT::Localize("ui.assetInspector.tabDependencies").c_str())) {
-      if (record->artifactManifest.dependencies.empty()) {
-        ImGui::TextDisabled(
-            "%s",
-            TEXT::Localize(
-                "ui.assetInspector.noDependencies").c_str());
-      } else if (ImGui::BeginTable("AssetDependenciesTable", 4,
-                                   ImGuiTableFlags_RowBg |
-                                       ImGuiTableFlags_BordersInnerV)) {
-        ImGui::TableSetupColumn(
-            TEXT::Localize("ui.assetInspector.role").c_str());
-        ImGui::TableSetupColumn("GUID");
-        ImGui::TableSetupColumn(
-            TEXT::Localize("ui.assetInspector.resolved").c_str(),
-            ImGuiTableColumnFlags_WidthFixed, 80.0f);
-        ImGui::TableSetupColumn(
-            TEXT::Localize("ui.assetInspector.path").c_str());
-        ImGui::TableHeadersRow();
-
-        for (const AssetDependencyDesc &dependency :
-             record->artifactManifest.dependencies) {
-          const bool resolved =
-              dependency.guid.IsValid()
-                  ? assetDatabase.FindByGuid(dependency.guid) != nullptr
-                  : !dependency.path.empty() &&
-                        std::filesystem::exists(assetDatabase.GetProjectRoot() /
-                                                dependency.path);
-
-          ImGui::TableNextRow();
-          ImGui::TableSetColumnIndex(0);
-          ImGui::TextUnformatted(dependency.role.c_str());
-          ImGui::TableSetColumnIndex(1);
-          ImGui::TextUnformatted(dependency.guid.value.c_str());
-          ImGui::TableSetColumnIndex(2);
-          ImGui::TextUnformatted(
-              resolved
-                  ? TEXT::Localize("ui.common.yes").c_str()
-                  : TEXT::Localize("ui.common.no").c_str());
-          ImGui::TableSetColumnIndex(3);
-          ImGui::TextUnformatted(dependency.path.c_str());
-        }
-
-        ImGui::EndTable();
-      }
-      if (!record->artifactManifest.dependencies.empty()) {
-        if (ImGui::Button(
-                TEXT::Localize(
-                    "ui.assetInspector.importDependencies").c_str())) {
-          (void)assetDatabase.QueueImportDependencies(record->guid, false);
-        }
-      }
-      ImGui::EndTabItem();
-    }
-
-    if (ImGui::BeginTabItem(
-            TEXT::Localize("ui.assetInspector.tabPreview").c_str())) {
-      if (record->type == AssetType::Texture) {
-        if (record->artifactManifest.artifacts.empty()) {
-          ImGui::TextDisabled(
-              "%s",
-              TEXT::Localize(
-                  "ui.assetInspector.previewTextureWaiting").c_str());
-        } else {
-          ImGui::Text(
-              TEXT::Localize(
-                  "ui.assetInspector.previewTextureArtifact").c_str(),
-                      record->artifactManifest.artifacts.front().path.c_str());
-          ImGui::TextDisabled(
-              "%s",
-              TEXT::Localize(
-                  "ui.assetInspector.previewTextureSrv").c_str());
-        }
-      } else if (record->type == AssetType::Sky) {
-        ImGui::TextDisabled(
-            "%s",
-            TEXT::Localize(
-                "ui.assetInspector.previewSkyReserved").c_str());
-        if (const AssetArtifactDesc *artifact =
-                ASSETS::SEMANTICS::FindCompatibleAssetArtifact(
-                    *record,
-                    ASSETS::SEMANTICS::AssetArtifactKind::SkyCubemap)) {
-          ImGui::Text(
-              TEXT::Localize(
-                  "ui.assetInspector.previewSkyCubemap").c_str(),
-              artifact->path.c_str());
-        }
-      } else if (record->type == AssetType::Model) {
-        DrawPathRow(
-            TEXT::Localize("ui.assetInspector.modelSource").c_str(),
-            record->sourcePath);
-        RefreshFilePreview(assetDatabase, *record);
-        DrawModelDiagnostics(modelInfo_, modelReport_);
-      } else if (record->type == AssetType::Scene) {
-        DrawPathRow(
-            TEXT::Localize("ui.assetInspector.sceneSource").c_str(),
-            record->sourcePath);
-        ImGui::TextDisabled(
-            "%s",
-            TEXT::Localize(
-                "ui.assetInspector.sceneManagedHint").c_str());
-      } else {
-        ImGui::TextDisabled(
-            "%s",
-            TEXT::Localize(
-                "ui.assetInspector.noPreview").c_str());
-      }
-      ImGui::EndTabItem();
-    }
-
-    if (record->type == AssetType::Material &&
-        ImGui::BeginTabItem(
-            TEXT::Localize(
-                "ui.assetInspector.tabPbrMaterial").c_str())) {
-      DrawMaterialAssetEditor(assetDatabase, assetRegistry, selection, *record,
-                              applyRuntimeMaterialGuid_,
-                              applyRuntimeMaterialData_,
-                              pendingRefreshRuntimeMaterialGuid_);
-      ImGui::EndTabItem();
-    }
-
-    if (ImGui::BeginTabItem(
-            TEXT::Localize("ui.assetInspector.tabDebugJson").c_str())) {
-      if (ImGui::InputTextMultiline(
-              TEXT::Localize(
-                  "ui.assetInspector.importSettingsJson").c_str(),
-              importSettingsBuffer.data(),
-              importSettingsBuffer.size(), ImVec2(-1.0f, 160.0f))) {
         record->meta.importSettingsJson = importSettingsBuffer.data();
-        dirty = true;
-      }
-      if (ImGui::Button(
-              TEXT::Localize(
-                  "ui.assetInspector.saveRawImportSettings").c_str())) {
-        saveMeta();
-      }
+        if (assetDatabase.WriteMeta(*record)) {
+            record->importOutdated = true;
+            record->lastImportMessage = "[AssetDatabase] Meta saved; reimport required";
+        }
+    };
 
-      ImGui::SeparatorText(
-          TEXT::Localize("ui.assetInspector.rawMetaJson").c_str());
-      RefreshFilePreview(assetDatabase, *record);
-      const std::string& metaText = rawMeta_;
-      if (metaText.empty()) {
-        ImGui::TextDisabled(
-            "%s",
-            TEXT::Localize(
-                "ui.assetInspector.metaJsonUnavailable").c_str());
-      } else {
-        ImGui::InputTextMultiline("##RawMetaJson",
-                                  const_cast<char *>(metaText.c_str()),
-                                  metaText.size() + 1, ImVec2(-1.0f, 180.0f),
-                                  ImGuiInputTextFlags_ReadOnly);
-      }
+    if (ImGui::BeginTabBar("AssetInspectorTabs", ImGuiTabBarFlags_FittingPolicyScroll)) {
+        if (ImGui::BeginTabItem(TEXT::Localize("ui.assetInspector.tabSummary").c_str())) {
+            if (ImGui::InputText(TEXT::Localize("ui.assetInspector.displayName").c_str(), displayNameBuffer.data(),
+                                 displayNameBuffer.size())) {
+                dirty = true;
+            }
 
-      ImGui::SeparatorText(
-          TEXT::Localize("ui.assetInspector.importReportJson").c_str());
-      const std::string& reportText = rawReport_;
-      if (reportText.empty()) {
-        ImGui::TextDisabled(
-            "%s",
-            TEXT::Localize(
-                "ui.assetInspector.importReportUnavailable").c_str());
-      } else {
-        ImGui::InputTextMultiline("##ImportReportJson",
-                                  const_cast<char *>(reportText.c_str()),
-                                  reportText.size() + 1, ImVec2(-1.0f, 180.0f),
-                                  ImGuiInputTextFlags_ReadOnly);
-      }
+            ImGui::Text(TEXT::Localize("ui.assetInspector.guidFormat").c_str(), record->guid.value.c_str());
+            ImGui::Text(TEXT::Localize("ui.assetInspector.typeFormat").c_str(),
+                        ASSETS::SEMANTICS::ToString(record->type).data());
+            DrawPathRow(TEXT::Localize("ui.assetInspector.sourcePath").c_str(), record->sourcePath);
+            DrawPathRow(TEXT::Localize("ui.assetInspector.metaPath").c_str(), record->metaPath);
+            ImGui::Text(TEXT::Localize("ui.assetInspector.importerFormat").c_str(),
+                        record->meta.importerId.empty() ? TEXT::Localize("ui.common.none").c_str()
+                                                        : record->meta.importerId.c_str());
+            ImGui::Text(TEXT::Localize("ui.assetInspector.importerVersionFormat").c_str(),
+                        record->meta.importerVersion);
+            DrawPathRow(TEXT::Localize("ui.assetInspector.importedDirectory").c_str(), record->importedDirectory);
+            ImGui::Text(TEXT::Localize("ui.assetInspector.stateFormat").c_str(), ToString(importState));
+            if (!record->lastImportMessage.empty()) {
+                ImGui::TextWrapped(TEXT::Localize("ui.assetInspector.lastImportMessageFormat").c_str(),
+                                   record->lastImportMessage.c_str());
+            }
 
-      ImGui::EndTabItem();
+            if (ImGui::Button(TEXT::Localize("ui.assetInspector.copyGuid").c_str())) {
+                ImGui::SetClipboardText(record->guid.value.c_str());
+            }
+            ImGui::SameLine();
+            if (ImGui::Button(TEXT::Localize("ui.assetInspector.showSource").c_str())) {
+                EDITOR::SHELL::ShowFileInExplorer(assetDatabase.GetProjectRoot() / record->sourcePath);
+            }
+            ImGui::SameLine();
+            if (ImGui::Button(TEXT::Localize("ui.assetInspector.showImportedDirectory").c_str()) &&
+                !record->importedDirectory.empty()) {
+                EDITOR::SHELL::OpenFolderInExplorer(record->importedDirectory);
+            }
+
+            if (ImGui::Button(TEXT::Localize("ui.assetInspector.reimport").c_str())) {
+                (void)assetDatabase.QueueImportAssets({record->guid}, "Reimport " + record->displayName);
+            }
+            ImGui::SameLine();
+            if (ImGui::Button(TEXT::Localize("ui.assetInspector.importDependencies").c_str())) {
+                (void)assetDatabase.QueueImportDependencies(record->guid, false);
+            }
+            ImGui::SameLine();
+            if (ImGui::Button(TEXT::Localize("ui.assetInspector.saveMeta").c_str())) {
+                if (dirty) {
+                    record->meta.importSettingsJson = settings.dump(2);
+                    CopyToBuffer(record->meta.importSettingsJson, importSettingsBuffer.data(),
+                                 importSettingsBuffer.size());
+                }
+                saveMeta();
+            }
+
+            ImGui::EndTabItem();
+        }
+
+        if (ImGui::BeginTabItem(TEXT::Localize("ui.assetInspector.tabImportSettings").c_str())) {
+            if (record->type == AssetType::Texture) {
+                dirty = DrawComboSetting(TEXT::Localize("ui.assetInspector.settingUsage").c_str(), settings, "usage",
+                                         TextureUsageItems.data(), static_cast<int>(TextureUsageItems.size())) ||
+                        dirty;
+                dirty = DrawComboSetting(TEXT::Localize("ui.assetInspector.settingColorSpace").c_str(), settings,
+                                         "colorSpace", TextureColorSpaceItems.data(),
+                                         static_cast<int>(TextureColorSpaceItems.size())) ||
+                        dirty;
+                dirty = DrawComboSetting(TEXT::Localize("ui.assetInspector.settingCompression").c_str(), settings,
+                                         "compression", TextureCompressionItems.data(),
+                                         static_cast<int>(TextureCompressionItems.size())) ||
+                        dirty;
+                dirty = DrawComboSetting(TEXT::Localize("ui.assetInspector.settingMipPolicy").c_str(), settings,
+                                         "mipPolicy", TextureMipPolicyItems.data(),
+                                         static_cast<int>(TextureMipPolicyItems.size())) ||
+                        dirty;
+                dirty = DrawIntSetting(TEXT::Localize("ui.assetInspector.settingMaxSize").c_str(), settings, "maxSize",
+                                       4096, 1) ||
+                        dirty;
+                dirty = DrawBoolSetting(TEXT::Localize("ui.assetInspector.settingForcePowerOfTwo").c_str(), settings,
+                                        "forcePowerOfTwo", false) ||
+                        dirty;
+                dirty = DrawBoolSetting(TEXT::Localize("ui.assetInspector.settingAllowResize").c_str(), settings,
+                                        "allowResize", false) ||
+                        dirty;
+            } else if (record->type == AssetType::Sky) {
+                dirty = DrawBoolSetting(TEXT::Localize("ui.assetInspector.settingCopySkyCubemap").c_str(), settings,
+                                        "copySkyCubemap", true) ||
+                        dirty;
+                dirty = DrawBoolSetting(TEXT::Localize("ui.assetInspector.settingAutoBakeIbl").c_str(), settings,
+                                        "autoBakeIBL", true) ||
+                        dirty;
+                dirty = DrawIntSetting(TEXT::Localize("ui.assetInspector.settingIrradianceSize").c_str(), settings,
+                                       "irradianceSize", 64, 1) ||
+                        dirty;
+                dirty = DrawIntSetting(TEXT::Localize("ui.assetInspector.settingIrradianceSamples").c_str(), settings,
+                                       "irradianceSampleCount", 256, 1) ||
+                        dirty;
+                dirty = DrawIntSetting(TEXT::Localize("ui.assetInspector.settingPrefilteredSize").c_str(), settings,
+                                       "prefilteredSize", 256, 1) ||
+                        dirty;
+                dirty = DrawIntSetting(TEXT::Localize("ui.assetInspector.settingPrefilteredMipCount").c_str(), settings,
+                                       "prefilteredMipCount", 7, 0) ||
+                        dirty;
+                dirty = DrawIntSetting(TEXT::Localize("ui.assetInspector.settingPrefilteredSamples").c_str(), settings,
+                                       "prefilteredSampleCount", 1024, 1) ||
+                        dirty;
+                dirty = DrawIntSetting(TEXT::Localize("ui.assetInspector.settingBrdfLutSize").c_str(), settings,
+                                       "brdfLutSize", 256, 1) ||
+                        dirty;
+                dirty = DrawIntSetting(TEXT::Localize("ui.assetInspector.settingBrdfSamples").c_str(), settings,
+                                       "brdfSampleCount", 1024, 1) ||
+                        dirty;
+            } else if (record->type == AssetType::Model) {
+                dirty = DrawFloatSetting(TEXT::Localize("ui.assetInspector.settingUnitScale").c_str(), settings,
+                                         "unitScale", 1.0f, 0.0f) ||
+                        dirty;
+                dirty =
+                    DrawComboSetting(TEXT::Localize("ui.assetInspector.settingCoordinateSystem").c_str(), settings,
+                                     "coordinateSystem", CoordinateSystemItems, IM_ARRAYSIZE(CoordinateSystemItems)) ||
+                    dirty;
+                dirty = DrawComboSetting(TEXT::Localize("ui.assetInspector.settingGenerateNormals").c_str(), settings,
+                                         "generateNormals", GeneratePolicyItems, IM_ARRAYSIZE(GeneratePolicyItems)) ||
+                        dirty;
+                dirty = DrawComboSetting(TEXT::Localize("ui.assetInspector.settingGenerateTangents").c_str(), settings,
+                                         "generateTangents", GeneratePolicyItems, IM_ARRAYSIZE(GeneratePolicyItems)) ||
+                        dirty;
+                dirty = DrawBoolSetting(TEXT::Localize("ui.assetInspector.settingLoadMaterials").c_str(), settings,
+                                        "loadMaterials", true) ||
+                        dirty;
+                dirty = DrawBoolSetting(TEXT::Localize("ui.assetInspector.settingLoadTextures").c_str(), settings,
+                                        "loadTextures", true) ||
+                        dirty;
+                dirty = EDITOR::ASSET_IMPORT_SETTINGS::DrawModelImportSettings(settings) || dirty;
+            } else if (record->type == AssetType::Scene) {
+                dirty = DrawBoolSetting(TEXT::Localize("ui.assetInspector.settingCookScene").c_str(), settings,
+                                        "cookScene", false) ||
+                        dirty;
+                ImGui::TextDisabled("%s", TEXT::Localize("ui.assetInspector.sceneCookHint").c_str());
+            } else {
+                ImGui::TextDisabled("%s", TEXT::Localize("ui.assetInspector.noEditableSettings").c_str());
+            }
+
+            if (dirty) {
+                record->meta.displayName = displayNameBuffer.data();
+                record->displayName = record->meta.displayName;
+                record->meta.importSettingsJson = settings.dump(2);
+                CopyToBuffer(record->meta.importSettingsJson, importSettingsBuffer.data(), importSettingsBuffer.size());
+            }
+            if (ImGui::Button(TEXT::Localize("ui.assetInspector.saveMeta").c_str())) {
+                saveMeta();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button(TEXT::Localize("ui.assetInspector.reimport").c_str())) {
+                (void)assetDatabase.QueueImportAssets({record->guid}, "Reimport " + record->displayName);
+            }
+
+            ImGui::EndTabItem();
+        }
+
+        if (ImGui::BeginTabItem(TEXT::Localize("ui.assetInspector.tabArtifacts").c_str())) {
+            if (record->artifactManifest.artifacts.empty()) {
+                ImGui::TextDisabled("%s", TEXT::Localize("ui.assetInspector.noArtifacts").c_str());
+            } else if (ImGui::BeginTable("AssetArtifactsTable", 4,
+                                         ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV)) {
+                ImGui::TableSetupColumn(TEXT::Localize("ui.assetInspector.role").c_str());
+                ImGui::TableSetupColumn(TEXT::Localize("ui.assetInspector.format").c_str(),
+                                        ImGuiTableColumnFlags_WidthFixed, 80.0f);
+                ImGui::TableSetupColumn(TEXT::Localize("ui.assetInspector.exists").c_str(),
+                                        ImGuiTableColumnFlags_WidthFixed, 70.0f);
+                ImGui::TableSetupColumn(TEXT::Localize("ui.assetInspector.path").c_str());
+                ImGui::TableHeadersRow();
+
+                for (size_t artifactIndex = 0; artifactIndex < record->artifactManifest.artifacts.size();
+                     ++artifactIndex) {
+                    const AssetArtifactDesc& artifact = record->artifactManifest.artifacts[artifactIndex];
+                    const std::filesystem::path artifactPath = assetDatabase.GetProjectRoot() / artifact.path;
+                    const bool exists = std::filesystem::exists(artifactPath);
+
+                    ImGui::PushID(static_cast<int>(artifactIndex));
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    ImGui::TextUnformatted(artifact.role.c_str());
+                    ImGui::TableSetColumnIndex(1);
+                    ImGui::TextUnformatted(artifact.format.c_str());
+                    ImGui::TableSetColumnIndex(2);
+                    ImGui::TextUnformatted(exists ? TEXT::Localize("ui.common.yes").c_str()
+                                                  : TEXT::Localize("ui.common.no").c_str());
+                    ImGui::TableSetColumnIndex(3);
+                    ImGui::TextUnformatted(artifact.path.c_str());
+                    if (ImGui::BeginPopupContextItem("ArtifactContext")) {
+                        if (ImGui::MenuItem(TEXT::Localize("ui.assetInspector.openFolder").c_str())) {
+                            EDITOR::SHELL::OpenFolderInExplorer(artifactPath.parent_path());
+                        }
+                        if (ImGui::MenuItem(TEXT::Localize("ui.assetInspector.copyPath").c_str())) {
+                            ImGui::SetClipboardText(artifact.path.c_str());
+                        }
+                        ImGui::EndPopup();
+                    }
+                    ImGui::PopID();
+                }
+
+                ImGui::EndTable();
+            }
+            ImGui::EndTabItem();
+        }
+
+        if (ImGui::BeginTabItem(TEXT::Localize("ui.assetInspector.tabDependencies").c_str())) {
+            if (record->artifactManifest.dependencies.empty()) {
+                ImGui::TextDisabled("%s", TEXT::Localize("ui.assetInspector.noDependencies").c_str());
+            } else if (ImGui::BeginTable("AssetDependenciesTable", 4,
+                                         ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV)) {
+                ImGui::TableSetupColumn(TEXT::Localize("ui.assetInspector.role").c_str());
+                ImGui::TableSetupColumn("GUID");
+                ImGui::TableSetupColumn(TEXT::Localize("ui.assetInspector.resolved").c_str(),
+                                        ImGuiTableColumnFlags_WidthFixed, 80.0f);
+                ImGui::TableSetupColumn(TEXT::Localize("ui.assetInspector.path").c_str());
+                ImGui::TableHeadersRow();
+
+                for (const AssetDependencyDesc& dependency : record->artifactManifest.dependencies) {
+                    const bool resolved =
+                        dependency.guid.IsValid()
+                            ? assetDatabase.FindByGuid(dependency.guid) != nullptr
+                            : !dependency.path.empty() &&
+                                  std::filesystem::exists(assetDatabase.GetProjectRoot() / dependency.path);
+
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    ImGui::TextUnformatted(dependency.role.c_str());
+                    ImGui::TableSetColumnIndex(1);
+                    ImGui::TextUnformatted(dependency.guid.value.c_str());
+                    ImGui::TableSetColumnIndex(2);
+                    ImGui::TextUnformatted(resolved ? TEXT::Localize("ui.common.yes").c_str()
+                                                    : TEXT::Localize("ui.common.no").c_str());
+                    ImGui::TableSetColumnIndex(3);
+                    ImGui::TextUnformatted(dependency.path.c_str());
+                }
+
+                ImGui::EndTable();
+            }
+            if (!record->artifactManifest.dependencies.empty()) {
+                if (ImGui::Button(TEXT::Localize("ui.assetInspector.importDependencies").c_str())) {
+                    (void)assetDatabase.QueueImportDependencies(record->guid, false);
+                }
+            }
+            ImGui::EndTabItem();
+        }
+
+        if (ImGui::BeginTabItem(TEXT::Localize("ui.assetInspector.tabPreview").c_str())) {
+            if (record->type == AssetType::Texture) {
+                if (record->artifactManifest.artifacts.empty()) {
+                    ImGui::TextDisabled("%s", TEXT::Localize("ui.assetInspector.previewTextureWaiting").c_str());
+                } else {
+                    ImGui::Text(TEXT::Localize("ui.assetInspector.previewTextureArtifact").c_str(),
+                                record->artifactManifest.artifacts.front().path.c_str());
+                    ImGui::TextDisabled("%s", TEXT::Localize("ui.assetInspector.previewTextureSrv").c_str());
+                }
+            } else if (record->type == AssetType::Sky) {
+                ImGui::TextDisabled("%s", TEXT::Localize("ui.assetInspector.previewSkyReserved").c_str());
+                if (const AssetArtifactDesc* artifact = ASSETS::SEMANTICS::FindCompatibleAssetArtifact(
+                        *record, ASSETS::SEMANTICS::AssetArtifactKind::SkyCubemap)) {
+                    ImGui::Text(TEXT::Localize("ui.assetInspector.previewSkyCubemap").c_str(), artifact->path.c_str());
+                }
+            } else if (record->type == AssetType::Model) {
+                DrawPathRow(TEXT::Localize("ui.assetInspector.modelSource").c_str(), record->sourcePath);
+                RefreshFilePreview(assetDatabase, *record);
+                DrawModelDiagnostics(modelInfo_, modelReport_);
+            } else if (record->type == AssetType::Scene) {
+                DrawPathRow(TEXT::Localize("ui.assetInspector.sceneSource").c_str(), record->sourcePath);
+                ImGui::TextDisabled("%s", TEXT::Localize("ui.assetInspector.sceneManagedHint").c_str());
+            } else {
+                ImGui::TextDisabled("%s", TEXT::Localize("ui.assetInspector.noPreview").c_str());
+            }
+            ImGui::EndTabItem();
+        }
+
+        if (record->type == AssetType::Material &&
+            ImGui::BeginTabItem(TEXT::Localize("ui.assetInspector.tabPbrMaterial").c_str())) {
+            DrawMaterialAssetEditor(assetDatabase, assetRegistry, selection, *record, applyRuntimeMaterialGuid_,
+                                    applyRuntimeMaterialData_, pendingRefreshRuntimeMaterialGuid_);
+            ImGui::EndTabItem();
+        }
+
+        if (ImGui::BeginTabItem(TEXT::Localize("ui.assetInspector.tabDebugJson").c_str())) {
+            if (ImGui::InputTextMultiline(TEXT::Localize("ui.assetInspector.importSettingsJson").c_str(),
+                                          importSettingsBuffer.data(), importSettingsBuffer.size(),
+                                          ImVec2(-1.0f, 160.0f))) {
+                record->meta.importSettingsJson = importSettingsBuffer.data();
+                dirty = true;
+            }
+            if (ImGui::Button(TEXT::Localize("ui.assetInspector.saveRawImportSettings").c_str())) {
+                saveMeta();
+            }
+
+            ImGui::SeparatorText(TEXT::Localize("ui.assetInspector.rawMetaJson").c_str());
+            RefreshFilePreview(assetDatabase, *record);
+            const std::string& metaText = rawMeta_;
+            if (metaText.empty()) {
+                ImGui::TextDisabled("%s", TEXT::Localize("ui.assetInspector.metaJsonUnavailable").c_str());
+            } else {
+                ImGui::InputTextMultiline("##RawMetaJson", const_cast<char*>(metaText.c_str()), metaText.size() + 1,
+                                          ImVec2(-1.0f, 180.0f), ImGuiInputTextFlags_ReadOnly);
+            }
+
+            ImGui::SeparatorText(TEXT::Localize("ui.assetInspector.importReportJson").c_str());
+            const std::string& reportText = rawReport_;
+            if (reportText.empty()) {
+                ImGui::TextDisabled("%s", TEXT::Localize("ui.assetInspector.importReportUnavailable").c_str());
+            } else {
+                ImGui::InputTextMultiline("##ImportReportJson", const_cast<char*>(reportText.c_str()),
+                                          reportText.size() + 1, ImVec2(-1.0f, 180.0f), ImGuiInputTextFlags_ReadOnly);
+            }
+
+            ImGui::EndTabItem();
+        }
+
+        ImGui::EndTabBar();
     }
 
-    ImGui::EndTabBar();
-  }
-
-  if (dirty) {
-    record->meta.displayName = displayNameBuffer.data();
-    record->displayName = record->meta.displayName;
-  }
+    if (dirty) {
+        record->meta.displayName = displayNameBuffer.data();
+        record->displayName = record->meta.displayName;
+    }
 #else
-  (void)assetDatabase;
-  (void)assetRegistry;
-  (void)selection;
+    (void)assetDatabase;
+    (void)assetRegistry;
+    (void)selection;
 #endif
 }
 
-bool AssetInspectorPanel::ConsumeApplyRuntimeMaterialRequest(
-    AssetGuid &outGuid, PbrMaterialAssetData &outData) const {
+bool AssetInspectorPanel::ConsumeApplyRuntimeMaterialRequest(AssetGuid& outGuid, PbrMaterialAssetData& outData) const {
+    if (!applyRuntimeMaterialGuid_.IsValid()) {
+        return false;
+    }
 
-  if (!applyRuntimeMaterialGuid_.IsValid()) {
-    return false;
-  }
-
-  outGuid = applyRuntimeMaterialGuid_;
-  outData = applyRuntimeMaterialData_;
-  applyRuntimeMaterialGuid_ = {};
-  applyRuntimeMaterialData_ = {};
-  return true;
+    outGuid = applyRuntimeMaterialGuid_;
+    outData = applyRuntimeMaterialData_;
+    applyRuntimeMaterialGuid_ = {};
+    applyRuntimeMaterialData_ = {};
+    return true;
 }
 
 std::string AssetInspectorPanel::ConsumeRefreshRuntimeMaterialGuid() const {
-  std::string guid = std::move(refreshRuntimeMaterialGuid_);
-  refreshRuntimeMaterialGuid_.clear();
-  return guid;
+    std::string guid = std::move(refreshRuntimeMaterialGuid_);
+    refreshRuntimeMaterialGuid_.clear();
+    return guid;
 }
 
 } // namespace HIKARI

@@ -6,7 +6,6 @@
 
 namespace HIKARI::EDITOR {
 
-bool DrawPostProfileParameter(const VFX::ParamDesc &parameter,
-                              DirectX::XMFLOAT4 &slotValue);
+bool DrawPostProfileParameter(const VFX::ParamDesc& parameter, DirectX::XMFLOAT4& slotValue);
 
 } // namespace HIKARI::EDITOR

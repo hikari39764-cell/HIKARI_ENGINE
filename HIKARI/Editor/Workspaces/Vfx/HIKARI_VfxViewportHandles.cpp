@@ -10,21 +10,21 @@
 
 namespace HIKARI::EDITOR {
 namespace {
-MATH::Vec3 Transform(const MATH::Mat4 &matrix, const MATH::Vec3 &v, float w = 1) {
+MATH::Vec3 Transform(const MATH::Mat4& matrix, const MATH::Vec3& v, float w = 1) {
     const auto result = matrix.TransformPoint({v.x, v.y, v.z, w});
     return {result.x, result.y, result.z};
 }
 } // namespace
-bool VfxWorkspaceController::DrawLayerHandles(const EditorViewportRect &rect, bool hovered,
-                                              bool gizmoInteracting, std::string &pickedLayer) {
+bool VfxWorkspaceController::DrawLayerHandles(const EditorViewportRect& rect, bool hovered, bool gizmoInteracting,
+                                              std::string& pickedLayer) {
 #if defined(HIKARI_WITH_EDITOR)
-    if (!document_.IsOpen() || !previewProgram_)
+    if (!document_.IsOpen() || !preview_.previewProgram_)
         return false;
-    const auto &camera = cameraController_.GetCamera();
+    const auto& camera = preview_.cameraController_.GetCamera();
     const auto vp = camera.GetViewProj();
     const auto mouse = ImGui::GetIO().MousePos;
-    auto &draw = *ImGui::GetWindowDrawList();
-    const auto project = [&](MATH::Vec3 world, ImVec2 &screen) {
+    auto& draw = *ImGui::GetWindowDrawList();
+    const auto project = [&](MATH::Vec3 world, ImVec2& screen) {
         const auto clip = vp.TransformPoint({world.x, world.y, world.z, 1});
         if (clip.w < 0.00001f || clip.z < 0)
             return false;
@@ -63,16 +63,16 @@ bool VfxWorkspaceController::DrawLayerHandles(const EditorViewportRect &rect, bo
                 const auto inverseView = MATH::Inverse(camera.GetView());
                 viewportHandle_.planeNormal = MATH::Normalize(Transform(inverseView, {0, 0, 1}, 0));
                 if (viewportHandle_.pathKey)
-                    (void)SeekPreview(viewportHandle_.seconds, statusMessage_);
+                    (void)preview_.SeekPreview(viewportHandle_.seconds, statusMessage_);
             }
         }
     };
-    for (const auto &layer : asset.emitters) {
-        if (layer.kind == VFX::VfxLayerKind::Adjustment || !IsEmitterPreviewVisible(layer.id))
+    for (const auto& layer : asset.emitters) {
+        if (layer.kind == VFX::VfxLayerKind::Adjustment || !preview_.IsEmitterPreviewVisible(layer.id))
             continue;
         VFX::VfxWorldTransform world, frame;
-        if (!playbackService_.GetLayerPoseAtTime(previewHandle_, layer.id, previewElapsedSeconds_, world,
-                                                 frame))
+        if (!preview_.playbackService_.GetLayerPoseAtTime(preview_.previewHandle_, layer.id,
+                                                          preview_.previewElapsedSeconds_, world, frame))
             continue;
         if (std::abs(world.scale.x * world.scale.y * world.scale.z) < 0.000001f)
             world = frame;
@@ -82,24 +82,23 @@ bool VfxWorkspaceController::DrawLayerHandles(const EditorViewportRect &rect, bo
         const auto inverse = MATH::Inverse(matrix);
         const bool selected = selection_.emitterId == layer.id;
         const bool particles = layer.kind == VFX::VfxLayerKind::Particles;
-        const float span =
-            layer.activeDuration > 0 ? layer.activeDuration : asset.durationSeconds - layer.startDelay;
-        auto compiled = std::find_if(previewProgram_->emitters.begin(), previewProgram_->emitters.end(),
-                                     [&](const auto &e) { return e.sourceEmitterId == layer.id; });
-        if (compiled == previewProgram_->emitters.end())
+        const float span = layer.activeDuration > 0 ? layer.activeDuration : asset.durationSeconds - layer.startDelay;
+        auto compiled =
+            std::find_if(preview_.previewProgram_->emitters.begin(), preview_.previewProgram_->emitters.end(),
+                         [&](const auto& e) { return e.sourceEmitterId == layer.id; });
+        if (compiled == preview_.previewProgram_->emitters.end())
             continue;
         auto render = compiled->render;
         VFX::EvaluateVfxLayerRenderParameters(
-            *compiled, span > 0 ? (previewElapsedSeconds_ - layer.startDelay) / span : 0, render, span);
+            *compiled, span > 0 ? (preview_.previewElapsedSeconds_ - layer.startDelay) / span : 0, render, span);
         const bool ring = layer.renderShape.type == VFX::VfxRenderShapeType::Ring && !particles;
         MATH::Vec3 half{0.5f, 0.5f, 0.5f};
         if (ring)
             half = {render.ringOuterRadius, render.ringOuterRadius, 0.03f};
         else if (particles) {
-            const float radius =
-                (std::max)(0.15f, layer.shape.radius.mode == VFX::VfxDistributionMode::Constant
-                                      ? layer.shape.radius.minimum
-                                      : layer.shape.radius.maximum);
+            const float radius = (std::max)(0.15f, layer.shape.radius.mode == VFX::VfxDistributionMode::Constant
+                                                       ? layer.shape.radius.minimum
+                                                       : layer.shape.radius.maximum);
             half = layer.shape.type == VFX::VfxShapeType::Box ? layer.shape.boxHalfExtents
                                                               : MATH::Vec3{radius, radius, radius};
         } else if (layer.renderShape.type == VFX::VfxRenderShapeType::Sprite)
@@ -117,8 +116,7 @@ bool VfxWorkspaceController::DrawLayerHandles(const EditorViewportRect &rect, bo
                 if (end < start)
                     std::swap(start, end);
                 angle += std::ceil((start - angle) / 6.2831853f) * 6.2831853f;
-                hit = distance >= 0 && r >= render.ringInnerRadius && r <= render.ringOuterRadius &&
-                      angle <= end;
+                hit = distance >= 0 && r >= render.ringInnerRadius && r <= render.ringOuterRadius && angle <= end;
             }
             if (hit && distance < nearest) {
                 nearest = distance;
@@ -147,7 +145,7 @@ bool VfxWorkspaceController::DrawLayerHandles(const EditorViewportRect &rect, bo
             for (int i = 0; i < 4; ++i) {
                 const float angle = i < 2 ? mid : i == 2 ? start : end;
                 const float radius = i == 0 ? render.ringInnerRadius : render.ringOuterRadius;
-                const char *properties[]{"ringInnerRadius", "ringOuterRadius", "ringStartAngleDegrees",
+                const char* properties[]{"ringInnerRadius", "ringOuterRadius", "ringStartAngleDegrees",
                                          "ringEndAngleDegrees"};
                 VfxViewportHandleState handle;
                 handle.id = properties[i];
@@ -163,8 +161,7 @@ bool VfxWorkspaceController::DrawLayerHandles(const EditorViewportRect &rect, bo
         } else {
             MATH::Vec3 corners[8];
             for (int i = 0; i < 8; ++i)
-                corners[i] = {(i & 1) ? half.x : -half.x, (i & 2) ? half.y : -half.y,
-                              (i & 4) ? half.z : -half.z};
+                corners[i] = {(i & 1) ? half.x : -half.x, (i & 2) ? half.y : -half.y, (i & 4) ? half.z : -half.z};
             for (int i = 0; i < 8; ++i)
                 for (int axis = 1; axis <= 4; axis *= 2)
                     if (!(i & axis))
@@ -177,19 +174,16 @@ bool VfxWorkspaceController::DrawLayerHandles(const EditorViewportRect &rect, bo
                 handle.layerId = layer.id;
                 handle.propertyId = "length";
                 const auto sample = VFX::EvaluateVfxLayerAnimation(
-                    *compiled, previewElapsedSeconds_ - layer.startDelay, span, 0);
+                    *compiled, preview_.previewElapsedSeconds_ - layer.startDelay, span, 0);
                 handle.scaleValue = sample.scale;
-                handle.initialValue =
-                    timelineEdit_.autoKey ? sample.scale.y : layer.emitterTransform.transform.scale.y;
+                handle.initialValue = timelineEdit_.autoKey ? sample.scale.y : layer.emitterTransform.transform.scale.y;
                 handle.frame = matrix;
                 const float inverseLength = 1 / (std::max)(std::abs(handle.initialValue), 0.001f);
-                marker(handle, Transform(matrix, {0, 0.5f, 0}),
-                       Transform(matrix, {0, 0.5f * inverseLength, 0}, 0));
+                marker(handle, Transform(matrix, {0, 0.5f, 0}), Transform(matrix, {0, 0.5f * inverseLength, 0}, 0));
             }
-            if (particles && (layer.shape.type == VFX::VfxShapeType::Sphere ||
-                              layer.shape.type == VFX::VfxShapeType::Cone ||
-                              layer.shape.type == VFX::VfxShapeType::Cylinder ||
-                              layer.shape.type == VFX::VfxShapeType::Circle)) {
+            if (particles &&
+                (layer.shape.type == VFX::VfxShapeType::Sphere || layer.shape.type == VFX::VfxShapeType::Cone ||
+                 layer.shape.type == VFX::VfxShapeType::Cylinder || layer.shape.type == VFX::VfxShapeType::Circle)) {
                 VfxViewportHandleState handle;
                 handle.id = "emitter.radius";
                 handle.layerId = layer.id;
@@ -214,8 +208,7 @@ bool VfxWorkspaceController::DrawLayerHandles(const EditorViewportRect &rect, bo
                     handle.propertyId = "coneAngleDegrees";
                     handle.initialValue = layer.shape.coneAngleDegrees;
                     const float derivative = 0.01745329252f / (std::cos(angle) * std::cos(angle));
-                    marker(handle, Transform(matrix, {radius, 1, 0}),
-                           Transform(matrix, {derivative, 0, 0}, 0));
+                    marker(handle, Transform(matrix, {radius, 1, 0}), Transform(matrix, {derivative, 0, 0}, 0));
                 }
             }
         }
@@ -224,8 +217,8 @@ bool VfxWorkspaceController::DrawLayerHandles(const EditorViewportRect &rect, bo
             bool valid = false;
             for (int i = 0; i <= 48; ++i) {
                 VFX::VfxWorldTransform pose, parent;
-                if (!playbackService_.GetLayerPoseAtTime(previewHandle_, layer.id,
-                                                         layer.startDelay + span * i / 48, pose, parent))
+                if (!preview_.playbackService_.GetLayerPoseAtTime(preview_.previewHandle_, layer.id,
+                                                                  layer.startDelay + span * i / 48, pose, parent))
                     break;
                 ImVec2 point;
                 const bool next = project(pose.position, point);
@@ -235,30 +228,30 @@ bool VfxWorkspaceController::DrawLayerHandles(const EditorViewportRect &rect, bo
                 valid = next;
             }
             if (layer.position.value.mode == VFX::VfxAnimatedValueMode::Curve) {
-                std::vector<const VFX::VfxCurveKeyData *> keys;
-                const auto &curves = layer.position.value.curve;
-                for (const auto *curve : {&curves.x, &curves.y, &curves.z})
-                    for (const auto &key : curve->keys)
-                        if (std::none_of(keys.begin(), keys.end(), [&](const auto *k) {
-                                return std::abs(k->time - key.time) < 0.00001f;
-                            }))
+                std::vector<const VFX::VfxCurveKeyData*> keys;
+                const auto& curves = layer.position.value.curve;
+                for (const auto* curve : {&curves.x, &curves.y, &curves.z})
+                    for (const auto& key : curve->keys)
+                        if (std::none_of(keys.begin(), keys.end(),
+                                         [&](const auto* k) { return std::abs(k->time - key.time) < 0.00001f; }))
                             keys.push_back(&key);
                 // 同じ位置のキーは再生ヘッドに最も近い時刻から操作する。
                 std::stable_sort(keys.begin(), keys.end(), [&](const auto* a, const auto* b) {
                     const auto distance = [&](const auto* key) {
                         return std::abs(layer.startDelay + layer.animationTiming.LayerSeconds(key->time, span) -
-                                        previewElapsedSeconds_);
+                                        preview_.previewElapsedSeconds_);
                     };
                     return distance(a) < distance(b);
                 });
-                const auto pathKnots = ReadVfxBezierPath(layer,span);
-                for (const auto *key : keys) {
+                const auto pathKnots = ReadVfxBezierPath(layer, span);
+                for (const auto* key : keys) {
                     VFX::VfxWorldTransform pose, parent;
                     const float local = layer.animationTiming.LayerSeconds(key->time, span);
                     if (local < 0 || local > span)
                         continue;
                     const float seconds = layer.startDelay + local;
-                    if (!playbackService_.GetLayerPoseAtTime(previewHandle_, layer.id, seconds, pose, parent))
+                    if (!preview_.playbackService_.GetLayerPoseAtTime(preview_.previewHandle_, layer.id, seconds, pose,
+                                                                      parent))
                         continue;
                     VfxViewportHandleState handle;
                     handle.id = key->id;
@@ -267,19 +260,25 @@ bool VfxWorkspaceController::DrawLayerHandles(const EditorViewportRect &rect, bo
                     handle.seconds = seconds;
                     handle.frame = MATH::Mat4::TRS(parent.position, parent.rotation, parent.scale);
                     marker(handle, pose.position, {});
-                    const auto knot = std::find_if(pathKnots.begin(),pathKnots.end(),[&](const auto& k) {
-                        return std::abs(k.seconds-seconds)<0.0001f;
+                    const auto knot = std::find_if(pathKnots.begin(), pathKnots.end(), [&](const auto& k) {
+                        return std::abs(k.seconds - seconds) < 0.0001f;
                     });
-                    if (knot!=pathKnots.end()) {
+                    if (knot != pathKnots.end()) {
                         const auto control = [&](const MATH::Vec3& localPoint, const char* property) {
-                            const auto worldPoint=Transform(handle.frame,localPoint);
-                            ImVec2 a,b;
-                            if (project(pose.position,a) && project(worldPoint,b)) draw.AddLine(a,b,IM_COL32(190,160,90,190));
-                            auto tangent=handle; tangent.id+=".";tangent.id+=property;tangent.propertyId=property;
-                            marker(tangent,worldPoint,{});
+                            const auto worldPoint = Transform(handle.frame, localPoint);
+                            ImVec2 a, b;
+                            if (project(pose.position, a) && project(worldPoint, b))
+                                draw.AddLine(a, b, IM_COL32(190, 160, 90, 190));
+                            auto tangent = handle;
+                            tangent.id += ".";
+                            tangent.id += property;
+                            tangent.propertyId = property;
+                            marker(tangent, worldPoint, {});
                         };
-                        if (knot!=pathKnots.begin()) control(knot->incoming,"path.in");
-                        if (std::next(knot)!=pathKnots.end()) control(knot->outgoing,"path.out");
+                        if (knot != pathKnots.begin())
+                            control(knot->incoming, "path.in");
+                        if (std::next(knot) != pathKnots.end())
+                            control(knot->outgoing, "path.out");
                     }
                 }
             }
@@ -295,7 +294,7 @@ bool VfxWorkspaceController::DrawLayerHandles(const EditorViewportRect &rect, bo
             EndTimelineEdit(false);
             viewportHandle_ = {};
         } else if (rayValid && ImGui::IsMouseDragging(0)) {
-            auto &h = viewportHandle_;
+            auto& h = viewportHandle_;
             if (h.pathKey) {
                 const float denom = MATH::Dot(ray.direction, h.planeNormal);
                 if (std::abs(denom) > 0.00001f) {
@@ -310,10 +309,12 @@ bool VfxWorkspaceController::DrawLayerHandles(const EditorViewportRect &rect, bo
                         if (s.z > 0)
                             local.z = std::round(local.z / s.z) * s.z;
                     }
-                    if (h.propertyId=="path.in" || h.propertyId=="path.out")
-                        (void)SetLayerPathControl(h.layerId,h.seconds,h.propertyId=="path.in",local,statusMessage_,VfxTimelineEditState::mergeGroup);
-                    else (void)SetLayerTransformKey(h.layerId, "position", h.seconds, local, statusMessage_,
-                                               VfxTimelineEditState::mergeGroup);
+                    if (h.propertyId == "path.in" || h.propertyId == "path.out")
+                        (void)SetLayerPathControl(h.layerId, h.seconds, h.propertyId == "path.in", local,
+                                                  statusMessage_, VfxTimelineEditState::mergeGroup);
+                    else
+                        (void)SetLayerTransformKey(h.layerId, "position", h.seconds, local, statusMessage_,
+                                                   VfxTimelineEditState::mergeGroup);
                 }
             } else {
                 const float axisLength = h.screenAxis.x * h.screenAxis.x + h.screenAxis.y * h.screenAxis.y;
@@ -330,7 +331,7 @@ bool VfxWorkspaceController::DrawLayerHandles(const EditorViewportRect &rect, bo
                     value += (mouse.x - h.startMouse.x) * h.screenAxis.x / axisLength +
                              (mouse.y - h.startMouse.y) * h.screenAxis.y / axisLength;
                 auto next = document_.Asset();
-                auto *layer = FindEmitterMutable(next, h.layerId);
+                auto* layer = FindEmitterMutable(next, h.layerId);
                 if (layer) {
                     if (h.propertyId == "radius") {
                         layer->shape.radius = VFX::MakeVfxFloatConstant((std::max)(0.0f, value));
@@ -338,19 +339,16 @@ bool VfxWorkspaceController::DrawLayerHandles(const EditorViewportRect &rect, bo
                     } else if (h.propertyId == "length") {
                         value = (std::max)(0.001f, value);
                         if (timelineEdit_.autoKey) {
-                            const float end = layer->activeDuration > 0
-                                                  ? layer->startDelay + layer->activeDuration
-                                                  : next.durationSeconds;
+                            const float end = layer->activeDuration > 0 ? layer->startDelay + layer->activeDuration
+                                                                        : next.durationSeconds;
                             auto scale = h.scaleValue;
                             scale.y = value;
                             (void)SetLayerTransformKey(
-                                h.layerId, "scale",
-                                std::clamp(previewElapsedSeconds_, layer->startDelay, end), scale,
-                                statusMessage_, VfxTimelineEditState::mergeGroup);
+                                h.layerId, "scale", std::clamp(preview_.previewElapsedSeconds_, layer->startDelay, end),
+                                scale, statusMessage_, VfxTimelineEditState::mergeGroup);
                         } else {
                             layer->emitterTransform.transform.scale.y = value;
-                            (void)ApplyAsset(std::move(next), statusMessage_,
-                                             VfxTimelineEditState::mergeGroup);
+                            (void)ApplyAsset(std::move(next), statusMessage_, VfxTimelineEditState::mergeGroup);
                         }
                     } else if (h.propertyId == "coneAngleDegrees") {
                         layer->shape.coneAngleDegrees = std::clamp(value, 0.0f, 80.0f);
@@ -359,16 +357,15 @@ bool VfxWorkspaceController::DrawLayerHandles(const EditorViewportRect &rect, bo
                         const bool animated =
                             timelineEdit_.autoKey ||
                             std::any_of(layer->parameterTracks.begin(), layer->parameterTracks.end(),
-                                        [&](const auto &t) {
+                                        [&](const auto& t) {
                                             return t.targetId == h.targetId && t.propertyId == h.propertyId;
                                         });
                         if (animated) {
-                            const float end = layer->activeDuration > 0
-                                                  ? layer->startDelay + layer->activeDuration
-                                                  : next.durationSeconds;
+                            const float end = layer->activeDuration > 0 ? layer->startDelay + layer->activeDuration
+                                                                        : next.durationSeconds;
                             (void)SetLayerParameterKey(
                                 h.layerId, h.targetId, h.propertyId,
-                                std::clamp(previewElapsedSeconds_, layer->startDelay, end), value,
+                                std::clamp(preview_.previewElapsedSeconds_, layer->startDelay, end), value,
                                 statusMessage_, VfxTimelineEditState::mergeGroup);
                         } else
                             (void)SetProperty(h.targetId, h.propertyId, value, statusMessage_,

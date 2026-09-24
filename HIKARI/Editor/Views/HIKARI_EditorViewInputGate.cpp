@@ -6,25 +6,22 @@
 
 namespace HIKARI::EDITOR {
 
-    EditorViewInputBlockState QueryEditorViewInputBlockState() noexcept {
+EditorViewInputBlockState QueryEditorViewInputBlockState() noexcept {
 #if defined(HIKARI_WITH_EDITOR)
-        if (ImGui::GetCurrentContext() == nullptr) {
-            return {};
-        }
-
-        const ImGuiIO& io = ImGui::GetIO();
-        const bool popupOpen =
-            ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
-        const bool dragDropActive =
-            ImGui::GetDragDropPayload() != nullptr;
-        EditorViewInputBlockState state{};
-        state.pointer = popupOpen || dragDropActive;
-        state.keyboard =
-            state.pointer || io.WantTextInput || ImGui::IsAnyItemActive();
-        return state;
-#else
+    if (ImGui::GetCurrentContext() == nullptr) {
         return {};
-#endif
     }
+
+    const ImGuiIO& io = ImGui::GetIO();
+    const bool popupOpen = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
+    const bool dragDropActive = ImGui::GetDragDropPayload() != nullptr;
+    EditorViewInputBlockState state{};
+    state.pointer = popupOpen || dragDropActive;
+    state.keyboard = state.pointer || io.WantTextInput || ImGui::IsAnyItemActive();
+    return state;
+#else
+    return {};
+#endif
+}
 
 } // namespace HIKARI::EDITOR

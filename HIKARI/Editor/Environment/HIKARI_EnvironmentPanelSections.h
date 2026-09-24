@@ -12,20 +12,13 @@ class AssetRegistry;
 namespace HIKARI::EDITOR::ENVIRONMENT_PANEL {
 
 #if defined(HIKARI_WITH_EDITOR)
-void DrawEnvironmentLightingControls(SceneEnvironment &environment);
+void DrawEnvironmentLightingControls(SceneEnvironment& environment);
 
-bool DrawSkyAssetPicker(const AssetRegistry *assetRegistry,
-                        const AssetDatabase *assetDatabase, std::string &value);
+bool DrawSkyAssetPicker(const AssetRegistry* assetRegistry, const AssetDatabase* assetDatabase, std::string& value);
 
-bool DrawPanoramaTextureAssetPicker(const AssetDatabase *assetDatabase,
-                                    const char *labelKey,
-                                    std::string &value);
+bool DrawPanoramaTextureAssetPicker(const AssetDatabase* assetDatabase, const char* labelKey, std::string& value);
 
-bool DrawReflectionProbeAssetPicker(const AssetRegistry *assetRegistry,
-                                    const AssetDatabase *assetDatabase,
-                                    std::string &value);
-
-void ApplyEnvironmentPreset(SceneEnvironment &environment, int presetIndex);
+void ApplyEnvironmentPreset(SceneEnvironment& environment, int presetIndex);
 #endif
 
 } // namespace HIKARI::EDITOR::ENVIRONMENT_PANEL

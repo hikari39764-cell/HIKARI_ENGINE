@@ -199,13 +199,6 @@ HikariDirectPbrLobes HikariEvaluateDirectPbrLobes(
     return result;
 }
 
-float3 HikariEvaluateDirectPbr(
-    HikariPbrShadingContext context, float3 l, float3 lightColor, float lightIntensity)
-{
-    const HikariDirectPbrLobes lobes = HikariEvaluateDirectPbrLobes(context, l, lightColor * lightIntensity);
-    return lobes.diffuse + lobes.specular;
-}
-
 HikariPbrShadingContext HikariFilterDirectPbrContext(
     HikariPbrShadingContext context, float3 directionDx, float3 directionDy,
     float sourceHalfAngleSineSquared)

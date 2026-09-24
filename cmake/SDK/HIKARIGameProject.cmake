@@ -301,7 +301,6 @@ function(hikari_add_game_project)
         target_compile_options(
             HIKARI_GameProjectModule
             PRIVATE
-                /utf-8
                 /permissive-
                 /sdl
                 /MP
@@ -398,7 +397,6 @@ function(hikari_add_game_project)
             target_compile_options(
                 HIKARI_GameProjectEditorModule
                 PRIVATE
-                    /utf-8
                     /permissive-
                     /sdl
                     /MP

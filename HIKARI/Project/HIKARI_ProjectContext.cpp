@@ -6,160 +6,102 @@
 #include "Project/Paths/HIKARI_ProjectPath.h"
 
 namespace HIKARI {
-    namespace {
+namespace {
 
-        ProjectContext gProjectContext{};
+ProjectContext gProjectContext{};
 
-        void SetMessage(
-            std::string* outMessage,
-            std::string message) {
+void SetMessage(std::string* outMessage, std::string message) {
+    if (outMessage != nullptr) {
+        *outMessage = std::move(message);
+    }
+}
 
-            if (outMessage != nullptr) {
-                *outMessage = std::move(message);
-            }
-        }
+} // namespace
 
-    } // namespace
-
-    bool ProjectContext::Open(
-        const std::filesystem::path& projectPath,
-        std::string* outMessage) {
-
-        const std::filesystem::path descriptorPath =
-            ResolveProjectDescriptorPath(projectPath);
-        std::error_code ec{};
-        if (descriptorPath.empty() ||
-            !std::filesystem::is_regular_file(descriptorPath, ec) ||
-            ec) {
-            SetMessage(
-                outMessage,
-                "Project.hikari was not found: " +
-                    descriptorPath.generic_string());
-            return false;
-        }
-
-        ProjectDescriptor descriptor{};
-        std::string loadMessage{};
-        if (!LoadProjectDescriptor(
-                descriptorPath,
-                descriptor,
-                &loadMessage)) {
-            SetMessage(outMessage, std::move(loadMessage));
-            return false;
-        }
-
-        const std::filesystem::path root =
-            PROJECT_PATHS::NormalizeProjectRoot(
-                descriptorPath.parent_path());
-        if (root.empty()) {
-            SetMessage(outMessage, "project root could not be resolved");
-            return false;
-        }
-
-        descriptor_ = std::move(descriptor);
-        descriptorPath_ = descriptorPath;
-        root_ = root;
-        source_ = ProjectContextSource::Descriptor;
-        open_ = true;
-        SetMessage(outMessage, {});
-        return true;
+bool ProjectContext::Open(const std::filesystem::path& projectPath, std::string* outMessage) {
+    const std::filesystem::path descriptorPath = ResolveProjectDescriptorPath(projectPath);
+    std::error_code ec{};
+    if (descriptorPath.empty() || !std::filesystem::is_regular_file(descriptorPath, ec) || ec) {
+        SetMessage(outMessage, "Project.hikari was not found: " + descriptorPath.generic_string());
+        return false;
     }
 
-    bool ProjectContext::OpenCompatibilityRoot(
-        const std::filesystem::path& projectRoot,
-        ProjectContextSource source,
-        std::string* outMessage) {
-
-        if (source == ProjectContextSource::Descriptor) {
-            SetMessage(
-                outMessage,
-                "descriptor source requires ProjectContext::Open");
-            return false;
-        }
-
-        const std::filesystem::path root =
-            PROJECT_PATHS::NormalizeProjectRoot(projectRoot);
-        std::error_code ec{};
-        if (root.empty() ||
-            !std::filesystem::is_directory(root, ec) ||
-            ec) {
-            SetMessage(
-                outMessage,
-                "compatibility project root is invalid: " +
-                    root.generic_string());
-            return false;
-        }
-
-        descriptor_ = {};
-        descriptor_.name = root.filename().string();
-        descriptorPath_.clear();
-        root_ = root;
-        source_ = source;
-        open_ = true;
-        SetMessage(outMessage, {});
-        return true;
+    ProjectDescriptor descriptor{};
+    std::string loadMessage{};
+    if (!LoadProjectDescriptor(descriptorPath, descriptor, &loadMessage)) {
+        SetMessage(outMessage, std::move(loadMessage));
+        return false;
     }
 
-    void ProjectContext::Close() {
-        descriptor_ = {};
-        descriptorPath_.clear();
-        root_.clear();
-        source_ =
-            ProjectContextSource::WorkingDirectoryCompatibility;
-        open_ = false;
+    const std::filesystem::path root = PROJECT_PATHS::NormalizeProjectRoot(descriptorPath.parent_path());
+    if (root.empty()) {
+        SetMessage(outMessage, "project root could not be resolved");
+        return false;
     }
 
-    bool ProjectContext::IsOpen() const noexcept {
-        return open_;
+    descriptor_ = std::move(descriptor);
+    descriptorPath_ = descriptorPath;
+    root_ = root;
+    source_ = ProjectContextSource::Descriptor;
+    open_ = true;
+    SetMessage(outMessage, {});
+    return true;
+}
+
+bool ProjectContext::OpenCompatibilityRoot(const std::filesystem::path& projectRoot, ProjectContextSource source,
+                                           std::string* outMessage) {
+    if (source == ProjectContextSource::Descriptor) {
+        SetMessage(outMessage, "descriptor source requires ProjectContext::Open");
+        return false;
     }
 
-    bool ProjectContext::IsDescriptorBacked() const noexcept {
-        return open_ &&
-            source_ == ProjectContextSource::Descriptor;
+    const std::filesystem::path root = PROJECT_PATHS::NormalizeProjectRoot(projectRoot);
+    std::error_code ec{};
+    if (root.empty() || !std::filesystem::is_directory(root, ec) || ec) {
+        SetMessage(outMessage, "compatibility project root is invalid: " + root.generic_string());
+        return false;
     }
 
-    ProjectContextSource ProjectContext::GetSource() const noexcept {
-        return source_;
-    }
+    descriptor_ = {};
+    descriptor_.name = root.filename().string();
+    descriptorPath_.clear();
+    root_ = root;
+    source_ = source;
+    open_ = true;
+    SetMessage(outMessage, {});
+    return true;
+}
 
-    const ProjectDescriptor&
-        ProjectContext::GetDescriptor() const noexcept {
-        return descriptor_;
-    }
+void ProjectContext::Close() {
+    descriptor_ = {};
+    descriptorPath_.clear();
+    root_.clear();
+    source_ = ProjectContextSource::WorkingDirectoryCompatibility;
+    open_ = false;
+}
 
-    const std::filesystem::path&
-        ProjectContext::GetDescriptorPath() const noexcept {
-        return descriptorPath_;
-    }
+bool ProjectContext::IsOpen() const noexcept { return open_; }
 
-    const std::filesystem::path&
-        ProjectContext::GetRoot() const noexcept {
-        return root_;
-    }
+bool ProjectContext::IsDescriptorBacked() const noexcept {
+    return open_ && source_ == ProjectContextSource::Descriptor;
+}
 
-    std::filesystem::path ProjectContext::GetAssetsRoot() const {
-        return Resolve("Assets");
-    }
+ProjectContextSource ProjectContext::GetSource() const noexcept { return source_; }
 
-    std::filesystem::path
-        ProjectContext::GetProjectSettingsRoot() const {
-        return Resolve("ProjectSettings");
-    }
+const ProjectDescriptor& ProjectContext::GetDescriptor() const noexcept { return descriptor_; }
 
-    std::filesystem::path ProjectContext::GetLibraryRoot() const {
-        return Resolve("Library");
-    }
+const std::filesystem::path& ProjectContext::GetDescriptorPath() const noexcept { return descriptorPath_; }
 
-    std::filesystem::path ProjectContext::Resolve(
-        const std::filesystem::path& projectRelativePath) const {
+const std::filesystem::path& ProjectContext::GetRoot() const noexcept { return root_; }
 
-        return PROJECT_PATHS::ResolveProjectPath(
-            root_,
-            projectRelativePath);
-    }
+std::filesystem::path ProjectContext::GetAssetsRoot() const { return Resolve("Assets"); }
 
-    ProjectContext& GetProjectContext() {
-        return gProjectContext;
-    }
+std::filesystem::path ProjectContext::GetLibraryRoot() const { return Resolve("Library"); }
+
+std::filesystem::path ProjectContext::Resolve(const std::filesystem::path& projectRelativePath) const {
+    return PROJECT_PATHS::ResolveProjectPath(root_, projectRelativePath);
+}
+
+ProjectContext& GetProjectContext() { return gProjectContext; }
 
 } // namespace HIKARI

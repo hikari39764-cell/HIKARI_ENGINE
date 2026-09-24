@@ -4,8 +4,6 @@
 
 namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
 
-void BuildMaterialProgramInstructions(
-    const MaterialGraphData& graph,
-    MaterialProgramIR& program);
+void BuildMaterialProgramInstructions(const MaterialGraphData& graph, MaterialProgramIR& program);
 
 } // namespace HIKARI::MATERIAL_COMPILER_INTERNAL

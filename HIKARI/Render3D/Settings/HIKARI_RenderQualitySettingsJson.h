@@ -8,12 +8,9 @@
 
 namespace HIKARI::RENDER3D {
 
-    nlohmann::json SerializeRenderQualitySettings(
-        const RenderQualitySettings& settings);
+nlohmann::json SerializeRenderQualitySettings(const RenderQualitySettings& settings);
 
-    bool DeserializeRenderQualitySettings(
-        const nlohmann::json& node,
-        RenderQualitySettings& inOutSettings,
-        std::string* errorMessage = nullptr);
+bool DeserializeRenderQualitySettings(const nlohmann::json& node, RenderQualitySettings& inOutSettings,
+                                      std::string* errorMessage = nullptr);
 
 } // namespace HIKARI::RENDER3D

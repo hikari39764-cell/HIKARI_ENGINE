@@ -27,23 +27,15 @@ public:
 
     bool AddSystem(std::string systemId, int executionOrder, std::unique_ptr<ISystem> system);
     bool HasSystem(std::string_view systemId) const;
-    size_t GetSystemCount() const;
-    uint64_t GetParallelMassFailureCount() const noexcept;
     uint64_t GetMassSnapshotReuseCount() const noexcept { return massSnapshotReuseCount_; }
-    uint64_t GetRenderObserverFailureCount() const noexcept;
     uint64_t GetRenderPassFailureCount() const noexcept;
     std::vector<std::string> GetExecutionOrder() const;
 
-    bool ObserveRenderFrame(
-        const GameProjectRenderFrameView& frame) noexcept;
+    bool ObserveRenderFrame(const GameProjectRenderFrameView& frame) noexcept;
     bool GetRenderPassCount(uint32_t& outCount) const noexcept;
-    bool DescribeRenderPass(
-        uint32_t index,
-        GameProjectRenderPassDesc& outDescriptor) const noexcept;
-    bool ExecuteRenderPass(
-        const char* stableId,
-        const GameProjectRenderPassContext& context,
-        bool* outCallbackEntered = nullptr) noexcept;
+    bool DescribeRenderPass(uint32_t index, GameProjectRenderPassDesc& outDescriptor) const noexcept;
+    bool ExecuteRenderPass(const char* stableId, const GameProjectRenderPassContext& context,
+                           bool* outCallbackEntered = nullptr) noexcept;
 
     void AttachWorld(World& world);
     void DetachWorld(World& world);
@@ -62,22 +54,13 @@ public:
 private:
     struct SystemEntry;
 
-    using FrameCallback = void (ISystem::*)(
-        World&,
-        const FrameContext&);
+    using FrameCallback = void (ISystem::*)(World&, const FrameContext&);
 
-    void ExecuteFramePhase(
-        World& world,
-        const FrameContext& frame,
-        WorldCommandPhase phase,
-        FrameCallback callback,
-        bool flushAfterEach);
+    void ExecuteFramePhase(World& world, const FrameContext& frame, WorldCommandPhase phase, FrameCallback callback,
+                           bool flushAfterEach);
     bool IsOwnerThread() const noexcept;
-    bool ExecuteParallelMassSystem(
-        World& world,
-        const FrameContext& frame,
-        const SystemEntry& entry,
-        const IMassWorkerSystem& system);
+    bool ExecuteParallelMassSystem(World& world, const FrameContext& frame, const SystemEntry& entry,
+                                   const IMassWorkerSystem& system);
     void WaitForParallelIdle() noexcept;
     void ReleaseParallelRuntime() noexcept;
     void DiscardParallelSystemScratch(const ISystem* system) noexcept;
@@ -89,10 +72,8 @@ private:
         int executionOrder = 0;
         uint64_t insertionIndex = 0;
         std::unique_ptr<ISystem> system{};
-        CPU_PROFILE::DynamicPassHandle frameTiming =
-            CPU_PROFILE::kInvalidDynamicPassHandle;
-        CPU_PROFILE::DynamicPassHandle fixedTiming =
-            CPU_PROFILE::kInvalidDynamicPassHandle;
+        CPU_PROFILE::DynamicPassHandle frameTiming = CPU_PROFILE::kInvalidDynamicPassHandle;
+        CPU_PROFILE::DynamicPassHandle fixedTiming = CPU_PROFILE::kInvalidDynamicPassHandle;
     };
 
     std::vector<SystemEntry> systems_{};

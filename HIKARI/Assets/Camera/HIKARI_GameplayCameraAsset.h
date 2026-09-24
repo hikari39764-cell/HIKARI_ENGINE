@@ -7,18 +7,18 @@
 
 namespace HIKARI {
 class AssetDatabase;
-bool LoadGameplayCameraAsset(const std::filesystem::path &path, CAMERA::GameplayCameraProfile &profile,
-                             std::string &error);
-bool SaveGameplayCameraAsset(const std::filesystem::path &path, const CAMERA::GameplayCameraProfile &profile,
-                             std::string &error);
+bool LoadGameplayCameraAsset(const std::filesystem::path& path, CAMERA::GameplayCameraProfile& profile,
+                             std::string& error);
+bool SaveGameplayCameraAsset(const std::filesystem::path& path, const CAMERA::GameplayCameraProfile& profile,
+                             std::string& error);
 
 class GameplayCameraAssetStore {
-  public:
-    void Configure(const AssetDatabase *database);
-    std::shared_ptr<const CAMERA::GameplayCameraProfile> Load(const AssetGuid &guid, std::string &error) const;
+public:
+    void Configure(const AssetDatabase* database);
+    std::shared_ptr<const CAMERA::GameplayCameraProfile> Load(const AssetGuid& guid, std::string& error) const;
 
-  private:
-    const AssetDatabase *database_ = nullptr;
+private:
+    const AssetDatabase* database_ = nullptr;
     mutable uint64_t revision_ = 0;
     struct Entry {
         std::shared_ptr<const CAMERA::GameplayCameraProfile> profile;

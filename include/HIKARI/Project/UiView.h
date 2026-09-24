@@ -8,50 +8,62 @@
 
 namespace HIKARI {
 
-    struct GameProjectSdkAccess;
+struct UiAnimationStatus {
+    float seconds = 0, duration = 0;
+    bool playing = false, closing = false;
+};
 
-    // A frame-local, non-owning command view. Paths are consumed
-    // synchronously and must resolve below the active project's Assets root.
-    class UiView {
-    public:
-        UiView() = default;
+struct GameProjectSdkAccess;
 
-        bool IsValid() const noexcept {
-            return world_ != nullptr;
-        }
+// A frame-local, non-owning command view. Paths are consumed
+// synchronously and must resolve below the active project's Assets root.
+class UiView {
+public:
+    UiView() = default;
 
-        HIKARI_GAME_PROJECT_SDK_API bool SubmitSprite(
-            std::string_view projectRelativeAssetPath,
-            const GameProjectUiSpriteRequest& request) const noexcept;
+    bool IsValid() const noexcept { return world_ != nullptr; }
 
-        HIKARI_GAME_PROJECT_SDK_API bool SubmitText(
-            std::string_view projectRelativeFontAssetPath,
-            std::string_view utf8Text,
-            const GameProjectUiTextRequest& request) const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API bool SubmitSprite(std::string_view projectRelativeAssetPath,
+                                                  const GameProjectUiSpriteRequest& request) const noexcept;
 
-        HIKARI_GAME_PROJECT_SDK_API bool SubmitBackdrop(
-            const GameProjectUiBackdropRequest& request) const noexcept;
-        // Returns true only during the frame in which the Scene-authored
-        // button on this object was activated. The object must belong to this
-        // World and callers must remain on the runtime owner thread.
-        HIKARI_GAME_PROJECT_SDK_API bool WasActivated(
-            GameProjectObjectHandle object) const noexcept;
-        // Runtime-only bindings for Scene-authored controls. SetText is a no-op
-        // when the resolved UTF-8 text is unchanged; projects own localization.
-        HIKARI_GAME_PROJECT_SDK_API bool SetText(GameProjectObjectHandle object,
-            std::string_view utf8Text) const noexcept;
-        HIKARI_GAME_PROJECT_SDK_API bool SetCanvasEnabled(GameProjectObjectHandle object,
-            bool enabled) const noexcept;
-        HIKARI_GAME_PROJECT_SDK_API bool SetButtonInteractable(GameProjectObjectHandle object,
-            bool interactable) const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API bool SubmitText(std::string_view projectRelativeFontAssetPath,
+                                                std::string_view utf8Text,
+                                                const GameProjectUiTextRequest& request) const noexcept;
 
-    private:
-        friend struct GameProjectSdkAccess;
+    HIKARI_GAME_PROJECT_SDK_API bool SubmitBackdrop(const GameProjectUiBackdropRequest& request) const noexcept;
+    // Returns true only during the frame in which the Scene-authored
+    // button on this object was activated. The object must belong to this
+    // World and callers must remain on the runtime owner thread.
+    HIKARI_GAME_PROJECT_SDK_API bool WasActivated(GameProjectObjectHandle object) const noexcept;
+    // Runtime-only bindings for Scene-authored controls. SetText is a no-op
+    // when the resolved UTF-8 text is unchanged; projects own localization.
+    HIKARI_GAME_PROJECT_SDK_API bool SetText(GameProjectObjectHandle object, std::string_view utf8Text) const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API bool SetCanvasEnabled(GameProjectObjectHandle object, bool enabled) const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API bool SetButtonInteractable(GameProjectObjectHandle object,
+                                                           bool interactable) const noexcept;
+    // Owner-thread runtime changes; never modify the saved scene. Missing
+    // components, foreign/stale handles and nonfinite numbers return false.
+    // Opacity and progress values are clamped by the authored range.
+    HIKARI_GAME_PROJECT_SDK_API bool SetGroupVisible(GameProjectObjectHandle object, bool visible) const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API bool SetGroupOpacity(GameProjectObjectHandle object, float opacity) const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API bool SetProgressValue(GameProjectObjectHandle object, float value) const noexcept;
+    // Plays a named clip from the object's authored UiAnimator asset.
+    // One playback per animator. Child animators are independent instances.
+    // Non-looping clips hold their final pose until StopAnimation or replacement.
+    HIKARI_GAME_PROJECT_SDK_API bool PlayAnimation(GameProjectObjectHandle object,
+                                                   std::string_view clip) const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API bool SeekAnimation(GameProjectObjectHandle object, float seconds) const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API bool PauseAnimation(GameProjectObjectHandle object, bool paused) const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API bool StopAnimation(GameProjectObjectHandle object) const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API bool GetAnimationStatus(GameProjectObjectHandle object,
+                                                        UiAnimationStatus& status) const noexcept;
 
-        explicit UiView(void* world) noexcept
-            : world_(world) {}
+private:
+    friend struct GameProjectSdkAccess;
 
-        void* world_ = nullptr;
-    };
+    explicit UiView(void* world) noexcept : world_(world) {}
+
+    void* world_ = nullptr;
+};
 
 } // namespace HIKARI

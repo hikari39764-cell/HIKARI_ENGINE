@@ -1,11 +1,11 @@
 #pragma once
 
 namespace HIKARI {
-    class ModelAsset;
+class ModelAsset;
 }
 
 namespace HIKARI::ASSETS::MODELS {
 
-    bool LoadObjModelSource(ModelAsset& asset);
+bool LoadObjModelSource(ModelAsset& asset);
 
 } // namespace HIKARI::ASSETS::MODELS
