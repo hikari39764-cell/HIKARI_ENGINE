@@ -194,10 +194,10 @@ GameObject* CreateWaterSurfaceObject(DocumentSceneBase& scene, const CreateObjec
     return FindRuntimeObject(scene, id);
 }
 
-GameObject* CreateSandSurfaceObject(DocumentSceneBase& scene, const CreateObjectRequest& request) {
+GameObject* CreateTerrainSurfaceObject(DocumentSceneBase& scene, const CreateObjectRequest& request) {
     CreateObjectRequest objectRequest = request;
     if (objectRequest.name.empty()) {
-        objectRequest.name = "Sand Surface";
+        objectRequest.name = "Terrain";
     }
 
     SceneObjectData object = BuildBaseObject(scene, nullptr, objectRequest);
@@ -219,11 +219,11 @@ GameObject* CreateSandSurfaceObject(DocumentSceneBase& scene, const CreateObject
                                                     {"doubleSided", true},
                                                     {"generateTangents", true}}});
 
-    TerrainSurfaceComponent sandDefaults{};
-    sandDefaults.ApplySolidPreset("sand");
-    nlohmann::json sandProperties = nlohmann::json::object();
-    sandDefaults.Serialize(sandProperties);
-    object.components.push_back(SceneComponentData{"TerrainSurfaceComponent", std::move(sandProperties)});
+    TerrainSurfaceComponent terrainDefaults{};
+    terrainDefaults.ApplySolidPreset("sand");
+    nlohmann::json terrainProperties = nlohmann::json::object();
+    terrainDefaults.Serialize(terrainProperties);
+    object.components.push_back(SceneComponentData{"TerrainSurfaceComponent", std::move(terrainProperties)});
 
     NormalizeSceneComponentIds(object);
     scene.GetSceneDocument().objects.push_back(std::move(object));

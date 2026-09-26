@@ -237,7 +237,7 @@ DirectorViewPanelResult DirectorViewPanel::DrawContents(const DocumentSceneBase&
     bool cameraChanged = toolbarCameraChanged;
     if (allowNavigation && inputState.AcceptsKeyboard() && imageHovered && !io.WantTextInput &&
         ImGui::IsKeyPressed(ImGuiKey_F, false)) {
-        if (const GameObject* selectedObject = FindRuntimeObject(scene, selectedObjectId)) {
+        if (selectedObject != nullptr) {
             ActiveController().Focus(ExtractPosition(selectedObject->GetTransform().GetWorldMatrix()));
             cameraChanged = true;
         }

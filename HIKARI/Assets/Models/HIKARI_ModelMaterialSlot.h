@@ -40,21 +40,9 @@ void AssignMaterialSlotIds(std::vector<MaterialAsset>& materials, MaterialSlotIm
 
 bool HaveValidUniqueMaterialSlotIds(const std::vector<MaterialAsset>& materials);
 
-enum class MaterialSlotResolutionSource : uint8_t {
-    StableId,
-    LegacyIndex,
-    Missing,
-};
-
-struct MaterialSlotResolution {
-    uint32_t materialIndex = 0u;
-    MaterialSlotResolutionSource source = MaterialSlotResolutionSource::Missing;
-
-    bool IsValid() const noexcept { return source != MaterialSlotResolutionSource::Missing; }
-};
-
-MaterialSlotResolution ResolveMaterialSlot(const std::vector<MaterialAsset>& materials, MaterialSlotId slotId,
-                                           uint32_t legacySlotIndex) noexcept;
+// 安定 slot ID から現在の material index を引く。見つからなければ nullopt。
+std::optional<uint32_t> FindMaterialSlotIndex(const std::vector<MaterialAsset>& materials,
+                                              MaterialSlotId slotId) noexcept;
 
 std::string MaterialSlotIdToString(MaterialSlotId slotId);
 std::optional<MaterialSlotId> ParseMaterialSlotId(std::string_view text) noexcept;

@@ -205,4 +205,8 @@ void TextStyleWorkspaceController::Draw(DocumentSceneBase& scene, EditorOperatio
     }
     ImGui::End();
 }
+nlohmann::json TextStyleWorkspaceController::DescribeDocumentState() const {
+    return {{"open", document_.IsOpen()}, {"assetGuid", document_.Guid().value}, {"dirty", document_.IsDirty()}};
+}
+
 } // namespace HIKARI::EDITOR

@@ -78,47 +78,21 @@ const char* ToString(WaterSurfaceGeometryMode mode) noexcept {
 }
 
 WaterSurfacePreset ParseWaterSurfacePreset(std::string_view value, WaterSurfacePreset fallback) noexcept {
-    if (value == "anime_summer" || value == "AnimeSummer" || value == "stylized" || value == "Stylized") {
+    if (value == ToString(WaterSurfacePreset::AnimeSummer)) {
         return WaterSurfacePreset::AnimeSummer;
     }
-    if (value == "realistic_clear_summer" || value == "RealisticClearSummer" || value == "realistic" ||
-        value == "Realistic") {
-        return WaterSurfacePreset::RealisticClearSummer;
-    }
-    // v5 compatibility: the removed sparkling preset is now the single
-    // AnimeSummer product. Keep old display/name tokens readable without
-    // exposing a third enum value to authoring or runtime code.
-    if (value == "anime_sparkling_summer" || value == "AnimeSparklingSummer" || value == "sparkling" ||
-        value == "Sparkling") {
-        return WaterSurfacePreset::AnimeSummer;
-    }
-    // v5 compatibility: the removed spectral preset is now the single
-    // RealisticClearSummer product.
-    if (value == "realistic_spectral_summer" || value == "RealisticSpectralSummer" || value == "spectral" ||
-        value == "Spectral") {
+    if (value == ToString(WaterSurfacePreset::RealisticClearSummer)) {
         return WaterSurfacePreset::RealisticClearSummer;
     }
     return fallback;
 }
 
-WaterSurfacePreset ParseWaterSurfacePreset(int32_t value, WaterSurfacePreset fallback) noexcept {
-    switch (value) {
-    case 0:
-    case 2: // v5 AnimeSparklingSummer -> AnimeSummer
-        return WaterSurfacePreset::AnimeSummer;
-    case 1:
-    case 3: // v5 RealisticSpectralSummer -> RealisticClearSummer
-        return WaterSurfacePreset::RealisticClearSummer;
-    default: return fallback;
-    }
-}
-
 WaterSurfaceGeometryMode ParseWaterSurfaceGeometryMode(std::string_view value,
                                                        WaterSurfaceGeometryMode fallback) noexcept {
-    if (value == "finite_authored" || value == "FiniteAuthored" || value == "finite" || value == "Finite") {
+    if (value == ToString(WaterSurfaceGeometryMode::FiniteAuthored)) {
         return WaterSurfaceGeometryMode::FiniteAuthored;
     }
-    if (value == "camera_centered_ocean" || value == "CameraCenteredOcean" || value == "ocean" || value == "Ocean") {
+    if (value == ToString(WaterSurfaceGeometryMode::CameraCenteredOcean)) {
         return WaterSurfaceGeometryMode::CameraCenteredOcean;
     }
     return fallback;

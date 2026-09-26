@@ -20,53 +20,46 @@ namespace HIKARI::EDITOR {
 
 void RegisterVfxPreviewOperations(EditorOperationRegistry& registry, VfxWorkspaceController& controller) {
     using VFXOPERATIONS::ContextData;
-    using VFXOPERATIONS::Failure;
-    using VFXOPERATIONS::Parameter;
-    using VFXOPERATIONS::Success;
 
-    const auto registerPreviewOperation = [&registry, &controller](const char* id, const char* summary, int action) {
-        registry.Register({
-            id,
-            summary,
-            "vfx",
-            {},
-            [&controller, action](const nlohmann::json&) {
-                std::string message{};
-                bool accepted = true;
-                switch (action) {
-                case 0: accepted = controller.Preview().PlayPreview(message); break;
-                case 1:
-                    controller.Preview().PausePreview(true);
-                    message = "VFX preview paused";
-                    break;
-                case 2:
-                    controller.Preview().PausePreview(false);
-                    message = "VFX preview resumed";
-                    break;
-                case 3:
-                    controller.Preview().StopPreview();
-                    message = "VFX preview stopped";
-                    break;
-                case 4: accepted = controller.Preview().RestartPreview(message); break;
-                case 5:
-                    controller.Preview().ResetPreviewInputs();
-                    message = "VFX preview inputs reset";
-                    break;
-                default:
-                    accepted = false;
-                    message = "Unknown VFX preview action";
-                    break;
-                }
-                return accepted ? Success(message, ContextData(controller)) : Failure("VFX_PREVIEW_FAILED", message);
-            },
-        });
+    // 引数なしの再生制御。message が空のまま成功した操作は既定文言を返す。
+    using PreviewControl = bool (*)(VfxWorkspaceController&, std::string&);
+    struct PreviewControlOperation {
+        const char* id;
+        const char* summary;
+        const char* doneMessage;
+        PreviewControl run;
     };
-    registerPreviewOperation("vfx.preview.play", "Play the VFX preview", 0);
-    registerPreviewOperation("vfx.preview.pause", "Pause the VFX preview", 1);
-    registerPreviewOperation("vfx.preview.resume", "Resume the VFX preview", 2);
-    registerPreviewOperation("vfx.preview.stop", "Stop the VFX preview", 3);
-    registerPreviewOperation("vfx.preview.restart", "Restart the VFX preview", 4);
-    registerPreviewOperation("vfx.preview.reset_inputs", "Reset all session-only VFX preview inputs", 5);
+    static constexpr PreviewControlOperation kPreviewControls[] = {
+        {"vfx.preview.play", "Play the VFX preview", "",
+         [](VfxWorkspaceController& c, std::string& m) { return c.Preview().PlayPreview(m); }},
+        {"vfx.preview.pause", "Pause the VFX preview", "VFX preview paused",
+         [](VfxWorkspaceController& c, std::string&) { return c.Preview().PausePreview(true), true; }},
+        {"vfx.preview.resume", "Resume the VFX preview", "VFX preview resumed",
+         [](VfxWorkspaceController& c, std::string&) { return c.Preview().PausePreview(false), true; }},
+        {"vfx.preview.stop", "Stop the VFX preview", "VFX preview stopped",
+         [](VfxWorkspaceController& c, std::string&) { return c.Preview().StopPreview(), true; }},
+        {"vfx.preview.restart", "Restart the VFX preview", "",
+         [](VfxWorkspaceController& c, std::string& m) { return c.Preview().RestartPreview(m); }},
+        {"vfx.preview.reset_inputs", "Reset all session-only VFX preview inputs", "VFX preview inputs reset",
+         [](VfxWorkspaceController& c, std::string&) { return c.Preview().ResetPreviewInputs(), true; }},
+        {"vfx.preview.focus_selected", "Focus the preview camera on the selected emitter", "",
+         [](VfxWorkspaceController& c, std::string& m) { return c.FocusSelectedEmitter(m); }},
+    };
+    for (const PreviewControlOperation& operation : kPreviewControls) {
+        registry.Register(
+            {
+                operation.id,
+                operation.summary,
+                "vfx",
+                {},
+                [&controller, operation](const nlohmann::json&) {
+                    std::string message = operation.doneMessage;
+                    return operation.run(controller, message) ? OperationOk(message, ContextData(controller))
+                                                              : OperationFailure("VFX_PREVIEW_FAILED", message);
+                },
+            },
+            EditorOperationKind::Session);
+    }
 
     registry.Register(
         {
@@ -74,16 +67,33 @@ void RegisterVfxPreviewOperations(EditorOperationRegistry& registry, VfxWorkspac
             "Set the session-only VFX preview playback speed",
             "vfx",
             {
-                Parameter("speed", EditorOperationParameterType::Float, true, "Playback speed from 0.1x to 4.0x"),
+                {"speed", EditorOperationParameterType::Float, true, "Playback speed from 0.1x to 4.0x"},
             },
             [&controller](const nlohmann::json& parameters) {
                 controller.Preview().SetPreviewPlaybackSpeed(parameters.at("speed").get<float>());
                 nlohmann::json data = ContextData(controller);
                 data["speed"] = controller.Preview().GetPreviewPlaybackSpeed();
-                return Success("VFX preview playback speed updated", std::move(data));
+                return OperationOk("VFX preview playback speed updated", std::move(data));
             },
         },
-        HIKARI::EDITOR::EditorOperationKind::Session);
+        EditorOperationKind::Session);
+
+    registry.Register(
+        {
+            "vfx.preview.step",
+            "Pause the preview and advance a fixed number of frames",
+            "vfx",
+            {
+                {"frameCount", EditorOperationParameterType::Int, false, "Frames to advance (1-120, default 1)"},
+            },
+            [&controller](const nlohmann::json& parameters) {
+                std::string message{};
+                return controller.Preview().StepPreviewFrame(parameters.value("frameCount", 1), message)
+                           ? OperationOk(message, ContextData(controller))
+                           : OperationFailure("VFX_STEP_FAILED", message);
+            },
+        },
+        EditorOperationKind::Session);
 
     registry.Register(
         {
@@ -91,19 +101,19 @@ void RegisterVfxPreviewOperations(EditorOperationRegistry& registry, VfxWorkspac
             "Seek the session-only VFX preview playhead",
             "vfx",
             {
-                Parameter("seconds", EditorOperationParameterType::Float, true, "Preview time in seconds"),
+                {"seconds", EditorOperationParameterType::Float, true, "Preview time in seconds"},
             },
             [&controller](const nlohmann::json& parameters) {
                 std::string message{};
                 if (!controller.Preview().SeekPreview(parameters.at("seconds").get<float>(), message)) {
-                    return Failure("VFX_PREVIEW_SEEK_FAILED", message);
+                    return OperationFailure("VFX_PREVIEW_SEEK_FAILED", message);
                 }
                 nlohmann::json data = ContextData(controller);
                 data["seconds"] = controller.Preview().GetPreviewElapsedSeconds();
-                return Success("VFX preview playhead moved", std::move(data));
+                return OperationOk("VFX preview playhead moved", std::move(data));
             },
         },
-        HIKARI::EDITOR::EditorOperationKind::Session);
+        EditorOperationKind::Session);
 
     registry.Register(
         {
@@ -111,16 +121,16 @@ void RegisterVfxPreviewOperations(EditorOperationRegistry& registry, VfxWorkspac
             "Enable or disable session-only VFX preview looping",
             "vfx",
             {
-                Parameter("enabled", EditorOperationParameterType::Bool, true, "Whether preview looping is enabled"),
+                {"enabled", EditorOperationParameterType::Bool, true, "Whether preview looping is enabled"},
             },
             [&controller](const nlohmann::json& parameters) {
                 controller.Preview().SetPreviewLoopEnabled(parameters.at("enabled").get<bool>());
                 nlohmann::json data = ContextData(controller);
                 data["enabled"] = controller.Preview().IsPreviewLoopEnabled();
-                return Success("VFX preview loop updated", std::move(data));
+                return OperationOk("VFX preview loop updated", std::move(data));
             },
         },
-        HIKARI::EDITOR::EditorOperationKind::Session);
+        EditorOperationKind::Session);
 
     registry.Register(
         {
@@ -128,8 +138,8 @@ void RegisterVfxPreviewOperations(EditorOperationRegistry& registry, VfxWorkspac
             "Set the session-only VFX preview loop range",
             "vfx",
             {
-                Parameter("startSeconds", EditorOperationParameterType::Float, true, "Loop start time in seconds"),
-                Parameter("endSeconds", EditorOperationParameterType::Float, true, "Loop end time in seconds"),
+                {"startSeconds", EditorOperationParameterType::Float, true, "Loop start time in seconds"},
+                {"endSeconds", EditorOperationParameterType::Float, true, "Loop end time in seconds"},
             },
             [&controller](const nlohmann::json& parameters) {
                 controller.Preview().SetPreviewLoopRange(parameters.at("startSeconds").get<float>(),
@@ -137,10 +147,10 @@ void RegisterVfxPreviewOperations(EditorOperationRegistry& registry, VfxWorkspac
                 nlohmann::json data = ContextData(controller);
                 data["startSeconds"] = controller.Preview().GetPreviewLoopStartSeconds();
                 data["endSeconds"] = controller.Preview().GetPreviewLoopEndSeconds();
-                return Success("VFX preview loop range updated", std::move(data));
+                return OperationOk("VFX preview loop range updated", std::move(data));
             },
         },
-        HIKARI::EDITOR::EditorOperationKind::Session);
+        EditorOperationKind::Session);
 
     registry.Register(
         {
@@ -149,22 +159,21 @@ void RegisterVfxPreviewOperations(EditorOperationRegistry& registry, VfxWorkspac
             "can be inspected instead of assumed",
             "vfx",
             {
-                Parameter("path", EditorOperationParameterType::String, false,
-                          "Output PNG path; defaults to the temp directory"),
-                Parameter("frameCount", EditorOperationParameterType::Int, false,
-                          "Single frame; use authoring.preview with time for sequences"),
-                Parameter("intervalSeconds", EditorOperationParameterType::Float, false,
-                          "Seconds between captures (0..2)"),
+                {"path", EditorOperationParameterType::String, false,
+                 "Output PNG path; defaults to the temp directory"},
+                {"frameCount", EditorOperationParameterType::Int, false,
+                 "Single frame; use authoring.preview with time for sequences"},
+                {"intervalSeconds", EditorOperationParameterType::Float, false, "Seconds between captures (0..2)"},
             },
             [&controller](const nlohmann::json& parameters) {
                 if (parameters.value("frameCount", 1) != 1)
-                    return Failure("USE_TIMED_PREVIEWS",
-                                   "Use authoring.preview at explicit time values to capture a sequence.");
+                    return OperationFailure("USE_TIMED_PREVIEWS",
+                                            "Use authoring.preview at explicit time values to capture a sequence.");
                 return StartEditorPreviewCapture(controller.Preview().GetActivePreviewViewId(), {},
                                                  parameters.value("path", std::string{}));
             },
         },
-        HIKARI::EDITOR::EditorOperationKind::Session, true, HIKARI::EDITOR::EditorOperationSessionDispatch::Preview);
+        EditorOperationKind::Session, true, HIKARI::EDITOR::EditorOperationSessionDispatch::Preview);
 
     registry.Register(
         {
@@ -172,27 +181,27 @@ void RegisterVfxPreviewOperations(EditorOperationRegistry& registry, VfxWorkspac
             "Set a session-only exposed input value for VFX preview",
             "vfx",
             {
-                Parameter("inputId", EditorOperationParameterType::String, true, "Stable exposed input ID"),
-                Parameter("value", EditorOperationParameterType::Json, true, "Typed preview value"),
+                {"inputId", EditorOperationParameterType::String, true, "Stable exposed input ID"},
+                {"value", EditorOperationParameterType::Json, true, "Typed preview value"},
             },
             [&controller](const nlohmann::json& parameters) {
                 const std::string inputId = parameters.at("inputId").get<std::string>();
                 const VFX::VfxExposedInputData* input = controller.FindInput(inputId);
                 if (input == nullptr) {
-                    return Failure("VFX_INPUT_NOT_FOUND", "VFX exposed input was not found");
+                    return OperationFailure("VFX_INPUT_NOT_FOUND", "VFX exposed input was not found");
                 }
                 VFX::VfxValue value{};
                 std::string message{};
                 if (!TryReadVfxEditorValue(parameters.at("value"), input->type, value, message) ||
                     !controller.Preview().SetPreviewInput(inputId, value, message)) {
-                    return Failure("VFX_PREVIEW_INPUT_REJECTED", message);
+                    return OperationFailure("VFX_PREVIEW_INPUT_REJECTED", message);
                 }
                 nlohmann::json data = ContextData(controller, inputId);
                 data["value"] = WriteVfxEditorValue(value);
-                return Success(message, std::move(data));
+                return OperationOk(message, std::move(data));
             },
         },
-        HIKARI::EDITOR::EditorOperationKind::Session);
+        EditorOperationKind::Session);
 }
 
 } // namespace HIKARI::EDITOR

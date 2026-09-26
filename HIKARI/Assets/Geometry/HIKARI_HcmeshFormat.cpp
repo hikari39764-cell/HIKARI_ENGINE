@@ -6,7 +6,6 @@
 #include <type_traits>
 #include <utility>
 
-#include "Assets/Geometry/HIKARI_HcmeshCompatibility.h"
 #include "Core/Serialization/Binary/HIKARI_BinaryBuffer.h"
 #include "Core/Serialization/Binary/HIKARI_BinaryStream.h"
 
@@ -154,7 +153,7 @@ bool ValidateHeader(const HcmeshHeader& header, std::string& outMessage) {
         outMessage = "[HCMESH] invalid magic";
         return false;
     }
-    if (header.version != kHcmeshVersion && header.version != COMPATIBILITY::kStaticContainerVersion) {
+    if (header.version != kHcmeshVersion) {
         outMessage = "[HCMESH] unsupported version; reimport asset";
         return false;
     }
@@ -392,15 +391,6 @@ bool ReadHcmeshPackedFile(const std::filesystem::path& path, RENDER3D::CLUSTER::
         return false;
     }
 
-    const bool upgradedCompatibleStatic = header.version == COMPATIBILITY::kStaticContainerVersion;
-    uint32_t compatibleHeaderGrowth = 0u;
-    if (upgradedCompatibleStatic &&
-        !COMPATIBILITY::UpgradeStaticPackedGpuChunks(packed.geometryBytes, packed.metadataBytes, compatibleHeaderGrowth,
-                                                     outMessage)) {
-        outMessage += ": " + path.generic_string();
-        return false;
-    }
-
     const HcmeshChunkDesc* surfaceRangesChunk = FindChunk(chunks, HcmeshChunkKind::SurfaceRanges);
     const HcmeshChunkDesc* lodRangesChunk = FindChunk(chunks, HcmeshChunkKind::SurfaceLodRanges);
     const HcmeshChunkDesc* sectionsChunk = FindChunk(chunks, HcmeshChunkKind::SurfaceSections);
@@ -422,8 +412,8 @@ bool ReadHcmeshPackedFile(const std::filesystem::path& path, RENDER3D::CLUSTER::
         return false;
     }
 
-    const uint64_t expectedGeometryByteSize = static_cast<uint64_t>(header.geometryByteSize) + compatibleHeaderGrowth;
-    const uint64_t expectedMetadataByteSize = static_cast<uint64_t>(header.metadataByteSize) + compatibleHeaderGrowth;
+    const uint64_t expectedGeometryByteSize = header.geometryByteSize;
+    const uint64_t expectedMetadataByteSize = header.metadataByteSize;
     if (packed.layout.surfaceCount != header.surfaceCount ||
         packed.layout.surfaceLodRangeCount != header.surfaceLodRangeCount ||
         packed.layout.surfaceSectionCount != header.surfaceSectionCount ||
@@ -436,8 +426,7 @@ bool ReadHcmeshPackedFile(const std::filesystem::path& path, RENDER3D::CLUSTER::
     }
 
     outPacked = std::move(packed);
-    outMessage = "[HCMESH] read GPU-ready v" + std::to_string(header.version) +
-                 (upgradedCompatibleStatic ? " (GPU v11 upgraded in memory) " : " ") + path.generic_string();
+    outMessage = "[HCMESH] read GPU-ready v" + std::to_string(header.version) + " " + path.generic_string();
     return true;
 }
 

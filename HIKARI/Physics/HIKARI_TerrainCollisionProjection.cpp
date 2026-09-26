@@ -19,7 +19,7 @@
 #include "Core/Math/HIKARI_MathValidation.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_World.h"
-#include "Scene/Sand/HIKARI_SandSurfaceTypes.h"
+#include "Scene/Terrain/HIKARI_TerrainSurfaceTypes.h"
 #include "Scene/Terrain/HIKARI_TerrainSurfaceComponent.h"
 
 namespace HIKARI::PHYSICS {
@@ -200,7 +200,7 @@ public:
             return;
         }
 
-        constexpr float threshold = SAND::kSandSurfaceVisibleCoverageThreshold;
+        constexpr float threshold = TERRAIN::kTerrainSurfaceVisibleCoverageThreshold;
         const std::array<const CoverageVertex*, 3u> input{&first, &second, &third};
         std::array<uint32_t, 4u> polygon{};
         uint32_t count = 0u;
@@ -314,7 +314,7 @@ private:
             return kInvalidVertexIndex;
         }
 
-        constexpr float threshold = SAND::kSandSurfaceVisibleCoverageThreshold;
+        constexpr float threshold = TERRAIN::kTerrainSurfaceVisibleCoverageThreshold;
         if (first.coverage == threshold) {
             return firstIndex;
         }
@@ -468,7 +468,7 @@ void AppendTerrainChunkGeometry(const TerrainSurfaceComponent& terrain, const TE
                     static_cast<std::size_t>(canonical.localZ) * canonicalStride + canonical.localX;
                 authoredHeight = canonical.chunk->heights[canonicalIndex];
             }
-            const float effectiveHeight = SAND::EvaluateSandSurfaceEffectiveHeight(
+            const float effectiveHeight = TERRAIN::EvaluateTerrainSurfaceEffectiveHeight(
                 authoredHeight, coverage, surface.shoreline.edgeDepth, surface.deform.rimStrength);
             vertices[index] = CoverageVertex{lattice, {localX, effectiveHeight, localZ}, coverage};
         }

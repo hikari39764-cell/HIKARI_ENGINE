@@ -7,7 +7,7 @@
 #include "Render3D/Procedural/HIKARI_ProceduralModelFactory.h"
 #include "Render3D/Runtime/HIKARI_SceneRenderCache.h"
 #include "Render3D/Runtime/HIKARI_SceneSurfaceFloatPool.h"
-#include "Scene/Sand/HIKARI_SandSurfaceMaterialBinder.h"
+#include "Scene/Terrain/HIKARI_TerrainSurfaceMaterialBinder.h"
 #include "Scene/Terrain/HIKARI_TerrainSurfaceComponent.h"
 #include "Scene/Terrain/HIKARI_TerrainSurfaceConversion.h"
 #include "Scene/Terrain/HIKARI_SurfaceLayerRegistry.h"
@@ -26,12 +26,12 @@ MATH::Vec4 ResolveTerrainAtlasScaleBias(uint32_t tile) noexcept {
     };
 }
 
-RENDER3D::SAND::SandSurfaceLayerRenderStyle BuildTerrainLayerRenderStyle(
+RENDER3D::TERRAIN::TerrainSurfaceLayerRenderStyle BuildTerrainLayerRenderStyle(
     const TERRAIN::SurfacePreset& preset, const TERRAIN::TerrainStylizationSettings& authoredSettings) noexcept {
     const TERRAIN::SurfaceLayerMaterialParams& authored = preset.layerMaterial;
     const TERRAIN::TerrainStylizationSettings stylization =
         TERRAIN::SanitizeTerrainStylizationSettings(authoredSettings);
-    RENDER3D::SAND::SandSurfaceLayerRenderStyle style{};
+    RENDER3D::TERRAIN::TerrainSurfaceLayerRenderStyle style{};
     style.lightTint = preset.tint.light;
     style.textureStrength = std::clamp(authored.textureStrength * stylization.textureStrength, 0.0f, 2.0f);
     style.darkTint = preset.tint.dark;
@@ -54,11 +54,6 @@ RENDER3D::SAND::SandSurfaceLayerRenderStyle BuildTerrainLayerRenderStyle(
     return style;
 }
 
-std::string_view ResolveLegacyTerrainLayerPresetId(uint32_t layer) noexcept {
-    constexpr std::array<std::string_view, 5u> kIds{"sand", "snow", "dirt", "grass", "rock"};
-    return layer < kIds.size() ? kIds[layer] : kIds.front();
-}
-
 void AppendChangedChunk(std::vector<TERRAIN::TerrainChunkKey>& chunks, TERRAIN::TerrainChunkKey key) {
     if (std::find(chunks.begin(), chunks.end(), key) == chunks.end()) {
         chunks.push_back(key);
@@ -73,10 +68,10 @@ uint32_t ResolveTerrainProjectionGrid(uint32_t totalCellsX, uint32_t totalCellsZ
                                         (layerCount > 1u ? static_cast<std::size_t>(layerCount) : 0u);
     const std::size_t fixedPoolFloats =
         RENDER3D::RUNTIME::kSceneSurfaceNeutralFloatCount +
-        (layerCount > 1u ? static_cast<std::size_t>(layerCount) * RENDER3D::SAND::kSandSurfaceLayerStyleFloatCount
+        (layerCount > 1u ? static_cast<std::size_t>(layerCount) * RENDER3D::TERRAIN::kTerrainSurfaceLayerStyleFloatCount
                          : 0u);
-    const std::size_t availableVertexFloats = RENDER3D::SAND::kSandSurfaceMaxHeightCells > fixedPoolFloats
-                                                  ? RENDER3D::SAND::kSandSurfaceMaxHeightCells - fixedPoolFloats
+    const std::size_t availableVertexFloats = RENDER3D::TERRAIN::kTerrainSurfaceMaxHeightCells > fixedPoolFloats
+                                                  ? RENDER3D::TERRAIN::kTerrainSurfaceMaxHeightCells - fixedPoolFloats
                                                   : 0u;
     const std::size_t vertexBudget = fieldsPerVertex > 0u ? availableVertexFloats / fieldsPerVertex : 0u;
     const double budgetStride = std::sqrt(static_cast<double>(vertexBudget));
@@ -105,17 +100,18 @@ bool SampleTerrainGrid(const std::vector<float>& values, std::size_t baseOffset,
 }
 
 void BakeTerrainChunksForRender(const TERRAIN::TerrainSurface& surface, const TerrainSurfaceComponent& terrain,
-                                RuntimeObjectHandle objectHandle, const SAND::SandSurfaceQueryService* sandSurfaceQuery,
+                                RuntimeObjectHandle objectHandle,
+                                const TERRAIN::TerrainSurfaceQueryService* terrainSurfaceQuery,
                                 const std::filesystem::path& projectRoot, float chunkSize, uint32_t cells,
                                 TerrainProjectionState& state, SceneRenderCacheSync::DebugStats& stats,
                                 TerrainProjectionOutput& output, RENDER3D::RUNTIME::SceneRenderObjectDesc& desc) {
-    desc.sandSurfaceHeights.reset();
-    desc.sandSurfaceDeformations.reset();
-    desc.sandSurfaceLayerWeights.reset();
-    desc.sandSurfaceCoverage.reset();
+    desc.terrainSurfaceHeights.reset();
+    desc.terrainSurfaceDeformations.reset();
+    desc.terrainSurfaceLayerWeights.reset();
+    desc.terrainSurfaceCoverage.reset();
     const TERRAIN::TerrainChunkMap& chunks = surface.chunks;
     if (chunks.empty()) {
-        desc.sandSurface = false;
+        desc.terrainSurface = false;
         state = {};
         return;
     }
@@ -196,10 +192,10 @@ void BakeTerrainChunksForRender(const TERRAIN::TerrainSurface& surface, const Te
     uint32_t responseProjectionScale = 1u;
     for (const auto& [key, chunk] : chunks) {
         (void)chunk;
-        SAND::SandChunkRuntimeSnapshotPtr runtime{};
+        TERRAIN::TerrainChunkRuntimeSnapshotPtr runtime{};
         const bool runtimeValid =
-            sandSurfaceQuery != nullptr && sandSurfaceQuery->TryGetChunkState(objectHandle, key, runtime) && runtime &&
-            runtime->cells > 0u && std::isfinite(runtime->cellSize) && runtime->cellSize > 1.0e-4f;
+            terrainSurfaceQuery != nullptr && terrainSurfaceQuery->TryGetChunkState(objectHandle, key, runtime) &&
+            runtime && runtime->cells > 0u && std::isfinite(runtime->cellSize) && runtime->cellSize > 1.0e-4f;
         const auto oldRevision = state.runtimeRevisions.find(key);
         if (!runtimeValid) {
             if (oldRevision != state.runtimeRevisions.end()) {
@@ -368,7 +364,7 @@ void BakeTerrainChunksForRender(const TERRAIN::TerrainSurface& surface, const Te
                     continue;
                 }
                 const auto runtimeFound = state.runtimeByChunk.find(key);
-                const SAND::SandChunkRuntimeState* runtime =
+                const TERRAIN::TerrainChunkRuntimeState* runtime =
                     runtimeFound != state.runtimeByChunk.end() ? runtimeFound->second.get() : nullptr;
                 float cov = 0.0f;
                 const bool sampledRuntimeCoverage =
@@ -455,34 +451,30 @@ void BakeTerrainChunksForRender(const TERRAIN::TerrainSurface& surface, const Te
 
     // chunk 経路でもスタイル/変形パラメータを全同期する。
     // 以前は既定値のままだったため、パネルで変えても反映されなかった。
-    desc.sandSurfaceData.gridResolution = gridRes;
-    desc.sandSurfaceData.extents = {extentX, extentZ};
-    desc.sandSurfaceData.heightScale = surface.heightScale;
-    desc.sandSurfaceData.rimStrength = surface.deform.rimStrength;
-    desc.sandSurfaceData.lightTint = surface.material.lightTint;
-    desc.sandSurfaceData.darkTint = surface.material.darkTint;
-    desc.sandSurfaceData.sparkleStrength = surface.material.sparkleStrength;
-    desc.sandSurfaceData.rippleAmount = surface.material.rippleAmount;
-    desc.sandSurfaceData.pitDarkening = surface.material.pitDarkening;
-    desc.sandSurfaceData.toonBandCount = surface.material.toonBandCount;
-    desc.sandSurfaceData.toonBandHardness = surface.material.toonBandHardness;
-    desc.sandSurfaceData.layerCount = layerCount;
-    desc.sandSurfaceData.layerWeights.clear();
-    desc.sandSurfaceData.coverage.clear();
-    desc.sandSurfaceData.wetness = surface.shoreline.wetness;
-    desc.sandSurfaceData.edgeDepth = surface.shoreline.edgeDepth;
+    desc.terrainSurfaceData.gridResolution = gridRes;
+    desc.terrainSurfaceData.extents = {extentX, extentZ};
+    desc.terrainSurfaceData.heightScale = surface.heightScale;
+    desc.terrainSurfaceData.rimStrength = surface.deform.rimStrength;
+    desc.terrainSurfaceData.lightTint = surface.material.lightTint;
+    desc.terrainSurfaceData.darkTint = surface.material.darkTint;
+    desc.terrainSurfaceData.sparkleStrength = surface.material.sparkleStrength;
+    desc.terrainSurfaceData.rippleAmount = surface.material.rippleAmount;
+    desc.terrainSurfaceData.pitDarkening = surface.material.pitDarkening;
+    desc.terrainSurfaceData.toonBandCount = surface.material.toonBandCount;
+    desc.terrainSurfaceData.toonBandHardness = surface.material.toonBandHardness;
+    desc.terrainSurfaceData.layerCount = layerCount;
+    desc.terrainSurfaceData.layerWeights.clear();
+    desc.terrainSurfaceData.coverage.clear();
+    desc.terrainSurfaceData.wetness = surface.shoreline.wetness;
+    desc.terrainSurfaceData.edgeDepth = surface.shoreline.edgeDepth;
 
-    // 全レイヤーの atlas/toon style を解決する。layerPresetIds を持たない
-    // 旧 scene は従来の sand/snow/dirt registry 順を維持する。
+    // 全レイヤーの atlas/toon style を解決する。
     TERRAIN::SurfaceLayerRegistry::Get().RegisterBuiltins();
-    auto& styles = desc.sandSurfaceData.layerStyles;
+    auto& styles = desc.terrainSurfaceData.layerStyles;
     styles.assign(layerCount, BuildTerrainLayerRenderStyle(TERRAIN::MakeSandPreset(), surface.stylization));
     for (uint32_t layer = 0u; layer < layerCount; ++layer) {
         const std::string_view id =
-            layer < surface.layerPresetIds.size() && !surface.layerPresetIds[layer].empty()
-                ? std::string_view(surface.layerPresetIds[layer])
-                : (layer == 0u && !surface.presetId.empty() ? std::string_view(surface.presetId)
-                                                            : ResolveLegacyTerrainLayerPresetId(layer));
+            TERRAIN::ResolveTerrainLayerPresetId(surface.layerPresetIds, surface.presetId, layer);
         const TERRAIN::SurfacePreset* preset = id.empty() ? nullptr : TERRAIN::SurfaceLayerRegistry::Get().Find(id);
         if (preset != nullptr) {
             styles[layer] = BuildTerrainLayerRenderStyle(*preset, surface.stylization);
@@ -501,19 +493,19 @@ void BakeTerrainChunksForRender(const TERRAIN::TerrainSurface& surface, const Te
     desc.worldTransform.explicitMatrix =
         objectWorld * MATH::Mat4::Translate({originX + extentX * 0.5f, 0.0f, originZ + extentZ * 0.5f});
 
-    desc.sandSurfaceHeights = state.heights;
-    desc.sandSurfaceLayerWeights = state.layerWeights;
-    desc.sandSurfaceCoverage = state.coverage;
+    desc.terrainSurfaceHeights = state.heights;
+    desc.terrainSurfaceLayerWeights = state.layerWeights;
+    desc.terrainSurfaceCoverage = state.coverage;
     if (responseGridActive) {
-        desc.sandSurfaceDeformations = state.deformations;
+        desc.terrainSurfaceDeformations = state.deformations;
     }
-    desc.sandSurfaceProjectionRevision = state.projectionRevision;
+    desc.terrainSurfaceProjectionRevision = state.projectionRevision;
 
     // authored 高さと response profile から保守 bounds を作り、8m 単位で
     // 量子化して只拡張する。dent tick や通常の brush sample が毎回
     // topology rebuild を起こさず、極値を越えた時だけ安全側へ広がる。
-    const float rippleMargin = std::clamp(desc.sandSurfaceData.rippleAmount, 0.0f, 3.0f) *
-                               std::clamp(desc.sandSurfaceData.heightScale, 0.0f, 2.0f) * 0.021f;
+    const float rippleMargin = std::clamp(desc.terrainSurfaceData.rippleAmount, 0.0f, 3.0f) *
+                               std::clamp(desc.terrainSurfaceData.heightScale, 0.0f, 2.0f) * 0.021f;
     const float desiredMin = state.authoredMinHeight - (std::max)(surface.shoreline.edgeDepth, 0.0f) -
                              (std::max)(surface.deform.maxDepth, 0.0f) - rippleMargin;
     const float desiredMax = state.authoredMaxHeight +

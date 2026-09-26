@@ -48,8 +48,8 @@ private:
     void CreateWaterSurfaceObject(DocumentSceneBase& scene, EditorContext& context,
                                   const SelectionSyncService& selectionSync);
 
-    void CreateSandSurfaceObject(DocumentSceneBase& scene, EditorContext& context,
-                                 const SelectionSyncService& selectionSync);
+    void CreateTerrainSurfaceObject(DocumentSceneBase& scene, EditorContext& context,
+                                    const SelectionSyncService& selectionSync);
 
     void CreateDialogueTriggerObject(DocumentSceneBase& scene, EditorContext& context,
                                      const SelectionSyncService& selectionSync);

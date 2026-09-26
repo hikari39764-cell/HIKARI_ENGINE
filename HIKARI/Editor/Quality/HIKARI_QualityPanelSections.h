@@ -14,7 +14,6 @@ void DrawAmbientOcclusion(SceneEnvironment& environment,
                           const RENDER3D::DIAGNOSTICS::EnvironmentDiagnosticsSnapshot& runtimeSnapshot);
 void DrawBloom(SceneEnvironment& environment);
 void DrawToneMapping(SceneEnvironment& environment);
-void DrawGlobalPost(SceneEnvironment& environment);
 void DrawTransitionDebug();
 #endif
 

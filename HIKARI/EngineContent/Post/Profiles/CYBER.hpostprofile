@@ -1,0 +1,6 @@
+{
+  "formatVersion": 1,
+  "name": "CYBER",
+  "effect": "engine.post.effect.cyber",
+  "values": {}
+}

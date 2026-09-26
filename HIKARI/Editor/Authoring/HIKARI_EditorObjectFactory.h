@@ -63,7 +63,7 @@ GameObject* CreatePrimitiveObject(DocumentSceneBase& scene, const CreatePrimitiv
 
 GameObject* CreateWaterSurfaceObject(DocumentSceneBase& scene, const CreateObjectRequest& request);
 
-GameObject* CreateSandSurfaceObject(DocumentSceneBase& scene, const CreateObjectRequest& request);
+GameObject* CreateTerrainSurfaceObject(DocumentSceneBase& scene, const CreateObjectRequest& request);
 
 GameObject* CreateDialogueTriggerObject(DocumentSceneBase& scene, const CreateObjectRequest& request);
 

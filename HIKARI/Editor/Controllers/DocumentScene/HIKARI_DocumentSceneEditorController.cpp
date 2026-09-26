@@ -6,6 +6,7 @@
 #include "Editor/Commands/HIKARI_EditorOperationValue.h"
 #include "Editor/Authoring/HIKARI_EditorWorkspaceSessionProviders.h"
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.h"
+#include "Editor/AI/HIKARI_AI_ProjectKnowledge.h"
 #include "Editor/Project/HIKARI_GameProjectEditorWorkspaceHost.h"
 #include "Core/HIKARI_TimeService.h"
 
@@ -58,17 +59,6 @@
 namespace HIKARI {
 
 namespace {
-const char* OperationParameterTypeName(EDITOR::EditorOperationParameterType type) noexcept {
-    switch (type) {
-    case EDITOR::EditorOperationParameterType::String: return "string";
-    case EDITOR::EditorOperationParameterType::Float: return "float";
-    case EDITOR::EditorOperationParameterType::Int: return "int";
-    case EDITOR::EditorOperationParameterType::Bool: return "bool";
-    case EDITOR::EditorOperationParameterType::Json: return "json";
-    }
-    return "unknown";
-}
-
 EDITOR::AI_ASSISTANT::AiRequestResult ToAiRequestResult(const EDITOR::EditorOperationResult& operation) {
     EDITOR::AI_ASSISTANT::AiRequestResult result{};
     result.ok = operation.ok;
@@ -126,8 +116,9 @@ DocumentSceneEditorController::DocumentSceneEditorController() {
                 capability.semantics.erase("parameters");
                 capability.searchTerms = definition->searchTerms;
                 for (const EDITOR::EditorOperationParameter& parameter : definition->parameters) {
-                    capability.parameters.push_back({parameter.name, OperationParameterTypeName(parameter.type),
-                                                     parameter.required, parameter.description, parameter.schema});
+                    capability.parameters.push_back(
+                        {parameter.name, TEXT::EnumToName(EDITOR::kEditorOperationParameterTypeNames, parameter.type),
+                         parameter.required, parameter.description, parameter.schema});
                 }
                 if (definition->requiresDocumentSession &&
                     authoringSessions_.SupportsWorkspace(definition->workspace) &&
@@ -297,30 +288,19 @@ DocumentSceneEditorController::DocumentSceneEditorController() {
             context += object->GetName();
             ++shown;
         }
-        context += ")\n" + ModelMaterialWorkspace().GetAiMaterialStatus();
-        context += "\nmodel assets: " + std::to_string(scene.GetAssetRegistry().CollectByType(AssetType::Model).size());
-        context += "\n" + VfxWorkspace().GetAiVfxStatus();
-        using Workspace = EDITOR::EditorWorkspaceId;
+        context +=
+            ")\nmodel assets: " + std::to_string(scene.GetAssetRegistry().CollectByType(AssetType::Model).size());
         const auto active = workspaceHost_.GetActive();
         nlohmann::json document{{"workspace", EDITOR::EditorWorkspaceOperationId(active)}};
-        if (active == Workspace::Cinematics) {
-            const auto& sequence = CinematicsWorkspace().GetSequenceDocument();
-            document["assetGuid"] = sequence.GetAssetGuid().value;
-            document["dirty"] = CinematicsWorkspace().IsSequenceDocumentDirty();
-        } else if (active == Workspace::Vfx)
-            document["assetGuid"] = VfxWorkspace().GetDocument().GetAssetGuid().value;
-        else if (active == Workspace::ModelMaterial)
-            document["assetGuid"] = ModelMaterialWorkspace().GetDocumentAssetGuid().value;
-        else if (active == Workspace::ModelCollision)
-            document["assetGuid"] = ModelCollisionWorkspace().GetDocumentAssetGuid().value;
-        else if (active == Workspace::Dialogue)
-            document["assetGuid"] = DialogueWorkspace().GetDocumentAssetGuid().value;
-        else if (active == Workspace::AnimationStateMachine)
-            document["assetGuid"] = AnimationStateMachineWorkspace().GetDocumentAssetGuid().value;
-        else if (active == Workspace::Scene)
+        if (nlohmann::json state = DescribeWorkspaceDocument(active, true); !state.is_null())
+            document["document"] = std::move(state);
+        if (active == EDITOR::EditorWorkspaceId::Scene)
             document["scenePath"] = scene.GetScenePath();
         context += "\nActive document: " + document.dump();
         context += "\nBackground authoring: " + authoringSessions_.Snapshot().dump();
+        if (const std::string guide = EDITOR::ReadProjectGuideForContext(scene.GetAssetDatabase().GetProjectRoot());
+            !guide.empty())
+            context += "\nProject guide (user-authored conventions):\n" + guide;
         return context;
     });
 
@@ -343,9 +323,7 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::ExecuteTerrainOpera
     auto* scene = aiOperationScene_;
     if (!scene)
         return {false, "NO_SCENE", "Scene context unavailable."};
-    const bool externalDirtyBefore =
-        historyExternalDirty_ ||
-        ((context_.sceneDirty || scene->HasUnsavedSceneChanges()) && !documentHistory_.IsDirty());
+    const bool externalDirtyBefore = IsDirtyOutsideHistory(*scene);
     auto output = operation(*scene, parameters);
     if (output.command)
         CommitAppliedDocumentCommand(*scene, std::move(output.command), 0u, externalDirtyBefore,
@@ -366,23 +344,6 @@ DocumentSceneEditorController::~DocumentSceneEditorController() {
     aiLocalBridge_.Stop();
     CancelAiSceneCapture();
     authoringSessions_.Reset();
-}
-
-EDITOR::EditorOperationResult DocumentSceneEditorController::ExecuteAiAssetListModels() {
-    EDITOR::EditorOperationResult result{};
-    DocumentSceneBase* scene = aiOperationScene_;
-    if (scene == nullptr) {
-        return EDITOR::OperationFailure("NO_SCENE", "场景上下文不可用");
-    }
-    result.ok = true;
-    result.message = "模型资产：";
-    for (const AssetDescriptor* descriptor : scene->GetAssetRegistry().CollectByType(AssetType::Model)) {
-        result.details.push_back(descriptor->id.value + " | " + descriptor->sourcePath);
-    }
-    if (result.details.empty()) {
-        result.message = "没有已注册的模型资产";
-    }
-    return result;
 }
 
 EDITOR::EditorOperationResult DocumentSceneEditorController::ExecuteAiCapturePreview(const nlohmann::json& parameters) {
@@ -501,14 +462,6 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::ExecuteAiUndoLast()
     }
     ExecuteSceneDocumentHistory(*scene, false);
     return EDITOR::OperationOk("已撤销场景最近一次编辑");
-}
-
-EDITOR::EditorOperationResult DocumentSceneEditorController::ExecuteAiMaterialVerify(const nlohmann::json& parameters) {
-    const auto folder = aiOperationScene_
-                            ? aiOperationScene_->GetAssetDatabase().GetLibraryRoot() / "EditorAI" / "Captures"
-                            : std::filesystem::path{};
-    return EDITOR::StartEditorPreviewCapture(workspaceHost_.GetModelMaterialPreviewView().renderViewId, folder,
-                                             parameters.value("path", std::string{}));
 }
 
 EDITOR::EditorOperationResult DocumentSceneEditorController::ExecuteSceneSave() {

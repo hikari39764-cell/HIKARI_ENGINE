@@ -71,17 +71,6 @@ void LogOperationEnd(uint64_t sequence, const std::string& id, const EditorOpera
     }
 }
 
-const char* ParameterTypeName(EditorOperationParameterType type) noexcept {
-    switch (type) {
-    case EditorOperationParameterType::String: return "string";
-    case EditorOperationParameterType::Float: return "number";
-    case EditorOperationParameterType::Int: return "integer";
-    case EditorOperationParameterType::Bool: return "boolean";
-    case EditorOperationParameterType::Json: return "json";
-    }
-    return "unknown";
-}
-
 bool MatchesParameterType(const nlohmann::json& value, EditorOperationParameterType type) noexcept {
     switch (type) {
     case EditorOperationParameterType::String: return value.is_string();
@@ -178,17 +167,16 @@ bool ValidateShape(const nlohmann::json& value, const nlohmann::json& schema, co
 } // namespace
 
 nlohmann::json DescribeEditorOperation(const EditorOperationDefinition& definition) {
-    const char* kind = "unspecified";
-    switch (definition.kind) {
-    case EditorOperationKind::Query: kind = "query"; break;
-    case EditorOperationKind::Mutation: kind = "mutation"; break;
-    case EditorOperationKind::Session: kind = "session"; break;
-    default: break;
-    }
+    constexpr TEXT::EnumName<EditorOperationKind> kKindNames[] = {
+        {EditorOperationKind::Query, "query"},
+        {EditorOperationKind::Mutation, "mutation"},
+        {EditorOperationKind::Session, "session"},
+    };
     nlohmann::json result{{"id", definition.id},
                           {"summary", definition.summary},
                           {"workspace", definition.workspace},
-                          {"kind", kind},
+                          {"kind", TEXT::EnumToName(kKindNames, definition.kind, "unspecified")},
+                          {"permission", TEXT::EnumToName(kEditorOperationPermissionNames, definition.permission)},
                           {"requiresDocumentSession", definition.requiresDocumentSession},
                           {"requiresCleanDocument", definition.requiresCleanDocument},
                           {"entryPoint", definition.entryPoint},
@@ -196,7 +184,7 @@ nlohmann::json DescribeEditorOperation(const EditorOperationDefinition& definiti
                           {"parameters", nlohmann::json::array()}};
     for (const auto& parameter : definition.parameters) {
         result["parameters"].push_back({{"name", parameter.name},
-                                        {"type", ParameterTypeName(parameter.type)},
+                                        {"type", TEXT::EnumToName(kEditorOperationParameterTypeNames, parameter.type)},
                                         {"required", parameter.required},
                                         {"description", parameter.description},
                                         {"schema", parameter.schema}});
@@ -220,6 +208,10 @@ EditorOperationRegistrationResult EditorOperationRegistry::Register(EditorOperat
     if (!definition.execute) {
         return RejectRegistration(EditorOperationRegistrationCode::MissingExecute, definition.id,
                                   "Editor operation execute callback is required.");
+    }
+    if (definition.kind == EditorOperationKind::Unspecified) {
+        return RejectRegistration(EditorOperationRegistrationCode::MissingKind, definition.id,
+                                  "Editor operation kind (query/mutation/session) is required.");
     }
     if (operations_.find(definition.id) != operations_.end()) {
         return RejectRegistration(EditorOperationRegistrationCode::DuplicateId, definition.id,
@@ -262,8 +254,9 @@ EditorOperationResult EditorOperationRegistry::Validate(const EditorOperationDef
         }
         if (!MatchesParameterType(*found, parameter.type)) {
             result.code = "PARAMETER_TYPE_MISMATCH";
-            result.message = "Parameter '" + parameter.name + "' must be " + ParameterTypeName(parameter.type) +
-                             ", received " + found->type_name();
+            result.message = "Parameter '" + parameter.name + "' must be " +
+                             TEXT::EnumToName(kEditorOperationParameterTypeNames, parameter.type) + ", received " +
+                             found->type_name();
             result.details.push_back("operation: " + definition.id);
             return result;
         }

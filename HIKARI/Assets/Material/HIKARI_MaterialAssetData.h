@@ -115,7 +115,7 @@ struct MaterialAssetData {
     MaterialRampData ramp{};
 };
 
-MaterialAssetData MakeStandardPbrMaterialAssetData(const PbrMaterialAssetData& legacyData = {});
+MaterialAssetData MakeStandardPbrMaterialAssetData(const PbrMaterialAssetData& pbr = {});
 
 void ApplyPbrMaterialAssetData(MaterialAssetData& material, const PbrMaterialAssetData& pbr);
 

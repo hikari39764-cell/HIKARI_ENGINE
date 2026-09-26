@@ -123,7 +123,7 @@ void RegisterModelMaterialOperations(EditorOperationRegistry& registry, ModelMat
             "model_material",
             {
                 EditorOperationParameter{"modelGuid", EditorOperationParameterType::String, true,
-                                         "模型资产 guid（asset.list_models 可查）"},
+                                         "模型资产 guid（asset.query 可查）"},
             },
             [&controller, sceneProvider](const nlohmann::json& parameters) {
                 EditorOperationResult result{};

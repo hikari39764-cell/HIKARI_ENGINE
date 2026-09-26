@@ -46,6 +46,8 @@ public:
     bool RequestOpenSequenceAsset(DocumentSceneBase& scene, const AssetGuid& assetGuid, std::string& outMessage);
     bool IsEditingSequenceAsset() const noexcept;
     bool IsSequenceDocumentDirty() const noexcept;
+    // 文書の状態。シェル、AI の文脈、バックグラウンドのセッションで共有する。
+    nlohmann::json DescribeDocumentState() const;
     bool CanUndoSequenceDocument() const noexcept;
     bool CanRedoSequenceDocument() const noexcept;
     bool SaveSequenceDocument(DocumentSceneBase& scene, std::string& outMessage);

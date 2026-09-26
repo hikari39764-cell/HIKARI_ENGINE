@@ -50,35 +50,6 @@ void AiAssistantPanel::SaveApiSettings() {
     OpenApiSettingsBuffers();
 }
 
-void AiAssistantPanel::OpenVisionBuffers() {
-    AI_ASSISTANT::AiChatConfig vision{};
-    (void)AI_ASSISTANT::LoadAiVisionConfig(vision);
-    std::snprintf(visionApiKeyBuffer_, sizeof(visionApiKeyBuffer_), "%s", vision.apiKey.c_str());
-    std::snprintf(visionBaseUrlBuffer_, sizeof(visionBaseUrlBuffer_), "%s", vision.baseUrl.c_str());
-    std::snprintf(visionModelBuffer_, sizeof(visionModelBuffer_), "%s", vision.model.c_str());
-}
-
-void AiAssistantPanel::SaveVisionSettings() {
-    AI_ASSISTANT::AiChatConfig updated{};
-    updated.apiKey = AI_ASSISTANT::Trim(visionApiKeyBuffer_);
-    updated.baseUrl = AI_ASSISTANT::Trim(visionBaseUrlBuffer_);
-    updated.model = AI_ASSISTANT::Trim(visionModelBuffer_);
-    if (updated.baseUrl.empty()) {
-        updated.baseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1";
-    }
-    if (updated.model.empty()) {
-        updated.model = "qwen-vl-plus";
-    }
-    updated.valid = !updated.apiKey.empty();
-    AI_ASSISTANT::SaveAiVisionConfig(updated);
-    OpenVisionBuffers();
-}
-
-void AiAssistantPanel::ResetVisionSettings() {
-    AI_ASSISTANT::ResetAiVisionConfig();
-    OpenVisionBuffers();
-}
-
 void AiAssistantPanel::DrawSettings() {
 #if defined(HIKARI_WITH_EDITOR)
     if (showCapabilities_) {
@@ -142,24 +113,6 @@ void AiAssistantPanel::DrawSettings() {
                 OpenApiSettingsBuffers();
             }
             ImGui::TextDisabled(TEXT::Localize("ai.api.savedTo").c_str());
-
-            ImGui::SeparatorText(TEXT::Localize("ai.api.vision").c_str());
-            ImGui::InputText(TEXT::Localize("ai.api.visionKey").c_str(), visionApiKeyBuffer_,
-                             sizeof(visionApiKeyBuffer_), showVisionKey_ ? 0 : ImGuiInputTextFlags_Password);
-            ImGui::SameLine();
-            ImGui::Checkbox(TEXT::Localize("ai.api.show").c_str(), &showVisionKey_);
-            ImGui::InputText(TEXT::Localize("ai.api.visionBaseUrl").c_str(), visionBaseUrlBuffer_,
-                             sizeof(visionBaseUrlBuffer_));
-            ImGui::InputText(TEXT::Localize("ai.api.visionModel").c_str(), visionModelBuffer_,
-                             sizeof(visionModelBuffer_));
-            if (ImGui::Button(TEXT::Localize("ai.api.saveVision").c_str())) {
-                SaveVisionSettings();
-            }
-            ImGui::SameLine();
-            if (ImGui::Button(TEXT::Localize("ai.api.resetVision").c_str())) {
-                ResetVisionSettings();
-            }
-            ImGui::TextDisabled(TEXT::Localize("ai.api.visionDefault").c_str());
         }
     }
 

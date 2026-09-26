@@ -2,6 +2,7 @@
 
 #include <array>
 #include <filesystem>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -77,6 +78,11 @@ void ProcessDroppedFiles(AssetDatabase& assetDatabase, const std::filesystem::pa
                          EditorSelection& selection, std::string& lastOperationMessage, float targetScreenLeft,
                          float targetScreenTop, float targetScreenRight, float targetScreenBottom);
 
+struct AssetTypeFilter {
+    AssetType type = AssetType::Unknown;
+    const char* labelKey = "";
+};
+std::span<const AssetTypeFilter> GetAssetTypeFilters() noexcept;
 AssetType TypeFromFilterIndex(int index);
 
 bool MatchesTypeFilter(const AssetRecord& record, int typeFilter);

@@ -102,19 +102,16 @@ public:
     bool PlayWorldEffect(VfxPlaybackService& playback, const CombatWorldEffectRequest& request);
     bool SubmitGroundTelegraph(const GroundTelegraphRequest& request, uint64_t frameIndex) noexcept;
     bool SubmitWorldBarrier(const WorldBarrierRequest& request, uint64_t frameIndex) noexcept;
-    bool SubmitWeaponTrail(const WeaponTrailSampleRequest& request, uint64_t frameIndex) noexcept;
+    // 見た目は WeaponPathDistortion 出力が決め、要求は刃の位置と作用の倍率だけを渡す。
     bool SubmitWeaponTrail(const WeaponTrailSampleRequest& request, const VfxSpecialOutputData& output,
                            uint64_t frameIndex) noexcept;
-    bool SubmitWeaponTrail(const WeaponTrailSampleRequest& request, const VfxProgram& program,
-                           uint64_t frameIndex) noexcept;
-    bool SubmitWeaponTrail(const WeaponTrailSampleRequest& request, const VfxProgram& program,
-                           std::string_view outputId, uint64_t frameIndex) noexcept;
     void Tick(uint64_t frameIndex, float unscaledDeltaSeconds) noexcept;
     void Reset() noexcept;
 
     const RENDER3D::COMBAT_VFX::CombatPresentationFrameSource& GetFrameSource() const noexcept;
 
 private:
+    bool AddWeaponTrailSample(const WeaponTrailSampleRequest& request, uint64_t frameIndex) noexcept;
     struct TrailSample;
     struct TrailState;
     struct GroundTelegraphState;

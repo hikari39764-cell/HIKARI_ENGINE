@@ -3,8 +3,8 @@
 #include <algorithm>
 
 namespace HIKARI::VFX {
-namespace {
-size_t ParameterComponentCount(ParamType type) {
+
+size_t GetParameterComponentCount(ParamType type) noexcept {
     switch (type) {
     case ParamType::Float2: return 2;
     case ParamType::Float3:
@@ -17,27 +17,29 @@ size_t ParameterComponentCount(ParamType type) {
     default: return 1;
     }
 }
-} // namespace
+
+void WriteParameterValue(const ParamDesc& parameter, const float* components, DirectX::XMFLOAT4* values,
+                         size_t valueCount) noexcept {
+    const size_t slot = static_cast<size_t>(parameter.ref.slot);
+    const size_t channel = static_cast<size_t>(parameter.ref.channel);
+    if (values == nullptr || components == nullptr || slot >= valueCount || channel >= 4u) {
+        return;
+    }
+    float* destination = &values[slot].x;
+    const size_t writeCount = std::min<size_t>(4u - channel, GetParameterComponentCount(parameter.type));
+    for (size_t index = 0; index < writeCount; ++index) {
+        destination[channel + index] = components[index];
+    }
+}
 
 void ResetParameterValuesFromDefaults(const std::vector<ParamDesc>& parameters, DirectX::XMFLOAT4* values,
                                       size_t valueCount) {
     if (values == nullptr) {
         return;
     }
-
     std::fill(values, values + valueCount, DirectX::XMFLOAT4{});
     for (const ParamDesc& parameter : parameters) {
-        const size_t slot = static_cast<size_t>(parameter.ref.slot);
-        const size_t channel = static_cast<size_t>(parameter.ref.channel);
-        if (slot >= valueCount || channel >= 4u) {
-            continue;
-        }
-
-        float* destination = &values[slot].x;
-        const size_t writeCount = std::min<size_t>(4u - channel, ParameterComponentCount(parameter.type));
-        for (size_t index = 0; index < writeCount; ++index) {
-            destination[channel + index] = parameter.defaultValues[index];
-        }
+        WriteParameterValue(parameter, parameter.defaultValues, values, valueCount);
     }
 }
 

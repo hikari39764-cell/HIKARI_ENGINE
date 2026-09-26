@@ -22,11 +22,4 @@ inline const VfxSpecialOutputData* FindVfxSpecialOutput(const VfxProgram& progra
     return nullptr;
 }
 
-// Legacy/internal callers that do not carry an output id retain the
-// first typed output behavior. Profiled public requests must use the
-// overload above with a stable id.
-inline const VfxSpecialOutputData* FindVfxSpecialOutput(const VfxProgram& program, VfxSpecialOutputType type) noexcept {
-    return FindVfxSpecialOutput(program, {}, type);
-}
-
 } // namespace HIKARI::VFX

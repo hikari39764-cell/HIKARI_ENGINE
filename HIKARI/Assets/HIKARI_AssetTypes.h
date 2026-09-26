@@ -35,6 +35,8 @@ enum class AssetType {
     Font,
     TextStyle,
     UiAnimation,
+    PostEffect,
+    PostProfile,
     Unknown
 };
 

@@ -332,7 +332,7 @@ void DocumentSceneEditorController::DrawGameViewportWindow(DocumentSceneBase& sc
         viewportSelectionService_.DrawMarquee(ImGui::GetWindowDrawList());
         DrawLightOverlayIcons(scene, context_.overlays, imageOrigin, imageSize);
         DrawViewportContextMenu(scene);
-        HandleSandTerrainBrush(scene, sceneViewportRect, viewportImageHovered);
+        HandleTerrainBrush(scene, sceneViewportRect, viewportImageHovered);
     }
     viewportTransformHistory_.EndFrame(scene.GetSceneDocument());
 
@@ -370,9 +370,9 @@ void DocumentSceneEditorController::DrawGameViewportWindow(DocumentSceneBase& sc
 #endif
 }
 
-void DocumentSceneEditorController::HandleSandTerrainBrush(DocumentSceneBase& scene,
-                                                           const EDITOR::SceneViewportRect& viewport,
-                                                           bool viewportHovered) {
+void DocumentSceneEditorController::HandleTerrainBrush(DocumentSceneBase& scene,
+                                                       const EDITOR::SceneViewportRect& viewport,
+                                                       bool viewportHovered) {
 #if defined(HIKARI_WITH_EDITOR)
     GameObject* selected = context_.terrainTool.targetObjectId.value != 0u
                                ? scene.GetWorld().FindObject(context_.terrainTool.targetObjectId)
@@ -420,26 +420,26 @@ void DocumentSceneEditorController::HandleSandTerrainBrush(DocumentSceneBase& sc
     };
 
     const auto resetStrokeState = [&]() {
-        sandTerrainStrokeActive_ = false;
-        sandBrushStrokeChanged_ = false;
-        sandBrushTargetObjectId_ = {};
-        sandBrushTargetRuntimeHandle_ = {};
-        sandBrushTargetComponentId_ = {};
-        sandBrushPreviousLocalHit_ = {};
-        sandBrushHasPreviousLocalHit_ = false;
-        sandBrushDirtyBefore_ = false;
+        terrainStrokeActive_ = false;
+        terrainBrushStrokeChanged_ = false;
+        terrainBrushTargetObjectId_ = {};
+        terrainBrushTargetRuntimeHandle_ = {};
+        terrainBrushTargetComponentId_ = {};
+        terrainBrushPreviousLocalHit_ = {};
+        terrainBrushHasPreviousLocalHit_ = false;
+        terrainBrushDirtyBefore_ = false;
     };
 
     const auto finishStroke = [&]() {
-        if (!sandTerrainStrokeActive_) {
+        if (!terrainStrokeActive_) {
             return;
         }
-        const SceneObjectId strokeObjectId = sandBrushTargetObjectId_;
-        const SceneComponentId strokeComponentId = sandBrushTargetComponentId_;
+        const SceneObjectId strokeObjectId = terrainBrushTargetObjectId_;
+        const SceneComponentId strokeComponentId = terrainBrushTargetComponentId_;
         GameObject* strokeTarget = scene.GetWorld().FindObject(strokeObjectId);
         TerrainSurfaceComponent* strokeTerrain =
             strokeTarget != nullptr ? strokeTarget->GetComponent<TerrainSurfaceComponent>() : nullptr;
-        if (strokeTerrain == nullptr || strokeTarget->GetRuntimeHandle() != sandBrushTargetRuntimeHandle_) {
+        if (strokeTerrain == nullptr || strokeTarget->GetRuntimeHandle() != terrainBrushTargetRuntimeHandle_) {
             // The runtime world changed while the stroke was active.
             // Runtime-only edits cannot be committed safely against a
             // replacement component, so restore the document projection.
@@ -449,7 +449,7 @@ void DocumentSceneEditorController::HandleSandTerrainBrush(DocumentSceneBase& sc
             return;
         }
         (void)strokeTerrain->EndGeometryEditBatch();
-        const bool strokeChanged = sandBrushStrokeChanged_;
+        const bool strokeChanged = terrainBrushStrokeChanged_;
         if (!strokeChanged) {
             nlohmann::json discardedBefore{};
             nlohmann::json discardedAfter{};
@@ -493,13 +493,13 @@ void DocumentSceneEditorController::HandleSandTerrainBrush(DocumentSceneBase& sc
                                      EDITOR::MakeSceneTerrainSurfaceEditDeltaHistoryCommand(
                                          std::move(label), strokeObjectId, strokeComponentId, std::move(beforeDelta),
                                          std::move(afterDelta), EDITOR::EditorDocumentImpact::RuntimeWorld),
-                                     0, sandBrushDirtyBefore_ && !documentHistory_.IsDirty(),
+                                     0, terrainBrushDirtyBefore_ && !documentHistory_.IsDirty(),
                                      EDITOR::EditorDocumentImpact::None);
         resetStrokeState();
     };
 
     const auto beginStroke = [&]() -> bool {
-        if (sandTerrainStrokeActive_) {
+        if (terrainStrokeActive_) {
             return true;
         }
         if (selected == nullptr || terrain == nullptr) {
@@ -520,15 +520,15 @@ void DocumentSceneEditorController::HandleSandTerrainBrush(DocumentSceneBase& sc
         if (documentComponent == nullptr || documentComponent->id.value == 0u) {
             return false;
         }
-        sandBrushDirtyBefore_ = context_.sceneDirty || scene.HasUnsavedSceneChanges();
-        sandBrushTargetObjectId_ = selected->GetDocumentId();
-        sandBrushTargetRuntimeHandle_ = selected->GetRuntimeHandle();
-        sandBrushTargetComponentId_ = documentComponent->id;
-        sandBrushStrokeChanged_ = false;
-        sandBrushPreviousLocalHit_ = {};
-        sandBrushHasPreviousLocalHit_ = false;
+        terrainBrushDirtyBefore_ = context_.sceneDirty || scene.HasUnsavedSceneChanges();
+        terrainBrushTargetObjectId_ = selected->GetDocumentId();
+        terrainBrushTargetRuntimeHandle_ = selected->GetRuntimeHandle();
+        terrainBrushTargetComponentId_ = documentComponent->id;
+        terrainBrushStrokeChanged_ = false;
+        terrainBrushPreviousLocalHit_ = {};
+        terrainBrushHasPreviousLocalHit_ = false;
         terrain->BeginGeometryEditBatch();
-        sandTerrainStrokeActive_ = true;
+        terrainStrokeActive_ = true;
         return true;
     };
 
@@ -538,7 +538,7 @@ void DocumentSceneEditorController::HandleSandTerrainBrush(DocumentSceneBase& sc
         return;
     }
 
-    if (sandTerrainStrokeActive_ && (selected == nullptr || selected->GetDocumentId() != sandBrushTargetObjectId_)) {
+    if (terrainStrokeActive_ && (selected == nullptr || selected->GetDocumentId() != terrainBrushTargetObjectId_)) {
         finishStroke();
     }
 
@@ -779,7 +779,7 @@ void DocumentSceneEditorController::HandleSandTerrainBrush(DocumentSceneBase& sc
                 opening.height = context_.terrainTool.openingHeight;
                 opening.depth = context_.terrainTool.openingDepth;
                 opening.feather = context_.terrainTool.openingFeather;
-                sandBrushStrokeChanged_ = terrain->ApplyOpeningAtLocal(opening);
+                terrainBrushStrokeChanged_ = terrain->ApplyOpeningAtLocal(opening);
                 finishStroke();
             }
             return;
@@ -802,7 +802,7 @@ void DocumentSceneEditorController::HandleSandTerrainBrush(DocumentSceneBase& sc
                 ramp.halfWidth = context_.terrainTool.rampHalfWidth;
                 ramp.shoulderWidth = context_.terrainTool.rampShoulderWidth;
                 ramp.blendAmount = context_.terrainTool.rampBlendAmount;
-                sandBrushStrokeChanged_ = terrain->ApplyRampAtLocal(ramp);
+                terrainBrushStrokeChanged_ = terrain->ApplyRampAtLocal(ramp);
                 finishStroke();
             }
             context_.terrainTool.rampAnchorSet = false;
@@ -810,7 +810,7 @@ void DocumentSceneEditorController::HandleSandTerrainBrush(DocumentSceneBase& sc
         }
 
         const EditorTerrainPaintMode paint = context_.terrainTool.paint;
-        if (pointerDown && !sandTerrainStrokeActive_) {
+        if (pointerDown && !terrainStrokeActive_) {
             if (beginStroke() && context_.terrainTool.mode == EditorTerrainToolMode::Shaft) {
                 TERRAIN::TerrainBrush shaftBrush = terrain->GetBrush();
                 shaftBrush.flattenHeight = localHit.y - shaftBrush.shaftDepth;
@@ -818,17 +818,17 @@ void DocumentSceneEditorController::HandleSandTerrainBrush(DocumentSceneBase& sc
             }
         }
 
-        if (pointerDown && sandTerrainStrokeActive_) {
+        if (pointerDown && terrainStrokeActive_) {
             const TERRAIN::TerrainBrush strokeBrush = terrain->GetBrush();
             const float cellSize =
                 terrain->GetChunkWorldSize() / static_cast<float>((std::max)(terrain->GetChunkCells(), 1u));
             const float brushSpacing = (std::max)(cellSize, strokeBrush.radius * 0.22f);
-            const float segmentDx = localHit.x - sandBrushPreviousLocalHit_.x;
-            const float segmentDz = localHit.z - sandBrushPreviousLocalHit_.z;
+            const float segmentDx = localHit.x - terrainBrushPreviousLocalHit_.x;
+            const float segmentDz = localHit.z - terrainBrushPreviousLocalHit_.z;
             const float segmentLength =
-                sandBrushHasPreviousLocalHit_ ? std::sqrt(segmentDx * segmentDx + segmentDz * segmentDz) : 0.0f;
+                terrainBrushHasPreviousLocalHit_ ? std::sqrt(segmentDx * segmentDx + segmentDz * segmentDz) : 0.0f;
             const uint32_t sampleCount =
-                sandBrushHasPreviousLocalHit_
+                terrainBrushHasPreviousLocalHit_
                     ? (std::max)(1u,
                                  static_cast<uint32_t>(std::ceil(segmentLength / (std::max)(brushSpacing, 1.0e-4f))))
                     : 1u;
@@ -855,12 +855,12 @@ void DocumentSceneEditorController::HandleSandTerrainBrush(DocumentSceneBase& sc
 
             bool frameChanged = false;
             for (uint32_t sampleIndex = 1u; sampleIndex <= sampleCount; ++sampleIndex) {
-                const float t = sandBrushHasPreviousLocalHit_
+                const float t = terrainBrushHasPreviousLocalHit_
                                     ? static_cast<float>(sampleIndex) / static_cast<float>(sampleCount)
                                     : 1.0f;
                 const MATH::Vec3 sampleLocal =
-                    sandBrushHasPreviousLocalHit_
-                        ? sandBrushPreviousLocalHit_ + (localHit - sandBrushPreviousLocalHit_) * t
+                    terrainBrushHasPreviousLocalHit_
+                        ? terrainBrushPreviousLocalHit_ + (localHit - terrainBrushPreviousLocalHit_) * t
                         : localHit;
                 bool sampleChanged = false;
                 switch (paint) {
@@ -894,13 +894,13 @@ void DocumentSceneEditorController::HandleSandTerrainBrush(DocumentSceneBase& sc
                 }
                 frameChanged = frameChanged || sampleChanged;
             }
-            sandBrushPreviousLocalHit_ = localHit;
-            sandBrushHasPreviousLocalHit_ = true;
-            sandBrushStrokeChanged_ = sandBrushStrokeChanged_ || frameChanged;
+            terrainBrushPreviousLocalHit_ = localHit;
+            terrainBrushHasPreviousLocalHit_ = true;
+            terrainBrushStrokeChanged_ = terrainBrushStrokeChanged_ || frameChanged;
         }
     } else {
         context_.terrainTool.hasHit = false;
-        sandBrushHasPreviousLocalHit_ = false;
+        terrainBrushHasPreviousLocalHit_ = false;
     }
 
     if (!pointerDown) {

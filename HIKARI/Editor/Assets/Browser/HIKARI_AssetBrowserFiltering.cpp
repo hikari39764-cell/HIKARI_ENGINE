@@ -44,23 +44,33 @@
 
 namespace HIKARI::EDITOR::ASSET_BROWSER {
 
+namespace {
+// 先頭は「すべて」。並びが種類フィルターの選択肢の表示順になる。
+constexpr AssetTypeFilter kAssetTypeFilters[] = {
+    {AssetType::Unknown, "ui.assetBrowser.filterAll"},
+    {AssetType::Texture, "ui.assetBrowser.filterTexture"},
+    {AssetType::Model, "ui.assetBrowser.filterModel"},
+    {AssetType::Scene, "ui.assetBrowser.filterScene"},
+    {AssetType::Sky, "ui.assetBrowser.filterSky"},
+    {AssetType::Material, "ui.assetBrowser.filterMaterial"},
+    {AssetType::VfxEffect, "ui.assetBrowser.filterVfx"},
+    {AssetType::Sequence, "ui.assetBrowser.filterSequence"},
+    {AssetType::AnimationStateMachine, "ui.assetBrowser.filterAnimationStateMachine"},
+    {AssetType::Dialogue, "ui.assetBrowser.filterDialogue"},
+    {AssetType::ModelMaterialBinding, "ui.assetBrowser.filterMaterialSet"},
+    {AssetType::Font, "textstyle.font"},
+    {AssetType::TextStyle, "textstyle.asset"},
+    {AssetType::UiAnimation, "uianim.asset"},
+    {AssetType::PostEffect, "post.effect.asset"},
+    {AssetType::PostProfile, "post.profile.asset"},
+};
+} // namespace
+
+std::span<const AssetTypeFilter> GetAssetTypeFilters() noexcept { return kAssetTypeFilters; }
+
 AssetType TypeFromFilterIndex(int index) {
-    switch (index) {
-    case 1: return AssetType::Texture;
-    case 2: return AssetType::Model;
-    case 3: return AssetType::Scene;
-    case 4: return AssetType::Sky;
-    case 5: return AssetType::Material;
-    case 6: return AssetType::VfxEffect;
-    case 7: return AssetType::Sequence;
-    case 8: return AssetType::AnimationStateMachine;
-    case 9: return AssetType::Dialogue;
-    case 10: return AssetType::ModelMaterialBinding;
-    case 11: return AssetType::Font;
-    case 12: return AssetType::TextStyle;
-    case 13: return AssetType::UiAnimation;
-    default: return AssetType::Unknown;
-    }
+    return index > 0 && static_cast<size_t>(index) < std::size(kAssetTypeFilters) ? kAssetTypeFilters[index].type
+                                                                                  : AssetType::Unknown;
 }
 
 bool MatchesTypeFilter(const AssetRecord& record, int typeFilter) {
@@ -201,6 +211,8 @@ const char* ToCompactTypeBadge(AssetType type) {
     case AssetType::UiAnimation: return "UIA";
     case AssetType::Font: return "FONT";
     case AssetType::TextStyle: return "TXT";
+    case AssetType::PostEffect: return "PFX";
+    case AssetType::PostProfile: return "PPR";
     case AssetType::Unknown:
     default: return "UNK";
     }

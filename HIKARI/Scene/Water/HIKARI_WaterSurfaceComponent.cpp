@@ -11,23 +11,10 @@ namespace HIKARI {
 
 namespace {
 WATER::WaterSurfacePreset ReadPreset(const nlohmann::json& source, WATER::WaterSurfacePreset fallback) {
-    if (const nlohmann::json* preset = JSONREAD::FindMember(source, "preset")) {
-        if (preset->is_string()) {
-            return WATER::ParseWaterSurfacePreset(preset->get<std::string>(), fallback);
-        }
-        if (preset->is_number_integer() || preset->is_number_unsigned()) {
-            const int value = JSONREAD::IntegerMemberOr(source, "preset", -1);
-            return WATER::ParseWaterSurfacePreset(value, fallback);
-        }
-    }
-
-    // 原型の style は Realistic=0 / Stylized=1 だった。
-    if (const nlohmann::json* style = JSONREAD::FindMember(source, "style");
-        style != nullptr && (style->is_number_integer() || style->is_number_unsigned())) {
-        return JSONREAD::IntegerMemberOr(source, "style", 1) == 0 ? WATER::WaterSurfacePreset::RealisticClearSummer
-                                                                  : WATER::WaterSurfacePreset::AnimeSummer;
-    }
-    return fallback;
+    const nlohmann::json* preset = JSONREAD::FindMember(source, "preset");
+    return preset != nullptr && preset->is_string()
+               ? WATER::ParseWaterSurfacePreset(preset->get<std::string>(), fallback)
+               : fallback;
 }
 } // namespace
 
@@ -135,15 +122,7 @@ void WaterSurfaceComponent::Deserialize(const nlohmann::json& in) {
     next.shortWaveStrength = JSONREAD::NumberMemberOr(in, "shortWaveStrength", next.shortWaveStrength);
     next.capillaryStrength = JSONREAD::NumberMemberOr(in, "capillaryStrength", next.capillaryStrength);
 
-    if (JSONREAD::FindMember(in, "absorptionDistance") != nullptr) {
-        next.absorptionDistance = JSONREAD::NumberMemberOr(in, "absorptionDistance", next.absorptionDistance);
-    } else if (const nlohmann::json* legacyAbsorption = JSONREAD::FindMember(in, "absorption");
-               legacyAbsorption != nullptr && legacyAbsorption->is_number()) {
-        const float coefficient = legacyAbsorption->get<float>();
-        if (std::isfinite(coefficient) && coefficient > 1.0e-4f) {
-            next.absorptionDistance = 1.0f / coefficient;
-        }
-    }
+    next.absorptionDistance = JSONREAD::NumberMemberOr(in, "absorptionDistance", next.absorptionDistance);
 
     if (const nlohmann::json* waves = JSONREAD::FindMember(in, "waves"); waves != nullptr && waves->is_array()) {
         const std::size_t count = (std::min)(waves->size(), next.waves.size());

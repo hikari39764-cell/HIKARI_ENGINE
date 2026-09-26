@@ -1,5 +1,6 @@
 #pragma once
 
+#include <json.hpp>
 #include <array>
 #include <cstdint>
 #include <filesystem>
@@ -67,7 +68,7 @@ public:
 
     void ApplyWorkspaceActivation(DocumentSceneBase& scene, const EditorWorkspaceActivation& activation);
     void DrawDockSpace(bool resetDefaultDockLayout) const;
-    DialogueWorkspaceResult Draw(DocumentSceneBase& scene, EditorCommandRouter& commandRouter);
+    DialogueWorkspaceResult Draw(DocumentSceneBase& scene);
     void BindDocumentCommands(EditorCommandRouter& commandRouter, DocumentSceneBase& scene);
 
     bool Save(DocumentSceneBase& scene, std::string& outMessage);
@@ -90,14 +91,15 @@ public:
     bool IsDocumentOpen() const noexcept;
     bool IsDocumentDirty() const noexcept;
     const AssetGuid& GetDocumentAssetGuid() const noexcept;
+    // 文書の状態。シェル、AI の文脈、バックグラウンドのセッションで共有する。
+    nlohmann::json DescribeDocumentState() const;
 
     const DIALOGUE::DialogueDefinition& GetDefinition() const noexcept;
     const DIALOGUE::DialogueProjectStyle& GetStyle() const noexcept;
     const std::string& GetStatusMessage() const noexcept;
 
 private:
-    friend void DrawDialogueWorkspaceWindows(DialogueWorkspaceController& controller, DocumentSceneBase& scene,
-                                             EditorCommandRouter& commandRouter);
+    friend class DialogueWorkspaceWindows;
 
     DIALOGUE::DialogueNode* SelectedNode() noexcept;
     const DIALOGUE::DialogueNode* SelectedNode() const noexcept;
@@ -167,7 +169,6 @@ private:
     float previewRevealAmount_ = 1.0f;
 };
 
-void DrawDialogueWorkspaceWindows(DialogueWorkspaceController& controller, DocumentSceneBase& scene,
-                                  EditorCommandRouter& commandRouter);
+void DrawDialogueWorkspaceWindows(DialogueWorkspaceController& controller, DocumentSceneBase& scene);
 
 } // namespace HIKARI::EDITOR

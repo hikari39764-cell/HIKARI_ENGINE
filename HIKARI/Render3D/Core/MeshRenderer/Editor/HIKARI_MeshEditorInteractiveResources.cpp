@@ -115,7 +115,7 @@ bool EnsureEditorInteractiveResources() {
         &gMeshRendererState.editorInteractive.surfaceGpuSceneBuffer, nullptr, nullptr,
         &gMeshRendererState.editorInteractive.clusterGpuDrivenProducer,
         &gMeshRendererState.editorInteractive.waterSurfaceGpuFrameBuffer,
-        &gMeshRendererState.sandSurfaceGpuFrameBuffer);
+        &gMeshRendererState.terrainSurfaceGpuFrameBuffer);
     if (!gMeshRendererState.editorInteractive.gpuDrivenLayer.Initialize(
             device, GetStaticRootSignature(gMeshRendererState.pipelines), ROOT_PARAM::SurfaceGpuSceneControl, 4u)) {
         ResetEditorInteractiveResources();

@@ -3,12 +3,10 @@
 #include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Environment/HIKARI_EnvironmentEditComparison.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
-#include "Editor/Widgets/HIKARI_PostProfileParameterWidget.h"
 #include "Render3D/Diagnostics/HIKARI_EnvironmentDiagnostics.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Scene/HIKARI_RuntimeSceneContext.h"
 #include "Scene/HIKARI_SceneTransitionBus.h"
-#include "Vfx/Post/HIKARI_PostProfile.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 
 #if defined(HIKARI_WITH_EDITOR)

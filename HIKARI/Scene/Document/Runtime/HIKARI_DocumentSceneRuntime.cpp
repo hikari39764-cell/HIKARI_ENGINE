@@ -317,7 +317,7 @@ bool DocumentSceneBase::ConfigureRuntimeWorldServices() {
     state_->runtime.presentationModelService.Clear();
     state_->runtime.sceneCaptureService.Reset();
     state_->runtime.runtimeObjectActivityService.Clear();
-    state_->runtime.sandSurfaceQueryService.Clear();
+    state_->runtime.terrainSurfaceQueryService.Clear();
     state_->runtime.waterSurfaceQueryService.Clear();
     state_->runtime.navigationWorldService.Clear();
     MESHRENDERER::ReleaseParticleNamespace(state_->runtime.vfxPlaybackService.GetPlaybackNamespace());
@@ -423,7 +423,7 @@ bool DocumentSceneBase::ConfigureRuntimeWorldServices() {
     success = services.Register(state_->runtime.gameUiPresentationService) && success;
     success = services.Register(state_->runtime.dialogueSessionService) && success;
     success = (!waterEnabled || services.Register(state_->runtime.waterSurfaceQueryService)) && success;
-    success = (!surfaceInteractionEnabled || services.Register(state_->runtime.sandSurfaceQueryService)) && success;
+    success = (!surfaceInteractionEnabled || services.Register(state_->runtime.terrainSurfaceQueryService)) && success;
     success = services.Register(state_->camera.sequencePlayback) && success;
     success = services.Register(state_->runtime.sceneCaptureService) && success;
     success = services.Register(state_->runtime.playStateService) && success;
@@ -437,6 +437,8 @@ bool DocumentSceneBase::ConfigureRuntimeWorldServices() {
     success = services.Register(state_->assets.TextAssets()) && success;
     state_->assets.UiAnimations().Configure(&state_->assets.Database());
     success = services.Register(state_->assets.UiAnimations()) && success;
+    state_->assets.PostAssets().Configure(&state_->assets.Database());
+    success = services.Register(state_->assets.PostAssets()) && success;
     success = (!animationEnabled || services.Register(state_->runtime.animationPoseService)) && success;
     success = (!animationEnabled || services.Register(state_->runtime.animationNodeOverrideService)) && success;
     success = (!renderingEnabled || services.Register(state_->runtime.animationSocketService)) && success;

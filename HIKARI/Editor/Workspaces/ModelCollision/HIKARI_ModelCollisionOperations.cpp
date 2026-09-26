@@ -82,7 +82,7 @@ void RegisterModelCollisionOperations(EditorOperationRegistry& registry, ModelCo
             "model_collision",
             {
                 EditorOperationParameter{"modelGuid", EditorOperationParameterType::String, true,
-                                         "模型资产 guid（asset.list_models 可查）"},
+                                         "模型资产 guid（asset.query 可查）"},
             },
             [&controller, sceneProvider](const nlohmann::json& parameters) {
                 EditorOperationResult result{};
@@ -100,7 +100,7 @@ void RegisterModelCollisionOperations(EditorOperationRegistry& registry, ModelCo
                     result.code = "ASSET_NOT_FOUND";
                     result.message = "找不到该模型资产：" + guidText;
                     result.hints = {
-                        "先用 asset.list_models 查询可用模型 guid。",
+                        "先用 asset.query 查询可用模型 guid。",
                     };
                     return result;
                 }

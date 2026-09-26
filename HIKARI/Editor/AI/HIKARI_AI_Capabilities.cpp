@@ -72,7 +72,7 @@ const std::vector<AiCapability>& BuiltInCapabilities() {
              "stable",
              {{"workspace", "string", false, "Workspace id"},
               {"keyword", "string", false, "Purpose, operation name or search terms"},
-              {"includeParameters", "bool", false, "Include parameter schemas (default true)"},
+              {"includeParameters", "boolean", false, "Include parameter schemas (default true)"},
               {"offset", "integer", false, "Next page offset from previous result"},
               {"limit", "integer", false, "Results per page, 1 to 32 (default 12)"}}},
             {"help",
@@ -83,10 +83,12 @@ const std::vector<AiCapability>& BuiltInCapabilities() {
              "Reopen an existing local image for visual review, without a new capture or separate model call.",
              "stable",
              {{"path", "string", true, "Path from a previous image result"}}},
-            {"vision.analyze_image",
-             "Optional separate vision model. Main-model image inputs arrive directly from captures and attachments.",
+            {"context.compare_images",
+             "Review candidate images side by side with a reference image (user attachment or project file) and report concrete differences before adjusting.",
              "stable",
-             {{"path", "string", true, "Local image path"}, {"prompt", "string", false, "Analysis instructions"}}}};
+             {{"reference", "string", true, "Reference image path"},
+              {"candidates", "json", true, "Array of 1 to 5 candidate image paths, such as capture results"},
+              {"focus", "string", false, "What to compare, for example silhouette, color or timing"}}}};
         for (auto& entry : entries)
             entry.semantics = {{"kind", "query"}, {"entryPoint", true}, {"requiresDocumentSession", false}};
         return entries;
@@ -94,8 +96,7 @@ const std::vector<AiCapability>& BuiltInCapabilities() {
     return capabilities;
 }
 
-AiRequestResult SubmitAiRequest(std::string_view requestJson, const std::vector<AiCapability>& capabilities,
-                                const std::function<bool()>& shouldCancel) {
+AiRequestResult SubmitAiRequest(std::string_view requestJson, const std::vector<AiCapability>& capabilities) {
     const std::string action = Trim(ExtractJsonField(requestJson, "action"));
     if (action == "context.image") {
         const auto path = ExtractJsonField(requestJson, "path");
@@ -144,37 +145,31 @@ AiRequestResult SubmitAiRequest(std::string_view requestJson, const std::vector<
             result.data["nextOffset"] = offset + limit;
         return result;
     }
-    if (action == "vision.analyze_image") {
-        AiRequestResult result{};
-        std::string image = ExtractJsonField(requestJson, "path");
-        if (image.empty())
-            image = ExtractJsonField(requestJson, "image");
-        if (image.empty()) {
-            result.ok = false;
-            result.message = "缺少 image 字段（本地图片路径）";
-            result.details = {
-                "示例：{\"action\":\"vision.analyze_image\","
-                "\"image\":\"C:/x.png\",\"prompt\":\"描述这张图\"}",
-            };
-            return result;
+    if (action == "context.compare_images") {
+        constexpr size_t kMaximumCandidates = 5u;
+        const auto arguments = nlohmann::json::parse(requestJson, nullptr, false);
+        const std::string reference = arguments.value("reference", std::string{});
+        const auto candidates = arguments.value("candidates", nlohmann::json::array());
+        if (reference.empty() || !candidates.is_array() || candidates.empty() ||
+            candidates.size() > kMaximumCandidates) {
+            return {false, "INVALID_IMAGES", "Provide reference and 1 to 5 candidate image paths."};
         }
-        AiChatConfig vision{};
-        if (!LoadAiVisionConfig(vision)) {
-            result.ok = false;
-            result.message = "未配置视觉 API Key（可在 API Settings 的 Vision 区配置）";
-            return result;
+        AiRequestResult result{true, "OK",
+                               "Compare each candidate with the reference. List concrete differences in "
+                               "silhouette, composition, color and value, lighting and motion before editing; "
+                               "do not claim a match that is not visible."};
+        const std::string focus = arguments.value("focus", std::string{});
+        if (!focus.empty()) {
+            result.message += " Focus: " + focus;
         }
-        const std::string prompt = ExtractJsonField(requestJson, "prompt");
-        vision.shouldCancel = shouldCancel;
-        std::string text;
-        std::string error;
-        if (!RunVisionAnalysis(vision, image, prompt, text, error)) {
-            result.ok = false;
-            result.message = "识图失败：" + error;
-            return result;
+        result.data["images"] = nlohmann::json::array({{{"path", reference}, {"label", "Reference"}}});
+        for (size_t index = 0; index < candidates.size(); ++index) {
+            if (!candidates[index].is_string()) {
+                return {false, "INVALID_IMAGES", "Candidate image paths must be strings."};
+            }
+            result.data["images"].push_back(
+                {{"path", candidates[index].get<std::string>()}, {"label", "Candidate " + std::to_string(index + 1)}});
         }
-        result.ok = true;
-        result.message = text;
         return result;
     }
     if (action == "help") {

@@ -54,7 +54,7 @@ struct PointLight {
     MATH::Vec3 color{1.0f, 1.0f, 1.0f};
     float intensity = 1.0f;
     int priority = 0;
-    RENDER3D::LIGHTING::LocalLightFalloff distanceFalloff = RENDER3D::LIGHTING::LocalLightFalloff::LegacyRange;
+    RENDER3D::LIGHTING::LocalLightFalloff distanceFalloff = RENDER3D::LIGHTING::LocalLightFalloff::Range;
 };
 
 struct SpotLight {
@@ -69,7 +69,7 @@ struct SpotLight {
     MATH::Vec3 color{1.0f, 1.0f, 1.0f};
     float intensity = 1.0f;
     int priority = 0;
-    RENDER3D::LIGHTING::LocalLightFalloff distanceFalloff = RENDER3D::LIGHTING::LocalLightFalloff::LegacyRange;
+    RENDER3D::LIGHTING::LocalLightFalloff distanceFalloff = RENDER3D::LIGHTING::LocalLightFalloff::Range;
 };
 
 enum class SkyMode {
@@ -299,11 +299,10 @@ struct ToneMappingSettings {
     int mode = 2;       // 0=None, 1=Reinhard, 2=ACES fitted
 };
 
+// 全画面後処理は後処理プロファイル資産を参照する（エンジン内蔵 ID かプロジェクト資産の GUID）。
 struct ScenePostSettings {
     bool enabled = false;
-    std::string globalPostProfileId{};
-    DirectX::XMFLOAT4 paramValues[16]{};
-    bool valuesInitialized = false;
+    std::string profileId{};
 };
 
 struct SceneEnvironment {

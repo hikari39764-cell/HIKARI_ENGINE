@@ -1,62 +1,21 @@
 #include "HIKARI_DebugLogBuffer.h"
 #include "Core/HIKARI_Logger.h"
 
-#include <Windows.h>
 #include <algorithm>
-#include <chrono>
 #include <deque>
-#include <filesystem>
-#include <fstream>
 #include <mutex>
-#include <sstream>
 
 namespace HIKARI::DEBUGLOG {
 namespace {
 std::mutex gMutex;
 std::deque<std::string> gRecentErrors;
-std::filesystem::path gLogDirectory{};
 constexpr size_t kMaxRecentErrors = 128;
-
-std::filesystem::path GetLogPath() {
-    const std::filesystem::path dir =
-        gLogDirectory.empty() ? std::filesystem::current_path() / "RendererLog" : gLogDirectory;
-    std::error_code ec;
-    std::filesystem::create_directories(dir, ec);
-    return dir / "render_diagnostics.log";
-}
-
-std::string MakeTimestampPrefix() {
-    using namespace std::chrono;
-    const auto now = system_clock::now();
-    const auto time = system_clock::to_time_t(now);
-    tm localTime{};
-    localtime_s(&localTime, &time);
-
-    char buffer[64]{};
-    std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &localTime);
-    return std::string("[") + buffer + "] ";
-}
 } // namespace
 
-void WriteRenderLogLine(const std::string& message) {
-    const std::string line = MakeTimestampPrefix() + message;
-    OutputDebugStringA((line + "\n").c_str());
-
-    std::ofstream out(GetLogPath(), std::ios::app);
-    if (out.is_open()) {
-        out << line << '\n';
-    }
-}
-
-void SetRenderLogDirectory(const std::filesystem::path& directory) {
-    std::lock_guard lock(gMutex);
-    gLogDirectory = directory.lexically_normal();
-}
-
+// 出力は共通ログへ一本化し、ここではエディター表示用の直近エラーだけを保持する。
 void PushRenderError(std::string message) {
     CORE::LogMessage(CORE::LogLevel::Error, "Renderer", message);
     std::lock_guard lock(gMutex);
-    WriteRenderLogLine(message);
     gRecentErrors.push_back(std::move(message));
     while (gRecentErrors.size() > kMaxRecentErrors) {
         gRecentErrors.pop_front();

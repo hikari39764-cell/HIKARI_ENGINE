@@ -228,21 +228,16 @@ public:
     HIKARI_GAME_PROJECT_SDK_API bool PlayWorldEffect(const GameProjectCombatWorldEffectRequest& request) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool SubmitGroundTelegraph(
         const GameProjectGroundTelegraphRequest& request) const noexcept;
-    HIKARI_GAME_PROJECT_SDK_API bool SubmitOcclusionReveal(
-        const GameProjectOcclusionRevealRequest& request) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool SubmitWorldBarrier(const GameProjectWorldBarrierRequest& request) const noexcept;
-    HIKARI_GAME_PROJECT_SDK_API bool SubmitWeaponTrail(const GameProjectWeaponTrailSample& sample) const noexcept;
-    HIKARI_GAME_PROJECT_SDK_API bool TriggerPerfectGuardWave(
-        const GameProjectPerfectGuardWaveRequest& request) const noexcept;
+    // effectId は現在の全体後処理効果の ID（エンジン内蔵 "engine.post.effect.*" か効果資産の GUID）。
     HIKARI_GAME_PROJECT_SDK_API bool SubmitPostProfileParameter(
-        std::string_view profileId, const GameProjectPostProfileParameterRequest& request) const noexcept;
+        std::string_view effectId, const GameProjectPostProfileParameterRequest& request) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool SubmitActionCinematicGrade(
         const GameProjectActionCinematicGradeRequest& request) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool SubmitActionBoostGrade(
         const GameProjectActionBoostGradeRequest& request) const noexcept;
-    // Profiled methods use all-new request layouts so older callers keep
-    // the exact legacy ABI.  The profile GUID/output id is resolved by
-    // the engine's compiled HVFX registry.
+    // 見た目は VFX 資産の特殊出力が決める。要求の数値は作用の強さの倍率として働き、
+    // 資産 GUID と出力 ID はエンジンの HVFX レジストリで解決する。
     HIKARI_GAME_PROJECT_SDK_API bool SubmitWeaponTrailProfiled(
         const GameProjectWeaponTrailProfiledRequest& request) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool TriggerPerfectGuardWaveProfiled(

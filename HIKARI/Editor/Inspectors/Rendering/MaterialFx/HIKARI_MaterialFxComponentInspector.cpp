@@ -8,7 +8,7 @@
 #include <utility>
 
 #include "Authoring/HIKARI_IInspectorBuilder.h"
-#include "Editor/Widgets/HIKARI_PostProfileParameterWidget.h"
+#include "Editor/Widgets/HIKARI_FxParameterWidget.h"
 #include "Vfx/MaterialFx/HIKARI_MaterialFxProfile.h"
 
 #if defined(HIKARI_ENABLE_IMGUI)
@@ -204,7 +204,7 @@ void MaterialFxComponent::RenderImGui() {
 
                     ImGui::PushID(static_cast<int>(paramIndex));
                     DirectX::XMFLOAT4 slotValue = visibleValues[slot];
-                    if (EDITOR::DrawPostProfileParameter(param, slotValue)) {
+                    if (EDITOR::DrawFxParameter(param, slotValue)) {
                         visibleValues[slot] = slotValue;
                         ensureWritableValues();
                         paramValues_[slot] = slotValue;

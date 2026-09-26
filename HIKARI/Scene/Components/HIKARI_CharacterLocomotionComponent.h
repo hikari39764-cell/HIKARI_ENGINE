@@ -53,7 +53,6 @@ public:
     bool GetRotateToMove() const noexcept { return rotateToMove_; }
 
 private:
-    static constexpr uint32_t kTraversalProfileVersion = 2u;
     void ClampSettings() noexcept;
 
     bool enabled_ = true;

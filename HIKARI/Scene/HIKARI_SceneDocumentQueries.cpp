@@ -64,7 +64,6 @@ bool AppendClonedSceneObjects(std::span<const SceneObjectData> source, SceneDocu
             }
         }
         for (auto& component : object.components) {
-            SCENE::SERIALIZATION::NormalizeLegacySceneObjectReferences(component);
             SCENE::SERIALIZATION::RemapSceneObjectReferences(component.properties, ids);
         }
     }

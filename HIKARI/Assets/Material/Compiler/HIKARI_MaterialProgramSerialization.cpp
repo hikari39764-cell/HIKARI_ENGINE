@@ -156,10 +156,9 @@ bool ReadProgram(const nlohmann::json& node, MaterialProgramIR& outProgram, std:
     }
     MaterialProgramIR program{};
     const uint32_t storedVersion = node.value("version", 0u);
-    if (storedVersion != 3u && storedVersion != 4u && storedVersion != 5u && storedVersion != 6u &&
-        storedVersion != kMaterialProgramIrVersion) {
+    if (storedVersion != kMaterialProgramIrVersion) {
         outError = "unsupported MaterialProgram IR version " + std::to_string(storedVersion) +
-                   "; recompile canonical Material v6 source";
+                   "; recompile the material source";
         return false;
     }
     program.version = kMaterialProgramIrVersion;
@@ -262,15 +261,11 @@ bool ReadProgram(const nlohmann::json& node, MaterialProgramIR& outProgram, std:
     for (const nlohmann::json& item : *instructions) {
         MaterialProgramInstruction instruction{};
         const uint32_t opcode = item.value("opcode", (std::numeric_limits<uint32_t>::max)());
-        const uint32_t legacyMaximumOpcode = storedVersion == 3u
-                                                 ? static_cast<uint32_t>(MaterialProgramOpcode::CorneaHighlight)
-                                                 : static_cast<uint32_t>(MaterialProgramOpcode::Fresnel);
-        const bool particleTerminal =
-            storedVersion >= 6u && opcode == static_cast<uint32_t>(MaterialProgramOpcode::ParticleOutput);
-        const bool particleInput = storedVersion >= 7u &&
-                                   opcode >= static_cast<uint32_t>(MaterialProgramOpcode::ParticleState) &&
-                                   opcode <= static_cast<uint32_t>(MaterialProgramOpcode::ParticleUv);
-        if ((opcode > legacyMaximumOpcode && !particleTerminal && !particleInput) ||
+        // Variable などの作成専用ノードは lowering 済みの IR に現れない。
+        const bool executableOpcode = opcode <= static_cast<uint32_t>(MaterialProgramOpcode::Fresnel) ||
+                                      (opcode >= static_cast<uint32_t>(MaterialProgramOpcode::ParticleOutput) &&
+                                       opcode <= static_cast<uint32_t>(MaterialProgramOpcode::ParticleUv));
+        if (!executableOpcode ||
             !TryParseMaterialValueType(item.value("valueType", std::string{}), instruction.valueType)) {
             outError = "compiled MaterialProgram contains an unknown instruction opcode or type";
             return false;

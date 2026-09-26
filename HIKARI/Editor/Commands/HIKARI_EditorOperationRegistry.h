@@ -9,6 +9,8 @@
 
 #include <json.hpp>
 
+#include "Core/Text/HIKARI_EnumNames.h"
+
 namespace HIKARI::EDITOR {
 
 enum class EditorOperationParameterType : uint8_t {
@@ -19,13 +21,21 @@ enum class EditorOperationParameterType : uint8_t {
     Json,
 };
 
+// 検証メッセージ・能力説明・AI への能力一覧で共通の型名。
+inline constexpr TEXT::EnumName<EditorOperationParameterType> kEditorOperationParameterTypeNames[] = {
+    {EditorOperationParameterType::String, "string"}, {EditorOperationParameterType::Float, "number"},
+    {EditorOperationParameterType::Int, "integer"},   {EditorOperationParameterType::Bool, "boolean"},
+    {EditorOperationParameterType::Json, "json"},
+};
+
 enum class EditorOperationExecutionPolicy : uint8_t {
     MainThread,
     WorkerThread,
 };
 
+// Unspecified は登録時に拒否する。各操作は必ず分類を宣言する。
 enum class EditorOperationKind : uint8_t {
-    Legacy,
+    Unspecified,
     Query,
     Mutation,
     Session,
@@ -39,7 +49,7 @@ enum class EditorOperationExposureMask : uint8_t {
     BuiltInAi = 1u << 1u,
     LocalBridge = 1u << 2u,
     Automation = 1u << 3u,
-    LegacyDefault = (1u << 0u) | (1u << 1u) | (1u << 2u),
+    Default = (1u << 0u) | (1u << 1u) | (1u << 2u),
 };
 
 constexpr EditorOperationExposureMask operator|(EditorOperationExposureMask lhs,
@@ -53,20 +63,26 @@ constexpr bool HasEditorOperationExposure(EditorOperationExposureMask value,
 }
 
 enum class EditorOperationPermission : uint8_t {
-    Legacy,
+    Unspecified,
     ReadEditorState,
     ModifyEditorState,
     ModifyProjectFiles,
     ExecuteExternalProcess,
 };
 
-enum class EditorOperationRisk : uint8_t {
-    Legacy,
-    Low,
-    Medium,
-    High,
-    Destructive,
+inline constexpr TEXT::EnumName<EditorOperationPermission> kEditorOperationPermissionNames[] = {
+    {EditorOperationPermission::Unspecified, "unspecified"},
+    {EditorOperationPermission::ReadEditorState, "readEditorState"},
+    {EditorOperationPermission::ModifyEditorState, "modifyEditorState"},
+    {EditorOperationPermission::ModifyProjectFiles, "modifyProjectFiles"},
+    {EditorOperationPermission::ExecuteExternalProcess, "executeExternalProcess"},
 };
+
+// AI・外部エージェントからの呼び出しでは、プロジェクトファイルの変更と外部プロセスの起動をユーザーの承認後に実行する。
+constexpr bool RequiresUserApproval(EditorOperationPermission permission) noexcept {
+    return permission == EditorOperationPermission::ModifyProjectFiles ||
+           permission == EditorOperationPermission::ExecuteExternalProcess;
+}
 
 enum class EditorOperationRegistrationCode : uint8_t {
     Unspecified,
@@ -75,6 +91,7 @@ enum class EditorOperationRegistrationCode : uint8_t {
     MissingSummary,
     MissingWorkspace,
     MissingExecute,
+    MissingKind,
     DuplicateId,
 };
 
@@ -111,12 +128,9 @@ struct EditorOperationDefinition {
     std::vector<EditorOperationParameter> parameters{};
     std::function<EditorOperationResult(const nlohmann::json&)> execute{};
     EditorOperationExecutionPolicy executionPolicy = EditorOperationExecutionPolicy::MainThread;
-    // Existing operations retain their current discovery behavior until each
-    // registrar is migrated to an explicit Schema v2 classification.
-    EditorOperationKind kind = EditorOperationKind::Legacy;
-    EditorOperationExposureMask exposureMask = EditorOperationExposureMask::LegacyDefault;
-    EditorOperationPermission permission = EditorOperationPermission::Legacy;
-    EditorOperationRisk risk = EditorOperationRisk::Legacy;
+    EditorOperationKind kind = EditorOperationKind::Unspecified;
+    EditorOperationExposureMask exposureMask = EditorOperationExposureMask::Default;
+    EditorOperationPermission permission = EditorOperationPermission::Unspecified;
     // Project asset discovery does not read or mutate a workspace document.
     bool requiresDocumentSession = true;
     std::vector<std::string> searchTerms{};

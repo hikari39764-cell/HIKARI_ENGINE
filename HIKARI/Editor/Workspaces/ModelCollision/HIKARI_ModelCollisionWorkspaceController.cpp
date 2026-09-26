@@ -656,4 +656,8 @@ void ModelCollisionWorkspaceController::DiscardGenerationDraft() noexcept {
     statusMessage_ = "generation draft discarded";
 }
 
+nlohmann::json ModelCollisionWorkspaceController::DescribeDocumentState() const {
+    return {{"open", IsEditingModel()}, {"assetGuid", modelGuid_.value}, {"dirty", IsDocumentDirty()}};
+}
+
 } // namespace HIKARI::EDITOR

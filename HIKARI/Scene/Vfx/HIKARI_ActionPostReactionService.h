@@ -4,14 +4,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
-#include <string_view>
 
 #include "Assets/Vfx/HIKARI_VfxAssetData.h"
 #include "Render3D/Vfx/HIKARI_ActionPostReactionFrameSource.h"
 
 namespace HIKARI::VFX {
-
-struct VfxProgram;
 
 // Scene-owned, presentation-time combat reactions. It owns no GPU
 // resources and never changes gameplay or time scale.
@@ -65,16 +62,10 @@ public:
     ActionPostReactionService(const ActionPostReactionService&) = delete;
     ActionPostReactionService& operator=(const ActionPostReactionService&) = delete;
 
-    // Returns false for invalid values or a duplicate source/sequence
-    // (or source/frame when sequence is unavailable).
-    bool TriggerPerfectGuardShockwave(const PerfectGuardShockwaveRequest& request) noexcept;
+    // 見た目は ScreenImpulse 出力が決め、要求の数値は既定値に対する倍率として掛ける。
+    // 不正な値、または同じ source/sequence（sequence が無ければ source/frame）の重複は false。
     bool TriggerPerfectGuardShockwave(const PerfectGuardShockwaveRequest& request,
                                       const VfxSpecialOutputData& output) noexcept;
-    bool TriggerPerfectGuardShockwave(const PerfectGuardShockwaveRequest& request,
-                                      const VfxScreenImpulseProfile& profile) noexcept;
-    bool TriggerPerfectGuardShockwave(const PerfectGuardShockwaveRequest& request, const VfxProgram& program) noexcept;
-    bool TriggerPerfectGuardShockwave(const PerfectGuardShockwaveRequest& request, const VfxProgram& program,
-                                      std::string_view outputId) noexcept;
 
     // VFX 再生側から毎フレーム差し替える画面波。ゲームプレイ由来の波と
     // 同じウェーブ表を共有し、エフェクト側の年齢はエフェクト内時刻で
@@ -98,6 +89,7 @@ public:
     void Reset() noexcept;
 
 private:
+    bool StartShockwave(const PerfectGuardShockwaveRequest& request) noexcept;
     struct ActiveWave {
         RENDER3D::COMBAT_VFX::PerfectGuardShockwaveFrame frame{};
         bool active = false;

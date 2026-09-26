@@ -1,4 +1,5 @@
 #include "Assets/Vfx/Serialization/HIKARI_VfxSourceJsonInternal.h"
+#include "Assets/Vfx/HIKARI_VfxEnumNames.h"
 
 #include <algorithm>
 #include <utility>
@@ -29,9 +30,10 @@ bool ReadDistributionData(const Json& node, Distribution& outValue, ReadNumber&&
         return false;
     Distribution value{};
     const std::string mode = node.value("mode", std::string{});
-    if (!TryParseVfxDistributionMode(mode, value.mode) || !node.contains("minimum") || !node.contains("maximum") ||
-        !readNumber(node["minimum"], value.minimum) || !readNumber(node["maximum"], value.maximum) ||
-        !node.contains("randomGroup") || !node["randomGroup"].is_number_unsigned()) {
+    if (!TEXT::TryParseEnum(kVfxDistributionModeNames, mode, value.mode) || !node.contains("minimum") ||
+        !node.contains("maximum") || !readNumber(node["minimum"], value.minimum) ||
+        !readNumber(node["maximum"], value.maximum) || !node.contains("randomGroup") ||
+        !node["randomGroup"].is_number_unsigned()) {
         return false;
     }
     value.randomGroup = node["randomGroup"].get<uint32_t>();
@@ -85,7 +87,7 @@ bool ReadEasing(const Json& node, VfxEasingData<T>& outValue) {
     if (!node.is_object() || !node.contains("start") || !node.contains("middle") || !node.contains("end") ||
         !ReadDistribution(node["start"], value.start) || !ReadDistribution(node["middle"], value.middle) ||
         !ReadDistribution(node["end"], value.end) ||
-        !TryParseVfxEasingFunction(node.value("function", std::string{}), value.function) ||
+        !TEXT::TryParseEnum(kVfxEasingFunctionNames, node.value("function", std::string{}), value.function) ||
         !node.contains("useMiddle") || !node["useMiddle"].is_boolean()) {
         return false;
     }
@@ -107,7 +109,8 @@ bool ReadCurve(const Json& node, VfxCurveData& outCurve) {
         return false;
     }
     VfxCurveData curve{};
-    if (!TryParseVfxCurveInterpolation(node.value("interpolation", std::string{}), curve.interpolation) ||
+    if (!TEXT::TryParseEnum(kVfxCurveInterpolationNames, node.value("interpolation", std::string{}),
+                            curve.interpolation) ||
         !ReadDistribution(node["randomOffset"], curve.randomOffset)) {
         return false;
     }
@@ -203,7 +206,8 @@ bool ReadDistribution(const Json& node, VfxColorDistributionData& outValue) {
 
 bool ReadAnimatedVec3(const Json& node, VfxAnimatedVec3Data& outValue) {
     VfxAnimatedVec3Data value{};
-    if (!node.is_object() || !TryParseVfxAnimatedValueMode(node.value("mode", std::string{}), value.mode) ||
+    if (!node.is_object() ||
+        !TEXT::TryParseEnum(kVfxAnimatedValueModeNames, node.value("mode", std::string{}), value.mode) ||
         !node.contains("fixed") || !ReadDistribution(node["fixed"], value.fixed) || !node.contains("pva") ||
         !node["pva"].is_object() || !node["pva"].contains("initial") || !node["pva"].contains("velocity") ||
         !node["pva"].contains("acceleration") || !ReadDistribution(node["pva"]["initial"], value.pva.initial) ||
@@ -219,7 +223,8 @@ bool ReadAnimatedVec3(const Json& node, VfxAnimatedVec3Data& outValue) {
 
 bool ReadAnimatedColor(const Json& node, VfxAnimatedColorData& outValue) {
     VfxAnimatedColorData value{};
-    if (!node.is_object() || !TryParseVfxAnimatedColorMode(node.value("mode", std::string{}), value.mode) ||
+    if (!node.is_object() ||
+        !TEXT::TryParseEnum(kVfxAnimatedColorModeNames, node.value("mode", std::string{}), value.mode) ||
         !node.contains("fixed") || !ReadDistribution(node["fixed"], value.fixed) || !node.contains("easing") ||
         !ReadEasing(node["easing"], value.easing) || !node.contains("curve") ||
         !ReadColorCurve(node["curve"], value.curve) || !node.contains("gradient") ||
@@ -260,9 +265,8 @@ bool ReadVfxSourceDocument(const Json& root, VfxAssetData& outAsset, std::string
         return false;
     }
 
-    const uint32_t sourceVersion = root["version"].get<uint32_t>();
-    if (sourceVersion < 2u || sourceVersion > kVfxSourceVersion) {
-        outError = "unsupported VFX source version";
+    if (root["version"].get<uint32_t>() != kVfxSourceVersion) {
+        outError = "unsupported VFX source version (supported: " + std::to_string(kVfxSourceVersion) + ")";
         return false;
     }
 
@@ -280,7 +284,7 @@ bool ReadVfxSourceDocument(const Json& root, VfxAssetData& outAsset, std::string
         VfxExposedInputData input{};
         input.id = item["id"].get<std::string>();
         input.name = item["name"].get<std::string>();
-        if (!TryParseVfxValueType(item.value("type", std::string{}), input.type) ||
+        if (!TEXT::TryParseEnum(kVfxValueTypeNames, item.value("type", std::string{}), input.type) ||
             !ReadValue(item["defaultValue"], input.type, input.defaultValue)) {
             outError = "invalid VFX exposed input value";
             return false;
@@ -289,7 +293,7 @@ bool ReadVfxSourceDocument(const Json& root, VfxAssetData& outAsset, std::string
     }
     for (const Json& item : root["emitters"]) {
         VfxEmitterData emitter{};
-        if (!ReadVfxSourceEmitter(item, sourceVersion, emitter)) {
+        if (!ReadVfxSourceEmitter(item, emitter)) {
             outError = "invalid VFX emitter document";
             return false;
         }

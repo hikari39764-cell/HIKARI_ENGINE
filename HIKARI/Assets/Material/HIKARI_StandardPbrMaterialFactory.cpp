@@ -34,49 +34,46 @@ MaterialGraphResourceData MakeResource(std::string id, std::string displayName, 
 
 } // namespace
 
-MaterialAssetData MakeStandardPbrMaterialAssetData(const PbrMaterialAssetData& legacyData) {
+MaterialAssetData MakeStandardPbrMaterialAssetData(const PbrMaterialAssetData& pbr) {
     MaterialAssetData data{};
     data.version = kMaterialAssetSourceVersion;
-    data.materialName = legacyData.materialName;
+    data.materialName = pbr.materialName;
     data.templateId = MaterialTemplateId::StandardPbr;
-    data.surface.doubleSided = legacyData.doubleSided;
-    data.surface.unlit = legacyData.unlit;
-    data.pbr = legacyData;
+    data.surface.doubleSided = pbr.doubleSided;
+    data.surface.unlit = pbr.unlit;
+    data.pbr = pbr;
     data.pbr.version = kMaterialAssetSourceVersion;
 
     data.graph.parameters = {
-        MakeParameter("parameter.baseColor", "Base Color", MaterialValueType::Float4, legacyData.baseColorFactor),
+        MakeParameter("parameter.baseColor", "Base Color", MaterialValueType::Float4, pbr.baseColorFactor),
         MakeParameter("parameter.metallic", "Metallic", MaterialValueType::Float1,
-                      {legacyData.metallicFactor, 0.0f, 0.0f, 0.0f}),
+                      {pbr.metallicFactor, 0.0f, 0.0f, 0.0f}),
         MakeParameter("parameter.roughness", "Roughness", MaterialValueType::Float1,
-                      {legacyData.roughnessFactor, 0.0f, 0.0f, 0.0f}),
+                      {pbr.roughnessFactor, 0.0f, 0.0f, 0.0f}),
         MakeParameter("parameter.specular", "Specular", MaterialValueType::Float1,
-                      {legacyData.specularFactor, 0.0f, 0.0f, 0.0f}),
+                      {pbr.specularFactor, 0.0f, 0.0f, 0.0f}),
         MakeParameter("parameter.specularColor", "Specular Color", MaterialValueType::Float3,
-                      {legacyData.specularColorFactor.x, legacyData.specularColorFactor.y,
-                       legacyData.specularColorFactor.z, 0.0f}),
+                      {pbr.specularColorFactor.x, pbr.specularColorFactor.y, pbr.specularColorFactor.z, 0.0f}),
         MakeParameter("parameter.normalScale", "Normal Scale", MaterialValueType::Float1,
-                      {legacyData.normalScale, 0.0f, 0.0f, 0.0f}),
+                      {pbr.normalScale, 0.0f, 0.0f, 0.0f}),
         MakeParameter("parameter.occlusionStrength", "Occlusion Strength", MaterialValueType::Float1,
-                      {legacyData.occlusionStrength, 0.0f, 0.0f, 0.0f}),
+                      {pbr.occlusionStrength, 0.0f, 0.0f, 0.0f}),
         MakeParameter("parameter.emissive", "Emissive", MaterialValueType::Float3,
-                      {legacyData.emissiveFactor.x, legacyData.emissiveFactor.y, legacyData.emissiveFactor.z, 0.0f}),
+                      {pbr.emissiveFactor.x, pbr.emissiveFactor.y, pbr.emissiveFactor.z, 0.0f}),
         MakeParameter("parameter.emissiveStrength", "Emissive Strength", MaterialValueType::Float1,
-                      {legacyData.emissiveStrength, 0.0f, 0.0f, 0.0f}),
+                      {pbr.emissiveStrength, 0.0f, 0.0f, 0.0f}),
     };
 
     data.graph.resources = {
-        MakeResource("resource.baseColor", "Base Color", MaterialResourceSemantic::BaseColor,
-                     legacyData.baseColorTexture),
-        MakeResource("resource.normal", "Normal", MaterialResourceSemantic::Normal, legacyData.normalTexture),
+        MakeResource("resource.baseColor", "Base Color", MaterialResourceSemantic::BaseColor, pbr.baseColorTexture),
+        MakeResource("resource.normal", "Normal", MaterialResourceSemantic::Normal, pbr.normalTexture),
         MakeResource("resource.metallicRoughness", "Metallic Roughness", MaterialResourceSemantic::MetallicRoughness,
-                     legacyData.metallicRoughnessTexture),
-        MakeResource("resource.occlusion", "Occlusion", MaterialResourceSemantic::Occlusion,
-                     legacyData.occlusionTexture),
-        MakeResource("resource.emissive", "Emissive", MaterialResourceSemantic::Emissive, legacyData.emissiveTexture),
-        MakeResource("resource.specular", "Specular", MaterialResourceSemantic::Specular, legacyData.specularTexture),
+                     pbr.metallicRoughnessTexture),
+        MakeResource("resource.occlusion", "Occlusion", MaterialResourceSemantic::Occlusion, pbr.occlusionTexture),
+        MakeResource("resource.emissive", "Emissive", MaterialResourceSemantic::Emissive, pbr.emissiveTexture),
+        MakeResource("resource.specular", "Specular", MaterialResourceSemantic::Specular, pbr.specularTexture),
         MakeResource("resource.specularColor", "Specular Color", MaterialResourceSemantic::SpecularColor,
-                     legacyData.specularColorTexture),
+                     pbr.specularColorTexture),
     };
 
     auto addNode = [&data](std::string id, std::string displayName, MaterialNodeKind kind, MaterialValueType valueType,
@@ -107,36 +104,36 @@ MaterialAssetData MakeStandardPbrMaterialAssetData(const PbrMaterialAssetData& l
         addNode(std::move(id), std::move(displayName), MaterialNodeKind::TextureSample, MaterialValueType::Float4,
                 -680.0f, y, std::move(referenceId));
     };
-    if (legacyData.baseColorTexture.useTexture) {
+    if (pbr.baseColorTexture.useTexture) {
         addTextureSample("node.texture.baseColor", "Base Color Texture", "resource.baseColor", -40.0f);
         connect("edge.texture.baseColor", "node.texture.baseColor", "Color", "node.standardPbr", "BaseColor");
     }
-    if (legacyData.normalTexture.useTexture) {
+    if (pbr.normalTexture.useTexture) {
         addTextureSample("node.texture.normal", "Normal Texture", "resource.normal", 180.0f);
         addNode("node.normalUnpack", "Normal Map", MaterialNodeKind::NormalUnpack, MaterialValueType::Float3, -340.0f,
                 180.0f);
         connect("edge.texture.normal.unpack", "node.texture.normal", "RGB", "node.normalUnpack", "PackedNormal");
         connect("edge.texture.normal.surface", "node.normalUnpack", "Normal", "node.standardPbr", "Normal");
     }
-    if (legacyData.metallicRoughnessTexture.useTexture) {
+    if (pbr.metallicRoughnessTexture.useTexture) {
         addTextureSample("node.texture.metallicRoughness", "Metallic Roughness Texture", "resource.metallicRoughness",
                          400.0f);
         connect("edge.texture.metallic", "node.texture.metallicRoughness", "B", "node.standardPbr", "Metallic");
         connect("edge.texture.roughness", "node.texture.metallicRoughness", "G", "node.standardPbr", "Roughness");
     }
-    if (legacyData.occlusionTexture.useTexture) {
+    if (pbr.occlusionTexture.useTexture) {
         addTextureSample("node.texture.occlusion", "Occlusion Texture", "resource.occlusion", 620.0f);
         connect("edge.texture.occlusion", "node.texture.occlusion", "R", "node.standardPbr", "Occlusion");
     }
-    if (legacyData.emissiveTexture.useTexture) {
+    if (pbr.emissiveTexture.useTexture) {
         addTextureSample("node.texture.emissive", "Emissive Texture", "resource.emissive", 840.0f);
         connect("edge.texture.emissive", "node.texture.emissive", "RGB", "node.standardPbr", "Emissive");
     }
-    if (legacyData.specularTexture.useTexture) {
+    if (pbr.specularTexture.useTexture) {
         addTextureSample("node.texture.specular", "Specular Texture", "resource.specular", 1060.0f);
         connect("edge.texture.specular", "node.texture.specular", "A", "node.standardPbr", "Specular");
     }
-    if (legacyData.specularColorTexture.useTexture) {
+    if (pbr.specularColorTexture.useTexture) {
         addTextureSample("node.texture.specularColor", "Specular Color Texture", "resource.specularColor", 1280.0f);
         connect("edge.texture.specularColor", "node.texture.specularColor", "RGB", "node.standardPbr", "SpecularColor");
     }

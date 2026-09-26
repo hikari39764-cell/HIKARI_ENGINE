@@ -201,9 +201,9 @@ bool PublishShadowSceneSources(ShadowRendererState& state, const RENDER3D::GPUDR
          {&state.shadowSceneSource, &state.staticShadowSceneSource, &state.dynamicShadowSceneSource}) {
         partition->meshShaderJointPalettes = state.gpuDrivenSceneSource->meshShaderJointPalettes;
         partition->waterSurfaceGpuData = state.gpuDrivenSceneSource->waterSurfaceGpuData;
-        partition->sandSurfaceGpuData = state.gpuDrivenSceneSource->sandSurfaceGpuData;
-        partition->sandSurfaceHeights = state.gpuDrivenSceneSource->sandSurfaceHeights;
-        partition->sandSurfaceHeightVersion = state.gpuDrivenSceneSource->sandSurfaceHeightVersion;
+        partition->terrainSurfaceGpuData = state.gpuDrivenSceneSource->terrainSurfaceGpuData;
+        partition->terrainSurfaceHeights = state.gpuDrivenSceneSource->terrainSurfaceHeights;
+        partition->terrainSurfaceHeightVersion = state.gpuDrivenSceneSource->terrainSurfaceHeightVersion;
     }
 
     state.frameHasStaticShadowWork = state.staticShadowSceneSource.sourceInstanceCount != 0u;

@@ -7,6 +7,7 @@
 #include <string_view>
 #include <vector>
 
+#include "Core/Text/HIKARI_EnumNames.h"
 #include "Render3D/HIKARI_Math3D.h"
 #include "Scene/Terrain/HIKARI_SurfacePreset.h"
 #include "Scene/Terrain/HIKARI_TerrainChunks.h"
@@ -27,55 +28,16 @@ enum class TerrainBrushMode : uint8_t {
     Noise = 9,
 };
 
-inline const char* ToString(TerrainBrushMode mode) noexcept {
-    switch (mode) {
-    case TerrainBrushMode::Raise: return "raise";
-    case TerrainBrushMode::Lower: return "lower";
-    case TerrainBrushMode::Smooth: return "smooth";
-    case TerrainBrushMode::Flatten: return "flatten";
-    case TerrainBrushMode::Mound: return "mound";
-    case TerrainBrushMode::Pit: return "pit";
-    case TerrainBrushMode::Ridge: return "ridge";
-    case TerrainBrushMode::Terrace: return "terrace";
-    case TerrainBrushMode::Shaft: return "shaft";
-    case TerrainBrushMode::Noise: return "noise";
-    }
-    return "raise";
-}
+inline constexpr TEXT::EnumName<TerrainBrushMode> kTerrainBrushModeNames[] = {
+    {TerrainBrushMode::Raise, "raise"},   {TerrainBrushMode::Lower, "lower"},
+    {TerrainBrushMode::Smooth, "smooth"}, {TerrainBrushMode::Flatten, "flatten"},
+    {TerrainBrushMode::Mound, "mound"},   {TerrainBrushMode::Pit, "pit"},
+    {TerrainBrushMode::Ridge, "ridge"},   {TerrainBrushMode::Terrace, "terrace"},
+    {TerrainBrushMode::Shaft, "shaft"},   {TerrainBrushMode::Noise, "noise"},
+};
 
-inline TerrainBrushMode ParseTerrainBrushMode(std::string_view value,
-                                              TerrainBrushMode fallback = TerrainBrushMode::Raise) noexcept {
-    if (value == "raise") {
-        return TerrainBrushMode::Raise;
-    }
-    if (value == "lower") {
-        return TerrainBrushMode::Lower;
-    }
-    if (value == "smooth") {
-        return TerrainBrushMode::Smooth;
-    }
-    if (value == "flatten") {
-        return TerrainBrushMode::Flatten;
-    }
-    if (value == "mound") {
-        return TerrainBrushMode::Mound;
-    }
-    if (value == "pit") {
-        return TerrainBrushMode::Pit;
-    }
-    if (value == "ridge") {
-        return TerrainBrushMode::Ridge;
-    }
-    if (value == "terrace") {
-        return TerrainBrushMode::Terrace;
-    }
-    if (value == "shaft") {
-        return TerrainBrushMode::Shaft;
-    }
-    if (value == "noise") {
-        return TerrainBrushMode::Noise;
-    }
-    return fallback;
+inline const char* ToString(TerrainBrushMode mode) noexcept {
+    return TEXT::EnumToName(kTerrainBrushModeNames, mode, "raise");
 }
 
 constexpr float kTerrainBrushMaximumStrength = 8.0f;
@@ -228,6 +190,15 @@ struct TerrainSurface {
 };
 
 constexpr float kTerrainMinimumChunkCellSize = 0.01f;
+
+// 層の表面プリセット ID。明示が無ければ層 0 は地形の presetId、他の層は未設定（空）。
+inline std::string_view ResolveTerrainLayerPresetId(const std::vector<std::string>& layerPresetIds,
+                                                    std::string_view basePresetId, uint32_t layer) noexcept {
+    if (layer < layerPresetIds.size() && !layerPresetIds[layer].empty()) {
+        return layerPresetIds[layer];
+    }
+    return layer == 0u ? basePresetId : std::string_view{};
+}
 constexpr float kTerrainMaximumChunkCellSize = 1024.0f;
 
 inline float SanitizeTerrainChunkCellSize(float value) noexcept {

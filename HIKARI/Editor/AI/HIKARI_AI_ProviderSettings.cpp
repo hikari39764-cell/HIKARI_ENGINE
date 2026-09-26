@@ -45,23 +45,18 @@ int Integer(const Values& values, const char* name, int fallback, int low, int h
         return fallback;
     }
 }
-bool Load(AiChatConfig& config, bool vision) {
+} // namespace
+bool LoadAiChatConfig(AiChatConfig& config) {
     config = {};
     const auto values = ReadSettings();
-    config.apiKey = Setting(values, vision ? "VISION_API_KEY" : "DASHSCOPE_API_KEY");
-    config.baseUrl = Setting(values, vision ? "VISION_BASE_URL" : "DASHSCOPE_BASE_URL");
-    config.model = Setting(values, vision ? "VISION_MODEL" : "CHAT_MODEL");
-    if (vision) {
-        if (config.apiKey.empty() && !values.contains("VISION_API_KEY"))
-            config.apiKey = Setting(values, "DASHSCOPE_API_KEY");
-        if (config.baseUrl.empty())
-            config.baseUrl = Setting(values, "DASHSCOPE_BASE_URL");
-    }
+    config.apiKey = Setting(values, "DASHSCOPE_API_KEY");
+    config.baseUrl = Setting(values, "DASHSCOPE_BASE_URL");
+    config.model = Setting(values, "CHAT_MODEL");
     if (config.baseUrl.empty())
         config.baseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1";
     if (config.model.empty())
-        config.model = vision ? "qwen-vl-plus" : "qwen-plus";
-    config.imageInputEnabled = vision || Setting(values, "CHAT_IMAGE_INPUT", "1") != "0";
+        config.model = "qwen-plus";
+    config.imageInputEnabled = Setting(values, "CHAT_IMAGE_INPUT", "1") != "0";
     config.requestUsage = Setting(values, "CHAT_REQUEST_USAGE", "1") != "0";
     config.maxToolRounds = Integer(values, "CHAT_MAX_TOOL_ROUNDS", kDefaultAiToolRounds, 1, kMaxAiToolRounds);
     config.maxTaskTokens = Integer(values, "CHAT_MAX_TASK_TOKENS", 0, 0, INT_MAX);
@@ -70,21 +65,21 @@ bool Load(AiChatConfig& config, bool vision) {
     config.valid = !config.apiKey.empty();
     return config.valid;
 }
-bool Save(const AiChatConfig* config, bool vision) {
+namespace {
+bool Save(const AiChatConfig* config) {
     const auto path = GetAiUserConfigPath();
     if (path.empty())
         return false;
     auto values = ReadSettings();
-    std::erase_if(values, [vision](const auto& entry) {
+    std::erase_if(values, [](const auto& entry) {
         const auto& key = entry.first;
-        return vision ? key.starts_with("VISION_")
-                      : key.starts_with("CHAT_") || key == "DASHSCOPE_API_KEY" || key == "DASHSCOPE_BASE_URL";
+        return key.starts_with("CHAT_") || key == "DASHSCOPE_API_KEY" || key == "DASHSCOPE_BASE_URL";
     });
     if (config) {
-        values[vision ? "VISION_API_KEY" : "DASHSCOPE_API_KEY"] = config->apiKey;
-        values[vision ? "VISION_BASE_URL" : "DASHSCOPE_BASE_URL"] = config->baseUrl;
-        values[vision ? "VISION_MODEL" : "CHAT_MODEL"] = config->model;
-        if (!vision) {
+        values["DASHSCOPE_API_KEY"] = config->apiKey;
+        values["DASHSCOPE_BASE_URL"] = config->baseUrl;
+        values["CHAT_MODEL"] = config->model;
+        {
             values["CHAT_IMAGE_INPUT"] = config->imageInputEnabled ? "1" : "0";
             values["CHAT_REQUEST_USAGE"] = config->requestUsage ? "1" : "0";
             values["CHAT_MAX_TOOL_ROUNDS"] = std::to_string(std::clamp(config->maxToolRounds, 1, kMaxAiToolRounds));
@@ -119,10 +114,6 @@ std::string GetAiUserConfigPath() {
     const char* profile = std::getenv("USERPROFILE");
     return profile && *profile ? std::string(profile) + "/.hikari-ai-assistant.env" : std::string{};
 }
-bool LoadAiChatConfig(AiChatConfig& config) { return Load(config, false); }
-bool LoadAiVisionConfig(AiChatConfig& config) { return Load(config, true); }
-bool SaveAiChatConfig(const AiChatConfig& config) { return Save(&config, false); }
-bool SaveAiVisionConfig(const AiChatConfig& config) { return Save(&config, true); }
-bool ResetAiChatConfig() { return Save(nullptr, false); }
-bool ResetAiVisionConfig() { return Save(nullptr, true); }
+bool SaveAiChatConfig(const AiChatConfig& config) { return Save(&config); }
+bool ResetAiChatConfig() { return Save(nullptr); }
 } // namespace HIKARI::EDITOR::AI_ASSISTANT

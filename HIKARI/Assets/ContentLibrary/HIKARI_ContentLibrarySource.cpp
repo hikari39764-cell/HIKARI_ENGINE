@@ -37,11 +37,11 @@ bool SaveSource(const std::filesystem::path& path, const Source& source, std::st
 }
 
 void VisitReferences(Source& source, const std::function<void(AssetGuid&)>& visit) {
-    if (auto* value = std::get_if<MaterialAssetData>(&source)) {
+    if (auto* material = std::get_if<MaterialAssetData>(&source)) {
         VisitMaterialAssetReferences(
-            *value, [&](AssetGuid& guid, MaterialDependencyKind, std::string) { visit(guid); }, true);
-    } else if (auto* value = std::get_if<VFX::VfxAssetData>(&source)) {
-        for (auto& emitter : value->emitters) {
+            *material, [&](AssetGuid& guid, MaterialDependencyKind, std::string) { visit(guid); }, true);
+    } else if (auto* vfx = std::get_if<VFX::VfxAssetData>(&source)) {
+        for (auto& emitter : vfx->emitters) {
             visit(emitter.renderCommon.colorTextureAssetGuid);
             visit(emitter.renderCommon.materialAssetGuid);
         }

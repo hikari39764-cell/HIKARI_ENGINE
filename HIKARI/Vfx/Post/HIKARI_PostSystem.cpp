@@ -97,14 +97,15 @@ void PostSystem::SetIntensity(float value) { processingStage_.SetIntensity(value
 void PostSystem::SetCombo(float value) { processingStage_.SetCombo(value); }
 void PostSystem::ClearEffects() { processingStage_.ClearEffects(); }
 void PostSystem::AddEffect(PostEffect* effect) { processingStage_.AddEffect(effect); }
-bool PostSystem::SetGlobalProfile(const std::string& id, const DirectX::XMFLOAT4 (&values)[16]) {
-    return processingStage_.SetGlobalProfile(id, values);
+bool PostSystem::SetGlobalEffect(std::string_view effectId, std::shared_ptr<const PostEffectDefinition> effect,
+                                 const PostParameterBlock& values) {
+    return processingStage_.SetGlobalEffect(effectId, std::move(effect), values);
 }
-void PostSystem::ClearGlobalProfile() { processingStage_.ClearGlobalProfile(); }
-bool PostSystem::SubmitProfileParameter(std::string_view profileId, uint32_t index, uint32_t channelMask,
-                                        const DirectX::XMFLOAT4& value, int32_t priority, uint64_t sourceId) {
+void PostSystem::ClearGlobalEffect() { processingStage_.ClearGlobalEffect(); }
+bool PostSystem::SubmitEffectParameter(std::string_view effectId, uint32_t index, uint32_t channelMask,
+                                       const DirectX::XMFLOAT4& value, int32_t priority, uint64_t sourceId) {
     return initialized_ &&
-           processingStage_.SubmitProfileParameter(profileId, index, channelMask, value, priority, sourceId);
+           processingStage_.SubmitEffectParameter(effectId, index, channelMask, value, priority, sourceId);
 }
 bool PostSystem::GetRadialScreenWarp(float& curvature, float& strength) noexcept {
     curvature = strength = 0.0f;

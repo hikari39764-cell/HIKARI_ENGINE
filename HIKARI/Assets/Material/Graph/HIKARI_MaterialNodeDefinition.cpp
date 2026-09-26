@@ -691,7 +691,7 @@ bool IsMaterialNodeAvailableForDomain(MaterialNodeKind kind, MaterialDomain doma
 
 bool IsMaterialNodeAvailableForDomain(const MaterialNodeTypeId& typeId, MaterialDomain domain) noexcept {
     MaterialNodeKind kind{};
-    return TryGetLegacyMaterialNodeKind(typeId, kind) && IsMaterialNodeAvailableForDomain(kind, domain);
+    return TryGetBuiltinMaterialNodeKind(typeId, kind) && IsMaterialNodeAvailableForDomain(kind, domain);
 }
 
 const MaterialNodePinDefinition* FindMaterialNodeInputDefinition(MaterialNodeKind kind, std::string_view pin) noexcept {

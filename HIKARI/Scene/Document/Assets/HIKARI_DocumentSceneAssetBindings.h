@@ -9,6 +9,7 @@
 #include "Assets/HIKARI_AssetTypes.h"
 #include "Assets/HIKARI_DocumentAssetStores.h"
 #include "Assets/Camera/HIKARI_GameplayCameraAsset.h"
+#include "Assets/Post/HIKARI_PostAssetStore.h"
 #include "Assets/Text/HIKARI_TextStyleAsset.h"
 #include "Assets/Ui/HIKARI_UiAnimationAsset.h"
 #include "Render3D/Models/HIKARI_ModelManager.h"
@@ -29,6 +30,7 @@ public:
     const AssetRegistry& Registry() const noexcept { return registry_; }
     SequenceAssetStore& SequenceAssets() noexcept { return sequenceAssets_; }
     GameplayCameraAssetStore& GameplayCameras() noexcept { return gameplayCameras_; }
+    POST::PostAssetStore& PostAssets() noexcept { return postAssets_; }
     TextAssetStore& TextAssets() noexcept { return textAssets_; }
     UiAnimationAssetStore& UiAnimations() noexcept { return uiAnimations_; }
     ModelManager& Models() noexcept { return models_; }
@@ -57,6 +59,7 @@ private:
     uint64_t registrySourceRevision_ = 0u;
     SequenceAssetStore sequenceAssets_{};
     GameplayCameraAssetStore gameplayCameras_;
+    POST::PostAssetStore postAssets_;
     TextAssetStore textAssets_;
     UiAnimationAssetStore uiAnimations_;
     ModelManager models_{};

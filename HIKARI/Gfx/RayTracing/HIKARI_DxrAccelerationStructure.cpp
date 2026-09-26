@@ -71,14 +71,14 @@ bool DxrAccelerationStructure::BuildTopLevel(const Context& graphics,
                                              std::span<const D3D12_RAYTRACING_INSTANCE_DESC> instances,
                                              uint64_t maximumAllocationBytes, bool allowUpdate,
                                              const DxrAccelerationStructure* updateSource, std::string* outMessage) {
+    // 不透明の強制と非不透明の強制は同時に指定できない。
+    constexpr UINT kForcedOpacityFlags =
+        D3D12_RAYTRACING_INSTANCE_FLAG_FORCE_OPAQUE | D3D12_RAYTRACING_INSTANCE_FLAG_FORCE_NON_OPAQUE;
     bool valid = instances.size() <= (1u << 24);
     for (const auto& instance : instances) {
         valid &= instance.AccelerationStructure % kAlignment == 0 &&
                  (instance.InstanceMask == 0 || instance.AccelerationStructure != 0) &&
-                 (instance.Flags & ~0x0fu) == 0 &&
-                 (instance.Flags &
-                  (D3D12_RAYTRACING_INSTANCE_FLAG_FORCE_OPAQUE | D3D12_RAYTRACING_INSTANCE_FLAG_FORCE_NON_OPAQUE)) !=
-                     (D3D12_RAYTRACING_INSTANCE_FLAG_FORCE_OPAQUE | D3D12_RAYTRACING_INSTANCE_FLAG_FORCE_NON_OPAQUE);
+                 (instance.Flags & ~0x0fu) == 0 && (instance.Flags & kForcedOpacityFlags) != kForcedOpacityFlags;
         for (const auto& row : instance.Transform)
             for (const float value : row)
                 valid &= std::isfinite(value);

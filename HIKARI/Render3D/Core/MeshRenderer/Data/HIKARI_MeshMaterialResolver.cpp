@@ -2,6 +2,7 @@
 
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Assets/Models/HIKARI_ModelAsset.h"
+#include "Render3D/Material/HIKARI_MaterialTextureUsage.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI::MESHRENDERER {

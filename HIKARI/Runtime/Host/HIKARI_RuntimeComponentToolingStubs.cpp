@@ -23,7 +23,7 @@
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 #include "Scene/Terrain/HIKARI_TerrainSurfaceComponent.h"
 #include "Scene/Water/HIKARI_WaterSurfaceComponent.h"
-#include "Scene/Sand/HIKARI_SandSurfaceFollowerComponent.h"
+#include "Scene/Terrain/HIKARI_TerrainSurfaceFollowerComponent.h"
 
 namespace HIKARI {
 
@@ -61,7 +61,7 @@ void ModelComponent::RenderImGui() {}
 
 void TerrainSurfaceComponent::BuildInspector(IInspectorBuilder&) {}
 void WaterSurfaceComponent::BuildInspector(IInspectorBuilder&) {}
-void SandSurfaceFollowerComponent::BuildInspector(IInspectorBuilder&) {}
+void TerrainSurfaceFollowerComponent::BuildInspector(IInspectorBuilder&) {}
 
 } // namespace HIKARI
 

@@ -151,7 +151,7 @@ EditorOperationResult CreateSceneModel(SceneObjectOperationContext& operation, c
     if (model.empty()) {
         result.code = "MISSING_FIELD";
         result.message = "缺少 model 字段（资产 id 或路径片段，"
-                         "可用 asset.list_models 查询）";
+                         "可用 asset.query 查询）";
         return result;
     }
     const AssetRegistry& registry = scene->GetAssetRegistry();

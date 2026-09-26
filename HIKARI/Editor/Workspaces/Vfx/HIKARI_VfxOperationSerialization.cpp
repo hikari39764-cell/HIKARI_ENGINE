@@ -51,10 +51,7 @@ nlohmann::json EmitterSummary(const VFX::VfxEmitterData& emitter) {
     return {
         {"id", emitter.id},
         {"name", emitter.name},
-        {"kind", emitter.kind == VFX::VfxLayerKind::Shape        ? "Shape"
-                 : emitter.kind == VFX::VfxLayerKind::Group      ? "Group"
-                 : emitter.kind == VFX::VfxLayerKind::Adjustment ? "Adjustment"
-                                                                 : "Particles"},
+        {"kind", VFX::ToString(emitter.kind)},
         {"parentEmitterId", emitter.parentEmitterId},
         {"order", emitter.order},
         {"enabled", emitter.basic.enabled},
@@ -310,8 +307,8 @@ bool DescribeVfxTarget(const VfxWorkspaceController& controller, std::string_vie
             const auto id = property.value("id", std::string{});
             if (id == "space")
                 property["choices"] = SupportsSpatialMaterialEffect(effect->kind)
-                                          ? nlohmann::json::array({"LayerUv", "Group3D"})
-                                          : nlohmann::json::array({"LayerUv"});
+                                          ? nlohmann::json(TEXT::EnumNameList(kMaterialEffectSpaceNames))
+                                          : nlohmann::json::array({kMaterialEffectSpaceNames[0].name});
             if (id == "mix") {
                 property["range"] = {0, 1};
                 property["animatable"] = true;

@@ -5,11 +5,13 @@
 #include <span>
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <string_view>
 
 #include <DirectXMath.h>
 
+#include "Assets/Post/HIKARI_PostAsset.h"
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/HIKARI_Math3D.h"
 #include "Render3D/Color/HIKARI_AutomaticExposure.h"
@@ -61,10 +63,12 @@ public:
     static void SetCombo(float combo);
     static void ClearEffects();
     static void AddEffect(PostEffect* effect);
-    static bool SetGlobalProfile(const std::string& profileId, const DirectX::XMFLOAT4 (&values)[16]);
-    static void ClearGlobalProfile();
-    static bool SubmitProfileParameter(std::string_view profileId, uint32_t index, uint32_t channelMask,
-                                       const DirectX::XMFLOAT4& value, int32_t priority, uint64_t sourceId);
+    static bool SetGlobalEffect(std::string_view effectId, std::shared_ptr<const PostEffectDefinition> effect,
+                                const PostParameterBlock& values);
+    static void ClearGlobalEffect();
+    // 実行中の全体効果のパラメーターを 1 フレームだけ上書きする。effectId が現在の効果と違えば無視する。
+    static bool SubmitEffectParameter(std::string_view effectId, uint32_t index, uint32_t channelMask,
+                                      const DirectX::XMFLOAT4& value, int32_t priority, uint64_t sourceId);
     static bool GetRadialScreenWarp(float& curvature, float& strength) noexcept;
     static void SetBloomSettings(const BloomSettings& settings);
     static void SetScreenReadability(const RENDER3D::ScreenReadabilityFrame& frame);

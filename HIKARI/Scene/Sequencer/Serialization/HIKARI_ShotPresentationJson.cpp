@@ -110,48 +110,6 @@ ShotCamera ReadShotCamera(const nlohmann::json& n) {
     if (const auto channels = n.find("channels"); channels != n.end() && channels->is_object()) {
         for (size_t i = 0; i < c.channels.size(); ++i)
             c.channels[i] = Parameter(channels->value(kShotChannelNames[i], json{}), c.channels[i].value);
-    } else {
-        // 旧ポーズを読み込み時だけ変換。区間進行度の接線を値/秒へ変換し、補間を維持する。
-        struct LegacyPose {
-            ShotPose pose;
-            float incoming = 0, outgoing = 0;
-        };
-        std::vector<LegacyPose> poses;
-        for (const auto& item : n.value("poses", json::array())) {
-            LegacyPose legacy;
-            auto& p = legacy.pose;
-            p.time = item.value("time", 0.0f);
-            p.eye = Vector(item.value("eye", json{}), p.eye);
-            p.target = Vector(item.value("target", json{}), p.target);
-            p.fov = item.value("fov", 55.0f);
-            p.roll = item.value("roll", 0.0f);
-            legacy.outgoing = item.value("outgoing", 0.0f);
-            legacy.incoming = item.value("incoming", 0.0f);
-            if (std::isfinite(p.time)) {
-                p.time = (std::max)(0.0f, p.time);
-                poses.push_back(legacy);
-            }
-        }
-        std::stable_sort(poses.begin(), poses.end(),
-                         [](const auto& a, const auto& b) { return a.pose.time < b.pose.time; });
-        for (const auto& legacy : poses)
-            SetShotPose(c, legacy.pose, poses.size() > 1);
-        for (auto& channel : c.channels) {
-            for (size_t i = 0; i < channel.keys.size(); ++i) {
-                auto& key = channel.keys[i];
-                const auto legacy = std::find_if(poses.rbegin(), poses.rend(), [&](const auto& p) {
-                    return std::abs(p.pose.time - key.time) < 0.00001f;
-                });
-                if (legacy == poses.rend())
-                    continue;
-                if (i)
-                    key.inSlope = legacy->incoming * (key.value - channel.keys[i - 1].value) /
-                                  (key.time - channel.keys[i - 1].time);
-                if (i + 1 < channel.keys.size())
-                    key.outSlope = legacy->outgoing * (channel.keys[i + 1].value - key.value) /
-                                   (channel.keys[i + 1].time - key.time);
-            }
-        }
     }
     c.motion = ReadCameraMotionEffects(n.value("motion", json::array()));
     NormalizeShotCamera(c);

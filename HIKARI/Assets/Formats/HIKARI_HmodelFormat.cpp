@@ -33,12 +33,6 @@ using SERIALIZATION::BINARY::STREAM::WriteLengthPrefixedTrivialVector32;
 using SERIALIZATION::BINARY::STREAM::WriteTrivial;
 
 template <class T>
-struct LegacyAnimationKeyframe {
-    float timeSec = 0.0f;
-    T value{};
-};
-
-template <class T>
 bool WriteAnimationKeyframes(std::ofstream& ofs, const std::vector<AnimationKeyframe<T>>& keys) {
     if (keys.size() > kMaxVectorCount)
         return false;
@@ -55,19 +49,7 @@ bool WriteAnimationKeyframes(std::ofstream& ofs, const std::vector<AnimationKeyf
 }
 
 template <class T>
-bool ReadAnimationKeyframes(std::ifstream& ifs, uint32_t version, std::vector<AnimationKeyframe<T>>& keys) {
-    if (version < 4u) {
-        std::vector<LegacyAnimationKeyframe<T>> legacy{};
-        if (!ReadLengthPrefixedTrivialVector32<kMaxVectorCount>(ifs, legacy))
-            return false;
-        keys.resize(legacy.size());
-        for (size_t index = 0u; index < legacy.size(); ++index) {
-            keys[index].timeSec = legacy[index].timeSec;
-            keys[index].value = legacy[index].value;
-        }
-        return true;
-    }
-
+bool ReadAnimationKeyframes(std::ifstream& ifs, std::vector<AnimationKeyframe<T>>& keys) {
     uint32_t count = 0u;
     if (!ReadTrivial(ifs, count) || count > kMaxVectorCount) {
         return false;
@@ -88,16 +70,13 @@ bool WriteTextureSlot(std::ofstream& ofs, const TextureSlot& slot) {
            WriteTrivial(ofs, slot.scale) && WriteTrivial(ofs, slot.strength);
 }
 
-bool ReadTextureSlot(std::ifstream& ifs, TextureSlot& slot, uint32_t version) {
+bool ReadTextureSlot(std::ifstream& ifs, TextureSlot& slot) {
     if (!ReadTrivial(ifs, slot.textureIndex) || !ReadTrivial(ifs, slot.texCoord)) {
         return false;
     }
     slot.texCoord = std::clamp(slot.texCoord, 0, 1);
-    if (version >= 3u &&
-        (!ReadTrivial(ifs, slot.uvScale) || !ReadTrivial(ifs, slot.uvOffset) || !ReadTrivial(ifs, slot.uvRotation))) {
-        return false;
-    }
-    return ReadTrivial(ifs, slot.scale) && ReadTrivial(ifs, slot.strength);
+    return ReadTrivial(ifs, slot.uvScale) && ReadTrivial(ifs, slot.uvOffset) && ReadTrivial(ifs, slot.uvRotation) &&
+           ReadTrivial(ifs, slot.scale) && ReadTrivial(ifs, slot.strength);
 }
 
 bool WriteMaterial(std::ofstream& ofs, const MaterialAsset& material) {
@@ -117,31 +96,15 @@ bool WriteMaterial(std::ofstream& ofs, const MaterialAsset& material) {
            WriteTrivial(ofs, material.featureBits);
 }
 
-bool ReadMaterial(std::ifstream& ifs, MaterialAsset& material, uint32_t version) {
-    if (!ReadLengthPrefixedString32<kMaxStringBytes>(ifs, material.name)) {
-        return false;
-    }
-    if (version >= 7u && !ReadTrivial(ifs, material.slotId.value)) {
-        return false;
-    }
-    if (!ReadTrivial(ifs, material.baseColorFactor) || !ReadTrivial(ifs, material.metallicFactor) ||
-        !ReadTrivial(ifs, material.roughnessFactor)) {
-        return false;
-    }
-
-    if (version >= 2u &&
-        (!ReadTrivial(ifs, material.specularFactor) || !ReadTrivial(ifs, material.specularColorFactor))) {
-        return false;
-    }
-
-    return ReadTrivial(ifs, material.emissiveFactor) && ReadTrivial(ifs, material.emissiveStrength) &&
-           ReadTextureSlot(ifs, material.baseColorTexture, version) &&
-           ReadTextureSlot(ifs, material.normalTexture, version) &&
-           ReadTextureSlot(ifs, material.metallicRoughnessTexture, version) &&
-           ReadTextureSlot(ifs, material.occlusionTexture, version) &&
-           ReadTextureSlot(ifs, material.emissiveTexture, version) &&
-           (version < 2u || ReadTextureSlot(ifs, material.specularTexture, version)) &&
-           (version < 2u || ReadTextureSlot(ifs, material.specularColorTexture, version)) &&
+bool ReadMaterial(std::ifstream& ifs, MaterialAsset& material) {
+    return ReadLengthPrefixedString32<kMaxStringBytes>(ifs, material.name) && ReadTrivial(ifs, material.slotId.value) &&
+           ReadTrivial(ifs, material.baseColorFactor) && ReadTrivial(ifs, material.metallicFactor) &&
+           ReadTrivial(ifs, material.roughnessFactor) && ReadTrivial(ifs, material.specularFactor) &&
+           ReadTrivial(ifs, material.specularColorFactor) && ReadTrivial(ifs, material.emissiveFactor) &&
+           ReadTrivial(ifs, material.emissiveStrength) && ReadTextureSlot(ifs, material.baseColorTexture) &&
+           ReadTextureSlot(ifs, material.normalTexture) && ReadTextureSlot(ifs, material.metallicRoughnessTexture) &&
+           ReadTextureSlot(ifs, material.occlusionTexture) && ReadTextureSlot(ifs, material.emissiveTexture) &&
+           ReadTextureSlot(ifs, material.specularTexture) && ReadTextureSlot(ifs, material.specularColorTexture) &&
            ReadTrivial(ifs, material.alphaMode) && ReadTrivial(ifs, material.alphaCutoff) &&
            ReadBoolean8(ifs, material.doubleSided) &&
            ReadLengthPrefixedString32<kMaxStringBytes>(ifs, material.shaderProfileId) &&
@@ -164,14 +127,6 @@ bool WritePrimitive(std::ofstream& ofs, const MeshPrimitive& primitive) {
            WriteTrivial(ofs, primitive.lightmapUvLayout.chartPadding);
 }
 
-bool HasLegacyLightmapUv(const MeshPrimitive& primitive) {
-    const auto hasNonZeroUv = [](const auto& vertex) {
-        return std::abs(vertex.uv1.x) > 1.0e-7f || std::abs(vertex.uv1.y) > 1.0e-7f;
-    };
-    return std::any_of(primitive.staticVertices.begin(), primitive.staticVertices.end(), hasNonZeroUv) ||
-           std::any_of(primitive.skinnedVertices.begin(), primitive.skinnedVertices.end(), hasNonZeroUv);
-}
-
 bool IsValidLightmapUvLayoutMetadata(const MeshPrimitive& primitive) {
     const LightmapUvLayoutMetadata& metadata = primitive.lightmapUvLayout;
     const bool hasAnyMetadata =
@@ -184,34 +139,16 @@ bool IsValidLightmapUvLayoutMetadata(const MeshPrimitive& primitive) {
            static_cast<uint64_t>(metadata.chartPadding) * 2u < metadata.referenceHeight;
 }
 
-bool ReadPrimitive(std::ifstream& ifs, MeshPrimitive& primitive, uint32_t version) {
-    const bool readCore = ReadLengthPrefixedString32<kMaxStringBytes>(ifs, primitive.name) &&
-                          ReadTrivial(ifs, primitive.layout) &&
-                          ReadLengthPrefixedTrivialVector32<kMaxVectorCount>(ifs, primitive.staticVertices) &&
-                          ReadLengthPrefixedTrivialVector32<kMaxVectorCount>(ifs, primitive.skinnedVertices) &&
-                          ReadLengthPrefixedTrivialVector32<kMaxVectorCount>(ifs, primitive.indices) &&
-                          ReadTrivial(ifs, primitive.materialIndex) && ReadTrivial(ifs, primitive.bounds);
-    if (!readCore) {
-        return false;
-    }
-    if (version >= 5u) {
-        const bool readLightmapState =
-            ReadBoolean8(ifs, primitive.hasMorphTargets) && ReadBoolean8(ifs, primitive.hasLightmapUv);
-        if (!readLightmapState) {
-            return false;
-        }
-        if (version >= 6u) {
-            const bool readLayout = ReadTrivial(ifs, primitive.lightmapUvLayout.referenceWidth) &&
-                                    ReadTrivial(ifs, primitive.lightmapUvLayout.referenceHeight) &&
-                                    ReadTrivial(ifs, primitive.lightmapUvLayout.chartPadding);
-            return readLayout && IsValidLightmapUvLayoutMetadata(primitive);
-        }
-        primitive.lightmapUvLayout = {};
-        return true;
-    }
-    primitive.hasLightmapUv = HasLegacyLightmapUv(primitive);
-    primitive.lightmapUvLayout = {};
-    return true;
+bool ReadPrimitive(std::ifstream& ifs, MeshPrimitive& primitive) {
+    return ReadLengthPrefixedString32<kMaxStringBytes>(ifs, primitive.name) && ReadTrivial(ifs, primitive.layout) &&
+           ReadLengthPrefixedTrivialVector32<kMaxVectorCount>(ifs, primitive.staticVertices) &&
+           ReadLengthPrefixedTrivialVector32<kMaxVectorCount>(ifs, primitive.skinnedVertices) &&
+           ReadLengthPrefixedTrivialVector32<kMaxVectorCount>(ifs, primitive.indices) &&
+           ReadTrivial(ifs, primitive.materialIndex) && ReadTrivial(ifs, primitive.bounds) &&
+           ReadBoolean8(ifs, primitive.hasMorphTargets) && ReadBoolean8(ifs, primitive.hasLightmapUv) &&
+           ReadTrivial(ifs, primitive.lightmapUvLayout.referenceWidth) &&
+           ReadTrivial(ifs, primitive.lightmapUvLayout.referenceHeight) &&
+           ReadTrivial(ifs, primitive.lightmapUvLayout.chartPadding) && IsValidLightmapUvLayoutMetadata(primitive);
 }
 
 bool WriteMesh(std::ofstream& ofs, const MeshAsset& mesh) {
@@ -233,7 +170,7 @@ bool WriteMesh(std::ofstream& ofs, const MeshAsset& mesh) {
     return true;
 }
 
-bool ReadMesh(std::ifstream& ifs, MeshAsset& mesh, uint32_t version) {
+bool ReadMesh(std::ifstream& ifs, MeshAsset& mesh) {
     uint32_t primitiveCount = 0;
     if (!ReadLengthPrefixedString32<kMaxStringBytes>(ifs, mesh.name) || !ReadTrivial(ifs, mesh.bounds) ||
         !ReadTrivial(ifs, primitiveCount) || primitiveCount > kMaxVectorCount) {
@@ -241,7 +178,7 @@ bool ReadMesh(std::ifstream& ifs, MeshAsset& mesh, uint32_t version) {
     }
     mesh.primitives.resize(primitiveCount);
     for (MeshPrimitive& primitive : mesh.primitives) {
-        if (!ReadPrimitive(ifs, primitive, version)) {
+        if (!ReadPrimitive(ifs, primitive)) {
             return false;
         }
     }
@@ -323,7 +260,7 @@ bool WriteAnimation(std::ofstream& ofs, const AnimationClip& clip) {
     return true;
 }
 
-bool ReadAnimation(std::ifstream& ifs, AnimationClip& clip, uint32_t version) {
+bool ReadAnimation(std::ifstream& ifs, AnimationClip& clip) {
     uint32_t channelCount = 0;
     if (!ReadLengthPrefixedString32<kMaxStringBytes>(ifs, clip.name) || !ReadTrivial(ifs, clip.durationSec) ||
         !ReadTrivial(ifs, channelCount) || channelCount > kMaxVectorCount) {
@@ -332,8 +269,8 @@ bool ReadAnimation(std::ifstream& ifs, AnimationClip& clip, uint32_t version) {
     clip.channels.resize(channelCount);
     for (NodeAnimationChannel& channel : clip.channels) {
         if (!ReadTrivial(ifs, channel.targetNode) || !ReadTrivial(ifs, channel.path) ||
-            !ReadTrivial(ifs, channel.interpolation) || !ReadAnimationKeyframes(ifs, version, channel.vec3Keys) ||
-            !ReadAnimationKeyframes(ifs, version, channel.quatKeys)) {
+            !ReadTrivial(ifs, channel.interpolation) || !ReadAnimationKeyframes(ifs, channel.vec3Keys) ||
+            !ReadAnimationKeyframes(ifs, channel.quatKeys)) {
             return false;
         }
     }
@@ -428,8 +365,8 @@ bool ReadHmodelFile(const std::filesystem::path& path, ModelAsset& outModel, std
     }
 
     HmodelFileHeader header{};
-    if (!ReadTrivial(ifs, header) || header.magic != kHmodelMagic || header.version < 1u ||
-        header.version > kHmodelVersion || header.headerSize != sizeof(HmodelFileHeader)) {
+    if (!ReadTrivial(ifs, header) || header.magic != kHmodelMagic || header.version != kHmodelVersion ||
+        header.headerSize != sizeof(HmodelFileHeader)) {
         outMessage = "[HMODEL] invalid or unsupported file: " + path.generic_string();
         return false;
     }
@@ -442,36 +379,21 @@ bool ReadHmodelFile(const std::filesystem::path& path, ModelAsset& outModel, std
         return false;
     }
 
-    const bool ok = ReadObjectVector(ifs, model.nodes, ReadNode) &&
-                    ReadObjectVector(ifs, model.meshes,
-                                     [version = header.version](std::ifstream& stream, MeshAsset& mesh) {
-                                         return ReadMesh(stream, mesh, version);
-                                     }) &&
-                    ReadObjectVector(ifs, model.materials,
-                                     [version = header.version](std::ifstream& stream, MaterialAsset& material) {
-                                         return ReadMaterial(stream, material, version);
-                                     }) &&
+    const bool ok = ReadObjectVector(ifs, model.nodes, ReadNode) && ReadObjectVector(ifs, model.meshes, ReadMesh) &&
+                    ReadObjectVector(ifs, model.materials, ReadMaterial) &&
                     ReadObjectVector(ifs, model.textures,
                                      [](std::ifstream& stream, TextureAsset3D& texture) {
                                          return ReadLengthPrefixedString32<kMaxStringBytes>(stream, texture.name) &&
                                                 ReadLengthPrefixedString32<kMaxStringBytes>(stream, texture.sourcePath);
                                      }) &&
                     ReadObjectVector(ifs, model.skins, ReadSkin) &&
-                    ReadObjectVector(ifs, model.animations,
-                                     [version = header.version](std::ifstream& stream, AnimationClip& animation) {
-                                         return ReadAnimation(stream, animation, version);
-                                     });
+                    ReadObjectVector(ifs, model.animations, ReadAnimation);
 
     if (!ok || !ifs.good()) {
         outMessage = "[HMODEL] failed while reading: " + path.generic_string();
         return false;
     }
 
-    const bool migratedLegacyMaterialSlots = header.version < 7u;
-    if (migratedLegacyMaterialSlots) {
-        ASSETS::MODELS::AssignMaterialSlotIds(model.materials,
-                                              ASSETS::MODELS::ResolveMaterialSlotImporterSemantic(model.sourcePath));
-    }
     if (!ASSETS::MODELS::HaveValidUniqueMaterialSlotIds(model.materials)) {
         outMessage = "[HMODEL] invalid material slot identity table: " + path.generic_string();
         return false;
@@ -479,9 +401,6 @@ bool ReadHmodelFile(const std::filesystem::path& path, ModelAsset& outModel, std
 
     outModel = std::move(model);
     outMessage = "[HMODEL] read " + path.generic_string();
-    if (migratedLegacyMaterialSlots) {
-        outMessage += " (migrated v1-v6 material slots from source identity)";
-    }
     return true;
 }
 

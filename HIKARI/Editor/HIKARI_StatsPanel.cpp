@@ -44,9 +44,8 @@ void StatsPanel::DrawContents(const char* sceneName, const World& world, const M
         ImGui::Text(TEXT::Localize("editor.ui.failed.models.zu.5cf3dd").c_str(), modelManager.CountFailedAssets());
         size_t texturedMaterialCount = 0;
         for (const auto& asset : modelManager.GetAssets()) {
-            if (asset && asset->GetLegacyRuntimeMaterial() &&
-                asset->GetLegacyRuntimeMaterial()->HasBaseColorTexture()) {
-                ++texturedMaterialCount;
+            for (const MaterialAsset& material : asset ? asset->materials : std::vector<MaterialAsset>{}) {
+                texturedMaterialCount += material.baseColorTexture.textureIndex >= 0 ? 1u : 0u;
             }
         }
         ImGui::Text(TEXT::Localize("editor.ui.textured.materials.zu.6250fa").c_str(), texturedMaterialCount);

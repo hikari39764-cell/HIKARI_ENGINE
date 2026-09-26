@@ -60,7 +60,7 @@ struct Group {
     std::vector<std::pair<uint32_t, uint32_t>> surfaces; // material slot, flags
 };
 bool SupportsGeometry(const GPUDRIVEN::GpuSceneSurfaceRecord& record) {
-    return !record.skinned && !record.foliageWind && !record.waterSurface && !record.sandSurface &&
+    return !record.skinned && !record.foliageWind && !record.waterSurface && !record.terrainSurface &&
            !record.key.customVertexShader && !record.key.materialFx && !record.key.transparent;
 }
 bool ValidTransform(const MATH::Mat4& world) {

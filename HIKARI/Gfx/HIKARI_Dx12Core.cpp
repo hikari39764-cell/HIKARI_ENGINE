@@ -9,7 +9,6 @@
 #include <d3dx12.h>
 #include <atomic>
 #include <cassert>
-#include <cstdio>
 #include <sstream>
 #include <string>
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
@@ -72,17 +71,6 @@ static LetterboxRect ComputeLetterboxRect(int backBufferW, int backBufferH) {
 }
 } // namespace
 
-namespace {
-// エラーコードをログに出力する
-void LogHr(const char* stage, HRESULT hr) {
-    char buf[256]{};
-    std::snprintf(buf, sizeof(buf), "[Dx12Core] %s failed. hr=0x%08lX\n", stage, static_cast<unsigned long>(hr));
-    OutputDebugStringA(buf);
-    DEBUGLOG::PushRenderError(buf);
-    HIKARI_LOG_ERROR(buf);
-}
-
-} // namespace
 // Dx12Core の初期化。失敗した場合は false を返す。
 bool Dx12Core::CheckDeviceRemoved(const char* reason, HRESULT hr) {
     if (deviceLost_) {
@@ -107,7 +95,6 @@ bool Dx12Core::CheckDeviceRemoved(const char* reason, HRESULT hr) {
         << " hr=" << FormatHRESULT(hr) << " removedReason=" << FormatHRESULT(removedReason) << " text=\""
         << HResultToString(removedReason) << "\"";
     DEBUGLOG::PushRenderError(oss.str());
-    HIKARI_LOG_ERROR(oss.str());
     DumpD3D12InfoQueue(device_.Get(), reason != nullptr ? reason : "DeviceRemoved");
     return true;
 }
@@ -127,14 +114,12 @@ bool Dx12Core::Initialize(HWND hwnd, int w, int h, bool enableDebugLayer, const 
         ComPtr<ID3D12Debug> debug;
         if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug)))) {
             debug->EnableDebugLayer();
-            DEBUGLOG::WriteRenderLogLine("[D3D12] Debug Layer enabled.");
             HIKARI_LOG_D3D12("Debug Layer enabled.");
 
             if (debugConfig.enableGpuBasedValidation) {
                 ComPtr<ID3D12Debug3> debug3;
                 if (SUCCEEDED(debug.As(&debug3))) {
                     debug3->SetEnableGPUBasedValidation(TRUE);
-                    DEBUGLOG::WriteRenderLogLine("[D3D12] GPU-Based Validation enabled.");
                     HIKARI_LOG_D3D12("GPU-Based Validation enabled.");
                 }
             }
@@ -146,8 +131,7 @@ bool Dx12Core::Initialize(HWND hwnd, int w, int h, bool enableDebugLayer, const 
     if (FAILED(hr)) {
         // Graphics Tools / DXGI Debug が無い環境では失敗するため、通常 Factory にフォールバックする。
         hr = CreateDXGIFactory2(0, IID_PPV_ARGS(&factory_));
-        if (FAILED(hr)) {
-            LogHr("CreateDXGIFactory2", hr);
+        if (!HIKARI_DX_CHECK(hr, "Dx12Core CreateDXGIFactory2")) {
             return false;
         }
     }
@@ -168,8 +152,7 @@ bool Dx12Core::Initialize(HWND hwnd, int w, int h, bool enableDebugLayer, const 
         hr = factory_->EnumAdapterByGpuPreference(i, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IID_PPV_ARGS(&candidate));
         if (hr == DXGI_ERROR_NOT_FOUND)
             break;
-        if (FAILED(hr) || !candidate) {
-            LogHr("EnumAdapterByGpuPreference", hr);
+        if (!HIKARI_DX_CHECK(hr, "Dx12Core EnumAdapterByGpuPreference") || !candidate) {
             initializationError_ = "Could not enumerate graphics adapters. Update the graphics driver.";
             return false;
         }
@@ -209,8 +192,7 @@ bool Dx12Core::Initialize(HWND hwnd, int w, int h, bool enableDebugLayer, const 
     D3D12_COMMAND_QUEUE_DESC qDesc{};
     qDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
     hr = device_->CreateCommandQueue(&qDesc, IID_PPV_ARGS(&queue_));
-    if (FAILED(hr)) {
-        LogHr("CreateCommandQueue", hr);
+    if (!HIKARI_DX_CHECK(hr, "Dx12Core CreateCommandQueue")) {
         return false;
     }
     SetD3D12Name(queue_.Get(), L"HIKARI Direct Command Queue");
@@ -228,8 +210,7 @@ bool Dx12Core::Initialize(HWND hwnd, int w, int h, bool enableDebugLayer, const 
     dsvDesc.NumDescriptors = 2;
     dsvDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
     hr = device_->CreateDescriptorHeap(&dsvDesc, IID_PPV_ARGS(&dsvHeap_));
-    if (FAILED(hr)) {
-        LogHr("Create DSV Heap", hr);
+    if (!HIKARI_DX_CHECK(hr, "Dx12Core Create DSV Heap")) {
         return false;
     }
     SetD3D12Name(dsvHeap_.Get(), L"HIKARI Main DSV Heap");
@@ -241,8 +222,7 @@ bool Dx12Core::Initialize(HWND hwnd, int w, int h, bool enableDebugLayer, const 
     srvDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     srvDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     hr = device_->CreateDescriptorHeap(&srvDesc, IID_PPV_ARGS(&srvHeap_));
-    if (FAILED(hr)) {
-        LogHr("Create SRV Heap", hr);
+    if (!HIKARI_DX_CHECK(hr, "Dx12Core Create SRV Heap")) {
         return false;
     }
     SetD3D12Name(srvHeap_.Get(), L"HIKARI Global SRV Heap");
@@ -257,16 +237,14 @@ bool Dx12Core::Initialize(HWND hwnd, int w, int h, bool enableDebugLayer, const 
 
     for (uint32_t i = 0; i < kFrameCount; ++i) {
         hr = device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&allocators_[i]));
-        if (FAILED(hr)) {
-            LogHr("CreateCommandAllocator", hr);
+        if (!HIKARI_DX_CHECK(hr, "Dx12Core CreateCommandAllocator")) {
             return false;
         }
     }
     HIKARI_LOG_D3D12("Command allocators created.");
     hr = device_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, allocators_[frameIndex_].Get(), nullptr,
                                     IID_PPV_ARGS(&cmdList_));
-    if (FAILED(hr)) {
-        LogHr("CreateCommandList", hr);
+    if (!HIKARI_DX_CHECK(hr, "Dx12Core CreateCommandList")) {
         return false;
     }
     SetD3D12Name(cmdList_.Get(), L"HIKARI Main Command List");
@@ -274,8 +252,7 @@ bool Dx12Core::Initialize(HWND hwnd, int w, int h, bool enableDebugLayer, const 
     HIKARI_LOG_D3D12("Command list created.");
 
     hr = device_->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence_));
-    if (FAILED(hr)) {
-        LogHr("CreateFence", hr);
+    if (!HIKARI_DX_CHECK(hr, "Dx12Core CreateFence")) {
         return false;
     }
     SetD3D12Name(fence_.Get(), L"HIKARI Frame Fence");

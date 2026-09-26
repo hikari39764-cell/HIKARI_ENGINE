@@ -244,8 +244,8 @@ void BindSurfaceFeatureData(const MeshBindingContext& ctx, D3D12_GPU_VIRTUAL_ADD
     BindSrvCached(ctx, ROOT_PARAM::SurfaceFeatureData, featureDataAddress);
 }
 
-void BindSandSurfaceData(const MeshBindingContext& ctx, D3D12_GPU_VIRTUAL_ADDRESS sandDataAddress) {
-    BindSrvCached(ctx, ROOT_PARAM::SandSurfaceData, sandDataAddress);
+void BindTerrainSurfaceData(const MeshBindingContext& ctx, D3D12_GPU_VIRTUAL_ADDRESS terrainDataAddress) {
+    BindSrvCached(ctx, ROOT_PARAM::TerrainSurfaceData, terrainDataAddress);
 }
 
 void BindOceanSpectrumData(const MeshBindingContext& ctx, D3D12_GPU_DESCRIPTOR_HANDLE spectrumTable, bool valid,

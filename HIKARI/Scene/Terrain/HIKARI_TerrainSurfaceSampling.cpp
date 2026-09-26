@@ -2,7 +2,7 @@
 #include "Core/Math/HIKARI_GridBilinearSample.h"
 #include "Core/Math/HIKARI_NormalMatrix.h"
 #include "Scene/HIKARI_GameObject.h"
-#include "Scene/Sand/HIKARI_SandSurfaceTypes.h"
+#include "Scene/Terrain/HIKARI_TerrainSurfaceTypes.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -289,7 +289,7 @@ void TerrainSurfaceComponent::RebuildCoverageCache() const {
         {1, 1},
     }};
     std::priority_queue<QueueEntry, std::vector<QueueEntry>, QueueGreater> queue{};
-    constexpr float threshold = SAND::kSandSurfaceVisibleCoverageThreshold;
+    constexpr float threshold = TERRAIN::kTerrainSurfaceVisibleCoverageThreshold;
     if (width > cellSize * 0.5f) {
         for (std::size_t index = 0u; index < nodes.size(); ++index) {
             CoverageNode& node = nodes[index];
@@ -401,12 +401,12 @@ bool TerrainSurfaceComponent::SampleLocalSurfaceHeight(const MATH::Vec3& localPo
         return false;
     }
     const float coverage = SampleLocalCoverage(localPos);
-    if (coverage < SAND::kSandSurfaceVisibleCoverageThreshold) {
+    if (coverage < TERRAIN::kTerrainSurfaceVisibleCoverageThreshold) {
         outHeight = 0.0f;
         return false;
     }
-    outHeight = SAND::EvaluateSandSurfaceEffectiveHeight(outHeight, coverage, surface_.shoreline.edgeDepth,
-                                                         surface_.deform.rimStrength);
+    outHeight = TERRAIN::EvaluateTerrainSurfaceEffectiveHeight(outHeight, coverage, surface_.shoreline.edgeDepth,
+                                                               surface_.deform.rimStrength);
     return true;
 }
 

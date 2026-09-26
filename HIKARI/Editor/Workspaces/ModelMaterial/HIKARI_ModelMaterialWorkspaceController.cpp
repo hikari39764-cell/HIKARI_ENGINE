@@ -334,9 +334,12 @@ void ModelMaterialWorkspaceController::UpdatePublicSlotViews() {
     }
 }
 
-std::string ModelMaterialWorkspaceController::GetAiMaterialStatus() const {
+nlohmann::json ModelMaterialWorkspaceController::DescribeDocumentState() const {
+    nlohmann::json state{{"open", GetDocumentAssetGuid().IsValid() || HasUnsavedMaterialChanges()},
+                         {"assetGuid", GetDocumentAssetGuid().value},
+                         {"dirty", HasUnsavedMaterialChanges()}};
     if (!authoringDocument_.HasMaterial()) {
-        return "material: none";
+        return state;
     }
     const MaterialAssetData& material = authoringDocument_.GetMaterial();
     const MaterialCompileResult& compile = authoringDocument_.GetCompileResult();
@@ -344,8 +347,10 @@ std::string ModelMaterialWorkspaceController::GetAiMaterialStatus() const {
                                      : material.kind == MaterialAssetKind::Function ? &material.function.graph
                                                                                     : nullptr;
     const size_t parameterCount = graph != nullptr ? graph->parameters.size() : 0u;
-    return "material: " + material.materialName + " | compile: " + (compile.success ? "ok" : "failed") +
-           " | params: " + std::to_string(parameterCount);
+    state["name"] = material.materialName;
+    state["status"] =
+        std::string("compile: ") + (compile.success ? "ok" : "failed") + " | params: " + std::to_string(parameterCount);
+    return state;
 }
 
 } // namespace HIKARI::EDITOR

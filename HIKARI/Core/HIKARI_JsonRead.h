@@ -128,18 +128,9 @@ inline MATH::Vec3 Vec3MemberOr(const nlohmann::json& object, const char* key, co
     return value != nullptr ? Vec3Or(*value, fallback) : fallback;
 }
 
-// 列挙値を名前（別名可）で読む。acceptInteger では表にある整数値も受け付ける。
+// 列挙値を名前（別名可）で読む。
 template <class E, std::size_t N>
-E EnumOr(const nlohmann::json& node, const TEXT::EnumName<E> (&names)[N], E fallback, bool acceptInteger = false) {
-    if (acceptInteger && node.is_number_integer()) {
-        const int value = node.get<int>();
-        for (const TEXT::EnumName<E>& entry : names) {
-            if (static_cast<int>(entry.value) == value) {
-                return entry.value;
-            }
-        }
-        return fallback;
-    }
+E EnumOr(const nlohmann::json& node, const TEXT::EnumName<E> (&names)[N], E fallback) {
     return node.is_string() ? TEXT::ParseEnum(names, node.get<std::string>(), fallback) : fallback;
 }
 

@@ -389,8 +389,8 @@ const MaterialNodeSemanticContract& GetMaterialNodeSemanticContract(MaterialNode
 
 const MaterialNodeSemanticContract& GetMaterialNodeSemanticContract(const MaterialNodeTypeId& typeId) noexcept {
     MaterialNodeKind kind{};
-    return TryGetLegacyMaterialNodeKind(typeId, kind) ? GetMaterialNodeSemanticContract(kind)
-                                                      : GetMaterialNodeSemanticContract(MaterialNodeKind::Constant);
+    return TryGetBuiltinMaterialNodeKind(typeId, kind) ? GetMaterialNodeSemanticContract(kind)
+                                                       : GetMaterialNodeSemanticContract(MaterialNodeKind::Constant);
 }
 
 std::span<const std::string_view> GetMaterialNodeOwnedParameterIds(MaterialNodeKind kind) noexcept {
@@ -416,8 +416,8 @@ std::span<const std::string_view> GetMaterialNodeOwnedParameterIds(MaterialNodeK
 
 std::span<const std::string_view> GetMaterialNodeOwnedParameterIds(const MaterialNodeTypeId& typeId) noexcept {
     MaterialNodeKind kind{};
-    return TryGetLegacyMaterialNodeKind(typeId, kind) ? GetMaterialNodeOwnedParameterIds(kind)
-                                                      : std::span<const std::string_view>{};
+    return TryGetBuiltinMaterialNodeKind(typeId, kind) ? GetMaterialNodeOwnedParameterIds(kind)
+                                                       : std::span<const std::string_view>{};
 }
 
 std::span<const std::string_view> GetMaterialNodeOwnedResourceIds(MaterialNodeKind kind) noexcept {
@@ -439,8 +439,8 @@ std::span<const std::string_view> GetMaterialNodeOwnedResourceIds(MaterialNodeKi
 
 std::span<const std::string_view> GetMaterialNodeOwnedResourceIds(const MaterialNodeTypeId& typeId) noexcept {
     MaterialNodeKind kind{};
-    return TryGetLegacyMaterialNodeKind(typeId, kind) ? GetMaterialNodeOwnedResourceIds(kind)
-                                                      : std::span<const std::string_view>{};
+    return TryGetBuiltinMaterialNodeKind(typeId, kind) ? GetMaterialNodeOwnedResourceIds(kind)
+                                                       : std::span<const std::string_view>{};
 }
 
 bool IsReadyMadeMaterialNode(MaterialNodeKind kind) noexcept {
@@ -466,7 +466,7 @@ bool IsReadyMadeMaterialNode(MaterialNodeKind kind) noexcept {
 
 bool IsReadyMadeMaterialNode(const MaterialNodeTypeId& typeId) noexcept {
     MaterialNodeKind kind{};
-    return TryGetLegacyMaterialNodeKind(typeId, kind) && IsReadyMadeMaterialNode(kind);
+    return TryGetBuiltinMaterialNodeKind(typeId, kind) && IsReadyMadeMaterialNode(kind);
 }
 
 bool IsSingletonReadyMadeMaterialNode(MaterialNodeKind kind) noexcept {
@@ -476,7 +476,7 @@ bool IsSingletonReadyMadeMaterialNode(MaterialNodeKind kind) noexcept {
 
 bool IsSingletonReadyMadeMaterialNode(const MaterialNodeTypeId& typeId) noexcept {
     MaterialNodeKind kind{};
-    return TryGetLegacyMaterialNodeKind(typeId, kind) && IsSingletonReadyMadeMaterialNode(kind);
+    return TryGetBuiltinMaterialNodeKind(typeId, kind) && IsSingletonReadyMadeMaterialNode(kind);
 }
 
 std::string_view ReadyMadeMaterialNodeDisplayName(MaterialNodeKind kind) noexcept {
@@ -502,19 +502,19 @@ std::string_view ReadyMadeMaterialNodeDisplayName(MaterialNodeKind kind) noexcep
 
 std::string_view ReadyMadeMaterialNodeDisplayName(const MaterialNodeTypeId& typeId) noexcept {
     MaterialNodeKind kind{};
-    return TryGetLegacyMaterialNodeKind(typeId, kind) ? ReadyMadeMaterialNodeDisplayName(kind) : ToString(typeId);
+    return TryGetBuiltinMaterialNodeKind(typeId, kind) ? ReadyMadeMaterialNodeDisplayName(kind) : ToString(typeId);
 }
 
 void InitializeReadyMadeMaterialNode(MaterialAssetData& material, MaterialGraphNodeData& node) {
     if (!IsReadyMadeMaterialNode(node.kind)) {
         return;
     }
-    MaterialNodeKind legacyKind{};
-    if (!TryGetLegacyMaterialNodeKind(node.kind, legacyKind)) {
+    MaterialNodeKind builtinKind{};
+    if (!TryGetBuiltinMaterialNodeKind(node.kind, builtinKind)) {
         return;
     }
     MaterialGraphData& graph = material.graph;
-    switch (legacyKind) {
+    switch (builtinKind) {
     case MaterialNodeKind::PbrSurface:
         node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
         node.valueType = MaterialValueType::Surface;

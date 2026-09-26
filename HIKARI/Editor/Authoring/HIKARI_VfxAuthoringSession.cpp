@@ -10,7 +10,9 @@
 #include "Assets/HIKARI_AssetDatabase.h"
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <filesystem>
+#include <vector>
 
 namespace HIKARI::EDITOR {
 namespace {
@@ -70,14 +72,11 @@ public:
         return {true, "OK", "Background VFX document is ready."};
     }
     nlohmann::json Describe() const override {
-        const auto& document = controller_.GetDocument();
-        return {{"name", document.IsOpen() ? document.Asset().name : std::string{}},
-                {"assetGuid", document.GetAssetGuid().value},
-                {"dirty", document.IsDirty()},
-                {"revision", document.GetRevision()},
-                {"recoverySupported", true},
-                {"preview", true},
-                {"capturePending", capture_.IsPending()}};
+        nlohmann::json state = controller_.DescribeDocumentState();
+        state["recoverySupported"] = true;
+        state["preview"] = true;
+        state["capturePending"] = capture_.IsPending();
+        return state;
     }
     EditorOperationResult Reveal() override {
         EditorWorkspaceOpenRequest request{};
@@ -86,9 +85,9 @@ public:
         return {true, "OK", "VFX workspace requested."};
     }
     EditorOperationResult Preview(const nlohmann::json& parameters) override {
+        constexpr size_t kMaximumTimelineCaptures = 6u;
         if (parameters.value("frameCount", 1) != 1)
-            return {false, "USE_TIMED_PREVIEWS",
-                    "Use authoring.preview at explicit time values to capture a sequence."};
+            return {false, "USE_TIMED_PREVIEWS", "Pass times with up to 6 second values to capture a timeline."};
         if (parameters.contains("path") && !parameters.value("path", std::string{}).empty())
             return {
                 false, "UNSUPPORTED_PREVIEW_PATH",
@@ -100,7 +99,26 @@ public:
             return {false, "NO_PROJECT", "No project is open."};
         view_.extent.width = std::clamp(parameters.value("width", 768), 128, 1536);
         view_.extent.height = std::clamp(parameters.value("height", 768), 128, 1536);
-        time_ = parameters.value("time", controller_.Preview().GetRequestedPreviewSeconds());
+        // times は時間軸上の複数時刻を順に撮影し、全画像をまとめて返す。
+        pendingTimes_.clear();
+        capturedImages_ = nlohmann::json::array();
+        if (parameters.contains("times")) {
+            const nlohmann::json& times = parameters["times"];
+            if (!times.is_array() || times.empty() || times.size() > kMaximumTimelineCaptures)
+                return {false, "INVALID_TIMES", "times must list 1 to 6 non-negative seconds values."};
+            for (const nlohmann::json& time : times) {
+                if (!time.is_number() || !std::isfinite(time.get<float>()) || time.get<float>() < 0.0f)
+                    return {false, "INVALID_TIMES", "times must list 1 to 6 non-negative seconds values."};
+                pendingTimes_.push_back(time.get<float>());
+            }
+        } else {
+            pendingTimes_.push_back(parameters.value("time", controller_.Preview().GetRequestedPreviewSeconds()));
+        }
+        return StartCapture(*scene);
+    }
+    EditorOperationResult StartCapture(DocumentSceneBase& scene) {
+        time_ = pendingTimes_.front();
+        pendingTimes_.erase(pendingTimes_.begin());
         std::string message;
         // 撮影は不変な文書スナップショットを独立 namespace で再生する。
         // 表示中の再生・GPU mailbox・カメラを奪わず、停止後も再撮影できる。
@@ -111,7 +129,7 @@ public:
             !capturePreview_->PrepareBackgroundPreview(view_, time_, message))
             return {false, "PREVIEW_FAILED", message};
         capturedRevision_ = controller_.GetDocument().GetRevision();
-        return capture_.Start(scene->GetAssetDatabase().GetLibraryRoot(),
+        return capture_.Start(scene.GetAssetDatabase().GetLibraryRoot(),
                               {{"label", "VFX · " + std::to_string(time_) + " s"},
                                {"time", time_},
                                {"documentRevision", controller_.GetDocument().GetRevision()}});
@@ -128,8 +146,27 @@ public:
     }
     EditorOperationResult PreviewStatus(const nlohmann::json&) override {
         auto result = capture_.Poll();
-        if (!capture_.IsPending())
-            capturePreview_.reset();
+        if (capture_.IsPending())
+            return result;
+        capturePreview_.reset();
+        if (!result.ok) {
+            pendingTimes_.clear();
+            capturedImages_ = nlohmann::json::array();
+            return result;
+        }
+        for (const nlohmann::json& image : result.data.value("images", nlohmann::json::array()))
+            capturedImages_.push_back(image);
+        if (!pendingTimes_.empty()) {
+            auto* scene = scene_();
+            if (!scene) {
+                pendingTimes_.clear();
+                capturedImages_ = nlohmann::json::array();
+                return {false, "NO_PROJECT", "No project is open."};
+            }
+            return StartCapture(*scene);
+        }
+        result.data["images"] = std::move(capturedImages_);
+        capturedImages_ = nlohmann::json::array();
         return result;
     }
 
@@ -139,6 +176,8 @@ private:
     VfxWorkspaceController controller_;
     std::unique_ptr<VfxPreviewSession> capturePreview_;
     uint64_t capturedRevision_ = 0;
+    std::vector<float> pendingTimes_;
+    nlohmann::json capturedImages_ = nlohmann::json::array();
     EditorOperationRegistry operations_;
     EditorViewInstance view_;
     uint64_t previewId_;

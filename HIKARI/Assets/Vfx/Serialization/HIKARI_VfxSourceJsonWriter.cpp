@@ -243,7 +243,7 @@ Json WriteEmitter(const VfxEmitterData& emitter) {
         effects.push_back({{"id", effect.id},
                            {"kind", MaterialEffectName(effect.kind)},
                            {"enabled", effect.enabled},
-                           {"space", effect.space == MaterialEffectSpace::Group3D ? "Group3D" : "LayerUv"},
+                           {"space", TEXT::EnumToName(kMaterialEffectSpaceNames, effect.space, "LayerUv")},
                            {"parameters", WriteVec4(effect.parameters)},
                            {"parameters2", WriteVec4(effect.parameters2)},
                            {"textureTarget", MaterialEffectTextureTargetName(effect.textureTarget)},
@@ -319,9 +319,7 @@ Json WriteEmitter(const VfxEmitterData& emitter) {
         {"anchor", WriteVec3(emitter.anchor)},
         {"connectTarget",
          {
-             {"mode", emitter.connectTarget.mode == VfxConnectTargetMode::LayerOrigin     ? "LayerOrigin"
-                      : emitter.connectTarget.mode == VfxConnectTargetMode::LocalPosition ? "LocalPosition"
-                                                                                          : "None"},
+             {"mode", ToString(emitter.connectTarget.mode)},
              {"targetLayerId", emitter.connectTarget.targetLayerId},
              {"localPosition", WriteVec3(emitter.connectTarget.localPosition)},
              {"pivot", emitter.connectTarget.pivot},
@@ -338,19 +336,14 @@ Json WriteEmitter(const VfxEmitterData& emitter) {
              {"castShadows", emitter.meshOutput.castShadows},
              {"receiveShadow", emitter.meshOutput.receiveShadow},
          }},
-        {"kind", emitter.kind == VfxLayerKind::Shape        ? "Shape"
-                 : emitter.kind == VfxLayerKind::Group      ? "Group"
-                 : emitter.kind == VfxLayerKind::Adjustment ? "Adjustment"
-                                                            : "Particles"},
+        {"kind", ToString(emitter.kind)},
         {"activeDuration", emitter.activeDuration},
         {"animationTiming",
          {{"sourceDuration", emitter.animationTiming.sourceDuration},
           {"offset", emitter.animationTiming.offset},
           {"rate", emitter.animationTiming.rate}}},
         {"history",
-         {{"mode", emitter.history.mode == VfxHistoryMode::Afterimage ? "Afterimage"
-                   : emitter.history.mode == VfxHistoryMode::Trail    ? "Trail"
-                                                                      : "None"},
+         {{"mode", ToString(emitter.history.mode)},
           {"duration", emitter.history.duration},
           {"samples", emitter.history.samples},
           {"breakDistance", emitter.history.breakDistance},
@@ -376,8 +369,6 @@ Json WriteEmitter(const VfxEmitterData& emitter) {
               {
                   {"id", emitter.spawn.id},
                   {"ratePerSecond", emitter.spawn.ratePerSecond},
-                  // Keep the v3 field for old tools; burstTimeline is
-                  // authoritative whenever it contains keys.
                   {"burstTimeline", std::move(burstTimeline)},
                   {"capacityMode", ToString(emitter.spawn.capacityMode)},
                   {"maximumParticles", emitter.spawn.maximumParticles},

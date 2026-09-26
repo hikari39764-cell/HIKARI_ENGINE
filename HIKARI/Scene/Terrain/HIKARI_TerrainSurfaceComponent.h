@@ -21,7 +21,7 @@ namespace HIKARI {
 // chunk 表」として保持する。筆刷が届いた場所に chunk が生え、1 つの
 // コンポーネントが任意範囲の地形を担う。水面は独立コンポーネント。
 //
-// 着色は従来の SandSurface パイプラインを chunk ごとに再利用し、
+// 着色は従来の TerrainSurface パイプラインを chunk ごとに再利用し、
 // 見た目（アニメ調沙地）を変えない。物理・変形も chunk 単位で駆動する。
 class TerrainSurfaceComponent final : public IComponent {
 public:

@@ -35,7 +35,6 @@ CharacterMovementSpace ParseMovementSpace(const nlohmann::json& value, Character
 } // namespace
 
 void CharacterLocomotionComponent::Serialize(nlohmann::json& out) const {
-    out["traversalProfileVersion"] = kTraversalProfileVersion;
     out["enabled"] = enabled_;
     out["motionPriority"] = motionPriority_;
     out["movementSpace"] = ToString(movementSpace_);
@@ -69,7 +68,6 @@ void CharacterLocomotionComponent::Serialize(nlohmann::json& out) const {
 }
 
 void CharacterLocomotionComponent::Deserialize(const nlohmann::json& in) {
-    const uint32_t traversalProfileVersion = in.value("traversalProfileVersion", 0u);
     enabled_ = in.value("enabled", enabled_);
     motionPriority_ = in.value("motionPriority", motionPriority_);
     if (const auto found = in.find("movementSpace"); found != in.end()) {
@@ -102,23 +100,6 @@ void CharacterLocomotionComponent::Deserialize(const nlohmann::json& in) {
     enhancedInternalEdgeRemoval_ = in.value("enhancedInternalEdgeRemoval", enhancedInternalEdgeRemoval_);
     inputDeadZone_ = in.value("inputDeadZone", inputDeadZone_);
     rotateToMove_ = in.value("rotateToMove", rotateToMove_);
-    if (traversalProfileVersion < kTraversalProfileVersion) {
-        const auto migrateLegacyDefault = [](float& value, float legacyValue, float productionValue) noexcept {
-            if (std::fabs(value - legacyValue) <= 1.0e-5f) {
-                value = productionValue;
-            }
-        };
-        migrateLegacyDefault(maximumSlopeAngleDegrees_, 50.0f, 42.0f);
-        migrateLegacyDefault(stepHeight_, 0.4f, 0.25f);
-        migrateLegacyDefault(stickToFloorDistance_, 0.5f, 0.28f);
-        migrateLegacyDefault(stepForwardTestDistance_, 0.15f, 0.30f);
-        if (!in.contains("edgeGuardEnabled")) {
-            // Legacy third-person player controllers are camera-relative.
-            // World/object-relative AI remains on the cheaper Jolt slope
-            // path until its Navigation profile requests an edge guard.
-            edgeGuardEnabled_ = movementSpace_ == CharacterMovementSpace::Camera;
-        }
-    }
     ClampSettings();
 }
 

@@ -100,13 +100,13 @@ void ModelComponent::BuildInspector(IInspectorBuilder& builder) {
         materialSetLabels.push_back(TEXT::Localize("ui.inspector.model.importedModelMaterials"));
         materialSetIds.emplace_back();
         int selectedSetIndex = 0;
-        const bool legacySelection = !materialSetSelectionAuthored_;
-        if (legacySelection) {
-            materialSetLabels.push_back(TEXT::Localize("ui.inspector.model.legacyModelDefault"));
-            materialSetIds.push_back("__legacy_model_default");
+        const bool modelDefaultSelection = !materialSetSelectionAuthored_;
+        if (modelDefaultSelection) {
+            materialSetLabels.push_back(TEXT::Localize("ui.inspector.model.modelDefault"));
+            materialSetIds.push_back("__model_default");
             selectedSetIndex = 1;
         }
-        const size_t materialSetChoiceOffset = legacySelection ? 2u : 1u;
+        const size_t materialSetChoiceOffset = modelDefaultSelection ? 2u : 1u;
         for (size_t index = 0u; index < materialSets.size(); ++index) {
             const ModelMaterialSetAuthoringView& materialSet = materialSets[index];
             materialSetLabels.push_back(
@@ -132,9 +132,8 @@ void ModelComponent::BuildInspector(IInspectorBuilder& builder) {
                            selectedSetIndex, materialSetChoices)) {
             if (selectedSetIndex == 0) {
                 UseImportedModelMaterials();
-            } else if (legacySelection && selectedSetIndex == 1) {
-                // Keep the pre-Material-Set compatibility behavior until
-                // the user deliberately chooses a new mode.
+            } else if (modelDefaultSelection && selectedSetIndex == 1) {
+                // 明示的な Material Set を選ぶまでモデル既定のバインディングを使う。
             } else {
                 const size_t setIndex = static_cast<size_t>(selectedSetIndex) - materialSetChoiceOffset;
                 if (setIndex < materialSets.size()) {
@@ -153,9 +152,7 @@ void ModelComponent::BuildInspector(IInspectorBuilder& builder) {
         const uint32_t slotIndex = imported.slotIndex;
         std::string materialOverrideGuid{};
         for (const ModelMaterialOverrideSlot& slot : materialOverrides_) {
-            const bool stableMatch = imported.slotId.IsValid() && slot.slotId == imported.slotId;
-            const bool legacyMatch = !slot.slotId.IsValid() && slot.slotIndex == slotIndex;
-            if (stableMatch || legacyMatch) {
+            if (imported.slotId.IsValid() && slot.slotId == imported.slotId) {
                 materialOverrideGuid = slot.materialAssetGuid.value;
                 break;
             }
@@ -168,9 +165,11 @@ void ModelComponent::BuildInspector(IInspectorBuilder& builder) {
                          : TEXT::Localize("ui.inspector.model.importedDefaultBaseColorFactor"));
         const std::string pickerLabel =
             TEXT::Localize("ui.inspector.model.overrideMaterial") + "##ModelMaterialSlot" + std::to_string(slotIndex);
+        if (!imported.slotId.IsValid()) {
+            return;
+        }
         const std::string materialOverridePropertyId =
-            "materialOverrides." + (imported.slotId.IsValid() ? ASSETS::MODELS::MaterialSlotIdToString(imported.slotId)
-                                                              : "legacy." + std::to_string(slotIndex));
+            "materialOverrides." + ASSETS::MODELS::MaterialSlotIdToString(imported.slotId);
         if (!builder.AssetIdPicker(AuthoringFieldDescriptor{materialOverridePropertyId, pickerLabel,
                                                             "Per-instance Material asset override for this "
                                                             "stable model slot. Empty restores the "
@@ -178,14 +177,14 @@ void ModelComponent::BuildInspector(IInspectorBuilder& builder) {
                                    AssetType::Material, materialOverrideGuid)) {
             if (!materialOverrideGuid.empty() && builder.Button(TEXT::Localize("ui.inspector.model.restoreImported") +
                                                                 "##ModelMaterialSlot" + std::to_string(slotIndex))) {
-                ClearMaterialOverride(slotIndex);
+                ClearMaterialOverride(imported.slotId);
             }
             return;
         }
         if (materialOverrideGuid.empty()) {
-            ClearMaterialOverride(slotIndex);
+            ClearMaterialOverride(imported.slotId);
         } else {
-            SetMaterialOverride(imported.slotId, slotIndex, AssetGuid{materialOverrideGuid});
+            SetMaterialOverride(imported.slotId, AssetGuid{materialOverrideGuid});
         }
     };
 

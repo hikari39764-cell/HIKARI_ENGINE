@@ -95,8 +95,7 @@ public:
         locomotion.requiredComponents = {"PhysicsBodyComponent"};
         locomotion.optionalComponents = {"CharacterInputComponent"};
         locomotion.initializeDefaults = [](const SceneObjectData&, nlohmann::json& properties) {
-            properties = {{"traversalProfileVersion", 2u},
-                          {"enabled", true},
+            properties = {{"enabled", true},
                           {"motionPriority", 100},
                           {"movementSpace", "Camera"},
                           {"maximumSpeed", 5.0f},

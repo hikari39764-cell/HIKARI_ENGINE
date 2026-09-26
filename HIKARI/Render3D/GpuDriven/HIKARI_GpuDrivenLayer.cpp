@@ -256,14 +256,14 @@ bool GpuDrivenLayer::Initialize(ID3D12Device* device, ID3D12RootSignature* stati
 void GpuDrivenLayer::Attach(SurfaceGpuSceneFrameBuffer* sceneBuffer, MassGpuSceneFrameBuffer* massSceneBuffer,
                             GpuTraditionalCommandStreamBuffer* traditionalCommandStreamBuffer,
                             IGpuDrivenProducer* producer, WATER::WaterSurfaceGpuFrameBuffer* waterSurfaceBuffer,
-                            SAND::SandSurfaceGpuFrameBuffer* sandSurfaceBuffer) {
+                            TERRAIN::TerrainSurfaceGpuFrameBuffer* terrainSurfaceBuffer) {
     if (sceneBuffer_ != sceneBuffer) {
         sceneUploadHistory_ = {};
     }
     sceneBuffer_ = sceneBuffer;
     massSceneBuffer_ = massSceneBuffer;
     waterSurfaceBuffer_ = waterSurfaceBuffer;
-    sandSurfaceBuffer_ = sandSurfaceBuffer;
+    terrainSurfaceBuffer_ = terrainSurfaceBuffer;
     traditionalCommandStreamBuffer_ = traditionalCommandStreamBuffer;
     producer_ = producer;
     frameContext_.scene.instanceBuffer = sceneBuffer_;
@@ -303,13 +303,13 @@ const GpuDrivenSceneUploadStats& GpuDrivenLayer::UploadSceneFrame(const GpuDrive
                                          frameSource_ != nullptr ? frameSource_->waterSurfaceGpuData : nullptr);
     sceneUploadStats_.waterSurfaceDataResident = waterSurfaceDataResident;
 
-    const bool sandSurfaceDataResident =
-        sandSurfaceBuffer_ == nullptr ||
-        sandSurfaceBuffer_->UploadFrame(desc.frameIndex, desc.commandList,
-                                        frameSource_ != nullptr ? frameSource_->sandSurfaceGpuData : nullptr,
-                                        frameSource_ != nullptr ? frameSource_->sandSurfaceHeights : nullptr,
-                                        frameSource_ != nullptr ? frameSource_->sandSurfaceHeightVersion : 0u);
-    sceneUploadStats_.sandSurfaceDataResident = sandSurfaceDataResident;
+    const bool terrainSurfaceDataResident =
+        terrainSurfaceBuffer_ == nullptr ||
+        terrainSurfaceBuffer_->UploadFrame(desc.frameIndex, desc.commandList,
+                                           frameSource_ != nullptr ? frameSource_->terrainSurfaceGpuData : nullptr,
+                                           frameSource_ != nullptr ? frameSource_->terrainSurfaceHeights : nullptr,
+                                           frameSource_ != nullptr ? frameSource_->terrainSurfaceHeightVersion : 0u);
+    sceneUploadStats_.terrainSurfaceDataResident = terrainSurfaceDataResident;
     if (sceneBuffer_ != nullptr) {
         sceneBuffer_->BeginFrame(desc.frameIndex);
     }
@@ -331,9 +331,9 @@ const GpuDrivenSceneUploadStats& GpuDrivenLayer::UploadSceneFrame(const GpuDrive
     InitializePassExecutionStates(source);
     RefreshPassExecutionStates();
     // surface payload と Scene records は同じ frame transaction。どちらかの
-    // upload が失敗した frame へ、offset を持つ legacy instance record は
+    // upload が失敗した frame へ、offset を持つ surface instance record は
     // 送信しない。独立した Mass residency はこの失敗から隔離する。
-    if (sceneBuffer_ == nullptr || source == nullptr || !waterSurfaceDataResident || !sandSurfaceDataResident) {
+    if (sceneBuffer_ == nullptr || source == nullptr || !waterSurfaceDataResident || !terrainSurfaceDataResident) {
         if (sceneBuffer_ != nullptr) {
             sceneBuffer_->ResetFrame();
             sceneUploadStats_.bufferStats = sceneBuffer_->GetStats();
@@ -398,7 +398,7 @@ const GpuDrivenSceneUploadStats& GpuDrivenLayer::UploadSceneFrame(const GpuDrive
 
     sceneUploadStats_.bufferStats = sceneBuffer_->GetStats();
     sceneUploadStats_.sceneResident = sceneCommitted && sourceInstanceCount != 0u && waterSurfaceDataResident &&
-                                      sandSurfaceDataResident &&
+                                      terrainSurfaceDataResident &&
                                       sceneUploadStats_.bufferStats.overflowInstanceCount == 0u &&
                                       sceneUploadStats_.bufferStats.uploadedInstanceCount == sourceInstanceCount;
     if (desc.residency != nullptr) {
@@ -617,15 +617,15 @@ void GpuDrivenLayer::InitializePassExecutionStates(const GpuDrivenSceneSource* s
         }
 
         const GpuDrivenPassSource& passSource = source->GetPass(state.sourcePass);
-        const bool legacySource = sceneUploadStats_.sceneResident && passSource.HasGpuSceneRange();
+        const bool surfaceSource = sceneUploadStats_.sceneResident && passSource.HasGpuSceneRange();
         const bool massSource = sceneUploadStats_.massSceneResident && source->HasMassInstances() &&
                                 (state.sourcePass == GpuDrivenPassKind::ForwardOpaque ||
                                  state.sourcePass == GpuDrivenPassKind::DepthPrepass);
-        state.hasSource = legacySource || massSource;
-        state.clusterEligible = (legacySource && passSource.clusterEligible) || massSource;
-        state.sourceInstanceCount = (legacySource ? static_cast<size_t>(passSource.gpuSceneInstanceCount) : 0u) +
+        state.hasSource = surfaceSource || massSource;
+        state.clusterEligible = (surfaceSource && passSource.clusterEligible) || massSource;
+        state.sourceInstanceCount = (surfaceSource ? static_cast<size_t>(passSource.gpuSceneInstanceCount) : 0u) +
                                     (massSource ? source->mass->instances.size() : 0u);
-        state.hasTraditionalIndirectCommands = legacySource && passSource.traditionalIndirect.HasCommands();
+        state.hasTraditionalIndirectCommands = surfaceSource && passSource.traditionalIndirect.HasCommands();
         state.traditionalIndirectCommandCount = passSource.traditionalIndirect.CommandCount();
         state.traditionalIndirectInstanceCount = passSource.traditionalIndirect.gpuSceneInstanceCount;
         if (!state.hasSource) {

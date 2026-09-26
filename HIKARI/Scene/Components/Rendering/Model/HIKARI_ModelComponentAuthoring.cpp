@@ -38,9 +38,7 @@ std::vector<ComponentAuthoringCommandDefinition> BuildModelComponentAuthoringCom
         {"model.material_override.bind",
          "Bind a material asset to a stable model material slot.",
          {Parameter("slotId", ParameterType::String, true, "Stable MaterialSlotId returned by the model slot query."),
-          Parameter("materialGuid", ParameterType::String, true, "Material asset GUID."),
-          Parameter("legacySlotIndex", ParameterType::Int, false,
-                    "Compatibility slot index used only as fallback metadata.")},
+          Parameter("materialGuid", ParameterType::String, true, "Material asset GUID.")},
          [](IComponent& component, const nlohmann::json& arguments) {
              ModelComponent* model = ResolveModelComponent(component);
              if (model == nullptr) {
@@ -55,22 +53,7 @@ std::vector<ComponentAuthoringCommandDefinition> BuildModelComponentAuthoringCom
              if (!IsValidAssetGuid(materialGuid)) {
                  return ModelCommandFailure("INVALID_ASSET_GUID", "materialGuid is not a valid asset GUID.");
              }
-             uint64_t legacyIndex = 0u;
-             if (const auto found = arguments.find("legacySlotIndex"); found != arguments.end()) {
-                 if (found->is_number_unsigned()) {
-                     legacyIndex = found->get<uint64_t>();
-                 } else {
-                     const int64_t signedIndex = found->get<int64_t>();
-                     if (signedIndex < 0) {
-                         return ModelCommandFailure("VALUE_OUT_OF_RANGE", "legacySlotIndex must not be negative.");
-                     }
-                     legacyIndex = static_cast<uint64_t>(signedIndex);
-                 }
-                 if (legacyIndex > (std::numeric_limits<uint32_t>::max)()) {
-                     return ModelCommandFailure("VALUE_OUT_OF_RANGE", "legacySlotIndex is outside the uint32 range.");
-                 }
-             }
-             model->SetMaterialOverride(*slotId, static_cast<uint32_t>(legacyIndex), AssetGuid{materialGuid});
+             model->SetMaterialOverride(*slotId, AssetGuid{materialGuid});
              AuthoringCommandResult result{};
              result.ok = true;
              result.message = "Model material override bound.";

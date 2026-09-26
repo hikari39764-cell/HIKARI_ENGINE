@@ -36,11 +36,10 @@ public:
             {{"templateId", "StandardPbr"}, {"name", parameters.value("name", std::string("New Material"))}});
     }
     nlohmann::json Describe() const override {
-        return {{"assetGuid", controller_.GetDocumentAssetGuid().value},
-                {"dirty", controller_.HasUnsavedMaterialChanges()},
-                {"preview", true},
-                {"previewScope", {{"kind", "material_surface"}, {"timeSampling", false}}},
-                {"status", controller_.GetAiMaterialStatus()}};
+        nlohmann::json state = controller_.DescribeDocumentState();
+        state["preview"] = true;
+        state["previewScope"] = {{"kind", "material_surface"}, {"timeSampling", false}};
+        return state;
     }
     EditorOperationResult Reveal() override {
         EditorWorkspaceOpenRequest request{};

@@ -84,9 +84,9 @@ void SceneCreationPanel::DrawCreationMenu(DocumentSceneBase& scene, EditorContex
         CreateWaterSurfaceObject(scene, context, selectionSync);
     }
 
-    const std::string sandSurfaceLabel = TEXT::Localize("ui.sceneCreation.sandSurface");
-    if (MatchesSearch(sandSurfaceLabel.c_str(), search) && ImGui::MenuItem(sandSurfaceLabel.c_str())) {
-        CreateSandSurfaceObject(scene, context, selectionSync);
+    const std::string terrainSurfaceLabel = TEXT::Localize("ui.sceneCreation.terrain");
+    if (MatchesSearch(terrainSurfaceLabel.c_str(), search) && ImGui::MenuItem(terrainSurfaceLabel.c_str())) {
+        CreateTerrainSurfaceObject(scene, context, selectionSync);
     }
 
     const std::string dialogueTriggerLabel = TEXT::Localize("ui.sceneCreation.dialogueTrigger");
@@ -288,20 +288,23 @@ void SceneCreationPanel::CreateLightObject(DocumentSceneBase& scene, EditorConte
                                                          scene.GetSceneDocument().camera,  dirtyBefore};
 }
 
-void SceneCreationPanel::CreateSandSurfaceObject(DocumentSceneBase& scene, EditorContext& context,
-                                                 const SelectionSyncService& selectionSync) {
+void SceneCreationPanel::CreateTerrainSurfaceObject(DocumentSceneBase& scene, EditorContext& context,
+                                                    const SelectionSyncService& selectionSync) {
     const bool dirtyBefore = context.sceneDirty || scene.HasUnsavedSceneChanges();
     const std::vector<SceneObjectData> beforeObjects = scene.GetSceneDocument().objects;
     const SceneCameraSettings beforeCamera = scene.GetSceneDocument().camera;
     CreateObjectRequest request{};
     request.position = ComputeObjectPlacementInView(scene.GetCamera());
-    GameObject* object = EDITOR::CreateSandSurfaceObject(scene, request);
+    GameObject* object = EDITOR::CreateTerrainSurfaceObject(scene, request);
     context.selection.SelectObject(scene.GetWorld(), object);
     context.sceneDirty = true;
     selectionSync.SyncNextSceneObjectId(scene, context.nextSceneObjectId);
-    historyRequest_ = SceneObjectAuthoringHistoryRequest{
-        "Create Sand Surface",           beforeObjects, scene.GetSceneDocument().objects, beforeCamera,
-        scene.GetSceneDocument().camera, dirtyBefore};
+    historyRequest_ = SceneObjectAuthoringHistoryRequest{"Create Terrain",
+                                                         beforeObjects,
+                                                         scene.GetSceneDocument().objects,
+                                                         beforeCamera,
+                                                         scene.GetSceneDocument().camera,
+                                                         dirtyBefore};
 }
 
 void SceneCreationPanel::CreateDialogueTriggerObject(DocumentSceneBase& scene, EditorContext& context,

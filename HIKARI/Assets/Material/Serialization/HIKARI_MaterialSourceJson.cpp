@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <exception>
-#include <unordered_set>
 #include <utility>
 
 #include <json.hpp>
@@ -225,61 +224,6 @@ nlohmann::json WriteRamp(const MaterialRampData& ramp) {
     };
 }
 
-bool MigrateV4Graph(MaterialGraphData& graph, std::vector<std::string>* outDiagnostics) {
-    std::unordered_set<std::string> legacyEyeNodeIds{};
-    std::string pbrSurfaceNodeId{};
-    for (MaterialGraphNodeData& node : graph.nodes) {
-        if (node.kind.value == "EyeLighting") {
-            legacyEyeNodeIds.emplace(node.id);
-            node.kind = MaterialNodeTypeId{MaterialNodeKind::EyeLighting};
-            if (node.displayName == "Eye Lighting" || node.displayName == "Anime Eye") {
-                node.displayName = "Eye Layer";
-            }
-        }
-        if (node.kind == MaterialNodeKind::PbrSurface && pbrSurfaceNodeId.empty()) {
-            pbrSurfaceNodeId = node.id;
-        }
-    }
-    if (legacyEyeNodeIds.empty()) {
-        return false;
-    }
-
-    for (MaterialGraphResourceData& resource : graph.resources) {
-        if (resource.id == "resource.eyeControl" && resource.semantic == MaterialResourceSemantic::Mask) {
-            resource.semantic = MaterialResourceSemantic::EyeControl;
-        }
-    }
-
-    bool reroutedEyeLayer = false;
-    for (MaterialGraphEdgeData& edge : graph.edges) {
-        if (!legacyEyeNodeIds.contains(edge.sourceNodeId) || edge.sourcePin != "Color") {
-            continue;
-        }
-        const auto target =
-            std::find_if(graph.nodes.begin(), graph.nodes.end(),
-                         [&edge](const MaterialGraphNodeData& node) { return node.id == edge.targetNodeId; });
-        const bool legacyDirectRoute =
-            target != graph.nodes.end() && target->kind == MaterialNodeKind::PbrSurface && edge.targetPin == "Additive";
-        const bool legacyAddStack = target != graph.nodes.end() && target->kind == MaterialNodeKind::Add;
-        if (!legacyDirectRoute && !legacyAddStack) {
-            continue;
-        }
-        if (pbrSurfaceNodeId.empty()) {
-            continue;
-        }
-        edge.targetNodeId = pbrSurfaceNodeId;
-        edge.targetPin = "Eye";
-        reroutedEyeLayer = true;
-    }
-
-    if (outDiagnostics) {
-        outDiagnostics->push_back(
-            reroutedEyeLayer ? "Material v4 EyeLighting migrated to the Material v5 EyeLayer socket"
-                             : "Material v4 EyeLighting renamed to Material v5 EyeLayer; verify its custom route");
-    }
-    return true;
-}
-
 bool ParseCurrent(const nlohmann::json& root, MaterialAssetData& outData, std::string& outError) {
     MaterialAssetData data{};
     data.version = kMaterialAssetSourceVersion;
@@ -287,7 +231,7 @@ bool ParseCurrent(const nlohmann::json& root, MaterialAssetData& outData, std::s
     if (!TryParseMaterialAssetKind(root.value("kind", std::string{}), data.kind) ||
         !TryParseMaterialDomain(root.value("domain", std::string{"Surface"}), data.domain) ||
         !TryParseMaterialTemplateId(root.value("template", std::string{"StandardPBR"}), data.templateId)) {
-        outError = "unknown Material v6 kind, domain, or template";
+        outError = "unknown Material kind, domain, or template";
         return false;
     }
     data.profileAssetGuid.value = root.value("profileAssetGuid", std::string{});
@@ -297,20 +241,19 @@ bool ParseCurrent(const nlohmann::json& root, MaterialAssetData& outData, std::s
 
     if (const auto surface = root.find("surface"); surface != root.end() && surface->is_object()) {
         if (!TryParseMaterialAlphaMode(surface->value("alphaMode", std::string{"Opaque"}), data.surface.alphaMode)) {
-            outError = "unknown Material v6 alpha mode";
+            outError = "unknown Material alpha mode";
             return false;
         }
         if (!TryParseMaterialAlphaRepresentation(surface->value("alphaRepresentation", std::string{"Straight"}),
                                                  data.surface.alphaRepresentation)) {
-            outError = "unknown Material v6 alpha representation";
+            outError = "unknown Material alpha representation";
             return false;
         }
         data.surface.alphaCutoff = surface->value("alphaCutoff", data.surface.alphaCutoff);
         data.surface.doubleSided = surface->value("doubleSided", data.surface.doubleSided);
         data.surface.unlit = surface->value("unlit", data.surface.unlit);
     }
-    data.pbr = ReadPbrMaterialJson(root.value("pbr", nlohmann::json::object()), kMaterialAssetSourceVersion,
-                                   data.materialName);
+    data.pbr = ReadPbrMaterialJson(root.value("pbr", nlohmann::json::object()), data.materialName);
     data.pbr.doubleSided = data.surface.doubleSided;
     data.pbr.unlit = data.surface.unlit;
 
@@ -349,30 +292,6 @@ bool ParseCurrent(const nlohmann::json& root, MaterialAssetData& outData, std::s
         break;
     }
     outData = std::move(data);
-    return true;
-}
-
-bool ParseV4(const nlohmann::json& root, MaterialAssetData& outData, std::string& outError,
-             std::vector<std::string>* outDiagnostics) {
-    MaterialAssetData migrated{};
-    if (!ParseCurrent(root, migrated, outError)) {
-        if (!outError.empty()) {
-            outError = "Material v4 migration failed: " + outError;
-        }
-        return false;
-    }
-    if (migrated.kind == MaterialAssetKind::Material) {
-        (void)MigrateV4Graph(migrated.graph, outDiagnostics);
-    } else if (migrated.kind == MaterialAssetKind::Function) {
-        (void)MigrateV4Graph(migrated.function.graph, outDiagnostics);
-    }
-    migrated.version = kMaterialAssetSourceVersion;
-    migrated.pbr.version = kMaterialAssetSourceVersion;
-    outData = std::move(migrated);
-    if (outDiagnostics) {
-        outDiagnostics->push_back(
-            "Material v4 migrated to Material v6; surface alpha mode and Straight alpha representation were preserved");
-    }
     return true;
 }
 
@@ -425,33 +344,13 @@ bool ParseMaterialSourceJson(std::string_view jsonText, MaterialAssetData& outDa
             outError = "invalid material JSON document";
             return false;
         }
-        const uint32_t version = root.value("version", 1u);
-        if (version < 1u || version > kMaterialAssetSourceVersion) {
+        const uint32_t version = root.value("version", 0u);
+        if (version != kMaterialAssetSourceVersion) {
             outError = "unsupported material source version " + std::to_string(version) +
-                       "; supported versions are 1 through " + std::to_string(kMaterialAssetSourceVersion);
+                       " (supported: " + std::to_string(kMaterialAssetSourceVersion) + ")";
             return false;
         }
-        if (version < 4u) {
-            PbrMaterialAssetData legacy =
-                ReadPbrMaterialJson(root, version, root.value("materialName", std::string{"Migrated Material"}));
-            legacy.doubleSided = root.value("doubleSided", legacy.doubleSided);
-            legacy.unlit = root.value("unlit", legacy.unlit);
-            outData = MakeStandardPbrMaterialAssetData(legacy);
-            if (outDiagnostics) {
-                outDiagnostics->push_back("Material v" + std::to_string(version) +
-                                          " migrated to Material v6 StandardPBR");
-            }
-            return true;
-        }
-        if (version == 4u) {
-            return ParseV4(root, outData, outError, outDiagnostics);
-        }
-        const bool parsed = ParseCurrent(root, outData, outError);
-        if (parsed && version == 5u && outDiagnostics) {
-            outDiagnostics->push_back(
-                "Material v5 Surface source migrated to Material v6 without changing its graph semantics");
-        }
-        return parsed;
+        return ParseCurrent(root, outData, outError);
     } catch (const std::exception& exception) {
         outError = "material JSON schema error: " + std::string(exception.what());
         return false;
@@ -464,7 +363,7 @@ bool SerializeMaterialSourceJson(const MaterialAssetData& data, std::string& out
         outError.clear();
         return true;
     } catch (const std::exception& exception) {
-        outError = "failed to serialize Material v6 JSON: " + std::string(exception.what());
+        outError = "failed to serialize Material JSON: " + std::string(exception.what());
         return false;
     }
 }
@@ -482,7 +381,7 @@ bool SaveMaterialSourceJson(const std::filesystem::path& path, const MaterialAss
     try {
         return SERIALIZATION::JSON::WriteJsonFile(path, ToJson(data), &outError);
     } catch (const std::exception& exception) {
-        outError = "failed to save Material v6 JSON: " + std::string(exception.what());
+        outError = "failed to save Material JSON: " + std::string(exception.what());
         return false;
     }
 }

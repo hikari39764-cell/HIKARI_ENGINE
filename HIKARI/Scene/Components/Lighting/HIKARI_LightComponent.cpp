@@ -72,8 +72,7 @@ void LightComponent::Deserialize(const nlohmann::json& in) {
     sourceRadius_ = in.value("sourceRadius", 0.0f);
     castsShadows_ = in.value("castsShadows", false);
     // 旧シーンを読み直した際も、新規作成用の既定値で照度を変えない。
-    distanceFalloff_ =
-        RENDER3D::LIGHTING::ParseLocalLightFalloff(in.value("distanceFalloff", std::string("LegacyRange")));
+    distanceFalloff_ = RENDER3D::LIGHTING::ParseLocalLightFalloff(in.value("distanceFalloff", std::string("Range")));
     innerConeAngleDegrees_ = in.value("innerConeAngleDegrees", innerConeAngleDegrees_);
     outerConeAngleDegrees_ = in.value("outerConeAngleDegrees", outerConeAngleDegrees_);
     angularFalloff_ = in.value("angularFalloff", angularFalloff_);

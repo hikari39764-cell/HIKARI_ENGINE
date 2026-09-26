@@ -163,7 +163,7 @@ bool DocumentSceneBase::CreateTransientEmptySceneDocument() {
         state_->identity.document.objects.push_back(BuildDefaultGridFloorSceneObject(state_->identity.document));
     }
     state_->identity.document.systems = state_->runtime.featureCatalog.CreateDefaultSceneSystems();
-    LIGHTING_AUTHORING::MigrateLegacyLightingAuthoring(state_->identity.document, 5u);
+    LIGHTING_AUTHORING::AddDefaultSceneLight(state_->identity.document);
     state_->lighting.environment = state_->identity.document.environment;
     state_->identity.scenePath.clear();
     state_->identity.sceneId = "TransientScene";

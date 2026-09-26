@@ -40,10 +40,9 @@ void DialogueWorkspaceController::ApplyWorkspaceActivation(DocumentSceneBase& sc
     NormalizeSpeakerSelection();
 }
 
-DialogueWorkspaceResult DialogueWorkspaceController::Draw(DocumentSceneBase& scene,
-                                                          EditorCommandRouter& commandRouter) {
+DialogueWorkspaceResult DialogueWorkspaceController::Draw(DocumentSceneBase& scene) {
     DialogueWorkspaceResult result{};
-    DrawDialogueWorkspaceWindows(*this, scene, commandRouter);
+    DrawDialogueWorkspaceWindows(*this, scene);
     result.workspaceRequest = std::move(deferredWorkspaceRequest_);
     deferredWorkspaceRequest_.reset();
     result.statusMessage = statusMessage_;
@@ -680,6 +679,10 @@ bool DialogueWorkspaceController::RenameSelectedNode(std::string newId, std::str
     RecordMutation(std::move(before));
     outMessage = "Node id and references updated";
     return true;
+}
+
+nlohmann::json DialogueWorkspaceController::DescribeDocumentState() const {
+    return {{"open", IsDocumentOpen()}, {"assetGuid", GetDocumentAssetGuid().value}, {"dirty", IsDocumentDirty()}};
 }
 
 } // namespace HIKARI::EDITOR

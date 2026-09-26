@@ -41,9 +41,9 @@ bool CreateBuffers(const GFX::Context& graphics) {
         DEBUGLOG::PushRenderError(
             "[MeshRenderer][WARN] Water surface feature buffer initialization failed. GPU-driven mesh pass will be unavailable.");
     }
-    if (!gMeshRendererState.sandSurfaceGpuFrameBuffer.Initialize(device)) {
+    if (!gMeshRendererState.terrainSurfaceGpuFrameBuffer.Initialize(device)) {
         DEBUGLOG::PushRenderError(
-            "[MeshRenderer][WARN] SandSurface feature buffer initialization failed. Sand displacement will fall back to the base surface.");
+            "[MeshRenderer][WARN] Terrain surface feature buffer initialization failed. Terrain displacement will fall back to the base surface.");
     }
 
     if (!gMeshRendererState.frameResources.Initialize(device, srvHeap)) {
@@ -119,7 +119,7 @@ bool EnsureInitialized(const GFX::Context& graphics) {
     gMeshRendererState.gpuDrivenLayer.Attach(
         &gMeshRendererState.surfaceGpuSceneBuffer, &gMeshRendererState.massGpuSceneBuffer,
         &gMeshRendererState.traditionalCommandStreamBuffer, &gMeshRendererState.clusterGpuDrivenProducer,
-        &gMeshRendererState.waterSurfaceGpuFrameBuffer, &gMeshRendererState.sandSurfaceGpuFrameBuffer);
+        &gMeshRendererState.waterSurfaceGpuFrameBuffer, &gMeshRendererState.terrainSurfaceGpuFrameBuffer);
     if (!gMeshRendererState.gpuDrivenLayer.Initialize(device, GetStaticRootSignature(gMeshRendererState.pipelines),
                                                       ROOT_PARAM::SurfaceGpuSceneControl, 4u)) {
         DEBUGLOG::PushRenderError(

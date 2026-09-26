@@ -123,9 +123,7 @@ void ModelComponent::RenderImGui() {
             const MaterialAsset& imported = asset_->materials[materialIndex];
             const ModelMaterialOverrideSlot* authoredOverride = nullptr;
             for (const ModelMaterialOverrideSlot& slot : materialOverrides_) {
-                const bool stableMatch = imported.slotId.IsValid() && slot.slotId == imported.slotId;
-                const bool legacyMatch = !slot.slotId.IsValid() && slot.slotIndex == materialIndex;
-                if (stableMatch || legacyMatch) {
+                if (imported.slotId.IsValid() && slot.slotId == imported.slotId) {
                     authoredOverride = &slot;
                     break;
                 }
@@ -206,28 +204,6 @@ void ModelComponent::RenderImGui() {
         ImGui::Text(TEXT::Localize("editor.ui.asset.s.f75f74").c_str(), asset_->GetName().c_str());
         ImGui::Text(TEXT::Localize("ui.assetBrowser.tooltipSource").c_str(), asset_->GetSourcePath().c_str());
         ImGui::Text(TEXT::Localize("ui.quality.stateFormat").c_str(), ToStateText(asset_->GetState()));
-        ImGui::Text(TEXT::Localize("editor.ui.has.legacy.runtime.mesh.s.d93988").c_str(),
-                    asset_->GetLegacyRuntimeMesh() ? "Yes" : "No");
-        ImGui::Text(TEXT::Localize("editor.ui.has.legacy.runtime.material.s.1c80a5").c_str(),
-                    asset_->GetLegacyRuntimeMaterial() ? "Yes" : "No");
-        if (const Material* material = asset_->GetLegacyRuntimeMaterial()) {
-            const MATH::Vec4& color = material->GetBaseColor();
-            ImGui::Text(TEXT::Localize("editor.ui.basecolor.2f.2f.2f.2f.032572").c_str(), color.x, color.y, color.z,
-                        color.w);
-            auto drawRuntimeSlot = [](const char* label, const RuntimeTextureSlot& slot) {
-                ImGui::Text(TEXT::Localize("editor.ui.s.handle.d.source.s.39f78c").c_str(), label, slot.handle,
-                            slot.sourcePath.empty() ? "<none>" : slot.sourcePath.c_str());
-                ImGui::Text(TEXT::Localize("editor.ui.resolved.s.57180c").c_str(),
-                            slot.resolvedPath.empty() ? "<none>" : slot.resolvedPath.c_str());
-            };
-            drawRuntimeSlot("BaseColor", material->GetTextureSlot(MaterialTextureUsage::BaseColor));
-            drawRuntimeSlot("Normal", material->GetTextureSlot(MaterialTextureUsage::Normal));
-            drawRuntimeSlot("MetallicRoughness", material->GetTextureSlot(MaterialTextureUsage::MetallicRoughness));
-            drawRuntimeSlot("Occlusion", material->GetTextureSlot(MaterialTextureUsage::Occlusion));
-            drawRuntimeSlot("Emissive", material->GetTextureSlot(MaterialTextureUsage::Emissive));
-            drawRuntimeSlot("Specular", material->GetTextureSlot(MaterialTextureUsage::Specular));
-            drawRuntimeSlot("SpecularColor", material->GetTextureSlot(MaterialTextureUsage::SpecularColor));
-        }
         ImGui::TreePop();
     }
 

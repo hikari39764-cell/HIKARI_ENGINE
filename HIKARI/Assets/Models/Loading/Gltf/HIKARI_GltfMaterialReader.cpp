@@ -125,8 +125,8 @@ void ReadMaterials(const std::filesystem::path& gltfPath, const nlohmann::json& 
                 MATERIAL_POLICY::HasThinTransparentCue(baseColorTexturePath)) {
                 mat.featureBits |= MATERIAL_FEATURES::ThinTransparentSurface;
             }
-            // Opaque 縺ｮ doubleSided 縺ｯ cluster 縺ｮ閭碁擇 cone culling 繧呈ｮｺ縺励ｄ縺吶＞縲・
-            // MaterialAsset 縺ｫ縺ｯ蜈・・諢丞峙繧剃ｿ晄戟縺励∝ｮ溯｡梧凾縺ｮ譛牙柑蛹悶・ MATERIAL_POLICY 縺ｫ莉ｻ縺帙ｋ縲・
+            // Opaque の doubleSided は cluster の背面 cone culling を殺しやすい。
+            // MaterialAsset には元の意図を保持し、実行時の有効化は MATERIAL_POLICY に任せる。
             mat.doubleSided = importedDoubleSided;
 
             if (matNode.contains("extensions") && matNode["extensions"].is_object()) {

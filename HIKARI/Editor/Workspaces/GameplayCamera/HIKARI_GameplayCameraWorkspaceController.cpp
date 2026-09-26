@@ -6,7 +6,7 @@
 #include <algorithm>
 
 namespace HIKARI::EDITOR {
-nlohmann::json GameplayCameraWorkspaceController::Describe() const {
+nlohmann::json GameplayCameraWorkspaceController::DescribeDocumentState() const {
     return {{"preview", true},
             {"previewParameters", {"cameraId", "targetId", "lookTargetId", "mode", "width", "height"}},
             {"open", document_.IsOpen()},

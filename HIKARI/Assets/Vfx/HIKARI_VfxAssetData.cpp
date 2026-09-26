@@ -1,9 +1,8 @@
-#include <cmath>
 #include "Assets/Vfx/HIKARI_VfxAssetData.h"
 
-#include <initializer_list>
-#include <array>
-#include <utility>
+#include <cmath>
+
+#include "Assets/Vfx/HIKARI_VfxEnumNames.h"
 
 namespace HIKARI::VFX {
 bool IsValidVfxSpecialOutputProfile(const VfxSpecialOutputData& output) noexcept {
@@ -75,428 +74,61 @@ bool IsValidVfxHistory(const VfxHistoryData& h) noexcept {
            h.tailColor.w >= 0 && h.tailColor.w <= 1;
 }
 
-namespace {
-template <class Enum>
-bool ParseEnum(std::string_view text, std::initializer_list<std::pair<std::string_view, Enum>> values,
-               Enum& outValue) noexcept {
-    for (const auto& [name, value] : values) {
-        if (text == name) {
-            outValue = value;
-            return true;
-        }
-    }
-    return false;
-}
-} // namespace
-
-std::string_view ToString(VfxValueType value) noexcept {
-    switch (value) {
-    case VfxValueType::Bool: return "Bool";
-    case VfxValueType::Int: return "Int";
-    case VfxValueType::Float2: return "Float2";
-    case VfxValueType::Float3: return "Float3";
-    case VfxValueType::Float4: return "Float4";
-    case VfxValueType::Color: return "Color";
-    case VfxValueType::Float:
-    default: return "Float";
-    }
-}
-
-std::string_view ToString(VfxShapeType value) noexcept {
-    switch (value) {
-    case VfxShapeType::Sphere: return "Sphere";
-    case VfxShapeType::Cone: return "Cone";
-    case VfxShapeType::Box: return "Box";
-    case VfxShapeType::Cylinder: return "Cylinder";
-    case VfxShapeType::Circle: return "Circle";
-    case VfxShapeType::Edge: return "Edge";
-    case VfxShapeType::Point:
-    default: return "Point";
-    }
-}
-
+// 範囲外の値は各列挙の既定値の名前として書く。
+std::string_view ToString(VfxValueType value) noexcept { return TEXT::EnumToName(kVfxValueTypeNames, value, "Float"); }
+std::string_view ToString(VfxShapeType value) noexcept { return TEXT::EnumToName(kVfxShapeTypeNames, value, "Point"); }
 std::string_view ToString(VfxRenderShapeType value) noexcept {
-    switch (value) {
-    case VfxRenderShapeType::Ribbon: return "Ribbon";
-    case VfxRenderShapeType::Ring: return "Ring";
-    case VfxRenderShapeType::MeshBox: return "MeshBox";
-    case VfxRenderShapeType::MeshSphere: return "MeshSphere";
-    case VfxRenderShapeType::MeshCylinder: return "MeshCylinder";
-    case VfxRenderShapeType::MeshCone: return "MeshCone";
-    case VfxRenderShapeType::MeshHemisphere: return "MeshHemisphere";
-    case VfxRenderShapeType::CrossPlane: return "CrossPlane";
-    case VfxRenderShapeType::MeshTorus: return "MeshTorus";
-    case VfxRenderShapeType::MeshCapsule: return "MeshCapsule";
-    case VfxRenderShapeType::Sprite:
-    default: return "Sprite";
-    }
+    return TEXT::EnumToName(kVfxRenderShapeTypeNames, value, "Sprite");
 }
-
-std::span<const std::string_view> GetVfxRenderShapeChoices() noexcept {
-    static const std::array values{
-        ToString(VfxRenderShapeType::Sprite),     ToString(VfxRenderShapeType::Ribbon),
-        ToString(VfxRenderShapeType::Ring),       ToString(VfxRenderShapeType::MeshBox),
-        ToString(VfxRenderShapeType::MeshSphere), ToString(VfxRenderShapeType::MeshCylinder),
-        ToString(VfxRenderShapeType::MeshCone),   ToString(VfxRenderShapeType::MeshHemisphere),
-        ToString(VfxRenderShapeType::CrossPlane), ToString(VfxRenderShapeType::MeshTorus),
-        ToString(VfxRenderShapeType::MeshCapsule)};
-    return values;
-}
-
 std::string_view ToString(VfxShapeUvMode value) noexcept {
-    return value == VfxShapeUvMode::WorldLength ? "WorldLength" : "Parameter";
+    return TEXT::EnumToName(kVfxShapeUvModeNames, value, "Parameter");
 }
-
-std::span<const std::string_view> GetVfxShapeUvModeChoices() noexcept {
-    static const std::array values{ToString(VfxShapeUvMode::Parameter), ToString(VfxShapeUvMode::WorldLength)};
-    return values;
-}
-
-std::span<const std::string_view> GetVfxBillboardModeChoices() noexcept {
-    static const std::array values{
-        ToString(VfxBillboardMode::RotatedBillboard),     ToString(VfxBillboardMode::FixedYAxis),
-        ToString(VfxBillboardMode::DirectionalBillboard), ToString(VfxBillboardMode::Fixed),
-        ToString(VfxBillboardMode::CylindricalBillboard), ToString(VfxBillboardMode::FaceCameraPosition)};
-    return values;
-}
-
-std::span<const std::string_view> GetVfxBillboardAxisChoices() noexcept {
-    static const std::array values{ToString(VfxBillboardAxis::LocalX), ToString(VfxBillboardAxis::LocalY),
-                                   ToString(VfxBillboardAxis::LocalZ)};
-    return values;
-}
-
-std::span<const std::string_view> GetVfxMaterialModeChoices() noexcept {
-    static const std::array values{ToString(VfxMaterialMode::StandardUnlit), ToString(VfxMaterialMode::StandardLit),
-                                   ToString(VfxMaterialMode::CustomMaterial), ToString(VfxMaterialMode::CustomLit)};
-    return values;
-}
-
-std::string_view ToString(VfxBlendMode value) noexcept {
-    return value == VfxBlendMode::Additive ? "Additive" : "Alpha";
-}
-
+std::string_view ToString(VfxBlendMode value) noexcept { return TEXT::EnumToName(kVfxBlendModeNames, value, "Alpha"); }
 std::string_view ToString(VfxMaterialMode value) noexcept {
-    switch (value) {
-    case VfxMaterialMode::CustomMaterial: return "CustomMaterial";
-    case VfxMaterialMode::StandardLit: return "StandardLit";
-    case VfxMaterialMode::CustomLit: return "CustomLit";
-    default: return "StandardUnlit";
-    }
+    return TEXT::EnumToName(kVfxMaterialModeNames, value, "StandardUnlit");
 }
-
 std::string_view ToString(VfxParticleDepthMode value) noexcept {
-    switch (value) {
-    case VfxParticleDepthMode::SoftIntersection: return "SoftIntersection";
-    case VfxParticleDepthMode::ContactSurface: return "ContactSurface";
-    case VfxParticleDepthMode::ForegroundAccent: return "ForegroundAccent";
-    case VfxParticleDepthMode::WorldOccluded:
-    default: return "WorldOccluded";
-    }
+    return TEXT::EnumToName(kVfxParticleDepthModeNames, value, "WorldOccluded");
 }
-
 std::string_view ToString(VfxParticleCapacityMode value) noexcept {
-    return value == VfxParticleCapacityMode::Fixed ? "Fixed" : "Automatic";
+    return TEXT::EnumToName(kVfxParticleCapacityModeNames, value, "Automatic");
 }
-
 std::string_view ToString(VfxBillboardMode value) noexcept {
-    switch (value) {
-    case VfxBillboardMode::RotatedBillboard: return "RotatedBillboard";
-    case VfxBillboardMode::FixedYAxis: return "FixedYAxis";
-    case VfxBillboardMode::DirectionalBillboard: return "DirectionalBillboard";
-    case VfxBillboardMode::CylindricalBillboard: return "CylindricalBillboard";
-    case VfxBillboardMode::FaceCameraPosition: return "FaceCameraPosition";
-    case VfxBillboardMode::Fixed:
-    default: return "Fixed";
-    }
+    return TEXT::EnumToName(kVfxBillboardModeNames, value, "Fixed");
 }
-
-std::string_view ToString(VfxCurveInterpolation value) noexcept {
-    switch (value) {
-    case VfxCurveInterpolation::Smooth: return "Smooth";
-    case VfxCurveInterpolation::Step: return "Step";
-    case VfxCurveInterpolation::Linear:
-    default: return "Linear";
-    }
-}
-
-std::string_view ToString(VfxDistributionMode value) noexcept {
-    return value == VfxDistributionMode::RandomRange ? "RandomRange" : "Constant";
-}
-
-std::string_view ToString(VfxAnimatedValueMode value) noexcept {
-    switch (value) {
-    case VfxAnimatedValueMode::Pva: return "Pva";
-    case VfxAnimatedValueMode::Easing: return "Easing";
-    case VfxAnimatedValueMode::Curve: return "Curve";
-    case VfxAnimatedValueMode::Fixed:
-    default: return "Fixed";
-    }
-}
-
-std::string_view ToString(VfxAnimatedColorMode value) noexcept {
-    switch (value) {
-    case VfxAnimatedColorMode::RandomRange: return "RandomRange";
-    case VfxAnimatedColorMode::Easing: return "Easing";
-    case VfxAnimatedColorMode::Curve: return "Curve";
-    case VfxAnimatedColorMode::Gradient: return "Gradient";
-    case VfxAnimatedColorMode::Fixed:
-    default: return "Fixed";
-    }
-}
-
-std::string_view ToString(VfxEasingFunction value) noexcept {
-    switch (value) {
-    case VfxEasingFunction::EaseIn: return "EaseIn";
-    case VfxEasingFunction::EaseOut: return "EaseOut";
-    case VfxEasingFunction::EaseInOut: return "EaseInOut";
-    case VfxEasingFunction::Linear:
-    default: return "Linear";
-    }
-}
-
-std::string_view ToString(VfxAttachmentMode value) noexcept {
-    return value == VfxAttachmentMode::Owner         ? "Owner"
-           : value == VfxAttachmentMode::OwnerSocket ? "OwnerSocket"
-                                                     : "World";
-}
-
-std::string_view ToString(VfxFollowMode value) noexcept {
-    switch (value) {
-    case VfxFollowMode::Position: return "Position";
-    case VfxFollowMode::Rotation: return "Rotation";
-    case VfxFollowMode::Transform: return "Transform";
-    case VfxFollowMode::None:
-    default: return "None";
-    }
-}
-
-std::string_view ToString(VfxSpecialOutputType value) noexcept {
-    switch (value) {
-    case VfxSpecialOutputType::ScreenImpulse: return "ScreenImpulse";
-    case VfxSpecialOutputType::SkinnedAfterimage: return "SkinnedAfterimage";
-    case VfxSpecialOutputType::Light: return "Light";
-    case VfxSpecialOutputType::WeaponPathDistortion:
-    default: return "WeaponPathDistortion";
-    }
-}
-
-bool TryParseVfxValueType(std::string_view text, VfxValueType& outValue) noexcept {
-    return ParseEnum(text,
-                     {
-                         {"Bool", VfxValueType::Bool},
-                         {"Int", VfxValueType::Int},
-                         {"Float", VfxValueType::Float},
-                         {"Float2", VfxValueType::Float2},
-                         {"Float3", VfxValueType::Float3},
-                         {"Float4", VfxValueType::Float4},
-                         {"Color", VfxValueType::Color},
-                     },
-                     outValue);
-}
-
-bool TryParseVfxShapeType(std::string_view text, VfxShapeType& outValue) noexcept {
-    return ParseEnum(text,
-                     {
-                         {"Point", VfxShapeType::Point},
-                         {"Sphere", VfxShapeType::Sphere},
-                         {"Cone", VfxShapeType::Cone},
-                         {"Box", VfxShapeType::Box},
-                         {"Cylinder", VfxShapeType::Cylinder},
-                         {"Circle", VfxShapeType::Circle},
-                         {"Edge", VfxShapeType::Edge},
-                     },
-                     outValue);
-}
-
-bool TryParseVfxRenderShapeType(std::string_view text, VfxRenderShapeType& outValue) noexcept {
-    return ParseEnum(text,
-                     {
-                         {"Sprite", VfxRenderShapeType::Sprite},
-                         {"Ribbon", VfxRenderShapeType::Ribbon},
-                         {"Ring", VfxRenderShapeType::Ring},
-                         {"MeshBox", VfxRenderShapeType::MeshBox},
-                         {"MeshSphere", VfxRenderShapeType::MeshSphere},
-                         {"MeshCylinder", VfxRenderShapeType::MeshCylinder},
-                         {"MeshCone", VfxRenderShapeType::MeshCone},
-                         {"MeshHemisphere", VfxRenderShapeType::MeshHemisphere},
-                         {"CrossPlane", VfxRenderShapeType::CrossPlane},
-                         {"MeshTorus", VfxRenderShapeType::MeshTorus},
-                         {"MeshCapsule", VfxRenderShapeType::MeshCapsule},
-                     },
-                     outValue);
-}
-
-bool TryParseVfxShapeUvMode(std::string_view text, VfxShapeUvMode& outValue) noexcept {
-    return ParseEnum(text,
-                     {
-                         {"Parameter", VfxShapeUvMode::Parameter},
-                         {"WorldLength", VfxShapeUvMode::WorldLength},
-                     },
-                     outValue);
-}
-
-bool TryParseVfxBlendMode(std::string_view text, VfxBlendMode& outValue) noexcept {
-    return ParseEnum(text,
-                     {
-                         {"Alpha", VfxBlendMode::Alpha},
-                         {"Additive", VfxBlendMode::Additive},
-                     },
-                     outValue);
-}
-
-bool TryParseVfxMaterialMode(std::string_view text, VfxMaterialMode& outValue) noexcept {
-    return ParseEnum(text,
-                     {
-                         {"StandardUnlit", VfxMaterialMode::StandardUnlit},
-                         {"CustomMaterial", VfxMaterialMode::CustomMaterial},
-                         {"StandardLit", VfxMaterialMode::StandardLit},
-                         {"CustomLit", VfxMaterialMode::CustomLit},
-                     },
-                     outValue);
-}
-
-bool TryParseVfxParticleCapacityMode(std::string_view text, VfxParticleCapacityMode& outValue) noexcept {
-    return ParseEnum(text,
-                     {
-                         {"Automatic", VfxParticleCapacityMode::Automatic},
-                         {"Fixed", VfxParticleCapacityMode::Fixed},
-                     },
-                     outValue);
-}
-
-bool TryParseVfxBillboardMode(std::string_view text, VfxBillboardMode& outValue) noexcept {
-    return ParseEnum(text,
-                     {
-                         {"RotatedBillboard", VfxBillboardMode::RotatedBillboard},
-                         {"FixedYAxis", VfxBillboardMode::FixedYAxis},
-                         {"DirectionalBillboard", VfxBillboardMode::DirectionalBillboard},
-                         {"CylindricalBillboard", VfxBillboardMode::CylindricalBillboard},
-                         {"FaceCameraPosition", VfxBillboardMode::FaceCameraPosition},
-                         {"Fixed", VfxBillboardMode::Fixed},
-                         // VFX source v2 compatibility aliases. New saves always emit the
-                         // canonical Effekseer-aligned names above.
-                         {"CameraFacing", VfxBillboardMode::RotatedBillboard},
-                         {"Vertical", VfxBillboardMode::FixedYAxis},
-                     },
-                     outValue);
-}
-
 std::string_view ToString(VfxBillboardAxis value) noexcept {
-    switch (value) {
-    case VfxBillboardAxis::LocalY: return "LocalY";
-    case VfxBillboardAxis::LocalZ: return "LocalZ";
-    case VfxBillboardAxis::LocalX:
-    default: return "LocalX";
-    }
+    return TEXT::EnumToName(kVfxBillboardAxisNames, value, "LocalX");
 }
-
-bool TryParseVfxBillboardAxis(std::string_view text, VfxBillboardAxis& outValue) noexcept {
-    return ParseEnum(text,
-                     {
-                         {"LocalX", VfxBillboardAxis::LocalX},
-                         {"LocalY", VfxBillboardAxis::LocalY},
-                         {"LocalZ", VfxBillboardAxis::LocalZ},
-                     },
-                     outValue);
+std::string_view ToString(VfxCurveInterpolation value) noexcept {
+    return TEXT::EnumToName(kVfxCurveInterpolationNames, value, "Linear");
 }
-
-bool TryParseVfxCurveInterpolation(std::string_view text, VfxCurveInterpolation& outValue) noexcept {
-    return ParseEnum(text,
-                     {
-                         {"Linear", VfxCurveInterpolation::Linear},
-                         {"Smooth", VfxCurveInterpolation::Smooth},
-                         {"Step", VfxCurveInterpolation::Step},
-                     },
-                     outValue);
+std::string_view ToString(VfxDistributionMode value) noexcept {
+    return TEXT::EnumToName(kVfxDistributionModeNames, value, "Constant");
 }
-
-bool TryParseVfxDistributionMode(std::string_view text, VfxDistributionMode& outValue) noexcept {
-    return ParseEnum(text,
-                     {
-                         {"Constant", VfxDistributionMode::Constant},
-                         {"RandomRange", VfxDistributionMode::RandomRange},
-                     },
-                     outValue);
+std::string_view ToString(VfxAnimatedValueMode value) noexcept {
+    return TEXT::EnumToName(kVfxAnimatedValueModeNames, value, "Fixed");
 }
-
-bool TryParseVfxAnimatedValueMode(std::string_view text, VfxAnimatedValueMode& outValue) noexcept {
-    return ParseEnum(text,
-                     {
-                         {"Fixed", VfxAnimatedValueMode::Fixed},
-                         {"Pva", VfxAnimatedValueMode::Pva},
-                         {"Easing", VfxAnimatedValueMode::Easing},
-                         {"Curve", VfxAnimatedValueMode::Curve},
-                     },
-                     outValue);
+std::string_view ToString(VfxAnimatedColorMode value) noexcept {
+    return TEXT::EnumToName(kVfxAnimatedColorModeNames, value, "Fixed");
 }
-
-bool TryParseVfxAnimatedColorMode(std::string_view text, VfxAnimatedColorMode& outValue) noexcept {
-    return ParseEnum(text,
-                     {
-                         {"Fixed", VfxAnimatedColorMode::Fixed},
-                         {"RandomRange", VfxAnimatedColorMode::RandomRange},
-                         {"Easing", VfxAnimatedColorMode::Easing},
-                         {"Curve", VfxAnimatedColorMode::Curve},
-                         {"Gradient", VfxAnimatedColorMode::Gradient},
-                     },
-                     outValue);
+std::string_view ToString(VfxEasingFunction value) noexcept {
+    return TEXT::EnumToName(kVfxEasingFunctionNames, value, "Linear");
 }
-
-bool TryParseVfxEasingFunction(std::string_view text, VfxEasingFunction& outValue) noexcept {
-    return ParseEnum(text,
-                     {
-                         {"Linear", VfxEasingFunction::Linear},
-                         {"EaseIn", VfxEasingFunction::EaseIn},
-                         {"EaseOut", VfxEasingFunction::EaseOut},
-                         {"EaseInOut", VfxEasingFunction::EaseInOut},
-                     },
-                     outValue);
+std::string_view ToString(VfxAttachmentMode value) noexcept {
+    return TEXT::EnumToName(kVfxAttachmentModeNames, value, "World");
 }
-
-bool TryParseVfxParticleDepthMode(std::string_view text, VfxParticleDepthMode& outValue) noexcept {
-    return ParseEnum(text,
-                     {
-                         {"WorldOccluded", VfxParticleDepthMode::WorldOccluded},
-                         {"SoftIntersection", VfxParticleDepthMode::SoftIntersection},
-                         {"ContactSurface", VfxParticleDepthMode::ContactSurface},
-                         {"ForegroundAccent", VfxParticleDepthMode::ForegroundAccent},
-                     },
-                     outValue);
+std::string_view ToString(VfxFollowMode value) noexcept { return TEXT::EnumToName(kVfxFollowModeNames, value, "None"); }
+std::string_view ToString(VfxSpecialOutputType value) noexcept {
+    return TEXT::EnumToName(kVfxSpecialOutputTypeNames, value, "WeaponPathDistortion");
 }
-
-bool TryParseVfxAttachmentMode(std::string_view text, VfxAttachmentMode& outValue) noexcept {
-    return ParseEnum(text,
-                     {
-                         {"World", VfxAttachmentMode::World},
-                         {"Owner", VfxAttachmentMode::Owner},
-                         {"OwnerSocket", VfxAttachmentMode::OwnerSocket},
-                         // Source v4 preview aliases accepted only during migration.
-                         {"Socket", VfxAttachmentMode::OwnerSocket},
-                     },
-                     outValue);
+std::string_view ToString(VfxLayerKind value) noexcept {
+    return TEXT::EnumToName(kVfxLayerKindNames, value, "Particles");
 }
-
-bool TryParseVfxFollowMode(std::string_view text, VfxFollowMode& outValue) noexcept {
-    return ParseEnum(text,
-                     {
-                         {"None", VfxFollowMode::None},
-                         {"Position", VfxFollowMode::Position},
-                         {"Rotation", VfxFollowMode::Rotation},
-                         {"Transform", VfxFollowMode::Transform},
-                     },
-                     outValue);
+std::string_view ToString(VfxHistoryMode value) noexcept {
+    return TEXT::EnumToName(kVfxHistoryModeNames, value, "None");
 }
-
-bool TryParseVfxSpecialOutputType(std::string_view text, VfxSpecialOutputType& outValue) noexcept {
-    return ParseEnum(text,
-                     {
-                         {"WeaponPathDistortion", VfxSpecialOutputType::WeaponPathDistortion},
-                         {"ScreenImpulse", VfxSpecialOutputType::ScreenImpulse},
-                         {"SkinnedAfterimage", VfxSpecialOutputType::SkinnedAfterimage},
-                         {"Light", VfxSpecialOutputType::Light},
-                     },
-                     outValue);
+std::string_view ToString(VfxConnectTargetMode value) noexcept {
+    return TEXT::EnumToName(kVfxConnectTargetModeNames, value, "None");
 }
 
 VfxFloatDistributionData MakeVfxFloatConstant(float value) noexcept {

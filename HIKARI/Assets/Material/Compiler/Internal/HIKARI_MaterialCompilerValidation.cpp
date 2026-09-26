@@ -176,12 +176,12 @@ bool IsStaticRuntimeExpression(const RuntimeGraphView& view, std::string_view no
     };
 
     bool supported = false;
-    MaterialNodeKind legacyKind{};
-    if (!TryGetLegacyMaterialNodeKind(node->kind, legacyKind)) {
+    MaterialNodeKind builtinKind{};
+    if (!TryGetBuiltinMaterialNodeKind(node->kind, builtinKind)) {
         evaluating.erase(node->id);
         return false;
     }
-    switch (legacyKind) {
+    switch (builtinKind) {
     case MaterialNodeKind::Constant:
     case MaterialNodeKind::Parameter:
     case MaterialNodeKind::Variable: supported = true; break;
@@ -247,7 +247,7 @@ bool IsAdditiveRuntimeExpression(const RuntimeGraphView& view, std::string_view 
 
 bool IsAllowedResponseParameterPin(const MaterialNodeTypeId& typeId, std::string_view pin) noexcept {
     MaterialNodeKind kind{};
-    if (!TryGetLegacyMaterialNodeKind(typeId, kind)) {
+    if (!TryGetBuiltinMaterialNodeKind(typeId, kind)) {
         return false;
     }
     switch (kind) {
@@ -389,11 +389,11 @@ bool ValidateRuntimeGraphContract(const MaterialAssetData& source, MaterialCompi
                  inputNode->kind == MaterialNodeKind::SkinLighting ||
                  inputNode->kind == MaterialNodeKind::HybridLighting);
             const auto expectedMaskChannel = [node]() -> std::string_view {
-                MaterialNodeKind legacyKind{};
-                if (!TryGetLegacyMaterialNodeKind(node->kind, legacyKind)) {
+                MaterialNodeKind builtinKind{};
+                if (!TryGetBuiltinMaterialNodeKind(node->kind, builtinKind)) {
                     return {};
                 }
-                switch (legacyKind) {
+                switch (builtinKind) {
                 case MaterialNodeKind::RampDiffuse:
                 case MaterialNodeKind::MultiRampDiffuse:
                 case MaterialNodeKind::AnisotropicHair: return "R";

@@ -40,27 +40,6 @@ struct PassDescriptor {
     bool doubleSided = false;
 };
 
-inline bool TryNormalizeBuiltinShaderProgramId(std::string_view programId, std::string_view legacyShaderId,
-                                               std::string& outProgramId) {
-    if (!programId.empty()) {
-        outProgramId = programId;
-        return true;
-    }
-    if (!legacyShaderId.starts_with("Post_")) {
-        return false;
-    }
-    for (const char value : legacyShaderId) {
-        const bool alphaNumeric =
-            (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z') || (value >= '0' && value <= '9');
-        if (!alphaNumeric && value != '_') {
-            return false;
-        }
-    }
-    outProgramId = "HIKARI.EngineShader.";
-    outProgramId.append(legacyShaderId);
-    return true;
-}
-
 inline bool IsStableFxProfileId(std::string_view value) {
     if (value.empty() || value.size() > 64u) {
         return false;

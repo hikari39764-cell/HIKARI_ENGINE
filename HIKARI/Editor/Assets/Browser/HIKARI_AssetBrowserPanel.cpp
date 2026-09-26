@@ -170,31 +170,21 @@ void AssetBrowserPanel::DrawContents(AssetDatabase& assetDatabase, EditorSelecti
                             searchBuffer_.data(), searchBuffer_.size(),
                             (std::max)(220.0f, ImGui::GetContentRegionAvail().x * 0.42f));
         ImGui::SameLine();
-        const std::array TypeFilterItems{
-            TEXT::Localize("ui.assetBrowser.filterAll"),
-            TEXT::Localize("ui.assetBrowser.filterTexture"),
-            TEXT::Localize("ui.assetBrowser.filterModel"),
-            TEXT::Localize("ui.assetBrowser.filterScene"),
-            TEXT::Localize("ui.assetBrowser.filterSky"),
-            TEXT::Localize("ui.assetBrowser.filterMaterial"),
-            TEXT::Localize("ui.assetBrowser.filterVfx"),
-            TEXT::Localize("ui.assetBrowser.filterSequence"),
-            TEXT::Localize("ui.assetBrowser.filterAnimationStateMachine"),
-            TEXT::Localize("ui.assetBrowser.filterDialogue"),
-            TEXT::Localize("ui.assetBrowser.filterMaterialSet"),
-            TEXT::Localize("textstyle.font"),
-            TEXT::Localize("textstyle.asset"),
-            TEXT::Localize("uianim.asset"),
-        };
-        std::array<const char*, TypeFilterItems.size()> TypeFilterItemPtrs{};
-        for (size_t index = 0; index < TypeFilterItems.size(); ++index) {
-            TypeFilterItemPtrs[index] = TypeFilterItems[index].c_str();
-        };
+        const auto typeFilters = GetAssetTypeFilters();
+        std::vector<std::string> typeFilterLabels;
+        std::vector<const char*> typeFilterLabelPtrs;
+        typeFilterLabels.reserve(typeFilters.size());
+        for (const AssetTypeFilter& filter : typeFilters) {
+            typeFilterLabels.push_back(TEXT::Localize(filter.labelKey));
+        }
+        for (const std::string& label : typeFilterLabels) {
+            typeFilterLabelPtrs.push_back(label.c_str());
+        }
         ImGui::TextUnformatted(TEXT::Localize("ui.assetBrowser.type").c_str());
         ImGui::SameLine();
         ImGui::SetNextItemWidth(120.0f);
-        ImGui::Combo("##AssetTypeFilter", &typeFilter_, TypeFilterItemPtrs.data(),
-                     static_cast<int>(TypeFilterItems.size()));
+        ImGui::Combo("##AssetTypeFilter", &typeFilter_, typeFilterLabelPtrs.data(),
+                     static_cast<int>(typeFilterLabelPtrs.size()));
         ImGui::SameLine();
         const std::array<std::string, 6> StateFilterItems{
             TEXT::Localize("ui.assetBrowser.filterAll"),     TEXT::Localize("ui.assetBrowser.stateImported"),

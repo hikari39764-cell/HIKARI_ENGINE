@@ -16,7 +16,7 @@ bool MayAffectLocalShadow(const RENDER3D::RUNTIME::SurfaceGpuSceneInstance& inst
     using Flag = RENDER3D::RUNTIME::SurfaceGpuSceneInstanceFlags;
     // 動的変形の conservative bounds が保証されない入力は省略しない。
     constexpr uint32_t deforming = uint32_t(Flag::Skinned) | uint32_t(Flag::FoliageWind) |
-                                   uint32_t(Flag::WaterSurface) | uint32_t(Flag::SandSurface) |
+                                   uint32_t(Flag::WaterSurface) | uint32_t(Flag::TerrainSurface) |
                                    uint32_t(Flag::MaterialFx);
     if ((instance.flags & deforming) || instance.deformationFlags || instance.materialProgramFlags)
         return true;
@@ -48,7 +48,7 @@ bool IsStaticPrimaryShadowCaster(const RENDER3D::RUNTIME::SurfaceGpuSceneInstanc
     // StaticGeometry でも Shader による変形・Opacity が時間で変わる場合がある。
     constexpr uint32_t dynamicDepthFlags =
         static_cast<uint32_t>(Flag::Skinned) | static_cast<uint32_t>(Flag::FoliageWind) |
-        static_cast<uint32_t>(Flag::WaterSurface) | static_cast<uint32_t>(Flag::SandSurface) |
+        static_cast<uint32_t>(Flag::WaterSurface) | static_cast<uint32_t>(Flag::TerrainSurface) |
         static_cast<uint32_t>(Flag::MaterialFx);
     if (!IsPrimaryShadowCaster(instance) || (instance.flags & dynamicDepthFlags) != 0u ||
         !HasSurfaceGpuSceneFlag(instance, Flag::StaticGeometry))

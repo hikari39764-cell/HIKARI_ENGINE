@@ -46,7 +46,7 @@ struct SceneLightProvider {
     float innerConeAngleDegrees = 25.0f;
     float outerConeAngleDegrees = 35.0f;
     float angularFalloff = 1.0f;
-    LocalLightFalloff distanceFalloff = LocalLightFalloff::LegacyRange;
+    LocalLightFalloff distanceFalloff = LocalLightFalloff::Range;
     int priority = 0;
 };
 

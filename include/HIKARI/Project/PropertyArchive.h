@@ -20,7 +20,7 @@ public:
     HIKARI_GAME_PROJECT_SDK_API bool ReadBool(std::string_view name, bool fallback = false) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API int64_t ReadInt(std::string_view name, int64_t fallback = 0) const noexcept;
     // Explicit scene references are remapped when duplicating or
-    // instantiating a hierarchy. Reads legacy nonnegative integer IDs too.
+    // instantiating a hierarchy. Only references written by WriteSceneObjectId are read.
     HIKARI_GAME_PROJECT_SDK_API uint64_t ReadSceneObjectId(std::string_view name, uint64_t fallback = 0) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API float ReadFloat(std::string_view name, float fallback = 0.0f) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API GameProjectFloat3 ReadFloat3(std::string_view name,
@@ -29,10 +29,6 @@ public:
                                                            GameProjectVfxAssetReference& outReference) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool ReadTextureAssetReference(
         std::string_view name, GameProjectUiTextureReference& outReference) const noexcept;
-
-    bool ReadAssetReference(std::string_view name, GameProjectVfxAssetReference& outReference) const noexcept {
-        return ReadVfxAssetReference(name, outReference);
-    }
 
     std::string ReadString(std::string_view name, std::string_view fallback = {}) const {
         if (!Contains(name)) {
@@ -73,10 +69,6 @@ public:
                                                             const GameProjectVfxAssetReference& reference);
     HIKARI_GAME_PROJECT_SDK_API void WriteTextureAssetReference(std::string_view name,
                                                                 const GameProjectUiTextureReference& reference);
-
-    void WriteAssetReference(std::string_view name, const GameProjectVfxAssetReference& reference) {
-        WriteVfxAssetReference(name, reference);
-    }
 
 private:
     friend struct GameProjectSdkAccess;

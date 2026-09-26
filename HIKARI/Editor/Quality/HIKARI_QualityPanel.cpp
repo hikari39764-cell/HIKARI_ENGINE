@@ -4,12 +4,10 @@
 #include "Editor/Environment/HIKARI_EnvironmentEditComparison.h"
 #include "Editor/Quality/HIKARI_QualityPanelSections.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
-#include "Editor/Widgets/HIKARI_PostProfileParameterWidget.h"
 #include "Render3D/Diagnostics/HIKARI_EnvironmentDiagnostics.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Scene/HIKARI_RuntimeSceneContext.h"
 #include "Scene/HIKARI_SceneTransitionBus.h"
-#include "Vfx/Post/HIKARI_PostProfile.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 
 #if defined(HIKARI_WITH_EDITOR)
@@ -26,9 +24,7 @@ namespace HIKARI {
 using namespace EDITOR::QUALITY_PANEL;
 
 #if defined(HIKARI_WITH_EDITOR)
-namespace {}
-
-QualityPanelResult QualityPanel::Draw(SceneEnvironment& environment) const {
+QualityPanelResult QualityPanel::Draw(SceneEnvironment& environment, DocumentSceneBase& scene) {
     if (!ImGui::Begin(TEXT::LocalizeWindow("ui.window.quality", "Quality").c_str())) {
         ImGui::End();
         return {};
@@ -66,7 +62,7 @@ QualityPanelResult QualityPanel::Draw(SceneEnvironment& environment) const {
         ImGui::TreePop();
     }
     if (ImGui::TreeNode(TEXT::Localize("ui.quality.globalPost").c_str())) {
-        DrawGlobalPost(environment);
+        globalPost_.Draw(environment.post, scene);
         ImGui::TreePop();
     }
     if (ImGui::TreeNode(TEXT::Localize("ui.quality.transitionDebug").c_str())) {
@@ -83,7 +79,7 @@ QualityPanelResult QualityPanel::Draw(SceneEnvironment& environment) const {
     };
 }
 #else
-QualityPanelResult QualityPanel::Draw(SceneEnvironment&) const { return {}; }
+QualityPanelResult QualityPanel::Draw(SceneEnvironment&, DocumentSceneBase&) { return {}; }
 #endif
 
 } // namespace HIKARI

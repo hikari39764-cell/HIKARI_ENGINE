@@ -39,9 +39,9 @@ nlohmann::json WriteSlot(const MaterialTextureSlotData& slot) {
 
 } // namespace
 
-PbrMaterialAssetData ReadPbrMaterialJson(const nlohmann::json& node, uint32_t version, std::string materialName) {
+PbrMaterialAssetData ReadPbrMaterialJson(const nlohmann::json& node, std::string materialName) {
     PbrMaterialAssetData data{};
-    data.version = version;
+    data.version = kMaterialAssetSourceVersion;
     data.materialName = std::move(materialName);
     if (!node.is_object()) {
         return data;

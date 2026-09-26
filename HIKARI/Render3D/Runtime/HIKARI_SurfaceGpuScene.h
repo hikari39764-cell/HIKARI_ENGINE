@@ -37,7 +37,7 @@ enum class SurfaceGpuSceneInstanceFlags : uint32_t {
     PassForwardTransparent = 1u << 14,
     PassShadow = 1u << 15,
     Skinned = 1u << 16,
-    SandSurface = 1u << 17,
+    TerrainSurface = 1u << 17,
     CameraCenteredOcean = 1u << 18,
     FoliageWind = 1u << 19,
 };

@@ -249,7 +249,7 @@ bool ExecuteTraditionalDrawFrame(const GFX::Context& graphics, const MeshPassRes
         BindSurfaceGpuSceneBuffer(drawCtx.binding, drawCtx.surfaceGpuSceneSrv);
         BindSurfaceGpuSceneControl(drawCtx.binding, 0u, false);
         BindSurfaceFeatureData(drawCtx.binding, drawCtx.surfaceFeatureDataAddress);
-        BindSandSurfaceData(drawCtx.binding, drawCtx.sandSurfaceDataAddress);
+        BindTerrainSurfaceData(drawCtx.binding, drawCtx.terrainSurfaceDataAddress);
         BindSurfaceFeatureHeights(drawCtx.binding, drawCtx.surfaceFeatureHeightsAddress);
         BindShadowMap(drawCtx.binding);
         if (passKind == MeshDrawPassKind::Forward) {

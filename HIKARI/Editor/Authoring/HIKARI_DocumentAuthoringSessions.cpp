@@ -34,16 +34,14 @@ template <class Controller>
 class DocumentSession final : public EditorAuthoringSession {
 public:
     using OpenDocument = std::function<bool(Controller&, DocumentSceneBase&, const AssetGuid&, std::string&)>;
-    using DescribeDocument = std::function<nlohmann::json(const Controller&)>;
     using Registrar = std::function<void(EditorOperationRegistry&, Controller&, EditorWorkspaceHost&, SceneProvider)>;
-    using RevealDocument = std::function<EditorWorkspaceOpenRequest(const Controller&)>;
     using PreviewDocument = std::function<EditorOperationResult(const Controller&, DocumentSceneBase&,
                                                                 const nlohmann::json&, EditorAuthoringPreview&)>;
 
-    DocumentSession(SceneProvider scene, EditorWorkspaceHost& visibleHost, Registrar registrar, OpenDocument open,
-                    DescribeDocument describe, RevealDocument reveal, PreviewDocument preview = {})
-        : scene_(std::move(scene)), visibleHost_(visibleHost), open_(std::move(open)), describe_(std::move(describe)),
-          reveal_(std::move(reveal)), preview_(std::move(preview)) {
+    DocumentSession(SceneProvider scene, EditorWorkspaceHost& visibleHost, EditorWorkspaceId workspaceId,
+                    Registrar registrar, OpenDocument open, PreviewDocument preview = {})
+        : scene_(std::move(scene)), visibleHost_(visibleHost), workspaceId_(workspaceId), open_(std::move(open)),
+          preview_(std::move(preview)) {
         registrar(operations_, controller_, privateHost_, scene_);
         if (preview_)
             capture_ =
@@ -82,7 +80,11 @@ public:
         privateHost_.CancelPending();
         return {ok, ok ? "OK" : "OPEN_FAILED", message};
     }
-    nlohmann::json Describe() const override { return describe_(controller_); }
+    nlohmann::json Describe() const override {
+        nlohmann::json state = controller_.DescribeDocumentState();
+        state["preview"] = static_cast<bool>(preview_);
+        return state;
+    }
     EditorOperationResult Preview(const nlohmann::json& parameters) override {
         if (!preview_)
             return EditorAuthoringSession::Preview(parameters);
@@ -118,19 +120,20 @@ public:
             controller_.TickBackgroundTasks();
     }
     EditorOperationResult Reveal() override {
-        visibleHost_.RequestOpen(reveal_(controller_));
+        EditorWorkspaceOpenRequest request{};
+        request.workspaceId = workspaceId_;
+        visibleHost_.RequestOpen(request);
         return {true, "OK", "Workspace requested."};
     }
 
 private:
     SceneProvider scene_;
     EditorWorkspaceHost& visibleHost_;
+    EditorWorkspaceId workspaceId_;
     Controller controller_;
     EditorWorkspaceHost privateHost_;
     EditorOperationRegistry operations_;
     OpenDocument open_;
-    DescribeDocument describe_;
-    RevealDocument reveal_;
     PreviewDocument preview_;
     std::unique_ptr<EditorAuthoringPreview> capture_;
     const DocumentSceneBase* captureScene_ = nullptr;
@@ -175,7 +178,7 @@ EditorOperationResult PreviewGameplayCamera(const GameplayCameraWorkspaceControl
     CAMERA::ResolveGameplayCameraSafety(scene.GetWorld(), cameraId, request.cameraFrame.camera, nullptr, &preview);
     request.cameraFrame.valid = true;
     request.sceneRevision = scene.GetSceneDocumentRevision();
-    request.contentRevision = std::hash<std::string>{}(controller.Describe().dump() + parameters.dump());
+    request.contentRevision = std::hash<std::string>{}(controller.DescribeDocumentState().dump() + parameters.dump());
     request.cameraFrame.revision = request.contentRevision;
     request.visible = true;
     request.drawDebug = false;
@@ -247,7 +250,7 @@ void RegisterDocumentAuthoringSessions(EditorAuthoringSessionHost& host, EditorW
     host.RegisterWorkspace({"animation_state_machine", "Animation State Machine", [&workspaceHost, scene] {
                                 using C = AnimationStateMachineWorkspaceController;
                                 return std::make_unique<DocumentSession<C>>(
-                                    scene, workspaceHost,
+                                    scene, workspaceHost, EditorWorkspaceId::AnimationStateMachine,
                                     [](auto& registry, C& controller, auto&, auto provider) {
                                         RegisterAnimationStateMachineOperations(registry, controller, provider);
                                         controller.SetOperationRegistry(&registry);
@@ -256,22 +259,12 @@ void RegisterDocumentAuthoringSessions(EditorAuthoringSessionHost& host, EditorW
                                         return guid.IsValid()
                                                    ? controller.OpenAsset(owner.GetAssetDatabase(), guid, message)
                                                    : controller.NewAsset(message);
-                                    },
-                                    [](const C& controller) {
-                                        return nlohmann::json{{"assetGuid", controller.GetDocumentAssetGuid().value},
-                                                              {"dirty", controller.IsDocumentDirty()},
-                                                              {"preview", false}};
-                                    },
-                                    [](const C& controller) {
-                                        EditorWorkspaceOpenRequest request{};
-                                        request.workspaceId = EditorWorkspaceId::AnimationStateMachine;
-                                        return request;
                                     });
                             }});
     host.RegisterWorkspace({"dialogue", "Dialogue", [&workspaceHost, scene] {
                                 using C = DialogueWorkspaceController;
                                 return std::make_unique<DocumentSession<C>>(
-                                    scene, workspaceHost,
+                                    scene, workspaceHost, EditorWorkspaceId::Dialogue,
                                     [](auto& registry, C& controller, auto& privateHost, auto provider) {
                                         RegisterDialogueOperations(registry, controller, privateHost, provider);
                                     },
@@ -279,22 +272,12 @@ void RegisterDocumentAuthoringSessions(EditorAuthoringSessionHost& host, EditorW
                                         return guid.IsValid() ? controller.RequestOpenAsset(owner.GetAssetDatabase(),
                                                                                             guid, message)
                                                               : controller.RequestNewAsset(message);
-                                    },
-                                    [](const C& controller) {
-                                        return nlohmann::json{{"assetGuid", controller.GetDocumentAssetGuid().value},
-                                                              {"dirty", controller.IsDocumentDirty()},
-                                                              {"preview", false}};
-                                    },
-                                    [](const C& controller) {
-                                        EditorWorkspaceOpenRequest request{};
-                                        request.workspaceId = EditorWorkspaceId::Dialogue;
-                                        return request;
                                     });
                             }});
     host.RegisterWorkspace({"runtime_binding", "Runtime Bindings", [&workspaceHost, scene] {
                                 using C = RuntimeBindingWorkspaceController;
                                 return std::make_unique<DocumentSession<C>>(
-                                    scene, workspaceHost,
+                                    scene, workspaceHost, EditorWorkspaceId::RuntimeBinding,
                                     [](auto& registry, C& controller, auto&, auto provider) {
                                         RegisterRuntimeBindingOperations(registry, controller, provider);
                                         controller.SetReferenceProvider([provider](std::string_view id) {
@@ -305,21 +288,12 @@ void RegisterDocumentAuthoringSessions(EditorAuthoringSessionHost& host, EditorW
                                     },
                                     [](C& controller, auto& owner, const AssetGuid&, auto& message) {
                                         return controller.Activate(owner, message);
-                                    },
-                                    [](const C& controller) {
-                                        return nlohmann::json{{"dirty", controller.IsDocumentDirty()},
-                                                              {"preview", false}};
-                                    },
-                                    [](const C&) {
-                                        EditorWorkspaceOpenRequest request{};
-                                        request.workspaceId = EditorWorkspaceId::RuntimeBinding;
-                                        return request;
                                     });
                             }});
     host.RegisterWorkspace({"model_collision", "Model Collision", [&workspaceHost, scene] {
                                 using C = ModelCollisionWorkspaceController;
                                 return std::make_unique<DocumentSession<C>>(
-                                    scene, workspaceHost,
+                                    scene, workspaceHost, EditorWorkspaceId::ModelCollision,
                                     [](auto& registry, C& controller, auto&, auto provider) {
                                         RegisterModelCollisionOperations(registry, controller, provider);
                                     },
@@ -329,22 +303,12 @@ void RegisterDocumentAuthoringSessions(EditorAuthoringSessionHost& host, EditorW
                                             return false;
                                         }
                                         return controller.OpenModel(owner.GetAssetDatabase(), guid, message);
-                                    },
-                                    [](const C& controller) {
-                                        return nlohmann::json{{"assetGuid", controller.GetDocumentAssetGuid().value},
-                                                              {"dirty", controller.IsDocumentDirty()},
-                                                              {"preview", false}};
-                                    },
-                                    [](const C& controller) {
-                                        EditorWorkspaceOpenRequest request{};
-                                        request.workspaceId = EditorWorkspaceId::ModelCollision;
-                                        return request;
                                     });
                             }});
     host.RegisterWorkspace({"gameplay_camera", "Gameplay Camera", [&workspaceHost, scene] {
                                 using C = GameplayCameraWorkspaceController;
                                 return std::make_unique<DocumentSession<C>>(
-                                    scene, workspaceHost,
+                                    scene, workspaceHost, EditorWorkspaceId::GameplayCamera,
                                     [](auto& registry, C& controller, auto& host, auto provider) {
                                         RegisterGameplayCameraOperations(registry, controller, host, provider);
                                     },
@@ -353,43 +317,21 @@ void RegisterDocumentAuthoringSessions(EditorAuthoringSessionHost& host, EditorW
                                                    ? controller.Document().Open(owner.GetAssetDatabase(), guid, message)
                                                    : controller.Document().New("third_person", message);
                                     },
-                                    [](const C& controller) { return controller.Describe(); },
-                                    [](const C&) {
-                                        EditorWorkspaceOpenRequest request;
-                                        request.workspaceId = EditorWorkspaceId::GameplayCamera;
-                                        return request;
-                                    },
                                     PreviewGameplayCamera);
                             }});
-    host.RegisterWorkspace(
-        {"cinematics", "Cinematics", [&workspaceHost, scene] {
-             using C = CinematicsWorkspaceController;
-             return std::make_unique<DocumentSession<C>>(
-                 scene, workspaceHost,
-                 [](auto& registry, C& controller, auto&, auto provider) {
-                     RegisterCinematicsOperations(registry, controller, provider);
-                 },
-                 [](C& controller, auto& owner, const AssetGuid& guid, auto& message) {
-                     return guid.IsValid() ? controller.RequestOpenSequenceAsset(owner, guid, message)
-                                           : controller.RequestNewSequenceAsset(owner, message);
-                 },
-                 [](const C& controller) {
-                     return nlohmann::json{
-                         {"assetGuid", controller.GetSequenceDocument().GetAssetGuid().value},
-                         {"name", controller.GetSequenceDocument().GetAssetSequence()
-                                      ? controller.GetSequenceDocument().GetAssetSequence()->name
-                                      : std::string{}},
-                         {"dirty", controller.IsSequenceDocumentDirty()},
-                         {"preview", true},
-                         {"previewScope",
-                          "Sequence camera at requested time over the current scene; scene simulation and sequence post effects are not sampled."}};
-                 },
-                 [](const C& controller) {
-                     EditorWorkspaceOpenRequest request{};
-                     request.workspaceId = EditorWorkspaceId::Cinematics;
-                     return request;
-                 },
-                 PreviewCinematics);
-         }});
+    host.RegisterWorkspace({"cinematics", "Cinematics", [&workspaceHost, scene] {
+                                using C = CinematicsWorkspaceController;
+                                return std::make_unique<DocumentSession<C>>(
+                                    scene, workspaceHost, EditorWorkspaceId::Cinematics,
+                                    [](auto& registry, C& controller, auto&, auto provider) {
+                                        RegisterCinematicsOperations(registry, controller, provider);
+                                    },
+                                    [](C& controller, auto& owner, const AssetGuid& guid, auto& message) {
+                                        return guid.IsValid()
+                                                   ? controller.RequestOpenSequenceAsset(owner, guid, message)
+                                                   : controller.RequestNewSequenceAsset(owner, message);
+                                    },
+                                    PreviewCinematics);
+                            }});
 }
 } // namespace HIKARI::EDITOR

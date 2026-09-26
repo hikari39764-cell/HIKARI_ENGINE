@@ -27,8 +27,10 @@ void EditorShell::Draw(EditorContext& context, EditorWorkspaceHost& workspaces, 
         initialized_ = true;
     }
     const Page previousPage = page_;
-    if (context.windows.runtime.showAiAssistant && !lastAssistant_)
+    if ((context.windows.runtime.showAiAssistant && !lastAssistant_) ||
+        (contents.assistantAttention && !lastAssistantAttention_))
         page_ = Page::Assistant;
+    lastAssistantAttention_ = contents.assistantAttention;
     if (context.windows.runtime.showEditorSettings && !lastSettings_)
         page_ = Page::Settings;
     if (context.windows.resources.showAssetBrowser && !lastResources_)
@@ -59,7 +61,8 @@ void EditorShell::Draw(EditorContext& context, EditorWorkspaceHost& workspaces, 
         entry(Page::Workspaces, EditorGlyph::Grid, "shell.workspaces");
         entry(Page::Resources, EditorGlyph::Library, "shell.resources");
         ImGui::Separator();
-        entry(Page::Assistant, EditorGlyph::Assistant, "shell.ai", contents.assistantBusy);
+        entry(Page::Assistant, EditorGlyph::Assistant, "shell.ai",
+              contents.assistantBusy || contents.assistantAttention);
         entry(Page::Tasks, EditorGlyph::Ready, "shell.tasks", contents.tasksBusy);
         entry(Page::Log, EditorGlyph::Log, "shell.log", history.errors > readErrors_);
         ImGui::SetCursorPosY((std::max)(ImGui::GetCursorPosY(), ImGui::GetWindowHeight() - 48 * scale));

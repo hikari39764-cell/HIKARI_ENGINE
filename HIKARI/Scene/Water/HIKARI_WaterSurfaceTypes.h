@@ -26,11 +26,6 @@ const char* ToString(WaterSurfacePreset preset) noexcept;
 const char* ToString(WaterSurfaceGeometryMode mode) noexcept;
 WaterSurfacePreset ParseWaterSurfacePreset(std::string_view value,
                                            WaterSurfacePreset fallback = WaterSurfacePreset::AnimeSummer) noexcept;
-// Serialized numeric values 2/3 belonged to the removed intermediate
-// presets. Keep their migration at the Scene water owner so the public
-// enum remains limited to the two supported products.
-WaterSurfacePreset ParseWaterSurfacePreset(int32_t value,
-                                           WaterSurfacePreset fallback = WaterSurfacePreset::AnimeSummer) noexcept;
 WaterSurfaceGeometryMode ParseWaterSurfaceGeometryMode(
     std::string_view value, WaterSurfaceGeometryMode fallback = WaterSurfaceGeometryMode::FiniteAuthored) noexcept;
 

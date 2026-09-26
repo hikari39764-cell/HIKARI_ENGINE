@@ -37,7 +37,6 @@
 #include "Scene/Sequencer/Drivers/HIKARI_CameraSequenceTrackDriver.h"
 #include "Scene/Sequencer/Drivers/HIKARI_PresentationCueDriver.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
-#include "Vfx/Post/HIKARI_PostProfile.h"
 #include "Scene/HIKARI_RuntimeSceneContext.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
@@ -50,7 +49,22 @@
 
 namespace HIKARI {
 namespace {
-constexpr const char* kDefaultGlobalPostProfileId = "Ani";
+// 環境が参照する後処理プロファイルを解決して全体効果へ渡す。解決できなければ全体効果を止める。
+void ApplyGlobalPost(const ScenePostSettings& post, const POST::PostAssetStore& store) {
+    if (!post.enabled || post.profileId.empty()) {
+        POST::PostSystem::ClearGlobalEffect();
+        return;
+    }
+    std::string error;
+    const auto profile = store.LoadProfile(post.profileId, error);
+    const auto effect = profile ? store.LoadEffect(profile->effectId, error) : nullptr;
+    if (!effect) {
+        POST::PostSystem::ClearGlobalEffect();
+        return;
+    }
+    POST::PostSystem::SetGlobalEffect(profile->effectId, effect, POST::ResolvePostParameters(*effect, profile.get()));
+}
+
 bool TryUnprojectClipCorner(const MATH::Mat4& invViewProj, float x, float y, float z, MATH::Vec3& out) {
     const MATH::Vec4 clip{x, y, z, 1.0f};
     const MATH::Vec4 world = invViewProj.TransformPoint(clip);
@@ -206,7 +220,7 @@ void DocumentSceneBase::OnExit() {
     state_->runtime.world.Clear();
     state_->runtime.world.Services().Clear();
     state_->runtime.worldServicesConfigured = false;
-    state_->runtime.sandSurfaceQueryService.Clear();
+    state_->runtime.terrainSurfaceQueryService.Clear();
     state_->runtime.waterSurfaceQueryService.Clear();
     state_->runtime.navigationWorldService.Clear();
     state_->runtime.animationPoseService.Clear();
@@ -372,24 +386,7 @@ void DocumentSceneBase::Render() {
     MODELRENDERER::ResetFrame();
     SKYRENDERER::Reset();
 
-    if (state_->lighting.environment.post.enabled && state_->lighting.environment.post.globalPostProfileId.empty()) {
-        state_->lighting.environment.post.globalPostProfileId = kDefaultGlobalPostProfileId;
-        state_->lighting.environment.post.valuesInitialized = false;
-    }
-
-    if (state_->lighting.environment.post.enabled && !state_->lighting.environment.post.globalPostProfileId.empty()) {
-        if (!state_->lighting.environment.post.valuesInitialized) {
-            PostProfile profile{};
-            if (PostProfile::LoadById(state_->lighting.environment.post.globalPostProfileId, profile)) {
-                profile.CopyValuesTo(state_->lighting.environment.post.paramValues);
-                state_->lighting.environment.post.valuesInitialized = true;
-            }
-        }
-        POST::PostSystem::SetGlobalProfile(state_->lighting.environment.post.globalPostProfileId,
-                                           state_->lighting.environment.post.paramValues);
-    } else {
-        POST::PostSystem::ClearGlobalProfile();
-    }
+    ApplyGlobalPost(state_->lighting.environment.post, state_->assets.PostAssets());
     auto bloom = state_->lighting.environment.bloom;
     auto tone = state_->lighting.environment.toneMapping;
     std::vector<SEQUENCER::ScreenEffectSample> screenEffects;

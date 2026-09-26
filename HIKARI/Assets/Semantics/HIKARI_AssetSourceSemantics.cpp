@@ -124,6 +124,8 @@ constexpr std::array<AssetImporterSemantics, static_cast<size_t>(AssetImporterKi
     {AssetImporterKind::Font, AssetType::Font, "FontAssetImporter", 2u, ".ttf, .otf, .ttc"},
     {AssetImporterKind::TextStyle, AssetType::TextStyle, "TextStyleAssetImporter", 1u, ".htextstyle"},
     {AssetImporterKind::UiAnimation, AssetType::UiAnimation, "UiAnimationAssetImporter", 1u, ".huianim"},
+    {AssetImporterKind::PostEffect, AssetType::PostEffect, "PostEffectAssetImporter", 1u, ".hposteffect"},
+    {AssetImporterKind::PostProfile, AssetType::PostProfile, "PostProfileAssetImporter", 1u, ".hpostprofile"},
 }};
 
 static_assert(
@@ -179,6 +181,8 @@ constexpr TEXT::EnumName<AssetType> kAssetTypeNames[] = {
     {AssetType::Font, "Font"},
     {AssetType::TextStyle, "TextStyle"},
     {AssetType::UiAnimation, "UiAnimation"},
+    {AssetType::PostEffect, "PostEffect"},
+    {AssetType::PostProfile, "PostProfile"},
     {AssetType::GameplayCamera, "GameplayCamera"},
     {AssetType::Sequence, "Sequence"},
     {AssetType::AnimationStateMachine, "AnimationStateMachine"},
@@ -186,7 +190,6 @@ constexpr TEXT::EnumName<AssetType> kAssetTypeNames[] = {
     {AssetType::ModelMaterialBinding, "ModelMaterialBinding"},
     {AssetType::Shader, "Shader"},
     {AssetType::Unknown, "Unknown"},
-    {AssetType::VfxEffect, "Vfx"},
 };
 std::string_view ToString(AssetType type) noexcept { return TEXT::EnumToName(kAssetTypeNames, type, "Unknown"); }
 
@@ -233,6 +236,10 @@ const AssetImporterSemantics* ResolveAssetSourceSemantics(const std::filesystem:
         kind = AssetImporterKind::TextStyle;
     } else if (extension == ".hcamera") {
         kind = AssetImporterKind::GameplayCamera;
+    } else if (extension == ".hposteffect") {
+        kind = AssetImporterKind::PostEffect;
+    } else if (extension == ".hpostprofile") {
+        kind = AssetImporterKind::PostProfile;
     } else if (extension == ".hsequence") {
         kind = AssetImporterKind::Sequence;
     } else if (extension == ".hanimsm") {

@@ -67,13 +67,6 @@ enum class VfxShapeUvMode : uint8_t {
     WorldLength,
 };
 
-std::span<const std::string_view> GetVfxRenderShapeChoices() noexcept;
-std::span<const std::string_view> GetVfxShapeUvModeChoices() noexcept;
-std::span<const std::string_view> GetVfxMaterialModeChoices() noexcept;
-// 向きモードと固定軸の唯一の一覧。UI・AI 操作・検証が同じ順序を参照する。
-std::span<const std::string_view> GetVfxBillboardModeChoices() noexcept;
-std::span<const std::string_view> GetVfxBillboardAxisChoices() noexcept;
-
 enum class VfxBlendMode : uint8_t {
     Alpha,
     Additive,
@@ -707,25 +700,10 @@ std::string_view ToString(VfxEasingFunction value) noexcept;
 std::string_view ToString(VfxAttachmentMode value) noexcept;
 std::string_view ToString(VfxFollowMode value) noexcept;
 std::string_view ToString(VfxSpecialOutputType value) noexcept;
-
-bool TryParseVfxValueType(std::string_view text, VfxValueType& outValue) noexcept;
-bool TryParseVfxShapeType(std::string_view text, VfxShapeType& outValue) noexcept;
-bool TryParseVfxRenderShapeType(std::string_view text, VfxRenderShapeType& outValue) noexcept;
-bool TryParseVfxShapeUvMode(std::string_view text, VfxShapeUvMode& outValue) noexcept;
-bool TryParseVfxBlendMode(std::string_view text, VfxBlendMode& outValue) noexcept;
-bool TryParseVfxMaterialMode(std::string_view text, VfxMaterialMode& outValue) noexcept;
-bool TryParseVfxParticleDepthMode(std::string_view text, VfxParticleDepthMode& outValue) noexcept;
-bool TryParseVfxParticleCapacityMode(std::string_view text, VfxParticleCapacityMode& outValue) noexcept;
-bool TryParseVfxBillboardMode(std::string_view text, VfxBillboardMode& outValue) noexcept;
-bool TryParseVfxBillboardAxis(std::string_view text, VfxBillboardAxis& outValue) noexcept;
-bool TryParseVfxCurveInterpolation(std::string_view text, VfxCurveInterpolation& outValue) noexcept;
-bool TryParseVfxDistributionMode(std::string_view text, VfxDistributionMode& outValue) noexcept;
-bool TryParseVfxAnimatedValueMode(std::string_view text, VfxAnimatedValueMode& outValue) noexcept;
-bool TryParseVfxAnimatedColorMode(std::string_view text, VfxAnimatedColorMode& outValue) noexcept;
-bool TryParseVfxEasingFunction(std::string_view text, VfxEasingFunction& outValue) noexcept;
-bool TryParseVfxAttachmentMode(std::string_view text, VfxAttachmentMode& outValue) noexcept;
-bool TryParseVfxFollowMode(std::string_view text, VfxFollowMode& outValue) noexcept;
-bool TryParseVfxSpecialOutputType(std::string_view text, VfxSpecialOutputType& outValue) noexcept;
+std::string_view ToString(VfxLayerKind value) noexcept;
+std::string_view ToString(VfxHistoryMode value) noexcept;
+std::string_view ToString(VfxConnectTargetMode value) noexcept;
+// 名前から値への変換と選択肢一覧は Assets/Vfx/HIKARI_VfxEnumNames.h の表を使う。
 
 VfxFloatDistributionData MakeVfxFloatConstant(float value) noexcept;
 VfxVec3DistributionData MakeVfxVec3Constant(const MATH::Vec3& value) noexcept;

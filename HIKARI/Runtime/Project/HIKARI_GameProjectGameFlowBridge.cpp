@@ -277,25 +277,6 @@ uint64_t DialogueView::GetDroppedEventCount() const noexcept {
     }
 }
 
-uint32_t DialogueView::ConsumeOneShotTriggers() const noexcept {
-    try {
-        World* world = ResolveDialogueWorld(world_);
-        if (world == nullptr) {
-            return 0u;
-        }
-        uint32_t consumed = 0u;
-        world->ForEachObjectWith<DialogueTriggerComponent>([&consumed](GameObject&, DialogueTriggerComponent& trigger) {
-            if (trigger.IsEnabled() && trigger.IsOneShot() && !trigger.IsConsumed()) {
-                trigger.MarkConsumed();
-                ++consumed;
-            }
-        });
-        return consumed;
-    } catch (...) {
-        return 0u;
-    }
-}
-
 uint64_t DialogueView::CaptureOneShotTriggerMask() const noexcept {
     try {
         World* world = ResolveDialogueWorld(world_);

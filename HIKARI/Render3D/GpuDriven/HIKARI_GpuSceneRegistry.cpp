@@ -457,10 +457,10 @@ void GpuSceneRegistry::Clear() {
     waterSurfaceGpuData_.clear();
     waterSurfaceGpuData_.push_back(WATER::BuildWaterSurfaceGpuDataSentinel());
     meshShaderJointPalettes_.clear();
-    sandSurfaceGpuData_.clear();
-    sandSurfaceGpuData_.push_back(SAND::BuildSandSurfaceGpuDataSentinel());
-    sandSurfaceHeights_ = nullptr;
-    sandSurfaceHeightVersion_ = 0;
+    terrainSurfaceGpuData_.clear();
+    terrainSurfaceGpuData_.push_back(TERRAIN::BuildTerrainSurfaceGpuDataSentinel());
+    terrainSurfaceHeights_ = nullptr;
+    terrainSurfaceHeightVersion_ = 0;
     forwardOpaqueResidentRecordIndices_.clear();
     depthPrepassOccluderRecordIndices_.clear();
     forwardDepthAwareResidentRecordIndices_.clear();
@@ -521,8 +521,8 @@ void GpuSceneRegistry::SyncForwardFromSceneCache(const GpuSceneRegistrySyncInput
     ClearFrameDirtyRanges();
     if (dataVersion_ == dataVersion) {
         stats_.syncMode = GpuSceneSyncMode::Reuse;
-        sandSurfaceHeightVersion_ = heightVersion;
-        sceneSource_.sandSurfaceHeightVersion = heightVersion;
+        terrainSurfaceHeightVersion_ = heightVersion;
+        sceneSource_.terrainSurfaceHeightVersion = heightVersion;
         sceneSource_.dirtyBaseSourceVersion = sceneSource_.sourceVersion;
         return;
     }
@@ -540,8 +540,8 @@ void GpuSceneRegistry::SyncForwardFromSceneCache(const GpuSceneRegistrySyncInput
 
     stats_.syncMode = GpuSceneSyncMode::Patch;
     dataVersion_ = dataVersion;
-    sandSurfaceHeightVersion_ = heightVersion;
-    sceneSource_.sandSurfaceHeightVersion = heightVersion;
+    terrainSurfaceHeightVersion_ = heightVersion;
+    sceneSource_.terrainSurfaceHeightVersion = heightVersion;
     sceneSource_.layoutVersion = BuildSourceLayoutVersion(residencyEpoch_, layoutVersion_, routingVersion_);
     sceneSource_.sourceVersion = dataVersion_;
     sceneSource_.dirtyBaseSourceVersion = patchBaseSourceVersion;
@@ -623,21 +623,21 @@ void GpuSceneRegistry::RebuildForwardFromSceneCache(const GpuSceneRegistrySyncIn
         record.jointPaletteMatrixCount = NUMERIC::SaturateToUint32(palette->size());
     }
 
-    sandSurfaceGpuData_.clear();
-    sandSurfaceGpuData_.push_back(SAND::BuildSandSurfaceGpuDataSentinel());
-    sandSurfaceHeights_ = input.sceneCache->GetSandSurfaceHeights();
-    sandSurfaceHeightVersion_ =
+    terrainSurfaceGpuData_.clear();
+    terrainSurfaceGpuData_.push_back(TERRAIN::BuildTerrainSurfaceGpuDataSentinel());
+    terrainSurfaceHeights_ = input.sceneCache->GetTerrainSurfaceHeights();
+    terrainSurfaceHeightVersion_ =
         BuildSurfaceHeightContentVersion(residencyEpoch_, input.sceneCache->GetSurfaceFloatPoolVersion());
     for (GpuSceneSurfaceRecord& record : surfaceRecords_) {
-        if (!record.valid || !record.sandSurface) {
-            record.sandSurfaceGpuDataIndex = 0u;
+        if (!record.valid || !record.terrainSurface) {
+            record.terrainSurfaceGpuDataIndex = 0u;
             continue;
         }
-        record.sandSurfaceGpuDataIndex = NUMERIC::SaturateToUint32(sandSurfaceGpuData_.size());
-        sandSurfaceGpuData_.push_back(
-            SAND::BuildSandSurfaceGpuData(record.sandSurfaceData, record.sandSurfaceHeightOffset,
-                                          record.sandSurfaceDeformationOffset, record.sandSurfaceLayerWeightsOffset,
-                                          record.sandSurfaceCoverageOffset, record.sandSurfaceLayerTintsOffset));
+        record.terrainSurfaceGpuDataIndex = NUMERIC::SaturateToUint32(terrainSurfaceGpuData_.size());
+        terrainSurfaceGpuData_.push_back(TERRAIN::BuildTerrainSurfaceGpuData(
+            record.terrainSurfaceData, record.terrainSurfaceHeightOffset, record.terrainSurfaceDeformationOffset,
+            record.terrainSurfaceLayerWeightsOffset, record.terrainSurfaceCoverageOffset,
+            record.terrainSurfaceLayerTintsOffset));
     }
 
     stats_.sourceRecordCount = NUMERIC::SaturateToUint32(surfaceRecords_.size());
@@ -882,7 +882,7 @@ bool GpuSceneRegistry::TryPatchForwardDataFromSceneCache(const GpuSceneRegistryS
             IsGpuSceneShadowStaticTraditionalRecord(newRecord)) {
             return reject("traditional surface");
         }
-        if (oldRecord.sandSurface != newRecord.sandSurface) {
+        if (oldRecord.terrainSurface != newRecord.terrainSurface) {
             return reject("sand membership changed");
         }
         const auto oldForwardPass = ResolveForwardResidentPass(oldRecord);
@@ -915,12 +915,12 @@ bool GpuSceneRegistry::TryPatchForwardDataFromSceneCache(const GpuSceneRegistryS
             newRecord.waterSurfaceGpuDataIndex = waterSurfaceGpuDataIndex;
         }
 
-        const uint32_t sandSurfaceGpuDataIndex = oldRecord.sandSurfaceGpuDataIndex;
-        if (newRecord.sandSurface) {
-            if (sandSurfaceGpuDataIndex == 0u || sandSurfaceGpuDataIndex >= sandSurfaceGpuData_.size()) {
+        const uint32_t terrainSurfaceGpuDataIndex = oldRecord.terrainSurfaceGpuDataIndex;
+        if (newRecord.terrainSurface) {
+            if (terrainSurfaceGpuDataIndex == 0u || terrainSurfaceGpuDataIndex >= terrainSurfaceGpuData_.size()) {
                 return reject("sand slot missing");
             }
-            newRecord.sandSurfaceGpuDataIndex = sandSurfaceGpuDataIndex;
+            newRecord.terrainSurfaceGpuDataIndex = terrainSurfaceGpuDataIndex;
         }
 
         surfaceRecords_[surfaceIndex] = std::move(newRecord);
@@ -929,13 +929,14 @@ bool GpuSceneRegistry::TryPatchForwardDataFromSceneCache(const GpuSceneRegistryS
                 WATER::BuildWaterSurfaceGpuData(surfaceRecords_[surfaceIndex].waterSurfaceData,
                                                 surfaceRecords_[surfaceIndex].waterSurfaceLiquidCoverageOffset);
         }
-        if (sandSurfaceGpuDataIndex != 0u) {
-            sandSurfaceGpuData_[sandSurfaceGpuDataIndex] = SAND::BuildSandSurfaceGpuData(
-                surfaceRecords_[surfaceIndex].sandSurfaceData, surfaceRecords_[surfaceIndex].sandSurfaceHeightOffset,
-                surfaceRecords_[surfaceIndex].sandSurfaceDeformationOffset,
-                surfaceRecords_[surfaceIndex].sandSurfaceLayerWeightsOffset,
-                surfaceRecords_[surfaceIndex].sandSurfaceCoverageOffset,
-                surfaceRecords_[surfaceIndex].sandSurfaceLayerTintsOffset);
+        if (terrainSurfaceGpuDataIndex != 0u) {
+            terrainSurfaceGpuData_[terrainSurfaceGpuDataIndex] =
+                TERRAIN::BuildTerrainSurfaceGpuData(surfaceRecords_[surfaceIndex].terrainSurfaceData,
+                                                    surfaceRecords_[surfaceIndex].terrainSurfaceHeightOffset,
+                                                    surfaceRecords_[surfaceIndex].terrainSurfaceDeformationOffset,
+                                                    surfaceRecords_[surfaceIndex].terrainSurfaceLayerWeightsOffset,
+                                                    surfaceRecords_[surfaceIndex].terrainSurfaceCoverageOffset,
+                                                    surfaceRecords_[surfaceIndex].terrainSurfaceLayerTintsOffset);
         }
         if (newForwardPass == GpuDrivenPassKind::Count && !newDepthOccluder && !newShadow) {
             continue;
@@ -994,9 +995,9 @@ void GpuSceneRegistry::RebuildForwardSceneSource() {
     sceneSource_.surfaceRecords = &surfaceRecords_;
     sceneSource_.meshShaderJointPalettes = &meshShaderJointPalettes_;
     sceneSource_.waterSurfaceGpuData = &waterSurfaceGpuData_;
-    sceneSource_.sandSurfaceGpuData = &sandSurfaceGpuData_;
-    sceneSource_.sandSurfaceHeights = sandSurfaceHeights_;
-    sceneSource_.sandSurfaceHeightVersion = sandSurfaceHeightVersion_;
+    sceneSource_.terrainSurfaceGpuData = &terrainSurfaceGpuData_;
+    sceneSource_.terrainSurfaceHeights = terrainSurfaceHeights_;
+    sceneSource_.terrainSurfaceHeightVersion = terrainSurfaceHeightVersion_;
     const uint32_t sharedPrimaryCount = NUMERIC::SaturateToUint32(globalGpuSceneInstances_.size());
     uint32_t cursor = sharedPrimaryCount;
 

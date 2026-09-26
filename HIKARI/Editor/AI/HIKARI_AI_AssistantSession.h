@@ -60,6 +60,14 @@ public:
     // once per frame from the scene controller, independent of the panel
     // window being visible.
     void PumpActions();
+    // プロジェクトファイルの変更や外部プロセスの起動は、ユーザーが承認するまで保留する。
+    struct ApprovalRequest {
+        uint64_t id = 0;
+        std::string action, permission, parameters;
+    };
+    std::vector<ApprovalRequest> PendingApprovals() const;
+    bool HasPendingApprovals() const;
+    void ResolveApproval(uint64_t id, bool approved);
 
 private:
     friend class AiAssistantPanel;
@@ -67,12 +75,16 @@ private:
         std::string json{};
         uint64_t generation = 0;
         std::optional<AI_ASSISTANT::AiRequestResult> result{};
+        uint64_t approvalId = 0;
+        std::string permission{};
+        bool approved = false;
     };
 
     AI_ASSISTANT::AiChatMessage ExecuteConversationAction(const std::string& actionJson);
     void RunConversation(bool resume);
     bool StartConversation(std::string text, std::vector<AI_ASSISTANT::AiImageAttachment> images, bool resume);
     AI_ASSISTANT::AiRequestResult ExecuteRequestNow(std::string_view json);
+    std::string ApprovalPermission(std::string_view action) const;
     void AppendMessage(const AI_ASSISTANT::AiChatMessage& message);
     void FlushConversation();
     void UpdateConversationStorage();
@@ -89,9 +101,11 @@ private:
     TaskActivity activity_;
     std::mutex streamMutex_{};
     mutable std::mutex stateMutex_{};
-    std::mutex actionMutex_{};
+    mutable std::mutex actionMutex_{};
     std::condition_variable actionCv_{};
     std::vector<std::shared_ptr<PendingAiAction>> pendingActions_{};
+    std::vector<std::shared_ptr<PendingAiAction>> awaitingApproval_{};
+    uint64_t nextApprovalId_ = 1;
     std::thread::id mainThreadId_{};
     std::string streamingPartial_{};
     bool streamingActive_ = false;

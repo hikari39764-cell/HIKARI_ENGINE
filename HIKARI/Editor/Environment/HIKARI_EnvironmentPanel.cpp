@@ -14,7 +14,6 @@
 #include "Render3D/Lighting/Atmosphere/HIKARI_AtmosphereParameters.h"
 #include "Scene/HIKARI_RuntimeSceneContext.h"
 #include "Scene/HIKARI_SceneTransitionBus.h"
-#include "Vfx/Post/HIKARI_PostProfile.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 
 #if defined(HIKARI_WITH_EDITOR)
@@ -35,7 +34,6 @@ using namespace EDITOR::ENVIRONMENT_PANEL;
 
 #if defined(HIKARI_WITH_EDITOR)
 namespace {
-constexpr const char* kDefaultGlobalPostProfileId = "Ani";
 
 bool DrawSolarAngularRadius(float& radius) {
     float degrees = DirectX::XMConvertToDegrees(radius);
@@ -57,13 +55,7 @@ EnvironmentPanelResult EnvironmentPanel::Draw(SceneEnvironment& environment, con
         return {};
     }
 
-    // UI
-    // 髯ｷ闌ｨ・ｽ・ｨ髣厄ｽｴ髦ｮ蜷ｶ繝ｻ鬩搾ｽｱ繝ｻ・ｨ鬯ｮ・ｮ郢晢ｽｻ霎ｯ謌奇｣ｰ蜍滂ｽｾ魃会ｽｽ螳夲ｽｱ閧ｲ・｢謇假ｽｽ・ｼ郢晢ｽｻ繝ｻ・ｰ驍ｵ・ｲ繝ｻ・｣reset
-    // 驛｢・ｧ郢晢ｽｻ郢晢ｽｻ髯具ｽｻ驍・ｽｲ隴ｯ繝ｻ謚・ｫ帛･・ｽｽ繧会ｽｸ・ｺ繝ｻ・ｾ驍ｵ・ｺ繝ｻ・ｨ驛｢・ｧ遶丞｣ｺﾂ・ｻ髫ｶﾂ隲幢ｽｷ郢晢ｽｻ驍ｵ・ｺ陷ｷ・ｶ繝ｻ迢暦ｽｸ・ｲ郢晢ｽｻ
-    // 鬩搾ｽｱ繝ｻ・ｨ鬯ｮ・ｮ郢晢ｽｻ・つ繝ｻ・､驍ｵ・ｺ繝ｻ・ｯ髯ｷ螂・ｽｽ・ｳ髫ｴ蠑ｱ・・ｫ翫・runtime
-    // 驍ｵ・ｺ繝ｻ・ｸ髯ｷ・ｿ髢ｧ・ｴ闕ｳ蜊・ｽｸ・ｺ陷会ｽｱ・つ遶擾ｽｬ繝ｻ・ｩ繝ｻ・ｳ鬩肴得・ｽ・ｰ鬮ｫ・ｪ繝ｻ・ｺ髫ｴ繝ｻ・ｽ・ｭ驍ｵ・ｺ繝ｻ・ｯ
-    // log
-    // 驍ｵ・ｺ繝ｻ・ｸ鬯ｨ・ｾ郢晢ｽｻ遯ｶ・ｲ驍ｵ・ｺ陷ｷ・ｶ・つ郢晢ｽｻ
+    // 上から実行時の状態（エラーがあれば log を案内）、クイック操作、preset、各設定の順に並べる。
     const SceneEnvironment beforeEdit = environment;
     bool openLightingBakeRequested = false;
 
@@ -88,17 +80,10 @@ EnvironmentPanelResult EnvironmentPanel::Draw(SceneEnvironment& environment, con
     }
 
     if (ImGui::TreeNode(TEXT::Localize("ui.environment.presets").c_str())) {
-        const char* presetKeys[] = {
-            "ui.environment.preset.default",    "ui.environment.preset.brightDay",
-            "ui.environment.preset.sunset",     "ui.environment.preset.night",
-            "ui.environment.preset.overcast",   "ui.environment.preset.stylizedBlue",
-            "ui.environment.preset.warmIndoor", "ui.environment.preset.freshSummer",
-            "ui.environment.preset.goldenHour", "ui.environment.preset.layeredPanorama",
-        };
-        const int presetCount = static_cast<int>(sizeof(presetKeys) / sizeof(presetKeys[0]));
+        const int presetCount = static_cast<int>(std::size(kEnvironmentPresets));
         for (int i = 0; i < presetCount; ++i) {
             ImGui::PushID(i);
-            if (ImGui::Button(TEXT::Localize(presetKeys[i]).c_str())) {
+            if (ImGui::Button(TEXT::Localize(kEnvironmentPresets[i].labelKey).c_str())) {
                 ApplyEnvironmentPreset(environment, i);
             }
             if ((i % 3) != 2 && (i + 1) < presetCount) {

@@ -18,7 +18,7 @@
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_PresentationTransformService.h"
 #include "Scene/HIKARI_World.h"
-#include "Scene/Vfx/HIKARI_VfxSpecialOutputBridge.h"
+#include "Assets/Vfx/HIKARI_VfxProgram.h"
 
 namespace HIKARI::VFX {
 namespace {
@@ -329,29 +329,6 @@ bool CombatAfterimageService::Capture(World& world, const CombatAfterimageReques
     configured.shellOffsetWorld = profile.shellOffset;
     configured.color = {profile.color.x, profile.color.y, profile.color.z};
     return Capture(world, configured);
-}
-
-bool CombatAfterimageService::Capture(World& world, const CombatAfterimageRequest& request,
-                                      const VfxSkinnedAfterimageProfile& profile) noexcept {
-    VfxSpecialOutputData output{};
-    output.type = VfxSpecialOutputType::SkinnedAfterimage;
-    output.skinnedAfterimage = profile;
-    return Capture(world, request, output);
-}
-
-bool CombatAfterimageService::Capture(World& world, const CombatAfterimageRequest& request,
-                                      const VfxProgram& program) noexcept {
-    return Capture(world, request, program, {});
-}
-
-bool CombatAfterimageService::Capture(World& world, const CombatAfterimageRequest& request, const VfxProgram& program,
-                                      std::string_view outputId) noexcept {
-    const VfxSpecialOutputData* output =
-        FindVfxSpecialOutput(program, outputId, VfxSpecialOutputType::SkinnedAfterimage);
-    if (output == nullptr) {
-        return outputId.empty() ? Capture(world, request) : false;
-    }
-    return Capture(world, request, *output);
 }
 
 void CombatAfterimageService::Tick(uint64_t frameIndex, float unscaledDeltaSeconds) noexcept {

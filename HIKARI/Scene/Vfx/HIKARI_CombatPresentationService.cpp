@@ -14,7 +14,7 @@
 #include "Assets/Vfx/Compiler/HIKARI_VfxCompiler.h"
 #include "Assets/Vfx/HIKARI_VfxPresetRegistry.h"
 #include "Scene/Vfx/HIKARI_VfxPlaybackService.h"
-#include "Scene/Vfx/HIKARI_VfxSpecialOutputBridge.h"
+#include "Assets/Vfx/HIKARI_VfxProgram.h"
 
 namespace HIKARI::VFX {
 namespace {
@@ -279,8 +279,8 @@ bool CombatPresentationService::SubmitWorldBarrier(const WorldBarrierRequest& re
     return true;
 }
 
-bool CombatPresentationService::SubmitWeaponTrail(const WeaponTrailSampleRequest& request,
-                                                  uint64_t frameIndex) noexcept {
+bool CombatPresentationService::AddWeaponTrailSample(const WeaponTrailSampleRequest& request,
+                                                     uint64_t frameIndex) noexcept {
     if (!request.ownerObject.IsValid() || request.sourceId == 0u || !IsFinite(request.bladeBaseWorld) ||
         !IsFinite(request.bladeTipWorld) || !IsFinite(request.bodyColor) || !IsFinite(request.edgeColor) ||
         !IsFinite(request.bodyAlpha) || !IsFinite(request.edgeAlpha) || !IsFinite(request.lifetimeUnscaledSeconds) ||
@@ -369,7 +369,7 @@ bool CombatPresentationService::SubmitWeaponTrail(const WeaponTrailSampleRequest
         return false;
     }
 
-    // The compiled HVFX profile is the authored art source. The legacy
+    // The compiled HVFX profile is the authored art source. The
     // request contributes only frame-local action multipliers and the
     // world-space blade sample; it does not replace profile colors or
     // lifetime with old combat defaults.
@@ -397,25 +397,7 @@ bool CombatPresentationService::SubmitWeaponTrail(const WeaponTrailSampleRequest
     configured.width = (profile.width / 0.15f) * widthScale;
     configured.distortionStrength = profile.distortion * distortionScale;
     configured.blurScale = profile.blur * blurScale;
-    return SubmitWeaponTrail(configured, frameIndex);
-}
-
-bool CombatPresentationService::SubmitWeaponTrail(const WeaponTrailSampleRequest& request, const VfxProgram& program,
-                                                  uint64_t frameIndex) noexcept {
-    const VfxSpecialOutputData* output = FindVfxSpecialOutput(program, VfxSpecialOutputType::WeaponPathDistortion);
-    if (output == nullptr) {
-        // Assets authored before typed special outputs retain the old
-        // numeric presentation request as a compatibility fallback.
-        return SubmitWeaponTrail(request, frameIndex);
-    }
-    return SubmitWeaponTrail(request, *output, frameIndex);
-}
-
-bool CombatPresentationService::SubmitWeaponTrail(const WeaponTrailSampleRequest& request, const VfxProgram& program,
-                                                  std::string_view outputId, uint64_t frameIndex) noexcept {
-    const VfxSpecialOutputData* output =
-        FindVfxSpecialOutput(program, outputId, VfxSpecialOutputType::WeaponPathDistortion);
-    return output != nullptr && SubmitWeaponTrail(request, *output, frameIndex);
+    return AddWeaponTrailSample(configured, frameIndex);
 }
 
 void CombatPresentationService::Tick(uint64_t frameIndex, float unscaledDeltaSeconds) noexcept {

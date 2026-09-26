@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+#include <string>
 #include <vector>
 
 #include <json.hpp>
@@ -8,6 +10,8 @@
 
 namespace HIKARI::VFX::SERIALIZATION {
 
-void ReadParameterDescriptorsFromJson(const nlohmann::json& parameterArray, std::vector<ParamDesc>& outParameters);
+// 効果のパラメーター定義配列を読む。ref は slotCount 個の float4 のどこかを指す。
+bool ReadParameterDescriptorsFromJson(const nlohmann::json& parameterArray, size_t slotCount,
+                                      std::vector<ParamDesc>& outParameters, std::string& outError);
 
 } // namespace HIKARI::VFX::SERIALIZATION

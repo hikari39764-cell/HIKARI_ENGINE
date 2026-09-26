@@ -6,9 +6,9 @@
 #include <d3d12.h>
 
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
+#include "Render3D/HIKARI_Mesh.h"
 
 namespace HIKARI {
-class Mesh;
 struct MeshPrimitive;
 } // namespace HIKARI
 

@@ -44,14 +44,12 @@ bool ParseProfileNode(const nlohmann::json& node, const std::string& targetId, M
         VFX::SERIALIZATION::ParseCompositeMode(node.value("composite", nlohmann::json{}), outProfile.composite);
     outProfile.renderPhase = ParseRenderPhase(node.value("renderPhase", std::string{"Opaque"}));
 
-    const nlohmann::json* paramsNode = nullptr;
-    if (node.contains("params") && node["params"].is_array()) {
-        paramsNode = &node["params"];
-    } else if (node.contains("parameters") && node["parameters"].is_array()) {
-        paramsNode = &node["parameters"];
+    std::string parameterError;
+    if (!VFX::SERIALIZATION::ReadParameterDescriptorsFromJson(node.value("params", nlohmann::json::array()),
+                                                              VFX::kMaterialFxUserCount, outProfile.params,
+                                                              parameterError)) {
+        return false;
     }
-    VFX::SERIALIZATION::ReadParameterDescriptorsFromJson(paramsNode != nullptr ? *paramsNode : nlohmann::json{},
-                                                         outProfile.params);
     VFX::ResetParameterValuesFromDefaults(outProfile.params, outProfile.values.data(), outProfile.values.size());
 
     return true;

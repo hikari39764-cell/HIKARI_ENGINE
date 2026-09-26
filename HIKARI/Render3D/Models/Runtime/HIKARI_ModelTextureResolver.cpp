@@ -6,7 +6,6 @@
 #include "Assets/Models/HIKARI_ModelAssetLookup.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Core/HIKARI_Logger.h"
-#include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI::RENDER3D::MODELS {
 
@@ -69,72 +68,6 @@ std::string ModelTextureResolver::ResolvePath(const std::string& sourceTexturePa
     return resolvedPath;
 }
 
-RuntimeTextureSlot ModelTextureResolver::LoadMaterialTexture(const ModelAsset& asset, const std::string& textureName,
-                                                             const TextureSlot& textureSlot,
-                                                             MaterialTextureUsage usage) const {
-    RuntimeTextureSlot slot{};
-    const TextureAsset3D* texture = ASSETS::MODELS::FindModelTexture(asset, textureSlot);
-    if (texture == nullptr || texture->sourcePath.empty()) {
-        return slot;
-    }
-
-    slot.sourcePath = texture->sourcePath;
-    slot.resolvedPath = texture->resolvedPath.empty() ? ResolvePath(texture->sourcePath, usage) : texture->resolvedPath;
-    if (slot.resolvedPath.empty()) {
-        slot.resolvedPath = slot.sourcePath;
-    }
-    slot.texCoord = std::clamp(textureSlot.texCoord, 0, 1);
-    slot.uvScale = textureSlot.uvScale;
-    slot.uvOffset = textureSlot.uvOffset;
-    slot.uvRotation = textureSlot.uvRotation;
-
-    slot.resource =
-        RENDER3D::LoadTextureResourceWithColorSpace(textureName, slot.resolvedPath, MaterialTextureColorSpace(usage));
-    slot.handle = RENDER3D::GetTextureResourceBackendHandle(slot.resource);
-    slot.enabled = slot.handle >= 0;
-    return slot;
-}
-
-void ModelTextureResolver::ApplyMaterial(const ModelAsset& asset, const MaterialAsset& source,
-                                         Material& runtimeMaterial, const std::string& materialNamePrefix) const {
-    runtimeMaterial.SetBaseColor(source.baseColorFactor);
-    runtimeMaterial.SetMetallicFactor(source.metallicFactor);
-    runtimeMaterial.SetRoughnessFactor(source.roughnessFactor);
-    runtimeMaterial.SetSpecularFactor(source.specularFactor);
-    runtimeMaterial.SetSpecularColorFactor(source.specularColorFactor);
-    runtimeMaterial.SetNormalScale(source.normalTexture.scale);
-    runtimeMaterial.SetOcclusionStrength(source.occlusionTexture.strength);
-    runtimeMaterial.SetEmissiveFactor(source.emissiveFactor);
-    runtimeMaterial.SetEmissiveStrength(source.emissiveStrength);
-    runtimeMaterial.SetFeatureBits(source.featureBits);
-    runtimeMaterial.SetShaderProfileId(source.shaderProfileId);
-
-    // 螳溯｡梧凾 Material 縺ｯ縲∝・繝代せ縺ｨ隗｣豎ｺ貂医∩ cooked 繝代せ繧剃ｸ｡譁ｹ菫晄戟縺吶ｋ縲・
-    runtimeMaterial.SetTextureSlot(MaterialTextureUsage::BaseColor,
-                                   LoadMaterialTexture(asset, materialNamePrefix + "_baseColor",
-                                                       source.baseColorTexture, MaterialTextureUsage::BaseColor));
-    runtimeMaterial.SetTextureSlot(
-        MaterialTextureUsage::Normal,
-        LoadMaterialTexture(asset, materialNamePrefix + "_normal", source.normalTexture, MaterialTextureUsage::Normal));
-    runtimeMaterial.SetTextureSlot(MaterialTextureUsage::MetallicRoughness,
-                                   LoadMaterialTexture(asset, materialNamePrefix + "_metallicRoughness",
-                                                       source.metallicRoughnessTexture,
-                                                       MaterialTextureUsage::MetallicRoughness));
-    runtimeMaterial.SetTextureSlot(MaterialTextureUsage::Occlusion,
-                                   LoadMaterialTexture(asset, materialNamePrefix + "_occlusion",
-                                                       source.occlusionTexture, MaterialTextureUsage::Occlusion));
-    runtimeMaterial.SetTextureSlot(MaterialTextureUsage::Emissive,
-                                   LoadMaterialTexture(asset, materialNamePrefix + "_emissive", source.emissiveTexture,
-                                                       MaterialTextureUsage::Emissive));
-    runtimeMaterial.SetTextureSlot(MaterialTextureUsage::Specular,
-                                   LoadMaterialTexture(asset, materialNamePrefix + "_specular", source.specularTexture,
-                                                       MaterialTextureUsage::Specular));
-    runtimeMaterial.SetTextureSlot(MaterialTextureUsage::SpecularColor,
-                                   LoadMaterialTexture(asset, materialNamePrefix + "_specularColor",
-                                                       source.specularColorTexture,
-                                                       MaterialTextureUsage::SpecularColor));
-}
-
 void ModelTextureResolver::ResolveAssetTexturePaths(ModelAsset& asset) const {
     auto resolveSlot = [this, &asset](const TextureSlot& slot, MaterialTextureUsage usage) {
         TextureAsset3D* texture = ASSETS::MODELS::FindModelTexture(asset, slot);
@@ -149,7 +82,7 @@ void ModelTextureResolver::ResolveAssetTexturePaths(ModelAsset& asset) const {
         }
     };
 
-    // 讒矩蛹匁緒逕ｻ縺ｯ ModelAsset 縺ｮ texture 驟榊・縺九ｉ SRV 繧貞ｼ輔￥縺溘ａ縲√％縺薙〒 cooked 繝代せ縺ｸ蟇・○繧九・
+    // 構造化描画は ModelAsset の texture 配列から SRV を引くため、ここで cooked パスへ寄せる。
     for (const MaterialAsset& material : asset.materials) {
         resolveSlot(material.baseColorTexture, MaterialTextureUsage::BaseColor);
         resolveSlot(material.normalTexture, MaterialTextureUsage::Normal);

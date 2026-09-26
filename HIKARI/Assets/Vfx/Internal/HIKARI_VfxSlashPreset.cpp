@@ -11,7 +11,8 @@ void Sweep(VfxEmitterData& layer, float delay) {
 }
 void BladePath(VfxEmitterData& layer) {
     // 同じキーはワークスペースの位置/回転曲線として編集できる。
-    const std::pair<float, float> angles[]{{0, -155}, {0.12f, -130}, {0.4f, -15}, {0.68f, 76}, {1, 103}};
+    const std::pair<float, float> angles[]{
+        {0.0f, -155.0f}, {0.12f, -130.0f}, {0.4f, -15.0f}, {0.68f, 76.0f}, {1.0f, 103.0f}};
     layer.position.value.mode = VfxAnimatedValueMode::Curve;
     layer.rotation.eulerDegrees.mode = VfxAnimatedValueMode::Curve;
     VfxCurveData* position[]{&layer.position.value.curve.x, &layer.position.value.curve.y,

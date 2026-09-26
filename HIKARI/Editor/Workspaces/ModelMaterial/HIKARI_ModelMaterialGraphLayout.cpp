@@ -12,7 +12,7 @@ bool IsRuntimeDrivenInput(const MaterialNodeTypeId& typeId, std::string_view pin
 
 bool IsInlineOwnedInput(const MaterialNodeTypeId& typeId, std::string_view pin) noexcept {
     MaterialNodeKind kind{};
-    if (!TryGetLegacyMaterialNodeKind(typeId, kind)) {
+    if (!TryGetBuiltinMaterialNodeKind(typeId, kind)) {
         return false;
     }
     switch (kind) {

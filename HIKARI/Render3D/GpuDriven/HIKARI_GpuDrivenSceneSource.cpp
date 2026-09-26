@@ -90,10 +90,10 @@ void GpuDrivenSceneSource::Reset() {
     }
     meshShaderJointPalettes = nullptr;
     waterSurfaceGpuData = nullptr;
-    sandSurfaceGpuData = nullptr;
-    sandSurfaceHeights = nullptr;
+    terrainSurfaceGpuData = nullptr;
+    terrainSurfaceHeights = nullptr;
     mass = nullptr;
-    sandSurfaceHeightVersion = 0;
+    terrainSurfaceHeightVersion = 0;
     layoutVersion = 0;
     sourceVersion = 0;
     dirtyBaseSourceVersion = 0;

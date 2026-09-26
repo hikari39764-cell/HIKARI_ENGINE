@@ -170,15 +170,6 @@ bool PresentationVfxView::SubmitGroundTelegraph(const GameProjectGroundTelegraph
     }
 }
 
-bool PresentationVfxView::SubmitOcclusionReveal(const GameProjectOcclusionRevealRequest& request) const noexcept {
-    (void)request;
-    // Disabled fail-closed: the rejected shared depth/forward cutout path
-    // made every GPU-scene surface disappear on the real Summer scene.
-    // Keep the SDK symbol for ABI compatibility without mutating player
-    // materials or shared rendering state.
-    return false;
-}
-
 bool PresentationVfxView::SubmitWorldBarrier(const GameProjectWorldBarrierRequest& request) const noexcept {
     try {
         if (world_ == nullptr || request.sourceId == 0u || request.reserved != 0u ||
@@ -216,92 +207,18 @@ bool PresentationVfxView::SubmitWorldBarrier(const GameProjectWorldBarrierReques
     }
 }
 
-bool PresentationVfxView::SubmitWeaponTrail(const GameProjectWeaponTrailSample& sample) const noexcept {
-    try {
-        if (world_ == nullptr || sample.sourceId == 0u || sample.reserved != 0u || !IsFinite(sample.bladeBaseWorld) ||
-            !IsFinite(sample.bladeTipWorld) || !IsFiniteNonNegative(sample.bodyColor) ||
-            !IsFiniteNonNegative(sample.edgeColor) || !IsFinitePositive(sample.lifetimeUnscaledSeconds) ||
-            !IsFiniteNonNegative(sample.emissiveIntensity) || !IsFiniteNonNegative(sample.opacity) ||
-            sample.opacity > 1.0f || !IsFiniteNonNegative(sample.flowStrength)) {
-            return false;
-        }
-
-        World* world = static_cast<World*>(world_);
-        const RuntimeObjectHandle owner = RuntimeObjectHandle::FromValue(sample.ownerObjectHandle);
-        if (!owner.IsValid() || world->FindObject(owner) == nullptr) {
-            return false;
-        }
-        VFX::CombatPresentationService* combat = world->Services().Find<VFX::CombatPresentationService>();
-        if (combat == nullptr) {
-            return false;
-        }
-
-        VFX::WeaponTrailSampleRequest runtimeRequest{};
-        runtimeRequest.ownerObject = owner;
-        runtimeRequest.sourceId = sample.sourceId;
-        runtimeRequest.bladeBaseWorld = ToRuntime(sample.bladeBaseWorld);
-        runtimeRequest.bladeTipWorld = ToRuntime(sample.bladeTipWorld);
-        runtimeRequest.bodyColor = ToRuntime(sample.bodyColor);
-        runtimeRequest.edgeColor = ToRuntime(sample.edgeColor);
-        runtimeRequest.lifetimeUnscaledSeconds = sample.lifetimeUnscaledSeconds;
-        runtimeRequest.opacity = sample.opacity;
-        runtimeRequest.emissiveIntensity = sample.emissiveIntensity;
-        runtimeRequest.flowStrength = sample.flowStrength;
-        return combat->SubmitWeaponTrail(runtimeRequest, TIME::GetFrameContext().frameIndex);
-    } catch (...) {
-        return false;
-    }
-}
-
-bool PresentationVfxView::TriggerPerfectGuardWave(const GameProjectPerfectGuardWaveRequest& request) const noexcept {
-    try {
-        if (world_ == nullptr || request.sourceId == 0u ||
-            (request.flags & ~kGameProjectPerfectGuardWaveKnownFlags) != 0u || !IsFinite(request.worldCenter) ||
-            !IsFiniteNonNegative(request.color) || !IsFinitePositive(request.durationUnscaledSeconds) ||
-            !IsFinitePositive(request.maximumScreenRadius) || !IsFinitePositive(request.ringThickness) ||
-            !IsFiniteNonNegative(request.distortionStrength) || !IsFiniteNonNegative(request.chromaticAberration) ||
-            !IsFiniteNonNegative(request.flashIntensity) || !IsFinitePositive(request.intensity)) {
-            return false;
-        }
-
-        World* world = static_cast<World*>(world_);
-        VFX::ActionPostReactionService* reaction = world->Services().Find<VFX::ActionPostReactionService>();
-        if (reaction == nullptr) {
-            return false;
-        }
-
-        VFX::ActionPostReactionService::PerfectGuardShockwaveRequest runtimeRequest{};
-        runtimeRequest.sourceId = request.sourceId;
-        runtimeRequest.sequence = request.sequence;
-        runtimeRequest.frameIndex = TIME::GetFrameContext().frameIndex;
-        runtimeRequest.worldPosition = ToRuntime(request.worldCenter);
-        runtimeRequest.color = ToRuntime(request.color);
-        runtimeRequest.durationSeconds = request.durationUnscaledSeconds;
-        runtimeRequest.maximumScreenRadius = request.maximumScreenRadius;
-        runtimeRequest.ringThickness = request.ringThickness;
-        runtimeRequest.distortionStrength = request.distortionStrength;
-        runtimeRequest.chromaticShift = request.chromaticAberration;
-        runtimeRequest.flashIntensity = request.flashIntensity;
-        runtimeRequest.intensity = request.intensity;
-        runtimeRequest.flags = request.flags;
-        return reaction->TriggerPerfectGuardShockwave(runtimeRequest);
-    } catch (...) {
-        return false;
-    }
-}
-
 bool PresentationVfxView::SubmitPostProfileParameter(
-    std::string_view profileId, const GameProjectPostProfileParameterRequest& request) const noexcept {
+    std::string_view effectId, const GameProjectPostProfileParameterRequest& request) const noexcept {
     try {
-        if (!world_ || profileId.empty() || profileId.size() > 128u)
+        if (!world_ || effectId.empty() || effectId.size() > 128u)
             return false;
         World* world = static_cast<World*>(world_);
         const auto* camera = world->Services().Find<GameplayCameraService>();
         if (!camera || !camera->IsRuntimeCameraActive())
             return false;
         const DirectX::XMFLOAT4 value{request.value.x, request.value.y, request.value.z, request.value.w};
-        return POST::PostSystem::SubmitProfileParameter(profileId, request.parameterIndex, request.channelMask, value,
-                                                        request.priority, request.sourceId);
+        return POST::PostSystem::SubmitEffectParameter(effectId, request.parameterIndex, request.channelMask, value,
+                                                       request.priority, request.sourceId);
     } catch (...) {
         return false;
     }

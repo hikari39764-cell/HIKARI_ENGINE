@@ -21,7 +21,7 @@ DefaultModelMaterialBindingResolution ResolveModelMaterialBindings(const AssetRe
                                                                    const AssetGuid& modelAssetGuid,
                                                                    const AssetGuid& materialSetAssetGuid,
                                                                    const std::vector<MaterialAsset>& importedMaterials,
-                                                                   bool allowLegacyDefault) {
+                                                                   bool allowModelDefault) {
     DefaultModelMaterialBindingResolution result{};
     if (!modelAssetGuid.IsValid() || importedMaterials.empty()) {
         return result;
@@ -42,7 +42,7 @@ DefaultModelMaterialBindingResolution ResolveModelMaterialBindings(const AssetRe
             return result;
         }
         candidates.push_back(explicitSet);
-    } else if (allowLegacyDefault) {
+    } else if (allowModelDefault) {
         for (const AssetDescriptor* descriptor : registry.CollectByType(AssetType::ModelMaterialBinding)) {
             const auto* binding = dynamic_cast<const ModelMaterialBindingAssetDescriptor*>(descriptor);
             if (binding != nullptr && binding->data.modelAssetGuid == modelAssetGuid) {
@@ -66,9 +66,8 @@ DefaultModelMaterialBindingResolution ResolveModelMaterialBindings(const AssetRe
 
     result.bindings.reserve(result.bindingDescriptor->data.bindings.size());
     for (const ModelMaterialBindingEntry& authored : result.bindingDescriptor->data.bindings) {
-        const MaterialSlotResolution slot =
-            ResolveMaterialSlot(importedMaterials, authored.slotId, (std::numeric_limits<uint32_t>::max)());
-        if (!slot.IsValid()) {
+        const std::optional<uint32_t> slot = FindMaterialSlotIndex(importedMaterials, authored.slotId);
+        if (!slot.has_value()) {
             result.diagnostics.push_back("default material binding references a missing stable slot " +
                                          MaterialSlotIdToString(authored.slotId));
             continue;
@@ -79,8 +78,8 @@ DefaultModelMaterialBindingResolution ResolveModelMaterialBindings(const AssetRe
                                          authored.materialAssetGuid.value);
             continue;
         }
-        result.bindings.push_back(ResolvedDefaultModelMaterialBinding{authored.slotId, slot.materialIndex,
-                                                                      authored.materialAssetGuid, material});
+        result.bindings.push_back(
+            ResolvedDefaultModelMaterialBinding{authored.slotId, *slot, authored.materialAssetGuid, material});
     }
     std::sort(result.bindings.begin(), result.bindings.end(),
               [](const auto& left, const auto& right) { return left.materialIndex < right.materialIndex; });

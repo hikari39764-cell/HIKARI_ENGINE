@@ -57,16 +57,11 @@ void ModelComponent::Serialize(nlohmann::json& out) const {
     }
     out["materialOverrides"] = nlohmann::json::array();
     for (const ModelMaterialOverrideSlot& slot : materialOverrides_) {
-        if (!slot.materialAssetGuid.IsValid()) {
+        if (!slot.materialAssetGuid.IsValid() || !slot.slotId.IsValid()) {
             continue;
         }
-        nlohmann::json node{{"slot", slot.slotIndex},
-                            {"legacySlotIndex", slot.slotIndex},
-                            {"materialAssetGuid", slot.materialAssetGuid.value}};
-        if (slot.slotId.IsValid()) {
-            node["slotId"] = ASSETS::MODELS::MaterialSlotIdToString(slot.slotId);
-        }
-        out["materialOverrides"].push_back(std::move(node));
+        out["materialOverrides"].push_back({{"slotId", ASSETS::MODELS::MaterialSlotIdToString(slot.slotId)},
+                                            {"materialAssetGuid", slot.materialAssetGuid.value}});
     }
 }
 
@@ -95,31 +90,18 @@ void ModelComponent::Deserialize(const nlohmann::json& in) {
                 continue;
             }
 
-            const uint32_t slotIndex = node.value("legacySlotIndex", node.value("slot", 0u));
-            MaterialSlotId slotId{};
-            if (const auto parsedSlotId = ASSETS::MODELS::ParseMaterialSlotId(node.value("slotId", std::string{}))) {
-                slotId = *parsedSlotId;
-            }
-            AssetGuid materialGuid{};
-            materialGuid.value = node.value("materialAssetGuid", std::string{});
-            if (!materialGuid.IsValid()) {
+            const auto slotId = ASSETS::MODELS::ParseMaterialSlotId(node.value("slotId", std::string{}));
+            AssetGuid materialGuid{node.value("materialAssetGuid", std::string{})};
+            if (!slotId.has_value() || !materialGuid.IsValid()) {
                 continue;
             }
-
             const auto existing =
                 std::find_if(materialOverrides_.begin(), materialOverrides_.end(),
-                             [slotIndex, slotId](const ModelMaterialOverrideSlot& slot) {
-                                 if (slotId.IsValid() && slot.slotId.IsValid()) {
-                                     return slot.slotId == slotId;
-                                 }
-                                 return !slotId.IsValid() && !slot.slotId.IsValid() && slot.slotIndex == slotIndex;
-                             });
+                             [&](const ModelMaterialOverrideSlot& slot) { return slot.slotId == *slotId; });
             if (existing != materialOverrides_.end()) {
-                existing->slotId = slotId;
-                existing->slotIndex = slotIndex;
                 existing->materialAssetGuid = std::move(materialGuid);
             } else {
-                materialOverrides_.push_back(ModelMaterialOverrideSlot{slotIndex, std::move(materialGuid), slotId});
+                materialOverrides_.push_back(ModelMaterialOverrideSlot{*slotId, std::move(materialGuid)});
             }
         }
     }

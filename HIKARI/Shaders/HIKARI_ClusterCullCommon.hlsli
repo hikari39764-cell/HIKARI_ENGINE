@@ -735,8 +735,8 @@ bool HikariClusterCullSelectSectionLodRange(
             continue;
         }
 
-        // LOD 縺ｮ谿ｵ髫主､画峩縺ｯ隕九◆逶ｮ繧ｵ繧､繧ｺ縺ｨ蟷ｾ菴戊ｪ､蟾ｮ縺ｮ荳｡譁ｹ縺ｧ豎ｺ繧√ｋ縲・
-        // 迚・婿縺縺代〒關ｽ縺ｨ縺吶→縲・ｫ伜ｯ・ｺｦ繧ｭ繝｣繝ｩ繧ｯ繧ｿ繝ｼ縺碁□霍晞屬縺ｧ譛邨・LOD 縺ｫ蠑ｵ繧贋ｻ倥″繧・☆縺・・
+        // LOD の段階変更は見た目サイズと幾何誤差の両方で決める。
+        // 片方だけで落とすと、高密度キャラクターが遠距離で最粗 LOD に張り付きやすい。
         float transitionRadius =
             HikariClusterCullResolveLodTransitionRadius(selectedRange, range);
         bool radiusAllowsStepDown =

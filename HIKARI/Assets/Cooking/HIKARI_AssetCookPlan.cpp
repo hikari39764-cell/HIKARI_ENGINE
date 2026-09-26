@@ -2,6 +2,7 @@
 #include "Assets/Cooking/HIKARI_CookedContentManifest.h"
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetUsageAnalyzer.h"
+#include "Assets/Post/HIKARI_PostAsset.h"
 #include "Assets/Ui/HIKARI_UiAnimationAsset.h"
 #include "Assets/Text/HIKARI_TextStyleAsset.h"
 #include "Assets/Sequence/HIKARI_SequenceAsset.h"
@@ -80,6 +81,23 @@ bool CollectSourceCookDependencies(const AssetRecord& record, const std::filesys
             return false;
         UiAnimationAsset animation;
         return LoadUiAnimationAsset(path, animation, outMessage);
+    }
+    if (record.type == AssetType::PostEffect) {
+        std::filesystem::path path;
+        if (!ResolveContainedFilePath(projectRoot, record.sourcePath, path, outMessage))
+            return false;
+        POST::PostEffectDefinition effect;
+        return POST::LoadPostEffectDefinition(path, effect, outMessage);
+    }
+    if (record.type == AssetType::PostProfile) {
+        std::filesystem::path path;
+        if (!ResolveContainedFilePath(projectRoot, record.sourcePath, path, outMessage))
+            return false;
+        POST::PostProfileAsset profile;
+        if (!POST::LoadPostProfileAsset(path, profile, outMessage))
+            return false;
+        plan.sourceDependencies.insert_or_assign(record.guid.value, POST::CollectPostProfileDependencies(profile));
+        return true;
     }
     if (record.type == AssetType::TextStyle) {
         std::filesystem::path path;

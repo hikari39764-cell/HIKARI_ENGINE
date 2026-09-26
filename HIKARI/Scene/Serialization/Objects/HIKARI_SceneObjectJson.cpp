@@ -7,44 +7,9 @@
 #include "Core/HIKARI_JsonRead.h"
 #include "Core/Serialization/Json/HIKARI_JsonMath.h"
 #include "Scene/HIKARI_SceneComponentId.h"
-#include "Scene/Terrain/HIKARI_TerrainSurfaceMigration.h"
 #include "Scene/HIKARI_SceneDocument.h"
 
 namespace HIKARI::SCENE::SERIALIZATION {
-
-void NormalizeLegacySceneObjectReferences(SceneComponentData& component) {
-    // Legacy migration names only known component fields. New project
-    // components opt in through PropertyWriter::WriteSceneObjectId.
-    const auto normalize = [](nlohmann::json& properties, const char* name) {
-        if (!properties.is_object())
-            return;
-        const auto found = properties.find(name);
-        uint64_t id = 0;
-        if (found != properties.end() && ReadSceneObjectReference(*found, id)) {
-            *found = WriteSceneObjectReference(id);
-        }
-    };
-    auto& properties = component.properties;
-    if (!properties.is_object())
-        return;
-    if (component.type == "CameraFollowComponent") {
-        normalize(properties, "targetObjectId");
-        normalize(properties, "cameraLookTarget");
-    } else if (component.type == "CameraActivationVolumeComponent" || component.type == "CameraFlowComponent") {
-        normalize(properties, "subjectObjectId");
-        normalize(properties, "cameraObjectId");
-    } else if (component.type == "SequencePlayerComponent") {
-        if (auto bindings = properties.find("bindings"); bindings != properties.end() && bindings->is_array()) {
-            for (auto& binding : *bindings)
-                normalize(binding, "sceneObjectId");
-        }
-    } else if (component.type == "VfxPlayerComponent") {
-        if (auto slots = properties.find("slots"); slots != properties.end() && slots->is_array()) {
-            for (auto& slot : *slots)
-                normalize(slot, "fixedObjectId");
-        }
-    }
-}
 
 uint32_t RemapSceneObjectReferences(nlohmann::json& properties, const std::unordered_map<uint64_t, uint64_t>& ids,
                                     bool clearExternalReferences) {
@@ -98,9 +63,7 @@ void DeserializeTransform(const nlohmann::json& node, TransformData& outTransfor
 void SerializeComponents(const std::vector<SceneComponentData>& components, nlohmann::json& out) {
     out = nlohmann::json::array();
     for (const SceneComponentData& component : components) {
-        auto persisted = component;
-        NormalizeLegacySceneObjectReferences(persisted);
-        out.push_back({{"id", component.id.value}, {"type", component.type}, {"properties", persisted.properties}});
+        out.push_back({{"id", component.id.value}, {"type", component.type}, {"properties", component.properties}});
     }
 }
 
@@ -117,7 +80,6 @@ void DeserializeComponents(const nlohmann::json& node, std::vector<SceneComponen
         component.id.value = componentNode.value("id", 0ull);
         component.type = componentNode.value("type", std::string{});
         component.properties = componentNode.value("properties", nlohmann::json::object());
-        NormalizeLegacySceneObjectReferences(component);
         outComponents.push_back(std::move(component));
     }
 }
@@ -168,37 +130,6 @@ bool DeserializeSceneObjectJson(const nlohmann::json& node, SceneObjectData& out
 
     DeserializeTransform(node.value("transform", nlohmann::json::object()), outObject.transform);
     DeserializeComponents(node.value("components", nlohmann::json::array()), outObject.components);
-    {
-        const nlohmann::json* sandJson = nullptr;
-        const nlohmann::json* waterJson = nullptr;
-        SceneComponentId terrainId{};
-        for (const SceneComponentData& component : outObject.components) {
-            if (component.type == "SandSurfaceComponent") {
-                sandJson = &component.properties;
-                terrainId = component.id;
-            } else if (component.type == "WaterSurfaceComponent") {
-                waterJson = &component.properties;
-            }
-        }
-        if (sandJson != nullptr) {
-            nlohmann::json merged = TERRAIN::BuildTerrainSurfaceFromLegacy(*sandJson, waterJson);
-            std::vector<SceneComponentData> next{};
-            next.reserve(outObject.components.size());
-            for (SceneComponentData& component : outObject.components) {
-                // 砂地は統合地形へ移行し、水は独立コンポーネントとして温存する。
-                if (component.type == "SandSurfaceComponent") {
-                    continue;
-                }
-                next.push_back(std::move(component));
-            }
-            SceneComponentData terrain{};
-            terrain.type = "TerrainSurfaceComponent";
-            terrain.id = terrainId;
-            terrain.properties = std::move(merged);
-            next.push_back(std::move(terrain));
-            outObject.components = std::move(next);
-        }
-    }
     NormalizeSceneComponentIds(outObject);
     return true;
 }

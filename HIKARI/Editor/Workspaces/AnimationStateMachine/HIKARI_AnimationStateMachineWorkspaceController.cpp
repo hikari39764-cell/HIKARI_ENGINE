@@ -378,4 +378,8 @@ ANIMATION::AnimationStateTransition* AnimationStateMachineWorkspaceController::S
     return found != transitions.end() ? &*found : nullptr;
 }
 
+nlohmann::json AnimationStateMachineWorkspaceController::DescribeDocumentState() const {
+    return {{"open", IsDocumentOpen()}, {"assetGuid", GetDocumentAssetGuid().value}, {"dirty", IsDocumentDirty()}};
+}
+
 } // namespace HIKARI::EDITOR

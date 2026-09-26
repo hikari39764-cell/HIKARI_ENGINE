@@ -74,7 +74,7 @@ SceneObjectId AddIrradianceVolume(SceneDocument& document, const IrradianceVolum
 const SceneComponentData* FindLightingComponent(const SceneObjectData& object, const char* componentType);
 SceneComponentData* FindLightingComponent(SceneObjectData& object, const char* componentType);
 
-void MigrateLegacyLightingAuthoring(SceneDocument& document, uint32_t sourceVersion);
+void AddDefaultSceneLight(SceneDocument& document);
 void SynchronizeLegacyLightingViews(SceneDocument& document);
 
 } // namespace HIKARI::LIGHTING_AUTHORING

@@ -63,7 +63,7 @@ struct LightingTransportLight {
     MATH::Vec3 radiance{1.0f, 1.0f, 1.0f};
     float innerConeCos = -1.0f;
     float angularFalloff = 1.0f;
-    LocalLightFalloff distanceFalloff = LocalLightFalloff::LegacyRange;
+    LocalLightFalloff distanceFalloff = LocalLightFalloff::Range;
     float sourceRadius = 0.0f;
 };
 

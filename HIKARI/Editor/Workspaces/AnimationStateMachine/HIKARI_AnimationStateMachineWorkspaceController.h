@@ -1,5 +1,6 @@
 #pragma once
 
+#include <json.hpp>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -61,6 +62,8 @@ public:
     bool IsDocumentOpen() const noexcept;
     const AssetGuid& GetDocumentAssetGuid() const noexcept { return document_.GetAssetGuid(); }
     bool IsDocumentDirty() const noexcept;
+    // 文書の状態。シェル、AI の文脈、バックグラウンドのセッションで共有する。
+    nlohmann::json DescribeDocumentState() const;
     bool CanUndo() const noexcept;
     bool CanRedo() const noexcept;
 

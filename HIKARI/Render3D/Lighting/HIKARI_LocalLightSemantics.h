@@ -12,22 +12,22 @@ struct SpotLight;
 
 namespace HIKARI::RENDER3D::LIGHTING {
 
-// GPU と保存データで共有する値。既存シーンの未指定値は LegacyRange。
+// GPU と保存データで共有する値。未指定値は Range。
 enum class LocalLightFalloff : uint32_t {
-    LegacyRange = 0u,
+    Range = 0u,
     InverseSquare = 1u,
 };
 
 constexpr LocalLightFalloff CanonicalLocalLightFalloff(LocalLightFalloff value) noexcept {
-    return value == LocalLightFalloff::InverseSquare ? value : LocalLightFalloff::LegacyRange;
+    return value == LocalLightFalloff::InverseSquare ? value : LocalLightFalloff::Range;
 }
 
 constexpr const char* ToString(LocalLightFalloff value) noexcept {
-    return value == LocalLightFalloff::InverseSquare ? "InverseSquare" : "LegacyRange";
+    return value == LocalLightFalloff::InverseSquare ? "InverseSquare" : "Range";
 }
 
 constexpr LocalLightFalloff ParseLocalLightFalloff(std::string_view value) noexcept {
-    return value == "InverseSquare" ? LocalLightFalloff::InverseSquare : LocalLightFalloff::LegacyRange;
+    return value == "InverseSquare" ? LocalLightFalloff::InverseSquare : LocalLightFalloff::Range;
 }
 
 struct SceneLightProvider;

@@ -17,7 +17,6 @@ void RegisterGameExportOperations(EditorOperationRegistry& registry, GameExportJ
     start.workspace = "general";
     start.kind = EditorOperationKind::Session;
     start.permission = EditorOperationPermission::ExecuteExternalProcess;
-    start.risk = EditorOperationRisk::Medium;
     start.parameters = {
         {"outputDirectory", EditorOperationParameterType::String, true, "出力先フォルダー"},
         {"startupSceneGuid", EditorOperationParameterType::String, false, "開始シーン GUID"},
@@ -46,8 +45,7 @@ void RegisterGameExportOperations(EditorOperationRegistry& registry, GameExportJ
         operation.workspace = "general";
         operation.kind = cancel ? EditorOperationKind::Session : EditorOperationKind::Query;
         operation.permission =
-            cancel ? EditorOperationPermission::ExecuteExternalProcess : EditorOperationPermission::ReadEditorState;
-        operation.risk = EditorOperationRisk::Low;
+            cancel ? EditorOperationPermission::ModifyEditorState : EditorOperationPermission::ReadEditorState;
         operation.execute = [&job, cancel](const nlohmann::json&) -> EditorOperationResult {
             if (cancel)
                 job.Cancel();
@@ -63,7 +61,6 @@ void RegisterGameExportOperations(EditorOperationRegistry& registry, GameExportJ
     getIdentity.workspace = "general";
     getIdentity.kind = EditorOperationKind::Query;
     getIdentity.permission = EditorOperationPermission::ReadEditorState;
-    getIdentity.risk = EditorOperationRisk::Low;
     getIdentity.execute = [](const nlohmann::json&) -> EditorOperationResult {
         if (!GetProjectContext().IsOpen())
             return {false, "PROJECT_NOT_OPEN", "プロジェクトを開いてください。"};
@@ -80,7 +77,6 @@ void RegisterGameExportOperations(EditorOperationRegistry& registry, GameExportJ
     setIdentity.workspace = "general";
     setIdentity.kind = EditorOperationKind::Mutation;
     setIdentity.permission = EditorOperationPermission::ModifyProjectFiles;
-    setIdentity.risk = EditorOperationRisk::Low;
     setIdentity.parameters = {
         {"executableName", EditorOperationParameterType::String, true, "出力 EXE ファイル名"},
         {"windowTitle", EditorOperationParameterType::String, true, "ウィンドウタイトル（空欄で既定値）"},

@@ -1,5 +1,4 @@
 #include "Assets/Ui/HIKARI_UiAnimationAsset.h"
-#include "Assets/HIKARI_AssetDatabase.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
 #include <algorithm>
 #include <array>
@@ -135,42 +134,5 @@ bool SaveUiAnimationAsset(const std::filesystem::path& path, const UiAnimationAs
     UiAnimationAsset checked;
     const auto data = WriteUiAnimationAsset(asset);
     return ReadUiAnimationAsset(data, checked, error) && SERIALIZATION::JSON::WriteJsonFile(path, data, &error);
-}
-void UiAnimationAssetStore::Configure(const AssetDatabase* database) {
-    if (database_ != database) {
-        database_ = database;
-        revision_ = ~uint64_t(0);
-        cache_.clear();
-    }
-}
-std::shared_ptr<const UiAnimationAsset> UiAnimationAssetStore::Load(const AssetGuid& guid, std::string& error) {
-    if (!database_ || !guid.IsValid()) {
-        error = "No UI animation asset is bound.";
-        return {};
-    }
-    const auto revision = database_->GetContentRevision();
-    if (revision != revision_) {
-        revision_ = revision;
-        cache_.clear();
-    }
-    if (auto it = cache_.find(guid.value); it != cache_.end()) {
-        error = it->second.error;
-        return it->second.asset;
-    }
-    Entry entry;
-    const auto* record = database_->FindByGuid(guid);
-    if (!record || record->type != AssetType::UiAnimation || !record->lastImportSucceeded)
-        entry.error = "UI animation asset is missing or failed import: " + guid.value;
-    else {
-        auto value = std::make_shared<UiAnimationAsset>();
-        const auto path =
-            record->sourcePath.is_absolute() ? record->sourcePath : database_->GetProjectRoot() / record->sourcePath;
-        if (LoadUiAnimationAsset(path, *value, entry.error))
-            entry.asset = std::move(value);
-    }
-    error = entry.error;
-    auto result = entry.asset;
-    cache_.emplace(guid.value, std::move(entry));
-    return result;
 }
 } // namespace HIKARI

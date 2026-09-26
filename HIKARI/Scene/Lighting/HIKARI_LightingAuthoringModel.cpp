@@ -9,7 +9,6 @@
 #include "Core/Serialization/Json/HIKARI_JsonMath.h"
 #include "Scene/HIKARI_SceneComponentId.h"
 #include "Scene/HIKARI_SceneDocumentQueries.h"
-#include "Scene/Lighting/Internal/HIKARI_LightAuthoringInternal.h"
 
 namespace HIKARI::LIGHTING_AUTHORING {
 
@@ -211,32 +210,6 @@ SceneObjectId AddIrradianceVolume(SceneDocument& document, const IrradianceVolum
     const SceneObjectId id = object.id;
     document.objects.push_back(std::move(object));
     return id;
-}
-
-void MigrateLegacyLightingAuthoring(SceneDocument& document, uint32_t sourceVersion) {
-    if (sourceVersion < 5u && !HasLightingComponent(document, kReflectionProbeComponentType) &&
-        document.environment.reflectionProbe.enabled) {
-        const ReflectionProbeSettings& legacy = document.environment.reflectionProbe;
-        ReflectionProbeAuthoring probe{};
-        probe.name = "Reflection Probe";
-        probe.position = legacy.position;
-        probe.settings = legacy;
-        (void)AddReflectionProbe(document, probe);
-    }
-
-    if (sourceVersion < 5u && !HasLightingComponent(document, kIrradianceVolumeComponentType) &&
-        document.lightingBake.lightProbeVolume.enabled) {
-        LightProbeVolumeSettings legacy = document.lightingBake.lightProbeVolume;
-        ClampLightProbeVolumeSettings(legacy);
-        IrradianceVolumeAuthoring volume{};
-        volume.name = "Irradiance Volume";
-        volume.center = {legacy.origin.x + legacy.size.x * 0.5f, legacy.origin.y + legacy.size.y * 0.5f,
-                         legacy.origin.z + legacy.size.z * 0.5f};
-        volume.settings = legacy;
-        (void)AddIrradianceVolume(document, volume);
-    }
-
-    INTERNAL::MigrateLegacyLights(document, sourceVersion);
 }
 
 void SynchronizeLegacyLightingViews(SceneDocument& document) {

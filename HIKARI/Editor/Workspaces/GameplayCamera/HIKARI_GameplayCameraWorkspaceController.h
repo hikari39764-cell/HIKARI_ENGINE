@@ -23,7 +23,8 @@ class GameplayCameraWorkspaceController {
 public:
     GameplayCameraEditorDocument& Document() { return document_; }
     const GameplayCameraEditorDocument& Document() const { return document_; }
-    nlohmann::json Describe() const;
+    // 文書の状態。シェル、AI の文脈、バックグラウンドのセッションで共有する。
+    nlohmann::json DescribeDocumentState() const;
     nlohmann::json DescribeFlows(const DocumentSceneBase& scene) const;
     bool EditingFlow() const { return flowEditing_; }
     bool HasFlowDraft() const { return flowDirty_; }

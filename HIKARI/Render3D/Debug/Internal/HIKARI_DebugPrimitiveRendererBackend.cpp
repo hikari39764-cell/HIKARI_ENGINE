@@ -4,9 +4,11 @@
 #include <array>
 #include <cstddef>
 #include <filesystem>
+#include <string>
 #include <d3dcompiler.h>
 #include <d3dx12.h>
 #include <wrl/client.h>
+#include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_D3DBlobCompat.h"
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
@@ -63,8 +65,11 @@ bool CompileShader(const wchar_t* relativePath, const char* target, ID3DBlob** o
     ComPtr<ID3DBlob> errors;
     const HRESULT result = D3DCompileFromFile(path.c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "main", target,
                                               flags, 0, output, errors.GetAddressOf());
-    if (FAILED(result) && errors != nullptr) {
-        OutputDebugStringA(static_cast<const char*>(errors->GetBufferPointer()));
+    if (FAILED(result)) {
+        DEBUGLOG::PushRenderError("[DebugPrimitiveRenderer] shader compile failed. path=" + path.generic_string() +
+                                  (errors != nullptr
+                                       ? "\n" + std::string(static_cast<const char*>(errors->GetBufferPointer()))
+                                       : std::string{}));
     }
     return SUCCEEDED(result);
 }

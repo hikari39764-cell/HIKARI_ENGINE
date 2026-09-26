@@ -134,8 +134,7 @@ nlohmann::json WriteGameplayCameraProfile(const GameplayCameraProfile& profile) 
 bool ReadGameplayCameraProfile(const nlohmann::json& root, GameplayCameraProfile& result, std::string& error) {
     try {
         if (!root.is_object() || root.value("assetType", "") != "GameplayCamera" ||
-            (root.value("formatVersion", 0u) < 1 ||
-             root.value("formatVersion", 0u) > GameplayCameraProfile::kFormatVersion)) {
+            root.value("formatVersion", 0u) != GameplayCameraProfile::kFormatVersion) {
             error = "Unsupported gameplay camera asset format.";
             return false;
         }
@@ -177,43 +176,6 @@ bool ReadGameplayCameraProfile(const nlohmann::json& root, GameplayCameraProfile
             HIKARI_READ_MODE(priority);
 #undef HIKARI_READ_MODE
             mode.effects = SEQUENCER::ReadCameraMotionEffects(item.value("effects", nlohmann::json::array()));
-            if (!item.contains("effects") || item.contains("rollDegrees") || item.contains("shakeAmplitude") ||
-                item.contains("shakeFrequency") || item.contains("speedFovDegrees") ||
-                item.contains("speedForMaximumFov")) {
-                // v1 の固定欄は読込時だけ積み木へ変換する。
-                const auto add = [&](SEQUENCER::CameraMotionKind kind, float amount) {
-                    const char* key = kind == SEQUENCER::CameraMotionKind::Roll    ? "rollDegrees"
-                                      : kind == SEQUENCER::CameraMotionKind::Shake ? "shakeAmplitude"
-                                                                                   : "speedFovDegrees";
-                    auto existing = std::find_if(mode.effects.begin(), mode.effects.end(),
-                                                 [&](const auto& e) { return e.kind == kind; });
-                    if (existing != mode.effects.end()) {
-                        if (item.contains(key)) {
-                            existing->amount.value = amount;
-                            existing->amount.keys.clear();
-                        }
-                        if (kind == SEQUENCER::CameraMotionKind::Shake && item.contains("shakeFrequency"))
-                            existing->frequency = item.at("shakeFrequency").get<float>();
-                        if (kind == SEQUENCER::CameraMotionKind::SpeedFov && item.contains("speedForMaximumFov"))
-                            existing->maximumSpeed = item.at("speedForMaximumFov").get<float>();
-                        return;
-                    }
-                    if (amount == 0)
-                        return;
-                    SEQUENCER::CameraMotionEffect e;
-                    for (const auto& old : mode.effects)
-                        e.id = std::max(e.id, old.id + 1);
-                    e.kind = kind;
-                    e.amount.value = amount;
-                    e.seed = 0;
-                    e.frequency = item.value("shakeFrequency", 9.0f);
-                    e.maximumSpeed = item.value("speedForMaximumFov", 8.0f);
-                    mode.effects.push_back(e);
-                };
-                add(SEQUENCER::CameraMotionKind::Shake, item.value("shakeAmplitude", 0.0f));
-                add(SEQUENCER::CameraMotionKind::Roll, item.value("rollDegrees", 0.0f));
-                add(SEQUENCER::CameraMotionKind::SpeedFov, item.value("speedFovDegrees", 0.0f));
-            }
             profile.modes.push_back(std::move(mode));
         }
         for (const auto& item : root.value("effects", nlohmann::json::array())) {

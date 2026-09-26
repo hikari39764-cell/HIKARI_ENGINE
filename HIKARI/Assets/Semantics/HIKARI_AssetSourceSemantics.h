@@ -32,6 +32,8 @@ enum class AssetImporterKind : uint8_t {
     Font,
     TextStyle,
     UiAnimation,
+    PostEffect,
+    PostProfile,
     Count,
 };
 

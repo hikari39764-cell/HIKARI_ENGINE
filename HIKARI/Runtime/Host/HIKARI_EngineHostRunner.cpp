@@ -93,7 +93,7 @@ void EnableProcessDpiAwareness() {
 
 int ReportLaunchFailure(const std::string& message, bool showDialog = true) {
     const std::string displayMessage = "HIKARI could not start.\n\n" + message;
-    OutputDebugStringA(displayMessage.c_str());
+    HIKARI_LOG_ERROR(displayMessage);
     if (!showDialog)
         return -2;
     // 自身の window の終了処理で残った WM_QUIT によって、

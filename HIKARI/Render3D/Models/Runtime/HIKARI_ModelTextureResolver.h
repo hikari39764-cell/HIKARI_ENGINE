@@ -40,12 +40,6 @@ public:
 
     void ResolveAssetTexturePaths(ModelAsset& asset) const;
 
-    RuntimeTextureSlot LoadMaterialTexture(const ModelAsset& asset, const std::string& textureName,
-                                           const TextureSlot& textureSlot, MaterialTextureUsage usage) const;
-
-    void ApplyMaterial(const ModelAsset& asset, const MaterialAsset& source, Material& runtimeMaterial,
-                       const std::string& materialNamePrefix) const;
-
 private:
     ModelTexturePathResolver pathResolver_{};
     mutable ModelTextureResolveStats stats_{};

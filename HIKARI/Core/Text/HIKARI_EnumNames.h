@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <optional>
 #include <string_view>
@@ -32,6 +33,32 @@ constexpr std::optional<E> TryParseEnum(const EnumName<E> (&table)[N], std::stri
         }
     }
     return std::nullopt;
+}
+
+// 表に載っている値か。範囲外の列挙値の検出に使う。
+template <class E, std::size_t N>
+constexpr bool IsNamedEnum(const EnumName<E> (&table)[N], E value) noexcept {
+    return EnumToName(table, value, nullptr) != nullptr;
+}
+
+// 一致した時だけ outValue を書き換える。
+template <class E, std::size_t N>
+constexpr bool TryParseEnum(const EnumName<E> (&table)[N], std::string_view text, E& outValue) noexcept {
+    const std::optional<E> parsed = TryParseEnum(table, text);
+    if (parsed) {
+        outValue = *parsed;
+    }
+    return parsed.has_value();
+}
+
+// 表の名前を並び順のまま返す。別名を持たない表の選択肢一覧に使う。
+template <class E, std::size_t N>
+constexpr std::array<std::string_view, N> EnumNameList(const EnumName<E> (&table)[N]) noexcept {
+    std::array<std::string_view, N> names{};
+    for (std::size_t index = 0; index < N; ++index) {
+        names[index] = table[index].name;
+    }
+    return names;
 }
 
 template <class E, std::size_t N>

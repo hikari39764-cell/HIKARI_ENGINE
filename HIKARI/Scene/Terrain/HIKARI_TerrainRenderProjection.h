@@ -6,7 +6,7 @@
 #include "Scene/HIKARI_SceneRenderCacheSync.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
-#include "Scene/Sand/HIKARI_SandSurfaceQueryService.h"
+#include "Scene/Terrain/HIKARI_TerrainSurfaceQueryService.h"
 #include "Scene/Terrain/HIKARI_TerrainChunks.h"
 
 namespace HIKARI {
@@ -46,7 +46,7 @@ struct TerrainProjectionState {
     uint64_t authoredRevision = 0u;
     std::map<TERRAIN::TerrainChunkKey, AuthoredChunkState> authoredChunks{};
     std::map<TERRAIN::TerrainChunkKey, uint64_t> runtimeRevisions{};
-    std::map<TERRAIN::TerrainChunkKey, SAND::SandChunkRuntimeSnapshotPtr> runtimeByChunk{};
+    std::map<TERRAIN::TerrainChunkKey, TERRAIN::TerrainChunkRuntimeSnapshotPtr> runtimeByChunk{};
     std::vector<TERRAIN::TerrainChunkKey> changedChunks{};
     std::shared_ptr<std::vector<float>> heights{};
     std::shared_ptr<std::vector<float>> deformations{};
@@ -73,7 +73,8 @@ struct TerrainProjectionOutput {
 };
 
 void BakeTerrainChunksForRender(const TERRAIN::TerrainSurface& surface, const TerrainSurfaceComponent& terrain,
-                                RuntimeObjectHandle objectHandle, const SAND::SandSurfaceQueryService* sandSurfaceQuery,
+                                RuntimeObjectHandle objectHandle,
+                                const TERRAIN::TerrainSurfaceQueryService* terrainSurfaceQuery,
                                 const std::filesystem::path& projectRoot, float chunkSize, uint32_t cells,
                                 TerrainProjectionState& state, SceneRenderCacheSync::DebugStats& stats,
                                 TerrainProjectionOutput& output, RENDER3D::RUNTIME::SceneRenderObjectDesc& desc);

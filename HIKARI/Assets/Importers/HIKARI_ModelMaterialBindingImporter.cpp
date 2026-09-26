@@ -46,7 +46,6 @@ AssetImportResult ModelMaterialBindingImporter::Import(const AssetRecord& record
         {"valid", true},
         {"modelAssetGuid", data.modelAssetGuid.value},
         {"bindingCount", data.bindings.size()},
-        {"migratedFromLegacy", data.migratedFromLegacy},
         {"diagnostics",
          diagnostics}}.dump(2);
     return result;

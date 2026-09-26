@@ -82,7 +82,7 @@ void ProjectLauncherApp::RenderHostUi() {
     ImGui::PopStyleVar();
     DrawHeader();
     const float statusHeight =
-        openWorkflow_.GetState() == ProjectOpenWorkflowState::Idle && interactionMessage_.empty() ? 32 : 98;
+        openWorkflow_.GetState() == ProjectOpenWorkflowState::Idle && interactionMessage_.empty() ? 32.0f : 98.0f;
     const bool narrow = viewport->WorkSize.x < 760;
     const float navigationWidth = narrow ? 54.0f : 174.0f;
     ImGui::BeginChild("navigation", {navigationWidth, -statusHeight});

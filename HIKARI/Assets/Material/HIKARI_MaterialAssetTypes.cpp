@@ -146,10 +146,10 @@ std::string_view ToString(MaterialNodeKind value) noexcept {
     return definition == nullptr ? std::string_view{"Unknown"} : definition->stableName;
 }
 
-MaterialNodeTypeId::MaterialNodeTypeId(MaterialNodeKind legacyKind) : value(ToString(legacyKind)) {}
+MaterialNodeTypeId::MaterialNodeTypeId(MaterialNodeKind builtinKind) : value(ToString(builtinKind)) {}
 
-bool MaterialNodeTypeId::operator==(MaterialNodeKind legacyKind) const noexcept {
-    return value == ToString(legacyKind);
+bool MaterialNodeTypeId::operator==(MaterialNodeKind builtinKind) const noexcept {
+    return value == ToString(builtinKind);
 }
 
 bool MaterialNodeTypeId::IsValid() const noexcept {
@@ -164,7 +164,9 @@ bool MaterialNodeTypeId::IsValid() const noexcept {
     });
 }
 
-bool operator==(MaterialNodeKind legacyKind, const MaterialNodeTypeId& typeId) noexcept { return typeId == legacyKind; }
+bool operator==(MaterialNodeKind builtinKind, const MaterialNodeTypeId& typeId) noexcept {
+    return typeId == builtinKind;
+}
 
 std::string_view ToString(const MaterialNodeTypeId& value) noexcept { return value.value; }
 
@@ -189,7 +191,7 @@ bool TryParseMaterialNodeTypeId(std::string_view text, MaterialNodeTypeId& outVa
     return true;
 }
 
-bool TryGetLegacyMaterialNodeKind(const MaterialNodeTypeId& typeId, MaterialNodeKind& outValue) noexcept {
+bool TryGetBuiltinMaterialNodeKind(const MaterialNodeTypeId& typeId, MaterialNodeKind& outValue) noexcept {
     return TryParseMaterialNodeKind(typeId.value, outValue);
 }
 

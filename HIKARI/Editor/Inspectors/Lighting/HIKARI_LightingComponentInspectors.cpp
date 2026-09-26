@@ -74,11 +74,11 @@ void LightComponent::BuildInspector(IInspectorBuilder& builder) {
             sourceRadius_, 0.0f, RENDER3D::LIGHTING::kMaximumLocalLightSourceRadius, 0.01f);
         int falloff = static_cast<int>(distanceFalloff_);
         static constexpr std::array<AuthoringChoice, 2> falloffChoices{
-            AuthoringChoice{"LegacyRange", "Legacy Range"}, AuthoringChoice{"InverseSquare", "Inverse Square"}};
+            AuthoringChoice{"Range", "Range"}, AuthoringChoice{"InverseSquare", "Inverse Square"}};
         if (builder.Choice(
                 AuthoringFieldDescriptor{
                     "distanceFalloff", "Distance Falloff",
-                    "Inverse Square uses intensity per squared world distance with a smooth range cutoff. Legacy Range preserves older scenes."},
+                    "Range fades to zero at the light range. Inverse Square uses intensity per squared world distance with a smooth range cutoff."},
                 falloff, falloffChoices)) {
             distanceFalloff_ = RENDER3D::LIGHTING::CanonicalLocalLightFalloff(
                 static_cast<RENDER3D::LIGHTING::LocalLightFalloff>(falloff));

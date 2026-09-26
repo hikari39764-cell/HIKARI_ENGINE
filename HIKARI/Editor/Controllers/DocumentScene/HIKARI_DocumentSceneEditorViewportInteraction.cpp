@@ -205,7 +205,7 @@ void DocumentSceneEditorController::HandleGameViewportAssetDrop(DocumentSceneBas
             }
 
             const MaterialAsset& importedMaterial = modelAsset->materials.front();
-            modelComponent->SetMaterialOverride(importedMaterial.slotId, 0u, payload.guid);
+            modelComponent->SetMaterialOverride(importedMaterial.slotId, payload.guid);
             scene.RebuildMaterialOverrides();
             if (SceneObjectData* documentObject =
                     selectionSync_.FindDocumentObjectByRuntime(scene, context_.selection.selectedObject)) {

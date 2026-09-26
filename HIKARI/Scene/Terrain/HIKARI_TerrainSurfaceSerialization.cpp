@@ -7,6 +7,7 @@
 
 namespace HIKARI::TERRAIN {
 namespace {
+constexpr uint32_t kTerrainSurfaceSchemaVersion = 9u;
 // 数値項目のキーとメンバーは保存・読込で共有する。
 template <class Settings>
 struct FloatField {
@@ -119,7 +120,7 @@ std::vector<float> ReadFloatArray(const nlohmann::json& source, const char* key,
 
 void SerializeTerrainSurfaceSettings(const TerrainSurface& s, nlohmann::json& out) {
     out = {
-        {"_schemaVersion", 9u},
+        {"_schemaVersion", kTerrainSurfaceSchemaVersion},
         {"presetId", s.presetId},
         {"heightScale", s.heightScale},
         {"material",
@@ -174,12 +175,11 @@ bool DeserializeTerrainSurface(const nlohmann::json& in, TerrainSurface& surface
     if (!in.is_object()) {
         return false;
     }
-    const uint32_t schemaVersion = in.value("_schemaVersion", 0u);
-    // schema 7 以下の scene には render stylization block がないため、
-    // legacy scene の読み込みで古い in-memory 値を持ち越さない。
+    if (in.value("_schemaVersion", 0u) != kTerrainSurfaceSchemaVersion) {
+        return false;
+    }
+    // 省略された block は既定値から始め、以前の in-memory 値を持ち越さない。
     surface.stylization = TERRAIN::TerrainStylizationSettings{};
-    // Grass authored values are introduced by schema 9. Legacy scenes
-    // intentionally start from the stable defaults, never stale memory.
     surface.grass = TERRAIN::TerrainGrassSettings{};
     surface.presetId = in.value("presetId", surface.presetId);
     surface.heightScale = JSONREAD::NumberMemberOr(in, "heightScale", surface.heightScale);
@@ -196,11 +196,9 @@ bool DeserializeTerrainSurface(const nlohmann::json& in, TerrainSurface& surface
         surface.material.toonBandCount =
             static_cast<uint32_t>(material->value("toonBandCount", surface.material.toonBandCount));
     }
-    if (schemaVersion >= 8u) {
-        if (const nlohmann::json* stylization = JSONREAD::FindMember(in, "stylization");
-            stylization != nullptr && stylization->is_object()) {
-            ReadFloatFields(*stylization, surface.stylization, kStylizationFields);
-        }
+    if (const nlohmann::json* stylization = JSONREAD::FindMember(in, "stylization");
+        stylization != nullptr && stylization->is_object()) {
+        ReadFloatFields(*stylization, surface.stylization, kStylizationFields);
     }
     if (const nlohmann::json* deform = JSONREAD::FindMember(in, "deform"); deform != nullptr && deform->is_object()) {
         ReadFloatFields(*deform, surface.deform, kDeformFields);
@@ -209,36 +207,6 @@ bool DeserializeTerrainSurface(const nlohmann::json& in, TerrainSurface& surface
 
         surface.deform.responseResolutionScale =
             static_cast<uint32_t>(deform->value("responseResolutionScale", surface.deform.responseResolutionScale));
-
-        // schema 3 の 1.2 は旧既定値で、単一点の痕跡を約 0.57 秒で
-        // 平坦化していた。明示的な新設定が無い既存 scene だけを
-        // 新しい elastic-flow 既定値へ移行する。
-        if (schemaVersion < 4u && std::fabs(surface.deform.diffusionPerSecond - 1.2f) < 1.0e-5f) {
-            surface.deform.diffusionPerSecond = 0.12f;
-        }
-        if (schemaVersion < 6u) {
-            const auto migrateDefault = [](float& value, float legacyValue, float currentValue) noexcept {
-                if (std::fabs(value - legacyValue) < 1.0e-5f) {
-                    value = currentValue;
-                }
-            };
-            // schema 5 までの既定 profile は接触直後の見える痕跡が
-            // 小さく、2 秒後から elastic が急にぼけていた。ユーザーが
-            // 明示変更した値は維持し、旧既定値だけを animation profileへ移す。
-            migrateDefault(surface.deform.stampRadius, 0.42f, 0.58f);
-            migrateDefault(surface.deform.rimStrength, 0.28f, 0.32f);
-            migrateDefault(surface.deform.restDepthScale, 0.30f, 0.36f);
-            migrateDefault(surface.deform.minimumDepth, 0.04f, 0.055f);
-            migrateDefault(surface.deform.settleStartRatio, 0.65f, 0.72f);
-            migrateDefault(surface.deform.settleSeconds, 0.12f, 0.18f);
-            migrateDefault(surface.deform.impactDepthScale, 0.025f, 0.03f);
-            migrateDefault(surface.deform.rimWidthScale, 0.32f, 0.42f);
-            migrateDefault(surface.deform.refillPerSecond, 0.018f, 0.008f);
-            migrateDefault(surface.deform.diffusionPerSecond, 0.12f, 0.04f);
-            migrateDefault(surface.deform.plasticity, 0.85f, 0.93f);
-            migrateDefault(surface.deform.plasticRefillPerSecond, 0.002f, 0.0003f);
-            migrateDefault(surface.deform.recoveryDelaySeconds, 2.0f, 8.0f);
-        }
     }
     if (const nlohmann::json* shoreline = JSONREAD::FindMember(in, "shoreline");
         shoreline != nullptr && shoreline->is_object()) {
@@ -253,16 +221,15 @@ bool DeserializeTerrainSurface(const nlohmann::json& in, TerrainSurface& surface
     }
     if (const nlohmann::json* brush = JSONREAD::FindMember(in, "brush"); brush != nullptr && brush->is_object()) {
         ReadFloatFields(*brush, surface.brush, kBrushFields);
-        surface.brush.mode = TERRAIN::ParseTerrainBrushMode(
-            brush->value("mode", std::string(TERRAIN::ToString(surface.brush.mode))), surface.brush.mode);
+        surface.brush.mode = TEXT::ParseEnum(TERRAIN::kTerrainBrushModeNames,
+                                             brush->value("mode", std::string(TERRAIN::ToString(surface.brush.mode))),
+                                             surface.brush.mode);
 
         surface.brush.noiseSeed = JSONREAD::UnsignedMemberOr(*brush, "noiseSeed", surface.brush.noiseSeed);
     }
 
-    if (schemaVersion >= 9u) {
-        if (const nlohmann::json* grass = JSONREAD::FindMember(in, "grass"); grass != nullptr && grass->is_object()) {
-            surface.grass = TERRAIN::DeserializeTerrainGrassSettings(*grass);
-        }
+    if (const nlohmann::json* grass = JSONREAD::FindMember(in, "grass"); grass != nullptr && grass->is_object()) {
+        surface.grass = TERRAIN::DeserializeTerrainGrassSettings(*grass);
     }
 
     surface.chunks.clear();

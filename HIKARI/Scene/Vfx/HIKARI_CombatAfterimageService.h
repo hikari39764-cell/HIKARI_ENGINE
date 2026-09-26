@@ -2,7 +2,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <string_view>
 #include <vector>
 
 #include "Assets/Vfx/HIKARI_VfxAssetData.h"
@@ -14,8 +13,6 @@ class World;
 }
 
 namespace HIKARI::VFX {
-
-struct VfxProgram;
 
 // Private presentation request.  Gameplay supplies only an owner and a
 // deduplication identity; the service resolves the current model, pose,
@@ -51,12 +48,8 @@ public:
     // draw data.  Invalid owners/assets/poses are rejected without
     // mutating existing active afterimages.
     bool Capture(World& world, const CombatAfterimageRequest& request) noexcept;
+    // SkinnedAfterimage 出力の見た目で取り込む。要求の intensity/opacity は倍率として掛ける。
     bool Capture(World& world, const CombatAfterimageRequest& request, const VfxSpecialOutputData& output) noexcept;
-    bool Capture(World& world, const CombatAfterimageRequest& request,
-                 const VfxSkinnedAfterimageProfile& profile) noexcept;
-    bool Capture(World& world, const CombatAfterimageRequest& request, const VfxProgram& program) noexcept;
-    bool Capture(World& world, const CombatAfterimageRequest& request, const VfxProgram& program,
-                 std::string_view outputId) noexcept;
 
     // Advances unscaled presentation time.  Repeated calls for the same
     // frame are ignored so multiple views cannot age the effect twice.

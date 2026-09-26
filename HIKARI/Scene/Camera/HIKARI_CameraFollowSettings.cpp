@@ -4,7 +4,6 @@
 #include "Core/Serialization/Json/HIKARI_JsonMath.h"
 #include <algorithm>
 #include <cmath>
-#include <numbers>
 
 namespace HIKARI::CAMERA {
 namespace JsonMath = SERIALIZATION::JSON::MATH;
@@ -18,8 +17,6 @@ float NonNegativeFinite(float value, float fallback) noexcept { return (std::max
 MATH::Vec3 FiniteOr(const MATH::Vec3& value, const MATH::Vec3& fallback) noexcept {
     return MATH::IsFinite(value) ? value : fallback;
 }
-
-float RadiansToDegrees(float radians) noexcept { return radians * 180.0f / std::numbers::pi_v<float>; }
 } // namespace
 void CameraFollowSettings::Serialize(nlohmann::json& out) const {
     out["pivotOffset"] = JsonMath::ToJsonArray(pivotOffset);
@@ -69,25 +66,10 @@ void CameraFollowSettings::Serialize(nlohmann::json& out) const {
 void CameraFollowSettings::Deserialize(const nlohmann::json& in) {
     if (in.contains("pivotOffset")) {
         pivotOffset = JSONREAD::Vec3Or(in["pivotOffset"], pivotOffset);
-    } else if (in.contains("lookAtOffset")) {
-        pivotOffset = JSONREAD::Vec3Or(in["lookAtOffset"], pivotOffset);
     }
-
-    const bool hasOrbitSettings =
-        in.contains("initialYawDegrees") || in.contains("initialPitchDegrees") || in.contains("initialDistance");
     initialYawDegrees = in.value("initialYawDegrees", initialYawDegrees);
     initialPitchDegrees = in.value("initialPitchDegrees", initialPitchDegrees);
     initialDistance = in.value("initialDistance", initialDistance);
-    if (!hasOrbitSettings && in.contains("offset")) {
-        const MATH::Vec3 legacyEye = JSONREAD::Vec3Or(in["offset"], MATH::Vec3{0.0f, 5.5f, -7.5f});
-        const MATH::Vec3 delta = legacyEye - pivotOffset;
-        const float distance = MATH::Length(delta);
-        if (distance > kMinimumRange) {
-            initialDistance = distance;
-            initialPitchDegrees = RadiansToDegrees(std::asin(std::clamp(delta.y / distance, -1.0f, 1.0f)));
-            initialYawDegrees = RadiansToDegrees(std::atan2(delta.x, -delta.z));
-        }
-    }
 
     minimumPitchDegrees = in.value("minimumPitchDegrees", minimumPitchDegrees);
     maximumPitchDegrees = in.value("maximumPitchDegrees", maximumPitchDegrees);

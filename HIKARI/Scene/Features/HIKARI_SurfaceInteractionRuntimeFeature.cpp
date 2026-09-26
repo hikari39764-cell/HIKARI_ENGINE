@@ -12,8 +12,8 @@
 #include "Scene/HIKARI_ComponentSystemPolicy.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/HIKARI_SystemTypeRegistry.h"
-#include "Scene/Sand/HIKARI_SandSurfaceFollowerComponent.h"
-#include "Scene/Sand/HIKARI_SandSurfaceSystem.h"
+#include "Scene/Terrain/HIKARI_TerrainSurfaceFollowerComponent.h"
+#include "Scene/Terrain/HIKARI_TerrainSurfaceSystem.h"
 #include "Scene/Terrain/HIKARI_TerrainInteractionSourceSystem.h"
 
 namespace HIKARI {
@@ -35,12 +35,12 @@ public:
     }
 
     std::span<const std::string_view> GetComponentTypeNames() const noexcept override {
-        static constexpr std::array<std::string_view, 1> names{"SandSurfaceFollowerComponent"};
+        static constexpr std::array<std::string_view, 1> names{"TerrainSurfaceFollowerComponent"};
         return names;
     }
 
     std::span<const std::string_view> GetSystemIds() const noexcept override {
-        static constexpr std::array<std::string_view, 2> ids{"TerrainInteractionSourceSystem", "SandSurfaceSystem"};
+        static constexpr std::array<std::string_view, 2> ids{"TerrainInteractionSourceSystem", "TerrainSurfaceSystem"};
         return ids;
     }
 
@@ -50,13 +50,13 @@ public:
         ComponentSystemPolicy& policy = RuntimeFeatureContextAccess::Policy(context);
 
         ComponentTypeInfo follower{};
-        follower.typeName = "SandSurfaceFollowerComponent";
+        follower.typeName = "TerrainSurfaceFollowerComponent";
         follower.factory = []() -> std::unique_ptr<IComponent> {
-            return IComponent::Create<SandSurfaceFollowerComponent>();
+            return IComponent::Create<TerrainSurfaceFollowerComponent>();
         };
         follower.runtimeApplyPolicy = ComponentRuntimeApplyPolicy::Immediate;
         follower.initializeDefaults = [](const SceneObjectData&, nlohmann::json& properties) {
-            SandSurfaceFollowerComponent defaults{};
+            TerrainSurfaceFollowerComponent defaults{};
             defaults.Serialize(properties);
         };
         follower.presentation = ComponentTypePresentation{"Surface Follower", "Surface Interaction",
@@ -71,19 +71,20 @@ public:
                                                   "Terrain Interaction Sources",
                                                   std::string(RuntimeFeatureIds::SurfaceInteraction)}) &&
                   success;
-        success =
-            systems.Register(SystemTypeInfo{
-                "SandSurfaceSystem",
-                [](const nlohmann::json&) -> std::unique_ptr<ISystem> { return std::make_unique<SandSurfaceSystem>(); },
-                "Surface Deformation", std::string(RuntimeFeatureIds::SurfaceInteraction)}) &&
-            success;
+        success = systems.Register(SystemTypeInfo{"TerrainSurfaceSystem",
+                                                  [](const nlohmann::json&) -> std::unique_ptr<ISystem> {
+                                                      return std::make_unique<TerrainSurfaceSystem>();
+                                                  },
+                                                  "Surface Deformation",
+                                                  std::string(RuntimeFeatureIds::SurfaceInteraction)}) &&
+                  success;
         // 明示的な systems 配列で上書きされた Scene でも、対応する
         // component が存在する場合は interaction system を導入する。
         for (const ComponentSystemRule& rule :
              {ComponentSystemRule{"TerrainSurfaceComponent", "TerrainInteractionSourceSystem", 125},
-              ComponentSystemRule{"SandSurfaceFollowerComponent", "TerrainInteractionSourceSystem", 125},
-              ComponentSystemRule{"TerrainSurfaceComponent", "SandSurfaceSystem", 140},
-              ComponentSystemRule{"SandSurfaceFollowerComponent", "SandSurfaceSystem", 140}}) {
+              ComponentSystemRule{"TerrainSurfaceFollowerComponent", "TerrainInteractionSourceSystem", 125},
+              ComponentSystemRule{"TerrainSurfaceComponent", "TerrainSurfaceSystem", 140},
+              ComponentSystemRule{"TerrainSurfaceFollowerComponent", "TerrainSurfaceSystem", 140}}) {
             success = policy.Register(rule) && success;
         }
         return success;
@@ -92,7 +93,7 @@ public:
     std::span<const RuntimeSystemDefault> GetDefaultSystems() const noexcept override {
         static constexpr std::array<RuntimeSystemDefault, 2> defaults{
             RuntimeSystemDefault{"TerrainInteractionSourceSystem", true, 125},
-            RuntimeSystemDefault{"SandSurfaceSystem", true, 140}};
+            RuntimeSystemDefault{"TerrainSurfaceSystem", true, 140}};
         return defaults;
     }
 };

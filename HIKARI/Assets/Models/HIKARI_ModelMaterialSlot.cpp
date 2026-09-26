@@ -135,23 +135,18 @@ bool HaveValidUniqueMaterialSlotIds(const std::vector<MaterialAsset>& materials)
     return true;
 }
 
-MaterialSlotResolution ResolveMaterialSlot(const std::vector<MaterialAsset>& materials, MaterialSlotId slotId,
-                                           uint32_t legacySlotIndex) noexcept {
-    if (slotId.IsValid()) {
-        const auto found = std::find_if(materials.begin(), materials.end(),
-                                        [slotId](const MaterialAsset& material) { return material.slotId == slotId; });
-        if (found != materials.end()) {
-            const size_t materialIndex = static_cast<size_t>(std::distance(materials.begin(), found));
-            if (materialIndex > (std::numeric_limits<uint32_t>::max)()) {
-                return {};
-            }
-            return {static_cast<uint32_t>(materialIndex), MaterialSlotResolutionSource::StableId};
-        }
+std::optional<uint32_t> FindMaterialSlotIndex(const std::vector<MaterialAsset>& materials,
+                                              MaterialSlotId slotId) noexcept {
+    if (!slotId.IsValid()) {
+        return std::nullopt;
     }
-    if (legacySlotIndex < materials.size()) {
-        return {legacySlotIndex, MaterialSlotResolutionSource::LegacyIndex};
+    const auto found = std::find_if(materials.begin(), materials.end(),
+                                    [slotId](const MaterialAsset& material) { return material.slotId == slotId; });
+    const size_t index = static_cast<size_t>(std::distance(materials.begin(), found));
+    if (found == materials.end() || index > (std::numeric_limits<uint32_t>::max)()) {
+        return std::nullopt;
     }
-    return {};
+    return static_cast<uint32_t>(index);
 }
 
 std::string MaterialSlotIdToString(MaterialSlotId slotId) {

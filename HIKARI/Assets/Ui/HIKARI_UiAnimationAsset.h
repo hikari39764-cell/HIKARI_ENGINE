@@ -1,5 +1,5 @@
 #pragma once
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Assets/HIKARI_AssetFileCache.h"
 #include "Core/Animation/HIKARI_ScalarCurve.h"
 #include <filesystem>
 #include <memory>
@@ -9,7 +9,6 @@
 #include <json.hpp>
 
 namespace HIKARI {
-class AssetDatabase;
 enum class UiMotionProperty : uint8_t {
     OffsetX,
     OffsetY,
@@ -56,18 +55,5 @@ bool LoadUiAnimationAsset(const std::filesystem::path&, UiAnimationAsset&, std::
 bool SaveUiAnimationAsset(const std::filesystem::path&, const UiAnimationAsset&, std::string& error);
 UiAnimationAsset MakeUiAnimationPreset(std::string_view preset);
 
-class UiAnimationAssetStore {
-public:
-    void Configure(const AssetDatabase* database);
-    std::shared_ptr<const UiAnimationAsset> Load(const AssetGuid&, std::string& error);
-
-private:
-    const AssetDatabase* database_ = nullptr;
-    uint64_t revision_ = ~uint64_t(0);
-    struct Entry {
-        std::shared_ptr<const UiAnimationAsset> asset;
-        std::string error;
-    };
-    std::unordered_map<std::string, Entry> cache_;
-};
+using UiAnimationAssetStore = AssetFileCache<UiAnimationAsset, AssetType::UiAnimation, &LoadUiAnimationAsset>;
 } // namespace HIKARI

@@ -4,12 +4,10 @@
 #include <array>
 #include "Editor/Environment/HIKARI_EnvironmentEditComparison.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
-#include "Editor/Widgets/HIKARI_PostProfileParameterWidget.h"
 #include "Render3D/Diagnostics/HIKARI_EnvironmentDiagnostics.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Scene/HIKARI_RuntimeSceneContext.h"
 #include "Scene/HIKARI_SceneTransitionBus.h"
-#include "Vfx/Post/HIKARI_PostProfile.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 
 #if defined(HIKARI_WITH_EDITOR)
@@ -25,7 +23,6 @@
 namespace HIKARI::EDITOR::QUALITY_PANEL {
 
 #if defined(HIKARI_WITH_EDITOR)
-constexpr const char* kDefaultGlobalPostProfileId = "Ani";
 
 void DrawDirectionalShadow(SceneEnvironment& environment) {
     ImGui::Checkbox(TEXT::Localize("ui.quality.shadowEnabled").c_str(), &environment.directionalShadow.enabled);
@@ -275,83 +272,6 @@ void DrawToneMapping(SceneEnvironment& environment) {
     int mode = std::clamp(environment.toneMapping.mode, 0, 2);
     if (ImGui::Combo(TEXT::Localize("ui.quality.mode").c_str(), &mode, modePtrs, static_cast<int>(modes.size()))) {
         environment.toneMapping.mode = mode;
-    }
-}
-
-void DrawGlobalPost(SceneEnvironment& environment) {
-    const bool wasPostEnabled = environment.post.enabled;
-    if (ImGui::Checkbox(TEXT::Localize("ui.quality.postEnabled").c_str(), &environment.post.enabled) &&
-        environment.post.enabled && !wasPostEnabled && environment.post.globalPostProfileId.empty()) {
-        environment.post.globalPostProfileId = kDefaultGlobalPostProfileId;
-        environment.post.valuesInitialized = false;
-    }
-
-    const std::string previousProfileId = environment.post.globalPostProfileId;
-    static const std::vector<std::string> profileIds = PostProfile::CollectAvailableIds();
-    const std::string profilePreview = environment.post.globalPostProfileId.empty()
-                                           ? TEXT::Localize("ui.common.none")
-                                           : environment.post.globalPostProfileId;
-    if (ImGui::BeginCombo(TEXT::Localize("ui.quality.globalPostProfile").c_str(), profilePreview.c_str())) {
-        for (const std::string& profileId : profileIds) {
-            const bool selected = environment.post.globalPostProfileId == profileId;
-            if (ImGui::Selectable(profileId.c_str(), selected)) {
-                environment.post.globalPostProfileId = profileId;
-                environment.post.valuesInitialized = false;
-            }
-            if (selected) {
-                ImGui::SetItemDefaultFocus();
-            }
-        }
-        ImGui::EndCombo();
-    }
-
-    if (!environment.post.globalPostProfileId.empty()) {
-        PostProfile profile{};
-        if (PostProfile::LoadById(environment.post.globalPostProfileId, profile)) {
-            const bool profileChanged = environment.post.globalPostProfileId != previousProfileId;
-            if (profileChanged || !environment.post.valuesInitialized) {
-                profile.CopyValuesTo(environment.post.paramValues);
-                environment.post.valuesInitialized = true;
-            }
-
-            if (ImGui::Button(TEXT::Localize("ui.quality.resetToProfileDefaults").c_str())) {
-                profile.CopyValuesTo(environment.post.paramValues);
-                environment.post.valuesInitialized = true;
-            }
-            ImGui::SameLine();
-            if (ImGui::Button(TEXT::Localize("ui.quality.reloadProfile").c_str())) {
-                PostProfile reloadedProfile{};
-                if (PostProfile::LoadById(environment.post.globalPostProfileId, reloadedProfile)) {
-                    profile = std::move(reloadedProfile);
-                }
-            }
-
-            if (ImGui::TreeNode(TEXT::Localize("ui.quality.profileParameters").c_str())) {
-                for (const VFX::ParamDesc& param : profile.params) {
-                    const int slot = static_cast<int>(param.ref.slot);
-                    if (slot < 0 || slot >= 16 || param.ref.channel >= 4) {
-                        continue;
-                    }
-                    ImGui::PushID(param.key.c_str());
-                    EDITOR::DrawPostProfileParameter(param, environment.post.paramValues[slot]);
-                    ImGui::PopID();
-                }
-                ImGui::TreePop();
-            }
-        } else {
-            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f),
-                               TEXT::Localize("ui.quality.profileNotFoundFormat").c_str(),
-                               environment.post.globalPostProfileId.c_str());
-        }
-    }
-
-    if (ImGui::TreeNode(TEXT::Localize("ui.quality.advancedRawParameterBlock").c_str())) {
-        for (int i = 0; i < 16; ++i) {
-            ImGui::PushID(i);
-            ImGui::InputFloat4(TEXT::Localize("ui.quality.param").c_str(), &environment.post.paramValues[i].x);
-            ImGui::PopID();
-        }
-        ImGui::TreePop();
     }
 }
 

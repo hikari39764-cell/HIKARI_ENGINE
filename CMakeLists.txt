@@ -269,6 +269,10 @@ if(HIKARI_WITH_EDITOR_BUILD)
         hikari_configure_engine_target(${editor_target})
     endforeach()
     target_link_libraries(HIKARI_Editor PRIVATE HIKARI_EditorWorkspaces)
+    # エンジン向けに改変した ImGui backend もサードパーティコードなので、エンジンの警告規則を適用しない。
+    set(hikari_editor_third_party_sources ${HIKARI_EDITOR_SOURCES})
+    list(FILTER hikari_editor_third_party_sources INCLUDE REGEX "/ThirdParty/")
+    set_property(SOURCE ${hikari_editor_third_party_sources} APPEND PROPERTY COMPILE_OPTIONS /W0)
     source_group(
         TREE "${HIKARI_SOURCE_ROOT}"
         FILES

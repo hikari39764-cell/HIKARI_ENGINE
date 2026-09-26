@@ -1,15 +1,15 @@
 #pragma once
 
-#include "Scene/Sand/HIKARI_SandSurfaceTypes.h"
+#include "Scene/Terrain/HIKARI_TerrainSurfaceTypes.h"
 #include "Scene/Terrain/HIKARI_TerrainSurface.h"
 
 namespace HIKARI::TERRAIN {
 
-// TerrainSurface の solid 部分を既存 SandSurfaceSettings へ写像する。
+// TerrainSurface の solid 部分を既存 TerrainSurfaceSettings へ写像する。
 // 描画・変形パイプラインはこの設定を共有し、chunk ごとの高さ場は
 // 別途 query service 経由で渡す。着色パラメータは変えない。
-inline SAND::SandSurfaceSettings ToSandSurfaceSettings(const TerrainSurface& surface) {
-    SAND::SandSurfaceSettings settings{};
+inline TERRAIN::TerrainSurfaceSettings ToTerrainSurfaceSettings(const TerrainSurface& surface) {
+    TERRAIN::TerrainSurfaceSettings settings{};
     settings.presetId = surface.presetId;
     settings.deformationEnabled = surface.deform.behavior != DeformBehaviorId::None;
     settings.gridResolution = surface.chunkCells;

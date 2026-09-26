@@ -164,7 +164,7 @@ bool CreateEmptySceneAsset(AssetDatabase& assetDatabase, const std::filesystem::
     // 新規シーンのデフォルト構成として実体のグリッド床を置く。
     document.objects.push_back(BuildDefaultGridFloorSceneObject(document));
     document.systems.push_back(SceneSystemData{"ModelRenderSystem", true, 100, nlohmann::json::object()});
-    LIGHTING_AUTHORING::MigrateLegacyLightingAuthoring(document, 5u);
+    LIGHTING_AUTHORING::AddDefaultSceneLight(document);
     const SceneSerializer serializer{};
     if (!serializer.SaveToFile(absoluteScenePath.string(), document)) {
         outError = "Failed to write scene file.";

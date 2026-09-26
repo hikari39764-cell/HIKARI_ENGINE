@@ -14,8 +14,8 @@ public:
     TerrainView() = default;
     bool IsValid() const noexcept { return world_ != nullptr; }
 
-    HIKARI_GAME_PROJECT_SDK_API bool IsSandSurfaceAt(GameProjectFloat3 worldPosition,
-                                                     float maximumVerticalDistance = 1.25f) const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API bool IsTerrainSurfaceAt(GameProjectFloat3 worldPosition,
+                                                        float maximumVerticalDistance = 1.25f) const noexcept;
 
 private:
     friend struct GameProjectSdkAccess;

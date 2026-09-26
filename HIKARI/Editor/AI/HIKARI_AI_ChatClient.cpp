@@ -159,15 +159,4 @@ bool RunChatCompletionsStreaming(const AiChatConfig& config, const std::vector<A
     return true;
 }
 
-bool RunVisionAnalysis(const AiChatConfig& config, const std::string& imagePath, const std::string& prompt,
-                       std::string& outText, std::string& outError) {
-    auto vision = config;
-    vision.editorTools = false;
-    std::string body;
-    const std::vector<AiChatMessage> messages{
-        {"user", prompt.empty() ? "Describe the image." : prompt, {{imagePath, "Preview"}}}};
-    return BuildAiChatRequest(vision, messages, false, body, outError) &&
-           RunApiRequest(vision, body, outText, outError);
-}
-
 } // namespace HIKARI::EDITOR::AI_ASSISTANT

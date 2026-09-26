@@ -121,57 +121,34 @@ const std::vector<ModelMaterialOverrideSlot>& ModelComponent::GetMaterialOverrid
     return materialOverrides_;
 }
 
-void ModelComponent::SetMaterialOverride(uint32_t slotIndex, AssetGuid materialGuid) {
-    SetMaterialOverride(ResolveCurrentSlotId(slotIndex), slotIndex, std::move(materialGuid));
-}
-
-void ModelComponent::SetMaterialOverride(MaterialSlotId slotId, uint32_t legacySlotIndex, AssetGuid materialGuid) {
-    auto existing = materialOverrides_.end();
-    if (slotId.IsValid()) {
-        existing = std::find_if(materialOverrides_.begin(), materialOverrides_.end(),
-                                [slotId](const ModelMaterialOverrideSlot& slot) { return slot.slotId == slotId; });
-    }
-    if (existing == materialOverrides_.end()) {
-        existing = std::find_if(materialOverrides_.begin(), materialOverrides_.end(),
-                                [legacySlotIndex](const ModelMaterialOverrideSlot& slot) {
-                                    return !slot.slotId.IsValid() && slot.slotIndex == legacySlotIndex;
-                                });
-    }
-    if (existing != materialOverrides_.end()) {
-        existing->slotId = slotId;
-        existing->slotIndex = legacySlotIndex;
-        existing->materialAssetGuid = std::move(materialGuid);
-        ClearRuntimeMaterialOverride(legacySlotIndex);
-        return;
-    }
-
-    materialOverrides_.push_back(ModelMaterialOverrideSlot{legacySlotIndex, std::move(materialGuid), slotId});
-    ClearRuntimeMaterialOverride(legacySlotIndex);
-}
-
-void ModelComponent::ClearMaterialOverride(uint32_t slotIndex) {
-    const MaterialSlotId slotId = ResolveCurrentSlotId(slotIndex);
-    std::erase_if(materialOverrides_, [slotIndex, slotId](const ModelMaterialOverrideSlot& slot) {
-        if (slotId.IsValid()) {
-            return slot.slotId == slotId || (!slot.slotId.IsValid() && slot.slotIndex == slotIndex);
-        }
-        return slot.slotIndex == slotIndex;
-    });
-    ClearRuntimeMaterialOverride(slotIndex);
-}
-
-void ModelComponent::ClearMaterialOverride(MaterialSlotId slotId) {
+void ModelComponent::SetMaterialOverride(MaterialSlotId slotId, AssetGuid materialGuid) {
     if (!slotId.IsValid()) {
         return;
     }
-    const auto found = std::find_if(materialOverrides_.begin(), materialOverrides_.end(),
-                                    [slotId](const ModelMaterialOverrideSlot& slot) { return slot.slotId == slotId; });
-    if (found == materialOverrides_.end()) {
-        return;
+    const auto existing =
+        std::find_if(materialOverrides_.begin(), materialOverrides_.end(),
+                     [slotId](const ModelMaterialOverrideSlot& slot) { return slot.slotId == slotId; });
+    if (existing != materialOverrides_.end()) {
+        existing->materialAssetGuid = std::move(materialGuid);
+    } else {
+        materialOverrides_.push_back(ModelMaterialOverrideSlot{slotId, std::move(materialGuid)});
     }
-    const uint32_t legacySlotIndex = found->slotIndex;
-    materialOverrides_.erase(found);
-    ClearRuntimeMaterialOverride(legacySlotIndex);
+    ClearRuntimeMaterialOverride(slotId);
+}
+
+void ModelComponent::ClearMaterialOverride(MaterialSlotId slotId) {
+    if (std::erase_if(materialOverrides_,
+                      [slotId](const ModelMaterialOverrideSlot& slot) { return slot.slotId == slotId; }) != 0u) {
+        ClearRuntimeMaterialOverride(slotId);
+    }
+}
+
+void ModelComponent::ClearRuntimeMaterialOverride(MaterialSlotId slotId) {
+    if (asset_ != nullptr) {
+        if (const auto index = ASSETS::MODELS::FindMaterialSlotIndex(asset_->materials, slotId)) {
+            ClearRuntimeMaterialOverride(*index);
+        }
+    }
 }
 
 Material* ModelComponent::GetRuntimeMaterialOverride(uint32_t slotIndex) {

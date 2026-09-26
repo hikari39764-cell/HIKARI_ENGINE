@@ -79,12 +79,8 @@ bool ImportOutdatedShaderArtifacts(AssetDatabase& database) {
 }
 #endif
 
-ASSETS::MODELS::MaterialSlotResolution ResolveOverrideSlot(const ModelAsset* model,
-                                                           const ModelMaterialOverrideSlot& slot) {
-    if (model == nullptr) {
-        return {};
-    }
-    return ASSETS::MODELS::ResolveMaterialSlot(model->materials, slot.slotId, slot.slotIndex);
+std::optional<uint32_t> ResolveOverrideSlot(const ModelAsset* model, const ModelMaterialOverrideSlot& slot) {
+    return model != nullptr ? ASSETS::MODELS::FindMaterialSlotIndex(model->materials, slot.slotId) : std::nullopt;
 }
 
 bool HasMissingAssetDescriptors(const AssetRegistry& registry, AssetType expectedType,
@@ -459,7 +455,7 @@ int DocumentSceneAssetBindings::RebuildMaterialOverrides(DocumentSceneBase& scen
                 }
 
                 const auto resolution = ResolveOverrideSlot(modelAsset, slot);
-                if (!resolution.IsValid()) {
+                if (!resolution.has_value()) {
                     continue;
                 }
 
@@ -473,7 +469,7 @@ int DocumentSceneAssetBindings::RebuildMaterialOverrides(DocumentSceneBase& scen
                 auto runtimeMaterial = std::make_unique<Material>();
                 if (materialBuilder.BuildRuntimeMaterial(descriptor->sourceData, descriptor->compileResult, registry_,
                                                          programRegistry, *runtimeMaterial, descriptor->id.value)) {
-                    modelComponent.SetRuntimeMaterialOverride(resolution.materialIndex, std::move(runtimeMaterial));
+                    modelComponent.SetRuntimeMaterialOverride(*resolution, std::move(runtimeMaterial));
                     ++rebuiltCount;
                 }
             }
@@ -558,12 +554,11 @@ int DocumentSceneAssetBindings::ApplyMaterialOverridePreview(DocumentSceneBase& 
                 }
 
                 const auto resolution = ResolveOverrideSlot(modelAsset, slot);
-                if (!resolution.IsValid()) {
+                if (!resolution.has_value()) {
                     continue;
                 }
 
-                effectiveMaterialByIndex[resolution.materialIndex] =
-                    EffectiveMaterialBinding{slot.materialAssetGuid, false};
+                effectiveMaterialByIndex[*resolution] = EffectiveMaterialBinding{slot.materialAssetGuid, false};
             }
 
             for (const auto& [materialIndex, effectiveBinding] : effectiveMaterialByIndex) {

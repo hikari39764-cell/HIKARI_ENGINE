@@ -342,7 +342,7 @@ GpuSceneResourceKey BuildResourceKey(const GpuSceneSurfaceRecord& record) {
     key.objectDataCompatible = shaderRoute.objectDataCompatible;
     key.materialFx = !record.materialFxProfileId.empty();
     key.waterMaterialFx = record.waterSurface;
-    key.sandSurface = record.sandSurface;
+    key.terrainSurface = record.terrainSurface;
     key.materialFxUsesCustomVertexShader = key.materialFx && usesCustomVertexShader;
     key.materialFxUsesCustomPixelShader = key.materialFx && !waterMaterialFxPixelCompatible;
     key.customVertexShader = usesCustomVertexShader;
@@ -361,7 +361,7 @@ GpuSceneResourceKey BuildResourceKey(const GpuSceneSurfaceRecord& record) {
     // Blend のパス分割と深度書き込み無効化は key.transparent が所有する。
     key.clusterMainlineEligible = key.geometryBackend == RUNTIME::SurfaceGeometryBackend::ClusterGeometry &&
                                   clusterVertexCompatible && clusterPixelCompatible && key.objectDataCompatible &&
-                                  !key.sandSurface &&
+                                  !key.terrainSurface &&
                                   (ordinaryMeshletMaterial || materialFxMeshletMaterial || waterSurfaceMeshletMaterial);
     if (key.clusterMainlineEligible) {
         key.backendRoute = RUNTIME::SurfaceBackendRoute::MeshShader;
@@ -407,8 +407,8 @@ uint32_t BuildInstanceFlags(const GpuSceneSurfaceRecord& record) {
         record.waterSurfaceData.geometryMode == RENDER3D::WATER::WaterSurfaceGeometryMode::CameraCenteredOcean) {
         flags |= ToInstanceFlag(RUNTIME::SurfaceGpuSceneInstanceFlags::CameraCenteredOcean);
     }
-    if (record.key.sandSurface) {
-        flags |= ToInstanceFlag(RUNTIME::SurfaceGpuSceneInstanceFlags::SandSurface);
+    if (record.key.terrainSurface) {
+        flags |= ToInstanceFlag(RUNTIME::SurfaceGpuSceneInstanceFlags::TerrainSurface);
     }
     if (record.key.depthAware) {
         flags |= ToInstanceFlag(RUNTIME::SurfaceGpuSceneInstanceFlags::DepthAware);
@@ -549,7 +549,7 @@ RUNTIME::SurfaceGpuSceneInstance BuildGpuSceneInstance(const GpuSceneSurfaceReco
     }
     instance.postGroupMask = record.postGroupMask;
     instance.surfaceFeatureDataIndex =
-        record.waterSurface ? record.waterSurfaceGpuDataIndex : record.sandSurfaceGpuDataIndex;
+        record.waterSurface ? record.waterSurfaceGpuDataIndex : record.terrainSurfaceGpuDataIndex;
     if (record.skinned && record.jointPaletteSlot != RUNTIME::kInvalidRenderSurfaceIndex) {
         instance.jointPaletteOffsetBytes = record.jointPaletteSlot * RUNTIME::kSurfaceGpuSceneJointPaletteStrideBytes;
         instance.jointPaletteMatrixCount = record.jointPaletteMatrixCount;
@@ -613,7 +613,7 @@ GpuSceneSurfaceRecord BuildGpuSceneSurfaceRecord(const RUNTIME::SceneSurfaceInst
     // through offset-zero neutral data: that produces a convincing but
     // false flat sand plane and masks the real capacity failure.
     record.visible =
-        surfaceInstance.visible && (!surfaceInstance.sandSurface || surfaceInstance.sandSurfaceCoreResident);
+        surfaceInstance.visible && (!surfaceInstance.terrainSurface || surfaceInstance.terrainSurfaceCoreResident);
     record.isStatic = surfaceInstance.isStatic;
     record.hasRuntimeAnimation = surfaceInstance.hasRuntimeAnimation;
     record.animationPose = surfaceInstance.animationPose;
@@ -636,18 +636,18 @@ GpuSceneSurfaceRecord BuildGpuSceneSurfaceRecord(const RUNTIME::SceneSurfaceInst
     record.foliageWindParams = surfaceInstance.foliageWindParams;
     record.waterSurface = surfaceInstance.waterSurface;
     record.waterSurfaceData = surfaceInstance.waterSurfaceData;
-    record.sandSurface = surfaceInstance.sandSurface && surfaceInstance.sandSurfaceCoreResident;
-    record.sandSurfaceData = surfaceInstance.sandSurfaceData;
-    record.sandSurfaceHeightOffset = surfaceInstance.sandSurfaceHeightOffset;
-    record.sandSurfaceDeformationOffset = surfaceInstance.sandSurfaceDeformationOffset;
-    record.sandSurfaceLayerWeightsOffset = surfaceInstance.sandSurfaceLayerWeightsOffset;
-    record.sandSurfaceCoverageOffset = surfaceInstance.sandSurfaceCoverageOffset;
-    record.sandSurfaceLayerTintsOffset = surfaceInstance.sandSurfaceLayerTintsOffset;
+    record.terrainSurface = surfaceInstance.terrainSurface && surfaceInstance.terrainSurfaceCoreResident;
+    record.terrainSurfaceData = surfaceInstance.terrainSurfaceData;
+    record.terrainSurfaceHeightOffset = surfaceInstance.terrainSurfaceHeightOffset;
+    record.terrainSurfaceDeformationOffset = surfaceInstance.terrainSurfaceDeformationOffset;
+    record.terrainSurfaceLayerWeightsOffset = surfaceInstance.terrainSurfaceLayerWeightsOffset;
+    record.terrainSurfaceCoverageOffset = surfaceInstance.terrainSurfaceCoverageOffset;
+    record.terrainSurfaceLayerTintsOffset = surfaceInstance.terrainSurfaceLayerTintsOffset;
     record.waterSurfaceLiquidCoverageOffset = surfaceInstance.waterSurfaceLiquidCoverageOffset;
 
     record.forwardCandidate = record.visible;
     record.shadowCandidate = record.visible && record.castShadow;
-    if (!record.visible && !record.waterSurface && !surfaceInstance.sandSurface) {
+    if (!record.visible && !record.waterSurface && !surfaceInstance.terrainSurface) {
         // 非表示ノードは識別情報だけを保持し、表示時に資源を解決する。
         record.valid = surfaceInstance.valid;
         return record;

@@ -1,4 +1,5 @@
 #pragma once
+#include <json.hpp>
 #include "Editor/Documents/HIKARI_EditorSourceVersion.h"
 
 #include <array>
@@ -61,6 +62,8 @@ public:
     bool IsEditingModel() const noexcept;
     const AssetGuid& GetDocumentAssetGuid() const noexcept { return modelGuid_; }
     bool IsDocumentDirty() const noexcept;
+    // 文書の状態。シェル、AI の文脈、バックグラウンドのセッションで共有する。
+    nlohmann::json DescribeDocumentState() const;
     bool OpenModel(AssetDatabase& assetDatabase, const AssetGuid& guid, std::string& outMessage);
     bool CanUndo() const noexcept;
     bool CanRedo() const noexcept;

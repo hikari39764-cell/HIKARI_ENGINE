@@ -86,7 +86,7 @@ void BuildNodeRecords(const ModelAsset& source, RenderModelAsset& out) {
     }
 }
 
-void BuildLegacySurfaces(const ModelAsset& source, RenderModelAsset& out) {
+void BuildNodelessSurfaces(const ModelAsset& source, RenderModelAsset& out) {
     for (size_t meshIndex = 0; meshIndex < source.meshes.size(); ++meshIndex) {
         const MeshAsset& mesh = source.meshes[meshIndex];
         for (size_t primitiveIndex = 0; primitiveIndex < mesh.primitives.size(); ++primitiveIndex) {
@@ -114,8 +114,8 @@ bool BuildRenderModelAsset(const ModelAsset& source, RenderModelAsset& out, std:
         BuildNodeRecords(source, out);
         out.bindNodeGlobals = BuildRenderModelNodeGlobals(out);
     } else {
-        // 旧形式は node 無しでも surface 契約だけを作る。
-        BuildLegacySurfaces(source, out);
+        // node を持たないモデル（プロシージャルモデル等）は mesh ごとに surface を作る。
+        BuildNodelessSurfaces(source, out);
     }
 
     out.localBounds = ResolveModelBounds(source);

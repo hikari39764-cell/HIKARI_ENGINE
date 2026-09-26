@@ -67,10 +67,5 @@ bool RunChatCompletionsStreaming(const AiChatConfig& config, const std::vector<A
                                  AiToolReply* toolReply = nullptr);
 
 using AiChatCompletion = std::function<decltype(RunChatCompletionsStreaming)>;
-bool LoadAiVisionConfig(AiChatConfig& config);
-bool SaveAiVisionConfig(const AiChatConfig& config);
-bool ResetAiVisionConfig();
-bool RunVisionAnalysis(const AiChatConfig& config, const std::string& imagePath, const std::string& prompt,
-                       std::string& outText, std::string& outError);
 
 } // namespace HIKARI::EDITOR::AI_ASSISTANT

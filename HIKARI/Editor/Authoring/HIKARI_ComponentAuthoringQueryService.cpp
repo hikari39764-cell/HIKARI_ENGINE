@@ -1,4 +1,5 @@
 #include "Editor/Authoring/HIKARI_ComponentAuthoringQueryService.h"
+#include "Editor/Commands/HIKARI_EditorOperationContext.h"
 
 #include <algorithm>
 #include <string>
@@ -17,13 +18,6 @@
 namespace HIKARI::EDITOR {
 
 namespace {
-
-EditorOperationResult Failure(std::string code, std::string message) {
-    EditorOperationResult result{};
-    result.code = std::move(code);
-    result.message = std::move(message);
-    return result;
-}
 
 std::string BuildHierarchyPath(const SceneDocument& document, const SceneObjectData& object) {
     std::vector<const SceneObjectData*> hierarchy{};
@@ -86,10 +80,11 @@ EditorOperationResult ComponentAuthoringQueryService::DescribeType(DocumentScene
                                                                    std::string_view componentType) const {
     const auto* type = scene.GetComponentRegistry().Find(componentType);
     if (!type)
-        return Failure("UNKNOWN_COMPONENT_TYPE", "Search component.types.query for a registered component type.");
+        return OperationFailure("UNKNOWN_COMPONENT_TYPE",
+                                "Search component.types.query for a registered component type.");
     auto instance = type->factory();
     if (!instance)
-        return Failure("COMPONENT_FACTORY_FAILED", "The component factory returned no instance.");
+        return OperationFailure("COMPONENT_FACTORY_FAILED", "The component factory returned no instance.");
     // 型情報の取得は一時文書を使い、ユーザーのシーンには追加しない。
     SceneDocument defaults;
     SceneObjectData object;
@@ -145,7 +140,7 @@ EditorOperationResult ComponentAuthoringQueryService::QueryComponents(const Docu
     const SceneDocument& document = scene.GetSceneDocument();
     const SceneObjectData* object = FindSceneObjectData(document, SceneObjectId{objectId});
     if (object == nullptr) {
-        return Failure("OBJECT_NOT_FOUND", "Scene object id was not found: " + std::to_string(objectId));
+        return OperationFailure("OBJECT_NOT_FOUND", "Scene object id was not found: " + std::to_string(objectId));
     }
     EditorOperationResult result{};
     result.ok = true;

@@ -16,9 +16,9 @@
 
 namespace HIKARI::POST {
 namespace {
-void WriteCombatVfxLog(const std::string& message) noexcept {
+void LogCombatVfx(CORE::LogLevel level, const std::string& message) noexcept {
     try {
-        DEBUGLOG::WriteRenderLogLine(message);
+        CORE::Log(level, message);
     } catch (...) {
     }
 }
@@ -74,7 +74,7 @@ void PostProcessingStage::UpdateContext(const GFX::Context& context) {
 }
 
 void PostProcessingStage::Shutdown() {
-    ClearGlobalProfile();
+    ClearGlobalEffect();
     ClearTransitionState();
     globalChain_.Finalize();
     sequenceChain_.Clear();
@@ -130,63 +130,54 @@ void PostProcessingStage::ClearEffects() { globalChain_.Clear(); }
 
 void PostProcessingStage::AddEffect(PostEffect* effect) { globalChain_.Add(effect); }
 
-bool PostProcessingStage::SetGlobalProfile(const std::string& profileId, const DirectX::XMFLOAT4 (&values)[16]) {
-    if (profileId.empty()) {
-        ClearGlobalProfile();
+bool PostProcessingStage::SetGlobalEffect(std::string_view effectId, std::shared_ptr<const PostEffectDefinition> effect,
+                                          const PostParameterBlock& values) {
+    if (effectId.empty() || !effect) {
+        ClearGlobalEffect();
         return false;
     }
-
-    const bool rebuild = activeGlobalProfileId_ != profileId || activeGlobalEffects_.empty();
-    if (rebuild) {
-        PostProfile profile{};
-        if (!PostProfile::LoadById(profileId, profile)) {
-            return false;
-        }
-        std::vector<std::unique_ptr<PostEffect>> effects{};
-        effects.reserve(profile.passes.size());
-        for (const auto& pass : profile.passes) {
-            auto effect = std::make_unique<PostEffect>();
-            if (!effect->LoadBuiltinPixelShader(pass.programId, pass.entryId)) {
+    // 資産の再読み込みで定義が差し替わった時も pass を作り直す。
+    if (activeGlobalEffectId_ != effectId || activeGlobalEffect_ != effect || activeGlobalEffects_.empty()) {
+        std::vector<std::unique_ptr<PostEffect>> passes{};
+        passes.reserve(effect->passes.size());
+        for (const PostEffectPass& pass : effect->passes) {
+            auto instance = std::make_unique<PostEffect>();
+            if (!instance->LoadBuiltinPixelShader(pass.programId, pass.entryId)) {
                 return false;
             }
-            effects.push_back(std::move(effect));
+            passes.push_back(std::move(instance));
         }
         globalChain_.Clear();
-        activeGlobalEffects_ = std::move(effects);
-        for (const auto& effect : activeGlobalEffects_) {
-            globalChain_.Add(effect.get());
+        activeGlobalEffects_ = std::move(passes);
+        for (const auto& instance : activeGlobalEffects_) {
+            globalChain_.Add(instance.get());
         }
-        activeGlobalProfile_ = std::move(profile);
-        activeGlobalProfileId_ = profileId;
+        activeGlobalEffect_ = std::move(effect);
+        activeGlobalEffectId_ = effectId;
     }
-
-    activeGlobalProfile_.ResetValuesFromDefaults();
-    for (size_t i = 0; i < activeGlobalProfile_.values.size(); ++i) {
-        activeGlobalProfile_.values[i] = values[i];
-    }
-    activeGlobalProfile_.ApplyToCommonParams(commonParams_);
+    std::copy(values.begin(), values.end(), std::begin(commonParams_.user));
     return globalChain_.HasAny();
 }
 
-bool PostProcessingStage::SubmitProfileParameter(std::string_view profileId, uint32_t index, uint32_t channelMask,
-                                                 const DirectX::XMFLOAT4& value, int32_t priority, uint64_t sourceId) {
-    if (profileId.empty() || profileId != activeGlobalProfileId_ || index >= 16u || channelMask == 0u ||
-        (channelMask & ~15u) != 0u || sourceId == 0u)
+bool PostProcessingStage::SubmitEffectParameter(std::string_view effectId, uint32_t index, uint32_t channelMask,
+                                                const DirectX::XMFLOAT4& value, int32_t priority, uint64_t sourceId) {
+    if (effectId.empty() || effectId != activeGlobalEffectId_ || index >= kPostParameterSlotCount ||
+        channelMask == 0u || (channelMask & ~15u) != 0u || sourceId == 0u)
         return false;
     const float values[]{value.x, value.y, value.z, value.w};
     for (uint32_t channel = 0; channel < 4u; ++channel)
         if ((channelMask & (1u << channel)) && !std::isfinite(values[channel]))
             return false;
     const auto frame = TIME::GetFrameContext().frameIndex;
-    if (profileOverrideFrame_ != frame || profileOverrideId_ != profileId) {
-        profileOverrides_ = {};
-        profileOverrideFrame_ = frame;
-        profileOverrideId_ = profileId;
+    if (effectOverrideFrame_ != frame || effectOverrideId_ != effectId) {
+        effectOverrides_ = {};
+        effectOverrideFrame_ = frame;
+        effectOverrideId_ = effectId;
     }
     for (uint32_t channel = 0; channel < 4u; ++channel) {
         if (!(channelMask & (1u << channel)))
             continue;
-        auto& selected = profileOverrides_[index][channel];
+        auto& selected = effectOverrides_[index][channel];
         if (selected.sourceId == 0u || priority > selected.priority ||
             (priority == selected.priority && sourceId <= selected.sourceId))
             selected = {values[channel], priority, sourceId};
@@ -196,36 +187,42 @@ bool PostProcessingStage::SubmitProfileParameter(std::string_view profileId, uin
 
 CommonParams PostProcessingStage::ResolveGlobalFrameParams() const noexcept {
     CommonParams params = commonParams_;
-    if (profileOverrideFrame_ != TIME::GetFrameContext().frameIndex || profileOverrideId_ != activeGlobalProfileId_)
+    if (effectOverrideFrame_ != TIME::GetFrameContext().frameIndex || effectOverrideId_ != activeGlobalEffectId_)
         return params;
-    for (size_t index = 0; index < profileOverrides_.size(); ++index) {
+    for (size_t index = 0; index < effectOverrides_.size(); ++index) {
         auto& value = params.user[index];
         float* channels[]{&value.x, &value.y, &value.z, &value.w};
         for (size_t channel = 0; channel < 4; ++channel)
-            if (profileOverrides_[index][channel].sourceId)
-                *channels[channel] = profileOverrides_[index][channel].value;
+            if (effectOverrides_[index][channel].sourceId)
+                *channels[channel] = effectOverrides_[index][channel].value;
     }
     return params;
 }
 
 void PostProcessingStage::GetRadialScreenWarp(float& curvature, float& strength) const noexcept {
     curvature = strength = 0.0f;
-    if (activeGlobalProfileId_ != "CRTDY" || !globalChain_.HasAny())
+    if (!activeGlobalEffect_ || !activeGlobalEffect_->screenWarp || !globalChain_.HasAny())
         return;
+    // 画面の曲げは効果が宣言したパラメーターから読む。SDK の一時上書きも反映する。
     const CommonParams params = ResolveGlobalFrameParams();
-    const float value = params.user[0].x * params.intensity;
-    if (!std::isfinite(params.user[0].y) || !std::isfinite(value))
+    const PostScreenWarpBinding& warp = *activeGlobalEffect_->screenWarp;
+    const auto strengthValue = ReadPostParameter(*activeGlobalEffect_, params.user, warp.strengthParam);
+    const auto curvatureValue = ReadPostParameter(*activeGlobalEffect_, params.user, warp.curvatureParam);
+    if (!strengthValue || !curvatureValue)
         return;
-    curvature = (std::max)(params.user[0].y, 0.0f);
+    const float value = *strengthValue * params.intensity;
+    if (!std::isfinite(*curvatureValue) || !std::isfinite(value))
+        return;
+    curvature = (std::max)(*curvatureValue, 0.0f);
     strength = std::clamp(value, 0.0f, 1.0f);
 }
 
-void PostProcessingStage::ClearGlobalProfile() {
-    profileOverrides_ = {};
-    profileOverrideId_.clear();
-    profileOverrideFrame_ = (std::numeric_limits<uint64_t>::max)();
-    activeGlobalProfileId_.clear();
-    activeGlobalProfile_ = PostProfile{};
+void PostProcessingStage::ClearGlobalEffect() {
+    effectOverrides_ = {};
+    effectOverrideId_.clear();
+    effectOverrideFrame_ = (std::numeric_limits<uint64_t>::max)();
+    activeGlobalEffectId_.clear();
+    activeGlobalEffect_.reset();
     globalChain_.Clear();
     activeGlobalEffects_.clear();
 }
@@ -663,7 +660,7 @@ RenderTarget2D* PostProcessingStage::ApplyActionScreenImpulse(RenderTarget2D& so
             stream << "[CombatVfx][ScreenDistortion] wave projection rejected"
                    << " reason=" << debug.lastRejectReason << " sourceCount=" << debug.sourceWaveCount
                    << " rejected=" << debug.projectionRejectCount << " frame=" << absoluteFrame;
-            WriteCombatVfxLog(stream.str());
+            LogCombatVfx(CORE::LogLevel::Info, stream.str());
             lastActionProjectionRejectReason_ = debug.lastRejectReason;
         }
         if (!debug.requested) {
@@ -707,7 +704,7 @@ RenderTarget2D* PostProcessingStage::ApplyActionScreenImpulse(RenderTarget2D& so
                            << " waves=" << debug.activeWaveCount << " mask=" << debug.maskApplied
                            << " accent=" << debug.accentApplied << " grade=" << debug.cinematicGradeApplied
                            << " boost=" << debug.boostGradeApplied << " frame=" << absoluteFrame;
-                    WriteCombatVfxLog(stream.str());
+                    LogCombatVfx(CORE::LogLevel::Info, stream.str());
                 }
                 actionScreenRequestWasActive_ = true;
                 actionCompositeFailureLogged_ = false;
@@ -722,8 +719,8 @@ RenderTarget2D* PostProcessingStage::ApplyActionScreenImpulse(RenderTarget2D& so
     // device is being recreated). It intentionally cannot reproduce the
     // mask or persistent cinematic grade.
     if ((debug.maskCompatible || cinematicGrade.IsActive()) && !actionCompositeFailureLogged_) {
-        WriteCombatVfxLog("[CombatVfx][ScreenDistortion] dedicated composite failed; "
-                          "trail mask/cinematic grade cannot use the guard-only fallback");
+        LogCombatVfx(CORE::LogLevel::Warn, "[CombatVfx][ScreenDistortion] dedicated composite failed; "
+                                           "trail mask/cinematic grade cannot use the guard-only fallback");
         actionCompositeFailureLogged_ = true;
     }
     if (!EnsureActionScreenImpulseEffect()) {
@@ -744,7 +741,7 @@ RenderTarget2D* PostProcessingStage::ApplyActionScreenImpulse(RenderTarget2D& so
         std::ostringstream stream;
         stream << "[CombatVfx][ScreenDistortion] guard fallback composited"
                << " waves=" << debug.activeWaveCount << " frame=" << absoluteFrame;
-        WriteCombatVfxLog(stream.str());
+        LogCombatVfx(CORE::LogLevel::Info, stream.str());
     }
     actionScreenRequestWasActive_ = true;
     return output;

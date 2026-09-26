@@ -21,7 +21,7 @@
 #include "Scene/HIKARI_RuntimeObjectActivityService.h"
 #include "Scene/HIKARI_RuntimeWorldServices.h"
 #include "Scene/HIKARI_World.h"
-#include "Scene/Sand/HIKARI_SandSurfaceFollowerComponent.h"
+#include "Scene/Terrain/HIKARI_TerrainSurfaceFollowerComponent.h"
 #include "Scene/Terrain/HIKARI_TerrainSurfaceComponent.h"
 
 namespace HIKARI {
@@ -719,8 +719,8 @@ void TerrainInteractionSourceSystem::PublishEditorPreviewSources(World& world, c
 
 void TerrainInteractionSourceSystem::PublishFollowerSources(World& world, const FrameContext& frame) {
     std::unordered_set<TERRAIN::TerrainInteractionSourceKey, SourceKeyHash> seen{};
-    world.ForEachObjectWith<SandSurfaceFollowerComponent>([&](GameObject& object,
-                                                              SandSurfaceFollowerComponent& follower) {
+    world.ForEachObjectWith<TerrainSurfaceFollowerComponent>([&](GameObject& object,
+                                                                 TerrainSurfaceFollowerComponent& follower) {
         if (runtimeActivityService_ != nullptr && !runtimeActivityService_->IsActive(object.GetRuntimeHandle())) {
             return;
         }

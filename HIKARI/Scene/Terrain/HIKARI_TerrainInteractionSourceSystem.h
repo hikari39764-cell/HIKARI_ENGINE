@@ -22,7 +22,7 @@ class PhysicsWorldService;
 
 // Physics collider / follower compatibility を唯一の
 // TerrainInteractionSample 契約へ適配する producer。consumer である
-// SandSurfaceSystem は source component を直接走査しない。
+// TerrainSurfaceSystem は source component を直接走査しない。
 class TerrainInteractionSourceSystem final : public ISystem {
 public:
     std::string_view GetName() const override { return "TerrainInteractionSourceSystem"; }

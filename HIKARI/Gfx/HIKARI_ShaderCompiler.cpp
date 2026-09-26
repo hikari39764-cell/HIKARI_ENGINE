@@ -85,12 +85,7 @@ std::string BlobToString(IDxcBlobUtf8* blob) {
 
 void ReportCompileError(const std::string& message) {
     if (!message.empty()) {
-        OutputDebugStringA(message.c_str());
-        if (message.back() != '\n') {
-            OutputDebugStringA("\n");
-        }
         DEBUGLOG::PushRenderError(message);
-        HIKARI_LOG_ERROR(message);
     }
 }
 
@@ -190,7 +185,8 @@ bool CompileDxcBuffer(const DxcBuffer& source, const wchar_t* sourceName, const 
     }
 
     if (!errorText.empty()) {
-        OutputDebugStringA(errorText.c_str());
+        HIKARI_LOG_WARN("[ShaderCompiler] warnings. source=" + NarrowUtf8(sourceName) +
+                        " entry=" + (entry ? entry : "") + "\n" + errorText);
     }
 
     ComPtr<IDxcBlob> shaderBlob;

@@ -12,16 +12,6 @@
 
 namespace HIKARI::EDITOR {
 namespace {
-EditorOperationParameter Parameter(std::string name, EditorOperationParameterType type, bool required,
-                                   std::string description) {
-    EditorOperationParameter value{};
-    value.name = std::move(name);
-    value.type = type;
-    value.required = required;
-    value.description = std::move(description);
-    return value;
-}
-
 bool RequireDialogueScene(const std::function<DocumentSceneBase*()>& provider, EditorOperationResult& result,
                           DocumentSceneBase*& outScene) {
     outScene = provider ? provider() : nullptr;
@@ -139,7 +129,7 @@ void RegisterDialogueOperations(EditorOperationRegistry& registry, DialogueWorks
             "dialogue.open_asset",
             "Open a Dialogue asset by guid.",
             "dialogue",
-            {Parameter("assetGuid", EditorOperationParameterType::String, true, "Dialogue asset guid")},
+            {{"assetGuid", EditorOperationParameterType::String, true, "Dialogue asset guid"}},
             [&controller, &workspaceHost, sceneProvider](const nlohmann::json& parameters) {
                 EditorOperationResult result{};
                 DocumentSceneBase* scene = nullptr;

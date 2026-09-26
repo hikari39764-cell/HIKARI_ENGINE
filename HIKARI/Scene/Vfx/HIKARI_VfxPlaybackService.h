@@ -51,7 +51,7 @@ public:
     // Resolves a typed compiled special output by stable asset GUID and
     // output id. The returned value is copied so callers never retain a
     // pointer into an evictable program cache. Empty/mismatched ids fail
-    // closed; legacy numeric presentation APIs do not use this path.
+    // closed.
     bool ResolveSpecialOutput(const AssetGuid& assetGuid, std::string_view outputId, VfxSpecialOutputType expectedType,
                               VfxSpecialOutputData& outOutput) const;
 

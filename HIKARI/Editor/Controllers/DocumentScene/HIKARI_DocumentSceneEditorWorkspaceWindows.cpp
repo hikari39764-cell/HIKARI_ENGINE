@@ -119,15 +119,7 @@ void DocumentSceneEditorController::DrawWorkspaceContent(DocumentSceneBase& scen
         SERVICES::SetEditorGameViewportSize(0, 0, false);
         RuntimeBindingWorkspace().DrawDockSpace(workspaceHost_.ConsumeReset(EDITOR::EditorWorkspaceId::RuntimeBinding));
         const EDITOR::RuntimeBindingWorkspaceResult result = RuntimeBindingWorkspace().Draw(scene, commandRouter_);
-        if (result.exitToSceneRequested) {
-            EDITOR::EditorWorkspaceOpenRequest request{};
-            request.workspaceId = EDITOR::EditorWorkspaceId::Scene;
-            (void)workspaceHost_.RequestOpen(std::move(request));
-        }
-        if (!result.statusMessage.empty()) {
-            viewportDropMessage_ = result.statusMessage;
-        }
-        DrawPendingSceneOpenModal(scene);
+        FinishWorkspaceFrame(scene, result.exitToSceneRequested, result.statusMessage);
         return;
     }
 
@@ -139,29 +131,18 @@ void DocumentSceneEditorController::DrawWorkspaceContent(DocumentSceneBase& scen
         const EDITOR::VfxWorkspaceResult result = VfxWorkspace().Draw(
             scene.GetAssetDatabase(), scene.GetAssetRegistry(), workspaceHost_.GetVfxPreviewView(),
             static_cast<uint64_t>(ImGui::GetFrameCount()), ImGui::GetIO().DeltaTime, commandRouter_);
-        if (result.exitToSceneRequested) {
-            EDITOR::EditorWorkspaceOpenRequest request{};
-            request.workspaceId = EDITOR::EditorWorkspaceId::Scene;
-            (void)workspaceHost_.RequestOpen(std::move(request));
-        }
-        if (!result.statusMessage.empty()) {
-            viewportDropMessage_ = result.statusMessage;
-        }
-        DrawPendingSceneOpenModal(scene);
+        FinishWorkspaceFrame(scene, result.exitToSceneRequested, result.statusMessage);
         return;
     }
 
     if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Dialogue)) {
         SERVICES::SetEditorGameViewportSize(0, 0, false);
         DialogueWorkspace().DrawDockSpace(workspaceHost_.ConsumeReset(EDITOR::EditorWorkspaceId::Dialogue));
-        const EDITOR::DialogueWorkspaceResult result = DialogueWorkspace().Draw(scene, commandRouter_);
+        const EDITOR::DialogueWorkspaceResult result = DialogueWorkspace().Draw(scene);
         if (result.workspaceRequest) {
             (void)workspaceHost_.RequestOpen(std::move(*result.workspaceRequest));
         }
-        if (!result.statusMessage.empty()) {
-            viewportDropMessage_ = result.statusMessage;
-        }
-        DrawPendingSceneOpenModal(scene);
+        FinishWorkspaceFrame(scene, false, result.statusMessage);
         return;
     }
 
@@ -171,18 +152,8 @@ void DocumentSceneEditorController::DrawWorkspaceContent(DocumentSceneBase& scen
             workspaceHost_.ConsumeReset(EDITOR::EditorWorkspaceId::AnimationStateMachine));
         const EDITOR::AnimationStateMachineWorkspaceResult result =
             AnimationStateMachineWorkspace().Draw(scene, commandRouter_);
-        if (result.exitToSceneRequested) {
-            EDITOR::EditorWorkspaceOpenRequest request{};
-            request.workspaceId = EDITOR::EditorWorkspaceId::Scene;
-            (void)workspaceHost_.RequestOpen(std::move(request));
-        }
-        if (!result.statusMessage.empty()) {
-            viewportDropMessage_ = result.statusMessage;
-        }
-        DrawPendingSceneOpenModal(scene);
-        if (renderQualitySavePending_ && !ImGui::IsAnyItemActive()) {
-            (void)SaveRenderQualityProfile(scene);
-        }
+        FinishWorkspaceFrame(scene, result.exitToSceneRequested, result.statusMessage);
+        SaveRenderQualityWhenIdle(scene);
         return;
     }
 
@@ -191,18 +162,8 @@ void DocumentSceneEditorController::DrawWorkspaceContent(DocumentSceneBase& scen
         ModelMaterialWorkspace().DrawDockSpace(workspaceHost_.ConsumeReset(EDITOR::EditorWorkspaceId::ModelMaterial));
         const EDITOR::ModelMaterialWorkspaceResult result =
             ModelMaterialWorkspace().Draw(scene, workspaceHost_, commandRouter_);
-        if (result.exitToSceneRequested) {
-            EDITOR::EditorWorkspaceOpenRequest request{};
-            request.workspaceId = EDITOR::EditorWorkspaceId::Scene;
-            (void)workspaceHost_.RequestOpen(std::move(request));
-        }
-        if (!result.statusMessage.empty()) {
-            viewportDropMessage_ = result.statusMessage;
-        }
-        DrawPendingSceneOpenModal(scene);
-        if (renderQualitySavePending_ && !ImGui::IsAnyItemActive()) {
-            (void)SaveRenderQualityProfile(scene);
-        }
+        FinishWorkspaceFrame(scene, result.exitToSceneRequested, result.statusMessage);
+        SaveRenderQualityWhenIdle(scene);
         return;
     }
 
@@ -211,18 +172,8 @@ void DocumentSceneEditorController::DrawWorkspaceContent(DocumentSceneBase& scen
         ModelCollisionWorkspace().DrawDockSpace(workspaceHost_.ConsumeReset(EDITOR::EditorWorkspaceId::ModelCollision));
         const EDITOR::ModelCollisionWorkspaceResult result =
             ModelCollisionWorkspace().Draw(scene, workspaceHost_, commandRouter_);
-        if (result.exitToSceneRequested) {
-            EDITOR::EditorWorkspaceOpenRequest request{};
-            request.workspaceId = EDITOR::EditorWorkspaceId::Scene;
-            (void)workspaceHost_.RequestOpen(std::move(request));
-        }
-        if (!result.statusMessage.empty()) {
-            viewportDropMessage_ = result.statusMessage;
-        }
-        DrawPendingSceneOpenModal(scene);
-        if (renderQualitySavePending_ && !ImGui::IsAnyItemActive()) {
-            (void)SaveRenderQualityProfile(scene);
-        }
+        FinishWorkspaceFrame(scene, result.exitToSceneRequested, result.statusMessage);
+        SaveRenderQualityWhenIdle(scene);
         return;
     }
 
@@ -258,114 +209,140 @@ void DocumentSceneEditorController::DrawWorkspaceContent(DocumentSceneBase& scen
     }
 
     if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Cinematics)) {
-        SERVICES::SetEditorGameViewportSize(0, 0, false);
-        const bool externalDirtyBefore =
-            historyExternalDirty_ ||
-            ((context_.sceneDirty || scene.HasUnsavedSceneChanges()) && !documentHistory_.IsDirty());
-        std::optional<SceneCinematicsSettings> cinematicsBefore{};
-        if (CouldMutateEditorDocumentThisFrame()) {
-            cinematicsBefore = scene.GetSceneDocument().cinematics;
-        }
-        CinematicsWorkspace().DrawDockSpace(workspaceHost_.ConsumeReset(EDITOR::EditorWorkspaceId::Cinematics));
-        const EDITOR::CinematicsWorkspaceResult result =
-            CinematicsWorkspace().Draw(scene, playSession, context_, selectionSync_, workspaceHost_);
-        if (result.cinematicsChanged && cinematicsBefore) {
-            RecordCinematicsHistory(scene, std::move(*cinematicsBefore), result.timelineEditMergeId,
-                                    externalDirtyBefore);
-        } else if (result.timelineEditMergeId == 0) {
-            documentHistory_.SealMerge();
-        }
-        if (result.saveSceneRequested) {
-            (void)commandRouter_.Execute(EDITOR::EditorCommandId::SaveDocument);
-        }
-        if (result.toggleGamePreviewRequested) {
-            ToggleGamePreview(scene, playSession);
-        }
-        if (!result.statusMessage.empty()) {
-            viewportDropMessage_ = result.statusMessage;
-        }
-        DrawPendingSceneOpenModal(scene);
-        if (renderQualitySavePending_ && !ImGui::IsAnyItemActive()) {
-            (void)SaveRenderQualityProfile(scene);
-        }
+        DrawCinematicsWorkspace(scene, playSession);
         return;
     }
-
     if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::TerrainSurface)) {
-#if defined(HIKARI_WITH_EDITOR)
-        terrainSurfaceWorkspaceController_.DrawDockSpace(
-            workspaceHost_.ConsumeReset(EDITOR::EditorWorkspaceId::TerrainSurface));
-#endif
-        if (context_.windows.viewport.showGameView) {
-            DrawGameViewportWindow(scene, playSession, "TerrainSurface/GameView");
-        } else {
-            playSession.ReleaseEmbeddedInput();
-            viewportTransformHistory_.BeginFrame();
-            viewportTransformHistory_.EndFrame(scene.GetSceneDocument());
-            EDITOR::ClearGameViewportInputRect();
-            SERVICES::SetEditorGameViewportSize(0, 0, false);
-        }
-        const bool externalDirtyBefore =
-            historyExternalDirty_ ||
-            ((context_.sceneDirty || scene.HasUnsavedSceneChanges()) && !documentHistory_.IsDirty());
-        EDITOR::TerrainSurfaceWorkspaceResult terrainResult = terrainSurfaceWorkspaceController_.Draw(scene, context_);
-        if (terrainResult.componentChanged) {
-            std::unique_ptr<EDITOR::IEditorDocumentCommand> command =
-                terrainResult.terrainDelta
-                    ? EDITOR::MakeSceneTerrainSurfaceEditDeltaHistoryCommand(
-                          terrainResult.historyLabel.empty() ? "Edit Terrain Surface" : terrainResult.historyLabel,
-                          terrainResult.objectId, terrainResult.componentId, std::move(terrainResult.beforePatch),
-                          std::move(terrainResult.afterPatch), EDITOR::EditorDocumentImpact::RuntimeWorld)
-                    : EDITOR::MakeSceneComponentPropertiesPatchHistoryCommand(
-                          "Edit Terrain Surface Settings", terrainResult.objectId, terrainResult.componentId,
-                          std::move(terrainResult.beforePatch), std::move(terrainResult.afterPatch),
-                          EDITOR::EditorDocumentImpact::RuntimeWorld);
-            CommitAppliedDocumentCommand(scene, std::move(command),
-                                         terrainResult.editActive ? kTerrainSurfaceWorkspaceMergeGroup : 0u,
-                                         externalDirtyBefore, EDITOR::EditorDocumentImpact::None);
-        }
-        if (terrainResult.placeSelectionRequested) {
-            std::vector<SceneObjectData> beforeObjects = scene.GetSceneDocument().objects;
-            const SceneCameraSettings beforeCamera = scene.GetSceneDocument().camera;
-            const EDITOR::TerrainPlacementResult placement = EDITOR::PlaceSelectedObjectsOnTerrain(
-                scene, context_.selection, terrainResult.terrainTargetObjectId, terrainResult.placementOffset);
-            if (!placement.changedObjectIds.empty()) {
-                CommitSceneObjectAuthoringHistory(scene, SceneObjectAuthoringHistoryRequest{
-                                                             "Place Objects on Terrain",
-                                                             std::move(beforeObjects),
-                                                             scene.GetSceneDocument().objects,
-                                                             beforeCamera,
-                                                             scene.GetSceneDocument().camera,
-                                                             externalDirtyBefore,
-                                                             true,
-                                                             false,
-                                                         });
-                viewportDropMessage_ =
-                    "Placed " + std::to_string(placement.changedObjectIds.size()) + " object(s) on terrain.";
-            } else {
-                viewportDropMessage_ = "No selected object intersects the active terrain.";
-            }
-        }
-        if (!terrainResult.editActive) {
-            documentHistory_.SealMerge();
-        }
-        DrawPendingSceneOpenModal(scene);
+        DrawTerrainSurfaceWorkspace(scene, playSession);
         return;
     }
+    DrawSceneWorkspace(scene, playSession);
+#else
+    (void)scene;
+    (void)playSession;
+#endif
+}
+
+bool DocumentSceneEditorController::IsDirtyOutsideHistory(const DocumentSceneBase& scene) const {
+    return historyExternalDirty_ ||
+           ((context_.sceneDirty || scene.HasUnsavedSceneChanges()) && !documentHistory_.IsDirty());
+}
 
 #if defined(HIKARI_WITH_EDITOR)
-    DrawEditorDockSpace(workspaceHost_.ConsumeReset(EDITOR::EditorWorkspaceId::Scene));
-#endif
-
-    if (context_.windows.viewport.showGameView) {
-        DrawGameViewportWindow(scene, playSession);
-    } else {
-        playSession.ReleaseEmbeddedInput();
-        viewportTransformHistory_.BeginFrame();
-        viewportTransformHistory_.EndFrame(scene.GetSceneDocument());
-        EDITOR::ClearGameViewportInputRect();
-        SERVICES::SetEditorGameViewportSize(0, 0, false);
+void DocumentSceneEditorController::FinishWorkspaceFrame(DocumentSceneBase& scene, bool exitToScene,
+                                                         const std::string& statusMessage) {
+    if (exitToScene) {
+        EDITOR::EditorWorkspaceOpenRequest request{};
+        request.workspaceId = EDITOR::EditorWorkspaceId::Scene;
+        (void)workspaceHost_.RequestOpen(std::move(request));
     }
+    if (!statusMessage.empty()) {
+        viewportDropMessage_ = statusMessage;
+    }
+    DrawPendingSceneOpenModal(scene);
+}
+
+void DocumentSceneEditorController::SaveRenderQualityWhenIdle(DocumentSceneBase& scene) {
+    if (renderQualitySavePending_ && !ImGui::IsAnyItemActive()) {
+        (void)SaveRenderQualityProfile(scene);
+    }
+}
+
+void DocumentSceneEditorController::DrawOptionalGameViewport(DocumentSceneBase& scene,
+                                                             EDITOR::EditorPlaySession& playSession,
+                                                             std::string_view stableWindowId) {
+    if (context_.windows.viewport.showGameView) {
+        DrawGameViewportWindow(scene, playSession, stableWindowId);
+        return;
+    }
+    playSession.ReleaseEmbeddedInput();
+    viewportTransformHistory_.BeginFrame();
+    viewportTransformHistory_.EndFrame(scene.GetSceneDocument());
+    EDITOR::ClearGameViewportInputRect();
+    SERVICES::SetEditorGameViewportSize(0, 0, false);
+}
+
+void DocumentSceneEditorController::DrawCinematicsWorkspace(DocumentSceneBase& scene,
+                                                            EDITOR::EditorPlaySession& playSession) {
+    SERVICES::SetEditorGameViewportSize(0, 0, false);
+    const bool externalDirtyBefore = IsDirtyOutsideHistory(scene);
+    std::optional<SceneCinematicsSettings> cinematicsBefore{};
+    if (CouldMutateEditorDocumentThisFrame()) {
+        cinematicsBefore = scene.GetSceneDocument().cinematics;
+    }
+    CinematicsWorkspace().DrawDockSpace(workspaceHost_.ConsumeReset(EDITOR::EditorWorkspaceId::Cinematics));
+    const EDITOR::CinematicsWorkspaceResult result =
+        CinematicsWorkspace().Draw(scene, playSession, context_, selectionSync_, workspaceHost_);
+    if (result.cinematicsChanged && cinematicsBefore) {
+        RecordCinematicsHistory(scene, std::move(*cinematicsBefore), result.timelineEditMergeId, externalDirtyBefore);
+    } else if (result.timelineEditMergeId == 0) {
+        documentHistory_.SealMerge();
+    }
+    if (result.saveSceneRequested) {
+        (void)commandRouter_.Execute(EDITOR::EditorCommandId::SaveDocument);
+    }
+    if (result.toggleGamePreviewRequested) {
+        ToggleGamePreview(scene, playSession);
+    }
+    FinishWorkspaceFrame(scene, false, result.statusMessage);
+    SaveRenderQualityWhenIdle(scene);
+}
+
+void DocumentSceneEditorController::DrawTerrainSurfaceWorkspace(DocumentSceneBase& scene,
+                                                                EDITOR::EditorPlaySession& playSession) {
+    terrainSurfaceWorkspaceController_.DrawDockSpace(
+        workspaceHost_.ConsumeReset(EDITOR::EditorWorkspaceId::TerrainSurface));
+    DrawOptionalGameViewport(scene, playSession, "TerrainSurface/GameView");
+    const bool externalDirtyBefore = IsDirtyOutsideHistory(scene);
+    EDITOR::TerrainSurfaceWorkspaceResult terrainResult = terrainSurfaceWorkspaceController_.Draw(scene, context_);
+    if (terrainResult.componentChanged) {
+        std::unique_ptr<EDITOR::IEditorDocumentCommand> command =
+            terrainResult.terrainDelta
+                ? EDITOR::MakeSceneTerrainSurfaceEditDeltaHistoryCommand(
+                      terrainResult.historyLabel.empty() ? "Edit Terrain Surface" : terrainResult.historyLabel,
+                      terrainResult.objectId, terrainResult.componentId, std::move(terrainResult.beforePatch),
+                      std::move(terrainResult.afterPatch), EDITOR::EditorDocumentImpact::RuntimeWorld)
+                : EDITOR::MakeSceneComponentPropertiesPatchHistoryCommand(
+                      "Edit Terrain Surface Settings", terrainResult.objectId, terrainResult.componentId,
+                      std::move(terrainResult.beforePatch), std::move(terrainResult.afterPatch),
+                      EDITOR::EditorDocumentImpact::RuntimeWorld);
+        CommitAppliedDocumentCommand(scene, std::move(command),
+                                     terrainResult.editActive ? kTerrainSurfaceWorkspaceMergeGroup : 0u,
+                                     externalDirtyBefore, EDITOR::EditorDocumentImpact::None);
+    }
+    if (terrainResult.placeSelectionRequested) {
+        std::vector<SceneObjectData> beforeObjects = scene.GetSceneDocument().objects;
+        const SceneCameraSettings beforeCamera = scene.GetSceneDocument().camera;
+        const EDITOR::TerrainPlacementResult placement = EDITOR::PlaceSelectedObjectsOnTerrain(
+            scene, context_.selection, terrainResult.terrainTargetObjectId, terrainResult.placementOffset);
+        if (!placement.changedObjectIds.empty()) {
+            CommitSceneObjectAuthoringHistory(scene, SceneObjectAuthoringHistoryRequest{
+                                                         "Place Objects on Terrain",
+                                                         std::move(beforeObjects),
+                                                         scene.GetSceneDocument().objects,
+                                                         beforeCamera,
+                                                         scene.GetSceneDocument().camera,
+                                                         externalDirtyBefore,
+                                                         true,
+                                                         false,
+                                                     });
+            viewportDropMessage_ =
+                "Placed " + std::to_string(placement.changedObjectIds.size()) + " object(s) on terrain.";
+        } else {
+            viewportDropMessage_ = "No selected object intersects the active terrain.";
+        }
+    }
+    if (!terrainResult.editActive) {
+        documentHistory_.SealMerge();
+    }
+    DrawPendingSceneOpenModal(scene);
+}
+
+void DocumentSceneEditorController::DrawSceneWorkspace(DocumentSceneBase& scene,
+                                                       EDITOR::EditorPlaySession& playSession) {
+    DrawEditorDockSpace(workspaceHost_.ConsumeReset(EDITOR::EditorWorkspaceId::Scene));
+
+    DrawOptionalGameViewport(scene, playSession, "Game View");
     if (context_.windows.authoring.showSceneWorkspace) {
         DrawSceneWorkspaceWindow(scene);
     }
@@ -375,9 +352,7 @@ void DocumentSceneEditorController::DrawWorkspaceContent(DocumentSceneBase& scen
     const SceneSystemsPanelResult systemsResult = sceneAuthoringUtilityWindows_.Draw(
         scene, context_.windows.authoring, SERVICES::GetInputService(), systemAuthoringRegistry_, toolHost_);
     if (systemsResult.changed) {
-        const bool externalDirtyBefore =
-            historyExternalDirty_ ||
-            ((context_.sceneDirty || scene.HasUnsavedSceneChanges()) && !documentHistory_.IsDirty());
+        const bool externalDirtyBefore = IsDirtyOutsideHistory(scene);
         CommitAppliedDocumentCommand(scene,
                                      EDITOR::MakeSceneSystemsHistoryCommand(systemsResult.label, systemsResult.before,
                                                                             scene.GetSceneDocument().systems),
@@ -405,83 +380,102 @@ void DocumentSceneEditorController::DrawWorkspaceContent(DocumentSceneBase& scen
     if (const std::optional<SceneObjectId> focusRequest = sceneInspectorPanel_.ConsumeFocusObjectRequest()) {
         FocusSceneObjects(scene, {*focusRequest});
     }
-    if (context_.windows.resources.showAssetBrowser) {
-        if (const auto activation = resourceWorkspacePanel_.ConsumeActivatedAsset()) {
-            EDITOR::AssetWorkspaceActivationRoute route = EDITOR::RouteAssetWorkspaceActivation(*activation);
-            if (route.workspaceRequest.has_value()) {
-                (void)workspaceHost_.RequestOpen(std::move(*route.workspaceRequest));
-            } else if (route.sceneAssetGuid.has_value()) {
-                pendingSceneOpenGuid_ = *route.sceneAssetGuid;
-                if (context_.sceneDirty || scene.HasUnsavedSceneChanges()) {
-                    ImGui::OpenPopup("Unsaved Scene Changes");
-                } else {
-                    OpenSceneAssetFromEditor(scene, pendingSceneOpenGuid_);
-                    pendingSceneOpenGuid_ = {};
-                }
-            }
-        }
+    HandleResourceWorkspaceRequests(scene);
+    DrawEnvironmentPanels(scene);
+    EDITOR::EditorToolContext toolContext{scene, context_};
+    toolHost_.Draw(toolContext);
+    if (context_.windows.runtime.showDebugView) {
+        DrawDebugViewWindow(scene, context_.windows.runtime.showDebugView);
+    }
+    if (context_.windows.runtime.showPerformanceAudit) {
+        performanceAuditPanel_.Draw(context_.windows.runtime.showPerformanceAudit);
+    }
+    DrawPendingSceneOpenModal(scene);
+    SaveRenderQualityWhenIdle(scene);
+}
 
-        const std::string saveSceneAsGuid = resourceWorkspacePanel_.ConsumeSaveSceneAsGuid();
-        if (!saveSceneAsGuid.empty()) {
-            if (scene.SaveCurrentSceneDocumentAs(AssetGuid{saveSceneAsGuid})) {
-                context_.sceneDirty = false;
-                scene.SetUnsavedSceneChanges(false);
-                viewportDropMessage_ = "Scene saved to selected asset";
-                HIKARI_LOG_INFO("[SceneAsset] save scene: " + saveSceneAsGuid);
+void DocumentSceneEditorController::HandleResourceWorkspaceRequests(DocumentSceneBase& scene) {
+    if (!context_.windows.resources.showAssetBrowser) {
+        return;
+    }
+    if (const auto activation = resourceWorkspacePanel_.ConsumeActivatedAsset()) {
+        EDITOR::AssetWorkspaceActivationRoute route = EDITOR::RouteAssetWorkspaceActivation(*activation);
+        if (route.workspaceRequest.has_value()) {
+            (void)workspaceHost_.RequestOpen(std::move(*route.workspaceRequest));
+        } else if (route.sceneAssetGuid.has_value()) {
+            pendingSceneOpenGuid_ = *route.sceneAssetGuid;
+            if (context_.sceneDirty || scene.HasUnsavedSceneChanges()) {
+                ImGui::OpenPopup("Unsaved Scene Changes");
             } else {
-                viewportDropMessage_ = "Scene save target failed";
-                HIKARI_LOG_WARN("[SceneAsset] save scene failed: " + saveSceneAsGuid);
+                OpenSceneAssetFromEditor(scene, pendingSceneOpenGuid_);
+                pendingSceneOpenGuid_ = {};
             }
-        }
-
-        RuntimeResourceRefreshService refreshService{};
-        auto applyRefreshReport = [this](RuntimeResourceRefreshReport report) {
-            context_.lastRuntimeRefreshReport = std::move(report);
-            viewportDropMessage_ = SummarizeRuntimeRefreshReport(context_.lastRuntimeRefreshReport);
-        };
-
-        const bool refreshCurrentScene = resourceWorkspacePanel_.ConsumeRefreshCurrentSceneResourcesRequested();
-        const std::string refreshRuntimeGuid = resourceWorkspacePanel_.ConsumeRefreshRuntimeAssetGuid();
-        const std::string reimportAndRefreshRuntimeGuid =
-            resourceWorkspacePanel_.ConsumeReimportAndRefreshRuntimeAssetGuid();
-        const std::string refreshRuntimeMaterialGuid = resourceWorkspacePanel_.ConsumeRefreshRuntimeMaterialGuid();
-        std::vector<AssetId> targetedRefreshAssets{};
-        const auto appendTargetedRefresh = [&targetedRefreshAssets](const std::string& guid) {
-            if (guid.empty() ||
-                std::ranges::any_of(targetedRefreshAssets, [&guid](const AssetId& id) { return id.value == guid; })) {
-                return;
-            }
-            targetedRefreshAssets.push_back(AssetId{guid});
-        };
-        appendTargetedRefresh(refreshRuntimeGuid);
-        appendTargetedRefresh(reimportAndRefreshRuntimeGuid);
-        appendTargetedRefresh(refreshRuntimeMaterialGuid);
-
-        bool assetRegistryPublished = false;
-        if (refreshCurrentScene) {
-            EDITOR::ClearEditorTexturePreviewCache();
-            // 霑ｴ・ｾ陜ｨ・ｨ邵ｺ・ｮ SceneDocument 邵ｺ・ｫ陷・ｽｺ邵ｺ・ｦ邵ｺ荳奇ｽ玖嵩譎擾ｽｭ繝ｻresource 郢ｧ蛛ｵ竏ｪ邵ｺ・ｨ郢ｧ竏壺ｻ陟托ｽｵ郢ｧ鬘泌ｳｩ邵ｺ蜷ｶﾂ繝ｻ
-            RuntimeResourceRefreshReport report = refreshService.RefreshCurrentSceneResources(scene);
-            assetRegistryPublished = report.assetRegistryPublished;
-            applyRefreshReport(std::move(report));
-        }
-
-        if (!targetedRefreshAssets.empty() && (!refreshCurrentScene || assetRegistryPublished)) {
-            EDITOR::ClearEditorTexturePreviewCache();
-            applyRefreshReport(refreshService.RefreshAssets(scene, targetedRefreshAssets, assetRegistryPublished));
-        }
-
-        AssetGuid applyMaterialGuid{};
-        PbrMaterialAssetData applyMaterialData{};
-        if (resourceWorkspacePanel_.ConsumeApplyRuntimeMaterialRequest(applyMaterialGuid, applyMaterialData)) {
-            const int rebuilt = scene.ApplyRuntimeMaterialOverridePreview(applyMaterialGuid, applyMaterialData);
-            context_.lastRuntimeRefreshReport = {};
-            context_.lastRuntimeRefreshReport.materialReboundComponentCount = rebuilt;
-            context_.lastRuntimeRefreshReport.messages.push_back("Applied material runtime preview: " +
-                                                                 applyMaterialGuid.value);
-            viewportDropMessage_ = SummarizeRuntimeRefreshReport(context_.lastRuntimeRefreshReport);
         }
     }
+
+    const std::string saveSceneAsGuid = resourceWorkspacePanel_.ConsumeSaveSceneAsGuid();
+    if (!saveSceneAsGuid.empty()) {
+        if (scene.SaveCurrentSceneDocumentAs(AssetGuid{saveSceneAsGuid})) {
+            context_.sceneDirty = false;
+            scene.SetUnsavedSceneChanges(false);
+            viewportDropMessage_ = "Scene saved to selected asset";
+            HIKARI_LOG_INFO("[SceneAsset] save scene: " + saveSceneAsGuid);
+        } else {
+            viewportDropMessage_ = "Scene save target failed";
+            HIKARI_LOG_WARN("[SceneAsset] save scene failed: " + saveSceneAsGuid);
+        }
+    }
+
+    RuntimeResourceRefreshService refreshService{};
+    auto applyRefreshReport = [this](RuntimeResourceRefreshReport report) {
+        context_.lastRuntimeRefreshReport = std::move(report);
+        viewportDropMessage_ = SummarizeRuntimeRefreshReport(context_.lastRuntimeRefreshReport);
+    };
+
+    const bool refreshCurrentScene = resourceWorkspacePanel_.ConsumeRefreshCurrentSceneResourcesRequested();
+    const std::string refreshRuntimeGuid = resourceWorkspacePanel_.ConsumeRefreshRuntimeAssetGuid();
+    const std::string reimportAndRefreshRuntimeGuid =
+        resourceWorkspacePanel_.ConsumeReimportAndRefreshRuntimeAssetGuid();
+    const std::string refreshRuntimeMaterialGuid = resourceWorkspacePanel_.ConsumeRefreshRuntimeMaterialGuid();
+    std::vector<AssetId> targetedRefreshAssets{};
+    const auto appendTargetedRefresh = [&targetedRefreshAssets](const std::string& guid) {
+        if (guid.empty() ||
+            std::ranges::any_of(targetedRefreshAssets, [&guid](const AssetId& id) { return id.value == guid; })) {
+            return;
+        }
+        targetedRefreshAssets.push_back(AssetId{guid});
+    };
+    appendTargetedRefresh(refreshRuntimeGuid);
+    appendTargetedRefresh(reimportAndRefreshRuntimeGuid);
+    appendTargetedRefresh(refreshRuntimeMaterialGuid);
+
+    bool assetRegistryPublished = false;
+    if (refreshCurrentScene) {
+        EDITOR::ClearEditorTexturePreviewCache();
+        // 現在の SceneDocument が参照する実行時リソースをまとめて引き直す。
+        RuntimeResourceRefreshReport report = refreshService.RefreshCurrentSceneResources(scene);
+        assetRegistryPublished = report.assetRegistryPublished;
+        applyRefreshReport(std::move(report));
+    }
+
+    if (!targetedRefreshAssets.empty() && (!refreshCurrentScene || assetRegistryPublished)) {
+        EDITOR::ClearEditorTexturePreviewCache();
+        applyRefreshReport(refreshService.RefreshAssets(scene, targetedRefreshAssets, assetRegistryPublished));
+    }
+
+    AssetGuid applyMaterialGuid{};
+    PbrMaterialAssetData applyMaterialData{};
+    if (resourceWorkspacePanel_.ConsumeApplyRuntimeMaterialRequest(applyMaterialGuid, applyMaterialData)) {
+        const int rebuilt = scene.ApplyRuntimeMaterialOverridePreview(applyMaterialGuid, applyMaterialData);
+        context_.lastRuntimeRefreshReport = {};
+        context_.lastRuntimeRefreshReport.materialReboundComponentCount = rebuilt;
+        context_.lastRuntimeRefreshReport.messages.push_back("Applied material runtime preview: " +
+                                                             applyMaterialGuid.value);
+        viewportDropMessage_ = SummarizeRuntimeRefreshReport(context_.lastRuntimeRefreshReport);
+    }
+}
+
+void DocumentSceneEditorController::DrawEnvironmentPanels(DocumentSceneBase& scene) {
     bool environmentEditActive = false;
     if (context_.windows.resources.showEnvironment) {
         const SceneEnvironment beforeEnvironment = scene.GetSceneDocument().environment;
@@ -490,9 +484,7 @@ void DocumentSceneEditorController::DrawWorkspaceContent(DocumentSceneBase& scen
             editedEnvironment, &SKYRENDERER::GetDebugState(), &scene.GetAssetRegistry(), &scene.GetAssetDatabase());
         environmentEditActive |= environmentResult.editActive;
         if (environmentResult.environmentChanged) {
-            const bool externalDirtyBefore =
-                historyExternalDirty_ ||
-                ((context_.sceneDirty || scene.HasUnsavedSceneChanges()) && !documentHistory_.IsDirty());
+            const bool externalDirtyBefore = IsDirtyOutsideHistory(scene);
             scene.GetSceneDocument().environment = editedEnvironment;
             CommitAppliedDocumentCommand(scene,
                                          EDITOR::MakeEnvironmentHistoryCommand("Edit Environment", beforeEnvironment,
@@ -512,12 +504,10 @@ void DocumentSceneEditorController::DrawWorkspaceContent(DocumentSceneBase& scen
     if (context_.windows.resources.showQuality) {
         const SceneEnvironment beforeEnvironment = scene.GetSceneDocument().environment;
         SceneEnvironment editedEnvironment = beforeEnvironment;
-        const QualityPanelResult qualityResult = qualityPanel_.Draw(editedEnvironment);
+        const QualityPanelResult qualityResult = qualityPanel_.Draw(editedEnvironment, scene);
         environmentEditActive |= qualityResult.editActive;
         if (qualityResult.environmentChanged) {
-            const bool externalDirtyBefore =
-                historyExternalDirty_ ||
-                ((context_.sceneDirty || scene.HasUnsavedSceneChanges()) && !documentHistory_.IsDirty());
+            const bool externalDirtyBefore = IsDirtyOutsideHistory(scene);
             scene.GetSceneDocument().environment = editedEnvironment;
             CommitAppliedDocumentCommand(scene,
                                          EDITOR::MakeEnvironmentHistoryCommand("Edit Quality Environment",
@@ -531,23 +521,8 @@ void DocumentSceneEditorController::DrawWorkspaceContent(DocumentSceneBase& scen
     if (!environmentEditActive) {
         documentHistory_.SealMerge();
     }
-    EDITOR::EditorToolContext toolContext{scene, context_};
-    toolHost_.Draw(toolContext);
-    if (context_.windows.runtime.showDebugView) {
-        DrawDebugViewWindow(scene, context_.windows.runtime.showDebugView);
-    }
-    if (context_.windows.runtime.showPerformanceAudit) {
-        performanceAuditPanel_.Draw(context_.windows.runtime.showPerformanceAudit);
-    }
-    DrawPendingSceneOpenModal(scene);
-    if (renderQualitySavePending_ && !ImGui::IsAnyItemActive()) {
-        (void)SaveRenderQualityProfile(scene);
-    }
-#else
-    (void)scene;
-    (void)playSession;
-#endif
 }
+#endif
 
 void DocumentSceneEditorController::DrawSceneWorkspaceWindow(DocumentSceneBase& scene) {
 #if defined(HIKARI_WITH_EDITOR)

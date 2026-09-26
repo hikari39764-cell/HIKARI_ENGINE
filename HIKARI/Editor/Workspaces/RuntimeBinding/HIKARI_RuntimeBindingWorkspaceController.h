@@ -58,6 +58,8 @@ public:
 
     bool IsDocumentOpen() const noexcept;
     bool IsDocumentDirty() const noexcept;
+    // 文書の状態。シェル、AI の文脈、バックグラウンドのセッションで共有する。
+    nlohmann::json DescribeDocumentState() const;
     bool CanUndo() const noexcept;
     bool CanRedo() const noexcept;
     bool Save(DocumentSceneBase& scene, std::string& outMessage);

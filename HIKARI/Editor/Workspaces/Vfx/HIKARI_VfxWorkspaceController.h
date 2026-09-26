@@ -208,7 +208,8 @@ public:
     const std::vector<VFX::VfxDiagnostic>& GetDiagnostics() const noexcept;
     const std::string& GetStatusMessage() const noexcept;
     // AI 消費者向けの現在状態の要約（開いている資産・層・効果・選択・再生位置）。
-    std::string GetAiVfxStatus() const;
+    // 文書の状態。シェル、AI の文脈、バックグラウンドのセッションで共有する。
+    nlohmann::json DescribeDocumentState() const;
     bool WasLastAssetRefreshAttempted() const noexcept;
     bool DidLastAssetRefreshSucceed() const noexcept;
     const std::string& GetLastAssetRefreshMessage() const noexcept;
@@ -273,6 +274,13 @@ private:
     void DrawEmitterInspector(AssetDatabase& assetDatabase, const VFX::VfxEmitterData& emitter);
     void DrawEmitterAppearance(AssetDatabase&, const VFX::VfxEmitterData&);
     void DrawEmitterAdvanced(AssetDatabase&, const VFX::VfxEmitterData&);
+    void DrawAdjustmentLayerInspector(AssetDatabase&, const VFX::VfxEmitterData&);
+    void DrawEmitterGeometry(AssetDatabase&, const VFX::VfxEmitterData&);
+    void DrawGeometryPresetPicker(const VFX::VfxEmitterData&);
+    void DrawEmitterPlacement(AssetDatabase&, const VFX::VfxEmitterData&);
+    void DrawEmitterTiming(AssetDatabase&, const VFX::VfxEmitterData&);
+    void DrawEmitterSpawnPage(AssetDatabase&, const VFX::VfxEmitterData&);
+    void DrawEmitterMotionPage(AssetDatabase&, const VFX::VfxEmitterData&);
     void DrawTemplateLibrary();
     void DrawContentLibrary(AssetDatabase&);
     void DrawEmitterBindingsInspector(const VFX::VfxEmitterData& emitter);

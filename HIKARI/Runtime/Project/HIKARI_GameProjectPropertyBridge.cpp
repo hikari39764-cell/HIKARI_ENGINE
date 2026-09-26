@@ -46,14 +46,39 @@ bool CopyFixedString(const nlohmann::json* value, char (&destination)[Capacity])
     return true;
 }
 
-const nlohmann::json* FindObjectMember(const nlohmann::json& object, std::string_view primary,
-                                       std::string_view legacy) noexcept {
-    const auto found = object.find(std::string(primary));
-    if (found != object.end()) {
-        return &*found;
+// 資産参照は {"assetGuid", "assetPath"} オブジェクトとして保存する。
+template <typename Reference>
+bool ReadAssetReference(const void* properties, std::string_view name, Reference& outReference) noexcept {
+    outReference = {};
+    try {
+        const nlohmann::json* value = FindProperty(properties, name);
+        if (value == nullptr || !value->is_object()) {
+            return false;
+        }
+        const nlohmann::json* guid = FindProperty(value, "assetGuid");
+        const nlohmann::json* path = FindProperty(value, "assetPath");
+        if ((guid != nullptr && !CopyFixedString(guid, outReference.assetGuid)) ||
+            (path != nullptr && !CopyFixedString(path, outReference.assetPath))) {
+            outReference = {};
+            return false;
+        }
+        return true;
+    } catch (...) {
+        outReference = {};
+        return false;
     }
-    const auto legacyFound = object.find(std::string(legacy));
-    return legacyFound != object.end() ? &*legacyFound : nullptr;
+}
+
+template <typename Reference>
+void WriteAssetReference(void* properties, std::string_view name, const Reference& reference) {
+    const std::string guid = ReadFixedString(reference.assetGuid);
+    const std::string path = ReadFixedString(reference.assetPath);
+    if ((reference.assetGuid[0] != '\0' && guid.empty()) || (reference.assetPath[0] != '\0' && path.empty())) {
+        return;
+    }
+    if (nlohmann::json* object = GetPropertyObject(properties)) {
+        (*object)[std::string(name)] = {{"assetGuid", guid}, {"assetPath", path}};
+    }
 }
 
 } // namespace
@@ -111,61 +136,12 @@ GameProjectFloat3 PropertyReader::ReadFloat3(std::string_view name, GameProjectF
 
 bool PropertyReader::ReadVfxAssetReference(std::string_view name,
                                            GameProjectVfxAssetReference& outReference) const noexcept {
-    outReference = {};
-    try {
-        const nlohmann::json* value = FindProperty(properties_, name);
-        if (value == nullptr) {
-            return false;
-        }
-        // Older project components may have stored only the GUID string.
-        if (value->is_string()) {
-            return CopyFixedString(value, outReference.assetGuid);
-        }
-        if (!value->is_object()) {
-            return false;
-        }
-        const nlohmann::json* guid = FindObjectMember(*value, "assetGuid", "guid");
-        const nlohmann::json* path = FindObjectMember(*value, "assetPath", "sourcePath");
-        const bool guidFits = CopyFixedString(guid, outReference.assetGuid);
-        const bool pathFits = CopyFixedString(path, outReference.assetPath);
-        if ((guid != nullptr && !guidFits) || (path != nullptr && !pathFits)) {
-            outReference = {};
-            return false;
-        }
-        return true;
-    } catch (...) {
-        outReference = {};
-        return false;
-    }
+    return ReadAssetReference(properties_, name, outReference);
 }
 
 bool PropertyReader::ReadTextureAssetReference(std::string_view name,
                                                GameProjectUiTextureReference& outReference) const noexcept {
-    outReference = {};
-    try {
-        const nlohmann::json* value = FindProperty(properties_, name);
-        if (value == nullptr) {
-            return false;
-        }
-        if (value->is_string()) {
-            return CopyFixedString(value, outReference.assetGuid);
-        }
-        if (!value->is_object()) {
-            return false;
-        }
-        const nlohmann::json* guid = FindObjectMember(*value, "assetGuid", "guid");
-        const nlohmann::json* path = FindObjectMember(*value, "assetPath", "sourcePath");
-        const bool guidFits = CopyFixedString(guid, outReference.assetGuid);
-        const bool pathFits = CopyFixedString(path, outReference.assetPath);
-        if ((guid != nullptr && !guidFits) || (path != nullptr && !pathFits)) {
-            outReference = {};
-            return false;
-        }
-        return true;
-    } catch (...) {
-        outReference = {};
-        return false;
-    }
+    return ReadAssetReference(properties_, name, outReference);
 }
 
 size_t PropertyReader::GetStringSize(std::string_view name) const noexcept {
@@ -220,25 +196,11 @@ void PropertyWriter::WriteFloat3(std::string_view name, GameProjectFloat3 value)
 }
 
 void PropertyWriter::WriteVfxAssetReference(std::string_view name, const GameProjectVfxAssetReference& reference) {
-    const std::string guid = ReadFixedString(reference.assetGuid);
-    const std::string path = ReadFixedString(reference.assetPath);
-    if ((reference.assetGuid[0] != '\0' && guid.empty()) || (reference.assetPath[0] != '\0' && path.empty())) {
-        return;
-    }
-    if (nlohmann::json* object = GetPropertyObject(properties_)) {
-        (*object)[std::string(name)] = {{"assetGuid", guid}, {"assetPath", path}};
-    }
+    WriteAssetReference(properties_, name, reference);
 }
 
 void PropertyWriter::WriteTextureAssetReference(std::string_view name, const GameProjectUiTextureReference& reference) {
-    const std::string guid = ReadFixedString(reference.assetGuid);
-    const std::string path = ReadFixedString(reference.assetPath);
-    if ((reference.assetGuid[0] != '\0' && guid.empty()) || (reference.assetPath[0] != '\0' && path.empty())) {
-        return;
-    }
-    if (nlohmann::json* object = GetPropertyObject(properties_)) {
-        (*object)[std::string(name)] = {{"assetGuid", guid}, {"assetPath", path}};
-    }
+    WriteAssetReference(properties_, name, reference);
 }
 
 } // namespace HIKARI

@@ -9,7 +9,7 @@
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenSceneSource.h"
 #include "Render3D/GpuDriven/HIKARI_GpuSceneSurfaceRecord.h"
 #include "Render3D/Runtime/HIKARI_SceneRenderCache.h"
-#include "Render3D/Sand/HIKARI_SandSurfaceGpuData.h"
+#include "Render3D/Terrain/HIKARI_TerrainSurfaceGpuData.h"
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
 
@@ -145,9 +145,9 @@ private:
     std::vector<GpuSceneSurfaceRecord> surfaceRecords_{};
     std::vector<WATER::WaterSurfaceGpuData> waterSurfaceGpuData_{};
     std::vector<std::vector<MATH::Mat4>> meshShaderJointPalettes_{};
-    std::vector<SAND::SandSurfaceGpuData> sandSurfaceGpuData_{};
-    const std::vector<float>* sandSurfaceHeights_ = nullptr;
-    uint64_t sandSurfaceHeightVersion_ = 0;
+    std::vector<TERRAIN::TerrainSurfaceGpuData> terrainSurfaceGpuData_{};
+    const std::vector<float>* terrainSurfaceHeights_ = nullptr;
+    uint64_t terrainSurfaceHeightVersion_ = 0;
     std::vector<uint32_t> forwardOpaqueResidentRecordIndices_{};
     std::vector<uint32_t> depthPrepassOccluderRecordIndices_{};
     std::vector<uint32_t> forwardDepthAwareResidentRecordIndices_{};

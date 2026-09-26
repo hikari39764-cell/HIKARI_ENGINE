@@ -38,12 +38,12 @@ DefaultModelMaterialBindingResolution ResolveDefaultModelMaterialBindings(
     const AssetRegistry& registry, const AssetGuid& modelAssetGuid,
     const std::vector<MaterialAsset>& importedMaterials);
 
-// An explicit Material Set is exact-model-only. Passing an empty set GUID
-// preserves the legacy deterministic model-default lookup.
+// An explicit Material Set is exact-model-only. Without one, allowModelDefault
+// selects the model's deterministic default binding asset.
 DefaultModelMaterialBindingResolution ResolveModelMaterialBindings(const AssetRegistry& registry,
                                                                    const AssetGuid& modelAssetGuid,
                                                                    const AssetGuid& materialSetAssetGuid,
                                                                    const std::vector<MaterialAsset>& importedMaterials,
-                                                                   bool allowLegacyDefault = true);
+                                                                   bool allowModelDefault = true);
 
 } // namespace HIKARI::ASSETS::MODELS

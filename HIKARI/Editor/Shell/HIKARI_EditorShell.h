@@ -11,6 +11,8 @@ struct EditorShellContents {
     std::function<void()> documents;
     std::function<void(const char*)> projectWorkspaces;
     bool assistantBusy = false;
+    // AI の操作がユーザーの承認を待っている。
+    bool assistantAttention = false;
     bool tasksBusy = false;
 };
 class EditorShell {
@@ -21,6 +23,7 @@ private:
     enum class Page { None, Workspaces, Resources, Assistant, Tasks, Log, Settings };
     Page page_ = Page::None;
     bool lastAssistant_ = false, lastSettings_ = false, lastResources_ = false;
+    bool lastAssistantAttention_ = false;
     bool initialized_ = false, resizing_ = false;
     bool detachedLog_ = false;
     float width_ = 340;

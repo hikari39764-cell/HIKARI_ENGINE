@@ -14,7 +14,7 @@
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Render3D/Runtime/HIKARI_RenderModelAsset.h"
 #include "Render3D/Water/HIKARI_WaterSurfaceRenderData.h"
-#include "Render3D/Sand/HIKARI_SandSurfaceRenderData.h"
+#include "Render3D/Terrain/HIKARI_TerrainSurfaceRenderData.h"
 
 namespace HIKARI {
 class Material;
@@ -82,13 +82,13 @@ struct SceneRenderObjectDesc {
     // Renderer-owned typed input; Scene does not own the GPU slot layout.
     bool waterSurface = false;
     WATER::WaterSurfaceRenderData waterSurfaceData{};
-    bool sandSurface = false;
-    SAND::SandSurfaceRenderData sandSurfaceData{};
-    std::shared_ptr<const std::vector<float>> sandSurfaceHeights{};
-    std::shared_ptr<const std::vector<float>> sandSurfaceDeformations{};
-    std::shared_ptr<const std::vector<float>> sandSurfaceLayerWeights{};
-    std::shared_ptr<const std::vector<float>> sandSurfaceCoverage{};
-    uint64_t sandSurfaceProjectionRevision = 0u;
+    bool terrainSurface = false;
+    TERRAIN::TerrainSurfaceRenderData terrainSurfaceData{};
+    std::shared_ptr<const std::vector<float>> terrainSurfaceHeights{};
+    std::shared_ptr<const std::vector<float>> terrainSurfaceDeformations{};
+    std::shared_ptr<const std::vector<float>> terrainSurfaceLayerWeights{};
+    std::shared_ptr<const std::vector<float>> terrainSurfaceCoverage{};
+    uint64_t terrainSurfaceProjectionRevision = 0u;
 };
 
 struct SceneRenderObject {
@@ -153,21 +153,21 @@ struct SceneSurfaceInstance {
     MATH::Vec4 foliageWindParams{};
     bool waterSurface = false;
     WATER::WaterSurfaceRenderData waterSurfaceData{};
-    bool sandSurface = false;
+    bool terrainSurface = false;
     // CPU-side residency only. A terrain whose atomic core could not be
     // admitted must never be submitted as the neutral 2x2 sand tile.
-    bool sandSurfaceCoreResident = false;
-    SAND::SandSurfaceRenderData sandSurfaceData{};
-    std::shared_ptr<const std::vector<float>> sandSurfaceHeights{};
-    std::shared_ptr<const std::vector<float>> sandSurfaceDeformations{};
-    std::shared_ptr<const std::vector<float>> sandSurfaceLayerWeights{};
-    std::shared_ptr<const std::vector<float>> sandSurfaceCoverage{};
-    uint64_t sandSurfaceProjectionRevision = 0u;
-    uint32_t sandSurfaceHeightOffset = 0u;
-    uint32_t sandSurfaceDeformationOffset = 0u;
-    uint32_t sandSurfaceLayerWeightsOffset = 0u;
-    uint32_t sandSurfaceCoverageOffset = 0u;
-    uint32_t sandSurfaceLayerTintsOffset = 0u;
+    bool terrainSurfaceCoreResident = false;
+    TERRAIN::TerrainSurfaceRenderData terrainSurfaceData{};
+    std::shared_ptr<const std::vector<float>> terrainSurfaceHeights{};
+    std::shared_ptr<const std::vector<float>> terrainSurfaceDeformations{};
+    std::shared_ptr<const std::vector<float>> terrainSurfaceLayerWeights{};
+    std::shared_ptr<const std::vector<float>> terrainSurfaceCoverage{};
+    uint64_t terrainSurfaceProjectionRevision = 0u;
+    uint32_t terrainSurfaceHeightOffset = 0u;
+    uint32_t terrainSurfaceDeformationOffset = 0u;
+    uint32_t terrainSurfaceLayerWeightsOffset = 0u;
+    uint32_t terrainSurfaceCoverageOffset = 0u;
+    uint32_t terrainSurfaceLayerTintsOffset = 0u;
     uint32_t waterSurfaceLiquidCoverageOffset = 0u;
 };
 
@@ -219,7 +219,7 @@ public:
     const SceneRenderObject* Find(SceneRenderObjectId id) const;
     const std::vector<SceneRenderObject>& GetObjects() const;
     const std::vector<SceneSurfaceInstance>& GetSurfaceInstances() const;
-    const std::vector<float>* GetSandSurfaceHeights() const;
+    const std::vector<float>* GetTerrainSurfaceHeights() const;
     const std::vector<uint32_t>& GetDirtySurfaceIndices() const;
     uint64_t GetSurfaceVersion() const;
     uint64_t GetSurfaceRoutingVersion() const;
@@ -247,7 +247,7 @@ private:
     std::vector<SceneRenderObject> objects_{};
     std::vector<SceneSurfaceInstance> surfaceInstances_{};
     std::vector<ObjectSurfaceRange> objectSurfaceRanges_{};
-    std::vector<float> sandSurfaceHeights_{};
+    std::vector<float> terrainSurfaceHeights_{};
     std::vector<uint32_t> dirtySurfaceIndices_{};
     std::unordered_map<uint64_t, size_t> indexById_{};
 
@@ -262,7 +262,7 @@ private:
     bool surfaceDataDirty_ = true;
     bool surfaceFloatPoolDirty_ = true;
     std::vector<std::array<uint32_t, 10u>> previousPackedSurfaceScratch_{};
-    std::vector<uint32_t> sourceSandGridResolutionScratch_{};
+    std::vector<uint32_t> sourceTerrainGridResolutionScratch_{};
     std::vector<uint8_t> terrainCoreResidentScratch_{};
     std::vector<float> surfaceTintScratch_{};
 };

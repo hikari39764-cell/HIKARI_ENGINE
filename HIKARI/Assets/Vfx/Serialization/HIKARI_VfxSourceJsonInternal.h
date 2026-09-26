@@ -18,7 +18,7 @@ bool ReadDistribution(const nlohmann::json& node, VfxColorDistributionData& outV
 bool ReadAnimatedVec3(const nlohmann::json& node, VfxAnimatedVec3Data& outValue);
 bool ReadAnimatedColor(const nlohmann::json& node, VfxAnimatedColorData& outValue);
 bool ReadTransform(const nlohmann::json& node, VfxTransformData& outValue);
-bool ReadVfxSourceEmitter(const nlohmann::json& node, uint32_t sourceVersion, VfxEmitterData& outEmitter);
+bool ReadVfxSourceEmitter(const nlohmann::json& node, VfxEmitterData& outEmitter);
 bool ReadVfxSourceDocument(const nlohmann::json& root, VfxAssetData& outAsset, std::string& outError);
 nlohmann::json WriteVfxSourceDocument(const VfxAssetData& asset);
 bool ValidateVfxSourceAsset(const VfxAssetData& asset, std::string& outError);

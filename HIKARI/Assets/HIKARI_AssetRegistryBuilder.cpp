@@ -103,8 +103,7 @@ bool LoadRawMaterialDataForRegistry(const AssetDatabase& assetDatabase, const As
         const std::filesystem::path hmatPath = (assetDatabase.GetProjectRoot() / hmatArtifact).lexically_normal();
 
         std::string readMessage{};
-        if (ReadHmatFile(hmatPath, outData, outCompileResult,
-                         ASSETS::MATERIAL::MakeMaterialCompileOptions(assetDatabase), readMessage)) {
+        if (ReadHmatFile(hmatPath, outData, outCompileResult, readMessage)) {
             return true;
         }
 

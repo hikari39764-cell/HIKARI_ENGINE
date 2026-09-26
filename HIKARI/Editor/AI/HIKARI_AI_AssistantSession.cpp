@@ -1,4 +1,5 @@
 #include "HIKARI_AI_AssistantSession.h"
+#include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
 #include "HIKARI_AI_MessageText.h"
 #include <algorithm>
 #include <utility>
@@ -202,10 +203,10 @@ AI_ASSISTANT::AiRequestResult AiAssistantSession::ExecuteRequest(std::string_vie
     const std::string action = AI_ASSISTANT::ExtractJsonField(json, "action");
     // Panel-local actions are handled here; every other action is routed to
     // the unified operation registry through the scene callback.
-    const bool panelLocalAction = action == "query.capabilities" || action == "vision.analyze_image" ||
+    const bool panelLocalAction = action == "query.capabilities" || action == "context.compare_images" ||
                                   action == "context.image" || action == "help";
     if (panelLocalAction) {
-        return AI_ASSISTANT::SubmitAiRequest(json, Capabilities(), [this] { return stopRequested_.load(); });
+        return AI_ASSISTANT::SubmitAiRequest(json, Capabilities());
     }
 
     std::thread::id mainThreadId{};
@@ -254,7 +255,6 @@ AI_ASSISTANT::AiRequestResult AiAssistantSession::ExecuteRequestNow(std::string_
     result.message = "场景执行器未接线：" + action;
     result.details = {
         "supported: query.capabilities",
-        "supported: vision.analyze_image",
     };
     return result;
 }
@@ -266,6 +266,10 @@ void AiAssistantSession::PumpActions() {
     {
         std::lock_guard<std::mutex> lock(actionMutex_);
         mainThreadId_ = std::this_thread::get_id();
+        // 停止や会話の切り替えで待ち手が消えた承認要求は捨てる。
+        std::erase_if(awaitingApproval_, [this](const std::shared_ptr<PendingAiAction>& request) {
+            return stopRequested_.load() || request->generation != generation_.load();
+        });
         if (pendingActions_.empty()) {
             return;
         }
@@ -273,9 +277,19 @@ void AiAssistantSession::PumpActions() {
     }
     for (const std::shared_ptr<PendingAiAction>& request : actions) {
         AI_ASSISTANT::AiRequestResult result{};
+        const std::string action = AI_ASSISTANT::ExtractJsonField(request->json, "action");
+        std::string permission = request->approved ? std::string{} : ApprovalPermission(action);
         if (stopRequested_.load() || request->generation != generation_.load()) {
             result.code = "ACTION_CANCELED";
             result.message = "任务已停止，排队中的动作未执行。";
+        } else if (!permission.empty()) {
+            // 結果を返さずに保留し、呼び出し元は承認か拒否まで待つ。
+            SetActivity("waiting_approval", action);
+            std::lock_guard<std::mutex> lock(actionMutex_);
+            request->permission = std::move(permission);
+            request->approvalId = nextApprovalId_++;
+            awaitingApproval_.push_back(request);
+            continue;
         } else {
             try {
                 result = ExecuteRequestNow(request->json);
@@ -290,6 +304,61 @@ void AiAssistantSession::PumpActions() {
             request->result = std::move(result);
         }
     }
+    actionCv_.notify_all();
+}
+
+std::string AiAssistantSession::ApprovalPermission(std::string_view action) const {
+    for (const AI_ASSISTANT::AiCapability& capability : Capabilities()) {
+        if (capability.id != action) {
+            continue;
+        }
+        const std::string permission = capability.semantics.value("permission", std::string{});
+        const auto parsed = TEXT::TryParseEnum(kEditorOperationPermissionNames, permission);
+        return parsed && RequiresUserApproval(*parsed) ? permission : std::string{};
+    }
+    return {};
+}
+
+std::vector<AiAssistantSession::ApprovalRequest> AiAssistantSession::PendingApprovals() const {
+    constexpr size_t kMaximumShownParameterBytes = 800u;
+    std::vector<ApprovalRequest> approvals;
+    std::lock_guard<std::mutex> lock(actionMutex_);
+    for (const std::shared_ptr<PendingAiAction>& request : awaitingApproval_) {
+        std::string parameters = request->json.substr(0, kMaximumShownParameterBytes);
+        if (request->json.size() > kMaximumShownParameterBytes) {
+            parameters += "...";
+        }
+        approvals.push_back({request->approvalId, AI_ASSISTANT::ExtractJsonField(request->json, "action"),
+                             request->permission, std::move(parameters)});
+    }
+    return approvals;
+}
+
+bool AiAssistantSession::HasPendingApprovals() const {
+    std::lock_guard<std::mutex> lock(actionMutex_);
+    return !awaitingApproval_.empty();
+}
+
+void AiAssistantSession::ResolveApproval(uint64_t id, bool approved) {
+    {
+        std::lock_guard<std::mutex> lock(actionMutex_);
+        const auto found = std::find_if(awaitingApproval_.begin(), awaitingApproval_.end(),
+                                        [id](const auto& request) { return request->approvalId == id; });
+        if (found == awaitingApproval_.end()) {
+            return;
+        }
+        const std::shared_ptr<PendingAiAction> request = *found;
+        awaitingApproval_.erase(found);
+        if (approved) {
+            // 次のフレームの PumpActions で通常どおり実行する。
+            request->approved = true;
+            pendingActions_.push_back(request);
+            return;
+        }
+        request->result = AI_ASSISTANT::AiRequestResult{
+            false, "USER_REJECTED", "用户拒绝执行此操作。不要重复提交；需要时说明理由并等待用户指示。"};
+    }
+    SetActivity("executing");
     actionCv_.notify_all();
 }
 

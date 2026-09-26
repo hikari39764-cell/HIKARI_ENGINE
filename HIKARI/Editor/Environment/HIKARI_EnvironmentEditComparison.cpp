@@ -8,10 +8,6 @@ bool EqualVec3(const MATH::Vec3& lhs, const MATH::Vec3& rhs) {
     return lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z;
 }
 
-bool EqualFloat4(const DirectX::XMFLOAT4& lhs, const DirectX::XMFLOAT4& rhs) {
-    return lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z && lhs.w == rhs.w;
-}
-
 bool EqualSkySettings(const SkySettings& lhs, const SkySettings& rhs) {
     return lhs.enabled == rhs.enabled && lhs.mode == rhs.mode && lhs.skyAsset == rhs.skyAsset &&
            lhs.scale == rhs.scale && lhs.panoramaCloudEnabled == rhs.panoramaCloudEnabled &&
@@ -117,16 +113,7 @@ bool EqualSpotLight(const SpotLight& lhs, const SpotLight& rhs) {
 }
 
 bool EqualPostSettings(const ScenePostSettings& lhs, const ScenePostSettings& rhs) {
-    if (lhs.enabled != rhs.enabled || lhs.globalPostProfileId != rhs.globalPostProfileId ||
-        lhs.valuesInitialized != rhs.valuesInitialized) {
-        return false;
-    }
-    for (int i = 0; i < 16; ++i) {
-        if (!EqualFloat4(lhs.paramValues[i], rhs.paramValues[i])) {
-            return false;
-        }
-    }
-    return true;
+    return lhs.enabled == rhs.enabled && lhs.profileId == rhs.profileId;
 }
 
 } // namespace

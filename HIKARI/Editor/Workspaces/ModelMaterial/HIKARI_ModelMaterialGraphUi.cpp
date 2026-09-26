@@ -129,7 +129,7 @@ std::string PinKey(std::string_view nodeId, std::string_view pin) {
 
 NodeInlineLayoutSpec ResolveNodeInlineLayoutSpec(const MaterialNodeTypeId& typeId) noexcept {
     MaterialNodeKind kind{};
-    if (!TryGetLegacyMaterialNodeKind(typeId, kind)) {
+    if (!TryGetBuiltinMaterialNodeKind(typeId, kind)) {
         return {};
     }
     switch (kind) {

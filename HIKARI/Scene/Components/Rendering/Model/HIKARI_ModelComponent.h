@@ -8,6 +8,7 @@
 
 #include "Assets/HIKARI_AssetGuid.h"
 #include "Assets/Models/HIKARI_ModelAssetTypes.h"
+#include "Render3D/Core/HIKARI_Material.h"
 #include "Scene/Components/HIKARI_IComponent.h"
 #include "Scene/Geometry/HIKARI_GeometryFitProvider.h"
 
@@ -24,7 +25,6 @@ inline constexpr char MaterialSetAssetGuid[] = "materialSetAssetGuid";
 inline constexpr char PostGroupMask[] = "postGroupMask";
 } // namespace ModelComponentPropertyIds
 
-class Material;
 class ModelAsset;
 
 enum class ModelRenderDebugMode {
@@ -35,9 +35,8 @@ enum class ModelRenderDebugMode {
 };
 
 struct ModelMaterialOverrideSlot {
-    uint32_t slotIndex = 0;
-    AssetGuid materialAssetGuid{};
     MaterialSlotId slotId{};
+    AssetGuid materialAssetGuid{};
 };
 
 struct RuntimeMaterialOverrideSlot {
@@ -92,14 +91,13 @@ public:
     uint32_t GetPostGroupMask() const;
 
     const std::vector<ModelMaterialOverrideSlot>& GetMaterialOverrides() const;
-    void SetMaterialOverride(uint32_t slotIndex, AssetGuid materialGuid);
-    void SetMaterialOverride(MaterialSlotId slotId, uint32_t legacySlotIndex, AssetGuid materialGuid);
-    void ClearMaterialOverride(uint32_t slotIndex);
+    void SetMaterialOverride(MaterialSlotId slotId, AssetGuid materialGuid);
     void ClearMaterialOverride(MaterialSlotId slotId);
     Material* GetRuntimeMaterialOverride(uint32_t slotIndex);
     const Material* GetRuntimeMaterialOverride(uint32_t slotIndex) const;
     void SetRuntimeMaterialOverride(uint32_t slotIndex, std::unique_ptr<Material> material);
     void ClearRuntimeMaterialOverride(uint32_t slotIndex);
+    void ClearRuntimeMaterialOverride(MaterialSlotId slotId);
     void ClearRuntimeMaterialOverrides();
     const std::vector<RuntimeMaterialOverrideSlot>& GetRuntimeMaterialOverrides() const noexcept;
     bool SetRuntimeNodeVisibilityOverride(std::string_view nodeName, bool visible, bool includeDescendants);

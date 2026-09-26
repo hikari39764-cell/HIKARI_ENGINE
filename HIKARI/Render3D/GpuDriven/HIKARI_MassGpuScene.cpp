@@ -119,7 +119,7 @@ bool IsSupportedTemplateInstance(const RUNTIME::SurfaceGpuSceneInstance& instanc
     using Flag = RUNTIME::SurfaceGpuSceneInstanceFlags;
     using ResourceFlag = RUNTIME::SurfaceGpuSceneResourceFlags;
     const uint32_t unsupported = static_cast<uint32_t>(Flag::Skinned) | static_cast<uint32_t>(Flag::WaterSurface) |
-                                 static_cast<uint32_t>(Flag::SandSurface) |
+                                 static_cast<uint32_t>(Flag::TerrainSurface) |
                                  static_cast<uint32_t>(Flag::CameraCenteredOcean) |
                                  static_cast<uint32_t>(Flag::FoliageWind) | static_cast<uint32_t>(Flag::MaterialFx) |
                                  static_cast<uint32_t>(Flag::Transparent) | static_cast<uint32_t>(Flag::DepthAware) |

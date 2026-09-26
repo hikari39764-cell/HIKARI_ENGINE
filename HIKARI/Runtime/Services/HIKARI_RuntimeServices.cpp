@@ -15,7 +15,6 @@
 #include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Text/HIKARI_UtfPath.h"
-#include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
 #include "Gfx/HIKARI_PixProfiler.h"
@@ -144,7 +143,6 @@ bool Initialize(const char* title, const RUNTIME::HostBootstrapConfig& cfg, std:
     }
     PLATFORM::SetHikariRuntimeUserRoot(runtimeUserRoot);
     const std::filesystem::path logRoot = runtimeUserRoot.empty() ? std::filesystem::path{} : runtimeUserRoot / "Logs";
-    DEBUGLOG::SetRenderLogDirectory(logRoot.empty() ? std::filesystem::path{} : logRoot / "Renderer");
     CORE::InitializeLogger(logRoot);
     CORE::StartupTimer servicesTimer("Services.initialize");
     HIKARI_LOG_INFO("HIKARI boot started.");

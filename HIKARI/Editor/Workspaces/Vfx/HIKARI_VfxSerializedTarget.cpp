@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "Assets/Vfx/Serialization/HIKARI_VfxSourceJson.h"
+#include "Assets/Vfx/HIKARI_VfxEnumNames.h"
 
 namespace HIKARI::EDITOR {
 namespace {
@@ -169,77 +170,69 @@ Json ChoicesFor(std::string_view path, const Json& parent, const Json& value) {
     const std::string_view leaf = separator == std::string_view::npos ? path : path.substr(separator + 1u);
     if (leaf == "mode") {
         if (parent.contains("samples") && parent.contains("breakDistance"))
-            return {"None", "Afterimage", "Trail"};
+            return Json(VFX::kVfxHistoryModeChoices);
         if (parent.contains("socketName") && parent.contains("offset")) {
-            return {"World", "Owner", "OwnerSocket"};
+            return Json(VFX::kVfxAttachmentModeChoices);
         }
         if (parent.contains("pva")) {
-            return {"Fixed", "Pva", "Easing", "Curve"};
+            return Json(VFX::kVfxAnimatedValueModeChoices);
         }
         if (parent.contains("gradient")) {
-            return {"Fixed", "RandomRange", "Easing", "Curve", "Gradient"};
+            return Json(VFX::kVfxAnimatedColorModeChoices);
         }
         if (parent.contains("minimum") && parent.contains("maximum")) {
-            return {"Constant", "RandomRange"};
+            return Json(VFX::kVfxDistributionModeChoices);
         }
     }
     if (leaf == "follow" && parent.contains("socketName") && parent.contains("offset")) {
-        return {"None", "Position", "Rotation", "Transform"};
+        return Json(VFX::kVfxFollowModeChoices);
     }
     if (leaf == "interpolation") {
-        return {"Linear", "Smooth", "Step"};
+        return Json(VFX::kVfxCurveInterpolationChoices);
     }
     if (leaf == "function") {
-        return {"Linear", "EaseIn", "EaseOut", "EaseInOut"};
+        return Json(VFX::kVfxEasingFunctionChoices);
     }
     if (leaf == "blendMode")
-        return {"Alpha", "Additive"};
-    if (leaf == "materialMode") {
-        const auto values = VFX::GetVfxMaterialModeChoices();
-        return Json(values);
-    }
+        return Json(VFX::kVfxBlendModeChoices);
+    if (leaf == "materialMode")
+        return Json(VFX::kVfxMaterialModeChoices);
     if (leaf == "depthMode") {
-        return {"WorldOccluded", "SoftIntersection", "ContactSurface", "ForegroundAccent"};
+        return Json(VFX::kVfxParticleDepthModeChoices);
     }
     if (leaf == "kind" && parent.contains("startDelay"))
-        return {"Shape", "Particles", "Group", "Adjustment"};
+        return Json(VFX::kVfxLayerKindChoices);
     if (leaf == "kind" && parent.contains("parameters")) {
         return Json(GetMaterialEffectKindNames());
     }
     if (leaf == "capacityMode") {
-        return {"Automatic", "Fixed"};
+        return Json(VFX::kVfxParticleCapacityModeChoices);
     }
     if (leaf == "billboardMode") {
-        return Json(VFX::GetVfxBillboardModeChoices());
+        return Json(VFX::kVfxBillboardModeChoices);
     }
     if (leaf == "billboardAxis") {
-        return Json(VFX::GetVfxBillboardAxisChoices());
+        return Json(VFX::kVfxBillboardAxisChoices);
     }
     if (leaf == "mode" && parent.contains("targetLayerId")) {
-        return {"None", "LayerOrigin", "LocalPosition"};
+        return Json(VFX::kVfxConnectTargetModeChoices);
     }
     if (leaf == "uvMode") {
-        return Json(VFX::GetVfxShapeUvModeChoices());
+        return Json(VFX::kVfxShapeUvModeChoices);
     }
     if (leaf == "type" && value.is_string()) {
         const std::string& current = value.get_ref<const std::string&>();
         if (parent.contains("weaponPathDistortion") && parent.contains("screenImpulse") &&
             parent.contains("skinnedAfterimage") && parent.contains("light")) {
-            return {
-                "WeaponPathDistortion",
-                "ScreenImpulse",
-                "SkinnedAfterimage",
-                "Light",
-            };
+            return Json(VFX::kVfxSpecialOutputTypeChoices);
         }
-        if (current == "Point" || current == "Sphere" || current == "Cone" || current == "Box" ||
-            current == "Cylinder" || current == "Circle" || current == "Edge") {
-            return {"Point", "Sphere", "Cone", "Box", "Cylinder", "Circle", "Edge"};
+        if (TEXT::TryParseEnum(VFX::kVfxShapeTypeNames, current)) {
+            return Json(VFX::kVfxShapeTypeChoices);
         }
         if (parent.contains("billboardMode")) {
-            return Json(VFX::GetVfxRenderShapeChoices());
+            return Json(VFX::kVfxRenderShapeTypeChoices);
         }
-        return {"Bool", "Int", "Float", "Float2", "Float3", "Float4", "Color"};
+        return Json(VFX::kVfxValueTypeChoices);
     }
     return nullptr;
 }
@@ -370,7 +363,7 @@ bool SetVfxSerializedProperty(nlohmann::json& document, std::string_view targetI
     *current = value;
     if (path.size() == 1u && path.front() == "type" && target->contains("defaultValue") && value.is_string()) {
         VFX::VfxValueType type{};
-        if (!VFX::TryParseVfxValueType(value.get_ref<const std::string&>(), type)) {
+        if (!TEXT::TryParseEnum(VFX::kVfxValueTypeNames, value.get_ref<const std::string&>(), type)) {
             outMessage = "Unknown VFX input type";
             return false;
         }

@@ -13,6 +13,7 @@ public:
 
 private:
     void DrawContents();
+    void DrawApprovals();
     void DrawTask(const std::vector<AI_ASSISTANT::AiChatMessage>& messages, size_t begin, size_t end, bool active);
     void DrawDraftMenu();
     void RevealDraft(const std::string& sessionId);
@@ -25,9 +26,6 @@ private:
     void SendCurrentMessage();
     void OpenApiSettingsBuffers();
     void SaveApiSettings();
-    void OpenVisionBuffers();
-    void SaveVisionSettings();
-    void ResetVisionSettings();
     AiAssistantSession& session_;
     std::vector<AI_ASSISTANT::AiImageAttachment> attachments_{};
     char inputBuffer_[8192]{};
@@ -35,9 +33,6 @@ private:
     char apiKeyBuffer_[256]{};
     char baseUrlBuffer_[512]{};
     char modelBuffer_[128]{};
-    char visionApiKeyBuffer_[256]{};
-    char visionBaseUrlBuffer_[512]{};
-    char visionModelBuffer_[128]{};
     bool showCapabilities_ = false;
     bool showRawRequest_ = false;
     bool showApiSettings_ = false;
@@ -48,7 +43,6 @@ private:
     int toolHistoryKiB_ = 24;
     bool requestUsage_ = true;
     bool showApiKey_ = false;
-    bool showVisionKey_ = false;
     bool hasRawResult_ = false;
     std::string attachmentError_{};
     std::string workspaceLabel_{};

@@ -18,7 +18,9 @@ EditorGlyph AssetTypeGlyph(AssetType type) noexcept {
     case AssetType::Sky: return EditorGlyph::Sky;
     case AssetType::Animation: return EditorGlyph::Animation;
     case AssetType::Particle:
-    case AssetType::VfxEffect: return EditorGlyph::Vfx;
+    case AssetType::VfxEffect:
+    case AssetType::PostEffect:
+    case AssetType::PostProfile: return EditorGlyph::Vfx;
     case AssetType::Sequence: return EditorGlyph::Sequence;
     case AssetType::AnimationStateMachine: return EditorGlyph::StateMachine;
     case AssetType::UiAnimation: return EditorGlyph::Keyframe;
@@ -42,6 +44,8 @@ ImVec4 AssetTypeIconColor(AssetType type) noexcept {
     case AssetType::Animation: return ImVec4(0.94f, 0.56f, 0.72f, 1.0f);
     case AssetType::Particle:
     case AssetType::VfxEffect: return ImVec4(0.94f, 0.48f, 0.66f, 1.0f);
+    case AssetType::PostEffect:
+    case AssetType::PostProfile: return ImVec4(0.86f, 0.62f, 0.96f, 1.0f);
     case AssetType::Sequence: return ImVec4(0.62f, 0.58f, 0.94f, 1.0f);
     case AssetType::AnimationStateMachine: return ImVec4(0.30f, 0.82f, 0.72f, 1.0f);
     case AssetType::Dialogue: return ImVec4(0.34f, 0.68f, 1.0f, 1.0f);

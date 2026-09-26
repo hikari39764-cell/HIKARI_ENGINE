@@ -9,7 +9,6 @@
 #include "Core/Serialization/Json/HIKARI_JsonMath.h"
 #include "Scene/HIKARI_SceneComponentId.h"
 #include "Scene/HIKARI_SceneDocumentQueries.h"
-#include "Scene/Lighting/Internal/HIKARI_LightAuthoringInternal.h"
 
 namespace HIKARI::LIGHTING_AUTHORING {
 
@@ -60,7 +59,7 @@ LightAuthoring ReadLight(const SceneObjectData& object, const SceneComponentData
     light.direction = ForwardFromEulerDegrees(light.rotationEulerDeg);
     light.type = ReadLightType(properties);
     light.distanceFalloff =
-        RENDER3D::LIGHTING::ParseLocalLightFalloff(properties.value("distanceFalloff", std::string("LegacyRange")));
+        RENDER3D::LIGHTING::ParseLocalLightFalloff(properties.value("distanceFalloff", std::string("Range")));
     light.enabled = object.enabled && properties.value("enabled", true);
     light.color = JSONREAD::Vec3Or(properties.value("color", nlohmann::json::array()), {1.0f, 1.0f, 1.0f});
     light.intensity = std::clamp(properties.value("intensity", 1.0f), 0.0f, 100.0f);
@@ -145,64 +144,22 @@ SceneObjectId AddLight(SceneDocument& document, const LightAuthoring& light) {
     return id;
 }
 
-namespace INTERNAL {
-
-void MigrateLegacyLights(SceneDocument& document, uint32_t sourceVersion) {
-    if (sourceVersion >= 6u || HasLightComponent(document)) {
+// 新規 scene の既定光源。environment の平行光設定を Light component として置く。
+void AddDefaultSceneLight(SceneDocument& document) {
+    if (HasLightComponent(document)) {
         return;
     }
-
-    const DirectionalLight& legacyDirectional = document.environment.directional;
-    LightAuthoring directional{};
-    directional.name = "Directional Light";
-    directional.position = {0.0f, 2.0f, 0.0f};
-    directional.rotationEulerDeg = EulerDegreesFromForward(legacyDirectional.direction);
-    directional.type = RENDER3D::LIGHTING::SceneLightType::Directional;
-    directional.enabled = legacyDirectional.enabled;
-    directional.color = legacyDirectional.color;
-    directional.intensity = legacyDirectional.intensity;
-    directional.priority = 100;
-    (void)AddLight(document, directional);
-
-    for (size_t index = 0u; index < document.environment.pointLights.size(); ++index) {
-        const PointLight& legacy = document.environment.pointLights[index];
-        LightAuthoring point{};
-        point.name = "Point Light " + std::to_string(index);
-        point.position = legacy.position;
-        point.type = RENDER3D::LIGHTING::SceneLightType::Point;
-        point.enabled = legacy.enabled;
-        point.color = legacy.color;
-        point.intensity = legacy.intensity;
-        point.range = legacy.range;
-        point.distanceFalloff = legacy.distanceFalloff;
-        point.sourceRadius = legacy.sourceRadius;
-        point.castsShadows = false;
-        point.priority = legacy.priority;
-        (void)AddLight(document, point);
-    }
-
-    for (size_t index = 0u; index < document.environment.spotLights.size(); ++index) {
-        const SpotLight& legacy = document.environment.spotLights[index];
-        LightAuthoring spot{};
-        spot.name = "Spot Light " + std::to_string(index);
-        spot.position = legacy.position;
-        spot.rotationEulerDeg = EulerDegreesFromForward(legacy.direction);
-        spot.type = RENDER3D::LIGHTING::SceneLightType::Spot;
-        spot.enabled = legacy.enabled;
-        spot.color = legacy.color;
-        spot.intensity = legacy.intensity;
-        spot.range = legacy.range;
-        spot.distanceFalloff = legacy.distanceFalloff;
-        spot.sourceRadius = legacy.sourceRadius;
-        spot.castsShadows = false;
-        spot.innerConeAngleDegrees = legacy.innerConeAngleDegrees;
-        spot.outerConeAngleDegrees = legacy.outerConeAngleDegrees;
-        spot.angularFalloff = legacy.angularFalloff;
-        spot.priority = legacy.priority;
-        (void)AddLight(document, spot);
-    }
+    const DirectionalLight& environmentLight = document.environment.directional;
+    LightAuthoring light{};
+    light.name = "Directional Light";
+    light.position = {0.0f, 2.0f, 0.0f};
+    light.rotationEulerDeg = EulerDegreesFromForward(environmentLight.direction);
+    light.type = RENDER3D::LIGHTING::SceneLightType::Directional;
+    light.enabled = environmentLight.enabled;
+    light.color = environmentLight.color;
+    light.intensity = environmentLight.intensity;
+    light.priority = 100;
+    (void)AddLight(document, light);
 }
-
-} // namespace INTERNAL
 
 } // namespace HIKARI::LIGHTING_AUTHORING

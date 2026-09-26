@@ -18,7 +18,6 @@ void AiAssistantPanel::DrawEmbedded() { DrawContents(); }
 void AiAssistantPanel::DrawPreferences() {
     if (!showApiSettings_) {
         OpenApiSettingsBuffers();
-        OpenVisionBuffers();
         showApiSettings_ = true;
     }
     DrawSettings();
@@ -78,6 +77,29 @@ void AiAssistantPanel::DrawAttachments(const std::vector<AI_ASSISTANT::AiImageAt
 #endif
 }
 
+void AiAssistantPanel::DrawApprovals() {
+#if defined(HIKARI_WITH_EDITOR)
+    // 承認待ちは会話より先に出す。承認するまで AI の処理は止まっている。
+    for (const AiAssistantSession::ApprovalRequest& approval : session_.PendingApprovals()) {
+        ImGui::PushID(static_cast<int>(approval.id));
+        StatusBadge(TEXT::Localize("ai.approval.title").c_str(), EditorStatusTone::Warning);
+        ImGui::SameLine();
+        ImGui::TextUnformatted(approval.action.c_str());
+        ImGui::TextWrapped("%s", TEXT::Localize("ai.approval.permission." + approval.permission).c_str());
+        ImGui::TextDisabled("%s", approval.parameters.c_str());
+        if (ImGui::Button(TEXT::Localize("ai.approval.approve").c_str())) {
+            session_.ResolveApproval(approval.id, true);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button(TEXT::Localize("ai.approval.reject").c_str())) {
+            session_.ResolveApproval(approval.id, false);
+        }
+        ImGui::Separator();
+        ImGui::PopID();
+    }
+#endif
+}
+
 void AiAssistantPanel::DrawContents() {
 #if defined(HIKARI_WITH_EDITOR)
     const auto& palette = GetEditorThemePalette();
@@ -105,6 +127,7 @@ void AiAssistantPanel::DrawContents() {
     DrawDraftMenu();
     ImGui::Spacing();
     ImGui::Separator();
+    DrawApprovals();
     const float inputHeight =
         126.0f + (!attachments_.empty() ? 28.0f : 0.0f) + (!attachmentError_.empty() ? 42.0f : 0.0f);
     ImGui::BeginChild("##Conversation", {0, -inputHeight}, false);

@@ -82,19 +82,15 @@ bool PrefabSerializer::LoadFromFile(const std::string& path, PrefabDocument& out
         return false;
     }
     try {
-        const uint32_t version = root.value("version", 1u);
-        if (version != 1u && version != 2u)
-            return false;
         PrefabDocument document{};
+        if (root.value("version", 0u) != document.version)
+            return false;
         document.prefabName = root.value("prefabName", std::string("Prefab"));
         if (!root.contains("rootObject") ||
             !SceneJson::DeserializeSceneObjectJson(root.at("rootObject"), document.rootObject,
-                                                   version == 1u ? SceneJson::SceneObjectJsonScope::PrefabRoot
-                                                                 : SceneJson::SceneObjectJsonScope::SceneDocument))
+                                                   SceneJson::SceneObjectJsonScope::SceneDocument))
             return false;
-        if (version == 1u && document.rootObject.id.value == 0u)
-            document.rootObject.id.value = 1u;
-        if (version == 2u && root.contains("descendants")) {
+        if (root.contains("descendants")) {
             const auto& descendants = root.at("descendants");
             if (!descendants.is_array())
                 return false;

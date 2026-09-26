@@ -40,7 +40,7 @@ bool RuntimeEngineApp::Initialize() {
     HIKARI_LOG_INFO("RuntimeEngineApp initialization started.");
     standaloneRuntimeEntryFailed_ = false;
 
-    // 襍ｷ蜍・Scene 縺ｯ Scene Asset GUID 縺九ｉ DocumentSceneBase 縺瑚ｧ｣豎ｺ縺吶ｋ縲・
+    // 起動 Scene は Scene Asset GUID から DocumentSceneBase が解決する。
     auto initialScene = std::make_unique<GameDocumentScene>("StartupSceneAsset");
     std::string moduleMessage{};
     const bool allowMissingProjectModule =

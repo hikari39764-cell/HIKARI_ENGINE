@@ -68,15 +68,11 @@ public:
     // Saturating count of events discarded since this World's dialogue
     // service was reset. Consumers can compare snapshots to detect loss.
     HIKARI_GAME_PROJECT_SDK_API uint64_t GetDroppedEventCount() const noexcept;
-    // Legacy bulk gate: marks every one-shot DialogueTrigger in the
-    // current World consumed. Persistence code should use the mask APIs
-    // below so completing one dialogue cannot suppress unrelated ones.
-    HIKARI_GAME_PROJECT_SDK_API uint32_t ConsumeOneShotTriggers() const noexcept;
     // Maps enabled one-shot DialogueTriggers to stable handle order and
     // captures only the triggers already consumed in this World.
     HIKARI_GAME_PROJECT_SDK_API uint64_t CaptureOneShotTriggerMask() const noexcept;
     // Restores the exact per-trigger completion mask into a rebuilt
-    // World. Unlike ConsumeOneShotTriggers this never consumes unrelated
+    // World. It never consumes unrelated
     // dialogue volumes.
     HIKARI_GAME_PROJECT_SDK_API uint32_t RestoreOneShotTriggerMask(uint64_t completedMask) const noexcept;
 

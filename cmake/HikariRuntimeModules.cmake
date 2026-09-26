@@ -86,7 +86,7 @@ foreach(runtime_source IN LISTS HIKARI_RUNTIME_SOURCES)
         list(APPEND HIKARI_RUNTIME_RENDER3D_SOURCES "${runtime_source}")
     elseif(
         runtime_relative_path MATCHES
-        "^HIKARI/Render3D/(Color|Features|Lighting|Reflection|Sand|ScreenSpace|Shadow|Surface|Vfx|Water)/")
+        "^HIKARI/Render3D/(Color|Features|Lighting|Reflection|ScreenSpace|Shadow|Surface|Terrain|Vfx|Water)/")
         list(APPEND HIKARI_RUNTIME_RENDER3D_FEATURE_SOURCES "${runtime_source}")
     elseif(runtime_relative_path MATCHES "^HIKARI/Render3D/")
         list(APPEND HIKARI_RUNTIME_RENDER3D_SOURCES "${runtime_source}")

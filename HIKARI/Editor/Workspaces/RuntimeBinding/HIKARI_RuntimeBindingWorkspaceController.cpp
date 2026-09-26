@@ -227,4 +227,8 @@ void RuntimeBindingWorkspaceController::InvalidateInspectorDraft() noexcept {
     previewDraftItemId_.clear();
 }
 
+nlohmann::json RuntimeBindingWorkspaceController::DescribeDocumentState() const {
+    return {{"open", IsDocumentOpen()}, {"dirty", IsDocumentDirty()}};
+}
+
 } // namespace HIKARI::EDITOR

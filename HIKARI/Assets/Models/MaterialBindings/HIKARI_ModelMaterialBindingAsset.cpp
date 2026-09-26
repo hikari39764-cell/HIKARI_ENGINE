@@ -91,17 +91,14 @@ bool ParseModelMaterialBindingAssetJson(std::string_view jsonText, ModelMaterial
             return false;
         }
         const uint32_t version = root.value("version", 0u);
-        if (version > kModelMaterialBindingAssetVersion) {
+        if (version != kModelMaterialBindingAssetVersion) {
             outError = "unsupported ModelMaterialBinding version " + std::to_string(version);
             return false;
         }
         ModelMaterialBindingAssetData data{};
-        data.sourceVersion = version;
-        data.migratedFromLegacy = version == 0u;
         data.displayName = root.value("displayName", data.displayName);
-        data.modelAssetGuid.value = root.value(version == 0u ? "modelGuid" : "modelAssetGuid", std::string{});
-        const char* bindingsKey = version == 0u ? "materialBindings" : "bindings";
-        const auto bindings = root.find(bindingsKey);
+        data.modelAssetGuid.value = root.value("modelAssetGuid", std::string{});
+        const auto bindings = root.find("bindings");
         if (bindings != root.end()) {
             if (!bindings->is_array()) {
                 outError = "ModelMaterialBinding bindings must be an array";
@@ -118,9 +115,8 @@ bool ParseModelMaterialBindingAssetJson(std::string_view jsonText, ModelMaterial
                     outError = "ModelMaterialBinding entry requires a stable slotId";
                     return false;
                 }
-                const char* materialKey = version == 0u ? "materialGuid" : "materialAssetGuid";
                 data.bindings.push_back(
-                    ModelMaterialBindingEntry{*slotId, AssetGuid{item.value(materialKey, std::string{})}});
+                    ModelMaterialBindingEntry{*slotId, AssetGuid{item.value("materialAssetGuid", std::string{})}});
             }
         }
         std::vector<std::string> validation{};
@@ -130,9 +126,6 @@ bool ParseModelMaterialBindingAssetJson(std::string_view jsonText, ModelMaterial
                 *outDiagnostics = std::move(validation);
             }
             return false;
-        }
-        if (data.migratedFromLegacy && outDiagnostics) {
-            outDiagnostics->push_back("ModelMaterialBinding v0 migrated to stable v1 slot mapping");
         }
         outData = std::move(data);
         outError.clear();

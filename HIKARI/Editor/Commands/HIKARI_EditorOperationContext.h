@@ -35,6 +35,12 @@ inline EditorOperationResult OperationResult(bool ok, std::string_view failureCo
 
 inline EditorOperationResult OperationOk(std::string message) { return OperationResult(true, {}, std::move(message)); }
 
+inline EditorOperationResult OperationOk(std::string message, nlohmann::json data) {
+    EditorOperationResult result = OperationOk(std::move(message));
+    result.data = std::move(data);
+    return result;
+}
+
 inline EditorOperationResult OperationFailure(std::string_view code, std::string message) {
     return OperationResult(false, code, std::move(message));
 }

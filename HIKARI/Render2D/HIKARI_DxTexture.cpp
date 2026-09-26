@@ -61,7 +61,7 @@ std::string NormalizeTextureCachePath(const std::string& path) {
 }
 
 std::string MakeTextureCacheKey(const std::string& name, const std::string& path, TextureColorSpace colorSpace) {
-    // 蜷後§隲也炊蜷阪〒繧ゅ∝ｮ滉ｽ薙ヵ繧｡繧､繝ｫ縺碁＆縺・ｴ蜷医・蛻･ GPU resource 縺ｨ縺励※謇ｱ縺・・
+    // 同じ論理名でも、実体ファイルが違う場合は別 GPU resource として扱う。
     const bool isCubemap = name.rfind("cube:", 0) == 0;
     const char* dimensionPrefix = isCubemap ? "cube" : "tex";
     const std::string normalizedPath = NormalizeTextureCachePath(path);
@@ -258,9 +258,8 @@ bool DxTextureManager::Init(const GFX::Context& ctx, int maxTextures) {
         desc.NumDescriptors = maxTextures;
         desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
         desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-        HRESULT hr = device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&srvHeap_));
-        if (FAILED(hr)) {
-            OutputDebugStringA("DxTextureManager::Init - CreateDescriptorHeap failed.\n");
+        if (!HIKARI_DX_CHECK(device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&srvHeap_)),
+                             "DxTextureManager::Init CreateDescriptorHeap")) {
             return false;
         }
     }

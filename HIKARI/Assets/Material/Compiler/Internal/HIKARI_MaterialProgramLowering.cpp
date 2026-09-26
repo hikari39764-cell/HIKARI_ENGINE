@@ -13,7 +13,7 @@ namespace {
 
 MaterialProgramOpcode ToProgramOpcode(const MaterialNodeTypeId& typeId) noexcept {
     MaterialNodeKind kind = MaterialNodeKind::Constant;
-    (void)TryGetLegacyMaterialNodeKind(typeId, kind);
+    (void)TryGetBuiltinMaterialNodeKind(typeId, kind);
     return kind;
 }
 

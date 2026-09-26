@@ -1,4 +1,5 @@
 #pragma once
+#include <json.hpp>
 #include "Editor/Documents/HIKARI_TextStyleEditorDocument.h"
 #include "Editor/Views/HIKARI_GameUiPreviewTarget.h"
 #include "Scene/Ui/HIKARI_GameUiPresentationService.h"
@@ -15,6 +16,8 @@ class TextStyleWorkspaceController {
 public:
     TextStyleEditorDocument& Document() { return document_; }
     const TextStyleEditorDocument& Document() const { return document_; }
+    // 文書の状態。シェル、AI の文脈、バックグラウンドのセッションで共有する。
+    nlohmann::json DescribeDocumentState() const;
     void Draw(DocumentSceneBase&, EditorOperationRegistry&, EditorCommandRouter&);
     void DrawDockSpace(bool reset);
     void ApplyActivation(DocumentSceneBase&, const EditorWorkspaceActivation&);

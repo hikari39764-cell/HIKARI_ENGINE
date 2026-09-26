@@ -12,24 +12,29 @@
 #include "imgui_internal.h"
 
 namespace HIKARI {
-bool DocumentSceneEditorController::HasForegroundDocument(EDITOR::EditorWorkspaceId workspace) const {
+nlohmann::json DocumentSceneEditorController::DescribeWorkspaceDocument(EDITOR::EditorWorkspaceId workspace,
+                                                                        bool includeSessions) const {
     using W = EDITOR::EditorWorkspaceId;
+    const auto describe = [includeSessions](const auto& visible, const auto& foreground) {
+        return (includeSessions ? visible : foreground).DescribeDocumentState();
+    };
     switch (workspace) {
-    case W::Text: return textWorkspaceController_.Document().IsOpen();
-    case W::GameplayCamera: return gameplayCameraWorkspaceController_.Document().IsOpen();
-    case W::Vfx: return vfxWorkspaceController_.GetDocument().IsOpen();
-    case W::Cinematics:
-        return cinematicsWorkspaceController_.IsEditingSequenceAsset() ||
-               cinematicsWorkspaceController_.IsSequenceDocumentDirty();
-    case W::ModelMaterial:
-        return modelMaterialWorkspaceController_.GetDocumentAssetGuid().IsValid() ||
-               modelMaterialWorkspaceController_.HasUnsavedMaterialChanges();
-    case W::ModelCollision: return modelCollisionWorkspaceController_.IsEditingModel();
-    case W::AnimationStateMachine: return animationStateMachineWorkspaceController_.IsDocumentOpen();
-    case W::Dialogue: return dialogueWorkspaceController_.IsDocumentOpen();
-    case W::RuntimeBinding: return runtimeBindingWorkspaceController_.IsDocumentOpen();
-    default: return true;
+    case W::Text: return textWorkspaceController_.DescribeDocumentState();
+    case W::GameplayCamera: return describe(GameplayCameraWorkspace(), gameplayCameraWorkspaceController_);
+    case W::Vfx: return describe(VfxWorkspace(), vfxWorkspaceController_);
+    case W::Cinematics: return describe(CinematicsWorkspace(), cinematicsWorkspaceController_);
+    case W::ModelMaterial: return describe(ModelMaterialWorkspace(), modelMaterialWorkspaceController_);
+    case W::ModelCollision: return describe(ModelCollisionWorkspace(), modelCollisionWorkspaceController_);
+    case W::AnimationStateMachine:
+        return describe(AnimationStateMachineWorkspace(), animationStateMachineWorkspaceController_);
+    case W::Dialogue: return describe(DialogueWorkspace(), dialogueWorkspaceController_);
+    case W::RuntimeBinding: return describe(RuntimeBindingWorkspace(), runtimeBindingWorkspaceController_);
+    default: return nullptr;
     }
+}
+bool DocumentSceneEditorController::HasForegroundDocument(EDITOR::EditorWorkspaceId workspace) const {
+    const nlohmann::json state = DescribeWorkspaceDocument(workspace, false);
+    return state.is_null() || state.value("open", false);
 }
 void DocumentSceneEditorController::DrawGlobalShell(DocumentSceneBase& scene) {
     using namespace EDITOR;
@@ -101,6 +106,7 @@ void DocumentSceneEditorController::DrawGlobalShell(DocumentSceneBase& scene) {
         ImGui::PopStyleVar();
     };
     contents.assistantBusy = aiAssistantSession_.IsBusy();
+    contents.assistantAttention = aiAssistantSession_.HasPendingApprovals();
     contents.tasksBusy = exportJob_.IsRunning() || projectCodeJob_.Running() ||
                          scene.GetAssetDatabase().GetAssetTaskService().HasActiveTasks();
     contents.assistant = [&] { aiAssistantPanel_.DrawEmbedded(); };

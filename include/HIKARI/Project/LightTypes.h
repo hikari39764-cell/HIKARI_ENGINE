@@ -9,7 +9,6 @@
 namespace HIKARI {
 
 inline constexpr uint32_t kGameProjectLightStateVersion = 2u;
-inline constexpr uint32_t kGameProjectLightStateV1Size = 64u;
 inline constexpr uint32_t kGameProjectLightStateV2Size = 72u;
 inline constexpr uint32_t kGameProjectLightPatchVersion = 1u;
 inline constexpr uint32_t kGameProjectLightPatchV1Size = 64u;
@@ -35,7 +34,7 @@ enum class GameProjectLightPatchField : uint32_t {
 };
 
 enum class GameProjectLightFalloff : uint32_t {
-    LegacyRange = 0u,
+    Range = 0u,
     InverseSquare = 1u,
 };
 
@@ -60,9 +59,8 @@ inline constexpr uint32_t kGameProjectLightPatchKnownFields =
     GameProjectLightPatchFields(GameProjectLightPatchField::CastShadows);
 
 // Runtime snapshot. The values belong to the World instance and are not
-// persisted back to the Scene document. Initialize size/version before reading.
-// Hosts accept v1/64-byte and v2/72-byte callers and only write that prefix.
-// A pre-2.27 host returns v1; sourceRadius/castsShadows are only valid in a v2 result.
+// persisted back to the Scene document. Initialize size/version before reading;
+// the host rejects any other size/version.
 struct GameProjectLightState {
     uint32_t structSize = kGameProjectLightStateV2Size;
     uint32_t version = kGameProjectLightStateVersion;
@@ -76,8 +74,7 @@ struct GameProjectLightState {
     float outerConeAngleDegrees = 35.0f;
     float angularFalloff = 1.0f;
     int32_t priority = 0;
-    // SDK 2.26 uses the previously reserved word; all v1 offsets are stable.
-    GameProjectLightFalloff distanceFalloff = GameProjectLightFalloff::LegacyRange;
+    GameProjectLightFalloff distanceFalloff = GameProjectLightFalloff::Range;
     uint64_t stateRevision = 0u;
     // Point/Spot physical emitter radius in world units; independent of Range.
     float sourceRadius = 0.0f;
@@ -99,10 +96,8 @@ struct GameProjectLightPatch {
     float outerConeAngleDegrees = 35.0f;
     float angularFalloff = 1.0f;
     // Read only when DistanceFalloff is selected; applies to Point/Spot.
-    // Older hosts reject that field mask without applying any part of it.
-    GameProjectLightFalloff distanceFalloff = GameProjectLightFalloff::LegacyRange;
-    // SDK 2.27 consumes one reserved word without changing the v1 patch size.
-    // Read only for SourceRadius; old hosts reject the unknown mask atomically.
+    GameProjectLightFalloff distanceFalloff = GameProjectLightFalloff::Range;
+    // Read only for SourceRadius.
     float sourceRadius = 0.0f;
     // Read only for CastShadows. Must be 0 or 1; applies to Point/Spot.
     uint32_t castsShadows = 0u;
@@ -113,7 +108,6 @@ static_assert(std::is_standard_layout_v<GameProjectLightState>);
 static_assert(std::is_trivially_copyable_v<GameProjectLightState>);
 static_assert(sizeof(GameProjectLightState) == kGameProjectLightStateV2Size);
 static_assert(offsetof(GameProjectLightState, color) == 16u);
-static_assert(offsetof(GameProjectLightState, sourceRadius) == kGameProjectLightStateV1Size);
 static_assert(offsetof(GameProjectLightState, castsShadows) == 68u);
 static_assert(offsetof(GameProjectLightState, stateRevision) == 56u);
 static_assert(offsetof(GameProjectLightState, distanceFalloff) == 52u);

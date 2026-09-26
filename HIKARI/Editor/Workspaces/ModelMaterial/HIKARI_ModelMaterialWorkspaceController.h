@@ -1,5 +1,6 @@
 #pragma once
 
+#include <json.hpp>
 #include <array>
 #include <cstdint>
 #include <filesystem>
@@ -214,7 +215,8 @@ public:
     bool LayoutMaterialGraph(DocumentSceneBase& scene, std::string& outMessage, std::string& outCode,
                              bool selectionOnly = false);
     void AppendAiCompileDiagnostics(std::vector<std::string>& outDetails) const;
-    std::string GetAiMaterialStatus() const;
+    // 文書の状態。シェル、AI の文脈、バックグラウンドのセッションで共有する。
+    nlohmann::json DescribeDocumentState() const;
 
     ModelMaterialBindingCommandResult ExecuteBindingCommand(const ModelMaterialBindingCommand& command,
                                                             const AssetDatabase& assetDatabase,

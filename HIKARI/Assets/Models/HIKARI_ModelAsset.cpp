@@ -45,12 +45,12 @@ const AnimationClip* ModelAsset::FindAnimationClip(std::string_view name) const 
     return nullptr;
 }
 
-const AnimationClip* ModelAsset::FindAnimationClip(AnimationClipId id) const {
-    if (!id.IsValid()) {
+const AnimationClip* ModelAsset::FindAnimationClip(AnimationClipId clipId) const {
+    if (!clipId.IsValid()) {
         return nullptr;
     }
     for (size_t index = 0u; index < animations.size(); ++index) {
-        if (GetAnimationClipId(index) == id) {
+        if (GetAnimationClipId(index) == clipId) {
             return &animations[index];
         }
     }
@@ -78,15 +78,6 @@ AnimationClipId ModelAsset::GetAnimationClipId(size_t index) const noexcept {
         }
     }
     return MakeAnimationClipId(animations[index].name, duplicateOrdinal);
-}
-
-Mesh* ModelAsset::GetLegacyRuntimeMesh() { return legacyRuntimeMesh_.get(); }
-const Mesh* ModelAsset::GetLegacyRuntimeMesh() const { return legacyRuntimeMesh_.get(); }
-Material* ModelAsset::GetLegacyRuntimeMaterial() { return legacyRuntimeMaterial_.get(); }
-const Material* ModelAsset::GetLegacyRuntimeMaterial() const { return legacyRuntimeMaterial_.get(); }
-void ModelAsset::SetLegacyRuntimeMesh(std::unique_ptr<Mesh> mesh) { legacyRuntimeMesh_ = std::move(mesh); }
-void ModelAsset::SetLegacyRuntimeMaterial(std::unique_ptr<Material> material) {
-    legacyRuntimeMaterial_ = std::move(material);
 }
 
 } // namespace HIKARI

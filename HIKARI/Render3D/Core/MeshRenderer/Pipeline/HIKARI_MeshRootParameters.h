@@ -77,7 +77,7 @@ constexpr UINT MaterialProgramResources = 33;
 // Water surface feature records -> t0, space7
 constexpr UINT SurfaceFeatureData = 34;
 // Sand surface feature records -> t4, space7
-constexpr UINT SandSurfaceData = 35;
+constexpr UINT TerrainSurfaceData = 35;
 // Sand surface feature heights -> t1, space7
 constexpr UINT SurfaceFeatureHeights = 36;
 // Current-frame hierarchical depth pyramid -> t2, space7

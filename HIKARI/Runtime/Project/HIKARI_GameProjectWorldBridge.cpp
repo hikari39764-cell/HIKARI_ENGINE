@@ -13,7 +13,7 @@
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 #include "Scene/Components/Rendering/WorldSprite/HIKARI_WorldSpriteComponent.h"
 #include "Scene/HIKARI_GameObject.h"
-#include "Scene/Sand/HIKARI_SandSurfaceQueryService.h"
+#include "Scene/Terrain/HIKARI_TerrainSurfaceQueryService.h"
 #include "Scene/HIKARI_World.h"
 
 namespace HIKARI {
@@ -99,13 +99,12 @@ ObjectView ObjectView::GetParent() const noexcept {
 bool ObjectView::TryGetRuntimeLightState(GameProjectLightState& outState) const noexcept {
     const uint32_t bytes = outState.structSize;
     const uint32_t version = outState.version;
-    if (!((version == 1u && bytes == kGameProjectLightStateV1Size) ||
-          (version == kGameProjectLightStateVersion && bytes == kGameProjectLightStateV2Size)))
+    if (version != kGameProjectLightStateVersion || bytes != kGameProjectLightStateV2Size)
         return false;
     GameProjectLightState snapshot{};
     snapshot.structSize = bytes;
     snapshot.version = version;
-    // v1 モジュールの64-byte領域を越えて書かない。失敗時も一貫した空の値を返す。
+    // 失敗時も一貫した空の値を返す。
     std::memcpy(&outState, &snapshot, bytes);
     try {
         GameObject* object = GameProjectSdkAccess::GetObject(*this);
@@ -182,7 +181,7 @@ GameProjectWorldResult ObjectView::ApplyRuntimeLightPatch(const GameProjectLight
         (Selected(GameProjectLightPatchField::CastShadows) && patch.castsShadows > 1u) ||
         (Selected(GameProjectLightPatchField::SourceRadius) && !std::isfinite(patch.sourceRadius)) ||
         (Selected(GameProjectLightPatchField::DistanceFalloff) &&
-         patch.distanceFalloff != GameProjectLightFalloff::LegacyRange &&
+         patch.distanceFalloff != GameProjectLightFalloff::Range &&
          patch.distanceFalloff != GameProjectLightFalloff::InverseSquare)) {
         return PROJECT::INTERNAL::MakeWorldResult(GameProjectWorldResultCode::InvalidRequest, handle_);
     }
@@ -635,7 +634,7 @@ TerrainView WorldView::GetTerrain() const noexcept {
     return world != nullptr ? GameProjectSdkAccess::MakeTerrainView(*world) : TerrainView{};
 }
 
-bool TerrainView::IsSandSurfaceAt(GameProjectFloat3 worldPosition, float maximumVerticalDistance) const noexcept {
+bool TerrainView::IsTerrainSurfaceAt(GameProjectFloat3 worldPosition, float maximumVerticalDistance) const noexcept {
     try {
         if (world_ == nullptr || !std::isfinite(worldPosition.x) || !std::isfinite(worldPosition.y) ||
             !std::isfinite(worldPosition.z) || !std::isfinite(maximumVerticalDistance) ||
@@ -643,13 +642,13 @@ bool TerrainView::IsSandSurfaceAt(GameProjectFloat3 worldPosition, float maximum
             return false;
         }
         auto* world = static_cast<World*>(world_);
-        SAND::SandSurfaceQueryService* sand = world->Services().Find<SAND::SandSurfaceQueryService>();
-        if (sand == nullptr) {
+        TERRAIN::TerrainSurfaceQueryService* query = world->Services().Find<TERRAIN::TerrainSurfaceQueryService>();
+        if (query == nullptr) {
             return false;
         }
         float height = 0.0f;
         MATH::Vec3 normal{};
-        return sand->SampleWorldHeight({worldPosition.x, worldPosition.y, worldPosition.z}, height, normal) &&
+        return query->SampleWorldHeight({worldPosition.x, worldPosition.y, worldPosition.z}, height, normal) &&
                std::abs(worldPosition.y - height) <= maximumVerticalDistance;
     } catch (...) {
         return false;

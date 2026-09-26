@@ -53,7 +53,7 @@ void DeserializeBindings(const json& sequenceNode, SEQUENCER::SequenceBindingTab
     SEQUENCER::NormalizeSequenceBindings(bindings);
 }
 
-SEQUENCER::CameraCutClip DeserializeCameraCutClip(const json& clipNode, CinematicSequence& sequence, bool legacyShot) {
+SEQUENCER::CameraCutClip DeserializeCameraCutClip(const json& clipNode) {
     SEQUENCER::CameraCutClip clip{};
     if (const auto idIt = clipNode.find("id"); idIt != clipNode.end() && idIt->is_number_unsigned()) {
         clip.id = idIt->get<uint64_t>();
@@ -61,13 +61,6 @@ SEQUENCER::CameraCutClip DeserializeCameraCutClip(const json& clipNode, Cinemati
     if (const auto bindingIt = clipNode.find("cameraBindingId");
         bindingIt != clipNode.end() && bindingIt->is_number_unsigned()) {
         clip.cameraBindingId.value = bindingIt->get<uint64_t>();
-    }
-    if (legacyShot || !clip.cameraBindingId.IsValid()) {
-        if (const auto cameraIt = clipNode.find("cameraObjectId");
-            cameraIt != clipNode.end() && cameraIt->is_number_unsigned()) {
-            const SceneObjectId cameraObjectId{cameraIt->get<uint64_t>()};
-            clip.cameraBindingId = SEQUENCER::FindOrCreateSceneObjectBinding(sequence.bindings, cameraObjectId);
-        }
     }
     if (const auto startIt = clipNode.find("startTimeSeconds"); startIt != clipNode.end() && startIt->is_number()) {
         clip.startTimeSeconds = startIt->get<float>();
@@ -91,10 +84,10 @@ SEQUENCER::CameraCutClip DeserializeCameraCutClip(const json& clipNode, Cinemati
     return clip;
 }
 
-bool DeserializeCameraCutTrack(const json& sequenceNode, CinematicSequence& sequence) {
+void DeserializeCameraCutTrack(const json& sequenceNode, CinematicSequence& sequence) {
     const auto tracksIt = sequenceNode.find("tracks");
     if (tracksIt == sequenceNode.end() || !tracksIt->is_array()) {
-        return false;
+        return;
     }
     for (const json& trackNode : *tracksIt) {
         if (!trackNode.is_object() || trackNode.value("type", std::string{}) != "cameraCut") {
@@ -108,24 +101,11 @@ bool DeserializeCameraCutTrack(const json& sequenceNode, CinematicSequence& sequ
         if (clipsIt != trackNode.end() && clipsIt->is_array()) {
             for (const json& clipNode : *clipsIt) {
                 if (clipNode.is_object()) {
-                    sequence.cameraCutTrack.clips.push_back(DeserializeCameraCutClip(clipNode, sequence, false));
+                    sequence.cameraCutTrack.clips.push_back(DeserializeCameraCutClip(clipNode));
                 }
             }
         }
-        return true;
-    }
-    return false;
-}
-
-void DeserializeLegacyShots(const json& sequenceNode, CinematicSequence& sequence) {
-    const auto shotsIt = sequenceNode.find("shots");
-    if (shotsIt == sequenceNode.end() || !shotsIt->is_array()) {
         return;
-    }
-    for (const json& shotNode : *shotsIt) {
-        if (shotNode.is_object()) {
-            sequence.cameraCutTrack.clips.push_back(DeserializeCameraCutClip(shotNode, sequence, true));
-        }
     }
 }
 
@@ -146,9 +126,7 @@ CinematicSequence DeserializeSequence(const json& sequenceNode, CinematicSequenc
     }
 
     DeserializeBindings(sequenceNode, sequence.bindings);
-    if (!DeserializeCameraCutTrack(sequenceNode, sequence)) {
-        DeserializeLegacyShots(sequenceNode, sequence);
-    }
+    DeserializeCameraCutTrack(sequenceNode, sequence);
     DeserializeCameraAnimationTracksJson(sequenceNode, sequence);
     SEQUENCER::ReadPresentationCueJson(sequenceNode, sequence.presentationCueTrack);
     sequence.screenEffects = SEQUENCER::ReadScreenEffects(sequenceNode.value("screenEffects", json{}));
@@ -194,10 +172,7 @@ void DeserializeSceneCinematicsJson(const nlohmann::json& input, SceneCinematics
         settings.defaultSequenceId.value = defaultIt->get<uint64_t>();
     }
 
-    auto sequencesIt = input.find("sequences");
-    if (sequencesIt == input.end() || !sequencesIt->is_array()) {
-        sequencesIt = input.find("cameraSequences");
-    }
+    const auto sequencesIt = input.find("sequences");
     if (sequencesIt != input.end() && sequencesIt->is_array()) {
         for (const nlohmann::json& sequenceNode : *sequencesIt) {
             if (!sequenceNode.is_object()) {
@@ -206,12 +181,6 @@ void DeserializeSceneCinematicsJson(const nlohmann::json& input, SceneCinematics
             const CinematicSequenceId fallbackId{static_cast<uint64_t>(settings.sequences.size() + 1)};
             settings.sequences.push_back(
                 DeserializeSequence(sequenceNode, fallbackId, "Sequence " + std::to_string(fallbackId.value)));
-        }
-    } else {
-        const auto legacyIt = input.find("cameraSequence");
-        if (legacyIt != input.end() && legacyIt->is_object()) {
-            settings.sequences.push_back(DeserializeSequence(*legacyIt, CinematicSequenceId{1}, "Main Sequence"));
-            settings.defaultSequenceId = {1};
         }
     }
     NormalizeSceneCinematicsSettings(settings);

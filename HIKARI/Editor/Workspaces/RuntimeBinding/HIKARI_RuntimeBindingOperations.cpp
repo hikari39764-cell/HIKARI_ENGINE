@@ -15,16 +15,6 @@
 namespace HIKARI::EDITOR {
 namespace {
 
-EditorOperationParameter MakeParameter(std::string name, EditorOperationParameterType type, bool required,
-                                       std::string description) {
-    return {
-        std::move(name),
-        type,
-        required,
-        std::move(description),
-    };
-}
-
 bool RequireContext(RuntimeBindingWorkspaceController& controller,
                     const std::function<DocumentSceneBase*()>& sceneProvider, EditorOperationResult& result,
                     DocumentSceneBase*& outScene) {
@@ -207,7 +197,7 @@ void RegisterRuntimeBindingOperations(EditorOperationRegistry& registry, Runtime
             "Describe one runtime variable or event and its editable properties.",
             "runtime_binding",
             {
-                MakeParameter("id", EditorOperationParameterType::String, true, "Stable runtime binding ID"),
+                {"id", EditorOperationParameterType::String, true, "Stable runtime binding ID"},
             },
             [&controller, sceneProvider](const nlohmann::json& parameters) {
                 EditorOperationResult result{};
@@ -241,11 +231,11 @@ void RegisterRuntimeBindingOperations(EditorOperationRegistry& registry, Runtime
             "Create a typed project runtime variable with a stable ID.",
             "runtime_binding",
             {
-                MakeParameter("type", EditorOperationParameterType::String, true,
-                              "Bool, Int, Float, Float2, Float3, Float4, or Color"),
-                MakeParameter("name", EditorOperationParameterType::String, false, "Display name"),
-                MakeParameter("id", EditorOperationParameterType::String, false,
-                              "Optional explicit stable ID; generated when omitted"),
+                {"type", EditorOperationParameterType::String, true,
+                 "Bool, Int, Float, Float2, Float3, Float4, or Color"},
+                {"name", EditorOperationParameterType::String, false, "Display name"},
+                {"id", EditorOperationParameterType::String, false,
+                 "Optional explicit stable ID; generated when omitted"},
             },
             [&controller, sceneProvider](const nlohmann::json& parameters) {
                 EditorOperationResult result{};
@@ -281,13 +271,12 @@ void RegisterRuntimeBindingOperations(EditorOperationRegistry& registry, Runtime
             "Create a project runtime event with an optional typed payload.",
             "runtime_binding",
             {
-                MakeParameter("name", EditorOperationParameterType::String, false, "Display name"),
-                MakeParameter("id", EditorOperationParameterType::String, false,
-                              "Optional explicit stable ID; generated when omitted"),
-                MakeParameter("hasPayload", EditorOperationParameterType::Bool, false,
-                              "Whether this event carries a typed payload"),
-                MakeParameter("payloadType", EditorOperationParameterType::String, false,
-                              "Bool, Int, Float, Float2, Float3, Float4, or Color"),
+                {"name", EditorOperationParameterType::String, false, "Display name"},
+                {"id", EditorOperationParameterType::String, false,
+                 "Optional explicit stable ID; generated when omitted"},
+                {"hasPayload", EditorOperationParameterType::Bool, false, "Whether this event carries a typed payload"},
+                {"payloadType", EditorOperationParameterType::String, false,
+                 "Bool, Int, Float, Float2, Float3, Float4, or Color"},
             },
             [&controller, sceneProvider](const nlohmann::json& parameters) {
                 EditorOperationResult result{};
@@ -326,10 +315,10 @@ void RegisterRuntimeBindingOperations(EditorOperationRegistry& registry, Runtime
             "Set one schema-described property on a runtime binding item.",
             "runtime_binding",
             {
-                MakeParameter("id", EditorOperationParameterType::String, true, "Stable runtime binding ID"),
-                MakeParameter("property", EditorOperationParameterType::String, true,
-                              "Property ID returned by binding.item.describe"),
-                MakeParameter("value", EditorOperationParameterType::Json, true, "Typed property value"),
+                {"id", EditorOperationParameterType::String, true, "Stable runtime binding ID"},
+                {"property", EditorOperationParameterType::String, true,
+                 "Property ID returned by binding.item.describe"},
+                {"value", EditorOperationParameterType::Json, true, "Typed property value"},
             },
             [&controller, sceneProvider](const nlohmann::json& parameters) {
                 EditorOperationResult result{};
@@ -360,9 +349,9 @@ void RegisterRuntimeBindingOperations(EditorOperationRegistry& registry, Runtime
             "Remove a runtime binding item by stable ID.",
             "runtime_binding",
             {
-                MakeParameter("id", EditorOperationParameterType::String, true, "Stable runtime binding ID"),
-                MakeParameter("confirm", EditorOperationParameterType::Bool, false,
-                              "Explicitly allow referenced slots to become unresolved"),
+                {"id", EditorOperationParameterType::String, true, "Stable runtime binding ID"},
+                {"confirm", EditorOperationParameterType::Bool, false,
+                 "Explicitly allow referenced slots to become unresolved"},
             },
             [&controller, sceneProvider](const nlohmann::json& parameters) {
                 EditorOperationResult result{};
@@ -404,7 +393,7 @@ void RegisterRuntimeBindingOperations(EditorOperationRegistry& registry, Runtime
             "List editor-authored slots referencing one runtime binding ID.",
             "runtime_binding",
             {
-                MakeParameter("id", EditorOperationParameterType::String, true, "Stable runtime binding ID"),
+                {"id", EditorOperationParameterType::String, true, "Stable runtime binding ID"},
             },
             [&controller, sceneProvider](const nlohmann::json& parameters) {
                 EditorOperationResult result{};
@@ -440,9 +429,8 @@ void RegisterRuntimeBindingOperations(EditorOperationRegistry& registry, Runtime
             "Set a session-only preview value through the editor writer.",
             "runtime_binding",
             {
-                MakeParameter("id", EditorOperationParameterType::String, true, "Stable runtime variable ID"),
-                MakeParameter("value", EditorOperationParameterType::Json, true,
-                              "Typed value matching the variable definition"),
+                {"id", EditorOperationParameterType::String, true, "Stable runtime variable ID"},
+                {"value", EditorOperationParameterType::Json, true, "Typed value matching the variable definition"},
             },
             [&controller, sceneProvider](const nlohmann::json& parameters) {
                 EditorOperationResult result{};
@@ -472,9 +460,8 @@ void RegisterRuntimeBindingOperations(EditorOperationRegistry& registry, Runtime
             "Emit a session-only test event into the current runtime frame.",
             "runtime_binding",
             {
-                MakeParameter("id", EditorOperationParameterType::String, true, "Stable runtime event ID"),
-                MakeParameter("payload", EditorOperationParameterType::Json, false,
-                              "Typed payload when required by the event"),
+                {"id", EditorOperationParameterType::String, true, "Stable runtime event ID"},
+                {"payload", EditorOperationParameterType::Json, false, "Typed payload when required by the event"},
             },
             [&controller, sceneProvider](const nlohmann::json& parameters) {
                 EditorOperationResult result{};
@@ -506,8 +493,8 @@ void RegisterRuntimeBindingOperations(EditorOperationRegistry& registry, Runtime
             "Release one or all editor-owned runtime variable previews.",
             "runtime_binding",
             {
-                MakeParameter("id", EditorOperationParameterType::String, false,
-                              "Variable ID; omit to release every editor preview"),
+                {"id", EditorOperationParameterType::String, false,
+                 "Variable ID; omit to release every editor preview"},
             },
             [&controller, sceneProvider](const nlohmann::json& parameters) {
                 EditorOperationResult result{};

@@ -6,6 +6,7 @@
 #include <vector>
 #include "Render3D/HIKARI_Math3D.h"
 #include "Assets/HIKARI_AssetGuid.h"
+#include "Core/Text/HIKARI_EnumNames.h"
 
 namespace HIKARI {
 struct MaterialAssetData;
@@ -26,6 +27,10 @@ std::string_view MaterialEffectStageName(MaterialEffectStage stage) noexcept;
 bool IsAdjustmentMaterialEffect(MaterialEffectKind kind) noexcept;
 bool SupportsSpatialMaterialEffect(MaterialEffectKind kind) noexcept;
 enum class MaterialEffectSpace : uint8_t { LayerUv, Group3D };
+inline constexpr TEXT::EnumName<MaterialEffectSpace> kMaterialEffectSpaceNames[]{
+    {MaterialEffectSpace::LayerUv, "LayerUv"},
+    {MaterialEffectSpace::Group3D, "Group3D"},
+};
 // enum 順の UI 配列を持たず、資産の効果定義から両方の編集経路を生成する。
 enum class MaterialEffectCategory : uint8_t { Mapping, Mask, Color, Light, Filter, Style, Count };
 MaterialEffectCategory GetMaterialEffectCategory(MaterialEffectKind kind) noexcept;

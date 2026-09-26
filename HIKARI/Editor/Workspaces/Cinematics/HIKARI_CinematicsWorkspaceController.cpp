@@ -266,4 +266,15 @@ void CinematicsWorkspaceController::CapturePose(DocumentSceneBase& scene, Cinema
     previewEnabled_ = true;
 }
 
+nlohmann::json CinematicsWorkspaceController::DescribeDocumentState() const {
+    const SequenceEditorDocument& document = GetSequenceDocument();
+    return {
+        {"open", IsEditingSequenceAsset() || IsSequenceDocumentDirty()},
+        {"assetGuid", document.GetAssetGuid().value},
+        {"name", document.GetAssetSequence() ? document.GetAssetSequence()->name : std::string{}},
+        {"dirty", IsSequenceDocumentDirty()},
+        {"previewScope",
+         "Sequence camera at requested time over the current scene; scene simulation and sequence post effects are not sampled."}};
+}
+
 } // namespace HIKARI::EDITOR

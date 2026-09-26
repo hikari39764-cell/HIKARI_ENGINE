@@ -7,6 +7,7 @@
 
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Core/Content/HIKARI_EngineContentContext.h"
+#include "Core/HIKARI_Logger.h"
 #include "Editor/App/HIKARI_EditorEngineApp.h"
 #include "Editor/Export/HIKARI_GameExporter.h"
 #include "Editor/Export/HIKARI_GameExportJob.h"
@@ -33,15 +34,13 @@ std::optional<int> RunHeadlessAssetImportIfRequested() {
         return std::nullopt;
     }
     if (!IsSafeAuthoredAssetScope(*assetScope)) {
-        OutputDebugStringA("[AssetImporter] --import-assets must be a project-relative "
-                           "Assets directory.\n");
+        HIKARI_LOG_ERROR("[AssetImporter] --import-assets must be a project-relative Assets directory.");
         return 2;
     }
 
     const std::optional<std::filesystem::path> projectPath = HIKARI::ReadRuntimeCommandLinePath(L"--project");
     if (!projectPath) {
-        OutputDebugStringA("[AssetImporter] --project is required with "
-                           "--import-assets.\n");
+        HIKARI_LOG_ERROR("[AssetImporter] --project is required with --import-assets.");
         return 2;
     }
 
@@ -49,22 +48,22 @@ std::optional<int> RunHeadlessAssetImportIfRequested() {
     launchOptions.explicitProjectPath = projectPath;
     std::string message{};
     if (!HIKARI::OpenProjectForLaunch(launchOptions, &message) || !HIKARI::ApplyProjectWorkingDirectory(&message)) {
-        OutputDebugStringA(("[AssetImporter] " + message + "\n").c_str());
+        HIKARI_LOG_ERROR("[AssetImporter] " + message);
         HIKARI::GetProjectContext().Close();
         return 3;
     }
+    HIKARI::CORE::InitializeLogger();
 
     const HRESULT comResult = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     if (FAILED(comResult)) {
-        OutputDebugStringA("[AssetImporter] Could not initialize COM for texture "
-                           "import.\n");
+        HIKARI_LOG_ERROR("[AssetImporter] Could not initialize COM for texture import.");
         HIKARI::GetProjectContext().Close();
         return 4;
     }
 
     HIKARI::AssetDatabase assetDatabase{};
     if (!assetDatabase.Initialize(HIKARI::GetProjectContext().GetRoot()) || !assetDatabase.ScanAssets(false)) {
-        OutputDebugStringA("[AssetImporter] Could not scan authored assets.\n");
+        HIKARI_LOG_ERROR("[AssetImporter] Could not scan authored assets.");
         CoUninitialize();
         HIKARI::GetProjectContext().Close();
         return 4;
@@ -87,8 +86,8 @@ std::optional<int> RunHeadlessAssetImportIfRequested() {
     const std::string resultMessage = "[AssetImporter] scope=" + assetScope->lexically_normal().generic_string() +
                                       ", attempted=" + std::to_string(result.attempted) +
                                       ", succeeded=" + std::to_string(result.succeeded) +
-                                      ", failed=" + std::to_string(result.failed) + "\n";
-    OutputDebugStringA(resultMessage.c_str());
+                                      ", failed=" + std::to_string(result.failed);
+    HIKARI::CORE::Log(result.failed == 0 ? HIKARI::CORE::LogLevel::Info : HIKARI::CORE::LogLevel::Error, resultMessage);
     CoUninitialize();
     HIKARI::GetProjectContext().Close();
     return result.failed == 0 ? 0 : 5;
@@ -103,8 +102,7 @@ std::optional<int> RunHeadlessGamePackageIfRequested() {
 
     const std::optional<std::filesystem::path> projectPath = HIKARI::ReadRuntimeCommandLinePath(L"--project");
     if (!projectPath) {
-        OutputDebugStringA("[GamePackager] --project is required with "
-                           "--package-game.\n");
+        HIKARI_LOG_ERROR("[GamePackager] --project is required with --package-game.");
         return 2;
     }
 
@@ -112,10 +110,11 @@ std::optional<int> RunHeadlessGamePackageIfRequested() {
     launchOptions.explicitProjectPath = projectPath;
     std::string message{};
     if (!HIKARI::OpenProjectForLaunch(launchOptions, &message) || !HIKARI::ApplyProjectWorkingDirectory(&message)) {
-        OutputDebugStringA(("[GamePackager] " + message + "\n").c_str());
+        HIKARI_LOG_ERROR("[GamePackager] " + message);
         HIKARI::GetProjectContext().Close();
         return 3;
     }
+    HIKARI::CORE::InitializeLogger();
 
     HIKARI::EDITOR::GameExportOptions exportOptions{};
     if (requestPath) {
@@ -135,7 +134,8 @@ std::optional<int> RunHeadlessGamePackageIfRequested() {
     }
 
     const HIKARI::EDITOR::GameExportResult result = HIKARI::EDITOR::GameExporter::Export(exportOptions);
-    OutputDebugStringA((std::string("[GamePackager] ") + result.message + "\n").c_str());
+    HIKARI::CORE::Log(result.success ? HIKARI::CORE::LogLevel::Info : HIKARI::CORE::LogLevel::Error,
+                      "[GamePackager] " + result.message);
     HIKARI::GetProjectContext().Close();
     return result.success ? 0 : 4;
 }
@@ -148,7 +148,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
         HIKARI::ReadRuntimeCommandLinePath(L"--export-request")) {
         std::string message;
         if (!HIKARI::CONTENT::OpenEngineContentForLaunch(&message)) {
-            OutputDebugStringA(message.c_str());
+            HIKARI_LOG_ERROR(message);
             return 3;
         }
         const auto importExitCode = RunHeadlessAssetImportIfRequested();

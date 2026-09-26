@@ -301,7 +301,7 @@ bool RenderTarget2D::CreateResources() {
         readOnlyDsvView.Flags = D3D12_DSV_FLAG_READ_ONLY_DEPTH;
         device->CreateDepthStencilView(depthTex_.Get(), &readOnlyDsvView, readOnlyDsvHandle_);
 
-        // Capture 蟆ら畑 RT 縺ｯ繝｡繧､繝ｳ SceneDepth SRV 繧剃ｸ頑嶌縺阪＠縺ｪ縺・・
+        // Capture 専用 RT はメイン SceneDepth SRV を上書きしない。
     }
     SetDebugName(debugName_);
 

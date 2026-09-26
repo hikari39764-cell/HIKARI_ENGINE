@@ -21,8 +21,6 @@ struct ModelMaterialBindingEntry {
 
 struct ModelMaterialBindingAssetData {
     uint32_t version = kModelMaterialBindingAssetVersion;
-    uint32_t sourceVersion = kModelMaterialBindingAssetVersion;
-    bool migratedFromLegacy = false;
     std::string displayName = "Model Material Bindings";
     AssetGuid modelAssetGuid{};
     std::vector<ModelMaterialBindingEntry> bindings{};

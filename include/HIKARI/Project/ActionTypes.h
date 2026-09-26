@@ -442,24 +442,6 @@ struct GameProjectGroundTelegraphRequest {
     uint8_t reserved[3] = {0u, 0u, 0u};
 };
 
-// Reserved camera-occlusion request. SDK 1.28 keeps this value layout for
-// ABI compatibility, but the rejected shared cutout renderer currently
-// fails closed and does not alter player or scene materials.
-struct GameProjectOcclusionRevealRequest {
-    uint64_t ownerObjectHandle = 0u;
-    uint64_t sourceId = 0u;
-    GameProjectFloat3 centerWorld{};
-    // Retained for source/ABI compatibility with SDK 1.28. Cutout does
-    // not tint either the player or the occluder.
-    GameProjectFloat3 color{0.22f, 0.72f, 1.0f};
-    float maskRadiusScreenHeight = 0.18f;
-    float maskFeatherScreenHeight = 0.045f;
-    float opacity = 0.78f;
-    float intensity = 1.0f;
-    float lifetimeUnscaledSeconds = 0.10f;
-    uint32_t reserved = 0u;
-};
-
 // Transient shader-backed world barrier visualization. Gameplay owns
 // unlock conditions and blocking; the engine owns procedural geometry.
 struct GameProjectWorldBarrierRequest {
@@ -520,12 +502,7 @@ struct GameProjectPerfectGuardWaveRequest {
     float chromaticAberration = 0.0035f;
     float flashIntensity = 0.42f;
     float intensity = 1.0f;
-    union {
-        uint32_t flags = GameProjectPerfectGuardWaveFlags(GameProjectPerfectGuardWaveFlag::None);
-        // Source-compatible alias for projects built against the older
-        // request contract. It occupies the same ABI field as flags.
-        uint32_t reserved;
-    };
+    uint32_t flags = GameProjectPerfectGuardWaveFlags(GameProjectPerfectGuardWaveFlag::None);
 };
 
 struct GameProjectPostProfileParameterRequest {

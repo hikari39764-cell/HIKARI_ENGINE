@@ -193,16 +193,16 @@ struct MaterialNodeTypeId {
     std::string value{"Constant"};
 
     MaterialNodeTypeId() = default;
-    MaterialNodeTypeId(MaterialNodeKind legacyKind);
+    MaterialNodeTypeId(MaterialNodeKind builtinKind);
     MaterialNodeTypeId(std::string text) : value(std::move(text)) {}
     MaterialNodeTypeId(std::string_view text) : value(text) {}
 
     bool operator==(const MaterialNodeTypeId&) const noexcept = default;
-    bool operator==(MaterialNodeKind legacyKind) const noexcept;
+    bool operator==(MaterialNodeKind builtinKind) const noexcept;
     bool IsValid() const noexcept;
 };
 
-bool operator==(MaterialNodeKind legacyKind, const MaterialNodeTypeId& typeId) noexcept;
+bool operator==(MaterialNodeKind builtinKind, const MaterialNodeTypeId& typeId) noexcept;
 
 enum class MaterialFeatureRequest : uint8_t {
     GeometryOutline,
@@ -246,7 +246,7 @@ bool TryParseMaterialResourceType(std::string_view text, MaterialResourceType& o
 bool TryParseMaterialResourceSemantic(std::string_view text, MaterialResourceSemantic& outValue) noexcept;
 bool TryParseMaterialNodeKind(std::string_view text, MaterialNodeKind& outValue) noexcept;
 bool TryParseMaterialNodeTypeId(std::string_view text, MaterialNodeTypeId& outValue) noexcept;
-bool TryGetLegacyMaterialNodeKind(const MaterialNodeTypeId& typeId, MaterialNodeKind& outValue) noexcept;
+bool TryGetBuiltinMaterialNodeKind(const MaterialNodeTypeId& typeId, MaterialNodeKind& outValue) noexcept;
 bool TryParseMaterialFeatureRequest(std::string_view text, MaterialFeatureRequest& outValue) noexcept;
 bool TryParseMaterialRampDimension(std::string_view text, MaterialRampDimension& outValue) noexcept;
 bool TryParseMaterialRampInterpolation(std::string_view text, MaterialRampInterpolation& outValue) noexcept;

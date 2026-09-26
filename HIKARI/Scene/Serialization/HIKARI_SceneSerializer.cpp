@@ -59,90 +59,6 @@ namespace SceneJson = SCENE::SERIALIZATION;
 
 namespace {
 
-void MigrateLegacyProceduralModels(SceneDocument& document) {
-    if (document.version >= 3) {
-        return;
-    }
-    for (SceneObjectData& object : document.objects) {
-        SceneComponentData* model = nullptr;
-        bool hasProceduralMesh = false;
-        for (SceneComponentData& component : object.components) {
-            if (component.type == "ModelComponent") {
-                model = &component;
-            } else if (component.type == "ProceduralMeshComponent") {
-                hasProceduralMesh = true;
-            }
-        }
-        if (model == nullptr || !model->properties.is_object()) {
-            continue;
-        }
-
-        const nlohmann::json sourceKind = model->properties.value("sourceKind", nlohmann::json{});
-        const bool wasProcedural = (sourceKind.is_string() && sourceKind.get<std::string>() == "Procedural") ||
-                                   (sourceKind.is_number_integer() && sourceKind.get<int>() == 1);
-        if (wasProcedural && !hasProceduralMesh) {
-            nlohmann::json properties = model->properties.value("procedural", nlohmann::json::object());
-            if (!properties.is_object()) {
-                properties = nlohmann::json::object();
-            }
-            const std::string kind = properties.value("kind", std::string("GridPlane"));
-            if ((kind == "Plane" || kind == "GridPlane") && properties.contains("height")) {
-                // Legacy planes used height as their Z dimension.
-                properties["depth"] = properties["height"];
-            }
-            object.components.push_back(SceneComponentData{"ProceduralMeshComponent", std::move(properties)});
-        }
-        model->properties.erase("sourceKind");
-        model->properties.erase("procedural");
-    }
-    document.version = (std::max)(document.version, 3u);
-}
-
-void MigrateEmbeddedModelMaterialFx(SceneDocument& document) {
-    if (document.version >= 4u) {
-        return;
-    }
-
-    for (SceneObjectData& object : document.objects) {
-        const bool hasMaterialFx =
-            std::any_of(object.components.begin(), object.components.end(),
-                        [](const SceneComponentData& component) { return component.type == "MaterialFxComponent"; });
-        bool shouldAddMaterialFx = false;
-        nlohmann::json materialFxProperties{};
-
-        for (SceneComponentData& component : object.components) {
-            if (component.type != "ModelComponent" || !component.properties.is_object()) {
-                continue;
-            }
-
-            nlohmann::json& properties = component.properties;
-            const std::string profileId = properties.value("materialFxProfileId", std::string{});
-            const bool valuesInitialized = properties.value("materialFxValuesInitialized", false);
-            const bool hasParamValues = properties.contains("materialFxParamValues") &&
-                                        properties["materialFxParamValues"].is_array() &&
-                                        !properties["materialFxParamValues"].empty();
-
-            if (!hasMaterialFx && !shouldAddMaterialFx && (!profileId.empty() || valuesInitialized || hasParamValues)) {
-                materialFxProperties = {{"profileId", profileId},
-                                        {"valuesInitialized", valuesInitialized || hasParamValues}};
-                if (hasParamValues) {
-                    materialFxProperties["paramValues"] = properties["materialFxParamValues"];
-                }
-                shouldAddMaterialFx = true;
-            }
-
-            properties.erase("materialFxProfileId");
-            properties.erase("materialFxValuesInitialized");
-            properties.erase("materialFxParamValues");
-        }
-
-        if (shouldAddMaterialFx) {
-            object.components.push_back(SceneComponentData{"MaterialFxComponent", std::move(materialFxProperties)});
-        }
-    }
-    document.version = (std::max)(document.version, 4u);
-}
-
 void DeserializeCamera(const nlohmann::json& node, SceneCameraSettings& outCamera) {
     if (!node.is_object() || !node.contains("defaultCameraObjectId") ||
         !node["defaultCameraObjectId"].is_number_unsigned()) {
@@ -171,12 +87,13 @@ bool SceneSerializer::LoadFromFile(const std::string& path, SceneDocument& outDo
 
     try {
         SceneDocument decoded{};
-        decoded.version = root.value("version", 1u);
-        if (decoded.version == 0 || decoded.version > kCurrentSceneDocumentVersion) {
-            HIKARI_LOG_ERROR("[SceneAsset] unsupported scene version: " + std::to_string(decoded.version));
+        // 現行版だけを読む。旧版の scene は旧版エンジンで開いて保存し直す。
+        decoded.version = root.value("version", 0u);
+        if (decoded.version != kCurrentSceneDocumentVersion) {
+            HIKARI_LOG_ERROR("[SceneAsset] unsupported scene version: " + std::to_string(decoded.version) +
+                             " (supported: " + std::to_string(kCurrentSceneDocumentVersion) + ")");
             return false;
         }
-        const uint32_t sourceVersion = decoded.version;
         decoded.sceneName = root.value("sceneName", std::string("Untitled"));
         if (const auto folders = root.find("editorFolders"); folders != root.end() && folders->is_array())
             for (const auto& folder : *folders)
@@ -203,14 +120,10 @@ bool SceneSerializer::LoadFromFile(const std::string& path, SceneDocument& outDo
             }
         }
 
-        MigrateLegacyProceduralModels(decoded);
-        MigrateEmbeddedModelMaterialFx(decoded);
-        LIGHTING_AUTHORING::MigrateLegacyLightingAuthoring(decoded, sourceVersion);
         LIGHTING_AUTHORING::SynchronizeLegacyLightingViews(decoded);
         for (SceneObjectData& object : decoded.objects) {
             NormalizeSceneComponentIds(object);
         }
-        decoded.version = (std::max)(decoded.version, kCurrentSceneDocumentVersion);
         outDocument = std::move(decoded);
         return true;
     } catch (const nlohmann::json::exception& exception) {

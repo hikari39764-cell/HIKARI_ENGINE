@@ -5,6 +5,7 @@
 #include "Assets/Dialogue/HIKARI_DialogueAsset.h"
 #include "Assets/Sequence/HIKARI_SequenceAsset.h"
 #include "Assets/Ui/HIKARI_UiAnimationAsset.h"
+#include "Assets/Post/HIKARI_PostAsset.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/Serialization/HIKARI_SceneSerializer.h"
 #include <unordered_set>
@@ -153,7 +154,7 @@ AssetImportResult ImportDialogue(const std::filesystem::path& sourcePath, const 
     return result;
 }
 
-AssetImportResult ImportGameplayCamera(const std::filesystem::path& sourcePath, const AssetGuid& guid) {
+AssetImportResult ImportGameplayCamera(const std::filesystem::path& sourcePath, const AssetGuid&) {
     AssetImportResult result;
     CAMERA::GameplayCameraProfile profile;
 
@@ -164,12 +165,38 @@ AssetImportResult ImportGameplayCamera(const std::filesystem::path& sourcePath, 
     return result;
 }
 
-AssetImportResult ImportUiAnimation(const std::filesystem::path& sourcePath, const AssetGuid& guid) {
+AssetImportResult ImportUiAnimation(const std::filesystem::path& sourcePath, const AssetGuid&) {
     AssetImportResult result;
     UiAnimationAsset asset;
     result.success = LoadUiAnimationAsset(sourcePath, asset, result.message);
     if (result.success)
         result.message = "UI animation validated";
+    return result;
+}
+
+AssetImportResult ImportPostEffect(const std::filesystem::path& sourcePath, const AssetGuid&) {
+    AssetImportResult result;
+    POST::PostEffectDefinition effect;
+    result.success = POST::LoadPostEffectDefinition(sourcePath, effect, result.message);
+    if (result.success)
+        result.message = "Post effect validated";
+    result.diagnosticsJson = nlohmann::json{
+        {"valid", result.success},
+        {"passCount", effect.passes.size()},
+        {"parameterCount",
+         effect.params.size()}}.dump();
+    return result;
+}
+
+AssetImportResult ImportPostProfile(const std::filesystem::path& sourcePath, const AssetGuid&) {
+    AssetImportResult result;
+    POST::PostProfileAsset profile;
+    result.success = POST::LoadPostProfileAsset(sourcePath, profile, result.message);
+    if (result.success)
+        result.message = "Post profile validated";
+    result.diagnosticsJson =
+        nlohmann::json{{"valid", result.success}, {"effect", profile.effectId}, {"valueCount", profile.values.size()}}
+            .dump();
     return result;
 }
 } // namespace
@@ -184,5 +211,7 @@ void RegisterStructuredAssetImporters(AssetImporterRegistry& registry) {
     add(ImporterKind::Dialogue, "DialogueAssetStore", ImportDialogue);
     add(ImporterKind::GameplayCamera, nullptr, ImportGameplayCamera);
     add(ImporterKind::UiAnimation, nullptr, ImportUiAnimation);
+    add(ImporterKind::PostEffect, nullptr, ImportPostEffect);
+    add(ImporterKind::PostProfile, nullptr, ImportPostProfile);
 }
 } // namespace HIKARI

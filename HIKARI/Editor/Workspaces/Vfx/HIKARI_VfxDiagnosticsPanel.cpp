@@ -11,19 +11,22 @@ namespace HIKARI::EDITOR {
 // AI 消費者のための現在状態の要約。どの資産を開いていて、どの層があり、
 // どの効果とキーが載り、どこを選び、プレビューがどこにいるかを 1 つの
 // テキストへまとめる。診断と同じく「今の真実」を所有するのはこの場所。
-std::string VfxWorkspaceController::GetAiVfxStatus() const {
+nlohmann::json VfxWorkspaceController::DescribeDocumentState() const {
+    const VfxEditorDocument& document = GetDocument();
+    nlohmann::json state{{"open", document.IsOpen()},
+                         {"assetGuid", document.GetAssetGuid().value},
+                         {"dirty", document.IsDirty()},
+                         {"revision", document.GetRevision()}};
     const VFX::VfxAssetData* asset = GetAsset();
     if (asset == nullptr) {
-        return "vfx: none";
+        return state;
     }
+    state["name"] = asset->name;
     std::string status = "vfx: " + asset->name + " | " + std::to_string(asset->durationSeconds) + "s" +
                          (asset->loop ? " loop" : "") + " | layers " + std::to_string(asset->emitters.size());
     for (const VFX::VfxEmitterData& layer : asset->emitters) {
         status += "\n  [" + layer.id + "] " + layer.name + " ";
-        status += layer.kind == VFX::VfxLayerKind::Particles    ? "Particles"
-                  : layer.kind == VFX::VfxLayerKind::Group      ? "Group"
-                  : layer.kind == VFX::VfxLayerKind::Adjustment ? "Adjustment"
-                                                                : "Shape";
+        status += VFX::ToString(layer.kind);
         if (layer.kind != VFX::VfxLayerKind::Group && layer.kind != VFX::VfxLayerKind::Adjustment) {
             status += " ";
             status += std::string(VFX::ToString(layer.renderShape.type));
@@ -57,8 +60,8 @@ std::string VfxWorkspaceController::GetAiVfxStatus() const {
     }
     status += "\npreview: " + std::to_string(preview_.GetPreviewElapsedSeconds()) + "s ";
     status += preview_.IsPreviewPlaying() ? (preview_.IsPreviewPaused() ? "paused" : "playing") : "stopped";
-    status += GetDocument().IsDirty() ? " | unsaved" : " | saved";
-    return status;
+    state["status"] = std::move(status);
+    return state;
 }
 
 namespace {

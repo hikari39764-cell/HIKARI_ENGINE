@@ -7,19 +7,6 @@
 
 namespace HIKARI {
 namespace {
-std::string NormalizeImporterId(std::string importerId) {
-    // 旧 Stub 名で保存済みの meta を、現在の正式 importer 名へ寄せる。
-    if (importerId == "ModelImporterStub") {
-        return std::string(
-            ASSETS::SEMANTICS::GetAssetImporterSemantics(ASSETS::SEMANTICS::AssetImporterKind::Model).importerId);
-    }
-    if (importerId == "SceneImporterStub") {
-        return std::string(
-            ASSETS::SEMANTICS::GetAssetImporterSemantics(ASSETS::SEMANTICS::AssetImporterKind::Scene).importerId);
-    }
-    return importerId;
-}
-
 nlohmann::json SerializeDependencies(const std::vector<AssetDependencyDesc>& dependencies) {
     nlohmann::json out = nlohmann::json::array();
     for (const AssetDependencyDesc& dependency : dependencies) {
@@ -158,7 +145,7 @@ bool AssetDatabase::ReadMeta(const std::filesystem::path& metaPath, AssetMeta& o
     outMeta.metaVersion = root.value("metaVersion", 1u);
     outMeta.guid.value = root.value("guid", "");
     outMeta.type = ASSETS::SEMANTICS::ParseAssetType(root.value("type", "Unknown"));
-    outMeta.importerId = NormalizeImporterId(root.value("importerId", ""));
+    outMeta.importerId = root.value("importerId", "");
     outMeta.importerVersion = root.value("importerVersion", 1u);
     outMeta.sourcePath = root.value("sourcePath", "");
     outMeta.displayName = root.value("displayName", "");

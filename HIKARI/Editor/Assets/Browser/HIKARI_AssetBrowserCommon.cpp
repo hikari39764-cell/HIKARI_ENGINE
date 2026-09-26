@@ -61,6 +61,8 @@ std::string ToAssetTypeText(AssetType type) {
     case AssetType::UiAnimation: return TEXT::Localize("uianim.asset");
     case AssetType::Font: return TEXT::Localize("textstyle.font");
     case AssetType::TextStyle: return TEXT::Localize("textstyle.asset");
+    case AssetType::PostEffect: return TEXT::Localize("post.effect.asset");
+    case AssetType::PostProfile: return TEXT::Localize("post.profile.asset");
     case AssetType::Unknown:
     default: return ASSETS::SEMANTICS::ToString(type).data();
     }

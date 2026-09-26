@@ -1,4 +1,5 @@
 #include "Editor/Authoring/HIKARI_ComponentAuthoringOperations.h"
+#include "Editor/Commands/HIKARI_EditorOperationContext.h"
 
 #include <cstdint>
 #include <memory>
@@ -25,32 +26,20 @@ namespace {
 
 constexpr size_t kMaxTransactionMutations = 256u;
 
-EditorOperationParameter Parameter(std::string name, EditorOperationParameterType type, bool required,
-                                   std::string description) {
-    return EditorOperationParameter{std::move(name), type, required, std::move(description)};
-}
-
-EditorOperationResult Failure(std::string code, std::string message) {
-    EditorOperationResult result{};
-    result.code = std::move(code);
-    result.message = std::move(message);
-    return result;
-}
-
 bool ReadRequiredId(const nlohmann::json& parameters, const char* name, uint64_t& outValue,
                     EditorOperationResult& outFailure) {
     const auto found = parameters.find(name);
     if (found == parameters.end() || (!found->is_number_unsigned() && !found->is_number_integer())) {
-        outFailure = Failure("INVALID_ID", std::string(name) + " must be a positive integer id.");
+        outFailure = OperationFailure("INVALID_ID", std::string(name) + " must be a positive integer id.");
         return false;
     }
     if (!found->is_number_unsigned() && found->get<int64_t>() <= 0) {
-        outFailure = Failure("INVALID_ID", std::string(name) + " must be a positive integer id.");
+        outFailure = OperationFailure("INVALID_ID", std::string(name) + " must be a positive integer id.");
         return false;
     }
     outValue = found->get<uint64_t>();
     if (outValue == 0u) {
-        outFailure = Failure("INVALID_ID", std::string(name) + " must be a positive integer id.");
+        outFailure = OperationFailure("INVALID_ID", std::string(name) + " must be a positive integer id.");
         return false;
     }
     return true;
@@ -135,19 +124,20 @@ public:
     EditorOperationResult ApplyTransaction(const nlohmann::json& parameters) {
         const nlohmann::json& commands = parameters.at("commands");
         if (!commands.is_array() || commands.empty()) {
-            return Failure("EMPTY_TRANSACTION", "commands must be a non-empty array.");
+            return OperationFailure("EMPTY_TRANSACTION", "commands must be a non-empty array.");
         }
         if (commands.size() > kMaxTransactionMutations) {
-            return Failure("TRANSACTION_TOO_LARGE", "A component authoring transaction supports at most " +
-                                                        std::to_string(kMaxTransactionMutations) + " mutations.");
+            return OperationFailure("TRANSACTION_TOO_LARGE", "A component authoring transaction supports at most " +
+                                                                 std::to_string(kMaxTransactionMutations) +
+                                                                 " mutations.");
         }
         std::vector<ComponentPropertyMutation> mutations{};
         mutations.reserve(commands.size());
         for (const nlohmann::json& command : commands) {
             if (!command.is_object() || !command.contains("propertyId") || !command["propertyId"].is_string() ||
                 !command.contains("value")) {
-                return Failure("INVALID_TRANSACTION_COMMAND", "Each transaction command requires objectId, "
-                                                              "componentId, propertyId, and value.");
+                return OperationFailure("INVALID_TRANSACTION_COMMAND", "Each transaction command requires objectId, "
+                                                                       "componentId, propertyId, and value.");
             }
             ComponentAuthoringTarget target{};
             EditorOperationResult failure{};
@@ -194,7 +184,7 @@ public:
         }
         SceneObjectData* object = FindSceneObjectData(scene->GetSceneDocument(), SceneObjectId{objectId});
         if (object == nullptr) {
-            return Failure("OBJECT_NOT_FOUND", "Scene object id was not found: " + std::to_string(objectId));
+            return OperationFailure("OBJECT_NOT_FOUND", "Scene object id was not found: " + std::to_string(objectId));
         }
         const std::vector<SceneObjectData> beforeObjects = scene->GetSceneDocument().objects;
         const SceneCameraSettings beforeCamera = scene->GetSceneDocument().camera;
@@ -206,7 +196,7 @@ public:
         const ComponentAddResult addResult = structureService_.AddComponent(
             scene->GetComponentRegistry(), *object, parameters.value("componentType", std::string{}));
         if (!addResult.success) {
-            return Failure("COMPONENT_ADD_REJECTED", addResult.message);
+            return OperationFailure("COMPONENT_ADD_REJECTED", addResult.message);
         }
         nlohmann::json added = nlohmann::json::array();
         for (const SceneComponentData& component : object->components) {
@@ -235,13 +225,13 @@ public:
         }
         SceneObjectData* object = FindSceneObjectData(scene->GetSceneDocument(), target.objectId);
         if (object == nullptr) {
-            return Failure("OBJECT_NOT_FOUND",
-                           "Scene object id was not found: " + std::to_string(target.objectId.value));
+            return OperationFailure("OBJECT_NOT_FOUND",
+                                    "Scene object id was not found: " + std::to_string(target.objectId.value));
         }
         const std::optional<size_t> componentIndex = FindSceneComponentIndex(*object, target.componentId);
         if (!componentIndex.has_value()) {
-            return Failure("COMPONENT_NOT_FOUND",
-                           "Component id was not found: " + std::to_string(target.componentId.value));
+            return OperationFailure("COMPONENT_NOT_FOUND",
+                                    "Component id was not found: " + std::to_string(target.componentId.value));
         }
         const std::string componentType = object->components[*componentIndex].type;
         const std::vector<SceneObjectData> beforeObjects = scene->GetSceneDocument().objects;
@@ -250,7 +240,7 @@ public:
         const ComponentEditResult editResult = structureService_.RemoveComponent(
             scene->GetComponentRegistry(), scene->GetSceneDocument(), *object, *componentIndex);
         if (!editResult.success) {
-            return Failure("COMPONENT_REMOVE_REJECTED", editResult.message);
+            return OperationFailure("COMPONENT_REMOVE_REJECTED", editResult.message);
         }
         Commit(*scene, "Remove " + componentType, beforeObjects, beforeCamera, dirtyBefore);
         EditorOperationResult result{};
@@ -275,7 +265,7 @@ public:
         }
         const SceneObjectData* object = FindSceneObjectData(scene->GetSceneDocument(), SceneObjectId{objectId});
         if (object == nullptr) {
-            return Failure("OBJECT_NOT_FOUND", "Scene object id was not found: " + std::to_string(objectId));
+            return OperationFailure("OBJECT_NOT_FOUND", "Scene object id was not found: " + std::to_string(objectId));
         }
         if (context_.selectObject) {
             context_.selectObject(*scene, SceneObjectId{objectId});
@@ -292,7 +282,7 @@ private:
     DocumentSceneBase* GetScene() const { return context_.sceneProvider ? context_.sceneProvider() : nullptr; }
 
     EditorOperationResult NoScene() const {
-        return Failure("SCENE_UNAVAILABLE", "No active Scene document is available.");
+        return OperationFailure("SCENE_UNAVAILABLE", "No active Scene document is available.");
     }
 
     bool IsDirty(const DocumentSceneBase& scene) const {
@@ -365,88 +355,86 @@ void RegisterComponentAuthoringOperations(EditorOperationRegistry& registry,
         {"component.types.query",
          "Search registered component types by name, category or purpose, including dependencies. 组件目录 / コンポーネント一覧.",
          "scene",
-         {Parameter("keyword", ParameterType::String, false, "Component name, category or purpose"),
-          Parameter("offset", ParameterType::Int, false, "Next page offset"),
-          Parameter("limit", ParameterType::Int, false, "Page size 1 to 64, default 16")},
+         {{"keyword", ParameterType::String, false, "Component name, category or purpose"},
+          {"offset", ParameterType::Int, false, "Next page offset"},
+          {"limit", ParameterType::Int, false, "Page size 1 to 64, default 16"}},
          [handler](const nlohmann::json& parameters) { return handler->QueryTypes(parameters); }},
         EditorOperationKind::Query, false);
     registry.Register(
         {"component.type.describe",
          "Describe default editable fields and commands before adding a component. Instance fields may depend on its current settings.",
          "scene",
-         {Parameter("componentType", ParameterType::String, true, "Type from component.types.query")},
+         {{"componentType", ParameterType::String, true, "Type from component.types.query"}},
          [handler](const nlohmann::json& parameters) { return handler->DescribeType(parameters); }},
         EditorOperationKind::Query, false);
     registry.Register(
         {"scene.objects.query",
          "Query precise Scene object ids, hierarchy paths, and component instance ids. Optional exact name and componentType filters never select the first duplicate implicitly.",
          "scene",
-         {Parameter("name", ParameterType::String, false,
-                    "Optional exact object name filter; duplicate matches are all returned."),
-          Parameter("componentType", ParameterType::String, false, "Optional registered component type filter.")},
+         {{"name", ParameterType::String, false,
+           "Optional exact object name filter; duplicate matches are all returned."},
+          {"componentType", ParameterType::String, false, "Optional registered component type filter."}},
          [handler](const nlohmann::json& parameters) { return handler->QueryObjects(parameters); }},
         HIKARI::EDITOR::EditorOperationKind::Query);
     registry.Register(
         {"scene.object.select",
          "Select one Scene object by stable objectId for UI reveal. Authoring operations do not require selection.",
          "scene",
-         {Parameter("objectId", ParameterType::Int, true, "Stable SceneObjectId returned by scene.objects.query.")},
+         {{"objectId", ParameterType::Int, true, "Stable SceneObjectId returned by scene.objects.query."}},
          [handler](const nlohmann::json& parameters) { return handler->SelectObject(parameters); }},
         HIKARI::EDITOR::EditorOperationKind::Session);
     registry.Register({"component.instances.query",
                        "List stable component instance ids on one Scene object.",
                        "scene",
-                       {Parameter("objectId", ParameterType::Int, true, "Stable SceneObjectId.")},
+                       {{"objectId", ParameterType::Int, true, "Stable SceneObjectId."}},
                        [handler](const nlohmann::json& parameters) { return handler->QueryComponents(parameters); }},
                       HIKARI::EDITOR::EditorOperationKind::Query);
-    registry.Register(
-        {"component.describe",
-         "Return typed writable fields and semantic commands declared by one component instance.",
-         "scene",
-         {Parameter("objectId", ParameterType::Int, true, "Stable SceneObjectId."),
-          Parameter("componentId", ParameterType::Int, true, "Stable SceneComponentId within the object.")},
-         [handler](const nlohmann::json& parameters) { return handler->DescribeComponent(parameters); }},
-        HIKARI::EDITOR::EditorOperationKind::Query);
+    registry.Register({"component.describe",
+                       "Return typed writable fields and semantic commands declared by one component instance.",
+                       "scene",
+                       {{"objectId", ParameterType::Int, true, "Stable SceneObjectId."},
+                        {"componentId", ParameterType::Int, true, "Stable SceneComponentId within the object."}},
+                       [handler](const nlohmann::json& parameters) { return handler->DescribeComponent(parameters); }},
+                      HIKARI::EDITOR::EditorOperationKind::Query);
     registry.Register(
         {"component.property.set",
          "Set one typed component field through its shared Inspector/Authoring declaration and record Document History.",
          "scene",
-         {Parameter("objectId", ParameterType::Int, true, "Stable SceneObjectId."),
-          Parameter("componentId", ParameterType::Int, true, "Stable SceneComponentId."),
-          Parameter("propertyId", ParameterType::String, true, "Stable property id returned by component.describe."),
-          Parameter("value", ParameterType::Json, true, "Typed property value matching component.describe.")},
+         {{"objectId", ParameterType::Int, true, "Stable SceneObjectId."},
+          {"componentId", ParameterType::Int, true, "Stable SceneComponentId."},
+          {"propertyId", ParameterType::String, true, "Stable property id returned by component.describe."},
+          {"value", ParameterType::Json, true, "Typed property value matching component.describe."}},
          [handler](const nlohmann::json& parameters) { return handler->SetProperty(parameters); }},
         HIKARI::EDITOR::EditorOperationKind::Mutation);
     registry.Register(
         {"authoring.transaction",
          "Atomically apply up to 256 component property mutations as one Undo step; any failure rolls back the whole transaction.",
          "scene",
-         {Parameter("commands", ParameterType::Json, true,
-                    "Array of {objectId, componentId, propertyId, value} mutations.")},
+         {{"commands", ParameterType::Json, true, "Array of {objectId, componentId, propertyId, value} mutations."}},
          [handler](const nlohmann::json& parameters) { return handler->ApplyTransaction(parameters); }},
         HIKARI::EDITOR::EditorOperationKind::Mutation);
     registry.Register(
         {"component.command.execute",
          "Execute a semantic command declared by the target component; query component.describe for command ids and parameters.",
          "scene",
-         {Parameter("objectId", ParameterType::Int, true, "Stable SceneObjectId."),
-          Parameter("componentId", ParameterType::Int, true, "Stable SceneComponentId."),
-          Parameter("commandId", ParameterType::String, true, "Command id returned by component.describe."),
-          Parameter("arguments", ParameterType::Json, true, "Command argument object matching component.describe.")},
+         {{"objectId", ParameterType::Int, true, "Stable SceneObjectId."},
+          {"componentId", ParameterType::Int, true, "Stable SceneComponentId."},
+          {"commandId", ParameterType::String, true, "Command id returned by component.describe."},
+          {"arguments", ParameterType::Json, true, "Command argument object matching component.describe."}},
          [handler](const nlohmann::json& parameters) { return handler->ExecuteCommand(parameters); }},
         HIKARI::EDITOR::EditorOperationKind::Mutation);
     registry.Register({"component.add",
                        "Add a registered component type and required dependencies to an exact Scene object.",
                        "scene",
-                       {Parameter("objectId", ParameterType::Int, true, "Stable SceneObjectId."),
-                        Parameter("componentType", ParameterType::String, true, "Registered component type name.")},
+                       {{"objectId", ParameterType::Int, true, "Stable SceneObjectId."},
+                        {"componentType", ParameterType::String, true, "Registered component type name."}},
                        [handler](const nlohmann::json& parameters) { return handler->AddComponent(parameters); }},
                       HIKARI::EDITOR::EditorOperationKind::Mutation);
     registry.Register({"component.remove",
                        "Remove one exact component instance while enforcing component dependency rules.",
                        "scene",
-                       {Parameter("objectId", ParameterType::Int, true, "Stable SceneObjectId."),
-                        Parameter("componentId", ParameterType::Int, true, "Stable SceneComponentId.")},
+                       {{"objectId", ParameterType::Int, true, "Stable SceneObjectId."},
+                        {"componentId", ParameterType::Int, true, "Stable SceneComponentId."}},
                        [handler](const nlohmann::json& parameters) { return handler->RemoveComponent(parameters); }},
                       HIKARI::EDITOR::EditorOperationKind::Mutation);
 }

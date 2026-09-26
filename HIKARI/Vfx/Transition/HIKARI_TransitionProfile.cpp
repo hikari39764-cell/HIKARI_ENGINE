@@ -13,14 +13,6 @@
 #undef max
 
 namespace HIKARI {
-namespace {
-bool ReadTransitionProgramReference(const nlohmann::json& root, std::string& outProgramId, std::string& outEntryId) {
-    const std::string programId = root.value("programId", std::string{});
-    outEntryId = root.value("entryId", std::string("Main"));
-    const std::string legacyShaderId = root.value("shaderId", std::string{});
-    return VFX::TryNormalizeBuiltinShaderProgramId(programId, legacyShaderId, outProgramId) && !outEntryId.empty();
-}
-} // namespace
 
 bool TransitionProfile::LoadById(const std::string& profileId, TransitionProfile& outProfile) {
     if (!VFX::IsStableFxProfileId(profileId)) {
@@ -28,23 +20,8 @@ bool TransitionProfile::LoadById(const std::string& profileId, TransitionProfile
     }
     const std::filesystem::path engineProfile =
         CONTENT::GetEngineContentContext().Resolve(std::filesystem::path("Transitions") / (profileId + ".json"));
-    if (!engineProfile.empty()) {
-        std::error_code error{};
-        const bool exists = std::filesystem::exists(engineProfile, error);
-        if (error) {
-            return false;
-        }
-        if (exists) {
-            TransitionProfile parsed{};
-            if (!parsed.LoadFromJson(engineProfile.generic_string())) {
-                return false;
-            }
-            outProfile = std::move(parsed);
-            return true;
-        }
-    }
     TransitionProfile parsed{};
-    if (!parsed.LoadFromJson(std::string("Data/transition_profiles/") + profileId + ".json")) {
+    if (engineProfile.empty() || !parsed.LoadFromJson(engineProfile.generic_string())) {
         return false;
     }
     outProfile = std::move(parsed);
@@ -60,8 +37,9 @@ bool TransitionProfile::LoadFromJson(const std::string& path) {
     TransitionProfile parsed{};
     parsed.id = root.value("id", parsed.id);
     parsed.displayName = root.value("displayName", parsed.displayName);
-    if (!VFX::IsStableFxProfileId(parsed.id) ||
-        !ReadTransitionProgramReference(root, parsed.programId, parsed.entryId)) {
+    parsed.programId = root.value("programId", std::string{});
+    parsed.entryId = root.value("entryId", std::string("Main"));
+    if (!VFX::IsStableFxProfileId(parsed.id) || parsed.programId.empty() || parsed.entryId.empty()) {
         return false;
     }
     parsed.outDuration = root.value("outDuration", parsed.outDuration);
@@ -69,7 +47,11 @@ bool TransitionProfile::LoadFromJson(const std::string& path) {
     parsed.waitForCameraReady = root.value("waitForCameraReady", parsed.waitForCameraReady);
     parsed.cameraReadyTimeout = std::clamp(root.value("cameraReadyTimeout", parsed.cameraReadyTimeout), 0.0f, 5.0f);
 
-    VFX::SERIALIZATION::ReadParameterDescriptorsFromJson(root.value("params", nlohmann::json{}), parsed.params);
+    std::string parameterError;
+    if (!VFX::SERIALIZATION::ReadParameterDescriptorsFromJson(root.value("params", nlohmann::json::array()),
+                                                              parsed.values.size(), parsed.params, parameterError)) {
+        return false;
+    }
 
     parsed.ResetValuesFromDefaults();
     *this = std::move(parsed);

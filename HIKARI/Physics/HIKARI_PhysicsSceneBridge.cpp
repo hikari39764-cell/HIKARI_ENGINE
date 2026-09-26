@@ -117,18 +117,6 @@ void HashShapeDefinitionFields(uint64_t& signature, const PhysicsShapeDesc& shap
     HashValue(signature, shape.filter.mask);
 }
 
-bool IsLegacyTerrainFloorCollider(const ColliderComponent& collider) noexcept {
-    if (collider.GetFitMode() != ColliderFitMode::Manual || collider.IsTrigger()) {
-        return false;
-    }
-    const ResolvedColliderShape shape = collider.ResolveShape();
-    const auto nearlyEqual = [](float lhs, float rhs) { return std::fabs(lhs - rhs) <= 1.0e-4f; };
-    return shape.type == PhysicsShapeType::Box && nearlyEqual(shape.center.x, 0.0f) &&
-           nearlyEqual(shape.center.y, -0.1f) && nearlyEqual(shape.center.z, 0.0f) &&
-           nearlyEqual(shape.rotationEulerDegrees.x, 0.0f) && nearlyEqual(shape.rotationEulerDegrees.y, 0.0f) &&
-           nearlyEqual(shape.rotationEulerDegrees.z, 0.0f) && nearlyEqual(shape.size.x, 40.0f) &&
-           nearlyEqual(shape.size.y, 0.2f) && nearlyEqual(shape.size.z, 40.0f);
-}
 } // namespace
 
 PhysicsShapeDesc BuildPhysicsShapeDesc(const ColliderComponent& collider, const MATH::Vec3& worldScale,
@@ -242,12 +230,6 @@ PhysicsBodyBuildResult BuildPhysicsBodyCreateInfo(const GameObject& object, Phys
     object.ForEachComponent<ColliderComponent>([&](const ColliderComponent& collider) {
         ++componentOrdinal;
         if (!collider.IsEnabled()) {
-            return;
-        }
-        // 旧 sand factory が保存した仮の 40x0.2x40 床だけを精密に
-        // 無視する。新しい domain-owned terrain mesh と二重衝突させず、
-        // ユーザーが追加した別寸法の trigger/collider は保持する。
-        if (terrainCollisionAppended && IsLegacyTerrainFloorCollider(collider)) {
             return;
         }
         result.hasDefinition = true;

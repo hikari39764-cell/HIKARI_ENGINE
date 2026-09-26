@@ -1,5 +1,6 @@
 #include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
+#include "Assets/Vfx/HIKARI_VfxEnumNames.h"
 
 #include <array>
 #include <string_view>
@@ -21,12 +22,10 @@ void VfxWorkspaceController::DrawEmitterAdvanced(AssetDatabase& database, const 
     orderEditor.Unsigned(VfxUiText("Sibling order").c_str(), "order", emitter.order);
     ImGui::SeparatorText(VfxUiText("Attachment / Follow").c_str());
     VfxInspectorPropertyEditor attachmentEditor(*this, database, emitter.attachment.id, statusMessage_);
-    constexpr std::array<std::string_view, 3u> attachmentModes{"World", "Owner", "OwnerSocket"};
     attachmentEditor.Choice(VfxUiText("Attachment Mode").c_str(), "mode", VFX::ToString(emitter.attachment.mode),
-                            attachmentModes.data(), attachmentModes.size());
-    constexpr std::array<std::string_view, 4u> followModes{"None", "Position", "Rotation", "Transform"};
+                            VFX::kVfxAttachmentModeChoices.data(), VFX::kVfxAttachmentModeChoices.size());
     attachmentEditor.Choice(VfxUiText("Follow").c_str(), "follow", VFX::ToString(emitter.attachment.follow),
-                            followModes.data(), followModes.size());
+                            VFX::kVfxFollowModeChoices.data(), VFX::kVfxFollowModeChoices.size());
     if (emitter.attachment.mode == VFX::VfxAttachmentMode::OwnerSocket) {
         attachmentEditor.Text(VfxUiText("Socket Name").c_str(), "socketName", emitter.attachment.socketName);
     }
@@ -36,8 +35,6 @@ void VfxWorkspaceController::DrawEmitterAdvanced(AssetDatabase& database, const 
     attachmentEditor.Vec3(VfxUiText("Local Scale").c_str(), "offset.scale", emitter.attachment.offset.scale);
 
     ImGui::SeparatorText(VfxUiText("Typed Special Outputs").c_str());
-    constexpr std::array<std::string_view, 4u> specialOutputTypes{"WeaponPathDistortion", "ScreenImpulse",
-                                                                  "SkinnedAfterimage", "Light"};
     if (emitter.specialOutputs.empty()) {
         ImGui::TextDisabled(
             VfxUiText("No special output profiles. Add one to expose the typed renderer profile.").c_str());
@@ -59,8 +56,8 @@ void VfxWorkspaceController::DrawEmitterAdvanced(AssetDatabase& database, const 
         }
         VfxInspectorPropertyEditor outputEditor(*this, database, output.id, statusMessage_);
         outputEditor.Bool(VfxUiText("Enabled").c_str(), "enabled", output.enabled);
-        outputEditor.Choice(VfxUiText("Profile").c_str(), "type", VFX::ToString(output.type), specialOutputTypes.data(),
-                            specialOutputTypes.size());
+        outputEditor.Choice(VfxUiText("Profile").c_str(), "type", VFX::ToString(output.type),
+                            VFX::kVfxSpecialOutputTypeChoices.data(), VFX::kVfxSpecialOutputTypeChoices.size());
         switch (output.type) {
         case VFX::VfxSpecialOutputType::ScreenImpulse:
             outputEditor.Float(VfxUiText("Duration").c_str(), "screenImpulse.durationSeconds",

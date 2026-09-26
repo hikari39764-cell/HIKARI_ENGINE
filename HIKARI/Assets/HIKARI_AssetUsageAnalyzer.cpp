@@ -1,6 +1,7 @@
 #include "HIKARI_AssetUsageAnalyzer.h"
 
 #include "HIKARI_AssetDatabase.h"
+#include "Assets/Post/HIKARI_PostAsset.h"
 #include "Assets/Text/HIKARI_TextStyleAsset.h"
 #include "Gameplay/Dialogue/HIKARI_DialogueProjectStyle.h"
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
@@ -26,6 +27,14 @@ void AddReference(const std::string& assetId, const std::string& owner, const st
             std::string error;
             if (LoadTextStyleAsset(assetDatabase.GetProjectRoot() / record->sourcePath, style, error))
                 AddReference(style.font.value, owner, "TextStyle.Font", assetDatabase, summary);
+        }
+        if (first && record->type == AssetType::PostProfile) {
+            POST::PostProfileAsset profile;
+            std::string error;
+            if (POST::LoadPostProfileAsset(assetDatabase.GetProjectRoot() / record->sourcePath, profile, error)) {
+                for (const AssetDependencyDesc& dependency : POST::CollectPostProfileDependencies(profile))
+                    AddReference(dependency.guid.value, owner, dependency.role, assetDatabase, summary);
+            }
         }
         return;
     }
@@ -153,6 +162,11 @@ AssetUsageSummary AnalyzeAssetUsage(const SceneDocument& document, const AssetDa
                  assetDatabase, summary);
     AddReference(document.environment.reflectionProbe.sourceCubemapAsset, "Scene Environment",
                  "Reflection Probe Cubemap", assetDatabase, summary);
+    // エンジン内蔵の後処理プロファイルはエンジンの内容として出力されるので、プロジェクト資産だけを数える。
+    if (const ScenePostSettings& post = document.environment.post;
+        post.enabled && !post.profileId.starts_with(POST::kBuiltinPostProfilePrefix)) {
+        AddReference(post.profileId, "Scene Environment", "Post Profile", assetDatabase, summary);
+    }
 
     for (const SceneObjectData& object : document.objects) {
         const std::string owner = object.name.empty() ? ("Object " + std::to_string(object.id.value)) : object.name;

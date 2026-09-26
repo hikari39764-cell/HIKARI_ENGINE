@@ -230,8 +230,8 @@ MeshDrawContext BuildDrawContext(const GFX::Context& graphics, bool depthAwarePh
                                     : frame.view.Bindings().skyEnvironment;
     ctx.surfaceFeatureDataAddress =
         waterSurfaceBuffer != nullptr ? waterSurfaceBuffer->GetRecordGpuVirtualAddress() : 0u;
-    ctx.sandSurfaceDataAddress = gMeshRendererState.sandSurfaceGpuFrameBuffer.GetRecordGpuVirtualAddress();
-    ctx.surfaceFeatureHeightsAddress = gMeshRendererState.sandSurfaceGpuFrameBuffer.GetHeightGpuVirtualAddress();
+    ctx.terrainSurfaceDataAddress = gMeshRendererState.terrainSurfaceGpuFrameBuffer.GetRecordGpuVirtualAddress();
+    ctx.surfaceFeatureHeightsAddress = gMeshRendererState.terrainSurfaceGpuFrameBuffer.GetHeightGpuVirtualAddress();
     const RENDER3D::WATER::SPECTRUM::OceanSpectrumOutputDescriptorTable& oceanSpectrumTable =
         gMeshRendererState.oceanSpectrumRuntime.GetOutputDescriptorTable();
     const bool waterRequiresOceanSpectrum =
@@ -280,7 +280,7 @@ bool BeginFrameInternal(const GFX::Context& graphics, const Camera3D& camera, co
     gMeshRendererState.frameResources.Activate(graphics.frameIndex);
     gMeshRendererState.materialResolver.BeginFrame(kMaxMaterialTextureGpuLoadsPerFrame);
     gMeshRendererState.gpuMaterialRegistry.BeginFrame();
-    // Capture 逕ｨ縺ｮ蝗ｺ螳夊ｧ｣蜒丞ｺｦ繧・camera constants 縺ｫ蜿肴丐縺吶ｋ縲・
+    // Capture 用の固定解像度を camera constants に反映する。
     if (!PrepareMeshFrame(graphics, camera, environment, lighting, debugView, screenWidth, screenHeight,
                           cameraOverrides)) {
         return false;

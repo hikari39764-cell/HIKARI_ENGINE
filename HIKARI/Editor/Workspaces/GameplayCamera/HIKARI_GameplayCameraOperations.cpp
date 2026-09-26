@@ -102,7 +102,8 @@ void RegisterGameplayCameraOperations(EditorOperationRegistry& registry, Gamepla
                        "gameplay_camera",
                        {},
                        [&controller](const auto&) {
-                           return EditorOperationResult{true, "OK", "Gameplay camera document", controller.Describe()};
+                           return EditorOperationResult{true, "OK", "Gameplay camera document",
+                                                        controller.DescribeDocumentState()};
                        }},
                       K::Query);
     registry.Register(
@@ -115,25 +116,27 @@ void RegisterGameplayCameraOperations(EditorOperationRegistry& registry, Gamepla
              std::string message;
              const bool ok =
                  controller.Document().New(p.value("preset", "third_person"), message, p.value("discard", false));
-             return EditorOperationResult{ok, ok ? "OK" : "DIRTY_DOCUMENT", message, controller.Describe()};
+             return EditorOperationResult{ok, ok ? "OK" : "DIRTY_DOCUMENT", message,
+                                          controller.DescribeDocumentState()};
          }},
         K::Mutation);
-    registry.Register({"gameplay_camera.open",
-                       "Open an existing .hcamera profile by asset GUID.",
-                       "gameplay_camera",
-                       {P{"assetGuid", T::String, true, "Camera profile asset GUID"},
-                        P{"discard", T::Bool, false, "Discard current draft"}},
-                       [&controller, scene](const auto& p) {
-                           auto* current = scene();
-                           if (!current)
-                               return EditorOperationResult{false, "NO_SCENE", "No project."};
-                           std::string message;
-                           const bool ok = controller.Document().Open(
-                               current->GetAssetDatabase(), AssetGuid{p.at("assetGuid").template get<std::string>()},
-                               message, p.value("discard", false));
-                           return EditorOperationResult{ok, ok ? "OK" : "OPEN_FAILED", message, controller.Describe()};
-                       }},
-                      K::Mutation);
+    registry.Register(
+        {"gameplay_camera.open",
+         "Open an existing .hcamera profile by asset GUID.",
+         "gameplay_camera",
+         {P{"assetGuid", T::String, true, "Camera profile asset GUID"},
+          P{"discard", T::Bool, false, "Discard current draft"}},
+         [&controller, scene](const auto& p) {
+             auto* current = scene();
+             if (!current)
+                 return EditorOperationResult{false, "NO_SCENE", "No project."};
+             std::string message;
+             const bool ok = controller.Document().Open(current->GetAssetDatabase(),
+                                                        AssetGuid{p.at("assetGuid").template get<std::string>()},
+                                                        message, p.value("discard", false));
+             return EditorOperationResult{ok, ok ? "OK" : "OPEN_FAILED", message, controller.DescribeDocumentState()};
+         }},
+        K::Mutation);
     const nlohmann::json editSchema = {
         {"type", "object"},
         {"required", {"action"}},
@@ -179,7 +182,8 @@ void RegisterGameplayCameraOperations(EditorOperationRegistry& registry, Gamepla
                        {},
                        [&controller](const auto&) {
                            const bool ok = controller.Document().Undo();
-                           return EditorOperationResult{ok, ok ? "OK" : "NO_UNDO", "", controller.Describe()};
+                           return EditorOperationResult{ok, ok ? "OK" : "NO_UNDO", "",
+                                                        controller.DescribeDocumentState()};
                        }},
                       K::Mutation);
     registry.Register({"gameplay_camera.redo",
@@ -188,7 +192,8 @@ void RegisterGameplayCameraOperations(EditorOperationRegistry& registry, Gamepla
                        {},
                        [&controller](const auto&) {
                            const bool ok = controller.Document().Redo();
-                           return EditorOperationResult{ok, ok ? "OK" : "NO_REDO", "", controller.Describe()};
+                           return EditorOperationResult{ok, ok ? "OK" : "NO_REDO", "",
+                                                        controller.DescribeDocumentState()};
                        }},
                       K::Mutation);
     registry.Register({"gameplay_camera.reveal",

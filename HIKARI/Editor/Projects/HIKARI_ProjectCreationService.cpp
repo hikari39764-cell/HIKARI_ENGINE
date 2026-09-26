@@ -163,9 +163,7 @@ bool CreateProject(const ProjectCreationRequest& request, ProjectCreationResult&
                        outMessage) ||
         !WriteTextFile(stagingRoot / "Source" / "Runtime" / (identifier + "GameProjectModule.cpp"),
                        PROJECT_TEMPLATE::MakeGameProjectModule(identifier), outMessage) ||
-        !WriteTextFile(stagingRoot / ".gitignore",
-                       "/Library/\n/logs/\n/RendererLog/\n"
-                       "/out/\n/.vs/\n/imgui.ini\n*.user\n",
+        !WriteTextFile(stagingRoot / ".gitignore", "/Library/\n/logs/\n/out/\n/.vs/\n/imgui.ini\n*.user\n",
                        outMessage) ||
         !WriteTextFile(stagingRoot / ".gitattributes", PROJECT_TEMPLATE::MakeProjectGitAttributes(), outMessage)) {
         RemoveStagingDirectory(stagingRoot);

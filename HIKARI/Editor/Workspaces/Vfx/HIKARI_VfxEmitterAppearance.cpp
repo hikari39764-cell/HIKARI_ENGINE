@@ -1,4 +1,5 @@
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
+#include "Assets/Vfx/HIKARI_VfxEnumNames.h"
 
 #include <array>
 #include <string_view>
@@ -24,7 +25,7 @@ void VfxWorkspaceController::DrawEmitterAppearance(AssetDatabase& database, cons
 
     ImGui::SeparatorText(VfxUiText("Surface and lighting").c_str());
     VfxInspectorPropertyEditor renderCommonEditor(*this, database, emitter.renderCommon.id, statusMessage_);
-    const auto materialModes = VFX::GetVfxMaterialModeChoices();
+    const auto materialModes = VFX::kVfxMaterialModeChoices;
     renderCommonEditor.Choice(VfxUiText("Lighting / material").c_str(), "materialMode",
                               VFX::ToString(emitter.renderCommon.materialMode), materialModes.data(),
                               materialModes.size());
@@ -86,17 +87,12 @@ void VfxWorkspaceController::DrawEmitterAppearance(AssetDatabase& database, cons
             }
         }
     }
-    constexpr std::array<std::string_view, 2u> blendModes{"Alpha", "Additive"};
     renderCommonEditor.Choice(VfxUiText("Blend Mode").c_str(), "blendMode",
-                              VFX::ToString(emitter.renderCommon.blendMode), blendModes.data(), blendModes.size());
-    constexpr std::array<std::string_view, 4u> depthModes{
-        "WorldOccluded",
-        "SoftIntersection",
-        "ContactSurface",
-        "ForegroundAccent",
-    };
+                              VFX::ToString(emitter.renderCommon.blendMode), VFX::kVfxBlendModeChoices.data(),
+                              VFX::kVfxBlendModeChoices.size());
     renderCommonEditor.Choice(VfxUiText("Depth Policy").c_str(), "depthMode",
-                              VFX::ToString(emitter.renderCommon.depthMode), depthModes.data(), depthModes.size());
+                              VFX::ToString(emitter.renderCommon.depthMode), VFX::kVfxParticleDepthModeChoices.data(),
+                              VFX::kVfxParticleDepthModeChoices.size());
     if (emitter.renderCommon.depthMode == VFX::VfxParticleDepthMode::SoftIntersection) {
         renderCommonEditor.Float(VfxUiText("Soft Intersection Distance").c_str(), "softIntersectionDistance",
                                  emitter.renderCommon.softIntersectionDistance, 0.01f, 0.001f, 10.0f);

@@ -4,8 +4,8 @@
 #include <cmath>
 #include <sstream>
 
-#include "Diagnostics/HIKARI_DebugLogBuffer.h"
-#include "Scene/Vfx/HIKARI_VfxSpecialOutputBridge.h"
+#include "Core/HIKARI_Logger.h"
+#include "Assets/Vfx/HIKARI_VfxProgram.h"
 
 namespace HIKARI::VFX {
 namespace {
@@ -180,7 +180,7 @@ bool ActionPostReactionService::SubmitActionBoostGrade(const ActionBoostGradeReq
     return true;
 }
 
-bool ActionPostReactionService::TriggerPerfectGuardShockwave(const PerfectGuardShockwaveRequest& request) noexcept {
+bool ActionPostReactionService::StartShockwave(const PerfectGuardShockwaveRequest& request) noexcept {
     if (request.sourceId == 0u || !std::isfinite(request.worldPosition.x) || !std::isfinite(request.worldPosition.y) ||
         !std::isfinite(request.worldPosition.z)) {
         return false;
@@ -220,7 +220,7 @@ bool ActionPostReactionService::TriggerPerfectGuardShockwave(const PerfectGuardS
                << " frame=" << request.frameIndex << " duration=" << activeWaves_[slot].frame.durationSeconds
                << " radius=" << activeWaves_[slot].frame.maximumScreenRadius
                << " distortion=" << activeWaves_[slot].frame.distortionStrength;
-        DEBUGLOG::WriteRenderLogLine(stream.str());
+        HIKARI_LOG_INFO(stream.str());
     } catch (...) {
     }
     return true;
@@ -307,7 +307,7 @@ bool ActionPostReactionService::TriggerPerfectGuardShockwave(const PerfectGuardS
     const VfxScreenImpulseProfile& profile = output.screenImpulse;
     PerfectGuardShockwaveRequest configured = request;
     // Request fields are action-level multipliers normalized against the
-    // legacy defaults. The authored HVFX profile remains the predictable
+    // request defaults. The authored HVFX profile remains the predictable
     // art baseline while callers can independently scale each dimension.
     const float durationScale = ActionScale(request.durationSeconds, kDefaultDurationSeconds);
     const float radiusScale = ActionScale(request.maximumScreenRadius, kDefaultMaximumScreenRadius);
@@ -332,33 +332,7 @@ bool ActionPostReactionService::TriggerPerfectGuardShockwave(const PerfectGuardS
     configured.waveAmplitude = profile.waveAmplitude;
     configured.waveDamping = profile.waveDamping;
     configured.waveCount = profile.waveCount;
-    return TriggerPerfectGuardShockwave(configured);
-}
-
-bool ActionPostReactionService::TriggerPerfectGuardShockwave(const PerfectGuardShockwaveRequest& request,
-                                                             const VfxScreenImpulseProfile& profile) noexcept {
-    VfxSpecialOutputData output{};
-    output.type = VfxSpecialOutputType::ScreenImpulse;
-    output.screenImpulse = profile;
-    return TriggerPerfectGuardShockwave(request, output);
-}
-
-bool ActionPostReactionService::TriggerPerfectGuardShockwave(const PerfectGuardShockwaveRequest& request,
-                                                             const VfxProgram& program) noexcept {
-    return TriggerPerfectGuardShockwave(request, program, {});
-}
-
-bool ActionPostReactionService::TriggerPerfectGuardShockwave(const PerfectGuardShockwaveRequest& request,
-                                                             const VfxProgram& program,
-                                                             std::string_view outputId) noexcept {
-    const VfxSpecialOutputData* output = FindVfxSpecialOutput(program, outputId, VfxSpecialOutputType::ScreenImpulse);
-    if (output == nullptr) {
-        // Only the id-less overload retains compatibility fallback. A
-        // profiled request with an explicit id fails closed when the
-        // compiled profile is absent or has the wrong type.
-        return outputId.empty() ? TriggerPerfectGuardShockwave(request) : false;
-    }
-    return TriggerPerfectGuardShockwave(request, *output);
+    return StartShockwave(configured);
 }
 
 void ActionPostReactionService::Reset() noexcept {

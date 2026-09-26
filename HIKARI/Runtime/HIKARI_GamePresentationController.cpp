@@ -88,9 +88,8 @@ bool GamePresentationController::RestoreEditorSurface(GFX::Dx12Core& core, PLATF
     }
 
     const GFX::Context editorContext = core.BuildContext();
-    const uint32_t editorWidth = static_cast<uint32_t>(editorWindow.Width());
-    const uint32_t editorHeight = static_cast<uint32_t>(editorWindow.Height());
-    if ((editorContext.backBufferWidth != editorWidth || editorContext.backBufferHeight != editorHeight) &&
+    if ((editorContext.backBufferWidth != editorWindow.Width() ||
+         editorContext.backBufferHeight != editorWindow.Height()) &&
         !core.Resize(editorWindow.Width(), editorWindow.Height())) {
         HIKARI_LOG_ERROR("Editor presentation surface could not be synchronized to the restored window size.");
         return false;

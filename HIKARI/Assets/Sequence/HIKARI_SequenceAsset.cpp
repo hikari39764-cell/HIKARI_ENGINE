@@ -41,7 +41,7 @@ bool LoadSequenceAsset(const std::filesystem::path& path, const AssetGuid& autho
         return false;
     }
     const uint32_t version = root.value("formatVersion", 0u);
-    if (version == 0 || version > SequenceAsset::kFormatVersion) {
+    if (version != SequenceAsset::kFormatVersion) {
         SetError(outError, "Unsupported sequence asset version");
         return false;
     }

@@ -3,10 +3,9 @@
 
 #include <algorithm>
 #include <commctrl.h>
-#include <cstdio>
 #include <filesystem>
 #include <shellapi.h>
-#include <sstream>
+#include <string>
 #include <vector>
 
 #include "Core/HIKARI_Logger.h"
@@ -145,13 +144,7 @@ bool Win32Window::Initialize(const wchar_t* title, int width, int height, bool r
     if (cls == 0) {
         const DWORD err = GetLastError();
         if (err != ERROR_CLASS_ALREADY_EXISTS) {
-            char msg[256]{};
-            std::snprintf(msg, sizeof(msg), "[Win32Window] RegisterClassW failed. err=%lu\n",
-                          static_cast<unsigned long>(err));
-            OutputDebugStringA(msg);
-            std::ostringstream oss;
-            oss << "RegisterClassW failed. err=" << static_cast<unsigned long>(err);
-            HIKARI_LOG_ERROR(oss.str());
+            HIKARI_LOG_ERROR("[Win32Window] RegisterClassW failed. err=" + std::to_string(err));
             return false;
         }
     }
@@ -180,13 +173,7 @@ bool Win32Window::Initialize(const wchar_t* title, int width, int height, bool r
 
     if (!hwnd_) {
         const DWORD err = GetLastError();
-        char msg[256]{};
-        std::snprintf(msg, sizeof(msg), "[Win32Window] CreateWindowExW failed. err=%lu\n",
-                      static_cast<unsigned long>(err));
-        OutputDebugStringA(msg);
-        std::ostringstream oss;
-        oss << "CreateWindowExW failed. err=" << static_cast<unsigned long>(err);
-        HIKARI_LOG_ERROR(oss.str());
+        HIKARI_LOG_ERROR("[Win32Window] CreateWindowExW failed. err=" + std::to_string(err));
         return false;
     }
     HIKARI_LOG_INFO("Window created.");
@@ -359,7 +346,7 @@ void Win32Window::Shutdown() {
     running_ = false;
     closeRequested_ = false;
 }
-// 繝｡繝・そ繝ｼ繧ｸ繝ｫ繝ｼ繝励ｒ蜃ｦ逅・☆繧九８M_QUIT 繝｡繝・そ繝ｼ繧ｸ縺梧擂縺溘ｉ false 繧定ｿ斐☆縲ゅ◎繧御ｻ･螟悶・ true 繧定ｿ斐☆縲・
+// メッセージループを処理する。WM_QUIT メッセージが来たら false を返す。それ以外は true を返す。
 bool Win32Window::PumpMessages() {
     MSG msg{};
     while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
@@ -372,7 +359,7 @@ bool Win32Window::PumpMessages() {
     }
     return running_;
 }
-// 繝槭え繧ｹ繝帙う繝ｼ繝ｫ縺ｮ繝・Ν繧ｿ繧呈ｶ郁ｲｻ縺吶ｋ縲ょ他縺ｳ蜃ｺ縺吶→迴ｾ蝨ｨ縺ｮ繝・Ν繧ｿ縺瑚ｿ斐＆繧後∝・驛ｨ縺ｮ繝・Ν繧ｿ縺ｯ繝ｪ繧ｻ繝・ヨ縺輔ｌ繧九・
+// マウスホイールのデルタを消費する。呼び出すと現在のデルタが返され、内部のデルタはリセットされる。
 float Win32Window::ConsumeMouseWheelDelta() {
     const float delta = mouseWheelDelta_;
     mouseWheelDelta_ = 0.0f;
@@ -450,7 +437,7 @@ LRESULT Win32Window::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
     }
     default: break;
     }
-    // NOTE: 蠢・★縲御ｻ雁・逅・ｸｭ縺ｮ hwnd縲阪ｒ貂｡縺吶・reateWindow 逶ｴ蠕後↑縺ｩ縺ｧ hwnd_ 縺梧悴遒ｺ螳壹〒繧ょｮ牙・縲・
+    // NOTE: 必ず「今処理中の hwnd」を渡す。CreateWindow 直後などで hwnd_ が未確定でも安全。
     return DefWindowProcW(hwnd, msg, wparam, lparam);
 }
 

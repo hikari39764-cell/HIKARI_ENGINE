@@ -21,26 +21,13 @@ namespace JsonMath = ::HIKARI::SERIALIZATION::JSON::MATH;
 
 namespace {
 
-DirectX::XMFLOAT4 DeserializeFloat4(const nlohmann::json& node, const DirectX::XMFLOAT4& fallback) {
-    if (!node.is_array() || node.size() < 4) {
-        return fallback;
-    }
-    return {node[0].is_number() ? node[0].get<float>() : fallback.x,
-            node[1].is_number() ? node[1].get<float>() : fallback.y,
-            node[2].is_number() ? node[2].get<float>() : fallback.z,
-            node[3].is_number() ? node[3].get<float>() : fallback.w};
-}
-
 constexpr TEXT::EnumName<SkyMode> kSkyModeNames[] = {
     {SkyMode::None, "None"},           {SkyMode::Gradient, "Gradient"},     {SkyMode::Cubemap, "Cubemap"},
-    {SkyMode::Texture2D, "Texture2D"}, {SkyMode::Atmosphere, "Atmosphere"}, {SkyMode::Atmosphere, "Atmospheric"},
-    {SkyMode::Atmosphere, "Physical"},
+    {SkyMode::Texture2D, "Texture2D"}, {SkyMode::Atmosphere, "Atmosphere"},
 };
 constexpr TEXT::EnumName<RENDER3D::COLOR::ExposureMode> kExposureModeNames[] = {
     {RENDER3D::COLOR::ExposureMode::Manual, "Manual"},
     {RENDER3D::COLOR::ExposureMode::Automatic, "Automatic"},
-    {RENDER3D::COLOR::ExposureMode::Manual, "manual"},
-    {RENDER3D::COLOR::ExposureMode::Automatic, "automatic"},
 };
 constexpr TEXT::EnumName<ReflectionProbeInfluenceShape> kInfluenceShapeNames[] = {
     {ReflectionProbeInfluenceShape::Sphere, "Sphere"},
@@ -59,19 +46,13 @@ constexpr TEXT::EnumName<ScreenSpaceReflectionQuality> kSsrQualityNames[] = {
 
 const char* ToString(SkyMode mode) { return TEXT::EnumToName(kSkyModeNames, mode, "Gradient"); }
 SkyMode ParseSkyMode(const nlohmann::json& node, SkyMode fallback) {
-    return JSONREAD::EnumOr(node, kSkyModeNames, fallback, true);
+    return JSONREAD::EnumOr(node, kSkyModeNames, fallback);
 }
 
 const char* ExposureModeName(RENDER3D::COLOR::ExposureMode mode) {
     return TEXT::EnumToName(kExposureModeNames, mode, "Manual");
 }
-// 旧形式の整数は Automatic(1) 以外を Manual として読む
 RENDER3D::COLOR::ExposureMode ParseExposureMode(const nlohmann::json& node, RENDER3D::COLOR::ExposureMode fallback) {
-    if (node.is_number_integer()) {
-        return node.get<int>() == static_cast<int>(RENDER3D::COLOR::ExposureMode::Automatic)
-                   ? RENDER3D::COLOR::ExposureMode::Automatic
-                   : RENDER3D::COLOR::ExposureMode::Manual;
-    }
     return JSONREAD::EnumOr(node, kExposureModeNames, fallback);
 }
 
@@ -81,28 +62,14 @@ const char* ToString(ReflectionProbeInfluenceShape shape) {
 const char* ToString(ReflectionProbeProjectionShape shape) {
     return TEXT::EnumToName(kProjectionShapeNames, shape, "Infinite");
 }
-// 旧形式の整数は 1 だけを Box として受け付ける
-template <class Shape, std::size_t N>
-Shape ParseProbeShape(const nlohmann::json& node, const TEXT::EnumName<Shape> (&names)[N], Shape fallback) {
-    if (node.is_number_integer()) {
-        return node.get<int>() == 1 ? Shape::Box : fallback;
-    }
-    return JSONREAD::EnumOr(node, names, fallback);
-}
-
 SsaoMode ParseSsaoMode(const nlohmann::json& node, SsaoMode fallback) {
-    return JSONREAD::EnumOr(node, kSsaoModeNames, fallback, true);
+    return JSONREAD::EnumOr(node, kSsaoModeNames, fallback);
 }
 const char* ToString(ScreenSpaceReflectionQuality quality) {
     return TEXT::EnumToName(kSsrQualityNames, quality, "Medium");
 }
 ScreenSpaceReflectionQuality ParseSsrQuality(const nlohmann::json& node, ScreenSpaceReflectionQuality fallback) {
-    return JSONREAD::EnumOr(node, kSsrQualityNames, fallback, true);
-}
-
-MATH::Vec3 ReflectionProbeRadiusBoxSize(float radius) {
-    const float diameter = std::max(0.01f, radius * 2.0f);
-    return {diameter, diameter, diameter};
+    return JSONREAD::EnumOr(node, kSsrQualityNames, fallback);
 }
 
 constexpr float kCloudColorMin = 0.0f;
@@ -448,16 +415,6 @@ nlohmann::json WriteLocalLight(const Light& light, const Fields& fields) {
     return out;
 }
 
-template <class Light, class Fields>
-Light ReadLocalLight(const nlohmann::json& node, const Fields& fields) {
-    Light light{};
-    JSONFIELDS::Read(node, light, fields);
-    light.distanceFalloff =
-        RENDER3D::LIGHTING::ParseLocalLightFalloff(node.value("distanceFalloff", std::string("LegacyRange")));
-    light.sourceRadius = RENDER3D::LIGHTING::SanitizeLocalLightSourceRadius(node.value("sourceRadius", 0.0f));
-    return light;
-}
-
 } // namespace
 
 void SerializeSceneEnvironmentJson(const SceneEnvironment& environment, nlohmann::json& out) {
@@ -548,17 +505,10 @@ void SerializeSceneEnvironmentJson(const SceneEnvironment& environment, nlohmann
     out["showSkyDebugInfo"] = environment.showSkyDebugInfo;
 
     out["post"]["enabled"] = environment.post.enabled;
-    out["post"]["globalPostProfileId"] = environment.post.globalPostProfileId;
-    out["post"]["valuesInitialized"] = environment.post.valuesInitialized;
-    out["post"]["paramValues"] = nlohmann::json::array();
-    for (const DirectX::XMFLOAT4& value : environment.post.paramValues) {
-        out["post"]["paramValues"].push_back(JsonMath::ToJsonArray(value));
-    }
+    out["post"]["profile"] = environment.post.profileId;
 }
 
 void DeserializeSceneEnvironmentJson(const nlohmann::json& node, SceneEnvironment& outEnvironment) {
-    // Clouds were introduced after the original environment format. A
-    // missing or malformed member must keep the legacy scene disabled.
     outEnvironment.clouds = StylizedCloudSettings{};
     if (!node.is_object()) {
         return;
@@ -567,30 +517,12 @@ void DeserializeSceneEnvironmentJson(const nlohmann::json& node, SceneEnvironmen
     if (node.contains("ambient")) {
         JSONFIELDS::Read(node["ambient"], outEnvironment.ambient, kAmbientFields);
     }
-    if (node.contains("directional")) {
-        JSONFIELDS::Read(node["directional"], outEnvironment.directional, kDirectionalFields);
-    }
     if (const nlohmann::json* shadow = FindObject(node, "directionalShadow")) {
         DirectionalShadowSettings& settings = outEnvironment.directionalShadow;
         JSONFIELDS::Read(*shadow, settings, kDirectionalShadowFields);
         settings.cascadeCount = std::clamp(settings.cascadeCount, 1u, SHADOW::kMaxDirectionalShadowCascades);
         settings.cascadeSplitLambda = std::clamp(settings.cascadeSplitLambda, 0.0f, 1.0f);
         settings.cascadeBlend = std::clamp(settings.cascadeBlend, 0.0f, 0.3f);
-    }
-
-    if (node.contains("pointLights") && node["pointLights"].is_array()) {
-        outEnvironment.pointLights.clear();
-        for (const nlohmann::json& pointNode : node["pointLights"]) {
-            outEnvironment.pointLights.push_back(ReadLocalLight<PointLight>(pointNode, kLocalLightFields<PointLight>));
-        }
-    }
-    if (node.contains("spotLights") && node["spotLights"].is_array()) {
-        outEnvironment.spotLights.clear();
-        for (const nlohmann::json& spotNode : node["spotLights"]) {
-            SpotLight spotLight = ReadLocalLight<SpotLight>(spotNode, kSpotLightFields);
-            RENDER3D::LIGHTING::SanitizeSpotLight(spotLight);
-            outEnvironment.spotLights.push_back(spotLight);
-        }
     }
 
     if (const nlohmann::json* sky = FindObject(node, "sky")) {
@@ -602,13 +534,8 @@ void DeserializeSceneEnvironmentJson(const nlohmann::json& node, SceneEnvironmen
                           settings.panoramaCloudScrollSpeed, -1.0f, 1.0f);
         settings.panoramaCloudOpacity =
             ReadCloudMember(*sky, "panoramaCloudOpacity", settings.panoramaCloudOpacity, 0.0f, 1.0f);
-    } else if (node.contains("skyMode")) {
-        outEnvironment.sky.mode = ParseSkyMode(node["skyMode"], outEnvironment.sky.mode);
     }
 
-    // Atmosphere is additive to the legacy Gradient/Cubemap/Texture2D
-    // payload. Missing members intentionally retain standard defaults so
-    // old scenes deserialize without requiring a migration write-back.
     if (const nlohmann::json* atmosphereNode = FindObject(node, "atmosphere")) {
         const AtmosphereSettings defaults{};
         AtmosphereSettings& atmosphere = outEnvironment.atmosphere;
@@ -643,8 +570,8 @@ void DeserializeSceneEnvironmentJson(const nlohmann::json& node, SceneEnvironmen
         StylizedCloudSettings& clouds = outEnvironment.clouds;
         const StylizedCloudSettings defaults{};
         clouds.enabled = JSONREAD::BooleanMemberOr(*cloudNode, "enabled", defaults.enabled);
-        // 旧 scene の色段階表現は保持し、新規 scene は物理散乱を既定にする。
-        clouds.physicallyBasedLighting = JSONREAD::BooleanMemberOr(*cloudNode, "physicallyBasedLighting", false);
+        clouds.physicallyBasedLighting =
+            JSONREAD::BooleanMemberOr(*cloudNode, "physicallyBasedLighting", defaults.physicallyBasedLighting);
         ReadEnvironmentFloats(*cloudNode, clouds, kStylizedCloudSettingsFields);
         clouds.windDirection = ReadCloudVec2(cloudNode->value("windDirection", nlohmann::json{}),
                                              defaults.windDirection, kCloudDirectionMin, kCloudDirectionMax);
@@ -654,36 +581,11 @@ void DeserializeSceneEnvironmentJson(const nlohmann::json& node, SceneEnvironmen
                                            kCloudColorMin, kCloudColorMax);
     }
 
-    if (const nlohmann::json* probeNode = FindObject(node, "reflectionProbe")) {
-        const nlohmann::json& probe = *probeNode;
-        ReflectionProbeSettings& settings = outEnvironment.reflectionProbe;
-        JSONFIELDS::Read(probe, settings, kReflectionProbeFields);
-        settings.influenceShape = ParseProbeShape(probe.value("influenceShape", nlohmann::json{}), kInfluenceShapeNames,
-                                                  settings.influenceShape);
-        settings.projectionShape = ParseProbeShape(probe.value("projectionShape", nlohmann::json{}),
-                                                   kProjectionShapeNames, settings.projectionShape);
-        // 箱の既定値は旧形式の中心位置と半径から作る
-        const MATH::Vec3 radiusBoxSize = ReflectionProbeRadiusBoxSize(settings.radius);
-        const auto readBox = [&](const char* key, MATH::Vec3& value, const MATH::Vec3& legacy) {
-            value = JSONREAD::Vec3Or(probe.value(key, nlohmann::json::array()), probe.contains(key) ? value : legacy);
-        };
-        readBox("influenceBoxCenter", settings.influenceBoxCenter, settings.position);
-        readBox("influenceBoxSize", settings.influenceBoxSize, radiusBoxSize);
-        readBox("projectionBoxCenter", settings.projectionBoxCenter, settings.position);
-        readBox("projectionBoxSize", settings.projectionBoxSize, radiusBoxSize);
-    }
-
     if (const nlohmann::json* aoNode = FindObject(node, "ambientOcclusion")) {
         const nlohmann::json& ao = *aoNode;
         AmbientOcclusionSettings& settings = outEnvironment.ambientOcclusion;
-        const bool legacyEnabled = ao.value("enabled", settings.enabled);
-        if (ao.contains("mode")) {
-            settings.mode = ParseSsaoMode(ao.value("mode", nlohmann::json{}), settings.mode);
-            settings.enabled = settings.mode != SsaoMode::Off;
-        } else {
-            settings.enabled = legacyEnabled;
-            settings.mode = legacyEnabled ? settings.mode : SsaoMode::Off;
-        }
+        settings.mode = ParseSsaoMode(ao.value("mode", nlohmann::json{}), settings.mode);
+        settings.enabled = settings.mode != SsaoMode::Off;
         JSONFIELDS::Read(ao, settings, kAmbientOcclusionFields);
         settings.sampleCount = std::clamp<uint32_t>(settings.sampleCount, 8u, 32u);
         settings.blurIterations = std::clamp<uint32_t>(settings.blurIterations, 0u, 4u);
@@ -723,30 +625,13 @@ void DeserializeSceneEnvironmentJson(const nlohmann::json& node, SceneEnvironmen
         }
     }
 
-    // 旧 Phong の specularIntensity/specularPower は PBR では使わない。
-    // 既存 Scene に残るキーは他の未知キーと同様に読み飛ばす。
     outEnvironment.showLightDebug = node.value("showLightDebug", outEnvironment.showLightDebug);
     outEnvironment.showSkyDebugInfo = node.value("showSkyDebugInfo", outEnvironment.showSkyDebugInfo);
 
     if (const nlohmann::json* postNode = FindObject(node, "post")) {
         const nlohmann::json& post = *postNode;
         outEnvironment.post.enabled = post.value("enabled", outEnvironment.post.enabled);
-        outEnvironment.post.globalPostProfileId =
-            post.value("globalPostProfileId", outEnvironment.post.globalPostProfileId);
-        // paramValues が無い旧形式は userOverrides を読む
-        const nlohmann::json* values = JSONREAD::FindMember(post, "paramValues");
-        if (values == nullptr || !values->is_array()) {
-            values = JSONREAD::FindMember(post, "userOverrides");
-        }
-        const bool hasParamValues = values != nullptr && values->is_array();
-        if (hasParamValues) {
-            const size_t count = std::min<size_t>(values->size(), std::size(outEnvironment.post.paramValues));
-            for (size_t i = 0; i < count; ++i) {
-                outEnvironment.post.paramValues[i] =
-                    DeserializeFloat4((*values)[i], outEnvironment.post.paramValues[i]);
-            }
-        }
-        outEnvironment.post.valuesInitialized = post.value("valuesInitialized", hasParamValues);
+        outEnvironment.post.profileId = post.value("profile", outEnvironment.post.profileId);
     }
 }
 

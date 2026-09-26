@@ -32,6 +32,7 @@
 #include "Editor/Panels/HIKARI_SceneCreationPanel.h"
 #include "Editor/Scene/Inspector/HIKARI_SceneInspectorPanel.h"
 #include "Editor/Performance/HIKARI_PerformanceAuditPanel.h"
+#include "Editor/Preview/HIKARI_SceneViewSeriesCapture.h"
 #include "Editor/Quality/HIKARI_QualityPanel.h"
 #include "Editor/Settings/HIKARI_EditorSettingsPanel.h"
 #include "Editor/Shell/HIKARI_EditorShell.h"
@@ -83,6 +84,8 @@ public:
 private:
     RUNTIME::RuntimeDebugWindow runtimeDebugWindow_{};
     void RegisterEditorOperations();
+    // 環境・光照ベイクの操作。
+    void RegisterEnvironmentOperations();
     void RegisterSceneAuthoringSessions();
     EDITOR::EditorOperationResult ExecuteBackgroundSceneOperation(const EDITOR::EditorOperationDefinition& definition,
                                                                   const nlohmann::json& parameters);
@@ -119,11 +122,14 @@ private:
     EDITOR::EditorOperationResult CaptureAiScenePreview(const nlohmann::json& parameters);
     EDITOR::EditorOperationResult PollAiPreviewCapture(uint64_t id);
     void CancelAiSceneCapture();
+    EDITOR::SceneViewSeriesCapture sceneViewSeries_{};
     EDITOR::AiAssistantSession aiAssistantSession_{};
     EDITOR::AiAssistantPanel aiAssistantPanel_{aiAssistantSession_};
     EDITOR::EditorSettingsPanel editorSettingsPanel_{};
     EDITOR::EditorShell editorShell_{};
     bool HasForegroundDocument(EDITOR::EditorWorkspaceId workspace) const;
+    // ワークスペースの文書状態。includeSessions では AI が表示中のバックグラウンド文書を優先する。
+    nlohmann::json DescribeWorkspaceDocument(EDITOR::EditorWorkspaceId workspace, bool includeSessions) const;
     void DrawGlobalShell(DocumentSceneBase& scene);
     EDITOR::AI_ASSISTANT::AiLocalBridge aiLocalBridge_{};
     bool aiBridgeStarted_ = false;
@@ -202,13 +208,25 @@ private:
     EDITOR::EditorTransformGizmo transformGizmo_{};
     void DrawGameViewportWindow(DocumentSceneBase& scene, EDITOR::EditorPlaySession& playSession,
                                 std::string_view stableWindowId = "Game View");
-    void HandleSandTerrainBrush(DocumentSceneBase& scene, const EDITOR::SceneViewportRect& viewport,
-                                bool viewportHovered);
+    void HandleTerrainBrush(DocumentSceneBase& scene, const EDITOR::SceneViewportRect& viewport, bool viewportHovered);
     void ToggleGamePreview(DocumentSceneBase& scene, EDITOR::EditorPlaySession& playSession);
     void LaunchWindowedGamePreview(DocumentSceneBase& scene, EDITOR::EditorPlaySession& playSession);
     bool PrepareGamePreview(DocumentSceneBase& scene);
     bool SaveRenderQualityProfile(DocumentSceneBase& scene);
     void DrawWorkspaceContent(DocumentSceneBase& scene, EDITOR::EditorPlaySession& playSession);
+    void DrawSceneWorkspace(DocumentSceneBase& scene, EDITOR::EditorPlaySession& playSession);
+    void DrawCinematicsWorkspace(DocumentSceneBase& scene, EDITOR::EditorPlaySession& playSession);
+    void DrawTerrainSurfaceWorkspace(DocumentSceneBase& scene, EDITOR::EditorPlaySession& playSession);
+    // showGameView が無効な時は埋め込み入力と Game View の矩形を解放する。
+    void DrawOptionalGameViewport(DocumentSceneBase& scene, EDITOR::EditorPlaySession& playSession,
+                                  std::string_view stableWindowId);
+    void HandleResourceWorkspaceRequests(DocumentSceneBase& scene);
+    void DrawEnvironmentPanels(DocumentSceneBase& scene);
+    // 独立工作区のフレーム後処理: 場景への復帰要求・状態文言・場景切替確認。
+    void FinishWorkspaceFrame(DocumentSceneBase& scene, bool exitToScene, const std::string& statusMessage);
+    void SaveRenderQualityWhenIdle(DocumentSceneBase& scene);
+    // 履歴に載っていない未保存変更。履歴コマンドを積む直前の状態として記録する。
+    bool IsDirtyOutsideHistory(const DocumentSceneBase& scene) const;
     void DrawSceneWorkspaceWindow(DocumentSceneBase& scene);
     void DrawInspectorWindow(DocumentSceneBase& scene);
     void SelectViewportObjects(DocumentSceneBase& scene, const std::vector<SceneObjectId>& objectIds,
@@ -223,14 +241,12 @@ private:
                                                           const nlohmann::json& parameters);
     EDITOR::EditorOperationResult ExecuteSceneObjectOperation(EDITOR::SceneObjectOperation operation,
                                                               const nlohmann::json& parameters);
-    EDITOR::EditorOperationResult ExecuteAiAssetListModels();
     EDITOR::EditorOperationResult ExecuteAiCapturePreview(const nlohmann::json& parameters);
 
     EDITOR::EditorOperationResult ExecuteAiAssetImport(const nlohmann::json& parameters);
     EDITOR::EditorOperationResult ExecuteAiAssetImportStatus();
     EDITOR::EditorOperationResult ExecuteAiUndoLast();
 
-    EDITOR::EditorOperationResult ExecuteAiMaterialVerify(const nlohmann::json& parameters);
     EDITOR::EditorOperationResult ExecuteSceneSave();
     bool OpenSceneAssetFromEditor(DocumentSceneBase& scene, const AssetGuid& sceneGuid);
     void SyncDocumentHistory(DocumentSceneBase& scene);
@@ -262,14 +278,14 @@ private:
     Camera3D sceneViewEditorCameraSnapshot_{};
     DebugCameraController3D sceneViewDebugCameraSnapshot_{};
     bool historyExternalDirty_ = false;
-    bool sandTerrainStrokeActive_ = false;
-    bool sandBrushStrokeChanged_ = false;
-    SceneObjectId sandBrushTargetObjectId_{};
-    RuntimeObjectHandle sandBrushTargetRuntimeHandle_{};
-    SceneComponentId sandBrushTargetComponentId_{};
-    MATH::Vec3 sandBrushPreviousLocalHit_{};
-    bool sandBrushHasPreviousLocalHit_ = false;
-    bool sandBrushDirtyBefore_ = false;
+    bool terrainStrokeActive_ = false;
+    bool terrainBrushStrokeChanged_ = false;
+    SceneObjectId terrainBrushTargetObjectId_{};
+    RuntimeObjectHandle terrainBrushTargetRuntimeHandle_{};
+    SceneComponentId terrainBrushTargetComponentId_{};
+    MATH::Vec3 terrainBrushPreviousLocalHit_{};
+    bool terrainBrushHasPreviousLocalHit_ = false;
+    bool terrainBrushDirtyBefore_ = false;
 };
 
 } // namespace HIKARI

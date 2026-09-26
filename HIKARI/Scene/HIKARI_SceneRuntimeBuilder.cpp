@@ -31,7 +31,7 @@
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 #include "Scene/Components/HIKARI_IComponent.h"
 #include "Scene/Terrain/HIKARI_TerrainSurfaceComponent.h"
-#include "Scene/Sand/HIKARI_SandSurfaceMaterialBinder.h"
+#include "Scene/Terrain/HIKARI_TerrainSurfaceMaterialBinder.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelRenderableAssetResolver.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
@@ -261,8 +261,7 @@ void BuildModelMaterialOverrides(ModelComponent& modelComponent, const AssetRegi
         return;
     }
 
-    // imported -> explicit model-owned Material Set (legacy scenes
-    // without one retain deterministic model-default lookup)
+    // imported -> explicit model-owned Material Set, or the model default binding when none is selected
     const auto defaults = ASSETS::MODELS::ResolveModelMaterialBindings(
         assetRegistry, AssetGuid{modelComponent.GetAssetId()}, modelComponent.GetMaterialSetAssetGuid(),
         modelAsset->materials, !modelComponent.HasAuthoredMaterialSetSelection());
@@ -286,27 +285,22 @@ void BuildModelMaterialOverrides(ModelComponent& modelComponent, const AssetRegi
             continue;
         }
 
-        const ASSETS::MODELS::MaterialSlotResolution resolution =
-            ASSETS::MODELS::ResolveMaterialSlot(modelAsset->materials, slot.slotId, slot.slotIndex);
-        if (!resolution.IsValid()) {
+        const std::optional<uint32_t> materialIndex =
+            ASSETS::MODELS::FindMaterialSlotIndex(modelAsset->materials, slot.slotId);
+        if (!materialIndex.has_value()) {
             HIKARI_LOG_WARN("[MaterialRuntime] model material slot is no longer present; "
                             "keeping imported material");
             continue;
         }
-        if (resolution.source == ASSETS::MODELS::MaterialSlotResolutionSource::LegacyIndex && slot.slotId.IsValid()) {
-            HIKARI_LOG_WARN("[MaterialRuntime] stable material slot was not found; "
-                            "using legacy slot index fallback");
-        }
-
-        (void)applyMaterial(resolution.materialIndex, *descriptor, false);
+        (void)applyMaterial(*materialIndex, *descriptor, false);
     }
 }
 
-void ApplySandSurfaceMaterialOverrides(World& world, const AssetRegistry& assetRegistry) {
+void ApplyTerrainSurfaceMaterialOverrides(World& world, const AssetRegistry& assetRegistry) {
     world.ForEachObjectWith<ModelComponent, TerrainSurfaceComponent>(
         WorldComponentQueryAnchor::SmallestUniqueBucket,
         [&](GameObject&, ModelComponent& modelComponent, TerrainSurfaceComponent&) {
-            (void)SAND::EnsureSandSurfaceMaterialOverride(modelComponent, assetRegistry);
+            (void)TERRAIN::EnsureTerrainSurfaceMaterialOverride(modelComponent, assetRegistry);
         });
 }
 
@@ -645,7 +639,7 @@ bool SceneRuntimeBuilder::BuildWorldFromDocument(const SceneDocument& document, 
         }
     }
 
-    ApplySandSurfaceMaterialOverrides(world, assetRegistry);
+    ApplyTerrainSurfaceMaterialOverrides(world, assetRegistry);
 
     for (const SceneObjectData& objectData : document.objects) {
         if (!objectData.parent.has_value()) {

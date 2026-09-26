@@ -24,7 +24,6 @@ void RegisterProjectCodeOperations(EditorOperationRegistry& registry, ProjectCod
         definition.kind = kind;
         definition.requiresDocumentSession = false;
         definition.permission = permission;
-        definition.risk = kind == EditorOperationKind::Query ? EditorOperationRisk::Low : EditorOperationRisk::Medium;
         registry.Register(std::move(definition));
     };
     add(
@@ -91,7 +90,7 @@ void RegisterProjectCodeOperations(EditorOperationRegistry& registry, ProjectCod
             job.Cancel();
             return EditorOperationResult{true, "CANCELLED", "Code task cancelled.", job.Status()};
         },
-        EditorOperationKind::Session, EditorOperationPermission::ModifyProjectFiles);
+        EditorOperationKind::Session, EditorOperationPermission::ModifyEditorState);
     add(
         "project.code.apply",
         "Apply successfully compiled, reviewed source if the project and candidate are still unchanged. Module activation requires the normal human-controlled Rebuild and Reload boundary.",

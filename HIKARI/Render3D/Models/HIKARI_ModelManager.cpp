@@ -3,9 +3,6 @@
 #include <utility>
 
 #include "Assets/Models/Loading/HIKARI_ModelSourceLoader.h"
-#include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
-#include "Render3D/Models/Primitives/HIKARI_BuiltinModelFactory.h"
-#include "Render3D/Models/Runtime/HIKARI_ModelRuntimeResourceBuilder.h"
 
 namespace HIKARI {
 
@@ -28,15 +25,10 @@ void ClearModelSourceData(ModelAsset& asset) {
     asset.bounds = {};
 }
 
-bool RequiresLegacyRuntimeResources(const std::string& sourcePath) {
-    return ASSETS::SEMANTICS::ClassifyCookedAssetFormat(sourcePath) != CookedAssetFormat::HMODEL;
-}
-
 } // namespace
 
 ModelAsset* ModelManager::RegisterAsset(const std::string& name, const std::string& sourcePath) {
     if (ModelAsset* found = FindAsset(name)) {
-        RENDER3D::MODELS::ReleaseModelRuntimeResources(*found);
         ClearModelSourceData(*found);
         found->SetSourcePath(sourcePath);
         found->SetState(ModelAsset::State::Unloaded);
@@ -70,20 +62,11 @@ bool ModelManager::LoadAssetNow(const std::string& name) {
         return false;
     }
 
-    RENDER3D::MODELS::ReleaseModelRuntimeResources(*asset);
     ClearModelSourceData(*asset);
 
-    bool loaded = false;
-    if (asset->GetSourcePath() == "builtin:cube") {
-        loaded = RENDER3D::MODELS::BuildBuiltinCubeModel(*asset);
-    } else {
-        loaded = ASSETS::MODELS::LoadModelSource(*asset);
-        if (loaded) {
-            textureResolver_.ResolveAssetTexturePaths(*asset);
-        }
-        if (loaded && RequiresLegacyRuntimeResources(asset->GetSourcePath())) {
-            loaded = RENDER3D::MODELS::BuildModelRuntimeResources(*asset, textureResolver_);
-        }
+    const bool loaded = ASSETS::MODELS::LoadModelSource(*asset);
+    if (loaded) {
+        textureResolver_.ResolveAssetTexturePaths(*asset);
     }
 
     asset->SetState(loaded ? ModelAsset::State::Loaded : ModelAsset::State::Failed);
@@ -104,7 +87,6 @@ void ModelManager::UnloadAsset(const std::string& name) {
         return;
     }
 
-    RENDER3D::MODELS::ReleaseModelRuntimeResources(*asset);
     ClearModelSourceData(*asset);
     asset->SetState(ModelAsset::State::Unloaded);
 }

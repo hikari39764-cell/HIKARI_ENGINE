@@ -63,7 +63,6 @@ bool CapturePrefabDocument(const SceneDocument& scene, SceneObjectId rootId, std
         object.editorLocked = false;
         object.editorFolder.clear();
         for (auto& component : object.components) {
-            SCENE::SERIALIZATION::NormalizeLegacySceneObjectReferences(component);
             externalReferenceCount += SCENE::SERIALIZATION::RemapSceneObjectReferences(component.properties, localIds);
         }
     };

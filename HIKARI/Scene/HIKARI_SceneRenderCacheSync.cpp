@@ -23,7 +23,7 @@
 #include "Render3D/Runtime/HIKARI_SceneSurfaceFloatPool.h"
 #include "Render3D/Models/HIKARI_ModelManager.h"
 #include "Render3D/Water/HIKARI_WaterSurfaceRenderData.h"
-#include "Render3D/Sand/HIKARI_SandSurfaceRenderData.h"
+#include "Render3D/Terrain/HIKARI_TerrainSurfaceRenderData.h"
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
 #include "Scene/Components/Rendering/MaterialFx/HIKARI_MaterialFxComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
@@ -35,8 +35,8 @@
 #include "Scene/HIKARI_RuntimeObjectActivityService.h"
 #include "Scene/HIKARI_World.h"
 #include "Scene/Water/HIKARI_WaterSurfaceComponent.h"
-#include "Scene/Sand/HIKARI_SandSurfaceMaterialBinder.h"
-#include "Scene/Sand/HIKARI_SandSurfaceQueryService.h"
+#include "Scene/Terrain/HIKARI_TerrainSurfaceMaterialBinder.h"
+#include "Scene/Terrain/HIKARI_TerrainSurfaceQueryService.h"
 #include "Scene/Terrain/HIKARI_TerrainSurfaceComponent.h"
 #include "Scene/Terrain/HIKARI_TerrainSurfaceConversion.h"
 #include "Scene/Terrain/HIKARI_TerrainGrassRenderProjection.h"
@@ -99,12 +99,12 @@ RENDER3D::WATER::WaterSurfaceRenderData BuildWaterSurfaceRenderData(const WATER:
     return data;
 }
 
-RENDER3D::SAND::SandSurfaceRenderData BuildSandSurfaceRenderData(const SAND::SandSurfaceSettings& authoredSettings,
-                                                                 const ProceduralMeshComponent& procedural) {
+RENDER3D::TERRAIN::TerrainSurfaceRenderData BuildTerrainSurfaceRenderData(
+    const TERRAIN::TerrainSurfaceSettings& authoredSettings, const ProceduralMeshComponent& procedural) {
     const ProceduralMeshSettings mesh = SanitizeProceduralMeshSettings(procedural.GetSettings());
-    const SAND::SandSurfaceSettings settings = SAND::SanitizeSandSurfaceSettings(authoredSettings);
+    const TERRAIN::TerrainSurfaceSettings settings = TERRAIN::SanitizeTerrainSurfaceSettings(authoredSettings);
 
-    RENDER3D::SAND::SandSurfaceRenderData data{};
+    RENDER3D::TERRAIN::TerrainSurfaceRenderData data{};
     data.gridResolution = settings.gridResolution;
     data.extents = {mesh.width, mesh.depth};
     data.heightScale = settings.heightScale;
@@ -218,7 +218,8 @@ private:
 RENDER3D::RUNTIME::SceneRenderObjectDesc BuildSceneRenderObjectDesc(
     const GameObject& object, ModelComponent& model, RENDER3D::RUNTIME::RenderModelCache& renderModelCache,
     ClusteredGeometryPathResolver& clusteredGeometryPaths, const PresentationTransformService* presentationTransforms,
-    const ANIMATION::AnimationPoseService* animationPoses, const SAND::SandSurfaceQueryService* sandSurfaceQuery,
+    const ANIMATION::AnimationPoseService* animationPoses,
+    const TERRAIN::TerrainSurfaceQueryService* terrainSurfaceQuery,
     const RuntimeObjectActivityService* runtimeActivityService, TerrainProjectionState& terrainProjection,
     SceneRenderCacheSync::DebugStats& syncStats, RENDER3D::RenderViewPurpose purpose) {
     RENDER3D::RUNTIME::SceneRenderObjectDesc desc{};
@@ -282,10 +283,11 @@ RENDER3D::RUNTIME::SceneRenderObjectDesc BuildSceneRenderObjectDesc(
                 const float chunkSize = terrainSurface->GetChunkWorldSize();
                 const uint32_t cells = terrainSurface->GetChunkCells();
 
-                desc.sandSurface = true;
-                desc.sandSurfaceData = BuildSandSurfaceRenderData(TERRAIN::ToSandSurfaceSettings(surface), *procedural);
+                desc.terrainSurface = true;
+                desc.terrainSurfaceData =
+                    BuildTerrainSurfaceRenderData(TERRAIN::ToTerrainSurfaceSettings(surface), *procedural);
                 TerrainProjectionOutput projectionOutput{};
-                BakeTerrainChunksForRender(surface, *terrainSurface, object.GetRuntimeHandle(), sandSurfaceQuery,
+                BakeTerrainChunksForRender(surface, *terrainSurface, object.GetRuntimeHandle(), terrainSurfaceQuery,
                                            clusteredGeometryPaths.GetProjectRoot(), chunkSize, cells, terrainProjection,
                                            syncStats, projectionOutput, desc);
                 const ProceduralMeshSettings& terrainSettings = projectionOutput.meshSettings;
@@ -396,7 +398,8 @@ void SceneRenderCacheSync::State::Synchronize(World& world, RENDER3D::RUNTIME::R
     ClusteredGeometryPathResolver clusteredGeometryPaths(assetRegistry, std::move(projectRoot));
     const PresentationTransformService* presentationTransforms = world.Services().Find<PresentationTransformService>();
     const ANIMATION::AnimationPoseService* animationPoses = world.Services().Find<ANIMATION::AnimationPoseService>();
-    const SAND::SandSurfaceQueryService* sandSurfaceQuery = world.Services().Find<SAND::SandSurfaceQueryService>();
+    const TERRAIN::TerrainSurfaceQueryService* terrainSurfaceQuery =
+        world.Services().Find<TERRAIN::TerrainSurfaceQueryService>();
     const RuntimeObjectActivityService* runtimeActivityService = world.Services().Find<RuntimeObjectActivityService>();
 
     PresentationModelService* presentationModels = world.Services().Find<PresentationModelService>();
@@ -422,12 +425,12 @@ void SceneRenderCacheSync::State::Synchronize(World& world, RENDER3D::RUNTIME::R
         TerrainProjectionState& terrainProjection = cacheTerrainProjections[objectId.value];
         sceneRenderCache.Upsert(BuildSceneRenderObjectDesc(
             object, model, renderModelCache, clusteredGeometryPaths, presentationTransforms, animationPoses,
-            sandSurfaceQuery, runtimeActivityService, terrainProjection, debugStats, purpose));
+            terrainSurfaceQuery, runtimeActivityService, terrainProjection, debugStats, purpose));
     };
     const auto syncObject = [&](GameObject& object, ModelComponent& model) {
         // 全量・差分のどちらも、再構築した地形へのマテリアルを保証する。
         if (assetRegistry != nullptr && object.GetComponent<TerrainSurfaceComponent>() != nullptr) {
-            (void)SAND::EnsureSandSurfaceMaterialOverride(model, *assetRegistry);
+            (void)TERRAIN::EnsureTerrainSurfaceMaterialOverride(model, *assetRegistry);
         }
         upsertModel(object, model);
         if (const TerrainSurfaceComponent* terrain = object.GetComponent<TerrainSurfaceComponent>()) {

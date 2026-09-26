@@ -1,4 +1,5 @@
 #include "Scene/Terrain/HIKARI_TerrainGrass.h"
+#include "Scene/Terrain/HIKARI_TerrainSurface.h"
 
 #include <algorithm>
 #include <cmath>
@@ -106,19 +107,11 @@ bool IsGrassPreset(std::string_view presetId) {
     return preset.has_value() && preset->layerMaterial.kind == SurfaceLayerMaterialKind::Grass;
 }
 
-std::string_view EffectiveLayerPresetId(const std::vector<std::string>& layerPresetIds, uint32_t layer,
-                                        std::string_view basePresetId) noexcept {
-    if (layer < layerPresetIds.size() && !layerPresetIds[layer].empty()) {
-        return layerPresetIds[layer];
-    }
-    return layer == 0u ? basePresetId : std::string_view{};
-}
-
 uint32_t FindGrassLayer(const std::vector<std::string>& layerPresetIds, std::string_view basePresetId) {
     const uint32_t explicitCount =
         static_cast<uint32_t>((std::min)(layerPresetIds.size(), static_cast<std::size_t>(kTerrainChunkMaxLayers)));
     for (uint32_t layer = 0u; layer < explicitCount; ++layer) {
-        if (IsGrassPreset(EffectiveLayerPresetId(layerPresetIds, layer, basePresetId))) {
+        if (IsGrassPreset(ResolveTerrainLayerPresetId(layerPresetIds, basePresetId, layer))) {
             return layer;
         }
     }

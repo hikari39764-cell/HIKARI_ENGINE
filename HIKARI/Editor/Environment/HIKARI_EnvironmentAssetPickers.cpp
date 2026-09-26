@@ -12,7 +12,6 @@
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Scene/HIKARI_RuntimeSceneContext.h"
 #include "Scene/HIKARI_SceneTransitionBus.h"
-#include "Vfx/Post/HIKARI_PostProfile.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 
 #if defined(HIKARI_WITH_EDITOR)

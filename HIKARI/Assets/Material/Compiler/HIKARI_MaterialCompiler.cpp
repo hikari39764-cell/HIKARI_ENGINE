@@ -76,11 +76,11 @@ void AddNodeCapabilities(const MaterialGraphData& graph, uint64_t& capabilities)
         if (!reachable.contains(node.id)) {
             continue;
         }
-        MaterialNodeKind legacyKind{};
-        if (!TryGetLegacyMaterialNodeKind(node.kind, legacyKind)) {
+        MaterialNodeKind builtinKind{};
+        if (!TryGetBuiltinMaterialNodeKind(node.kind, builtinKind)) {
             continue;
         }
-        switch (legacyKind) {
+        switch (builtinKind) {
         case MaterialNodeKind::PbrSurface: AddCapability(capabilities, MaterialProgramCapability::StandardPbr); break;
         case MaterialNodeKind::RampDiffuse: AddCapability(capabilities, MaterialProgramCapability::RampDiffuse); break;
         case MaterialNodeKind::MultiRampDiffuse:

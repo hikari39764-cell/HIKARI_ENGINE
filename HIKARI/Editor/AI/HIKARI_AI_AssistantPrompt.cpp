@@ -11,7 +11,10 @@ std::string AiAssistantSession::BuildSystemPrompt() const {
         "简述当前目标、阶段变化和判断依据；操作明细由界面呈现。通过 task_finish 提交结论、需要用户补充的问题或真实阻碍，勿以承诺开始代替执行。\n"
         "图片附件是视觉输入，路径和绘制数量不能证明看过效果。按需检查结构和关键时刻的画面，保留实际观察。context.image 可重看原图，无需重新截图。"
         "预览故障与作品质量分开处理：恢复预览或继续不依赖画面判断的工作，不能因截图失败删除内容；未完成的视觉验证明确说明。\n"
-        "用户可以同时编辑。遇到版本冲突重新核对相关状态，保留用户修改。引擎负责等待短暂的交互占用、预算暂停与任务恢复。\n";
+        "用户可以同时编辑。遇到版本冲突重新核对相关状态，保留用户修改。引擎负责等待短暂的交互占用、预算暂停与任务恢复。\n"
+        "修改项目文件或启动外部进程的操作会先等用户批准；被拒绝时不要重复提交，说明理由并等待指示。\n"
+        "上下文里的项目指南由用户编写，制作时遵守其中的画风、命名与资产偏好；用户要求记录新约定时用 project.guide.write。"
+        "有参考图时用 context.compare_images 与截图并排对比，写出具体差异再修改。\n";
     for (const auto& capability : Capabilities()) {
         if (capability.status != "stable" || !capability.semantics.value("entryPoint", false))
             continue;

@@ -24,7 +24,7 @@
 #include "Vfx/Post/HIKARI_PostChain.h"
 #include "Vfx/Post/HIKARI_PostCommon.h"
 #include "Vfx/Post/HIKARI_PostProcessingTypes.h"
-#include "Vfx/Post/HIKARI_PostProfile.h"
+#include "Assets/Post/HIKARI_PostAsset.h"
 #include "Vfx/Transition/HIKARI_TransitionProfile.h"
 
 namespace HIKARI::POST {
@@ -47,10 +47,11 @@ public:
 
     void ClearEffects();
     void AddEffect(PostEffect* effect);
-    bool SetGlobalProfile(const std::string& profileId, const DirectX::XMFLOAT4 (&values)[16]);
-    bool SubmitProfileParameter(std::string_view profileId, uint32_t index, uint32_t channelMask,
-                                const DirectX::XMFLOAT4& value, int32_t priority, uint64_t sourceId);
-    void ClearGlobalProfile();
+    bool SetGlobalEffect(std::string_view effectId, std::shared_ptr<const PostEffectDefinition> effect,
+                         const PostParameterBlock& values);
+    bool SubmitEffectParameter(std::string_view effectId, uint32_t index, uint32_t channelMask,
+                               const DirectX::XMFLOAT4& value, int32_t priority, uint64_t sourceId);
+    void ClearGlobalEffect();
     void GetRadialScreenWarp(float& curvature, float& strength) const noexcept;
     void SetBloomSettings(const BloomSettings& settings);
     void SetToneMappingSettings(const ToneMappingSettings& settings);
@@ -95,14 +96,14 @@ public:
 
 private:
     CommonParams ResolveGlobalFrameParams() const noexcept;
-    struct ProfileChannelOverride {
+    struct EffectChannelOverride {
         float value = 0.f;
         int32_t priority = 0;
         uint64_t sourceId = 0u;
     };
-    std::array<std::array<ProfileChannelOverride, 4>, 16> profileOverrides_{};
-    uint64_t profileOverrideFrame_ = (std::numeric_limits<uint64_t>::max)();
-    std::string profileOverrideId_;
+    std::array<std::array<EffectChannelOverride, 4>, kPostParameterSlotCount> effectOverrides_{};
+    uint64_t effectOverrideFrame_ = (std::numeric_limits<uint64_t>::max)();
+    std::string effectOverrideId_;
     bool EnsureToneMappingEffect();
     bool EnsureFxaaEffect();
     bool EnsureBloomEffects(uint32_t blurPairCount);
@@ -134,8 +135,8 @@ private:
     CommonParams commonParams_{};
     float elapsedTime_ = 0.0f;
 
-    std::string activeGlobalProfileId_{};
-    PostProfile activeGlobalProfile_{};
+    std::string activeGlobalEffectId_{};
+    std::shared_ptr<const PostEffectDefinition> activeGlobalEffect_{};
     std::vector<std::unique_ptr<PostEffect>> activeGlobalEffects_{};
     std::vector<std::unique_ptr<PostEffect>> activeBloomEffects_{};
     BloomSettings bloomSettings_{};

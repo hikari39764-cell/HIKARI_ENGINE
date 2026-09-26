@@ -48,13 +48,16 @@ void BindShadowGpuDrivenFrameResources(ShadowRendererState& state, const GFX::Co
         cmd->SetGraphicsRootShaderResourceView(PIPELINE::kShadowStaticRootParamDeformationPalettes,
                                                frame.meshJointPaletteAddress);
     }
-    const D3D12_GPU_VIRTUAL_ADDRESS sandDataAddress = state.sandSurfaceGpuFrameBuffer.GetRecordGpuVirtualAddress();
-    if (sandDataAddress != 0u) {
-        cmd->SetGraphicsRootShaderResourceView(PIPELINE::kShadowStaticRootParamSandSurfaceData, sandDataAddress);
+    const D3D12_GPU_VIRTUAL_ADDRESS terrainDataAddress =
+        state.terrainSurfaceGpuFrameBuffer.GetRecordGpuVirtualAddress();
+    if (terrainDataAddress != 0u) {
+        cmd->SetGraphicsRootShaderResourceView(PIPELINE::kShadowStaticRootParamTerrainSurfaceData, terrainDataAddress);
     }
-    const D3D12_GPU_VIRTUAL_ADDRESS sandHeightAddress = state.sandSurfaceGpuFrameBuffer.GetHeightGpuVirtualAddress();
-    if (sandHeightAddress != 0u) {
-        cmd->SetGraphicsRootShaderResourceView(PIPELINE::kShadowStaticRootParamSandSurfaceHeights, sandHeightAddress);
+    const D3D12_GPU_VIRTUAL_ADDRESS terrainHeightAddress =
+        state.terrainSurfaceGpuFrameBuffer.GetHeightGpuVirtualAddress();
+    if (terrainHeightAddress != 0u) {
+        cmd->SetGraphicsRootShaderResourceView(PIPELINE::kShadowStaticRootParamTerrainSurfaceHeights,
+                                               terrainHeightAddress);
     }
     cmd->SetGraphicsRoot32BitConstant(PIPELINE::kShadowStaticRootParamMaterialIndex, 0u, 0);
 }

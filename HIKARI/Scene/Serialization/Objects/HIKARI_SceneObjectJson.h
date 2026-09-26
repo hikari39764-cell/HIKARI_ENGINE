@@ -12,7 +12,6 @@ struct SceneComponentData;
 namespace SCENE::SERIALIZATION {
 
 enum class SceneObjectJsonScope { SceneDocument, PrefabRoot };
-void NormalizeLegacySceneObjectReferences(SceneComponentData& component);
 
 void SerializeSceneObjectJson(const SceneObjectData& object, nlohmann::json& out, SceneObjectJsonScope scope);
 
@@ -21,23 +20,17 @@ bool DeserializeSceneObjectJson(const nlohmann::json& node, SceneObjectData& out
 // Only explicitly tagged references are remapped; unrelated numeric
 // gameplay properties must never be interpreted as object identities.
 inline bool ReadSceneObjectReference(const nlohmann::json& value, uint64_t& outId) noexcept {
-    const nlohmann::json* id = &value;
-    if (value.is_object()) {
-        const auto kind = value.find("$hikariRef");
-        const auto member = value.find("id");
-        if (kind == value.end() || !kind->is_string() || *kind != "SceneObject" || member == value.end())
-            return false;
-        id = &*member;
+    if (!value.is_object()) {
+        return false;
     }
-    if (id->is_number_unsigned()) {
-        outId = id->get<uint64_t>();
-        return true;
+    const auto kind = value.find("$hikariRef");
+    const auto id = value.find("id");
+    if (kind == value.end() || !kind->is_string() || *kind != "SceneObject" || id == value.end() ||
+        !id->is_number_unsigned()) {
+        return false;
     }
-    if (id->is_number_integer() && id->get<int64_t>() >= 0) {
-        outId = static_cast<uint64_t>(id->get<int64_t>());
-        return true;
-    }
-    return false;
+    outId = id->get<uint64_t>();
+    return true;
 }
 
 inline nlohmann::json WriteSceneObjectReference(uint64_t id) { return {{"$hikariRef", "SceneObject"}, {"id", id}}; }

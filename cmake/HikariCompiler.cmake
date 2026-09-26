@@ -73,8 +73,10 @@ function(hikari_configure_engine_target target_name)
                 /permissive-
                 /sdl
                 /MP
+                # 全構成で警告をエラーにする。C4324 は alignas による意図したパディングの通知なので除外する。
+                /WX
+                /wd4324
                 "$<$<CONFIG:Debug>:/W3>"
-                "$<$<CONFIG:Debug>:/WX>"
                 "$<$<OR:$<CONFIG:EditorRelease>,$<CONFIG:Shipping>>:/W4>"
                 "$<$<OR:$<CONFIG:EditorRelease>,$<CONFIG:Shipping>>:/O2>"
                 "$<$<OR:$<CONFIG:EditorRelease>,$<CONFIG:Shipping>>:/Oi>"

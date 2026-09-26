@@ -2,7 +2,6 @@
 #include <string>
 #include <string_view>
 #include <vector>
-#include <functional>
 #include <json.hpp>
 namespace HIKARI::EDITOR {
 namespace AI_ASSISTANT {
@@ -41,8 +40,7 @@ struct AiRequestResult {
 // the workspace operation registry.
 nlohmann::json DescribeAiCapability(const AiCapability& capability, bool parameters = true);
 const std::vector<AiCapability>& BuiltInCapabilities();
-AiRequestResult SubmitAiRequest(std::string_view requestJson, const std::vector<AiCapability>& capabilities,
-                                const std::function<bool()>& shouldCancel = {});
+AiRequestResult SubmitAiRequest(std::string_view requestJson, const std::vector<AiCapability>& capabilities);
 
 } // namespace AI_ASSISTANT
 
