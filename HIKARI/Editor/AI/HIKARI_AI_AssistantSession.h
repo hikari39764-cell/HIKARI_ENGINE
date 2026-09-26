@@ -3,6 +3,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <chrono>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -20,10 +21,12 @@
 #include "Editor/AI/HIKARI_AI_ConversationStore.h"
 namespace HIKARI::EDITOR {
 class AiAssistantPanel;
+enum class EditorOperationPermission : uint8_t;
 class AiAssistantSession {
 public:
     using AiSceneActionCallback = std::function<AI_ASSISTANT::AiRequestResult(std::string_view)>;
     using AiCapabilityProvider = std::function<std::vector<AI_ASSISTANT::AiCapability>()>;
+    using AiOperationPermissionResolver = std::function<std::optional<EditorOperationPermission>(std::string_view)>;
 
     explicit AiAssistantSession(AI_ASSISTANT::AiChatCompletion completion = AI_ASSISTANT::RunChatCompletionsStreaming);
     ~AiAssistantSession();
@@ -40,6 +43,8 @@ public:
     // Provider is evaluated on the submitting editor thread, never by the model worker.
     void SetContextProvider(std::function<std::string()> provider);
     void SetCapabilityProvider(AiCapabilityProvider callback, std::function<uint64_t()> revision = {});
+    // Resolved on the editor thread before queued operations; a missing resolver fails closed.
+    void SetOperationPermissionResolver(AiOperationPermissionResolver resolver);
     void RefreshCapabilities(bool onlyIfChanged = false);
     std::vector<AI_ASSISTANT::AiChatMessage> SnapshotMessages() const;
     struct TaskActivity {
@@ -84,7 +89,6 @@ private:
     void RunConversation(bool resume);
     bool StartConversation(std::string text, std::vector<AI_ASSISTANT::AiImageAttachment> images, bool resume);
     AI_ASSISTANT::AiRequestResult ExecuteRequestNow(std::string_view json);
-    std::string ApprovalPermission(std::string_view action) const;
     void AppendMessage(const AI_ASSISTANT::AiChatMessage& message);
     void FlushConversation();
     void UpdateConversationStorage();
@@ -112,6 +116,7 @@ private:
     std::string bridgeStatus_{};
     std::string bridgeSessionToken_{};
     AiSceneActionCallback sceneActionCallback_{};
+    AiOperationPermissionResolver operationPermissionResolver_{};
     std::string contextSnapshot_{};
     std::function<std::string()> contextProvider_;
     std::string taskContext_{};

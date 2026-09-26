@@ -1,9 +1,11 @@
 #pragma once
 
 #include <functional>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
+#include "Core/Text/HIKARI_EnumNames.h"
 #include <json.hpp>
 
 namespace HIKARI::EDITOR::AI_ASSISTANT {
@@ -24,6 +26,10 @@ struct AiChatMessage {
 inline constexpr int kDefaultAiToolRounds = 128;
 inline constexpr int kMaxAiToolRounds = 4096;
 struct AiToolReply;
+struct AiRequestContextState;
+enum class AiReasoningContentPolicy : uint8_t { Preserve, Omit };
+inline constexpr TEXT::EnumName<AiReasoningContentPolicy> kAiReasoningContentPolicyNames[]{
+    {AiReasoningContentPolicy::Preserve, "preserve"}, {AiReasoningContentPolicy::Omit, "omit"}};
 struct AiChatConfig {
     std::string apiKey;
     std::string baseUrl;
@@ -34,6 +40,9 @@ struct AiChatConfig {
     int maxTaskTokens = 0;        // Reported input + output per run; zero disables the soft limit.
     int maxNoProgressRounds = 12; // Zero disables automatic pausing; diagnostics still appear.
     int toolHistoryKiB = 24;
+    AiRequestContextState* requestContext = nullptr; // Borrowed by one active conversation only.
+    size_t requestContextPrefixMessages = 0;         // Dynamic system/context prefix before task messages.
+    AiReasoningContentPolicy reasoningContentPolicy = AiReasoningContentPolicy::Preserve;
     bool requestUsage = true;
     bool editorTools = false;
     std::function<bool()> shouldCancel{};

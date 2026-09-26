@@ -46,24 +46,43 @@ int MatchScore(const AiCapability& capability, const std::string& keyword) {
     return score;
 }
 } // namespace
-nlohmann::json DescribeAiCapability(const AiCapability& capability, bool parameters) {
+nlohmann::json DescribeAiCapability(const AiCapability& capability, bool parameters, bool forModel) {
     auto item = capability.semantics;
+    if (forModel) {
+        item.erase("searchTerms");
+        item.erase("parameters");
+        item.erase("status");
+        const auto permission = item.find("permission");
+        if (permission != item.end() && permission->is_string() && permission->get<std::string>() == "unspecified")
+            item.erase("permission");
+        for (const std::string_view flag : {"requiresDocumentSession", "requiresCleanDocument", "entryPoint"}) {
+            const auto value = item.find(std::string(flag));
+            if (value != item.end() && value->is_boolean() && !value->get<bool>())
+                item.erase(value);
+        }
+    }
     item["id"] = capability.id;
-    item["status"] = capability.status;
+    if (!forModel || capability.status != "stable")
+        item["status"] = capability.status;
     item["summary"] = capability.summary;
     item["workspace"] = capability.workspace;
     if (parameters) {
         item["parameters"] = nlohmann::json::array();
         for (const auto& p : capability.parameters) {
-            auto field = nlohmann::json{
-                {"name", p.name}, {"type", p.type}, {"required", p.required}, {"description", p.description}};
+            nlohmann::json field{{"name", p.name}, {"type", p.type}};
+            if (!forModel || p.required)
+                field["required"] = p.required;
+            if (!forModel || !p.description.empty())
+                field["description"] = p.description;
             if (!p.schema.empty())
                 field["schema"] = p.schema;
             item["parameters"].push_back(std::move(field));
         }
-    }
+    } else
+        item.erase("parameters");
     return item;
 }
+
 const std::vector<AiCapability>& BuiltInCapabilities() {
     static const std::vector<AiCapability> capabilities = [] {
         std::vector<AiCapability> entries{
@@ -140,7 +159,7 @@ AiRequestResult SubmitAiRequest(std::string_view requestJson, const std::vector<
         });
         result.data["total"] = matches.size();
         for (size_t i = static_cast<size_t>(offset); i < matches.size() && i < static_cast<size_t>(offset) + limit; ++i)
-            result.data["capabilities"].push_back(DescribeAiCapability(*matches[i].second, includeParameters));
+            result.data["capabilities"].push_back(DescribeAiCapability(*matches[i].second, includeParameters, true));
         if (static_cast<size_t>(offset) + limit < matches.size())
             result.data["nextOffset"] = offset + limit;
         return result;
@@ -177,7 +196,7 @@ AiRequestResult SubmitAiRequest(std::string_view requestJson, const std::vector<
         for (const auto& capability : capabilities)
             if (capability.id == topic) {
                 AiRequestResult result{true, "OK", capability.summary};
-                result.data = DescribeAiCapability(capability, true);
+                result.data = DescribeAiCapability(capability, true, true);
                 result.data["operationKind"] = "query";
                 result.data["knowledgeScope"] = "capability";
                 result.data["catalogVersion"] = CatalogVersion(capabilities);

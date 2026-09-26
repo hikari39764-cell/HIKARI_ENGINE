@@ -13,6 +13,7 @@
 #include "Editor/Workspaces/Vfx/HIKARI_VfxOperationSections.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxOperationSerialization.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxOperationSupport.h"
+#include "Editor/Workspaces/Vfx/HIKARI_VfxSerializedTarget.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 
 namespace HIKARI::EDITOR {
@@ -293,17 +294,42 @@ void RegisterTargetOperations(EditorOperationRegistry& registry, VfxWorkspaceCon
                     return result;
                 }
                 const std::string targetId = parameters.at("targetId").get<std::string>();
+                const std::string property = parameters.at("property").get<std::string>();
+                const nlohmann::json& requestedValue = parameters.at("value");
+                const uint64_t revisionBefore = controller.GetDocument().GetRevision();
                 std::string message{};
-                if (!controller.SetProperty(targetId, parameters.at("property").get<std::string>(),
-                                            parameters.at("value"), message, 0u, database)) {
+                if (!controller.SetProperty(targetId, property, requestedValue, message, 0u, database)) {
                     return OperationFailure(
                         message.starts_with("DOMAIN_MISMATCH:") ? "DOMAIN_MISMATCH" : "VFX_PROPERTY_REJECTED", message);
                 }
-                nlohmann::json description{};
-                (void)DescribeVfxTarget(controller, targetId, description);
-                description["workspace"] = "vfx";
-                description["vfxAssetGuid"] = controller.GetDocument().GetAssetGuid().value;
-                return OperationOk(message, std::move(description));
+                const auto& document = controller.GetDocument();
+                nlohmann::json data{{"workspace", "vfx"},
+                                    {"targetId", targetId},
+                                    {"property", property},
+                                    {"vfxAssetGuid", document.GetAssetGuid().value},
+                                    {"documentChanged", document.GetRevision() != revisionBefore},
+                                    {"dirty", document.IsDirty()},
+                                    {"revision", document.GetRevision()}};
+                nlohmann::json serialized{};
+                std::string readMessage{};
+                const nlohmann::json* appliedValue = nullptr;
+                const VFX::VfxAssetData* asset = controller.GetAsset();
+                if (asset != nullptr && BuildVfxSerializedDocument(*asset, serialized, readMessage)) {
+                    const nlohmann::json* target = FindVfxSerializedTarget(serialized, targetId);
+                    if (target != nullptr)
+                        appliedValue = FindVfxSerializedProperty(*target, property);
+                }
+                if (appliedValue != nullptr) {
+                    data["appliedValue"] = *appliedValue;
+                    data["adjusted"] = nlohmann::json::object();
+                    if (!EquivalentOperationValue(requestedValue, *appliedValue))
+                        data["adjusted"][property] = *appliedValue;
+                } else {
+                    data["stateNeedsRefresh"] = true;
+                    if (!readMessage.empty())
+                        data["stateRefreshMessage"] = std::move(readMessage);
+                }
+                return OperationOk(message, std::move(data));
             },
         },
         EditorOperationKind::Mutation);

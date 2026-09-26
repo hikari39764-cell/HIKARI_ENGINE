@@ -41,6 +41,12 @@ enum class EditorOperationKind : uint8_t {
     Session,
 };
 
+inline constexpr TEXT::EnumName<EditorOperationKind> kEditorOperationKindNames[] = {
+    {EditorOperationKind::Query, "query"},
+    {EditorOperationKind::Mutation, "mutation"},
+    {EditorOperationKind::Session, "session"},
+};
+
 enum class EditorOperationSessionDispatch : uint8_t { Operation, Preview };
 
 enum class EditorOperationExposureMask : uint8_t {
@@ -118,6 +124,9 @@ struct EditorOperationResult {
     std::vector<std::string> details{};
     std::vector<std::string> hints{};
 };
+
+// Ignores only float storage roundoff; integer values and all structure remain exact.
+bool EquivalentOperationValue(const nlohmann::json& requested, const nlohmann::json& applied);
 
 struct EditorOperationDefinition {
     std::string id{};

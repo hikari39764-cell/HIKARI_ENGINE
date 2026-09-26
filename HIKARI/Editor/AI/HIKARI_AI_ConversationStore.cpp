@@ -51,6 +51,14 @@ std::vector<AiChatMessage> DecodeMessages(const nlohmann::json& items) {
     }
     return result;
 }
+size_t ReadBoundary(const nlohmann::json& object, const char* key, size_t maximum) {
+    const auto it = object.find(key);
+    if (it == object.end() || !(it->is_number_unsigned() || it->is_number_integer()))
+        return 0;
+    if (it->is_number_integer() && it->get<int64_t>() < 0)
+        return 0;
+    return (std::min)(it->get<size_t>(), maximum);
+}
 } // namespace
 std::vector<AiConversationSummary> ListAiConversations(const std::filesystem::path& folder) {
     std::vector<std::pair<std::filesystem::file_time_type, AiConversationSummary>> ordered;
@@ -89,6 +97,10 @@ bool LoadAiConversation(const std::filesystem::path& folder, const std::string& 
             checkpoint.context = saved.value("context", std::string{});
             if (saved.contains("messages"))
                 checkpoint.messages = DecodeMessages(saved["messages"]);
+            checkpoint.requestContext.compactedThroughMessage =
+                ReadBoundary(saved, "compactedThroughMessage", checkpoint.messages.size());
+            checkpoint.requestContext.retiredImageThroughMessage =
+                ReadBoundary(saved, "retiredImageThroughMessage", checkpoint.messages.size());
             checkpoint.active = checkpoint.active && !checkpoint.messages.empty();
         }
         if (task)
@@ -119,7 +131,9 @@ bool SaveAiConversation(const std::filesystem::path& folder, const std::string& 
             data["task"] = {{"active", true},
                             {"prompt", task->prompt},
                             {"context", task->context},
-                            {"messages", EncodeMessages(task->messages)}};
+                            {"messages", EncodeMessages(task->messages)},
+                            {"compactedThroughMessage", task->requestContext.compactedThroughMessage},
+                            {"retiredImageThroughMessage", task->requestContext.retiredImageThroughMessage}};
         const auto bytes = data.dump();
         if (bytes.size() > kMaximumConversationBytes) {
             error = "Conversation exceeds the storage limit; the previous checkpoint is retained.";

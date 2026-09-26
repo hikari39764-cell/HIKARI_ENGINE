@@ -1,6 +1,7 @@
 #pragma once
 #include <filesystem>
 #include "HIKARI_AI_ChatClient.h"
+#include "HIKARI_AI_RequestContext.h"
 namespace HIKARI::EDITOR::AI_ASSISTANT {
 struct AiConversationSummary {
     std::string id, title;
@@ -10,6 +11,7 @@ struct AiTaskCheckpoint {
     bool active = false;
     std::string prompt, context;
     std::vector<AiChatMessage> messages;
+    AiRequestContextState requestContext;
 };
 std::vector<AiConversationSummary> ListAiConversations(const std::filesystem::path& folder);
 bool LoadAiConversation(const std::filesystem::path& folder, const std::string& id,

@@ -51,10 +51,21 @@ void CollectAdjusted(const nlohmann::json& requested, const nlohmann::json& stor
         }
         if (it->is_object() && found->is_object()) {
             CollectAdjusted(*it, *found, key, outAdjusted);
-        } else if (*it != *found) {
+        } else if (!EDITOR::EquivalentOperationValue(*it, *found)) {
             outAdjusted[key] = *found;
         }
     }
+}
+
+nlohmann::json ProjectAppliedPatch(const nlohmann::json& patch, const nlohmann::json& stored) {
+    nlohmann::json applied = nlohmann::json::object();
+    for (auto it = patch.begin(); it != patch.end(); ++it) {
+        const auto found = stored.find(it.key());
+        if (found == stored.end())
+            continue;
+        applied[it.key()] = it->is_object() && found->is_object() ? ProjectAppliedPatch(*it, *found) : *found;
+    }
+    return applied;
 }
 } // namespace
 
@@ -124,12 +135,20 @@ void DocumentSceneEditorController::RegisterEnvironmentOperations() {
                  return EDITOR::OperationFailure("INVALID_VALUE", error.what());
              }
              const nlohmann::json stored = SerializeEnvironment(edited);
-             if (stored == current)
-                 return EDITOR::OperationOk("Environment unchanged.", {{"changed", false}});
              nlohmann::json adjusted = nlohmann::json::object();
              CollectAdjusted(patch, stored, {}, adjusted);
-             commitEnvironment(scene, std::move(edited), "AI Edit Environment");
-             return EDITOR::OperationOk("Environment updated.", {{"changed", true}, {"adjusted", std::move(adjusted)}});
+             const uint64_t revisionBefore = scene.GetSceneDocumentRevision();
+             if (stored != current)
+                 commitEnvironment(scene, std::move(edited), "AI Edit Environment");
+             const uint64_t revisionAfter = scene.GetSceneDocumentRevision();
+             const bool dirty = context_.sceneDirty || scene.HasUnsavedSceneChanges();
+             nlohmann::json data{{"appliedPatch", ProjectAppliedPatch(patch, stored)},
+                                 {"adjusted", std::move(adjusted)},
+                                 {"documentChanged", revisionAfter != revisionBefore},
+                                 {"dirty", dirty},
+                                 {"revision", revisionAfter}};
+             return EDITOR::OperationOk(
+                 revisionAfter != revisionBefore ? "Environment updated." : "Environment unchanged.", std::move(data));
          }},
         EditorOperationKind::Mutation);
 
@@ -146,10 +165,21 @@ void DocumentSceneEditorController::RegisterEnvironmentOperations() {
              for (int index = 0; index < static_cast<int>(std::size(presets)); ++index) {
                  if (id != presets[index].id)
                      continue;
-                 SceneEnvironment edited = aiOperationScene_->GetSceneDocument().environment;
+                 auto& scene = *aiOperationScene_;
+                 const nlohmann::json before = SerializeEnvironment(scene.GetSceneDocument().environment);
+                 const uint64_t revisionBefore = scene.GetSceneDocumentRevision();
+                 SceneEnvironment edited = scene.GetSceneDocument().environment;
                  EDITOR::ENVIRONMENT_PANEL::ApplyEnvironmentPreset(edited, index);
-                 commitEnvironment(*aiOperationScene_, std::move(edited), "AI Apply Environment Preset");
-                 return EDITOR::OperationOk("Environment preset applied: " + id);
+                 const nlohmann::json applied = SerializeEnvironment(edited);
+                 if (applied != before)
+                     commitEnvironment(scene, std::move(edited), "AI Apply Environment Preset");
+                 const uint64_t revisionAfter = scene.GetSceneDocumentRevision();
+                 nlohmann::json data{{"preset", id},
+                                     {"appliedChanges", nlohmann::json::diff(before, applied)},
+                                     {"documentChanged", revisionAfter != revisionBefore},
+                                     {"dirty", context_.sceneDirty || scene.HasUnsavedSceneChanges()},
+                                     {"revision", revisionAfter}};
+                 return EDITOR::OperationOk("Environment preset applied: " + id, std::move(data));
              }
              return EDITOR::OperationFailure("UNKNOWN_PRESET", "Unknown environment preset: " + id);
          }},
@@ -174,7 +204,7 @@ void DocumentSceneEditorController::RegisterEnvironmentOperations() {
                 return EDITOR::OperationFailure("BAKE_REJECTED",
                                                 "The scene has nothing to bake or rejected the request.");
             return EDITOR::OperationOk("Lighting bake started; query lighting.bake.status for progress.",
-                                       {{"statusAction", "lighting.bake.status"}});
+                                       {{"statusAction", "lighting.bake.status"}, {"pending", true}});
         }};
     bake.permission = EDITOR::EditorOperationPermission::ModifyProjectFiles;
     operationRegistry_.Register(std::move(bake), EditorOperationKind::Session);
@@ -188,7 +218,8 @@ void DocumentSceneEditorController::RegisterEnvironmentOperations() {
                                          return EDITOR::OperationFailure("NO_SCENE", "No scene is open.");
                                      const auto state = aiOperationScene_->GetLightingBakeJobState();
                                      nlohmann::json data{{"state", TOOLS::BAKING::ToString(state)},
-                                                         {"running", TOOLS::BAKING::IsLightingBakeJobRunning(state)}};
+                                                         {"running", TOOLS::BAKING::IsLightingBakeJobRunning(state)},
+                                                         {"pending", TOOLS::BAKING::IsLightingBakeJobRunning(state)}};
                                      if (aiOperationScene_->HasLastLightingBakeReport()) {
                                          const auto& report = aiOperationScene_->GetLastLightingBakeReport();
                                          data["report"] = {{"success", report.success},

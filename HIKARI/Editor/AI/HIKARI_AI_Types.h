@@ -38,7 +38,7 @@ struct AiRequestResult {
 
 // Assistant-local discovery/help and optional vision; authoring uses
 // the workspace operation registry.
-nlohmann::json DescribeAiCapability(const AiCapability& capability, bool parameters = true);
+nlohmann::json DescribeAiCapability(const AiCapability& capability, bool parameters = true, bool forModel = false);
 const std::vector<AiCapability>& BuiltInCapabilities();
 AiRequestResult SubmitAiRequest(std::string_view requestJson, const std::vector<AiCapability>& capabilities);
 

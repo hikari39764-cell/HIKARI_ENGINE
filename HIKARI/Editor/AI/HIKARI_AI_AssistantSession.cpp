@@ -159,6 +159,11 @@ void AiAssistantSession::SetCapabilityProvider(AiCapabilityProvider callback, st
     capabilityRevision_ = ~uint64_t{0};
 }
 
+void AiAssistantSession::SetOperationPermissionResolver(AiOperationPermissionResolver resolver) {
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    operationPermissionResolver_ = std::move(resolver);
+}
+
 std::vector<AI_ASSISTANT::AiCapability> AiAssistantSession::Capabilities() const {
     std::lock_guard<std::mutex> lock(stateMutex_);
     return capabilitySnapshot_;
@@ -275,22 +280,42 @@ void AiAssistantSession::PumpActions() {
         }
         actions.swap(pendingActions_);
     }
+    AiOperationPermissionResolver permissionResolver;
+    {
+        std::lock_guard<std::mutex> lock(stateMutex_);
+        permissionResolver = operationPermissionResolver_;
+    }
     for (const std::shared_ptr<PendingAiAction>& request : actions) {
         AI_ASSISTANT::AiRequestResult result{};
         const std::string action = AI_ASSISTANT::ExtractJsonField(request->json, "action");
-        std::string permission = request->approved ? std::string{} : ApprovalPermission(action);
+        std::optional<EditorOperationPermission> permission;
+        if (!request->approved && permissionResolver) {
+            try {
+                permission = permissionResolver(action);
+            } catch (const std::exception& error) {
+                result.code = "PERMISSION_RESOLUTION_FAILED";
+                result.message = "动作未执行：权限解析失败。";
+                result.details.push_back(error.what());
+            } catch (...) {
+                result.code = "PERMISSION_RESOLUTION_FAILED";
+                result.message = "动作未执行：权限解析失败。";
+            }
+        }
         if (stopRequested_.load() || request->generation != generation_.load()) {
             result.code = "ACTION_CANCELED";
             result.message = "任务已停止，排队中的动作未执行。";
-        } else if (!permission.empty()) {
+        } else if (result.code.empty() && !request->approved && !permissionResolver) {
+            result.code = "PERMISSION_RESOLVER_UNAVAILABLE";
+            result.message = "动作未执行：编辑器操作权限解析器未接线。";
+        } else if (result.code.empty() && permission && RequiresUserApproval(*permission)) {
             // 結果を返さずに保留し、呼び出し元は承認か拒否まで待つ。
             SetActivity("waiting_approval", action);
             std::lock_guard<std::mutex> lock(actionMutex_);
-            request->permission = std::move(permission);
+            request->permission = TEXT::EnumToName(kEditorOperationPermissionNames, *permission);
             request->approvalId = nextApprovalId_++;
             awaitingApproval_.push_back(request);
             continue;
-        } else {
+        } else if (result.code.empty()) {
             try {
                 result = ExecuteRequestNow(request->json);
             } catch (const std::exception& error) {
@@ -305,18 +330,6 @@ void AiAssistantSession::PumpActions() {
         }
     }
     actionCv_.notify_all();
-}
-
-std::string AiAssistantSession::ApprovalPermission(std::string_view action) const {
-    for (const AI_ASSISTANT::AiCapability& capability : Capabilities()) {
-        if (capability.id != action) {
-            continue;
-        }
-        const std::string permission = capability.semantics.value("permission", std::string{});
-        const auto parsed = TEXT::TryParseEnum(kEditorOperationPermissionNames, permission);
-        return parsed && RequiresUserApproval(*parsed) ? permission : std::string{};
-    }
-    return {};
 }
 
 std::vector<AiAssistantSession::ApprovalRequest> AiAssistantSession::PendingApprovals() const {

@@ -316,6 +316,22 @@ const nlohmann::json* FindVfxSerializedTarget(const nlohmann::json& document, st
     return targetId == "asset" ? &document : FindById(document, targetId);
 }
 
+const nlohmann::json* FindVfxSerializedProperty(const nlohmann::json& target, std::string_view propertyPath) {
+    const std::vector<std::string> path = SplitPath(propertyPath);
+    if (path.empty())
+        return nullptr;
+    const Json* value = &target;
+    for (const std::string& part : path) {
+        if (!value->is_object())
+            return nullptr;
+        const auto child = value->find(part);
+        if (child == value->end())
+            return nullptr;
+        value = &*child;
+    }
+    return value;
+}
+
 bool SetVfxSerializedProperty(nlohmann::json& document, std::string_view targetId, std::string_view propertyPath,
                               const nlohmann::json& value, const VfxStableIdAllocator& allocateId,
                               std::string& outMessage) {

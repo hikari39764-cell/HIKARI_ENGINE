@@ -3,6 +3,7 @@
 #include "HIKARI_AI_RequestContext.h"
 
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <set>
@@ -15,9 +16,53 @@
 
 namespace HIKARI::EDITOR::AI_ASSISTANT {
 namespace {
-// 転送の安全上限。画像履歴全体ではなく直近の画像だけをモデルに渡す。
+// 転送の安全上限。
 constexpr size_t kMaxImageBytes = 16u * 1024u * 1024u;
-constexpr size_t kMaxPreviewImages = 6u;
+
+bool RequiresReasoningReplay(const AiChatConfig& config) {
+    if (!config.editorTools)
+        return false;
+    std::string endpoint = config.baseUrl;
+    std::transform(endpoint.begin(), endpoint.end(), endpoint.begin(),
+                   [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+    const auto scheme = endpoint.find("://");
+    if (scheme != std::string::npos)
+        endpoint.erase(0, scheme + 3);
+    const auto suffix = endpoint.find_first_of("/?#");
+    if (suffix != std::string::npos)
+        endpoint.resize(suffix);
+    const auto port = endpoint.find(':');
+    if (port != std::string::npos)
+        endpoint.resize(port);
+    std::string model = config.model;
+    std::transform(model.begin(), model.end(), model.begin(),
+                   [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+    return endpoint == "api.deepseek.com" && (model == "deepseek-flash" || model.starts_with("deepseek-v4-"));
+}
+
+size_t SentTextBytes(const nlohmann::json& request) {
+    size_t bytes = request.contains("tools") ? request["tools"].dump().size() : 0;
+    if (!request.contains("messages") || !request["messages"].is_array())
+        return bytes;
+    for (const auto& message : request["messages"]) {
+        const auto content = message.find("content");
+        if (content != message.end()) {
+            if (content->is_string())
+                bytes += content->get_ref<const std::string&>().size();
+            else if (content->is_array()) {
+                for (const auto& part : *content)
+                    if (part.is_object() && part.value("type", std::string{}) == "text" && part.contains("text") &&
+                        part["text"].is_string())
+                        bytes += part["text"].get_ref<const std::string&>().size();
+            }
+        }
+        for (const auto* key : {"tool_calls", "reasoning_content"})
+            if (message.contains(key))
+                bytes += message[key].is_string() ? message[key].get_ref<const std::string&>().size()
+                                                  : message[key].dump().size();
+    }
+    return bytes;
+}
 
 bool DecodeImage(const std::string& bytes, std::string& error) {
 #ifdef _WIN32
@@ -131,21 +176,19 @@ bool BuildAiChatRequest(const AiChatConfig& config, const std::vector<AiChatMess
             if (message.data.contains(field))
                 measured.sourceTextBytes += message.data[field].dump().size();
     }
-    const auto context = BuildAiRequestContext(messages, config.toolHistoryKiB);
-    size_t imageCount = 0;
-    for (const auto& message : context)
-        if (message.role == "tool")
-            imageCount += message.images.size();
-    size_t skip = imageCount > kMaxPreviewImages ? imageCount - kMaxPreviewImages : 0;
+    if (config.reasoningContentPolicy == AiReasoningContentPolicy::Omit && RequiresReasoningReplay(config)) {
+        error = "当前 DeepSeek 官方接口的原生编辑器工具协议要求保留完整 reasoning_content；请将推理策略设为保留。";
+        return false;
+    }
+    const auto context = BuildAiRequestContext(messages, config.toolHistoryKiB, config.requestContext,
+                                               config.requestContextPrefixMessages, config.reasoningContentPolicy);
     nlohmann::json request{{"model", config.model}, {"stream", stream}, {"messages", nlohmann::json::array()}};
     if (stream && config.requestUsage)
         request["stream_options"] = {{"include_usage", true}};
     if (config.editorTools) {
         request["tools"] = BuildAiTools();
         request["tool_choice"] = "auto";
-        const auto schemaBytes = request["tools"].dump().size();
-        measured.sourceTextBytes += schemaBytes;
-        measured.sentTextBytes += schemaBytes;
+        measured.sourceTextBytes += request["tools"].dump().size();
     }
     std::set<std::string> sentImages;
     std::vector<nlohmann::json> pendingImages;
@@ -155,14 +198,10 @@ bool BuildAiChatRequest(const AiChatConfig& config, const std::vector<AiChatMess
         pendingImages.clear();
     };
     for (const auto& message : context) {
-        measured.sentTextBytes += message.content.size();
         // Native calls and their result IDs stay paired within the current task.
         const bool nativeResult = message.data.contains("_toolCallId");
         if (!nativeResult)
             flushImages();
-        for (const char* field : {"_toolCalls", "_reasoningContent"})
-            if (message.data.contains(field))
-                measured.sentTextBytes += message.data[field].dump().size();
         if (message.data.contains("_toolCalls")) {
             nlohmann::json outgoing{
                 {"role", "assistant"}, {"content", message.content}, {"tool_calls", message.data["_toolCalls"]}};
@@ -190,14 +229,19 @@ bool BuildAiChatRequest(const AiChatConfig& config, const std::vector<AiChatMess
         }
         // Chat Completions の画像は user メッセージに限定する。
         nlohmann::json parts = nlohmann::json::array();
-        parts.push_back({{"type", "text"}, {"text", message.content}});
-        size_t omitted = 0;
-        for (const auto& image : message.images) {
-            if (skip && message.role == "tool") {
-                --skip;
-                ++omitted;
-                continue;
+        std::string imageText = message.content;
+        if (nativeResult) {
+            imageText = "Preview images for editor tool call " + message.data.value("_toolCallId", std::string{}) + ":";
+            for (size_t imageIndex = 0; imageIndex < message.images.size(); ++imageIndex) {
+                const auto& image = message.images[imageIndex];
+                imageText += " Image " + std::to_string(imageIndex + 1);
+                if (!image.label.empty())
+                    imageText += ": " + image.label;
+                imageText += ";";
             }
+        }
+        parts.push_back({{"type", "text"}, {"text", std::move(imageText)}});
+        for (const auto& image : message.images) {
             if (!sentImages.insert(image.path).second)
                 continue;
             std::string uri;
@@ -207,12 +251,6 @@ bool BuildAiChatRequest(const AiChatConfig& config, const std::vector<AiChatMess
             parts.push_back(
                 {{"type", "image_url"}, {"image_url", {{"url", std::move(uri)}, {"detail", image.detail}}}});
         }
-        if (omitted)
-            parts.push_back(
-                {{"type", "text"},
-                 {"text",
-                  std::to_string(omitted) +
-                      " images omitted by the per-request preview limit; use context.image to review their paths."}});
         // 全 tool_call_id の返答を連続させてから画像を渡す。
         nlohmann::json imageMessage{{"role", "user"}, {"content", std::move(parts)}};
         if (nativeResult)
@@ -221,6 +259,7 @@ bool BuildAiChatRequest(const AiChatConfig& config, const std::vector<AiChatMess
             request["messages"].push_back(std::move(imageMessage));
     }
     flushImages();
+    measured.sentTextBytes = SentTextBytes(request);
     body = request.dump();
     if (stats)
         *stats = measured;

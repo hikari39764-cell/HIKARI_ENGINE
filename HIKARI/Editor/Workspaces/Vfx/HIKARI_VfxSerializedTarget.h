@@ -17,6 +17,7 @@ bool ParseVfxSerializedDocument(const nlohmann::json& document, VFX::VfxAssetDat
 
 nlohmann::json* FindVfxSerializedTarget(nlohmann::json& document, std::string_view targetId) noexcept;
 const nlohmann::json* FindVfxSerializedTarget(const nlohmann::json& document, std::string_view targetId) noexcept;
+const nlohmann::json* FindVfxSerializedProperty(const nlohmann::json& target, std::string_view propertyPath);
 
 bool SetVfxSerializedProperty(nlohmann::json& document, std::string_view targetId, std::string_view propertyPath,
                               const nlohmann::json& value, const VfxStableIdAllocator& allocateId,

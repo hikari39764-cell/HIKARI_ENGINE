@@ -24,12 +24,29 @@ nlohmann::json EditorAuthoringSessionHost::DescribeSession(const std::string& id
     item["checkpointed"] = session.checkpointed;
     return item;
 }
-nlohmann::json EditorAuthoringSessionHost::Snapshot() const {
+nlohmann::json EditorAuthoringSessionHost::Snapshot(bool compact) const {
     nlohmann::json state{{"workspaces", nlohmann::json::array()}, {"sessions", nlohmann::json::array()}};
     for (const auto& [id, workspace] : workspaces_)
         state["workspaces"].push_back({{"id", id}, {"label", workspace.label}});
-    for (const auto& [id, session] : sessions_)
-        state["sessions"].push_back(DescribeSession(id, session));
+    std::string latestSession;
+    if (compact && !sessions_.empty()) {
+        const auto latest =
+            std::max_element(sessions_.begin(), sessions_.end(), [](const auto& left, const auto& right) {
+                return left.second.touched < right.second.touched;
+            });
+        latestSession = latest->first;
+    }
+    for (const auto& [id, session] : sessions_) {
+        if (!compact || id == latestSession) {
+            state["sessions"].push_back(DescribeSession(id, session));
+            continue;
+        }
+        const auto workspace = workspaces_.find(session.workspace);
+        const std::string fallbackLabel = workspace == workspaces_.end() ? session.workspace : workspace->second.label;
+        state["sessions"].push_back({{"sessionId", id},
+                                     {"workspace", session.workspace},
+                                     {"name", session.name.empty() ? fallbackLabel : session.name}});
+    }
     state["recoveryErrors"] = recoveryErrors_;
     return state;
 }

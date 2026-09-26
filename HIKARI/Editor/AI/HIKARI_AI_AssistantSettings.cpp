@@ -3,6 +3,7 @@
 #include "HIKARI_AI_ChatClient.h"
 #include <cstdio>
 #include <algorithm>
+#include <string_view>
 #include "Core/Text/HIKARI_Localization.h"
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
@@ -15,6 +16,7 @@ void AiAssistantPanel::OpenApiSettingsBuffers() {
     maxTaskTokens_ = config.maxTaskTokens;
     maxNoProgressRounds_ = config.maxNoProgressRounds;
     toolHistoryKiB_ = config.toolHistoryKiB;
+    reasoningContentPolicy_ = config.reasoningContentPolicy;
     requestUsage_ = config.requestUsage;
     std::snprintf(apiKeyBuffer_, sizeof(apiKeyBuffer_), "%s", config.apiKey.c_str());
     std::snprintf(baseUrlBuffer_, sizeof(baseUrlBuffer_), "%s", config.baseUrl.c_str());
@@ -38,6 +40,7 @@ void AiAssistantPanel::SaveApiSettings() {
     updated.maxTaskTokens = (std::max)(0, maxTaskTokens_);
     updated.maxNoProgressRounds = std::clamp(maxNoProgressRounds_, 0, AI_ASSISTANT::kMaxAiToolRounds);
     updated.toolHistoryKiB = toolHistoryKiB_;
+    updated.reasoningContentPolicy = reasoningContentPolicy_;
     updated.requestUsage = requestUsage_;
     if (!AI_ASSISTANT::SaveAiChatConfig(updated)) {
         attachmentError_ = "无法保存 AI 设置。";
@@ -97,6 +100,25 @@ void AiAssistantPanel::DrawSettings() {
             ImGui::SliderInt(TEXT::Localize("ai.api.historyBudget").c_str(), &toolHistoryKiB_, 8, 256, "%d KiB");
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("%s", TEXT::Localize("ai.api.historyBudgetHint").c_str());
+            const auto reasoningChoices = TEXT::EnumNameList(AI_ASSISTANT::kAiReasoningContentPolicyNames);
+            const std::string selectedPolicy =
+                TEXT::EnumToName(AI_ASSISTANT::kAiReasoningContentPolicyNames, reasoningContentPolicy_, "preserve");
+            const std::string selectedPolicyLabel = TEXT::Localize(("ai.api.reasoning." + selectedPolicy).c_str());
+            if (ImGui::BeginCombo(TEXT::Localize("ai.api.reasoning").c_str(), selectedPolicyLabel.c_str())) {
+                for (const std::string_view choice : reasoningChoices) {
+                    const auto value = TEXT::ParseEnum(AI_ASSISTANT::kAiReasoningContentPolicyNames, choice,
+                                                       AI_ASSISTANT::AiReasoningContentPolicy::Preserve);
+                    const std::string optionKey = "ai.api.reasoning." + std::string(choice);
+                    const bool selected = value == reasoningContentPolicy_;
+                    if (ImGui::Selectable(TEXT::Localize(optionKey.c_str()).c_str(), selected))
+                        reasoningContentPolicy_ = value;
+                    if (selected)
+                        ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("%s", TEXT::Localize("ai.api.reasoning.hint").c_str());
             ImGui::Checkbox(TEXT::Localize("ai.api.usage").c_str(), &requestUsage_);
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("%s", TEXT::Localize("ai.api.usageHint").c_str());

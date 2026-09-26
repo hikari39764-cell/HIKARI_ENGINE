@@ -11,8 +11,38 @@
 #include <utility>
 
 #include "Core/HIKARI_Logger.h"
+#include "Core/Math/HIKARI_MathValidation.h"
 
 namespace HIKARI::EDITOR {
+
+bool EquivalentOperationValue(const nlohmann::json& requested, const nlohmann::json& applied) {
+    if (requested.is_number() && applied.is_number()) {
+        if (!requested.is_number_float() || !applied.is_number_float())
+            return requested == applied;
+        const float left = static_cast<float>(requested.get<double>());
+        const float right = static_cast<float>(applied.get<double>());
+        return MATH::IsFinite(left) && MATH::IsFinite(right) ? left == right : requested == applied;
+    }
+    if (requested.is_array() && applied.is_array()) {
+        if (requested.size() != applied.size())
+            return false;
+        for (size_t index = 0; index < requested.size(); ++index)
+            if (!EquivalentOperationValue(requested[index], applied[index]))
+                return false;
+        return true;
+    }
+    if (requested.is_object() && applied.is_object()) {
+        if (requested.size() != applied.size())
+            return false;
+        for (const auto& [key, value] : requested.items()) {
+            const auto found = applied.find(key);
+            if (found == applied.end() || !EquivalentOperationValue(value, *found))
+                return false;
+        }
+        return true;
+    }
+    return requested == applied;
+}
 
 namespace {
 
@@ -167,15 +197,10 @@ bool ValidateShape(const nlohmann::json& value, const nlohmann::json& schema, co
 } // namespace
 
 nlohmann::json DescribeEditorOperation(const EditorOperationDefinition& definition) {
-    constexpr TEXT::EnumName<EditorOperationKind> kKindNames[] = {
-        {EditorOperationKind::Query, "query"},
-        {EditorOperationKind::Mutation, "mutation"},
-        {EditorOperationKind::Session, "session"},
-    };
     nlohmann::json result{{"id", definition.id},
                           {"summary", definition.summary},
                           {"workspace", definition.workspace},
-                          {"kind", TEXT::EnumToName(kKindNames, definition.kind, "unspecified")},
+                          {"kind", TEXT::EnumToName(kEditorOperationKindNames, definition.kind, "unspecified")},
                           {"permission", TEXT::EnumToName(kEditorOperationPermissionNames, definition.permission)},
                           {"requiresDocumentSession", definition.requiresDocumentSession},
                           {"requiresCleanDocument", definition.requiresCleanDocument},
@@ -295,10 +320,11 @@ EditorOperationResult EditorOperationRegistry::Execute(const std::string& id, co
         if (found != operations_.end()) {
             if (!result.data.is_object())
                 result.data = nlohmann::json::object();
-            const auto description = DescribeEditorOperation(found->second);
-            result.data["operationKind"] = description["kind"];
-            if (!result.ok)
-                result.data["operationSchema"] = description;
+            result.data["operationKind"] =
+                TEXT::EnumToName(kEditorOperationKindNames, found->second.kind, "unspecified");
+            if (!result.ok) {
+                result.data["operationSchema"] = DescribeEditorOperation(found->second);
+            }
         }
         LogOperationEnd(sequence, id, result, startedAt);
         return result;

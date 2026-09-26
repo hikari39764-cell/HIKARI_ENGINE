@@ -3,7 +3,9 @@
 #include "HIKARI_AI_MessageText.h"
 #include "HIKARI_AI_ToolProtocol.h"
 #include "HIKARI_AI_RequestContext.h"
+#include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
 #include <algorithm>
+#include <iterator>
 #include <map>
 #include <set>
 
@@ -26,6 +28,59 @@ void SealInterruptedCalls(std::vector<AI_ASSISTANT::AiChatMessage>& messages) {
              {},
              {{"_toolCallId", id}, {"ok", false}, {"code", "INTERRUPTED"}}});
 }
+
+std::string ActionReviewReason(const AI_ASSISTANT::AiChatMessage& result, const nlohmann::json* action) {
+    using Json = nlohmann::json;
+    const Json& data = result.data;
+    if (!result.images.empty())
+        return "a new image needs visual review";
+    if (!data.is_object())
+        return {};
+    if (data.value("verificationPending", false))
+        return "visual verification is pending";
+    if (data.value("pending", false))
+        return "the operation is still pending";
+    if (data.contains("stateNeedsRefresh") && data["stateNeedsRefresh"].is_boolean() &&
+        data["stateNeedsRefresh"].get<bool>())
+        return "the document state needs refresh";
+    if (data.contains("adjusted")) {
+        const Json& adjusted = data["adjusted"];
+        if ((adjusted.is_boolean() && adjusted.get<bool>()) ||
+            ((adjusted.is_object() || adjusted.is_array()) && !adjusted.empty()))
+            return "the applied values differ from the request";
+    }
+    if (data.contains("appliedValue") && action != nullptr && action->is_object() && action->contains("value")) {
+        // Structured typed values report canonicalization through adjusted/stateNeedsRefresh.
+        const Json& applied = data["appliedValue"];
+        if (!EquivalentOperationValue((*action)["value"], applied))
+            return "the applied value differs from the requested value";
+    }
+    const auto diagnostics = data.find("diagnostics");
+    if (diagnostics != data.end() && diagnostics->is_array()) {
+        for (const Json& diagnostic : *diagnostics) {
+            if (!diagnostic.is_object())
+                continue;
+            const std::string severity = diagnostic.value("severity", std::string{});
+            if (severity == "warning" || severity == "error")
+                return "the operation returned warning or error diagnostics";
+        }
+    }
+    const auto hasDiagnostics = [](const Json& value) {
+        return value.is_object() &&
+               ((value.contains("warnings") && value["warnings"].is_array() && !value["warnings"].empty()) ||
+                (value.contains("errors") && value["errors"].is_array() && !value["errors"].empty()));
+    };
+    if (hasDiagnostics(data))
+        return "the operation returned warnings or errors";
+    const auto report = data.find("report");
+    if (report != data.end() && report->is_object()) {
+        if (report->contains("success") && (*report)["success"].is_boolean() && !(*report)["success"].get<bool>())
+            return "the operation report is unsuccessful";
+        if (hasDiagnostics(*report))
+            return "the operation report contains warnings or errors";
+    }
+    return {};
+}
 } // namespace
 void AiAssistantSession::RunConversation(bool resume) {
     using namespace AI_ASSISTANT;
@@ -40,6 +95,7 @@ void AiAssistantSession::RunConversation(bool resume) {
     }
     if (!resume)
         task = {true, BuildSystemPrompt(), taskContext_, SnapshotMessages()};
+    config.requestContext = &task.requestContext;
     auto& conversation = task.messages;
     SealInterruptedCalls(conversation);
     if (resume)
@@ -88,6 +144,7 @@ void AiAssistantSession::RunConversation(bool resume) {
         if (!task.context.empty())
             request.insert(request.begin() + 1,
                            {"user", "任务开始时的编辑器状态；实际文档以操作结果为准：\n" + task.context});
+        config.requestContextPrefixMessages = request.size() - conversation.size();
         std::string reply, error;
         AiChatUsage usage;
         AiChatRequestStats stats;
@@ -135,13 +192,56 @@ void AiAssistantSession::RunConversation(bool resume) {
             continue;
         }
         noToolRounds = 0;
-        bool batchStopped = false, progressed = false;
-        std::string failure;
+        std::string finishValidationError;
+        const auto finishCall = std::find_if(decoded.calls.begin(), decoded.calls.end(), [](const Json& call) {
+            return call["function"]["name"] == "task_finish";
+        });
+        const bool hasFinish = finishCall != decoded.calls.end();
+        if (hasFinish && std::count_if(decoded.calls.begin(), decoded.calls.end(), [](const Json& call) {
+                             return call["function"]["name"] == "task_finish";
+                         }) != 1) {
+            finishValidationError = "task_finish may appear only once in a response.";
+        } else if (hasFinish) {
+            const size_t finishIndex = static_cast<size_t>(std::distance(decoded.calls.begin(), finishCall));
+            if (finishIndex + 1 != decoded.calls.size()) {
+                finishValidationError = "task_finish must be the final tool call in a response.";
+            } else {
+                const Json arguments =
+                    Json::parse((*finishCall)["function"]["arguments"].get<std::string>(), nullptr, false);
+                if (!arguments.is_object() || arguments.size() != 2 || !arguments.contains("status") ||
+                    !arguments["status"].is_string() || !arguments.contains("summary") ||
+                    !arguments["summary"].is_string()) {
+                    finishValidationError = "task_finish requires a valid status and nonempty summary.";
+                } else {
+                    const std::string status = arguments["status"].get<std::string>();
+                    const std::string summary = arguments["summary"].get<std::string>();
+                    if (AI_ASSISTANT::Trim(summary).empty() ||
+                        (status != "completed" && status != "needs_input" && status != "blocked")) {
+                        finishValidationError = "task_finish requires a valid status and nonempty summary.";
+                    } else if (status != "completed" && decoded.calls.size() != 1) {
+                        finishValidationError =
+                            "needs_input and blocked must be reported with a sole task_finish call.";
+                    } else if (status == "completed") {
+                        for (size_t index = 0; index < finishIndex; ++index) {
+                            if (decoded.calls[index]["function"]["name"] != "editor_actions") {
+                                finishValidationError =
+                                    "A completed task_finish may follow only editor_actions calls in the same response.";
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        bool batchStopped = !finishValidationError.empty(), completionNeedsReview = false, progressed = false;
+        std::string failure = batchStopped ? "task_finish:" + finishValidationError : std::string{};
+        std::string reviewReason;
         for (const auto& call : decoded.calls) {
             const auto id = call["id"].get<std::string>();
             const auto name = call["function"]["name"].get<std::string>();
             const auto raw = call["function"]["arguments"].get<std::string>();
-            const auto args = Json::parse(raw);
+            const auto args = Json::parse(raw, nullptr, false);
             AiChatMessage response{"tool", "", {}, {{"_toolCallId", id}}};
             const auto fail = [&](const std::string& message) {
                 response.content = message;
@@ -156,16 +256,67 @@ void AiAssistantSession::RunConversation(bool resume) {
                     response = cached->second.result;
                     if (!response.data.value("ok", false))
                         fail(response.content);
-                } else
+                    else if (hasFinish && name == "editor_actions" && response.data.contains("results") &&
+                             response.data["results"].is_array()) {
+                        const auto requestedActions = args.is_object() ? args.find("actions") : args.end();
+                        for (size_t index = 0;
+                             requestedActions != args.end() && requestedActions->is_array() &&
+                             index < response.data["results"].size() && index < requestedActions->size();
+                             ++index) {
+                            const Json& receipt = response.data["results"][index];
+                            const std::string reason =
+                                ActionReviewReason(AiChatMessage{"tool", {}, {}, receipt}, &(*requestedActions)[index]);
+                            if (!reason.empty()) {
+                                completionNeedsReview = true;
+                                if (reviewReason.empty())
+                                    reviewReason = reason;
+                            }
+                        }
+                    }
+                } else {
                     fail("Tool call ID reused or interrupted. Inspect state and use a new call ID.");
+                    response.data["code"] = "TOOL_CALL_REPLAY";
+                }
+            } else if (!finishValidationError.empty()) {
+                fail("Tool response rejected before execution: " + finishValidationError);
+                response.data["code"] = "INVALID_TASK_FINISH";
+                response.data["deferred"] = true;
+            } else if (name == "task_finish" && (batchStopped || stopRequested_.load())) {
+                if (stopRequested_.load()) {
+                    batchStopped = true;
+                    if (failure.empty())
+                        failure = "ACTION_CANCELED";
+                }
+                response.content =
+                    "task_finish deferred because " + failure + ". Inspect the receipts and continue review.";
+                response.data["ok"] = false;
+                response.data["code"] = "TASK_FINISH_DEFERRED";
+                response.data["deferred"] = true;
+            } else if (stopRequested_.load()) {
+                fail("Action canceled before execution; remaining calls were not executed.");
+                response.data["code"] = "ACTION_CANCELED";
             } else if (batchStopped) {
                 fail("Skipped because an earlier call in this response failed.");
+            } else if (!args.is_object()) {
+                fail("Tool arguments must be a JSON object.");
             } else if (name == "task_finish") {
                 const auto status = args.value("status", std::string{});
                 const auto summary = args.value("summary", std::string{});
-                if (decoded.calls.size() != 1 || summary.empty() ||
-                    (status != "completed" && status != "needs_input" && status != "blocked")) {
-                    fail("task_finish requires a sole call with status and summary.");
+                if (status == "completed" && completionNeedsReview) {
+                    response.content = "task_finish deferred because " + reviewReason +
+                                       ". Inspect the receipts and any returned image, then continue review.";
+                    response.data["ok"] = false;
+                    response.data["code"] = "TASK_FINISH_DEFERRED";
+                    response.data["deferred"] = true;
+                } else if (stopRequested_.load()) {
+                    batchStopped = true;
+                    if (failure.empty())
+                        failure = "ACTION_CANCELED";
+                    response.content =
+                        "task_finish deferred because " + failure + ". Inspect the receipts and continue review.";
+                    response.data["ok"] = false;
+                    response.data["code"] = "TASK_FINISH_DEFERRED";
+                    response.data["deferred"] = true;
                 } else {
                     response.data["ok"] = true;
                     conversation.push_back(std::move(response));
@@ -181,7 +332,8 @@ void AiAssistantSession::RunConversation(bool resume) {
                 response.data["results"] = Json::array();
                 for (const auto& action : args["actions"]) {
                     if (stopRequested_.load()) {
-                        fail("Interrupted; remaining actions were not executed.");
+                        fail("Action canceled; remaining actions were not executed.");
+                        response.data["code"] = "ACTION_CANCELED";
                         break;
                     }
                     if (!action.is_object() || !action.contains("action") || !action["action"].is_string()) {
@@ -192,6 +344,13 @@ void AiAssistantSession::RunConversation(bool resume) {
                     AppendMessage(result);
                     auto receipt = result.data;
                     receipt["message"] = result.content;
+                    const std::string actionReviewReason =
+                        hasFinish ? ActionReviewReason(result, &action) : std::string{};
+                    if (!actionReviewReason.empty()) {
+                        completionNeedsReview = true;
+                        if (reviewReason.empty())
+                            reviewReason = actionReviewReason;
+                    }
                     response.data["results"].push_back(std::move(receipt));
                     response.images.insert(response.images.end(), result.images.begin(), result.images.end());
                     if (!result.data.value("ok", false)) {

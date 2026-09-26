@@ -60,7 +60,7 @@ public:
         const auto found = sessions_.find(id);
         return found != sessions_.end() && found->second.backend->HasInteractiveEdit();
     }
-    nlohmann::json Snapshot() const;
+    nlohmann::json Snapshot(bool compact = false) const;
     std::string VisibleSession(const std::string& workspace) const;
     bool ActivateDocument(const std::string& workspace, const std::string& requestedGuid, bool foregroundHasDocument);
     void ShowForeground(const std::string& workspace);

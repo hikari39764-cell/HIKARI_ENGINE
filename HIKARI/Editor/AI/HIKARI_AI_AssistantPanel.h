@@ -41,6 +41,7 @@ private:
     int maxNoProgressRounds_ = 12;
     int maxTaskTokens_ = 0;
     int toolHistoryKiB_ = 24;
+    AI_ASSISTANT::AiReasoningContentPolicy reasoningContentPolicy_ = AI_ASSISTANT::AiReasoningContentPolicy::Preserve;
     bool requestUsage_ = true;
     bool showApiKey_ = false;
     bool hasRawResult_ = false;

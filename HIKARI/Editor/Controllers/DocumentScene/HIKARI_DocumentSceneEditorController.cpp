@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <optional>
 #include <vector>
 #include "Assets/HIKARI_AssetImportState.h"
 #include "Core/HIKARI_Logger.h"
@@ -137,6 +138,12 @@ DocumentSceneEditorController::DocumentSceneEditorController() {
             return capabilities;
         },
         [this] { return operationRegistry_.Revision(); });
+    aiAssistantSession_.SetOperationPermissionResolver(
+        [this](std::string_view action) -> std::optional<EDITOR::EditorOperationPermission> {
+            const EDITOR::EditorOperationDefinition* definition = operationRegistry_.Find(std::string(action));
+            return definition != nullptr ? std::optional<EDITOR::EditorOperationPermission>{definition->permission}
+                                         : std::nullopt;
+        });
     aiLocalBridge_.SetCapabilityProvider([this]() { return aiAssistantSession_.Capabilities(); });
     ModelMaterialWorkspace().SetOperationRegistry(&operationRegistry_);
     AnimationStateMachineWorkspace().SetOperationRegistry(&operationRegistry_);
@@ -297,7 +304,7 @@ DocumentSceneEditorController::DocumentSceneEditorController() {
         if (active == EDITOR::EditorWorkspaceId::Scene)
             document["scenePath"] = scene.GetScenePath();
         context += "\nActive document: " + document.dump();
-        context += "\nBackground authoring: " + authoringSessions_.Snapshot().dump();
+        context += "\nBackground authoring: " + authoringSessions_.Snapshot(true).dump();
         if (const std::string guide = EDITOR::ReadProjectGuideForContext(scene.GetAssetDatabase().GetProjectRoot());
             !guide.empty())
             context += "\nProject guide (user-authored conventions):\n" + guide;
