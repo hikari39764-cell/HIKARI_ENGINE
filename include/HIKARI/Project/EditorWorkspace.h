@@ -8,7 +8,7 @@
 
 namespace HIKARI::EDITOR_PROJECT {
 
-inline constexpr uint32_t kEditorWorkspaceApiVersion = 4u;
+inline constexpr uint32_t kEditorWorkspaceApiVersion = 5u;
 
 enum class EditorWorkspaceDockRegion : uint32_t {
     Center,
@@ -51,6 +51,11 @@ enum class EditorWorkspaceStatusSeverity : uint32_t {
     Error = 2u,
 };
 
+enum class EditorWorkspaceOption : uint32_t {
+    None = 0u,
+    RequestSceneViewport = 1u << 0u,
+};
+
 enum class EditorWorkspacePointerButton : uint32_t {
     None = 0u,
     Primary = 1u << 0u,
@@ -63,6 +68,8 @@ struct EditorWorkspaceDescriptor {
     uint32_t apiVersion = kEditorWorkspaceApiVersion;
     const char* workspaceId = nullptr;
     const char* displayName = nullptr;
+    uint32_t options = static_cast<uint32_t>(EditorWorkspaceOption::None);
+    uint32_t reserved = 0u;
 };
 
 struct EditorWorkspacePoint {
@@ -183,6 +190,8 @@ public:
                                   IEditorOperationResultSink& result) = 0;
 };
 
+class IEditorDocumentService;
+
 struct EditorWorkspaceHostContext {
     uint32_t structSize = sizeof(EditorWorkspaceHostContext);
     uint32_t apiVersion = kEditorWorkspaceApiVersion;
@@ -196,6 +205,9 @@ struct EditorWorkspaceHostContext {
     const char* workspaceId = nullptr;
     IEditorWorkspaceUi* ui = nullptr;
     IEditorWorkspaceCommands* commands = nullptr;
+    // Host-owned module-scoped service. Unlike frame-scoped pointers above,
+    // this pointer remains valid until the module is unregistered.
+    IEditorDocumentService* documents = nullptr;
 };
 
 class IEditorWorkspace {
@@ -204,7 +216,8 @@ public:
 
     // Descriptor strings remain valid for the lifetime of this object.
     // Every other callback runs synchronously on the Editor UI thread;
-    // context pointers must not be retained beyond that callback.
+    // ui/commands pointers are frame-scoped. documents is the stable
+    // module-scoped exception and remains valid until the module is unregistered.
     virtual EditorWorkspaceDescriptor GetDescriptor() const = 0;
     // Workspaces editing the same live document can switch without closing it.
     virtual std::string_view GetDocumentIdentity() const { return {}; }
@@ -220,7 +233,8 @@ public:
 
 static_assert(std::is_standard_layout_v<EditorWorkspaceDescriptor>);
 static_assert(std::is_trivially_copyable_v<EditorWorkspaceDescriptor>);
-static_assert(sizeof(EditorWorkspaceDescriptor) == 24u);
+static_assert(sizeof(EditorWorkspaceDescriptor) == 32u);
+static_assert(offsetof(EditorWorkspaceDescriptor, options) == 24u);
 static_assert(offsetof(EditorWorkspaceDescriptor, structSize) == 0u);
 static_assert(offsetof(EditorWorkspaceDescriptor, apiVersion) == 4u);
 static_assert(offsetof(EditorWorkspaceDescriptor, workspaceId) == 8u);
@@ -248,7 +262,7 @@ static_assert(offsetof(EditorWorkspaceCanvasInput, releasedButtons) == 24u);
 static_assert(offsetof(EditorWorkspaceCanvasInput, hovered) == 28u);
 static_assert(std::is_standard_layout_v<EditorWorkspaceHostContext>);
 static_assert(std::is_trivially_copyable_v<EditorWorkspaceHostContext>);
-static_assert(sizeof(EditorWorkspaceHostContext) == 64u);
+static_assert(sizeof(EditorWorkspaceHostContext) == 72u);
 static_assert(offsetof(EditorWorkspaceHostContext, structSize) == 0u);
 static_assert(offsetof(EditorWorkspaceHostContext, apiVersion) == 4u);
 static_assert(offsetof(EditorWorkspaceHostContext, frameIndex) == 8u);
@@ -259,5 +273,6 @@ static_assert(offsetof(EditorWorkspaceHostContext, moduleId) == 32u);
 static_assert(offsetof(EditorWorkspaceHostContext, workspaceId) == 40u);
 static_assert(offsetof(EditorWorkspaceHostContext, ui) == 48u);
 static_assert(offsetof(EditorWorkspaceHostContext, commands) == 56u);
+static_assert(offsetof(EditorWorkspaceHostContext, documents) == 64u);
 
 } // namespace HIKARI::EDITOR_PROJECT

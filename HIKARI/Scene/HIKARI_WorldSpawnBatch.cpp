@@ -79,6 +79,18 @@ WorldMutationResult World::SubmitSpawnBatch(std::span<const WorldSpawnRequest> r
         return rejectAll(WorldMutationResult::InternalError);
     }
     const size_t reservedCount = requests.size();
+    std::array<uint64_t, kWorldSpawnBatchMaximumCapacity> documentIds{};
+    for (size_t index = 0u; index < requests.size(); ++index) {
+        if (!ReserveDynamicSceneObjectId(reservedHandles[index], documentIds[index])) {
+            for (size_t releaseIndex = 0u; releaseIndex < index; ++releaseIndex) {
+                ReleaseDynamicSceneObjectId(documentIds[releaseIndex], reservedHandles[releaseIndex]);
+            }
+            for (size_t releaseIndex = 0u; releaseIndex < reservedCount; ++releaseIndex) {
+                ReleaseReservedObjectHandle(reservedHandles[releaseIndex]);
+            }
+            return rejectAll(WorldMutationResult::InternalError);
+        }
+    }
     try {
         for (size_t index = 0u; index < requests.size(); ++index) {
             const WorldSpawnRequest& request = requests[index];
@@ -94,6 +106,7 @@ WorldMutationResult World::SubmitSpawnBatch(std::span<const WorldSpawnRequest> r
             command.transform = request.transform;
             command.payload = spawnPayload;
             command.payloadIndex = static_cast<uint32_t>(index);
+            command.documentId = documentIds[index];
             std::memcpy(command.name.data(), request.name.data(), request.name.size());
             command.name[request.name.size()] = '\0';
             pendingCommands_.push_back(command);
@@ -103,6 +116,7 @@ WorldMutationResult World::SubmitSpawnBatch(std::span<const WorldSpawnRequest> r
     } catch (...) {
         pendingCommands_.resize(previousCommandCount);
         for (size_t index = 0u; index < reservedCount; ++index) {
+            ReleaseDynamicSceneObjectId(documentIds[index], reservedHandles[index]);
             ReleaseReservedObjectHandle(reservedHandles[index]);
         }
         return rejectAll(WorldMutationResult::InternalError);
@@ -110,7 +124,9 @@ WorldMutationResult World::SubmitSpawnBatch(std::span<const WorldSpawnRequest> r
     return WorldMutationResult::Queued;
 }
 
-WorldMutationResult World::ApplyQueuedSpawn(const PendingWorldCommand& command) {
+WorldMutationResult World::ApplyQueuedSpawn(const PendingWorldCommand& command, std::string_view nameOverride,
+                                            bool attachToLiveObject, uint32_t componentOnlyIndex,
+                                            bool preserveReservationJournal) {
     if (!command.object.IsValid() || command.object.slot >= objectSlots_.size()) {
         return WorldMutationResult::InvalidObjectHandle;
     }
@@ -118,14 +134,17 @@ WorldMutationResult World::ApplyQueuedSpawn(const PendingWorldCommand& command) 
     if (objectSlots_[slotIndex].generation != command.object.generation) {
         return WorldMutationResult::InvalidObjectHandle;
     }
-    if (objectSlots_[slotIndex].state == ObjectSlotState::ReservedCanceled) {
+    if (!attachToLiveObject && objectSlots_[slotIndex].state == ObjectSlotState::ReservedCanceled) {
+        ReleaseDynamicSceneObjectId(command.documentId, command.object);
         ReleaseReservedObjectHandle(command.object);
         return WorldMutationResult::CommandCanceled;
     }
-    if (objectSlots_[slotIndex].state != ObjectSlotState::Reserved) {
+    if ((!attachToLiveObject && objectSlots_[slotIndex].state != ObjectSlotState::Reserved) ||
+        (attachToLiveObject && objectSlots_[slotIndex].state != ObjectSlotState::Live)) {
         return WorldMutationResult::InvalidObjectHandle;
     }
     const auto rejectReserved = [&](WorldMutationResult result) noexcept {
+        ReleaseDynamicSceneObjectId(command.documentId, command.object);
         if (IsReservedObjectHandle(command.object)) {
             ReleaseReservedObjectHandle(command.object);
         }
@@ -138,6 +157,12 @@ WorldMutationResult World::ApplyQueuedSpawn(const PendingWorldCommand& command) 
         if (parent == nullptr) {
             return rejectReserved(WorldMutationResult::InvalidParentHandle);
         }
+    }
+    GameObject* existingObject = attachToLiveObject ? FindObject(command.object) : nullptr;
+    if (attachToLiveObject &&
+        (existingObject == nullptr || existingObject->GetParent() != parent || command.documentId == 0u ||
+         existingObject->GetDocumentId().value != command.documentId)) {
+        return WorldMutationResult::InvalidObjectHandle;
     }
 
     const WorldSpawnObjectPayload* payload = nullptr;
@@ -160,12 +185,22 @@ WorldMutationResult World::ApplyQueuedSpawn(const PendingWorldCommand& command) 
         if (componentRegistry_ == nullptr) {
             return rejectReserved(WorldMutationResult::ComponentInitializationFailed);
         }
+        const size_t firstComponent =
+            componentOnlyIndex == (std::numeric_limits<uint32_t>::max)() ? 0u : static_cast<size_t>(componentOnlyIndex);
+        const size_t componentEnd = componentOnlyIndex == (std::numeric_limits<uint32_t>::max)()
+                                        ? payload->components.size()
+                                        : firstComponent + 1u;
+        if (firstComponent >= payload->components.size()) {
+            return rejectReserved(WorldMutationResult::InvalidComponentData);
+        }
         try {
-            prepared.reserve(payload->components.size());
-            for (const WorldSpawnComponentPayload& source : payload->components) {
+            prepared.reserve(componentEnd - firstComponent);
+            for (size_t componentIndex = firstComponent; componentIndex < componentEnd; ++componentIndex) {
+                const WorldSpawnComponentPayload& source = payload->components[componentIndex];
                 const ComponentTypeInfo* info = componentRegistry_->Find(source.typeId);
                 if (info == nullptr || !info->factory ||
-                    info->registrationSource != ComponentRegistrationSource::GameProject) {
+                    (!static_cast<const WorldSpawnBatchPayload*>(command.payload.get())->allowEngineComponents &&
+                     info->registrationSource != ComponentRegistrationSource::GameProject)) {
                     return rejectReserved(WorldMutationResult::ComponentInitializationFailed);
                 }
                 std::unique_ptr<IComponent> component = info->factory();
@@ -192,48 +227,58 @@ WorldMutationResult World::ApplyQueuedSpawn(const PendingWorldCommand& command) 
         }
     }
 
-    if (objects_.size() >= objects_.max_size()) {
-        return rejectReserved(WorldMutationResult::InternalError);
-    }
-    const size_t nextObjectCount = objects_.size() + 1u;
-    const size_t objectCapacity =
-        INTERNAL::GrowWorldCapacity(objects_.capacity(), nextObjectCount, objects_.max_size());
-    objects_.reserve(objectCapacity);
+    GameObject* ptr = existingObject;
+    if (!attachToLiveObject) {
+        if (objects_.size() >= objects_.max_size()) {
+            return rejectReserved(WorldMutationResult::InternalError);
+        }
+        const size_t nextObjectCount = objects_.size() + 1u;
+        const size_t objectCapacity =
+            INTERNAL::GrowWorldCapacity(objects_.capacity(), nextObjectCount, objects_.max_size());
+        objects_.reserve(objectCapacity);
 
-    auto object = std::make_unique<GameObject>(command.name.data());
-    GameObject* ptr = object.get();
-    ptr->SetRuntimeHandle(command.object);
-    bool objectStored = false;
-    try {
-        ptr->SetOwnerWorld(this);
-        Transform3D localTransform{};
-        localTransform.position = command.transform.position;
-        localTransform.rotation = command.transform.rotation;
-        localTransform.scale = command.transform.scale;
-        (void)ptr->SetLocalTransform(localTransform);
-        if (parent != nullptr && !ptr->SetParentInternal(parent)) {
-            throw std::runtime_error("Queued World spawn hierarchy rejected.");
+        const std::string_view objectName = nameOverride.empty() ? std::string_view(command.name.data()) : nameOverride;
+        auto object = std::make_unique<GameObject>(std::string(objectName));
+        ptr = object.get();
+        ptr->SetRuntimeHandle(command.object);
+        bool objectStored = false;
+        try {
+            ptr->SetOwnerWorld(this);
+            Transform3D localTransform{};
+            localTransform.position = command.transform.position;
+            localTransform.rotation = command.transform.rotation;
+            localTransform.scale = command.transform.scale;
+            (void)ptr->SetLocalTransform(localTransform);
+            if (parent != nullptr && !ptr->SetParentInternal(parent)) {
+                throw std::runtime_error("Queued World spawn hierarchy rejected.");
+            }
+            const size_t storageIndex = objects_.size();
+            objects_.push_back(std::move(object));
+            objectStored = true;
+            if (!CommitReservedObjectHandle(command.object, ptr, storageIndex)) {
+                throw std::runtime_error("Queued World spawn handle commit rejected.");
+            }
+            if (command.documentId != 0u && !ptr->SetDocumentId(SceneObjectId{command.documentId})) {
+                throw std::runtime_error("Queued World spawn document identity rejected.");
+            }
+        } catch (...) {
+            if (ptr->GetDocumentId().value != 0u) {
+                (void)ptr->SetDocumentId({});
+            }
+            (void)ptr->SetParentInternal(nullptr);
+            RemoveRenderObjectDirty(ptr);
+            ptr->SetOwnerWorld(nullptr);
+            ptr->SetRuntimeHandle({});
+            if (slotIndex < objectSlots_.size() && objectSlots_[slotIndex].state == ObjectSlotState::Live) {
+                ReleaseObjectHandle(command.object);
+            } else {
+                ReleaseReservedObjectHandle(command.object);
+            }
+            if (objectStored && !objects_.empty() && objects_.back().get() == ptr) {
+                objects_.pop_back();
+            }
+            throw;
         }
-        const size_t storageIndex = objects_.size();
-        objects_.push_back(std::move(object));
-        objectStored = true;
-        if (!CommitReservedObjectHandle(command.object, ptr, storageIndex)) {
-            throw std::runtime_error("Queued World spawn handle commit rejected.");
-        }
-    } catch (...) {
-        (void)ptr->SetParentInternal(nullptr);
-        RemoveRenderObjectDirty(ptr);
-        ptr->SetOwnerWorld(nullptr);
-        ptr->SetRuntimeHandle({});
-        if (slotIndex < objectSlots_.size() && objectSlots_[slotIndex].state == ObjectSlotState::Live) {
-            ReleaseObjectHandle(command.object);
-        } else {
-            ReleaseReservedObjectHandle(command.object);
-        }
-        if (objectStored && !objects_.empty() && objects_.back().get() == ptr) {
-            objects_.pop_back();
-        }
-        throw;
     }
     if (prepared.empty()) {
         return WorldMutationResult::Success;
@@ -257,7 +302,9 @@ WorldMutationResult World::ApplyQueuedSpawn(const PendingWorldCommand& command) 
             }
         }
         if (attached) {
-            reservationStateJournal_.resize(spawnCheckpoint.reservationJournalCount);
+            if (!preserveReservationJournal) {
+                reservationStateJournal_.resize(spawnCheckpoint.reservationJournalCount);
+            }
             spawnMaterializationObject_ = nullptr;
             return WorldMutationResult::Success;
         }
@@ -294,6 +341,12 @@ WorldMutationResult World::ApplyQueuedSpawn(const PendingWorldCommand& command) 
         spawnMaterializationObject_ = nullptr;
     }
     RemoveRenderObjectDirty(ptr);
+    if (attachToLiveObject) {
+        return failure;
+    }
+    if (ptr->GetDocumentId().value != 0u) {
+        (void)ptr->SetDocumentId({});
+    }
     ptr->SetRuntimeHandle({});
     ptr->SetOwnerWorld(nullptr);
     ReleaseObjectHandle(command.object);

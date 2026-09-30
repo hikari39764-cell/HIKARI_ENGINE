@@ -199,17 +199,24 @@ bool ImGuiInspectorBuilder::InputActionIdPicker(std::string_view label, INPUT::I
 
 bool ImGuiInspectorBuilder::RuntimeVariableIdPicker(std::string_view label, BINDING::ValueType expectedType,
                                                     std::string& value) {
+    return RuntimeVariableIdPicker(AuthoringFieldDescriptor{{}, label, {}},
+                                   std::span<const BINDING::ValueType>(&expectedType, 1u), value);
+}
+
+bool ImGuiInspectorBuilder::RuntimeVariableIdPicker(const AuthoringFieldDescriptor& field,
+                                                    std::span<const BINDING::ValueType> allowedTypes,
+                                                    std::string& value) {
 #if defined(HIKARI_WITH_EDITOR)
     const auto* store =
         context_.worldServices != nullptr ? context_.worldServices->Find<BINDING::RuntimeBindingStore>() : nullptr;
     if (store == nullptr) {
-        return String(label, value);
+        return String(field.label, value);
     }
-    EDITOR::InspectorPropertyRow row(label);
-    return row.IsVisible() && EDITOR::DrawRuntimeVariableField(store->GetCatalog(), "##Value", expectedType, value);
+    EDITOR::InspectorPropertyRow row(field.label);
+    return row.IsVisible() && EDITOR::DrawRuntimeVariableField(store->GetCatalog(), "##Value", allowedTypes, value);
 #else
-    (void)expectedType;
-    return String(label, value);
+    (void)allowedTypes;
+    return String(field.label, value);
 #endif
 }
 

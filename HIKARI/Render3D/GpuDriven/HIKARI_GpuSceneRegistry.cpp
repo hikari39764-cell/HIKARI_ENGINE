@@ -456,7 +456,7 @@ void GpuSceneRegistry::Clear() {
     surfaceRecords_.clear();
     waterSurfaceGpuData_.clear();
     waterSurfaceGpuData_.push_back(WATER::BuildWaterSurfaceGpuDataSentinel());
-    meshShaderJointPalettes_.clear();
+    meshShaderJointPalettes_.reset();
     terrainSurfaceGpuData_.clear();
     terrainSurfaceGpuData_.push_back(TERRAIN::BuildTerrainSurfaceGpuDataSentinel());
     terrainSurfaceHeights_ = nullptr;
@@ -604,24 +604,27 @@ void GpuSceneRegistry::RebuildForwardFromSceneCache(const GpuSceneRegistrySyncIn
             WATER::BuildWaterSurfaceGpuData(record.waterSurfaceData, record.waterSurfaceLiquidCoverageOffset));
     }
 
-    meshShaderJointPalettes_.resize(surfaceRecords_.size());
+    auto jointPaletteSnapshot = std::make_shared<GpuSceneJointPaletteSnapshot>();
     GpuScenePoseBuilder meshShaderPoseBuilder{};
     for (uint32_t recordIndex = 0; recordIndex < surfaceRecords_.size(); ++recordIndex) {
         GpuSceneSurfaceRecord& record = surfaceRecords_[recordIndex];
-        if (!record.skinned || record.key.backendRoute != RUNTIME::SurfaceBackendRoute::MeshShader ||
-            recordIndex >= RUNTIME::kSurfaceGpuSceneMaxDeformationPalettes) {
+        record.jointPaletteOffsetBytes = 0u;
+        record.jointPaletteMatrixCount = 0u;
+        if (!record.skinned || record.key.backendRoute != RUNTIME::SurfaceBackendRoute::MeshShader) {
             continue;
         }
         const std::vector<MATH::Mat4>* palette = meshShaderPoseBuilder.ResolveJointPalette(record);
-        if (palette == nullptr || palette->empty() || palette->size() > RUNTIME::kSurfaceGpuSceneMaxJointMatrices) {
-            record.jointPaletteSlot = RUNTIME::kInvalidRenderSurfaceIndex;
-            record.jointPaletteMatrixCount = 0u;
+        if (palette == nullptr || palette->empty() || palette->size() > kMaxGpuSceneJointMatricesPerSurface ||
+            jointPaletteSnapshot->matrices.size() > kMaxGpuSceneJointPaletteMatrixCount ||
+            palette->size() > kMaxGpuSceneJointPaletteMatrixCount - jointPaletteSnapshot->matrices.size()) {
             continue;
         }
-        meshShaderJointPalettes_[recordIndex] = *palette;
-        record.jointPaletteSlot = recordIndex;
+        record.jointPaletteOffsetBytes =
+            static_cast<uint32_t>(jointPaletteSnapshot->matrices.size() * sizeof(MATH::Mat4));
         record.jointPaletteMatrixCount = NUMERIC::SaturateToUint32(palette->size());
+        jointPaletteSnapshot->matrices.insert(jointPaletteSnapshot->matrices.end(), palette->begin(), palette->end());
     }
+    meshShaderJointPalettes_ = std::move(jointPaletteSnapshot);
 
     terrainSurfaceGpuData_.clear();
     terrainSurfaceGpuData_.push_back(TERRAIN::BuildTerrainSurfaceGpuDataSentinel());
@@ -851,6 +854,7 @@ bool GpuSceneRegistry::TryPatchForwardDataFromSceneCache(const GpuSceneRegistryS
     std::vector<RUNTIME::SurfaceGpuSceneInstance> singleInstance{};
     std::vector<RUNTIME::SurfaceGpuSceneMaterialSource> singleMaterial{};
     GpuScenePoseBuilder meshShaderPoseBuilder{};
+    std::shared_ptr<GpuSceneJointPaletteSnapshot> updatedJointPaletteSnapshot{};
 
     for (const uint32_t surfaceIndex : dirtySurfaceIndices) {
         currentSurfaceIndex = surfaceIndex;
@@ -860,20 +864,55 @@ bool GpuSceneRegistry::TryPatchForwardDataFromSceneCache(const GpuSceneRegistryS
 
         GpuSceneSurfaceRecord newRecord = BuildGpuSceneSurfaceRecord(surfaces[surfaceIndex], surfaceIndex);
         ++stats_.frameRecordBuildCount;
-        if (newRecord.skinned && newRecord.key.backendRoute == RUNTIME::SurfaceBackendRoute::MeshShader &&
-            surfaceIndex < RUNTIME::kSurfaceGpuSceneMaxDeformationPalettes) {
-            const std::vector<MATH::Mat4>* palette = meshShaderPoseBuilder.ResolveJointPalette(newRecord);
-            if (palette != nullptr && !palette->empty() &&
-                palette->size() <= RUNTIME::kSurfaceGpuSceneMaxJointMatrices) {
-                if (meshShaderJointPalettes_.size() != surfaceRecords_.size()) {
-                    return reject("pose storage changed");
-                }
-                meshShaderJointPalettes_[surfaceIndex] = *palette;
-                newRecord.jointPaletteSlot = surfaceIndex;
-                newRecord.jointPaletteMatrixCount = NUMERIC::SaturateToUint32(palette->size());
-            }
-        }
         const GpuSceneSurfaceRecord& oldRecord = surfaceRecords_[surfaceIndex];
+        const bool oldMeshShaderSkinned =
+            oldRecord.skinned && oldRecord.key.backendRoute == RUNTIME::SurfaceBackendRoute::MeshShader;
+        const bool newMeshShaderSkinned =
+            newRecord.skinned && newRecord.key.backendRoute == RUNTIME::SurfaceBackendRoute::MeshShader;
+        if (oldMeshShaderSkinned != newMeshShaderSkinned) {
+            return reject("joint palette routing changed");
+        }
+        if (newMeshShaderSkinned && oldRecord.jointPaletteMatrixCount != 0u) {
+            const std::vector<MATH::Mat4>* palette = meshShaderPoseBuilder.ResolveJointPalette(newRecord);
+            if (palette == nullptr || palette->empty() || palette->size() > kMaxGpuSceneJointMatricesPerSurface ||
+                oldRecord.jointPaletteMatrixCount != palette->size() || meshShaderJointPalettes_ == nullptr) {
+                return reject("joint palette layout changed");
+            }
+            const size_t firstMatrix = oldRecord.jointPaletteOffsetBytes / sizeof(MATH::Mat4);
+            const size_t oldMatrixCount = oldRecord.jointPaletteMatrixCount;
+            if (oldRecord.jointPaletteOffsetBytes % sizeof(MATH::Mat4) != 0u ||
+                firstMatrix > meshShaderJointPalettes_->matrices.size() ||
+                oldMatrixCount > meshShaderJointPalettes_->matrices.size() - firstMatrix) {
+                return reject("joint palette storage changed");
+            }
+            const auto oldBegin = meshShaderJointPalettes_->matrices.begin() + static_cast<std::ptrdiff_t>(firstMatrix);
+            const bool poseUnchanged = std::equal(palette->begin(), palette->end(), oldBegin,
+                                                  [](const MATH::Mat4& lhs, const MATH::Mat4& rhs) {
+                                                      for (int column = 0; column < 4; ++column) {
+                                                          for (int row = 0; row < 4; ++row) {
+                                                              if (lhs.m[column][row] != rhs.m[column][row]) {
+                                                                  return false;
+                                                              }
+                                                          }
+                                                      }
+                                                      return true;
+                                                  });
+            if (!poseUnchanged) {
+                if (updatedJointPaletteSnapshot == nullptr) {
+                    updatedJointPaletteSnapshot =
+                        std::make_shared<GpuSceneJointPaletteSnapshot>(*meshShaderJointPalettes_);
+                }
+                std::copy(palette->begin(), palette->end(),
+                          updatedJointPaletteSnapshot->matrices.begin() + static_cast<std::ptrdiff_t>(firstMatrix));
+            }
+            newRecord.jointPaletteOffsetBytes = oldRecord.jointPaletteOffsetBytes;
+            newRecord.jointPaletteMatrixCount = oldRecord.jointPaletteMatrixCount;
+        } else if (newMeshShaderSkinned) {
+            // パレット上限で描画できないレコードは、ルートとレイアウトが同じ間は
+            // ブロック状態を維持し、姿勢やトランスフォームの更新で全件再構築しない。
+            newRecord.jointPaletteOffsetBytes = 0u;
+            newRecord.jointPaletteMatrixCount = 0u;
+        }
         if (oldRecord.waterSurface != newRecord.waterSurface) {
             return reject("water membership changed");
         }
@@ -976,6 +1015,10 @@ bool GpuSceneRegistry::TryPatchForwardDataFromSceneCache(const GpuSceneRegistryS
         globalMaterialSources_[globalInstanceIndex] = materialSource;
     }
 
+    if (updatedJointPaletteSnapshot != nullptr) {
+        meshShaderJointPalettes_ = std::move(updatedJointPaletteSnapshot);
+        sceneSource_.meshShaderJointPalettes = meshShaderJointPalettes_;
+    }
     return true;
 }
 
@@ -993,7 +1036,7 @@ std::array<GpuSceneRegistry::PrimaryPassBinding, 5> GpuSceneRegistry::PrimaryPas
 
 void GpuSceneRegistry::RebuildForwardSceneSource() {
     sceneSource_.surfaceRecords = &surfaceRecords_;
-    sceneSource_.meshShaderJointPalettes = &meshShaderJointPalettes_;
+    sceneSource_.meshShaderJointPalettes = meshShaderJointPalettes_;
     sceneSource_.waterSurfaceGpuData = &waterSurfaceGpuData_;
     sceneSource_.terrainSurfaceGpuData = &terrainSurfaceGpuData_;
     sceneSource_.terrainSurfaceHeights = terrainSurfaceHeights_;

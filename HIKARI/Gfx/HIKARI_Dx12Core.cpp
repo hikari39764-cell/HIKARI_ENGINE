@@ -462,7 +462,10 @@ bool Dx12Core::BeginFrame(float clearR, float clearG, float clearB, float clearA
     GPU_PROFILE::SetEnabled(allowGpuProfiler, debugConfig.enableDebugLayer
                                                   ? "GPU profiler is disabled while D3D12 Debug Layer is enabled."
                                                   : "GPU profiler is disabled by GfxDebugConfig.");
-    GPU_PIPELINE_STATS::SetEnabled(allowGpuProfiler,
+    const bool allowGpuPipelineStats =
+        debugConfig.enableGpuPipelineStats &&
+        (!debugConfig.enableDebugLayer || debugConfig.enableGpuFrameProfilerWithDebugLayer);
+    GPU_PIPELINE_STATS::SetEnabled(allowGpuPipelineStats,
                                    debugConfig.enableDebugLayer
                                        ? "Pipeline stats profiler is disabled while D3D12 Debug Layer is enabled."
                                        : "Pipeline stats profiler is disabled by GfxDebugConfig.");

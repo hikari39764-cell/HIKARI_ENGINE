@@ -15,6 +15,7 @@
 #include <utility>
 #include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
+#include "Runtime/Project/Internal/HIKARI_GameProjectSessionRuntimeExtension.h"
 #include "Runtime/Binding/HIKARI_RuntimeBindingCatalogJson.h"
 #include "Runtime/Binding/Adapters/HIKARI_RuntimeMaterialProjection.h"
 #include "Core/HIKARI_Logger.h"
@@ -29,6 +30,7 @@
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
 #if defined(HIKARI_WITH_EDITOR)
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
+#include "Render3D/Views/HIKARI_EditorViewCapture.h"
 #endif
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Render3D/Lighting/HIKARI_PanoramaSkyLayerStage.h"
@@ -44,6 +46,7 @@
 #include "Scene/Vfx/HIKARI_VfxLightOutput.h"
 #include "Scene/Vfx/HIKARI_VfxPlaybackService.h"
 #include "Scene/Vfx/HIKARI_VfxScreenOutput.h"
+#include "Scene/Ui/HIKARI_UiSceneSystem.h"
 #include "Scene/Capture/HIKARI_SceneCaptureReadability.h"
 #include "Scene/Lighting/HIKARI_SceneLightingSet.h"
 
@@ -200,6 +203,13 @@ void DocumentSceneBase::OnExit() {
     if (!state_->runtime.initialized) {
         return;
     }
+    RUNTIME::GameProjectSessionRuntimeExtension* sessionOwner =
+        state_->runtime.world.Services().Find<RUNTIME::GameProjectSessionRuntimeExtension>();
+    if (sessionOwner != nullptr) {
+        sessionOwner->ExitScene(state_->runtime.world);
+    }
+    if (UiSceneSystem* uiSystem = state_->runtime.world.Services().Find<UiSceneSystem>())
+        uiSystem->ReleaseInputOwnership();
     SERVICES::GetActionTimeDilationService().ReleaseOwner(&state_->runtime.world);
     state_->camera.sequencePlayback.Reset();
     state_->camera.currentCameraSequenceHandle = {};
@@ -218,6 +228,11 @@ void DocumentSceneBase::OnExit() {
     // Components detach while World services (including RuntimeBinding)
     // are still available, so SDK contexts can release owned writers.
     state_->runtime.world.Clear();
+    if (sessionOwner != nullptr) {
+        sessionOwner->StopGameSession();
+    }
+    state_->runtime.playActive = false;
+    state_->runtime.stopGameProjectSessionAfterWorldDetach = false;
     state_->runtime.world.Services().Clear();
     state_->runtime.worldServicesConfigured = false;
     state_->runtime.terrainSurfaceQueryService.Clear();
@@ -473,6 +488,10 @@ void DocumentSceneBase::Render() {
         primaryView.purpose =
             state_->runtime.playActive ? RENDER3D::RenderViewPurpose::Game : RENDER3D::RenderViewPurpose::EditorScene;
         primaryView.cameraFrame = &state_->camera.resolvedFrame;
+#if defined(HIKARI_WITH_EDITOR)
+        RENDER3D::EDITORVIEW::SetPrimaryViewCaptureFrame(state_->camera.resolvedFrame,
+                                                         state_->identity.documentRevision);
+#endif
         primaryView.assetRegistry = &state_->assets.Registry();
         primaryView.worldSpriteFrameSource = &RenderSubmissionSystem::GetWorldSpriteFrameSource();
         primaryView.worldTextFrameSource = &RenderSubmissionSystem::GetWorldTextFrameSource();
@@ -646,6 +665,7 @@ SceneObjectId DocumentSceneBase::GetSelectedGizmoObjectId() const { return state
 bool DocumentSceneBase::RequestLightingBake(bool force, SceneObjectId selectedObjectId) {
     return state_->baking.RequestLightingBake(*this, force, selectedObjectId);
 }
+bool DocumentSceneBase::ClearLightingBake() { return state_->baking.ClearLightingBake(*this); }
 TOOLS::BAKING::LightingBakeJobState DocumentSceneBase::GetLightingBakeJobState() const {
     return state_->baking.GetJobState();
 }

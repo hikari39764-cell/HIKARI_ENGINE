@@ -7,6 +7,8 @@
 
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Editor/Projects/HIKARI_ProjectProcess.h"
+#include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
+#include "Editor/Project/HIKARI_GameProjectEditorOperationRegistration.h"
 #include "Runtime/HIKARI_RuntimeLaunchConfig.h"
 
 namespace HIKARI::EDITOR {
@@ -66,7 +68,7 @@ bool GameProjectEditorModuleLibrary::Load(const std::filesystem::path& modulePat
     if (api == nullptr || api->structSize < sizeof(EDITOR_PROJECT::GameProjectEditorModuleApi) ||
         api->abiVersion != EDITOR_PROJECT::kGameProjectEditorModuleAbiVersion || api->createInstance == nullptr ||
         api->destroyInstance == nullptr || api->getModuleId == nullptr || api->getWorkspaceCount == nullptr ||
-        api->getWorkspace == nullptr) {
+        api->getWorkspace == nullptr || api->registerEditorOperations == nullptr) {
         outMessage = "GameProject Editor companion ABI is incompatible. "
                      "Rebuild the project with this HIKARI Editor SDK.";
         FreeLibrary(library);
@@ -129,6 +131,26 @@ size_t GameProjectEditorModuleLibrary::GetWorkspaceCount() const noexcept {
 
 EDITOR_PROJECT::IEditorWorkspace* GameProjectEditorModuleLibrary::GetWorkspace(size_t index) const noexcept {
     return IsLoaded() ? api_->getWorkspace(instance_, index) : nullptr;
+}
+
+bool GameProjectEditorModuleLibrary::RegisterEditorOperations(EditorOperationRegistry& registry, uint64_t ownerToken,
+                                                              EDITOR_PROJECT::IEditorDocumentService* documents,
+                                                              std::string& outMessage) const {
+    outMessage.clear();
+    if (!IsLoaded() || ownerToken == 0u) {
+        outMessage = "GameProject Editor operation registration requires a loaded module and owner token.";
+        return false;
+    }
+    GameProjectEditorOperationRegistration registrar{registry, ownerToken, documents};
+    if (!api_->registerEditorOperations(instance_, &registrar)) {
+        outMessage = "GameProject Editor operation registration callback failed.";
+        return false;
+    }
+    if (registrar.Failed()) {
+        outMessage = registrar.FailureMessage();
+        return false;
+    }
+    return true;
 }
 
 const std::filesystem::path& GameProjectEditorModuleLibrary::GetModulePath() const noexcept { return modulePath_; }

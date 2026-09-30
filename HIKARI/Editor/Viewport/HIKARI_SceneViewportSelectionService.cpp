@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 
+#include "Editor/Views/HIKARI_EditorViewportGeometry.h"
 #include "Render3D/Core/HIKARI_BoundsUtils.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"
 #include "Render3D/Runtime/HIKARI_SceneRenderCache.h"
@@ -20,65 +21,11 @@ namespace HIKARI::EDITOR {
 namespace {
 constexpr float kRayEpsilon = 1.0e-6f;
 
-struct SelectionRay {
-    MATH::Vec3 origin{};
-    MATH::Vec3 direction{};
-};
-
-SelectionRay BuildSelectionRay(const Camera3D& camera, const SceneViewportRect& viewport,
-                               const MATH::Vec2& screenPosition) {
-    const float normalizedX = (screenPosition.x - viewport.x) / (std::max)(viewport.width, 1.0f);
-    const float normalizedY = (screenPosition.y - viewport.y) / (std::max)(viewport.height, 1.0f);
-    const float ndcX = normalizedX * 2.0f - 1.0f;
-    const float ndcY = 1.0f - normalizedY * 2.0f;
-
-    const MATH::Vec3 forward = MATH::Normalize(camera.GetTarget() - camera.GetPosition());
-    const MATH::Vec3 right = MATH::Normalize(MATH::Cross(camera.GetUp(), forward));
-    const MATH::Vec3 up = MATH::Normalize(MATH::Cross(forward, right));
-    const float tanHalfFov = std::tan((std::max)(camera.GetFovYRad(), 0.001f) * 0.5f);
-    const float aspect = viewport.height > 0.0f ? viewport.width / viewport.height : camera.GetAspect();
-
-    SelectionRay ray{};
-    ray.origin = camera.GetPosition();
-    ray.direction = MATH::Normalize(forward + right * (ndcX * aspect * tanHalfFov) + up * (ndcY * tanHalfFov));
-    return ray;
-}
-
-bool IntersectRayBounds(const SelectionRay& ray, const Bounds& bounds, float& outDistance) {
+bool IntersectSelectionBounds(const EditorPointerRay& ray, const Bounds& bounds, float& outDistance) {
     if (!BOUNDS::IsUsable(bounds)) {
         return false;
     }
-
-    float nearDistance = 0.0f;
-    float farDistance = (std::numeric_limits<float>::max)();
-    const float origins[] = {ray.origin.x, ray.origin.y, ray.origin.z};
-    const float directions[] = {ray.direction.x, ray.direction.y, ray.direction.z};
-    const float minimums[] = {bounds.min.x, bounds.min.y, bounds.min.z};
-    const float maximums[] = {bounds.max.x, bounds.max.y, bounds.max.z};
-
-    for (int axis = 0; axis < 3; ++axis) {
-        if (std::fabs(directions[axis]) <= kRayEpsilon) {
-            if (origins[axis] < minimums[axis] || origins[axis] > maximums[axis]) {
-                return false;
-            }
-            continue;
-        }
-
-        const float inverseDirection = 1.0f / directions[axis];
-        float axisNear = (minimums[axis] - origins[axis]) * inverseDirection;
-        float axisFar = (maximums[axis] - origins[axis]) * inverseDirection;
-        if (axisNear > axisFar) {
-            std::swap(axisNear, axisFar);
-        }
-        nearDistance = (std::max)(nearDistance, axisNear);
-        farDistance = (std::min)(farDistance, axisFar);
-        if (nearDistance > farDistance) {
-            return false;
-        }
-    }
-
-    outDistance = nearDistance;
-    return farDistance >= 0.0f;
+    return IntersectEditorBounds(ray, bounds.min, bounds.max, outDistance);
 }
 
 MATH::Vec3 NormalizePointInBounds(const MATH::Vec3& point, const Bounds& bounds) {
@@ -324,7 +271,12 @@ SceneObjectId SceneViewportSelectionService::PickObject(const Camera3D& camera, 
         return {};
     }
 
-    const SelectionRay ray = BuildSelectionRay(camera, viewport, screenPosition);
+    EditorPointerRay ray{};
+    const float normalizedX = (screenPosition.x - viewport.x) / viewport.width;
+    const float normalizedY = (screenPosition.y - viewport.y) / viewport.height;
+    if (!BuildEditorPointerRay(camera, normalizedX, normalizedY, ray)) {
+        return {};
+    }
     const RENDER3D::RUNTIME::SceneRenderCache& cache = RenderSubmissionSystem::GetSceneRenderCache();
 
     SceneObjectId selectedObject{};
@@ -338,7 +290,7 @@ SceneObjectId SceneViewportSelectionService::PickObject(const Camera3D& camera, 
             continue;
         }
         float distance = 0.0f;
-        if (IntersectRayBounds(ray, surface.worldBounds, distance) && distance < selectedDistance) {
+        if (IntersectSelectionBounds(ray, surface.worldBounds, distance) && distance < selectedDistance) {
             selectedDistance = distance;
             selectedObject.value = surface.objectId.value;
             selectedSurface = &surface;
@@ -350,7 +302,7 @@ SceneObjectId SceneViewportSelectionService::PickObject(const Camera3D& camera, 
             continue;
         }
         float distance = 0.0f;
-        if (IntersectRayBounds(ray, sprite.worldBounds, distance) && distance < selectedDistance) {
+        if (IntersectSelectionBounds(ray, sprite.worldBounds, distance) && distance < selectedDistance) {
             selectedDistance = distance;
             selectedObject.value = sprite.objectId;
             selectedSurface = nullptr;
@@ -364,7 +316,7 @@ SceneObjectId SceneViewportSelectionService::PickObject(const Camera3D& camera, 
             continue;
         }
         float distance = 0.0f;
-        if (IntersectRayBounds(ray, text.worldBounds, distance) && distance < selectedDistance) {
+        if (IntersectSelectionBounds(ray, text.worldBounds, distance) && distance < selectedDistance) {
             selectedDistance = distance;
             selectedObject.value = text.objectId;
             selectedSurface = nullptr;
@@ -392,7 +344,7 @@ SceneObjectId SceneViewportSelectionService::PickObject(const Camera3D& camera, 
             continue;
         }
         float distance = 0.0f;
-        if (IntersectRayBounds(ray, object.desc.worldBounds, distance) && distance < selectedDistance) {
+        if (IntersectSelectionBounds(ray, object.desc.worldBounds, distance) && distance < selectedDistance) {
             selectedDistance = distance;
             selectedObject.value = object.desc.id.value;
             selectedSprite = nullptr;

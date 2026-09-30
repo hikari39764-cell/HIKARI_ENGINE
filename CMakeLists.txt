@@ -81,6 +81,7 @@ set(
     d3d12
     dxgi
     dxguid
+    imm32
     xaudio2)
 set(HIKARI_RUNTIME_PRIVATE_LINK_LIBRARIES)
 if(HIKARI_WITH_EDITOR_BUILD)

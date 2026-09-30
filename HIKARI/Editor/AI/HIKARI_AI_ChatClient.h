@@ -43,6 +43,7 @@ struct AiChatConfig {
     AiRequestContextState* requestContext = nullptr; // Borrowed by one active conversation only.
     size_t requestContextPrefixMessages = 0;         // Dynamic system/context prefix before task messages.
     AiReasoningContentPolicy reasoningContentPolicy = AiReasoningContentPolicy::Preserve;
+    bool showReasoning = true;
     bool requestUsage = true;
     bool editorTools = false;
     std::function<bool()> shouldCancel{};
@@ -60,7 +61,10 @@ bool ReadAiImageDataUri(const std::string& path, std::string& uri, std::string& 
 bool BuildAiChatRequest(const AiChatConfig& config, const std::vector<AiChatMessage>& messages, bool stream,
                         std::string& body, std::string& error, AiChatRequestStats* stats = nullptr);
 
-using AiChatStreamCallback = std::function<bool(const std::string& delta)>;
+struct AiChatDelta {
+    std::string content, reasoning;
+};
+using AiChatStreamCallback = std::function<bool(const AiChatDelta& delta)>;
 
 bool LoadAiChatConfig(AiChatConfig& outConfig);
 bool SaveAiChatConfig(const AiChatConfig& config);

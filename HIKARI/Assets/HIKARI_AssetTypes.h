@@ -20,6 +20,7 @@ struct ShaderCookedArtifact;
 enum class AssetType {
     Model,
     Scene,
+    Prefab,
     Sky,
     Texture,
     Material,
@@ -218,6 +219,7 @@ enum class CookedAssetFormat {
     HVFX,
     HSHADERC,
     HPAK,
+    HPREFABC,
 };
 
 struct TextureAssetDescriptor final : AssetDescriptor {

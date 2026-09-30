@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <condition_variable>
 #include <chrono>
@@ -24,8 +25,8 @@ class AiAssistantPanel;
 enum class EditorOperationPermission : uint8_t;
 class AiAssistantSession {
 public:
-    using AiSceneActionCallback = std::function<AI_ASSISTANT::AiRequestResult(std::string_view)>;
-    using AiCapabilityProvider = std::function<std::vector<AI_ASSISTANT::AiCapability>()>;
+    using AiSceneActionCallback = std::function<AI_ASSISTANT::AiRequestResult(std::string_view, AiRequestSource)>;
+    using AiCapabilityProvider = std::function<std::vector<AI_ASSISTANT::AiCapability>(AiRequestSource)>;
     using AiOperationPermissionResolver = std::function<std::optional<EditorOperationPermission>(std::string_view)>;
 
     explicit AiAssistantSession(AI_ASSISTANT::AiChatCompletion completion = AI_ASSISTANT::RunChatCompletionsStreaming);
@@ -38,6 +39,10 @@ public:
     bool CanResume() const;
     bool IsBusy() const noexcept { return busy_.load(); }
     bool ConsumeCancellation() noexcept { return cancelOwnerRequested_.exchange(false); }
+    AiProjectAccessMode ProjectAccessMode() const noexcept { return projectAccessMode_.load(); }
+    AiProjectAccessMode RequestedProjectAccessMode() const noexcept;
+    bool IsProjectAccessModeChangePending() const noexcept { return pendingProjectAccessMode_.has_value(); }
+    bool RequestProjectAccessMode(AiProjectAccessMode mode);
     void SetSceneActionCallback(AiSceneActionCallback callback);
     void SetContextSnapshot(std::string snapshot);
     // Provider is evaluated on the submitting editor thread, never by the model worker.
@@ -47,6 +52,7 @@ public:
     void SetOperationPermissionResolver(AiOperationPermissionResolver resolver);
     void RefreshCapabilities(bool onlyIfChanged = false);
     std::vector<AI_ASSISTANT::AiChatMessage> SnapshotMessages() const;
+    AI_ASSISTANT::AiChatDelta SnapshotStreaming() const;
     struct TaskActivity {
         std::string phase = "planning", action, sessionId;
         std::chrono::steady_clock::time_point since = std::chrono::steady_clock::now();
@@ -59,8 +65,9 @@ public:
     std::vector<AI_ASSISTANT::AiConversationSummary> Conversations() const;
     void SetBridgeStatus(const std::string& status);
     void SetBridgeSessionToken(std::string token);
-    AI_ASSISTANT::AiRequestResult ExecuteRequest(std::string_view json);
-    std::vector<AI_ASSISTANT::AiCapability> Capabilities() const;
+    AI_ASSISTANT::AiRequestResult ExecuteRequest(std::string_view json,
+                                                 AiRequestSource source = AiRequestSource::BuiltInAi);
+    std::vector<AI_ASSISTANT::AiCapability> Capabilities(AiRequestSource source = AiRequestSource::BuiltInAi) const;
     // Dispatches queued engine actions on the editor main thread. Called
     // once per frame from the scene controller, independent of the panel
     // window being visible.
@@ -78,6 +85,7 @@ private:
     friend class AiAssistantPanel;
     struct PendingAiAction {
         std::string json{};
+        AiRequestSource source = AiRequestSource::BuiltInAi;
         uint64_t generation = 0;
         std::optional<AI_ASSISTANT::AiRequestResult> result{};
         uint64_t approvalId = 0;
@@ -86,13 +94,14 @@ private:
     };
 
     AI_ASSISTANT::AiChatMessage ExecuteConversationAction(const std::string& actionJson);
+    void ApplyPendingProjectAccessMode();
     void RunConversation(bool resume);
     bool StartConversation(std::string text, std::vector<AI_ASSISTANT::AiImageAttachment> images, bool resume);
-    AI_ASSISTANT::AiRequestResult ExecuteRequestNow(std::string_view json);
+    AI_ASSISTANT::AiRequestResult ExecuteRequestNow(std::string_view json, AiRequestSource source);
     void AppendMessage(const AI_ASSISTANT::AiChatMessage& message);
     void FlushConversation();
     void UpdateConversationStorage();
-    void AppendProgress(const std::string& text);
+    void AppendProgress(const std::string& text, const std::string& reasoning, bool incomplete);
     void RecordUsage(const AI_ASSISTANT::AiChatUsage& usage, const AI_ASSISTANT::AiChatRequestStats& stats);
     void SetActivity(std::string phase, std::string action = {}, std::string sessionId = {});
     std::string BuildSystemPrompt() const;
@@ -103,7 +112,7 @@ private:
     AI_ASSISTANT::AiTaskCheckpoint taskCheckpoint_;
     mutable std::mutex messageMutex_{};
     TaskActivity activity_;
-    std::mutex streamMutex_{};
+    mutable std::mutex streamMutex_{};
     mutable std::mutex stateMutex_{};
     mutable std::mutex actionMutex_{};
     std::condition_variable actionCv_{};
@@ -111,7 +120,7 @@ private:
     std::vector<std::shared_ptr<PendingAiAction>> awaitingApproval_{};
     uint64_t nextApprovalId_ = 1;
     std::thread::id mainThreadId_{};
-    std::string streamingPartial_{};
+    AI_ASSISTANT::AiChatDelta streamingPartial_{};
     bool streamingActive_ = false;
     std::string bridgeStatus_{};
     std::string bridgeSessionToken_{};
@@ -123,7 +132,10 @@ private:
     AiCapabilityProvider capabilityProvider_{};
     std::function<uint64_t()> capabilityVersionProvider_;
     uint64_t capabilityRevision_ = ~uint64_t{0};
-    std::vector<AI_ASSISTANT::AiCapability> capabilitySnapshot_;
+    std::array<std::vector<AI_ASSISTANT::AiCapability>, 2> capabilitySnapshots_{};
+    std::atomic<AiProjectAccessMode> projectAccessMode_{AiProjectAccessMode::Content};
+    std::optional<AiProjectAccessMode> pendingProjectAccessMode_{};
+    AiProjectAccessMode conversationRequiredAccess_ = AiProjectAccessMode::Content;
     AI_ASSISTANT::AiChatConfig config_{};
     bool configLoaded_ = false;
     std::atomic<bool> busy_{false};

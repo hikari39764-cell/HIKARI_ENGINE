@@ -12,7 +12,7 @@
 
 namespace HIKARI::EDITOR {
 namespace {
-constexpr std::array<UiTemplateDefinition, 16> templates{{{"settings", "display.panel"},
+constexpr std::array<UiTemplateDefinition, 18> templates{{{"settings", "display.panel"},
                                                           {"menu", "uix.menu"},
                                                           {"hud", "uix.hud"},
                                                           {"canvas", "uix.canvas"},
@@ -21,6 +21,8 @@ constexpr std::array<UiTemplateDefinition, 16> templates{{{"settings", "display.
                                                           {"button", "uix.button"},
                                                           {"scene_button", "uix.sceneButton"},
                                                           {"progress", "uix.progress"},
+                                                          {"scroll", "uix.scrollList"},
+                                                          {"text_field", "uix.textField", true},
                                                           {"row", "uix.row"},
                                                           {"column", "uix.column"},
                                                           {"grid", "uix.grid"},
@@ -129,6 +131,13 @@ UiCreateResult CreateUiTemplate(SceneDocument& document, const ComponentRegistry
                                            name.empty() ? TEXT::Localize(entry->labelKey) : std::string(name));
         if (!root.ok)
             return root;
+        for (auto* ancestor = FindSceneObjectData(working, root.id); ancestor;) {
+            if (Has(*ancestor, "UiCanvasComponent")) {
+                Patch(*ancestor, "UiCanvasComponent", {{"inputMode", templateId == "menu" ? "Menu" : "Hud"}});
+                break;
+            }
+            ancestor = ancestor->parent ? FindSceneObjectData(working, *ancestor->parent) : nullptr;
+        }
         const auto child = [&](std::string_view kind, const char* label) {
             return CreateUiTemplate(working, registry, kind, root.id, font, TEXT::Localize(label));
         };
@@ -245,12 +254,12 @@ UiCreateResult CreateUiTemplate(SceneDocument& document, const ComponentRegistry
         if (!add(object, "UiRectComponent"))
             return {false, {}, error};
         const bool text = entry->text || templateId == "button" || templateId == "scene_button";
-        if (!entry->text) {
+        if (!entry->text && templateId != "scroll" && templateId != "text_field") {
             if (!add(object, "UiImageComponent"))
                 return {false, {}, error};
             Patch(object, "UiImageComponent", {{"tint", {.055, .08, .115, .96}}});
         }
-        if (text) {
+        if (text && templateId != "text_field") {
             if (!add(object, "UiTextComponent"))
                 return {false, {}, error};
             Patch(object, "UiTextComponent",
@@ -274,6 +283,32 @@ UiCreateResult CreateUiTemplate(SceneDocument& document, const ComponentRegistry
                 return {false, {}, error};
             Patch(object, "UiRectComponent", {{"offsetMinimum", {-160, -10}}, {"offsetMaximum", {160, 10}}});
             Patch(object, "UiImageComponent", {{"tint", {.15, .78, .65, 1}}});
+        }
+        if (templateId == "scroll") {
+            if (!add(object, "UiImageComponent") || !add(object, "UiGroupComponent") ||
+                !add(object, "UiScrollViewComponent") || !add(object, "UiLayoutGroupComponent"))
+                return {false, {}, error};
+            Patch(object, "UiRectComponent", {{"offsetMinimum", {-360, -220}}, {"offsetMaximum", {360, 220}}});
+            Patch(object, "UiImageComponent", {{"tint", {.035, .048, .07, .98}}});
+            Patch(object, "UiScrollViewComponent",
+                  {{"axis", "Vertical"}, {"contentExtent", 0.0}, {"scrollSpeed", 48.0}});
+            Patch(object, "UiLayoutGroupComponent",
+                  {{"direction", 1}, {"cellSize", {680, 56}}, {"spacing", 12}, {"padding", 16}});
+        }
+        if (templateId == "text_field") {
+            if (!add(object, "UiTextComponent") || !add(object, "UiImageComponent") ||
+                !add(object, "UiTextFieldComponent"))
+                return {false, {}, error};
+            Patch(object, "UiRectComponent", {{"offsetMinimum", {-340, -36}}, {"offsetMaximum", {340, 36}}});
+            Patch(object, "UiImageComponent", {{"tint", {.09, .14, .20, 1}}});
+            Patch(object, "UiTextComponent",
+                  {{"text", TEXT::Localize("uix.textFieldSample")},
+                   {IsValidAssetGuid(font) ? "fontAssetGuid" : "fontAssetPath", font},
+                   {"pixelHeight", 24},
+                   {"horizontalAlign", "Left"},
+                   {"outlineWidth", 0},
+                   {"shadowColor", {0, 0, 0, 0}}});
+            Patch(object, "UiTextFieldComponent", {{"enabled", true}, {"maximumCharacters", 256}});
         }
         if (templateId == "panel" || templateId == "row" || templateId == "column" || templateId == "grid") {
             if (!add(object, "UiGroupComponent"))
@@ -312,6 +347,14 @@ UiCreateResult CreateUiTemplate(SceneDocument& document, const ComponentRegistry
     NormalizeSceneComponentIds(object);
     const auto id = object.id;
     working.objects.push_back(std::move(object));
+    if (templateId == "scroll") {
+        for (const char* label : {"uix.scrollItemOne", "uix.scrollItemTwo", "uix.scrollItemThree"}) {
+            const auto item = CreateUiTemplate(working, registry, "button", id, font, TEXT::Localize(label));
+            if (!item.ok)
+                return item;
+            Patch(*FindSceneObjectData(working, item.id), "UiImageComponent", {{"tint", {.08, .38, .44, 1}}});
+        }
+    }
     document.objects = std::move(working.objects);
     return {true, id, {}};
 }

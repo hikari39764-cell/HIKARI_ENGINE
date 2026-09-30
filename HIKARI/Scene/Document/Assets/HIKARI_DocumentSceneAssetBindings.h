@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <string>
 
 #include "Assets/HIKARI_AssetDatabase.h"
@@ -18,6 +19,10 @@
 namespace HIKARI {
 
 class DocumentSceneBase;
+class ComponentRegistry;
+class PrefabAssetStore;
+class SceneRuntimeBuilder;
+class SkyManager;
 struct MaterialAssetData;
 struct PbrMaterialAssetData;
 struct SceneDependencySet;
@@ -35,7 +40,12 @@ public:
     UiAnimationAssetStore& UiAnimations() noexcept { return uiAnimations_; }
     ModelManager& Models() noexcept { return models_; }
 
-    bool ReloadAssets(const SceneDependencySet* required = nullptr);
+    bool ReloadAssets(const SceneDependencySet* required = nullptr, const AssetGuid* admissionRoot = nullptr,
+                      const std::function<bool(const AssetRegistry&, std::string&)>& validatePrepared = {},
+                      std::string* outError = nullptr);
+    bool PrepareRuntimePrefabAssets(const AssetGuid& prefabGuid, const PrefabAssetStore& prefabAssets,
+                                    const SceneRuntimeBuilder& builder, const ComponentRegistry& componentRegistry,
+                                    SkyManager& skyManager, std::string& outError);
     bool NeedsRuntimeProgramImport(const SceneDependencySet& required) const;
     void ConfigureModelTextureResolver();
     const AssetRecord* FindUniqueTextureAssetByFilename(const std::string& filename,

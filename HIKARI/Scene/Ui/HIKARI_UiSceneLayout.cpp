@@ -29,7 +29,9 @@ int AddOrder(int base, int offset) noexcept {
 
 void UiSceneSystem::SubmitImages(World& world, GAME_UI::GameUiPresentationService& presentation, SceneObjectId canvas,
                                  float timeSeconds) {
-    const auto* bindings = world.Services().Find<BINDING::RuntimeBindingStore>();
+    const auto* bindings = authoringPreview_ && previewBindings_
+                               ? previewBindings_
+                               : world.Services().Find<BINDING::RuntimeBindingStore>();
     (void)world.ForEachObjectWith<UiRectComponent, UiImageComponent>(
         WorldComponentQueryAnchor::SmallestUniqueBucket,
         [&](GameObject& object, UiRectComponent&, UiImageComponent& image) {
@@ -38,6 +40,8 @@ void UiSceneSystem::SubmitImages(World& world, GAME_UI::GameUiPresentationServic
             const ResolvedLayout layout = ResolveLayout(world, object);
             if (!layout.valid || (canvas.value && layout.canvas != canvas))
                 return;
+            const GAME_UI::GameUiClipRect clip{layout.clipEnabled, layout.clipLeft, layout.clipTop, layout.clipRight,
+                                               layout.clipBottom};
             GameProjectUiSpriteRequest request{};
             request.sourceId = object.GetRuntimeHandle().ToValue();
             request.order = AddOrder(layout.order, image.GetOrderOffset());
@@ -57,7 +61,8 @@ void UiSceneSystem::SubmitImages(World& world, GAME_UI::GameUiPresentationServic
             request.tint.g *= layout.color.y;
             request.tint.b *= layout.color.z;
             if (const auto* progress = object.GetComponent<UiProgressComponent>(); progress && progress->IsEnabled()) {
-                const float fraction = progress->ResolveFraction(bindings);
+                const float fraction = progress->ResolveFraction(
+                    bindings, authoringPreview_ ? UiBindingReadMode::AuthoringPreview : UiBindingReadMode::Runtime);
                 if (fraction <= 0)
                     return;
                 float dx = 0, dy = 0;
@@ -77,10 +82,10 @@ void UiSceneSystem::SubmitImages(World& world, GAME_UI::GameUiPresentationServic
             bool submitted = false;
             if (image.GetTextureAssetGuid().IsValid()) {
                 submitted =
-                    presentation.SubmitSpriteAsset(image.GetTextureAssetGuid().value, request, layout.transform);
+                    presentation.SubmitSpriteAsset(image.GetTextureAssetGuid().value, request, layout.transform, clip);
             }
             if (!submitted && !image.GetTextureAssetPath().empty()) {
-                submitted = presentation.SubmitSprite(image.GetTextureAssetPath(), request, layout.transform);
+                submitted = presentation.SubmitSprite(image.GetTextureAssetPath(), request, layout.transform, clip);
             }
             (void)submitted;
         });
@@ -94,20 +99,36 @@ void UiSceneSystem::SubmitTexts(World& world, GAME_UI::GameUiPresentationService
             if (!text.IsEnabled())
                 return;
             const auto* binding = object.GetComponent<UiDataBindingComponent>();
-            const auto* values = world.Services().Find<BINDING::RuntimeBindingStore>();
-            const auto boundText = binding ? binding->ResolveText(values, text.GetText()) : std::string{};
-            const std::string_view content = binding ? std::string_view(boundText) : std::string_view(text.GetText());
-            if (content.empty())
+            auto* textField = object.GetComponent<UiTextFieldComponent>();
+            const auto* values = authoringPreview_ && previewBindings_
+                                     ? previewBindings_
+                                     : world.Services().Find<BINDING::RuntimeBindingStore>();
+            std::string boundText{};
+            const bool editable = textField && textField->IsEnabled();
+            if (editable) {
+                textField->ClampEditingState(text);
+                boundText = textField->DisplayText(text);
+            }
+            if (binding && !(textField && textField->IsEnabled()))
+                boundText = authoringPreview_ ? binding->ResolveTextForPreview(values, text.GetText())
+                                              : binding->ResolveText(values, text.GetText());
+            const std::string_view content =
+                editable || binding ? std::string_view(boundText) : std::string_view(text.GetText());
+            if (content.empty() && !editable)
                 return;
             const ResolvedLayout layout = ResolveLayout(world, object);
             if (!layout.valid || (canvas.value && layout.canvas != canvas))
                 return;
+            const GAME_UI::GameUiClipRect clip{layout.clipEnabled, layout.clipLeft, layout.clipTop, layout.clipRight,
+                                               layout.clipBottom};
             const auto* store = world.Services().Find<TextAssetStore>();
             TextStyleAsset local;
             local.effects = text.GetStyle();
             local.pixelHeight = text.GetPixelHeight();
             local.color = text.GetColor();
-            const auto appearance = ResolveTextStyle(store, text.GetStyleBinding(), local);
+            const auto appearance = ResolveTextStyle(
+                store, text.GetStyleBinding(), local,
+                authoringPreview_ && object.GetDocumentId() == previewTextObject_ ? previewTextStyle_ : nullptr);
             const auto font =
                 appearance.font.IsValid() && store ? store->ResolveFont(appearance.font) : text.GetFontAssetPath();
             if (font.empty()) {
@@ -131,6 +152,38 @@ void UiSceneSystem::SubmitTexts(World& world, GAME_UI::GameUiPresentationService
             request.horizontalAlign = text.GetHorizontalAlign();
             request.verticalAlign = text.GetVerticalAlign();
             appearance.effects.Apply(request);
+            GAME_UI::GameUiTextEditing editing;
+            GAME_UI::GameUiClipRect textClip = clip;
+            if (editable) {
+                request.wrap = GameProjectUiTextWrap::None;
+                request.revealAmount = 1.0f;
+                editing.feedback = textField->LayoutFeedback();
+                editing.focused = !authoringPreview_ && focusedControl_ == object.GetRuntimeHandle();
+                editing.caret = textField->DisplayCaret();
+                if (textField->IsComposing()) {
+                    editing.compositionStart = textField->GetSelectionStartByteOffset();
+                    editing.compositionEnd = editing.compositionStart + textField->GetCompositionText().size();
+                } else {
+                    editing.selectionStart = textField->GetSelectionStartByteOffset();
+                    editing.selectionEnd = textField->GetSelectionEndByteOffset();
+                }
+                float x0 = layout.x, y0 = layout.y, x1 = layout.x + layout.width, y1 = layout.y;
+                float x2 = layout.x, y2 = layout.y + layout.height;
+                float x3 = layout.x + layout.width, y3 = layout.y + layout.height;
+                layout.transform.Transform(x0, y0);
+                layout.transform.Transform(x1, y1);
+                layout.transform.Transform(x2, y2);
+                layout.transform.Transform(x3, y3);
+                GAME_UI::GameUiClipRect own{true, (std::min)({x0, x1, x2, x3}), (std::min)({y0, y1, y2, y3}),
+                                            (std::max)({x0, x1, x2, x3}), (std::max)({y0, y1, y2, y3})};
+                if (textClip.enabled) {
+                    own.left = (std::max)(own.left, textClip.left);
+                    own.top = (std::max)(own.top, textClip.top);
+                    own.right = (std::min)(own.right, textClip.right);
+                    own.bottom = (std::min)(own.bottom, textClip.bottom);
+                }
+                textClip = own;
+            }
             request.textColor.a *= layout.opacity;
             request.outlineColor.a *= layout.opacity;
             request.shadowColor.a *= layout.opacity;
@@ -146,7 +199,7 @@ void UiSceneSystem::SubmitTexts(World& world, GAME_UI::GameUiPresentationService
             glow.glowColor.r *= layout.color.x;
             glow.glowColor.g *= layout.color.y;
             glow.glowColor.b *= layout.color.z;
-            if (!presentation.SubmitStyledText(font, content, request, glow, layout.transform))
+            if (!presentation.SubmitStyledText(font, content, request, glow, layout.transform, textClip, editing))
                 ++rejectedTextRequests_;
         });
 }
@@ -165,6 +218,8 @@ void UiSceneSystem::PreRender(World& world, const FrameContext& frame) {
 void UiSceneSystem::BuildPresentation(World& world, const FrameContext&,
                                       GAME_UI::GameUiPresentationService& presentation, SceneObjectId canvas,
                                       float timeSeconds) {
+    authoringPreview_ = playState_ == nullptr || !playState_->IsActive();
+    layouts_.SetAuthoringPreview(authoringPreview_);
     layouts_.Clear();
     rejectedTextRequests_ = 0;
     SubmitImages(world, presentation, canvas, timeSeconds);

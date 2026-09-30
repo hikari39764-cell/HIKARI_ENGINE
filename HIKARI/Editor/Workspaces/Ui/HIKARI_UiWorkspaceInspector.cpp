@@ -1,6 +1,7 @@
 #include "Editor/Authoring/HIKARI_UiAuthoring.h"
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
+#include "Core/HIKARI_JsonRead.h"
 #include "Core/Text/HIKARI_Localization.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
@@ -10,6 +11,8 @@
 #include "Editor/Workspaces/Ui/HIKARI_UiWorkspaceController.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/HIKARI_GameObject.h"
+#include "Scene/HIKARI_SceneDocumentQueries.h"
+#include "Scene/Serialization/Objects/HIKARI_SceneObjectJson.h"
 #include "Scene/Ui/HIKARI_UiSceneComponents.h"
 #include "imgui.h"
 #include <array>
@@ -38,8 +41,15 @@ void UiWorkspaceController::DrawInspector(DocumentSceneBase& scene, EditorContex
         ImGui::End();
         return;
     }
+    if (animation_.IsRecording()) {
+        ImGui::BeginDisabled(scene.IsRuntimePlayActive() || object->editorLocked);
+        animation_.DrawPoseInspector(scene, context, operations);
+        ImGui::EndDisabled();
+        ImGui::End();
+        return;
+    }
     ImGui::TextDisabled("%s", L("uix.sceneSaved"));
-    ImGui::BeginDisabled(scene.IsRuntimePlayActive() || object->editorLocked);
+    ImGui::BeginDisabled(scene.IsRuntimePlayActive() || animation_.IsPreviewing() || object->editorLocked);
     if (nameObject_ != id || !ImGui::IsAnyItemActive()) {
         nameObject_ = id;
         const auto count = std::min(object->name.size(), sizeof(name_) - 1);
@@ -70,12 +80,47 @@ void UiWorkspaceController::DrawInspector(DocumentSceneBase& scene, EditorContex
         object = selection.FindDocumentObjectById(scene, id);
     }
 
+    if (object) {
+        if (const auto* textField = Component(*object, "UiTextFieldComponent")) {
+            if (const auto* binding = Component(*object, "UiDataBindingComponent");
+                binding && JSONREAD::BooleanMemberOr(textField->properties, "enabled", true) &&
+                JSONREAD::BooleanMemberOr(binding->properties, "enabled", true) &&
+                !JSONREAD::StringMemberOr(binding->properties, "textVariable", {}).empty())
+                ImGui::TextWrapped("%s", L("uix.textFieldBindingConflict"));
+        }
+        for (const SceneObjectData* ancestor = object; ancestor;) {
+            if (const auto* source = Component(*ancestor, "UiBindingSourceComponent")) {
+                const auto* target = JSONREAD::FindMember(source->properties, "targetObjectId");
+                const SceneObjectId targetId{target ? SCENE::SERIALIZATION::SceneObjectReferenceOr(*target) : 0u};
+                if (!targetId.value || !FindSceneObjectData(scene.GetSceneDocument(), targetId))
+                    ImGui::TextWrapped("%s", L("uix.bindingSourceInvalid"));
+                break;
+            }
+            ancestor = ancestor->parent ? FindSceneObjectData(scene.GetSceneDocument(), *ancestor->parent) : nullptr;
+        }
+    }
+
+    if (object)
+        if (const auto* text = Component(*object, "UiTextComponent")) {
+            if (ImGui::Button(L("textstyle.editInContext"))) {
+                const auto guid = text->properties.value("textStyleAssetGuid", std::string{});
+                const auto opened =
+                    operations.Execute(guid.empty() ? "text.style.new" : "text.style.open",
+                                       guid.empty() ? nlohmann::json::object() : nlohmann::json{{"assetGuid", guid}});
+                if (opened.ok)
+                    operations.Execute("text.reveal", {{"objectId", id.value}});
+                else
+                    status_ = opened.message;
+            }
+        }
     if (object && ImGui::BeginTabBar("UiProperties")) {
         const std::array<std::string_view, 3> appearance{"UiImageComponent", "UiTextComponent", "UiProgressComponent"};
-        const std::array<std::string_view, 3> layout{"UiCanvasComponent", "UiRectComponent", "UiLayoutGroupComponent"};
-        const std::array<std::string_view, 6> interaction{
+        const std::array<std::string_view, 4> layout{"UiCanvasComponent", "UiRectComponent", "UiLayoutGroupComponent",
+                                                     "UiScrollViewComponent"};
+        const std::array<std::string_view, 8> interaction{
             "UiButtonComponent",         "UiGroupComponent",         "UiDisplaySettingsPanelComponent",
-            "UiDisplaySettingComponent", "HIKARI.SceneFlow.Trigger", "UiDataBindingComponent"};
+            "UiDisplaySettingComponent", "HIKARI.SceneFlow.Trigger", "UiDataBindingComponent",
+            "UiTextFieldComponent",      "UiBindingSourceComponent"};
         auto tab = [&](const char* label, std::span<const std::string_view> types) {
             if (!ImGui::BeginTabItem(L(label)))
                 return;

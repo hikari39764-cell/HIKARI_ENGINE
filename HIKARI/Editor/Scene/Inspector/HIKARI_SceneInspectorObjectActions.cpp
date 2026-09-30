@@ -81,7 +81,7 @@ void SceneInspectorPanel::DrawObjectContextMenu(DocumentSceneBase& scene, Editor
     ImGui::Separator();
     if (ImGui::BeginMenu(TEXT::LocalizeWindow("menu.edit", "Edit").c_str())) {
         if (ImGui::MenuItem(TEXT::LocalizeWindow("ui.vfx.text.Focus", "Focus").c_str(), "F")) {
-            focusObjectRequest_ = target->id;
+            RequestFocusObject(target->id);
         }
         if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.add.component.08ba89", "Add Component...").c_str(), nullptr,
                             false, !target->editorLocked)) {
@@ -101,14 +101,14 @@ void SceneInspectorPanel::DrawObjectContextMenu(DocumentSceneBase& scene, Editor
             std::snprintf(prefabBuffer_, sizeof(prefabBuffer_), "%s", target->name.c_str());
             openPrefabPopup_ = true;
         }
-        const std::vector<std::string> prefabIds = commands.ListPrefabIds();
-        if (!prefabIds.empty()) {
+        const std::vector<PrefabAssetEntry> prefabs = commands.ListPrefabs(scene.GetAssetDatabase());
+        if (!prefabs.empty()) {
             ImGui::Separator();
             if (ImGui::BeginMenu(TEXT::LocalizeWindow("editor.ui.instantiate.bad193", "Instantiate").c_str())) {
-                for (const std::string& prefabId : prefabIds) {
-                    if (ImGui::MenuItem(prefabId.c_str())) {
+                for (const PrefabAssetEntry& prefab : prefabs) {
+                    if (ImGui::MenuItem(prefab.name.c_str())) {
                         commands.Execute(SceneObjectCommandId::InstantiatePrefab, scene, context, selectionSync,
-                                         prefabId);
+                                         prefab.guid.value);
                     }
                 }
                 ImGui::EndMenu();

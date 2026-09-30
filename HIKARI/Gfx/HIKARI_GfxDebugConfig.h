@@ -15,6 +15,7 @@ struct GfxDebugConfig {
     bool enableGpuBasedValidation = false;
     bool enableGpuFrameProfiler = true;
     bool enableGpuFrameProfilerWithDebugLayer = false;
+    bool enableGpuPipelineStats = false;
     bool enableClusterGpuCullCounterReadback = true;
     bool enableClusterGpuCullDebugCounters = false;
     bool enableInfoQueueBreakOnError = false;

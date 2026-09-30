@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <string_view>
 
 #include "HIKARI/Project/GameProjectSdk.h"
@@ -38,15 +39,30 @@ public:
     // Runtime-only bindings for Scene-authored controls. SetText is a no-op
     // when the resolved UTF-8 text is unchanged; projects own localization.
     HIKARI_GAME_PROJECT_SDK_API bool SetText(GameProjectObjectHandle object, std::string_view utf8Text) const noexcept;
+    // Copies the editable text value without exposing engine-owned storage. Required bytes excludes the terminator.
+    HIKARI_GAME_PROJECT_SDK_API bool CopyTextFieldText(GameProjectObjectHandle object, char* destination,
+                                                       size_t capacity, size_t* requiredBytes) const noexcept;
+    // Binds an explicit scoped UI source to another object in this World. Pass an invalid target to clear it.
+    HIKARI_GAME_PROJECT_SDK_API bool SetBindingSource(GameProjectObjectHandle source,
+                                                      GameProjectObjectHandle target) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool SetCanvasEnabled(GameProjectObjectHandle object, bool enabled) const noexcept;
+    // Menu canvases receive input automatically while visible. This runtime-only override can suspend or resume it.
+    HIKARI_GAME_PROJECT_SDK_API bool SetCanvasInputActive(GameProjectObjectHandle object, bool active) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool SetButtonInteractable(GameProjectObjectHandle object,
                                                            bool interactable) const noexcept;
+    // Requests focus for a focusable control in an active Menu Canvas. The control handle must belong to this World.
+    HIKARI_GAME_PROJECT_SDK_API bool RequestFocus(GameProjectObjectHandle control) const noexcept;
+    // Returns an invalid handle when no Menu control currently owns focus.
+    HIKARI_GAME_PROJECT_SDK_API GameProjectObjectHandle GetFocusedControl() const noexcept;
     // Owner-thread runtime changes; never modify the saved scene. Missing
     // components, foreign/stale handles and nonfinite numbers return false.
     // Opacity and progress values are clamped by the authored range.
     HIKARI_GAME_PROJECT_SDK_API bool SetGroupVisible(GameProjectObjectHandle object, bool visible) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool SetGroupOpacity(GameProjectObjectHandle object, float opacity) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool SetProgressValue(GameProjectObjectHandle object, float value) const noexcept;
+    // Uses the current resolved viewport size and clamps against the known content extent.
+    HIKARI_GAME_PROJECT_SDK_API bool SetScrollOffset(GameProjectObjectHandle object, float offset) const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API bool GetScrollOffset(GameProjectObjectHandle object, float& offset) const noexcept;
     // Plays a named clip from the object's authored UiAnimator asset.
     // One playback per animator. Child animators are independent instances.
     // Non-looping clips hold their final pose until StopAnimation or replacement.

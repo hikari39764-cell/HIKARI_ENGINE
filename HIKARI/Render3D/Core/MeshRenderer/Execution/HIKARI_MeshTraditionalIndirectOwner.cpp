@@ -80,9 +80,9 @@ bool MeshTraditionalIndirectOwner::HydrateStream(OwnedStream& stream,
             continue;
         }
 
-        if (context.graphics == nullptr || context.deformationUploads == nullptr)
+        if (context.graphics == nullptr || context.traditionalJointPaletteUploads == nullptr)
             return false;
-        command.jointPaletteGpuAddress = UploadJointPalettes(*context.graphics, *context.deformationUploads,
+        command.jointPaletteGpuAddress = UploadJointPalettes(*context.graphics, *context.traditionalJointPaletteUploads,
                                                              &stream.jointPalettes[command.firstRecordIndex], 1u);
         if (command.jointPaletteGpuAddress == 0u)
             return false;

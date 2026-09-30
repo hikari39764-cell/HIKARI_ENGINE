@@ -364,6 +364,9 @@ void World::Clear() {
         massStore_.Clear();
         objects_.clear();
         objectsByDocumentId_.clear();
+        reservedDynamicSceneObjectIds_.clear();
+        prefabRequests_.clear();
+        prefabInstances_.clear();
         componentBuckets_.clear();
         nativeComponentTypeIds_.clear();
         componentRegistry_ = nullptr;
@@ -539,12 +542,56 @@ void World::BeginFrame(uint64_t frameIndex) noexcept {
 
 void World::BeginFixedStep(uint64_t fixedTickIndex) noexcept { fixedEvents_.BeginScope(fixedTickIndex); }
 
+bool World::ReserveDynamicSceneObjectId(RuntimeObjectHandle object, uint64_t& outId) noexcept {
+    outId = 0u;
+    if (!IsOwnerThread() || !object.IsValid() || !IsReservedObjectHandle(object)) {
+        return false;
+    }
+    while (nextDynamicSceneObjectId_ != 0u && (objectsByDocumentId_.contains(nextDynamicSceneObjectId_) ||
+                                               reservedDynamicSceneObjectIds_.contains(nextDynamicSceneObjectId_))) {
+        if (nextDynamicSceneObjectId_ == (std::numeric_limits<uint64_t>::max)()) {
+            nextDynamicSceneObjectId_ = 0u;
+            return false;
+        }
+        ++nextDynamicSceneObjectId_;
+    }
+    if (nextDynamicSceneObjectId_ == 0u) {
+        return false;
+    }
+    const uint64_t id = nextDynamicSceneObjectId_;
+    nextDynamicSceneObjectId_ = id == (std::numeric_limits<uint64_t>::max)() ? 0u : id + 1u;
+    try {
+        if (!reservedDynamicSceneObjectIds_.emplace(id, object).second) {
+            return false;
+        }
+    } catch (...) {
+        return false;
+    }
+    outId = id;
+    return true;
+}
+
+void World::ReleaseDynamicSceneObjectId(uint64_t id, RuntimeObjectHandle object) noexcept {
+    if (id == 0u) {
+        return;
+    }
+    const auto found = reservedDynamicSceneObjectIds_.find(id);
+    if (found != reservedDynamicSceneObjectIds_.end() && found->second == object) {
+        reservedDynamicSceneObjectIds_.erase(found);
+    }
+}
+
 bool World::OnDocumentIdChanged(GameObject* object, SceneObjectId previousId, SceneObjectId nextId) {
     if (object == nullptr) {
         return false;
     }
 
     if (nextId.value != 0u) {
+        const auto reserved = reservedDynamicSceneObjectIds_.find(nextId.value);
+        if (reserved != reservedDynamicSceneObjectIds_.end() && reserved->second != object->GetRuntimeHandle()) {
+            HIKARI_LOG_ERROR("[World] reserved dynamic SceneObjectId rejected: " + std::to_string(nextId.value));
+            return false;
+        }
         const auto found = objectsByDocumentId_.find(nextId.value);
         if (found != objectsByDocumentId_.end() && found->second != object) {
             HIKARI_LOG_ERROR("[World] duplicate SceneObjectId rejected: " + std::to_string(nextId.value));
@@ -559,6 +606,12 @@ bool World::OnDocumentIdChanged(GameObject* object, SceneObjectId previousId, Sc
         const auto previous = objectsByDocumentId_.find(previousId.value);
         if (previous != objectsByDocumentId_.end() && previous->second == object) {
             objectsByDocumentId_.erase(previous);
+        }
+    }
+    if (nextId.value != 0u) {
+        const auto reserved = reservedDynamicSceneObjectIds_.find(nextId.value);
+        if (reserved != reservedDynamicSceneObjectIds_.end() && reserved->second == object->GetRuntimeHandle()) {
+            reservedDynamicSceneObjectIds_.erase(reserved);
         }
     }
     return true;

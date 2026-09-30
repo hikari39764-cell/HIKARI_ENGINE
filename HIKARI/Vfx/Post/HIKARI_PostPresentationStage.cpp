@@ -1,6 +1,10 @@
 #include "Vfx/Post/HIKARI_PostPresentationStage.h"
 
 #include <algorithm>
+#if defined(HIKARI_WITH_EDITOR)
+#include "Render3D/Views/HIKARI_EditorViewCapture.h"
+#include "Core/HIKARI_TimeService.h"
+#endif
 
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_D3D12DebugTools.h"
@@ -147,6 +151,12 @@ bool PostPresentationStage::PresentToEditor(RenderTarget2D& source, QuadDrawer& 
     if (replacingOutput) {
         PruneObsoleteEditorOutputSrvTracking(editorOutput_.GetResource());
     }
+#if defined(HIKARI_WITH_EDITOR)
+    RENDER3D::EDITORVIEW::RecordViewCapture(RENDER3D::kPrimaryRenderViewId, true, TIME::GetFrameContext().frameIndex,
+                                            editorOutput_.GetResource(), editorOutput_.GetColorState(),
+                                            static_cast<uint32_t>(editorOutput_.GetWidth()),
+                                            static_cast<uint32_t>(editorOutput_.GetHeight()));
+#endif
     return true;
 }
 

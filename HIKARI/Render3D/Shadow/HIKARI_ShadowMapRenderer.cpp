@@ -18,7 +18,8 @@ using namespace INTERNAL;
 void Reset() {
     ResetLocalLightShadows();
     ClearShadowFrameSubmissions(gShadowRendererState);
-    InvalidateShadowCache(gShadowRendererState);
+    gShadowRendererState.shadowCache = {};
+    PublishShadowCacheStats(gShadowRendererState);
     SetGpuDrivenSceneSource(nullptr);
 }
 
@@ -63,9 +64,7 @@ void BeginFrame(const GFX::Context& graphics, const SceneEnvironment& environmen
                                static_cast<uint32_t>((std::max)(1, graphics.backBufferWidth)),
                                static_cast<uint32_t>((std::max)(1, graphics.backBufferHeight)),
                                gShadowRendererState.materialCamera);
-    if (!UploadShadowMaterialCamera(gShadowRendererState, graphics) ||
-        ((gShadowRendererState.frameHasStaticShadowWork || gShadowRendererState.frameHasDynamicShadowWork) &&
-         !PrepareShadowDeformation(gShadowRendererState, graphics))) {
+    if (!UploadShadowMaterialCamera(gShadowRendererState, graphics)) {
         gShadowRendererState.frameEnabled = false;
         gShadowRendererState.debugStats.enabled = false;
         gShadowRendererState.frameHasShadowWork = false;
@@ -189,10 +188,17 @@ void RenderDirectionalShadowMap(const GFX::Context& graphics) {
     bool staticRendered = false;
     bool dynamicRendered = false;
     bool fallbackRendered = false;
+    bool shadowDeformationPrepared = false;
 
     const auto renderCascades = [&](const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& source, bool clearDepth,
                                     GFX::GPU_PROFILE::Pass traditionalPass, GFX::GPU_PROFILE::Pass meshletPass) {
         // Scene / Material は全 Cascade で不変。視点依存の剔除だけを各回記録する。
+        if (!shadowDeformationPrepared) {
+            if (!PrepareShadowDeformation(gShadowRendererState, graphics)) {
+                return false;
+            }
+            shadowDeformationPrepared = true;
+        }
         if (!PrepareShadowSourceForDraw(gShadowRendererState, graphics, source)) {
             return false;
         }

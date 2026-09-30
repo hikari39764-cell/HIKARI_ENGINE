@@ -2,6 +2,7 @@
 #include "HIKARI_EditorAuthoringPreview.h"
 #include "Assets/HIKARI_AssetGuid.h"
 #include <atomic>
+#include "Editor/Preview/HIKARI_EditorPreviewCapture.h"
 
 namespace HIKARI::EDITOR {
 namespace {
@@ -53,22 +54,16 @@ EditorOperationResult EditorAuthoringPreview::Poll() {
     }
     if (!captureId_)
         return Pending();
-    const auto result = RENDER3D::EDITORVIEW::GetViewCaptureResult(captureId_);
-    if (!result.done)
+    auto result = PollEditorPreviewCapture(captureId_);
+    if (result.ok && result.data.value("pending", false))
         return Pending();
-    const auto& error = result.error;
     pending_ = false;
     RENDER3D::EDITORVIEW::ClearRequest(viewId_);
-    if (!error.empty())
-        return {false, "CAPTURE_FAILED", error};
-    auto data = metadata_;
-    data["viewId"] = viewId_.value;
-    data["width"] = result.width;
-    data["height"] = result.height;
-    data["outputRevision"] = result.outputRevision;
-    data["images"] =
-        nlohmann::json::array({{{"path", path_}, {"label", metadata_.value("label", std::string("Preview"))}}});
-    return {true, "OK", "预览图片已返回；画面内容仍需视觉检查。", std::move(data)};
+    if (!result.ok)
+        return result;
+    result.data.update(metadata_);
+    result.data["images"][0]["label"] = metadata_.value("label", std::string("Preview"));
+    return result;
 }
 void EditorAuthoringPreview::Cancel() {
     if (captureId_ && pending_)

@@ -198,7 +198,7 @@ void GameplayCameraWorkspaceController::DrawLibrary(DocumentSceneBase& scene, Ed
     ImGui::End();
 }
 void GameplayCameraWorkspaceController::DrawInspector(DocumentSceneBase& scene, EditorOperationRegistry& operations,
-                                                      EditorWorkspaceHost& host) {
+                                                      EditorWorkspaceHost& host, SceneObjectId selectedObject) {
     if (ImGui::Begin(TEXT::LocalizeWindow("gc.inspector", "GameplayCamera/Inspector").c_str())) {
         if (ImGui::RadioButton(L("gc.camera"), !flowEditing_ && !effectsEditing_)) {
             flowEditing_ = false;
@@ -228,8 +228,23 @@ void GameplayCameraWorkspaceController::DrawInspector(DocumentSceneBase& scene, 
             return;
         }
         if (ImGui::CollapsingHeader(L("gc.bindings"), ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::TextWrapped("%s", L("gc.bindingWorkflow"));
             SelectObject(scene, "gc.target", target_, false);
+            ImGui::SameLine();
+            ImGui::BeginDisabled(!scene.GetWorld().FindObject(selectedObject) || selectedObject == camera_);
+            if (ImGui::SmallButton(L("gc.followSelected")))
+                target_ = selectedObject;
+            ImGui::EndDisabled();
             SelectObject(scene, "gc.lookTarget", lookTarget_, false);
+            ImGui::SameLine();
+            ImGui::BeginDisabled(!scene.GetWorld().FindObject(selectedObject) || selectedObject == camera_);
+            if (ImGui::SmallButton(L("gc.lookSelected")))
+                lookTarget_ = selectedObject;
+            ImGui::EndDisabled();
+            if (!scene.GetWorld().FindObject(target_))
+                ImGui::TextWrapped("%s", L("gc.targetRequired"));
+            if (!lookTarget_.value)
+                ImGui::TextDisabled("%s", L("gc.lookFallback"));
             ImGui::BeginDisabled(scene.IsRuntimePlayActive() || !document_.IsOpen() || !target_.value);
             if (ImGui::Button(L("gc.applyBinding"))) {
                 bool saved = true;
@@ -350,12 +365,13 @@ void GameplayCameraWorkspaceController::DrawInspector(DocumentSceneBase& scene, 
 }
 GameplayCameraWorkspaceResult GameplayCameraWorkspaceController::Draw(DocumentSceneBase& scene,
                                                                       EditorWorkspaceHost& host,
-                                                                      EditorOperationRegistry& operations) {
+                                                                      EditorOperationRegistry& operations,
+                                                                      SceneObjectId selectedObject) {
     GameplayCameraWorkspaceResult result;
     if (!document_.Profile().FindMode(mode_))
         mode_ = document_.Profile().defaultMode;
     DrawLibrary(scene, operations);
-    DrawInspector(scene, operations, host);
+    DrawInspector(scene, operations, host, selectedObject);
     DrawViews(scene, host, result);
     if (ImGui::Begin(TEXT::LocalizeWindow("gc.playtest", "GameplayCamera/Playtest").c_str())) {
         ImGui::BeginDisabled(flowDirty_ && !scene.IsRuntimePlayActive());

@@ -2,6 +2,7 @@
 #include <filesystem>
 #include "HIKARI_AI_ChatClient.h"
 #include "HIKARI_AI_RequestContext.h"
+#include "HIKARI_AI_Types.h"
 namespace HIKARI::EDITOR::AI_ASSISTANT {
 struct AiConversationSummary {
     std::string id, title;
@@ -15,8 +16,9 @@ struct AiTaskCheckpoint {
 };
 std::vector<AiConversationSummary> ListAiConversations(const std::filesystem::path& folder);
 bool LoadAiConversation(const std::filesystem::path& folder, const std::string& id,
-                        std::vector<AiChatMessage>& messages, std::string& error, AiTaskCheckpoint* task = nullptr);
+                        std::vector<AiChatMessage>& messages, std::string& error, AiTaskCheckpoint* task,
+                        AiProjectAccessMode* requiredAccess);
 bool SaveAiConversation(const std::filesystem::path& folder, const std::string& id,
-                        const std::vector<AiChatMessage>& messages, std::string& error,
-                        const AiTaskCheckpoint* task = nullptr);
+                        const std::vector<AiChatMessage>& messages, std::string& error, const AiTaskCheckpoint* task,
+                        AiProjectAccessMode requiredAccess);
 } // namespace HIKARI::EDITOR::AI_ASSISTANT

@@ -22,8 +22,7 @@ class ComponentAuthoringQueryService {
 public:
     EditorOperationResult QueryTypes(DocumentSceneBase& scene, std::string_view keyword, int offset, int limit) const;
     EditorOperationResult DescribeType(DocumentSceneBase& scene, std::string_view componentType) const;
-    EditorOperationResult QueryObjects(const DocumentSceneBase& scene, std::string_view exactName,
-                                       std::string_view componentType) const;
+    EditorOperationResult QueryObjects(const DocumentSceneBase& scene, const nlohmann::json& parameters) const;
     EditorOperationResult QueryComponents(const DocumentSceneBase& scene, uint64_t objectId) const;
 
     nlohmann::json SerializeComponent(const SceneComponentData& component) const;

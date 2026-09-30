@@ -23,6 +23,11 @@ const char* L(const char* key) { return TEXT::LocalizeCStr(key); }
 
 float FiniteOr(float value, float fallback) noexcept { return std::isfinite(value) ? value : fallback; }
 
+constexpr TEXT::EnumName<UiCanvasInputMode> kCanvasInputModeNames[] = {
+    {UiCanvasInputMode::Hud, "Hud"},
+    {UiCanvasInputMode::Menu, "Menu"},
+};
+
 MATH::Vec2 ReadVec2Member(const nlohmann::json& source, const char* key, MATH::Vec2 fallback) {
     const nlohmann::json* node = JSONREAD::FindMember(source, key);
     return node != nullptr ? JSONREAD::Vec2Or(*node, fallback) : fallback;
@@ -86,6 +91,7 @@ void UiCanvasComponent::Serialize(nlohmann::json& out) const {
     out = {{"version", 1},
            {"enabled", enabled_},
            {"interactable", interactable_},
+           {"inputMode", TEXT::EnumToName(kCanvasInputModeNames, inputMode_, "Hud")},
            {"referenceWidth", referenceWidth_},
            {"referenceHeight", referenceHeight_},
            {"sortOrder", sortOrder_}};
@@ -94,6 +100,13 @@ void UiCanvasComponent::Serialize(nlohmann::json& out) const {
 void UiCanvasComponent::Deserialize(const nlohmann::json& in) {
     enabled_ = JSONREAD::BooleanMemberOr(in, "enabled", true);
     interactable_ = JSONREAD::BooleanMemberOr(in, "interactable", true);
+    inputMode_ = UiCanvasInputMode::Hud;
+    if (const auto* node = JSONREAD::FindMember(in, "inputMode"))
+        inputMode_ = JSONREAD::EnumOr(*node, kCanvasInputModeNames, UiCanvasInputMode::Hud);
+    if (!TEXT::IsNamedEnum(kCanvasInputModeNames, inputMode_))
+        inputMode_ = UiCanvasInputMode::Hud;
+    inputActive_ = true;
+    pendingFocus_ = {};
     referenceWidth_ =
         std::clamp(FiniteOr(JSONREAD::NumberMemberOr(in, "referenceWidth", 1920.0f), 1920.0f), 1.0f, 16384.0f);
     referenceHeight_ =
@@ -108,6 +121,17 @@ void UiCanvasComponent::BuildInspector(IInspectorBuilder& builder) {
     (void)builder.Bool({"enabled", L("Enabled"), "Enables this Canvas and every child UI element."}, enabled_);
     (void)builder.Bool({"interactable", L("Interactable"), "Allows child buttons to receive pointer and action input."},
                        interactable_);
+    constexpr auto inputModeValues = TEXT::EnumNameList(kCanvasInputModeNames);
+    const std::array<AuthoringChoice, 2u> inputModes{{
+        {inputModeValues[0], L("uix.hudMode")},
+        {inputModeValues[1], L("uix.menuMode")},
+    }};
+    int inputMode = static_cast<int>(inputMode_);
+    if (builder.Choice({"inputMode", L("uix.inputMode"), L("uix.inputModeHelp")}, inputMode, inputModes)) {
+        inputMode_ = TEXT::IsNamedEnum(kCanvasInputModeNames, static_cast<UiCanvasInputMode>(inputMode))
+                         ? static_cast<UiCanvasInputMode>(inputMode)
+                         : UiCanvasInputMode::Hud;
+    }
     (void)builder.FloatRange(
         {"referenceWidth", L("Reference Width"), "Authored logical width before aspect-preserving fit."},
         referenceWidth_, 1.0f, 16384.0f, 1.0f);

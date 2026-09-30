@@ -98,6 +98,12 @@ bool GameProjectEditorWorkspaceRegistry::RegisterModule(std::string_view moduleI
                          "incompatible.";
             return false;
         }
+        constexpr uint32_t kKnownOptions =
+            static_cast<uint32_t>(EDITOR_PROJECT::EditorWorkspaceOption::RequestSceneViewport);
+        if ((descriptor.options & ~kKnownOptions) != 0u || descriptor.reserved != 0u) {
+            outMessage = "GameProject Editor workspace descriptor contains unknown options or reserved values.";
+            return false;
+        }
         if (!IsIdentifier(workspaceId) || HasReservedEnginePrefix(workspaceId)) {
             outMessage = "GameProject Editor workspace ID is invalid or uses "
                          "the reserved 'hikari.' namespace: " +
@@ -130,6 +136,7 @@ bool GameProjectEditorWorkspaceRegistry::RegisterModule(std::string_view moduleI
             std::string(displayName),
             workspace,
             {},
+            (descriptor.options & kKnownOptions) != 0u,
             false,
         });
     }
@@ -144,6 +151,10 @@ void GameProjectEditorWorkspaceRegistry::SetProjectRootUtf8(std::string projectR
         return;
     }
     projectRootUtf8_ = std::move(projectRootUtf8);
+}
+
+void GameProjectEditorWorkspaceRegistry::SetDocuments(EDITOR_PROJECT::IEditorDocumentService* documents) noexcept {
+    documents_ = documents;
 }
 
 size_t GameProjectEditorWorkspaceRegistry::GetWorkspaceCount() const noexcept { return entries_.size(); }
@@ -373,7 +384,28 @@ EDITOR_PROJECT::EditorWorkspaceHostContext GameProjectEditorWorkspaceRegistry::M
         entry.workspaceId.c_str(),
         frameUi_,
         this,
+        documents_,
     };
+}
+
+bool GameProjectEditorWorkspaceRegistry::ActiveWorkspaceRequestsSceneViewport() const noexcept {
+    return active_ && *active_ < entries_.size() && entries_[*active_].requestsSceneViewport;
+}
+
+bool GameProjectEditorWorkspaceRegistry::HasUnsavedWorkspaceChanges() const noexcept {
+    for (const Entry& entry : entries_) {
+        if (entry.workspace == nullptr) {
+            continue;
+        }
+        try {
+            if (entry.workspace->IsDirty()) {
+                return true;
+            }
+        } catch (...) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool GameProjectEditorWorkspaceRegistry::Activate(size_t index) noexcept {

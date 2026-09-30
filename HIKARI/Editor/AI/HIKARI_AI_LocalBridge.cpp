@@ -377,7 +377,8 @@ void AiLocalBridge::HandleConnection(uintptr_t clientSocket, const Executor& exe
     if (method == "GET" && (path == "/health" || path == "/")) {
         payload = nlohmann::json{{"ok", true}}.dump();
     } else if (method == "GET" && path == "/capabilities") {
-        payload = BuildCapabilitiesJson(capabilityProvider ? capabilityProvider() : BuiltInCapabilities());
+        payload = BuildCapabilitiesJson(capabilityProvider ? capabilityProvider(AiRequestSource::LocalBridge)
+                                                           : BuiltInCapabilities());
     } else if (method == "POST" && path == "/action") {
         if (body.empty()) {
             statusCode = 400;
@@ -389,7 +390,7 @@ void AiLocalBridge::HandleConnection(uintptr_t clientSocket, const Executor& exe
                     .dump();
         } else {
             try {
-                payload = BuildResultJson(executor(body));
+                payload = BuildResultJson(executor(body, AiRequestSource::LocalBridge));
             } catch (...) {
                 statusCode = 500;
                 payload =

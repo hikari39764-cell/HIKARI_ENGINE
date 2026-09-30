@@ -38,6 +38,7 @@ public:
     bool RegisterModule(std::string_view moduleId, EDITOR_PROJECT::IEditorWorkspace* const* workspaces,
                         size_t workspaceCount, std::string& outMessage);
     void SetProjectRootUtf8(std::string projectRootUtf8);
+    void SetDocuments(EDITOR_PROJECT::IEditorDocumentService* documents) noexcept;
     // The controller owns the operation registry; attach only for the frame.
     void SetOperationRegistry(EditorOperationRegistry* registry) noexcept;
 
@@ -45,6 +46,8 @@ public:
     GameProjectEditorWorkspaceInfo GetWorkspaceInfo(size_t index) const noexcept;
     bool HasActiveWorkspace() const noexcept;
     std::string_view GetActiveWorkspaceId() const noexcept;
+    bool ActiveWorkspaceRequestsSceneViewport() const noexcept;
+    bool HasUnsavedWorkspaceChanges() const noexcept;
     bool IsActiveWorkspaceDirty() noexcept;
 
     void BeginFrame(EDITOR_PROJECT::IEditorWorkspaceUi& ui, float unscaledDeltaSeconds) noexcept;
@@ -77,6 +80,7 @@ private:
         std::string displayName{};
         EDITOR_PROJECT::IEditorWorkspace* workspace = nullptr;
         std::string failureMessage{};
+        bool requestsSceneViewport = false;
         bool disabled = false;
     };
 
@@ -97,6 +101,7 @@ private:
 
     std::vector<Entry> entries_{};
     std::string projectRootUtf8_{};
+    EDITOR_PROJECT::IEditorDocumentService* documents_ = nullptr;
     std::optional<size_t> active_{};
     NavigationRequest navigation_{};
     std::optional<NavigationRequest> awaitingClose_{};

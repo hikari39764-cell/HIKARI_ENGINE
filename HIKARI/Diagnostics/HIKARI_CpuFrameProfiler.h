@@ -59,6 +59,7 @@ struct FrameSnapshot {
 const char* ToString(Pass pass);
 void BeginFrame(uint64_t frameIndex);
 void EndFrame();
+void ResetStatistics();
 const FrameSnapshot& GetLatestSnapshot();
 DynamicPassHandle RegisterDynamicPass(std::string_view name);
 

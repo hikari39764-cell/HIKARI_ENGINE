@@ -10,6 +10,7 @@
 #include "Editor/Selection/HIKARI_SceneSelectionTransform.h"
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
+#include "Editor/Views/HIKARI_EditorViewportGeometry.h"
 #include "Editor/Viewport/HIKARI_ViewportAuthoringToolbar.h"
 #include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
@@ -549,17 +550,15 @@ void DocumentSceneEditorController::HandleTerrainBrush(DocumentSceneBase& scene,
     }
 
     const Camera3D& camera = scene.GetCamera();
-    const MATH::Vec3 forward = MATH::Normalize(camera.GetTarget() - camera.GetPosition());
-    const MATH::Vec3 right = MATH::Normalize(MATH::Cross(camera.GetUp(), forward));
-    const MATH::Vec3 up = MATH::Normalize(MATH::Cross(forward, right));
-    const float tanHalfFov = std::tan((std::max)(camera.GetFovYRad(), 0.001f) * 0.5f);
-    const float aspect = viewport.height > 0.0f ? viewport.width / viewport.height : camera.GetAspect();
     const ImVec2 mouse = ImGui::GetMousePos();
-    const float ndcX = (mouse.x - viewport.x) / (std::max)(viewport.width, 1.0f) * 2.0f - 1.0f;
-    const float ndcY = 1.0f - (mouse.y - viewport.y) / (std::max)(viewport.height, 1.0f) * 2.0f;
-    const MATH::Vec3 rayDirection =
-        MATH::Normalize(forward + right * (ndcX * aspect * tanHalfFov) + up * (ndcY * tanHalfFov));
-    const MATH::Vec3 rayOrigin = camera.GetPosition();
+    EDITOR::EditorPointerRay pointerRay{};
+    const float normalizedX = (mouse.x - viewport.x) / (std::max)(viewport.width, 1.0f);
+    const float normalizedY = (mouse.y - viewport.y) / (std::max)(viewport.height, 1.0f);
+    if (!EDITOR::BuildEditorPointerRay(camera, normalizedX, normalizedY, pointerRay)) {
+        context_.terrainTool.hasHit = false;
+        finishStroke();
+        return;
+    }
 
     const auto setTool = [&](EditorTerrainToolMode mode) {
         context_.terrainTool.mode = mode;
@@ -629,7 +628,8 @@ void DocumentSceneEditorController::HandleTerrainBrush(DocumentSceneBase& scene,
 
     MATH::Vec3 worldHit{};
     MATH::Vec3 worldHitNormal{};
-    const bool hasHit = terrain->RaycastWorld(rayOrigin, rayDirection, 500.0f, worldHit, worldHitNormal, true);
+    const bool hasHit =
+        terrain->RaycastWorld(pointerRay.origin, pointerRay.direction, 500.0f, worldHit, worldHitNormal, true);
 
     if (hasHit) {
         context_.terrainTool.hasHit = true;

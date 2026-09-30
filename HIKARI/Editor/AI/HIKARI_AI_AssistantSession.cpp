@@ -4,10 +4,67 @@
 #include <algorithm>
 #include <utility>
 namespace HIKARI::EDITOR {
+namespace {
+size_t SourceIndex(AiRequestSource source) noexcept { return source == AiRequestSource::LocalBridge ? 1u : 0u; }
+
+AI_ASSISTANT::AiRequestResult ProjectAccessFailure(std::string_view action, AiProjectAccessMode mode) {
+    AI_ASSISTANT::AiRequestResult result{};
+    result.code = "PROJECT_ACCESS_REQUIRED";
+    result.message = "当前助手权限模式不允许调用 " + std::string(action) + "。";
+    const auto required = AI_ASSISTANT::RequiredProjectAccess(action);
+    if (required) {
+        result.details.push_back(
+            "Required access: " + std::string(TEXT::EnumToName(kAiProjectAccessModeNames, *required)) +
+            "; current access: " + TEXT::EnumToName(kAiProjectAccessModeNames, mode) + ".");
+    }
+    result.hints.push_back("由用户在助手面板切换权限模式；切换会开启新对话。旧对话不会自动提升权限。");
+    return result;
+}
+} // namespace
+
 AiAssistantSession::AiAssistantSession(AI_ASSISTANT::AiChatCompletion completion) : completion_(std::move(completion)) {
     mainThreadId_ = std::this_thread::get_id();
-    capabilitySnapshot_ = AI_ASSISTANT::BuiltInCapabilities();
+    for (auto& capabilities : capabilitySnapshots_) {
+        capabilities = AI_ASSISTANT::BuiltInCapabilities();
+    }
     configLoaded_ = AI_ASSISTANT::LoadAiChatConfig(config_);
+}
+
+AiProjectAccessMode AiAssistantSession::RequestedProjectAccessMode() const noexcept {
+    return pendingProjectAccessMode_.value_or(projectAccessMode_.load());
+}
+
+bool AiAssistantSession::RequestProjectAccessMode(AiProjectAccessMode mode) {
+    if (!TEXT::IsNamedEnum(kAiProjectAccessModeNames, mode) || projectSwitchPending_) {
+        return false;
+    }
+    if (mode == projectAccessMode_.load()) {
+        pendingProjectAccessMode_.reset();
+        return true;
+    }
+    pendingProjectAccessMode_ = mode;
+    Cancel();
+    ApplyPendingProjectAccessMode();
+    return true;
+}
+
+void AiAssistantSession::ApplyPendingProjectAccessMode() {
+    if (!pendingProjectAccessMode_ || IsBusy() || projectSwitchPending_) {
+        return;
+    }
+    const AiProjectAccessMode next = *pendingProjectAccessMode_;
+    pendingProjectAccessMode_.reset();
+    if (next == projectAccessMode_.load()) {
+        return;
+    }
+    const AiProjectAccessMode previous = projectAccessMode_.exchange(next);
+    if (!NewConversation()) {
+        projectAccessMode_.store(previous);
+        storageError_ = "权限模式未切换：请等待当前项目会话操作结束。";
+        return;
+    }
+    RefreshCapabilities(false);
+    stopRequested_.store(false);
 }
 
 AiAssistantSession::~AiAssistantSession() {
@@ -18,6 +75,10 @@ AiAssistantSession::~AiAssistantSession() {
 std::vector<AI_ASSISTANT::AiChatMessage> AiAssistantSession::SnapshotMessages() const {
     std::lock_guard<std::mutex> lock(messageMutex_);
     return messages_;
+}
+AI_ASSISTANT::AiChatDelta AiAssistantSession::SnapshotStreaming() const {
+    std::lock_guard lock(streamMutex_);
+    return streamingActive_ ? streamingPartial_ : AI_ASSISTANT::AiChatDelta{};
 }
 void AiAssistantSession::SetConfig(AI_ASSISTANT::AiChatConfig config) {
     std::lock_guard<std::mutex> lock(stateMutex_);
@@ -95,10 +156,13 @@ void AiAssistantSession::AppendMessage(const AI_ASSISTANT::AiChatMessage& messag
     }
 }
 
-void AiAssistantSession::AppendProgress(const std::string& text) {
+void AiAssistantSession::AppendProgress(const std::string& text, const std::string& reasoning, bool incomplete) {
     const std::string display = AI_ASSISTANT::StripActionJsonForDisplay(text);
     AI_ASSISTANT::AiChatMessage progress{"assistant", display};
     progress.data["kind"] = "progress";
+    if (!reasoning.empty())
+        progress.data["_reasoningContent"] = reasoning;
+    progress.data["incomplete"] = incomplete;
     AppendMessage(progress);
 }
 
@@ -164,9 +228,17 @@ void AiAssistantSession::SetOperationPermissionResolver(AiOperationPermissionRes
     operationPermissionResolver_ = std::move(resolver);
 }
 
-std::vector<AI_ASSISTANT::AiCapability> AiAssistantSession::Capabilities() const {
-    std::lock_guard<std::mutex> lock(stateMutex_);
-    return capabilitySnapshot_;
+std::vector<AI_ASSISTANT::AiCapability> AiAssistantSession::Capabilities(AiRequestSource source) const {
+    std::vector<AI_ASSISTANT::AiCapability> capabilities;
+    {
+        std::lock_guard<std::mutex> lock(stateMutex_);
+        capabilities = capabilitySnapshots_[SourceIndex(source)];
+    }
+    const AiProjectAccessMode mode = projectAccessMode_.load();
+    std::erase_if(capabilities, [mode](const AI_ASSISTANT::AiCapability& capability) {
+        return !AI_ASSISTANT::AllowsProjectAccess(mode, capability.id);
+    });
+    return capabilities;
 }
 
 void AiAssistantSession::RefreshCapabilities(bool onlyIfChanged) {
@@ -185,10 +257,12 @@ void AiAssistantSession::RefreshCapabilities(bool onlyIfChanged) {
     const auto revision = version ? version() : 0;
     if (onlyIfChanged && previous == revision)
         return;
-    auto capabilities = provider ? provider() : AI_ASSISTANT::BuiltInCapabilities();
+    std::array<std::vector<AI_ASSISTANT::AiCapability>, 2> capabilities = {
+        provider ? provider(AiRequestSource::BuiltInAi) : AI_ASSISTANT::BuiltInCapabilities(),
+        provider ? provider(AiRequestSource::LocalBridge) : AI_ASSISTANT::BuiltInCapabilities()};
     {
         std::lock_guard<std::mutex> lock(stateMutex_);
-        capabilitySnapshot_ = std::move(capabilities);
+        capabilitySnapshots_ = std::move(capabilities);
         capabilityRevision_ = revision;
     }
 }
@@ -197,7 +271,7 @@ void AiAssistantSession::SetBridgeStatus(const std::string& status) { bridgeStat
 
 void AiAssistantSession::SetBridgeSessionToken(std::string token) { bridgeSessionToken_ = std::move(token); }
 
-AI_ASSISTANT::AiRequestResult AiAssistantSession::ExecuteRequest(std::string_view json) {
+AI_ASSISTANT::AiRequestResult AiAssistantSession::ExecuteRequest(std::string_view json, AiRequestSource source) {
     if (stopRequested_.load()) {
         AI_ASSISTANT::AiRequestResult result{};
         result.code = "ACTION_CANCELED";
@@ -206,12 +280,16 @@ AI_ASSISTANT::AiRequestResult AiAssistantSession::ExecuteRequest(std::string_vie
     }
 
     const std::string action = AI_ASSISTANT::ExtractJsonField(json, "action");
+    const AiProjectAccessMode accessMode = projectAccessMode_.load();
+    if (!AI_ASSISTANT::AllowsProjectAccess(accessMode, action)) {
+        return ProjectAccessFailure(action, accessMode);
+    }
     // Panel-local actions are handled here; every other action is routed to
     // the unified operation registry through the scene callback.
     const bool panelLocalAction = action == "query.capabilities" || action == "context.compare_images" ||
                                   action == "context.image" || action == "help";
     if (panelLocalAction) {
-        return AI_ASSISTANT::SubmitAiRequest(json, Capabilities());
+        return AI_ASSISTANT::SubmitAiRequest(json, Capabilities(source));
     }
 
     std::thread::id mainThreadId{};
@@ -220,11 +298,12 @@ AI_ASSISTANT::AiRequestResult AiAssistantSession::ExecuteRequest(std::string_vie
         mainThreadId = mainThreadId_;
     }
     if (std::this_thread::get_id() == mainThreadId) {
-        return ExecuteRequestNow(json);
+        return ExecuteRequestNow(json, source);
     }
 
     auto request = std::make_shared<PendingAiAction>();
     request->json = std::string(json);
+    request->source = source;
     request->generation = generation_.load();
     {
         std::lock_guard<std::mutex> lock(actionMutex_);
@@ -245,15 +324,19 @@ AI_ASSISTANT::AiRequestResult AiAssistantSession::ExecuteRequest(std::string_vie
     return *request->result;
 }
 
-AI_ASSISTANT::AiRequestResult AiAssistantSession::ExecuteRequestNow(std::string_view json) {
+AI_ASSISTANT::AiRequestResult AiAssistantSession::ExecuteRequestNow(std::string_view json, AiRequestSource source) {
     const std::string action = AI_ASSISTANT::ExtractJsonField(json, "action");
+    const AiProjectAccessMode accessMode = projectAccessMode_.load();
+    if (!AI_ASSISTANT::AllowsProjectAccess(accessMode, action)) {
+        return ProjectAccessFailure(action, accessMode);
+    }
     AiSceneActionCallback sceneCallback;
     {
         std::lock_guard<std::mutex> lock(stateMutex_);
         sceneCallback = sceneActionCallback_;
     }
     if (sceneCallback) {
-        return sceneCallback(json);
+        return sceneCallback(json, source);
     }
     AI_ASSISTANT::AiRequestResult result{};
     result.ok = false;
@@ -267,6 +350,7 @@ AI_ASSISTANT::AiRequestResult AiAssistantSession::ExecuteRequestNow(std::string_
 void AiAssistantSession::PumpActions() {
     RefreshCapabilities(true);
     UpdateConversationStorage();
+    ApplyPendingProjectAccessMode();
     std::vector<std::shared_ptr<PendingAiAction>> actions;
     {
         std::lock_guard<std::mutex> lock(actionMutex_);
@@ -289,7 +373,12 @@ void AiAssistantSession::PumpActions() {
         AI_ASSISTANT::AiRequestResult result{};
         const std::string action = AI_ASSISTANT::ExtractJsonField(request->json, "action");
         std::optional<EditorOperationPermission> permission;
-        if (!request->approved && permissionResolver) {
+        if (stopRequested_.load() || request->generation != generation_.load()) {
+            result.code = "ACTION_CANCELED";
+            result.message = "任务已停止，排队中的动作未执行。";
+        } else if (!AI_ASSISTANT::AllowsProjectAccess(projectAccessMode_.load(), action)) {
+            result = ProjectAccessFailure(action, projectAccessMode_.load());
+        } else if (!request->approved && permissionResolver) {
             try {
                 permission = permissionResolver(action);
             } catch (const std::exception& error) {
@@ -301,10 +390,7 @@ void AiAssistantSession::PumpActions() {
                 result.message = "动作未执行：权限解析失败。";
             }
         }
-        if (stopRequested_.load() || request->generation != generation_.load()) {
-            result.code = "ACTION_CANCELED";
-            result.message = "任务已停止，排队中的动作未执行。";
-        } else if (result.code.empty() && !request->approved && !permissionResolver) {
+        if (result.code.empty() && !request->approved && !permissionResolver) {
             result.code = "PERMISSION_RESOLVER_UNAVAILABLE";
             result.message = "动作未执行：编辑器操作权限解析器未接线。";
         } else if (result.code.empty() && permission && RequiresUserApproval(*permission)) {
@@ -317,7 +403,7 @@ void AiAssistantSession::PumpActions() {
             continue;
         } else if (result.code.empty()) {
             try {
-                result = ExecuteRequestNow(request->json);
+                result = ExecuteRequestNow(request->json, request->source);
             } catch (const std::exception& error) {
                 result = {false, "ACTION_FAILED", error.what()};
             } catch (...) {

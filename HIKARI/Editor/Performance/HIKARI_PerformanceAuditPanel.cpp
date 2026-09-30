@@ -4,6 +4,7 @@
 #include "Core/HIKARI_TimeService.h"
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Gfx/HIKARI_DXCheck.h"
+#include "Gfx/HIKARI_GfxDebugConfig.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_GpuPipelineStatsProfiler.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
@@ -56,13 +57,30 @@ void PerformanceAuditPanel::Draw(bool& open) const {
 
 void PerformanceAuditPanel::DrawContents() const {
 #if defined(HIKARI_WITH_EDITOR)
+    const bool copyRequested =
+        ImGui::Button(TEXT::LocalizeWindow("editor.copyDiagnostics", "診断結果をコピー").c_str());
+    ImGui::SameLine();
+    const bool restartRequested =
+        ImGui::Button(TEXT::LocalizeWindow("editor.performance.restartStatistics", "重新开始统计").c_str());
+    GFX::GfxDebugConfig debugConfig = GFX::GetGfxDebugConfig();
+    const bool pipelineStatsChanged =
+        ImGui::Checkbox(TEXT::LocalizeWindow("editor.performance.pipelineStats", "GPU 管线统计（按需开启）").c_str(),
+                        &debugConfig.enableGpuPipelineStats);
+    if (pipelineStatsChanged) {
+        GFX::SetGfxDebugConfig(debugConfig);
+    }
+    if (restartRequested || pipelineStatsChanged) {
+        CPU_PROFILE::ResetStatistics();
+        GFX::GPU_PROFILE::ResetStatistics();
+        GFX::GPU_PIPELINE_STATS::ResetStatistics();
+    }
+    ImGui::TextDisabled(TEXT::Localize("editor.captureStatsHint").c_str());
+    ImGui::TextDisabled(TEXT::Localize("editor.performance.pipelineStatsHint").c_str());
     const RuntimePerformanceSnapshot snapshot = BuildSnapshot();
-    if (ImGui::Button(TEXT::LocalizeWindow("editor.copyDiagnostics", "診断結果をコピー").c_str())) {
+    if (copyRequested) {
         const auto report = BuildPerformanceReport(snapshot);
         ImGui::SetClipboardText(report.c_str());
     }
-    ImGui::SameLine();
-    ImGui::TextDisabled(TEXT::Localize("editor.captureStatsHint").c_str());
     DrawFrameSummary(snapshot);
     DrawReadiness(snapshot);
     DrawCpuTimingTable(snapshot);

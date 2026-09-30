@@ -78,6 +78,7 @@ struct ShadowMapDebugStats {
     bool shadowCacheHit = false;
     uint32_t shadowCacheMissReasonFlags = ShadowCacheMissReasonNone;
     uint32_t shadowCacheLastMissReasonFlags = ShadowCacheMissReasonNone;
+    uint64_t shadowCacheLastMissFrameIndex = 0u;
     size_t shadowCacheHitCount = 0;
     size_t shadowCacheMissCount = 0;
     size_t shadowStaticCacheCopyCount = 0;

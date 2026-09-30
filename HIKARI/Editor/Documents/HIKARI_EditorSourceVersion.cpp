@@ -1,5 +1,6 @@
 #include "HIKARI_EditorSourceVersion.h"
 #include "Assets/HIKARI_AssetDatabase.h"
+#include "Core/IO/HIKARI_NativeFilePath.h"
 #include <fstream>
 #include <array>
 
@@ -9,13 +10,14 @@ bool Fingerprint(const std::filesystem::path& path, uint64_t& hash) {
     hash = 0;
     if (path.empty())
         return true;
+    const std::filesystem::path nativePath = IO::NativeFilePath(path);
     std::error_code error;
-    const bool exists = std::filesystem::exists(path, error);
+    const bool exists = std::filesystem::exists(nativePath, error);
     if (error)
         return false;
     if (!exists)
         return true;
-    std::ifstream input(path, std::ios::binary);
+    std::ifstream input(nativePath, std::ios::binary);
     if (!input)
         return false;
     hash = 14695981039346656037ull;

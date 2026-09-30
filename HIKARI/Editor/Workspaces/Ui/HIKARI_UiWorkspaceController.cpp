@@ -82,26 +82,54 @@ void UiWorkspaceController::FinishDrag(DocumentSceneBase& scene, EditorOperation
         return;
     auto edit = std::move(*drag_);
     drag_.reset();
-    const bool sameRevision = edit.revision == scene.GetSceneDocumentRevision();
-    if (auto* object = scene.GetWorld().FindObject(edit.object)) {
-        if (auto* rect = object->GetComponent<UiRectComponent>())
-            for (const auto& authored : scene.GetSceneDocument().objects)
-                if (authored.id == edit.object)
-                    for (const auto& c : authored.components)
-                        if (c.id == edit.before.id)
-                            rect->Deserialize(c.properties);
+    if (edit.animation) {
+        animation_.FinishPoseDrag(scene, operations);
+        return;
     }
-    if (sameRevision && operations && edit.changed && edit.after != edit.before.properties)
-        EditProperties(
-            *operations, edit.object, edit.before,
-            {{"offsetMinimum", edit.after.at("offsetMinimum")}, {"offsetMaximum", edit.after.at("offsetMaximum")}});
+    const bool sameRevision = edit.revision == scene.GetSceneDocumentRevision();
+    auto commands = nlohmann::json::array();
+    const auto restore = [&](SceneObjectId id, const SceneComponentData& before, const nlohmann::json& after) {
+        if (auto* object = scene.GetWorld().FindObject(id))
+            if (auto* rect = object->GetComponent<UiRectComponent>())
+                for (const auto& authored : scene.GetSceneDocument().objects)
+                    if (authored.id == id)
+                        for (const auto& c : authored.components)
+                            if (c.id == before.id)
+                                rect->Deserialize(c.properties);
+        if (sameRevision && edit.changed && after != before.properties)
+            for (const auto* field : {"offsetMinimum", "offsetMaximum"})
+                commands.push_back({{"objectId", id.value},
+                                    {"componentId", before.id.value},
+                                    {"propertyId", field},
+                                    {"value", after.at(field)}});
+    };
+    restore(edit.object, edit.before, edit.after);
+    for (const auto& [id, before] : edit.companions) {
+        auto after = before.properties;
+        for (const auto* field : {"offsetMinimum", "offsetMaximum"}) {
+            auto offset = after.at(field).get<std::array<float, 2>>();
+            offset[0] += edit.translation.x;
+            offset[1] += edit.translation.y;
+            after[field] = offset;
+        }
+        restore(id, before, after);
+    }
+    if (operations && !commands.empty()) {
+        const auto result = operations->Execute("authoring.transaction", {{"commands", commands}});
+        status_ = result.ok ? std::string{} : result.message;
+    }
 }
 void UiWorkspaceController::Deactivate(DocumentSceneBase& scene) {
+    FinishDrag(scene, nullptr);
     animation_.StopPreview();
     target_.Reset();
     content_.Reset();
     hierarchyScene_ = nullptr;
-    FinishDrag(scene, nullptr);
+    marquee_.reset();
+    previewDataEnabled_ = false;
+    previewDataSource_ = 0;
+    projector_.SetPreviewBindings(nullptr);
+    previewData_.Clear();
 }
 void UiWorkspaceController::DrawLibrary(DocumentSceneBase& scene, EditorContext& context,
                                         SceneObjectCommandService& objects, SelectionSyncService& selection,
@@ -121,9 +149,9 @@ void UiWorkspaceController::DrawLibrary(DocumentSceneBase& scene, EditorContext&
             }
             std::string prefab;
             if (ImGui::BeginMenu(L("uix.savedPrefabs"))) {
-                for (const auto& id : objects.ListPrefabIds())
-                    if (ImGui::MenuItem(id.c_str()))
-                        prefab = id;
+                for (const PrefabAssetEntry& entry : objects.ListPrefabs(scene.GetAssetDatabase()))
+                    if (ImGui::MenuItem(entry.name.c_str()))
+                        prefab = entry.guid.value;
                 ImGui::EndMenu();
             }
             if (!prefab.empty())
@@ -193,7 +221,28 @@ void UiWorkspaceController::DrawLibrary(DocumentSceneBase& scene, EditorContext&
             if (indentation > 0)
                 ImGui::Indent(indentation);
             if (ImGui::Selectable(object.name.c_str(), context.selection.IsObjectSelected(object.id)))
-                context.selection.SelectObjectIds(scene.GetWorld(), {object.id});
+                context.selection.SelectObjectIds(scene.GetWorld(), {object.id},
+                                                  ImGui::GetIO().KeyCtrl ? EditorObjectSelectionMode::Toggle
+                                                                         : EditorObjectSelectionMode::Replace);
+            if (editing && ImGui::BeginDragDropSource()) {
+                ImGui::SetDragDropPayload("HIKARI_UI_ELEMENT", &object.id, sizeof(object.id));
+                ImGui::TextUnformatted(object.name.c_str());
+                ImGui::EndDragDropSource();
+            }
+            if (editing && ImGui::BeginDragDropTarget()) {
+                if (const auto* payload = ImGui::AcceptDragDropPayload("HIKARI_UI_ELEMENT")) {
+                    const auto id = *static_cast<const SceneObjectId*>(payload->Data);
+                    const auto r =
+                        operations.Execute("ui.parent.set", {{"objectId", id.value}, {"parentId", object.id.value}});
+                    status_ = r.ok ? std::string{} : r.message;
+                    ImGui::EndDragDropTarget();
+                    if (indentation > 0)
+                        ImGui::Unindent(indentation);
+                    ImGui::PopID();
+                    break;
+                }
+                ImGui::EndDragDropTarget();
+            }
             if (indentation > 0)
                 ImGui::Unindent(indentation);
             if (ImGui::BeginPopupContextItem()) {

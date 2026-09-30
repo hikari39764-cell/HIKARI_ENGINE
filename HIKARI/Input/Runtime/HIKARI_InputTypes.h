@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace HIKARI::INPUT {
 
@@ -11,6 +12,26 @@ enum class InputDeviceKind {
     None,
     KeyboardMouse,
     Gamepad,
+};
+
+enum class TextInputEventKind : uint8_t {
+    CompositionStarted,
+    CompositionUpdated,
+    Committed,
+    CompositionEnded,
+};
+
+struct TextInputEvent {
+    TextInputEventKind kind = TextInputEventKind::Committed;
+    // UTF-8 committed text or the current composition preview.
+    std::string utf8{};
+};
+
+struct ImeCaretAnchor {
+    // Coordinates are client pixels in the active game window.
+    int32_t clientX = 0;
+    int32_t clientY = 0;
+    bool valid = false;
 };
 
 // The presentation layer chooses how the operating-system cursor is owned.
@@ -99,6 +120,8 @@ public:
     bool TryGetPointerState(uint32_t logicalWidth, uint32_t logicalHeight, InputPointerState& outState) const noexcept;
 
     const InputDeviceState& GetDevices() const noexcept { return devices_; }
+    // Events are owned by this snapshot for one InputService::Update only.
+    const std::vector<TextInputEvent>& GetTextInputEvents() const noexcept { return textInputEvents_; }
     InputDeviceKind GetLastActiveDevice() const noexcept { return devices_.lastActiveDevice; }
     uint64_t GetFrameIndex() const noexcept { return frameIndex_; }
 
@@ -107,6 +130,7 @@ private:
     uint64_t frameIndex_ = 0;
     InputDeviceState devices_{};
     std::unordered_map<std::string, InputActionState> actions_{};
+    std::vector<TextInputEvent> textInputEvents_{};
 };
 
 } // namespace HIKARI::INPUT

@@ -32,6 +32,7 @@ void BeginFrame(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, uint64_t f
                 uint64_t retireFence);
 void EndFrame(ID3D12GraphicsCommandList* cmd);
 void Shutdown();
+void ResetStatistics();
 
 bool BeginPass(ID3D12GraphicsCommandList* cmd, GPU_PROFILE::Pass pass);
 void EndPass(ID3D12GraphicsCommandList* cmd, GPU_PROFILE::Pass pass);

@@ -6,6 +6,7 @@
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Editor/Workspaces/Cinematics/HIKARI_CinematicsWorkspaceController.h"
 #include "Project/HIKARI_ProjectContext.h"
+#include "Editor/HIKARI_EditorContext.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include <algorithm>
 #include <array>
@@ -15,10 +16,20 @@
 #include "imgui.h"
 #endif
 namespace HIKARI::EDITOR {
-bool CinematicsWorkspaceController::DrawResources(DocumentSceneBase& scene, CinematicSequence& sequence) {
+bool CinematicsWorkspaceController::DrawResources(DocumentSceneBase& scene, CinematicSequence& sequence,
+                                                  EditorContext& context) {
     bool changed = false;
 #if defined(HIKARI_WITH_EDITOR)
     using namespace SEQUENCER;
+    size_t unresolved = 0;
+    for (const auto& binding : sequence.bindings) {
+        SceneObjectId id;
+        if (!previewBindings_.Resolve(sequence.bindings, binding.id, id) || !scene.GetWorld().FindObject(id))
+            ++unresolved;
+    }
+    ImGui::TextWrapped("%s", TEXT::LocalizeCStr("cine.workflowHelp"));
+    if (unresolved)
+        ImGui::Text(TEXT::LocalizeCStr("cine.missingBindings"), static_cast<int>(unresolved));
     if (!ImGui::BeginTabBar("SequenceResources"))
         return false;
     if (ImGui::BeginTabItem(TEXT::LocalizeWindow("cine.shot", "镜头").c_str())) {
@@ -181,6 +192,21 @@ bool CinematicsWorkspaceController::DrawResources(DocumentSceneBase& scene, Cine
             FindSequenceBinding(sequence.bindings, id)->required = false;
             changed = true;
         }
+        ImGui::SameLine();
+        const auto selected = context.selection.GetActiveObjectId();
+        ImGui::BeginDisabled(!selected.value);
+        if (ImGui::Button(TEXT::LocalizeCStr("cine.slotFromSelection"))) {
+            const auto slotName = "Subject." + std::to_string(AllocateSequenceBindingId(sequence.bindings).value);
+            const auto id = FindOrCreateSlotBinding(sequence.bindings, slotName, slotName);
+            for (const auto& object : scene.GetSceneDocument().objects)
+                if (object.id == selected)
+                    FindSequenceBinding(sequence.bindings, id)->name = object.name;
+            previewBindings_.Bind(id, selected);
+            previewChanged_ = true;
+            changed = true;
+        }
+        ImGui::EndDisabled();
+        ImGui::TextWrapped("%s", TEXT::LocalizeCStr("cine.bindingHelp"));
         for (auto& binding : sequence.bindings) {
             ImGui::PushID(static_cast<int>(binding.id.value));
             std::array<char, 128> name{};
@@ -196,8 +222,17 @@ bool CinematicsWorkspaceController::DrawResources(DocumentSceneBase& scene, Cine
                 if (object.id == current)
                     label = object.name;
             if (ImGui::BeginCombo(TEXT::LocalizeWindow("cine.previewObject", "预览对象").c_str(), label.c_str())) {
-                for (const auto& object : scene.GetSceneDocument().objects)
-                    if (ImGui::Selectable(object.name.c_str(), object.id == current)) {
+                static ImGuiTextFilter filter;
+                if (ImGui::IsWindowAppearing()) {
+                    filter.Clear();
+                    ImGui::SetKeyboardFocusHere();
+                }
+                filter.Draw(TEXT::LocalizeCStr("uix.search"));
+                for (const auto& object : scene.GetSceneDocument().objects) {
+                    if (!filter.PassFilter(object.name.c_str()))
+                        continue;
+                    const auto objectLabel = object.name + "##" + std::to_string(object.id.value);
+                    if (ImGui::Selectable(objectLabel.c_str(), object.id == current)) {
                         previewBindings_.Bind(binding.id, object.id);
                         previewChanged_ = true;
                         if (binding.targetKind == SequenceBindingTargetKind::SceneObject) {
@@ -205,8 +240,24 @@ bool CinematicsWorkspaceController::DrawResources(DocumentSceneBase& scene, Cine
                             changed = true;
                         }
                     }
+                }
                 ImGui::EndCombo();
             }
+            ImGui::BeginDisabled(!selected.value);
+            if (ImGui::SmallButton(TEXT::LocalizeCStr("cine.useSelection"))) {
+                previewBindings_.Bind(binding.id, selected);
+                previewChanged_ = true;
+                if (binding.targetKind == SequenceBindingTargetKind::SceneObject) {
+                    binding.sceneObjectId = selected;
+                    changed = true;
+                }
+            }
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::BeginDisabled(!scene.GetWorld().FindObject(current));
+            if (ImGui::SmallButton(TEXT::LocalizeCStr("cine.selectBoundObject")))
+                context.selection.SelectObjectIds(scene.GetWorld(), {current});
+            ImGui::EndDisabled();
             changed |= ImGui::Checkbox(TEXT::LocalizeWindow("cine.requiredRuntime", "运行时必须提供").c_str(),
                                        &binding.required);
             ImGui::Separator();

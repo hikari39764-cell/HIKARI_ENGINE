@@ -70,7 +70,8 @@ bool DocumentSceneBase::OpenSceneAssetWithCurrentAssets(const AssetGuid& sceneGu
     state_->identity.documentDirty = false;
 
     state_->lighting.environment = state_->identity.document.environment;
-    if (RebuildRuntimeWorld(false, true)) {
+    bool oldWorldDetached = false;
+    if (RebuildRuntimeWorld(false, true, &oldWorldDetached)) {
         state_->identity.loadError.clear();
         return true;
     }
@@ -86,10 +87,12 @@ bool DocumentSceneBase::OpenSceneAssetWithCurrentAssets(const AssetGuid& sceneGu
     state_->identity.currentSceneAssetGuid = std::move(previousSceneAssetGuid);
     state_->identity.documentDirty = previousDocumentDirty;
     state_->lighting.environment = previousEnvironment;
-    if (!RebuildRuntimeWorld(false, true)) {
+    if (oldWorldDetached && !RebuildRuntimeWorld(false, true)) {
         HIKARI_LOG_ERROR("[SceneAsset] failed to restore the previous runtime World "
                          "after Scene open failed.");
-        state_->runtime.playActive = false;
+        if (state_->runtime.playActive && !EndRuntimePlay()) {
+            HIKARI_LOG_ERROR("[RuntimeLifecycle] Play was stopped after runtime Scene restoration failed.");
+        }
     }
     state_->identity.loadError = loadError;
     return false;

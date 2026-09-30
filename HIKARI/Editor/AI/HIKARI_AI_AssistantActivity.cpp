@@ -10,6 +10,31 @@
 #endif
 
 namespace HIKARI::EDITOR {
+void AiAssistantPanel::DrawReasoning(const std::string& text, bool streaming, bool incomplete) {
+#if defined(HIKARI_WITH_EDITOR)
+    if (!session_.SnapshotConfig().showReasoning)
+        return;
+    const auto key = streaming ? "ai.reasoning.streaming" : "ai.reasoning.title";
+    ImGui::SetNextItemOpen(streaming, ImGuiCond_Once);
+    if (!ImGui::TreeNode("##Reasoning", "%s", TEXT::LocalizeCStr(key)))
+        return;
+    ImGui::TextWrapped("%s", TEXT::LocalizeCStr("ai.reasoning.source"));
+    if (incomplete)
+        ImGui::TextWrapped("%s", TEXT::LocalizeCStr("ai.reasoning.incomplete"));
+    if (text.empty())
+        ImGui::TextDisabled("%s", TEXT::LocalizeCStr("ai.reasoning.unavailable"));
+    else {
+        ImGui::BeginChild("##ReasoningText", {0, ImGui::GetTextLineHeightWithSpacing() * 9}, true);
+        const bool follow = ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 24.0f;
+        ImGui::TextWrapped("%s", text.c_str());
+        if (streaming && follow)
+            ImGui::SetScrollHereY(1.0f);
+        ImGui::EndChild();
+    }
+    ImGui::TreePop();
+#endif
+}
+
 void AiAssistantPanel::RevealDraft(const std::string& sessionId) {
     const auto result =
         session_.ExecuteRequest(nlohmann::json{{"action", "authoring.reveal"}, {"sessionId", sessionId}}.dump());
@@ -108,6 +133,14 @@ void AiAssistantPanel::DrawTask(const std::vector<AI_ASSISTANT::AiChatMessage>& 
         const auto text = AI_ASSISTANT::StripActionJsonForDisplay(messages[latestProgress].content);
         if (!text.empty())
             ImGui::TextWrapped("%s", text.c_str());
+    }
+    for (size_t i = begin; i < end; ++i) {
+        if (messages[i].data.value("kind", std::string{}) != "progress")
+            continue;
+        ImGui::PushID(static_cast<int>(i));
+        DrawReasoning(messages[i].data.value("_reasoningContent", std::string{}), false,
+                      messages[i].data.value("incomplete", false));
+        ImGui::PopID();
     }
     // ユーザーへの結論と進捗をログから分離する。
     for (size_t i = begin; i < end; ++i) {

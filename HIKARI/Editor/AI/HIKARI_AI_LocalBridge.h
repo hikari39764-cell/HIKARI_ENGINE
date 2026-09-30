@@ -17,8 +17,8 @@ namespace HIKARI::EDITOR::AI_ASSISTANT {
 // executes requests through the same executor as the AI Assistant panel.
 class AiLocalBridge {
 public:
-    using Executor = std::function<AiRequestResult(std::string_view)>;
-    using CapabilityProvider = std::function<std::vector<AiCapability>()>;
+    using Executor = std::function<AiRequestResult(std::string_view, AiRequestSource)>;
+    using CapabilityProvider = std::function<std::vector<AiCapability>(AiRequestSource)>;
 
     AiLocalBridge();
     ~AiLocalBridge();

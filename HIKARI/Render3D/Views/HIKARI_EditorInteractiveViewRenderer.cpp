@@ -862,14 +862,6 @@ bool RenderPending(const SceneEnvironment& environment, const LIGHTING::SceneLig
         FailOutput(*selected, EditorInteractiveViewFailure::RenderTargetUnavailable);
         return false;
     }
-    auto* captureTarget =
-        selected->request.spatialAntiAliasing ? selected->antialiasedTarget.get() : selected->displayTarget.get();
-    if (captureTarget)
-        RecordViewCapture(selected->request.viewId, selected->output.ready, selected->output.outputRevision,
-                          captureTarget->GetResource(), captureTarget->GetColorState(),
-                          static_cast<uint32_t>(captureTarget->GetWidth()),
-                          static_cast<uint32_t>(captureTarget->GetHeight()));
-
     const std::array<float, 4> clearColor = ResolveClearColor(selected->request.shadingMode);
     selected->target->BeginCapture(clearColor[0], clearColor[1], clearColor[2], clearColor[3]);
 
@@ -1016,6 +1008,9 @@ bool RenderPending(const SceneEnvironment& environment, const LIGHTING::SceneLig
     selected->output.failure = EditorInteractiveViewFailure::None;
     selected->pending = false;
     selected->pendingSerial = 0u;
+    RecordViewCapture(selected->request.viewId, true, selected->output.outputRevision, publishedTarget->GetResource(),
+                      publishedTarget->GetColorState(), width, height, &selected->request.cameraFrame,
+                      selected->output.sceneRevision);
     return true;
 }
 

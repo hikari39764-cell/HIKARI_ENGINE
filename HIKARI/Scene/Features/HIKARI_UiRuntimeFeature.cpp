@@ -1,4 +1,7 @@
 #include "Scene/Ui/HIKARI_UiDataBindingComponent.h"
+#include "Scene/Ui/HIKARI_UiBindingSourceComponent.h"
+#include "Scene/Ui/HIKARI_UiScrollViewComponent.h"
+#include "Scene/Ui/HIKARI_UiTextFieldComponent.h"
 #include "Scene/Features/HIKARI_UiRuntimeFeature.h"
 
 #include "Scene/Ui/HIKARI_UiAnimationComponents.h"
@@ -46,12 +49,22 @@ public:
         return ids;
     }
     std::span<const std::string_view> GetComponentTypeNames() const noexcept override {
-        static constexpr std::array<std::string_view, 13u> names{
-            kUiCanvasComponentType,      kUiRectComponentType,   kUiImageComponentType,
-            kUiTextComponentType,        kUiButtonComponentType, "UiGroupComponent",
-            "UiLayoutGroupComponent",    "UiProgressComponent",  "UiDisplaySettingsPanelComponent",
-            "UiDisplaySettingComponent", "UiAnimatorComponent",  "UiAnimationTargetComponent",
-            "UiDataBindingComponent"};
+        static constexpr std::array<std::string_view, 16u> names{kUiCanvasComponentType,
+                                                                 kUiRectComponentType,
+                                                                 kUiImageComponentType,
+                                                                 kUiTextComponentType,
+                                                                 kUiButtonComponentType,
+                                                                 "UiTextFieldComponent",
+                                                                 "UiScrollViewComponent",
+                                                                 "UiGroupComponent",
+                                                                 "UiLayoutGroupComponent",
+                                                                 "UiProgressComponent",
+                                                                 "UiDisplaySettingsPanelComponent",
+                                                                 "UiDisplaySettingComponent",
+                                                                 "UiAnimatorComponent",
+                                                                 "UiAnimationTargetComponent",
+                                                                 "UiDataBindingComponent",
+                                                                 "UiBindingSourceComponent"};
         return names;
     }
     std::span<const std::string_view> GetSystemIds() const noexcept override {
@@ -80,12 +93,20 @@ public:
         ComponentTypeInfo button = UiComponent<UiButtonComponent>(std::string(kUiButtonComponentType), "UI Button",
                                                                   "Pointer and action-driven UI activation.");
         button.requiredComponents = {std::string(kUiRectComponentType)};
+        ComponentTypeInfo textField =
+            UiComponent<UiTextFieldComponent>("UiTextFieldComponent", "uix.textField", "uix.textFieldHelp");
+        textField.requiredComponents = {std::string(kUiRectComponentType), std::string(kUiTextComponentType)};
+        ComponentTypeInfo scrollView =
+            UiComponent<UiScrollViewComponent>("UiScrollViewComponent", "uix.scrollView", "uix.scrollViewHelp");
+        scrollView.requiredComponents = {std::string(kUiRectComponentType)};
 
         bool success = components.Register(std::move(canvas));
         success = components.Register(std::move(rect)) && success;
         success = components.Register(std::move(image)) && success;
         success = components.Register(std::move(text)) && success;
         success = components.Register(std::move(button)) && success;
+        success = components.Register(std::move(textField)) && success;
+        success = components.Register(std::move(scrollView)) && success;
         success =
             components.Register(UiComponent<UiGroupComponent>(
                 "UiGroupComponent", "UI Group", "Visibility, opacity and interaction inherited by descendants.")) &&
@@ -110,6 +131,9 @@ public:
         auto binding = UiComponent<UiDataBindingComponent>("UiDataBindingComponent", "uibind.component", "uibind.help");
         binding.requiredComponents = {"UiRectComponent"};
         success = components.Register(std::move(binding)) && success;
+        success = components.Register(UiComponent<UiBindingSourceComponent>("UiBindingSourceComponent", "uibind.source",
+                                                                            "uibind.sourceHelp")) &&
+                  success;
         auto animator =
             UiComponent<UiAnimatorComponent>("UiAnimatorComponent", "uianim.animator", "uianim.animatorHelp");
         success = components.Register(std::move(animator)) && success;

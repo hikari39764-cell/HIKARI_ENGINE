@@ -28,11 +28,21 @@ public:
     bool IsPreviewing() const { return preview_; }
     bool Open(AssetDatabase&, const AssetGuid&);
     bool TravelHistory(bool redo);
+    bool IsRecording() const { return autoKey_ && document_.IsOpen(); }
+    bool BeginPoseDrag(DocumentSceneBase&, SceneObjectId);
+    void UpdatePoseDrag(DocumentSceneBase&, float dx, float dy, float scaleX, float scaleY);
+    void FinishPoseDrag(DocumentSceneBase&, EditorOperationRegistry*);
+    void DrawPoseInspector(DocumentSceneBase&, EditorContext&, EditorOperationRegistry&);
+    void DrawCanvasTools(DocumentSceneBase&, EditorContext&, EditorOperationRegistry&);
+    std::string TargetName(DocumentSceneBase&, std::string_view slot) const;
 
 private:
-    void DrawTimeline(UiAnimationAsset&, UiAnimationClip&, bool& changed);
+    static UiAnimationTrack& EnsureTrack(UiAnimationClip&, std::string_view, UiMotionProperty);
+    void DrawTimeline(DocumentSceneBase&, EditorContext&, EditorOperationRegistry&, UiAnimationAsset&, UiAnimationClip&,
+                      bool& changed);
+    bool PreviewAsset(DocumentSceneBase&, SceneObjectId, const UiAnimationAsset&, std::string_view, float, bool);
     void BindToSelection(DocumentSceneBase&, EditorContext&, EditorOperationRegistry&);
-    bool AssignTarget(DocumentSceneBase&, EditorContext&, EditorOperationRegistry&, UiAnimationTrack&);
+    bool AssignTarget(DocumentSceneBase&, SceneObjectId, EditorOperationRegistry&, UiAnimationTrack&);
     UiAnimationEditorDocument document_;
     UiAnimationPlayer player_;
     SceneObjectId root_{};
@@ -43,6 +53,14 @@ private:
     bool preview_ = false, playing_ = false, focused_ = false, autoKey_ = false, loop_ = false;
     bool curve_ = false, snap_ = true;
     ScalarCurveView curveView_;
+    float timelineZoom_ = 1;
+    float staggerSeconds_ = .08f;
+    struct PoseDrag {
+        UiAnimationAsset before, draft;
+        std::string slot;
+        uint64_t revision = 0, sceneRevision = 0;
+    };
+    std::optional<PoseDrag> poseDrag_;
     std::string message_;
     char search_[128]{};
     std::set<std::pair<uint64_t, size_t>> selectedKeys_;
@@ -57,6 +75,8 @@ private:
         float x = 0;
     };
     std::optional<KeyDrag> drag_;
+    std::optional<MATH::Vec2> keyMarquee_;
+    std::set<std::pair<uint64_t, size_t>> marqueeBefore_;
 };
 void RegisterUiAnimationOperations(EditorOperationRegistry&, UiAnimationEditor&, std::function<DocumentSceneBase*()>);
 } // namespace HIKARI::EDITOR

@@ -6,9 +6,11 @@
 #include "Core/HIKARI_TimeService.h"
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Gfx/HIKARI_DXCheck.h"
+#include "Gfx/HIKARI_GfxDebugConfig.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_GpuPipelineStatsProfiler.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
+#include "Render3D/GpuDriven/HIKARI_GpuSceneJointPaletteUpload.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
 #include "Render3D/Lighting/HIKARI_StylizedCloudStage.h"
 #include "Render3D/Lighting/HIKARI_DynamicDiffuseGi.h"
@@ -44,9 +46,15 @@ struct RuntimePerformanceSnapshot {
     float fpsRaw = 0.0f;
     uint32_t fixedStepsThisFrame = 0u;
     float droppedFixedTimeSeconds = 0.0f;
+    int backBufferWidth = 0;
+    int backBufferHeight = 0;
+    std::string sceneId{};
+    GFX::GfxDebugConfig debugConfig{};
+    RENDER3D::RenderQualitySettings renderQuality{};
     RenderSubmissionDebugStats submission{};
     RENDER3D::RUNTIME::SceneRenderCache::Stats scene{};
     RENDER3D::GPUDRIVEN::GpuSceneRegistryStats gpuRegistry{};
+    RENDER3D::GPUDRIVEN::GpuSceneJointPaletteUploadStats jointPaletteUpload{};
     RENDER3D::MATERIAL::GpuMaterialRegistryStats gpuMaterials{};
     MESHRENDERER::MeshRendererDebugStats mesh{};
     SHADOW::ShadowMapDebugStats shadow{};

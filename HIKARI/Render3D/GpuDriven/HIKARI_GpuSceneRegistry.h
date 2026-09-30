@@ -144,7 +144,7 @@ private:
 
     std::vector<GpuSceneSurfaceRecord> surfaceRecords_{};
     std::vector<WATER::WaterSurfaceGpuData> waterSurfaceGpuData_{};
-    std::vector<std::vector<MATH::Mat4>> meshShaderJointPalettes_{};
+    GpuSceneJointPaletteSnapshotPtr meshShaderJointPalettes_{};
     std::vector<TERRAIN::TerrainSurfaceGpuData> terrainSurfaceGpuData_{};
     const std::vector<float>* terrainSurfaceHeights_ = nullptr;
     uint64_t terrainSurfaceHeightVersion_ = 0;

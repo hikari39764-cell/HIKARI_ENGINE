@@ -14,10 +14,6 @@ class Material;
 
 namespace HIKARI::RENDER3D::RUNTIME {
 
-constexpr uint32_t kSurfaceGpuSceneMaxJointMatrices = 128u;
-constexpr uint32_t kSurfaceGpuSceneMaxDeformationPalettes = 2048u;
-constexpr uint32_t kSurfaceGpuSceneJointPaletteStrideBytes = kSurfaceGpuSceneMaxJointMatrices * sizeof(MATH::Mat4);
-
 enum class SurfaceGpuSceneInstanceFlags : uint32_t {
     None = 0,
     StaticGeometry = 1u << 0,
@@ -115,8 +111,6 @@ static_assert(sizeof(SurfaceGpuSceneInstance) == 560u);
 static_assert(offsetof(SurfaceGpuSceneInstance, surfaceFeatureDataIndex) == 408u);
 static_assert(offsetof(SurfaceGpuSceneInstance, lightmapUvScaleBias) == 416u);
 static_assert(offsetof(SurfaceGpuSceneInstance, fxUser) == 432u);
-static_assert(kSurfaceGpuSceneJointPaletteStrideBytes == 8192u);
-
 struct SurfaceGpuSceneMaterialSource {
     const ModelAsset* model = nullptr;
     const Material* materialOverride = nullptr;

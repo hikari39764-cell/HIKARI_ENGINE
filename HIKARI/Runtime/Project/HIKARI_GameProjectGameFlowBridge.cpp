@@ -14,6 +14,7 @@
 #include "Core/HIKARI_Logger.h"
 #include "Gameplay/Dialogue/HIKARI_DialogueSessionService.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
+#include "Runtime/Project/Internal/HIKARI_GameProjectSessionRuntimeExtension.h"
 #include "Runtime/Services/HIKARI_GameProjectSaveStorageService.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "Scene/HIKARI_RuntimeSceneContext.h"
@@ -168,6 +169,16 @@ SaveGameView WorldView::GetSaveGame() const noexcept {
 RuntimeSessionView WorldView::GetRuntimeSession() const noexcept {
     World* world = GameProjectSdkAccess::GetWorld(*this);
     return world != nullptr ? GameProjectSdkAccess::MakeRuntimeSessionView(*world) : RuntimeSessionView{};
+}
+
+IGameProjectSession* WorldView::GetGameSession() const noexcept {
+    World* world = GameProjectSdkAccess::GetWorld(*this);
+    if (world == nullptr || !world->IsOwnerThread()) {
+        return nullptr;
+    }
+    RUNTIME::GameProjectSessionRuntimeExtension* sessionOwner =
+        world->Services().Find<RUNTIME::GameProjectSessionRuntimeExtension>();
+    return sessionOwner != nullptr ? sessionOwner->GetGameSession() : nullptr;
 }
 
 bool DialogueView::Start(std::string_view assetGuid, uint64_t actorObjectHandle, std::string_view locale,

@@ -1,3 +1,4 @@
+#include "Editor/Authoring/HIKARI_ComponentAuthoringQueryService.h"
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Editor/Authoring/HIKARI_SceneObjectOperations.h"
 #include "Editor/Authoring/HIKARI_EditorObjectFactory.h"
@@ -45,28 +46,10 @@ void ReadObjectTransform(const nlohmann::json& parameters, CreateObjectRequest& 
     request.scale = {read("scaleX", 1), read("scaleY", 1), read("scaleZ", 1)};
 }
 
-void SummarizeSceneObjects(DocumentSceneBase& scene, std::vector<std::string>& outLines, size_t limit,
-                           std::string_view filter = {}) {
-    const auto& objects = scene.GetWorld().GetObjects();
-    size_t count = 0u;
-    for (const auto& object : objects) {
-        if (!filter.empty() && object->GetName().find(filter) == std::string::npos)
-            continue;
-        if (count >= limit) {
-            outLines.push_back("...（更多省略）");
-            break;
-        }
-        const MATH::Vec3& position = object->GetTransform().position;
-        const MATH::Vec3& scale = object->GetTransform().scale;
-        char line[192];
-        std::snprintf(line, sizeof(line),
-                      "[%llu] %s | pos(%.2f, %.2f, %.2f) | "
-                      "scale(%.2f, %.2f, %.2f)",
-                      static_cast<unsigned long long>(object->GetDocumentId().value), object->GetName().c_str(),
-                      position.x, position.y, position.z, scale.x, scale.y, scale.z);
-        outLines.push_back(line);
-        ++count;
-    }
+nlohmann::json CreatedObjectReceipt(const DocumentSceneBase& scene, const GameObject& object) {
+    auto result = ComponentAuthoringQueryService{}.QueryObjects(scene, {{"objectId", object.GetDocumentId().value}});
+    result.data["objectId"] = object.GetDocumentId().value;
+    return std::move(result.data);
 }
 
 EditorOperationResult EditSceneSelection(SceneObjectOperationContext& operation, SceneObjectCommandId command,
@@ -181,7 +164,7 @@ EditorOperationResult CreateSceneModel(SceneObjectOperationContext& operation, c
     }
     edit.Complete(*object);
     result.ok = true;
-    SummarizeSceneObjects(*scene, result.details, 8u);
+    result.data = CreatedObjectReceipt(*scene, *object);
     result.message = "已创建模型 " + request.name + "（" + descriptor->sourcePath + "）";
     return result;
 }
@@ -220,8 +203,8 @@ EditorOperationResult CreateSceneWorldSprite(SceneObjectOperationContext& operat
         return OperationFailure("CREATE_FAILED", "创建 3D 世界贴图失败");
     }
     edit.Complete(*object);
-    SummarizeSceneObjects(*scene, result.details, 8u);
-    return OperationOk("已创建 3D 世界贴图 " + object->GetName());
+    result.data = CreatedObjectReceipt(*scene, *object);
+    return OperationOk("已创建 3D 世界贴图 " + object->GetName(), std::move(result.data));
 }
 
 EditorOperationResult CreateSceneWorldText(SceneObjectOperationContext& operation, const nlohmann::json& parameters) {
@@ -298,8 +281,8 @@ EditorOperationResult CreateSceneWorldText(SceneObjectOperationContext& operatio
         return OperationFailure("CREATE_FAILED", "创建 3D 世界文字失败");
     }
     edit.Complete(*object);
-    SummarizeSceneObjects(*scene, result.details, 8u);
-    return OperationOk("已创建 3D 世界文字 " + object->GetName());
+    result.data = CreatedObjectReceipt(*scene, *object);
+    return OperationOk("已创建 3D 世界文字 " + object->GetName(), std::move(result.data));
 }
 
 EditorOperationResult CreateScenePrimitive(SceneObjectOperationContext& operation, const nlohmann::json& parameters) {
@@ -339,7 +322,7 @@ EditorOperationResult CreateScenePrimitive(SceneObjectOperationContext& operatio
     char positionText[96];
     std::snprintf(positionText, sizeof(positionText), "(%.2f, %.2f, %.2f)", request.object.position.x,
                   request.object.position.y, request.object.position.z);
-    SummarizeSceneObjects(*scene, result.details, 8u);
+    result.data = CreatedObjectReceipt(*scene, *object);
     result.ok = true;
     result.message = "已创建 " + request.object.name + " " + std::string(positionText);
     return result;
@@ -360,7 +343,7 @@ EditorOperationResult CreateSceneEmptyObject(SceneObjectOperationContext& operat
         return OperationFailure("CREATE_FAILED", "创建空物体失败：" + request.name);
     }
     edit.Complete(*object);
-    SummarizeSceneObjects(*scene, result.details, 8u);
+    result.data = CreatedObjectReceipt(*scene, *object);
     result.ok = true;
     result.message = "已创建空物体 " + request.name;
     return result;
@@ -371,11 +354,5 @@ EditorOperationResult DeleteSceneObjects(SceneObjectOperationContext& operation,
 EditorOperationResult DuplicateSceneObjects(SceneObjectOperationContext& operation, const nlohmann::json& parameters) {
     return EditSceneSelection(operation, SceneObjectCommandId::Duplicate, parameters);
 }
-EditorOperationResult QuerySceneObjects(SceneObjectOperationContext& operation, const nlohmann::json& parameters) {
-    EditorOperationResult result;
-    SummarizeSceneObjects(operation.scene, result.details, 200u, parameters.value("name", std::string{}));
-    result.ok = true;
-    result.message = result.details.empty() ? "没有匹配的对象" : "场景对象：";
-    return result;
-}
+
 } // namespace HIKARI::EDITOR

@@ -55,19 +55,16 @@ bool ProjectRelativeOutputExists(const std::filesystem::path& projectRoot, const
 
 } // namespace
 
-LightingBakeReport LightingBakeService::BakeDirtyLighting(DocumentSceneBase& scene) const {
-    (void)scene.RequestLightingBake(false);
-    return scene.HasLastLightingBakeReport() ? scene.GetLastLightingBakeReport() : LightingBakeReport{};
-}
-
-LightingBakeReport LightingBakeService::BakeAllLighting(DocumentSceneBase& scene) const {
-    (void)scene.RequestLightingBake(true);
-    return scene.HasLastLightingBakeReport() ? scene.GetLastLightingBakeReport() : LightingBakeReport{};
-}
-
-LightingBakeReport LightingBakeService::BakeSelectedLighting(DocumentSceneBase& scene) const {
-    (void)scene.RequestLightingBake(true, scene.GetSelectedGizmoObjectId());
-    return scene.HasLastLightingBakeReport() ? scene.GetLastLightingBakeReport() : LightingBakeReport{};
+std::string LightingBakeService::GetBlockReason(const DocumentSceneBase& scene) const {
+    if (scene.IsRuntimePlayActive())
+        return "Stop Play before changing lighting bake outputs.";
+    if (IsLightingBakeJobRunning(scene.GetLightingBakeJobState()))
+        return "A lighting bake is running. Wait for completion before starting or clearing outputs.";
+    if (scene.GetAssetDatabase().GetAssetTaskService().HasActiveTasks())
+        return "Wait for asset import to finish before baking or clearing lighting.";
+    if (!scene.GetCurrentSceneAssetGuid().IsValid())
+        return "Save the scene before baking lighting.";
+    return {};
 }
 
 LightingBakeStatus LightingBakeService::AnalyzeLightingBakeStatus(const LightingBakeRequest& request) const {

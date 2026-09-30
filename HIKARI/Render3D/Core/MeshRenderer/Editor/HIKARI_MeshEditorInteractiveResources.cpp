@@ -60,8 +60,7 @@ bool EnsureEditorInteractiveResources() {
     }
 
     for (EditorInteractiveMeshFrameResources& frame : gMeshRendererState.editorInteractive.frames) {
-        if (!frame.view.Initialize(device) ||
-            !frame.deformationUploads.Init(device, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT)) {
+        if (!frame.view.Initialize(device)) {
             ResetEditorInteractiveResources();
             return false;
         }

@@ -18,6 +18,7 @@
 #include "Project/HIKARI_ProjectContext.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettingsJson.h"
 #include "Render3D/Pipeline/HIKARI_RenderFramePipeline.h"
+#include "Render3D/GpuDriven/HIKARI_GpuSceneJointPaletteUpload.h"
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineFrameGeneration.h"
 #include "Runtime/HIKARI_RuntimeLaunchConfig.h"
@@ -49,12 +50,15 @@ struct RuntimeBenchmark::State {
     uint64_t previousRenderFailures = 0, rejectedRenderSamples = 0;
     uint64_t peakObjects = 0, peakVisibleObjects = 0, peakMassInstances = 0;
     uint64_t peakWorkingSet = 0, peakPrivateBytes = 0, peakVram = 0;
+    uint64_t jointPaletteMatrixPayloadBytes = 0, jointPaletteSnapshotUploads = 0;
+    uint64_t jointPaletteSnapshotReuses = 0, jointPaletteEmptyBindingUploads = 0;
     uint64_t minimumVramBudget = UINT64_MAX;
     uint32_t processMemorySamples = 0, videoMemorySamples = 0;
     RENDER3D::RenderQualitySettings initialQuality{};
     std::array<uint32_t, 6> initialDimensions{};
     uint64_t initialDeviceGeneration = 0;
     bool initialDebugLayer = false, initialGpuValidation = false;
+    bool initialGpuFrameProfiler = false, initialGpuPipelineStats = false;
     std::string initialSceneId;
     uint64_t initialSceneRevision = 0;
     Json context = Json::object();
@@ -94,7 +98,9 @@ struct RuntimeBenchmark::State {
             configurationStable &=
                 RENDER3D::AreRenderQualitySettingsEqual(initialQuality, quality) && initialDimensions == dimensions &&
                 initialDeviceGeneration == graphics.deviceGeneration && initialDebugLayer == debug.enableDebugLayer &&
-                initialGpuValidation == debug.enableGpuBasedValidation;
+                initialGpuValidation == debug.enableGpuBasedValidation &&
+                initialGpuFrameProfiler == debug.enableGpuFrameProfiler &&
+                initialGpuPipelineStats == debug.enableGpuPipelineStats;
             temporalValid &= temporal.completed && !temporal.aborted;
             configurationStable &= (scene ? scene->GetSceneId() : "") == initialSceneId &&
                                    (!document || document->GetSceneDocumentRevision() == initialSceneRevision);
@@ -108,6 +114,8 @@ struct RuntimeBenchmark::State {
         initialDeviceGeneration = graphics.deviceGeneration;
         initialDebugLayer = debug.enableDebugLayer;
         initialGpuValidation = debug.enableGpuBasedValidation;
+        initialGpuFrameProfiler = debug.enableGpuFrameProfiler;
+        initialGpuPipelineStats = debug.enableGpuPipelineStats;
         initialSceneId = scene ? scene->GetSceneId() : "";
         initialSceneRevision = document ? document->GetSceneDocumentRevision() : 0;
         temporalValid = temporal.completed && !temporal.aborted;
@@ -125,6 +133,9 @@ struct RuntimeBenchmark::State {
               {"backBuffer", {dimensions[4], dimensions[5]}}}},
             {"debugLayer", initialDebugLayer},
             {"gpuValidation", initialGpuValidation},
+            {"profiling",
+             {{"enableGpuFrameProfiler", initialGpuFrameProfiler},
+              {"enableGpuPipelineStats", initialGpuPipelineStats}}},
             {"deviceGeneration", initialDeviceGeneration},
             {"sceneId", initialSceneId},
             {"sceneDocumentRevision", initialSceneRevision},
@@ -137,6 +148,9 @@ struct RuntimeBenchmark::State {
             {"cacheState", "uncontrolled"},
             {"workload", "active project; fixture/camera controlled by caller"}};
         if (document) {
+            const Camera3D& camera = document->GetCamera();
+            context["cameraAtStart"]["target"] = {camera.GetTarget().x, camera.GetTarget().y, camera.GetTarget().z};
+            context["cameraAtStart"]["up"] = {camera.GetUp().x, camera.GetUp().y, camera.GetUp().z};
             SCENE::SERIALIZATION::SerializeSceneEnvironmentJson(document->GetSceneEnvironment(),
                                                                 context["environmentAtStart"]);
             if (run.CaptureComplete())
@@ -220,6 +234,12 @@ void RuntimeBenchmark::OnPresentedFrame(uint64_t frameId, bool applicationFrame,
         if (renderRejected)
             ++s.rejectedRenderSamples;
         s.CaptureContext(scene);
+        const auto& jointPaletteUpload =
+            RENDER3D::GPUDRIVEN::GetGpuSceneJointPaletteUploadStats(GFX::GetCurrentContext());
+        s.jointPaletteMatrixPayloadBytes += jointPaletteUpload.matrixPayloadBytes;
+        s.jointPaletteSnapshotUploads += jointPaletteUpload.snapshotUploadCount;
+        s.jointPaletteSnapshotReuses += jointPaletteUpload.snapshotReuseCount;
+        s.jointPaletteEmptyBindingUploads += jointPaletteUpload.emptyBindingUploadCount;
         const auto& sceneStats = RenderSubmissionSystem::GetSceneRenderCacheStats();
         s.peakObjects = (std::max)(s.peakObjects, static_cast<uint64_t>(sceneStats.renderObjectCount));
         s.peakVisibleObjects = (std::max)(s.peakVisibleObjects, static_cast<uint64_t>(sceneStats.visibleObjectCount));
@@ -261,6 +281,11 @@ void RuntimeBenchmark::Finish() {
         report["scenePeaks"] = {{"objects", s.peakObjects},
                                 {"visibleObjects", s.peakVisibleObjects},
                                 {"massRenderInstances", s.peakMassInstances}};
+        report["jointPaletteUploads"] = {{"sampleFrames", s.run.SampleCount()},
+                                         {"matrixPayloadBytes", s.jointPaletteMatrixPayloadBytes},
+                                         {"snapshotUploads", s.jointPaletteSnapshotUploads},
+                                         {"snapshotReuses", s.jointPaletteSnapshotReuses},
+                                         {"emptyBindingUploads", s.jointPaletteEmptyBindingUploads}};
         report["memory"] = {
             {"samplingIntervalFrames", 60},
             {"processSamples", s.processMemorySamples},

@@ -30,7 +30,7 @@ struct MeshFrameResources {
     DX::DynamicUploadBuffer materialUploads;
     bool materialUploadNeedsRetry = false;
     bool materialProgramUploadNeedsRetry = false;
-    DX::DynamicUploadBuffer deformationUploads;
+    DX::DynamicUploadBuffer traditionalJointPaletteUploads;
     D3D12_GPU_VIRTUAL_ADDRESS jointPaletteAddress = 0;
 
     ObjectCB* objectMapped = nullptr;

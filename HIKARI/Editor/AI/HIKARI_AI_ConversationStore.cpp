@@ -1,5 +1,7 @@
 #include "HIKARI_AI_ConversationStore.h"
 #include <fstream>
+#include <map>
+#include <stdexcept>
 #include <algorithm>
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -81,7 +83,8 @@ std::vector<AiConversationSummary> ListAiConversations(const std::filesystem::pa
     return result;
 }
 bool LoadAiConversation(const std::filesystem::path& folder, const std::string& id,
-                        std::vector<AiChatMessage>& messages, std::string& error, AiTaskCheckpoint* task) {
+                        std::vector<AiChatMessage>& messages, std::string& error, AiTaskCheckpoint* task,
+                        AiProjectAccessMode* requiredAccess) {
     try {
         nlohmann::json data;
         if (!ValidId(id) || !Read(folder / (id + ".json"), data) || !data.at("messages").is_array()) {
@@ -89,6 +92,11 @@ bool LoadAiConversation(const std::filesystem::path& folder, const std::string& 
             return false;
         }
         auto loaded = DecodeMessages(data.at("messages"));
+        AiProjectAccessMode loadedAccess = AiProjectAccessMode::DevelopProject;
+        if (data.contains("requiredAccess") && data["requiredAccess"].is_string()) {
+            loadedAccess = TEXT::ParseEnum(kAiProjectAccessModeNames, data["requiredAccess"].get<std::string>(),
+                                           AiProjectAccessMode::DevelopProject);
+        }
         AiTaskCheckpoint checkpoint;
         if (data.contains("task") && data["task"].is_object()) {
             const auto& saved = data["task"];
@@ -103,8 +111,20 @@ bool LoadAiConversation(const std::filesystem::path& folder, const std::string& 
                 ReadBoundary(saved, "retiredImageThroughMessage", checkpoint.messages.size());
             checkpoint.active = checkpoint.active && !checkpoint.messages.empty();
         }
+        for (auto& message : loaded) {
+            const auto reference = message.data.find("_taskReasoningIndex");
+            if (reference == message.data.end())
+                continue;
+            const auto index = reference->get<size_t>();
+            if (index >= checkpoint.messages.size() || !checkpoint.messages[index].data.contains("_reasoningContent"))
+                throw std::runtime_error("Invalid reasoning reference");
+            message.data["_reasoningContent"] = checkpoint.messages[index].data.at("_reasoningContent");
+            message.data.erase("_taskReasoningIndex");
+        }
         if (task)
             *task = std::move(checkpoint);
+        if (requiredAccess)
+            *requiredAccess = loadedAccess;
         messages = std::move(loaded);
         error.clear();
         return true;
@@ -114,26 +134,49 @@ bool LoadAiConversation(const std::filesystem::path& folder, const std::string& 
     }
 }
 bool SaveAiConversation(const std::filesystem::path& folder, const std::string& id,
-                        const std::vector<AiChatMessage>& messages, std::string& error, const AiTaskCheckpoint* task) {
+                        const std::vector<AiChatMessage>& messages, std::string& error, const AiTaskCheckpoint* task,
+                        AiProjectAccessMode requiredAccess) {
     try {
-        if (!ValidId(id) || folder.empty()) {
+        if (!ValidId(id) || folder.empty() || !TEXT::IsNamedEnum(kAiProjectAccessModeNames, requiredAccess)) {
             error = "对话保存位置无效。";
             return false;
         }
-        nlohmann::json data{{"version", 1}, {"title", "Conversation"}, {"messages", nlohmann::json::array()}};
+        nlohmann::json data{{"version", 1},
+                            {"title", "Conversation"},
+                            {"requiredAccess", TEXT::EnumToName(kAiProjectAccessModeNames, requiredAccess)},
+                            {"messages", nlohmann::json::array()}};
         data["messages"] = EncodeMessages(messages);
         for (const auto& message : messages)
             if (message.role == "user" && !message.content.empty()) {
                 data["title"] = message.content.substr(0, message.content.find('\n'));
                 break;
             }
-        if (task && task->active)
+        if (task && task->active) {
             data["task"] = {{"active", true},
                             {"prompt", task->prompt},
                             {"context", task->context},
                             {"messages", EncodeMessages(task->messages)},
                             {"compactedThroughMessage", task->requestContext.compactedThroughMessage},
                             {"retiredImageThroughMessage", task->requestContext.retiredImageThroughMessage}};
+            // 表示ログと再開用チェックポイントの長い思考本文を二重保存しない。
+            std::map<std::string_view, size_t> reasoningSources;
+            for (size_t i = 0; i < task->messages.size(); ++i) {
+                const auto reasoning = task->messages[i].data.find("_reasoningContent");
+                if (reasoning != task->messages[i].data.end() && reasoning->is_string())
+                    reasoningSources.emplace(reasoning->get_ref<const std::string&>(), i);
+            }
+            for (auto& message : data["messages"]) {
+                auto& fields = message["data"];
+                const auto reasoning = fields.find("_reasoningContent");
+                if (reasoning == fields.end() || !reasoning->is_string())
+                    continue;
+                const auto source = reasoningSources.find(reasoning->get_ref<const std::string&>());
+                if (source != reasoningSources.end()) {
+                    fields.erase("_reasoningContent");
+                    fields["_taskReasoningIndex"] = source->second;
+                }
+            }
+        }
         const auto bytes = data.dump();
         if (bytes.size() > kMaximumConversationBytes) {
             error = "Conversation exceeds the storage limit; the previous checkpoint is retained.";

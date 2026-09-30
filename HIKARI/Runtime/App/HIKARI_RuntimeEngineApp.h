@@ -2,6 +2,7 @@
 
 #include "Runtime/App/HIKARI_IHostApplication.h"
 #include "Runtime/Project/HIKARI_GameProjectModuleLibrary.h"
+#include "Runtime/Project/Internal/HIKARI_GameProjectSessionRuntimeExtension.h"
 #include "Scene/HIKARI_RuntimeSceneContext.h"
 #include "Scene/HIKARI_SceneManager.h"
 #include "Scene/HIKARI_SceneTransitionBus.h"
@@ -25,6 +26,7 @@ public:
 
 private:
     GameProjectModuleLibrary gameProjectModule_{};
+    GameProjectSessionRuntimeExtension gameProjectSessionExtension_;
     SceneManager sceneManager_{};
     SceneTransitionBus sceneTransitionBus_;
     bool standaloneRuntimeEntryFailed_ = false;

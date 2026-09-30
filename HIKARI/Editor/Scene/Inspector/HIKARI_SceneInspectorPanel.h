@@ -35,6 +35,7 @@ public:
 
     std::optional<SceneObjectAuthoringHistoryRequest> ConsumeHistoryRequest();
     std::optional<SceneObjectId> ConsumeOpenCinematicsWorkspaceCameraRequest();
+    void RequestFocusObject(SceneObjectId id) { focusObjectRequest_ = id; }
     std::optional<SceneObjectId> ConsumeFocusObjectRequest();
     IModelMaterialSlotProvider& GetModelMaterialSlotProvider() noexcept {
         return componentAuthoringSection_.GetModelMaterialSlotProvider();

@@ -1,5 +1,6 @@
 #pragma once
 #include "Assets/Text/HIKARI_TextStyleBinding.h"
+#include "Core/Text/HIKARI_Utf8.h"
 
 #include <string>
 
@@ -8,6 +9,7 @@
 #include "Render3D/HIKARI_Math3D.h"
 #include "HIKARI/Runtime/ComponentTypeId.h"
 #include "Scene/Components/HIKARI_IComponent.h"
+#include "Scene/HIKARI_RuntimeObjectHandle.h"
 #include "Scene/Ui/HIKARI_UiTextStyle.h"
 #include "Scene/HIKARI_SceneObjectId.h"
 
@@ -34,6 +36,11 @@ enum class UiButtonVisualState : uint8_t {
     Disabled,
 };
 
+enum class UiCanvasInputMode : uint8_t {
+    Hud,
+    Menu,
+};
+
 class UiCanvasComponent final : public IComponent {
 public:
     std::string_view GetTypeName() const override { return kUiCanvasComponentType; }
@@ -43,10 +50,24 @@ public:
 
     bool IsEnabled() const noexcept { return enabled_; }
     bool IsInteractable() const noexcept { return interactable_; }
+    UiCanvasInputMode GetInputMode() const noexcept { return inputMode_; }
+    bool IsInputActive() const noexcept { return inputMode_ == UiCanvasInputMode::Menu && inputActive_; }
     float GetReferenceWidth() const noexcept { return referenceWidth_; }
     void SetEnabled(bool value) noexcept { enabled_ = value; }
+    void SetInputActive(bool value) noexcept { inputActive_ = value; }
     float GetReferenceHeight() const noexcept { return referenceHeight_; }
     int GetSortOrder() const noexcept { return sortOrder_; }
+    bool RequestFocus(RuntimeObjectHandle control) noexcept {
+        if (!control.IsValid())
+            return false;
+        pendingFocus_ = control;
+        return true;
+    }
+    RuntimeObjectHandle ConsumePendingFocus() noexcept {
+        const RuntimeObjectHandle result = pendingFocus_;
+        pendingFocus_ = {};
+        return result;
+    }
 
 private:
     float referenceWidth_ = 1920.0f;
@@ -54,6 +75,9 @@ private:
     int sortOrder_ = 0;
     bool enabled_ = true;
     bool interactable_ = true;
+    UiCanvasInputMode inputMode_ = UiCanvasInputMode::Hud;
+    bool inputActive_ = true;
+    RuntimeObjectHandle pendingFocus_{};
 };
 
 class UiRectComponent final : public IComponent {
@@ -117,7 +141,7 @@ public:
     bool IsEnabled() const noexcept { return enabled_; }
     const std::string& GetText() const noexcept { return text_; }
     bool SetText(std::string_view value) {
-        if (value.size() > 16384 || value.find('\0') != std::string_view::npos)
+        if (value.size() > 16384 || value.find('\0') != std::string_view::npos || !TEXT::IsValidUtf8(value))
             return false;
         if (text_ != value)
             text_.assign(value);

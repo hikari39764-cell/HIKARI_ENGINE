@@ -28,7 +28,7 @@ struct MeshRendererTraditionalIndirectHydrationContext {
     MeshPrimitiveCache* primitiveCache = nullptr;
     MeshRendererDebugStats* debugStats = nullptr;
     const GFX::Context* graphics = nullptr;
-    DX::DynamicUploadBuffer* deformationUploads = nullptr;
+    DX::DynamicUploadBuffer* traditionalJointPaletteUploads = nullptr;
 };
 
 // GpuDrivenSceneSource の traditionalIndirect は参照 view なので、

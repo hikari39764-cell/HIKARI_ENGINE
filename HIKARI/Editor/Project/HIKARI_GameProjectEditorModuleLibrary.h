@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <string_view>
@@ -9,11 +10,14 @@
 
 namespace HIKARI::EDITOR_PROJECT {
 
+class IEditorDocumentService;
 class IEditorWorkspace;
 
 } // namespace HIKARI::EDITOR_PROJECT
 
 namespace HIKARI::EDITOR {
+
+class EditorOperationRegistry;
 
 class GameProjectEditorModuleLibrary {
 public:
@@ -32,6 +36,8 @@ public:
     std::string_view GetModuleId() const noexcept;
     size_t GetWorkspaceCount() const noexcept;
     EDITOR_PROJECT::IEditorWorkspace* GetWorkspace(size_t index) const noexcept;
+    bool RegisterEditorOperations(EditorOperationRegistry& registry, uint64_t ownerToken,
+                                  EDITOR_PROJECT::IEditorDocumentService* documents, std::string& outMessage) const;
     const std::filesystem::path& GetModulePath() const noexcept;
 
 private:

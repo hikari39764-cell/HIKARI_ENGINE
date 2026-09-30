@@ -7,6 +7,7 @@
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/Ui/HIKARI_UiAnimationComponents.h"
+#include "Scene/Ui/HIKARI_UiSceneComponents.h"
 #include "Core/Text/HIKARI_Localization.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 #include "HIKARI/Project/FrameContext.h"
@@ -47,6 +48,8 @@ bool UiAnimationEditor::Open(AssetDatabase& db, const AssetGuid& guid) {
     return true;
 }
 void UiAnimationEditor::StopPreview() {
+    poseDrag_.reset();
+    keyMarquee_.reset();
     preview_ = playing_ = false;
     player_.Reset();
     previewRevision_ = ~uint64_t(0);
@@ -58,15 +61,20 @@ bool UiAnimationEditor::TravelHistory(bool redo) {
     if (changed) {
         selectedKeys_.clear();
         drag_.reset();
+        keyMarquee_.reset();
     }
     return changed;
 }
 bool UiAnimationEditor::Preview(DocumentSceneBase& scene, SceneObjectId root, std::string_view clip, float seconds,
                                 bool play) {
+    return PreviewAsset(scene, root, document_.Profile(), clip, seconds, play);
+}
+bool UiAnimationEditor::PreviewAsset(DocumentSceneBase& scene, SceneObjectId root, const UiAnimationAsset& source,
+                                     std::string_view clip, float seconds, bool play) {
     auto* object = scene.GetWorld().FindObject(root);
     if (!object || !document_.IsOpen() || scene.IsRuntimePlayActive() || !std::isfinite(seconds))
         return false;
-    auto asset = std::make_shared<UiAnimationAsset>(document_.Profile());
+    auto asset = std::make_shared<UiAnimationAsset>(source);
     if (!player_.Play(scene.GetWorld(), *object, asset, clip))
         return false;
     root_ = root;
@@ -119,7 +127,7 @@ void UiAnimationEditor::Tick(DocumentSceneBase& scene, float delta) {
         playing_ = status.playing;
 }
 void UiAnimationEditor::BindCommands(EditorCommandRouter& commands) {
-    if (!focused_)
+    if (!focused_ && !IsRecording())
         return;
     commands.BindOperation(EditorCommandId::SaveDocument, L("uix.save"), document_.IsOpen(), "ui.animation.save");
     commands.BindOperation(EditorCommandId::Undo, L("uix.undo"), document_.CanUndo(), "ui.animation.undo");
@@ -157,12 +165,12 @@ void UiAnimationEditor::BindToSelection(DocumentSceneBase& scene, EditorContext&
                     return;
                 }
 }
-bool UiAnimationEditor::AssignTarget(DocumentSceneBase& scene, EditorContext& context,
-                                     EditorOperationRegistry& operations, UiAnimationTrack& track) {
-    const auto id = context.selection.GetActiveObjectId();
+bool UiAnimationEditor::AssignTarget(DocumentSceneBase& scene, SceneObjectId id, EditorOperationRegistry& operations,
+                                     UiAnimationTrack& track) {
     auto* selected = scene.GetWorld().FindObject(id);
     auto* root = scene.GetWorld().FindObject(root_);
-    if (!selected || !root) {
+    if (!selected || !root ||
+        (!selected->GetComponent<UiRectComponent>() && !selected->GetComponent<UiCanvasComponent>())) {
         message_ = L("uianim.selectRoot");
         return false;
     }
@@ -229,6 +237,15 @@ void UiAnimationEditor::Draw(DocumentSceneBase& scene, EditorContext& context, E
                     clip_ = track_ = 0;
                     selectedKeys_.clear();
                     root_ = context.selection.GetActiveObjectId();
+                    autoKey_ = false;
+                    auto* selected = scene.GetWorld().FindObject(root_);
+                    if (selected &&
+                        (selected->GetComponent<UiRectComponent>() || selected->GetComponent<UiCanvasComponent>())) {
+                        const auto saved = operations.Execute("ui.animation.save", {});
+                        message_ = saved.message;
+                        if (saved.ok)
+                            BindToSelection(scene, context, operations);
+                    }
                 }
             }
         }
@@ -406,10 +423,10 @@ void UiAnimationEditor::Draw(DocumentSceneBase& scene, EditorContext& context, E
                 target != clip->tracks.end()) {
                 if (IconTextButton(EditorGlyph::Object, L("uianim.useSelectedTarget"), "selectedTrackTarget",
                                    EditorButtonTone::Quiet))
-                    changed |= AssignTarget(scene, context, operations, *target);
+                    changed |= AssignTarget(scene, context.selection.GetActiveObjectId(), operations, *target);
             }
             const float beforeTime = time_;
-            DrawTimeline(asset, *clip, changed);
+            DrawTimeline(scene, context, operations, asset, *clip, changed);
             if (time_ != beforeTime)
                 Preview(scene, root_.value ? root_ : context.selection.GetActiveObjectId(), clip->name, time_, false);
         }

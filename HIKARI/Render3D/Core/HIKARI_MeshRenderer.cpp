@@ -1,6 +1,8 @@
 #include "HIKARI_MeshRenderer.h"
 
+#include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Core/MeshRenderer/Internal/HIKARI_MeshRendererInternal.h"
+#include "Render3D/GpuDriven/HIKARI_GpuSceneJointPaletteUpload.h"
 #include "Render3D/Pipeline/HIKARI_RenderFramePipeline.h"
 #include "Vfx/MaterialFx/HIKARI_MaterialFxProfile.h"
 
@@ -21,6 +23,7 @@ void InvalidateGpuDrivenSceneResidency() {
 } // namespace
 
 void Reset() {
+    RENDER3D::GPUDRIVEN::FinalizeGpuSceneJointPaletteUploads(GFX::GetCurrentContext());
     gMeshRendererState.materialFrameReady = false;
     gMeshRendererState.meshletRenderBackend.ResetVisibility();
     ResetSecondarySceneCaptureResources();

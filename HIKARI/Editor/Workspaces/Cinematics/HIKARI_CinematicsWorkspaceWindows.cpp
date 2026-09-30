@@ -2,7 +2,6 @@
 #include "Core/Text/HIKARI_Localization.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Editor/HIKARI_EditorContext.h"
-#include "Editor/Play/HIKARI_EditorPlaySession.h"
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Editor/Workspaces/Cinematics/HIKARI_CinematicsWorkspaceController.h"
@@ -48,8 +47,7 @@ void CinematicsWorkspaceController::DrawDockSpace(bool reset) const {
 #endif
 }
 
-CinematicsWorkspaceResult CinematicsWorkspaceController::Draw(DocumentSceneBase& scene, EditorPlaySession&,
-                                                              EditorContext& context, SelectionSyncService&,
+CinematicsWorkspaceResult CinematicsWorkspaceController::Draw(DocumentSceneBase& scene, EditorContext& context,
                                                               EditorWorkspaceHost& workspaceHost) {
     CinematicsWorkspaceResult result;
     result.statusMessage.swap(pendingStatusMessage_);
@@ -101,7 +99,7 @@ CinematicsWorkspaceResult CinematicsWorkspaceController::Draw(DocumentSceneBase&
     bool changed = false;
     if (ImGui::Begin(TEXT::LocalizeWindow("cine.assetsShots", "Cinematics/Resources").c_str())) {
         ImGui::BeginDisabled(!enabled);
-        changed |= DrawResources(scene, sequence);
+        changed |= DrawResources(scene, sequence, context);
         ImGui::EndDisabled();
     }
     ImGui::End();
@@ -120,7 +118,7 @@ CinematicsWorkspaceResult CinematicsWorkspaceController::Draw(DocumentSceneBase&
         ImGui::EndDisabled();
     }
     ImGui::End();
-    DrawMonitor(scene, workspaceHost);
+    DrawMonitor(scene, workspaceHost, result);
     changed |= DrawStage(scene, sequence, context, workspaceHost, enabled);
     if (changed) {
         NormalizeCinematicSequence(sequence);

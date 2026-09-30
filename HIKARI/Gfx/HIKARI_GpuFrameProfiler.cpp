@@ -30,6 +30,7 @@ struct FrameSlot {
     bool resolved = false;
     uint64_t frameIndex = 0;
     uint64_t retireFence = 0;
+    uint64_t statisticsEpoch = 0;
 };
 
 struct ProfilerState {
@@ -40,6 +41,7 @@ struct ProfilerState {
     uint64_t timestampFrequency = 0;
     uint32_t writeSlotIndex = 0;
     uint32_t groupDepth = 0;
+    uint64_t statisticsEpoch = 1u;
     bool initialized = false;
     bool enabled = true;
     const char* unavailableReason = "";
@@ -67,6 +69,17 @@ void ResetUnavailableSnapshot(const char* reason) {
     gState.latest.gpuTimingAvailable = false;
     gState.latest.timestampFrequency = gState.timestampFrequency;
     gState.latest.unavailableReason = reason != nullptr ? reason : "";
+    ResetLatestNames(gState.latest);
+}
+
+void ResetStatisticsSnapshot() {
+    gState.latest = {};
+    gState.latest.initialized = gState.initialized;
+    gState.latest.profilerEnabled = gState.enabled;
+    gState.latest.gpuTimingAvailable = false;
+    gState.latest.timestampFrequency = gState.timestampFrequency;
+    gState.latest.unavailableReason =
+        gState.enabled ? "Waiting for a completed GPU frame after statistics reset." : gState.unavailableReason;
     ResetLatestNames(gState.latest);
 }
 
@@ -120,6 +133,10 @@ bool EnsureInitialized(ID3D12Device* device, ID3D12CommandQueue* queue) {
 
 void CollectResolvedSlot(FrameSlot& slot) {
     if (!slot.resolved || slot.readbackBuffer == nullptr || gState.timestampFrequency == 0) {
+        return;
+    }
+    if (slot.statisticsEpoch != gState.statisticsEpoch) {
+        slot.resolved = false;
         return;
     }
 
@@ -186,22 +203,32 @@ void ResetSlot(FrameSlot& slot, uint64_t frameIndex) {
     slot.activeDepth = 0;
     slot.frameIndex = frameIndex;
     slot.resolved = false;
+    slot.statisticsEpoch = gState.statisticsEpoch;
 }
 } // namespace
 
 void SetEnabled(bool enabled, const char* unavailableReason) {
-    if (gState.enabled != enabled) {
+    const bool changed = gState.enabled != enabled;
+    if (changed) {
         gState.rolling = {};
-        // 無効化前の readback を新しい測定窓へ混ぜない。再利用自体は fence で保護する。
-        for (auto& slot : gState.slots)
-            slot.resolved = false;
+        ++gState.statisticsEpoch;
     }
     gState.enabled = enabled;
     gState.unavailableReason = enabled ? "" : (unavailableReason != nullptr ? unavailableReason : "");
     if (!enabled) {
         gState.currentSlot = nullptr;
         ResetUnavailableSnapshot(gState.unavailableReason);
+    } else if (changed) {
+        ResetStatisticsSnapshot();
     }
+}
+
+void ResetStatistics() {
+    gState.rolling = {};
+    ++gState.statisticsEpoch;
+    // 記録中のスコープは維持し、EndPass/EndFrame まで完了させる。
+    // ただし、この世代の結果は統計リセット後の値として採用しない。
+    ResetStatisticsSnapshot();
 }
 
 bool IsEnabled() { return gState.enabled; }

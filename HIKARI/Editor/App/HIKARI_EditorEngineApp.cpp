@@ -45,7 +45,8 @@ bool EditorEngineApp::Initialize() {
         gameProjectEditorModule_.Reset();
         return true;
     }
-    if (!gameProjectWorkspaceHost_.RegisterModule(gameProjectEditorModule_, projectRootUtf8, moduleMessage)) {
+    if (!gameProjectWorkspaceHost_.RegisterModule(gameProjectEditorModule_, projectRootUtf8,
+                                                  documentSceneEditorController_.Operations(), moduleMessage)) {
         HIKARI_LOG_ERROR("[GameProjectEditor] " + moduleMessage);
         gameProjectWorkspaceHost_.ReportModuleFailure(std::move(moduleMessage));
         gameProjectEditorModule_.Reset();

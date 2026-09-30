@@ -34,7 +34,8 @@ public:
 
 } // namespace
 
-RuntimeEngineApp::RuntimeEngineApp() : sceneTransitionBus_(sceneManager_) {}
+RuntimeEngineApp::RuntimeEngineApp()
+    : gameProjectSessionExtension_(gameProjectModule_), sceneTransitionBus_(sceneManager_) {}
 
 bool RuntimeEngineApp::Initialize() {
     HIKARI_LOG_INFO("RuntimeEngineApp initialization started.");
@@ -47,6 +48,11 @@ bool RuntimeEngineApp::Initialize() {
         SERVICES::IsEditorHost() && HasRuntimeCommandLineFlag(L"--allow-missing-project-module");
     if (!gameProjectModule_.LoadForLaunch(allowMissingProjectModule, moduleMessage)) {
         HIKARI_LOG_ERROR("[GameProject] " + moduleMessage);
+        return false;
+    }
+
+    if (!initialScene->AddBorrowedRuntimeExtension(gameProjectSessionExtension_)) {
+        HIKARI_LOG_ERROR("[GameProjectSession] failed to add the runtime session owner extension.");
         return false;
     }
 

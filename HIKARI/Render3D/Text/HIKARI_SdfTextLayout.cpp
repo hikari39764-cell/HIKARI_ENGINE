@@ -78,7 +78,8 @@ struct RasterGlyph {
 };
 
 struct TextLine {
-    std::vector<uint32_t> codepoints{};
+    std::vector<size_t> codepointIndices{};
+    size_t startIndex = 0;
     float width = 0.0f;
 };
 
@@ -116,10 +117,9 @@ bool TryDivideFinite(float lhs, float rhs, float& out) noexcept {
 }
 
 bool IsValidRequest(const SdfTextLayoutRequest& request) noexcept {
-    if (request.absoluteFontAssetPath.empty() || request.utf8Text.empty() ||
-        request.utf8Text.size() > kSdfTextMaximumUtf8Bytes || !IsFinite(request.x) || !IsFinite(request.y) ||
-        !IsFinite(request.fontHeight) || !IsFinite(request.maxWidth) || !IsFinite(request.maxHeight) ||
-        !IsFinite(request.lineHeightMultiplier) || !IsFinite(request.letterSpacing) ||
+    if (request.absoluteFontAssetPath.empty() || request.utf8Text.size() > kSdfTextMaximumUtf8Bytes ||
+        !IsFinite(request.x) || !IsFinite(request.y) || !IsFinite(request.fontHeight) || !IsFinite(request.maxWidth) ||
+        !IsFinite(request.maxHeight) || !IsFinite(request.lineHeightMultiplier) || !IsFinite(request.letterSpacing) ||
         !IsFinite(request.revealAmount) || request.fontHeight <= 0.0f || request.maxWidth <= 0.0f ||
         request.maxHeight <= 0.0f || request.lineHeightMultiplier <= 0.0f ||
         static_cast<uint32_t>(request.horizontalAlign) > static_cast<uint32_t>(SdfTextHorizontalAlign::Right) ||
@@ -137,12 +137,14 @@ bool IsValidRequest(const SdfTextLayoutRequest& request) noexcept {
            TryMultiplyFinite(request.fontHeight, request.lineHeightMultiplier, lineHeight);
 }
 
-std::vector<uint32_t> DecodeUtf8(std::string_view text) {
+std::vector<uint32_t> DecodeUtf8(std::string_view text, std::vector<size_t>* offsets = nullptr) {
     std::vector<uint32_t> result{};
     result.reserve(text.size());
     const auto* bytes = reinterpret_cast<const unsigned char*>(text.data());
     size_t index = 0u;
     while (index < text.size()) {
+        if (offsets)
+            offsets->push_back(index);
         const unsigned char lead = bytes[index];
         if (lead < 0x80u) {
             result.push_back(lead);
@@ -191,6 +193,8 @@ std::vector<uint32_t> DecodeUtf8(std::string_view text) {
         result.push_back(codepoint);
         index += length;
     }
+    if (offsets)
+        offsets->push_back(text.size());
     return result;
 }
 
@@ -430,6 +434,7 @@ bool BuildLines(const FontAtlas& atlas, const std::vector<uint32_t>& codepoints,
             continue;
         if (codepoint == '\n') {
             flush();
+            current.startIndex = index + 1;
             continue;
         }
         const uint32_t next = index + 1u < codepoints.size() ? codepoints[index + 1u] : 0u;
@@ -441,17 +446,18 @@ bool BuildLines(const FontAtlas& atlas, const std::vector<uint32_t>& codepoints,
         if (!TryAddFinite(current.width, advance, widthWithAdvance)) {
             return false;
         }
-        if (request.wrap == SdfTextWrap::Character && !current.codepoints.empty() &&
+        if (request.wrap == SdfTextWrap::Character && !current.codepointIndices.empty() &&
             widthWithAdvance > request.maxWidth) {
             flush();
+            current.startIndex = index;
             if (!TryAddFinite(current.width, advance, widthWithAdvance)) {
                 return false;
             }
         }
-        current.codepoints.push_back(codepoint);
+        current.codepointIndices.push_back(index);
         current.width = widthWithAdvance;
     }
-    if (!current.codepoints.empty() || outLines.empty())
+    if (!current.codepointIndices.empty() || outLines.empty() || current.startIndex == codepoints.size())
         flush();
     return true;
 }
@@ -487,8 +493,10 @@ bool ComputeVerticalOffset(SdfTextVerticalAlign align, float availableHeight, fl
 }
 
 bool AppendTextDraws(const SdfTextLayoutRequest& text, uint32_t requestIndex, FontAtlas& atlas,
-                     uint32_t maximumGlyphCount, std::vector<SdfTextGlyphDraw>& outDraws, SdfTextLayoutStats& stats) {
-    const std::vector<uint32_t> codepoints = DecodeUtf8(text.utf8Text);
+                     uint32_t maximumGlyphCount, std::vector<SdfTextGlyphDraw>& outDraws, SdfTextLayoutStats& stats,
+                     std::vector<SdfTextCaretStop>* stops) {
+    std::vector<size_t> offsets;
+    const std::vector<uint32_t> codepoints = DecodeUtf8(text.utf8Text, stops ? &offsets : nullptr);
     float glyphScale = 0.0f;
     if (!TryDivideFinite(text.fontHeight, kSdfTextAtlasPixelHeight, glyphScale)) {
         return false;
@@ -516,7 +524,7 @@ bool AppendTextDraws(const SdfTextLayoutRequest& text, uint32_t requestIndex, Fo
     const size_t revealableCount = [&]() {
         size_t count = 0u;
         for (const TextLine& line : lines) {
-            count += line.codepoints.size();
+            count += line.codepointIndices.size();
         }
         return count;
     }();
@@ -545,9 +553,16 @@ bool AppendTextDraws(const SdfTextLayoutRequest& text, uint32_t requestIndex, Fo
             !TryAddFinite(baselineY, ascentOffset, baselineY)) {
             return false;
         }
-        for (size_t index = 0u; index < line.codepoints.size(); ++index, ++revealIndex) {
-            const uint32_t codepoint = line.codepoints[index];
-            const uint32_t next = index + 1u < line.codepoints.size() ? line.codepoints[index + 1u] : 0u;
+        const float caretY = baselineY - ascentOffset;
+        if (stops)
+            stops->push_back({requestIndex,
+                              offsets[line.codepointIndices.empty() ? line.startIndex : line.codepointIndices.front()],
+                              cursorX, caretY, text.fontHeight});
+        for (size_t index = 0u; index < line.codepointIndices.size(); ++index, ++revealIndex) {
+            const size_t sourceIndex = line.codepointIndices[index];
+            const uint32_t codepoint = codepoints[sourceIndex];
+            const uint32_t next =
+                index + 1u < line.codepointIndices.size() ? codepoints[line.codepointIndices[index + 1u]] : 0u;
             const Glyph* glyph = FindGlyph(atlas, codepoint);
             float advance = 0.0f;
             if (!ComputeAdvance(atlas, codepoint, next, glyphScale, text.letterSpacing, advance)) {
@@ -596,6 +611,8 @@ bool AppendTextDraws(const SdfTextLayoutRequest& text, uint32_t requestIndex, Fo
             if (!TryAddFinite(cursorX, advance, cursorX)) {
                 return false;
             }
+            if (stops)
+                stops->push_back({requestIndex, offsets[sourceIndex + 1], cursorX, caretY, text.fontHeight});
         }
     }
     return true;
@@ -603,8 +620,8 @@ bool AppendTextDraws(const SdfTextLayoutRequest& text, uint32_t requestIndex, Fo
 } // namespace
 
 bool BuildSdfTextGlyphDraws(std::span<const SdfTextLayoutRequest> requests, std::vector<SdfTextGlyphDraw>& outDraws,
-                            SdfTextLayoutStats* outStats, uint32_t maximumGlyphCount,
-                            SdfTextLayoutLease* outLease) noexcept {
+                            SdfTextLayoutStats* outStats, uint32_t maximumGlyphCount, SdfTextLayoutLease* outLease,
+                            std::vector<SdfTextCaretStop>* outCaretStops) noexcept {
     static const auto timer = CPU_PROFILE::RegisterDynamicPass("Text.SdfLayout");
     const CPU_PROFILE::ScopedDynamicCpuTimer scope(timer);
     SdfTextLayoutStats stats{};
@@ -612,6 +629,8 @@ bool BuildSdfTextGlyphDraws(std::span<const SdfTextLayoutRequest> requests, std:
         static_cast<uint32_t>((std::min)(requests.size(), static_cast<size_t>((std::numeric_limits<uint32_t>::max)())));
     try {
         outDraws.clear();
+        if (outCaretStops)
+            outCaretStops->clear();
         if (outLease != nullptr)
             outLease->Reset();
         std::vector<bool> valid(requests.size(), false);
@@ -660,10 +679,13 @@ bool BuildSdfTextGlyphDraws(std::span<const SdfTextLayoutRequest> requests, std:
                 continue;
             }
             const size_t drawCountBefore = outDraws.size();
+            const size_t stopCountBefore = outCaretStops ? outCaretStops->size() : 0;
             const uint32_t droppedGlyphCountBefore = stats.droppedGlyphCount;
-            if (!AppendTextDraws(text, static_cast<uint32_t>(index), atlas->second, maximumGlyphCount, outDraws,
-                                 stats)) {
+            if (!AppendTextDraws(text, static_cast<uint32_t>(index), atlas->second, maximumGlyphCount, outDraws, stats,
+                                 outCaretStops)) {
                 outDraws.resize(drawCountBefore);
+                if (outCaretStops)
+                    outCaretStops->resize(stopCountBefore);
                 stats.droppedGlyphCount = droppedGlyphCountBefore;
                 ++stats.failedRequestCount;
                 continue;
@@ -680,6 +702,8 @@ bool BuildSdfTextGlyphDraws(std::span<const SdfTextLayoutRequest> requests, std:
         return true;
     } catch (...) {
         outDraws.clear();
+        if (outCaretStops)
+            outCaretStops->clear();
         if (outLease != nullptr)
             outLease->Reset();
         stats.emittedGlyphCount = 0u;

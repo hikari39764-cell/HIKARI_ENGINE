@@ -101,7 +101,8 @@ public:
     bool& GetEnvironmentLightingEnabled();
     bool ReloadAssets();
     bool ReloadSceneDocument();
-    bool RebuildRuntimeWorld(bool reconfigureWorldServices = false, bool assetSnapshotAlreadyRefreshed = false);
+    bool RebuildRuntimeWorld(bool reconfigureWorldServices = false, bool assetSnapshotAlreadyRefreshed = false,
+                             bool* outOldWorldDetached = nullptr);
     bool ApplySystemRuntimeChanges();
     bool ApplyCameraRuntimeChanges();
     bool SetGameDefaultCamera(SceneObjectId cameraObjectId);
@@ -136,6 +137,7 @@ public:
     int ApplyRuntimeMaterialOverridePreview(const AssetGuid& materialGuid, const MaterialAssetData& data);
     int ApplyRuntimeMaterialOverridePreview(const AssetGuid& materialGuid, const PbrMaterialAssetData& data);
     bool RequestLightingBake(bool force, SceneObjectId selectedObjectId = {});
+    bool ClearLightingBake();
     TOOLS::BAKING::LightingBakeJobState GetLightingBakeJobState() const;
     bool HasLastLightingBakeReport() const;
     const TOOLS::BAKING::LightingBakeReport& GetLastLightingBakeReport() const;

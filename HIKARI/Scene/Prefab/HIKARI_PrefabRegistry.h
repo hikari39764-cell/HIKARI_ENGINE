@@ -3,24 +3,26 @@
 #include <string>
 #include <vector>
 
+#include "Assets/HIKARI_AssetGuid.h"
+
 namespace HIKARI {
 
+class AssetDatabase;
 class PrefabSerializer;
 struct PrefabDocument;
 
+struct PrefabAssetEntry {
+    AssetGuid guid{};
+    std::string name{};
+};
+
 class PrefabRegistry {
 public:
-    explicit PrefabRegistry(std::string rootPath = "Data/prefabs");
-
-    bool Save(const std::string& prefabId, const PrefabDocument& document, const PrefabSerializer& serializer) const;
-    bool Load(const std::string& prefabId, PrefabDocument& outDocument, const PrefabSerializer& serializer) const;
-    std::vector<std::string> ListPrefabIds() const;
-
-private:
-    std::string BuildPath(const std::string& prefabId) const;
-
-private:
-    std::string rootPath_{};
+    bool Save(AssetDatabase& assetDatabase, const std::string& name, const PrefabDocument& document,
+              const PrefabSerializer& serializer, AssetGuid& outGuid, std::string& outError) const;
+    bool Load(const AssetDatabase& assetDatabase, const AssetGuid& guid, PrefabDocument& outDocument,
+              const PrefabSerializer& serializer, std::string& outError) const;
+    std::vector<PrefabAssetEntry> List(const AssetDatabase& assetDatabase) const;
 };
 
 } // namespace HIKARI

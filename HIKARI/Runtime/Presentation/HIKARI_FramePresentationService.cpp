@@ -410,9 +410,26 @@ bool BeginFrame(const RUNTIME::HostBootstrapConfig& cfg) {
     {
         static const auto inputPass = CPU_PROFILE::RegisterDynamicPass("Frame.Input");
         CPU_PROFILE::ScopedDynamicCpuTimer inputTimer(inputPass);
-        PLATFORM::Win32Window* inputWindow = gGamePresentationController.GetGameWindow();
+        PLATFORM::Win32Window* gameWindow = gGamePresentationController.GetGameWindow();
+        PLATFORM::Win32Window* inputWindow = nullptr;
+        if (gameWindow != nullptr && gameWindow->GetHWND() == gInputService.GetHostWindow()) {
+            inputWindow = gameWindow;
+        } else if (gWindow.GetHWND() == gInputService.GetHostWindow()) {
+            inputWindow = &gWindow;
+        }
+        if (inputWindow != &gWindow) {
+            gWindow.DiscardTextInputEvents();
+        }
+        if (gameWindow != nullptr && inputWindow != gameWindow) {
+            gameWindow->DiscardTextInputEvents();
+        }
         gInputService.SetExternalMouseWheel(inputWindow != nullptr ? inputWindow->ConsumeMouseWheelDelta()
                                                                    : gWindow.ConsumeMouseWheelDelta());
+        if (inputWindow != nullptr) {
+            gInputService.SetExternalTextInputEvents(inputWindow->ConsumeTextInputEvents());
+        } else {
+            gInputService.SetExternalTextInputEvents({});
+        }
         gInputService.Update(frame.unscaledDt);
     }
     if (RUNTIME::IEditorUiServices* editorUiServices = RUNTIME::GetEditorUiServices()) {

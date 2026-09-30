@@ -112,16 +112,26 @@ void DrawEffectsTable(const RuntimePerformanceSnapshot& s) {
         MetricRow("Shared RT Pending / Unsupported / Missing", "%u / %u / %u", s.rayScene.pendingChunks,
                   s.rayScene.unsupportedSurfaces, s.rayScene.missingSurfaces);
         MetricRow("GI Local Lights / Overflow", "%u / %u", s.dynamicGi.localLights, s.dynamicGi.droppedLights);
+        MetricRow("Probe Sampling / Dynamic GI Quality", "%s / %s",
+                  RENDER3D::LightProbeVolumeSamplingModeLabel(s.renderQuality.lightProbeVolumeSampling),
+                  RENDER3D::DynamicGiQualityLabel(s.renderQuality.dynamicGiQuality));
         MetricRow("Shadow Enabled / Resolution / Ortho / Texel", "%s / %u / %.2f / %.5f",
                   s.shadow.enabled ? "yes" : "no", s.shadow.resolution, s.shadow.orthoSize, s.shadow.worldTexelSize);
+        MetricRow("Shadow PCF / Radius / Bias / Normal Bias / Strength", "%s / %.2f / %.4f / %.4f / %.2f",
+                  s.shadow.pcfEnabled ? "on" : "off", s.shadow.pcfRadius, s.shadow.depthBias, s.shadow.normalBias,
+                  s.shadow.strength);
         const std::string currentMissReason = ShadowCacheMissReasonText(s.shadow.shadowCacheMissReasonFlags);
         const std::string lastMissReason = ShadowCacheMissReasonText(s.shadow.shadowCacheLastMissReasonFlags);
-        MetricRow("Shadow Cache Valid / Hit / Miss / Last", "%s / %s / %s / %s",
+        MetricRow("Shadow Depth Cache Valid / Hit / Miss / Last @ Logical Frame", "%s / %s / %s / %s @ %llu",
                   s.shadow.shadowCacheValid ? "yes" : "no", s.shadow.shadowCacheHit ? "yes" : "no",
-                  currentMissReason.c_str(), lastMissReason.c_str());
-        MetricRow("Shadow Cache Hits / Misses / Copy / Update", "%zu / %zu / %zu / %zu", s.shadow.shadowCacheHitCount,
-                  s.shadow.shadowCacheMissCount, s.shadow.shadowStaticCacheCopyCount,
+                  currentMissReason.c_str(), lastMissReason.c_str(),
+                  static_cast<unsigned long long>(s.shadow.shadowCacheLastMissFrameIndex));
+        MetricRow("Shadow Depth Cache Hits / Misses / Copy / Update", "%zu / %zu / %zu / %zu",
+                  s.shadow.shadowCacheHitCount, s.shadow.shadowCacheMissCount, s.shadow.shadowStaticCacheCopyCount,
                   s.shadow.shadowStaticCacheUpdateCount);
+        MetricRow("Shadow Source Cache Full / Patch / Reuse / Updated", "%zu / %zu / %zu / %zu",
+                  s.shadow.shadowSourceFullSyncCount, s.shadow.shadowSourcePatchCount, s.shadow.shadowSourceReuseCount,
+                  s.shadow.shadowSourceUpdatedInstanceCount);
         MetricRow("Shadow Sources Static / Dynamic / Drawn", "%zu / %zu / %s %s %s",
                   s.shadow.shadowStaticSourceInstanceCount, s.shadow.shadowDynamicSourceInstanceCount,
                   s.shadow.shadowStaticRendered ? "static" : "-", s.shadow.shadowDynamicRendered ? "dynamic" : "-",
@@ -136,11 +146,40 @@ void DrawEffectsTable(const RuntimePerformanceSnapshot& s) {
 void DrawTemporalTable(const RuntimePerformanceSnapshot& s) {
     ImGui::SeparatorText(TEXT::Localize("ui.debugView.temporal").c_str());
     if (BeginMetricTable("TemporalMetrics", 250.0f)) {
-        const RENDER3D::RenderQualitySettings& renderQuality = RENDER3D::GetRenderQualitySettings();
-        MetricRow("AA Mode", "%s", RENDER3D::RenderAntiAliasingModeLabel(renderQuality.antiAliasingMode));
+        const RENDER3D::RenderQualitySettings& renderQuality = s.renderQuality;
+        MetricRowText("Scene", s.sceneId.empty() ? "unavailable" : s.sceneId.c_str());
+        MetricRow("Camera Valid / Source / Position", "%s / %llu / %.2f, %.2f, %.2f",
+                  s.temporalFrame.camera.valid ? "yes" : "no",
+                  static_cast<unsigned long long>(s.temporalFrame.cameraSourceObjectId),
+                  s.temporalFrame.camera.cameraPos.x, s.temporalFrame.camera.cameraPos.y,
+                  s.temporalFrame.camera.cameraPos.z);
+        MetricRow("Camera FOV Y / Near / Far / Aspect", "%.3f / %.3f / %.3f / %.3f", s.temporalFrame.camera.fovYRad,
+                  s.temporalFrame.camera.nearZ, s.temporalFrame.camera.farZ, s.temporalFrame.camera.aspect);
+        MetricRow("Scene Resolution / Window Size / Mode", "%s / %s / %s",
+                  RENDER3D::RenderResolutionPresetLabel(renderQuality.sceneResolution),
+                  RENDER3D::RenderResolutionPresetLabel(renderQuality.windowSize),
+                  RENDER3D::WindowPresentationModeLabel(renderQuality.windowMode));
+        MetricRow("Viewport Scale / VSync / Scene Depth Prepass", "%.2f / %s / %s", renderQuality.viewportScale,
+                  renderQuality.vSync ? "on" : "off", renderQuality.sceneDepthPrepass ? "on" : "off");
+        MetricRow("Geometry Pipeline / Forward Cost", "%s / %s",
+                  RENDER3D::GeometryPipelineModeLabel(renderQuality.geometryPipeline),
+                  RENDER3D::ForwardShadingCostModeLabel(renderQuality.forwardCostMode));
+        MetricRow("AA Mode / DLSS Quality", "%s / %s",
+                  RENDER3D::RenderAntiAliasingModeLabel(renderQuality.antiAliasingMode),
+                  RENDER3D::DlssQualityModeLabel(renderQuality.dlssQualityMode));
         MetricRow("Frame Generation Policy / Multiplier", "%s / %ux",
                   RENDER3D::RenderFrameGenerationModeLabel(renderQuality.frameGenerationMode),
                   static_cast<unsigned int>(renderQuality.frameGenerationMultiplier));
+        MetricRow("Probe Sampling / GI / Local Shadow", "%s / %s / %s",
+                  RENDER3D::LightProbeVolumeSamplingModeLabel(renderQuality.lightProbeVolumeSampling),
+                  RENDER3D::DynamicGiQualityLabel(renderQuality.dynamicGiQuality),
+                  RENDER3D::LocalShadowQualityLabel(renderQuality.localShadowQuality));
+        MetricRow("Volumetric / Stylized Cloud Quality", "%s / %s",
+                  RENDER3D::VolumetricLightingQualityLabel(renderQuality.volumetricLightingQuality),
+                  RENDER3D::StylizedCloudQualityLabel(renderQuality.stylizedCloudQuality));
+        MetricRow("TAA History / Variance / Depth / Luma / Sharpness", "%.3f / %.3f / %.4f / %.3f / %.3f",
+                  renderQuality.taaHistoryWeight, renderQuality.taaVarianceClipGamma, renderQuality.taaDepthRejection,
+                  renderQuality.taaLuminanceRejection, renderQuality.taaSharpness);
         MetricRow(
             "Frame / History / Reset", "%llu / %s / %s", static_cast<unsigned long long>(s.temporalFrame.frameIndex),
             s.temporalFrame.historyValid ? "valid" : "cold", RENDER3D::TEMPORAL::ToString(s.temporalFrame.resetReason));

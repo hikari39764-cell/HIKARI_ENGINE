@@ -13,6 +13,8 @@ set(
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/DebugView.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/DisplaySettingsTypes.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/DisplaySettingsView.h"
+    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/EditorOperations.h"
+    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/EditorDocuments.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/EditorWorkspace.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/FrameContext.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/GameComponent.h"
@@ -23,6 +25,7 @@ set(
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/GameProjectEditorModule.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/GameProjectEditorModuleApi.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/GameProjectSdk.h"
+    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/GameProjectSession.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/GameSystem.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/MassSystem.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/Inspector.h"
@@ -30,9 +33,13 @@ set(
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/MaterialFxView.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/NavigationTypes.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/NavigationView.h"
+    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/PrefabTypes.h"
+    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/PrefabView.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/PresentationTypes.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/PresentationViews.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/PropertyArchive.h"
+    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/ProjectDataTypes.h"
+    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/ProjectDataView.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/RenderDispatch.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/RenderFrame.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/RenderPass.h"
@@ -152,21 +159,20 @@ function(hikari_configure_game_project_sdk host_target)
         "${HIKARI_SOURCE_ROOT}/docs/game-project/MakingAGame.md"
         "${HIKARI_SOURCE_ROOT}/docs/game-project/GameProjectSdkApiGuide.md"
         "${HIKARI_SOURCE_ROOT}/docs/game-project/ComponentsAndSystemsTutorial.md")
-    set(_obsolete_flat_docs)
-    foreach(_document IN LISTS _sdk_docs)
-        get_filename_component(_name "${_document}" NAME)
-        list(APPEND _obsolete_flat_docs "${_sdk_root}/docs/${_name}")
-    endforeach()
+    set(_sdk_ai_docs "${HIKARI_SOURCE_ROOT}/docs/ai/hikari-ai-capabilities.md")
+    set(_sdk_ui_docs "${HIKARI_SOURCE_ROOT}/docs/ui-text-workspaces.md")
     # 文書だけの修正ではホストを再リンクしない。
     add_custom_target("${host_target}_SdkDocs"
         COMMAND "${CMAKE_COMMAND}" -E make_directory "${_sdk_root}/docs/game-project"
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${_sdk_root}/docs/ai"
         COMMAND "${CMAKE_COMMAND}" -E copy_if_different ${_sdk_docs} "${_sdk_root}/docs/game-project"
-        COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${HIKARI_SOURCE_ROOT}/docs/ui-text-workspaces.md" "${_sdk_root}/docs"
-        COMMAND "${CMAKE_COMMAND}" -E rm -f ${_obsolete_flat_docs}
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${_sdk_ui_docs}" "${_sdk_root}/docs"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different ${_sdk_ai_docs} "${_sdk_root}/docs/ai"
         VERBATIM)
     add_dependencies("${host_target}" "${host_target}_SdkDocs")
     install(FILES ${_sdk_docs} DESTINATION "${HIKARI_INSTALL_RUNTIME_PREFIX}Sdk/docs/game-project")
-    install(FILES "${HIKARI_SOURCE_ROOT}/docs/ui-text-workspaces.md" DESTINATION "${HIKARI_INSTALL_RUNTIME_PREFIX}Sdk/docs")
+    install(FILES ${_sdk_ui_docs} DESTINATION "${HIKARI_INSTALL_RUNTIME_PREFIX}Sdk/docs")
+    install(FILES ${_sdk_ai_docs} DESTINATION "${HIKARI_INSTALL_RUNTIME_PREFIX}Sdk/docs/ai")
     if(MSVC)
         target_link_options(
             "${host_target}"

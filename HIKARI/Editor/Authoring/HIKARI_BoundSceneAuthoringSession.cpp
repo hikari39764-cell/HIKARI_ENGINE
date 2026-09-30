@@ -17,7 +17,7 @@ public:
             const auto* definition = source.Find(id);
             if (definition->workspace != "scene" && definition->workspace != "terrain_surface")
                 continue;
-            if (id == "scene.open" || id == "scene.new" || id == "scene.load")
+            if (!definition->requiresDocumentSession || id == "scene.open" || id == "scene.new" || id == "scene.load")
                 continue;
             auto local = *definition;
             local.execute = [this, definition = *definition](const nlohmann::json& parameters) {
@@ -27,8 +27,8 @@ public:
                         "场景已切换或被其他编辑操作修改。当前动作未执行；请重新打开场景会话并查询状态。"};
                 const bool implicitTarget = std::any_of(definition.parameters.begin(), definition.parameters.end(),
                                                         [](const auto& p) { return p.name == "objectId"; });
-                if (implicitTarget && !parameters.contains("objectId") &&
-                    parameters.value("name", std::string{}).empty())
+                if (definition.kind == EditorOperationKind::Mutation && implicitTarget &&
+                    !parameters.contains("objectId") && parameters.value("name", std::string{}).empty())
                     return EditorOperationResult{false, "EXPLICIT_TARGET_REQUIRED",
                                                  "后台操作需要明确的 objectId 或唯一名称。"};
                 auto result = context_.execute(definition, parameters);
@@ -92,7 +92,9 @@ public:
         request.drawDebug = false;
         RENDER3D::EDITORVIEW::SubmitRequest(request);
         auto result = capture_.Start(scene_->GetAssetDatabase().GetLibraryRoot(),
-                                     {{"label", "Current scene preview"},
+                                     {{"label", "Scene inspection preview (separate render, not game output)"},
+                                      {"source", "scene_inspection"},
+                                      {"gameOutputAction", "capture.preview"},
                                       {"editRevision", revision_},
                                       {"sceneRevision", documentRevision_},
                                       {"assetGuid", scene_->GetCurrentSceneAssetGuid().value},

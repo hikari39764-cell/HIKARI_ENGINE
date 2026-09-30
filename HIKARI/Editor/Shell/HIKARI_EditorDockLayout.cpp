@@ -24,4 +24,21 @@ ImGuiID DrawWorkspaceDockSpace(ImGuiID id, const ImGuiViewport* viewport, ImGuiD
     }
     return ImGui::DockSpaceOverViewport(id, viewport, flags);
 }
+
+void RevealEditorWindow(const char* windowName) {
+    const auto* window = ImGui::FindWindowByName(windowName);
+    const auto* settings = window ? nullptr : ImGui::FindWindowSettingsByID(ImHashStr(windowName));
+    const ImGuiID dockId = window ? window->DockId : (settings ? settings->DockId : 0);
+    auto* node = ImGui::DockBuilderGetNode(dockId);
+    const auto* root = node ? ImGui::DockNodeGetRootNode(node) : nullptr;
+    // KeepAliveOnly のドックはフォーカスだけでは表示されない。現在表示中の配置は維持する。
+    if (dockId != 0 && (!root || (root->IsDockSpace() && root->LastFrameActive != ImGui::GetFrameCount()))) {
+        const auto* viewport = ImGui::GetMainViewport();
+        ImGui::SetNextWindowDockID(0, ImGuiCond_Always);
+        ImGui::SetNextWindowViewport(viewport->ID);
+        ImGui::SetNextWindowPos(viewport->GetWorkCenter(), ImGuiCond_Always, {0.5f, 0.5f});
+    }
+    ImGui::SetNextWindowFocus();
+    ImGui::SetNextWindowCollapsed(false);
+}
 } // namespace HIKARI::EDITOR

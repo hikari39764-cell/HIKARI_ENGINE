@@ -15,6 +15,7 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include "HIKARI/Project/PrefabTypes.h"
 #include "HIKARI_GameObject.h"
 #include "Scene/HIKARI_WorldCommands.h"
 #include "Scene/HIKARI_WorldComponentIndex.h"
@@ -23,6 +24,7 @@
 namespace HIKARI {
 
 class ComponentRegistry;
+class PrefabView;
 class SystemScheduler;
 struct GameProjectSdkAccess;
 
@@ -221,6 +223,7 @@ public:
 
 private:
     friend class GameObject;
+    friend class PrefabView;
     friend class SystemScheduler;
     friend struct GameProjectSdkAccess;
 
@@ -330,6 +333,8 @@ private:
         uint32_t nextLiveSlot = kInvalidLiveObjectSlot;
         uint32_t generation = 1u;
         uint32_t reservationToken = 0u;
+        uint64_t prefabInstanceId = 0u;
+        uint64_t prefabLocalObjectId = 0u;
         ObjectSlotState state = ObjectSlotState::Free;
         ObjectStorageKind storageKind = ObjectStorageKind::None;
     };
@@ -337,6 +342,18 @@ private:
     struct ReservedStateJournalEntry {
         RuntimeObjectHandle object{};
         ObjectSlotState previousState = ObjectSlotState::Reserved;
+    };
+
+    struct PrefabRequestRecord {
+        GameProjectPrefabRequestResult result{};
+        std::shared_ptr<WorldPrefabInstantiatePayload> payload{};
+    };
+
+    struct PrefabInstanceRecord {
+        RuntimeObjectHandle root{};
+        std::vector<RuntimeObjectHandle> objects{};
+        std::unordered_map<uint64_t, RuntimeObjectHandle> objectsByPrefabLocalId{};
+        bool destroyPending = false;
     };
 
     struct NativeComponentTypeCount {
@@ -364,12 +381,32 @@ private:
     void RemoveLiveObjectSlot(uint32_t slotIndex) noexcept;
     void ReleaseObjectHandle(RuntimeObjectHandle handle);
     WorldCommandSubmission QueueCommand(PendingWorldCommand command);
-    void ReleaseSpawnCommandReservations(const PendingWorldCommand& command) noexcept;
+    void ReleaseCommandPayloadReservations(const PendingWorldCommand& command) noexcept;
     uint32_t AllocateCommandToken() noexcept;
     void RecordCommandFailure(const PendingWorldCommand& command, WorldMutationResult result,
                               WorldCommandPhase phase) noexcept;
     void RecordParallelMassSystemFailure(WorldCommandPhase phase) noexcept;
-    WorldMutationResult ApplyQueuedSpawn(const PendingWorldCommand& command);
+    WorldMutationResult ApplyQueuedSpawn(const PendingWorldCommand& command, std::string_view nameOverride = {},
+                                         bool attachToLiveObject = false,
+                                         uint32_t componentOnlyIndex = (std::numeric_limits<uint32_t>::max)(),
+                                         bool preserveReservationJournal = false);
+    WorldMutationResult ApplyQueuedPrefabInstantiate(const PendingWorldCommand& command);
+    WorldMutationResult ApplyQueuedPrefabDestroyInstance(const PendingWorldCommand& command);
+    GameProjectPrefabSubmission RequestPrefabInstantiate(std::string_view prefabAssetGuid,
+                                                         const GameProjectPrefabInstantiateOptions& options) noexcept;
+    bool ReadPrefabRequestResult(GameProjectPrefabRequestHandle request,
+                                 GameProjectPrefabRequestResult& outResult) const noexcept;
+    bool CancelPrefabRequest(GameProjectPrefabRequestHandle request) noexcept;
+    bool ReleasePrefabRequest(GameProjectPrefabRequestHandle request) noexcept;
+    RuntimeObjectHandle FindPrefabInstanceObject(GameProjectPrefabInstanceHandle instance,
+                                                 uint64_t prefabLocalObjectId) const noexcept;
+    WorldCommandSubmission SubmitDestroyPrefabInstance(uint64_t instanceId);
+    void ReleasePrefabSpawnReservations(const WorldPrefabInstantiatePayload& payload) noexcept;
+    void FinishPrefabRequest(uint64_t requestId, GameProjectPrefabRequestState state,
+                             GameProjectPrefabError error) noexcept;
+    bool ReserveDynamicSceneObjectId(RuntimeObjectHandle object, uint64_t& outId) noexcept;
+    void ReleaseDynamicSceneObjectId(uint64_t id, RuntimeObjectHandle object) noexcept;
+    void ReleasePrefabInstanceObject(uint64_t instanceId, uint64_t prefabLocalObjectId) noexcept;
     WorldMutationResult ApplyQueuedMassSpawnBatch(const PendingWorldCommand& command);
     WorldMutationResult ApplyQueuedMassDestroyBatch(const PendingWorldCommand& command);
     void UnregisterRuntimeIdentity() noexcept;
@@ -383,6 +420,9 @@ private:
     uint32_t lastLiveObjectSlot_ = kInvalidLiveObjectSlot;
     size_t liveObjectCount_ = 0u;
     std::unordered_map<uint64_t, GameObject*> objectsByDocumentId_{};
+    std::unordered_map<uint64_t, RuntimeObjectHandle> reservedDynamicSceneObjectIds_{};
+    std::unordered_map<uint64_t, PrefabRequestRecord> prefabRequests_{};
+    std::unordered_map<uint64_t, PrefabInstanceRecord> prefabInstances_{};
     std::unordered_map<uint64_t, WorldComponentBucket> componentBuckets_{};
     // Invalid values mark one native C++ adapter type that represents
     // multiple declared component IDs; such callers must query by ID.
@@ -402,6 +442,9 @@ private:
     std::vector<ReservedStateJournalEntry> reservationStateJournal_{};
     std::thread::id ownerThread_{};
     uint64_t runtimeIdentity_ = 0u;
+    uint64_t nextPrefabRequestId_ = 1u;
+    uint64_t nextPrefabInstanceId_ = 1u;
+    uint64_t nextDynamicSceneObjectId_ = 1u;
     uint64_t nextCommandSequence_ = 1u;
     uint32_t nextCommandToken_ = 1u;
     uint32_t commandFailureOverflowCount_ = 0u;

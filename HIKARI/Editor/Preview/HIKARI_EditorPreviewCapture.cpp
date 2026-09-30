@@ -20,7 +20,25 @@ EditorOperationResult PollEditorPreviewCapture(RENDER3D::EDITORVIEW::PreviewCapt
              {"width", result.width},
              {"height", result.height},
              {"outputRevision", result.outputRevision},
-             {"images", nlohmann::json::array({{{"path", result.path}, {"label", "Preview"}}})}}};
+             {"frameIndex", result.frameIndex},
+             {"sceneRevision", result.sceneRevision},
+             {"source", result.viewId == RENDER3D::kPrimaryRenderViewId ? "game_output" : "tool_preview"},
+             {"camera",
+              {{"valid", result.cameraFrame.valid},
+               {"revision", result.cameraFrame.revision},
+               {"objectId", result.cameraFrame.sourceCameraObjectId},
+               {"position",
+                {result.cameraFrame.camera.GetPosition().x, result.cameraFrame.camera.GetPosition().y,
+                 result.cameraFrame.camera.GetPosition().z}},
+               {"target",
+                {result.cameraFrame.camera.GetTarget().x, result.cameraFrame.camera.GetTarget().y,
+                 result.cameraFrame.camera.GetTarget().z}},
+               {"verticalFovRadians", result.cameraFrame.camera.GetFovYRad()},
+               {"aspect", result.cameraFrame.camera.GetAspect()}}},
+             {"images", nlohmann::json::array({{{"path", result.path},
+                                                {"label", result.viewId == RENDER3D::kPrimaryRenderViewId
+                                                              ? "Game output (final composite)"
+                                                              : "Tool preview"}}})}}};
 }
 EditorOperationResult StartEditorPreviewCapture(RENDER3D::RenderViewId viewId, const std::filesystem::path& folder,
                                                 const std::string& outputPath) {

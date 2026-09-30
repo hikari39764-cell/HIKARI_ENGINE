@@ -3,7 +3,6 @@
 #include "Core/Text/HIKARI_Localization.h"
 
 #include <algorithm>
-#include <cctype>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -29,20 +28,6 @@ constexpr SceneObjectCommandPresentation kPresentations[] = {
     {"editor.scene.instantiatePrefab", ""},
     {"editor.ui.add.component.08ba89", ""},
 };
-
-std::string SanitizePrefabToken(std::string_view raw) {
-    std::string sanitized{};
-    sanitized.reserve(raw.size());
-    for (char ch : raw) {
-        const unsigned char value = static_cast<unsigned char>(ch);
-        if (std::isalnum(value) != 0 || ch == '_' || ch == '-') {
-            sanitized.push_back(ch);
-        } else if (!std::isspace(value)) {
-            sanitized.push_back('_');
-        }
-    }
-    return sanitized.empty() ? "NewPrefab" : sanitized;
-}
 
 SceneObjectData* FindSelectedDocumentObject(DocumentSceneBase& scene, const EditorContext& context,
                                             const SelectionSyncService& selectionSync) {
@@ -267,29 +252,33 @@ bool SceneObjectCommandService::Execute(SceneObjectCommandId command, DocumentSc
         return true;
     }
     case SceneObjectCommandId::SaveAsPrefab: {
-        const std::string prefabId = SanitizePrefabToken(argument.empty() ? target->name : argument);
+        const std::string prefabId = argument.empty() ? target->name : std::string(argument);
         PrefabDocument prefab{};
         std::string prefabError;
         if (!CapturePrefabDocument(scene.GetSceneDocument(), target->id, prefabId, prefab, prefabError)) {
             SetStatus(prefabError, true);
             return false;
         }
-        const bool saved = prefabRegistry_.Save(prefabId, prefab, prefabSerializer_);
-        SetStatus(saved ? "Saved prefab: " + prefabId + "." : "Failed to save prefab: " + prefabId + ".", !saved);
+        AssetGuid prefabGuid{};
+        const bool saved = prefabRegistry_.Save(scene.GetAssetDatabase(), prefabId, prefab, prefabSerializer_,
+                                                prefabGuid, prefabError);
+        SetStatus(saved ? "Saved prefab: " + prefabId + " (" + prefabGuid.value + ")."
+                        : "Failed to save prefab: " + prefabId + ". " + prefabError,
+                  !saved);
         return saved;
     }
     case SceneObjectCommandId::InstantiatePrefab: {
         const auto selectedParent = context.selection.GetActiveObjectId();
         const auto previousNextId = context.nextSceneObjectId;
         PrefabDocument prefab{};
-        const std::string prefabId(argument);
-        if (!prefabRegistry_.Load(prefabId, prefab, prefabSerializer_)) {
-            SetStatus("Failed to load prefab: " + prefabId + ".", true);
+        const AssetGuid prefabGuid{std::string(argument)};
+        std::string prefabError;
+        if (!prefabRegistry_.Load(scene.GetAssetDatabase(), prefabGuid, prefab, prefabSerializer_, prefabError)) {
+            SetStatus("Failed to load prefab: " + prefabGuid.value + ". " + prefabError, true);
             return false;
         }
         SceneObjectId instanceId;
-        std::string prefabError;
-        if (!InstantiatePrefabDocument(prefab, prefabId, scene.GetSceneDocument(), context.nextSceneObjectId,
+        if (!InstantiatePrefabDocument(prefab, prefabGuid.value, scene.GetSceneDocument(), context.nextSceneObjectId,
                                        instanceId, prefabError)) {
             SetStatus(prefabError, true);
             return false;
@@ -306,7 +295,7 @@ bool SceneObjectCommandService::Execute(SceneObjectCommandId command, DocumentSc
         context.selection.SelectObject(scene.GetWorld(),
                                        selectionSync.FindRuntimeObjectByDocumentId(scene, instanceId));
         historyRequest_ = MakeHistory("Instantiate Prefab", std::move(beforeObjects), beforeCamera, dirtyBefore, scene);
-        SetStatus("Instantiated prefab: " + prefabId + ".", false);
+        SetStatus("Instantiated prefab: " + prefab.prefabName + ".", false);
         return true;
     }
     case SceneObjectCommandId::AddComponent: {
@@ -328,10 +317,8 @@ bool SceneObjectCommandService::Execute(SceneObjectCommandId command, DocumentSc
     return false;
 }
 
-std::vector<std::string> SceneObjectCommandService::ListPrefabIds() const {
-    std::vector<std::string> ids = prefabRegistry_.ListPrefabIds();
-    std::sort(ids.begin(), ids.end());
-    return ids;
+std::vector<PrefabAssetEntry> SceneObjectCommandService::ListPrefabs(const AssetDatabase& assetDatabase) const {
+    return prefabRegistry_.List(assetDatabase);
 }
 
 const std::string& SceneObjectCommandService::GetStatusMessage() const noexcept { return statusMessage_; }

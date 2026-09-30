@@ -1,10 +1,25 @@
 #pragma once
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 #include <json.hpp>
+#include "Core/Text/HIKARI_EnumNames.h"
 namespace HIKARI::EDITOR {
+enum class AiProjectAccessMode : uint8_t { Content, ReadProjectCode, DevelopProject };
+inline constexpr TEXT::EnumName<AiProjectAccessMode> kAiProjectAccessModeNames[] = {
+    {AiProjectAccessMode::Content, "content"},
+    {AiProjectAccessMode::ReadProjectCode, "readProjectCode"},
+    {AiProjectAccessMode::DevelopProject, "developProject"},
+};
+
+enum class AiRequestSource : uint8_t { BuiltInAi, LocalBridge };
+
 namespace AI_ASSISTANT {
+
+std::optional<AiProjectAccessMode> RequiredProjectAccess(std::string_view operationId) noexcept;
+bool AllowsProjectAccess(AiProjectAccessMode mode, std::string_view operationId) noexcept;
 
 struct AiCapabilityParameter {
     std::string name{};

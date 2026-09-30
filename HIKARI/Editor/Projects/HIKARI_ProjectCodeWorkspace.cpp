@@ -124,26 +124,6 @@ nlohmann::json ReadFile(const std::filesystem::path& root, const std::string& re
         throw std::runtime_error("Cannot fingerprint project code.");
     return {{"path", relative}, {"sha256", HASH::ToHex(hash)}, {"exists", true}, {"content", content}};
 }
-nlohmann::json ReadSdkHeader(const std::filesystem::path& sdk, const std::string& relative) {
-    const auto path = TEXT::PathFromUtf8(relative);
-    if (path.is_absolute() || path.has_root_name() || path.extension() != ".h")
-        throw std::runtime_error("Choose a public SDK header relative to include/HIKARI.");
-    auto resolved = sdk / "include/HIKARI";
-    for (const auto& part : path) {
-        const auto name = TEXT::PathToUtf8(part);
-        if (name == "." || name == ".." || name.empty() || name.find(':') != std::string::npos)
-            throw std::runtime_error("Invalid SDK header path.");
-        resolved /= part;
-        RejectReparsePoint(resolved);
-    }
-    if (std::filesystem::file_size(resolved) > kFileBudget)
-        throw std::runtime_error("SDK header exceeds the read budget.");
-    std::ifstream input(resolved, std::ios::binary);
-    std::string content((std::istreambuf_iterator<char>(input)), {});
-    if (input.bad())
-        throw std::runtime_error("Cannot read public SDK header.");
-    return {{"path", relative}, {"content", content}};
-}
 nlohmann::json Prepare(const std::filesystem::path& project, const std::filesystem::path& sdk,
                        const std::filesystem::path& job, const nlohmann::json& edits) {
     if (!edits.is_array() || edits.empty() || edits.size() > 64)

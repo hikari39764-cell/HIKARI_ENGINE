@@ -9,7 +9,6 @@ bool IsCodePath(const std::filesystem::path& relative);
 std::filesystem::path ResolveCodeFile(const std::filesystem::path& root, const std::string& relative);
 nlohmann::json Snapshot(const std::filesystem::path& root);
 nlohmann::json ReadFile(const std::filesystem::path& root, const std::string& relative);
-nlohmann::json ReadSdkHeader(const std::filesystem::path& sdk, const std::string& relative);
 nlohmann::json Prepare(const std::filesystem::path& project, const std::filesystem::path& sdk,
                        const std::filesystem::path& job, const nlohmann::json& edits);
 void Apply(const std::filesystem::path& project, const std::filesystem::path& job, const nlohmann::json& prepared);

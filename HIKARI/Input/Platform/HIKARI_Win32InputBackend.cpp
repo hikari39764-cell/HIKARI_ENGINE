@@ -10,6 +10,8 @@
 #undef min
 #undef max
 
+#include "Platform/HIKARI_Win32Window.h"
+
 namespace HIKARI::INPUT {
 namespace {
 
@@ -188,6 +190,9 @@ void Win32InputBackend::SetHostWindow(void* nativeWindow) {
         hostWindow_ = nativeWindow;
         hasPreviousMouse_ = false;
         relativeMousePrimed_ = false;
+        pendingImeCaretAnchor_ = {};
+        appliedImeCaretAnchor_ = {};
+        hasPendingImeCaretAnchor_ = false;
     }
 }
 
@@ -221,6 +226,32 @@ void Win32InputBackend::ClearMouseCaptureRegion() {
 }
 
 void Win32InputBackend::SetExternalMouseWheel(float delta) { externalWheel_ += delta; }
+
+void Win32InputBackend::ResetTextInput() noexcept {
+    PLATFORM::Win32Window::ResetTextInputForWindow(static_cast<HWND>(hostWindow_));
+    pendingImeCaretAnchor_ = {};
+    hasPendingImeCaretAnchor_ = true;
+}
+
+void Win32InputBackend::SetImeCaretAnchor(ImeCaretAnchor anchor) noexcept {
+    pendingImeCaretAnchor_ = anchor;
+    hasPendingImeCaretAnchor_ = true;
+}
+
+void Win32InputBackend::ApplyImeCaretAnchor() noexcept {
+    if (!hasPendingImeCaretAnchor_) {
+        return;
+    }
+    hasPendingImeCaretAnchor_ = false;
+    if (pendingImeCaretAnchor_.clientX == appliedImeCaretAnchor_.clientX &&
+        pendingImeCaretAnchor_.clientY == appliedImeCaretAnchor_.clientY &&
+        pendingImeCaretAnchor_.valid == appliedImeCaretAnchor_.valid) {
+        return;
+    }
+
+    appliedImeCaretAnchor_ = pendingImeCaretAnchor_;
+    PLATFORM::Win32Window::ApplyImeCaretAnchorForWindow(static_cast<HWND>(hostWindow_), appliedImeCaretAnchor_);
+}
 
 void Win32InputBackend::SetPointerCursorVisible(bool visible) {
     const HWND window = ::GetForegroundWindow();
@@ -261,6 +292,7 @@ void Win32InputBackend::ReleaseRelativeMouseCapture() noexcept {
 }
 
 void Win32InputBackend::Poll(InputDeviceState& out) {
+    ApplyImeCaretAnchor();
     out = {};
     const HWND host = static_cast<HWND>(hostWindow_);
     const bool active = IsHostActive(host);

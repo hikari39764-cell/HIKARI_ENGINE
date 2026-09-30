@@ -13,8 +13,10 @@ public:
 
 private:
     void DrawContents();
+    void DrawProjectAccessMode();
     void DrawApprovals();
     void DrawTask(const std::vector<AI_ASSISTANT::AiChatMessage>& messages, size_t begin, size_t end, bool active);
+    void DrawReasoning(const std::string& text, bool streaming, bool incomplete);
     void DrawDraftMenu();
     void RevealDraft(const std::string& sessionId);
     void DrawSettings();
@@ -43,6 +45,7 @@ private:
     int toolHistoryKiB_ = 24;
     AI_ASSISTANT::AiReasoningContentPolicy reasoningContentPolicy_ = AI_ASSISTANT::AiReasoningContentPolicy::Preserve;
     bool requestUsage_ = true;
+    bool showReasoning_ = true;
     bool showApiKey_ = false;
     bool hasRawResult_ = false;
     std::string attachmentError_{};

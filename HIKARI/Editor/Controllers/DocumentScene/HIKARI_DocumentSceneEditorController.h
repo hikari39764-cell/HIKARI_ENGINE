@@ -74,6 +74,7 @@ public:
     DocumentSceneEditorController();
     ~DocumentSceneEditorController();
     EDITOR::EditorAuthoringSessionHost& AuthoringSessions() noexcept { return authoringSessions_; }
+    EDITOR::EditorOperationRegistry& Operations() noexcept { return operationRegistry_; }
     void SetProjectWorkspaceHost(EDITOR::GameProjectEditorWorkspaceHost* host) noexcept {
         projectWorkspaceHost_ = host;
     }
@@ -116,10 +117,8 @@ private:
     ValidationLabPanel validationLabPanel_{};
     EDITOR::EditorAuthoringSessionHost authoringSessions_{};
     std::string authoringProjectRoot_{};
-    RENDER3D::RenderViewId aiSceneCaptureView_{};
     uint64_t aiSceneCaptureTicket_ = 0, aiSceneCaptureRevision_ = 0;
     std::string aiSceneCaptureIdentity_{};
-    EDITOR::EditorOperationResult CaptureAiScenePreview(const nlohmann::json& parameters);
     EDITOR::EditorOperationResult PollAiPreviewCapture(uint64_t id);
     void CancelAiSceneCapture();
     EDITOR::SceneViewSeriesCapture sceneViewSeries_{};

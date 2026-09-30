@@ -93,6 +93,7 @@ void BeginFrame(ID3D12Device* device, ID3D12CommandQueue* queue, ID3D12GraphicsC
                 uint64_t completedFence, uint64_t retireFence);
 void EndFrame(ID3D12GraphicsCommandList* cmd);
 void Shutdown();
+void ResetStatistics();
 
 bool BeginPass(ID3D12GraphicsCommandList* cmd, Pass pass);
 void EndPass(ID3D12GraphicsCommandList* cmd, Pass pass);

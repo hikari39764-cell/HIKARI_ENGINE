@@ -84,6 +84,7 @@ struct ResolvedDraw {
     int textureHandle = -1;
     GameProjectUiSpriteRequest request{};
     Affine2D transform{};
+    GameUiClipRect clip{};
     float u0 = 0.0f;
     float v0 = 0.0f;
     float u1 = 1.0f;
@@ -301,6 +302,28 @@ void CopyColor(float* destination, const GameProjectUiColor& color) {
     destination[2] = color.b;
     destination[3] = color.a;
 }
+
+bool ResolveScissor(const GameUiClipRect& clip, const GameProjectUiSpriteRequest& request, int logicalWidth,
+                    int logicalHeight, D3D12_RECT& outRect) noexcept {
+    outRect = {0, 0, logicalWidth, logicalHeight};
+    if (!clip.enabled)
+        return true;
+    if (!IsFinite(clip.left) || !IsFinite(clip.top) || !IsFinite(clip.right) || !IsFinite(clip.bottom))
+        return false;
+    GameProjectUiCanvasFit fit{};
+    if (!ResolveGameProjectUiCanvasFit(static_cast<uint32_t>(logicalWidth), static_cast<uint32_t>(logicalHeight),
+                                       request.referenceWidth, request.referenceHeight, fit))
+        return false;
+    const float left = std::clamp(fit.offsetX + clip.left * fit.scale, 0.0f, static_cast<float>(logicalWidth));
+    const float top = std::clamp(fit.offsetY + clip.top * fit.scale, 0.0f, static_cast<float>(logicalHeight));
+    const float right = std::clamp(fit.offsetX + clip.right * fit.scale, 0.0f, static_cast<float>(logicalWidth));
+    const float bottom = std::clamp(fit.offsetY + clip.bottom * fit.scale, 0.0f, static_cast<float>(logicalHeight));
+    outRect.left = static_cast<LONG>(std::floor(left));
+    outRect.top = static_cast<LONG>(std::floor(top));
+    outRect.right = static_cast<LONG>(std::ceil(right));
+    outRect.bottom = static_cast<LONG>(std::ceil(bottom));
+    return outRect.right > outRect.left && outRect.bottom > outRect.top;
+}
 } // namespace
 
 void BeginGameUiFrame() noexcept { g.source = nullptr; }
@@ -337,6 +360,7 @@ static bool RenderGameUiSource(RendererState& state, const GameUiFrameSource* so
             item.textureHandle = texture;
             item.request = draw.request;
             item.transform = draw.transform;
+            item.clip = draw.clip;
             item.submissionSequence = draw.submissionSequence;
             resolved.push_back(std::move(item));
         }
@@ -348,6 +372,7 @@ static bool RenderGameUiSource(RendererState& state, const GameUiFrameSource* so
             item.textureHandle = glyph.textureHandle;
             item.request = glyph.request;
             item.transform = glyph.transform;
+            item.clip = glyph.clip;
             item.u0 = glyph.u0;
             item.v0 = glyph.v0;
             item.u1 = glyph.u1;
@@ -400,6 +425,10 @@ static bool RenderGameUiSource(RendererState& state, const GameUiFrameSource* so
             if (textureWidth == 0u || textureHeight == 0u) {
                 continue;
             }
+            D3D12_RECT scissor{};
+            if (!ResolveScissor(draw.clip, draw.request, logicalWidth, logicalHeight, scissor))
+                continue;
+            cmd->RSSetScissorRects(1u, &scissor);
 
             UiVertex* vertices = frame.vertexMapped + drawIndex * kVerticesPerSprite;
             auto geometry = draw.request;
@@ -439,6 +468,8 @@ static bool RenderGameUiSource(RendererState& state, const GameUiFrameSource* so
             cmd->DrawInstanced(kVerticesPerSprite, 1u, 0u, 0u);
             ++drawIndex;
         }
+        const D3D12_RECT fullScissor{0, 0, logicalWidth, logicalHeight};
+        cmd->RSSetScissorRects(1u, &fullScissor);
         return true;
     } catch (...) {
         return false;

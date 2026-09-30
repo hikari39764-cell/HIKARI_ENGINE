@@ -15,6 +15,20 @@ std::string AiAssistantSession::BuildSystemPrompt() const {
         "修改项目文件或启动外部进程的操作会先等用户批准；被拒绝时不要重复提交，说明理由并等待指示。\n"
         "上下文里的项目指南由用户编写，制作时遵守其中的画风、命名与资产偏好；用户要求记录新约定时用 project.guide.write。"
         "有参考图时用 context.compare_images 与截图并排对比，写出具体差异再修改。\n";
+    switch (projectAccessMode_.load()) {
+    case AiProjectAccessMode::Content:
+        prompt +=
+            "当前项目代码权限为 Content：仅使用现有内容制作操作和已安装的公开 SDK/指南；不得列出、读取、比较、构建或修改项目源码。\n";
+        break;
+    case AiProjectAccessMode::ReadProjectCode:
+        prompt +=
+            "当前项目代码权限为 ReadProjectCode：可以列出和读取项目源码、检查候选状态与差异；不得准备构建、应用源码修改。\n";
+        break;
+    case AiProjectAccessMode::DevelopProject:
+        prompt +=
+            "当前项目代码权限为 DevelopProject：可按 prepare、status/diff、apply 流程协助项目编程。外部原生项目模块是可信进程内代码，不是沙箱；操作仍受路径范围和用户批准约束，不能读取引擎源码。\n";
+        break;
+    }
     for (const auto& capability : Capabilities()) {
         if (capability.status != "stable" || !capability.semantics.value("entryPoint", false))
             continue;

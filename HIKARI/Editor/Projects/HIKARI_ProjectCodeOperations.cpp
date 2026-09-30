@@ -1,7 +1,10 @@
 #include "Editor/Projects/HIKARI_ProjectCodeJob.h"
+#include "Editor/Projects/HIKARI_ProjectSdkDocs.h"
 #include "Editor/Projects/HIKARI_ProjectCodeWorkspace.h"
 #include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
 #include "Project/HIKARI_ProjectContext.h"
+
+#include <algorithm>
 
 namespace HIKARI::EDITOR {
 void RegisterProjectCodeOperations(EditorOperationRegistry& registry, ProjectCodeJob& job,
@@ -46,13 +49,40 @@ void RegisterProjectCodeOperations(EditorOperationRegistry& registry, ProjectCod
         },
         EditorOperationKind::Query, EditorOperationPermission::ReadEditorState);
     add(
-        "project.code.sdk",
-        "Read a public SDK header. Start with Project/GameComponent.h, Project/WorldView.h and Project/RuntimeRegistration.h. Report a capability gap when these APIs are insufficient.",
-        {{"path", P::String, true, "Header relative to SDK include/HIKARI, for example Project/GameComponent.h."}},
+        "project.sdk.index",
+        "List the installed public SDK guides and headers with their intended starting points. This does not scan engine source.",
+        {{"keyword", P::String, false, "Optional case-insensitive header path filter."},
+         {"offset", P::Int, false, "Header page offset from a previous result.", {{"minimum", 0}}},
+         {"limit", P::Int, false, "Header page size from 1 to 64; defaults to 32.", {{"minimum", 1}, {"maximum", 64}}}},
         [](const nlohmann::json& p) {
+            const size_t offset = static_cast<size_t>((std::max)(0, p.value("offset", 0)));
+            const size_t limit = static_cast<size_t>(std::clamp(p.value("limit", 32), 1, 64));
+            auto index =
+                PROJECT_SDK::Index(ProjectCodeJob::SdkRoot(), p.value("keyword", std::string{}), offset, limit);
+            const bool complete = index.value("complete", false);
+            return EditorOperationResult{complete, complete ? "OK" : "SDK_INCOMPLETE",
+                                         complete ? "Installed public SDK index."
+                                                  : "Installed SDK documentation or headers are incomplete.",
+                                         std::move(index)};
+        },
+        EditorOperationKind::Query, EditorOperationPermission::ReadEditorState);
+    add(
+        "project.sdk.read",
+        "Read one bounded excerpt from an installed public SDK header or guide. Paths stay inside Sdk/include/HIKARI or Sdk/docs.",
+        {{"path", P::String, true,
+          "Path from project.sdk.index, such as include/HIKARI/Project/WorldView.h or docs/game-project/MakingAGame.md."},
+         {"startLine", P::Int, false, "One-based first line; defaults to 1.", {{"minimum", 1}}},
+         {"maxLines",
+          P::Int,
+          false,
+          "Lines to return, 1 to 400; defaults to 160.",
+          {{"minimum", 1}, {"maximum", 400}}}},
+        [](const nlohmann::json& p) {
+            const size_t startLine = static_cast<size_t>((std::max)(1, p.value("startLine", 1)));
+            const size_t maxLines = static_cast<size_t>(std::clamp(p.value("maxLines", 160), 1, 400));
             return EditorOperationResult{
-                true, "OK", "Public SDK header.",
-                PROJECT_CODE::ReadSdkHeader(ProjectCodeJob::SdkRoot(), p.at("path").get<std::string>())};
+                true, "OK", "Installed public SDK file.",
+                PROJECT_SDK::ReadFile(ProjectCodeJob::SdkRoot(), p.at("path").get<std::string>(), startLine, maxLines)};
         },
         EditorOperationKind::Query, EditorOperationPermission::ReadEditorState);
     add(

@@ -18,6 +18,8 @@ class ModelManager;
 class Material;
 struct MaterialAssetDescriptor;
 class ModelAsset;
+class GameObject;
+class IComponent;
 class SkyManager;
 class World;
 class WorldMassSchemaRegistry;
@@ -53,12 +55,16 @@ public:
                                            const ComponentRegistry* enabledComponents = nullptr) const;
     bool PreloadDependencies(const SceneDependencySet& dependencies, const AssetRegistry& assetRegistry,
                              ModelManager& modelManager, SkyManager& skyManager,
-                             const std::filesystem::path& projectRoot, const std::string& sceneGuid) const;
+                             const std::filesystem::path& projectRoot, const std::string& sceneGuid,
+                             bool loadLighting = true) const;
 
     bool BuildWorldFromDocument(const SceneDocument& document, World& world, const AssetRegistry& assetRegistry,
                                 const ComponentRegistry& componentRegistry,
                                 const WorldMassSchemaRegistry& massSchemaRegistry, ModelManager& modelManager,
                                 SkyManager& skyManager) const;
+    bool InitializeRuntimeComponentAssets(GameObject& object, IComponent& component, const AssetRegistry& assetRegistry,
+                                          ModelManager& modelManager, std::string& outDiagnostic) const;
+    void FinalizeRuntimeObjectAssets(GameObject& object, const AssetRegistry& assetRegistry) const;
 };
 
 } // namespace HIKARI

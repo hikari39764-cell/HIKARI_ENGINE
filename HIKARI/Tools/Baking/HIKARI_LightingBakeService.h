@@ -57,9 +57,7 @@ struct LightingBakeStatus {
 
 class LightingBakeService {
 public:
-    LightingBakeReport BakeDirtyLighting(DocumentSceneBase& scene) const;
-    LightingBakeReport BakeAllLighting(DocumentSceneBase& scene) const;
-    LightingBakeReport BakeSelectedLighting(DocumentSceneBase& scene) const;
+    std::string GetBlockReason(const DocumentSceneBase& scene) const;
     LightingBakeReport ClearLightingBake(const LightingBakeRequest& request) const;
     LightingBakeStatus AnalyzeLightingBakeStatus(const LightingBakeRequest& request) const;
 };

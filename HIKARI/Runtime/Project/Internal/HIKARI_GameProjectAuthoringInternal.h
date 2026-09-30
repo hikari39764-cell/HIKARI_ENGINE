@@ -30,6 +30,7 @@ class IInspectorBuilder;
 class MotionView;
 class NavigationView;
 class PhysicsQueryView;
+class PrefabView;
 class PresentationModelView;
 class PresentationVfxView;
 class RuntimeSessionView;
@@ -91,6 +92,7 @@ struct GameProjectSdkAccess {
     static RuntimeSessionView MakeRuntimeSessionView(World& world) noexcept;
     static SceneCaptureView MakeSceneCaptureView(World& world) noexcept;
     static SequenceView MakeSequenceView(World& world) noexcept;
+    static PrefabView MakePrefabView(World& world) noexcept;
     static GameComponentContext MakeGameComponentContext(GameProjectComponentAdapter& adapter, GameObject& object,
                                                          World& world) noexcept;
     static GameObject* GetObject(const ObjectView& view, RuntimeWorldAccessResult* outAccess = nullptr) noexcept;
@@ -122,6 +124,9 @@ public:
     bool WriteVariable(const WorldView& world, std::string_view variableId,
                        const GameProjectBindingValue& value) noexcept;
     bool ReleaseVariable(const WorldView& world, std::string_view variableId) noexcept;
+    bool WriteObjectVariable(const WorldView& world, std::string_view variableId,
+                             const GameProjectBindingValue& value) noexcept;
+    bool ReleaseObjectVariable(const WorldView& world, std::string_view variableId) noexcept;
 
 private:
     void ReleaseAllVariables(const WorldView& world) noexcept;
@@ -129,6 +134,7 @@ private:
     std::string typeName_{};
     std::string bindingWriterId_{};
     std::unordered_set<std::string> writtenVariableIds_{};
+    std::unordered_set<std::string> writtenObjectVariableIds_{};
     IGameComponent* component_ = nullptr;
     DestroyGameComponentFn destroy_ = nullptr;
 };

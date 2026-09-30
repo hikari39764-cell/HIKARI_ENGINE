@@ -26,6 +26,5 @@ EditorOperationResult CreateScenePrimitive(SceneObjectOperationContext& operatio
 EditorOperationResult CreateSceneEmptyObject(SceneObjectOperationContext& operation, const nlohmann::json& parameters);
 EditorOperationResult DeleteSceneObjects(SceneObjectOperationContext& operation, const nlohmann::json& parameters);
 EditorOperationResult DuplicateSceneObjects(SceneObjectOperationContext& operation, const nlohmann::json& parameters);
-EditorOperationResult QuerySceneObjects(SceneObjectOperationContext& operation, const nlohmann::json& parameters);
 } // namespace EDITOR
 } // namespace HIKARI

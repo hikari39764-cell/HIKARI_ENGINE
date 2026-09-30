@@ -84,6 +84,12 @@ struct SdfTextLayoutStats {
     uint32_t atlasRebuildCount = 0u;
 };
 
+struct SdfTextCaretStop {
+    uint32_t requestIndex = 0;
+    size_t byteOffset = 0;
+    float x = 0, y = 0, height = 0;
+};
+
 // 一回の layout 結果が参照する不変 atlas generation を所有する。
 // Copy は同じ generation を共有し、Reset/破棄後に最後の所有者が
 // texture resource を GPU-safe release へ渡す。
@@ -102,7 +108,8 @@ public:
 
 private:
     friend bool BuildSdfTextGlyphDraws(std::span<const SdfTextLayoutRequest>, std::vector<SdfTextGlyphDraw>&,
-                                       SdfTextLayoutStats*, uint32_t, SdfTextLayoutLease*) noexcept;
+                                       SdfTextLayoutStats*, uint32_t, SdfTextLayoutLease*,
+                                       std::vector<SdfTextCaretStop>*) noexcept;
 
     std::shared_ptr<const void> retention_{};
     size_t retainedGenerationCount_ = 0u;
@@ -114,7 +121,8 @@ private:
 bool BuildSdfTextGlyphDraws(std::span<const SdfTextLayoutRequest> requests, std::vector<SdfTextGlyphDraw>& outDraws,
                             SdfTextLayoutStats* outStats = nullptr,
                             uint32_t maximumGlyphCount = kSdfTextDefaultMaximumGlyphCount,
-                            SdfTextLayoutLease* outLease = nullptr) noexcept;
+                            SdfTextLayoutLease* outLease = nullptr,
+                            std::vector<SdfTextCaretStop>* outCaretStops = nullptr) noexcept;
 
 // Renderer shutdown owner だけが呼ぶ。各 consumer は個別 atlas を持たない。
 void ShutdownSdfTextLayout() noexcept;

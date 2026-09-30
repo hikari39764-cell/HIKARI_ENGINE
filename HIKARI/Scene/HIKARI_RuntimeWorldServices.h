@@ -1,10 +1,15 @@
 #pragma once
 
+#include <functional>
+#include <string>
+#include <string_view>
+
 namespace HIKARI {
 
 class AssetRegistry;
 class Camera3D;
 class ModelManager;
+class PrefabAssetStore;
 
 struct RuntimePlayStateService {
     const bool* active = nullptr;
@@ -26,6 +31,8 @@ struct GameplayCameraService {
 struct RuntimeAssetContextService {
     AssetRegistry* assetRegistry = nullptr;
     ModelManager* modelManager = nullptr;
+    PrefabAssetStore* prefabAssetStore = nullptr;
+    std::function<bool(std::string_view, std::string&)> preparePrefabRuntimeAssets{};
 };
 
 } // namespace HIKARI

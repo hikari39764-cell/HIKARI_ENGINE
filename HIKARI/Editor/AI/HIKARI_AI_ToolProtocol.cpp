@@ -36,42 +36,47 @@ Json BuildAiTools() {
               {"additionalProperties", false}}}}}}});
 }
 
-void AiToolReply::ReadDelta(const Json& chunk) {
+AiChatDelta AiToolReply::ReadDelta(const Json& chunk) {
+    AiChatDelta result;
     if (!chunk.is_object()) {
         error = "Invalid response chunk.";
-        return;
+        return result;
     }
     if (chunk.contains("error")) {
         error = "Provider returned an error in the response stream.";
-        return;
+        return result;
     }
     const auto choices = chunk.find("choices");
     if (choices == chunk.end() || !choices->is_array() || choices->empty())
-        return;
+        return result;
     const auto& choice = (*choices)[0];
     if (choice.contains("finish_reason") && choice["finish_reason"].is_string())
         finishReason = choice["finish_reason"].get<std::string>();
     const auto delta = choice.find("delta");
     if (delta == choice.end() || !delta->is_object())
-        return;
-    if (delta->contains("reasoning_content") && (*delta)["reasoning_content"].is_string())
-        reasoning += (*delta)["reasoning_content"].get<std::string>();
+        return result;
+    if (delta->contains("content") && (*delta)["content"].is_string())
+        result.content = (*delta)["content"].get<std::string>();
+    if (delta->contains("reasoning_content") && (*delta)["reasoning_content"].is_string()) {
+        result.reasoning = (*delta)["reasoning_content"].get<std::string>();
+        reasoning += result.reasoning;
+    }
     const auto incoming = delta->find("tool_calls");
     if (incoming == delta->end())
-        return;
+        return result;
     if (!incoming->is_array()) {
         error = "Invalid tool call list.";
-        return;
+        return result;
     }
     for (const auto& item : *incoming) {
         if (!item.is_object() || !item.contains("index") || !item["index"].is_number_integer()) {
             error = "Tool call index is missing.";
-            return;
+            return result;
         }
         const int index = item["index"].get<int>();
         if (index < 0 || index >= 64) {
             error = "Invalid tool call index.";
-            return;
+            return result;
         }
         while (calls.size() <= static_cast<size_t>(index))
             calls.push_back({{"id", ""}, {"type", "function"}, {"function", {{"name", ""}, {"arguments", ""}}}});
@@ -80,7 +85,7 @@ void AiToolReply::ReadDelta(const Json& chunk) {
             const auto id = item["id"].get<std::string>();
             if (call["id"] != "" && call["id"] != id) {
                 error = "Conflicting tool call ID.";
-                return;
+                return result;
             }
             call["id"] = id;
         }
@@ -92,6 +97,7 @@ void AiToolReply::ReadDelta(const Json& chunk) {
             }
         }
     }
+    return result;
 }
 
 bool AiToolReply::Validate(std::string& outError) const {

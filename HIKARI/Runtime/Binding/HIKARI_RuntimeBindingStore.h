@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "Runtime/Binding/HIKARI_RuntimeBindingCatalog.h"
+#include "Scene/HIKARI_RuntimeObjectHandle.h"
 
 namespace HIKARI::BINDING {
 
@@ -45,6 +46,12 @@ public:
     bool ReadVariable(std::string_view variableId, Value& outValue) const noexcept;
     bool WriteVariable(std::string_view variableId, const Value& value, std::string_view writerId);
     bool ReleaseWriter(std::string_view variableId, std::string_view writerId) noexcept;
+    bool ReadObjectVariable(RuntimeObjectHandle object, std::string_view variableId, Value& outValue) const noexcept;
+    bool WriteObjectVariable(RuntimeObjectHandle object, std::string_view variableId, const Value& value,
+                             std::string_view writerId);
+    bool ReleaseObjectVariableWriter(RuntimeObjectHandle object, std::string_view variableId,
+                                     std::string_view writerId) noexcept;
+    void ReleaseObjectVariableWriters(RuntimeObjectHandle object, std::string_view writerId) noexcept;
     // Restores the authored catalog default and releases the matching
     // writer as one world-thread operation. This is intended for bounded
     // editor previews; ordinary runtime writer release preserves value.
@@ -65,11 +72,17 @@ public:
     std::shared_ptr<const Snapshot> GetPublishedSnapshot() const noexcept;
 
 private:
+    struct ObjectVariableValue {
+        Value value{};
+        std::string writerId{};
+    };
+
     bool ReplaceCatalog(Catalog catalog, bool preserveValues);
 
     Catalog catalog_{};
     std::unordered_map<std::string, Value> values_{};
     std::unordered_map<std::string, std::string> writers_{};
+    std::unordered_map<uint64_t, std::unordered_map<std::string, ObjectVariableValue>> objectValues_{};
     std::vector<EventRecord> events_{};
     std::atomic<std::shared_ptr<const Snapshot>> publishedSnapshot_{};
     uint64_t instanceId_ = 0u;

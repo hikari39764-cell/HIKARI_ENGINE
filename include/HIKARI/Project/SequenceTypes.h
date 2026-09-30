@@ -75,9 +75,9 @@ enum class GameProjectSequenceChannelPolicy : uint8_t {
 };
 
 // A slot override is borrowed only during SequenceView::Play. The
-// referenced object must be a live GameObject in the same World and must
-// have a document identity; the engine resolves it to that identity
-// before the playback request returns.
+// referenced object must be a live GameObject in the same World with a
+// World-unique SceneObjectId, including an object from an instantiated
+// Prefab; the engine resolves it to that identity before returning.
 struct GameProjectSequenceBinding {
     char slotName[kGameProjectSequenceSlotNameCapacity]{};
     GameProjectObjectHandle object{};

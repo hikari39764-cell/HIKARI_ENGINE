@@ -43,8 +43,6 @@ struct SkeletonAsset {
     std::vector<SkeletonJoint> joints{};
 };
 
-// HMODEL v1-v3 wrote these enums directly. Keep their original storage
-// size so the versioned reader can migrate existing imported assets.
 enum class AnimationTargetPath {
     Translation,
     Rotation,
@@ -58,6 +56,7 @@ enum class AnimationInterpolation {
     CubicSpline,
 };
 
+//动画关键帧
 template <class T>
 struct AnimationKeyframe {
     float timeSec = 0.0f;
@@ -65,7 +64,7 @@ struct AnimationKeyframe {
     T inTangent{};
     T outTangent{};
 };
-
+//动画通道
 struct NodeAnimationChannel {
     int targetNode = -1;
     AnimationTargetPath path = AnimationTargetPath::Translation;
@@ -74,6 +73,7 @@ struct NodeAnimationChannel {
     std::vector<AnimationKeyframe<MATH::Quat>> quatKeys{};
 };
 
+//动画剪辑
 struct AnimationClip {
     std::string name{};
     float durationSec = 0.0f;

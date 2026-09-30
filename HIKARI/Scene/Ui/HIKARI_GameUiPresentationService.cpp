@@ -1,4 +1,5 @@
 #include "Scene/Ui/HIKARI_GameUiPresentationService.h"
+#include "Render2D/HIKARI_GameUiTextLayout.h"
 #include "Core/Math/HIKARI_MathValidation.h"
 
 #include <algorithm>
@@ -172,21 +173,22 @@ bool GameUiPresentationService::ResolveDirectAssetPath(std::string_view relative
 }
 
 bool GameUiPresentationService::SubmitSprite(std::string_view assetPathBelowAssets,
-                                             const GameProjectUiSpriteRequest& request,
-                                             const Affine2D& transform) noexcept {
+                                             const GameProjectUiSpriteRequest& request, const Affine2D& transform,
+                                             const GameUiClipRect& clip) noexcept {
     try {
         std::filesystem::path resolved{};
-        return ResolveTexturePath(assetPathBelowAssets, resolved) && SubmitResolvedSprite(resolved, request, transform);
+        return ResolveTexturePath(assetPathBelowAssets, resolved) &&
+               SubmitResolvedSprite(resolved, request, transform, clip);
     } catch (...) {
         return false;
     }
 }
 
 bool GameUiPresentationService::SubmitSpriteAsset(std::string_view assetGuid, const GameProjectUiSpriteRequest& request,
-                                                  const Affine2D& transform) noexcept {
+                                                  const Affine2D& transform, const GameUiClipRect& clip) noexcept {
     try {
         std::filesystem::path resolved{};
-        return ResolveTextureAsset(assetGuid, resolved) && SubmitResolvedSprite(resolved, request, transform);
+        return ResolveTextureAsset(assetGuid, resolved) && SubmitResolvedSprite(resolved, request, transform, clip);
     } catch (...) {
         return false;
     }
@@ -194,7 +196,7 @@ bool GameUiPresentationService::SubmitSpriteAsset(std::string_view assetGuid, co
 
 bool GameUiPresentationService::SubmitResolvedSprite(const std::filesystem::path& resolved,
                                                      const GameProjectUiSpriteRequest& request,
-                                                     const Affine2D& transform) noexcept {
+                                                     const Affine2D& transform, const GameUiClipRect& clip) noexcept {
     try {
         if (!transform.IsFinite() || request.sourceId == 0u || request.width <= 0.0f || request.height <= 0.0f ||
             request.referenceWidth <= 0.0f || request.referenceHeight <= 0.0f || !IsFinite(request.referenceWidth) ||
@@ -213,6 +215,7 @@ bool GameUiPresentationService::SubmitResolvedSprite(const std::filesystem::path
         draw.absoluteAssetPath = TEXT::PathToUtf8(resolved);
         draw.request = request;
         draw.transform = transform;
+        draw.clip = clip;
         draw.request.fillAmount = std::clamp(request.fillAmount, 0.0f, 1.0f);
         draw.request.effectProgress = std::clamp(request.effectProgress, 0.0f, 1.0f);
         draw.request.effectIntensity = std::clamp(request.effectIntensity, 0.0f, 8.0f);
@@ -290,11 +293,12 @@ bool GameUiPresentationService::SubmitTextStyle(const AssetGuid& guid, std::stri
 
 bool GameUiPresentationService::SubmitStyledText(std::string_view fontAssetPathBelowAssets, std::string_view utf8Text,
                                                  const GameProjectUiTextRequest& request,
-                                                 const GameUiTextEffectStyle& style,
-                                                 const Affine2D& transform) noexcept {
+                                                 const GameUiTextEffectStyle& style, const Affine2D& transform,
+                                                 const GameUiClipRect& clip,
+                                                 const GameUiTextEditing& editing) noexcept {
     try {
         constexpr size_t kMaximumUtf8Bytes = 64u * 1024u;
-        if (!transform.IsFinite() || request.sourceId == 0u || utf8Text.empty() ||
+        if (!transform.IsFinite() || request.sourceId == 0u || (utf8Text.empty() && !editing.feedback) ||
             utf8Text.size() > kMaximumUtf8Bytes || request.referenceWidth <= 0.0f || request.referenceHeight <= 0.0f ||
             request.maxWidth <= 0.0f || request.maxHeight <= 0.0f || request.pixelHeight <= 0.0f ||
             request.lineHeightMultiplier <= 0.0f || !IsFinite(request.referenceWidth) ||
@@ -321,7 +325,9 @@ bool GameUiPresentationService::SubmitStyledText(std::string_view fontAssetPathB
         draw.utf8Text.assign(utf8Text.data(), utf8Text.size());
         draw.request = request;
         draw.transform = transform;
+        draw.clip = clip;
         draw.style = style;
+        draw.editing = editing;
         draw.request.revealAmount = std::clamp(request.revealAmount, 0.0f, 1.0f);
         draw.request.effectProgress = std::clamp(request.effectProgress, 0.0f, 1.0f);
         draw.request.effectIntensity = std::clamp(request.effectIntensity, 0.0f, 8.0f);
@@ -329,6 +335,15 @@ bool GameUiPresentationService::SubmitStyledText(std::string_view fontAssetPathB
         draw.style.glowWidth = std::clamp(style.glowWidth, 0.0f, 12.0f);
         draw.style.glowIntensity = std::clamp(style.glowIntensity, 0.0f, 8.0f);
         draw.submissionSequence = nextSequence_++;
+        if (editing.feedback) {
+            auto expected = MakeGameUiTextLayoutRequest(draw);
+            std::lock_guard lock(editing.feedback->mutex);
+            if (editing.feedback->expected != expected) {
+                editing.feedback->expected = std::move(expected);
+                editing.feedback->ready = false;
+                editing.feedback->stops.clear();
+            }
+        }
         pendingTexts_.push_back(std::move(draw));
         return true;
     } catch (...) {
@@ -399,14 +414,15 @@ bool GameUiPresentationService::PendingMatchesFrame() const noexcept {
         const auto& a = pending_[i];
         const auto& b = frameSource_.sprites[i];
         if (a.absoluteAssetPath != b.absoluteAssetPath || a.request != b.request || a.transform != b.transform ||
-            a.submissionSequence - pendingBase != b.submissionSequence - frameBase)
+            a.clip != b.clip || a.submissionSequence - pendingBase != b.submissionSequence - frameBase)
             return false;
     }
     for (size_t i = 0; i < pendingTexts_.size(); ++i) {
         const auto& a = pendingTexts_[i];
         const auto& b = frameSource_.texts[i];
         if (a.fontRevision != b.fontRevision || a.absoluteFontAssetPath != b.absoluteFontAssetPath ||
-            a.utf8Text != b.utf8Text || a.request != b.request || a.transform != b.transform || a.style != b.style ||
+            a.utf8Text != b.utf8Text || a.request != b.request || a.transform != b.transform || a.clip != b.clip ||
+            a.style != b.style || a.editing != b.editing ||
             a.submissionSequence - pendingBase != b.submissionSequence - frameBase)
             return false;
     }

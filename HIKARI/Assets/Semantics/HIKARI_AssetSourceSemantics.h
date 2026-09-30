@@ -21,6 +21,7 @@ enum class AssetImporterKind : uint8_t {
     Texture,
     Model,
     Scene,
+    Prefab,
     Sequence,
     AnimationStateMachine,
     Dialogue,

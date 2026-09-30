@@ -1,4 +1,6 @@
 #include "Core/Text/HIKARI_Localization.h"
+#include "Editor/Commands/HIKARI_EditorOperationContext.h"
+#include "Editor/Authoring/HIKARI_UiArrangement.h"
 #include "Editor/Authoring/HIKARI_UiAuthoring.h"
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
@@ -10,6 +12,31 @@ void DocumentSceneEditorController::RegisterUiOperations() {
                                   [this] { return aiOperationScene_; });
     RegisterTextStyleOperations(operationRegistry_, textWorkspaceController_, workspaceHost_,
                                 [this] { return aiOperationScene_; });
+    operationRegistry_.Register(
+        {"ui.arrange",
+         "Align or distribute sibling UI elements as one undoable layout edit.",
+         "ui",
+         {{"objectIds", EditorOperationParameterType::Json, true,
+           "UI object IDs; at least two, or three for distribution."},
+          {"mode", EditorOperationParameterType::String, true,
+           "left, center, right, top, middle, bottom, horizontal or vertical."}},
+         [this](const nlohmann::json& p) {
+             auto* scene = aiOperationScene_;
+             if (!scene || scene->IsRuntimePlayActive() || uiWorkspaceController_.Animation().IsPreviewing())
+                 return OperationFailure("NOT_EDITABLE", TEXT::Localize("uianim.layoutHelp"));
+             std::vector<SceneObjectId> ids;
+             for (const auto& id : p.at("objectIds"))
+                 ids.push_back({id.get<uint64_t>()});
+             nlohmann::json commands;
+             std::string error;
+             if (!BuildUiArrangement(scene->GetSceneDocument(), scene->GetWorld(), ids, p.at("mode").get<std::string>(),
+                                     commands, error))
+                 return OperationFailure("INVALID_ARRANGEMENT", error);
+             if (commands.empty())
+                 return OperationOk("UI elements already arranged.");
+             return operationRegistry_.Execute("authoring.transaction", {{"commands", commands}});
+         }},
+        EditorOperationKind::Mutation, false);
     operationRegistry_.Register(
         {"ui.parent.set",
          "Move an element into a Canvas or UI container; anchors and offsets "

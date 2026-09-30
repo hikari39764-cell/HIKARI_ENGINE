@@ -16,6 +16,7 @@
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshPipelineStore.h"
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshRootParameters.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenWorkBuilder.h"
+#include "Render3D/GpuDriven/HIKARI_GpuSceneJointPaletteUpload.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorAccess.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
@@ -126,8 +127,7 @@ bool EnsureCaptureResources(SecondaryMeshViewResources& resources, const GFX::Co
         return true;
     }
     for (SecondaryMeshViewFrameResources& frame : resources.frames) {
-        if (!frame.view.Initialize(device) ||
-            !frame.deformationUploads.Init(device, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT)) {
+        if (!frame.view.Initialize(device)) {
             ResetCaptureResources(resources);
             return false;
         }
@@ -247,10 +247,8 @@ bool RenderSecondarySceneCapture(const GFX::Context& graphics, const RENDER3D::R
     }
 
     const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& sceneSource = gMeshRendererState.gpuDrivenSceneSource;
-    const auto* jointPalettes = sceneSource.meshShaderJointPalettes;
-    captureFrame.jointPaletteAddress = UploadJointPalettes(graphics, captureFrame.deformationUploads,
-                                                           jointPalettes != nullptr ? jointPalettes->data() : nullptr,
-                                                           jointPalettes != nullptr ? jointPalettes->size() : 0u);
+    captureFrame.jointPaletteAddress =
+        RENDER3D::GPUDRIVEN::UploadGpuSceneJointPaletteSnapshot(graphics, sceneSource.meshShaderJointPalettes);
     if (captureFrame.jointPaletteAddress == 0u) {
         ReportCaptureFailure(CaptureFailureStage::FrameResourcesUnavailable);
         return false;

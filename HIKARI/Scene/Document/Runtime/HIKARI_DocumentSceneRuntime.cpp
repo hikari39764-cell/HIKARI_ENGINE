@@ -19,6 +19,7 @@
 #include "Physics/Backends/Jolt/HIKARI_JoltPhysicsBackend.h"
 #include "Project/HIKARI_ProjectSettings.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
+#include "Runtime/Project/Internal/HIKARI_GameProjectSessionRuntimeExtension.h"
 #include "Scene/Features/HIKARI_BuiltInRuntimeFeatures.h"
 #include "HIKARI/Project/RuntimeFeature.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureIds.h"
@@ -29,6 +30,7 @@
 #include "Scene/Vfx/HIKARI_CombatAfterimageService.h"
 #include "Scene/Vfx/HIKARI_CombatPresentationService.h"
 #include "Scene/Vfx/HIKARI_VfxAttachmentResolver.h"
+#include "Scene/Ui/HIKARI_UiSceneSystem.h"
 
 namespace HIKARI {
 
@@ -62,6 +64,23 @@ public:
 private:
     const PHYSICS::PhysicsWorldService* physics_ = nullptr;
 };
+
+void DetachAndStopGameProjectSession(DocumentSceneRuntimeState& runtime) {
+    World& world = runtime.world;
+    if (RUNTIME::GameProjectSessionRuntimeExtension* sessionOwner =
+            world.Services().Find<RUNTIME::GameProjectSessionRuntimeExtension>()) {
+        sessionOwner->ExitScene(world);
+    }
+    runtime.systemScheduler.DetachWorld(world);
+    runtime.systemScheduler.Clear();
+    world.Clear();
+    if (RUNTIME::GameProjectSessionRuntimeExtension* sessionOwner =
+            world.Services().Find<RUNTIME::GameProjectSessionRuntimeExtension>()) {
+        sessionOwner->StopGameSession();
+    }
+    runtime.playActive = false;
+    runtime.stopGameProjectSessionAfterWorldDetach = false;
+}
 } // namespace
 
 bool DocumentSceneBase::IsRuntimePlayActive() const { return state_->runtime.playActive; }
@@ -179,6 +198,19 @@ bool DocumentSceneBase::BeginRuntimePlay() {
         (void)navigation->Synchronize(state_->runtime.world);
     }
     state_->runtime.fixedStepClock.Reset();
+    std::string sessionMessage{};
+    RUNTIME::GameProjectSessionRuntimeExtension* sessionOwner =
+        state_->runtime.world.Services().Find<RUNTIME::GameProjectSessionRuntimeExtension>();
+    if (sessionOwner != nullptr && !sessionOwner->StartGameSession(state_->runtime.world, sessionMessage)) {
+        HIKARI_LOG_ERROR("[RuntimeLifecycle] " + sessionMessage);
+        (void)EndRuntimePlay();
+        return false;
+    }
+    if (sessionOwner != nullptr && !sessionOwner->EnterScene(state_->runtime.world, sessionMessage)) {
+        HIKARI_LOG_ERROR("[RuntimeLifecycle] " + sessionMessage);
+        (void)EndRuntimePlay();
+        return false;
+    }
     HIKARI_LOG_INFO("Document scene entered runtime Play state.");
     return true;
 }
@@ -187,7 +219,12 @@ bool DocumentSceneBase::EndRuntimePlay() {
         return true;
     }
 
-    state_->runtime.playActive = false;
+    if (RUNTIME::GameProjectSessionRuntimeExtension* sessionOwner =
+            state_->runtime.world.Services().Find<RUNTIME::GameProjectSessionRuntimeExtension>()) {
+        sessionOwner->ExitScene(state_->runtime.world);
+    }
+    if (UiSceneSystem* uiSystem = state_->runtime.world.Services().Find<UiSceneSystem>())
+        uiSystem->ReleaseInputOwnership();
     SERVICES::GetInputService().SetDeveloperInputCaptured(false);
     state_->runtime.debugService.Reset(state_->runtime.world);
     AUDIO::StopOwner(state_->runtime.world.GetRuntimeIdentity());
@@ -206,8 +243,9 @@ bool DocumentSceneBase::EndRuntimePlay() {
     state_->camera.rigService.Clear();
     if (!state_->runtime.editorDocumentSnapshotValid) {
         // Standalone hosts do not own editor snapshots to restore.
-        // Their current scene and runtime state are destroyed by the
-        // host after leaving Play.
+        // Stop failed or explicit Play through the same detach boundary;
+        // RuntimeEngineApp will then stop the standalone host.
+        DetachAndStopGameProjectSession(state_->runtime);
         state_->camera.resolvedFrame = {};
         HIKARI_LOG_INFO("Standalone document scene left runtime Play state.");
         return true;
@@ -225,7 +263,12 @@ bool DocumentSceneBase::EndRuntimePlay() {
     state_->lighting.environment = state_->editor.environmentSnapshot;
     state_->identity.documentDirty = state_->runtime.editorDocumentDirtySnapshot;
     state_->runtime.editorDocumentSnapshotValid = false;
+    state_->runtime.stopGameProjectSessionAfterWorldDetach = true;
     const bool restored = RebuildRuntimeWorld();
+    if (!restored && state_->runtime.stopGameProjectSessionAfterWorldDetach) {
+        DetachAndStopGameProjectSession(state_->runtime);
+        RuntimeSceneContext::SetCurrentWorld(nullptr);
+    }
     ++state_->identity.documentRevision;
     state_->camera.editorCamera = state_->camera.editorCameraSnapshot;
     state_->camera.gameplayCamera = state_->camera.editorCamera;
@@ -397,6 +440,14 @@ bool DocumentSceneBase::ConfigureRuntimeWorldServices() {
     state_->runtime.gameplayCameraService.runtimeSceneCameraActive = &state_->camera.runtimeSceneCameraActive;
     state_->runtime.runtimeAssetContextService.assetRegistry = &state_->assets.Registry();
     state_->runtime.runtimeAssetContextService.modelManager = &state_->assets.Models();
+    state_->runtime.prefabAssets.Configure(&state_->assets.Database());
+    state_->runtime.runtimeAssetContextService.prefabAssetStore = &state_->runtime.prefabAssets;
+    state_->runtime.runtimeAssetContextService.preparePrefabRuntimeAssets = [this](std::string_view prefabGuid,
+                                                                                   std::string& outError) {
+        return state_->assets.PrepareRuntimePrefabAssets(
+            AssetGuid{std::string(prefabGuid)}, state_->runtime.prefabAssets, state_->runtime.builder,
+            state_->runtime.componentRegistry, state_->lighting.sky, outError);
+    };
     if (physicsEnabled) {
         state_->runtime.collisionGeometryStore.SetAssetDatabase(&state_->assets.Database());
         if (!state_->runtime.physicsWorldService.HasBackend() &&
@@ -531,7 +582,11 @@ bool DocumentSceneBase::ReloadSceneDocument() {
     }
     return OpenStartupSceneAsset();
 }
-bool DocumentSceneBase::RebuildRuntimeWorld(bool reconfigureWorldServices, bool assetSnapshotAlreadyRefreshed) {
+bool DocumentSceneBase::RebuildRuntimeWorld(bool reconfigureWorldServices, bool assetSnapshotAlreadyRefreshed,
+                                            bool* outOldWorldDetached) {
+    if (outOldWorldDetached != nullptr) {
+        *outOldWorldDetached = false;
+    }
     SceneDependencySet deps =
         state_->runtime.builder.CollectDependencies(state_->identity.document, &state_->runtime.componentRegistry);
     std::string dependencyReason;
@@ -557,6 +612,16 @@ bool DocumentSceneBase::RebuildRuntimeWorld(bool reconfigureWorldServices, bool 
         }
     }
 
+    RUNTIME::GameProjectSessionRuntimeExtension* sessionOwner =
+        state_->runtime.world.Services().Find<RUNTIME::GameProjectSessionRuntimeExtension>();
+    if (outOldWorldDetached != nullptr) {
+        *outOldWorldDetached = true;
+    }
+    if (state_->runtime.playActive && sessionOwner != nullptr) {
+        sessionOwner->ExitScene(state_->runtime.world);
+    }
+    if (UiSceneSystem* uiSystem = state_->runtime.world.Services().Find<UiSceneSystem>())
+        uiSystem->ReleaseInputOwnership();
     SERVICES::GetActionTimeDilationService().ReleaseOwner(&state_->runtime.world);
     state_->runtime.gameUiPresentationService.Reset();
     state_->runtime.sceneCaptureService.Reset();
@@ -569,6 +634,13 @@ bool DocumentSceneBase::RebuildRuntimeWorld(bool reconfigureWorldServices, bool 
     // Service-owned snapshots are cleared only after every old object
     // has released its borrowed service references.
     state_->runtime.world.Clear();
+    if (state_->runtime.stopGameProjectSessionAfterWorldDetach) {
+        if (sessionOwner != nullptr) {
+            sessionOwner->StopGameSession();
+        }
+        state_->runtime.playActive = false;
+        state_->runtime.stopGameProjectSessionAfterWorldDetach = false;
+    }
     MESHRENDERER::ReleaseParticleNamespace(state_->runtime.vfxPlaybackService.GetPlaybackNamespace());
     AUDIO::StopOwner(state_->runtime.world.GetRuntimeIdentity());
     state_->runtime.vfxPlaybackService.Reset();
@@ -623,6 +695,16 @@ bool DocumentSceneBase::RebuildRuntimeWorld(bool reconfigureWorldServices, bool 
     RuntimeSceneContext::ResolvePendingSceneEntry(state_->runtime.world, state_->identity.sceneId);
     BuildSystemScheduleFromDocument();
     state_->runtime.systemScheduler.AttachWorld(state_->runtime.world);
+    if (state_->runtime.playActive) {
+        sessionOwner = state_->runtime.world.Services().Find<RUNTIME::GameProjectSessionRuntimeExtension>();
+        if (sessionOwner != nullptr) {
+            std::string sessionMessage{};
+            if (!sessionOwner->EnterScene(state_->runtime.world, sessionMessage)) {
+                state_->identity.loadError = sessionMessage;
+                return false;
+            }
+        }
+    }
     ApplyCameraRuntimeChanges();
     return true;
 }

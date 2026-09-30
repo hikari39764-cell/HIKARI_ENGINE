@@ -4,10 +4,22 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <memory>
+#include <mutex>
+#include "Render3D/Text/HIKARI_SdfTextLayout.h"
 
 #include "HIKARI/Project/UiTypes.h"
 
 namespace HIKARI::GAME_UI {
+
+struct GameUiClipRect {
+    bool enabled = false;
+    float left = 0.0f;
+    float top = 0.0f;
+    float right = 0.0f;
+    float bottom = 0.0f;
+    bool operator==(const GameUiClipRect&) const noexcept = default;
+};
 
 struct GameUiTextEffectStyle {
     GameProjectUiColor glowColor{};
@@ -16,10 +28,26 @@ struct GameUiTextEffectStyle {
     bool operator==(const GameUiTextEffectStyle&) const noexcept = default;
 };
 
+// Render 側の実測配置のみを共有する。Component を render thread に渡さない。
+struct GameUiTextLayoutFeedback {
+    std::mutex mutex;
+    TEXT_RENDERING::SdfTextLayoutRequest expected;
+    std::vector<TEXT_RENDERING::SdfTextCaretStop> stops;
+    bool ready = false;
+};
+
+struct GameUiTextEditing {
+    std::shared_ptr<GameUiTextLayoutFeedback> feedback;
+    size_t caret = 0, selectionStart = 0, selectionEnd = 0, compositionStart = 0, compositionEnd = 0;
+    bool focused = false;
+    bool operator==(const GameUiTextEditing&) const noexcept = default;
+};
+
 struct GameUiSpriteDraw {
     std::string absoluteAssetPath{};
     GameProjectUiSpriteRequest request{};
     Affine2D transform{};
+    GameUiClipRect clip{};
     uint64_t submissionSequence = 0u;
 };
 
@@ -29,7 +57,9 @@ struct GameUiTextDraw {
     std::string utf8Text{};
     GameProjectUiTextRequest request{};
     Affine2D transform{};
+    GameUiClipRect clip{};
     GameUiTextEffectStyle style{};
+    GameUiTextEditing editing{};
     uint64_t submissionSequence = 0u;
 };
 

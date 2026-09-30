@@ -40,6 +40,8 @@ public:
                                                     size_t capacity);
     HIKARI_GAME_PROJECT_SDK_API bool SequenceAssetGuid(std::string_view propertyId, std::string_view label, char* value,
                                                        size_t capacity);
+    HIKARI_GAME_PROJECT_SDK_API bool PrefabAssetGuid(std::string_view propertyId, std::string_view label, char* value,
+                                                     size_t capacity);
     HIKARI_GAME_PROJECT_SDK_API bool InputActionId(std::string_view propertyId, std::string_view label,
                                                    GameProjectInputValueType expectedType, char* value,
                                                    size_t capacity);

@@ -125,8 +125,6 @@ SystemSettingsInspectorResult SystemSettingsInspector::Draw(const SceneSystemAut
         if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.open.tool.59e596", "Open Tool...").c_str())) {
             EditorToolOpenRequest request{};
             request.toolId = authoring->dedicatedToolId;
-            request.target.kind = EditorToolTargetKind::System;
-            request.target.typeId = draft_.systemId;
             toolHost.RequestOpen(std::move(request));
         }
     }

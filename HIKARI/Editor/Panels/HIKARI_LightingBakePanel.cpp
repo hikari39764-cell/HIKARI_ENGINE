@@ -11,8 +11,14 @@
 #include "Core/HIKARI_Logger.h"
 #include "Editor/Panels/Internal/HIKARI_LightingBakePanelSummary.h"
 #include "Editor/Platform/HIKARI_EditorShellActions.h"
+#include "Editor/Shell/HIKARI_EditorDockLayout.h"
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorTheme.h"
+#include "Editor/Tools/HIKARI_EditorTool.h"
+#include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
+#include "Editor/HIKARI_EditorContext.h"
+#include "Scene/HIKARI_GameObject.h"
+#include "Scene/HIKARI_World.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Tools/Baking/HIKARI_LightingBakeService.h"
@@ -108,9 +114,14 @@ void DrawLines(const char* label, const std::vector<std::string>& lines, const I
 
 } // namespace
 
-void LightingBakePanel::Draw(DocumentSceneBase& scene, bool& open) {
+void LightingBakePanel::Draw(EDITOR::EditorToolContext& tool, bool& open) {
 #if defined(HIKARI_WITH_EDITOR)
-    if (!ImGui::Begin(TEXT::LocalizeWindow("ui.window.lightingBake", "Lighting Bake").c_str(), &open)) {
+    auto& scene = tool.scene;
+    const std::string windowName = TEXT::LocalizeWindow("ui.window.lightingBake", "Lighting Bake");
+    if (tool.openRequest)
+        EDITOR::RevealEditorWindow(windowName.c_str());
+    ImGui::SetNextWindowSize({760.0f, 620.0f}, ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin(windowName.c_str(), &open)) {
         ImGui::End();
         return;
     }
@@ -118,9 +129,19 @@ void LightingBakePanel::Draw(DocumentSceneBase& scene, bool& open) {
     TOOLS::BAKING::LightingBakeService service{};
     const TOOLS::BAKING::LightingBakeRequest request = BuildRequest(scene);
     const bool bakeBusy = TOOLS::BAKING::IsLightingBakeJobRunning(scene.GetLightingBakeJobState());
+    const std::string blockReason = service.GetBlockReason(scene);
+    const auto execute = [&](const char* action, nlohmann::json parameters = nlohmann::json::object()) {
+        const auto result = tool.operations.Execute(action, parameters);
+        actionMessage_ = result.message;
+        statusRefreshRequested_ = true;
+    };
     const uint64_t sceneRevision = scene.GetSceneDocumentRevision();
     const uint64_t assetRevision = scene.GetAssetDatabase().GetContentRevision();
     const bool cacheIdentityChanged = cachedSceneGuid_ != request.sceneGuid;
+    if (cacheIdentityChanged) {
+        actionMessage_.clear();
+        lastOpenFolderMessage_.clear();
+    }
     const bool cacheRevisionChanged = cachedSceneRevision_ != sceneRevision || cachedAssetRevision_ != assetRevision;
     const bool bakeCompleted = wasBakeBusy_ && !bakeBusy;
     const bool needsStatusRefresh = !hasCachedStatus_ || cacheIdentityChanged || statusRefreshRequested_ ||
@@ -172,7 +193,14 @@ void LightingBakePanel::Draw(DocumentSceneBase& scene, bool& open) {
     EDITOR::LIGHTING_BAKE_PANEL::DrawWorkflowSummary(status, palette);
 
     ImGui::Spacing();
-    if (bakeBusy || !status.valid) {
+    ImGui::TextWrapped("%s", TEXT::LocalizeCStr("ui.lightingBake.workflowHelp"));
+    if (!blockReason.empty())
+        ImGui::TextWrapped("%s", blockReason.c_str());
+    const auto selected = tool.editorContext.selection.GetActiveObjectId();
+    const auto selectedItem = std::find_if(status.items.begin(), status.items.end(), [&](const auto& item) {
+        return item.enabled && item.objectId == selected.value;
+    });
+    if (!blockReason.empty() || !status.valid) {
         ImGui::BeginDisabled();
     }
     if (EDITOR::IconTextButton(EDITOR::EditorGlyph::Bake,
@@ -180,50 +208,53 @@ void LightingBakePanel::Draw(DocumentSceneBase& scene, bool& open) {
                                                        : TEXT::Localize("ui.lightingBake.bakeDirty").c_str(),
                                "LightingBakeDirty", EDITOR::EditorButtonTone::Primary, ImVec2(150.0f, 32.0f),
                                TEXT::Localize("ui.lightingBake.bakeDirtyTooltip").c_str())) {
-        lastReport_ = service.BakeDirtyLighting(scene);
-        hasReport_ = true;
-        statusRefreshRequested_ = true;
+        execute("lighting.bake.start");
     }
     ImGui::SameLine();
+    ImGui::BeginDisabled(selectedItem == status.items.end());
     if (EDITOR::IconTextButton(EDITOR::EditorGlyph::Focus, TEXT::Localize("ui.lightingBake.bakeSelected").c_str(),
                                "LightingBakeSelected", EDITOR::EditorButtonTone::Neutral, ImVec2(150.0f, 32.0f),
                                TEXT::Localize("ui.lightingBake.bakeSelectedTooltip").c_str())) {
-        lastReport_ = service.BakeSelectedLighting(scene);
-        hasReport_ = true;
-        statusRefreshRequested_ = true;
+        execute("lighting.bake.start", {{"force", true}, {"targetObjectId", selected.value}});
     }
+    ImGui::EndDisabled();
     ImGui::SameLine();
     if (EDITOR::IconTextButton(EDITOR::EditorGlyph::Refresh, TEXT::Localize("ui.lightingBake.bakeAll").c_str(),
                                "LightingBakeAll", EDITOR::EditorButtonTone::Quiet, ImVec2(120.0f, 32.0f),
                                TEXT::Localize("ui.lightingBake.bakeAllTooltip").c_str())) {
-        lastReport_ = service.BakeAllLighting(scene);
-        hasReport_ = true;
-        statusRefreshRequested_ = true;
+        execute("lighting.bake.start", {{"force", true}});
     }
-    if (bakeBusy || !status.valid) {
+    if (!blockReason.empty() || !status.valid) {
         ImGui::EndDisabled();
     }
 
-    if (scene.HasLastLightingBakeReport()) {
-        lastReport_ = scene.GetLastLightingBakeReport();
-        hasReport_ = true;
-    }
-    if (hasReport_ && !lastReport_.errors.empty()) {
+    if (selectedItem != status.items.end())
+        ImGui::Text(TEXT::LocalizeCStr("ui.lightingBake.selectedName"), selectedItem->name.c_str());
+    else
+        ImGui::TextDisabled("%s", TEXT::LocalizeCStr("ui.lightingBake.selectHint"));
+    if (!actionMessage_.empty())
+        ImGui::TextWrapped("%s", actionMessage_.c_str());
+    const bool hasReport = scene.HasLastLightingBakeReport();
+    const auto& report = scene.GetLastLightingBakeReport();
+    if (hasReport && !report.errors.empty()) {
         ImGui::PushStyleColor(ImGuiCol_Text, palette.error);
-        ImGui::TextWrapped("%s", lastReport_.errors.front().c_str());
+        ImGui::TextWrapped("%s", report.errors.front().c_str());
         ImGui::PopStyleColor();
     }
-    if (bakeBusy && hasReport_) {
-        const float progress = ResolveProgress(lastReport_);
-        const std::string label =
-            lastReport_.currentItemName.empty()
-                ? std::string(TOOLS::BAKING::ToString(lastReport_.jobState))
-                : lastReport_.currentItemName + " - " + TOOLS::BAKING::ToString(lastReport_.jobState);
+    if (bakeBusy && hasReport) {
+        const float progress = ResolveProgress(report);
+        const std::string label = report.currentItemName.empty()
+                                      ? std::string(TOOLS::BAKING::ToString(report.jobState))
+                                      : report.currentItemName + " - " + TOOLS::BAKING::ToString(report.jobState);
         ImGui::ProgressBar(progress, ImVec2(-1.0f, 0.0f), label.c_str());
     }
 
     ImGui::Spacing();
     ImGui::SeparatorText(TEXT::Localize("ui.lightingBake.lightingObjectsSection").c_str());
+    EDITOR::SearchField("bakeObjects", TEXT::LocalizeCStr("ui.lightingBake.filter"), objectFilter_,
+                        sizeof(objectFilter_));
+    ImGui::SameLine();
+    ImGui::Checkbox(TEXT::LocalizeCStr("ui.lightingBake.onlyDirty"), &onlyDirty_);
     if (status.items.empty()) {
         EDITOR::EmptyState(TEXT::Localize("ui.lightingBake.emptyTitle").c_str(),
                            TEXT::Localize("ui.lightingBake.emptyHint").c_str());
@@ -238,12 +269,18 @@ void LightingBakePanel::Draw(DocumentSceneBase& scene, bool& open) {
         ImGui::TableSetupColumn(TEXT::Localize("ui.lightingBake.tableReason").c_str());
         ImGui::TableHeadersRow();
         for (const TOOLS::BAKING::LightingBakeItemStatus& item : status.items) {
+            if ((onlyDirty_ && (!item.enabled || !item.dirty)) ||
+                (objectFilter_[0] && item.name.find(objectFilter_) == std::string::npos))
+                continue;
             ImGui::PushID(static_cast<int>(item.objectId));
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             DrawInlineGlyph(ItemGlyph(item.kind), item.enabled ? palette.accent : palette.textMuted);
             ImGui::TableNextColumn();
-            ImGui::TextUnformatted(item.name.c_str());
+            if (ImGui::Selectable(item.name.c_str(), selected.value == item.objectId))
+                execute("scene.object.select", {{"objectId", item.objectId}});
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("ID: %llu", static_cast<unsigned long long>(item.objectId));
             ImGui::TableNextColumn();
             if (!item.enabled) {
                 EDITOR::StatusBadge(TEXT::Localize("ui.lightingBake.disabled").c_str(),
@@ -256,26 +293,25 @@ void LightingBakePanel::Draw(DocumentSceneBase& scene, bool& open) {
                                     EDITOR::EditorStatusTone::Ready);
             }
             ImGui::TableNextColumn();
-            ImGui::TextDisabled("%s", item.dirtyReason.c_str());
+            ImGui::TextWrapped("%s", item.dirtyReason.c_str());
+            if (ImGui::SmallButton(TEXT::LocalizeCStr("ui.lightingBake.locate")))
+                execute("scene.object.focus", {{"objectId", item.objectId}});
             ImGui::PopID();
         }
         ImGui::EndTable();
     }
 
     ImGui::Spacing();
-    if (ImGui::CollapsingHeader(TEXT::Localize("ui.lightingBake.diagnosticsOutput").c_str(),
-                                ImGuiTreeNodeFlags_DefaultOpen)) {
-        if (hasReport_) {
-            ImGui::Text(TEXT::Localize("ui.lightingBake.jobFormat").c_str(),
-                        TOOLS::BAKING::ToString(lastReport_.jobState));
+    if (ImGui::CollapsingHeader(TEXT::Localize("ui.lightingBake.diagnosticsOutput").c_str())) {
+        if (hasReport) {
+            ImGui::Text(TEXT::Localize("ui.lightingBake.jobFormat").c_str(), TOOLS::BAKING::ToString(report.jobState));
             ImGui::SameLine();
-            ImGui::TextDisabled(TEXT::Localize("ui.lightingBake.completeFormat").c_str(),
-                                lastReport_.completedItemCount, lastReport_.bakeItemCount, lastReport_.reusedItemCount);
-            DrawLines(TEXT::Localize("ui.lightingBake.dirtyReasons").c_str(), lastReport_.dirtyReasons,
-                      palette.warning);
-            DrawLines(TEXT::Localize("ui.lightingBake.warnings").c_str(), lastReport_.warnings, palette.warning);
-            DrawLines(TEXT::Localize("ui.lightingBake.errors").c_str(), lastReport_.errors, palette.error);
-            DrawLines(TEXT::Localize("ui.lightingBake.messages").c_str(), lastReport_.messages, palette.textMuted);
+            ImGui::TextDisabled(TEXT::Localize("ui.lightingBake.completeFormat").c_str(), report.completedItemCount,
+                                report.bakeItemCount, report.reusedItemCount);
+            DrawLines(TEXT::Localize("ui.lightingBake.dirtyReasons").c_str(), report.dirtyReasons, palette.warning);
+            DrawLines(TEXT::Localize("ui.lightingBake.warnings").c_str(), report.warnings, palette.warning);
+            DrawLines(TEXT::Localize("ui.lightingBake.errors").c_str(), report.errors, palette.error);
+            DrawLines(TEXT::Localize("ui.lightingBake.messages").c_str(), report.messages, palette.textMuted);
         } else {
             ImGui::TextDisabled("%s", TEXT::Localize("ui.lightingBake.noBakeAction").c_str());
         }
@@ -290,12 +326,25 @@ void LightingBakePanel::Draw(DocumentSceneBase& scene, bool& open) {
             }
         }
         ImGui::SameLine();
+        ImGui::BeginDisabled(!blockReason.empty());
         if (EDITOR::IconTextButton(EDITOR::EditorGlyph::Delete, TEXT::Localize("ui.lightingBake.clearOutputs").c_str(),
                                    "LightingBakeClear", EDITOR::EditorButtonTone::Danger)) {
-            lastReport_ = service.ClearLightingBake(request);
-            hasReport_ = true;
-            scene.RefreshLightingRuntime();
-            statusRefreshRequested_ = true;
+            ImGui::OpenPopup(TEXT::LocalizeWindow("ui.lightingBake.clearOutputs", "ClearLightingOutputs").c_str());
+        }
+        ImGui::EndDisabled();
+        if (ImGui::BeginPopupModal(TEXT::LocalizeWindow("ui.lightingBake.clearOutputs", "ClearLightingOutputs").c_str(),
+                                   nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::TextWrapped("%s", TEXT::LocalizeCStr("ui.lightingBake.clearConfirm"));
+            ImGui::BeginDisabled(!blockReason.empty());
+            if (ImGui::Button(TEXT::LocalizeCStr("ui.lightingBake.clearOutputs"))) {
+                execute("lighting.bake.clear");
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            if (ImGui::Button(TEXT::LocalizeCStr("ui.common.cancel")))
+                ImGui::CloseCurrentPopup();
+            ImGui::EndPopup();
         }
         if (!lastOpenFolderMessage_.empty()) {
             ImGui::TextDisabled("%s", lastOpenFolderMessage_.c_str());
@@ -305,7 +354,7 @@ void LightingBakePanel::Draw(DocumentSceneBase& scene, bool& open) {
     wasBakeBusy_ = bakeBusy;
     ImGui::End();
 #else
-    (void)scene;
+    (void)tool;
     (void)open;
 #endif
 }

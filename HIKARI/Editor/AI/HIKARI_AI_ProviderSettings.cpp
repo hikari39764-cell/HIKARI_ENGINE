@@ -58,6 +58,7 @@ bool LoadAiChatConfig(AiChatConfig& config) {
         config.model = "qwen-plus";
     config.imageInputEnabled = Setting(values, "CHAT_IMAGE_INPUT", "1") != "0";
     config.requestUsage = Setting(values, "CHAT_REQUEST_USAGE", "1") != "0";
+    config.showReasoning = Setting(values, "CHAT_SHOW_REASONING", "1") != "0";
     config.reasoningContentPolicy =
         TEXT::ParseEnum(kAiReasoningContentPolicyNames, Setting(values, "CHAT_REASONING_CONTENT", "preserve"),
                         AiReasoningContentPolicy::Preserve);
@@ -85,6 +86,7 @@ bool Save(const AiChatConfig* config) {
         {
             values["CHAT_IMAGE_INPUT"] = config->imageInputEnabled ? "1" : "0";
             values["CHAT_REQUEST_USAGE"] = config->requestUsage ? "1" : "0";
+            values["CHAT_SHOW_REASONING"] = config->showReasoning ? "1" : "0";
             values["CHAT_REASONING_CONTENT"] =
                 TEXT::EnumToName(kAiReasoningContentPolicyNames, config->reasoningContentPolicy, "preserve");
             values["CHAT_MAX_TOOL_ROUNDS"] = std::to_string(std::clamp(config->maxToolRounds, 1, kMaxAiToolRounds));

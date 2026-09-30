@@ -77,9 +77,7 @@ public:
         if (scene == nullptr) {
             return NoScene();
         }
-        const std::string name = parameters.value("name", std::string{});
-        const std::string componentType = parameters.value("componentType", std::string{});
-        return queryService_.QueryObjects(*scene, name, componentType);
+        return queryService_.QueryObjects(*scene, parameters);
     }
 
     EditorOperationResult QueryComponents(const nlohmann::json& parameters) const {
@@ -369,11 +367,15 @@ void RegisterComponentAuthoringOperations(EditorOperationRegistry& registry,
         EditorOperationKind::Query, false);
     registry.Register(
         {"scene.objects.query",
-         "Query precise Scene object ids, hierarchy paths, and component instance ids. Optional exact name and componentType filters never select the first duplicate implicitly.",
+         "Page through scene identities, transforms, world bounds, model sources, material slots and current-camera screen anchors. No occlusion inference.",
          "scene",
          {{"name", ParameterType::String, false,
            "Optional exact object name filter; duplicate matches are all returned."},
-          {"componentType", ParameterType::String, false, "Optional registered component type filter."}},
+          {"componentType", ParameterType::String, false, "Optional registered component type filter."},
+          {"objectId", ParameterType::Int, false, "Optional stable object id filter."},
+          {"keyword", ParameterType::String, false, "Optional name substring."},
+          {"offset", ParameterType::Int, false, "Page offset, default 0."},
+          {"limit", ParameterType::Int, false, "Page size 1..64, default 16."}},
          [handler](const nlohmann::json& parameters) { return handler->QueryObjects(parameters); }},
         HIKARI::EDITOR::EditorOperationKind::Query);
     registry.Register(
@@ -382,7 +384,7 @@ void RegisterComponentAuthoringOperations(EditorOperationRegistry& registry,
          "scene",
          {{"objectId", ParameterType::Int, true, "Stable SceneObjectId returned by scene.objects.query."}},
          [handler](const nlohmann::json& parameters) { return handler->SelectObject(parameters); }},
-        HIKARI::EDITOR::EditorOperationKind::Session);
+        HIKARI::EDITOR::EditorOperationKind::Session, false);
     registry.Register({"component.instances.query",
                        "List stable component instance ids on one Scene object.",
                        "scene",

@@ -3,6 +3,7 @@
 #include "Scene/Document/Assets/HIKARI_DocumentSceneAssetBindings.h"
 #include "Scene/Document/Internal/HIKARI_DocumentSceneState.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
+#include "Core/Text/HIKARI_UtfPath.h"
 
 #include <exception>
 #include <filesystem>
@@ -19,6 +20,7 @@
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Assets/Models/HIKARI_ModelMaterialSlot.h"
+#include "Assets/Prefab/HIKARI_PrefabAssetStore.h"
 #include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingResolver.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
@@ -31,22 +33,81 @@
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelRenderableAssetResolver.h"
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
+#include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
+#include "Scene/HIKARI_SceneDocument.h"
+#include "Scene/HIKARI_SceneRuntimeBuilder.h"
+#include "Scene/Prefab/HIKARI_PrefabDocument.h"
+#include "Scene/Prefab/HIKARI_PrefabSerializer.h"
 
 namespace HIKARI {
 namespace {
 #if defined(HIKARI_WITH_EDITOR)
-std::vector<AssetGuid> CollectRequiredProgramImports(const AssetDatabase& database, const AssetRegistry& registry,
+std::vector<AssetGuid> CollectRequiredProgramImports(const AssetDatabase& database,
                                                      const SceneDependencySet& required) {
     std::vector<AssetGuid> guids;
     if (database.IsCookedContent())
         return guids;
     for (const auto& id : required.vfxAssetIds) {
         const auto* record = database.FindByGuid(AssetGuid{id});
-        if (record && record->type == AssetType::VfxEffect && (record->importOutdated || !registry.FindDescriptor(id)))
+        if (record && record->type == AssetType::VfxEffect &&
+            (record->importOutdated || !record->lastImportSucceeded || record->artifactMissing))
             guids.push_back(record->guid);
     }
     return guids;
+}
+
+bool ImportRequiredAssetClosure(AssetDatabase& database, const AssetGuid& root, std::string& outError) {
+    if (database.IsCookedContent()) {
+        outError = "Cooked runtime assets cannot import source dependencies.";
+        return false;
+    }
+
+    std::vector<AssetGuid> pending{root};
+    std::unordered_set<std::string> visited{};
+    for (size_t index = 0u; index < pending.size(); ++index) {
+        const AssetGuid guid = pending[index];
+        if (!guid.IsValid()) {
+            outError = "Required asset manifest contains an invalid dependency GUID.";
+            return false;
+        }
+        if (!visited.emplace(guid.value).second) {
+            continue;
+        }
+
+        const AssetRecord* record = database.FindByGuid(guid);
+        if (record == nullptr || record->type == AssetType::Unknown || record->duplicateGuid ||
+            !record->guid.IsValid()) {
+            outError = "Required asset is missing or cannot be imported: " + guid.value;
+            return false;
+        }
+        const bool needsImport = record->importOutdated || !record->lastImportSucceeded || record->artifactMissing;
+        if (needsImport && !record->CanImport()) {
+            outError = "Required asset cannot be imported: " + guid.value;
+            return false;
+        }
+        if (needsImport && !database.ImportAsset(guid)) {
+            record = database.FindByGuid(guid);
+            outError = "Required asset import failed: " + guid.value;
+            if (record != nullptr && !record->lastImportMessage.empty()) {
+                outError += " (" + record->lastImportMessage + ")";
+            }
+            return false;
+        }
+
+        record = database.FindByGuid(guid);
+        if (record == nullptr || !record->lastImportSucceeded || record->importOutdated || record->artifactMissing) {
+            outError = "Required asset did not produce a usable import: " + guid.value;
+            if (record != nullptr && !record->lastImportMessage.empty()) {
+                outError += " (" + record->lastImportMessage + ")";
+            }
+            return false;
+        }
+        for (const AssetDependencyDesc& dependency : record->artifactManifest.dependencies) {
+            pending.push_back(dependency.guid);
+        }
+    }
+    return true;
 }
 
 bool ImportOutdatedShaderArtifacts(AssetDatabase& database) {
@@ -121,6 +182,42 @@ bool HasMissingSkyResourceDescriptors(const AssetRegistry& registry, const std::
     return false;
 }
 
+bool HasMissingSceneDependencyDescriptors(const AssetRegistry& registry, const SceneDependencySet& dependencies,
+                                          std::string* outReason) {
+    return HasMissingAssetDescriptors(registry, AssetType::Model, dependencies.modelAssetIds, outReason) ||
+           HasMissingAssetDescriptors(registry, AssetType::Material, dependencies.materialAssetIds, outReason) ||
+           HasMissingAssetDescriptors(registry, AssetType::ModelMaterialBinding, dependencies.modelMaterialSetAssetIds,
+                                      outReason) ||
+           HasMissingAssetDescriptors(registry, AssetType::VfxEffect, dependencies.vfxAssetIds, outReason) ||
+           HasMissingAssetDescriptors(registry, AssetType::Texture, dependencies.textureAssetIds, outReason) ||
+           HasMissingSkyResourceDescriptors(registry, dependencies.skyAssetIds, outReason);
+}
+
+#if defined(HIKARI_WITH_EDITOR)
+bool IsImportedAssetClosureReady(const AssetDatabase& database, const AssetGuid& root) {
+    std::vector<AssetGuid> pending{root};
+    std::unordered_set<std::string> visited{};
+    for (size_t index = 0u; index < pending.size(); ++index) {
+        const AssetGuid guid = pending[index];
+        if (!guid.IsValid()) {
+            return false;
+        }
+        if (!visited.emplace(guid.value).second) {
+            continue;
+        }
+        const AssetRecord* record = database.FindByGuid(guid);
+        if (record == nullptr || record->duplicateGuid || !record->guid.IsValid() || !record->lastImportSucceeded ||
+            record->importOutdated || record->artifactMissing) {
+            return false;
+        }
+        for (const AssetDependencyDesc& dependency : record->artifactManifest.dependencies) {
+            pending.push_back(dependency.guid);
+        }
+    }
+    return true;
+}
+#endif
+
 bool IsCookedTextureRuntimePath(const std::filesystem::path& path) {
     if (ASSETS::SEMANTICS::ClassifyCookedAssetFormat(path) == CookedAssetFormat::HTEX) {
         return true;
@@ -131,22 +228,41 @@ bool IsCookedTextureRuntimePath(const std::filesystem::path& path) {
 }
 } // namespace
 
-bool DocumentSceneAssetBindings::ReloadAssets(const SceneDependencySet* required) {
+bool DocumentSceneAssetBindings::ReloadAssets(
+    const SceneDependencySet* required, const AssetGuid* admissionRoot,
+    const std::function<bool(const AssetRegistry&, std::string&)>& validatePrepared, std::string* outError) {
+#if !defined(HIKARI_WITH_EDITOR)
+    (void)admissionRoot;
+#endif
+    if (outError != nullptr) {
+        outError->clear();
+    }
     CORE::StartupTimer assetsTimer("Scene.reload_assets");
     if (database_.GetProjectRoot().empty()) {
         if (!database_.Initialize({})) {
+            if (outError != nullptr) {
+                *outError = "Asset database initialization failed.";
+            }
             return false;
         }
     }
     AssetDatabase::ContentSnapshot previousDatabase = {};
     if (!database_.TryTakeContentSnapshot(previousDatabase)) {
+        if (outError != nullptr) {
+            *outError = "Asset database snapshot is busy.";
+        }
         return false;
     }
     const auto restoreDatabase = [&]() noexcept { database_.RestoreContentSnapshot(std::move(previousDatabase)); };
     AssetRegistry nextRegistry{};
+    const uint64_t previousRegistrySourceRevision = registrySourceRevision_;
+    bool registryPublished = false;
     try {
         CORE::StartupTimer scanTimer("Assets.scan");
         if (!database_.ScanAssets(true)) {
+            if (outError != nullptr) {
+                *outError = "Asset source scan failed.";
+            }
             restoreDatabase();
             return false;
         }
@@ -154,17 +270,33 @@ bool DocumentSceneAssetBindings::ReloadAssets(const SceneDependencySet* required
 #if defined(HIKARI_WITH_EDITOR)
         CORE::StartupTimer shaderTimer("Assets.refresh_shader_artifacts");
         if (!ImportOutdatedShaderArtifacts(database_)) {
+            if (outError != nullptr) {
+                *outError = "Shader artifact refresh failed.";
+            }
             restoreDatabase();
             return false;
         }
         shaderTimer.Finish();
+        if (admissionRoot != nullptr) {
+            std::string importError{};
+            if (!ImportRequiredAssetClosure(database_, *admissionRoot, importError)) {
+                if (outError != nullptr) {
+                    *outError = std::move(importError);
+                }
+                restoreDatabase();
+                return false;
+            }
+        }
         if (required) {
-            const auto programs = CollectRequiredProgramImports(database_, registry_, *required);
+            const auto programs = CollectRequiredProgramImports(database_, *required);
             if (!programs.empty()) {
                 const auto imported = database_.ImportAssets(programs);
                 if (imported.failed || imported.succeeded != static_cast<int>(programs.size())) {
                     HIKARI_LOG_ERROR(
                         "[SceneRuntime] required VFX program import failed; previous live assets preserved.");
+                    if (outError != nullptr) {
+                        *outError = "Required VFX program import failed.";
+                    }
                     restoreDatabase();
                     return false;
                 }
@@ -179,18 +311,59 @@ bool DocumentSceneAssetBindings::ReloadAssets(const SceneDependencySet* required
         AssetRegistryBuilder assetRegistryBuilder{};
         CORE::StartupTimer registryTimer("Assets.build_registry");
         if (!assetRegistryBuilder.RebuildRegistry(database_, nextRegistry)) {
+            if (outError != nullptr) {
+                *outError = "Asset registry rebuild failed.";
+            }
             restoreDatabase();
             return false;
         }
+        if (required != nullptr) {
+            std::string reason{};
+            if (HasMissingSceneDependencyDescriptors(nextRegistry, *required, &reason)) {
+                if (outError != nullptr) {
+                    *outError = std::move(reason);
+                }
+                restoreDatabase();
+                return false;
+            }
+        }
         registry_.SwapContents(nextRegistry);
         registrySourceRevision_ = database_.GetContentRevision();
+        registryPublished = true;
+        if (validatePrepared) {
+            std::string reason{};
+            if (!validatePrepared(registry_, reason)) {
+                if (outError != nullptr) {
+                    *outError = reason.empty() ? "Prepared runtime assets failed validation." : std::move(reason);
+                }
+                registry_.SwapContents(nextRegistry);
+                registrySourceRevision_ = previousRegistrySourceRevision;
+                registryPublished = false;
+                restoreDatabase();
+                return false;
+            }
+        }
     } catch (const std::exception& error) {
         HIKARI_LOG_ERROR(std::string("[SceneAsset] registry publication threw: ") + error.what());
+        if (outError != nullptr) {
+            *outError = error.what();
+        }
+        if (registryPublished) {
+            registry_.SwapContents(nextRegistry);
+            registrySourceRevision_ = previousRegistrySourceRevision;
+        }
         restoreDatabase();
         return false;
     } catch (...) {
         HIKARI_LOG_ERROR("[SceneAsset] registry publication threw an unknown "
                          "exception.");
+        if (outError != nullptr) {
+            *outError = "Asset registry publication failed with an unknown exception.";
+        }
+        if (registryPublished) {
+            registry_.SwapContents(nextRegistry);
+            registrySourceRevision_ = previousRegistrySourceRevision;
+        }
         restoreDatabase();
         return false;
     }
@@ -198,6 +371,88 @@ bool DocumentSceneAssetBindings::ReloadAssets(const SceneDependencySet* required
     ConfigureModelTextureResolver();
     RenderSubmissionSystem::InvalidateSceneResources(false);
     return true;
+}
+
+bool DocumentSceneAssetBindings::PrepareRuntimePrefabAssets(const AssetGuid& prefabGuid,
+                                                            const PrefabAssetStore& prefabAssets,
+                                                            const SceneRuntimeBuilder& builder,
+                                                            const ComponentRegistry& componentRegistry,
+                                                            SkyManager& skyManager, std::string& outError) {
+    outError.clear();
+    const AssetRecord* record = database_.FindByGuid(prefabGuid);
+    if (record == nullptr || record->type != AssetType::Prefab || !prefabGuid.IsValid()) {
+        outError = "Prefab GUID is missing or belongs to a different asset type: " + prefabGuid.value;
+        return false;
+    }
+    const auto collectDependencies = [&](const PrefabDocument& prefab) {
+        SceneDocument prefabScene{};
+        prefabScene.objects.reserve(prefab.descendants.size() + 1u);
+        prefabScene.objects.push_back(prefab.rootObject);
+        prefabScene.objects.insert(prefabScene.objects.end(), prefab.descendants.begin(), prefab.descendants.end());
+        return builder.CollectDependencies(prefabScene, &componentRegistry);
+    };
+    const auto validateAndPreload = [&](const SceneDependencySet& dependencies, const AssetRegistry& registry,
+                                        std::string& reason) {
+        if (HasMissingSceneDependencyDescriptors(registry, dependencies, &reason)) {
+            return false;
+        }
+        if (!builder.PreloadDependencies(dependencies, registry, models_, skyManager, database_.GetProjectRoot(),
+                                         prefabGuid.value, false)) {
+            reason = "Prefab dependency preload failed.";
+            return false;
+        }
+        for (const std::string& modelId : dependencies.modelAssetIds) {
+            const ModelAsset* model = models_.FindAsset(modelId);
+            if (model == nullptr || model->GetState() != ModelAsset::State::Loaded) {
+                reason = "Required Prefab model failed to load: " + modelId;
+                return false;
+            }
+        }
+        return true;
+    };
+    if (database_.IsCookedContent()) {
+        const std::string artifact =
+            ASSETS::SEMANTICS::FindAssetArtifactPath(*record, ASSETS::SEMANTICS::AssetArtifactKind::PrefabRuntime);
+        std::error_code artifactError{};
+        if (record->lastImportSucceeded && !artifact.empty() &&
+            std::filesystem::is_regular_file(TEXT::PathFromUtf8(artifact), artifactError)) {
+            PrefabAssetLoadFailure loadFailure = PrefabAssetLoadFailure::None;
+            std::shared_ptr<const PrefabDocument> prefab = prefabAssets.Load(prefabGuid, outError, &loadFailure);
+            if (prefab == nullptr) {
+                outError = "Cooked Prefab runtime artifact load failed: " + outError;
+                return false;
+            }
+            const SceneDependencySet dependencies = collectDependencies(*prefab);
+            return validateAndPreload(dependencies, registry_, outError);
+        }
+        outError = "Cooked Prefab runtime artifact is unavailable: " + prefabGuid.value;
+        return false;
+    }
+#if !defined(HIKARI_WITH_EDITOR)
+    (void)prefabAssets;
+    (void)builder;
+    (void)componentRegistry;
+    (void)skyManager;
+    outError = "Source Prefab dependency import is only available in the Editor host.";
+    return false;
+#else
+    const std::shared_ptr<const PrefabDocument> prefab = prefabAssets.LoadSourceForAdmission(prefabGuid, outError);
+    if (prefab == nullptr) {
+        outError = "Prefab source validation failed: " + outError;
+        return false;
+    }
+
+    const SceneDependencySet dependencies = collectDependencies(*prefab);
+    const auto validatePrepared = [&](const AssetRegistry& preparedRegistry, std::string& reason) {
+        return validateAndPreload(dependencies, preparedRegistry, reason);
+    };
+    if (registrySourceRevision_ == database_.GetContentRevision() &&
+        IsImportedAssetClosureReady(database_, prefabGuid) &&
+        !HasMissingSceneDependencyDescriptors(registry_, dependencies, &outError)) {
+        return validateAndPreload(dependencies, registry_, outError);
+    }
+    return ReloadAssets(&dependencies, &prefabGuid, validatePrepared, &outError);
+#endif
 }
 void DocumentSceneAssetBindings::ConfigureModelTextureResolver() {
     models_.ResetTextureResolveStats();
@@ -301,8 +556,9 @@ std::string DocumentSceneAssetBindings::ResolveModelTexturePath(const std::strin
 
 bool DocumentSceneAssetBindings::NeedsRuntimeProgramImport(const SceneDependencySet& required) const {
 #if defined(HIKARI_WITH_EDITOR)
-    return !CollectRequiredProgramImports(database_, registry_, required).empty();
+    return !CollectRequiredProgramImports(database_, required).empty();
 #else
+    (void)required;
     return false;
 #endif
 }

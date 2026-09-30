@@ -150,6 +150,9 @@ struct PreviewCaptureResult {
     RenderViewId viewId{};
     uint32_t width = 0, height = 0;
     uint64_t outputRevision = 0;
+    uint64_t frameIndex = 0;
+    uint64_t sceneRevision = 0;
+    ResolvedCameraFrame cameraFrame{};
 };
 PreviewCaptureResult GetViewCaptureResult(PreviewCaptureId id);
 void CancelViewCapture(PreviewCaptureId id);

@@ -167,10 +167,12 @@ void TextStyleWorkspaceController::Draw(DocumentSceneBase& scene, EditorOperatio
         ImGui::EndDisabled();
         ImGui::SameLine();
         ImGui::Checkbox(L("textstyle.light"), &light_);
+        DrawContextTools(scene, operations);
         if (document_.IsOpen()) {
             ImGui::Text("%s%s", document_.Profile().name.c_str(), document_.IsDirty() ? " *" : "");
             ImGui::InputTextMultiline("##Sample", preview_, sizeof(preview_), {-1, 60});
-            const auto& source = BuildPreview(database);
+            const auto& source =
+                contextPreview_ && previewObject_.value ? BuildContextPreview(scene) : BuildPreview(database);
             if (previewMessageKey_)
                 ImGui::TextWrapped("%s", L(previewMessageKey_));
             const auto available = ImGui::GetContentRegionAvail();

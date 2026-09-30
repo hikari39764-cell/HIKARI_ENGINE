@@ -9,5 +9,6 @@ struct TextStyleBinding {
     bool Inspect(IInspectorBuilder&, bool allowSizeOverride = true);
 };
 // 内部の長さ単位は Canvas pixels。WorldText の換算は描画投影側で一度だけ行う。
-TextStyleAsset ResolveTextStyle(const TextAssetStore*, const TextStyleBinding&, TextStyleAsset local);
+TextStyleAsset ResolveTextStyle(const TextAssetStore*, const TextStyleBinding&, TextStyleAsset local,
+                                const TextStyleAsset* preview = nullptr);
 } // namespace HIKARI

@@ -64,6 +64,11 @@ void DrawRenderPathTable(const RuntimePerformanceSnapshot& s) {
                   static_cast<size_t>(s.mesh.gpuSceneUpload.uploadedFullScene),
                   static_cast<size_t>(s.mesh.gpuSceneUpload.patchedDirtyRanges),
                   static_cast<size_t>(s.mesh.gpuSceneUpload.reusedResidentFrame));
+        MetricRow("Joint Palette Matrix KB / Uploads / Reuse / Empty", "%.2f / %llu / %llu / %llu",
+                  static_cast<double>(s.jointPaletteUpload.matrixPayloadBytes) / 1024.0,
+                  static_cast<unsigned long long>(s.jointPaletteUpload.snapshotUploadCount),
+                  static_cast<unsigned long long>(s.jointPaletteUpload.snapshotReuseCount),
+                  static_cast<unsigned long long>(s.jointPaletteUpload.emptyBindingUploadCount));
         MetricRow("Mass Stores / Instances / Dirty Ranges", "%u / %u / %u", s.submission.massRenderStoreCount,
                   s.submission.massRenderInstanceCount, s.submission.massRenderDirtyRangeCount);
         MetricRow("Mass Templates Missing / Unsupported", "%u / %u", s.submission.massRenderMissingTemplateCount,

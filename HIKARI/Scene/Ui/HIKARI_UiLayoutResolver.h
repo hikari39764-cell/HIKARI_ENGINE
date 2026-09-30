@@ -9,6 +9,10 @@ namespace HIKARI {
 class World;
 class UiAnimationPlayer;
 class GameObject;
+class UiLayoutGroupComponent;
+namespace BINDING {
+class RuntimeBindingStore;
+}
 struct UiResolvedLayout {
     float referenceWidth = 0, referenceHeight = 0;
     float x = 0, y = 0, width = 0, height = 0, pivotX = .5f, pivotY = .5f, rotationRadians = 0;
@@ -16,7 +20,9 @@ struct UiResolvedLayout {
     MATH::Vec3 color{1, 1, 1};
     Affine2D transform;
     int order = 0;
-    bool interactable = false, valid = false;
+    bool interactable = false, inputEnabled = false, valid = false;
+    bool clipEnabled = false, clipSupported = true;
+    float clipLeft = 0.0f, clipTop = 0.0f, clipRight = 0.0f, clipBottom = 0.0f;
     SceneObjectId canvas{};
 };
 bool ContainsUiPoint(const UiResolvedLayout& layout, float x, float y) noexcept;
@@ -32,6 +38,14 @@ public:
         previewRoot_ = root;
         Clear();
     }
+    void SetPreviewBindings(const BINDING::RuntimeBindingStore* bindings) {
+        previewBindings_ = bindings;
+        Clear();
+    }
+    void SetAuthoringPreview(bool active) {
+        authoringPreview_ = active;
+        Clear();
+    }
     void Clear() {
         layouts_.clear();
         arranged_.clear();
@@ -40,8 +54,14 @@ public:
     UiResolvedLayout Resolve(World& world, GameObject& object, uint32_t depth = 0);
 
 private:
+    void ArrangeChildren(World& world, GameObject& object, const UiResolvedLayout& parent,
+                         UiLayoutGroupComponent& group, bool previewBranch,
+                         const BINDING::RuntimeBindingStore* bindings);
+
     const UiAnimationPlayer* player_ = nullptr;
+    const BINDING::RuntimeBindingStore* previewBindings_ = nullptr;
     SceneObjectId previewRoot_{};
+    bool authoringPreview_ = false;
     std::unordered_map<uint64_t, UiResolvedLayout> layouts_;
     std::unordered_map<uint64_t, MATH::Vec4> arranged_;
     std::unordered_set<uint64_t> groups_;

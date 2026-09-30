@@ -1,9 +1,9 @@
 #include "HIKARI_DocumentSceneEditorController.h"
 #include "Editor/Authoring/HIKARI_BoundSceneAuthoringSession.h"
-#include "Editor/Authoring/HIKARI_EditorAuthoringPreview.h"
 #include "Editor/Preview/HIKARI_EditorPreviewCapture.h"
+#include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Assets/HIKARI_AssetDatabase.h"
-#include <algorithm>
+#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/HIKARI_World.h"
 #if defined(HIKARI_WITH_EDITOR)
@@ -11,48 +11,68 @@
 #endif
 
 namespace HIKARI {
-void DocumentSceneEditorController::CancelAiSceneCapture() {
-    if (aiSceneCaptureTicket_)
-        RENDER3D::EDITORVIEW::CancelViewCapture(aiSceneCaptureTicket_);
-    if (aiSceneCaptureView_.value)
-        RENDER3D::EDITORVIEW::ClearRequest(aiSceneCaptureView_);
-    aiSceneCaptureTicket_ = 0;
-}
-EDITOR::EditorOperationResult DocumentSceneEditorController::CaptureAiScenePreview(const nlohmann::json& parameters) {
+EDITOR::EditorOperationResult DocumentSceneEditorController::ExecuteAiCapturePreview(const nlohmann::json& parameters) {
+    using namespace EDITOR;
     if (!aiOperationScene_)
-        return {false, "NO_SCENE", "No scene is open."};
+        return OperationFailure("NO_SCENE", "No scene is open.");
     if (aiSceneCaptureTicket_ && !RENDER3D::EDITORVIEW::GetViewCaptureResult(aiSceneCaptureTicket_).done)
-        return {false, "CAPTURE_BUSY", "A scene preview is already pending."};
+        return OperationFailure("CAPTURE_BUSY", "A viewport capture is still pending.");
+    const std::string source = parameters.value("source", std::string("auto"));
+    if (source != "auto" && source != "game" && source != "space" && source != "preview")
+        return OperationFailure("INVALID_SOURCE", "source accepts auto, game, space or preview.");
+    RENDER3D::RenderViewId view{};
+    const auto workspace = workspaceHost_.GetActive();
+    if (source == "game") {
+        view = RENDER3D::kPrimaryRenderViewId;
+    } else if (source == "space") {
+        if (workspace == EditorWorkspaceId::Cinematics)
+            view = workspaceHost_.GetCinematicsDirectorView().renderViewId;
+        else if (workspace == EditorWorkspaceId::GameplayCamera)
+            view = workspaceHost_.GetGameplayCameraObserverView().renderViewId;
+    } else {
+        switch (workspace) {
+        case EditorWorkspaceId::Scene:
+        case EditorWorkspaceId::TerrainSurface:
+        case EditorWorkspaceId::Ui:
+        case EditorWorkspaceId::Cinematics: view = RENDER3D::kPrimaryRenderViewId; break;
+        case EditorWorkspaceId::GameplayCamera:
+            view = aiOperationScene_->IsRuntimePlayActive()
+                       ? RENDER3D::kPrimaryRenderViewId
+                       : workspaceHost_.GetGameplayCameraPreviewView().renderViewId;
+            break;
+        case EditorWorkspaceId::Vfx: view = workspaceHost_.GetVfxPreviewView().renderViewId; break;
+        case EditorWorkspaceId::ModelMaterial: view = workspaceHost_.GetModelMaterialPreviewView().renderViewId; break;
+        case EditorWorkspaceId::ModelCollision:
+            view = workspaceHost_.GetModelCollisionPreviewView().renderViewId;
+            break;
+        default: break;
+        }
+        if (source == "preview" && view == RENDER3D::kPrimaryRenderViewId)
+            view = {};
+    }
+    if (view == RENDER3D::kPrimaryRenderViewId && !SERVICES::IsEditorGameViewportVisible())
+        return OperationFailure("VIEW_NOT_VISIBLE",
+                                "Show the Game View / output monitor before capturing game output.");
     CancelAiSceneCapture();
-    if (!aiSceneCaptureView_.value)
-        aiSceneCaptureView_ = {EDITOR::AllocateAuthoringPreviewViewId()};
     auto& scene = *aiOperationScene_;
-    RENDER3D::EDITORVIEW::EditorInteractiveViewRequest request{};
-    request.viewId = aiSceneCaptureView_;
-    request.cameraFrame = scene.GetResolvedCameraFrame();
-    request.width = 768;
-    request.height = std::clamp(
-        static_cast<uint32_t>(768.0f / std::clamp(request.cameraFrame.camera.GetAspect(), 0.5f, 3.0f)), 128u, 1536u);
-    request.cameraFrame.camera.SetAspect(static_cast<float>(request.width) / request.height);
-    request.visible = true;
-    request.drawDebug = false;
-    request.sceneRevision = scene.GetSceneDocumentRevision();
     aiSceneCaptureIdentity_ = scene.GetSceneId() + "|" + scene.GetScenePath();
-    aiSceneCaptureRevision_ = request.sceneRevision;
-    RENDER3D::EDITORVIEW::SubmitRequest(request);
-    auto result = EDITOR::StartEditorPreviewCapture(aiSceneCaptureView_,
-                                                    scene.GetAssetDatabase().GetLibraryRoot() / "EditorAI" / "Captures",
-                                                    parameters.value("path", std::string{}));
+    aiSceneCaptureRevision_ = scene.GetSceneDocumentRevision();
+    auto result = StartEditorPreviewCapture(view, scene.GetAssetDatabase().GetLibraryRoot() / "EditorAI" / "Captures",
+                                            parameters.value("path", std::string{}));
     if (result.ok && result.data.contains("poll"))
         aiSceneCaptureTicket_ = result.data["poll"].value("captureId", uint64_t{});
-    else
-        RENDER3D::EDITORVIEW::ClearRequest(aiSceneCaptureView_);
     return result;
+}
+
+void DocumentSceneEditorController::CancelAiSceneCapture() {
+    sceneViewSeries_.Clear();
+    if (aiSceneCaptureTicket_)
+        RENDER3D::EDITORVIEW::CancelViewCapture(aiSceneCaptureTicket_);
+    aiSceneCaptureTicket_ = 0;
 }
 EDITOR::EditorOperationResult DocumentSceneEditorController::PollAiPreviewCapture(uint64_t id) {
     auto result = EDITOR::PollEditorPreviewCapture(id);
     if (id == aiSceneCaptureTicket_ && (!result.ok || !result.data.value("pending", false))) {
-        RENDER3D::EDITORVIEW::ClearRequest(aiSceneCaptureView_);
         aiSceneCaptureTicket_ = 0;
     }
     return result;
@@ -69,6 +89,8 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::ExecuteBackgroundSc
     const EDITOR::EditorOperationDefinition& definition, const nlohmann::json& parameters) {
     if (!aiOperationScene_)
         return {false, "NO_SCENE", "No scene is open."};
+    if (definition.kind == EDITOR::EditorOperationKind::Query)
+        return definition.execute(parameters);
     if (aiOperationScene_->IsRuntimePlayActive())
         return {false, "PLAY_ACTIVE", "Stop Play before editing the scene."};
 #if defined(HIKARI_WITH_EDITOR)

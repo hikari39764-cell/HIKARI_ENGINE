@@ -125,14 +125,15 @@ void SceneCreationPanel::DrawCreationMenu(DocumentSceneBase& scene, EditorContex
         ImGui::EndMenu();
     }
 
-    const std::vector<std::string> prefabIds = commands.ListPrefabIds();
-    if (!prefabIds.empty() &&
+    const std::vector<PrefabAssetEntry> prefabs = commands.ListPrefabs(scene.GetAssetDatabase());
+    if (!prefabs.empty() &&
         (search.empty() || MatchesSearch(TEXT::Localize("ui.sceneCreation.prefab").c_str(), search)) &&
         ImGui::BeginMenu(TEXT::Localize("ui.sceneCreation.prefab").c_str())) {
-        for (const std::string& prefabId : prefabIds) {
-            if (search.empty() || MatchesSearch(prefabId, search)) {
-                if (ImGui::MenuItem(prefabId.c_str())) {
-                    commands.Execute(SceneObjectCommandId::InstantiatePrefab, scene, context, selectionSync, prefabId);
+        for (const PrefabAssetEntry& prefab : prefabs) {
+            if (search.empty() || MatchesSearch(prefab.name, search)) {
+                if (ImGui::MenuItem(prefab.name.c_str())) {
+                    commands.Execute(SceneObjectCommandId::InstantiatePrefab, scene, context, selectionSync,
+                                     prefab.guid.value);
                 }
             }
         }

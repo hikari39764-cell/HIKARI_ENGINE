@@ -45,15 +45,16 @@ bool TextStyleBinding::Inspect(IInspectorBuilder& b, bool allowSizeOverride) {
                   changed;
     return changed;
 }
-TextStyleAsset ResolveTextStyle(const TextAssetStore* store, const TextStyleBinding& binding, TextStyleAsset local) {
+TextStyleAsset ResolveTextStyle(const TextAssetStore* store, const TextStyleBinding& binding, TextStyleAsset local,
+                                const TextStyleAsset* preview) {
     local.font = binding.font;
-    if (!store || !binding.style.IsValid())
+    if (!preview && (!store || !binding.style.IsValid()))
         return local;
     std::string error;
-    const auto shared = store->LoadStyle(binding.style, error);
-    if (!shared)
+    const auto shared = !preview && store ? store->LoadStyle(binding.style, error) : nullptr;
+    if (!preview && !shared)
         return local;
-    auto resolved = *shared;
+    auto resolved = preview ? *preview : *shared;
     if (binding.overrideFont)
         resolved.font = local.font;
     if (binding.overrideSize)

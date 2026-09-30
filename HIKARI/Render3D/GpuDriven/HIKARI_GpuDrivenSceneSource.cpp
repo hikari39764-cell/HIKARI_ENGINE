@@ -88,7 +88,7 @@ void GpuDrivenSceneSource::Reset() {
     for (GpuDrivenPassSource& pass : passes) {
         pass.Reset();
     }
-    meshShaderJointPalettes = nullptr;
+    meshShaderJointPalettes.reset();
     waterSurfaceGpuData = nullptr;
     terrainSurfaceGpuData = nullptr;
     terrainSurfaceHeights = nullptr;

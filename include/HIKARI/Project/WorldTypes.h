@@ -230,6 +230,8 @@ enum class GameProjectWorldCommandKind : uint8_t {
     SpawnMass = 3u,
     DestroyMass = 4u,
     ParallelMassSystem = 5u,
+    PrefabInstantiate = 6u,
+    PrefabDestroyInstance = 7u,
 };
 
 enum class GameProjectWorldCommandPhase : uint8_t {

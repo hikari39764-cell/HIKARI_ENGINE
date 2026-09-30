@@ -23,6 +23,7 @@ struct FrameSlot {
     bool resolved = false;
     uint64_t frameIndex = 0;
     uint64_t retireFence = 0;
+    uint64_t statisticsEpoch = 0;
 };
 
 struct ProfilerState {
@@ -30,6 +31,7 @@ struct ProfilerState {
     FrameSlot* currentSlot = nullptr;
     FrameSnapshot latest{};
     uint32_t writeSlotIndex = 0;
+    uint64_t statisticsEpoch = 1u;
     bool initialized = false;
     bool enabled = true;
     bool meshShaderPipelineStatsSupported = false;
@@ -56,6 +58,17 @@ void ResetUnavailableSnapshot(const char* reason) {
     gState.latest.pipelineStatsAvailable = false;
     gState.latest.meshShaderPipelineStatsSupported = gState.meshShaderPipelineStatsSupported;
     gState.latest.unavailableReason = reason != nullptr ? reason : "";
+    ResetLatestNames(gState.latest);
+}
+
+void ResetStatisticsSnapshot() {
+    gState.latest = {};
+    gState.latest.initialized = gState.initialized;
+    gState.latest.profilerEnabled = gState.enabled;
+    gState.latest.pipelineStatsAvailable = false;
+    gState.latest.meshShaderPipelineStatsSupported = gState.meshShaderPipelineStatsSupported;
+    gState.latest.unavailableReason =
+        gState.enabled ? "Waiting for pipeline statistics after reset." : gState.unavailableReason;
     ResetLatestNames(gState.latest);
 }
 
@@ -116,6 +129,10 @@ void CollectResolvedSlot(FrameSlot& slot) {
     if (!slot.resolved || slot.readbackBuffer == nullptr) {
         return;
     }
+    if (slot.statisticsEpoch != gState.statisticsEpoch) {
+        slot.resolved = false;
+        return;
+    }
 
     const D3D12_RANGE readRange{0, sizeof(D3D12_QUERY_DATA_PIPELINE_STATISTICS1) * kQueryCount};
     void* mapped = nullptr;
@@ -154,16 +171,29 @@ void ResetSlot(FrameSlot& slot, uint64_t frameIndex) {
     slot.active.fill(0u);
     slot.frameIndex = frameIndex;
     slot.resolved = false;
+    slot.statisticsEpoch = gState.statisticsEpoch;
 }
 } // namespace
 
 void SetEnabled(bool enabled, const char* unavailableReason) {
+    const bool changed = gState.enabled != enabled;
+    if (changed) {
+        ++gState.statisticsEpoch;
+    }
     gState.enabled = enabled;
     gState.unavailableReason = enabled ? "" : (unavailableReason != nullptr ? unavailableReason : "");
     if (!enabled) {
         gState.currentSlot = nullptr;
         ResetUnavailableSnapshot(gState.unavailableReason);
+    } else if (changed) {
+        ResetStatisticsSnapshot();
     }
+}
+
+void ResetStatistics() {
+    ++gState.statisticsEpoch;
+    // アクティブなクエリ状態は変更せず、フレームの解決後に世代番号で破棄する。
+    ResetStatisticsSnapshot();
 }
 
 bool IsEnabled() { return gState.enabled; }
@@ -181,7 +211,7 @@ void BeginFrame(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, uint64_t f
     }
 
     FrameSlot& slot = gState.slots[gState.writeSlotIndex % kBufferedFrameCount];
-    if (completedFence == UINT64_MAX || retireFence == 0 || (slot.resolved && completedFence < slot.retireFence)) {
+    if (completedFence == UINT64_MAX || retireFence == 0 || completedFence < slot.retireFence) {
         gState.currentSlot = nullptr;
         return;
     }

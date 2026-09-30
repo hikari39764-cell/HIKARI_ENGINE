@@ -24,6 +24,12 @@ struct AssetUsageSummary {
     bool IsUsed(const AssetGuid& guid) const { return guid.IsValid() && usedGuids.find(guid.value) != usedGuids.end(); }
 };
 
-AssetUsageSummary AnalyzeAssetUsage(const SceneDocument& document, const AssetDatabase& assetDatabase);
+enum class AssetUsageScope : uint8_t {
+    Scene,
+    ObjectComponents,
+};
+
+AssetUsageSummary AnalyzeAssetUsage(const SceneDocument& document, const AssetDatabase& assetDatabase,
+                                    AssetUsageScope scope = AssetUsageScope::Scene);
 
 } // namespace HIKARI

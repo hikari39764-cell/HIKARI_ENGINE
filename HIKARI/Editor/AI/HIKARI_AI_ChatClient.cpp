@@ -118,12 +118,11 @@ bool RunChatCompletionsStreaming(const AiChatConfig& config, const std::vector<A
                 return false;
             }
             ReadUsage(data, usage);
-            decoded.ReadDelta(nlohmann::json::parse(data, nullptr, false));
-            const std::string delta = ExtractJsonContent(data);
-            if (delta.empty()) {
+            const auto delta = decoded.ReadDelta(nlohmann::json::parse(data, nullptr, false));
+            if (delta.content.empty() && delta.reasoning.empty()) {
                 continue;
             }
-            full += delta;
+            full += delta.content;
             if (onDelta && !onDelta(delta)) {
                 userAbort = true;
                 return false;

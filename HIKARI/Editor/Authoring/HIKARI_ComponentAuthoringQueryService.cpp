@@ -1,6 +1,8 @@
 #include "Editor/Authoring/HIKARI_ComponentAuthoringQueryService.h"
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
 
+#include "Editor/Authoring/HIKARI_SceneObjectObservation.h"
+#include "Core/HIKARI_TimeService.h"
 #include <algorithm>
 #include <string>
 #include <unordered_set>
@@ -110,28 +112,46 @@ EditorOperationResult ComponentAuthoringQueryService::DescribeType(DocumentScene
 }
 
 EditorOperationResult ComponentAuthoringQueryService::QueryObjects(const DocumentSceneBase& scene,
-                                                                   std::string_view exactName,
-                                                                   std::string_view componentType) const {
+                                                                   const nlohmann::json& parameters) const {
+    const auto name = parameters.value("name", std::string{});
+    const auto keyword = parameters.value("keyword", std::string{});
+    const auto componentType = parameters.value("componentType", std::string{});
+    const auto objectId = parameters.value("objectId", uint64_t{});
+    if (parameters.contains("objectId") && objectId == 0)
+        return OperationFailure("INVALID_OBJECT_ID", "objectId must be nonzero.");
+    const int offset = (std::max)(0, parameters.value("offset", 0));
+    const int limit = std::clamp(parameters.value("limit", 16), 1, 64);
     const SceneDocument& document = scene.GetSceneDocument();
-    nlohmann::json objects = nlohmann::json::array();
-    EditorOperationResult result{};
-    for (const SceneObjectData& object : document.objects) {
-        if (!exactName.empty() && object.name != exactName) {
+    auto objects = nlohmann::json::array();
+    size_t matched = 0;
+    for (const auto& object : document.objects) {
+        if ((!name.empty() && object.name != name) || (objectId && object.id.value != objectId) ||
+            (!keyword.empty() && object.name.find(keyword) == std::string::npos))
             continue;
-        }
-        if (!componentType.empty() && std::none_of(object.components.begin(), object.components.end(),
-                                                   [componentType](const SceneComponentData& component) {
-                                                       return component.type == componentType;
-                                                   })) {
+        if (!componentType.empty() &&
+            std::none_of(object.components.begin(), object.components.end(),
+                         [&componentType](const auto& component) { return component.type == componentType; }))
             continue;
-        }
-        objects.push_back(SerializeObject(document, object));
-        result.details.push_back(std::to_string(object.id.value) + ": " + BuildHierarchyPath(document, object));
+        if (matched++ < static_cast<size_t>(offset) || objects.size() >= static_cast<size_t>(limit))
+            continue;
+        auto item = SerializeObject(document, object);
+        item.update(ObserveSceneObject(scene, object));
+        objects.push_back(std::move(item));
     }
-    result.ok = true;
-    result.code = "OK";
-    result.message = "Scene object identities returned.";
-    result.data = {{"count", objects.size()}, {"objects", std::move(objects)}};
+    const auto count = objects.size();
+    auto result = OperationOk(
+        "Scene object observations returned.",
+        {{"count", count},
+         {"total", matched},
+         {"objects", std::move(objects)},
+         {"sceneRevision", scene.GetSceneDocumentRevision()},
+         {"frameIndex", TIME::GetFrameContext().frameIndex},
+         {"screenSpace",
+          "Current scene camera, normalized top-left UV; projected anchor, no occlusion test. Bounds are conservative, not pixel silhouettes or an earlier screenshot snapshot."}});
+    result.data["cameraObjectId"] = scene.GetResolvedCameraFrame().sourceCameraObjectId;
+    result.data["cameraRevision"] = scene.GetResolvedCameraFrame().revision;
+    if (static_cast<size_t>(offset) + count < matched)
+        result.data["nextOffset"] = offset + count;
     return result;
 }
 

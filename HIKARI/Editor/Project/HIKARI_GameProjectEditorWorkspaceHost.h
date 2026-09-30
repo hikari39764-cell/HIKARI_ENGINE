@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -14,7 +15,9 @@ class AssetRegistry;
 namespace HIKARI::EDITOR {
 
 class GameProjectEditorModuleLibrary;
+class GameProjectEditorDocumentService;
 class GameProjectEditorWorkspaceUi;
+class EditorOperationRegistry;
 
 class GameProjectEditorWorkspaceHost {
 public:
@@ -25,12 +28,15 @@ public:
     GameProjectEditorWorkspaceHost& operator=(const GameProjectEditorWorkspaceHost&) = delete;
 
     bool RegisterModule(const GameProjectEditorModuleLibrary& module, std::string_view projectRootUtf8,
-                        std::string& outMessage);
+                        EditorOperationRegistry& operationRegistry, std::string& outMessage);
     void ReportModuleFailure(std::string message);
     void RequestWorkspace(std::string workspaceId) { requestedWorkspace_ = std::move(workspaceId); }
     void UpdateNavigation(EditorWorkspaceHost& host, float unscaledDeltaSeconds);
     void DrawWorkspaceEntries(EditorWorkspaceHost& host, const char* filter);
     void Draw(EditorWorkspaceHost& host, float unscaledDeltaSeconds, AssetDatabase&, AssetRegistry&);
+    bool ActiveWorkspaceRequestsSceneViewport() const noexcept;
+    bool HasUnsavedChanges() const noexcept;
+    void PrepareSceneViewportWindow();
     void Shutdown() noexcept;
 
     bool IsAvailable() const noexcept;
@@ -42,6 +48,9 @@ private:
     void DrawClosePrompt();
 
     GameProjectEditorWorkspaceRegistry registry_{};
+    std::unique_ptr<GameProjectEditorDocumentService> documents_{};
+    EditorOperationRegistry* operationRegistry_ = nullptr;
+    uint64_t operationOwnerToken_ = 0u;
     std::unique_ptr<GameProjectEditorWorkspaceUi> ui_{};
     std::string moduleFailureMessage_{};
     bool closePromptWasPending_ = false;

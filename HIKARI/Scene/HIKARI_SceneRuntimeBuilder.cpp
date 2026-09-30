@@ -296,14 +296,6 @@ void BuildModelMaterialOverrides(ModelComponent& modelComponent, const AssetRegi
     }
 }
 
-void ApplyTerrainSurfaceMaterialOverrides(World& world, const AssetRegistry& assetRegistry) {
-    world.ForEachObjectWith<ModelComponent, TerrainSurfaceComponent>(
-        WorldComponentQueryAnchor::SmallestUniqueBucket,
-        [&](GameObject&, ModelComponent& modelComponent, TerrainSurfaceComponent&) {
-            (void)TERRAIN::EnsureTerrainSurfaceMaterialOverride(modelComponent, assetRegistry);
-        });
-}
-
 } // namespace
 
 std::unique_ptr<Material> BuildRuntimeMaterialOverride(const AssetRegistry& assetRegistry,
@@ -323,6 +315,40 @@ std::unique_ptr<Material> BuildRuntimeMaterialOverride(const AssetRegistry& asse
 ModelAsset* ResolveModelAssetNow(ModelManager& modelManager, const AssetRegistry& assetRegistry,
                                  const std::string& assetId) {
     return ResolveModelAssetNowInternal(modelManager, assetRegistry, assetId);
+}
+
+bool SceneRuntimeBuilder::InitializeRuntimeComponentAssets(GameObject&, IComponent& component,
+                                                           const AssetRegistry& assetRegistry,
+                                                           ModelManager& modelManager,
+                                                           std::string& outDiagnostic) const {
+    outDiagnostic.clear();
+    if (auto* modelComponent = dynamic_cast<ModelComponent*>(&component)) {
+        const std::string& assetId = modelComponent->GetAssetId();
+        ModelAsset* asset = ResolveModelAssetNow(modelManager, assetRegistry, assetId);
+        if (!assetId.empty() && (asset == nullptr || asset->GetState() != ModelAsset::State::Loaded)) {
+            modelComponent->SetModelAsset(nullptr);
+            outDiagnostic = "Required model asset could not be loaded: " + assetId;
+            return false;
+        }
+        modelComponent->SetModelAsset(asset);
+    }
+    return true;
+}
+
+void SceneRuntimeBuilder::FinalizeRuntimeObjectAssets(GameObject& object, const AssetRegistry& assetRegistry) const {
+    for (const std::unique_ptr<IComponent>& component : object.GetComponents()) {
+        if (auto* modelComponent = dynamic_cast<ModelComponent*>(component.get())) {
+            const std::string* proceduralSelection = nullptr;
+            if (const auto* procedural = object.GetComponent<ProceduralMeshComponent>()) {
+                proceduralSelection = &procedural->GetMaterialSelection();
+            }
+            BuildModelMaterialOverrides(*modelComponent, assetRegistry,
+                                        ResolveRenderableModelAsset(object, *modelComponent), proceduralSelection);
+            if (object.GetComponent<TerrainSurfaceComponent>() != nullptr) {
+                (void)TERRAIN::EnsureTerrainSurfaceMaterialOverride(*modelComponent, assetRegistry);
+            }
+        }
+    }
 }
 
 SceneDependencySet SceneRuntimeBuilder::CollectDependencies(const SceneDocument& document,
@@ -409,7 +435,7 @@ SceneDependencySet SceneRuntimeBuilder::CollectDependencies(const SceneDocument&
 bool SceneRuntimeBuilder::PreloadDependencies(const SceneDependencySet& dependencies,
                                               const AssetRegistry& assetRegistry, ModelManager& modelManager,
                                               SkyManager& skyManager, const std::filesystem::path& projectRoot,
-                                              const std::string& sceneGuid) const {
+                                              const std::string& sceneGuid, bool loadLighting) const {
     RuntimeAssetLoadPlan loadPlan{};
 
     auto addModelToLoadPlan = [&](const std::string& modelId, const ModelAssetDescriptor& descriptor) {
@@ -534,6 +560,10 @@ bool SceneRuntimeBuilder::PreloadDependencies(const SceneDependencySet& dependen
                     " clusterGeometry=" + std::to_string(loadPlan.clusterGeometryRequests.size()));
     ExecuteRuntimeAssetLoadPlan(loadPlan);
 
+    if (!loadLighting) {
+        return true;
+    }
+
     RENDER3D::LIGHTING::LightingRuntimeLoadRequest request{};
     request.sceneGuid = sceneGuid;
     request.projectRoot = projectRoot;
@@ -590,7 +620,29 @@ bool SceneRuntimeBuilder::BuildWorldFromDocument(const SceneDocument& document, 
                                                            objectData.transform.rotationEulerDeg.y * kDegToRad,
                                                            objectData.transform.rotationEulerDeg.z * kDegToRad);
         (void)object->SetLocalTransform(localTransform);
+    }
 
+    for (const SceneObjectData& objectData : document.objects) {
+        if (!objectData.parent.has_value()) {
+            continue;
+        }
+        GameObject* child = world.FindObject(objectData.id);
+        GameObject* parent = world.FindObject(*objectData.parent);
+        if (child == nullptr || parent == nullptr || !child->SetParent(parent)) {
+            HIKARI_LOG_WARN(
+                "[SceneRuntime] invalid object hierarchy skipped: child=" + std::to_string(objectData.id.value) +
+                " parent=" + std::to_string(objectData.parent->value));
+        }
+    }
+
+    for (const SceneObjectData& objectData : document.objects) {
+        GameObject* object = world.FindObject(objectData.id);
+        if (object == nullptr) {
+            HIKARI_LOG_ERROR("[SceneRuntime] object lookup failed after creation: " +
+                             std::to_string(objectData.id.value));
+            world.Clear();
+            return false;
+        }
         for (const SceneComponentData& componentData : objectData.components) {
             const ComponentTypeInfo* componentInfo = componentRegistry.Find(componentData.type);
             if (componentInfo == nullptr) {
@@ -618,40 +670,15 @@ bool SceneRuntimeBuilder::BuildWorldFromDocument(const SceneDocument& document, 
                 return false;
             }
 
-            if (auto* modelComponent = dynamic_cast<ModelComponent*>(attached)) {
-                modelComponent->SetModelAsset(
-                    ResolveModelAssetNow(modelManager, assetRegistry, modelComponent->GetAssetId()));
+            std::string runtimeDiagnostic{};
+            if (!InitializeRuntimeComponentAssets(*object, *attached, assetRegistry, modelManager, runtimeDiagnostic)) {
+                HIKARI_LOG_WARN("[SceneRuntime] " + runtimeDiagnostic);
             }
         }
 
-        // 全コンポーネントを反映した後に、プログラム化モデルを含む
-        // レンダリング可能アセットへ解決してマテリアルオーバーライドを構築する。
-        // (ProceduralMeshComponent が後続の順序で追加されるケースを吸収)
-        for (const std::unique_ptr<IComponent>& component : object->GetComponents()) {
-            if (auto* modelComponent = dynamic_cast<ModelComponent*>(component.get())) {
-                const std::string* proceduralSelection = nullptr;
-                if (const auto* procedural = object->GetComponent<ProceduralMeshComponent>()) {
-                    proceduralSelection = &procedural->GetMaterialSelection();
-                }
-                BuildModelMaterialOverrides(*modelComponent, assetRegistry,
-                                            ResolveRenderableModelAsset(*object, *modelComponent), proceduralSelection);
-            }
-        }
-    }
-
-    ApplyTerrainSurfaceMaterialOverrides(world, assetRegistry);
-
-    for (const SceneObjectData& objectData : document.objects) {
-        if (!objectData.parent.has_value()) {
-            continue;
-        }
-        GameObject* child = world.FindObject(objectData.id);
-        GameObject* parent = world.FindObject(*objectData.parent);
-        if (child == nullptr || parent == nullptr || !child->SetParent(parent)) {
-            HIKARI_LOG_WARN(
-                "[SceneRuntime] invalid object hierarchy skipped: child=" + std::to_string(objectData.id.value) +
-                " parent=" + std::to_string(objectData.parent->value));
-        }
+        // 全コンポーネント反映後、後続で追加された ProceduralMesh も含めて
+        // レンダリング可能アセットとマテリアル上書きを確定する。
+        FinalizeRuntimeObjectAssets(*object, assetRegistry);
     }
 
     return true;

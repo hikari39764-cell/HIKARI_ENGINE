@@ -25,6 +25,7 @@ public:
     ~SceneViewSeriesCapture();
     EditorOperationResult Start(DocumentSceneBase& scene, const nlohmann::json& parameters);
     EditorOperationResult Poll(DocumentSceneBase* scene);
+    void Clear();
 
 private:
     struct View {
@@ -34,13 +35,13 @@ private:
 
     EditorOperationResult SubmitNext();
     EditorOperationResult Pending() const;
-    void Clear();
 
     RENDER3D::RenderViewId viewId_{};
     std::vector<View> views_;
     std::size_t next_ = 0;
     uint64_t ticket_ = 0;
     uint64_t sceneRevision_ = 0;
+    uint64_t worldIdentity_ = 0;
     uint32_t width_ = 0;
     uint32_t height_ = 0;
     std::filesystem::path folder_;

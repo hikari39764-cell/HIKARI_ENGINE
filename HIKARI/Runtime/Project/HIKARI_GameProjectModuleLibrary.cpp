@@ -79,7 +79,8 @@ bool GameProjectModuleLibrary::Load(const std::filesystem::path& modulePath, std
     if (api == nullptr || api->structSize < sizeof(GameProjectModuleApi) ||
         api->abiVersion != kGameProjectModuleAbiVersion || api->createInstance == nullptr ||
         api->destroyInstance == nullptr || api->getModuleId == nullptr || api->getRuntimeExtensionCount == nullptr ||
-        api->getRuntimeExtension == nullptr) {
+        api->getRuntimeExtension == nullptr || api->createGameSession == nullptr ||
+        api->destroyGameSession == nullptr) {
         outMessage = "GameProject module ABI is incompatible. "
                      "Rebuild the project with this HIKARI engine.";
         FreeLibrary(library);
@@ -110,6 +111,7 @@ bool GameProjectModuleLibrary::Load(const std::filesystem::path& modulePath, std
 }
 
 void GameProjectModuleLibrary::Reset() noexcept {
+    DestroyGameSession();
     if (api_ != nullptr && instance_ != nullptr && api_->destroyInstance != nullptr) {
         api_->destroyInstance(instance_);
     }
@@ -135,6 +137,33 @@ size_t GameProjectModuleLibrary::GetRuntimeExtensionCount() const noexcept {
 
 IRuntimeExtension* GameProjectModuleLibrary::GetRuntimeExtension(size_t index) const noexcept {
     return IsLoaded() ? api_->getRuntimeExtension(instance_, index) : nullptr;
+}
+
+bool GameProjectModuleLibrary::CreateGameSession(std::string& outMessage) {
+    DestroyGameSession();
+    if (!IsLoaded()) {
+        outMessage.clear();
+        return true;
+    }
+
+    HIKARI::IGameProjectSession* session = nullptr;
+    if (!api_->createGameSession(instance_, &session)) {
+        outMessage = "GameProject module failed to create its game session.";
+        return false;
+    }
+
+    gameSession_ = session;
+    outMessage.clear();
+    return true;
+}
+
+HIKARI::IGameProjectSession* GameProjectModuleLibrary::GetGameSession() const noexcept { return gameSession_; }
+
+void GameProjectModuleLibrary::DestroyGameSession() noexcept {
+    if (gameSession_ != nullptr && api_ != nullptr && instance_ != nullptr && api_->destroyGameSession != nullptr) {
+        api_->destroyGameSession(instance_);
+    }
+    gameSession_ = nullptr;
 }
 
 const std::filesystem::path& GameProjectModuleLibrary::GetModulePath() const noexcept { return modulePath_; }

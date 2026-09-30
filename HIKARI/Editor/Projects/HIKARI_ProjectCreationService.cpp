@@ -4,9 +4,7 @@
 
 #include <ShlObj.h>
 
-#include <algorithm>
 #include <chrono>
-#include <cctype>
 #include <fstream>
 #include <string_view>
 #include <system_error>
@@ -19,22 +17,6 @@
 
 namespace HIKARI::EDITOR {
 namespace {
-
-bool IsWindowsReservedName(std::string name) {
-    std::transform(name.begin(), name.end(), name.begin(),
-                   [](unsigned char character) { return static_cast<char>(std::toupper(character)); });
-    const size_t extension = name.find('.');
-    if (extension != std::string::npos) {
-        name.resize(extension);
-    }
-    if (name == "CON" || name == "PRN" || name == "AUX" || name == "NUL") {
-        return true;
-    }
-    if (name.size() == 4u && (name.starts_with("COM") || name.starts_with("LPT")) && name[3] >= '1' && name[3] <= '9') {
-        return true;
-    }
-    return false;
-}
 
 bool ValidateProjectName(const std::string& name, std::string& outMessage) {
     if (name.empty()) {
@@ -55,7 +37,7 @@ bool ValidateProjectName(const std::string& name, std::string& outMessage) {
         outMessage = TEXT::Localize("launcher.nameCharacters");
         return false;
     }
-    if (IsWindowsReservedName(name.substr(0, name.find('.')))) {
+    if (TEXT::IsWindowsReservedFileName(name)) {
         outMessage = TEXT::Localize("launcher.nameReserved");
         return false;
     }

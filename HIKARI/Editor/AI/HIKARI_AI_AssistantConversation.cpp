@@ -93,8 +93,16 @@ void AiAssistantSession::RunConversation(bool resume) {
         std::lock_guard lock(messageMutex_);
         task = taskCheckpoint_;
     }
-    if (!resume)
-        task = {true, BuildSystemPrompt(), taskContext_, SnapshotMessages()};
+    if (!resume) {
+        auto history = SnapshotMessages();
+        // 表示専用の思考は、新しいタスクのプロトコル履歴に混ぜない。
+        for (auto& message : history)
+            message.data.erase("_reasoningContent");
+        std::erase_if(history, [](const auto& message) {
+            return message.data.value("kind", std::string{}) == "progress" && message.content.empty();
+        });
+        task = {true, BuildSystemPrompt(), taskContext_, std::move(history)};
+    }
     config.requestContext = &task.requestContext;
     auto& conversation = task.messages;
     SealInterruptedCalls(conversation);
@@ -151,33 +159,38 @@ void AiAssistantSession::RunConversation(bool resume) {
         AiToolReply decoded;
         {
             std::lock_guard lock(streamMutex_);
-            streamingPartial_.clear();
+            streamingPartial_ = {};
             streamingActive_ = true;
         }
         const bool ok = completion_(
             config, request,
-            [this](const std::string& delta) {
+            [this](const AiChatDelta& delta) {
                 std::lock_guard lock(streamMutex_);
-                streamingPartial_ += delta;
+                streamingPartial_.content += delta.content;
+                streamingPartial_.reasoning += delta.reasoning;
                 return !stopRequested_.load();
             },
             reply, error, &usage, &stats, &decoded);
         RecordUsage(usage, stats);
         runTokens += (std::max)(int64_t{0}, usage.inputTokens) + (std::max)(int64_t{0}, usage.outputTokens);
+        AiChatDelta received;
         {
             std::lock_guard lock(streamMutex_);
             streamingActive_ = false;
-            streamingPartial_.clear();
+            received = std::move(streamingPartial_);
+            streamingPartial_ = {};
         }
-        if (stopRequested_.load())
+        const bool interrupted = stopRequested_.load();
+        const auto& reasoning = decoded.reasoning.empty() ? received.reasoning : decoded.reasoning;
+        if (ok || !received.content.empty() || !reasoning.empty())
+            AppendProgress(reply.empty() ? received.content : reply, reasoning, !ok || interrupted);
+        if (interrupted)
             return;
         if (!ok) {
             SetActivity("failed");
             AppendMessage({"assistant", TEXT::Localize("ai.error.incomplete") + "\n" + error});
             return;
         }
-        if (!reply.empty())
-            AppendProgress(reply);
         conversation.push_back(decoded.Message(reply));
         if (decoded.calls.empty()) {
             if (++noToolRounds >= 4) {
@@ -390,7 +403,8 @@ bool AiAssistantSession::CanResume() const {
     if (IsBusy())
         return false;
     std::lock_guard lock(messageMutex_);
-    return taskCheckpoint_.active;
+    return taskCheckpoint_.active &&
+           static_cast<uint8_t>(projectAccessMode_.load()) >= static_cast<uint8_t>(conversationRequiredAccess_);
 }
 bool AiAssistantSession::Resume() { return CanResume() && StartConversation({}, {}, true); }
 bool AiAssistantSession::SubmitMessage(std::string text, std::vector<AI_ASSISTANT::AiImageAttachment> images) {
@@ -398,12 +412,26 @@ bool AiAssistantSession::SubmitMessage(std::string text, std::vector<AI_ASSISTAN
 }
 bool AiAssistantSession::StartConversation(std::string text, std::vector<AI_ASSISTANT::AiImageAttachment> images,
                                            bool resume) {
-    if (busy_.load() || projectSwitchPending_) {
+    if (busy_.load() || projectSwitchPending_ || pendingProjectAccessMode_) {
         return false;
     }
     text = AI_ASSISTANT::Trim(std::move(text));
     if (!resume && text.empty() && images.empty()) {
         return false;
+    }
+    const AiProjectAccessMode currentAccess = projectAccessMode_.load();
+    {
+        std::lock_guard lock(messageMutex_);
+        if (static_cast<uint8_t>(currentAccess) < static_cast<uint8_t>(conversationRequiredAccess_)) {
+            storageError_ = "此对话需要 " +
+                            std::string(TEXT::EnumToName(kAiProjectAccessModeNames, conversationRequiredAccess_)) +
+                            " 权限。当前模式不会自动提升；请切换模式或新建对话。";
+            return false;
+        }
+        if (static_cast<uint8_t>(currentAccess) > static_cast<uint8_t>(conversationRequiredAccess_)) {
+            conversationRequiredAccess_ = currentAccess;
+            conversationDirty_.store(true);
+        }
     }
     if (conversationId_.empty())
         NewConversation();
@@ -454,7 +482,7 @@ bool AiAssistantSession::StartConversation(std::string text, std::vector<AI_ASSI
         {
             std::lock_guard<std::mutex> lock(streamMutex_);
             streamingActive_ = false;
-            streamingPartial_.clear();
+            streamingPartial_ = {};
         }
         busy_.store(false);
     });

@@ -108,10 +108,17 @@ void DocumentSceneEditorController::DrawWorkspaceContent(DocumentSceneBase& scen
                                                          EDITOR::EditorPlaySession& playSession) {
 #if defined(HIKARI_WITH_EDITOR)
     if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Project) && projectWorkspaceHost_) {
-        SERVICES::SetEditorGameViewportSize(0, 0, false);
         projectWorkspaceHost_->Registry().SetOperationRegistry(&operationRegistry_);
         projectWorkspaceHost_->Draw(workspaceHost_, TIME::GetFrameContext().unscaledDt, scene.GetAssetDatabase(),
                                     scene.GetAssetRegistry());
+        if (projectWorkspaceHost_->ActiveWorkspaceRequestsSceneViewport()) {
+            projectWorkspaceHost_->PrepareSceneViewportWindow();
+            DrawGameViewportWindow(scene, playSession, "Project Scene View");
+        } else {
+            playSession.ReleaseEmbeddedInput();
+            EDITOR::ClearGameViewportInputRect();
+            SERVICES::SetEditorGameViewportSize(0, 0, false);
+        }
         return;
     }
 
@@ -200,7 +207,8 @@ void DocumentSceneEditorController::DrawWorkspaceContent(DocumentSceneBase& scen
     }
     if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::GameplayCamera)) {
         GameplayCameraWorkspace().DrawDockSpace(workspaceHost_.ConsumeReset(EDITOR::EditorWorkspaceId::GameplayCamera));
-        const auto result = GameplayCameraWorkspace().Draw(scene, workspaceHost_, operationRegistry_);
+        const auto result = GameplayCameraWorkspace().Draw(scene, workspaceHost_, operationRegistry_,
+                                                           context_.selection.GetActiveObjectId());
         playSession.UpdateEmbeddedViewportInput(result.playViewport, result.playViewportClicked);
         if (result.togglePlay)
             ToggleGamePreview(scene, playSession);
@@ -271,8 +279,8 @@ void DocumentSceneEditorController::DrawCinematicsWorkspace(DocumentSceneBase& s
         cinematicsBefore = scene.GetSceneDocument().cinematics;
     }
     CinematicsWorkspace().DrawDockSpace(workspaceHost_.ConsumeReset(EDITOR::EditorWorkspaceId::Cinematics));
-    const EDITOR::CinematicsWorkspaceResult result =
-        CinematicsWorkspace().Draw(scene, playSession, context_, selectionSync_, workspaceHost_);
+    const EDITOR::CinematicsWorkspaceResult result = CinematicsWorkspace().Draw(scene, context_, workspaceHost_);
+    playSession.UpdateEmbeddedViewportInput(result.playViewport, result.playViewportClicked);
     if (result.cinematicsChanged && cinematicsBefore) {
         RecordCinematicsHistory(scene, std::move(*cinematicsBefore), result.timelineEditMergeId, externalDirtyBefore);
     } else if (result.timelineEditMergeId == 0) {
@@ -280,9 +288,6 @@ void DocumentSceneEditorController::DrawCinematicsWorkspace(DocumentSceneBase& s
     }
     if (result.saveSceneRequested) {
         (void)commandRouter_.Execute(EDITOR::EditorCommandId::SaveDocument);
-    }
-    if (result.toggleGamePreviewRequested) {
-        ToggleGamePreview(scene, playSession);
     }
     FinishWorkspaceFrame(scene, false, result.statusMessage);
     SaveRenderQualityWhenIdle(scene);
@@ -382,8 +387,6 @@ void DocumentSceneEditorController::DrawSceneWorkspace(DocumentSceneBase& scene,
     }
     HandleResourceWorkspaceRequests(scene);
     DrawEnvironmentPanels(scene);
-    EDITOR::EditorToolContext toolContext{scene, context_};
-    toolHost_.Draw(toolContext);
     if (context_.windows.runtime.showDebugView) {
         DrawDebugViewWindow(scene, context_.windows.runtime.showDebugView);
     }
@@ -495,9 +498,6 @@ void DocumentSceneEditorController::DrawEnvironmentPanels(DocumentSceneBase& sce
         if (environmentResult.openLightingBakeRequested) {
             EDITOR::EditorToolOpenRequest request{};
             request.toolId = EDITOR::kLightingBakeToolId;
-            request.target.kind = EDITOR::EditorToolTargetKind::Scene;
-            request.target.typeId = "ReflectionProbe";
-            request.target.assetGuid = scene.GetCurrentSceneAssetGuid().value;
             (void)toolHost_.RequestOpen(std::move(request));
         }
     }

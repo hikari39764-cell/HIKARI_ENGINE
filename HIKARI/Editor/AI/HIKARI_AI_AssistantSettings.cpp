@@ -18,6 +18,7 @@ void AiAssistantPanel::OpenApiSettingsBuffers() {
     toolHistoryKiB_ = config.toolHistoryKiB;
     reasoningContentPolicy_ = config.reasoningContentPolicy;
     requestUsage_ = config.requestUsage;
+    showReasoning_ = config.showReasoning;
     std::snprintf(apiKeyBuffer_, sizeof(apiKeyBuffer_), "%s", config.apiKey.c_str());
     std::snprintf(baseUrlBuffer_, sizeof(baseUrlBuffer_), "%s", config.baseUrl.c_str());
     std::snprintf(modelBuffer_, sizeof(modelBuffer_), "%s", config.model.c_str());
@@ -42,6 +43,7 @@ void AiAssistantPanel::SaveApiSettings() {
     updated.toolHistoryKiB = toolHistoryKiB_;
     updated.reasoningContentPolicy = reasoningContentPolicy_;
     updated.requestUsage = requestUsage_;
+    updated.showReasoning = showReasoning_;
     if (!AI_ASSISTANT::SaveAiChatConfig(updated)) {
         attachmentError_ = "无法保存 AI 设置。";
         return;
@@ -100,6 +102,7 @@ void AiAssistantPanel::DrawSettings() {
             ImGui::SliderInt(TEXT::Localize("ai.api.historyBudget").c_str(), &toolHistoryKiB_, 8, 256, "%d KiB");
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("%s", TEXT::Localize("ai.api.historyBudgetHint").c_str());
+            ImGui::Checkbox(TEXT::LocalizeCStr("ai.reasoning.show"), &showReasoning_);
             const auto reasoningChoices = TEXT::EnumNameList(AI_ASSISTANT::kAiReasoningContentPolicyNames);
             const std::string selectedPolicy =
                 TEXT::EnumToName(AI_ASSISTANT::kAiReasoningContentPolicyNames, reasoningContentPolicy_, "preserve");

@@ -94,7 +94,7 @@ struct GpuSceneSurfaceRecord {
     uint64_t animationPoseRevision = 0u;
     bool hasSpecialRenderDebug = false;
     bool skinned = false;
-    uint32_t jointPaletteSlot = RUNTIME::kInvalidRenderSurfaceIndex;
+    uint32_t jointPaletteOffsetBytes = 0u;
     uint32_t jointPaletteMatrixCount = 0;
     bool castShadow = true;
     bool receiveShadow = true;

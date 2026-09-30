@@ -101,11 +101,10 @@ bool ShadowCachePolicy::EvaluateReuse(const ShadowCacheReuseInput& input) {
 void ShadowCachePolicy::MarkHit() {
     hitThisFrame_ = true;
     missReasonFlags_ = ShadowCacheMissReasonNone;
-    lastMissReasonFlags_ = ShadowCacheMissReasonNone;
     ++hitCount_;
 }
 
-void ShadowCachePolicy::MarkMiss() {
+void ShadowCachePolicy::MarkMiss(uint64_t logicalFrameIndex) {
     hitThisFrame_ = false;
     valid_ = false;
     finalMatchesStaticCache_ = false;
@@ -113,6 +112,7 @@ void ShadowCachePolicy::MarkMiss() {
         missReasonFlags_ = ShadowCacheMissReasonInvalid;
     }
     lastMissReasonFlags_ = missReasonFlags_;
+    lastMissFrameIndex_ = logicalFrameIndex;
     ++missCount_;
 }
 
@@ -136,6 +136,7 @@ void ShadowCachePolicy::PublishStats(ShadowMapDebugStats& stats) const {
     stats.shadowCacheHit = hitThisFrame_;
     stats.shadowCacheMissReasonFlags = missReasonFlags_;
     stats.shadowCacheLastMissReasonFlags = lastMissReasonFlags_;
+    stats.shadowCacheLastMissFrameIndex = lastMissFrameIndex_;
     stats.shadowCacheHitCount = hitCount_;
     stats.shadowCacheMissCount = missCount_;
     stats.shadowStaticCacheCopyCount = copyCount_;

@@ -8,6 +8,7 @@
 #include "Animation/Runtime/HIKARI_AnimationSocketService.h"
 #include "Animation/StateMachine/HIKARI_AnimationStateMachineRuntimeService.h"
 #include "Assets/HIKARI_DocumentAssetStores.h"
+#include "Assets/Prefab/HIKARI_PrefabAssetStore.h"
 #include "Core/HIKARI_FixedStepClock.h"
 #include "Runtime/Diagnostics/HIKARI_RuntimeDebugService.h"
 #include "Gameplay/Motion/HIKARI_CharacterMotionStateService.h"
@@ -91,10 +92,12 @@ struct DocumentSceneRuntimeState {
     WorldMassSchemaRegistry massSchemaRegistry{};
     SceneRuntimeBuilder builder{};
     AnimationStateMachineAssetStore animationStateMachineAssets{};
+    PrefabAssetStore prefabAssets{};
     DialogueAssetStore dialogueAssets{};
     // World borrows registries/services above and must be destroyed first.
     World world{};
     bool playActive = false;
+    bool stopGameProjectSessionAfterWorldDetach = false;
     bool inputContextSnapshotValid = false;
     bool editorInputContextWasActive = false;
     bool gameplayInputContextWasActive = false;

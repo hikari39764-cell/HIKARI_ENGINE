@@ -218,6 +218,11 @@ nlohmann::json DescribeEditorOperation(const EditorOperationDefinition& definiti
 }
 
 EditorOperationRegistrationResult EditorOperationRegistry::Register(EditorOperationDefinition definition) {
+    definition.ownerToken = 0u;
+    return RegisterInternal(std::move(definition));
+}
+
+EditorOperationRegistrationResult EditorOperationRegistry::RegisterInternal(EditorOperationDefinition definition) {
     if (definition.id.empty()) {
         return RejectRegistration(EditorOperationRegistrationCode::MissingId, definition.id,
                                   "Editor operation ID is required.");
@@ -252,6 +257,43 @@ EditorOperationRegistrationResult EditorOperationRegistry::Register(EditorOperat
     result.code = EditorOperationRegistrationCode::Registered;
     result.message = "Registered editor operation: " + id;
     return result;
+}
+
+EditorOperationOwnerToken EditorOperationRegistry::CreateOwnerToken() noexcept {
+    ++nextOwnerToken_;
+    if (nextOwnerToken_ == 0u) {
+        ++nextOwnerToken_;
+    }
+    return nextOwnerToken_;
+}
+
+EditorOperationRegistrationResult EditorOperationRegistry::RegisterOwned(EditorOperationDefinition definition,
+                                                                         EditorOperationOwnerToken ownerToken) {
+    if (ownerToken == 0u) {
+        return RejectRegistration(EditorOperationRegistrationCode::InvalidOwner, definition.id,
+                                  "Editor operation owner token must be nonzero.");
+    }
+    definition.ownerToken = ownerToken;
+    return RegisterInternal(std::move(definition));
+}
+
+size_t EditorOperationRegistry::UnregisterOwner(EditorOperationOwnerToken ownerToken) noexcept {
+    if (ownerToken == 0u) {
+        return 0u;
+    }
+    size_t removed = 0u;
+    for (auto operation = operations_.begin(); operation != operations_.end();) {
+        if (operation->second.ownerToken == ownerToken) {
+            operation = operations_.erase(operation);
+            ++removed;
+        } else {
+            ++operation;
+        }
+    }
+    if (removed != 0u) {
+        ++revision_;
+    }
+    return removed;
 }
 
 bool EditorOperationRegistry::IsRegistered(const std::string& id) const noexcept {

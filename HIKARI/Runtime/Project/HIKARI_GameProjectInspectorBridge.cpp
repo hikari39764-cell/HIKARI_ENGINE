@@ -17,6 +17,25 @@
 namespace HIKARI {
 using namespace PROJECT::DETAIL;
 
+namespace {
+
+bool SelectAssetGuid(IInspectorBuilder* builder, std::string_view propertyId, std::string_view label, char* value,
+                     size_t capacity, AssetType assetType, std::string_view description) {
+    if (builder == nullptr || propertyId.empty() || value == nullptr || capacity == 0u) {
+        return false;
+    }
+    std::string editable{};
+    if (!ReadStringBuffer(value, capacity, editable)) {
+        return false;
+    }
+    const std::string original = editable;
+    const AuthoringFieldDescriptor field{propertyId, label.empty() ? propertyId : label, description};
+    const bool changed = builder->AssetIdPicker(field, assetType, editable);
+    return CopyStringToReference(editable, value, capacity) && (changed || original != editable);
+}
+
+} // namespace
+
 GameProjectInspector GameProjectSdkAccess::MakeInspector(IInspectorBuilder& builder) noexcept {
     return GameProjectInspector(&builder);
 }
@@ -136,19 +155,14 @@ bool GameProjectInspector::SceneAssetGuid(std::string_view propertyId, std::stri
 
 bool GameProjectInspector::SequenceAssetGuid(std::string_view propertyId, std::string_view label, char* value,
                                              size_t capacity) {
-    if (propertyId.empty() || value == nullptr || capacity == 0u) {
-        return false;
-    }
-    auto* builder = static_cast<IInspectorBuilder*>(builder_);
-    std::string editable{};
-    if (builder == nullptr || !ReadStringBuffer(value, capacity, editable)) {
-        return false;
-    }
-    const std::string original = editable;
-    const AuthoringFieldDescriptor field{propertyId, label.empty() ? propertyId : label,
-                                         "Sequence asset GUID played by the runtime Sequence service."};
-    const bool changed = builder->AssetIdPicker(field, AssetType::Sequence, editable);
-    return CopyStringToReference(editable, value, capacity) && (changed || original != editable);
+    return SelectAssetGuid(static_cast<IInspectorBuilder*>(builder_), propertyId, label, value, capacity,
+                           AssetType::Sequence, "Sequence asset GUID played by the runtime Sequence service.");
+}
+
+bool GameProjectInspector::PrefabAssetGuid(std::string_view propertyId, std::string_view label, char* value,
+                                           size_t capacity) {
+    return SelectAssetGuid(static_cast<IInspectorBuilder*>(builder_), propertyId, label, value, capacity,
+                           AssetType::Prefab, "Prefab asset instantiated into the current World.");
 }
 
 bool GameProjectInspector::InputActionId(std::string_view propertyId, std::string_view label,
@@ -177,26 +191,8 @@ bool GameProjectInspector::InputActionId(std::string_view propertyId, std::strin
 
 bool GameProjectInspector::ModelMaterialSetAssetGuid(std::string_view propertyId, std::string_view label, char* value,
                                                      size_t capacity) {
-    if (propertyId.empty() || value == nullptr || capacity == 0u) {
-        return false;
-    }
-    auto* builder = static_cast<IInspectorBuilder*>(builder_);
-    if (builder == nullptr) {
-        return false;
-    }
-
-    std::string editable{};
-    if (!ReadStringBuffer(value, capacity, editable)) {
-        return false;
-    }
-    const std::string original = editable;
-    const AuthoringFieldDescriptor field{propertyId, label.empty() ? propertyId : label,
-                                         "Formal Material Set asset GUID for a model presentation."};
-    const bool pickerChanged = builder->AssetIdPicker(field, AssetType::ModelMaterialBinding, editable);
-    if (!CopyStringToReference(editable, value, capacity)) {
-        return false;
-    }
-    return pickerChanged || original != editable;
+    return SelectAssetGuid(static_cast<IInspectorBuilder*>(builder_), propertyId, label, value, capacity,
+                           AssetType::ModelMaterialBinding, "Formal Material Set asset GUID for a model presentation.");
 }
 
 bool GameProjectInspector::Vec2(std::string_view label, float& x, float& y) {

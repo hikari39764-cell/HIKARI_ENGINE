@@ -1,6 +1,7 @@
 #pragma once
 
 #include "HIKARI/Project/UiCanvasView.h"
+#include "HIKARI/Project/PrefabView.h"
 
 #include <cstdint>
 #include <span>
@@ -28,12 +29,15 @@ class DialogueView;
 class DebugView;
 class DisplaySettingsView;
 class IGameComponent;
+class IGameProjectSession;
 class InputView;
 class MotionView;
 class NavigationView;
 class PhysicsQueryView;
+class ProjectDataView;
 class PresentationModelView;
 class PresentationVfxView;
+class PrefabView;
 class RuntimeSessionView;
 class SaveGameView;
 class SceneCaptureView;
@@ -57,8 +61,9 @@ public:
     // Returned text is borrowed and remains valid only until the object is
     // renamed or destroyed.
     HIKARI_GAME_PROJECT_SDK_API std::string_view GetName() const noexcept;
-    // Scene-local authored identity, not a runtime handle. Zero means an
-    // invalid or code-created object without an authored identity.
+    // Identity used to resolve objects inside this World. Authored objects
+    // retain their document ID; runtime-spawned objects receive an ephemeral
+    // ID that is not written back to the Scene document. Zero means invalid.
     HIKARI_GAME_PROJECT_SDK_API uint64_t GetSceneObjectId() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool GetLocalTransform(GameProjectTransform& outTransform) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool GetWorldTransform(GameProjectTransform& outTransform) const noexcept;
@@ -202,6 +207,10 @@ public:
     HIKARI_GAME_PROJECT_SDK_API uint32_t GetCommandFailureOverflowCount() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool ReadVariable(std::string_view variableId,
                                                   GameProjectBindingValue& outValue) const noexcept;
+    // Reads this object's variable scope, returning its catalog default until
+    // a component on that object writes the variable.
+    HIKARI_GAME_PROJECT_SDK_API bool ReadObjectVariable(GameProjectObjectHandle object, std::string_view variableId,
+                                                        GameProjectBindingValue& outValue) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool WriteVariable(std::string_view variableId, const GameProjectBindingValue& value,
                                                    std::string_view writerId) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool ReleaseVariableWriter(std::string_view variableId,
@@ -229,11 +238,16 @@ public:
     HIKARI_GAME_PROJECT_SDK_API DisplaySettingsView GetDisplaySettings() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API UiCanvasView GetUiCanvases() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API SequenceView GetSequence() const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API PrefabView GetPrefabs() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API SceneCaptureView GetSceneCapture() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API SceneFlowView GetSceneFlow() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API DialogueView GetDialogue() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API SaveGameView GetSaveGame() const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API ProjectDataView GetProjectData() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API RuntimeSessionView GetRuntimeSession() const noexcept;
+    // Borrowed project state for the active Play session; null outside Play.
+    // Valid only on the World owner thread and until that session is stopped.
+    HIKARI_GAME_PROJECT_SDK_API IGameProjectSession* GetGameSession() const noexcept;
     // Additive C++ SDK export; this is not the module's extern-C ABI table.
     // Invalid queries invoke no callback and do not flush commands.
     // Valid queries attempt QueryEnd after traversal. When nested in an

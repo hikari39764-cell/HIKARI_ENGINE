@@ -214,8 +214,9 @@ DirectorViewPanelResult DirectorViewPanel::DrawContents(const DocumentSceneBase&
     }
 
     EditorDirectorCameraInput cameraInput{};
-    const bool allowNavigation = mode_ != DirectorViewMode::LookThrough && !runtimePlayActive &&
-                                 !inputState.gizmoCaptured && !inputBlock.pointer;
+    const bool allowNavigation = mode_ != DirectorViewMode::LookThrough &&
+                                 (!runtimePlayActive || mode_ == DirectorViewMode::Free) && !inputState.gizmoCaptured &&
+                                 !inputBlock.pointer;
     if (allowNavigation) {
         cameraInput.lookActive = inputState.rightMouseCaptured;
         cameraInput.orbitActive = inputState.orbitMouseCaptured;

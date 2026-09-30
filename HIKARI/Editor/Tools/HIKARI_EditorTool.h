@@ -12,32 +12,17 @@ struct EditorContext;
 
 namespace EDITOR {
 
-enum class EditorToolTargetKind : uint8_t {
-    None,
-    Scene,
-    SceneObject,
-    Component,
-    Asset,
-    System,
-};
-
-struct EditorToolTarget {
-    EditorToolTargetKind kind = EditorToolTargetKind::None;
-    uint64_t sceneObjectId = 0;
-    std::string typeId{};
-    std::string assetGuid{};
-};
+class EditorOperationRegistry;
 
 struct EditorToolOpenRequest {
     std::string toolId{};
-    EditorToolTarget target{};
 };
 
 struct EditorToolContext {
     DocumentSceneBase& scene;
     EditorContext& editorContext;
-    // The request is valid only for the current Draw call. Tools that
-    // keep a target must copy the fields they need.
+    EditorOperationRegistry& operations;
+    // A pending open request asks the tool to focus/uncollapse this frame.
     const EditorToolOpenRequest* openRequest = nullptr;
 };
 

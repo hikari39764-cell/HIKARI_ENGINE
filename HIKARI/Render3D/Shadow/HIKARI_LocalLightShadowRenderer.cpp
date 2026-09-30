@@ -204,9 +204,7 @@ void RenderLocalLightShadows(const GFX::Context& graphics, const SceneLightingSe
     MESHRENDERER::FillCameraCB(state.cameraViewProj, MATH::Inverse(state.cameraViewProj), camera.GetPosition(),
                                uint32_t((std::max)(1, graphics.backBufferWidth)),
                                uint32_t((std::max)(1, graphics.backBufferHeight)), renderer.materialCamera);
-    if (!UploadShadowMaterialCamera(renderer, graphics) ||
-        ((renderer.frameHasStaticShadowWork || renderer.frameHasDynamicShadowWork) &&
-         !PrepareShadowDeformation(renderer, graphics))) {
+    if (!UploadShadowMaterialCamera(renderer, graphics)) {
         failAll();
         return;
     }
@@ -263,6 +261,11 @@ void RenderLocalLightShadows(const GFX::Context& graphics, const SceneLightingSe
             }
     };
     if (needsRender) {
+        if ((renderer.frameHasStaticShadowWork || renderer.frameHasDynamicShadowWork) &&
+            !PrepareShadowDeformation(renderer, graphics)) {
+            failAll();
+            return;
+        }
         if (renderer.frameHasStaticShadowWork)
             renderSource(renderer.staticShadowSceneSource, true);
         if (renderer.frameHasDynamicShadowWork)

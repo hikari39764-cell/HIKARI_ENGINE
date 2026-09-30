@@ -1,6 +1,7 @@
 #include "Editor/Performance/HIKARI_PerformanceAuditPanel.h"
 
 #include "Core/HIKARI_TimeService.h"
+#include "Core/Text/HIKARI_EnumNames.h"
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
@@ -13,6 +14,7 @@
 #include "Render3D/ScreenSpace/HIKARI_ScreenSpacePasses.h"
 #include "Render3D/ScreenSpace/HIKARI_SsaoRenderer.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
+#include "Render3D/Settings/HIKARI_RenderQualitySettingsJson.h"
 #include "Render3D/Shadow/HIKARI_ShadowMapRenderer.h"
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 #include "Render3D/Temporal/HIKARI_TemporalResourceSystem.h"
@@ -20,6 +22,7 @@
 #include "Render3D/Upscaling/HIKARI_StreamlineReflex.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineRuntime.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
+#include "Scene/HIKARI_RuntimeSceneContext.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 
 #if defined(HIKARI_WITH_EDITOR)
@@ -106,12 +109,19 @@ void MetricRowText(const char* label, const char* value) {
 RuntimePerformanceSnapshot BuildSnapshot() {
     RuntimePerformanceSnapshot out{};
     const FrameContext& frame = TIME::GetFrameContext();
+    const GFX::Context& graphics = GFX::GetCurrentContext();
     out.fpsRaw = frame.rawDt > 0.0f ? 1.0f / frame.rawDt : 0.0f;
     out.fixedStepsThisFrame = frame.fixedStepsThisFrame;
     out.droppedFixedTimeSeconds = frame.droppedFixedTime;
+    out.sceneId = RuntimeSceneContext::GetCurrentSceneId();
+    out.debugConfig = GFX::GetGfxDebugConfig();
+    out.renderQuality = RENDER3D::GetRenderQualitySettings();
+    out.backBufferWidth = graphics.backBufferWidth;
+    out.backBufferHeight = graphics.backBufferHeight;
     out.submission = RenderSubmissionSystem::GetDebugStats();
     out.scene = RenderSubmissionSystem::GetSceneRenderCacheStats();
     out.gpuRegistry = RenderSubmissionSystem::GetGpuSceneRegistryStats();
+    out.jointPaletteUpload = RENDER3D::GPUDRIVEN::GetGpuSceneJointPaletteUploadStats(graphics);
     out.gpuMaterials = MESHRENDERER::GetGpuMaterialRegistryStats();
     out.mesh = MESHRENDERER::GetDebugStats();
     out.shadow = SHADOW::GetDebugStats();
@@ -175,6 +185,11 @@ uint32_t CountValidCpuPasses(const CPU_PROFILE::FrameSnapshot& profile) {
     return count;
 }
 std::string BuildPerformanceReport(const RuntimePerformanceSnapshot& s) {
+    static constexpr TEXT::EnumName<RENDER3D::UPSCALING::StreamlineReflexMode> reflexModes[] = {
+        {RENDER3D::UPSCALING::StreamlineReflexMode::Off, "Off"},
+        {RENDER3D::UPSCALING::StreamlineReflexMode::LowLatency, "LowLatency"},
+        {RENDER3D::UPSCALING::StreamlineReflexMode::LowLatencyWithBoost, "Boost"},
+    };
     std::ostringstream out;
     out.imbue(std::locale::classic());
     out << std::fixed << std::setprecision(3);
@@ -198,9 +213,22 @@ std::string BuildPerformanceReport(const RuntimePerformanceSnapshot& s) {
         out << "Adapter: unavailable\n";
     out << "Scene render: " << s.temporalFrame.renderWidth << 'x' << s.temporalFrame.renderHeight
         << "\nScene output: " << s.temporalFrame.outputWidth << 'x' << s.temporalFrame.outputHeight
-        << "\nBack buffer: " << context.backBufferWidth << 'x' << context.backBufferHeight
-        << "\nAA: " << RENDER3D::RenderAntiAliasingModeLabel(RENDER3D::GetRenderQualitySettings().antiAliasingMode)
+        << "\nBack buffer: " << s.backBufferWidth << 'x' << s.backBufferHeight
+        << "\nAA: " << RENDER3D::RenderAntiAliasingModeLabel(s.renderQuality.antiAliasingMode)
         << "\nFPS raw: " << s.fpsRaw << '\n';
+    out << "Scene: " << (s.sceneId.empty() ? "unavailable" : s.sceneId) << '\n';
+    out << "Camera valid/source/position: " << s.temporalFrame.camera.valid << '/'
+        << s.temporalFrame.cameraSourceObjectId << "/(" << s.temporalFrame.camera.cameraPos.x << ','
+        << s.temporalFrame.camera.cameraPos.y << ',' << s.temporalFrame.camera.cameraPos.z << ")\n"
+        << "Camera FOV Y radians / near / far / aspect: " << s.temporalFrame.camera.fovYRad << '/'
+        << s.temporalFrame.camera.nearZ << '/' << s.temporalFrame.camera.farZ << '/' << s.temporalFrame.camera.aspect
+        << '\n';
+    out << "Camera view matrix (rows):\n";
+    for (int row = 0; row < 4; ++row) {
+        out << "  " << s.temporalFrame.camera.view.m[0][row] << ' ' << s.temporalFrame.camera.view.m[1][row] << ' '
+            << s.temporalFrame.camera.view.m[2][row] << ' ' << s.temporalFrame.camera.view.m[3][row] << '\n';
+    }
+    out << "Render quality settings: " << RENDER3D::SerializeRenderQualitySettings(s.renderQuality).dump() << '\n';
     const auto& fg = s.streamlineFrameGeneration;
     out << "Frame Gen requested/loaded/supported/host: " << fg.requested << '/' << fg.featureLoaded << '/'
         << fg.supported << '/' << fg.hostAllowed << '\n';
@@ -211,9 +239,18 @@ std::string BuildPerformanceReport(const RuntimePerformanceSnapshot& s) {
     out << "Frame Gen generated requested/max; actually presented: " << fg.generatedFrames << '/'
         << fg.maxGeneratedFrames << "; " << fg.presentedFrames << '\n';
     out << "Frame Gen status flags/failures: " << fg.statusFlags << '/' << fg.failureCount << '\n';
-    const auto& debug = GFX::GetGfxDebugConfig();
-    out << "Debug layer configured: " << debug.enableDebugLayer
-        << " GPU validation configured: " << debug.enableGpuBasedValidation << '\n';
+    out << "Reflex plugin / PCL plugin / support / PCL support: " << s.streamlineReflex.reflexPluginPresent << '/'
+        << s.streamlineReflex.pclPluginPresent << '/' << s.streamlineReflex.reflexSupported << '/'
+        << s.streamlineReflex.pclSupported << '\n';
+    out << "Reflex mode / options / sleep / marker mask / failures: "
+        << TEXT::EnumToName(reflexModes, s.streamlineReflex.mode, "Unknown") << '/'
+        << s.streamlineReflex.optionsConfigured << '/' << s.streamlineReflex.sleepCalled << "/0x" << std::hex
+        << static_cast<unsigned int>(s.streamlineReflex.markerMask) << std::dec << '/'
+        << s.streamlineReflex.failureCount << '\n';
+    out << "Debug layer configured: " << s.debugConfig.enableDebugLayer
+        << " GPU validation configured: " << s.debugConfig.enableGpuBasedValidation << '\n';
+    out << "GPU timing / pipeline statistics configured: " << s.debugConfig.enableGpuFrameProfiler << '/'
+        << s.debugConfig.enableGpuPipelineStats << '\n';
     out << "CPU frame: " << s.cpu.frameIndex << " valid=" << s.cpu.valid << '\n';
     const auto cpu = [&](const CPU_PROFILE::PassTiming& p) {
         if (!p.valid && p.rollingSampleCount == 0)
@@ -273,6 +310,29 @@ std::string BuildPerformanceReport(const RuntimePerformanceSnapshot& s) {
     out << "Shadow source full/patch/reuse; updated records: " << s.shadow.shadowSourceFullSyncCount << '/'
         << s.shadow.shadowSourcePatchCount << '/' << s.shadow.shadowSourceReuseCount << "; "
         << s.shadow.shadowSourceUpdatedInstanceCount << '\n';
+    const std::string currentShadowCacheReason = ShadowCacheMissReasonText(s.shadow.shadowCacheMissReasonFlags);
+    const std::string lastShadowCacheReason = ShadowCacheMissReasonText(s.shadow.shadowCacheLastMissReasonFlags);
+    out << "Directional shadow enabled/resolution/cascades/PCF/radius: " << s.shadow.enabled << '/'
+        << s.shadow.resolution << '/' << s.shadow.cascadeCount << '/' << s.shadow.pcfEnabled << '/'
+        << s.shadow.pcfRadius << '\n';
+    out << "Directional shadow ortho/near/far/depth bias/normal bias/strength: " << s.shadow.orthoSize << '/'
+        << s.shadow.nearPlane << '/' << s.shadow.farPlane << '/' << s.shadow.depthBias << '/' << s.shadow.normalBias
+        << '/' << s.shadow.strength << '\n';
+    out << "Shadow depth cache valid/hit/current reason/last reason/last miss logical frame: "
+        << s.shadow.shadowCacheValid << '/' << s.shadow.shadowCacheHit << '/' << currentShadowCacheReason << '/'
+        << lastShadowCacheReason << '/' << s.shadow.shadowCacheLastMissFrameIndex << '\n';
+    out << "Shadow depth cache hits/misses/copy/update: " << s.shadow.shadowCacheHitCount << '/'
+        << s.shadow.shadowCacheMissCount << '/' << s.shadow.shadowStaticCacheCopyCount << '/'
+        << s.shadow.shadowStaticCacheUpdateCount << '\n';
+    out << "Shadow static/dynamic sources and rendered static/dynamic/fallback: "
+        << s.shadow.shadowStaticSourceInstanceCount << '/' << s.shadow.shadowDynamicSourceInstanceCount << '/'
+        << s.shadow.shadowStaticRendered << '/' << s.shadow.shadowDynamicRendered << '/'
+        << s.shadow.shadowFallbackRendered << '\n';
+    out << "Probe sampling / dynamic GI quality / status / resident / updated / primary rays / bytes: "
+        << RENDER3D::LightProbeVolumeSamplingModeLabel(s.renderQuality.lightProbeVolumeSampling) << '/'
+        << RENDER3D::DynamicGiQualityLabel(s.renderQuality.dynamicGiQuality) << '/'
+        << RENDER3D::DYNAMICGI::ToString(s.dynamicGi.status) << '/' << s.dynamicGi.probes << '/'
+        << s.dynamicGi.updatedProbes << '/' << s.dynamicGi.primaryRays << '/' << s.dynamicGi.probeBytes << '\n';
     out << "Scene objects total/visible/hidden: " << s.scene.renderObjectCount << '/' << s.scene.visibleObjectCount
         << '/' << s.scene.hiddenObjectCount << "\nSurfaces total/dirty: " << s.scene.surfaceInstanceCount << '/'
         << s.scene.dirtySurfaceInstanceCount << '\n';
@@ -290,6 +350,9 @@ std::string BuildPerformanceReport(const RuntimePerformanceSnapshot& s) {
         << s.mesh.gpuSceneUpload.patchedDirtyRanges << '/' << s.mesh.gpuSceneUpload.reusedResidentFrame << '\n';
     out << "GPU scene upload committed instances/bytes: " << s.mesh.gpuSceneUpload.bufferStats.committedInstanceCount
         << '/' << s.mesh.gpuSceneUpload.bufferStats.committedBytes << '\n';
+    out << "Joint palette matrix payload bytes / uploads / reuse / empty bindings: "
+        << s.jointPaletteUpload.matrixPayloadBytes << '/' << s.jointPaletteUpload.snapshotUploadCount << '/'
+        << s.jointPaletteUpload.snapshotReuseCount << '/' << s.jointPaletteUpload.emptyBindingUploadCount << '\n';
     return out.str();
 }
 #endif

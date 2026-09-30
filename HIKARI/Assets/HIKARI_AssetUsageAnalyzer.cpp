@@ -10,6 +10,7 @@
 #include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingAsset.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Render3D/Lighting/HIKARI_DefaultSkyEnvironment.h"
+#include "HIKARI/Project/PropertyArchive.h"
 
 namespace HIKARI {
 
@@ -121,8 +122,14 @@ void AddGameProjectPropertyReferences(const nlohmann::json& value, std::string_v
                                       const std::string& owner, const AssetDatabase& assetDatabase,
                                       AssetUsageSummary& summary) {
     if (value.is_object()) {
+        const auto taggedAssetGuid = value.find(std::string(kGameProjectAssetGuidArchiveMarker));
+        if (taggedAssetGuid != value.end() && taggedAssetGuid->is_string()) {
+            AddReference(taggedAssetGuid->get<std::string>(), owner, "GameProject AssetGuid", assetDatabase, summary);
+        }
         for (auto it = value.begin(); it != value.end(); ++it) {
-            AddGameProjectPropertyReferences(it.value(), it.key(), owner, assetDatabase, summary);
+            if (it.key() != kGameProjectAssetGuidArchiveMarker) {
+                AddGameProjectPropertyReferences(it.value(), it.key(), owner, assetDatabase, summary);
+            }
         }
         return;
     }
@@ -139,33 +146,36 @@ void AddGameProjectPropertyReferences(const nlohmann::json& value, std::string_v
 }
 } // namespace
 
-AssetUsageSummary AnalyzeAssetUsage(const SceneDocument& document, const AssetDatabase& assetDatabase) {
+AssetUsageSummary AnalyzeAssetUsage(const SceneDocument& document, const AssetDatabase& assetDatabase,
+                                    AssetUsageScope scope) {
     AssetUsageSummary summary{};
     std::unordered_set<std::string> visitedMaterials{};
-    std::error_code styleError;
-    if (std::filesystem::is_regular_file(assetDatabase.GetProjectRoot() / DIALOGUE::kDialogueProjectStylePath,
-                                         styleError)) {
-        DIALOGUE::DialogueProjectStyle style;
-        if (DIALOGUE::LoadDialogueProjectStyle(assetDatabase.GetProjectRoot(), style)) {
-            for (const auto& guid :
-                 {style.theme.speakerTextStyle, style.theme.bodyTextStyle, style.theme.choiceTextStyle})
-                AddReference(guid.value, "Dialogue UI", "TextStyle", assetDatabase, summary);
-            for (const auto& speaker : style.speakers)
-                AddReference(speaker.portraitAssetGuid, "Dialogue UI", "Portrait", assetDatabase, summary);
+    if (scope == AssetUsageScope::Scene) {
+        std::error_code styleError;
+        if (std::filesystem::is_regular_file(assetDatabase.GetProjectRoot() / DIALOGUE::kDialogueProjectStylePath,
+                                             styleError)) {
+            DIALOGUE::DialogueProjectStyle style;
+            if (DIALOGUE::LoadDialogueProjectStyle(assetDatabase.GetProjectRoot(), style)) {
+                for (const auto& guid :
+                     {style.theme.speakerTextStyle, style.theme.bodyTextStyle, style.theme.choiceTextStyle})
+                    AddReference(guid.value, "Dialogue UI", "TextStyle", assetDatabase, summary);
+                for (const auto& speaker : style.speakers)
+                    AddReference(speaker.portraitAssetGuid, "Dialogue UI", "Portrait", assetDatabase, summary);
+            }
         }
-    }
 
-    if (document.environment.sky.skyAsset != RENDER3D::LIGHTING::kDefaultSkyAssetName) {
-        AddReference(document.environment.sky.skyAsset, "Scene Environment", "Sky", assetDatabase, summary);
-    }
-    AddReference(document.environment.sky.panoramaCloudAsset, "Scene Environment", "Panorama Cloud Layer",
-                 assetDatabase, summary);
-    AddReference(document.environment.reflectionProbe.sourceCubemapAsset, "Scene Environment",
-                 "Reflection Probe Cubemap", assetDatabase, summary);
-    // エンジン内蔵の後処理プロファイルはエンジンの内容として出力されるので、プロジェクト資産だけを数える。
-    if (const ScenePostSettings& post = document.environment.post;
-        post.enabled && !post.profileId.starts_with(POST::kBuiltinPostProfilePrefix)) {
-        AddReference(post.profileId, "Scene Environment", "Post Profile", assetDatabase, summary);
+        if (document.environment.sky.skyAsset != RENDER3D::LIGHTING::kDefaultSkyAssetName) {
+            AddReference(document.environment.sky.skyAsset, "Scene Environment", "Sky", assetDatabase, summary);
+        }
+        AddReference(document.environment.sky.panoramaCloudAsset, "Scene Environment", "Panorama Cloud Layer",
+                     assetDatabase, summary);
+        AddReference(document.environment.reflectionProbe.sourceCubemapAsset, "Scene Environment",
+                     "Reflection Probe Cubemap", assetDatabase, summary);
+        // エンジン内蔵の後処理プロファイルはエンジンの内容として出力されるので、プロジェクト資産だけを数える。
+        if (const ScenePostSettings& post = document.environment.post;
+            post.enabled && !post.profileId.starts_with(POST::kBuiltinPostProfilePrefix)) {
+            AddReference(post.profileId, "Scene Environment", "Post Profile", assetDatabase, summary);
+        }
     }
 
     for (const SceneObjectData& object : document.objects) {
@@ -231,19 +241,19 @@ AssetUsageSummary AnalyzeAssetUsage(const SceneDocument& document, const AssetDa
                 AddReference(component.properties.value("collisionAssetId", std::string{}), owner, "Collision Geometry",
                              assetDatabase, summary);
             }
-            // GameProject component schemas are owned by their module and
-            // cannot be hard-coded into the engine analyzer. A narrow
-            // AssetGuid naming contract closes over model/VFX/UI presets
-            // such as Summer.MonsterSpawnComponent without scanning
-            // arbitrary strings or source code.
+            // GameProject component schemas belong to their module. Prefer
+            // explicit PropertyArchive AssetGuid tags while retaining the
+            // suffix convention used by existing component properties.
             AddGameProjectPropertyReferences(component.properties, {}, owner, assetDatabase, summary);
         }
     }
 
-    for (const auto& sequence : document.cinematics.sequences) {
-        for (const auto& cue : sequence.presentationCueTrack.clips)
-            if (cue.kind == SEQUENCER::PresentationCueKind::Vfx)
-                AddReference(cue.vfxAsset.value, sequence.name, "Sequence.VfxCue", assetDatabase, summary);
+    if (scope == AssetUsageScope::Scene) {
+        for (const auto& sequence : document.cinematics.sequences) {
+            for (const auto& cue : sequence.presentationCueTrack.clips)
+                if (cue.kind == SEQUENCER::PresentationCueKind::Vfx)
+                    AddReference(cue.vfxAsset.value, sequence.name, "Sequence.VfxCue", assetDatabase, summary);
+        }
     }
     return summary;
 }

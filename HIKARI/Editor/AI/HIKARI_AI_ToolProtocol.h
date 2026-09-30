@@ -6,7 +6,7 @@ namespace HIKARI::EDITOR::AI_ASSISTANT {
 struct AiToolReply {
     nlohmann::json calls = nlohmann::json::array();
     std::string reasoning, finishReason, error;
-    void ReadDelta(const nlohmann::json& chunk);
+    AiChatDelta ReadDelta(const nlohmann::json& chunk);
     bool Validate(std::string& outError) const;
     AiChatMessage Message(const std::string& content) const;
 };

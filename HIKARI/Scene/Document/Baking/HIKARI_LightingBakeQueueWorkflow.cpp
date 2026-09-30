@@ -11,11 +11,8 @@ namespace HIKARI {
 
 bool DocumentSceneBakeCoordinator::RequestLightingBake(DocumentSceneBase& scene, bool force,
                                                        SceneObjectId selectedObjectId) {
-    if (TOOLS::BAKING::IsLightingBakeJobRunning(GetJobState())) {
-        lastReport_.warnings.push_back("A lighting bake batch is already running.");
-        hasLastReport_ = true;
+    if (!TOOLS::BAKING::LightingBakeService{}.GetBlockReason(scene).empty())
         return false;
-    }
 
     if (scene.state_->assets.Database().GetProjectRoot().empty()) {
         scene.state_->assets.Database().Initialize({});
@@ -102,6 +99,20 @@ bool DocumentSceneBakeCoordinator::RequestLightingBake(DocumentSceneBase& scene,
     lastReport_ = report;
     hasLastReport_ = true;
     return StartNextQueuedBake(scene);
+}
+
+bool DocumentSceneBakeCoordinator::ClearLightingBake(DocumentSceneBase& scene) {
+    TOOLS::BAKING::LightingBakeService service;
+    if (!service.GetBlockReason(scene).empty())
+        return false;
+    TOOLS::BAKING::LightingBakeRequest request;
+    request.projectRoot = scene.GetAssetDatabase().GetProjectRoot();
+    request.sceneGuid = scene.GetCurrentSceneAssetGuid().value;
+    lastReport_ = service.ClearLightingBake(request);
+    hasLastReport_ = true;
+    if (lastReport_.success)
+        scene.RefreshLightingRuntime();
+    return lastReport_.success;
 }
 
 bool DocumentSceneBakeCoordinator::StartNextQueuedBake(DocumentSceneBase& scene) {

@@ -102,7 +102,11 @@ void RegisterUiAnimationOperations(EditorOperationRegistry& registry, UiAnimatio
              auto r = result(ok, error);
              r.data["assetGuid"] = editor.Document().Guid().value;
              return r;
-         }},
+         },
+         EditorOperationExecutionPolicy::MainThread,
+         EditorOperationKind::Mutation,
+         EditorOperationExposureMask::Default,
+         EditorOperationPermission::ModifyProjectFiles},
         EditorOperationKind::Mutation, false);
     for (bool redo : {false, true})
         registry.Register(

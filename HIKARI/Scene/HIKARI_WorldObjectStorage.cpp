@@ -77,7 +77,8 @@ RuntimeObjectHandle World::ReserveObjectHandle() {
         ObjectSlot& slot = objectSlots_[slotIndex];
         if (slot.state != ObjectSlotState::Free || slot.object != nullptr ||
             slot.storageKind != ObjectStorageKind::None || slot.massTypeId.IsValid() ||
-            slot.storageIndex != kInvalidObjectStorageIndex) {
+            slot.storageIndex != kInvalidObjectStorageIndex || slot.prefabInstanceId != 0u ||
+            slot.prefabLocalObjectId != 0u) {
             return {};
         }
         slot.reservationToken = 0u;
@@ -236,6 +237,8 @@ void World::RecycleObjectSlot(uint32_t slotIndex) noexcept {
     slot.previousLiveSlot = kInvalidLiveObjectSlot;
     slot.nextLiveSlot = kInvalidLiveObjectSlot;
     slot.reservationToken = 0u;
+    slot.prefabInstanceId = 0u;
+    slot.prefabLocalObjectId = 0u;
     slot.storageKind = ObjectStorageKind::None;
     if (slot.generation == (std::numeric_limits<uint32_t>::max)()) {
         slot.state = ObjectSlotState::Retired;
@@ -287,6 +290,7 @@ void World::ReleaseObjectHandle(RuntimeObjectHandle handle) {
         slot.storageKind != ObjectStorageKind::GameObject || slot.object == nullptr) {
         return;
     }
+    ReleasePrefabInstanceObject(slot.prefabInstanceId, slot.prefabLocalObjectId);
     RemoveLiveObjectSlot(handle.slot);
     RecycleObjectSlot(handle.slot);
 }

@@ -3,10 +3,12 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #include "Render3D/HIKARI_Math3D.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenFrame.h"
+#include "Render3D/GpuDriven/HIKARI_GpuSceneJointPaletteSnapshot.h"
 #include "Render3D/Runtime/HIKARI_SurfaceGpuScene.h"
 #include "Render3D/Water/HIKARI_WaterSurfaceGpuData.h"
 #include "Render3D/Terrain/HIKARI_TerrainSurfaceGpuData.h"
@@ -69,7 +71,7 @@ struct GpuDrivenSceneSource {
     // Scene registry の全 surface。View の culling/描画 route に依存しない
     // RT/GI 入力とし、CPU scene をもう一つ複製しない。
     const std::vector<GpuSceneSurfaceRecord>* surfaceRecords = nullptr;
-    const std::vector<std::vector<MATH::Mat4>>* meshShaderJointPalettes = nullptr;
+    GpuSceneJointPaletteSnapshotPtr meshShaderJointPalettes{};
     const std::vector<WATER::WaterSurfaceGpuData>* waterSurfaceGpuData = nullptr;
     const std::vector<TERRAIN::TerrainSurfaceGpuData>* terrainSurfaceGpuData = nullptr;
     const std::vector<float>* terrainSurfaceHeights = nullptr;

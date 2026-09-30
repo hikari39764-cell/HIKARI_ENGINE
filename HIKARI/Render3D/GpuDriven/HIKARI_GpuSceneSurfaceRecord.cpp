@@ -550,8 +550,8 @@ RUNTIME::SurfaceGpuSceneInstance BuildGpuSceneInstance(const GpuSceneSurfaceReco
     instance.postGroupMask = record.postGroupMask;
     instance.surfaceFeatureDataIndex =
         record.waterSurface ? record.waterSurfaceGpuDataIndex : record.terrainSurfaceGpuDataIndex;
-    if (record.skinned && record.jointPaletteSlot != RUNTIME::kInvalidRenderSurfaceIndex) {
-        instance.jointPaletteOffsetBytes = record.jointPaletteSlot * RUNTIME::kSurfaceGpuSceneJointPaletteStrideBytes;
+    if (record.skinned && record.jointPaletteMatrixCount != 0u) {
+        instance.jointPaletteOffsetBytes = record.jointPaletteOffsetBytes;
         instance.jointPaletteMatrixCount = record.jointPaletteMatrixCount;
     }
 
@@ -703,9 +703,7 @@ namespace {
 bool IsGpuSceneResidentRecordCommon(const GpuSceneSurfaceRecord& record) {
     return record.valid && record.key.resourceKeyValid && record.key.objectDataCompatible &&
            !record.hasSpecialRenderDebug && record.key.backendRoute == RUNTIME::SurfaceBackendRoute::MeshShader &&
-           (!record.skinned ||
-            (record.jointPaletteSlot != RUNTIME::kInvalidRenderSurfaceIndex && record.jointPaletteMatrixCount != 0u)) &&
-           HasValidGpuSceneSubmitPrimitiveTarget(record);
+           (!record.skinned || record.jointPaletteMatrixCount != 0u) && HasValidGpuSceneSubmitPrimitiveTarget(record);
 }
 } // namespace
 

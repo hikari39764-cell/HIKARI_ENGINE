@@ -250,7 +250,7 @@ void World::RollbackCommandCheckpoint(WorldCommandCheckpoint checkpoint) noexcep
         for (size_t index = checkpoint.pendingCommandCount; index < pendingCommands_.size(); ++index) {
             const PendingWorldCommand& command = pendingCommands_[index];
             RecordCommandFailure(command, WorldMutationResult::CommandCanceled, WorldCommandPhase::Unknown);
-            ReleaseSpawnCommandReservations(command);
+            ReleaseCommandPayloadReservations(command);
         }
         pendingCommands_.resize(checkpoint.pendingCommandCount);
     }

@@ -33,6 +33,7 @@ public:
     bool RequestLightProbeBake(DocumentSceneBase& scene, SceneObjectId targetObjectId = {});
     bool RequestLightmapBake(DocumentSceneBase& scene, SceneObjectId targetObjectId = {});
     bool RequestLightingBake(DocumentSceneBase& scene, bool force, SceneObjectId selectedObjectId);
+    bool ClearLightingBake(DocumentSceneBase& scene);
     TOOLS::BAKING::LightingBakeJobState GetJobState() const;
     bool HasLastReport() const;
     const TOOLS::BAKING::LightingBakeReport& GetLastReport() const;

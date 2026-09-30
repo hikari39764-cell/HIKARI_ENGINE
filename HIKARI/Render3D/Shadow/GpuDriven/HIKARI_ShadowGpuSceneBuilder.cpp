@@ -9,6 +9,7 @@
 
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Render3D/Core/MeshRenderer/Data/HIKARI_MeshDrawDataBuilder.h"
+#include "Render3D/GpuDriven/HIKARI_GpuSceneJointPaletteUpload.h"
 #include "Render3D/GpuDriven/CommandStream/HIKARI_OwnedTraditionalIndirectStream.h"
 
 namespace HIKARI::SHADOW::INTERNAL {
@@ -161,11 +162,8 @@ bool PrepareShadowDeformation(ShadowRendererState& state, const GFX::Context& gr
     const auto* source = state.gpuDrivenSceneSource;
     if (source == nullptr)
         return false;
-    const auto* palettes = source->meshShaderJointPalettes;
-    // Mesh Shader の連続配列と従来描画の CBV は別の不変領域を使う。
-    frame.meshJointPaletteAddress = MESHRENDERER::UploadJointPalettes(graphics, frame.frameUploads,
-                                                                      palettes != nullptr ? palettes->data() : nullptr,
-                                                                      palettes != nullptr ? palettes->size() : 0u);
+    frame.meshJointPaletteAddress =
+        RENDER3D::GPUDRIVEN::UploadGpuSceneJointPaletteSnapshot(graphics, source->meshShaderJointPalettes);
     return frame.meshJointPaletteAddress != 0u &&
            HydrateShadowTraditionalIndirectStream(state, graphics, state.staticTraditionalIndirectStream) &&
            HydrateShadowTraditionalIndirectStream(state, graphics, state.dynamicTraditionalIndirectStream);

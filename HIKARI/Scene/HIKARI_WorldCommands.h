@@ -60,6 +60,8 @@ enum class WorldCommandKind : uint8_t {
     SpawnMass,
     DestroyMass,
     ParallelMassSystem,
+    PrefabInstantiate,
+    PrefabDestroyInstance,
 };
 
 enum class WorldCommandPhase : uint8_t {
@@ -128,6 +130,8 @@ enum class WorldCommandPayloadKind : uint8_t {
     Spawn,
     SpawnMass,
     DestroyMass,
+    PrefabInstantiate,
+    PrefabDestroyInstance,
 };
 
 struct WorldCommandPayload {
@@ -139,6 +143,31 @@ struct WorldCommandPayload {
 struct WorldSpawnBatchPayload final : WorldCommandPayload {
     WorldSpawnBatchPayload() noexcept : WorldCommandPayload(WorldCommandPayloadKind::Spawn) {}
     std::vector<WorldSpawnObjectPayload> objects{};
+    bool allowEngineComponents = false;
+};
+
+struct WorldPrefabSpawnObjectPayload {
+    uint64_t prefabLocalObjectId = 0u;
+    uint64_t sceneObjectId = 0u;
+    RuntimeObjectHandle object{};
+    RuntimeObjectHandle parent{};
+    WorldCommandLocalTransform transform{};
+    std::string name{};
+};
+
+struct WorldPrefabInstantiatePayload final : WorldCommandPayload {
+    WorldPrefabInstantiatePayload() noexcept : WorldCommandPayload(WorldCommandPayloadKind::PrefabInstantiate) {}
+    uint64_t requestId = 0u;
+    uint64_t instanceId = 0u;
+    std::shared_ptr<WorldSpawnBatchPayload> components{};
+    std::vector<WorldPrefabSpawnObjectPayload> objects{};
+};
+
+struct WorldPrefabDestroyInstancePayload final : WorldCommandPayload {
+    WorldPrefabDestroyInstancePayload() noexcept
+        : WorldCommandPayload(WorldCommandPayloadKind::PrefabDestroyInstance) {}
+    uint64_t instanceId = 0u;
+    std::vector<RuntimeObjectHandle> objects{};
 };
 
 struct WorldMassSpawnBatchPayload final : WorldCommandPayload {
@@ -159,7 +188,8 @@ struct WorldMassDestroyBatchPayload final : WorldCommandPayload {
 namespace INTERNAL {
 WorldMutationResult BuildWorldSpawnBatchPayload(const ComponentRegistry* registry,
                                                 std::span<const WorldSpawnRequest> requests,
-                                                std::shared_ptr<WorldSpawnBatchPayload>& outPayload) noexcept;
+                                                std::shared_ptr<WorldSpawnBatchPayload>& outPayload,
+                                                bool allowEngineComponents = false) noexcept;
 WorldMutationResult BuildWorldMassSpawnBatchPayload(const WorldMassSpawnBatchRequest& request,
                                                     std::shared_ptr<WorldMassSpawnBatchPayload>& outPayload) noexcept;
 } // namespace INTERNAL
@@ -175,6 +205,7 @@ struct PendingWorldCommand {
     std::array<char, kWorldCommandObjectNameCapacity> name{};
     std::shared_ptr<const WorldCommandPayload> payload{};
     uint32_t payloadIndex = 0u;
+    uint64_t documentId = 0u;
 };
 
 static_assert(sizeof(WorldCommandLocalTransform) == 40u);

@@ -12,7 +12,7 @@ namespace {
 
 class LightingBakeEditorTool final : public IEditorTool {
 public:
-    void Draw(EditorToolContext& context, bool& open) override { panel_.Draw(context.scene, open); }
+    void Draw(EditorToolContext& context, bool& open) override { panel_.Draw(context, open); }
 
 private:
     LightingBakePanel panel_{};
@@ -21,7 +21,7 @@ private:
 std::unique_ptr<IEditorTool> CreateLightingBakeTool() { return std::make_unique<LightingBakeEditorTool>(); }
 
 constexpr std::array<EditorToolDescriptor, 1> kBuiltInEditorTools{
-    EditorToolDescriptor{kLightingBakeToolId, "Lighting Bake", "Lighting", false, &CreateLightingBakeTool}};
+    EditorToolDescriptor{kLightingBakeToolId, "ui.window.lightingBake", "Lighting", false, &CreateLightingBakeTool}};
 
 } // namespace
 

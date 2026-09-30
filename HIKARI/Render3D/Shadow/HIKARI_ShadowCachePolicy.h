@@ -54,7 +54,7 @@ public:
     void Invalidate();
     bool EvaluateReuse(const ShadowCacheReuseInput& input);
     void MarkHit();
-    void MarkMiss();
+    void MarkMiss(uint64_t logicalFrameIndex);
     void MarkValid(const ShadowCacheKey& key);
     void RecordCopy(bool finalMatchesStaticCache);
     void SetFinalMatchesStaticCache(bool matches);
@@ -71,6 +71,7 @@ private:
     bool finalMatchesStaticCache_ = false;
     uint32_t missReasonFlags_ = ShadowCacheMissReasonNone;
     uint32_t lastMissReasonFlags_ = ShadowCacheMissReasonNone;
+    uint64_t lastMissFrameIndex_ = 0u;
     ShadowCacheKey key_{};
     size_t hitCount_ = 0;
     size_t missCount_ = 0;

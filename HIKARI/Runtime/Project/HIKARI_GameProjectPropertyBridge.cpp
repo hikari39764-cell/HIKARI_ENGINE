@@ -30,14 +30,23 @@ nlohmann::json* GetPropertyObject(void* properties) {
     return object;
 }
 
+bool CopyStringToBuffer(const nlohmann::json* value, char* destination, size_t capacity) noexcept;
+
 template <size_t Capacity>
 bool CopyFixedString(const nlohmann::json* value, char (&destination)[Capacity]) noexcept {
-    std::memset(destination, 0, Capacity);
+    return CopyStringToBuffer(value, destination, Capacity);
+}
+
+bool CopyStringToBuffer(const nlohmann::json* value, char* destination, size_t capacity) noexcept {
+    if (destination == nullptr || capacity == 0u) {
+        return false;
+    }
+    std::memset(destination, 0, capacity);
     if (value == nullptr || !value->is_string()) {
         return false;
     }
     const std::string& source = value->get_ref<const std::string&>();
-    if (source.size() >= Capacity) {
+    if (source.size() >= capacity) {
         return false;
     }
     const size_t count = source.size();
@@ -144,6 +153,18 @@ bool PropertyReader::ReadTextureAssetReference(std::string_view name,
     return ReadAssetReference(properties_, name, outReference);
 }
 
+bool PropertyReader::ReadAssetGuid(std::string_view name, char* outUtf8, size_t capacity) const noexcept {
+    if (outUtf8 != nullptr && capacity != 0u) {
+        std::memset(outUtf8, 0, capacity);
+    }
+    const nlohmann::json* property = FindProperty(properties_, name);
+    if (property == nullptr || !property->is_object()) {
+        return false;
+    }
+    const auto marker = property->find(std::string(kGameProjectAssetGuidArchiveMarker));
+    return marker != property->end() && CopyStringToBuffer(&*marker, outUtf8, capacity);
+}
+
 size_t PropertyReader::GetStringSize(std::string_view name) const noexcept {
     const nlohmann::json* value = FindProperty(properties_, name);
     return value != nullptr && value->is_string() ? value->get_ref<const std::string&>().size() : 0u;
@@ -201,6 +222,12 @@ void PropertyWriter::WriteVfxAssetReference(std::string_view name, const GamePro
 
 void PropertyWriter::WriteTextureAssetReference(std::string_view name, const GameProjectUiTextureReference& reference) {
     WriteAssetReference(properties_, name, reference);
+}
+
+void PropertyWriter::WriteAssetGuid(std::string_view name, std::string_view assetGuid) {
+    if (nlohmann::json* object = GetPropertyObject(properties_)) {
+        (*object)[std::string(name)] = {{std::string(kGameProjectAssetGuidArchiveMarker), assetGuid}};
+    }
 }
 
 } // namespace HIKARI

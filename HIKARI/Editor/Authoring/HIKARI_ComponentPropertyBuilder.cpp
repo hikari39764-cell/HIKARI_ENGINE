@@ -9,6 +9,7 @@
 #include <type_traits>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetRecord.h"
@@ -165,7 +166,17 @@ public:
 
     bool RuntimeVariableIdPicker(const AuthoringFieldDescriptor& field, BINDING::ValueType expectedType,
                                  std::string& value) override {
-        const auto validator = [this, expectedType](const std::string& next) {
+        return RuntimeVariableIdPicker(field, std::span<const BINDING::ValueType>(&expectedType, 1u), value);
+    }
+
+    bool RuntimeVariableIdPicker(const AuthoringFieldDescriptor& field,
+                                 std::span<const BINDING::ValueType> allowedTypes, std::string& value) override {
+        if (allowedTypes.empty()) {
+            SetError("RUNTIME_VARIABLE_TYPE_MISMATCH", "At least one runtime variable type is required.");
+            return false;
+        }
+        const std::vector<BINDING::ValueType> acceptedTypes(allowedTypes.begin(), allowedTypes.end());
+        const auto validator = [this, acceptedTypes](const std::string& next) {
             if (next.empty()) {
                 return true;
             }
@@ -177,14 +188,20 @@ public:
                 SetError("RUNTIME_VARIABLE_NOT_FOUND", "Runtime variable was not found: " + next);
                 return false;
             }
-            if (definition->defaultValue.type != expectedType) {
+            if (std::find(acceptedTypes.begin(), acceptedTypes.end(), definition->defaultValue.type) ==
+                acceptedTypes.end()) {
                 SetError("RUNTIME_VARIABLE_TYPE_MISMATCH", "Runtime variable type is incompatible.");
                 return false;
             }
             return true;
         };
-        return VisitString(field, AuthoringFieldValueType::RuntimeVariableId, value,
-                           {{"valueType", BINDING::ToString(expectedType)}}, validator);
+        nlohmann::json typeNames = nlohmann::json::array();
+        for (const BINDING::ValueType type : acceptedTypes)
+            typeNames.push_back(BINDING::ToString(type));
+        nlohmann::json shape{{"valueTypes", std::move(typeNames)}};
+        if (acceptedTypes.size() == 1u)
+            shape["valueType"] = BINDING::ToString(acceptedTypes.front());
+        return VisitString(field, AuthoringFieldValueType::RuntimeVariableId, value, shape, validator);
     }
 
     bool RuntimeEventIdPicker(const AuthoringFieldDescriptor& field, bool hasPayload, BINDING::ValueType payloadType,

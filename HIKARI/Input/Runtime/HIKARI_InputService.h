@@ -26,17 +26,23 @@ public:
     void Shutdown();
     void SetBackend(std::unique_ptr<IInputBackend> backend);
     void SetHostWindow(void* nativeWindow);
+    void* GetHostWindow() const noexcept { return hostWindow_; }
     void SetMouseCaptureMode(MouseCaptureMode mode);
     void SetMouseCaptureRegion(const MouseCaptureRegion& region);
     void ClearMouseCaptureRegion();
     MouseCaptureMode GetMouseCaptureMode() const noexcept;
-    void SetUiInteractionActive(bool active) noexcept { uiInteractionActive_ = active; }
+    void SetUiInteractionActive(bool active) noexcept;
     bool IsUiInteractionActive() const noexcept { return uiInteractionActive_ || developerInputCaptured_; }
-    void SetDeveloperInputCaptured(bool active) noexcept { developerInputCaptured_ = active; }
+    void SetDeveloperInputCaptured(bool active) noexcept;
     bool IsDeveloperInputCaptured() const noexcept { return developerInputCaptured_; }
     void SetPointerCursorVisible(bool visible) noexcept { pointerCursorHiddenRequested_ = !visible; }
     void ApplyPointerCursorVisibility(bool pointerOwned);
     void SetExternalMouseWheel(float delta);
+    void SetExternalTextInputEvents(std::vector<TextInputEvent> events);
+    void DiscardTextInputEvents() noexcept;
+    void ResetTextInput() noexcept;
+    void SetImeCaretAnchor(ImeCaretAnchor anchor) noexcept;
+    ImeCaretAnchor GetImeCaretAnchor() const noexcept { return imeCaretAnchor_; }
     void Update(float unscaledDeltaSeconds);
 
     const InputSnapshot& GetSnapshot() const noexcept { return snapshot_; }
@@ -71,6 +77,7 @@ private:
     void SuppressActions();
 
     std::unique_ptr<IInputBackend> backend_{};
+    void* hostWindow_ = nullptr;
     std::filesystem::path inputDirectory_{};
     InputActionMap actionMap_{};
     InputContextStack contexts_{};
@@ -78,6 +85,8 @@ private:
     InputSnapshot snapshot_{};
     InputRebindOperation rebindOperation_{};
     InputDeviceState rebindPreviousDevices_{};
+    std::vector<TextInputEvent> externalTextInputEvents_{};
+    ImeCaretAnchor imeCaretAnchor_{};
     float rebindReleaseThreshold_ = 0.25f;
     bool suppressActionsUntilNeutral_ = false;
     bool uiInteractionActive_ = false;

@@ -11,6 +11,7 @@
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/Serialization/Environment/HIKARI_SceneEnvironmentJson.h"
 #include "Tools/Baking/HIKARI_LightingBakeReport.h"
+#include "Tools/Baking/HIKARI_LightingBakeService.h"
 
 namespace HIKARI {
 namespace {
@@ -195,10 +196,12 @@ void DocumentSceneEditorController::RegisterEnvironmentOperations() {
         [this](const nlohmann::json& parameters) -> EDITOR::EditorOperationResult {
             if (!aiOperationScene_)
                 return EDITOR::OperationFailure("NO_SCENE", "No scene is open.");
-            if (aiOperationScene_->IsRuntimePlayActive())
-                return EDITOR::OperationFailure("PLAY_ACTIVE", "Stop Play before baking lighting.");
-            if (TOOLS::BAKING::IsLightingBakeJobRunning(aiOperationScene_->GetLightingBakeJobState()))
-                return EDITOR::OperationFailure("BAKE_RUNNING", "A lighting bake is already running.");
+            if (const auto reason = TOOLS::BAKING::LightingBakeService{}.GetBlockReason(*aiOperationScene_);
+                !reason.empty())
+                return EDITOR::OperationFailure("BAKE_BLOCKED", reason);
+            if (parameters.contains("targetObjectId") && parameters.value("targetObjectId", uint64_t{}) == 0u)
+                return EDITOR::OperationFailure("TARGET_REQUIRED",
+                                                "Select a bake object or omit targetObjectId for the scene.");
             if (!aiOperationScene_->RequestLightingBake(parameters.value("force", false),
                                                         SceneObjectId{parameters.value("targetObjectId", uint64_t{})}))
                 return EDITOR::OperationFailure("BAKE_REJECTED",
@@ -207,7 +210,25 @@ void DocumentSceneEditorController::RegisterEnvironmentOperations() {
                                        {{"statusAction", "lighting.bake.status"}, {"pending", true}});
         }};
     bake.permission = EDITOR::EditorOperationPermission::ModifyProjectFiles;
-    operationRegistry_.Register(std::move(bake), EditorOperationKind::Session);
+    operationRegistry_.Register(std::move(bake), EditorOperationKind::Session, false);
+    EDITOR::EditorOperationDefinition clear{
+        "lighting.bake.clear",
+        "Clear the current scene's generated lighting outputs when no bake, import or Play is active.",
+        "scene",
+        {},
+        [this](const nlohmann::json&) {
+            if (!aiOperationScene_)
+                return EDITOR::OperationFailure("NO_SCENE", "No scene is open.");
+            if (const auto reason = TOOLS::BAKING::LightingBakeService{}.GetBlockReason(*aiOperationScene_);
+                !reason.empty())
+                return EDITOR::OperationFailure("BAKE_BLOCKED", reason);
+            if (!aiOperationScene_->ClearLightingBake())
+                return EDITOR::OperationFailure("CLEAR_FAILED",
+                                                "Could not clear lighting outputs; inspect the bake report.");
+            return EDITOR::OperationOk("Lighting outputs cleared.");
+        }};
+    clear.permission = EDITOR::EditorOperationPermission::ModifyProjectFiles;
+    operationRegistry_.Register(std::move(clear), EditorOperationKind::Mutation, false);
 
     operationRegistry_.Register({"lighting.bake.status",
                                  "Report the lighting bake state and the latest bake report.",

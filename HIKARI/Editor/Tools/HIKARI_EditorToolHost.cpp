@@ -1,6 +1,7 @@
 #include "HIKARI_EditorToolHost.h"
 
 #include "Core/HIKARI_Logger.h"
+#include "Core/Text/HIKARI_Localization.h"
 
 #include <algorithm>
 #include <utility>
@@ -43,7 +44,8 @@ void EditorToolHost::DrawMenuItem(std::string_view toolId) {
     if (!entry) {
         return;
     }
-    ImGui::MenuItem(entry->displayName.c_str(), nullptr, &entry->open);
+    if (ImGui::MenuItem(TEXT::Localize(entry->displayName).c_str(), nullptr, entry->open))
+        RequestOpen({entry->toolId});
 #else
     (void)toolId;
 #endif
@@ -54,7 +56,7 @@ void EditorToolHost::DrawMenuContents() {
     for (size_t i = 0; i < tools_.size(); ++i) {
         ToolEntry& entry = tools_[i];
         if (entry.menuGroup.empty()) {
-            ImGui::MenuItem(entry.displayName.c_str(), nullptr, &entry.open);
+            DrawMenuItem(entry.toolId);
             continue;
         }
 
@@ -67,7 +69,7 @@ void EditorToolHost::DrawMenuContents() {
 
         for (ToolEntry& groupedEntry : tools_) {
             if (groupedEntry.menuGroup == entry.menuGroup) {
-                ImGui::MenuItem(groupedEntry.displayName.c_str(), nullptr, &groupedEntry.open);
+                DrawMenuItem(groupedEntry.toolId);
             }
         }
         ImGui::EndMenu();
@@ -91,7 +93,7 @@ void EditorToolHost::Draw(EditorToolContext& context) {
             }
         }
 
-        EditorToolContext toolContext{context.scene, context.editorContext,
+        EditorToolContext toolContext{context.scene, context.editorContext, context.operations,
                                       entry.pendingOpenRequest ? &*entry.pendingOpenRequest : nullptr};
         entry.instance->Draw(toolContext, entry.open);
         entry.pendingOpenRequest.reset();

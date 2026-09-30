@@ -121,7 +121,7 @@ bool MeshFrameResourceStore::Initialize(ID3D12Device* device, ID3D12DescriptorHe
         }
         if (!frame.view.Initialize(device) ||
             !frame.materialUploads.Init(device, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT) ||
-            !frame.deformationUploads.Init(device, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT)) {
+            !frame.traditionalJointPaletteUploads.Init(device, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT)) {
             return false;
         }
         frame.materialUploadNeedsRetry = false;

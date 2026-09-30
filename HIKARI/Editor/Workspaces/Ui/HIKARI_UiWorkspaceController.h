@@ -6,6 +6,7 @@
 #include "Scene/Ui/HIKARI_UiSceneSystem.h"
 #include "Editor/Workspaces/Ui/HIKARI_UiAnimationEditor.h"
 #include <functional>
+#include "Runtime/Binding/HIKARI_RuntimeBindingStore.h"
 
 namespace HIKARI {
 class DocumentSceneBase;
@@ -36,6 +37,7 @@ public:
 private:
     void DrawLibrary(DocumentSceneBase&, EditorContext&, SceneObjectCommandService&, SelectionSyncService&,
                      EditorCommandRouter&, EditorOperationRegistry&);
+    void DrawPreviewData(DocumentSceneBase&, EditorContext&);
     void DrawCanvas(DocumentSceneBase&, EditorContext&, EditorCommandRouter&, EditorOperationRegistry&,
                     UiWorkspaceResult&);
     void DrawInspector(DocumentSceneBase&, EditorContext&, SelectionSyncService&, SceneObjectCommandService&,
@@ -60,6 +62,11 @@ private:
     std::string status_;
     SceneComponentAuthoringSection inspector_;
     UiSceneSystem projector_;
+    BINDING::RuntimeBindingStore previewData_;
+    uint64_t previewDataSource_ = 0, previewDataRevision_ = 0;
+    SceneObjectId previewDataObject_{};
+    RuntimeObjectHandle previewDataTarget_{};
+    bool previewDataEnabled_ = false;
     GAME_UI::GameUiPresentationService content_;
     GameUiPreviewTarget target_;
     std::filesystem::path projectRoot_;
@@ -68,12 +75,16 @@ private:
         SceneObjectId object{};
         SceneComponentData before;
         nlohmann::json after;
-        MATH::Vec2 mouse{}, parentDelta{};
+        MATH::Vec2 mouse{};
+        Affine2D axes;
         uint64_t revision = 0;
+        bool animation = false;
         bool resize = false;
         bool changed = false;
-        MATH::Vec2 size{};
+        MATH::Vec2 size{}, translation{};
+        std::vector<std::pair<SceneObjectId, SceneComponentData>> companions;
     };
     std::optional<Drag> drag_;
+    std::optional<MATH::Vec2> marquee_;
 };
 } // namespace HIKARI::EDITOR

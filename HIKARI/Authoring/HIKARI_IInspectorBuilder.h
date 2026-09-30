@@ -95,6 +95,10 @@ public:
                                          std::string& value) {
         return RuntimeVariableIdPicker(field.label, expectedType, value);
     }
+    virtual bool RuntimeVariableIdPicker(const AuthoringFieldDescriptor& field,
+                                         std::span<const BINDING::ValueType> allowedTypes, std::string& value) {
+        return !allowedTypes.empty() && RuntimeVariableIdPicker(field, allowedTypes.front(), value);
+    }
     virtual bool RuntimeEventIdPicker(std::string_view label, bool hasPayload, BINDING::ValueType payloadType,
                                       std::string& value) = 0;
     virtual bool RuntimeEventIdPicker(const AuthoringFieldDescriptor& field, bool hasPayload,

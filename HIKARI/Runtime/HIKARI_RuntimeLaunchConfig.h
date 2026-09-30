@@ -45,6 +45,8 @@ struct RuntimeLaunchConfig {
     std::optional<bool> enableEditorUI{};
     // D3D12 デバッグレイヤーの有効/無効
     std::optional<bool> enableDebugLayer{};
+    // GPU pipeline statistics query の有効/無効。未指定なら GfxDebugConfig の既定値を維持する。
+    std::optional<bool> enableGpuPipelineStats{};
     // デバッグカメラ（自由飛行カメラ）の有効/無効
     std::optional<bool> enableDebugCamera{};
 

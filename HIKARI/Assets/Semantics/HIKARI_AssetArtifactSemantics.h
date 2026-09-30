@@ -23,6 +23,7 @@ enum class AssetArtifactKind : uint8_t {
     BrdfLut,
     VfxProgram,
     ShaderProgram,
+    PrefabRuntime,
     Count,
 };
 

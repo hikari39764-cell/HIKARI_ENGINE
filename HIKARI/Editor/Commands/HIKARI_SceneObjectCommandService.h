@@ -47,7 +47,7 @@ public:
     bool Execute(SceneObjectCommandId command, DocumentSceneBase& scene, EditorContext& context,
                  const SelectionSyncService& selectionSync, std::string_view argument = {});
 
-    std::vector<std::string> ListPrefabIds() const;
+    std::vector<PrefabAssetEntry> ListPrefabs(const AssetDatabase& assetDatabase) const;
     const std::string& GetStatusMessage() const noexcept;
     bool IsStatusError() const noexcept;
     void ClearStatus() noexcept;

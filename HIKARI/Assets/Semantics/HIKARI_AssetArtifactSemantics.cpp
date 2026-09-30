@@ -3,6 +3,7 @@
 #include <array>
 
 #include "Core/Text/HIKARI_AsciiCase.h"
+#include "Core/Text/HIKARI_EnumNames.h"
 
 namespace HIKARI::ASSETS::SEMANTICS {
 
@@ -100,7 +101,28 @@ constexpr std::array<AssetArtifactSemantics, static_cast<size_t>(AssetArtifactKi
         "ShaderProgram",
         true,
     },
+    {AssetArtifactKind::PrefabRuntime, AssetType::Prefab, CookedAssetFormat::HPREFABC, "PrefabRuntime", true},
 }};
+
+constexpr TEXT::EnumName<CookedAssetFormat> kCookedAssetFormatNames[] = {
+    {CookedAssetFormat::DDS, "DDS"},           {CookedAssetFormat::HTEX, "HTEX"},
+    {CookedAssetFormat::HMODEL, "HMODEL"},     {CookedAssetFormat::HMESH, "HMESH"},
+    {CookedAssetFormat::HCMESH, "HCMESH"},     {CookedAssetFormat::HCOLLISION, "HCOLLISION"},
+    {CookedAssetFormat::HMAT, "HMAT"},         {CookedAssetFormat::HSKY, "HSKY"},
+    {CookedAssetFormat::HIBL, "HIBL"},         {CookedAssetFormat::HVFX, "HVFX"},
+    {CookedAssetFormat::HSHADERC, "HSHADERC"}, {CookedAssetFormat::HPAK, "HPAK"},
+    {CookedAssetFormat::HPREFABC, "HPREFABC"},
+};
+
+constexpr TEXT::EnumName<CookedAssetFormat> kCookedAssetFormatExtensions[] = {
+    {CookedAssetFormat::DDS, ".dds"},           {CookedAssetFormat::HTEX, ".htex"},
+    {CookedAssetFormat::HMODEL, ".hmodel"},     {CookedAssetFormat::HMESH, ".hmesh"},
+    {CookedAssetFormat::HCMESH, ".hcmesh"},     {CookedAssetFormat::HCOLLISION, ".hcollision"},
+    {CookedAssetFormat::HMAT, ".hmat"},         {CookedAssetFormat::HSKY, ".hsky"},
+    {CookedAssetFormat::HIBL, ".hibl"},         {CookedAssetFormat::HVFX, ".hvfxc"},
+    {CookedAssetFormat::HSHADERC, ".hshaderc"}, {CookedAssetFormat::HPAK, ".hpak"},
+    {CookedAssetFormat::HPREFABC, ".hprefabc"},
+};
 
 } // namespace
 
@@ -121,70 +143,20 @@ const AssetArtifactSemantics* FindPrimaryAssetArtifactSemantics(AssetType type) 
 }
 
 std::string_view ToString(CookedAssetFormat format) noexcept {
-    switch (format) {
-    case CookedAssetFormat::DDS: return "DDS";
-    case CookedAssetFormat::HTEX: return "HTEX";
-    case CookedAssetFormat::HMODEL: return "HMODEL";
-    case CookedAssetFormat::HMESH: return "HMESH";
-    case CookedAssetFormat::HCMESH: return "HCMESH";
-    case CookedAssetFormat::HCOLLISION: return "HCOLLISION";
-    case CookedAssetFormat::HMAT: return "HMAT";
-    case CookedAssetFormat::HSKY: return "HSKY";
-    case CookedAssetFormat::HIBL: return "HIBL";
-    case CookedAssetFormat::HVFX: return "HVFX";
-    case CookedAssetFormat::HSHADERC: return "HSHADERC";
-    case CookedAssetFormat::HPAK: return "HPAK";
-    case CookedAssetFormat::Unknown:
-    default: return "Unknown";
-    }
+    return TEXT::EnumToName(kCookedAssetFormatNames, format, "Unknown");
 }
 
 CookedAssetFormat ParseCookedAssetFormat(std::string_view text) noexcept {
-    constexpr CookedAssetFormat formats[] = {
-        CookedAssetFormat::DDS,    CookedAssetFormat::HTEX,       CookedAssetFormat::HMODEL,   CookedAssetFormat::HMESH,
-        CookedAssetFormat::HCMESH, CookedAssetFormat::HCOLLISION, CookedAssetFormat::HMAT,     CookedAssetFormat::HSKY,
-        CookedAssetFormat::HIBL,   CookedAssetFormat::HVFX,       CookedAssetFormat::HSHADERC, CookedAssetFormat::HPAK,
-    };
-    for (CookedAssetFormat format : formats) {
-        if (text == ToString(format)) {
-            return format;
-        }
-    }
-    return CookedAssetFormat::Unknown;
+    return TEXT::ParseEnum(kCookedAssetFormatNames, text, CookedAssetFormat::Unknown);
 }
 
 std::string_view GetCookedAssetExtension(CookedAssetFormat format) noexcept {
-    switch (format) {
-    case CookedAssetFormat::DDS: return ".dds";
-    case CookedAssetFormat::HTEX: return ".htex";
-    case CookedAssetFormat::HMODEL: return ".hmodel";
-    case CookedAssetFormat::HMESH: return ".hmesh";
-    case CookedAssetFormat::HCMESH: return ".hcmesh";
-    case CookedAssetFormat::HCOLLISION: return ".hcollision";
-    case CookedAssetFormat::HMAT: return ".hmat";
-    case CookedAssetFormat::HSKY: return ".hsky";
-    case CookedAssetFormat::HIBL: return ".hibl";
-    case CookedAssetFormat::HVFX: return ".hvfxc";
-    case CookedAssetFormat::HSHADERC: return ".hshaderc";
-    case CookedAssetFormat::HPAK: return ".hpak";
-    case CookedAssetFormat::Unknown:
-    default: return {};
-    }
+    return TEXT::EnumToName(kCookedAssetFormatExtensions, format, "");
 }
 
 CookedAssetFormat ClassifyCookedAssetFormat(const std::filesystem::path& path) {
     const std::string extension = TEXT::ToLowerAsciiCopy(path.extension().string());
-    constexpr CookedAssetFormat formats[] = {
-        CookedAssetFormat::DDS,    CookedAssetFormat::HTEX,       CookedAssetFormat::HMODEL,   CookedAssetFormat::HMESH,
-        CookedAssetFormat::HCMESH, CookedAssetFormat::HCOLLISION, CookedAssetFormat::HMAT,     CookedAssetFormat::HSKY,
-        CookedAssetFormat::HIBL,   CookedAssetFormat::HVFX,       CookedAssetFormat::HSHADERC, CookedAssetFormat::HPAK,
-    };
-    for (CookedAssetFormat format : formats) {
-        if (extension == GetCookedAssetExtension(format)) {
-            return format;
-        }
-    }
-    return CookedAssetFormat::Unknown;
+    return TEXT::ParseEnum(kCookedAssetFormatExtensions, extension, CookedAssetFormat::Unknown);
 }
 
 AssetArtifactDesc MakeAssetArtifact(AssetArtifactKind kind, std::string path) {

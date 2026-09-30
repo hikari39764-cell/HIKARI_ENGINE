@@ -1,5 +1,7 @@
 #include "Editor/Preview/HIKARI_SceneViewSeriesCapture.h"
 
+#include "Editor/Authoring/HIKARI_SceneObjectObservation.h"
+#include "Render3D/Core/HIKARI_BoundsUtils.h"
 #include <algorithm>
 #include <cmath>
 #include <numbers>
@@ -41,7 +43,7 @@ const ViewAngle* FindViewAngle(std::string_view id) {
     return nullptr;
 }
 
-bool ResolveCenter(DocumentSceneBase& scene, const nlohmann::json& parameters, MATH::Vec3& center,
+bool ResolveCenter(DocumentSceneBase& scene, const nlohmann::json& parameters, MATH::Vec3& center, float& radius,
                    EditorOperationResult& failure) {
     if (parameters.contains("focusObjectId")) {
         GameObject* object = scene.GetWorld().FindObject(SceneObjectId{parameters.value("focusObjectId", uint64_t{})});
@@ -51,6 +53,12 @@ bool ResolveCenter(DocumentSceneBase& scene, const nlohmann::json& parameters, M
         }
         const MATH::Mat4 world = object->GetTransform().GetWorldMatrix();
         center = {world.m[3][0], world.m[3][1], world.m[3][2]};
+        const auto bounds = ObserveSceneObjectBounds(scene, object->GetDocumentId());
+        if (BOUNDS::IsUsable(bounds)) {
+            const auto sphere = BOUNDS::ComputeCenterRadius(bounds);
+            center = {sphere.x, sphere.y, sphere.z};
+            radius = sphere.w;
+        }
         return true;
     }
     if (parameters.contains("center")) {
@@ -80,15 +88,19 @@ EditorOperationResult SceneViewSeriesCapture::Start(DocumentSceneBase& scene, co
         return OperationFailure("CAPTURE_BUSY", "A multi-view capture is already pending.");
     }
     MATH::Vec3 center{};
+    float radius = 0.0f;
     EditorOperationResult failure{};
-    if (!ResolveCenter(scene, parameters, center, failure)) {
+    if (!ResolveCenter(scene, parameters, center, radius, failure)) {
         return failure;
     }
-    const float distance = std::clamp(parameters.value("distance", 6.0f), 0.1f, 10000.0f);
     const float pitch = std::clamp(parameters.value("pitchDegrees", 20.0f), -80.0f, 89.0f);
     const float fov = std::clamp(parameters.value("fovDegrees", 50.0f), 10.0f, 120.0f);
     width_ = static_cast<uint32_t>(std::clamp(parameters.value("width", 768), 128, 1536));
     height_ = static_cast<uint32_t>(std::clamp(parameters.value("height", 432), 128, 1536));
+    const float halfFov = std::atan(std::tan(fov * std::numbers::pi_v<float> / 360.0f) *
+                                    (std::min)(1.0f, static_cast<float>(width_) / static_cast<float>(height_)));
+    const float fittedDistance = radius > 0 ? radius * 1.1f / std::sin(halfFov) : 6.0f;
+    const float distance = std::clamp(parameters.value("distance", fittedDistance), 0.1f, 10000.0f);
     const nlohmann::json requested =
         parameters.value("views", nlohmann::json::array({"front", "three_quarter", "right", "top"}));
     if (!std::isfinite(distance) || !std::isfinite(pitch) || !std::isfinite(fov) || !requested.is_array() ||
@@ -121,6 +133,7 @@ EditorOperationResult SceneViewSeriesCapture::Start(DocumentSceneBase& scene, co
     }
     folder_ = scene.GetAssetDatabase().GetLibraryRoot() / "EditorAI" / "Captures";
     sceneRevision_ = scene.GetSceneDocumentRevision();
+    worldIdentity_ = scene.GetWorld().GetRuntimeIdentity();
     next_ = 0;
     images_ = nlohmann::json::array();
     return SubmitNext();
@@ -163,7 +176,8 @@ EditorOperationResult SceneViewSeriesCapture::Poll(DocumentSceneBase* scene) {
     if (views_.empty()) {
         return OperationFailure("NO_CAPTURE", "No multi-view capture is pending.");
     }
-    if (scene == nullptr || scene->GetSceneDocumentRevision() != sceneRevision_) {
+    if (scene == nullptr || scene->GetSceneDocumentRevision() != sceneRevision_ ||
+        scene->GetWorld().GetRuntimeIdentity() != worldIdentity_) {
         Clear();
         return OperationFailure("DOCUMENT_CONFLICT", "The scene changed during capture; capture it again.");
     }
@@ -176,7 +190,9 @@ EditorOperationResult SceneViewSeriesCapture::Poll(DocumentSceneBase* scene) {
         return Pending();
     }
     nlohmann::json image = result.data["images"][0];
-    image["label"] = "Scene · " + views_[next_].label;
+    image["label"] = "Scene inspection · " + views_[next_].label;
+    image["camera"] = result.data["camera"];
+    image["frameIndex"] = result.data["frameIndex"];
     images_.push_back(std::move(image));
     ++next_;
     if (next_ < views_.size()) {
@@ -186,7 +202,9 @@ EditorOperationResult SceneViewSeriesCapture::Poll(DocumentSceneBase* scene) {
     const std::size_t count = views_.size();
     Clear();
     return OperationOk("已返回 " + std::to_string(count) + " 个角度的截图；画面内容仍需视觉检查。",
-                       {{"images", std::move(images)}});
+                       {{"images", std::move(images)},
+                        {"source", "scene_inspection"},
+                        {"note", "Separate inspection renders; use capture.preview for final game output."}});
 }
 
 void SceneViewSeriesCapture::Clear() {

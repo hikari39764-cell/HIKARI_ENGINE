@@ -16,11 +16,14 @@
 #include <imgui_internal.h>
 
 #include "Editor/Project/HIKARI_GameProjectEditorModuleLibrary.h"
+#include "Editor/Project/HIKARI_GameProjectEditorDocumentService.h"
+#include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetRegistry.h"
 #include "Editor/DragDrop/HIKARI_EditorAssetDragDrop.h"
 #include "Render2D/HIKARI_DxTexture.h"
 #include "Scene/Ui/HIKARI_GameUiPresentationService.h"
+#include "Core/Text/HIKARI_UtfPath.h"
 
 namespace HIKARI::EDITOR {
 namespace {
@@ -215,6 +218,12 @@ public:
             dockRegions_.fill(root);
         }
         HIKARI::EDITOR::DrawWorkspaceDockSpace(root, viewport);
+    }
+
+    void PrepareSceneViewportWindow() {
+        if (dockRegions_[0] != 0u) {
+            ImGui::SetNextWindowDockID(dockRegions_[0], forceDock_ ? ImGuiCond_Always : ImGuiCond_FirstUseEver);
+        }
     }
 
     void EndFrame() noexcept {
@@ -549,11 +558,34 @@ GameProjectEditorWorkspaceHost::GameProjectEditorWorkspaceHost()
 GameProjectEditorWorkspaceHost::~GameProjectEditorWorkspaceHost() = default;
 
 bool GameProjectEditorWorkspaceHost::RegisterModule(const GameProjectEditorModuleLibrary& module,
-                                                    std::string_view projectRootUtf8, std::string& outMessage) {
+                                                    std::string_view projectRootUtf8,
+                                                    EditorOperationRegistry& operationRegistry,
+                                                    std::string& outMessage) {
     if (!module.IsLoaded()) {
         outMessage.clear();
         return true;
     }
+    if (operationRegistry_ != nullptr || operationOwnerToken_ != 0u) {
+        outMessage = "A GameProject Editor companion is already registered with this host.";
+        return false;
+    }
+
+    const EditorOperationOwnerToken operationOwnerToken = operationRegistry.CreateOwnerToken();
+    if (operationOwnerToken == 0u) {
+        outMessage = "Could not allocate an Editor operation owner token for the GameProject module.";
+        return false;
+    }
+    documents_ = std::make_unique<GameProjectEditorDocumentService>(TEXT::PathFromUtf8(projectRootUtf8) / "Data");
+    registry_.SetDocuments(documents_.get());
+    std::string operationMessage{};
+    if (!module.RegisterEditorOperations(operationRegistry, operationOwnerToken, documents_.get(), operationMessage)) {
+        (void)operationRegistry.UnregisterOwner(operationOwnerToken);
+        registry_.SetDocuments(nullptr);
+        documents_.reset();
+        outMessage = "GameProject Editor operation registration failed: " + operationMessage;
+        return false;
+    }
+
     registry_.SetProjectRootUtf8(std::string(projectRootUtf8));
     std::vector<EDITOR_PROJECT::IEditorWorkspace*> workspaces{};
     workspaces.reserve(module.GetWorkspaceCount());
@@ -563,7 +595,13 @@ bool GameProjectEditorWorkspaceHost::RegisterModule(const GameProjectEditorModul
     const bool registered =
         registry_.RegisterModule(module.GetModuleId(), workspaces.data(), workspaces.size(), outMessage);
     if (registered) {
+        operationRegistry_ = &operationRegistry;
+        operationOwnerToken_ = operationOwnerToken;
         moduleFailureMessage_.clear();
+    } else {
+        (void)operationRegistry.UnregisterOwner(operationOwnerToken);
+        registry_.SetDocuments(nullptr);
+        documents_.reset();
     }
     return registered;
 }
@@ -629,18 +667,41 @@ void GameProjectEditorWorkspaceHost::Draw(EditorWorkspaceHost& host, float unsca
 }
 
 void GameProjectEditorWorkspaceHost::Shutdown() noexcept {
-    if (!ui_) {
-        return;
+    if (ui_) {
+        ui_->BeginFrame(registry_.GetActiveWorkspaceId());
+        registry_.Shutdown(*ui_);
+        ui_->EndFrame();
     }
-    ui_->BeginFrame(registry_.GetActiveWorkspaceId());
-    registry_.Shutdown(*ui_);
-    ui_->EndFrame();
+    if (operationRegistry_ != nullptr && operationOwnerToken_ != 0u) {
+        (void)operationRegistry_->UnregisterOwner(operationOwnerToken_);
+    }
+    registry_.SetDocuments(nullptr);
+    if (documents_) {
+        documents_->CloseAll();
+        documents_.reset();
+    }
+    operationRegistry_ = nullptr;
+    operationOwnerToken_ = 0u;
     moduleFailureMessage_.clear();
     closePromptWasPending_ = false;
 }
 
 bool GameProjectEditorWorkspaceHost::IsAvailable() const noexcept {
     return registry_.GetWorkspaceCount() != 0u || !moduleFailureMessage_.empty();
+}
+
+bool GameProjectEditorWorkspaceHost::ActiveWorkspaceRequestsSceneViewport() const noexcept {
+    return registry_.ActiveWorkspaceRequestsSceneViewport();
+}
+
+bool GameProjectEditorWorkspaceHost::HasUnsavedChanges() const noexcept {
+    return (documents_ != nullptr && documents_->HasUnsavedDocuments()) || registry_.HasUnsavedWorkspaceChanges();
+}
+
+void GameProjectEditorWorkspaceHost::PrepareSceneViewportWindow() {
+    if (ui_ && ActiveWorkspaceRequestsSceneViewport()) {
+        ui_->PrepareSceneViewportWindow();
+    }
 }
 
 GameProjectEditorWorkspaceRegistry& GameProjectEditorWorkspaceHost::Registry() noexcept { return registry_; }

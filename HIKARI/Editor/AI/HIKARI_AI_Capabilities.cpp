@@ -46,6 +46,33 @@ int MatchScore(const AiCapability& capability, const std::string& keyword) {
     return score;
 }
 } // namespace
+
+std::optional<AiProjectAccessMode> RequiredProjectAccess(std::string_view operationId) noexcept {
+    if (operationId == "project.code.files" || operationId == "project.code.read" ||
+        operationId == "project.code.status" || operationId == "project.code.diff" ||
+        operationId == "project.code.cancel") {
+        return AiProjectAccessMode::ReadProjectCode;
+    }
+    if (operationId == "project.code.prepare" || operationId == "project.code.apply") {
+        return AiProjectAccessMode::DevelopProject;
+    }
+    if (operationId == "project.sdk.index" || operationId == "project.sdk.read") {
+        return AiProjectAccessMode::Content;
+    }
+    if (operationId.starts_with("project.code.")) {
+        return AiProjectAccessMode::DevelopProject;
+    }
+    return std::nullopt;
+}
+
+bool AllowsProjectAccess(AiProjectAccessMode mode, std::string_view operationId) noexcept {
+    if (!TEXT::IsNamedEnum(kAiProjectAccessModeNames, mode)) {
+        return false;
+    }
+    const auto required = RequiredProjectAccess(operationId);
+    return !required || static_cast<uint8_t>(mode) >= static_cast<uint8_t>(*required);
+}
+
 nlohmann::json DescribeAiCapability(const AiCapability& capability, bool parameters, bool forModel) {
     auto item = capability.semantics;
     if (forModel) {

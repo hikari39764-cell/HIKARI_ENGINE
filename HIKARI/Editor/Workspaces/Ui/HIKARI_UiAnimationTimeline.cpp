@@ -5,6 +5,7 @@
 #include "Core/Text/HIKARI_Localization.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 #include "imgui.h"
+#include "Editor/HIKARI_EditorContext.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -13,14 +14,10 @@
 namespace HIKARI::EDITOR {
 namespace {
 const char* L(const char* key) { return TEXT::LocalizeCStr(key); }
-uint64_t NextTrack(const UiAnimationClip& clip) {
-    uint64_t id = 1;
-    for (const auto& t : clip.tracks)
-        id = std::max(id, t.id + 1);
-    return id;
-}
 } // namespace
-void UiAnimationEditor::DrawTimeline(UiAnimationAsset&, UiAnimationClip& clip, bool& changed) {
+void UiAnimationEditor::DrawTimeline(DocumentSceneBase& scene, EditorContext& context,
+                                     EditorOperationRegistry& operations, UiAnimationAsset&, UiAnimationClip& clip,
+                                     bool& changed) {
     if (IconTextButton(EditorGlyph::Add, L("uianim.addTrack"), "addTrack", EditorButtonTone::Quiet))
         ImGui::OpenPopup("motionProperty");
     if (ImGui::BeginPopup("motionProperty")) {
@@ -32,20 +29,12 @@ void UiAnimationEditor::DrawTimeline(UiAnimationAsset&, UiAnimationClip& clip, b
             if (!needle.empty() && TEXT::ToLowerAsciiCopy(label + p.id).find(needle) == std::string::npos)
                 continue;
             if (ImGui::Selectable(label.c_str())) {
-                UiAnimationTrack t;
-                t.id = NextTrack(clip);
-                t.property = p.property;
-                t.curve.value = p.initial;
-                // 同じチャンネルがあれば選択し、重複を作らない。
-                auto found = std::find_if(clip.tracks.begin(), clip.tracks.end(), [&](const auto& track) {
-                    return track.slot == "self" && track.property == p.property;
-                });
-                if (found == clip.tracks.end()) {
-                    track_ = t.id;
-                    clip.tracks.push_back(t);
-                    changed = true;
-                } else
-                    track_ = found->id;
+                UiAnimationTrack target;
+                if (!AssignTarget(scene, context.selection.GetActiveObjectId(), operations, target))
+                    continue;
+                const auto count = clip.tracks.size();
+                track_ = EnsureTrack(clip, target.slot, p.property).id;
+                changed |= clip.tracks.size() != count;
                 curveView_ = {};
                 selectedKeys_.clear();
             }
@@ -64,14 +53,8 @@ void UiAnimationEditor::DrawTimeline(UiAnimationAsset&, UiAnimationClip& clip, b
     }
     ImGui::EndDisabled();
     if (active != clip.tracks.end()) {
-        char slot[128]{};
-        std::memcpy(slot, active->slot.data(), std::min(active->slot.size(), sizeof(slot) - 1));
         ImGui::SameLine();
-        ImGui::SetNextItemWidth(120);
-        if (ImGui::InputText(L("uianim.slot"), slot, sizeof(slot))) {
-            active->slot = slot;
-            changed = true;
-        }
+        ImGui::TextUnformatted(TargetName(scene, active->slot).c_str());
         ImGui::SameLine();
         bool addKey = IconButton(EditorGlyph::Keyframe, "addKey", EditorButtonTone::Quiet, {26, 26}, L("cine.addKey"));
         auto selected = std::find_if(selectedKeys_.begin(), selectedKeys_.end(), [&](const auto& key) {
@@ -122,18 +105,7 @@ void UiAnimationEditor::DrawTimeline(UiAnimationAsset&, UiAnimationClip& clip, b
     }
     if (shortcut && ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_V, false)) {
         for (const auto& copy : clipboard_) {
-            auto target = std::find_if(clip.tracks.begin(), clip.tracks.end(), [&](const auto& t) {
-                return t.slot == copy.slot && t.property == copy.property;
-            });
-            if (target == clip.tracks.end()) {
-                UiAnimationTrack t;
-                t.id = NextTrack(clip);
-                t.slot = copy.slot;
-                t.property = copy.property;
-                t.curve.value = UiMotionProperties()[static_cast<size_t>(copy.property)].initial;
-                clip.tracks.push_back(t);
-                target = std::prev(clip.tracks.end());
-            }
+            auto* target = &EnsureTrack(clip, copy.slot, copy.property);
             auto key = copy.key;
             key.time = std::min(clip.duration, key.time + time_);
             SetScalarCurveKey(target->curve, key.time, key.value);
@@ -155,10 +127,59 @@ void UiAnimationEditor::DrawTimeline(UiAnimationAsset&, UiAnimationClip& clip, b
                 }
         selectedKeys_.clear();
     }
+    active = std::find_if(clip.tracks.begin(), clip.tracks.end(), [&](const auto& t) { return t.id == track_; });
+    ImGui::SetNextItemWidth(140);
+    ImGui::SliderFloat(L("uianim.zoom"), &timelineZoom_, 1, 12, "%.1fx");
+    ImGui::SameLine();
+    if (ImGui::SmallButton(L("uix.fit")))
+        timelineZoom_ = 1;
+    ImGui::SameLine();
+    if (ImGui::Button(L("uianim.batch")))
+        ImGui::OpenPopup("UiMotionBatch");
+    if (ImGui::BeginPopup("UiMotionBatch")) {
+        ImGui::TextWrapped("%s", L("uianim.batchHelp"));
+        ImGui::SetNextItemWidth(120);
+        ImGui::DragFloat(L("uianim.stagger"), &staggerSeconds_, .01f, 0, 10, "%.2f s");
+        ImGui::BeginDisabled(active == clip.tracks.end() || context.selection.GetSelectedObjectCount() == 0);
+        if (ImGui::Button(L("uianim.copyMotion"))) {
+            const std::string sourceSlot = active->slot;
+            std::vector<UiAnimationTrack> source;
+            for (const auto& t : clip.tracks)
+                if (t.slot == sourceSlot)
+                    source.push_back(t);
+            size_t index = 0;
+            const auto targetIds = context.selection.GetSelectedObjectIds();
+            for (const auto id : targetIds) {
+                UiAnimationTrack target;
+                if (!AssignTarget(scene, id, operations, target))
+                    break;
+                const float delay = staggerSeconds_ * static_cast<float>(index++);
+                if (target.slot == sourceSlot)
+                    continue;
+                for (auto copy : source) {
+                    copy.slot = target.slot;
+                    for (auto& key : copy.curve.keys)
+                        key.time += delay;
+                    if (!copy.curve.keys.empty())
+                        clip.duration = std::max(clip.duration, copy.curve.keys.back().time);
+                    auto& destination = EnsureTrack(clip, copy.slot, copy.property);
+                    copy.id = destination.id;
+                    destination = std::move(copy);
+                }
+                changed = true;
+            }
+            active =
+                std::find_if(clip.tracks.begin(), clip.tracks.end(), [&](const auto& t) { return t.id == track_; });
+            selectedKeys_.clear();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndDisabled();
+        ImGui::EndPopup();
+    }
     ImGui::BeginChild("motionRows", {0, 0}, false, ImGuiWindowFlags_HorizontalScrollbar);
     const float labelWidth = 185, rowHeight = 28;
     const auto origin = ImGui::GetCursorScreenPos();
-    const float width = std::max(180.f, ImGui::GetContentRegionAvail().x - labelWidth - 14);
+    const float width = std::max(180.f, ImGui::GetContentRegionAvail().x - labelWidth - 14) * timelineZoom_;
     const float timelineX = origin.x + labelWidth;
     auto* draw = ImGui::GetWindowDrawList();
     for (int i = 0; i <= 10; ++i) {
@@ -167,11 +188,32 @@ void UiAnimationEditor::DrawTimeline(UiAnimationAsset&, UiAnimationClip& clip, b
         draw->AddText({timelineX + width * i / 10, origin.y}, IM_COL32(132, 147, 166, 255), text);
     }
     ImGui::Dummy({labelWidth + width, rowHeight});
-    for (auto& t : clip.tracks) {
+    struct Marker {
+        uint64_t track;
+        size_t key;
+        ImVec2 position;
+    };
+    std::vector<Marker> markers;
+    std::vector<UiAnimationTrack*> rows;
+    for (auto& t : clip.tracks)
+        rows.push_back(&t);
+    std::stable_sort(rows.begin(), rows.end(), [](const auto* a, const auto* b) { return a->slot < b->slot; });
+    std::string group;
+    bool expanded = true;
+    for (auto* rowTrack : rows) {
+        auto& t = *rowTrack;
+        if (group != t.slot) {
+            group = t.slot;
+            ImGui::SetCursorScreenPos({origin.x, ImGui::GetCursorScreenPos().y});
+            expanded = ImGui::TreeNodeEx((TargetName(scene, t.slot) + "##" + t.slot).c_str(),
+                                         ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_NoTreePushOnOpen);
+        }
+        if (!expanded)
+            continue;
         ImGui::PushID(static_cast<int>(t.id));
         const auto row = ImGui::GetCursorScreenPos();
         const auto& prop = UiMotionProperties()[static_cast<size_t>(t.property)];
-        const auto label = t.slot + " · " + TEXT::Localize(prop.label);
+        const auto label = TEXT::Localize(prop.label);
         if (ImGui::Selectable(label.c_str(), track_ == t.id, 0, {labelWidth - 8, rowHeight - 2})) {
             track_ = t.id;
             curveView_ = {};
@@ -185,6 +227,7 @@ void UiAnimationEditor::DrawTimeline(UiAnimationAsset&, UiAnimationClip& clip, b
         for (size_t i = 0; i < t.curve.keys.size(); ++i) {
             const auto& key = t.curve.keys[i];
             const ImVec2 p{timelineX + key.time / clip.duration * width, row.y + rowHeight * .5f};
+            markers.push_back({t.id, i, p});
             ImGui::SetCursorScreenPos({p.x - 7, p.y - 7});
             ImGui::PushID(static_cast<int>(i));
             ImGui::InvisibleButton("key", {14, 14});
@@ -208,7 +251,11 @@ void UiAnimationEditor::DrawTimeline(UiAnimationAsset&, UiAnimationClip& clip, b
         }
         ImGui::SetCursorScreenPos({timelineX, row.y});
         ImGui::InvisibleButton("row", {width, rowHeight});
-        if (!keyHovered && ImGui::IsItemHovered() && ImGui::IsMouseClicked(0)) {
+        if (!keyHovered && ImGui::IsItemHovered() && ImGui::IsMouseClicked(0) && ImGui::GetIO().KeyShift) {
+            keyMarquee_ = MATH::Vec2{ImGui::GetIO().MousePos.x, ImGui::GetIO().MousePos.y};
+            marqueeBefore_ = selectedKeys_;
+        }
+        if (!keyHovered && ImGui::IsItemHovered() && ImGui::IsMouseClicked(0) && !ImGui::GetIO().KeyShift) {
             time_ = std::clamp((ImGui::GetIO().MousePos.x - timelineX) / width * clip.duration, 0.f, clip.duration);
             if (snap_ && !ImGui::GetIO().KeyAlt)
                 time_ = std::clamp(std::round(time_ * 60) / 60, 0.f, clip.duration);
@@ -224,6 +271,29 @@ void UiAnimationEditor::DrawTimeline(UiAnimationAsset&, UiAnimationClip& clip, b
         draw->AddLine({cursor, row.y}, {cursor, row.y + rowHeight}, IM_COL32(245, 206, 123, 230));
         ImGui::SetCursorScreenPos({origin.x, row.y + rowHeight});
         ImGui::PopID();
+    }
+    if (keyMarquee_) {
+        const auto mouse = ImGui::GetIO().MousePos;
+        const ImVec2 low{std::min(keyMarquee_->x, mouse.x), std::min(keyMarquee_->y, mouse.y)};
+        const ImVec2 high{std::max(keyMarquee_->x, mouse.x), std::max(keyMarquee_->y, mouse.y)};
+        selectedKeys_ = ImGui::GetIO().KeyCtrl ? marqueeBefore_ : decltype(selectedKeys_){};
+        for (const auto& marker : markers)
+            if (marker.position.x >= low.x && marker.position.x <= high.x && marker.position.y >= low.y &&
+                marker.position.y <= high.y)
+                selectedKeys_.insert({marker.track, marker.key});
+        draw->AddRectFilled(low, high, IM_COL32(50, 210, 221, 30));
+        draw->AddRect(low, high, IM_COL32(50, 210, 221, 220));
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+            selectedKeys_ = marqueeBefore_;
+            keyMarquee_.reset();
+        }
+        if (ImGui::IsMouseReleased(0))
+            keyMarquee_.reset();
+    }
+    if (drag_ && ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+        clip = drag_->before;
+        changed = true;
+        drag_.reset();
     }
     if (drag_ && ImGui::IsMouseDragging(0)) {
         float delta = (ImGui::GetIO().MousePos.x - drag_->x) / width * clip.duration;

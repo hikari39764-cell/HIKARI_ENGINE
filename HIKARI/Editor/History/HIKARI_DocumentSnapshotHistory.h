@@ -18,6 +18,13 @@ public:
         Metadata metadata;
     };
     explicit DocumentSnapshotHistory(size_t capacity = 0) : capacity_(capacity) {}
+    // Capacity zero means unbounded. Lowering a nonzero capacity preserves
+    // the current cursor and trims the farthest past entries first, then redo.
+    void SetCapacity(size_t capacity) {
+        capacity_ = capacity;
+        TrimToCapacity();
+        SealMerge();
+    }
     void Reset(bool saved = true) noexcept {
         entries_.clear();
         cursor_ = 0;
@@ -64,16 +71,7 @@ public:
             cursor_ = entries_.size();
         }
         mergeGroup_ = mergeGroup;
-        if (capacity_ && entries_.size() > capacity_) {
-            entries_.erase(entries_.begin());
-            --cursor_;
-            if (savedCursor_) {
-                if (*savedCursor_ == 0)
-                    savedCursor_.reset();
-                else
-                    --*savedCursor_;
-            }
-        }
+        TrimToCapacity();
     }
     bool Undo(State& state, Metadata* metadata = nullptr) {
         if (!CanUndo())
@@ -97,6 +95,30 @@ public:
     }
 
 private:
+    void TrimToCapacity() {
+        if (capacity_ == 0u) {
+            return;
+        }
+        while (entries_.size() > capacity_) {
+            if (cursor_ > 0u) {
+                entries_.erase(entries_.begin());
+                --cursor_;
+                if (savedCursor_) {
+                    if (*savedCursor_ == 0u) {
+                        savedCursor_.reset();
+                    } else {
+                        --*savedCursor_;
+                    }
+                }
+            } else {
+                entries_.pop_back();
+                if (savedCursor_ && *savedCursor_ > entries_.size()) {
+                    savedCursor_.reset();
+                }
+            }
+        }
+    }
+
     std::vector<Entry> entries_;
     size_t capacity_ = 0;
     size_t cursor_ = 0;

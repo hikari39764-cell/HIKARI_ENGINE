@@ -13,6 +13,7 @@
 #include "Render3D/Core/MeshRenderer/Data/HIKARI_MeshDrawDataBuilder.h"
 #include "Render3D/Core/MeshRenderer/Internal/HIKARI_MeshRendererInternal.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenWorkBuilder.h"
+#include "Render3D/GpuDriven/HIKARI_GpuSceneJointPaletteUpload.h"
 #include "Render3D/Lighting/HIKARI_IblEnvironment.h"
 #include "Render3D/Lighting/HIKARI_LightProbeVolumeRuntime.h"
 #include "Render3D/Reflection/HIKARI_ReflectionProbeRuntime.h"
@@ -113,10 +114,8 @@ EditorInteractiveMeshRenderResult RenderEditorInteractiveOpaque(const RENDER3D::
     const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& sceneSource = settings.sceneSourceOverride != nullptr
                                                                        ? *settings.sceneSourceOverride
                                                                        : gMeshRendererState.gpuDrivenSceneSource;
-    const auto* jointPalettes = sceneSource.meshShaderJointPalettes;
-    editorFrame.jointPaletteAddress = UploadJointPalettes(graphics, editorFrame.deformationUploads,
-                                                          jointPalettes != nullptr ? jointPalettes->data() : nullptr,
-                                                          jointPalettes != nullptr ? jointPalettes->size() : 0u);
+    editorFrame.jointPaletteAddress =
+        RENDER3D::GPUDRIVEN::UploadGpuSceneJointPaletteSnapshot(graphics, sceneSource.meshShaderJointPalettes);
     if (editorFrame.jointPaletteAddress == 0u) {
         return EditorInteractiveMeshRenderResult::FrameResourcesUnavailable;
     }

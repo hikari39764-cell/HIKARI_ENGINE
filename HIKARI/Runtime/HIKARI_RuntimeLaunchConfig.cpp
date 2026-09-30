@@ -17,6 +17,8 @@
 
 #include "Core/HIKARI_Logger.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
+#include "Core/Serialization/Json/HIKARI_JsonFields.h"
+#include "Gfx/HIKARI_GfxDebugConfig.h"
 #include "Platform/Paths/HIKARI_ExecutablePath.h"
 #include "Project/HIKARI_ProjectContext.h"
 #include "Render3D/Settings/HIKARI_RenderQualityProfileStore.h"
@@ -27,6 +29,10 @@ namespace HIKARI {
 
 namespace {
 // JSON コンフィグファイル内の"runtime"ノードを抽出する補助関数群
+
+constexpr auto kRuntimeGfxDebugFields = [](auto&& field) {
+    field("enableGpuPipelineStats", &GFX::GfxDebugConfig::enableGpuPipelineStats);
+};
 
 // "runtime"キーを持つノードを取得、見つからなければ root 自体を返す
 const nlohmann::json& RuntimeNode(const nlohmann::json& root) {
@@ -219,6 +225,13 @@ RuntimeLaunchConfig LoadRuntimeLaunchConfigFromFile(const std::filesystem::path&
     cfg.enableEditorUI = ReadBool(runtime, "enableEditorUI");
     cfg.enableDebugLayer = ReadBool(runtime, "enableDebugLayer");
     cfg.enableDebugCamera = ReadBool(runtime, "enableDebugCamera");
+    if (const nlohmann::json* gfxDebug = JSONREAD::FindMember(runtime, "gfxDebug");
+        gfxDebug != nullptr && gfxDebug->is_object() &&
+        JSONREAD::FindMember(*gfxDebug, "enableGpuPipelineStats") != nullptr) {
+        GFX::GfxDebugConfig parsedDebug{};
+        JSONFIELDS::ReadLenient(*gfxDebug, parsedDebug, kRuntimeGfxDebugFields);
+        cfg.enableGpuPipelineStats = parsedDebug.enableGpuPipelineStats;
+    }
     cfg.windowTitle = ReadString(runtime, "windowTitle");
     cfg.resizableWindow = ReadBool(runtime, "resizableWindow");
     cfg.windowWidth = ReadInt(runtime, "windowWidth");
@@ -301,6 +314,11 @@ void ApplyRuntimeLaunchConfig(const RuntimeLaunchConfig& runtimeCfg, RUNTIME::Ho
     }
     if (runtimeCfg.enableDebugLayer) {
         servicesCfg.enableDebugLayer = *runtimeCfg.enableDebugLayer;
+    }
+    if (runtimeCfg.enableGpuPipelineStats) {
+        GFX::GfxDebugConfig debugConfig = GFX::GetGfxDebugConfig();
+        debugConfig.enableGpuPipelineStats = *runtimeCfg.enableGpuPipelineStats;
+        GFX::SetGfxDebugConfig(debugConfig);
     }
     if (runtimeCfg.enableDebugCamera) {
         servicesCfg.enableDebugCamera = *runtimeCfg.enableDebugCamera;

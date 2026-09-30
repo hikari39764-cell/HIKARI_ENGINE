@@ -20,9 +20,15 @@ public:
     bool ReadVariable(std::string_view variableId, GameProjectBindingValue& outValue) const noexcept {
         return world_.ReadVariable(variableId, outValue);
     }
+    bool ReadObjectVariable(std::string_view variableId, GameProjectBindingValue& outValue) const noexcept {
+        return world_.ReadObjectVariable(object_.GetHandle(), variableId, outValue);
+    }
     HIKARI_GAME_PROJECT_SDK_API bool WriteVariable(std::string_view variableId,
                                                    const GameProjectBindingValue& value) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool ReleaseVariable(std::string_view variableId) const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API bool WriteObjectVariable(std::string_view variableId,
+                                                         const GameProjectBindingValue& value) const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API bool ReleaseObjectVariable(std::string_view variableId) const noexcept;
     bool EmitEvent(std::string_view eventId) const noexcept { return world_.EmitEvent(eventId, object_.GetHandle()); }
     bool EmitEvent(std::string_view eventId, const GameProjectBindingValue& payload) const noexcept {
         return world_.EmitEvent(eventId, object_.GetHandle(), payload);

@@ -19,6 +19,7 @@ struct DynamicPassState {
 
 struct State {
     bool frameActive = false;
+    bool discardActiveFrame = false;
     uint64_t frameIndex = 0;
     Clock::time_point frameBegin{};
     std::array<double, static_cast<size_t>(Pass::Count)> elapsedMs{};
@@ -63,6 +64,17 @@ void FillTiming(PassTiming& target, const char* name, double elapsedMs, uint32_t
     target.maximumMs = rolling.maximum;
     target.rollingSampleCount = static_cast<uint32_t>(rolling.count);
 }
+
+void ResetSnapshot() {
+    gState.latest = {};
+    for (size_t index = 0; index < gState.latest.passes.size(); ++index) {
+        gState.latest.passes[index].name = ToString(static_cast<Pass>(index));
+    }
+    gState.latest.dynamicPassCount = gState.dynamicPassCount;
+    for (uint32_t index = 0; index < gState.dynamicPassCount; ++index) {
+        gState.latest.dynamicPasses[index].name = gState.dynamicPasses[index].name.c_str();
+    }
+}
 } // namespace
 
 const char* ToString(Pass pass) {
@@ -105,6 +117,12 @@ void EndFrame() {
         return;
     }
 
+    gState.frameActive = false;
+    if (gState.discardActiveFrame) {
+        gState.discardActiveFrame = false;
+        return;
+    }
+
     const Clock::time_point frameEnd = Clock::now();
     const size_t framePassIndex = static_cast<size_t>(Pass::Frame);
     gState.elapsedMs[framePassIndex] = std::chrono::duration<double, std::milli>(frameEnd - gState.frameBegin).count();
@@ -124,7 +142,15 @@ void EndFrame() {
         FillTiming(gState.latest.dynamicPasses[index], state.name.c_str(), state.elapsedMs, state.callCount,
                    state.rolling);
     }
-    gState.frameActive = false;
+}
+
+void ResetStatistics() {
+    gState.rolling = {};
+    for (uint32_t index = 0u; index < gState.dynamicPassCount; ++index) {
+        gState.dynamicPasses[index].rolling = {};
+    }
+    gState.discardActiveFrame = gState.frameActive;
+    ResetSnapshot();
 }
 
 const FrameSnapshot& GetLatestSnapshot() { return gState.latest; }

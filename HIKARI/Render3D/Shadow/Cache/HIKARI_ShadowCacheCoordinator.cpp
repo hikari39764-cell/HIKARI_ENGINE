@@ -1,5 +1,7 @@
 #include "Render3D/Shadow/Internal/HIKARI_ShadowRendererInternal.h"
 
+#include "Core/HIKARI_TimeService.h"
+
 #include <algorithm>
 
 namespace HIKARI::SHADOW::INTERNAL {
@@ -88,7 +90,7 @@ void MarkShadowCacheHit(ShadowRendererState& state) {
 }
 
 void MarkShadowCacheMiss(ShadowRendererState& state) {
-    state.shadowCache.MarkMiss();
+    state.shadowCache.MarkMiss(TIME::GetFrameContext().frameIndex);
     PublishShadowCacheStats(state);
 }
 

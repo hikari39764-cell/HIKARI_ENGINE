@@ -36,10 +36,9 @@ namespace HIKARI::MESHRENDERER {
 
 struct SecondaryMeshViewFrameResources {
     MeshViewFrameResources view{};
-    DX::DynamicUploadBuffer deformationUploads;
     D3D12_GPU_VIRTUAL_ADDRESS jointPaletteAddress = 0;
 
-    bool IsReady() const { return view.IsInitialized() && deformationUploads.IsInitialized(); }
+    bool IsReady() const { return view.IsInitialized(); }
 };
 
 struct SecondaryMeshViewResources {

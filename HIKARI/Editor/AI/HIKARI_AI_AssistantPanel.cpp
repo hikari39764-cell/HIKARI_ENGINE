@@ -7,6 +7,7 @@
 #include "Render2D/HIKARI_DxTexture.h"
 #include <algorithm>
 #include <filesystem>
+#include <iterator>
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -100,6 +101,38 @@ void AiAssistantPanel::DrawApprovals() {
 #endif
 }
 
+void AiAssistantPanel::DrawProjectAccessMode() {
+#if defined(HIKARI_WITH_EDITOR)
+    static constexpr const char* kModeNames[] = {"内容", "读取项目代码", "开发项目"};
+    static constexpr const char* kModeDescriptions[] = {
+        "只使用内容制作操作和随引擎发布的公开 SDK/指南，不读取项目源码。",
+        "可查看项目源码、候选状态和差异，也可取消候选；不能构建或应用源码修改。",
+        "可构建和应用项目源码；修改文件与启动外部进程仍需用户批准。原生项目模块不是沙箱。",
+    };
+    ImGui::TextDisabled("助手项目代码权限");
+    ImGui::SameLine();
+    int selected = static_cast<int>(session_.RequestedProjectAccessMode());
+    ImGui::SetNextItemWidth(172.0f);
+    if (ImGui::Combo("##AiProjectAccessMode", &selected, kModeNames, static_cast<int>(std::size(kModeNames)))) {
+        const auto requested = static_cast<AiProjectAccessMode>(selected);
+        if (session_.RequestProjectAccessMode(requested)) {
+            ResetComposer();
+        } else {
+            attachmentError_ = "权限模式切换失败；请等待当前项目切换完成。";
+        }
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::BeginTooltip();
+        ImGui::TextWrapped("%s", kModeDescriptions[std::clamp(selected, 0, 2)]);
+        ImGui::EndTooltip();
+    }
+    if (session_.IsProjectAccessModeChangePending()) {
+        ImGui::SameLine();
+        ImGui::TextDisabled("正在停止当前任务并开启新对话…");
+    }
+#endif
+}
+
 void AiAssistantPanel::DrawContents() {
 #if defined(HIKARI_WITH_EDITOR)
     const auto& palette = GetEditorThemePalette();
@@ -118,6 +151,7 @@ void AiAssistantPanel::DrawContents() {
                                                                                 : EditorStatusTone::Ready);
     ImGui::SameLine();
     ImGui::TextDisabled("%s", config.model.c_str());
+    DrawProjectAccessMode();
     if (!workspaceLabel_.empty()) {
         ImGui::Spacing();
         ImGui::TextDisabled("%s", workspaceLabel_.c_str());
@@ -161,16 +195,16 @@ void AiAssistantPanel::DrawContents() {
         ImGui::PopID();
         i = end;
     }
-    std::string partial;
-    {
-        std::lock_guard<std::mutex> lock(session_.streamMutex_);
-        if (session_.streamingActive_)
-            partial = AI_ASSISTANT::StripActionJsonForDisplay(session_.streamingPartial_);
-    }
-    if (busy && !partial.empty()) {
+    const auto streaming = session_.SnapshotStreaming();
+    const auto partial = AI_ASSISTANT::StripActionJsonForDisplay(streaming.content);
+    if (busy && (!partial.empty() || !streaming.reasoning.empty())) {
         ImGui::Spacing();
         ImGui::TextColored(palette.accent, "%s", TEXT::Localize("ai.chat.assistant").c_str());
-        ImGui::TextWrapped("%s", partial.c_str());
+        ImGui::PushID("LiveReasoning");
+        DrawReasoning(streaming.reasoning, true, false);
+        ImGui::PopID();
+        if (!partial.empty())
+            ImGui::TextWrapped("%s", partial.c_str());
     }
     if (follow && (messages.size() != lastMessageCount_ || busy))
         ImGui::SetScrollHereY(1.0f);

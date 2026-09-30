@@ -190,6 +190,7 @@ void InputService::ResetRuntimeState() {
     pointerCursorHiddenRequested_ = false;
     uiInteractionActive_ = false;
     snapshot_ = {};
+    ResetTextInput();
     rebindOperation_.Reset();
     rebindPreviousDevices_ = {};
     suppressActionsUntilNeutral_ = false;
@@ -203,8 +204,10 @@ void InputService::Shutdown() {
     pointerCursorHiddenRequested_ = false;
     uiInteractionActive_ = false;
     StopGamepadVibration();
+    ResetTextInput();
     if (backend_)
         backend_->Reset();
+    hostWindow_ = nullptr;
     snapshot_ = {};
     rebindOperation_.Reset();
     rebindPreviousDevices_ = {};
@@ -213,13 +216,37 @@ void InputService::Shutdown() {
 }
 
 void InputService::SetBackend(std::unique_ptr<IInputBackend> backend) {
-    if (backend)
+    if (backend) {
         backend_ = std::move(backend);
+        backend_->SetHostWindow(hostWindow_);
+        backend_->SetImeCaretAnchor(imeCaretAnchor_);
+    }
 }
 
 void InputService::SetHostWindow(void* nativeWindow) {
-    if (backend_)
+    if (backend_) {
+        ResetTextInput();
+        hostWindow_ = nativeWindow;
         backend_->SetHostWindow(nativeWindow);
+    } else {
+        hostWindow_ = nativeWindow;
+    }
+}
+
+void InputService::SetUiInteractionActive(bool active) noexcept {
+    if (uiInteractionActive_ == active) {
+        return;
+    }
+    uiInteractionActive_ = active;
+    ResetTextInput();
+}
+
+void InputService::SetDeveloperInputCaptured(bool active) noexcept {
+    if (developerInputCaptured_ == active) {
+        return;
+    }
+    developerInputCaptured_ = active;
+    ResetTextInput();
 }
 
 void InputService::SetMouseCaptureMode(MouseCaptureMode mode) {
@@ -246,6 +273,31 @@ void InputService::SetExternalMouseWheel(float delta) {
         backend_->SetExternalMouseWheel(delta);
 }
 
+void InputService::SetExternalTextInputEvents(std::vector<TextInputEvent> events) {
+    externalTextInputEvents_ = std::move(events);
+}
+
+void InputService::DiscardTextInputEvents() noexcept {
+    externalTextInputEvents_.clear();
+    snapshot_.textInputEvents_.clear();
+}
+
+void InputService::ResetTextInput() noexcept {
+    DiscardTextInputEvents();
+    imeCaretAnchor_ = {};
+    if (backend_) {
+        backend_->ResetTextInput();
+        backend_->SetImeCaretAnchor({});
+    }
+}
+
+void InputService::SetImeCaretAnchor(ImeCaretAnchor anchor) noexcept {
+    imeCaretAnchor_ = anchor;
+    if (backend_) {
+        backend_->SetImeCaretAnchor(anchor);
+    }
+}
+
 void InputService::ApplyPointerCursorVisibility(bool pointerOwned) {
     // 入力所有権を失ったら、独自カーソルだけでなく相対入力の非表示・拘束も解除する。
     if (!pointerOwned) {
@@ -259,6 +311,8 @@ void InputService::ApplyPointerCursorVisibility(bool pointerOwned) {
 
 void InputService::Update(float unscaledDeltaSeconds) {
     pointerCursorHiddenRequested_ = false;
+    snapshot_.textInputEvents_ = std::move(externalTextInputEvents_);
+    externalTextInputEvents_.clear();
     if (!backend_)
         return;
     const InputDeviceState previousDevices = snapshot_.devices_;

@@ -26,14 +26,15 @@ public:
     void SetAssetDatabase(const AssetDatabase* assetDatabase) noexcept;
 
     bool SubmitSprite(std::string_view assetPathBelowAssets, const GameProjectUiSpriteRequest& request,
-                      const Affine2D& transform = {}) noexcept;
+                      const Affine2D& transform = {}, const GameUiClipRect& clip = {}) noexcept;
     bool SubmitSpriteAsset(std::string_view assetGuid, const GameProjectUiSpriteRequest& request,
-                           const Affine2D& transform = {}) noexcept;
+                           const Affine2D& transform = {}, const GameUiClipRect& clip = {}) noexcept;
     bool SubmitText(std::string_view fontAssetPathBelowAssets, std::string_view utf8Text,
                     const GameProjectUiTextRequest& request) noexcept;
     bool SubmitStyledText(std::string_view fontAssetPathBelowAssets, std::string_view utf8Text,
                           const GameProjectUiTextRequest& request, const GameUiTextEffectStyle& style,
-                          const Affine2D& transform = {}) noexcept;
+                          const Affine2D& transform = {}, const GameUiClipRect& clip = {},
+                          const GameUiTextEditing& editing = {}) noexcept;
     bool SubmitTextStyle(const AssetGuid& style, std::string_view utf8Text, const GameProjectUiTextRequest& request,
                          float scale = 1.f) noexcept;
     bool SubmitBackdrop(const GameProjectUiBackdropRequest& request) noexcept;
@@ -54,7 +55,7 @@ private:
     bool ResolveDirectAssetPath(std::string_view relativePath, std::filesystem::path& outPath) noexcept;
     bool ResolveTextureAsset(std::string_view assetGuid, std::filesystem::path& outPath) noexcept;
     bool SubmitResolvedSprite(const std::filesystem::path& resolved, const GameProjectUiSpriteRequest& request,
-                              const Affine2D& transform = {}) noexcept;
+                              const Affine2D& transform = {}, const GameUiClipRect& clip = {}) noexcept;
 
     TextAssetStore textAssets_;
     const AssetDatabase* assetDatabase_ = nullptr;

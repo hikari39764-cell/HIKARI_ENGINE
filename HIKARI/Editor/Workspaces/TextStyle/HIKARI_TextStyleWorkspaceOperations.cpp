@@ -91,7 +91,11 @@ void RegisterTextStyleOperations(EditorOperationRegistry& registry, TextStyleWor
                            EditorOperationResult r{ok, ok ? "OK" : "SAVE_FAILED", error};
                            r.data["assetGuid"] = controller.Document().Guid().value;
                            return r;
-                       }},
+                       },
+                       EditorOperationExecutionPolicy::MainThread,
+                       EditorOperationKind::Mutation,
+                       EditorOperationExposureMask::Default,
+                       EditorOperationPermission::ModifyProjectFiles},
                       EditorOperationKind::Mutation, false);
     for (const bool redo : {false, true})
         registry.Register({redo ? "text.style.redo" : "text.style.undo",
@@ -104,10 +108,11 @@ void RegisterTextStyleOperations(EditorOperationRegistry& registry, TextStyleWor
                            }},
                           EditorOperationKind::Mutation, false);
     registry.Register({"text.reveal",
-                       "Reveal the reusable text style workspace.",
+                       "Reveal the reusable text style workspace with optional scene UI text preview.",
                        "text",
-                       {},
-                       [&host](const nlohmann::json&) {
+                       {{"objectId", P::Int, false, "UI text object to preview in its canvas."}},
+                       [&host, &controller](const nlohmann::json& p) {
+                           controller.SetPreviewObject({p.value("objectId", uint64_t{})});
                            host.RequestOpen({EditorWorkspaceId::Text});
                            return EditorOperationResult{true, "OK", "Text style workspace requested."};
                        }},

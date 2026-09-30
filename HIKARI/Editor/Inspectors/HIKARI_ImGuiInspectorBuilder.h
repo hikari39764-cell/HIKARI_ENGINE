@@ -22,6 +22,8 @@ public:
     bool InputActionIdPicker(std::string_view label, INPUT::InputActionValueType expectedType,
                              std::string& value) override;
     bool RuntimeVariableIdPicker(std::string_view label, BINDING::ValueType expectedType, std::string& value) override;
+    bool RuntimeVariableIdPicker(const AuthoringFieldDescriptor& field,
+                                 std::span<const BINDING::ValueType> allowedTypes, std::string& value) override;
     bool RuntimeEventIdPicker(std::string_view label, bool hasPayload, BINDING::ValueType payloadType,
                               std::string& value) override;
     bool RuntimeEventIdPicker(std::string_view label, AuthoringEventPayloadPolicy policy,

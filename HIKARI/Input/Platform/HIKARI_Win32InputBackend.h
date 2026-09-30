@@ -16,6 +16,8 @@ public:
     void ClearMouseCaptureRegion() override;
     MouseCaptureMode GetMouseCaptureMode() const noexcept override { return mouseCaptureMode_; }
     void SetExternalMouseWheel(float delta) override;
+    void ResetTextInput() noexcept override;
+    void SetImeCaretAnchor(ImeCaretAnchor anchor) noexcept override;
     void SetPointerCursorVisible(bool visible) override;
     void Reset() override;
     void Poll(InputDeviceState& out) override;
@@ -28,6 +30,7 @@ public:
     bool SetGamepadVibration(uint32_t gamepadIndex, float lowFrequency, float highFrequency) override;
 
 private:
+    void ApplyImeCaretAnchor() noexcept;
     void ReleaseRelativeMouseCapture() noexcept;
 
     void* hostWindow_ = nullptr;
@@ -39,6 +42,9 @@ private:
     bool relativeMousePrimed_ = false;
     bool cursorHiddenByBackend_ = false;
     bool pointerCursorHidden_ = false;
+    ImeCaretAnchor pendingImeCaretAnchor_{};
+    ImeCaretAnchor appliedImeCaretAnchor_{};
+    bool hasPendingImeCaretAnchor_ = false;
     long previousMouseX_ = 0;
     long previousMouseY_ = 0;
 };

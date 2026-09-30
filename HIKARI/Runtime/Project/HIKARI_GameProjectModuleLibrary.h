@@ -28,6 +28,9 @@ public:
     std::string_view GetModuleId() const noexcept;
     size_t GetRuntimeExtensionCount() const noexcept;
     IRuntimeExtension* GetRuntimeExtension(size_t index) const noexcept;
+    bool CreateGameSession(std::string& outMessage);
+    HIKARI::IGameProjectSession* GetGameSession() const noexcept;
+    void DestroyGameSession() noexcept;
     const std::filesystem::path& GetModulePath() const noexcept;
 
 private:
@@ -40,6 +43,7 @@ private:
     void* libraryHandle_ = nullptr;
     const GameProjectModuleApi* api_ = nullptr;
     void* instance_ = nullptr;
+    HIKARI::IGameProjectSession* gameSession_ = nullptr;
     std::filesystem::path modulePath_{};
     std::string moduleId_{};
 };

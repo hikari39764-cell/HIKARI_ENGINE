@@ -1,6 +1,7 @@
 #include "HIKARI_EditorViewCapture.h"
 #if defined(HIKARI_WITH_EDITOR)
 #include "Gfx/HIKARI_GfxContext.h"
+#include "Core/HIKARI_TimeService.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include <d3dx12.h>
 #include <wincodec.h>
@@ -23,6 +24,8 @@ struct PreviewCaptureRequest {
     uint32_t width = 0, height = 0;
     uint64_t outputRevision = 0;
     RenderViewId viewId{};
+    uint64_t frameIndex = 0, sceneRevision = 0;
+    ResolvedCameraFrame cameraFrame{};
     std::string path;
     std::string error;
     std::chrono::steady_clock::time_point created = std::chrono::steady_clock::now();
@@ -40,6 +43,9 @@ std::vector<CaptureReadback> g_captureReadbacks;
 std::mutex g_captureMutex;
 std::map<PreviewCaptureId, PreviewCaptureRequest> g_captureRequests{};
 PreviewCaptureId g_captureSerial = 0;
+ResolvedCameraFrame g_primaryCaptureCamera{};
+uint64_t g_primaryCaptureSceneRevision = 0;
+uint64_t g_primaryCaptureFrame = UINT64_MAX;
 
 uint64_t NextNonZero(uint64_t value) { return ++value ? value : 1u; }
 bool WriteBmp(const std::string& path, int width, int height, UINT sourcePitch, const uint8_t* source) {
@@ -230,8 +236,20 @@ void CollectCaptureReadbacks() {
 }
 
 } // namespace
+void SetPrimaryViewCaptureFrame(const ResolvedCameraFrame& camera, uint64_t sceneRevision) {
+    g_primaryCaptureCamera = camera;
+    g_primaryCaptureSceneRevision = sceneRevision;
+    g_primaryCaptureFrame = TIME::GetFrameContext().frameIndex;
+}
 void RecordViewCapture(RenderViewId viewId, bool ready, uint64_t outputRevision, ID3D12Resource* resource,
-                       D3D12_RESOURCE_STATES resourceState, uint32_t width, uint32_t height) {
+                       D3D12_RESOURCE_STATES resourceState, uint32_t width, uint32_t height,
+                       const ResolvedCameraFrame* camera, uint64_t sceneRevision) {
+    if (viewId == kPrimaryRenderViewId) {
+        if (g_primaryCaptureFrame != TIME::GetFrameContext().frameIndex)
+            return;
+        camera = &g_primaryCaptureCamera;
+        sceneRevision = g_primaryCaptureSceneRevision;
+    }
     PreviewCaptureRequest request{};
     {
         std::lock_guard<std::mutex> lock(g_captureMutex);
@@ -247,6 +265,10 @@ void RecordViewCapture(RenderViewId viewId, bool ready, uint64_t outputRevision,
         found->second.width = width;
         found->second.height = height;
         found->second.outputRevision = outputRevision;
+        found->second.frameIndex = TIME::GetFrameContext().frameIndex;
+        found->second.sceneRevision = sceneRevision;
+        if (camera)
+            found->second.cameraFrame = *camera;
     }
     const auto finish = [id = request.id](std::string error) {
         std::lock_guard<std::mutex> lock(g_captureMutex);
@@ -334,6 +356,8 @@ PreviewCaptureId RequestViewCapture(RenderViewId viewId, const std::string& outp
     }
     PreviewCaptureRequest request{};
     request.pending = true;
+    // 主画面は再描画要求を作らず、次の実際の最終表示から読む。
+    request.scheduled = viewId == kPrimaryRenderViewId;
     request.id = g_captureSerial = NextNonZero(g_captureSerial);
     request.viewId = viewId;
     request.path = outputPath;
@@ -357,8 +381,8 @@ PreviewCaptureResult GetViewCaptureResult(PreviewCaptureId id) {
     if (found == g_captureRequests.end())
         return {true, {}, "Capture expired or was not found."};
     const auto& request = found->second;
-    return {request.done,  request.path,   request.error,         request.viewId,
-            request.width, request.height, request.outputRevision};
+    return {request.done,   request.path,           request.error,      request.viewId,        request.width,
+            request.height, request.outputRevision, request.frameIndex, request.sceneRevision, request.cameraFrame};
 }
 
 void ScheduleViewCaptures(const std::function<std::optional<uint64_t>(RenderViewId)>& schedule) {
@@ -370,7 +394,7 @@ void ScheduleViewCaptures(const std::function<std::optional<uint64_t>(RenderView
             capture.done = true;
             capture.error = "截图超时";
         }
-        if (!capture.pending)
+        if (!capture.pending || capture.viewId == kPrimaryRenderViewId)
             continue;
         const auto revision = schedule(capture.viewId);
         if (!revision) {
@@ -384,6 +408,9 @@ void ScheduleViewCaptures(const std::function<std::optional<uint64_t>(RenderView
     }
 }
 void ShutdownViewCaptures() {
+    g_primaryCaptureFrame = UINT64_MAX;
+    g_primaryCaptureCamera = {};
+    g_primaryCaptureSceneRevision = 0;
     for (auto& readback : g_captureReadbacks) {
         GFX::RetireD3D12ObjectForCurrentFrame(readback.staging, "Editor capture readback");
         GFX::RetireD3D12ObjectForCurrentFrame(readback.source, "Editor capture source");

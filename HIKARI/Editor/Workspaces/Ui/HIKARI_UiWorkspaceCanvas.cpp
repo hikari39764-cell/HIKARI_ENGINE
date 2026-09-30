@@ -1,4 +1,5 @@
 #include "Assets/HIKARI_AssetDatabase.h"
+#include "Editor/Authoring/HIKARI_UiArrangement.h"
 #include "HIKARI/Project/FrameContext.h"
 #include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Commands/HIKARI_EditorCommandRouter.h"
@@ -81,6 +82,26 @@ void UiWorkspaceController::DrawCanvas(DocumentSceneBase& scene, EditorContext& 
     ImGui::SetNextItemWidth(125);
     const char* devices[]{"1920 x 1080", "1280 x 720", "1080 x 1920", "2560 x 1080"};
     ImGui::Combo("##Device", &device_, devices, 4);
+    ImGui::SameLine();
+    ImGui::BeginDisabled(runtime || animation_.IsPreviewing() || context.selection.GetSelectedObjectCount() < 2);
+    if (ImGui::Button(L("uix.arrange")))
+        ImGui::OpenPopup("UiArrange");
+    if (ImGui::BeginPopup("UiArrange")) {
+        for (const auto& mode : UiArrangements())
+            if (ImGui::MenuItem(TEXT::Localize(mode.label).c_str())) {
+                auto ids = nlohmann::json::array();
+                for (const auto id : context.selection.GetSelectedObjectIds())
+                    ids.push_back(id.value);
+                const auto r = operations.Execute("ui.arrange", {{"objectIds", ids}, {"mode", mode.id}});
+                status_ = r.ok ? std::string{} : r.message;
+            }
+        ImGui::EndPopup();
+    }
+    ImGui::EndDisabled();
+    if (!status_.empty())
+        ImGui::TextWrapped("%s", status_.c_str());
+    animation_.DrawCanvasTools(scene, context, operations);
+    DrawPreviewData(scene, context);
     ImGui::Separator();
 
     auto* selected = scene.GetWorld().FindObject(context.selection.GetActiveObjectId());
@@ -165,6 +186,14 @@ void UiWorkspaceController::DrawCanvas(DocumentSceneBase& scene, EditorContext& 
     ProjectGameUiScreenPointToCanvas(fit, ImGui::GetIO().MousePos.x - origin.x, ImGui::GetIO().MousePos.y - origin.y,
                                      mouseX, mouseY);
     if (!runtime) {
+        for (auto* item : context.selection.ResolveSelectedObjects(scene.GetWorld())) {
+            const auto layout = projector_.ResolveLayout(scene.GetWorld(), *item);
+            if (layout.valid && layout.canvas == canvas_) {
+                const auto corners = Corners(layout);
+                for (int i = 0; i < 4; ++i)
+                    draw->AddLine(toScreen(corners[i]), toScreen(corners[(i + 1) % 4]), IM_COL32(50, 210, 221, 190));
+            }
+        }
         UiResolvedLayout selectedLayout;
         bool resize = false;
         if (selected && selected->GetComponent<UiRectComponent>()) {
@@ -180,7 +209,9 @@ void UiWorkspaceController::DrawCanvas(DocumentSceneBase& scene, EditorContext& 
                          std::abs(ImGui::GetIO().MousePos.y - handle.y) < 9;
             }
         }
-        if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && ImGui::GetIO().KeyShift)
+            marquee_ = MATH::Vec2{mouseX, mouseY};
+        if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ImGui::GetIO().KeyShift) {
             GameObject* picked = resize ? selected : nullptr;
             int best = INT_MIN;
             if (!picked)
@@ -194,26 +225,73 @@ void UiWorkspaceController::DrawCanvas(DocumentSceneBase& scene, EditorContext& 
                     }
                 }
             if (picked) {
-                context.selection.SelectObjectIds(scene.GetWorld(), {picked->GetDocumentId()});
+                const bool toggle = ImGui::GetIO().KeyCtrl;
+                if (toggle || !context.selection.IsObjectSelected(picked->GetDocumentId()))
+                    context.selection.SelectObjectIds(scene.GetWorld(), {picked->GetDocumentId()},
+                                                      toggle ? EditorObjectSelectionMode::Toggle
+                                                             : EditorObjectSelectionMode::Replace);
                 const auto* parent = picked->GetParent();
                 const auto* group = parent ? parent->GetComponent<UiLayoutGroupComponent>() : nullptr;
-                if (!animation_.IsPreviewing() && (!group || !group->IsEnabled()))
+                if (!toggle &&
+                    (animation_.IsRecording() || (!animation_.IsPreviewing() && (!group || !group->IsEnabled()))))
                     if (const auto* data = RectData(scene.GetSceneDocument(), picked->GetDocumentId())) {
-                        float angle = 0;
+                        Affine2D axes;
                         if (parent && parent->GetComponent<UiRectComponent>())
-                            angle = projector_.ResolveLayout(scene.GetWorld(), *picked->GetParent()).rotationRadians;
+                            axes = projector_.ResolveLayout(scene.GetWorld(), *picked->GetParent()).transform;
                         if (resize)
-                            angle = projector_.ResolveLayout(scene.GetWorld(), *picked).rotationRadians;
-                        drag_ = Drag{picked->GetDocumentId(),
-                                     *data,
-                                     data->properties,
-                                     {mouseX, mouseY},
-                                     {std::cos(angle), std::sin(angle)},
-                                     scene.GetSceneDocumentRevision(),
-                                     resize};
+                            axes = projector_.ResolveLayout(scene.GetWorld(), *picked).transform;
+                        axes.tx = axes.ty = 0;
+                        drag_ = Drag{picked->GetDocumentId(),  *data, data->properties,
+                                     {mouseX, mouseY},         axes,  scene.GetSceneDocumentRevision(),
+                                     animation_.IsRecording(), resize};
                         const auto initial = projector_.ResolveLayout(scene.GetWorld(), *picked);
                         drag_->size = {initial.width, initial.height};
+                        if (drag_->animation && resize)
+                            drag_->size = {initial.width * (1 - initial.pivotX), initial.height * (1 - initial.pivotY)};
+                        if (!drag_->animation && !resize) {
+                            for (auto* companion : context.selection.ResolveSelectedObjects(scene.GetWorld())) {
+                                if (companion == picked)
+                                    continue;
+                                const auto* companionRect =
+                                    RectData(scene.GetSceneDocument(), companion->GetDocumentId());
+                                if (!companionRect || companion->GetParent() != parent) {
+                                    status_ = L("uix.arrangeSiblings");
+                                    drag_.reset();
+                                    break;
+                                }
+                                drag_->companions.emplace_back(companion->GetDocumentId(), *companionRect);
+                            }
+                        }
+                        if (drag_ && drag_->animation && !animation_.BeginPoseDrag(scene, picked->GetDocumentId()))
+                            drag_.reset();
                     }
+            }
+        }
+        if (marquee_) {
+            const MATH::Vec2 low{std::min(marquee_->x, mouseX), std::min(marquee_->y, mouseY)};
+            const MATH::Vec2 high{std::max(marquee_->x, mouseX), std::max(marquee_->y, mouseY)};
+            draw->AddRectFilled(toScreen(low), toScreen(high), IM_COL32(50, 210, 221, 30));
+            draw->AddRect(toScreen(low), toScreen(high), IM_COL32(50, 210, 221, 220));
+            if (ImGui::IsKeyPressed(ImGuiKey_Escape))
+                marquee_.reset();
+            else if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+                std::vector<SceneObjectId> ids;
+                for (const auto& object : scene.GetWorld().GetObjects()) {
+                    if (!object || !RectData(scene.GetSceneDocument(), object->GetDocumentId()))
+                        continue;
+                    const auto layout = projector_.ResolveLayout(scene.GetWorld(), *object);
+                    if (!layout.valid || layout.canvas != canvas_)
+                        continue;
+                    const auto corners = Corners(layout);
+                    if (std::all_of(corners.begin(), corners.end(), [&](const auto& p) {
+                            return p.x >= low.x && p.x <= high.x && p.y >= low.y && p.y <= high.y;
+                        }))
+                        ids.push_back(object->GetDocumentId());
+                }
+                context.selection.SelectObjectIds(scene.GetWorld(), ids,
+                                                  ImGui::GetIO().KeyCtrl ? EditorObjectSelectionMode::Add
+                                                                         : EditorObjectSelectionMode::Replace);
+                marquee_.reset();
             }
         }
         if (drag_) {
@@ -223,38 +301,61 @@ void UiWorkspaceController::DrawCanvas(DocumentSceneBase& scene, EditorContext& 
                 FinishDrag(scene, &operations);
             else {
                 const float x = mouseX - drag_->mouse.x, y = mouseY - drag_->mouse.y;
-                float dx = x * drag_->parentDelta.x + y * drag_->parentDelta.y;
-                float dy = -x * drag_->parentDelta.y + y * drag_->parentDelta.x;
+                float dx = x, dy = y;
+                if (!drag_->axes.InverseTransform(dx, dy))
+                    dx = dy = 0;
                 if (snap_) {
                     dx = std::round(dx / 8) * 8;
                     dy = std::round(dy / 8) * 8;
                 }
-                auto lo = drag_->before.properties.value("offsetMinimum", std::array<float, 2>{-160, -40});
-                auto hi = drag_->before.properties.value("offsetMaximum", std::array<float, 2>{160, 40});
-                if (!drag_->resize) {
-                    lo[0] += dx;
-                    lo[1] += dy;
+                if (drag_->animation) {
+                    const float sx = drag_->resize ? std::max(.01f, 1 + dx / std::max(1.f, drag_->size.x)) : 1;
+                    const float sy = drag_->resize ? std::max(.01f, 1 + dy / std::max(1.f, drag_->size.y)) : 1;
+                    animation_.UpdatePoseDrag(scene, drag_->resize ? 0 : dx, drag_->resize ? 0 : dy, sx, sy);
                 } else {
-                    dx = std::max(dx, 4.f - drag_->size.x);
-                    dy = std::max(dy, 4.f - drag_->size.y);
-                    const auto pivot = drag_->before.properties.value("pivot", std::array<float, 2>{.5f, .5f});
-                    const float angle = drag_->before.properties.value("rotationDegrees", 0.f) * .01745329251994329577f;
-                    const float pivotDeltaX = dx * pivot[0], pivotDeltaY = dy * pivot[1];
-                    const float shiftX = pivotDeltaX - (pivotDeltaX * std::cos(angle) - pivotDeltaY * std::sin(angle));
-                    const float shiftY = pivotDeltaY - (pivotDeltaX * std::sin(angle) + pivotDeltaY * std::cos(angle));
-                    lo[0] += shiftX;
-                    hi[0] += shiftX;
-                    lo[1] += shiftY;
-                    hi[1] += shiftY;
+                    auto lo = drag_->before.properties.value("offsetMinimum", std::array<float, 2>{-160, -40});
+                    auto hi = drag_->before.properties.value("offsetMaximum", std::array<float, 2>{160, 40});
+                    if (!drag_->resize) {
+                        lo[0] += dx;
+                        lo[1] += dy;
+                    } else {
+                        dx = std::max(dx, 4.f - drag_->size.x);
+                        dy = std::max(dy, 4.f - drag_->size.y);
+                        const auto pivot = drag_->before.properties.value("pivot", std::array<float, 2>{.5f, .5f});
+                        const float angle =
+                            drag_->before.properties.value("rotationDegrees", 0.f) * .01745329251994329577f;
+                        const float pivotDeltaX = dx * pivot[0], pivotDeltaY = dy * pivot[1];
+                        const float shiftX =
+                            pivotDeltaX - (pivotDeltaX * std::cos(angle) - pivotDeltaY * std::sin(angle));
+                        const float shiftY =
+                            pivotDeltaY - (pivotDeltaX * std::sin(angle) + pivotDeltaY * std::cos(angle));
+                        lo[0] += shiftX;
+                        hi[0] += shiftX;
+                        lo[1] += shiftY;
+                        hi[1] += shiftY;
+                    }
+                    drag_->changed = dx != 0 || dy != 0;
+                    drag_->translation = {dx, dy};
+                    for (const auto& [id, companionRect] : drag_->companions) {
+                        auto properties = companionRect.properties;
+                        for (const auto* field : {"offsetMinimum", "offsetMaximum"}) {
+                            auto offset = properties.at(field).get<std::array<float, 2>>();
+                            offset[0] += dx;
+                            offset[1] += dy;
+                            properties[field] = offset;
+                        }
+                        if (auto* object = scene.GetWorld().FindObject(id))
+                            if (auto* rect = object->GetComponent<UiRectComponent>())
+                                rect->Deserialize(properties);
+                    }
+                    hi[0] += dx;
+                    hi[1] += dy;
+                    drag_->after["offsetMinimum"] = lo;
+                    drag_->after["offsetMaximum"] = hi;
+                    if (auto* object = scene.GetWorld().FindObject(drag_->object))
+                        if (auto* rect = object->GetComponent<UiRectComponent>())
+                            rect->Deserialize(drag_->after);
                 }
-                drag_->changed = dx != 0 || dy != 0;
-                hi[0] += dx;
-                hi[1] += dy;
-                drag_->after["offsetMinimum"] = lo;
-                drag_->after["offsetMaximum"] = hi;
-                if (auto* object = scene.GetWorld().FindObject(drag_->object))
-                    if (auto* rect = object->GetComponent<UiRectComponent>())
-                        rect->Deserialize(drag_->after);
             }
         }
         if (hovered && ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {

@@ -1,4 +1,5 @@
 #include "Scene/Ui/HIKARI_UiUtilityComponents.h"
+#include "Scene/Ui/HIKARI_UiDataBindingComponent.h"
 #include "Authoring/HIKARI_IInspectorBuilder.h"
 #include "Core/HIKARI_JsonRead.h"
 #include "Core/Text/HIKARI_Localization.h"
@@ -94,11 +95,15 @@ void UiProgressComponent::SetValue(float value) noexcept {
     if (std::isfinite(value))
         value_ = std::clamp(value, minimum_, maximum_);
 }
-float UiProgressComponent::ResolveFraction(const BINDING::RuntimeBindingStore* bindings) const noexcept {
+float UiProgressComponent::ResolveFraction(const BINDING::RuntimeBindingStore* bindings,
+                                           UiBindingReadMode mode) const noexcept {
     float value = value_;
-    if (bindings && !variableId_.empty()) {
+    if (!variableId_.empty()) {
         BINDING::Value v;
-        if (bindings->ReadVariable(variableId_, v)) {
+        const UiBoundValueStatus status = ReadUiBoundValue(*this, bindings, variableId_, v, mode);
+        if (status == UiBoundValueStatus::InvalidObjectSource)
+            return 0.0f;
+        if (status == UiBoundValueStatus::Value) {
             if (v.type == BINDING::ValueType::Float)
                 value = v.numeric.x;
             else if (v.type == BINDING::ValueType::Int)
@@ -119,8 +124,8 @@ void UiProgressComponent::BuildInspector(IInspectorBuilder& b) {
     int direction = static_cast<int>(direction_);
     if (b.Choice(AuthoringFieldDescriptor{"direction", L("uix.fill")}, direction, choices))
         direction_ = static_cast<UiFillDirection>(std::clamp(direction, 0, 3));
-    b.RuntimeVariableIdPicker(AuthoringFieldDescriptor{"variableId", L("uix.variable")}, BINDING::ValueType::Float,
-                              variableId_);
+    constexpr std::array allowedTypes{BINDING::ValueType::Int, BINDING::ValueType::Float};
+    b.RuntimeVariableIdPicker(AuthoringFieldDescriptor{"variableId", L("uix.variable")}, allowedTypes, variableId_);
     nlohmann::json value;
     Serialize(value);
     Deserialize(value);

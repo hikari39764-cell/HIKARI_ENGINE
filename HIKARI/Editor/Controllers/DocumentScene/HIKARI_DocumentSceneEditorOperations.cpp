@@ -82,8 +82,6 @@ std::vector<SceneObjectOperationSpec> SceneObjectOperationSpecs() {
          "Set one object's transform by stable objectId. Exact name is a discovery fallback and must be unique.",
          "scene", EDITOR::SetSceneObjectTransform,
          Concat({ObjectTargetParameters(), PositionParameters(), ScaleParameters(), RotationParameters()})},
-        {"scene.query", "Query scene objects with position and scale, optionally filtered by name.", "scene",
-         EDITOR::QuerySceneObjects, NameParameter("按名称包含过滤"), EditorOperationKind::Query},
         {"scene.create_object", "Create a model object in the scene by asset id or path fragment.", "scene",
          EDITOR::CreateSceneModel,
          Concat({{{"model", EditorOperationParameterType::String, true, "模型资产 id 或路径片段"}},
@@ -216,6 +214,26 @@ void DocumentSceneEditorController::RegisterEditorOperations() {
                                  [this](const nlohmann::json&) { return ExecuteAiAssetImportStatus(); }},
                                 EditorOperationKind::Query, false);
 
+    operationRegistry_.Register(
+        {"scene.object.focus",
+         "Select and frame one object in the Scene workspace.",
+         "scene",
+         {{"objectId", EditorOperationParameterType::Int, true, "Stable scene object id"}},
+         [this](const nlohmann::json& p) {
+             if (!aiOperationScene_)
+                 return EDITOR::OperationFailure("NO_SCENE", "No scene is open.");
+             const SceneObjectId id{p.at("objectId").get<uint64_t>()};
+             if (!aiOperationScene_->GetWorld().FindObject(id))
+                 return EDITOR::OperationFailure("OBJECT_NOT_FOUND", "Object no longer exists.");
+             SelectViewportObjects(*aiOperationScene_, {id}, EditorObjectSelectionMode::Replace);
+             EDITOR::EditorWorkspaceOpenRequest request;
+             request.workspaceId = EDITOR::EditorWorkspaceId::Scene;
+             workspaceHost_.RequestOpen(request);
+             sceneInspectorPanel_.RequestFocusObject(id);
+             return EDITOR::OperationOk("Object selected; scene framing requested.");
+         }},
+        EditorOperationKind::Session, false);
+
     EDITOR::EditorOperationDefinition captureViews{
         "scene.capture_views",
         "Render the current scene from up to 6 fixed angles (front, three_quarter, right, back, left, top) around an object or point and return all images.",
@@ -224,7 +242,8 @@ void DocumentSceneEditorController::RegisterEditorOperations() {
           "Object to orbit; defaults to the scene camera target"},
          {"center", EditorOperationParameterType::Json, false, "World [x, y, z] center instead of focusObjectId"},
          {"views", EditorOperationParameterType::Json, false, "Angle names; default front, three_quarter, right, top"},
-         {"distance", EditorOperationParameterType::Float, false, "Camera distance, default 6"},
+         {"distance", EditorOperationParameterType::Float, false,
+          "Camera distance; defaults to object bounds fit, or 6 for a point"},
          {"pitchDegrees", EditorOperationParameterType::Float, false, "Elevation for side views, default 20"},
          {"fovDegrees", EditorOperationParameterType::Float, false, "Vertical field of view, default 50"},
          {"width", EditorOperationParameterType::Int, false, "Image width 128-1536"},
@@ -236,8 +255,7 @@ void DocumentSceneEditorController::RegisterEditorOperations() {
         }};
     captureViews.entryPoint = true;
     captureViews.searchTerms = {"screenshot", "capture", "angles", "multi view", "截图", "多角度"};
-    operationRegistry_.Register(std::move(captureViews), EditorOperationKind::Session, true,
-                                EDITOR::EditorOperationSessionDispatch::Preview);
+    operationRegistry_.Register(std::move(captureViews), EditorOperationKind::Session);
     operationRegistry_.Register({"scene.capture_views.status",
                                  "Poll a multi-angle scene capture.",
                                  "scene",
@@ -253,11 +271,12 @@ void DocumentSceneEditorController::RegisterEditorOperations() {
         EditorOperationKind::Query, false);
     operationRegistry_.Register(
         {"capture.preview",
-         "Capture the current visible preview as a real image. Poll capture.status until complete.",
+         "Capture the actual displayed output. auto uses the game/output monitor for scene and cameras; space explicitly captures the camera workspace observer. Poll capture.status.",
          "general",
-         {{"path", EditorOperationParameterType::String, false, "输出文件路径，缺省为临时目录"}},
+         {{"path", EditorOperationParameterType::String, false, "输出 PNG 路径，可省略"},
+          {"source", EditorOperationParameterType::String, false, "auto (default), game, space or preview"}},
          [this](const nlohmann::json& parameters) { return ExecuteAiCapturePreview(parameters); }},
-        EditorOperationKind::Session, true, EDITOR::EditorOperationSessionDispatch::Preview);
+        EditorOperationKind::Session, false);
 
     operationRegistry_.Register(
         {"material.node_info",

@@ -15,6 +15,11 @@ uint64_t AllocateStoreInstanceId() noexcept {
     }
     return id;
 }
+
+bool IsWritableValue(const VariableDefinition& definition, const Value& value) noexcept {
+    return IsValueCompatible(value, definition.defaultValue.type) && IsValueFinite(value) &&
+           (!definition.hasRange || IsValueWithinRange(value, definition.minimum, definition.maximum));
+}
 } // namespace
 
 RuntimeBindingStore::RuntimeBindingStore() noexcept : instanceId_(AllocateStoreInstanceId()) {}
@@ -35,6 +40,7 @@ void RuntimeBindingStore::Clear() {
     catalog_ = {};
     values_.clear();
     writers_.clear();
+    objectValues_.clear();
     events_.clear();
     publishedSnapshot_.store({}, std::memory_order_release);
     revision_ = 0u;
@@ -64,8 +70,7 @@ bool RuntimeBindingStore::WriteVariable(std::string_view variableId, const Value
         return false;
     }
     const VariableDefinition* definition = catalog_.FindVariable(variableId);
-    if (definition == nullptr || !IsValueCompatible(value, definition->defaultValue.type) || !IsValueFinite(value) ||
-        (definition->hasRange && !IsValueWithinRange(value, definition->minimum, definition->maximum))) {
+    if (definition == nullptr || !IsWritableValue(*definition, value)) {
         return false;
     }
 
@@ -83,6 +88,87 @@ bool RuntimeBindingStore::WriteVariable(std::string_view variableId, const Value
         snapshotDirty_ = true;
     }
     return true;
+}
+
+bool RuntimeBindingStore::ReadObjectVariable(RuntimeObjectHandle object, std::string_view variableId,
+                                             Value& outValue) const noexcept {
+    if (!object.IsValid()) {
+        return false;
+    }
+    const VariableDefinition* definition = catalog_.FindVariable(variableId);
+    if (definition == nullptr) {
+        return false;
+    }
+    const auto objectValues = objectValues_.find(object.ToValue());
+    if (objectValues != objectValues_.end()) {
+        const auto value = objectValues->second.find(std::string(variableId));
+        if (value != objectValues->second.end()) {
+            outValue = value->second.value;
+            return true;
+        }
+    }
+    outValue = definition->defaultValue;
+    return true;
+}
+
+bool RuntimeBindingStore::WriteObjectVariable(RuntimeObjectHandle object, std::string_view variableId,
+                                              const Value& value, std::string_view writerId) {
+    if (!object.IsValid() || variableId.empty() || writerId.empty()) {
+        return false;
+    }
+    const VariableDefinition* definition = catalog_.FindVariable(variableId);
+    if (definition == nullptr || !IsWritableValue(*definition, value)) {
+        return false;
+    }
+
+    auto [objectValues, insertedObject] = objectValues_.try_emplace(object.ToValue());
+    auto [scopedValue, insertedValue] =
+        objectValues->second.try_emplace(std::string(variableId), ObjectVariableValue{value, std::string(writerId)});
+    if (insertedValue) {
+        return true;
+    }
+    if (scopedValue->second.writerId != writerId) {
+        if (insertedObject && objectValues->second.empty()) {
+            objectValues_.erase(objectValues);
+        }
+        return false;
+    }
+    scopedValue->second.value = value;
+    return true;
+}
+
+bool RuntimeBindingStore::ReleaseObjectVariableWriter(RuntimeObjectHandle object, std::string_view variableId,
+                                                      std::string_view writerId) noexcept {
+    if (!object.IsValid()) {
+        return false;
+    }
+    const auto objectValues = objectValues_.find(object.ToValue());
+    if (objectValues == objectValues_.end()) {
+        return false;
+    }
+    const auto scopedValue = objectValues->second.find(std::string(variableId));
+    if (scopedValue == objectValues->second.end() || scopedValue->second.writerId != writerId) {
+        return false;
+    }
+    objectValues->second.erase(scopedValue);
+    if (objectValues->second.empty()) {
+        objectValues_.erase(objectValues);
+    }
+    return true;
+}
+
+void RuntimeBindingStore::ReleaseObjectVariableWriters(RuntimeObjectHandle object, std::string_view writerId) noexcept {
+    if (!object.IsValid()) {
+        return;
+    }
+    const auto objectValues = objectValues_.find(object.ToValue());
+    if (objectValues == objectValues_.end()) {
+        return;
+    }
+    std::erase_if(objectValues->second, [writerId](const auto& entry) { return entry.second.writerId == writerId; });
+    if (objectValues->second.empty()) {
+        objectValues_.erase(objectValues);
+    }
 }
 
 bool RuntimeBindingStore::ReleaseWriter(std::string_view variableId, std::string_view writerId) noexcept {
@@ -219,6 +305,24 @@ bool RuntimeBindingStore::ReplaceCatalog(Catalog catalog, bool preserveValues) {
         const VariableDefinition* next = catalog.FindVariable(writer.first);
         return previous == nullptr || next == nullptr || previous->defaultValue.type != next->defaultValue.type;
     });
+    if (!preserveValues) {
+        objectValues_.clear();
+    } else {
+        std::erase_if(objectValues_, [this, &catalog](auto& objectValues) {
+            std::erase_if(objectValues.second, [this, &catalog](auto& scopedValue) {
+                const VariableDefinition* previous = catalog_.FindVariable(scopedValue.first);
+                const VariableDefinition* next = catalog.FindVariable(scopedValue.first);
+                if (previous == nullptr || next == nullptr || previous->defaultValue.type != next->defaultValue.type) {
+                    return true;
+                }
+                if (!IsWritableValue(*next, scopedValue.second.value)) {
+                    scopedValue.second.value = next->defaultValue;
+                }
+                return false;
+            });
+            return objectValues.second.empty();
+        });
+    }
     catalog_ = std::move(catalog);
     values_ = std::move(nextValues);
     events_.clear();

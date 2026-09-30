@@ -129,24 +129,42 @@ std::string MakeGameProjectModule(const std::string& identifier) {
 #include "HIKARI/Project/RuntimeFeatureRegistration.h"
 #include "HIKARI/Project/SceneFlowTrigger.h"
 #include <array>
+#include <cstdint>
+#include <memory>
 
 namespace )cpp" +
            identifier + R"cpp( {
 
-// ゲームの入口。通常の C++ クラスへ戦闘・進行などの処理を委譲してよい。
+// Play 中にシーンをまたいで保持するプロジェクト状態。
+class GameSession final : public HIKARI::IGameProjectSession {
+public:
+    void OnGameStarted(HIKARI::WorldView&) override {
+        gameplaySeconds = 0.0f;
+        enteredScenes = 0;
+        sceneActive = false;
+    }
+
+    void OnSceneEntered(HIKARI::WorldView&) override {
+        ++enteredScenes;
+        sceneActive = true;
+    }
+    void OnSceneExiting(HIKARI::WorldView&) override { sceneActive = false; }
+
+    float gameplaySeconds = 0.0f;
+    uint32_t enteredScenes = 0;
+    bool sceneActive = false;
+};
+
+// システムは通常どおり World に Attach され、ゲーム状態は Play session から取得する。
 class Game final : public HIKARI::IGameSystem {
 public:
     void Update(HIKARI::WorldView& world, const HIKARI::FrameContext& frame) override {
-        if (!world.GetRuntimeSession().IsPlayActive() || frame.paused) return;
-        if (!started_) {
-            started_ = true;
-            // Play 開始後の初期化。OnWorldAttached は編集時にも呼ばれる。
+        auto* session = dynamic_cast<GameSession*>(world.GetGameSession());
+        if (session == nullptr || !session->sceneActive || frame.paused) {
+            return;
         }
-        // 入力・ゲームルールをここから呼ぶ。ゲーム時間は frame.gameDt を使う。
+        session->gameplaySeconds += frame.gameDt;
     }
-    void OnWorldDetached(HIKARI::WorldView&) override { started_ = false; }
-private:
-    bool started_ = false;
 };
 
 // 以下はエンジンへの登録。日常のゲーム処理は上の Game に書く。
@@ -191,6 +209,9 @@ class GameProjectModule final : public HIKARI::RUNTIME::IGameProjectModule {
 public:
     std::string_view GetModuleId() const noexcept override { return ")cpp" +
            identifier + R"cpp("; }
+    std::unique_ptr<HIKARI::IGameProjectSession> CreateGameSession() override {
+        return std::make_unique<GameSession>();
+    }
     std::vector<std::unique_ptr<HIKARI::IRuntimeExtension>> CreateRuntimeExtensions() const override {
         std::vector<std::unique_ptr<HIKARI::IRuntimeExtension>> extensions;
         extensions.push_back(std::make_unique<GameplayExtension>());

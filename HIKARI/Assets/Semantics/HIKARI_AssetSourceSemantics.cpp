@@ -70,6 +70,7 @@ constexpr std::array<AssetImporterSemantics, static_cast<size_t>(AssetImporterKi
         2u,
         ".hscene, .scene.json, or JSON under Assets/Scenes",
     },
+    {AssetImporterKind::Prefab, AssetType::Prefab, "PrefabAssetImporter", 1u, ".hprefab"},
     {
         AssetImporterKind::Sequence,
         AssetType::Sequence,
@@ -172,6 +173,7 @@ bool IsShaderSourcePath(const std::string& lowerPath) noexcept { return lowerPat
 constexpr TEXT::EnumName<AssetType> kAssetTypeNames[] = {
     {AssetType::Model, "Model"},
     {AssetType::Scene, "Scene"},
+    {AssetType::Prefab, "Prefab"},
     {AssetType::Sky, "Sky"},
     {AssetType::Texture, "Texture"},
     {AssetType::Material, "Material"},
@@ -228,6 +230,8 @@ const AssetImporterSemantics* ResolveAssetSourceSemantics(const std::filesystem:
         kind = AssetImporterKind::Model;
     } else if (IsScenePath(genericPath, filename, extension)) {
         kind = AssetImporterKind::Scene;
+    } else if (extension == ".hprefab") {
+        kind = AssetImporterKind::Prefab;
     } else if (extension == ".ttf" || extension == ".otf" || extension == ".ttc") {
         kind = AssetImporterKind::Font;
     } else if (extension == ".huianim") {

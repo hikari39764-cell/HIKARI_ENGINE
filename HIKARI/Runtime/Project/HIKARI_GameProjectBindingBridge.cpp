@@ -15,16 +15,20 @@ BINDING::RuntimeBindingStore* FindBindingStore(World* world) noexcept {
     return world != nullptr ? world->Services().Find<BINDING::RuntimeBindingStore>() : nullptr;
 }
 
-bool TryDecodeEventSource(GameProjectObjectHandle handle, World& world, RuntimeObjectHandle& outHandle) noexcept {
-    if (handle.IsNull()) {
-        outHandle = {};
-        return true;
-    }
+bool TryDecodeObjectHandle(GameProjectObjectHandle handle, World& world, RuntimeObjectHandle& outHandle) noexcept {
     if (!PROJECT::INTERNAL::IsObjectHandleForWorld(handle, world)) {
         return false;
     }
     outHandle = PROJECT::INTERNAL::DecodeRuntimeHandle(handle);
     return world.FindObject(outHandle) != nullptr;
+}
+
+bool TryDecodeEventSource(GameProjectObjectHandle handle, World& world, RuntimeObjectHandle& outHandle) noexcept {
+    if (handle.IsNull()) {
+        outHandle = {};
+        return true;
+    }
+    return TryDecodeObjectHandle(handle, world, outHandle);
 }
 
 } // namespace
@@ -33,6 +37,20 @@ bool WorldView::ReadVariable(std::string_view variableId, GameProjectBindingValu
     BINDING::RuntimeBindingStore* store = FindBindingStore(GameProjectSdkAccess::GetWorld(*this));
     BINDING::Value value{};
     if (store == nullptr || !store->ReadVariable(variableId, value)) {
+        return false;
+    }
+    outValue = ToProjectValue(value);
+    return true;
+}
+
+bool WorldView::ReadObjectVariable(GameProjectObjectHandle object, std::string_view variableId,
+                                   GameProjectBindingValue& outValue) const noexcept {
+    World* world = GameProjectSdkAccess::GetWorld(*this);
+    BINDING::RuntimeBindingStore* store = FindBindingStore(world);
+    RuntimeObjectHandle runtimeObject{};
+    BINDING::Value value{};
+    if (store == nullptr || world == nullptr || !TryDecodeObjectHandle(object, *world, runtimeObject) ||
+        !store->ReadObjectVariable(runtimeObject, variableId, value)) {
         return false;
     }
     outValue = ToProjectValue(value);

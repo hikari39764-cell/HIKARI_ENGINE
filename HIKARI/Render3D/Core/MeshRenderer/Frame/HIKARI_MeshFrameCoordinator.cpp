@@ -11,6 +11,7 @@
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshPipelineStore.h"
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshRootParameters.h"
 #include "Render3D/Core/MeshRenderer/Data/HIKARI_MeshDrawDataBuilder.h"
+#include "Render3D/GpuDriven/HIKARI_GpuSceneJointPaletteUpload.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI::MESHRENDERER::INTERNAL {
@@ -100,16 +101,14 @@ MeshRendererTraditionalIndirectHydrationContext BuildTraditionalIndirectHydratio
     context.primitiveCache = &gMeshRendererState.primitiveCache;
     context.debugStats = &gMeshRendererState.debugStats;
     context.graphics = &graphics;
-    context.deformationUploads = &GetActiveMeshFrameResources().deformationUploads;
+    context.traditionalJointPaletteUploads = &GetActiveMeshFrameResources().traditionalJointPaletteUploads;
     return context;
 }
 
 bool UploadMeshShaderJointPalettes(const GFX::Context& graphics) {
     MeshFrameResources& frame = GetActiveMeshFrameResources();
-    const auto* palettes = gMeshRendererState.gpuDrivenSceneSource.meshShaderJointPalettes;
-    frame.jointPaletteAddress =
-        UploadJointPalettes(graphics, frame.deformationUploads, palettes != nullptr ? palettes->data() : nullptr,
-                            palettes != nullptr ? palettes->size() : 0u);
+    frame.jointPaletteAddress = RENDER3D::GPUDRIVEN::UploadGpuSceneJointPaletteSnapshot(
+        graphics, gMeshRendererState.gpuDrivenSceneSource.meshShaderJointPalettes);
     return frame.jointPaletteAddress != 0u;
 }
 

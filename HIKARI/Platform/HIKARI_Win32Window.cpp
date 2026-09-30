@@ -4,8 +4,11 @@
 #include <algorithm>
 #include <commctrl.h>
 #include <filesystem>
+#include <imm.h>
+#include <limits>
 #include <shellapi.h>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "Core/HIKARI_Logger.h"
@@ -21,6 +24,27 @@ struct ExternalFileDrop {
 };
 
 std::vector<ExternalFileDrop> gExternalFileDrops{};
+constexpr size_t kMaximumTextInputEventsPerFrame = 1024u;
+constexpr size_t kMaximumImeCompositionLength = 256u * 1024u;
+
+bool TryEncodeUtf16(std::wstring_view text, std::string& outUtf8) {
+    outUtf8.clear();
+    if (text.empty()) {
+        return true;
+    }
+    if (text.size() > static_cast<size_t>((std::numeric_limits<int>::max)())) {
+        return false;
+    }
+    const int sourceLength = static_cast<int>(text.size());
+    const int byteCount =
+        WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, text.data(), sourceLength, nullptr, 0, nullptr, nullptr);
+    if (byteCount <= 0) {
+        return false;
+    }
+    outUtf8.resize(static_cast<size_t>(byteCount));
+    return WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, text.data(), sourceLength, outUtf8.data(), byteCount,
+                               nullptr, nullptr) == byteCount;
+}
 
 void QueueExternalFileDrop(HWND hwnd, HDROP drop) {
     if (drop == nullptr) {
@@ -339,6 +363,7 @@ bool Win32Window::ApplyWindowMode(WindowMode mode, int clientWidth, int clientHe
 void Win32Window::Shutdown() {
     messageHandler_ = {};
     if (hwnd_) {
+        ResetTextInput(hwnd_, true);
         DragAcceptFiles(hwnd_, FALSE);
         DestroyWindow(hwnd_);
         hwnd_ = nullptr;
@@ -364,6 +389,192 @@ float Win32Window::ConsumeMouseWheelDelta() {
     const float delta = mouseWheelDelta_;
     mouseWheelDelta_ = 0.0f;
     return delta;
+}
+
+std::vector<INPUT::TextInputEvent> Win32Window::ConsumeTextInputEvents() {
+    std::vector<INPUT::TextInputEvent> events = std::move(textInputEvents_);
+    textInputEvents_.clear();
+    return events;
+}
+
+void Win32Window::DiscardTextInputEvents() noexcept { textInputEvents_.clear(); }
+
+void Win32Window::ResetTextInputForWindow(HWND hwnd) noexcept {
+    if (hwnd == nullptr || IsWindow(hwnd) == FALSE) {
+        return;
+    }
+    auto* window = reinterpret_cast<Win32Window*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+    if (window != nullptr && window->hwnd_ == hwnd) {
+        window->ResetTextInput(hwnd, true);
+    }
+}
+
+void Win32Window::ApplyImeCaretAnchorForWindow(HWND hwnd, INPUT::ImeCaretAnchor anchor) noexcept {
+    if (hwnd == nullptr || IsWindow(hwnd) == FALSE) {
+        return;
+    }
+    HIMC context = ImmGetContext(hwnd);
+    if (context == nullptr) {
+        return;
+    }
+    if (!anchor.valid) {
+        (void)ImmNotifyIME(context, NI_COMPOSITIONSTR, CPS_CANCEL, 0u);
+        (void)ImmReleaseContext(hwnd, context);
+        return;
+    }
+
+    RECT clientRect{};
+    if (GetClientRect(hwnd, &clientRect) != FALSE) {
+        anchor.clientX = (std::clamp)(anchor.clientX, 0, static_cast<int32_t>((std::max)(clientRect.right - 1, 0L)));
+        anchor.clientY = (std::clamp)(anchor.clientY, 0, static_cast<int32_t>((std::max)(clientRect.bottom - 1, 0L)));
+    }
+    const POINT position{anchor.clientX, anchor.clientY};
+    COMPOSITIONFORM composition{};
+    composition.dwStyle = CFS_POINT;
+    composition.ptCurrentPos = position;
+    (void)ImmSetCompositionWindow(context, &composition);
+
+    CANDIDATEFORM candidate{};
+    candidate.dwIndex = 0u;
+    candidate.dwStyle = CFS_CANDIDATEPOS;
+    candidate.ptCurrentPos = position;
+    (void)ImmSetCandidateWindow(context, &candidate);
+    (void)ImmReleaseContext(hwnd, context);
+}
+
+void Win32Window::AppendTextInput(INPUT::TextInputEventKind kind, std::string utf8) {
+    try {
+        if (kind == INPUT::TextInputEventKind::CompositionUpdated && !textInputEvents_.empty() &&
+            textInputEvents_.back().kind == kind) {
+            textInputEvents_.back().utf8 = std::move(utf8);
+            return;
+        }
+        if (textInputEvents_.size() >= kMaximumTextInputEventsPerFrame) {
+            return;
+        }
+        textInputEvents_.push_back(INPUT::TextInputEvent{kind, std::move(utf8)});
+    } catch (...) {
+    }
+}
+
+void Win32Window::AppendUnicodeCharacter(uint32_t value) {
+    if (value == 0u || value > 0x10FFFFu || (value >= 0xD800u && value <= 0xDFFFu)) {
+        return;
+    }
+    std::string utf8{};
+    if (value <= 0x7Fu) {
+        utf8.push_back(static_cast<char>(value));
+    } else if (value <= 0x7FFu) {
+        utf8.push_back(static_cast<char>(0xC0u | (value >> 6u)));
+        utf8.push_back(static_cast<char>(0x80u | (value & 0x3Fu)));
+    } else if (value <= 0xFFFFu) {
+        utf8.push_back(static_cast<char>(0xE0u | (value >> 12u)));
+        utf8.push_back(static_cast<char>(0x80u | ((value >> 6u) & 0x3Fu)));
+        utf8.push_back(static_cast<char>(0x80u | (value & 0x3Fu)));
+    } else {
+        utf8.push_back(static_cast<char>(0xF0u | (value >> 18u)));
+        utf8.push_back(static_cast<char>(0x80u | ((value >> 12u) & 0x3Fu)));
+        utf8.push_back(static_cast<char>(0x80u | ((value >> 6u) & 0x3Fu)));
+        utf8.push_back(static_cast<char>(0x80u | (value & 0x3Fu)));
+    }
+    AppendTextInput(INPUT::TextInputEventKind::Committed, std::move(utf8));
+}
+
+void Win32Window::AppendUtf16Character(uint16_t value) {
+    if (value >= 0xD800u && value <= 0xDBFFu) {
+        pendingHighSurrogate_ = static_cast<wchar_t>(value);
+        return;
+    }
+    if (value >= 0xDC00u && value <= 0xDFFFu) {
+        if (pendingHighSurrogate_ != L'\0') {
+            const uint32_t high = static_cast<uint16_t>(pendingHighSurrogate_);
+            pendingHighSurrogate_ = L'\0';
+            AppendUnicodeCharacter(0x10000u + ((high - 0xD800u) << 10u) + (value - 0xDC00u));
+        }
+        return;
+    }
+    pendingHighSurrogate_ = L'\0';
+    AppendUnicodeCharacter(value);
+}
+
+void Win32Window::ResetTextInput(HWND hwnd, bool cancelComposition, bool publishCompositionEnded) noexcept {
+    const bool wasComposing = imeCompositionActive_;
+    const bool hadCompositionEnd = std::any_of(textInputEvents_.begin(), textInputEvents_.end(), [](const auto& event) {
+        return event.kind == INPUT::TextInputEventKind::CompositionEnded;
+    });
+    textInputEvents_.clear();
+    pendingHighSurrogate_ = L'\0';
+    imeCompositionActive_ = false;
+    if (publishCompositionEnded && (wasComposing || hadCompositionEnd)) {
+        AppendTextInput(INPUT::TextInputEventKind::CompositionEnded);
+    }
+    if (cancelComposition && wasComposing && hwnd != nullptr) {
+        HIMC context = ImmGetContext(hwnd);
+        if (context != nullptr) {
+            (void)ImmNotifyIME(context, NI_COMPOSITIONSTR, CPS_CANCEL, 0u);
+            (void)ImmReleaseContext(hwnd, context);
+        }
+    }
+}
+
+void Win32Window::CaptureTextInput(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
+    switch (msg) {
+    case WM_CHAR: AppendUtf16Character(static_cast<uint16_t>(wparam)); break;
+    case WM_UNICHAR:
+        if (wparam != UNICODE_NOCHAR) {
+            pendingHighSurrogate_ = L'\0';
+            AppendUnicodeCharacter(static_cast<uint32_t>(wparam));
+        }
+        break;
+    case WM_IME_STARTCOMPOSITION:
+        pendingHighSurrogate_ = L'\0';
+        if (!imeCompositionActive_) {
+            imeCompositionActive_ = true;
+            AppendTextInput(INPUT::TextInputEventKind::CompositionStarted);
+        }
+        break;
+    case WM_IME_COMPOSITION:
+        if ((static_cast<uint32_t>(lparam) & GCS_COMPSTR) != 0u) {
+            if (!imeCompositionActive_) {
+                imeCompositionActive_ = true;
+                AppendTextInput(INPUT::TextInputEventKind::CompositionStarted);
+            }
+            HIMC context = ImmGetContext(hwnd);
+            if (context != nullptr) {
+                const LONG byteCount = ImmGetCompositionStringW(context, GCS_COMPSTR, nullptr, 0u);
+                if (byteCount >= 0 && static_cast<size_t>(byteCount) <= kMaximumImeCompositionLength &&
+                    (static_cast<size_t>(byteCount) % sizeof(wchar_t)) == 0u) {
+                    std::wstring composition(static_cast<size_t>(byteCount) / sizeof(wchar_t), L'\0');
+                    const LONG readBytes = byteCount == 0
+                                               ? 0
+                                               : ImmGetCompositionStringW(context, GCS_COMPSTR, composition.data(),
+                                                                          static_cast<DWORD>(byteCount));
+                    if (readBytes == byteCount) {
+                        std::string utf8{};
+                        if (TryEncodeUtf16(composition, utf8)) {
+                            AppendTextInput(INPUT::TextInputEventKind::CompositionUpdated, std::move(utf8));
+                        }
+                    }
+                }
+                (void)ImmReleaseContext(hwnd, context);
+            }
+        }
+        break;
+    case WM_IME_ENDCOMPOSITION:
+        if (imeCompositionActive_) {
+            imeCompositionActive_ = false;
+            AppendTextInput(INPUT::TextInputEventKind::CompositionEnded);
+        }
+        pendingHighSurrogate_ = L'\0';
+        break;
+    case WM_KILLFOCUS: ResetTextInput(hwnd, true, true); break;
+    case WM_ACTIVATEAPP:
+        if (wparam == FALSE) {
+            ResetTextInput(hwnd, true, true);
+        }
+        break;
+    default: break;
+    }
 }
 //
 LRESULT CALLBACK Win32Window::StaticWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
@@ -392,6 +603,15 @@ void Win32Window::Show() {
 }
 
 LRESULT Win32Window::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
+    try {
+        CaptureTextInput(hwnd, msg, wparam, lparam);
+    } catch (...) {
+        pendingHighSurrogate_ = L'\0';
+        imeCompositionActive_ = false;
+    }
+    if (msg == WM_UNICHAR && wparam == UNICODE_NOCHAR) {
+        return TRUE;
+    }
     if (dispatchHostMessages_ && messageHandler_ && messageHandler_(hwnd, msg, wparam, lparam)) {
         return TRUE;
     }

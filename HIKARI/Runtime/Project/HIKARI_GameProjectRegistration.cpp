@@ -13,7 +13,9 @@
 #include <json.hpp>
 
 #include "Core/HIKARI_Logger.h"
+#include "Runtime/Binding/HIKARI_RuntimeBindingStore.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
+#include "Runtime/Project/Internal/HIKARI_GameProjectBindingConversion.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_ComponentSystemPolicy.h"
 #include "Scene/HIKARI_GameObject.h"
@@ -55,6 +57,13 @@ bool InvokeProjectCallback(std::string_view owner, std::string_view callback, Ca
     return false;
 }
 
+BINDING::RuntimeBindingStore* FindObjectBindingStore(const WorldView& world, const GameObject* owner) noexcept {
+    World* runtimeWorld = GameProjectSdkAccess::GetWorld(world);
+    return runtimeWorld != nullptr && owner != nullptr && owner->GetWorld() == runtimeWorld
+               ? runtimeWorld->Services().Find<BINDING::RuntimeBindingStore>()
+               : nullptr;
+}
+
 } // namespace
 
 RuntimeFeatureContext RuntimeFeatureContextAccess::Create(ComponentRegistry& componentRegistry,
@@ -90,6 +99,17 @@ bool GameComponentContext::WriteVariable(std::string_view variableId,
 bool GameComponentContext::ReleaseVariable(std::string_view variableId) const noexcept {
     auto* adapter = static_cast<GameProjectComponentAdapter*>(bindingOwner_);
     return adapter != nullptr && adapter->ReleaseVariable(world_, variableId);
+}
+
+bool GameComponentContext::WriteObjectVariable(std::string_view variableId,
+                                               const GameProjectBindingValue& value) const noexcept {
+    auto* adapter = static_cast<GameProjectComponentAdapter*>(bindingOwner_);
+    return adapter != nullptr && adapter->WriteObjectVariable(world_, variableId, value);
+}
+
+bool GameComponentContext::ReleaseObjectVariable(std::string_view variableId) const noexcept {
+    auto* adapter = static_cast<GameProjectComponentAdapter*>(bindingOwner_);
+    return adapter != nullptr && adapter->ReleaseObjectVariable(world_, variableId);
 }
 
 GameProjectComponentAdapter::GameProjectComponentAdapter(std::string typeName, IGameComponent* component,
@@ -228,11 +248,58 @@ bool GameProjectComponentAdapter::ReleaseVariable(const WorldView& world, std::s
     return false;
 }
 
+bool GameProjectComponentAdapter::WriteObjectVariable(const WorldView& world, std::string_view variableId,
+                                                      const GameProjectBindingValue& value) noexcept {
+    GameObject* owner = GetOwner();
+    BINDING::RuntimeBindingStore* store = FindObjectBindingStore(world, owner);
+    if (variableId.empty() || bindingWriterId_.empty() || owner == nullptr || store == nullptr) {
+        return false;
+    }
+    try {
+        const auto [written, inserted] = writtenObjectVariableIds_.emplace(variableId);
+        if (store->WriteObjectVariable(owner->GetRuntimeHandle(), variableId, PROJECT::DETAIL::ToRuntimeValue(value),
+                                       bindingWriterId_)) {
+            return true;
+        }
+        if (inserted) {
+            writtenObjectVariableIds_.erase(written);
+        }
+        return false;
+    } catch (...) {
+        return false;
+    }
+}
+
+bool GameProjectComponentAdapter::ReleaseObjectVariable(const WorldView& world, std::string_view variableId) noexcept {
+    GameObject* owner = GetOwner();
+    BINDING::RuntimeBindingStore* store = FindObjectBindingStore(world, owner);
+    if (owner == nullptr || store == nullptr) {
+        return false;
+    }
+    for (auto written = writtenObjectVariableIds_.begin(); written != writtenObjectVariableIds_.end(); ++written) {
+        if (*written != variableId) {
+            continue;
+        }
+        if (!store->ReleaseObjectVariableWriter(owner->GetRuntimeHandle(), *written, bindingWriterId_)) {
+            return false;
+        }
+        writtenObjectVariableIds_.erase(written);
+        return true;
+    }
+    return false;
+}
+
 void GameProjectComponentAdapter::ReleaseAllVariables(const WorldView& world) noexcept {
     for (const std::string& variableId : writtenVariableIds_) {
         (void)world.ReleaseVariableWriter(variableId, bindingWriterId_);
     }
     writtenVariableIds_.clear();
+    if (GameObject* owner = GetOwner()) {
+        if (BINDING::RuntimeBindingStore* store = FindObjectBindingStore(world, owner); store != nullptr) {
+            store->ReleaseObjectVariableWriters(owner->GetRuntimeHandle(), bindingWriterId_);
+        }
+    }
+    writtenObjectVariableIds_.clear();
 }
 
 GameProjectSystemAdapter::GameProjectSystemAdapter(std::string systemId, IGameSystem* system,

@@ -4,6 +4,7 @@
 #include <string_view>
 #include <vector>
 
+#include "HIKARI/Project/EditorOperations.h"
 #include "HIKARI/Project/EditorWorkspace.h"
 
 namespace HIKARI::EDITOR_PROJECT {
@@ -14,6 +15,9 @@ public:
 
     virtual std::string_view GetModuleId() const = 0;
     virtual std::vector<std::unique_ptr<IEditorWorkspace>> CreateEditorWorkspaces() const = 0;
+    // Project-owned handlers must remain alive until the Editor unregisters
+    // this module's operations before destroying the module instance.
+    virtual void RegisterEditorOperations(IEditorOperationRegistrar&) {}
 };
 
 // Defined by an optional project Editor companion. The SDK adapter owns

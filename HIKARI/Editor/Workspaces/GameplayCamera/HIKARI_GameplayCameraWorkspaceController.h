@@ -33,7 +33,7 @@ public:
                        std::string& message);
     void DrawDockSpace(bool reset);
     GameplayCameraWorkspaceResult Draw(DocumentSceneBase& scene, EditorWorkspaceHost& host,
-                                       EditorOperationRegistry& operations);
+                                       EditorOperationRegistry& operations, SceneObjectId selectedObject);
     void ApplyActivation(DocumentSceneBase& scene, const EditorWorkspaceActivation& activation,
                          EditorWorkspaceHost& host);
     void ClosePreviewRequest(EditorWorkspaceHost& host);
@@ -57,7 +57,8 @@ private:
     void DrawFlowOverlay(DocumentSceneBase& scene, const EditorViewportRect& rect);
     void SelectFlow(DocumentSceneBase& scene, SceneObjectId id);
     void DrawLibrary(DocumentSceneBase& scene, EditorOperationRegistry& operations);
-    void DrawInspector(DocumentSceneBase& scene, EditorOperationRegistry& operations, EditorWorkspaceHost& host);
+    void DrawInspector(DocumentSceneBase& scene, EditorOperationRegistry& operations, EditorWorkspaceHost& host,
+                       SceneObjectId selectedObject);
     void DrawViews(DocumentSceneBase& scene, EditorWorkspaceHost& host, GameplayCameraWorkspaceResult& result);
     bool SelectObject(DocumentSceneBase& scene, const char* key, SceneObjectId& id, bool camerasOnly);
     std::shared_ptr<const SequenceAsset> flowSequence_;

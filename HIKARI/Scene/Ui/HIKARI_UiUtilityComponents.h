@@ -2,6 +2,7 @@
 
 #include "Render3D/HIKARI_Math3D.h"
 #include "Scene/Components/HIKARI_IComponent.h"
+#include "Scene/Ui/HIKARI_UiDataBindingComponent.h"
 #include <string>
 
 namespace HIKARI {
@@ -60,7 +61,8 @@ public:
     void BuildInspector(IInspectorBuilder& builder) override;
     bool IsEnabled() const noexcept { return enabled_; }
     UiFillDirection GetDirection() const noexcept { return direction_; }
-    float ResolveFraction(const BINDING::RuntimeBindingStore* bindings) const noexcept;
+    float ResolveFraction(const BINDING::RuntimeBindingStore* bindings,
+                          UiBindingReadMode mode = UiBindingReadMode::Runtime) const noexcept;
     void SetValue(float value) noexcept;
 
 private:

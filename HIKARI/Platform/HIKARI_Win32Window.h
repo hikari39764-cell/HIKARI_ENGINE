@@ -3,8 +3,10 @@
 #include <windows.h>
 #include <filesystem>
 #include <functional>
-#include <vector>
 #include <string>
+#include <vector>
+
+#include "Input/Runtime/HIKARI_InputTypes.h"
 
 namespace HIKARI::PLATFORM {
 
@@ -31,6 +33,10 @@ public:
 
     bool PumpMessages();
     float ConsumeMouseWheelDelta();
+    std::vector<INPUT::TextInputEvent> ConsumeTextInputEvents();
+    void DiscardTextInputEvents() noexcept;
+    static void ResetTextInputForWindow(HWND hwnd) noexcept;
+    static void ApplyImeCaretAnchorForWindow(HWND hwnd, INPUT::ImeCaretAnchor anchor) noexcept;
     bool SetTitle(const wchar_t* title);
     void Show();
     bool IsStartupHidden() const { return startupHidden_; }
@@ -53,6 +59,11 @@ public:
 private:
     static LRESULT CALLBACK StaticWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
     LRESULT WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
+    void CaptureTextInput(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
+    void ResetTextInput(HWND hwnd, bool cancelComposition, bool publishCompositionEnded = false) noexcept;
+    void AppendTextInput(INPUT::TextInputEventKind kind, std::string utf8 = {});
+    void AppendUtf16Character(uint16_t value);
+    void AppendUnicodeCharacter(uint32_t value);
 
 private:
     HWND hwnd_{};
@@ -67,6 +78,9 @@ private:
     WindowCloseBehavior closeBehavior_ = WindowCloseBehavior::QuitApplication;
     bool dispatchHostMessages_ = true;
     float mouseWheelDelta_{};
+    std::vector<INPUT::TextInputEvent> textInputEvents_{};
+    wchar_t pendingHighSurrogate_ = L'\0';
+    bool imeCompositionActive_ = false;
     ResizeCallback onResize_{};
     MessageHandler messageHandler_{};
     WindowMode windowMode_ = WindowMode::Windowed;

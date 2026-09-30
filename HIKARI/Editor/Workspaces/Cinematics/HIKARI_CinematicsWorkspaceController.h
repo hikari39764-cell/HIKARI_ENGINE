@@ -15,18 +15,18 @@
 #include "Editor/Workspaces/Sequence/HIKARI_SequenceLibraryPanel.h"
 #include "Scene/HIKARI_CameraDirector.h"
 #include "Scene/HIKARI_SceneObjectId.h"
+#include "Input/Runtime/HIKARI_InputTypes.h"
 
 namespace HIKARI {
 
 class DocumentSceneBase;
 struct EditorContext;
-class SelectionSyncService;
 
 namespace EDITOR {
-class EditorPlaySession;
 
 struct CinematicsWorkspaceResult {
-    bool toggleGamePreviewRequested = false;
+    INPUT::MouseCaptureRegion playViewport{};
+    bool playViewportClicked = false;
     bool cinematicsChanged = false;
     bool saveSceneRequested = false;
     uint64_t timelineEditMergeId = 0;
@@ -41,8 +41,8 @@ public:
     void OnCinematicsDocumentRestored(DocumentSceneBase& scene, EditorWorkspaceHost& workspaceHost);
     void ApplyWorkspaceActivation(DocumentSceneBase& scene, const EditorWorkspaceActivation& activation,
                                   EditorContext& context, EditorWorkspaceHost& workspaceHost);
-    CinematicsWorkspaceResult Draw(DocumentSceneBase& scene, EditorPlaySession& playSession, EditorContext& context,
-                                   SelectionSyncService& selectionSync, EditorWorkspaceHost& workspaceHost);
+    CinematicsWorkspaceResult Draw(DocumentSceneBase& scene, EditorContext& context,
+                                   EditorWorkspaceHost& workspaceHost);
     bool RequestOpenSequenceAsset(DocumentSceneBase& scene, const AssetGuid& assetGuid, std::string& outMessage);
     bool IsEditingSequenceAsset() const noexcept;
     bool IsSequenceDocumentDirty() const noexcept;
@@ -67,10 +67,10 @@ public:
 private:
     CinematicSequence& ActiveSequence(DocumentSceneBase& scene);
     void ResetEditing(DocumentSceneBase& scene);
-    bool DrawResources(DocumentSceneBase& scene, CinematicSequence& sequence);
+    bool DrawResources(DocumentSceneBase& scene, CinematicSequence& sequence, EditorContext& context);
     bool DrawInspector(DocumentSceneBase& scene, CinematicSequence& sequence);
     bool DrawTimeline(DocumentSceneBase& scene, CinematicSequence& sequence);
-    void DrawMonitor(DocumentSceneBase& scene, EditorWorkspaceHost& workspaceHost);
+    void DrawMonitor(DocumentSceneBase& scene, EditorWorkspaceHost& workspaceHost, CinematicsWorkspaceResult& result);
     bool DrawStage(DocumentSceneBase& scene, CinematicSequence& sequence, EditorContext& context,
                    EditorWorkspaceHost& host, bool enabled);
     bool DrawShotOverlays(DocumentSceneBase& scene, CinematicSequence& sequence, const EditorViewportRect& viewport,

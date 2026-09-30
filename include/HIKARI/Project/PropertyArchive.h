@@ -14,6 +14,8 @@ namespace HIKARI {
 
 struct GameProjectSdkAccess;
 
+inline constexpr std::string_view kGameProjectAssetGuidArchiveMarker = "$hikari.assetGuid";
+
 class PropertyReader {
 public:
     HIKARI_GAME_PROJECT_SDK_API bool Contains(std::string_view name) const noexcept;
@@ -29,6 +31,9 @@ public:
                                                            GameProjectVfxAssetReference& outReference) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool ReadTextureAssetReference(
         std::string_view name, GameProjectUiTextureReference& outReference) const noexcept;
+    // Reads the explicit $hikari.assetGuid archive marker; legacy string values are not inferred.
+    HIKARI_GAME_PROJECT_SDK_API bool ReadAssetGuid(std::string_view name, char* outUtf8,
+                                                   size_t capacity) const noexcept;
 
     std::string ReadString(std::string_view name, std::string_view fallback = {}) const {
         if (!Contains(name)) {
@@ -69,6 +74,7 @@ public:
                                                             const GameProjectVfxAssetReference& reference);
     HIKARI_GAME_PROJECT_SDK_API void WriteTextureAssetReference(std::string_view name,
                                                                 const GameProjectUiTextureReference& reference);
+    HIKARI_GAME_PROJECT_SDK_API void WriteAssetGuid(std::string_view name, std::string_view assetGuid);
 
 private:
     friend struct GameProjectSdkAccess;

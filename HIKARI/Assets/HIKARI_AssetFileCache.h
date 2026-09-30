@@ -21,7 +21,13 @@ public:
         entries_.clear();
     }
 
-    std::shared_ptr<const Asset> Load(const AssetGuid& guid, std::string& error) const {
+    std::shared_ptr<const Asset> Load(const AssetGuid& guid, std::string& error) const { return Load(guid, {}, error); }
+
+    // Some runtime assets are loaded from a declared cooked artifact rather
+    // than the authored source path. The selected path still shares the
+    // normal GUID + content-revision cache and is borrowed only for lookup.
+    std::shared_ptr<const Asset> Load(const AssetGuid& guid, const std::filesystem::path& loadPath, std::string& error,
+                                      bool allowUnimportedSource = false) const {
         if (!database_ || !guid.IsValid()) {
             error = "No " + std::string(ASSETS::SEMANTICS::ToString(Type)) + " asset is bound.";
             return {};
@@ -30,26 +36,28 @@ public:
             entries_.clear();
             revision_ = database_->GetContentRevision();
         }
-        if (const auto found = entries_.find(guid.value); found != entries_.end()) {
-            error = found->second.error;
-            return found->second.asset;
-        }
         Entry entry;
         const AssetRecord* record = database_->FindByGuid(guid);
-        if (!record || record->type != Type || !record->lastImportSucceeded) {
+        if (!record || record->type != Type || (!record->lastImportSucceeded && !allowUnimportedSource)) {
             entry.error =
                 std::string(ASSETS::SEMANTICS::ToString(Type)) + " asset is missing or failed import: " + guid.value;
         } else {
+            const auto selectedPath = loadPath.empty() ? record->sourcePath : loadPath;
+            entry.path = (selectedPath.is_absolute() ? selectedPath : database_->GetProjectRoot() / selectedPath)
+                             .lexically_normal();
+            if (const auto found = entries_.find(guid.value);
+                found != entries_.end() && found->second.path == entry.path) {
+                error = found->second.error;
+                return found->second.asset;
+            }
             auto asset = std::make_shared<Asset>();
-            const auto path = record->sourcePath.is_absolute() ? record->sourcePath
-                                                               : database_->GetProjectRoot() / record->sourcePath;
-            if (LoadSource(path, *asset, entry.error)) {
+            if (LoadSource(entry.path, *asset, entry.error)) {
                 entry.asset = std::move(asset);
             }
         }
         error = entry.error;
         auto asset = entry.asset;
-        entries_.emplace(guid.value, std::move(entry));
+        entries_.insert_or_assign(guid.value, std::move(entry));
         return asset;
     }
 
@@ -57,6 +65,7 @@ private:
     struct Entry {
         std::shared_ptr<const Asset> asset;
         std::string error;
+        std::filesystem::path path{};
     };
     const AssetDatabase* database_ = nullptr;
     mutable uint64_t revision_ = 0;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -99,7 +100,10 @@ enum class EditorOperationRegistrationCode : uint8_t {
     MissingExecute,
     MissingKind,
     DuplicateId,
+    InvalidOwner,
 };
+
+using EditorOperationOwnerToken = uint64_t;
 
 struct EditorOperationRegistrationResult {
     bool ok = false;
@@ -147,6 +151,8 @@ struct EditorOperationDefinition {
     bool requiresCleanDocument = false;
     bool entryPoint = false;
     EditorOperationSessionDispatch sessionDispatch = EditorOperationSessionDispatch::Operation;
+    // Zero identifies operations registered by Engine-owned subsystems.
+    EditorOperationOwnerToken ownerToken = 0u;
 };
 
 // UI / AI / Bridge の能力説明とエラーは同じ実行定義から生成する。
@@ -162,6 +168,10 @@ public:
         targetSelector_ = std::move(selector);
     }
     EditorOperationRegistrationResult Register(EditorOperationDefinition definition);
+    EditorOperationOwnerToken CreateOwnerToken() noexcept;
+    EditorOperationRegistrationResult RegisterOwned(EditorOperationDefinition definition,
+                                                    EditorOperationOwnerToken ownerToken);
+    size_t UnregisterOwner(EditorOperationOwnerToken ownerToken) noexcept;
     EditorOperationRegistrationResult Register(
         EditorOperationDefinition definition, EditorOperationKind kind, bool requiresDocumentSession = true,
         EditorOperationSessionDispatch dispatch = EditorOperationSessionDispatch::Operation) {
@@ -180,10 +190,13 @@ public:
     const EditorOperationDefinition* Find(const std::string& id) const noexcept;
 
 private:
+    EditorOperationRegistrationResult RegisterInternal(EditorOperationDefinition definition);
+
     TargetExecutor targetExecutor_{};
     std::function<std::string(const std::string&)> targetSelector_{};
     std::unordered_map<std::string, EditorOperationDefinition> operations_{};
     uint64_t revision_ = 0;
+    EditorOperationOwnerToken nextOwnerToken_ = 0u;
 };
 
 } // namespace HIKARI::EDITOR

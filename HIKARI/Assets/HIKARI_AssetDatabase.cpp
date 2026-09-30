@@ -19,6 +19,7 @@
 #include "Importers/HIKARI_MaterialImporter.h"
 #include "Importers/HIKARI_ModelMaterialBindingImporter.h"
 #include "Importers/HIKARI_ModelImporter.h"
+#include "Importers/HIKARI_PrefabAssetImporter.h"
 #include "Importers/HIKARI_TextAssetImporter.h"
 #include "Importers/HIKARI_ShaderImporter.h"
 #include "Importers/HIKARI_SkyCubemapImporter.h"
@@ -554,6 +555,7 @@ void AssetDatabase::RegisterDefaultImporters() {
     importerRegistry_.Register(std::make_unique<TextureImporter>(std::make_unique<DirectXTexTextureImportBackend>()));
     importerRegistry_.Register(std::make_unique<ShaderImporter>());
     importerRegistry_.Register(std::make_unique<ModelImporter>());
+    importerRegistry_.Register(std::make_unique<PrefabAssetImporter>());
     importerRegistry_.Register(std::make_unique<TextAssetImporter>(false));
     importerRegistry_.Register(std::make_unique<TextAssetImporter>(true));
     importerRegistry_.Register(std::make_unique<MaterialImporter>());

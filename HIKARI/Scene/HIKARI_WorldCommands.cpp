@@ -12,9 +12,10 @@
 
 namespace HIKARI {
 
-WorldMutationResult INTERNAL::BuildWorldSpawnBatchPayload(
-    const ComponentRegistry* registry, std::span<const WorldSpawnRequest> requests,
-    std::shared_ptr<WorldSpawnBatchPayload>& outPayload) noexcept {
+WorldMutationResult INTERNAL::BuildWorldSpawnBatchPayload(const ComponentRegistry* registry,
+                                                          std::span<const WorldSpawnRequest> requests,
+                                                          std::shared_ptr<WorldSpawnBatchPayload>& outPayload,
+                                                          bool allowEngineComponents) noexcept {
     outPayload.reset();
     try {
         bool hasComponentPayload = false;
@@ -35,7 +36,7 @@ WorldMutationResult INTERNAL::BuildWorldSpawnBatchPayload(
                 const WorldSpawnComponentRequest& component = request.components[componentIndex];
                 const ComponentTypeInfo* info = registry->Find(component.typeId);
                 if (info == nullptr || !info->factory ||
-                    info->registrationSource != ComponentRegistrationSource::GameProject) {
+                    (!allowEngineComponents && info->registrationSource != ComponentRegistrationSource::GameProject)) {
                     return WorldMutationResult::InvalidComponentType;
                 }
                 for (size_t prior = 0u; prior < componentIndex; ++prior) {
@@ -84,6 +85,7 @@ WorldMutationResult INTERNAL::BuildWorldSpawnBatchPayload(
             return WorldMutationResult::Success;
         }
         outPayload = std::make_shared<WorldSpawnBatchPayload>();
+        outPayload->allowEngineComponents = allowEngineComponents;
         outPayload->objects.resize(requests.size());
         for (size_t objectIndex = 0u; objectIndex < requests.size(); ++objectIndex) {
             const auto components = requests[objectIndex].components;
@@ -182,8 +184,30 @@ WorldCommandSubmission World::QueueCommand(PendingWorldCommand command) {
     return {WorldMutationResult::Queued, object, token};
 }
 
-void World::ReleaseSpawnCommandReservations(const PendingWorldCommand& command) noexcept {
+void World::ReleaseCommandPayloadReservations(const PendingWorldCommand& command) noexcept {
+    if (command.kind == WorldCommandKind::PrefabInstantiate && command.payload != nullptr &&
+        command.payload->kind == WorldCommandPayloadKind::PrefabInstantiate) {
+        const auto* payload = static_cast<const WorldPrefabInstantiatePayload*>(command.payload.get());
+        const auto request = prefabRequests_.find(payload->requestId);
+        if (request != prefabRequests_.end() &&
+            request->second.result.state == GameProjectPrefabRequestState::Pending) {
+            FinishPrefabRequest(payload->requestId, GameProjectPrefabRequestState::Cancelled,
+                                GameProjectPrefabError::Cancelled);
+        }
+        ReleasePrefabSpawnReservations(*payload);
+        return;
+    }
+    if (command.kind == WorldCommandKind::PrefabDestroyInstance && command.payload != nullptr &&
+        command.payload->kind == WorldCommandPayloadKind::PrefabDestroyInstance) {
+        const auto* payload = static_cast<const WorldPrefabDestroyInstancePayload*>(command.payload.get());
+        const auto instance = prefabInstances_.find(payload->instanceId);
+        if (instance != prefabInstances_.end()) {
+            instance->second.destroyPending = false;
+        }
+        return;
+    }
     if (command.kind == WorldCommandKind::Spawn) {
+        ReleaseDynamicSceneObjectId(command.documentId, command.object);
         if (IsReservedObjectHandle(command.object)) {
             ReleaseReservedObjectHandle(command.object);
         }
@@ -226,6 +250,11 @@ WorldCommandSubmission World::SubmitSpawn(std::string_view name, const Transform
     if (!object.IsValid()) {
         return {WorldMutationResult::InternalError};
     }
+    uint64_t documentId = 0u;
+    if (!ReserveDynamicSceneObjectId(object, documentId)) {
+        ReleaseReservedObjectHandle(object);
+        return {WorldMutationResult::InternalError};
+    }
 
     PendingWorldCommand command{};
     command.kind = WorldCommandKind::Spawn;
@@ -233,6 +262,7 @@ WorldCommandSubmission World::SubmitSpawn(std::string_view name, const Transform
     command.parent = parent;
     command.transform =
         WorldCommandLocalTransform{localTransform.position, localTransform.rotation, localTransform.scale};
+    command.documentId = documentId;
     std::memcpy(command.name.data(), name.data(), name.size());
     command.name[name.size()] = '\0';
 
@@ -242,6 +272,7 @@ WorldCommandSubmission World::SubmitSpawn(std::string_view name, const Transform
         if (submission.result == WorldMutationResult::Queued) {
             objectSlots_[object.slot].reservationToken = submission.token;
         } else {
+            ReleaseDynamicSceneObjectId(documentId, object);
             ReleaseReservedObjectHandle(object);
         }
         return submission;
@@ -251,12 +282,14 @@ WorldCommandSubmission World::SubmitSpawn(std::string_view name, const Transform
     try {
         result = ApplyQueuedSpawn(command);
     } catch (...) {
+        ReleaseDynamicSceneObjectId(documentId, object);
         if (IsReservedObjectHandle(object)) {
             ReleaseReservedObjectHandle(object);
         }
         return {WorldMutationResult::InternalError, object, 0u};
     }
     if (result != WorldMutationResult::Success && IsReservedObjectHandle(object)) {
+        ReleaseDynamicSceneObjectId(documentId, object);
         ReleaseReservedObjectHandle(object);
     }
     return {result, object, 0u};
@@ -371,7 +404,13 @@ uint32_t World::FlushQueuedCommands(WorldCommandPhase phase) {
         WorldMutationResult result = WorldMutationResult::InternalError;
         try {
             switch (command.kind) {
-            case WorldCommandKind::Spawn: result = ApplyQueuedSpawn(command); break;
+            case WorldCommandKind::Spawn:
+                commandApplyActive_ = true;
+                result = ApplyQueuedSpawn(command);
+                commandApplyActive_ = false;
+                break;
+            case WorldCommandKind::PrefabInstantiate: result = ApplyQueuedPrefabInstantiate(command); break;
+            case WorldCommandKind::PrefabDestroyInstance: result = ApplyQueuedPrefabDestroyInstance(command); break;
             case WorldCommandKind::Destroy:
                 commandApplyActive_ = true;
                 result = DestroyObject(command.object);
@@ -395,11 +434,11 @@ uint32_t World::FlushQueuedCommands(WorldCommandPhase phase) {
             spawnMaterializationObject_ = nullptr;
             componentCallbackActive_ = false;
             reservationStateJournal_.clear();
-            ReleaseSpawnCommandReservations(command);
+            ReleaseCommandPayloadReservations(command);
             result = WorldMutationResult::InternalError;
         }
         if (result != WorldMutationResult::Success) {
-            ReleaseSpawnCommandReservations(command);
+            ReleaseCommandPayloadReservations(command);
             RecordCommandFailure(command, result, phase);
         }
         ++executedCount;
