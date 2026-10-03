@@ -43,6 +43,11 @@ public:
     // The winning request is resolved per camera and per frame.
     bool SubmitTargetFraming(const CameraTargetFramingSubmission& submission);
 
+    // Authored depth-of-field settings and focus are separate per-frame
+    // arbitration channels. A zero-weight request never wins either channel.
+    bool SubmitDepthOfField(const CameraDepthOfFieldSubmission& submission);
+    bool SubmitFocus(const CameraFocusSubmission& submission);
+
     // 指定カメラの最適な姿勢を解決する
     // 最も高い優先度の提出が選択され、outSubmission に格納される
     // 戻り値: 有効な姿勢が見つかった場合は true
@@ -50,6 +55,9 @@ public:
 
     bool TryResolveTargetFraming(SceneObjectId cameraObjectId,
                                  CameraTargetFramingSubmission& outSubmission) const noexcept;
+    bool TryResolveDepthOfField(SceneObjectId cameraObjectId,
+                                CameraDepthOfFieldSubmission& outSubmission) const noexcept;
+    bool TryResolveFocus(SceneObjectId cameraObjectId, CameraFocusSubmission& outSubmission) const noexcept;
 
     // フォールバックカメラを検索する
     // どのソースからも姿勢が提出されていない場合に、
@@ -86,6 +94,8 @@ private:
     // 今フレームに提出されたカメラモディファイア一覧
     std::vector<CameraModifierSubmission> modifiers_{};
     std::vector<CameraTargetFramingSubmission> targetFramings_{};
+    std::vector<CameraDepthOfFieldSubmission> depthOfField_{};
+    std::vector<CameraFocusSubmission> focuses_{};
 };
 
 } // namespace CAMERA

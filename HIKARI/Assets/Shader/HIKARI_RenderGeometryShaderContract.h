@@ -131,11 +131,11 @@ inline constexpr std::string_view kParticleDrawRootLayoutCanonical =
     "Flags(None)";
 
 inline constexpr std::string_view kWorldSpriteDrawRootLayoutId = "HIKARI.RenderGeometry.WorldSpriteDraw.Root";
-inline constexpr uint32_t kWorldSpriteDrawRootLayoutVersion = 3u;
+inline constexpr uint32_t kWorldSpriteDrawRootLayoutVersion = 5u;
 inline constexpr std::string_view kWorldSpriteDrawRootLayoutHash =
-    "da005f6b073095390c8d94e67fa080058bd3dbdd4a5929c25cccd876cb523286";
+    "28b3180ebac7fb772905401be74bd0fed4dc99633fe26ce1b89d8f2e18801f8b";
 inline constexpr std::string_view kWorldSpriteDrawRootLayoutCanonical =
-    "HIKARI.RenderGeometry.WorldSpriteDraw.Root.v3|0:CBV(b0,space0,All)|1:SRV(t1,space0,All)|2:Table(SRV(t20,space0,count3968),Pixel)|3:Constants(b1,space0,count4,All)|4:CBV(b2,Pixel)|5:CBV(b4,Pixel)|6:CBV(b5,Pixel)|7:SRV(t0,space5,Pixel)|8:SRV(t1,space5,Pixel)|9:SRV(t2,space5,Pixel)|10:Table(SRV(t0,space9),Pixel)|11:Table(SRV(t9),Pixel)|12:Table(SRV(t10),Pixel)|13:Constants(b3,space0,count16,All)|PositionW(ShadowFlags)|StaticSampler(s0,LinearClamp,Pixel)|StaticSampler(s2,ShadowCompare,Pixel)|Pipeline(MeshOrVertex,Pixel)|Flags(None)";
+    "HIKARI.RenderGeometry.WorldSpriteDraw.Root.v5|0:CBV(b0,space0,All)|1:SRV(t1,space0,All)|2:Table(SRV(t20,space0,count3968),Pixel)|3:Constants(b1,space0,count5,All)|4:CBV(b2,Pixel)|5:CBV(b4,Pixel)|6:CBV(b5,Pixel)|7:SRV(t0,space5,Pixel)|8:SRV(t1,space5,Pixel)|9:SRV(t2,space5,Pixel)|10:Table(SRV(t0,space9),Pixel)|11:Table(SRV(t9),Pixel)|12:Table(SRV(t10),Pixel)|13:Constants(b3,space0,count16,All)|14:SRV(t2,space0,Pixel)|WorldSpriteInstance(Stride144,NormalTextureDescriptorIndex,SourceCanvasRect)|SpriteParameters(StructuredBufferFloat4,16Slots,InstanceReserved0BlockIndex)|PositionW(CastShadowBit0,ReceiveShadowBit1,RotatedAtlasBit2,FlipXBit3)|StaticSampler(s0,LinearClamp,Pixel)|StaticSampler(s2,ShadowCompare,Pixel)|Pipeline(MeshOrVertex,Pixel)|Flags(None)";
 
 inline constexpr std::string_view kWorldTextDrawRootLayoutId = "HIKARI.RenderGeometry.WorldTextDraw.Root";
 inline constexpr uint32_t kWorldTextDrawRootLayoutVersion = 1u;
@@ -372,7 +372,8 @@ inline bool IsRenderGeometryEntryIdentityValid(std::string_view programId, Rende
                entry.entry.entry == id;
     case RenderGeometryRootLayout::WorldSpriteDraw:
         return (id == "WorldSpriteMS" || id == "WorldSpritePS" || id == "WorldSpriteVS" || id == "WorldSpriteDepthPS" ||
-                id == "WorldSpriteSurfacePS" || id == "WorldSpriteSurfaceFeaturePS") &&
+                id == "WorldSpriteDepthOfFieldPS" || id == "WorldSpriteSurfacePS" ||
+                id == "WorldSpriteSurfaceFeaturePS") &&
                entry.entry.entry == id;
     case RenderGeometryRootLayout::WorldTextDraw:
         return (id == "WorldTextMS" || id == "WorldTextPS") && entry.entry.entry == id;
@@ -485,7 +486,8 @@ inline bool IsRenderGeometryBindingAllowed(RenderGeometryRootLayout layout,
         return (binding.kind == Kind::ConstantBuffer && binding.registerSpace == 0u && binding.registerIndex <= 5u &&
                 binding.count == 1u) ||
                (binding.kind == Kind::ShaderResource && binding.registerSpace == 0u &&
-                ((binding.registerIndex == 1u || binding.registerIndex == 9u || binding.registerIndex == 10u) &&
+                ((binding.registerIndex == 1u || binding.registerIndex == 2u || binding.registerIndex == 9u ||
+                  binding.registerIndex == 10u) &&
                      binding.count == 1u ||
                  binding.registerIndex == 20u && binding.count == 3968u)) ||
                (binding.kind == Kind::ShaderResource && binding.registerSpace == 5u && binding.registerIndex <= 2u &&
@@ -518,7 +520,7 @@ inline bool ValidateRenderGeometryShaderArtifact(const ShaderCookedArtifact& art
         : rootLayout == RenderGeometryRootLayout::ParticleSimulation ||
                 rootLayout == RenderGeometryRootLayout::ParticleCompaction
             ? 3u
-        : rootLayout == RenderGeometryRootLayout::WorldSpriteDraw ? 5u
+        : rootLayout == RenderGeometryRootLayout::WorldSpriteDraw ? 6u
         : rootLayout == RenderGeometryRootLayout::WorldTextDraw   ? 2u
                                                                   : 1u;
     if (artifact.entries.size() != expectedEntryCount) {

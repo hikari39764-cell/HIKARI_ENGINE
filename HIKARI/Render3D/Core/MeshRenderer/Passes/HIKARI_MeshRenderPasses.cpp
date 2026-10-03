@@ -220,10 +220,28 @@ bool ExecutePreparedWorldSpriteForwardOpaque(const GFX::Context& graphics, D3D12
                                                                    ResolveSurfaceLightingBindings());
 }
 
-bool ExecutePreparedWorldSpriteForwardTransparent(const GFX::Context& graphics,
-                                                  D3D12_GPU_VIRTUAL_ADDRESS cameraAddress) {
+bool ExecutePreparedWorldSpriteForwardTransparent(const GFX::Context& graphics, D3D12_GPU_VIRTUAL_ADDRESS cameraAddress,
+                                                  const MeshPassResources& passResources) {
     if (!gMeshRendererState.worldSpritePass.HasTransparentWork()) {
         return true;
+    }
+    const auto* capture = passResources.worldSpriteDepthOfFieldCapture;
+    if (capture != nullptr && gMeshRendererState.worldSpritePass.GetStats().depthOfFieldCaptureReady &&
+        graphics.cmdList != nullptr && passResources.compositionDepth.ptr != 0u) {
+        graphics.cmdList->OMSetRenderTargets(static_cast<UINT>(capture->renderTargets.size()),
+                                             capture->renderTargets.data(), FALSE, &passResources.compositionDepth);
+        const bool captured = gMeshRendererState.worldSpritePass.ExecuteForwardTransparentDepthOfField(
+            graphics, cameraAddress, ResolveSurfaceLightingBindings(), *capture);
+        if (captured) {
+            RENDER3D::DOF::MarkWorldSpriteLayerCapture(capture->frameIndex);
+        }
+        const bool rebound = passResources.compositionTarget.Rebind();
+        if (!rebound) {
+            return false;
+        }
+        if (captured) {
+            return true;
+        }
     }
     return gMeshRendererState.worldSpritePass.ExecuteForwardTransparent(graphics, cameraAddress,
                                                                         ResolveSurfaceLightingBindings());
@@ -373,7 +391,8 @@ bool RenderForwardTransparentPass(const GFX::Context& graphics, const MeshPassRe
         surfaceExecuted = backendResult.gpuBackendExecuted;
     }
     const MeshFrameResources& frame = GetActiveMeshFrameResources();
-    const bool spritesExecuted = ExecutePreparedWorldSpriteForwardTransparent(graphics, frame.view.Bindings().camera);
+    const bool spritesExecuted =
+        ExecutePreparedWorldSpriteForwardTransparent(graphics, frame.view.Bindings().camera, passResources);
     const bool particlesExecuted =
         ExecutePreparedParticleForwardTransparent(graphics, frame.view.Bindings().camera, passResources);
     const bool textExecuted = ExecutePreparedWorldTextForwardTransparent(graphics, frame.view.Bindings().camera);

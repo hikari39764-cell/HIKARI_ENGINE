@@ -33,8 +33,20 @@ nlohmann::json DocumentSceneEditorController::DescribeWorkspaceDocument(EDITOR::
     }
 }
 bool DocumentSceneEditorController::HasForegroundDocument(EDITOR::EditorWorkspaceId workspace) const {
-    const nlohmann::json state = DescribeWorkspaceDocument(workspace, false);
-    return state.is_null() || state.value("open", false);
+    // 毎フレーム呼ばれるため、文書状態の JSON は組み立てない。
+    using W = EDITOR::EditorWorkspaceId;
+    switch (workspace) {
+    case W::Text: return textWorkspaceController_.IsDocumentOpen();
+    case W::GameplayCamera: return gameplayCameraWorkspaceController_.IsDocumentOpen();
+    case W::Vfx: return vfxWorkspaceController_.IsDocumentOpen();
+    case W::Cinematics: return cinematicsWorkspaceController_.IsDocumentOpen();
+    case W::ModelMaterial: return modelMaterialWorkspaceController_.IsDocumentOpen();
+    case W::ModelCollision: return modelCollisionWorkspaceController_.IsDocumentOpen();
+    case W::AnimationStateMachine: return animationStateMachineWorkspaceController_.IsDocumentOpen();
+    case W::Dialogue: return dialogueWorkspaceController_.IsDocumentOpen();
+    case W::RuntimeBinding: return runtimeBindingWorkspaceController_.IsDocumentOpen();
+    default: return true;
+    }
 }
 void DocumentSceneEditorController::DrawGlobalShell(DocumentSceneBase& scene) {
     using namespace EDITOR;

@@ -76,7 +76,20 @@ bool ExecuteForwardTransparent(const GRAPH::RenderGraphPassContext& graphPass, v
         auto resources = context.postOpaqueResources;
         resources.compositionTarget = context.frame.targetAccess;
         resources.compositionDepth = context.frame.scene.readOnlyDsv;
-        return MESHRENDERER::RenderForwardTransparentPass(context.frame.graphics, resources);
+        const DOF::WorldSpriteLayerCapture* capture =
+            state.cameraDepthOfFieldPrepared ? DOF::BeginWorldSpriteLayerCapture(context.frame.frameIndex) : nullptr;
+        resources.worldSpriteDepthOfFieldCapture = capture;
+        bool rendered = false;
+        try {
+            rendered = MESHRENDERER::RenderForwardTransparentPass(context.frame.graphics, resources);
+        } catch (...) {
+            rendered = false;
+        }
+        resources.worldSpriteDepthOfFieldCapture = nullptr;
+        if (capture != nullptr) {
+            DOF::EndWorldSpriteLayerCapture(context.frame.frameIndex);
+        }
+        return rendered;
     } catch (...) {
         return false;
     }
@@ -208,6 +221,25 @@ bool ExecuteStylizedFeatureComposite(const GRAPH::RenderGraphPassContext& graphP
         }
         return context.features.renderer.Render(context.frame.graphics, context.frame.targetAccess,
                                                 context.sceneSurfaces, context.features.plan, settings);
+    } catch (...) {
+        return false;
+    }
+}
+
+bool ExecuteCameraDepthOfField(const GRAPH::RenderGraphPassContext& graphPass, void* userData) noexcept {
+    auto& state = *static_cast<StageExecutionState*>(userData);
+    if (!ValidateRenderFrameGraphPassContext(graphPass, state)) {
+        return false;
+    }
+    const RenderFrameGraphStageContext& context = *state.context;
+    if (!state.cameraDepthOfFieldPrepared || context.frame.camera == nullptr) {
+        return false;
+    }
+    try {
+        const CAMERA::DepthOfFieldSettings& settings = context.frame.camera->GetDepthOfFieldSettings();
+        return POST::PostSystem::ExecuteCameraDepthOfField(context.frame.frameIndex, context.temporalFrame,
+                                                           *context.frame.camera, settings,
+                                                           context.renderQuality.depthOfFieldQuality);
     } catch (...) {
         return false;
     }

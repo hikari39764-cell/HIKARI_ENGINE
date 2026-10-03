@@ -124,7 +124,20 @@ bool BuildRenderFrameGraphTailPlan(const RenderFrameGraphPlanOptions& options, v
         return false;
     }
 
-    GRAPH::RenderGraphResourceId projectPassDependency = compositeComplete;
+    GRAPH::RenderGraphResourceId postCompositeDependency = compositeComplete;
+    if (options.includeCameraDepthOfField) {
+        GRAPH::RenderGraphResourceId depthOfFieldComplete{};
+        const std::array depthOfFieldReads{
+            ResourceUse{postCompositeDependency, GRAPH::RenderGraphAccess::ReadDependency},
+            ResourceUse{resources.sceneDepth, GRAPH::RenderGraphAccess::ReadSampled}};
+        if (!AddCompletionPass(graph, "CameraDepthOfField", "CameraDepthOfField.Complete", depthOfFieldReads,
+                               callbacks.cameraDepthOfField, userData, depthOfFieldComplete)) {
+            return false;
+        }
+        postCompositeDependency = depthOfFieldComplete;
+    }
+
+    GRAPH::RenderGraphResourceId projectPassDependency = postCompositeDependency;
     const bool captureSceneColorFinal =
         options.projectExtensions != nullptr &&
         ProjectRenderPassesRequireSceneColorFinal(*options.projectExtensions, options.projectPurpose);
@@ -137,7 +150,8 @@ bool BuildRenderFrameGraphTailPlan(const RenderFrameGraphPlanOptions& options, v
         if (!sceneColorFinal.IsValid() || !finalCaptureComplete.IsValid()) {
             return false;
         }
-        const std::array finalCaptureReads{ResourceUse{compositeComplete, GRAPH::RenderGraphAccess::ReadDependency}};
+        const std::array finalCaptureReads{
+            ResourceUse{postCompositeDependency, GRAPH::RenderGraphAccess::ReadDependency}};
         const std::array finalCaptureWrites{
             ResourceUse{sceneColorFinal, GRAPH::RenderGraphAccess::CopyDestination,
                         SURFACE::SceneSurfaceProducer::PostFinal},

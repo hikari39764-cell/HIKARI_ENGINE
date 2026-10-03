@@ -307,8 +307,7 @@ const GpuDrivenSceneUploadStats& GpuDrivenLayer::UploadSceneFrame(const GpuDrive
         terrainSurfaceBuffer_ == nullptr ||
         terrainSurfaceBuffer_->UploadFrame(desc.frameIndex, desc.commandList,
                                            frameSource_ != nullptr ? frameSource_->terrainSurfaceGpuData : nullptr,
-                                           frameSource_ != nullptr ? frameSource_->terrainSurfaceHeights : nullptr,
-                                           frameSource_ != nullptr ? frameSource_->terrainSurfaceHeightVersion : 0u);
+                                           frameSource_ != nullptr ? &frameSource_->surfaceFeatureFloats : nullptr);
     sceneUploadStats_.terrainSurfaceDataResident = terrainSurfaceDataResident;
     if (sceneBuffer_ != nullptr) {
         sceneBuffer_->BeginFrame(desc.frameIndex);

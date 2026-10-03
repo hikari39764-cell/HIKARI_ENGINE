@@ -151,6 +151,7 @@ enum class GameProjectWorldResultCode : uint8_t {
     CommandQueueFull = 13u,
     WorldClosing = 14u,
     CommandCanceled = 15u,
+    InvalidAsset = 16u,
 };
 
 enum class GameProjectParentMode : uint8_t {

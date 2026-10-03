@@ -35,6 +35,17 @@ bool HasDocumentComponent(const SceneObjectData& object, std::string_view typeNa
 }
 } // namespace
 
+void SceneInspectorPanel::ExecutePendingObjectCommand(DocumentSceneBase& scene, EditorContext& context,
+                                                      const SelectionSyncService& selectionSync,
+                                                      SceneObjectCommandService& commands) {
+    // Game View は Scene 以外にも存在するので、共通の UI フレーム末尾で消費する。
+    if (auto pending = std::exchange(pendingObjectCommand_, std::nullopt);
+        pending && pending->scene == &scene && pending->documentRevision == scene.GetSceneDocumentRevision() &&
+        pending->selection == context.selection.GetSelectedObjectIds()) {
+        commands.Execute(pending->command, scene, context, selectionSync, pending->argument);
+    }
+}
+
 void SceneInspectorPanel::DrawObjectContextMenu(DocumentSceneBase& scene, EditorContext& context,
                                                 const SelectionSyncService& selectionSync,
                                                 SceneObjectCommandService& commands, GameObject& object) {
@@ -58,6 +69,12 @@ void SceneInspectorPanel::DrawObjectContextMenu(DocumentSceneBase& scene, Editor
         return ImGui::MenuItem(presentation.label, presentation.shortcut, false,
                                commands.CanExecute(command, scene, context));
     };
+    // 階層・Inspector の借用ポインターが生存する間は World を再構築しない。
+    const auto deferCommand = [&](SceneObjectCommandId command, std::string argument = {}) {
+        pendingObjectCommand_ =
+            PendingObjectCommand{command, std::move(argument), &scene, scene.GetSceneDocumentRevision(),
+                                 context.selection.GetSelectedObjectIds()};
+    };
 
     if (commandItem(SceneObjectCommandId::Rename)) {
         RequestRename(object);
@@ -70,11 +87,11 @@ void SceneInspectorPanel::DrawObjectContextMenu(DocumentSceneBase& scene, Editor
     }
     ImGui::Separator();
     if (commandItem(SceneObjectCommandId::Duplicate)) {
-        commands.Execute(SceneObjectCommandId::Duplicate, scene, context, selectionSync);
+        deferCommand(SceneObjectCommandId::Duplicate);
         return;
     }
     if (commandItem(SceneObjectCommandId::Delete)) {
-        commands.Execute(SceneObjectCommandId::Delete, scene, context, selectionSync);
+        deferCommand(SceneObjectCommandId::Delete);
         return;
     }
 
@@ -107,8 +124,7 @@ void SceneInspectorPanel::DrawObjectContextMenu(DocumentSceneBase& scene, Editor
             if (ImGui::BeginMenu(TEXT::LocalizeWindow("editor.ui.instantiate.bad193", "Instantiate").c_str())) {
                 for (const PrefabAssetEntry& prefab : prefabs) {
                     if (ImGui::MenuItem(prefab.name.c_str())) {
-                        commands.Execute(SceneObjectCommandId::InstantiatePrefab, scene, context, selectionSync,
-                                         prefab.guid.value);
+                        deferCommand(SceneObjectCommandId::InstantiatePrefab, prefab.guid.value);
                     }
                 }
                 ImGui::EndMenu();

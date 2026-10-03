@@ -7,6 +7,7 @@
 #include "Assets/Text/HIKARI_TextStyleAsset.h"
 #include "Assets/Sequence/HIKARI_SequenceAsset.h"
 #include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingAsset.h"
+#include "Assets/Sprite/HIKARI_SpriteMaterialSerialization.h"
 #include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 #include "Core/Text/HIKARI_UtfPath.h"
@@ -117,6 +118,25 @@ bool CollectSourceCookDependencies(const AssetRecord& record, const std::filesys
         if (!LoadSequenceAsset(path, record.guid, asset, &outMessage))
             return false;
         plan.sourceDependencies.insert_or_assign(record.guid.value, CollectSequenceDependencies(asset.sequence));
+        return true;
+    }
+    if (record.type == AssetType::SpriteMaterial) {
+        std::filesystem::path path{};
+        if (!ResolveContainedFilePath(projectRoot, record.sourcePath, path, outMessage)) {
+            return false;
+        }
+        SPRITE::SpriteMaterialAssetData material{};
+        if (!SPRITE::LoadSpriteMaterialAssetData(path, material, outMessage)) {
+            return false;
+        }
+        const AssetRecord* shader = assetDatabase.FindByGuid(material.shaderAssetGuid);
+        if (shader == nullptr || shader->duplicateGuid || shader->type != AssetType::Shader) {
+            outMessage = "SpriteMaterial references a missing or non-Shader asset: " + material.shaderAssetGuid.value;
+            return false;
+        }
+        plan.sourceDependencies.insert_or_assign(
+            record.guid.value,
+            std::vector<AssetDependencyDesc>{{material.shaderAssetGuid, {}, "SpriteMaterialShader"}});
         return true;
     }
     if (record.type != AssetType::ModelMaterialBinding) {

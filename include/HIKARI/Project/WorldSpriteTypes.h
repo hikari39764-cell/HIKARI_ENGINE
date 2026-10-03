@@ -40,6 +40,7 @@ enum class GameProjectWorldSpritePatchField : uint32_t {
     AlphaMode = 1u << 7u,
     AlphaCutoff = 1u << 8u,
     TransparentSortPriority = 1u << 9u,
+    FlipX = 1u << 10u,
 };
 
 constexpr GameProjectWorldSpritePatchField operator|(GameProjectWorldSpritePatchField lhs,
@@ -61,7 +62,8 @@ inline constexpr uint32_t kGameProjectWorldSpritePatchKnownFields =
     GameProjectWorldSpritePatchFields(GameProjectWorldSpritePatchField::Pivot) |
     GameProjectWorldSpritePatchFields(GameProjectWorldSpritePatchField::AlphaMode) |
     GameProjectWorldSpritePatchFields(GameProjectWorldSpritePatchField::AlphaCutoff) |
-    GameProjectWorldSpritePatchFields(GameProjectWorldSpritePatchField::TransparentSortPriority);
+    GameProjectWorldSpritePatchFields(GameProjectWorldSpritePatchField::TransparentSortPriority) |
+    GameProjectWorldSpritePatchFields(GameProjectWorldSpritePatchField::FlipX);
 
 // Runtime snapshot of an authored WorldSpriteComponent. Runtime changes
 // belong to the World instance and never persist to the Scene document.
@@ -79,7 +81,8 @@ struct GameProjectWorldSpriteState {
     GameProjectWorldSpriteAlphaMode alphaMode = GameProjectWorldSpriteAlphaMode::Auto;
     uint8_t visible = 1u;
     uint8_t preserveAspect = 1u;
-    uint8_t reserved[6] = {0u, 0u, 0u, 0u, 0u, 0u};
+    uint8_t flipX = 0u;
+    uint8_t reserved[5] = {0u, 0u, 0u, 0u, 0u};
 };
 
 // Atomic runtime-only update. Only fields selected by fieldMask are read.
@@ -100,7 +103,8 @@ struct GameProjectWorldSpritePatch {
     GameProjectWorldSpriteAlphaMode alphaMode = GameProjectWorldSpriteAlphaMode::Auto;
     uint8_t visible = 1u;
     uint8_t preserveAspect = 1u;
-    uint8_t reserved1[6] = {0u, 0u, 0u, 0u, 0u, 0u};
+    uint8_t flipX = 0u;
+    uint8_t reserved1[5] = {0u, 0u, 0u, 0u, 0u};
 };
 
 static_assert(std::is_standard_layout_v<GameProjectWorldSpriteState>);
@@ -108,10 +112,14 @@ static_assert(std::is_trivially_copyable_v<GameProjectWorldSpriteState>);
 static_assert(sizeof(GameProjectWorldSpriteState) == kGameProjectWorldSpriteStateV1Size);
 static_assert(offsetof(GameProjectWorldSpriteState, size) == 16u);
 static_assert(offsetof(GameProjectWorldSpriteState, visible) == 64u);
+static_assert(offsetof(GameProjectWorldSpriteState, flipX) == 66u);
+static_assert(offsetof(GameProjectWorldSpriteState, reserved) == 67u);
 static_assert(std::is_standard_layout_v<GameProjectWorldSpritePatch>);
 static_assert(std::is_trivially_copyable_v<GameProjectWorldSpritePatch>);
 static_assert(sizeof(GameProjectWorldSpritePatch) == kGameProjectWorldSpritePatchV1Size);
 static_assert(offsetof(GameProjectWorldSpritePatch, size) == 16u);
 static_assert(offsetof(GameProjectWorldSpritePatch, visible) == 64u);
+static_assert(offsetof(GameProjectWorldSpritePatch, flipX) == 66u);
+static_assert(offsetof(GameProjectWorldSpritePatch, reserved1) == 67u);
 
 } // namespace HIKARI

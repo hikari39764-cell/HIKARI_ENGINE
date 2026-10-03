@@ -18,6 +18,8 @@ public:
     TextStyleEditorDocument& Document() { return document_; }
     const TextStyleEditorDocument& Document() const { return document_; }
     // 文書の状態。シェル、AI の文脈、バックグラウンドのセッションで共有する。
+    // 表示中の文書があるか。DescribeDocumentState の open と同じ判定。
+    bool IsDocumentOpen() const noexcept;
     nlohmann::json DescribeDocumentState() const;
     void SetPreviewObject(SceneObjectId id) { previewObject_ = id; }
     void Draw(DocumentSceneBase&, EditorOperationRegistry&, EditorCommandRouter&);

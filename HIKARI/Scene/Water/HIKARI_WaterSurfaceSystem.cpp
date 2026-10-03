@@ -43,7 +43,6 @@ void WaterSurfaceSystem::Refresh(World& world) {
     }
 
     std::vector<WATER::WaterSurfaceSnapshotEntry> surfaces{};
-    surfaces.reserve(world.GetObjects().size());
     const auto publishSurface = [&](GameObject& object, const WATER::WaterSurfaceSettings& authored,
                                     ProceduralMeshComponent& procedural) {
         const ProceduralMeshSettings mesh = SanitizeProceduralMeshSettings(procedural.GetSettings());

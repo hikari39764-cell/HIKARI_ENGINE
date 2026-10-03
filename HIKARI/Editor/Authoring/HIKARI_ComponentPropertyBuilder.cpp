@@ -14,7 +14,9 @@
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetRecord.h"
 #include "Assets/HIKARI_AssetTypes.h"
+#include "Assets/Shader/HIKARI_ShaderParameterSerialization.h"
 #include "Authoring/HIKARI_IInspectorBuilder.h"
+#include "Core/Serialization/Json/HIKARI_JsonStrict.h"
 #include "Scene/Components/HIKARI_IComponent.h"
 #include "Scene/HIKARI_SceneComponentId.h"
 #include "Scene/HIKARI_SceneDocument.h"
@@ -43,6 +45,7 @@ const char* FieldTypeName(AuthoringFieldValueType type) noexcept {
     case AuthoringFieldValueType::InputActionId: return "inputActionId";
     case AuthoringFieldValueType::RuntimeVariableId: return "runtimeVariableId";
     case AuthoringFieldValueType::RuntimeEventId: return "runtimeEventId";
+    case AuthoringFieldValueType::TypedValue: return "typedValue";
     }
     return "unknown";
 }
@@ -129,6 +132,52 @@ public:
     bool FloatRange(const AuthoringFieldDescriptor& field, float& value, float minimum, float maximum,
                     float speed) override {
         return VisitFloat(field, value, FloatMetadata{minimum, maximum, speed});
+    }
+
+    bool TypedValue(const AuthoringFieldDescriptor& field, BINDING::Value& value, bool hasRange, float minimum,
+                    float maximum, float step) override {
+        const nlohmann::json current{{"type", BINDING::ToString(value.type)},
+                                     {"value", ASSETS::SHADER::WriteShaderParameterValue(value)}};
+        nlohmann::json metadata{{"valueType", BINDING::ToString(value.type)}, {"hasRange", hasRange}, {"step", step}};
+        if (hasRange) {
+            metadata["minimum"] = minimum;
+            metadata["maximum"] = maximum;
+        }
+        const auto apply = [this, &value, hasRange, minimum, maximum]() {
+            if (!requestedValue_.is_object() || requestedValue_.size() != 2u || !requestedValue_.contains("type") ||
+                !requestedValue_.contains("value")) {
+                SetTypeError("typed value object");
+                return false;
+            }
+            std::string typeName{};
+            std::string readError{};
+            if (!JSONSTRICT::ReadString(requestedValue_, "type", {}, typeName, readError, "property") ||
+                typeName != BINDING::ToString(value.type)) {
+                SetError("PROPERTY_TYPE_MISMATCH", "Typed value type does not match its Shader metadata.");
+                return false;
+            }
+            BINDING::Value next{};
+            std::string error{};
+            if (!ASSETS::SHADER::ReadShaderParameterValue(requestedValue_.at("value"), value.type, next, error) ||
+                !BINDING::IsValueFinite(next)) {
+                SetError("VALUE_OUT_OF_RANGE", error.empty() ? "Typed value must be finite." : error);
+                return false;
+            }
+            if (hasRange && BINDING::IsNumeric(next.type) && !BINDING::IsValueWithinRange(next, minimum, maximum)) {
+                SetError("VALUE_OUT_OF_RANGE", "Typed value is outside its Shader metadata range.");
+                return false;
+            }
+            if (next.type == BINDING::ValueType::Int &&
+                (next.integer < -ASSETS::SHADER::kShaderParameterMaximumExactInteger ||
+                 next.integer > ASSETS::SHADER::kShaderParameterMaximumExactInteger)) {
+                SetError("VALUE_OUT_OF_RANGE", "Integer value exceeds the exact Shader float range.");
+                return false;
+            }
+            const bool changed = next != value;
+            value = next;
+            return changed;
+        };
+        return Visit(field, AuthoringFieldValueType::TypedValue, current, std::move(metadata), apply);
     }
 
     bool Color3(const AuthoringFieldDescriptor& field, float& red, float& green, float& blue) override {

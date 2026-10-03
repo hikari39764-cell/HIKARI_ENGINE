@@ -4,6 +4,8 @@
 #include <string_view>
 
 #include "HIKARI/Project/ActionTypes.h"
+#include "HIKARI/Project/CameraLensTypes.h"
+#include "HIKARI/Project/CameraViewSnapshot.h"
 #include "HIKARI/Project/GameProjectSdk.h"
 #include "HIKARI/Project/VfxTypes.h"
 
@@ -168,6 +170,25 @@ public:
     // ワールド更新スレッドで、直近に解決した実行時の描画カメラをコピーする。
     // カメラ未解決・実行停止時は false を返し、出力を初期化する。
     HIKARI_GAME_PROJECT_SDK_API bool GetRenderedPose(GameProjectCameraPose& outPose) const noexcept;
+    // Lens values are copied without exposing Camera3D. Authored requires an
+    // explicit camera object; control/rendered identify their source camera.
+    HIKARI_GAME_PROJECT_SDK_API bool GetAuthoredLens(uint64_t cameraObjectHandle,
+                                                     GameProjectCameraLens& outLens) const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API bool GetControlLens(GameProjectCameraLens& outLens) const noexcept;
+    // Returns the lens that produced the latest successfully presented primary
+    // frame, which can be one frame behind current camera resolution.
+    HIKARI_GAME_PROJECT_SDK_API bool GetRenderedLens(GameProjectCameraLens& outLens) const noexcept;
+    // Frame-scoped overrides. Omitting either request in a frame returns that
+    // channel to the authored/resolved lens. A zero camera handle targets the
+    // currently resolved primary camera in this World.
+    HIKARI_GAME_PROJECT_SDK_API bool SubmitDepthOfField(
+        const GameProjectCameraDepthOfFieldRequest& request) const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API bool SubmitFocus(const GameProjectCameraFocusRequest& request) const noexcept;
+    // Latest successfully presented primary image for this World. This may
+    // describe Game, EditorScene or an editor camera preview and can be one
+    // frame behind the current update. Camera, frame and coordinate mapping
+    // always describe that same image.
+    HIKARI_GAME_PROJECT_SDK_API bool TryGetViewSnapshot(GameProjectCameraViewSnapshot& outSnapshot) const noexcept;
     // 同スレッドで有効な全画面の放射状歪みを取得する。歪みなしは 0、0。
     // 実行停止・描画未初期化時は false。時間変化するグリッチは含まない。
     HIKARI_GAME_PROJECT_SDK_API bool GetRadialScreenWarp(float& outCurvature, float& outStrength) const noexcept;

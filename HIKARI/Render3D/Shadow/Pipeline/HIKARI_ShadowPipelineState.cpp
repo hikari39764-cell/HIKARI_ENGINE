@@ -128,7 +128,7 @@ bool CreateShadowDepthPipelineState(ShadowRendererState& state, const GFX::Conte
         MakeRootDescriptor(D3D12_ROOT_PARAMETER_TYPE_SRV, 0, 3);
     params[PIPELINE::kShadowStaticRootParamTerrainSurfaceData] =
         MakeRootDescriptor(D3D12_ROOT_PARAMETER_TYPE_SRV, 4, 7);
-    params[PIPELINE::kShadowStaticRootParamTerrainSurfaceHeights] =
+    params[PIPELINE::kShadowStaticRootParamSurfaceFeatureFloats] =
         MakeRootDescriptor(D3D12_ROOT_PARAMETER_TYPE_SRV, 1, 7);
     params[PIPELINE::kShadowStaticRootParamMaterialProgramParameters] =
         MakeRootDescriptor(D3D12_ROOT_PARAMETER_TYPE_SRV, 0, 6);

@@ -266,10 +266,14 @@ void CinematicsWorkspaceController::CapturePose(DocumentSceneBase& scene, Cinema
     previewEnabled_ = true;
 }
 
+bool CinematicsWorkspaceController::IsDocumentOpen() const noexcept {
+    return IsEditingSequenceAsset() || IsSequenceDocumentDirty();
+}
+
 nlohmann::json CinematicsWorkspaceController::DescribeDocumentState() const {
     const SequenceEditorDocument& document = GetSequenceDocument();
     return {
-        {"open", IsEditingSequenceAsset() || IsSequenceDocumentDirty()},
+        {"open", IsDocumentOpen()},
         {"assetGuid", document.GetAssetGuid().value},
         {"name", document.GetAssetSequence() ? document.GetAssetSequence()->name : std::string{}},
         {"dirty", IsSequenceDocumentDirty()},

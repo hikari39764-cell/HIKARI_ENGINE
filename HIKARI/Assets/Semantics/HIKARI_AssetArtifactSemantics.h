@@ -24,6 +24,10 @@ enum class AssetArtifactKind : uint8_t {
     VfxProgram,
     ShaderProgram,
     PrefabRuntime,
+    SpriteRuntime,
+    SpritePageTexture,
+    SpritePageNormalTexture,
+    SpriteMaterialRuntime,
     Count,
 };
 

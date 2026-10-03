@@ -32,6 +32,7 @@
 #include "Render3D/Material/HIKARI_MaterialRuntimeBuilder.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelRenderableAssetResolver.h"
+#include "Scene/Components/Rendering/WorldSprite/HIKARI_WorldSpriteComponent.h"
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
@@ -104,6 +105,9 @@ bool ImportRequiredAssetClosure(AssetDatabase& database, const AssetGuid& root, 
             return false;
         }
         for (const AssetDependencyDesc& dependency : record->artifactManifest.dependencies) {
+            if (ASSETS::SEMANTICS::IsSourceOnlyAssetDependencyRole(dependency.role)) {
+                continue;
+            }
             pending.push_back(dependency.guid);
         }
     }
@@ -187,6 +191,9 @@ bool HasMissingSceneDependencyDescriptors(const AssetRegistry& registry, const S
     return HasMissingAssetDescriptors(registry, AssetType::Model, dependencies.modelAssetIds, outReason) ||
            HasMissingAssetDescriptors(registry, AssetType::Material, dependencies.materialAssetIds, outReason) ||
            HasMissingAssetDescriptors(registry, AssetType::ModelMaterialBinding, dependencies.modelMaterialSetAssetIds,
+                                      outReason) ||
+           HasMissingAssetDescriptors(registry, AssetType::Sprite, dependencies.spriteAssetIds, outReason) ||
+           HasMissingAssetDescriptors(registry, AssetType::SpriteMaterial, dependencies.spriteMaterialAssetIds,
                                       outReason) ||
            HasMissingAssetDescriptors(registry, AssetType::VfxEffect, dependencies.vfxAssetIds, outReason) ||
            HasMissingAssetDescriptors(registry, AssetType::Texture, dependencies.textureAssetIds, outReason) ||
@@ -397,7 +404,7 @@ bool DocumentSceneAssetBindings::PrepareRuntimePrefabAssets(const AssetGuid& pre
             return false;
         }
         if (!builder.PreloadDependencies(dependencies, registry, models_, skyManager, database_.GetProjectRoot(),
-                                         prefabGuid.value, false)) {
+                                         prefabGuid.value, false, &spriteAssets_)) {
             reason = "Prefab dependency preload failed.";
             return false;
         }
@@ -575,7 +582,8 @@ bool DocumentSceneAssetBindings::NeedsRuntimeDependencyRegistryRefresh(const Sce
     const bool hasDescriptorDependencies =
         !dependencies.modelAssetIds.empty() || !dependencies.skyAssetIds.empty() ||
         !dependencies.textureAssetIds.empty() || !dependencies.materialAssetIds.empty() ||
-        !dependencies.modelMaterialSetAssetIds.empty() || !dependencies.vfxAssetIds.empty();
+        !dependencies.modelMaterialSetAssetIds.empty() || !dependencies.spriteAssetIds.empty() ||
+        !dependencies.spriteMaterialAssetIds.empty() || !dependencies.vfxAssetIds.empty();
     if (hasDescriptorDependencies && registrySourceRevision_ != database_.GetContentRevision()) {
         if (outReason)
             *outReason = "Asset registry snapshot is out of date.";
@@ -584,6 +592,9 @@ bool DocumentSceneAssetBindings::NeedsRuntimeDependencyRegistryRefresh(const Sce
     return HasMissingAssetDescriptors(registry_, AssetType::Model, dependencies.modelAssetIds, outReason) ||
            HasMissingAssetDescriptors(registry_, AssetType::Material, dependencies.materialAssetIds, outReason) ||
            HasMissingAssetDescriptors(registry_, AssetType::ModelMaterialBinding, dependencies.modelMaterialSetAssetIds,
+                                      outReason) ||
+           HasMissingAssetDescriptors(registry_, AssetType::Sprite, dependencies.spriteAssetIds, outReason) ||
+           HasMissingAssetDescriptors(registry_, AssetType::SpriteMaterial, dependencies.spriteMaterialAssetIds,
                                       outReason) ||
            HasMissingAssetDescriptors(registry_, AssetType::VfxEffect, dependencies.vfxAssetIds, outReason) ||
            HasMissingAssetDescriptors(registry_, AssetType::Texture, dependencies.textureAssetIds, outReason) ||
@@ -629,9 +640,9 @@ int DocumentSceneAssetBindings::RebindModelComponents(DocumentSceneBase& scene) 
         }
     }
 
-    scene.state_->runtime.builder.PreloadDependencies(deps, registry_, models_, scene.state_->lighting.sky,
-                                                      database_.GetProjectRoot(),
-                                                      scene.state_->identity.currentSceneAssetGuid.value);
+    scene.state_->runtime.builder.PreloadDependencies(
+        deps, registry_, models_, scene.state_->lighting.sky, database_.GetProjectRoot(),
+        scene.state_->identity.currentSceneAssetGuid.value, true, &spriteAssets_);
     SKYRENDERER::InvalidateSkyTextureCache();
     RENDER3D::PANORAMA_SKY::InvalidatePanoramaSkyLayerTextureCache();
 

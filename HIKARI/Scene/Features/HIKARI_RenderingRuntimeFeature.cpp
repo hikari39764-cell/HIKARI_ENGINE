@@ -95,18 +95,7 @@ public:
         };
         worldSprite.affectsRenderState = true;
         worldSprite.initializeDefaults = [](const SceneObjectData&, nlohmann::json& properties) {
-            properties = {{"version", 1u},
-                          {"textureAssetGuid", ""},
-                          {"visible", true},
-                          {"size", {1.0f, 1.0f}},
-                          {"preserveAspect", true},
-                          {"facing", "CameraFacing"},
-                          {"tint", {1.0f, 1.0f, 1.0f}},
-                          {"opacity", 1.0f},
-                          {"pivot", {0.5f, 0.5f}},
-                          {"alphaMode", "Auto"},
-                          {"alphaCutoff", 0.5f},
-                          {"transparentSortPriority", 0}};
+            WorldSpriteComponent{}.Serialize(properties);
         };
         worldSprite.presentation =
             RenderingPresentation("World Sprite (3D)", "Displays a texture directly on an engine-owned quad in "

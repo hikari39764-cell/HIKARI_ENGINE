@@ -1,6 +1,7 @@
 #include "Assets/Shader/Internal/HIKARI_ShaderJson.h"
 #include "Assets/Formats/Internal/HIKARI_HshadercMetadata.h"
 #include "Assets/Formats/HIKARI_HshadercFormat.h"
+#include "Assets/Shader/HIKARI_ShaderParameterSerialization.h"
 
 #include <algorithm>
 #include <initializer_list>
@@ -50,7 +51,7 @@ bool ParseHshadercMetadata(std::string_view jsonText, std::span<const uint8_t> p
         const nlohmann::json root = JSON::Parse(jsonText, depthExceeded);
         if (depthExceeded || !JSON::HasOnlyKeys(root, {"schema", "version", "sourceGuid", "programId", "manifestHash",
                                                        "sourceClosureHash", "compiler", "engineInterface", "rootLayout",
-                                                       "requiredCaps", "dependencies", "entries"})) {
+                                                       "requiredCaps", "parameters", "dependencies", "entries"})) {
             outError = "shader cooked metadata schema is invalid";
             return false;
         }
@@ -91,6 +92,11 @@ bool ParseHshadercMetadata(std::string_view jsonText, std::span<const uint8_t> p
             !ReadUnsigned(*caps, "minimumRootSignatureVersion", artifact.requiredCaps.minimumRootSignatureVersion) ||
             !ReadUnsigned(*caps, "requiredFeatureMask", artifact.requiredCaps.requiredFeatureMask)) {
             outError = "shader compiler/interface/root/caps metadata is invalid";
+            return false;
+        }
+
+        if (const auto parameters = root.find("parameters");
+            parameters != root.end() && !ParseShaderParameterDefinitions(*parameters, artifact.parameters, outError)) {
             return false;
         }
 

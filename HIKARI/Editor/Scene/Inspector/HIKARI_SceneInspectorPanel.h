@@ -16,6 +16,7 @@ class SelectionSyncService;
 
 namespace EDITOR {
 class SceneObjectCommandService;
+enum class SceneObjectCommandId;
 
 class SceneInspectorPanel {
 public:
@@ -28,6 +29,8 @@ public:
     void DrawObjectContextMenu(DocumentSceneBase& scene, EditorContext& context,
                                const SelectionSyncService& selectionSync, SceneObjectCommandService& commands,
                                GameObject& object);
+    void ExecutePendingObjectCommand(DocumentSceneBase& scene, EditorContext& context,
+                                     const SelectionSyncService& selectionSync, SceneObjectCommandService& commands);
 
     void RequestRename(GameObject& object);
     void DrawDeferredDialogs(DocumentSceneBase& scene, EditorContext& context,
@@ -42,6 +45,14 @@ public:
     }
 
 private:
+    struct PendingObjectCommand {
+        SceneObjectCommandId command;
+        std::string argument{};
+        const DocumentSceneBase* scene = nullptr;
+        uint64_t documentRevision = 0;
+        std::vector<SceneObjectId> selection{};
+    };
+
     struct PendingTransformHistory {
         std::vector<SceneObjectData> beforeObjects{};
         SceneCameraSettings beforeCamera{};
@@ -55,6 +66,7 @@ private:
     CollisionAuthoringDialog collisionAuthoringDialog_{};
     CollisionAuthoringService collisionAuthoringService_{};
     std::optional<PendingTransformHistory> pendingTransformHistory_{};
+    std::optional<PendingObjectCommand> pendingObjectCommand_{};
     std::optional<SceneObjectAuthoringHistoryRequest> historyRequest_{};
     std::optional<SceneObjectId> openCinematicsWorkspaceCameraRequest_{};
     std::optional<SceneObjectId> focusObjectRequest_{};

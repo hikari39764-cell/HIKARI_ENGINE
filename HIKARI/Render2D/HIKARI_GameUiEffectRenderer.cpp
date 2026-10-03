@@ -304,20 +304,29 @@ void CopyColor(float* destination, const GameProjectUiColor& color) {
 }
 
 bool ResolveScissor(const GameUiClipRect& clip, const GameProjectUiSpriteRequest& request, int logicalWidth,
-                    int logicalHeight, D3D12_RECT& outRect) noexcept {
-    outRect = {0, 0, logicalWidth, logicalHeight};
+                    int logicalHeight, int outputWidth, int outputHeight, D3D12_RECT& outRect) noexcept {
+    outRect = {0, 0, outputWidth, outputHeight};
     if (!clip.enabled)
         return true;
-    if (!IsFinite(clip.left) || !IsFinite(clip.top) || !IsFinite(clip.right) || !IsFinite(clip.bottom))
+    if (logicalWidth <= 0 || logicalHeight <= 0 || outputWidth <= 0 || outputHeight <= 0 || !IsFinite(clip.left) ||
+        !IsFinite(clip.top) || !IsFinite(clip.right) || !IsFinite(clip.bottom) || clip.right <= clip.left ||
+        clip.bottom <= clip.top)
         return false;
     GameProjectUiCanvasFit fit{};
     if (!ResolveGameProjectUiCanvasFit(static_cast<uint32_t>(logicalWidth), static_cast<uint32_t>(logicalHeight),
                                        request.referenceWidth, request.referenceHeight, fit))
         return false;
-    const float left = std::clamp(fit.offsetX + clip.left * fit.scale, 0.0f, static_cast<float>(logicalWidth));
-    const float top = std::clamp(fit.offsetY + clip.top * fit.scale, 0.0f, static_cast<float>(logicalHeight));
-    const float right = std::clamp(fit.offsetX + clip.right * fit.scale, 0.0f, static_cast<float>(logicalWidth));
-    const float bottom = std::clamp(fit.offsetY + clip.bottom * fit.scale, 0.0f, static_cast<float>(logicalHeight));
+    const float scaleX = static_cast<float>(outputWidth) / static_cast<float>(logicalWidth);
+    const float scaleY = static_cast<float>(outputHeight) / static_cast<float>(logicalHeight);
+    const float left =
+        std::clamp((fit.offsetX + clip.left * fit.scale) * scaleX, 0.0f, static_cast<float>(outputWidth));
+    const float top = std::clamp((fit.offsetY + clip.top * fit.scale) * scaleY, 0.0f, static_cast<float>(outputHeight));
+    const float right =
+        std::clamp((fit.offsetX + clip.right * fit.scale) * scaleX, 0.0f, static_cast<float>(outputWidth));
+    const float bottom =
+        std::clamp((fit.offsetY + clip.bottom * fit.scale) * scaleY, 0.0f, static_cast<float>(outputHeight));
+    if (!(right > left) || !(bottom > top))
+        return false;
     outRect.left = static_cast<LONG>(std::floor(left));
     outRect.top = static_cast<LONG>(std::floor(top));
     outRect.right = static_cast<LONG>(std::ceil(right));
@@ -331,7 +340,8 @@ void BeginGameUiFrame() noexcept { g.source = nullptr; }
 void SetGameUiFrameSource(const GameUiFrameSource* source) noexcept { g.source = source; }
 
 static bool RenderGameUiSource(RendererState& state, const GameUiFrameSource* source, uint64_t frameIndex,
-                               int logicalWidth, int logicalHeight, uint32_t* failedTextRequests = nullptr) noexcept {
+                               int logicalWidth, int logicalHeight, int outputWidth, int outputHeight,
+                               uint32_t* failedTextRequests = nullptr) noexcept {
     if (failedTextRequests)
         *failedTextRequests = 0;
     try {
@@ -340,7 +350,7 @@ static bool RenderGameUiSource(RendererState& state, const GameUiFrameSource* so
         }
         const GFX::Context& graphics = GFX::GetCurrentContext();
         if (graphics.device == nullptr || graphics.cmdList == nullptr || logicalWidth <= 0 || logicalHeight <= 0 ||
-            !EnsurePipeline(state, graphics.device)) {
+            outputWidth <= 0 || outputHeight <= 0 || !EnsurePipeline(state, graphics.device)) {
             return false;
         }
 
@@ -426,7 +436,8 @@ static bool RenderGameUiSource(RendererState& state, const GameUiFrameSource* so
                 continue;
             }
             D3D12_RECT scissor{};
-            if (!ResolveScissor(draw.clip, draw.request, logicalWidth, logicalHeight, scissor))
+            if (!ResolveScissor(draw.clip, draw.request, logicalWidth, logicalHeight, outputWidth, outputHeight,
+                                scissor))
                 continue;
             cmd->RSSetScissorRects(1u, &scissor);
 
@@ -468,7 +479,7 @@ static bool RenderGameUiSource(RendererState& state, const GameUiFrameSource* so
             cmd->DrawInstanced(kVerticesPerSprite, 1u, 0u, 0u);
             ++drawIndex;
         }
-        const D3D12_RECT fullScissor{0, 0, logicalWidth, logicalHeight};
+        const D3D12_RECT fullScissor{0, 0, outputWidth, outputHeight};
         cmd->RSSetScissorRects(1u, &fullScissor);
         return true;
     } catch (...) {
@@ -476,13 +487,14 @@ static bool RenderGameUiSource(RendererState& state, const GameUiFrameSource* so
     }
 }
 
-bool RenderGameUiFrame(uint64_t frameIndex, int logicalWidth, int logicalHeight) noexcept {
-    return RenderGameUiSource(g, g.source, frameIndex, logicalWidth, logicalHeight);
+bool RenderGameUiFrame(uint64_t frameIndex, int logicalWidth, int logicalHeight, int outputWidth,
+                       int outputHeight) noexcept {
+    return RenderGameUiSource(g, g.source, frameIndex, logicalWidth, logicalHeight, outputWidth, outputHeight);
 }
 
 bool RenderGameUiPreviewFrame(const GameUiFrameSource& source, uint64_t frameIndex, int logicalWidth,
                               int logicalHeight) noexcept {
-    return RenderGameUiSource(gPreview, &source, frameIndex, logicalWidth, logicalHeight);
+    return RenderGameUiSource(gPreview, &source, frameIndex, logicalWidth, logicalHeight, logicalWidth, logicalHeight);
 }
 
 bool RenderGameUiCanvasTarget(uint32_t slot, uint64_t worldIdentity, const GameUiFrameSource& source, uint64_t revision,
@@ -511,7 +523,8 @@ bool RenderGameUiCanvasTarget(uint32_t slot, uint64_t worldIdentity, const GameU
             (!state.published || state.renderedFence != graphics.currentFrameRetireFenceValue)) {
             auto& target = *state.target.targets[state.target.writeIndex];
             target.BeginCapture(clearColor.r, clearColor.g, clearColor.b, clearColor.a);
-            const bool ok = RenderGameUiSource(state.renderer, &source, source.frameIndex, width, height);
+            const bool ok =
+                RenderGameUiSource(state.renderer, &source, source.frameIndex, width, height, width, height);
             target.EndCapture();
             (void)POST::PostSystem::RebindCurrentRenderTarget();
             if (!ok)
@@ -544,7 +557,8 @@ void ResetGameUiCanvasTarget(uint32_t slot) noexcept {
 
 bool RenderGameUiWorkspacePreviewFrame(const GameUiFrameSource& source, int width, int height,
                                        uint32_t* failedTextRequests) noexcept {
-    return RenderGameUiSource(gWorkspacePreview, &source, source.frameIndex, width, height, failedTextRequests);
+    return RenderGameUiSource(gWorkspacePreview, &source, source.frameIndex, width, height, width, height,
+                              failedTextRequests);
 }
 bool GetGameUiBackdropRequest(uint64_t frameIndex, GameProjectUiBackdropRequest& outRequest) noexcept {
     outRequest = {};

@@ -90,7 +90,6 @@ void PhysicsSystem::PreFixedUpdate(World& world, const FrameContext& frame) {
         ReconcileBodies(world, frame.frameIndex);
     }
     wasRuntimeActive_ = true;
-    PushSceneDrivenPoses(world);
 }
 
 void PhysicsSystem::FixedUpdate(World& world, const FrameContext& frame) {
@@ -98,6 +97,8 @@ void PhysicsSystem::FixedUpdate(World& world, const FrameContext& frame) {
         return;
     }
     ProcessKinematicMotions(world, frame);
+    // ゲーム FixedUpdate と controller の最終目標を、この物理 tick に反映する。
+    PushSceneDrivenPoses(world);
     PhysicsStepResult stepResult = service_->Step(frame.fixedDt);
     if (runtimeStatus_ != nullptr) {
         runtimeStatus_->SetStepResult(stepResult, service_->GetStatistics());
@@ -120,7 +121,7 @@ void PhysicsSystem::FixedUpdate(World& world, const FrameContext& frame) {
 
 void PhysicsSystem::PostFixedUpdate(World& world, const FrameContext&) {
     if (ShouldSimulate()) {
-        PullDynamicPoses(world);
+        CaptureSimulatedPoses(world);
     }
 }
 

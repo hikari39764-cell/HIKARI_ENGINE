@@ -2,7 +2,7 @@
 #include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
 #include "Include/Surface/HIKARI_SurfaceTangentFrame.hlsli"
 #include "Include/Meshlet/HIKARI_WaterSurfaceDeform.hlsli"
-#include "Include/Surface/HIKARI_SandSurfaceDeform.hlsli"
+#include "Include/Surface/HIKARI_TerrainSurfaceDeform.hlsli"
 #include "Include/Surface/HIKARI_FoliageWind.hlsli"
 
 struct HikariMeshletGeometryAuxVertexOut
@@ -58,12 +58,12 @@ HikariMeshletGeometryAuxVertexOut HikariBuildMeshletGeometryAuxVertex(
         instance.clusterWorld,
         localPosition,
         localNormal);
-    float3 sandSurfaceData = 0.0f.xxx;
-    HikariApplySandSurfaceDeform(
+    float3 terrainSurfaceData = 0.0f.xxx;
+    HikariApplyTerrainSurfaceDeform(
         instance,
         localPosition,
         localNormal,
-        sandSurfaceData);
+        terrainSurfaceData);
 
     // Depth prepass (MeshletDepthMS) と深度を bit 一致させるため、
     // clip 位置の計算は各 MS で同一式 + precise に固定する。

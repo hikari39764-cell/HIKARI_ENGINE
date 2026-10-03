@@ -31,7 +31,16 @@
 #include "Vfx/Post/HIKARI_SceneColorSnapshot.h"
 
 namespace HIKARI {
+class Camera3D;
 class RenderTarget2D;
+} // namespace HIKARI
+
+namespace HIKARI::CAMERA {
+struct DepthOfFieldSettings;
+}
+
+namespace HIKARI::RENDER3D {
+enum class DepthOfFieldQuality : uint8_t;
 }
 
 namespace HIKARI::POST {
@@ -121,6 +130,12 @@ public:
     static D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentRenderTargetReadOnlyDsv();
     static bool BeginCurrentRenderTargetDepthRead();
     static void EndCurrentRenderTargetDepthRead();
+    static bool PrepareCameraDepthOfField(uint64_t frameIndex, const CAMERA::DepthOfFieldSettings& settings,
+                                          RENDER3D::DepthOfFieldQuality quality, bool captureWorldSprites);
+    static bool ExecuteCameraDepthOfField(uint64_t frameIndex,
+                                          const RENDER3D::TEMPORAL::TemporalFrameState& temporalFrame,
+                                          const Camera3D& camera, const CAMERA::DepthOfFieldSettings& settings,
+                                          RENDER3D::DepthOfFieldQuality quality);
     static bool PrepareGameUiComposition(bool editorViewport, int uiLogicalWidth = 0, int uiLogicalHeight = 0);
     static bool FinalizeGameUiComposition(bool editorViewport);
     static const PresentationFrameResources& GetPresentationFrameResources();

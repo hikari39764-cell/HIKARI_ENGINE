@@ -5,6 +5,7 @@
 #include "Include/Material/HIKARI_MaterialExpressionSurface.hlsli"
 #include "Include/Material/HIKARI_StylizedMaterial.hlsli"
 #include "Include/Forward/HIKARI_SurfaceFeatureCoverage.hlsli"
+#include "Include/Surface/HIKARI_SurfacePartition.hlsli"
 
 #if HIKARI_FORWARD_ENABLE_MATERIAL_FX
 #include "Include/Forward/HIKARI_SurfaceFeatureShading.hlsli"
@@ -12,12 +13,17 @@
 
 typedef HikariForwardPixelInput PSInput;
 
-#include "Include/Surface/HIKARI_SandSurfaceShading.hlsli"
+#if HIKARI_SURFACE_PARTITION != HIKARI_SURFACE_PARTITION_GENERAL
+#include "Include/Surface/HIKARI_TerrainSurfaceShading.hlsli"
+#endif
 #include "Include/Forward/HIKARI_ForwardMaterialInputs.hlsli"
 
+// 水面は depth-aware/transparent の全経路 PSO だけが描く。
+#if HIKARI_SURFACE_PARTITION == HIKARI_SURFACE_PARTITION_ALL
 #define HIKARI_WATER_EMBEDDED 1
 #include "Render3D_WaterSurfacePS.hlsl"
 #undef HIKARI_WATER_EMBEDDED
+#endif
 
 #ifndef HIKARI_FORWARD_REFLECTION_CAPTURE
 #define HIKARI_FORWARD_REFLECTION_CAPTURE 0
@@ -45,10 +51,6 @@ float4 main(PSInput input) : SV_TARGET
     specularResponse = 0.0f.xxxx;
     reflectionMaterial = 0.0f.xxxx;
 #endif
-    const bool neutralClay =
-        gDebugView == HIKARI_DEBUG_VIEW_NEUTRAL_CLAY;
-    const bool sandSurface =
-        HikariSurfaceHasSandSurface(input.surfaceFeatureFlags);
 #if HIKARI_FORWARD_COST_MODE_STATIC != 255
     static const uint forwardCostMode = HIKARI_FORWARD_COST_MODE_STATIC;
 #else
@@ -56,27 +58,43 @@ float4 main(PSInput input) : SV_TARGET
 #endif
     const bool costNoShadow =
         forwardCostMode == HIKARI_FORWARD_COST_NO_SHADOW;
+#if HIKARI_SURFACE_PARTITION == HIKARI_SURFACE_PARTITION_TERRAIN
+    // 地形専用 PSO。AS が地形以外の可視範囲を除外している。
+    // debug view 中は CPU が全経路 PSO へ切り替えるため、ここでは通常着色だけを持つ。
+    return HikariShadeTerrainSurface(
+        input,
+        HikariGetMeshObjectDataForPixel(
+            input.objectDataIndex,
+            input.surfaceGpuSceneIndex),
+        input.surfaceFeatureData,
+        costNoShadow);
+#else
+    const bool neutralClay =
+        gDebugView == HIKARI_DEBUG_VIEW_NEUTRAL_CLAY;
+#if HIKARI_SURFACE_PARTITION == HIKARI_SURFACE_PARTITION_ALL
+    const bool terrainSurface =
+        HikariSurfaceHasTerrainSurface(input.surfaceFeatureFlags);
     // Neutral Clay も authored coverage の外側を描いてはいけない。
     // 深度/GeometryAux と同じ clip を先に適用し、debug 表示だけが
     // 四角い terrain chunk を復活させる不一致を防ぐ。
-    if (neutralClay && sandSurface)
+    if (neutralClay && terrainSurface)
     {
-        const HikariSurfaceGpuSceneInstance sandInstance =
+        const HikariSurfaceGpuSceneInstance terrainInstance =
             HikariGetSurfaceGpuSceneInstanceAt(input.surfaceGpuSceneIndex);
-        HikariClipSandCoverage(
-            HikariLoadSandSurfaceParamsFromDataIndex(
-                sandInstance.surfaceFeatureDataIndex),
+        HikariClipTerrainCoverage(
+            HikariLoadTerrainSurfaceParams(
+                terrainInstance.surfaceFeatureDataIndex),
             input.uv1);
     }
-    if (!neutralClay && sandSurface)
+    if (!neutralClay && terrainSurface)
     {
-        const HikariMeshObjectData sandObjectData =
+        const HikariMeshObjectData terrainObjectData =
             HikariGetMeshObjectDataForPixel(
                 input.objectDataIndex,
                 input.surfaceGpuSceneIndex);
-        return HikariShadeSandSurface(
+        return HikariShadeTerrainSurface(
             input,
-            sandObjectData,
+            terrainObjectData,
             input.surfaceFeatureData,
             costNoShadow);
     }
@@ -89,6 +107,7 @@ float4 main(PSInput input) : SV_TARGET
                 input.surfaceGpuSceneIndex);
         return HikariShadeWaterSurface(input, waterObjectData);
     }
+#endif
 #if HIKARI_FORWARD_ENABLE_MATERIAL_FX
     HikariMeshObjectData surfaceFeatureData = (HikariMeshObjectData)0;
     bool hasStaticMaterialFx = false;
@@ -556,6 +575,7 @@ float4 main(PSInput input) : SV_TARGET
     return float4(
         alphaBlended ? finalColor * albedo.a : finalColor,
         albedo.a);
+#endif
 }
 
 #if HIKARI_FORWARD_REFLECTION_CAPTURE

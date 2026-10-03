@@ -296,6 +296,14 @@ bool WriteScratchImageToHtex(const DirectX::ScratchImage& image, const TextureIm
 
 bool CookTextureImage(const std::filesystem::path& sourcePath, TextureImportSettings settings,
                       DirectX::ScratchImage& outImage, std::string& outMessage, AssetTaskContext* task) {
+    if (settings.preserveNormalChannels &&
+        (settings.usage != TextureUsage::Normal || settings.colorSpace != TextureAssetColorSpace::Linear ||
+         settings.compression != TextureCompression::None || settings.mipPolicy != TextureMipPolicy::None ||
+         settings.forcePowerOfTwo || settings.allowResize)) {
+        outMessage = "[DirectXTexBackend] preserving normal channels requires linear, uncompressed, no-mip, fixed-size "
+                     "normal texture settings";
+        return false;
+    }
     if (task != nullptr) {
         task->ReportStage("Reading texture source", 0.22f, true, sourcePath.filename().string());
         if (task->IsCancellationRequested()) {
@@ -373,7 +381,8 @@ bool CookTextureImage(const std::filesystem::path& sourcePath, TextureImportSett
     if (working.GetImageCount() > 0)
         loaded = std::move(working);
     DirectX::ScratchImage normalDirections;
-    if (settings.usage == TextureUsage::Normal && FAILED(hr = FilterNormalDirections(loaded, true, normalDirections))) {
+    if (settings.usage == TextureUsage::Normal && !settings.preserveNormalChannels &&
+        FAILED(hr = FilterNormalDirections(loaded, true, normalDirections))) {
         outMessage = "[DirectXTexBackend] normal direction decoding failed: " + ToHexHr(hr);
         return false;
     }
@@ -447,7 +456,7 @@ bool CookTextureImage(const std::filesystem::path& sourcePath, TextureImportSett
         directionsFiltered = true;
     }
     DirectX::ScratchImage normalizedMips;
-    if (settings.usage == TextureUsage::Normal && directionsFiltered &&
+    if (settings.usage == TextureUsage::Normal && !settings.preserveNormalChannels && directionsFiltered &&
         FAILED(hr = FilterNormalDirections(loaded, false, normalizedMips))) {
         outMessage = "[DirectXTexBackend] normal mip normalization failed: " + ToHexHr(hr);
         return false;

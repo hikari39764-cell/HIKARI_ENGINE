@@ -24,6 +24,8 @@ public:
     GameplayCameraEditorDocument& Document() { return document_; }
     const GameplayCameraEditorDocument& Document() const { return document_; }
     // 文書の状態。シェル、AI の文脈、バックグラウンドのセッションで共有する。
+    // 表示中の文書があるか。DescribeDocumentState の open と同じ判定。
+    bool IsDocumentOpen() const noexcept;
     nlohmann::json DescribeDocumentState() const;
     nlohmann::json DescribeFlows(const DocumentSceneBase& scene) const;
     bool EditingFlow() const { return flowEditing_; }

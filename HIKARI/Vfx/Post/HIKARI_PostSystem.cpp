@@ -4,10 +4,12 @@
 #include <sstream>
 
 #include "Core/Presentation/HIKARI_LogicalDisplayDefaults.h"
+#include "Core/HIKARI_Logger.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_D3D12DebugTools.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
+#include "Render3D/DepthOfField/HIKARI_CameraDepthOfFieldStage.h"
 #include "Render3D/Debug/HIKARI_RenderDebugOutput.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
@@ -23,6 +25,15 @@ namespace HIKARI::POST {
 namespace {
 constexpr int kMinViewportSize = 16;
 constexpr int kMaxViewportSize = 8192;
+bool gCameraDepthOfFieldPrepareWarningLogged = false;
+
+void LogCameraDepthOfFieldPrepareFailure() {
+    if (!gCameraDepthOfFieldPrepareWarningLogged) {
+        HIKARI_LOG_WARN(
+            "[CameraDepthOfField] Enabled effect could not prepare its render resources; using the regular transparent path.");
+        gCameraDepthOfFieldPrepareWarningLogged = true;
+    }
+}
 
 } // namespace
 
@@ -71,6 +82,7 @@ void PostSystem::UpdateContext(const GFX::Context& context) {
 
 void PostSystem::Shutdown() {
     AbortSceneCaptureTemporalFrame(RENDER3D::TEMPORAL::TemporalHistoryResetReason::PreviousFrameIncomplete);
+    RENDER3D::DOF::ShutdownCameraDepthOfFieldStage();
     if (!initialized_)
         return;
     captureStage_.Shutdown();
@@ -432,6 +444,67 @@ D3D12_CPU_DESCRIPTOR_HANDLE PostSystem::GetCurrentRenderTargetReadOnlyDsv() {
 }
 bool PostSystem::BeginCurrentRenderTargetDepthRead() { return captureStage_.BeginCurrentDepthRead(); }
 void PostSystem::EndCurrentRenderTargetDepthRead() { captureStage_.EndCurrentDepthRead(); }
+
+bool PostSystem::PrepareCameraDepthOfField(uint64_t frameIndex, const CAMERA::DepthOfFieldSettings& settings,
+                                           RENDER3D::DepthOfFieldQuality quality, bool captureWorldSprites) {
+    if (!initialized_) {
+        if (RENDER3D::DOF::IsCameraDepthOfFieldActive(settings, quality)) {
+            LogCameraDepthOfFieldPrepareFailure();
+        }
+        return false;
+    }
+    const bool compositeSpriteFog = captureWorldSprites && RENDER3D::VOLUMETRIC::IsVolumetricLightingActive();
+    if (!RENDER3D::DOF::IsCameraDepthOfFieldActive(settings, quality) && !compositeSpriteFog) {
+        gCameraDepthOfFieldPrepareWarningLogged = false;
+        return RENDER3D::DOF::PrepareCameraDepthOfFieldFrame(context_, frameIndex, {}, {}, settings, quality, false,
+                                                             false);
+    }
+    if (!captureStage_.HasCurrentTarget()) {
+        LogCameraDepthOfFieldPrepareFailure();
+        return false;
+    }
+    const RENDER3D::RenderTextureView sceneColor = captureStage_.GetCurrentColorView();
+    const RENDER3D::RenderTextureView sceneDepth = captureStage_.GetCurrentDepthView();
+    const bool prepared = RENDER3D::DOF::PrepareCameraDepthOfFieldFrame(
+        context_, frameIndex, sceneColor, sceneDepth, settings, quality, captureWorldSprites, compositeSpriteFog);
+    if (prepared) {
+        gCameraDepthOfFieldPrepareWarningLogged = false;
+    } else {
+        LogCameraDepthOfFieldPrepareFailure();
+    }
+    return prepared;
+}
+
+bool PostSystem::ExecuteCameraDepthOfField(uint64_t frameIndex,
+                                           const RENDER3D::TEMPORAL::TemporalFrameState& temporalFrame,
+                                           const Camera3D& camera, const CAMERA::DepthOfFieldSettings& settings,
+                                           RENDER3D::DepthOfFieldQuality quality) {
+    if (!initialized_) {
+        return false;
+    }
+    RenderTarget2D* target = captureStage_.GetCurrentTarget();
+    if (target == nullptr) {
+        HIKARI_LOG_ERROR("[CameraDepthOfField] Prepared frame lost its scene render target before composite.");
+        return false;
+    }
+    (void)RENDER3D::VOLUMETRIC::ExecuteVolumetricLightingStage(*target);
+    RENDER3D::VOLUMETRIC::VolumetricFogSamplingView fogView{};
+    (void)RENDER3D::VOLUMETRIC::GetVolumetricFogSamplingView(frameIndex, fogView);
+    if (!captureStage_.BeginCurrentDepthRead()) {
+        HIKARI_LOG_ERROR("[CameraDepthOfField] Prepared frame could not transition scene depth for compute sampling.");
+        (void)captureStage_.RebindCurrentTarget();
+        return false;
+    }
+    const RENDER3D::RenderTextureView depth = captureStage_.GetCurrentDepthView();
+    const bool executed = RENDER3D::DOF::ExecuteCameraDepthOfField(context_, frameIndex, *target, depth, temporalFrame,
+                                                                   camera, settings, quality, fogView);
+    captureStage_.EndCurrentDepthRead();
+    const bool rebound = captureStage_.RebindCurrentTarget();
+    if (!executed || !rebound) {
+        HIKARI_LOG_ERROR("[CameraDepthOfField] A prepared frame failed during composite after sprite routing.");
+    }
+    return executed && rebound;
+}
 
 RENDER3D::RenderTextureView PostSystem::CaptureSceneColorSnapshot(SceneColorSnapshotKind kind) {
     return captureStage_.CaptureSceneColorSnapshot(kind);

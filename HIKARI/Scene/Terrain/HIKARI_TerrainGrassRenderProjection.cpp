@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstring>
 
 #include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Render3D/Core/HIKARI_BoundsUtils.h"
@@ -48,21 +49,28 @@ bool IsLightingBakeCapture(RENDER3D::RenderViewPurpose purpose) noexcept {
     return purpose == RENDER3D::RenderViewPurpose::ReflectionProbeCapture ||
            purpose == RENDER3D::RenderViewPurpose::LightProbeCapture;
 }
+
+bool SameGrassSource(const TerrainGrassRenderSourceKey& lhs, const TerrainGrassRenderSourceKey& rhs) noexcept {
+    return lhs.terrainRevision == rhs.terrainRevision &&
+           std::memcmp(&lhs.terrainWorld, &rhs.terrainWorld, sizeof(MATH::Mat4)) == 0 &&
+           lhs.projectRoot == rhs.projectRoot && lhs.postGroupMask == rhs.postGroupMask && lhs.visible == rhs.visible &&
+           lhs.receiveShadow == rhs.receiveShadow && lhs.lightingBakeCapture == rhs.lightingBakeCapture;
+}
 } // namespace
 
 void RemoveTerrainGrassRenderObjects(RENDER3D::RUNTIME::SceneRenderCache& sceneRenderCache,
                                      TerrainGrassRenderProjectionState& state, uint64_t ownerStableId) {
-    const auto found = state.renderObjectIdsByOwner.find(ownerStableId);
-    if (found == state.renderObjectIdsByOwner.end()) {
+    const auto found = state.owners.find(ownerStableId);
+    if (found == state.owners.end()) {
         return;
     }
-    for (const uint64_t id : found->second) {
+    const std::vector<uint64_t>& ids = found->second.renderObjectIds;
+    for (const uint64_t id : ids) {
         sceneRenderCache.Remove(RENDER3D::RUNTIME::SceneRenderObjectId{id});
     }
-    state.activeRenderInstanceCount = state.activeRenderInstanceCount >= found->second.size()
-                                          ? state.activeRenderInstanceCount - found->second.size()
-                                          : 0u;
-    state.renderObjectIdsByOwner.erase(found);
+    state.activeRenderInstanceCount =
+        state.activeRenderInstanceCount >= ids.size() ? state.activeRenderInstanceCount - ids.size() : 0u;
+    state.owners.erase(found);
 }
 
 void SyncTerrainGrassRenderObjects(const GameObject& object, const ModelComponent& terrainModel,
@@ -74,7 +82,31 @@ void SyncTerrainGrassRenderObjects(const GameObject& object, const ModelComponen
                                    RENDER3D::RUNTIME::SceneRenderCache& sceneRenderCache,
                                    RENDER3D::RenderViewPurpose purpose, TerrainGrassRenderProjectionStats& stats) {
     const uint64_t ownerStableId = object.GetRenderStableId();
+    MATH::Mat4 terrainWorld = object.GetTransform().GetWorldMatrix();
+    if (presentationTransforms != nullptr) {
+        MATH::Mat4 presentationWorld{};
+        if (presentationTransforms->TryGetWorldMatrix(object.GetRuntimeHandle(), presentationWorld)) {
+            terrainWorld = presentationWorld;
+        }
+    }
+    TerrainGrassRenderSourceKey source{};
+    source.terrainRevision = terrain.GetRevision();
+    source.terrainWorld = terrainWorld;
+    source.projectRoot = projectRoot;
+    source.postGroupMask = terrainModel.GetPostGroupMask();
+    source.visible = terrainModel.IsVisible();
+    source.receiveShadow = terrainModel.GetReceiveShadow();
+    source.lightingBakeCapture = IsLightingBakeCapture(purpose);
+    // 足跡など runtime 応答だけの dirty は authored 入力を変えない。
+    // 既存の投影をそのまま残し、配置走査と render object の出し入れを避ける。
+    if (const auto found = state.owners.find(ownerStableId);
+        found != state.owners.end() && SameGrassSource(found->second.source, source)) {
+        stats.renderedCount += found->second.renderObjectIds.size();
+        return;
+    }
     RemoveTerrainGrassRenderObjects(sceneRenderCache, state, ownerStableId);
+    TerrainGrassOwnerProjection& owner = state.owners[ownerStableId];
+    owner.source = source;
 
     const ProceduralMeshComponent* procedural = object.GetComponent<ProceduralMeshComponent>();
     if (procedural == nullptr || (procedural->GetSettings().kind != ProceduralMeshKind::Plane &&
@@ -88,14 +120,6 @@ void SyncTerrainGrassRenderObjects(const GameObject& object, const ModelComponen
         return;
     }
 
-    MATH::Mat4 terrainWorld = object.GetTransform().GetWorldMatrix();
-    if (presentationTransforms != nullptr) {
-        MATH::Mat4 presentationWorld{};
-        if (presentationTransforms->TryGetWorldMatrix(object.GetRuntimeHandle(), presentationWorld)) {
-            terrainWorld = presentationWorld;
-        }
-    }
-
     if (state.clusteredGeometryProjectRoot != projectRoot) {
         state.clusteredGeometryProjectRoot = projectRoot;
         state.clusteredGeometryPaths.fill({});
@@ -103,7 +127,7 @@ void SyncTerrainGrassRenderObjects(const GameObject& object, const ModelComponen
     }
 
     std::array<const ModelAsset*, kTerrainGrassVariantCount> models{};
-    auto& ids = state.renderObjectIdsByOwner[ownerStableId];
+    std::vector<uint64_t>& ids = owner.renderObjectIds;
     ids.reserve(
         (std::min)((std::min)(snapshot.placements.size(), static_cast<std::size_t>(settings.maxClumps)),
                    state.activeRenderInstanceCount < kTerrainGrassMaxProjectedInstances
@@ -215,9 +239,6 @@ void SyncTerrainGrassRenderObjects(const GameObject& object, const ModelComponen
         ids.push_back(desc.id.value);
         ++state.activeRenderInstanceCount;
         ++stats.renderedCount;
-    }
-    if (ids.empty()) {
-        state.renderObjectIdsByOwner.erase(ownerStableId);
     }
 }
 

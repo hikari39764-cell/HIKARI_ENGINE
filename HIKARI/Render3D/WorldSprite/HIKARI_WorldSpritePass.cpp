@@ -1,5 +1,6 @@
 #include "Render3D/WorldSprite/HIKARI_WorldSpritePass.h"
 #include "Render3D/WorldSprite/HIKARI_WorldSpritePipelines.h"
+#include "Render3D/WorldSprite/HIKARI_WorldSpriteMaterials.h"
 
 #include <algorithm>
 #include <array>
@@ -8,7 +9,9 @@
 #include <limits>
 #include <span>
 #include <string>
+#include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -17,6 +20,7 @@
 
 #include "Assets/HIKARI_AssetRegistry.h"
 #include "Assets/HIKARI_AssetTypes.h"
+#include "Core/HIKARI_TimeService.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_DynamicUploadBuffer.h"
@@ -44,7 +48,7 @@ enum class ResolvedAlphaMode : uint8_t {
 
 // CPU 側の整列は自然境界のままにする。PreparedItem を
 // std::stable_sort するため、拡張境界にすると MSVC の内部
-// aligned_storage 契約に抵触する。GPU 側は 112-byte stride で一致する。
+// aligned_storage 契約に抵触する。GPU 側は 144-byte stride で一致する。
 struct GpuWorldSpriteInstance {
     MATH::Vec4 position{};
     MATH::Vec4 orientation{};
@@ -56,19 +60,24 @@ struct GpuWorldSpriteInstance {
     uint32_t facingMode = 0u;
     uint32_t alphaMode = kGpuAlphaBlend;
     float alphaCutoff = 0.5f;
+    uint32_t normalTextureDescriptorIndex = (std::numeric_limits<uint32_t>::max)();
+    uint32_t reserved[3]{};
+    MATH::Vec4 sourceCanvasRect{};
 };
 
-static_assert(sizeof(GpuWorldSpriteInstance) == 112u);
+static_assert(sizeof(GpuWorldSpriteInstance) == 144u);
 
 struct DrawConstants {
     uint32_t baseIndex = 0u;
     uint32_t count = 0u;
     uint32_t reserved0 = 0u;
     uint32_t reserved1 = 0u;
+    float logicalTimeSeconds = 0.0f;
 };
 
 struct PreparedItem {
     GpuWorldSpriteInstance gpu{};
+    std::shared_ptr<const WorldSpriteMaterialPipelines> material;
     int32_t sortPriority = 0;
     float viewDepth = 0.0f;
     uint32_t stableOrder = 0u;
@@ -113,6 +122,8 @@ struct WorldSpritePass::Impl {
     GFX::Context context{};
     ComPtr<ID3D12RootSignature> rootSignature{};
     WorldSpritePipelineSet pipelines{};
+    ASSETS::SHADER::ShaderAssetEntryLease geometryShader;
+    WorldSpriteMaterials materials;
     struct FrameSlot {
         ComPtr<ID3D12Resource> instances{};
         DX::DynamicUploadBuffer staging{};
@@ -122,10 +133,12 @@ struct WorldSpritePass::Impl {
     std::array<FrameSlot, GFX::kFrameResourceCount> frames{};
     std::vector<PreparedItem> opaque, masked, hybridCore, transparent;
     std::vector<GpuWorldSpriteInstance> packed;
+    std::vector<std::shared_ptr<const WorldSpriteMaterialPipelines>> packedMaterials;
+    std::vector<MATH::Vec4> parameterValues;
     std::vector<MATH::Vec4> shadowBounds;
     std::vector<TextureResourceLoadRequest> requests;
-    std::vector<std::string> requestGuids;
-    std::unordered_map<std::string, TextureResourceHandle> textureByGuid;
+    std::vector<std::string> requestAssetIds;
+    std::unordered_map<std::string, TextureResourceHandle> textureByAssetId;
     uint64_t textureWorld = 0, textureRegistry = 0, textureRevision = 0;
     TextureResourceHandle missingTexture{};
     WorldSpritePassStats stats{};
@@ -147,8 +160,8 @@ struct WorldSpritePass::Impl {
         Shutdown();
         context = newContext;
         capacity = (std::max)((std::min)(newCapacity, (std::numeric_limits<uint32_t>::max)() / 2u), 1u);
-        if (context.device == nullptr ||
-            !CreateWorldSpritePipelines(context.device, preferRaster, rootSignature, pipelines, meshPipeline)) {
+        if (context.device == nullptr || !CreateWorldSpritePipelines(context.device, preferRaster, rootSignature,
+                                                                     pipelines, meshPipeline, geometryShader)) {
             Shutdown();
             return false;
         }
@@ -170,6 +183,8 @@ struct WorldSpritePass::Impl {
         }
         initialized = true;
         stats.ready = true;
+        stats.depthOfFieldCaptureReady =
+            pipelines[static_cast<size_t>(WorldSpritePipeline::DepthOfFieldCapture)] != nullptr;
         return true;
     }
 
@@ -185,14 +200,18 @@ struct WorldSpritePass::Impl {
         hybridCore.clear();
         transparent.clear();
         packed.clear();
+        packedMaterials.clear();
+        parameterValues.clear();
+        materials.Shutdown();
+        geometryShader = {};
         shadowBounds.clear();
         requests.clear();
-        requestGuids.clear();
-        textureByGuid.clear();
+        requestAssetIds.clear();
+        textureByAssetId.clear();
         textureWorld = textureRegistry = textureRevision = 0;
         for (auto& pipeline : pipelines)
-            pipeline.Reset();
-        rootSignature.Reset();
+            GFX::RetireD3D12ObjectForFrame(pipeline, context, "WorldSpritePipeline");
+        GFX::RetireD3D12ObjectForFrame(rootSignature, context, "WorldSpriteRoot");
         if (missingTexture) {
             (void)ReleaseTextureResource(missingTexture);
             missingTexture = {};
@@ -229,8 +248,22 @@ struct WorldSpritePass::Impl {
         stats.textureLoadRequests = 0u;
         stats.shadowCasterCount = 0u;
         shadowBounds.clear();
-        if (source == nullptr || source->instances.empty())
+        opaque.clear();
+        masked.clear();
+        hybridCore.clear();
+        transparent.clear();
+        packed.clear();
+        packedMaterials.clear();
+        parameterValues.clear();
+        const uint64_t registryId = source && source->assetRegistry ? source->assetRegistry->GetInstanceId() : 0;
+        const uint64_t revision = source && source->assetRegistry ? source->assetRegistry->GetRevision() : 0;
+        materials.BeginFrame(context, registryId, revision);
+        if (source == nullptr || source->instances.empty()) {
+            (void)materials.UploadParameters({}, stats.uploadedBytes);
+            stats.residentBytes =
+                UINT64(capacity) * 2u * sizeof(GpuWorldSpriteInstance) * frames.size() + materials.GetResidentBytes();
             return true;
+        }
         if (!initialized || context.device == nullptr) {
             stats.droppedCount = static_cast<uint32_t>(
                 (std::min)(source->instances.size(), static_cast<size_t>((std::numeric_limits<uint32_t>::max)())));
@@ -239,52 +272,60 @@ struct WorldSpritePass::Impl {
 
         if (context.cmdList == nullptr)
             return false;
-        const uint64_t registryId = source->assetRegistry ? source->assetRegistry->GetInstanceId() : 0;
-        const uint64_t revision = source->assetRegistry ? source->assetRegistry->GetRevision() : 0;
         if (source->worldIdentity != textureWorld || registryId != textureRegistry || revision != textureRevision) {
-            textureByGuid.clear();
+            textureByAssetId.clear();
             textureWorld = source->worldIdentity;
             textureRegistry = registryId;
             textureRevision = revision;
         }
         requests.clear();
-        requestGuids.clear();
+        requestAssetIds.clear();
         const uint32_t acceptedCount = static_cast<uint32_t>((std::min)(source->instances.size(), size_t(capacity)));
-        for (uint32_t index = 0; index < acceptedCount; ++index) {
-            const auto& instance = source->instances[index];
-            const std::string& guid = instance.textureAssetGuid.value;
-            if (const auto found = textureByGuid.find(guid);
-                found != textureByGuid.end() && found->second && !IsTextureResourceValid(found->second))
-                textureByGuid.erase(found);
-            if (guid.empty() || !textureByGuid.try_emplace(guid).second)
-                continue;
+        std::unordered_set<std::string_view> requestedThisFrame{};
+        requestedThisFrame.reserve(static_cast<size_t>(acceptedCount) * 2u);
+        const auto queueTexture = [&](const std::string& assetId) {
+            if (assetId.empty()) {
+                return;
+            }
+            if (!requestedThisFrame.insert(assetId).second) {
+                return;
+            }
+            if (const auto found = textureByAssetId.find(assetId); found != textureByAssetId.end()) {
+                if (found->second && IsTextureResourceValid(found->second)) {
+                    return;
+                }
+                textureByAssetId.erase(found);
+            }
+            textureByAssetId.try_emplace(assetId);
             const auto* descriptor = source->assetRegistry != nullptr
-                                         ? source->assetRegistry->FindAs<TextureAssetDescriptor>(AssetId{guid})
+                                         ? source->assetRegistry->FindAs<TextureAssetDescriptor>(AssetId{assetId})
                                          : nullptr;
             if (descriptor == nullptr || descriptor->dimension != TextureAssetDimension::Texture2D ||
                 descriptor->sourcePath.empty()) {
-                continue;
+                textureByAssetId.erase(assetId);
+                return;
             }
-            requests.push_back({"runtime_world_sprite/" + guid, descriptor->sourcePath,
+            requests.push_back({"runtime_world_sprite/" + assetId, descriptor->sourcePath,
                                 ResolveTextureColorSpace(descriptor->colorSpace)});
-            requestGuids.push_back(guid);
+            requestAssetIds.push_back(assetId);
+        };
+        for (uint32_t index = 0; index < acceptedCount; ++index) {
+            const auto& instance = source->instances[index];
+            queueTexture(instance.textureAssetId.value);
+            queueTexture(instance.normalTextureAssetId.value);
         }
         if (!requests.empty()) {
             TextureResourceBatchLoadStats loadStats{};
             const auto handles = PreloadTextureResourcesWithColorSpace(requests, &loadStats);
-            const size_t count = (std::min)(handles.size(), requestGuids.size());
+            const size_t count = (std::min)(handles.size(), requestAssetIds.size());
             for (size_t index = 0u; index < count; ++index) {
                 if (handles[index]) {
-                    textureByGuid[requestGuids[index]] = handles[index];
+                    textureByAssetId[requestAssetIds[index]] = handles[index];
                 }
             }
         }
 
         stats.textureLoadRequests = static_cast<uint32_t>(requests.size());
-        opaque.clear();
-        masked.clear();
-        hybridCore.clear();
-        transparent.clear();
         stats.droppedCount = static_cast<uint32_t>(source->instances.size()) - acceptedCount;
         opaque.reserve(acceptedCount);
         masked.reserve(acceptedCount);
@@ -297,12 +338,12 @@ struct WorldSpritePass::Impl {
         for (uint32_t index = 0u; index < acceptedCount; ++index) {
             const WorldSpriteInstance& instance = source->instances[index];
             const TextureAssetDescriptor* descriptor =
-                source->assetRegistry != nullptr && instance.textureAssetGuid.IsValid()
-                    ? source->assetRegistry->FindAs<TextureAssetDescriptor>(AssetId{instance.textureAssetGuid.value})
+                source->assetRegistry != nullptr && !instance.textureAssetId.value.empty()
+                    ? source->assetRegistry->FindAs<TextureAssetDescriptor>(instance.textureAssetId)
                     : nullptr;
             TextureResourceHandle texture = missingTexture;
-            if (const auto found = textureByGuid.find(instance.textureAssetGuid.value);
-                found != textureByGuid.end() && IsTextureResourceValid(found->second)) {
+            if (const auto found = textureByAssetId.find(instance.textureAssetId.value);
+                found != textureByAssetId.end() && IsTextureResourceValid(found->second)) {
                 texture = found->second;
             } else {
                 ++stats.missingTextureCount;
@@ -311,6 +352,16 @@ struct WorldSpritePass::Impl {
             if (descriptorIndex >= GFX::DESCRIPTOR::kUserSrvCount) {
                 descriptorIndex = missingDescriptorIndex;
                 ++stats.missingTextureCount;
+            }
+            uint32_t normalDescriptorIndex = (std::numeric_limits<uint32_t>::max)();
+            if (!instance.normalTextureAssetId.value.empty()) {
+                if (const auto found = textureByAssetId.find(instance.normalTextureAssetId.value);
+                    found != textureByAssetId.end() && IsTextureResourceValid(found->second)) {
+                    const uint32_t candidate = GetTextureResourceSrvDescriptorIndex(found->second);
+                    if (candidate < GFX::DESCRIPTOR::kUserSrvCount) {
+                        normalDescriptorIndex = candidate;
+                    }
+                }
             }
 
             float width = instance.size.x * (std::max)(std::abs(instance.worldScale.x), 0.001f);
@@ -334,15 +385,28 @@ struct WorldSpritePass::Impl {
 
             PreparedItem item{};
             item.gpu.position = {instance.worldPosition.x, instance.worldPosition.y, instance.worldPosition.z,
-                                 float((instance.castShadow ? 1u : 0u) | (instance.receiveShadow ? 2u : 0u))};
+                                 float((instance.castShadow ? 1u : 0u) | (instance.receiveShadow ? 2u : 0u) |
+                                       (instance.rotated ? 4u : 0u) | (instance.flipX ? 8u : 0u))};
             item.gpu.orientation = {instance.worldRotation.x, instance.worldRotation.y, instance.worldRotation.z,
                                     instance.worldRotation.w};
             item.gpu.sizePivot = {width, height, instance.pivot.x, instance.pivot.y};
             item.gpu.tintOpacity = {instance.tint.x, instance.tint.y, instance.tint.z, instance.opacity};
             item.gpu.uvRect = instance.uvRect;
+            item.gpu.sourceCanvasRect = instance.sourceCanvasRect;
+            if (instance.spriteShaderArtifact) {
+                item.material = materials.Resolve(instance.spriteShaderArtifact, rootSignature.Get(), meshPipeline,
+                                                  geometryShader.GetDxil());
+                if (item.material) {
+                    item.gpu.reserved[0] =
+                        static_cast<uint32_t>(parameterValues.size() / ASSETS::SHADER::kShaderParameterSlotCount);
+                    parameterValues.insert(parameterValues.end(), instance.spriteMaterialParameters.begin(),
+                                           instance.spriteMaterialParameters.end());
+                }
+            }
             item.gpu.surface = {instance.lit ? 1.0f : 0.0f, instance.roughness, instance.specular,
                                 instance.pointSampling ? 1.0f : 0.0f};
             item.gpu.textureDescriptorIndex = descriptorIndex;
+            item.gpu.normalTextureDescriptorIndex = normalDescriptorIndex;
             item.gpu.facingMode = static_cast<uint32_t>(instance.facing);
             const ResolvedAlphaMode resolvedAlpha = ResolveAlphaMode(instance.alphaMode, descriptor, instance.opacity);
             if (instance.castShadow && resolvedAlpha != ResolvedAlphaMode::Blend) {
@@ -397,6 +461,7 @@ struct WorldSpritePass::Impl {
         const auto copyItems = [this](const std::vector<PreparedItem>& items) {
             for (const PreparedItem& item : items) {
                 packed.push_back(item.gpu);
+                packedMaterials.push_back(item.material);
             }
         };
         copyItems(opaque);
@@ -423,6 +488,10 @@ struct WorldSpritePass::Impl {
             frame.published = packed;
             stats.uploadedBytes = bytes;
         }
+        if (!materials.UploadParameters(parameterValues, stats.uploadedBytes))
+            return false;
+        stats.residentBytes =
+            UINT64(capacity) * 2u * sizeof(GpuWorldSpriteInstance) * frames.size() + materials.GetResidentBytes();
         stats.opaqueCount = static_cast<uint32_t>(opaque.size());
         stats.maskCount = static_cast<uint32_t>(masked.size());
         stats.hybridCount = static_cast<uint32_t>(hybridCore.size());
@@ -464,10 +533,14 @@ struct WorldSpritePass::Impl {
         context.cmdList->SetGraphicsRootShaderResourceView(1u,
                                                            frames[activeFrameSlot].instances->GetGPUVirtualAddress());
         context.cmdList->SetGraphicsRootDescriptorTable(2u, texturePool);
+        context.cmdList->SetGraphicsRootShaderResourceView(
+            14u, materials.GetParameterAddress(frames[activeFrameSlot].instances->GetGPUVirtualAddress()));
         const MATH::Mat4 identity = MATH::Mat4::Identity();
         context.cmdList->SetGraphicsRoot32BitConstants(13u, 16u, lightViewProjection ? lightViewProjection : &identity,
                                                        0u);
-        if (passKind == 0u) {
+        const bool usesSurfaceLighting = passKind == 0u || passKind == 4u;
+        const bool lightingAvailable = usesSurfaceLighting && lighting.IsValid();
+        if (lightingAvailable) {
             context.cmdList->SetGraphicsRootConstantBufferView(4, lighting.light);
             context.cmdList->SetGraphicsRootConstantBufferView(5, lighting.shadow);
             context.cmdList->SetGraphicsRootConstantBufferView(6, lighting.skyEnvironment);
@@ -481,7 +554,7 @@ struct WorldSpritePass::Impl {
             context.cmdList->SetGraphicsRootDescriptorTable(12, lighting.prefiltered.ptr ? lighting.prefiltered
                                                                                          : texturePool);
         }
-        const UINT lightingAvailable = lighting.IsValid() ? 1u : 0u;
+        const UINT lightingFlag = lightingAvailable ? 1u : 0u;
         if (!meshPipeline)
             context.cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         const auto draw = [&](UINT instances) {
@@ -490,18 +563,25 @@ struct WorldSpritePass::Impl {
             else
                 context.cmdList->DrawInstanced(6, instances, 0, 0);
         };
-        if (!preserveDrawOrder) {
-            const DrawConstants constants{offset, count, lightingAvailable, passKind};
-            context.cmdList->SetGraphicsRoot32BitConstants(3u, 4u, &constants, 0u);
-            draw(count);
-        } else {
-            // Separate dispatches preserve the CPU-authored stable
-            // back-to-front order across transparent primitives.
-            for (uint32_t index = 0u; index < count; ++index) {
-                const DrawConstants constants{offset + index, 1u, lightingAvailable, passKind};
-                context.cmdList->SetGraphicsRoot32BitConstants(3u, 4u, &constants, 0u);
-                draw(1u);
+        const float logicalTime = TIME::GetInterpolatedSimulationTimeSeconds();
+        const auto pipelineAt = [&](uint32_t index) -> ID3D12PipelineState* {
+            if (usesSurfaceLighting && packedMaterials[index])
+                return packedMaterials[index]->Get(static_cast<WorldSpritePipeline>(alphaMode));
+            return pipelines[alphaMode].Get();
+        };
+        // 透明順序を保ったまま、同じ PSO の連続する不透明 instance だけをまとめる。
+        for (uint32_t index = 0u; index < count;) {
+            ID3D12PipelineState* pipeline = pipelineAt(offset + index);
+            uint32_t run = 1u;
+            if (!preserveDrawOrder) {
+                while (index + run < count && pipelineAt(offset + index + run) == pipeline)
+                    ++run;
             }
+            context.cmdList->SetPipelineState(pipeline);
+            const DrawConstants constants{offset + index, run, lightingFlag, passKind, logicalTime};
+            context.cmdList->SetGraphicsRoot32BitConstants(3u, 5u, &constants, 0u);
+            draw(run);
+            index += run;
         }
         return true;
     }
@@ -523,6 +603,8 @@ void WorldSpritePass::Shutdown() noexcept {
 
 bool WorldSpritePass::PrepareFrame(const GFX::Context& context, const WorldSpriteFrameSource* source,
                                    const Camera3D& camera) {
+    if (impl_->context.device && impl_->context.device != context.device)
+        impl_->Shutdown();
     // 入力のない view に PSO/Upload/SRV を確保しない。失敗の再試行は
     // Shutdown または明示 Initialize を所有者が行う時だけにする。
     if (!impl_->initialized && !impl_->initializationAttempted && context.device && context.srvHeap && source &&
@@ -548,6 +630,31 @@ bool WorldSpritePass::ExecuteForwardTransparent(const GFX::Context& context, D3D
     impl_->lighting = lighting;
     return impl_->ExecuteBatch(context, cameraConstants, kGpuAlphaBlend, impl_->transparentOffset,
                                impl_->stats.transparentCount, true);
+}
+
+bool WorldSpritePass::ExecuteForwardTransparentDepthOfField(const GFX::Context& context,
+                                                            D3D12_GPU_VIRTUAL_ADDRESS cameraConstants,
+                                                            const SurfaceLightingBindings& lighting,
+                                                            const DOF::WorldSpriteLayerCapture& capture) {
+    if (capture.frameSlot != context.frameIndex || capture.width == 0u || capture.height == 0u ||
+        !impl_->pipelines[static_cast<size_t>(WorldSpritePipeline::DepthOfFieldCapture)]) {
+        return false;
+    }
+    impl_->lighting = lighting;
+    MATH::Mat4 passData = MATH::Mat4::Identity();
+    const CAMERA::DepthOfFieldSettings& settings = capture.settings;
+    passData.m[0][0] = settings.focusDistance;
+    passData.m[1][0] = settings.focusRange;
+    passData.m[2][0] = settings.nearTransition;
+    passData.m[3][0] = settings.farTransition;
+    const float scale = static_cast<float>(capture.height) / 1080.0f;
+    passData.m[0][1] = settings.nearBlurRadius1080pPixels * scale;
+    passData.m[1][1] = settings.farBlurRadius1080pPixels * scale;
+    passData.m[2][1] = static_cast<float>(capture.width);
+    passData.m[3][1] = static_cast<float>(capture.height);
+    return impl_->ExecuteBatch(context, cameraConstants,
+                               static_cast<uint32_t>(WorldSpritePipeline::DepthOfFieldCapture),
+                               impl_->transparentOffset, impl_->stats.transparentCount, true, 4u, &passData);
 }
 
 bool WorldSpritePass::ExecuteDepth(const GFX::Context& context, D3D12_GPU_VIRTUAL_ADDRESS camera) {

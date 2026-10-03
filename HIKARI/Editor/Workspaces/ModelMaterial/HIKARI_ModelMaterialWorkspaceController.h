@@ -216,6 +216,8 @@ public:
                              bool selectionOnly = false);
     void AppendAiCompileDiagnostics(std::vector<std::string>& outDetails) const;
     // 文書の状態。シェル、AI の文脈、バックグラウンドのセッションで共有する。
+    // 表示中の文書があるか。DescribeDocumentState の open と同じ判定。
+    bool IsDocumentOpen() const noexcept;
     nlohmann::json DescribeDocumentState() const;
 
     ModelMaterialBindingCommandResult ExecuteBindingCommand(const ModelMaterialBindingCommand& command,

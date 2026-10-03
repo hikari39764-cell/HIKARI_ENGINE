@@ -57,13 +57,9 @@ void PhysicsSystem::ProcessKinematicMotions(World& world, const FrameContext& fr
         if (runtimeActivityService_ != nullptr && !runtimeActivityService_->IsActive(binding.object)) {
             // 非 Active actor の queued motion はここで消費して捨てる。
             // 再開時に古い入力や root motion が一気に適用されない。
-            binding.kinematicPresentationActive = false;
             continue;
         }
         if (!hasMove && !hasMotionDelta && !hasTeleport) {
-            if (binding.effectiveMotionType == PhysicsMotionType::Kinematic) {
-                binding.kinematicPresentationActive = false;
-            }
             continue;
         }
 
@@ -102,7 +98,6 @@ void PhysicsSystem::ProcessKinematicMotions(World& world, const FrameContext& fr
                 teleportedState.angularVelocity = {};
             }
             CommitFixedState(binding, teleportedState, true);
-            binding.kinematicPresentationActive = true;
             if (binding.kinematicSolver.IsValid()) {
                 (void)service_->SetCharacterPose(binding.kinematicSolver, teleport.pose);
                 if (teleport.clearVelocity) {
@@ -354,19 +349,10 @@ void PhysicsSystem::ProcessKinematicMotions(World& world, const FrameContext& fr
                                   jumpApplied,
                                   binding.kinematicJumpActive,
                                   allowGroundTraversal});
-        if (!service_->SetKinematicTarget(binding.body, after.pose) || !ApplyPhysicsWorldPose(*object, after.pose)) {
+        if (!ApplyPhysicsWorldPose(*object, after.pose)) {
             setError("unable to apply the solved kinematic body pose");
             continue;
         }
-
-        binding.lastPushedPose = after.pose;
-        binding.hasLastPushedPose = true;
-        PhysicsBodyState solvedState = bodyState;
-        solvedState.pose = after.pose;
-        solvedState.linearVelocity = after.linearVelocity;
-        solvedState.awake = true;
-        CommitFixedState(binding, solvedState, false);
-        binding.kinematicPresentationActive = true;
 
         kinematicMotion_->SetState(binding.object, ToMotionState(after));
         kinematicMotion_->SetStatus(

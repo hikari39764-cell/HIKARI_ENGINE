@@ -77,6 +77,10 @@ bool ExecuteMeshletDrawFrame(const GFX::Context& graphics, const MeshPassResourc
     ctx.reflectionCapture = passResources.reflectionCapture;
     ctx.reflectionMaterialCapture = passResources.reflectionMaterialCapture;
     ctx.forwardCostMode = RENDER3D::GetRenderQualitySettings().forwardCostMode;
+    // record 0 は sentinel。地形 record があるフレームだけ地形 PSO を dispatch する。
+    const auto* terrainRecords = gMeshRendererState.gpuDrivenSceneSource.terrainSurfaceGpuData;
+    ctx.terrainSurfacesPresent = terrainRecords != nullptr && terrainRecords->size() > 1u;
+    ctx.forwardDebugView = frame.view.light.debugView != 0u;
     const bool executed = gMeshRendererState.meshletRenderBackend.Execute(ctx);
     gMeshRendererState.meshletRenderBackend.EndVisibility(graphics);
     UpdateMeshletBackendDebugStats();
@@ -250,7 +254,7 @@ bool ExecuteTraditionalDrawFrame(const GFX::Context& graphics, const MeshPassRes
         BindSurfaceGpuSceneControl(drawCtx.binding, 0u, false);
         BindSurfaceFeatureData(drawCtx.binding, drawCtx.surfaceFeatureDataAddress);
         BindTerrainSurfaceData(drawCtx.binding, drawCtx.terrainSurfaceDataAddress);
-        BindSurfaceFeatureHeights(drawCtx.binding, drawCtx.surfaceFeatureHeightsAddress);
+        BindSurfaceFeatureFloats(drawCtx.binding, drawCtx.surfaceFeatureFloatsAddress);
         BindShadowMap(drawCtx.binding);
         if (passKind == MeshDrawPassKind::Forward) {
             BindSkyCube(drawCtx.binding);

@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "Assets/HIKARI_AssetGuid.h"
+#include "Assets/Shader/HIKARI_ShaderParameters.h"
 #include "Assets/Shader/HIKARI_ShaderSourceManifest.h"
 #include "Core/Hashing/HIKARI_Sha256.h"
 
@@ -76,6 +77,7 @@ struct ShaderCookedArtifact {
     uint32_t rootLayoutVersion = 0u;
     HASH::Sha256Digest rootLayoutHash{};
     ShaderDeviceCaps requiredCaps{};
+    std::vector<ShaderParameterDefinition> parameters{};
     std::vector<ShaderCookedEntry> entries{};
 };
 

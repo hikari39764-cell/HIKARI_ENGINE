@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -13,6 +14,7 @@
 #include "Animation/Runtime/HIKARI_AnimationPose.h"
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Render3D/Runtime/HIKARI_RenderModelAsset.h"
+#include "Render3D/Runtime/HIKARI_SceneSurfaceFloatPool.h"
 #include "Render3D/Water/HIKARI_WaterSurfaceRenderData.h"
 #include "Render3D/Terrain/HIKARI_TerrainSurfaceRenderData.h"
 
@@ -84,11 +86,11 @@ struct SceneRenderObjectDesc {
     WATER::WaterSurfaceRenderData waterSurfaceData{};
     bool terrainSurface = false;
     TERRAIN::TerrainSurfaceRenderData terrainSurfaceData{};
-    std::shared_ptr<const std::vector<float>> terrainSurfaceHeights{};
-    std::shared_ptr<const std::vector<float>> terrainSurfaceDeformations{};
-    std::shared_ptr<const std::vector<float>> terrainSurfaceLayerWeights{};
-    std::shared_ptr<const std::vector<float>> terrainSurfaceCoverage{};
+    std::shared_ptr<const TERRAIN::TerrainSurfaceProjectedFields> terrainSurfaceFields{};
     uint64_t terrainSurfaceProjectionRevision = 0u;
+    // terrainSurfaceDirtyBaseRevision からこの revision までに値が変わった範囲。
+    uint64_t terrainSurfaceDirtyBaseRevision = 0u;
+    TERRAIN::TerrainSurfaceFieldRect terrainSurfaceDirtyRect{};
 };
 
 struct SceneRenderObject {
@@ -158,16 +160,9 @@ struct SceneSurfaceInstance {
     // admitted must never be submitted as the neutral 2x2 sand tile.
     bool terrainSurfaceCoreResident = false;
     TERRAIN::TerrainSurfaceRenderData terrainSurfaceData{};
-    std::shared_ptr<const std::vector<float>> terrainSurfaceHeights{};
-    std::shared_ptr<const std::vector<float>> terrainSurfaceDeformations{};
-    std::shared_ptr<const std::vector<float>> terrainSurfaceLayerWeights{};
-    std::shared_ptr<const std::vector<float>> terrainSurfaceCoverage{};
+    std::shared_ptr<const TERRAIN::TerrainSurfaceProjectedFields> terrainSurfaceFields{};
     uint64_t terrainSurfaceProjectionRevision = 0u;
-    uint32_t terrainSurfaceHeightOffset = 0u;
-    uint32_t terrainSurfaceDeformationOffset = 0u;
-    uint32_t terrainSurfaceLayerWeightsOffset = 0u;
-    uint32_t terrainSurfaceCoverageOffset = 0u;
-    uint32_t terrainSurfaceLayerTintsOffset = 0u;
+    TERRAIN::TerrainSurfaceFieldOffsets terrainSurfaceOffsets{};
     uint32_t waterSurfaceLiquidCoverageOffset = 0u;
 };
 
@@ -219,7 +214,8 @@ public:
     const SceneRenderObject* Find(SceneRenderObjectId id) const;
     const std::vector<SceneRenderObject>& GetObjects() const;
     const std::vector<SceneSurfaceInstance>& GetSurfaceInstances() const;
-    const std::vector<float>* GetTerrainSurfaceHeights() const;
+    const std::vector<float>* GetSurfaceFeatureFloats() const;
+    std::span<const SceneSurfaceFloatPoolDelta> GetSurfaceFeatureFloatHistory() const;
     const std::vector<uint32_t>& GetDirtySurfaceIndices() const;
     uint64_t GetSurfaceVersion() const;
     uint64_t GetSurfaceRoutingVersion() const;
@@ -238,6 +234,9 @@ private:
     void MarkDirtySurfaceIndex(uint32_t surfaceIndex);
     void MarkAllSurfaceInstancesDirty();
     void RefreshStats();
+    void RepackSurfaceFloatPool(uint64_t dataVersionBeforePacking);
+    bool TryPatchTerrainSurfaceFloats();
+    void PublishSurfaceFloatPoolVersion(std::vector<SceneSurfaceFloatRange> ranges);
 
     struct ObjectSurfaceRange {
         size_t begin = 0;
@@ -247,7 +246,8 @@ private:
     std::vector<SceneRenderObject> objects_{};
     std::vector<SceneSurfaceInstance> surfaceInstances_{};
     std::vector<ObjectSurfaceRange> objectSurfaceRanges_{};
-    std::vector<float> terrainSurfaceHeights_{};
+    std::vector<float> surfaceFeatureFloats_{};
+    std::vector<SceneSurfaceFloatPoolDelta> surfaceFloatPoolHistory_{};
     std::vector<uint32_t> dirtySurfaceIndices_{};
     std::unordered_map<uint64_t, size_t> indexById_{};
 
@@ -260,11 +260,30 @@ private:
     bool surfaceTopologyDirty_ = true;
     bool surfaceRoutingDirty_ = true;
     bool surfaceDataDirty_ = true;
+    // true は float pool 全体の再配置。地形 field の値だけの変更は
+    // pendingTerrainPatches_ の行範囲を同じ offset へ書き戻す。
     bool surfaceFloatPoolDirty_ = true;
-    std::vector<std::array<uint32_t, 10u>> previousPackedSurfaceScratch_{};
+    struct PendingTerrainPatch {
+        SceneRenderObjectId objectId{};
+        TERRAIN::TerrainSurfaceFieldRect rect{};
+    };
+    std::vector<PendingTerrainPatch> pendingTerrainPatches_{};
+    struct PackedSurfaceMetadata {
+        uint32_t terrainGridResolution = 0u;
+        uint32_t terrainLayerCount = 0u;
+        TERRAIN::TerrainSurfaceFieldOffsets terrainOffsets{};
+        uint32_t waterCoverageResolution = 0u;
+        uint32_t waterCoverageOffset = 0u;
+        bool terrainCoreResident = false;
+
+        bool operator==(const PackedSurfaceMetadata&) const = default;
+    };
+    // PreRenderSync で決めた pool offset と実効格子。transform だけの更新で
+    // instance を作り直しても、再パックせずに引き継ぐ。
+    static PackedSurfaceMetadata CapturePackedSurfaceMetadata(const SceneSurfaceInstance& instance);
+    static void RestorePackedSurfaceMetadata(SceneSurfaceInstance& instance, const PackedSurfaceMetadata& metadata);
+    std::vector<PackedSurfaceMetadata> previousPackedSurfaceScratch_{};
     std::vector<uint32_t> sourceTerrainGridResolutionScratch_{};
-    std::vector<uint8_t> terrainCoreResidentScratch_{};
-    std::vector<float> surfaceTintScratch_{};
 };
 
 } // namespace HIKARI::RENDER3D::RUNTIME

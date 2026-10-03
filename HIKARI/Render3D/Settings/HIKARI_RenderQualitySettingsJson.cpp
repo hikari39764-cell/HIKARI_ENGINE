@@ -119,6 +119,14 @@ bool ReadValue(const nlohmann::json& node, const char* key, Value& value) {
         return false;
     }
 }
+
+bool ReadDepthOfFieldQuality(const nlohmann::json& node, DepthOfFieldQuality& quality) {
+    if (!node.contains("depthOfFieldQuality")) {
+        return true;
+    }
+    const nlohmann::json& value = node["depthOfFieldQuality"];
+    return value.is_string() && TEXT::TryParseEnum(kDepthOfFieldQualityNames, value.get<std::string>(), quality);
+}
 } // namespace
 
 nlohmann::json SerializeRenderQualitySettings(const RenderQualitySettings& source) {
@@ -137,6 +145,7 @@ nlohmann::json SerializeRenderQualitySettings(const RenderQualitySettings& sourc
         {"frameGenerationMode", EnumName(settings.frameGenerationMode, kFrameGenerationNames)},
         {"frameGenerationMultiplier", settings.frameGenerationMultiplier},
         {"volumetricLightingQuality", EnumName(settings.volumetricLightingQuality, kVolumetricNames)},
+        {"depthOfFieldQuality", TEXT::EnumToName(kDepthOfFieldQualityNames, settings.depthOfFieldQuality)},
         {"stylizedCloudQuality", EnumName(settings.stylizedCloudQuality, kStylizedCloudNames)},
         {"dynamicGiQuality", EnumName(settings.dynamicGiQuality, kDynamicGiNames)},
         {"localShadowQuality", EnumName(settings.localShadowQuality, kLocalShadowNames)},
@@ -172,6 +181,7 @@ bool DeserializeRenderQualitySettings(const nlohmann::json& node, RenderQualityS
         ReadEnum(node, "frameGenerationMode", kFrameGenerationNames, parsed.frameGenerationMode) &&
         ReadValue(node, "frameGenerationMultiplier", parsed.frameGenerationMultiplier) &&
         ReadEnum(node, "volumetricLightingQuality", kVolumetricNames, parsed.volumetricLightingQuality) &&
+        ReadDepthOfFieldQuality(node, parsed.depthOfFieldQuality) &&
         ReadEnum(node, "stylizedCloudQuality", kStylizedCloudNames, parsed.stylizedCloudQuality) &&
         ReadEnum(node, "dynamicGiQuality", kDynamicGiNames, parsed.dynamicGiQuality) &&
         ReadEnum(node, "localShadowQuality", kLocalShadowNames, parsed.localShadowQuality) &&

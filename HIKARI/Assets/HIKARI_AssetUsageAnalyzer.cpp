@@ -222,6 +222,16 @@ AssetUsageSummary AnalyzeAssetUsage(const SceneDocument& document, const AssetDa
             } else if (component.type == "DialogueTriggerComponent") {
                 AddReference(component.properties.value("dialogueAssetGuid", std::string{}), owner, "Dialogue Trigger",
                              assetDatabase, summary);
+            } else if (component.type == "WorldSpriteComponent") {
+                AddReference(component.properties.value("spriteAssetGuid", std::string{}), owner,
+                             "World Sprite Animation", assetDatabase, summary);
+                AddReference(component.properties.value("textureAssetGuid", std::string{}), owner,
+                             "World Sprite Texture", assetDatabase, summary);
+                const auto material = component.properties.find("spriteMaterial");
+                if (material != component.properties.end() && material->is_object()) {
+                    AddReference(material->value("assetGuid", std::string{}), owner, "World Sprite Material",
+                                 assetDatabase, summary);
+                }
             } else if (component.type == "VfxPlayerComponent") {
                 const auto slots = component.properties.find("slots");
                 if (slots != component.properties.end() && slots->is_array()) {

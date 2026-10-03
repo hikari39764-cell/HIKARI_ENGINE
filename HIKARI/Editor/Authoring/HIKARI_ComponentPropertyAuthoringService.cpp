@@ -1,4 +1,5 @@
 #include "Editor/Authoring/HIKARI_ComponentPropertyBuilder.h"
+#include "Editor/Authoring/HIKARI_ComponentAuthoringChanges.h"
 
 #include <algorithm>
 #include <exception>
@@ -262,6 +263,11 @@ ComponentAuthoringServiceResult ComponentPropertyAuthoringService::Apply(
         if (!deserialized.ok) {
             return deserialized;
         }
+        nlohmann::json before;
+        const auto baselineResult = SerializeForAuthoring(*resolved.instance, before, resolved.component->type);
+        if (!baselineResult.ok) {
+            return baselineResult;
+        }
         const auto applied = ApplyComponentProperty(*resolved.instance, context, mutation);
         if (!applied.ok)
             return applied;
@@ -273,7 +279,12 @@ ComponentAuthoringServiceResult ComponentPropertyAuthoringService::Apply(
         if (!serializedResult.ok) {
             return serializedResult;
         }
-        resolved.component->properties = std::move(serialized);
+        nlohmann::json candidate = resolved.component->properties;
+        ApplyComponentAuthoringChanges(candidate, before, serialized);
+        if (candidate == resolved.component->properties) {
+            continue;
+        }
+        resolved.component->properties = std::move(candidate);
         const auto knownTarget = std::find_if(
             changedTargets.begin(), changedTargets.end(), [&mutation](const ComponentAuthoringTarget& target) {
                 return target.objectId == mutation.target.objectId && target.componentId == mutation.target.componentId;
@@ -332,6 +343,11 @@ ComponentAuthoringServiceResult ComponentPropertyAuthoringService::ExecuteComman
     if (!deserialized.ok) {
         return deserialized;
     }
+    nlohmann::json before;
+    const auto baselineResult = SerializeForAuthoring(*resolved.instance, before, resolved.component->type);
+    if (!baselineResult.ok) {
+        return baselineResult;
+    }
     AuthoringCommandResult commandResult{};
     try {
         commandResult = command->execute(*resolved.instance, arguments);
@@ -356,10 +372,12 @@ ComponentAuthoringServiceResult ComponentPropertyAuthoringService::ExecuteComman
     if (!serializedResult.ok) {
         return serializedResult;
     }
-    const bool changed = serialized != resolved.component->properties;
+    nlohmann::json candidate = resolved.component->properties;
+    ApplyComponentAuthoringChanges(candidate, before, serialized);
+    const bool changed = candidate != resolved.component->properties;
     const std::string componentType = resolved.component->type;
     if (changed) {
-        resolved.component->properties = std::move(serialized);
+        resolved.component->properties = std::move(candidate);
         document.objects = std::move(working.objects);
     }
 

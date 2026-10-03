@@ -23,6 +23,7 @@ public:
     bool Abort();
     bool IsActive() const;
     bool HasCurrentTarget() const;
+    RenderTarget2D* GetCurrentTarget() const noexcept;
     bool RebindCurrentTarget();
     bool BindAdditionalColors(std::span<const D3D12_CPU_DESCRIPTOR_HANDLE> colors);
     bool ClearCurrentColor(float r, float g, float b, float a);

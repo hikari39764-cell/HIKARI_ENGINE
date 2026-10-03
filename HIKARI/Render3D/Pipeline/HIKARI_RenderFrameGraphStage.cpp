@@ -4,11 +4,15 @@
 #include <string>
 
 #include "Core/HIKARI_Logger.h"
+#include "Render3D/Core/HIKARI_Camera3D.h"
+#include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Core/HIKARI_MeshPassResources.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameContext.h"
 #include "Render3D/Pipeline/Internal/HIKARI_RenderFrameGraphStageInternal.h"
 #include "Render3D/Surface/HIKARI_SceneSurfaceSet.h"
 #include "Render3D/Temporal/HIKARI_TemporalResourceSystem.h"
+#include "Render3D/WorldSprite/HIKARI_WorldSpritePass.h"
+#include "Vfx/Post/HIKARI_PostSystem.h"
 
 namespace HIKARI::RENDER3D::PIPELINE {
 MESHRENDERER::MeshPassResources BuildMeshPassResources(const SURFACE::SceneSurfaceSet& surfaces,
@@ -86,10 +90,25 @@ RenderFrameGraphStageResult ExecuteRenderFrameGraphStage(const RenderFrameGraphS
         return result;
     };
 
+    CAMERA::DepthOfFieldSettings depthOfFieldSettings{};
+    if (context.frame.camera != nullptr) {
+        depthOfFieldSettings = context.frame.camera->GetDepthOfFieldSettings();
+    }
+    if (context.debugView != RenderDebugView::None) {
+        depthOfFieldSettings.enabled = false;
+    }
+    const auto& worldSpriteStats = MESHRENDERER::GetWorldSpritePassStats();
+    const bool captureWorldSprites =
+        context.debugView == RenderDebugView::None && worldSpriteStats.transparentCount > 0u &&
+        worldSpriteStats.depthOfFieldCaptureReady && context.frame.scene.readOnlyDsv.ptr != 0u;
+    state->cameraDepthOfFieldPrepared = POST::PostSystem::PrepareCameraDepthOfField(
+        context.frame.frameIndex, depthOfFieldSettings, context.renderQuality.depthOfFieldQuality, captureWorldSprites);
+
     const INTERNAL::RenderFrameGraphPlanOptions options{context.requiresSceneColorOpaque,
                                                         context.hasSsrWork,
                                                         context.hasDepthAwareWork,
                                                         context.hasTransparentWork,
+                                                        state->cameraDepthOfFieldPrepared,
                                                         &context.frame.projectRenderExtensions,
                                                         INTERNAL::MapProjectRenderPurpose(context.frame.purpose)};
     if (!INTERNAL::BuildRenderFrameGraphPlan(options, state, INTERNAL::GetRenderFrameGraphPassCallbacks(), *graph)) {

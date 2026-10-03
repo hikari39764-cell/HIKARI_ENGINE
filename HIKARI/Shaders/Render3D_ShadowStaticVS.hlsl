@@ -5,7 +5,7 @@
 
 #include "Include/HIKARI_MeshMaterialData.hlsli"
 #include "Include/HIKARI_SurfaceGpuScene.hlsli"
-#include "Include/Surface/HIKARI_SandSurfaceDeform.hlsli"
+#include "Include/Surface/HIKARI_TerrainSurfaceDeform.hlsli"
 #include "Include/Surface/HIKARI_FoliageWind.hlsli"
 #include "Include/Surface/HIKARI_SurfaceTangentFrame.hlsli"
 
@@ -49,8 +49,8 @@ VSOutput main(VSInput input)
     const float alphaCutoff = materialData.pbrParams.w;
     float3 localPosition = input.position;
     float3 localNormal = input.normal;
-    float3 sandSurfaceData = 0.0f.xxx;
-    HikariApplySandSurfaceDeform(instance, localPosition, localNormal, sandSurfaceData);
+    float3 terrainSurfaceData = 0.0f.xxx;
+    HikariApplyTerrainSurfaceDeform(instance, localPosition, localNormal, terrainSurfaceData);
 
     float4 worldPos = mul(world, float4(localPosition, 1.0f));
     worldPos = HikariApplyFoliageWindWorldPosition(instance, gTimeParams.x, input.uv, worldPos);

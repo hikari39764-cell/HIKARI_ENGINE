@@ -24,10 +24,15 @@ class SkyManager;
 class World;
 class WorldMassSchemaRegistry;
 struct SceneDocument;
+namespace SPRITE {
+class SpriteAssetStore;
+}
 
 struct SceneDependencySet {
     std::unordered_set<std::string> modelAssetIds{};
     std::unordered_set<std::string> skyAssetIds{};
+    std::unordered_set<std::string> spriteAssetIds{};
+    std::unordered_set<std::string> spriteMaterialAssetIds{};
     SkySettings sky{};
     std::unordered_set<std::string> textureAssetIds{};
     std::unordered_set<std::string> materialAssetIds{};
@@ -56,7 +61,8 @@ public:
     bool PreloadDependencies(const SceneDependencySet& dependencies, const AssetRegistry& assetRegistry,
                              ModelManager& modelManager, SkyManager& skyManager,
                              const std::filesystem::path& projectRoot, const std::string& sceneGuid,
-                             bool loadLighting = true) const;
+                             bool loadLighting = true,
+                             const SPRITE::SpriteAssetStore* spriteAssetStore = nullptr) const;
 
     bool BuildWorldFromDocument(const SceneDocument& document, World& world, const AssetRegistry& assetRegistry,
                                 const ComponentRegistry& componentRegistry,

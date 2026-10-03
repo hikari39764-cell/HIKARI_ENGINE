@@ -41,6 +41,7 @@ struct StageExecutionState {
     RenderFrameGraphSessionReceipt session{};
     ProjectRenderCommandGate* projectCommandGate = nullptr;
     bool presentationResumed = false;
+    bool cameraDepthOfFieldPrepared = false;
 };
 
 struct RenderFrameGraphPlanOptions {
@@ -48,6 +49,7 @@ struct RenderFrameGraphPlanOptions {
     bool includeSsr = false;
     bool includeDepthAware = false;
     bool includeTransparent = false;
+    bool includeCameraDepthOfField = false;
     const RenderFrameProjectExtensionSink* projectExtensions = nullptr;
     GameProjectRenderViewPurpose projectPurpose = GameProjectRenderViewPurpose::Game;
 };
@@ -72,6 +74,7 @@ struct RenderFrameGraphPassCallbacks {
     GRAPH::RenderGraphExecuteFn visibilityFeatures = nullptr;
     GRAPH::RenderGraphExecuteFn sceneColorPostOpaqueCapture = nullptr;
     GRAPH::RenderGraphExecuteFn stylizedFeatureComposite = nullptr;
+    GRAPH::RenderGraphExecuteFn cameraDepthOfField = nullptr;
     GRAPH::RenderGraphExecuteFn sceneColorFinalCapture = nullptr;
     GRAPH::RenderGraphExecuteFn projectRenderPass = nullptr;
     GRAPH::RenderGraphExecuteFn projectDispatchResolve = nullptr;
@@ -116,6 +119,7 @@ bool ExecuteGeometryFeatures(const GRAPH::RenderGraphPassContext& context, void*
 bool ExecuteVisibilityFeatures(const GRAPH::RenderGraphPassContext& context, void* userData) noexcept;
 bool ExecuteSceneColorPostOpaqueCapture(const GRAPH::RenderGraphPassContext& context, void* userData) noexcept;
 bool ExecuteStylizedFeatureComposite(const GRAPH::RenderGraphPassContext& context, void* userData) noexcept;
+bool ExecuteCameraDepthOfField(const GRAPH::RenderGraphPassContext& context, void* userData) noexcept;
 bool ExecuteSceneColorFinalCapture(const GRAPH::RenderGraphPassContext& context, void* userData) noexcept;
 bool ExecuteProjectRenderPass(const GRAPH::RenderGraphPassContext& context, void* userData) noexcept;
 bool ExecuteProjectFullscreenShaderCommand(void* context, uint64_t commandGeneration,

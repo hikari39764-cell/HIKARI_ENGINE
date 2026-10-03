@@ -227,6 +227,7 @@ bool ValidateShaderCookedArtifact(const ShaderCookedArtifact& artifact, std::str
     compatibility.rootLayoutVersion = artifact.rootLayoutVersion;
     compatibility.rootLayoutHash = artifact.rootLayoutHash;
     compatibility.requiredCaps = artifact.requiredCaps;
+    compatibility.parameters = artifact.parameters;
     compatibility.includeRoots = {ShaderIncludeRoot::Project, ShaderIncludeRoot::EngineSdk};
     compatibility.entries.reserve(artifact.entries.size());
     for (const ShaderCookedEntry& entry : artifact.entries) {

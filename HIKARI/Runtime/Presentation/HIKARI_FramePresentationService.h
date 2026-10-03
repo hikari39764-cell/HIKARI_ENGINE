@@ -1,11 +1,24 @@
 #pragma once
+#include <cstdint>
 #include <filesystem>
 
+#include "HIKARI/Project/CameraViewSnapshot.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineRuntime.h"
 #include "Runtime/Host/HIKARI_HostBootstrapConfig.h"
 
+namespace HIKARI::RENDER3D {
+struct ResolvedCameraFrame;
+}
+
 namespace HIKARI::SERVICES {
+namespace detail {
+void SubmitPrimaryViewCameraFrame(const RENDER3D::ResolvedCameraFrame& cameraFrame, uint64_t sourceCameraObjectHandle,
+                                  GameProjectPrimaryViewSource source, uint64_t worldIdentity,
+                                  uint64_t frameIndex) noexcept;
+bool TryGetLatestPrimaryViewSnapshot(uint64_t worldIdentity, GameProjectCameraViewSnapshot& outSnapshot) noexcept;
+} // namespace detail
+
 struct FrameSceneResolutionPlan {
     RENDER3D::RenderResolution render{};
     RENDER3D::RenderResolution output{};

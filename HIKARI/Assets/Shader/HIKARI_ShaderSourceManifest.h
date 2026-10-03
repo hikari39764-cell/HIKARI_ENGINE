@@ -8,6 +8,7 @@
 
 #include "Core/Hashing/HIKARI_Sha256.h"
 #include "Core/Shader/HIKARI_ShaderProfile.h"
+#include "Assets/Shader/HIKARI_ShaderParameters.h"
 
 namespace HIKARI::ASSETS::SHADER {
 
@@ -73,6 +74,7 @@ struct ShaderSourceManifest {
     std::string programId{};
     std::filesystem::path sourcePath{};
     std::vector<ShaderEntryPoint> entries{};
+    std::vector<ShaderParameterDefinition> parameters{};
     // Stage 1 permutations are program-wide; entry-specific define sets
     // require a later explicit schema version.
     std::vector<ShaderDefine> defines{};

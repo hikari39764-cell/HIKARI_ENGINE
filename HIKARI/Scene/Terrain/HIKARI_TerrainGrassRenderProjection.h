@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "Render3D/Core/HIKARI_RenderView.h"
+#include "Render3D/HIKARI_Math3D.h"
 #include "Scene/Terrain/HIKARI_TerrainGrass.h"
 
 namespace HIKARI {
@@ -29,10 +30,27 @@ struct TerrainGrassRenderProjectionStats {
     uint64_t skippedCount = 0u;
 };
 
+// 草を最後に投影した authored 入力。runtime 変形だけの dirty では
+// 配置も高さも変わらないため、同じ入力なら投影を作り直さない。
+struct TerrainGrassRenderSourceKey {
+    uint64_t terrainRevision = 0u;
+    MATH::Mat4 terrainWorld{};
+    std::filesystem::path projectRoot{};
+    uint32_t postGroupMask = 0u;
+    bool visible = false;
+    bool receiveShadow = false;
+    bool lightingBakeCapture = false;
+};
+
+struct TerrainGrassOwnerProjection {
+    TerrainGrassRenderSourceKey source{};
+    std::vector<uint64_t> renderObjectIds{};
+};
+
 // Grass blades are render projection instances derived from the
 // authored Grass terrain layer. They are never serialized GameObjects.
 struct TerrainGrassRenderProjectionState {
-    std::unordered_map<uint64_t, std::vector<uint64_t>> renderObjectIdsByOwner{};
+    std::unordered_map<uint64_t, TerrainGrassOwnerProjection> owners{};
     size_t activeRenderInstanceCount = 0u;
     std::array<std::string, kTerrainGrassVariantCount> clusteredGeometryPaths{};
     // Prevent a failed cook from being retried once per placement.

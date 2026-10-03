@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <string_view>
 
+#include "Core/Text/HIKARI_EnumNames.h"
+
 namespace HIKARI::RENDER3D {
 
 enum class RenderResolutionPreset : uint8_t {
@@ -81,6 +83,20 @@ enum class StylizedCloudQuality : uint8_t {
     High,
 };
 
+enum class DepthOfFieldQuality : uint8_t {
+    Off = 0,
+    Low,
+    Medium,
+    High,
+};
+
+inline constexpr TEXT::EnumName<DepthOfFieldQuality> kDepthOfFieldQualityNames[] = {
+    {DepthOfFieldQuality::Off, "Off"},
+    {DepthOfFieldQuality::Low, "Low"},
+    {DepthOfFieldQuality::Medium, "Medium"},
+    {DepthOfFieldQuality::High, "High"},
+};
+
 struct RenderResolution {
     int width = 0;
     int height = 0;
@@ -102,6 +118,7 @@ struct RenderQualitySettings {
     RenderFrameGenerationMode frameGenerationMode = RenderFrameGenerationMode::Off;
     uint8_t frameGenerationMultiplier = 2;
     VolumetricLightingQuality volumetricLightingQuality = VolumetricLightingQuality::Balanced;
+    DepthOfFieldQuality depthOfFieldQuality = DepthOfFieldQuality::Medium;
     StylizedCloudQuality stylizedCloudQuality = StylizedCloudQuality::Balanced;
     DynamicGiQuality dynamicGiQuality = DynamicGiQuality::Off;
     LocalShadowQuality localShadowQuality = LocalShadowQuality::Balanced;
@@ -152,6 +169,7 @@ const char* VolumetricLightingQualityLabel(VolumetricLightingQuality quality);
 const char* StylizedCloudQualityLabel(StylizedCloudQuality quality);
 const char* DynamicGiQualityLabel(DynamicGiQuality quality);
 const char* LocalShadowQualityLabel(LocalShadowQuality quality);
+const char* DepthOfFieldQualityLabel(DepthOfFieldQuality quality);
 
 bool IsTemporalAntiAliasingMode(RenderAntiAliasingMode mode);
 bool UsesTemporalJitter(RenderAntiAliasingMode mode);

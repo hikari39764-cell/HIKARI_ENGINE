@@ -2,35 +2,23 @@
 #define HIKARI_WATER_SURFACE_PS_INCLUDED
 
 #include "Include/HIKARI_WaterSurfaceParams.hlsli"
+#include "Include/Surface/HIKARI_SurfaceFeatureFloats.hlsli"
 #include "Include/Surface/HIKARI_WaterSpectralSlope.hlsli"
 #include "Include/Surface/HIKARI_ScreenSpaceReflectionTrace.hlsli"
 #include "Include/Surface/HIKARI_SurfaceTransmission.hlsli"
 #include "Include/Water/HIKARI_WaterOptics.hlsli"
 
+// 水面は Forward pass 内で全解像度に追跡する。全体 SSR (半解像度) より
+// 1 画素あたりが重いため、同じ距離を半分の歩数で覆い、交差後の二分探索で詰める。
+static const float HIKARI_WATER_SSR_STEP_FRACTION = 0.5f;
+
 float HikariSampleLiquidCoverage(
     HikariWaterSurfaceParams p,
     float2 uv)
 {
-    if (p.liquidCoverageOffset == 0u)
-    {
-        return 1.0f;
-    }
-    const float2 safeUv = saturate(uv);
-    const float fu = safeUv.x * (float)p.coverageResolution;
-    const float fv = safeUv.y * (float)p.coverageResolution;
-    uint x0 = (uint)fu;
-    uint y0 = (uint)fv;
-    uint x1 = min(x0 + 1u, p.coverageResolution);
-    uint y1 = min(y0 + 1u, p.coverageResolution);
-    const float tx = fu - (float)x0;
-    const float ty = fv - (float)y0;
-    const uint stride = p.coverageResolution + 1u;
-    const uint base = p.liquidCoverageOffset;
-    const float c00 = gSandSurfaceHeights[base + y0 * stride + x0];
-    const float c10 = gSandSurfaceHeights[base + y0 * stride + x1];
-    const float c01 = gSandSurfaceHeights[base + y1 * stride + x0];
-    const float c11 = gSandSurfaceHeights[base + y1 * stride + x1];
-    return lerp(lerp(c00, c10, tx), lerp(c01, c11, tx), ty);
+    return p.liquidCoverageOffset == 0u
+        ? 1.0f
+        : HikariSampleSurfaceFeatureField(p.liquidCoverageOffset, p.coverageResolution, uv);
 }
 
 struct HikariWaterDepthSample
@@ -593,15 +581,19 @@ float4 HikariShadeWaterSurface(
             1.0f,
             safeScatteringColor);
     HikariScreenSpaceReflectionTraceConfig waterSsrConfig;
+    // 反射強度 0 の水面は反射 budget の gain が 0 になるため追跡しない。
     waterSsrConfig.valid =
         (gScreenSpaceTraceFlags &
             HIKARI_SCREEN_SPACE_DEPTH_TRACE_VALID) != 0u &&
-        gScreenSpaceReflectionParams0.x > 0.0f
+        gScreenSpaceReflectionParams0.x > 0.0f &&
+        HikariFiniteOr(p.reflectionStrength, 0.0f) > 0.0f
             ? 1u
             : 0u;
-    waterSsrConfig.maxSteps = (uint)max(
+    const float globalSsrSteps = max(
         HikariFiniteOr(gScreenSpaceReflectionParams1.z, 0.0f),
         0.0f);
+    waterSsrConfig.maxSteps = (uint)ceil(
+        globalSsrSteps * HIKARI_WATER_SSR_STEP_FRACTION);
     waterSsrConfig.hzbMipCount =
         max(gScreenSpaceDepthPyramidMipCount, 1u);
     waterSsrConfig.maxDistance = HikariFiniteOr(
@@ -615,7 +607,7 @@ float4 HikariShadeWaterSurface(
         0.0f);
     waterSsrConfig.stride = HikariFiniteOr(
         gScreenSpaceReflectionParams1.x,
-        1.0f);
+        1.0f) * (globalSsrSteps / max((float)waterSsrConfig.maxSteps, 1.0f));
     waterSsrConfig.edgeFade = HikariFiniteOr(
         gScreenSpaceReflectionParams1.y,
         0.0f);

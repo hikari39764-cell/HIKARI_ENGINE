@@ -501,6 +501,8 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
     };
 
     ASSETS::SHADER::ShaderAssetEntryLease amplificationShader{};
+    ASSETS::SHADER::ShaderAssetEntryLease generalAmplificationShader{};
+    ASSETS::SHADER::ShaderAssetEntryLease terrainAmplificationShader{};
     ASSETS::SHADER::ShaderAssetEntryLease shadowAmplificationShader{};
     ASSETS::SHADER::ShaderAssetEntryLease forwardMeshShader{};
     ASSETS::SHADER::ShaderAssetEntryLease shadowMeshShader{};
@@ -509,10 +511,14 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
     ASSETS::SHADER::ShaderAssetEntryLease geometryMeshShader{};
     ASSETS::SHADER::ShaderAssetEntryLease geometryOutlineMeshShader{};
     ASSETS::SHADER::ShaderAssetEntryLease forwardPixelShader{};
+    ASSETS::SHADER::ShaderAssetEntryLease terrainForwardPixelShader{};
+    ASSETS::SHADER::ShaderAssetEntryLease surfacePixelShader{};
     ASSETS::SHADER::ShaderAssetEntryLease shadowPixelShader{};
     ASSETS::SHADER::ShaderAssetEntryLease waterVisibilityPixelShader{};
     ASSETS::SHADER::ShaderAssetEntryLease geometryPixelShader{};
+    ASSETS::SHADER::ShaderAssetEntryLease terrainGeometryPixelShader{};
     ASSETS::SHADER::ShaderAssetEntryLease geometryFeatureMaskPixelShader{};
+    ASSETS::SHADER::ShaderAssetEntryLease terrainGeometryFeatureMaskPixelShader{};
     ASSETS::SHADER::ShaderAssetEntryLease geometryOutlinePixelShader{};
     ASSETS::SHADER::ShaderAssetEntryLease visibilityOverlayPixelShader{};
     const bool needsForwardMeshShader = IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardOpaque) ||
@@ -535,6 +541,17 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
     if ((pipelineMask_ & MeshletPipelineMask::MainRenderer) != 0u &&
         !resolveShader("HIKARI.EngineShader.Render3D_MeshletAS", ASSETS::SHADER::ShaderStage::Amplification, "as_6_5",
                        amplificationShader)) {
+        return false;
+    }
+    // Forward と GeometryAux は同じ可視範囲を一般面用と地形用の AS で 2 回 dispatch する。
+    const bool needsSurfacePartition = IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardOpaque) ||
+                                       IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAux) ||
+                                       IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAuxFeatureMask);
+    if (needsSurfacePartition &&
+        (!resolveShader("HIKARI.EngineShader.Render3D_MeshletGeneralAS", ASSETS::SHADER::ShaderStage::Amplification,
+                        "as_6_5", generalAmplificationShader) ||
+         !resolveShader("HIKARI.EngineShader.Render3D_MeshletTerrainAS", ASSETS::SHADER::ShaderStage::Amplification,
+                        "as_6_5", terrainAmplificationShader))) {
         return false;
     }
     if (needsShadowMeshShader &&
@@ -574,21 +591,19 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
         DEBUGLOG::PushRenderError("[MeshletBackend][WARN] Optional geometry-outline mesh "
                                   "shader is unavailable; core Mesh rendering remains active.");
     }
-    bool fullForwardPixelShaderReady = false;
-    if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardOpaque)) {
-        if (!resolveShader(kForwardOpaqueProgramIds[0], ASSETS::SHADER::ShaderStage::Pixel, "ps_6_0",
-                           forwardPixelShader))
-            return false;
-        fullForwardPixelShaderReady = true;
+    if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardOpaque) &&
+        (!resolveShader(kForwardOpaqueProgramIds[0], ASSETS::SHADER::ShaderStage::Pixel, "ps_6_0",
+                        forwardPixelShader) ||
+         !resolveShader("HIKARI.EngineShader.Render3D_GpuDrivenTerrainPS", ASSETS::SHADER::ShaderStage::Pixel, "ps_6_0",
+                        terrainForwardPixelShader))) {
+        return false;
     }
+    // 水面を含む全経路は depth-aware/transparent だけが使う。
     if ((IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardDepthAware) ||
          IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardTransparent)) &&
-        !fullForwardPixelShaderReady) {
-        if (!resolveShader(kForwardOpaqueProgramIds[0u], ASSETS::SHADER::ShaderStage::Pixel, "ps_6_0",
-                           forwardPixelShader)) {
-            return false;
-        }
-        fullForwardPixelShaderReady = true;
+        !resolveShader("HIKARI.EngineShader.Render3D_GpuDrivenSurfacePS", ASSETS::SHADER::ShaderStage::Pixel, "ps_6_0",
+                       surfacePixelShader)) {
+        return false;
     }
     if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::Shadow) &&
         !resolveShader("HIKARI.EngineShader.Render3D_MeshletShadowPS", ASSETS::SHADER::ShaderStage::Pixel, "ps_6_0",
@@ -604,13 +619,17 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
                                   "remains active.");
     }
     if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAux) &&
-        !resolveShader("HIKARI.EngineShader.Render3D_MeshletGeometryAuxPS", ASSETS::SHADER::ShaderStage::Pixel,
-                       "ps_6_0", geometryPixelShader)) {
+        (!resolveShader("HIKARI.EngineShader.Render3D_MeshletGeometryAuxPS", ASSETS::SHADER::ShaderStage::Pixel,
+                        "ps_6_0", geometryPixelShader) ||
+         !resolveShader("HIKARI.EngineShader.Render3D_MeshletGeometryAuxTerrainPS", ASSETS::SHADER::ShaderStage::Pixel,
+                        "ps_6_0", terrainGeometryPixelShader))) {
         return false;
     }
     if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAuxFeatureMask) &&
-        !resolveShader("HIKARI.EngineShader.Render3D_MeshletGeometryAuxFeaturePS", ASSETS::SHADER::ShaderStage::Pixel,
-                       "ps_6_0", geometryFeatureMaskPixelShader)) {
+        (!resolveShader("HIKARI.EngineShader.Render3D_MeshletGeometryAuxFeaturePS", ASSETS::SHADER::ShaderStage::Pixel,
+                        "ps_6_0", geometryFeatureMaskPixelShader) ||
+         !resolveShader("HIKARI.EngineShader.Render3D_MeshletGeometryAuxFeatureTerrainPS",
+                        ASSETS::SHADER::ShaderStage::Pixel, "ps_6_0", terrainGeometryFeatureMaskPixelShader))) {
         geometryFeatureMaskShadersReady = false;
         pipelineMask_ &= ~MeshletPipelineMask::GeometryAuxFeatureMask;
         DEBUGLOG::PushRenderError("[MeshletBackend][WARN] Optional feature-mask pixel shader "
@@ -635,7 +654,7 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
     stats_.shaderCompileReady = true;
     if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardOpaque)) {
         forwardVariantAttempted_[0] = true;
-        if (!CreateForwardVariantPipelines(device, rootSignature, amplificationShader, forwardMeshShader,
+        if (!CreateForwardVariantPipelines(device, rootSignature, generalAmplificationShader, forwardMeshShader,
                                            forwardPixelShader, 0, forwardPipelineStates_[0], stats_))
             return false;
     }
@@ -647,7 +666,7 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
             ++stats_.pipelineCreateRequestCount;
             if (CreateMeshletPipelineState(
                     device, rootSignature, ShaderBytecode(amplificationShader), ShaderBytecode(forwardMeshShader),
-                    ShaderBytecode(forwardPixelShader), DXGI_FORMAT_R16G16B16A16_FLOAT, CullModeForBucket(bucket), true,
+                    ShaderBytecode(surfacePixelShader), DXGI_FORMAT_R16G16B16A16_FLOAT, CullModeForBucket(bucket), true,
                     false, true, DepthAwareDebugName(bucket), depthAwarePipelineStates_[bucketIndex].GetAddressOf())) {
                 ++stats_.pipelineCreateReadyCount;
             }
@@ -656,7 +675,7 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
         if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardTransparent)) {
             ++stats_.pipelineCreateRequestCount;
             if (CreateMeshletPipelineState(device, rootSignature, ShaderBytecode(amplificationShader),
-                                           ShaderBytecode(forwardMeshShader), ShaderBytecode(forwardPixelShader),
+                                           ShaderBytecode(forwardMeshShader), ShaderBytecode(surfacePixelShader),
                                            DXGI_FORMAT_R16G16B16A16_FLOAT, CullModeForBucket(bucket), true, false, true,
                                            TransparentDebugName(bucket),
                                            transparentPipelineStates_[bucketIndex].GetAddressOf())) {
@@ -674,25 +693,54 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
             }
         }
 
-        if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAux)) {
+        if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardOpaque)) {
             ++stats_.pipelineCreateRequestCount;
-            if (CreateMeshletPipelineState(device, rootSignature, ShaderBytecode(amplificationShader),
+            if (CreateMeshletPipelineState(device, rootSignature, ShaderBytecode(terrainAmplificationShader),
+                                           ShaderBytecode(forwardMeshShader), ShaderBytecode(terrainForwardPixelShader),
+                                           DXGI_FORMAT_R16G16B16A16_FLOAT, CullModeForBucket(bucket), false, true, true,
+                                           L"Meshlet Forward Terrain PSO",
+                                           terrainForwardPipelineStates_[bucketIndex].GetAddressOf())) {
+                ++stats_.pipelineCreateReadyCount;
+            }
+        }
+
+        if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAux)) {
+            stats_.pipelineCreateRequestCount += 2u;
+            if (CreateMeshletPipelineState(device, rootSignature, ShaderBytecode(generalAmplificationShader),
                                            ShaderBytecode(geometryMeshShader), ShaderBytecode(geometryPixelShader),
                                            DXGI_FORMAT_R16G16B16A16_FLOAT, CullModeForBucket(bucket), false, true, true,
                                            GeometryDebugName(bucket),
                                            geometryAuxPipelineStates_[bucketIndex].GetAddressOf())) {
                 ++stats_.pipelineCreateReadyCount;
             }
+            if (CreateMeshletPipelineState(device, rootSignature, ShaderBytecode(terrainAmplificationShader),
+                                           ShaderBytecode(geometryMeshShader),
+                                           ShaderBytecode(terrainGeometryPixelShader), DXGI_FORMAT_R16G16B16A16_FLOAT,
+                                           CullModeForBucket(bucket), false, true, true,
+                                           L"Meshlet GeometryAux Terrain PSO",
+                                           terrainGeometryAuxPipelineStates_[bucketIndex].GetAddressOf())) {
+                ++stats_.pipelineCreateReadyCount;
+            }
         }
 
         if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAuxFeatureMask) &&
             geometryFeatureMaskShadersReady) {
-            ++stats_.pipelineCreateRequestCount;
+            stats_.pipelineCreateRequestCount += 2u;
             if (CreateMeshletPipelineState(
-                    device, rootSignature, ShaderBytecode(amplificationShader), ShaderBytecode(geometryMeshShader),
-                    ShaderBytecode(geometryFeatureMaskPixelShader), DXGI_FORMAT_R16G16B16A16_FLOAT,
-                    CullModeForBucket(bucket), false, true, true, GeometryFeatureMaskDebugName(bucket),
+                    device, rootSignature, ShaderBytecode(generalAmplificationShader),
+                    ShaderBytecode(geometryMeshShader), ShaderBytecode(geometryFeatureMaskPixelShader),
+                    DXGI_FORMAT_R16G16B16A16_FLOAT, CullModeForBucket(bucket), false, true, true,
+                    GeometryFeatureMaskDebugName(bucket),
                     geometryFeatureMaskPipelineStates_[bucketIndex].GetAddressOf(), DXGI_FORMAT_R32G32_UINT,
+                    D3D12_COMPARISON_FUNC_LESS_EQUAL, DXGI_FORMAT_R8G8B8A8_UNORM)) {
+                ++stats_.pipelineCreateReadyCount;
+            }
+            if (CreateMeshletPipelineState(
+                    device, rootSignature, ShaderBytecode(terrainAmplificationShader),
+                    ShaderBytecode(geometryMeshShader), ShaderBytecode(terrainGeometryFeatureMaskPixelShader),
+                    DXGI_FORMAT_R16G16B16A16_FLOAT, CullModeForBucket(bucket), false, true, true,
+                    L"Meshlet GeometryAux FeatureMask Terrain PSO",
+                    terrainGeometryFeatureMaskPipelineStates_[bucketIndex].GetAddressOf(), DXGI_FORMAT_R32G32_UINT,
                     D3D12_COMPARISON_FUNC_LESS_EQUAL, DXGI_FORMAT_R8G8B8A8_UNORM)) {
                 ++stats_.pipelineCreateReadyCount;
             }
@@ -756,6 +804,9 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
     };
     disableOptionalPipeline(MeshletPipelineMask::GeometryAuxFeatureMask, geometryFeatureMaskPipelineStates_,
                             "[MeshletBackend][WARN] Optional feature-mask PSO creation "
+                            "failed; core Mesh rendering remains active.");
+    disableOptionalPipeline(MeshletPipelineMask::GeometryAuxFeatureMask, terrainGeometryFeatureMaskPipelineStates_,
+                            "[MeshletBackend][WARN] Optional terrain feature-mask PSO creation "
                             "failed; core Mesh rendering remains active.");
     disableOptionalPipeline(MeshletPipelineMask::GeometryOutline, geometryOutlinePipelineStates_,
                             "[MeshletBackend][WARN] Optional geometry-outline PSO creation "
@@ -821,7 +872,7 @@ bool MeshletRenderBackend::PrepareForwardVariant(ForwardShadingCostMode mode) {
     const auto caps = GFX::QueryShaderDeviceCapabilities(device_.Get());
     ASSETS::SHADER::ShaderAssetEntryLease amplification, mesh, pixel;
     using Stage = ASSETS::SHADER::ShaderStage;
-    if (!ResolveMeshletShader(caps, "HIKARI.EngineShader.Render3D_MeshletAS", Stage::Amplification, "as_6_5",
+    if (!ResolveMeshletShader(caps, "HIKARI.EngineShader.Render3D_MeshletGeneralAS", Stage::Amplification, "as_6_5",
                               amplification) ||
         !ResolveMeshletShader(caps, "HIKARI.EngineShader.Render3D_MeshletMS", Stage::Mesh, "ms_6_5", mesh) ||
         !ResolveMeshletShader(caps, kForwardOpaqueProgramIds[index], Stage::Pixel, "ps_6_0", pixel) ||
@@ -833,6 +884,64 @@ bool MeshletRenderBackend::PrepareForwardVariant(ForwardShadingCostMode mode) {
         return false;
     }
     return true;
+}
+
+bool MeshletRenderBackend::PrepareForwardDebugPipelines() {
+    if (ArePipelinesReady(forwardDebugPipelineStates_))
+        return true;
+    if (forwardDebugAttempted_ || !device_ || !rootSignature_ ||
+        !IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardOpaque))
+        return false;
+    forwardDebugAttempted_ = true;
+    const auto caps = GFX::QueryShaderDeviceCapabilities(device_.Get());
+    ASSETS::SHADER::ShaderAssetEntryLease amplification, mesh, pixel;
+    using Stage = ASSETS::SHADER::ShaderStage;
+    if (!ResolveMeshletShader(caps, "HIKARI.EngineShader.Render3D_MeshletAS", Stage::Amplification, "as_6_5",
+                              amplification) ||
+        !ResolveMeshletShader(caps, "HIKARI.EngineShader.Render3D_MeshletMS", Stage::Mesh, "ms_6_5", mesh) ||
+        !ResolveMeshletShader(caps, "HIKARI.EngineShader.Render3D_GpuDrivenSurfacePS", Stage::Pixel, "ps_6_0", pixel)) {
+        DEBUGLOG::PushRenderError("[MeshletBackend] Debug-view Forward shaders unavailable; using split Forward.");
+        return false;
+    }
+    PipelineBucketArray replacements{};
+    for (size_t i = 0; i < replacements.size(); ++i) {
+        if (!CreateMeshletPipelineState(device_.Get(), rootSignature_.Get(), ShaderBytecode(amplification),
+                                        ShaderBytecode(mesh), ShaderBytecode(pixel), DXGI_FORMAT_R16G16B16A16_FLOAT,
+                                        CullModeForBucket(static_cast<GPUDRIVEN::GpuDrivenCommandBucket>(i)), false,
+                                        true, true, L"Meshlet Forward DebugView PSO", replacements[i].GetAddressOf())) {
+            return false;
+        }
+    }
+    forwardDebugPipelineStates_.swap(replacements);
+    return true;
+}
+
+void MeshletRenderBackend::ApplyTerrainPartitionReadiness() {
+    const auto ready = [this](MeshletPipelineKind kind, const PipelineBucketArray& terrain) {
+        return !IsPipelineRequested(pipelineMask_, kind) || ArePipelinesReady(terrain);
+    };
+    const bool forwardTerrain = ready(MeshletPipelineKind::ForwardOpaque, terrainForwardPipelineStates_);
+    const bool geometryTerrain = ready(MeshletPipelineKind::GeometryAux, terrainGeometryAuxPipelineStates_);
+    const bool featureMaskTerrain =
+        ready(MeshletPipelineKind::GeometryAuxFeatureMask, terrainGeometryFeatureMaskPipelineStates_);
+    stats_.forwardPipelineReady = stats_.forwardPipelineReady && forwardTerrain;
+    stats_.geometryAuxPipelineReady = stats_.geometryAuxPipelineReady && geometryTerrain;
+    stats_.geometryFeatureMaskPipelineReady = stats_.geometryFeatureMaskPipelineReady && featureMaskTerrain;
+    stats_.pipelineReady = stats_.pipelineReady && forwardTerrain && geometryTerrain && featureMaskTerrain;
+}
+
+ID3D12PipelineState* MeshletRenderBackend::GetTerrainPipelineState(MeshletPipelineKind kind,
+                                                                   GPUDRIVEN::GpuDrivenCommandBucket bucket) const {
+    const size_t index = GPUDRIVEN::ToCommandBucketIndex(bucket);
+    if (index >= GPUDRIVEN::kGpuDrivenCommandBucketCount) {
+        return nullptr;
+    }
+    switch (kind) {
+    case MeshletPipelineKind::ForwardOpaque: return terrainForwardPipelineStates_[index].Get();
+    case MeshletPipelineKind::GeometryAux: return terrainGeometryAuxPipelineStates_[index].Get();
+    case MeshletPipelineKind::GeometryAuxFeatureMask: return terrainGeometryFeatureMaskPipelineStates_[index].Get();
+    default: return nullptr;
+    }
 }
 
 void MeshletRenderBackend::Reset() {
@@ -876,6 +985,16 @@ void MeshletRenderBackend::Reset() {
     for (auto& pipeline : waterVisibilityPipelineStates_) {
         pipeline.Reset();
     }
+    for (PipelineBucketArray* pipelines : {&terrainForwardPipelineStates_, &terrainGeometryAuxPipelineStates_,
+                                           &terrainGeometryFeatureMaskPipelineStates_}) {
+        for (auto& pipeline : *pipelines) {
+            pipeline.Reset();
+        }
+    }
+    for (auto& pipeline : forwardDebugPipelineStates_) {
+        GFX::RetireD3D12ObjectForCurrentFrame(pipeline, "Meshlet.ForwardDebugPSO");
+    }
+    forwardDebugAttempted_ = false;
     pipelineMask_ = MeshletPipelineMask::All;
     stats_ = {};
 }
@@ -932,6 +1051,7 @@ void MeshletRenderBackend::ResetFrame() {
                                                       geometryAuxPipelineStates_, geometryFeatureMaskPipelineStates_,
                                                       geometryOutlinePipelineStates_, visibilityOverlayPipelineStates_,
                                                       depthPrepassPipelineStates_, waterVisibilityPipelineStates_);
+    ApplyTerrainPartitionReadiness();
 }
 
 bool MeshletRenderBackend::Execute(const MeshletRenderExecutionContext& ctx) {
@@ -980,6 +1100,7 @@ bool MeshletRenderBackend::Execute(const MeshletRenderExecutionContext& ctx) {
                                                       geometryAuxPipelineStates_, geometryFeatureMaskPipelineStates_,
                                                       geometryOutlinePipelineStates_, visibilityOverlayPipelineStates_,
                                                       depthPrepassPipelineStates_, waterVisibilityPipelineStates_);
+    ApplyTerrainPartitionReadiness();
     const bool requestedPipelineReady =
         ctx.pipelineKind == MeshletPipelineKind::GeometryAuxFeatureMask ? stats_.geometryFeatureMaskPipelineReady
         : ctx.pipelineKind == MeshletPipelineKind::GeometryAux          ? stats_.geometryAuxPipelineReady
@@ -1024,6 +1145,8 @@ bool MeshletRenderBackend::Execute(const MeshletRenderExecutionContext& ctx) {
     constexpr UINT maxCommandCount = 1u;
 
     bool submittedAnyBucket = false;
+    const bool forwardDebug = ctx.forwardDebugView && !ctx.reflectionCapture &&
+                              ctx.pipelineKind == MeshletPipelineKind::ForwardOpaque && PrepareForwardDebugPipelines();
     const GFX::GPU_PROFILE::Pass profilePass = ctx.profilePass != GFX::GPU_PROFILE::Pass::Count
                                                    ? ctx.profilePass
                                                    : ProfilePassForPipelineKind(ctx.pipelineKind);
@@ -1038,10 +1161,15 @@ bool MeshletRenderBackend::Execute(const MeshletRenderExecutionContext& ctx) {
 
         ID3D12PipelineState* selectedPipeline =
             ctx.reflectionCapture ? reflectionPipelineStates_[ctx.reflectionMaterialCapture][bucketIndex].Get()
+            : forwardDebug        ? forwardDebugPipelineStates_[bucketIndex].Get()
                                   : GetPipelineState(ctx.pipelineKind, bucket, effectiveForwardCostMode);
         if (selectedPipeline == nullptr) {
             continue;
         }
+        // 一般 PSO の AS は地形を除外する。同じ可視範囲を地形 PSO で描き足す。
+        ID3D12PipelineState* terrainPipeline = ctx.reflectionCapture || forwardDebug || !ctx.terrainSurfacesPresent
+                                                   ? nullptr
+                                                   : GetTerrainPipelineState(ctx.pipelineKind, bucket);
 
         ++stats_.submitCallCount;
         if (bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided) {
@@ -1057,6 +1185,13 @@ bool MeshletRenderBackend::Execute(const MeshletRenderExecutionContext& ctx) {
         ctx.commandList->ExecuteIndirect(commandSignature, maxCommandCount, argumentBuffer,
                                          DispatchArgumentOffsetForBucket(layout, bucket), countBuffer,
                                          CounterOffsetForBucket(layout, bucket));
+        if (terrainPipeline != nullptr) {
+            ++stats_.submitCallCount;
+            ctx.commandList->SetPipelineState(terrainPipeline);
+            ctx.commandList->ExecuteIndirect(commandSignature, maxCommandCount, argumentBuffer,
+                                             DispatchArgumentOffsetForBucket(layout, bucket), countBuffer,
+                                             CounterOffsetForBucket(layout, bucket));
+        }
         submittedAnyBucket = true;
     }
 

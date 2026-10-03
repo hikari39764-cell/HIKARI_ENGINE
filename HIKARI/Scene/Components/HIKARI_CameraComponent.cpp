@@ -4,6 +4,8 @@
 #include <cmath>
 #include <numbers>
 
+#include "Render3D/Core/HIKARI_CameraOpticsSerialization.h"
+
 namespace HIKARI {
 
 namespace {
@@ -22,6 +24,7 @@ void CameraComponent::Serialize(nlohmann::json& out) const {
     out["verticalFovDegrees"] = verticalFovDegrees_;
     out["nearClip"] = nearClip_;
     out["farClip"] = farClip_;
+    out["depthOfField"] = CAMERA::WriteDepthOfFieldSettings(depthOfFieldSettings_);
 }
 
 void CameraComponent::Deserialize(const nlohmann::json& in) {
@@ -33,6 +36,10 @@ void CameraComponent::Deserialize(const nlohmann::json& in) {
     verticalFovDegrees_ = in.value("verticalFovDegrees", verticalFovDegrees_);
     nearClip_ = in.value("nearClip", nearClip_);
     farClip_ = in.value("farClip", farClip_);
+    depthOfFieldSettings_ = {};
+    if (const auto depthOfField = in.find("depthOfField"); depthOfField != in.end()) {
+        CAMERA::ReadDepthOfFieldSettings(*depthOfField, depthOfFieldSettings_);
+    }
     ClampLens();
 }
 
@@ -60,6 +67,7 @@ void CameraComponent::ClampLens() noexcept {
     verticalFovDegrees_ = std::clamp(verticalFovDegrees_, kMinVerticalFovDegrees, kMaxVerticalFovDegrees);
     nearClip_ = (std::max)(nearClip_, kMinNearClip);
     farClip_ = (std::max)(farClip_, nearClip_ + kMinClipRange);
+    depthOfFieldSettings_ = CAMERA::NormalizeDepthOfFieldSettings(depthOfFieldSettings_);
 }
 
 } // namespace HIKARI

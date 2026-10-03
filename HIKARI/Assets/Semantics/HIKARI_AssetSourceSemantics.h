@@ -19,6 +19,8 @@ std::string MakeAssetFileStem(std::string value, std::string_view fallback);
 enum class AssetImporterKind : uint8_t {
     SkyCubemap,
     Texture,
+    Sprite,
+    SpriteMaterial,
     Model,
     Scene,
     Prefab,

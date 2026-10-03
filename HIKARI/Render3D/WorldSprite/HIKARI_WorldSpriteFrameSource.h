@@ -1,10 +1,13 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Assets/HIKARI_AssetTypes.h"
 #include "Assets/Models/HIKARI_ModelAssetTypes.h"
+#include "Assets/Shader/HIKARI_ShaderParameters.h"
 #include "Render3D/HIKARI_Math3D.h"
 
 namespace HIKARI {
@@ -37,8 +40,13 @@ struct WorldSpriteInstance {
     MATH::Vec2 size{1.0f, 1.0f};
     MATH::Vec2 pivot{0.5f, 0.5f};
     MATH::Vec3 tint{1.0f, 1.0f, 1.0f};
-    AssetGuid textureAssetGuid{};
+    AssetId textureAssetId{};
+    AssetId normalTextureAssetId{};
+    std::shared_ptr<const ASSETS::SHADER::ShaderCookedArtifact> spriteShaderArtifact{};
+    std::array<MATH::Vec4, ASSETS::SHADER::kShaderParameterSlotCount> spriteMaterialParameters{};
     MATH::Vec4 uvRect{0, 0, 1, 1};
+    MATH::Vec4 sourceCanvasRect{};
+    bool rotated = false;
     float roughness = 0.85f, specular = 0.25f;
     bool lit = false, pointSampling = false;
     bool castShadow = true, receiveShadow = true;
@@ -48,6 +56,7 @@ struct WorldSpriteInstance {
     WorldSpriteFacingMode facing = WorldSpriteFacingMode::CameraFacing;
     WorldSpriteAlphaMode alphaMode = WorldSpriteAlphaMode::Auto;
     bool preserveAspect = true;
+    bool flipX = false;
     Bounds worldBounds{};
 };
 

@@ -10,6 +10,7 @@
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/HIKARI_Math3D.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"
+#include "Render3D/DepthOfField/HIKARI_CameraDepthOfFieldStage.h"
 #include "Render3D/WorldSprite/HIKARI_WorldSpriteFrameSource.h"
 
 namespace HIKARI::RENDER3D::WORLD_SPRITES {
@@ -28,6 +29,7 @@ struct WorldSpritePassStats {
     uint64_t uploadedBytes = 0u;
     uint64_t residentBytes = 0u;
     uint32_t textureLoadRequests = 0u;
+    bool depthOfFieldCaptureReady = false;
 };
 
 class WorldSpritePass final {
@@ -44,6 +46,10 @@ public:
                               const SurfaceLightingBindings& lighting = {});
     bool ExecuteForwardTransparent(const GFX::Context& context, D3D12_GPU_VIRTUAL_ADDRESS cameraConstants,
                                    const SurfaceLightingBindings& lighting = {});
+    bool ExecuteForwardTransparentDepthOfField(const GFX::Context& context,
+                                               D3D12_GPU_VIRTUAL_ADDRESS cameraConstants,
+                                               const SurfaceLightingBindings& lighting,
+                                               const DOF::WorldSpriteLayerCapture& capture);
 
     bool HasOpaqueWork() const noexcept;
     bool ExecuteDepth(const GFX::Context& context, D3D12_GPU_VIRTUAL_ADDRESS cameraConstants);

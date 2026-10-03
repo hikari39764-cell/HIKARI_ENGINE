@@ -34,21 +34,48 @@ inline GameProjectBindingValueType ToProjectBindingType(BINDING::ValueType type)
 inline BINDING::Value ToRuntimeValue(const GameProjectBindingValue& value) noexcept {
     BINDING::Value result{};
     result.type = ToRuntimeBindingType(value.type);
-    result.boolean = value.boolean;
-    result.integer = value.integer;
-    result.numeric = {value.numeric[0], value.numeric[1], value.numeric[2], value.numeric[3]};
+    switch (value.type) {
+    case GameProjectBindingValueType::Bool: result.boolean = value.boolean; break;
+    case GameProjectBindingValueType::Int: result.integer = value.integer; break;
+    case GameProjectBindingValueType::Float: result.numeric.x = value.numeric[0]; break;
+    case GameProjectBindingValueType::Float2: result.numeric = {value.numeric[0], value.numeric[1], 0.0f, 0.0f}; break;
+    case GameProjectBindingValueType::Float3:
+        result.numeric = {value.numeric[0], value.numeric[1], value.numeric[2], 0.0f};
+        break;
+    case GameProjectBindingValueType::Float4:
+    case GameProjectBindingValueType::Color:
+        result.numeric = {value.numeric[0], value.numeric[1], value.numeric[2], value.numeric[3]};
+        break;
+    default: break;
+    }
     return result;
 }
 
 inline GameProjectBindingValue ToProjectValue(const BINDING::Value& value) noexcept {
     GameProjectBindingValue result{};
     result.type = ToProjectBindingType(value.type);
-    result.boolean = value.boolean;
-    result.integer = value.integer;
-    result.numeric[0] = value.numeric.x;
-    result.numeric[1] = value.numeric.y;
-    result.numeric[2] = value.numeric.z;
-    result.numeric[3] = value.numeric.w;
+    switch (value.type) {
+    case BINDING::ValueType::Bool: result.boolean = value.boolean; break;
+    case BINDING::ValueType::Int: result.integer = value.integer; break;
+    case BINDING::ValueType::Float: result.numeric[0] = value.numeric.x; break;
+    case BINDING::ValueType::Float2:
+        result.numeric[0] = value.numeric.x;
+        result.numeric[1] = value.numeric.y;
+        break;
+    case BINDING::ValueType::Float3:
+        result.numeric[0] = value.numeric.x;
+        result.numeric[1] = value.numeric.y;
+        result.numeric[2] = value.numeric.z;
+        break;
+    case BINDING::ValueType::Float4:
+    case BINDING::ValueType::Color:
+        result.numeric[0] = value.numeric.x;
+        result.numeric[1] = value.numeric.y;
+        result.numeric[2] = value.numeric.z;
+        result.numeric[3] = value.numeric.w;
+        break;
+    default: break;
+    }
     return result;
 }
 

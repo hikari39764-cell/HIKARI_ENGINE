@@ -10,6 +10,7 @@
 #include <json.hpp>
 
 #include "Assets/HIKARI_AssetDatabase.h"
+#include "Assets/HIKARI_AssetImportState.h"
 #include "Assets/HIKARI_AssetUsageAnalyzer.h"
 #include "Editor/Assets/Browser/HIKARI_AssetBrowserPanel.h"
 #include "Editor/HIKARI_EditorContext.h"

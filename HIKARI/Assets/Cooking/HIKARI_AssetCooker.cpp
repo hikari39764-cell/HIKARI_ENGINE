@@ -213,8 +213,20 @@ AssetCookResult AssetCooker::Cook(const AssetCookOptions& options) const {
         }
 
         const bool sourcePayload = RequiresSourcePayload(*record, runtimeArtifacts);
-        cookedSourceByOriginalPath[MakePathKey(record->sourcePath)] =
+        std::filesystem::path cookedSourcePath =
             sourcePayload ? MakeRuntimePayloadPath(record->sourcePath) : record->sourcePath;
+        if (record->type == AssetType::Sprite || record->type == AssetType::SpriteMaterial) {
+            const SEMANTICS::AssetArtifactSemantics* primary =
+                SEMANTICS::FindPrimaryAssetArtifactSemantics(record->type);
+            const std::string runtimeArtifact =
+                primary == nullptr ? std::string{} : SEMANTICS::FindAssetArtifactPath(*record, primary->kind);
+            if (runtimeArtifact.empty()) {
+                result.message = "Normalized runtime artifact is missing: " + guid;
+                return result;
+            }
+            cookedSourcePath = TEXT::PathFromUtf8(runtimeArtifact);
+        }
+        cookedSourceByOriginalPath[MakePathKey(record->sourcePath)] = std::move(cookedSourcePath);
         runtimeArtifactsByGuid.emplace(guid, std::move(runtimeArtifacts));
     }
 
@@ -273,7 +285,7 @@ AssetCookResult AssetCooker::Cook(const AssetCookOptions& options) const {
         }
         cookedRecord.artifactManifest.dependencies = std::move(dependencies);
 
-        if (cookedRecord.sourcePath != sourceRecord->sourcePath) {
+        if (RequiresSourcePayload(*sourceRecord, runtimeArtifactsByGuid.at(guid))) {
             if (!CopyCookPayloadFile(options.projectRoot / sourceRecord->sourcePath,
                                      options.contentRoot / cookedRecord.sourcePath, result.fileCount, result.message)) {
                 return result;

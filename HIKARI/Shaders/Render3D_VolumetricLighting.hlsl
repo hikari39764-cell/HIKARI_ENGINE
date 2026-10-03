@@ -1,7 +1,9 @@
 #include "Include/Lighting/HIKARI_LocalLightContract.hlsli"
 #include "Include/Lighting/HIKARI_ShadowCascadeContract.hlsli"
+#include "Include/Lighting/HIKARI_VolumetricCamera.hlsli"
 #include "Include/Lighting/HIKARI_VolumetricScattering.hlsli"
 #include "Include/Lighting/HIKARI_CloudSolarVisibility.hlsli"
+#include "Include/Lighting/HIKARI_LocalFogDensity.hlsli"
 
 cbuffer VolumetricCB : register(b0)
 {
@@ -25,7 +27,7 @@ cbuffer VolumetricCB : register(b0)
     float gVolumetricDebugMode;
     float gLocalLightDepthScale;
     float gLocalLightDepthBias;
-    float gVolumetricPadding;
+    float gLocalFogVolumeCount;
     uint gLocalLightCount;
     uint gLocalLightClusterCountX;
     uint gLocalLightClusterCountY;
@@ -36,6 +38,7 @@ cbuffer VolumetricCB : register(b0)
     float gLocalLightFarDistance;
     HikariLocalShadowData gLocalShadow;
     HikariCloudSolarVisibilityData gCloudSolarVisibility;
+    HikariLocalFogVolume gLocalFogVolumes[32];
 };
 
 #include "Include/Lighting/HIKARI_LocalLightList.hlsli"
@@ -51,20 +54,7 @@ SamplerComparisonState gShadowSampler : register(s1);
 
 float DistanceToSlice(float distanceToCamera)
 {
-    const float nearDistance = max(0.01f, gFogDistances.x);
-    const float farDistance = max(nearDistance + 0.01f, gFogDistances.y);
-    const float normalized = saturate(log(max(distanceToCamera, nearDistance) / nearDistance) /
-        log(farDistance / nearDistance));
-    // 最初/最後の格納点は near/far 境界。Texture の Texel 中心へ写像する。
-    return (normalized * (gVolumeSize.z - 1.0f) + 0.5f) / gVolumeSize.z;
-}
-
-float3 ReconstructRay(float2 uv)
-{
-    float4 clip = float4(uv.x * 2.0f - 1.0f, 1.0f - uv.y * 2.0f, 1.0f, 1.0f);
-    float4 world = mul(gInvViewProj, clip);
-    world.xyz /= max(abs(world.w), 1e-6f);
-    return normalize(world.xyz - gCameraPos.xyz);
+    return HikariVolumeDistanceToSlice(distanceToCamera, gFogDistances.x, gFogDistances.y, gVolumeSize.z);
 }
 
 float SampleVolumeShadowCascade(float3 worldPosition, uint cascadeIndex, out bool valid)
@@ -83,7 +73,7 @@ float SampleVolumeShadowCascade(float3 worldPosition, uint cascadeIndex, out boo
 float ShadowVisibility(float3 worldPosition, float3 cameraForward)
 {
     if (gFrameParams.z < 0.5f) return 1.0f;
-    const float viewDepth = max(dot(worldPosition - gCameraPos.xyz, cameraForward), 0.0f);
+    const float viewDepth = HikariVolumeViewDepth(worldPosition, gCameraPos.xyz, cameraForward);
     const uint cascadeCount = clamp((uint)round(gShadowCascadeParams.x), 1u, 4u);
     const uint cascade = HikariSelectShadowCascade(viewDepth, gShadowCascadeSplits, cascadeCount);
     bool valid;
@@ -167,9 +157,11 @@ void InjectAndIntegrateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     gSceneDepth.GetDimensions(sceneWidth, sceneHeight);
     const float2 pixelPosition =
         uv * float2(sceneWidth, sceneHeight);
-    const float3 ray = ReconstructRay(uv);
-    const float3 cameraForward =
-        ReconstructRay(float2(0.5f, 0.5f));
+    float3 rayOrigin;
+    float3 ray;
+    bool orthographic;
+    HikariReconstructVolumeRay(uv, gInvViewProj, gCameraPos.xyz, rayOrigin, ray, orthographic);
+    const float3 cameraForward = HikariVolumeCameraForward(gInvViewProj, gCameraPos.xyz, orthographic);
     const float3 toDirectionalLight =
         normalize(-gDirectionalDirIntensity.xyz);
     const float directionalPhase = HikariHenyeyGreenstein(
@@ -186,7 +178,6 @@ void InjectAndIntegrateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     const float farDistance =
         max(nearDistance + 0.01f, gFogDistances.y);
     // 光源 Cluster は放射状距離ではなく CPU と同じ視線軸の深度を使う。
-    const float rayForwardCos = max(dot(ray, cameraForward), 1e-5f);
     const float fogLogStep =
         log(farDistance / nearDistance) /
         max((float)volumeSize.z - 1.0f, 1.0f);
@@ -194,22 +185,37 @@ void InjectAndIntegrateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         exp(fogLogStep);
     float distanceToCamera = nearDistance;
     float previousDistance = nearDistance;
+    const bool useHistory = gVolumeSize.w > 0.5f && gFrameParams.x > 0.0f;
+    const bool previousOrthographic = useHistory && HikariIsOrthographic(gPrevViewProj);
+    const float3 previousForward = previousOrthographic
+        ? normalize(gPrevViewProj[2].xyz)
+        : 0.0f.xxx;
 
     [loop]
     for (uint slice = 0; slice < volumeSize.z; ++slice)
     {
         const float stepLength = max(0.0f, distanceToCamera - previousDistance);
         const float sampleDistance = (distanceToCamera + previousDistance) * 0.5f;
-        const float3 worldPosition = gCameraPos.xyz + ray * sampleDistance;
+        const float3 worldPosition = rayOrigin + ray * sampleDistance;
         const float heightAboveBase = max(
             worldPosition.y - gVolumetricOptics.x,
             0.0f);
         const float heightDensity = exp(
             -heightAboveBase * gFogDistances.z);
-        const float extinction = max(0.0f, gFogColorDensity.a) * heightDensity;
+        float extinction = max(0.0f, gFogColorDensity.a) * heightDensity;
+        float3 scatteringCoefficient = extinction * gFogColorDensity.rgb * max(gVolumetricOptics.y, 0.0f);
+        [loop]
+        for (uint volumeIndex = 0; volumeIndex < (uint)gLocalFogVolumeCount; ++volumeIndex)
+        {
+            const HikariLocalFogVolume volume = gLocalFogVolumes[volumeIndex];
+            const float localExtinction = HikariLocalFogExtinction(volume, worldPosition);
+            extinction += localExtinction;
+            scatteringCoefficient += localExtinction * volume.colorDensity.rgb * volume.noiseEdgeScattering.w;
+        }
         const float stepTransmittance = exp(-extinction * stepLength);
         const uint localLightDepthSlice =
-            HikariResolveLocalLightDepthSlice(sampleDistance * rayForwardCos);
+            HikariResolveLocalLightDepthSlice(
+                HikariVolumeViewDepth(worldPosition, gCameraPos.xyz, cameraForward));
         const float3 lighting = EvaluateLighting(
             worldPosition,
             ray,
@@ -217,23 +223,24 @@ void InjectAndIntegrateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
             pixelPosition,
             localLightDepthSlice,
             directionalRadiance);
-        const float3 stepScattering = lighting * gFogColorDensity.rgb *
-            (1.0f - stepTransmittance) *
-            max(gVolumetricOptics.y, 0.0f);
+        // 全媒体の係数を合成してから一度だけ積分する。重なりでも fog を二重合成しない。
+        const float3 stepScattering = gLocalFogVolumeCount > 0.0f
+            ? lighting * scatteringCoefficient * HikariExtinctionIntegral(extinction.xxx, stepLength)
+            : lighting * gFogColorDensity.rgb * (1.0f - stepTransmittance) * max(gVolumetricOptics.y, 0.0f);
         integratedScattering += integratedTransmittance * stepScattering;
         integratedTransmittance *= stepTransmittance;
 
         float4 integrated = float4(integratedScattering, integratedTransmittance);
-        if (gVolumeSize.w > 0.5f && gFrameParams.x > 0.0f)
+        if (useHistory)
         {
-            const float3 endpoint = gCameraPos.xyz + ray * distanceToCamera;
+            const float3 endpoint = rayOrigin + ray * distanceToCamera;
             float4 previousClip = mul(gPrevViewProj, float4(endpoint, 1.0f));
             float3 previousNdc = previousClip.xyz / max(abs(previousClip.w), 1e-6f);
             float2 previousUv = float2(
                 previousNdc.x * 0.5f + 0.5f,
                 0.5f - previousNdc.y * 0.5f);
-            const float previousSlice = DistanceToSlice(
-                length(endpoint - gPrevCameraPos.xyz));
+            const float previousSlice = DistanceToSlice(HikariVolumeCameraDistance(
+                endpoint, gPrevCameraPos.xyz, previousForward, previousOrthographic));
             if (previousClip.w > 0.0f && all(previousUv >= 0.0f) && all(previousUv <= 1.0f) &&
                 previousNdc.z >= 0.0f && previousNdc.z <= 1.0f)
             {
@@ -304,12 +311,19 @@ void CompositeCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     const float depth = ResolveNearestCompositeDepth(
         gCompositeDepth.Load(int3(pixel, 0)),
         gCompositeWaterDepth.Load(int3(pixel, 0)));
-    float4 clip = float4(uv.x * 2.0f - 1.0f, 1.0f - uv.y * 2.0f, depth, 1.0f);
-    float4 world = mul(gInvViewProj, clip);
-    world.xyz /= max(abs(world.w), 1e-6f);
-    const float distanceToCamera = depth >= 0.999999f
-        ? gFogDistances.y
-        : length(world.xyz - gCameraPos.xyz);
+    const float3 worldPosition = HikariUnprojectVolumePosition(uv, depth, gInvViewProj);
+    const bool orthographic = HikariIsOrthographic(gInvViewProj);
+    float distanceToCamera = gFogDistances.y;
+    if (depth < 0.999999f)
+    {
+        distanceToCamera = orthographic
+            ? HikariVolumeCameraDistance(
+                  worldPosition,
+                  gCameraPos.xyz,
+                  HikariOrthographicForwardFromInverseViewProjection(gInvViewProj),
+                  true)
+            : length(worldPosition - gCameraPos.xyz);
+    }
     const float slice = DistanceToSlice(distanceToCamera);
     const float4 fog = distanceToCamera <= gFogDistances.x
         ? float4(0.0f, 0.0f, 0.0f, 1.0f)

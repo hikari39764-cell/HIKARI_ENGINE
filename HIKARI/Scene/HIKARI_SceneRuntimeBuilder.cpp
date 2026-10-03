@@ -14,6 +14,8 @@
 #include "Assets/Models/HIKARI_ModelAssetLookup.h"
 #include "Assets/Models/HIKARI_ModelMaterialSlot.h"
 #include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingResolver.h"
+#include "Assets/Sprite/HIKARI_SpriteAssetStore.h"
+#include "Assets/Sprite/HIKARI_SpriteMaterialStore.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 #include "Project/Paths/HIKARI_ProjectPath.h"
 #include "Core/HIKARI_Logger.h"
@@ -34,6 +36,7 @@
 #include "Scene/Terrain/HIKARI_TerrainSurfaceMaterialBinder.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelRenderableAssetResolver.h"
+#include "Scene/Components/Rendering/WorldSprite/HIKARI_WorldSpriteComponent.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/HIKARI_World.h"
@@ -317,7 +320,7 @@ ModelAsset* ResolveModelAssetNow(ModelManager& modelManager, const AssetRegistry
     return ResolveModelAssetNowInternal(modelManager, assetRegistry, assetId);
 }
 
-bool SceneRuntimeBuilder::InitializeRuntimeComponentAssets(GameObject&, IComponent& component,
+bool SceneRuntimeBuilder::InitializeRuntimeComponentAssets(GameObject& object, IComponent& component,
                                                            const AssetRegistry& assetRegistry,
                                                            ModelManager& modelManager,
                                                            std::string& outDiagnostic) const {
@@ -331,6 +334,56 @@ bool SceneRuntimeBuilder::InitializeRuntimeComponentAssets(GameObject&, ICompone
             return false;
         }
         modelComponent->SetModelAsset(asset);
+        return true;
+    }
+    if (auto* spriteComponent = dynamic_cast<WorldSpriteComponent*>(&component)) {
+        const AssetGuid& spriteGuid = spriteComponent->GetSpriteAssetGuid();
+        World* world = object.GetWorld();
+        if (spriteGuid.IsValid()) {
+            SPRITE::SpriteAssetStore* spriteAssets =
+                world != nullptr ? world->Services().Find<SPRITE::SpriteAssetStore>() : nullptr;
+            if (spriteAssets == nullptr) {
+                outDiagnostic =
+                    "SpriteAssetStore is unavailable while binding WorldSpriteComponent: " + spriteGuid.value;
+                return false;
+            }
+
+            const WorldSpriteAnimationState previous = spriteComponent->GetAnimationState();
+            const std::string initialClip(spriteComponent->GetAnimationClip());
+            std::shared_ptr<const SPRITE::SpriteAssetData> asset = spriteAssets->Load(spriteGuid, outDiagnostic);
+            if (asset == nullptr) {
+                outDiagnostic = "Required Sprite asset could not be loaded: " + spriteGuid.value +
+                                (outDiagnostic.empty() ? std::string{} : " (" + outDiagnostic + ")");
+                return false;
+            }
+            if (!spriteComponent->BindSpriteAsset(spriteGuid, std::move(asset), initialClip)) {
+                outDiagnostic = "Required Sprite clip could not be bound: " + spriteGuid.value;
+                return false;
+            }
+            if (!spriteComponent->SetPlaybackSpeed(previous.speed) ||
+                !spriteComponent->SeekAnimation(previous.timeMs) || !spriteComponent->SetPaused(previous.paused)) {
+                outDiagnostic = "Serialized Sprite playback state is invalid: " + spriteGuid.value;
+                return false;
+            }
+        }
+
+        const AssetGuid& materialGuid = spriteComponent->GetMaterialAssetGuid();
+        if (materialGuid.IsValid()) {
+            SPRITE::SpriteMaterialStore* materials =
+                world != nullptr ? world->Services().Find<SPRITE::SpriteMaterialStore>() : nullptr;
+            if (materials == nullptr) {
+                spriteComponent->SetMaterialDiagnostic("SpriteMaterialStore is unavailable in this World.");
+            } else {
+                std::string materialError{};
+                auto binding = materials->Resolve(materialGuid, materialError);
+                if (binding == nullptr || !spriteComponent->RefreshMaterialBinding(std::move(binding))) {
+                    spriteComponent->SetMaterialDiagnostic(
+                        materialError.empty() ? "Sprite material could not be resolved: " + materialGuid.value
+                                              : "Sprite material could not be resolved: " + materialGuid.value + " (" +
+                                                    materialError + ")");
+                }
+            }
+        }
     }
     return true;
 }
@@ -400,10 +453,22 @@ SceneDependencySet SceneRuntimeBuilder::CollectDependencies(const SceneDocument&
                     deps.materialAssetIds.insert(materialSelection);
                 }
             } else if (component.type == "WorldSpriteComponent") {
+                const auto sprite = component.properties.find("spriteAssetGuid");
+                if (sprite != component.properties.end() && sprite->is_string() &&
+                    !sprite->get_ref<const std::string&>().empty()) {
+                    deps.spriteAssetIds.insert(sprite->get_ref<const std::string&>());
+                }
                 const auto texture = component.properties.find("textureAssetGuid");
                 if (texture != component.properties.end() && texture->is_string() &&
                     !texture->get_ref<const std::string&>().empty()) {
                     deps.textureAssetIds.insert(texture->get_ref<const std::string&>());
+                }
+                const auto material = component.properties.find("spriteMaterial");
+                if (material != component.properties.end() && material->is_object()) {
+                    const auto guid = material->find("assetGuid");
+                    if (guid != material->end() && guid->is_string() && !guid->get_ref<const std::string&>().empty()) {
+                        deps.spriteMaterialAssetIds.insert(guid->get_ref<const std::string&>());
+                    }
                 }
             } else if (component.type == "VfxPlayerComponent") {
                 const auto slots = component.properties.find("slots");
@@ -435,7 +500,8 @@ SceneDependencySet SceneRuntimeBuilder::CollectDependencies(const SceneDocument&
 bool SceneRuntimeBuilder::PreloadDependencies(const SceneDependencySet& dependencies,
                                               const AssetRegistry& assetRegistry, ModelManager& modelManager,
                                               SkyManager& skyManager, const std::filesystem::path& projectRoot,
-                                              const std::string& sceneGuid, bool loadLighting) const {
+                                              const std::string& sceneGuid, bool loadLighting,
+                                              const SPRITE::SpriteAssetStore* spriteAssetStore) const {
     RuntimeAssetLoadPlan loadPlan{};
 
     auto addModelToLoadPlan = [&](const std::string& modelId, const ModelAssetDescriptor& descriptor) {
@@ -491,6 +557,46 @@ bool SceneRuntimeBuilder::PreloadDependencies(const SceneDependencySet& dependen
                           texture->colorSpace == TextureAssetColorSpace::Linear
                               ? RENDER3D::TextureResourceColorSpace::Linear
                               : RENDER3D::TextureResourceColorSpace::Srgb);
+    }
+
+    if (!dependencies.spriteAssetIds.empty() && spriteAssetStore == nullptr) {
+        HIKARI_LOG_ERROR("[SceneRuntime] Sprite dependencies require a configured SpriteAssetStore.");
+        return false;
+    }
+    for (const std::string& spriteId : dependencies.spriteAssetIds) {
+        std::string spriteError{};
+        const std::shared_ptr<const SPRITE::SpriteAssetData> spriteAsset =
+            spriteAssetStore->Load(AssetGuid{spriteId}, spriteError);
+        if (spriteAsset == nullptr) {
+            HIKARI_LOG_ERROR("[SceneRuntime] required Sprite could not be loaded: " + spriteId +
+                             (spriteError.empty() ? std::string{} : " (" + spriteError + ")"));
+            return false;
+        }
+        for (const SPRITE::SpritePage& page : spriteAsset->pages) {
+            const auto addSpritePageTexture = [&](std::string_view textureId, std::string name,
+                                                  RENDER3D::TextureResourceColorSpace colorSpace) {
+                if (textureId.empty()) {
+                    return true;
+                }
+                const TextureAssetDescriptor* texture =
+                    assetRegistry.FindAs<TextureAssetDescriptor>(AssetId{std::string(textureId)});
+                if (texture == nullptr || texture->dimension != TextureAssetDimension::Texture2D ||
+                    texture->sourcePath.empty()) {
+                    return false;
+                }
+                AddTextureRequest(loadPlan, std::move(name), texture->sourcePath, colorSpace);
+                return true;
+            };
+            if (!addSpritePageTexture(page.textureAssetId, "runtime_world_sprite/" + spriteId + "/" + page.id,
+                                      RENDER3D::TextureResourceColorSpace::Srgb) ||
+                !addSpritePageTexture(page.normalTextureAssetId,
+                                      "runtime_world_sprite_normal/" + spriteId + "/" + page.id,
+                                      RENDER3D::TextureResourceColorSpace::Linear)) {
+                HIKARI_LOG_ERROR("[SceneRuntime] Sprite page texture descriptor is unavailable: " + spriteId + "/" +
+                                 page.id);
+                return false;
+            }
+        }
     }
 
     for (const std::string& skyId : dependencies.skyAssetIds) {

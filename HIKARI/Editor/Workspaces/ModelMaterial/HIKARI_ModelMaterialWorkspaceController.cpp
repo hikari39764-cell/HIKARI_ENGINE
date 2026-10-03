@@ -334,8 +334,12 @@ void ModelMaterialWorkspaceController::UpdatePublicSlotViews() {
     }
 }
 
+bool ModelMaterialWorkspaceController::IsDocumentOpen() const noexcept {
+    return GetDocumentAssetGuid().IsValid() || HasUnsavedMaterialChanges();
+}
+
 nlohmann::json ModelMaterialWorkspaceController::DescribeDocumentState() const {
-    nlohmann::json state{{"open", GetDocumentAssetGuid().IsValid() || HasUnsavedMaterialChanges()},
+    nlohmann::json state{{"open", IsDocumentOpen()},
                          {"assetGuid", GetDocumentAssetGuid().value},
                          {"dirty", HasUnsavedMaterialChanges()}};
     if (!authoringDocument_.HasMaterial()) {

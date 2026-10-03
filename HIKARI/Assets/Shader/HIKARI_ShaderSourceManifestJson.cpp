@@ -1,5 +1,6 @@
 #include "Assets/Shader/Internal/HIKARI_ShaderJson.h"
 #include "Assets/Shader/HIKARI_ShaderSourceManifest.h"
+#include "Assets/Shader/HIKARI_ShaderParameterSerialization.h"
 
 #include <algorithm>
 #include <fstream>
@@ -25,10 +26,10 @@ bool ParseShaderSourceManifest(std::string_view jsonText, ShaderSourceManifest& 
             outError = "shader source manifest root must be an object";
             return false;
         }
-        if (!JSON::HasOnlyKeys(root,
-                               {"schema", "version", "programId", "source", "engineInterfaceId",
-                                "engineInterfaceVersion", "engineInterfaceHash", "rootLayoutId", "rootLayoutVersion",
-                                "rootLayoutHash", "requiredCaps", "entries", "defines", "includeRoots"})) {
+        if (!JSON::HasOnlyKeys(root, {"schema", "version", "programId", "source", "engineInterfaceId",
+                                      "engineInterfaceVersion", "engineInterfaceHash", "rootLayoutId",
+                                      "rootLayoutVersion", "rootLayoutHash", "requiredCaps", "entries", "defines",
+                                      "includeRoots", "parameters"})) {
             outError = "shader source manifest contains unknown fields";
             return false;
         }
@@ -75,6 +76,10 @@ bool ParseShaderSourceManifest(std::string_view jsonText, ShaderSourceManifest& 
         if (const auto roots = root.find("includeRoots");
             roots != root.end() && !JSON::ParseIncludeRoots(*roots, manifest.includeRoots)) {
             outError = "shader include-root table or value is invalid";
+            return false;
+        }
+        if (const auto parameters = root.find("parameters");
+            parameters != root.end() && !ParseShaderParameterDefinitions(*parameters, manifest.parameters, outError)) {
             return false;
         }
         if (!ValidateShaderSourceManifest(manifest, outError)) {
@@ -162,6 +167,9 @@ bool SerializeCanonicalShaderSourceManifest(const ShaderSourceManifest& manifest
             {"entry", entry.entry},
             {"profile", entry.profile},
         });
+    }
+    if (!canonical.parameters.empty()) {
+        root["parameters"] = WriteShaderParameterDefinitions(canonical.parameters);
     }
     outJson = root.dump();
     outError.clear();

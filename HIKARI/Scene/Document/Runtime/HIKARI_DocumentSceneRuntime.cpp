@@ -93,6 +93,7 @@ bool DocumentSceneBase::ApplySystemRuntimeChanges() {
     // records must not survive merely because the absolute frame token is
     // still current.
     state_->runtime.presentationModelService.Clear();
+    state_->runtime.localFogService.Clear();
     state_->runtime.fixedStepClock.Reset();
     // プロシージャルキャッシュは settings キーで不変なので、
     // シーン再構築ごとに破棄せずプロセス内で再利用する。
@@ -358,6 +359,7 @@ bool DocumentSceneBase::ConfigureRuntimeWorldServices() {
     services.Clear();
     state_->runtime.worldServicesConfigured = false;
     state_->runtime.presentationModelService.Clear();
+    state_->runtime.localFogService.Clear();
     state_->runtime.sceneCaptureService.Reset();
     state_->runtime.runtimeObjectActivityService.Clear();
     state_->runtime.terrainSurfaceQueryService.Clear();
@@ -488,6 +490,10 @@ bool DocumentSceneBase::ConfigureRuntimeWorldServices() {
     success = services.Register(state_->assets.TextAssets()) && success;
     state_->assets.UiAnimations().Configure(&state_->assets.Database());
     success = services.Register(state_->assets.UiAnimations()) && success;
+    state_->assets.SpriteAssets().Configure(&state_->assets.Database());
+    success = services.Register(state_->assets.SpriteAssets()) && success;
+    state_->assets.SpriteMaterials().Configure(&state_->assets.Database(), &state_->assets.Registry());
+    success = services.Register(state_->assets.SpriteMaterials()) && success;
     state_->assets.PostAssets().Configure(&state_->assets.Database());
     success = services.Register(state_->assets.PostAssets()) && success;
     success = (!animationEnabled || services.Register(state_->runtime.animationPoseService)) && success;
@@ -501,6 +507,7 @@ bool DocumentSceneBase::ConfigureRuntimeWorldServices() {
     success = services.Register(state_->runtime.characterMotionStateService) && success;
     success = (!physicsEnabled || services.Register(state_->runtime.kinematicMotionService)) && success;
     success = services.Register(state_->runtime.presentationModelService) && success;
+    success = services.Register(state_->runtime.localFogService) && success;
     success = services.Register(state_->runtime.presentationTransformService) && success;
     success = services.Register(state_->runtime.runtimeObjectActivityService) && success;
     success = (!physicsEnabled || services.Register(state_->runtime.collisionGeometryStore)) && success;
@@ -652,6 +659,7 @@ bool DocumentSceneBase::RebuildRuntimeWorld(bool reconfigureWorldServices, bool 
     // is still current, so the old world's render-only attachments must
     // not survive into the replacement world.
     state_->runtime.presentationModelService.Clear();
+    state_->runtime.localFogService.Clear();
     state_->runtime.navigationWorldService.Clear();
     state_->runtime.fixedStepClock.Reset();
     // プロシージャルキャッシュは settings キーで不変なので、
@@ -668,7 +676,8 @@ bool DocumentSceneBase::RebuildRuntimeWorld(bool reconfigureWorldServices, bool 
 
     state_->runtime.builder.PreloadDependencies(deps, state_->assets.Registry(), state_->assets.Models(),
                                                 state_->lighting.sky, state_->assets.Database().GetProjectRoot(),
-                                                state_->identity.currentSceneAssetGuid.value);
+                                                state_->identity.currentSceneAssetGuid.value, true,
+                                                &state_->assets.SpriteAssets());
     SKYRENDERER::InvalidateSkyTextureCache();
     RENDER3D::PANORAMA_SKY::InvalidatePanoramaSkyLayerTextureCache();
     for (const RuntimeFeatureSceneIssue& issue :

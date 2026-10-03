@@ -341,8 +341,8 @@ void BindScreenSpaceTraceResources(const MeshBindingContext& ctx) {
     }
 }
 
-void BindSurfaceFeatureHeights(const MeshBindingContext& ctx, D3D12_GPU_VIRTUAL_ADDRESS featureHeightsAddress) {
-    BindSrvCached(ctx, ROOT_PARAM::SurfaceFeatureHeights, featureHeightsAddress);
+void BindSurfaceFeatureFloats(const MeshBindingContext& ctx, D3D12_GPU_VIRTUAL_ADDRESS featureFloatsAddress) {
+    BindSrvCached(ctx, ROOT_PARAM::SurfaceFeatureFloats, featureFloatsAddress);
 }
 
 void BindMaterialTexturePool(const MeshBindingContext& ctx) {

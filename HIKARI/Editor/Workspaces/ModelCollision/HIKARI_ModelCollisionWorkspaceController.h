@@ -63,6 +63,8 @@ public:
     const AssetGuid& GetDocumentAssetGuid() const noexcept { return modelGuid_; }
     bool IsDocumentDirty() const noexcept;
     // 文書の状態。シェル、AI の文脈、バックグラウンドのセッションで共有する。
+    // 表示中の文書があるか。DescribeDocumentState の open と同じ判定。
+    bool IsDocumentOpen() const noexcept;
     nlohmann::json DescribeDocumentState() const;
     bool OpenModel(AssetDatabase& assetDatabase, const AssetGuid& guid, std::string& outMessage);
     bool CanUndo() const noexcept;

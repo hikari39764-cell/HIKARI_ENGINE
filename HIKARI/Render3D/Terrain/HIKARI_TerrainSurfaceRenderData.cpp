@@ -42,35 +42,32 @@ bool TerrainSurfaceRenderDataEqual(const TerrainSurfaceRenderData& lhs, const Te
            lhs.darkTint.x == rhs.darkTint.x && lhs.darkTint.y == rhs.darkTint.y && lhs.darkTint.z == rhs.darkTint.z &&
            lhs.rippleAmount == rhs.rippleAmount && lhs.pitDarkening == rhs.pitDarkening &&
            lhs.toonBandCount == rhs.toonBandCount && lhs.toonBandHardness == rhs.toonBandHardness &&
-           lhs.wetness == rhs.wetness && lhs.edgeDepth == rhs.edgeDepth && lhs.layerCount == rhs.layerCount &&
-           lhs.layerWeights == rhs.layerWeights && lhs.coverage == rhs.coverage &&
-           LayerStylesEqual(lhs.layerStyles, rhs.layerStyles);
+           lhs.wetness == rhs.wetness && lhs.edgeDepth == rhs.edgeDepth && lhs.boundsMinY == rhs.boundsMinY &&
+           lhs.boundsMaxY == rhs.boundsMaxY && lhs.runtimeResponse == rhs.runtimeResponse &&
+           lhs.layerCount == rhs.layerCount && LayerStylesEqual(lhs.layerStyles, rhs.layerStyles);
 }
 
-TerrainSurfaceGpuData BuildTerrainSurfaceGpuDataSentinel() noexcept {
+TerrainSurfaceGpuData BuildTerrainSurfaceGpuDataSentinel(uint32_t recordCount) noexcept {
     TerrainSurfaceGpuData result{};
     result.schemaVersion = kTerrainSurfaceGpuSchemaVersion;
     result.flags = 0u;
-    result.gridResolution = 0u;
-    result.heightOffset = 1u;
+    result.layerCount = recordCount;
     return result;
 }
 
-TerrainSurfaceGpuData BuildTerrainSurfaceGpuData(const TerrainSurfaceRenderData& source, uint32_t heightOffset,
-                                                 uint32_t deformationOffset, uint32_t layerWeightsOffset,
-                                                 uint32_t coverageOffset, uint32_t layerTintsOffset) noexcept {
+TerrainSurfaceGpuData BuildTerrainSurfaceGpuData(const TerrainSurfaceRenderData& source,
+                                                 const TerrainSurfaceFieldOffsets& offsets) noexcept {
     TerrainSurfaceGpuData result{};
     result.schemaVersion = kTerrainSurfaceGpuSchemaVersion;
-    // flags は enabled | layerCount(bits 1..7) |
-    // deformationOffset(bits 8..31)。offset 0 は neutral。
-    const uint32_t layerCount = std::clamp(source.layerCount, 1u, 0x7Fu);
-    const uint32_t safeDeformationOffset =
-        deformationOffset <= kTerrainSurfaceGpuMaxDeformationOffset ? deformationOffset : 0u;
-    result.flags = static_cast<uint32_t>(TerrainSurfaceGpuFlags::Enabled) |
-                   (layerCount << kTerrainSurfaceGpuLayerCountShift) |
-                   (safeDeformationOffset << kTerrainSurfaceGpuDeformationOffsetShift);
+    result.flags = static_cast<uint32_t>(TerrainSurfaceGpuFlags::Enabled);
     result.gridResolution = std::clamp(source.gridResolution, 1u, 512u);
-    result.heightOffset = heightOffset;
+    result.layerCount = std::clamp(source.layerCount, 1u, 8u);
+    result.heightOffset = offsets.height;
+    result.slopeOffset = offsets.slope;
+    result.coverageOffset = offsets.coverage;
+    result.deformationOffset = offsets.deformation;
+    result.layerWeightsOffset = offsets.layerWeights;
+    result.layerStylesOffset = offsets.layerStyles;
     result.extentsScale = {(std::max)(FiniteOr(source.extents.x, 20.0f), 0.001f),
                            (std::max)(FiniteOr(source.extents.y, 20.0f), 0.001f),
                            std::clamp(FiniteOr(source.heightScale, 0.32f), 0.0f, 2.0f),
@@ -83,14 +80,14 @@ TerrainSurfaceGpuData BuildTerrainSurfaceGpuData(const TerrainSurfaceRenderData&
                         std::clamp(FiniteOr(source.darkTint.y, 0.0f), 0.0f, 1.0f),
                         std::clamp(FiniteOr(source.darkTint.z, 0.0f), 0.0f, 1.0f),
                         std::clamp(FiniteOr(source.rippleAmount, 0.45f), 0.0f, 3.0f)};
-    result.stylePit = {std::clamp(FiniteOr(source.pitDarkening, 0.32f), 0.0f, 1.0f),
-                       std::clamp(FiniteOr(source.toonBandHardness, 0.14f), 0.0f, 0.5f),
-                       static_cast<float>(std::clamp(source.toonBandCount, 2u, 4u)),
-                       static_cast<float>(layerWeightsOffset)};
-    result.styleWet = {std::clamp(FiniteOr(source.wetness, 0.0f), 0.0f, 1.0f), static_cast<float>(coverageOffset),
-                       static_cast<float>(layerTintsOffset),
-                       // 空きスロットに edgeDepth を詰める（layerCount は flags bits 1..7）。
-                       std::clamp(FiniteOr(source.edgeDepth, 1.5f), 0.0f, 100.0f)};
+    result.styleShade = {std::clamp(FiniteOr(source.pitDarkening, 0.32f), 0.0f, 1.0f),
+                         std::clamp(FiniteOr(source.toonBandHardness, 0.14f), 0.0f, 0.5f),
+                         static_cast<float>(std::clamp(source.toonBandCount, 2u, 4u)),
+                         std::clamp(FiniteOr(source.wetness, 0.0f), 0.0f, 1.0f)};
+    // 包絡が未確定 (min > max) なら AS は剔除せず可視側へ倒す。
+    const float minY = FiniteOr(source.boundsMinY, 1.0f);
+    const float maxY = FiniteOr(source.boundsMaxY, 0.0f);
+    result.envelope = {minY, maxY, std::clamp(FiniteOr(source.edgeDepth, 1.5f), 0.0f, 100.0f), 0.0f};
     return result;
 }
 

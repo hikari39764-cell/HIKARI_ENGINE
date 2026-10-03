@@ -1,12 +1,15 @@
 #include "HIKARI_EditorObjectFactory.h"
 
+#include <memory>
 #include <utility>
 
 #include "Assets/HIKARI_AssetDatabase.h"
+#include "Assets/Sprite/HIKARI_SpriteAssetStore.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_SceneComponentId.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/HIKARI_SceneDocumentQueries.h"
+#include "Scene/Components/Rendering/WorldSprite/HIKARI_WorldSpriteComponent.h"
 #include "Scene/Components/Rendering/WorldText/HIKARI_WorldTextComponent.h"
 #include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
@@ -231,26 +234,43 @@ GameObject* CreateTerrainSurfaceObject(DocumentSceneBase& scene, const CreateObj
     return FindRuntimeObject(scene, id);
 }
 
-GameObject* CreateWorldSpriteObject(DocumentSceneBase& scene, const AssetGuid& textureGuid,
+GameObject* CreateWorldSpriteObject(DocumentSceneBase& scene, const AssetGuid& assetGuid,
                                     const CreateObjectRequest& request) {
-    SceneObjectData object = BuildBaseObject(scene, textureGuid.IsValid() ? &textureGuid : nullptr, request);
-    if (request.name.empty() && !textureGuid.IsValid()) {
+    SceneObjectData object = BuildBaseObject(scene, assetGuid.IsValid() ? &assetGuid : nullptr, request);
+    if (request.name.empty() && !assetGuid.IsValid()) {
         object.name = "World Sprite";
     }
+
+    WorldSpriteComponent sprite{};
+    bool enableSpriteLighting = false;
+    if (assetGuid.IsValid()) {
+        const AssetRecord* record = scene.GetAssetDatabase().FindByGuid(assetGuid);
+        if (record != nullptr && record->type == AssetType::Sprite) {
+            if (!record->lastImportSucceeded) {
+                return nullptr;
+            }
+            SPRITE::SpriteAssetStore store{};
+            store.Configure(&scene.GetAssetDatabase());
+            std::string error{};
+            const std::shared_ptr<const SPRITE::SpriteAssetData> asset = store.Load(assetGuid, error);
+            if (asset == nullptr || !sprite.BindSpriteAsset(assetGuid, asset)) {
+                return nullptr;
+            }
+            for (const SPRITE::SpritePage& page : asset->pages) {
+                enableSpriteLighting = enableSpriteLighting || !page.normalTextureAssetId.empty();
+            }
+        } else {
+            sprite.SetTextureAssetGuid(assetGuid);
+        }
+    }
+
+    nlohmann::json properties = nlohmann::json::object();
+    sprite.Serialize(properties);
+    if (enableSpriteLighting) {
+        properties["lit"] = true;
+    }
     const SceneObjectId id = object.id;
-    object.components.push_back(SceneComponentData{"WorldSpriteComponent",
-                                                   {{"version", 1u},
-                                                    {"textureAssetGuid", textureGuid.value},
-                                                    {"visible", true},
-                                                    {"size", {1.0f, 1.0f}},
-                                                    {"preserveAspect", true},
-                                                    {"facing", "CameraFacing"},
-                                                    {"tint", {1.0f, 1.0f, 1.0f}},
-                                                    {"opacity", 1.0f},
-                                                    {"pivot", {0.5f, 0.5f}},
-                                                    {"alphaMode", "Auto"},
-                                                    {"alphaCutoff", 0.5f},
-                                                    {"transparentSortPriority", 0}}});
+    object.components.push_back(SceneComponentData{"WorldSpriteComponent", std::move(properties)});
     NormalizeSceneComponentIds(object);
     scene.GetSceneDocument().objects.push_back(std::move(object));
     scene.RebuildRuntimeWorld();

@@ -89,14 +89,9 @@ void HikariApplyWaterSurfaceDeformWithWorld(
         : HikariOceanWorldAnchoredXZ(
             deformationWorld,
             sourceLocalPosition);
-    const bool useOceanSpectrum =
-        p.shadingModel >= HIKARI_WATER_SHADING_REALISTIC_CLEAR_SUMMER -
-            0.25f &&
-        (p.shortWaveStrength > 1.0e-4f ||
-            p.capillaryStrength > 1.0e-4f);
     HikariOceanSpectrumSample oceanSpectrum =
         (HikariOceanSpectrumSample)0;
-    if (useOceanSpectrum)
+    if (HikariWaterUsesOceanSpectrum(p))
     {
         oceanSpectrum = HikariSampleOceanSpectrum(
             spectrumWorldXZ,
@@ -109,7 +104,7 @@ void HikariApplyWaterSurfaceDeformWithWorld(
     // replacing all carriers with it made realistic water visually flat and
     // caused render/query disagreement.
     const float spectrumResidualWeight = oceanSpectrum.connected != 0u
-        ? 0.42f
+        ? HIKARI_WATER_SPECTRUM_RESIDUAL_WEIGHT
         : 0.0f;
 
     const HikariWaterSurfaceEvaluation evaluation =
@@ -125,10 +120,8 @@ void HikariApplyWaterSurfaceDeformWithWorld(
             evaluation.positionLocal.y - phasePosition.y;
         if (oceanSpectrum.connected != 0u)
         {
-            const float horizontalScale = clamp(
-                0.45f + loadedParams.choppiness * 0.75f,
-                0.25f,
-                1.35f);
+            const float horizontalScale =
+                HikariWaterSpectrumHorizontalScale(loadedParams.choppiness);
             worldDisplacement += oceanSpectrum.displacement.xz *
                 horizontalScale * spectrumResidualWeight;
             verticalDisplacement += oceanSpectrum.displacement.y *
@@ -146,10 +139,8 @@ void HikariApplyWaterSurfaceDeformWithWorld(
         localPosition = evaluation.positionLocal;
         if (oceanSpectrum.connected != 0u)
         {
-            const float horizontalScale = clamp(
-                0.45f + loadedParams.choppiness * 0.75f,
-                0.25f,
-                1.35f);
+            const float horizontalScale =
+                HikariWaterSpectrumHorizontalScale(loadedParams.choppiness);
             localPosition.xz += HikariOceanWorldDeltaToLocalXZ(
                 deformationWorld,
                 oceanSpectrum.displacement.xz * horizontalScale *

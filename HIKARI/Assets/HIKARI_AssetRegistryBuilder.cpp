@@ -23,9 +23,13 @@
 #include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingAsset.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Assets/Shader/Internal/HIKARI_ShaderAssetRegistryAdmission.h"
+#include "Assets/Sprite/HIKARI_SpriteAssetSerialization.h"
+#include "Assets/Sprite/HIKARI_SpriteMaterialSerialization.h"
 #include "Core/Content/HIKARI_EngineContentContext.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
+#include "Core/Text/HIKARI_AsciiCase.h"
+#include "Core/Text/HIKARI_UtfPath.h"
 
 namespace HIKARI {
 
@@ -52,13 +56,9 @@ void ResolveTextureDescriptorMetadata(const AssetDatabase& assetDatabase, const 
             if (hasAlphaValue != nullptr && meaningfulValue != nullptr) {
                 const bool hasAlpha = hasAlphaValue->get<bool>();
                 const bool meaningful = meaningfulValue->get<bool>();
-                if (!hasAlpha || !meaningful) {
-                    descriptor.alphaClass = TextureAssetAlphaClass::Opaque;
-                } else if (translucentValue != nullptr && translucentValue->get<bool>()) {
-                    descriptor.alphaClass = TextureAssetAlphaClass::Translucent;
-                } else if (cutoutValue != nullptr && cutoutValue->get<bool>()) {
-                    descriptor.alphaClass = TextureAssetAlphaClass::Cutout;
-                }
+                descriptor.alphaClass = ASSETS::IMPORT_POLICY::ResolveTextureAssetAlphaClass(
+                    hasAlpha, meaningful, translucentValue != nullptr && translucentValue->get<bool>(),
+                    cutoutValue != nullptr && cutoutValue->get<bool>());
             }
         }
     }
@@ -79,6 +79,27 @@ void ResolveTextureDescriptorMetadata(const AssetDatabase& assetDatabase, const 
         descriptor.width = info.width;
         descriptor.height = info.height;
     }
+}
+
+bool ResolveSpriteArtifactPath(const std::filesystem::path& projectRoot, std::string_view artifact,
+                               std::string_view expectedExtension, std::filesystem::path& outPath) {
+    const std::filesystem::path relative = TEXT::PathFromUtf8(artifact);
+    if (artifact.empty() || relative.is_absolute() || relative.has_root_name() || relative.has_root_directory() ||
+        TEXT::ToLowerAsciiCopy(TEXT::PathToUtf8(relative.extension())) != expectedExtension) {
+        return false;
+    }
+    for (const std::filesystem::path& part : relative) {
+        if (part == ".." || part == ".") {
+            return false;
+        }
+    }
+    const std::filesystem::path resolved = (projectRoot / relative).lexically_normal();
+    std::error_code error{};
+    if (!std::filesystem::is_regular_file(resolved, error) || error) {
+        return false;
+    }
+    outPath = resolved;
+    return true;
 }
 
 bool LoadMaterialSourceJson(const AssetDatabase& assetDatabase, const AssetRecord& record, MaterialAssetData& outData,
@@ -397,6 +418,105 @@ bool AssetRegistryBuilder::RebuildRegistry(const AssetDatabase& assetDatabase, A
             descriptor->compression = settings.compression;
             descriptor->mipPolicy = settings.mipPolicy;
             ResolveTextureDescriptorMetadata(assetDatabase, *record, *descriptor);
+            ok = registry.RegisterDescriptor(std::move(descriptor)) && ok;
+        } else if (record->type == AssetType::Sprite) {
+            const std::string spriteArtifact =
+                ASSETS::SEMANTICS::FindAssetArtifactPath(*record, ASSETS::SEMANTICS::AssetArtifactKind::SpriteRuntime);
+            std::filesystem::path spritePath{};
+            SPRITE::SpriteAssetData spriteData{};
+            std::string loadError{};
+            if (!record->lastImportSucceeded ||
+                !ResolveSpriteArtifactPath(assetDatabase.GetProjectRoot(), spriteArtifact, ".hspritec", spritePath) ||
+                !SPRITE::LoadSpriteAssetData(spritePath, spriteData, loadError)) {
+                HIKARI_LOG_WARN("[AssetRegistryBuilder][Sprite] normalized Sprite artifact is unavailable: " +
+                                record->guid.value + (loadError.empty() ? std::string{} : " (" + loadError + ")"));
+                continue;
+            }
+
+            bool pagesValid = true;
+            std::vector<std::unique_ptr<TextureAssetDescriptor>> pageDescriptors{};
+            pageDescriptors.reserve(spriteData.pages.size());
+            const auto appendPageTexture = [&](std::string_view assetId, std::string_view artifactPath,
+                                               TextureAssetColorSpace colorSpace, TextureUsage usage,
+                                               TextureAssetAlphaClass alphaClass, DXGI_FORMAT format,
+                                               uint32_t expectedWidth, uint32_t expectedHeight) {
+                std::filesystem::path pagePath{};
+                HtexFileInfo info{};
+                if (!ResolveSpriteArtifactPath(assetDatabase.GetProjectRoot(), artifactPath, ".htex", pagePath) ||
+                    !InspectHtexFile(pagePath, info, loadError) || info.width != expectedWidth ||
+                    info.height != expectedHeight || info.dimension != HtexTextureDimension::Texture2D ||
+                    info.colorSpace != colorSpace || info.usage != usage ||
+                    info.compression != TextureCompression::None || info.mipLevels != 1u || info.format != format) {
+                    return false;
+                }
+                auto texture = std::make_unique<TextureAssetDescriptor>();
+                texture->id.value = std::string(assetId);
+                texture->type = AssetType::Texture;
+                texture->sourcePath = std::string(artifactPath);
+                texture->version = record->meta.importerVersion;
+                texture->dimension = TextureAssetDimension::Texture2D;
+                texture->colorSpace = colorSpace;
+                texture->usage = usage;
+                texture->alphaClass = alphaClass;
+                texture->compression = TextureCompression::None;
+                texture->mipPolicy = TextureMipPolicy::None;
+                texture->width = info.width;
+                texture->height = info.height;
+                pageDescriptors.push_back(std::move(texture));
+                return true;
+            };
+            for (const SPRITE::SpritePage& page : spriteData.pages) {
+                if (page.textureAssetId != SPRITE::MakeSpritePageTextureAssetId(record->guid.value, page.id) ||
+                    !appendPageTexture(page.textureAssetId, page.artifactPath, TextureAssetColorSpace::Srgb,
+                                       TextureUsage::UI, page.colorAlphaClass, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
+                                       page.width, page.height)) {
+                    pagesValid = false;
+                    break;
+                }
+                const bool hasNormal = !page.normalTextureAssetId.empty() || !page.normalArtifactPath.empty();
+                if (hasNormal && (page.normalTextureAssetId !=
+                                      SPRITE::MakeSpritePageNormalTextureAssetId(record->guid.value, page.id) ||
+                                  !appendPageTexture(page.normalTextureAssetId, page.normalArtifactPath,
+                                                     TextureAssetColorSpace::Linear, TextureUsage::Normal,
+                                                     TextureAssetAlphaClass::Unknown, DXGI_FORMAT_R8G8B8A8_UNORM,
+                                                     page.width, page.height))) {
+                    pagesValid = false;
+                    break;
+                }
+            }
+            if (!pagesValid) {
+                HIKARI_LOG_WARN("[AssetRegistryBuilder][Sprite] page texture artifact is unavailable or mismatched: " +
+                                record->guid.value + (loadError.empty() ? std::string{} : " (" + loadError + ")"));
+                continue;
+            }
+            for (std::unique_ptr<TextureAssetDescriptor>& descriptor : pageDescriptors) {
+                ok = registry.RegisterDescriptor(std::move(descriptor)) && ok;
+            }
+            auto descriptor = std::make_unique<AssetDescriptor>();
+            descriptor->id.value = record->guid.value;
+            descriptor->type = AssetType::Sprite;
+            descriptor->sourcePath = spriteArtifact;
+            descriptor->version = record->meta.importerVersion;
+            ok = registry.RegisterDescriptor(std::move(descriptor)) && ok;
+        } else if (record->type == AssetType::SpriteMaterial) {
+            const std::string materialArtifact = ASSETS::SEMANTICS::FindAssetArtifactPath(
+                *record, ASSETS::SEMANTICS::AssetArtifactKind::SpriteMaterialRuntime);
+            std::filesystem::path materialPath{};
+            SPRITE::SpriteMaterialAssetData materialData{};
+            std::string loadError{};
+            if (!record->lastImportSucceeded ||
+                !ResolveSpriteArtifactPath(assetDatabase.GetProjectRoot(), materialArtifact, ".hspritematerialc",
+                                           materialPath) ||
+                !SPRITE::LoadSpriteMaterialAssetArtifact(materialPath, record->guid, materialData, loadError)) {
+                HIKARI_LOG_WARN("[AssetRegistryBuilder][SpriteMaterial] normalized material artifact is unavailable: " +
+                                record->guid.value + (loadError.empty() ? std::string{} : " (" + loadError + ")"));
+                continue;
+            }
+            auto descriptor = std::make_unique<AssetDescriptor>();
+            descriptor->id.value = record->guid.value;
+            descriptor->type = AssetType::SpriteMaterial;
+            descriptor->sourcePath = materialArtifact;
+            descriptor->version = record->meta.importerVersion;
             ok = registry.RegisterDescriptor(std::move(descriptor)) && ok;
         } else if (record->type == AssetType::Model) {
             auto descriptor = std::make_unique<ModelAssetDescriptor>();

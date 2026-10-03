@@ -11,6 +11,11 @@ static const float HIKARI_WATER_TIME_WRAP_SECONDS = 4096.0f;
 static const float HIKARI_WATER_MAXIMUM_HORIZONTAL_SLOPE = 0.92f;
 static const float HIKARI_WATER_SHADING_ANIME_SUMMER = 0.0f;
 static const float HIKARI_WATER_SHADING_REALISTIC_CLEAR_SUMMER = 1.0f;
+// 任意の FFT 頻譜は carrier の上に足す有界な残差。sampler がこの範囲へ丸める。
+static const float HIKARI_WATER_SPECTRUM_RESIDUAL_WEIGHT = 0.42f;
+static const float HIKARI_OCEAN_SPECTRUM_MAX_HORIZONTAL_DISPLACEMENT = 1.75f;
+static const float HIKARI_OCEAN_SPECTRUM_MAX_VERTICAL_DISPLACEMENT = 2.5f;
+static const float HIKARI_WATER_SPECTRUM_MAX_HORIZONTAL_SCALE = 1.35f;
 
 // C++ 側の WaterSurfaceWaveGpuData / WaterSurfaceGpuData と同一 layout。
 // 波向き、波数、角周波数は scene snapshot から CPU で一度だけ計算する。
@@ -326,6 +331,38 @@ float HikariResolveWaterHorizontalSlopeScale(
     return safeSlope > HIKARI_WATER_MAXIMUM_HORIZONTAL_SLOPE
         ? HIKARI_WATER_MAXIMUM_HORIZONTAL_SLOPE / safeSlope
         : 1.0f;
+}
+
+bool HikariWaterUsesOceanSpectrum(HikariWaterSurfaceParams p)
+{
+    return p.shadingModel >= HIKARI_WATER_SHADING_REALISTIC_CLEAR_SUMMER - 0.25f &&
+        (p.shortWaveStrength > 1.0e-4f || p.capillaryStrength > 1.0e-4f);
+}
+
+float HikariWaterSpectrumHorizontalScale(float choppiness)
+{
+    return clamp(0.45f + choppiness * 0.75f, 0.25f, HIKARI_WATER_SPECTRUM_MAX_HORIZONTAL_SCALE);
+}
+
+// HikariEvaluateWaterSurface が local 位置へ加える最大変位 (水平, 垂直)。
+// carrier の振幅和なので時刻に依存しない保守包絡になる。
+float2 HikariWaterSurfaceCarrierEnvelope(HikariWaterSurfaceParams p)
+{
+    const float horizontalSlopeScale = HikariResolveWaterHorizontalSlopeScale(p);
+    float horizontal = 0.0f;
+    float vertical = 0.0f;
+    [unroll]
+    for (uint index = 0u; index < HIKARI_WATER_SURFACE_WAVE_COUNT; ++index)
+    {
+        if (index >= p.waveCount)
+        {
+            continue;
+        }
+        const HikariWaterWaveParams wave = p.waves[index];
+        horizontal += p.choppiness * wave.steepness * wave.amplitude * horizontalSlopeScale;
+        vertical += wave.amplitude;
+    }
+    return float2(horizontal, vertical);
 }
 
 HikariWaterSurfaceEvaluation HikariEvaluateWaterSurface(

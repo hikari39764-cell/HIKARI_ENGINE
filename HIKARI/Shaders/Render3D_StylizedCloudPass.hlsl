@@ -293,8 +293,8 @@ float HikariStylizedCloudFrameJitter(uint2 pixel)
         int(pixel.x),
         int(pixel.y),
         int((uint)max(gHikariStylizedCloudTemporal.x, 0.0f)));
-    uint hash = HikariStylizedCloudHashInt3(cell, 0x73c5a4f1u);
-    float sequence = HikariStylizedCloudHashUnit(hash);
+    uint hash = HikariNoiseHashInt3(cell, 0x73c5a4f1u);
+    float sequence = HikariNoiseHashUnit(hash);
     return (sequence - 0.5f) * 0.32f;
 }
 

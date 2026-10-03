@@ -64,6 +64,20 @@ float2 HikariOceanWorldDeltaToLocalXZ(float4x4 world, float2 worldDelta)
         (basisX.x * worldDelta.y - basisX.y * worldDelta.x) * inverseDeterminant);
 }
 
+// HikariOceanWorldDeltaToLocalXZ が world 変位を local へ写す時の倍率上界。
+// 2x2 逆行列のスペクトルノルムを Frobenius ノルムで抑える。
+float HikariOceanWorldDeltaToLocalScaleBound(float4x4 world)
+{
+    const float2 basisX = float2(world._11, world._31);
+    const float2 basisZ = float2(world._13, world._33);
+    const float determinant = basisX.x * basisZ.y - basisX.y * basisZ.x;
+    if (abs(determinant) <= HIKARI_OCEAN_EPSILON)
+    {
+        return 1.0f;
+    }
+    return sqrt(dot(basisX, basisX) + dot(basisZ, basisZ)) / abs(determinant);
+}
+
 float2 HikariOceanResolveAuthoredHalfExtent(
     float2 authoritativeHalfExtent,
     float localBoundsRadius,

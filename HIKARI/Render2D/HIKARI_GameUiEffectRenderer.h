@@ -12,7 +12,9 @@ namespace HIKARI::GAME_UI {
 // RenderSubmission installs the current world's immutable frame source.
 void BeginGameUiFrame() noexcept;
 void SetGameUiFrameSource(const GameUiFrameSource* source) noexcept;
-bool RenderGameUiFrame(uint64_t frameIndex, int logicalWidth, int logicalHeight) noexcept;
+// The caller binds a full-target viewport. Layout uses logical dimensions; output dimensions define its pixel extent.
+bool RenderGameUiFrame(uint64_t frameIndex, int logicalWidth, int logicalHeight, int outputWidth,
+                       int outputHeight) noexcept;
 // Renders an editor-owned immutable source into the currently bound
 // target without borrowing or replacing the runtime HUD source.
 bool RenderGameUiPreviewFrame(const GameUiFrameSource& source, uint64_t frameIndex, int logicalWidth,

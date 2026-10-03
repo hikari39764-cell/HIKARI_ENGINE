@@ -377,6 +377,7 @@ const RenderFrameGraphPassCallbacks& GetRenderFrameGraphPassCallbacks() noexcept
                                                          &ExecuteVisibilityFeatures,
                                                          &ExecuteSceneColorPostOpaqueCapture,
                                                          &ExecuteStylizedFeatureComposite,
+                                                         &ExecuteCameraDepthOfField,
                                                          &ExecuteSceneColorFinalCapture,
                                                          &ExecuteProjectRenderPass,
                                                          &ExecuteProjectDispatchResolve,

@@ -54,7 +54,7 @@ GameObject* CreateEmptyObject(DocumentSceneBase& scene, const CreateObjectReques
 
 GameObject* CreateModelObject(DocumentSceneBase& scene, const AssetGuid& modelGuid, const CreateObjectRequest& request);
 
-GameObject* CreateWorldSpriteObject(DocumentSceneBase& scene, const AssetGuid& textureGuid,
+GameObject* CreateWorldSpriteObject(DocumentSceneBase& scene, const AssetGuid& assetGuid,
                                     const CreateObjectRequest& request);
 
 GameObject* CreateWorldTextObject(DocumentSceneBase& scene, const CreateWorldTextRequest& request);

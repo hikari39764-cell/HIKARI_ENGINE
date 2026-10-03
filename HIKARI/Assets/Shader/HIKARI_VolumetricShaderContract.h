@@ -36,7 +36,7 @@ inline constexpr std::array<VolumetricShaderDefinition, static_cast<size_t>(Volu
       "HIKARI.CloudPass.Root",
       "0:CBV(b0,Pixel);1..8:SRVTable(t0..7,1,Pixel);s0:linear-wrap;s1:linear-clamp;s2:point-clamp;Flags(IA)|Sun:0CBV(b0),1CBV(b1),2..4SRVTable(t0..2),5UAVTable(u0),s0linear-wrap;All;Flags(None)"},
      {"HIKARI.EngineShader.Render3D_VolumetricLighting", "HIKARI.VolumetricFog",
-      "VolumetricCB:1760;mat4 inverseVP,previousVP,lightVP[4];float4 splits,cascadeParams,shadowSampling,biasScales,camera,previousCamera,fogColorDensity,distances,directionIntensity,directionalColorShadow,ambientColorIntensity,optics,volumeSize,frameParams,debugAndDepth;LocalLightGrid:32;LocalShadow:1040;CloudSolar:64;scene-linear radiance/transmittance",
+      "VolumetricCB:5344;mat4 inverseVP,previousVP,lightVP[4];float4 splits,cascadeParams,shadowSampling,biasScales,camera,previousCamera,fogColorDensity,distances,directionIntensity,directionalColorShadow,ambientColorIntensity,optics,volumeSize,frameParams,debugAndDepth;LocalLightGrid:32;LocalShadow:1040;CloudSolar:64;LocalFogBoxes[32]:112,inverseBox,colorDensity,noiseEdgeScattering,noiseOffset;debugAndDepth.w:boxCount;scene-linear radiance/transmittance",
       "HIKARI.VolumetricFog.Root",
       "Inject:0CBV(b0),1..3SRVTable(t0..2),4UAVTable(u0),5..7SRV(t0..2,space5),8SRVTable(t7),9SRVTable(t8),s0linear-clamp,s1comparison-linear-border-white;Composite:0CBV(b0),1..3SRVTable(t4..6),4UAVTable(u1),s0linear-clamp;All;Flags(None)"},
      {"HIKARI.EngineShader.Render3D_AtmosphereTransmittanceCS", "HIKARI.AtmosphereLut", kAtmosphereLutInterface,
@@ -53,7 +53,7 @@ inline ShaderAssetContractExpectation MakeVolumetricShaderContract(VolumetricSha
     const auto& definition = kVolumetricShaders[index];
     ShaderAssetContractExpectation contract{};
     contract.engineInterfaceId = definition.interfaceId;
-    contract.engineInterfaceVersion = 1;
+    contract.engineInterfaceVersion = program == VolumetricShaderProgram::Fog ? 2 : 1;
     contract.rootLayoutId = definition.rootId;
     contract.rootLayoutVersion = 1;
     contract.availableDeviceCaps = caps;

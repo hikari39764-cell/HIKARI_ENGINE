@@ -7,7 +7,7 @@ static const uint HIKARI_INVALID_MESHLET_SHADOW_MATERIAL_INDEX = 0xffffffffu;
 #include "Include/Material/HIKARI_MaterialBaseColorInputs.hlsli"
 #include "Include/HIKARI_SurfaceGpuScene.hlsli"
 #include "Include/Forward/HIKARI_SurfaceFeatureCoverage.hlsli"
-#include "Include/Surface/HIKARI_SandSurfaceParams.hlsli"
+#include "Include/Surface/HIKARI_TerrainSurfaceParams.hlsli"
 #include "Include/Lighting/HIKARI_ShadowMaterialCoverage.hlsli"
 
 SamplerState gLinearWrap : register(s0);
@@ -28,14 +28,14 @@ struct PSInput
 
 float main(PSInput input) : SV_Depth
 {
-    if (HikariSurfaceHasSandSurface(input.surfaceFeatureFlags))
+    if (HikariSurfaceHasTerrainSurface(input.surfaceFeatureFlags))
     {
-        const HikariSurfaceGpuSceneInstance sandInstance =
+        const HikariSurfaceGpuSceneInstance terrainInstance =
             HikariGetSurfaceGpuSceneInstanceAt(input.surfaceGpuSceneIndex);
-        const HikariSandSurfaceParams sandParams =
-            HikariLoadSandSurfaceParamsFromDataIndex(
-                sandInstance.surfaceFeatureDataIndex);
-        HikariClipSandCoverage(sandParams, input.uv1);
+        const HikariTerrainSurfaceParams terrainParams =
+            HikariLoadTerrainSurfaceParams(
+                terrainInstance.surfaceFeatureDataIndex);
+        HikariClipTerrainCoverage(terrainParams, input.uv1);
     }
 
     if (input.materialDataIndex == HIKARI_INVALID_MESHLET_SHADOW_MATERIAL_INDEX)

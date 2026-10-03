@@ -8,6 +8,7 @@
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
 #include "Scene/Terrain/HIKARI_TerrainSurfaceQueryService.h"
 #include "Scene/Terrain/HIKARI_TerrainChunks.h"
+#include "Scene/Terrain/HIKARI_TerrainSurfaceBake.h"
 
 namespace HIKARI {
 class TerrainSurfaceComponent;
@@ -48,10 +49,12 @@ struct TerrainProjectionState {
     std::map<TERRAIN::TerrainChunkKey, uint64_t> runtimeRevisions{};
     std::map<TERRAIN::TerrainChunkKey, TERRAIN::TerrainChunkRuntimeSnapshotPtr> runtimeByChunk{};
     std::vector<TERRAIN::TerrainChunkKey> changedChunks{};
-    std::shared_ptr<std::vector<float>> heights{};
-    std::shared_ptr<std::vector<float>> deformations{};
-    std::shared_ptr<std::vector<float>> coverage{};
-    std::shared_ptr<std::vector<float>> layerWeights{};
+    // runtime 応答込みの地形高さ。頂点焼き込みの入力で GPU へは渡さない。
+    std::vector<float> sourceHeights{};
+    // render bridge と共有する焼き込み済み field。revision ごとに値だけ更新する。
+    std::shared_ptr<RENDER3D::TERRAIN::TerrainSurfaceProjectedFields> fields{};
+    TerrainSurfaceBakeInputs bakeInputs{};
+    bool bakeInputsValid = false;
     uint64_t projectionRevision = 0u;
     float authoredMinHeight = 0.0f;
     float authoredMaxHeight = 0.0f;

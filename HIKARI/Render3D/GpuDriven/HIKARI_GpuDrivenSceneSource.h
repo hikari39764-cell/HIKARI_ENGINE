@@ -9,6 +9,7 @@
 #include "Render3D/HIKARI_Math3D.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenFrame.h"
 #include "Render3D/GpuDriven/HIKARI_GpuSceneJointPaletteSnapshot.h"
+#include "Render3D/Runtime/HIKARI_SceneSurfaceFloatPool.h"
 #include "Render3D/Runtime/HIKARI_SurfaceGpuScene.h"
 #include "Render3D/Water/HIKARI_WaterSurfaceGpuData.h"
 #include "Render3D/Terrain/HIKARI_TerrainSurfaceGpuData.h"
@@ -74,9 +75,8 @@ struct GpuDrivenSceneSource {
     GpuSceneJointPaletteSnapshotPtr meshShaderJointPalettes{};
     const std::vector<WATER::WaterSurfaceGpuData>* waterSurfaceGpuData = nullptr;
     const std::vector<TERRAIN::TerrainSurfaceGpuData>* terrainSurfaceGpuData = nullptr;
-    const std::vector<float>* terrainSurfaceHeights = nullptr;
+    RUNTIME::SurfaceFeatureFloatPoolSource surfaceFeatureFloats{};
     const MassGpuSceneSource* mass = nullptr;
-    uint64_t terrainSurfaceHeightVersion = 0;
     uint64_t layoutVersion = 0;
     uint64_t sourceVersion = 0;
     uint64_t dirtyBaseSourceVersion = 0;

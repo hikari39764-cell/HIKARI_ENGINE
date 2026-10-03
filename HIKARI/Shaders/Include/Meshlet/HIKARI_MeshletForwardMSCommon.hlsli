@@ -7,7 +7,7 @@
 
 #define HIKARI_GPU_DRIVEN_ENABLE_WATER_DEFORM HIKARI_MESHLET_ENABLE_WATER_DEFORM
 #include "Include/Meshlet/HIKARI_WaterSurfaceDeform.hlsli"
-#include "Include/Surface/HIKARI_SandSurfaceDeform.hlsli"
+#include "Include/Surface/HIKARI_TerrainSurfaceDeform.hlsli"
 #include "Include/Surface/HIKARI_FoliageWind.hlsli"
 #include "Include/Forward/HIKARI_ForwardVertexMeta.hlsli"
 #if defined(HIKARI_GEOMETRY_OUTLINE_VERTEX)
@@ -46,11 +46,11 @@ HikariMeshletVertexOut HikariBuildMeshletVertex(
         localPosition,
         localNormal,
         output.surfaceFeatureData);
-    // 沙地も meshlet 本線で頂点位移する (地形は mesh shader 一本化)。
+    // 地形も meshlet 本線で頂点位移する (地形は mesh shader 一本化)。
     // depth pass (MeshletDepthMS) と同じ関数を共有し、深度を一致させる。
-    if ((instance.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_SAND_SURFACE) != 0u)
+    if ((instance.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_TERRAIN_SURFACE) != 0u)
     {
-        HikariApplySandSurfaceDeform(
+        HikariApplyTerrainSurfaceDeform(
             instance,
             localPosition,
             localNormal,
@@ -96,8 +96,8 @@ HikariMeshletVertexOut HikariBuildMeshletVertex(
         mul((float3x3)instance.clusterWorld, localCharacterRight));
     output.characterForwardWS = normalize(
         mul((float3x3)instance.clusterWorld, localCharacterForward));
-    // 沙地/水面は deform が surfaceFeatureData を書いたので上書きしない。
-    if ((instance.flags & (HIKARI_SURFACE_GPU_SCENE_FLAG_SAND_SURFACE |
+    // 地形/水面は deform が surfaceFeatureData を書いたので上書きしない。
+    if ((instance.flags & (HIKARI_SURFACE_GPU_SCENE_FLAG_TERRAIN_SURFACE |
                            HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_SURFACE)) == 0u)
     {
         output.surfaceFeatureData = float3(localPosition.xz, 0.0f);

@@ -385,7 +385,7 @@ void SceneRenderCacheSync::State::Synchronize(World& world, RENDER3D::RUNTIME::R
     if (fullSync) {
         sceneRenderCache.BeginSync(frameIndex);
         cacheTerrainProjections.clear();
-        grassProjections.renderObjectIdsByOwner.clear();
+        grassProjections.owners.clear();
         grassProjections.activeRenderInstanceCount = 0u;
     } else {
         sceneRenderCache.BeginPatchSync(frameIndex);
@@ -422,7 +422,11 @@ void SceneRenderCacheSync::State::Synchronize(World& world, RENDER3D::RUNTIME::R
 
     const auto upsertModel = [&](GameObject& object, ModelComponent& model) {
         const RENDER3D::RUNTIME::SceneRenderObjectId objectId = ResolveSceneRenderObjectId(object);
-        TerrainProjectionState& terrainProjection = cacheTerrainProjections[objectId.value];
+        // 投影状態は地形だけが持つ。通常 model ごとに空の状態を作らない。
+        TerrainProjectionState unusedProjection{};
+        TerrainProjectionState& terrainProjection = object.GetComponent<TerrainSurfaceComponent>() != nullptr
+                                                        ? cacheTerrainProjections[objectId.value]
+                                                        : unusedProjection;
         sceneRenderCache.Upsert(BuildSceneRenderObjectDesc(
             object, model, renderModelCache, clusteredGeometryPaths, presentationTransforms, animationPoses,
             terrainSurfaceQuery, runtimeActivityService, terrainProjection, debugStats, purpose));
@@ -434,12 +438,15 @@ void SceneRenderCacheSync::State::Synchronize(World& world, RENDER3D::RUNTIME::R
         }
         upsertModel(object, model);
         if (const TerrainSurfaceComponent* terrain = object.GetComponent<TerrainSurfaceComponent>()) {
+            // 草は authored 入力が変わった時だけ作り直す (runtime 応答の dirty では維持)。
             TERRAIN::TerrainGrassRenderProjectionStats grassStats{};
             TERRAIN::SyncTerrainGrassRenderObjects(object, model, *terrain, renderModelCache,
                                                    clusteredGeometryPaths.GetProjectRoot(), presentationTransforms,
                                                    grassProjections, sceneRenderCache, purpose, grassStats);
             debugStats.terrainGrassRenderInstanceCount += grassStats.renderedCount;
             debugStats.terrainGrassRenderSkippedCount += grassStats.skippedCount;
+        } else {
+            TERRAIN::RemoveTerrainGrassRenderObjects(sceneRenderCache, grassProjections, object.GetRenderStableId());
         }
     };
     if (fullSync) {
@@ -449,10 +456,10 @@ void SceneRenderCacheSync::State::Synchronize(World& world, RENDER3D::RUNTIME::R
             if (object == nullptr)
                 continue;
             const uint64_t ownerId = object->GetRenderStableId();
-            TERRAIN::RemoveTerrainGrassRenderObjects(sceneRenderCache, grassProjections, ownerId);
             if (ModelComponent* model = object->GetComponent<ModelComponent>()) {
                 syncObject(*object, *model);
             } else {
+                TERRAIN::RemoveTerrainGrassRenderObjects(sceneRenderCache, grassProjections, ownerId);
                 sceneRenderCache.Remove(RENDER3D::RUNTIME::SceneRenderObjectId{ownerId});
                 cacheTerrainProjections.erase(ownerId);
             }
@@ -475,13 +482,14 @@ void SceneRenderCacheSync::State::Synchronize(World& world, RENDER3D::RUNTIME::R
         world.ForEachObjectWith<ModelComponent>([&](GameObject& object, ModelComponent& model) {
             const RENDER3D::RUNTIME::SceneRenderObjectId objectId = ResolveSceneRenderObjectId(object);
             const RENDER3D::RUNTIME::SceneRenderObject* cached = sceneRenderCache.Find(objectId);
-            TerrainProjectionState& terrainProjection = cacheTerrainProjections[objectId.value];
             bool responseWarmReady = false;
-            if (terrainProjection.warmPending && terrainProjection.warmSettingsValid) {
+            const auto projection = cacheTerrainProjections.find(objectId.value);
+            if (projection != cacheTerrainProjections.end() && projection->second.warmPending &&
+                projection->second.warmSettingsValid) {
                 const ModelAsset* warmedModel = nullptr;
                 std::string warmedPath{};
                 responseWarmReady = PROCEDURAL::TryGetWarmedClusteredGeometry(
-                    terrainProjection.warmSettings, terrainProjection.warmProjectRoot, warmedModel, warmedPath);
+                    projection->second.warmSettings, projection->second.warmProjectRoot, warmedModel, warmedPath);
             }
             if (cached != nullptr && !HasRuntimeMaterialRevisionChange(cached->desc, model) && !responseWarmReady) {
                 return;

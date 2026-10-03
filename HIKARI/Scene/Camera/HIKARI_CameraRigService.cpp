@@ -32,6 +32,8 @@ void CameraRigService::BeginFrame(uint64_t frameIndex) noexcept {
     modes_.clear();
     modifiers_.clear();
     targetFramings_.clear();
+    depthOfField_.clear();
+    focuses_.clear();
 }
 
 void CameraRigService::Clear() noexcept {
@@ -40,6 +42,8 @@ void CameraRigService::Clear() noexcept {
     modes_.clear();
     modifiers_.clear();
     targetFramings_.clear();
+    depthOfField_.clear();
+    focuses_.clear();
 }
 
 bool CameraRigService::SubmitMode(const CameraModeSubmission& submission) {
@@ -116,6 +120,85 @@ bool CameraRigService::SubmitTargetFraming(const CameraTargetFramingSubmission& 
     return true;
 }
 
+template <typename Submission>
+const Submission* ResolveCameraFrameRequest(const std::vector<Submission>& requests,
+                                            SceneObjectId cameraObjectId) noexcept {
+    const Submission* winner = nullptr;
+    for (const Submission& candidate : requests) {
+        if ((candidate.cameraObjectId.value != 0u && !(candidate.cameraObjectId == cameraObjectId)) ||
+            candidate.weight <= 0.0f) {
+            continue;
+        }
+        const bool candidateIsSpecific = candidate.cameraObjectId.value != 0u;
+        const bool winnerIsSpecific = winner != nullptr && winner->cameraObjectId.value != 0u;
+        if (winner == nullptr ||
+            IsPreferred(candidate.priority, candidate.sourceId, winner->priority, winner->sourceId) ||
+            (candidate.priority == winner->priority && candidate.sourceId == winner->sourceId && candidateIsSpecific &&
+             !winnerIsSpecific)) {
+            winner = &candidate;
+        }
+    }
+    return winner;
+}
+
+bool CameraRigService::SubmitDepthOfField(const CameraDepthOfFieldSubmission& submission) {
+    if (submission.sourceId == 0u || !std::isfinite(submission.weight) || submission.weight < 0.0f ||
+        submission.weight > 1.0f || !IsValidDepthOfFieldSettings(submission.settings)) {
+        return false;
+    }
+
+    const auto existing = std::find_if(
+        depthOfField_.begin(), depthOfField_.end(), [&submission](const CameraDepthOfFieldSubmission& candidate) {
+            return candidate.cameraObjectId == submission.cameraObjectId && candidate.sourceId == submission.sourceId;
+        });
+    if (existing != depthOfField_.end()) {
+        *existing = submission;
+    } else {
+        depthOfField_.push_back(submission);
+    }
+    return true;
+}
+
+bool CameraRigService::SubmitFocus(const CameraFocusSubmission& submission) {
+    if (submission.sourceId == 0u || !std::isfinite(submission.weight) || submission.weight < 0.0f ||
+        submission.weight > 1.0f) {
+        return false;
+    }
+    switch (submission.mode) {
+    case CameraFocusMode::Distance:
+        if (!std::isfinite(submission.distance) || submission.distance < kMinDepthOfFieldFocusDistance) {
+            return false;
+        }
+        break;
+    case CameraFocusMode::WorldPoint:
+        if (!MATH::IsFinite(submission.worldPoint)) {
+            return false;
+        }
+        break;
+    case CameraFocusMode::WorldPlane:
+        if (!MATH::IsFinite(submission.planePoint) || !MATH::IsFinite(submission.planeNormal)) {
+            return false;
+        }
+        if (const float normalLength = MATH::Length(submission.planeNormal);
+            !std::isfinite(normalLength) || normalLength <= kViewEpsilon) {
+            return false;
+        }
+        break;
+    default: return false;
+    }
+
+    const auto existing =
+        std::find_if(focuses_.begin(), focuses_.end(), [&submission](const CameraFocusSubmission& candidate) {
+            return candidate.cameraObjectId == submission.cameraObjectId && candidate.sourceId == submission.sourceId;
+        });
+    if (existing != focuses_.end()) {
+        *existing = submission;
+    } else {
+        focuses_.push_back(submission);
+    }
+    return true;
+}
+
 bool CameraRigService::TryResolvePose(SceneObjectId cameraObjectId, CameraRigSubmission& outSubmission) const noexcept {
     const CameraRigSubmission* winner = nullptr;
     for (const CameraRigSubmission& submission : poses_) {
@@ -146,6 +229,26 @@ bool CameraRigService::TryResolveTargetFraming(SceneObjectId cameraObjectId,
             winner = &submission;
         }
     }
+    if (winner == nullptr) {
+        return false;
+    }
+    outSubmission = *winner;
+    return true;
+}
+
+bool CameraRigService::TryResolveDepthOfField(SceneObjectId cameraObjectId,
+                                              CameraDepthOfFieldSubmission& outSubmission) const noexcept {
+    const CameraDepthOfFieldSubmission* winner = ResolveCameraFrameRequest(depthOfField_, cameraObjectId);
+    if (winner == nullptr) {
+        return false;
+    }
+    outSubmission = *winner;
+    return true;
+}
+
+bool CameraRigService::TryResolveFocus(SceneObjectId cameraObjectId,
+                                       CameraFocusSubmission& outSubmission) const noexcept {
+    const CameraFocusSubmission* winner = ResolveCameraFrameRequest(focuses_, cameraObjectId);
     if (winner == nullptr) {
         return false;
     }

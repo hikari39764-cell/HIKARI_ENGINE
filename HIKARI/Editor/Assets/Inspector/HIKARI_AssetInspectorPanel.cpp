@@ -503,6 +503,21 @@ void AssetInspectorPanel::Draw(AssetDatabase& assetDatabase, AssetRegistry& asse
             ImGui::EndTabItem();
         }
 
+        if (record->type == AssetType::SpriteMaterial &&
+            ImGui::BeginTabItem(TEXT::Localize("ui.spriteMaterial.title").c_str())) {
+            DrawSpriteMaterialEditor(assetDatabase, assetRegistry, *record);
+            ImGui::EndTabItem();
+        }
+        if (record->type == AssetType::Shader &&
+            ImGui::BeginTabItem(TEXT::Localize("ui.spriteMaterial.title").c_str())) {
+            const bool recordInvalidated = DrawSpriteShaderCreation(assetDatabase, assetRegistry, *record, selection);
+            ImGui::EndTabItem();
+            if (recordInvalidated) {
+                ImGui::EndTabBar();
+                return;
+            }
+        }
+
         if (ImGui::BeginTabItem(TEXT::Localize("ui.assetInspector.tabDebugJson").c_str())) {
             if (ImGui::InputTextMultiline(TEXT::Localize("ui.assetInspector.importSettingsJson").c_str(),
                                           importSettingsBuffer.data(), importSettingsBuffer.size(),

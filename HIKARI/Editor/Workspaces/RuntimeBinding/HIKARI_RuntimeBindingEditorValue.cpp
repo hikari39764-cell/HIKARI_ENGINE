@@ -4,6 +4,7 @@
 #include <cctype>
 
 #include "Editor/Widgets/HIKARI_TypedValueEditor.h"
+#include "Core/Serialization/Json/HIKARI_TypedValueJson.h"
 
 namespace HIKARI::EDITOR {
 
@@ -32,16 +33,18 @@ bool TryParseRuntimeBindingEditorValueType(std::string_view text, BINDING::Value
 }
 
 namespace {
-constexpr TypedValueMessages kMessages{"", "Runtime binding", "runtime binding"};
+constexpr SERIALIZATION::JSON::TypedValueMessages kMessages{"", "Runtime binding", "runtime binding"};
 } // namespace
 
 bool TryReadRuntimeBindingEditorValue(const nlohmann::json& node, BINDING::ValueType expectedType,
                                       BINDING::Value& outValue, std::string& outMessage) {
-    return TryReadTypedEditorValue(node, expectedType, BINDING::MakeDefaultValue(expectedType), outValue, outMessage,
-                                   kMessages);
+    return SERIALIZATION::JSON::TryReadTypedValue(node, expectedType, BINDING::MakeDefaultValue(expectedType), outValue,
+                                                  outMessage, kMessages);
 }
 
-nlohmann::json WriteRuntimeBindingEditorValue(const BINDING::Value& value) { return WriteTypedEditorValue(value); }
+nlohmann::json WriteRuntimeBindingEditorValue(const BINDING::Value& value) {
+    return SERIALIZATION::JSON::WriteTypedValue(value);
+}
 
 #if defined(HIKARI_WITH_EDITOR)
 RuntimeBindingValueEditResult DrawRuntimeBindingValueEditor(const char* id, BINDING::Value& value,

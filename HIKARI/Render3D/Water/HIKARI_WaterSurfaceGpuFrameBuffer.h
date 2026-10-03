@@ -33,8 +33,8 @@ public:
     }
 
     bool UploadFrame(uint32_t frameIndex, ID3D12GraphicsCommandList* commandList,
-                     const std::vector<WaterSurfaceGpuData>* records, const std::vector<float>* heights = nullptr) {
-        const bool resident = Base::UploadFrame(frameIndex, commandList, records, heights);
+                     const std::vector<WaterSurfaceGpuData>* records) {
+        const bool resident = Base::UploadFrame(frameIndex, commandList, records);
         // The base upload publishes a neutral sentinel on rejection. Scan
         // only an accepted source payload so a failed/empty slot cannot
         // retain an earlier ocean-spectrum request.

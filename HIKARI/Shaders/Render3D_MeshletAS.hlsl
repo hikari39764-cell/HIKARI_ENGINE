@@ -6,6 +6,8 @@
 #include "Include/HIKARI_ClusterGpuData.hlsli"
 #include "Include/HIKARI_RenderDescriptorLayout.hlsli"
 #include "Include/Cluster/HIKARI_ClusterCullingMath.hlsli"
+#include "Include/Meshlet/HIKARI_MeshletDeformedBounds.hlsli"
+#include "Include/Surface/HIKARI_SurfacePartition.hlsli"
 
 cbuffer CameraCB : register(b0)
 {
@@ -174,6 +176,14 @@ void main(uint groupIndex : SV_GroupIndex, uint3 groupId : SV_GroupID)
     HikariMeshletVisibleRange visible = (HikariMeshletVisibleRange)0;
     if (rangeOffset < gMeshletVisibleRangeCount)
         visible = gMeshletVisibleRanges[visibleRangeIndex];
+#if HIKARI_SURFACE_PARTITION != HIKARI_SURFACE_PARTITION_ALL
+    // 地形と一般面は同じ可視範囲を別 PSO で 2 回 dispatch する。担当外の範囲は
+    // 空として扱い、mesh shader を起動しない。
+    const bool terrainRange =
+        (visible.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_TERRAIN_SURFACE) != 0u;
+    if (terrainRange != (HIKARI_SURFACE_PARTITION == HIKARI_SURFACE_PARTITION_TERRAIN))
+        visible = (HikariMeshletVisibleRange)0;
+#endif
     const uint sourceClusterCount = visible.clusterCount;
     const bool candidateLane = groupIndex < min(sourceClusterCount, HIKARI_MESHLET_AS_MAX_CLUSTER_PAYLOAD);
     bool frustumCulled = false, coneTested = false, coneCulled = false;
@@ -237,14 +247,23 @@ void main(uint groupIndex : SV_GroupIndex, uint3 groupId : SV_GroupID)
 
     float4x4 cullWorld = instance.clusterWorld;
     float4 cullMin = cluster.boundsMin, cullMax = cluster.boundsMax;
-    const bool requiresFineCull = HikariClusterHasConservativeBounds(instance);
+    float4 cullSphere = cluster.sphereCenterRadius;
+    bool requiresFineCull = HikariClusterHasConservativeBounds(instance);
+    // 頂点変形する地形/有限水面も、変形包絡で広げた bounds で剔除する。
+    if (clusterValid && !requiresFineCull &&
+        HikariMeshletResolveDeformedClusterBounds(instance, cullMin, cullMax))
+    {
+        requiresFineCull = true;
+        // 平面用の球は使わず、広げた box から作り直す。
+        cullSphere.w = 0.0f;
+    }
     if (clusterValid && requiresFineCull)
     {
         const float4 worldSphere = HikariClusterBuildCullSphere(
             instance,
-            cluster.sphereCenterRadius,
-            cluster.boundsMin,
-            cluster.boundsMax);
+            cullSphere,
+            cullMin,
+            cullMax);
         clusterValid = HikariClusterSphereVisible(
             gCullViewProj,
             worldSphere);

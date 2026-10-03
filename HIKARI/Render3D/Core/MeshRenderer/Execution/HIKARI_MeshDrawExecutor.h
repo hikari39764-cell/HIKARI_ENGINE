@@ -82,7 +82,7 @@ struct MeshDrawContext {
     D3D12_GPU_VIRTUAL_ADDRESS materialProgramResourcesAddress = 0;
     D3D12_GPU_VIRTUAL_ADDRESS surfaceFeatureDataAddress = 0;
     D3D12_GPU_VIRTUAL_ADDRESS terrainSurfaceDataAddress = 0;
-    D3D12_GPU_VIRTUAL_ADDRESS surfaceFeatureHeightsAddress = 0;
+    D3D12_GPU_VIRTUAL_ADDRESS surfaceFeatureFloatsAddress = 0;
     D3D12_GPU_DESCRIPTOR_HANDLE oceanSpectrumTable{};
     uint32_t oceanSpectrumResolution = 0u;
     bool oceanSpectrumValid = false;

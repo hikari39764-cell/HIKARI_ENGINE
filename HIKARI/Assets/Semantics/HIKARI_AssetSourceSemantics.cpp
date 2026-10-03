@@ -56,6 +56,8 @@ constexpr std::array<AssetImporterSemantics, static_cast<size_t>(AssetImporterKi
         8u,
         ".png, .jpg, .jpeg, .tga, .bmp, .dds, .hdr",
     },
+    {AssetImporterKind::Sprite, AssetType::Sprite, "SpriteAssetImporter", 1u, ".hsprite"},
+    {AssetImporterKind::SpriteMaterial, AssetType::SpriteMaterial, "SpriteMaterialImporter", 1u, ".hspritematerial"},
     {
         AssetImporterKind::Model,
         AssetType::Model,
@@ -176,6 +178,8 @@ constexpr TEXT::EnumName<AssetType> kAssetTypeNames[] = {
     {AssetType::Prefab, "Prefab"},
     {AssetType::Sky, "Sky"},
     {AssetType::Texture, "Texture"},
+    {AssetType::Sprite, "Sprite"},
+    {AssetType::SpriteMaterial, "SpriteMaterial"},
     {AssetType::Material, "Material"},
     {AssetType::Animation, "Animation"},
     {AssetType::Particle, "Particle"},
@@ -226,6 +230,10 @@ const AssetImporterSemantics* ResolveAssetSourceSemantics(const std::filesystem:
         kind = AssetImporterKind::SkyCubemap;
     } else if (IsTextureExtension(extension)) {
         kind = AssetImporterKind::Texture;
+    } else if (extension == ".hsprite") {
+        kind = AssetImporterKind::Sprite;
+    } else if (extension == ".hspritematerial") {
+        kind = AssetImporterKind::SpriteMaterial;
     } else if (IsModelExtension(extension)) {
         kind = AssetImporterKind::Model;
     } else if (IsScenePath(genericPath, filename, extension)) {
@@ -299,7 +307,8 @@ bool IsAssetCompanionSource(const std::filesystem::path& path) {
 }
 
 bool IsSourceOnlyAssetDependencyRole(std::string_view role) noexcept {
-    return role == "SourceBuffer" || role == "SourceCompanion" || role == "ShaderSource" || role == "ShaderInclude";
+    return role == "SourceBuffer" || role == "SourceCompanion" || role == "ShaderSource" || role == "ShaderInclude" ||
+           role == "SpriteSourcePage";
 }
 
 } // namespace HIKARI::ASSETS::SEMANTICS

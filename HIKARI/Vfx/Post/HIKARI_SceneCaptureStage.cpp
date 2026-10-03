@@ -129,6 +129,10 @@ bool SceneCaptureStage::HasCurrentTarget() const {
     return active_ && currentTarget_ != nullptr && currentTarget_->IsInitialized() && currentTarget_->GetResource();
 }
 
+RenderTarget2D* SceneCaptureStage::GetCurrentTarget() const noexcept {
+    return HasCurrentTarget() ? currentTarget_ : nullptr;
+}
+
 bool SceneCaptureStage::RebindCurrentTarget() {
     if (!HasCurrentTarget())
         return false;

@@ -6,10 +6,12 @@
 #include <algorithm>
 
 namespace HIKARI::EDITOR {
+bool GameplayCameraWorkspaceController::IsDocumentOpen() const noexcept { return document_.IsOpen(); }
+
 nlohmann::json GameplayCameraWorkspaceController::DescribeDocumentState() const {
     return {{"preview", true},
             {"previewParameters", {"cameraId", "targetId", "lookTargetId", "mode", "width", "height"}},
-            {"open", document_.IsOpen()},
+            {"open", IsDocumentOpen()},
             {"dirty", document_.IsDirty()},
             {"assetGuid", document_.Guid().value},
             {"name", document_.Profile().name},

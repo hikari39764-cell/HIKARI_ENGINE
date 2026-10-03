@@ -141,6 +141,25 @@ TextureMipPolicy ParseTextureMipPolicy(std::string_view value, TextureMipPolicy 
     return TEXT::ParseEnum(kMipPolicyNames, value, fallback);
 }
 
+TextureAssetAlphaClass ResolveTextureAssetAlphaClass(bool hasAlphaChannel, bool hasMeaningfulAlpha,
+                                                     bool hasTranslucentAlpha, bool hasCutoutAlpha) noexcept {
+    if (!hasAlphaChannel || !hasMeaningfulAlpha) {
+        return TextureAssetAlphaClass::Opaque;
+    }
+    if (hasTranslucentAlpha) {
+        return TextureAssetAlphaClass::Translucent;
+    }
+    if (hasCutoutAlpha) {
+        return TextureAssetAlphaClass::Cutout;
+    }
+    return TextureAssetAlphaClass::Unknown;
+}
+
+TextureAssetAlphaClass ResolveTextureAssetAlphaClass(const TextureImportSettings& settings) noexcept {
+    return ResolveTextureAssetAlphaClass(settings.sourceHasAlphaChannel, settings.sourceHasMeaningfulAlpha,
+                                         settings.sourceHasTranslucentAlpha, settings.sourceHasCutoutAlpha);
+}
+
 TextureImportSettings ResolveTextureImportSettings(const std::filesystem::path& sourcePath,
                                                    std::string_view importSettingsJson) {
     TextureImportSettings settings = GuessTextureImportSettings(sourcePath);

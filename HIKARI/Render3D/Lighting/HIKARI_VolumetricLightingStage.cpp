@@ -32,6 +32,7 @@
 #include "Render3D/Shadow/HIKARI_LocalLightShadowRenderer.h"
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 #include "Render3D/Water/HIKARI_WaterVisibleDepth.h"
+#include "HIKARI/Project/LocalFogTypes.h"
 
 namespace HIKARI::RENDER3D::VOLUMETRIC {
 
@@ -68,9 +69,10 @@ struct alignas(16) VolumetricConstants {
     float localLightFarDistance = 100.0f;
     LIGHTING::LocalShadowGpuData localShadow{};
     LIGHTING::CloudSolarVisibilityGpuData cloudSolarVisibility{};
+    LocalFogVolumeGpu localFogVolumes[kGameProjectLocalFogMaximumVolumes]{};
 };
 
-static_assert(sizeof(VolumetricConstants) == 1760u);
+static_assert(sizeof(VolumetricConstants) == 5344u);
 
 struct VolumeResource {
     ComPtr<ID3D12Resource> texture{};
@@ -99,6 +101,10 @@ struct StageState {
     VolumetricLightingStats stats{};
     uint32_t writeIndex = 0;
     uint64_t preparedFrameIndex = 0;
+    uint64_t executedFrameIndex = (std::numeric_limits<uint64_t>::max)();
+    ID3D12Resource* executedSceneColorResource = nullptr;
+    float fogNearDistance = 0.0f;
+    float fogFarDistance = 0.0f;
     uint64_t historyFrameIndex = 0;
     TEMPORAL::TemporalViewLease preparedView{}, historyView{};
     RenderDebugView debugView = RenderDebugView::None;
@@ -440,9 +446,12 @@ bool PrepareVolumetricLightingFrame(const GFX::Context& context, const TEMPORAL:
                                     const LIGHTING::LocalLightListGpuBindings& localLights,
                                     VolumetricLightingQuality quality, RenderDebugView debugView,
                                     const SHADOW::LocalLightShadowFrame* localShadows,
-                                    const CLOUDS::CloudSolarVisibilityFrame* clouds) {
+                                    const CLOUDS::CloudSolarVisibilityFrame* clouds,
+                                    std::span<const LocalFogVolumeGpu> localFogVolumes) {
     StageState& state = State();
-    state.stats.requested = environment.fog.enabled && environment.fog.volumetric;
+    const bool globalFog = environment.fog.enabled && (environment.fog.volumetric || !localFogVolumes.empty()) &&
+                           std::isfinite(environment.fog.density) && environment.fog.density > 0.0f;
+    state.stats.requested = globalFog || !localFogVolumes.empty();
     state.stats.active = false;
     state.stats.sceneTargetsReady = false;
     state.stats.localShadowFaces = 0;
@@ -454,10 +463,9 @@ bool PrepareVolumetricLightingFrame(const GFX::Context& context, const TEMPORAL:
     state.waterDepthSrv = {};
     state.stats.waterDepthValid = false;
     state.stats.waterDepthFallback = true;
-    if (!state.stats.requested || !std::isfinite(environment.fog.density) || environment.fog.density <= 0.0f ||
-        !frame.camera.valid || !frame.view.IsValid() || !context.deviceGeneration || !context.device ||
-        !context.cmdList || !context.srvHeap || sceneColor.width != frame.renderWidth ||
-        sceneColor.height != frame.renderHeight) {
+    if (!state.stats.requested || localFogVolumes.size() > kGameProjectLocalFogMaximumVolumes || !frame.camera.valid ||
+        !frame.view.IsValid() || !context.deviceGeneration || !context.device || !context.cmdList || !context.srvHeap ||
+        sceneColor.width != frame.renderWidth || sceneColor.height != frame.renderHeight) {
         return false;
     }
     if (state.context.device &&
@@ -522,7 +530,8 @@ bool PrepareVolumetricLightingFrame(const GFX::Context& context, const TEMPORAL:
                     environment.sky.horizonColor.y * environment.sky.tint.y * skyExposure,
                     environment.sky.horizonColor.z * environment.sky.tint.z * skyExposure};
     }
-    constants.fogColorDensity = {fogColor.x, fogColor.y, fogColor.z, (std::max)(0.0f, environment.fog.density)};
+    constants.fogColorDensity = {fogColor.x, fogColor.y, fogColor.z, globalFog ? environment.fog.density : 0.0f};
+    std::copy(localFogVolumes.begin(), localFogVolumes.end(), constants.localFogVolumes);
     constants.fogDistances = {(std::max)(0.01f, environment.fog.startDistance),
                               (std::max)(environment.fog.startDistance + 0.01f, environment.fog.endDistance),
                               (std::max)(0.0f, environment.fog.heightFalloff),
@@ -541,9 +550,11 @@ bool PrepareVolumetricLightingFrame(const GFX::Context& context, const TEMPORAL:
         std::clamp(environment.fog.sunShaftStrength, 0.0f, 8.0f),
     };
 
-    const uint64_t settingsSignature =
+    uint64_t settingsSignature =
         HASH::Fnv1aBytes(HashVolumetricSettings(environment, quality, localLights.view.lightingContentHash, solar),
                          &constants.cloudSolarVisibility.originDescriptor.w, sizeof(float));
+    // 内容が変わったフレームは以前の媒体を混ぜない。静的編集では履歴を保持する。
+    settingsSignature = HASH::Fnv1aBytes(settingsSignature, localFogVolumes.data(), localFogVolumes.size_bytes());
     if (state.lastSettingsSignature != 0u && state.lastSettingsSignature != settingsSignature &&
         state.volumeHistoryValid) {
         state.volumeHistoryValid = false;
@@ -567,11 +578,15 @@ bool PrepareVolumetricLightingFrame(const GFX::Context& context, const TEMPORAL:
     constants.localLightNearDistance = localLights.view.nearDistance;
     constants.localLightFarDistance = localLights.view.farDistance;
     constants.debugAndLocalLightDepth = {static_cast<float>(ResolveDebugMode(debugView)), localLights.view.depthScale,
-                                         localLights.view.depthBias, 0.0f};
+                                         localLights.view.depthBias, static_cast<float>(localFogVolumes.size())};
     state.preparedFrameIndex = frame.frameIndex;
+    state.executedFrameIndex = (std::numeric_limits<uint64_t>::max)();
+    state.executedSceneColorResource = nullptr;
+    state.fogNearDistance = constants.fogDistances.x;
+    state.fogFarDistance = constants.fogDistances.y;
     state.preparedView = frame.view;
     auto& uploads = state.uploads[context.frameIndex % GFX::kFrameResourceCount];
-    if (!uploads.IsInitialized() && !uploads.Init(context.device, 4096))
+    if (!uploads.IsInitialized() && !uploads.Init(context.device, sizeof(VolumetricConstants)))
         return false;
     uploads.ResetForFrame(context.currentFrameRetireFenceValue);
     const auto constantUpload = uploads.Allocate(sizeof(constants));
@@ -601,6 +616,10 @@ void SetVolumetricVisibleWaterDepth(const WATER::WaterVisibleDepthView& view) {
 
 RenderTarget2D* ExecuteVolumetricLightingStage(RenderTarget2D& scene) {
     StageState& state = State();
+    if (state.executedFrameIndex == state.preparedFrameIndex &&
+        state.executedSceneColorResource == scene.GetResource()) {
+        return &scene;
+    }
     if (!state.prepared || !state.stats.active)
         return &scene;
     // allocation は Forward より前に完了済み。ここで別の target を受け入れない。
@@ -680,8 +699,27 @@ RenderTarget2D* ExecuteVolumetricLightingStage(RenderTarget2D& scene) {
     state.volumeHistoryValid = true;
     state.historyView = state.preparedView;
     state.historyFrameIndex = state.preparedFrameIndex;
+    state.executedFrameIndex = state.preparedFrameIndex;
+    state.executedSceneColorResource = scene.GetResource();
     ++state.stats.dispatchCount;
     return &scene;
+}
+
+bool GetVolumetricFogSamplingView(uint64_t frameIndex, VolumetricFogSamplingView& outView) noexcept {
+    outView = {};
+    StageState& state = State();
+    if (!state.stats.active || state.executedFrameIndex != frameIndex || state.preparedFrameIndex != frameIndex ||
+        state.writeIndex >= std::size(state.volumes) || !state.volumes[state.writeIndex].srv.IsValid() ||
+        state.volumes[state.writeIndex].srv.gpu.ptr == 0u || state.stats.froxelDepth == 0u) {
+        return false;
+    }
+    outView.integratedVolumeSrv = state.volumes[state.writeIndex].srv.gpu;
+    outView.nearDistance = state.fogNearDistance;
+    outView.farDistance = state.fogFarDistance;
+    outView.depthSlices = state.stats.froxelDepth;
+    outView.frameIndex = frameIndex;
+    outView.valid = true;
+    return true;
 }
 
 bool IsVolumetricLightingActive() { return State().prepared && State().stats.active; }
@@ -708,6 +746,9 @@ void ShutdownVolumetricLightingStage() {
     state.stats = {};
     state.writeIndex = 0;
     state.preparedFrameIndex = 0;
+    state.executedFrameIndex = (std::numeric_limits<uint64_t>::max)();
+    state.executedSceneColorResource = nullptr;
+    state.fogNearDistance = state.fogFarDistance = 0.0f;
     state.historyFrameIndex = 0;
     state.preparedView = state.historyView = {};
     state.lastSettingsSignature = 0u;

@@ -26,6 +26,8 @@ int ImportPriority(AssetType type) {
     case AssetType::Sequence:
     case AssetType::AnimationStateMachine:
     case AssetType::Dialogue: return 5;
+    case AssetType::SpriteMaterial: return 7;
+    case AssetType::Shader: return 6;
     default: return 6;
     }
 }

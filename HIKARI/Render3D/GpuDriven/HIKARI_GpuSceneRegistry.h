@@ -146,8 +146,7 @@ private:
     std::vector<WATER::WaterSurfaceGpuData> waterSurfaceGpuData_{};
     GpuSceneJointPaletteSnapshotPtr meshShaderJointPalettes_{};
     std::vector<TERRAIN::TerrainSurfaceGpuData> terrainSurfaceGpuData_{};
-    const std::vector<float>* terrainSurfaceHeights_ = nullptr;
-    uint64_t terrainSurfaceHeightVersion_ = 0;
+    RUNTIME::SurfaceFeatureFloatPoolSource surfaceFeatureFloats_{};
     std::vector<uint32_t> forwardOpaqueResidentRecordIndices_{};
     std::vector<uint32_t> depthPrepassOccluderRecordIndices_{};
     std::vector<uint32_t> forwardDepthAwareResidentRecordIndices_{};

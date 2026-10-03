@@ -79,7 +79,7 @@ constexpr UINT SurfaceFeatureData = 34;
 // Sand surface feature records -> t4, space7
 constexpr UINT TerrainSurfaceData = 35;
 // Sand surface feature heights -> t1, space7
-constexpr UINT SurfaceFeatureHeights = 36;
+constexpr UINT SurfaceFeatureFloats = 36;
 // Current-frame hierarchical depth pyramid -> t2, space7
 constexpr UINT ScreenSpaceDepthPyramid = 37;
 // Current-frame packed receiver surface -> t3, space7

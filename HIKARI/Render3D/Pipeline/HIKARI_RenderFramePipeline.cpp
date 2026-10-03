@@ -282,10 +282,13 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
     temporalDesc.outputHeight = frame.outputHeight;
     temporalDesc.cameraCut = frame.cameraCut;
     temporalDesc.projectionChanged = frame.projectionChanged;
-    temporalDesc.historyConfigurationKey =
-        static_cast<uint64_t>(antiAliasingMode) | (antiAliasingMode == RENDER3D::RenderAntiAliasingMode::DLSS
-                                                       ? static_cast<uint64_t>(renderQuality.dlssQualityMode) << 32u
-                                                       : 0u);
+    const uint64_t depthOfFieldEnabledBit = camera.GetDepthOfFieldSettings().enabled ? uint64_t{1} << 48u : 0u;
+    const uint64_t depthOfFieldQualityBits = static_cast<uint64_t>(renderQuality.depthOfFieldQuality) << 49u;
+    temporalDesc.historyConfigurationKey = static_cast<uint64_t>(antiAliasingMode) |
+                                           (antiAliasingMode == RENDER3D::RenderAntiAliasingMode::DLSS
+                                                ? static_cast<uint64_t>(renderQuality.dlssQualityMode) << 32u
+                                                : 0u) |
+                                           depthOfFieldEnabledBit | depthOfFieldQualityBits;
     const bool temporalDebugView = debugRoute.temporalVisualization;
     const bool volumetricDebugView = debugRoute.volumetricVisualization;
     const bool temporalPipelineAllowed = !debugRoute.active || temporalDebugView;
@@ -392,7 +395,8 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
         frame.graphics, temporalFrame, frame.scene.color, frame.scene.depth, environment,
         MESHRENDERER::GetLocalLightListGpuBindings(), renderQuality.volumetricLightingQuality,
         volumetricDebugView ? debugView : RenderDebugView::None,
-        SHADOW::GetLocalLightShadowFrame(frame.graphics, lighting, camera), &cloudSolarVisibility);
+        SHADOW::GetLocalLightShadowFrame(frame.graphics, lighting, camera), &cloudSolarVisibility,
+        view.localFogVolumes);
     if (!MESHRENDERER::FinalizeVolumetricFog(frame.graphics, volumetricFogReady)) {
         MESHRENDERER::EndFrame();
         return false;

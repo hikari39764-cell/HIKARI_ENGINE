@@ -23,6 +23,7 @@
 #include "Scene/Components/Rendering/WorldText/HIKARI_WorldTextComponent.h"
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
 #include "Scene/HIKARI_GameObject.h"
+#include "Scene/HIKARI_PresentationTransformService.h"
 #include "Scene/Terrain/HIKARI_TerrainGrassModelFactory.h"
 #include "Scene/Ui/HIKARI_GameUiPresentationService.h"
 #include "Scene/HIKARI_World.h"
@@ -297,6 +298,7 @@ void BuildWorldSpriteFrameSource(World& world, const FrameContext& frame, const 
     outSource.assetRegistry = assetRegistry;
     outSource.worldIdentity = world.GetRuntimeIdentity();
     outSource.frameIndex = frame.frameIndex;
+    const auto* presentation = world.Services().Find<PresentationTransformService>();
     uint32_t stableOrder = 0u;
     world.ForEachObjectWith<WorldSpriteComponent>([&](GameObject& object, WorldSpriteComponent& sprite) {
         if (!sprite.IsVisible() || sprite.IsCanvasSourceOnly()) {
@@ -305,34 +307,54 @@ void BuildWorldSpriteFrameSource(World& world, const FrameContext& frame, const 
         RENDER3D::WORLD_SPRITES::WorldSpriteInstance instance{};
         instance.objectId = object.GetRenderStableId();
         instance.stableOrder = stableOrder++;
-        instance.size = sprite.GetSize();
-        instance.pivot = sprite.GetPivot();
         instance.tint = sprite.GetTint();
-        instance.textureAssetGuid = sprite.GetTextureAssetGuid();
         instance.opacity = sprite.GetOpacity();
         instance.alphaCutoff = sprite.GetAlphaCutoff();
         instance.transparentSortPriority = sprite.GetTransparentSortPriority();
         instance.facing = sprite.GetFacingMode();
         instance.alphaMode = sprite.GetAlphaMode();
-        instance.preserveAspect = sprite.GetPreserveAspect();
-        instance.uvRect = sprite.GetUvRect();
         instance.lit = sprite.IsLit();
         instance.roughness = sprite.GetRoughness();
         instance.specular = sprite.GetSpecular();
-        instance.pointSampling = sprite.UsesPointSampling();
         instance.castShadow = sprite.CastsShadow();
         instance.receiveShadow = sprite.ReceivesShadow();
 
-        const MATH::Mat4 worldMatrix = object.GetTransform().GetWorldMatrix();
+        auto worldMatrix = object.GetTransform().GetWorldMatrix();
+        if (presentation != nullptr)
+            (void)presentation->TryGetWorldMatrix(object.GetRuntimeHandle(), worldMatrix);
         if (!MATH::DecomposeTRS(worldMatrix, instance.worldPosition, instance.worldRotation, instance.worldScale)) {
             instance.worldPosition = TransformPoint(worldMatrix, {});
             instance.worldRotation = MATH::Quat::Identity();
             instance.worldScale = {1.0f, 1.0f, 1.0f};
         }
+        WorldSpriteRenderProjection projection{};
+        if (!sprite.ResolveRenderProjection(instance.worldScale, projection) || projection.empty) {
+            return;
+        }
+        instance.size = projection.size;
+        instance.pivot = projection.pivot;
+        instance.textureAssetId = std::move(projection.textureAssetId);
+        instance.normalTextureAssetId = std::move(projection.normalTextureAssetId);
+        instance.preserveAspect = projection.preserveAspect;
+        instance.uvRect = projection.uvRect;
+        instance.sourceCanvasRect = projection.sourceCanvasRect;
+        instance.rotated = projection.rotated;
+        instance.flipX = projection.flipX;
+        instance.pointSampling = projection.pointSampling;
+        if (sprite.IsMaterialEnabled()) {
+            const auto& binding = sprite.GetSpriteMaterialBinding();
+            if (binding != nullptr && binding->shaderArtifact != nullptr) {
+                instance.spriteShaderArtifact = binding->shaderArtifact;
+                const auto& parameterSlots = sprite.GetEffectiveMaterialParameterSlots();
+                for (size_t slotIndex = 0u; slotIndex < parameterSlots.size(); ++slotIndex) {
+                    const auto& slot = parameterSlots[slotIndex];
+                    instance.spriteMaterialParameters[slotIndex] = {slot[0], slot[1], slot[2], slot[3]};
+                }
+            }
+        }
         auto boundsInstance = instance;
-        if (instance.preserveAspect && assetRegistry != nullptr && instance.textureAssetGuid.IsValid()) {
-            const auto* texture =
-                assetRegistry->FindAs<TextureAssetDescriptor>(AssetId{instance.textureAssetGuid.value});
+        if (instance.preserveAspect && assetRegistry != nullptr && !instance.textureAssetId.value.empty()) {
+            const auto* texture = assetRegistry->FindAs<TextureAssetDescriptor>(instance.textureAssetId);
             if (texture != nullptr && texture->width != 0u && texture->height != 0u) {
                 const float scaleX = (std::max)(std::abs(instance.worldScale.x), 0.001f);
                 const float scaleY = (std::max)(std::abs(instance.worldScale.y), 0.001f);

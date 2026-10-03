@@ -554,8 +554,9 @@ bool Dx12Core::EndFrame() {
         if (SUCCEEDED(result) && captured.GetImageCount()) {
             std::error_code error;
             std::filesystem::create_directories(path.parent_path(), error);
+            // Backbufferは表示用に符号化済み。UNORMを線形PNGと誤記せず、画素値は変換しない。
             result = error ? E_FAIL
-                           : DirectX::SaveToWICFile(*captured.GetImage(0, 0, 0), DirectX::WIC_FLAGS_NONE,
+                           : DirectX::SaveToWICFile(*captured.GetImage(0, 0, 0), DirectX::WIC_FLAGS_FORCE_SRGB,
                                                     DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG), path.c_str());
         }
         if (FAILED(result))

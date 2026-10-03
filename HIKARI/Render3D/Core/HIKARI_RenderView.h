@@ -2,6 +2,7 @@
 #include "Render3D/ScreenSpace/HIKARI_ScreenReadability.h"
 
 #include <cstdint>
+#include <span>
 
 #include "Render3D/Core/HIKARI_Camera3D.h"
 #include "Render3D/Core/HIKARI_RenderViewIdentity.h"
@@ -14,6 +15,10 @@ struct GameProjectRenderPassContext;
 } // namespace HIKARI
 
 namespace HIKARI::RENDER3D {
+
+namespace VOLUMETRIC {
+struct LocalFogVolumeGpu;
+}
 
 namespace PARTICLES {
 struct ParticleRenderFrameSource;
@@ -71,6 +76,7 @@ struct RenderFrameProjectExtensionSink {
 };
 
 struct RenderViewContext {
+    std::span<const VOLUMETRIC::LocalFogVolumeGpu> localFogVolumes{};
     ScreenReadabilityWorldFrame screenReadability{};
     RenderViewId viewId{};
     RenderViewPurpose purpose = RenderViewPurpose::Game;

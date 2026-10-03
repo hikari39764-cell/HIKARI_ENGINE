@@ -10,12 +10,10 @@ namespace HIKARI::RENDER3D::TERRAIN {
 
 struct TerrainSurfaceFrameBufferTraits {
     static constexpr std::size_t kRecordCapacity = kTerrainSurfaceMaxGpuDataRecords;
-    static constexpr std::size_t kHeightCapacity = kTerrainSurfaceMaxHeightCells;
+    static constexpr std::size_t kHeightCapacity = kSurfaceFeatureFloatPoolCapacity;
 
     TerrainSurfaceGpuData MakeSentinel(std::size_t count) const noexcept {
-        TerrainSurfaceGpuData sentinel = BuildTerrainSurfaceGpuDataSentinel();
-        sentinel.heightOffset = static_cast<uint32_t>(count);
-        return sentinel;
+        return BuildTerrainSurfaceGpuDataSentinel(static_cast<uint32_t>(count));
     }
 };
 

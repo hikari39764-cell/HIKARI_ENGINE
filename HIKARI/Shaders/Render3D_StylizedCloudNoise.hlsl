@@ -22,19 +22,19 @@ float4 HikariStylizedCloudBuildShapeVoxel(
         max(float3(volumeSize), 1.0f.xxx);
     float3 macroPosition = uv * 8.0f;
     float3 detailPosition = uv * 16.0f + 3.17f.xxx;
-    float macroValue = HikariStylizedCloudPeriodicValue3D(
+    float macroValue = HikariNoisePeriodicValue3D(
         macroPosition,
         int3(8, 8, 8),
         0x31a7c9edu);
-    float secondaryValue = HikariStylizedCloudPeriodicValue3D(
+    float secondaryValue = HikariNoisePeriodicValue3D(
         detailPosition,
         int3(16, 16, 16),
         0x6d2b79f5u);
-    float cellular = HikariStylizedCloudPeriodicCellular3D(
+    float cellular = HikariNoisePeriodicCellular3D(
         macroPosition,
         int3(8, 8, 8),
         0x9e3779b9u);
-    float secondaryCellular = HikariStylizedCloudPeriodicCellular3D(
+    float secondaryCellular = HikariNoisePeriodicCellular3D(
         detailPosition,
         int3(16, 16, 16),
         0x243f6a88u);
@@ -54,19 +54,19 @@ float4 HikariStylizedCloudBuildDetailVoxel(
         max(float3(volumeSize), 1.0f.xxx);
     float3 primaryPosition = uv * 12.0f + 5.11f.xxx;
     float3 secondaryPosition = uv * 24.0f + 7.73f.xxx;
-    float primaryValue = HikariStylizedCloudPeriodicValue3D(
+    float primaryValue = HikariNoisePeriodicValue3D(
         primaryPosition,
         int3(12, 12, 12),
         0x85ebca6bu);
-    float secondaryValue = HikariStylizedCloudPeriodicValue3D(
+    float secondaryValue = HikariNoisePeriodicValue3D(
         secondaryPosition,
         int3(24, 24, 24),
         0xc2b2ae35u);
-    float cellular = HikariStylizedCloudPeriodicCellular3D(
+    float cellular = HikariNoisePeriodicCellular3D(
         primaryPosition,
         int3(12, 12, 12),
         0x27d4eb2fu);
-    float secondaryCellular = HikariStylizedCloudPeriodicCellular3D(
+    float secondaryCellular = HikariNoisePeriodicCellular3D(
         secondaryPosition,
         int3(24, 24, 24),
         0x165667b1u);
@@ -86,19 +86,19 @@ float4 HikariStylizedCloudBuildWeatherTexel(
         max(float2(textureSize), 1.0f.xx);
     float2 coveragePosition = uv * 32.0f;
     float2 typePosition = uv * 16.0f + 4.27f.xx;
-    float coverage = HikariStylizedCloudPeriodicValue2D(
+    float coverage = HikariNoisePeriodicValue2D(
         coveragePosition,
         int2(32, 32),
         0x4f1bbcdcu);
-    float coverageCellular = HikariStylizedCloudPeriodicCellular2D(
+    float coverageCellular = HikariNoisePeriodicCellular2D(
         coveragePosition,
         int2(32, 32),
         0x7f4a7c15u);
-    float cloudType = HikariStylizedCloudPeriodicValue2D(
+    float cloudType = HikariNoisePeriodicValue2D(
         typePosition,
         int2(16, 16),
         0x94d049bbu);
-    float rain = HikariStylizedCloudPeriodicValue2D(
+    float rain = HikariNoisePeriodicValue2D(
         uv * 8.0f + 9.31f.xx,
         int2(8, 8),
         0x369dea0fu);

@@ -10,6 +10,7 @@
 #include "Editor/HIKARI_SelectionSyncService.h"
 #include "Render3D/HIKARI_Math3D.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
+#include "Scene/HIKARI_SceneRuntimeBuilder.h"
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_SceneComponentId.h"
@@ -33,8 +34,9 @@ void SyncRuntimeTransformToDocument(SceneObjectData& target, const EditorContext
     target.transform.rotationEulerDeg = MATH::EulerXYZDegreesFromQuat(transform.rotation);
 }
 
-bool ApplyDocumentComponentToRuntime(const SceneObjectData& documentObject, const SceneComponentData& componentData,
-                                     size_t componentIndex, const EditorContext& context) {
+bool ApplyDocumentComponentToRuntime(DocumentSceneBase& scene, const SceneObjectData& documentObject,
+                                     const SceneComponentData& componentData, size_t componentIndex,
+                                     const EditorContext& context) {
     if (!context.selection.selectedObject) {
         return false;
     }
@@ -63,7 +65,10 @@ bool ApplyDocumentComponentToRuntime(const SceneObjectData& documentObject, cons
             continue;
         }
         runtimeEntry->Deserialize(componentData.properties);
-        return true;
+        std::string diagnostic{};
+        return SceneRuntimeBuilder{}.InitializeRuntimeComponentAssets(*context.selection.selectedObject, *runtimeEntry,
+                                                                      scene.GetAssetRegistry(), scene.GetModelManager(),
+                                                                      diagnostic);
     }
     return false;
 }
@@ -239,7 +244,7 @@ std::optional<SceneObjectAuthoringHistoryRequest> SceneComponentAuthoringSection
                 deferredRuntimeComponentApply_ = DeferredRuntimeComponentApply{target.id, component.id};
             } else {
                 const bool appliedToRuntime =
-                    ApplyDocumentComponentToRuntime(target, component, componentIndex, context);
+                    ApplyDocumentComponentToRuntime(scene, target, component, componentIndex, context);
                 if (!appliedToRuntime) {
                     needsRebuild = true;
                 } else if (component.type == "CameraComponent") {
@@ -266,7 +271,7 @@ std::optional<SceneObjectAuthoringHistoryRequest> SceneComponentAuthoringSection
             deferred.objectId == target.id ? FindSceneComponentIndex(target, deferred.componentId) : std::nullopt;
         if (deferredIndex.has_value()) {
             const SceneComponentData& component = target.components[*deferredIndex];
-            if (!ApplyDocumentComponentToRuntime(target, component, *deferredIndex, context)) {
+            if (!ApplyDocumentComponentToRuntime(scene, target, component, *deferredIndex, context)) {
                 needsRebuild = true;
             } else if (component.type == "CameraComponent") {
                 (void)scene.ApplyCameraRuntimeChanges();

@@ -200,8 +200,7 @@ bool PublishShadowSceneSources(ShadowRendererState& state, const RENDER3D::GPUDR
         partition->meshShaderJointPalettes = state.gpuDrivenSceneSource->meshShaderJointPalettes;
         partition->waterSurfaceGpuData = state.gpuDrivenSceneSource->waterSurfaceGpuData;
         partition->terrainSurfaceGpuData = state.gpuDrivenSceneSource->terrainSurfaceGpuData;
-        partition->terrainSurfaceHeights = state.gpuDrivenSceneSource->terrainSurfaceHeights;
-        partition->terrainSurfaceHeightVersion = state.gpuDrivenSceneSource->terrainSurfaceHeightVersion;
+        partition->surfaceFeatureFloats = state.gpuDrivenSceneSource->surfaceFeatureFloats;
     }
 
     state.frameHasStaticShadowWork = state.staticShadowSceneSource.sourceInstanceCount != 0u;

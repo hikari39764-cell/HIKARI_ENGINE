@@ -23,6 +23,8 @@ enum class AssetType {
     Prefab,
     Sky,
     Texture,
+    Sprite,
+    SpriteMaterial,
     Material,
     Animation,
     Particle,
@@ -220,6 +222,8 @@ enum class CookedAssetFormat {
     HSHADERC,
     HPAK,
     HPREFABC,
+    HSPRITEC,
+    HSPRITEMATERIALC,
 };
 
 struct TextureAssetDescriptor final : AssetDescriptor {

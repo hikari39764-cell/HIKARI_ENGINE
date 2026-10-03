@@ -3,17 +3,23 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "Assets/HIKARI_AssetTypes.h"
+#include "Assets/Sprite/HIKARI_SpriteAsset.h"
+#include "Assets/Sprite/HIKARI_SpriteMaterialAsset.h"
 #include "Authoring/HIKARI_IInspectorBuilder.h"
 #include "Core/HIKARI_JsonRead.h"
 #include "Core/Text/HIKARI_Localization.h"
 #include "Render3D/WorldSprite/HIKARI_WorldSpriteFrameSource.h"
 #include "Scene/Components/HIKARI_IComponent.h"
+#include "Scene/Components/Rendering/WorldSprite/HIKARI_WorldSpritePlayer.h"
 #include "Scene/Geometry/HIKARI_GeometryFitProvider.h"
 #include "Scene/HIKARI_GameObject.h"
 
@@ -21,7 +27,14 @@ namespace HIKARI {
 
 namespace WorldSpriteComponentPropertyIds {
 inline constexpr char TextureAssetGuid[] = "textureAssetGuid";
+inline constexpr char SpriteAssetGuid[] = "spriteAssetGuid";
+inline constexpr char AnimationClip[] = "animationClip";
+inline constexpr char AnimationSpeed[] = "animationSpeed";
+inline constexpr char AnimationPaused[] = "animationPaused";
+inline constexpr char SizeExplicit[] = "sizeExplicit";
+inline constexpr char PivotExplicit[] = "pivotExplicit";
 inline constexpr char Visible[] = "visible";
+inline constexpr char FlipX[] = "flipX";
 inline constexpr char Size[] = "size";
 inline constexpr char PreserveAspect[] = "preserveAspect";
 inline constexpr char Facing[] = "facing";
@@ -32,6 +45,21 @@ inline constexpr char AlphaMode[] = "alphaMode";
 inline constexpr char AlphaCutoff[] = "alphaCutoff";
 inline constexpr char TransparentSortPriority[] = "transparentSortPriority";
 } // namespace WorldSpriteComponentPropertyIds
+
+struct WorldSpriteRenderProjection {
+    AssetId textureAssetId{};
+    AssetId normalTextureAssetId{};
+    MATH::Vec2 size{1.0f, 1.0f};
+    MATH::Vec2 pivot{0.5f, 0.5f};
+    MATH::Vec4 uvRect{0.0f, 0.0f, 1.0f, 1.0f};
+    MATH::Vec4 sourceCanvasRect{};
+    bool preserveAspect = true;
+    bool usesSpriteAsset = false;
+    bool rotated = false;
+    bool flipX = false;
+    bool pointSampling = false;
+    bool empty = false;
+};
 
 class WorldSpriteComponent final : public IComponent, public IGeometryFitProvider {
 public:
@@ -52,16 +80,65 @@ public:
         AlphaMode alphaMode = AlphaMode::Auto;
         bool visible = true;
         bool preserveAspect = true;
+        bool sizeExplicit = false;
+        bool pivotExplicit = false;
+        bool flipX = false;
     };
 
     void Update(float dt) override;
     MATH::Vec4 GetUvRect() const noexcept;
+    bool ResolveRenderProjection(const MATH::Vec3& worldScale, WorldSpriteRenderProjection& outProjection) const;
+    bool BindSpriteAsset(const AssetGuid& guid, std::shared_ptr<const SPRITE::SpriteAssetData> asset,
+                         std::string_view initialClip = {});
+    const AssetGuid& GetMaterialAssetGuid() const noexcept { return materialAssetGuid_; }
+    const std::shared_ptr<const SPRITE::SpriteMaterialBinding>& GetSpriteMaterialBinding() const noexcept {
+        return materialBinding_;
+    }
+    const ASSETS::SHADER::ShaderParameterSlots& GetEffectiveMaterialParameterSlots() const noexcept {
+        return effectiveMaterialParameterSlots_;
+    }
+    bool BindMaterialAsset(const AssetGuid& guid, std::shared_ptr<const SPRITE::SpriteMaterialBinding> binding);
+    bool RefreshMaterialBinding(std::shared_ptr<const SPRITE::SpriteMaterialBinding> binding);
+    void ClearMaterialAsset();
+    bool IsMaterialEnabled() const noexcept { return materialEnabled_; }
+    bool SetMaterialEnabled(bool enabled) noexcept;
+    size_t GetMaterialParameterCount() const noexcept;
+    bool TryGetMaterialParameterInfo(size_t index, ASSETS::SHADER::ShaderParameterDefinition& outInfo) const;
+    bool HasMaterialParameterOverride(std::string_view key) const noexcept;
+    bool SetMaterialParameter(std::string_view key, const BINDING::Value& value);
+    bool TryGetMaterialParameter(std::string_view key, BINDING::Value& outValue) const noexcept;
+    bool ResetMaterialParameter(std::string_view key);
+    bool ResetMaterialParameters();
+    uint64_t GetMaterialStateRevision() const noexcept { return materialStateRevision_; }
+    void SetMaterialDiagnostic(std::string diagnostic) { materialDiagnostic_ = std::move(diagnostic); }
+    const std::string& GetMaterialDiagnostic() const noexcept { return materialDiagnostic_; }
+    bool PlayAnimation(std::string_view clip, bool restart = true);
+    bool SetPaused(bool paused) noexcept;
+    bool SetPlaybackSpeed(float speed) noexcept;
+    bool RestartAnimation() noexcept;
+    bool SeekAnimation(double timeMs) noexcept;
+    const AssetGuid& GetSpriteAssetGuid() const noexcept { return spriteAssetGuid_; }
+    bool HasBoundSpriteAsset() const noexcept { return spritePlayer_.HasSpriteAsset(); }
+    WorldSpriteAnimationState GetAnimationState() const noexcept;
+    // Borrowed until the bound asset changes; no player mutation or asset reload.
+    const SPRITE::SpriteClip* FindAnimationClip(std::string_view clipId) const noexcept;
+    MATH::Vec2 GetEffectivePivot() const noexcept;
+    bool GetFlipX() const noexcept { return flipX_; }
+    void SetFlipX(bool flipX) noexcept {
+        RuntimeState state = GetRuntimeState();
+        state.flipX = flipX;
+        (void)ApplyRuntimeState(state);
+    }
+    std::string_view GetAnimationClip() const noexcept {
+        return spritePlayer_.HasSpriteAsset() ? std::string_view(spritePlayer_.GetClipName())
+                                              : std::string_view(animationClip_);
+    }
     bool IsLit() const noexcept { return lit_; }
     bool CastsShadow() const noexcept { return castShadow_; }
     bool ReceivesShadow() const noexcept { return receiveShadow_; }
     float GetRoughness() const noexcept { return roughness_; }
     float GetSpecular() const noexcept { return specular_; }
-    bool UsesPointSampling() const noexcept { return pointSampling_; }
+    bool UsesPointSampling() const noexcept { return spriteAssetGuid_.IsValid() || pointSampling_; }
     bool IsCanvasSourceOnly() const noexcept { return canvasSourceOnly_; }
     void SetCanvasSourceOnly(bool value) {
         if (canvasSourceOnly_ == value)
@@ -73,13 +150,7 @@ public:
 
     const AssetGuid& GetTextureAssetGuid() const noexcept { return textureAssetGuid_; }
 
-    void SetTextureAssetGuid(AssetGuid guid) {
-        if (textureAssetGuid_ == guid) {
-            return;
-        }
-        textureAssetGuid_ = std::move(guid);
-        NotifyRenderStateDirty();
-    }
+    void SetTextureAssetGuid(AssetGuid guid);
 
     bool IsVisible() const noexcept { return visible_; }
     void SetVisible(bool visible) {
@@ -92,7 +163,9 @@ public:
     void SetSize(MATH::Vec2 size) {
         RuntimeState state = GetRuntimeState();
         state.size = size;
+        state.sizeExplicit = true;
         (void)ApplyRuntimeState(state);
+        sizeInitializedFromSprite_ = true;
     }
 
     bool GetPreserveAspect() const noexcept { return preserveAspect_; }
@@ -127,6 +200,7 @@ public:
     void SetPivot(MATH::Vec2 pivot) {
         RuntimeState state = GetRuntimeState();
         state.pivot = pivot;
+        state.pivotExplicit = true;
         (void)ApplyRuntimeState(state);
     }
 
@@ -166,6 +240,9 @@ public:
         state.alphaMode = alphaMode_;
         state.visible = visible_;
         state.preserveAspect = preserveAspect_;
+        state.sizeExplicit = sizeExplicit_;
+        state.pivotExplicit = pivotExplicit_;
+        state.flipX = flipX_;
         return state;
     }
 
@@ -194,19 +271,33 @@ public:
         alphaMode_ = state.alphaMode;
         visible_ = state.visible;
         preserveAspect_ = state.preserveAspect;
+        sizeExplicit_ = state.sizeExplicit;
+        pivotExplicit_ = state.pivotExplicit;
+        flipX_ = state.flipX;
+        sizeInitializedFromSprite_ = sizeInitializedFromSprite_ || state.sizeExplicit;
         NotifyRenderStateDirty();
         return true;
     }
 
     bool QueryGeometryFit(GeometryFitDesc& outFit) const noexcept override {
-        const MATH::Vec2 size = SanitizeSize(size_);
-        outFit = {};
-        outFit.shape = GeometryFitShape::Box;
-        outFit.center = {(0.5f - pivot_.x) * size.x, (0.5f - pivot_.y) * size.y, 0.0f};
-        outFit.size = {size.x, size.y, 0.02f};
-        outFit.radius = 0.01f;
-        outFit.height = size.y;
-        return true;
+        try {
+            WorldSpriteRenderProjection projection{};
+            if (!ResolveRenderProjection({1.0f, 1.0f, 1.0f}, projection) || projection.empty) {
+                outFit = {};
+                return false;
+            }
+            const MATH::Vec2 size = projection.size;
+            outFit = {};
+            outFit.shape = GeometryFitShape::Box;
+            outFit.center = {(0.5f - projection.pivot.x) * size.x, (0.5f - projection.pivot.y) * size.y, 0.0f};
+            outFit.size = {size.x, size.y, 0.02f};
+            outFit.radius = 0.01f;
+            outFit.height = size.y;
+            return true;
+        } catch (...) {
+            outFit = {};
+            return false;
+        }
     }
 
     void Serialize(nlohmann::json& out) const override;
@@ -263,7 +354,8 @@ private:
                tint_.y == state.tint.y && tint_.z == state.tint.z && pivot_.x == state.pivot.x &&
                pivot_.y == state.pivot.y && opacity_ == state.opacity && alphaCutoff_ == state.alphaCutoff &&
                transparentSortPriority_ == state.transparentSortPriority && facing_ == state.facing &&
-               alphaMode_ == state.alphaMode && visible_ == state.visible && preserveAspect_ == state.preserveAspect;
+               alphaMode_ == state.alphaMode && visible_ == state.visible && preserveAspect_ == state.preserveAspect &&
+               sizeExplicit_ == state.sizeExplicit && pivotExplicit_ == state.pivotExplicit && flipX_ == state.flipX;
     }
 
     static const char* FacingName(FacingMode mode) noexcept {
@@ -313,13 +405,21 @@ private:
         }
     }
 
+    void NotifyMaterialStateDirty() noexcept;
+    void BumpMaterialStateRevision() noexcept;
+    void SerializeMaterialState(nlohmann::json& out) const;
+    void DeserializeMaterialState(const nlohmann::json& node);
+    void BuildMaterialInspector(IInspectorBuilder& builder);
+
     void SanitizePresentation() noexcept;
     int atlasColumns_ = 1, atlasRows_ = 1, atlasFrames_ = 1;
     float framesPerSecond_ = 0, roughness_ = 0.85f, specular_ = 0.25f;
-    double animationSeconds_ = 0;
     bool lit_ = false, pointSampling_ = false;
     bool castShadow_ = true, receiveShadow_ = true;
     AssetGuid textureAssetGuid_{};
+    AssetGuid spriteAssetGuid_{};
+    std::string animationClip_{};
+    WorldSpritePlayer spritePlayer_{};
     MATH::Vec2 size_{1.0f, 1.0f};
     MATH::Vec3 tint_{1.0f, 1.0f, 1.0f};
     MATH::Vec2 pivot_{0.5f, 0.5f};
@@ -330,7 +430,18 @@ private:
     AlphaMode alphaMode_ = AlphaMode::Auto;
     bool visible_ = true;
     bool preserveAspect_ = true;
+    bool sizeExplicit_ = false;
+    bool pivotExplicit_ = false;
+    bool sizeInitializedFromSprite_ = false;
+    bool flipX_ = false;
     uint64_t stateRevision_ = 1u;
+    AssetGuid materialAssetGuid_{};
+    std::shared_ptr<const SPRITE::SpriteMaterialBinding> materialBinding_{};
+    std::vector<ASSETS::SHADER::ShaderParameterOverride> materialOverrides_{};
+    ASSETS::SHADER::ShaderParameterSlots effectiveMaterialParameterSlots_{};
+    bool materialEnabled_ = false;
+    uint64_t materialStateRevision_ = 1u;
+    std::string materialDiagnostic_{};
 
 private:
     bool canvasSourceOnly_ = false;

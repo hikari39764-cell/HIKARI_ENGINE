@@ -21,6 +21,7 @@ struct TextureImportSettings {
 
     bool forcePowerOfTwo = false;
     bool allowResize = false;
+    bool preserveNormalChannels = false;
     uint32_t maxSize = 4096;
 
     bool sourceHasAlphaChannel = false;

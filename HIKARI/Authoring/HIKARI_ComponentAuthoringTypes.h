@@ -26,6 +26,7 @@ enum class AuthoringFieldValueType : uint8_t {
     InputActionId,
     RuntimeVariableId,
     RuntimeEventId,
+    TypedValue,
 };
 
 enum class AuthoringEventPayloadPolicy : uint8_t {

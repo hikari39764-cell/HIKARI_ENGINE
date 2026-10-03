@@ -4,6 +4,7 @@
 #include "Scene/Components/HIKARI_CameraComponent.h"
 #include "Scene/Components/HIKARI_CameraFollowComponent.h"
 
+#include <limits>
 #include <string>
 #include "Assets/HIKARI_AssetTypes.h"
 
@@ -44,6 +45,40 @@ void CameraComponent::BuildInspector(IInspectorBuilder& builder) {
     builder.Float(AuthoringFieldDescriptor{"nearClip", "Near Clip", "Near clipping distance in world units."},
                   nearClip_);
     builder.Float(AuthoringFieldDescriptor{"farClip", "Far Clip", "Far clipping distance in world units."}, farClip_);
+    if (builder.Section("Depth of Field", false)) {
+        builder.Bool(
+            AuthoringFieldDescriptor{"depthOfField.enabled", "Enabled", "Apply depth of field for this camera."},
+            depthOfFieldSettings_.enabled);
+        if (depthOfFieldSettings_.enabled) {
+            const float maxValue = std::numeric_limits<float>::max();
+            builder.FloatRange(AuthoringFieldDescriptor{"depthOfField.focusDistance", "Focus Distance",
+                                                        "Camera forward-axis view-Z distance in world units."},
+                               depthOfFieldSettings_.focusDistance, CAMERA::kMinDepthOfFieldFocusDistance, maxValue,
+                               0.05f);
+            builder.FloatRange(
+                AuthoringFieldDescriptor{"depthOfField.focusRange", "Focus Range",
+                                         "Total clear-band width centered on Focus Distance, in world units."},
+                depthOfFieldSettings_.focusRange, 0.0f, maxValue, 0.05f);
+            builder.FloatRange(AuthoringFieldDescriptor{"depthOfField.nearTransition", "Near Transition",
+                                                        "Near-side transition length along view-Z, in world units."},
+                               depthOfFieldSettings_.nearTransition, CAMERA::kMinDepthOfFieldTransition, maxValue,
+                               0.05f);
+            builder.FloatRange(AuthoringFieldDescriptor{"depthOfField.farTransition", "Far Transition",
+                                                        "Far-side transition length along view-Z, in world units."},
+                               depthOfFieldSettings_.farTransition, CAMERA::kMinDepthOfFieldTransition, maxValue,
+                               0.05f);
+            builder.FloatRange(AuthoringFieldDescriptor{"depthOfField.nearBlurRadius1080pPixels",
+                                                        "Near Blur Radius (1080p pixels)",
+                                                        "Radius at 1080p output height; scaled with output height."},
+                               depthOfFieldSettings_.nearBlurRadius1080pPixels, 0.0f,
+                               CAMERA::kMaxDepthOfFieldBlurRadius1080pPixels, 0.05f);
+            builder.FloatRange(AuthoringFieldDescriptor{"depthOfField.farBlurRadius1080pPixels",
+                                                        "Far Blur Radius (1080p pixels)",
+                                                        "Radius at 1080p output height; scaled with output height."},
+                               depthOfFieldSettings_.farBlurRadius1080pPixels, 0.0f,
+                               CAMERA::kMaxDepthOfFieldBlurRadius1080pPixels, 0.05f);
+        }
+    }
     ClampLens();
 }
 

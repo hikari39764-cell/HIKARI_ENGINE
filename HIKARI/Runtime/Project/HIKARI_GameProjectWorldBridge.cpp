@@ -314,7 +314,7 @@ bool ObjectView::TryGetRuntimeWorldSpriteState(GameProjectWorldSpriteState& outS
         }
         const MATH::Vec2& size = sprite->GetSize();
         const MATH::Vec3& tint = sprite->GetTint();
-        const MATH::Vec2& pivot = sprite->GetPivot();
+        const MATH::Vec2 pivot = sprite->GetEffectivePivot();
         outState.stateRevision = sprite->GetStateRevision();
         outState.size = {size.x, size.y};
         outState.tint = {tint.x, tint.y, tint.z};
@@ -326,6 +326,7 @@ bool ObjectView::TryGetRuntimeWorldSpriteState(GameProjectWorldSpriteState& outS
         outState.alphaMode = static_cast<GameProjectWorldSpriteAlphaMode>(sprite->GetAlphaMode());
         outState.visible = sprite->IsVisible() ? 1u : 0u;
         outState.preserveAspect = sprite->GetPreserveAspect() ? 1u : 0u;
+        outState.flipX = sprite->GetFlipX() ? 1u : 0u;
         return true;
     } catch (...) {
         outState = {};
@@ -363,6 +364,7 @@ GameProjectWorldResult ObjectView::ApplyRuntimeWorldSpritePatch(
          patch.facing >= GameProjectWorldSpriteFacingMode::Count) ||
         (Selected(GameProjectWorldSpritePatchField::AlphaMode) &&
          patch.alphaMode >= GameProjectWorldSpriteAlphaMode::Count) ||
+        (Selected(GameProjectWorldSpritePatchField::FlipX) && patch.flipX > 1u) ||
         (Selected(GameProjectWorldSpritePatchField::Size) &&
          (!std::isfinite(patch.size.x) || !std::isfinite(patch.size.y))) ||
         (Selected(GameProjectWorldSpritePatchField::Tint) &&
@@ -381,14 +383,21 @@ GameProjectWorldResult ObjectView::ApplyRuntimeWorldSpritePatch(
                                                                     : GameProjectWorldResultCode::Unsupported,
                                                   handle_);
     }
+    if (sprite->IsCanvasSourceOnly() && Selected(GameProjectWorldSpritePatchField::FlipX)) {
+        return PROJECT::INTERNAL::MakeWorldResult(GameProjectWorldResultCode::Unsupported, handle_);
+    }
 
     try {
         WorldSpriteComponent::RuntimeState next = sprite->GetRuntimeState();
         if (Selected(GameProjectWorldSpritePatchField::Visible)) {
             next.visible = patch.visible != 0u;
         }
+        if (Selected(GameProjectWorldSpritePatchField::FlipX)) {
+            next.flipX = patch.flipX != 0u;
+        }
         if (Selected(GameProjectWorldSpritePatchField::Size)) {
             next.size = {patch.size.x, patch.size.y};
+            next.sizeExplicit = true;
         }
         if (Selected(GameProjectWorldSpritePatchField::PreserveAspect)) {
             next.preserveAspect = patch.preserveAspect != 0u;
@@ -404,6 +413,7 @@ GameProjectWorldResult ObjectView::ApplyRuntimeWorldSpritePatch(
         }
         if (Selected(GameProjectWorldSpritePatchField::Pivot)) {
             next.pivot = {patch.pivot.x, patch.pivot.y};
+            next.pivotExplicit = true;
         }
         if (Selected(GameProjectWorldSpritePatchField::AlphaMode)) {
             next.alphaMode = static_cast<WorldSpriteComponent::AlphaMode>(patch.alphaMode);

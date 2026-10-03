@@ -42,4 +42,8 @@ void Camera3D::SetLookAt(const MATH::Vec3& eye, const MATH::Vec3& target, const 
     view_ = MATH::Mat4::LookAtRH(eye_, target_, up_);
 }
 
+void Camera3D::SetDepthOfFieldSettings(const CAMERA::DepthOfFieldSettings& settings) {
+    depthOfFieldSettings_ = CAMERA::NormalizeDepthOfFieldSettings(settings);
+}
+
 } // namespace HIKARI

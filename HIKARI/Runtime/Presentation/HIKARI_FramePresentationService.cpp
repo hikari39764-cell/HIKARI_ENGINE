@@ -3,9 +3,11 @@
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "Runtime/Services/Internal/HIKARI_RuntimeServiceState.h"
 
+#include <cmath>
 #include <sstream>
 #include <string>
 
+#include "Core/Math/HIKARI_MathValidation.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
@@ -20,6 +22,7 @@
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "Render3D/Resources/HIKARI_ClusterGeometryResourceSystem.h"
 #include "Render3D/Core/HIKARI_RenderFrameToken.h"
+#include "Render3D/Core/HIKARI_RenderView.h"
 #include "Render3D/ScreenSpace/HIKARI_ScreenSpacePasses.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
@@ -30,6 +33,7 @@
 #include "Render3D/Upscaling/HIKARI_StreamlineRuntime.h"
 #include "Runtime/Host/HIKARI_HostBootstrapConfig.h"
 #include "Runtime/Host/HIKARI_IEditorUiServices.h"
+#include "Runtime/Project/Internal/HIKARI_GameProjectCameraLensConversion.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 
 namespace HIKARI {
@@ -55,6 +59,98 @@ auto& gStreamlineEnabled = INTERNAL::GetRuntimeServiceState().streamlineEnabled;
 auto& gRenderQualityRuntimeInitialized = INTERNAL::GetRuntimeServiceState().renderQualityRuntimeInitialized;
 auto& gAppliedRenderQuality = INTERNAL::GetRuntimeServiceState().appliedRenderQuality;
 auto& gRenderQualityTransitionCount = INTERNAL::GetRuntimeServiceState().renderQualityTransitionCount;
+
+struct PendingPrimaryCameraFrame {
+    RENDER3D::ResolvedCameraFrame frame{};
+    uint64_t sourceCameraObjectHandle = 0u;
+    uint64_t frameIndex = 0u;
+    uint64_t worldIdentity = 0u;
+    GameProjectPrimaryViewSource source = GameProjectPrimaryViewSource::Game;
+    bool valid = false;
+};
+
+PendingPrimaryCameraFrame gPendingPrimaryCameraFrame{};
+GameProjectCameraViewSnapshot gLatestPrimaryViewSnapshot{};
+bool gHasLatestPrimaryViewSnapshot = false;
+FramePresentationDestination gPreparedPresentationDestination = FramePresentationDestination::BackBuffer;
+
+GameProjectFloat3 ToProject(const MATH::Vec3& value) noexcept { return {value.x, value.y, value.z}; }
+
+bool CopyPresentedLens(const RENDER3D::ResolvedCameraFrame& frame, uint64_t sourceCameraObjectHandle,
+                       GameProjectCameraLens& outLens, GameProjectCameraViewPose& outPose, float& outAspect) noexcept {
+    if (!frame.valid) {
+        return false;
+    }
+    const Camera3D& camera = frame.camera;
+    const MATH::Vec3 eye = camera.GetPosition();
+    const MATH::Vec3 target = camera.GetTarget();
+    const MATH::Vec3 up = camera.GetUp();
+    const CAMERA::DepthOfFieldSettings& optics = camera.GetDepthOfFieldSettings();
+    if (!MATH::IsFinite(eye) || !MATH::IsFinite(target) || !MATH::IsFinite(up) || !std::isfinite(camera.GetAspect()) ||
+        camera.GetAspect() <= 0.0f) {
+        return false;
+    }
+    if (!PROJECT::INTERNAL::CopyCameraLens(outLens, sourceCameraObjectHandle, GameProjectCameraLensStage::Rendered,
+                                           camera.IsOrthographic() ? GameProjectCameraProjectionKind::Orthographic
+                                                                   : GameProjectCameraProjectionKind::Perspective,
+                                           camera.GetFovYRad(), camera.GetOrthographicHeight(), camera.GetNearZ(),
+                                           camera.GetFarZ(), optics)) {
+        return false;
+    }
+    outPose.eye = ToProject(eye);
+    outPose.target = ToProject(target);
+    outPose.up = ToProject(up);
+    outAspect = camera.GetAspect();
+    return true;
+}
+
+bool BuildPresentedViewSnapshot(const POST::PresentationFrameResources& presentation,
+                                GameProjectPresentationTarget presentationTarget,
+                                GameProjectCameraViewSnapshot& outSnapshot) noexcept {
+    if (!gPendingPrimaryCameraFrame.valid || !gPendingPrimaryCameraFrame.frame.valid ||
+        gPendingPrimaryCameraFrame.frameIndex != presentation.frameIndex || presentation.width <= 0 ||
+        presentation.height <= 0 || presentation.uiLogicalWidth <= 0 || presentation.uiLogicalHeight <= 0 ||
+        presentation.sceneRect.right <= presentation.sceneRect.left ||
+        presentation.sceneRect.bottom <= presentation.sceneRect.top || !presentation.finalReady) {
+        return false;
+    }
+
+    int sceneRenderWidth = 0;
+    int sceneRenderHeight = 0;
+    POST::PostSystem::GetSceneCaptureSize(sceneRenderWidth, sceneRenderHeight);
+    if (sceneRenderWidth <= 0 || sceneRenderHeight <= 0) {
+        return false;
+    }
+
+    GameProjectCameraViewSnapshot snapshot{};
+    if (!CopyPresentedLens(gPendingPrimaryCameraFrame.frame, gPendingPrimaryCameraFrame.sourceCameraObjectHandle,
+                           snapshot.lens, snapshot.pose, snapshot.aspectRatio)) {
+        return false;
+    }
+    snapshot.frameIndex = presentation.frameIndex;
+    snapshot.worldIdentity = gPendingPrimaryCameraFrame.worldIdentity;
+    snapshot.primaryViewId = RENDER3D::kPrimaryRenderViewId.value;
+    snapshot.source = gPendingPrimaryCameraFrame.source;
+    snapshot.presentationTarget = presentationTarget;
+    snapshot.sceneRenderWidth = static_cast<uint32_t>(sceneRenderWidth);
+    snapshot.sceneRenderHeight = static_cast<uint32_t>(sceneRenderHeight);
+    snapshot.outputPhysicalWidth = static_cast<uint32_t>(presentation.width);
+    snapshot.outputPhysicalHeight = static_cast<uint32_t>(presentation.height);
+    snapshot.uiLogicalWidth = static_cast<uint32_t>(presentation.uiLogicalWidth);
+    snapshot.uiLogicalHeight = static_cast<uint32_t>(presentation.uiLogicalHeight);
+    snapshot.sceneContentPhysical = {
+        static_cast<float>(presentation.sceneRect.left), static_cast<float>(presentation.sceneRect.top),
+        static_cast<float>(presentation.sceneRect.right), static_cast<float>(presentation.sceneRect.bottom)};
+    const float logicalScaleX =
+        static_cast<float>(presentation.uiLogicalWidth) / static_cast<float>(presentation.width);
+    const float logicalScaleY =
+        static_cast<float>(presentation.uiLogicalHeight) / static_cast<float>(presentation.height);
+    snapshot.sceneContentLogical = {
+        snapshot.sceneContentPhysical.left * logicalScaleX, snapshot.sceneContentPhysical.top * logicalScaleY,
+        snapshot.sceneContentPhysical.right * logicalScaleX, snapshot.sceneContentPhysical.bottom * logicalScaleY};
+    outSnapshot = snapshot;
+    return true;
+}
 
 void AbortActivePrimaryTemporalFrame() {
     POST::PostSystem::AbortSceneCaptureTemporalFrame(
@@ -186,6 +282,37 @@ bool RecoverLastEditorPresentation(bool editorViewport, const char* failedStage)
     return true;
 }
 } // namespace
+
+void detail::SubmitPrimaryViewCameraFrame(const RENDER3D::ResolvedCameraFrame& cameraFrame,
+                                          uint64_t sourceCameraObjectHandle, GameProjectPrimaryViewSource source,
+                                          uint64_t worldIdentity, uint64_t frameIndex) noexcept {
+    if (!cameraFrame.valid || worldIdentity == 0u || frameIndex != TIME::GetFrameContext().frameIndex) {
+        return;
+    }
+    switch (source) {
+    case GameProjectPrimaryViewSource::Game:
+    case GameProjectPrimaryViewSource::EditorScene:
+    case GameProjectPrimaryViewSource::EditorCameraPreview:
+    case GameProjectPrimaryViewSource::EditorSequencePreview: break;
+    default: return;
+    }
+    gPendingPrimaryCameraFrame.frame = cameraFrame;
+    gPendingPrimaryCameraFrame.sourceCameraObjectHandle = sourceCameraObjectHandle;
+    gPendingPrimaryCameraFrame.frameIndex = frameIndex;
+    gPendingPrimaryCameraFrame.worldIdentity = worldIdentity;
+    gPendingPrimaryCameraFrame.source = source;
+    gPendingPrimaryCameraFrame.valid = true;
+}
+
+bool detail::TryGetLatestPrimaryViewSnapshot(uint64_t worldIdentity,
+                                             GameProjectCameraViewSnapshot& outSnapshot) noexcept {
+    if (worldIdentity == 0u || !gHasLatestPrimaryViewSnapshot ||
+        gLatestPrimaryViewSnapshot.worldIdentity != worldIdentity) {
+        return false;
+    }
+    outSnapshot = gLatestPrimaryViewSnapshot;
+    return true;
+}
 
 void SetEditorGameViewportSize(int width, int height, bool visible) {
     gEditorGameViewportVisible = visible && width > 0 && height > 0;
@@ -494,10 +621,11 @@ bool PrepareFramePresentation(FramePresentationDestination destination) {
                                        "Game UI and Debug Layers");
         GFX::GPU_PROFILE::ScopedGpuTimer gpuUi(GFX::GetCurrentContext().cmdList, GFX::GPU_PROFILE::Pass::UiLayers);
         HIKARI::RENDERER::RenderLayerRange(HIKARI::RENDERER::RenderLayer::UI, HIKARI::RENDERER::RenderLayer::UI, false);
-        if (!HIKARI::GAME_UI::RenderGameUiFrame(
-                HIKARI::TIME::GetFrameContext().frameIndex,
-                HIKARI::POST::PostSystem::GetPresentationFrameResources().uiLogicalWidth,
-                HIKARI::POST::PostSystem::GetPresentationFrameResources().uiLogicalHeight)) {
+        const HIKARI::POST::PresentationFrameResources& presentation =
+            HIKARI::POST::PostSystem::GetPresentationFrameResources();
+        if (!HIKARI::GAME_UI::RenderGameUiFrame(HIKARI::TIME::GetFrameContext().frameIndex, presentation.uiLogicalWidth,
+                                                presentation.uiLogicalHeight, presentation.width,
+                                                presentation.height)) {
             HIKARI_LOG_ERROR("Game project UI effect rendering failed.");
         }
         HIKARI::RENDERER::RenderLayerRange(HIKARI::RENDERER::RenderLayer::Debug, HIKARI::RENDERER::RenderLayer::Debug,
@@ -525,6 +653,8 @@ bool PrepareFramePresentation(FramePresentationDestination destination) {
         HIKARI_LOG_ERROR("Temporal presentation resource frame did not close.");
         return RecoverLastEditorPresentation(editorViewport, "temporal presentation close failed");
     }
+    gPreparedPresentationDestination =
+        editorViewport ? FramePresentationDestination::EditorViewport : FramePresentationDestination::BackBuffer;
     gPresentationPrepared = true;
     return true;
 }
@@ -549,6 +679,18 @@ bool EndFrame() {
         HIKARI_LOG_ERROR("D3D12 EndFrame failed; stopping GPU frame loop.");
         CPU_PROFILE::EndFrame();
         return false;
+    }
+    if (gPresentationPrepared) {
+        const POST::PresentationFrameResources& presentation = POST::PostSystem::GetPresentationFrameResources();
+        GameProjectCameraViewSnapshot snapshot{};
+        const GameProjectPresentationTarget target =
+            gPreparedPresentationDestination == FramePresentationDestination::EditorViewport
+                ? GameProjectPresentationTarget::EditorViewport
+                : GameProjectPresentationTarget::BackBuffer;
+        if (BuildPresentedViewSnapshot(presentation, target, snapshot)) {
+            gLatestPrimaryViewSnapshot = snapshot;
+            gHasLatestPrimaryViewSnapshot = true;
+        }
     }
     if (!RENDER3D::UPSCALING::CaptureStreamlineFrameGenerationCompletionAfterPresent()) {
         HIKARI_LOG_WARN(

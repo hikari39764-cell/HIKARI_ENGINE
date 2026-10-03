@@ -117,11 +117,7 @@ struct GpuSceneSurfaceRecord {
     bool terrainSurface = false;
     TERRAIN::TerrainSurfaceRenderData terrainSurfaceData{};
     uint32_t terrainSurfaceGpuDataIndex = 0u;
-    uint32_t terrainSurfaceHeightOffset = 0u;
-    uint32_t terrainSurfaceDeformationOffset = 0u;
-    uint32_t terrainSurfaceLayerWeightsOffset = 0u;
-    uint32_t terrainSurfaceCoverageOffset = 0u;
-    uint32_t terrainSurfaceLayerTintsOffset = 0u;
+    TERRAIN::TerrainSurfaceFieldOffsets terrainSurfaceOffsets{};
     uint32_t waterSurfaceLiquidCoverageOffset = 0u;
 
     GpuSceneResourceKey key{};

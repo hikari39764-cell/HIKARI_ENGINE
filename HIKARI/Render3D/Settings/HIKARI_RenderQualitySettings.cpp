@@ -54,6 +54,9 @@ RenderQualitySettings NormalizeRenderQualitySettings(RenderQualitySettings setti
         static_cast<uint8_t>(VolumetricLightingQuality::High)) {
         settings.volumetricLightingQuality = VolumetricLightingQuality::Balanced;
     }
+    if (!TEXT::IsNamedEnum(kDepthOfFieldQualityNames, settings.depthOfFieldQuality)) {
+        settings.depthOfFieldQuality = DepthOfFieldQuality::Medium;
+    }
     if (static_cast<uint8_t>(settings.dynamicGiQuality) > static_cast<uint8_t>(DynamicGiQuality::High)) {
         settings.dynamicGiQuality = DynamicGiQuality::Off;
     }
@@ -83,11 +86,11 @@ bool AreRenderQualitySettingsEqual(const RenderQualitySettings& lhs, const Rende
            lhs.frameGenerationMode == rhs.frameGenerationMode &&
            lhs.frameGenerationMultiplier == rhs.frameGenerationMultiplier &&
            lhs.volumetricLightingQuality == rhs.volumetricLightingQuality &&
-           lhs.stylizedCloudQuality == rhs.stylizedCloudQuality && lhs.dynamicGiQuality == rhs.dynamicGiQuality &&
-           lhs.localShadowQuality == rhs.localShadowQuality && lhs.taaHistoryWeight == rhs.taaHistoryWeight &&
-           lhs.taaVarianceClipGamma == rhs.taaVarianceClipGamma && lhs.taaDepthRejection == rhs.taaDepthRejection &&
-           lhs.taaLuminanceRejection == rhs.taaLuminanceRejection && lhs.taaSharpness == rhs.taaSharpness &&
-           lhs.sceneDepthPrepass == rhs.sceneDepthPrepass;
+           lhs.depthOfFieldQuality == rhs.depthOfFieldQuality && lhs.stylizedCloudQuality == rhs.stylizedCloudQuality &&
+           lhs.dynamicGiQuality == rhs.dynamicGiQuality && lhs.localShadowQuality == rhs.localShadowQuality &&
+           lhs.taaHistoryWeight == rhs.taaHistoryWeight && lhs.taaVarianceClipGamma == rhs.taaVarianceClipGamma &&
+           lhs.taaDepthRejection == rhs.taaDepthRejection && lhs.taaLuminanceRejection == rhs.taaLuminanceRejection &&
+           lhs.taaSharpness == rhs.taaSharpness && lhs.sceneDepthPrepass == rhs.sceneDepthPrepass;
 }
 
 RenderQualityRuntimeChangeSet ClassifyRenderQualityRuntimeChanges(const RenderQualitySettings& before,
@@ -207,6 +210,10 @@ const char* VolumetricLightingQualityLabel(VolumetricLightingQuality quality) {
     case VolumetricLightingQuality::High: return "High";
     default: return "Unknown";
     }
+}
+
+const char* DepthOfFieldQualityLabel(DepthOfFieldQuality quality) {
+    return TEXT::EnumToName(kDepthOfFieldQualityNames, quality, "Unknown");
 }
 
 const char* DynamicGiQualityLabel(DynamicGiQuality quality) {

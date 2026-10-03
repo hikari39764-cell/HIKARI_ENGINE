@@ -1,12 +1,14 @@
 #ifndef HIKARI_STYLIZED_CLOUD_VOLUME_INCLUDED
 #define HIKARI_STYLIZED_CLOUD_VOLUME_INCLUDED
 
+#ifndef HIKARI_NOISE_INCLUDED
+#include "Include/Math/HIKARI_Noise.hlsli"
+#endif
+
 // Renderer-owned, texture-backed cloud volume helpers.
 //
-// The hash, value-noise, and cellular-noise routines below are deliberately
-// small HIKARI implementations.  They do not depend on, or reproduce, a
-// third-party noise library.  The pass owns the texture/sampler declarations
-// and its constant buffer; this file owns the math and density model.
+// Shared noise math lives in Math/HIKARI_Noise.hlsli.
+// This file owns the cloud density model.
 
 static const float HIKARI_CLOUD_PI = 3.14159265359f;
 static const float HIKARI_CLOUD_TWO_PI = 6.28318530718f;
@@ -32,198 +34,6 @@ struct HikariStylizedCloudShellInterval
     float farDistance;
     float valid;
 };
-
-uint HikariStylizedCloudMixUint(uint value)
-{
-    value ^= value >> 16u;
-    value *= 0x7feb352du;
-    value ^= value >> 15u;
-    value *= 0x846ca68bu;
-    value ^= value >> 16u;
-    return value;
-}
-
-uint HikariStylizedCloudHashInt3(int3 cell, uint salt)
-{
-    uint x = (uint)cell.x * 0x9e3779b9u;
-    uint y = (uint)cell.y * 0x85ebca6bu;
-    uint z = (uint)cell.z * 0xc2b2ae35u;
-    return HikariStylizedCloudMixUint(x ^ y ^ z ^ salt);
-}
-
-uint HikariStylizedCloudHashInt2(int2 cell, uint salt)
-{
-    uint x = (uint)cell.x * 0x9e3779b9u;
-    uint y = (uint)cell.y * 0x85ebca6bu;
-    return HikariStylizedCloudMixUint(x ^ y ^ salt);
-}
-
-float HikariStylizedCloudHashUnit(uint value)
-{
-    return (float)(value & 0x00ffffffu) / 16777216.0f;
-}
-
-int HikariStylizedCloudWrapInt(int value, int period)
-{
-    int wrapped = value % max(period, 1);
-    return wrapped < 0 ? wrapped + max(period, 1) : wrapped;
-}
-
-int2 HikariStylizedCloudWrapCell2(int2 cell, int2 period)
-{
-    return int2(
-        HikariStylizedCloudWrapInt(cell.x, period.x),
-        HikariStylizedCloudWrapInt(cell.y, period.y));
-}
-
-int3 HikariStylizedCloudWrapCell3(int3 cell, int3 period)
-{
-    return int3(
-        HikariStylizedCloudWrapInt(cell.x, period.x),
-        HikariStylizedCloudWrapInt(cell.y, period.y),
-        HikariStylizedCloudWrapInt(cell.z, period.z));
-}
-
-float HikariStylizedCloudFade(float value)
-{
-    value = saturate(value);
-    return value * value * value *
-        (value * (value * 6.0f - 15.0f) + 10.0f);
-}
-
-float HikariStylizedCloudPeriodicValue2D(
-    float2 position,
-    int2 period,
-    uint salt)
-{
-    int2 cell = int2(floor(position));
-    float2 local = frac(position);
-    float2 fade = float2(
-        HikariStylizedCloudFade(local.x),
-        HikariStylizedCloudFade(local.y));
-
-    float n00 = HikariStylizedCloudHashUnit(
-        HikariStylizedCloudHashInt2(
-            HikariStylizedCloudWrapCell2(cell, period), salt));
-    float n10 = HikariStylizedCloudHashUnit(
-        HikariStylizedCloudHashInt2(
-            HikariStylizedCloudWrapCell2(cell + int2(1, 0), period), salt));
-    float n01 = HikariStylizedCloudHashUnit(
-        HikariStylizedCloudHashInt2(
-            HikariStylizedCloudWrapCell2(cell + int2(0, 1), period), salt));
-    float n11 = HikariStylizedCloudHashUnit(
-        HikariStylizedCloudHashInt2(
-            HikariStylizedCloudWrapCell2(cell + int2(1, 1), period), salt));
-    return lerp(
-        lerp(n00, n10, fade.x),
-        lerp(n01, n11, fade.x),
-        fade.y);
-}
-
-float HikariStylizedCloudPeriodicValue3D(
-    float3 position,
-    int3 period,
-    uint salt)
-{
-    int3 cell = int3(floor(position));
-    float3 local = frac(position);
-    float3 fade = float3(
-        HikariStylizedCloudFade(local.x),
-        HikariStylizedCloudFade(local.y),
-        HikariStylizedCloudFade(local.z));
-
-    float value = 0.0f;
-    [unroll]
-    for (int z = 0; z <= 1; ++z)
-    {
-        [unroll]
-        for (int y = 0; y <= 1; ++y)
-        {
-            [unroll]
-            for (int x = 0; x <= 1; ++x)
-            {
-                int3 corner = cell + int3(x, y, z);
-                float cornerValue = HikariStylizedCloudHashUnit(
-                    HikariStylizedCloudHashInt3(
-                        HikariStylizedCloudWrapCell3(corner, period),
-                        salt));
-                float weightX = x == 0 ? 1.0f - fade.x : fade.x;
-                float weightY = y == 0 ? 1.0f - fade.y : fade.y;
-                float weightZ = z == 0 ? 1.0f - fade.z : fade.z;
-                value += cornerValue * weightX * weightY * weightZ;
-            }
-        }
-    }
-    return saturate(value);
-}
-
-float HikariStylizedCloudPeriodicCellular2D(
-    float2 position,
-    int2 period,
-    uint salt)
-{
-    int2 baseCell = int2(floor(position));
-    float2 local = frac(position);
-    float nearestSquared = 16.0f;
-
-    [unroll]
-    for (int y = -1; y <= 1; ++y)
-    {
-        [unroll]
-        for (int x = -1; x <= 1; ++x)
-        {
-            int2 cell = HikariStylizedCloudWrapCell2(
-                baseCell + int2(x, y),
-                period);
-            uint hash = HikariStylizedCloudHashInt2(cell, salt);
-            float2 feature = float2(
-                HikariStylizedCloudHashUnit(hash),
-                HikariStylizedCloudHashUnit(
-                    HikariStylizedCloudMixUint(hash ^ 0xa511e9b3u)));
-            float2 delta = float2(x, y) + feature - local;
-            nearestSquared = min(nearestSquared, dot(delta, delta));
-        }
-    }
-
-    return saturate(1.0f - sqrt(nearestSquared) * 0.72f);
-}
-
-float HikariStylizedCloudPeriodicCellular3D(
-    float3 position,
-    int3 period,
-    uint salt)
-{
-    int3 baseCell = int3(floor(position));
-    float3 local = frac(position);
-    float nearestSquared = 27.0f;
-
-    [unroll]
-    for (int z = -1; z <= 1; ++z)
-    {
-        [unroll]
-        for (int y = -1; y <= 1; ++y)
-        {
-            [unroll]
-            for (int x = -1; x <= 1; ++x)
-            {
-                int3 cell = HikariStylizedCloudWrapCell3(
-                    baseCell + int3(x, y, z),
-                    period);
-                uint hash = HikariStylizedCloudHashInt3(cell, salt);
-                float3 feature = float3(
-                    HikariStylizedCloudHashUnit(hash),
-                    HikariStylizedCloudHashUnit(
-                        HikariStylizedCloudMixUint(hash ^ 0x68bc21ebu)),
-                    HikariStylizedCloudHashUnit(
-                        HikariStylizedCloudMixUint(hash ^ 0x02e5be93u)));
-                float3 delta = float3(x, y, z) + feature - local;
-                nearestSquared = min(nearestSquared, dot(delta, delta));
-            }
-        }
-    }
-
-    return saturate(1.0f - sqrt(nearestSquared) * 0.58f);
-}
 
 float3 HikariStylizedCloudSafeNormalize(
     float3 value,

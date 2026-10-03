@@ -140,7 +140,8 @@ void DocumentSceneEditorController::HandleGameViewportAssetDrop(DocumentSceneBas
         }
         break;
     case AssetType::VfxEffect: viewportDropMessage_ = "VFX drop target not implemented yet"; break;
-    case AssetType::Texture: {
+    case AssetType::Texture:
+    case AssetType::Sprite: {
         const bool dirtyBefore = context_.sceneDirty || scene.HasUnsavedSceneChanges();
         const std::vector<SceneObjectData> beforeObjects = scene.GetSceneDocument().objects;
         const SceneCameraSettings beforeCamera = scene.GetSceneDocument().camera;

@@ -1,5 +1,6 @@
 #include "Assets/Formats/Internal/HIKARI_HshadercMetadata.h"
 #include "Assets/Formats/HIKARI_HshadercFormat.h"
+#include "Assets/Shader/HIKARI_ShaderParameterSerialization.h"
 
 #include <utility>
 
@@ -45,6 +46,9 @@ bool SerializeHshadercMetadata(const ShaderCookedArtifact& artifact, std::span<c
         {"minimumRootSignatureVersion", artifact.requiredCaps.minimumRootSignatureVersion},
         {"requiredFeatureMask", artifact.requiredCaps.requiredFeatureMask},
     };
+    if (!artifact.parameters.empty()) {
+        root["parameters"] = WriteShaderParameterDefinitions(artifact.parameters);
+    }
 
     root["dependencies"] = nlohmann::ordered_json::array();
     for (const ShaderSourceDependency& dependency : artifact.dependencies) {

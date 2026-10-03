@@ -103,6 +103,10 @@ struct MeshletRenderExecutionContext {
     bool reflectionCapture = false;
     bool reflectionMaterialCapture = false;
     ForwardShadingCostMode forwardCostMode = ForwardShadingCostMode::Full;
+    // Forward/GeometryAux は一般面と地形を別 PSO で描く。地形が無ければ地形 dispatch を省く。
+    bool terrainSurfacesPresent = false;
+    // debug view 中の Forward は全経路 PSO で描き、分割前と同じ表示を保つ。
+    bool forwardDebugView = false;
 };
 
 class MeshletRenderBackend final {
@@ -116,6 +120,8 @@ public:
     bool PrepareReflectionCapture(bool captureMaterial = false);
     // 診断 variant は最初の要求時にだけ準備する。失敗は Reset まで再試行しない。
     bool PrepareForwardVariant(ForwardShadingCostMode mode);
+    // debug view 用の全経路 Forward PSO。最初の要求時にだけ作る。
+    bool PrepareForwardDebugPipelines();
     void Reset();
     void ResetFrame();
     void ResetVisibility() {
@@ -140,6 +146,12 @@ public:
                                           ForwardShadingCostMode costMode = ForwardShadingCostMode::Full) const;
 
 private:
+    // 地形専用 PSO を持つ kind だけ非 null。
+    ID3D12PipelineState* GetTerrainPipelineState(MeshletPipelineKind kind,
+                                                 GPUDRIVEN::GpuDrivenCommandBucket bucket) const;
+    // 分割した kind は一般面と地形の両方が揃って初めて描ける。
+    void ApplyTerrainPartitionReadiness();
+
     MeshletVisibility visibility_{};
     Microsoft::WRL::ComPtr<ID3D12Device> device_{};
     Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignature_{};
@@ -156,6 +168,11 @@ private:
     PipelineBucketArray visibilityOverlayPipelineStates_{};
     PipelineBucketArray depthPrepassPipelineStates_{};
     PipelineBucketArray waterVisibilityPipelineStates_{};
+    PipelineBucketArray terrainForwardPipelineStates_{};
+    PipelineBucketArray terrainGeometryAuxPipelineStates_{};
+    PipelineBucketArray terrainGeometryFeatureMaskPipelineStates_{};
+    PipelineBucketArray forwardDebugPipelineStates_{};
+    bool forwardDebugAttempted_ = false;
     uint32_t pipelineMask_ = MeshletPipelineMask::All;
     MeshletRenderBackendStats stats_{};
 };

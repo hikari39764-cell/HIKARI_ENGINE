@@ -239,16 +239,17 @@ bool DrawFrameGenerationModeCombo(RENDER3D::RenderFrameGenerationMode& mode) {
     return changed;
 }
 
-template <typename Quality>
-bool DrawLightingQualityCombo(const char* label, Quality& quality, std::initializer_list<Quality> levels,
-                              const char* (*name)(Quality)) {
+template <typename Quality, typename Options, typename GetValue, typename GetName, typename GetCurrentName>
+bool DrawQualityCombo(const char* label, Quality& quality, const Options& options, GetValue getValue, GetName getName,
+                      GetCurrentName getCurrentName) {
     bool changed = false;
     ImGui::PushID(label);
     EDITOR::PropertyLabel(label);
-    if (ImGui::BeginCombo("##Value", name(quality))) {
-        for (Quality candidate : levels) {
+    if (ImGui::BeginCombo("##Value", getCurrentName(quality))) {
+        for (const auto& option : options) {
+            const Quality candidate = getValue(option);
             const bool selected = quality == candidate;
-            if (ImGui::Selectable(name(candidate), selected)) {
+            if (ImGui::Selectable(getName(option), selected)) {
                 quality = candidate;
                 changed = true;
             }
@@ -259,6 +260,21 @@ bool DrawLightingQualityCombo(const char* label, Quality& quality, std::initiali
     }
     ImGui::PopID();
     return changed;
+}
+
+template <typename Quality>
+bool DrawLightingQualityCombo(const char* label, Quality& quality, std::initializer_list<Quality> levels,
+                              const char* (*name)(Quality)) {
+    return DrawQualityCombo(
+        label, quality, levels, [](Quality candidate) { return candidate; },
+        [name](Quality candidate) { return name(candidate); }, name);
+}
+
+bool DrawDepthOfFieldQualityCombo(RENDER3D::DepthOfFieldQuality& quality) {
+    const std::string label = TEXT::Localize("ui.quality.depthOfField");
+    return DrawQualityCombo(
+        label.c_str(), quality, RENDER3D::kDepthOfFieldQualityNames, [](const auto& option) { return option.value; },
+        [](const auto& option) { return option.name; }, RENDER3D::DepthOfFieldQualityLabel);
 }
 
 bool DrawFxaaSettings() {
@@ -320,6 +336,7 @@ bool DrawRenderSettings() {
                 {RENDER3D::VolumetricLightingQuality::Low, RENDER3D::VolumetricLightingQuality::Balanced,
                  RENDER3D::VolumetricLightingQuality::High},
                 RENDER3D::VolumetricLightingQualityLabel);
+            changed |= DrawDepthOfFieldQualityCombo(settings.depthOfFieldQuality);
             changed |=
                 DrawLightingQualityCombo("Stylized Clouds", settings.stylizedCloudQuality,
                                          {RENDER3D::StylizedCloudQuality::Low, RENDER3D::StylizedCloudQuality::Balanced,

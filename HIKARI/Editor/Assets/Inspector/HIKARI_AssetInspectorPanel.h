@@ -8,6 +8,8 @@
 
 #include "Assets/HIKARI_AssetGuid.h"
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "Assets/HIKARI_AssetFileCache.h"
+#include "Assets/Sprite/HIKARI_SpriteMaterialAsset.h"
 
 namespace HIKARI {
 
@@ -22,6 +24,21 @@ public:
     std::string ConsumeRefreshRuntimeMaterialGuid() const;
 
 private:
+    void DrawSpriteMaterialEditor(AssetDatabase& database, AssetRegistry& registry, const AssetRecord& record) const;
+    bool DrawSpriteShaderCreation(AssetDatabase& database, AssetRegistry& registry, const AssetRecord& record,
+                                  EditorSelection& selection) const;
+    mutable std::filesystem::path spriteMaterialProject_;
+    mutable std::string spriteMaterialGuid_, spriteMaterialStatus_;
+    mutable uint64_t spriteMaterialRevision_ = 0u;
+    mutable SPRITE::SpriteMaterialAssetData spriteMaterialEdit_;
+    mutable bool spriteMaterialLoaded_ = false, spriteMaterialDirty_ = false;
+    mutable AssetFileCache<SPRITE::SpriteMaterialAssetData, AssetType::SpriteMaterial,
+                           &SPRITE::LoadSpriteMaterialAssetData>
+        spriteMaterialCache_;
+    mutable std::shared_ptr<const ASSETS::SHADER::ShaderCookedArtifact> spriteShader_;
+    mutable std::string spriteShaderDiagnostic_;
+    mutable bool spriteShaderValid_ = false;
+    bool ResolveSpriteInspectorShader(AssetRegistry& registry, const AssetGuid& guid) const;
     void RefreshFilePreview(const AssetDatabase& database, const AssetRecord& record) const;
     mutable std::filesystem::path loadedProject_{};
     mutable std::string loadedGuid_{};

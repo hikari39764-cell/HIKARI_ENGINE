@@ -75,7 +75,7 @@ void BindOceanSpectrumData(const MeshBindingContext& ctx, D3D12_GPU_DESCRIPTOR_H
 
 void BindScreenSpaceTraceResources(const MeshBindingContext& ctx);
 
-void BindSurfaceFeatureHeights(const MeshBindingContext& ctx, D3D12_GPU_VIRTUAL_ADDRESS featureHeightsAddress);
+void BindSurfaceFeatureFloats(const MeshBindingContext& ctx, D3D12_GPU_VIRTUAL_ADDRESS featureFloatsAddress);
 
 void BindMaterialTexturePool(const MeshBindingContext& ctx);
 

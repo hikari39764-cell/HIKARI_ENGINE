@@ -6,6 +6,7 @@
 #include <string>
 
 #include "Core/Hashing/HIKARI_FnvHash.h"
+#include "Render3D/Core/HIKARI_CameraOptics.h"
 #include "Render3D/HIKARI_Math3D.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
 #include "Scene/HIKARI_SceneObjectId.h"
@@ -109,6 +110,36 @@ struct CameraTargetFramingSubmission {
     float relationshipFocusLateralOffset = 0.0f;
     float relationshipFocusHeightOffset = 0.0f;
     bool relationshipSuppressModifiers = false;
+};
+
+// Full authored-lens override submitted for one frame. A zero camera ID
+// targets the active primary camera selected by CameraDirector.
+struct CameraDepthOfFieldSubmission {
+    SceneObjectId cameraObjectId{};
+    CameraRigSourceId sourceId = 0u;
+    int priority = 0;
+    float weight = 1.0f;
+    DepthOfFieldSettings settings{};
+};
+
+enum class CameraFocusMode : uint8_t {
+    Distance,
+    WorldPoint,
+    WorldPlane,
+};
+
+// Focus is an independent frame-scoped channel. World-point and plane
+// requests are resolved against the final rendered camera's forward axis.
+struct CameraFocusSubmission {
+    SceneObjectId cameraObjectId{};
+    CameraRigSourceId sourceId = 0u;
+    int priority = 0;
+    float weight = 1.0f;
+    CameraFocusMode mode = CameraFocusMode::Distance;
+    float distance = 10.0f;
+    MATH::Vec3 worldPoint{};
+    MATH::Vec3 planePoint{};
+    MATH::Vec3 planeNormal{0.0f, 0.0f, 1.0f};
 };
 
 struct CameraRigRuntimeStatus {

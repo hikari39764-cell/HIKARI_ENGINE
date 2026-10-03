@@ -142,6 +142,9 @@ bool ValidateShaderSourceManifest(const ShaderSourceManifest& manifest, std::str
         }
         includeRootMask |= 1u << index;
     }
+    if (!ValidateShaderParameterDefinitions(manifest.parameters, outError)) {
+        return false;
+    }
     outError.clear();
     return true;
 }

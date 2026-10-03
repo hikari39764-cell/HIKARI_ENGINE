@@ -638,11 +638,7 @@ GpuSceneSurfaceRecord BuildGpuSceneSurfaceRecord(const RUNTIME::SceneSurfaceInst
     record.waterSurfaceData = surfaceInstance.waterSurfaceData;
     record.terrainSurface = surfaceInstance.terrainSurface && surfaceInstance.terrainSurfaceCoreResident;
     record.terrainSurfaceData = surfaceInstance.terrainSurfaceData;
-    record.terrainSurfaceHeightOffset = surfaceInstance.terrainSurfaceHeightOffset;
-    record.terrainSurfaceDeformationOffset = surfaceInstance.terrainSurfaceDeformationOffset;
-    record.terrainSurfaceLayerWeightsOffset = surfaceInstance.terrainSurfaceLayerWeightsOffset;
-    record.terrainSurfaceCoverageOffset = surfaceInstance.terrainSurfaceCoverageOffset;
-    record.terrainSurfaceLayerTintsOffset = surfaceInstance.terrainSurfaceLayerTintsOffset;
+    record.terrainSurfaceOffsets = surfaceInstance.terrainSurfaceOffsets;
     record.waterSurfaceLiquidCoverageOffset = surfaceInstance.waterSurfaceLiquidCoverageOffset;
 
     record.forwardCandidate = record.visible;

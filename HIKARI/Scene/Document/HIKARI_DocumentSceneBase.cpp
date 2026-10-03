@@ -220,6 +220,7 @@ void DocumentSceneBase::OnExit() {
     state_->runtime.systemScheduler.DetachWorld(state_->runtime.world);
     state_->runtime.systemScheduler.Clear();
     state_->runtime.presentationModelService.Clear();
+    state_->runtime.localFogService.Clear();
     state_->runtime.sceneCaptureService.Reset();
     MODELRENDERER::ResetSecondarySceneCaptureTarget();
     // RenderSubmissionSystem borrows the document-owned Registry and
@@ -443,6 +444,8 @@ void DocumentSceneBase::Render() {
     state_->runtime.systemScheduler.PreRender(state_->runtime.world, frame);
     state_->runtime.systemScheduler.Render(state_->runtime.world, frame);
     state_->runtime.systemScheduler.PostRender(state_->runtime.world, frame);
+    const auto localFogVolumes = state_->runtime.localFogService.PrepareFrame(
+        state_->runtime.world, frame.frameIndex, &state_->identity.document, state_->identity.documentRevision);
     SceneEnvironment activeEnvironment = state_->lighting.environment;
     RENDER3D::LIGHTING::SceneLightingSet sceneLighting =
         LIGHTING_AUTHORING::BuildRuntimeSceneLightingSet(state_->identity.document, state_->runtime.world);
@@ -477,6 +480,8 @@ void DocumentSceneBase::Render() {
         (void)RENDER3D::PANORAMA_SKY::RenderPanoramaSkyLayer(graphics, renderCamera, activeEnvironment.sky,
                                                              state_->lighting.sky);
         if (DrawDebugHelpers()) {
+            state_->runtime.localFogService.DrawSelectedBounds(state_->runtime.world,
+                                                               state_->editor.selectedGizmoObjectId.value);
             state_->editor.componentGizmoRenderer.SubmitWorldGizmos(
                 state_->runtime.world, state_->editor.componentGizmoState, state_->editor.selectedGizmoObjectId,
                 renderCamera.GetAspect(), renderCamera.GetPosition());
@@ -488,12 +493,34 @@ void DocumentSceneBase::Render() {
         primaryView.purpose =
             state_->runtime.playActive ? RENDER3D::RenderViewPurpose::Game : RENDER3D::RenderViewPurpose::EditorScene;
         primaryView.cameraFrame = &state_->camera.resolvedFrame;
+        const GameProjectPrimaryViewSource presentationSource =
+            state_->runtime.playActive                     ? GameProjectPrimaryViewSource::Game
+            : IsEditorCameraPreviewActive()                ? GameProjectPrimaryViewSource::EditorCameraPreview
+            : state_->camera.sequencePreviewSnapshotActive ? GameProjectPrimaryViewSource::EditorSequencePreview
+                                                           : GameProjectPrimaryViewSource::EditorScene;
+        const uint64_t sourceCameraObjectId = state_->camera.resolvedFrame.sourceCameraObjectId;
+        uint64_t sourceCameraObjectHandle = 0u;
+        bool sourceCameraIdentityResolved = sourceCameraObjectId == 0u;
+        if (sourceCameraObjectId != 0u) {
+            const GameObject* sourceCameraObject =
+                state_->runtime.world.FindObject(SceneObjectId{sourceCameraObjectId});
+            if (sourceCameraObject != nullptr) {
+                sourceCameraObjectHandle = sourceCameraObject->GetRuntimeHandle().ToValue();
+                sourceCameraIdentityResolved = sourceCameraObjectHandle != 0u;
+            }
+        }
+        if (sourceCameraIdentityResolved) {
+            SERVICES::detail::SubmitPrimaryViewCameraFrame(
+                state_->camera.resolvedFrame, sourceCameraObjectHandle, presentationSource,
+                state_->runtime.world.GetRuntimeIdentity(), frame.frameIndex);
+        }
 #if defined(HIKARI_WITH_EDITOR)
         RENDER3D::EDITORVIEW::SetPrimaryViewCaptureFrame(state_->camera.resolvedFrame,
                                                          state_->identity.documentRevision);
 #endif
         primaryView.assetRegistry = &state_->assets.Registry();
         primaryView.worldSpriteFrameSource = &RenderSubmissionSystem::GetWorldSpriteFrameSource();
+        primaryView.localFogVolumes = localFogVolumes;
         primaryView.worldTextFrameSource = &RenderSubmissionSystem::GetWorldTextFrameSource();
         primaryView.projectRenderExtensions = {
             &state_->runtime.systemScheduler,

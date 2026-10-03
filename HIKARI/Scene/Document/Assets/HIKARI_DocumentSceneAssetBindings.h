@@ -13,6 +13,8 @@
 #include "Assets/Post/HIKARI_PostAssetStore.h"
 #include "Assets/Text/HIKARI_TextStyleAsset.h"
 #include "Assets/Ui/HIKARI_UiAnimationAsset.h"
+#include "Assets/Sprite/HIKARI_SpriteAssetStore.h"
+#include "Assets/Sprite/HIKARI_SpriteMaterialStore.h"
 #include "Render3D/Models/HIKARI_ModelManager.h"
 #include "Render3D/Material/HIKARI_MaterialTextureUsage.h"
 
@@ -38,6 +40,8 @@ public:
     POST::PostAssetStore& PostAssets() noexcept { return postAssets_; }
     TextAssetStore& TextAssets() noexcept { return textAssets_; }
     UiAnimationAssetStore& UiAnimations() noexcept { return uiAnimations_; }
+    SPRITE::SpriteAssetStore& SpriteAssets() noexcept { return spriteAssets_; }
+    SPRITE::SpriteMaterialStore& SpriteMaterials() noexcept { return spriteMaterials_; }
     ModelManager& Models() noexcept { return models_; }
 
     bool ReloadAssets(const SceneDependencySet* required = nullptr, const AssetGuid* admissionRoot = nullptr,
@@ -72,6 +76,8 @@ private:
     POST::PostAssetStore postAssets_;
     TextAssetStore textAssets_;
     UiAnimationAssetStore uiAnimations_;
+    SPRITE::SpriteAssetStore spriteAssets_{};
+    SPRITE::SpriteMaterialStore spriteMaterials_{};
     ModelManager models_{};
 };
 

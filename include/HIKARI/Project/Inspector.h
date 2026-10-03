@@ -17,6 +17,9 @@ class GameProjectInspector {
 public:
     HIKARI_GAME_PROJECT_SDK_API void Text(std::string_view text);
     HIKARI_GAME_PROJECT_SDK_API bool Section(std::string_view label, bool defaultOpen = false);
+    // Mutate the component's authored fields when true; the normal Inspector
+    // transaction captures all resulting property changes as one Undo step.
+    HIKARI_GAME_PROJECT_SDK_API bool Button(std::string_view label);
     HIKARI_GAME_PROJECT_SDK_API bool Bool(std::string_view label, bool& value);
     HIKARI_GAME_PROJECT_SDK_API bool Int(std::string_view label, int& value);
     HIKARI_GAME_PROJECT_SDK_API bool Float(std::string_view label, float& value);
@@ -36,6 +39,8 @@ public:
     HIKARI_GAME_PROJECT_SDK_API bool SceneObjectId(std::string_view propertyId, std::string_view label,
                                                    uint64_t& value);
     HIKARI_GAME_PROJECT_SDK_API bool StringBuffer(std::string_view label, char* value, size_t capacity);
+    HIKARI_GAME_PROJECT_SDK_API bool StringBuffer(std::string_view propertyId, std::string_view label, char* value,
+                                                  size_t capacity);
     HIKARI_GAME_PROJECT_SDK_API bool SceneAssetGuid(std::string_view propertyId, std::string_view label, char* value,
                                                     size_t capacity);
     HIKARI_GAME_PROJECT_SDK_API bool SequenceAssetGuid(std::string_view propertyId, std::string_view label, char* value,

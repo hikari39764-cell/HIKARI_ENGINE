@@ -708,6 +708,9 @@ void DocumentSceneEditorController::Draw(DocumentSceneBase& scene, EDITOR::Edito
     }
 
     DrawWorkspaceContent(scene, playSession);
+    sceneInspectorPanel_.ExecutePendingObjectCommand(scene, context_, selectionSync_, sceneObjectCommands_);
+    if (auto history = sceneObjectCommands_.ConsumeHistoryRequest())
+        CommitSceneObjectAuthoringHistory(scene, std::move(*history));
     EDITOR::EditorToolContext toolContext{scene, context_, operationRegistry_};
     toolHost_.Draw(toolContext);
 #else

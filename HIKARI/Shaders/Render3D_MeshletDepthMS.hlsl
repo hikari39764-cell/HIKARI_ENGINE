@@ -10,7 +10,7 @@
 #if HIKARI_MESHLET_DEPTH_ENABLE_WATER
 #include "Include/Meshlet/HIKARI_WaterSurfaceDeform.hlsli"
 #endif
-#include "Include/Surface/HIKARI_SandSurfaceDeform.hlsli"
+#include "Include/Surface/HIKARI_TerrainSurfaceDeform.hlsli"
 #include "Include/Surface/HIKARI_FoliageWind.hlsli"
 #if HIKARI_MESHLET_DEPTH_MATERIAL_CONTEXT
 #include "Include/Surface/HIKARI_SurfaceTangentFrame.hlsli"
@@ -86,16 +86,16 @@ HikariMeshletDepthVertexOut HikariBuildMeshletDepthVertex(
         localPosition,
         localNormal);
 #endif
-    // 沙地も depth pass で同じ頂点位移を行い、forward と深度を一致させる。
+    // 地形も depth pass で同じ頂点位移を行い、forward と深度を一致させる。
     // これが無いと SSR 用深度が未変形の平面になり、透明部で空を反射していた。
-    float3 sandSurfaceData = float3(0.0f, 0.0f, 0.0f);
-    if ((instance.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_SAND_SURFACE) != 0u)
+    float3 terrainSurfaceData = float3(0.0f, 0.0f, 0.0f);
+    if ((instance.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_TERRAIN_SURFACE) != 0u)
     {
-        HikariApplySandSurfaceDeform(
+        HikariApplyTerrainSurfaceDeform(
             instance,
             localPosition,
             localNormal,
-            sandSurfaceData);
+            terrainSurfaceData);
     }
 
     // Depth prepass と forward (LESS_EQUAL) の深度を bit 一致させるため、
@@ -114,14 +114,14 @@ HikariMeshletDepthVertexOut HikariBuildMeshletDepthVertex(
     const bool materialFx =
         (instance.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_MATERIAL_FX) != 0u &&
         (instance.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_SURFACE) == 0u;
-    const bool sandSurface =
-        (instance.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_SAND_SURFACE) != 0u;
+    const bool terrainSurface =
+        (instance.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_TERRAIN_SURFACE) != 0u;
     const bool waterSurface =
         (instance.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_SURFACE) != 0u;
     // Water visibility uses the same authored liquid-coverage clip as the
     // forward water shader, so its PS needs uv, feature-data index and flags
     // even when the material has no alpha/material-FX coverage path.
-    if (alphaMasked || materialFx || sandSurface ||
+    if (alphaMasked || materialFx || terrainSurface ||
         (HIKARI_MESHLET_DEPTH_WATER_ONLY && waterSurface))
     {
         output.uv = uv01.xy;

@@ -2,6 +2,7 @@
 #define HIKARI_OCEAN_SPECTRUM_SAMPLING_INCLUDED
 
 #include "Include/Math/HIKARI_FiniteMath.hlsli"
+#include "Include/HIKARI_WaterSurfaceParams.hlsli"
 
 static const uint HIKARI_OCEAN_SPECTRUM_CASCADE_COUNT = 3u;
 static const float HIKARI_OCEAN_SPECTRUM_LONG_SCALE = 240.0f;
@@ -172,17 +173,17 @@ HikariOceanSpectrumSample HikariSampleOceanSpectrum(
         capillaryDisplacement.xyz * (0.08f * capillaryWeight);
     float2 canonicalHorizontal = canonicalDisplacement.xz;
     const float horizontalLength = length(canonicalHorizontal);
-    if (horizontalLength > 1.75f)
+    if (horizontalLength > HIKARI_OCEAN_SPECTRUM_MAX_HORIZONTAL_DISPLACEMENT)
     {
-        canonicalHorizontal *= 1.75f / horizontalLength;
+        canonicalHorizontal *= HIKARI_OCEAN_SPECTRUM_MAX_HORIZONTAL_DISPLACEMENT / horizontalLength;
     }
     result.displacement.xz = HikariOceanSpectrumRotate(
         canonicalHorizontal,
         rotation);
     result.displacement.y = clamp(
         HikariFiniteOr(canonicalDisplacement.y, 0.0f),
-        -2.5f,
-        2.5f);
+        -HIKARI_OCEAN_SPECTRUM_MAX_VERTICAL_DISPLACEMENT,
+        HIKARI_OCEAN_SPECTRUM_MAX_VERTICAL_DISPLACEMENT);
 
     const float2 canonicalMacroSlope =
         longSlope.xy * 0.32f +

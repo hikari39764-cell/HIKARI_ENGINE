@@ -63,16 +63,15 @@ void AppendChangedChunk(std::vector<TERRAIN::TerrainChunkKey>& chunks, TERRAIN::
 uint32_t ResolveTerrainProjectionGrid(uint32_t totalCellsX, uint32_t totalCellsZ, uint32_t projectionScale,
                                       uint32_t layerCount, bool includeDeformation) {
     constexpr uint32_t kMaxGrid = 512u;
-    const std::size_t fieldsPerVertex = 2u + // total height + coverage
-                                        (includeDeformation ? 1u : 0u) +
-                                        (layerCount > 1u ? static_cast<std::size_t>(layerCount) : 0u);
+    const std::size_t fieldsPerVertex =
+        RENDER3D::RUNTIME::TerrainSurfaceCoreFloatsPerVertex(layerCount) + (includeDeformation ? 1u : 0u);
     const std::size_t fixedPoolFloats =
         RENDER3D::RUNTIME::kSceneSurfaceNeutralFloatCount +
-        (layerCount > 1u ? static_cast<std::size_t>(layerCount) * RENDER3D::TERRAIN::kTerrainSurfaceLayerStyleFloatCount
-                         : 0u);
-    const std::size_t availableVertexFloats = RENDER3D::TERRAIN::kTerrainSurfaceMaxHeightCells > fixedPoolFloats
-                                                  ? RENDER3D::TERRAIN::kTerrainSurfaceMaxHeightCells - fixedPoolFloats
-                                                  : 0u;
+        static_cast<std::size_t>(layerCount) * RENDER3D::TERRAIN::kTerrainSurfaceLayerStyleFloatCount;
+    const std::size_t availableVertexFloats =
+        RENDER3D::TERRAIN::kSurfaceFeatureFloatPoolCapacity > fixedPoolFloats
+            ? RENDER3D::TERRAIN::kSurfaceFeatureFloatPoolCapacity - fixedPoolFloats
+            : 0u;
     const std::size_t vertexBudget = fieldsPerVertex > 0u ? availableVertexFloats / fieldsPerVertex : 0u;
     const double budgetStride = std::sqrt(static_cast<double>(vertexBudget));
     const uint32_t budgetGrid = budgetStride >= 2.0 ? static_cast<uint32_t>(budgetStride) - 1u : 1u;
@@ -105,10 +104,7 @@ void BakeTerrainChunksForRender(const TERRAIN::TerrainSurface& surface, const Te
                                 const std::filesystem::path& projectRoot, float chunkSize, uint32_t cells,
                                 TerrainProjectionState& state, SceneRenderCacheSync::DebugStats& stats,
                                 TerrainProjectionOutput& output, RENDER3D::RUNTIME::SceneRenderObjectDesc& desc) {
-    desc.terrainSurfaceHeights.reset();
-    desc.terrainSurfaceDeformations.reset();
-    desc.terrainSurfaceLayerWeights.reset();
-    desc.terrainSurfaceCoverage.reset();
+    desc.terrainSurfaceFields.reset();
     const TERRAIN::TerrainChunkMap& chunks = surface.chunks;
     if (chunks.empty()) {
         desc.terrainSurface = false;
@@ -287,25 +283,31 @@ void BakeTerrainChunksForRender(const TERRAIN::TerrainSurface& surface, const Te
         minKeyX, minKeyZ, maxKeyX, maxKeyZ, chunkSize, cells, gridRes, layerCount,
     };
     const bool fullProjection = !state.layoutValid || state.layout != layout;
-    const auto ensureField = [&](std::shared_ptr<std::vector<float>>& field, std::size_t requiredCount, bool enabled) {
-        if (!field) {
-            field = std::make_shared<std::vector<float>>();
-        }
+    if (!state.fields) {
+        state.fields = std::make_shared<RENDER3D::TERRAIN::TerrainSurfaceProjectedFields>();
+    }
+    RENDER3D::TERRAIN::TerrainSurfaceProjectedFields& fields = *state.fields;
+    const auto ensureField = [&](std::vector<float>& field, std::size_t requiredCount, bool enabled) {
         if (!enabled) {
-            field->clear();
+            field.clear();
             return;
         }
-        if (field->size() != requiredCount) {
-            field->assign(requiredCount, 0.0f);
+        if (field.size() != requiredCount) {
+            field.assign(requiredCount, 0.0f);
             ++stats.terrainProjectionAllocationCount;
         }
     };
-    ensureField(state.heights, gridCount, true);
+    ensureField(state.sourceHeights, gridCount, true);
     // response field も load-time projection と同時に確保して 0 初期化する。
     // 最初の接触では changed chunk だけを書き、全 terrain を作り直さない。
-    ensureField(state.deformations, gridCount, true);
-    ensureField(state.coverage, gridCount, true);
-    ensureField(state.layerWeights, gridCount * static_cast<std::size_t>(layerCount), layerCount > 1u);
+    ensureField(fields.deformations, gridCount, true);
+    ensureField(fields.coverage, gridCount, true);
+    ensureField(fields.layerWeights, gridCount * static_cast<std::size_t>(layerCount), layerCount > 1u);
+    ensureField(fields.heights, gridCount, true);
+    ensureField(fields.slopeX, gridCount, true);
+    ensureField(fields.slopeZ, gridCount, true);
+    bool projectedAny = false;
+    RENDER3D::TERRAIN::TerrainSurfaceFieldRect projectedRect{gridRes, gridRes, 0u, 0u};
 
     const float gridCellX = extentX / static_cast<float>(gridRes);
     const float gridCellZ = extentZ / static_cast<float>(gridRes);
@@ -343,17 +345,22 @@ void BakeTerrainChunksForRender(const TERRAIN::TerrainSurface& surface, const Te
     };
 
     const auto projectRect = [&](uint32_t minGridX, uint32_t minGridZ, uint32_t maxGridX, uint32_t maxGridZ) {
+        projectedAny = true;
+        projectedRect.minX = (std::min)(projectedRect.minX, minGridX);
+        projectedRect.minZ = (std::min)(projectedRect.minZ, minGridZ);
+        projectedRect.maxX = (std::max)(projectedRect.maxX, maxGridX);
+        projectedRect.maxZ = (std::max)(projectedRect.maxZ, maxGridZ);
         for (uint32_t gz = minGridZ; gz <= maxGridZ; ++gz) {
             const float wz = originZ + static_cast<float>(gz) * gridCellZ;
             for (uint32_t gx = minGridX; gx <= maxGridX; ++gx) {
                 const float wx = originX + static_cast<float>(gx) * gridCellX;
                 const std::size_t dst = static_cast<std::size_t>(gz) * stride + gx;
-                (*state.heights)[dst] = 0.0f;
-                (*state.coverage)[dst] = 0.0f;
-                (*state.deformations)[dst] = 0.0f;
+                state.sourceHeights[dst] = 0.0f;
+                fields.coverage[dst] = 0.0f;
+                fields.deformations[dst] = 0.0f;
                 if (layerCount > 1u) {
                     for (uint32_t layer = 0u; layer < layerCount; ++layer) {
-                        (*state.layerWeights)[static_cast<std::size_t>(layer) * gridCount + dst] = 0.0f;
+                        fields.layerWeights[static_cast<std::size_t>(layer) * gridCount + dst] = 0.0f;
                     }
                 }
                 TERRAIN::TerrainChunkKey key{};
@@ -375,7 +382,7 @@ void BakeTerrainChunksForRender(const TERRAIN::TerrainSurface& surface, const Te
                     const float authoredCellSize = chunkSize / static_cast<float>(authoredCells);
                     (void)SampleTerrainGrid(chunk->coverage, 0u, authoredCells, authoredCellSize, localX, localZ, cov);
                 }
-                (*state.coverage)[dst] = cov;
+                fields.coverage[dst] = cov;
                 if (cov <= 1.0e-4f) {
                     continue;
                 }
@@ -391,14 +398,14 @@ void BakeTerrainChunksForRender(const TERRAIN::TerrainSurface& surface, const Te
                                                      localZ, totalHeight);
                 }
                 if (sampledTotal) {
-                    (*state.heights)[dst] = totalHeight;
+                    state.sourceHeights[dst] = totalHeight;
                 }
 
                 if (responseGridActive && runtime != nullptr) {
                     float deformation = 0.0f;
                     if (SampleTerrainGrid(runtime->deformHeights, 0u, runtime->cells, runtime->cellSize, localX, localZ,
                                           deformation)) {
-                        (*state.deformations)[dst] = deformation;
+                        fields.deformations[dst] = deformation;
                     }
                 }
 
@@ -411,7 +418,7 @@ void BakeTerrainChunksForRender(const TERRAIN::TerrainSurface& surface, const Te
                     float weight = 0.0f;
                     if (SampleTerrainGrid(chunk->layerWeights, lsrc, authoredCells, authoredCellSize, localX, localZ,
                                           weight)) {
-                        (*state.layerWeights)[static_cast<std::size_t>(layer) * gridCount + dst] = weight;
+                        fields.layerWeights[static_cast<std::size_t>(layer) * gridCount + dst] = weight;
                     }
                 }
             }
@@ -443,9 +450,6 @@ void BakeTerrainChunksForRender(const TERRAIN::TerrainSurface& surface, const Te
         ++stats.terrainProjectionReuseCount;
     }
 
-    if (fullProjection || !state.changedChunks.empty()) {
-        ++state.projectionRevision;
-    }
     state.layout = layout;
     state.layoutValid = true;
 
@@ -463,8 +467,7 @@ void BakeTerrainChunksForRender(const TERRAIN::TerrainSurface& surface, const Te
     desc.terrainSurfaceData.toonBandCount = surface.material.toonBandCount;
     desc.terrainSurfaceData.toonBandHardness = surface.material.toonBandHardness;
     desc.terrainSurfaceData.layerCount = layerCount;
-    desc.terrainSurfaceData.layerWeights.clear();
-    desc.terrainSurfaceData.coverage.clear();
+    desc.terrainSurfaceData.runtimeResponse = responseGridActive;
     desc.terrainSurfaceData.wetness = surface.shoreline.wetness;
     desc.terrainSurfaceData.edgeDepth = surface.shoreline.edgeDepth;
 
@@ -486,6 +489,26 @@ void BakeTerrainChunksForRender(const TERRAIN::TerrainSurface& surface, const Te
         }
     }
 
+    // 頂点の最終高さと勾配を CPU で焼き込む。field 以外の入力が変われば全頂点、
+    // そうでなければ投影し直した範囲を焼き込み半径だけ広げて焼き直す。
+    const TerrainSurfaceBakeInputs bakeInputs = ResolveTerrainSurfaceBakeInputs(desc.terrainSurfaceData);
+    const bool fullBake = fullProjection || !state.bakeInputsValid || state.bakeInputs != bakeInputs;
+    RENDER3D::TERRAIN::TerrainSurfaceFieldRect bakeRect{0u, 0u, gridRes, gridRes};
+    if (!fullBake && projectedAny) {
+        const uint32_t margin = ResolveTerrainSurfaceBakeMargin(bakeInputs);
+        bakeRect.minX = projectedRect.minX > margin ? projectedRect.minX - margin : 0u;
+        bakeRect.minZ = projectedRect.minZ > margin ? projectedRect.minZ - margin : 0u;
+        bakeRect.maxX = (std::min)(projectedRect.maxX + margin, gridRes);
+        bakeRect.maxZ = (std::min)(projectedRect.maxZ + margin, gridRes);
+    }
+    const uint64_t previousRevision = state.projectionRevision;
+    if (fullBake || projectedAny) {
+        BakeTerrainSurfaceRect(bakeInputs, state.sourceHeights, bakeRect, fields);
+        state.bakeInputs = bakeInputs;
+        state.bakeInputsValid = true;
+        ++state.projectionRevision;
+    }
+
     // 生成グリッドは原点中心なので、地形オブジェクトの本来の world
     // 行列に chunk bbox のローカル中心を合成する。
     const MATH::Mat4 objectWorld = desc.worldTransform.GetWorldMatrix();
@@ -493,21 +516,18 @@ void BakeTerrainChunksForRender(const TERRAIN::TerrainSurface& surface, const Te
     desc.worldTransform.explicitMatrix =
         objectWorld * MATH::Mat4::Translate({originX + extentX * 0.5f, 0.0f, originZ + extentZ * 0.5f});
 
-    desc.terrainSurfaceHeights = state.heights;
-    desc.terrainSurfaceLayerWeights = state.layerWeights;
-    desc.terrainSurfaceCoverage = state.coverage;
-    if (responseGridActive) {
-        desc.terrainSurfaceDeformations = state.deformations;
-    }
+    desc.terrainSurfaceFields = state.fields;
     desc.terrainSurfaceProjectionRevision = state.projectionRevision;
+    desc.terrainSurfaceDirtyBaseRevision = previousRevision;
+    desc.terrainSurfaceDirtyRect = bakeRect;
 
     // authored 高さと response profile から保守 bounds を作り、8m 単位で
     // 量子化して只拡張する。dent tick や通常の brush sample が毎回
     // topology rebuild を起こさず、極値を越えた時だけ安全側へ広がる。
     const float rippleMargin = std::clamp(desc.terrainSurfaceData.rippleAmount, 0.0f, 3.0f) *
                                std::clamp(desc.terrainSurfaceData.heightScale, 0.0f, 2.0f) * 0.021f;
-    const float desiredMin = state.authoredMinHeight - (std::max)(surface.shoreline.edgeDepth, 0.0f) -
-                             (std::max)(surface.deform.maxDepth, 0.0f) - rippleMargin;
+    const float desiredMin =
+        state.authoredMinHeight - bakeInputs.edgeSinkDepth - (std::max)(surface.deform.maxDepth, 0.0f) - rippleMargin;
     const float desiredMax = state.authoredMaxHeight +
                              (std::max)(surface.deform.maxDepth, 0.0f) * (std::max)(surface.deform.rimStrength, 0.0f) +
                              rippleMargin;
@@ -527,6 +547,8 @@ void BakeTerrainChunksForRender(const TERRAIN::TerrainSurface& surface, const Te
     output.meshSettings.segmentsY = gridRes;
     output.stableBoundsMinY = state.stableBoundsMinY;
     output.stableBoundsMaxY = state.stableBoundsMaxY;
+    desc.terrainSurfaceData.boundsMinY = state.stableBoundsMinY;
+    desc.terrainSurfaceData.boundsMaxY = state.stableBoundsMaxY;
 }
 
 } // namespace HIKARI::TERRAIN::RENDER

@@ -11,9 +11,11 @@ namespace HIKARI::EDITOR {
 // AI 消費者のための現在状態の要約。どの資産を開いていて、どの層があり、
 // どの効果とキーが載り、どこを選び、プレビューがどこにいるかを 1 つの
 // テキストへまとめる。診断と同じく「今の真実」を所有するのはこの場所。
+bool VfxWorkspaceController::IsDocumentOpen() const noexcept { return GetDocument().IsOpen(); }
+
 nlohmann::json VfxWorkspaceController::DescribeDocumentState() const {
     const VfxEditorDocument& document = GetDocument();
-    nlohmann::json state{{"open", document.IsOpen()},
+    nlohmann::json state{{"open", IsDocumentOpen()},
                          {"assetGuid", document.GetAssetGuid().value},
                          {"dirty", document.IsDirty()},
                          {"revision", document.GetRevision()}};

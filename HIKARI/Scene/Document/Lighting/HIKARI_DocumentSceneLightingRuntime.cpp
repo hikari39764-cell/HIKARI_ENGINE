@@ -67,7 +67,8 @@ bool DocumentSceneBase::RefreshLightingRuntime() {
 
     const bool ok = state_->runtime.builder.PreloadDependencies(
         deps, state_->assets.Registry(), state_->assets.Models(), state_->lighting.sky,
-        state_->assets.Database().GetProjectRoot(), state_->identity.currentSceneAssetGuid.value);
+        state_->assets.Database().GetProjectRoot(), state_->identity.currentSceneAssetGuid.value, true,
+        &state_->assets.SpriteAssets());
 
     SKYRENDERER::InvalidateSkyTextureCache();
     RENDER3D::PANORAMA_SKY::InvalidatePanoramaSkyLayerTextureCache();

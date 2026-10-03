@@ -13,6 +13,9 @@ std::string_view ToString(TextureAssetDimension value) noexcept;
 std::string_view ToString(TextureAssetColorSpace value) noexcept;
 std::string_view ToString(TextureCompression value) noexcept;
 std::string_view ToString(TextureMipPolicy value) noexcept;
+TextureAssetAlphaClass ResolveTextureAssetAlphaClass(bool hasAlphaChannel, bool hasMeaningfulAlpha,
+                                                     bool hasTranslucentAlpha, bool hasCutoutAlpha) noexcept;
+TextureAssetAlphaClass ResolveTextureAssetAlphaClass(const TextureImportSettings& settings) noexcept;
 
 TextureUsage ParseTextureUsage(std::string_view value, TextureUsage fallback) noexcept;
 TextureAssetDimension ParseTextureDimension(std::string_view value, TextureAssetDimension fallback) noexcept;

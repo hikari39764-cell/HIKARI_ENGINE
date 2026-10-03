@@ -24,6 +24,7 @@
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_ComponentSystemPolicy.h"
 #include "Scene/HIKARI_PresentationModelService.h"
+#include "Scene/Lighting/HIKARI_LocalFogService.h"
 #include "Scene/HIKARI_PresentationTransformService.h"
 #include "Scene/HIKARI_RuntimeObjectActivityService.h"
 #include "Scene/HIKARI_RuntimeWorldServices.h"
@@ -80,6 +81,7 @@ struct DocumentSceneRuntimeState {
     WATER::WaterSurfaceQueryService waterSurfaceQueryService{};
     TERRAIN::TerrainSurfaceQueryService terrainSurfaceQueryService{};
     PresentationModelService presentationModelService{};
+    LocalFogService localFogService{};
     PresentationTransformService presentationTransformService{};
     RuntimeObjectActivityService runtimeObjectActivityService{};
     RuntimeExtensionHost extensionHost{};

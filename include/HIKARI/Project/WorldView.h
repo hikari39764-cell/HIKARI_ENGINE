@@ -11,7 +11,10 @@
 
 #include "HIKARI/Project/GameProjectSdk.h"
 #include "HIKARI/Project/LightTypes.h"
+#include "HIKARI/Project/LocalFogView.h"
 #include "HIKARI/Project/MaterialFxView.h"
+#include "HIKARI/Project/SpriteAnimationView.h"
+#include "HIKARI/Project/SpriteMaterialView.h"
 #include "HIKARI/Project/ValueTypes.h"
 #include "HIKARI/Project/WorldTypes.h"
 #include "HIKARI/Project/WorldMassTypes.h"
@@ -69,6 +72,11 @@ public:
     HIKARI_GAME_PROJECT_SDK_API bool GetWorldTransform(GameProjectTransform& outTransform) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult
     SetLocalTransform(const GameProjectTransform& transform) const noexcept;
+    // Writes the authoritative pose. For script-driven Kinematic motion, write in
+    // FixedUpdate from a system ordered before PhysicsSystem. Physics synchronizes
+    // the same tick; rendering interpolates completed poses without changing these
+    // coordinates or enabling character collision solving. Use MotionView::RequestTeleport
+    // for discontinuous Kinematic relocation (no interpolation across the jump).
     HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult
     SetWorldTransform(const GameProjectTransform& transform) const noexcept;
     // Reads and updates the engine LightComponent attached to this object.
@@ -84,6 +92,8 @@ public:
     HIKARI_GAME_PROJECT_SDK_API bool SetRuntimeWorldSpriteTexture(std::string_view textureAssetGuid) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult
     ApplyRuntimeWorldSpritePatch(const GameProjectWorldSpritePatch& patch) const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API SpriteAnimationView GetSpriteAnimation() const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API SpriteMaterialView GetSpriteMaterial() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API MaterialFxView GetMaterialFx() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool TryGetRuntimeModelAppearance(GameProjectModelAppearance&) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool ApplyRuntimeModelAppearance(const GameProjectModelAppearance&) const noexcept;
@@ -229,6 +239,7 @@ public:
     HIKARI_GAME_PROJECT_SDK_API PhysicsQueryView GetPhysicsQueries() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API NavigationView GetNavigation() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API TerrainView GetTerrain() const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API LocalFogView GetLocalFog() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API CameraView GetCamera() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API TimeDilationView GetTimeDilation() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API PresentationModelView GetPresentationModels() const noexcept;

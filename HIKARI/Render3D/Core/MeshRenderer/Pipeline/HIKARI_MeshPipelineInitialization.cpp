@@ -174,7 +174,7 @@ bool InitializeMeshPipelines(ID3D12Device* device, MeshPipelineStore& store) {
     params[ROOT_PARAM::MaterialProgramResources].InitAsShaderResourceView(1, 6, kAll);
     params[ROOT_PARAM::SurfaceFeatureData].InitAsShaderResourceView(0, 7, kAll);
     params[ROOT_PARAM::TerrainSurfaceData].InitAsShaderResourceView(4, 7, kAll);
-    params[ROOT_PARAM::SurfaceFeatureHeights].InitAsShaderResourceView(1, 7, kAll);
+    params[ROOT_PARAM::SurfaceFeatureFloats].InitAsShaderResourceView(1, 7, kAll);
     params[ROOT_PARAM::ScreenSpaceDepthPyramid].InitAsDescriptorTable(1, &screenSpaceDepthPyramidRange, kPixel);
     params[ROOT_PARAM::ScreenSpacePackedSurface].InitAsDescriptorTable(1, &screenSpacePackedSurfaceRange, kPixel);
     params[ROOT_PARAM::ScreenSpaceTraceControl].InitAsConstants(2, 10, 0, kPixel);

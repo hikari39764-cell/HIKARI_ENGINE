@@ -4,10 +4,13 @@
 #include <utility>
 
 #include "Assets/HIKARI_AssetRegistry.h"
+#include "Assets/Sprite/HIKARI_SpriteAssetStore.h"
+#include "Assets/Sprite/HIKARI_SpriteMaterialStore.h"
 #include "Core/HIKARI_Logger.h"
 #include "Render3D/Diagnostics/HIKARI_EnvironmentDiagnostics.h"
 #include "Render3D/Lighting/HIKARI_DefaultSkyEnvironment.h"
 #include "Scene/HIKARI_SceneRuntimeBuilder.h"
+#include "Scene/Components/Rendering/WorldSprite/HIKARI_WorldSpriteComponent.h"
 
 #if defined(_MSC_VER)
 #pragma warning(push)
@@ -25,6 +28,98 @@ bool IsActiveSkyTexture(const DocumentSceneBase& scene, const std::string& asset
     const SkySettings& sky = scene.GetSceneEnvironment().sky;
     return sky.skyAsset == assetId || sky.panoramaCloudAsset == assetId;
 }
+
+void RefreshSpriteMaterials(DocumentSceneBase& scene, RuntimeResourceRefreshReport& report) {
+    auto* store = scene.GetWorld().Services().Find<SPRITE::SpriteMaterialStore>();
+    scene.GetWorld().ForEachObjectWith<WorldSpriteComponent>([&](GameObject&, WorldSpriteComponent& sprite) {
+        const AssetGuid& guid = sprite.GetMaterialAssetGuid();
+        if (!guid.IsValid())
+            return;
+        std::string error;
+        auto binding = store ? store->Resolve(guid, error) : nullptr;
+        if (!binding || !sprite.RefreshMaterialBinding(std::move(binding))) {
+            if (error.empty())
+                error = "Sprite material refresh failed: " + guid.value;
+            sprite.SetMaterialDiagnostic(error);
+            report.messages.push_back(error);
+            ++report.failedCount;
+        }
+    });
+}
+
+bool RefreshSpriteAsset(DocumentSceneBase& scene, const AssetGuid& spriteGuid, RuntimeResourceRefreshReport& report) {
+    const auto append = [&report](std::string message) {
+        HIKARI_LOG_INFO("[RuntimeRefresh] " + message);
+        report.messages.push_back(std::move(message));
+    };
+    auto* store = scene.GetWorld().Services().Find<SPRITE::SpriteAssetStore>();
+    if (store == nullptr) {
+        ++report.failedCount;
+        append("Sprite asset store is unavailable: " + spriteGuid.value);
+        return false;
+    }
+    std::string loadError{};
+    const auto sprite = store->Load(spriteGuid, loadError);
+    if (sprite == nullptr) {
+        ++report.failedCount;
+        append(loadError.empty() ? "Failed to reload sprite asset: " + spriteGuid.value : loadError);
+        return false;
+    }
+
+    const AssetRegistry& registry = scene.GetAssetRegistry();
+    const auto invalidatePageTexture = [&](const std::string& textureAssetId) {
+        if (textureAssetId.empty()) {
+            return true;
+        }
+        const auto* texture = registry.FindAs<TextureAssetDescriptor>(AssetId{textureAssetId});
+        if (texture == nullptr || texture->sourcePath.empty()) {
+            ++report.failedCount;
+            append("Missing sprite page texture descriptor: " + textureAssetId);
+            return false;
+        }
+        if (!scene.RefreshTextureRuntimeByPath(texture->sourcePath)) {
+            ++report.failedCount;
+            append("Texture cache invalidation failed: " + texture->sourcePath);
+            return false;
+        }
+        ++report.textureInvalidatedCount;
+        append("Invalidated sprite page texture: " + texture->sourcePath);
+        return true;
+    };
+
+    bool pagesInvalidated = true;
+    for (const SPRITE::SpritePage& page : sprite->pages) {
+        pagesInvalidated = invalidatePageTexture(page.textureAssetId) && pagesInvalidated;
+        pagesInvalidated = invalidatePageTexture(page.normalTextureAssetId) && pagesInvalidated;
+    }
+
+    int reboundCount = 0;
+    bool rebindSucceeded = true;
+    scene.GetWorld().ForEachObjectWith<WorldSpriteComponent>([&](GameObject&, WorldSpriteComponent& component) {
+        if (component.GetSpriteAssetGuid().value != spriteGuid.value) {
+            return;
+        }
+        const WorldSpriteAnimationState previousState = component.GetAnimationState();
+        const std::string previousClip(component.GetAnimationClip());
+        bool rebound = component.BindSpriteAsset(spriteGuid, sprite, previousClip);
+        if (!rebound && !previousClip.empty()) {
+            rebound = component.BindSpriteAsset(spriteGuid, sprite);
+        }
+        if (!rebound) {
+            rebindSucceeded = false;
+            ++report.failedCount;
+            append("Failed to rebind WorldSprite animation: " + spriteGuid.value);
+            return;
+        }
+        (void)component.SetPlaybackSpeed(previousState.speed);
+        (void)component.SeekAnimation(previousState.timeMs);
+        (void)component.SetPaused(previousState.paused);
+        ++reboundCount;
+    });
+    append("Reloaded sprite asset " + spriteGuid.value + " and rebound " + std::to_string(reboundCount) +
+           " WorldSprite component(s).");
+    return pagesInvalidated && rebindSucceeded;
+}
 } // namespace
 
 RuntimeResourceRefreshReport RuntimeResourceRefreshService::RefreshAssets(DocumentSceneBase& scene,
@@ -35,6 +130,7 @@ RuntimeResourceRefreshReport RuntimeResourceRefreshService::RefreshAssets(Docume
         return report;
     }
 
+    bool spriteMaterialTouched = false;
     bool textureTouched = false;
     bool skyTextureTouched = false;
     bool modelTouched = false;
@@ -50,12 +146,20 @@ RuntimeResourceRefreshReport RuntimeResourceRefreshService::RefreshAssets(Docume
             modelTouched = RefreshModelAsset(scene, *model, report, false) || modelTouched;
         } else if (const auto* material = registry.FindAs<MaterialAssetDescriptor>(assetId)) {
             RefreshMaterialAsset(scene, *material, report);
+        } else if (const AssetDescriptor* descriptor = registry.FindDescriptor(assetId);
+                   descriptor != nullptr && descriptor->type == AssetType::Sprite) {
+            (void)RefreshSpriteAsset(scene, AssetGuid{assetId.value}, report);
+        } else if (descriptor != nullptr &&
+                   (descriptor->type == AssetType::SpriteMaterial || descriptor->type == AssetType::Shader)) {
+            spriteMaterialTouched = true;
         } else {
             ++report.failedCount;
             AppendMessage(report, "Unsupported or missing asset: " + assetId.value);
         }
     }
 
+    if (spriteMaterialTouched)
+        RefreshSpriteMaterials(scene, report);
     if (textureTouched) {
         ReloadCurrentSceneModelDependencies(scene, report);
     } else if (modelTouched) {
@@ -134,6 +238,17 @@ RuntimeResourceRefreshReport RuntimeResourceRefreshService::RefreshCurrentSceneR
         }
     }
 
+    for (const std::string& spriteId : dependencies.spriteAssetIds) {
+        if (const AssetDescriptor* descriptor = registry.FindDescriptor(spriteId);
+            descriptor != nullptr && descriptor->type == AssetType::Sprite) {
+            (void)RefreshSpriteAsset(scene, AssetGuid{spriteId}, report);
+        } else {
+            ++report.failedCount;
+            AppendMessage(report, "Missing sprite dependency: " + spriteId);
+        }
+    }
+
+    RefreshSpriteMaterials(scene, report);
     scene.RefreshLightingRuntime();
     // Runtime refresh 後の environment 状態変化だけを diagnostics log に流す。
     RENDER3D::DIAGNOSTICS::LogEnvironmentSnapshotIfChanged("RuntimeRefresh.CurrentScene", &scene.GetSceneEnvironment());

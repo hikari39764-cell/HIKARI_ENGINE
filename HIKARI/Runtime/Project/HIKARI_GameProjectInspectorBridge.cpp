@@ -51,6 +51,22 @@ bool GameProjectInspector::Section(std::string_view label, bool defaultOpen) {
     return builder != nullptr && builder->Section(label, defaultOpen);
 }
 
+bool GameProjectInspector::Button(std::string_view label) {
+    auto* builder = static_cast<IInspectorBuilder*>(builder_);
+    return builder != nullptr && builder->Button(label);
+}
+
+bool GameProjectInspector::StringBuffer(std::string_view propertyId, std::string_view label, char* value,
+                                        size_t capacity) {
+    auto* builder = static_cast<IInspectorBuilder*>(builder_);
+    std::string editable{};
+    if (builder == nullptr || propertyId.empty() || !ReadStringBuffer(value, capacity, editable)) {
+        return false;
+    }
+    const bool changed = builder->String(AuthoringFieldDescriptor{propertyId, label}, editable);
+    return CopyStringToReference(editable, value, capacity) && changed;
+}
+
 bool GameProjectInspector::Bool(std::string_view propertyId, std::string_view label, bool& value) {
     auto* builder = static_cast<IInspectorBuilder*>(builder_);
     return builder != nullptr && !propertyId.empty() &&

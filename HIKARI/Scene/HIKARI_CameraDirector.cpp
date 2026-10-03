@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "Core/Math/HIKARI_MathValidation.h"
 #include "Scene/Components/HIKARI_CameraComponent.h"
 #include "Scene/Camera/HIKARI_CameraRigService.h"
 #include "Scene/HIKARI_CameraFollowSystem.h"
@@ -43,6 +44,67 @@ bool ProjectionDiffers(const Camera3D& lhs, const Camera3D& rhs) {
            !NearlyEqual(lhs.GetNearZ(), rhs.GetNearZ()) || !NearlyEqual(lhs.GetFarZ(), rhs.GetFarZ());
 }
 
+CAMERA::DepthOfFieldSettings BlendDepthOfFieldSettings(const CAMERA::DepthOfFieldSettings& from,
+                                                       const CAMERA::DepthOfFieldSettings& to, float amount) noexcept {
+    CAMERA::DepthOfFieldSettings result{};
+    const bool fromEndpoint = amount <= 0.0f;
+    const bool toEndpoint = amount >= 1.0f;
+    const float fromNearRadius = from.enabled ? from.nearBlurRadius1080pPixels : 0.0f;
+    const float toNearRadius = to.enabled ? to.nearBlurRadius1080pPixels : 0.0f;
+    const float fromFarRadius = from.enabled ? from.farBlurRadius1080pPixels : 0.0f;
+    const float toFarRadius = to.enabled ? to.farBlurRadius1080pPixels : 0.0f;
+    result.nearBlurRadius1080pPixels = fromEndpoint ? from.nearBlurRadius1080pPixels
+                                       : toEndpoint ? to.nearBlurRadius1080pPixels
+                                                    : Lerp(fromNearRadius, toNearRadius, amount);
+    result.farBlurRadius1080pPixels = fromEndpoint ? from.farBlurRadius1080pPixels
+                                      : toEndpoint ? to.farBlurRadius1080pPixels
+                                                   : Lerp(fromFarRadius, toFarRadius, amount);
+    result.enabled = fromEndpoint ? from.enabled
+                     : toEndpoint ? to.enabled
+                                  : result.nearBlurRadius1080pPixels > 0.0f || result.farBlurRadius1080pPixels > 0.0f;
+    result.focusDistance = Lerp(from.focusDistance, to.focusDistance, amount);
+    result.focusRange = Lerp(from.focusRange, to.focusRange, amount);
+    result.nearTransition = Lerp(from.nearTransition, to.nearTransition, amount);
+    result.farTransition = Lerp(from.farTransition, to.farTransition, amount);
+    return CAMERA::NormalizeDepthOfFieldSettings(result);
+}
+
+bool ResolveFocusDistance(const Camera3D& camera, const CAMERA::CameraFocusSubmission& request,
+                          float& outDistance) noexcept {
+    outDistance = 0.0f;
+    const MATH::Vec3 eye = camera.GetPosition();
+    const MATH::Vec3 forward = MATH::Normalize(camera.GetTarget() - eye);
+    if (!MATH::IsFinite(eye) || !MATH::IsFinite(forward) || MATH::Length(forward) <= kVectorEpsilon) {
+        return false;
+    }
+
+    float distance = 0.0f;
+    switch (request.mode) {
+    case CAMERA::CameraFocusMode::Distance: distance = request.distance; break;
+    case CAMERA::CameraFocusMode::WorldPoint: distance = MATH::Dot(request.worldPoint - eye, forward); break;
+    case CAMERA::CameraFocusMode::WorldPlane: {
+        const float denominator = MATH::Dot(forward, request.planeNormal);
+        if (!std::isfinite(denominator) || std::abs(denominator) <= kVectorEpsilon) {
+            return false;
+        }
+        distance = MATH::Dot(request.planePoint - eye, request.planeNormal) / denominator;
+        break;
+    }
+    default: return false;
+    }
+    if (!std::isfinite(distance) || distance < CAMERA::kMinDepthOfFieldFocusDistance) {
+        return false;
+    }
+    outDistance = distance;
+    return true;
+}
+
+bool FocusRequestWins(const CAMERA::CameraFocusSubmission& focus,
+                      const CAMERA::CameraDepthOfFieldSubmission& settings) noexcept {
+    return focus.priority > settings.priority ||
+           (focus.priority == settings.priority && focus.sourceId <= settings.sourceId);
+}
+
 bool IsCameraObjectEnabled(const World& world, SceneObjectId cameraObjectId) noexcept {
     const GameObject* object = world.FindObject(cameraObjectId);
     const CameraComponent* camera = object != nullptr ? object->GetComponent<CameraComponent>() : nullptr;
@@ -71,10 +133,11 @@ Camera3D CameraDirector::BlendViews(const Camera3D& from, const Camera3D& to, fl
     // Projection kinds do not have a physically meaningful interpolated lens.
     if (from.IsOrthographic() != to.IsOrthographic())
         return to;
+    const float blendAmount = std::clamp(std::isfinite(amount) ? amount : 1.0f, 0.0f, 1.0f);
     Camera3D result{};
-    const MATH::Vec3 eye = Lerp(from.GetPosition(), to.GetPosition(), amount);
-    MATH::Vec3 target = Lerp(from.GetTarget(), to.GetTarget(), amount);
-    MATH::Vec3 up = MATH::Normalize(Lerp(from.GetUp(), to.GetUp(), amount));
+    const MATH::Vec3 eye = Lerp(from.GetPosition(), to.GetPosition(), blendAmount);
+    MATH::Vec3 target = Lerp(from.GetTarget(), to.GetTarget(), blendAmount);
+    MATH::Vec3 up = MATH::Normalize(Lerp(from.GetUp(), to.GetUp(), blendAmount));
     if (MATH::Length(target - eye) <= kVectorEpsilon) {
         target = eye + MATH::Vec3{0.0f, 0.0f, 1.0f};
     }
@@ -83,13 +146,15 @@ Camera3D CameraDirector::BlendViews(const Camera3D& from, const Camera3D& to, fl
     }
     up = SafeUpForForward(MATH::Normalize(target - eye), up);
 
-    result.SetPerspective(Lerp(from.GetFovYRad(), to.GetFovYRad(), amount),
-                          Lerp(from.GetAspect(), to.GetAspect(), amount), Lerp(from.GetNearZ(), to.GetNearZ(), amount),
-                          Lerp(from.GetFarZ(), to.GetFarZ(), amount));
+    result.SetPerspective(
+        Lerp(from.GetFovYRad(), to.GetFovYRad(), blendAmount), Lerp(from.GetAspect(), to.GetAspect(), blendAmount),
+        Lerp(from.GetNearZ(), to.GetNearZ(), blendAmount), Lerp(from.GetFarZ(), to.GetFarZ(), blendAmount));
     if (to.IsOrthographic())
-        result.SetOrthographic(Lerp(from.GetOrthographicHeight(), to.GetOrthographicHeight(), amount),
+        result.SetOrthographic(Lerp(from.GetOrthographicHeight(), to.GetOrthographicHeight(), blendAmount),
                                result.GetAspect(), result.GetNearZ(), result.GetFarZ());
     result.SetLookAt(eye, target, up);
+    result.SetDepthOfFieldSettings(
+        BlendDepthOfFieldSettings(from.GetDepthOfFieldSettings(), to.GetDepthOfFieldSettings(), blendAmount));
     return result;
 }
 
@@ -275,6 +340,30 @@ const RENDER3D::ResolvedCameraFrame& CameraDirector::Resolve(const World& world,
         }
     }
 
+    if (rigService != nullptr) {
+        CAMERA::CameraDepthOfFieldSubmission settingsRequest{};
+        const bool hasSettingsRequest = rigService->TryResolveDepthOfField(resolvedSource, settingsRequest);
+        if (hasSettingsRequest) {
+            const CAMERA::DepthOfFieldSettings resolvedSettings = BlendDepthOfFieldSettings(
+                resolvedFrame_.camera.GetDepthOfFieldSettings(), settingsRequest.settings, settingsRequest.weight);
+            resolvedFrame_.camera.SetDepthOfFieldSettings(resolvedSettings);
+        }
+
+        CAMERA::CameraFocusSubmission focusRequest{};
+        const bool hasFocusRequest = rigService->TryResolveFocus(resolvedSource, focusRequest);
+        const bool focusWins =
+            hasFocusRequest && (!hasSettingsRequest || FocusRequestWins(focusRequest, settingsRequest));
+        if (focusWins) {
+            float requestedFocusDistance = 0.0f;
+            if (ResolveFocusDistance(resolvedFrame_.camera, focusRequest, requestedFocusDistance)) {
+                CAMERA::DepthOfFieldSettings resolvedSettings = resolvedFrame_.camera.GetDepthOfFieldSettings();
+                resolvedSettings.focusDistance =
+                    Lerp(resolvedSettings.focusDistance, requestedFocusDistance, focusRequest.weight);
+                resolvedFrame_.camera.SetDepthOfFieldSettings(resolvedSettings);
+            }
+        }
+    }
+
     resolvedFrame_.sourceCameraObjectId = resolvedSource.value;
     resolvedFrame_.revision = revision_;
     resolvedFrame_.valid = true;
@@ -387,6 +476,7 @@ bool CameraDirector::TryResolveCameraObject(const World& world, SceneObjectId ca
         }
     }
     outCamera.SetLookAt(eye, target, up);
+    outCamera.SetDepthOfFieldSettings(component->GetDepthOfFieldSettings());
     return true;
 }
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Render3D/Depth/HIKARI_DepthPyramidLayer.h"
+#include "Render3D/DepthOfField/HIKARI_CameraDepthOfFieldStage.h"
 #include "Render3D/Resources/HIKARI_RenderTextureView.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameContext.h"
 
@@ -18,6 +19,7 @@ struct MeshPassResources {
     int fallbackAoTextureHandle = -1;
     RENDER3D::PIPELINE::RenderTargetAccess compositionTarget{};
     D3D12_CPU_DESCRIPTOR_HANDLE compositionDepth{};
+    const RENDER3D::DOF::WorldSpriteLayerCapture* worldSpriteDepthOfFieldCapture = nullptr;
     bool reflectionCapture = false;
     bool reflectionMaterialCapture = false;
 };

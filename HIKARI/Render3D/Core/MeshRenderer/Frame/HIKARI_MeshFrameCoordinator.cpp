@@ -230,7 +230,7 @@ MeshDrawContext BuildDrawContext(const GFX::Context& graphics, bool depthAwarePh
     ctx.surfaceFeatureDataAddress =
         waterSurfaceBuffer != nullptr ? waterSurfaceBuffer->GetRecordGpuVirtualAddress() : 0u;
     ctx.terrainSurfaceDataAddress = gMeshRendererState.terrainSurfaceGpuFrameBuffer.GetRecordGpuVirtualAddress();
-    ctx.surfaceFeatureHeightsAddress = gMeshRendererState.terrainSurfaceGpuFrameBuffer.GetHeightGpuVirtualAddress();
+    ctx.surfaceFeatureFloatsAddress = gMeshRendererState.terrainSurfaceGpuFrameBuffer.GetFloatPoolGpuVirtualAddress();
     const RENDER3D::WATER::SPECTRUM::OceanSpectrumOutputDescriptorTable& oceanSpectrumTable =
         gMeshRendererState.oceanSpectrumRuntime.GetOutputDescriptorTable();
     const bool waterRequiresOceanSpectrum =

@@ -91,9 +91,8 @@ void GpuDrivenSceneSource::Reset() {
     meshShaderJointPalettes.reset();
     waterSurfaceGpuData = nullptr;
     terrainSurfaceGpuData = nullptr;
-    terrainSurfaceHeights = nullptr;
+    surfaceFeatureFloats = {};
     mass = nullptr;
-    terrainSurfaceHeightVersion = 0;
     layoutVersion = 0;
     sourceVersion = 0;
     dirtyBaseSourceVersion = 0;

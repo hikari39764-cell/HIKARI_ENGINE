@@ -152,6 +152,58 @@ uint HikariLocalShadowFace(float3 fromLight)
     return fromLight.z >= 0.0f ? 4u : 5u;
 }
 
+bool HikariResolveLocalShadowPlaneDepthGradient(float4x4 shadowViewProj, float4 clipPosition,
+    float3 geometricNormalWS, out float2 depthGradient)
+{
+    depthGradient = 0.0f.xx;
+    const float normalLengthSquared = dot(geometricNormalWS, geometricNormalWS);
+    if (!all(isfinite(clipPosition)) || clipPosition.w <= 1e-6f ||
+        !all(isfinite(geometricNormalWS)) || !isfinite(normalLengthSquared) || normalLengthSquared <= 1e-8f)
+        return false;
+
+    const float3 normalWS = geometricNormalWS * rsqrt(normalLengthSquared);
+    const float3 referenceAxis = abs(normalWS.z) < 0.999f ? float3(0.0f, 0.0f, 1.0f) : float3(0.0f, 1.0f, 0.0f);
+    const float3 tangentWS = normalize(cross(referenceAxis, normalWS));
+    const float3 bitangentWS = cross(normalWS, tangentWS);
+    const float4 tangentClip = mul(shadowViewProj, float4(tangentWS, 0.0f));
+    const float4 bitangentClip = mul(shadowViewProj, float4(bitangentWS, 0.0f));
+    const float inverseClipW2 = rcp(clipPosition.w * clipPosition.w);
+    const float3 tangentNdc =
+        (tangentClip.xyz * clipPosition.w - clipPosition.xyz * tangentClip.w) * inverseClipW2;
+    const float3 bitangentNdc =
+        (bitangentClip.xyz * clipPosition.w - clipPosition.xyz * bitangentClip.w) * inverseClipW2;
+    if (!all(isfinite(tangentNdc)) || !all(isfinite(bitangentNdc)))
+        return false;
+
+    const float2 tangentFaceUv = tangentNdc.xy * float2(0.5f, -0.5f);
+    const float2 bitangentFaceUv = bitangentNdc.xy * float2(0.5f, -0.5f);
+    const float tangentUvLength = length(tangentFaceUv);
+    const float bitangentUvLength = length(bitangentFaceUv);
+    const float projectedArea = tangentUvLength * bitangentUvLength;
+    const float uvDeterminant = tangentFaceUv.x * bitangentFaceUv.y -
+                                bitangentFaceUv.x * tangentFaceUv.y;
+    if (!isfinite(tangentUvLength) || !isfinite(bitangentUvLength) || !isfinite(projectedArea) ||
+        !isfinite(uvDeterminant) || tangentUvLength <= 1e-6f || bitangentUvLength <= 1e-6f ||
+        abs(uvDeterminant) <= max(1e-8f, projectedArea * 1e-3f))
+        return false;
+
+    depthGradient = float2((tangentNdc.z * bitangentFaceUv.y - bitangentNdc.z * tangentFaceUv.y) / uvDeterminant,
+        (tangentFaceUv.x * bitangentNdc.z - bitangentFaceUv.x * tangentNdc.z) / uvDeterminant);
+    return all(isfinite(depthGradient));
+}
+
+float HikariLocalShadowTapReferenceDepth(float centerDepth, float2 depthGradient, float2 faceUvDelta,
+    float2 sampleAtlasUv, float atlasSize, uint tileResolution)
+{
+    const float2 phase = frac(sampleAtlasUv * atlasSize - 0.5f);
+    const float2 gradientPositive = max(depthGradient, 0.0f.xx);
+    const float2 gradientNegative = max(-depthGradient, 0.0f.xx);
+    const float footprintDepthBias =
+        (dot(gradientPositive, phase) + dot(gradientNegative, 1.0f.xx - phase)) /
+        max(float(tileResolution), 1.0f);
+    return centerDepth + dot(depthGradient, faceUvDelta) - footprintDepthBias;
+}
+
 float HikariSampleLocalLightShadow(Texture2D atlas, SamplerComparisonState comparisonSampler,
     HikariLocalShadowData shadow, HikariLocalLightGpuData light,
     float3 worldPosWS, float3 geometricNormalWS, bool filter = true)
@@ -193,12 +245,23 @@ float HikariSampleLocalLightShadow(Texture2D atlas, SamplerComparisonState compa
     const float2 maximumUv = (tile + 1.0f) / float(grid) - 0.5f / atlasSize;
     if (!filter) return atlas.SampleCmpLevelZero(comparisonSampler,
         clamp(uv, minimumUv, maximumUv), ndc.z);
+
+    float2 depthGradient = 0.0f.xx;
+    const bool hasDepthGradient =
+        HikariResolveLocalShadowPlaneDepthGradient(shadow.viewProj[face], clip, geometricNormalWS, depthGradient);
     float visibility = 0.0f;
     // 九つの bilinear compare。guard と tile clamp で隣の light を読まない。
     [unroll] for (int y = -1; y <= 1; ++y)
     [unroll] for (int x = -1; x <= 1; ++x)
-        visibility += atlas.SampleCmpLevelZero(
-            comparisonSampler, clamp(uv + float2(x,y) / atlasSize, minimumUv, maximumUv), ndc.z);
+    {
+        const float2 sampleUv = clamp(uv + float2(x,y) / atlasSize, minimumUv, maximumUv);
+        const float2 faceUvDelta = (sampleUv - uv) * float(grid);
+        const float referenceDepth = hasDepthGradient
+            ? HikariLocalShadowTapReferenceDepth(ndc.z, depthGradient, faceUvDelta, sampleUv, atlasSize,
+                shadow.tileResolution)
+            : ndc.z;
+        visibility += atlas.SampleCmpLevelZero(comparisonSampler, sampleUv, referenceDepth);
+    }
     return visibility / 9.0f;
 }
 

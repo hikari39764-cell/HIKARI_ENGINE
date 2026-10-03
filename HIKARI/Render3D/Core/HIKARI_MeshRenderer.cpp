@@ -56,6 +56,8 @@ void SetGpuDrivenSceneSource(const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource* so
         gMeshRendererState.gpuDrivenSceneSource.sourceInstanceCount == source->sourceInstanceCount &&
         gMeshRendererState.gpuDrivenSceneSource.sourceRecordCount == source->sourceRecordCount) {
         gMeshRendererState.gpuDrivenSceneSource.dirtyBaseSourceVersion = source->dirtyBaseSourceVersion;
+        // float pool は record 配置と独立に差分更新される。
+        gMeshRendererState.gpuDrivenSceneSource.surfaceFeatureFloats = source->surfaceFeatureFloats;
         for (size_t passIndex = 0; passIndex < RENDER3D::GPUDRIVEN::kGpuDrivenPassCount; ++passIndex) {
             gMeshRendererState.gpuDrivenSceneSource.passes[passIndex].dirtyRanges =
                 source->passes[passIndex].dirtyRanges;

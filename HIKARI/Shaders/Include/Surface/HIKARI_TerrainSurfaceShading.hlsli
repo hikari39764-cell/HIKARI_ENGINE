@@ -1,24 +1,24 @@
-#ifndef HIKARI_SAND_SURFACE_SHADING_INCLUDED
-#define HIKARI_SAND_SURFACE_SHADING_INCLUDED
+#ifndef HIKARI_TERRAIN_SURFACE_SHADING_INCLUDED
+#define HIKARI_TERRAIN_SURFACE_SHADING_INCLUDED
 
-#include "Include/Surface/HIKARI_SandSurfaceParams.hlsli"
-#include "Include/Surface/HIKARI_SandSurfaceNormal.hlsli"
+#include "Include/Surface/HIKARI_TerrainSurfaceParams.hlsli"
+#include "Include/Surface/HIKARI_TerrainSurfaceNormal.hlsli"
 
 float3 HikariResolveTerrainLayerFlatBaseTint(
-    HikariSandLayerStyle style)
+    HikariTerrainLayerStyle style)
 {
-    // Preserve the original pure-Sand anime base while letting every other
+    // Preserve the sand layer's warm anime base while letting every other
     // built-in layer use its authored light tint as the flat base.
     const float3 flatWarm =
         float3(0.97f, 0.88f, 0.68f);
-    return style.materialKind == HIKARI_SAND_LAYER_MATERIAL_KIND_SAND
+    return style.materialKind == HIKARI_TERRAIN_LAYER_MATERIAL_KIND_SAND
         ? flatWarm
         : saturate(style.lightTint);
 }
 
 // All built-in terrain layers use the same anime color treatment. Their flat
 // base tint, texture density, and saturation stay authored per layer in
-// HikariSandLayerStyle (with the legacy Sand base resolved above). Keeping the
+// HikariTerrainLayerStyle (with the sand base resolved above). Keeping the
 // formula in one helper prevents color branches from drifting.
 float3 HikariApplyTerrainLayerAnimeColor(
     float3 flatBaseTint,
@@ -49,10 +49,10 @@ float3 HikariApplyTerrainLayerAnimeColor(
         clamp(saturation, 0.0f, 2.0f)));
 }
 
-float4 HikariShadeSandSurface(
+float4 HikariShadeTerrainSurface(
     PSInput input,
     HikariMeshObjectData objectData,
-    float3 sandSurfaceData,
+    float3 terrainSurfaceData,
     bool costNoShadow)
 {
     (void)objectData;
@@ -60,11 +60,10 @@ float4 HikariShadeSandSurface(
         HikariGetMeshMaterialData(input.materialDataIndex);
     const HikariSurfaceGpuSceneInstance instance =
         HikariGetSurfaceGpuSceneInstanceAt(input.surfaceGpuSceneIndex);
-    const HikariSandSurfaceParams p =
-        HikariLoadSandSurfaceParamsFromDataIndex(
-            instance.surfaceFeatureDataIndex);
+    const HikariTerrainSurfaceParams p =
+        HikariLoadTerrainSurfaceParams(instance.surfaceFeatureDataIndex);
 
-    HikariClipSandCoverage(p, input.uv1);
+    HikariClipTerrainCoverage(p, input.uv1);
 
     const float3 worldPos = input.worldPosWS;
     const float3 viewDir =
@@ -82,23 +81,21 @@ float4 HikariShadeSandSurface(
     float roughness = 0.0f;
     float shadowStrength = 0.0f;
     float granularStrength = 0.0f;
-    const uint blendLayers = min(p.layerCount, 8u);
-    bool pureSandBaseline = blendLayers == 1u;
-    for (uint layer = 0u; layer < blendLayers; ++layer)
+    // 全層の weight を一度に読み、寄与する層だけ style と texture を引く。
+    float4 layerWeights0;
+    float4 layerWeights1;
+    HikariTerrainSampleLayerWeights(p, input.uv1, layerWeights0, layerWeights1);
+    const bool pureSandBaseline = p.layerCount == 1u &&
+        HikariTerrainLoadLayerMaterialKind(p, 0u) == HIKARI_TERRAIN_LAYER_MATERIAL_KIND_SAND;
+    [loop]
+    for (uint layer = 0u; layer < p.layerCount; ++layer)
     {
-        const HikariSandLayerStyle style =
-            HikariSandLoadLayerStyle(p, layer);
-        if (layer == 0u &&
-            style.materialKind != HIKARI_SAND_LAYER_MATERIAL_KIND_SAND)
-        {
-            pureSandBaseline = false;
-        }
-        const float w = saturate(
-            HikariSandSampleLayerWeight(p, layer, input.uv1));
+        const float w = HikariTerrainLayerWeight(layerWeights0, layerWeights1, layer);
         if (w <= 1.0e-5f)
         {
             continue;
         }
+        const HikariTerrainLayerStyle style = HikariTerrainLoadLayerStyle(p, layer);
         const float2 tiledUv = worldPos.xz *
             max(style.tilesPerMeter, 1.0e-4f);
         const float2 atlasUv =
@@ -126,7 +123,7 @@ float4 HikariShadeSandSurface(
         }
         if (materialData.hasNormalTexture != 0u)
         {
-            blendedNormalXY += HikariSampleSandLayerNormalXY(
+            blendedNormalXY += HikariSampleTerrainLayerNormalXY(
                 materialData,
                 style,
                 worldPos,
@@ -162,13 +159,13 @@ float4 HikariShadeSandSurface(
     float4 albedo = materialData.baseColor;
     albedo.rgb *= blendedTexture;
 
-    // sandSurfaceData.z は runtime response のみ。地形サイズではなく
+    // terrainSurfaceData.z は runtime response のみ。地形サイズではなく
     // authored heightScale を基準にして、大きな地形でも足跡の濃さを保つ。
     const float responseScale = max(p.heightScale, 0.05f);
     const float pitMaskRaw = saturate(
-        -sandSurfaceData.z / responseScale);
+        -terrainSurfaceData.z / responseScale);
     const float rimMaskRaw = saturate(
-        sandSurfaceData.z / responseScale);
+        terrainSurfaceData.z / responseScale);
     const float pitMask = smoothstep(0.16f, 0.38f, pitMaskRaw) *
         granularStrength;
     const float rimMask = smoothstep(0.04f, 0.24f, rimMaskRaw) *
@@ -212,7 +209,7 @@ float4 HikariShadeSandSurface(
     const float2 windDir = normalize(float2(0.93f, 0.37f));
     const float ripplePhase =
         dot(worldPos.xz, windDir) * 2.4f +
-        HikariSandValueNoise(worldPos.xz * 0.32f + 7.0f) * 1.7f;
+        HikariTerrainValueNoise(worldPos.xz * 0.32f + 7.0f) * 1.7f;
     const float rippleAmplitude =
         p.rippleAmount * granularStrength * 0.12f *
         saturate(shadingNormal.y);
@@ -223,7 +220,7 @@ float4 HikariShadeSandSurface(
             0.0f,
             -windDir.y * sin(ripplePhase)) * rippleAmplitude);
 
-    // Sand is a regular directional-shadow receiver. Reuse the shared CSM
+    // Terrain is a regular directional-shadow receiver. Reuse the shared CSM
     // sampler and the same per-surface receive flag as opaque PBR surfaces.
     // The cost-analysis NO_SHADOW variant must remain a true zero-sample path.
     const bool doubleSidedBackFace =
@@ -278,7 +275,7 @@ float4 HikariShadeSandSurface(
         blendedLight * shadowFactor;
 
     // 砂粒のきらめき。高周波 hash で細かい輝点を作り、硬さを避ける。
-    const float grain = HikariSandHash21(
+    const float grain = HikariTerrainHash21(
         floor(worldPos.xz * 160.0f));
     const float sparkle = pow(grain, 12.0f) *
         p.sparkleStrength * granularStrength * ndotl;

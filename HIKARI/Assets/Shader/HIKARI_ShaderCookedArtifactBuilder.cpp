@@ -132,6 +132,7 @@ bool BuildShaderCookedArtifact(const AssetGuid& sourceGuid, const ShaderSourceMa
     artifact.requiredCaps = {compiled.requiredCaps.minimumShaderModel,
                              compiled.requiredCaps.minimumRootSignatureVersion,
                              compiled.requiredCaps.requiredFeatureMask};
+    artifact.parameters = manifest.parameters;
     artifact.dependencies.reserve(compiled.dependencies.size());
     for (const GFX::ShaderCookDependency& dependency : compiled.dependencies) {
         artifact.dependencies.push_back({dependency.logicalPath, dependency.byteSize, dependency.contentHash});

@@ -1,9 +1,11 @@
 #pragma once
 
 #include <cstdint>
+#include <span>
 
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Lighting/HIKARI_LocalLightList.h"
+#include "Render3D/Lighting/HIKARI_LocalFogVolume.h"
 #include "Render3D/Resources/HIKARI_RenderTextureView.h"
 
 namespace HIKARI {
@@ -60,15 +62,27 @@ struct VolumetricLightingStats {
     uint64_t historyResetCount = 0;
 };
 
+// Borrowed only after this frame's volume integration and scene composite.
+struct VolumetricFogSamplingView {
+    D3D12_GPU_DESCRIPTOR_HANDLE integratedVolumeSrv{};
+    float nearDistance = 0.0f;
+    float farDistance = 0.0f;
+    uint32_t depthSlices = 0u;
+    uint64_t frameIndex = 0u;
+    bool valid = false;
+};
+
 bool PrepareVolumetricLightingFrame(const GFX::Context& context, const TEMPORAL::TemporalFrameState& temporalFrame,
                                     const RenderTextureView& sceneColor, const RenderTextureView& sceneDepth,
                                     const SceneEnvironment& environment,
                                     const LIGHTING::LocalLightListGpuBindings& localLights,
                                     VolumetricLightingQuality quality, RenderDebugView debugView,
                                     const SHADOW::LocalLightShadowFrame* localShadows = nullptr,
-                                    const CLOUDS::CloudSolarVisibilityFrame* clouds = nullptr);
+                                    const CLOUDS::CloudSolarVisibilityFrame* clouds = nullptr,
+                                    std::span<const LocalFogVolumeGpu> localFogVolumes = {});
 
 RenderTarget2D* ExecuteVolumetricLightingStage(RenderTarget2D& sceneTarget);
+bool GetVolumetricFogSamplingView(uint64_t frameIndex, VolumetricFogSamplingView& outView) noexcept;
 // Borrow a producer-owned water depth view for the prepared frame/view.
 // Prepare clears this input every frame; Execute falls back to opaque
 // SceneDepth when the token, dimensions, or frame do not match.

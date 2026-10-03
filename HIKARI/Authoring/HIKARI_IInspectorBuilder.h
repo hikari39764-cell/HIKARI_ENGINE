@@ -7,12 +7,9 @@
 #include <vector>
 
 #include "Authoring/HIKARI_ComponentAuthoringTypes.h"
+#include "Runtime/Binding/HIKARI_RuntimeBindingTypes.h"
 
 namespace HIKARI {
-
-namespace BINDING {
-enum class ValueType : uint8_t;
-}
 
 namespace INPUT {
 enum class InputActionValueType;
@@ -63,6 +60,16 @@ public:
     virtual bool FloatRange(const AuthoringFieldDescriptor& field, float& value, float minimum, float maximum,
                             float speed = 0.1f) {
         return FloatRange(field.label, value, minimum, maximum, speed);
+    }
+    virtual bool TypedValue(const AuthoringFieldDescriptor& field, BINDING::Value& value, bool hasRange, float minimum,
+                            float maximum, float step) {
+        (void)field;
+        (void)value;
+        (void)hasRange;
+        (void)minimum;
+        (void)maximum;
+        (void)step;
+        return false;
     }
     virtual bool Color3(std::string_view label, float& red, float& green, float& blue) {
         bool changed = false;

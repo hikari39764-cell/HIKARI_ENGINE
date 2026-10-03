@@ -175,6 +175,10 @@ bool UiCanvasView::SubmitObject(GameProjectUiCanvasHandle h, GameProjectObjectHa
             return true;
         }
         if (auto* sprite = object->GetComponent<WorldSpriteComponent>()) {
+            if (sprite->GetSpriteAssetGuid().IsValid()) {
+                content->failed = true;
+                return false;
+            }
             if (!sprite->IsVisible() || sprite->GetOpacity() <= 0 || !sprite->GetTextureAssetGuid().IsValid())
                 return true;
             auto request = geometry;

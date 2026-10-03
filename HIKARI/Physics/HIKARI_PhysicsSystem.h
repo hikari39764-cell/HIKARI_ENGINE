@@ -52,7 +52,6 @@ private:
         PhysicsBodyState previousFixedState{};
         PhysicsBodyState currentFixedState{};
         bool hasFixedState = false;
-        bool kinematicPresentationActive = false;
         bool presentationDiscontinuity = true;
         PhysicsCharacterHandle kinematicSolver{};
         uint64_t kinematicSolverSignature = 0u;
@@ -80,7 +79,7 @@ private:
     void DestroyKinematicSolver(BodyBinding& binding) noexcept;
     bool EnsureKinematicSolver(BodyBinding& binding, const KinematicControllerSettings& settings,
                                const PhysicsBodyState& bodyState, bool& outRetainedPrevious, std::string& outError);
-    void PullDynamicPoses(World& world);
+    void CaptureSimulatedPoses(World& world);
     void CommitFixedState(BodyBinding& binding, const PhysicsBodyState& state, bool discontinuity) noexcept;
     void UpdatePresentationPoses(World& world, float interpolationAlpha);
     void ReportFailure(RuntimeObjectHandle object, const BodyBinding* retainedBinding,

@@ -6,7 +6,7 @@
 #include "Include/Material/HIKARI_MaterialBaseColorInputs.hlsli"
 #include "Include/HIKARI_SurfaceGpuScene.hlsli"
 #include "Include/Forward/HIKARI_SurfaceFeatureCoverage.hlsli"
-#include "Include/Surface/HIKARI_SandSurfaceParams.hlsli"
+#include "Include/Surface/HIKARI_TerrainSurfaceParams.hlsli"
 #include "Include/Lighting/HIKARI_ShadowMaterialCoverage.hlsli"
 
 SamplerState gLinearWrap : register(s0);
@@ -29,14 +29,14 @@ struct PSInput
 
 void main(PSInput input)
 {
-    if (HikariSurfaceHasSandSurface(input.surfaceFeatureFlags))
+    if (HikariSurfaceHasTerrainSurface(input.surfaceFeatureFlags))
     {
-        const HikariSurfaceGpuSceneInstance sandInstance =
+        const HikariSurfaceGpuSceneInstance terrainInstance =
             HikariGetSurfaceGpuSceneInstanceAt(input.surfaceGpuSceneIndex);
-        const HikariSandSurfaceParams sandParams =
-            HikariLoadSandSurfaceParamsFromDataIndex(
-                sandInstance.surfaceFeatureDataIndex);
-        HikariClipSandCoverage(sandParams, input.uv1);
+        const HikariTerrainSurfaceParams terrainParams =
+            HikariLoadTerrainSurfaceParams(
+                terrainInstance.surfaceFeatureDataIndex);
+        HikariClipTerrainCoverage(terrainParams, input.uv1);
     }
 
     if ((input.materialFlags & MATERIAL_ALPHA_MASK) == 0)

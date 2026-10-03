@@ -1,12 +1,12 @@
-#ifndef HIKARI_SAND_SURFACE_NORMAL_INCLUDED
-#define HIKARI_SAND_SURFACE_NORMAL_INCLUDED
+#ifndef HIKARI_TERRAIN_SURFACE_NORMAL_INCLUDED
+#define HIKARI_TERRAIN_SURFACE_NORMAL_INCLUDED
 
-// Sand forward and SceneSurface/GeometryAux must sample the same atlas tile.
+// Terrain forward and SceneSurface/GeometryAux must sample the same atlas tile.
 // Keep coverage uv1 separate from world-space texture density and keep the
 // atlas gutter protected by the clamp sampler supplied by the caller.
-float2 HikariSampleSandLayerNormalXY(
+float2 HikariSampleTerrainLayerNormalXY(
     HikariMeshMaterialData materialData,
-    HikariSandLayerStyle style,
+    HikariTerrainLayerStyle style,
     float3 worldPosWS,
     SamplerState samplerState)
 {
@@ -31,14 +31,14 @@ float2 HikariSampleSandLayerNormalXY(
             atlasDy,
             float4(0.5f, 0.5f, 1.0f, 1.0f)).xy *
             2.0f - 1.0f;
-    // Sand layer strength is the authoritative normal multiplier. Do not
+    // Terrain layer strength is the authoritative normal multiplier. Do not
     // apply the generic material UV transform or normalScale a second time.
     return normalXY * max(style.normalStrength, 0.0f);
 }
 
-float3 HikariResolveSandSurfaceAuxNormal(
+float3 HikariResolveTerrainSurfaceAuxNormal(
     HikariMeshMaterialData materialData,
-    HikariSandSurfaceParams p,
+    HikariTerrainSurfaceParams p,
     float3 worldPosWS,
     float2 coverageUv,
     float3 normalWS,
@@ -51,23 +51,22 @@ float3 HikariResolveSandSurfaceAuxNormal(
         return fallbackNormal;
     }
 
+    float4 weights0;
+    float4 weights1;
+    HikariTerrainSampleLayerWeights(p, coverageUv, weights0, weights1);
     float2 blendedNormalXY = 0.0f.xx;
     float weightSum = 0.0f;
-    const uint blendLayers = min(p.layerCount, 8u);
-    for (uint layer = 0u; layer < blendLayers; ++layer)
+    [loop]
+    for (uint layer = 0u; layer < p.layerCount; ++layer)
     {
-        const float weight = saturate(
-            HikariSandSampleLayerWeight(p, layer, coverageUv));
+        const float weight = HikariTerrainLayerWeight(weights0, weights1, layer);
         if (weight <= 1.0e-5f)
         {
             continue;
         }
-
-        const HikariSandLayerStyle style =
-            HikariSandLoadLayerStyle(p, layer);
-        blendedNormalXY += HikariSampleSandLayerNormalXY(
+        blendedNormalXY += HikariSampleTerrainLayerNormalXY(
             materialData,
-            style,
+            HikariTerrainLoadLayerStyle(p, layer),
             worldPosWS,
             samplerState) * weight;
         weightSum += weight;

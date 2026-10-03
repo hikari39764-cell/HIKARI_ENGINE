@@ -16,6 +16,7 @@
 #include "Editor/Widgets/HIKARI_InputActionFieldWidget.h"
 #include "Editor/Widgets/HIKARI_InspectorPropertyLayout.h"
 #include "Editor/Widgets/HIKARI_RuntimeBindingFieldWidget.h"
+#include "Editor/Widgets/HIKARI_TypedValueEditor.h"
 #include "Input/Runtime/HIKARI_InputService.h"
 #include "Runtime/Binding/HIKARI_RuntimeBindingStore.h"
 #include "Scene/HIKARI_WorldServiceRegistry.h"
@@ -267,6 +268,27 @@ bool ImGuiInspectorBuilder::FloatRange(std::string_view label, float& value, flo
     (void)minimum;
     (void)maximum;
     (void)speed;
+    return false;
+#endif
+}
+
+bool ImGuiInspectorBuilder::TypedValue(const AuthoringFieldDescriptor& field, BINDING::Value& value, bool hasRange,
+                                       float minimum, float maximum, float step) {
+#if defined(HIKARI_WITH_EDITOR)
+    EDITOR::InspectorPropertyRow row(field.label);
+    if (!row.IsVisible()) {
+        return false;
+    }
+    const std::string id = "##" + std::string(field.id);
+    const EDITOR::TypedValueRange range{hasRange, minimum, maximum, step > 0.0f ? step : 0.01f};
+    return EDITOR::DrawTypedEditorValue(id.c_str(), value, range, ImGui::GetContentRegionAvail().x).changed;
+#else
+    (void)field;
+    (void)value;
+    (void)hasRange;
+    (void)minimum;
+    (void)maximum;
+    (void)step;
     return false;
 #endif
 }

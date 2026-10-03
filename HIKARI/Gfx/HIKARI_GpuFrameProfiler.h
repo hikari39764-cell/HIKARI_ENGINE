@@ -39,6 +39,7 @@ enum class Pass : uint32_t {
     ForwardOpaque,
     DepthAware,
     ForwardTransparent,
+    DepthOfField,
     ParticleSimulation,
     ParticleDraw,
     VolumetricLighting,

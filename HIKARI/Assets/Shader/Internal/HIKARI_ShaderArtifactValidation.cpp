@@ -9,6 +9,7 @@
 #include "Assets/HIKARI_AssetRecord.h"
 #include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
 #include "Assets/Shader/HIKARI_ShaderCookedArtifact.h"
+#include "Assets/Shader/HIKARI_ShaderParameterSerialization.h"
 #include "Assets/Shader/HIKARI_ShaderSourceManifest.h"
 #include "Core/Hashing/HIKARI_Sha256.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
@@ -174,6 +175,8 @@ bool ValidateShaderArtifactAgainstAuthoringSources(const AssetRecord& record, co
         artifact.requiredCaps.minimumShaderModel != manifest.requiredCaps.minimumShaderModel ||
         artifact.requiredCaps.minimumRootSignatureVersion != manifest.requiredCaps.minimumRootSignatureVersion ||
         artifact.requiredCaps.requiredFeatureMask != manifest.requiredCaps.requiredFeatureMask ||
+        WriteShaderParameterDefinitions(std::span<const ShaderParameterDefinition>(artifact.parameters)) !=
+            WriteShaderParameterDefinitions(std::span<const ShaderParameterDefinition>(manifest.parameters)) ||
         artifact.entries.size() != manifest.entries.size()) {
         outError = "Shader artifact does not match its current manifest: " + record.guid.value;
         return false;

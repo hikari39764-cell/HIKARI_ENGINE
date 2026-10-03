@@ -209,6 +209,8 @@ public:
     const std::string& GetStatusMessage() const noexcept;
     // AI 消費者向けの現在状態の要約（開いている資産・層・効果・選択・再生位置）。
     // 文書の状態。シェル、AI の文脈、バックグラウンドのセッションで共有する。
+    // 表示中の文書があるか。DescribeDocumentState の open と同じ判定。
+    bool IsDocumentOpen() const noexcept;
     nlohmann::json DescribeDocumentState() const;
     bool WasLastAssetRefreshAttempted() const noexcept;
     bool DidLastAssetRefreshSucceed() const noexcept;
