@@ -132,9 +132,8 @@ void HierarchyPanel::DrawFolderContents(World& world, EditorSelection& selection
             ImGui::SetNextItemOpen(true, ImGuiCond_Always);
         else if (expansion != 0)
             ImGui::SetNextItemOpen(expansion > 0, ImGuiCond_Always);
-        const auto flags = ImGuiTreeNodeFlags_SpanAvailWidth |
-                           (parent(path).empty() ? ImGuiTreeNodeFlags_DefaultOpen : ImGuiTreeNodeFlags_None);
-        const bool open = ImGui::TreeNodeEx("folder", flags, "   %s  (%zu)", leaf(path).c_str(), counts[path]);
+        const bool open = ImGui::TreeNodeEx("folder", ImGuiTreeNodeFlags_SpanAvailWidth, "   %s  (%zu)",
+                                            leaf(path).c_str(), counts[path]);
         const auto min = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax();
         EDITOR::DrawEditorGlyph(*ImGui::GetWindowDrawList(), EDITOR::EditorGlyph::Folder,
                                 {min.x + 24.f, (min.y + max.y) * .5f}, 12.f,

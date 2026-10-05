@@ -249,7 +249,9 @@ GEOMETRY::ClusteredGeometryCookSettings BuildClusteredGeometryCookSettings(const
 
 ModelImporterKind ResolveModelImporterKind(const std::filesystem::path& sourcePath) {
     const std::string extension = TEXT::ToLowerAsciiCopy(sourcePath.extension().string());
-    return extension == ".obj" || extension == ".fbx" ? ModelImporterKind::Assimp : ModelImporterKind::Gltf;
+    return extension == ".obj"   ? ModelImporterKind::Builtin
+           : extension == ".fbx" ? ModelImporterKind::Assimp
+                                 : ModelImporterKind::Gltf;
 }
 
 } // namespace
@@ -262,9 +264,6 @@ ModelImportPolicy ResolveModelImportPolicy(const std::filesystem::path& sourcePa
     }
 
     ModelImportPolicy policy{};
-    policy.cookModel = settings.value("cookModel", true);
-    policy.loadMaterials = settings.value("loadMaterials", true);
-    policy.loadTextures = settings.value("loadTextures", true);
     policy.importer = ResolveModelImporterKind(sourcePath);
 
     const ModelGeometryCookProfile profile = ParseGeometryCookProfile(settings);
@@ -277,11 +276,8 @@ ModelImportPolicy ResolveModelImportPolicy(const std::filesystem::path& sourcePa
 std::string MakeDefaultModelImportSettingsJson(const std::filesystem::path& sourcePath) {
     return nlohmann::json{
         {"sourceFormat", sourcePath.extension().string()},
-        {"cookModel", true},
         {"outputFormat", "HMODEL"},
         {"meshFormat", "HCMESH"},
-        {"loadMaterials", true},
-        {"loadTextures", true},
         {"lightmapUv",
          {
              {"mode", "GenerateIfMissingOrInvalid"},

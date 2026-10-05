@@ -243,6 +243,16 @@ void PhysicsSystem::ProcessKinematicMotions(World& world, const FrameContext& fr
                 }
                 PhysicsHit supportHit{};
                 bool hasSupport = false;
+                const auto supportIsWalkable = [&] {
+                    const float normalLengthSq = MATH::Dot(supportHit.normal, supportHit.normal);
+                    const float normalUpDot = hasSupport && normalLengthSq > 1.0e-10f
+                                                  ? supportHit.normal.y / std::sqrt(normalLengthSq)
+                                                  : 0.0f;
+                    return IsKinematicTraversalSupportWalkable(
+                        request.controller,
+                        {hasSupport, hasSupport ? supportHit.position.y - before.groundPosition.y : 0.0f, normalUpDot,
+                         probeDistance});
+                };
                 const PhysicsBackendCapabilities capabilities = service_->GetCapabilities();
                 if (layerMask != 0u && capabilities.shapeCast) {
                     PhysicsShapeCastQuery query{};
@@ -257,7 +267,12 @@ void PhysicsSystem::ProcessKinematicMotions(World& world, const FrameContext& fr
                     query.filter.includeTriggers = false;
                     query.filter.ignoredObject = binding.object;
                     hasSupport = service_->ShapeCast(query, supportHit);
-                } else if (layerMask != 0u && capabilities.raycast) {
+                }
+                if (layerMask != 0u && capabilities.raycast &&
+                    (!capabilities.shapeCast || (hasSupport && !supportIsWalkable()))) {
+                    // 球の側面は床より先に隣の壁や段差の縁へ触れることがある。
+                    // 前探点直下の支えを再確認し、同じ勾配・落差制限を適用する。
+                    // 壁との実際の接触解決は character solver に任せる。
                     PhysicsRaycastQuery query{};
                     query.origin = {before.groundPosition.x + direction.x * probeDistance,
                                     before.groundPosition.y + upwardReach,
@@ -271,17 +286,7 @@ void PhysicsSystem::ProcessKinematicMotions(World& world, const FrameContext& fr
                 }
 
                 if (layerMask != 0u && (capabilities.shapeCast || capabilities.raycast)) {
-                    const float normalLengthSq = MATH::Dot(supportHit.normal, supportHit.normal);
-                    const float normalUpDot = hasSupport && normalLengthSq > 1.0e-10f
-                                                  ? supportHit.normal.y / std::sqrt(normalLengthSq)
-                                                  : 0.0f;
-                    traversalBlocked = !IsKinematicTraversalSupportWalkable(
-                        request.controller, {
-                                                hasSupport,
-                                                hasSupport ? supportHit.position.y - before.groundPosition.y : 0.0f,
-                                                normalUpDot,
-                                                probeDistance,
-                                            });
+                    traversalBlocked = !supportIsWalkable();
                     if (traversalBlocked) {
                         velocity.x = before.groundVelocity.x;
                         velocity.z = before.groundVelocity.z;

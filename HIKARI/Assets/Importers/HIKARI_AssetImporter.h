@@ -38,6 +38,7 @@ struct AssetImportResult {
     std::string diagnosticsJson{};
     std::vector<AssetArtifactDesc> artifacts{};
     std::vector<AssetDependencyDesc> dependencies{};
+    AssetImportInputs inputs{};
     std::shared_ptr<AssetImportPublication> publication{};
 };
 

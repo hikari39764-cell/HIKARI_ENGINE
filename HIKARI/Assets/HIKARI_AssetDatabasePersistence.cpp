@@ -1,7 +1,9 @@
 #include "Assets/HIKARI_AssetDatabase.h"
+#include "Assets/HIKARI_AssetImportInputs.h"
 #include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
+#include "Core/Serialization/Json/HIKARI_JsonStrict.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Project/Paths/HIKARI_ProjectPath.h"
 
@@ -132,6 +134,48 @@ bool AssetDatabase::WriteMeta(const AssetRecord& record) {
     return true;
 }
 
+bool AssetDatabase::UpdateImportSettings(const AssetGuid& guid, const AssetMeta& expected, const AssetMeta& edited,
+                                         std::string& error) {
+    if (!CheckOwnerThread("import settings update") || cookedContent_) {
+        error = "Import settings require an editable project on the owner thread";
+        return false;
+    }
+    auto* record = FindByGuid(guid);
+    if (!record) {
+        error = "Asset no longer exists";
+        return false;
+    }
+    AssetMeta onDisk;
+    if (!EquivalentAssetImportMeta(record->meta, expected) || !ReadMeta(record->metaPath, onDisk) ||
+        !EquivalentAssetImportMeta(onDisk, expected)) {
+        error = "Import settings changed externally. Reload before applying the draft";
+        return false;
+    }
+    const std::string settings = CanonicalImportSettings(edited.importSettingsJson);
+    if (settings.empty()) {
+        error = "Import settings must be a valid JSON object";
+        return false;
+    }
+    if (const auto* importer = importerRegistry_.FindById(record->meta.importerId)) {
+        if (!ValidateAssetImportSettings(edited, importer->CreateDefaultMeta(record->sourcePath, guid), error))
+            return false;
+    }
+    AssetRecord updated = *record;
+    updated.meta.importSettingsJson = settings;
+    updated.meta.displayName = edited.displayName;
+    updated.displayName = edited.displayName;
+    if (!WriteMeta(updated)) {
+        error = "Failed to save import settings; the draft has been kept";
+        return false;
+    }
+    *record = std::move(updated);
+    RefreshRecordState(*record);
+    RefreshImportDependents(guid);
+    AdvanceContentRevision();
+    error.clear();
+    return true;
+}
+
 bool AssetDatabase::ReadMeta(const std::filesystem::path& metaPath, AssetMeta& outMeta) const {
     const std::filesystem::path absoluteMetaPath = PROJECT_PATHS::ResolveProjectPath(projectRoot_, metaPath);
 
@@ -141,19 +185,32 @@ bool AssetDatabase::ReadMeta(const std::filesystem::path& metaPath, AssetMeta& o
         return false;
     }
 
-    outMeta = AssetMeta{};
-    outMeta.metaVersion = root.value("metaVersion", 1u);
-    outMeta.guid.value = root.value("guid", "");
-    outMeta.type = ASSETS::SEMANTICS::ParseAssetType(root.value("type", "Unknown"));
-    outMeta.importerId = root.value("importerId", "");
-    outMeta.importerVersion = root.value("importerVersion", 1u);
-    outMeta.sourcePath = root.value("sourcePath", "");
-    outMeta.displayName = root.value("displayName", "");
-    if (root.contains("importSettings") && root["importSettings"].is_object()) {
-        outMeta.importSettingsJson = root["importSettings"].dump(2);
-    } else {
-        outMeta.importSettingsJson = "{}";
+    AssetMeta parsed;
+    std::string type, diagnostic;
+    const std::pair<const char*, std::string*> strings[] = {{"guid", &parsed.guid.value},
+                                                            {"type", &type},
+                                                            {"importerId", &parsed.importerId},
+                                                            {"sourcePath", &parsed.sourcePath},
+                                                            {"displayName", &parsed.displayName}};
+    for (const auto& [key, value] : strings) {
+        if (!JSONSTRICT::ReadString(root, key, {}, *value, diagnostic, "meta")) {
+            HIKARI_LOG_ERROR("[AssetDatabase] " + diagnostic);
+            return false;
+        }
     }
+    if (!JSONSTRICT::ReadUint32(root, "metaVersion", parsed.metaVersion, parsed.metaVersion, diagnostic, "meta") ||
+        !JSONSTRICT::ReadUint32(root, "importerVersion", parsed.importerVersion, parsed.importerVersion, diagnostic,
+                                "meta")) {
+        HIKARI_LOG_ERROR("[AssetDatabase] " + diagnostic);
+        return false;
+    }
+    if (parsed.metaVersion != AssetMeta{}.metaVersion)
+        return false;
+    parsed.type = ASSETS::SEMANTICS::ParseAssetType(type);
+    if (root.contains("importSettings") && !root["importSettings"].is_object())
+        return false;
+    parsed.importSettingsJson = root.value("importSettings", nlohmann::json::object()).dump(2);
+    outMeta = std::move(parsed);
     return true;
 }
 
@@ -188,6 +245,15 @@ bool AssetDatabase::ReadArtifactManifest(const std::filesystem::path& manifestPa
     }
     ParseDependencies(root, outManifest.dependencies);
     ParseArtifacts(root, outManifest.artifacts);
+    if (root.contains("inputs") && root["inputs"].is_object()) {
+        const auto& inputs = root["inputs"];
+        outManifest.inputs.settings = inputs.value("settings", "");
+        if (inputs.contains("files") && inputs["files"].is_array()) {
+            for (const auto& file : inputs["files"])
+                if (file.is_object())
+                    outManifest.inputs.files.push_back({file.value("path", ""), file.value("digest", "")});
+        }
+    }
     return true;
 }
 
@@ -198,6 +264,11 @@ bool AssetDatabase::WriteArtifactManifest(const AssetRecord& record, const Asset
 
     auto root = SerializeImportResult(record, result, false);
     root["manifestVersion"] = kAssetArtifactManifestVersion;
+    const auto& inputs = result.inputs.files.empty() ? record.artifactManifest.inputs : result.inputs;
+    auto files = nlohmann::json::array();
+    for (const auto& file : inputs.files)
+        files.push_back({{"path", file.path}, {"digest", file.digest}});
+    root["inputs"] = {{"settings", inputs.settings}, {"files", std::move(files)}};
 
     std::string writeMessage{};
     if (!SERIALIZATION::JSON::WriteJsonFile(record.artifactManifestPath, root, &writeMessage)) {

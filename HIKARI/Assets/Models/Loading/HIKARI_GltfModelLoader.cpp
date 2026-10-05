@@ -94,7 +94,7 @@ bool ReadBinaryFile(const std::filesystem::path& path, std::vector<uint8_t>& out
 
 } // namespace
 
-bool LoadGltfModelSource(ModelAsset& asset) {
+bool LoadGltfModelSource(ModelAsset& asset, std::vector<AssetImportInputFile>* sourceInputs) {
     const std::filesystem::path gltfPath(asset.GetSourcePath());
     std::ifstream ifs(gltfPath);
     if (!ifs.is_open()) {
@@ -139,8 +139,12 @@ bool LoadGltfModelSource(ModelAsset& asset) {
                 ++asset.importDiagnostics.unsupportedFeatureCount;
                 return false;
             }
-        } else if (!ReadBinaryFile(gltfPath.parent_path() / uri, loadedBuffers[i])) {
-            return false;
+        } else {
+            const auto path = gltfPath.parent_path() / uri;
+            if (sourceInputs)
+                sourceInputs->push_back(CaptureAssetInputFile(path));
+            if (!ReadBinaryFile(path, loadedBuffers[i]))
+                return false;
         }
     }
 

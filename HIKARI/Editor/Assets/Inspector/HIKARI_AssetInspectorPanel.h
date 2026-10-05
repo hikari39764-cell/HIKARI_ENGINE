@@ -3,6 +3,7 @@
 #include <array>
 #include <chrono>
 #include <string>
+#include <unordered_map>
 #include <json.hpp>
 #include "Assets/HIKARI_AssetDatabase.h"
 
@@ -10,6 +11,7 @@
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
 #include "Assets/HIKARI_AssetFileCache.h"
 #include "Assets/Sprite/HIKARI_SpriteMaterialAsset.h"
+#include "Editor/Assets/HIKARI_AssetImportSettingsService.h"
 
 namespace HIKARI {
 
@@ -42,10 +44,10 @@ private:
     void RefreshFilePreview(const AssetDatabase& database, const AssetRecord& record) const;
     mutable std::filesystem::path loadedProject_{};
     mutable std::string loadedGuid_{};
+    mutable std::unordered_map<std::string, EDITOR::AssetImportSettingsDraft> importDrafts_{};
+    mutable std::string importSettingsStatus_{};
+    mutable AssetMeta importDefaults_{};
     mutable std::array<char, 256> displayNameBuffer_{};
-    mutable std::array<char, 16384> importSettingsBuffer_{};
-    mutable std::string parsedSettingsSource_{};
-    mutable nlohmann::json parsedSettings_{};
     mutable std::string filePreviewKey_{};
     mutable uint64_t filePreviewRevision_ = 0;
     mutable std::chrono::steady_clock::time_point nextFilePreview_{};

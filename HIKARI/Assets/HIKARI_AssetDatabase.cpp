@@ -218,6 +218,7 @@ bool AssetDatabase::ScanAssetsInPlace(bool createMissingMeta) {
         return false;
     }
 
+    std::unordered_map<std::string, std::string> scanDigests;
     auto appendRecordForSource = [&](const std::filesystem::path& sourcePath, bool allowCreateMissingMeta) {
         std::filesystem::path relativeSource = NormalizeProjectPath(sourcePath);
         if (ASSETS::SEMANTICS::IsAssetCompanionSource(relativeSource)) {
@@ -230,7 +231,7 @@ bool AssetDatabase::ScanAssetsInPlace(bool createMissingMeta) {
             return true;
         }
 
-        AssetRecord record = BuildRecordForSource(relativeSource, allowCreateMissingMeta);
+        AssetRecord record = BuildRecordForSource(relativeSource, allowCreateMissingMeta, scanDigests);
         const std::string pathKey = MakePathKey(record.sourcePath);
         if (guidByNormalizedPath_.find(pathKey) != guidByNormalizedPath_.end()) {
             return true;

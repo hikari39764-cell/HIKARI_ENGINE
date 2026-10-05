@@ -20,11 +20,11 @@ AssetImportState GetImportState(const AssetRecord& record) {
     if (record.artifactMissing) {
         return AssetImportState::MissingArtifact;
     }
-    if (record.importOutdated) {
-        return AssetImportState::Outdated;
-    }
     if (!record.lastImportSucceeded && !record.lastImportMessage.empty()) {
         return AssetImportState::ImportFailed;
+    }
+    if (record.importOutdated) {
+        return AssetImportState::Outdated;
     }
     if (record.lastImportSucceeded) {
         return AssetImportState::Imported;

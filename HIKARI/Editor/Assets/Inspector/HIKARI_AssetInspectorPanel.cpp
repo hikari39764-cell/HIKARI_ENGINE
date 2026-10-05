@@ -14,6 +14,7 @@
 
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetImportState.h"
+#include "Assets/HIKARI_AssetImportInputs.h"
 #include "Assets/Importers/Policy/HIKARI_TextureImportPolicy.h"
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
@@ -75,10 +76,6 @@ const std::array TextureMipPolicyItems = {
     ASSETS::IMPORT_POLICY::ToString(TextureMipPolicy::None).data(),
 };
 
-const char* CoordinateSystemItems[] = {"RightHanded_YUp", "LeftHanded_YUp", "RightHanded_ZUp"};
-
-const char* GeneratePolicyItems[] = {"IfMissing", "Always", "Never"};
-
 int FindItemIndex(const char* const* items, int count, const std::string& value) {
     for (int i = 0; i < count; ++i) {
         if (value == items[i]) {
@@ -86,14 +83,6 @@ int FindItemIndex(const char* const* items, int count, const std::string& value)
         }
     }
     return 0;
-}
-
-nlohmann::json ReadSettings(const AssetRecord& record) {
-    nlohmann::json settings = nlohmann::json::parse(record.meta.importSettingsJson, nullptr, false);
-    if (!settings.is_object()) {
-        settings = nlohmann::json::object();
-    }
-    return settings;
 }
 
 std::string ReadTextFile(const std::filesystem::path& path) {
@@ -129,16 +118,6 @@ bool DrawBoolSetting(const char* label, nlohmann::json& settings, const char* ke
 bool DrawIntSetting(const char* label, nlohmann::json& settings, const char* key, int fallback, int minimum = 0) {
     int value = settings.value(key, fallback);
     if (ImGui::InputInt(label, &value)) {
-        settings[key] = (std::max)(minimum, value);
-        return true;
-    }
-    return false;
-}
-
-bool DrawFloatSetting(const char* label, nlohmann::json& settings, const char* key, float fallback,
-                      float minimum = 0.0f) {
-    float value = settings.value(key, fallback);
-    if (ImGui::InputFloat(label, &value)) {
         settings[key] = (std::max)(minimum, value);
         return true;
     }
@@ -193,35 +172,46 @@ void AssetInspectorPanel::Draw(AssetDatabase& assetDatabase, AssetRegistry& asse
         return;
     }
 
+    const std::string draftKey = assetDatabase.GetProjectRoot().generic_string() + "/" + record->guid.value;
     auto& displayNameBuffer = displayNameBuffer_;
-    auto& importSettingsBuffer = importSettingsBuffer_;
-    if (loadedGuid_ != record->guid.value || loadedProject_ != assetDatabase.GetProjectRoot()) {
+    const bool selectionChanged = loadedGuid_ != record->guid.value || loadedProject_ != assetDatabase.GetProjectRoot();
+    if (selectionChanged) {
+        const auto previous = importDrafts_.find(loadedProject_.generic_string() + "/" + loadedGuid_);
+        if (previous != importDrafts_.end() && !previous->second.IsDirty())
+            importDrafts_.erase(previous);
         loadedGuid_ = record->guid.value;
         loadedProject_ = assetDatabase.GetProjectRoot();
-        CopyToBuffer(record->displayName, displayNameBuffer.data(), displayNameBuffer.size());
-        CopyToBuffer(record->meta.importSettingsJson, importSettingsBuffer.data(), importSettingsBuffer.size());
-        parsedSettingsSource_.clear();
         filePreviewKey_.clear();
+        importSettingsStatus_.clear();
+        const auto* importer = assetDatabase.GetImporterRegistry().FindById(record->meta.importerId);
+        importDefaults_ = importer ? importer->CreateDefaultMeta(record->sourcePath, record->guid) : record->meta;
     }
-
+    auto [draftIt, inserted] = importDrafts_.try_emplace(draftKey);
+    auto& draft = draftIt->second;
+    if (inserted || (!draft.IsDirty() && (draft.baseline.importSettingsJson != record->meta.importSettingsJson ||
+                                          draft.baseline.displayName != record->meta.displayName)))
+        draft.Reset(*record);
+    if (selectionChanged || !draft.IsDirty())
+        CopyToBuffer(draft.edited.displayName, displayNameBuffer.data(), displayNameBuffer.size());
+    auto settings = nlohmann::json::parse(draft.edited.importSettingsJson, nullptr, false);
+    if (!settings.is_object())
+        settings = nlohmann::json::object();
+    std::string settingsError;
+    const bool settingsValid = ValidateAssetImportSettings(draft.edited, importDefaults_, settingsError);
     bool dirty = false;
-    if (parsedSettings_.is_null() || parsedSettingsSource_ != record->meta.importSettingsJson) {
-        parsedSettings_ = ReadSettings(*record);
-        parsedSettingsSource_ = record->meta.importSettingsJson;
-    }
-    nlohmann::json settings = parsedSettings_;
     const AssetImportState importState = GetImportState(*record);
+    const bool importing = assetDatabase.GetQueuedImportStatus().active;
+    ImGui::Text("%s: %s", TEXT::Localize("ui.assetInspector.importStatus").c_str(), ToString(importState));
+    if (record->importOutdated && !record->importOutdatedReason.empty())
+        ImGui::TextWrapped("%s", record->importOutdatedReason.c_str());
+    if (!record->lastImportSucceeded && !record->lastImportMessage.empty())
+        ImGui::TextWrapped("%s", record->lastImportMessage.c_str());
+    if (draft.IsDirty())
+        ImGui::TextWrapped("%s", TEXT::Localize("ui.assetInspector.unappliedDraft").c_str());
 
-    auto saveMeta = [&]() {
-        record->meta.displayName = displayNameBuffer.data();
-        record->displayName = record->meta.displayName;
-        record->meta.importSettingsJson = importSettingsBuffer.data();
-        if (assetDatabase.WriteMeta(*record)) {
-            record->importOutdated = true;
-            record->lastImportMessage = "[AssetDatabase] Meta saved; reimport required";
-        }
-    };
-
+    const float footerHeight = ImGui::GetFrameHeightWithSpacing() + ImGui::GetTextLineHeightWithSpacing() * 4.0f;
+    ImGui::BeginChild("AssetInspectorContent",
+                      ImVec2(0, (std::max)(64.0f, ImGui::GetContentRegionAvail().y - footerHeight)));
     if (ImGui::BeginTabBar("AssetInspectorTabs", ImGuiTabBarFlags_FittingPolicyScroll)) {
         if (ImGui::BeginTabItem(TEXT::Localize("ui.assetInspector.tabSummary").c_str())) {
             if (ImGui::InputText(TEXT::Localize("ui.assetInspector.displayName").c_str(), displayNameBuffer.data(),
@@ -259,28 +249,20 @@ void AssetInspectorPanel::Draw(AssetDatabase& assetDatabase, AssetRegistry& asse
                 EDITOR::SHELL::OpenFolderInExplorer(record->importedDirectory);
             }
 
-            if (ImGui::Button(TEXT::Localize("ui.assetInspector.reimport").c_str())) {
-                (void)assetDatabase.QueueImportAssets({record->guid}, "Reimport " + record->displayName);
-            }
-            ImGui::SameLine();
+            ImGui::BeginDisabled(importing);
             if (ImGui::Button(TEXT::Localize("ui.assetInspector.importDependencies").c_str())) {
-                (void)assetDatabase.QueueImportDependencies(record->guid, false);
+                if (!assetDatabase.QueueImportDependencies(record->guid, false))
+                    importSettingsStatus_ = TEXT::Localize("ui.assetInspector.queueFailed");
             }
-            ImGui::SameLine();
-            if (ImGui::Button(TEXT::Localize("ui.assetInspector.saveMeta").c_str())) {
-                if (dirty) {
-                    record->meta.importSettingsJson = settings.dump(2);
-                    CopyToBuffer(record->meta.importSettingsJson, importSettingsBuffer.data(),
-                                 importSettingsBuffer.size());
-                }
-                saveMeta();
-            }
+            ImGui::EndDisabled();
 
             ImGui::EndTabItem();
         }
 
         if (ImGui::BeginTabItem(TEXT::Localize("ui.assetInspector.tabImportSettings").c_str())) {
-            if (record->type == AssetType::Texture) {
+            if (!settingsValid) {
+                ImGui::TextWrapped("%s", settingsError.c_str());
+            } else if (record->type == AssetType::Texture) {
                 dirty = DrawComboSetting(TEXT::Localize("ui.assetInspector.settingUsage").c_str(), settings, "usage",
                                          TextureUsageItems.data(), static_cast<int>(TextureUsageItems.size())) ||
                         dirty;
@@ -334,47 +316,12 @@ void AssetInspectorPanel::Draw(AssetDatabase& assetDatabase, AssetRegistry& asse
                                        "brdfSampleCount", 1024, 1) ||
                         dirty;
             } else if (record->type == AssetType::Model) {
-                dirty = DrawFloatSetting(TEXT::Localize("ui.assetInspector.settingUnitScale").c_str(), settings,
-                                         "unitScale", 1.0f, 0.0f) ||
-                        dirty;
-                dirty =
-                    DrawComboSetting(TEXT::Localize("ui.assetInspector.settingCoordinateSystem").c_str(), settings,
-                                     "coordinateSystem", CoordinateSystemItems, IM_ARRAYSIZE(CoordinateSystemItems)) ||
-                    dirty;
-                dirty = DrawComboSetting(TEXT::Localize("ui.assetInspector.settingGenerateNormals").c_str(), settings,
-                                         "generateNormals", GeneratePolicyItems, IM_ARRAYSIZE(GeneratePolicyItems)) ||
-                        dirty;
-                dirty = DrawComboSetting(TEXT::Localize("ui.assetInspector.settingGenerateTangents").c_str(), settings,
-                                         "generateTangents", GeneratePolicyItems, IM_ARRAYSIZE(GeneratePolicyItems)) ||
-                        dirty;
-                dirty = DrawBoolSetting(TEXT::Localize("ui.assetInspector.settingLoadMaterials").c_str(), settings,
-                                        "loadMaterials", true) ||
-                        dirty;
-                dirty = DrawBoolSetting(TEXT::Localize("ui.assetInspector.settingLoadTextures").c_str(), settings,
-                                        "loadTextures", true) ||
-                        dirty;
+                ImGui::TextWrapped("%s", TEXT::Localize("ui.assetInspector.modelSourceSettingsHint").c_str());
                 dirty = EDITOR::ASSET_IMPORT_SETTINGS::DrawModelImportSettings(settings) || dirty;
             } else if (record->type == AssetType::Scene) {
-                dirty = DrawBoolSetting(TEXT::Localize("ui.assetInspector.settingCookScene").c_str(), settings,
-                                        "cookScene", false) ||
-                        dirty;
                 ImGui::TextDisabled("%s", TEXT::Localize("ui.assetInspector.sceneCookHint").c_str());
             } else {
                 ImGui::TextDisabled("%s", TEXT::Localize("ui.assetInspector.noEditableSettings").c_str());
-            }
-
-            if (dirty) {
-                record->meta.displayName = displayNameBuffer.data();
-                record->displayName = record->meta.displayName;
-                record->meta.importSettingsJson = settings.dump(2);
-                CopyToBuffer(record->meta.importSettingsJson, importSettingsBuffer.data(), importSettingsBuffer.size());
-            }
-            if (ImGui::Button(TEXT::Localize("ui.assetInspector.saveMeta").c_str())) {
-                saveMeta();
-            }
-            ImGui::SameLine();
-            if (ImGui::Button(TEXT::Localize("ui.assetInspector.reimport").c_str())) {
-                (void)assetDatabase.QueueImportAssets({record->guid}, "Reimport " + record->displayName);
             }
 
             ImGui::EndTabItem();
@@ -514,20 +461,16 @@ void AssetInspectorPanel::Draw(AssetDatabase& assetDatabase, AssetRegistry& asse
             ImGui::EndTabItem();
             if (recordInvalidated) {
                 ImGui::EndTabBar();
+                ImGui::EndChild();
                 return;
             }
         }
 
         if (ImGui::BeginTabItem(TEXT::Localize("ui.assetInspector.tabDebugJson").c_str())) {
-            if (ImGui::InputTextMultiline(TEXT::Localize("ui.assetInspector.importSettingsJson").c_str(),
-                                          importSettingsBuffer.data(), importSettingsBuffer.size(),
-                                          ImVec2(-1.0f, 160.0f))) {
-                record->meta.importSettingsJson = importSettingsBuffer.data();
-                dirty = true;
-            }
-            if (ImGui::Button(TEXT::Localize("ui.assetInspector.saveRawImportSettings").c_str())) {
-                saveMeta();
-            }
+            const std::string settingsText = settings.dump(2);
+            ImGui::InputTextMultiline(TEXT::Localize("ui.assetInspector.importSettingsJson").c_str(),
+                                      const_cast<char*>(settingsText.c_str()), settingsText.size() + 1,
+                                      ImVec2(-1.0f, 160.0f), ImGuiInputTextFlags_ReadOnly);
 
             ImGui::SeparatorText(TEXT::Localize("ui.assetInspector.rawMetaJson").c_str());
             RefreshFilePreview(assetDatabase, *record);
@@ -553,11 +496,49 @@ void AssetInspectorPanel::Draw(AssetDatabase& assetDatabase, AssetRegistry& asse
 
         ImGui::EndTabBar();
     }
+    ImGui::EndChild();
 
     if (dirty) {
-        record->meta.displayName = displayNameBuffer.data();
-        record->displayName = record->meta.displayName;
+        draft.edited.displayName = displayNameBuffer.data();
+        draft.edited.importSettingsJson = settings.dump(2);
     }
+    ImGui::Separator();
+    ImGui::BeginDisabled(importing || !record->CanImport());
+    const bool hasDraft = draft.IsDirty();
+    ImGui::BeginDisabled(!settingsValid);
+    if (ImGui::Button(
+            TEXT::Localize(hasDraft ? "ui.assetInspector.applyReimport" : "ui.assetInspector.reimport").c_str())) {
+        if (hasDraft) {
+            const auto result = EDITOR::ApplyAssetImportSettings(assetDatabase, record->guid, draft);
+            importSettingsStatus_ = result.message;
+        } else if (!assetDatabase.QueueImportAssets({record->guid}, "Reimport " + record->displayName)) {
+            importSettingsStatus_ = TEXT::Localize("ui.assetInspector.queueFailed");
+        }
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!hasDraft && importSettingsStatus_.empty() && record->lastImportSucceeded);
+    if (ImGui::Button(TEXT::Localize("ui.assetInspector.revertSettings").c_str())) {
+        const AssetGuid guid = record->guid;
+        if (assetDatabase.ScanAssets(false)) {
+            if (const auto* reloaded = assetDatabase.FindByGuid(guid)) {
+                draft.Reset(*reloaded);
+                CopyToBuffer(draft.edited.displayName, displayNameBuffer.data(), displayNameBuffer.size());
+                importSettingsStatus_.clear();
+            }
+        } else {
+            importSettingsStatus_ = TEXT::Localize("ui.assetInspector.reloadFailed");
+        }
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (ImGui::Button(TEXT::Localize("ui.assetInspector.restoreDefaults").c_str()))
+        draft.edited.importSettingsJson = importDefaults_.importSettingsJson;
+    ImGui::EndDisabled();
+    if (importing)
+        ImGui::TextDisabled("%s", TEXT::Localize("ui.assetInspector.importInProgress").c_str());
+    if (!importSettingsStatus_.empty())
+        ImGui::TextWrapped("%s", importSettingsStatus_.c_str());
 #else
     (void)assetDatabase;
     (void)assetRegistry;

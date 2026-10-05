@@ -2,6 +2,7 @@
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.h"
 
 #include "Editor/AI/HIKARI_AI_ProjectKnowledge.h"
+#include "Editor/Assets/HIKARI_AssetImportSettingsService.h"
 #include "Editor/Authoring/HIKARI_ComponentAuthoringOperations.h"
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Editor/Quality/HIKARI_GlobalPostOperations.h"
@@ -200,6 +201,10 @@ void DocumentSceneEditorController::RegisterEditorOperations() {
                                  {},
                                  [this](const nlohmann::json&) { return ExecuteAiUndoLast(); }},
                                 EditorOperationKind::Mutation);
+
+    EDITOR::RegisterAssetImportSettingsOperations(operationRegistry_, [this]() -> AssetDatabase* {
+        return aiOperationScene_ ? &aiOperationScene_->GetAssetDatabase() : nullptr;
+    });
 
     operationRegistry_.Register({"asset.import",
                                  "Copy a supported source file into the project and queue its import.",

@@ -379,7 +379,9 @@ bool ApplyPhysicsWorldPose(GameObject& object, const PhysicsPose& pose) {
     local.rotation = MATH::NormalizeQ(localRotation);
     local.scale = localScale;
     local.useExplicitMatrix = false;
-    return object.SetLocalTransform(local);
+    // SetLocalTransform の false は同値でも返る。静止・衝突停止は正常な適用結果であり、
+    // Motion state の公開を止めない。
+    return object.GetTransform().HasSameLocalValue(local) || object.SetLocalTransform(local);
 }
 
 } // namespace HIKARI::PHYSICS

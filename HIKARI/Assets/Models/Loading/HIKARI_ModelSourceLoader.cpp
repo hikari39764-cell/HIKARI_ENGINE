@@ -56,7 +56,9 @@ bool LoadCookedModel(ModelAsset& asset) {
 
 } // namespace
 
-bool LoadModelSource(ModelAsset& asset) {
+bool LoadModelSource(ModelAsset& asset, std::vector<AssetImportInputFile>* sourceInputs) {
+    if (sourceInputs)
+        sourceInputs->clear();
     const std::string sourcePath = asset.GetSourcePath();
     bool loaded = false;
 
@@ -67,9 +69,9 @@ bool LoadModelSource(ModelAsset& asset) {
     else {
         const std::string extension = GetLowerFileExtension(sourcePath);
         if (extension == ".gltf") {
-            loaded = LoadGltfModelSource(asset);
+            loaded = LoadGltfModelSource(asset, sourceInputs);
         } else if (extension == ".obj") {
-            loaded = LoadObjModelSource(asset);
+            loaded = LoadObjModelSource(asset, sourceInputs);
         } else if (extension == ".fbx") {
             loaded = LoadAssimpModelSource(asset);
         }

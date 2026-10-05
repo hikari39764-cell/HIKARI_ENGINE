@@ -28,6 +28,7 @@ struct AssetRecord {
     bool importerMissing = false;
     bool artifactMissing = false;
     std::string lastImportMessage{};
+    std::string importOutdatedReason{};
 
     bool CanImport() const noexcept { return guid.IsValid() && sourceExists && !duplicateGuid && !importerMissing; }
 

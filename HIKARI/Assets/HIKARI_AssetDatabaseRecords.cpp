@@ -1,4 +1,5 @@
 #include "Assets/HIKARI_AssetDatabase.h"
+#include "Assets/HIKARI_AssetImportInputs.h"
 #include "Assets/Geometry/HIKARI_HcmeshFormat.h"
 #include "Assets/Importers/Policy/HIKARI_MaterialImportPolicy.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
@@ -57,19 +58,9 @@ ClusteredGeometryArtifactInfo AssetDatabase::GetClusteredGeometryArtifactInfo(co
         return info;
     }
 
-    bool sourceNewerThanArtifact = false;
-    if (record.sourceExists) {
-        const std::filesystem::path sourcePath = PROJECT_PATHS::ResolveProjectPath(projectRoot_, record.sourcePath);
-        const auto sourceTime = std::filesystem::last_write_time(sourcePath, ec);
-        if (!ec) {
-            const auto hcmeshTime = std::filesystem::last_write_time(hcmeshPath, ec);
-            sourceNewerThanArtifact = !ec && sourceTime > hcmeshTime;
-        }
-    }
-    if (sourceNewerThanArtifact || record.importOutdated) {
+    if (record.importOutdated) {
         info.state = ClusteredGeometryArtifactState::Outdated;
-        info.message = sourceNewerThanArtifact ? "Source model is newer than HCMESH"
-                                               : "Importer version or artifact state is outdated";
+        info.message = record.importOutdatedReason;
         return info;
     }
 
@@ -89,7 +80,8 @@ ClusteredGeometryArtifactInfo AssetDatabase::GetClusteredGeometryArtifactInfo(co
     return GetClusteredGeometryArtifactInfo(*record);
 }
 
-AssetRecord AssetDatabase::BuildRecordForSource(const std::filesystem::path& sourcePath, bool createMissingMeta) {
+AssetRecord AssetDatabase::BuildRecordForSource(const std::filesystem::path& sourcePath, bool createMissingMeta,
+                                                std::unordered_map<std::string, std::string>& scanDigests) {
     const std::filesystem::path normalizedSource = NormalizeProjectPath(sourcePath);
     const std::filesystem::path absoluteSource = PROJECT_PATHS::ResolveProjectPath(projectRoot_, normalizedSource);
 
@@ -194,11 +186,12 @@ AssetRecord AssetDatabase::BuildRecordForSource(const std::filesystem::path& sou
         }
     }
 
-    RefreshRecordState(record);
+    RefreshRecordState(record, &scanDigests);
     return record;
 }
 
-void AssetDatabase::RefreshRecordState(AssetRecord& record) const {
+void AssetDatabase::RefreshRecordState(AssetRecord& record,
+                                       std::unordered_map<std::string, std::string>* scanDigests) const {
     const std::filesystem::path absoluteSource = PROJECT_PATHS::ResolveProjectPath(projectRoot_, record.sourcePath);
     record.sourceExists = std::filesystem::exists(absoluteSource);
     record.metaExists = std::filesystem::exists(record.metaPath);
@@ -210,52 +203,19 @@ void AssetDatabase::RefreshRecordState(AssetRecord& record) const {
         record.artifactManifestPath = GetArtifactManifestPath(record.guid);
     }
 
-    bool artifactMissing = false;
-    std::filesystem::file_time_type oldestArtifactTime{};
-    bool hasArtifactTime = false;
-    for (const AssetArtifactDesc& artifact : record.artifactManifest.artifacts) {
-        const std::filesystem::path artifactPath =
-            PROJECT_PATHS::ResolveProjectPath(projectRoot_, TEXT::PathFromUtf8(artifact.path));
-        if (!std::filesystem::exists(artifactPath)) {
-            artifactMissing = true;
-            continue;
-        }
-
-        std::error_code ec{};
-        const auto writeTime = std::filesystem::last_write_time(artifactPath, ec);
-        if (!ec && (!hasArtifactTime || writeTime < oldestArtifactTime)) {
-            oldestArtifactTime = writeTime;
-            hasArtifactTime = true;
-        }
+    record.artifactMissing = false;
+    for (const auto& artifact : record.artifactManifest.artifacts) {
+        std::error_code error;
+        const auto path = PROJECT_PATHS::ResolveProjectPath(projectRoot_, TEXT::PathFromUtf8(artifact.path));
+        if (!std::filesystem::is_regular_file(path, error) || error)
+            record.artifactMissing = true;
     }
-    record.artifactMissing = artifactMissing;
-
-    bool sourceNewerThanArtifact = false;
-    if (record.sourceExists && hasArtifactTime) {
-        std::error_code ec{};
-        const auto sourceTime = std::filesystem::last_write_time(absoluteSource, ec);
-        sourceNewerThanArtifact = !ec && sourceTime > oldestArtifactTime;
-    }
-    bool sourceDependencyOutdated = false;
-    if (hasArtifactTime) {
-        for (const AssetDependencyDesc& dependency : record.artifactManifest.dependencies) {
-            if (!ASSETS::SEMANTICS::IsSourceOnlyAssetDependencyRole(dependency.role) || dependency.path.empty()) {
-                continue;
-            }
-            const std::filesystem::path dependencyPath =
-                PROJECT_PATHS::ResolveProjectPath(projectRoot_, TEXT::PathFromUtf8(dependency.path));
-            std::error_code dependencyEc{};
-            if (!std::filesystem::exists(dependencyPath, dependencyEc)) {
-                sourceDependencyOutdated = true;
-                break;
-            }
-            const auto dependencyTime = std::filesystem::last_write_time(dependencyPath, dependencyEc);
-            if (dependencyEc || dependencyTime > oldestArtifactTime) {
-                sourceDependencyOutdated = true;
-                break;
-            }
-        }
-    }
+    const bool settingsChanged =
+        record.artifactManifest.inputs.settings != CanonicalImportSettings(record.meta.importSettingsJson);
+    const bool inputsChanged = !CheckAssetImportInputs(projectRoot_, record.artifactManifest.inputs,
+                                                       record.importOutdatedReason, nullptr, scanDigests);
+    if (settingsChanged)
+        record.importOutdatedReason = "Import settings changed";
 
     const IAssetImporter* importer = importerRegistry_.FindById(record.meta.importerId);
     const bool importerVersionOutdated =
@@ -266,8 +226,14 @@ void AssetDatabase::RefreshRecordState(AssetRecord& record) const {
         (record.type != AssetType::Material ||
          ASSETS::IMPORT_POLICY::ResolveMaterialImportPolicy(record.meta.importSettingsJson).ShouldCookHmat()) &&
         !ASSETS::SEMANTICS::HasAssetArtifact(record, primary->kind);
-    record.importOutdated = record.importerMissing || record.artifactMissing || sourceNewerThanArtifact ||
-                            sourceDependencyOutdated || importerVersionOutdated || needsPrimaryArtifact;
+    const bool importerChanged = record.artifactManifest.importerId != record.meta.importerId ||
+                                 record.artifactManifest.importerVersion != record.meta.importerVersion;
+    record.importOutdated = record.importerMissing || record.artifactMissing || settingsChanged || inputsChanged ||
+                            importerChanged || importerVersionOutdated || needsPrimaryArtifact;
+    if (record.artifactMissing || needsPrimaryArtifact)
+        record.importOutdatedReason = "Imported artifact is missing";
+    if (importerChanged || importerVersionOutdated)
+        record.importOutdatedReason = "Importer changed";
 
     const std::filesystem::path reportPath = record.importedDirectory / "import_report.json";
     // manifest と report は同じ import 結果を持つ。大きな diagnostics を
@@ -287,6 +253,27 @@ void AssetDatabase::RefreshRecordState(AssetRecord& record) const {
         report.is_object()) {
         record.lastImportSucceeded = report.value("success", false);
         record.lastImportMessage = report.value("message", record.lastImportMessage);
+    }
+}
+
+void AssetDatabase::RefreshImportDependents(const AssetGuid& guid) {
+    const auto* source = FindByGuid(guid);
+    if (!source)
+        return;
+    const auto sourcePath = PROJECT_PATHS::ResolveProjectPath(projectRoot_, source->sourcePath).lexically_normal();
+    const auto metaPath = source->metaPath.lexically_normal();
+    const auto manifestPath = source->artifactManifestPath.lexically_normal();
+    for (auto& record : records_) {
+        if (record.guid == guid)
+            continue;
+        for (const auto& input : record.artifactManifest.inputs.files) {
+            const auto path =
+                PROJECT_PATHS::ResolveProjectPath(projectRoot_, TEXT::PathFromUtf8(input.path)).lexically_normal();
+            if (path == sourcePath || path == metaPath || path == manifestPath) {
+                RefreshRecordState(record);
+                break;
+            }
+        }
     }
 }
 

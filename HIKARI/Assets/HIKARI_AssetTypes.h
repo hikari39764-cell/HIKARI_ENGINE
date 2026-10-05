@@ -43,27 +43,10 @@ enum class AssetType {
     Unknown
 };
 
-enum class CoordinateSystem {
-    RightHanded_YUp,
-    LeftHanded_YUp,
-};
-
 enum class ModelImporterKind {
     Builtin,
     Gltf,
     Assimp,
-};
-
-enum class NormalImportPolicy {
-    Require,
-    IfMissing,
-    Always,
-};
-
-enum class TangentImportPolicy {
-    None,
-    IfMissing,
-    Always,
 };
 
 enum class ModelGeometryCookProfile {
@@ -84,26 +67,6 @@ struct ModelClusterCookOptions {
 struct AnimationClipAlias {
     std::string name;
     std::string sourceName;
-};
-
-struct ModelImportOptions {
-    float unitScale = 1.0f;
-    CoordinateSystem coordinateSystem = CoordinateSystem::RightHanded_YUp;
-
-    NormalImportPolicy generateNormals = NormalImportPolicy::IfMissing;
-    TangentImportPolicy generateTangents = TangentImportPolicy::IfMissing;
-
-    bool triangulate = true;
-    bool flipUV = false;
-    bool mergeMeshes = false;
-    bool keepNodeHierarchy = true;
-
-    bool loadMaterials = true;
-    bool loadTextures = true;
-    bool loadAnimations = true;
-    bool loadSkins = true;
-
-    ModelClusterCookOptions clusterGeometry{};
 };
 
 struct ModelMaterialOverrideDesc {
@@ -140,7 +103,6 @@ struct ModelAssetDescriptor final : AssetDescriptor {
     bool preload = true;
     std::string clusteredGeometryPath{};
     std::string collisionGeometryPath{};
-    ModelImportOptions importOptions{};
     std::vector<ModelMaterialOverrideDesc> materialOverrides{};
     ModelAnimationImportDesc animation{};
 };

@@ -20,8 +20,6 @@ struct AssetDatabase::QueuedImportBatch {
         IAssetImporter* importer = nullptr;
         uint32_t importerVersion = 0u;
         AssetImportContext context{};
-        std::filesystem::file_time_type sourceWriteTime{};
-        bool hasSourceWriteTime = false;
     };
 
     std::vector<WorkItem> textureItems{};
@@ -102,10 +100,6 @@ bool AssetDatabase::QueueImportAssets(const std::vector<AssetGuid>& guids, std::
         item.context.sourceMetaRoot = sourceMetaRoot_;
         item.context.importedDirectory = GetImportedDirectory(record->guid);
         item.context.assetDatabase = this;
-
-        std::error_code timeEc{};
-        item.sourceWriteTime = std::filesystem::last_write_time(projectRoot_ / record->sourcePath, timeEc);
-        item.hasSourceWriteTime = !timeEc;
 
         if (record->type == AssetType::Texture) {
             operation->textureItems.push_back(std::move(item));
@@ -227,18 +221,7 @@ void AssetDatabase::ScheduleQueuedImportWork() {
                 return AssetTaskOutcome::Failed(preparedResult->message);
             }
 
-            try {
-                context.publication = std::make_shared<AssetImportPublication>(context.projectRoot, context.libraryRoot,
-                                                                               context.sourceMetaRoot);
-                *preparedResult = item.importer->Import(item.sourceSnapshot, context);
-            } catch (const std::exception& error) {
-                preparedResult->success = false;
-                preparedResult->message = std::string("[AssetDatabase] importer exception: ") + error.what();
-            } catch (...) {
-                preparedResult->success = false;
-                preparedResult->message = "[AssetDatabase] importer exception: unknown";
-            }
-            preparedResult->publication = context.publication;
+            *preparedResult = PrepareImportResult(*item.importer, item.sourceSnapshot, context);
 
             if (task.IsCancellationRequested() && !preparedResult->success) {
                 return AssetTaskOutcome::Canceled(preparedResult->message.empty() ? "asset import canceled"
@@ -264,31 +247,21 @@ void AssetDatabase::ScheduleQueuedImportWork() {
             AssetTaskOutcome finalOutcome = workOutcome;
             if (workOutcome.canceled) {
                 operation->status.canceled = true;
+                if (auto* record = FindByGuid(item.sourceSnapshot.guid))
+                    RefreshRecordState(*record);
             } else {
                 if (preparedResult->message.empty()) {
                     preparedResult->message = workOutcome.message;
                 }
 
-                bool sourceUnchanged = true;
-                if (item.hasSourceWriteTime) {
-                    std::error_code timeEc{};
-                    const auto currentWriteTime =
-                        std::filesystem::last_write_time(projectRoot_ / item.sourceSnapshot.sourcePath, timeEc);
-                    sourceUnchanged = !timeEc && currentWriteTime == item.sourceWriteTime;
-                }
-
                 std::string commitMessage{};
-                const bool committed =
-                    sourceUnchanged && CommitPreparedImport(item.sourceSnapshot, item.importerVersion,
+                const bool committed = CommitPreparedImport(item.sourceSnapshot, item.importerVersion,
                                                             std::move(*preparedResult), commitMessage);
                 if (committed) {
                     ++operation->status.succeeded;
                     finalOutcome = AssetTaskOutcome::Succeeded(std::move(commitMessage));
                 } else {
                     ++operation->status.failed;
-                    if (!sourceUnchanged) {
-                        commitMessage = "Import result discarded because the source changed while it was processing";
-                    }
                     finalOutcome = AssetTaskOutcome::Failed(commitMessage.empty() ? workOutcome.message
                                                                                   : std::move(commitMessage));
                 }

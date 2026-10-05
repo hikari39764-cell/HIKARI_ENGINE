@@ -110,6 +110,8 @@ public:
     std::vector<const AssetRecord*> CollectInDirectory(const std::filesystem::path& directory, bool recursive) const;
 
     bool WriteMeta(const AssetRecord& record);
+    bool UpdateImportSettings(const AssetGuid& guid, const AssetMeta& expected, const AssetMeta& edited,
+                              std::string& error);
     bool ReadMeta(const std::filesystem::path& metaPath, AssetMeta& outMeta) const;
     bool RegenerateMeta(const std::filesystem::path& sourcePath);
 
@@ -137,7 +139,8 @@ private:
     bool TryTakeContentSnapshot(ContentSnapshot& outSnapshot);
     bool CheckOwnerThread(const char* operation) const;
     bool CanReplaceContentSnapshot() const;
-    AssetRecord BuildRecordForSource(const std::filesystem::path& sourcePath, bool createMissingMeta);
+    AssetRecord BuildRecordForSource(const std::filesystem::path& sourcePath, bool createMissingMeta,
+                                     std::unordered_map<std::string, std::string>& scanDigests);
     AssetType GuessAssetTypeFromPath(const std::filesystem::path& sourcePath) const;
     std::string SelectDefaultImporterId(AssetType type, const std::filesystem::path& sourcePath) const;
 
@@ -147,7 +150,9 @@ private:
     bool LoadCookedRecords();
     void AddDirectoryToCache(const std::filesystem::path& directory);
     void SortAndUniqueDirectories();
-    void RefreshRecordState(AssetRecord& record) const;
+    void RefreshRecordState(AssetRecord& record,
+                            std::unordered_map<std::string, std::string>* scanDigests = nullptr) const;
+    void RefreshImportDependents(const AssetGuid& guid);
     bool ReadArtifactManifest(const std::filesystem::path& manifestPath, AssetArtifactManifest& outManifest) const;
     bool WriteArtifactManifest(const AssetRecord& record, const AssetImportResult& result) const;
     bool WriteImportReport(const AssetRecord& record, const AssetImportResult& result) const;
@@ -156,6 +161,8 @@ private:
     std::string MakePathKey(const std::filesystem::path& path) const;
     bool IsPathUnderDirectory(const std::filesystem::path& path, const std::filesystem::path& directory) const;
     void AdvanceContentRevision() noexcept;
+    static AssetImportResult PrepareImportResult(IAssetImporter& importer, const AssetRecord& source,
+                                                 AssetImportContext& context);
     bool CommitPreparedImport(const AssetRecord& sourceSnapshot, uint32_t importerVersion, AssetImportResult result,
                               std::string& outMessage);
     std::vector<AssetGuid> PrepareImportGuids(const std::vector<AssetGuid>& guids, int& rejected,

@@ -11,6 +11,8 @@
 #include <json.hpp>
 
 #include "Assets/Collision/HIKARI_ModelCollisionArtifact.h"
+#include "Assets/HIKARI_AssetDatabase.h"
+#include "Assets/HIKARI_AssetImportInputs.h"
 #include "Assets/Geometry/HIKARI_ClusteredGeometryCooker.h"
 #include "Assets/Geometry/HIKARI_ClusteredGeometryValidator.h"
 #include "Assets/Geometry/HIKARI_HcmeshFormat.h"
@@ -24,7 +26,7 @@
 #include "Assets/Tasks/HIKARI_AssetTaskService.h"
 #include "Core/IO/HIKARI_FileReplacementTransaction.h"
 #include "Core/HIKARI_Logger.h"
-#include "Core/Serialization/Json/HIKARI_JsonFile.h"
+#include "Core/Text/HIKARI_UtfPath.h"
 #include "Core/Serialization/Json/HIKARI_JsonMath.h"
 #include "Project/Paths/HIKARI_ProjectPath.h"
 #include "HIKARI_TextureImportBackend_DirectXTex.h"
@@ -32,57 +34,6 @@
 namespace HIKARI {
 
 using namespace MODEL_IMPORT_INTERNAL;
-
-namespace {
-
-void AppendGltfSourceBufferDependencies(const std::filesystem::path& absoluteSource,
-                                        const std::filesystem::path& projectRoot,
-                                        std::vector<AssetDependencyDesc>& dependencies) {
-    nlohmann::json source{};
-    if (!SERIALIZATION::JSON::ReadJsonFile(absoluteSource, source) || !source.is_object() ||
-        !source.contains("buffers") || !source["buffers"].is_array()) {
-        return;
-    }
-
-    std::unordered_set<std::string> uniquePaths{};
-    for (const AssetDependencyDesc& dependency : dependencies) {
-        if (!dependency.path.empty()) {
-            uniquePaths.insert(dependency.path);
-        }
-    }
-
-    for (const nlohmann::json& buffer : source["buffers"]) {
-        if (!buffer.is_object()) {
-            continue;
-        }
-        const std::string uri = buffer.value("uri", "");
-        if (uri.empty() || uri.starts_with("data:") || uri.find("://") != std::string::npos) {
-            continue;
-        }
-
-        const std::filesystem::path uriPath{uri};
-        if (uriPath.is_absolute()) {
-            continue;
-        }
-        const std::filesystem::path absoluteDependency = (absoluteSource.parent_path() / uriPath).lexically_normal();
-        const std::filesystem::path projectRelative =
-            absoluteDependency.lexically_relative(projectRoot.lexically_normal());
-        if (projectRelative.empty() || *projectRelative.begin() == "..") {
-            continue;
-        }
-
-        const std::string dependencyPath = projectRelative.generic_string();
-        if (!uniquePaths.insert(dependencyPath).second) {
-            continue;
-        }
-        AssetDependencyDesc dependency{};
-        dependency.path = dependencyPath;
-        dependency.role = "SourceBuffer";
-        dependencies.push_back(std::move(dependency));
-    }
-}
-
-} // namespace
 
 ASSETS::SEMANTICS::AssetImporterKind ModelImporter::GetImporterKind() const noexcept {
     return ASSETS::SEMANTICS::AssetImporterKind::Model;
@@ -127,7 +78,7 @@ AssetImportResult ModelImporter::Import(const AssetRecord& record, const AssetIm
     ModelAsset model{};
     model.SetName(record.guid.value);
     model.SetSourcePath(absoluteSource.generic_string());
-    if (!ASSETS::MODELS::LoadModelSource(model)) {
+    if (!ASSETS::MODELS::LoadModelSource(model, &result.inputs.files)) {
         result.message =
             "[AssetImporter] failed to read model source for HMODEL cook. source=" + record.sourcePath.generic_string();
         HIKARI_LOG_ERROR(result.message);
@@ -136,8 +87,28 @@ AssetImportResult ModelImporter::Import(const AssetRecord& record, const AssetIm
 
     model.SetName(record.guid.value);
     model.SetSourcePath(record.sourcePath.generic_string());
-    if (importPolicy.importer == ModelImporterKind::Gltf) {
-        AppendGltfSourceBufferDependencies(absoluteSource, context.projectRoot, result.dependencies);
+    for (const auto& texture : model.textures) {
+        if (!texture.sourcePath.empty())
+            result.inputs.files.push_back(CaptureAssetInputFile(
+                PROJECT_PATHS::ResolveProjectPath(context.projectRoot, TEXT::PathFromUtf8(texture.sourcePath))));
+    }
+    // ローダーが実際に開いた BIN/MTL と packing 前の画像を依存として保存する。
+    std::unordered_set<std::string> dependencyPaths;
+    for (auto& input : result.inputs.files) {
+        const auto path = PROJECT_PATHS::MakeProjectRelativePath(context.projectRoot, TEXT::PathFromUtf8(input.path));
+        input.path = TEXT::PathToUtf8(path);
+        if (!dependencyPaths.insert(input.path).second)
+            continue;
+        AssetDependencyDesc dependency;
+        dependency.path = input.path;
+        const auto* referenced = context.assetDatabase ? context.assetDatabase->FindByPath(path) : nullptr;
+        if (referenced) {
+            dependency.guid = referenced->guid;
+            dependency.role = "Texture";
+        } else {
+            dependency.role = "SourceCompanion";
+        }
+        result.dependencies.push_back(std::move(dependency));
     }
 
     BuildCanonicalMetallicRoughnessTextures(model, context, result.artifacts);
@@ -173,11 +144,31 @@ AssetImportResult ModelImporter::Import(const AssetRecord& record, const AssetIm
                                       diagnostic);
         }
 
-        if (hasDependency) {
+        if (hasDependency && dependencyPaths.insert(dependency.path).second) {
             result.dependencies.push_back(std::move(dependency));
         }
         diagnostic.cookedPath = texture.sourcePath;
         textureDiagnostics.push_back(std::move(diagnostic));
+    }
+
+    // 古い texture cook を参照した model を最新として公開しない。
+    if (context.assetDatabase) {
+        for (const auto& dependency : result.dependencies) {
+            const auto* referenced = context.assetDatabase->FindByGuid(dependency.guid);
+            if (!referenced || referenced->type != AssetType::Texture || referenced->artifactManifest.artifacts.empty())
+                continue;
+            std::string reason;
+            AssetMeta persisted;
+            const bool current =
+                context.assetDatabase->ReadMeta(referenced->metaPath, persisted) &&
+                EquivalentAssetImportMeta(persisted, referenced->meta) &&
+                referenced->artifactManifest.inputs.settings == CanonicalImportSettings(persisted.importSettingsJson) &&
+                CheckAssetImportInputs(context.projectRoot, referenced->artifactManifest.inputs, reason);
+            if (!current) {
+                result.message = "Reimport the texture dependency first: " + referenced->sourcePath.generic_string();
+                return result;
+            }
+        }
     }
 
     const MaterialAlphaPolicyStats alphaPolicyStats =

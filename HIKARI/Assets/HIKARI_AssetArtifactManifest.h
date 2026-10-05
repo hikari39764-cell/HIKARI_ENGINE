@@ -8,7 +8,17 @@
 
 namespace HIKARI {
 
-inline constexpr uint32_t kAssetArtifactManifestVersion = 1u;
+inline constexpr uint32_t kAssetArtifactManifestVersion = 2u;
+
+struct AssetImportInputFile {
+    std::string path;
+    std::string digest;
+};
+
+struct AssetImportInputs {
+    std::string settings;
+    std::vector<AssetImportInputFile> files;
+};
 
 struct AssetDependencyDesc {
     AssetGuid guid{};
@@ -29,6 +39,7 @@ struct AssetArtifactManifest {
     std::string sourcePath{};
     std::string importerId{};
     uint32_t importerVersion = 1;
+    AssetImportInputs inputs{};
 
     bool lastImportSucceeded = false;
     std::string lastImportMessage{};

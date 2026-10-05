@@ -1,4 +1,5 @@
 #include "Assets/HIKARI_AssetDatabase.h"
+#include "Assets/HIKARI_AssetImportInputs.h"
 #include "Assets/Collision/HIKARI_ModelCollisionArtifact.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
@@ -169,24 +170,48 @@ bool AssetDatabase::ImportAsset(const AssetGuid& guid) {
         return false;
     }
 
-    AssetImportResult result{};
+    AssetImportResult result = PrepareImportResult(*importer, sourceSnapshot, context);
+    std::string commitMessage{};
+    return CommitPreparedImport(sourceSnapshot, importerVersion, std::move(result), commitMessage);
+}
+
+AssetImportResult AssetDatabase::PrepareImportResult(IAssetImporter& importer, const AssetRecord& source,
+                                                     AssetImportContext& context) {
+    AssetImportResult result;
     try {
-        context.publication = std::make_shared<AssetImportPublication>(projectRoot_, libraryRoot_, sourceMetaRoot_);
-        result = importer->Import(*record, context);
-    } catch (const std::exception& ex) {
+        auto before = CaptureAssetImportInputs(*context.assetDatabase, source, source.artifactManifest.dependencies);
+        std::erase_if(before.files, [](const auto& file) { return file.digest.empty(); });
+        context.publication =
+            std::make_shared<AssetImportPublication>(context.projectRoot, context.libraryRoot, context.sourceMetaRoot);
+        result = importer.Import(source, context);
+        if (result.success) {
+            std::string reason;
+            if (!CheckAssetImportInputs(context.projectRoot, before, reason)) {
+                result.success = false;
+                result.message = "Import result discarded: " + reason;
+            } else {
+                auto inputs = CaptureAssetImportInputs(*context.assetDatabase, source, result.dependencies,
+                                                       context.publication.get());
+                for (const auto& observed : result.inputs.files) {
+                    const auto found = std::find_if(inputs.files.begin(), inputs.files.end(),
+                                                    [&](const auto& file) { return file.path == observed.path; });
+                    if (found != inputs.files.end())
+                        found->digest = observed.digest;
+                    else
+                        inputs.files.push_back(observed);
+                }
+                result.inputs = std::move(inputs);
+            }
+        }
+    } catch (const std::exception& error) {
         result.success = false;
-        result.message = std::string("[AssetDatabase] importer exception: ") + ex.what();
-        HIKARI_LOG_ERROR(result.message + " source=" + TEXT::PathToUtf8(record->sourcePath) +
-                         " guid=" + record->guid.value);
+        result.message = std::string("[AssetDatabase] importer exception: ") + error.what();
     } catch (...) {
         result.success = false;
         result.message = "[AssetDatabase] importer exception: unknown";
-        HIKARI_LOG_ERROR(result.message + " source=" + TEXT::PathToUtf8(record->sourcePath) +
-                         " guid=" + record->guid.value);
     }
     result.publication = context.publication;
-    std::string commitMessage{};
-    return CommitPreparedImport(sourceSnapshot, importerVersion, std::move(result), commitMessage);
+    return result;
 }
 
 bool AssetDatabase::CommitPreparedImport(const AssetRecord& sourceSnapshot, uint32_t importerVersion,
@@ -196,10 +221,19 @@ bool AssetDatabase::CommitPreparedImport(const AssetRecord& sourceSnapshot, uint
         outMessage = "[AssetDatabase] import result discarded because the asset no longer exists";
         return false;
     }
-    if (record->sourcePath != sourceSnapshot.sourcePath || record->meta.importerId != sourceSnapshot.meta.importerId ||
-        record->meta.importSettingsJson != sourceSnapshot.meta.importSettingsJson) {
-        outMessage = "[AssetDatabase] import result discarded because the source or import settings changed";
-        return false;
+    AssetMeta persistedMeta;
+    if (record->sourcePath != sourceSnapshot.sourcePath ||
+        !EquivalentAssetImportMeta(record->meta, sourceSnapshot.meta) || !ReadMeta(record->metaPath, persistedMeta) ||
+        !EquivalentAssetImportMeta(persistedMeta, sourceSnapshot.meta)) {
+        result.success = false;
+        result.message = "[AssetDatabase] import result discarded because the source or import settings changed";
+    }
+    if (result.success) {
+        std::string reason;
+        if (!CheckAssetImportInputs(projectRoot_, result.inputs, reason, result.publication.get())) {
+            result.success = false;
+            result.message = "Import result discarded: " + reason;
+        }
     }
 
     if (result.success) {
@@ -220,6 +254,7 @@ bool AssetDatabase::CommitPreparedImport(const AssetRecord& sourceSnapshot, uint
         record->artifactManifest.diagnosticsJson = result.diagnosticsJson;
         record->artifactManifest.artifacts = result.artifacts;
         record->artifactManifest.dependencies = result.dependencies;
+        record->artifactManifest.inputs = result.inputs;
         const auto metaPath = record->metaPath;
         const auto manifestPath = record->artifactManifestPath;
         try {
@@ -257,6 +292,7 @@ bool AssetDatabase::CommitPreparedImport(const AssetRecord& sourceSnapshot, uint
     RefreshRecordState(*record);
     if (result.success) {
         AdvanceContentRevision();
+        RefreshImportDependents(record->guid);
     }
     outMessage = result.message;
     return result.success;

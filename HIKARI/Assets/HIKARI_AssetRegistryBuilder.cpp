@@ -535,9 +535,6 @@ bool AssetRegistryBuilder::RebuildRegistry(const AssetDatabase& assetDatabase, A
             const ASSETS::IMPORT_POLICY::ModelImportPolicy policy =
                 ASSETS::IMPORT_POLICY::ResolveModelImportPolicy(record->sourcePath, record->meta.importSettingsJson);
             descriptor->importer = policy.importer;
-            descriptor->importOptions.loadMaterials = policy.loadMaterials;
-            descriptor->importOptions.loadTextures = policy.loadTextures;
-            descriptor->importOptions.clusterGeometry = policy.clusterOptions;
             ok = registry.RegisterDescriptor(std::move(descriptor)) && ok;
         } else if (record->type == AssetType::Sky) {
             auto descriptor = std::make_unique<SkyAssetDescriptor>();

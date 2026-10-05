@@ -39,7 +39,7 @@ struct ObjKeyHash {
 
 } // namespace
 
-bool LoadObjModelSource(ModelAsset& asset) {
+bool LoadObjModelSource(ModelAsset& asset, std::vector<AssetImportInputFile>* sourceInputs) {
     std::ifstream file(asset.GetSourcePath());
     if (!file.is_open()) {
         return false;
@@ -265,6 +265,9 @@ bool LoadObjModelSource(ModelAsset& asset) {
     asset.defaultSceneRootNode = 0;
 
     OBJ::MaterialLibrary materialLibrary;
+    if (sourceInputs)
+        for (const auto& path : mtllibPaths)
+            sourceInputs->push_back(CaptureAssetInputFile(path));
     OBJ::LoadMaterialLibraries(mtllibPaths, asset, materialLibrary);
 
     ModelNode rootNode{};
